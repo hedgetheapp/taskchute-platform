@@ -58,6 +58,16 @@ canonical docs構成が変更された場合は、repository上の最新構成�
 - 必要なtest変更
 - canonical docsへの影響
 
+## Governance / Policy
+
+役割、Source of Truth、GitHub承認境界、Security / Safety等のGovernance / Policyを、AI Agentが独自判断で弱めたり、自らの権限を拡張したりしないこと。
+
+Governance / Policyを意味のある形で変更する必要がある場合は、変更案と理由を提示し、ユーザー判断へ戻す。
+
+説明改善、誤字修正、参照先整理等の非Policy変更は通常のdocs maintenanceとして扱ってよい。
+
+Project InstructionsとGitHub上の運用docsに実質的な矛盾を発見した場合は、どちらかへ黙って合わせず、矛盾を報告すること。
+
 ## Legacy reference
 
 Legacy repository:
@@ -76,15 +86,23 @@ Legacy repository:
 
 ## Knowledge Promotion
 
-作業中に得た発見を、すぐに恒久ルールへ昇格させないこと。
+作業中に得た発見を、すぐに一般的な恒久ルールへ昇格させないこと。
 
-原則として以下の段階で扱う。
+ただし、将来の開発再開・Decision・実装・testへMaterialな影響を与えるProduct事実、Risk、Open Question、test evidence等は、一度の観測でも十分な根拠があれば適切なcanonical docへ記録してよい。
 
-`Finding` → `再利用可能な知見` → `繰り返し確認されたルール`
+一方、複数の作業へ適用する一般的な恒久ルールへ昇格する場合は、少なくとも以下を確認する。
 
-将来の作業でも再利用価値があり、十分な根拠がある知見だけを、canonical docs、`AGENTS.md`、`DEVELOPMENT_WORKFLOW.md`等への昇格候補とする。
+- evidence
+- reuse value
+- scope
+- counterexample
+- stability
 
-同じ調査や同じ失敗を将来のAgentが繰り返さないために有用な、失敗・制約・判断理由は適切な場所へ残す。
+Knowledgeは永続的に正しいとは限らない。
+
+Architecture、SDK / API、platform、external service等の変化や新しいevidenceによって古くなったKnowledgeは、必要に応じて`Deprecated` / `Superseded` / `Removed`として整理する。
+
+目的はKnowledgeを無選別に増やすことではなく、同じ調査、同じ判断、同じ失敗を将来のAgentが無駄に繰り返さないことである。
 
 ## Safety
 
