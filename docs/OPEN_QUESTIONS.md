@@ -39,6 +39,7 @@ Start / Completeのretry safety自体はD-012でApproved済みだが、具体mec
 
 ## Documents
 
+- Document identity / revision model
 - Markdown editor library
 - wiki-link compatibility scope
 - general noteのinitial scope
@@ -47,6 +48,7 @@ Start / Completeのretry safety自体はD-012でApproved済みだが、具体mec
 
 ## Attachments / Images
 
+- Attachment identity / ownership / reference model
 - D-008 storage separationをApprovedするか
 - max image size
 - camera-photo resize policy
