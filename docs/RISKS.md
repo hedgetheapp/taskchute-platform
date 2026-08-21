@@ -1,41 +1,74 @@
 # Risks
 
 ## R-001 — Server authority increases sync responsibility
-Related: D-002
+Related: D-002, D-011, D-012
 
-Offline operation, retry, idempotency, conflicts, and multi-device convergence become platform responsibilities.
+Server authorityとoffline-capable clientを組み合わせるため、offline operation、retry、idempotency、conflict、multi-device convergenceがPlatform側の責務になる。
 
-Mitigation direction: stable identity, idempotent commands, local cache, explicit conflict handling, and reuse of legacy Bridge test lessons.
+Mitigation direction:
 
-## R-002 — Image storage may increase cost/usage
+- stable identity
+- retry-safe lifecycle operation
+- local state/cache
+- explicit conflict handling
+- legacy Bridgeで得たoffline / Ack ambiguity / regression knowledgeの再利用
+
+## R-002 — Image storage may increase cost / usage
 Related: D-007, D-008
 
-Images in Notes/Comments increase storage, operations, and transfer volume.
+Notes/Commentsでimagesを扱うと、storage、operation、transfer量が増える。
 
-Mitigation direction: object storage, Android resize/compression, orphan cleanup, attachment metadata, and free-tier monitoring.
+Mitigation direction:
+
+- D-008のstorage separation案を含むcost evaluation
+- Android resize / compression
+- orphan cleanup
+- attachment metadata
+- free-tier / quota monitoring
+
+D-008は`Proposed`であり、object storage採用自体は未確定。
 
 ## R-003 — Markdown interoperability
 Related: D-006
 
-Android editing and Obsidian projection may diverge in Markdown/image behavior.
+Android editingと将来のObsidian projectionでMarkdown / image behaviorが乖離する可能性がある。
 
-Mitigation direction: Markdown-native documents, stable document/attachment identity, explicit projection rules, and avoiding proprietary rich-text-only storage.
+Mitigation direction:
+
+- Markdown-native documents
+- stable document / attachment identity
+- explicit projection rules
+- proprietary rich-text-only storageを避ける
 
 ## R-004 — Rebuilding too much at once
 
-Porting all legacy features immediately may hide architecture mistakes.
+legacy featureを一括で再実装すると、Domain / Architectureの誤りを早期に発見しづらくなる。
 
-Mitigation: keep the first vertical slice deliberately small.
+Mitigation:
+
+- small vertical sliceを優先する
+- D-013は`Proposed`のままCore Domain model設計後に再評価する
 
 ## R-005 — Legacy data migration
 Related: D-009
 
-Existing Vault data may contain identity/history that can be lost or collided by a naive import.
+既存Vault dataにはidentity / historyが含まれ、naive importではloss / collisionが発生する可能性がある。
 
-Mitigation: dry-run -> validation -> preview -> import -> post-import verification.
+Mitigation direction:
+
+- dry-run
+- validation
+- preview
+- import
+- post-import verification
+
+exact migration contractは未決。
 
 ## R-006 — Public repository leakage
 
-The new repository is public.
+新repositoryはpublicである。
 
-Mitigation: never commit secrets, personal production notes, or real private images.
+Mitigation:
+
+- secret、credential、個人情報、private production note/image、production dataをcommitしない
+- 将来CI / artifact / logを導入する場合もpublic leakage riskを評価する
