@@ -2,33 +2,39 @@
 
 ## Vision
 
-Build a personal TaskChute platform that works without requiring Obsidian.
+Obsidianを必須とせずに動作する、個人向けTaskChute Platformを構築する。
 
 ## Initial user model
 
 - Single user
 - Multiple devices / clients
 - Personal use
-- Multi-user, team, organization, and billing are out of initial scope
+- Multi-user、team、organization、billingは初期scope外
 
 ## Client direction
 
 ### Android
 
-First-class client. It should eventually cover Today board, Task detail, Project, Notes, Routine, and execution flows.
+first-class clientとする。
+
+将来的にToday board、Task detail、Project、Notes、Routine、execution flowを主要機能として扱う。
+
+Androidはoffline-capableを前提とする。ただし、offline中に可能な操作範囲、local DB、command queue、conflict resolution、sync方式等は別途設計する。
 
 ### Android Widget
 
-Reuses Android app domain/API/cache architecture rather than becoming a one-off companion.
+one-offなcompanionとして独立実装せず、Android appのDomain / API / cache architectureを再利用する。
 
 ### Obsidian
 
-Future optional client/integration. It must not be required for TaskChute itself to function.
+将来のoptional client / integrationとする。TaskChute本体の動作にObsidianを必須としない。
 
 ### Future
 
-Wear OS, Web, MCP/API, and other clients may be added later.
+Wear OS、Web、MCP/API、その他clientは将来追加できる。
 
-## Notes
+## Notes / Documents
 
-TaskChute itself will provide Notes/Documents. Project notes, Task notes, and comments are expected to support Markdown and images.
+TaskChute自身がNotes/Documents capabilityを提供する。
+
+Project Note、Task Note、CommentはMarkdown-nativeなcontent semanticsを維持し、images/filesを扱えることを想定する。
