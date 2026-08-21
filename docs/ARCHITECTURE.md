@@ -29,6 +29,8 @@
 
 この図はtarget architectureの概念図であり、未決のDB schema、API、sync algorithm、storage providerを確定するものではない。
 
+図中のDomain labelもworking scopeを示す概念表現であり、Project / Section / Execution / Routine等のexact Domain modelやentity boundaryを確定するものではない。
+
 ## Storage direction
 
 Working direction only:
