@@ -8,6 +8,8 @@ Architecture / Bootstrap。Runtime implementationはまだ開始していない�
 
 canonical baselineのreviewと`main`へのintegrationは完了済み。現在のcanonical docsは`main`を正本として参照する。
 
+Web appをprimary / universal clientかつinitial development priority最優先とするProduct directionをApprovedとして整理した。
+
 ## Current source-of-truth state
 
 - Project Instructionsはfreeze方針で確定済み。
@@ -23,8 +25,12 @@ canonical baselineのreviewと`main`へのintegrationは完了済み。現在の
 
 - TaskChuteをObsidian非依存の独立Platformとして再構築する。
 - structured TaskChute stateのtarget canonical authorityはTaskChute Serverとする。
-- Android dedicated appをfirst-class clientとする。
+- Web appをprimary / universal clientとし、initial development priorityを最優先とする。
+- 対応browserを通じてWindows、Android、iOS等からCore TaskChute experienceを利用できることをtargetとする。
+- Android dedicated appをnative first-class clientとする。
 - Androidはoffline-capableを前提とする。ただしoffline中に可能な操作範囲やsync方式は未決。
+- Wear OS / Pixel Watchをcompanion clientの対応対象とする。
+- native iOS appは将来対応するが、優先度は低い。
 - 初期user modelはsingle-user / multi-deviceとする。
 - TaskChute自身がMarkdown-nativeなNotes/Documentsを持つ。
 - Notes/Commentsは共通のAttachment capabilityを使う。
@@ -35,7 +41,8 @@ canonical baselineのreviewと`main`へのintegrationは完了済み。現在の
 ## Proposed / Open
 
 - D-008: structured dataとbinary attachment storageの分離は`Proposed`。
-- 現在の10-step First vertical slice案は`Proposed`。Core Domain model設計後に再評価する。
+- D-013: Server + WebでProject / Tasks / Today ordering / Start / Complete / browser reload recoveryを通すFirst vertical sliceは`Proposed`。Core Domain model設計後に再評価する。
+- Web framework、hosting/runtime、supported browser baseline、PWA / Web offline scope、auth/session方式は未決。
 - D1 / R2 / Workersを含むInfrastructure、DB schema、API、auth、sync/conflict方式等は未決。
 
 ## Important distinction
@@ -45,8 +52,8 @@ canonical baselineのreviewと`main`へのintegrationは完了済み。現在の
 ## Next
 
 1. Core Domain modelを設計する。
-2. Proposed First vertical sliceを再評価し、Approved implementation contractへ昇格するか判断する。
+2. Proposed Web-first First vertical sliceを再評価し、Approved implementation contractへ昇格するか判断する。
 3. Approved vertical sliceのAcceptance criteria / Test contractを確定する。
-4. storage / API / sync等のtechnology・architecture Decisionを必要な順に行う。
-5. Approved vertical sliceからruntime implementationを開始する。
+4. Web framework / auth / hosting / storage / API / sync等のtechnology・architecture Decisionを必要な順に行う。
+5. Approved vertical sliceからServer + Web runtime implementationを開始する。
 6. 実装結果をreviewし、必要なverificationとcanonical docs更新を行う。
