@@ -14,10 +14,12 @@ Status: Approved
 
 これはlegacy Obsidian実装の現在のauthorityを遡って変更するものではない。
 
-## D-003 — Android is a first-class client
+## D-003 — Android is a native first-class client
 Status: Approved
 
-dedicated Android appを主要clientとして構築する。
+dedicated Android appをnative first-class clientとして構築する。
+
+Webをprimary / universal clientとした上で、AndroidではWidget、通知、native integration、offline capability等のplatform-specific experienceを提供できる方向とする。
 
 Android WidgetはAndroid client architectureを再利用する方向とする。
 
@@ -85,6 +87,19 @@ Start / Completeはnetwork ambiguity等による同一operationの再送で、�
 ## D-013 — Initial First vertical slice candidate
 Status: Proposed
 
-Project、Tasks、Today-board ordering、Start / Complete、Android、Widget、restart recoveryを通す10-step sliceを初期candidateとする。
+Project、Tasks、Today-board ordering、Start / Complete、Web client、browser reload recoveryを通すsliceを初期candidateとする。
+
+Android、Widget、Wear OSはinitial First vertical sliceには含めない。
 
 Core Domain model設計後に再評価し、Approved implementation contractへ昇格するか判断する。
+
+## D-014 — Web is the primary universal client
+Status: Approved
+
+Web appをinitial development priorityが最も高いprimary / universal clientとする。
+
+対応browserを通じてWindows、Android、iOS等からCore TaskChute experienceを利用できることをtargetとし、native appをTaskChute利用の必須条件としない。
+
+Androidはnative first-class client、Wear OS / Pixel Watchはcompanion target、native iOS appは将来対応のlow-priority clientとする。
+
+supported browser baseline、PWA、Web offline capability、Web hosting technology等の具体方式は別途設計する。
