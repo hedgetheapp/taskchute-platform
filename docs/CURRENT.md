@@ -6,13 +6,13 @@ Date: 2026-08-21
 
 Architecture / Bootstrap。Runtime implementationはまだ開始していない。
 
-canonical baselineは`docs/initial-canonical-baseline`で整備中であり、現時点では`main`へ未統合。
+canonical baselineのreviewと`main`へのintegrationは完了済み。現在のcanonical docsは`main`を正本として参照する。
 
 ## Current source-of-truth state
 
 - Project Instructionsはfreeze方針で確定済み。
 - `AGENTS.md`と`docs/DEVELOPMENT_WORKFLOW.md`はProject Instructionsへ整合済み。
-- canonical docsは日本語ベースへ整理し、Decision / Risk / Open Question / Testの責務を再確認済み。
+- canonical docsは`main`へ統合済みで、日本語ベースへ整理し、Decision / Risk / Open Question / Testの責務を再確認済み。
 - Runtime codeは未実装。
 
 ## Approved direction
@@ -44,9 +44,9 @@ canonical baselineは`docs/initial-canonical-baseline`で整備中であり、�
 
 ## Next
 
-1. canonical baselineのintegration readinessを最終reviewする。
-2. baselineを`main`へ統合するかユーザーが判断する。
-3. Core Domain modelを設計する。
-4. Proposed First vertical sliceを再評価し、Acceptance criteria / Test contractを確定する。
-5. storage / API / sync等のtechnology・architecture Decisionを必要な順に行う。
-6. Approved vertical sliceからruntime implementationを開始する。
+1. Core Domain modelを設計する。
+2. Proposed First vertical sliceを再評価し、Approved implementation contractへ昇格するか判断する。
+3. Approved vertical sliceのAcceptance criteria / Test contractを確定する。
+4. storage / API / sync等のtechnology・architecture Decisionを必要な順に行う。
+5. Approved vertical sliceからruntime implementationを開始する。
+6. 実装結果をreviewし、必要なverificationとcanonical docs更新を行う。
