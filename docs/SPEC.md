@@ -1,62 +1,80 @@
 # Specification
 
-This document only defines the approved bootstrap-level behavior. API endpoint names, DB schema, auth, and conflict algorithms remain open unless explicitly decided.
+この文書は、明示的にApprovedされたbootstrap-level behaviorを定義する。
+
+API endpoint名、DB schema、auth方式、local DB、command queue、conflict algorithm等は、別途DecisionされるまでOpenとする。
 
 ## User model
 
-- One user initially
-- Multiple devices/clients
-- Device identity and sync safety are required
-- Registration, teams, organization, and billing are out of initial scope
+- 初期はone user
+- multiple devices / clients
+- device identityとsync safetyは必要
+- registration、team、organization、billingは初期scope外
 
 ## Core identity
 
-Preserve the legacy lesson that Task definition identity and board placement/execution identity are separate concepts.
+Task definition identityとboard placement / execution identityは別概念とする。
 
-- Task identity must be stable.
-- Entry identity must be stable.
-- Mutable titles must not be identity.
-- One Task may appear as multiple Entries.
-- Ambiguous identity must not silently mutate a guessed target.
-- Exact ID formats remain undecided.
+- Task identityはstableでなければならない。
+- Entry identityはstableでなければならない。
+- mutableなtitleをidentityとして扱わない。
+- 1つのTaskが複数のEntryとして現れることを許容する。
+- identityが曖昧な場合、推測したtargetを黙ってmutateしない。
+- exact ID formatは未決。
 
-## Notes/Documents
+## Lifecycle retry safety
 
-- TaskChute owns Documents.
-- Document body is Markdown-native.
-- Documents need stable identity.
-- Revision/version semantics must remain possible.
-- Android must eventually read/edit them.
-- Future Obsidian projection should preserve Markdown semantics as faithfully as practical.
+Start / Completeは、network ambiguity等によって同一operationが再送された場合でも、二重実行や不整合を起こさないretry-safe behaviorを満たす。
+
+具体的な実現方式は未決であり、command ID、idempotency key、transaction設計等をここでは固定しない。
+
+## Android offline capability
+
+Android clientはtemporary network unavailabilityを考慮したoffline-capable designとする。
+
+offline中に許可するoperation範囲、local persistence、queueing、sync、conflict resolution等の具体方式は未決。
+
+## Notes / Documents
+
+- TaskChuteがDocumentsを所有する。
+- Document bodyはMarkdown-nativeとする。
+- Documentにはstable identityが必要。
+- revision / version semanticsを将来持てる設計余地を残す。
+- Androidは将来的にread / editできることを要求する。
+- 将来のObsidian projectionでは、実用上可能な範囲でMarkdown semanticsを保持する。
 
 ## Comments
 
-- Comments should support Markdown.
-- Comments should support images.
-- Notes and Comments should use one shared Attachment model.
+- CommentはMarkdownを扱えること。
+- Commentはimagesを扱えること。
+- NotesとCommentsは共通のAttachment modelを利用する。
 
 ## Images / Attachments
 
-Required capabilities:
+必要capability:
 
 - stable attachment identity
 - metadata
-- reference/ownership relation
-- deletion/orphan-cleanup strategy
+- reference / ownership relation
+- deletion / orphan-cleanup strategy
 - Android upload
 - future Obsidian file projection
 
-Binary-storage provider is not yet final. Cloudflare R2 is a leading candidate.
+binary-storage providerおよびstructured dataとのstorage separationは未確定。D-008は`Proposed`であり、Cloudflare R2はleading candidateの一つにすぎない。
 
-## First vertical slice
+## Proposed First vertical slice
 
-1. Create one Project on Server.
-2. Create three Tasks.
-3. Place them in explicit Today-board order.
-4. Android displays all three.
-5. Android starts one Task.
-6. Server records running state.
-7. Android completes it.
-8. Next Task is available.
-9. Widget displays running/next.
-10. Restart restores correct state.
+Status: Proposed
+
+以下はCore Domain model設計後に再評価するcandidateであり、現時点ではApproved implementation contractではない。
+
+1. Server上に1つのProjectを作成する。
+2. 3つのTaskを作成する。
+3. Today boardへexplicit orderで配置する。
+4. Androidが3つすべてを表示する。
+5. Androidから1つのTaskをStartする。
+6. Serverがrunning stateを記録する。
+7. AndroidからCompleteする。
+8. 次のTaskが利用可能になる。
+9. Widgetがrunning / nextを表示する。
+10. restart後もcorrect stateを復元する。
