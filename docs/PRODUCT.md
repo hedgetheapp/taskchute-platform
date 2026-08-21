@@ -13,17 +13,37 @@ Obsidianを必須とせずに動作する、個人向けTaskChute Platformを構
 
 ## Client direction
 
+### Web
+
+primary / universal clientとし、initial development priorityを最優先とする。
+
+対応browserを通じてWindows、Android、iOS等から利用でき、native appがなくてもCore TaskChute experienceを利用できることをtargetとする。
+
+supported browser baseline、responsive / adaptive layout、PWA、Web offline capability等のexact scopeは別途設計する。
+
 ### Android
 
-first-class clientとする。
+native first-class clientとする。
 
-将来的にToday board、Task detail、Project、Notes、Routine、execution flowを主要機能として扱う。
+Webをprimary / universal clientとした上で、dedicated Android appではToday board、Task detail、Project、Notes、Routine、execution flowに加え、Widget、通知、native integration等のAndroid固有capabilityを扱える方向とする。
 
 Androidはoffline-capableを前提とする。ただし、offline中に可能な操作範囲、local DB、command queue、conflict resolution、sync方式等は別途設計する。
 
 ### Android Widget
 
-one-offなcompanionとして独立実装せず、Android appのDomain / API / cache architectureを再利用する。
+one-offなcompanionとして独立実装せず、Android appのDomain / API / local-state architectureを再利用する。
+
+### Wear OS / Pixel Watch
+
+companion clientとして対応対象とする。
+
+running Task、next Task、Start / Complete等のexecution-oriented experienceを中心候補とし、exact scopeは別途設計する。
+
+### iOS native
+
+将来対応するが、native clientとしての優先度は低くする。
+
+iOSからはまずWeb clientでCore TaskChute experienceを利用できることを前提とし、native iOS appは後続scopeとする。
 
 ### Obsidian
 
@@ -31,7 +51,7 @@ one-offなcompanionとして独立実装せず、Android appのDomain / API / ca
 
 ### Future
 
-Wear OS、Web、MCP/API、その他clientは将来追加できる。
+MCP/API、その他clientは将来追加できる。
 
 ## Notes / Documents
 
