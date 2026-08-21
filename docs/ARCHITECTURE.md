@@ -22,12 +22,13 @@
           +---------------------+---------------------+
           |                     |                     |
           v                     v                     v
-   Android Client         Android Widget       Obsidian Client
-   local state/cache      running / next       optional
-   TaskBoard / Notes      quick actions         .md projection
+      Web Client          Android Client       Other Clients
+  primary / universal     native first-class   Wear OS companion
+  browser-based           local state/cache    iOS native future
+                          Android Widget       Obsidian optional
 ```
 
-この図はtarget architectureの概念図であり、未決のDB schema、API、sync algorithm、storage providerを確定するものではない。
+この図はtarget architectureの概念図であり、未決のDB schema、API、sync algorithm、storage provider、Web frameworkを確定するものではない。
 
 図中のDomain labelもworking scopeを示す概念表現であり、Project / Section / Execution / Routine等のexact Domain modelやentity boundaryを確定するものではない。
 
@@ -57,11 +58,19 @@ Cloudflare D1 / R2はleading candidatesであり、final Decisionではない。
 
 ## Client principle
 
-Androidはfirst-class clientであり、offline-capableであること自体はApproved requirementとする。
+Web appをprimary / universal clientとし、initial development priorityを最優先とする。
+
+対応browserを通じてWindows、Android、iOS等からCore TaskChute experienceを利用できることをtargetとする。supported browser baseline、responsive / adaptive behavior、PWA、Web offline capability、hosting/runtime technology等の具体Architectureは未決。
+
+Androidはnative first-class clientであり、offline-capableであること自体はApproved requirementとする。
 
 ただし、local DB、cache構造、offline中のoperation範囲、command queue、sync protocol、conflict resolution等の具体Architectureは未決。
 
-Widgetは可能な限りAndroid appのDomain / API / local-state architectureを再利用し、widget-only backendを別系統で持たない方向とする。
+Android Widgetは可能な限りAndroid appのDomain / API / local-state architectureを再利用し、widget-only backendを別系統で持たない方向とする。
+
+Wear OS / Pixel Watchはcompanion clientとしてServerと同じDomain / API contractを利用する方向とし、exact feature scopeは未決。
+
+native iOS appは将来のlow-priority clientとし、それ以前もiOSからWeb clientを利用できる構成をtargetとする。
 
 ## Retry safety principle
 
