@@ -17,10 +17,11 @@ Runtimeはまだ未実装。
 | CORE-ORDER-01 | Ordering | explicit orderをpreserveする | Proposed (D-013) | NOT_IMPLEMENTED |
 | CORE-LIFE-01 | Lifecycle | Startは同一operationのretryで二重実行・不整合を起こさない | Approved (D-012) | NOT_IMPLEMENTED |
 | CORE-LIFE-02 | Lifecycle | Completeは同一operationのretryで二重実行・不整合を起こさない | Approved (D-012) | NOT_IMPLEMENTED |
+| WEB-01 | Web | Today boardをexplicit orderで表示する | Proposed (D-013) | NOT_IMPLEMENTED |
+| WEB-02 | Web | Start後のrunning stateを表示する | Proposed (D-013) | NOT_IMPLEMENTED |
+| WEB-03 | Web | Complete後に次のTaskを利用可能な状態として表示する | Proposed (D-013) | NOT_IMPLEMENTED |
+| WEB-04 | Web | browser reload後もcorrect stateを復元する | Proposed (D-013) | NOT_IMPLEMENTED |
 | ANDROID-OFFLINE-01 | Android | temporary network unavailableを考慮したoffline-capable behaviorを持つ | Approved (D-011) | NOT_IMPLEMENTED |
-| ANDROID-01 | Android | Today boardを表示する | Proposed (D-013) | NOT_IMPLEMENTED |
-| ANDROID-02 | Android | running stateを表示する | Proposed (D-013) | NOT_IMPLEMENTED |
-| WIDGET-01 | Widget | running / nextを表示する | Proposed (D-013) | NOT_IMPLEMENTED |
 | DOC-01 | Documents | Markdown save/read round-tripでcontent semanticsを保持する | Approved (D-006) | NOT_IMPLEMENTED |
 | ATTACH-01 | Attachment | Noteでimage attachmentを扱える | Approved (D-007) | NOT_IMPLEMENTED |
 | ATTACH-02 | Attachment | Commentでimage attachmentを扱える | Approved (D-007) | NOT_IMPLEMENTED |
