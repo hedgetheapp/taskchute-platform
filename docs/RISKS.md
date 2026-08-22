@@ -128,12 +128,16 @@ Cloudflare D1を採用するが、Worker request全体を暗黙のtransactionと
 
 2026-08-22のcurrent-harness local + temporary remote feasibility spikeで、D1 `batch()` + conditional SQL + database constraintsによりD1-SPIKE-01〜08を満たせることはVerifiedした。これにより「D1で必要なatomicity / concurrency / idempotency strategyが成立可能か」というarchitecture gate riskはmitigatedした。
 
+PR #3ではCreateProject / AddTaskToDayについてproduction-shaped D1 implementationを実装・reviewした。Domain mutation + operation resultのatomic batch、owner-scoped FK / guard、placement revision、same-operation replay、operation-ID misuse、rollback、unknown infrastructure ambiguityをlocal integration testsで確認している。
+
+実装review中には、broad catch後のstate観測からunexpected infrastructure failureをdeterministic Domain rejectionへ誤分類し得るpath、およびsame-operation rejection raceでstored successを捨て得るpathを検出し、merge前に修正・回帰testを追加した。
+
 残存Risk:
 
-- spikeのexact schema / SQL / broad error mappingをそのままProduct runtimeへcopyすると、production semanticsと乖離する可能性がある
-- unexpected infrastructure failureをdeterministic Domain rejectionとして誤保存・誤分類する可能性がある
-- operation result retention / cleanup、overload時behavior、migration、observability等はspike対象外
-- exact production schema / command-specific transaction algorithmはまだ未確定
+- Reorder / Start / Complete / active Execution invariantのProduct runtime command-specific transaction algorithmは未実装
+- lifecycle実装でspikeのexact SQL / broad error mappingを無批判にcopyするとproduction semanticsと乖離する可能性がある
+- operation result retention / cleanup、overload時behavior、migration evolution、observability等は未解決
+- bootstrap Product runtimeはlocal evidenceのみで、remote D1 / deployed Worker evidenceは未取得
 
 Mitigation direction:
 
@@ -141,19 +145,47 @@ Mitigation direction:
 - active Execution最大1等をapplication codeだけに依存させない
 - current evidenceは`spikes/d1-feasibility/EVIDENCE.md`と`docs/TEST_MATRIX.md`へ記録する
 - Product runtimeではinfrastructure failureとDomain rejectionを分離し、safe retry / reconciliation余地を残す
-- implementation後はAPI / integration / conflict / retry evidenceを別途取得し、spike PASSをProduct runtime PASSへ自動継承しない
+- lifecycle incrementごとにAPI / integration / conflict / retry evidenceを取得し、spike PASSを自動継承しない
 
-D1 feasibility gateはPASS済みだが、Product runtimeそのものは未実装でありVerifiedではない。
+D1 feasibility gateはPASS / Verified。Product runtime bootstrap sliceはImplemented + Integrated + local testedだが、Product runtime全体はVerifiedではない。
 
 ## R-011 — Authentication library / identity coupling risk
 Related: D-021
 
 Better Authのphysical schemaやlibrary behaviorへTaskChute Domain identityを直接結合すると、auth library upgrade / replacementがDomain dataへ波及する可能性がある。
 
+Current bootstrap implementationではBetter Auth `1.7.1`をexact pinし、`AUTH_DB` physical schemaと`APP_DB` stable TaskChute app user identityをmappingで分離している。
+
 Mitigation direction:
 
 - stable TaskChute app user identityとauth subjectをmappingする
 - auth-managed persistenceとDomain persistenceの責務を分離する
 - Domain tableからauth library physical schemaへ強いFK dependencyを持たせない
-- implementation時に検証済みBetter Auth versionをpinする
-- upgrade時はmigration / session / authentication regressionを評価する
+- pinned version upgrade時はmigration / session / authentication regressionを評価する
+
+## R-012 — Bootstrap endpoint lifecycle / exposure
+Related: D-021, D-022
+
+Current local runtimeにはoperator-only initial user provisioning用の`POST /api/internal/bootstrap` endpointが存在する。
+
+Current mitigation:
+
+- `BOOTSTRAP_TOKEN`必須
+- fixed-length digest後のtiming-safe token comparison
+- token mismatch時はresource existenceを露出しない404 response
+- public Better Auth signupは常時disabled
+- bootstrap専用auth pathのみoperator invocation中にuser creationを許可
+- password / token / session secretをtracked file、evidence、通常logへ保存しない
+- AUTH_DB成功 / APP_DB失敗から同一subjectでrecoverable
+
+残存Risk:
+
+remote / production deployment時にbootstrap endpointを常時reachableなまま運用すると、bootstrap secret lifecycle、rotation、accidental exposure、post-bootstrap attack surfaceの管理が必要になる。
+
+Mitigation direction:
+
+- remote / production deploy前にbootstrap exposure / lifecycleをSecurity reviewする
+- explicit bootstrap mode、post-bootstrap secret removal / rotation、outer deployment control等を候補として評価する
+- production bootstrap lifecycleが決まるまで、このlocal implementationをproduction-ready security postureとみなさない
+
+このRisk記録自体はproduction deployment方式をApprovedするDecisionではない。

@@ -45,3 +45,20 @@
 - initial userをoperator-only one-shot bootstrapで作成し、public signupをbootstrap中も有効化しない方針を確定。bootstrapはAUTH_DB / APP_DB partial failureからrecoverableにする。
 - initial browser sessionをrolling 7日 / update threshold 1日とし、same Worker内でseparate `AUTH_DB` / `APP_DB` D1 bindingsを利用するphysical boundaryを確定。
 - `FEATURES.md`のD1 concurrency / atomicity spike statusをcanonical evidenceに合わせて`Verified`へ修正。
+
+### Runtime bootstrap implementation
+
+- PR #3でFirst production runtime bootstrap sliceを`main`へmerge。
+- React + Vite SPAとCloudflare Worker runtime scaffoldを追加。
+- Better Auth `1.7.1`をexact pinし、public signup disabled、operator-only bootstrap、rolling 7日 / update threshold 1日sessionを実装。
+- same Worker内にseparate `AUTH_DB` / `APP_DB` D1 bindingsを実装し、Better Auth subjectからstable TaskChute `app_user_id`へmappingするPrincipal境界を追加。
+- bootstrapをAUTH_DB / APP_DB partial failureからrecoverableにし、secret / passwordをtracked fileや通常logへ残さない運用を実装。
+- explicit IANA timezone / TaskChuteDay boundaryからcurrent logical dayをresolve / materializeし、actual intervalとestablishment contextを保存。
+- DST nonexistent / ambiguous boundaryをTemporal-compatible `compatible` semanticsで処理し、actual resolved boundary instantでday membershipを判定。
+- CreateProjectとAddTaskToDayを実装し、Task / Entry separate UUIDv7 identity、optional Project relation、explicit Entry positionをAPP_DBへ保存。
+- logical operation replay、different-semantic operation-ID misuse rejection、request fingerprint version 1、placement revision conflict protectionを実装。
+- unexpected infrastructure failureをdeterministic Domain rejectionへ誤保存せず、canonical Query + same-operation retryへreconcileできるfailure pathを実装。
+- same-operation concurrent raceがstored winner resultへ収束するようrejection persistence raceを修正し、owner-scoped temporary guard / assertionを追加。
+- Web DayBoardでlogin/logout、Project作成、Task + Entry追加、pending feedback、canonical refetch、browser reload recoveryを実装。
+- local evidenceとしてWorker / D1 34件 + Web 7件 = 41件PASS、typecheck / production build / fresh local migrations / FK checks PASSを取得し、implementation bundle / GitHub PR diff reviewもPASS。
+- remote D1 Product runtime verification、deployed Worker verification、production verificationは未実施。Reorder / Start / Complete / Execution runtimeは次increment。

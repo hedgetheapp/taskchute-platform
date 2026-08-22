@@ -4,28 +4,63 @@ Date: 2026-08-22
 
 ## Status
 
-Architecture / Pre-implementation。
+Implementation / First runtime bootstrap integrated。
 
-Runtime implementationはまだ開始していない。
+PR #3 `Add first runtime bootstrap slice` を2026-08-22にmergeし、current `main`にはauthentication、APP persistence、current TaskChuteDay、CreateProject、AddTaskToDay、Web DayBoard / reload recoveryまでの最初のproduction-shaped runtime bootstrap sliceが入っている。
 
-Core Domain foundations、TaskChuteDay、First Server + Web vertical slice、initial technology / authentication architectureまでApprovedとして設計した。
+Current main at this update base:
 
-Cloudflare D1のatomicity / concurrency / idempotency feasibility gateは、current harnessによるlocal D1 + temporary remote D1の`D1-SPIKE-01`〜`D1-SPIKE-08`でPASSし、implementation reviewも完了した。
+`afcf1ef0e1ca36ee0ce962be288fef41331fd694`
 
-2026-08-22に、runtime foundation investigationを踏まえ、First Server + Web runtime実装開始前に必要だったMaterial DecisionをD-022としてApprovedした。
+Runtime bootstrap implementation commit:
 
-次のimplementation workは、D-022を前提に、authentication + APP persistence + current TaskChuteDay + CreateProject + AddTaskToDay + Web DayBoard / reload recoveryを最小end-to-end sliceとして実装することである。
+`3b9fb8b78f6311b63e7a8a6ccf29ddf74415d3f6`
+
+D1 feasibility gateは引き続きPASS / Verified。Product runtime bootstrap sliceはImplemented + Integratedで、current local automated evidenceとimplementation / PR diff reviewはPASSしている。ただしremote D1、deployed Worker、production verificationは未実施であり、Product runtime全体をVerifiedとは扱わない。
+
+First vertical slice全体は未完了で、ReorderEntries、StartEntry、CompleteEntry、Execution runtime、lifecycle-aware Next / reload recoveryが次incrementである。
 
 ## Current source-of-truth state
 
 - Project Instructionsはfreeze方針で確定済み。
 - `AGENTS.md`と`docs/DEVELOPMENT_WORKFLOW.md`はProject Instructionsへ整合済み。
-- Runtime codeは未実装。
+- PR #3のruntime bootstrap sliceは`main`へIntegrated済み。
 - D1 concurrency / atomicity feasibility gateはPASS / Verified。current evidenceは`spike/d1-feasibility` branchの`eda694e22fd742827da5b90967c6b0305b885033`および`spikes/d1-feasibility/EVIDENCE.md`を参照する。
-- D1 spikeのPASSはexact production SQL / command-specific transaction algorithm / Product runtime verificationを意味しない。
-- D-022でinitial runtime foundationのID、Section scope、APP persistence baseline、TaskChuteDay bootstrap / DST、initial-user bootstrap、session policy、AUTH_DB / APP_DB boundaryをApprovedした。
+- D1 spikeのPASSはProduct runtime verificationを意味しない。
+- D-022でinitial runtime foundationのID、Section scope、APP persistence baseline、TaskChuteDay bootstrap / DST、initial-user bootstrap、session policy、AUTH_DB / APP_DB boundaryをApproved済み。
+- Better Authはruntime bootstrap implementationで`1.7.1`へexact pin済み。
 - `docs/DECISIONS.md`をApproved / Proposed Decisionの正本とする。
 - Verification requirement / evidenceの正本は`docs/TEST_MATRIX.md`とする。
+
+## Implemented runtime bootstrap slice
+
+PR #3で以下を実装・統合した。
+
+- React + Vite SPA
+- Cloudflare Worker API
+- separate local `AUTH_DB` / `APP_DB` D1 bindings
+- Better Auth 1.7.1
+- public signup disabled
+- operator-only bootstrap
+- Better Auth subject -> stable TaskChute `app_user_id` mapping
+- rolling 7日 / update threshold 1日のbrowser session policy
+- explicit IANA timezone / TaskChuteDay boundary / initial Sections bootstrap
+- current TaskChuteDay resolution / lazy materialization
+- Temporal-compatible DST ambiguous / nonexistent boundary handling
+- CreateProject
+- AddTaskToDay
+- Task / Entry separate UUIDv7 identity
+- explicit Entry position readback
+- current planned Next Entry projection
+- logical operation replay / misuse rejection
+- fingerprint version 1
+- AddTaskToDay placement revision conflict protection
+- unexpected infrastructure ambiguityとdeterministic Domain rejectionの分離
+- authenticated DayBoard
+- browser canonical reload recovery
+- ambiguous mutation reconciliation
+
+このsliceでは`executions`をまだ作らず、Start / Complete incrementまで延期している。
 
 ## Approved Product / Domain direction
 
@@ -75,63 +110,49 @@ Server + Webで以下をend-to-endに通す。
 
 First sliceにはRoutine generation、Notes/Documents implementation、Location/Map、Review、Calendar、Timeline、Android、Wear OS、Web/Android offline、realtime push等を含めない。
 
-実装はsmall vertical sliceで段階投入する。最初のruntime bootstrap sliceではauthentication、current TaskChuteDay、CreateProject、AddTaskToDay、DayBoard / reload recoveryまでを通し、Reorder / Start / Completeは次incrementへ分ける。
-
-## Approved initial technology / architecture
-
-- Web: React + Vite SPA
-- Server API: Cloudflare Workers
-- structured application persistence: Cloudflare D1
-- API: conceptual Command / Query separation
-- client-issued mutation: logical operation identity
-- placement conflict: revision / precondition、silent last-write-wins禁止
-- Auth: Better Auth + secure browser session
-- initial login: email + password
-- public self-signup: disabled
-- initial user: operator-only one-shot bootstrap
-- browser session: rolling 7日 / update threshold 1日
-- persistence: same Worker内でseparate `AUTH_DB` / `APP_DB`
-- TaskChute Domain identityとauth provider physical identityを分離
-
-Native clientはWeb React codeの直接流用を前提としない。
-
-- Android: Kotlin + Jetpack Compose第一候補
-- Wear OS: Kotlin + Compose for Wear OS第一候補
-- native iOS: Swift + SwiftUI第一候補
-
-Cloudflare R2等のbinary object storageは未Approvedで、D-008は`Proposed`のまま。
+bootstrap sliceでauthentication、current TaskChuteDay、CreateProject、AddTaskToDay、DayBoard / reload recoveryまでを通した。Reorder / Start / Complete / Executionは次incrementへ分ける。
 
 ## Verification state
 
-- Runtime: `NOT_IMPLEMENTED`
-- D1 feasibility spike: `PASS / VERIFIED`
-- D1 current-harness local: `PASS`
-- D1 current-harness temporary remote: `PASS`
-- First vertical slice: `NOT_IMPLEMENTED`
-- First runtime bootstrap slice: `NOT_IMPLEMENTED`
-- Auth: `NOT_IMPLEMENTED`
-- Web: `NOT_IMPLEMENTED`
+Current runtime bootstrap evidenceはPR #3へ入ったexact implementation contentに対するlocal evidenceである。
 
-Approved Decisionや設計が存在することを理由にTested / Verified扱いしない。
+- Runtime bootstrap implementation: `IMPLEMENTED / INTEGRATED`
+- Runtime bootstrap local Worker / D1 tests: `34 PASS`
+- Runtime bootstrap local Web tests: `7 PASS`
+- Runtime bootstrap local automated tests total: `41 PASS`
+- Typecheck: `PASS`
+- Production build: `PASS`
+- Fresh local AUTH_DB migration: `PASS`
+- Fresh local APP_DB migration: `PASS`
+- AUTH_DB foreign-key check: `0`
+- APP_DB foreign-key check: `0`
+- ChatGPT implementation bundle review: `PASS`
+- GitHub PR diff review: `PASS`
+- Remote D1 Product runtime verification: `NOT_RUN`
+- Deployed Worker verification: `NOT_RUN`
+- Product runtime overall: `NOT_VERIFIED`
+- First vertical slice overall: `PARTIALLY_IMPLEMENTED`
+- Reorder / Start / Complete / Execution: `NOT_IMPLEMENTED`
 
-D1 feasibility gateのVerifiedは、D1で必要なatomicity / concurrency / idempotency strategyが成立可能であることのverificationであり、Product runtime自体のImplemented / Integrated / Tested / Verifiedを意味しない。
+Approved Decisionや実装存在だけを理由にVerified扱いしない。詳細なcontract / evidenceは`docs/TEST_MATRIX.md`を正本とする。
 
 ## Important Risks / Gates
 
 - D1 Worker request全体を暗黙のtransactionとみなさない。
 - conditional SQL + DB constraint + explicit transactional batchによるstrategyはlocal + temporary remote spikeでfeasibleとVerified済み。
-- active Execution max 1、same-operation retry、Complete retry、reorder conflict、rollback、FK safetyはspikeでcurrent-harness PASS済み。
-- exact production migration SQL / command-specific transaction algorithmはD-022のbaselineを満たす形で実装・reviewする。
-- unexpected infrastructure failureを確定Domain rejectionへ誤分類しない。exact API表現は実装時にreviewする。
-- AUTH_DB / APP_DB間のcross-database atomicityを仮定せず、bootstrapはpartial failureからrecoverableにする。
+- CreateProject / AddTaskToDayのproduction-shaped command pathは実装・review済み。
+- unexpected infrastructure failureを確定Domain rejectionへ誤分類しない原則をruntime implementationでも維持している。
+- active Execution max 1、Start / Complete retry、reorder conflictのProduct runtime実装はまだ次increment。
+- AUTH_DB / APP_DB間のcross-database atomicityを仮定せず、bootstrapはpartial failureからrecoverableにしている。
 - repositoryはpublicであり、Better Auth secret、bootstrap password、session token等をcommit / evidence /通常logへ残さない。
+- remote / production deployment前にbootstrap endpointのexposure / lifecycleを別途reviewする。
 
 ## Next
 
-1. current `main`とD-022を再確認し、First production runtime bootstrap slice用branchで実装を開始する。
-2. React + Vite + Workerの最小runtime scaffold、local `AUTH_DB` / `APP_DB` bindings、review済みmigrationを作る。
-3. Better Auth local D1 smoke test後にexact versionをpinし、operator-only bootstrapとPrincipal mappingを実装する。
-4. explicit timezone / boundaryからcurrent TaskChuteDayを解決・materializeする。
-5. `LoadCurrentTaskChuteDay`、`CreateProject`、`AddTaskToDay`をServer + Webでend-to-endに通し、browser reload recoveryを確認する。
-6. Product runtime向けのunit / persistence / auth / API / Web testsを実施し、D1 spike PASSを自動継承せずcurrent evidenceを記録する。
-7. 実装review後にTEST_MATRIX、CURRENT、RISKS / OPEN_QUESTIONSをimpact analysisベースで更新する。
+1. current `main`をbaseに、ReorderEntries + StartEntry + CompleteEntry + Execution foundationのnext incrementを開始する。
+2. ReorderはTaskChuteDay-level `placement_revision`でconflict-safeにし、winner responseとfinal stored orderの一致を検証する。
+3. Startはuser-wide active Execution最大1、no implicit interrupt、same-operation retry safetyを実装する。
+4. Completeはfirst `ended_at` preservationとsame-operation retry safetyを実装する。
+5. Start / Completeが`placement_revision`を変更しないことを検証する。
+6. Webでreorder / running / completed / Next / reload recoveryをend-to-endに確認する。
+7. impact analysisに基づきcurrent evidenceを`TEST_MATRIX`へ反映する。

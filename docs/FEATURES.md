@@ -8,23 +8,24 @@ Status values: Planned / In design / Implemented / Verified
 
 | Feature | Status | Notes |
 |---|---|---|
-| Server canonical task state | In design | Target direction Approved |
-| Core Domain foundations | In design | D-015 Approved。runtime未実装 |
-| Task / Entry identity | In design | 分離・stable identity Approved。initial runtime IDはUUIDv7 (D-022) |
-| TaskChuteDay | In design | D-017 / D-022 Approved。explicit timezone/boundary bootstrap、continuous interval、compatible DST semantics |
-| Project | In design | D-013 First slice contract Approved |
-| Section | In design | user-global stable entity / Entry ordering foundation Approved (D-015, D-022) |
-| Today / DayBoard ordering | In design | Entry explicit order。D-013 Approved |
-| Start / Complete lifecycle | In design | planned -> running -> completed、retry safety、active Execution max 1 Approved |
-| Next Entry projection | In design | hard lockではない。D-013 Approved |
-| Historical fact foundation | In design | D-016 / D-022 Approved。TaskChuteDay interval context保存、exact metadata snapshotは未決 |
-| Web app | In design | React + Vite SPA、primary / universal client |
-| Async Web mutation | In design | full-page reload不要。D-013 / D-020 Approved |
-| Web browser reload recovery | In design | D-013 Approved |
-| Cloudflare Workers API | In design | D-020 Approved。runtime未実装 |
-| Cloudflare D1 application persistence | In design | D-020 / D-022 Approved。APP baseline / AUTH_DB split確定、exact SQL / migrationは実装時review |
+| Server canonical task state | Implemented | bootstrap sliceでcurrent TaskChuteDay / Project / Task / Entry authorityをServerへ実装。First vertical slice全体は未完了 |
+| Core Domain foundations | In design | D-015 Approved。bootstrap scopeのTask / Entry / Project / Section / TaskChuteDayは実装、Execution / lifecycle等は未実装 |
+| Task / Entry identity | Implemented | separate stable UUIDv7 identityをruntimeへ実装。ID timestampはordering authorityにしない |
+| TaskChuteDay | Implemented | explicit timezone/boundary bootstrap、materialized interval/context、compatible DST semanticsをruntimeへ実装 |
+| Project | Implemented | CreateProject + optional Task project relationをbootstrap sliceで実装 |
+| Section | In design | user-global stable persistence / bootstrapは実装。rename等を含むSection lifecycleは未実装 |
+| Today / DayBoard ordering | In design | explicit Entry position表示は実装。Reorder commandは未実装 |
+| Start / Complete lifecycle | In design | planned -> running -> completed、retry safety、active Execution max 1 Approved。runtime未実装 |
+| Next Entry projection | In design | current planned Entry projectionは実装。lifecycle-aware behavior / non-Next Startは次increment |
+| Historical fact foundation | In design | materialized TaskChuteDay interval context保存は実装。Execution / exact metadata snapshotは未実装・未決 |
+| First runtime bootstrap slice | Implemented | auth、current TaskChuteDay、CreateProject、AddTaskToDay、DayBoard / reload recoveryをPR #3でmerge |
+| Web app | In design | React + Vite SPA runtimeは実装。First vertical slice UI全体は未完了 |
+| Async Web mutation | In design | Project / Task+Entryはfull-page reload不要。Reorder / Start / Completeは未実装 |
+| Web browser reload recovery | Implemented | bootstrap scopeでServer canonical stateから再取得・復元を実装 |
+| Cloudflare Workers API | Implemented | auth / bootstrap / current day / Project / Task+Entry APIをruntimeへ実装 |
+| Cloudflare D1 application persistence | Implemented | bootstrap foundationのAUTH_DB / APP_DB migrationとowner-scoped persistenceを実装。Execution schemaは次increment |
 | D1 concurrency / atomicity spike | Verified | D1-SPIKE-01〜08 current-harness local + temporary remote PASS |
-| Application authentication | In design | Better Auth + no public signup、operator bootstrap、rolling 7日session、separate AUTH_DB / APP_DB (D-021, D-022) |
+| Application authentication | Implemented | Better Auth 1.7.1、public signup disabled、operator bootstrap、rolling 7日session、separate AUTH_DB / APP_DBを実装 |
 | Android app | Planned | native first-class。Kotlin + Jetpack Compose第一候補 |
 | Android offline capability | In design | capability自体はApproved。操作範囲 / sync方式は未決 |
 | Android Widget | Planned | Android architectureを再利用 |

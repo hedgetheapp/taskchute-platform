@@ -12,14 +12,25 @@ Cloudflare Workers + D1のinitial adoption自体はD-020でApproved済み。
 
 D-022によりFirst vertical slice全体のAPP persistence baseline responsibility、separate `AUTH_DB` / `APP_DB` boundary、UUIDv7 entity identity、user-global Section scopeはApproved済み。
 
+Current bootstrap implementation fact:
+
+- `AUTH_DB`にはBetter Auth 1.7.1 physical schemaをmigrationとして実装済み
+- `APP_DB`にはapp user / auth mapping / settings / projects / sections / taskchute_days / tasks / entries / operations / temporary command guard・assertionを実装済み
+- `executions`はStart / Complete未実装のため次incrementへ延期
+- `operations`は`(app_user_id, operation_id)` owner scopeとfingerprint versionを保持
+- current fingerprint canonicalizationはrecursive deterministic JSON canonicalization + SHA-256、version 1
+- current placement revision physical representationは`taskchute_days.placement_revision`
+- CreateProject / AddTaskToDayのcurrent transaction algorithmはimplementation review済み
+
+上記はcurrent implementation factであり、将来永続化方式を固定する新しいApproved Decisionではない。
+
 以下はOpen:
 
-- exact D1 schema / migration SQL
-- VerifiedになったD1 feasibility strategyをProduct runtimeへ落とし込むexact command-specific transaction algorithm
-- operation result persistenceのexact schema
-- request fingerprint canonicalization / hash方式
-- placement revisionのphysical representation
+- Reorder / Start / Completeを含むFirst vertical slice残りのexact schema / migration SQL
+- Reorder / Start / Completeのcommand-specific transaction algorithm
+- Execution indexes / active Execution uniquenessのexact physical strategy
 - operation result retention / cleanup policy
+- schema evolution / compatibility migration strategy
 - backup / export strategy
 - custom domainを採用する時期
 - preview / staging environment strategy
@@ -33,14 +44,25 @@ Command / Queryをconceptualに分離し、client-issued mutationへlogical oper
 
 unexpected infrastructure failureをdeterministic Domain rejectionとして保存せず、安全なretry / canonical Query reconciliation余地を残す原則はApproved済み。
 
+Current bootstrap implementationでは以下を実装済み。
+
+- `POST /api/auth/sign-in/email`
+- `POST /api/auth/sign-out`
+- `POST /api/internal/bootstrap`
+- `GET /api/v1/taskchute-days/current`
+- `POST /api/v1/projects`
+- `POST /api/v1/taskchute-days/current/entries`
+- CreateProject / AddTaskToDayのcurrent DTO / error mapping
+- `503 infrastructure_ambiguous` + reconciliation hint
+
+これらのexact path / DTO / status mappingはcurrent implementation factであり、長期API compatibilityを固定するApproved Decisionではない。
+
 以下はOpen:
 
-- exact endpoint paths
-- exact JSON request / response schema
-- exact HTTP status / error-code mapping
-- command-specific transactional SQL
-- unexpected infrastructure failure時のretry / reconciliation contractのexact API表現
-- API versioning policy
+- Reorder / Start / Complete endpoint / DTO / status mapping
+- lifecycle command-specific transactional SQL
+- long-term API versioning policy
+- public compatibility / deprecation policy
 - rate-limit / abuse-protection policy
 
 ## Authentication / authorization
@@ -55,11 +77,17 @@ D-022により以下はApproved済み。
 - same Workerでseparate `AUTH_DB` / `APP_DB` D1 bindingsを利用する
 - bootstrapはcross-DB partial failureからidempotent / recoverableにする
 
+Current bootstrap implementation fact:
+
+- Better Auth exact pin: `1.7.1`
+- minimal Web login / logout UIを実装済み
+- local operator bootstrap script / endpointを実装済み
+- stable auth subject -> app user mappingを実装済み
+
 以下はOpen:
 
-- Better Auth implementation-time pinned version
-- bootstrap operator UX / command packagingのexact方式
-- login / logout UI
+- remote / production bootstrap endpoint lifecycle / exposure / secret rotation policy
+- production operator bootstrap UX / packaging
 - password reset / recovery UX
 - Passkey導入時期
 - OAuth / MFAの必要性
@@ -71,11 +99,13 @@ D-022により以下はApproved済み。
 
 React + Vite SPAとasync HTTP mutationはD-020でApproved済み。
 
+Current bootstrap implementationではReact Router、server-state library、general offline queueを追加せず、component-local state + canonical refetchで最小sliceを構成している。これはcurrent implementation choiceであり、将来library追加を禁止するDecisionではない。
+
 以下の具体方式・scopeはOpen:
 
 - supported browser baseline
 - React Router等のclient routing exact choice / scope
-- Client state / Server-state management libraryを追加するか
+- Client state / Server-state management libraryを追加する条件
 - responsive / adaptive layout scope
 - mobile browserでのinteraction方針
 - PWA install support
@@ -110,11 +140,13 @@ D-015でCore Domain foundationsはApproved済み。
 
 D-022によりinitial runtime entity IDはUUIDv7、First slice Sectionはuser-global stable entityとしてApproved済み。
 
+Current bootstrap implementationではEntry `position`を同一user / TaskChuteDay / Section内のexplicit integer orderとして保存し、AddTaskToDayでappendしている。Reorderは未実装であり、current representationを長期Domain Decisionへ昇格しない。
+
 以下はOpen:
 
-- exact Project fields
-- exact Section fields
-- Entry position / ordering persistence algorithm
+- exact Project fields beyond current bootstrap minimum
+- exact Section fields beyond current bootstrap minimum
+- ReorderEntriesのproduction transaction / position update algorithm
 - future day-specific Section occurrence / override capabilityが必要になる条件
 - completed stateを将来Execution historyからderiveするか、stored lifecycle stateとして維持するか
 - Reopen semantics
@@ -129,6 +161,8 @@ D-022によりinitial runtime entity IDはUUIDv7、First slice Sectionはuser-gl
 D-017でlogical TaskChuteDayとcontinuous interval semanticsはApproved済み。
 
 D-022によりinitial bootstrapではcanonical IANA timezone / boundaryを明示入力し、暗黙のProduct defaultを適用しない。ambiguous / nonexistent local timeのinitial disambiguationはTemporal-compatibleな`compatible` semanticsとする。
+
+Current bootstrap implementationではactual resolved boundary instantでday membershipを判定し、start / next-day endを別々にtimezone ruleからresolveする。materialized intervalとestablishment timezone / boundary contextを保存する。
 
 以下はOpen:
 
