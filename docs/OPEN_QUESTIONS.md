@@ -12,6 +12,8 @@ Cloudflare Workers + D1のinitial adoption自体はD-020でApproved済み。
 
 D-022によりFirst vertical slice全体のAPP persistence baseline responsibility、separate `AUTH_DB` / `APP_DB` boundary、UUIDv7 entity identity、user-global Section scopeはApproved済み。
 
+D-024により、継続的なverificationではtracked / reusable configを利用する1つのpersistent Cloudflare non-production environmentを維持し、stable namingとseparate non-production `AUTH_DB` / `APP_DB` resourcesを使うことがApproved済み。date-scoped disposable environmentをverification cycleごとに再作成する方式は採用しない。
+
 Current First vertical slice implementation fact:
 
 - `AUTH_DB`にはBetter Auth 1.7.1 physical schemaをmigrationとして実装済み
@@ -35,7 +37,6 @@ Current First vertical slice implementation fact:
 - overload / observability strategy
 - current Execution / lifecycle physical schemaを将来どの条件で見直すか
 - custom domainを採用する時期
-- preview / staging environment strategy
 - D1 read replicationを将来導入するentry criteria
 - Durable Objects / external PostgreSQLを将来再評価する条件
 - Final R2 / binary object storage adoption
@@ -132,7 +133,6 @@ Current implementation fact:
 - service worker / cache strategy
 - Web clientのlocal persistence scope
 - browser reloadをまたいでambiguous logical operation identityを保持する必要性 /方式
-- deployment / preview environment strategy
 - exact optimistic / pessimistic UI strategy per future command
 - accessibility baseline
 
@@ -316,10 +316,17 @@ First Server + Web vertical sliceはImplemented / Integrated済み。次のProdu
 
 First Server + Web vertical sliceのlocal implementation / tests / reviewはPASSしているが、以下はOpen / NOT_RUN:
 
+D-024により、1つのpersistent non-production verification environmentをmaintainすること、tracked / reusable config、stable non-production naming、separate non-production D1 resources、normal `BOOTSTRAP_ENABLED=false` postureはApproved済み。
+
 - remote D1 Product runtime verificationをいつ実施するか
 - deployed Worker verificationをいつ実施するか
-- preview / production environmentをいつ作るか
+- non-production D1のlocation / jurisdiction
+- exact production deployment strategyとproduction environmentをいつ作るか
+- custom domainを採用する時期
+- Cloudflare Accessをpersistent non-production environmentへ後から追加するか
 - production smoke test contract
+- persistent non-production resourcesのdestructive cleanup / retention policy
+- current Free-plan limitsがruntimeをmaterialに阻害した場合にpaid planを採用するか
 - approved bootstrap lifecycleをremote / production deployment procedureへどう組み込み、検証するか
 - deploy前のcurrent Cloudflare pricing / quota / platform restriction再確認
 

@@ -210,3 +210,28 @@ Remaining mitigation / verification:
 - remote / deployed / production verificationが未実施の間はproduction-ready security postureとみなさない
 
 このRisk記録自体はproduction deployment方式をApprovedするDecisionではない。
+
+## R-013 — Persistent non-production exposure / configuration drift
+Related: D-023, D-024
+
+Persistent non-production environmentは、verification cycleごとに削除するdisposable environmentと比べて、long-lived remote attack surfaceとconfiguration driftのRiskを持つ。
+
+Mitigation direction:
+
+- productionとstrictに分離する
+- normal postureでは`BOOTSTRAP_ENABLED=false`を維持する
+- bootstrap temporary enable中もtoken認証を必須とし、provisioning後はimmediately disableしてtokenをremove / rotateする
+- secret、credential、private test data、personal credentialをtracked fileへ保存しない
+- separate non-production `AUTH_DB` / `APP_DB` bindingsを明示し、local placeholderやfuture production resourcesを再利用しない
+- current Free-plan limitsとusageをmonitorし、materialなblockが判明した場合は自動upgradeせずProduct Ownerへ判断を戻す
+- remote D1 / deployed Worker verificationでactual configurationとruntime behaviorを確認する
+
+残存Risk / Open:
+
+- non-production D1のlocation / jurisdictionは未決
+- Free-plan上のactual Worker CPU behaviorはremote executionまで未確認
+- persistent resourcesのdestructive cleanup / retention policyは未決
+- Cloudflare Accessを後から追加するかはOpen
+- remote D1 Product runtime、deployed Worker、production smokeは`NOT_RUN`
+
+このRisk記録はproduction architecture、paid plan adoption、custom domain、cleanup policyを決定しない。

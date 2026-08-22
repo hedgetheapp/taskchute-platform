@@ -320,3 +320,20 @@ Initial-user bootstrapは恒常的に有効化せず、通常runtimeではdisabl
 - Cloudflare Accessはinitial postureの必須要件にせず、preview / internal environmentのoptional outer gateとして将来採用できる。
 
 application codeはprovisioning後にenvironment configurationやsecretを自動変更しない。exact production operator UX / packagingとremote / production deployment procedureは別途決定・検証する。このDecisionはproduction deploymentをauthorizeしない。
+
+## D-024 — Persistent non-production verification environment
+Status: Approved
+
+TaskChute Platformの継続的なdevelopment / verification用として、1つのpersistent Cloudflare non-production environmentを維持する。
+
+- productionとは明示的に分離し、このDecisionはproduction deploymentをauthorizeしない。
+- initial postureはCloudflare Free planとする。current Free-plan limitsがruntimeをmaterialに阻害する場合は自動upgradeせず、Product Ownerへ判断を戻す。
+- verification cycleごとにdate-scoped disposable environmentを再作成せず、stable non-production resource namingを利用する。
+- non-productionではseparate `AUTH_DB` / `APP_DB` resourcesを利用し、local placeholderや将来のproduction bindingを再利用しない。
+- normal non-production postureは`BOOTSTRAP_ENABLED=false`とする。
+- temporary bootstrapはD-023に従い、explicit enable、bootstrap token認証、provisioning、immediate disable、token remove / rotateの順で実施する。
+- Cloudflare Accessはinitial non-production postureの必須要件にせず、optionalとする。
+- secret、credential、private test data、personal credentialをcommitしない。
+- Cloudflare remote writeは、実行する具体的scopeについてexplicit user approvalを必要とする。複数operationは、同じapproved scopeへ明示的に含まれる場合にまとめて承認できる。
+
+このDecisionはproduction architecture、custom domain、paid plan adoption、destructive cleanup policyを決定しない。

@@ -4,13 +4,13 @@ Date: 2026-08-22
 
 ## Status
 
-First Server + Web vertical sliceは`IMPLEMENTED / INTEGRATED`。D-023 bootstrap lifecycle security incrementも`IMPLEMENTED / INTEGRATED / LOCAL_TESTED`。
+First Server + Web vertical sliceは`IMPLEMENTED / INTEGRATED`。D-023 bootstrap lifecycle security incrementも`IMPLEMENTED / INTEGRATED / LOCAL_TESTED`。D-024 persistent non-production verification environmentは`APPROVED`。
 
 PR #3でruntime bootstrap sliceを、PR #5でReorder / Start / Complete / Execution lifecycle incrementを`main`へmergeした。PR #6でPR #5 merge後のcanonical docsをcurrent implementation / evidenceへ整合し、PR #7でcurrent-state maintenanceをmergeした。PR #8でD-023 bootstrap lifecycle security incrementを`main`へmergeし、explicit bootstrap mode、default-disabled posture、enabled中のtoken必須、provisioning後のmode disable + token remove / rotate方針をintegrationした。remote verificationは未実施。
 
 Current main at this update base:
 
-`3d0d1cf64ddfcb17511bfd622713ed8f5473970d`
+`8426fb46f57e84b498f2cfb50f7d0a4d7c8db801`
 
 Relevant implementation commits:
 
@@ -40,7 +40,25 @@ D1 feasibility gateは引き続きPASS / Verified。current Product runtimeはFi
 - PR #8でD-023 bootstrap lifecycle securityは`main`へIntegrated済み。
 - D1 concurrency / atomicity feasibility gateはlocal + temporary remote spikeでPASS / Verified済み。
 - Better Authはcurrent runtimeで`1.7.1`へexact pin済み。
+- D-024により1つのpersistent Cloudflare non-production verification environmentをmaintainする方向はApproved済み。
 - remote D1 Product runtime、deployed Worker、production smokeは`NOT_RUN`。
+
+## Persistent non-production working-tree increment
+
+Current uncommitted working treeでは、repository-side persistent non-production configを実装し、local検証済み。
+
+- named environment: `nonprod`
+- Worker intent: `taskchute-web-nonprod`
+- separate non-production `AUTH_DB` / `APP_DB` binding intent
+- `RUNTIME_ENV=nonprod`
+- normal `BOOTSTRAP_ENABLED=false`
+- missing remote D1 IDsは、実IDへの明示置換が必要なsentinel UUIDでfail-closedに保持
+- generated non-production configでlocal binding fallbackなし
+- Worker types / non-production build / credential-free deploy dry-run / typecheck / 73 automated tests / `git diff --check`: `PASS`
+
+このincrementは`IMPLEMENTED / LOCAL_TESTED / NOT_INTEGRATED`。GitHub commit / PR / mergeは未実施。README wording correctionsは反映・local recheck済みだが、source review / publicationは未実施のためまだ`PASS`ではない。
+
+Remote D1 Product runtime verification、deployed Worker verification、production smokeは引き続き`NOT_RUN`。Product runtime overallは`NOT_VERIFIED`、Releasedは`NO`。
 
 ## Implemented First Server + Web vertical slice
 
@@ -121,6 +139,7 @@ Local PASSをremote / deployed / production verificationへ自動拡張しない
 - AUTH_DB / APP_DB間のcross-database atomicityを仮定しない。
 - repositoryはpublicであり、secret / credential / private content / production dataをcommitしない。
 - D-023に従いnormal runtimeではbootstrapをdisabledとし、provisioning後のmode disable + token remove / rotateをoperator procedureで確実に行う。
+- D-024のpersistent non-production environmentはproductionから分離し、default-disabled bootstrap、explicit D1 bindings、secret hygiene、Free-plan monitoringを維持する。
 - bootstrap lifecycleのremote / deployed / production verificationは未実施。
 - operation result retention / cleanup、observability、backup / export、production deployment posture等は未解決。
 
@@ -130,7 +149,8 @@ First Server + Web vertical sliceとD-023 bootstrap lifecycle securityはcurrent
 
 次の進行は以下を分けて扱う。
 
-1. current Cloudflare Workers / D1 limits・pricing・platform restrictionsとtemporary enable -> bootstrap -> disable / token remove-or-rotate procedureを確認する。
-2. 上記preconditionを満たした後、明示承認されたnon-production environmentでremote D1 Product runtime / deployed Worker verificationを実施し、evidenceを`docs/TEST_MATRIX.md`へ記録する。production write / production smokeは別途明示承認を必要とする。
-3. 次のProduct feature sliceはまだ確定しない。Routine、Documents、Android、Review等のroadmap候補から、ユーザーが優先順位を決めた後にsmall vertical sliceを設計する。
-4. 未実装のcross-day / cross-Section Entry move、Section rename、historical snapshot等をFirst vertical sliceの完了と混同しない。
+1. persistent non-production config incrementをsource review / publicationし、GitHub integration前にworking-tree diffを確認する。
+2. current Cloudflare Workers / D1 limits・pricing・platform restrictions、non-production D1 location / jurisdiction、temporary enable -> bootstrap -> disable / token remove-or-rotate procedureを確認する。
+3. 上記preconditionを満たした後、明示承認されたpersistent non-production environmentでremote D1 Product runtime / deployed Worker verificationを実施し、evidenceを`docs/TEST_MATRIX.md`へ記録する。production write / production smokeは別途明示承認を必要とする。
+4. 次のProduct feature sliceはまだ確定しない。Routine、Documents、Android、Review等のroadmap候補から、ユーザーが優先順位を決めた後にsmall vertical sliceを設計する。
+5. 未実装のcross-day / cross-Section Entry move、Section rename、historical snapshot等をFirst vertical sliceの完了と混同しない。
