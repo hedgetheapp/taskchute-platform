@@ -1,6 +1,6 @@
 # Test Matrix
 
-First Server + Web vertical sliceは実装・main統合済み。Product runtime全体はまだVerified / Releasedではない。
+First Server + Web vertical sliceは実装・main統合済み。persistent non-production remote runtime / deployed Worker verificationはPASS。Product runtime全体はまだVerified / Releasedではない。
 
 この文書はverification requirementとcurrent evidenceの正本とする。
 
@@ -21,11 +21,12 @@ Contractが`Approved`でも、実装やverificationが未実施ならPASS扱い�
 
 ## Current First Server + Web vertical slice evidence
 
-`main@e26e3b167b8f79925d424275c68550c4e151a3fd`をbaseにしたbootstrap lifecycle security working treeに対するcurrent local evidence:
+`main@a1b342e0c07cffa1bbf38fbfd146e3912616d32a`に対するcurrent local / review evidence:
 
 - lifecycle / ordering implementation commit: `09b1526f7f09554bd937aa446737a979868b779b`
 - PR #5 merge commit: `1b5917ad1caff6dd648856bf7a054fa43d040a65`
-- bootstrap lifecycle security: `IMPLEMENTED / LOCAL_TESTED / NOT_INTEGRATED`
+- bootstrap lifecycle security: `IMPLEMENTED / INTEGRATED / LOCAL_TESTED`
+- persistent nonprod config: `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / SOURCE_REVIEWED / PR_DIFF_REVIEWED`
 - Worker / D1 tests: `55 PASS`
 - Web tests: `18 PASS`
 - total local automated tests: `73 PASS`
@@ -41,13 +42,90 @@ Contractが`Approved`でも、実装やverificationが未実施ならPASS扱い�
 - APP_DB foreign-key check: `0`
 - active Execution partial UNIQUE index: `PASS`
 - `git diff --check`: `PASS`
-- bootstrap lifecycle source-only implementation review: `NOT_RUN`
-- bootstrap lifecycle GitHub PR diff review: `NOT_RUN`
-- remote D1 Product runtime verification: `NOT_RUN`
-- deployed Worker verification: `NOT_RUN`
+- bootstrap lifecycle source-only implementation review: `PASS`
+- bootstrap lifecycle GitHub PR diff review: `PASS`
+- persistent nonprod config source-only implementation review: `PASS`
+- persistent nonprod GitHub PR diff review: `PASS`
+- remote D1 Product runtime verification: `PASS`
+- deployed Worker verification: `PASS`
 - production smoke test: `NOT_RUN`
 
-この73 PASSはexplicit bootstrap mode、token rejection、cross-DB recovery、public signup regressionを含むcurrent local suiteである。local evidenceをintegration、remote / deployed / production verificationへ自動拡張しない。
+この73 PASSはexplicit bootstrap mode、token rejection、cross-DB recovery、public signup regressionを含むcurrent local suiteである。local / nonprod evidenceをproduction verificationへ自動拡張しない。
+
+## Persistent non-production remote verification evidence — 2026-08-22
+
+Environment:
+
+- Worker: `taskchute-web-nonprod`
+- workers.dev URL: `https://taskchute-web-nonprod.taskfulness-sync.workers.dev`
+- AUTH_DB: `taskchute-auth-nonprod` / `60085f8d-0c4e-4c15-98e9-3ce178398041`
+- APP_DB: `taskchute-app-nonprod` / `6ad7e35f-5d03-4be3-9b00-46cd713a51c3`
+- D1 creation location hint: `apac`
+- jurisdiction: none
+- observed region: APAC; AUTH primary response HKG / APP primary response NRT
+
+Remote migration / schema evidence:
+
+- AUTH migration `0001_better_auth_1_7_1.sql`: `PASS`
+- APP migration `0001_runtime_bootstrap.sql`: `PASS`
+- APP migration `0002_lifecycle_ordering.sql`: `PASS`
+- pending migrations: AUTH 0 / APP 0
+- AUTH `PRAGMA foreign_key_check`: 0
+- APP `PRAGMA foreign_key_check`: 0
+- `one_active_execution_per_user` partial UNIQUE index: `PASS`
+- AUTH application tables observed: 5
+- APP tables observed: 14
+
+Deployment / bootstrap evidence:
+
+- initial disabled deployment: `89b1da39-85c4-446b-864b-1e9661921f13` / version `b4894e25-a0e5-4da1-889b-428d1440f5c6`
+- temporary enabled deployment: `8123e1e2-a330-491a-902e-608de7d88656` / version `fd7c32af-66f3-413b-81aa-137513665b11`
+- disabled restore deployment: `1284c066-f202-43d6-9330-b1850d622732` / version `7a480b82-0e90-4eed-b0c1-6dfc7e671e05`
+- final token-removed deployment: `44166465-52c6-418d-b8b2-d6034570563b` / version `98a11ea4-36b8-4177-8e38-d4a5dda81bde`
+- bootstrap HTTP 200 / `recovered=false`: `PASS`
+- final `BOOTSTRAP_ENABLED=false`: `PASS`
+- `BOOTSTRAP_TOKEN` removed: `PASS`
+- final secret list contains `BETTER_AUTH_SECRET` only: `PASS`
+- final bootstrap route: 404
+- old-token probe: 5 consecutive 404
+- root: 200
+- unauthenticated protected API: 401
+
+Remote runtime smoke evidence:
+
+| ID | Scenario | Evidence |
+|---|---|---|
+| NONPROD-REMOTE-01 | Login | PASS |
+| NONPROD-REMOTE-02 | Public signup rejection | PASS |
+| NONPROD-REMOTE-03 | Create Project | PASS |
+| NONPROD-REMOTE-04 | Add 3 Tasks / Entries | PASS |
+| NONPROD-REMOTE-05 | Reorder | PASS |
+| NONPROD-REMOTE-06 | stale placement revision rejection | PASS (409) |
+| NONPROD-REMOTE-07 | Start | PASS |
+| NONPROD-REMOTE-08 | same-operation Start retry | PASS |
+| NONPROD-REMOTE-09 | second user-wide active Execution rejection | PASS (409) |
+| NONPROD-REMOTE-10 | Complete | PASS |
+| NONPROD-REMOTE-11 | same-operation Complete retry | PASS |
+| NONPROD-REMOTE-12 | reload / canonical order-state recovery | PASS |
+| NONPROD-REMOTE-13 | active Execution converges to 0 | PASS |
+| NONPROD-REMOTE-14 | Logout | PASS |
+| NONPROD-REMOTE-15 | protected API after logout | PASS (401) |
+
+Free-plan-shaped feasibility evidence for the observed smoke scope:
+
+- Worker upload gzip: `353.80 KiB`
+- startup observed: `37–44 ms`
+- no observed CPU 1102, request 1027, D1 quota, or overload errors during smoke
+- AUTH DB: 81,920 bytes / 176 rows read / 51 rows written over observed 24h window
+- APP DB: 225,280 bytes / 1,518 rows read / 564 rows written over observed 24h window
+- actual Cloudflare account subscription tier independently confirmed: `NOT_VERIFIED`
+- paid-plan upgrade: `NOT_RUN`
+
+Operational observation:
+
+bootstrap disable deploy直後に旧enabled version由来とみられる400を1回観測し、その後8回連続404へ収束した。今後のbootstrap lifecycle verificationではdisable deployment後に複数回probeし、disabled postureへの収束を確認してから完了扱いとする。
+
+Remote smoke harnessの前提誤りにより追加test dataとsessionが残ったが、active Executionは0。cleanup / retention policyはOpen Questionであり、このevidence取得時には承認外DELETEを実施していない。
 
 ## Core Domain
 
