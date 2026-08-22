@@ -4,13 +4,13 @@ Date: 2026-08-22
 
 ## Status
 
-First Server + Web vertical sliceは`IMPLEMENTED / INTEGRATED`。D-023 bootstrap lifecycle security incrementはcurrent branchで`IMPLEMENTED / LOCAL_TESTED / NOT_INTEGRATED`。
+First Server + Web vertical sliceは`IMPLEMENTED / INTEGRATED`。D-023 bootstrap lifecycle security incrementも`IMPLEMENTED / INTEGRATED / LOCAL_TESTED`。
 
-PR #3でruntime bootstrap sliceを、PR #5でReorder / Start / Complete / Execution lifecycle incrementを`main`へmergeした。PR #6でPR #5 merge後のcanonical docsをcurrent implementation / evidenceへ整合し、PR #7でcurrent-state maintenanceをmergeした。D-023 incrementはexplicit bootstrap modeを追加し、normal runtimeをdisabled、enabled中もtoken必須、provisioning後はmode disable + token remove / rotateとするpostureを実装・local testし、branch commit `ed6927ce23722d0e756e91eee29b4c326ca1eeb6` としてpush済み。integration / remote verificationは未実施。
+PR #3でruntime bootstrap sliceを、PR #5でReorder / Start / Complete / Execution lifecycle incrementを`main`へmergeした。PR #6でPR #5 merge後のcanonical docsをcurrent implementation / evidenceへ整合し、PR #7でcurrent-state maintenanceをmergeした。PR #8でD-023 bootstrap lifecycle security incrementを`main`へmergeし、explicit bootstrap mode、default-disabled posture、enabled中のtoken必須、provisioning後のmode disable + token remove / rotate方針をintegrationした。remote verificationは未実施。
 
 Current main at this update base:
 
-`e26e3b167b8f79925d424275c68550c4e151a3fd`
+`3d0d1cf64ddfcb17511bfd622713ed8f5473970d`
 
 Relevant implementation commits:
 
@@ -24,6 +24,7 @@ Relevant merge commits:
 - PR #5: `1b5917ad1caff6dd648856bf7a054fa43d040a65`
 - PR #6 canonical docs alignment: `eeed503662c487a7691d7b82705079c89a3c8822`
 - PR #7 current-state maintenance: `e26e3b167b8f79925d424275c68550c4e151a3fd`
+- PR #8 bootstrap lifecycle security: `3d0d1cf64ddfcb17511bfd622713ed8f5473970d`
 
 D1 feasibility gateは引き続きPASS / Verified。current Product runtimeはFirst vertical slice scopeでImplemented + Integratedかつlocal automated evidence / implementation review / GitHub PR diff reviewがPASSしている。ただしremote D1 Product runtime verification、deployed Worker verification、production smokeは未実施であり、Product runtime全体をVerified / Releasedとは扱わない。
 
@@ -36,14 +37,14 @@ D1 feasibility gateは引き続きPASS / Verified。current Product runtimeはFi
 - PR #3 runtime bootstrap sliceは`main`へIntegrated済み。
 - PR #5 lifecycle / ordering incrementは`main`へIntegrated済み。
 - PR #6でPR #5 merge後のcanonical docs整合は完了済み。
-- D-023 bootstrap lifecycle securityはcurrent branch commit `ed6927ce23722d0e756e91eee29b4c326ca1eeb6` で実装・local test済み、未統合。
+- PR #8でD-023 bootstrap lifecycle securityは`main`へIntegrated済み。
 - D1 concurrency / atomicity feasibility gateはlocal + temporary remote spikeでPASS / Verified済み。
 - Better Authはcurrent runtimeで`1.7.1`へexact pin済み。
 - remote D1 Product runtime、deployed Worker、production smokeは`NOT_RUN`。
 
 ## Implemented First Server + Web vertical slice
 
-Current `main`のintegrated sliceに加え、D-023項目はcurrent branchで実装済み。
+Current `main`では以下を実装・統合済み。
 
 - React + Vite SPA
 - Cloudflare Worker API
@@ -82,9 +83,9 @@ Current `main`のintegrated sliceに加え、D-023項目はcurrent branchで実�
 
 ## Verification state
 
-`main@e26e3b167b8f79925d424275c68550c4e151a3fd`をbaseにしたbootstrap lifecycle security branch implementationに対するlocal evidence:
+PR #8へmergeされたbootstrap lifecycle security implementationに対するcurrent local evidence:
 
-- Runtime implementation: `IMPLEMENTED / LOCAL_TESTED / NOT_INTEGRATED`
+- Runtime implementation: `IMPLEMENTED / INTEGRATED / LOCAL_TESTED`
 - Worker / D1 tests: `55 PASS`
 - Web tests: `18 PASS`
 - total local automated tests: `73 PASS`
@@ -101,7 +102,7 @@ Current `main`のintegrated sliceに加え、D-023項目はcurrent branchで実�
 - active Execution partial UNIQUE index: `PASS`
 - `git diff --check`: `PASS`
 - Bootstrap lifecycle source-only implementation review: `PASS`
-- Bootstrap lifecycle GitHub PR diff review: `NOT_RUN`
+- Bootstrap lifecycle GitHub PR diff review: `PASS`
 - Remote D1 Product runtime verification: `NOT_RUN`
 - Deployed Worker verification: `NOT_RUN`
 - Production smoke test: `NOT_RUN`
@@ -113,7 +114,7 @@ Local PASSをremote / deployed / production verificationへ自動拡張しない
 ## Important Risks / Gates
 
 - D1 Worker request全体を暗黙のtransactionとみなさない。
-- conditional SQL + DB constraint + explicit `batch()`をcurrent invariant enforcementの基礎とする。
+- conditional SQL + database constraint + explicit `batch()`をcurrent invariant enforcementの基礎とする。
 - active Execution max 1はpartial UNIQUE indexでもenforceしている。
 - ReorderはEntry数ごとのUPDATEではなくset-based updateへ変更し、current mutation batchのstatement数をEntry数から分離した。
 - unexpected infrastructure failureを確定Domain rejectionへ誤分類しない。
@@ -125,12 +126,11 @@ Local PASSをremote / deployed / production verificationへ自動拡張しない
 
 ## Next
 
-First Server + Web vertical sliceの実装とPR #5 merge後のcanonical docs整合はcurrent `main`で完了済み。D-023 bootstrap lifecycle securityはcurrent branchで実装・local test・source review済みだが未統合。
+First Server + Web vertical sliceとD-023 bootstrap lifecycle securityはcurrent `main`でImplemented / Integrated / local Testedまで完了済み。
 
 次の進行は以下を分けて扱う。
 
-1. D-023 implementationをGitHub PR diff reviewし、承認されたGit workflowでintegrationする。
-2. integration後、current Cloudflare Workers / D1 limits・pricing・platform restrictionsとtemporary enable -> bootstrap -> disable / token remove-or-rotate procedureを確認する。
-3. 上記preconditionを満たした後、明示承認されたnon-production environmentでremote D1 Product runtime / deployed Worker verificationを実施し、evidenceを`docs/TEST_MATRIX.md`へ記録する。production write / production smokeは別途明示承認を必要とする。
-4. 次のProduct feature sliceはまだ確定しない。Routine、Documents、Android、Review等のroadmap候補から、ユーザーが優先順位を決めた後にsmall vertical sliceを設計する。
-5. 未実装のcross-day / cross-Section Entry move、Section rename、historical snapshot等をFirst vertical sliceの完了と混同しない。
+1. current Cloudflare Workers / D1 limits・pricing・platform restrictionsとtemporary enable -> bootstrap -> disable / token remove-or-rotate procedureを確認する。
+2. 上記preconditionを満たした後、明示承認されたnon-production environmentでremote D1 Product runtime / deployed Worker verificationを実施し、evidenceを`docs/TEST_MATRIX.md`へ記録する。production write / production smokeは別途明示承認を必要とする。
+3. 次のProduct feature sliceはまだ確定しない。Routine、Documents、Android、Review等のroadmap候補から、ユーザーが優先順位を決めた後にsmall vertical sliceを設計する。
+4. 未実装のcross-day / cross-Section Entry move、Section rename、historical snapshot等をFirst vertical sliceの完了と混同しない。
