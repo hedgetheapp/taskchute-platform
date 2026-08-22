@@ -6,11 +6,11 @@ Date: 2026-08-22
 
 First Server + Web vertical sliceは`IMPLEMENTED / INTEGRATED`。
 
-PR #3でruntime bootstrap sliceを、PR #5でReorder / Start / Complete / Execution lifecycle incrementを`main`へmergeした。current runtimeはauthentication、Project、Task + Entry、current TaskChuteDay、Section / explicit ordering、Web DayBoard、ReorderEntries、StartEntry、active Execution、CompleteEntry、lifecycle-aware Next、retry / conflict handling、browser canonical reload recoveryまでをend-to-endに持つ。
+PR #3でruntime bootstrap sliceを、PR #5でReorder / Start / Complete / Execution lifecycle incrementを`main`へmergeした。PR #6でPR #5 merge後のcanonical docsをcurrent implementation / evidenceへ整合した。current runtimeはauthentication、Project、Task + Entry、current TaskChuteDay、Section / explicit ordering、Web DayBoard、ReorderEntries、StartEntry、active Execution、CompleteEntry、lifecycle-aware Next、retry / conflict handling、browser canonical reload recoveryまでをend-to-endに持つ。
 
 Current main at this update base:
 
-`1b5917ad1caff6dd648856bf7a054fa43d040a65`
+`eeed503662c487a7691d7b82705079c89a3c8822`
 
 Relevant implementation commits:
 
@@ -21,6 +21,7 @@ Relevant merge commits:
 
 - PR #3: `afcf1ef0e1ca36ee0ce962be288fef41331fd694`
 - PR #5: `1b5917ad1caff6dd648856bf7a054fa43d040a65`
+- PR #6 canonical docs alignment: `eeed503662c487a7691d7b82705079c89a3c8822`
 
 D1 feasibility gateは引き続きPASS / Verified。current Product runtimeはFirst vertical slice scopeでImplemented + Integratedかつlocal automated evidence / implementation review / GitHub PR diff reviewがPASSしている。ただしremote D1 Product runtime verification、deployed Worker verification、production smokeは未実施であり、Product runtime全体をVerified / Releasedとは扱わない。
 
@@ -32,6 +33,7 @@ D1 feasibility gateは引き続きPASS / Verified。current Product runtimeはFi
 - Verification requirement / evidenceは`docs/TEST_MATRIX.md`を正本とする。
 - PR #3 runtime bootstrap sliceは`main`へIntegrated済み。
 - PR #5 lifecycle / ordering incrementは`main`へIntegrated済み。
+- PR #6でPR #5 merge後のcanonical docs整合は完了済み。
 - D1 concurrency / atomicity feasibility gateはlocal + temporary remote spikeでPASS / Verified済み。
 - Better Authはcurrent runtimeで`1.7.1`へexact pin済み。
 - remote D1 Product runtime、deployed Worker、production smokeは`NOT_RUN`。
@@ -116,11 +118,11 @@ Local PASSをremote / deployed / production verificationへ自動拡張しない
 
 ## Next
 
-First Server + Web vertical sliceの実装自体はcurrent `main`へ統合済み。
+First Server + Web vertical sliceの実装とPR #5 merge後のcanonical docs整合はcurrent `main`で完了済み。
 
 次の進行は以下を分けて扱う。
 
-1. PR #5 merge後のcanonical docsをcurrent implementation / evidenceへ整合する。
-2. remote D1 / deployed Worker / production smokeを実施する場合は、R-012 bootstrap endpoint lifecycle / exposureとcurrent Cloudflare limits / pricingを先に確認する。
+1. remote verification preparationとして、R-012 bootstrap endpoint lifecycle / exposureをSecurity reviewし、current Cloudflare Workers / D1 limits・pricing・platform restrictionsを確認する。
+2. 上記preconditionを満たした後、明示承認されたnon-production environmentでremote D1 Product runtime / deployed Worker verificationを実施し、evidenceを`docs/TEST_MATRIX.md`へ記録する。production write / production smokeは別途明示承認を必要とする。
 3. 次のProduct feature sliceはまだ確定しない。Routine、Documents、Android、Review等のroadmap候補から、ユーザーが優先順位を決めた後にsmall vertical sliceを設計する。
 4. 未実装のcross-day / cross-Section Entry move、Section rename、historical snapshot等をFirst vertical sliceの完了と混同しない。
