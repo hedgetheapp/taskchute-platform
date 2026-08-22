@@ -305,3 +305,18 @@ Initial browser sessionはrolling sessionとし、lifetimeを7日、update / ren
 - initial scopeではauth専用Worker/serviceを別途分離せず、同じWorker内で両bindingを利用する。
 
 Better Authのexact package versionはimplementation時のlocal D1 smoke test後にpinするimplementation detailとする。exact SQL、endpoint / JSON / HTTP mapping、operation retention cleanup、future timezone / boundary change UX等は引き続きOpenとする。
+
+## D-023 — Bootstrap endpoint lifecycle / exposure
+Status: Approved
+
+Initial-user bootstrapは恒常的に有効化せず、通常runtimeではdisabledとする。
+
+- bootstrap endpoint availabilityはtokenとは別の明示的bootstrap-mode configurationで制御する。
+- configurationがmissing、empty、disabled、invalidの場合はdisabledとして扱う。initial canonical enabled valueはexact lowercase `"true"`のみとする。
+- disabled時のbootstrap endpointはbootstrap stateやinitial userの存在を開示せず、unavailable resourceと同じ404 postureを返す。
+- bootstrap modeをenableしただけでは実行を許可せず、valid `BOOTSTRAP_TOKEN`認証とtiming-safe comparisonを引き続き必須とする。
+- initial provisioning成功後、operatorはbootstrap modeをdisableし、通常のremote / production operationへ移る前にbootstrap tokenをremoveまたはrotateする。
+- public self-signupはbootstrap modeにかかわらず常時disabledとする。
+- Cloudflare Accessはinitial postureの必須要件にせず、preview / internal environmentのoptional outer gateとして将来採用できる。
+
+application codeはprovisioning後にenvironment configurationやsecretを自動変更しない。exact production operator UX / packagingとremote / production deployment procedureは別途決定・検証する。このDecisionはproduction deploymentをauthorizeしない。

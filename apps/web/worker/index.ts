@@ -6,7 +6,7 @@ import { loadCurrentTaskChuteDay } from "./application/load-current-day";
 import { completeEntry, isCompleteEntryRequest, isStartEntryRequest, startEntry } from "./application/entry-lifecycle";
 import { isReorderEntriesRequest, reorderEntries } from "./application/reorder-entries";
 import { createRequestAuth } from "./auth/better-auth";
-import { bootstrapInitialUser } from "./auth/bootstrap";
+import { bootstrapInitialUser, isBootstrapModeEnabled } from "./auth/bootstrap";
 import { resolvePrincipal } from "./auth/principal";
 import { readBoundedJson } from "./http/json";
 
@@ -28,7 +28,10 @@ async function route(request: Request, env: Env): Promise<Response> {
     return createRequestAuth(request, env).handler(request);
   }
   if (request.method === "POST" && url.pathname === "/api/internal/bootstrap") {
-    return bootstrapInitialUser(request, env, await readBoundedJson(request));
+    if (!isBootstrapModeEnabled(env.BOOTSTRAP_ENABLED)) {
+      throw new HttpError(404, "resource_not_found", "Not found");
+    }
+    return bootstrapInitialUser(request, env);
   }
   if (!url.pathname.startsWith("/api/")) return new Response("Not found", { status: 404 });
 

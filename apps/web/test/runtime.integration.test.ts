@@ -1,5 +1,6 @@
 import { env, exports } from "cloudflare:workers";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import worker from "../worker";
 import { sessionPolicy } from "../worker/auth/better-auth";
 import { uuidv7 } from "../src/shared/uuidv7";
 import { addTaskToDay } from "../worker/application/add-task-to-day";
@@ -63,6 +64,50 @@ describe.sequential("production runtime bootstrap slice", () => {
   it("rejects unauthenticated protected requests", async () => {
     const response = await exports.default.fetch(`${origin}/api/v1/taskchute-days/current`);
     expect(response.status).toBe(401);
+  });
+
+  it.each([
+    ["missing", undefined],
+    ["empty", ""],
+    ["disabled", "false"],
+    ["malformed", "TRUE"],
+  ])("keeps bootstrap unavailable when mode is %s", async (_case, mode) => {
+    const authUsersBefore = await env.AUTH_DB.prepare("SELECT COUNT(*) AS count FROM user").first<number>("count");
+    const appUsersBefore = await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM app_users").first<number>("count");
+    const disabledEnv = { ...env, BOOTSTRAP_ENABLED: mode } as unknown as Env;
+    const response = await worker.fetch(
+      new Request(`${origin}/api/internal/bootstrap`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-taskchute-bootstrap-token": "fixture-only-bootstrap-token" },
+        body: "{",
+      }),
+      disabledEnv,
+    );
+    expect(response.status).toBe(404);
+    expect(await json(response)).toEqual({ error: { code: "resource_not_found", message: "Not found", reconcile: false } });
+    expect(await env.AUTH_DB.prepare("SELECT COUNT(*) AS count FROM user").first<number>("count")).toBe(authUsersBefore);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM app_users").first<number>("count")).toBe(appUsersBefore);
+  });
+
+  it.each([
+    ["missing", undefined],
+    ["wrong", "wrong-bootstrap-token"],
+  ])("rejects enabled bootstrap with %s token without disclosure", async (_case, token) => {
+    const errorLog = vi.spyOn(console, "error");
+    const headers = new Headers({ "content-type": "application/json" });
+    if (token) headers.set("x-taskchute-bootstrap-token", token);
+    const response = await exports.default.fetch(new Request(`${origin}/api/internal/bootstrap`, {
+      method: "POST",
+      headers,
+      body: "{",
+    }));
+    expect(response.status).toBe(404);
+    const responseText = await response.text();
+    expect(responseText).toContain("resource_not_found");
+    expect(responseText).not.toContain(token ?? "fixture-only-bootstrap-token");
+    expect(errorLog).not.toHaveBeenCalled();
+    expect(await env.AUTH_DB.prepare("SELECT COUNT(*) AS count FROM user").first<number>("count")).toBe(0);
+    errorLog.mockRestore();
   });
 
   it("keeps public signup disabled", async () => {

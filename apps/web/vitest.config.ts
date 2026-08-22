@@ -8,6 +8,7 @@ export default defineConfig({
       wrangler: { configPath: "./wrangler.jsonc" },
       miniflare: {
         bindings: {
+          BOOTSTRAP_ENABLED: "true",
           TEST_AUTH_MIGRATIONS: await readD1Migrations(path.join(import.meta.dirname, "migrations/auth")),
           TEST_APP_MIGRATIONS: await readD1Migrations(path.join(import.meta.dirname, "migrations/app")),
         },

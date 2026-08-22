@@ -11,6 +11,8 @@ exact DB schema、SQL、UI component library、Android local DB、offline confli
 - registration、team、organization、billingは初期scope外
 - Serverはauthenticated principalからTaskChute app userを確定し、Clientが申告したuser IDをauthorityとして信用しない
 - initial userはoperator-only one-shot bootstrapで作成し、public self-signupはbootstrap中も含めて有効化しない
+- bootstrap endpoint availabilityは明示的bootstrap modeで制御し、modeがmissing / empty / disabled / invalidの場合は404 postureでunavailableとする。initial enabled valueはexact lowercase `"true"`のみとする
+- bootstrap modeがenabledでもvalid `BOOTSTRAP_TOKEN`認証を必須とする。provisioning後はmodeをdisableし、通常運用前にtokenをremoveまたはrotateする
 - initial browser sessionはrolling 7日、update / renewal threshold 1日とする
 
 ## Client availability

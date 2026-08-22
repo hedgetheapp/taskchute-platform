@@ -4,24 +4,26 @@ Date: 2026-08-22
 
 ## Status
 
-First Server + Web vertical sliceは`IMPLEMENTED / INTEGRATED`。
+First Server + Web vertical sliceは`IMPLEMENTED / INTEGRATED`。D-023 bootstrap lifecycle security incrementはcurrent branchで`IMPLEMENTED / LOCAL_TESTED / NOT_INTEGRATED`。
 
-PR #3でruntime bootstrap sliceを、PR #5でReorder / Start / Complete / Execution lifecycle incrementを`main`へmergeした。PR #6でPR #5 merge後のcanonical docsをcurrent implementation / evidenceへ整合した。current runtimeはauthentication、Project、Task + Entry、current TaskChuteDay、Section / explicit ordering、Web DayBoard、ReorderEntries、StartEntry、active Execution、CompleteEntry、lifecycle-aware Next、retry / conflict handling、browser canonical reload recoveryまでをend-to-endに持つ。
+PR #3でruntime bootstrap sliceを、PR #5でReorder / Start / Complete / Execution lifecycle incrementを`main`へmergeした。PR #6でPR #5 merge後のcanonical docsをcurrent implementation / evidenceへ整合し、PR #7でcurrent-state maintenanceをmergeした。D-023 incrementはexplicit bootstrap modeを追加し、normal runtimeをdisabled、enabled中もtoken必須、provisioning後はmode disable + token remove / rotateとするpostureを実装・local testし、branch commit `ed6927ce23722d0e756e91eee29b4c326ca1eeb6` としてpush済み。integration / remote verificationは未実施。
 
 Current main at this update base:
 
-`eeed503662c487a7691d7b82705079c89a3c8822`
+`e26e3b167b8f79925d424275c68550c4e151a3fd`
 
 Relevant implementation commits:
 
 - runtime bootstrap: `3b9fb8b78f6311b63e7a8a6ccf29ddf74415d3f6`
 - lifecycle / ordering: `09b1526f7f09554bd937aa446737a979868b779b`
+- bootstrap lifecycle security: `ed6927ce23722d0e756e91eee29b4c326ca1eeb6`
 
 Relevant merge commits:
 
 - PR #3: `afcf1ef0e1ca36ee0ce962be288fef41331fd694`
 - PR #5: `1b5917ad1caff6dd648856bf7a054fa43d040a65`
 - PR #6 canonical docs alignment: `eeed503662c487a7691d7b82705079c89a3c8822`
+- PR #7 current-state maintenance: `e26e3b167b8f79925d424275c68550c4e151a3fd`
 
 D1 feasibility gateは引き続きPASS / Verified。current Product runtimeはFirst vertical slice scopeでImplemented + Integratedかつlocal automated evidence / implementation review / GitHub PR diff reviewがPASSしている。ただしremote D1 Product runtime verification、deployed Worker verification、production smokeは未実施であり、Product runtime全体をVerified / Releasedとは扱わない。
 
@@ -34,19 +36,22 @@ D1 feasibility gateは引き続きPASS / Verified。current Product runtimeはFi
 - PR #3 runtime bootstrap sliceは`main`へIntegrated済み。
 - PR #5 lifecycle / ordering incrementは`main`へIntegrated済み。
 - PR #6でPR #5 merge後のcanonical docs整合は完了済み。
+- D-023 bootstrap lifecycle securityはcurrent branch commit `ed6927ce23722d0e756e91eee29b4c326ca1eeb6` で実装・local test済み、未統合。
 - D1 concurrency / atomicity feasibility gateはlocal + temporary remote spikeでPASS / Verified済み。
 - Better Authはcurrent runtimeで`1.7.1`へexact pin済み。
 - remote D1 Product runtime、deployed Worker、production smokeは`NOT_RUN`。
 
 ## Implemented First Server + Web vertical slice
 
-Current `main`では以下を実装・統合済み。
+Current `main`のintegrated sliceに加え、D-023項目はcurrent branchで実装済み。
 
 - React + Vite SPA
 - Cloudflare Worker API
 - separate `AUTH_DB` / `APP_DB` D1 bindings
 - Better Auth 1.7.1
 - public signup disabled / operator-only bootstrap
+- explicit `BOOTSTRAP_ENABLED` gate（default / missing / invalid disabled、exact `"true"`のみenabled）
+- disabled bootstrapとenabled + token不備のinformation-disclosingしない404 posture
 - Better Auth subject -> stable TaskChute `app_user_id` mapping
 - rolling 7日 / update threshold 1日のbrowser session policy
 - explicit IANA timezone / TaskChuteDay boundary / initial Sections bootstrap
@@ -77,14 +82,15 @@ Current `main`では以下を実装・統合済み。
 
 ## Verification state
 
-PR #5へmergeされたexact implementation contentに対するcurrent local evidence:
+`main@e26e3b167b8f79925d424275c68550c4e151a3fd`をbaseにしたbootstrap lifecycle security branch implementationに対するlocal evidence:
 
-- Runtime implementation: `IMPLEMENTED / INTEGRATED`
-- Worker / D1 tests: `49 PASS`
+- Runtime implementation: `IMPLEMENTED / LOCAL_TESTED / NOT_INTEGRATED`
+- Worker / D1 tests: `55 PASS`
 - Web tests: `18 PASS`
-- total local automated tests: `67 PASS`
+- total local automated tests: `73 PASS`
 - `npm ci`: `PASS`
 - npm audit vulnerabilities: `0`
+- Generated Worker types: `PASS`
 - Typecheck: `PASS`
 - Production build: `PASS`
 - Fresh AUTH_DB migration: `PASS`
@@ -94,8 +100,8 @@ PR #5へmergeされたexact implementation contentに対するcurrent local evid
 - APP_DB foreign-key check: `0`
 - active Execution partial UNIQUE index: `PASS`
 - `git diff --check`: `PASS`
-- source-only implementation review: `PASS`
-- GitHub PR #5 diff review: `PASS`
+- Bootstrap lifecycle source-only implementation review: `PASS`
+- Bootstrap lifecycle GitHub PR diff review: `NOT_RUN`
 - Remote D1 Product runtime verification: `NOT_RUN`
 - Deployed Worker verification: `NOT_RUN`
 - Production smoke test: `NOT_RUN`
@@ -113,16 +119,18 @@ Local PASSをremote / deployed / production verificationへ自動拡張しない
 - unexpected infrastructure failureを確定Domain rejectionへ誤分類しない。
 - AUTH_DB / APP_DB間のcross-database atomicityを仮定しない。
 - repositoryはpublicであり、secret / credential / private content / production dataをcommitしない。
-- remote / production deployment前にbootstrap endpoint exposure / lifecycleをSecurity reviewする。
+- D-023に従いnormal runtimeではbootstrapをdisabledとし、provisioning後のmode disable + token remove / rotateをoperator procedureで確実に行う。
+- bootstrap lifecycleのremote / deployed / production verificationは未実施。
 - operation result retention / cleanup、observability、backup / export、production deployment posture等は未解決。
 
 ## Next
 
-First Server + Web vertical sliceの実装とPR #5 merge後のcanonical docs整合はcurrent `main`で完了済み。
+First Server + Web vertical sliceの実装とPR #5 merge後のcanonical docs整合はcurrent `main`で完了済み。D-023 bootstrap lifecycle securityはcurrent branchで実装・local test・source review済みだが未統合。
 
 次の進行は以下を分けて扱う。
 
-1. remote verification preparationとして、R-012 bootstrap endpoint lifecycle / exposureをSecurity reviewし、current Cloudflare Workers / D1 limits・pricing・platform restrictionsを確認する。
-2. 上記preconditionを満たした後、明示承認されたnon-production environmentでremote D1 Product runtime / deployed Worker verificationを実施し、evidenceを`docs/TEST_MATRIX.md`へ記録する。production write / production smokeは別途明示承認を必要とする。
-3. 次のProduct feature sliceはまだ確定しない。Routine、Documents、Android、Review等のroadmap候補から、ユーザーが優先順位を決めた後にsmall vertical sliceを設計する。
-4. 未実装のcross-day / cross-Section Entry move、Section rename、historical snapshot等をFirst vertical sliceの完了と混同しない。
+1. D-023 implementationをGitHub PR diff reviewし、承認されたGit workflowでintegrationする。
+2. integration後、current Cloudflare Workers / D1 limits・pricing・platform restrictionsとtemporary enable -> bootstrap -> disable / token remove-or-rotate procedureを確認する。
+3. 上記preconditionを満たした後、明示承認されたnon-production environmentでremote D1 Product runtime / deployed Worker verificationを実施し、evidenceを`docs/TEST_MATRIX.md`へ記録する。production write / production smokeは別途明示承認を必要とする。
+4. 次のProduct feature sliceはまだ確定しない。Routine、Documents、Android、Review等のroadmap候補から、ユーザーが優先順位を決めた後にsmall vertical sliceを設計する。
+5. 未実装のcross-day / cross-Section Entry move、Section rename、historical snapshot等をFirst vertical sliceの完了と混同しない。

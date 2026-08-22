@@ -1,4 +1,5 @@
-# Copy to .dev.vars and replace both values. Never commit .dev.vars.
+# Copy to .dev.vars and replace both secret values. Never commit .dev.vars.
+# Keep disabled normally. Set exactly "true" only while intentionally bootstrapping.
+BOOTSTRAP_ENABLED=false
 BETTER_AUTH_SECRET=
 BOOTSTRAP_TOKEN=
-

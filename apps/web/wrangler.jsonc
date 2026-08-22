@@ -4,7 +4,8 @@
   "main": "./worker/index.ts",
   "compatibility_date": "2026-08-22",
   "vars": {
-    "RUNTIME_ENV": "local"
+    "RUNTIME_ENV": "local",
+    "BOOTSTRAP_ENABLED": "false"
   },
   "d1_databases": [
     {
@@ -24,4 +25,3 @@
     "enabled": true
   }
 }
-
