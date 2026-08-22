@@ -636,6 +636,52 @@ describe.sequential("production runtime bootstrap slice", () => {
       .bind(appUserId, taskRequest.operation_id).first()).toEqual(taskRowBefore);
   });
 
+  it("wires Reorder, Start, and Complete HTTP routes and rejects path/body Entry mismatch", async () => {
+    const before = await json<{
+      placement_revision: number;
+      taskchute_day: { id: string };
+      sections: Array<{ id: string; entries: Array<{ id: string; lifecycle_state: string }> }>;
+    }>(await browser.fetch("/api/v1/taskchute-days/current"));
+    const targetSection = before.sections.find((section) => section.entries.length >= 2);
+    if (!targetSection) throw new Error("Missing HTTP lifecycle fixture Entries");
+    const reorderedIds = targetSection.entries.map((entry) => entry.id).reverse();
+    const reorderResponse = await browser.post("/api/v1/taskchute-days/current/entries/reorder", {
+      operation_id: uuidv7(),
+      taskchute_day_id: before.taskchute_day.id,
+      section_id: targetSection.id,
+      entry_ids: reorderedIds,
+      expected_placement_revision: before.placement_revision,
+    });
+    expect(reorderResponse.status).toBe(200);
+    expect(await json<{ entry_ids: string[] }>(reorderResponse)).toMatchObject({ entry_ids: reorderedIds });
+
+    const entryId = reorderedIds[0];
+    const executionId = uuidv7();
+    const mismatch = await browser.post(`/api/v1/entries/${reorderedIds[1]}/start`, {
+      operation_id: uuidv7(), entry_id: entryId, execution_id: executionId,
+    });
+    expect(mismatch.status).toBe(400);
+    expect((await json<{ error: { code: string } }>(mismatch)).error.code).toBe("malformed_request");
+
+    const started = await browser.post(`/api/v1/entries/${entryId}/start`, {
+      operation_id: uuidv7(), entry_id: entryId, execution_id: executionId,
+    });
+    expect(started.status).toBe(200);
+    expect(await json<object>(started)).toMatchObject({ entry_id: entryId, lifecycle_state: "running",
+      execution: { id: executionId, entry_id: entryId, ended_at: null } });
+
+    const completeMismatch = await browser.post(`/api/v1/entries/${reorderedIds[1]}/complete`, {
+      operation_id: uuidv7(), entry_id: entryId, execution_id: executionId,
+    });
+    expect(completeMismatch.status).toBe(400);
+    const completed = await browser.post(`/api/v1/entries/${entryId}/complete`, {
+      operation_id: uuidv7(), entry_id: entryId, execution_id: executionId,
+    });
+    expect(completed.status).toBe(200);
+    expect(await json<object>(completed)).toMatchObject({ entry_id: entryId, lifecycle_state: "completed",
+      execution: { id: executionId, entry_id: entryId } });
+  });
+
   it("invalidates the browser session on logout", async () => {
     expect((await env.APP_DB.prepare("PRAGMA foreign_key_check").all()).results).toHaveLength(0);
     expect((await browser.post("/api/auth/sign-out", {})).status).toBe(200);

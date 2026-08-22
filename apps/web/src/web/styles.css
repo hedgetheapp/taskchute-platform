@@ -22,6 +22,12 @@ input, select { width: 100%; border: 1px solid #b8c5bc; border-radius: .55rem; p
 .section ol { display: grid; gap: .6rem; padding: 0; list-style: none; }
 .section li { display: grid; gap: .15rem; border-left: 3px solid #3e805c; padding: .55rem .7rem; background: #f0f5ef; border-radius: .25rem .65rem .65rem .25rem; }
 .section small, .empty { color: #69776f; }
+.entry-actions { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .35rem; }
+.entry-actions button { padding: .35rem .6rem; }
+.active-execution { display: flex; align-items: center; flex-wrap: wrap; gap: .75rem; color: #405148; font-size: .85rem; }
+.active-execution button { padding: .45rem .7rem; }
+.pending-intent { display: flex; flex-wrap: wrap; align-items: center; gap: .65rem; margin-top: 1rem; }
+.pending-intent p { flex-basis: 100%; margin-bottom: 0; }
 .error { margin-top: 1rem; border-left: 4px solid #a63b35; background: #fff0ef; padding: .75rem; color: #7a2621; }
 .success { margin: 0; color: #236443; }
 footer { margin-top: 1.5rem; color: #405148; }

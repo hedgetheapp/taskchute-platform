@@ -38,6 +38,13 @@ interface EntryRow {
   project_title: string | null;
 }
 
+interface ExecutionRow {
+  id: string;
+  entry_id: string;
+  started_at: string;
+  ended_at: string | null;
+}
+
 function persistenceRecord(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid persistence row");
   return value as Record<string, unknown>;
@@ -139,7 +146,7 @@ export async function loadCurrentTaskChuteDay(
   nowInstant = new Date().toISOString(),
 ): Promise<CurrentTaskChuteDayProjection> {
   const day = await materializeCurrentDay(db, appUserId, nowInstant);
-  const [sectionResult, entryResult] = await db.batch([
+  const [sectionResult, entryResult, executionResult] = await db.batch([
     db.prepare("SELECT id, title, sort_order FROM sections WHERE app_user_id = ? ORDER BY sort_order, id").bind(appUserId),
     db
       .prepare(
@@ -153,6 +160,8 @@ export async function loadCurrentTaskChuteDay(
           ORDER BY e.section_id, e.position, e.id`,
       )
       .bind(appUserId, day.id),
+    db.prepare(`SELECT id, entry_id, started_at, ended_at FROM executions
+      WHERE app_user_id = ? AND ended_at IS NULL LIMIT 1`).bind(appUserId),
   ]);
   const entryRows = entryResult.results.map(toEntryRow);
   const entriesBySection = new Map<string, EntryProjection[]>();
@@ -178,6 +187,7 @@ export async function loadCurrentTaskChuteDay(
     entries: entriesBySection.get(section.id) ?? [],
   }));
   const nextEntry = sections.flatMap((section) => section.entries).find((entry) => entry.lifecycle_state === "planned") ?? null;
+  const activeExecution = executionResult.results[0] as ExecutionRow | undefined;
   return {
     taskchute_day: {
       id: day.id,
@@ -189,7 +199,12 @@ export async function loadCurrentTaskChuteDay(
     },
     placement_revision: day.placement_revision,
     sections,
-    active_execution: null,
+    active_execution: activeExecution ? {
+      id: activeExecution.id,
+      entry_id: activeExecution.entry_id,
+      started_at: activeExecution.started_at,
+      ended_at: activeExecution.ended_at,
+    } : null,
     next_entry: nextEntry,
   };
 }

@@ -5,6 +5,12 @@ import type {
   CreateProjectRequest,
   CreateProjectResult,
   CurrentTaskChuteDayProjection,
+  CompleteEntryRequest,
+  CompleteEntryResult,
+  ReorderEntriesRequest,
+  ReorderEntriesResult,
+  StartEntryRequest,
+  StartEntryResult,
 } from "../shared/contracts";
 
 export class ApiClientError extends Error {
@@ -52,5 +58,14 @@ export const api = {
   },
   addTask(body: AddTaskToDayRequest): Promise<unknown> {
     return requestJson("/api/v1/taskchute-days/current/entries", jsonPost("", body));
+  },
+  reorderEntries(body: ReorderEntriesRequest): Promise<ReorderEntriesResult> {
+    return requestJson("/api/v1/taskchute-days/current/entries/reorder", jsonPost("", body));
+  },
+  startEntry(body: StartEntryRequest): Promise<StartEntryResult> {
+    return requestJson(`/api/v1/entries/${body.entry_id}/start`, jsonPost("", body));
+  },
+  completeEntry(body: CompleteEntryRequest): Promise<CompleteEntryResult> {
+    return requestJson(`/api/v1/entries/${body.entry_id}/complete`, jsonPost("", body));
   },
 };

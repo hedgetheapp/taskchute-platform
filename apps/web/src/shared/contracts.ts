@@ -54,8 +54,15 @@ export interface CurrentTaskChuteDayProjection {
   };
   placement_revision: number;
   sections: SectionProjection[];
-  active_execution: null;
+  active_execution: ExecutionProjection | null;
   next_entry: EntryProjection | null;
+}
+
+export interface ExecutionProjection {
+  id: string;
+  entry_id: string;
+  started_at: string;
+  ended_at: string | null;
 }
 
 export interface CreateProjectRequest {
@@ -86,4 +93,43 @@ export interface AddTaskToDayResult {
   section_id: string;
   position: number;
   placement_revision: number;
+}
+
+export interface ReorderEntriesRequest {
+  operation_id: string;
+  taskchute_day_id: string;
+  section_id: string;
+  entry_ids: string[];
+  expected_placement_revision: number;
+}
+
+export interface ReorderEntriesResult {
+  taskchute_day_id: string;
+  section_id: string;
+  entry_ids: string[];
+  placement_revision: number;
+}
+
+export interface StartEntryRequest {
+  operation_id: string;
+  entry_id: string;
+  execution_id: string;
+}
+
+export interface StartEntryResult {
+  entry_id: string;
+  lifecycle_state: "running";
+  execution: ExecutionProjection;
+}
+
+export interface CompleteEntryRequest {
+  operation_id: string;
+  entry_id: string;
+  execution_id: string;
+}
+
+export interface CompleteEntryResult {
+  entry_id: string;
+  lifecycle_state: "completed";
+  execution: ExecutionProjection;
 }

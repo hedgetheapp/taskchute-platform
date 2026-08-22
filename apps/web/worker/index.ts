@@ -3,6 +3,8 @@ import { addTaskToDay, isAddTaskToDayRequest } from "./application/add-task-to-d
 import { createProject, isCreateProjectRequest } from "./application/create-project";
 import { HttpError } from "./application/errors";
 import { loadCurrentTaskChuteDay } from "./application/load-current-day";
+import { completeEntry, isCompleteEntryRequest, isStartEntryRequest, startEntry } from "./application/entry-lifecycle";
+import { isReorderEntriesRequest, reorderEntries } from "./application/reorder-entries";
 import { createRequestAuth } from "./auth/better-auth";
 import { bootstrapInitialUser } from "./auth/bootstrap";
 import { resolvePrincipal } from "./auth/principal";
@@ -44,6 +46,24 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (!isAddTaskToDayRequest(body)) throw new HttpError(400, "malformed_request", "Invalid AddTaskToDay request");
     return Response.json(await addTaskToDay(env.APP_DB, principal.appUserId, body));
   }
+  if (request.method === "POST" && url.pathname === "/api/v1/taskchute-days/current/entries/reorder") {
+    const body = await readBoundedJson(request);
+    if (!isReorderEntriesRequest(body)) throw new HttpError(400, "malformed_request", "Invalid ReorderEntries request");
+    return Response.json(await reorderEntries(env.APP_DB, principal.appUserId, body));
+  }
+  const lifecycleMatch = url.pathname.match(/^\/api\/v1\/entries\/([^/]+)\/(start|complete)$/);
+  if (request.method === "POST" && lifecycleMatch) {
+    const body = await readBoundedJson(request);
+    if (lifecycleMatch[1] !== (body as { entry_id?: unknown })?.entry_id) {
+      throw new HttpError(400, "malformed_request", "Path Entry and request Entry must match");
+    }
+    if (lifecycleMatch[2] === "start") {
+      if (!isStartEntryRequest(body)) throw new HttpError(400, "malformed_request", "Invalid StartEntry request");
+      return Response.json(await startEntry(env.APP_DB, principal.appUserId, body));
+    }
+    if (!isCompleteEntryRequest(body)) throw new HttpError(400, "malformed_request", "Invalid CompleteEntry request");
+    return Response.json(await completeEntry(env.APP_DB, principal.appUserId, body));
+  }
   return Response.json({ error: { code: "resource_not_found", message: "Not found", reconcile: false } }, { status: 404 });
 }
 
@@ -77,4 +97,3 @@ export default {
     }
   },
 } satisfies ExportedHandler<Env>;
-
