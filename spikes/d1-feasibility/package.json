@@ -1,0 +1,17 @@
+{
+  "name": "taskchute-d1-feasibility-spike",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "npm run types && tsc --noEmit",
+    "types": "wrangler types ./src/env.d.ts",
+    "test:local": "node ./scripts/run-environment.mjs --mode local",
+    "test:remote": "node ./scripts/run-environment.mjs --mode remote"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "typescript": "^7.0.2",
+    "wrangler": "^4.125.0"
+  }
+}

@@ -1,59 +1,122 @@
 # Current
 
-Date: 2026-08-21
+Date: 2026-08-22
 
 ## Status
 
-Architecture / Bootstrap。Runtime implementationはまだ開始していない。
+Architecture / Pre-implementation。
 
-canonical baselineのreviewと`main`へのintegrationは完了済み。現在のcanonical docsは`main`を正本として参照する。
+Runtime implementationはまだ開始していない。
 
-Web appをprimary / universal clientかつinitial development priority最優先とするProduct directionをApprovedとして整理した。
+Core Domain foundations、TaskChuteDay、First Server + Web vertical slice、initial technology / authentication architectureまでApprovedとして設計した。
+
+Cloudflare D1のatomicity / concurrency / idempotency feasibility gateは、current harnessによるlocal D1 + temporary remote D1の`D1-SPIKE-01`〜`D1-SPIKE-08`でPASSし、implementation reviewも完了した。
+
+次のimplementation workは、spikeのexact SQLをそのままProductへ移植することではなく、VerifiedになったD1 feasibilityを前提にFirst Server + Web vertical sliceのproduction persistence / command / auth foundationを設計・実装することである。
 
 ## Current source-of-truth state
 
 - Project Instructionsはfreeze方針で確定済み。
 - `AGENTS.md`と`docs/DEVELOPMENT_WORKFLOW.md`はProject Instructionsへ整合済み。
-- canonical docsは`main`へ統合済みで、日本語ベースへ整理し、Decision / Risk / Open Question / Testの責務を再確認済み。
 - Runtime codeは未実装。
+- D1 concurrency / atomicity feasibility gateはPASS / Verified。current evidenceは`spike/d1-feasibility` branchの`eda694e22fd742827da5b90967c6b0305b885033`および`spikes/d1-feasibility/EVIDENCE.md`を参照する。
+- D1 spikeのPASSはexact production schema / migration SQL / command-specific transaction algorithm / infrastructure failure reconciliationの確定を意味しない。
+- `docs/DECISIONS.md`をApproved / Proposed Decisionの正本とする。
+- Verification requirement / evidenceの正本は`docs/TEST_MATRIX.md`とする。
 
-## Approved direction
+## Approved Product / Domain direction
 
-正式なDecisionの正本は`docs/DECISIONS.md`とする。
-
-現在の主要なApproved direction:
+主要なApproved direction:
 
 - TaskChuteをObsidian非依存の独立Platformとして再構築する。
 - structured TaskChute stateのtarget canonical authorityはTaskChute Serverとする。
-- Web appをprimary / universal clientとし、initial development priorityを最優先とする。
-- 対応browserを通じてWindows、Android、iOS等からCore TaskChute experienceを利用できることをtargetとする。
-- Android dedicated appをnative first-class clientとする。
-- Androidはoffline-capableを前提とする。ただしoffline中に可能な操作範囲やsync方式は未決。
-- Wear OS / Pixel Watchをcompanion clientの対応対象とする。
-- native iOS appは将来対応するが、優先度は低い。
-- 初期user modelはsingle-user / multi-deviceとする。
-- TaskChute自身がMarkdown-nativeなNotes/Documentsを持つ。
-- Notes/Commentsは共通のAttachment capabilityを使う。
-- Task identityとEntry identityは別概念とする。
-- Start / Completeはnetwork retry等による再送で二重実行や不整合を起こさないretry-safe behaviorを要求する。
-- legacy Obsidian repositoryはmigration、domain semantics、regression knowledgeのreferenceとして利用する。
+- Web appをprimary / universal clientとする。
+- Android dedicated appはnative first-classかつoffline-capable targetとする。
+- Wear OS / Pixel Watchはcompanion target、native iOSはfuture / low priorityとする。
+- initial user modelはsingle-user / multi-deviceとする。
+- TaskとEntryは別stable identityとし、Entryはplacement moveでidentityを変えない。
+- Taskはinitial scopeで0..1 Projectに所属できる。
+- Sectionはstable entity、order authorityはEntry identityとする。
+- user全体でactive Executionは最大1つとする。
+- normal Startは別active Executionをimplicit interruptしない。
+- First slice lifecycleは`planned -> running -> completed`とする。
+- RoutineDefinition -> RoutineOccurrence -> Entryのfoundationを採用し、Occurrence origin TaskChuteDayを延期後も保持する。
+- configurable TaskChuteDayをcivil dateと分離し、continuous `[start, end)` intervalとして扱う。
+- DayBoard / Calendar / Timeline / Review / MapはDomain / historyからのprojectionとする。
+- historical factを現在metadata変更でretroactiveに再分類しない。
+- Task / Project Primary Documentとoptional RoutineOccurrence Documentのfoundationを採用する。
+- planned Placeとobserved Execution Locationを分離し、locationなしでもCore TaskChuteを利用可能とする。
 
-## Proposed / Open
+## Approved First vertical slice
 
-- D-008: structured dataとbinary attachment storageの分離は`Proposed`。
-- D-013: Server + WebでProject / Tasks / Today ordering / Start / Complete / browser reload recoveryを通すFirst vertical sliceは`Proposed`。Core Domain model設計後に再評価する。
-- Web framework、hosting/runtime、supported browser baseline、PWA / Web offline scope、auth/session方式は未決。
-- D1 / R2 / Workersを含むInfrastructure、DB schema、API、auth、sync/conflict方式等は未決。
+D-013をApproved implementation contractとする。
 
-## Important distinction
+Server + Webで以下をend-to-endに通す。
 
-上記は新Platformのtarget stateを示す。legacy Obsidian実装の現在のauthorityを遡って変更するものではなく、旧実装では引き続きVault Markdown等の既存authorityが有効である。
+- authentication
+- Project
+- Task + Entry
+- current TaskChuteDay
+- Section / explicit Entry ordering
+- Web DayBoard
+- async mutation without full-page reload
+- Start / active Execution
+- Complete
+- Next Entry projection
+- retry safety
+- placement conflict safety
+- browser reload recovery
+
+First sliceにはRoutine generation、Notes/Documents implementation、Location/Map、Review、Calendar、Timeline、Android、Wear OS、Web/Android offline、realtime push等を含めない。
+
+## Approved initial technology / architecture
+
+- Web: React + Vite SPA
+- Server API: Cloudflare Workers
+- structured application persistence: Cloudflare D1
+- API: conceptual Command / Query separation
+- client-issued mutation: logical operation identity
+- placement conflict: revision / precondition、silent last-write-wins禁止
+- Auth: Better Auth + secure browser session
+- initial login: email + password
+- public self-signup: disabled
+- TaskChute Domain identityとauth provider physical identityを分離
+
+Native clientはWeb React codeの直接流用を前提としない。
+
+- Android: Kotlin + Jetpack Compose第一候補
+- Wear OS: Kotlin + Compose for Wear OS第一候補
+- native iOS: Swift + SwiftUI第一候補
+
+Cloudflare R2等のbinary object storageは未Approvedで、D-008は`Proposed`のまま。
+
+## Verification state
+
+- Runtime: `NOT_IMPLEMENTED`
+- D1 feasibility spike: `PASS / VERIFIED`
+- D1 current-harness local: `PASS`
+- D1 current-harness temporary remote: `PASS`
+- First vertical slice: `NOT_IMPLEMENTED`
+- Auth: `NOT_IMPLEMENTED`
+- Web: `NOT_IMPLEMENTED`
+
+Approved Decisionや設計が存在することを理由にTested / Verified扱いしない。
+
+D1 feasibility gateのVerifiedは、D1で必要なatomicity / concurrency / idempotency strategyが成立可能であることのverificationであり、Product runtime自体のImplemented / Integrated / Tested / Verifiedを意味しない。
+
+## Important Risks / Gates
+
+- D1 Worker request全体を暗黙のtransactionとみなさない。
+- conditional SQL + DB constraint + explicit transactional batchによるstrategyはlocal + temporary remote spikeでfeasibleとVerified済み。
+- active Execution max 1、same-operation retry、Complete retry、reorder conflict、rollback、FK safetyはspikeでcurrent-harness PASS済み。
+- exact production schema / migration SQL / command-specific transaction algorithmはspikeのtest shapeを参考に別途設計する。
+- unexpected infrastructure failureを確定Domain rejectionへ誤分類しないretry / reconciliation contractは引き続きOpen。
+- repositoryはpublicであり、Better Auth secret等をcommitしない。
 
 ## Next
 
-1. Core Domain modelを設計する。
-2. Proposed Web-first First vertical sliceを再評価し、Approved implementation contractへ昇格するか判断する。
-3. Approved vertical sliceのAcceptance criteria / Test contractを確定する。
-4. Web framework / auth / hosting / storage / API / sync等のtechnology・architecture Decisionを必要な順に行う。
-5. Approved vertical sliceからServer + Web runtime implementationを開始する。
-6. 実装結果をreviewし、必要なverificationとcanonical docs更新を行う。
+1. Verified D1 feasibilityを前提に、First slice用APP persistenceのexact schema / migrationとcommand transaction contractを設計する。
+2. spikeのSQL / error mappingをそのままproductionへcopyせず、Domain invariant・operation replay・infrastructure failure reconciliationをProduct runtime向けに整理する。
+3. Better Auth bootstrap、auth subject -> stable TaskChute app user mapping、APP/AUTH persistence boundaryを実装可能な形へ落とす。
+4. First Server + Web vertical sliceをsmall vertical sliceで開始し、canonical Query / CommandをServer + Webでend-to-endに通す。
+5. 実装に応じてTEST_MATRIX、CURRENT、RISKS / OPEN_QUESTIONSをimpact analysisベースで更新する。
