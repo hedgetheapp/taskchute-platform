@@ -12,26 +12,28 @@ Cloudflare Workers + D1のinitial adoption自体はD-020でApproved済み。
 
 D-022によりFirst vertical slice全体のAPP persistence baseline responsibility、separate `AUTH_DB` / `APP_DB` boundary、UUIDv7 entity identity、user-global Section scopeはApproved済み。
 
-Current bootstrap implementation fact:
+Current First vertical slice implementation fact:
 
 - `AUTH_DB`にはBetter Auth 1.7.1 physical schemaをmigrationとして実装済み
-- `APP_DB`にはapp user / auth mapping / settings / projects / sections / taskchute_days / tasks / entries / operations / temporary command guard・assertionを実装済み
-- `executions`はStart / Complete未実装のため次incrementへ延期
+- `APP_DB`にはapp user / auth mapping / settings / projects / sections / taskchute_days / tasks / entries / operations / executions / temporary command guard・assertionを実装済み
 - `operations`は`(app_user_id, operation_id)` owner scopeとfingerprint versionを保持
 - current fingerprint canonicalizationはrecursive deterministic JSON canonicalization + SHA-256、version 1
 - current placement revision physical representationは`taskchute_days.placement_revision`
-- CreateProject / AddTaskToDayのcurrent transaction algorithmはimplementation review済み
+- `0002_lifecycle_ordering.sql`で既存operation rowを保持しつつlifecycle command typeとExecution persistenceを追加済み
+- active Execution uniquenessのcurrent physical strategyは`executions(app_user_id) WHERE ended_at IS NULL`のpartial UNIQUE index
+- CreateProject / AddTaskToDay / ReorderEntries / StartEntry / CompleteEntryのcurrent transaction algorithmはimplementation review済み
+- Reorderのcurrent physical strategyは`json_each`へordered Entry IDsを渡すset-based update
+- current Reorder mutation batchはEntry数に比例してstatementを増やさない
 
 上記はcurrent implementation factであり、将来永続化方式を固定する新しいApproved Decisionではない。
 
 以下はOpen:
 
-- Reorder / Start / Completeを含むFirst vertical slice残りのexact schema / migration SQL
-- Reorder / Start / Completeのcommand-specific transaction algorithm
-- Execution indexes / active Execution uniquenessのexact physical strategy
 - operation result retention / cleanup policy
 - schema evolution / compatibility migration strategy
 - backup / export strategy
+- overload / observability strategy
+- current Execution / lifecycle physical schemaを将来どの条件で見直すか
 - custom domainを採用する時期
 - preview / staging environment strategy
 - D1 read replicationを将来導入するentry criteria
@@ -44,7 +46,7 @@ Command / Queryをconceptualに分離し、client-issued mutationへlogical oper
 
 unexpected infrastructure failureをdeterministic Domain rejectionとして保存せず、安全なretry / canonical Query reconciliation余地を残す原則はApproved済み。
 
-Current bootstrap implementationでは以下を実装済み。
+Current implementationでは以下を実装済み。
 
 - `POST /api/auth/sign-in/email`
 - `POST /api/auth/sign-out`
@@ -52,18 +54,22 @@ Current bootstrap implementationでは以下を実装済み。
 - `GET /api/v1/taskchute-days/current`
 - `POST /api/v1/projects`
 - `POST /api/v1/taskchute-days/current/entries`
-- CreateProject / AddTaskToDayのcurrent DTO / error mapping
+- `POST /api/v1/taskchute-days/current/entries/reorder`
+- `POST /api/v1/entries/:entry_id/start`
+- `POST /api/v1/entries/:entry_id/complete`
+- CreateProject / AddTaskToDay / ReorderEntries / StartEntry / CompleteEntryのcurrent DTO / error mapping
+- lifecycle endpointのpath Entryとbody Entry一致validation
 - `503 infrastructure_ambiguous` + reconciliation hint
 
 これらのexact path / DTO / status mappingはcurrent implementation factであり、長期API compatibilityを固定するApproved Decisionではない。
 
 以下はOpen:
 
-- Reorder / Start / Complete endpoint / DTO / status mapping
-- lifecycle command-specific transactional SQL
 - long-term API versioning policy
 - public compatibility / deprecation policy
 - rate-limit / abuse-protection policy
+- pagination / large payload policy
+- future command追加時のendpoint naming / compatibility rule
 
 ## Authentication / authorization
 
@@ -77,7 +83,7 @@ D-022により以下はApproved済み。
 - same Workerでseparate `AUTH_DB` / `APP_DB` D1 bindingsを利用する
 - bootstrapはcross-DB partial failureからidempotent / recoverableにする
 
-Current bootstrap implementation fact:
+Current implementation fact:
 
 - Better Auth exact pin: `1.7.1`
 - minimal Web login / logout UIを実装済み
@@ -99,7 +105,17 @@ Current bootstrap implementation fact:
 
 React + Vite SPAとasync HTTP mutationはD-020でApproved済み。
 
-Current bootstrap implementationではReact Router、server-state library、general offline queueを追加せず、component-local state + canonical refetchで最小sliceを構成している。これはcurrent implementation choiceであり、将来library追加を禁止するDecisionではない。
+Current First vertical slice implementationではReact Router、server-state library、general offline queueを追加せず、component-local state + canonical refetchで最小sliceを構成している。これはcurrent implementation choiceであり、将来library追加を禁止するDecisionではない。
+
+Current implementation fact:
+
+- move up/downによるminimal Reorder UI
+- Start / Complete UI
+- pending feedback + canonical reconcile
+- ambiguous Reorder / Start / Completeの元operation専用Retry
+- client-side retained operation Discard
+- retained operation中はunrelated lifecycle / reorder mutationをdisableし、旧operationを別操作から暗黙再送しない
+- current DayBoard外のEntryに属するactive Executionもheader actionからComplete可能
 
 以下の具体方式・scopeはOpen:
 
@@ -108,12 +124,14 @@ Current bootstrap implementationではReact Router、server-state library、gene
 - Client state / Server-state management libraryを追加する条件
 - responsive / adaptive layout scope
 - mobile browserでのinteraction方針
+- final drag-and-drop等のordering UX
 - PWA install support
 - Web offline capabilityをいつ含めるか
 - service worker / cache strategy
 - Web clientのlocal persistence scope
+- browser reloadをまたいでambiguous logical operation identityを保持する必要性 /方式
 - deployment / preview environment strategy
-- exact optimistic / pessimistic UI strategy per command
+- exact optimistic / pessimistic UI strategy per future command
 - accessibility baseline
 
 ## Offline / Sync
@@ -140,13 +158,21 @@ D-015でCore Domain foundationsはApproved済み。
 
 D-022によりinitial runtime entity IDはUUIDv7、First slice Sectionはuser-global stable entityとしてApproved済み。
 
-Current bootstrap implementationではEntry `position`を同一user / TaskChuteDay / Section内のexplicit integer orderとして保存し、AddTaskToDayでappendしている。Reorderは未実装であり、current representationを長期Domain Decisionへ昇格しない。
+Current implementationではEntry `position`を同一user / TaskChuteDay / Section内のexplicit integer orderとして保存し、AddTaskToDayでappend、ReorderEntriesでrequested orderへ更新する。Reorderのcurrent physical implementationはset-based `json_each` updateだが、これを長期Domain Decisionへ昇格しない。
+
+Current lifecycle implementation fact:
+
+- lifecycle stateはEntryへ`planned / running / completed`として保持
+- StartEntryでExecutionを作成しrunningへ遷移
+- CompleteEntryでactive Executionへfirst `ended_at`を設定しcompletedへ遷移
+- user-wide active Execution最大1をDB partial UNIQUE indexでもenforce
+- TaskChuteDay境界をまたぐExecutionを分割しない
 
 以下はOpen:
 
-- exact Project fields beyond current bootstrap minimum
-- exact Section fields beyond current bootstrap minimum
-- ReorderEntriesのproduction transaction / position update algorithm
+- exact Project fields beyond current minimum
+- exact Section fields beyond current minimum
+- EntryをTaskChuteDay / Section間で移動するcommand / transaction algorithm
 - future day-specific Section occurrence / override capabilityが必要になる条件
 - completed stateを将来Execution historyからderiveするか、stored lifecycle stateとして維持するか
 - Reopen semantics
@@ -162,7 +188,9 @@ D-017でlogical TaskChuteDayとcontinuous interval semanticsはApproved済み。
 
 D-022によりinitial bootstrapではcanonical IANA timezone / boundaryを明示入力し、暗黙のProduct defaultを適用しない。ambiguous / nonexistent local timeのinitial disambiguationはTemporal-compatibleな`compatible` semanticsとする。
 
-Current bootstrap implementationではactual resolved boundary instantでday membershipを判定し、start / next-day endを別々にtimezone ruleからresolveする。materialized intervalとestablishment timezone / boundary contextを保存する。
+Current implementationではactual resolved boundary instantでday membershipを判定し、start / next-day endを別々にtimezone ruleからresolveする。materialized intervalとestablishment timezone / boundary contextを保存する。
+
+PR #5ではactive ExecutionをTaskChuteDay境界で分割せず、current dayへ切り替わった後もsame Executionとしてprojection / Completeできる。
 
 以下はOpen:
 
@@ -173,6 +201,7 @@ Current bootstrap implementationではactual resolved boundary instantでday mem
 - future TaskChuteDayをいつmaterialize / historically freezeするか
 - per-day boundary override
 - work-shift / profile機能
+- logical-day overlapによるReview / aggregation queryのexact implementation
 - `compatible` ruleを含むDST / timezone transitionの追加acceptance scenario coverage
 
 ## Routine
@@ -195,6 +224,8 @@ RoutineDefinition -> RoutineOccurrence -> Entryとorigin TaskChuteDay preservati
 Reviewをhistorical factsからのprojectionとする方向はD-016でApproved済み。
 
 D-022によりFirst sliceではmaterialized TaskChuteDayのactual interval / establishment contextを保持し、destructive hard-delete APIは提供しない。
+
+Current runtimeではExecutionの`id / app_user_id / entry_id / started_at / ended_at / created_at`を保存する。Execution時点metadata snapshotのexact fieldsはまだ未決。
 
 以下はOpen:
 
@@ -267,14 +298,30 @@ planned Placeとobserved LocationSnapshotの分離、optional best-effort Start 
 
 Native UIをWeb React codeの直接流用前提にしない方向はD-020でApproved済み。
 
+First Server + Web vertical sliceはImplemented / Integrated済み。次のProduct feature sliceの優先順位はまだ確定していない。
+
 以下はOpen:
 
+- 次sliceでRoutine / Documents / Review / Android等のどれを優先するか
 - Android native implementationへ進むentry criteria
 - Androidのinitial Compose architecture詳細
 - Android Widgetのinitial scope
 - Wear OS / Pixel Watchのinitial feature scope
 - Wear OS standalone / companion dependencyの境界
 - native iOS appへ進むentry criteria
+
+## Deployment / verification
+
+First Server + Web vertical sliceのlocal implementation / tests / reviewはPASSしているが、以下はOpen / NOT_RUN:
+
+- remote D1 Product runtime verificationをいつ実施するか
+- deployed Worker verificationをいつ実施するか
+- preview / production environmentをいつ作るか
+- production smoke test contract
+- bootstrap endpointをremote / productionでどうdisable / limit / rotateするか
+- deploy前のcurrent Cloudflare pricing / quota / platform restriction再確認
+
+remote / production writeは明示承認なしに実施しない。
 
 ## Legacy migration
 

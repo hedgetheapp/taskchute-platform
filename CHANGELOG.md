@@ -35,7 +35,7 @@
 - D1 spike用`D1-SPIKE-01`〜`D1-SPIKE-08`をTEST_MATRIXへ追加し、未実施evidenceを`NOT_RUN`として記録。
 - D1 feasibility spikeをcurrent harnessでlocal D1とtemporary remote D1の両方に対して実施し、`D1-SPIKE-01`〜`D1-SPIKE-08`のPASS evidenceを取得・reviewした。
 - local test runnerのport / persisted state共有によるfixture干渉を特定してrun単位隔離へ修正し、reorder concurrency contractはHTTP winner・stored result・final D1 orderの一致まで検証するよう強化した。
-- D1 `batch()` + conditional SQL + database constraintsによるatomicity / concurrency / idempotency strategyのfeasibilityをVerifiedとした。exact production schema / migration SQL / command-specific algorithm / infrastructure failure reconciliationは引き続き実装設計として未確定。
+- D1 `batch()` + conditional SQL + database constraintsによるatomicity / concurrency / idempotency strategyのfeasibilityをVerifiedとした。exact production schema / migration SQL / command-specific algorithm / infrastructure failure reconciliationは実装incrementごとに確定・reviewする方針とした。
 
 ### Runtime foundation decisions
 
@@ -61,4 +61,23 @@
 - same-operation concurrent raceがstored winner resultへ収束するようrejection persistence raceを修正し、owner-scoped temporary guard / assertionを追加。
 - Web DayBoardでlogin/logout、Project作成、Task + Entry追加、pending feedback、canonical refetch、browser reload recoveryを実装。
 - local evidenceとしてWorker / D1 34件 + Web 7件 = 41件PASS、typecheck / production build / fresh local migrations / FK checks PASSを取得し、implementation bundle / GitHub PR diff reviewもPASS。
-- remote D1 Product runtime verification、deployed Worker verification、production verificationは未実施。Reorder / Start / Complete / Execution runtimeは次increment。
+- remote D1 Product runtime verification、deployed Worker verification、production verificationは未実施のまま。
+
+### Runtime lifecycle / ordering implementation
+
+- PR #5でFirst Server + Web vertical sliceのlifecycle / ordering incrementを`main`へmerge。
+- `0002_lifecycle_ordering.sql`でExecution persistence、lifecycle operation support、既存operation rowを保持するmigrationを追加。
+- `executions`へuser-wide active Execution最大1をenforceするpartial UNIQUE indexを追加。
+- ReorderEntriesを実装し、TaskChuteDay-level `placement_revision`によるstale conflict rejection、same-operation replay、misuse rejection、atomic rollbackを実装。
+- ReorderをEntryごとのUPDATEから`json_each`を利用するset-based updateへ変更し、200 Entryの未承認capを削除。mutation batch statement数をEntry数から分離した。
+- StartEntryを実装し、planned EntryのみStart、exactly one active Execution、別active Execution時no implicit interrupt、same-operation retry safetyを実装。
+- CompleteEntryを実装し、running Entryとactive Executionを終了、first `ended_at` preservation、same-operation retry safetyを実装。
+- Start / Completeは`placement_revision`を変更しない。
+- current projectionへactive Executionとlifecycle-aware Nextを追加し、Next以外のplanned Entryもactive ExecutionがなければStart可能にした。
+- TaskChuteDay境界をまたぐactive Executionを分割せず保持し、current DayBoard外のEntryに属するExecutionもWebからComplete可能にした。
+- Webへmove up/down、Start、Complete、pending / conflict reconciliationを追加。
+- ambiguous Reorder / Start / Completeは元operation専用Retryとclient-side Discardを表示し、retained operation中はunrelated mutationから旧operationを暗黙再送しないようguardを追加。
+- 64 Entry set-based Reorder、stale conflict replay、cross-owner Reorder、Next advancement、cross-day active Execution、HTTP lifecycle routes、path/body mismatch、ambiguous Retry / Discard等のcoverageを追加。
+- current local evidenceをWorker / D1 49件 + Web 18件 = 67件PASSへ更新。`npm ci`、typecheck、production build、fresh migrations、existing operation upgrade、FK checks、active Execution index、`git diff --check`もPASS報告。
+- source-only reviewで初回3 blockerを検出・修正後に再review PASS、GitHub PR #5 diff reviewもPASS。
+- remote D1 Product runtime verification、deployed Worker verification、deployment / production smokeは引き続き`NOT_RUN`。Implemented / Integrated / local TestedをVerified / Releasedへ自動昇格しない。
