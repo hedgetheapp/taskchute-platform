@@ -46,6 +46,8 @@ Initial scopeではSSR、Durable Objects、external PostgreSQL、D1 read replica
 
 Cloudflare R2等のbinary storageはD-008のままProposedであり、採用未確定。
 
+D-022によりinitial Workerはseparate `AUTH_DB` / `APP_DB` D1 bindingsを同一Worker内で利用する。auth専用Worker/serviceの分離はinitial scopeでは行わない。
+
 ## Layering principle
 
 Cloudflare固有APIをDomain semanticsへ侵食させない。
@@ -223,56 +225,73 @@ Product runtimeでは特に、unexpected infrastructure failureをdeterministic 
 
 ## Initial persistent model direction
 
-D1 feasibilityはVerified済みだが、exact production migration SQL / schemaはspikeのtested shapeを参考に別途設計する。spike schema自体をfinal Product schemaとは扱わない。
+D1 feasibilityはVerified済みで、D-022によりFirst vertical slice全体のAPP persistence baselineとなる責務境界をApprovedとする。exact production migration SQL / indexes / statement orderingは実装時にreviewする。
 
-First sliceのAPP persistenceは概念的に以下を必要とする。
+TaskChute-owned APP persistenceは概念的に以下を必要とする。
 
-- app users / auth-subject mapping
+- app users
+- auth-subject mapping
 - user settings: TaskChute timezone / day boundary
 - projects
-- sections
+- user-global sections
 - taskchute days
 - tasks
 - entries
 - executions
 - operations
 
-TaskChuteDayはlogical dateだけではなくhistorically preservedできるactual interval、timezone / boundary contextを保持できる方向とする。
+migrationはsmall vertical slice単位で段階投入できるが、spike schema自体をfinal Product schemaとは扱わず、Routine、Documents、Place / Location等のfuture feature tableを先行作成しない。
 
-Executionはactual start / end factを保持し、Reviewで過去classificationを失わないために必要なhistorical contextを将来保持できる設計とする。exact snapshot fieldsはspike / schema設計で確定する。
+TaskChuteDayはlogical dateだけではなくhistorically preservedできるactual interval、timezone / boundary contextを保持する。
+
+Executionはactual start / end factを保持し、Reviewで過去classificationを失わないために必要なhistorical contextを将来保持できる設計とする。First sliceではdestructive hard-delete APIを提供しない。Execution時点のTask / Project / Section metadata snapshotのexact fieldsは、rename / move / delete / Reviewを導入する前に別途Decisionする。
 
 historical chainへの安易なcascade deleteを避ける。
 
-Routine、Documents、Place / Location等はDomain上の拡張余地を保持するが、First sliceのDB tableを先行作成しない。
+## Section scope
 
-## Identity generation direction
+D-022によりFirst sliceのSectionはuser-global stable entityとする。
 
-Task / Entry / Project等、将来offline中に新規作成し得るentity identityはClient側でも生成可能なopaque identityとする方向とする。
+- Section identityはTaskChuteDayごとに作り直さない。
+- 複数TaskChuteDayのEntryが同一Sectionを参照できる。
+- day-specific Section occurrence / overrideはinitial scope外とし、必要性が生じた場合に別capabilityとして設計する。
 
-exact string formatはOpen。DB / API contractではopaque valueとして扱い、titleやposition等のmutable fieldをidentityにしない。
+## Identity generation
+
+D-022によりinitial runtimeで新規作成するTask / Entry / Project / Section / Execution等のentity identityはUUIDv7を使用する。
+
+DB / APIではopaque stringとして扱い、UUIDv7に含まれるtimestamp情報をordering、priority、historical authorityとして利用しない。
+
+Client側でも生成可能とし、将来offline中に新規作成するclientへ同じidentity contractを拡張できるようにする。
 
 ## Authentication / authorization
 
-D-021によりapplication authenticationはTaskChute Serverが所有する。
+D-021によりapplication authenticationはTaskChute Serverが所有し、D-022によりinitial physical boundary / bootstrap / session policyを確定する。
 
 Initial implementation:
 
 - Better AuthをCloudflare Workers + D1上で利用する。
 - Webはsecure DB-backed browser sessionを利用する。
 - initial loginはemail + password。
-- public self-signupは無効。
-- initial userはbootstrapで作成する。
+- public self-signupは無効。bootstrap中も有効化しない。
+- initial userはoperator-only one-shot bootstrapで作成する。
+- browser sessionはrolling 7日、update / renewal threshold 1日とする。
 
 TaskChute Domain identityをBetter Authのphysical user schemaへ直接結合しない。
 
 ```text
 Better Auth subject
-  -> auth mapping
+  -> APP_DB auth mapping
   -> stable TaskChute app user
   -> Domain Commands / Queries
 ```
 
-Auth-managed persistenceとTaskChute Domain persistenceは責務を分離し、initially separate D1 bindings / databasesを利用する方向とする。Better Authのphysical auth schemaはlibrary管理領域として扱い、Domain tablesから強いFK dependencyを張らない。
+Initial Workerはseparate D1 bindingsを利用する。
+
+- `AUTH_DB`: Better Auth-owned physical auth schema / session persistence
+- `APP_DB`: TaskChute app user、mapping、settings、Domain persistence
+
+AUTH_DB / APP_DB間のcross-database FK / atomic transactionを前提にしない。bootstrapはAUTH_DB側だけ成功した場合等から安全に再実行できるidempotent / recoverable flowとする。
 
 Clientはuser IDをauthorityとして送らず、Serverがsession / tokenからAuthenticatedPrincipalを確定してownership / authorizationを検証する。
 
@@ -280,7 +299,9 @@ Clientはuser IDをauthorityとして送らず、Serverがsession / tokenからA
 
 Cloudflare Accessはcanonical application authとして使用せず、必要ならpreview / internal environmentの追加outer gateとして利用できる。
 
-Better Authのexact package versionはimplementation時に検証済みversionをlockfileでpinし、upgrade時はmigration / regression impactを確認する。
+Better Authのexact package versionはimplementation時にlocal D1 integrationをsmoke-testしたversionをlockfileでpinし、upgrade時はmigration / regression impactを確認する。
+
+password、secret、session token等をtracked file、evidence、通常logへ残さない。
 
 ## TaskChuteDay architecture
 
@@ -295,7 +316,13 @@ DayBoundaryPolicy
 
 civil midnight固定をDomainへ埋め込まない。
 
-current TaskChuteDayは必要時にServerがlazy materializeできる。未来dayを閲覧しただけでhistorically freezeするか等のfuture materialization policyは未決。
+D-022によりinitial bootstrapではcanonical IANA timezone、TaskChuteDay boundary、initial Section configurationを明示入力する。`Asia/Tokyo`、midnight等を暗黙のProduct defaultとして適用しない。
+
+ambiguous / nonexistent local timeのinitial disambiguationはTemporal-compatibleな`compatible` semanticsを利用する。day startとnext-day boundaryをそれぞれtimezone ruleでinstantへ解決し、`end = start + 24h`とは計算しない。
+
+current TaskChuteDayは必要時にServerがlazy materializeできる。materializeしたactual `[start, end)` intervalとestablishment contextを保存し、後のsetting変更でretroactiveに再分類しない。
+
+未来dayを閲覧しただけでhistorically freezeするか等のfuture materialization policy、timezone / boundary変更UX、travel behaviorは未決。
 
 Executionはactual instantを保持し、logical boundary crossing時も1つのExecution factとして残す。Reviewはinterval overlapでlogical dayへ配賦できる。
 

@@ -68,7 +68,7 @@ TaskとEntryはそれぞれstable identityを持ち、mutable title等をidentit
 
 1つのTaskが複数のEntryとして現れることを許容する。
 
-exact ID formatは別途設計する。
+initial runtimeのentity ID formatはD-022でUUIDv7として確定する。DB / APIではopaque stringとして扱い、IDに含まれるtimestamp情報をDomain ordering authorityとして利用しない。
 
 ## D-011 — Android is offline-capable
 Status: Approved
@@ -132,7 +132,7 @@ Core Domainでは以下を基礎invariantとする。
 - RoutineOccurrenceは特定のTaskChuteDay分として成立するoccurrenceで、0..* Entriesを持てる。
 - RoutineOccurrenceが成立した後、関連Entryを別TaskChuteDayへ延期・移動しても、そのOccurrenceが何日分として発生したかを失わない。
 
-exact ID format、DB table boundary、ordering storage algorithm、Pause / Interrupt / Cancel等の後続lifecycleは別途設計する。
+initial runtimeのID formatとSection scopeはD-022で確定する。DB table boundary、ordering storage algorithm、Pause / Interrupt / Cancel等の後続lifecycleは別途設計する。
 
 ## D-016 — Views and Review are projections over Domain and historical facts
 Status: Approved
@@ -162,7 +162,7 @@ UIでは`30:00`等のextended-time notationを利用できる方向とするが�
 
 過去にhistorically establishedされたTaskChuteDay assignment / intervalを、後のtimezone / boundary設定変更でretroactiveに再分類しない。
 
-未来TaskChuteDayをいつmaterialize / freezeするか、default boundary、timezone変更UX、travel behavior、per-day override / work profile、extended-time入力rangeはOpenとする。
+initial bootstrapではtimezone / boundaryを明示入力させ、暗黙のProduct defaultを適用しない。DST local-time disambiguationのinitial ruleはD-022で確定する。未来TaskChuteDayをいつmaterialize / freezeするか、timezone変更UX、travel behavior、per-day override / work profile、extended-time入力rangeはOpenとする。
 
 ## D-018 — Primary Documents and Routine occurrence notes
 Status: Approved
@@ -211,7 +211,7 @@ WebのReact UI codeをnative clientsへそのまま流用することは前提�
 
 APIは概念上Command / Queryを分離する。これはCQRSやEvent Sourcing採用を意味しない。
 
-client-issued mutationはlogical `operation_id`を持ち、network ambiguityによる同一operation retryを識別できるようにする。offlineで新規作成し得るentity identityはclient生成可能なopaque IDとする方向とし、exact ID formatはOpenとする。
+client-issued mutationはlogical `operation_id`を持ち、network ambiguityによる同一operation retryを識別できるようにする。initial runtimeで新規作成するentity IDはD-022に従いUUIDv7とし、DB / APIではopaque stringとして扱う。
 
 stale stateによるsilent overwriteが危険なmutationではrevision / preconditionを利用し、silent last-write-winsを行わない。First sliceのplacement競合はTaskChuteDay単位のplacement revisionで扱う方向とする。
 
@@ -234,4 +234,74 @@ Clientからuser IDをauthorityとして送らせず、Serverがauthenticated pr
 
 将来native clientは同じTaskChute identity / authorization modelへtoken-based authenticationを追加できる構成とする。Cloudflare Accessは必要に応じてpreview / internal environment等のinfrastructure-level outer gateとして利用できる。
 
-Passkey、OAuth、MFA、password reset UX、native credential handoff等は後続scopeとする。
+Passkey、OAuth、MFA、password reset UX、native credential handoff等は後続scopeとする。initial bootstrap、session policy、AUTH_DB / APP_DBのphysical boundaryはD-022で確定する。
+
+## D-022 — Initial runtime foundation decisions
+Status: Approved
+
+First Server + Web runtimeを実装開始するためのfoundationとして、以下をApprovedとする。
+
+### Entity identity
+
+- initial runtimeで新規作成するTask / Entry / Project / Section / Execution等のentity IDはUUIDv7を使用する。
+- DB / APIではopaque stringとして扱い、UUIDv7に含まれるtimestamp情報をDomain order、priority、history authorityとして利用しない。
+- Client生成可能とし、将来のoffline-capable clientでも同じidentity contractを利用できるようにする。
+
+### Section scope
+
+- First sliceのSectionはuser-globalなstable entityとする。
+- 複数TaskChuteDayのEntryが同じSection identityを再利用できる。
+- day-specific Section occurrence / overrideはFirst sliceへ導入せず、必要になった時点で後続capabilityとして設計する。
+
+### APP persistence baseline
+
+First vertical slice全体のTaskChute-owned APP persistence baselineは、必要最小限のstable-reference modelとして以下の責務を持つ。
+
+- app users
+- auth subject -> app user mapping
+- user settings: canonical timezone / TaskChuteDay boundary
+- projects
+- sections
+- TaskChuteDays
+- tasks
+- entries
+- executions
+- operations
+
+実際のmigrationはsmall vertical sliceに合わせて段階投入してよいが、spike schemaをfinal Product schemaとしてコピーせず、将来feature用tableを先行して増やさない。
+
+materialized TaskChuteDayはlogical dateだけでなくactual `[start, end)` intervalと、そのintervalをestablishしたtimezone / boundary contextを保持する。
+
+First sliceではdestructive hard-delete APIを提供しない。Execution時点のTask / Project / Section metadataをどこまでsnapshotするかは、rename / move / delete / Reviewを導入する前に別途Decisionする。
+
+### TaskChuteDay bootstrap / DST
+
+- initial user bootstrapではcanonical IANA timezone、TaskChuteDay boundary、initial Section configurationを明示入力する。
+- `Asia/Tokyo`、civil midnight等を暗黙のProduct defaultとして適用しない。test fixtureとして明示利用することは許容する。
+- ambiguous / nonexistent local timeのinitial disambiguationはTemporal-compatibleな`compatible` semanticsを使用する。
+- day startとnext-day boundaryをそれぞれtimezone ruleからinstantへ解決し、`end = start + 24h`とは計算しない。
+- established intervalを保存し、後のsetting変更でretroactiveに再分類しない。
+
+### Initial-user bootstrap
+
+- initial userはoperator-only one-shot bootstrapで作成する。
+- public self-signupはbootstrap中も含めて有効化しない。
+- bootstrapはAUTH_DB側だけ成功 / APP_DB側失敗等のpartial failureから安全に再実行できるidempotent / recoverable flowとする。
+- password、secret、session token等をtracked file、evidence、通常logへ保存しない。
+
+### Browser session policy
+
+Initial browser sessionはrolling sessionとし、lifetimeを7日、update / renewal thresholdを1日とする。
+
+将来このSecurity / UX balanceを変更する場合は、impactを確認した上で新たにDecisionする。
+
+### AUTH_DB / APP_DB boundary
+
+- Initial Workerは2つのseparate D1 database / bindingを利用する。
+- `AUTH_DB`はBetter Authのphysical auth persistenceを所有する。
+- `APP_DB`はTaskChute Domain / application persistenceを所有し、auth subjectからstable `app_user_id`へのmappingを保持する。
+- Better Auth physical user IDをTaskChute Domain identity authorityにしない。
+- AUTH_DBとAPP_DB間にcross-database FK / atomic transactionがあると仮定しない。
+- initial scopeではauth専用Worker/serviceを別途分離せず、同じWorker内で両bindingを利用する。
+
+Better Authのexact package versionはimplementation時のlocal D1 smoke test後にpinするimplementation detailとする。exact SQL、endpoint / JSON / HTTP mapping、operation retention cleanup、future timezone / boundary change UX等は引き続きOpenとする。

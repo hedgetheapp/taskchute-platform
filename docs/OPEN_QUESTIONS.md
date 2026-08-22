@@ -10,6 +10,8 @@ Cloudflare Workers + D1のinitial adoption自体はD-020でApproved済み。
 
 2026-08-22のcurrent-harness local + temporary remote D1 spikeにより、D1 `batch()` + conditional SQL + database constraintsで要求されたatomicity / concurrency / idempotency invariantを満たせるfeasibilityはVerified済み。
 
+D-022によりFirst vertical slice全体のAPP persistence baseline responsibility、separate `AUTH_DB` / `APP_DB` boundary、UUIDv7 entity identity、user-global Section scopeはApproved済み。
+
 以下はOpen:
 
 - exact D1 schema / migration SQL
@@ -17,6 +19,7 @@ Cloudflare Workers + D1のinitial adoption自体はD-020でApproved済み。
 - operation result persistenceのexact schema
 - request fingerprint canonicalization / hash方式
 - placement revisionのphysical representation
+- operation result retention / cleanup policy
 - backup / export strategy
 - custom domainを採用する時期
 - preview / staging environment strategy
@@ -28,14 +31,15 @@ Cloudflare Workers + D1のinitial adoption自体はD-020でApproved済み。
 
 Command / Queryをconceptualに分離し、client-issued mutationへlogical operation identityを持たせる方向はD-020でApproved済み。
 
+unexpected infrastructure failureをdeterministic Domain rejectionとして保存せず、安全なretry / canonical Query reconciliation余地を残す原則はApproved済み。
+
 以下はOpen:
 
 - exact endpoint paths
 - exact JSON request / response schema
 - exact HTTP status / error-code mapping
 - command-specific transactional SQL
-- unexpected infrastructure failure時のretry / reconciliation contract詳細
-- operation result retention / cleanup policy
+- unexpected infrastructure failure時のretry / reconciliation contractのexact API表現
 - API versioning policy
 - rate-limit / abuse-protection policy
 
@@ -43,13 +47,19 @@ Command / Queryをconceptualに分離し、client-issued mutationへlogical oper
 
 Better Auth + initial email/password + public signup disabled + secure browser sessionはD-021でApproved済み。
 
+D-022により以下はApproved済み。
+
+- initial userはoperator-only one-shot bootstrap
+- public signupはbootstrap中も有効化しない
+- browser sessionはrolling 7日、update / renewal threshold 1日
+- same Workerでseparate `AUTH_DB` / `APP_DB` D1 bindingsを利用する
+- bootstrapはcross-DB partial failureからidempotent / recoverableにする
+
 以下はOpen:
 
-- bootstrap initial userのexact procedure
-- auth-managed D1 / app D1のexact binding / deployment構成
 - Better Auth implementation-time pinned version
+- bootstrap operator UX / command packagingのexact方式
 - login / logout UI
-- session lifetime / renewal policy
 - password reset / recovery UX
 - Passkey導入時期
 - OAuth / MFAの必要性
@@ -98,12 +108,14 @@ Web offlineはinitial First slice外。
 
 D-015でCore Domain foundationsはApproved済み。
 
+D-022によりinitial runtime entity IDはUUIDv7、First slice Sectionはuser-global stable entityとしてApproved済み。
+
 以下はOpen:
 
-- exact Task / Entry / Project / Section / Execution ID format
 - exact Project fields
 - exact Section fields
 - Entry position / ordering persistence algorithm
+- future day-specific Section occurrence / override capabilityが必要になる条件
 - completed stateを将来Execution historyからderiveするか、stored lifecycle stateとして維持するか
 - Reopen semantics
 - Pause / Resume representation
@@ -116,9 +128,10 @@ D-015でCore Domain foundationsはApproved済み。
 
 D-017でlogical TaskChuteDayとcontinuous interval semanticsはApproved済み。
 
+D-022によりinitial bootstrapではcanonical IANA timezone / boundaryを明示入力し、暗黙のProduct defaultを適用しない。ambiguous / nonexistent local timeのinitial disambiguationはTemporal-compatibleな`compatible` semanticsとする。
+
 以下はOpen:
 
-- default day boundary
 - extended-time notationの入力range
 - timezone selection / onboarding UX
 - travel / timezone change behavior
@@ -126,7 +139,7 @@ D-017でlogical TaskChuteDayとcontinuous interval semanticsはApproved済み。
 - future TaskChuteDayをいつmaterialize / historically freezeするか
 - per-day boundary override
 - work-shift / profile機能
-- DST / timezone transitionのexact acceptance scenarios
+- `compatible` ruleを含むDST / timezone transitionの追加acceptance scenario coverage
 
 ## Routine
 
@@ -146,6 +159,8 @@ RoutineDefinition -> RoutineOccurrence -> Entryとorigin TaskChuteDay preservati
 ## Review / historical context
 
 Reviewをhistorical factsからのprojectionとする方向はD-016でApproved済み。
+
+D-022によりFirst sliceではmaterialized TaskChuteDayのactual interval / establishment contextを保持し、destructive hard-delete APIは提供しない。
 
 以下はOpen:
 
