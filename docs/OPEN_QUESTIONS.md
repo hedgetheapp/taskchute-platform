@@ -8,10 +8,12 @@ Resolved Decisionの正本は`docs/DECISIONS.md`を参照する。
 
 Cloudflare Workers + D1のinitial adoption自体はD-020でApproved済み。
 
+2026-08-22のcurrent-harness local + temporary remote D1 spikeにより、D1 `batch()` + conditional SQL + database constraintsで要求されたatomicity / concurrency / idempotency invariantを満たせるfeasibilityはVerified済み。
+
 以下はOpen:
 
 - exact D1 schema / migration SQL
-- D1 concurrency / atomicity spike結果と、それを踏まえたfinal transaction algorithm
+- VerifiedになったD1 feasibility strategyをProduct runtimeへ落とし込むexact command-specific transaction algorithm
 - operation result persistenceのexact schema
 - request fingerprint canonicalization / hash方式
 - placement revisionのphysical representation

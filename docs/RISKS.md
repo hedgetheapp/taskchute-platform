@@ -126,14 +126,24 @@ Related: D-020
 
 Cloudflare D1を採用するが、Worker request全体を暗黙のtransactionと考えたり、application-level read -> decision -> writeだけでconcurrency invariantを守ると、同時Start、retry、reorder race等で不整合が発生する可能性がある。
 
+2026-08-22のcurrent-harness local + temporary remote feasibility spikeで、D1 `batch()` + conditional SQL + database constraintsによりD1-SPIKE-01〜08を満たせることはVerifiedした。これにより「D1で必要なatomicity / concurrency / idempotency strategyが成立可能か」というarchitecture gate riskはmitigatedした。
+
+残存Risk:
+
+- spikeのexact schema / SQL / broad error mappingをそのままProduct runtimeへcopyすると、production semanticsと乖離する可能性がある
+- unexpected infrastructure failureをdeterministic Domain rejectionとして誤保存・誤分類する可能性がある
+- operation result retention / cleanup、overload時behavior、migration、observability等はspike対象外
+- exact production schema / command-specific transaction algorithmはまだ未確定
+
 Mitigation direction:
 
-- conditional SQL + database constraint + explicit transactional batch等でinvariantを守る
+- conditional SQL + database constraint + explicit transactional batchをProduct invariant enforcementの基礎として利用する
 - active Execution最大1等をapplication codeだけに依存させない
-- 本runtime実装前にlocal + temporary remote D1でatomicity / concurrency spikeを実施する
-- spikeが成立しなければD1前提で強行せず、strategy修正後も成立しない場合にDurable Objects等を再評価する
+- current evidenceは`spikes/d1-feasibility/EVIDENCE.md`と`docs/TEST_MATRIX.md`へ記録する
+- Product runtimeではinfrastructure failureとDomain rejectionを分離し、safe retry / reconciliation余地を残す
+- implementation後はAPI / integration / conflict / retry evidenceを別途取得し、spike PASSをProduct runtime PASSへ自動継承しない
 
-Spike PASS前はD1 concurrency architectureを`Verified`と扱わない。
+D1 feasibility gateはPASS済みだが、Product runtimeそのものは未実装でありVerifiedではない。
 
 ## R-011 — Authentication library / identity coupling risk
 Related: D-021

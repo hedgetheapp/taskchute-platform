@@ -1,6 +1,6 @@
 # Current
 
-Date: 2026-08-21
+Date: 2026-08-22
 
 ## Status
 
@@ -10,14 +10,17 @@ Runtime implementationはまだ開始していない。
 
 Core Domain foundations、TaskChuteDay、First Server + Web vertical slice、initial technology / authentication architectureまでApprovedとして設計した。
 
-次のimplementation workはProduct本体ではなく、Cloudflare D1のatomicity / concurrency / idempotency assumptionsを検証するfocused feasibility spikeである。
+Cloudflare D1のatomicity / concurrency / idempotency feasibility gateは、current harnessによるlocal D1 + temporary remote D1の`D1-SPIKE-01`〜`D1-SPIKE-08`でPASSし、implementation reviewも完了した。
+
+次のimplementation workは、spikeのexact SQLをそのままProductへ移植することではなく、VerifiedになったD1 feasibilityを前提にFirst Server + Web vertical sliceのproduction persistence / command / auth foundationを設計・実装することである。
 
 ## Current source-of-truth state
 
 - Project Instructionsはfreeze方針で確定済み。
 - `AGENTS.md`と`docs/DEVELOPMENT_WORKFLOW.md`はProject Instructionsへ整合済み。
 - Runtime codeは未実装。
-- D1 concurrency / atomicity spikeは未実施。
+- D1 concurrency / atomicity feasibility gateはPASS / Verified。current evidenceは`spike/d1-feasibility` branchの`eda694e22fd742827da5b90967c6b0305b885033`および`spikes/d1-feasibility/EVIDENCE.md`を参照する。
+- D1 spikeのPASSはexact production schema / migration SQL / command-specific transaction algorithm / infrastructure failure reconciliationの確定を意味しない。
 - `docs/DECISIONS.md`をApproved / Proposed Decisionの正本とする。
 - Verification requirement / evidenceの正本は`docs/TEST_MATRIX.md`とする。
 
@@ -90,27 +93,30 @@ Cloudflare R2等のbinary object storageは未Approvedで、D-008は`Proposed`�
 ## Verification state
 
 - Runtime: `NOT_IMPLEMENTED`
-- D1 feasibility spike: `NOT_RUN`
+- D1 feasibility spike: `PASS / VERIFIED`
+- D1 current-harness local: `PASS`
+- D1 current-harness temporary remote: `PASS`
 - First vertical slice: `NOT_IMPLEMENTED`
 - Auth: `NOT_IMPLEMENTED`
 - Web: `NOT_IMPLEMENTED`
 
 Approved Decisionや設計が存在することを理由にTested / Verified扱いしない。
 
+D1 feasibility gateのVerifiedは、D1で必要なatomicity / concurrency / idempotency strategyが成立可能であることのverificationであり、Product runtime自体のImplemented / Integrated / Tested / Verifiedを意味しない。
+
 ## Important Risks / Gates
 
 - D1 Worker request全体を暗黙のtransactionとみなさない。
-- conditional SQL + DB constraint + explicit transaction/batch strategyをfocused spikeで実証する。
-- local D1だけでなくtemporary remote D1でもconcurrency evidenceを取る。
-- active Execution max 1、same-operation retry、Complete retry、reorder conflict、rollback、FK safetyをspikeで確認する。
-- spikeが成立しない場合はProduct runtimeをD1前提で強行せず、strategy修正後も成立しなければDurable Objects等を再評価する。
+- conditional SQL + DB constraint + explicit transactional batchによるstrategyはlocal + temporary remote spikeでfeasibleとVerified済み。
+- active Execution max 1、same-operation retry、Complete retry、reorder conflict、rollback、FK safetyはspikeでcurrent-harness PASS済み。
+- exact production schema / migration SQL / command-specific transaction algorithmはspikeのtest shapeを参考に別途設計する。
+- unexpected infrastructure failureを確定Domain rejectionへ誤分類しないretry / reconciliation contractは引き続きOpen。
 - repositoryはpublicであり、Better Auth secret等をcommitしない。
 
 ## Next
 
-1. D1 feasibility spike用のminimal runtime / schema / test harnessを実装する。
-2. `D1-SPIKE-01`〜`D1-SPIKE-08`をlocal D1で実施する。
-3. temporary remote D1でも同じcontractを実施する。
-4. evidenceをreviewし、D1 transaction / constraint strategyを確定または再設計する。
-5. PASSした場合だけFirst sliceのexact migration / API foundation / Auth bootstrapへ進む。
-6. 実装結果に応じてTEST_MATRIX、CURRENT、RISKS / OPEN_QUESTIONSを更新する。
+1. Verified D1 feasibilityを前提に、First slice用APP persistenceのexact schema / migrationとcommand transaction contractを設計する。
+2. spikeのSQL / error mappingをそのままproductionへcopyせず、Domain invariant・operation replay・infrastructure failure reconciliationをProduct runtime向けに整理する。
+3. Better Auth bootstrap、auth subject -> stable TaskChute app user mapping、APP/AUTH persistence boundaryを実装可能な形へ落とす。
+4. First Server + Web vertical sliceをsmall vertical sliceで開始し、canonical Query / CommandをServer + Webでend-to-endに通す。
+5. 実装に応じてTEST_MATRIX、CURRENT、RISKS / OPEN_QUESTIONSをimpact analysisベースで更新する。

@@ -191,7 +191,7 @@ operation identity check
 
 D1ではWorker codeの複数read/writeを暗黙の一transactionとは扱わない。conditional SQL、database constraint、D1 batch等を組み合わせ、exact transaction algorithmはlocal + remote D1 feasibility spikeで確認してから本採用する。
 
-## D1 feasibility gate
+## D1 feasibility gate — PASS
 
 Product runtime implementation前に、D1のatomicity / concurrency / idempotency前提を検証する。
 
@@ -206,13 +206,24 @@ Required spike scenarios:
 - reorder failure / conflictでmixed orderを残さない
 - historical reference中のentityに対するunsafe hard deleteをconstraintで防ぐ
 
-local D1とtemporary remote D1の両方でevidenceを取得する。
+2026-08-22時点で、current harnessによるlocal D1とtemporary remote D1の双方で`D1-SPIKE-01`〜`D1-SPIKE-08`がPASSし、implementation reviewも完了した。current evidenceは`spike/d1-feasibility@eda694e22fd742827da5b90967c6b0305b885033`および`spikes/d1-feasibility/EVIDENCE.md`を参照する。
 
-このGateが成立しない場合はD1前提で本実装を強行せず、SQL / transaction strategyを修正し、それでも成立しない場合にDurable Objects等を再評価する。
+Spikeでfeasibleと確認できたstrategy:
+
+- D1 `batch()`内でDomain mutationとoperation resultをatomicに扱う
+- conditional SQLとdatabase constraintsを組み合わせてrace時のinvariantを守る
+- partial unique constraint等をapplication codeだけに依存しないlast line of defenseとして利用する
+- logical `operation_id`とserver-computed semantic fingerprintによりsame-operation replay / misuse rejectを成立させる
+- placement revision guardによりconflicting reorderをsilent overwriteさせない
+- FK `RESTRICT`等でhistorical chainへのunsafe hard deleteを防ぐ
+
+このGateのPASSはD1をinitial structured persistenceとして利用するfeasibilityを支持する。ただし、spikeのexact SQL / schema / endpoint / broad error mappingをそのままProduct runtimeのfinal implementationとして承認したものではない。
+
+Product runtimeでは特に、unexpected infrastructure failureをdeterministic Domain rejectionとして保存・分類しないこと、exact production schema / migration SQL / command-specific transaction algorithmを別途設計・reviewすることを要求する。
 
 ## Initial persistent model direction
 
-exact migration SQLはspike結果前にfinalizeしない。
+D1 feasibilityはVerified済みだが、exact production migration SQL / schemaはspikeのtested shapeを参考に別途設計する。spike schema自体をfinal Product schemaとは扱わない。
 
 First sliceのAPP persistenceは概念的に以下を必要とする。
 
