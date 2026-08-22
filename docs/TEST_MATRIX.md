@@ -21,15 +21,17 @@ Contractが`Approved`でも、実装やverificationが未実施ならPASS扱い�
 
 ## Current First Server + Web vertical slice evidence
 
-PR #5でmergeされたexact implementation contentに対するcurrent local evidence:
+`main@e26e3b167b8f79925d424275c68550c4e151a3fd`をbaseにしたbootstrap lifecycle security working treeに対するcurrent local evidence:
 
 - lifecycle / ordering implementation commit: `09b1526f7f09554bd937aa446737a979868b779b`
 - PR #5 merge commit: `1b5917ad1caff6dd648856bf7a054fa43d040a65`
-- Worker / D1 tests: `49 PASS`
+- bootstrap lifecycle security: `IMPLEMENTED / LOCAL_TESTED / NOT_INTEGRATED`
+- Worker / D1 tests: `55 PASS`
 - Web tests: `18 PASS`
-- total local automated tests: `67 PASS`
+- total local automated tests: `73 PASS`
 - `npm ci`: `PASS`
 - npm audit vulnerabilities: `0`
+- generated Worker types: `PASS`
 - typecheck: `PASS`
 - production build: `PASS`
 - fresh AUTH_DB migration: `PASS`
@@ -39,13 +41,13 @@ PR #5でmergeされたexact implementation contentに対するcurrent local evid
 - APP_DB foreign-key check: `0`
 - active Execution partial UNIQUE index: `PASS`
 - `git diff --check`: `PASS`
-- source-only implementation review: `PASS`
-- GitHub PR #5 diff review: `PASS`
+- bootstrap lifecycle source-only implementation review: `NOT_RUN`
+- bootstrap lifecycle GitHub PR diff review: `NOT_RUN`
 - remote D1 Product runtime verification: `NOT_RUN`
 - deployed Worker verification: `NOT_RUN`
 - production smoke test: `NOT_RUN`
 
-この67 PASSはbootstrap regressionを含むcurrent local suiteであり、PR #3時点の41 PASS evidenceをcurrent implementationへ更新する。local evidenceをremote / deployed / production verificationへ自動拡張しない。
+この73 PASSはexplicit bootstrap mode、token rejection、cross-DB recovery、public signup regressionを含むcurrent local suiteである。local evidenceをintegration、remote / deployed / production verificationへ自動拡張しない。
 
 ## Core Domain
 
@@ -144,10 +146,13 @@ Web suiteではdeterministic Reorder / Start conflict後のcanonical refetch、a
 | AUTH-02 | Auth | initial production flowでpublic self-signupを許可しない | Approved (D-021) | PASS |
 | AUTH-03 | AuthZ | Client申告user IDではなくauthenticated principalからownerを確定する | Approved (D-021) | PASS |
 | AUTH-04 | AuthZ | 別owner resource IDを指定してもServer authorizationが拒否する | Approved (D-021) | PASS |
-| AUTH-05 | Bootstrap | initial userをoperator-only bootstrapで作成し、bootstrap中もpublic signupを有効化しない | Approved (D-021, D-022) | PASS |
-| AUTH-06 | Bootstrap | AUTH_DB / APP_DBの片側成功後もbootstrapを安全に再実行・reconcileできる | Approved (D-022) | PASS |
+| AUTH-05 | Bootstrap | initial userをoperator-only bootstrapで作成し、bootstrap中もpublic signupを有効化しない | Approved (D-021, D-022, D-023) | PASS |
+| AUTH-06 | Bootstrap | AUTH_DB / APP_DBの片側成功後もbootstrapを安全に再実行・reconcileできる | Approved (D-022, D-023) | PASS |
 | AUTH-07 | Identity | Better Auth subjectをseparate APP_DB mappingからstable app_user_idへ解決し、physical auth user IDをDomain authorityにしない | Approved (D-021, D-022) | PASS |
 | AUTH-08 | Session | initial browser sessionがrolling 7日、update / renewal threshold 1日で動作する | Approved (D-022) | PASS |
+| AUTH-09 | Bootstrap | bootstrap modeがmissing / empty / disabled / invalidならbody parseやbootstrap logicより前に404 postureでunavailableとなる | Approved (D-023) | PASS |
+| AUTH-10 | Bootstrap | bootstrap modeがenabledでもmissing / wrong tokenをinformation disclosureなしにrejectし、correct tokenでflowを実行できる | Approved (D-023) | PASS |
+| AUTH-11 | Secrets | bootstrap rejection response / normal error logにprovided bootstrap tokenを出力しない | Approved (D-022, D-023) | PASS |
 
 ## D1 feasibility gate
 

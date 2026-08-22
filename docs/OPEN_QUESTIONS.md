@@ -83,16 +83,18 @@ D-022により以下はApproved済み。
 - same Workerでseparate `AUTH_DB` / `APP_DB` D1 bindingsを利用する
 - bootstrapはcross-DB partial failureからidempotent / recoverableにする
 
+D-023によりbootstrap availabilityはexplicit modeで制御し、default / missing / invalidはdisabled、enabled中もtoken必須、provisioning後はmode disable + token remove / rotateとすることがApproved済み。Cloudflare Accessは必須ではない。
+
 Current implementation fact:
 
 - Better Auth exact pin: `1.7.1`
 - minimal Web login / logout UIを実装済み
 - local operator bootstrap script / endpointを実装済み
+- exact `BOOTSTRAP_ENABLED=true` gateとdisabled 404 postureを実装・local test済み
 - stable auth subject -> app user mappingを実装済み
 
 以下はOpen:
 
-- remote / production bootstrap endpoint lifecycle / exposure / secret rotation policy
 - production operator bootstrap UX / packaging
 - password reset / recovery UX
 - Passkey導入時期
@@ -318,7 +320,7 @@ First Server + Web vertical sliceのlocal implementation / tests / reviewはPASS
 - deployed Worker verificationをいつ実施するか
 - preview / production environmentをいつ作るか
 - production smoke test contract
-- bootstrap endpointをremote / productionでどうdisable / limit / rotateするか
+- approved bootstrap lifecycleをremote / production deployment procedureへどう組み込み、検証するか
 - deploy前のcurrent Cloudflare pricing / quota / platform restriction再確認
 
 remote / production writeは明示承認なしに実施しない。

@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { HttpError } from "../application/errors";
 import { uuidv7 } from "../domain/uuidv7";
+import { readBoundedJson } from "../http/json";
 import { createRequestAuth } from "./better-auth";
 
 interface BootstrapBody {
@@ -10,6 +11,10 @@ interface BootstrapBody {
   timezone: string;
   day_boundary_minutes: number;
   sections: string[];
+}
+
+export function isBootstrapModeEnabled(value: unknown): boolean {
+  return value === "true";
 }
 
 function isBootstrapBody(value: unknown): value is BootstrapBody {
@@ -52,8 +57,9 @@ async function requireOperator(request: Request): Promise<void> {
   }
 }
 
-export async function bootstrapInitialUser(request: Request, env: Env, bodyValue: unknown): Promise<Response> {
+export async function bootstrapInitialUser(request: Request, env: Env): Promise<Response> {
   await requireOperator(request);
+  const bodyValue = await readBoundedJson(request);
   if (!isBootstrapBody(bodyValue)) throw new HttpError(400, "malformed_request", "Invalid bootstrap request");
   const body = bodyValue;
   try {

@@ -8,15 +8,16 @@ This package is the first production-shaped React SPA + Cloudflare Worker slice.
 ## Local setup
 
 1. Run `npm install`.
-2. Copy `.dev.vars.example` to `.dev.vars`. Generate independent high-entropy values for `BETTER_AUTH_SECRET` (at least 32 characters) and `BOOTSTRAP_TOKEN`. Do not commit or print them.
+2. Copy `.dev.vars.example` to `.dev.vars`. Generate independent high-entropy values for `BETTER_AUTH_SECRET` (at least 32 characters) and `BOOTSTRAP_TOKEN`. Do not commit or print them. Keep `BOOTSTRAP_ENABLED=false` during ordinary runtime.
 3. Run `npm run migrate:auth:local` and `npm run migrate:app:local`.
 4. Run `npm run dev`.
-5. In another terminal run `npm run bootstrap:local`. Password and bootstrap token are read from hidden TTY input, not command-line arguments.
-6. Open the local URL and log in.
+5. Temporarily set `BOOTSTRAP_ENABLED=true` (exact lowercase value), restart the local Worker, and in another terminal run `npm run bootstrap:local`. Password and bootstrap token are read from hidden TTY input, not command-line arguments.
+6. After bootstrap succeeds, set `BOOTSTRAP_ENABLED=false`, remove or rotate `BOOTSTRAP_TOKEN`, and restart the Worker before ordinary use.
+7. Open the local URL and log in.
 
-Public email signup remains disabled in the request-facing Better Auth instance. The internal bootstrap endpoint is indistinguishable from a missing route unless `BOOTSTRAP_TOKEN` is configured and presented. Do not expose a locally configured bootstrap endpoint to an untrusted network.
+Public email signup remains disabled in the request-facing Better Auth instance. The internal bootstrap endpoint has the same 404 posture as an unavailable route unless `BOOTSTRAP_ENABLED` is exactly `true`; when enabled, a configured and correctly presented `BOOTSTRAP_TOKEN` remains mandatory. Missing, empty, `false`, and malformed mode values are disabled. Do not expose an enabled bootstrap endpoint to an untrusted network.
 
-Before any remote or production deployment, review the bootstrap route's exposure and lifecycle explicitly. Require an intentional bootstrap mode or remove the bootstrap secret after initialization; this local-only slice does not define that deployment policy.
+Cloudflare Access is optional and is not required by this initial posture. Remote and production deployment procedures remain unverified and require separate approval.
 
 ## Partial-failure recovery
 

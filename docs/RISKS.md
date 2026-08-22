@@ -182,12 +182,14 @@ Mitigation direction:
 - pinned version upgrade時はmigration / session / authentication regressionを評価する
 
 ## R-012 — Bootstrap endpoint lifecycle / exposure
-Related: D-021, D-022
+Related: D-021, D-022, D-023
 
 Current runtimeにはoperator-only initial user provisioning用の`POST /api/internal/bootstrap` endpointが存在する。
 
 Current mitigation:
 
+- explicit `BOOTSTRAP_ENABLED` modeをexact `"true"`の場合だけenableし、default / missing / invalid valueはdisabled
+- disabled時はrequest body parseやbootstrap logic invocationより前にresource existenceを露出しない404 response
 - `BOOTSTRAP_TOKEN`必須
 - fixed-length digest後のtiming-safe token comparison
 - token mismatch時はresource existenceを露出しない404 response
@@ -198,12 +200,13 @@ Current mitigation:
 
 残存Risk:
 
-remote / production deployment時にbootstrap endpointを常時reachableなまま運用すると、bootstrap secret lifecycle、rotation、accidental exposure、post-bootstrap attack surfaceの管理が必要になる。
+operatorがinitial provisioning後にbootstrap modeをdisableせず、bootstrap tokenをremove / rotateしない場合、remote environmentでpost-bootstrap attack surfaceが残る。applicationはenvironment / secretを自動変更しないため、このoperational stepをdeployment procedureで確実に実施する必要がある。
 
-Mitigation direction:
+Remaining mitigation / verification:
 
-- remote / production deploy前にbootstrap exposure / lifecycleをSecurity reviewする
-- explicit bootstrap mode、post-bootstrap secret removal / rotation、outer deployment control等を候補として評価する
-- production bootstrap lifecycleが決まるまで、このlocal implementationをproduction-ready security postureとみなさない
+- temporary enable -> authenticated bootstrap -> mode disable -> token remove / rotateをoperator procedureへ組み込む
+- Cloudflare Accessはpreview / internal environmentのoptional outer gateとして必要性を別途評価する
+- remote D1 Product runtime、deployed Worker、production smokeでexact configuration / procedureを検証する
+- remote / deployed / production verificationが未実施の間はproduction-ready security postureとみなさない
 
 このRisk記録自体はproduction deployment方式をApprovedするDecisionではない。

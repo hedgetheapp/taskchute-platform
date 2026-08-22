@@ -39,6 +39,7 @@
 
 ### Runtime foundation decisions
 
+- D-023をApprovedし、initial-user bootstrapを通常runtimeではdisabled、explicit modeがexact `"true"`の場合だけavailableとするlifecycleを確定。enabled中もtoken必須とし、provisioning後はmode disable + token remove / rotateを要求する。
 - D-022をApprovedし、initial runtimeで新規作成するentity IDをUUIDv7のopaque identityとする方針を確定。ID timestampをDomain ordering authorityには使用しない。
 - First sliceのSectionをuser-global stable entityとし、APP persistence baselineをapp user / auth mapping / settings / Project / Section / TaskChuteDay / Task / Entry / Execution / operationの最小stable-reference modelとして確定。
 - initial bootstrapではIANA timezone、TaskChuteDay boundary、initial Sectionsを明示入力し、暗黙のProduct defaultを適用しない。DST ambiguous / nonexistent local timeはTemporal-compatibleな`compatible` semanticsで扱う。
@@ -48,6 +49,7 @@
 
 ### Runtime bootstrap implementation
 
+- `BOOTSTRAP_ENABLED` gateをrequest body parseより前へ追加し、missing / disabled / invalid modeとtoken不備をinformation disclosureのない404 postureに統一。mode / token / partial-failure recovery / public signup regressionをlocal automated testへ追加。
 - PR #3でFirst production runtime bootstrap sliceを`main`へmerge。
 - React + Vite SPAとCloudflare Worker runtime scaffoldを追加。
 - Better Auth `1.7.1`をexact pinし、public signup disabled、operator-only bootstrap、rolling 7日 / update threshold 1日sessionを実装。
