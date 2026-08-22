@@ -149,11 +149,10 @@ Approved Decisionや実装存在だけを理由にVerified扱いしない。詳�
 
 ## Next
 
-1. runtime bootstrap merge後のcanonical docsをcurrent evidenceへ整合する。
-2. current `main`をbaseに、ReorderEntries + StartEntry + CompleteEntry + Execution foundationのnext incrementを開始する。
-3. ReorderはTaskChuteDay-level `placement_revision`でconflict-safeにし、winner responseとfinal stored orderの一致を検証する。
-4. Startはuser-wide active Execution最大1、no implicit interrupt、same-operation retry safetyを実装する。
-5. Completeはfirst `ended_at` preservationとsame-operation retry safetyを実装する。
-6. Start / Completeが`placement_revision`を変更しないことを検証する。
-7. Webでreorder / running / completed / Next / reload recoveryをend-to-endに確認する。
-8. impact analysisに基づきcurrent evidenceを`TEST_MATRIX`へ反映する。
+1. current `main`をbaseに、ReorderEntries + StartEntry + CompleteEntry + Execution foundationのnext incrementを開始する。
+2. ReorderはTaskChuteDay-level `placement_revision`でconflict-safeにし、winner responseとfinal stored orderの一致を検証する。
+3. Startはuser-wide active Execution最大1、no implicit interrupt、same-operation retry safetyを実装する。
+4. Completeはfirst `ended_at` preservationとsame-operation retry safetyを実装する。
+5. Start / Completeが`placement_revision`を変更しないことを検証する。
+6. Webでreorder / running / completed / Next / reload recoveryをend-to-endに確認する。
+7. impact analysisに基づきcurrent evidenceを`TEST_MATRIX`へ反映する。
