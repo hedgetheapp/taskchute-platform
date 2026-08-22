@@ -80,6 +80,38 @@ Every fixed D1-SPIKE-02 iteration observed exactly one `200:started`, all remain
 
 The previous remote PASS remains relevant because its final evidence used one temporary remote database and one remote Worker preview, not overlapping local persistence. The root cause does not invalidate D1 remote transaction behavior. A new remote run is nevertheless recommended before a final gate decision so local and remote evidence are produced by the same revised harness; it was not performed because this investigation did not authorize remote resource writes.
 
+## Current-harness D1-SPIKE-06 strengthening and remote rerun
+
+On 2026-08-22 JST, the D1-SPIKE-06 assertion and current-harness evidence were strengthened from branch `spike/d1-feasibility`, starting at commit `612a635c26a35bf4a08b615633bfebb8218aa3d6`.
+
+The previous test proved that one same-revision reorder succeeded and the other conflicted, but it did not prove that the successful HTTP response identified the exact order committed to D1. Its candidate A order also matched the initial order, allowing a false-positive final state if A won.
+
+The strengthened contract now:
+
+- uses initial order `entry-a, entry-b, entry-c`;
+- uses candidate A `entry-b, entry-a, entry-c` and candidate B `entry-c, entry-a, entry-b`, both different from the initial order;
+- derives the winner from the actual HTTP responses;
+- requires exactly one `200` winner and one `409 revision_conflict` loser;
+- requires the winning response, stored operation result, and exact final D1 order to identify the same candidate;
+- requires final positions `[1, 2, 3]`, revision `1`, one successful operation row, one rejected operation row, two operation rows total, and zero foreign-key violations.
+
+The dispatch order alternates by iteration while the two requests remain concurrent. This exercises both candidate identities without weakening the concurrency contract.
+
+| Verification | Result | Evidence |
+|---|---|---|
+| Focused local D1-SPIKE-06 | PASS | 20 iterations × 2 concurrent reorders; candidate A won 10 and candidate B won 10 |
+| Full local regression run 1 | PASS | D1-SPIKE-01 through D1-SPIKE-08 |
+| Full local regression run 2 | PASS | D1-SPIKE-01 through D1-SPIKE-08 |
+| Current-harness remote regression | PASS | D1-SPIKE-01 through D1-SPIKE-08; process exit code `0` |
+| Remote D1-SPIKE-06 | PASS | 20 iterations × 2 concurrent reorders; candidate A won 7 and candidate B won 13 |
+| Syntax / types | PASS | `node --check` for the contract and runner scripts; `npm run check` |
+
+Every local and remote D1-SPIKE-06 iteration matched the HTTP winner to the stored operation result and exact final order. Every iteration also observed revision `1`, positions `[1, 2, 3]`, one successful and one rejected operation, and zero FK violations. No local or remote flakiness was observed. The earlier local-to-remote D1 proxy `500` was not reproduced by the current remote Worker preview path.
+
+The remote rerun used exactly one newly created APAC temporary D1 database named `taskchute-d1-spike-20260822-100522`. A fresh list verified its exact name and UUID before testing and again before deletion. The database count changed from 1 to 2 for the run, then returned to 1 after deletion; a fresh list verified absence by both name and UUID. No existing D1 database was modified, and no permanent Worker was deployed. The generated remote Wrangler config was removed after the run.
+
+Current evidence status: **CURRENT_HARNESS_LOCAL_REMOTE_PASS**. This means the strengthened current harness passed locally and through the temporary remote preview. It is not a new unqualified overall feasibility-gate or canonical Product decision.
+
 ## Tool versions
 
 - Node.js `22.22.3`
@@ -144,7 +176,7 @@ Before deletion, the target name prefix and UUID were matched against `wrangler 
 
 ## Historical gate conclusion and current review status
 
-The initial run recorded the D1 feasibility gate as PASS because both local and remote D1 passed D1-SPIKE-01 through D1-SPIKE-08. The later publication failure superseded treating that statement as an unqualified current conclusion. This investigation's status is **LOCAL_STABLE_PASS**, pending review and any separately authorized remote rerun; it does not make a new overall gate decision.
+The initial run recorded the D1 feasibility gate as PASS because both local and remote D1 passed D1-SPIKE-01 through D1-SPIKE-08. The later publication failure superseded treating that statement as an unqualified current conclusion. The subsequent current-harness run above supersedes the interim `LOCAL_STABLE_PASS` evidence status with **CURRENT_HARNESS_LOCAL_REMOTE_PASS**; it does not make a new overall gate decision.
 
 This does not finalize the Product schema or unexpected infrastructure failure reconciliation policy. It does not test authentication, multi-user authorization, production migration, read replication, overload thresholds, retention/cleanup of operation results, or a deployed production Worker. The spike demonstrates that the approved invariants are feasible with atomic D1 batches and database constraints; Product runtime design remains separate work.
 

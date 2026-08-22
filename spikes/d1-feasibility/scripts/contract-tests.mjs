@@ -169,21 +169,77 @@ async function spike05() {
 }
 
 async function spike06() {
-  const validOrders = new Set(["entry-a,entry-b,entry-c", "entry-c,entry-b,entry-a"]);
+  const initialOrder = ["entry-a", "entry-b", "entry-c"];
+  const winnerCounts = { a: 0, b: 0 };
   for (let iteration = 0; iteration < concurrencyIterations; iteration += 1) {
     await reset();
-    const responses = await Promise.all([
-      reorder({ operation_id: `op-reorder-a-${iteration}`, expected_revision: 0, entry_ids: ["entry-a", "entry-b", "entry-c"] }, [200, 409]),
-      reorder({ operation_id: `op-reorder-b-${iteration}`, expected_revision: 0, entry_ids: ["entry-c", "entry-b", "entry-a"] }, [200, 409])
-    ]);
+    const candidates = [
+      { key: "a", operationId: `op-reorder-a-${iteration}`, order: ["entry-b", "entry-a", "entry-c"] },
+      { key: "b", operationId: `op-reorder-b-${iteration}`, order: ["entry-c", "entry-a", "entry-b"] }
+    ];
+    assert(candidates.every(candidate => candidate.order.join(",") !== initialOrder.join(",")));
+    const dispatchedCandidates = iteration % 2 === 0 ? candidates : [...candidates].reverse();
+    const responses = await Promise.all(dispatchedCandidates.map(candidate => reorder({
+      operation_id: candidate.operationId,
+      expected_revision: 0,
+      entry_ids: candidate.order
+    }, [200, 409])));
     assert.equal(responses.filter(item => item.status === 200).length, 1);
     assert.equal(responses.filter(item => item.status === 409 && item.payload.code === "placement_revision_conflict").length, 1);
+    const winnerIndex = responses.findIndex(item => item.status === 200);
+    const loserIndex = winnerIndex === 0 ? 1 : 0;
+    const winner = dispatchedCandidates[winnerIndex];
+    const loser = dispatchedCandidates[loserIndex];
+    assert(winner);
+    assert(loser);
+    winnerCounts[winner.key] += 1;
+    assert.equal(responses[winnerIndex].payload.operation_id, winner.operationId);
+    assert.deepEqual(responses[winnerIndex].payload.entry_ids, winner.order);
+    assert.equal(responses[loserIndex].payload.code, "placement_revision_conflict");
     const final = await state();
     assert.equal(final.placement_revision, 1);
-    assert(validOrders.has(final.entries.map(item => item.id).join(",")));
-    assert.equal(new Set(final.entries.map(item => item.position)).size, 3);
+    assert.deepEqual(final.entries.map(item => item.id), winner.order);
+    assert.notDeepEqual(final.entries.map(item => item.id), initialOrder);
+    assert.deepEqual(final.entries.map(item => item.position), [1, 2, 3]);
+    assert.equal(new Set(final.entries.map(item => item.position)).size, final.entries.length);
+    assert.equal(final.foreign_key_violation_count, 0);
+
+    assert.equal(final.operations.length, 2);
+    const winnerOperation = final.operations.find(item => item.operation_id === winner.operationId);
+    const loserOperation = final.operations.find(item => item.operation_id === loser.operationId);
+    assert(winnerOperation);
+    assert(loserOperation);
+    assert.equal(winnerOperation.outcome, "success");
+    assert.equal(loserOperation.outcome, "rejected");
+    const winnerResult = JSON.parse(winnerOperation.result_json);
+    const loserResult = JSON.parse(loserOperation.result_json);
+    assert.equal(winnerResult.operation_id, winner.operationId);
+    assert.deepEqual(winnerResult.entry_ids, winner.order);
+    assert.equal(loserResult.code, "placement_revision_conflict");
+
+    console.log(`D1_SPIKE_06_ITERATION=${JSON.stringify({
+      iteration,
+      winner_operation_id: winner.operationId,
+      winner_order: winner.order,
+      final_order: final.entries.map(item => item.id),
+      placement_revision: final.placement_revision,
+      positions: final.entries.map(item => item.position),
+      operation_outcomes: Object.fromEntries(final.operations.map(item => [item.operation_id, item.outcome])),
+      foreign_key_violation_count: final.foreign_key_violation_count
+    })}`);
   }
-  return { status: "PASS", iterations: concurrencyIterations, requests: concurrencyIterations * 2, observed: "one reorder won; loser was revision conflict" };
+  return {
+    status: "PASS",
+    iterations: concurrencyIterations,
+    requests: concurrencyIterations * 2,
+    initial_order: initialOrder,
+    candidate_orders: {
+      a: ["entry-b", "entry-a", "entry-c"],
+      b: ["entry-c", "entry-a", "entry-b"]
+    },
+    winner_counts: winnerCounts,
+    observed: "HTTP winner identity, stored operation result, and exact final order matched; loser was revision conflict"
+  };
 }
 
 async function spike07() {
