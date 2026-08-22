@@ -10,6 +10,8 @@ exact DB schema、SQL、UI component library、Android local DB、offline confli
 - multiple devices / clients
 - registration、team、organization、billingは初期scope外
 - Serverはauthenticated principalからTaskChute app userを確定し、Clientが申告したuser IDをauthorityとして信用しない
+- initial userはoperator-only one-shot bootstrapで作成し、public self-signupはbootstrap中も含めて有効化しない
+- initial browser sessionはrolling 7日、update / renewal threshold 1日とする
 
 ## Client availability
 
@@ -33,8 +35,10 @@ Task definition identityとboard placement / execution identityは別概念と�
 - EntryをTaskChuteDay / Section間で移動・並び替えしてもEntry identityを変更しない。
 - identityが曖昧な場合、推測したtargetを黙ってmutateしない。
 - Taskは初期scopeで0..1 Projectに所属できる。
-- Sectionはstable identityを持つ。
-- exact ID formatは未決。ただし将来offlineで新規作成し得るidentityはclient生成可能なopaque identityとする方向とする。
+- First sliceのSectionはuser-globalなstable entityとし、複数TaskChuteDayのEntryが同じSection identityを再利用できる。
+- initial runtimeで新規作成するTask / Entry / Project / Section / Execution等のentity IDはUUIDv7を使用する。
+- IDはDB / APIでopaque stringとして扱い、UUIDv7に含まれるtimestamp情報をDomain order、priority、history authorityとして利用しない。
+- IDはClient生成可能とし、将来offline-capable clientでも同じidentity contractを利用できるようにする。
 
 ## TaskChuteDay
 
@@ -45,7 +49,12 @@ TaskChuteDayはcivil dateとは別のlogical activity dayとする。
 - day lengthを常に24時間とは仮定しない。
 - UIでは`30:00`等のextended-time notationを扱える方向とするが、actual timestampを架空の30時刻へ変換して保存しない。
 - historically establishedされた過去TaskChuteDayは、後のboundary / timezone変更でretroactiveに再分類しない。
-- future dayのmaterialize / freeze時点、default boundary、travel時timezone UX、per-day override等はOpenとする。
+- initial bootstrapではcanonical IANA timezone、TaskChuteDay boundary、initial Section configurationを明示入力する。
+- `Asia/Tokyo`、civil midnight等を暗黙のProduct defaultとして適用しない。test fixtureとして明示利用することは許容する。
+- ambiguous / nonexistent local timeはinitially Temporal-compatibleな`compatible` semanticsで解決する。
+- day startとnext-day boundaryをそれぞれtimezone ruleからinstantへ解決し、`end = start + 24h`とは計算しない。
+- materialized TaskChuteDayはactual `[start, end)` intervalと、そのintervalをestablishしたtimezone / boundary contextを保持する。
+- future dayのmaterialize / freeze時点、travel時timezone UX、per-day override等はOpenとする。
 
 ## Entry placement and ordering
 
@@ -93,9 +102,10 @@ DayBoard、Calendar、Timeline、Review、Mapはcanonical task stateを別系統
 - planned placementとactual Executionを区別する。
 - Task / Project / Routine等の現在metadata変更で、過去Execution / RoutineOccurrence等の意味を黙って再分類しない。
 - historical factsを参照不能にする破壊的hard deleteを前提としない。
+- First sliceではdestructive hard-delete APIを提供しない。
 - Reviewはlogical day / week / month、Project、Task、Routine、Section、estimate / actual等へ将来集計できることをtargetとする。
 
-historical contextのexact snapshot / reference fields、Review UI、qualitative Review semanticsはOpenとする。
+historical contextのexact snapshot / reference fields、Review UI、qualitative Review semanticsはOpenとする。Execution時点のTask / Project / Section metadata snapshotのexact fieldsは、rename / move / delete / Reviewを導入する前に別途Decisionする。
 
 ## Notes / Documents
 
@@ -147,8 +157,20 @@ client-issued mutationはlogical operation identityを持ち、同じoperation�
 - Start / Complete以外のmutationについてもretry ambiguityを避けられる共通mechanismを利用する。
 - stale overwriteが危険なplacement mutationではexpected revision等のpreconditionを利用する。
 - conflict時は一切変更せず、Clientが最新projectionへreconcileできることを要求する。
+- unexpected infrastructure failureをdeterministic Domain rejectionとして保存せず、安全なretry / canonical Query reconciliation余地を残す。
 
 exact request hash、HTTP endpoint、status code、transaction SQLはArchitecture / implementation contractで管理する。
+
+## Authentication persistence boundary
+
+Initial runtimeでは同じWorkerがseparate `AUTH_DB` / `APP_DB` D1 bindingsを利用する。
+
+- `AUTH_DB`はBetter Authのphysical auth / session persistenceを所有する。
+- `APP_DB`はTaskChute app user、auth subject mapping、user settings、Domain dataを所有する。
+- Better Auth physical user IDをTaskChute Domain identity authorityにしない。
+- AUTH_DB / APP_DB間のcross-database FK / atomic transactionを前提としない。
+- initial bootstrapは片側だけ成功したpartial failureから安全に再実行できるidempotent / recoverable flowとする。
+- password、secret、session token等をtracked file、evidence、通常logへ保存しない。
 
 ## Android offline capability
 

@@ -10,21 +10,21 @@ Status values: Planned / In design / Implemented / Verified
 |---|---|---|
 | Server canonical task state | In design | Target direction Approved |
 | Core Domain foundations | In design | D-015 Approved。runtime未実装 |
-| Task / Entry identity | In design | 分離・stable identity Approved。exact ID formatは未決 |
-| TaskChuteDay | In design | D-017 Approved。configurable boundary / continuous interval |
+| Task / Entry identity | In design | 分離・stable identity Approved。initial runtime IDはUUIDv7 (D-022) |
+| TaskChuteDay | In design | D-017 / D-022 Approved。explicit timezone/boundary bootstrap、continuous interval、compatible DST semantics |
 | Project | In design | D-013 First slice contract Approved |
-| Section | In design | stable entity / Entry ordering foundation Approved |
+| Section | In design | user-global stable entity / Entry ordering foundation Approved (D-015, D-022) |
 | Today / DayBoard ordering | In design | Entry explicit order。D-013 Approved |
 | Start / Complete lifecycle | In design | planned -> running -> completed、retry safety、active Execution max 1 Approved |
 | Next Entry projection | In design | hard lockではない。D-013 Approved |
-| Historical fact foundation | In design | D-016 Approved。exact context persistenceは未決 |
+| Historical fact foundation | In design | D-016 / D-022 Approved。TaskChuteDay interval context保存、exact metadata snapshotは未決 |
 | Web app | In design | React + Vite SPA、primary / universal client |
 | Async Web mutation | In design | full-page reload不要。D-013 / D-020 Approved |
 | Web browser reload recovery | In design | D-013 Approved |
 | Cloudflare Workers API | In design | D-020 Approved。runtime未実装 |
-| Cloudflare D1 application persistence | In design | D-020 Approved。exact schemaはspike後確定 |
-| D1 concurrency / atomicity spike | Planned | Product runtime前のrequired feasibility gate |
-| Application authentication | In design | Better Auth + initial email/password + no public signup。D-021 Approved |
+| Cloudflare D1 application persistence | In design | D-020 / D-022 Approved。APP baseline / AUTH_DB split確定、exact SQL / migrationは実装時review |
+| D1 concurrency / atomicity spike | Verified | D1-SPIKE-01〜08 current-harness local + temporary remote PASS |
+| Application authentication | In design | Better Auth + no public signup、operator bootstrap、rolling 7日session、separate AUTH_DB / APP_DB (D-021, D-022) |
 | Android app | Planned | native first-class。Kotlin + Jetpack Compose第一候補 |
 | Android offline capability | In design | capability自体はApproved。操作範囲 / sync方式は未決 |
 | Android Widget | Planned | Android architectureを再利用 |
