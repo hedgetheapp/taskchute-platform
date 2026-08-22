@@ -1,0 +1,35 @@
+:root { font-family: Inter, ui-sans-serif, system-ui, sans-serif; color: #18211b; background: #edf1e9; }
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; min-height: 100vh; }
+button, input, select { font: inherit; }
+button { border: 0; border-radius: .65rem; padding: .7rem 1rem; background: #205a3d; color: white; cursor: pointer; }
+button:disabled { cursor: wait; opacity: .6; }
+button.secondary { background: transparent; border: 1px solid #708078; color: #23382d; }
+.shell { width: min(1080px, calc(100% - 2rem)); margin: 0 auto; padding: 2rem 0 4rem; }
+.auth-shell { display: grid; min-height: 100vh; place-items: center; }
+.panel, .section { background: #fbfcf9; border: 1px solid #d8dfd5; border-radius: 1rem; padding: 1.25rem; box-shadow: 0 8px 28px rgb(35 56 45 / 8%); }
+.auth-shell .panel { width: min(420px, 100%); }
+.day-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+h1, h2, p { margin-top: 0; }
+h1 { margin-bottom: .25rem; }
+h2 { font-size: 1rem; }
+.eyebrow { color: #537060; font-size: .75rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; margin-bottom: .25rem; }
+.interval { color: #5d6c64; font-size: .8rem; overflow-wrap: anywhere; }
+form { display: grid; gap: .9rem; }
+label { display: grid; gap: .35rem; color: #405148; font-size: .85rem; }
+input, select { width: 100%; border: 1px solid #b8c5bc; border-radius: .55rem; padding: .65rem; background: white; color: #18211b; }
+.composer-grid, .board { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; margin-top: 1.5rem; }
+.section ol { display: grid; gap: .6rem; padding: 0; list-style: none; }
+.section li { display: grid; gap: .15rem; border-left: 3px solid #3e805c; padding: .55rem .7rem; background: #f0f5ef; border-radius: .25rem .65rem .65rem .25rem; }
+.section small, .empty { color: #69776f; }
+.error { margin-top: 1rem; border-left: 4px solid #a63b35; background: #fff0ef; padding: .75rem; color: #7a2621; }
+.success { margin: 0; color: #236443; }
+footer { margin-top: 1.5rem; color: #405148; }
+@media (prefers-color-scheme: dark) {
+  :root { color: #e8efe9; background: #111813; }
+  .panel, .section { background: #18221b; border-color: #314137; }
+  input, select { background: #101712; color: #e8efe9; border-color: #52645a; }
+  button.secondary { color: #d7e4da; }
+  .section li { background: #223027; }
+  .interval, .section small, .empty, label, footer { color: #a8b7ad; }
+}
