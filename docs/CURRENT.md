@@ -17,6 +17,7 @@ Relevant implementation commits:
 - runtime bootstrap: `3b9fb8b78f6311b63e7a8a6ccf29ddf74415d3f6`
 - lifecycle / ordering: `09b1526f7f09554bd937aa446737a979868b779b`
 - bootstrap lifecycle security: `ed6927ce23722d0e756e91eee29b4c326ca1eeb6`
+- persistent nonprod config: `6f079f238dd4efd2717c4911c8701a72fc2b0d72`
 
 Relevant merge commits:
 
@@ -41,22 +42,25 @@ D1 feasibility gateは引き続きPASS / Verified。current Product runtimeはFi
 - D1 concurrency / atomicity feasibility gateはlocal + temporary remote spikeでPASS / Verified済み。
 - Better Authはcurrent runtimeで`1.7.1`へexact pin済み。
 - D-024により1つのpersistent Cloudflare non-production verification environmentをmaintainする方向はApproved済み。
+- persistent non-production repository-side configはcurrent branch commit `6f079f238dd4efd2717c4911c8701a72fc2b0d72` で実装・local test・source review済み、未統合。
 - remote D1 Product runtime、deployed Worker、production smokeは`NOT_RUN`。
 
-## Persistent non-production working-tree increment
+## Persistent non-production branch increment
 
-Current uncommitted working treeでは、repository-side persistent non-production configを実装し、local検証済み。
+Current branchでは、repository-side persistent non-production configを実装し、local検証・source review済み。
 
 - named environment: `nonprod`
 - Worker intent: `taskchute-web-nonprod`
 - separate non-production `AUTH_DB` / `APP_DB` binding intent
 - `RUNTIME_ENV=nonprod`
 - normal `BOOTSTRAP_ENABLED=false`
-- missing remote D1 IDsは、実IDへの明示置換が必要なsentinel UUIDでfail-closedに保持
+- missing remote D1 IDsは、実IDへの明示置換が必要なsentinel UUIDで保持
 - generated non-production configでlocal binding fallbackなし
 - Worker types / non-production build / credential-free deploy dry-run / typecheck / 73 automated tests / `git diff --check`: `PASS`
+- source-only review: `PASS`
+- GitHub branch commit: `6f079f238dd4efd2717c4911c8701a72fc2b0d72`
 
-このincrementは`IMPLEMENTED / LOCAL_TESTED / NOT_INTEGRATED`。GitHub commit / PR / mergeは未実施。README wording correctionsは反映・local recheck済みだが、source review / publicationは未実施のためまだ`PASS`ではない。
+このincrementは`IMPLEMENTED / LOCAL_TESTED / SOURCE_REVIEWED / NOT_INTEGRATED`。GitHub branchへcommit済みだが、PR / mergeは未実施。
 
 Remote D1 Product runtime verification、deployed Worker verification、production smokeは引き続き`NOT_RUN`。Product runtime overallは`NOT_VERIFIED`、Releasedは`NO`。
 
@@ -121,6 +125,8 @@ PR #8へmergeされたbootstrap lifecycle security implementationに対するcur
 - `git diff --check`: `PASS`
 - Bootstrap lifecycle source-only implementation review: `PASS`
 - Bootstrap lifecycle GitHub PR diff review: `PASS`
+- Persistent nonprod config source-only implementation review: `PASS`
+- Persistent nonprod GitHub PR diff review: `NOT_RUN`
 - Remote D1 Product runtime verification: `NOT_RUN`
 - Deployed Worker verification: `NOT_RUN`
 - Production smoke test: `NOT_RUN`
@@ -145,11 +151,11 @@ Local PASSをremote / deployed / production verificationへ自動拡張しない
 
 ## Next
 
-First Server + Web vertical sliceとD-023 bootstrap lifecycle securityはcurrent `main`でImplemented / Integrated / local Testedまで完了済み。
+First Server + Web vertical sliceとD-023 bootstrap lifecycle securityはcurrent `main`でImplemented / Integrated / local Testedまで完了済み。Persistent non-production config incrementはcurrent branchでImplemented / local Tested / source reviewedまで完了し、未統合。
 
 次の進行は以下を分けて扱う。
 
-1. persistent non-production config incrementをsource review / publicationし、GitHub integration前にworking-tree diffを確認する。
+1. persistent non-production config incrementをGitHub PR diff reviewし、承認されたGit workflowでintegrationする。
 2. current Cloudflare Workers / D1 limits・pricing・platform restrictions、non-production D1 location / jurisdiction、temporary enable -> bootstrap -> disable / token remove-or-rotate procedureを確認する。
 3. 上記preconditionを満たした後、明示承認されたpersistent non-production environmentでremote D1 Product runtime / deployed Worker verificationを実施し、evidenceを`docs/TEST_MATRIX.md`へ記録する。production write / production smokeは別途明示承認を必要とする。
 4. 次のProduct feature sliceはまだ確定しない。Routine、Documents、Android、Review等のroadmap候補から、ユーザーが優先順位を決めた後にsmall vertical sliceを設計する。
