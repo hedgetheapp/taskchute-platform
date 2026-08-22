@@ -1,0 +1,4 @@
+# Copy to .dev.vars and replace both values. Never commit .dev.vars.
+BETTER_AUTH_SECRET=
+BOOTSTRAP_TOKEN=
+
