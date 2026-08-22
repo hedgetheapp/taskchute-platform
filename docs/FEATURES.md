@@ -8,22 +8,24 @@ Status values: Planned / In design / Implemented / Verified
 
 | Feature | Status | Notes |
 |---|---|---|
-| Server canonical task state | Implemented | bootstrap sliceでcurrent TaskChuteDay / Project / Task / Entry authorityをServerへ実装。First vertical slice全体は未完了 |
-| Core Domain foundations | In design | D-015 Approved。bootstrap scopeのTask / Entry / Project / Section / TaskChuteDayは実装、Execution / lifecycle等は未実装 |
+| Server canonical task state | Implemented | current TaskChuteDay / Project / Task / Entry / Execution authorityをServerへ実装。First Server + Web vertical sliceをPR #3 + #5で統合 |
+| Core Domain foundations | In design | D-015 Approved。Task / Entry / Project / Section / TaskChuteDay / Execution / first lifecycleは実装。Routine / richer history等は未実装 |
 | Task / Entry identity | Implemented | separate stable UUIDv7 identityをruntimeへ実装。ID timestampはordering authorityにしない |
 | TaskChuteDay | Implemented | explicit timezone/boundary bootstrap、materialized interval/context、compatible DST semanticsをruntimeへ実装 |
-| Project | Implemented | CreateProject + optional Task project relationをbootstrap sliceで実装 |
+| Project | Implemented | CreateProject + optional Task project relationを実装 |
 | Section | In design | user-global stable persistence / bootstrapは実装。rename等を含むSection lifecycleは未実装 |
-| Today / DayBoard ordering | In design | explicit Entry position表示は実装。Reorder commandは未実装 |
-| Start / Complete lifecycle | In design | planned -> running -> completed、retry safety、active Execution max 1 Approved。runtime未実装 |
-| Next Entry projection | In design | current planned Entry projectionは実装。lifecycle-aware behavior / non-Next Startは次increment |
-| Historical fact foundation | In design | materialized TaskChuteDay interval context保存は実装。Execution / exact metadata snapshotは未実装・未決 |
+| Today / DayBoard ordering | Implemented | explicit Entry order + ReorderEntries + placement revision conflict protectionを実装 |
+| Start / Complete lifecycle | Implemented | planned -> running -> completed、retry safety、active Execution max 1、no implicit interruptを実装 |
+| Next Entry projection | Implemented | explicit order上のplanned Entryからlifecycle-aware Nextを算出。Next以外のplanned EntryもStart可能 |
+| Historical fact foundation | In design | TaskChuteDay interval context + Execution factは実装。exact metadata snapshot / Review historical semanticsは未決 |
 | First runtime bootstrap slice | Implemented | auth、current TaskChuteDay、CreateProject、AddTaskToDay、DayBoard / reload recoveryをPR #3でmerge |
-| Web app | In design | React + Vite SPA runtimeは実装。First vertical slice UI全体は未完了 |
-| Async Web mutation | In design | Project / Task+Entryはfull-page reload不要。Reorder / Start / Completeは未実装 |
-| Web browser reload recovery | Implemented | bootstrap scopeでServer canonical stateから再取得・復元を実装 |
-| Cloudflare Workers API | Implemented | auth / bootstrap / current day / Project / Task+Entry APIをruntimeへ実装 |
-| Cloudflare D1 application persistence | Implemented | bootstrap foundationのAUTH_DB / APP_DB migrationとowner-scoped persistenceを実装。Execution schemaは次increment |
+| First Server + Web vertical slice | Implemented | PR #3 + #5でD-013 scopeを実装・main統合。local evidence 67 PASS、remote/deployed verificationはNOT_RUN |
+| Web app | In design | React + Vite SPAとFirst vertical slice UIは実装。broader Product UI / responsive / routing / offline等は未決 |
+| Web First vertical slice | Implemented | Project / Task+Entry / reorder / Start / Complete / Next / retry-conflict reconciliationをasync UIで実装 |
+| Async Web mutation | Implemented | First vertical sliceのProject / Task+Entry / Reorder / Start / Completeをfull-page reloadなしで実行 |
+| Web browser reload recovery | Implemented | Server canonical stateから再取得・復元。ambiguous mutationもcanonical refetchへreconcile |
+| Cloudflare Workers API | Implemented | auth / bootstrap / current day / Project / Task+Entry / Reorder / Start / Complete APIを実装 |
+| Cloudflare D1 application persistence | Implemented | AUTH_DB / APP_DB migrations、owner-scoped persistence、operations、executions、active Execution constraintを実装 |
 | D1 concurrency / atomicity spike | Verified | D1-SPIKE-01〜08 current-harness local + temporary remote PASS |
 | Application authentication | Implemented | Better Auth 1.7.1、public signup disabled、operator bootstrap、rolling 7日session、separate AUTH_DB / APP_DBを実装 |
 | Android app | Planned | native first-class。Kotlin + Jetpack Compose第一候補 |

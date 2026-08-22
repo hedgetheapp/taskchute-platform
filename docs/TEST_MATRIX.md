@@ -1,6 +1,6 @@
 # Test Matrix
 
-Product runtime bootstrap sliceは実装・main統合済み。First vertical slice全体は未完了。
+First Server + Web vertical sliceは実装・main統合済み。Product runtime全体はまだVerified / Releasedではない。
 
 この文書はverification requirementとcurrent evidenceの正本とする。
 
@@ -19,27 +19,33 @@ Product runtime bootstrap sliceは実装・main統合済み。First vertical sli
 
 Contractが`Approved`でも、実装やverificationが未実施ならPASS扱いしない。
 
-## Current runtime bootstrap evidence
+## Current First Server + Web vertical slice evidence
 
-PR #3でmergeされたexact implementation contentに対するcurrent local evidence:
+PR #5でmergeされたexact implementation contentに対するcurrent local evidence:
 
-- implementation commit: `3b9fb8b78f6311b63e7a8a6ccf29ddf74415d3f6`
-- merge commit: `afcf1ef0e1ca36ee0ce962be288fef41331fd694`
-- Worker / D1 tests: `34 PASS`
-- Web tests: `7 PASS`
-- total local automated tests: `41 PASS`
+- lifecycle / ordering implementation commit: `09b1526f7f09554bd937aa446737a979868b779b`
+- PR #5 merge commit: `1b5917ad1caff6dd648856bf7a054fa43d040a65`
+- Worker / D1 tests: `49 PASS`
+- Web tests: `18 PASS`
+- total local automated tests: `67 PASS`
+- `npm ci`: `PASS`
+- npm audit vulnerabilities: `0`
 - typecheck: `PASS`
 - production build: `PASS`
-- fresh local AUTH_DB migration: `PASS`
-- fresh local APP_DB migration: `PASS`
+- fresh AUTH_DB migration: `PASS`
+- fresh APP_DB migration `0001 -> 0002`: `PASS`
+- existing operation-row upgrade: `PASS`
 - AUTH_DB foreign-key check: `0`
 - APP_DB foreign-key check: `0`
-- implementation bundle review: `PASS`
-- GitHub PR diff review: `PASS`
+- active Execution partial UNIQUE index: `PASS`
+- `git diff --check`: `PASS`
+- source-only implementation review: `PASS`
+- GitHub PR #5 diff review: `PASS`
 - remote D1 Product runtime verification: `NOT_RUN`
 - deployed Worker verification: `NOT_RUN`
+- production smoke test: `NOT_RUN`
 
-PR #3 merge commitはreview済みimplementation commitをcanonical docs未変更のbaseへmergeしたもので、runtime code deltaを追加していない。このlocal evidenceをremote / deployed / production verificationへ自動拡張しない。
+この67 PASSはbootstrap regressionを含むcurrent local suiteであり、PR #3時点の41 PASS evidenceをcurrent implementationへ更新する。local evidenceをremote / deployed / production verificationへ自動拡張しない。
 
 ## Core Domain
 
@@ -52,14 +58,14 @@ PR #3 merge commitはreview済みimplementation commitをcanonical docs未変更
 | CORE-SECTION-01 | Section | Sectionはrename等でidentityを失わないstable entityである | Approved (D-015) | NOT_IMPLEMENTED |
 | CORE-SECTION-02 | Section | First sliceのSectionはuser-global stable entityとして複数TaskChuteDayで再利用できる | Approved (D-022) | NOT_IMPLEMENTED |
 | CORE-ORDER-01 | Ordering | TaskではなくEntry identityによるexplicit orderをpreserveする | Approved (D-013, D-015) | PASS |
-| CORE-ORDER-02 | Ordering | stale placement revisionによるreorderをsilent overwriteせずrejectする | Approved (D-020) | NOT_IMPLEMENTED |
-| CORE-LIFE-01 | Lifecycle | Startは同一operation retryでduplicate Execution / inconsistencyを起こさない | Approved (D-012, D-020) | NOT_IMPLEMENTED |
-| CORE-LIFE-02 | Lifecycle | Completeは同一operation retryで二重完了 / ended_at変更を起こさない | Approved (D-012, D-020) | NOT_IMPLEMENTED |
-| CORE-LIFE-03 | Lifecycle | user全体でactive Executionは最大1つ | Approved (D-015) | NOT_IMPLEMENTED |
-| CORE-LIFE-04 | Lifecycle | First sliceで`planned -> running -> completed`を正しく遷移する | Approved (D-013, D-015) | NOT_IMPLEMENTED |
-| CORE-LIFE-05 | Lifecycle | 別Entryがrunning中の通常Startはimplicit interruptせずrejectする | Approved (D-015) | NOT_IMPLEMENTED |
+| CORE-ORDER-02 | Ordering | stale placement revisionによるreorderをsilent overwriteせずrejectする | Approved (D-020) | PASS |
+| CORE-LIFE-01 | Lifecycle | Startは同一operation retryでduplicate Execution / inconsistencyを起こさない | Approved (D-012, D-020) | PASS |
+| CORE-LIFE-02 | Lifecycle | Completeは同一operation retryで二重完了 / ended_at変更を起こさない | Approved (D-012, D-020) | PASS |
+| CORE-LIFE-03 | Lifecycle | user全体でactive Executionは最大1つ | Approved (D-015) | PASS |
+| CORE-LIFE-04 | Lifecycle | First sliceで`planned -> running -> completed`を正しく遷移する | Approved (D-013, D-015) | PASS |
+| CORE-LIFE-05 | Lifecycle | 別Entryがrunning中の通常Startはimplicit interruptせずrejectする | Approved (D-015) | PASS |
 | CORE-NEXT-01 | Next | explicit orderから次のplanned EntryをNextとして算出する | Approved (D-013) | PASS |
-| CORE-NEXT-02 | Next | Next以外のplanned Entryもactive ExecutionがなければStart可能 | Approved (D-013) | NOT_IMPLEMENTED |
+| CORE-NEXT-02 | Next | Next以外のplanned Entryもactive ExecutionがなければStart可能 | Approved (D-013) | PASS |
 
 ## TaskChuteDay / History
 
@@ -75,6 +81,8 @@ PR #3 merge commitはreview済みimplementation commitをcanonical docs未変更
 | HISTORY-01 | History | Task / Project等の現在metadata変更で過去Executionのhistorical meaningを黙って再分類しない | Approved (D-016) | NOT_IMPLEMENTED |
 | HISTORY-02 | History | historical reference中のentityをunsafe hard deleteしてfactを参照不能にしない | Approved (D-016) | NOT_IMPLEMENTED |
 
+Cross-day lifecycle testでは、前日Entryのactive Executionを翌TaskChuteDayでも同一Executionとして保持し、分割せずCompleteできることをPASSしている。ただしlogical day overlapによるReview / aggregation queryは未実装のため`CORE-DAY-04`全体はPASSへ昇格しない。
+
 ## Runtime command / retry semantics
 
 | ID | Area | Requirement | Contract | Evidence |
@@ -84,8 +92,11 @@ PR #3 merge commitはreview済みimplementation commitをcanonical docs未変更
 | RUNTIME-OP-03 | Failure | unexpected infrastructure failureをdeterministic Domain rejectionとしてpersistせず、retry / reconciliation余地を残す | Approved (D-020) | PASS |
 | RUNTIME-OP-04 | Operation | persisted request fingerprint version incompatibilityをclient misuseへ誤分類しない | Approved (D-020) | PASS |
 | RUNTIME-PLACEMENT-01 | Placement | AddTaskToDayのstale placement revisionはpartial Task / Entryを残さずrejectする | Approved (D-020) | PASS |
+| RUNTIME-PLACEMENT-02 | Placement | Reorder conflict / failureでmixed orderを残さず、winner resultとfinal stored orderを一致させる | Approved (D-020) | PASS |
+| RUNTIME-LIFE-01 | Lifecycle | concurrent Startでexactly one active Execution / running Entryへ収束する | Approved (D-015, D-020) | PASS |
+| RUNTIME-LIFE-02 | Lifecycle | Start / Completeが`placement_revision`を変更しない | Approved (D-020) | PASS |
 
-これらのPASSは現在実装済みのCreateProject / AddTaskToDay pathに対するevidenceであり、未実装のReorder / Start / Completeへ自動継承しない。
+Current lifecycle / ordering suiteではsame-operation retry / misuse、stale conflict replay、cross-owner Reorder、atomic rollback、64 Entry set-based Reorder、Start / Complete lifecycleを明示的にcoverageしている。
 
 ## Routine / Documents
 
@@ -115,13 +126,15 @@ PR #3 merge commitはreview済みimplementation commitをcanonical docs未変更
 | ID | Area | Requirement | Contract | Evidence |
 |---|---|---|---|---|
 | WEB-01 | Web | DayBoardをcanonical Entry orderで表示する | Approved (D-013) | PASS |
-| WEB-02 | Web | Start成功後のrunning stateをfull-page reloadなしで表示する | Approved (D-013, D-020) | NOT_IMPLEMENTED |
-| WEB-03 | Web | Complete後にNext Entryをprojectionして表示できる | Approved (D-013) | NOT_IMPLEMENTED |
+| WEB-02 | Web | Start成功後のrunning stateをfull-page reloadなしで表示する | Approved (D-013, D-020) | PASS |
+| WEB-03 | Web | Complete後にNext Entryをprojectionして表示できる | Approved (D-013) | PASS |
 | WEB-04 | Web | browser reload後もServer canonical stateからcorrect stateを復元する | Approved (D-013) | PASS |
-| WEB-05 | Web | Project / Task+Entry作成、reorder、Start、Completeの通常mutationがfull-page reloadを要求しない | Approved (D-013, D-020) | NOT_IMPLEMENTED |
+| WEB-05 | Web | Project / Task+Entry作成、reorder、Start、Completeの通常mutationがfull-page reloadを要求しない | Approved (D-013, D-020) | PASS |
 | WEB-06 | Web | async mutation failure / conflict時にClientだけのfalse-success stateを残さない | Approved (D-013) | PASS |
+| WEB-07 | Web | ambiguous Reorder / Start / Completeは元operationだけを明示retryでき、別操作から旧operationを暗黙再送しない | Approved (D-020) | PASS |
+| WEB-08 | Web | current DayBoard外のEntryに属するactive ExecutionもWebからCompleteできる | Approved (D-013, D-017) | PASS |
 
-`WEB-05`はProject / Task+Entry部分のlocal evidenceはあるが、row全体がReorder / Start / Completeを含むため全面PASSにはしない。
+Web suiteではdeterministic Reorder / Start conflict後のcanonical refetch、ambiguous operationのRetry / Discard、unrelated button guard、cross-day active Execution completionを明示的にcoverageしている。
 
 ## Authentication / Authorization
 
@@ -153,7 +166,7 @@ PR #3 merge commitはreview済みimplementation commitをcanonical docs未変更
 
 D1 feasibility gateは`spike/d1-feasibility@eda694e22fd742827da5b90967c6b0305b885033`のcurrent harnessでLOCAL / temporary REMOTE双方のevidenceが揃い、`D1-SPIKE-01`〜`D1-SPIKE-08`をPASSとしてreview済み。詳細evidenceは`spikes/d1-feasibility/EVIDENCE.md`を参照する。
 
-このPASSはD1で必要なatomicity / concurrency / idempotency strategyのfeasibility verificationであり、未実装のProduct runtime lifecycle commandやremote/deployed Product runtimeをVerifiedとするものではない。
+このPASSはD1で必要なatomicity / concurrency / idempotency strategyのfeasibility verificationであり、Product runtimeのremote / deployed verificationを代替しない。
 
 ## Android / Migration
 
