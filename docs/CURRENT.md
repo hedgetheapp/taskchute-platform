@@ -42,12 +42,12 @@ D1 feasibility gateは引き続きPASS / Verified。current Product runtimeはFi
 - D1 concurrency / atomicity feasibility gateはlocal + temporary remote spikeでPASS / Verified済み。
 - Better Authはcurrent runtimeで`1.7.1`へexact pin済み。
 - D-024により1つのpersistent Cloudflare non-production verification environmentをmaintainする方向はApproved済み。
-- persistent non-production repository-side configはcurrent branch commit `6f079f238dd4efd2717c4911c8701a72fc2b0d72` で実装・local test・source review済み、未統合。
+- persistent non-production repository-side configはcurrent branch commit `6f079f238dd4efd2717c4911c8701a72fc2b0d72` で実装・local test・source review済み。PR #10のGitHub diff reviewもPASS、未統合。
 - remote D1 Product runtime、deployed Worker、production smokeは`NOT_RUN`。
 
 ## Persistent non-production branch increment
 
-Current branchでは、repository-side persistent non-production configを実装し、local検証・source review済み。
+Current branchでは、repository-side persistent non-production configを実装し、local検証・source review・GitHub PR diff review済み。
 
 - named environment: `nonprod`
 - Worker intent: `taskchute-web-nonprod`
@@ -58,9 +58,10 @@ Current branchでは、repository-side persistent non-production configを実装
 - generated non-production configでlocal binding fallbackなし
 - Worker types / non-production build / credential-free deploy dry-run / typecheck / 73 automated tests / `git diff --check`: `PASS`
 - source-only review: `PASS`
+- GitHub PR #10 diff review: `PASS`
 - GitHub branch commit: `6f079f238dd4efd2717c4911c8701a72fc2b0d72`
 
-このincrementは`IMPLEMENTED / LOCAL_TESTED / SOURCE_REVIEWED / NOT_INTEGRATED`。GitHub branchへcommit済みだが、PR / mergeは未実施。
+このincrementは`IMPLEMENTED / LOCAL_TESTED / SOURCE_REVIEWED / PR_DIFF_REVIEWED / NOT_INTEGRATED`。PR #10は作成・review済みだが、mergeは未実施。
 
 Remote D1 Product runtime verification、deployed Worker verification、production smokeは引き続き`NOT_RUN`。Product runtime overallは`NOT_VERIFIED`、Releasedは`NO`。
 
@@ -126,7 +127,7 @@ PR #8へmergeされたbootstrap lifecycle security implementationに対するcur
 - Bootstrap lifecycle source-only implementation review: `PASS`
 - Bootstrap lifecycle GitHub PR diff review: `PASS`
 - Persistent nonprod config source-only implementation review: `PASS`
-- Persistent nonprod GitHub PR diff review: `NOT_RUN`
+- Persistent nonprod GitHub PR diff review: `PASS`
 - Remote D1 Product runtime verification: `NOT_RUN`
 - Deployed Worker verification: `NOT_RUN`
 - Production smoke test: `NOT_RUN`
@@ -151,11 +152,11 @@ Local PASSをremote / deployed / production verificationへ自動拡張しない
 
 ## Next
 
-First Server + Web vertical sliceとD-023 bootstrap lifecycle securityはcurrent `main`でImplemented / Integrated / local Testedまで完了済み。Persistent non-production config incrementはcurrent branchでImplemented / local Tested / source reviewedまで完了し、未統合。
+First Server + Web vertical sliceとD-023 bootstrap lifecycle securityはcurrent `main`でImplemented / Integrated / local Testedまで完了済み。Persistent non-production config incrementはcurrent branchでImplemented / local Tested / source reviewed / PR diff reviewedまで完了し、未統合。
 
 次の進行は以下を分けて扱う。
 
-1. persistent non-production config incrementをGitHub PR diff reviewし、承認されたGit workflowでintegrationする。
+1. PR #10を承認されたGit workflowでintegrationする。
 2. current Cloudflare Workers / D1 limits・pricing・platform restrictions、non-production D1 location / jurisdiction、temporary enable -> bootstrap -> disable / token remove-or-rotate procedureを確認する。
 3. 上記preconditionを満たした後、明示承認されたpersistent non-production environmentでremote D1 Product runtime / deployed Worker verificationを実施し、evidenceを`docs/TEST_MATRIX.md`へ記録する。production write / production smokeは別途明示承認を必要とする。
 4. 次のProduct feature sliceはまだ確定しない。Routine、Documents、Android、Review等のroadmap候補から、ユーザーが優先順位を決めた後にsmall vertical sliceを設計する。
