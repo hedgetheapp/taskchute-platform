@@ -14,7 +14,7 @@ D-022によりFirst vertical slice全体のAPP persistence baseline responsibili
 
 D-024により、継続的なverificationではtracked / reusable configを利用する1つのpersistent Cloudflare non-production environmentを維持し、stable namingとseparate non-production `AUTH_DB` / `APP_DB` resourcesを使うことがApproved済み。date-scoped disposable environmentをverification cycleごとに再作成する方式は採用しない。
 
-Current First vertical slice implementation fact:
+Current First vertical slice implementation / nonprod verification fact:
 
 - `AUTH_DB`にはBetter Auth 1.7.1 physical schemaをmigrationとして実装済み
 - `APP_DB`にはapp user / auth mapping / settings / projects / sections / taskchute_days / tasks / entries / operations / executions / temporary command guard・assertionを実装済み
@@ -26,8 +26,10 @@ Current First vertical slice implementation fact:
 - CreateProject / AddTaskToDay / ReorderEntries / StartEntry / CompleteEntryのcurrent transaction algorithmはimplementation review済み
 - Reorderのcurrent physical strategyは`json_each`へordered Entry IDsを渡すset-based update
 - current Reorder mutation batchはEntry数に比例してstatementを増やさない
+- persistent nonprod remote migration / schema / FK / active Execution partial UNIQUE indexはPASS
+- persistent nonprod remote runtime smokeでCreate Project / Add Task+Entry / Reorder / Start / Complete / retry / conflict / reload recoveryをPASS
 
-上記はcurrent implementation factであり、将来永続化方式を固定する新しいApproved Decisionではない。
+上記はcurrent implementation / verification factであり、将来永続化方式を固定する新しいApproved Decisionではない。
 
 以下はOpen:
 
@@ -86,13 +88,15 @@ D-022により以下はApproved済み。
 
 D-023によりbootstrap availabilityはexplicit modeで制御し、default / missing / invalidはdisabled、enabled中もtoken必須、provisioning後はmode disable + token remove / rotateとすることがApproved済み。Cloudflare Accessは必須ではない。
 
-Current implementation fact:
+Current implementation / verification fact:
 
 - Better Auth exact pin: `1.7.1`
 - minimal Web login / logout UIを実装済み
 - local operator bootstrap script / endpointを実装済み
 - exact `BOOTSTRAP_ENABLED=true` gateとdisabled 404 postureを実装・local test済み
 - stable auth subject -> app user mappingを実装済み
+- persistent nonprodでtemporary enable -> bootstrap -> disable -> token removalを実行しPASS
+- final nonprod bootstrap route 404、旧token probe 5回連続404、`BOOTSTRAP_TOKEN`削除済み
 
 以下はOpen:
 
@@ -103,6 +107,7 @@ Current implementation fact:
 - future native client token format / storage / refresh / revocation
 - Wear OS credential handoff
 - Cloudflare Accessをpreview outer gateへ使うか
+- bootstrap disable deployment後のversion convergence確認をproduction operator procedureへどう固定するか
 
 ## Web client
 
@@ -314,23 +319,32 @@ First Server + Web vertical sliceはImplemented / Integrated済み。次のProdu
 
 ## Deployment / verification
 
-First Server + Web vertical sliceのlocal implementation / tests / reviewはPASSしているが、以下はOpen / NOT_RUN:
+First Server + Web vertical sliceのlocal implementation / tests / reviewはPASS。2026-08-22にpersistent non-production D1 / deployed Worker remote verificationを実施しPASSした。
 
 D-024により、1つのpersistent non-production verification environmentをmaintainすること、tracked / reusable config、stable non-production naming、separate non-production D1 resources、normal `BOOTSTRAP_ENABLED=false` postureはApproved済み。
 
-- remote D1 Product runtime verificationをいつ実施するか
-- deployed Worker verificationをいつ実施するか
-- non-production D1のlocation / jurisdiction
+Resolved / current fact:
+
+- persistent nonprod D1 resourcesは`apac` location hint、jurisdictionなしで作成済み
+- remote migrations / schema / FK / active Execution indexはPASS
+- persistent nonprod Worker deploy / runtime smokeはPASS
+- temporary bootstrap enable -> bootstrap -> disable -> token removalはPASS
+- final bootstrap postureはdisabled、`BOOTSTRAP_TOKEN`削除済み
+- observed smoke scopeではFree-plan-shaped Worker/D1 limit errorなし
+
+以下はOpen:
+
 - exact production deployment strategyとproduction environmentをいつ作るか
 - custom domainを採用する時期
 - Cloudflare Accessをpersistent non-production environmentへ後から追加するか
 - production smoke test contract
-- persistent non-production resourcesのdestructive cleanup / retention policy
+- persistent non-production test data / sessionのretention・cleanup policy
 - current Free-plan limitsがruntimeをmaterialに阻害した場合にpaid planを採用するか
-- approved bootstrap lifecycleをremote / production deployment procedureへどう組み込み、検証するか
+- actual Cloudflare account subscription tierを独立確認する必要性 / timing
+- bootstrap disable deployment後のversion convergenceをproduction procedureで何回 / どの条件で確認するか
 - deploy前のcurrent Cloudflare pricing / quota / platform restriction再確認
 
-remote / production writeは明示承認なしに実施しない。
+remote production writeは明示承認なしに実施しない。
 
 ## Legacy migration
 
