@@ -1,7 +1,7 @@
 import { HttpError } from "../application/errors";
 import { REQUEST_FINGERPRINT_VERSION } from "../application/fingerprint";
 
-export type CommandType = "CreateProject" | "AddTaskToDay";
+export type CommandType = "CreateProject" | "AddTaskToDay" | "ReorderEntries" | "StartEntry" | "CompleteEntry";
 export type OutcomeKind = "success" | "domain_rejection" | "revision_conflict";
 
 interface OperationRow {
