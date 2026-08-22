@@ -31,17 +31,13 @@
         {
           "binding": "AUTH_DB",
           "database_name": "taskchute-auth-nonprod",
-          // Intentional sentinel placeholder. Replace with the exact authorized remote
-          // D1 ID before deployment.
-          "database_id": "00000000-0000-0000-0000-000000000000",
+          "database_id": "60085f8d-0c4e-4c15-98e9-3ce178398041",
           "migrations_dir": "migrations/auth"
         },
         {
           "binding": "APP_DB",
           "database_name": "taskchute-app-nonprod",
-          // Intentional sentinel placeholder. Replace with the exact authorized remote
-          // D1 ID before deployment.
-          "database_id": "00000000-0000-0000-0000-000000000001",
+          "database_id": "6ad7e35f-5d03-4be3-9b00-46cd713a51c3",
           "migrations_dir": "migrations/app"
         }
       ]

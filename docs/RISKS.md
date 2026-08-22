@@ -132,7 +132,7 @@ Cloudflare D1を採用するが、Worker request全体を暗黙のtransactionと
 
 2026-08-22のcurrent-harness local + temporary remote feasibility spikeで、D1 `batch()` + conditional SQL + database constraintsによりD1-SPIKE-01〜08を満たせることはVerifiedした。これにより「D1で必要なatomicity / concurrency / idempotency strategyが成立可能か」というarchitecture gate riskはmitigatedした。
 
-PR #3ではCreateProject / AddTaskToDay、PR #5ではReorderEntries / StartEntry / CompleteEntryについてproduction-shaped D1 implementationを実装・reviewした。
+PR #3ではCreateProject / AddTaskToDay、PR #5ではReorderEntries / StartEntry / CompleteEntryについてproduction-shaped D1 implementationを実装・reviewした。2026-08-22のpersistent non-production remote verificationでは、remote migration、schema/FK/index、Create Project、Add Task/Entry、Reorder、stale revision rejection、Start/Complete、same-operation retry、second active Execution rejection、reload recoveryまでPASSした。
 
 Current mitigation / implementation:
 
@@ -146,26 +146,27 @@ Current mitigation / implementation:
 - Start / Completeで`placement_revision`を変更しない
 - Complete retryでfirst `ended_at`を維持する
 - current lifecycle / ordering local suiteでstale conflict replay、cross-owner、concurrent Start、same-operation retry、64 Entry Reorder等をcoverageする
+- persistent nonprod remote runtimeでactual D1 / Worker behaviorをverificationする
 
 実装review中には、runtime bootstrapでbroad catch後のstate観測からunexpected infrastructure failureをdeterministic Domain rejectionへ誤分類し得るpath、およびsame-operation rejection raceでstored successを捨て得るpathを検出し修正した。lifecycle reviewではcross-day Complete UI欠落、ambiguous retained operationの誤再送、O(N) Reorder statements / 200 Entry capを検出し、PR #5 merge前に修正・回帰testを追加した。
 
 残存Risk:
 
-- current Product runtime evidenceはlocal中心で、PR #5 implementationに対するremote D1 / deployed Worker evidenceは未取得
 - operation result retention / cleanup policyは未決
 - overload時behavior、observability、backup / export、migration evolution等は未解決
 - 64 KiB request-body protectionを維持しており、将来large board / API payload scaleは別途評価が必要
-- D1 platform limits / pricingは変更され得るため、remote / production deployment前にcurrent値を再確認する
+- D1 platform limits / pricingは変更され得るため、production deployment前にもcurrent値を再確認する
+- persistent nonprodのsmoke scopeではCPU/request/D1 quota or overload errorを観測しなかったが、production loadを代表しない
 
 Mitigation direction:
 
 - conditional SQL + database constraint + explicit transactional batchをProduct invariant enforcementの基礎として利用する
 - spike PASSをProduct runtime verificationへ自動継承しない
-- lifecycle / ordering local PASSをremote / deployed PASSへ自動継承しない
+- local / nonprod PASSをproduction PASSへ自動継承しない
 - current evidenceは`docs/TEST_MATRIX.md`へ記録する
 - future commandでもinfrastructure failureとDomain rejectionを分離し、safe retry / reconciliation余地を残す
 
-D1 feasibility gateはPASS / Verified。First Server + Web vertical sliceはImplemented + Integrated + local Testedだが、Product runtime全体はVerified / Releasedではない。
+D1 feasibility gateはPASS / Verified。First Server + Web vertical sliceはImplemented + Integrated + local Testedで、persistent nonprod remote runtime / deployed Worker verificationもPASS。Product runtime全体はproduction未検証のためVerified / Releasedではない。
 
 ## R-011 — Authentication library / identity coupling risk
 Related: D-021
@@ -198,16 +199,19 @@ Current mitigation:
 - password / token / session secretをtracked file、evidence、通常logへ保存しない
 - AUTH_DB成功 / APP_DB失敗から同一subjectでrecoverable
 
+2026-08-22のpersistent nonprod remote verificationでは、temporary enable -> authenticated bootstrap -> disable -> token removalを実行し、bootstrap HTTP 200、final `BOOTSTRAP_ENABLED=false`、`BOOTSTRAP_TOKEN`削除、旧token probe 5回連続404を確認した。最終secret一覧は`BETTER_AUTH_SECRET`のみ。
+
 残存Risk:
 
-operatorがinitial provisioning後にbootstrap modeをdisableせず、bootstrap tokenをremove / rotateしない場合、remote environmentでpost-bootstrap attack surfaceが残る。applicationはenvironment / secretを自動変更しないため、このoperational stepをdeployment procedureで確実に実施する必要がある。
+bootstrap disable deployment直後に旧enabled version由来とみられる400 responseを1回観測し、その後8回連続404へ収束した。deployment完了直後の一時的なversion convergenceを考慮し、operator procedureではdisable deploy後に複数回probeしてdisabled postureへの収束を確認してから完了扱いとする。
 
 Remaining mitigation / verification:
 
-- temporary enable -> authenticated bootstrap -> mode disable -> token remove / rotateをoperator procedureへ組み込む
+- temporary enable -> authenticated bootstrap -> mode disable -> token remove / rotateをoperator procedureとして維持する
+- disable deployment後の複数回404確認をprocedureへ組み込む
 - Cloudflare Accessはpreview / internal environmentのoptional outer gateとして必要性を別途評価する
-- remote D1 Product runtime、deployed Worker、production smokeでexact configuration / procedureを検証する
-- remote / deployed / production verificationが未実施の間はproduction-ready security postureとみなさない
+- production smokeでexact configuration / procedureを別途検証する
+- nonprod PASSをproduction-ready security postureへ自動拡張しない
 
 このRisk記録自体はproduction deployment方式をApprovedするDecisionではない。
 
@@ -226,12 +230,21 @@ Mitigation direction:
 - current Free-plan limitsとusageをmonitorし、materialなblockが判明した場合は自動upgradeせずProduct Ownerへ判断を戻す
 - remote D1 / deployed Worker verificationでactual configurationとruntime behaviorを確認する
 
+2026-08-22のremote evidence:
+
+- `taskchute-auth-nonprod` / `taskchute-app-nonprod`を`apac` location hint、jurisdictionなしで作成
+- Worker `taskchute-web-nonprod`をdeployしremote runtime smoke PASS
+- final bootstrap disabled + bootstrap token removed
+- remote migrations / FK / active Execution partial UNIQUE index PASS
+- upload gzip 353.80 KiB、startup 37–44 ms、observed smoke中にCPU/request/D1 quota or overload errorなし
+- actual Cloudflare account subscription tierの独立確認は`NOT_VERIFIED`
+
 残存Risk / Open:
 
-- non-production D1のlocation / jurisdictionは未決
-- Free-plan上のactual Worker CPU behaviorはremote executionまで未確認
-- persistent resourcesのdestructive cleanup / retention policyは未決
+- persistent nonprodのtest data / session retention・cleanup policyは未決
+- smoke harnessの前提誤りにより追加test dataとsessionが残っている。active Executionは0で、承認外DELETEは実施していない
 - Cloudflare Accessを後から追加するかはOpen
-- remote D1 Product runtime、deployed Worker、production smokeは`NOT_RUN`
+- production smokeは`NOT_RUN`
+- observed Free-plan-shaped feasibility PASSはproduction traffic / sustained loadを代表しない
 
 このRisk記録はproduction architecture、paid plan adoption、custom domain、cleanup policyを決定しない。
