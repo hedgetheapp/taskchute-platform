@@ -34,9 +34,11 @@ Notionそのものを再現するのではなく、TaskChuteの時間管理・�
 
 ### 2.3 一日の流れを分断しない
 
-Morning / Day / Evening等のSectionは独立したカードとして表示しない。
+Morning / Day / Evening等のSectionごとに独立したカードや別テーブルを作らない。
 
-一日のタスク全体を**1つの連続したテーブル**として表示する。Sectionはテーブル内の区切り行として扱う。
+一日のタスク全体を**1つの連続したDay Table**として表示する。Sectionは各Task RowのSection列で確認できることを基本とする。
+
+追加のSection separator / grouping rowを併用するかは未確定とし、採用する場合も同じDay Table内の視覚的groupingに限定する。
 
 ## 3. カラー
 
@@ -58,18 +60,13 @@ Morning / Day / Evening等のSectionは独立したカードとして表示し�
 - 未開始: Gray
 - 実行中: Blue
 - 完了: Green
+- 割り込み終了: Neutral / muted
 
-ステータスはテキストまたはアイコンと組み合わせる。
+ステータスはアイコンとaccessible label / Tooltipを組み合わせる。
 
 ### 3.3 Sectionカラー
 
-Sectionは非常に薄い背景色または小さなカラーインジケータによって識別する。
-
-例:
-
-- Morning: Yellow系
-- Day: Orange系
-- Evening: Purple系
+Sectionを色で補助する場合は、非常に薄い背景色または小さなカラーインジケータに留める。
 
 Section全体を強い色で塗りつぶさない。
 
@@ -132,15 +129,15 @@ SidebarはTop Navigation等の明示操作で完全に閉じられる。閉じ�
 
 ## 9. Right Detail Pane
 
-Task詳細表示用のRight Detail Paneを将来的に設ける。現段階では詳細UIそのものは確定しない。
+Task詳細やDocumentを表示するRight Detail Paneを将来的に設ける。現段階では詳細UIそのものは確定しない。
 
-ただしメイン画面には、**Right Detail Paneを開くためのボタン**をあらかじめ配置できる設計とする。Paneが閉じている状態を基本表示とする。
+ただしメイン画面には、Right Detail Paneを開くための操作を配置できる設計とする。Paneが閉じている状態を基本表示とする。
 
 ## 10. Task Controls
 
 Day Table上部にタスク操作領域を配置する。
 
-主な要素は、新しいタスクを入力、フィルター、追加、その他操作。
+主な要素は、新しいタスクを入力、フィルター、追加、完了Taskの表示 / 非表示、その他操作。
 
 画面下部に別の「タスクを追加」領域は設けず、タスク追加操作は上部へ集約する。
 
@@ -148,124 +145,241 @@ Day Table上部にタスク操作領域を配置する。
 
 Day TableはTaskChuteの中心UIである。一日のタスクを**単一のテーブル**として表示する。
 
-Morning / Day / Eveningごとに別々のテーブルを作らない。全体を1つの外枠で囲み、Section間に独立したカードBorderや大きな余白を設けない。
+- 原則として `1 Task Row = 1行` とする。
+- Task名を含むセルは基本1行表示とし、列幅を超える内容は折り返さずclipする。ellipsis `...` は使用しない。
+- Table全体がViewport幅を超える場合は横スクロールを許容し、列を自動的に消さない。
+- 完了Taskは表示 / 非表示を切り替えられる。
+- Sectionごとに別Tableや独立Cardへ分割しない。
 
-構造:
+## 12. Table Header / Default Columns
 
-```text
-Header
-Section A
-Task
-Task
-Section B
-Task
-Task
-Section C
-Task
-```
+列HeaderはDay Tableの最上部に一度だけ表示する。
 
-## 12. Table Header
+初期列順は以下とする。
 
-列HeaderはDay Tableの最上部に一度だけ表示する。SectionごとにHeaderを繰り返さない。
+| 選択 | 状態 | タスク名 | プロジェクト | モード | セクション | 見積時間 | 開始予定時間 | 開始見込時間 | 開始時間 | 終了時間 | 実績時間 | ルーティン | リンク | コメント | ノート |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
-基本列:
+この順序は初期値であり、ユーザーは列順を変更できる。
 
-| 選択 | ステータス | タスク | タグ | 予定時間 | 実行時間 |
-| --- | --- | --- | --- | --- | --- |
-
-「#」列は使用しない。
+Tag列は現時点のdefault Day Table列には含めない。将来必要になった場合は追加列として再検討する。
 
 ## 13. Checkbox列
 
-最左列は複数選択用Checkboxとする。
+初期状態では最左列を複数選択用Checkboxとする。
 
-Checkboxは**タスク行だけ**に表示する。Section Headerには表示しない。Headerには全タスク選択用Checkboxを配置できる。
+Checkboxの役割は**行選択**であり、Taskの実行状態やrow focusを表現するものではない。Headerには全Task選択用Checkboxを配置できる。
 
-Checkboxの役割は**行選択**であり、タスクの実行状態を表現するものではない。
+Checkbox列も他列と同様にユーザーが並び替え可能とする。
 
 ## 14. Status列
 
-Checkbox列とは別にStatus列を設ける。配置は `Checkbox → Status → Task` とする。
+Status列は**cell内をicon-only**とし、Checkbox列とは分離する。
 
-Statusはタスクの状態を表示する。
+基本表示:
 
-例:
+- `○` 未実行
+- `▶` 実行中
+- `⏸` 割り込み終了したExecution区間
+- `✓` 完了
 
-- `○ 未開始`
-- `▶ 実行中`
-- `✓ 完了`
+IconにはTooltip / accessible labelを提供する。
 
-状態は色だけでなく、アイコンまたはテキストでも識別可能にする。
+Status cellは実行操作のprimary入口として利用する。
 
-## 15. Task列
+- 未実行の`○`を操作するとStartする。
+- running中の`▶`を操作するとCompleteする。
+- 別Taskがrunning中に未実行Taskを開始する場合は、D-028のexplicit Interrupt workflowを実行する。
+- 完了 / 割り込み終了したhistorical rowは通常のStart / Complete操作対象にしない。
 
-Task名はテーブル内で最も重要な情報の1つとして扱い、十分な横幅を確保する。
+## 15. Task名列
 
-実行中タスクはSemibold等で若干強調してよい。
+Task名はテーブル内で最も重要な情報の1つとして扱い、初期状態で十分な横幅を確保する。
 
-長いTask名は必要に応じて省略表示し、詳細表示手段を別途提供する。
+- Task名は1行表示。
+- 列幅を超えた場合はclipし、ellipsisは使用しない。
+- 実行中TaskはSemibold等で若干強調してよい。
+- Interrupt continuationで生成された同名Taskへ、Task title自体に「続き」等の文字列を自動追加しない。
+- continuation indicatorを別途追加するかは必要性を確認して後続設計する。
 
-## 16. Tag列
+## 16. Project / Mode / Section
 
-Taskの分類を小さなBadgeとして表示する。
+### Project
 
-Badgeは淡い背景色を使用し、強い彩度を避ける。
+ProjectはTask名と同じcellへ埋め込まず、独立列として表示する。
+
+### Mode
+
+D-026に従い、Modeはユーザー定義で意味をProduct側に固定しない。その日のEntryごとに0..1 Modeを選択できる。
+
+### Section
+
+Sectionはその日のEntryの配置文脈として独立列に表示する。
+
+Section separator / grouping rowを追加表示するかは未確定とする。併用する場合もSection列の意味を置き換えず、視覚的groupingだけを担う。
 
 ## 17. 時間列
 
-時間情報は比較しやすい位置へ揃える。
+時間系は以下を区別する。
 
-基本列は予定時間と実行時間。
+- **見積時間**: その日のTaskのplanned estimate。ユーザー入力値。
+- **開始予定時間**: ユーザーが各Taskへ明示入力する予定値。前TaskやSectionから自動算出しない。
+- **開始見込時間**: D-026に従うderived projection。exact算出式は後続設計。
+- **開始時間**: actual Execution start fact。
+- **終了時間**: actual Execution end fact。
+- **実績時間**: actual Execution duration。
 
-例: 予定時間 `60m`、実行時間 `32:18`。
+Interrupt continuationの見積列にはremaining estimateを通常の時間値として表示する。`残`等のprefixを必須にせず、例として元Task `30分`、continuation `20分` のように表示する。
 
-実行中の実行時間はPrimary Accentで強調してよい。
+continuationのremaining estimateはReviewの見積合計へ加算しない。Review semanticsはD-028に従う。
 
-## 18. Column Resize
+## 18. Column Interaction
 
-Table Headerの各列境界にはドラッグ可能なResize Handleを設ける。
+Day Tableの**すべての列**を同一の基本interaction modelで扱う。
 
-ユーザーはHeader境界を左右へドラッグすることで列幅を変更できる。
+### Resize
 
-Resize Handleは通常時には目立たせず、hover / drag時に視認性を高める。列Headerの境界線は常時薄く表示する。
+- 各列境界にResize Handleを設ける。
+- Header境界を左右へdragすると、その列の幅をlive resizeする。
+- Resize Handleのhit areaは視覚的な1px境界線より広く確保する。
+- cursorは`col-resize`等の適切なresize cursorを使用する。
+- 列幅にはcontrolsを操作不能にしないための実用的minimumを設けてよい。
 
-## 19. Section Header
+### Auto Fit
 
-SectionはTable内の専用行として表示する。
+- 列境界をdouble clickすると、その列をAuto Fitする。
+- Auto FitはHeaderと現在表示対象となっているcell contentを基準に必要幅を算出する。
+- 全列Auto FitはHeader context menuから実行できる。
 
-表示情報候補:
+### Column Reorder
 
-- Sectionカラー
-- Section名
-- 時間帯
-- 合計予定時間
+- Header本体を左右へdragすると列順を変更する。
+- HeaderのResize Handle領域をdragした場合はreorderではなくresizeを優先する。
+- reorder中は挿入先をline等で明確に示す。
 
-**Section HeaderにはCheckboxを表示しない。Statusも表示しない。**
+### Persistence
 
-Section Headerはタスクではないため、Task Rowとは明確に役割を分ける。
+初期Desktop Webでは、列幅、列順、表示 / 非表示、pin状態をbrowser `localStorage`へ保存し、同一browserで復元する方向とする。account / device間syncは現段階では要求しない。
 
-## 20. Sectionの連続性
+## 19. Column Context Menu
 
-Sectionごとに独立したBorderを作らない。Sectionは視覚的には区切るが、構造的には同じDay Tableの一部とする。
+列Headerのcontext menuから少なくとも以下を操作できるようにする。
+
+- この列を非表示
+- 左に固定
+- 右に固定
+- Auto Fit
+- すべてAuto Fit
+
+表示 / 非表示やpinはユーザー設定であり、default column setそのものを変更しない。
+
+## 20. Routine / Link / Comment / Note Columns
+
+右側の4列は内容全文を表示する列ではなく、関連情報へアクセスするcompact action columnとする。
+
+### Routine
+
+- Routine由来のその日のTaskではRoutineとの関係が分かる状態にする。
+- 通常TaskからRoutine iconを操作した場合は、即座にRoutine化せずPopover等を開き、「Routineを作成」「元Routineを開く」等の操作へ進める。
+- RoutineはD-027に従い、cross-day reuseの主要mechanismとして扱う。
+
+### Link
+
+- Linkはdefaultでその日のTask文脈に属する。
+- 複数Linkを扱える方向とし、icon操作からPopover等で参照 / 編集できる。
+- Routineからdefault Linkを供給できるが、その日のLinkは個別変更できる。
+
+### Comment
+
+- Commentはその日のTaskに対する軽量な記録として扱う。
+- 長期知識Documentとは役割を分離する。
+
+### Note
+
+- Day TableのNote actionは、その日の作業文脈のNoteを優先して開く。
+- Routine由来の場合、特定日のRoutineOccurrence DocumentとRoutine共通のTask Primary Documentの双方へ到達できる構造を許容する。
+- 非Routineでもtitle一致だけを理由に別日のNoteを自動共有しない。
+- Document foundation / link / backlinkはD-006、D-018、D-025、D-027に従う。
+
+各action iconは、情報がある状態と空の状態を過度に派手にせず識別可能にし、Tooltip / accessible labelを提供する。
+
+## 21. Row Focus / Selection / Running State
+
+Row focus、Checkbox selection、Execution statusは別概念として表示する。
+
+- **Row focus**: 次にkeyboard / execution操作の対象となる行。
+- **Selection**: Checkboxによるbulk operation対象。
+- **Running state**: 現在Executionがactiveな行。
+
+実行中行はStatus iconだけでなく、薄いAccent背景やTask名Semibold等で行全体を軽く強調する。
+
+Row focusは実行中表示より弱いoutline、edge indicator等で識別可能にする。色だけに依存しない。
+
+## 22. Complete後のFocus移動
+
+Complete後に次Taskを自動Startしない。
+
+Completeが成功しcanonical stateへ反映された後、Dayのexplicit orderに従って**次の実行可能Taskへrow focusを自動移動**する。
+
+- completed / interrupted history等のStart不能rowはskipする。
+- 必要に応じてfocus対象が見える位置までscrollする。
+- completed表示ONの場合も次の実行可能Taskへfocusする。
+- completed表示OFFの場合は完了rowが消えた後、次の実行可能Taskへfocusする。
+- 次の実行可能Taskが存在しない場合は自動Startせず、focusを無理に作らない。
+- Checkbox selectionは自動変更しない。
+
+## 23. Interrupt表示
+
+D-028のInterrupt workflowでは、例として以下の状態遷移を表示する。
 
 ```text
-┌──────────────────┐
-│ Header           │
-├──────────────────┤
-│ Morning          │
-│ Task             │
-│ Task             │
-├──────────────────┤
-│ Day              │
-│ Task             │
-│ Task             │
-├──────────────────┤
-│ Evening          │
-│ Task             │
-└──────────────────┘
+▶ Task A   30分
+○ Task B   15分
+○ Task C   20分
 ```
 
-## 21. Floating Runner
+Task BへInterruptすると:
+
+```text
+⏸ Task A   30分
+▶ Task B   15分
+○ Task A   20分
+○ Task C   20分
+```
+
+- 最初のTask Aはcompletedではなくinterrupted historical rowとして残す。
+- Task Bをrunning表示する。
+- Task A continuationはBの直下へ生成する。
+- continuationのTask名へ「続き」等を自動追記しない。
+- continuationの見積はremaining estimateを通常の時間表示で示す。
+- Task BをCompleteしてもTask A continuationは自動Startしない。Complete後のfocus ruleに従い、continuation Aへfocusする。
+
+## 24. Completed Visibility
+
+完了Taskの表示 / 非表示をユーザーが切り替えられるようにする。
+
+非表示時、CompleteされたrowはDay Tableから除外表示される。これはhistorical factを削除することを意味しない。
+
+completed visibility変更によってcanonical execution historyを書き換えない。
+
+## 25. Keyboard Interaction
+
+Keyboard中心の高速操作は**高優先度のDesign topic**として扱う。
+
+Row focusをkeyboard interactionのfoundationとして利用できる構造にする。ただし現時点では具体的なkey bindingを確定しない。
+
+後続設計では少なくとも以下をまとめて検討する。
+
+- row focus上下移動
+- Start / Complete / Interrupt
+- Task追加
+- cell edit
+- column / table navigation
+- mouse D&Dの代替操作
+- shortcut conflict / browser / OS differences
+- accessibility
+
+## 26. Floating Runner
 
 現在実行中のタスクは、画面下部のFloating Runnerでも表示する。
 
@@ -273,7 +387,7 @@ Sectionごとに独立したBorderを作らない。Sectionは視覚的には区
 
 基本配置は画面下中央。背景はWhite、Borderは薄いGray、Shadowは控えめ、Radiusは8〜12px程度とする。
 
-## 22. Floating Runnerの目的
+## 27. Floating Runnerの目的
 
 Floating Runnerの目的は、**「現在何を実行しているかを、画面のどこにいても確認できること」**である。
 
@@ -289,13 +403,13 @@ Floating Runnerの目的は、**「現在何を実行しているかを、画面
 
 詳細操作は必要に応じて別UIへ展開する。
 
-## 23. Floating Runnerのサイズ
+## 28. Floating Runnerのサイズ
 
 Floating Runnerはコンパクトにし、画面横幅いっぱいに広げない。
 
 Desktopでは概ね `400〜600px` 程度を目安とする。ただし固定値ではなく、Task名やViewportに応じて調整する。
 
-## 24. Border
+## 29. Border
 
 Borderは情報構造を示すために使用する。
 
@@ -303,19 +417,19 @@ Borderは情報構造を示すために使用する。
 
 Tableでは外枠、Header、Row、Columnを薄いBorderで整理する。
 
-## 25. Shadow
+## 30. Shadow
 
 ShadowはFloating UI等、高さの違いを示す場合に限定する。
 
 Tableや通常Panelへ過度にShadowを使用しない。Floating Runnerでは軽いShadowを使用してよい。
 
-## 26. Corner Radius
+## 31. Corner Radius
 
 基本は4〜8px、Floating UIは8〜12px。
 
 Table Row単位で角丸を使用せず、Day Table全体にのみ軽いRadiusを適用する。
 
-## 27. Interaction
+## 32. Interaction
 
 Interactive elementはhover状態を持つ。
 
@@ -323,32 +437,21 @@ Interactive elementはhover状態を持つ。
 
 hoverによる変化は控えめにする。
 
-## 28. Selection
-
-CheckboxでTask Rowを選択した場合、選択状態を背景色などで識別可能にする。
-
-選択状態とTask Statusを混同しない。
-
-- Selection: ユーザーが現在選択している行
-- Status: Taskそのものの実行状態
-
-として明確に分離する。
-
-## 29. Density
+## 33. Density
 
 TaskChuteでは一日のTask一覧性が重要なため、一般的なWebアプリよりやや高密度なUIを許容する。
 
 ただし、クリック領域、読みやすさ、タッチ操作を損なわない。
 
-DesktopではTable Rowを比較的コンパクトにする。
+DesktopではTable Rowを比較的コンパクトにする。exact row height / initial column widthsはvisual prototypeで最終調整する。
 
-## 30. Accessibility
+## 34. Accessibility
 
 色だけで状態を表現しない。
 
 Iconには必要に応じてTooltip / accessible labelを提供する。Keyboard navigationを考慮し、Focus stateを削除しない。十分なContrastを確保する。
 
-## 31. Responsive Design
+## 35. Responsive Design
 
 Desktopを最初の主要Targetとする。
 
@@ -356,7 +459,7 @@ Desktopを最初の主要Targetとする。
 
 Desktop固有の固定配置へ過度に依存しない。
 
-## 32. 現在のUI構成案
+## 36. 現在のUI構成案
 
 現時点のDay画面:
 
@@ -373,34 +476,40 @@ Left Sidebar
   - 設定
 ↓
 Task Controls
+  - 新規Task
+  - Filter
+  - 完了Task 表示 / 非表示
 ↓
 Day Table
   Header
-    - Checkbox
-    - Status
-    - Task
-    - Tag
-    - Planned Time
-    - Actual Time
-  Morning
-    - Task
-    - Task
-  Day
-    - Task
-    - Task
-  Evening
-    - Task
+    - 選択
+    - 状態
+    - タスク名
+    - プロジェクト
+    - モード
+    - セクション
+    - 見積時間
+    - 開始予定時間
+    - 開始見込時間
+    - 開始時間
+    - 終了時間
+    - 実績時間
+    - ルーティン
+    - リンク
+    - コメント
+    - ノート
 ↓
 Floating Runner
 ```
 
 Right Detail Paneは通常閉じている。Left Sidebar / Right Detail Paneの双方に開閉手段を用意する。
 
-## 33. 未確定事項
+## 37. 未確定事項
 
 以下は今後設計する。
 
-- Right Detail Pane
+- Right Detail Pane exact UX
+- Floating Runner exact content / interaction
 - Mobile UI
 - Tablet UI
 - Project画面
@@ -408,17 +517,17 @@ Right Detail Paneは通常閉じている。Left Sidebar / Right Detail Paneの�
 - Notes画面
 - Analytics画面
 - Settings画面
-- Drag & Drop詳細挙動
-- Column幅の保存方法
-- Column表示/非表示
-- Floating Runner展開UI
-- Keyboard shortcuts
-- Context menu
+- Section separator / grouping rowをSection列と併用するか
+- exact initial column widths / minimum widths
+- continuation indicatorを追加するか
+- 開始見込時間のexact calculation
+- remaining estimateが0以下でも未完了の場合のre-estimation UX
+- Keyboard shortcutsのexact mapping（優先度高）
 - Bulk actions
 
-これらを本DESIGN.mdだけで仕様確定しない。
+これらを本DESIGN.mdだけでProduct / Domain仕様として確定しない。
 
-## 34. 参考デザイン
+## 38. 参考デザイン
 
 主なVisual Design参考: [Notion Design System](https://github.com/kzhrknt/awesome-design-md-jp/tree/main/design-md/notion)
 
@@ -435,7 +544,7 @@ Right Detail Paneは通常閉じている。Left Sidebar / Right Detail Paneの�
 
 TaskChute固有のDomain / Workflowについては、TaskChute Platformのcanonical docsを優先する。
 
-## 35. Design Principle Summary
+## 39. Design Principle Summary
 
 TaskChute PlatformのUIは次を基本原則とする。
 
