@@ -33,7 +33,9 @@ Status values: Planned / In design / Implemented / Verified
 | Android Widget | Planned | Android architectureを再利用 |
 | Wear OS / Pixel Watch | Planned | companion target。Compose for Wear OS第一候補、exact scope未決 |
 | iOS native app | Planned | Future / low priority。Swift + SwiftUI第一候補。まずWeb clientから利用 |
-| Notes/Documents | In design | Markdown-native + shared Document foundation |
+| Notes/Documents | In design | Markdown-native + shared Document foundation。standalone Document / general noteをfirst-class capabilityとして扱い、Task / Project等のDocumentと共通foundationを利用 |
+| Standalone Document / general note | In design | Task / Project等に従属しない独立Noteを作成可能とするApproved direction。exact lifecycle / organization / search UXは未決 |
+| Document links / backlinks | In design | Document同士をlinkし、backlinkから逆方向に辿れるcapability。exact syntax / rename semantics / indexing / Graph Viewは未決 |
 | Project Primary Document | In design | logical 1 Primary Document。physical lazy creation可 |
 | Task Primary Document | In design | logical 1 Primary Document。Routine共通noteにも利用 |
 | RoutineOccurrence Document | In design | optional日別Document。必要時のみ作成 |
