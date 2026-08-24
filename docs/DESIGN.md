@@ -114,11 +114,21 @@ Top Navigationには主に、Sidebar開閉、TaskChuteロゴ、前日、翌日�
 
 左Sidebarには主要Navigationを配置する。
 
-例: 今日、カレンダー、プロジェクト、タスク、分析、設定。
+主要Navigation候補は、今日、カレンダー、プロジェクト、タスク、**ノート**、分析、設定とする。D-025に従い、NotesはTask / Projectの従属UIだけではなくtop-level Product capabilityとして入口を持つ。
 
-Sidebarは開閉可能とする。閉じた状態でも再表示できるボタンを必ず残す。
+DesktopのSidebar幅は初期値を`240px`とし、右端のResize Handleを左右へドラッグして変更できるようにする。
 
-将来的なレスポンシブ対応を考慮し、Sidebarが常時表示されることを前提にしない。
+- 最小幅: `180px`
+- 最大幅: `420px`
+- Resize Handleのhit areaは境界線そのものより広く確保し、通常時は目立たせずhover / drag時に視認性を高める。
+- drag中はSidebar幅をリアルタイムに変更し、Main contentも追従する。
+- 最小幅まで縮めても自動的にSidebarを閉じない。resizeとopen / closeは別操作とする。
+
+SidebarはTop Navigation等の明示操作で完全に閉じられる。閉じた状態は`0px`相当とし、狭いicon-only Sidebarを別の第三状態として必須にはしない。閉じた状態でも再表示できる操作を必ず残す。
+
+再表示時は閉じる直前のSidebar幅へ戻す。Sidebarの最後の幅とopen / closed状態は、初期Desktop Webではbrowser `localStorage`に保存し、同じbrowserで次回利用時に復元する。account間 / device間の同期は現段階では要求しない。
+
+将来的なレスポンシブ対応を考慮し、Sidebarが常時表示されることを前提にしない。Mobile / Tabletで同じresize behaviorをそのまま要求するものではない。
 
 ## 9. Right Detail Pane
 
@@ -309,7 +319,7 @@ Table Row単位で角丸を使用せず、Day Table全体にのみ軽いRadius�
 
 Interactive elementはhover状態を持つ。
 
-対象例: Button、Table Row、Navigation、Column Resize Handle、Icon Button。
+対象例: Button、Table Row、Navigation、Column Resize Handle、Sidebar Resize Handle、Icon Button。
 
 hoverによる変化は控えめにする。
 
@@ -353,6 +363,15 @@ Desktop固有の固定配置へ過度に依存しない。
 ```text
 Top Navigation
 ↓
+Left Sidebar
+  - 今日
+  - カレンダー
+  - プロジェクト
+  - タスク
+  - ノート
+  - 分析
+  - 設定
+↓
 Task Controls
 ↓
 Day Table
@@ -386,6 +405,7 @@ Right Detail Paneは通常閉じている。Left Sidebar / Right Detail Paneの�
 - Tablet UI
 - Project画面
 - Calendar画面
+- Notes画面
 - Analytics画面
 - Settings画面
 - Drag & Drop詳細挙動
