@@ -4,6 +4,12 @@
 
 Obsidianを必須とせずに動作する、個人向けTaskChute Platformを構築する。
 
+TaskChute Platformは、単なるTask管理toolではなく、ユーザーの行動、実行履歴、計画、知識、思考、感情、メモ、Documentを蓄積し、後から時間軸と情報同士の関係の両方から辿れる**個人の情報基盤 / life log**を目指す。
+
+TaskChuteによる「いつ、何をし、どれだけ時間を使ったか」という行動・実行の時間軸と、Obsidian的なMarkdown-native knowledge management / linkingを同じPlatform上で統合する。
+
+このPlatformを見れば、過去のある時点について、何をしていたか、何を考えていたか、何を感じていたか、どのような知識やメモを残していたかを可能な限り再構築できることをlong-term targetとする。
+
 ## Initial user model
 
 - Single user
@@ -70,6 +76,12 @@ TaskChute自身がNotes/Documents capabilityを提供する。
 Project Note、Task Note、CommentはMarkdown-nativeなcontent semanticsを維持し、images/filesを扱えることを想定する。
 
 TaskとProjectはそれぞれPrimary Documentを持てる。Routineの共通noteはTask Noteを利用し、必要な場合だけ各Routine occurrenceにも日別noteを持てる方向とする。
+
+Task / Project等へ従属しない**standalone Document / general note**もfirst-classに作成できることを要求する。standalone DocumentとTask / Project / RoutineOccurrence等のDocumentは共通Document foundation上で扱い、相互非互換な別storageへ分断しない。
+
+Document同士をlinkでき、link先からbacklinkとして逆方向の関係を辿れることをtargetとする。内部linkのexact syntax、rename時の解決、link authority、indexing、Graph View等のexact semantics / UXは別途設計する。
+
+NotesはTask / Projectに付随する補助情報だけではなく、知識、思考、感情、メモ等を独立して蓄積し、行動・実行履歴と後から関連付けて辿るためのtop-level Product capabilityとして扱う。
 
 日別Routine noteを毎日空で自動生成することは要求せず、必要時に作成できる設計とする。
 
