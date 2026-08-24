@@ -69,6 +69,18 @@ TaskChuteではcivil dateとlogical activity dayを同一視しない。
 
 UIでは必要に応じて`24:00`を超えるextended-time notationを扱えるようにしつつ、actual execution timestampは実時間として保持する。
 
+## Routine-centered execution
+
+RoutineはTaskChuteにおけるcross-day reuseの中核capabilityとして扱う。
+
+同じ行動を繰り返す場合、同名Taskを毎日手作業で再現したり、title一致を暗黙の共有keyとして扱ったりするのではなく、Routineとして定義して日々の行動を開始しやすくすることを重視する。
+
+Routineは見積、Mode、Link等の繰り返し利用するdefault / reusable informationを供給できる方向とし、その日ごとのTaskでは必要に応じて個別に変更できることを要求する。
+
+その日のLink、Comment、Note、実行履歴等はday-specific historical contextとして保持でき、後からRoutine側を変更しても過去の日の意味を黙って書き換えない。
+
+同じtitleが複数日に存在することだけを理由に、Task identity、Note、Link等を自動的に共有・統合しない。cross-dayで共有する情報はRoutineまたは明示的なrelationを通じて扱う。
+
 ## Notes / Documents
 
 TaskChute自身がNotes/Documents capabilityを提供する。
