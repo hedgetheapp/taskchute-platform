@@ -337,3 +337,18 @@ TaskChute Platformの継続的なdevelopment / verification用として、1つ�
 - Cloudflare remote writeは、実行する具体的scopeについてexplicit user approvalを必要とする。複数operationは、同じapproved scopeへ明示的に含まれる場合にまとめて承認できる。
 
 このDecisionはproduction architecture、custom domain、paid plan adoption、destructive cleanup policyを決定しない。
+
+## D-025 — Personal knowledge / life log and standalone Documents
+Status: Approved
+
+TaskChute Platformは、Task管理だけでなく、行動・実行履歴と、知識・思考・感情・メモ等のDocumentを同じPlatform上で蓄積し、後から時間軸と情報同士の関係の両方から辿れるpersonal knowledge / life log foundationを目指す。
+
+- Task / Project等に従属しないstandalone Document / general noteをfirst-class capabilityとして扱う。
+- standalone Document、Task / Project Primary Document、RoutineOccurrence Document等は共通Document foundationを利用し、document typeごとの相互非互換storageを増やさない。
+- Document同士をlinkでき、link先からbacklinkとして逆方向の関係を辿れるcapabilityを持つ。
+- NotesはTask / Projectの補助情報だけではなく、top-level Product capabilityとして扱う。
+- 将来、Task / Project / Execution / TaskChuteDay等の行動・時間情報とDocumentを横断して振り返れる方向とする。ただしexact relation modelは別途設計する。
+
+Markdown-native semanticsはD-006、Primary Document foundationはD-018に従う。
+
+内部linkのexact syntax、rename時の解決、link authority、indexing / search、Graph View、autosave、revision history、standalone Documentのorganization / lifecycle、Task / Project / Execution等とのexact relation semanticsは後続設計とする。
