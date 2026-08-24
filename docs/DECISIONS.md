@@ -352,3 +352,50 @@ TaskChute Platformは、Task管理だけでなく、行動・実行履歴と、�
 Markdown-native semanticsはD-006、Primary Document foundationはD-018に従う。
 
 内部linkのexact syntax、rename時の解決、link authority、indexing / search、Graph View、autosave、revision history、standalone Documentのorganization / lifecycle、Task / Project / Execution等とのexact relation semanticsは後続設計とする。
+
+## D-026 — Entry-scoped planning metadata and user-defined Mode
+Status: Approved
+
+DayBoard上でユーザーが扱う「その日のTask」に固有なplanned metadataは、Task definitionではなく、そのTaskChuteDay上のEntry文脈へ属するものとして扱う。
+
+- Modeはユーザーが定義する再利用可能な分類であり、Product側で「感情」「作業難度」「場所」等の意味を固定しない。
+- 1 Entryは0..1 Modeを選択できる。同じTaskでもEntryごとに別Modeを選択できる。
+- 見積時間はEntryごとのplanned valueとする。同じTaskでも日ごとに異なる見積を持てる。
+- 開始予定時間はEntryごとのplanned valueとし、各Entryについてユーザーが明示入力する。前Entryの見積時間やSection開始時刻から自動生成・上書きしない。
+- 開始見込時間は開始予定時間とは別semanticsのderived projectionとする。現在の進捗・実績・残り見積等から算出できる方向とするが、exact計算式は後続設計とする。
+- SectionはEntryのDay上の配置文脈であり、Taskの永久属性とはしない。
+
+ModeDefinitionのexact persistence、Mode管理UI、開始見込時間のexact algorithm、見積の編集履歴 / re-estimation semanticsは後続設計とする。
+
+## D-027 — Routine-centered cross-day reuse and day-specific task context
+Status: Approved
+
+TaskChuteでは、繰り返す行動を日をまたいで再利用する主要mechanismをRoutineとする。同じtitleが複数日に現れることだけを理由に、Task identityや関連情報を自動的に共有・統合しない。
+
+- 非Routineのその日のTaskに付くLink、Comment、Note等は、defaultではその日の作業文脈に固有な情報として扱えるようにする。
+- RoutineDefinitionは、繰り返し利用する見積、Mode、Link等のdefault / reusable informationを供給できる方向とする。
+- Routineからその日のTaskが成立した後は、その日のLink、Comment、Note等を個別に変更できる。Routine側の後日の変更によって過去のday-specific historical contextを黙って書き換えない。
+- Routine共通の長期DocumentはD-018のTask Primary Documentを利用でき、特定日のRoutineOccurrenceには同じくD-018のoptional Occurrence Documentを利用できる。
+- Day UIから開くNoteは、その日の作業文脈を優先して扱う。cross-dayで共有するDocumentはRoutineまたは明示的なDocument relationとして扱い、title一致だけで共有しない。
+
+非Routineのday-specific Note / Link / Commentをどのphysical entityへ保持するか、Routine defaultをcopy / reference / snapshotのどれでmaterializeするか、day-specific contextをinterrupt continuation間でどう参照するかは後続Domain / persistence設計とする。
+
+## D-028 — Explicit interruption continuation and estimate review semantics
+Status: Approved
+
+TaskChuteの実行ではuser全体でactive Execution最大1つを維持しつつ、別Taskへの割り込みをfirst-class workflowとして扱う。
+
+- running Entry Aが存在する状態でEntry Bへ割り込む操作は、通常Startとは区別された明示的Interrupt operationとして扱う。UIはBのStart操作からこのInterrupt operationへ遷移できる。
+- InterruptはAのactive Executionをその時刻で終了し、終了理由をcompletedではなくinterruptedとしてhistorical factに残した上で、BのExecutionを開始する。
+- Interrupt時にはAのcontinuation Entryを自動生成し、Dayのexplicit order上でBの直下へ配置する。
+- continuationは元のその日の作業の続きとして扱い、Routine由来の場合は同じRoutineOccurrenceとの関係を維持する。
+- continuationの開始予定時間は自動入力しない。D-026に従い開始予定時間はユーザー入力値であり、自動生成continuationでは未設定を許容する。
+- continuationの見積表示値は、当初見積から同一continuation chainですでに実行したactual durationを差し引いた残り見積を基本とする。UIでは通常の時間値として表示してよく、「残」等のprefixを必須としない。
+- Reviewで見積を集計するときは、continuation Entryの残り見積を加算せず、その日のlogical work chainでユーザーが最初に立てた当初見積をbaselineとして1回だけ数える。
+- Reviewのactual durationは、interrupt前後を含む同一continuation chainのExecution実績を合算できるようにする。
+- Interrupt元のExecutionと通常Completeは別のhistorical outcomeとして区別する。
+- 割り込み先BをCompleteしてもcontinuation Aを自動Startしない。
+
+当初見積を使い切った後も未完了の場合のremaining estimate、明示re-estimationとそのReview semantics、Interrupt commandのexact atomicity / retry contract、continuation chainのphysical persistence modelは後続設計とする。
+
+D-015の「別Entryがrunning中の通常Startはrejectする」は維持する。D-028はその通常Startを暗黙interruptへ変更するものではなく、別の明示Interrupt operationを定義する。D-013のFirst vertical sliceがInterruptを含まないこと、およびcurrent implementationが通常Startをrejectすることも変更しない。
