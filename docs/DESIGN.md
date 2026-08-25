@@ -137,7 +137,7 @@ Task詳細やDocumentを表示するRight Detail Paneを将来的に設ける。
 
 Day Table上部にタスク操作領域を配置する。
 
-主な要素は、新しいタスクを入力、フィルター、追加、完了Taskの表示 / 非表示、その他操作。
+主な要素は、新しいタスクを入力、フィルター、追加、**実行済みを表示 / 非表示**、その他操作。
 
 画面下部に別の「タスクを追加」領域は設けず、タスク追加操作は上部へ集約する。
 
@@ -148,7 +148,7 @@ Day TableはTaskChuteの中心UIである。一日のタスクを**単一のテ�
 - 原則として `1 Task Row = 1行` とする。
 - Task名を含むセルは基本1行表示とし、列幅を超える内容は折り返さずclipする。ellipsis `...` は使用しない。
 - Table全体がViewport幅を超える場合は横スクロールを許容し、列を自動的に消さない。
-- 完了Taskは表示 / 非表示を切り替えられる。
+- 実行済みhistory rowは表示 / 非表示を切り替えられる。初期状態は表示とする。
 - Sectionごとに別Tableや独立Cardへ分割しない。
 
 ## 12. Table Header / Default Columns
@@ -215,6 +215,10 @@ D-026に従い、Modeはユーザー定義で意味をProduct側に固定しな�
 ### Section
 
 Sectionはその日のEntryの配置文脈として独立列に表示する。
+
+D-030に従い、Section設定はSection名に加えて開始時間 / 終了時間を持つ。時間範囲は`[開始, 終了)`で、重複するSection設定は許可しない。Section間のgapは許容し、現在時刻がどのSectionにも属さない場合はcurrent Section未設定として扱う。
+
+Quick Interruptで自動生成するその日のTaskは、割り込みを開始した時刻のcurrent Sectionへ配置する。元TaskのSectionを単純copyする挙動にはしない。
 
 Section separator / grouping rowを追加表示するかは未確定とする。併用する場合もSection列の意味を置き換えず、視覚的groupingだけを担う。
 
@@ -323,12 +327,12 @@ Completeが成功しcanonical stateへ反映された後、Dayのexplicit order�
 
 - completed / interrupted history等のStart不能rowはskipする。
 - 必要に応じてfocus対象が見える位置までscrollする。
-- completed表示ONの場合も次の実行可能Taskへfocusする。
-- completed表示OFFの場合は完了rowが消えた後、次の実行可能Taskへfocusする。
+- 実行済み表示ONの場合も次の実行可能Taskへfocusする。
+- 実行済み表示OFFの場合は完了 / interrupted history rowが非表示になった後、次の実行可能Taskへfocusする。
 - 次の実行可能Taskが存在しない場合は自動Startせず、focusを無理に作らない。
 - Checkbox selectionは自動変更しない。
 
-## 23. Interrupt表示
+## 23. Interrupt / Quick Interrupt表示
 
 D-028のInterrupt workflowでは、例として以下の状態遷移を表示する。
 
@@ -354,13 +358,44 @@ Task BへInterruptすると:
 - continuationの見積はremaining estimateを通常の時間表示で示す。
 - Task BをCompleteしてもTask A continuationは自動Startしない。Complete後のfocus ruleに従い、continuation Aへfocusする。
 
-## 24. Completed Visibility
+Floating RunnerのQuick Interruptを実行した場合は、その場でdefault title `（割込）` のその日のTaskを生成してStartする。確認Dialogを挟まず、割り込みの開始時刻を即時記録することを優先する。
 
-完了Taskの表示 / 非表示をユーザーが切り替えられるようにする。
+```text
+▶ Task A
+   ↓ Quick Interrupt
+⏸ Task A
+▶ （割込）
+○ Task A
+```
 
-非表示時、CompleteされたrowはDay Tableから除外表示される。これはhistorical factを削除することを意味しない。
+`（割込）`も通常のTask Rowとして表示し、特別なbadge / background colorを必須にしない。Task名はFloating Runnerから実行中に編集でき、例として`（割込）`から`田中さんから電話`へ変更してもexecution historyは維持する。
 
-completed visibility変更によってcanonical execution historyを書き換えない。
+Quick Interrupt中にさらにQuick Interruptする場合も同じ表示モデルを繰り返す。
+
+```text
+⏸ Task A
+⏸ 電話対応
+▶ 来客対応
+○ 電話対応
+○ Task A
+```
+
+最深部の割り込みをCompleteしても親Taskは自動Startせず、直近で中断されたTaskのcontinuationへfocusする。
+
+## 24. 実行済みVisibility
+
+Day Tableでは**「実行済みを表示 / 非表示」**をユーザーが切り替えられるようにする。初期状態は**表示**とする。
+
+実行済みを非表示にした場合、少なくとも以下のhistorical rowをDay Tableから除外表示する。
+
+- `✓` Complete済みrow
+- `⏸` Interruptで終了したhistorical row
+
+`▶` 実行中rowと`○` 未実行 / 再実行可能rowは表示対象に残す。
+
+これはprojection上のvisibility変更であり、Execution、Interrupt、Review対象の実績等のhistorical factを削除・変更しない。
+
+初期Desktop Webでは最後の表示 / 非表示状態をbrowser `localStorage`へ保存し、同じbrowserで復元する方向とする。account / device間syncは現段階では要求しない。
 
 ## 25. Keyboard Interaction
 
@@ -381,33 +416,90 @@ Row focusをkeyboard interactionのfoundationとして利用できる構造に�
 
 ## 26. Floating Runner
 
-現在実行中のタスクは、画面下部のFloating Runnerでも表示する。
+現在activeなExecutionが存在するとき、その実行中TaskをFloating Runnerとして表示する。active Executionがない場合はRunnerを表示しない。user全体でactive Execution最大1つのため、Runnerも最大1つとする。
 
-画面横幅いっぱいの固定Footerにはせず、**小型のFloating UI**として表示する。
+画面横幅いっぱいの固定Footerにはせず、**Main content areaの下部中央付近に固定する小型Floating UI**とする。Desktopでは下端から概ね`20〜24px`程度のgapを目安とし、Sidebar幅にかかわらずMain content側の中心を基準に配置する。
 
-基本配置は画面下中央。背景はWhite、Borderは薄いGray、Shadowは控えめ、Radiusは8〜12px程度とする。
+背景はWhite、Borderは薄いGray、Shadowは控えめ、Radiusは8〜12px程度とする。
 
-## 27. Floating Runnerの目的
+基本構成例:
 
-Floating Runnerの目的は、**「現在何を実行しているかを、画面のどこにいても確認できること」**である。
+```text
+┌───────────────────────────────────────────────┐
+│ ▶ Task A                    18:00 / 30分   [⌄]│
+│ ███████████████████────────────────────       │
+│                               [↶] [↪] │ [✓]  │
+└───────────────────────────────────────────────┘
+```
 
-情報を詰め込みすぎない。
+Runnerには少なくともTask名、logical daily work chainの累積実績時間、当初見積がある場合の見積時間、progress bar、execution actionを表示する。
 
-基本表示候補:
+## 27. Floating Runner Interaction / Progress
 
-- 実行状態
-- Task名
-- 経過時間
-- 予定時間
-- 完了操作
+### Task名とDay Table navigation
 
-詳細操作は必要に応じて別UIへ展開する。
+- Task名をクリックするとRunner内でinline editする。通常TaskとQuick Interruptの`（割込）`を同じinteractionで編集できる。
+- Runner本体のうちTask名 / action button等のinteractive element以外をクリックすると、Day Tableを現在実行中Taskのrowまでscrollし、そのrowへfocusする。
+- Day Tableへ戻る専用iconは追加しない。Runner本体の広いclick surfaceをnavigationに利用する。
+- inline editのexact keyboard / blur behaviorはimplementation時にaccessibilityを含めて調整する。
 
-## 28. Floating Runnerのサイズ
+### Progress
 
-Floating Runnerはコンパクトにし、画面横幅いっぱいに広げない。
+Runnerのprogressは**現在のExecution segmentだけではなく、同じlogical daily work chain全体**を表す。
 
-Desktopでは概ね `400〜600px` 程度を目安とする。ただし固定値ではなく、Task名やViewportに応じて調整する。
+例として当初見積30分のTaskを10分実行してInterruptし、後からcontinuationを再Startして5分実行中なら、Runnerは`15:00 / 30分`、progress 50%相当を表示する。continuation開始時に`0 / 20分`へresetしない。
+
+- numeratorは同一logical daily work chainのvalid Execution実績の累積とする。
+- 割り込み先Taskの実績時間は元Taskのprogressへ含めない。
+- D-029で取り消されたcurrent Executionはvalid actualとして累積へ含めない。
+- 見積がある場合、progress ratioは累積actual / 当初見積を基本とする。
+- 当初見積へ到達 / 超過した場合、bar自体は100%でcapするがelapsed表示は増え続ける。例: `36:42 / 30分`。
+- 見積超過を強い赤色やflashで強調しない。必要なwarningはtime text等の控えめな表現に留める。
+- 見積がないTaskでもprogress barの物理領域を消さない。同じ高さ / 幅のneutral・mutedなtrackを表示し、elapsedに応じて根拠なくbarを伸ばさない。
+
+Day Tableのcontinuation行ではD-028に従いremaining estimateを表示できるため、Runnerのwhole-work progressとDay Tableのremaining estimateは別の表示semanticsとして共存する。
+
+### Execution actions
+
+主要execution actionはicon-onlyを基本とし、Tooltip / accessible labelを必須とする。
+
+- `↶`系: **未実行に戻す**。D-029に従い現在のactive Execution / 今回のStartだけを取り消す。Tooltip / accessible labelは「未実行に戻す」。
+- `↪`系: **Quick Interrupt**。D-028に従い`（割込）`をその場で生成して即Startする。Tooltip / accessible labelは「割り込みを開始」。pause iconは単なる停止と誤解しやすいため第一候補にしない。
+- `✓`系: **Complete**。primary actionとして右端へ置き、secondary action群との間に控えめなseparatorを設けてよい。
+
+Quick Interruptでは発生時刻のcurrent SectionをD-030に従って使用し、該当Sectionがない場合はSection未設定で作成する。
+
+Completeが成功するとactive ExecutionがなくなるためRunnerは消え、Section 22のruleに従って次の実行可能Taskへfocusする。次Taskは自動Startしない。
+
+## 28. Floating Runner Size / Minimize
+
+Floating Runnerはコンパクトにし、画面横幅いっぱいに広げない。Desktopでは概ね`400〜600px`程度を目安とし、通常状態は約480px前後をvisual prototypeのstarting pointとする。ただし固定値ではなく、Task名やViewportに応じて調整する。
+
+Runnerには初期designからminimize操作を用意する。minimizeは情報量を少し減らす操作ではなく、**Runner本体を完全に畳み、restore controlだけを残す**。
+
+通常状態:
+
+```text
+┌───────────────────────────────────────────────┐
+│ ▶ Task A                    18:00 / 30分   [⌄]│
+│ ███████████████████────────────────────       │
+│                               [↶] [↪] │ [✓]  │
+└───────────────────────────────────────────────┘
+```
+
+Minimized:
+
+```text
+                       [⌃]
+```
+
+- minimized中はTask名、timer、progress、`↶` / `↪` / `✓`をすべて隠す。
+- restore controlは32〜36px程度のround / rounded-squareをstarting pointとし、Tooltip / accessible labelを「実行中タスクを表示」とする。
+- minimized中にactive TaskがComplete等で終了した場合、restore controlも消える。
+- 次に別TaskをStartした場合もminimized preferenceを維持し、restore controlだけの状態から開始する。
+- 初期Desktop Webではexpanded / minimized preferenceをbrowser `localStorage`へ保存し、同一browserで復元する方向とする。account / device間syncは現段階では要求しない。
+
+exact icon glyph、pixel metrics、animation、mobile placementはvisual prototype / responsive designで調整する。
 
 ## 29. Border
 
@@ -478,7 +570,7 @@ Left Sidebar
 Task Controls
   - 新規Task
   - Filter
-  - 完了Task 表示 / 非表示
+  - 実行済み 表示 / 非表示
 ↓
 Day Table
   Header
@@ -500,6 +592,10 @@ Day Table
     - ノート
 ↓
 Floating Runner
+  - Task名 / 累積実績 / 当初見積
+  - Progress
+  - 未実行に戻す / Quick Interrupt / Complete
+  - Minimize
 ```
 
 Right Detail Paneは通常閉じている。Left Sidebar / Right Detail Paneの双方に開閉手段を用意する。
@@ -509,7 +605,7 @@ Right Detail Paneは通常閉じている。Left Sidebar / Right Detail Paneの�
 以下は今後設計する。
 
 - Right Detail Pane exact UX
-- Floating Runner exact content / interaction
+- Floating Runner exact icon glyph / pixel metrics / animation
 - Mobile UI
 - Tablet UI
 - Project画面
@@ -518,6 +614,7 @@ Right Detail Paneは通常閉じている。Left Sidebar / Right Detail Paneの�
 - Analytics画面
 - Settings画面
 - Section separator / grouping rowをSection列と併用するか
+- Section timeのextended-time input range / DST edge UX
 - exact initial column widths / minimum widths
 - continuation indicatorを追加するか
 - 開始見込時間のexact calculation
