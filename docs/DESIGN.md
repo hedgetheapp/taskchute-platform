@@ -222,6 +222,88 @@ Quick Interruptで自動生成するその日のTaskは、割り込みを開始�
 
 Section separator / grouping rowを追加表示するかは未確定とする。併用する場合もSection列の意味を置き換えず、視覚的groupingだけを担う。
 
+### 基本Section設定画面
+
+基本Section設定は、カードをSectionごとに分割せず、**Section名 / 開始時間 / 終了時間を並べるcompactなtable editor**を基本とする。開始時間がconfiguration orderのauthorityなので、manual reorder用drag handleや順序列は置かない。
+
+基本構成例:
+
+```text
+Section名       開始時間       終了時間
+─────────────────────────────────────
+朝              05:00          09:00    ×
+午前            09:00          12:00    ×
+昼              12:00          13:00    ×
+午後            13:00          18:00    ×
+夜              18:00          24:00    ×
+
+＋ Sectionを追加
+```
+
+初期SectionはD-030に従い、以下を用意する。
+
+| Section名 | 開始時間 | 終了時間 |
+| --- | --- | --- |
+| 朝 | 05:00 | 09:00 |
+| 午前 | 09:00 | 12:00 |
+| 昼 | 12:00 | 13:00 |
+| 午後 | 13:00 | 18:00 |
+| 夜 | 18:00 | 24:00 |
+
+これらは編集可能な初期値であり、ユーザーは後からrename、時間変更、追加、削除できる。
+
+#### Inline edit / autosave
+
+- Section名、開始時間、終了時間はcell内でinline editする。
+- Section名は空文字を許可しない。
+- 時間はkeyboard直接入力とtime pickerの双方を利用できる方向とする。
+- 画面全体の大きな「保存」buttonは置かない。
+- Enter、blur、time picker確定等で編集を確定し、configuration全体がvalidな場合にautosaveする。
+- 編集途中のinvalid stateはServerへ保存しない。
+- 保存中は必要に応じて控えめな`保存中…`、成功後は`保存済み`等のstatusを表示できる。
+- Escで編集中の変更を取り消せるinteractionを基本とする。
+
+#### Auto sort
+
+- Sectionは開始時間の昇順に自動sortする。
+- time fieldへの入力途中にrowを移動させない。編集確定とvalidation成功後に正しい位置へ移動する。
+- manual reorder UIは設けない。
+
+#### Overlap / gap validation
+
+- overlapは保存不可とし、問題のあるtime field付近にinline errorを表示する。
+- errorは可能なら`「朝（05:00–10:00）と時間が重複しています」`のように、衝突相手と範囲が分かる具体的な文言にする。
+- gapはD-030上の正常なconfigurationなのでwarningを表示しない。
+- current Sectionが存在しないgap時間を設定上のerrorとして扱わない。
+
+#### Section追加
+
+- `＋ Sectionを追加`でtable末尾にlocalな新規入力rowを表示する。
+- Section名 / 開始時間 / 終了時間が揃い、configuration全体のvalidationを通るまでServer上へ未完成Sectionを作成しない。
+- 作成成功後は開始時間順の位置へ自動sortする。
+
+#### Section削除
+
+- 各row右端に小型の`×` delete controlを置く。独立した「操作」列見出しは設けない。
+- `×`は枠付きprimary buttonにせず、muted grayの低優先度iconとして表示し、hover / focus時に視認性を高める。
+- 視覚的には小さくてもhit areaとaccessible label / Tooltip「Sectionを削除」を確保する。
+- 誤操作を避けるため削除前に確認を挟んでよい。
+- 削除によって過去のSection名 / placement / execution historyを消さないことはD-030に従う。
+
+#### Extended time表示
+
+Section時間はTaskChuteDay基準のlogical timeとして入力・表示する。
+
+- `24:00`未満は通常のtime valueだけを表示する。
+- `24:00`以上はextended-time valueを主表示とし、civil timeを**同じ行の括弧内補助表示**として添える。例: `29:00（翌05:00）`。
+- 括弧内の`翌05:00`はあくまで補助なので、main timeより小さいfont size / muted grayを使用する。
+- 補助表示の有無でrow / inputの縦幅を変えない。
+- TaskChuteDay boundaryが05:00の場合、翌03:00は`27:00（翌03:00）`、翌05:00は`29:00（翌05:00）`のように表示する。
+
+#### Rename / historical display
+
+Section名をrenameしても、過去のEntry / Execution / Review等で表示するSection名は当時の名称を維持する。設定画面では現在のSection名だけを編集し、historical rowまで現在名へ一括置換したように見せない。
+
 ## 17. 時間列
 
 時間系は以下を区別する。
@@ -612,9 +694,9 @@ Right Detail Paneは通常閉じている。Left Sidebar / Right Detail Paneの�
 - Calendar画面
 - Notes画面
 - Analytics画面
-- Settings画面
+- Settings画面（Section設定以外）
 - Section separator / grouping rowをSection列と併用するか
-- Section timeのextended-time input range / DST edge UX
+- Section logical timeのactual instant mapping / DST edge UX
 - exact initial column widths / minimum widths
 - continuation indicatorを追加するか
 - 開始見込時間のexact calculation
