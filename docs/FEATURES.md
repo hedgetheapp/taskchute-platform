@@ -13,15 +13,18 @@ Status values: Planned / In design / Implemented / Verified
 | Task / Entry identity | Implemented | separate stable UUIDv7 identityをruntimeへ実装。ID timestampはordering authorityにしない |
 | TaskChuteDay | Implemented | explicit timezone/boundary bootstrap、materialized interval/context、compatible DST semanticsをruntimeへ実装 |
 | Project | Implemented | CreateProject + optional Task project relationを実装 |
-| Section | In design | user-global stable persistence / bootstrapは実装。EntryのDay配置文脈として扱う。rename等を含むSection lifecycleは未実装 |
+| Section | In design | user-global stable persistence / bootstrapは実装。D-030で開始時間 / 終了時間、non-overlap、gap許容、current Section resolutionをApproved。time-range persistence / settings UI / resolutionは未実装 |
 | Mode | In design | D-026 Approved。ユーザー定義で意味を固定せず、1 Entryに0..1 Mode。persistence / management UIは未実装 |
 | Entry planning metadata | In design | D-026 Approved。見積時間・開始予定時間はその日のEntryごとのplanned value。開始予定はユーザー明示入力、開始見込はderived projection |
 | Today / DayBoard ordering | Implemented | explicit Entry order + ReorderEntries + placement revision conflict protectionを実装 |
-| Day Table interaction | In design | configurable columns、column resize / auto-fit / reorder / hide / pin、row focus、completed visibility等をDESIGNで設計中 |
+| Day Table interaction | In design | configurable columns、column resize / auto-fit / reorder / hide / pin、row focus、実行済みhistory visibility等をDESIGNで設計中 |
 | Start / Complete lifecycle | Implemented | current runtimeはplanned -> running -> completed、retry safety、active Execution max 1、no implicit interruptを実装 |
-| Interrupt / continuation | In design | D-028 Approved target。explicit Interruptでcurrent Executionをinterrupted終了し、割り込みTaskをStart、元Task continuationを直下生成。current runtimeは未実装で通常Startをreject |
+| Interrupt / continuation | In design | D-028 Approved target。explicit Interruptでcurrent Executionをinterrupted終了し、割り込みTaskをStart、元Task continuationを直下生成。Quick Interruptも同じexplicit interruption semanticsを利用。current runtimeは未実装で通常Startをreject |
+| Quick Interrupt | In design | D-028 Approved。実行中Taskから`（割込）`のその日のTaskを即時生成・Startして履歴へ残す。発生時刻のcurrent Sectionへ配置し、nested Quick Interruptも許容。exact persistence / command contractは未決 |
+| Revert current Start | In design | D-029 Approved。「未実行に戻す」は現在activeなExecution / 今回のStartだけを取消対象とし、以前のvalid actualや割り込みhistoryは維持。current runtimeは未実装 |
+| Floating Runner | In design | current running TaskをMain content下部付近のcompact floating UIで継続表示。progress、inline title edit、Day Table navigation、Quick Interrupt / revert / Complete、minimize behaviorをDESIGNで定義 |
 | Next Entry projection | Implemented | explicit order上のplanned Entryからlifecycle-aware Nextを算出。Next以外のplanned EntryもStart可能 |
-| Historical fact foundation | In design | TaskChuteDay interval context + Execution factは実装。D-028でinterrupt outcome / continuation Review baselineの一部semanticsをApproved。exact metadata snapshot等は未決 |
+| Historical fact foundation | In design | TaskChuteDay interval context + Execution factは実装。D-028でinterrupt outcome / continuation Review baseline、D-029でcurrent Start取消時に過去actualを消さないsemanticsをApproved。exact metadata snapshot / cancelled representation等は未決 |
 | First runtime bootstrap slice | Implemented | auth、current TaskChuteDay、CreateProject、AddTaskToDay、DayBoard / reload recoveryをPR #3でmerge |
 | First Server + Web vertical slice | Implemented | PR #3 + #5でD-013 scopeを実装・main統合。local evidence 67 PASS、remote/deployed verificationはNOT_RUN |
 | Web app | In design | React + Vite SPAとFirst vertical slice UIは実装。broader Product UI / responsive / routing / offline等は未決 |
@@ -49,7 +52,7 @@ Status values: Planned / In design / Implemented / Verified
 | Routine foundation | In design | RoutineDefinition -> RoutineOccurrence -> Entry Approved。D-027でcross-day reuseの主要mechanismとして位置づけ |
 | Routine defaults / day override | In design | Routineは見積・Mode・Link等のreusable defaultを供給でき、その日の文脈は個別変更可能。past contextをretroactiveに変更しない |
 | Routine generation / streak | Planned | exact rule / achievement semanticsは未決 |
-| Review | Planned | historical factsからのprojection。D-028によりinterrupt continuationの見積は当初見積を1回だけbaseline集計し、actualは実行区間を合算する方向をApproved |
+| Review | Planned | historical factsからのprojection。D-028によりinterrupt continuationの見積は当初見積を1回だけbaseline集計し、actualはvalid実行区間を合算。D-029で取り消したcurrent Executionは通常集計から除外 |
 | Keyboard-first Day interaction | In design | 優先度高。row focusをfoundationとし、exact shortcut mapping / editing / navigation / execution bindingsは後続設計 |
 | Calendar | Planned | Domain / historyからのprojection |
 | Timeline | Planned | planned / actual viewのprojection |
