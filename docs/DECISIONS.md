@@ -395,7 +395,37 @@ TaskChuteの実行ではuser全体でactive Execution最大1つを維持しつ�
 - Reviewのactual durationは、interrupt前後を含む同一continuation chainのExecution実績を合算できるようにする。
 - Interrupt元のExecutionと通常Completeは別のhistorical outcomeとして区別する。
 - 割り込み先BをCompleteしてもcontinuation Aを自動Startしない。
+- Quick Interruptは明示Interruptの一形態とし、running Entryから即時に割り込み作業を記録できるようにする。Quick Interruptではdefault title `（割込）` のその日のTask / Entryを生成して直ちにStartし、元TaskのExecutionはinterruptedとして終了し、元Taskのcontinuationを通常のInterruptと同様に生成する。
+- Quick Interruptで生成したTaskも通常のその日のTaskと同様にExecution / historical logへ残す。titleは実行中を含め後から変更でき、renameしてもQuick Interrupt由来であることやexecution historyを失わない。
+- Quick Interruptで生成するEntryのSectionはD-030に従い、Interruptを実行した時刻に対応するcurrent Sectionとする。該当SectionがなければSection未設定を許容する。
+- Quick Interrupt実行中にさらにQuick Interruptすることを許容し、人工的なnesting depth limitを設けない。各割り込みはそれぞれ独立したその日のwork chain / historical executionとして扱い、完了後も外側のcontinuationを自動Startしない。
 
-当初見積を使い切った後も未完了の場合のremaining estimate、明示re-estimationとそのReview semantics、Interrupt commandのexact atomicity / retry contract、continuation chainのphysical persistence modelは後続設計とする。
+当初見積を使い切った後も未完了の場合のremaining estimate、明示re-estimationとそのReview semantics、Interrupt / Quick Interrupt commandのexact atomicity / retry contract、continuation chainおよびQuick Interrupt originのphysical persistence model、Quick Interrupt生成時のSection以外のmetadata defaultは後続設計とする。
 
 D-015の「別Entryがrunning中の通常Startはrejectする」は維持する。D-028はその通常Startを暗黙interruptへ変更するものではなく、別の明示Interrupt operationを定義する。D-013のFirst vertical sliceがInterruptを含まないこと、およびcurrent implementationが通常Startをrejectすることも変更しない。
+
+## D-029 — Revert the current Start without erasing earlier execution history
+Status: Approved
+
+実行中Taskに対する「未実行に戻す」は、そのTaskのlogical work chain全体を巻き戻す操作ではなく、**現在activeなExecution / 今回のStartだけを取り消す操作**として扱う。
+
+- 対象は現在activeなExecutionだけとし、そのExecutionを通常のactual / Review集計から除外した上で、現在のEntryを未実行状態へ戻す。
+- 同じlogical work chainにInterrupt前等の過去のvalid Executionが存在する場合、それらは維持する。continuationを再Startした後に今回のStartを取り消しても、以前に確定したactualは失わない。
+- Quick Interruptで生成したTaskのactive Executionにも同じルールを適用する。Quick Interruptの今回のStartを取り消した場合、そのQuick Interrupt Task / Entry自体は未実行として残し、元Taskがinterruptedになったhistorical factや元Task continuationを巻き戻さない。
+- 「未実行に戻す」によって別Taskを自動Startしない。
+- D-016に従い、取消されたExecutionを参照不能にする破壊的hard deleteを前提としない。実行開始後にユーザーが取り消したことを表現・監査できるhistorical representationを持つ方向とするが、exact outcome名、DB表現、retention、command atomicity / retry contractは後続設計とする。
+
+D-013のFirst vertical sliceがCancel / Reopenを含まないこと、およびcurrent implementationがこの操作を未実装であることは変更しない。
+
+## D-030 — Time-ranged Section semantics and current Section resolution
+Status: Approved
+
+Sectionはその日のEntry placement contextとしてstable identityを持つとともに、ユーザー設定として明示的な**開始時間と終了時間**を持つ。
+
+- Sectionの時間範囲は`[開始時間, 終了時間)`として扱い、開始時刻を含み終了時刻を含まない。
+- 同じSection configuration内で複数Sectionの時間範囲をoverlapさせない。ある時刻が複数Sectionへ同時に属する設定はrejectする。
+- Section間に時間のgapが存在することは許容する。ある時刻がどのSection範囲にも属さない場合、current Sectionは未設定として扱う。
+- current Sectionを必要とする操作では、その操作時刻が属するSectionを解決する。Quick InterruptではInterrupt発生時刻を使ってcurrent Sectionを解決し、自動生成EntryをそのSectionへ配置する。
+- あるEntryのSection placementが確定した後にSection設定を変更しても、過去のEntry placement / execution historyを黙って別Sectionへretroactiveに再分類しない。
+
+Section時間をTaskChuteDay / canonical timezone上のlocal timeへexactにmappingする方法、`24:00`を超えるextended-time inputの許容range、DST transition時のSection resolution、Section設定変更時のfuture Entryへの適用時点はD-017 / D-022と整合させて後続設計する。
