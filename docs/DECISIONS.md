@@ -420,12 +420,18 @@ D-013のFirst vertical sliceがCancel / Reopenを含まないこと、およびc
 ## D-030 — Time-ranged Section semantics and current Section resolution
 Status: Approved
 
-Sectionはその日のEntry placement contextとしてstable identityを持つとともに、ユーザー設定として明示的な**開始時間と終了時間**を持つ。
+Sectionはその日のEntry placement contextとしてstable identityを持つとともに、ユーザー設定として明示的な**Section名、開始時間、終了時間**を持つ。
 
 - Sectionの時間範囲は`[開始時間, 終了時間)`として扱い、開始時刻を含み終了時刻を含まない。
 - 同じSection configuration内で複数Sectionの時間範囲をoverlapさせない。ある時刻が複数Sectionへ同時に属する設定はrejectする。
 - Section間に時間のgapが存在することは許容する。ある時刻がどのSection範囲にも属さない場合、current Sectionは未設定として扱う。
+- Sectionの表示順 / configuration orderは開始時間の昇順から決定し、独立したmanual orderを持たせない。
 - current Sectionを必要とする操作では、その操作時刻が属するSectionを解決する。Quick InterruptではInterrupt発生時刻を使ってcurrent Sectionを解決し、自動生成EntryをそのSectionへ配置する。
+- Section時間は、そのEntryが属するTaskChuteDayのlogical timeとして解釈する。TaskChuteDay boundaryが05:00の場合、そのlogical dayの時間表現は`05:00`から翌日のboundaryを表す`29:00`までを扱い、翌03:00は`27:00`として表現する。
+- SectionはそのTaskChuteDayのlogical interval内に収まるよう設定する。`24:00`を超える時間はextended-time notationで表現するが、actual instant自体を架空の時刻として保存することを意味しない。
+- Section名は変更可能とする。同じstable Section identityをrenameしても、過去のEntry / Execution等で表示するhistorical Section名を現在名へretroactiveに置換しない。
+- Sectionを現在の基本configurationから削除しても、そのSectionを参照する過去のEntry / Execution / Review用historical contextを失わない。physical archive / tombstone / snapshot方式は後続persistence設計とする。
 - あるEntryのSection placementが確定した後にSection設定を変更しても、過去のEntry placement / execution historyを黙って別Sectionへretroactiveに再分類しない。
+- 初期Product configurationとして、`朝 05:00–09:00`、`午前 09:00–12:00`、`昼 12:00–13:00`、`午後 13:00–18:00`、`夜 18:00–24:00`を用意する。これは編集可能な初期値であり、Section間の完全coverageを要求するものではない。
 
-Section時間をTaskChuteDay / canonical timezone上のlocal timeへexactにmappingする方法、`24:00`を超えるextended-time inputの許容range、DST transition時のSection resolution、Section設定変更時のfuture Entryへの適用時点はD-017 / D-022と整合させて後続設計する。
+Section時間をcanonical timezoneのactual instantへ解決するexact algorithm、DST transition時のSection resolution、Section設定変更時のfuture Entryへの適用時点、historical Section名を保持するphysical snapshot / versioning方式、Section削除のarchive / tombstone方式はD-016 / D-017 / D-022と整合させて後続設計する。
