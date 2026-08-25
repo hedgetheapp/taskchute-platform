@@ -165,6 +165,8 @@ D-015でCore Domain foundationsはApproved済み。
 
 D-022によりinitial runtime entity IDはUUIDv7、First slice Sectionはuser-global stable entityとしてApproved済み。
 
+D-028でexplicit Interrupt / continuationの主要semantics、D-029でcurrent Start取消semantics、D-030でSection名・開始/終了・開始時間順・non-overlap・gap許容・TaskChuteDay基準extended time・初期Section・rename/delete時のhistorical context preservationはApproved済み。
+
 Current implementationではEntry `position`を同一user / TaskChuteDay / Section内のexplicit integer orderとして保存し、AddTaskToDayでappend、ReorderEntriesでrequested orderへ更新する。Reorderのcurrent physical implementationはset-based `json_each` updateだが、これを長期Domain Decisionへ昇格しない。
 
 Current lifecycle implementation fact:
@@ -178,16 +180,17 @@ Current lifecycle implementation fact:
 以下はOpen:
 
 - exact Project fields beyond current minimum
-- exact Section fields beyond current minimum
+- Section time-range / rename / archive / historical-name preservationのphysical persistence model
 - EntryをTaskChuteDay / Section間で移動するcommand / transaction algorithm
 - future day-specific Section occurrence / override capabilityが必要になる条件
+- Section設定変更時のfuture Entryへの適用時点
 - completed stateを将来Execution historyからderiveするか、stored lifecycle stateとして維持するか
 - Reopen semantics
 - Pause / Resume representation
-- explicit Interrupt operation semantics
-- interrupt continuation relationのexact model
+- Interrupt / Quick Interrupt commandのexact atomicity / retry contract
+- interrupt continuation relationのexact physical model
 - Cancel semantics
-- destructive delete / archive / tombstone UX
+- destructive delete / archive / tombstone UX for entities beyond the Approved Section historical-preservation requirement
 
 ## TaskChuteDay
 
@@ -195,13 +198,16 @@ D-017でlogical TaskChuteDayとcontinuous interval semanticsはApproved済み。
 
 D-022によりinitial bootstrapではcanonical IANA timezone / boundaryを明示入力し、暗黙のProduct defaultを適用しない。ambiguous / nonexistent local timeのinitial disambiguationはTemporal-compatibleな`compatible` semanticsとする。
 
+D-030によりSection時間はTaskChuteDay上のlogical timeとして扱い、`24:00`を超えるSection時間はextended-time notationで表現できることがApproved済み。
+
 Current implementationではactual resolved boundary instantでday membershipを判定し、start / next-day endを別々にtimezone ruleからresolveする。materialized intervalとestablishment timezone / boundary contextを保存する。
 
 PR #5ではactive ExecutionをTaskChuteDay境界で分割せず、current dayへ切り替わった後もsame Executionとしてprojection / Completeできる。
 
 以下はOpen:
 
-- extended-time notationの入力range
+- Section以外を含むgeneral extended-time notationの入力range / UX
+- Section logical timeをcanonical timezoneのactual instantへ解決するexact algorithm / DST transition behavior
 - timezone selection / onboarding UX
 - travel / timezone change behavior
 - boundary / timezone policy変更のeffective timing UX
@@ -232,6 +238,8 @@ Reviewをhistorical factsからのprojectionとする方向はD-016でApproved�
 
 D-022によりFirst sliceではmaterialized TaskChuteDayのactual interval / establishment contextを保持し、destructive hard-delete APIは提供しない。
 
+D-030によりSection rename/delete後も過去のEntry / Execution / Review用historical contextで当時のSection名を保持し、現在名へretroactiveに置換しないことはApproved済み。
+
 Current runtimeではExecutionの`id / app_user_id / entry_id / started_at / ended_at / created_at`を保存する。Execution時点metadata snapshotのexact fieldsはまだ未決。
 
 以下はOpen:
@@ -239,6 +247,7 @@ Current runtimeではExecutionの`id / app_user_id / entry_id / started_at / end
 - historical contextをsnapshot / versioned reference等のどの方式で保持するか
 - Executionに保存するProject / Section / Task contextのexact fields
 - Project移動 / rename / delete後のReview display semantics
+- Section historical name / referenceを実現するexact snapshot / versioning persistence
 - Routine achievement / streak calculation rule
 - logical day / week / month集計のexact timezone semantics
 - qualitative Review Document model / UX
