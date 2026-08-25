@@ -13,7 +13,7 @@ Status values: Planned / In design / Implemented / Verified
 | Task / Entry identity | Implemented | separate stable UUIDv7 identityをruntimeへ実装。ID timestampはordering authorityにしない |
 | TaskChuteDay | Implemented | explicit timezone/boundary bootstrap、materialized interval/context、compatible DST semanticsをruntimeへ実装 |
 | Project | Implemented | CreateProject + optional Task project relationを実装 |
-| Section | In design | user-global stable persistence / bootstrapは実装。D-030で開始時間 / 終了時間、non-overlap、gap許容、current Section resolutionをApproved。time-range persistence / settings UI / resolutionは未実装 |
+| Section | In design | user-global stable persistence / bootstrapは実装。D-030でSection名・開始/終了、開始時間順auto order、non-overlap、gap許容、TaskChuteDay基準extended time、初期基本Section、rename/delete時のhistorical context preservationをApproved。time-range persistence / settings UI / resolutionは未実装 |
 | Mode | In design | D-026 Approved。ユーザー定義で意味を固定せず、1 Entryに0..1 Mode。persistence / management UIは未実装 |
 | Entry planning metadata | In design | D-026 Approved。見積時間・開始予定時間はその日のEntryごとのplanned value。開始予定はユーザー明示入力、開始見込はderived projection |
 | Today / DayBoard ordering | Implemented | explicit Entry order + ReorderEntries + placement revision conflict protectionを実装 |
@@ -24,7 +24,7 @@ Status values: Planned / In design / Implemented / Verified
 | Revert current Start | In design | D-029 Approved。「未実行に戻す」は現在activeなExecution / 今回のStartだけを取消対象とし、以前のvalid actualや割り込みhistoryは維持。current runtimeは未実装 |
 | Floating Runner | In design | current running TaskをMain content下部付近のcompact floating UIで継続表示。progress、inline title edit、Day Table navigation、Quick Interrupt / revert / Complete、minimize behaviorをDESIGNで定義 |
 | Next Entry projection | Implemented | explicit order上のplanned Entryからlifecycle-aware Nextを算出。Next以外のplanned EntryもStart可能 |
-| Historical fact foundation | In design | TaskChuteDay interval context + Execution factは実装。D-028でinterrupt outcome / continuation Review baseline、D-029でcurrent Start取消時に過去actualを消さないsemanticsをApproved。exact metadata snapshot / cancelled representation等は未決 |
+| Historical fact foundation | In design | TaskChuteDay interval context + Execution factは実装。D-028でinterrupt outcome / continuation Review baseline、D-029でcurrent Start取消時に過去actualを消さないsemantics、D-030でSection rename/delete時にhistorical Section contextを失わないことをApproved。exact physical snapshot / cancelled representation等は未決 |
 | First runtime bootstrap slice | Implemented | auth、current TaskChuteDay、CreateProject、AddTaskToDay、DayBoard / reload recoveryをPR #3でmerge |
 | First Server + Web vertical slice | Implemented | PR #3 + #5でD-013 scopeを実装・main統合。local evidence 67 PASS、remote/deployed verificationはNOT_RUN |
 | Web app | In design | React + Vite SPAとFirst vertical slice UIは実装。broader Product UI / responsive / routing / offline等は未決 |
