@@ -397,7 +397,7 @@ TaskChuteの実行ではuser全体でactive Execution最大1つを維持しつ�
 - 割り込み先BをCompleteしてもcontinuation Aを自動Startしない。
 - Quick Interruptは明示Interruptの一形態とし、running Entryから即時に割り込み作業を記録できるようにする。Quick Interruptではdefault title `（割込）` のその日のTask / Entryを生成して直ちにStartし、元TaskのExecutionはinterruptedとして終了し、元Taskのcontinuationを通常のInterruptと同様に生成する。
 - Quick Interruptで生成したTaskも通常のその日のTaskと同様にExecution / historical logへ残す。titleは実行中を含め後から変更でき、renameしてもQuick Interrupt由来であることやexecution historyを失わない。
-- Quick Interruptで生成するEntryのSectionはD-030に従い、Interruptを実行した時刻に対応するcurrent Sectionとする。該当SectionがなければSection未設定を許容する。
+- Quick Interruptで生成するEntryのSectionはD-030に従い、Interruptを実行した時刻に対応するcurrent Sectionとする。TaskChuteDay内のvalid Section configurationはgapを持たないため、current Sectionを必ず解決する。
 - Quick Interrupt実行中にさらにQuick Interruptすることを許容し、人工的なnesting depth limitを設けない。各割り込みはそれぞれ独立したその日のwork chain / historical executionとして扱い、完了後も外側のcontinuationを自動Startしない。
 
 当初見積を使い切った後も未完了の場合のremaining estimate、明示re-estimationとそのReview semantics、Interrupt / Quick Interrupt commandのexact atomicity / retry contract、continuation chainおよびQuick Interrupt originのphysical persistence model、Quick Interrupt生成時のSection以外のmetadata defaultは後続設計とする。
@@ -423,15 +423,24 @@ Status: Approved
 Sectionはその日のEntry placement contextとしてstable identityを持つとともに、ユーザー設定として明示的な**Section名、開始時間、終了時間**を持つ。
 
 - Sectionの時間範囲は`[開始時間, 終了時間)`として扱い、開始時刻を含み終了時刻を含まない。
-- 同じSection configuration内で複数Sectionの時間範囲をoverlapさせない。ある時刻が複数Sectionへ同時に属する設定はrejectする。
-- Section間に時間のgapが存在することは許容する。ある時刻がどのSection範囲にも属さない場合、current Sectionは未設定として扱う。
+- 基本Section configurationは、そのユーザーが設定したTaskChuteDayのlogical interval全体を**gapなく、overlapなく100% coverする**。TaskChuteDay内の任意の時刻には常にexactly one current Sectionが存在する。
+- 最初のSection開始はTaskChuteDay開始、最後のSection終了はTaskChuteDay終了と一致し、隣接Sectionでは前Section終了と次Section開始が一致する。
 - Sectionの表示順 / configuration orderは開始時間の昇順から決定し、独立したmanual orderを持たせない。
 - current Sectionを必要とする操作では、その操作時刻が属するSectionを解決する。Quick InterruptではInterrupt発生時刻を使ってcurrent Sectionを解決し、自動生成EntryをそのSectionへ配置する。
 - Section時間は、そのEntryが属するTaskChuteDayのlogical timeとして解釈する。TaskChuteDay boundaryが05:00の場合、そのlogical dayの時間表現は`05:00`から翌日のboundaryを表す`29:00`までを扱い、翌03:00は`27:00`として表現する。
-- SectionはそのTaskChuteDayのlogical interval内に収まるよう設定する。`24:00`を超える時間はextended-time notationで表現するが、actual instant自体を架空の時刻として保存することを意味しない。
+- `24:00`を超えるSection時間はextended-time notationで表現するが、actual instant自体を架空の時刻として保存することを意味しない。
 - Section名は変更可能とする。同じstable Section identityをrenameしても、過去のEntry / Execution等で表示するhistorical Section名を現在名へretroactiveに置換しない。
+- Section時間を変更しても、過去TaskChuteDayでhistorically establishedされたSection名・開始時間・終了時間を現在設定へretroactiveに置換しない。過去DayのSection summary / capacityも当時のSection intervalを基準に再現できるようにする。
 - Sectionを現在の基本configurationから削除しても、そのSectionを参照する過去のEntry / Execution / Review用historical contextを失わない。physical archive / tombstone / snapshot方式は後続persistence設計とする。
-- あるEntryのSection placementが確定した後にSection設定を変更しても、過去のEntry placement / execution historyを黙って別Sectionへretroactiveに再分類しない。
-- 初期Product configurationとして、`朝 05:00–09:00`、`午前 09:00–12:00`、`昼 12:00–13:00`、`午後 13:00–18:00`、`夜 18:00–24:00`を用意する。これは編集可能な初期値であり、Section間の完全coverageを要求するものではない。
+- Section追加は既存Sectionの時間帯を分割して行い、追加後もgap / overlapを作らない。Section削除は原則として削除Sectionの時間帯を次Sectionへ吸収し、最後のSectionを削除する場合は前Sectionへ吸収する。
+- Section削除時、削除Sectionに属する未実行Entryは吸収先Sectionへ移動する。completed / interrupted等のhistorical rowは当時のSection contextを保持し、吸収先へretroactiveに移動しない。
+- Sectionの時間境界を編集するときは隣接Sectionとの共有境界として扱える。Day boundary変更で端Sectionだけを伸縮してvalid configurationを維持できる場合は端Sectionを追従させられるが、内部Section境界を追い越す等でvalidityを壊す変更は黙って再構成せずrejectする。
+- EntryはSection未設定を許容する。Section未設定は「今日行うが、実行時間帯はまだ決めていない」placementとして扱う。Section未設定EntryをStartすると、そのStart時刻のcurrent SectionへEntryを配置してから実行開始する。
+- completed / interrupted等、既にhistorical executionを持つrowは後からSection間移動や並び替えの対象にしない。未実行EntryはSection内並び替え、Section間移動を許容する。
+- Section summaryで扱うTask件数にはQuick Interruptで生成されたTask / Entryを通常Taskと同様に含め、Interruptで終了したhistorical rowも実行済み件数として扱える。
+- Section summaryの合計見積は、そのSectionに所属するEntryの見積を合計するplanning指標とし、実行済みになっても当該見積を消さない。合計見積がSection容量を超える場合はcapacity overflowとしてUIで明示できる。
+- Section capacityのactual使用量は、Taskの所属Sectionではなく**Executionのactual intervalと各Sectionのactual intervalとのoverlap duration**で計上する。ExecutionがSection境界をまたぐ場合は各Sectionへoverlap分だけ配分し、Execution自体を分割しない。したがってSection capacity usageは0〜100%の範囲であり、所属Taskのspilloverは別概念とする。
 
-Section時間をcanonical timezoneのactual instantへ解決するexact algorithm、DST transition時のSection resolution、Section設定変更時のfuture Entryへの適用時点、historical Section名を保持するphysical snapshot / versioning方式、Section削除のarchive / tombstone方式はD-016 / D-017 / D-022と整合させて後続設計する。
+05:00 boundaryのvisual/default exampleとして、`朝 05:00–09:00`、`午前 09:00–12:00`、`昼 12:00–13:00`、`午後 13:00–18:00`、`夜 18:00–29:00（翌05:00）`を利用できる。ただしTaskChuteDay boundary自体はユーザー設定であり05:00へ固定しない。D-022のinitial bootstrapでuser-selected boundaryとinitial Section configurationをどのように提示・生成するかのexact onboardingは未決とする。
+
+Section時間をcanonical timezoneのactual instantへ解決するexact algorithm、DST transition時のSection resolution、Section設定変更時のfuture Entryへの適用時点、historical Section versionを保持するphysical snapshot / versioning方式、Section削除のarchive / tombstone方式、Section icon / accentのphysical persistenceはD-016 / D-017 / D-022と整合させて後続設計する。
