@@ -132,7 +132,7 @@ Current implementation fact:
 - Client state / Server-state management libraryを追加する条件
 - responsive / adaptive layout scope
 - mobile browserでのinteraction方針
-- final drag-and-drop等のordering UX
+- final drag-and-drop library / implementation detail
 - PWA install support
 - Web offline capabilityをいつ含めるか
 - service worker / cache strategy
@@ -165,7 +165,7 @@ D-015でCore Domain foundationsはApproved済み。
 
 D-022によりinitial runtime entity IDはUUIDv7、First slice Sectionはuser-global stable entityとしてApproved済み。
 
-D-028でexplicit Interrupt / continuationの主要semantics、D-029でcurrent Start取消semantics、D-030でSection名・開始/終了・開始時間順・non-overlap・gap許容・TaskChuteDay基準extended time・初期Section・rename/delete時のhistorical context preservationはApproved済み。
+D-028でexplicit Interrupt / continuationの主要semantics、D-029でcurrent Start取消semantics、D-030でSection名・開始/終了、TaskChuteDay全体のgapなしcoverage、時間順、TaskChuteDay基準extended time、current Section resolution、SectionなしEntryのStart時配置、historical Section context preservation、Section時間帯とExecution overlapによる容量消費はApproved済み。
 
 Current implementationではEntry `position`を同一user / TaskChuteDay / Section内のexplicit integer orderとして保存し、AddTaskToDayでappend、ReorderEntriesでrequested orderへ更新する。Reorderのcurrent physical implementationはset-based `json_each` updateだが、これを長期Domain Decisionへ昇格しない。
 
@@ -180,10 +180,12 @@ Current lifecycle implementation fact:
 以下はOpen:
 
 - exact Project fields beyond current minimum
-- Section time-range / rename / archive / historical-name preservationのphysical persistence model
+- Section time-range / icon / accent / archive / historical-version preservationのphysical persistence model
+- Section summary / collapse preferenceのphysical persistenceとaccount/device syncを将来行うか
 - EntryをTaskChuteDay / Section間で移動するcommand / transaction algorithm
 - future day-specific Section occurrence / override capabilityが必要になる条件
 - Section設定変更時のfuture Entryへの適用時点
+- initial bootstrap / onboardingでuser-selected TaskChuteDay boundaryとdefault Section templateをどう整合させるか
 - completed stateを将来Execution historyからderiveするか、stored lifecycle stateとして維持するか
 - Reopen semantics
 - Pause / Resume representation
@@ -198,7 +200,7 @@ D-017でlogical TaskChuteDayとcontinuous interval semanticsはApproved済み。
 
 D-022によりinitial bootstrapではcanonical IANA timezone / boundaryを明示入力し、暗黙のProduct defaultを適用しない。ambiguous / nonexistent local timeのinitial disambiguationはTemporal-compatibleな`compatible` semanticsとする。
 
-D-030によりSection時間はTaskChuteDay上のlogical timeとして扱い、`24:00`を超えるSection時間はextended-time notationで表現できることがApproved済み。
+D-030によりSection時間はTaskChuteDay上のlogical timeとして扱い、Section configurationはTaskChuteDay全体をgapなくcoverする。`24:00`を超えるSection時間はextended-time notationで表現できることがApproved済み。
 
 Current implementationではactual resolved boundary instantでday membershipを判定し、start / next-day endを別々にtimezone ruleからresolveする。materialized intervalとestablishment timezone / boundary contextを保存する。
 
@@ -211,6 +213,7 @@ PR #5ではactive ExecutionをTaskChuteDay境界で分割せず、current dayへ
 - timezone selection / onboarding UX
 - travel / timezone change behavior
 - boundary / timezone policy変更のeffective timing UX
+- userがTaskChuteDay boundaryを変更した際、内部Section境界と衝突する場合のexact transaction / recovery UX
 - future TaskChuteDayをいつmaterialize / historically freezeするか
 - per-day boundary override
 - work-shift / profile機能
@@ -238,7 +241,7 @@ Reviewをhistorical factsからのprojectionとする方向はD-016でApproved�
 
 D-022によりFirst sliceではmaterialized TaskChuteDayのactual interval / establishment contextを保持し、destructive hard-delete APIは提供しない。
 
-D-030によりSection rename/delete後も過去のEntry / Execution / Review用historical contextで当時のSection名を保持し、現在名へretroactiveに置換しないことはApproved済み。
+D-030によりSection rename/delete/time変更後も過去のEntry / Execution / Review用historical contextで当時のSection名と時間帯を保持し、現在設定へretroactiveに置換しないことはApproved済み。
 
 Current runtimeではExecutionの`id / app_user_id / entry_id / started_at / ended_at / created_at`を保存する。Execution時点metadata snapshotのexact fieldsはまだ未決。
 
@@ -247,7 +250,7 @@ Current runtimeではExecutionの`id / app_user_id / entry_id / started_at / end
 - historical contextをsnapshot / versioned reference等のどの方式で保持するか
 - Executionに保存するProject / Section / Task contextのexact fields
 - Project移動 / rename / delete後のReview display semantics
-- Section historical name / referenceを実現するexact snapshot / versioning persistence
+- Section historical name / time range / referenceを実現するexact snapshot / versioning persistence
 - Routine achievement / streak calculation rule
 - logical day / week / month集計のexact timezone semantics
 - qualitative Review Document model / UX
