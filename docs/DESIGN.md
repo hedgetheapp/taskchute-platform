@@ -32,13 +32,13 @@ Notionそのものを再現するのではなく、TaskChuteの時間管理・�
 
 実行中タスクは他の状態より視覚的優先度を高くする。
 
-### 2.3 一日の流れを分断しない
+### 2.3 一日の流れをSectionで把握する
 
-Morning / Day / Evening等のSectionごとに独立したカードや別テーブルを作らない。
+一日のタスク全体は**1つの連続したDay Table**として扱うが、TaskChuteDay上の時間帯を素早く把握できるよう、各Sectionの先頭にSection summary rowを表示する。
 
-一日のタスク全体を**1つの連続したDay Table**として表示する。Sectionは各Task RowのSection列で確認できることを基本とする。
+Sectionごとに独立したCard / 別Tableへ分割せず、Section summary rowとその配下のTask Rowを同じDay Table内で連続表示する。
 
-追加のSection separator / grouping rowを併用するかは未確定とし、採用する場合も同じDay Table内の視覚的groupingに限定する。
+Section summary rowは単なる装飾separatorではなく、Section時間帯、Task件数、見積合計、Section容量のactual使用状況を確認する情報行として扱う。
 
 ## 3. カラー
 
@@ -66,9 +66,13 @@ Morning / Day / Evening等のSectionごとに独立したカードや別テー�
 
 ### 3.3 Sectionカラー
 
-Sectionを色で補助する場合は、非常に薄い背景色または小さなカラーインジケータに留める。
+SectionはユーザーがSection単位でiconとaccent colorを設定できる方向とする。
 
-Section全体を強い色で塗りつぶさない。
+- accentは主にSection iconとSection名へ適用する。
+- 時間帯、Task件数、見積、容量bar等のsummary情報は原則neutral colorを維持する。
+- defaultはmuted gray系とし、ユーザーが色指定しなくてもSectionが過度に目立たないようにする。
+- Section row全体を強いaccent colorで塗りつぶさない。
+- iconとSection名へ同じaccentを適用し、icon color / text colorを別々に細分化した設定は初期scopeで必須にしない。
 
 ## 4. タイポグラフィ
 
@@ -139,7 +143,7 @@ Day Table上部にタスク操作領域を配置する。
 
 主な要素は、新しいタスクを入力、フィルター、追加、**実行済みを表示 / 非表示**、その他操作。
 
-画面下部に別の「タスクを追加」領域は設けず、タスク追加操作は上部へ集約する。
+画面下部に別の「タスクを追加」領域は設けず、タスク追加操作は上部へ集約する。Section summary rowにはそのSectionへ直接Taskを追加するcompactな`＋`操作を併用できる。
 
 ## 11. Day Table
 
@@ -150,6 +154,8 @@ Day TableはTaskChuteの中心UIである。一日のタスクを**単一のテ�
 - Table全体がViewport幅を超える場合は横スクロールを許容し、列を自動的に消さない。
 - 実行済みhistory rowは表示 / 非表示を切り替えられる。初期状態は表示とする。
 - Sectionごとに別Tableや独立Cardへ分割しない。
+- 通常SectionはTaskが0件でもSection summary rowを表示する。空Sectionであること自体を一日の余白として把握できるようにする。
+- Section未設定Entryが存在する場合だけ、通常Sectionより上に特殊な`Sectionなし` groupを表示する。
 
 ## 12. Table Header / Default Columns
 
@@ -216,31 +222,110 @@ D-026に従い、Modeはユーザー定義で意味をProduct側に固定しな�
 
 Sectionはその日のEntryの配置文脈として独立列に表示する。
 
-D-030に従い、Section設定はSection名に加えて開始時間 / 終了時間を持つ。時間範囲は`[開始, 終了)`で、重複するSection設定は許可しない。Section間のgapは許容し、現在時刻がどのSectionにも属さない場合はcurrent Section未設定として扱う。
+D-030に従い、基本Section configurationはユーザー設定のTaskChuteDay全体をgap / overlapなくcoverする。Section順序は時間順から決まり、manual Section reorderは持たない。
 
 Quick Interruptで自動生成するその日のTaskは、割り込みを開始した時刻のcurrent Sectionへ配置する。元TaskのSectionを単純copyする挙動にはしない。
 
-Section separator / grouping rowを追加表示するかは未確定とする。併用する場合もSection列の意味を置き換えず、視覚的groupingだけを担う。
+### Section summary row
 
-### 基本Section設定画面
-
-基本Section設定は、カードをSectionごとに分割せず、**Section名 / 開始時間 / 終了時間を並べるcompactなtable editor**を基本とする。開始時間がconfiguration orderのauthorityなので、manual reorder用drag handleや順序列は置かない。
+各通常Sectionの先頭に、Day Table全列を横断するSection summary rowを表示する。Task Rowと同じ列へ情報を無理に割り当てず、summary row専用のcompact layoutを持つ。
 
 基本構成例:
 
 ```text
-Section名       開始時間       終了時間
-─────────────────────────────────────
-朝              05:00          09:00    ×
-午前            09:00          12:00    ×
-昼              12:00          13:00    ×
-午後            13:00          18:00    ×
-夜              18:00          24:00    ×
-
-＋ Sectionを追加
+⌄  ☀  05:00–09:00  朝      ☑ 6/12      ⌛ 2時間40分      ◷ ██████────  1時間20分      ＋
 ```
 
-初期SectionはD-030に従い、以下を用意する。
+情報の意味:
+
+- `⌄ / ›`: Section展開 / 折りたたみ。
+- `☀`: Sectionごとにユーザー設定可能なicon。
+- `05:00–09:00`: Section logical time。補助情報としてSection名より弱く見せる。
+- `朝`: Section名。iconとともにSection identityの中心情報。
+- `☑ 6/12`: 実行済み件数 / Section内総Task row数。Quick Interruptで生成されたTaskも分母へ含め、Complete済みとInterruptで終了したhistorical rowを実行済み件数へ含める。
+- `⌛ 2時間40分`: Section所属Entryの合計見積。完了済み・実行中になっても計画時の見積をsummaryから消さない。
+- `◷ + bar + 1時間20分`: Section容量のactual使用状況。barはactual使用時間が増えるほど左から右へ埋まる。右側の時間は残りSection容量を表す。
+- `＋`: そのSectionへ直接Taskを追加する。
+
+合計見積がSection容量を超える場合は、`⌛`の時間値をred等のwarning colorで示す。見積そのものにはprogress barを付けない。
+
+容量barは**見積ではなくExecution実績**を基準にする。Section durationを100%とし、そのSectionのactual interval内でvalid Executionが占有したoverlap durationを左から右へ埋める。ExecutionがSection境界をまたぐ場合、各Sectionのbarにはその時間帯とoverlapした分だけ反映する。barは最大100%であり、Section所属Taskのspilloverをbarの100%超過として表現しない。
+
+通常時のbarはneutral gray系を基本とし、Section accent colorを必須適用しない。
+
+Section summaryは「実行済みを非表示」のprojection filterで再集計しない。historical rowをTableから隠しても、`6/12`、合計見積、容量使用状況はSection全体のsummaryを維持する。
+
+### Section collapse
+
+- Section summary row左端のchevronでSection配下Task Rowを開閉できる。
+- Section summary row自体は折りたたみ中も常に表示する。
+- 初めてそのTaskChuteDayを開く場合は全Section展開をdefaultとする。
+- collapse状態は**TaskChuteDay × Section**単位で記憶し、別日の同じSectionへ自動共有しない。
+- 例として8/25の「朝」を折りたたんでも、8/26の「朝」は独立した状態を持つ。8/25へ戻った場合は8/25で最後に使用した状態を復元する。
+- 初期Desktop Webではbrowser `localStorage`等のUI preferenceとして保持する方向とし、account / device間syncは現段階では要求しない。
+- running Taskが折りたたまれたSection内に存在しても、Sectionを強制展開しない。実行中Taskの全体把握はFloating Runnerでも担保する。
+
+### 空Section
+
+通常SectionはTaskが0件でも表示する。0件時は`☑ 0/0`や`⌛ 0分`を必須表示せず、summaryを簡略化してよい。
+
+```text
+⌄  ☀  13:00–18:00  午後      タスクなし      ◷ ──────────  5時間      ＋
+```
+
+### Sectionなし group
+
+Section未設定Entryが1件以上存在する場合だけ、通常Sectionより上に`Sectionなし` groupを表示する。
+
+```text
+⌄  Sectionなし      ☑ 1/3      ⌛ 45分
+   ○ Task A
+   ○ Task B
+   ✓ Task C
+
+⌄  ☀ 05:00–09:00  朝  ...
+```
+
+- `Sectionなし`は時間帯 / Section容量を持たないため、容量barは表示しない。
+- Taskが0件ならgroup自体を表示しない。
+- 通常のSection設定画面にはSection entityとして表示しない。
+- rename / delete / icon / accent colorの設定対象にしない。
+- SectionなしEntryをStartした場合、D-030に従いStart時刻のcurrent SectionへEntryを配置してからStartする。
+- `Sectionなし` groupも日別collapse状態を持てる。
+
+### Section内 / Section間Task移動
+
+未実行Taskはdrag & dropでSection内のexplicit orderを変更でき、Section summary rowをまたいで別SectionへdropするとSection placementも変更する。
+
+- Section間dragではdropした位置へ挿入する。
+- Section fieldから別Sectionを選択した場合は移動先Section末尾へ入れる。
+- 移動後は両SectionのTask件数と合計見積を即時再計算する。
+- Executionのactual容量使用はTask placement変更で過去へ移動させない。actual intervalとSection時間帯のoverlapから算出する。
+- completed / interrupted等のhistorical rowはSection移動・manual reorder不可とする。
+
+### Section直接Task追加
+
+Section summary row右端にcompactな`＋`を置く。通常時は低優先度で、hover / focus時に操作可能であることを明確にする。
+
+`＋`から作成したTask / EntryはそのSectionを初期placementとして作成する。空Sectionでも同じ操作を利用できる。
+
+### 基本Section設定画面
+
+基本Section設定は、カードをSectionごとに分割せず、**icon / Section名 / 開始時間 / 終了時間 / accent color**を並べるcompactなtable editorを基本とする。時間順がconfiguration orderのauthorityなので、manual reorder用drag handleや順序列は置かない。
+
+基本構成例:
+
+```text
+Icon  Section名       開始時間       終了時間              Accent
+──────────────────────────────────────────────────────────────
+ ☀    朝              05:00          09:00                 ●    ×
+ ◷    午前            09:00          12:00                 ●    ×
+ ◇    昼              12:00          13:00                 ●    ×
+      午後            13:00          18:00                 ●    ×
+      夜              18:00          29:00（翌05:00）      ●    ×
+```
+
+05:00 boundary時のvisual/default exampleとして以下を利用できる。
 
 | Section名 | 開始時間 | 終了時間 |
 | --- | --- | --- |
@@ -248,13 +333,21 @@ Section名       開始時間       終了時間
 | 午前 | 09:00 | 12:00 |
 | 昼 | 12:00 | 13:00 |
 | 午後 | 13:00 | 18:00 |
-| 夜 | 18:00 | 24:00 |
+| 夜 | 18:00 | 29:00（翌05:00） |
 
-これらは編集可能な初期値であり、ユーザーは後からrename、時間変更、追加、削除できる。
+TaskChuteDay boundary自体はユーザー設定であり05:00へ固定しない。最初のSection開始と最後のSection終了は、そのユーザーのTaskChuteDay boundaryへ一致させる。
+
+#### Icon / Accent
+
+- Section iconはSectionごとにユーザーがicon picker等から変更できる。
+- icon未設定も許容できる方向とする。
+- accent colorもSectionごとに指定できる。
+- default accentはmuted grayとし、設定しないユーザーの画面をカラフルにしすぎない。
+- accentは主にiconとSection名へ使用する。
 
 #### Inline edit / autosave
 
-- Section名、開始時間、終了時間はcell内でinline editする。
+- Section名、時間、icon、accentは設定画面内で直接編集できる。
 - Section名は空文字を許可しない。
 - 時間はkeyboard直接入力とtime pickerの双方を利用できる方向とする。
 - 画面全体の大きな「保存」buttonは置かない。
@@ -263,24 +356,33 @@ Section名       開始時間       終了時間
 - 保存中は必要に応じて控えめな`保存中…`、成功後は`保存済み`等のstatusを表示できる。
 - Escで編集中の変更を取り消せるinteractionを基本とする。
 
-#### Auto sort
+#### Boundary edit / validation
 
-- Sectionは開始時間の昇順に自動sortする。
-- time fieldへの入力途中にrowを移動させない。編集確定とvalidation成功後に正しい位置へ移動する。
-- manual reorder UIは設けない。
-
-#### Overlap / gap validation
-
-- overlapは保存不可とし、問題のあるtime field付近にinline errorを表示する。
-- errorは可能なら`「朝（05:00–10:00）と時間が重複しています」`のように、衝突相手と範囲が分かる具体的な文言にする。
-- gapはD-030上の正常なconfigurationなのでwarningを表示しない。
-- current Sectionが存在しないgap時間を設定上のerrorとして扱わない。
+- Section configurationはTaskChuteDay全体をgap / overlapなくcoverする。
+- 最初のSection開始はTaskChuteDay開始、最後のSection終了はTaskChuteDay終了へ一致する。
+- 隣接Sectionの境界は共有値として扱う。例として「朝」の終了を`09:00 → 10:00`へ変更した場合、次の「午前」の開始も`10:00`へ連動させる。
+- Section順序は時間順で自動的に決まり、manual reorder UIは設けない。
+- Day boundary変更で端Sectionだけの伸縮によりvalidityを維持できる場合は端Sectionを追従させる。
+- Day boundaryが内部Section境界を追い越す等、既存Section構成を壊す変更は勝手にSection削除 / 再構成せず、保存を止めて調整を促す。
 
 #### Section追加
 
-- `＋ Sectionを追加`でtable末尾にlocalな新規入力rowを表示する。
-- Section名 / 開始時間 / 終了時間が揃い、configuration全体のvalidationを通るまでServer上へ未完成Sectionを作成しない。
-- 作成成功後は開始時間順の位置へ自動sortする。
+Section追加は既存Sectionの**分割**として扱う。
+
+例:
+
+```text
+午後  13:00 ───────── 18:00
+```
+
+へ16:00境界で「夕方」を追加すると:
+
+```text
+午後  13:00 ─ 16:00
+夕方  16:00 ─ 18:00
+```
+
+`＋ Sectionを追加`では、分割対象 / 境界時間と新Section名等を入力し、valid configurationになった場合だけ作成する。
 
 #### Section削除
 
@@ -288,7 +390,9 @@ Section名       開始時間       終了時間
 - `×`は枠付きprimary buttonにせず、muted grayの低優先度iconとして表示し、hover / focus時に視認性を高める。
 - 視覚的には小さくてもhit areaとaccessible label / Tooltip「Sectionを削除」を確保する。
 - 誤操作を避けるため削除前に確認を挟んでよい。
-- 削除によって過去のSection名 / placement / execution historyを消さないことはD-030に従う。
+- 削除Sectionの時間帯は原則として次Sectionへ吸収し、最後のSectionを削除する場合のみ前Sectionへ吸収する。
+- 削除Sectionの未実行Taskは吸収先Sectionへ移す。
+- 実行済みhistorical rowは削除前Sectionのidentity / 名前 / 当時の時間帯を保持する。
 
 #### Extended time表示
 
@@ -302,7 +406,7 @@ Section時間はTaskChuteDay基準のlogical timeとして入力・表示する�
 
 #### Rename / historical display
 
-Section名をrenameしても、過去のEntry / Execution / Review等で表示するSection名は当時の名称を維持する。設定画面では現在のSection名だけを編集し、historical rowまで現在名へ一括置換したように見せない。
+Section名または時間帯を変更しても、過去のEntry / Execution / Review等では当時のSection名と時間帯を維持する。過去DayのSection summaryも当時のSection intervalを基準に表示する。
 
 ## 17. 時間列
 
@@ -475,7 +579,7 @@ Day Tableでは**「実行済みを表示 / 非表示」**をユーザーが切�
 
 `▶` 実行中rowと`○` 未実行 / 再実行可能rowは表示対象に残す。
 
-これはprojection上のvisibility変更であり、Execution、Interrupt、Review対象の実績等のhistorical factを削除・変更しない。
+これはprojection上のvisibility変更であり、Execution、Interrupt、Review対象の実績等のhistorical factを削除・変更しない。Section summaryの件数、見積、容量使用状況もvisibility filterで再計算しない。
 
 初期Desktop Webでは最後の表示 / 非表示状態をbrowser `localStorage`へ保存し、同じbrowserで復元する方向とする。account / device間syncは現段階では要求しない。
 
@@ -549,7 +653,7 @@ Day Tableのcontinuation行ではD-028に従いremaining estimateを表示でき
 - `↪`系: **Quick Interrupt**。D-028に従い`（割込）`をその場で生成して即Startする。Tooltip / accessible labelは「割り込みを開始」。pause iconは単なる停止と誤解しやすいため第一候補にしない。
 - `✓`系: **Complete**。primary actionとして右端へ置き、secondary action群との間に控えめなseparatorを設けてよい。
 
-Quick Interruptでは発生時刻のcurrent SectionをD-030に従って使用し、該当Sectionがない場合はSection未設定で作成する。
+Quick Interruptでは発生時刻のcurrent SectionをD-030に従って使用する。validなTaskChuteDay内では基本Sectionがgapなくcoverするためcurrent Sectionを解決できる。
 
 Completeが成功するとactive ExecutionがなくなるためRunnerは消え、Section 22のruleに従って次の実行可能Taskへfocusする。次Taskは自動Startしない。
 
@@ -672,6 +776,19 @@ Day Table
     - リンク
     - コメント
     - ノート
+  ↓
+  Sectionなし（Entryが存在するときだけ）
+  ↓
+  Section summary row
+    - collapse / icon / 時間帯 / Section名
+    - 完了数 / 総Task数
+    - 合計見積
+    - Section容量actual使用bar / 残り容量
+    - SectionへTask追加
+  ↓
+  Task Rows
+  ↓
+  次Section summary row ...
 ↓
 Floating Runner
   - Task名 / 累積実績 / 当初見積
@@ -695,8 +812,11 @@ Right Detail Paneは通常閉じている。Left Sidebar / Right Detail Paneの�
 - Notes画面
 - Analytics画面
 - Settings画面（Section設定以外）
-- Section separator / grouping rowをSection列と併用するか
 - Section logical timeのactual instant mapping / DST edge UX
+- user-selected TaskChuteDay boundaryとinitial Section templateのexact onboarding UX
+- Section icon picker / accent paletteのexact component
+- Section collapse stateのaccount / device syncを将来行うか
+- Section所属Taskのspilloverを別途表示するか
 - exact initial column widths / minimum widths
 - continuation indicatorを追加するか
 - 開始見込時間のexact calculation
@@ -731,5 +851,5 @@ TaskChute PlatformのUIは次を基本原則とする。
 - **Dense** — 一日のTaskを俯瞰できる。
 - **Temporal** — 時間の流れを感じられる。
 - **Execution First** — 現在実行しているTaskを見失わない。
-- **Continuous** — Sectionで一日の流れを分断しない。
+- **Continuous** — Sectionで一日の流れを分断しすぎない。
 - **Predictable** — 同じ操作は同じ見た目・同じ挙動にする。
