@@ -40,13 +40,14 @@ Modeも同じ構造とする。
 - cell/value clickまたはTab flowからselectorを開ける。
 - selector close後など、Project / Mode cell自体へfocusがある状態では`Enter`で同じselectorを再度開く。
 - `Space`ではProject / Mode selectorを開かない。
-- Mouseから開いた場合もkeyboardから開いた場合も、開いた直後はsearch inputへfocusする。
-- selectorを開いた瞬間から文字入力をsearchとして扱い、検索欄への追加clickを要求しない。
+- Mouseから開いた場合もkeyboardから開いた場合も、open直後からsearch-readyとし、printableな文字入力をそのままsearchとして扱う。
+- 検索欄への追加clickを要求しない。
+- actual DOM focusの置き方はimplementation detailとし、本書ではuser-visibleなsearch-ready behaviorをauthorityとする。
 - selector open中はglobal one-key shortcutを発火させない。
 
 ### 1.2 Keyboard operation
 
-search inputへfocusした状態を起点とする。
+search-readyな状態を起点とする。
 
 検索文字が空の場合:
 
@@ -63,7 +64,7 @@ search inputへfocusした状態を起点とする。
 
 候補navigation:
 
-- search input自体のkeyboard focusを維持したまま、`↑ / ↓`でactive candidateだけを移動する。
+- search-readyな入力状態を維持したまま、`↑ / ↓`でactive candidateだけを移動する。
 - active candidateがcandidate list内にある場合、`↑ / ↓`で前 / 次candidateへ移動する。
 - quick createが表示されている場合はcandidate navigationの末尾として到達可能にする。
 - 先頭でさらに`↑`、末尾でさらに`↓`を押してもwrapせず、その端に留まる。
@@ -114,6 +115,17 @@ Project cell
 ```
 
 initialでは`Backspace` / `Delete`をProject / Modeの専用clear shortcutへ割り当てない。search text editとの衝突を避け、`未設定`を選ぶ明示操作をauthorityとする。
+
+### 1.3 Pointer / keyboard active candidate
+
+Mouseとkeyboardは同じactive candidateを共有する。
+
+- candidate上へpointerを実際に移動した場合、そのhover candidateへactive stateを移す。
+- selectorをopenした瞬間、たまたまpointerがcandidate上に存在しているだけではactive stateを変更しない。open後のpointer movementをMouse intentとして扱う。
+- hoverだけではProject / Modeの値をcommitしない。
+- candidateをclickした場合は、そのcandidateを確定してselectorを閉じる。
+- Mouseでcandidateをactiveにした後に`↑ / ↓`を押した場合は、そのcandidateを起点としてkeyboard navigationを続ける。
+- Mouseでcandidateをactiveにした後でも、そのまま文字入力を再開できる。検索文字が変わった場合はSection 1.2のruleでcandidate listとactive stateを再計算する。
 
 ## 2. Search / quick create
 
@@ -192,6 +204,7 @@ Section
 - Section数が多い場合はcandidate領域だけscroll可能にする。
 - initialでは文字入力によるSection searchを行わない。
 - Day TableからSectionをquick createしない。Section追加は全日coverageへ影響するためSection設定画面で行う。
+- Pointer / keyboard active candidateの切替はSection 1.3と同じruleを使う。hoverだけではcommitせず、clickで確定する。
 
 ### 3.1 Section change
 
@@ -214,5 +227,8 @@ Project / Mode / Sectionとも、Mouseで一度Rowを選択してから再click�
 - selector内では`Enter`でcommit、`Esc`でcancelという基本モデルを揃える。
 - selector open中の`Tab / Shift+Tab`はcandidateをcommitせずcancel扱いで閉じ、次 / 前のfieldへ移動する。
 - commit後は元cellへfocusを戻し、field移動は`Tab / Shift+Tab`へ統一する。
+- pointer movementはhover candidateをactiveにするが、hoverだけではcommitしない。
+- candidate clickはそのcandidateをcommitする。
+- Mouseでactive candidateを変更した後もkeyboard navigationへ連続して移行できる。
 
-Project / Modeだけはopen直後からsearch inputへfocusし、Sectionはcurrent candidate focusとする。これはProject / Modeが多数候補からの検索をprimary interactionにする一方、Sectionは少数のtime-ordered候補から選ぶためである。
+Project / Modeはopen直後からsearch-readyとし、Sectionはcurrent candidate focusとする。これはProject / Modeが多数候補からの検索をprimary interactionにする一方、Sectionは少数のtime-ordered候補から選ぶためである。
