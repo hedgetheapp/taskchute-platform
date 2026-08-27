@@ -264,6 +264,21 @@ candidateからpointerが外れたことだけを理由にactive candidateを解
 
 このruleはProject / Mode / Sectionのcandidate listに共通適用する。
 
+### 1.11 Reselect current value
+
+すでにpersistされているcurrent valueと同じcandidateを明示的に選んだ場合は、値変更なしのno-op commitとして扱う。
+
+- current Project / Mode candidateをactiveにして`Enter`した場合、persisted valueは変更せずselectorを閉じる。
+- current Project / Mode candidateをclickした場合も同じく、値変更なしでselectorを閉じる。
+- no-op commit後のfocusは通常selectionと同じく元のProject / Mode cellへ戻す。
+- current valueと同じcandidateを選んだだけでは新しいoverrideや履歴変更を発生させない。
+- Routine由来defaultとcurrent effective valueが同じcandidateを再選択した場合も、実際の値変更がないため`今回だけ / ルーティンに反映`scope selectionを表示しない。
+- current valueが`未設定`の場合に`未設定`を再選択しても同じno-op behaviorとする。
+- Sectionでもcurrent Sectionまたはcurrent `Sectionなし`を再選択した場合は値変更なしでselectorを閉じ、planned startのclear等のSection change side effectを発生させない。
+- no-op selectionは見た目上の明示的なselection actionとしてselectorを閉じるが、persisted semantics上は変更として扱わない。
+
+このruleにより、selected indicator上のcandidateを確認目的で再選択してもRoutine scope promptやplanned-start clear等の不要な副作用を起こさない。
+
 ## 2. Search / quick create
 
 既存のJapanese / romaji search foundationを利用する。
@@ -348,6 +363,7 @@ Section
 - popoverのplacement / anchor visibilityはSection 1.7に従う。
 - popoverのwidth / max-height / candidate overflowはSection 1.8に従う。
 - pointer leave / manual candidate scroll時のactive stateはSection 1.10に従う。
+- current Sectionの再選択時のno-op behaviorはSection 1.11に従う。
 
 ### 3.1 Section change
 
@@ -375,6 +391,7 @@ Project / Mode / Sectionとも、Mouseで一度Rowを選択してから再click�
 - selector外clickはcandidateをcommitせずselectorをcancelし、click先の通常interactionを続行する。
 - Mouseでactive candidateを変更した後もkeyboard navigationへ連続して移行できる。
 - pointerがcandidateから外れてもactive candidateを維持し、manual candidate scrollだけではstationary pointer下のcandidateへactiveを移さない。
+- current valueを再選択した場合は値変更なしのno-opとしてselectorを閉じ、Routine scope promptやSection change side effectを発生させない。
 - popoverはanchor cellへ追従し、anchorが完全にviewport外へ出た場合は未確定状態をcommitせず閉じる。
 - popoverはanchor cell幅より広く表示してよく、多数candidate時はcandidate領域だけ内部scrollする。
 - Project / ModeのIME composition中はIME operationをselector shortcutより優先し、IME確定とcandidate commitを同じ`Enter`で連続発火させない。
