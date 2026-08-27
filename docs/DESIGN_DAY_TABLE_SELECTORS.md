@@ -166,6 +166,29 @@ current Project: 仕事
 
 この状態で`Esc`や`Tab`を行ってもProjectは`仕事`のまま維持される。`Enter`または`個人開発`のclickでcommitした場合だけProjectが`個人開発`へ変わる。
 
+### 1.6 Initial scroll / active visibility
+
+Project / ModeとSectionではopen時のcandidate list scroll positionを分ける。
+
+Project / Mode:
+
+- 検索文字が空の状態でselectorをopenした場合、candidate listは先頭から表示する。
+- current persisted valueがlist下部にあっても、open時にその位置へ自動scrollしない。
+- candidate list先頭の`未設定`をすぐ確認できる状態とし、Section 1.2の`↓`で最初に`未設定`へ移るruleと一致させる。
+- current valueはDay Table cellとselected indicatorで確認可能であり、現在値を探すための自動scrollよりsearch primaryのinteractionを優先する。
+- 検索文字をclearして通常候補listへ戻った場合も、candidate listは先頭へ戻す。
+
+Section:
+
+- selector open直後はcurrent Sectionをcandidate focusとする既存ruleに合わせ、current Sectionが見える位置までcandidate listを自動scrollする。
+- current valueが`Sectionなし`の場合は`Sectionなし`が見える先頭位置とする。
+
+Project / Mode / Section共通:
+
+- `↑ / ↓`やpointer movementでactive candidateがvisible area外へ移る場合は、active candidateが見えるために必要な最小限だけcandidate領域をscrollする。
+- active candidateを毎回中央へ寄せる等の不要なre-centeringは行わない。
+- Project / Modeで検索結果を再計算して先頭existing candidateをactiveにした場合も、そのactive candidateが見える位置まで必要最小限scrollする。
+
 ## 2. Search / quick create
 
 既存のJapanese / romaji search foundationを利用する。
@@ -246,6 +269,7 @@ Section
 - Pointer / keyboard active candidateの切替はSection 1.3と同じruleを使う。hoverだけではcommitせず、clickで確定する。
 - selector外clickはSection 1.4と同じruleを使い、candidateをcommitせずclick先の通常interactionへ移る。
 - selected current valueとactive candidateの視覚的な区別はSection 1.5と同じ考え方を使う。current Sectionにはselected indicatorを維持し、candidate focusは別のfocus treatmentで示す。
+- open時とcandidate navigation中のscroll behaviorはSection 1.6に従う。
 
 ### 3.1 Section change
 
