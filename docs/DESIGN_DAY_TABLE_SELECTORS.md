@@ -249,6 +249,21 @@ Enter
 
 IME composition stateの検出方法やbrowser eventの扱いはimplementation detailとするが、対応browser / OSで上記の二重確定防止behaviorをverificationする。
 
+### 1.10 Pointer leave / manual candidate scroll
+
+candidateからpointerが外れたことだけを理由にactive candidateを解除しない。
+
+- pointerをactive candidateからcandidate list外、search area、popover内の非candidate領域へ移動しても、現在のactive candidateを維持する。
+- pointerを別candidate上へ実際に移動した場合は、Section 1.3に従いそのcandidateへactive stateを移す。
+- Mouse wheel / trackpad等でcandidate listをscrollしただけでは、pointer位置の下に別candidateが現れてもactive stateを移さない。pointer自体のmovementをMouse intentのauthorityとする。
+- manual scrollによってactive candidateがvisible area外へ出てもactive state自体は維持する。manual scrollを打ち消すためにactive candidateへ自動でscroll backしない。
+- manual scroll後にpointerを実際に動かしてcandidateへ乗せた場合は、そのcandidateをactiveにする。
+- manual scroll後に`↑ / ↓`を押した場合は、保持しているactive candidateを起点にkeyboard navigationを続け、移動後のactive candidateが見えるようSection 1.6の必要最小限scrollを適用する。
+- 検索文字が変わった場合はpointer位置に関係なくSection 1.2のsearch再計算ruleをauthorityとする。
+- pointer leave / manual scrollだけではpersisted valueをcommitしない。
+
+このruleはProject / Mode / Sectionのcandidate listに共通適用する。
+
 ## 2. Search / quick create
 
 既存のJapanese / romaji search foundationを利用する。
@@ -332,6 +347,7 @@ Section
 - open時とcandidate navigation中のscroll behaviorはSection 1.6に従う。
 - popoverのplacement / anchor visibilityはSection 1.7に従う。
 - popoverのwidth / max-height / candidate overflowはSection 1.8に従う。
+- pointer leave / manual candidate scroll時のactive stateはSection 1.10に従う。
 
 ### 3.1 Section change
 
@@ -358,6 +374,7 @@ Project / Mode / Sectionとも、Mouseで一度Rowを選択してから再click�
 - candidate clickはそのcandidateをcommitする。
 - selector外clickはcandidateをcommitせずselectorをcancelし、click先の通常interactionを続行する。
 - Mouseでactive candidateを変更した後もkeyboard navigationへ連続して移行できる。
+- pointerがcandidateから外れてもactive candidateを維持し、manual candidate scrollだけではstationary pointer下のcandidateへactiveを移さない。
 - popoverはanchor cellへ追従し、anchorが完全にviewport外へ出た場合は未確定状態をcommitせず閉じる。
 - popoverはanchor cell幅より広く表示してよく、多数candidate時はcandidate領域だけ内部scrollする。
 - Project / ModeのIME composition中はIME operationをselector shortcutより優先し、IME確定とcandidate commitを同じ`Enter`で連続発火させない。
