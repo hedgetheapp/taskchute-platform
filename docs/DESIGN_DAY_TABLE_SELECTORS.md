@@ -189,6 +189,22 @@ Project / Mode / Section共通:
 - active candidateを毎回中央へ寄せる等の不要なre-centeringは行わない。
 - Project / Modeで検索結果を再計算して先頭existing candidateをactiveにした場合も、そのactive candidateが見える位置まで必要最小限scrollする。
 
+### 1.7 Popover placement / anchor visibility
+
+Project / Mode / Section selectorのpopoverは、Day Table上のselector cellをanchorとして配置する。
+
+- 通常はanchor cellの直下にpopoverを表示する。
+- viewport下端に十分なspaceがない場合は、anchor cellの上側へflipする。
+- 左右のviewport外へはみ出す場合は、anchorとの関係を保ちながらviewport内へhorizontal shiftする。右端付近ではpopover右端をanchor側へ合わせる等の補正を許容する。
+- Day Tableを横scrollしてもanchor cellがvisibleな間はpopoverをanchor位置へ追従させる。
+- browser window resizeやlayout変化でanchor位置が変わった場合はpopover位置を再計算する。
+- popover全体を表示するspaceが不足する場合、viewport自体を勝手にscrollさせず、candidate領域側を内部scroll可能にする。
+- anchor cellが横scroll等で完全にviewport外へ出た場合は、未確定candidateをcommitせずselectorをcancelして閉じる。
+- anchor cellが一部でもvisibleな間は、可能な範囲でanchor関係を維持してpopoverを表示する。
+- popover placementのためにDay Tableのcanonical scroll位置やTask orderを変更しない。
+
+このplacement ruleはProject / Mode / Section共通とし、outside-click時のcommit / cancel semanticsはSection 1.4を維持する。
+
 ## 2. Search / quick create
 
 既存のJapanese / romaji search foundationを利用する。
@@ -270,6 +286,7 @@ Section
 - selector外clickはSection 1.4と同じruleを使い、candidateをcommitせずclick先の通常interactionへ移る。
 - selected current valueとactive candidateの視覚的な区別はSection 1.5と同じ考え方を使う。current Sectionにはselected indicatorを維持し、candidate focusは別のfocus treatmentで示す。
 - open時とcandidate navigation中のscroll behaviorはSection 1.6に従う。
+- popoverのplacement / anchor visibilityはSection 1.7に従う。
 
 ### 3.1 Section change
 
@@ -296,5 +313,6 @@ Project / Mode / Sectionとも、Mouseで一度Rowを選択してから再click�
 - candidate clickはそのcandidateをcommitする。
 - selector外clickはcandidateをcommitせずselectorをcancelし、click先の通常interactionを続行する。
 - Mouseでactive candidateを変更した後もkeyboard navigationへ連続して移行できる。
+- popoverはanchor cellへ追従し、anchorが完全にviewport外へ出た場合は未確定状態をcommitせず閉じる。
 
 Project / Modeはopen直後からsearch-readyとし、Sectionはcurrent candidate focusとする。これはProject / Modeが多数候補からの検索をprimary interactionにする一方、Sectionは少数のtime-ordered候補から選ぶためである。
