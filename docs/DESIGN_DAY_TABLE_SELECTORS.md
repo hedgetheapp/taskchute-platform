@@ -70,10 +70,11 @@ search inputへfocusした状態を起点とする。
 - candidateを`↑ / ↓`で移動した後でも、そのまま文字入力を再開できる。
 - 検索文字が変わったらcandidate listを再計算し、existing matchがあれば新しい先頭existing candidateをactiveにする。existing matchがなければactive candidateを解除する。
 - `Enter`: active candidateがある場合だけ、そのcandidateを確定してselectorを閉じる。
-- `Esc`: 値を変更せずselectorを閉じる。
+- `Esc`: 値を変更せずselectorを閉じ、元のProject / Mode cellへfocusを戻す。
+- `Tab`: active candidateがあっても確定せず、selectorを閉じて現在のvisual column order上の次のvisible editable / actionable fieldへ移動する。
+- `Shift+Tab`: active candidateがあっても確定せず、selectorを閉じて現在のvisual column order上の前のvisible editable / actionable fieldへ移動する。
 - selectorを`Enter`で確定した後は、次fieldへ自動で進まず、元のProject / Mode cellへfocusを戻す。
-- `Esc`で閉じた場合も元のProject / Mode cellへfocusを戻す。
-- selector close後の`Tab / Shift+Tab`が、現在のvisual column orderに従って次 / 前のvisible editable / actionable fieldへ移動するauthorityとする。
+- field間を移動しながら値も確定したい場合は、`Enter`で確定してから`Tab / Shift+Tab`で移動する。
 - initialでは`Space`をProject / Mode selectorのopen / selection用shortcutへ割り当てない。Routine / Note等のbutton-like actionに定義された`Space`操作とは分離する。
 
 例:
@@ -88,6 +89,15 @@ search: tas
 ```
 
 `↓`でactive candidateを次へ移し、さらに`↓`でquick createまで到達できる。途中で文字を追加した場合は検索結果を再計算する。
+
+この状態で:
+
+```text
+Enter      → TaskChute Platformを確定してProject cellへ戻る
+Tab        → Projectは変更せずselectorを閉じて次fieldへ進む
+Shift+Tab  → Projectは変更せずselectorを閉じて前fieldへ戻る
+Esc        → Projectは変更せずselectorを閉じてProject cellへ戻る
+```
 
 たとえばProject=`仕事`を未設定へ戻す場合:
 
@@ -134,6 +144,7 @@ quick createは:
 - 新規Definitionは設定順の末尾へ追加する。
 - 検索結果にexisting candidateがない場合でも自動activeにしない。
 - keyboardでは`↑ / ↓`でquick createを明示的にactiveへ移動し、`Enter`で確定する。
+- quick createがactiveでも`Tab / Shift+Tab`では作成せず、そのselectorをcancelしてfield移動する。
 
 quick createを`Enter`で確定した後のfocusも通常selectionと同じく元のProject / Mode cellへ戻し、次fieldへの移動は`Tab`で行う。
 
@@ -173,9 +184,10 @@ Section
 - selectorを開いた直後はcurrent Sectionをcandidate focusとする。current valueが`Sectionなし`なら`Sectionなし`をfocusする。
 - `↑ / ↓`でcandidate移動。
 - `Enter`で確定。
-- `Esc`で変更せず閉じる。
-- `Enter`確定後も`Esc`cancel後も元のSection cellへfocusを戻し、次fieldへ自動で進まない。
-- selector close後の`Tab / Shift+Tab`で次 / 前のvisible editable / actionable fieldへ移動する。
+- `Esc`で変更せず閉じて元のSection cellへfocusを戻す。
+- `Tab`ではfocused candidateを確定せずselectorを閉じ、次のvisible editable / actionable fieldへ移動する。
+- `Shift+Tab`ではfocused candidateを確定せずselectorを閉じ、前のvisible editable / actionable fieldへ移動する。
+- `Enter`確定後は元のSection cellへfocusを戻し、次fieldへ自動で進まない。
 - initialでは`Space`をSection selectorのopen / selection用shortcutへ割り当てない。
 - Section数が多い場合はcandidate領域だけscroll可能にする。
 - initialでは文字入力によるSection searchを行わない。
@@ -200,6 +212,7 @@ Project / Mode / Sectionとも、Mouseで一度Rowを選択してから再click�
 - selector cellへfocusがある状態では`Enter`で開く。
 - `Space`はselector open / selectionには使わない。
 - selector内では`Enter`でcommit、`Esc`でcancelという基本モデルを揃える。
-- commit / cancel後は元cellへfocusを戻し、field間の移動は`Tab / Shift+Tab`へ統一する。
+- selector open中の`Tab / Shift+Tab`はcandidateをcommitせずcancel扱いで閉じ、次 / 前のfieldへ移動する。
+- commit後は元cellへfocusを戻し、field移動は`Tab / Shift+Tab`へ統一する。
 
 Project / Modeだけはopen直後からsearch inputへfocusし、Sectionはcurrent candidate focusとする。これはProject / Modeが多数候補からの検索をprimary interactionにする一方、Sectionは少数のtime-ordered候補から選ぶためである。
