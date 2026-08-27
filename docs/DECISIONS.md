@@ -390,7 +390,7 @@ TaskChuteの実行ではuser全体でactive Execution最大1つを維持しつ�
 - Interrupt時にはAのcontinuation Entryを自動生成し、Dayのexplicit order上でBの直下へ配置する。
 - continuationは元のその日の作業の続きとして扱い、Routine由来の場合は同じRoutineOccurrenceとの関係を維持する。
 - continuationの開始予定時間は自動入力しない。D-026に従い開始予定時間はユーザー入力値であり、自動生成continuationでは未設定を許容する。
-- continuationの見積表示値は、当初見積から同一continuation chainですでに実行したactual durationを差し引いた残り見積を基本とする。UIでは通常の時間値として表示してよく、「残」等のprefixを必須としない。
+- continuationの見積表示値は、当初見積から同一continuation chainですでに実行したactual durationを差し引いた残り見積を基本とする。UIでは通常の時間値として表示してよく、「残」等のprefixを必須にしない。
 - Reviewで見積を集計するときは、continuation Entryの残り見積を加算せず、その日のlogical work chainでユーザーが最初に立てた当初見積をbaselineとして1回だけ数える。
 - Reviewのactual durationは、interrupt前後を含む同一continuation chainのExecution実績を合算できるようにする。
 - Interrupt元のExecutionと通常Completeは別のhistorical outcomeとして区別する。
@@ -444,3 +444,166 @@ Sectionはその日のEntry placement contextとしてstable identityを持つ�
 05:00 boundaryのvisual/default exampleとして、`朝 05:00–09:00`、`午前 09:00–12:00`、`昼 12:00–13:00`、`午後 13:00–18:00`、`夜 18:00–29:00（翌05:00）`を利用できる。ただしTaskChuteDay boundary自体はユーザー設定であり05:00へ固定しない。D-022のinitial bootstrapでuser-selected boundaryとinitial Section configurationをどのように提示・生成するかのexact onboardingは未決とする。
 
 Section時間をcanonical timezoneのactual instantへ解決するexact algorithm、DST transition時のSection resolution、Section設定変更時のfuture Entryへの適用時点、historical Section versionを保持するphysical snapshot / versioning方式、Section削除のarchive / tombstone方式、Section icon / accentのphysical persistenceはD-016 / D-017 / D-022と整合させて後続設計する。
+
+## D-031 — Planned start, Section placement, and within-Section order
+Status: Approved
+
+Day上の開始予定時間は、D-026のEntry-scoped planned valueであると同時に、未実行EntryのSection placementとSection内表示順を決めるplanning authorityとして扱う。
+
+- 開始予定時間を入力・変更した未実行Entryは、そのlogical timeを含むSectionへ自動的に配置する。Section境界はD-030の`[start, end)`に従うため、境界時刻は次Sectionへ属する。
+- `Sectionなし`と開始予定時間は同時に成立させない。SectionなしEntryへ開始予定時間を設定した場合は該当Sectionへ移動する。
+- 開始予定時間を空にした場合、現在のSection placementはそのまま維持する。
+- Section dropdownやSection間drag等でSectionを明示変更した場合は、既存の開始予定時間をclearする。Sectionなしへ移す場合も同じとする。Section変更からexact開始時刻を推測して自動入力しない。
+- Section configuration変更時、未実行Entryに開始予定時間がある場合はその時刻をauthorityとして新しいSectionへ追従させる。開始予定時間がないEntryは、Section削除等で不可能にならない限り現在Sectionを維持する。
+- Section内では、開始予定時間がない未実行Entryを先に表示し、その集合内はexplicit manual orderを持つ。開始予定時間がある未実行Entryはその後に開始予定時間昇順で表示する。同一開始予定時間は許容し、その同時刻集合内はstableなmanual orderをtie-breakとする。
+- 開始予定時間の編集によりEntryは自動的に正しい位置へ移動する。開始予定ありEntryをmanual dragで時刻順に反する位置へ固定しない。同時刻Entry間はmanual reorder可能とする。
+- Section間dragはSection変更と同様に開始予定時間をclearするため、移動先Sectionの開始予定なし領域へ入り、そこでmanual orderを持つ。
+- completed / interrupted等のhistorical rowはD-030に従い後からSection移動・reorderしない。
+
+開始予定時間は実行開始を禁止する`not-before` constraintではない。開始予定より早く実行順が到達すること自体は許容し、開始見込時間とは別semanticsとする。
+
+## D-032 — Start forecast projection semantics
+Status: Approved
+
+開始見込時間は、開始予定時間とは独立したderived projectionとして、現在の進行状況、Day上の実行順、見積から「このまま進んだ場合にいつ開始できそうか」を表す。
+
+- 開始予定時間を待機barrierとして扱わない。例として開始予定`10:00`のEntryに開始見込`09:45`が表示されてもvalidとする。
+- current Dayでは現在時刻と現在の進捗をforecastのbaseとする。future DayではTaskChuteDay開始をbaseとする。past Dayでは開始見込を再計算・表示しない。
+- completed / interrupted historical rowはfuture forecast計算対象から外し、自身の開始見込表示を持たない。
+- running Entry自身はactual開始済みのため開始見込を表示しない。その後続Entryのforecastでは、running workの残り見積を考慮する。
+- running workに見積がある場合、残り見積はそのlogical work chainで既に消費したvalid actualを考慮し、少なくとも`max(estimate - actual, 0)`を基礎とする。見積超過中は後続forecastを過去へ戻さず、少なくともcurrent timeから先へ進める。
+- 見積がないfuture Entryはforecast上の追加durationを0として扱う。見積がないrunning Entryは、実行が継続する間、後続forecastのbaseがcurrent timeとともに進む。
+- forecastはSection境界でresetしない。前Sectionの遅延は後続Sectionへ連続して伝播する。
+- `Sectionなし` Entryはforecast計算対象外とし、開始見込を表示しない。
+- Quick Interrupt / continuationは通常の実行順・valid actual・remaining estimate semanticsに従ってforecastへ参加する。
+- order、見積、Start、Complete、Interrupt、actual time correction等、forecast入力が変われば再計算する。
+
+UI上で開始見込がowning Section終了を超えた場合はplanning warningを表示できるが、開始予定と開始見込の単純な差だけではwarningとしない。
+
+exact rounding、秒精度、timezone表示等のpresentation detailはDesign / implementationで定める。
+
+## D-033 — Manual Execution time correction and non-overlap invariant
+Status: Approved
+
+Start / Complete操作による自動記録に加え、ユーザーが押し忘れ等を修正できるよう、Executionのactual開始・終了時刻を明示的に入力・修正できるようにする。
+
+- 実績時間は手入力する独立authorityとせず、valid Execution intervalからderivedする。
+- 未実行Entryへactual開始だけを入力する操作は、その時刻からrunning Executionを開始する意味を持つ。user全体のactive Execution最大1 invariantは維持する。
+- 未実行Entryへvalidなactual開始・終了をまとめて与えることで、過去に完了したExecutionを記録できる方向とする。
+- running Entryへ終了時刻を入力すると、その指定時刻でCompleteしたものとして扱う。現在時刻まで引き延ばさない。
+- completed Entryのactual開始・終了は後から訂正可能とし、訂正後のintervalから実績、Review、Section capacity usage等を再計算する。
+- 同一userのvalid Execution interval同士はoverlapを許可しない。新規入力または訂正で他Executionと重なる場合はrejectし、既存Executionを自動shift / truncateしない。
+- validationでは可能な範囲で衝突相手のTask / Executionを特定してユーザーへ示す。
+- running Executionは終了未確定として扱い、終了時刻を通常inline editでclearしてcompleted EntryをReopenする操作は提供しない。Reopenは別semanticsとしてOpenのままとする。
+- D-029等で取消されたExecutionはvalid actualから除外されるため、通常のoverlap / Review集計対象とは区別する。
+
+manual correctionのcommand atomicity / retry contract、historical correction audit、timezone / DST ambiguity入力UX、複数Execution segmentを直接編集するadvanced UXは後続設計とする。
+
+## D-034 — Routine projection, materialization, defaults, and day-specific override semantics
+Status: Approved
+
+Routineは無期限の未来Taskを物理的に大量事前生成するのではなく、RoutineDefinitionから必要な日付範囲の予定Occurrenceをprojectionできるmodelとする。
+
+### Projection / materialization
+
+- Routine scheduleに該当する未来Occurrenceは、必要なDay / query範囲でProjected Occurrenceとして算出できる。
+- その日固有の編集、日付移動、Skip、実行開始等、persistent day-specific stateが必要になった時点でRoutineOccurrenceをmaterializeできる。
+- UIは通常、Projected / Materializedの内部差をユーザーへ意識させず「その日に予定されたRoutine Task」として一貫表示してよい。
+- RoutineOccurrenceのorigin TaskChuteDayはD-015に従い保持し、別日へ移動しても「何日分として発生したOccurrenceか」を失わない。
+
+### Routine defaults / occurrence overrides
+
+RoutineDefinitionは、そのRoutine Taskのdefaultとして少なくともTask名、Project、Mode、Section、見積、開始予定時間、day-specific Task Note template/defaultを供給できる方向とする。Link等の既存D-027 reusable informationも引き続き許容する。
+
+- 開始予定時間defaultがある場合はD-031に従い、その時刻をauthorityとしてOccurrenceのSectionを決める。Section defaultは開始予定時間がない場合のplacement defaultとして利用する。
+- その日のOccurrenceでは項目単位のoverrideを持てる。Task名やProject等のoverrideを持ってもTask / Routine identity自体をmutable文字列へ置き換えない。
+- Routine由来TaskをDay UIでdefault対象項目について編集するときは、ユーザーが「今回だけ」か「Routineへ反映」かを明示選択できるUXとする。黙ってRoutine本体へ書き戻さない。
+- 「今回だけ」はそのOccurrenceの当該項目overrideとする。「Routineへ反映」はRoutine defaultを変更し、その項目をoverrideしていないfuture / unstarted Occurrenceへ新defaultを反映する。
+- past Day、running / completed / interrupted等のhistorical contextはRoutine default変更でretroactiveに書き換えない。
+- Task Noteについて、Routine共通の長期DocumentはD-018のTask Primary Documentを維持する。本DecisionのTask Note defaultはday-specific Occurrence Documentへ供給するtemplate/defaultとして扱い、長期共通Documentを複製する意味ではない。
+
+### Schedule changes / explicit day intent
+
+- Routine schedule自体を変更した場合、new scheduleに該当しないfuture / unstartedのProjected Occurrenceは表示対象から外す。
+- field-level overrideだけを持つfuture Occurrenceも、発生日そのものはRoutine scheduleをauthorityとする。scheduleから外れた日をfield overrideだけで自動保護しない。
+- ユーザーがOccurrenceを別日へ明示移動した場合、そのscheduled-date overrideはexplicit intentとして保護し、後からRoutine scheduleを変更してもその移動済みOccurrenceを自動削除しない。
+- 明示移動したOccurrenceと新scheduleから発生するOccurrenceが同じ日に重なっても、自動dedupe / mergeしない。必要ならUIで重複予定を通知する。
+- Routine由来Taskをその日だけ削除する操作は、そのOccurrenceのSkipとして扱い、RoutineDefinitionや他日のOccurrenceを削除しない。同じDayを再表示してもそのOccurrenceを勝手に再生成しない。
+
+### Stop / resume / delete
+
+- Routineは停止できる。停止日以降はnew schedule Occurrenceを発生させず、RoutineDefinition自体は保持する。
+- 停止済みRoutineは明示的な再開日から再開でき、停止期間を後から自動backfillしない。
+- Routine削除は今後の発生ruleを無効化する操作とし、RoutineDefinitionはhistorical relationを保てるsoft-delete / archived相当を基本とする。
+- Routine削除後、過去・実行済み・running・明示移動済み、およびpersistentなday-specific stateを持つmaterialized Occurrenceはhistorical / explicit user stateとして保持できる。未materializedなProjected future Occurrenceは消える。
+- Routine削除や停止によってExecution historyを破壊しない。
+
+Routine materializationのexact DB schema、projection query caching、field override representation、schedule versioning、Routine statistics / streakは後続設計とする。Calendar View自体の具体UX / implementationはこのDecisionでは要求しない。
+
+## D-035 — Effective workday / holiday calendar semantics
+Status: Approved
+
+Routine等で「営業日」「休日」を判定できるよう、civil weekday / public holiday factと、ユーザー固有のeffective day classificationを分離する。
+
+- base classificationは、月〜金を営業日、土日を休日とし、日本の公的祝日は曜日にかかわらず休日とする。
+- ユーザーは任意の日付を`指定休日`として登録できる。通常なら営業日の平日でも、代休、会社休日、有給、個人休日等としてeffective休日にできる。
+- ユーザーは土日・公的祝日・指定休日を含む任意の日付を`営業日扱い`へoverrideできる。休日出勤等を表現する。
+- ユーザー指定には`日付`と任意の自由入力`理由`を持たせる。理由は固定categoryへ限定しない。
+- 同一日付についてユーザーの`指定休日`と`営業日扱い`を同時に成立させない。設定は排他的なday overrideとして扱う。
+- public holidayであるというcalendar factはeffective営業日overrideで失わない。したがって「祝日Routine」と「営業日Routine」の双方に該当する日を表現できる。
+- effective workday / holiday classificationを使う機能は、user override適用後の最終判定をauthorityとする。
+
+日本の祝日データをどのprovider / library / update mechanismから取得するか、将来locale / country calendarを拡張するか、祝日法変更へのversioningは後続Architecture / Product設計とする。
+
+## D-036 — Initial Routine recurrence patterns
+Status: Approved
+
+Routineのinitial recurrence UX / Domainは、少なくとも以下のpatternを扱えるようにする。
+
+- **毎日**: 開始日以降の毎civil date。
+- **日ごと**: 開始日をanchorとして`N` calendar daysごと。営業日判定は挟まない。
+- **営業日**: D-035のeffective classificationが営業日の日すべて。
+- **休日**: D-035のeffective classificationが休日の日すべて。
+- **祝日**: 日本のpublic holiday factを持つ日。effective営業日override後も祝日属性自体で判定する。
+- **毎週**: 1つ以上のcalendar weekdayを選択し、毎週その曜日に発生する。祝日 / effective休日であることだけを理由に除外しない。
+- **週ごと**: `N`週ごと + 1つ以上のweekday。開始日を含む月曜始まりのweekをanchorとし、開始日より前のcandidateは発生させない。
+- **毎月指定日**: 毎月1つ以上のday-of-monthを指定する。存在しない日付はその月では発生させず、月末へ丸めない。
+- **月ごと**: `N`か月ごと + day-of-month。開始日を含む月をanchorとし、開始日前candidateは発生させない。存在しない日付はskipする。
+- **毎月第N曜日**: 第1〜第5または最終 + weekday。第5等が存在しない月はskipする。
+- **月末**: civil monthの最終日。曜日 / holiday classificationで移動しない。
+- **月末営業日**: civil month末から後方へ探索し、D-035のeffective classificationで最後の営業日を選ぶ。
+
+Routineは開始日を持つ。終了条件のinitial scopeは`終了なし`または`日付まで`とし、終了日はinclusiveとする。`N回完了まで`等のcount-based終了条件はinitial scopeへ含めない。
+
+Routine stop / resume / deleteとOccurrence overrideはD-034に従う。recurrence ruleのtimezone resolution、DST、祝日data update、非常に長いprojection rangeのperformanceは後続設計とする。
+
+## D-037 — Day-task move, duplicate, and delete semantics
+Status: Approved
+
+Day UI上のTask / Entryに対するmove、duplicate、deleteは、historical factを破壊しない範囲で以下のsemanticsとする。
+
+### Move to another Day
+
+- 別Dayへの通常移動対象は未実行Entryとする。running / completed / interrupted historical rowは通常の日付移動対象にしない。
+- 前日、翌日、任意日付への移動を許容し、過去Dayへの未実行Entry移動も禁止しない。
+- 移動先ではSectionを`Sectionなし`、開始予定時間を未設定へclearする。Task名、Project、Mode、見積、day-specific Task Note等の内容は維持する。
+- RoutineOccurrence由来Entryを移動する場合、RoutineDefinitionとのrelationとorigin Occurrence dayを維持したままscheduled Dayだけを明示overrideする。Routine全体のschedule変更とは扱わない。
+
+### Duplicate
+
+- duplicateは新しいTask / Entry identityを作り、元Entryの直下をinitial insertion pointとする。
+- Task名、Project、Mode、Section、見積、開始予定時間、day-specific Task Noteを複製できる。
+- actual開始・終了、Execution、実績、completed / interrupted状態、開始見込等のderived / historical stateは複製しない。複製先は未実行とする。
+- Routine由来TaskをduplicateしてもRoutine relationは複製しない。複製先は通常Taskとし、必要なら別途Routine化する。
+- 元Routine Taskと複製通常Taskを両方実行した場合、両方のactual historyを保持するが、Routine単位の将来集計では元RoutineOccurrenceに紐づく実績だけをそのRoutineの実績として扱う。
+
+### Delete / remove from Day
+
+- 未実行Entryは通常delete可能とする。
+- running Entryも、ユーザーが「開始したが実際にはやめてTask自体をDayから消す」explicit操作としてdelete可能とする。この場合current active Executionを通常のvalid actual / Review集計から除外してactive stateを解消し、Entryをnormal Day projectionから除外する。
+- running deleteでもD-016に反してhistorical factを参照不能にするhard deleteは行わない。開始後に削除されたことを表現できるcancelled / removed historical representationを保持する方向とする。
+- completed / interrupted historical rowは通常delete不可とする。
+- Routine由来の未実行 / running Taskをその日だけdeleteする場合はD-034のOccurrence Skip semanticsを併用し、RoutineDefinition自体は削除しない。
+- bulk deleteは同じeligibilityを適用する。running Entryを含む場合は確認UIでその旨を明示する。
+
+exact archive / tombstone schema、cancelled Execution outcome名、deleted EntryをReview / audit UIへどの程度露出するか、retentionは後続設計とする。
