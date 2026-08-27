@@ -48,14 +48,46 @@ Modeも同じ構造とする。
 
 search inputへfocusした状態を起点とする。
 
-- `↓`: 最初の候補へ移動。initial候補の先頭は`未設定`。
-- `↑ / ↓`: 候補移動。
-- `Enter`: focused candidateを確定してselectorを閉じる。
+検索文字が空の場合:
+
+- selector open直後はcandidateを自動activeにしない。
+- `↓`で最初のcandidateへ移動する。initial候補の先頭は`未設定`。
+
+検索文字がある場合:
+
+- existing candidateが1件以上matchしたら、先頭のexisting candidateを自動activeにする。
+- active existing candidateがある状態で`Enter`すると、そのcandidateを確定してselectorを閉じる。
+- existing candidateが0件の場合はcandidateを自動activeにしない。
+- quick createが表示されていても自動activeにはしない。`↓`等で明示的にactiveへ移動してから`Enter`した場合だけ新規作成する。
+- active candidateがない状態の`Enter`ではselection / quick createを確定しない。
+
+候補navigation:
+
+- search input自体のkeyboard focusを維持したまま、`↑ / ↓`でactive candidateだけを移動する。
+- active candidateがcandidate list内にある場合、`↑ / ↓`で前 / 次candidateへ移動する。
+- quick createが表示されている場合はcandidate navigationの末尾として到達可能にする。
+- 先頭でさらに`↑`、末尾でさらに`↓`を押してもwrapせず、その端に留まる。
+- candidateを`↑ / ↓`で移動した後でも、そのまま文字入力を再開できる。
+- 検索文字が変わったらcandidate listを再計算し、existing matchがあれば新しい先頭existing candidateをactiveにする。existing matchがなければactive candidateを解除する。
+- `Enter`: active candidateがある場合だけ、そのcandidateを確定してselectorを閉じる。
 - `Esc`: 値を変更せずselectorを閉じる。
 - selectorを`Enter`で確定した後は、次fieldへ自動で進まず、元のProject / Mode cellへfocusを戻す。
 - `Esc`で閉じた場合も元のProject / Mode cellへfocusを戻す。
 - selector close後の`Tab / Shift+Tab`が、現在のvisual column orderに従って次 / 前のvisible editable / actionable fieldへ移動するauthorityとする。
 - initialでは`Space`をProject / Mode selectorのopen / selection用shortcutへ割り当てない。Routine / Note等のbutton-like actionに定義された`Space`操作とは分離する。
+
+例:
+
+```text
+search: tas
+
+> TaskChute Platform
+  タスク管理
+  Task App
+  ＋「tas」を新規Projectとして作成
+```
+
+`↓`でactive candidateを次へ移し、さらに`↓`でquick createまで到達できる。途中で文字を追加した場合は検索結果を再計算する。
 
 たとえばProject=`仕事`を未設定へ戻す場合:
 
@@ -100,32 +132,18 @@ quick createは:
 - selectorを閉じる。
 - 詳細設定画面は自動で開かない。
 - 新規Definitionは設定順の末尾へ追加する。
+- 検索結果にexisting candidateがない場合でも自動activeにしない。
+- keyboardでは`↑ / ↓`でquick createを明示的にactiveへ移動し、`Enter`で確定する。
 
 quick createを`Enter`で確定した後のfocusも通常selectionと同じく元のProject / Mode cellへ戻し、次fieldへの移動は`Tab`で行う。
 
 ### 2.2 Duplicate prevention
 
-検索 / matchingに利用するnormalization上で既存候補と同一と判断できる場合、新規作成候補を出さず既存Definitionを優先する。
+`docs/DESIGN.md` Section 10の現行Designに合わせ、existing Definitionとの**exact duplicate**はquick createしない。
 
-例:
+検索matchingのためのcase / fullwidth / kana / romaji normalizationを、そのままDefinition identityやuniqueness authorityとしては扱わない。
 
-```text
-TaskChute
-taskchute
-ＴａｓｋＣｈｕｔｅ
-```
-
-のような表記差だけで同一扱いできるものは、重複Definitionを作らない。
-
-ただし部分一致しかない場合は、新規作成を選択可能とする。
-
-```text
-入力: 仕事
-
-仕事（社内）
-仕事（顧客対応）
-＋「仕事」を新規Projectとして作成
-```
+normalization差まで同一Definitionとして禁止するかは未確定であり、本Design supplementだけでDomain semanticsとして追加しない。
 
 新規作成が成立した場合、保存するnameはユーザーの入力文字列をauthorityとし、search用romaji等を勝手に日本語へ変換しない。
 
