@@ -289,7 +289,38 @@ candidateからpointerが外れたことだけを理由にactive candidateを解
 - romaji input → kana matching
 - reading indexが利用可能な場合のKanji reading match
 
-### 2.1 Quick create
+### 2.1 Empty search state
+
+検索文字が空ではなく、existing candidateが0件の場合は、候補が存在しないことをmutedなempty stateで明示する。
+
+Projectの例:
+
+```text
+Project
+┌──────────────────────────────┐
+│ 🔍 新規開発                  │
+├──────────────────────────────┤
+│ 一致するProjectはありません │
+├──────────────────────────────┤
+│ ＋「新規開発」を作成         │
+└──────────────────────────────┘
+```
+
+Modeも同じ構造とし、`一致するModeはありません`と表示する。
+
+- empty state messageはcandidateではなく、selected / active / commit対象にしない。
+- existing candidateが0件になった直後はactive candidateなしとする。
+- quick createが表示されていても自動activeにしない。
+- active candidateがない状態で`Enter`してもquick createしない。
+- `↓`等でcandidate navigationを開始した場合、empty state messageはskipし、quick createが最初の到達可能candidateになる。
+- quick createをactiveにした後の`Enter`またはdirect clickだけがcreate authorityとなる。
+- 検索文字をclearした場合はempty stateを消し、通常candidate listへ戻す。
+- 検索文字変更によってexisting matchが1件以上になった場合はempty stateを消し、Section 1.2に従って先頭existing candidateをactiveにする。
+- empty state表示だけではcurrent persisted valueを変更しない。
+
+empty stateは「一致候補が0件であること」の説明と「新規作成action」を視覚的・操作的に分離し、0件時の`Enter`だけで意図せずDefinitionを作成しないために使う。
+
+### 2.2 Quick create
 
 検索文字が既存候補と完全一致しない場合、候補末尾に以下を表示できる。
 
@@ -312,7 +343,7 @@ quick createは:
 
 quick createを`Enter`で確定した後のfocusも通常selectionと同じく元のProject / Mode cellへ戻し、次fieldへの移動は`Tab`で行う。
 
-### 2.2 Duplicate prevention
+### 2.3 Duplicate prevention
 
 `docs/DESIGN.md` Section 10の現行Designに合わせ、existing Definitionとの**exact duplicate**はquick createしない。
 
