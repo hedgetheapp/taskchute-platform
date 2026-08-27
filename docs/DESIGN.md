@@ -143,6 +143,7 @@ Day Toolbarは「その日のTaskを操作・絞り込む」ためのcompact con
 - SearchとFilterを同時利用した場合はAND条件。
 - search専用の`/`等のkeyboard shortcutは設けない。Mouse / Tab / Hit-a-Hintで到達できればよい。
 - search inputへfocus中はglobal single-key shortcutを発火させない。
+- `Esc`でsearch inputから抜け、直前に有効だったRow / Section focusへ戻れるようにする。
 - search clear後は元のTask order / Section collapse stateを復元する。
 
 Search中はmatchしたTaskを含むSectionだけを表示してよい。`Sectionなし`もmatch Taskがある場合だけ表示する。
@@ -424,25 +425,34 @@ Section順は時間順から自動決定し、manual reorder handleは置かな�
 
 ## 10. Project / Mode / Section selector
 
+selectorはDay Table cellへanchoredするpopoverを基本とし、Row選択を別clickで要求しない。
+
 ### 10.1 Project / Mode common UX
 
 ProjectとModeは同じselector interactionを使う。
 
 ```text
-検索…
-────────────
-候補A
-候補B
-...
-────────────
-＋ 新規Project / Modeを作成
+Project
+┌──────────────────────────┐
+│ 🔍 検索…                 │
+├──────────────────────────┤
+│ ✓ TaskChute Platform     │
+│   仕事                   │
+│   個人開発               │
+│   ...                    │
+├──────────────────────────┤
+│ ＋ 新規Projectを作成     │
+└──────────────────────────┘
 ```
 
-- clickまたはfield focusから選択。
-- keyboard文字入力ですぐ検索開始。
+- cell/value clickまたはTab focusから開く。
+- current valueには`✓`等でselected stateを示す。
+- cell自体が狭くてもpopoverは読みやすさを優先し、240〜300px程度をvisual starting pointとする。
+- 候補が多い場合はpopover内部だけをscrollさせる。
+- selector fieldへfocusした状態で文字入力を始めたら、そのまま検索入力として扱う。検索欄を別clickする必要はない。
 - `↑ / ↓`候補移動、`Enter`決定、`Esc`閉じる。
-- match 0件では入力値を使ったquick create entryを出す。
-- quick createのinitial required fieldは名前だけとし、作成後そのTaskへ即設定。
+- 検索文字がある場合は候補末尾に`＋「入力文字」を新規Project / Modeとして作成`を出せる。既存値とのexact duplicateは作らない。
+- quick createのinitial required fieldは名前だけとし、作成後そのTaskへ即設定してpopoverを閉じる。
 - quick createしたProject / Modeは設定順の末尾へ追加する。
 
 ### 10.2 Romaji Japanese search
@@ -482,20 +492,29 @@ Project設定                 Mode設定
 
 ### 10.4 Section selector
 
-Section selectorはtime orderで表示する。
+Section selectorもcellへanchoredするpopoverとするが、Project / Modeと違いinitialでは検索やquick createを置かず、time orderをそのまま見せる。
 
 ```text
-Sectionなし
-朝      05:00–09:00
-午前    09:00–12:00
-...
-────────────
-Section設定を開く…
+Section
+┌──────────────────────────┐
+│ Sectionなし              │
+├──────────────────────────┤
+│ ☀ 朝      05:00–09:00   │
+│ ◷ 午前    09:00–12:00   │
+│ ◇ 昼      12:00–13:00   │
+│   午後    13:00–18:00   │
+│   夜      18:00–29:00   │
+├──────────────────────────┤
+│ Section設定を開く…      │
+└──────────────────────────┘
 ```
 
-Day TableからSectionをquick createしない。Section追加は全日coverageに影響するため、Section設定画面で行う。
-
-Section直接変更は未実行Taskのみを基本とし、D-031に従い開始予定をclearする。
+- current valueはselected stateを示す。
+- icon、Section名、logical time rangeをcompactに表示する。
+- Section数がpopover高を超える場合は候補領域をscroll可能にする。
+- Day TableからSectionをquick createしない。Section追加は全日coverageに影響するため、Section設定画面で行う。
+- initialではSection数が比較的少なくtime orderがauthorityである前提から、selector内検索は設けない。必要性が実利用で確認された場合に再評価する。
+- Section直接変更は未実行Taskのみを基本とし、D-031に従い開始予定をclearする。
 
 ## 11. Task field inline edit
 
@@ -575,6 +594,8 @@ TaskChuteDay boundaryより前のcivil clock timeをそのDay上で入力した�
 
 この例の`05:00`自体をProduct defaultとしてhardcodeしない。実際の解釈はuser-selected TaskChuteDay boundaryに従う。
 
+時間fieldへfocusしたときに常に全選択を強制せず、通常のtext cursor editingもできるようにする。`09:30`の分部分だけを`45`へ修正するような部分編集を1操作で行えることを優先する。
+
 D-031に従い、planned start値変更時はSectionを自動resolveする。空にした場合はcurrent Sectionを維持する。
 
 ### 11.5 Start forecast
@@ -607,7 +628,7 @@ D-033に従う。
 - Running中の実績はlive elapsed。
 - Complete controlでcurrent timeをendとして確定。
 - Actual start / endはユーザーが直接入力・後修正可能。
-- Actual time入力はPlanned startと同じlogical `HH:mm` normalization foundationを利用する。
+- Actual time入力はPlanned startと同じlogical `HH:mm` normalization / normal cursor editing foundationを利用する。
 - Running TaskへEndを入力したら指定時刻でComplete。
 - Actual durationはread-only derived。
 - completed actual start / end修正後はduration / Section capacity等を即再計算。
@@ -699,7 +720,7 @@ Search / Filter中に作成した新規Taskは、名前等を確定するまで�
 
 ### 13.4 New Task Tab flow
 
-Task名確定後の`Tab`は通常Rowと同じ現在のvisible editable column orderへ従う。
+Task名確定後の`Tab`は通常Rowと同じ現在のvisible editable / actionable column orderへ従う。
 
 例:
 
@@ -708,6 +729,8 @@ Task → Project → Mode → Section → Routine → Note → 見積 → 開始
 ```
 
 実際にはユーザーがcolumnをreorder / hideした現在のvisual orderをauthorityとし、read-only columnはskipする。
+
+Routine / Noteのようなcompact action columnもvisibleならTab対象とし、`Enter` / `Space`でそれぞれのmenu / paneを開ける。
 
 新規Task専用の別Tab順を定義しない。
 
@@ -830,8 +853,8 @@ Routineは独立したcompact column。
 ↻  Routineなし: muted gray
 ```
 
-- Routineあり: click / Enterで元Routine設定への入口。
-- Routineなし: click / EnterでこのTaskからRoutine作成への入口。
+- Routineあり: click / `Enter` / `Space`で元Routine設定への入口。
+- Routineなし: click / `Enter` / `Space`でこのTaskからRoutine作成への入口。
 - Routine columnをprimary入口とする。
 - `… → ルーティン設定…`もsecondary入口として残す。
 
@@ -1060,7 +1083,7 @@ Note columnはcompact icon action。
 
 - Noteあり: iconを少し濃くする。
 - Noteなし: muted。
-- click: そのTaskのTask Note Paneを開く。
+- click / `Enter` / `Space`: そのTaskのTask Note Paneを開く。
 - `… → タスクノートを開く`も同じ動作。
 
 ### 21.1 Pane content
@@ -1076,10 +1099,9 @@ Task Note                         ×
 [ Note editor ... ]
 ```
 
-- Task名 + editor + closeを基本構成。
-- autosaveを基本とする。
-- Pane幅はdrag resize可能。初期約360pxをstarting point。
-- widthをlocal preferenceとして記憶できる方向。
+確定している基本構成はTask名 + editor + closeとする。
+
+editorのexact save timing、autosave conflict UX、Paneのexact width / resize / local persistenceはまだ確定扱いにせず、prototype /後続設計で詰める。
 
 ### 21.2 Active Note target
 
@@ -1089,8 +1111,6 @@ Task Note                         ×
 
 - J/Kで別Taskへfocus移動してもPane内容は変わらない。
 - 別TaskのNote buttonを押したときだけPane targetを切り替える。
-
-Normal Task Noteはautosaveを基本とする。
 
 Routine Task Noteでは、別Task Noteへ切り替える、Paneを閉じる等のNote edit session確定時にSection 16のscope popupを一度出す。1文字ごとには出さない。
 
@@ -1117,7 +1137,7 @@ Day Table search専用shortcutは設けず、Hit-a-Hint / Tab / Mouseから到�
 | `Shift+F10` | Task context menu |
 | `Shift+← / →` | 前 / 次Day Board |
 | `?` | shortcut help |
-| `Tab` | selected Taskの最初のvisible editable fieldへ入り、即edit-ready |
+| `Tab` | selected Taskの最初のvisible editable / actionable fieldへ入り、即操作可能 |
 | `Esc` | current modeから1段戻る / cancel |
 
 Section summary selected時の`Enter`はcollapse / expand。
@@ -1126,8 +1146,9 @@ Section summary selected時の`Enter`はcollapse / expand。
 
 - single-key global shortcutを停止。
 - normal文字入力 / IMEを優先。
-- `Tab / Shift+Tab`で現在のvisible editable fields間をvisual column orderどおり移動。
-- `Enter`で確定しRow focusへ戻る。
+- `Tab / Shift+Tab`で現在のvisible editable / actionable fields間をvisual column orderどおり移動。
+- text / numeric / time fieldでは`Enter`で確定しRow focusへ戻る。
+- Routine / Note等のaction fieldでは`Enter` / `Space`で該当UIを開く。
 - `Esc`で変更破棄してRow selectionへ戻る。
 - invalid inputではfocusを離脱させずvalidationを表示する。
 
@@ -1391,7 +1412,8 @@ Floating Runner（active Execution時）
 - exact Hit-a-Hint alphabet / label assignment
 - browser / OSごとのshortcut conflict / accessibility validation
 - final D&D library / interaction implementation
-- Task Note editor library / autosave conflict UX
+- Task Note editor library / exact save timing / autosave conflict UX
+- Task Note Pane exact width / resize / local persistence
 - Project / Mode漢字reading indexのexact生成方式
 - public holiday data source / update UX
 - Routine recurrence controlのexact component styling
