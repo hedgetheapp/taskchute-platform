@@ -42,6 +42,7 @@ Current First vertical slice implementation / nonprod verification fact:
 - D1 read replicationを将来導入するentry criteria
 - Durable Objects / external PostgreSQLを将来再評価する条件
 - Final R2 / binary object storage adoption
+- D-031〜D-037で追加されたplanned-start order、RoutineOccurrence override、workday override、manual Execution correction、cancelled / removed historyのphysical schema
 
 ## API / Command / Query
 
@@ -73,6 +74,9 @@ Current implementationでは以下を実装済み。
 - rate-limit / abuse-protection policy
 - pagination / large payload policy
 - future command追加時のendpoint naming / compatibility rule
+- planned-start edit + Section auto-moveを1 logical commandとしてどうatomic化するか
+- manual actual correction / historical overlap validation commandのexact API / retry contract
+- running delete / Routine Skip / Routine stop-resume-delete commandのexact atomicity / retry contract
 
 ## Authentication / authorization
 
@@ -125,6 +129,8 @@ Current implementation fact:
 - retained operation中はunrelated lifecycle / reorder mutationをdisableし、旧operationを別操作から暗黙再送しない
 - current DayBoard外のEntryに属するactive Executionもheader actionからComplete可能
 
+D-031〜D-037でDay planning / Routine target semanticsが追加され、`docs/DESIGN.md` DraftではDay Tableのkeyboard-first interaction、fixed left controls、inline edit、column customization、Routine scope popup等を設計している。これらはcurrent runtimeへ未実装。
+
 以下の具体方式・scopeはOpen:
 
 - supported browser baseline
@@ -139,7 +145,9 @@ Current implementation fact:
 - Web clientのlocal persistence scope
 - browser reloadをまたいでambiguous logical operation identityを保持する必要性 /方式
 - exact optimistic / pessimistic UI strategy per future command
-- accessibility baseline
+- accessibility baseline / shortcut conflictのbrowser実機検証
+- Hit-a-Hint hint alphabet / assignment algorithm
+- exact icon set / pixel metrics / animation
 
 ## Offline / Sync
 
@@ -165,7 +173,7 @@ D-015でCore Domain foundationsはApproved済み。
 
 D-022によりinitial runtime entity IDはUUIDv7、First slice Sectionはuser-global stable entityとしてApproved済み。
 
-D-028でexplicit Interrupt / continuationの主要semantics、D-029でcurrent Start取消semantics、D-030でSection名・開始/終了、TaskChuteDay全体のgapなしcoverage、時間順、TaskChuteDay基準extended time、current Section resolution、SectionなしEntryのStart時配置、historical Section context preservation、Section時間帯とExecution overlapによる容量消費はApproved済み。
+D-028でexplicit Interrupt / continuation、D-029でcurrent Start取消、D-030でSection semantics、D-031でplanned startとSection placement / ordering、D-032で開始見込、D-033でmanual actual correction / non-overlap、D-037でDay move / duplicate / deleteの主要semanticsはApproved済み。
 
 Current implementationではEntry `position`を同一user / TaskChuteDay / Section内のexplicit integer orderとして保存し、AddTaskToDayでappend、ReorderEntriesでrequested orderへ更新する。Reorderのcurrent physical implementationはset-based `json_each` updateだが、これを長期Domain Decisionへ昇格しない。
 
@@ -184,15 +192,17 @@ Current lifecycle implementation fact:
 - Section summary / collapse preferenceのphysical persistenceとaccount/device syncを将来行うか
 - EntryをTaskChuteDay / Section間で移動するcommand / transaction algorithm
 - future day-specific Section occurrence / override capabilityが必要になる条件
-- Section設定変更時のfuture Entryへの適用時点
+- Section / TaskChuteDay boundary設定変更時にD-031のplanned-start authorityを適用するexact transaction / recovery UX
 - initial bootstrap / onboardingでuser-selected TaskChuteDay boundaryとdefault Section templateをどう整合させるか
+- planned-startなしmanual orderと同時刻tie-breakを保持するexact persistence / reorder algorithm
 - completed stateを将来Execution historyからderiveするか、stored lifecycle stateとして維持するか
 - Reopen semantics
 - Pause / Resume representation
 - Interrupt / Quick Interrupt commandのexact atomicity / retry contract
 - interrupt continuation relationのexact physical model
-- Cancel semantics
-- destructive delete / archive / tombstone UX for entities beyond the Approved Section historical-preservation requirement
+- generic Cancel semantics（D-037のrunning deleteはApproved済みだが、独立したCancel operation全体は未定）
+- D-037のdeleted / removed Entryとcancelled Executionを表現するarchive / tombstone / outcome model
+- manual Execution correctionのaudit / revision / conflict semantics
 
 ## TaskChuteDay
 
@@ -201,6 +211,8 @@ D-017でlogical TaskChuteDayとcontinuous interval semanticsはApproved済み。
 D-022によりinitial bootstrapではcanonical IANA timezone / boundaryを明示入力し、暗黙のProduct defaultを適用しない。ambiguous / nonexistent local timeのinitial disambiguationはTemporal-compatibleな`compatible` semanticsとする。
 
 D-030によりSection時間はTaskChuteDay上のlogical timeとして扱い、Section configurationはTaskChuteDay全体をgapなくcoverする。`24:00`を超えるSection時間はextended-time notationで表現できることがApproved済み。
+
+D-031により開始予定時間をSection placement authorityとして利用し、Section configuration変更後の未実行Entryは開始予定時間がある場合その時刻へ追従する。
 
 Current implementationではactual resolved boundary instantでday membershipを判定し、start / next-day endを別々にtimezone ruleからresolveする。materialized intervalとestablishment timezone / boundary contextを保存する。
 
@@ -224,16 +236,27 @@ PR #5ではactive ExecutionをTaskChuteDay境界で分割せず、current dayへ
 
 RoutineDefinition -> RoutineOccurrence -> Entryとorigin TaskChuteDay preservationはD-015でApproved済み。
 
+D-034でProjected / Materialized Occurrence、field-level day override、Routine default反映scope、Skip、明示日付移動、stop / resume / deleteの主要semanticsがApproved済み。
+
+D-035 / D-036でeffective営業日 / 休日判定とinitial recurrence pattern setがApproved済み。
+
 以下はOpen:
 
-- repeat ruleのinitial supported set
-- RoutineOccurrenceをいつmaterializeするか
-- Skip / Cancel / delete outcome model
+- RoutineDefinition / RoutineOccurrence / field override / schedule versionのexact persistence schema
+- Projected Occurrenceをquery時に算出するexact algorithm / caching / pagination
+- どの操作時点でphysical RoutineOccurrence rowをmaterializeするかのimplementation boundary（Product semanticsはD-034でApproved）
+- Routine defaultからday-specific Task Note templateを適用するcopy / reference / revision strategy
+- Routine Taskのday-specific Task名 / Project overrideをEntry / Occurrence / dedicated contextのどこへ保持するか
+- schedule変更と既materialized Occurrenceをatomicにreconcileするcommand algorithm
+- stop / resume / delete stateのphysical representation
+- long-range recurrence projectionのperformance / query limit
+- public holiday source / library / update mechanismとholiday data versioning
+- 将来Japan以外のlocale / country calendarを扱うか
 - overdue occurrenceをどう表示するか
 - delayed completionをstreak上どう評価するか
 - continuationによるachievement判定
-- future RoutineDefinition変更がmaterialized occurrenceへ与える影響
 - Rotation Routine等のscope
+- Routine statistics / streakのexact relation（duplicateしたnon-Routine TaskはRoutine実績へ含めないこと自体はD-037でApproved）
 
 ## Review / historical context
 
@@ -243,6 +266,8 @@ D-022によりFirst sliceではmaterialized TaskChuteDayのactual interval / est
 
 D-030によりSection rename/delete/time変更後も過去のEntry / Execution / Review用historical contextで当時のSection名と時間帯を保持し、現在設定へretroactiveに置換しないことはApproved済み。
 
+D-033によりactual開始 / 終了の訂正後はvalid Execution intervalをauthorityとして実績 / Reviewを再計算し、同一userのvalid Execution overlapは禁止する。D-037によりrunning deleteで取消されたcurrent Executionを通常actualへ含めない一方、参照不能なhard deleteにはしない。
+
 Current runtimeではExecutionの`id / app_user_id / entry_id / started_at / ended_at / created_at`を保存する。Execution時点metadata snapshotのexact fieldsはまだ未決。
 
 以下はOpen:
@@ -251,6 +276,8 @@ Current runtimeではExecutionの`id / app_user_id / entry_id / started_at / end
 - Executionに保存するProject / Section / Task contextのexact fields
 - Project移動 / rename / delete後のReview display semantics
 - Section historical name / time range / referenceを実現するexact snapshot / versioning persistence
+- corrected Executionのaudit trail / prior timestamp retention
+- cancelled / removed Executionを通常Reviewとは別にどの程度表示するか
 - Routine achievement / streak calculation rule
 - logical day / week / month集計のexact timezone semantics
 - qualitative Review Document model / UX
@@ -259,6 +286,8 @@ Current runtimeではExecutionの`id / app_user_id / entry_id / started_at / end
 ## Documents
 
 Primary Task / Project Documentとoptional RoutineOccurrence DocumentはD-018でApproved済み。
+
+D-034によりRoutineDefinitionがday-specific Task Noteのtemplate/defaultを供給できる方向がApproved済み。ただしRoutine共通の長期noteはD-018のTask Primary Documentを維持する。
 
 以下はOpen:
 
@@ -274,6 +303,7 @@ Primary Task / Project Documentとoptional RoutineOccurrence DocumentはD-018で
 - revision / version model
 - revision-history UX
 - autosave / conflict semantics
+- Routine day-specific Note templateのcopy / reference / override semanticsのphysical implementation
 - Entry / Execution単位の専用Documentを将来持つか
 
 ## Place / Location / Map
@@ -321,7 +351,7 @@ First Server + Web vertical sliceはImplemented / Integrated済み。次のProdu
 
 以下はOpen:
 
-- 次sliceでRoutine / Documents / Review / Android等のどれを優先するか
+- 次sliceでDay planning / Routine / Documents / Review / Android等のどれを優先するか
 - Android native implementationへ進むentry criteria
 - Androidのinitial Compose architecture詳細
 - Android Widgetのinitial scope
