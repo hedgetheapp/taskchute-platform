@@ -127,6 +127,19 @@ Mouseとkeyboardは同じactive candidateを共有する。
 - Mouseでcandidateをactiveにした後に`↑ / ↓`を押した場合は、そのcandidateを起点としてkeyboard navigationを続ける。
 - Mouseでcandidateをactiveにした後でも、そのまま文字入力を再開できる。検索文字が変わった場合はSection 1.2のruleでcandidate listとactive stateを再計算する。
 
+### 1.4 Outside click
+
+selector外をMouseでclickした場合は、active candidateやsearch中の候補をcommitせずselectorをcancelして閉じ、そのclick先の通常interactionを続行する。
+
+- 別のeditable / actionable fieldをclick: current selectorは未確定のまま閉じ、clickしたfieldの通常actionを実行する。
+- Row / Section等の空白やfocusable surfaceをclick: current selectorは未確定のまま閉じ、その場所へ通常どおりfocusを移す。
+- toolbar button等をclick: current selectorは未確定のまま閉じ、そのbutton actionを実行する。
+- existing candidateをclick: outside clickではなくselection commitとして扱い、そのcandidateを確定する。
+- quick create candidateをclick: 明示的なcreate actionとして扱い、新規Definitionを作成・assignしてselectorを閉じる。
+- hover / active stateだけではcommitしない。
+
+Routine由来defaultの変更で既存のscope selection `今回だけ / ルーティンに反映`まで進んだ後は、selectorのoutside-click ruleではなくscope selection側のinteractionをauthorityとする。outside clickでscopeを自動確定せず、明示的なscope selectionまたは`Esc`によるcancelを優先する。
+
 ## 2. Search / quick create
 
 既存のJapanese / romaji search foundationを利用する。
@@ -205,6 +218,7 @@ Section
 - initialでは文字入力によるSection searchを行わない。
 - Day TableからSectionをquick createしない。Section追加は全日coverageへ影響するためSection設定画面で行う。
 - Pointer / keyboard active candidateの切替はSection 1.3と同じruleを使う。hoverだけではcommitせず、clickで確定する。
+- selector外clickはSection 1.4と同じruleを使い、candidateをcommitせずclick先の通常interactionへ移る。
 
 ### 3.1 Section change
 
@@ -229,6 +243,7 @@ Project / Mode / Sectionとも、Mouseで一度Rowを選択してから再click�
 - commit後は元cellへfocusを戻し、field移動は`Tab / Shift+Tab`へ統一する。
 - pointer movementはhover candidateをactiveにするが、hoverだけではcommitしない。
 - candidate clickはそのcandidateをcommitする。
+- selector外clickはcandidateをcommitせずselectorをcancelし、click先の通常interactionを続行する。
 - Mouseでactive candidateを変更した後もkeyboard navigationへ連続して移行できる。
 
 Project / Modeはopen直後からsearch-readyとし、Sectionはcurrent candidate focusとする。これはProject / Modeが多数候補からの検索をprimary interactionにする一方、Sectionは少数のtime-ordered候補から選ぶためである。
