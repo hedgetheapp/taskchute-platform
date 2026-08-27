@@ -50,6 +50,10 @@ search inputへfocusした状態を起点とする。
 - `↑ / ↓`: 候補移動。
 - `Enter`: focused candidateを確定してselectorを閉じる。
 - `Esc`: 値を変更せずselectorを閉じる。
+- selectorを`Enter`で確定した後は、次fieldへ自動で進まず、元のProject / Mode cellへfocusを戻す。
+- `Esc`で閉じた場合も元のProject / Mode cellへfocusを戻す。
+- selector close後の`Tab / Shift+Tab`が、現在のvisual column orderに従って次 / 前のvisible editable / actionable fieldへ移動するauthorityとする。
+- initialでは`Space`をProject / Mode selectorのopen / selection用shortcutへ割り当てない。Routine / Note等のbutton-like actionに定義された`Space`操作とは分離する。
 
 たとえばProject=`仕事`を未設定へ戻す場合:
 
@@ -60,6 +64,8 @@ Project cell
   → 未設定
   → Enter
   → Day Tableでは —
+  → focusはProject cellへ戻る
+  → Tabで次fieldへ進む
 ```
 
 initialでは`Backspace` / `Delete`をProject / Modeの専用clear shortcutへ割り当てない。search text editとの衝突を避け、`未設定`を選ぶ明示操作をauthorityとする。
@@ -91,6 +97,8 @@ quick createは:
 - selectorを閉じる。
 - 詳細設定画面は自動で開かない。
 - 新規Definitionは設定順の末尾へ追加する。
+
+quick createを`Enter`で確定した後のfocusも通常selectionと同じく元のProject / Mode cellへ戻し、次fieldへの移動は`Tab`で行う。
 
 ### 2.2 Duplicate prevention
 
@@ -144,6 +152,9 @@ Section
 - `↑ / ↓`でcandidate移動。
 - `Enter`で確定。
 - `Esc`で変更せず閉じる。
+- `Enter`確定後も`Esc`cancel後も元のSection cellへfocusを戻し、次fieldへ自動で進まない。
+- selector close後の`Tab / Shift+Tab`で次 / 前のvisible editable / actionable fieldへ移動する。
+- initialでは`Space`をSection selectorのopen / selection用shortcutへ割り当てない。
 - Section数が多い場合はcandidate領域だけscroll可能にする。
 - initialでは文字入力によるSection searchを行わない。
 - Day TableからSectionをquick createしない。Section追加は全日coverageへ影響するためSection設定画面で行う。
@@ -156,7 +167,7 @@ Section
 - 移動先Sectionの開始時刻等から新しいplanned startを自動生成しない。
 - `Sectionなし`を選択した場合もplanned startをclearする。
 
-Routine由来TaskでSectionを変更する場合は、既存のRoutine edit scope ruleを適用する。
+Routine由来TaskでSectionを変更する場合は、既存のRoutine edit scope ruleを適用する。scope selectionを確定した後も元のSection cellへfocusを戻し、次fieldへの移動は`Tab`で行う。
 
 ## 4. Mouse / keyboard parity
 
@@ -165,5 +176,7 @@ Project / Mode / Sectionとも、Mouseで一度Rowを選択してから再click�
 - value / selector hit area click: 直接selectorを開く。
 - keyboard: current visual Tab flowから到達して同じselectorを開く。
 - `Enter`でcommit、`Esc`でcancelという基本モデルを揃える。
+- commit / cancel後は元cellへfocusを戻し、field間の移動は`Tab / Shift+Tab`へ統一する。
+- selector自体には`Space` shortcutを追加しない。
 
 Project / Modeだけはopen直後からsearch inputへfocusし、Sectionはcurrent candidate focusとする。これはProject / Modeが多数候補からの検索をprimary interactionにする一方、Sectionは少数のtime-ordered候補から選ぶためである。
