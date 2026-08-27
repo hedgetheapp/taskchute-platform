@@ -223,6 +223,32 @@ selector popoverはanchor cell幅へ完全追従させず、候補を選びや�
 
 このsize ruleは視認性と操作性のinitial guidelineであり、正確なpixel valueは実装・visual verificationで微調整してよい。ただし「anchor cellより広くしてよい」「長いlabelは1行ellipsis」「多数candidateはcandidate領域だけscroll」というuser-visible behaviorは維持する。
 
+### 1.9 IME composition priority
+
+Project / Mode selectorで日本語IME等のcomposition中は、IME interactionをselectorのcandidate operationより優先する。
+
+- composition中の`Enter`はIMEの変換確定だけに使い、active candidateのselection / quick createを同じkey pressでcommitしない。
+- IME確定後にactive candidateをselector valueとしてcommitするには、composition終了後に改めて`Enter`を押す。
+- composition中の`↑ / ↓`はselector candidate navigationへ割り当てず、IMEの変換候補操作を優先する。
+- composition中の`Esc`がIME側で変換cancelとして処理された場合、その同じ`Esc`でselectorまで閉じない。composition終了後の別の`Esc`でSection 1.2のselector cancelを行う。
+- composition中の`Tab / Shift+Tab`はSection 1.2のselector field navigationとして横取りせず、IME / native input処理を優先する。
+- compositionが確定してsearch textが確定した時点で通常のsearch ruleを適用し、existing matchがあればSection 1.2に従って先頭existing candidateをactiveにする。existing matchがなければactive candidateを解除し、quick createは自動activeにしない。
+- IME確定とselector commitを1回の`Enter`で連続発火させないことをuser-visible authorityとする。
+
+例:
+
+```text
+検索: しごと［IME変換中］
+Enter
+  → IME変換だけを確定
+検索: 仕事
+> 仕事
+Enter
+  → active candidateの「仕事」をselector valueとして確定
+```
+
+IME composition stateの検出方法やbrowser eventの扱いはimplementation detailとするが、対応browser / OSで上記の二重確定防止behaviorをverificationする。
+
 ## 2. Search / quick create
 
 既存のJapanese / romaji search foundationを利用する。
@@ -334,5 +360,6 @@ Project / Mode / Sectionとも、Mouseで一度Rowを選択してから再click�
 - Mouseでactive candidateを変更した後もkeyboard navigationへ連続して移行できる。
 - popoverはanchor cellへ追従し、anchorが完全にviewport外へ出た場合は未確定状態をcommitせず閉じる。
 - popoverはanchor cell幅より広く表示してよく、多数candidate時はcandidate領域だけ内部scrollする。
+- Project / ModeのIME composition中はIME operationをselector shortcutより優先し、IME確定とcandidate commitを同じ`Enter`で連続発火させない。
 
 Project / Modeはopen直後からsearch-readyとし、Sectionはcurrent candidate focusとする。これはProject / Modeが多数候補からの検索をprimary interactionにする一方、Sectionは少数のtime-ordered候補から選ぶためである。
