@@ -75,7 +75,7 @@ Day Tableは一般的Web appよりやや高密度を許容するが、click / to
 
 主要領域:
 
-1. Top Navigation
+1. Top Navigation / Day Header
 2. Left Sidebar
 3. Day Toolbar / Task Controls
 4. Day Table
@@ -83,9 +83,27 @@ Day Tableは一般的Web appよりやや高密度を許容するが、click / to
 6. Floating Runner
 7. 将来のgeneric Right Detail Pane
 
-### 3.1 Top Navigation
+### 3.1 Top Navigation / Day Header
 
-主にSidebar開閉、TaskChuteロゴ、前日 / 翌日 / 今日、日付選択、検索、設定、アカウント等を置く。
+Dayのdate navigationはTop Navigation側へ置き、Day Toolbarとは分離する。
+
+基本形:
+
+```text
+‹   2026年8月27日（木）   ›      今日
+```
+
+- 前 / 次矢印で前日 / 翌日へ移動。
+- 日付clickでcalendar pickerを開く。
+- `今日`でcurrent TaskChuteDayへ戻る。
+- current TaskChuteDay表示中も`今日`controlの位置は維持し、disabled表示を基本とする。
+- HeaderにはTask数、完了率、見積合計、実績合計等を重複表示せず、logical dateをprimary informationとする。
+- TaskChuteDayがcivil dateをまたぐ場合もHeaderのprimary表示はlogical dateとし、`05:00–翌05:00`等のboundary informationは常時表示しない。
+- `Shift+← / →`は前 / 次Day navigationとして維持する。
+
+Calendar pickerはmonth gridを基本とし、矢印・`PageUp / PageDown`・`Enter`・`Esc`で操作できる。
+
+Day Table内のTask searchはTop Navigationのgeneric/global searchとは別概念としてDay Toolbarへ置く。
 
 ### 3.2 Left Sidebar
 
@@ -102,6 +120,58 @@ Day Tableは一般的Web appよりやや高密度を許容するが、click / to
 Desktop初期幅は約240pxをstarting pointとし、180〜420px程度でresize可能にする。open / closedとwidthを分離し、閉じる直前の幅を復元する。
 
 初期Desktop WebではSidebar幅とopen stateをbrowser `localStorage`へ保持する方向とする。
+
+### 3.3 Day Toolbar
+
+Day Toolbarは「その日のTaskを操作・絞り込む」ためのcompact controlsへ限定する。
+
+基本形:
+
+```text
+[＋ タスクを追加] [🔍 タスクを検索…] [Filter] [実行済み ✓] [列]
+```
+
+将来用途だけを理由に空の`…`overflow menuは置かない。具体的なlow-frequency Day actionが確定した時点で追加する。
+
+#### Task search
+
+- current DayのTask row projectionだけを絞り込む。
+- Task orderを変更しない。
+- 初期search targetはTask名、Project名、Mode名、Section名。
+- Routine definitionやTask Note本文のfull-text searchはinitial Day search対象に含めず、必要なら将来global search側で扱う。
+- Project / Mode selectorと同じ日本語normalization / romaji matching foundationを再利用する。例: `tasuku`で`タスクシュート開発`をmatch可能にする。
+- SearchとFilterを同時利用した場合はAND条件。
+- search専用の`/`等のkeyboard shortcutは設けない。Mouse / Tab / Hit-a-Hintで到達できればよい。
+- search inputへfocus中はglobal single-key shortcutを発火させない。
+- search clear後は元のTask order / Section collapse stateを復元する。
+
+Search中はmatchしたTaskを含むSectionだけを表示してよい。`Sectionなし`もmatch Taskがある場合だけ表示する。
+
+#### Filter
+
+initial filter target:
+
+- Project — multi-select
+- Mode — multi-select
+- Section — multi-select、`Sectionなし`を含む
+- Routine — `すべて / Routineのみ / 通常Taskのみ`
+
+同一category内の複数選択はOR、category間はANDとする。
+
+Filterは表示projectionだけを変更し、Task order / forecast calculation / canonical Section summary aggregationを変更しない。
+
+Filter適用中はbuttonへactive countを表示し、必要に応じてcompact chipを1行内へ表示する。
+
+```text
+[Filter 2] [Project: 仕事 ×] [Mode: 集中 ×]
+```
+
+- chipの`×`でその条件だけ解除。
+- Filter popup内に`すべて解除`を用意する。
+- 横幅不足時は`[Project: 仕事 ×] [+1]`等へcompact化する。
+- Filter / Searchで0件になったSectionはprojection上隠してよいが、summary calculation自体はfilter後のvisible rowsへ再定義しない。
+
+`実行済み`visibility toggleと重複するため、initial FilterへExecution status categoryを追加しない。
 
 ## 4. Day Table foundation
 
@@ -244,6 +314,21 @@ Row focus、Bulk checkbox selection、Running stateは別概念として扱う�
 
 Section summary rowもRow focus対象とし、Task Rowと同じvisual languageを使う。
 
+### 8.1 Mouse interaction
+
+Rowの「focus」とcell/actionの「直接操作」を分ける。
+
+- Rowの空白 / 非action領域click: そのTask Rowへfocus。
+- Execution Control click: Rowを事前選択する追加clickを要求せず、そのTaskを直接Start / Complete。
+- editable value / selector表示部click: 1 clickでそのRowへfocusしたうえで該当fieldをedit / open。
+- Task名、Project / Mode / Section、見積、開始予定、開始、終了等はこのdirect interactionを利用する。
+- Routine / Note iconは直接action。
+- cell内の余白まで全面を不用意にedit triggerにせず、value / control hit area外はRow focusとして扱う。
+- right click: そのTaskへfocusを移してTask context menuを開く。
+- double clickへ一般Row actionを割り当てない。column境界double clickのAuto Fit等、明示済みinteractionだけに限定する。
+
+別Rowのeditable cellをclickした場合も「Rowを選択してからもう一度click」を要求せず、1 clickで目的のeditへ入る。
+
 ## 9. Section grouping / summary
 
 D-030 / D-031に従う。
@@ -271,6 +356,8 @@ Quick Interruptで生成されたTaskも通常Taskとして総数へ含める。
 
 `実行済みを非表示`にしてもSection summaryはvisibility filterで再集計しない。
 
+Search / Filter中もsummary自体の意味をvisible subsetへ切り替えず、canonical Section全体の集計を維持する。
+
 ### 9.2 Estimate summary
 
 - Section所属Entryの見積合計。
@@ -285,13 +372,22 @@ Quick Interruptで生成されたTaskも通常Taskとして総数へ含める。
 - barは0〜100%でcapし、Task placementのspilloverを100%超えとして表現しない。
 - neutral gray系を基本とし、Section accentをbar全体へ強制しない。
 
-### 9.4 Collapse
+### 9.4 Collapse / Section summary interaction
 
 - Section summary自身は常に表示。
 - 初回はexpanded。
 - collapse stateは`TaskChuteDay × Section`ごとに独立記憶。
 - 初期Desktop WebではlocalStorage等のUI preference。
 - J/K navigationではcollapsed child rowsをskipする。
+- summary rowの空き領域clickでSection summaryへfocus。
+- chevron clickでcollapse / expand。
+- `＋`clickでそのSectionへTask追加。
+- Section名clickだけで設定画面を開く挙動にはしない。
+- Section summary selected時の`Enter`でcollapse / expand。
+- Section summary selected時の`I`でそのSectionへTask追加。
+- collapsed Sectionから`＋`または`I`でTask追加した場合はSectionをexpandし、新規Task名fieldへfocusする。
+- child Taskへfocusがある状態でSectionをcollapseした場合は、そのSection summaryへfocusを移す。
+- Section自体をDay Table上でD&D reorderしない。Section orderはtime authorityに従う。
 
 ### 9.5 Empty Section
 
@@ -411,46 +507,77 @@ read-onlyの`開始見込` / `実績`等はTab対象からskipする。非表示
 
 基本:
 
-- `Tab`: 確定して次editable field。
-- `Shift+Tab`: 確定して前editable field。
-- `Enter`: current fieldを確定。
-- `Esc`: current editを破棄しRow selectionへ戻る。
+- `Tab`: validなら確定して次editable field。
+- `Shift+Tab`: validなら確定して前editable field。
+- `Enter`: validならcurrent fieldを確定しRow focusへ戻る。
+- `Esc`: current editを破棄し編集前の値へ戻してRow selectionへ戻る。
 
 Field edit / IME composing中はglobal single-key shortcutを発火させない。
 
-### 11.1 Task name
+### 11.1 Blur / invalid input
+
+別cell / Row / actionをclickした場合も、current fieldがvalidならcommitしてclick先へ移る。
+
+invalidな値の場合:
+
+- 自動補正して保存しない。
+- 入力を勝手に破棄しない。
+- current edit stateを維持する。
+- `入力値を確認してください`等のcompact validation messageを出す。
+- click先へのfocus移動は行わない。
+
+Routine由来Taskのdefault対象fieldでは、通常のfield validation成功後、Section 16のscope popupを挟んでcommit authorityを確定する。
+
+### 11.2 Task name
 
 - inline text edit。
 - Task名はrequired。
 - 新規Taskが未確定かつ空のまま`Esc`された場合はその新規rowを破棄。
 
-### 11.2 Estimate
+### 11.3 Estimate
 
-optional。入力例:
-
-```text
-30      → 30分
-30m     → 30分
-1h      → 60分
-1h30m   → 90分
-```
-
-空なら`—`。見積なし自体はwarningにしない。
-
-### 11.3 Planned start
+optional。入力はゆるく受け付け、保存 / displayはdurationへ正規化する。
 
 入力例:
 
 ```text
+30      → 30分
+90      → 1時間30分
+30m     → 30分
+1h      → 60分
+1h30m   → 1時間30分
+1:30    → 1時間30分
+```
+
+- 空または`0`は見積なしとして扱う。
+- 見積なしはwarningにしない。
+- 負数等、durationとして解釈できない値はinvalid。
+
+### 11.4 Planned start
+
+入力はゆるく受け付け、displayはlogical timeの`HH:mm`へ正規化する。
+
+例:
+
+```text
+9       → 09:00
 900     → 09:00
-09:00   → 09:00
-1330    → 13:30
+930     → 09:30
+9:30    → 09:30
+09:30   → 09:30
+25:30   → 25:30
 29:00   → 29:00（翌05:00）
 ```
 
-D-031に従い、値変更時はSectionを自動resolveする。空にした場合はcurrent Sectionを維持する。
+TaskChuteDay boundaryより前のcivil clock timeをそのDay上で入力した場合は、logical Day内の翌日側として解釈できる。
 
-### 11.4 Start forecast
+例としてboundaryが`05:00`のDayで`01:30`を入力した場合、logical timeは`25:30`へnormalizeする。
+
+この例の`05:00`自体をProduct defaultとしてhardcodeしない。実際の解釈はuser-selected TaskChuteDay boundaryに従う。
+
+D-031に従い、planned start値変更時はSectionを自動resolveする。空にした場合はcurrent Sectionを維持する。
+
+### 11.5 Start forecast
 
 read-only。D-032に従う。
 
@@ -471,7 +598,7 @@ Tooltip: 開始見込がSection終了 12:00 を超えています
 
 開始予定と開始見込が単に違うだけではwarningにしない。
 
-### 11.5 Actual start / end / duration
+### 11.6 Actual start / end / duration
 
 D-033に従う。
 
@@ -480,19 +607,26 @@ D-033に従う。
 - Running中の実績はlive elapsed。
 - Complete controlでcurrent timeをendとして確定。
 - Actual start / endはユーザーが直接入力・後修正可能。
+- Actual time入力はPlanned startと同じlogical `HH:mm` normalization foundationを利用する。
 - Running TaskへEndを入力したら指定時刻でComplete。
 - Actual durationはread-only derived。
 - completed actual start / end修正後はduration / Section capacity等を即再計算。
 
-Execution overlapは保存不可。衝突Taskを可能な範囲で示す。
+以下は保存不可:
+
+- TaskChuteDay上でendがstartより前になる解釈。
+- valid Execution同士のoverlap。
+- logical timeとして解釈できない値。
+
+Execution overlap時は衝突Taskを可能な範囲で示す。
 
 ```text
 「資料作成」の実行時間 10:00–11:00 と重複しています
 ```
 
-auto shiftしない。
+auto shift / auto truncateしない。
 
-### 11.6 Estimate overrun
+### 11.7 Estimate overrun
 
 Day Tableでは実績値だけをsubtle warning colorにする。
 
@@ -523,6 +657,8 @@ Section内:
 
 ## 13. New Task / insert
 
+新規Task専用Modal / Formを作らず、通常Task Rowと同じinline edit foundationを使う。
+
 ### 13.1 Keyboard `I`
 
 Task Row selected:
@@ -545,6 +681,35 @@ Sectionなし selected:
 ### 13.2 Section summary `＋`
 
 `I`と同じSection直下Task作成入口として使用する。
+
+collapsed Sectionから追加した場合はSectionをexpandし、新規Task名fieldへfocusする。
+
+### 13.3 Day Toolbar `＋ タスクを追加`
+
+Toolbarから追加したTaskは**常に`Sectionなし`へ作成する**。
+
+- current Row focus、current time、現在のSectionを推測してplacementしない。
+- Task名fieldへ即focus。
+- planned startなし。
+- Filter / Search条件をProject / Mode / Section等のdefaultとして自動継承しない。
+
+Search / Filter中に作成した新規Taskは、名前等を確定するまでは一時的にvisibility条件を無視して表示する。
+
+確定後に現在のSearch / Filter条件へmatchしなければ通常projectionどおり非表示にし、必要ならlight notificationで`タスクを追加しました / 現在のフィルターでは非表示です`等を示す。
+
+### 13.4 New Task Tab flow
+
+Task名確定後の`Tab`は通常Rowと同じ現在のvisible editable column orderへ従う。
+
+例:
+
+```text
+Task → Project → Mode → Section → Routine → Note → 見積 → 開始予定 → 開始 → 終了
+```
+
+実際にはユーザーがcolumnをreorder / hideした現在のvisual orderをauthorityとし、read-only columnはskipする。
+
+新規Task専用の別Tab順を定義しない。
 
 ## 14. Task context menu
 
@@ -925,11 +1090,15 @@ Task Note                         ×
 - J/Kで別Taskへfocus移動してもPane内容は変わらない。
 - 別TaskのNote buttonを押したときだけPane targetを切り替える。
 
-Routine Task Noteを編集した場合はSection 16のscope popupをedit session確定時に出す。
+Normal Task Noteはautosaveを基本とする。
+
+Routine Task Noteでは、別Task Noteへ切り替える、Paneを閉じる等のNote edit session確定時にSection 16のscope popupを一度出す。1文字ごとには出さない。
 
 ## 22. Keyboard interaction
 
 Keyboard操作はRow / Section focusをfoundationとする。
+
+Day Table search専用shortcutは設けず、Hit-a-Hint / Tab / Mouseから到達する。
 
 ### 22.1 Row / Section selection mode
 
@@ -957,9 +1126,10 @@ Section summary selected時の`Enter`はcollapse / expand。
 
 - single-key global shortcutを停止。
 - normal文字入力 / IMEを優先。
-- `Tab / Shift+Tab`でvisible editable fields間移動。
-- `Enter`で確定。
+- `Tab / Shift+Tab`で現在のvisible editable fields間をvisual column orderどおり移動。
+- `Enter`で確定しRow focusへ戻る。
 - `Esc`で変更破棄してRow selectionへ戻る。
+- invalid inputではfocusを離脱させずvalidationを表示する。
 
 ### 22.3 Modal / menu mode
 
@@ -975,7 +1145,7 @@ IME composing中はone-key global shortcutを発火しない。
 
 - 現在visibleな**actionable element**へtemporary hint overlayを付ける。
 - read-only cellはactionがない限りhint対象にしない。
-- 対象例: Day navigation、Execution Control、editable cells、selector、Routine / Note button、Section collapse、Section `＋`、context action等。
+- 対象例: Day navigation、Day Toolbar search / Filter / columns、Execution Control、editable cells、selector、Routine / Note button、Section collapse、Section `＋`、context action等。
 - hintは1〜2文字等の短いsequenceを利用する方向。
 - mode中の文字入力はhint filter / activation専用。
 - `D / S / U / I / X / J / K`等を通常shortcutとして実行しない。
@@ -1033,7 +1203,18 @@ Quick Interrupt Taskも通常Taskとしてcount / history / Section capacityへ�
 
 nested Quick Interruptを許容する。
 
-## 26. Complete後focus
+## 26. Focus navigation / Complete後focus
+
+J/Kは現在画面にvisibleかつfocusableなTask / Section summaryだけを辿る。
+
+Search / Filter / 実行済み非表示 / Section collapseで隠れたTaskはnavigation targetからskipする。
+
+Visibility変更時:
+
+- current focus対象が引き続きvisibleならfocus維持。
+- hiddenになった場合は、その位置から見て次のvisible focus targetへ移動。
+- 次がなければ前のvisible targetへ移動。
+- どちらもなければ所属Section summaryへfocusを戻せる場合は戻す。
 
 Complete後に次Taskを自動Startしない。
 
@@ -1043,7 +1224,9 @@ canonical completion後、Day上の次の実行可能TaskへRow focusを移動�
 - collapsed child等visibilityも考慮。
 - 必要ならscroll into view。
 - Bulk selectionは変更しない。
-- 次がなければ無理にfocusを作らない。
+- `実行済みを非表示`なら完了したRowはprojectionから消え、次の実行可能Taskへfocus。
+- `実行済みを表示`でも完了Rowを残したまま、focusは次の実行可能Taskへ進める。
+- 次の実行可能Taskがない場合は無理に別Taskへfocusを作らない。
 
 ## 27. Floating Runner
 
@@ -1124,9 +1307,11 @@ Day Tableで`実行済みを表示 / 非表示`を切り替えられる。initia
 
 running / unexecutedは残す。
 
-visibility変更はprojectionだけで、historical fact / Section summaryを変更しない。
+visibility変更はprojectionだけで、historical fact / Section summary / forecast authorityを変更しない。
 
 初期Desktop Webではlast stateをlocalStorageへ保持する方向。
+
+focus移動はSection 26に従う。
 
 ## 29. Accessibility
 
@@ -1137,6 +1322,7 @@ visibility変更はprojectionだけで、historical fact / Section summaryを変
 - keyboard-onlyで主要Day操作へ到達可能にする。
 - browser / OS standard shortcutとのconflictを実機検証する。
 - `Ctrl+C`はRow selection modeだけduplicateとして扱い、text edit / text selectionではstandard clipboard behaviorを維持する。
+- Search等のUIへ専用single-key shortcutを過剰追加せず、Hit-a-Hintを共通到達手段として活用する。
 
 ## 30. Responsive direction
 
@@ -1149,13 +1335,19 @@ Tablet / Mobileでは同じcolumn density / sticky幅 / keyboard bindingをそ�
 ## 31. Current Day UI structure
 
 ```text
-Top Navigation
+Top Navigation / Day Header
+  - 前日 / 翌日
+  - logical date
+  - 今日
+  - date picker
 ↓
 Left Sidebar
 ↓
 Day Toolbar
-  - 新規Task
+  - ＋ タスクを追加 → Sectionなし
+  - current Day Task search
   - Filter
+  - active Filter chips
   - 実行済み 表示 / 非表示
   - 列
 ↓
@@ -1185,7 +1377,7 @@ Day Table
   ↓
   next Section ...
 ↓
-Task Note Pane（明示open時）
+Task Note Pane（明示open時。Row focusへ追従しない）
 ↓
 Floating Runner（active Execution時）
 ```
@@ -1217,5 +1409,7 @@ Floating Runner（active Execution時）
 - continuation indicatorの必要性
 - remaining estimate 0以下で未完了の場合のre-estimation UX
 - running delete / cancelled historyをReview UIへどう露出するか
+- Search / Filter chipのexact truncation / responsive behavior
+- invalid inline inputのexact error placement / text
 
 これらを本DESIGN.mdだけでProduct / Domain仕様として確定しない。
