@@ -140,6 +140,32 @@ selector外をMouseでclickした場合は、active candidateやsearch中の候�
 
 Routine由来defaultの変更で既存のscope selection `今回だけ / ルーティンに反映`まで進んだ後は、selectorのoutside-click ruleではなくscope selection側のinteractionをauthorityとする。outside clickでscopeを自動確定せず、明示的なscope selectionまたは`Esc`によるcancelを優先する。
 
+### 1.5 Current value / active candidate
+
+current valueとactive candidateは別stateとして見分けられるようにする。
+
+- `✓`等のselected indicatorは、現在persistされているProject / Mode valueを示す。
+- keyboard / pointerによるactive candidateは背景highlight等のfocus treatmentで示し、selected indicatorとは区別する。
+- active candidateになっただけではpersisted valueを変更しない。
+- `Enter`またはcandidate clickでcommitした時点でpersisted valueが更新され、次回open時のselected indicatorも新しいvalueへ移る。
+- current valueが`未設定`の場合は`未設定`candidateにselected indicatorを表示する。
+- current valueとactive candidateが同じcandidateでも、selected stateとactive stateは意味上別のstateとして扱う。
+- 検索によってcurrent valueがresult listから外れた場合、current valueを検索結果へ強制表示しない。検索中もpersisted value自体は維持し、`Esc` / `Tab` / `Shift+Tab`等でcancelした場合は変更しない。
+- 検索文字をclearしてcurrent valueが再び候補に含まれれば、そのcandidateにselected indicatorを再表示する。
+
+例:
+
+```text
+current Project: 仕事
+
+  未設定
+✓ 仕事             ← persisted current value
+> 個人開発         ← active candidate
+  TaskChute Platform
+```
+
+この状態で`Esc`や`Tab`を行ってもProjectは`仕事`のまま維持される。`Enter`または`個人開発`のclickでcommitした場合だけProjectが`個人開発`へ変わる。
+
 ## 2. Search / quick create
 
 既存のJapanese / romaji search foundationを利用する。
@@ -219,6 +245,7 @@ Section
 - Day TableからSectionをquick createしない。Section追加は全日coverageへ影響するためSection設定画面で行う。
 - Pointer / keyboard active candidateの切替はSection 1.3と同じruleを使う。hoverだけではcommitせず、clickで確定する。
 - selector外clickはSection 1.4と同じruleを使い、candidateをcommitせずclick先の通常interactionへ移る。
+- selected current valueとactive candidateの視覚的な区別はSection 1.5と同じ考え方を使う。current Sectionにはselected indicatorを維持し、candidate focusは別のfocus treatmentで示す。
 
 ### 3.1 Section change
 
