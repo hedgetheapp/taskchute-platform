@@ -205,6 +205,24 @@ Project / Mode / Section selectorのpopoverは、Day Table上のselector cellを
 
 このplacement ruleはProject / Mode / Section共通とし、outside-click時のcommit / cancel semanticsはSection 1.4を維持する。
 
+### 1.8 Popover size / candidate overflow
+
+selector popoverはanchor cell幅へ完全追従させず、候補を選びやすい実用的な幅を確保する。
+
+- popover幅は原則としてanchor cell幅以上とする。
+- Project / ModeはDesktop initialでおおむね`280px`前後をminimum widthの目安とする。ただしviewportが狭い場合はSection 1.7に従いviewport内へ収まるよう縮小できる。
+- SectionもSection名とtime rangeを1行で判別できる実用的なminimum widthを持ち、anchor cellより広く表示してよい。
+- Project / Mode / Sectionのcandidate labelはinitialでは1行表示とする。
+- candidate labelが利用可能幅を超える場合は末尾ellipsisで省略し、hover / active時にtooltip等でfull labelを確認できるようにする。
+- 長いcandidate名だけを理由にpopoverを無制限に横へ拡張しない。
+- 候補が少ない場合は内容量に応じた高さとする。
+- 候補が多い場合はpopover全体を延々と伸ばさず、candidate list領域だけを内部scroll可能にする。
+- Project / Modeではsearch areaをcandidate listのscroll外に置き、quick create等の固定下部actionを持つ場合もcandidate listのscroll外に維持する。
+- popover max-heightはviewportの利用可能高さに応じて調整する。Desktop initialでは候補が概ね6〜8件見える高さを基本目安とし、それを超える候補はcandidate list内でscrollする。
+- candidate数のためにpopoverが画面の大半を不必要に覆わないようにする。
+
+このsize ruleは視認性と操作性のinitial guidelineであり、正確なpixel valueは実装・visual verificationで微調整してよい。ただし「anchor cellより広くしてよい」「長いlabelは1行ellipsis」「多数candidateはcandidate領域だけscroll」というuser-visible behaviorは維持する。
+
 ## 2. Search / quick create
 
 既存のJapanese / romaji search foundationを利用する。
@@ -287,6 +305,7 @@ Section
 - selected current valueとactive candidateの視覚的な区別はSection 1.5と同じ考え方を使う。current Sectionにはselected indicatorを維持し、candidate focusは別のfocus treatmentで示す。
 - open時とcandidate navigation中のscroll behaviorはSection 1.6に従う。
 - popoverのplacement / anchor visibilityはSection 1.7に従う。
+- popoverのwidth / max-height / candidate overflowはSection 1.8に従う。
 
 ### 3.1 Section change
 
@@ -314,5 +333,6 @@ Project / Mode / Sectionとも、Mouseで一度Rowを選択してから再click�
 - selector外clickはcandidateをcommitせずselectorをcancelし、click先の通常interactionを続行する。
 - Mouseでactive candidateを変更した後もkeyboard navigationへ連続して移行できる。
 - popoverはanchor cellへ追従し、anchorが完全にviewport外へ出た場合は未確定状態をcommitせず閉じる。
+- popoverはanchor cell幅より広く表示してよく、多数candidate時はcandidate領域だけ内部scrollする。
 
 Project / Modeはopen直後からsearch-readyとし、Sectionはcurrent candidate focusとする。これはProject / Modeが多数候補からの検索をprimary interactionにする一方、Sectionは少数のtime-ordered候補から選ぶためである。
