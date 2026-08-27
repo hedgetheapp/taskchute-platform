@@ -38,6 +38,8 @@ Modeも同じ構造とする。
 ### 1.1 Open / focus
 
 - cell/value clickまたはTab flowからselectorを開ける。
+- selector close後など、Project / Mode cell自体へfocusがある状態では`Enter`で同じselectorを再度開く。
+- `Space`ではProject / Mode selectorを開かない。
 - Mouseから開いた場合もkeyboardから開いた場合も、開いた直後はsearch inputへfocusする。
 - selectorを開いた瞬間から文字入力をsearchとして扱い、検索欄への追加clickを要求しない。
 - selector open中はglobal one-key shortcutを発火させない。
@@ -65,6 +67,7 @@ Project cell
   → Enter
   → Day Tableでは —
   → focusはProject cellへ戻る
+  → Enterで同じselectorを再openできる
   → Tabで次fieldへ進む
 ```
 
@@ -148,6 +151,7 @@ Section
 - `Sectionなし`を先頭候補とする。
 - 通常Sectionはcanonical time orderで表示する。
 - current valueにはselected stateを示す。
+- Section cell自体へfocusがある状態では`Enter`でselectorを開く。`Space`では開かない。
 - selectorを開いた直後はcurrent Sectionをcandidate focusとする。current valueが`Sectionなし`なら`Sectionなし`をfocusする。
 - `↑ / ↓`でcandidate移動。
 - `Enter`で確定。
@@ -175,8 +179,9 @@ Project / Mode / Sectionとも、Mouseで一度Rowを選択してから再click�
 
 - value / selector hit area click: 直接selectorを開く。
 - keyboard: current visual Tab flowから到達して同じselectorを開く。
-- `Enter`でcommit、`Esc`でcancelという基本モデルを揃える。
+- selector cellへfocusがある状態では`Enter`で開く。
+- `Space`はselector open / selectionには使わない。
+- selector内では`Enter`でcommit、`Esc`でcancelという基本モデルを揃える。
 - commit / cancel後は元cellへfocusを戻し、field間の移動は`Tab / Shift+Tab`へ統一する。
-- selector自体には`Space` shortcutを追加しない。
 
 Project / Modeだけはopen直後からsearch inputへfocusし、Sectionはcurrent candidate focusとする。これはProject / Modeが多数候補からの検索をprimary interactionにする一方、Sectionは少数のtime-ordered候補から選ぶためである。
