@@ -1,16 +1,10 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { CurrentTaskChuteDayProjection } from "../../src/shared/contracts";
+import type { CurrentTaskChuteDayProjection, EntryProjection } from "../../src/shared/contracts";
 
 const mocks = vi.hoisted(() => ({
-  login: vi.fn(),
-  logout: vi.fn(),
-  loadDay: vi.fn(),
-  createProject: vi.fn(),
-  addTask: vi.fn(),
-  reorderEntries: vi.fn(),
-  startEntry: vi.fn(),
-  completeEntry: vi.fn(),
+  login: vi.fn(), logout: vi.fn(), loadDay: vi.fn(), createProject: vi.fn(), addTask: vi.fn(),
+  reorderEntries: vi.fn(), startEntry: vi.fn(), completeEntry: vi.fn(),
 }));
 
 vi.mock("../../src/web/api", async () => {
@@ -20,6 +14,40 @@ vi.mock("../../src/web/api", async () => {
 
 import { App } from "../../src/web/App";
 import { ApiClientError } from "../../src/web/api";
+
+const morningId = "019c0000-0000-7000-8000-000000000002";
+const eveningId = "019c0000-0000-7000-8000-000000000008";
+const firstEntry: EntryProjection = {
+  id: "019c0000-0000-7000-8000-000000000003",
+  section_id: morningId,
+  position: 1,
+  lifecycle_state: "planned",
+  task: { id: "019c0000-0000-7000-8000-000000000004", title: "Canonical task", project: null },
+};
+const secondEntry: EntryProjection = {
+  id: "019c0000-0000-7000-8000-000000000006",
+  section_id: morningId,
+  position: 2,
+  lifecycle_state: "planned",
+  task: { id: "019c0000-0000-7000-8000-000000000007", title: "Second task", project: null },
+};
+const thirdEntry: EntryProjection = {
+  id: "019c0000-0000-7000-8000-000000000009",
+  section_id: morningId,
+  position: 3,
+  lifecycle_state: "planned",
+  task: { id: "019c0000-0000-7000-8000-000000000010", title: "Third task", project: null },
+};
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
 
 const emptyDay: CurrentTaskChuteDayProjection = {
   taskchute_day: {
@@ -31,7 +59,10 @@ const emptyDay: CurrentTaskChuteDayProjection = {
     establishment_boundary_minutes: 240,
   },
   placement_revision: 0,
-  sections: [{ id: "019c0000-0000-7000-8000-000000000002", title: "Morning", sort_order: 0, entries: [] }],
+  sections: [
+    { id: morningId, title: "Morning", sort_order: 0, entries: [] },
+    { id: eveningId, title: "Evening", sort_order: 1, entries: [] },
+  ],
   active_execution: null,
   next_entry: null,
 };
@@ -39,279 +70,386 @@ const emptyDay: CurrentTaskChuteDayProjection = {
 const populatedDay: CurrentTaskChuteDayProjection = {
   ...emptyDay,
   placement_revision: 1,
-  sections: [{
-    ...emptyDay.sections[0],
-    entries: [{
-      id: "019c0000-0000-7000-8000-000000000003",
-      section_id: emptyDay.sections[0].id,
-      position: 1,
-      lifecycle_state: "planned",
-      task: { id: "019c0000-0000-7000-8000-000000000004", title: "Canonical task", project: null },
-    }],
-  }],
-  next_entry: {
-    id: "019c0000-0000-7000-8000-000000000003",
-    section_id: emptyDay.sections[0].id,
-    position: 1,
-    lifecycle_state: "planned",
-    task: { id: "019c0000-0000-7000-8000-000000000004", title: "Canonical task", project: null },
-  },
+  sections: [
+    { ...emptyDay.sections[0], entries: [firstEntry] },
+    emptyDay.sections[1],
+  ],
+  next_entry: firstEntry,
+};
+
+const twoPlannedDay: CurrentTaskChuteDayProjection = {
+  ...populatedDay,
+  sections: [{ ...populatedDay.sections[0], entries: [firstEntry, secondEntry] }, emptyDay.sections[1]],
 };
 
 const runningDay: CurrentTaskChuteDayProjection = {
   ...populatedDay,
   active_execution: {
     id: "019c0000-0000-7000-8000-000000000005",
-    entry_id: populatedDay.sections[0].entries[0].id,
+    entry_id: firstEntry.id,
     started_at: "2026-08-22T12:00:00.000Z",
     ended_at: null,
   },
-  sections: [{ ...populatedDay.sections[0], entries: [{ ...populatedDay.sections[0].entries[0], lifecycle_state: "running" }] }],
+  sections: [{ ...populatedDay.sections[0], entries: [{ ...firstEntry, lifecycle_state: "running" }] }, emptyDay.sections[1]],
   next_entry: null,
 };
 
 const completedDay: CurrentTaskChuteDayProjection = {
   ...runningDay,
   active_execution: null,
-  sections: [{ ...runningDay.sections[0], entries: [{ ...runningDay.sections[0].entries[0], lifecycle_state: "completed" }] }],
-};
-
-const secondEntry = {
-  ...populatedDay.sections[0].entries[0],
-  id: "019c0000-0000-7000-8000-000000000006",
-  task: { ...populatedDay.sections[0].entries[0].task, id: "019c0000-0000-7000-8000-000000000007", title: "Second task" },
-  position: 2,
-};
-
-const twoPlannedDay: CurrentTaskChuteDayProjection = {
-  ...populatedDay,
-  sections: [{ ...populatedDay.sections[0], entries: [populatedDay.sections[0].entries[0], secondEntry] }],
+  sections: [{ ...runningDay.sections[0], entries: [{ ...firstEntry, lifecycle_state: "completed" }] }, emptyDay.sections[1]],
 };
 
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.logout.mockResolvedValue({});
-  mocks.createProject.mockResolvedValue({ project: { id: "project", title: "Project" }, replayed: false });
+  mocks.createProject.mockResolvedValue({ project: { id: "project", title: "Project" } });
+  mocks.addTask.mockResolvedValue({});
   mocks.reorderEntries.mockResolvedValue({});
   mocks.startEntry.mockResolvedValue({});
   mocks.completeEntry.mockResolvedValue({});
 });
 
-describe("DayBoard web behavior", () => {
-  it("restores Server-canonical state on initial browser load", async () => {
+describe("Dogfood Day shell", () => {
+  it("renders the logical Day as one surface with current Sections, Entries, and empty Sections", async () => {
     mocks.loadDay.mockResolvedValue(populatedDay);
     render(<App />);
-    expect(await screen.findByText("Canonical task")).toBeTruthy();
-    expect(screen.getByText("Next: Canonical task")).toBeTruthy();
+    expect(await screen.findByRole("region", { name: "DayBoard" })).toBeTruthy();
+    expect(screen.getByText("2026-08-22")).toBeTruthy();
+    expect(screen.getByText("Morning")).toBeTruthy();
+    expect(screen.getByText("Canonical task")).toBeTruthy();
+    expect(screen.getByText("Evening")).toBeTruthy();
+    expect(screen.getAllByText("表示するTaskはありません")).toHaveLength(1);
   });
 
-  it("shows pending state and replaces it with a freshly loaded canonical projection", async () => {
-    let resolveMutation: (() => void) | undefined;
+  it("opens a focused inline draft from the selected Section plus", async () => {
+    mocks.loadDay.mockResolvedValue(emptyDay);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "EveningにTaskを追加" }));
+    const input = screen.getByRole("textbox", { name: "EveningのTask名" });
+    expect(document.activeElement).toBe(input);
+    expect(screen.queryByRole("textbox", { name: "MorningのTask名" })).toBeNull();
+    expect(screen.getAllByText("表示するTaskはありません")).toHaveLength(1);
+  });
+
+  it("removes an empty draft with Escape or outside click without mutation", async () => {
+    mocks.loadDay.mockResolvedValue(emptyDay);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "MorningにTaskを追加" }));
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "MorningのTask名" }), { key: "Escape" });
+    expect(screen.queryByRole("textbox", { name: "MorningのTask名" })).toBeNull();
+    expect(mocks.addTask).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "EveningにTaskを追加" }));
+    fireEvent.blur(screen.getByRole("textbox", { name: "EveningのTask名" }), { relatedTarget: document.body });
+    expect(screen.queryByRole("textbox", { name: "EveningのTask名" })).toBeNull();
+    expect(mocks.addTask).not.toHaveBeenCalled();
+  });
+
+  it("commits a valid draft exactly once from a non-composing Enter and reconciles canonical state", async () => {
     mocks.loadDay.mockResolvedValueOnce(emptyDay).mockResolvedValueOnce(populatedDay);
-    mocks.addTask.mockImplementation(() => new Promise<void>((resolve) => { resolveMutation = resolve; }));
     render(<App />);
-    await screen.findByText("Entryなし");
-    fireEvent.change(screen.getByLabelText("Taskタイトル"), { target: { value: "Client draft" } });
-    fireEvent.click(screen.getByRole("button", { name: "現在日に追加" }));
-    expect((await screen.findByRole("button", { name: "追加・照合中…" }) as HTMLButtonElement).disabled).toBe(true);
-    resolveMutation?.();
-    expect(await screen.findByText("Canonical task")).toBeTruthy();
-    expect(mocks.loadDay).toHaveBeenCalledTimes(2);
-  });
-
-  it("reconciles after conflict and never displays a false-success draft", async () => {
-    mocks.loadDay.mockResolvedValue(emptyDay);
-    mocks.addTask.mockRejectedValue(new ApiClientError("revision conflict", 409, true, "revision_conflict"));
-    render(<App />);
-    await screen.findByText("Entryなし");
-    fireEvent.change(screen.getByLabelText("Taskタイトル"), { target: { value: "False success" } });
-    fireEvent.click(screen.getByRole("button", { name: "現在日に追加" }));
-    expect((await screen.findByRole("alert")).textContent).toContain("revision conflict");
+    fireEvent.click(await screen.findByRole("button", { name: "EveningにTaskを追加" }));
+    const input = screen.getByRole("textbox", { name: "EveningのTask名" });
+    fireEvent.change(input, { target: { value: "  Added in evening  " } });
+    fireEvent.keyDown(input, { key: "Enter", code: "Enter", keyCode: 229, isComposing: false });
+    await waitFor(() => expect(mocks.addTask).toHaveBeenCalledTimes(1));
+    expect(mocks.addTask.mock.calls[0][0]).toMatchObject({ title: "Added in evening", section_id: eveningId, project_id: null });
     await waitFor(() => expect(mocks.loadDay).toHaveBeenCalledTimes(2));
-    expect(screen.queryByText("False success")).toBeNull();
-    expect(screen.getByText("Entryなし")).toBeTruthy();
+    expect(screen.queryByRole("textbox", { name: "EveningのTask名" })).toBeNull();
+    expect(mocks.addTask).toHaveBeenCalledTimes(1);
   });
 
-  it("retries an ambiguous CreateProject with the exact same operation and entity IDs", async () => {
+  it("does not submit an empty draft with Enter", async () => {
     mocks.loadDay.mockResolvedValue(emptyDay);
-    mocks.createProject
-      .mockRejectedValueOnce(new TypeError("lost response"))
-      .mockResolvedValueOnce({ project: { id: "created", title: "Canonical Project" } });
     render(<App />);
-    await screen.findByText("Entryなし");
-    fireEvent.change(screen.getByLabelText("タイトル"), { target: { value: "  Canonical Project  " } });
-    fireEvent.click(screen.getByRole("button", { name: "Projectを作成" }));
-    expect(await screen.findByRole("button", { name: "同じProject操作を再試行" })).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("タイトル"), { target: { value: "Changed draft" } });
-    fireEvent.click(screen.getByRole("button", { name: "同じProject操作を再試行" }));
-    await screen.findByText("選択中: Canonical Project");
-    expect(mocks.createProject).toHaveBeenCalledTimes(2);
-    expect(mocks.createProject.mock.calls[1][0]).toEqual(mocks.createProject.mock.calls[0][0]);
-    expect(mocks.createProject.mock.calls[0][0].title).toBe("Canonical Project");
+    fireEvent.click(await screen.findByRole("button", { name: "MorningにTaskを追加" }));
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "MorningのTask名" }), { key: "Enter", code: "Enter" });
+    expect(mocks.addTask).not.toHaveBeenCalled();
   });
 
-  it("retries an ambiguous AddTaskToDay with the exact same operation, Task, and Entry IDs", async () => {
-    mocks.loadDay.mockResolvedValueOnce(emptyDay).mockResolvedValueOnce(emptyDay).mockResolvedValueOnce(populatedDay);
-    mocks.addTask
-      .mockRejectedValueOnce(new ApiClientError("ambiguous", 503, true, "infrastructure_ambiguous"))
-      .mockResolvedValueOnce({});
+  it("does not submit the draft with the Enter that confirms Japanese IME composition", async () => {
+    mocks.loadDay.mockResolvedValueOnce(emptyDay).mockResolvedValueOnce(populatedDay);
     render(<App />);
-    await screen.findByText("Entryなし");
-    fireEvent.change(screen.getByLabelText("Taskタイトル"), { target: { value: "Retry me" } });
-    fireEvent.click(screen.getByRole("button", { name: "現在日に追加" }));
-    expect(await screen.findByRole("button", { name: "同じTask操作を再試行" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "同じTask操作を再試行" }));
-    expect(await screen.findByText("Canonical task")).toBeTruthy();
-    expect(mocks.addTask).toHaveBeenCalledTimes(2);
+    fireEvent.click(await screen.findByRole("button", { name: "MorningにTaskを追加" }));
+    const input = screen.getByRole("textbox", { name: "MorningのTask名" });
+    fireEvent.compositionStart(input);
+    fireEvent.change(input, { target: { value: "日本語タスク" } });
+    fireEvent.keyDown(input, { key: "Enter", isComposing: true, keyCode: 229 });
+    expect(mocks.addTask).not.toHaveBeenCalled();
+    expect(screen.getByDisplayValue("日本語タスク")).toBeTruthy();
+
+    fireEvent.compositionEnd(input);
+    fireEvent.keyDown(input, { key: "Enter", code: "Enter" });
+    await waitFor(() => expect(mocks.addTask).toHaveBeenCalledTimes(1));
+  });
+
+  it("traverses visible Section and Row focus with J/K and arrow keys", async () => {
+    mocks.loadDay.mockResolvedValue(twoPlannedDay);
+    render(<App />);
+    const morning = await screen.findByText("Morning");
+    const summary = morning.closest<HTMLElement>("[data-day-focus-target]")!;
+    summary.focus();
+    expect((document.activeElement as HTMLElement).dataset.focusKey).toBe(`section:${morningId}`);
+    fireEvent.keyDown(summary, { key: "j" });
+    expect((document.activeElement as HTMLElement).dataset.focusKey).toBe(`entry:${firstEntry.id}`);
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
+    expect((document.activeElement as HTMLElement).dataset.entryId).toBe(secondEntry.id);
+    fireEvent.keyDown(document.activeElement!, { key: "k" });
+    expect((document.activeElement as HTMLElement).dataset.entryId).toBe(firstEntry.id);
+  });
+
+  it("does not run global navigation while editing text or during IME composition", async () => {
+    mocks.loadDay.mockResolvedValue(populatedDay);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "EveningにTaskを追加" }));
+    const input = screen.getByRole("textbox", { name: "EveningのTask名" });
+    fireEvent.keyDown(input, { key: "j" });
+    expect(document.activeElement).toBe(input);
+
+    fireEvent.keyDown(input, { key: "Escape" });
+    const summary = screen.getByText("Morning").closest<HTMLElement>("[data-day-focus-target]")!;
+    summary.focus();
+    fireEvent.keyDown(summary, { key: "j", isComposing: true });
+    expect(document.activeElement).toBe(summary);
+  });
+
+  it("starts through the existing operation path and reconciles running state", async () => {
+    mocks.loadDay.mockResolvedValueOnce(populatedDay).mockResolvedValueOnce(runningDay);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskを開始" }));
+    await waitFor(() => expect(mocks.startEntry).toHaveBeenCalledTimes(1));
+    expect(mocks.startEntry.mock.calls[0][0].entry_id).toBe(firstEntry.id);
+    expect(await screen.findByRole("button", { name: "Canonical taskを完了" })).toBeTruthy();
+  });
+
+  it("completes from the Row and runner through the canonical lifecycle path", async () => {
+    mocks.loadDay.mockResolvedValueOnce(runningDay).mockResolvedValueOnce(completedDay);
+    render(<App />);
+    expect(await screen.findByRole("complementary", { name: "実行中のTask" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Canonical taskを完了" }));
+    await waitFor(() => expect(mocks.completeEntry).toHaveBeenCalledTimes(1));
+    expect(mocks.completeEntry.mock.calls[0][0]).toMatchObject({ entry_id: firstEntry.id, execution_id: runningDay.active_execution?.id });
+    expect(await screen.findByLabelText("Canonical taskは完了済み")).toBeTruthy();
+    expect(screen.queryByRole("complementary", { name: "実行中のTask" })).toBeNull();
+  });
+
+  it("reorders a focused planned Entry with Shift+Arrow and current placement revision", async () => {
+    const reordered = {
+      ...twoPlannedDay,
+      placement_revision: 2,
+      sections: [{ ...twoPlannedDay.sections[0], entries: [{ ...secondEntry, position: 1 }, { ...firstEntry, position: 2 }] }, emptyDay.sections[1]],
+    };
+    mocks.loadDay.mockResolvedValueOnce(twoPlannedDay).mockResolvedValueOnce(reordered);
+    render(<App />);
+    const row = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
+    row.focus();
+    fireEvent.keyDown(row, { key: "ArrowDown", shiftKey: true });
+    await waitFor(() => expect(mocks.reorderEntries).toHaveBeenCalledTimes(1));
+    expect(mocks.reorderEntries.mock.calls[0][0]).toMatchObject({
+      section_id: morningId,
+      entry_ids: [secondEntry.id, firstEntry.id],
+      expected_placement_revision: 1,
+    });
+  });
+
+  it("reorders canonically adjacent planned Entries with the pointer control", async () => {
+    mocks.loadDay.mockResolvedValue(twoPlannedDay);
+    render(<App />);
+    const down = await screen.findByRole("button", { name: "Canonical taskを下へ" }) as HTMLButtonElement;
+    expect(down.disabled).toBe(false);
+    fireEvent.click(down);
+    await waitFor(() => expect(mocks.reorderEntries).toHaveBeenCalledTimes(1));
+    expect(mocks.reorderEntries.mock.calls[0][0].entry_ids).toEqual([secondEntry.id, firstEntry.id]);
+  });
+
+  it("does not reorder planned A across a hidden completed canonical neighbor", async () => {
+    const day = {
+      ...twoPlannedDay,
+      sections: [{ ...twoPlannedDay.sections[0], entries: [firstEntry, { ...secondEntry, lifecycle_state: "completed" as const }] }, emptyDay.sections[1]],
+    };
+    mocks.loadDay.mockResolvedValue(day);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("checkbox", { name: "実行済みを表示" }));
+    const down = screen.getByRole("button", { name: "Canonical taskを下へ" }) as HTMLButtonElement;
+    expect(down.disabled).toBe(true);
+    fireEvent.click(down);
+    expect(mocks.reorderEntries).not.toHaveBeenCalled();
+  });
+
+  it("does not reorder planned B upward across a hidden completed canonical neighbor", async () => {
+    const day = {
+      ...twoPlannedDay,
+      sections: [{ ...twoPlannedDay.sections[0], entries: [{ ...firstEntry, lifecycle_state: "completed" as const }, secondEntry] }, emptyDay.sections[1]],
+    };
+    mocks.loadDay.mockResolvedValue(day);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("checkbox", { name: "実行済みを表示" }));
+    const up = screen.getByRole("button", { name: "Second taskを上へ" }) as HTMLButtonElement;
+    expect(up.disabled).toBe(true);
+    fireEvent.click(up);
+    expect(mocks.reorderEntries).not.toHaveBeenCalled();
+  });
+
+  it("does not reorder visible planned C across hidden completed B by pointer or keyboard", async () => {
+    const day = {
+      ...twoPlannedDay,
+      sections: [{
+        ...twoPlannedDay.sections[0],
+        entries: [firstEntry, { ...secondEntry, lifecycle_state: "completed" as const }, thirdEntry],
+      }, emptyDay.sections[1]],
+    };
+    mocks.loadDay.mockResolvedValue(day);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("checkbox", { name: "実行済みを表示" }));
+    const up = screen.getByRole("button", { name: "Third taskを上へ" }) as HTMLButtonElement;
+    expect(up.disabled).toBe(true);
+    fireEvent.click(up);
+    const row = screen.getByText("Third task").closest<HTMLElement>("[data-entry-id]")!;
+    fireEvent.keyDown(row, { key: "ArrowUp", shiftKey: true });
+    expect(mocks.reorderEntries).not.toHaveBeenCalled();
+  });
+
+  it("does not swap a planned Entry with an adjacent running Entry", async () => {
+    const day = {
+      ...twoPlannedDay,
+      sections: [{ ...twoPlannedDay.sections[0], entries: [firstEntry, { ...secondEntry, lifecycle_state: "running" as const }] }, emptyDay.sections[1]],
+    };
+    mocks.loadDay.mockResolvedValue(day);
+    render(<App />);
+    const down = await screen.findByRole("button", { name: "Canonical taskを下へ" }) as HTMLButtonElement;
+    expect(down.disabled).toBe(true);
+    fireEvent.click(down);
+    expect(mocks.reorderEntries).not.toHaveBeenCalled();
+  });
+
+  it("retains an ambiguous AddTask operation for exact retry and blocks unrelated actions", async () => {
+    mocks.loadDay.mockResolvedValue(emptyDay);
+    mocks.addTask.mockRejectedValueOnce(new ApiClientError("ambiguous", 503, true, "infrastructure_ambiguous")).mockResolvedValueOnce({});
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "MorningにTaskを追加" }));
+    const input = screen.getByRole("textbox", { name: "MorningのTask名" });
+    fireEvent.change(input, { target: { value: "Retry me" } });
+    fireEvent.keyDown(input, { key: "Enter", code: "Enter" });
+    const retry = await screen.findByRole("button", { name: "保留中のTask追加を再試行" });
+    const unrelated = screen.getByRole("button", { name: "EveningにTaskを追加" }) as HTMLButtonElement;
+    expect(unrelated.disabled).toBe(true);
+    fireEvent.click(unrelated);
+    expect(mocks.addTask).toHaveBeenCalledTimes(1);
+    fireEvent.click(retry);
+    await waitFor(() => expect(mocks.addTask).toHaveBeenCalledTimes(2));
     expect(mocks.addTask.mock.calls[1][0]).toEqual(mocks.addTask.mock.calls[0][0]);
   });
 
-  it("starts a new logical operation after a deterministic revision conflict", async () => {
+  it("settles a lost AddTask response from canonical state without a duplicate action", async () => {
+    mocks.loadDay.mockResolvedValueOnce(emptyDay).mockImplementationOnce(async () => {
+      const operation = mocks.addTask.mock.calls[0][0];
+      return {
+        ...populatedDay,
+        sections: [{
+          ...populatedDay.sections[0],
+          entries: [{ ...firstEntry, id: operation.entry_id, task: { ...firstEntry.task, id: operation.task_id, title: operation.title } }],
+        }, emptyDay.sections[1]],
+      };
+    });
+    mocks.addTask.mockRejectedValueOnce(new TypeError("response lost after commit"));
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "MorningにTaskを追加" }));
+    const input = screen.getByRole("textbox", { name: "MorningのTask名" });
+    fireEvent.change(input, { target: { value: "Committed once" } });
+    fireEvent.keyDown(input, { key: "Enter", code: "Enter" });
+    expect(await screen.findByText("Committed once")).toBeTruthy();
+    expect(mocks.addTask).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: "保留中のTask追加を再試行" })).toBeNull();
+  });
+
+  it("uses a fresh AddTask identity and reconciled revision after deterministic conflict", async () => {
     const revisionOne = { ...emptyDay, placement_revision: 1 };
     mocks.loadDay.mockResolvedValueOnce(emptyDay).mockResolvedValueOnce(revisionOne).mockResolvedValueOnce(populatedDay);
-    mocks.addTask
-      .mockRejectedValueOnce(new ApiClientError("revision conflict", 409, true, "revision_conflict"))
-      .mockResolvedValueOnce({});
+    mocks.addTask.mockRejectedValueOnce(new ApiClientError("revision conflict", 409, true, "revision_conflict")).mockResolvedValueOnce({});
     render(<App />);
-    await screen.findByText("Entryなし");
-    fireEvent.change(screen.getByLabelText("Taskタイトル"), { target: { value: "Conflict then decide" } });
-    fireEvent.click(screen.getByRole("button", { name: "現在日に追加" }));
-    await screen.findByRole("alert");
+    fireEvent.click(await screen.findByRole("button", { name: "MorningにTaskを追加" }));
+    const input = screen.getByRole("textbox", { name: "MorningのTask名" });
+    fireEvent.change(input, { target: { value: "Conflict then retry" } });
+    fireEvent.keyDown(input, { key: "Enter", code: "Enter" });
     await waitFor(() => expect(mocks.loadDay).toHaveBeenCalledTimes(2));
-    fireEvent.click(screen.getByRole("button", { name: "現在日に追加" }));
-    await screen.findByText("Canonical task");
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "MorningのTask名" }), { key: "Enter", code: "Enter" });
+    await waitFor(() => expect(mocks.addTask).toHaveBeenCalledTimes(2));
     const first = mocks.addTask.mock.calls[0][0];
     const second = mocks.addTask.mock.calls[1][0];
     expect(second.operation_id).not.toBe(first.operation_id);
     expect(second.expected_placement_revision).toBe(1);
   });
 
-  it("settles a lost-response AddTaskToDay from canonical state without a duplicate client action", async () => {
-    mocks.loadDay.mockResolvedValueOnce(emptyDay).mockImplementationOnce(async () => {
-      const operation = mocks.addTask.mock.calls[0][0];
-      const reflected = {
-        ...populatedDay,
-        sections: [{
-          ...populatedDay.sections[0],
-          entries: [{
-            ...populatedDay.sections[0].entries[0],
-            id: operation.entry_id,
-            task: { ...populatedDay.sections[0].entries[0].task, id: operation.task_id, title: operation.title },
-          }],
-        }],
-      };
-      return reflected;
-    });
-    mocks.addTask.mockRejectedValueOnce(new TypeError("response lost after commit"));
-    render(<App />);
-    await screen.findByText("Entryなし");
-    fireEvent.change(screen.getByLabelText("Taskタイトル"), { target: { value: "Committed once" } });
-    fireEvent.click(screen.getByRole("button", { name: "現在日に追加" }));
-    expect(await screen.findByText("Committed once")).toBeTruthy();
-    expect(mocks.addTask).toHaveBeenCalledTimes(1);
-    expect(screen.queryAllByText("Committed once")).toHaveLength(1);
-    expect(screen.queryByRole("button", { name: "同じTask操作を再試行" })).toBeNull();
-  });
-
-  it("shows Start pending feedback and reconciles to running canonical state", async () => {
-    let resolveStart: (() => void) | undefined;
-    mocks.loadDay.mockResolvedValueOnce(populatedDay).mockResolvedValueOnce(runningDay);
-    mocks.startEntry.mockImplementation(() => new Promise<void>((resolve) => { resolveStart = resolve; }));
-    render(<App />);
-    await screen.findByRole("button", { name: "Start" });
-    fireEvent.click(screen.getByRole("button", { name: "Start" }));
-    expect(await screen.findByRole("button", { name: "開始・照合中…" })).toBeTruthy();
-    resolveStart?.();
-    expect(await screen.findByRole("button", { name: "Complete" })).toBeTruthy();
-    expect(screen.getByText(/Active:/).textContent).toContain(runningDay.active_execution?.entry_id);
-  });
-
-  it("completes without a full-page reload and restores completed state from canonical Query", async () => {
-    mocks.loadDay.mockResolvedValueOnce(runningDay).mockResolvedValueOnce(completedDay);
-    render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "Complete" }));
-    await waitFor(() => expect(mocks.completeEntry).toHaveBeenCalledTimes(1));
-    expect(await screen.findByText(/completed/)).toBeTruthy();
-    expect(screen.getByText("Active: なし")).toBeTruthy();
-  });
-
-  it("settles an ambiguous Reorder from canonical order and preserves stable Entry IDs", async () => {
-    const second = { ...populatedDay.sections[0].entries[0], id: "019c0000-0000-7000-8000-000000000006",
-      task: { ...populatedDay.sections[0].entries[0].task, id: "019c0000-0000-7000-8000-000000000007", title: "Second task" }, position: 2 };
-    const twoEntries = { ...populatedDay, sections: [{ ...populatedDay.sections[0], entries: [populatedDay.sections[0].entries[0], second] }] };
-    const reordered = { ...twoEntries, placement_revision: 2, sections: [{ ...twoEntries.sections[0], entries: [
-      { ...second, position: 1 }, { ...populatedDay.sections[0].entries[0], position: 2 },
-    ] }] };
-    mocks.loadDay.mockResolvedValueOnce(twoEntries).mockResolvedValueOnce(reordered);
-    mocks.reorderEntries.mockRejectedValueOnce(new ApiClientError("ambiguous", 503, true, "infrastructure_ambiguous"));
-    render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskを下へ" }));
-    await waitFor(() => expect(mocks.loadDay).toHaveBeenCalledTimes(2));
-    expect(mocks.reorderEntries.mock.calls[0][0].entry_ids).toEqual([second.id, populatedDay.sections[0].entries[0].id]);
-    expect(screen.queryByText("結果未確定の操作があります。同じ操作ボタンでもう一度照合してください。")).toBeNull();
-  });
-
-  it("restores running and completed lifecycle states on browser load", async () => {
-    mocks.loadDay.mockResolvedValueOnce(runningDay);
-    const view = render(<App />);
-    expect(await screen.findByText(/running/)).toBeTruthy();
-    view.unmount();
-    mocks.loadDay.mockResolvedValueOnce(completedDay);
-    render(<App />);
-    expect(await screen.findByText(/completed/)).toBeTruthy();
-  });
-
-  it("offers cross-day active Execution completion even when its Entry is absent from the current board", async () => {
-    const crossDay = { ...emptyDay, active_execution: runningDay.active_execution };
-    mocks.loadDay.mockResolvedValueOnce(crossDay).mockResolvedValueOnce(emptyDay);
-    render(<App />);
-    expect(await screen.findByText("Entryなし")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Complete active Execution" }));
-    await waitFor(() => expect(mocks.completeEntry).toHaveBeenCalledTimes(1));
-    expect(mocks.completeEntry.mock.calls[0][0]).toMatchObject({
-      entry_id: runningDay.active_execution?.entry_id,
-      execution_id: runningDay.active_execution?.id,
-    });
-    expect(await screen.findByText("Active: なし")).toBeTruthy();
-  });
-
-  it("retries only the exact ambiguous Start and disables unrelated Entry actions", async () => {
+  it("retries only the exact ambiguous Start and never replays it from another Row", async () => {
     mocks.loadDay.mockResolvedValueOnce(twoPlannedDay).mockResolvedValueOnce(twoPlannedDay).mockResolvedValueOnce(runningDay);
     mocks.startEntry.mockRejectedValueOnce(new ApiClientError("ambiguous", 503, true, "infrastructure_ambiguous")).mockResolvedValueOnce({});
     render(<App />);
-    const starts = await screen.findAllByRole("button", { name: "Start" });
-    fireEvent.click(starts[0]);
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskを開始" }));
     const retry = await screen.findByRole("button", { name: "保留中のStartを再試行" });
-    expect((screen.getAllByRole("button", { name: "Start" })[1] as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(screen.getAllByRole("button", { name: "Start" })[1]);
+    const unrelated = screen.getByRole("button", { name: "Second taskを開始" }) as HTMLButtonElement;
+    expect(unrelated.disabled).toBe(true);
+    fireEvent.click(unrelated);
     expect(mocks.startEntry).toHaveBeenCalledTimes(1);
     fireEvent.click(retry);
     await waitFor(() => expect(mocks.startEntry).toHaveBeenCalledTimes(2));
     expect(mocks.startEntry.mock.calls[1][0]).toEqual(mocks.startEntry.mock.calls[0][0]);
   });
 
-  it("discards an ambiguous Start client intent before creating fresh IDs for another Entry", async () => {
-    const runningSecond = { ...runningDay, active_execution: { ...runningDay.active_execution!, entry_id: secondEntry.id },
-      sections: [{ ...twoPlannedDay.sections[0], entries: [twoPlannedDay.sections[0].entries[0], { ...secondEntry, lifecycle_state: "running" as const }] }] };
-    mocks.loadDay.mockResolvedValueOnce(twoPlannedDay).mockResolvedValueOnce(twoPlannedDay).mockResolvedValueOnce(runningSecond);
-    mocks.startEntry.mockRejectedValueOnce(new TypeError("lost response")).mockResolvedValueOnce({});
+  it("keeps a non-empty draft but blocks its submit while an ambiguous Start is retained", async () => {
+    mocks.loadDay.mockResolvedValue(twoPlannedDay);
+    mocks.startEntry.mockRejectedValueOnce(new ApiClientError("ambiguous", 503, true, "infrastructure_ambiguous"));
     render(<App />);
-    fireEvent.click((await screen.findAllByRole("button", { name: "Start" }))[0]);
+    fireEvent.click(await screen.findByRole("button", { name: "EveningにTaskを追加" }));
+    const input = screen.getByRole("textbox", { name: "EveningのTask名" });
+    fireEvent.change(input, { target: { value: "Keep this draft" } });
+    fireEvent.click(screen.getByRole("button", { name: "Canonical taskを開始" }));
     await screen.findByRole("button", { name: "保留中のStartを再試行" });
-    fireEvent.click(screen.getByRole("button", { name: "保留中のclient操作を破棄" }));
-    fireEvent.click(screen.getAllByRole("button", { name: "Start" })[1]);
-    await waitFor(() => expect(mocks.startEntry).toHaveBeenCalledTimes(2));
-    const first = mocks.startEntry.mock.calls[0][0];
-    const second = mocks.startEntry.mock.calls[1][0];
-    expect(second.entry_id).toBe(secondEntry.id);
-    expect(second.operation_id).not.toBe(first.operation_id);
-    expect(second.execution_id).not.toBe(first.execution_id);
+    expect(screen.getByDisplayValue("Keep this draft")).toBeTruthy();
+    fireEvent.keyDown(input, { key: "Enter", code: "Enter" });
+    expect(mocks.addTask).not.toHaveBeenCalled();
   });
 
-  it("retries an ambiguous Reorder explicitly and never reuses it from a different arrow", async () => {
-    const reordered = { ...twoPlannedDay, placement_revision: 2, sections: [{ ...twoPlannedDay.sections[0], entries: [
-      { ...secondEntry, position: 1 }, { ...twoPlannedDay.sections[0].entries[0], position: 2 },
-    ] }] };
+  it("keeps a non-empty draft but blocks its Enter submit while another mutation is pending", async () => {
+    const request = deferred<unknown>();
+    mocks.loadDay.mockResolvedValue(twoPlannedDay);
+    mocks.startEntry.mockReturnValue(request.promise);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "EveningにTaskを追加" }));
+    const input = screen.getByRole("textbox", { name: "EveningのTask名" });
+    fireEvent.change(input, { target: { value: "Keep pending draft" } });
+    fireEvent.click(screen.getByRole("button", { name: "Canonical taskを開始" }));
+    await waitFor(() => expect(mocks.startEntry).toHaveBeenCalledTimes(1));
+    fireEvent.keyDown(input, { key: "Enter", code: "Enter" });
+    expect(mocks.addTask).not.toHaveBeenCalled();
+    expect(screen.getByDisplayValue("Keep pending draft")).toBeTruthy();
+    request.resolve({});
+    await waitFor(() => expect(screen.queryByText("開始・照合中…")).toBeNull());
+  });
+
+  it("discards ambiguous Start without mutation and then creates fresh Start identities", async () => {
+    mocks.loadDay.mockResolvedValue(twoPlannedDay);
+    mocks.startEntry.mockRejectedValueOnce(new ApiClientError("ambiguous", 503, true, "infrastructure_ambiguous")).mockResolvedValueOnce({});
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskを開始" }));
+    const discard = await screen.findByRole("button", { name: "保留中のclient操作を破棄" });
+    const retained = mocks.startEntry.mock.calls[0][0];
+    fireEvent.click(discard);
+    expect(mocks.startEntry).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Second taskを開始" }));
+    await waitFor(() => expect(mocks.startEntry).toHaveBeenCalledTimes(2));
+    const fresh = mocks.startEntry.mock.calls[1][0];
+    expect(fresh.operation_id).not.toBe(retained.operation_id);
+    expect(fresh.execution_id).not.toBe(retained.execution_id);
+    expect(fresh.entry_id).toBe(secondEntry.id);
+  });
+
+  it("retries only the exact ambiguous Reorder and disables a different move", async () => {
+    const reordered = {
+      ...twoPlannedDay,
+      placement_revision: 2,
+      sections: [{ ...twoPlannedDay.sections[0], entries: [{ ...secondEntry, position: 1 }, { ...firstEntry, position: 2 }] }, emptyDay.sections[1]],
+    };
     mocks.loadDay.mockResolvedValueOnce(twoPlannedDay).mockResolvedValueOnce(twoPlannedDay).mockResolvedValueOnce(reordered);
     mocks.reorderEntries.mockRejectedValueOnce(new ApiClientError("ambiguous", 503, true, "infrastructure_ambiguous")).mockResolvedValueOnce({});
     render(<App />);
@@ -326,49 +464,72 @@ describe("DayBoard web behavior", () => {
     expect(mocks.reorderEntries.mock.calls[1][0]).toEqual(mocks.reorderEntries.mock.calls[0][0]);
   });
 
-  it("discards an ambiguous Reorder before accepting a fresh move with current revision", async () => {
-    const reconciled = { ...twoPlannedDay, placement_revision: 4 };
-    mocks.loadDay.mockResolvedValueOnce(twoPlannedDay).mockResolvedValueOnce(reconciled).mockResolvedValueOnce(reconciled);
-    mocks.reorderEntries.mockRejectedValueOnce(new TypeError("lost response")).mockResolvedValueOnce({});
+  it("keeps a non-empty draft but blocks its submit while an ambiguous Reorder is retained", async () => {
+    mocks.loadDay.mockResolvedValue(twoPlannedDay);
+    mocks.reorderEntries.mockRejectedValueOnce(new ApiClientError("ambiguous", 503, true, "infrastructure_ambiguous"));
     render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskを下へ" }));
+    fireEvent.click(await screen.findByRole("button", { name: "EveningにTaskを追加" }));
+    const input = screen.getByRole("textbox", { name: "EveningのTask名" });
+    fireEvent.change(input, { target: { value: "Keep reorder draft" } });
+    fireEvent.click(screen.getByRole("button", { name: "Canonical taskを下へ" }));
     await screen.findByRole("button", { name: "保留中のReorderを再試行" });
-    fireEvent.click(screen.getByRole("button", { name: "保留中のclient操作を破棄" }));
-    fireEvent.click(screen.getByRole("button", { name: "Second taskを上へ" }));
-    await waitFor(() => expect(mocks.reorderEntries).toHaveBeenCalledTimes(2));
-    expect(mocks.reorderEntries.mock.calls[1][0].operation_id).not.toBe(mocks.reorderEntries.mock.calls[0][0].operation_id);
-    expect(mocks.reorderEntries.mock.calls[1][0].expected_placement_revision).toBe(4);
+    fireEvent.keyDown(input, { key: "Enter", code: "Enter" });
+    expect(mocks.addTask).not.toHaveBeenCalled();
+    expect(screen.getByDisplayValue("Keep reorder draft")).toBeTruthy();
   });
 
-  it("retries an ambiguous Complete with exact identity and discard performs no Domain mutation", async () => {
+  it("discards ambiguous Reorder and uses a fresh operation with reconciled revision", async () => {
+    const revisionSeven = { ...twoPlannedDay, placement_revision: 7 };
+    mocks.loadDay.mockResolvedValueOnce(twoPlannedDay).mockResolvedValue(revisionSeven);
+    mocks.reorderEntries.mockRejectedValueOnce(new ApiClientError("ambiguous", 503, true, "infrastructure_ambiguous")).mockResolvedValueOnce({});
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskを下へ" }));
+    const discard = await screen.findByRole("button", { name: "保留中のclient操作を破棄" });
+    const retained = mocks.reorderEntries.mock.calls[0][0];
+    fireEvent.click(discard);
+    expect(mocks.reorderEntries).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Second taskを上へ" }));
+    await waitFor(() => expect(mocks.reorderEntries).toHaveBeenCalledTimes(2));
+    const fresh = mocks.reorderEntries.mock.calls[1][0];
+    expect(fresh.operation_id).not.toBe(retained.operation_id);
+    expect(fresh.expected_placement_revision).toBe(7);
+  });
+
+  it("retries the exact ambiguous Complete identity", async () => {
     mocks.loadDay.mockResolvedValue(runningDay);
     mocks.completeEntry.mockRejectedValueOnce(new ApiClientError("ambiguous", 503, true, "infrastructure_ambiguous")).mockResolvedValueOnce({});
     render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "Complete active Execution" }));
+    fireEvent.click(await screen.findByRole("button", { name: "実行中のTaskを完了" }));
     const retry = await screen.findByRole("button", { name: "保留中のCompleteを再試行" });
     fireEvent.click(retry);
     await waitFor(() => expect(mocks.completeEntry).toHaveBeenCalledTimes(2));
     expect(mocks.completeEntry.mock.calls[1][0]).toEqual(mocks.completeEntry.mock.calls[0][0]);
+  });
 
-    mocks.completeEntry.mockRejectedValueOnce(new TypeError("another lost response"));
-    fireEvent.click(screen.getByRole("button", { name: "Complete active Execution" }));
-    await screen.findByRole("button", { name: "保留中のCompleteを再試行" });
-    const callsBeforeDiscard = mocks.completeEntry.mock.calls.length;
-    fireEvent.click(screen.getByRole("button", { name: "保留中のclient操作を破棄" }));
-    expect(mocks.completeEntry).toHaveBeenCalledTimes(callsBeforeDiscard);
+  it("discards ambiguous Complete without mutation and unlocks unrelated controls", async () => {
+    mocks.loadDay.mockResolvedValue(runningDay);
+    mocks.completeEntry.mockRejectedValueOnce(new ApiClientError("ambiguous", 503, true, "infrastructure_ambiguous"));
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "実行中のTaskを完了" }));
+    const discard = await screen.findByRole("button", { name: "保留中のclient操作を破棄" });
+    expect((screen.getByRole("button", { name: "EveningにTaskを追加" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(discard);
+    expect(mocks.completeEntry).toHaveBeenCalledTimes(1);
+    expect((screen.getByRole("button", { name: "EveningにTaskを追加" }) as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("reconciles deterministic Reorder and Start conflicts without false-success UI", async () => {
-    const canonicalWinner = { ...twoPlannedDay, placement_revision: 2, sections: [{ ...twoPlannedDay.sections[0], entries: [
-      { ...secondEntry, position: 1 }, { ...twoPlannedDay.sections[0].entries[0], position: 2 },
-    ] }] };
+    const canonicalWinner = {
+      ...twoPlannedDay,
+      placement_revision: 2,
+      sections: [{ ...twoPlannedDay.sections[0], entries: [{ ...secondEntry, position: 1 }, { ...firstEntry, position: 2 }] }, emptyDay.sections[1]],
+    };
     mocks.loadDay.mockResolvedValueOnce(twoPlannedDay).mockResolvedValueOnce(canonicalWinner);
     mocks.reorderEntries.mockRejectedValueOnce(new ApiClientError("revision conflict", 409, true, "revision_conflict"));
     const view = render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Canonical taskを下へ" }));
     await waitFor(() => expect(mocks.loadDay).toHaveBeenCalledTimes(2));
-    const listItems = screen.getAllByRole("listitem");
-    expect(listItems[0].getAttribute("data-entry-id")).toBe(secondEntry.id);
+    expect(Array.from(document.querySelectorAll("[data-entry-id]")).map((row) => row.getAttribute("data-entry-id"))).toEqual([secondEntry.id, firstEntry.id]);
     expect(screen.queryByRole("button", { name: "保留中のReorderを再試行" })).toBeNull();
     view.unmount();
 
@@ -376,10 +537,93 @@ describe("DayBoard web behavior", () => {
     mocks.loadDay.mockResolvedValue(twoPlannedDay);
     mocks.startEntry.mockRejectedValueOnce(new ApiClientError("active conflict", 409, true, "resource_conflict"));
     render(<App />);
-    fireEvent.click((await screen.findAllByRole("button", { name: "Start" }))[0]);
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskを開始" }));
     await waitFor(() => expect(mocks.loadDay).toHaveBeenCalledTimes(2));
-    expect(screen.getByText("Active: なし")).toBeTruthy();
-    expect(screen.queryByText(/running/)).toBeNull();
+    expect(screen.queryByRole("complementary", { name: "実行中のTask" })).toBeNull();
     expect(screen.queryByRole("button", { name: "保留中のStartを再試行" })).toBeNull();
+  });
+
+  it("can complete a cross-Day active Execution from the runner without inventing a Task title", async () => {
+    const crossDay = { ...emptyDay, active_execution: runningDay.active_execution };
+    mocks.loadDay.mockResolvedValueOnce(crossDay).mockResolvedValueOnce(emptyDay);
+    render(<App />);
+    const runner = await screen.findByRole("complementary", { name: "実行中のTask" });
+    expect(runner.textContent).toContain("別日の実行中Task");
+    fireEvent.click(screen.getByRole("button", { name: "実行中のTaskを完了" }));
+    await waitFor(() => expect(mocks.completeEntry).toHaveBeenCalledTimes(1));
+    expect(mocks.completeEntry.mock.calls[0][0]).toMatchObject({
+      entry_id: runningDay.active_execution?.entry_id,
+      execution_id: runningDay.active_execution?.id,
+    });
+    expect(screen.queryByRole("complementary", { name: "実行中のTask" })).toBeNull();
+  });
+
+  it("shows the floating runner only for an active Execution and resolves its Task title", async () => {
+    mocks.loadDay.mockResolvedValueOnce(populatedDay);
+    const view = render(<App />);
+    await screen.findByText("Canonical task");
+    expect(screen.queryByRole("complementary", { name: "実行中のTask" })).toBeNull();
+    view.unmount();
+
+    mocks.loadDay.mockResolvedValueOnce(runningDay);
+    render(<App />);
+    const runner = await screen.findByRole("complementary", { name: "実行中のTask" });
+    expect(runner.textContent).toContain("Canonical task");
+    expect(runner.textContent).toContain("実行中");
+  });
+
+  it("hides completed Rows client-side while keeping their Section visible", async () => {
+    mocks.loadDay.mockResolvedValue(completedDay);
+    render(<App />);
+    expect(await screen.findByText("Canonical task")).toBeTruthy();
+    fireEvent.click(screen.getByRole("checkbox", { name: "実行済みを表示" }));
+    expect(screen.queryByText("Canonical task")).toBeNull();
+    expect(screen.getByText("Morning")).toBeTruthy();
+    expect(screen.getByText("1/1 実行済み")).toBeTruthy();
+  });
+
+  it("still creates a Project from the compact auxiliary control", async () => {
+    mocks.loadDay.mockResolvedValue(emptyDay);
+    render(<App />);
+    fireEvent.click(await screen.findByText("Project作成"));
+    fireEvent.change(screen.getByRole("textbox", { name: "タイトル" }), { target: { value: "Project" } });
+    fireEvent.click(screen.getByRole("button", { name: "作成" }));
+    await waitFor(() => expect(mocks.createProject).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText("作成済み: Project")).toBeTruthy();
+  });
+
+  it("blocks concurrent Project primary submits while the first request is pending", async () => {
+    const request = deferred<{ project: { id: string; title: string } }>();
+    mocks.loadDay.mockResolvedValue(emptyDay);
+    mocks.createProject.mockReturnValue(request.promise);
+    render(<App />);
+    fireEvent.click(await screen.findByText("Project作成"));
+    const input = screen.getByRole("textbox", { name: "タイトル" });
+    fireEvent.change(input, { target: { value: "One request" } });
+    const form = input.closest("form")!;
+    fireEvent.submit(form);
+    await waitFor(() => expect(mocks.createProject).toHaveBeenCalledTimes(1));
+    expect((screen.getByRole("button", { name: "作成中…" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.submit(form);
+    expect(mocks.createProject).toHaveBeenCalledTimes(1);
+    request.resolve({ project: { id: "project", title: "One request" } });
+    await screen.findByText("作成済み: One request");
+  });
+
+  it("retries an ambiguous Project with the exact original identity and semantic title", async () => {
+    mocks.loadDay.mockResolvedValue(emptyDay);
+    mocks.createProject.mockRejectedValueOnce(new ApiClientError("ambiguous", 503, true, "infrastructure_ambiguous")).mockResolvedValueOnce({ project: { id: "project", title: "Original title" } });
+    render(<App />);
+    fireEvent.click(await screen.findByText("Project作成"));
+    const input = screen.getByRole("textbox", { name: "タイトル" });
+    fireEvent.change(input, { target: { value: "Original title" } });
+    fireEvent.submit(input.closest("form")!);
+    const retry = await screen.findByRole("button", { name: "保留中のProject作成を再試行" });
+    const original = mocks.createProject.mock.calls[0][0];
+    fireEvent.change(input, { target: { value: "Changed form text" } });
+    fireEvent.click(retry);
+    await waitFor(() => expect(mocks.createProject).toHaveBeenCalledTimes(2));
+    expect(mocks.createProject.mock.calls[1][0]).toEqual(original);
+    expect(original).toMatchObject({ title: "Original title" });
   });
 });
