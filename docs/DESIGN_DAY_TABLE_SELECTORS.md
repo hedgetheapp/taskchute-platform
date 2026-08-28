@@ -314,6 +314,24 @@ Routine由来defaultのProject / Mode / Section変更でscope popupを開いた�
 
 scope確定後のfocusはSection 1.12どおり元のselector cellへ戻す。実装上のfocus trap手段やDOM構造はimplementation detailとし、本Sectionではuser-visibleなkeyboard navigationとcommit / cancel semanticsをauthorityとする。
 
+### 1.14 Vertical Day Table scroll / anchor lifecycle
+
+selectorまたはRoutine scope popupが開いている間にDay Tableを縦scrollした場合も、anchorとなるselector cellのvisibilityをlifecycle authorityとして扱う。
+
+- Day Tableを縦scrollしてもanchor cellがvisibleな間は、selector / scope popupをanchor位置へ追従させる。
+- anchor cellが一部でもvisibleな間は、可能な範囲でanchor関係を維持する。
+- anchor cellがDay Tableのvisible areaから完全に外れた場合は、selectorを未確定candidateのままcommitせずcancelして閉じる。
+- Routine scope popupが開いている場合にanchor cellが完全にvisible area外へ出たときは、pending変更をcancelしてscope popupを閉じる。`今回だけ` / `ルーティンに反映`のどちらも暗黙commitしない。
+- scrollだけを理由にactive candidateやscope choiceをcommitしない。
+- selector / scope popupを維持するためにDay Tableを自動でscroll backしない。
+- anchor位置や上下の利用可能spaceが変わった場合はSection 1.7のplacement ruleに従ってbelow / aboveを再計算する。
+- candidate list上でのMouse wheel / trackpad操作は、candidate領域がscroll可能な場合はまずcandidate list内部scrollとして扱い、Section 1.10のmanual candidate scroll ruleを適用する。
+- selector / scope popup外でのwheel / trackpad操作によるDay Table scrollは通常のDay Table scrollとして扱う。
+
+sticky header等によってanchorが何pixel隠れた時点で「完全にvisible area外」と判定するか、どのDOM intersection mechanismを使うかはimplementation detailとする。本Sectionではuser-visible authorityを「元のanchor cellが完全に見えなくなったら、未確定状態をcommitせず閉じる」とする。
+
+このruleはProject / Mode / Section selectorおよび、それらから遷移したRoutine scope popupに共通適用する。
+
 ## 2. Search / quick create
 
 既存のJapanese / romaji search foundationを利用する。
@@ -430,6 +448,7 @@ Section
 - popoverのwidth / max-height / candidate overflowはSection 1.8に従う。
 - pointer leave / manual candidate scroll時のactive stateはSection 1.10に従う。
 - current Sectionの再選択時のno-op behaviorはSection 1.11に従う。
+- Day Table縦scroll時のanchor lifecycleはSection 1.14に従う。
 
 ### 3.1 Section change
 
@@ -459,6 +478,7 @@ Project / Mode / Sectionとも、Mouseで一度Rowを選択してから再click�
 - pointerがcandidateから外れてもactive candidateを維持し、manual candidate scrollだけではstationary pointer下のcandidateへactiveを移さない。
 - current valueを再選択した場合は値変更なしのno-opとしてselectorを閉じ、Routine scope promptやSection change side effectを発生させない。
 - popoverはanchor cellへ追従し、anchorが完全にviewport外へ出た場合は未確定状態をcommitせず閉じる。
+- Day Table縦scrollでもanchor cellが見えている間はselector / scope popupを追従させ、完全に見えなくなったら未確定状態をcommitせずcancelして閉じる。
 - popoverはanchor cell幅より広く表示してよく、多数candidate時はcandidate領域だけ内部scrollする。
 - Project / ModeのIME composition中はIME operationをselector shortcutより優先し、IME確定とcandidate commitを同じ`Enter`で連続発火させない。
 - Routine scope popupでは`今回だけ`をinitial activeとし、`← / →`または`Tab / Shift+Tab`でscopeを移動し、`Enter / Space`で明示commitする。scope未確定のままTabでDay Tableへ抜けない。
