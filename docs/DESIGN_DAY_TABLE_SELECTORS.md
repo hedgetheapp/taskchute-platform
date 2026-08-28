@@ -279,6 +279,23 @@ candidateからpointerが外れたことだけを理由にactive candidateを解
 
 このruleにより、selected indicator上のcandidateを確認目的で再選択してもRoutine scope promptやplanned-start clear等の不要な副作用を起こさない。
 
+### 1.12 Routine scope popup outside click
+
+Routine由来defaultのProject / Mode / Section変更でscope selection `今回だけ / ルーティンに反映`が表示されている間は、scopeを明示的に選んだ場合だけpending変更をcommitする。
+
+- `[今回だけ]`: pending変更をcurrent Task / occurrenceだけへcommitする。
+- `[ルーティンに反映]`: pending変更をRoutine側へcommitする。
+- `Esc`: pending変更をcancelし、変更前のvalueを維持したままscope popupを閉じ、元のselector cellへfocusを戻す。
+- scope popup外をclick: pending変更をcancelしてpopupを閉じ、原則としてclick先の通常interactionを続行する。
+- outside clickを`今回だけ`の暗黙選択として扱わない。
+- outside clickを`ルーティンに反映`の暗黙選択として扱わない。
+- scope popup内部の非action余白をclickした場合は何も確定・cancelせず、popupを維持する。
+- scope popupの起点となった元のselector cellをclickした場合はpending変更をcancelしてpopupを閉じ、そのcellへfocusを戻す。このclickだけでselectorを即reopenしない。
+- current valueの再選択等、Section 1.11のno-op selectionではscope popup自体を表示しない。
+- `[今回だけ]`がdefault choiceとして示される場合でも、scope popup外clickをそのdefaultのcommitとして扱わない。
+
+scope確定後のfocusは既存ruleどおり元のselector cellへ戻す。scope popupのvisual placementやanimation等はimplementation detailとし、本Sectionではcommit / cancel semanticsをauthorityとする。
+
 ## 2. Search / quick create
 
 既存のJapanese / romaji search foundationを利用する。
