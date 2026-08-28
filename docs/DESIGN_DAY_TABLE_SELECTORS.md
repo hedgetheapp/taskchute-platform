@@ -358,7 +358,39 @@ sticky layerのDOM構造、z-index、IntersectionObserver等の利用、完全oc
 - romaji input → kana matching
 - reading indexが利用可能な場合のKanji reading match
 
-### 2.1 Empty search state
+### 2.1 Candidate ranking
+
+検索文字が空ではなくexisting candidateが1件以上matchした場合は、Project / Mode候補を検索relevanceで表示する。
+
+優先順位:
+
+1. stored nameと検索文字が直接完全一致するcandidate
+2. stored nameが検索文字で直接前方一致するcandidate
+3. direct substring、case / fullwidth normalization、hiragana / katakana normalization、romaji → kana、reading index等によってmatchするその他candidate
+
+同じranking group内ではProject / Modeの既存の設定順を維持し、検索のためにDefinition自体の保存順を変更しない。
+
+- 検索文字がある間は`未設定`を通常の検索結果へ混ぜない。
+- current persisted valueだからという理由だけでcandidateを検索結果の上位へ固定しない。
+- quick createが表示される場合はexisting candidate群の後ろに別actionとして置く。
+- Section 1.2でいう「先頭existing candidate」は、このranking後の先頭candidateを指す。
+- rankingのためのnormalizationはsearch relevanceだけに使い、Definition identity / uniqueness authorityへ昇格させない。
+- Section 2.4のduplicate preventionは引き続きstored nameとのexact duplicateをauthorityとし、normalization差まで同一Definitionとして禁止することを本ranking ruleから導出しない。
+
+例:
+
+```text
+検索: 仕事
+
+> 仕事                 ← direct exact match
+  仕事・定例           ← direct prefix match
+  仕事用メモ           ← direct prefix match
+  今日の仕事を整理     ← other match
+```
+
+これにより、検索文字と同名のDefinitionが存在する場合はそれを先頭active candidateにしつつ、かな / カナ / romaji / reading等の検索補助も維持する。
+
+### 2.2 Empty search state
 
 検索文字が空ではなく、existing candidateが0件の場合は、候補が存在しないことをmutedなempty stateで明示する。
 
@@ -389,7 +421,7 @@ Modeも同じ構造とし、`一致するModeはありません`と表示する�
 
 empty stateは「一致候補が0件であること」の説明と「新規作成action」を視覚的・操作的に分離し、0件時の`Enter`だけで意図せずDefinitionを作成しないために使う。
 
-### 2.2 Quick create
+### 2.3 Quick create
 
 検索文字が既存候補と完全一致しない場合、候補末尾に以下を表示できる。
 
@@ -412,7 +444,7 @@ quick createは:
 
 quick createを`Enter`で確定した後のfocusも通常selectionと同じく元のProject / Mode cellへ戻し、次fieldへの移動は`Tab`で行う。
 
-### 2.3 Duplicate prevention
+### 2.4 Duplicate prevention
 
 `docs/DESIGN.md` Section 10の現行Designに合わせ、existing Definitionとの**exact duplicate**はquick createしない。
 
