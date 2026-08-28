@@ -62,6 +62,16 @@ search-readyな状態を起点とする。
 - quick createが表示されていても自動activeにはしない。`↓`等で明示的にactiveへ移動してから`Enter`した場合だけ新規作成する。
 - active candidateがない状態の`Enter`ではselection / quick createを確定しない。
 
+検索文字をすべて消して空文字へ戻した場合:
+
+- search rankingを解除して通常のcandidate listへ戻す。
+- candidate listのscroll位置を先頭へ戻す。
+- `未設定`を通常どおり先頭candidateとして表示する。
+- search中にactive candidateが存在していてもactive stateを解除し、candidateなしへ戻す。
+- current persisted valueのselected indicatorは維持するが、current valueを自動activeにはしない。
+- active candidateがないため、その状態で`Enter`してもselectionを確定しない。
+- `↓`を押した場合は通常のempty-query ruleどおり最初のcandidateである`未設定`をactiveにする。
+
 候補navigation:
 
 - search-readyな入力状態を維持したまま、`↑ / ↓`でactive candidateだけを移動する。
@@ -176,7 +186,7 @@ Project / Mode:
 - current persisted valueがlist下部にあっても、open時にその位置へ自動scrollしない。
 - candidate list先頭の`未設定`をすぐ確認できる状態とし、Section 1.2の`↓`で最初に`未設定`へ移るruleと一致させる。
 - current valueはDay Table cellとselected indicatorで確認可能であり、現在値を探すための自動scrollよりsearch primaryのinteractionを優先する。
-- 検索文字をclearして通常候補listへ戻った場合も、candidate listは先頭へ戻す。
+- 検索文字をclearして通常候補listへ戻った場合も、candidate listは先頭へ戻し、Section 1.2どおりactive candidateを解除する。
 
 Section:
 
