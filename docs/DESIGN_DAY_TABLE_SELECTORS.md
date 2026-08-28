@@ -203,7 +203,7 @@ Project / Mode / Section selectorのpopoverは、Day Table上のselector cellを
 - anchor cellが一部でもvisibleな間は、可能な範囲でanchor関係を維持してpopoverを表示する。
 - popover placementのためにDay Tableのcanonical scroll位置やTask orderを変更しない。
 
-このplacement ruleはProject / Mode / Section共通とし、outside-click時のcommit / cancel semanticsはSection 1.4を維持する。
+このplacement ruleはProject / Mode / Section共通とし、outside-click時のcommit / cancel semanticsはSection 1.4を維持する。anchor cellの`visible`判定はSection 1.15のeffective visible area ruleで補足する。
 
 ### 1.8 Popover size / candidate overflow
 
@@ -330,6 +330,22 @@ selectorまたはRoutine scope popupが開いている間にDay Tableを縦scrol
 
 sticky header等によってanchorが何pixel隠れた時点で「完全にvisible area外」と判定するか、どのDOM intersection mechanismを使うかはimplementation detailとする。本Sectionではuser-visible authorityを「元のanchor cellが完全に見えなくなったら、未確定状態をcommitせず閉じる」とする。
 
+このruleはProject / Mode / Section selectorおよび、それらから遷移したRoutine scope popupに共通適用する。anchor cellのvisibility判定はSection 1.15のeffective visible area ruleを使う。
+
+### 1.15 Effective visible area / sticky occlusion
+
+Section 1.7 / 1.14でいうanchor cellの`visible`判定は、browser viewportに座標上含まれているかだけではなく、Day Table上でユーザーが実際にcellを視認できるeffective visible areaを基準とする。
+
+- effective visible areaは、browser viewportとDay Tableのscroll viewportのうち、sticky headerやsticky left columns等によって実際に覆われていない領域として扱う。
+- anchor cellがbrowser viewport内に残っていても、sticky header / sticky columnの背後へ完全に隠れてユーザーから見えない場合はnon-visibleと扱い、未確定candidateをcommitせずselectorをcancelして閉じる。
+- Routine scope popupでもanchor cellがsticky UIに完全に覆われた場合はpending変更をcancelしてpopupを閉じ、scopeを暗黙commitしない。
+- anchor cellの一部でもeffective visible area内に実際に見えている場合はvisibleと扱い、可能な範囲でselector / scope popupをanchorへ追従させる。
+- partial visibility時はpopoverがsticky UIの背後へ潜らないよう、Section 1.7のplacement補正をeffective visible area内で行ってよい。
+- placement補正によってpopoverだけをanchorから大きく切り離し、どのcellに属するpopupか分からなくなる配置にはしない。
+- selector / scope popupを維持するためにsticky UIの位置やDay Tableのcanonical scroll位置を変更しない。
+
+sticky layerのDOM構造、z-index、IntersectionObserver等の利用、完全occlusion判定の具体的なpixel thresholdはimplementation detailとする。本Sectionではuser-visible authorityを「sticky UIに完全に隠れて実際に見えないanchorはnon-visible、一部でも実際に見えているanchorはvisible」とする。
+
 このruleはProject / Mode / Section selectorおよび、それらから遷移したRoutine scope popupに共通適用する。
 
 ## 2. Search / quick create
@@ -449,6 +465,7 @@ Section
 - pointer leave / manual candidate scroll時のactive stateはSection 1.10に従う。
 - current Sectionの再選択時のno-op behaviorはSection 1.11に従う。
 - Day Table縦scroll時のanchor lifecycleはSection 1.14に従う。
+- sticky UIを含むeffective visible area判定はSection 1.15に従う。
 
 ### 3.1 Section change
 
@@ -479,6 +496,7 @@ Project / Mode / Sectionとも、Mouseで一度Rowを選択してから再click�
 - current valueを再選択した場合は値変更なしのno-opとしてselectorを閉じ、Routine scope promptやSection change side effectを発生させない。
 - popoverはanchor cellへ追従し、anchorが完全にviewport外へ出た場合は未確定状態をcommitせず閉じる。
 - Day Table縦scrollでもanchor cellが見えている間はselector / scope popupを追従させ、完全に見えなくなったら未確定状態をcommitせずcancelして閉じる。
+- sticky header / sticky left columns等の背後へanchor cellが完全に隠れた場合もnon-visibleとして未確定状態をcancelし、一部でも実際に見えている間はanchor関係を維持する。
 - popoverはanchor cell幅より広く表示してよく、多数candidate時はcandidate領域だけ内部scrollする。
 - Project / ModeのIME composition中はIME operationをselector shortcutより優先し、IME確定とcandidate commitを同じ`Enter`で連続発火させない。
 - Routine scope popupでは`今回だけ`をinitial activeとし、`← / →`または`Tab / Shift+Tab`でscopeを移動し、`Enter / Space`で明示commitする。scope未確定のままTabでDay Tableへ抜けない。
