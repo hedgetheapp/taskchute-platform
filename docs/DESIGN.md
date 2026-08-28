@@ -504,8 +504,6 @@ Section
 │ ◇ 昼      12:00–13:00   │
 │   午後    13:00–18:00   │
 │   夜      18:00–29:00   │
-├──────────────────────────┤
-│ Section設定を開く…      │
 └──────────────────────────┘
 ```
 
@@ -513,6 +511,7 @@ Section
 - icon、Section名、logical time rangeをcompactに表示する。
 - Section数がpopover高を超える場合は候補領域をscroll可能にする。
 - Day TableからSectionをquick createしない。Section追加は全日coverageに影響するため、Section設定画面で行う。
+- Section selector内にはSection設定画面への導線を置かず、Sectionの選択に専念させる。
 - initialではSection数が比較的少なくtime orderがauthorityである前提から、selector内検索は設けない。必要性が実利用で確認された場合に再評価する。
 - Section直接変更は未実行Taskのみを基本とし、D-031に従い開始予定をclearする。
 
@@ -552,6 +551,7 @@ Routine由来Taskのdefault対象fieldでは、通常のfield validation成功�
 - inline text edit。
 - Task名はrequired。
 - 新規Taskが未確定かつ空のまま`Esc`された場合はその新規rowを破棄。
+- 新規Task draftのclick-away lifecycleはSection 13.5に従う。
 
 ### 11.3 Estimate
 
@@ -733,6 +733,19 @@ Task → Project → Mode → Section → Routine → Note → 見積 → 開始
 Routine / Noteのようなcompact action columnもvisibleならTab対象とし、`Enter` / `Space`でそれぞれのmenu / paneを開ける。
 
 新規Task専用の別Tab順を定義しない。
+
+### 13.5 New Task draft lifecycle
+
+新規TaskのTask名がまだ確定していないdraftでは、空のrowを残さないことを優先する。
+
+- Task名が空の未確定draftで`Esc`した場合はdraft rowを破棄し、Taskとして保存しない。
+- Task名が空の未確定draftから別cell / Row / action等をclickした場合もdraft rowを破棄し、そのclick先の通常interactionを続行する。
+- Task名がvalidな状態で別cell / Row / action等をclickした場合は通常のblur ruleどおりTaskをcommitしてからclick先へ移る。
+- Task名に入力があるがinvalidな場合は自動破棄せず、Section 11.1どおりedit stateを維持してvalidationを表示し、click先へfocusを移さない。
+- 空draftの破棄ではTask / history / Routine relation等のpersisted recordを残さない。
+- 空draftのclick-awayをvalidation errorとして扱ってユーザー操作を止めない。
+
+この特例は未確定の新規Task draftだけに適用し、既存Taskのrequired Task名を空にした場合のvalidation semanticsはSection 11.1を維持する。
 
 ## 14. Task context menu
 
