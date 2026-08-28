@@ -443,7 +443,7 @@ Sectionはその日のEntry placement contextとしてstable identityを持つ�
 
 05:00 boundaryのvisual/default exampleとして、`朝 05:00–09:00`、`午前 09:00–12:00`、`昼 12:00–13:00`、`午後 13:00–18:00`、`夜 18:00–29:00（翌05:00）`を利用できる。ただしTaskChuteDay boundary自体はユーザー設定であり05:00へ固定しない。D-022のinitial bootstrapでuser-selected boundaryとinitial Section configurationをどのように提示・生成するかのexact onboardingは未決とする。
 
-Section時間をcanonical timezoneのactual instantへ解決するexact algorithm、DST transition時のSection resolution、Section設定変更時のfuture Entryへの適用時点、historical Section versionを保持するphysical snapshot / versioning方式、Section削除のarchive / tombstone方式、Section icon / accentのphysical persistenceはD-016 / D-017 / D-022と整合させて後続設計する。
+Section configurationのversioned persistence、established TaskChuteDayごとのhistorical Section context、legacy historyのtime-range unknown handling、`Sectionなし`のphysical absence representation、通常のSection設定変更のeffective timingはD-038で確定する。Section時間をcanonical timezoneのactual instantへ解決するexact algorithm / DST transition behavior、Section削除のarchive / tombstone exact retention、Section icon / accentのphysical persistenceは引き続きOpenとする。
 
 ## D-031 — Planned start, Section placement, and within-Section order
 Status: Approved
@@ -607,3 +607,41 @@ Day UI上のTask / Entryに対するmove、duplicate、deleteは、historical fa
 - bulk deleteは同じeligibilityを適用する。running Entryを含む場合は確認UIでその旨を明示する。
 
 exact archive / tombstone schema、cancelled Execution outcome名、deleted EntryをReview / audit UIへどの程度露出するか、retentionは後続設計とする。
+
+## D-038 — Versioned Section configuration and staged Day-planning persistence foundation
+Status: Approved
+
+D-030のtime-ranged Section semanticsとhistorical stabilityを実装するpersistence foundationでは、stable Section identity、Section configuration version、established TaskChuteDayごとのhistorical Section contextを分離して扱う。
+
+- Section identityは長期のstable identityとして維持し、mutableなSection名・時間帯をidentityそのものへ埋め込まない。
+- Section名・時間帯等のcurrent configurationはversioned configurationとして扱い、既にestablishされたTaskChuteDayのSection contextを後の設定変更でretroactiveに書き換えない。
+- TaskChuteDayで利用したSection contextは、そのDayで再現に必要なSection identity / 表示名 / logical range等をhistorical contextとして保持できる構造とする。exact table名、column名、index、snapshotとreferenceの細部はこの責務分離を壊さない範囲でimplementation detailとする。
+- 通常のSection設定変更は、既にSection contextが成立しているcurrent TaskChuteDayを途中で再構成せず、原則として**次のTaskChuteDayから**有効にする。
+- migration / onboardingでvalid Section configurationがまだ一度も成立しておらず、current TaskChuteDayへnormal historical contextを確定できていない初回設定では、ユーザーが明示したinitial configurationをcurrent TaskChuteDayへ適用してよい。一度establishしたDay contextは以後固定する。
+- migration前のlegacy historyにauthoritativeなSection time rangeが存在しない場合、既存のSection名や`sort_order`等から過去時間帯を推測しない。保持できるSection identity / name contextは保持し、時間帯はunknownとして扱う。
+- `Sectionなし`はD-030のplacement未決定を表すため、normal timed Sectionを表すsentinel rowを作らず、physical persistenceでもSection relationの**absence / nullable placement**として表現する方向を採用する。exact nullable column / context relationはreferential integrityを維持する範囲でimplementation detailとする。
+- Section configuration version / Day context導入時点からhistorical context preservationを行い、将来rename / boundary edit / deleteを実装するときに過去Section semanticsを後付けで推測し直す構造を前提としない。
+
+Dogfood Dayの次のimplementationはsmall vertical sliceを維持し、以下の順序をApprovedする。
+
+1. **B1 — Section time foundation + `Sectionなし` + Entry見積**
+   - versioned Section configuration foundation
+   - TaskChuteDayごとのhistorical Section context foundation
+   - Section time range表示
+   - Section未設定Entryのplacement
+   - `Sectionなし` EntryをStartした時刻のcurrent Sectionへ配置してからStart
+   - D-026のEntry-scoped見積
+2. **B2 — planned start + derived Section placement / order**
+   - D-031のplanned-start authority
+   - planned-startによるSection auto-move
+   - planned-startなし / あり / 同時刻tie-breakを含むcanonical order
+3. **B3 — Section settings lifecycle**
+   - rename / boundary edit / add / delete / absorption
+   - config versionのeffective timing UX
+   - archive / historical presentation
+
+B1へplanned startまで同時投入せず、Section configuration / nullable placement / Start placement / estimateを先にdogfood可能にする。
+
+D-026の見積semantics自体はApproved済みだが、B1 migrationで用いるexact physical unit / column representation / storage safety limitはまだ本Decisionで固定しない。D-031のplanned-start physical representation、manual tie-break persistence、planned-start mutationのexact command / retry contractもB2実装前に別途確定する。
+
+Section内部境界をactual instantへ解決するDST disambiguation、Section delete/archive retentionのexact physical model、icon / accent persistence、legacy unknown contextのUI presentation detailは引き続きOpenとする。
