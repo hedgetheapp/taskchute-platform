@@ -14,6 +14,8 @@ D-022によりFirst vertical slice全体のAPP persistence baseline responsibili
 
 D-024により、継続的なverificationではtracked / reusable configを利用する1つのpersistent Cloudflare non-production environmentを維持し、stable namingとseparate non-production `AUTH_DB` / `APP_DB` resourcesを使うことがApproved済み。date-scoped disposable environmentをverification cycleごとに再作成する方式は採用しない。
 
+D-038によりSection persistenceではstable Section identity、versioned Section configuration、established TaskChuteDayごとのhistorical Section contextを責務分離し、`Sectionなし`をnormal timed Sectionのsentinelではなくplacement relationのabsenceとして扱う方向がApproved済み。authoritative time rangeを持たないlegacy historyからSection時間を推測せずunknownとして保持し、通常のSection設定変更はestablished current Dayをretroactiveに書き換えず原則次TaskChuteDayから有効にする。Dogfood実装順はB1（Section time foundation + `Sectionなし` + Entry見積）→B2（planned start + derived placement/order）→B3（Section settings lifecycle）でApproved済み。
+
 Current First vertical slice implementation / nonprod verification fact:
 
 - `AUTH_DB`にはBetter Auth 1.7.1 physical schemaをmigrationとして実装済み
@@ -34,7 +36,7 @@ Current First vertical slice implementation / nonprod verification fact:
 以下はOpen:
 
 - operation result retention / cleanup policy
-- schema evolution / compatibility migration strategy
+- schema evolution / compatibility migration strategy、およびD-038をcurrent tablesへ安全に導入するexact migration / backfill SQL
 - backup / export strategy
 - overload / observability strategy
 - current Execution / lifecycle physical schemaを将来どの条件で見直すか
@@ -42,7 +44,7 @@ Current First vertical slice implementation / nonprod verification fact:
 - D1 read replicationを将来導入するentry criteria
 - Durable Objects / external PostgreSQLを将来再評価する条件
 - Final R2 / binary object storage adoption
-- D-031〜D-037で追加されたplanned-start order、RoutineOccurrence override、workday override、manual Execution correction、cancelled / removed historyのphysical schema
+- D-031〜D-037で追加されたplanned-start order、RoutineOccurrence override、workday override、manual Execution correction、cancelled / removed historyのphysical schema（D-038で確定したSection configuration / Day context / `Sectionなし` foundationを除く）
 
 ## API / Command / Query
 
@@ -129,7 +131,7 @@ Current implementation fact:
 - retained operation中はunrelated lifecycle / reorder mutationをdisableし、旧operationを別操作から暗黙再送しない
 - current DayBoard外のEntryに属するactive Executionもheader actionからComplete可能
 
-D-031〜D-037でDay planning / Routine target semanticsが追加され、`docs/DESIGN.md` DraftではDay Tableのkeyboard-first interaction、fixed left controls、inline edit、column customization、Routine scope popup等を設計している。これらはcurrent runtimeへ未実装。
+D-031〜D-037でDay planning / Routine target semanticsが追加され、D-038で次のDay dogfood persistence stagingとしてB1 / B2 / B3がApprovedされた。`docs/DESIGN.md` DraftではDay Tableのkeyboard-first interaction、fixed left controls、inline edit、column customization、Routine scope popup等を設計している。これらの大部分とD-038のB1以降はcurrent runtimeへ未実装。
 
 以下の具体方式・scopeはOpen:
 
@@ -173,7 +175,7 @@ D-015でCore Domain foundationsはApproved済み。
 
 D-022によりinitial runtime entity IDはUUIDv7、First slice Sectionはuser-global stable entityとしてApproved済み。
 
-D-028でexplicit Interrupt / continuation、D-029でcurrent Start取消、D-030でSection semantics、D-031でplanned startとSection placement / ordering、D-032で開始見込、D-033でmanual actual correction / non-overlap、D-037でDay move / duplicate / deleteの主要semanticsはApproved済み。
+D-028でexplicit Interrupt / continuation、D-029でcurrent Start取消、D-030でSection semantics、D-031でplanned startとSection placement / ordering、D-032で開始見込、D-033でmanual actual correction / non-overlap、D-037でDay move / duplicate / deleteの主要semanticsはApproved済み。D-038でSection persistence責務分離、legacy unknown handling、`Sectionなし` physical absence、normal Section configのnext-Day effective timing、B1/B2/B3 stagingがApproved済み。
 
 Current implementationではEntry `position`を同一user / TaskChuteDay / Section内のexplicit integer orderとして保存し、AddTaskToDayでappend、ReorderEntriesでrequested orderへ更新する。Reorderのcurrent physical implementationはset-based `json_each` updateだが、これを長期Domain Decisionへ昇格しない。
 
@@ -188,12 +190,13 @@ Current lifecycle implementation fact:
 以下はOpen:
 
 - exact Project fields beyond current minimum
-- Section time-range / icon / accent / archive / historical-version preservationのphysical persistence model
+- D-038を実装するexact table / column / index / migration SQL、Section delete/archive retention、icon / accent persistence
 - Section summary / collapse preferenceのphysical persistenceとaccount/device syncを将来行うか
 - EntryをTaskChuteDay / Section間で移動するcommand / transaction algorithm
 - future day-specific Section occurrence / override capabilityが必要になる条件
 - Section / TaskChuteDay boundary設定変更時にD-031のplanned-start authorityを適用するexact transaction / recovery UX
 - initial bootstrap / onboardingでuser-selected TaskChuteDay boundaryとdefault Section templateをどう整合させるか
+- B1 Entry見積のexact physical unit / column representation / storage safety limit
 - planned-startなしmanual orderと同時刻tie-breakを保持するexact persistence / reorder algorithm
 - completed stateを将来Execution historyからderiveするか、stored lifecycle stateとして維持するか
 - Reopen semantics
@@ -213,6 +216,8 @@ D-022によりinitial bootstrapではcanonical IANA timezone / boundaryを明示
 D-030によりSection時間はTaskChuteDay上のlogical timeとして扱い、Section configurationはTaskChuteDay全体をgapなくcoverする。`24:00`を超えるSection時間はextended-time notationで表現できることがApproved済み。
 
 D-031により開始予定時間をSection placement authorityとして利用し、Section configuration変更後の未実行Entryは開始予定時間がある場合その時刻へ追従する。
+
+D-038により、一度establishしたTaskChuteDayのSection contextは後のSection設定変更でretroactiveに書き換えず、通常のSection設定変更は原則次TaskChuteDayから有効にする。初回migration/onboardingでvalid Section configurationが未成立の場合だけ、明示したinitial configurationをcurrent Dayへ適用できる。
 
 Current implementationではactual resolved boundary instantでday membershipを判定し、start / next-day endを別々にtimezone ruleからresolveする。materialized intervalとestablishment timezone / boundary contextを保存する。
 
@@ -266,16 +271,18 @@ D-022によりFirst sliceではmaterialized TaskChuteDayのactual interval / est
 
 D-030によりSection rename/delete/time変更後も過去のEntry / Execution / Review用historical contextで当時のSection名と時間帯を保持し、現在設定へretroactiveに置換しないことはApproved済み。
 
+D-038によりSection historical contextはstable Section identity + versioned configuration + established TaskChuteDay contextの責務分離で保持し、legacyでauthoritative time rangeが存在しないhistoryは時間帯unknownとして扱う方向がApproved済み。
+
 D-033によりactual開始 / 終了の訂正後はvalid Execution intervalをauthorityとして実績 / Reviewを再計算し、同一userのvalid Execution overlapは禁止する。D-037によりrunning deleteで取消されたcurrent Executionを通常actualへ含めない一方、参照不能なhard deleteにはしない。
 
 Current runtimeではExecutionの`id / app_user_id / entry_id / started_at / ended_at / created_at`を保存する。Execution時点metadata snapshotのexact fieldsはまだ未決。
 
 以下はOpen:
 
-- historical contextをsnapshot / versioned reference等のどの方式で保持するか
+- Section以外のhistorical contextをsnapshot / versioned reference等のどの方式で保持するか
 - Executionに保存するProject / Section / Task contextのexact fields
 - Project移動 / rename / delete後のReview display semantics
-- Section historical name / time range / referenceを実現するexact snapshot / versioning persistence
+- Section delete/archive retentionのexact physical modelとlegacy time-range unknown contextのexact UI presentation
 - corrected Executionのaudit trail / prior timestamp retention
 - cancelled / removed Executionを通常Reviewとは別にどの程度表示するか
 - Routine achievement / streak calculation rule
@@ -347,11 +354,11 @@ planned Placeとobserved LocationSnapshotの分離、optional best-effort Start 
 
 Native UIをWeb React codeの直接流用前提にしない方向はD-020でApproved済み。
 
-First Server + Web vertical sliceはImplemented / Integrated済み。次のProduct feature sliceの優先順位はまだ確定していない。
+First Server + Web vertical sliceはImplemented / Integrated済み。D-038により次のDay dogfood feature sequenceはB1（Section time foundation + `Sectionなし` + Entry見積）→B2（planned start + derived placement/order）→B3（Section settings lifecycle）としてApproved済み。ただしcurrent runtimeへの実装はまだ行っていない。
 
 以下はOpen:
 
-- 次sliceでDay planning / Routine / Documents / Review / Android等のどれを優先するか
+- B1/B2/B3の後にRoutine / Documents / Review / Android等のどれへ優先的に進むか
 - Android native implementationへ進むentry criteria
 - Androidのinitial Compose architecture詳細
 - Android Widgetのinitial scope
