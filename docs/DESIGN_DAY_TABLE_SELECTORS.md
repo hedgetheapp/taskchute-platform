@@ -296,6 +296,24 @@ Routine由来defaultのProject / Mode / Section変更でscope selection `今回�
 
 scope確定後のfocusは既存ruleどおり元のselector cellへ戻す。scope popupのvisual placementやanimation等はimplementation detailとし、本Sectionではcommit / cancel semanticsをauthorityとする。
 
+### 1.13 Routine scope popup keyboard operation
+
+Routine由来defaultのProject / Mode / Section変更でscope popupを開いた直後は、`今回だけ`をinitial active choiceとする。ただしactiveであるだけではpending変更をcommitしない。
+
+- `← / →`で`今回だけ`と`ルーティンに反映`のactive choiceを切り替える。
+- `Tab / Shift+Tab`でも2つのscope button間を移動する。
+- popup内の最後 / 最初のscope buttonから`Tab / Shift+Tab`してもDay Tableの別fieldへ抜けず、2つのscope button間で循環する。
+- `Enter`または`Space`でactive choiceを明示的に確定する。
+- `Esc`はSection 1.12と同じくpending変更をcancelし、scope popupを閉じて元のselector cellへfocusを戻す。
+- active choiceを移動しただけではpending変更をcommitしない。
+- pointerをscope button上へ実際に移動した場合は、そのbuttonへactive stateを移してよい。hoverだけではcommitしない。
+- scope button clickはそのscopeを明示選択したものとして即commitする。
+- popup内部の非action余白clickはSection 1.12どおり何も確定・cancelしない。
+- scope popup open中はDay Tableのglobal one-key shortcutを発火させない。
+- `[今回だけ]`はdefault active choiceではあるがdefault commitではない。`Enter` / `Space` / scope button clickのいずれかの明示操作がcommit authorityとなる。
+
+scope確定後のfocusはSection 1.12どおり元のselector cellへ戻す。実装上のfocus trap手段やDOM構造はimplementation detailとし、本Sectionではuser-visibleなkeyboard navigationとcommit / cancel semanticsをauthorityとする。
+
 ## 2. Search / quick create
 
 既存のJapanese / romaji search foundationを利用する。
@@ -443,5 +461,6 @@ Project / Mode / Sectionとも、Mouseで一度Rowを選択してから再click�
 - popoverはanchor cellへ追従し、anchorが完全にviewport外へ出た場合は未確定状態をcommitせず閉じる。
 - popoverはanchor cell幅より広く表示してよく、多数candidate時はcandidate領域だけ内部scrollする。
 - Project / ModeのIME composition中はIME operationをselector shortcutより優先し、IME確定とcandidate commitを同じ`Enter`で連続発火させない。
+- Routine scope popupでは`今回だけ`をinitial activeとし、`← / →`または`Tab / Shift+Tab`でscopeを移動し、`Enter / Space`で明示commitする。scope未確定のままTabでDay Tableへ抜けない。
 
 Project / Modeはopen直後からsearch-readyとし、Sectionはcurrent candidate focusとする。これはProject / Modeが多数候補からの検索をprimary interactionにする一方、Sectionは少数のtime-ordered候補から選ぶためである。
