@@ -598,6 +598,17 @@ TaskChuteDay boundaryより前のcivil clock timeをそのDay上で入力した�
 
 D-031に従い、planned start値変更時はSectionを自動resolveする。空にした場合はcurrent Sectionを維持する。
 
+#### Planned start確定後のreposition / focus
+
+planned startの入力・変更でD-031に従ってTaskが別SectionまたはSection内の別位置へ自動repositionする場合、focusは画面上の旧位置ではなく編集中のTask identityへ追従させる。
+
+- `Enter`でplanned startを確定した場合、Taskを正しいSection / orderへrepositionした後、その同じTask Rowへfocusを戻す。
+- `Tab`で確定した場合、Taskをrepositionした後、その同じTaskの現在のvisual column order上の次のvisible editable / actionable fieldへfocusを移す。
+- Mouseで別cell / Row / action等をclickしてvalidなplanned startを確定した場合、Taskはrepositionするが、focusはユーザーがclickした先の通常interactionへ移す。
+- `Enter` / `Tab`によるreposition後のTaskがvisible area外へ移動した場合は、そのTaskとfocus targetが見えるために必要な最小限だけDay Tableをscrollする。元位置へ戻すためのscrollは行わない。
+- reposition animationを入れる場合も短く控えめにし、別Taskへfocusが移ったように誤認させない。
+- Search / Filter等のprojection条件によりreposition後のTask自体が非表示になった場合は同じTaskへfocusを維持できないため、Section 26のvisibility-change ruleに従ってfocusを退避する。
+
 ### 11.5 Start forecast
 
 read-only。D-032に従う。
