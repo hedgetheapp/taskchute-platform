@@ -1,16 +1,18 @@
 # Current
 
-Date: 2026-08-22
+Date: 2026-08-28
 
 ## Status
 
-First Server + Web vertical sliceは`IMPLEMENTED / INTEGRATED`。D-023 bootstrap lifecycle security incrementも`IMPLEMENTED / INTEGRATED / LOCAL_TESTED`。D-024 persistent non-production verification environmentは`APPROVED`。
+First Server + Web vertical sliceは`IMPLEMENTED / INTEGRATED`。D-023 bootstrap lifecycle security incrementも`IMPLEMENTED / INTEGRATED / LOCAL_TESTED`。D-024 persistent non-production verification environmentは`APPROVED`かつremote verification済み。
 
 PR #3でruntime bootstrap sliceを、PR #5でReorder / Start / Complete / Execution lifecycle incrementを`main`へmergeした。PR #6でPR #5 merge後のcanonical docsをcurrent implementation / evidenceへ整合し、PR #7でcurrent-state maintenanceをmergeした。PR #8でD-023 bootstrap lifecycle security incrementを、PR #10でD-024 persistent non-production environment configurationを`main`へmergeし、PR #11でそのmerge後current stateを整合した。persistent non-production remote runtime verificationはPASS。production verificationは未実施。
 
+その後、Day planning / Routine設計をcanonical docsへ進め、D-026〜D-037をApproved。2026-08-28にD-038をApprovedし、Section persistence foundationと次のDay dogfood implementation順を確定した。D-038のB1 / B2 / B3はまだcurrent runtimeへ未実装。
+
 Current main at this update base:
 
-`a1b342e0c07cffa1bbf38fbfd146e3912616d32a`
+`5169ae8518a56b1caf0b5a328db7be805dea6af1`
 
 Relevant implementation commits:
 
@@ -46,6 +48,9 @@ D1 feasibility gateは引き続きPASS / Verified。current Product runtimeはFi
 - D-024により1つのpersistent Cloudflare non-production verification environmentをmaintainする方向はApproved済み。
 - PR #10でpersistent non-production repository-side configは`main`へIntegrated済み。
 - persistent non-production D1 / deployed Worker remote verificationは`PASS`。
+- D-026〜D-037でEntry planning metadata、Section / planned-start / forecast、Routine、manual correction、Day move / duplicate / delete等のtarget semanticsはApproved済み。
+- D-038でstable Section identity + versioned configuration + established TaskChuteDay context、legacy time-range unknown handling、`Sectionなし` physical absence、通常Section設定変更のnext-Day effective timing、およびB1→B2→B3 stagingはApproved済み。
+- D-038のB1 / B2 / B3 runtime implementation / migration / verificationは未実施。
 - production smokeは`NOT_RUN`。
 
 ## Persistent non-production increment
@@ -119,6 +124,8 @@ Current `main`では以下を実装・統合済み。
 - unrelated mutationからretained operationを暗黙再送しないUI guard
 - canonical refetch / conflict reconciliation / browser reload recovery
 
+D-038でApprovedしたSection time / `Sectionなし` / Entry見積等をこのImplemented一覧へ含めない。current `main` runtimeにはまだ存在しない。
+
 ## Verification state
 
 Current evidence:
@@ -166,16 +173,26 @@ Local / nonprod PASSをproduction verificationへ自動拡張しない。
 - D-024のpersistent non-production environmentはproductionから分離し、default-disabled bootstrap、explicit D1 bindings、secret hygiene、Free-plan monitoringを維持する。
 - bootstrap disable deployment後は複数回probeでdisabled postureへ収束したことを確認する。
 - persistent nonprod test data / session retention・cleanup policyは未決。
+- D-038 B1はschema migration / compatibilityへ影響するため、exact migration / backfill、Entry見積physical representation、local verificationを実装前に詰める。
 - operation result retention / cleanup、observability、backup / export、production deployment posture等は未解決。
 
 ## Next
 
 First Server + Web vertical slice、D-023 bootstrap lifecycle security、persistent non-production config incrementはcurrent `main`でImplemented / Integratedまで完了済み。persistent nonprod remote runtime / deployed Worker verificationもPASS。
 
-次の進行は以下を分けて扱う。
+次のProduct feature sequenceはD-038によりDay dogfoodを優先し、以下で進める。
 
-1. 今回取得したpersistent nonprod D1 IDsをtracked `wrangler.jsonc`へpublishし、remote verification evidenceをcanonical docsへ記録する。
-2. nonprod test data / session retention・cleanup policyを決める。
-3. production deployment strategy / production smoke contractは別途Material Decision / explicit approvalとして扱い、nonprod PASSを自動継承しない。
-4. 次のProduct feature sliceはまだ確定しない。Routine、Documents、Android、Review等のroadmap候補から、ユーザーが優先順位を決めた後にsmall vertical sliceを設計する。
-5. 未実装のcross-day / cross-Section Entry move、Section rename、historical snapshot等をFirst vertical sliceの完了と混同しない。
+1. **B1 — Section time foundation + `Sectionなし` + Entry見積**
+   - stable Section identity + versioned configuration + established TaskChuteDay historical contextを実装する。
+   - legacy historyのauthoritative time rangeを推測せずunknownとして保持する。
+   - `Sectionなし` Entryを表現し、Start時刻のcurrent SectionへplacementしてからStartする。
+   - D-026のEntry-scoped見積を追加する。
+   - exact migration / backfill SQLと見積physical representationは実装開始前に確定する。
+2. **B2 — planned start + derived Section placement / order**
+   - D-031のplanned-start authorityとcanonical orderを実装する。
+3. **B3 — Section settings lifecycle**
+   - rename / boundary edit / add / delete / absorptionとhistory preservationを実装する。
+4. nonprod test data / session retention・cleanup policyは別Open Questionとして維持する。
+5. production deployment strategy / production smoke contractは別途Material Decision / explicit approvalとして扱い、nonprod PASSを自動継承しない。
+
+B1 / B2 / B3をImplemented / Integrated / Verifiedと混同しない。現時点ではApproved design / implementation sequenceでありruntime未実装。
