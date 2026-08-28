@@ -288,7 +288,7 @@ Routine由来defaultのProject / Mode / Section変更でscope selection `今回�
 - `Esc`: pending変更をcancelし、変更前のvalueを維持したままscope popupを閉じ、元のselector cellへfocusを戻す。
 - scope popup外をclick: pending変更をcancelしてpopupを閉じ、原則としてclick先の通常interactionを続行する。
 - outside clickを`今回だけ`の暗黙選択として扱わない。
-- outside clickを`ルーティンに反映]`の暗黙選択として扱わない。
+- outside clickを`ルーティンに反映`の暗黙選択として扱わない。
 - scope popup内部の非action余白をclickした場合は何も確定・cancelせず、popupを維持する。
 - scope popupの起点となった元のselector cellをclickした場合はpending変更をcancelしてpopupを閉じ、そのcellへfocusを戻す。このclickだけでselectorを即reopenしない。
 - current valueの再選択等、Section 1.11のno-op selectionではscope popup自体を表示しない。
