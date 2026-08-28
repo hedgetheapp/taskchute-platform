@@ -747,6 +747,17 @@ Routine / Noteのようなcompact action columnもvisibleならTab対象とし�
 
 この特例は未確定の新規Task draftだけに適用し、既存Taskのrequired Task名を空にした場合のvalidation semanticsはSection 11.1を維持する。
 
+### 13.6 New Task Enter / Tab / continue flow
+
+新規TaskのTask名がvalidな状態では、`Enter` / `Tab` / `I`の役割を分ける。
+
+- Task名fieldで`Enter`した場合はTaskをcommitし、同じTask Rowへfocusを戻す。
+- `Enter`によるcommitだけでは次の空draftを自動生成しない。
+- Task名fieldで`Tab`した場合はTaskをcommitし、Section 13.4どおり次のvisible editable / actionable fieldへ進む。
+- 続けて別Taskを追加したい場合は、Row focusへ戻った後に`I`を押して新しいTask draftを明示的に作成する。
+
+したがってinitial keyboard semanticsは、`Enter = Taskを確定してRowへ戻る`、`Tab = Taskを確定して詳細入力を続ける`、`I = 新しいTaskを追加する`として分離する。
+
 ## 14. Task context menu
 
 Task Row右端の`…`を通常時はmuted、hover / Row focus時に濃くする。layout shiftしないようslotは維持する。
