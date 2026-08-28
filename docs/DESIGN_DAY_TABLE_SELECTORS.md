@@ -288,7 +288,7 @@ Routine由来defaultのProject / Mode / Section変更でscope selection `今回�
 - `Esc`: pending変更をcancelし、変更前のvalueを維持したままscope popupを閉じ、元のselector cellへfocusを戻す。
 - scope popup外をclick: pending変更をcancelしてpopupを閉じ、原則としてclick先の通常interactionを続行する。
 - outside clickを`今回だけ`の暗黙選択として扱わない。
-- outside clickを`ルーティンに反映`の暗黙選択として扱わない。
+- outside clickを`ルーティンに反映]`の暗黙選択として扱わない。
 - scope popup内部の非action余白をclickした場合は何も確定・cancelせず、popupを維持する。
 - scope popupの起点となった元のselector cellをclickした場合はpending変更をcancelしてpopupを閉じ、そのcellへfocusを戻す。このclickだけでselectorを即reopenしない。
 - current valueの再選択等、Section 1.11のno-op selectionではscope popup自体を表示しない。
@@ -436,8 +436,6 @@ Section
 │ ◇ 昼      12:00–13:00   │
 │   午後    13:00–18:00   │
 │   夜      18:00–29:00   │
-├──────────────────────────┤
-│ Section設定を開く…      │
 └──────────────────────────┘
 ```
 
@@ -456,6 +454,7 @@ Section
 - Section数が多い場合はcandidate領域だけscroll可能にする。
 - initialでは文字入力によるSection searchを行わない。
 - Day TableからSectionをquick createしない。Section追加は全日coverageへ影響するためSection設定画面で行う。
+- Section selector内にはSection設定画面への導線を置かず、Sectionの選択に専念させる。
 - Pointer / keyboard active candidateの切替はSection 1.3と同じruleを使う。hoverだけではcommitせず、clickで確定する。
 - selector外clickはSection 1.4と同じruleを使い、candidateをcommitせずclick先の通常interactionへ移る。
 - selected current valueとactive candidateの視覚的な区別はSection 1.5と同じ考え方を使う。current Sectionにはselected indicatorを維持し、candidate focusは別のfocus treatmentで示す。
