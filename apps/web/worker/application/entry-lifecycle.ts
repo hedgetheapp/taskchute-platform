@@ -27,11 +27,16 @@ async function reject<T>(db: D1Database, appUserId: string, request: { operation
     outcomeKind: "domain_rejection", result: { code, message } });
 }
 
-export async function startEntry(db: D1Database, appUserId: string, request: StartEntryRequest): Promise<StartEntryResult> {
+export async function startEntry(
+  db: D1Database,
+  appUserId: string,
+  request: StartEntryRequest,
+  nowInstant = new Date().toISOString(),
+): Promise<StartEntryResult> {
   const requestFingerprint = await fingerprint(request);
   const prior = await readOperation(db, appUserId, request.operation_id);
   if (prior) return replayOperation(prior, "StartEntry", requestFingerprint);
-  const now = new Date().toISOString();
+  const now = nowInstant;
   const [entryResult, activeResult, collisionResult] = await db.batch([
     db.prepare(`SELECT e.lifecycle_state, e.section_id, e.taskchute_day_id, d.placement_revision
       FROM entries e JOIN taskchute_days d ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id

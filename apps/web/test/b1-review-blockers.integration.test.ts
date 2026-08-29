@@ -354,7 +354,7 @@ describe.sequential("Dogfood Day B1 source-review blockers", () => {
       })),
     };
     expect(isEstablishInitialSectionConfigurationRequest(request)).toBe(true);
-    expect(await establishInitialSectionConfiguration(configurationDb, userId, request)).toEqual({
+    expect(await establishInitialSectionConfiguration(configurationDb, userId, request, now)).toEqual({
       configuration_version_id: request.configuration_version_id, taskchute_day_id: day.id,
     });
     expect(configurationBatchSizes).toEqual([4, 6]);
@@ -455,9 +455,9 @@ describe.sequential("Dogfood Day B1 source-review blockers", () => {
       WHERE app_user_id = ? AND taskchute_day_id = ?`).bind(unsectioned.userId, dayId).run();
     const [entry] = await seedEntries(unsectioned.userId, dayId, null, ["planned"]);
     await expect(startEntry(env.APP_DB, unsectioned.userId, { operation_id: uuidv7(), entry_id: entry!.id,
-      execution_id: uuidv7() })).rejects.toMatchObject({ code: "resource_conflict" });
+      execution_id: uuidv7() }, unsectioned.now)).rejects.toMatchObject({ code: "resource_conflict" });
     const stale = { operation_id: uuidv7(), entry_id: entry!.id, execution_id: uuidv7(), expected_placement_revision: 1 };
-    await expect(startEntry(env.APP_DB, unsectioned.userId, stale)).rejects.toMatchObject({ code: "revision_conflict" });
+    await expect(startEntry(env.APP_DB, unsectioned.userId, stale, unsectioned.now)).rejects.toMatchObject({ code: "revision_conflict" });
     expect(await env.APP_DB.prepare("SELECT lifecycle_state, section_id FROM entries WHERE id = ?").bind(entry!.id).first())
       .toMatchObject({ lifecycle_state: "planned", section_id: null });
 
@@ -474,25 +474,25 @@ describe.sequential("Dogfood Day B1 source-review blockers", () => {
         return typeof value === "function" ? value.bind(target) : value;
       },
     });
-    await expect(startEntry(interleaved, unsectioned.userId, raced)).rejects.toMatchObject({ code: "revision_conflict" });
-    await expect(startEntry(env.APP_DB, unsectioned.userId, raced)).rejects.toMatchObject({ code: "revision_conflict" });
+    await expect(startEntry(interleaved, unsectioned.userId, raced, unsectioned.now)).rejects.toMatchObject({ code: "revision_conflict" });
+    await expect(startEntry(env.APP_DB, unsectioned.userId, raced, unsectioned.now)).rejects.toMatchObject({ code: "revision_conflict" });
     expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM executions WHERE entry_id = ?").bind(entry!.id).first<number>("count")).toBe(0);
     const fresh = { operation_id: uuidv7(), entry_id: entry!.id, execution_id: uuidv7(), expected_placement_revision: 1 };
-    const started = await startEntry(env.APP_DB, unsectioned.userId, fresh);
+    const started = await startEntry(env.APP_DB, unsectioned.userId, fresh, unsectioned.now);
     expect(started.placement_revision).toBe(2);
-    expect(await startEntry(env.APP_DB, unsectioned.userId, fresh)).toEqual(started);
+    expect(await startEntry(env.APP_DB, unsectioned.userId, fresh, unsectioned.now)).toEqual(started);
 
     const sectioned = await seedUser(1);
     const sectionedDay = await seedLegacyDay(sectioned.userId, sectioned.sectionIds, sectioned.now, 7);
     const [sectionedEntry] = await seedEntries(sectioned.userId, sectionedDay, sectioned.sectionIds[0]!, ["planned"]);
     const nonCanonicalOperation = uuidv7();
     await expect(startEntry(env.APP_DB, sectioned.userId, { operation_id: nonCanonicalOperation,
-      entry_id: sectionedEntry!.id, execution_id: uuidv7(), expected_placement_revision: 7 }))
+      entry_id: sectionedEntry!.id, execution_id: uuidv7(), expected_placement_revision: 7 }, sectioned.now))
       .rejects.toMatchObject({ status: 400, code: "malformed_request" });
     expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM operations WHERE app_user_id = ? AND operation_id = ?")
       .bind(sectioned.userId, nonCanonicalOperation).first<number>("count")).toBe(0);
     const lifecycleOnly = await startEntry(env.APP_DB, sectioned.userId, { operation_id: uuidv7(),
-      entry_id: sectionedEntry!.id, execution_id: uuidv7() });
+      entry_id: sectionedEntry!.id, execution_id: uuidv7() }, sectioned.now);
     expect(lifecycleOnly.placement_revision).toBeNull();
     expect(await env.APP_DB.prepare("SELECT placement_revision FROM taskchute_days WHERE id = ?")
       .bind(sectionedDay).first<number>("placement_revision")).toBe(7);
