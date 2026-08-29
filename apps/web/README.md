@@ -17,13 +17,18 @@ This package is the first production-shaped React SPA + Cloudflare Worker slice.
 
 Public email signup remains disabled in the request-facing Better Auth instance. The internal bootstrap endpoint has the same 404 posture as an unavailable route unless `BOOTSTRAP_ENABLED` is exactly `true`; when enabled, a configured and correctly presented `BOOTSTRAP_TOKEN` remains mandatory. Missing, empty, `false`, and malformed mode values are disabled. Do not expose an enabled bootstrap endpoint to an untrusted network.
 
-Cloudflare Access is optional and is not required by this initial posture. Remote and production deployment procedures remain unverified and require separate approval.
+Cloudflare Access is optional and is not required by this initial posture. The persistent non-production deployment, initial bootstrap, and pre-B1 runtime verification were performed on 2026-08-22. B1-specific persistent non-production verification is still `NOT_RUN`. Production deployment and production verification remain separately unverified and unauthorized unless explicitly approved.
 
 ## Persistent non-production configuration
 
 `wrangler.jsonc` contains a named `nonprod` environment. Selecting it produces the Worker name `taskchute-web-nonprod`, binds `AUTH_DB` and `APP_DB` to the non-production logical names, sets `RUNTIME_ENV=nonprod`, and keeps `BOOTSTRAP_ENABLED=false`.
 
-The two tracked non-production `database_id` values are intentional sentinel UUIDs, not the intended non-production D1 resource IDs. They must be replaced with the exact IDs returned by explicitly authorized D1 creation before remote deployment. They are guard placeholders intended to prevent the tracked configuration from silently reusing local placeholders or future production resources. Never guess an ID, commit a secret, or deploy while either sentinel remains.
+The tracked `env.nonprod` bindings are the current persistent non-production D1 resources established under D-024:
+
+- `AUTH_DB`: `taskchute-auth-nonprod` / `60085f8d-0c4e-4c15-98e9-3ce178398041`
+- `APP_DB`: `taskchute-app-nonprod` / `6ad7e35f-5d03-4be3-9b00-46cd713a51c3`
+
+These IDs are not sentinels and must not be guessed, casually replaced, or pointed at local or production resources. Replacing or recreating either D1 resource requires explicit authorization and a corresponding canonical-state update. Production resources must remain separate. Never commit a secret or private data.
 
 Cloudflare environment selection happens at Vite build time. In PowerShell, build and inspect the non-production output with:
 
@@ -46,7 +51,7 @@ Environment-specific binding types can be checked without replacing the tracked 
 npx wrangler types --env nonprod .wrangler/nonprod-worker-configuration.d.ts
 ```
 
-For a later explicitly approved remote bootstrap, follow D-023 in order: deploy nonprod with bootstrap disabled; configure the remote secrets; temporarily change only the nonprod `BOOTSTRAP_ENABLED` value to exact `true` and rebuild/deploy; run `npm run bootstrap:local` and enter the deployed HTTPS base URL; immediately restore `false`, rebuild/deploy, and remove or rotate the bootstrap token. Do not commit the temporary enabled state. Remote operations require explicit user approval for the specific scope being executed. Multiple operations may be approved together when they are explicitly included in the same approved scope.
+The persistent non-production initial user is already provisioned. Normal verification, including B1 verification, must keep `BOOTSTRAP_ENABLED=false`; do not repeat bootstrap or recreate, replace, or rotate a bootstrap token merely to run verification. If a future recovery or reprovisioning task explicitly authorizes bootstrap, follow D-023 in order: deploy nonprod with bootstrap disabled; configure the authorized remote secrets; temporarily change only the nonprod `BOOTSTRAP_ENABLED` value to exact `true` and rebuild/deploy; run `npm run bootstrap:local` and enter the deployed HTTPS base URL; immediately restore `false`, rebuild/deploy, and remove or rotate the bootstrap token. Do not commit the temporary enabled state. Remote operations require explicit user approval for the specific scope being executed. Multiple operations may be approved together only when explicitly included in the same approved scope.
 
 ## Partial-failure recovery
 
@@ -63,6 +68,6 @@ npm run test:all
 npm run build
 ```
 
-No remote database, deployment, or production migration is part of this slice.
+These local verification commands do not perform remote database, deployment, or production migration operations. Persistent non-production remote operations are a separate procedure and require explicit approval for the specific write scope; running the local commands does not authorize remote writes.
 
 The current local workerd runtime does not expose native `Temporal`. Timezone and DST resolution therefore uses `@js-temporal/polyfill` only behind the narrow `worker/domain/taskchute-day.ts` adapter; Domain identity and persistence remain plain strings/numbers.

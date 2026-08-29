@@ -36,7 +36,7 @@ Current First vertical slice implementation / nonprod verification fact:
 以下はOpen:
 
 - operation result retention / cleanup policy
-- B1 candidate統合後を含むfuture schema evolution / compatibility migration strategy
+- B1統合後を含むfuture schema evolution / compatibility migration strategy
 - backup / export strategy
 - overload / observability strategy
 - current Execution / lifecycle physical schemaを将来どの条件で見直すか
@@ -131,7 +131,7 @@ Current implementation fact:
 - retained operation中はunrelated lifecycle / reorder mutationをdisableし、旧operationを別操作から暗黙再送しない
 - current DayBoard外のEntryに属するactive Executionもheader actionからComplete可能
 
-D-031〜D-037でDay planning / Routine target semanticsが追加され、D-038で次のDay dogfood persistence stagingとしてB1 / B2 / B3がApprovedされた。B1はlocal commit candidateへ実装済みだがmain未統合。`docs/DESIGN.md` Draftのbroader Day Table interactionとB2 / B3は未実装。
+D-031〜D-037でDay planning / Routine target semanticsが追加され、D-038で次のDay dogfood persistence stagingとしてB1 / B2 / B3がApprovedされた。B1はPR #13で`main`へImplemented / Integrated済みでlocal evidenceはPASSだが、persistent nonprod remote verificationは`NOT_RUN`。`docs/DESIGN.md` Draftのbroader Day Table interactionとB2 / B3は未実装。
 
 以下の具体方式・scopeはOpen:
 
@@ -355,7 +355,7 @@ planned Placeとobserved LocationSnapshotの分離、optional best-effort Start 
 
 Native UIをWeb React codeの直接流用前提にしない方向はD-020でApproved済み。
 
-First Server + Web vertical sliceはImplemented / Integrated済み。D-038のB1はlocal candidateでImplemented / local verifiedだがmain未統合。B2（planned start + derived placement/order）とB3（Section settings lifecycle）は未実装。
+First Server + Web vertical sliceとD-038 B1はImplemented / Integrated済み。B1 local evidenceはPASS、persistent nonprod remote verificationは`NOT_RUN`。B2（planned start + derived placement/order）とB3（Section settings lifecycle）は未実装。
 
 以下はOpen:
 
