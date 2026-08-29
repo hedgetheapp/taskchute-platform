@@ -231,6 +231,27 @@ local dogfoodで利用したSection set / rangesはuser-specific verification da
 | B1-REMOTE-01 | Remote nonprod | B1 migration / runtime / browser flowをpersistent nonprodで検証する | PASS |
 | B1-PROD-01 | Production | B1 production migration / smokeを検証する | NOT_RUN |
 
+## Dogfood Day v0.1-B / B2 planned-start contract
+
+D-039でB2のpersistence / command contractはApproved済みだが、runtime、migration、UI、verificationは未実装である。以下をPASSへ昇格しない。
+
+| ID | Area | Requirement | Contract | Evidence |
+|---|---|---|---|---|
+| B2-PERSIST-01 | Persistence | nullable `planned_start_minute INTEGER`がestablished Day `logicalDate`基準のextended wall-clock minuteをSection contextと同じ座標系で保持し、existing EntryをNULLでupgradeする | Approved (D-039) | NOT_IMPLEMENTED |
+| B2-VALIDATE-01 | Validation | non-null値を`[establishment_boundary_minutes, establishment_boundary_minutes + 1440)`内かつexactly one authoritative timed Sectionへ検証し、Day開始0-based offsetやlegacy unknown timingを推測しない | Approved (D-039) | NOT_IMPLEMENTED |
+| B2-PLACEMENT-01 | Placement | planned start設定・変更がexactly one Sectionを解決してauto-moveし、Section boundary minuteを次Sectionへ配置する | Approved (D-039) | NOT_IMPLEMENTED |
+| B2-PLACEMENT-02 | Placement | `Sectionなし` + non-null planned startを許さず、SectionなしEntryへの設定をresolved real Sectionへ移す | Approved (D-039) | NOT_IMPLEMENTED |
+| B2-CLEAR-01 | Placement | planned start clearが現在Sectionを維持し、開始予定なしcohortへ配置する | Approved (D-039) | NOT_IMPLEMENTED |
+| B2-ORDER-01 | Ordering | Section内で開始予定なしをposition順、開始予定ありをminute昇順・同minute position順にし、historical slotを保護する | Approved (D-039) | NOT_IMPLEMENTED |
+| B2-REORDER-01 | Reorder | manual Reorderを開始予定なしcohortまたは同一minute cohort内だけに制限し、異なるcohort / historical boundary越えをrejectする | Approved (D-039) | NOT_IMPLEMENTED |
+| B2-COMMAND-01 | Command | SetEntryPlannedStartがplanned-start、Section、order、revision exactly +1、operation resultをatomicに確定する | Approved (D-039) | NOT_IMPLEMENTED |
+| B2-RETRY-01 | Retry / Conflict | stale revisionをpartial effectなしでrejectし、same-operation retryでrevision / effectsを二重適用せず、different-semantic misuseとambiguity reconciliationを扱う | Approved (D-039) | NOT_IMPLEMENTED |
+| B2-MOVE-01 | Placement | explicit Section moveがplanned startをclearし、MoveEntry全体でrevisionをexactly once増やす | Approved (D-039) | NOT_IMPLEMENTED |
+| B2-START-01 | Lifecycle | planned-startにnot-beforeを課さず、Sectionなし Start placementをplanned-start NULLへ限定する | Approved (D-039) | NOT_IMPLEMENTED |
+| B2-ELIGIBILITY-01 | Lifecycle | running / completed Entryのplanned-start editをrejectする | Approved (D-039) | NOT_IMPLEMENTED |
+| B2-RELOAD-01 | Query | planned start、derived Section / order、revisionがreload後もcanonical stateから復元する | Approved (D-039) | NOT_IMPLEMENTED |
+| B2-WEB-01 | Web | current Day planned Entryのblank / extended-time入力、auto-placement、clear、move時clear、illegal reorder control抑止を実ブラウザで扱う | Approved (D-039) | NOT_IMPLEMENTED |
+
 ## Persistent non-production B1 remote verification evidence — 2026-08-29
 
 Source / deployment:

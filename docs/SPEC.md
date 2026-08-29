@@ -68,6 +68,25 @@ EntryはTaskChuteDay / Section上のplacement / execution targetとする。
 - active Executionが存在しない限り、Next以外のplanned Entryも明示Startできる。
 - stale stateによるplacement overwriteが危険なmutationではrevision / preconditionを利用し、silent last-write-winsを行わない。
 
+### Planned start persistence and canonical order
+
+Status: Approved (D-031, D-039). Runtime: NOT_IMPLEMENTED.
+
+- Entryの開始予定はnullableな`planned_start_minute INTEGER`として保存する。`NULL`は開始予定なし、non-nullはestablished TaskChuteDayの`logicalDate`を基準にしたextended wall-clock minuteであり、Day開始を0とするoffsetやactual timestampではない。
+- Section contextの`logical_start_minute` / `logical_end_minute`と同じ座標系を使い、valid rangeは`[establishment_boundary_minutes, establishment_boundary_minutes + 1440)`とする。
+- 05:00 boundaryでは05:00 = `300`、翌03:00 = `27:00` = `1620`、翌05:00 = `29:00` = `1740`となり、Day end boundaryの`1740`はplanned startとしてexclusiveである。
+- extended wall-clock timeを許容する。non-null値は上記range内のintegerで、authoritative time rangeを持つexactly one timed Sectionの`[logical_start_minute, logical_end_minute)`へ属する必要がある。legacy unknown timingから値やSectionを推測しない。
+- `Sectionなし`とnon-null開始予定は共存しない。
+- real Section内のplanned Entryは、開始予定なしを`position`順で先に置き、開始予定ありをminute昇順、同minuteを`position`順で置く。`position`をmanual / stable tie-break authorityとして再利用する。
+- 開始予定の設定・変更は該当Sectionへのauto-placementとcanonical orderingをatomicに行う。clearは現在Sectionを維持して開始予定なしcohortへ移す。どちらもplacement revisionをexactly once増やす。
+- explicit Section moveは開始予定をclearし、Sectionから時刻を推測しない。MoveEntry全体でplacement revisionをexactly once増やす。
+- manual Reorderは開始予定なしcohort内または同一minute cohort内だけを許可し、異なるcohort / minuteやhistorical boundaryを越えない。
+- running / completed等のhistorical rowはplanned-start mutation / reorder対象にしない。
+
+`SetEntryPlannedStart` logical commandは`operation_id`、`entry_id`、`taskchute_day_id`、integerまたは`null`の`planned_start_minute`、`expected_placement_revision`を受け取る。ownerはauthenticated principalから解決する。同じoperation + semantic requestはreplayし、different-semantic reuseとstale revisionをpartial effectなしでrejectする。planned-start、Section、order、revision increment、operation resultはatomicに確定する。
+
+Startはplanned-startのnot-before制約を持たず、早期Startを許可する。Sectionなし Startのactual current Section配置は開始予定が`NULL`の場合だけ適用する。
+
 ## Lifecycle and Execution
 
 First vertical sliceのEntry lifecycleは以下に限定する。

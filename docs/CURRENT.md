@@ -8,11 +8,11 @@ First Server + Web vertical sliceは`IMPLEMENTED / INTEGRATED`。D-023 bootstrap
 
 PR #3でruntime bootstrap sliceを、PR #5でReorder / Start / Complete / Execution lifecycle incrementを`main`へmergeした。PR #6でPR #5 merge後のcanonical docsをcurrent implementation / evidenceへ整合し、PR #7でcurrent-state maintenanceをmergeした。PR #8でD-023 bootstrap lifecycle security incrementを、PR #10でD-024 persistent non-production environment configurationを`main`へmergeし、PR #11でそのmerge後current stateを整合した。persistent non-production remote runtime verificationはPASS。production verificationは未実施。
 
-その後、Day planning / Routine設計をcanonical docsへ進め、D-026〜D-037をApproved。2026-08-28にD-038をApprovedし、Section persistence foundationと次のDay dogfood implementation順を確定した。Dogfood Day v0.1-A UI shellとB1はPR #13で`main`へmerge済み。B1は`IMPLEMENTED / INTEGRATED`で、source review、local automated verification、real local APP DB migration、signed-in browser verification、persistent non-production migration / runtime / browser verificationはPASSした。B1 production verificationとreal Japanese IMEは`NOT_RUN`、Releasedは`NO`。B2 / B3は未実装。
+その後、Day planning / Routine設計をcanonical docsへ進め、D-026〜D-037をApproved。2026-08-28にD-038をApprovedし、Section persistence foundationと次のDay dogfood implementation順を確定した。Dogfood Day v0.1-A UI shellとB1はPR #13で`main`へmerge済み。B1は`IMPLEMENTED / INTEGRATED`で、source review、local automated verification、real local APP DB migration、signed-in browser verification、persistent non-production migration / runtime / browser verificationはPASSした。B1 production verificationとreal Japanese IMEは`NOT_RUN`、Releasedは`NO`。D-039でB2 planned-start persistence / command contractをApprovedしたが、B2 / B3 runtimeは未実装。
 
 Current main at this update base:
 
-`779f9d18dab79062679dec696657a5addc6539b2`
+`bf91286c2bf9d72f9c3408696a351ee55cfb4664`
 
 Relevant implementation commits:
 
@@ -52,8 +52,9 @@ D1 feasibility gateは引き続きPASS / Verified。current Product runtimeはFi
 - persistent non-production D1 / deployed Worker remote verificationは`PASS`。
 - D-026〜D-037でEntry planning metadata、Section / planned-start / forecast、Routine、manual correction、Day move / duplicate / delete等のtarget semanticsはApproved済み。
 - D-038でstable Section identity + versioned configuration + established TaskChuteDay context、legacy time-range unknown handling、`Sectionなし` physical absence、通常Section設定変更のnext-Day effective timing、およびB1→B2→B3 stagingはApproved済み。
+- D-039でB2の`planned_start_minute INTEGER NULL`、既存`position`によるmanual tie-break、derived Section / canonical order、SetEntryPlannedStart / MoveEntry / Reorder / Startのatomicity・retry境界はApproved済み。
 - D-038 B1はPR #13でcurrent `main`へIntegrated済みで、Implemented / Integrated / Local Tested / Source Reviewed / Signed-in Local Browser Verified / Persistent Nonprod Remote Verified。B1 production verificationは`NOT_RUN`。
-- D-038 B2 / B3 runtime implementationは未実施。
+- D-038 B2 / B3 runtime implementationは未実施。D-039はB2 implementation開始・完了のevidenceではない。
 - production smokeは`NOT_RUN`。
 
 ## Dogfood Day v0.1-B / B1 integrated state
@@ -217,10 +218,10 @@ B1 integrated implementation / local verification evidence:
 
 First Server + Web vertical slice、D-023 bootstrap lifecycle security、persistent non-production config incrementはcurrent `main`でImplemented / Integratedまで完了済み。persistent nonprod remote runtime / deployed Worker verificationもPASS。
 
-次のrepository actionは、B1のImplemented / Integrated / local + persistent nonprod remote PASSを前提に、B2へ進むかを別途判断することである。このdocs task自体はB2実装を開始・承認しない。
+次のrepository actionは、B1のImplemented / Integrated / local + persistent nonprod remote PASSとD-039のApproved contractを前提に、B2実装へ進むかを別途判断することである。このdocs task自体はB2実装を開始しない。
 
 1. **B2 — planned start + derived Section placement / order**
-   - B1 integration prerequisiteは満たされた。D-031のapproved stagingとcurrent work-item decisionに従い、別途開始を判断する。
+   - B1 integration prerequisiteは満たされ、D-039でpersistence / command contractもApproved済み。runtime / migration / UI / testは`NOT_IMPLEMENTED`であり、別途開始を判断する。
 2. **B3 — Section settings lifecycle**
    - rename / boundary edit / add / delete / absorptionとhistory preservationを実装する。
 3. real Japanese IME verificationは`NOT_RUN`のまま別scopeで実施判断する。

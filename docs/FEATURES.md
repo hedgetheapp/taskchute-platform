@@ -17,10 +17,10 @@ Status values: Planned / In design / Implemented / Verified
 | Section Day summary | In design | DESIGNでSection summary row、完了/総数、合計見積、Execution実績によるcapacity bar、空Section、Sectionなしgroup、日別collapse、Section直下Task追加を設計 |
 | Mode | In design | D-026 Approved。ユーザー定義で意味を固定せず、1 Entryに0..1 Mode。Day UI quick create / 検索、設定画面でuser-defined orderを設計。persistence / management UIは未実装 |
 | Project / Mode selector search | In design | Project / Mode selectorはdirect文字一致、正規化、かな/カタカナ統一、romaji→かな検索を扱い、例として`tasuku`から`タスクシュート開発`を候補化する方向。漢字読みindexのexact方式は実装設計で詰める |
-| Entry planning metadata | In design | D-026 + D-031 Approved。B1のEntry見積は`estimate_seconds INTEGER NULL`としてPR #13でmainへImplemented / Integrated済み。local + persistent nonprod remote verificationはPASS、production verificationはNOT_RUN、Released NO。planned start + derived placement/orderはB2で未実装 |
-| Planned-start ordering | In design | D-031 Approved。Section内は開始予定なしを先頭manual order、開始予定ありを時刻昇順、同時刻をmanual tie-break。Section間moveでは開始予定clear。D-038でB2実装scope |
+| Entry planning metadata | In design | D-026 + D-031 + D-039 Approved。B1のEntry見積は`estimate_seconds INTEGER NULL`としてPR #13でmainへImplemented / Integrated済み。local + persistent nonprod remote verificationはPASS、production verificationはNOT_RUN、Released NO。B2 planned startは`planned_start_minute INTEGER NULL`としてcontract確定済みだが未実装 |
+| Planned-start ordering | In design | D-031 + D-039 Approved。既存`position`をmanual tie-breakに再利用し、Section内は開始予定なしを先頭manual order、開始予定ありをlogical minute昇順、同minuteをposition順とする。SetEntryPlannedStartのatomicity / retry、Section move時clear、Reorder cohort制約までcontract確定済み。B2 runtimeは未実装 |
 | Start forecast | In design | D-032 Approved。開始予定とは独立したprojection。current progress / Day order / estimateを使いSectionをまたいで連続計算。past / completed / running自身 / Sectionなしは表示対象外 |
-| Today / DayBoard ordering | Implemented | current runtimeはexplicit Entry order + ReorderEntries + placement revision conflict protectionを実装。D-031 target orderingへの拡張は未実装 |
+| Today / DayBoard ordering | Implemented | current runtimeはexplicit Entry order + ReorderEntries + placement revision conflict protectionを実装。D-031 / D-039 planned-start canonical orderingへの拡張は未実装 |
 | Day Table interaction | In design | fixed Bulk slot + circular Execution Control + Task sticky領域、configurable columns、header D&D / resize / auto-fit / hide、inline edit、row/Section focus、context menu、Note pane等をDESIGNで定義 |
 | Day task move / duplicate / delete | In design | D-037 Approved。未実行Taskの日付移動、fresh duplicate、未実行 / running delete、completed / interrupted historical row保護を設計。running deleteはcancelled historical representationを残す |
 | Start / Complete lifecycle | Implemented | current runtimeはplanned -> running -> completed、retry safety、active Execution max 1、no implicit interruptを実装 |

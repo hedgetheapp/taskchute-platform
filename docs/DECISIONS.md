@@ -644,6 +644,67 @@ B1へplanned startまで同時投入せず、Section configuration / nullable pl
 
 D-026のEntry見積はB1 persistenceで`estimate_seconds INTEGER NULL`として保存する。`NULL`を見積なし、positive integerを秒単位durationとし、blank / user input `0`はrequest fingerprint生成前に`NULL`へnormalizeする。negative valueは禁止し、persisted/API canonical stateで`0`を見積なしの別表現として保持しない。SQLite / JSON / JavaScriptの安全な整数範囲によるtechnical validationは行うが、根拠のないProduct-visible上限を設けない。
 
-D-031のplanned-start physical representation、manual tie-break persistence、planned-start mutationのexact command / retry contractはB2実装前に別途確定する。
+D-031のplanned-start physical representation、manual tie-break persistence、planned-start mutationのexact command / retry contractはD-039で確定する。
 
 Section logical boundaryをactual instantへ解決するときはTaskChuteDay boundaryと同じTemporal-compatibleな`compatible` disambiguationを利用する。`day.start + logical minutes`ではなく、logical dateから対応するlocal civil date + wall-clock timeをcanonical timezoneで個別に解決し、established Day contextへactual intervalを保存する。Section delete/archive retentionのexact physical model、icon / accent persistence、legacy unknown contextのUI presentation detailは引き続きOpenとする。
+
+## D-039 — B2 planned-start persistence and mutation contract
+Status: Approved
+
+D-031でApprovedしたplanned-start authorityをB2で実装するため、Entry persistence、canonical ordering、mutation / retry contractを次のとおり確定する。
+
+### Persistence and validation
+
+- Entryはnullableな`planned_start_minute INTEGER`を持つ。`NULL`は開始予定なし、non-nullはestablished TaskChuteDayの`logicalDate`を基準にしたextended wall-clock minuteを表す。Day開始を0とするoffsetではない。
+- `planned_start_minute`はSection contextの`logical_start_minute` / `logical_end_minute`と同じ座標系を使い、valid rangeは`[establishment_boundary_minutes, establishment_boundary_minutes + 1440)`とする。
+- 05:00 boundaryでは、05:00は`300`、翌03:00は`27:00` = `1620`、翌05:00は`29:00` = `1740`である。`1740`はDay end boundaryなのでplanned startとしてはexclusiveである。
+- `planned_start_minute`はactual timestampではない。`24:00`以降を含むextended wall-clock timeを表現でき、既存Entryはmigration時に`NULL`とする。
+- non-null値はintegerであり、上記valid range内かつauthoritative time rangeを持つexactly one timed Sectionの`[logical_start_minute, logical_end_minute)`へ属さなければならない。legacy time-range unknown contextからSectionや時刻を推測せず、根拠のないProduct-visible最大値も設けない。
+- `Sectionなし`のEntryとnon-null `planned_start_minute`は同時に成立しない。
+- manual / stable tie-break authorityには既存の`entries.position`を再利用し、planned-start専用の新しいtie-break columnは追加しない。
+
+### Canonical placement and ordering
+
+同一real Section内のplanned Entryは、次の順をcanonical orderとする。
+
+1. 開始予定なし（`planned_start_minute IS NULL`）を`position`順で先に置く。
+2. 開始予定ありを`planned_start_minute`昇順で置く。
+3. 同じ開始予定minute内は`position`をmanual tie-breakとして使う。
+
+running / completed等のhistorical rowとそのcanonical slotは後から書き換えず、既存のhistorical protectionを維持する。
+
+開始予定を設定・変更すると、そのlogical minuteを含むexactly one Sectionをestablished Day contextの`[start, end)`から解決し、境界時刻は次Sectionへ配置する。Section placementとcanonical orderを同じmutationで確定し、`placement_revision`をexactly once incrementする。
+
+開始予定を`NULL`へclearした場合は現在Sectionを維持し、そのSectionの開始予定なしcohortへmanual authorityに従って配置し直し、`placement_revision`をexactly once incrementする。Sectionなし + `NULL`はvalidである。
+
+Section dropdown、Section間move等でSectionを明示変更した場合は開始予定をclearし、Sectionから時刻を推測しない。既存のMoveEntry command内でclearとplacement changeをatomicに行い、`placement_revision`はcommand全体でexactly onceだけincrementする。
+
+manual Reorderは開始予定なしcohort内、または同じnon-null minute cohort内だけ許可する。開始予定なしと開始予定ありの間、異なるminute間、historical boundaryを越えるReorderはrejectする。既存ReorderEntriesをこのvalidationへ拡張できる限り、新しいReorder commandは追加しない。
+
+### SetEntryPlannedStart command
+
+B2は次のlogical request shapeを持つ`SetEntryPlannedStart` commandを利用する。
+
+- `operation_id`
+- `entry_id`
+- `taskchute_day_id`
+- `planned_start_minute`: integerまたは`null`
+- `expected_placement_revision`
+
+owner identityはClient requestから受け取らず、authenticated Server principalから解決する。
+
+- same operation identity + same semantic requestは確定済みresultをreplayする。
+- same operation identityをdifferent semantic requestへ再利用した場合はrejectする。
+- stale `expected_placement_revision`はpartial effectなしでconflictとする。
+- planned-start value、Section placement、manual position / canonical order consistency、`placement_revision`のexactly one increment、operation resultをatomicに確定する。
+- retryでrevisionを二重incrementしたりorderを二重変更したりしない。unexpected infrastructure ambiguityはsafe retry / canonical Query reconciliation余地を残す。
+
+### Lifecycle and UI boundary
+
+- Startにplanned-startのnot-before制約は設けず、開始予定より早い明示Startを許可する。
+- B1のSectionなし Startによるactual current Section配置は`planned_start_minute IS NULL`のEntryだけへ適用する。
+- Web B2 UIはcurrent Dayのplanned Entryだけに開始予定編集を提供し、blankを開始予定なしとして扱い、extended-time notationを表示・入力できるようにする。
+- 設定時はSection auto-placementとcanonical orderを反映し、clear時はSectionを維持する。explicit Section move後は開始予定表示もclearし、許可されないcohort間Reorder controlは提供しない。
+- running / completed Entryにはplanned-start編集を提供しない。
+
+本DecisionはB2 implementation contractをApprovedにするが、runtime実装・migration・verificationの完了を意味しない。B2は実装とevidenceが揃うまで`NOT_IMPLEMENTED`とする。
