@@ -8,7 +8,7 @@ First Server + Web vertical sliceは`IMPLEMENTED / INTEGRATED`。D-023 bootstrap
 
 PR #3でruntime bootstrap sliceを、PR #5でReorder / Start / Complete / Execution lifecycle incrementを`main`へmergeした。PR #6でPR #5 merge後のcanonical docsをcurrent implementation / evidenceへ整合し、PR #7でcurrent-state maintenanceをmergeした。PR #8でD-023 bootstrap lifecycle security incrementを、PR #10でD-024 persistent non-production environment configurationを`main`へmergeし、PR #11でそのmerge後current stateを整合した。persistent non-production remote runtime verificationはPASS。production verificationは未実施。
 
-その後、Day planning / Routine設計をcanonical docsへ進め、D-026〜D-037をApproved。2026-08-28にD-038をApprovedし、Section persistence foundationと次のDay dogfood implementation順を確定した。B1は`dogfood-day-v01a`のlocal uncommitted working treeでImplementedとなり、source review、local automated verification、real local APP DB migration、signed-in browser verificationがPASSした。B1はまだ`main`へIntegratedされておらず、remote / production verificationおよびReleaseは未実施。B2 / B3は未実装。
+その後、Day planning / Routine設計をcanonical docsへ進め、D-026〜D-037をApproved。2026-08-28にD-038をApprovedし、Section persistence foundationと次のDay dogfood implementation順を確定した。B1はcommitされてremote `dogfood-day-v01a`へpush済みであり、PR #13がOPEN。source review、local automated verification、real local APP DB migration、signed-in browser verificationはPASSした。B1はまだ`main`へIntegratedされておらず、remote / production verificationおよびReleaseは未実施。real Japanese IMEは`NOT_RUN`。B2 / B3は未実装。
 
 Current main at this update base:
 
@@ -20,6 +20,7 @@ Relevant implementation commits:
 - lifecycle / ordering: `09b1526f7f09554bd937aa446737a979868b779b`
 - bootstrap lifecycle security: `ed6927ce23722d0e756e91eee29b4c326ca1eeb6`
 - persistent nonprod config: `6f079f238dd4efd2717c4911c8701a72fc2b0d72`
+- Dogfood Day B1 planning foundation: `1c14eef4695c2de2ced65f43250544159e039485` (`dogfood-day-v01a` / PR #13 OPEN)
 
 Relevant merge commits:
 
@@ -50,13 +51,13 @@ D1 feasibility gateは引き続きPASS / Verified。current Product runtimeはFi
 - persistent non-production D1 / deployed Worker remote verificationは`PASS`。
 - D-026〜D-037でEntry planning metadata、Section / planned-start / forecast、Routine、manual correction、Day move / duplicate / delete等のtarget semanticsはApproved済み。
 - D-038でstable Section identity + versioned configuration + established TaskChuteDay context、legacy time-range unknown handling、`Sectionなし` physical absence、通常Section設定変更のnext-Day effective timing、およびB1→B2→B3 stagingはApproved済み。
-- D-038 B1は`dogfood-day-v01a`のlocal commit candidateでImplemented / Local Tested / Source Reviewed / Signed-in Local Browser Verified。current `main`およびremote `dogfood-day-v01a`には未統合。
+- D-038 B1はremote `dogfood-day-v01a`へcommit / push済みで、Implemented / Local Tested / Source Reviewed / Signed-in Local Browser Verified。PR #13はOPEN。current `main`には未Integrated。
 - D-038 B2 / B3 runtime implementationは未実施。
 - production smokeは`NOT_RUN`。
 
-## Dogfood Day v0.1-B / B1 local commit candidate
+## Dogfood Day v0.1-B / B1 publication state
 
-B1 implementationはlocal working treeにのみ存在し、remote branch HEADは引き続きv0.1-A commit `b6419f522ee6cb643b5b01a1b1c70f37b3da10a9`である。reviewed B1 patchは26 files、`+2,135 / -110`、SHA-256 `2D0154230E253B3DB2916604C346AE902F1A7CF6524561F2F4921164653B116D`。
+B1 implementationは`Implement Dogfood Day B1 planning foundation` commit `1c14eef4695c2de2ced65f43250544159e039485`としてcommitされ、remote `dogfood-day-v01a`へpush済み。branch HEADも同SHAである。PR #13 `Implement Dogfood Day v0.1-A and B1 planning foundation`はOPENだが、`main`へはまだIntegratedされていない。
 
 Observed evidence:
 
@@ -67,7 +68,8 @@ Observed evidence:
 - real local APP DB backup、`0003` migration、identity/history comparison、foreign-key integrity: `PASS`
 - signed-in real local browserでSection表示、`Sectionなし`作成、見積、Section移動、Start時のactual current Section配置、Runner、Complete、reorder、reload persistence: `PASS`
 - real Japanese IME: `NOT_RUN`
-- B1 persistent nonprod / production verification: `NOT_RUN`
+- B1 remote verification: `NOT_RUN`
+- B1 production verification: `NOT_RUN`
 - Integrated to `main`: `NO`
 - Released: `NO`
 
@@ -180,9 +182,9 @@ Current evidence:
 
 Local / nonprod PASSをproduction verificationへ自動拡張しない。
 
-B1 local candidate evidence:
+B1 branch publication / local verification evidence:
 
-- Implementation: `IMPLEMENTED (local working tree)`
+- Implementation: `IMPLEMENTED (remote dogfood-day-v01a / PR #13 OPEN; main未Integrated)`
 - Source review: `PASS`
 - Worker / D1 tests: `79 PASS`
 - Web tests: `40 PASS`
@@ -204,18 +206,18 @@ B1 local candidate evidence:
 - D-024のpersistent non-production environmentはproductionから分離し、default-disabled bootstrap、explicit D1 bindings、secret hygiene、Free-plan monitoringを維持する。
 - bootstrap disable deployment後は複数回probeでdisabled postureへ収束したことを確認する。
 - persistent nonprod test data / session retention・cleanup policyは未決。
-- B1 local candidateのschema migration / compatibility、Entry見積physical representation、local verificationはreview済み。未解決のestimate multi-device LWW、initial configurationのDay境界race、unusual DST transition recoveryは`RISKS` / `OPEN_QUESTIONS`を参照する。
+- B1 published branchのschema migration / compatibility、Entry見積physical representation、local verificationはreview済み。未解決のestimate multi-device LWW、initial configurationのDay境界race、unusual DST transition recoveryは`RISKS` / `OPEN_QUESTIONS`を参照する。
 - operation result retention / cleanup、observability、backup / export、production deployment posture等は未解決。
 
 ## Next
 
 First Server + Web vertical slice、D-023 bootstrap lifecycle security、persistent non-production config incrementはcurrent `main`でImplemented / Integratedまで完了済み。persistent nonprod remote runtime / deployed Worker verificationもPASS。
 
-次のrepository actionは、review済みB1 local candidateのdocs / final diff reviewと、別途承認されたcommit / push / PR / integrationである。B1が統合される前にB2実装へ進まない。
+次のrepository actionは、PR #13のintegration preparation / merge decisionである。mergeにはProduct Ownerの別途明示承認が必要。B1が`main`へIntegratedされる前にB2実装へ進まない。
 
 1. **B1 publication / integration preparation**
-   - final commit candidate review
-   - Product Ownerの別途承認後にcommit / push / PR / integration
+   - PR #13のintegration readinessとmerge decisionを確認
+   - Product Ownerの別途明示承認後にのみmerge
    - integration後に必要なremote verification scopeを確定
 2. **B2 — planned start + derived Section placement / order（B1統合後）**
    - D-031のplanned-start authorityとcanonical orderを実装する。
@@ -224,4 +226,4 @@ First Server + Web vertical slice、D-023 bootstrap lifecycle security、persist
 4. nonprod test data / session retention・cleanup policyは別Open Questionとして維持する。
 5. production deployment strategy / production smoke contractは別途Material Decision / explicit approvalとして扱い、nonprod PASSを自動継承しない。
 
-B1のlocal Implemented / Verified evidenceをIntegrated / remote Verified / Releasedと混同しない。B2 / B3はApproved design / implementation sequenceでありruntime未実装。
+B1のImplemented / local verification evidenceとremote branch publicationをIntegrated / remote Verified / Releasedと混同しない。B2 / B3はApproved design / implementation sequenceでありruntime未実装。
