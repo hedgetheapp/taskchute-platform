@@ -70,7 +70,7 @@ EntryはTaskChuteDay / Section上のplacement / execution targetとする。
 
 ### Planned start persistence and canonical order
 
-Status: Approved (D-031, D-039). Runtime: NOT_IMPLEMENTED.
+Status: Approved (D-031, D-039). Runtime: IMPLEMENTED.
 
 - Entryの開始予定はnullableな`planned_start_minute INTEGER`として保存する。`NULL`は開始予定なし、non-nullはestablished TaskChuteDayの`logicalDate`を基準にしたextended wall-clock minuteであり、Day開始を0とするoffsetやactual timestampではない。
 - Section contextの`logical_start_minute` / `logical_end_minute`と同じ座標系を使い、valid rangeは`[establishment_boundary_minutes, establishment_boundary_minutes + 1440)`とする。

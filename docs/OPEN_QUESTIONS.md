@@ -18,6 +18,8 @@ D-038によりSection persistenceではstable Section identity、versioned Secti
 
 D-039によりB2 planned-startの`planned_start_minute INTEGER NULL`、既存`entries.position`を使うmanual tie-break、derived Section / canonical order、SetEntryPlannedStart requestとatomic retry / conflict contractはApproved済み。B2 runtimeはcommit `316ad0d88f0f88d1445991904da587b1e0987dab`で`main`へImplemented / Integrated済みで、source review、automated verification、real local `0004` migration、signed-in browser、persistent nonprod `0004` migration / runtime / authenticated browser verificationはPASS。production verificationは`NOT_RUN`である。
 
+D-038 B3 Section settings lifecycleはcommit `2481c4916ca2f694f07d6808a4482bea28c79a80`で`main`へImplemented / Integrated済み。immutable configuration version append、expected-head conflict protection付きhead switch、rename / boundary edit / add / delete・absorption、stable Section row retention、established Day context freeze、next-Day effective query/update、Web settings lifecycleを実装し、source review、automated verification、real local `0005` migration、signed-in browser verificationはPASS。persistent nonprod / production verificationは`NOT_RUN`、Releasedは`NO`である。これはcurrent implementation factであり、新しいDecisionではない。
+
 Current First vertical slice implementation / nonprod verification fact:
 
 - `AUTH_DB`にはBetter Auth 1.7.1 physical schemaをmigrationとして実装済み
@@ -28,12 +30,14 @@ Current First vertical slice implementation / nonprod verification fact:
 - `0002_lifecycle_ordering.sql`で既存operation rowを保持しつつlifecycle command typeとExecution persistenceを追加済み
 - `0003_dogfood_day_b1.sql`でversioned Section configuration / established Day context、nullable Section placement、Entry見積を追加済み
 - `0004_dogfood_day_b2.sql`でnullable `entries.planned_start_minute`、Sectionなし + non-null禁止constraint、planned-start / canonical-order index、`SetEntryPlannedStart` operation typeを追加済み
+- `0005_dogfood_day_b3.sql`で`UpdateSectionConfiguration` operation typeを追加し、既存operation rowsを保持してoperations command constraintを拡張済み
 - active Execution uniquenessのcurrent physical strategyは`executions(app_user_id) WHERE ended_at IS NULL`のpartial UNIQUE index
 - CreateProject / AddTaskToDay / ReorderEntries / StartEntry / CompleteEntryのcurrent transaction algorithmはimplementation review済み
 - Reorderのcurrent physical strategyは`json_each`へordered Entry IDsを渡すset-based update
 - current Reorder mutation batchはEntry数に比例してstatementを増やさない
 - current B2 canonical projectionはSection内でplanned start NULLを先に`position`順、non-nullをminute昇順・同minute `position`順で返す
 - SetEntryPlannedStartはestablished Day contextからSectionを解決してplacement / order / revision / operation resultをatomicに確定し、MoveEntryはplanned startをclear、ReorderはNULLまたは同一minute cohort内へ制限する
+- UpdateSectionConfigurationはimmutable version/itemsをappendし、expected current headを検証してheadをatomicに切り替える。新しいactive configurationから削除したSectionもstable row / prior version / established Day contextには保持し、established Dayをrewriteしない
 - persistent nonprod remote migration / schema / FK / active Execution partial UNIQUE indexはPASS
 - persistent nonprod remote runtime smokeでCreate Project / Add Task+Entry / Reorder / Start / Complete / retry / conflict / reload recoveryをPASS
 
@@ -67,6 +71,8 @@ Current implementationでは以下を実装済み。
 - `POST /api/v1/projects`
 - `POST /api/v1/taskchute-days/current/entries`
 - `POST /api/v1/taskchute-days/current/entries/reorder`
+- `GET /api/v1/section-configuration`
+- `POST /api/v1/section-configuration`
 - `POST /api/v1/entries/:entry_id/planned-start`
 - `POST /api/v1/entries/:entry_id/start`
 - `POST /api/v1/entries/:entry_id/complete`
@@ -140,8 +146,11 @@ Current implementation fact:
 - explicit Section move時にvisible planned start editor / valueをclearし、canonical reconcile後に`—`を表示する
 - planned-start NULL / different minuteを越えるillegal Reorder controlを抑止し、same-minute cohort内のmanual reorderを提供する
 - running / completed Entryではplanned-start編集を提供しない
+- inline Section settings panel、next-Day effective timing copy、raw-time validation、explicit Save / Cancel、draft add / delete・absorptionを実装済み
+- revision conflict時はlatest canonical configurationをreloadしてstale draftをresetし、ユーザーが再編集した場合だけnew head基準で保存する
+- infrastructure ambiguityではexact original UpdateSectionConfiguration operationだけをretry対象として保持する
 
-D-031〜D-037でDay planning / Routine target semanticsが追加され、D-038で次のDay dogfood persistence stagingとしてB1 / B2 / B3がApprovedされた。B1はPR #13で、D-039のB2 planned-start persistence / command runtimeはcommit `316ad0d88f0f88d1445991904da587b1e0987dab`で`main`へImplemented / Integrated済み。B1 / B2のlocal + persistent nonprod evidenceはPASS。B1 / B2 production、real Japanese IMEは`NOT_RUN`。`docs/DESIGN.md` Draftのbroader Day Table interactionとB3 runtimeは未実装。
+D-031〜D-037でDay planning / Routine target semanticsが追加され、D-038で次のDay dogfood persistence stagingとしてB1 / B2 / B3がApprovedされた。B1はPR #13で、D-039のB2 runtimeはcommit `316ad0d88f0f88d1445991904da587b1e0987dab`、D-038のB3 runtimeはcommit `2481c4916ca2f694f07d6808a4482bea28c79a80`で`main`へImplemented / Integrated済み。B1 / B2はlocal + persistent nonprod evidenceがPASS。B3はlocal evidenceがPASS、persistent nonprod / productionは`NOT_RUN`。B1 real Japanese IMEも`NOT_RUN`。`docs/DESIGN.md` Draftのbroader Day Table interaction、broader Settings navigation、icon / accent等は未実装。
 
 以下の具体方式・scopeはOpen:
 
@@ -200,7 +209,7 @@ Current lifecycle implementation fact:
 以下はOpen:
 
 - exact Project fields beyond current minimum
-- Section delete/archive retention、icon / accent persistence、およびB1 foundation以後のschema evolution
+- B3のstable-row / prior-version retentionを越えるSection archive / restore management semantics、icon / accent persistence、およびfuture schema evolution
 - Section summary / collapse preferenceのphysical persistenceとaccount/device syncを将来行うか
 - EntryをTaskChuteDay / Section間で移動するcommand / transaction algorithm
 - future day-specific Section occurrence / override capabilityが必要になる条件
@@ -364,7 +373,7 @@ planned Placeとobserved LocationSnapshotの分離、optional best-effort Start 
 
 Native UIをWeb React codeの直接流用前提にしない方向はD-020でApproved済み。
 
-First Server + Web vertical slice、D-038 B1、D-039 B2はImplemented / Integrated済み。B1 / B2 local + persistent nonprod evidenceはPASS。B1 / B2 production、real Japanese IMEは`NOT_RUN`、Releasedは`NO`。B3（Section settings lifecycle）は未実装。
+First Server + Web vertical slice、D-038 B1 / B3、D-039 B2はImplemented / Integrated済み。B1 / B2 local + persistent nonprod evidenceはPASS。B3 source / automated / real local migration / signed-in browser evidenceはPASS、persistent nonprod / productionは`NOT_RUN`。B1 real Japanese IMEは`NOT_RUN`、Releasedは`NO`。
 
 以下はOpen:
 

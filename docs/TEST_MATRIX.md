@@ -1,6 +1,6 @@
 # Test Matrix
 
-First Server + Web vertical slice、D-038 B1、D-039 B2は実装・main統合済み。B1 / B2 local + persistent non-production verificationはPASS。B1 / B2 production verificationは`NOT_RUN`。Product runtime全体はまだVerified / Releasedではない。
+First Server + Web vertical slice、D-038 B1 / B3、D-039 B2は実装・main統合済み。B1 / B2 local + persistent non-production verificationはPASS。B3 local implementation / migration / signed-in browser verificationはPASSだがpersistent non-productionは`NOT_RUN`。B1 / B2 / B3 production verificationは`NOT_RUN`。Product runtime全体はまだVerified / Releasedではない。
 
 この文書はverification requirementとcurrent evidenceの正本とする。
 
@@ -136,8 +136,8 @@ Remote smoke harnessの前提誤りにより追加test dataとsessionが残っ�
 | CORE-ID-02 | Identity | EntryをTaskChuteDay / Section間で移動してもEntry identityを維持する | Approved (D-015) | NOT_IMPLEMENTED |
 | CORE-ID-03 | Identity | initial runtime entity IDはUUIDv7を使用し、opaque identityとして扱いID timestampをordering authorityにしない | Approved (D-022) | PASS |
 | CORE-PROJECT-01 | Project | Taskはinitial scopeで0..1 Projectに所属する | Approved (D-015) | PASS |
-| CORE-SECTION-01 | Section | Sectionはrename等でidentityを失わないstable entityである | Approved (D-015) | NOT_IMPLEMENTED |
-| CORE-SECTION-02 | Section | First sliceのSectionはuser-global stable entityとして複数TaskChuteDayで再利用できる | Approved (D-022) | NOT_IMPLEMENTED |
+| CORE-SECTION-01 | Section | Sectionはrename等でidentityを失わないstable entityである | Approved (D-015) | PASS |
+| CORE-SECTION-02 | Section | First sliceのSectionはuser-global stable entityとして複数TaskChuteDayで再利用できる | Approved (D-022) | PASS |
 | CORE-ORDER-01 | Ordering | TaskではなくEntry identityによるexplicit orderをpreserveする | Approved (D-013, D-015) | PASS |
 | CORE-ORDER-02 | Ordering | stale placement revisionによるreorderをsilent overwriteせずrejectする | Approved (D-020) | PASS |
 | CORE-LIFE-01 | Lifecycle | Startは同一operation retryでduplicate Execution / inconsistencyを起こさない | Approved (D-012, D-020) | PASS |
@@ -280,6 +280,69 @@ Signed-in real local browser evidence — 2026-08-29:
 | B2-BROWSER-01 | Web / Browser | signed-in real local browserでB2 placement / order / validation / lifecycle / reload scenariosを検証する | Approved (D-039) | PASS |
 | B2-REMOTE-01 | Remote nonprod | B2 migration / runtime / authenticated browser flowをpersistent nonprodで検証する | Approved (D-039) | PASS |
 | B2-PROD-01 | Production | B2 production migration / smokeを検証する | Approved (D-039) | NOT_RUN |
+
+## Dogfood Day v0.1-B / B3 local implementation evidence
+
+B3 implementation commit `2481c4916ca2f694f07d6808a4482bea28c79a80`（parent `d3061ced6e27cf304fe8375002072bc122ac8d22`、subject `Implement B3 Section settings lifecycle`）は`main`へIntegrated済み。reviewed v3 patchは12 files、`+904 / -9`、SHA-256 `4537423FCEFC1F39E3FD0EAEE00ABA3D60BBADE4A35CA4CBE6BB28F60BA726E4`、stable patch-id `f3b88cf45ed17d19bb21ddcc90844bd28c0d418a`で、source reviewは`PASS`。
+
+Automated / isolated evidence:
+
+- Worker / D1 full suite: `91 PASS`
+- focused B3 application: `3 PASS`
+- Web full suite: `55 PASS`
+- isolated APP migration regression: `32 data/schema checks PASS`
+- typecheck / production build / `git diff --check`: `PASS`
+- current-head query independent of current Day context、immutable append / head switch、rename identity/history、shared boundary、add/delete/last absorption、current-Day freeze、next-Day materialization、stale conflict、same-operation replay/misuse、invalid range rejection、B2 planned-start against new context: `PASS`
+- Web invalid raw time、success feedback、revision-conflict canonical reset / new-base edit、infrastructure-ambiguous exact retry: `PASS`
+
+Real local APP DB migration evidence — 2026-08-29:
+
+- private ignored pre-B3 backupとdeterministic fingerprint snapshotを作成・別SQLiteでvalidation: `PASS`
+- pre-migration pendingは`0005_dogfood_day_b3.sql`のみ、7 migration commands成功、post-migration pending 0
+- AUTH pending 0、AUTH migration / explicit SQL writeなし
+- pre/post APP/AUTH `quick_check`: `PASS`、FK violations 0、active Execution 0、Sectionなし + non-null planned start invalid rows 0
+- migration前後でpre-existing APP identities/content、operations、Section configuration head、established current Day context、placement revisionを保持: `PASS`
+
+Signed-in real local browser evidence — 2026-08-29:
+
+- existing signed-in sessionを使用し、bootstrap / account / credential operationなし
+- settings/effective timing copy、invalid raw boundary syncとSave/Add/Delete disable、Add draft + Cancel、non-last / last Delete absorption + Cancel、one-Section delete disable: `PASS`
+- temporary immutable configuration Bをnormal Web UIで保存し、temporary rename + safe shared-boundary 1-minute shiftとsuccess messageを確認: `PASS`
+- B後もalready-established current Dayのhistorical Section identity/name/range、Task/Entry placement、planned starts、canonical order、lifecycleは不変、placement revision `22`: `PASS`
+- reload後にDayはhistorical A、settingsはBを表示: `PASS`
+- pre-test A semanticsを新immutable configuration CとしてWeb UIで保存し、final active semanticsをexact restore: `PASS`
+- expected APP increments: configuration versions `+2`、items `+10`、operations `+2`（両方`UpdateSectionConfiguration`）、head row count不変
+- pre-existing Task / Entry / Execution fingerprints不変、final APP/AUTH quick check PASS、FK 0、active Execution 0
+- browser unexpected warnings / errors: `0 / 0`
+- next-Day materializationはautomated `PASS`、real browser `NOT_RUN`
+
+AUTH rolling-session observationはD-022のexisting rolling lifetime 7日 / update・renewal threshold 1日policyに沿うexpected verification/runtime side effectである。original verification startとの比較ではuser / account / credential / mapping、session row count / identityは不変で、既存sessionの`expiresAt` / `updatedAt`だけが更新された。token / hash / secretは取得・記録しておらず、resume baseline後のAUTH差分は0。これは新しいDecisionではない。
+
+real localで利用したSection dataとtemporary B/Cはuser-specific dogfood dataであり、Product default evidenceとして扱わない。
+
+| ID | Area | Requirement | Contract | Evidence |
+|---|---|---|---|---|
+| B3-QUERY-01 | Query | current Section configuration head/itemsをcurrent Day historical contextから独立してowner-scoped queryする | Approved (D-038) | PASS |
+| B3-VERSION-01 | Persistence | updateはimmutable configuration version/itemsをappendし、expected headを検証してheadをatomicに切り替える | Approved (D-038) | PASS |
+| B3-RENAME-01 | Identity / History | rename後もstable Section identityとprior version / established Day historyを保持する | Approved (D-030, D-038) | PASS |
+| B3-BOUNDARY-01 | Validation | adjacent Sectionのshared boundaryを同期し、configuration全体をgaplessに保つ | Approved (D-030, D-038) | PASS |
+| B3-VALIDATE-01 | Validation | overlap / gap / zero-length / before-Day / after-Dayをpartial effectなしでrejectする | Approved (D-030, D-038) | PASS |
+| B3-ADD-01 | Settings | Section追加はexisting intervalを分割し、新しいstable Section identityをactive configurationへ追加する | Approved (D-030, D-038) | PASS |
+| B3-DELETE-01 | Settings | non-last Section削除を次Sectionへのinterval absorptionとして保存し、stable row/historyをhard deleteしない | Approved (D-030, D-038) | PASS |
+| B3-LAST-DELETE-01 | Settings | last Section削除を前Sectionへ吸収し、one remaining Sectionの削除を拒否する | Approved (D-030, D-038) | PASS |
+| B3-HISTORY-01 | History | settings変更がestablished current Day contextをretroactiveにrewriteしない | Approved (D-030, D-038) | PASS |
+| B3-EFFECTIVE-01 | TaskChuteDay | later unestablished Dayはlatest active configurationからcontextをmaterializeする | Approved (D-038) | PASS (automated; real browser NOT_RUN) |
+| B3-CONFLICT-01 | Conflict | stale expected headをrejectし、Webはlatest canonical stateへreloadしてstale draftをresetする | Approved (D-038) | PASS |
+| B3-RETRY-01 | Retry | same-operation replay / misuseを分離し、infrastructure ambiguityはexact original requestだけをretryする | Approved (D-020, D-038) | PASS |
+| B3-PLANNED-01 | B2 regression | B2 planned-startが新たにestablishされたB3 next-Day contextからSectionを解決する | Approved (D-031, D-038, D-039) | PASS |
+| B3-MIGRATION-01 | Migration | isolated upgradeでexisting rowsを保持し、UpdateSectionConfiguration operation typeを追加する | Approved (D-038) | PASS |
+| B3-WEB-01 | Web | raw invalid timeではSave/Add/Deleteをdisableし、valid saveのsuccess / conflict reconciliationを表示する | Approved (D-038) | PASS |
+| B3-WEB-ADDDELETE-01 | Web | Add/Delete draft、absorption、Cancelがserver mutationなしで動作する | Approved (D-038) | PASS |
+| B3-WEB-HISTORY-01 | Web / History | B保存とreload後もcurrent Dayはhistorical contextを表示し、settingsだけがlatest headを表示する | Approved (D-038) | PASS |
+| B3-LOCAL-DB-01 | Migration / Integrity | real local APP DBをprivate backup後に0005へupgradeし、pre-existing identity/contentとintegrityを保持する | Approved (D-038) | PASS |
+| B3-BROWSER-01 | Web / Browser | signed-in real local browserでB3 draft/save/freeze/reload/immutable restoreを検証する | Approved (D-038) | PASS |
+| B3-REMOTE-01 | Remote nonprod | B3 migration / runtime / authenticated browser flowをpersistent nonprodで検証する | Approved (D-038) | NOT_RUN |
+| B3-PROD-01 | Production | B3 production migration / smokeを検証する | Approved (D-038) | NOT_RUN |
 
 ## Persistent non-production B2 remote verification evidence — 2026-08-29
 
