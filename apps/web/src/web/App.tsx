@@ -19,7 +19,9 @@ import type {
   SectionProjection,
   StartEntryRequest,
   SetEntryEstimateRequest,
+  SetEntryPlannedStartRequest,
 } from "../shared/contracts";
+import { isSamePlannedStartCohort } from "../shared/planned-entry-order";
 import { uuidv7 } from "../shared/uuidv7";
 import { api, ApiClientError } from "./api";
 
@@ -57,7 +59,7 @@ function canMoveEntry(entries: EntryProjection[], entryId: string, delta: -1 | 1
   if (from < 0) return false;
   const entry = entries[from];
   const neighbor = entries[from + delta];
-  return entry?.lifecycle_state === "planned" && neighbor?.lifecycle_state === "planned";
+  return isSamePlannedStartCohort(entry, neighbor);
 }
 
 function groupKey(sectionId: string | null): string { return sectionId ?? "unsectioned"; }
@@ -81,6 +83,24 @@ function parseLogicalTime(value: FormDataEntryValue | null): number | null {
   return hours <= 47 && minutes <= 59 ? hours * 60 + minutes : null;
 }
 
+function parsePlannedStart(value: string, boundaryMinutes: number): number | null | "invalid" {
+  const trimmed = value.trim();
+  if (trimmed === "") return null;
+  const match = trimmed.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return "invalid";
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  const logicalMinute = hours * 60 + minutes;
+  return minutes <= 59 && Number.isSafeInteger(logicalMinute)
+    && logicalMinute >= boundaryMinutes && logicalMinute < boundaryMinutes + 1440
+    ? logicalMinute : "invalid";
+}
+
+type PlannedStartOperation = {
+  request: SetEntryPlannedStartRequest;
+  expectedSectionId: string | null;
+};
+
 export function App() {
   const [authState, setAuthState] = useState<AuthState>("loading");
   const [day, setDay] = useState<CurrentTaskChuteDayProjection | null>(null);
@@ -93,8 +113,10 @@ export function App() {
   const [configurationOperation, setConfigurationOperation] = useState<EstablishInitialSectionConfigurationRequest | null>(null);
   const [sectionMoveOperation, setSectionMoveOperation] = useState<MoveEntryRequest | null>(null);
   const [estimateOperation, setEstimateOperation] = useState<SetEntryEstimateRequest | null>(null);
+  const [plannedStartOperation, setPlannedStartOperation] = useState<PlannedStartOperation | null>(null);
   const [editingEstimate, setEditingEstimate] = useState<{ entryId: string; minutes: string } | null>(null);
-  const [pending, setPending] = useState<"login" | "project" | "task" | "reorder" | "start" | "complete" | "configuration" | "move" | "estimate" | "logout" | null>(null);
+  const [editingPlannedStart, setEditingPlannedStart] = useState<{ entryId: string; value: string } | null>(null);
+  const [pending, setPending] = useState<"login" | "project" | "task" | "reorder" | "start" | "complete" | "configuration" | "move" | "estimate" | "planned-start" | "logout" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draftTask, setDraftTask] = useState<DraftTask | null>(null);
   const [pendingFocusKey, setPendingFocusKey] = useState<string | null>(null);
@@ -102,7 +124,7 @@ export function App() {
   const draftInputRef = useRef<HTMLInputElement | null>(null);
   const draftCompositionRef = useRef(false);
   const retainedOperation = projectOperation ?? taskOperation ?? reorderOperation ?? startOperation ?? completeOperation
-    ?? configurationOperation ?? sectionMoveOperation ?? estimateOperation;
+    ?? configurationOperation ?? sectionMoveOperation ?? estimateOperation ?? plannedStartOperation;
   const mutationLocked = pending !== null || retainedOperation !== null;
 
   const reconcile = useCallback(async () => {
@@ -248,6 +270,7 @@ export function App() {
       setConfigurationOperation(null);
       setSectionMoveOperation(null);
       setEstimateOperation(null);
+      setPlannedStartOperation(null);
       setDraftTask(null);
       setAuthState("signed-out");
     } catch (caught) {
@@ -412,6 +435,7 @@ export function App() {
         const canonical = [...(projection?.unsectioned_entries ?? []), ...(projection?.sections.flatMap((section) => section.entries) ?? [])]
           .find((entry) => entry.id === operation.entry_id);
         if (ambiguous && canonical?.section_id === operation.section_id
+          && canonical.planned_start_minute === null
           && projection?.placement_revision === operation.expected_placement_revision + 1) {
           setSectionMoveOperation(null); setError(null);
         }
@@ -421,6 +445,7 @@ export function App() {
 
   async function changeSection(entry: EntryProjection, sectionId: string | null) {
     if (!day || mutationLocked || entry.lifecycle_state !== "planned" || entry.section_id === sectionId) return;
+    setEditingPlannedStart((editing) => editing?.entryId === entry.id ? null : editing);
     const operation: MoveEntryRequest = { operation_id: uuidv7(), entry_id: entry.id,
       taskchute_day_id: day.taskchute_day.id, section_id: sectionId, expected_placement_revision: day.placement_revision };
     setSectionMoveOperation(operation); await executeSectionMove(operation);
@@ -453,6 +478,57 @@ export function App() {
     const operation: SetEntryEstimateRequest = { operation_id: uuidv7(), entry_id: entryId,
       estimate_seconds: minutes === 0 ? null : minutes * 60 };
     setEstimateOperation(operation); await executeEstimate(operation);
+  }
+
+  async function executePlannedStart(operation: PlannedStartOperation) {
+    setPending("planned-start"); setError(null);
+    try {
+      await api.setEntryPlannedStart(operation.request);
+      await reconcile();
+      setPlannedStartOperation(null);
+      setEditingPlannedStart(null);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "開始予定の保存に失敗しました");
+      const ambiguous = isAmbiguousOutcome(caught);
+      if (!ambiguous) setPlannedStartOperation(null);
+      try {
+        const projection = await reconcile();
+        const canonical = [...(projection?.unsectioned_entries ?? []), ...(projection?.sections.flatMap((section) => section.entries) ?? [])]
+          .find((entry) => entry.id === operation.request.entry_id);
+        if (ambiguous && canonical?.planned_start_minute === operation.request.planned_start_minute
+          && canonical.section_id === operation.expectedSectionId
+          && projection?.placement_revision === operation.request.expected_placement_revision + 1) {
+          setPlannedStartOperation(null); setEditingPlannedStart(null); setError(null);
+        }
+      } catch { /* Preserve retained operation. */ }
+    } finally { setPending(null); }
+  }
+
+  async function commitPlannedStart(entry: EntryProjection) {
+    if (!day || mutationLocked || editingPlannedStart?.entryId !== entry.id) return;
+    const plannedStartMinute = parsePlannedStart(
+      editingPlannedStart.value,
+      day.taskchute_day.establishment_boundary_minutes,
+    );
+    if (plannedStartMinute === "invalid") {
+      const boundary = day.taskchute_day.establishment_boundary_minutes;
+      setError(`開始予定は ${formatLogicalMinute(boundary)} 以上 ${formatLogicalMinute(boundary + 1440)} 未満のHH:mmで入力してください`);
+      return;
+    }
+    const expectedSectionId = plannedStartMinute === null ? entry.section_id
+      : day.sections.find((section) => section.logical_start_minute !== null && section.logical_end_minute !== null
+        && section.logical_start_minute <= plannedStartMinute && plannedStartMinute < section.logical_end_minute)?.id;
+    if (expectedSectionId === undefined) {
+      setError("開始予定を含む確定済みSection時間帯がありません");
+      return;
+    }
+    const operation: PlannedStartOperation = {
+      request: { operation_id: uuidv7(), entry_id: entry.id, taskchute_day_id: day.taskchute_day.id,
+        planned_start_minute: plannedStartMinute, expected_placement_revision: day.placement_revision },
+      expectedSectionId,
+    };
+    setPlannedStartOperation(operation);
+    await executePlannedStart(operation);
   }
 
   if (authState === "loading") return <main className="shell"><p>Server canonical stateを読み込み中…</p></main>;
@@ -585,6 +661,7 @@ export function App() {
       {pending === "complete" && <p role="status">完了・照合中…</p>}
       {pending === "move" && <p role="status">Section移動・照合中…</p>}
       {pending === "estimate" && <p role="status">見積を保存・照合中…</p>}
+      {pending === "planned-start" && <p role="status">開始予定を保存・照合中…</p>}
       {error && <p role="alert" className="error">{error}</p>}
 
       {day.section_configuration_required && (
@@ -605,7 +682,7 @@ export function App() {
 
       <section className="day-surface" aria-label="DayBoard">
         <div className="table-heading" aria-hidden="true">
-          <span>実行</span><span>Task</span><span>Project</span><span>Section</span><span>見積</span><span>状態</span><span>並び替え</span>
+          <span>実行</span><span>Task</span><span>Project</span><span>Section</span><span>開始予定</span><span>見積</span><span>状態</span><span>並び替え</span>
         </div>
         {groups.map((section) => {
           const visibleEntries = showCompleted ? section.entries : section.entries.filter((entry) => entry.lifecycle_state !== "completed");
@@ -630,7 +707,7 @@ export function App() {
                   <label className="draft-name"><span className="sr-only">Task名</span><input ref={draftInputRef} name="title" maxLength={300} value={draftTask.title} placeholder="Task名を入力…" aria-label={`${section.title}のTask名`} disabled={pending === "task" || taskOperation !== null} onChange={(event) => setDraftTask({ ...draftTask, title: event.target.value })} onCompositionStart={() => { draftCompositionRef.current = true; }} onCompositionEnd={() => { draftCompositionRef.current = false; }} onKeyDown={handleDraftKeyDown} onBlur={(event) => {
                     if (!draftTask.title.trim() && !event.currentTarget.form?.contains(event.relatedTarget as Node | null)) setDraftTask(null);
                   }} /></label>
-                  <span className="muted">—</span><span>{section.title}</span><span className="muted">—</span><span className="muted">未確定</span><span className="muted">Enterで追加</span>
+                  <span className="muted">—</span><span>{section.title}</span><span className="muted">—</span><span className="muted">—</span><span className="muted">未確定</span><span className="muted">Enterで追加</span>
                 </form>
               )}
 
@@ -659,6 +736,19 @@ export function App() {
                       <option value="">Sectionなし</option>
                       {day.sections.map((candidate) => <option value={candidate.id} key={candidate.id}>{candidate.title}</option>)}
                     </select>
+                    <span className="planned-start-cell">
+                      {editingPlannedStart?.entryId === entry.id ? <input autoFocus aria-label={`${entry.task.title}の開始予定`}
+                        value={editingPlannedStart.value} placeholder="HH:mm" inputMode="numeric"
+                        onChange={(event) => setEditingPlannedStart({ entryId: entry.id, value: event.target.value })}
+                        onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void commitPlannedStart(entry); }
+                          else if (event.key === "Escape") { event.preventDefault(); setEditingPlannedStart(null); } }} />
+                        : <button type="button" className="planned-start-button" aria-label={`${entry.task.title}の開始予定`}
+                          disabled={mutationLocked || entry.lifecycle_state !== "planned"}
+                          onClick={() => setEditingPlannedStart({ entryId: entry.id,
+                            value: entry.planned_start_minute === null ? "" : formatLogicalMinute(entry.planned_start_minute) })}>
+                          {entry.planned_start_minute === null ? "—" : formatLogicalMinute(entry.planned_start_minute)}
+                        </button>}
+                    </span>
                     <span className="estimate-cell">
                       {editingEstimate?.entryId === entry.id ? <input autoFocus aria-label={`${entry.task.title}の見積（分）`} inputMode="numeric" value={editingEstimate.minutes}
                         onChange={(event) => setEditingEstimate({ entryId: entry.id, minutes: event.target.value })}
@@ -692,9 +782,10 @@ export function App() {
           {configurationOperation && <button type="button" onClick={() => void executeConfiguration(configurationOperation)}>保留中のSection設定を再試行</button>}
           {sectionMoveOperation && <button type="button" onClick={() => void executeSectionMove(sectionMoveOperation)}>保留中のSection移動を再試行</button>}
           {estimateOperation && <button type="button" onClick={() => void executeEstimate(estimateOperation)}>保留中の見積保存を再試行</button>}
+          {plannedStartOperation && <button type="button" onClick={() => void executePlannedStart(plannedStartOperation)}>保留中の開始予定保存を再試行</button>}
           <button type="button" className="secondary" onClick={() => {
             setProjectOperation(null); setTaskOperation(null); setReorderOperation(null); setStartOperation(null); setCompleteOperation(null);
-            setConfigurationOperation(null); setSectionMoveOperation(null); setEstimateOperation(null); setError(null);
+            setConfigurationOperation(null); setSectionMoveOperation(null); setEstimateOperation(null); setPlannedStartOperation(null); setError(null);
           }}>保留中のclient操作を破棄</button>
         </section>
       )}

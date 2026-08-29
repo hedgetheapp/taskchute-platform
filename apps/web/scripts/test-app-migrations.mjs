@@ -8,7 +8,7 @@ import { createHash } from "node:crypto";
 
 const appRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const wrangler = join(appRoot, "node_modules", "wrangler", "bin", "wrangler.js");
-const persistencePath = await mkdtemp(join(tmpdir(), "taskchute-b1-migration-"));
+const persistencePath = await mkdtemp(join(tmpdir(), "taskchute-b2-migration-"));
 
 function execute(args, expectSuccess = true) {
   const result = spawnSync(process.execPath, [wrangler, "d1", "execute", "taskchute-app-local", "--local",
@@ -35,6 +35,31 @@ try {
   applyFile("migrations/app/0002_lifecycle_ordering.sql");
   applyFile("test/fixtures/dogfood-v01a-app.sql");
   applyFile("migrations/app/0003_dogfood_day_b1.sql");
+  execute(["--command", `
+    UPDATE entries SET estimate_seconds = 900 WHERE id = 'entry-planned';
+    INSERT INTO section_configuration_versions (id, app_user_id, day_boundary_minutes, created_at)
+      VALUES ('config-b1', 'user-v01a', 240, '2026-08-28T01:00:00.000Z');
+    INSERT INTO section_configuration_items
+      (app_user_id, configuration_version_id, section_id, title, logical_start_minute, logical_end_minute, configuration_order)
+      VALUES
+      ('user-v01a', 'config-b1', 'section-morning', 'Morning', 240, 720, 0),
+      ('user-v01a', 'config-b1', 'section-evening', 'Evening', 720, 1680, 1);
+    INSERT INTO section_configuration_heads (app_user_id, configuration_version_id) VALUES ('user-v01a', 'config-b1');
+    INSERT INTO taskchute_days
+      (id, app_user_id, logical_date, start_instant, end_instant, establishment_timezone,
+       establishment_boundary_minutes, establishment_disambiguation, placement_revision, created_at)
+      VALUES ('day-configured', 'user-v01a', '2026-08-29', '2026-08-28T19:00:00Z', '2026-08-29T19:00:00Z',
+       'Asia/Tokyo', 240, 'compatible', 7, '2026-08-28T01:00:00.000Z');
+    INSERT INTO taskchute_day_section_contexts
+      (app_user_id, taskchute_day_id, section_id, configuration_version_id, title,
+       logical_start_minute, logical_end_minute, actual_start_instant, actual_end_instant, context_order)
+      VALUES
+      ('user-v01a', 'day-configured', 'section-morning', 'config-b1', 'Morning', 240, 720,
+       '2026-08-28T19:00:00Z', '2026-08-29T03:00:00Z', 0),
+      ('user-v01a', 'day-configured', 'section-evening', 'config-b1', 'Evening', 720, 1680,
+       '2026-08-29T03:00:00Z', '2026-08-29T19:00:00Z', 1);
+  `]);
+  applyFile("migrations/app/0004_dogfood_day_b2.sql");
 
   const legacyStartRequest = { entry_id: "019d2f00-0000-7000-8000-000000000002",
     execution_id: "019d2f00-0000-7000-8000-000000000003",
@@ -42,9 +67,9 @@ try {
   assert.equal(createHash("sha256").update(JSON.stringify(legacyStartRequest)).digest("hex"),
     "ae7259e4469236b36922e6e8b2cd9158b82602cd05777af2ed81d6599583c8c9");
 
-  assert.deepEqual(query("SELECT id, lifecycle_state, estimate_seconds FROM entries ORDER BY id"), [
-    { id: "019d2f00-0000-7000-8000-000000000002", lifecycle_state: "running", estimate_seconds: null },
-    { id: "entry-planned", lifecycle_state: "planned", estimate_seconds: null },
+  assert.deepEqual(query("SELECT id, lifecycle_state, estimate_seconds, planned_start_minute FROM entries ORDER BY id"), [
+    { id: "019d2f00-0000-7000-8000-000000000002", lifecycle_state: "running", estimate_seconds: null, planned_start_minute: null },
+    { id: "entry-planned", lifecycle_state: "planned", estimate_seconds: 900, planned_start_minute: null },
   ]);
   assert.deepEqual(query("SELECT id, project_id FROM tasks ORDER BY id"), [
     { id: "task-planned", project_id: "project-v01a" },
@@ -64,32 +89,58 @@ try {
       outcome_kind: "success", result_json: "{\"fixture\":true}" },
   ]);
   const contexts = query(`SELECT section_id, logical_start_minute, logical_end_minute,
-    actual_start_instant, actual_end_instant FROM taskchute_day_section_contexts ORDER BY section_id`);
+    actual_start_instant, actual_end_instant FROM taskchute_day_section_contexts
+    WHERE taskchute_day_id = 'day-v01a' ORDER BY section_id`);
   assert.equal(contexts.length, 2);
   assert(contexts.every((row) => row.logical_start_minute === null && row.logical_end_minute === null
     && row.actual_start_instant === null && row.actual_end_instant === null));
+  assert.deepEqual(query(`SELECT section_id, configuration_version_id, logical_start_minute, logical_end_minute,
+    actual_start_instant, actual_end_instant FROM taskchute_day_section_contexts
+    WHERE taskchute_day_id = 'day-configured' ORDER BY context_order`), [
+    { section_id: "section-morning", configuration_version_id: "config-b1", logical_start_minute: 240,
+      logical_end_minute: 720, actual_start_instant: "2026-08-28T19:00:00Z", actual_end_instant: "2026-08-29T03:00:00Z" },
+    { section_id: "section-evening", configuration_version_id: "config-b1", logical_start_minute: 720,
+      logical_end_minute: 1680, actual_start_instant: "2026-08-29T03:00:00Z", actual_end_instant: "2026-08-29T19:00:00Z" },
+  ]);
+  assert.deepEqual(query("SELECT app_user_id, configuration_version_id FROM section_configuration_heads"), [
+    { app_user_id: "user-v01a", configuration_version_id: "config-b1" },
+  ]);
+  assert.deepEqual(query("SELECT id, placement_revision FROM taskchute_days ORDER BY id"), [
+    { id: "day-configured", placement_revision: 7 }, { id: "day-v01a", placement_revision: 2 },
+  ]);
 
   const entryColumns = query("PRAGMA table_info(entries)");
   assert.equal(entryColumns.find((column) => column.name === "section_id")?.notnull, 0);
   assert.equal(entryColumns.find((column) => column.name === "estimate_seconds")?.notnull, 0);
+  assert.equal(entryColumns.find((column) => column.name === "planned_start_minute")?.notnull, 0);
   const indexNames = new Set(query("PRAGMA index_list(entries)").map((index) => index.name));
   assert(indexNames.has("entries_section_position_unique"));
   assert(indexNames.has("entries_unsectioned_position_unique"));
+  assert(indexNames.has("entries_planned_start_idx"));
   assert(new Set(query("PRAGMA index_list(executions)").map((index) => index.name)).has("one_active_execution_per_user"));
 
   execute(["--command", `INSERT INTO entries
-    (id, app_user_id, task_id, taskchute_day_id, section_id, position, lifecycle_state, estimate_seconds, created_at)
-    VALUES ('entry-unsectioned', 'user-v01a', 'task-planned', 'day-v01a', NULL, 1, 'planned', NULL,
+    (id, app_user_id, task_id, taskchute_day_id, section_id, position, lifecycle_state, estimate_seconds, planned_start_minute, created_at)
+    VALUES ('entry-unsectioned', 'user-v01a', 'task-planned', 'day-v01a', NULL, 1, 'planned', NULL, NULL,
       '2026-08-28T00:00:00.000Z')`]);
-  assert.deepEqual(query("SELECT section_id, estimate_seconds FROM entries WHERE id = 'entry-unsectioned'"),
-    [{ section_id: null, estimate_seconds: null }]);
+  assert.deepEqual(query("SELECT section_id, estimate_seconds, planned_start_minute FROM entries WHERE id = 'entry-unsectioned'"),
+    [{ section_id: null, estimate_seconds: null, planned_start_minute: null }]);
+  const invalidSectionlessTime = execute(["--command",
+    "UPDATE entries SET planned_start_minute = 300 WHERE id = 'entry-unsectioned'"], false);
+  assert.notEqual(invalidSectionlessTime.status, 0, "Section-less non-null planned start must be rejected");
+  execute(["--command", `INSERT INTO operations
+    (app_user_id, operation_id, command_type, request_fingerprint_version, request_fingerprint, outcome_kind, result_json, created_at)
+    VALUES ('user-v01a', 'operation-b2', 'SetEntryPlannedStart', 1, 'b2-fingerprint', 'success', '{}',
+      '2026-08-28T02:00:00.000Z')`]);
+  assert.deepEqual(query("SELECT command_type, result_json FROM operations WHERE operation_id = 'operation-b2'"),
+    [{ command_type: "SetEntryPlannedStart", result_json: "{}" }]);
   const duplicateActive = execute(["--command", `INSERT INTO executions
     (id, app_user_id, entry_id, started_at, ended_at, created_at)
     VALUES ('execution-second-active', 'user-v01a', 'entry-planned', '2026-08-28T10:00:00.000Z', NULL,
       '2026-08-28T10:00:00.000Z')`], false);
   assert.notEqual(duplicateActive.status, 0, "the active Execution unique index must reject a second active row");
   assert.deepEqual(query("PRAGMA foreign_key_check"), []);
-  console.log("migration regression: 1 scenario passed (15 data/schema checks; 0001 -> 0002 -> v0.1-A fixture -> 0003)");
+  console.log("migration regression: 1 scenario passed (25 data/schema checks; 0001 -> 0002 -> v0.1-A fixture -> 0003 -> B1 state -> 0004)");
 } finally {
   await rm(persistencePath, { recursive: true, force: true });
 }

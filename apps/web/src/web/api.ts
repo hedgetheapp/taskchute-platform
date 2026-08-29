@@ -17,6 +17,8 @@ import type {
   StartEntryResult,
   SetEntryEstimateRequest,
   SetEntryEstimateResult,
+  SetEntryPlannedStartRequest,
+  SetEntryPlannedStartResult,
 } from "../shared/contracts";
 
 export class ApiClientError extends Error {
@@ -82,5 +84,8 @@ export const api = {
   },
   setEntryEstimate(body: SetEntryEstimateRequest): Promise<SetEntryEstimateResult> {
     return requestJson(`/api/v1/entries/${body.entry_id}/estimate`, jsonPost("", body));
+  },
+  setEntryPlannedStart(body: SetEntryPlannedStartRequest): Promise<SetEntryPlannedStartResult> {
+    return requestJson(`/api/v1/entries/${body.entry_id}/planned-start`, jsonPost("", body));
   },
 };

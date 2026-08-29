@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   login: vi.fn(), logout: vi.fn(), loadDay: vi.fn(), createProject: vi.fn(), addTask: vi.fn(),
   reorderEntries: vi.fn(), startEntry: vi.fn(), completeEntry: vi.fn(),
   establishInitialSectionConfiguration: vi.fn(), moveEntry: vi.fn(), setEntryEstimate: vi.fn(),
+  setEntryPlannedStart: vi.fn(),
 }));
 
 vi.mock("../../src/web/api", async () => {
@@ -24,6 +25,7 @@ const firstEntry: EntryProjection = {
   position: 1,
   lifecycle_state: "planned",
   estimate_seconds: null,
+  planned_start_minute: null,
   task: { id: "019c0000-0000-7000-8000-000000000004", title: "Canonical task", project: null },
 };
 const secondEntry: EntryProjection = {
@@ -32,6 +34,7 @@ const secondEntry: EntryProjection = {
   position: 2,
   lifecycle_state: "planned",
   estimate_seconds: null,
+  planned_start_minute: null,
   task: { id: "019c0000-0000-7000-8000-000000000007", title: "Second task", project: null },
 };
 const thirdEntry: EntryProjection = {
@@ -40,6 +43,7 @@ const thirdEntry: EntryProjection = {
   position: 3,
   lifecycle_state: "planned",
   estimate_seconds: null,
+  planned_start_minute: null,
   task: { id: "019c0000-0000-7000-8000-000000000010", title: "Third task", project: null },
 };
 
@@ -119,6 +123,7 @@ beforeEach(() => {
   mocks.establishInitialSectionConfiguration.mockResolvedValue({});
   mocks.moveEntry.mockResolvedValue({});
   mocks.setEntryEstimate.mockResolvedValue({});
+  mocks.setEntryPlannedStart.mockResolvedValue({});
 });
 
 describe("Dogfood Day shell", () => {
@@ -683,6 +688,158 @@ describe("Dogfood Day shell", () => {
     fireEvent.change(await screen.findByRole("combobox", { name: "Canonical taskのSection" }), { target: { value: "" } });
     await waitFor(() => expect(mocks.moveEntry).toHaveBeenCalledTimes(1));
     expect(mocks.moveEntry.mock.calls[0][0]).toMatchObject({ entry_id: firstEntry.id, section_id: null, expected_placement_revision: 1 });
+  });
+
+  it("edits an extended planned start and reconciles the Entry into its canonical Section", async () => {
+    const moved = {
+      ...populatedDay,
+      placement_revision: 2,
+      sections: [emptyDay.sections[0], {
+        ...emptyDay.sections[1],
+        entries: [{ ...firstEntry, section_id: eveningId, position: 1, planned_start_minute: 1620 }],
+      }],
+      next_entry: { ...firstEntry, section_id: eveningId, position: 1, planned_start_minute: 1620 },
+    };
+    mocks.loadDay.mockResolvedValueOnce(populatedDay).mockResolvedValueOnce(moved);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskの開始予定" }));
+    const input = screen.getByRole("textbox", { name: "Canonical taskの開始予定" });
+    fireEvent.change(input, { target: { value: "27:00" } });
+    fireEvent.keyDown(input, { key: "Enter", code: "Enter" });
+    await waitFor(() => expect(mocks.setEntryPlannedStart).toHaveBeenCalledTimes(1));
+    expect(mocks.setEntryPlannedStart.mock.calls[0][0]).toMatchObject({
+      entry_id: firstEntry.id,
+      taskchute_day_id: emptyDay.taskchute_day.id,
+      planned_start_minute: 1620,
+      expected_placement_revision: 1,
+    });
+    expect((await screen.findByRole("button", { name: "Canonical taskの開始予定" })).textContent).toContain("27:00");
+    expect(screen.getByText("Canonical task").closest(".section-group")?.textContent ?? "").toContain("Evening");
+  });
+
+  it("rejects the exclusive Day end before sending a planned-start command", async () => {
+    mocks.loadDay.mockResolvedValue(populatedDay);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskの開始予定" }));
+    const input = screen.getByRole("textbox", { name: "Canonical taskの開始予定" });
+    fireEvent.change(input, { target: { value: "28:00" } });
+    fireEvent.keyDown(input, { key: "Enter", code: "Enter" });
+    expect((await screen.findByRole("alert")).textContent).toContain("28:00 未満");
+    expect(mocks.setEntryPlannedStart).not.toHaveBeenCalled();
+  });
+
+  it("clears planned start without changing its Section and reflects explicit Move clearing", async () => {
+    const timed = { ...firstEntry, planned_start_minute: 600 };
+    const timedDay = { ...populatedDay, sections: [{ ...emptyDay.sections[0], entries: [timed] }, emptyDay.sections[1]], next_entry: timed };
+    const clearedDay = { ...timedDay, placement_revision: 2,
+      sections: [{ ...emptyDay.sections[0], entries: [firstEntry] }, emptyDay.sections[1]], next_entry: firstEntry };
+    const movedDay = { ...clearedDay, placement_revision: 3,
+      sections: [emptyDay.sections[0], { ...emptyDay.sections[1], entries: [{ ...firstEntry, section_id: eveningId }] }],
+      next_entry: { ...firstEntry, section_id: eveningId } };
+    mocks.loadDay.mockResolvedValueOnce(timedDay).mockResolvedValueOnce(clearedDay).mockResolvedValueOnce(movedDay);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskの開始予定" }));
+    const plannedInput = screen.getByRole("textbox", { name: "Canonical taskの開始予定" });
+    fireEvent.change(plannedInput, { target: { value: "" } });
+    fireEvent.keyDown(plannedInput, { key: "Enter", code: "Enter" });
+    await waitFor(() => expect(mocks.setEntryPlannedStart).toHaveBeenCalledTimes(1));
+    expect(mocks.setEntryPlannedStart.mock.calls[0][0].planned_start_minute).toBeNull();
+    expect((screen.getByRole("combobox", { name: "Canonical taskのSection" }) as unknown as HTMLSelectElement).value).toBe(morningId);
+    fireEvent.change(screen.getByRole("combobox", { name: "Canonical taskのSection" }), { target: { value: eveningId } });
+    await waitFor(() => expect(mocks.moveEntry).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect((screen.getByRole("combobox", { name: "Canonical taskのSection" }) as unknown as HTMLSelectElement).value).toBe(eveningId));
+    expect(screen.getByRole("button", { name: "Canonical taskの開始予定" }).textContent).toContain("—");
+  });
+
+  it("closes an open planned-start editor and shows the canonical clear after explicit Section move", async () => {
+    const timed = { ...firstEntry, planned_start_minute: 600 };
+    const timedDay = { ...populatedDay,
+      sections: [{ ...emptyDay.sections[0], entries: [timed] }, emptyDay.sections[1]], next_entry: timed };
+    const moved = { ...firstEntry, section_id: eveningId, planned_start_minute: null };
+    const movedDay = { ...timedDay, placement_revision: 2,
+      sections: [emptyDay.sections[0], { ...emptyDay.sections[1], entries: [moved] }], next_entry: moved };
+    mocks.loadDay.mockResolvedValueOnce(timedDay).mockResolvedValueOnce(movedDay);
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskの開始予定" }));
+    expect((screen.getByRole("textbox", { name: "Canonical taskの開始予定" }) as unknown as HTMLInputElement).value).toBe("10:00");
+    fireEvent.change(screen.getByRole("combobox", { name: "Canonical taskのSection" }), { target: { value: eveningId } });
+
+    await waitFor(() => expect(mocks.moveEntry).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect((screen.getByRole("combobox", { name: "Canonical taskのSection" }) as unknown as HTMLSelectElement).value)
+      .toBe(eveningId));
+    expect(screen.queryByRole("textbox", { name: "Canonical taskの開始予定" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Canonical taskの開始予定" }).textContent).toContain("—");
+  });
+
+  it("allows reorder only inside the same planned-start cohort", async () => {
+    const nullEntry = firstEntry;
+    const timedA = { ...secondEntry, planned_start_minute: 600 };
+    const timedB = { ...thirdEntry, planned_start_minute: 600 };
+    const day = { ...twoPlannedDay, sections: [{ ...emptyDay.sections[0], entries: [nullEntry, timedA, timedB] }, emptyDay.sections[1]] };
+    mocks.loadDay.mockResolvedValue(day);
+    render(<App />);
+    expect((await screen.findByRole("button", { name: "Canonical taskを下へ" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Second taskを下へ" }) as HTMLButtonElement).disabled).toBe(false);
+    const row = screen.getByText("Second task").closest<HTMLElement>("[data-entry-id]")!;
+    fireEvent.keyDown(row, { key: "ArrowUp", shiftKey: true });
+    expect(mocks.reorderEntries).not.toHaveBeenCalled();
+  });
+
+  it("does not expose editable planned-start controls for running or completed Entries", async () => {
+    mocks.loadDay.mockResolvedValueOnce(runningDay);
+    const runningView = render(<App />);
+    expect((await screen.findByRole("button", { name: "Canonical taskの開始予定" }) as HTMLButtonElement).disabled).toBe(true);
+    runningView.unmount();
+    mocks.loadDay.mockResolvedValueOnce(completedDay);
+    render(<App />);
+    expect((await screen.findByRole("button", { name: "Canonical taskの開始予定" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("retains and exactly retries an ambiguous planned-start operation", async () => {
+    mocks.loadDay.mockResolvedValue(populatedDay);
+    mocks.setEntryPlannedStart.mockRejectedValueOnce(new ApiClientError("ambiguous", 503, true, "infrastructure_ambiguous"))
+      .mockResolvedValueOnce({});
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskの開始予定" }));
+    const input = screen.getByRole("textbox", { name: "Canonical taskの開始予定" });
+    fireEvent.change(input, { target: { value: "10:00" } });
+    fireEvent.keyDown(input, { key: "Enter", code: "Enter" });
+    const retry = await screen.findByRole("button", { name: "保留中の開始予定保存を再試行" });
+    expect((screen.getByRole("button", { name: "Canonical taskを開始" }) as HTMLButtonElement).disabled).toBe(true);
+    const original = mocks.setEntryPlannedStart.mock.calls[0][0];
+    fireEvent.click(retry);
+    await waitFor(() => expect(mocks.setEntryPlannedStart).toHaveBeenCalledTimes(2));
+    expect(mocks.setEntryPlannedStart.mock.calls[1][0]).toEqual(original);
+  });
+
+  it("settles a lost planned-start response from canonical state without resending", async () => {
+    const committedEntry = { ...firstEntry, planned_start_minute: 600 };
+    const committedDay = { ...populatedDay, placement_revision: 2,
+      sections: [{ ...emptyDay.sections[0], entries: [committedEntry] }, emptyDay.sections[1]], next_entry: committedEntry };
+    mocks.loadDay.mockResolvedValueOnce(populatedDay).mockResolvedValueOnce(committedDay);
+    mocks.setEntryPlannedStart.mockRejectedValueOnce(new TypeError("response lost after commit"));
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskの開始予定" }));
+    const input = screen.getByRole("textbox", { name: "Canonical taskの開始予定" });
+    fireEvent.change(input, { target: { value: "10:00" } });
+    fireEvent.keyDown(input, { key: "Enter", code: "Enter" });
+    await waitFor(() => expect(screen.queryByRole("button", { name: "保留中の開始予定保存を再試行" })).toBeNull());
+    expect((await screen.findByRole("button", { name: "Canonical taskの開始予定" })).textContent).toContain("10:00");
+    expect(mocks.setEntryPlannedStart).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders canonical planned-start order and values on initial reload", async () => {
+    const timed = { ...secondEntry, planned_start_minute: 600 };
+    const reloaded = { ...twoPlannedDay,
+      sections: [{ ...emptyDay.sections[0], entries: [firstEntry, timed] }, emptyDay.sections[1]], next_entry: firstEntry };
+    mocks.loadDay.mockResolvedValue(reloaded);
+    render(<App />);
+    await screen.findByText("Canonical task");
+    expect(Array.from(document.querySelectorAll("[data-entry-id]")).map((row) => row.getAttribute("data-entry-id")))
+      .toEqual([firstEntry.id, secondEntry.id]);
+    expect(screen.getByRole("button", { name: "Canonical taskの開始予定" }).textContent).toContain("—");
+    expect(screen.getByRole("button", { name: "Second taskの開始予定" }).textContent).toContain("10:00");
   });
 
   it("submits only explicitly entered initial Section ranges", async () => {

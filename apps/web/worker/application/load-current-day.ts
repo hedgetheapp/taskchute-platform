@@ -3,6 +3,7 @@ import type {
   EntryProjection,
   SectionProjection,
 } from "../../src/shared/contracts";
+import { canonicalizeEntryOrder } from "../../src/shared/planned-entry-order";
 import { resolveSectionIntervals, resolveTaskChuteDay } from "../domain/taskchute-day";
 import { uuidv7 } from "../domain/uuidv7";
 
@@ -52,6 +53,7 @@ interface EntryRow {
   project_id: string | null;
   project_title: string | null;
   estimate_seconds: number | null;
+  planned_start_minute: number | null;
 }
 
 interface ExecutionRow {
@@ -108,6 +110,7 @@ function toEntryRow(value: unknown): EntryRow {
     project_id: projectId,
     project_title: projectTitle,
     estimate_seconds: row.estimate_seconds === null ? null : requiredNumber(row, "estimate_seconds"),
+    planned_start_minute: row.planned_start_minute === null ? null : requiredNumber(row, "planned_start_minute"),
   };
 }
 
@@ -303,7 +306,7 @@ export async function loadCurrentTaskChuteDay(
       .bind(appUserId, day.id),
     db
       .prepare(
-        `SELECT e.id AS entry_id, e.section_id, e.position, e.lifecycle_state, e.estimate_seconds,
+        `SELECT e.id AS entry_id, e.section_id, e.position, e.lifecycle_state, e.estimate_seconds, e.planned_start_minute,
                 t.id AS task_id, t.title AS task_title,
                 p.id AS project_id, p.title AS project_title
            FROM entries e
@@ -326,6 +329,7 @@ export async function loadCurrentTaskChuteDay(
       position: row.position,
       lifecycle_state: row.lifecycle_state,
       estimate_seconds: row.estimate_seconds,
+      planned_start_minute: row.planned_start_minute,
       task: {
         id: row.task_id,
         title: row.task_title,
@@ -333,7 +337,10 @@ export async function loadCurrentTaskChuteDay(
           row.project_id && row.project_title ? { id: row.project_id, title: row.project_title } : null,
       },
     };
-    if (row.section_id === null) unsectionedEntries.push(entry);
+    if (row.section_id === null) {
+      if (row.planned_start_minute !== null) throw new Error("Section-less Entry cannot have a planned start");
+      unsectionedEntries.push(entry);
+    }
     else {
       const collection = entriesBySection.get(row.section_id) ?? [];
       collection.push(entry);
@@ -345,7 +352,7 @@ export async function loadCurrentTaskChuteDay(
     logical_end_minute: section.logical_end_minute, actual_start_instant: section.actual_start_instant,
     actual_end_instant: section.actual_end_instant,
     estimate_total_seconds: (entriesBySection.get(section.id) ?? []).reduce((sum, entry) => sum + (entry.estimate_seconds ?? 0), 0),
-    entries: entriesBySection.get(section.id) ?? [],
+    entries: canonicalizeEntryOrder(entriesBySection.get(section.id) ?? []),
   }));
   const projectedSectionIds = new Set(sections.map((section) => section.id));
   if ([...entriesBySection.keys()].some((sectionId) => !projectedSectionIds.has(sectionId))) {

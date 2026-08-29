@@ -62,7 +62,7 @@ export async function moveEntry(db: D1Database, appUserId: string, request: Move
   const [dayResult, entryResult, sectionResult, targetPositionResult] = await db.batch([
     db.prepare("SELECT placement_revision FROM taskchute_days WHERE app_user_id = ? AND id = ?")
       .bind(appUserId, request.taskchute_day_id),
-    db.prepare("SELECT section_id, lifecycle_state FROM entries WHERE app_user_id = ? AND id = ? AND taskchute_day_id = ?")
+    db.prepare("SELECT section_id, lifecycle_state, planned_start_minute FROM entries WHERE app_user_id = ? AND id = ? AND taskchute_day_id = ?")
       .bind(appUserId, request.entry_id, request.taskchute_day_id),
     request.section_id ? db.prepare(`SELECT section_id AS id FROM taskchute_day_section_contexts
       WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id = ?`)
@@ -71,7 +71,7 @@ export async function moveEntry(db: D1Database, appUserId: string, request: Move
       .bind(appUserId, request.taskchute_day_id, request.section_id),
   ]);
   const day = dayResult.results[0] as { placement_revision: number } | undefined;
-  const entry = entryResult.results[0] as { section_id: string | null; lifecycle_state: string } | undefined;
+  const entry = entryResult.results[0] as { section_id: string | null; lifecycle_state: string; planned_start_minute: number | null } | undefined;
   const reject = (message: string, revision = false) => persistRejection<MoveEntryResult>(db, { appUserId,
     operationId: request.operation_id, commandType: "MoveEntry", requestFingerprint,
     outcomeKind: revision ? "revision_conflict" : "domain_rejection",
@@ -91,17 +91,21 @@ export async function moveEntry(db: D1Database, appUserId: string, request: Move
       db.prepare(`INSERT INTO placement_command_guards (operation_id, app_user_id, taskchute_day_id, expected_revision)
         SELECT ?, app_user_id, id, ? FROM taskchute_days WHERE app_user_id = ? AND id = ? AND placement_revision = ?`)
         .bind(request.operation_id, request.expected_placement_revision, appUserId, request.taskchute_day_id, request.expected_placement_revision),
-      db.prepare(`UPDATE entries SET section_id = ?, position = ? WHERE app_user_id = ? AND id = ? AND lifecycle_state = 'planned'
-        AND section_id IS ? AND EXISTS (SELECT 1 FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
-        .bind(request.section_id, position, appUserId, request.entry_id, oldSection, appUserId, request.operation_id),
+      db.prepare(`UPDATE entries SET section_id = ?, position = ?, planned_start_minute = NULL
+        WHERE app_user_id = ? AND id = ? AND lifecycle_state = 'planned'
+        AND section_id IS ? AND planned_start_minute IS ?
+        AND EXISTS (SELECT 1 FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(request.section_id, position, appUserId, request.entry_id, oldSection, entry.planned_start_minute,
+          appUserId, request.operation_id),
       db.prepare(`UPDATE taskchute_days SET placement_revision = placement_revision + 1 WHERE app_user_id = ? AND id = ?
         AND EXISTS (SELECT 1 FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?)
-        AND EXISTS (SELECT 1 FROM entries WHERE app_user_id = ? AND id = ? AND lifecycle_state = 'planned' AND section_id IS ? AND position = ?)`)
+        AND EXISTS (SELECT 1 FROM entries WHERE app_user_id = ? AND id = ? AND lifecycle_state = 'planned'
+          AND section_id IS ? AND position = ? AND planned_start_minute IS NULL)`)
         .bind(appUserId, request.taskchute_day_id, appUserId, request.operation_id,
           appUserId, request.entry_id, request.section_id, position),
       db.prepare(`INSERT INTO transaction_assertions (app_user_id, id, ok) SELECT ?, ?, CASE WHEN
         EXISTS (SELECT 1 FROM entries WHERE app_user_id = ? AND id = ? AND lifecycle_state = 'planned'
-          AND section_id IS ? AND position = ?)
+          AND section_id IS ? AND position = ? AND planned_start_minute IS NULL)
         AND EXISTS (SELECT 1 FROM taskchute_days WHERE app_user_id = ? AND id = ? AND placement_revision = ?)
         THEN 1 ELSE 0 END WHERE EXISTS
         (SELECT 1 FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?)`)

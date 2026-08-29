@@ -729,6 +729,39 @@ describe.sequential("production runtime bootstrap slice", () => {
     expect(after.unsectioned_entries.find((entry) => entry.id === source.id)?.estimate_seconds).toBe(1200);
   });
 
+  it("wires authenticated planned-start mutation and rejects path/body mismatch", async () => {
+    const before = await json<{
+      placement_revision: number;
+      taskchute_day: { id: string; establishment_boundary_minutes: number };
+      sections: Array<{ id: string; entries: Array<{ id: string; lifecycle_state: string }> }>;
+    }>(await browser.fetch("/api/v1/taskchute-days/current"));
+    const source = before.sections.flatMap((section) => section.entries)
+      .find((entry) => entry.lifecycle_state === "planned");
+    if (!source) throw new Error("Missing planned-start HTTP fixture");
+    const body = { operation_id: uuidv7(), entry_id: source.id, taskchute_day_id: before.taskchute_day.id,
+      planned_start_minute: before.taskchute_day.establishment_boundary_minutes,
+      expected_placement_revision: before.placement_revision };
+    const mismatch = await browser.post(`/api/v1/entries/${uuidv7()}/planned-start`, body);
+    expect(mismatch.status).toBe(400);
+    expect((await json<{ error: { code: string } }>(mismatch)).error.code).toBe("malformed_request");
+    const set = await browser.post(`/api/v1/entries/${source.id}/planned-start`, body);
+    expect(set.status).toBe(200);
+    expect(await json<object>(set)).toMatchObject({ entry_id: source.id,
+      planned_start_minute: before.taskchute_day.establishment_boundary_minutes,
+      placement_revision: before.placement_revision + 1 });
+    const cleared = await browser.post(`/api/v1/entries/${source.id}/planned-start`, {
+      ...body, operation_id: uuidv7(), planned_start_minute: null,
+      expected_placement_revision: before.placement_revision + 1,
+    });
+    expect(cleared.status).toBe(200);
+    expect(await json<object>(cleared)).toMatchObject({ entry_id: source.id, planned_start_minute: null,
+      placement_revision: before.placement_revision + 2 });
+    const unauthenticated = await exports.default.fetch(new Request(`${origin}/api/v1/entries/${source.id}/planned-start`, {
+      method: "POST", headers: { "content-type": "application/json", origin }, body: JSON.stringify(body),
+    }));
+    expect(unauthenticated.status).toBe(401);
+  });
+
   it("wires Reorder, Start, and Complete HTTP routes and rejects path/body Entry mismatch", async () => {
     const before = await json<{
       placement_revision: number;

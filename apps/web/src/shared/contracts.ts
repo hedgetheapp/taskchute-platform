@@ -35,6 +35,7 @@ export interface EntryProjection {
   position: number;
   lifecycle_state: "planned" | "running" | "completed";
   estimate_seconds: number | null;
+  planned_start_minute: number | null;
 }
 
 export interface SectionProjection {
@@ -186,4 +187,20 @@ export interface SetEntryEstimateRequest {
 export interface SetEntryEstimateResult {
   entry_id: string;
   estimate_seconds: number | null;
+}
+
+export interface SetEntryPlannedStartRequest {
+  operation_id: string;
+  entry_id: string;
+  taskchute_day_id: string;
+  planned_start_minute: number | null;
+  expected_placement_revision: number;
+}
+
+export interface SetEntryPlannedStartResult {
+  entry_id: string;
+  section_id: string | null;
+  planned_start_minute: number | null;
+  position: number;
+  placement_revision: number;
 }

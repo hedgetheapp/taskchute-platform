@@ -6,6 +6,7 @@ import { loadCurrentTaskChuteDay } from "./application/load-current-day";
 import { completeEntry, isCompleteEntryRequest, isStartEntryRequest, startEntry } from "./application/entry-lifecycle";
 import { isMoveEntryRequest, isSetEntryEstimateRequest, moveEntry, setEntryEstimate } from "./application/entry-planning";
 import { isReorderEntriesRequest, reorderEntries } from "./application/reorder-entries";
+import { isSetEntryPlannedStartRequest, setEntryPlannedStart } from "./application/planned-start";
 import { establishInitialSectionConfiguration, isEstablishInitialSectionConfigurationRequest } from "./application/section-configuration";
 import { createRequestAuth } from "./auth/better-auth";
 import { bootstrapInitialUser, isBootstrapModeEnabled } from "./auth/bootstrap";
@@ -73,6 +74,14 @@ async function route(request: Request, env: Env): Promise<Response> {
       throw new HttpError(400, "malformed_request", "Invalid SetEntryEstimate request");
     }
     return Response.json(await setEntryEstimate(env.APP_DB, principal.appUserId, body));
+  }
+  const plannedStartMatch = url.pathname.match(/^\/api\/v1\/entries\/([^/]+)\/planned-start$/);
+  if (request.method === "POST" && plannedStartMatch) {
+    const body = await readBoundedJson(request);
+    if (plannedStartMatch[1] !== (body as { entry_id?: unknown })?.entry_id || !isSetEntryPlannedStartRequest(body)) {
+      throw new HttpError(400, "malformed_request", "Invalid SetEntryPlannedStart request");
+    }
+    return Response.json(await setEntryPlannedStart(env.APP_DB, principal.appUserId, body));
   }
   const lifecycleMatch = url.pathname.match(/^\/api\/v1\/entries\/([^/]+)\/(start|complete)$/);
   if (request.method === "POST" && lifecycleMatch) {

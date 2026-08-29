@@ -38,7 +38,7 @@ export async function startEntry(
   if (prior) return replayOperation(prior, "StartEntry", requestFingerprint);
   const now = nowInstant;
   const [entryResult, activeResult, collisionResult] = await db.batch([
-    db.prepare(`SELECT e.lifecycle_state, e.section_id, e.taskchute_day_id, d.placement_revision
+    db.prepare(`SELECT e.lifecycle_state, e.section_id, e.planned_start_minute, e.taskchute_day_id, d.placement_revision
       FROM entries e JOIN taskchute_days d ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
       WHERE e.app_user_id = ? AND e.id = ?`).bind(appUserId, request.entry_id),
     db.prepare("SELECT id, entry_id, started_at FROM executions WHERE app_user_id = ? AND ended_at IS NULL LIMIT 1").bind(appUserId),
@@ -47,7 +47,12 @@ export async function startEntry(
   const convergedBeforeStart = await readOperation(db, appUserId, request.operation_id);
   if (convergedBeforeStart) return replayOperation(convergedBeforeStart, "StartEntry", requestFingerprint);
   if (entryResult.results.length === 0) return reject(db, appUserId, request, "StartEntry", requestFingerprint, "resource_not_found", "Entry is unavailable");
-  const entry = entryResult.results[0] as { lifecycle_state: string; section_id: string | null; taskchute_day_id: string; placement_revision: number };
+  const entry = entryResult.results[0] as { lifecycle_state: string; section_id: string | null;
+    planned_start_minute: number | null; taskchute_day_id: string; placement_revision: number };
+  if (entry.section_id === null && entry.planned_start_minute !== null) {
+    return reject(db, appUserId, request, "StartEntry", requestFingerprint, "resource_conflict",
+      "Section-less Entry cannot have a planned start");
+  }
   if (entry.section_id !== null && request.expected_placement_revision !== undefined) {
     throw new HttpError(400, "malformed_request",
       "A sectioned Start request must omit expected_placement_revision");
@@ -104,6 +109,7 @@ export async function startEntry(
         .bind(appUserId, request.operation_id, request.execution_id, appUserId, request.entry_id, appUserId,
           movesFromUnsectioned ? 1 : 0, appUserId, request.operation_id),
       db.prepare(`UPDATE entries SET section_id = ?, position = ? WHERE app_user_id = ? AND id = ? AND section_id IS NULL
+        AND planned_start_minute IS NULL
         AND ? = 1 AND EXISTS (SELECT 1 FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?)
         AND EXISTS (SELECT 1 FROM lifecycle_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
         .bind(targetSectionId, targetPosition, appUserId, request.entry_id, movesFromUnsectioned ? 1 : 0,
@@ -123,11 +129,13 @@ export async function startEntry(
       db.prepare(`INSERT INTO transaction_assertions (app_user_id, id, ok) SELECT ?, ?, CASE WHEN
         EXISTS (SELECT 1 FROM entries WHERE app_user_id = ? AND id = ? AND lifecycle_state = 'running')
         AND EXISTS (SELECT 1 FROM executions WHERE app_user_id = ? AND id = ? AND entry_id = ? AND ended_at IS NULL)
-        AND EXISTS (SELECT 1 FROM entries WHERE app_user_id = ? AND id = ? AND section_id = ?)
+        AND EXISTS (SELECT 1 FROM entries WHERE app_user_id = ? AND id = ? AND section_id = ?
+          AND (? = 0 OR planned_start_minute IS NULL))
         AND (? = 0 OR EXISTS (SELECT 1 FROM taskchute_days WHERE app_user_id = ? AND id = ? AND placement_revision = ?))
         THEN 1 ELSE 0 END WHERE EXISTS (SELECT 1 FROM lifecycle_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
         .bind(appUserId, assertionId, appUserId, request.entry_id, appUserId, request.execution_id, request.entry_id,
-          appUserId, request.entry_id, targetSectionId, movesFromUnsectioned ? 1 : 0, appUserId,
+          appUserId, request.entry_id, targetSectionId, movesFromUnsectioned ? 1 : 0,
+          movesFromUnsectioned ? 1 : 0, appUserId,
           entry.taskchute_day_id, result.placement_revision, appUserId, request.operation_id),
       db.prepare(`INSERT INTO operations (app_user_id, operation_id, command_type, request_fingerprint_version, request_fingerprint, outcome_kind, result_json, created_at)
         SELECT ?, ?, 'StartEntry', ?, ?, 'success', ?, ? WHERE EXISTS (SELECT 1 FROM lifecycle_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
