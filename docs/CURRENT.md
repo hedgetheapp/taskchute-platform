@@ -8,11 +8,11 @@ First Server + Web vertical sliceは`IMPLEMENTED / INTEGRATED`。D-023 bootstrap
 
 PR #3でruntime bootstrap sliceを、PR #5でReorder / Start / Complete / Execution lifecycle incrementを`main`へmergeした。PR #6でPR #5 merge後のcanonical docsをcurrent implementation / evidenceへ整合し、PR #7でcurrent-state maintenanceをmergeした。PR #8でD-023 bootstrap lifecycle security incrementを、PR #10でD-024 persistent non-production environment configurationを`main`へmergeし、PR #11でそのmerge後current stateを整合した。persistent non-production remote runtime verificationはPASS。production verificationは未実施。
 
-その後、Day planning / Routine設計をcanonical docsへ進め、D-026〜D-037をApproved。2026-08-28にD-038をApprovedし、Section persistence foundationと次のDay dogfood implementation順を確定した。Dogfood Day v0.1-A UI shellとB1はPR #13で`main`へmerge済み。B1は`IMPLEMENTED / INTEGRATED`で、source review、local automated verification、real local APP DB migration、signed-in browser verification、persistent non-production migration / runtime / browser verificationはPASSした。B1 production verificationとreal Japanese IMEは`NOT_RUN`、Releasedは`NO`。D-039でApprovedしたB2 planned-start persistence / command contractはcommit `316ad0d88f0f88d1445991904da587b1e0987dab`で`main`へ`IMPLEMENTED / INTEGRATED`となり、source review、local automated verification、real local APP DB migration、signed-in browser verification、persistent non-production migration / runtime / authenticated browser verificationはPASSした。B2 production verificationは`NOT_RUN`、Releasedは`NO`。D-038 B3 Section settings lifecycleはcommit `2481c4916ca2f694f07d6808a4482bea28c79a80`で`IMPLEMENTED / INTEGRATED`となり、source review、automated verification、real local APP DB `0005` migration、signed-in browser verificationはPASSした。B3 persistent nonprod / production verificationは`NOT_RUN`、Releasedは`NO`。
+その後、Day planning / Routine設計をcanonical docsへ進め、D-026〜D-037をApproved。2026-08-28にD-038をApprovedし、Section persistence foundationと次のDay dogfood implementation順を確定した。Dogfood Day v0.1-A UI shellとB1はPR #13で`main`へmerge済み。B1は`IMPLEMENTED / INTEGRATED`で、source review、local automated verification、real local APP DB migration、signed-in browser verification、persistent non-production migration / runtime / browser verificationはPASSした。B1 production verificationとreal Japanese IMEは`NOT_RUN`、Releasedは`NO`。D-039でApprovedしたB2 planned-start persistence / command contractはcommit `316ad0d88f0f88d1445991904da587b1e0987dab`で`main`へ`IMPLEMENTED / INTEGRATED`となり、source review、local automated verification、real local APP DB migration、signed-in browser verification、persistent non-production migration / runtime / authenticated browser verificationはPASSした。B2 production verificationは`NOT_RUN`、Releasedは`NO`。D-038 B3 Section settings lifecycleはcommit `2481c4916ca2f694f07d6808a4482bea28c79a80`で`IMPLEMENTED / INTEGRATED`となり、source review、automated verification、real local APP DB `0005` migration、signed-in browser verification、persistent non-production APP `0005` migration / preservation / deployed runtime / authenticated browser verificationはPASSした。B3 production verificationは`NOT_RUN`、Releasedは`NO`。
 
 Current main at this update base:
 
-`2481c4916ca2f694f07d6808a4482bea28c79a80`
+`d8d48c4e764958d7a0e5652cf6ed6cbd7b895e43`
 
 Relevant implementation commits:
 
@@ -57,7 +57,7 @@ D1 feasibility gateは引き続きPASS / Verified。current Product runtimeはFi
 - D-039でB2の`planned_start_minute INTEGER NULL`、既存`position`によるmanual tie-break、derived Section / canonical order、SetEntryPlannedStart / MoveEntry / Reorder / Startのatomicity・retry境界はApproved済み。
 - D-038 B1はPR #13でcurrent `main`へIntegrated済みで、Implemented / Integrated / Local Tested / Source Reviewed / Signed-in Local Browser Verified / Persistent Nonprod Remote Verified。B1 production verificationは`NOT_RUN`。
 - D-038 B2はcommit `316ad0d88f0f88d1445991904da587b1e0987dab`でcurrent `main`へImplemented / Integrated済み。source review、automated/local migration、signed-in local browser、persistent nonprod migration / runtime / authenticated browser evidenceはPASS。B2 production verificationは`NOT_RUN`。
-- D-038 B3はcommit `2481c4916ca2f694f07d6808a4482bea28c79a80`でcurrent `main`へImplemented / Integrated済み。source review、automated verification、real local `0005` migration、signed-in local browser、current-Day freeze evidenceはPASS。next-Day materializationのautomated evidenceはPASSだがreal browserは`NOT_RUN`。persistent nonprod / production verificationは`NOT_RUN`、Releasedは`NO`。
+- D-038 B3はcommit `2481c4916ca2f694f07d6808a4482bea28c79a80`でcurrent `main`へImplemented / Integrated済み。source review、automated verification、real local `0005` migration、signed-in local browser、persistent nonprod `0005` migration / preservation / deployed runtime / authenticated browser、current-Day freeze evidenceはPASS。next-Day materializationのautomated evidenceはPASSだがreal browserは`NOT_RUN`。persistent nonprodのraw console warning/error exact countは`NOT_VERIFIED`、production verificationは`NOT_RUN`、Releasedは`NO`。
 - production smokeは`NOT_RUN`。
 
 ## Dogfood Day v0.1-B / B1 integrated state
@@ -119,7 +119,8 @@ Observed evidence:
 - next-Day materialization: automated `PASS` / real browser `NOT_RUN`
 - browser unexpected console errors / warnings: `0 / 0`
 - Better Auth既存rolling sessionの`expiresAt` / `updatedAt`更新をD-022の7日lifetime / 1日renewal thresholdに沿うexpected runtime side effectとして観測。user / account / credential / mappingとsession identityは不変で、token / hash / secretは取得・記録していない
-- B3 persistent nonprod migration / runtime / browser verification: `NOT_RUN`
+- B3 persistent nonprod migration / runtime / authenticated browser verification: `PASS`
+- B3 persistent nonprod raw console warning / error exact count: `NOT_VERIFIED`（visible errorは未観測）
 - B3 production migration / smoke: `NOT_RUN`
 - Integrated to `main`: `YES`
 - Released: `NO`
@@ -130,18 +131,21 @@ Persistent nonprod B1 verificationは`main@779f9d18dab79062679dec696657a5addc653
 
 Persistent nonprod B2 verificationは`main@606d192aa22aea364ad54b7244f295284487a2c6`から既存nonprod environmentへWorker version `23706fe1-5359-43c2-9fef-09b5e8ab714d`をdeployして実施した。private APP DB exportとisolated restore、`0004_dogfood_day_b2.sql` migration、pre-existing全12 tableのidentity / content preservation、schema / FK / active Execution integrity、planned-start auto-placement / clear / explicit Section move時clear / canonical order / same-minute reorder / extended time / boundary rejection / early Start・Complete / reloadをPASSした。検証dataは削除せず残置している。direct bootstrap POSTとpublic signup remote POSTは`NOT_RUN`であり、PASSとは扱わない。
 
+Persistent nonprod B3 verificationは`main@d8d48c4e764958d7a0e5652cf6ed6cbd7b895e43`から既存nonprod environmentへWorker version `0a47ad68-0133-408f-9ce7-d35dcd3b99cb`をdeployして実施した。private APP DB exportとisolated restore、`0005_dogfood_day_b3.sql` migration、pre-existing identity / content preservation、schema / FK / active Execution integrity、draft validation / Add / Delete / Cancel、temporary immutable B save、current-Day freeze、reload、pre-test semanticsを新immutable CとしてrestoreするflowをPASSした。final expected deltaはconfiguration versions `+2`、items `+6`、`UpdateSectionConfiguration` operations `+2`だけで、Task / Entry / Executionは不変。raw console warning / error exact countは`NOT_VERIFIED`であり、visible errorは未観測。direct bootstrap POSTとpublic signup remote POSTは`NOT_RUN`、production verificationは`NOT_RUN`である。
+
 ## Persistent non-production increment
 
 Current `main`では、repository-side persistent non-production configを実装・統合済み。local検証・source review・GitHub PR diff reviewもPASS。2026-08-22にpersistent non-production remote environmentを作成してremote verificationを実施しPASSした。
 
 - Worker: `taskchute-web-nonprod`
 - URL: `https://taskchute-web-nonprod.taskfulness-sync.workers.dev`
+- current Worker version: `0a47ad68-0133-408f-9ce7-d35dcd3b99cb`
 - `AUTH_DB`: `taskchute-auth-nonprod` / `60085f8d-0c4e-4c15-98e9-3ce178398041`
 - `APP_DB`: `taskchute-app-nonprod` / `6ad7e35f-5d03-4be3-9b00-46cd713a51c3`
 - D1 location hint: `apac`
 - jurisdiction: none
 - observed placement: APAC; AUTH primary response HKG / APP primary response NRT
-- remote migrations: AUTH `0001_better_auth_1_7_1.sql` PASS、APP `0001_runtime_bootstrap.sql` + `0002_lifecycle_ordering.sql` PASS、pending 0
+- remote migrations: AUTH `0001_better_auth_1_7_1.sql` PASS、APP `0001_runtime_bootstrap.sql`〜`0005_dogfood_day_b3.sql` PASS、pending 0
 - remote `PRAGMA foreign_key_check`: AUTH 0 / APP 0
 - active Execution partial UNIQUE index: PASS
 - bootstrap: PASS / HTTP 200 / `recovered=false`
@@ -267,7 +271,8 @@ B3 integrated implementation / local verification evidence:
 - isolated migration: `32 data/schema checks PASS`
 - real local APP DB migration / signed-in real local browser / current-Day freeze: `PASS / PASS / PASS`
 - next-Day materialization automated / real browser: `PASS / NOT_RUN`
-- Integrated / persistent nonprod verified / production verified / Released: `YES / NOT_RUN / NOT_RUN / NO`
+- Integrated / persistent nonprod verified / production verified / Released: `YES / PASS / NOT_RUN / NO`
+- persistent nonprod raw console warning / error exact count: `NOT_VERIFIED`
 
 ## Important Risks / Gates
 
@@ -289,12 +294,11 @@ B3 integrated implementation / local verification evidence:
 
 First Server + Web vertical slice、D-023 bootstrap lifecycle security、persistent non-production config incrementはcurrent `main`でImplemented / Integratedまで完了済み。persistent nonprod remote runtime / deployed Worker verificationもPASS。
 
-次のrepository actionは、B3のImplemented / Integrated / local PASSを前提に、persistent nonprod B3 migration / runtime / browser verificationへ進むかを別途判断することである。このdocs task自体はremote / production操作を開始しない。
+次のrepository actionは、このB3 persistent nonprod evidence docs commitをreview / integrationした後、B1 / B2 / B3後の次work itemを別途決定することである。このdocs task自体はproduction操作を開始しない。
 
-1. **B3 persistent nonprod verification**
-   - private backup / `0005` migration / preservation gate / deploy / authenticated runtime・browser verificationは`NOT_RUN`。別途明示承認が必要。
-2. direct bootstrap POST / public signup remote POSTとreal Japanese IME verificationは`NOT_RUN`のまま別scopeで実施判断する。
-3. nonprod test data / session retention・cleanup policyは別Open Questionとして維持する。
-4. production deployment strategy / production smoke contractは別途Material Decision / explicit approvalとして扱い、nonprod PASSを自動継承しない。
+1. direct bootstrap POST / public signup remote POST、B1 real Japanese IME、B3 next-Day real-browser materialization、B3 remote raw console exact countは未検証の境界を維持する。
+2. nonprod test data / session retention・cleanup policyは別Open Questionとして維持する。
+3. production deployment strategy / production smoke contractは別途Material Decision / explicit approvalとして扱い、nonprod PASSを自動継承しない。
+4. B1 / B2 / B3後のRoutine / Documents / Review / Android等の優先順位を別途判断する。
 
-B1 / B2のpersistent nonprod remote PASSをproduction Verified / Product全体のVerified / Releasedと混同しない。B3はImplemented / Integrated / Local Verifiedだが、persistent nonprod / productionは`NOT_RUN`、Releasedは`NO`。
+B1 / B2 / B3のpersistent nonprod remote PASSをproduction Verified / Product全体のVerified / Releasedと混同しない。B3はImplemented / Integrated / Local Verified / Persistent Nonprod Remote Verifiedだが、productionは`NOT_RUN`、Releasedは`NO`。

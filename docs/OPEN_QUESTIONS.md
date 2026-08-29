@@ -18,7 +18,7 @@ D-038によりSection persistenceではstable Section identity、versioned Secti
 
 D-039によりB2 planned-startの`planned_start_minute INTEGER NULL`、既存`entries.position`を使うmanual tie-break、derived Section / canonical order、SetEntryPlannedStart requestとatomic retry / conflict contractはApproved済み。B2 runtimeはcommit `316ad0d88f0f88d1445991904da587b1e0987dab`で`main`へImplemented / Integrated済みで、source review、automated verification、real local `0004` migration、signed-in browser、persistent nonprod `0004` migration / runtime / authenticated browser verificationはPASS。production verificationは`NOT_RUN`である。
 
-D-038 B3 Section settings lifecycleはcommit `2481c4916ca2f694f07d6808a4482bea28c79a80`で`main`へImplemented / Integrated済み。immutable configuration version append、expected-head conflict protection付きhead switch、rename / boundary edit / add / delete・absorption、stable Section row retention、established Day context freeze、next-Day effective query/update、Web settings lifecycleを実装し、source review、automated verification、real local `0005` migration、signed-in browser verificationはPASS。persistent nonprod / production verificationは`NOT_RUN`、Releasedは`NO`である。これはcurrent implementation factであり、新しいDecisionではない。
+D-038 B3 Section settings lifecycleはcommit `2481c4916ca2f694f07d6808a4482bea28c79a80`で`main`へImplemented / Integrated済み。immutable configuration version append、expected-head conflict protection付きhead switch、rename / boundary edit / add / delete・absorption、stable Section row retention、established Day context freeze、next-Day effective query/update、Web settings lifecycleを実装し、source review、automated verification、real local `0005` migration、signed-in browser、persistent nonprod `0005` migration / preservation / deploy / authenticated browser verificationはPASS。persistent nonprod raw console exact countは`NOT_VERIFIED`、production verificationは`NOT_RUN`、Releasedは`NO`である。これはcurrent implementation factであり、新しいDecisionではない。
 
 Current First vertical slice implementation / nonprod verification fact:
 
@@ -38,7 +38,7 @@ Current First vertical slice implementation / nonprod verification fact:
 - current B2 canonical projectionはSection内でplanned start NULLを先に`position`順、non-nullをminute昇順・同minute `position`順で返す
 - SetEntryPlannedStartはestablished Day contextからSectionを解決してplacement / order / revision / operation resultをatomicに確定し、MoveEntryはplanned startをclear、ReorderはNULLまたは同一minute cohort内へ制限する
 - UpdateSectionConfigurationはimmutable version/itemsをappendし、expected current headを検証してheadをatomicに切り替える。新しいactive configurationから削除したSectionもstable row / prior version / established Day contextには保持し、established Dayをrewriteしない
-- persistent nonprod remote migration / schema / FK / active Execution partial UNIQUE indexはPASS
+- persistent nonprod remote migrations `0001`〜`0005` / schema / FK / active Execution partial UNIQUE indexはPASS
 - persistent nonprod remote runtime smokeでCreate Project / Add Task+Entry / Reorder / Start / Complete / retry / conflict / reload recoveryをPASS
 
 上記はcurrent implementation / verification factであり、将来永続化方式を固定する新しいApproved Decisionではない。
@@ -150,7 +150,7 @@ Current implementation fact:
 - revision conflict時はlatest canonical configurationをreloadしてstale draftをresetし、ユーザーが再編集した場合だけnew head基準で保存する
 - infrastructure ambiguityではexact original UpdateSectionConfiguration operationだけをretry対象として保持する
 
-D-031〜D-037でDay planning / Routine target semanticsが追加され、D-038で次のDay dogfood persistence stagingとしてB1 / B2 / B3がApprovedされた。B1はPR #13で、D-039のB2 runtimeはcommit `316ad0d88f0f88d1445991904da587b1e0987dab`、D-038のB3 runtimeはcommit `2481c4916ca2f694f07d6808a4482bea28c79a80`で`main`へImplemented / Integrated済み。B1 / B2はlocal + persistent nonprod evidenceがPASS。B3はlocal evidenceがPASS、persistent nonprod / productionは`NOT_RUN`。B1 real Japanese IMEも`NOT_RUN`。`docs/DESIGN.md` Draftのbroader Day Table interaction、broader Settings navigation、icon / accent等は未実装。
+D-031〜D-037でDay planning / Routine target semanticsが追加され、D-038で次のDay dogfood persistence stagingとしてB1 / B2 / B3がApprovedされた。B1はPR #13で、D-039のB2 runtimeはcommit `316ad0d88f0f88d1445991904da587b1e0987dab`、D-038のB3 runtimeはcommit `2481c4916ca2f694f07d6808a4482bea28c79a80`で`main`へImplemented / Integrated済み。B1 / B2 / B3はlocal + persistent nonprod evidenceがPASS。B3 persistent nonprod raw console exact countは`NOT_VERIFIED`、B3 productionとB1 real Japanese IMEは`NOT_RUN`。`docs/DESIGN.md` Draftのbroader Day Table interaction、broader Settings navigation、icon / accent等は未実装。
 
 以下の具体方式・scopeはOpen:
 
@@ -373,7 +373,7 @@ planned Placeとobserved LocationSnapshotの分離、optional best-effort Start 
 
 Native UIをWeb React codeの直接流用前提にしない方向はD-020でApproved済み。
 
-First Server + Web vertical slice、D-038 B1 / B3、D-039 B2はImplemented / Integrated済み。B1 / B2 local + persistent nonprod evidenceはPASS。B3 source / automated / real local migration / signed-in browser evidenceはPASS、persistent nonprod / productionは`NOT_RUN`。B1 real Japanese IMEは`NOT_RUN`、Releasedは`NO`。
+First Server + Web vertical slice、D-038 B1 / B3、D-039 B2はImplemented / Integrated済み。B1 / B2 / B3 local + persistent nonprod evidenceはPASS。B3 remote raw console exact countは`NOT_VERIFIED`、B3 productionは`NOT_RUN`。B1 real Japanese IMEは`NOT_RUN`、Releasedは`NO`。
 
 以下はOpen:
 
@@ -399,6 +399,7 @@ Resolved / current fact:
 - B1 `0003` migration / preservation / authenticated runtime / browser flowは2026-08-29にPASS
 - B2 `0004` local migration / preservation / authenticated local browser flowは2026-08-29にPASS
 - B2 persistent nonprod `0004` migration / preservation / deployed runtime / authenticated browser verificationは2026-08-29にPASS
+- B3 persistent nonprod `0005` migration / preservation / Worker version `0a47ad68-0133-408f-9ce7-d35dcd3b99cb` / authenticated browser B save・current-Day freeze・immutable C restoreは2026-08-29にPASS。raw console exact countは`NOT_VERIFIED`
 - B2 verificationでdirect bootstrap POSTとpublic signup remote POSTは`NOT_RUN`。この2項目をremote PASSへ含めない
 - temporary bootstrap enable -> bootstrap -> disable -> token removalはPASS
 - final bootstrap postureはdisabled、`BOOTSTRAP_TOKEN`削除済み

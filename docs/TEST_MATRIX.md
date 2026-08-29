@@ -1,6 +1,6 @@
 # Test Matrix
 
-First Server + Web vertical slice、D-038 B1 / B3、D-039 B2は実装・main統合済み。B1 / B2 local + persistent non-production verificationはPASS。B3 local implementation / migration / signed-in browser verificationはPASSだがpersistent non-productionは`NOT_RUN`。B1 / B2 / B3 production verificationは`NOT_RUN`。Product runtime全体はまだVerified / Releasedではない。
+First Server + Web vertical slice、D-038 B1 / B3、D-039 B2は実装・main統合済み。B1 / B2 / B3 local + persistent non-production verificationはPASS。B3 remote raw console warning / error exact countは`NOT_VERIFIED`。B1 / B2 / B3 production verificationは`NOT_RUN`。Product runtime全体はまだVerified / Releasedではない。
 
 この文書はverification requirementとcurrent evidenceの正本とする。
 
@@ -341,8 +341,78 @@ real localで利用したSection dataとtemporary B/Cはuser-specific dogfood da
 | B3-WEB-HISTORY-01 | Web / History | B保存とreload後もcurrent Dayはhistorical contextを表示し、settingsだけがlatest headを表示する | Approved (D-038) | PASS |
 | B3-LOCAL-DB-01 | Migration / Integrity | real local APP DBをprivate backup後に0005へupgradeし、pre-existing identity/contentとintegrityを保持する | Approved (D-038) | PASS |
 | B3-BROWSER-01 | Web / Browser | signed-in real local browserでB3 draft/save/freeze/reload/immutable restoreを検証する | Approved (D-038) | PASS |
-| B3-REMOTE-01 | Remote nonprod | B3 migration / runtime / authenticated browser flowをpersistent nonprodで検証する | Approved (D-038) | NOT_RUN |
+| B3-REMOTE-01 | Remote nonprod | B3 migration / runtime / authenticated browser flowをpersistent nonprodで検証する | Approved (D-038) | PASS |
 | B3-PROD-01 | Production | B3 production migration / smokeを検証する | Approved (D-038) | NOT_RUN |
+
+## Persistent non-production B3 remote verification evidence — 2026-08-29
+
+Source / environment:
+
+- source / `main`: `d8d48c4e764958d7a0e5652cf6ed6cbd7b895e43`（B3 implementation `2481c4916ca2f694f07d6808a4482bea28c79a80`を含む）
+- Worker: `taskchute-web-nonprod`
+- URL: `https://taskchute-web-nonprod.taskfulness-sync.workers.dev`
+- pre-B3 Worker version: `23706fe1-5359-43c2-9fef-09b5e8ab714d`
+- deployed Worker version: `0a47ad68-0133-408f-9ce7-d35dcd3b99cb`
+- AUTH_DB: `taskchute-auth-nonprod` / `60085f8d-0c4e-4c15-98e9-3ce178398041`
+- APP_DB: `taskchute-app-nonprod` / `6ad7e35f-5d03-4be3-9b00-46cd713a51c3`
+
+Local / preflight gate:
+
+- Worker / D1: `91 PASS / 91`
+- Web: `55 PASS / 55`
+- isolated migration regression: `1 scenario / 32 data/schema checks PASS`
+- typecheck / `git diff --check`: `PASS`
+- pre-deploy root / unauthenticated protected API: `200 / 401`
+- `RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、expected bindings、APP pendingは`0005_dogfood_day_b3.sql`のみ、AUTH pending 0
+- APP `PRAGMA quick_check = ok`、FK violations 0、active Execution 0、duplicate active Execution 0、Sectionなし + non-null planned start 0
+
+Backup / migration / preservation:
+
+- private ignored full APP exportを作成・検証: `PASS`
+- backup: 44,795 bytes / SHA-256 `1F37B2F93360368DF748BE2535605DA58A3868E4D7BF95BC054BB2F6ED638411`
+- isolated SQLite restore、restored quick check / FK: `PASS / ok / 0`
+- pre-migration counts: app_users 1、auth_subject_mappings 1、projects 1、sections 3、taskchute_days 2、tasks 11、entries 11、executions 3、operations 35、configuration versions / heads / items `1 / 1 / 3`、Day contexts 6
+- `0005_dogfood_day_b3.sql`: `PASS`、7 commands、post-migration pending 0
+- migration直後の13-table identity / content fingerprints、current Day context、Section configuration head semanticsはpre-migrationと一致
+- `UpdateSectionConfiguration` command constraint、B1/B2 indexes、one-active-Execution indexを保持
+
+Build / deployment / security:
+
+- `CLOUDFLARE_ENV=nonprod` build、generated config inspection、dry-run: `PASS`
+- generated Worker / vars / D1 names and IDsはexpected nonprodだけを参照
+- upload: 1,728.23 KiB / gzip 361.20 KiB、startup 39 ms
+- deployed Worker version: `0a47ad68-0133-408f-9ce7-d35dcd3b99cb`
+- post-deploy root: 3 consecutive 200、unauthenticated Day / Section configuration API: 401
+- direct bootstrap POST: `NOT_RUN`
+- public signup remote POST: `NOT_RUN`
+- production、secret / credential / binding / resource mutation: none
+
+Authenticated B3 browser evidence:
+
+- existing signed-in persistent nonprod browser sessionを使用。bootstrap / credential / account operationなし
+- effective-timing copy、malformed shared-boundary raw value同期、invalid draftでSave/Add/Delete disable、valid valueで復帰: `PASS`
+- Add draftのmidpoint split / gapless + Cancel、non-last / last Delete absorption + Cancel、one-Section delete disable: `PASS`
+- draft-only検証後もversions / items / operations `1 / 3 / 35`、head不変
+- temporary immutable Bをnormal Web UIで保存し、success feedbackとreload persistenceを確認: `PASS`
+- B保存後もcurrent Day identity / establishment context / placement revision、historical context、Task / Entry / Execution / planned start / canonical orderはpre-test snapshotから不変: `PASS`
+- pre-test semanticsを新immutable Cとしてnormal Web UIで保存し、active semanticsをexact restore: `PASS`
+- final reloadでcurrent Day freezeとsettings semantic equalityを再確認: `PASS`
+- verification configuration / Section rangeはuser-specific nonprod dataであり、Product defaultではない
+- visible browser error: none observed
+- raw console warning / error exact count: `NOT_VERIFIED`
+- raw console境界はDomain / persistence / visible browser flowのPASSをinvalidateしない
+- next-Day materialization: automated `PASS` / remote real-browser `NOT_RUN`
+
+Final integrity / evidence boundary:
+
+- APP / AUTH pending migration: `0 / 0`
+- APP `PRAGMA quick_check = ok`、FK violations 0、active Execution 0、duplicate active Execution 0、Sectionなし + non-null planned start 0
+- pre-existing app user / mapping / Project / Section / Day / Task / Entry / Execution / operation / Day-context rowsを保持
+- expected delta only: configuration versions `+2`、items `+6`、operations `+2`（両方`UpdateSectionConfiguration`）
+- Task / Entry / Execution delta: `0 / 0 / 0`
+- AUTH user / account / mapping: `1 / 1 / 1`、auth subject -> APP mapping整合。AUTH migration / explicit SQL write、credential/hash/token/secret取得なし
+- B3 production verification: `NOT_RUN`
+- Released: `NO`
 
 ## Persistent non-production B2 remote verification evidence — 2026-08-29
 
