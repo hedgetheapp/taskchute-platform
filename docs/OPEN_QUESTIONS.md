@@ -131,7 +131,7 @@ Current implementation fact:
 - retained operation中はunrelated lifecycle / reorder mutationをdisableし、旧operationを別操作から暗黙再送しない
 - current DayBoard外のEntryに属するactive Executionもheader actionからComplete可能
 
-D-031〜D-037でDay planning / Routine target semanticsが追加され、D-038で次のDay dogfood persistence stagingとしてB1 / B2 / B3がApprovedされた。B1はPR #13で`main`へImplemented / Integrated済みでlocal evidenceはPASSだが、persistent nonprod remote verificationは`NOT_RUN`。`docs/DESIGN.md` Draftのbroader Day Table interactionとB2 / B3は未実装。
+D-031〜D-037でDay planning / Routine target semanticsが追加され、D-038で次のDay dogfood persistence stagingとしてB1 / B2 / B3がApprovedされた。B1はPR #13で`main`へImplemented / Integrated済みで、local evidenceと2026-08-29 persistent nonprod migration / runtime / browser verificationはPASS。production verificationとreal Japanese IMEは`NOT_RUN`。`docs/DESIGN.md` Draftのbroader Day Table interactionとB2 / B3は未実装。
 
 以下の具体方式・scopeはOpen:
 
@@ -355,7 +355,7 @@ planned Placeとobserved LocationSnapshotの分離、optional best-effort Start 
 
 Native UIをWeb React codeの直接流用前提にしない方向はD-020でApproved済み。
 
-First Server + Web vertical sliceとD-038 B1はImplemented / Integrated済み。B1 local evidenceはPASS、persistent nonprod remote verificationは`NOT_RUN`。B2（planned start + derived placement/order）とB3（Section settings lifecycle）は未実装。
+First Server + Web vertical sliceとD-038 B1はImplemented / Integrated済み。B1 local evidenceとpersistent nonprod migration / runtime / browser verificationはPASS。production verificationとreal Japanese IMEは`NOT_RUN`、Releasedは`NO`。B2（planned start + derived placement/order）とB3（Section settings lifecycle）は未実装。
 
 以下はOpen:
 
@@ -378,6 +378,7 @@ Resolved / current fact:
 - persistent nonprod D1 resourcesは`apac` location hint、jurisdictionなしで作成済み
 - remote migrations / schema / FK / active Execution indexはPASS
 - persistent nonprod Worker deploy / runtime smokeはPASS
+- B1 `0003` migration / preservation / authenticated runtime / browser flowは2026-08-29にPASS
 - temporary bootstrap enable -> bootstrap -> disable -> token removalはPASS
 - final bootstrap postureはdisabled、`BOOTSTRAP_TOKEN`削除済み
 - observed smoke scopeではFree-plan-shaped Worker/D1 limit errorなし

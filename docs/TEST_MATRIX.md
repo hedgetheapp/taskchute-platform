@@ -1,6 +1,6 @@
 # Test Matrix
 
-First Server + Web vertical sliceとD-038 B1は実装・main統合済み。B1 local evidenceはPASS、B1 remote / production verificationは`NOT_RUN`。persistent non-productionのpre-B1 remote runtime / deployed Worker verificationはPASS。Product runtime全体はまだVerified / Releasedではない。
+First Server + Web vertical sliceとD-038 B1は実装・main統合済み。B1 local evidenceとpersistent non-productionでのB1 migration / runtime / browser verificationはPASS、B1 production verificationは`NOT_RUN`。persistent non-productionのpre-B1 remote runtime / deployed Worker verificationもPASS。Product runtime全体はまだVerified / Releasedではない。
 
 この文書はverification requirementとcurrent evidenceの正本とする。
 
@@ -204,7 +204,7 @@ Real local evidence — 2026-08-28, `Asia/Tokyo`:
 - reload persistence: `PASS`
 - browser unexpected console errors: `0`
 - real Japanese IME: `NOT_RUN`
-- B1 persistent nonprod / production verification: `NOT_RUN / NOT_RUN`
+- B1 persistent nonprod / production verification: `PASS / NOT_RUN`
 - Integrated to `main` / Released: `YES / NO`
 
 local dogfoodで利用したSection set / rangesはuser-specific verification dataであり、Product default evidenceとして扱わない。
@@ -228,8 +228,85 @@ local dogfoodで利用したSection set / rangesはuser-specific verification da
 | B1-BROWSER-05 | Complete | CompleteがExecutionをexactly once終了しactive Executionを0へ戻し、placement revisionを変えず、reload / completed visibility toggleで保持される | PASS |
 | B1-BROWSER-06 | Reorder | natural planned cohortでpointer / Shift+Arrow reorderを行い、running / completed boundaryを越えずcanonical orderへ復元できる | PASS |
 | B1-IME-01 | Web / IME | real OS Japanese IME composition Enterがpremature submitせず、normal Enterでexactly one作成する | NOT_RUN |
-| B1-REMOTE-01 | Remote nonprod | B1 migration / runtime / browser flowをpersistent nonprodで検証する | NOT_RUN |
+| B1-REMOTE-01 | Remote nonprod | B1 migration / runtime / browser flowをpersistent nonprodで検証する | PASS |
 | B1-PROD-01 | Production | B1 production migration / smokeを検証する | NOT_RUN |
+
+## Persistent non-production B1 remote verification evidence — 2026-08-29
+
+Source / deployment:
+
+- source / `main`: `779f9d18dab79062679dec696657a5addc6539b2`
+- time-dependent test gate fix: integrated in the same source
+- Worker: `taskchute-web-nonprod`
+- URL: `https://taskchute-web-nonprod.taskfulness-sync.workers.dev`
+- deployed version: `b8d7df82-baa3-4162-adbf-c0ecb65dcc84`
+- AUTH_DB: `taskchute-auth-nonprod` / `60085f8d-0c4e-4c15-98e9-3ce178398041`
+- APP_DB: `taskchute-app-nonprod` / `6ad7e35f-5d03-4be3-9b00-46cd713a51c3`
+- observed APP primary: NRT / APAC context
+
+Local gate before remote:
+
+- typecheck / build / `git diff --check`: `PASS`
+- Worker / D1 tests: `79 PASS / 0 FAIL`
+- Web tests: `40 PASS / 0 FAIL`
+- migration regression: `1 scenario / 15 checks PASS`
+
+Migration / preservation:
+
+- pre-migration pending: APPは`0003_dogfood_day_b1.sql`のみ / AUTH 0
+- private ignored APP backup captured before migration: `PASS`
+- pre/post APP `PRAGMA quick_check`: `ok`
+- pre/post APP foreign-key violations: `0`
+- pre/post active Execution: `0`
+- `0003_dogfood_day_b1.sql`: `PASS`、standard Wrangler migration tracking、31 commands executed、pending after 0
+- `entries.section_id`: nullable
+- `entries.estimate_seconds`: exists / nullable
+- B1 tables / indexes: present
+- pre-existing core row counts、Task / Entry / Execution / operation identity fingerprints: preserved
+- legacy Section contexts: authoritative timeを推測せずunknownを保持
+- initial configuration前のversions / heads / items: `0 / 0 / 0`
+
+Deployment / security:
+
+- root: 200 / unauthenticated protected API: 401
+- `BOOTSTRAP_ENABLED=false`
+- bootstrap route: prior runで5回連続404
+- secret / resource / binding / production changes: none
+- existing persistent nonprod account authenticated successfully; auth subject -> APP user mapping preserved
+
+Authenticated B1 runtime / browser evidence:
+
+- current TaskChuteDay: `2026-08-29` / `2026-08-28T19:00:00Z`–`2026-08-29T19:00:00Z`
+- initial Section configuration: `PASS`、versions / heads / items = `1 / 1 / 3`
+- verification-only ranges: Morning `04:00–12:00` / Day `12:00–20:00` / Evening `20:00–28:00`。Product defaultではない
+- current Day contexts: known timed contextsへ確定
+- historical `2026-08-22` contexts: legacy unknownのまま保持
+- clearly labeled B1 verification Entry 3件を作成し残置。cleanup / deleteは未実施
+- `Sectionなし`: create / reloadでnull Section保持 `PASS`
+- estimate: 15分 / 900秒、group total 15分、placement revision不変 `PASS`
+- MoveEntry: `Sectionなし -> Morning -> Sectionなし`、revision `3 -> 4 -> 5`、reload persistence `PASS`
+- Reorder: revision 3のstale requestは`revision_conflict`、mixed orderなし。fresh reorder `5 -> 6`、reload persistence `PASS`
+- Start from `Sectionなし`: actual current Sectionをexactly oneの`Day`へ解決し、`Sectionなし -> Day`、revision `6 -> 7`、running、Execution exactly one、Runner / reload persistence `PASS`
+- Complete: completed、ended Execution exactly one、active Execution 0、revision 7維持、reload persistence `PASS`
+- browser flow: Day / ranges / `Sectionなし` / create / estimate / move / reorder / stale conflict / Start / Runner / Complete / reload `PASS`
+- unexpected browser console warnings / errors: 0
+
+Remote retry evidence boundary:
+
+- exact same-operation initial Section configuration retry: `NOT_RUN`
+- exact same-operation unsectioned Start retry: `NOT_RUN`
+- exact same-operation Complete retry: `NOT_RUN`
+- 上記3項目をremote実行済みとは扱わない。一方、`B1-REMOTE-01`のcanonical requirementはB1 migration / runtime / browser flowであり、このremote evidenceで満たした。same-operation retry semanticsは独立したcurrent PASS requirement / evidenceである`RUNTIME-OP-01`、`CORE-LIFE-01`、`CORE-LIFE-02`、`B1-CONFIG-01`、`B1-START-02`、79-PASS Worker suite、および2026-08-22 persistent nonprodのStart / Complete retry PASSでcoverageされている。このため3件のremote retry `NOT_RUN`を明示したまま`B1-REMOTE-01`を`PASS`とする。
+
+Final:
+
+- APP `PRAGMA quick_check`: `ok`
+- APP foreign-key violations: `0`
+- active Execution: `0`
+- pending migrations: `0`
+- `B1-IME-01`: `NOT_RUN`
+- `B1-PROD-01` / production verification: `NOT_RUN`
+- Released: `NO`
 
 ## Routine / Documents
 
