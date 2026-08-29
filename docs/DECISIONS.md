@@ -642,6 +642,8 @@ Dogfood Dayの次のimplementationはsmall vertical sliceを維持し、以下�
 
 B1へplanned startまで同時投入せず、Section configuration / nullable placement / Start placement / estimateを先にdogfood可能にする。
 
-D-026の見積semantics自体はApproved済みだが、B1 migrationで用いるexact physical unit / column representation / storage safety limitはまだ本Decisionで固定しない。D-031のplanned-start physical representation、manual tie-break persistence、planned-start mutationのexact command / retry contractもB2実装前に別途確定する。
+D-026のEntry見積はB1 persistenceで`estimate_seconds INTEGER NULL`として保存する。`NULL`を見積なし、positive integerを秒単位durationとし、blank / user input `0`はrequest fingerprint生成前に`NULL`へnormalizeする。negative valueは禁止し、persisted/API canonical stateで`0`を見積なしの別表現として保持しない。SQLite / JSON / JavaScriptの安全な整数範囲によるtechnical validationは行うが、根拠のないProduct-visible上限を設けない。
 
-Section内部境界をactual instantへ解決するDST disambiguation、Section delete/archive retentionのexact physical model、icon / accent persistence、legacy unknown contextのUI presentation detailは引き続きOpenとする。
+D-031のplanned-start physical representation、manual tie-break persistence、planned-start mutationのexact command / retry contractはB2実装前に別途確定する。
+
+Section logical boundaryをactual instantへ解決するときはTaskChuteDay boundaryと同じTemporal-compatibleな`compatible` disambiguationを利用する。`day.start + logical minutes`ではなく、logical dateから対応するlocal civil date + wall-clock timeをcanonical timezoneで個別に解決し、established Day contextへactual intervalを保存する。Section delete/archive retentionのexact physical model、icon / accent persistence、legacy unknown contextのUI presentation detailは引き続きOpenとする。

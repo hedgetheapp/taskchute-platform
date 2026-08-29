@@ -36,7 +36,7 @@ Current First vertical slice implementation / nonprod verification fact:
 以下はOpen:
 
 - operation result retention / cleanup policy
-- schema evolution / compatibility migration strategy、およびD-038をcurrent tablesへ安全に導入するexact migration / backfill SQL
+- B1 candidate統合後を含むfuture schema evolution / compatibility migration strategy
 - backup / export strategy
 - overload / observability strategy
 - current Execution / lifecycle physical schemaを将来どの条件で見直すか
@@ -131,7 +131,7 @@ Current implementation fact:
 - retained operation中はunrelated lifecycle / reorder mutationをdisableし、旧operationを別操作から暗黙再送しない
 - current DayBoard外のEntryに属するactive Executionもheader actionからComplete可能
 
-D-031〜D-037でDay planning / Routine target semanticsが追加され、D-038で次のDay dogfood persistence stagingとしてB1 / B2 / B3がApprovedされた。`docs/DESIGN.md` DraftではDay Tableのkeyboard-first interaction、fixed left controls、inline edit、column customization、Routine scope popup等を設計している。これらの大部分とD-038のB1以降はcurrent runtimeへ未実装。
+D-031〜D-037でDay planning / Routine target semanticsが追加され、D-038で次のDay dogfood persistence stagingとしてB1 / B2 / B3がApprovedされた。B1はlocal commit candidateへ実装済みだがmain未統合。`docs/DESIGN.md` Draftのbroader Day Table interactionとB2 / B3は未実装。
 
 以下の具体方式・scopeはOpen:
 
@@ -190,13 +190,13 @@ Current lifecycle implementation fact:
 以下はOpen:
 
 - exact Project fields beyond current minimum
-- D-038を実装するexact table / column / index / migration SQL、Section delete/archive retention、icon / accent persistence
+- Section delete/archive retention、icon / accent persistence、およびB1 foundation以後のschema evolution
 - Section summary / collapse preferenceのphysical persistenceとaccount/device syncを将来行うか
 - EntryをTaskChuteDay / Section間で移動するcommand / transaction algorithm
 - future day-specific Section occurrence / override capabilityが必要になる条件
 - Section / TaskChuteDay boundary設定変更時にD-031のplanned-start authorityを適用するexact transaction / recovery UX
 - initial bootstrap / onboardingでuser-selected TaskChuteDay boundaryとdefault Section templateをどう整合させるか
-- B1 Entry見積のexact physical unit / column representation / storage safety limit
+- B1以後に見積の編集履歴 / re-estimation auditやEntry value revisionが必要になる条件（B1 physical representationはD-038で解決済み）
 - planned-startなしmanual orderと同時刻tie-breakを保持するexact persistence / reorder algorithm
 - completed stateを将来Execution historyからderiveするか、stored lifecycle stateとして維持するか
 - Reopen semantics
@@ -226,7 +226,8 @@ PR #5ではactive ExecutionをTaskChuteDay境界で分割せず、current dayへ
 以下はOpen:
 
 - Section以外を含むgeneral extended-time notationの入力range / UX
-- Section logical timeをcanonical timezoneのactual instantへ解決するexact algorithm / DST transition behavior
+- unusual timezone transitionで`compatible` resolution後の内部Section intervalがzero / negativeになる場合のProduct recovery UX（B1の通常resolution ruleはD-038で解決済み）
+- initial Section configuration commandがTaskChuteDay境界をまたぐrare raceでcurrent-Day判定を失った場合のexact retry / recovery UX
 - timezone selection / onboarding UX
 - travel / timezone change behavior
 - boundary / timezone policy変更のeffective timing UX
@@ -354,7 +355,7 @@ planned Placeとobserved LocationSnapshotの分離、optional best-effort Start 
 
 Native UIをWeb React codeの直接流用前提にしない方向はD-020でApproved済み。
 
-First Server + Web vertical sliceはImplemented / Integrated済み。D-038により次のDay dogfood feature sequenceはB1（Section time foundation + `Sectionなし` + Entry見積）→B2（planned start + derived placement/order）→B3（Section settings lifecycle）としてApproved済み。ただしcurrent runtimeへの実装はまだ行っていない。
+First Server + Web vertical sliceはImplemented / Integrated済み。D-038のB1はlocal candidateでImplemented / local verifiedだがmain未統合。B2（planned start + derived placement/order）とB3（Section settings lifecycle）は未実装。
 
 以下はOpen:
 

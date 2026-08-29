@@ -7,10 +7,16 @@ import type {
   CurrentTaskChuteDayProjection,
   CompleteEntryRequest,
   CompleteEntryResult,
+  EstablishInitialSectionConfigurationRequest,
+  EstablishInitialSectionConfigurationResult,
+  MoveEntryRequest,
+  MoveEntryResult,
   ReorderEntriesRequest,
   ReorderEntriesResult,
   StartEntryRequest,
   StartEntryResult,
+  SetEntryEstimateRequest,
+  SetEntryEstimateResult,
 } from "../shared/contracts";
 
 export class ApiClientError extends Error {
@@ -67,5 +73,14 @@ export const api = {
   },
   completeEntry(body: CompleteEntryRequest): Promise<CompleteEntryResult> {
     return requestJson(`/api/v1/entries/${body.entry_id}/complete`, jsonPost("", body));
+  },
+  establishInitialSectionConfiguration(body: EstablishInitialSectionConfigurationRequest): Promise<EstablishInitialSectionConfigurationResult> {
+    return requestJson("/api/v1/section-configurations/initial", jsonPost("", body));
+  },
+  moveEntry(body: MoveEntryRequest): Promise<MoveEntryResult> {
+    return requestJson("/api/v1/taskchute-days/current/entries/move", jsonPost("", body));
+  },
+  setEntryEstimate(body: SetEntryEstimateRequest): Promise<SetEntryEstimateResult> {
+    return requestJson(`/api/v1/entries/${body.entry_id}/estimate`, jsonPost("", body));
   },
 };

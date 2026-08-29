@@ -10,6 +10,7 @@
     "types": "wrangler types worker-configuration.d.ts",
     "test": "vitest run --config vitest.config.ts",
     "test:web": "vitest run --config vitest.web.config.ts",
+    "test:migrations": "node ./scripts/test-app-migrations.mjs",
     "test:all": "npm run test && npm run test:web",
     "migrate:app:local": "wrangler d1 migrations apply taskchute-app-local --local --persist-to .wrangler/state",
     "migrate:auth:local": "wrangler d1 migrations apply taskchute-auth-local --local --persist-to .wrangler/state",

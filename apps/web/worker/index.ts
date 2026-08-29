@@ -4,7 +4,9 @@ import { createProject, isCreateProjectRequest } from "./application/create-proj
 import { HttpError } from "./application/errors";
 import { loadCurrentTaskChuteDay } from "./application/load-current-day";
 import { completeEntry, isCompleteEntryRequest, isStartEntryRequest, startEntry } from "./application/entry-lifecycle";
+import { isMoveEntryRequest, isSetEntryEstimateRequest, moveEntry, setEntryEstimate } from "./application/entry-planning";
 import { isReorderEntriesRequest, reorderEntries } from "./application/reorder-entries";
+import { establishInitialSectionConfiguration, isEstablishInitialSectionConfigurationRequest } from "./application/section-configuration";
 import { createRequestAuth } from "./auth/better-auth";
 import { bootstrapInitialUser, isBootstrapModeEnabled } from "./auth/bootstrap";
 import { resolvePrincipal } from "./auth/principal";
@@ -53,6 +55,24 @@ async function route(request: Request, env: Env): Promise<Response> {
     const body = await readBoundedJson(request);
     if (!isReorderEntriesRequest(body)) throw new HttpError(400, "malformed_request", "Invalid ReorderEntries request");
     return Response.json(await reorderEntries(env.APP_DB, principal.appUserId, body));
+  }
+  if (request.method === "POST" && url.pathname === "/api/v1/section-configurations/initial") {
+    const body = await readBoundedJson(request);
+    if (!isEstablishInitialSectionConfigurationRequest(body)) throw new HttpError(400, "malformed_request", "Invalid initial Section configuration request");
+    return Response.json(await establishInitialSectionConfiguration(env.APP_DB, principal.appUserId, body));
+  }
+  if (request.method === "POST" && url.pathname === "/api/v1/taskchute-days/current/entries/move") {
+    const body = await readBoundedJson(request);
+    if (!isMoveEntryRequest(body)) throw new HttpError(400, "malformed_request", "Invalid MoveEntry request");
+    return Response.json(await moveEntry(env.APP_DB, principal.appUserId, body));
+  }
+  const estimateMatch = url.pathname.match(/^\/api\/v1\/entries\/([^/]+)\/estimate$/);
+  if (request.method === "POST" && estimateMatch) {
+    const body = await readBoundedJson(request);
+    if (estimateMatch[1] !== (body as { entry_id?: unknown })?.entry_id || !isSetEntryEstimateRequest(body)) {
+      throw new HttpError(400, "malformed_request", "Invalid SetEntryEstimate request");
+    }
+    return Response.json(await setEntryEstimate(env.APP_DB, principal.appUserId, body));
   }
   const lifecycleMatch = url.pathname.match(/^\/api\/v1\/entries\/([^/]+)\/(start|complete)$/);
   if (request.method === "POST" && lifecycleMatch) {

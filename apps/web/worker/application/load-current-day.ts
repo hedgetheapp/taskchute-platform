@@ -3,7 +3,7 @@ import type {
   EntryProjection,
   SectionProjection,
 } from "../../src/shared/contracts";
-import { resolveTaskChuteDay } from "../domain/taskchute-day";
+import { resolveSectionIntervals, resolveTaskChuteDay } from "../domain/taskchute-day";
 import { uuidv7 } from "../domain/uuidv7";
 
 interface SettingsRow {
@@ -24,18 +24,34 @@ interface DayRow {
 interface SectionRow {
   id: string;
   title: string;
-  sort_order: number;
+  logical_start_minute: number | null;
+  logical_end_minute: number | null;
+  actual_start_instant: string | null;
+  actual_end_instant: string | null;
+  context_order: number;
+}
+
+interface DaySectionContextRow {
+  section_id: string;
+  configuration_version_id: string | null;
+  title: string;
+  logical_start_minute: number | null;
+  logical_end_minute: number | null;
+  actual_start_instant: string | null;
+  actual_end_instant: string | null;
+  context_order: number;
 }
 
 interface EntryRow {
   entry_id: string;
-  section_id: string;
+  section_id: string | null;
   position: number;
   lifecycle_state: "planned" | "running" | "completed";
   task_id: string;
   task_title: string;
   project_id: string | null;
   project_title: string | null;
+  estimate_seconds: number | null;
 }
 
 interface ExecutionRow {
@@ -64,7 +80,12 @@ function requiredNumber(row: Record<string, unknown>, field: string): number {
 
 function toSectionRow(value: unknown): SectionRow {
   const row = persistenceRecord(value);
-  return { id: requiredString(row, "id"), title: requiredString(row, "title"), sort_order: requiredNumber(row, "sort_order") };
+  const optionalNumber = (field: string) => row[field] === null ? null : requiredNumber(row, field);
+  const optionalString = (field: string) => row[field] === null ? null : requiredString(row, field);
+  return { id: requiredString(row, "id"), title: requiredString(row, "title"),
+    logical_start_minute: optionalNumber("logical_start_minute"), logical_end_minute: optionalNumber("logical_end_minute"),
+    actual_start_instant: optionalString("actual_start_instant"), actual_end_instant: optionalString("actual_end_instant"),
+    context_order: requiredNumber(row, "context_order") };
 }
 
 function toEntryRow(value: unknown): EntryRow {
@@ -79,14 +100,139 @@ function toEntryRow(value: unknown): EntryRow {
   if (projectTitle !== null && typeof projectTitle !== "string") throw new Error("Invalid persistence row: project_title");
   return {
     entry_id: requiredString(row, "entry_id"),
-    section_id: requiredString(row, "section_id"),
+    section_id: row.section_id === null ? null : requiredString(row, "section_id"),
     position: requiredNumber(row, "position"),
     lifecycle_state: lifecycle,
     task_id: requiredString(row, "task_id"),
     task_title: requiredString(row, "task_title"),
     project_id: projectId,
     project_title: projectTitle,
+    estimate_seconds: row.estimate_seconds === null ? null : requiredNumber(row, "estimate_seconds"),
   };
+}
+
+async function readDaySectionContexts(db: D1Database, appUserId: string, dayId: string): Promise<DaySectionContextRow[]> {
+  const result = await db.prepare(`SELECT section_id, configuration_version_id, title, logical_start_minute,
+    logical_end_minute, actual_start_instant, actual_end_instant, context_order
+    FROM taskchute_day_section_contexts WHERE app_user_id = ? AND taskchute_day_id = ?
+    ORDER BY context_order, section_id`).bind(appUserId, dayId).all<DaySectionContextRow>();
+  return result.results;
+}
+
+async function expectedLegacyContexts(db: D1Database, appUserId: string): Promise<DaySectionContextRow[]> {
+  const result = await db.prepare(`SELECT id AS section_id, NULL AS configuration_version_id, title,
+    NULL AS logical_start_minute, NULL AS logical_end_minute, NULL AS actual_start_instant,
+    NULL AS actual_end_instant, sort_order AS context_order FROM sections
+    WHERE app_user_id = ? ORDER BY sort_order, id`).bind(appUserId).all<DaySectionContextRow>();
+  return result.results;
+}
+
+async function configuredDefinitionContexts(
+  db: D1Database,
+  appUserId: string,
+  versionId: string,
+): Promise<DaySectionContextRow[]> {
+  const items = await db.prepare(`SELECT section_id, title, logical_start_minute, logical_end_minute, configuration_order
+    FROM section_configuration_items WHERE app_user_id = ? AND configuration_version_id = ? ORDER BY configuration_order`)
+    .bind(appUserId, versionId).all<{ section_id: string; title: string; logical_start_minute: number; logical_end_minute: number; configuration_order: number }>();
+  return items.results.map((item) => ({
+    section_id: item.section_id,
+    configuration_version_id: versionId,
+    title: item.title,
+    logical_start_minute: item.logical_start_minute,
+    logical_end_minute: item.logical_end_minute,
+    actual_start_instant: null,
+    actual_end_instant: null,
+    context_order: item.configuration_order,
+  }));
+}
+
+async function expectedConfiguredContexts(
+  db: D1Database,
+  appUserId: string,
+  day: DayRow,
+  versionId: string,
+): Promise<DaySectionContextRow[]> {
+  const expected = await configuredDefinitionContexts(db, appUserId, versionId);
+  const intervals = resolveSectionIntervals({ logicalDate: day.logical_date, timezone: day.establishment_timezone,
+    startInstant: day.start_instant, endInstant: day.end_instant }, expected.map((item) => ({
+      logicalStartMinute: item.logical_start_minute!, logicalEndMinute: item.logical_end_minute!,
+    })));
+  return expected.map((item, index) => ({ ...item,
+    actual_start_instant: intervals[index]?.actualStartInstant ?? null,
+    actual_end_instant: intervals[index]?.actualEndInstant ?? null,
+  }));
+}
+
+function assertMaterializedContext(actual: DaySectionContextRow[], expected: DaySectionContextRow[]): void {
+  const fields: Array<keyof DaySectionContextRow> = ["section_id", "configuration_version_id", "title",
+    "logical_start_minute", "logical_end_minute", "context_order"];
+  if (actual.length !== expected.length || actual.some((row, index) => {
+    const expectedRow = expected[index];
+    return !expectedRow || fields.some((field) => row[field] !== expectedRow[field]);
+  })) throw new Error("TaskChuteDay Section context is incomplete or inconsistent");
+}
+
+function assertEstablishedContext(day: DayRow, context: DaySectionContextRow[]): void {
+  const versionIds = new Set(context.map((row) => row.configuration_version_id));
+  if (versionIds.size !== 1) throw new Error("TaskChuteDay Section context mixes configuration versions");
+  const versionId = context[0]?.configuration_version_id ?? null;
+  if (versionId === null) {
+    if (context.some((row) => row.logical_start_minute !== null || row.logical_end_minute !== null
+      || row.actual_start_instant !== null || row.actual_end_instant !== null)) {
+      throw new Error("Legacy TaskChuteDay Section context must keep time ranges unknown");
+    }
+    return;
+  }
+  if (context.some((row) => row.logical_start_minute === null || row.logical_end_minute === null
+    || row.actual_start_instant === null || row.actual_end_instant === null)) {
+    throw new Error("Configured TaskChuteDay Section context has missing intervals");
+  }
+  if (context[0]?.actual_start_instant !== day.start_instant
+    || context.at(-1)?.actual_end_instant !== day.end_instant
+    || context.some((row, index) => {
+      const start = Date.parse(row.actual_start_instant!);
+      const end = Date.parse(row.actual_end_instant!);
+      const next = context[index + 1];
+      return !Number.isFinite(start) || !Number.isFinite(end) || start >= end
+        || (next !== undefined && row.actual_end_instant !== next.actual_start_instant);
+    })) throw new Error("Configured TaskChuteDay Section context actual intervals are inconsistent");
+}
+
+async function ensureDaySectionContext(db: D1Database, appUserId: string, day: DayRow): Promise<void> {
+  const existing = await readDaySectionContexts(db, appUserId, day.id);
+  if (existing.length > 0) {
+    assertEstablishedContext(day, existing);
+    const versionId = existing[0]?.configuration_version_id ?? null;
+    if (versionId !== null) {
+      const expected = await configuredDefinitionContexts(db, appUserId, versionId);
+      assertMaterializedContext(existing, expected);
+    }
+    return;
+  }
+  const version = await db.prepare(`SELECT v.id FROM section_configuration_heads h
+    JOIN section_configuration_versions v ON v.app_user_id = h.app_user_id AND v.id = h.configuration_version_id
+    WHERE h.app_user_id = ? AND v.day_boundary_minutes = ?`)
+    .bind(appUserId, day.establishment_boundary_minutes).first<{ id: string }>();
+  const expected = version
+    ? await expectedConfiguredContexts(db, appUserId, day, version.id)
+    : await expectedLegacyContexts(db, appUserId);
+  if (expected.length > 0) {
+    const expectedJson = JSON.stringify(expected);
+    await db.batch([db.prepare(`INSERT INTO taskchute_day_section_contexts
+      (app_user_id, taskchute_day_id, section_id, configuration_version_id, title, logical_start_minute,
+       logical_end_minute, actual_start_instant, actual_end_instant, context_order)
+      SELECT ?, ?, json_extract(value, '$.section_id'), json_extract(value, '$.configuration_version_id'),
+        json_extract(value, '$.title'), json_extract(value, '$.logical_start_minute'),
+        json_extract(value, '$.logical_end_minute'), json_extract(value, '$.actual_start_instant'),
+        json_extract(value, '$.actual_end_instant'), CAST(json_extract(value, '$.context_order') AS INTEGER)
+      FROM json_each(?) WHERE true
+      ON CONFLICT (app_user_id, taskchute_day_id, section_id) DO NOTHING`)
+      .bind(appUserId, day.id, expectedJson)]);
+  }
+  const materialized = await readDaySectionContexts(db, appUserId, day.id);
+  assertMaterializedContext(materialized, expected);
+  assertEstablishedContext(day, materialized);
 }
 
 export async function materializeCurrentDay(db: D1Database, appUserId: string, nowInstant: string): Promise<DayRow> {
@@ -107,7 +253,10 @@ export async function materializeCurrentDay(db: D1Database, appUserId: string, n
     )
     .bind(appUserId, resolved.logicalDate)
     .first<DayRow>();
-  if (existing) return existing;
+  if (existing) {
+    await ensureDaySectionContext(db, appUserId, existing);
+    return existing;
+  }
 
   await db
     .prepare(
@@ -137,6 +286,7 @@ export async function materializeCurrentDay(db: D1Database, appUserId: string, n
     .bind(appUserId, resolved.logicalDate)
     .first<DayRow>();
   if (!converged) throw new Error("TaskChuteDay materialization did not converge");
+  await ensureDaySectionContext(db, appUserId, converged);
   return converged;
 }
 
@@ -147,10 +297,13 @@ export async function loadCurrentTaskChuteDay(
 ): Promise<CurrentTaskChuteDayProjection> {
   const day = await materializeCurrentDay(db, appUserId, nowInstant);
   const [sectionResult, entryResult, executionResult] = await db.batch([
-    db.prepare("SELECT id, title, sort_order FROM sections WHERE app_user_id = ? ORDER BY sort_order, id").bind(appUserId),
+    db.prepare(`SELECT section_id AS id, title, logical_start_minute, logical_end_minute,
+      actual_start_instant, actual_end_instant, context_order
+      FROM taskchute_day_section_contexts WHERE app_user_id = ? AND taskchute_day_id = ? ORDER BY context_order, section_id`)
+      .bind(appUserId, day.id),
     db
       .prepare(
-        `SELECT e.id AS entry_id, e.section_id, e.position, e.lifecycle_state,
+        `SELECT e.id AS entry_id, e.section_id, e.position, e.lifecycle_state, e.estimate_seconds,
                 t.id AS task_id, t.title AS task_title,
                 p.id AS project_id, p.title AS project_title
            FROM entries e
@@ -165,12 +318,14 @@ export async function loadCurrentTaskChuteDay(
   ]);
   const entryRows = entryResult.results.map(toEntryRow);
   const entriesBySection = new Map<string, EntryProjection[]>();
+  const unsectionedEntries: EntryProjection[] = [];
   for (const row of entryRows) {
     const entry: EntryProjection = {
       id: row.entry_id,
       section_id: row.section_id,
       position: row.position,
       lifecycle_state: row.lifecycle_state,
+      estimate_seconds: row.estimate_seconds,
       task: {
         id: row.task_id,
         title: row.task_title,
@@ -178,15 +333,26 @@ export async function loadCurrentTaskChuteDay(
           row.project_id && row.project_title ? { id: row.project_id, title: row.project_title } : null,
       },
     };
-    const collection = entriesBySection.get(row.section_id) ?? [];
-    collection.push(entry);
-    entriesBySection.set(row.section_id, collection);
+    if (row.section_id === null) unsectionedEntries.push(entry);
+    else {
+      const collection = entriesBySection.get(row.section_id) ?? [];
+      collection.push(entry);
+      entriesBySection.set(row.section_id, collection);
+    }
   }
   const sections: SectionProjection[] = sectionResult.results.map(toSectionRow).map((section) => ({
-    ...section,
+    id: section.id, title: section.title, logical_start_minute: section.logical_start_minute,
+    logical_end_minute: section.logical_end_minute, actual_start_instant: section.actual_start_instant,
+    actual_end_instant: section.actual_end_instant,
+    estimate_total_seconds: (entriesBySection.get(section.id) ?? []).reduce((sum, entry) => sum + (entry.estimate_seconds ?? 0), 0),
     entries: entriesBySection.get(section.id) ?? [],
   }));
-  const nextEntry = sections.flatMap((section) => section.entries).find((entry) => entry.lifecycle_state === "planned") ?? null;
+  const projectedSectionIds = new Set(sections.map((section) => section.id));
+  if ([...entriesBySection.keys()].some((sectionId) => !projectedSectionIds.has(sectionId))) {
+    throw new Error("Entry references a Section outside its TaskChuteDay context");
+  }
+  const nextEntry = [...unsectionedEntries, ...sections.flatMap((section) => section.entries)]
+    .find((entry) => entry.lifecycle_state === "planned") ?? null;
   const activeExecution = executionResult.results[0] as ExecutionRow | undefined;
   return {
     taskchute_day: {
@@ -198,7 +364,9 @@ export async function loadCurrentTaskChuteDay(
       establishment_boundary_minutes: day.establishment_boundary_minutes,
     },
     placement_revision: day.placement_revision,
+    section_configuration_required: sections.length === 0 || sections.some((section) => section.logical_start_minute === null),
     sections,
+    unsectioned_entries: unsectionedEntries,
     active_execution: activeExecution ? {
       id: activeExecution.id,
       entry_id: activeExecution.entry_id,

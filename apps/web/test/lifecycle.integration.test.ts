@@ -45,6 +45,9 @@ beforeAll(async () => {
        establishment_disambiguation, placement_revision, created_at)
       VALUES (?, ?, '2026-08-22', '2026-08-22T00:00:00.000Z', '2026-08-23T00:00:00.000Z', 'UTC', 0, 'compatible', 0, ?)`)
       .bind(dayId, userId, now),
+    env.APP_DB.prepare(`INSERT INTO taskchute_day_section_contexts
+      (app_user_id, taskchute_day_id, section_id, title, context_order) VALUES (?, ?, ?, 'Lifecycle', 0)`)
+      .bind(userId, dayId, sectionId),
     ...taskIds.map((taskId, index) => env.APP_DB.prepare("INSERT INTO tasks (id, app_user_id, title, created_at) VALUES (?, ?, ?, ?)")
       .bind(taskId, userId, `Lifecycle task ${index + 1}`, now)),
     ...entryIds.map((entryId, index) => env.APP_DB.prepare(`INSERT INTO entries
@@ -124,6 +127,9 @@ describe.sequential("ordering and lifecycle increment", () => {
     await env.APP_DB.batch([
       env.APP_DB.prepare("INSERT INTO sections (id, app_user_id, title, sort_order, created_at) VALUES (?, ?, 'Large', 1, ?)")
         .bind(largeSectionId, userId, now),
+      env.APP_DB.prepare(`INSERT INTO taskchute_day_section_contexts
+        (app_user_id, taskchute_day_id, section_id, title, context_order) VALUES (?, ?, ?, 'Large', 1)`)
+        .bind(userId, dayId, largeSectionId),
       ...largeEntries.flatMap(({ taskId, entryId }, index) => [
         env.APP_DB.prepare("INSERT INTO tasks (id, app_user_id, title, created_at) VALUES (?, ?, ?, ?)")
           .bind(taskId, userId, `Large task ${index + 1}`, now),
@@ -214,7 +220,10 @@ describe.sequential("ordering and lifecycle increment", () => {
   });
 
   it("keeps injected Start and Complete failures ambiguous and atomic", async () => {
-    const startRequest = { operation_id: uuidv7(), entry_id: entryIds[1], execution_id: uuidv7() };
+    const plannedEntry = await env.APP_DB.prepare("SELECT id FROM entries WHERE app_user_id = ? AND lifecycle_state = 'planned' ORDER BY id LIMIT 1")
+      .bind(userId).first<string>("id");
+    if (!plannedEntry) throw new Error("missing planned fixture");
+    const startRequest = { operation_id: uuidv7(), entry_id: plannedEntry, execution_id: uuidv7() };
     await expect(startEntry(failingMutationBatch(env.APP_DB), userId, startRequest)).rejects.toMatchObject({ code: "infrastructure_ambiguous" });
     expect(await env.APP_DB.prepare("SELECT lifecycle_state FROM entries WHERE id = ?").bind(startRequest.entry_id).first<string>("lifecycle_state")).toBe("planned");
     expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM executions WHERE id = ?").bind(startRequest.execution_id).first<number>("count")).toBe(0);

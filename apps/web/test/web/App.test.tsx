@@ -5,6 +5,7 @@ import type { CurrentTaskChuteDayProjection, EntryProjection } from "../../src/s
 const mocks = vi.hoisted(() => ({
   login: vi.fn(), logout: vi.fn(), loadDay: vi.fn(), createProject: vi.fn(), addTask: vi.fn(),
   reorderEntries: vi.fn(), startEntry: vi.fn(), completeEntry: vi.fn(),
+  establishInitialSectionConfiguration: vi.fn(), moveEntry: vi.fn(), setEntryEstimate: vi.fn(),
 }));
 
 vi.mock("../../src/web/api", async () => {
@@ -22,6 +23,7 @@ const firstEntry: EntryProjection = {
   section_id: morningId,
   position: 1,
   lifecycle_state: "planned",
+  estimate_seconds: null,
   task: { id: "019c0000-0000-7000-8000-000000000004", title: "Canonical task", project: null },
 };
 const secondEntry: EntryProjection = {
@@ -29,6 +31,7 @@ const secondEntry: EntryProjection = {
   section_id: morningId,
   position: 2,
   lifecycle_state: "planned",
+  estimate_seconds: null,
   task: { id: "019c0000-0000-7000-8000-000000000007", title: "Second task", project: null },
 };
 const thirdEntry: EntryProjection = {
@@ -36,6 +39,7 @@ const thirdEntry: EntryProjection = {
   section_id: morningId,
   position: 3,
   lifecycle_state: "planned",
+  estimate_seconds: null,
   task: { id: "019c0000-0000-7000-8000-000000000010", title: "Third task", project: null },
 };
 
@@ -59,10 +63,14 @@ const emptyDay: CurrentTaskChuteDayProjection = {
     establishment_boundary_minutes: 240,
   },
   placement_revision: 0,
+  section_configuration_required: false,
   sections: [
-    { id: morningId, title: "Morning", sort_order: 0, entries: [] },
-    { id: eveningId, title: "Evening", sort_order: 1, entries: [] },
+    { id: morningId, title: "Morning", logical_start_minute: 240, logical_end_minute: 720,
+      actual_start_instant: "2026-08-22T04:00:00Z", actual_end_instant: "2026-08-22T12:00:00Z", estimate_total_seconds: 0, entries: [] },
+    { id: eveningId, title: "Evening", logical_start_minute: 720, logical_end_minute: 1680,
+      actual_start_instant: "2026-08-22T12:00:00Z", actual_end_instant: "2026-08-23T04:00:00Z", estimate_total_seconds: 0, entries: [] },
   ],
+  unsectioned_entries: [],
   active_execution: null,
   next_entry: null,
 };
@@ -108,6 +116,9 @@ beforeEach(() => {
   mocks.reorderEntries.mockResolvedValue({});
   mocks.startEntry.mockResolvedValue({});
   mocks.completeEntry.mockResolvedValue({});
+  mocks.establishInitialSectionConfiguration.mockResolvedValue({});
+  mocks.moveEntry.mockResolvedValue({});
+  mocks.setEntryEstimate.mockResolvedValue({});
 });
 
 describe("Dogfood Day shell", () => {
@@ -116,9 +127,9 @@ describe("Dogfood Day shell", () => {
     render(<App />);
     expect(await screen.findByRole("region", { name: "DayBoard" })).toBeTruthy();
     expect(screen.getByText("2026-08-22")).toBeTruthy();
-    expect(screen.getByText("Morning")).toBeTruthy();
+    expect(screen.getAllByText("Morning")[0]).toBeTruthy();
     expect(screen.getByText("Canonical task")).toBeTruthy();
-    expect(screen.getByText("Evening")).toBeTruthy();
+    expect(screen.getAllByText("Evening")[0]).toBeTruthy();
     expect(screen.getAllByText("表示するTaskはありません")).toHaveLength(1);
   });
 
@@ -187,8 +198,8 @@ describe("Dogfood Day shell", () => {
   it("traverses visible Section and Row focus with J/K and arrow keys", async () => {
     mocks.loadDay.mockResolvedValue(twoPlannedDay);
     render(<App />);
-    const morning = await screen.findByText("Morning");
-    const summary = morning.closest<HTMLElement>("[data-day-focus-target]")!;
+    const summary = (await screen.findByRole("button", { name: "MorningにTaskを追加" }))
+      .closest<HTMLElement>(".section-summary")!;
     summary.focus();
     expect((document.activeElement as HTMLElement).dataset.focusKey).toBe(`section:${morningId}`);
     fireEvent.keyDown(summary, { key: "j" });
@@ -208,7 +219,7 @@ describe("Dogfood Day shell", () => {
     expect(document.activeElement).toBe(input);
 
     fireEvent.keyDown(input, { key: "Escape" });
-    const summary = screen.getByText("Morning").closest<HTMLElement>("[data-day-focus-target]")!;
+    const summary = screen.getByRole("button", { name: "MorningにTaskを追加" }).closest<HTMLElement>(".section-summary")!;
     summary.focus();
     fireEvent.keyDown(summary, { key: "j", isComposing: true });
     expect(document.activeElement).toBe(summary);
@@ -220,6 +231,7 @@ describe("Dogfood Day shell", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Canonical taskを開始" }));
     await waitFor(() => expect(mocks.startEntry).toHaveBeenCalledTimes(1));
     expect(mocks.startEntry.mock.calls[0][0].entry_id).toBe(firstEntry.id);
+    expect(mocks.startEntry.mock.calls[0][0]).not.toHaveProperty("expected_placement_revision");
     expect(await screen.findByRole("button", { name: "Canonical taskを完了" })).toBeTruthy();
   });
 
@@ -578,8 +590,8 @@ describe("Dogfood Day shell", () => {
     expect(await screen.findByText("Canonical task")).toBeTruthy();
     fireEvent.click(screen.getByRole("checkbox", { name: "実行済みを表示" }));
     expect(screen.queryByText("Canonical task")).toBeNull();
-    expect(screen.getByText("Morning")).toBeTruthy();
-    expect(screen.getByText("1/1 実行済み")).toBeTruthy();
+    expect(screen.getAllByText("Morning")[0]).toBeTruthy();
+    expect(screen.getByText(/1\/1 実行済み/)).toBeTruthy();
   });
 
   it("still creates a Project from the compact auxiliary control", async () => {
@@ -625,5 +637,68 @@ describe("Dogfood Day shell", () => {
     await waitFor(() => expect(mocks.createProject).toHaveBeenCalledTimes(2));
     expect(mocks.createProject.mock.calls[1][0]).toEqual(original);
     expect(original).toMatchObject({ title: "Original title" });
+  });
+
+  it("creates the first Sectionなし Task from the Day toolbar", async () => {
+    mocks.loadDay.mockResolvedValue(emptyDay);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "＋ Taskを追加" }));
+    const input = screen.getByRole("textbox", { name: "SectionなしのTask名" });
+    fireEvent.change(input, { target: { value: "Unsectioned task" } });
+    fireEvent.keyDown(input, { key: "Enter", code: "Enter" });
+    await waitFor(() => expect(mocks.addTask).toHaveBeenCalledTimes(1));
+    expect(mocks.addTask.mock.calls[0][0]).toMatchObject({ title: "Unsectioned task", section_id: null });
+  });
+
+  it("normalizes zero estimate minutes to null before sending the operation", async () => {
+    mocks.loadDay.mockResolvedValue(populatedDay);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskの見積" }));
+    const input = screen.getByRole("textbox", { name: "Canonical taskの見積（分）" });
+    fireEvent.change(input, { target: { value: "0" } });
+    fireEvent.keyDown(input, { key: "Enter", code: "Enter" });
+    await waitFor(() => expect(mocks.setEntryEstimate).toHaveBeenCalledTimes(1));
+    expect(mocks.setEntryEstimate.mock.calls[0][0]).toMatchObject({ entry_id: firstEntry.id, estimate_seconds: null });
+  });
+
+  it("retains only the exact ambiguous estimate operation and blocks unrelated Start", async () => {
+    mocks.loadDay.mockResolvedValue(populatedDay);
+    mocks.setEntryEstimate.mockRejectedValueOnce(new ApiClientError("ambiguous", 503, true, "infrastructure_ambiguous")).mockResolvedValueOnce({});
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskの見積" }));
+    const input = screen.getByRole("textbox", { name: "Canonical taskの見積（分）" });
+    fireEvent.change(input, { target: { value: "10" } });
+    fireEvent.keyDown(input, { key: "Enter", code: "Enter" });
+    const retry = await screen.findByRole("button", { name: "保留中の見積保存を再試行" });
+    expect((screen.getByRole("button", { name: "Canonical taskを開始" }) as HTMLButtonElement).disabled).toBe(true);
+    const original = mocks.setEntryEstimate.mock.calls[0][0];
+    fireEvent.click(retry);
+    await waitFor(() => expect(mocks.setEntryEstimate).toHaveBeenCalledTimes(2));
+    expect(mocks.setEntryEstimate.mock.calls[1][0]).toEqual(original);
+  });
+
+  it("moves a planned Entry directly to Sectionなし with the current placement revision", async () => {
+    mocks.loadDay.mockResolvedValue(populatedDay);
+    render(<App />);
+    fireEvent.change(await screen.findByRole("combobox", { name: "Canonical taskのSection" }), { target: { value: "" } });
+    await waitFor(() => expect(mocks.moveEntry).toHaveBeenCalledTimes(1));
+    expect(mocks.moveEntry.mock.calls[0][0]).toMatchObject({ entry_id: firstEntry.id, section_id: null, expected_placement_revision: 1 });
+  });
+
+  it("submits only explicitly entered initial Section ranges", async () => {
+    const legacyDay = { ...emptyDay, section_configuration_required: true,
+      sections: emptyDay.sections.map((section) => ({ ...section, logical_start_minute: null, logical_end_minute: null,
+        actual_start_instant: null, actual_end_instant: null })) };
+    mocks.loadDay.mockResolvedValue(legacyDay);
+    render(<App />);
+    const gate = await screen.findByRole("region", { name: "初期Section時間帯設定" });
+    const inputs = gate.querySelectorAll<HTMLInputElement>("input");
+    ["04:00", "12:00", "12:00", "28:00"].forEach((value, index) => fireEvent.change(inputs[index]!, { target: { value } }));
+    fireEvent.click(screen.getByRole("button", { name: "この時間帯で確定" }));
+    await waitFor(() => expect(mocks.establishInitialSectionConfiguration).toHaveBeenCalledTimes(1));
+    expect(mocks.establishInitialSectionConfiguration.mock.calls[0][0].items).toEqual([
+      { section_id: morningId, logical_start_minute: 240, logical_end_minute: 720 },
+      { section_id: eveningId, logical_start_minute: 720, logical_end_minute: 1680 },
+    ]);
   });
 });

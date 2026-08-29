@@ -248,3 +248,17 @@ Mitigation direction:
 - observed Free-plan-shaped feasibility PASSはproduction traffic / sustained loadを代表しない
 
 このRisk記録はproduction architecture、paid plan adoption、custom domain、cleanup policyを決定しない。
+
+## R-014 — B1 Entry estimate concurrent update risk
+Related: D-020, D-026, D-038
+
+B1 local candidateのEntry見積編集はoperation retry safetyを持つが、Entry value revision / expected-value preconditionは導入していない。複数deviceが同じEntryの見積をconcurrentに編集した場合、確定順によるlast-write-winsとなり、一方の編集意図がsilentに上書きされる可能性がある。
+
+Current mitigation / scope:
+
+- B1では見積をEntry-scopedな`estimate_seconds INTEGER NULL`としてcanonical化し、同一operation retryによる重複副作用を避ける
+- estimate editはplacement mutationと分離し、`placement_revision`を変更しない
+- current single-user dogfood scopeでは既知のnon-blocking limitationとして明示する
+- multi-device利用でMaterialな競合が観測された場合、Entry value revision、expected value、conflict UI等をB1以後の設計候補として評価する
+
+このRisk記録はlast-write-winsを長期Product semanticsとしてApprovedするものではない。見積編集履歴 / re-estimation auditやEntry value revisionを導入する条件は`docs/OPEN_QUESTIONS.md`で管理する。

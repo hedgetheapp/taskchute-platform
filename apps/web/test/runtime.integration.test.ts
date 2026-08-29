@@ -681,6 +681,54 @@ describe.sequential("production runtime bootstrap slice", () => {
       .bind(appUserId, taskRequest.operation_id).first()).toEqual(taskRowBefore);
   });
 
+  it("wires initial Section configuration, MoveEntry, and SetEntryEstimate HTTP routes", async () => {
+    const before = await json<{
+      placement_revision: number;
+      section_configuration_required: boolean;
+      taskchute_day: { id: string; establishment_boundary_minutes: number };
+      sections: Array<{ id: string; entries: Array<{ id: string; lifecycle_state: string }> }>;
+    }>(await browser.fetch("/api/v1/taskchute-days/current"));
+    expect(before.section_configuration_required).toBe(true);
+    const configurationVersionId = uuidv7();
+    const configuration = await browser.post("/api/v1/section-configurations/initial", {
+      operation_id: uuidv7(),
+      configuration_version_id: configurationVersionId,
+      taskchute_day_id: before.taskchute_day.id,
+      items: before.sections.map((section, index) => ({
+        section_id: section.id,
+        logical_start_minute: before.taskchute_day.establishment_boundary_minutes + index * (1440 / before.sections.length),
+        logical_end_minute: before.taskchute_day.establishment_boundary_minutes + (index + 1) * (1440 / before.sections.length),
+      })),
+    });
+    expect(configuration.status).toBe(200);
+    expect(await json<object>(configuration)).toEqual({
+      configuration_version_id: configurationVersionId,
+      taskchute_day_id: before.taskchute_day.id,
+    });
+
+    const source = before.sections.flatMap((section) => section.entries)
+      .find((entry) => entry.lifecycle_state === "planned");
+    if (!source) throw new Error("Missing planned HTTP MoveEntry fixture");
+    const moved = await browser.post("/api/v1/taskchute-days/current/entries/move", {
+      operation_id: uuidv7(), entry_id: source.id, taskchute_day_id: before.taskchute_day.id,
+      section_id: null, expected_placement_revision: before.placement_revision,
+    });
+    expect(moved.status).toBe(200);
+    const movedBody = await json<{ placement_revision: number }>(moved);
+    expect(movedBody).toMatchObject({ entry_id: source.id, section_id: null,
+      placement_revision: before.placement_revision + 1 });
+
+    const estimated = await browser.post(`/api/v1/entries/${source.id}/estimate`, {
+      operation_id: uuidv7(), entry_id: source.id, estimate_seconds: 1200,
+    });
+    expect(estimated.status).toBe(200);
+    expect(await json<object>(estimated)).toEqual({ entry_id: source.id, estimate_seconds: 1200 });
+    const after = await json<{ section_configuration_required: boolean; unsectioned_entries: Array<{ id: string; estimate_seconds: number | null }> }>(
+      await browser.fetch("/api/v1/taskchute-days/current"));
+    expect(after.section_configuration_required).toBe(false);
+    expect(after.unsectioned_entries.find((entry) => entry.id === source.id)?.estimate_seconds).toBe(1200);
+  });
+
   it("wires Reorder, Start, and Complete HTTP routes and rejects path/body Entry mismatch", async () => {
     const before = await json<{
       placement_revision: number;
@@ -702,6 +750,12 @@ describe.sequential("production runtime bootstrap slice", () => {
 
     const entryId = reorderedIds[0];
     const executionId = uuidv7();
+    const nonCanonical = await browser.post(`/api/v1/entries/${entryId}/start`, {
+      operation_id: uuidv7(), entry_id: entryId, execution_id: uuidv7(),
+      expected_placement_revision: before.placement_revision + 1,
+    });
+    expect(nonCanonical.status).toBe(400);
+    expect((await json<{ error: { code: string } }>(nonCanonical)).error.code).toBe("malformed_request");
     const mismatch = await browser.post(`/api/v1/entries/${reorderedIds[1]}/start`, {
       operation_id: uuidv7(), entry_id: entryId, execution_id: executionId,
     });
