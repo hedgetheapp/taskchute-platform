@@ -21,8 +21,7 @@ export function isAddTaskToDayRequest(value: unknown): value is AddTaskToDayRequ
     body.title.length <= 300 &&
     typeof body.taskchute_day_id === "string" &&
     isUuidV7(body.taskchute_day_id) &&
-    typeof body.section_id === "string" &&
-    isUuidV7(body.section_id) &&
+    (body.section_id === null || (typeof body.section_id === "string" && isUuidV7(body.section_id))) &&
     Number.isInteger(body.expected_placement_revision) &&
     Number(body.expected_placement_revision) >= 0
   );
@@ -71,7 +70,11 @@ export async function addTaskToDay(
     db
       .prepare("SELECT placement_revision FROM taskchute_days WHERE app_user_id = ? AND id = ?")
       .bind(appUserId, request.taskchute_day_id),
-    db.prepare("SELECT id FROM sections WHERE app_user_id = ? AND id = ?").bind(appUserId, request.section_id),
+    request.section_id
+      ? db.prepare(`SELECT section_id AS id FROM taskchute_day_section_contexts
+          WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id = ?`)
+        .bind(appUserId, request.taskchute_day_id, request.section_id)
+      : db.prepare("SELECT 1 AS id"),
     request.project_id
       ? db.prepare("SELECT id FROM projects WHERE app_user_id = ? AND id = ?").bind(appUserId, request.project_id)
       : db.prepare("SELECT 1 AS id"),
@@ -79,7 +82,7 @@ export async function addTaskToDay(
     db.prepare("SELECT id FROM entries WHERE id = ?").bind(request.entry_id),
     db
       .prepare(
-        "SELECT COALESCE(MAX(position), 0) + 1 AS next_position FROM entries WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id = ?",
+        "SELECT COALESCE(MAX(position), 0) + 1 AS next_position FROM entries WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id IS ?",
       )
       .bind(appUserId, request.taskchute_day_id, request.section_id),
   ]);

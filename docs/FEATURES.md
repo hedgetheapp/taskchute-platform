@@ -13,11 +13,11 @@ Status values: Planned / In design / Implemented / Verified
 | Task / Entry identity | Implemented | separate stable UUIDv7 identityをruntimeへ実装。ID timestampはordering authorityにしない |
 | TaskChuteDay | Implemented | explicit timezone/boundary bootstrap、materialized interval/context、compatible DST semanticsをruntimeへ実装 |
 | Project | Implemented | CreateProject + optional Task project relationを実装。Day UIではProject dropdownからquick create、検索、設定画面でuser-defined orderを扱う方向をDESIGNで定義 |
-| Section | In design | user-global stable persistence / bootstrapは実装。D-030でgapなしtime range、Sectionなし、historical context、capacity semanticsをApproved。D-038でstable Section identity + versioned configuration + established Day context、legacy time-range unknown、`Sectionなし` physical absence、normal config changeのnext-Day effective timingをApproved。B1 runtimeは未実装 |
+| Section | In design | user-global stable persistence / bootstrapはmainへ実装。D-038 B1のversioned configuration / established Day context / legacy unknown / `Sectionなし` foundationはremote `dogfood-day-v01a`へcommit / push済みでPR #13 OPEN。local verificationはPASSだがmain未統合、remote / production verificationはNOT_RUN、Released NO。B3のsettings lifecycleを含むbroader Section scopeは未実装 |
 | Section Day summary | In design | DESIGNでSection summary row、完了/総数、合計見積、Execution実績によるcapacity bar、空Section、Sectionなしgroup、日別collapse、Section直下Task追加を設計 |
 | Mode | In design | D-026 Approved。ユーザー定義で意味を固定せず、1 Entryに0..1 Mode。Day UI quick create / 検索、設定画面でuser-defined orderを設計。persistence / management UIは未実装 |
 | Project / Mode selector search | In design | Project / Mode selectorはdirect文字一致、正規化、かな/カタカナ統一、romaji→かな検索を扱い、例として`tasuku`から`タスクシュート開発`を候補化する方向。漢字読みindexのexact方式は実装設計で詰める |
-| Entry planning metadata | In design | D-026 + D-031 Approved。見積・開始予定はEntry planned value。D-038でB1にEntry見積、B2にplanned start + derived placement/orderを分割。exact B1見積physical representationは未決 |
+| Entry planning metadata | In design | D-026 + D-031 Approved。B1のEntry見積は`estimate_seconds INTEGER NULL`としてremote `dogfood-day-v01a`へcommit / push済みでPR #13 OPEN。local verificationはPASSだがmain未統合、remote / production verificationはNOT_RUN、Released NO。planned start + derived placement/orderはB2で未実装 |
 | Planned-start ordering | In design | D-031 Approved。Section内は開始予定なしを先頭manual order、開始予定ありを時刻昇順、同時刻をmanual tie-break。Section間moveでは開始予定clear。D-038でB2実装scope |
 | Start forecast | In design | D-032 Approved。開始予定とは独立したprojection。current progress / Day order / estimateを使いSectionをまたいで連続計算。past / completed / running自身 / Sectionなしは表示対象外 |
 | Today / DayBoard ordering | Implemented | current runtimeはexplicit Entry order + ReorderEntries + placement revision conflict protectionを実装。D-031 target orderingへの拡張は未実装 |
@@ -31,7 +31,7 @@ Status values: Planned / In design / Implemented / Verified
 | Floating Runner | In design | current running TaskをMain content下部付近のcompact floating UIで継続表示。whole logical work chain progress、subtle estimate overrun、Quick Interrupt / revert / Complete、minimizeをDESIGNで定義 |
 | Next Entry projection | Implemented | explicit order上のplanned Entryからlifecycle-aware Nextを算出。Next以外のplanned EntryもStart可能 |
 | Historical fact foundation | In design | TaskChuteDay interval + Execution factは実装。D-028〜D-033 / D-037でinterrupt、Start取消、Section historical semantics、manual time correction、running delete時のnon-destructive cancellationをApproved。D-038でSection version/config/day-context責務分離をApproved。Section以外のsnapshot / cancelled outcome等は未決 |
-| Day planning persistence B1 | In design | D-038 Approved next slice。Section time foundation + `Sectionなし` + Entry見積。planned startはB2、Section settings lifecycleはB3へ分離。current runtimeは未実装 |
+| Day planning persistence B1 | Implemented | implementationはremote `dogfood-day-v01a`へcommit / push済みでPR #13 OPEN。local automated + source review + real local APP migration + signed-in browser verificationはPASS。main未統合、remote / production verificationはNOT_RUN、Released NO。planned startはB2、Section settings lifecycleはB3として未実装 |
 | First runtime bootstrap slice | Implemented | auth、current TaskChuteDay、CreateProject、AddTaskToDay、DayBoard / reload recoveryをPR #3でmerge |
 | First Server + Web vertical slice | Implemented | PR #3 + #5でD-013 scopeを実装・main統合。local + persistent nonprod evidenceはcurrent TEST_MATRIXを参照 |
 | Web app | In design | React + Vite SPAとFirst vertical slice UIは実装。broader Product UI / responsive / routing / offline等は設計継続 |

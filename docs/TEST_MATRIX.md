@@ -16,6 +16,7 @@ First Server + Web vertical sliceは実装・main統合済み。persistent non-p
 - `PASS`: current evidenceで要求を満たした
 - `FAIL`: current evidenceで要求を満たさなかった
 - `NOT_REQUIRED`: current change / scopeでは実施不要
+- `LOCAL_PASS`: local working tree / commit candidateではPASSだが、mainへ未統合
 
 Contractが`Approved`でも、実装やverificationが未実施ならPASS扱いしない。
 
@@ -174,9 +175,59 @@ Cross-day lifecycle testでは、前日Entryのactive Executionを翌TaskChuteDa
 | RUNTIME-PLACEMENT-01 | Placement | AddTaskToDayのstale placement revisionはpartial Task / Entryを残さずrejectする | Approved (D-020) | PASS |
 | RUNTIME-PLACEMENT-02 | Placement | Reorder conflict / failureでmixed orderを残さず、winner resultとfinal stored orderを一致させる | Approved (D-020) | PASS |
 | RUNTIME-LIFE-01 | Lifecycle | concurrent Startでexactly one active Execution / running Entryへ収束する | Approved (D-015, D-020) | PASS |
-| RUNTIME-LIFE-02 | Lifecycle | Start / Completeが`placement_revision`を変更しない | Approved (D-020) | PASS |
+| RUNTIME-LIFE-02 | Lifecycle | Section設定済みEntryのStartとCompleteはplacement変更を伴わず、`placement_revision`を変更しない | Approved (D-020) | PASS |
+| RUNTIME-LIFE-03 | Lifecycle | SectionなしEntryのStartはexpected placement revisionを前提に、Section配置・revisionのexactly one increment・Execution・lifecycle・operation resultをatomicに確定する | Approved (D-020) | LOCAL_PASS (uncommitted; not integrated) |
+| RUNTIME-LIFE-04 | Lifecycle | Complete requestはplacement revisionを要求せず、`placement_revision`を変更しない | Approved (D-020) | PASS |
 
-Current lifecycle / ordering suiteではsame-operation retry / misuse、stale conflict replay、cross-owner Reorder、atomic rollback、64 Entry set-based Reorder、Start / Complete lifecycleを明示的にcoverageしている。
+Current lifecycle / ordering suiteではsame-operation retry / misuse、stale conflict replay、cross-owner Reorder、historical Entryを越えないplanned-only Reorder、atomic rollback、64 Entry set-based Reorder、sectioned lifecycle-only Start / Complete、SectionなしStartのplacement atomicityを明示的にcoverageしている。
+
+## Dogfood Day v0.1-B / B1 local review evidence
+
+以下はuncommitted review working treeに対するlocal evidenceであり、main統合、deployed verification、remote D1 verification、Product全体のVerified状態を意味しない。
+
+Candidate identity / automated evidence:
+
+- branch / base: `dogfood-day-v01a@b6419f522ee6cb643b5b01a1b1c70f37b3da10a9`
+- reviewed patch: 26 files、`+2,135 / -110`、SHA-256 `2D0154230E253B3DB2916604C346AE902F1A7CF6524561F2F4921164653B116D`
+- source review: `PASS`
+- Worker / D1 tests: `79 PASS`
+- Web tests: `40 PASS`
+- upgrade migration: `1 scenario / 15 checks PASS`
+- typecheck / production build / `git diff --check`: `PASS`
+
+Real local evidence — 2026-08-28, `Asia/Tokyo`:
+
+- real local APP DB backup + `0003` migration + identity/history comparison + `PRAGMA foreign_key_check = 0`: `PASS`
+- signed-in real-browser B1 verification: `PASS` for the rows below
+- reload persistence: `PASS`
+- browser unexpected console errors: `0`
+- real Japanese IME: `NOT_RUN`
+- B1 persistent nonprod / production verification: `NOT_RUN / NOT_RUN`
+- Integrated to `main` / Released: `NO / NO`
+
+local dogfoodで利用したSection set / rangesはuser-specific verification dataであり、Product default evidenceとして扱わない。
+
+| ID | Area | Requirement | Evidence |
+|---|---|---|---|
+| B1-ORDER-01 | Reorder | Section / Sectionなし双方でmutation-time lifecycle snapshotを検証し、running / completed Entryのnumeric positionを含むcanonical slotを固定してhistorical境界越えをrejectする | LOCAL_PASS (uncommitted; not integrated) |
+| B1-CONTEXT-01 | TaskChuteDay | configured / legacy双方のconcurrent context materializationが単一集合へ収束し、60 Sectionでも単一set-based statementでmaterializeする。established contextはcurrent Section metadataやtimezone再解決に依存せずhistorical authorityとして読み、configured actual intervalの内部連続性は検証する | LOCAL_PASS (uncommitted; not integrated) |
+| B1-START-01 | Lifecycle / Placement | SectionなしStartのstale / concurrent loserがrevision conflictとなり、配置・revision・Execution・lifecycle・operation resultにpartial effectを残さない | LOCAL_PASS (uncommitted; not integrated) |
+| B1-START-02 | Lifecycle / Retry compatibility | Sectioned Startはplacement revisionを省略した単一canonical request shapeを強制し、0003 upgrade後もoptional B1 result fieldsを含まないpre-B1 fingerprint / resultをexact replayする。SectionなしStartだけがinteger placement revisionを送る | LOCAL_PASS (uncommitted; not integrated) |
+| B1-CONFIG-01 | Section configuration | initial configurationはserver command timeのcurrentかつlegacy-unknownなTaskChuteDayだけへ適用し、historical Dayをrewriteしない。同一success operationはDay境界後もreplayする。hidden Section-count capを置かず、60 Sectionを固定6-statement mutation batchでatomicに確定する | LOCAL_PASS (uncommitted; not integrated) |
+| B1-MOVE-01 | Placement | MoveEntryがold groupを再採番せずgapを保持し、stale loserは全Entry位置とrevisionを変更しない | LOCAL_PASS (uncommitted; not integrated) |
+| B1-CONTEXT-02 | Authorization / Projection | real Section指定commandはDay Section contextを検証し、out-of-context Entryをprojectionから黙って欠落させない | LOCAL_PASS (uncommitted; not integrated) |
+| B1-MIGRATION-01 | Migration | isolated local D1で`0001 -> 0002 -> v0.1-A fixture -> 0003`を適用し、identity / lifecycle / nullable fields / indexes / active unique / FKを検証する | LOCAL_PASS (uncommitted; not integrated) |
+| B1-HTTP-01 | Worker HTTP | initial Section configuration / MoveEntry / SetEntryEstimate routeをsigned-in test sessionで検証する | LOCAL_PASS (uncommitted; not integrated) |
+| B1-LOCAL-DB-01 | Migration / Integrity | real local APP DBをbackup後に0003へupgradeし、original identity/history/operationを保持してFK 0、legacy Section time非捏造を確認する | LOCAL_PASS (uncommitted; not integrated) |
+| B1-BROWSER-01 | Section / Reload | signed-in real browserでauthoritative Section range、extended-time表示、Section estimate total、virtualなSectionなし、reload persistenceを確認する | LOCAL_PASS (uncommitted; not integrated) |
+| B1-BROWSER-02 | Sectionなし / Estimate | SectionなしEntryをEnterでexactly one作成し、15分を900秒として保存・集計・reloadし、estimate editでplacement revisionが変わらないことを確認する | LOCAL_PASS (uncommitted; not integrated) |
+| B1-BROWSER-03 | Placement | planned EntryをSectionなし↔real Sectionへ移動し、各mutationでplacement revisionがexactly one増え、reload後も保持される | LOCAL_PASS (uncommitted; not integrated) |
+| B1-BROWSER-04 | Start / Runner | SectionなしStartがactual current Sectionへの配置、revision exactly one increment、running lifecycle、exactly one Execution、Runnerをatomicに確定し、reload後も保持する | LOCAL_PASS (uncommitted; not integrated) |
+| B1-BROWSER-05 | Complete | CompleteがExecutionをexactly once終了しactive Executionを0へ戻し、placement revisionを変えず、reload / completed visibility toggleで保持される | LOCAL_PASS (uncommitted; not integrated) |
+| B1-BROWSER-06 | Reorder | natural planned cohortでpointer / Shift+Arrow reorderを行い、running / completed boundaryを越えずcanonical orderへ復元できる | LOCAL_PASS (uncommitted; not integrated) |
+| B1-IME-01 | Web / IME | real OS Japanese IME composition Enterがpremature submitせず、normal Enterでexactly one作成する | NOT_RUN |
+| B1-REMOTE-01 | Remote nonprod | B1 migration / runtime / browser flowをpersistent nonprodで検証する | NOT_RUN |
+| B1-PROD-01 | Production | B1 production migration / smokeを検証する | NOT_RUN |
 
 ## Routine / Documents
 

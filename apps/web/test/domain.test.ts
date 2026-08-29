@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveTaskChuteDay } from "../worker/domain/taskchute-day";
+import { resolveLogicalMinuteInstant, resolveSectionIntervals, resolveTaskChuteDay, validateSectionConfiguration } from "../worker/domain/taskchute-day";
 import { isUuidV7, uuidv7 } from "../src/shared/uuidv7";
 import { fingerprint } from "../worker/application/fingerprint";
 
@@ -22,6 +22,29 @@ describe("operation fingerprint", () => {
 });
 
 describe("TaskChuteDay", () => {
+  it("validates full, adjacent extended logical ranges", () => {
+    expect(validateSectionConfiguration(240, [
+      { logicalStartMinute: 240, logicalEndMinute: 540 },
+      { logicalStartMinute: 540, logicalEndMinute: 1440 },
+      { logicalStartMinute: 1440, logicalEndMinute: 1680 },
+    ])).toBe(true);
+    expect(validateSectionConfiguration(240, [{ logicalStartMinute: 240, logicalEndMinute: 500 }, { logicalStartMinute: 540, logicalEndMinute: 1680 }])).toBe(false);
+    expect(validateSectionConfiguration(240, [{ logicalStartMinute: 240, logicalEndMinute: 600 }, { logicalStartMinute: 540, logicalEndMinute: 1680 }])).toBe(false);
+    expect(validateSectionConfiguration(240, [{ logicalStartMinute: 240, logicalEndMinute: 240 }, { logicalStartMinute: 240, logicalEndMinute: 1680 }])).toBe(false);
+  });
+
+  it("resolves ordinary, spring, fall, and extended Section boundaries with compatible semantics", () => {
+    expect(resolveLogicalMinuteInstant("2026-08-22", "Asia/Tokyo", 1620)).toBe("2026-08-22T18:00:00Z");
+    expect(resolveLogicalMinuteInstant("2026-03-08", "America/New_York", 150)).toBe("2026-03-08T07:30:00Z");
+    expect(resolveLogicalMinuteInstant("2026-11-01", "America/New_York", 90)).toBe("2026-11-01T05:30:00Z");
+    const day = resolveTaskChuteDay("2026-03-08T12:00:00Z", { timezone: "America/New_York", boundaryMinutes: 0 });
+    const intervals = resolveSectionIntervals(day, [
+      { logicalStartMinute: 0, logicalEndMinute: 150 },
+      { logicalStartMinute: 150, logicalEndMinute: 1440 },
+    ]);
+    expect(intervals[0]?.actualStartInstant).toBe(day.startInstant);
+    expect(intervals.at(-1)?.actualEndInstant).toBe(day.endInstant);
+  });
   it("maps a pre-boundary instant to the previous non-midnight logical day", () => {
     const day = resolveTaskChuteDay("2026-08-22T18:00:00Z", { timezone: "Asia/Tokyo", boundaryMinutes: 240 });
     expect(day.logicalDate).toBe("2026-08-22");
