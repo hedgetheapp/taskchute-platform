@@ -9,6 +9,9 @@ import type {
   CompleteEntryResult,
   EstablishInitialSectionConfigurationRequest,
   EstablishInitialSectionConfigurationResult,
+  SectionConfigurationProjection,
+  UpdateSectionConfigurationRequest,
+  UpdateSectionConfigurationResult,
   MoveEntryRequest,
   MoveEntryResult,
   ReorderEntriesRequest,
@@ -78,6 +81,12 @@ export const api = {
   },
   establishInitialSectionConfiguration(body: EstablishInitialSectionConfigurationRequest): Promise<EstablishInitialSectionConfigurationResult> {
     return requestJson("/api/v1/section-configurations/initial", jsonPost("", body));
+  },
+  loadSectionConfiguration(): Promise<SectionConfigurationProjection> {
+    return requestJson("/api/v1/section-configuration");
+  },
+  updateSectionConfiguration(body: UpdateSectionConfigurationRequest): Promise<UpdateSectionConfigurationResult> {
+    return requestJson("/api/v1/section-configuration", jsonPost("", body));
   },
   moveEntry(body: MoveEntryRequest): Promise<MoveEntryResult> {
     return requestJson("/api/v1/taskchute-days/current/entries/move", jsonPost("", body));

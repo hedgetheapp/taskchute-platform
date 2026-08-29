@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   reorderEntries: vi.fn(), startEntry: vi.fn(), completeEntry: vi.fn(),
   establishInitialSectionConfiguration: vi.fn(), moveEntry: vi.fn(), setEntryEstimate: vi.fn(),
   setEntryPlannedStart: vi.fn(),
+  loadSectionConfiguration: vi.fn(), updateSectionConfiguration: vi.fn(),
 }));
 
 vi.mock("../../src/web/api", async () => {
@@ -124,6 +125,15 @@ beforeEach(() => {
   mocks.moveEntry.mockResolvedValue({});
   mocks.setEntryEstimate.mockResolvedValue({});
   mocks.setEntryPlannedStart.mockResolvedValue({});
+  mocks.loadSectionConfiguration.mockResolvedValue({
+    configuration_version_id: "019c0000-0000-7000-8000-000000000020",
+    day_boundary_minutes: 240,
+    items: [
+      { section_id: morningId, title: "Morning", logical_start_minute: 240, logical_end_minute: 720 },
+      { section_id: eveningId, title: "Evening", logical_start_minute: 720, logical_end_minute: 1680 },
+    ],
+  });
+  mocks.updateSectionConfiguration.mockResolvedValue({ configuration_version_id: "new-version" });
 });
 
 describe("Dogfood Day shell", () => {
@@ -856,6 +866,172 @@ describe("Dogfood Day shell", () => {
     expect(mocks.establishInitialSectionConfiguration.mock.calls[0][0].items).toEqual([
       { section_id: morningId, logical_start_minute: 240, logical_end_minute: 720 },
       { section_id: eveningId, logical_start_minute: 720, logical_end_minute: 1680 },
+    ]);
+  });
+
+  it("edits and saves a gapless next-Day Section configuration without changing the current Day", async () => {
+    const saved = {
+      configuration_version_id: "019c0000-0000-7000-8000-000000000099",
+      day_boundary_minutes: 240,
+      items: [
+        { section_id: morningId, title: "Focus", logical_start_minute: 240, logical_end_minute: 780 },
+        { section_id: eveningId, title: "Evening", logical_start_minute: 780, logical_end_minute: 1680 },
+      ],
+    };
+    mocks.loadDay.mockResolvedValue(emptyDay);
+    mocks.loadSectionConfiguration
+      .mockResolvedValueOnce({ configuration_version_id: "019c0000-0000-7000-8000-000000000020",
+        day_boundary_minutes: 240, items: [
+          { section_id: morningId, title: "Morning", logical_start_minute: 240, logical_end_minute: 720 },
+          { section_id: eveningId, title: "Evening", logical_start_minute: 720, logical_end_minute: 1680 },
+        ] })
+      .mockResolvedValueOnce(saved);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Section設定" }));
+    const settingsRegion = await screen.findByRole("region", { name: "Section設定" });
+    expect(settingsRegion.textContent).toContain("次に確立されるTaskChuteDayから反映");
+    expect(settingsRegion.textContent).not.toMatch(/Icon|Accent/);
+    fireEvent.change(screen.getByRole("textbox", { name: "Morningの終了" }), { target: { value: "13:00" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Section 1の名前" }), { target: { value: " Focus " } });
+    expect((screen.getByRole("textbox", { name: "Eveningの開始" }) as HTMLInputElement).value).toBe("13:00");
+    fireEvent.click(screen.getByRole("button", { name: "次のDay用に保存" }));
+    await waitFor(() => expect(mocks.updateSectionConfiguration).toHaveBeenCalledTimes(1));
+    expect(mocks.updateSectionConfiguration.mock.calls[0][0]).toMatchObject({
+      expected_configuration_version_id: "019c0000-0000-7000-8000-000000000020",
+      items: saved.items,
+    });
+    await waitFor(() => expect(screen.queryByRole("region", { name: "Section設定" })).toBeNull());
+    expect(screen.getByRole("status").textContent).toContain("保存しました。次のTaskChuteDayから反映されます。");
+    expect(mocks.loadDay).toHaveBeenCalledTimes(1);
+    expect(screen.getAllByText("Morning").length).toBeGreaterThan(0);
+  });
+
+  it("adds by deterministic midpoint, deletes with absorption, and cancels without a server mutation", async () => {
+    mocks.loadDay.mockResolvedValue(emptyDay);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Section設定" }));
+    await screen.findByRole("region", { name: "Section設定" });
+    fireEvent.click(screen.getAllByRole("button", { name: "この後に追加" })[0]!);
+    expect(screen.getAllByLabelText(/Section \d+の名前/)).toHaveLength(3);
+    expect((screen.getByRole("textbox", { name: "新しいSectionの開始" }) as HTMLInputElement).value).toBe("08:00");
+    expect((screen.getByRole("textbox", { name: "新しいSectionの終了" }) as HTMLInputElement).value).toBe("12:00");
+    fireEvent.click(screen.getAllByRole("button", { name: "削除" })[1]!);
+    expect(screen.getAllByLabelText(/Section \d+の名前/)).toHaveLength(2);
+    expect((screen.getByRole("textbox", { name: "Eveningの開始" }) as HTMLInputElement).value).toBe("08:00");
+    fireEvent.click(screen.getByRole("button", { name: "キャンセル" }));
+    expect(screen.queryByRole("region", { name: "Section設定" })).toBeNull();
+    expect(mocks.updateSectionConfiguration).not.toHaveBeenCalled();
+  });
+
+  it("retains and retries the exact Section Settings operation after an ambiguous outcome", async () => {
+    mocks.loadDay.mockResolvedValue(emptyDay);
+    mocks.updateSectionConfiguration
+      .mockRejectedValueOnce(new ApiClientError("ambiguous", 503, true, "infrastructure_ambiguous"))
+      .mockResolvedValueOnce({ configuration_version_id: "new-version" });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Section設定" }));
+    await screen.findByRole("region", { name: "Section設定" });
+    fireEvent.change(screen.getByRole("textbox", { name: "Section 1の名前" }), { target: { value: "Focus" } });
+    fireEvent.click(screen.getByRole("button", { name: "次のDay用に保存" }));
+    const retry = await screen.findByRole("button", { name: "保留中の次Day Section設定を再試行" });
+    const original = mocks.updateSectionConfiguration.mock.calls[0][0];
+    fireEvent.click(retry);
+    await waitFor(() => expect(mocks.updateSectionConfiguration).toHaveBeenCalledTimes(2));
+    expect(mocks.updateSectionConfiguration.mock.calls[1][0]).toEqual(original);
+  });
+
+  it("keeps malformed visible boundary text authoritative and enables Save only after a valid extended-time edit", async () => {
+    mocks.loadDay.mockResolvedValue(emptyDay);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Section設定" }));
+    await screen.findByRole("region", { name: "Section設定" });
+    const morningEnd = screen.getByRole("textbox", { name: "Morningの終了" });
+    fireEvent.change(morningEnd, { target: { value: "13:xx" } });
+    expect((screen.getByRole("textbox", { name: "Morningの終了" }) as HTMLInputElement).value).toBe("13:xx");
+    expect((screen.getByRole("textbox", { name: "Eveningの開始" }) as HTMLInputElement).value).toBe("13:xx");
+    const save = screen.getByRole("button", { name: "次のDay用に保存" }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+    expect(screen.getAllByRole("button", { name: "この後に追加" }).every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
+    expect(screen.getAllByRole("button", { name: "削除" }).every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
+    fireEvent.click(save);
+    expect(mocks.updateSectionConfiguration).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Morningの終了" }), { target: { value: "24:30" } });
+    expect((screen.getByRole("textbox", { name: "Eveningの開始" }) as HTMLInputElement).value).toBe("24:30");
+    expect((screen.getByRole("button", { name: "次のDay用に保存" }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getAllByRole("button", { name: "この後に追加" })[0] as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "次のDay用に保存" }));
+    await waitFor(() => expect(mocks.updateSectionConfiguration).toHaveBeenCalledTimes(1));
+    expect(mocks.updateSectionConfiguration.mock.calls[0][0].items).toMatchObject([
+      { section_id: morningId, logical_start_minute: 240, logical_end_minute: 1470 },
+      { section_id: eveningId, logical_start_minute: 1470, logical_end_minute: 1680 },
+    ]);
+  });
+
+  it("deletes the last Section by absorbing its interval into the previous Section and saves a gapless draft", async () => {
+    mocks.loadDay.mockResolvedValue(emptyDay);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Section設定" }));
+    await screen.findByRole("region", { name: "Section設定" });
+    fireEvent.click(screen.getAllByRole("button", { name: "削除" })[1]!);
+    expect(screen.getAllByLabelText(/Section \d+の名前/)).toHaveLength(1);
+    expect((screen.getByRole("textbox", { name: "Morningの終了" }) as HTMLInputElement).value).toBe("28:00");
+    expect((screen.getByRole("button", { name: "削除" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "次のDay用に保存" }));
+    await waitFor(() => expect(mocks.updateSectionConfiguration).toHaveBeenCalledTimes(1));
+    expect(mocks.updateSectionConfiguration.mock.calls[0][0].items).toEqual([
+      { section_id: morningId, title: "Morning", logical_start_minute: 240, logical_end_minute: 1680 },
+    ]);
+  });
+
+  it("refreshes a stale draft after revision conflict and bases a later explicit edit on the new canonical version", async () => {
+    const versionA = "019c0000-0000-7000-8000-000000000020";
+    const versionB = "019c0000-0000-7000-8000-000000000021";
+    const versionC = "019c0000-0000-7000-8000-000000000022";
+    const configurationA = { configuration_version_id: versionA, day_boundary_minutes: 240, items: [
+      { section_id: morningId, title: "Morning", logical_start_minute: 240, logical_end_minute: 720 },
+      { section_id: eveningId, title: "Evening", logical_start_minute: 720, logical_end_minute: 1680 },
+    ] };
+    const configurationB = { configuration_version_id: versionB, day_boundary_minutes: 240, items: [
+      { section_id: morningId, title: "Concurrent Morning", logical_start_minute: 240, logical_end_minute: 800 },
+      { section_id: eveningId, title: "Concurrent Evening", logical_start_minute: 800, logical_end_minute: 1680 },
+    ] };
+    const configurationC = { ...configurationB, configuration_version_id: versionC, items: [
+      configurationB.items[0], { ...configurationB.items[1], title: "Reviewed Evening" },
+    ] };
+    mocks.loadDay.mockResolvedValue(emptyDay);
+    mocks.loadSectionConfiguration.mockResolvedValueOnce(configurationA)
+      .mockResolvedValueOnce(configurationB).mockResolvedValueOnce(configurationC);
+    mocks.updateSectionConfiguration
+      .mockRejectedValueOnce(new ApiClientError("stale", 409, true, "revision_conflict"))
+      .mockResolvedValueOnce({ configuration_version_id: versionC });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Section設定" }));
+    await screen.findByRole("region", { name: "Section設定" });
+    fireEvent.change(screen.getByRole("textbox", { name: "Section 1の名前" }), { target: { value: "Stale A edit" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Stale A editの終了" }), { target: { value: "13:00" } });
+    fireEvent.click(screen.getByRole("button", { name: "次のDay用に保存" }));
+    await waitFor(() => expect(screen.getByRole("alert").textContent)
+      .toContain("別の場所で更新されたため、最新内容を読み込み直しました"));
+    expect(screen.getByRole("region", { name: "Section設定" })).toBeTruthy();
+    expect((screen.getByRole("textbox", { name: "Section 1の名前" }) as HTMLInputElement).value).toBe("Concurrent Morning");
+    expect((screen.getByRole("textbox", { name: "Concurrent Morningの終了" }) as HTMLInputElement).value).toBe("13:20");
+    expect((screen.getByRole("textbox", { name: "Section 2の名前" }) as HTMLInputElement).value).toBe("Concurrent Evening");
+    expect(screen.queryByText("保存しました。次のTaskChuteDayから反映されます。")).toBeNull();
+    expect(screen.queryByRole("button", { name: "保留中の次Day Section設定を再試行" })).toBeNull();
+    expect(mocks.updateSectionConfiguration).toHaveBeenCalledTimes(1);
+    const staleRequest = mocks.updateSectionConfiguration.mock.calls[0][0];
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Section 2の名前" }), { target: { value: "Reviewed Evening" } });
+    fireEvent.click(screen.getByRole("button", { name: "次のDay用に保存" }));
+    await waitFor(() => expect(mocks.updateSectionConfiguration).toHaveBeenCalledTimes(2));
+    const refreshedRequest = mocks.updateSectionConfiguration.mock.calls[1][0];
+    expect(refreshedRequest.expected_configuration_version_id).toBe(versionB);
+    expect(refreshedRequest.operation_id).not.toBe(staleRequest.operation_id);
+    expect(refreshedRequest.configuration_version_id).not.toBe(staleRequest.configuration_version_id);
+    expect(refreshedRequest.items).toEqual([
+      { section_id: morningId, title: "Concurrent Morning", logical_start_minute: 240, logical_end_minute: 800 },
+      { section_id: eveningId, title: "Reviewed Evening", logical_start_minute: 800, logical_end_minute: 1680 },
     ]);
   });
 });

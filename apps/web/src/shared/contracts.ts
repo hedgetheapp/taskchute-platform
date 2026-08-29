@@ -163,6 +163,30 @@ export interface EstablishInitialSectionConfigurationResult {
   taskchute_day_id: string;
 }
 
+export interface SectionConfigurationItemProjection {
+  section_id: string;
+  title: string;
+  logical_start_minute: number;
+  logical_end_minute: number;
+}
+
+export interface SectionConfigurationProjection {
+  configuration_version_id: string;
+  day_boundary_minutes: number;
+  items: SectionConfigurationItemProjection[];
+}
+
+export interface UpdateSectionConfigurationRequest {
+  operation_id: string;
+  configuration_version_id: string;
+  expected_configuration_version_id: string;
+  items: SectionConfigurationItemProjection[];
+}
+
+export interface UpdateSectionConfigurationResult {
+  configuration_version_id: string;
+}
+
 export interface MoveEntryRequest {
   operation_id: string;
   entry_id: string;

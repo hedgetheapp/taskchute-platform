@@ -20,6 +20,8 @@ import type {
   StartEntryRequest,
   SetEntryEstimateRequest,
   SetEntryPlannedStartRequest,
+  SectionConfigurationProjection,
+  UpdateSectionConfigurationRequest,
 } from "../shared/contracts";
 import { isSamePlannedStartCohort } from "../shared/planned-entry-order";
 import { uuidv7 } from "../shared/uuidv7";
@@ -101,6 +103,43 @@ type PlannedStartOperation = {
   expectedSectionId: string | null;
 };
 
+type SectionSettingsDraft = Omit<SectionConfigurationProjection, "items"> & {
+  items: Array<Omit<SectionConfigurationProjection["items"][number], "logical_start_minute" | "logical_end_minute"> & {
+    logical_start_text: string;
+    logical_end_text: string;
+  }>;
+};
+
+function sectionSettingsDraftFrom(configuration: SectionConfigurationProjection): SectionSettingsDraft {
+  return {
+    ...configuration,
+    items: configuration.items.map(({ logical_start_minute, logical_end_minute, ...item }) => ({
+      ...item,
+      logical_start_text: formatLogicalMinute(logical_start_minute),
+      logical_end_text: formatLogicalMinute(logical_end_minute),
+    })),
+  };
+}
+
+function parseSectionSettingsDraft(draft: SectionSettingsDraft | null): SectionConfigurationProjection | null {
+  if (!draft || draft.items.length === 0) return null;
+  const items = draft.items.map((item) => ({
+    section_id: item.section_id,
+    title: item.title.trim(),
+    logical_start_minute: parseLogicalTime(item.logical_start_text),
+    logical_end_minute: parseLogicalTime(item.logical_end_text),
+  }));
+  if (items.some((item) => item.logical_start_minute === null || item.logical_end_minute === null)) return null;
+  const parsed = items as SectionConfigurationProjection["items"];
+  const boundary = draft.day_boundary_minutes;
+  if (parsed[0]?.logical_start_minute !== boundary
+    || parsed[parsed.length - 1]?.logical_end_minute !== boundary + 1440
+    || parsed.some((item, index) => item.title.length < 1 || item.title.length > 100
+      || item.logical_start_minute >= item.logical_end_minute
+      || (index > 0 && parsed[index - 1]?.logical_end_minute !== item.logical_start_minute))) return null;
+  return { configuration_version_id: draft.configuration_version_id, day_boundary_minutes: boundary, items: parsed };
+}
+
 export function App() {
   const [authState, setAuthState] = useState<AuthState>("loading");
   const [day, setDay] = useState<CurrentTaskChuteDayProjection | null>(null);
@@ -114,9 +153,13 @@ export function App() {
   const [sectionMoveOperation, setSectionMoveOperation] = useState<MoveEntryRequest | null>(null);
   const [estimateOperation, setEstimateOperation] = useState<SetEntryEstimateRequest | null>(null);
   const [plannedStartOperation, setPlannedStartOperation] = useState<PlannedStartOperation | null>(null);
+  const [sectionSettingsOperation, setSectionSettingsOperation] = useState<UpdateSectionConfigurationRequest | null>(null);
+  const [, setSectionSettings] = useState<SectionConfigurationProjection | null>(null);
+  const [sectionSettingsDraft, setSectionSettingsDraft] = useState<SectionSettingsDraft | null>(null);
+  const [sectionSettingsNotice, setSectionSettingsNotice] = useState<string | null>(null);
   const [editingEstimate, setEditingEstimate] = useState<{ entryId: string; minutes: string } | null>(null);
   const [editingPlannedStart, setEditingPlannedStart] = useState<{ entryId: string; value: string } | null>(null);
-  const [pending, setPending] = useState<"login" | "project" | "task" | "reorder" | "start" | "complete" | "configuration" | "move" | "estimate" | "planned-start" | "logout" | null>(null);
+  const [pending, setPending] = useState<"login" | "project" | "task" | "reorder" | "start" | "complete" | "configuration" | "section-settings" | "move" | "estimate" | "planned-start" | "logout" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draftTask, setDraftTask] = useState<DraftTask | null>(null);
   const [pendingFocusKey, setPendingFocusKey] = useState<string | null>(null);
@@ -124,7 +167,7 @@ export function App() {
   const draftInputRef = useRef<HTMLInputElement | null>(null);
   const draftCompositionRef = useRef(false);
   const retainedOperation = projectOperation ?? taskOperation ?? reorderOperation ?? startOperation ?? completeOperation
-    ?? configurationOperation ?? sectionMoveOperation ?? estimateOperation ?? plannedStartOperation;
+    ?? configurationOperation ?? sectionSettingsOperation ?? sectionMoveOperation ?? estimateOperation ?? plannedStartOperation;
   const mutationLocked = pending !== null || retainedOperation !== null;
 
   const reconcile = useCallback(async () => {
@@ -271,6 +314,10 @@ export function App() {
       setSectionMoveOperation(null);
       setEstimateOperation(null);
       setPlannedStartOperation(null);
+      setSectionSettingsOperation(null);
+      setSectionSettings(null);
+      setSectionSettingsDraft(null);
+      setSectionSettingsNotice(null);
       setDraftTask(null);
       setAuthState("signed-out");
     } catch (caught) {
@@ -424,6 +471,102 @@ export function App() {
     setConfigurationOperation(operation); await executeConfiguration(operation);
   }
 
+  async function openSectionSettings() {
+    if (mutationLocked || day?.section_configuration_required) return;
+    setPending("section-settings"); setError(null); setSectionSettingsNotice(null);
+    try {
+      const configuration = await api.loadSectionConfiguration();
+      setSectionSettings(configuration);
+      setSectionSettingsDraft(sectionSettingsDraftFrom(configuration));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Section設定の読み込みに失敗しました");
+    } finally { setPending(null); }
+  }
+
+  function updateSectionBoundary(index: number, edge: "start" | "end", value: string) {
+    if (!sectionSettingsDraft) return;
+    const items = sectionSettingsDraft.items.map((item) => ({ ...item }));
+    if (edge === "start") {
+      items[index]!.logical_start_text = value;
+      if (index > 0) items[index - 1]!.logical_end_text = value;
+    } else {
+      items[index]!.logical_end_text = value;
+      if (index + 1 < items.length) items[index + 1]!.logical_start_text = value;
+    }
+    setSectionSettingsDraft({ ...sectionSettingsDraft, items });
+  }
+
+  function addSection(index: number) {
+    if (!sectionSettingsDraft || mutationLocked) return;
+    const parsed = parseSectionSettingsDraft(sectionSettingsDraft);
+    if (!parsed) return;
+    const items = parsed.items.map((item) => ({ ...item }));
+    const target = items[index]!;
+    const midpoint = Math.floor((target.logical_start_minute + target.logical_end_minute) / 2);
+    if (midpoint <= target.logical_start_minute || midpoint >= target.logical_end_minute) {
+      setError("この時間帯は分割できません"); return;
+    }
+    const previousEnd = target.logical_end_minute;
+    target.logical_end_minute = midpoint;
+    items.splice(index + 1, 0, {
+      section_id: uuidv7(), title: "新しいSection",
+      logical_start_minute: midpoint, logical_end_minute: previousEnd,
+    });
+    setSectionSettingsDraft(sectionSettingsDraftFrom({ ...parsed, items }));
+  }
+
+  function deleteSection(index: number) {
+    if (!sectionSettingsDraft || sectionSettingsDraft.items.length <= 1 || mutationLocked) return;
+    const parsed = parseSectionSettingsDraft(sectionSettingsDraft);
+    if (!parsed) return;
+    const items = parsed.items.map((item) => ({ ...item }));
+    const removed = items[index]!;
+    if (index + 1 < items.length) items[index + 1]!.logical_start_minute = removed.logical_start_minute;
+    else items[index - 1]!.logical_end_minute = removed.logical_end_minute;
+    items.splice(index, 1);
+    setSectionSettingsDraft(sectionSettingsDraftFrom({ ...parsed, items }));
+  }
+
+  async function executeSectionSettings(operation: UpdateSectionConfigurationRequest) {
+    setPending("section-settings"); setError(null);
+    try {
+      await api.updateSectionConfiguration(operation);
+      const canonical = await api.loadSectionConfiguration();
+      setSectionSettings(canonical); setSectionSettingsDraft(null); setSectionSettingsOperation(null);
+      setSectionSettingsNotice("保存しました。次のTaskChuteDayから反映されます。");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Section設定の保存に失敗しました");
+      const ambiguous = isAmbiguousOutcome(caught);
+      const revisionConflict = caught instanceof ApiClientError && caught.code === "revision_conflict";
+      if (!ambiguous) setSectionSettingsOperation(null);
+      try {
+        const canonical = await api.loadSectionConfiguration();
+        setSectionSettings(canonical);
+        if (revisionConflict) {
+          setSectionSettingsDraft(sectionSettingsDraftFrom(canonical));
+          setSectionSettingsOperation(null);
+          setSectionSettingsNotice(null);
+          setError("Section設定が別の場所で更新されたため、最新内容を読み込み直しました。変更内容を確認して再編集してください。");
+        } else if (ambiguous && canonical.configuration_version_id === operation.configuration_version_id) {
+          setSectionSettingsDraft(null); setSectionSettingsOperation(null); setError(null);
+          setSectionSettingsNotice("保存しました。次のTaskChuteDayから反映されます。");
+        }
+      } catch { /* Preserve the original mutation outcome and operation identity. */ }
+    } finally { setPending(null); }
+  }
+
+  async function saveSectionSettings() {
+    const parsed = parseSectionSettingsDraft(sectionSettingsDraft);
+    if (!parsed || mutationLocked) return;
+    const operation: UpdateSectionConfigurationRequest = {
+      operation_id: uuidv7(), configuration_version_id: uuidv7(),
+      expected_configuration_version_id: parsed.configuration_version_id,
+      items: parsed.items,
+    };
+    setSectionSettingsOperation(operation);
+    await executeSectionSettings(operation);
+  }
+
   async function executeSectionMove(operation: MoveEntryRequest) {
     setPending("move"); setError(null);
     try { await api.moveEntry(operation); await reconcile(); setSectionMoveOperation(null); }
@@ -553,6 +696,7 @@ export function App() {
   const currentDay = day;
   const allEntries = [...currentDay.unsectioned_entries, ...currentDay.sections.flatMap((section) => section.entries)];
   const activeEntry = currentDay.active_execution ? allEntries.find((entry) => entry.id === currentDay.active_execution?.entry_id) : null;
+  const parsedSectionSettingsDraft = parseSectionSettingsDraft(sectionSettingsDraft);
   const groups = [
     ...(currentDay.unsectioned_entries.length > 0 || draftTask?.sectionId === null ? [{
       id: null, title: "Sectionなし", logical_start_minute: null, logical_end_minute: null,
@@ -629,6 +773,10 @@ export function App() {
           <p className="interval">{day.taskchute_day.start_instant} — {day.taskchute_day.end_instant}</p>
         </div>
         <div className="header-actions">
+          <button type="button" className="secondary" disabled={mutationLocked || day.section_configuration_required}
+            onClick={() => void openSectionSettings()}>
+            {pending === "section-settings" ? "Section設定を読み込み中…" : "Section設定"}
+          </button>
           <details className="project-tools">
             <summary>Project作成</summary>
             <form className="project-form" onSubmit={createProject} aria-busy={pending === "project"}>
@@ -662,7 +810,41 @@ export function App() {
       {pending === "move" && <p role="status">Section移動・照合中…</p>}
       {pending === "estimate" && <p role="status">見積を保存・照合中…</p>}
       {pending === "planned-start" && <p role="status">開始予定を保存・照合中…</p>}
+      {sectionSettingsNotice && <p role="status" className="success">{sectionSettingsNotice}</p>}
       {error && <p role="alert" className="error">{error}</p>}
+
+      {sectionSettingsDraft && (
+        <section className="panel section-settings" aria-label="Section設定">
+          <h2>Section設定</h2>
+          <p>変更は次に確立されるTaskChuteDayから反映されます。現在のDayとTask配置は変わりません。</p>
+          <div className="section-settings-list">
+            {sectionSettingsDraft.items.map((item, index) => (
+              <div className="section-settings-row" key={item.section_id}>
+                <label>名前<input aria-label={`Section ${index + 1}の名前`} maxLength={100} value={item.title}
+                  onChange={(event) => setSectionSettingsDraft({ ...sectionSettingsDraft,
+                    items: sectionSettingsDraft.items.map((candidate, itemIndex) => itemIndex === index
+                      ? { ...candidate, title: event.target.value } : candidate) })} /></label>
+                <label>開始<input aria-label={`${item.title}の開始`} value={item.logical_start_text}
+                  disabled={index === 0} onChange={(event) => updateSectionBoundary(index, "start", event.target.value)} /></label>
+                <label>終了<input aria-label={`${item.title}の終了`} value={item.logical_end_text}
+                  disabled={index === sectionSettingsDraft.items.length - 1}
+                  onChange={(event) => updateSectionBoundary(index, "end", event.target.value)} /></label>
+                <button type="button" className="secondary" disabled={mutationLocked || !parsedSectionSettingsDraft}
+                  onClick={() => addSection(index)}>この後に追加</button>
+                <button type="button" className="secondary"
+                  disabled={mutationLocked || sectionSettingsDraft.items.length === 1 || !parsedSectionSettingsDraft}
+                  onClick={() => deleteSection(index)}>削除</button>
+              </div>
+            ))}
+          </div>
+          <div className="section-settings-actions">
+            <button type="button" className="secondary" disabled={pending !== null}
+              onClick={() => { setSectionSettingsDraft(null); setError(null); }}>キャンセル</button>
+            <button type="button" disabled={mutationLocked || !parsedSectionSettingsDraft}
+              onClick={() => void saveSectionSettings()}>{pending === "section-settings" ? "保存・照合中…" : "次のDay用に保存"}</button>
+          </div>
+        </section>
+      )}
 
       {day.section_configuration_required && (
         <section className="panel configuration-gate" aria-label="初期Section時間帯設定">
@@ -780,12 +962,13 @@ export function App() {
           {startOperation && <button type="button" onClick={() => void executeStart(startOperation)}>保留中のStartを再試行</button>}
           {completeOperation && <button type="button" onClick={() => void executeComplete(completeOperation)}>保留中のCompleteを再試行</button>}
           {configurationOperation && <button type="button" onClick={() => void executeConfiguration(configurationOperation)}>保留中のSection設定を再試行</button>}
+          {sectionSettingsOperation && <button type="button" onClick={() => void executeSectionSettings(sectionSettingsOperation)}>保留中の次Day Section設定を再試行</button>}
           {sectionMoveOperation && <button type="button" onClick={() => void executeSectionMove(sectionMoveOperation)}>保留中のSection移動を再試行</button>}
           {estimateOperation && <button type="button" onClick={() => void executeEstimate(estimateOperation)}>保留中の見積保存を再試行</button>}
           {plannedStartOperation && <button type="button" onClick={() => void executePlannedStart(plannedStartOperation)}>保留中の開始予定保存を再試行</button>}
           <button type="button" className="secondary" onClick={() => {
             setProjectOperation(null); setTaskOperation(null); setReorderOperation(null); setStartOperation(null); setCompleteOperation(null);
-            setConfigurationOperation(null); setSectionMoveOperation(null); setEstimateOperation(null); setPlannedStartOperation(null); setError(null);
+            setConfigurationOperation(null); setSectionSettingsOperation(null); setSectionMoveOperation(null); setEstimateOperation(null); setPlannedStartOperation(null); setError(null);
           }}>保留中のclient操作を破棄</button>
         </section>
       )}

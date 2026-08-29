@@ -74,6 +74,12 @@ input:focus-visible, select:focus-visible { border-color: #2383e2; outline: 2px 
 .configuration-gate p { margin: 0 0 12px; color: #575754; font-size: 13px; }
 .configuration-gate form { display: grid; gap: 8px; }
 .configuration-row { display: grid; grid-template-columns: minmax(100px, 1fr) 130px auto 130px; align-items: end; gap: 8px; }
+.section-settings { margin: 12px 0; }
+.section-settings-list { display: grid; gap: 8px; }
+.section-settings-row { display: grid; grid-template-columns: minmax(140px, 1fr) repeat(4, auto); align-items: end; gap: 8px; }
+.section-settings-row label { margin: 0; }
+.section-settings-row input { min-width: 92px; }
+.section-settings-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
 
 .execution-control { display: grid; width: 28px; height: 28px; margin: 0 auto; padding: 0; place-items: center; border: 1px solid #c8c8c5; border-radius: 50%; background: #fff; color: #575754; font-size: 10px; }
 button.execution-control:hover { border-color: #2383e2; color: #2383e2; }
@@ -106,4 +112,5 @@ button.execution-control:hover { border-color: #2383e2; color: #2383e2; }
   .header-actions { justify-content: space-between; }
   .day-surface { overflow-x: auto; }
   .table-heading, .task-row { min-width: 720px; }
+  .section-settings-row { grid-template-columns: 1fr 1fr; }
 }

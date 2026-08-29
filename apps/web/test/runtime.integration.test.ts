@@ -762,6 +762,30 @@ describe.sequential("production runtime bootstrap slice", () => {
     expect(unauthenticated.status).toBe(401);
   });
 
+  it("wires authenticated Section configuration query and update routes", async () => {
+    const queryResponse = await browser.fetch("/api/v1/section-configuration");
+    expect(queryResponse.status).toBe(200);
+    const current = await json<{
+      configuration_version_id: string;
+      day_boundary_minutes: number;
+      items: Array<{ section_id: string; title: string; logical_start_minute: number; logical_end_minute: number }>;
+    }>(queryResponse);
+    expect(current.items.length).toBeGreaterThan(0);
+    const nextVersion = uuidv7();
+    const update = await browser.post("/api/v1/section-configuration", {
+      operation_id: uuidv7(), configuration_version_id: nextVersion,
+      expected_configuration_version_id: current.configuration_version_id,
+      items: current.items.map((item, index) => index === 0 ? { ...item, title: "HTTP Focus" } : item),
+    });
+    expect(update.status).toBe(200);
+    expect(await json<object>(update)).toEqual({ configuration_version_id: nextVersion });
+    const updated = await json<{ configuration_version_id: string; items: Array<{ title: string }> }>(
+      await browser.fetch("/api/v1/section-configuration"));
+    expect(updated.configuration_version_id).toBe(nextVersion);
+    expect(updated.items[0]?.title).toBe("HTTP Focus");
+    expect((await exports.default.fetch(`${origin}/api/v1/section-configuration`)).status).toBe(401);
+  });
+
   it("wires Reorder, Start, and Complete HTTP routes and rejects path/body Entry mismatch", async () => {
     const before = await json<{
       placement_revision: number;

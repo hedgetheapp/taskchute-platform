@@ -2,7 +2,8 @@ import { HttpError } from "../application/errors";
 import { REQUEST_FINGERPRINT_VERSION } from "../application/fingerprint";
 
 export type CommandType = "CreateProject" | "AddTaskToDay" | "ReorderEntries" | "StartEntry" | "CompleteEntry"
-  | "EstablishInitialSectionConfiguration" | "MoveEntry" | "SetEntryEstimate" | "SetEntryPlannedStart";
+  | "EstablishInitialSectionConfiguration" | "MoveEntry" | "SetEntryEstimate" | "SetEntryPlannedStart"
+  | "UpdateSectionConfiguration";
 export type OutcomeKind = "success" | "domain_rejection" | "revision_conflict";
 
 interface OperationRow {
@@ -40,7 +41,8 @@ export function replayOperation<T>(row: OperationRow, commandType: CommandType, 
     throw new HttpError(409, "operation_id_misuse", "operation_id was already used for a different semantic request");
   }
   if (row.outcome_kind === "revision_conflict") {
-    throw new HttpError(409, "revision_conflict", "The placement revision is stale", true);
+    const stored = JSON.parse(row.result_json) as { message?: string };
+    throw new HttpError(409, "revision_conflict", stored.message ?? "The placement revision is stale", true);
   }
   if (row.outcome_kind === "domain_rejection") {
     const stored = JSON.parse(row.result_json) as { code: "resource_not_found" | "resource_conflict"; message: string };
@@ -85,7 +87,8 @@ export async function persistRejection<T>(
     throw new HttpError(503, "infrastructure_ambiguous", "The outcome is unknown; reload canonical state and retry", true);
   }
   if (input.outcomeKind === "revision_conflict") {
-    throw new HttpError(409, "revision_conflict", "The placement revision is stale", true);
+    const result = input.result as { message?: string };
+    throw new HttpError(409, "revision_conflict", result.message ?? "The placement revision is stale", true);
   }
   const result = input.result as { code: "resource_not_found" | "resource_conflict"; message: string };
   throw new HttpError(result.code === "resource_not_found" ? 404 : 409, result.code, result.message, true);

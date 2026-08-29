@@ -8,7 +8,7 @@ import { createHash } from "node:crypto";
 
 const appRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const wrangler = join(appRoot, "node_modules", "wrangler", "bin", "wrangler.js");
-const persistencePath = await mkdtemp(join(tmpdir(), "taskchute-b2-migration-"));
+const persistencePath = await mkdtemp(join(tmpdir(), "taskchute-b3-migration-"));
 
 function execute(args, expectSuccess = true) {
   const result = spawnSync(process.execPath, [wrangler, "d1", "execute", "taskchute-app-local", "--local",
@@ -60,6 +60,28 @@ try {
        '2026-08-29T03:00:00Z', '2026-08-29T19:00:00Z', 1);
   `]);
   applyFile("migrations/app/0004_dogfood_day_b2.sql");
+
+  const preB3Entries = query(`SELECT id, section_id, estimate_seconds, planned_start_minute,
+    position, lifecycle_state FROM entries ORDER BY id`);
+  const preB3Operations = query(`SELECT app_user_id, operation_id, command_type, request_fingerprint_version,
+    request_fingerprint, outcome_kind, result_json, created_at FROM operations ORDER BY operation_id`);
+  const preB3Versions = query("SELECT * FROM section_configuration_versions ORDER BY app_user_id, id");
+  const preB3Items = query(`SELECT * FROM section_configuration_items
+    ORDER BY app_user_id, configuration_version_id, configuration_order`);
+  const preB3Heads = query("SELECT * FROM section_configuration_heads ORDER BY app_user_id");
+  const preB3Contexts = query(`SELECT * FROM taskchute_day_section_contexts
+    ORDER BY app_user_id, taskchute_day_id, context_order`);
+  applyFile("migrations/app/0005_dogfood_day_b3.sql");
+  assert.deepEqual(query(`SELECT id, section_id, estimate_seconds, planned_start_minute,
+    position, lifecycle_state FROM entries ORDER BY id`), preB3Entries);
+  assert.deepEqual(query(`SELECT app_user_id, operation_id, command_type, request_fingerprint_version,
+    request_fingerprint, outcome_kind, result_json, created_at FROM operations ORDER BY operation_id`), preB3Operations);
+  assert.deepEqual(query("SELECT * FROM section_configuration_versions ORDER BY app_user_id, id"), preB3Versions);
+  assert.deepEqual(query(`SELECT * FROM section_configuration_items
+    ORDER BY app_user_id, configuration_version_id, configuration_order`), preB3Items);
+  assert.deepEqual(query("SELECT * FROM section_configuration_heads ORDER BY app_user_id"), preB3Heads);
+  assert.deepEqual(query(`SELECT * FROM taskchute_day_section_contexts
+    ORDER BY app_user_id, taskchute_day_id, context_order`), preB3Contexts);
 
   const legacyStartRequest = { entry_id: "019d2f00-0000-7000-8000-000000000002",
     execution_id: "019d2f00-0000-7000-8000-000000000003",
@@ -134,13 +156,19 @@ try {
       '2026-08-28T02:00:00.000Z')`]);
   assert.deepEqual(query("SELECT command_type, result_json FROM operations WHERE operation_id = 'operation-b2'"),
     [{ command_type: "SetEntryPlannedStart", result_json: "{}" }]);
+  execute(["--command", `INSERT INTO operations
+    (app_user_id, operation_id, command_type, request_fingerprint_version, request_fingerprint, outcome_kind, result_json, created_at)
+    VALUES ('user-v01a', 'operation-b3', 'UpdateSectionConfiguration', 1, 'b3-fingerprint', 'success', '{}',
+      '2026-08-28T03:00:00.000Z')`]);
+  assert.deepEqual(query("SELECT command_type, result_json FROM operations WHERE operation_id = 'operation-b3'"),
+    [{ command_type: "UpdateSectionConfiguration", result_json: "{}" }]);
   const duplicateActive = execute(["--command", `INSERT INTO executions
     (id, app_user_id, entry_id, started_at, ended_at, created_at)
     VALUES ('execution-second-active', 'user-v01a', 'entry-planned', '2026-08-28T10:00:00.000Z', NULL,
       '2026-08-28T10:00:00.000Z')`], false);
   assert.notEqual(duplicateActive.status, 0, "the active Execution unique index must reject a second active row");
   assert.deepEqual(query("PRAGMA foreign_key_check"), []);
-  console.log("migration regression: 1 scenario passed (25 data/schema checks; 0001 -> 0002 -> v0.1-A fixture -> 0003 -> B1 state -> 0004)");
+  console.log("migration regression: 1 scenario passed (32 data/schema checks; 0001 -> 0002 -> v0.1-A fixture -> 0003 -> B1 state -> 0004 -> preservation gate -> 0005)");
 } finally {
   await rm(persistencePath, { recursive: true, force: true });
 }
