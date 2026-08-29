@@ -1,6 +1,6 @@
 # Test Matrix
 
-First Server + Web vertical slice、D-038 B1、D-039 B2は実装・main統合済み。B1 local + persistent non-production verificationとB2 local migration / browser verificationはPASS。B1 production、B2 persistent non-production / production verificationは`NOT_RUN`。Product runtime全体はまだVerified / Releasedではない。
+First Server + Web vertical slice、D-038 B1、D-039 B2は実装・main統合済み。B1 / B2 local + persistent non-production verificationはPASS。B1 / B2 production verificationは`NOT_RUN`。Product runtime全体はまだVerified / Releasedではない。
 
 この文書はverification requirementとcurrent evidenceの正本とする。
 
@@ -278,8 +278,55 @@ Signed-in real local browser evidence — 2026-08-29:
 | B2-WEB-01 | Web | current Day planned Entryのblank / extended-time入力、auto-placement、clear、move時clear、illegal reorder control抑止を実ブラウザで扱う | Approved (D-039) | PASS |
 | B2-LOCAL-DB-01 | Migration / Integrity | real local APP DBをprivate backup後に0004へupgradeし、pre-existing identity / content / historical authorityとDB integrityを保持する | Approved (D-039) | PASS |
 | B2-BROWSER-01 | Web / Browser | signed-in real local browserでB2 placement / order / validation / lifecycle / reload scenariosを検証する | Approved (D-039) | PASS |
-| B2-REMOTE-01 | Remote nonprod | B2 migration / runtime / authenticated browser flowをpersistent nonprodで検証する | Approved (D-039) | NOT_RUN |
+| B2-REMOTE-01 | Remote nonprod | B2 migration / runtime / authenticated browser flowをpersistent nonprodで検証する | Approved (D-039) | PASS |
 | B2-PROD-01 | Production | B2 production migration / smokeを検証する | Approved (D-039) | NOT_RUN |
+
+## Persistent non-production B2 remote verification evidence — 2026-08-29
+
+Source / environment:
+
+- source / `main`: `606d192aa22aea364ad54b7244f295284487a2c6`（B2 implementation `316ad0d88f0f88d1445991904da587b1e0987dab`を含む）
+- Worker: `taskchute-web-nonprod`
+- URL: `https://taskchute-web-nonprod.taskfulness-sync.workers.dev`
+- pre-B2 Worker version: `b8d7df82-baa3-4162-adbf-c0ecb65dcc84`
+- deployed Worker version: `23706fe1-5359-43c2-9fef-09b5e8ab714d`（deployment `c85e57af-7045-489e-8d40-1c4b6f6318d1`、traffic 100%）
+- AUTH_DB: `taskchute-auth-nonprod` / `60085f8d-0c4e-4c15-98e9-3ce178398041`
+- APP_DB: `taskchute-app-nonprod` / `6ad7e35f-5d03-4be3-9b00-46cd713a51c3`
+
+Local / preflight gate:
+
+- Worker / D1: `87 PASS / 87`（focused B2 `7 PASS / 7`）
+- Web: `49 PASS / 49`
+- migration regression: `1 scenario / 25 checks PASS`
+- typecheck / `git diff --check`: `PASS`
+- pre-deploy root / unauthenticated protected API: `200 / 401`
+- `BOOTSTRAP_ENABLED=false`、expected bindings、APP pendingは`0004_dogfood_day_b2.sql`のみ、`PRAGMA quick_check = ok`、FK violations 0、active Execution 0
+
+Backup / migration / preservation:
+
+- private ignored APP export: `.wrangler/private-backups/taskchute-app-nonprod-pre-b2-20260829-165630.sql`、27,490 bytes、SHA-256 `492AFF9D4179420E16738867D336EF34A68C4D65DAC7CAA1A5716D5CC51FAB70`
+- isolated restore: `PASS`。pre-existing countsはapp_users 1 / projects 1 / sections 3 / taskchute_days 2 / tasks 4 / entries 4 / executions 2 / operations 15 / configuration versions 1 / heads 1 / items 3 / contexts 6
+- `0004_dogfood_day_b2.sql`: `PASS`、9 commands、pending after 0
+- preservation gate: 全12 tableのpre-existing identity / content、placement revision、estimate、historical Section contextを保持 `PASS`
+- post-migration `PRAGMA quick_check = ok`、FK violations 0、active Execution 0、Sectionなし + non-null planned start 0
+
+Deployment / authenticated browser:
+
+- build / dry-run / deploy: `PASS`、startup 44 ms。deploy後root / unauthenticated protected APIを3回連続`200 / 401`、schema / 5xx errorなし
+- existing signed-in session、logical date `2026-08-29`、boundary `04:00` / 240、placement revision `7 -> 25`
+- planned-start auto-placement、exact Section boundary、clear、editor-open explicit Section move時clear、NULL / minute / same-minute canonical order、same-minute reorder、illegal cohort reorder control抑止、extended `24:30`、`28:00` / `29:00` rejection、early Start / Complete、reload persistence: `PASS`
+- browser unexpected console errors / warnings: `0 / 0`
+- final APP integrity: pending 0、`quick_check = ok`、FK 0、active Execution 0、Sectionなし + non-null planned start 0。pre-existing content / historical Day authorityを保持
+- verification用Morning `04:00–12:00` / Day `12:00–20:00` / Evening `20:00–28:00`はuser-specific configurationでありProduct defaultではない。verification-created dataはcleanupせず残置した
+
+Verification boundary:
+
+- direct bootstrap POST: `NOT_RUN`
+- public signup remote POST: `NOT_RUN`
+- 上記2項目はremote PASSへ含めない。`B2-REMOTE-01`はprivate backup、0004 migration / preservation、deploy、authenticated B2 runtime / browser flow、final integrityによりPASSとする
+- B2 production verification: `NOT_RUN`
+- B1 real Japanese IME: `NOT_RUN`
+- Released: `NO`
 
 ## Persistent non-production B1 remote verification evidence — 2026-08-29
 

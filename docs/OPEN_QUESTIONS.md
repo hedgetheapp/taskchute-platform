@@ -16,7 +16,7 @@ D-024により、継続的なverificationではtracked / reusable configを利�
 
 D-038によりSection persistenceではstable Section identity、versioned Section configuration、established TaskChuteDayごとのhistorical Section contextを責務分離し、`Sectionなし`をnormal timed Sectionのsentinelではなくplacement relationのabsenceとして扱う方向がApproved済み。authoritative time rangeを持たないlegacy historyからSection時間を推測せずunknownとして保持し、通常のSection設定変更はestablished current Dayをretroactiveに書き換えず原則次TaskChuteDayから有効にする。Dogfood実装順はB1（Section time foundation + `Sectionなし` + Entry見積）→B2（planned start + derived placement/order）→B3（Section settings lifecycle）でApproved済み。
 
-D-039によりB2 planned-startの`planned_start_minute INTEGER NULL`、既存`entries.position`を使うmanual tie-break、derived Section / canonical order、SetEntryPlannedStart requestとatomic retry / conflict contractはApproved済み。B2 runtimeはcommit `316ad0d88f0f88d1445991904da587b1e0987dab`で`main`へImplemented / Integrated済みで、source review、automated verification、real local `0004` migration、signed-in browser verificationはPASS。persistent nonprod / production verificationは`NOT_RUN`である。
+D-039によりB2 planned-startの`planned_start_minute INTEGER NULL`、既存`entries.position`を使うmanual tie-break、derived Section / canonical order、SetEntryPlannedStart requestとatomic retry / conflict contractはApproved済み。B2 runtimeはcommit `316ad0d88f0f88d1445991904da587b1e0987dab`で`main`へImplemented / Integrated済みで、source review、automated verification、real local `0004` migration、signed-in browser、persistent nonprod `0004` migration / runtime / authenticated browser verificationはPASS。production verificationは`NOT_RUN`である。
 
 Current First vertical slice implementation / nonprod verification fact:
 
@@ -141,7 +141,7 @@ Current implementation fact:
 - planned-start NULL / different minuteを越えるillegal Reorder controlを抑止し、same-minute cohort内のmanual reorderを提供する
 - running / completed Entryではplanned-start編集を提供しない
 
-D-031〜D-037でDay planning / Routine target semanticsが追加され、D-038で次のDay dogfood persistence stagingとしてB1 / B2 / B3がApprovedされた。B1はPR #13で、D-039のB2 planned-start persistence / command runtimeはcommit `316ad0d88f0f88d1445991904da587b1e0987dab`で`main`へImplemented / Integrated済み。B1 local + persistent nonprod evidenceとB2 local migration / browser evidenceはPASS。B1 production、B2 persistent nonprod / production、real Japanese IMEは`NOT_RUN`。`docs/DESIGN.md` Draftのbroader Day Table interactionとB3 runtimeは未実装。
+D-031〜D-037でDay planning / Routine target semanticsが追加され、D-038で次のDay dogfood persistence stagingとしてB1 / B2 / B3がApprovedされた。B1はPR #13で、D-039のB2 planned-start persistence / command runtimeはcommit `316ad0d88f0f88d1445991904da587b1e0987dab`で`main`へImplemented / Integrated済み。B1 / B2のlocal + persistent nonprod evidenceはPASS。B1 / B2 production、real Japanese IMEは`NOT_RUN`。`docs/DESIGN.md` Draftのbroader Day Table interactionとB3 runtimeは未実装。
 
 以下の具体方式・scopeはOpen:
 
@@ -364,7 +364,7 @@ planned Placeとobserved LocationSnapshotの分離、optional best-effort Start 
 
 Native UIをWeb React codeの直接流用前提にしない方向はD-020でApproved済み。
 
-First Server + Web vertical slice、D-038 B1、D-039 B2はImplemented / Integrated済み。B1 local + persistent nonprod evidenceとB2 local migration / browser evidenceはPASS。B1 production、B2 persistent nonprod / production、real Japanese IMEは`NOT_RUN`、Releasedは`NO`。B3（Section settings lifecycle）は未実装。
+First Server + Web vertical slice、D-038 B1、D-039 B2はImplemented / Integrated済み。B1 / B2 local + persistent nonprod evidenceはPASS。B1 / B2 production、real Japanese IMEは`NOT_RUN`、Releasedは`NO`。B3（Section settings lifecycle）は未実装。
 
 以下はOpen:
 
@@ -389,7 +389,8 @@ Resolved / current fact:
 - persistent nonprod Worker deploy / runtime smokeはPASS
 - B1 `0003` migration / preservation / authenticated runtime / browser flowは2026-08-29にPASS
 - B2 `0004` local migration / preservation / authenticated local browser flowは2026-08-29にPASS
-- B2 persistent nonprod migration / runtime / browser verificationは`NOT_RUN`
+- B2 persistent nonprod `0004` migration / preservation / deployed runtime / authenticated browser verificationは2026-08-29にPASS
+- B2 verificationでdirect bootstrap POSTとpublic signup remote POSTは`NOT_RUN`。この2項目をremote PASSへ含めない
 - temporary bootstrap enable -> bootstrap -> disable -> token removalはPASS
 - final bootstrap postureはdisabled、`BOOTSTRAP_TOKEN`削除済み
 - observed smoke scopeではFree-plan-shaped Worker/D1 limit errorなし
