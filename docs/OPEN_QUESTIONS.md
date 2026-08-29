@@ -16,7 +16,7 @@ D-024により、継続的なverificationではtracked / reusable configを利�
 
 D-038によりSection persistenceではstable Section identity、versioned Section configuration、established TaskChuteDayごとのhistorical Section contextを責務分離し、`Sectionなし`をnormal timed Sectionのsentinelではなくplacement relationのabsenceとして扱う方向がApproved済み。authoritative time rangeを持たないlegacy historyからSection時間を推測せずunknownとして保持し、通常のSection設定変更はestablished current Dayをretroactiveに書き換えず原則次TaskChuteDayから有効にする。Dogfood実装順はB1（Section time foundation + `Sectionなし` + Entry見積）→B2（planned start + derived placement/order）→B3（Section settings lifecycle）でApproved済み。
 
-D-039によりB2 planned-startの`planned_start_minute INTEGER NULL`、既存`entries.position`を使うmanual tie-break、derived Section / canonical order、SetEntryPlannedStart requestとatomic retry / conflict contractはApproved済み。これはruntime実装済みという意味ではなく、B2 evidenceは`NOT_IMPLEMENTED`である。
+D-039によりB2 planned-startの`planned_start_minute INTEGER NULL`、既存`entries.position`を使うmanual tie-break、derived Section / canonical order、SetEntryPlannedStart requestとatomic retry / conflict contractはApproved済み。B2 runtimeはcommit `316ad0d88f0f88d1445991904da587b1e0987dab`で`main`へImplemented / Integrated済みで、source review、automated verification、real local `0004` migration、signed-in browser verificationはPASS。persistent nonprod / production verificationは`NOT_RUN`である。
 
 Current First vertical slice implementation / nonprod verification fact:
 
@@ -26,10 +26,14 @@ Current First vertical slice implementation / nonprod verification fact:
 - current fingerprint canonicalizationはrecursive deterministic JSON canonicalization + SHA-256、version 1
 - current placement revision physical representationは`taskchute_days.placement_revision`
 - `0002_lifecycle_ordering.sql`で既存operation rowを保持しつつlifecycle command typeとExecution persistenceを追加済み
+- `0003_dogfood_day_b1.sql`でversioned Section configuration / established Day context、nullable Section placement、Entry見積を追加済み
+- `0004_dogfood_day_b2.sql`でnullable `entries.planned_start_minute`、Sectionなし + non-null禁止constraint、planned-start / canonical-order index、`SetEntryPlannedStart` operation typeを追加済み
 - active Execution uniquenessのcurrent physical strategyは`executions(app_user_id) WHERE ended_at IS NULL`のpartial UNIQUE index
 - CreateProject / AddTaskToDay / ReorderEntries / StartEntry / CompleteEntryのcurrent transaction algorithmはimplementation review済み
 - Reorderのcurrent physical strategyは`json_each`へordered Entry IDsを渡すset-based update
 - current Reorder mutation batchはEntry数に比例してstatementを増やさない
+- current B2 canonical projectionはSection内でplanned start NULLを先に`position`順、non-nullをminute昇順・同minute `position`順で返す
+- SetEntryPlannedStartはestablished Day contextからSectionを解決してplacement / order / revision / operation resultをatomicに確定し、MoveEntryはplanned startをclear、ReorderはNULLまたは同一minute cohort内へ制限する
 - persistent nonprod remote migration / schema / FK / active Execution partial UNIQUE indexはPASS
 - persistent nonprod remote runtime smokeでCreate Project / Add Task+Entry / Reorder / Start / Complete / retry / conflict / reload recoveryをPASS
 
@@ -63,6 +67,7 @@ Current implementationでは以下を実装済み。
 - `POST /api/v1/projects`
 - `POST /api/v1/taskchute-days/current/entries`
 - `POST /api/v1/taskchute-days/current/entries/reorder`
+- `POST /api/v1/entries/:entry_id/planned-start`
 - `POST /api/v1/entries/:entry_id/start`
 - `POST /api/v1/entries/:entry_id/complete`
 - CreateProject / AddTaskToDay / ReorderEntries / StartEntry / CompleteEntryのcurrent DTO / error mapping
@@ -131,8 +136,12 @@ Current implementation fact:
 - client-side retained operation Discard
 - retained operation中はunrelated lifecycle / reorder mutationをdisableし、旧operationを別操作から暗黙再送しない
 - current DayBoard外のEntryに属するactive Executionもheader actionからComplete可能
+- current Day planned Entryのplanned-start editor、blank clear、extended-time入力 / 表示、derived Section placement / orderを実装済み
+- explicit Section move時にvisible planned start editor / valueをclearし、canonical reconcile後に`—`を表示する
+- planned-start NULL / different minuteを越えるillegal Reorder controlを抑止し、same-minute cohort内のmanual reorderを提供する
+- running / completed Entryではplanned-start編集を提供しない
 
-D-031〜D-037でDay planning / Routine target semanticsが追加され、D-038で次のDay dogfood persistence stagingとしてB1 / B2 / B3がApprovedされた。D-039でB2 planned-start persistence / command contractもApproved済み。B1はPR #13で`main`へImplemented / Integrated済みで、local evidenceと2026-08-29 persistent nonprod migration / runtime / browser verificationはPASS。production verificationとreal Japanese IMEは`NOT_RUN`。`docs/DESIGN.md` Draftのbroader Day Table interactionとB2 / B3 runtimeは未実装。
+D-031〜D-037でDay planning / Routine target semanticsが追加され、D-038で次のDay dogfood persistence stagingとしてB1 / B2 / B3がApprovedされた。B1はPR #13で、D-039のB2 planned-start persistence / command runtimeはcommit `316ad0d88f0f88d1445991904da587b1e0987dab`で`main`へImplemented / Integrated済み。B1 local + persistent nonprod evidenceとB2 local migration / browser evidenceはPASS。B1 production、B2 persistent nonprod / production、real Japanese IMEは`NOT_RUN`。`docs/DESIGN.md` Draftのbroader Day Table interactionとB3 runtimeは未実装。
 
 以下の具体方式・scopeはOpen:
 
@@ -178,7 +187,7 @@ D-022によりinitial runtime entity IDはUUIDv7、First slice Sectionはuser-gl
 
 D-028でexplicit Interrupt / continuation、D-029でcurrent Start取消、D-030でSection semantics、D-031でplanned startとSection placement / ordering、D-032で開始見込、D-033でmanual actual correction / non-overlap、D-037でDay move / duplicate / deleteの主要semanticsはApproved済み。D-038でSection persistence責務分離、legacy unknown handling、`Sectionなし` physical absence、normal Section configのnext-Day effective timing、B1/B2/B3 stagingがApproved済み。D-039でplanned-start physical representation、manual tie-break persistence、SetEntryPlannedStart / MoveEntry / Reorder / Startのcommand boundaryとretry / atomicityをApprovedした。
 
-Current implementationではEntry `position`を同一user / TaskChuteDay / Section内のexplicit integer orderとして保存し、AddTaskToDayでappend、ReorderEntriesでrequested orderへ更新する。Reorderのcurrent physical implementationはset-based `json_each` updateだが、これを長期Domain Decisionへ昇格しない。
+Current implementationではEntry `position`を同一user / TaskChuteDay / Section内のexplicit manual / tie-break authorityとして保存し、AddTaskToDayでappend、ReorderEntriesで許可されたcohort内のrequested orderへ更新する。B2 planned Entryはplanned start NULLを先に`position`順、non-nullをminute昇順・同minute `position`順でderiveする。Reorderのcurrent physical implementationはset-based `json_each` updateだが、これを長期Domain Decisionへ昇格しない。
 
 Current lifecycle implementation fact:
 
@@ -355,7 +364,7 @@ planned Placeとobserved LocationSnapshotの分離、optional best-effort Start 
 
 Native UIをWeb React codeの直接流用前提にしない方向はD-020でApproved済み。
 
-First Server + Web vertical sliceとD-038 B1はImplemented / Integrated済み。B1 local evidenceとpersistent nonprod migration / runtime / browser verificationはPASS。production verificationとreal Japanese IMEは`NOT_RUN`、Releasedは`NO`。B2（planned start + derived placement/order）とB3（Section settings lifecycle）は未実装。
+First Server + Web vertical slice、D-038 B1、D-039 B2はImplemented / Integrated済み。B1 local + persistent nonprod evidenceとB2 local migration / browser evidenceはPASS。B1 production、B2 persistent nonprod / production、real Japanese IMEは`NOT_RUN`、Releasedは`NO`。B3（Section settings lifecycle）は未実装。
 
 以下はOpen:
 
@@ -379,6 +388,8 @@ Resolved / current fact:
 - remote migrations / schema / FK / active Execution indexはPASS
 - persistent nonprod Worker deploy / runtime smokeはPASS
 - B1 `0003` migration / preservation / authenticated runtime / browser flowは2026-08-29にPASS
+- B2 `0004` local migration / preservation / authenticated local browser flowは2026-08-29にPASS
+- B2 persistent nonprod migration / runtime / browser verificationは`NOT_RUN`
 - temporary bootstrap enable -> bootstrap -> disable -> token removalはPASS
 - final bootstrap postureはdisabled、`BOOTSTRAP_TOKEN`削除済み
 - observed smoke scopeではFree-plan-shaped Worker/D1 limit errorなし

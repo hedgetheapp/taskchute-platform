@@ -1,6 +1,6 @@
 # Test Matrix
 
-First Server + Web vertical sliceとD-038 B1は実装・main統合済み。B1 local evidenceとpersistent non-productionでのB1 migration / runtime / browser verificationはPASS、B1 production verificationは`NOT_RUN`。persistent non-productionのpre-B1 remote runtime / deployed Worker verificationもPASS。Product runtime全体はまだVerified / Releasedではない。
+First Server + Web vertical slice、D-038 B1、D-039 B2は実装・main統合済み。B1 local + persistent non-production verificationとB2 local migration / browser verificationはPASS。B1 production、B2 persistent non-production / production verificationは`NOT_RUN`。Product runtime全体はまだVerified / Releasedではない。
 
 この文書はverification requirementとcurrent evidenceの正本とする。
 
@@ -231,26 +231,55 @@ local dogfoodで利用したSection set / rangesはuser-specific verification da
 | B1-REMOTE-01 | Remote nonprod | B1 migration / runtime / browser flowをpersistent nonprodで検証する | PASS |
 | B1-PROD-01 | Production | B1 production migration / smokeを検証する | NOT_RUN |
 
-## Dogfood Day v0.1-B / B2 planned-start contract
+## Dogfood Day v0.1-B / B2 integrated implementation evidence
 
-D-039でB2のpersistence / command contractはApproved済みだが、runtime、migration、UI、verificationは未実装である。以下をPASSへ昇格しない。
+B2 implementation commit `316ad0d88f0f88d1445991904da587b1e0987dab`（parent `313679fa0c68ce798c01b2a0216f1dbb0832f4c1`、subject `Implement B2 planned-start planning`）は`main`へfast-forward Integrated済み。reviewed patchは17 files、`+938 / -40`、SHA-256 `38A4D4FB08612039EE0DC313FF9EC665A3B982D9AE1C417EC5BBB5A574489F31`で、commit patch-idとの一致とsource review `PASS`を確認した。
+
+Automated / isolated evidence:
+
+- Worker / D1: `87 PASS / 87`（focused B2 `7 PASS / 7`）
+- Web: `49 PASS / 49`
+- isolated APP migration regression: `1 scenario / 25 data-schema checks PASS`
+- typecheck / production build / `git diff --check`: `PASS`
+
+Real local APP DB migration evidence — 2026-08-29:
+
+- private ignored raw SQLite backup: `taskchute-app-local-pre-b2-20260829-160924.sqlite`、311,296 bytes、SHA-256 `3AF6A262629CA9807FAC5126DA7A92677F8B7076959DFB4A4A7DFCFF981AA1C5`
+- backup / pre-migration: `PRAGMA quick_check = ok`、FK violations 0、active Execution 0、pendingは`0004_dogfood_day_b2.sql`のみ
+- pre-existing counts: app_users 1 / projects 1 / sections 5 / taskchute_days 1 / tasks 9 / entries 9 / executions 4 / operations 55 / Section configuration versions 1 / heads 1 / items 5 / Day contexts 5
+- `0004_dogfood_day_b2.sql`: `PASS`、post-migration pending 0
+- immediate preservation gate: `PASS`。全12 tableのpre-existing identity / deterministic fingerprint、placement revision、estimate、unknown-vs-timed Section contextを保持。既存Entry 9件はplanned start NULL、schema / constraint / B1+B2 index / one-active index、quick check / FK / active Executionを確認
+
+Signed-in real local browser evidence — 2026-08-29:
+
+- `http://127.0.0.1:5173/`、logical date `2026-08-29`、boundary `04:00` / 240
+- auto-placement、exact Section boundary、clear、editor-open explicit Section move時clear、NULL / minute / same-minute canonical order、same-minute reorder、illegal cohort reorder control抑止、extended `24:30`、`28:00` / `29:00` rejection、17:30 planned Entryの16:15 early Start / Complete、reload persistence: `PASS`
+- unexpected console errors / warnings: `0 / 0`
+- final DB: `quick_check = ok`、FK 0、active Execution 0、pending 0、Sectionなし + non-null planned start 0、original Task / Entry / Execution / operation identity and content preserved
+- verification用Morning 04:00–09:00 / Focus 09:00–12:00 / Lunch 12:00–13:00 / Afternoon 13:00–18:00 / Evening 18:00–28:00はuser-specific configurationであり、Product defaultではない。verification-created dataはcleanupせず残置した
+
+`B2-COMMAND-01` / `B2-RETRY-01`のexact operation replay / misuse / concurrency / ambiguityはautomated Worker / Web evidenceによる。real browserではoperation IDをinjectしてlow-level retryを再現していない。
 
 | ID | Area | Requirement | Contract | Evidence |
 |---|---|---|---|---|
-| B2-PERSIST-01 | Persistence | nullable `planned_start_minute INTEGER`がestablished Day `logicalDate`基準のextended wall-clock minuteをSection contextと同じ座標系で保持し、existing EntryをNULLでupgradeする | Approved (D-039) | NOT_IMPLEMENTED |
-| B2-VALIDATE-01 | Validation | non-null値を`[establishment_boundary_minutes, establishment_boundary_minutes + 1440)`内かつexactly one authoritative timed Sectionへ検証し、Day開始0-based offsetやlegacy unknown timingを推測しない | Approved (D-039) | NOT_IMPLEMENTED |
-| B2-PLACEMENT-01 | Placement | planned start設定・変更がexactly one Sectionを解決してauto-moveし、Section boundary minuteを次Sectionへ配置する | Approved (D-039) | NOT_IMPLEMENTED |
-| B2-PLACEMENT-02 | Placement | `Sectionなし` + non-null planned startを許さず、SectionなしEntryへの設定をresolved real Sectionへ移す | Approved (D-039) | NOT_IMPLEMENTED |
-| B2-CLEAR-01 | Placement | planned start clearが現在Sectionを維持し、開始予定なしcohortへ配置する | Approved (D-039) | NOT_IMPLEMENTED |
-| B2-ORDER-01 | Ordering | Section内で開始予定なしをposition順、開始予定ありをminute昇順・同minute position順にし、historical slotを保護する | Approved (D-039) | NOT_IMPLEMENTED |
-| B2-REORDER-01 | Reorder | manual Reorderを開始予定なしcohortまたは同一minute cohort内だけに制限し、異なるcohort / historical boundary越えをrejectする | Approved (D-039) | NOT_IMPLEMENTED |
-| B2-COMMAND-01 | Command | SetEntryPlannedStartがplanned-start、Section、order、revision exactly +1、operation resultをatomicに確定する | Approved (D-039) | NOT_IMPLEMENTED |
-| B2-RETRY-01 | Retry / Conflict | stale revisionをpartial effectなしでrejectし、same-operation retryでrevision / effectsを二重適用せず、different-semantic misuseとambiguity reconciliationを扱う | Approved (D-039) | NOT_IMPLEMENTED |
-| B2-MOVE-01 | Placement | explicit Section moveがplanned startをclearし、MoveEntry全体でrevisionをexactly once増やす | Approved (D-039) | NOT_IMPLEMENTED |
-| B2-START-01 | Lifecycle | planned-startにnot-beforeを課さず、Sectionなし Start placementをplanned-start NULLへ限定する | Approved (D-039) | NOT_IMPLEMENTED |
-| B2-ELIGIBILITY-01 | Lifecycle | running / completed Entryのplanned-start editをrejectする | Approved (D-039) | NOT_IMPLEMENTED |
-| B2-RELOAD-01 | Query | planned start、derived Section / order、revisionがreload後もcanonical stateから復元する | Approved (D-039) | NOT_IMPLEMENTED |
-| B2-WEB-01 | Web | current Day planned Entryのblank / extended-time入力、auto-placement、clear、move時clear、illegal reorder control抑止を実ブラウザで扱う | Approved (D-039) | NOT_IMPLEMENTED |
+| B2-PERSIST-01 | Persistence | nullable `planned_start_minute INTEGER`がestablished Day `logicalDate`基準のextended wall-clock minuteをSection contextと同じ座標系で保持し、existing EntryをNULLでupgradeする | Approved (D-039) | PASS |
+| B2-VALIDATE-01 | Validation | non-null値を`[establishment_boundary_minutes, establishment_boundary_minutes + 1440)`内かつexactly one authoritative timed Sectionへ検証し、Day開始0-based offsetやlegacy unknown timingを推測しない | Approved (D-039) | PASS |
+| B2-PLACEMENT-01 | Placement | planned start設定・変更がexactly one Sectionを解決してauto-moveし、Section boundary minuteを次Sectionへ配置する | Approved (D-039) | PASS |
+| B2-PLACEMENT-02 | Placement | `Sectionなし` + non-null planned startを許さず、SectionなしEntryへの設定をresolved real Sectionへ移す | Approved (D-039) | PASS |
+| B2-CLEAR-01 | Placement | planned start clearが現在Sectionを維持し、開始予定なしcohortへ配置する | Approved (D-039) | PASS |
+| B2-ORDER-01 | Ordering | Section内で開始予定なしをposition順、開始予定ありをminute昇順・同minute position順にし、historical slotを保護する | Approved (D-039) | PASS |
+| B2-REORDER-01 | Reorder | manual Reorderを開始予定なしcohortまたは同一minute cohort内だけに制限し、異なるcohort / historical boundary越えをrejectする | Approved (D-039) | PASS |
+| B2-COMMAND-01 | Command | SetEntryPlannedStartがplanned-start、Section、order、revision exactly +1、operation resultをatomicに確定する | Approved (D-039) | PASS |
+| B2-RETRY-01 | Retry / Conflict | stale revisionをpartial effectなしでrejectし、same-operation retryでrevision / effectsを二重適用せず、different-semantic misuseとambiguity reconciliationを扱う | Approved (D-039) | PASS |
+| B2-MOVE-01 | Placement | explicit Section moveがplanned startをclearし、MoveEntry全体でrevisionをexactly once増やす | Approved (D-039) | PASS |
+| B2-START-01 | Lifecycle | planned-startにnot-beforeを課さず、Sectionなし Start placementをplanned-start NULLへ限定する | Approved (D-039) | PASS |
+| B2-ELIGIBILITY-01 | Lifecycle | running / completed Entryのplanned-start editをrejectする | Approved (D-039) | PASS |
+| B2-RELOAD-01 | Query | planned start、derived Section / order、revisionがreload後もcanonical stateから復元する | Approved (D-039) | PASS |
+| B2-WEB-01 | Web | current Day planned Entryのblank / extended-time入力、auto-placement、clear、move時clear、illegal reorder control抑止を実ブラウザで扱う | Approved (D-039) | PASS |
+| B2-LOCAL-DB-01 | Migration / Integrity | real local APP DBをprivate backup後に0004へupgradeし、pre-existing identity / content / historical authorityとDB integrityを保持する | Approved (D-039) | PASS |
+| B2-BROWSER-01 | Web / Browser | signed-in real local browserでB2 placement / order / validation / lifecycle / reload scenariosを検証する | Approved (D-039) | PASS |
+| B2-REMOTE-01 | Remote nonprod | B2 migration / runtime / authenticated browser flowをpersistent nonprodで検証する | Approved (D-039) | NOT_RUN |
+| B2-PROD-01 | Production | B2 production migration / smokeを検証する | Approved (D-039) | NOT_RUN |
 
 ## Persistent non-production B1 remote verification evidence — 2026-08-29
 
