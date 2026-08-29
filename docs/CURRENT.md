@@ -57,7 +57,7 @@ D1 feasibility gateは引き続きPASS / Verified。current Product runtimeはFi
 
 ## Dogfood Day v0.1-B / B1 publication state
 
-B1 implementationは`Implement Dogfood Day B1 planning foundation` commit `1c14eef4695c2de2ced65f43250544159e039485`としてcommitされ、remote `dogfood-day-v01a`へpush済み。branch HEADも同SHAである。PR #13 `Implement Dogfood Day v0.1-A and B1 planning foundation`はOPENだが、`main`へはまだIntegratedされていない。
+B1 implementationは`Implement Dogfood Day B1 planning foundation` commit `1c14eef4695c2de2ced65f43250544159e039485`としてcommitされ、remote `dogfood-day-v01a`へpush済み。PR #13 `Implement Dogfood Day v0.1-A and B1 planning foundation`はOPENで、current branch / PR HEADにはpublication-state docs follow-upも含まれるが、`main`へはまだIntegratedされていない。
 
 Observed evidence:
 
