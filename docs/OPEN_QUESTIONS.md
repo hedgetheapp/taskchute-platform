@@ -264,15 +264,19 @@ D-034でProjected / Materialized Occurrence、field-level day override、Routine
 
 D-035 / D-036でeffective営業日 / 休日判定とinitial recurrence pattern setがApproved済み。
 
+D-040でdaily-only R1について、existing Entry conversion、minimal RoutineDefinition / RoutineOccurrence / Entry relation、current-Day lazy materialization、placement revision、defaults、inclusive end / Routine終了、minimal Web UXをApprovedした。以下はR1を越えるbroader scopeまたは将来拡張としてOpenのまま維持する。
+
 以下はOpen:
 
-- RoutineDefinition / RoutineOccurrence / field override / schedule versionのexact persistence schema
+- R1 minimal schemaを越えるfield override / schedule versionとbroader Routine persistence schema
 - Projected Occurrenceをquery時に算出するexact algorithm / caching / pagination
-- どの操作時点でphysical RoutineOccurrence rowをmaterializeするかのimplementation boundary（Product semanticsはD-034でApproved）
+- R1 current-Day lazy ensure以外でphysical RoutineOccurrenceをmaterializeするimplementation boundary（Product semanticsはD-034でApproved）
 - Routine defaultからday-specific Task Note templateを適用するcopy / reference / revision strategy
 - Routine Taskのday-specific Task名 / Project overrideをEntry / Occurrence / dedicated contextのどこへ保持するか
 - schedule変更と既materialized Occurrenceをatomicにreconcileするcommand algorithm
-- stop / resume / delete stateのphysical representation
+- R1 inclusive endを越えるtemporary stop / resume / delete stateのphysical representation
+- D-034の`今回だけ / Routineへ反映` choice UXとfield-level override persistence。R1ではRoutine由来EntryのSection / 開始予定 / 見積をread-onlyとしてsilent overrideを作らない
+- Routine default planned startが将来establishされたDay Section contextと両立しない場合のrecovery UX。R1 local candidateはpartial materializationせずsafe failureするが、default修正 / skip等の復旧導線は未決
 - long-range recurrence projectionのperformance / query limit
 - public holiday source / library / update mechanismとholiday data versioning
 - 将来Japan以外のlocale / country calendarを扱うか

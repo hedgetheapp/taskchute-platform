@@ -9,6 +9,7 @@ interface PlannedStartEntryRow {
   position: number;
   lifecycle_state: string;
   planned_start_minute: number | null;
+  routine_occurrence_id: string | null;
 }
 
 export function isSetEntryPlannedStartRequest(value: unknown): value is SetEntryPlannedStartRequest {
@@ -34,7 +35,7 @@ export async function setEntryPlannedStart(
   const [dayResult, entryResult, contextResult] = await db.batch([
     db.prepare(`SELECT placement_revision, establishment_boundary_minutes FROM taskchute_days
       WHERE app_user_id = ? AND id = ?`).bind(appUserId, request.taskchute_day_id),
-    db.prepare(`SELECT section_id, position, lifecycle_state, planned_start_minute FROM entries
+    db.prepare(`SELECT section_id, position, lifecycle_state, planned_start_minute, routine_occurrence_id FROM entries
       WHERE app_user_id = ? AND id = ? AND taskchute_day_id = ?`)
       .bind(appUserId, request.entry_id, request.taskchute_day_id),
     request.planned_start_minute === null
@@ -61,6 +62,7 @@ export async function setEntryPlannedStart(
   const entry = entryResult.results[0] as PlannedStartEntryRow | undefined;
   if (!day || !entry) return reject("Entry or TaskChuteDay is unavailable");
   if (entry.lifecycle_state !== "planned") return reject("Only a planned Entry planned start can be edited");
+  if (entry.routine_occurrence_id !== null) return reject("Routine-derived Entry planned start is read-only");
   if (day.placement_revision !== request.expected_placement_revision) return reject("The placement revision is stale", true);
 
   let targetSectionId = entry.section_id;
@@ -99,7 +101,8 @@ export async function setEntryPlannedStart(
         SELECT ?, d.app_user_id, d.id, ? FROM taskchute_days d
         WHERE d.app_user_id = ? AND d.id = ? AND d.placement_revision = ?
           AND EXISTS (SELECT 1 FROM entries e WHERE e.app_user_id = d.app_user_id AND e.id = ?
-            AND e.taskchute_day_id = d.id AND e.lifecycle_state = 'planned' AND e.section_id IS ?
+            AND e.taskchute_day_id = d.id AND e.lifecycle_state = 'planned'
+            AND e.routine_occurrence_id IS NULL AND e.section_id IS ?
             AND e.position = ? AND e.planned_start_minute IS ?)
           AND (? IS NULL OR EXISTS (SELECT 1 FROM taskchute_day_section_contexts c
             WHERE c.app_user_id = d.app_user_id AND c.taskchute_day_id = d.id AND c.section_id = ?
@@ -110,6 +113,7 @@ export async function setEntryPlannedStart(
           request.planned_start_minute, targetSectionId, request.planned_start_minute, request.planned_start_minute),
       db.prepare(`UPDATE entries SET section_id = ?, position = ?, planned_start_minute = ?
         WHERE app_user_id = ? AND id = ? AND taskchute_day_id = ? AND lifecycle_state = 'planned'
+          AND routine_occurrence_id IS NULL
           AND section_id IS ? AND position = ? AND planned_start_minute IS ?
           AND EXISTS (SELECT 1 FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
         .bind(targetSectionId, targetPosition, request.planned_start_minute, appUserId, request.entry_id,
@@ -119,12 +123,14 @@ export async function setEntryPlannedStart(
         WHERE app_user_id = ? AND id = ? AND placement_revision = ?
           AND EXISTS (SELECT 1 FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?)
           AND EXISTS (SELECT 1 FROM entries WHERE app_user_id = ? AND id = ? AND section_id IS ?
-            AND position = ? AND planned_start_minute IS ? AND lifecycle_state = 'planned')`)
+            AND position = ? AND planned_start_minute IS ? AND lifecycle_state = 'planned'
+            AND routine_occurrence_id IS NULL)`)
         .bind(appUserId, request.taskchute_day_id, request.expected_placement_revision, appUserId, request.operation_id,
           appUserId, request.entry_id, targetSectionId, targetPosition, request.planned_start_minute),
       db.prepare(`INSERT INTO transaction_assertions (app_user_id, id, ok) SELECT ?, ?, CASE WHEN
         EXISTS (SELECT 1 FROM entries WHERE app_user_id = ? AND id = ? AND taskchute_day_id = ?
-          AND section_id IS ? AND position = ? AND planned_start_minute IS ? AND lifecycle_state = 'planned')
+          AND section_id IS ? AND position = ? AND planned_start_minute IS ? AND lifecycle_state = 'planned'
+          AND routine_occurrence_id IS NULL)
         AND EXISTS (SELECT 1 FROM taskchute_days WHERE app_user_id = ? AND id = ? AND placement_revision = ?)
         THEN 1 ELSE 0 END WHERE EXISTS
           (SELECT 1 FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?)`)

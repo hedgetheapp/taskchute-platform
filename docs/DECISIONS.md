@@ -708,3 +708,50 @@ owner identityはClient requestから受け取らず、authenticated Server prin
 - running / completed Entryにはplanned-start編集を提供しない。
 
 本DecisionはB2 implementation contractをApprovedにするが、runtime実装・migration・verificationの完了を意味しない。B2は実装とevidenceが揃うまで`NOT_IMPLEMENTED`とする。
+
+## D-040 — Minimal Routine R1 daily dogfood slice
+Status: Approved
+
+D-015 / D-027 / D-034 / D-036のRoutine target semanticsを、最初にdogfood可能なdaily-only sliceとして実装するため、以下をR1 contractとして確定する。これはD-036のbroader recurrence patternを狭めず、R1以外のpatternは後続sliceとする。
+
+### Daily schedule and conversion
+
+- R1 recurrenceは毎日のみとし、conversionを行うcurrent logical TaskChuteDayをinclusive start logical dateとする。
+- end conditionは終了なし、またはinclusive end logical dateとする。count-based endはR1 scope外とする。
+- current-DayのplannedかつRoutine由来でないEntryをRoutine化できる。
+- conversionは既存Task / current-Day Entry identity、TaskChuteDay、Section placementまたは`Sectionなし`、見積、開始予定を維持し、todayのTask / Entryをduplicateしない。
+- conversion時のSection、見積、開始予定をRoutineDefinitionのinitial defaultsとしてsnapshotし、current DayをoriginとするRoutineOccurrenceを1件materializeして既存Entryへ関連付ける。
+- conversionはD-020のlogical operation identity / retry / atomicityに従う。
+
+### Minimal persistence
+
+- R1 APP migrationはstable owner-scoped `RoutineDefinition` / `RoutineOccurrence`とnullableなEntryからOccurrenceへのrelationを追加する。
+- RoutineDefinitionはstable Taskを参照し、daily recurrence、start logical date、nullable inclusive end logical date、nullable default Section / estimate / planned startを保持する。
+- RoutineOccurrenceはRoutineDefinitionとorigin TaskChuteDayを参照し、同じRoutineDefinition + origin TaskChuteDayのduplicateを許さない。
+- RoutineOccurrenceは長期modelで`0..* Entries`を持てるため、Entry relationに将来のcontinuation共有を妨げるuniquenessを置かない。
+- migration前のEntryはRoutine relation `NULL`のまま保持し、既存identity / content / history / operation / B1-B3 stateを変更しない。
+- 新しいRoutineDefinition / RoutineOccurrence identityはD-022のUUIDv7 opaque identityに従い、ID timestampをProduct ordering authorityにしない。
+
+### Current-Day lazy materialization
+
+- current-Day queryはfinal canonical projectionを返す前に、そのlogical dateへ適用されるactive daily Routineをensureする。
+- current Dayがinclusive schedule range内で、Occurrenceが未materializeなら、originをtarget TaskChuteDayとするOccurrenceをexactly one作成し、同じstable Taskを参照するinitial planned Entryをexactly one作成する。既存Occurrenceは再利用する。
+- future Dayをunboundedに事前生成せず、repeated / concurrent loadはduplicate Occurrence / Entryを作らないowner-scoped convergenceを要求する。
+- one ensureで1件以上のRoutine Entryを作成した場合、target Dayの`placement_revision`をatomicにexactly once増やす。0件なら増やさず、Entry件数ごとには増やさない。partial occurrence / entry / revisionを残さない。
+
+### Defaults and canonical placement
+
+- default planned startがnon-nullならtarget established Dayのlogical rangeで検証し、D-031 / D-039に従ってauthoritative Sectionをderiveする。`Sectionなし + non-null planned start`を作らない。
+- default planned startがnullなら、default stable Sectionがtarget Day contextに存在する場合だけ利用し、存在しなければ`Sectionなし`へfallbackする。削除済みSectionを推測・復活させない。
+- default estimate / planned startをnew Entryへcopyする。
+- generated Entryは既存B2 canonical cohortへ参加し、既存manual memberの後へstable appendする。同じensure内の複数Routineはstable RoutineDefinition dataによるdeterministic orderを使い、UUID timestampをProduct ordering authorityにしない。
+
+### Routine end and minimal Web UX
+
+- `Routineを終了`はcurrent logical Dayより後のgenerationを無効化し、already-materialized current / past Occurrence、Entry、Execution historyを保持する。RoutineDefinitionをhard deleteせず、historyをrewriteしない。
+- end mutationはD-020のretry / atomicityに従う。temporary stop / resume、gap backfill、schedule editはR1 scope外とする。
+- eligible Entryへ`Routine化` actionを提供し、終了なしまたはinclusive end dateを選択できる。
+- Routine-derived Entryはsmall Routine indicatorと`Routineを終了`へのaccessを持ち、成功後とreload後にcanonical relationを表示する。
+- pending / deterministic rejection / ambiguityは既存async mutation conventionに従い、retained ambiguous operationをunrelated actionへ再利用しない。
+
+R1はnon-daily recurrence、holiday calendar、future-range projection UI、schedule editing、field override UX、Skip、Day move、temporary stop/resume、Documents、Interrupt、statistics、native/offline clientを実装しない。これらの既存Approved target semanticsとOpen Questionは維持する。本DecisionはR1 implementation contractをApprovedにするが、runtime実装・migration・verification完了を意味しない。

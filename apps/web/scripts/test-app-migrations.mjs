@@ -83,6 +83,29 @@ try {
   assert.deepEqual(query(`SELECT * FROM taskchute_day_section_contexts
     ORDER BY app_user_id, taskchute_day_id, context_order`), preB3Contexts);
 
+  const preR1Entries = query(`SELECT id, app_user_id, task_id, taskchute_day_id, section_id, position,
+    lifecycle_state, estimate_seconds, created_at, planned_start_minute FROM entries ORDER BY id`);
+  const preR1Tasks = query("SELECT * FROM tasks ORDER BY id");
+  const preR1Days = query("SELECT * FROM taskchute_days ORDER BY id");
+  const preR1Executions = query("SELECT * FROM executions ORDER BY id");
+  const preR1Operations = query("SELECT * FROM operations ORDER BY operation_id");
+  applyFile("migrations/app/0006_minimal_routine_r1.sql");
+  assert.deepEqual(query(`SELECT id, app_user_id, task_id, taskchute_day_id, section_id, position,
+    lifecycle_state, estimate_seconds, created_at, planned_start_minute FROM entries ORDER BY id`), preR1Entries);
+  assert(query("SELECT routine_occurrence_id FROM entries").every((row) => row.routine_occurrence_id === null));
+  assert.deepEqual(query("SELECT * FROM tasks ORDER BY id"), preR1Tasks);
+  assert.deepEqual(query("SELECT * FROM taskchute_days ORDER BY id"), preR1Days);
+  assert.deepEqual(query("SELECT * FROM executions ORDER BY id"), preR1Executions);
+  assert.deepEqual(query("SELECT * FROM operations ORDER BY operation_id"), preR1Operations);
+  assert.deepEqual(query("SELECT * FROM section_configuration_versions ORDER BY app_user_id, id"), preB3Versions);
+  assert.deepEqual(query(`SELECT * FROM section_configuration_items
+    ORDER BY app_user_id, configuration_version_id, configuration_order`), preB3Items);
+  assert.deepEqual(query("SELECT * FROM section_configuration_heads ORDER BY app_user_id"), preB3Heads);
+  assert.deepEqual(query(`SELECT * FROM taskchute_day_section_contexts
+    ORDER BY app_user_id, taskchute_day_id, context_order`), preB3Contexts);
+  assert.deepEqual(query("SELECT * FROM routine_definitions"), []);
+  assert.deepEqual(query("SELECT * FROM routine_occurrences"), []);
+
   const legacyStartRequest = { entry_id: "019d2f00-0000-7000-8000-000000000002",
     execution_id: "019d2f00-0000-7000-8000-000000000003",
     operation_id: "019d2f00-0000-7000-8000-000000000001" };
@@ -135,10 +158,12 @@ try {
   assert.equal(entryColumns.find((column) => column.name === "section_id")?.notnull, 0);
   assert.equal(entryColumns.find((column) => column.name === "estimate_seconds")?.notnull, 0);
   assert.equal(entryColumns.find((column) => column.name === "planned_start_minute")?.notnull, 0);
+  assert.equal(entryColumns.find((column) => column.name === "routine_occurrence_id")?.notnull, 0);
   const indexNames = new Set(query("PRAGMA index_list(entries)").map((index) => index.name));
   assert(indexNames.has("entries_section_position_unique"));
   assert(indexNames.has("entries_unsectioned_position_unique"));
   assert(indexNames.has("entries_planned_start_idx"));
+  assert(indexNames.has("entries_routine_occurrence_idx"));
   assert(new Set(query("PRAGMA index_list(executions)").map((index) => index.name)).has("one_active_execution_per_user"));
 
   execute(["--command", `INSERT INTO entries
@@ -167,8 +192,9 @@ try {
     VALUES ('execution-second-active', 'user-v01a', 'entry-planned', '2026-08-28T10:00:00.000Z', NULL,
       '2026-08-28T10:00:00.000Z')`], false);
   assert.notEqual(duplicateActive.status, 0, "the active Execution unique index must reject a second active row");
+  assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
   assert.deepEqual(query("PRAGMA foreign_key_check"), []);
-  console.log("migration regression: 1 scenario passed (32 data/schema checks; 0001 -> 0002 -> v0.1-A fixture -> 0003 -> B1 state -> 0004 -> preservation gate -> 0005)");
+  console.log("migration regression: 1 scenario passed (46 data/schema checks; 0001 -> 0002 -> v0.1-A fixture -> 0003 -> B1 state -> 0004 -> preservation gate -> 0005 -> 0006 R1)");
 } finally {
   await rm(persistencePath, { recursive: true, force: true });
 }

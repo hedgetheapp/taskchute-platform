@@ -22,6 +22,8 @@ import type {
   SetEntryPlannedStartRequest,
   SectionConfigurationProjection,
   UpdateSectionConfigurationRequest,
+  ConvertEntryToRoutineRequest,
+  EndRoutineRequest,
 } from "../shared/contracts";
 import { isSamePlannedStartCohort } from "../shared/planned-entry-order";
 import { uuidv7 } from "../shared/uuidv7";
@@ -75,6 +77,21 @@ function formatEstimate(seconds: number | null): string {
   if (!seconds) return "—";
   const minutes = Math.floor(seconds / 60);
   return minutes >= 60 ? `${Math.floor(minutes / 60)}時間${minutes % 60 ? `${minutes % 60}分` : ""}` : `${minutes}分`;
+}
+
+function transientStatusText(pending: string | null): string | null {
+  switch (pending) {
+    case "reorder": return "並び替え・照合中…";
+    case "task": return "Taskを追加・照合中…";
+    case "start": return "開始・照合中…";
+    case "complete": return "完了・照合中…";
+    case "move": return "Section移動・照合中…";
+    case "estimate": return "見積を保存・照合中…";
+    case "planned-start": return "開始予定を保存・照合中…";
+    case "routine-convert": return "Routine化・照合中…";
+    case "routine-end": return "Routine終了・照合中…";
+    default: return null;
+  }
 }
 
 function parseLogicalTime(value: FormDataEntryValue | null): number | null {
@@ -154,12 +171,15 @@ export function App() {
   const [estimateOperation, setEstimateOperation] = useState<SetEntryEstimateRequest | null>(null);
   const [plannedStartOperation, setPlannedStartOperation] = useState<PlannedStartOperation | null>(null);
   const [sectionSettingsOperation, setSectionSettingsOperation] = useState<UpdateSectionConfigurationRequest | null>(null);
+  const [routineConversionOperation, setRoutineConversionOperation] = useState<ConvertEntryToRoutineRequest | null>(null);
+  const [routineEndOperation, setRoutineEndOperation] = useState<EndRoutineRequest | null>(null);
   const [, setSectionSettings] = useState<SectionConfigurationProjection | null>(null);
   const [sectionSettingsDraft, setSectionSettingsDraft] = useState<SectionSettingsDraft | null>(null);
   const [sectionSettingsNotice, setSectionSettingsNotice] = useState<string | null>(null);
   const [editingEstimate, setEditingEstimate] = useState<{ entryId: string; minutes: string } | null>(null);
   const [editingPlannedStart, setEditingPlannedStart] = useState<{ entryId: string; value: string } | null>(null);
-  const [pending, setPending] = useState<"login" | "project" | "task" | "reorder" | "start" | "complete" | "configuration" | "section-settings" | "move" | "estimate" | "planned-start" | "logout" | null>(null);
+  const [routineDraft, setRoutineDraft] = useState<{ entryId: string; endDate: string } | null>(null);
+  const [pending, setPending] = useState<"login" | "project" | "task" | "reorder" | "start" | "complete" | "configuration" | "section-settings" | "move" | "estimate" | "planned-start" | "routine-convert" | "routine-end" | "logout" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draftTask, setDraftTask] = useState<DraftTask | null>(null);
   const [pendingFocusKey, setPendingFocusKey] = useState<string | null>(null);
@@ -167,7 +187,8 @@ export function App() {
   const draftInputRef = useRef<HTMLInputElement | null>(null);
   const draftCompositionRef = useRef(false);
   const retainedOperation = projectOperation ?? taskOperation ?? reorderOperation ?? startOperation ?? completeOperation
-    ?? configurationOperation ?? sectionSettingsOperation ?? sectionMoveOperation ?? estimateOperation ?? plannedStartOperation;
+    ?? configurationOperation ?? sectionSettingsOperation ?? sectionMoveOperation ?? estimateOperation ?? plannedStartOperation
+    ?? routineConversionOperation ?? routineEndOperation;
   const mutationLocked = pending !== null || retainedOperation !== null;
 
   const reconcile = useCallback(async () => {
@@ -318,6 +339,9 @@ export function App() {
       setSectionSettings(null);
       setSectionSettingsDraft(null);
       setSectionSettingsNotice(null);
+      setRoutineConversionOperation(null);
+      setRoutineEndOperation(null);
+      setRoutineDraft(null);
       setDraftTask(null);
       setAuthState("signed-out");
     } catch (caught) {
@@ -587,7 +611,8 @@ export function App() {
   }
 
   async function changeSection(entry: EntryProjection, sectionId: string | null) {
-    if (!day || mutationLocked || entry.lifecycle_state !== "planned" || entry.section_id === sectionId) return;
+    if (!day || mutationLocked || entry.lifecycle_state !== "planned" || entry.routine !== null
+      || entry.section_id === sectionId) return;
     setEditingPlannedStart((editing) => editing?.entryId === entry.id ? null : editing);
     const operation: MoveEntryRequest = { operation_id: uuidv7(), entry_id: entry.id,
       taskchute_day_id: day.taskchute_day.id, section_id: sectionId, expected_placement_revision: day.placement_revision };
@@ -612,7 +637,12 @@ export function App() {
   }
 
   async function commitEstimate(entryId: string) {
-    if (mutationLocked || editingEstimate?.entryId !== entryId) return;
+    const canonical = day ? [...day.unsectioned_entries, ...day.sections.flatMap((section) => section.entries)]
+      .find((entry) => entry.id === entryId) : undefined;
+    if (mutationLocked || editingEstimate?.entryId !== entryId || canonical?.routine !== null) {
+      if (canonical?.routine) setEditingEstimate(null);
+      return;
+    }
     const raw = editingEstimate.minutes.trim();
     const minutes = raw === "" ? 0 : Number(raw);
     if (!Number.isInteger(minutes) || minutes < 0 || !Number.isSafeInteger(minutes * 60)) {
@@ -648,7 +678,12 @@ export function App() {
   }
 
   async function commitPlannedStart(entry: EntryProjection) {
-    if (!day || mutationLocked || editingPlannedStart?.entryId !== entry.id) return;
+    const canonical = day ? [...day.unsectioned_entries, ...day.sections.flatMap((section) => section.entries)]
+      .find((candidate) => candidate.id === entry.id) : undefined;
+    if (!day || mutationLocked || editingPlannedStart?.entryId !== entry.id || canonical?.routine !== null) {
+      if (canonical?.routine) setEditingPlannedStart(null);
+      return;
+    }
     const plannedStartMinute = parsePlannedStart(
       editingPlannedStart.value,
       day.taskchute_day.establishment_boundary_minutes,
@@ -674,7 +709,76 @@ export function App() {
     await executePlannedStart(operation);
   }
 
-  if (authState === "loading") return <main className="shell"><p>Server canonical stateを読み込み中…</p></main>;
+  async function executeRoutineConversion(operation: ConvertEntryToRoutineRequest) {
+    setPending("routine-convert"); setError(null);
+    try {
+      await api.convertEntryToRoutine(operation);
+      await reconcile();
+      setRoutineConversionOperation(null); setRoutineDraft(null);
+      setEditingEstimate((editing) => editing?.entryId === operation.entry_id ? null : editing);
+      setEditingPlannedStart((editing) => editing?.entryId === operation.entry_id ? null : editing);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Routine化に失敗しました");
+      const ambiguous = isAmbiguousOutcome(caught);
+      if (!ambiguous) setRoutineConversionOperation(null);
+      try {
+        const projection = await reconcile();
+        const canonical = [...(projection?.unsectioned_entries ?? []), ...(projection?.sections.flatMap((section) => section.entries) ?? [])]
+          .find((entry) => entry.id === operation.entry_id);
+        if (ambiguous && canonical?.routine?.routine_definition_id === operation.routine_definition_id) {
+          setRoutineConversionOperation(null); setRoutineDraft(null); setError(null);
+          setEditingEstimate((editing) => editing?.entryId === operation.entry_id ? null : editing);
+          setEditingPlannedStart((editing) => editing?.entryId === operation.entry_id ? null : editing);
+        }
+      } catch { /* Preserve retained operation identity. */ }
+    } finally { setPending(null); }
+  }
+
+  async function commitRoutineConversion(entry: EntryProjection) {
+    if (!day || mutationLocked || routineDraft?.entryId !== entry.id || entry.routine !== null) return;
+    const endLogicalDate = routineDraft.endDate.trim() || null;
+    if (endLogicalDate !== null && endLogicalDate < day.taskchute_day.logical_date) {
+      setError("Routine終了日は今日以降を指定してください");
+      return;
+    }
+    const operation: ConvertEntryToRoutineRequest = {
+      operation_id: uuidv7(), routine_definition_id: uuidv7(), routine_occurrence_id: uuidv7(),
+      entry_id: entry.id, taskchute_day_id: day.taskchute_day.id, end_logical_date: endLogicalDate,
+    };
+    setRoutineConversionOperation(operation);
+    await executeRoutineConversion(operation);
+  }
+
+  async function executeRoutineEnd(operation: EndRoutineRequest) {
+    setPending("routine-end"); setError(null);
+    try {
+      await api.endRoutine(operation);
+      await reconcile();
+      setRoutineEndOperation(null);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Routine終了に失敗しました");
+      const ambiguous = isAmbiguousOutcome(caught);
+      if (!ambiguous) setRoutineEndOperation(null);
+      try {
+        const projection = await reconcile();
+        const canonical = [...(projection?.unsectioned_entries ?? []), ...(projection?.sections.flatMap((section) => section.entries) ?? [])]
+          .find((entry) => entry.routine?.routine_definition_id === operation.routine_definition_id);
+        if (ambiguous && canonical?.routine?.can_end === false) {
+          setRoutineEndOperation(null); setError(null);
+        }
+      } catch { /* Preserve retained operation identity. */ }
+    } finally { setPending(null); }
+  }
+
+  async function endRoutine(entry: EntryProjection) {
+    if (!day || mutationLocked || !entry.routine?.can_end) return;
+    const operation: EndRoutineRequest = { operation_id: uuidv7(),
+      routine_definition_id: entry.routine.routine_definition_id, taskchute_day_id: day.taskchute_day.id };
+    setRoutineEndOperation(operation);
+    await executeRoutineEnd(operation);
+  }
+
+  if (authState === "loading") return <main className="shell"><p role="status">読み込み中…</p></main>;
   if (authState === "signed-out") {
     return (
       <main className="shell auth-shell">
@@ -697,6 +801,7 @@ export function App() {
   const allEntries = [...currentDay.unsectioned_entries, ...currentDay.sections.flatMap((section) => section.entries)];
   const activeEntry = currentDay.active_execution ? allEntries.find((entry) => entry.id === currentDay.active_execution?.entry_id) : null;
   const parsedSectionSettingsDraft = parseSectionSettingsDraft(sectionSettingsDraft);
+  const transientStatus = transientStatusText(pending);
   const groups = [
     ...(currentDay.unsectioned_entries.length > 0 || draftTask?.sectionId === null ? [{
       id: null, title: "Sectionなし", logical_start_minute: null, logical_end_minute: null,
@@ -803,13 +908,11 @@ export function App() {
         </label>
       </div>
 
-      {pending === "reorder" && <p role="status">並び替え・照合中…</p>}
-      {pending === "task" && <p role="status">Taskを追加・照合中…</p>}
-      {pending === "start" && <p role="status">開始・照合中…</p>}
-      {pending === "complete" && <p role="status">完了・照合中…</p>}
-      {pending === "move" && <p role="status">Section移動・照合中…</p>}
-      {pending === "estimate" && <p role="status">見積を保存・照合中…</p>}
-      {pending === "planned-start" && <p role="status">開始予定を保存・照合中…</p>}
+      {transientStatus && (
+        <div className="transient-status" role="status" aria-live="polite" aria-atomic="true">
+          {transientStatus}
+        </div>
+      )}
       {sectionSettingsNotice && <p role="status" className="success">{sectionSettingsNotice}</p>}
       {error && <p role="alert" className="error">{error}</p>}
 
@@ -911,32 +1014,49 @@ export function App() {
                         else if (canComplete) void complete(entry.id);
                       }}>{isRunning ? "■" : "▶"}</button>
                     )}
-                    <div className="task-main"><strong>{entry.task.title}</strong>{day.next_entry?.id === entry.id && <span className="next-label">Next</span>}</div>
+                    <div className="task-main"><div><strong>{entry.task.title}</strong>{day.next_entry?.id === entry.id && <span className="next-label">Next</span>}
+                      {entry.routine && <span className="routine-badge">Routine</span>}</div>
+                      {entry.lifecycle_state === "planned" && entry.routine === null && (
+                        routineDraft?.entryId === entry.id
+                          ? <div className="routine-editor" onClick={(event) => event.stopPropagation()}>
+                              <label>終了日（空欄は終了なし）<input type="date" min={day.taskchute_day.logical_date}
+                                value={routineDraft.endDate} onChange={(event) => setRoutineDraft({ entryId: entry.id, endDate: event.target.value })} /></label>
+                              <button type="button" disabled={mutationLocked} onClick={() => void commitRoutineConversion(entry)}>Routine化</button>
+                              <button type="button" className="secondary" disabled={mutationLocked} onClick={() => setRoutineDraft(null)}>Cancel</button>
+                            </div>
+                          : <button type="button" className="routine-action" disabled={mutationLocked}
+                              onClick={(event) => { event.stopPropagation(); setRoutineDraft({ entryId: entry.id, endDate: "" }); }}>Routine化</button>
+                      )}
+                      {entry.routine?.can_end && <button type="button" className="routine-action" disabled={mutationLocked}
+                        onClick={(event) => { event.stopPropagation(); void endRoutine(entry); }}>Routineを終了</button>}
+                      {entry.routine && !entry.routine.can_end && <span className="routine-ended">終了済み</span>}
+                    </div>
                     <span className="project-name">{entry.task.project?.title ?? "—"}</span>
-                    <select aria-label={`${entry.task.title}のSection`} value={entry.section_id ?? ""} disabled={mutationLocked || entry.lifecycle_state !== "planned"}
+                    <select aria-label={`${entry.task.title}のSection`} value={entry.section_id ?? ""}
+                      disabled={mutationLocked || entry.lifecycle_state !== "planned" || entry.routine !== null}
                       onClick={(event) => event.stopPropagation()} onChange={(event) => void changeSection(entry, event.target.value || null)}>
                       <option value="">Sectionなし</option>
                       {day.sections.map((candidate) => <option value={candidate.id} key={candidate.id}>{candidate.title}</option>)}
                     </select>
                     <span className="planned-start-cell">
-                      {editingPlannedStart?.entryId === entry.id ? <input autoFocus aria-label={`${entry.task.title}の開始予定`}
+                      {entry.routine === null && editingPlannedStart?.entryId === entry.id ? <input autoFocus aria-label={`${entry.task.title}の開始予定`}
                         value={editingPlannedStart.value} placeholder="HH:mm" inputMode="numeric"
                         onChange={(event) => setEditingPlannedStart({ entryId: entry.id, value: event.target.value })}
                         onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void commitPlannedStart(entry); }
                           else if (event.key === "Escape") { event.preventDefault(); setEditingPlannedStart(null); } }} />
                         : <button type="button" className="planned-start-button" aria-label={`${entry.task.title}の開始予定`}
-                          disabled={mutationLocked || entry.lifecycle_state !== "planned"}
+                          disabled={mutationLocked || entry.lifecycle_state !== "planned" || entry.routine !== null}
                           onClick={() => setEditingPlannedStart({ entryId: entry.id,
                             value: entry.planned_start_minute === null ? "" : formatLogicalMinute(entry.planned_start_minute) })}>
                           {entry.planned_start_minute === null ? "—" : formatLogicalMinute(entry.planned_start_minute)}
                         </button>}
                     </span>
                     <span className="estimate-cell">
-                      {editingEstimate?.entryId === entry.id ? <input autoFocus aria-label={`${entry.task.title}の見積（分）`} inputMode="numeric" value={editingEstimate.minutes}
+                      {entry.routine === null && editingEstimate?.entryId === entry.id ? <input autoFocus aria-label={`${entry.task.title}の見積（分）`} inputMode="numeric" value={editingEstimate.minutes}
                         onChange={(event) => setEditingEstimate({ entryId: entry.id, minutes: event.target.value })}
                         onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void commitEstimate(entry.id); }
                           else if (event.key === "Escape") { event.preventDefault(); setEditingEstimate(null); } }} />
-                        : <button type="button" className="estimate-button" aria-label={`${entry.task.title}の見積`} disabled={mutationLocked || entry.lifecycle_state !== "planned"}
+                        : <button type="button" className="estimate-button" aria-label={`${entry.task.title}の見積`} disabled={mutationLocked || entry.lifecycle_state !== "planned" || entry.routine !== null}
                           onClick={() => setEditingEstimate({ entryId: entry.id, minutes: entry.estimate_seconds ? String(entry.estimate_seconds / 60) : "" })}>{formatEstimate(entry.estimate_seconds)}</button>}
                     </span>
                     <span className="lifecycle-label">{entry.lifecycle_state === "planned" ? "未実行" : entry.lifecycle_state === "running" ? "実行中" : "完了"}</span>
@@ -966,9 +1086,12 @@ export function App() {
           {sectionMoveOperation && <button type="button" onClick={() => void executeSectionMove(sectionMoveOperation)}>保留中のSection移動を再試行</button>}
           {estimateOperation && <button type="button" onClick={() => void executeEstimate(estimateOperation)}>保留中の見積保存を再試行</button>}
           {plannedStartOperation && <button type="button" onClick={() => void executePlannedStart(plannedStartOperation)}>保留中の開始予定保存を再試行</button>}
+          {routineConversionOperation && <button type="button" onClick={() => void executeRoutineConversion(routineConversionOperation)}>保留中のRoutine化を再試行</button>}
+          {routineEndOperation && <button type="button" onClick={() => void executeRoutineEnd(routineEndOperation)}>保留中のRoutine終了を再試行</button>}
           <button type="button" className="secondary" onClick={() => {
             setProjectOperation(null); setTaskOperation(null); setReorderOperation(null); setStartOperation(null); setCompleteOperation(null);
-            setConfigurationOperation(null); setSectionSettingsOperation(null); setSectionMoveOperation(null); setEstimateOperation(null); setPlannedStartOperation(null); setError(null);
+            setConfigurationOperation(null); setSectionSettingsOperation(null); setSectionMoveOperation(null); setEstimateOperation(null); setPlannedStartOperation(null);
+            setRoutineConversionOperation(null); setRoutineEndOperation(null); setError(null);
           }}>保留中のclient操作を破棄</button>
         </section>
       )}

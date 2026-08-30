@@ -36,6 +36,14 @@ export interface EntryProjection {
   lifecycle_state: "planned" | "running" | "completed";
   estimate_seconds: number | null;
   planned_start_minute: number | null;
+  routine: RoutineEntryProjection | null;
+}
+
+export interface RoutineEntryProjection {
+  routine_definition_id: string;
+  routine_occurrence_id: string;
+  end_logical_date: string | null;
+  can_end: boolean;
 }
 
 export interface SectionProjection {
@@ -227,4 +235,33 @@ export interface SetEntryPlannedStartResult {
   planned_start_minute: number | null;
   position: number;
   placement_revision: number;
+}
+
+export interface ConvertEntryToRoutineRequest {
+  operation_id: string;
+  routine_definition_id: string;
+  routine_occurrence_id: string;
+  entry_id: string;
+  taskchute_day_id: string;
+  end_logical_date: string | null;
+}
+
+export interface ConvertEntryToRoutineResult {
+  routine_definition_id: string;
+  routine_occurrence_id: string;
+  entry_id: string;
+  task_id: string;
+  taskchute_day_id: string;
+  end_logical_date: string | null;
+}
+
+export interface EndRoutineRequest {
+  operation_id: string;
+  routine_definition_id: string;
+  taskchute_day_id: string;
+}
+
+export interface EndRoutineResult {
+  routine_definition_id: string;
+  end_logical_date: string;
 }

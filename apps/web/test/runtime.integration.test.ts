@@ -762,6 +762,44 @@ describe.sequential("production runtime bootstrap slice", () => {
     expect(unauthenticated.status).toBe(401);
   });
 
+  it("rejects an authenticated direct planning mutation for a Routine-derived Entry", async () => {
+    const before = await json<{
+      placement_revision: number;
+      taskchute_day: { id: string };
+      sections: Array<{ entries: Array<{ id: string; lifecycle_state: string; estimate_seconds: number | null;
+        routine: { routine_definition_id: string } | null }> }>;
+      unsectioned_entries: Array<{ id: string; lifecycle_state: string; estimate_seconds: number | null;
+        routine: { routine_definition_id: string } | null }>;
+    }>(await browser.fetch("/api/v1/taskchute-days/current"));
+    const source = [...before.sections.flatMap((section) => section.entries), ...before.unsectioned_entries]
+      .find((entry) => entry.lifecycle_state === "planned" && entry.routine === null);
+    if (!source) throw new Error("Missing planned HTTP Routine conversion fixture");
+    const converted = await browser.post(`/api/v1/entries/${source.id}/routine`, {
+      operation_id: uuidv7(), routine_definition_id: uuidv7(), routine_occurrence_id: uuidv7(),
+      entry_id: source.id, taskchute_day_id: before.taskchute_day.id, end_logical_date: null,
+    });
+    expect(converted.status).toBe(200);
+
+    const rejected = await browser.post(`/api/v1/entries/${source.id}/estimate`, {
+      operation_id: uuidv7(), entry_id: source.id,
+      estimate_seconds: source.estimate_seconds === 1200 ? 1800 : 1200,
+    });
+    expect(rejected.status).toBe(409);
+    expect((await json<{ error: { code: string } }>(rejected)).error.code).toBe("resource_conflict");
+    const after = await json<{
+      placement_revision: number;
+      sections: Array<{ entries: Array<{ id: string; estimate_seconds: number | null;
+        routine: { routine_definition_id: string } | null }> }>;
+      unsectioned_entries: Array<{ id: string; estimate_seconds: number | null;
+        routine: { routine_definition_id: string } | null }>;
+    }>(await browser.fetch("/api/v1/taskchute-days/current"));
+    const unchanged = [...after.sections.flatMap((section) => section.entries), ...after.unsectioned_entries]
+      .find((entry) => entry.id === source.id);
+    expect(unchanged).toMatchObject({ estimate_seconds: source.estimate_seconds,
+      routine: { routine_definition_id: expect.any(String) } });
+    expect(after.placement_revision).toBe(before.placement_revision);
+  });
+
   it("wires authenticated Section configuration query and update routes", async () => {
     const queryResponse = await browser.fetch("/api/v1/section-configuration");
     expect(queryResponse.status).toBe(200);
