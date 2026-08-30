@@ -328,7 +328,7 @@ Settings v0.1はcommit `51242b08e015817108010839cd5234959da2fed5`でcurrent `mai
 
 UI-1のstructural prerequisite完了によりR2A Web workはその観点では再開可能になった。ただしD-034の`今回だけ / Routineへ反映`を永続化・command化する際のcross-field coupling等のMaterial Product semanticsは未決のままであり、このcurrent-state maintenanceはそれらをApprovedまたはimplementation-readyへ昇格しない。
 
-次のProduct development gateはR1後続scopeの選定である。real-browser controlled inclusive end-dateとdeployed non-null inclusive-date subcheckはtooling boundaryにより`NOT_VERIFIED`を維持し、productionは別gateとする。R1のmain integration完了をproduction verification / Product全体のVerified / Releasedへ自動拡張しない。
+R1後続scopeの選定 / R2AはDay Navigation v0.1の後続gateとして残る。real-browser controlled inclusive end-dateとdeployed non-null inclusive-date subcheckはtooling boundaryにより`NOT_VERIFIED`を維持し、productionは別gateとする。R1のmain integration完了をproduction verification / Product全体のVerified / Releasedへ自動拡張しない。
 
 1. direct bootstrap POST / public signup remote POST、B1 real Japanese IME、B3 next-Day real-browser materialization、B3 remote raw console exact countは未検証の境界を維持する。
 2. nonprod test data / session retention・cleanup policyは別Open Questionとして維持する。
