@@ -22,6 +22,10 @@ export interface ProjectSummary {
   title: string;
 }
 
+export interface ProjectListProjection {
+  projects: ProjectSummary[];
+}
+
 export interface TaskSummary {
   id: string;
   title: string;

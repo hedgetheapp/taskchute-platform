@@ -1,6 +1,7 @@
 import type { ApiErrorBody } from "../src/shared/contracts";
 import { addTaskToDay, isAddTaskToDayRequest } from "./application/add-task-to-day";
 import { createProject, isCreateProjectRequest } from "./application/create-project";
+import { loadProjects } from "./application/load-projects";
 import { HttpError } from "./application/errors";
 import { loadCurrentTaskChuteDay } from "./application/load-current-day";
 import { completeEntry, isCompleteEntryRequest, isStartEntryRequest, startEntry } from "./application/entry-lifecycle";
@@ -48,6 +49,9 @@ async function route(request: Request, env: Env): Promise<Response> {
   const principal = await resolvePrincipal(request, env);
   if (request.method === "GET" && url.pathname === "/api/v1/taskchute-days/current") {
     return Response.json(await loadCurrentTaskChuteDay(env.APP_DB, principal.appUserId));
+  }
+  if (request.method === "GET" && url.pathname === "/api/v1/projects") {
+    return Response.json(await loadProjects(env.APP_DB, principal.appUserId));
   }
   if (request.method === "POST" && url.pathname === "/api/v1/projects") {
     const body = await readBoundedJson(request);

@@ -30,6 +30,8 @@ import { uuidv7 } from "../shared/uuidv7";
 import { api, ApiClientError } from "./api";
 
 type AuthState = "loading" | "signed-out" | "signed-in";
+type AppView = "today" | "settings";
+type SettingsDestination = "section" | "project";
 type FocusTarget = { kind: "section" | "entry"; id: string };
 type DraftTask = { sectionId: string | null; title: string };
 
@@ -81,6 +83,9 @@ function formatEstimate(seconds: number | null): string {
 
 function transientStatusText(pending: string | null): string | null {
   switch (pending) {
+    case "project": return "Projectを作成・照合中…";
+    case "project-settings": return "Project一覧を読み込み中…";
+    case "section-settings": return "Section設定を読み込み・照合中…";
     case "reorder": return "並び替え・照合中…";
     case "task": return "Taskを追加・照合中…";
     case "start": return "開始・照合中…";
@@ -159,8 +164,11 @@ function parseSectionSettingsDraft(draft: SectionSettingsDraft | null): SectionC
 
 export function App() {
   const [authState, setAuthState] = useState<AuthState>("loading");
+  const [view, setView] = useState<AppView>("today");
+  const [settingsDestination, setSettingsDestination] = useState<SettingsDestination>("section");
   const [day, setDay] = useState<CurrentTaskChuteDayProjection | null>(null);
   const [project, setProject] = useState<ProjectSummary | null>(null);
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [projectOperation, setProjectOperation] = useState<CreateProjectRequest | null>(null);
   const [taskOperation, setTaskOperation] = useState<AddTaskToDayRequest | null>(null);
   const [reorderOperation, setReorderOperation] = useState<ReorderEntriesRequest | null>(null);
@@ -179,7 +187,7 @@ export function App() {
   const [editingEstimate, setEditingEstimate] = useState<{ entryId: string; minutes: string } | null>(null);
   const [editingPlannedStart, setEditingPlannedStart] = useState<{ entryId: string; value: string } | null>(null);
   const [routineDraft, setRoutineDraft] = useState<{ entryId: string; endDate: string } | null>(null);
-  const [pending, setPending] = useState<"login" | "project" | "task" | "reorder" | "start" | "complete" | "configuration" | "section-settings" | "move" | "estimate" | "planned-start" | "routine-convert" | "routine-end" | "logout" | null>(null);
+  const [pending, setPending] = useState<"login" | "project" | "project-settings" | "task" | "reorder" | "start" | "complete" | "configuration" | "section-settings" | "move" | "estimate" | "planned-start" | "routine-convert" | "routine-end" | "logout" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draftTask, setDraftTask] = useState<DraftTask | null>(null);
   const [pendingFocusKey, setPendingFocusKey] = useState<string | null>(null);
@@ -257,13 +265,23 @@ export function App() {
     try {
       const created = await api.createProject(operation);
       setProject(created.project);
+      setProjects((current) => current.some((candidate) => candidate.id === created.project.id)
+        ? current : [...current, created.project]);
       setProjectOperation(null);
-      document.querySelector<HTMLFormElement>(".project-form")?.reset();
+      document.querySelector<HTMLFormElement>(".settings-project-form")?.reset();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Project作成に失敗しました");
       if (!isAmbiguousOutcome(caught)) setProjectOperation(null);
       if (!(caught instanceof ApiClientError) || caught.reconcile) {
-        try { await reconcile(); } catch { /* Preserve the original mutation outcome. */ }
+        try {
+          const projection = await api.loadProjects();
+          setProjects(projection.projects);
+          if (projection.projects.some((candidate) => candidate.id === operation.project_id)) {
+            setProjectOperation(null);
+            setProject(projection.projects.find((candidate) => candidate.id === operation.project_id) ?? null);
+            setError(null);
+          }
+        } catch { /* Preserve the original mutation outcome. */ }
       }
     } finally {
       setPending(null);
@@ -325,7 +343,9 @@ export function App() {
     try {
       await api.logout();
       setDay(null);
+      setView("today");
       setProject(null);
+      setProjects([]);
       setProjectOperation(null);
       setTaskOperation(null);
       setReorderOperation(null);
@@ -507,6 +527,28 @@ export function App() {
     } finally { setPending(null); }
   }
 
+  async function openProjectSettings() {
+    if (mutationLocked) return;
+    setPending("project-settings"); setError(null);
+    try {
+      const projection = await api.loadProjects();
+      setProjects(projection.projects);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Project一覧の読み込みに失敗しました");
+    } finally { setPending(null); }
+  }
+
+  async function openSettings(destination: SettingsDestination) {
+    if (mutationLocked) return;
+    setView("settings");
+    setSettingsDestination(destination);
+    setProject(null);
+    setSectionSettingsNotice(null);
+    if (destination === "section") {
+      if (sectionSettingsDraft === null) await openSectionSettings();
+    } else await openProjectSettings();
+  }
+
   function updateSectionBoundary(index: number, edge: "start" | "end", value: string) {
     if (!sectionSettingsDraft) return;
     const items = sectionSettingsDraft.items.map((item) => ({ ...item }));
@@ -556,7 +598,7 @@ export function App() {
     try {
       await api.updateSectionConfiguration(operation);
       const canonical = await api.loadSectionConfiguration();
-      setSectionSettings(canonical); setSectionSettingsDraft(null); setSectionSettingsOperation(null);
+      setSectionSettings(canonical); setSectionSettingsDraft(sectionSettingsDraftFrom(canonical)); setSectionSettingsOperation(null);
       setSectionSettingsNotice("保存しました。次のTaskChuteDayから反映されます。");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Section設定の保存に失敗しました");
@@ -572,7 +614,7 @@ export function App() {
           setSectionSettingsNotice(null);
           setError("Section設定が別の場所で更新されたため、最新内容を読み込み直しました。変更内容を確認して再編集してください。");
         } else if (ambiguous && canonical.configuration_version_id === operation.configuration_version_id) {
-          setSectionSettingsDraft(null); setSectionSettingsOperation(null); setError(null);
+          setSectionSettingsDraft(sectionSettingsDraftFrom(canonical)); setSectionSettingsOperation(null); setError(null);
           setSectionSettingsNotice("保存しました。次のTaskChuteDayから反映されます。");
         }
       } catch { /* Preserve the original mutation outcome and operation identity. */ }
@@ -870,30 +912,118 @@ export function App() {
   }
 
   return (
+    <div className="app-layout">
+      <aside className="primary-sidebar">
+        <div className="product-mark">TaskChute</div>
+        <nav aria-label="メインナビゲーション">
+          <button type="button" className={view === "today" ? "active" : ""} aria-current={view === "today" ? "page" : undefined}
+            disabled={mutationLocked} onClick={() => { setView("today"); setError(null); }}>今日</button>
+          <button type="button" className={view === "settings" ? "active" : ""} aria-current={view === "settings" ? "page" : undefined}
+            disabled={mutationLocked || day.section_configuration_required} onClick={() => void openSettings("section")}>設定</button>
+        </nav>
+        <button className="sidebar-logout" onClick={() => void logout()} disabled={mutationLocked}>
+          {pending === "logout" ? "ログアウト中…" : "ログアウト"}
+        </button>
+      </aside>
+
+      {view === "settings" ? (
+        <main className="shell settings-shell">
+          <header className="settings-header">
+            <p className="eyebrow">Settings</p>
+            <h1>設定</h1>
+          </header>
+          <div className="settings-layout">
+            <nav className="settings-navigation" aria-label="設定ナビゲーション">
+              <button type="button" className={settingsDestination === "section" ? "active" : ""}
+                aria-current={settingsDestination === "section" ? "page" : undefined} disabled={mutationLocked}
+                onClick={() => void openSettings("section")}>Section</button>
+              <button type="button" className={settingsDestination === "project" ? "active" : ""}
+                aria-current={settingsDestination === "project" ? "page" : undefined} disabled={mutationLocked}
+                onClick={() => void openSettings("project")}>Project</button>
+            </nav>
+
+            <section className="settings-content" aria-label="設定内容">
+              {transientStatus && <div className="transient-status" role="status" aria-live="polite" aria-atomic="true">{transientStatus}</div>}
+              {sectionSettingsNotice && <p role="status" className="success">{sectionSettingsNotice}</p>}
+              {error && <p role="alert" className="error">{error}</p>}
+
+              {settingsDestination === "project" && (
+                <section aria-label="Project設定">
+                  <div className="settings-section-heading">
+                    <div><h2>Project</h2><p>Projectの一覧と新規作成を管理します。</p></div>
+                  </div>
+                  <form className="settings-project-form" onSubmit={createProject} aria-busy={pending === "project"}>
+                    <label>Project名<input name="title" maxLength={200} required /></label>
+                    <button disabled={mutationLocked}>{pending === "project" ? "作成中…" : "Projectを作成"}</button>
+                  </form>
+                  {project && <p className="success">作成済み: {project.title}</p>}
+                  <div className="project-list" aria-label="Project一覧">
+                    {projects.map((candidate) => <div className="project-list-item" key={candidate.id}>{candidate.title}</div>)}
+                    {projects.length === 0 && pending !== "project-settings" && <p className="muted">Projectはまだありません。</p>}
+                  </div>
+                  <p className="settings-capability-note">rename・delete・archive・並び替えは現在未対応です。</p>
+                </section>
+              )}
+
+              {settingsDestination === "section" && !sectionSettingsDraft && pending !== "section-settings" && (
+                <div className="settings-empty">
+                  <h2>Section</h2>
+                  <p>Section設定を編集するには、現在の設定を読み込んでください。</p>
+                  <button type="button" className="secondary" disabled={mutationLocked} onClick={() => void openSectionSettings()}>再読み込み</button>
+                </div>
+              )}
+
+              {settingsDestination === "section" && sectionSettingsDraft && (
+                <section className="section-settings" aria-label="Section設定">
+                  <div className="settings-section-heading"><div><h2>Section</h2><p>変更は次に確立されるTaskChuteDayから反映されます。現在のDayとTask配置は変わりません。</p></div></div>
+                  <div className="section-settings-list">
+                    {sectionSettingsDraft.items.map((item, index) => (
+                      <div className="section-settings-row" key={item.section_id}>
+                        <label>名前<input aria-label={`Section ${index + 1}の名前`} maxLength={100} value={item.title}
+                          onChange={(event) => setSectionSettingsDraft({ ...sectionSettingsDraft,
+                            items: sectionSettingsDraft.items.map((candidate, itemIndex) => itemIndex === index
+                              ? { ...candidate, title: event.target.value } : candidate) })} /></label>
+                        <label>開始<input aria-label={`${item.title}の開始`} value={item.logical_start_text}
+                          disabled={index === 0} onChange={(event) => updateSectionBoundary(index, "start", event.target.value)} /></label>
+                        <label>終了<input aria-label={`${item.title}の終了`} value={item.logical_end_text}
+                          disabled={index === sectionSettingsDraft.items.length - 1}
+                          onChange={(event) => updateSectionBoundary(index, "end", event.target.value)} /></label>
+                        <button type="button" className="secondary" disabled={mutationLocked || !parsedSectionSettingsDraft}
+                          onClick={() => addSection(index)}>この後に追加</button>
+                        <button type="button" className="secondary"
+                          disabled={mutationLocked || sectionSettingsDraft.items.length === 1 || !parsedSectionSettingsDraft}
+                          onClick={() => deleteSection(index)}>削除</button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="section-settings-actions">
+                    <button type="button" className="secondary" disabled={pending !== null}
+                      onClick={() => { setSectionSettingsDraft(null); setError(null); }}>キャンセル</button>
+                    <button type="button" disabled={mutationLocked || !parsedSectionSettingsDraft}
+                      onClick={() => void saveSectionSettings()}>{pending === "section-settings" ? "保存・照合中…" : "次のDay用に保存"}</button>
+                  </div>
+                </section>
+              )}
+            </section>
+          </div>
+
+          {retainedOperation && pending === null && (
+            <section className="panel pending-intent" aria-label="結果未確定の操作">
+              <p>結果未確定の操作があります。元の操作だけを再試行するか、client側の保留を破棄してください。</p>
+              {projectOperation && <button type="button" onClick={() => void executeCreateProject(projectOperation)}>保留中のProject作成を再試行</button>}
+              {sectionSettingsOperation && <button type="button" onClick={() => void executeSectionSettings(sectionSettingsOperation)}>保留中の次Day Section設定を再試行</button>}
+              <button type="button" className="secondary" onClick={() => {
+                setProjectOperation(null); setSectionSettingsOperation(null); setError(null);
+              }}>保留中のclient操作を破棄</button>
+            </section>
+          )}
+        </main>
+      ) : (
     <main className="shell day-shell" onKeyDown={handleDayKeyDown}>
       <header className="day-header">
         <div>
           <p className="eyebrow">TaskChuteDay</p>
           <h1>{day.taskchute_day.logical_date}</h1>
-        </div>
-        <div className="header-actions">
-          <button type="button" className="secondary" disabled={mutationLocked || day.section_configuration_required}
-            onClick={() => void openSectionSettings()}>
-            {pending === "section-settings" ? "Section設定を読み込み中…" : "Section設定"}
-          </button>
-          <details className="project-tools">
-            <summary>Project作成</summary>
-            <form className="project-form" onSubmit={createProject} aria-busy={pending === "project"}>
-              <label>タイトル<input name="title" maxLength={200} required /></label>
-              <button disabled={mutationLocked}>
-                {pending === "project" ? "作成中…" : "作成"}
-              </button>
-              {project && <p className="success">作成済み: {project.title}</p>}
-            </form>
-          </details>
-          <button className="secondary" onClick={() => void logout()} disabled={mutationLocked}>
-            {pending === "logout" ? "ログアウト中…" : "ログアウト"}
-          </button>
         </div>
       </header>
 
@@ -910,41 +1040,7 @@ export function App() {
           {transientStatus}
         </div>
       )}
-      {sectionSettingsNotice && <p role="status" className="success">{sectionSettingsNotice}</p>}
       {error && <p role="alert" className="error">{error}</p>}
-
-      {sectionSettingsDraft && (
-        <section className="panel section-settings" aria-label="Section設定">
-          <h2>Section設定</h2>
-          <p>変更は次に確立されるTaskChuteDayから反映されます。現在のDayとTask配置は変わりません。</p>
-          <div className="section-settings-list">
-            {sectionSettingsDraft.items.map((item, index) => (
-              <div className="section-settings-row" key={item.section_id}>
-                <label>名前<input aria-label={`Section ${index + 1}の名前`} maxLength={100} value={item.title}
-                  onChange={(event) => setSectionSettingsDraft({ ...sectionSettingsDraft,
-                    items: sectionSettingsDraft.items.map((candidate, itemIndex) => itemIndex === index
-                      ? { ...candidate, title: event.target.value } : candidate) })} /></label>
-                <label>開始<input aria-label={`${item.title}の開始`} value={item.logical_start_text}
-                  disabled={index === 0} onChange={(event) => updateSectionBoundary(index, "start", event.target.value)} /></label>
-                <label>終了<input aria-label={`${item.title}の終了`} value={item.logical_end_text}
-                  disabled={index === sectionSettingsDraft.items.length - 1}
-                  onChange={(event) => updateSectionBoundary(index, "end", event.target.value)} /></label>
-                <button type="button" className="secondary" disabled={mutationLocked || !parsedSectionSettingsDraft}
-                  onClick={() => addSection(index)}>この後に追加</button>
-                <button type="button" className="secondary"
-                  disabled={mutationLocked || sectionSettingsDraft.items.length === 1 || !parsedSectionSettingsDraft}
-                  onClick={() => deleteSection(index)}>削除</button>
-              </div>
-            ))}
-          </div>
-          <div className="section-settings-actions">
-            <button type="button" className="secondary" disabled={pending !== null}
-              onClick={() => { setSectionSettingsDraft(null); setError(null); }}>キャンセル</button>
-            <button type="button" disabled={mutationLocked || !parsedSectionSettingsDraft}
-              onClick={() => void saveSectionSettings()}>{pending === "section-settings" ? "保存・照合中…" : "次のDay用に保存"}</button>
-          </div>
-        </section>
-      )}
 
       {day.section_configuration_required && (
         <section className="panel configuration-gate" aria-label="初期Section時間帯設定">
@@ -1105,5 +1201,7 @@ export function App() {
         </aside>
       )}
     </main>
+      )}
+    </div>
   );
 }

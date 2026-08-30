@@ -4,6 +4,7 @@ import type {
   ApiErrorBody,
   CreateProjectRequest,
   CreateProjectResult,
+  ProjectListProjection,
   CurrentTaskChuteDayProjection,
   CompleteEntryRequest,
   CompleteEntryResult,
@@ -67,6 +68,9 @@ export const api = {
   },
   loadDay(): Promise<CurrentTaskChuteDayProjection> {
     return requestJson("/api/v1/taskchute-days/current");
+  },
+  loadProjects(): Promise<ProjectListProjection> {
+    return requestJson("/api/v1/projects");
   },
   createProject(body: CreateProjectRequest): Promise<CreateProjectResult> {
     return requestJson("/api/v1/projects", jsonPost("", body));

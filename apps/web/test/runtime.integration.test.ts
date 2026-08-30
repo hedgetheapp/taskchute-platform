@@ -64,6 +64,7 @@ describe.sequential("production runtime bootstrap slice", () => {
   it("rejects unauthenticated protected requests", async () => {
     const response = await exports.default.fetch(`${origin}/api/v1/taskchute-days/current`);
     expect(response.status).toBe(401);
+    expect((await exports.default.fetch(`${origin}/api/v1/projects`)).status).toBe(401);
   });
 
   it.each([
@@ -223,6 +224,20 @@ describe.sequential("production runtime bootstrap slice", () => {
         .bind(appUserId, operationId)
         .first<number>("request_fingerprint_version"),
     ).toBe(1);
+  });
+
+  it("lists existing Projects for only the authenticated app user", async () => {
+    const otherUser = uuidv7();
+    const otherProject = uuidv7();
+    const now = new Date().toISOString();
+    await env.APP_DB.batch([
+      env.APP_DB.prepare("INSERT INTO app_users (id, created_at) VALUES (?, ?)").bind(otherUser, now),
+      env.APP_DB.prepare("INSERT INTO projects (id, app_user_id, title, created_at) VALUES (?, ?, 'Other owner Project', ?)")
+        .bind(otherProject, otherUser, now),
+    ]);
+    const response = await browser.fetch("/api/v1/projects");
+    expect(response.status).toBe(200);
+    expect(await json(response)).toEqual({ projects: [{ id: projectId, title: "Runtime foundation" }] });
   });
 
   it("treats an unsupported persisted fingerprint version as internal incompatibility, not operation misuse", async () => {

@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CurrentTaskChuteDayProjection, EntryProjection } from "../../src/shared/contracts";
 
 const mocks = vi.hoisted(() => ({
-  login: vi.fn(), logout: vi.fn(), loadDay: vi.fn(), createProject: vi.fn(), addTask: vi.fn(),
+  login: vi.fn(), logout: vi.fn(), loadDay: vi.fn(), loadProjects: vi.fn(), createProject: vi.fn(), addTask: vi.fn(),
   reorderEntries: vi.fn(), startEntry: vi.fn(), completeEntry: vi.fn(),
   establishInitialSectionConfiguration: vi.fn(), moveEntry: vi.fn(), setEntryEstimate: vi.fn(),
   setEntryPlannedStart: vi.fn(),
@@ -120,6 +120,7 @@ const completedDay: CurrentTaskChuteDayProjection = {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.logout.mockResolvedValue({});
+  mocks.loadProjects.mockResolvedValue({ projects: [{ id: "existing-project", title: "Existing Project" }] });
   mocks.createProject.mockResolvedValue({ project: { id: "project", title: "Project" } });
   mocks.addTask.mockResolvedValue({});
   mocks.reorderEntries.mockResolvedValue({});
@@ -141,6 +142,18 @@ beforeEach(() => {
   });
   mocks.updateSectionConfiguration.mockResolvedValue({ configuration_version_id: "new-version" });
 });
+
+async function openSectionSettings() {
+  fireEvent.click(await screen.findByRole("button", { name: "設定" }));
+  return screen.findByRole("region", { name: "Section設定" });
+}
+
+async function openProjectSettings() {
+  fireEvent.click(await screen.findByRole("button", { name: "設定" }));
+  await screen.findByRole("region", { name: "Section設定" });
+  fireEvent.click(screen.getByRole("button", { name: "Project" }));
+  return screen.findByRole("region", { name: "Project設定" });
+}
 
 describe("Dogfood Day shell", () => {
   it("shows a concise accessible status while loading the canonical Day", () => {
@@ -684,14 +697,22 @@ describe("Dogfood Day shell", () => {
     expect(screen.getByText(/1\/1 実行済み/)).toBeTruthy();
   });
 
-  it("still creates a Project from the compact auxiliary control", async () => {
+  it("lists and creates Projects in dedicated Settings while keeping DayBoard controls focused", async () => {
     mocks.loadDay.mockResolvedValue(emptyDay);
     render(<App />);
-    fireEvent.click(await screen.findByText("Project作成"));
-    fireEvent.change(screen.getByRole("textbox", { name: "タイトル" }), { target: { value: "Project" } });
-    fireEvent.click(screen.getByRole("button", { name: "作成" }));
+    await screen.findByRole("region", { name: "DayBoard" });
+    expect(screen.queryByText("Project作成")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Section設定" })).toBeNull();
+    const settings = await openProjectSettings();
+    expect(settings.textContent).toContain("Existing Project");
+    expect(settings.textContent).toContain("rename・delete・archive・並び替えは現在未対応");
+    expect(screen.queryByRole("region", { name: "DayBoard" })).toBeNull();
+    fireEvent.change(screen.getByRole("textbox", { name: "Project名" }), { target: { value: "Project" } });
+    fireEvent.click(screen.getByRole("button", { name: "Projectを作成" }));
     await waitFor(() => expect(mocks.createProject).toHaveBeenCalledTimes(1));
     expect(await screen.findByText("作成済み: Project")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "今日" }));
+    expect(await screen.findByRole("region", { name: "DayBoard" })).toBeTruthy();
   });
 
   it("blocks concurrent Project primary submits while the first request is pending", async () => {
@@ -699,8 +720,8 @@ describe("Dogfood Day shell", () => {
     mocks.loadDay.mockResolvedValue(emptyDay);
     mocks.createProject.mockReturnValue(request.promise);
     render(<App />);
-    fireEvent.click(await screen.findByText("Project作成"));
-    const input = screen.getByRole("textbox", { name: "タイトル" });
+    await openProjectSettings();
+    const input = screen.getByRole("textbox", { name: "Project名" });
     fireEvent.change(input, { target: { value: "One request" } });
     const form = input.closest("form")!;
     fireEvent.submit(form);
@@ -716,8 +737,8 @@ describe("Dogfood Day shell", () => {
     mocks.loadDay.mockResolvedValue(emptyDay);
     mocks.createProject.mockRejectedValueOnce(new ApiClientError("ambiguous", 503, true, "infrastructure_ambiguous")).mockResolvedValueOnce({ project: { id: "project", title: "Original title" } });
     render(<App />);
-    fireEvent.click(await screen.findByText("Project作成"));
-    const input = screen.getByRole("textbox", { name: "タイトル" });
+    await openProjectSettings();
+    const input = screen.getByRole("textbox", { name: "Project名" });
     fireEvent.change(input, { target: { value: "Original title" } });
     fireEvent.submit(input.closest("form")!);
     const retry = await screen.findByRole("button", { name: "保留中のProject作成を再試行" });
@@ -962,8 +983,7 @@ describe("Dogfood Day shell", () => {
         ] })
       .mockResolvedValueOnce(saved);
     render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "Section設定" }));
-    const settingsRegion = await screen.findByRole("region", { name: "Section設定" });
+    const settingsRegion = await openSectionSettings();
     expect(settingsRegion.textContent).toContain("次に確立されるTaskChuteDayから反映");
     expect(settingsRegion.textContent).not.toMatch(/Icon|Accent/);
     fireEvent.change(screen.getByRole("textbox", { name: "Morningの終了" }), { target: { value: "13:00" } });
@@ -975,17 +995,18 @@ describe("Dogfood Day shell", () => {
       expected_configuration_version_id: "019c0000-0000-7000-8000-000000000020",
       items: saved.items,
     });
-    await waitFor(() => expect(screen.queryByRole("region", { name: "Section設定" })).toBeNull());
+    await waitFor(() => expect(screen.getByRole("region", { name: "Section設定" })).toBeTruthy());
+    expect((screen.getByRole("textbox", { name: "Section 1の名前" }) as HTMLInputElement).value).toBe("Focus");
     expect(screen.getByRole("status").textContent).toContain("保存しました。次のTaskChuteDayから反映されます。");
     expect(mocks.loadDay).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "今日" }));
     expect(screen.getAllByText("Morning").length).toBeGreaterThan(0);
   });
 
   it("adds by deterministic midpoint, deletes with absorption, and cancels without a server mutation", async () => {
     mocks.loadDay.mockResolvedValue(emptyDay);
     render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "Section設定" }));
-    await screen.findByRole("region", { name: "Section設定" });
+    await openSectionSettings();
     fireEvent.click(screen.getAllByRole("button", { name: "この後に追加" })[0]!);
     expect(screen.getAllByLabelText(/Section \d+の名前/)).toHaveLength(3);
     expect((screen.getByRole("textbox", { name: "新しいSectionの開始" }) as HTMLInputElement).value).toBe("08:00");
@@ -998,14 +1019,50 @@ describe("Dogfood Day shell", () => {
     expect(mocks.updateSectionConfiguration).not.toHaveBeenCalled();
   });
 
+  it("preserves an unsaved Section draft across Project and Today navigation without reloading canonical configuration", async () => {
+    mocks.loadDay.mockResolvedValue(emptyDay);
+    render(<App />);
+    await openSectionSettings();
+    expect(mocks.loadSectionConfiguration).toHaveBeenCalledTimes(1);
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Section 1の名前" }), { target: { value: "Unsaved Focus" } });
+    fireEvent.click(screen.getByRole("button", { name: "Project" }));
+    await screen.findByRole("region", { name: "Project設定" });
+    fireEvent.click(screen.getByRole("button", { name: "Section" }));
+    expect((await screen.findByRole("textbox", { name: "Section 1の名前" }) as HTMLInputElement).value).toBe("Unsaved Focus");
+    expect(mocks.loadSectionConfiguration).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "今日" }));
+    fireEvent.click(screen.getByRole("button", { name: "設定" }));
+    expect((await screen.findByRole("textbox", { name: "Section 1の名前" }) as HTMLInputElement).value).toBe("Unsaved Focus");
+    fireEvent.click(screen.getByRole("button", { name: "Section" }));
+    expect((screen.getByRole("textbox", { name: "Section 1の名前" }) as HTMLInputElement).value).toBe("Unsaved Focus");
+    expect(mocks.loadSectionConfiguration).toHaveBeenCalledTimes(1);
+    expect(mocks.updateSectionConfiguration).not.toHaveBeenCalled();
+  });
+
+  it("discards an unsaved Section draft only on explicit Cancel and reloads canonical configuration on return", async () => {
+    mocks.loadDay.mockResolvedValue(emptyDay);
+    render(<App />);
+    await openSectionSettings();
+    fireEvent.change(screen.getByRole("textbox", { name: "Section 1の名前" }), { target: { value: "Discard me" } });
+    fireEvent.click(screen.getByRole("button", { name: "キャンセル" }));
+    expect(screen.queryByRole("region", { name: "Section設定" })).toBeNull();
+    expect(mocks.updateSectionConfiguration).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Section" }));
+    expect((await screen.findByRole("textbox", { name: "Section 1の名前" }) as HTMLInputElement).value).toBe("Morning");
+    expect(mocks.loadSectionConfiguration).toHaveBeenCalledTimes(2);
+    expect(mocks.updateSectionConfiguration).not.toHaveBeenCalled();
+  });
+
   it("retains and retries the exact Section Settings operation after an ambiguous outcome", async () => {
     mocks.loadDay.mockResolvedValue(emptyDay);
     mocks.updateSectionConfiguration
       .mockRejectedValueOnce(new ApiClientError("ambiguous", 503, true, "infrastructure_ambiguous"))
       .mockResolvedValueOnce({ configuration_version_id: "new-version" });
     render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "Section設定" }));
-    await screen.findByRole("region", { name: "Section設定" });
+    await openSectionSettings();
     fireEvent.change(screen.getByRole("textbox", { name: "Section 1の名前" }), { target: { value: "Focus" } });
     fireEvent.click(screen.getByRole("button", { name: "次のDay用に保存" }));
     const retry = await screen.findByRole("button", { name: "保留中の次Day Section設定を再試行" });
@@ -1018,8 +1075,7 @@ describe("Dogfood Day shell", () => {
   it("keeps malformed visible boundary text authoritative and enables Save only after a valid extended-time edit", async () => {
     mocks.loadDay.mockResolvedValue(emptyDay);
     render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "Section設定" }));
-    await screen.findByRole("region", { name: "Section設定" });
+    await openSectionSettings();
     const morningEnd = screen.getByRole("textbox", { name: "Morningの終了" });
     fireEvent.change(morningEnd, { target: { value: "13:xx" } });
     expect((screen.getByRole("textbox", { name: "Morningの終了" }) as HTMLInputElement).value).toBe("13:xx");
@@ -1046,8 +1102,7 @@ describe("Dogfood Day shell", () => {
   it("deletes the last Section by absorbing its interval into the previous Section and saves a gapless draft", async () => {
     mocks.loadDay.mockResolvedValue(emptyDay);
     render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "Section設定" }));
-    await screen.findByRole("region", { name: "Section設定" });
+    await openSectionSettings();
     fireEvent.click(screen.getAllByRole("button", { name: "削除" })[1]!);
     expect(screen.getAllByLabelText(/Section \d+の名前/)).toHaveLength(1);
     expect((screen.getByRole("textbox", { name: "Morningの終了" }) as HTMLInputElement).value).toBe("28:00");
@@ -1081,8 +1136,7 @@ describe("Dogfood Day shell", () => {
       .mockRejectedValueOnce(new ApiClientError("stale", 409, true, "revision_conflict"))
       .mockResolvedValueOnce({ configuration_version_id: versionC });
     render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "Section設定" }));
-    await screen.findByRole("region", { name: "Section設定" });
+    await openSectionSettings();
     fireEvent.change(screen.getByRole("textbox", { name: "Section 1の名前" }), { target: { value: "Stale A edit" } });
     fireEvent.change(screen.getByRole("textbox", { name: "Stale A editの終了" }), { target: { value: "13:00" } });
     fireEvent.click(screen.getByRole("button", { name: "次のDay用に保存" }));
