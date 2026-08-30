@@ -4,7 +4,7 @@
 
 この文書は、TaskChute PlatformのUI / visual / interaction targetを記録するcanonical documentである。
 
-現在canonical化済みのscopeは、Desktop WebのDay Table foundationと、それに直接関係するcontrol / interactionに限定する。
+現在canonical化済みのscopeは、Desktop WebのDay Table foundation、それに直接関係するcontrol / interaction、Day date navigation、Section / ProjectのSettings navigationとする。
 
 - Product / Domain behaviorは`docs/SPEC.md`を正本とする。
 - Approved Decisionとその状態は`docs/DECISIONS.md`を正本とする。
@@ -13,6 +13,89 @@
 - この文書は新しいDomain semanticsを作らず、上記canonical docsと矛盾する場合は上記を優先する。
 
 historical UI design referenceはbranch `docs/design-guidelines`、commit `e91bc916ccac5e9b95221602c4e4b2be90455ad6`に残る。ただし、その文書全体はDraft referenceであり、current canonical docsとのreconciliationを終えていないsectionを暗黙にApprovedへ昇格しない。
+
+## Desktop Web navigation shell
+
+Dayのdate navigationはDay ToolbarではなくTop Navigation / Day Headerへ置く。
+
+基本形:
+
+```text
+‹   2026年8月27日（木）   ›      今日
+```
+
+- 前 / 次矢印で前日 / 翌日へ移動する。
+- 日付clickでcalendar pickerを開く。
+- `今日`でcurrent TaskChuteDayへ戻る。
+- current TaskChuteDay表示中も`今日`controlの位置を維持し、disabled表示を基本とする。
+- Headerのprimary informationはlogical dateとし、Task数、完了率、見積合計、実績合計等を重複して常設しない。
+- TaskChuteDayがcivil dateをまたぐ場合もlogical dateをprimary表示とし、raw intervalやboundary informationを常時表示しない。
+- keyboard targetとして`Shift+← / →`を前 / 次Day navigationに割り当てる。
+- calendar pickerはmonth gridを基本とし、keyboard操作として矢印、`PageUp / PageDown`、`Enter`、`Esc`を扱えるtargetとする。
+
+Day navigationのProduct / Domain semantics、future TaskChuteDayのmaterialization / freeze timing等は`SPEC` / `DECISIONS` / `OPEN_QUESTIONS`を正本とし、この文書だけで確定しない。
+
+Desktopのprimary navigationはLeft Sidebarをtargetとする。
+
+主要destination target:
+
+- 今日
+- カレンダー
+- プロジェクト
+- タスク
+- ノート
+- 分析
+- 設定
+
+underlying capabilityが未実装のdestinationについて、fake screenや無意味なdisabled navigationを先に出す必要はない。Settings等、現在のdogfood利用に必要なdestinationから段階的に導入してよい。
+
+SidebarはDesktop初期幅約240pxをstarting pointとし、180〜420px程度のresize、open / closed stateとwidthの分離、閉じる直前のwidth復元をtargetとする。初期Desktop WebではSidebar preferenceをbrowser-localに保持してよい。
+
+## Settings information architecture
+
+Section / Projectの管理はDayBoardの常設controlではなく、dedicated Settings surfaceで行う。
+
+initial Settings target:
+
+- Section
+- Project
+- Modeはunderlying capability実装後に同じSettings information architectureへ追加する。
+
+DayBoardは日々のTask planning / executionへ集中させる。現在DayBoard上に存在するProject-create / Section-settings convenience controlsはreplacement navigationが実装されるまでのtemporary accessであり、dedicated Settings accessが利用可能になった時点でDayBoardから撤去する。
+
+### Section settings target
+
+Section設定はcompact table editorを基本とする。
+
+概念形:
+
+```text
+Icon  Section名       開始       終了       Accent
+──────────────────────────────────────────────
+      朝              05:00      09:00
+      午前            09:00      12:00
+      昼              12:00      13:00
+      午後            13:00      18:00
+      夜              18:00      29:00
+```
+
+- rename / boundary edit / add / delete等、Section configuration管理はSettings側へ集約する。
+- icon / accentはtarget capabilityであり、underlying capability未実装の間はfake fieldやdisabled placeholderを要求しない。
+- Section追加はDay Tableから行わない。
+- Day TableのSection selectorは既存Sectionを選択するinteractionへ専念させる。
+- Section selector内へSettingsへの導線を埋め込むことはinitial targetにしない。
+- Section orderはtime authorityに従い、Settingsでarbitrary D&D reorderする対象にはしない。
+- configurationのeffective timing、current-Day freeze、historical context等のsemanticsはD-038を正本とする。
+
+### Project settings target
+
+Projectのquick createとProject管理を分ける。
+
+- Day TableのProject selectorからのquick createはdaily flowの低friction interactionとして許容する。
+- Projectの一覧管理、user-defined display order等はdedicated Project Settingsで行う。
+- user-defined Project orderはSettings上でD&D変更できるtargetとする。
+- quick create時はユーザーが入力したProject名をauthorityとし、検索用normalization等を保存名へ勝手に変換しない。
+- Project SettingsをDayBoardの常設editorとして置かない。
 
 ## Day Table foundation
 
@@ -137,7 +220,7 @@ Day toolbarは、その日のTaskを操作・絞り込むcompact controlsへ限�
 
 task countをpermanent toolbar itemとして要求しない。`placement_revision`はServerとのconcurrency制御に使うinternal stateであり、target user-facing UIには表示しない。raw TaskChuteDay intervalもmain Day header / toolbarへ常時表示しない。
 
-current Project-create / Section-settings convenience controlsは、replacement navigationが実装されるまでtemporary accessとして残してよい。
+Project-createはProject selectorでのquick createに寄せ、Section configuration managementはdedicated Settingsへ置く。current DayBoard上のProject-create / Section-settings convenience controlsはreplacement navigationが実装されるまでtemporary accessとしてのみ残してよい。
 
 ## Section summary target
 
@@ -174,8 +257,10 @@ Day Table UI-1では、独立した`状態`列と独立した`並び替え`列�
 
 UI-1は既存のServer-canonical command、retry / reconciliation、placement / ordering、Routine persistence semanticsを変更していない。
 
+current runtimeはcurrent TaskChuteDay中心で、canonicalなTop Navigation date navigation / calendar picker / Left Sidebar / dedicated Settings surfaceは未実装である。DayBoard上のProject作成controlとSection設定editorはtemporary accessであり、target placementではない。
+
 full target column modelはcurrent implementationより広い。Bulk slot runtime、sticky / fixed-left final structure、Mode、Note、開始見込、fullerな開始 / 終了 / 実績、column reorder / hide / show / resize / auto-fit / preference、Search / Filter、Section collapse、D&Dまたはfullerなcontext interaction等はUI-2以後のfuture workとして残る。
 
 ## Unreconciled historical scope
 
-historical design branchにあるbroader Navigation、Settings、Floating Runner、context menu、Hit-a-Hint、Bulk actions、responsive / mobile等は、この文書へまだcanonicalizeしていない。必要なscopeごとにcurrent Product / Domain Decisionと再照合してから追加する。
+historical design branchにあるFloating Runner、context menu、Hit-a-Hint、Bulk actions、responsive / mobile等は、この文書へまだcanonicalizeしていない。必要なscopeごとにcurrent Product / Domain Decisionと再照合してから追加する。
