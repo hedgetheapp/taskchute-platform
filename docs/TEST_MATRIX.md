@@ -642,7 +642,7 @@ Web suiteではdeterministic Reorder / Start conflict後のcanonical refetch、a
 - persistent nonprod UI-1 / production UI-1: `NOT_RUN / NOT_RUN`
 - Released: `NO`
 
-### Settings v0.1 integration-candidate evidence — 2026-08-30
+### Settings v0.1 integrated evidence — 2026-08-30
 
 - implementation commit: `51242b08e015817108010839cd5234959da2fed5`（parent `f250a0bb6c0f5da66fd690d451e7f8a7a3e88a29`、subject `Implement Settings v0.1 navigation`）
 - reviewed patch: 43,103 bytes、SHA-256 `8E60725C00824121568F4A45F083FFE59EA3FDC51B06FA9986D9B09751E07BB0`、stable patch-id `afb8edde279fba2db8a08ea1b3315735b0acb34e`、`8 files changed, 301 insertions(+), 86 deletions(-)`
@@ -658,7 +658,7 @@ Web suiteではdeterministic Reorder / Start conflict後のcanonical refetch、a
 - authenticated persistent nonprod browser: Navigation / Settings、Section edit / save / reload、current-Day freeze / original semantics restore、Project list / create / reload、draft preservation / Cancel、240px Sidebar、7列 / Routine列、planning / lifecycle / reload、console warnings / errors `0 / 0`: `PASS`
 - persistent nonprod safety / integrity: existing AUTH_DB / APP_DBを保持、migration / DB recreation / secret変更なし、APP `PRAGMA quick_check = ok`、FK violations `0`、active Execution `0`、AUTHはSettings verificationでhealthy、destructive cleanupなし
 - Product / Domain semantics / Material Decision: `UNCHANGED / NONE`
-- GitHub canonical integration: local integration candidate only。`origin/main = f250a0bb6c0f5da66fd690d451e7f8a7a3e88a29`、push未実施
+- GitHub canonical integration: implementation commit `51242b08e015817108010839cd5234959da2fed5`を`main`へIntegrated
 - production / Released: `NOT_RUN / NO`
 
 ## Authentication / Authorization
