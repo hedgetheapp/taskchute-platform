@@ -12,9 +12,11 @@ PR #3でruntime bootstrap sliceを、PR #5でReorder / Start / Complete / Execut
 
 Day Table UI-1はcommit `da4a8c8316d60d942dc73fbd53bb90d15df5517b`（`Realign Day Table UI`）でcurrent `main`へ`IMPLEMENTED / INTEGRATED`となった。独立した状態/並び替え列を除き、Routineを独立列へ移し、current visible orderを`実行 | Task | Project | Section | Routine | 見積 | 開始予定`へ整合した。source review、focused Web、full Web `65 / 65 PASS`、typecheck、production build、`git diff --check`、signed-in real local browser verification、APP integrityは`PASS`。browser console errors / warningsは`0 / 0`。UI-1 persistent nonprod / production verificationは`NOT_RUN`、Releasedは`NO`。
 
+Settings v0.1はlocal implementation commit `51242b08e015817108010839cd5234959da2fed5`（`Implement Settings v0.1 navigation`）として、current local `main`上のintegration candidateになった。Desktop Left Navigationの`今日` / `設定`、Settingsの`Section` / `Project`、owner-scoped Project list、Settings内Project作成を実装し、既存Section editorとProject作成をDayBoardのtemporary controlからSettingsへ移した。UI-1の7列と独立Routine列、Section configuration semantics、current-Day freezeは維持している。ChatGPT source review、focused Web `2 PASS`、full Web `67 PASS`、Worker / D1 `101 PASS`、typecheck、local / nonprod build、Wrangler nonprod dry-run、`git diff --check`、signed-in local browser、persistent nonprod authenticated browser / integrityは`PASS`。corrected nonprod Worker versionは`22578f99-6256-4027-a345-ce523c67d241`。productionは`NOT_RUN`、Releasedは`NO`。GitHub canonical `origin/main`は`f250a0bb6c0f5da66fd690d451e7f8a7a3e88a29`のままで、Settings実装のintegrationはpush承認待ちである。
+
 Current main at this update base:
 
-`da4a8c8316d60d942dc73fbd53bb90d15df5517b`
+`f250a0bb6c0f5da66fd690d451e7f8a7a3e88a29`
 
 Relevant implementation commits:
 
@@ -27,6 +29,10 @@ Relevant implementation commits:
 - Dogfood Day B3 Section settings lifecycle: `2481c4916ca2f694f07d6808a4482bea28c79a80`
 - Minimal Routine R1: `f9324e866deb74277d2fd83c5945f2df4b2b95da`（PR #14 merge commit `ebaff6d156813ba78b4c5c28818f9f55db9fd970`でmainへIntegrated）
 - Day Table UI-1: `da4a8c8316d60d942dc73fbd53bb90d15df5517b`
+
+Current local integration candidate:
+
+- Settings v0.1: `51242b08e015817108010839cd5234959da2fed5`（GitHub canonical `main`へのintegrationは未実施）
 
 Relevant merge commits:
 
@@ -146,7 +152,7 @@ Current `main`では、repository-side persistent non-production configを実装
 
 - Worker: `taskchute-web-nonprod`
 - URL: `https://taskchute-web-nonprod.taskfulness-sync.workers.dev`
-- current Worker version: `be96301c-f131-47b4-bf78-11d4433716b1`
+- current Worker version: `22578f99-6256-4027-a345-ce523c67d241`（Settings v0.1 local integration candidateのpersistent nonprod verification）
 - `AUTH_DB`: `taskchute-auth-nonprod` / `60085f8d-0c4e-4c15-98e9-3ce178398041`
 - `APP_DB`: `taskchute-app-nonprod` / `6ad7e35f-5d03-4be3-9b00-46cd713a51c3`
 - D1 location hint: `apac`
@@ -315,6 +321,8 @@ R1 integrated implementation / verification evidence:
 First Server + Web vertical slice、D-023 bootstrap lifecycle security、persistent non-production config increment、D-038 B1/B3、D-039 B2、D-040 Minimal Routine R1はcurrent `main`でImplemented / Integratedまで完了済み。R1 persistent nonprod `0006` migration / preservation / deploy / authenticated general browserもPASS。
 
 Day Table foundationは`docs/DESIGN.md`をcanonical UI targetとし、UI-1はcurrent `main`へImplemented / Integrated済みである。current visible orderは`実行 | Task | Project | Section | Routine | 見積 | 開始予定`で、独立した`状態` / `並び替え`列はなく、Task cell内pointer reorderと独立Routine列を持つ。UI-2以後にはBulk slot runtime、sticky / fixed-left final structure、Mode / Note / 開始見込 / fuller actual columns、column customization、Search / Filter、Section collapse、D&D等が残る。
+
+Settings v0.1はlocal `main@51242b08e015817108010839cd5234959da2fed5`のsource-reviewed / local-browser-verified / persistent-nonprod-verified integration candidateである。GitHub canonical `origin/main@f250a0bb6c0f5da66fd690d451e7f8a7a3e88a29`へのpushは未実施であり、次のintegration gateはreview済みimplementation commitとこのevidence docs commitをそのままpushするかの明示判断である。Settings v0.1は新しいProduct / Domain Decisionを追加せず、broader Project管理、Mode Settings、Sidebar resize / preference等を実装済みへ昇格しない。
 
 UI-1のstructural prerequisite完了によりR2A Web workはその観点では再開可能になった。ただしD-034の`今回だけ / Routineへ反映`を永続化・command化する際のcross-field coupling等のMaterial Product semanticsは未決のままであり、このcurrent-state maintenanceはそれらをApprovedまたはimplementation-readyへ昇格しない。
 

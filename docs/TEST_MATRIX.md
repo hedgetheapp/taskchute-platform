@@ -642,6 +642,25 @@ Web suiteではdeterministic Reorder / Start conflict後のcanonical refetch、a
 - persistent nonprod UI-1 / production UI-1: `NOT_RUN / NOT_RUN`
 - Released: `NO`
 
+### Settings v0.1 integration-candidate evidence — 2026-08-30
+
+- implementation commit: `51242b08e015817108010839cd5234959da2fed5`（parent `f250a0bb6c0f5da66fd690d451e7f8a7a3e88a29`、subject `Implement Settings v0.1 navigation`）
+- reviewed patch: 43,103 bytes、SHA-256 `8E60725C00824121568F4A45F083FFE59EA3FDC51B06FA9986D9B09751E07BB0`、stable patch-id `afb8edde279fba2db8a08ea1b3315735b0acb34e`、`8 files changed, 301 insertions(+), 86 deletions(-)`
+- commit-vs-reviewed-patch mechanical comparison: exact changed path list / diff stat / stable patch-id一致、`PASS`
+- ChatGPT source review: `PASS`
+- focused Web / full Web / Worker-D1: `2 PASS / 67 PASS / 101 PASS`
+- typecheck / local build / nonprod build / Wrangler nonprod dry-run / `git diff --check`: `PASS`
+- implementation: Desktop Left Navigation `今日` / `設定`、Settings `Section` / `Project`、existing Section editor移設、owner-scoped `GET /api/v1/projects`、Project list / create移設、DayBoard temporary Section settings / standalone Project create撤去: `PASS`
+- Section draft UX: `Section → Project → Section`、`Section → 今日 → 設定 / Section`、active Section再選択で未保存draftを保持し、明示Cancelでcanonical configurationへ戻す: automated / signed-in local / authenticated nonprod `PASS`
+- UI continuity: Sidebar starting width `240px`、visible order `実行 | Task | Project | Section | Routine | 見積 | 開始予定`、独立Routine列、Section move時planned-start clear、estimate / planned start、Start / Complete、reload recovery: `PASS`
+- signed-in local browser: Navigation / Settings、Section save / reload、current-Day freeze、original Section semantics restore、Project create / reload、temporary controls撤去、draft preservation / Cancel、browser console warnings / errors `0 / 0`: `PASS`
+- persistent nonprod Worker: `taskchute-web-nonprod` / version `22578f99-6256-4027-a345-ce523c67d241` / `BOOTSTRAP_ENABLED=false`
+- authenticated persistent nonprod browser: Navigation / Settings、Section edit / save / reload、current-Day freeze / original semantics restore、Project list / create / reload、draft preservation / Cancel、240px Sidebar、7列 / Routine列、planning / lifecycle / reload、console warnings / errors `0 / 0`: `PASS`
+- persistent nonprod safety / integrity: existing AUTH_DB / APP_DBを保持、migration / DB recreation / secret変更なし、APP `PRAGMA quick_check = ok`、FK violations `0`、active Execution `0`、AUTHはSettings verificationでhealthy、destructive cleanupなし
+- Product / Domain semantics / Material Decision: `UNCHANGED / NONE`
+- GitHub canonical integration: local integration candidate only。`origin/main = f250a0bb6c0f5da66fd690d451e7f8a7a3e88a29`、push未実施
+- production / Released: `NOT_RUN / NO`
+
 ## Authentication / Authorization
 
 | ID | Area | Requirement | Contract | Evidence |
