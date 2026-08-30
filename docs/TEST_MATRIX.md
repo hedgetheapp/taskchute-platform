@@ -544,22 +544,22 @@ Final:
 |---|---|---|---|---|
 | ROUTINE-01 | Routine | RoutineOccurrenceは成立時のorigin TaskChuteDayをEntry延期後も保持する | Approved (D-015) | NOT_IMPLEMENTED |
 | ROUTINE-02 | Routine | 8/21持越しOccurrenceと本来の8/22 Occurrenceを別identityとして同日に保持できる | Approved (D-015) | NOT_IMPLEMENTED |
-| ROUTINE-R1-MIGRATION-01 | Routine R1 / Migration | 0005からR1へupgradeしexisting canonical rows / identity / content / B1-B3 constraintを保持し、existing Entry relationはNULL、quick check / FK checkを通す | Approved (D-040) | LOCAL_PASS |
+| ROUTINE-R1-MIGRATION-01 | Routine R1 / Migration | 0005からR1へupgradeしexisting canonical rows / identity / content / B1-B3 constraintを保持し、existing Entry relationはNULL、quick check / FK checkを通す | Approved (D-040) | LOCAL_PASS / NONPROD_PASS |
 | ROUTINE-R1-PERSIST-01 | Routine R1 / Persistence | owner-scoped stable RoutineDefinition / RoutineOccurrence relation、same Routine + origin Day uniqueness、Occurrence 0..* Entries compatibilityを持つ | Approved (D-015, D-040) | LOCAL_PASS |
-| ROUTINE-R1-CONVERT-01 | Routine R1 / Conversion | current planned EntryのTask / Entry identityとplacement / estimate / planned startを維持し、duplicateなしでRoutine defaultsとcurrent-Day Occurrence relationを確定する | Approved (D-040) | LOCAL_PASS |
+| ROUTINE-R1-CONVERT-01 | Routine R1 / Conversion | current planned EntryのTask / Entry identityとplacement / estimate / planned startを維持し、duplicateなしでRoutine defaultsとcurrent-Day Occurrence relationを確定する | Approved (D-040) | LOCAL_PASS / NONPROD_PASS |
 | ROUTINE-R1-CONVERT-RETRY-01 | Routine R1 / Retry | conversion same-operation replay / different-semantic misuse / ambiguous canonical reconciliationでduplicateやdouble effectを作らない | Approved (D-020, D-040) | LOCAL_PASS |
 | ROUTINE-R1-DAILY-01 | Routine R1 / Daily | eligible current logical dateへexactly one occurrence / initial Entryをlazy materializeし、stable Taskとfresh Entry identityを使う | Approved (D-040) | LOCAL_PASS |
 | ROUTINE-R1-RANGE-01 | Routine R1 / Range | start / configured end logical dateはinclusive、day-after-endは生成せず、no-endは継続する | Approved (D-036, D-040) | LOCAL_PASS |
-| ROUTINE-R1-RELOAD-01 | Routine R1 / Reload | convergence後のrepeated current-Day loadがOccurrence / Entryをduplicateせずrevisionも変更しない | Approved (D-040) | LOCAL_PASS |
+| ROUTINE-R1-RELOAD-01 | Routine R1 / Reload | convergence後のrepeated current-Day loadがOccurrence / Entryをduplicateせずrevisionも変更しない | Approved (D-040) | LOCAL_PASS / NONPROD_PASS |
 | ROUTINE-R1-DEFAULTS-01 | Routine R1 / Defaults | estimate / planned start copy、planned-start Section derive、available default Section、missing Sectionなし fallbackをcanonicalに適用する | Approved (D-031, D-039, D-040) | LOCAL_PASS |
 | ROUTINE-R1-ORDER-01 | Routine R1 / Order | generated Entryがexisting NULL-first / minute / same-minute position orderへstable appendし新order authorityを作らない | Approved (D-031, D-039, D-040) | LOCAL_PASS |
 | ROUTINE-R1-REVISION-01 | Routine R1 / Revision | one ensureで1件以上生成時にrevision exactly +1、0件なら+0とする | Approved (D-020, D-040) | LOCAL_PASS |
 | ROUTINE-R1-CONCURRENCY-01 | Routine R1 / Concurrency | concurrent current-Day loadsがduplicateなしへ収束しOccurrence / Entry / revisionのpartial stateを残さない | Approved (D-020, D-040) | LOCAL_PASS |
 | ROUTINE-R1-FAILURE-01 | Routine R1 / Failure | infrastructure ambiguityをdeterministic rejectionとしてpersistせずcanonical reload / retryをsafeに保つ | Approved (D-020, D-040) | LOCAL_PASS |
-| ROUTINE-R1-END-01 | Routine R1 / End | current logical Dayで終了するとcurrent/past Occurrence / Entry / Execution historyを保持してlater generationを止める | Approved (D-034, D-040) | LOCAL_PASS |
+| ROUTINE-R1-END-01 | Routine R1 / End | current logical Dayで終了するとcurrent/past Occurrence / Entry / Execution historyを保持してlater generationを止める | Approved (D-034, D-040) | LOCAL_PASS / NONPROD_PASS |
 | ROUTINE-R1-END-RETRY-01 | Routine R1 / Retry | same end-operation retryはidempotent、different-semantic operation reuseはrejectする | Approved (D-020, D-040) | LOCAL_PASS |
-| ROUTINE-R1-WEB-01 | Routine R1 / Web | Routine化、end-date/no-end、indicator、Routine終了をasync canonical reconciliation付きで扱う | Approved (D-040) | LOCAL_PASS（automated。real-browser inclusive end-date controlled-inputはTOOLING_BLOCKED / NOT_VERIFIED） |
-| ROUTINE-R1-WEB-RELOAD-01 | Routine R1 / Web | reloadでRoutine relation / indicatorを維持しdaily Entryをduplicateしない | Approved (D-040) | LOCAL_PASS |
+| ROUTINE-R1-WEB-01 | Routine R1 / Web | Routine化、end-date/no-end、indicator、Routine終了をasync canonical reconciliation付きで扱う | Approved (D-040) | LOCAL_PASS / NONPROD_GENERAL_PASS（real-browser controlled inclusive end-dateとdeployed non-null inclusive-date subcheckはTOOLING_BLOCKED / NOT_VERIFIED） |
+| ROUTINE-R1-WEB-RELOAD-01 | Routine R1 / Web | reloadでRoutine relation / indicatorを維持しdaily Entryをduplicateしない | Approved (D-040) | LOCAL_PASS / NONPROD_PASS |
 | ROUTINE-R1-REGRESSION-01 | Routine R1 / Regression | B1/B2/B3 Section context/freeze、Sectionなし、estimate、planned start、order、Move/Reorder、lifecycle、retry/conflictを維持し、D-034 choice未実装中はRoutine由来Entryへの旧planning commandをserver mutation-timeでrejectする | Approved (D-034, D-040) | LOCAL_PASS |
 | ROUTINE-DOC-01 | Documents | Routine共通noteはTask Primary Documentを利用できる | Approved (D-018) | NOT_IMPLEMENTED |
 | ROUTINE-DOC-02 | Documents | RoutineOccurrenceはoptional Documentを持ち、同一Occurrenceの複数Entryで共有できる | Approved (D-018) | NOT_IMPLEMENTED |
@@ -579,7 +579,12 @@ R1 local candidate automated evidence（2026-08-30）:
 - real local dogfood APP DB private backup / `0006` migration / pre-post preservation / quick check / FK: `PASS`
 - signed-in real-browser general R1 flow（identity-preserving conversion、defaults、Routine planning fields read-only、reload/no duplicate、Routine終了、Start/Complete）: `PASS`。browser console warning / error: `0 / 0`、exact HTTP status: `NOT_VERIFIED`
 - real-browser inclusive end-date controlled-input path: `TOOLING_BLOCKED / NOT_VERIFIED`。browser automationでlive DOM propertyは`2026-08-31`になったが、successful `ConvertEntryToRoutine`のpersisted D-020 request fingerprintはNULL候補`37cf50b3cae324a1beafcbd4759e4e3302c69f36982ca3d8509becd0d99768c0`とexact matchし、date候補`eceb3d2cb615d55fa9f5963a64bb0bd4fe4be7b21bbd49c6688a0c536b42e57c`とは不一致だった。React controlled request stateへdate eventが届かず、Worker / DBは受信したNULL requestを正しく保存したため、Product / Worker persistence failureではない
-- persistent nonprod / production: `NOT_RUN`。Released: `NO`
+- PR #14 / commit `f9324e866deb74277d2fd83c5945f2df4b2b95da` persistent nonprod evidence（2026-08-30）: APP `0006` migration / pre-post preservation、quick check / FK、R1 schema / constraint、existing Entry relation NULL、current Day revision・active Execution preservationは`PASS`
+- exact PR headをexisting `taskchute-web-nonprod`へdeploy: `PASS`。Worker version `be96301c-f131-47b4-bf78-11d4433716b1`、`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、canonical APP/AUTH bindings、secret names不変
+- authenticated general R1 browser（identity-preserving no-end conversion、defaults、planning fields read-only、reload/no duplicate/revision不変、Start/Complete、Routine終了、future occurrence 0）: `PASS`。browser console warning / error: `0 / 0`、exact HTTP status: `NOT_VERIFIED`
+- deployed non-null inclusive-date subcheck: `TOOLING_BLOCKED / NOT_VERIFIED`。live DOM value `2026-08-31`を確認したがReact request stateへeventが届かずnon-null requestを発行できず、DBはNULLを保存したため、Product / Worker failureとは分類しない。作成したverification Routineはすべてnormal Web UIでcurrent Day終了状態へ戻し、future occurrenceは0
+- post-verification APP/AUTH quick check / FK: `PASS`。AUTH full exportはpre-runとsize / SHA-256まで一致し、user / account / session / verificationは不変。bootstrap enable / public signup / secret changeは未実施
+- main integration: `NO`。production: `NOT_RUN`。Released: `NO`
 
 ## Place / Location / Projections
 
