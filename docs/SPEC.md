@@ -50,7 +50,7 @@ TaskChuteDayはcivil dateとは別のlogical activity dayとする。
 - 連続する`[start, end)` intervalとして扱い、consecutive day間にgap / overlapを作らない。
 - day lengthを常に24時間とは仮定しない。
 - UIでは`30:00`等のextended-time notationを扱える方向とするが、actual timestampを架空の30時刻へ変換して保存しない。
-- historically establishedされた過去TaskChuteDayは、後のboundary / timezone変更でretroactiveに再分類しない。
+- historically establishedされた過去TaskChuteDayは、後のboundary / timezone設定変更でretroactiveに再分類しない。
 - initial bootstrapではcanonical IANA timezone、TaskChuteDay boundary、initial Section configurationを明示入力する。
 - `Asia/Tokyo`、civil midnight等を暗黙のProduct defaultとして適用しない。test fixtureとして明示利用することは許容する。
 - ambiguous / nonexistent local timeはinitially Temporal-compatibleな`compatible` semanticsで解決する。
@@ -118,7 +118,7 @@ Routineは以下のconceptual relationを前提とする。
 
 ### Minimal Routine R1 daily slice
 
-Status: Approved (D-040). Runtime: IMPLEMENTED IN LOCAL CANDIDATE / NOT_INTEGRATED.
+Status: Approved (D-040). Runtime: IMPLEMENTED / INTEGRATED.
 
 R1はcurrent-Dayのplanned non-Routine Entryを起点とするdaily-only Routine dogfood sliceとする。
 
