@@ -16,6 +16,8 @@ Settings v0.1はimplementation commit `51242b08e015817108010839cd5234959da2fed5`
 
 D-041 `Non-materializing Day navigation and mutation-time future Day establishment`はApproved。未来日をviewするだけではTaskChuteDay / historical context / RoutineOccurrence / Entryを作らず、non-persistent previewとして扱う。最初のsuccessful day-specific planning mutationでDay establishmentとmutation effectをatomicに確定し、失敗時はDayだけを残さない。establish後のcontextはhistorical authorityとしてfreezeする。Day Navigation v0.1は次のplanned sliceで、runtimeは`NOT_IMPLEMENTED`、local / persistent nonprod / production verificationは`NOT_RUN`である。
 
+D-042 `Non-established past Day is an empty read-only historical gap`はApproved。未establishの過去日はrecord-none read-only projectionとして表示し、current settingsからhistorical interval / Section contextを捏造せず、Routine / Task / Entry / planning stateをbackfillしない。established past Dayはexisting frozen canonical contextを表示する。Day Navigation v0.1 runtimeは`NOT_IMPLEMENTED`、verificationは`NOT_RUN`である。
+
 Settings v0.1 implementation commit:
 
 `51242b08e015817108010839cd5234959da2fed5`
@@ -68,6 +70,7 @@ D1 feasibility gateは引き続きPASS / Verified。current Product runtimeはFi
 - D-039でB2の`planned_start_minute INTEGER NULL`、既存`position`によるmanual tie-break、derived Section / canonical order、SetEntryPlannedStart / MoveEntry / Reorder / Startのatomicity・retry境界はApproved済み。
 - D-040でdaily-only Minimal Routine R1のidentity-preserving conversion、minimal persistence、current-Day lazy materialization、revision exactly once、defaults、inclusive end / Routine終了、minimal Web UXはApproved済み。runtime commit `f9324e866deb74277d2fd83c5945f2df4b2b95da`とevidence docs commit `c63a98f22ab685370d3e20f1f15f480fab951ae8`はPR #14 merge commit `ebaff6d156813ba78b4c5c28818f9f55db9fd970`でcurrent `main`へImplemented / Integrated済み。source review、focused / full Web `65 / 65`、typecheck / build / diff-check、real local `0006` migration / preservation、signed-in general browser flowは`PASS`。persistent nonprod APP `0006` migration / preservation、Worker version `be96301c-f131-47b4-bf78-11d4433716b1` deploy、authenticated general browser flow、APP/AUTH integrity / security postureも`PASS`。real-browser controlled inclusive end-dateとdeployed non-null inclusive-date subcheckはautomation event mismatchにより`TOOLING_BLOCKED / NOT_VERIFIED`、production `NOT_RUN`、Released `NO`。
 - D-041で未来Dayのnon-materializing read preview、first successful mutationによるatomic establishment、failure / retry / concurrency、historical freeze、D-040 current-Day Routine boundaryをApprovedした。Day Navigation v0.1 runtimeは`NOT_IMPLEMENTED`、verificationは`NOT_RUN`。
+- D-042で未establish past Dayのempty record-none / read-only / no-fabrication / no-backfillと、established past Dayのcanonical history表示をApprovedした。new past editing / historical correctionは別scopeとする。
 - D-038 B1はPR #13でcurrent `main`へIntegrated済みで、Implemented / Integrated / Local Tested / Source Reviewed / Signed-in Local Browser Verified / Persistent Nonprod Remote Verified。B1 production verificationは`NOT_RUN`。
 - D-038 B2はcommit `316ad0d88f0f88d1445991904da587b1e0987dab`でcurrent `main`へImplemented / Integrated済み。source review、automated/local migration、signed-in local browser、persistent nonprod migration / runtime / authenticated browser evidenceはPASS。B2 production verificationは`NOT_RUN`。
 - D-038 B3はcommit `2481c4916ca2f694f07d6808a4482bea28c79a80`でcurrent `main`へImplemented / Integrated済み。source review、automated verification、real local `0005` migration、signed-in local browser、persistent nonprod `0005` migration / preservation / deployed runtime / authenticated browser、current-Day freeze evidenceはPASS。next-Day materializationのautomated evidenceはPASSだがreal browserは`NOT_RUN`。persistent nonprodのraw console warning/error exact countは`NOT_VERIFIED`、production verificationは`NOT_RUN`、Releasedは`NO`。
@@ -324,7 +327,7 @@ Day Table foundationは`docs/DESIGN.md`をcanonical UI targetとし、UI-1はcur
 
 Settings v0.1はcommit `51242b08e015817108010839cd5234959da2fed5`でcurrent `main`へImplemented / Integrated済みで、source review、local browser、persistent nonprod authenticated browser / integrityはPASSした。新しいProduct / Domain Decisionは追加しておらず、broader Project管理、Mode Settings、Sidebar resize / preference等を実装済みへ昇格しない。
 
-次のplanned sliceはDay Navigation v0.1である。D-041に従い、previous / next、calendar picker、Today return、keyboard navigationと未来日のnon-persistent preview / atomic planning establishmentを実装対象とする。future Routine previewとnon-current DayのStart / Completeはscope外であり、runtimeは`NOT_IMPLEMENTED`、local / persistent nonprod / production verificationは`NOT_RUN`である。
+次のplanned sliceはDay Navigation v0.1である。D-041に従うprevious / next、calendar picker、Today return、keyboard navigation、未来日のnon-persistent preview / atomic planning establishmentに加え、D-042に従うpast unestablished record-none / read-only表示を実装対象とする。future Routine preview、past historical correction、non-current DayのStart / Completeはscope外であり、runtimeは`NOT_IMPLEMENTED`、local / persistent nonprod / production verificationは`NOT_RUN`である。
 
 UI-1のstructural prerequisite完了によりR2A Web workはその観点では再開可能になった。ただしD-034の`今回だけ / Routineへ反映`を永続化・command化する際のcross-field coupling等のMaterial Product semanticsは未決のままであり、このcurrent-state maintenanceはそれらをApprovedまたはimplementation-readyへ昇格しない。
 

@@ -1,6 +1,6 @@
 # Test Matrix
 
-First Server + Web vertical slice、D-038 B1 / B3、D-039 B2、D-040 Minimal Routine R1、Day Table UI-1は実装・main統合済み。D-041 Day navigation semanticsはApprovedだがruntimeは`NOT_IMPLEMENTED`。B1 / B2 / B3 / R1 local + persistent non-production verificationはPASS。UI-1 source / automated / real local browser verificationはPASS、persistent nonprod / production UI-1は`NOT_RUN`。B3 remote raw console warning / error exact countは`NOT_VERIFIED`。R1 real-browser controlled inclusive end-dateとdeployed non-null inclusive-date subcheckは`TOOLING_BLOCKED / NOT_VERIFIED`。B1 / B2 / B3 / R1 production verificationは`NOT_RUN`。Product runtime全体はまだVerified / Releasedではない。
+First Server + Web vertical slice、D-038 B1 / B3、D-039 B2、D-040 Minimal Routine R1、Day Table UI-1は実装・main統合済み。D-041 future DayとD-042 past historical-gapのDay navigation semanticsはApprovedだがruntimeは`NOT_IMPLEMENTED`。B1 / B2 / B3 / R1 local + persistent non-production verificationはPASS。UI-1 source / automated / real local browser verificationはPASS、persistent nonprod / production UI-1は`NOT_RUN`。B3 remote raw console warning / error exact countは`NOT_VERIFIED`。R1 real-browser controlled inclusive end-dateとdeployed non-null inclusive-date subcheckは`TOOLING_BLOCKED / NOT_VERIFIED`。B1 / B2 / B3 / R1 production verificationは`NOT_RUN`。Product runtime全体はまだVerified / Releasedではない。
 
 この文書はverification requirementとcurrent evidenceの正本とする。
 
@@ -179,8 +179,12 @@ Cross-day lifecycle testでは、前日Entryのactive Executionを翌TaskChuteDa
 | DAY-NAV-09 | Execution boundary | non-current Day view / planningからStart / Completeを拡張せず、current-Day execution semanticsを維持する | Approved (D-013, D-017, D-041) | NOT_IMPLEMENTED |
 | DAY-NAV-10 | Security | arbitrary-date query / mutationをauthenticated principalからowner-scopedに解決し、cross-owner accessを拒否する | Approved (D-021, D-041) | NOT_IMPLEMENTED |
 | DAY-NAV-11 | Regression | Settings v0.1、UI-1 7列 / Routine列、Section / estimate / planned-start / reorder、current-Day Start / Completeを維持する | Approved regression contract | NOT_RUN |
+| DAY-NAV-12 | Past unestablished read | TaskChuteDay rowがないpast logical dateをempty / record-none projectionとして返し、Day / Section context / RoutineOccurrence / Routine Entryを作らずrepeated read / reloadもno-writeとする | Approved (D-042) | NOT_IMPLEMENTED |
+| DAY-NAV-13 | Past non-fabrication | unestablished past dateのview前後にcurrent Section configurationが変わっても、当時存在したかのようなhistorical interval / Section contextをsynthesize / persistしない | Approved (D-017, D-038, D-042) | NOT_IMPLEMENTED |
+| DAY-NAV-14 | Past mutation boundary | Webはpast unestablished DayのAdd / planning / reorder / lifecycle / Routine mutationをusableにせず、direct Server mutationもDB変更なしでrejectする | Approved (D-020, D-021, D-042) | NOT_IMPLEMENTED |
+| DAY-NAV-15 | Established past regression | established past Dayをexisting frozen canonical context / historyからreadし、later Section settingsでrewriteせず、Day Navigation v0.1はnew past editing semanticsを追加しない | Approved (D-017, D-038, D-042) | NOT_IMPLEMENTED |
 
-Day Navigation v0.1 implementation / local browser / persistent nonprod / production verificationは`NOT_RUN`。future Routine previewはv0.1 scope外である。
+Day Navigation v0.1 implementation / local browser / persistent nonprod / production verificationは`NOT_RUN`。future Routine previewとpast historical correction / backfillはv0.1 scope外である。
 
 ## Runtime command / retry semantics
 

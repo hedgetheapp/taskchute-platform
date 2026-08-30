@@ -70,6 +70,17 @@ Status: Approved (D-041). Runtime: NOT_IMPLEMENTED.
 - D-040はcurrent-Day lazy Routine materializationを維持する。未来日viewはRoutineをmaterializeせず、Day Navigation v0.1はfuture Routine previewを提供しない。既にmanual planningでestablishされたDayがcurrentになった場合、R1 ensureはそのhistorical contextを利用する。
 - Day Navigation v0.1はnon-current DayのStart / Completeを有効化しない。current-Day execution semanticsは変更しない。
 
+### Past Day navigation and historical gaps
+
+Status: Approved (D-042). Runtime: NOT_IMPLEMENTED.
+
+- established past logical dateはexisting canonical TaskChuteDay / frozen context / historyを表示し、後のsettingsからrewriteしない。
+- TaskChuteDayが存在しないpast logical dateはempty / record-none read-only projectionとして表示する。normal established Dayのempty stateとは区別する。
+- past unestablished view / reload / repeated readはTaskChuteDay、interval / timezone / boundary context、Section historical context、RoutineOccurrence / Entry、Task / Entry / planning stateをcreate / synthesize / persist / backfillしない。
+- Day Navigation v0.1はpast unestablished DayのAdd Task、placement、estimate / planned start、reorder、Start / Complete、Routine conversionを提供せず、direct mutationもDB変更なしでrejectする。
+- D-040 current-Day lazy ensureをpast unestablished dateへretroactiveに実行しない。established past Dayへのnew editing / historical correction / backfillは別scopeとする。
+- future unestablished DayはD-041、past unestablished DayはD-042に従い、current TaskChuteDay behaviorは変更しない。
+
 ## Entry placement and ordering
 
 EntryはTaskChuteDay / Section上のplacement / execution targetとする。

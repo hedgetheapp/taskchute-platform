@@ -239,6 +239,8 @@ D-038により、一度establishしたTaskChuteDayのSection contextは後のSec
 
 D-041により、未establishの未来Dayのview / repeated navigationはnon-persistent previewに留め、最初のsuccessful day-specific mutationでDay establishmentとmutation effectをatomicに確定する。失敗したmutationはDayだけを残さず、retry / concurrencyはone owner-scoped Day / context / effectへ収束する。establish後のcontextはhistorical authorityとしてfreezeする。
 
+D-042により、未establishの過去Dayはempty / record-none read-only historical gapとして扱う。current settingsからinterval / Section contextを捏造せず、Routine / Task / Entry / planning stateをbackfillしない。established past Dayはexisting canonical context / historyを表示する。Day Navigation v0.1はpast unestablished Dayへのmutationを提供せず、historical correction / backfill capabilityは別のexplicit Product Decisionとする。
+
 Current implementationではactual resolved boundary instantでday membershipを判定し、start / next-day endを別々にtimezone ruleからresolveする。materialized intervalとestablishment timezone / boundary contextを保存する。
 
 PR #5ではactive ExecutionをTaskChuteDay境界で分割せず、current dayへ切り替わった後もsame Executionとしてprojection / Completeできる。
@@ -256,6 +258,7 @@ PR #5ではactive ExecutionをTaskChuteDay境界で分割せず、current dayへ
 - work-shift / profile機能
 - logical-day overlapによるReview / aggregation queryのexact implementation
 - `compatible` ruleを含むDST / timezone transitionの追加acceptance scenario coverage
+- established past Dayへ新しいediting capabilityを提供する場合のscope、および明示的historical correction / backfillのProduct semantics
 
 ## Routine
 

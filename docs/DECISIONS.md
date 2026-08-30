@@ -787,3 +787,29 @@ Status: Approved
 - Day Navigation v0.1のview / planning capabilityは、Start / Completeをnon-current Dayへ拡張するDecisionではない。
 
 本DecisionはD-017でOpenだったfuture Dayのread-vs-establishment timingを解決する。historical stability、D-038 Section configuration version semantics、D-040 R1 schedule semantics、D-034 broader projected Routine behavior、timezone travel UX、per-Day boundary override、work profile semanticsは変更しない。exact endpoint / DTO / SQLは別のMaterial Decisionを必要としない限りimplementation detailとする。
+
+## D-042 — Non-established past Day is an empty read-only historical gap
+Status: Approved
+
+### Historical non-fabrication
+
+- 過去logical dateにhistorically establishedされたTaskChuteDayが存在しない場合、viewのためにTaskChuteDayをcreate / materializeしない。
+- current settingsから過去の`[start, end)` interval、timezone / DayBoundary context、Section historical contextをsynthesize / persistしない。
+- その過去日へRoutineOccurrence / Routine-derived Entry、Task / Entry、planning stateをbackfillせず、当時の計画を推測しない。
+- UIはnormal established Dayのempty stateではなく、empty / record-none past Dayとして表現する。
+
+### Read-only boundary
+
+- Day Navigation v0.1ではnon-established past Dayをread-onlyとし、Add Task、Section placement、estimate / planned-start edit、reorder、Start / Complete、Routine conversion等のplanning / execution mutationを提供しない。
+- direct mutation pathへ到達しても、unestablished past Dayをnew planning historyとして作成せずrejectし、DBを変更しない。
+- navigation away、reload、repeated readはno-writeを維持する。
+
+### Established past Day and Decision boundaries
+
+- past logical dateが既にhistorically establishedされている場合、そのcanonical Day / frozen context / historyを表示する。
+- D-042はestablished past Dayのexisting historical semanticsを再定義せず、Day Navigation v0.1へnew past editing capabilityを導入しない。
+- D-017 historical stabilityとD-038 established Section historical contextを維持し、D-040 current-Day lazy Routine materializationをpast unestablished dateへretroactiveに実行しない。
+- D-041はfuture unestablished Day、D-042はpast unestablished Dayを扱い、current TaskChuteDay behaviorは変更しない。
+- D-037のbroader Day move targetをDay Navigation v0.1へ実装するものではない。unestablished past Dayへのhistorical correction / backfill capabilityは別のexplicit Product Decisionを必要とする。
+
+travel / timezone-change UX、per-Day boundary override、work profile / work shift、broader future Routine projection、established past Dayのnew editing semanticsはOpenのまま維持する。
