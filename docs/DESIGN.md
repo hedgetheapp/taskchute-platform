@@ -84,7 +84,7 @@ Taskはtarget column listに含まれるが、固定・非表示不可である�
 
 Routineは独立したtarget columnを持つ。
 
-Minimal Routine R1のbadge / editor / actionをTask cell内に置く現在の表示はtemporary presentationであり、target column semanticsではない。既存R1 controlをRoutine列へ移すことはUI realignmentであり、D-040のpersistence / materialization / lifecycle semanticsを変更しない。
+Day Table UI-1でMinimal Routine R1のbadge / editor / end state / actionを独立したRoutine列へ移した。これはpresentation realignmentであり、D-040のpersistence / materialization / lifecycle semanticsを変更しない。
 
 D-034の`今回だけ / Routineへ反映` scope choiceとfield override persistenceが実装されるまで、Routine由来EntryのSection / 開始予定 / 見積はcurrent R1 contractどおりread-onlyとする。
 
@@ -103,7 +103,7 @@ manual Task reorderはcanonicalに許可されたcohort内だけで行う。
 - keyboard targetは`Shift+↑/↓`とする。
 - pointer利用者向けにはD&Dまたは同等のaccessible interactionを提供する。
 - target Day Tableに独立した`並び替え`data columnは置かない。
-- current runtimeの専用`↑/↓`buttons列はtemporary affordanceであり、target designではない。
+- current runtimeの`↑/↓`buttonsはTask cell内に置くtemporary pointer affordanceであり、独立したdata columnではない。
 
 D&Dが利用可能になるまでのpointer affordanceをcontext action等にするかはlater runtime taskのimplementation detailとし、この文書では確定しない。
 
@@ -164,15 +164,17 @@ Search / Filterはvisible row projectionを変更できるが、canonical Sectio
 
 個々のshortcutのimplementation statusは`FEATURES` / `TEST_MATRIX`で管理する。
 
-## Current realignment gap
+## Current implementation after UI-1
 
-current mainのvertical-slice UIは一時的に次のheadingを描画する。
+current mainで実装済みのvisible heading orderは次である。
 
-`実行 | Task | Project | Section | 開始予定 | 見積 | 状態 | 並び替え`
+`実行 | Task | Project | Section | Routine | 見積 | 開始予定`
 
-これはtarget column modelではない。Day Table UI realignmentでは、独立した`状態`列と独立した`並び替え`列を除き、Routineを独立列へ移し、見積を開始予定より前へ配置する。
+Day Table UI-1では、独立した`状態`列と独立した`並び替え`列を除き、Execution Controlへlifecycle action / state presentationを維持し、Routineを独立列へ移し、見積を開始予定より前へ配置した。pointer `↑/↓`はTask cell内のtemporary affordanceとして、keyboard `Shift+↑/↓`は既存interactionとして維持する。task count、`placement_revision`、raw TaskChuteDay intervalはnormal toolbar / Day headerから除いた。
 
-realignmentは既存のServer-canonical command、retry / reconciliation、placement / ordering、Routine persistence semanticsを変更しない。
+UI-1は既存のServer-canonical command、retry / reconciliation、placement / ordering、Routine persistence semanticsを変更していない。
+
+full target column modelはcurrent implementationより広い。Bulk slot runtime、sticky / fixed-left final structure、Mode、Note、開始見込、fullerな開始 / 終了 / 実績、column reorder / hide / show / resize / auto-fit / preference、Search / Filter、Section collapse、D&Dまたはfullerなcontext interaction等はUI-2以後のfuture workとして残る。
 
 ## Unreconciled historical scope
 

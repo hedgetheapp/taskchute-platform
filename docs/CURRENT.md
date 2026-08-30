@@ -10,9 +10,11 @@ PR #3でruntime bootstrap sliceを、PR #5でReorder / Start / Complete / Execut
 
 その後、Day planning / Routine設計をcanonical docsへ進め、D-026〜D-037をApproved。2026-08-28にD-038をApprovedし、Section persistence foundationと次のDay dogfood implementation順を確定した。Dogfood Day v0.1-A UI shellとB1はPR #13で`main`へmerge済み。B1は`IMPLEMENTED / INTEGRATED`で、source review、local automated verification、real local APP DB migration、signed-in browser verification、persistent non-production migration / runtime / browser verificationはPASSした。B1 production verificationとreal Japanese IMEは`NOT_RUN`、Releasedは`NO`。D-039でApprovedしたB2 planned-start persistence / command contractはcommit `316ad0d88f0f88d1445991904da587b1e0987dab`で`main`へ`IMPLEMENTED / INTEGRATED`となり、source review、local automated verification、real local APP DB migration、signed-in browser verification、persistent non-production migration / runtime / authenticated browser verificationはPASSした。B2 production verificationは`NOT_RUN`、Releasedは`NO`。D-038 B3 Section settings lifecycleはcommit `2481c4916ca2f694f07d6808a4482bea28c79a80`で`main`へ`IMPLEMENTED / INTEGRATED`となり、source review、automated verification、real local APP DB `0005` migration、signed-in browser verification、persistent non-production APP `0005` migration / preservation / deployed runtime / authenticated browser verificationはPASSした。B3 production verificationは`NOT_RUN`、Releasedは`NO`。D-040 Minimal Routine R1 daily dogfood sliceはruntime commit `f9324e866deb74277d2fd83c5945f2df4b2b95da`とnonprod evidence docs commit `c63a98f22ab685370d3e20f1f15f480fab951ae8`をPR #14 merge commit `ebaff6d156813ba78b4c5c28818f9f55db9fd970`で`main`へ統合済み。source review、isolated migration / Worker-D1 / Web automated evidence、real local APP DB `0006` migration / preservation、signed-in real-browserのgeneral R1 flowは`PASS`。v6でserver-canonical reconciliation semanticsを変えず、transient pending statusによるDayBoard layout shiftを解消し、ChatGPT source review `PASS`、focused / full Web `65 / 65 PASS`、typecheck / build / `git diff --check` `PASS`を確認した。persistent nonprod APP `0006` migration / preservation、PR head deploy、authenticated general R1 browser flowは`PASS`で、deployed Worker versionは`be96301c-f131-47b4-bf78-11d4433716b1`。real-browser controlled inclusive end-dateとdeployed non-null inclusive-date subcheckはbrowser automation event mismatchにより`TOOLING_BLOCKED / NOT_VERIFIED`、productionは`NOT_RUN`、Releasedは`NO`。
 
+Day Table UI-1はcommit `da4a8c8316d60d942dc73fbd53bb90d15df5517b`（`Realign Day Table UI`）でcurrent `main`へ`IMPLEMENTED / INTEGRATED`となった。独立した状態/並び替え列を除き、Routineを独立列へ移し、current visible orderを`実行 | Task | Project | Section | Routine | 見積 | 開始予定`へ整合した。source review、focused Web、full Web `65 / 65 PASS`、typecheck、production build、`git diff --check`、signed-in real local browser verification、APP integrityは`PASS`。browser console errors / warningsは`0 / 0`。UI-1 persistent nonprod / production verificationは`NOT_RUN`、Releasedは`NO`。
+
 Current main at this update base:
 
-`155429b7bd7b84d1e8a9de856290a76d9a9c6abb`
+`da4a8c8316d60d942dc73fbd53bb90d15df5517b`
 
 Relevant implementation commits:
 
@@ -24,6 +26,7 @@ Relevant implementation commits:
 - Dogfood Day B2 planned-start planning: `316ad0d88f0f88d1445991904da587b1e0987dab`
 - Dogfood Day B3 Section settings lifecycle: `2481c4916ca2f694f07d6808a4482bea28c79a80`
 - Minimal Routine R1: `f9324e866deb74277d2fd83c5945f2df4b2b95da`（PR #14 merge commit `ebaff6d156813ba78b4c5c28818f9f55db9fd970`でmainへIntegrated）
+- Day Table UI-1: `da4a8c8316d60d942dc73fbd53bb90d15df5517b`
 
 Relevant merge commits:
 
@@ -311,7 +314,9 @@ R1 integrated implementation / verification evidence:
 
 First Server + Web vertical slice、D-023 bootstrap lifecycle security、persistent non-production config increment、D-038 B1/B3、D-039 B2、D-040 Minimal Routine R1はcurrent `main`でImplemented / Integratedまで完了済み。R1 persistent nonprod `0006` migration / preservation / deploy / authenticated general browserもPASS。
 
-Day Table foundationは`docs/DESIGN.md`へcurrent canonical UI targetとして復元した。固定左領域はBulk slot / Execution Control / Task、target data columnsはProject以後、独立した`状態` / `並び替え`列は置かない。current runtimeの状態/並び替え列、Task cell内Routine、開始予定/見積の列順、task count / `placement_revision`表示はtemporary vertical-slice UIであり、UI-1 realignmentはまだ未実装である。次のDay Table UI workは、Server-canonical command / persistence semanticsを変えずにこのrealignmentを行い、R2A Web implementationをtemporary Task cell layoutへ積み増さないこととする。
+Day Table foundationは`docs/DESIGN.md`をcanonical UI targetとし、UI-1はcurrent `main`へImplemented / Integrated済みである。current visible orderは`実行 | Task | Project | Section | Routine | 見積 | 開始予定`で、独立した`状態` / `並び替え`列はなく、Task cell内pointer reorderと独立Routine列を持つ。UI-2以後にはBulk slot runtime、sticky / fixed-left final structure、Mode / Note / 開始見込 / fuller actual columns、column customization、Search / Filter、Section collapse、D&D等が残る。
+
+UI-1のstructural prerequisite完了によりR2A Web workはその観点では再開可能になった。ただしD-034の`今回だけ / Routineへ反映`を永続化・command化する際のcross-field coupling等のMaterial Product semanticsは未決のままであり、このcurrent-state maintenanceはそれらをApprovedまたはimplementation-readyへ昇格しない。
 
 次のProduct development gateはR1後続scopeの選定である。real-browser controlled inclusive end-dateとdeployed non-null inclusive-date subcheckはtooling boundaryにより`NOT_VERIFIED`を維持し、productionは別gateとする。R1のmain integration完了をproduction verification / Product全体のVerified / Releasedへ自動拡張しない。
 

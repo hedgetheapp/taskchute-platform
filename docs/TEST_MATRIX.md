@@ -1,6 +1,6 @@
 # Test Matrix
 
-First Server + Web vertical slice、D-038 B1 / B3、D-039 B2、D-040 Minimal Routine R1は実装・main統合済み。B1 / B2 / B3 / R1 local + persistent non-production verificationはPASS。B3 remote raw console warning / error exact countは`NOT_VERIFIED`。R1 real-browser controlled inclusive end-dateとdeployed non-null inclusive-date subcheckは`TOOLING_BLOCKED / NOT_VERIFIED`。B1 / B2 / B3 / R1 production verificationは`NOT_RUN`。Product runtime全体はまだVerified / Releasedではない。
+First Server + Web vertical slice、D-038 B1 / B3、D-039 B2、D-040 Minimal Routine R1、Day Table UI-1は実装・main統合済み。B1 / B2 / B3 / R1 local + persistent non-production verificationはPASS。UI-1 source / automated / real local browser verificationはPASS、persistent nonprod / production UI-1は`NOT_RUN`。B3 remote raw console warning / error exact countは`NOT_VERIFIED`。R1 real-browser controlled inclusive end-dateとdeployed non-null inclusive-date subcheckは`TOOLING_BLOCKED / NOT_VERIFIED`。B1 / B2 / B3 / R1 production verificationは`NOT_RUN`。Product runtime全体はまだVerified / Releasedではない。
 
 この文書はverification requirementとcurrent evidenceの正本とする。
 
@@ -619,6 +619,28 @@ Web suiteではdeterministic Reorder / Start conflict後のcanonical refetch、a
 - typecheck / build / `git diff --check`: `PASS`
 - source review: `PASS`。status surfaceがnormal layout flow外であることをsource / structural testで確認
 - pixel-level real-browser geometry measurement: `NOT_RUN`。persistent nonprod / production verificationへは拡張しない
+
+### Day Table UI-1 integrated evidence — 2026-08-30
+
+- implementation commit: `da4a8c8316d60d942dc73fbd53bb90d15df5517b`（parent `55f829cef5129d57835490c63a15b4a89db74438`、subject `Realign Day Table UI`）
+- changed runtime/test paths: `apps/web/src/web/App.tsx`、`apps/web/src/web/styles.css`、`apps/web/test/web/App.test.tsx`
+- reviewed patch: 23,114 bytes、SHA-256 `9A18AAF28BB1D1411FB3E1779ACF748CB445CDE7AE9822167B473A17F7C64A16`、stable patch-id `8ef44268583103aa1467d49d58e27bfdf462a106`、`3 files changed, 75 insertions(+), 44 deletions(-)`
+- source review: `PASS`
+- focused Web / full Web: `PASS / 65 / 65 PASS`
+- typecheck / production build / `git diff --check`: `PASS / PASS / PASS`
+- Worker / D1 / migration suites: `NOT_RUN`（Web-only impact analysis。既存B1 / B2 / B3 / R1 evidenceは維持）
+- signed-in real local browser（`http://127.0.0.1:5173/`、viewport `610 × 910`、logical Day `2026-08-30`）: `PASS`
+- visible order `実行 | Task | Project | Section | Routine | 見積 | 開始予定`、状態/並び替え独立列なし、Execution Control lifecycle presentation、toolbar/header cleanup: `PASS`
+- Task-cell pointer `↑/↓`、boundary disable、`Shift+↑`、reload canonical order、hover bounding-rect不変: `PASS`
+- Routine independent column、non-Routine editor + Cancel、existing Routine-derived indicator/end state、Section / 見積 / 開始予定read-only: `PASS`
+- Section edit、estimate `10分`、planned start `09:45` -> Focus、clear時Section維持、Start / Complete、reload、completed hide/show: `PASS`
+- browser unexpected console errors / warnings: `0 / 0`
+- pre/post local APP integrity: `PRAGMA quick_check = ok`、FK violations `0`、active Execution `0`、invalid `Sectionなし + non-null planned start` `0`、Routine duplicate `0`
+- verification dataはnormal Web UIで残置: `UI1 verification A`（planned / Focus / estimate 600 sec / planned start NULL）、`UI1 verification B`（completed / Afternoon / ended Execution 1）、new Routine `0`、placement revision `3 -> 12`。Product defaultではない
+- new Routine conversion / Routine end mutation: `NOT_RUN`（long-lived stateを避け、editor Cancel + existing Routine-derived rowsでpresentation/read-onlyを確認）
+- D&D: `NOT_RUN`（UI-2以後）
+- persistent nonprod UI-1 / production UI-1: `NOT_RUN / NOT_RUN`
+- Released: `NO`
 
 ## Authentication / Authorization
 
