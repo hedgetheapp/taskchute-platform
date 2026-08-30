@@ -155,12 +155,30 @@ describe("Dogfood Day shell", () => {
   it("renders the logical Day as one surface with current Sections, Entries, and empty Sections", async () => {
     mocks.loadDay.mockResolvedValue(populatedDay);
     render(<App />);
-    expect(await screen.findByRole("region", { name: "DayBoard" })).toBeTruthy();
+    const dayBoard = await screen.findByRole("region", { name: "DayBoard" });
+    expect(dayBoard).toBeTruthy();
     expect(screen.getByText("2026-08-22")).toBeTruthy();
     expect(screen.getAllByText("Morning")[0]).toBeTruthy();
     expect(screen.getByText("Canonical task")).toBeTruthy();
     expect(screen.getAllByText("Evening")[0]).toBeTruthy();
     expect(screen.getAllByText("表示するTaskはありません")).toHaveLength(1);
+
+    const heading = dayBoard.querySelector<HTMLElement>(".table-heading")!;
+    expect(Array.from(heading.children).map((cell) => cell.textContent)).toEqual([
+      "実行", "Task", "Project", "Section", "Routine", "見積", "開始予定",
+    ]);
+    expect(heading.textContent).not.toContain("状態");
+    expect(heading.textContent).not.toContain("並び替え");
+    expect(dayBoard.querySelector(".lifecycle-label")).toBeNull();
+    expect(screen.getByRole("button", { name: "Canonical taskを開始" })).toBeTruthy();
+    expect(screen.queryByText("1 tasks")).toBeNull();
+    expect(screen.queryByText("revision 1")).toBeNull();
+    expect(screen.queryByText(
+      `${populatedDay.taskchute_day.start_instant} — ${populatedDay.taskchute_day.end_instant}`,
+    )).toBeNull();
+    expect(document.querySelector(".interval")).toBeNull();
+    expect(screen.getByRole("button", { name: "＋ Taskを追加" })).toBeTruthy();
+    expect(screen.getByRole("checkbox", { name: "実行済みを表示" })).toBeTruthy();
   });
 
   it("opens a focused inline draft from the selected Section plus", async () => {
@@ -169,6 +187,7 @@ describe("Dogfood Day shell", () => {
     fireEvent.click(await screen.findByRole("button", { name: "EveningにTaskを追加" }));
     const input = screen.getByRole("textbox", { name: "EveningのTask名" });
     expect(document.activeElement).toBe(input);
+    expect(input.closest(".draft-row")?.children).toHaveLength(7);
     expect(screen.queryByRole("textbox", { name: "MorningのTask名" })).toBeNull();
     expect(screen.getAllByText("表示するTaskはありません")).toHaveLength(1);
   });
@@ -321,6 +340,8 @@ describe("Dogfood Day shell", () => {
     render(<App />);
     const down = await screen.findByRole("button", { name: "Canonical taskを下へ" }) as HTMLButtonElement;
     expect(down.disabled).toBe(false);
+    expect(down.closest(".task-main")).toBeTruthy();
+    expect(down.closest(".task-reorder-controls")).toBeTruthy();
     fireEvent.click(down);
     await waitFor(() => expect(mocks.reorderEntries).toHaveBeenCalledTimes(1));
     expect(mocks.reorderEntries.mock.calls[0][0].entry_ids).toEqual([secondEntry.id, firstEntry.id]);
@@ -1094,7 +1115,10 @@ describe("Dogfood Day shell", () => {
     mocks.loadDay.mockResolvedValue(populatedDay);
     mocks.convertEntryToRoutine.mockReturnValue(request.promise);
     render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "Routine化" }));
+    const openRoutine = await screen.findByRole("button", { name: "Routine化" });
+    expect(openRoutine.closest(".routine-cell")).toBeTruthy();
+    expect(openRoutine.closest(".task-main")).toBeNull();
+    fireEvent.click(openRoutine);
     fireEvent.click(screen.getByRole("button", { name: "Routine化" }));
 
     const status = await screen.findByRole("status");
@@ -1134,7 +1158,10 @@ describe("Dogfood Day shell", () => {
     expect(mocks.convertEntryToRoutine.mock.calls[0][0]).toMatchObject({
       entry_id: firstEntry.id, taskchute_day_id: emptyDay.taskchute_day.id, end_logical_date: null,
     });
-    expect(await screen.findByText("Routine")).toBeTruthy();
+    await waitFor(() => expect(document.querySelector(".routine-badge")).toBeTruthy());
+    const routineBadge = document.querySelector<HTMLElement>(".routine-badge")!;
+    expect(routineBadge.closest(".routine-cell")).toBeTruthy();
+    expect(routineBadge.closest(".task-main")).toBeNull();
     expect(screen.getByRole("combobox", { name: "Canonical taskのSection" })).toHaveProperty("disabled", true);
     const plannedStart = screen.getByRole("button", { name: "Canonical taskの開始予定" }) as HTMLButtonElement;
     expect(plannedStart.disabled).toBe(true);
@@ -1206,7 +1233,7 @@ describe("Dogfood Day shell", () => {
     const staleEditor = screen.getByRole("textbox", { name: "Canonical taskの見積（分）" });
     fireEvent.click(screen.getByRole("button", { name: "Routine化" }));
     fireEvent.click(screen.getByRole("button", { name: "Routine化" }));
-    expect(await screen.findByText("Routine")).toBeTruthy();
+    await waitFor(() => expect(document.querySelector(".routine-badge")).toBeTruthy());
     expect(screen.queryByRole("textbox", { name: "Canonical taskの見積（分）" })).toBeNull();
     expect((screen.getByRole("button", { name: "Canonical taskの見積" }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.keyDown(staleEditor, { key: "Enter" });
@@ -1236,7 +1263,7 @@ describe("Dogfood Day shell", () => {
     const staleEditor = screen.getByRole("textbox", { name: "Canonical taskの開始予定" });
     fireEvent.click(screen.getByRole("button", { name: "Routine化" }));
     fireEvent.click(screen.getByRole("button", { name: "Routine化" }));
-    expect(await screen.findByText("Routine")).toBeTruthy();
+    await waitFor(() => expect(document.querySelector(".routine-badge")).toBeTruthy());
     expect(screen.queryByRole("textbox", { name: "Canonical taskの開始予定" })).toBeNull();
     expect((screen.getByRole("button", { name: "Canonical taskの開始予定" }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.keyDown(staleEditor, { key: "Enter" });
@@ -1267,7 +1294,7 @@ describe("Dogfood Day shell", () => {
     fireEvent.click(retry);
     await waitFor(() => expect(mocks.convertEntryToRoutine).toHaveBeenCalledTimes(2));
     expect(mocks.convertEntryToRoutine.mock.calls[1][0]).toEqual(original);
-    expect(await screen.findByText("Routine")).toBeTruthy();
+    await waitFor(() => expect(document.querySelector(".routine-badge")).toBeTruthy());
     expect(screen.queryByRole("button", { name: "保留中のRoutine化を再試行" })).toBeNull();
   });
 

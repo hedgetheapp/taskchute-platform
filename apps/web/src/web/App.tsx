@@ -875,7 +875,6 @@ export function App() {
         <div>
           <p className="eyebrow">TaskChuteDay</p>
           <h1>{day.taskchute_day.logical_date}</h1>
-          <p className="interval">{day.taskchute_day.start_instant} — {day.taskchute_day.end_instant}</p>
         </div>
         <div className="header-actions">
           <button type="button" className="secondary" disabled={mutationLocked || day.section_configuration_required}
@@ -899,8 +898,6 @@ export function App() {
       </header>
 
       <div className="day-toolbar" aria-label="Day controls">
-        <span>{allEntries.length} tasks</span>
-        <span>revision {day.placement_revision}</span>
         <button type="button" className="secondary" disabled={mutationLocked} onClick={() => openDraft(null)}>＋ Taskを追加</button>
         <label className="completed-toggle">
           <input type="checkbox" checked={showCompleted} onChange={(event) => setShowCompleted(event.target.checked)} />
@@ -967,7 +964,7 @@ export function App() {
 
       <section className="day-surface" aria-label="DayBoard">
         <div className="table-heading" aria-hidden="true">
-          <span>実行</span><span>Task</span><span>Project</span><span>Section</span><span>開始予定</span><span>見積</span><span>状態</span><span>並び替え</span>
+          <span>実行</span><span>Task</span><span>Project</span><span>Section</span><span>Routine</span><span>見積</span><span>開始予定</span>
         </div>
         {groups.map((section) => {
           const visibleEntries = showCompleted ? section.entries : section.entries.filter((entry) => entry.lifecycle_state !== "completed");
@@ -992,7 +989,7 @@ export function App() {
                   <label className="draft-name"><span className="sr-only">Task名</span><input ref={draftInputRef} name="title" maxLength={300} value={draftTask.title} placeholder="Task名を入力…" aria-label={`${section.title}のTask名`} disabled={pending === "task" || taskOperation !== null} onChange={(event) => setDraftTask({ ...draftTask, title: event.target.value })} onCompositionStart={() => { draftCompositionRef.current = true; }} onCompositionEnd={() => { draftCompositionRef.current = false; }} onKeyDown={handleDraftKeyDown} onBlur={(event) => {
                     if (!draftTask.title.trim() && !event.currentTarget.form?.contains(event.relatedTarget as Node | null)) setDraftTask(null);
                   }} /></label>
-                  <span className="muted">—</span><span>{section.title}</span><span className="muted">—</span><span className="muted">—</span><span className="muted">未確定</span><span className="muted">Enterで追加</span>
+                  <span className="muted">—</span><span>{section.title}</span><span className="muted">—</span><span className="muted">—</span><span className="muted">—</span>
                 </form>
               )}
 
@@ -1014,11 +1011,27 @@ export function App() {
                         else if (canComplete) void complete(entry.id);
                       }}>{isRunning ? "■" : "▶"}</button>
                     )}
-                    <div className="task-main"><div><strong>{entry.task.title}</strong>{day.next_entry?.id === entry.id && <span className="next-label">Next</span>}
-                      {entry.routine && <span className="routine-badge">Routine</span>}</div>
+                    <div className="task-main">
+                      <div className="task-identity"><strong>{entry.task.title}</strong>{day.next_entry?.id === entry.id && <span className="next-label">Next</span>}</div>
+                      <div className="task-reorder-controls" role="group" aria-label={`${entry.task.title}の並び替え`} onClick={(event) => event.stopPropagation()}>
+                        <button type="button" className="icon-button" aria-label={`${entry.task.title}を上へ`} title="上へ" disabled={mutationLocked || !canMoveUp}
+                          onClick={(event) => { event.stopPropagation(); void moveEntry(section.id, entry.id, -1); }}>↑</button>
+                        <button type="button" className="icon-button" aria-label={`${entry.task.title}を下へ`} title="下へ" disabled={mutationLocked || !canMoveDown}
+                          onClick={(event) => { event.stopPropagation(); void moveEntry(section.id, entry.id, 1); }}>↓</button>
+                      </div>
+                    </div>
+                    <span className="project-name">{entry.task.project?.title ?? "—"}</span>
+                    <select aria-label={`${entry.task.title}のSection`} value={entry.section_id ?? ""}
+                      disabled={mutationLocked || entry.lifecycle_state !== "planned" || entry.routine !== null}
+                      onClick={(event) => event.stopPropagation()} onChange={(event) => void changeSection(entry, event.target.value || null)}>
+                      <option value="">Sectionなし</option>
+                      {day.sections.map((candidate) => <option value={candidate.id} key={candidate.id}>{candidate.title}</option>)}
+                    </select>
+                    <div className="routine-cell" onClick={(event) => event.stopPropagation()}>
+                      {entry.routine && <span className="routine-badge">Routine</span>}
                       {entry.lifecycle_state === "planned" && entry.routine === null && (
                         routineDraft?.entryId === entry.id
-                          ? <div className="routine-editor" onClick={(event) => event.stopPropagation()}>
+                          ? <div className="routine-editor">
                               <label>終了日（空欄は終了なし）<input type="date" min={day.taskchute_day.logical_date}
                                 value={routineDraft.endDate} onChange={(event) => setRoutineDraft({ entryId: entry.id, endDate: event.target.value })} /></label>
                               <button type="button" disabled={mutationLocked} onClick={() => void commitRoutineConversion(entry)}>Routine化</button>
@@ -1030,14 +1043,16 @@ export function App() {
                       {entry.routine?.can_end && <button type="button" className="routine-action" disabled={mutationLocked}
                         onClick={(event) => { event.stopPropagation(); void endRoutine(entry); }}>Routineを終了</button>}
                       {entry.routine && !entry.routine.can_end && <span className="routine-ended">終了済み</span>}
+                      {entry.lifecycle_state !== "planned" && entry.routine === null && <span className="muted">—</span>}
                     </div>
-                    <span className="project-name">{entry.task.project?.title ?? "—"}</span>
-                    <select aria-label={`${entry.task.title}のSection`} value={entry.section_id ?? ""}
-                      disabled={mutationLocked || entry.lifecycle_state !== "planned" || entry.routine !== null}
-                      onClick={(event) => event.stopPropagation()} onChange={(event) => void changeSection(entry, event.target.value || null)}>
-                      <option value="">Sectionなし</option>
-                      {day.sections.map((candidate) => <option value={candidate.id} key={candidate.id}>{candidate.title}</option>)}
-                    </select>
+                    <span className="estimate-cell">
+                      {entry.routine === null && editingEstimate?.entryId === entry.id ? <input autoFocus aria-label={`${entry.task.title}の見積（分）`} inputMode="numeric" value={editingEstimate.minutes}
+                        onChange={(event) => setEditingEstimate({ entryId: entry.id, minutes: event.target.value })}
+                        onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void commitEstimate(entry.id); }
+                          else if (event.key === "Escape") { event.preventDefault(); setEditingEstimate(null); } }} />
+                        : <button type="button" className="estimate-button" aria-label={`${entry.task.title}の見積`} disabled={mutationLocked || entry.lifecycle_state !== "planned" || entry.routine !== null}
+                          onClick={() => setEditingEstimate({ entryId: entry.id, minutes: entry.estimate_seconds ? String(entry.estimate_seconds / 60) : "" })}>{formatEstimate(entry.estimate_seconds)}</button>}
+                    </span>
                     <span className="planned-start-cell">
                       {entry.routine === null && editingPlannedStart?.entryId === entry.id ? <input autoFocus aria-label={`${entry.task.title}の開始予定`}
                         value={editingPlannedStart.value} placeholder="HH:mm" inputMode="numeric"
@@ -1051,19 +1066,6 @@ export function App() {
                           {entry.planned_start_minute === null ? "—" : formatLogicalMinute(entry.planned_start_minute)}
                         </button>}
                     </span>
-                    <span className="estimate-cell">
-                      {entry.routine === null && editingEstimate?.entryId === entry.id ? <input autoFocus aria-label={`${entry.task.title}の見積（分）`} inputMode="numeric" value={editingEstimate.minutes}
-                        onChange={(event) => setEditingEstimate({ entryId: entry.id, minutes: event.target.value })}
-                        onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void commitEstimate(entry.id); }
-                          else if (event.key === "Escape") { event.preventDefault(); setEditingEstimate(null); } }} />
-                        : <button type="button" className="estimate-button" aria-label={`${entry.task.title}の見積`} disabled={mutationLocked || entry.lifecycle_state !== "planned" || entry.routine !== null}
-                          onClick={() => setEditingEstimate({ entryId: entry.id, minutes: entry.estimate_seconds ? String(entry.estimate_seconds / 60) : "" })}>{formatEstimate(entry.estimate_seconds)}</button>}
-                    </span>
-                    <span className="lifecycle-label">{entry.lifecycle_state === "planned" ? "未実行" : entry.lifecycle_state === "running" ? "実行中" : "完了"}</span>
-                    <div className="reorder-controls">
-                      <button type="button" className="icon-button" aria-label={`${entry.task.title}を上へ`} title="上へ" disabled={mutationLocked || !canMoveUp} onClick={() => void moveEntry(section.id, entry.id, -1)}>↑</button>
-                      <button type="button" className="icon-button" aria-label={`${entry.task.title}を下へ`} title="下へ" disabled={mutationLocked || !canMoveDown} onClick={() => void moveEntry(section.id, entry.id, 1)}>↓</button>
-                    </div>
                   </div>
                 );
               })}
