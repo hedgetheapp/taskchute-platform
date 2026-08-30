@@ -26,6 +26,7 @@
 - `docs/FEATURES.md`
 - `docs/SPEC.md`
 - `docs/ARCHITECTURE.md`
+- `docs/DESIGN.md`
 - `docs/RISKS.md`
 - `docs/COST.md`
 - `docs/TEST_MATRIX.md`

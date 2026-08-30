@@ -101,6 +101,7 @@ Product / Domainを起点とするが、platform constraints、Security、perfor
 - `FEATURES` → Feature状態
 - `SPEC` → Product / Domain behavior
 - `ARCHITECTURE` → system構造・設計
+- `DESIGN` → UI / visual / interaction target。Product / Domain semanticsは`SPEC` / `DECISIONS`をownerとする
 - `DECISIONS` → Decisionと理由、Decision history
 - `RISKS` → Risk
 - `OPEN_QUESTIONS` → 未決事項
