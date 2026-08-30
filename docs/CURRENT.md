@@ -12,7 +12,7 @@ PR #3でruntime bootstrap sliceを、PR #5でReorder / Start / Complete / Execut
 
 Current main at this update base:
 
-`ebaff6d156813ba78b4c5c28818f9f55db9fd970`
+`155429b7bd7b84d1e8a9de856290a76d9a9c6abb`
 
 Relevant implementation commits:
 
@@ -44,6 +44,7 @@ D1 feasibility gateは引き続きPASS / Verified。current Product runtimeはFi
 - Project InstructionsはGovernance / Source of Truth / authority boundaryの正本。
 - `AGENTS.md`と`docs/DEVELOPMENT_WORKFLOW.md`は具体的なAI / development workflowの入口。
 - Product / Domain behaviorは`docs/SPEC.md`、Decision状態は`docs/DECISIONS.md`を正本とする。
+- UI / visual / interaction targetは`docs/DESIGN.md`を正本とし、Product / Domain semanticsは`docs/SPEC.md` / `docs/DECISIONS.md`をownerとする。
 - Verification requirement / evidenceは`docs/TEST_MATRIX.md`を正本とする。
 - PR #3 runtime bootstrap sliceは`main`へIntegrated済み。
 - PR #5 lifecycle / ordering incrementは`main`へIntegrated済み。
