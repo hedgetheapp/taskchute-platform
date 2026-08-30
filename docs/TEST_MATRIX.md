@@ -544,12 +544,42 @@ Final:
 |---|---|---|---|---|
 | ROUTINE-01 | Routine | RoutineOccurrenceは成立時のorigin TaskChuteDayをEntry延期後も保持する | Approved (D-015) | NOT_IMPLEMENTED |
 | ROUTINE-02 | Routine | 8/21持越しOccurrenceと本来の8/22 Occurrenceを別identityとして同日に保持できる | Approved (D-015) | NOT_IMPLEMENTED |
+| ROUTINE-R1-MIGRATION-01 | Routine R1 / Migration | 0005からR1へupgradeしexisting canonical rows / identity / content / B1-B3 constraintを保持し、existing Entry relationはNULL、quick check / FK checkを通す | Approved (D-040) | LOCAL_PASS |
+| ROUTINE-R1-PERSIST-01 | Routine R1 / Persistence | owner-scoped stable RoutineDefinition / RoutineOccurrence relation、same Routine + origin Day uniqueness、Occurrence 0..* Entries compatibilityを持つ | Approved (D-015, D-040) | LOCAL_PASS |
+| ROUTINE-R1-CONVERT-01 | Routine R1 / Conversion | current planned EntryのTask / Entry identityとplacement / estimate / planned startを維持し、duplicateなしでRoutine defaultsとcurrent-Day Occurrence relationを確定する | Approved (D-040) | LOCAL_PASS |
+| ROUTINE-R1-CONVERT-RETRY-01 | Routine R1 / Retry | conversion same-operation replay / different-semantic misuse / ambiguous canonical reconciliationでduplicateやdouble effectを作らない | Approved (D-020, D-040) | LOCAL_PASS |
+| ROUTINE-R1-DAILY-01 | Routine R1 / Daily | eligible current logical dateへexactly one occurrence / initial Entryをlazy materializeし、stable Taskとfresh Entry identityを使う | Approved (D-040) | LOCAL_PASS |
+| ROUTINE-R1-RANGE-01 | Routine R1 / Range | start / configured end logical dateはinclusive、day-after-endは生成せず、no-endは継続する | Approved (D-036, D-040) | LOCAL_PASS |
+| ROUTINE-R1-RELOAD-01 | Routine R1 / Reload | convergence後のrepeated current-Day loadがOccurrence / Entryをduplicateせずrevisionも変更しない | Approved (D-040) | LOCAL_PASS |
+| ROUTINE-R1-DEFAULTS-01 | Routine R1 / Defaults | estimate / planned start copy、planned-start Section derive、available default Section、missing Sectionなし fallbackをcanonicalに適用する | Approved (D-031, D-039, D-040) | LOCAL_PASS |
+| ROUTINE-R1-ORDER-01 | Routine R1 / Order | generated Entryがexisting NULL-first / minute / same-minute position orderへstable appendし新order authorityを作らない | Approved (D-031, D-039, D-040) | LOCAL_PASS |
+| ROUTINE-R1-REVISION-01 | Routine R1 / Revision | one ensureで1件以上生成時にrevision exactly +1、0件なら+0とする | Approved (D-020, D-040) | LOCAL_PASS |
+| ROUTINE-R1-CONCURRENCY-01 | Routine R1 / Concurrency | concurrent current-Day loadsがduplicateなしへ収束しOccurrence / Entry / revisionのpartial stateを残さない | Approved (D-020, D-040) | LOCAL_PASS |
+| ROUTINE-R1-FAILURE-01 | Routine R1 / Failure | infrastructure ambiguityをdeterministic rejectionとしてpersistせずcanonical reload / retryをsafeに保つ | Approved (D-020, D-040) | LOCAL_PASS |
+| ROUTINE-R1-END-01 | Routine R1 / End | current logical Dayで終了するとcurrent/past Occurrence / Entry / Execution historyを保持してlater generationを止める | Approved (D-034, D-040) | LOCAL_PASS |
+| ROUTINE-R1-END-RETRY-01 | Routine R1 / Retry | same end-operation retryはidempotent、different-semantic operation reuseはrejectする | Approved (D-020, D-040) | LOCAL_PASS |
+| ROUTINE-R1-WEB-01 | Routine R1 / Web | Routine化、end-date/no-end、indicator、Routine終了をasync canonical reconciliation付きで扱う | Approved (D-040) | LOCAL_PASS（automated。real-browser inclusive end-date controlled-inputはTOOLING_BLOCKED / NOT_VERIFIED） |
+| ROUTINE-R1-WEB-RELOAD-01 | Routine R1 / Web | reloadでRoutine relation / indicatorを維持しdaily Entryをduplicateしない | Approved (D-040) | LOCAL_PASS |
+| ROUTINE-R1-REGRESSION-01 | Routine R1 / Regression | B1/B2/B3 Section context/freeze、Sectionなし、estimate、planned start、order、Move/Reorder、lifecycle、retry/conflictを維持し、D-034 choice未実装中はRoutine由来Entryへの旧planning commandをserver mutation-timeでrejectする | Approved (D-034, D-040) | LOCAL_PASS |
 | ROUTINE-DOC-01 | Documents | Routine共通noteはTask Primary Documentを利用できる | Approved (D-018) | NOT_IMPLEMENTED |
 | ROUTINE-DOC-02 | Documents | RoutineOccurrenceはoptional Documentを持ち、同一Occurrenceの複数Entryで共有できる | Approved (D-018) | NOT_IMPLEMENTED |
 | DOC-01 | Documents | Markdown save/read round-tripでcontent semanticsを保持する | Approved (D-006) | NOT_IMPLEMENTED |
 | DOC-02 | Documents | Task / Projectのlogical Primary Document identityをowner identityと分離する | Approved (D-018) | NOT_IMPLEMENTED |
 | ATTACH-01 | Attachment | Noteでimage attachmentを扱える | Approved (D-007) | NOT_IMPLEMENTED |
 | ATTACH-02 | Attachment | Commentでimage attachmentを扱える | Approved (D-007) | NOT_IMPLEMENTED |
+
+R1 local candidate automated evidence（2026-08-30）:
+
+- focused Worker/D1 `r1.integration.test.ts`: `8 PASS`。mutation-time conversion snapshot（estimate / placement）、Routine由来Entryへのestimate / Move / planned-start server rejection、Reorder / Start許可、conversion injected-failure atomic rollback + exact same-operation retry、EndRoutine operation-id misuse、Sectionなし、EndRoutine vs stale materialization、same-minute stable append、concurrent load / rollbackを含む
+- full Worker/D1: `100 PASS`（authenticated direct HTTP estimate rejectionを含む）、full Web jsdom: `61 PASS`（controlled date input `2026-08-31` → conversion request `end_logical_date`を含む）
+- isolated migration chain `0001 -> 0002 -> fixture -> 0003 -> 0004 -> 0005 -> 0006`: `1 scenario / 46 checks PASS`。existing identity/content/relation preservation、`PRAGMA quick_check = ok`、`PRAGMA foreign_key_check = []`
+- Routine由来EntryのSection / 開始予定 / 見積read-only、stale editor protection、Start / canonical cohort Reorder / Routine終了、conversion/end ambiguous exact retryはautomated Web PASS
+- typecheck / build / `git diff --check`: `PASS`
+- source review: `PASS`。Integrated to main: `NO`
+- real local dogfood APP DB private backup / `0006` migration / pre-post preservation / quick check / FK: `PASS`
+- signed-in real-browser general R1 flow（identity-preserving conversion、defaults、Routine planning fields read-only、reload/no duplicate、Routine終了、Start/Complete）: `PASS`。browser console warning / error: `0 / 0`、exact HTTP status: `NOT_VERIFIED`
+- real-browser inclusive end-date controlled-input path: `TOOLING_BLOCKED / NOT_VERIFIED`。browser automationでlive DOM propertyは`2026-08-31`になったが、successful `ConvertEntryToRoutine`のpersisted D-020 request fingerprintはNULL候補`37cf50b3cae324a1beafcbd4759e4e3302c69f36982ca3d8509becd0d99768c0`とexact matchし、date候補`eceb3d2cb615d55fa9f5963a64bb0bd4fe4be7b21bbd49c6688a0c536b42e57c`とは不一致だった。React controlled request stateへdate eventが届かず、Worker / DBは受信したNULL requestを正しく保存したため、Product / Worker persistence failureではない
+- persistent nonprod / production: `NOT_RUN`。Released: `NO`
 
 ## Place / Location / Projections
 
@@ -573,8 +603,16 @@ Final:
 | WEB-06 | Web | async mutation failure / conflict時にClientだけのfalse-success stateを残さない | Approved (D-013) | PASS |
 | WEB-07 | Web | ambiguous Reorder / Start / Completeは元operationだけを明示retryでき、別操作から旧operationを暗黙再送しない | Approved (D-020) | PASS |
 | WEB-08 | Web | current DayBoard外のEntryに属するactive ExecutionもWebからCompleteできる | Approved (D-013, D-017) | PASS |
+| WEB-DAY-STATUS-LAYOUT-01 | Web / DayBoard | startup loading copyは不要なserver実装用語を露出せず、Add Taskと代表的なplacement / lifecycle / Routine mutationはshared transient statusを使う。pending表示 / 消去でDayBoard直前のin-flow rowを増減させず、canonical reconciliation / retryとdeterministic error / conflict表示を維持する | Approved UX invariant | LOCAL_PASS |
 
 Web suiteではdeterministic Reorder / Start conflict後のcanonical refetch、ambiguous operationのRetry / Discard、unrelated button guard、cross-day active Execution completionを明示的にcoverageしている。
+
+`WEB-DAY-STATUS-LAYOUT-01` v6 local candidate evidence（2026-08-30）:
+
+- focused / full Web: `65 PASS / 65`。startup copy、Add Task、Reorder、Start、Routine化のshared transient statusと旧in-flow pending row除去をcoverage
+- typecheck / build / `git diff --check`: `PASS`
+- source review: `PASS`。status surfaceがnormal layout flow外であることをsource / structural testで確認
+- pixel-level real-browser geometry measurement: `NOT_RUN`。persistent nonprod / production verificationへは拡張しない
 
 ## Authentication / Authorization
 

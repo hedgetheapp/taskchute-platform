@@ -69,6 +69,8 @@ Application
 - ReorderEntries
 - StartEntry
 - CompleteEntry
+- ConvertEntryToRoutine
+- EndRoutine
 - LoadTaskChuteDay
 
 Infrastructure
@@ -239,8 +241,12 @@ TaskChute-owned APP persistenceは概念的に以下を必要とする。
 - entries
 - executions
 - operations
+- routine definitions
+- routine occurrences
 
-migrationはsmall vertical slice単位で段階投入できるが、spike schema自体をfinal Product schemaとは扱わず、Routine、Documents、Place / Location等のfuture feature tableを先行作成しない。
+migrationはsmall vertical slice単位で段階投入できるが、spike schema自体をfinal Product schemaとは扱わない。R1 local candidateはApproved D-040 scopeに限って`routine_definitions` / `routine_occurrences`とnullable `entries.routine_occurrence_id`を追加し、Documents、Place / Location等のfuture feature tableは先行作成しない。
+
+R1のcurrent-Day Query pathはfinal projection前にeligible daily Routineをlazy ensureする。missing RoutineOccurrence / initial Entryを1 batchで作成し、1件以上を作るensureごとにTaskChuteDay `placement_revision`をexactly +1、0件なら+0とする。conditional SQL guardはplanned set全件のschedule eligibility / absenceとDay revisionをmutation時に再検証し、stale planやconcurrent winnerではpartial stateを残さず再読込・再計算へ収束する。conversion / endは`ConvertEntryToRoutine` / `EndRoutine` operationとしてresult persistenceと同じD1 batchへ含める。これはD-020 / D-040を満たすcurrent D1 implementationであり、追加のProduct ordering authorityではない。
 
 TaskChuteDayはlogical dateだけではなくhistorically preservedできるactual interval、timezone / boundary contextを保持する。
 

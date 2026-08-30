@@ -262,3 +262,20 @@ Current mitigation / scope:
 - multi-device利用でMaterialな競合が観測された場合、Entry value revision、expected value、conflict UI等をB1以後の設計候補として評価する
 
 このRisk記録はlast-write-winsを長期Product semanticsとしてApprovedするものではない。見積編集履歴 / re-estimation auditやEntry value revisionを導入する条件は`docs/OPEN_QUESTIONS.md`で管理する。
+
+## R-015 — R1 future Day context / lazy materialization convergence risk
+Related: D-020, D-031, D-034, D-039, D-040
+
+Routine default planned startはconversion時のestablished Dayでは有効でも、将来のSection configurationでは対応intervalを持たない可能性がある。またlazy materializationのpre-readとRoutine終了・別loadが競合すると、stale planのcommitやduplicate生成を防ぐ必要がある。
+
+Current local candidate mitigation:
+
+- mutation-time guardでplanned set全件のdaily schedule eligibility、same owner、same definition、missing occurrence、Day revisionを再検証する
+- 1件でもstaleならbatch全体をno-opとし、再読込・再計算へ収束させる
+- incompatible planned startはpartial Occurrence / Entry / revisionを残さずsafe failureする
+- same Routine + origin Day uniquenessとD1 batch assertionをlast line of defenseとする
+
+残存Risk / Open:
+
+- incompatible future Dayからdefaultを修正・skipするProduct recovery UXは未決
+- real local dogfood DB、persistent nonprod、productionでのR1 convergence / platform behaviorは`NOT_RUN`

@@ -116,6 +116,27 @@ Routineは以下のconceptual relationを前提とする。
 - 8/21分の持越しと本来の8/22分は別Occurrence / Entryとして同じ日に存在できる。
 - 遅延実施をstreak上の当日達成とみなすか等のachievement semanticsはOpenとする。
 
+### Minimal Routine R1 daily slice
+
+Status: Approved (D-040). Runtime: IMPLEMENTED IN LOCAL CANDIDATE / NOT_INTEGRATED.
+
+R1はcurrent-Dayのplanned non-Routine Entryを起点とするdaily-only Routine dogfood sliceとする。
+
+- conversionはexisting Task / Entry identity、current TaskChuteDay、Sectionまたは`Sectionなし`、見積、開始予定を維持し、duplicate Task / Entryを作らない。
+- current valuesをRoutineDefinitionのdefault Section / estimate / planned startとしてsnapshotし、current DayをoriginとするRoutineOccurrenceをmaterializeしてexisting Entryへ関連付ける。
+- scheduleはconversion Dayをinclusive startとする毎日で、終了なしまたはinclusive end logical dateを持つ。
+- persistenceはowner-scoped stable RoutineDefinition / RoutineOccurrenceとnullable Entry relationを持ち、same Routine + origin Dayのduplicate Occurrenceを防ぐ。Occurrenceは将来`0..* Entries`を共有できるrelationとする。
+- current-Day queryはapplicable daily Routineをlazy ensureし、未materializeならOccurrenceとinitial planned Entryをexactly one作る。future Dayをunboundedにpre-generateしない。
+- one ensureで1件以上作成した場合だけDay `placement_revision`をatomicにexactly once増やし、0件なら変更しない。concurrent / repeated loadはduplicateやpartial stateを残さない。
+- generated Entryはsame stable Taskを参照し、default estimate / planned startをcopyする。non-null planned startはestablished Day contextとD-031 / D-039でSectionをderiveし、nullならavailable default Sectionを使い、missingなら`Sectionなし`へfallbackする。
+- generated Entryは既存B2 canonical cohortのmanual member後へstable appendし、複数Routineはstable RoutineDefinition dataでdeterministicに並べる。UUID timestampをProduct ordering authorityにしない。
+- `Routineを終了`はcurrent logical Day後のgenerationを止め、current/past Occurrence、Entry、Execution historyとRoutineDefinitionを保持する。
+- conversion / endはD-020 logical operation replay / misuse / ambiguity / atomicity contractに従う。
+- Webはeligible Entryの`Routine化`、終了なし/inclusive end date、Routine indicator、`Routineを終了`とcanonical reload/reconciliationを提供する。
+- D-034の`今回だけ / Routineへ反映` choiceとfield override persistenceはR1 scope外のため、Routine由来EntryのSection / 開始予定 / 見積はR1 Day UIでは表示のみとし、既存の`MoveEntry` / `SetEntryPlannedStart` / `SetEntryEstimate` commandもserver mutation-timeでrejectする。Reorder / Start / Complete / `Routineを終了`は既存canonical ruleに従い利用できる。
+
+non-daily recurrence、future-range projection UI、schedule editing、field-level override、Skip、Day move、temporary stop/resume、Documents、Interrupt、statistics、native/offline clientはR1 scope外であり、broader Approved semantics / Open Questionを維持する。
+
 ## Historical facts and projections
 
 DayBoard、Calendar、Timeline、Review、Mapはcanonical task stateを別系統で保持するauthorityではなく、Domain / historical factsから構築するprojectionとする。
@@ -165,6 +186,8 @@ First vertical slice内の通常mutationはasync Server communicationで実行�
 
 - mutation処理中にClientは操作を受理したことが分かるtransient UI stateを持てる。
 - `starting` / `completing`等のpending stateはClient UI stateであり、Domain lifecycle stateではない。
+- initial canonical Day loadは実装用語を露出しない簡潔なuser-facing loading stateを表示できる。通常のmutation / reconciliation中もvisibleかつaccessibleなtransient feedbackを維持するが、その表示 / 非表示によってDayBoard直前のnormal layout flowを増減させたり、DayBoardを上下へ移動させたりしない。
+- transient pending feedbackのlayout invariantは、Server canonical stateへのreconciliation、retained operationのretry、mutation locking、deterministic error / conflict feedbackを削除・弱化しない。error / conflictはtransient normal-pending feedbackと区別して表示する。
 - Server成功後はauthoritative resultをClient stateへ反映する。
 - failure / conflict時にClientだけがfalse-success stateのまま残らず、必要に応じてQueryでServer canonical stateへreconcileできる。
 - realtime push、Web offline queue、PWA / background syncはinitial scope外とする。

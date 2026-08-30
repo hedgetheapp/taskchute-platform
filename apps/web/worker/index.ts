@@ -7,6 +7,7 @@ import { completeEntry, isCompleteEntryRequest, isStartEntryRequest, startEntry 
 import { isMoveEntryRequest, isSetEntryEstimateRequest, moveEntry, setEntryEstimate } from "./application/entry-planning";
 import { isReorderEntriesRequest, reorderEntries } from "./application/reorder-entries";
 import { isSetEntryPlannedStartRequest, setEntryPlannedStart } from "./application/planned-start";
+import { convertEntryToRoutine, endRoutine, isConvertEntryToRoutineRequest, isEndRoutineRequest } from "./application/routine";
 import {
   establishInitialSectionConfiguration,
   isEstablishInitialSectionConfigurationRequest,
@@ -98,6 +99,24 @@ async function route(request: Request, env: Env): Promise<Response> {
       throw new HttpError(400, "malformed_request", "Invalid SetEntryPlannedStart request");
     }
     return Response.json(await setEntryPlannedStart(env.APP_DB, principal.appUserId, body));
+  }
+  const routineConvertMatch = url.pathname.match(/^\/api\/v1\/entries\/([^/]+)\/routine$/);
+  if (request.method === "POST" && routineConvertMatch) {
+    const body = await readBoundedJson(request);
+    if (routineConvertMatch[1] !== (body as { entry_id?: unknown })?.entry_id
+      || !isConvertEntryToRoutineRequest(body)) {
+      throw new HttpError(400, "malformed_request", "Invalid ConvertEntryToRoutine request");
+    }
+    return Response.json(await convertEntryToRoutine(env.APP_DB, principal.appUserId, body));
+  }
+  const routineEndMatch = url.pathname.match(/^\/api\/v1\/routines\/([^/]+)\/end$/);
+  if (request.method === "POST" && routineEndMatch) {
+    const body = await readBoundedJson(request);
+    if (routineEndMatch[1] !== (body as { routine_definition_id?: unknown })?.routine_definition_id
+      || !isEndRoutineRequest(body)) {
+      throw new HttpError(400, "malformed_request", "Invalid EndRoutine request");
+    }
+    return Response.json(await endRoutine(env.APP_DB, principal.appUserId, body));
   }
   const lifecycleMatch = url.pathname.match(/^\/api\/v1\/entries\/([^/]+)\/(start|complete)$/);
   if (request.method === "POST" && lifecycleMatch) {

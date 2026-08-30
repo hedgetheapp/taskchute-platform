@@ -6,6 +6,7 @@ import type {
 import { canonicalizeEntryOrder } from "../../src/shared/planned-entry-order";
 import { resolveSectionIntervals, resolveTaskChuteDay } from "../domain/taskchute-day";
 import { uuidv7 } from "../domain/uuidv7";
+import { ensureCurrentDayRoutineEntries } from "./routine";
 
 interface SettingsRow {
   timezone: string;
@@ -54,6 +55,9 @@ interface EntryRow {
   project_title: string | null;
   estimate_seconds: number | null;
   planned_start_minute: number | null;
+  routine_occurrence_id: string | null;
+  routine_definition_id: string | null;
+  routine_end_logical_date: string | null;
 }
 
 interface ExecutionRow {
@@ -111,6 +115,9 @@ function toEntryRow(value: unknown): EntryRow {
     project_title: projectTitle,
     estimate_seconds: row.estimate_seconds === null ? null : requiredNumber(row, "estimate_seconds"),
     planned_start_minute: row.planned_start_minute === null ? null : requiredNumber(row, "planned_start_minute"),
+    routine_occurrence_id: row.routine_occurrence_id === null ? null : requiredString(row, "routine_occurrence_id"),
+    routine_definition_id: row.routine_definition_id === null ? null : requiredString(row, "routine_definition_id"),
+    routine_end_logical_date: row.routine_end_logical_date === null ? null : requiredString(row, "routine_end_logical_date"),
   };
 }
 
@@ -298,7 +305,12 @@ export async function loadCurrentTaskChuteDay(
   appUserId: string,
   nowInstant = new Date().toISOString(),
 ): Promise<CurrentTaskChuteDayProjection> {
-  const day = await materializeCurrentDay(db, appUserId, nowInstant);
+  const materializedDay = await materializeCurrentDay(db, appUserId, nowInstant);
+  await ensureCurrentDayRoutineEntries(db, appUserId, materializedDay, nowInstant);
+  const day = await db.prepare(`SELECT id, logical_date, start_instant, end_instant, establishment_timezone,
+      establishment_boundary_minutes, placement_revision FROM taskchute_days WHERE app_user_id = ? AND id = ?`)
+    .bind(appUserId, materializedDay.id).first<DayRow>();
+  if (!day) throw new Error("TaskChuteDay disappeared after Routine materialization");
   const [sectionResult, entryResult, executionResult] = await db.batch([
     db.prepare(`SELECT section_id AS id, title, logical_start_minute, logical_end_minute,
       actual_start_instant, actual_end_instant, context_order
@@ -307,10 +319,14 @@ export async function loadCurrentTaskChuteDay(
     db
       .prepare(
         `SELECT e.id AS entry_id, e.section_id, e.position, e.lifecycle_state, e.estimate_seconds, e.planned_start_minute,
+                e.routine_occurrence_id, ro.routine_definition_id,
+                rd.end_logical_date AS routine_end_logical_date,
                 t.id AS task_id, t.title AS task_title,
                 p.id AS project_id, p.title AS project_title
            FROM entries e
            JOIN tasks t ON t.app_user_id = e.app_user_id AND t.id = e.task_id
+           LEFT JOIN routine_occurrences ro ON ro.app_user_id = e.app_user_id AND ro.id = e.routine_occurrence_id
+           LEFT JOIN routine_definitions rd ON rd.app_user_id = ro.app_user_id AND rd.id = ro.routine_definition_id
            LEFT JOIN projects p ON p.app_user_id = t.app_user_id AND p.id = t.project_id
           WHERE e.app_user_id = ? AND e.taskchute_day_id = ?
           ORDER BY e.section_id, e.position, e.id`,
@@ -330,6 +346,12 @@ export async function loadCurrentTaskChuteDay(
       lifecycle_state: row.lifecycle_state,
       estimate_seconds: row.estimate_seconds,
       planned_start_minute: row.planned_start_minute,
+      routine: row.routine_occurrence_id && row.routine_definition_id ? {
+        routine_definition_id: row.routine_definition_id,
+        routine_occurrence_id: row.routine_occurrence_id,
+        end_logical_date: row.routine_end_logical_date,
+        can_end: row.routine_end_logical_date === null || row.routine_end_logical_date > day.logical_date,
+      } : null,
       task: {
         id: row.task_id,
         title: row.task_title,
