@@ -150,7 +150,7 @@ Current implementation fact:
 - revision conflict時はlatest canonical configurationをreloadしてstale draftをresetし、ユーザーが再編集した場合だけnew head基準で保存する
 - infrastructure ambiguityではexact original UpdateSectionConfiguration operationだけをretry対象として保持する
 
-D-031〜D-037でDay planning / Routine target semanticsが追加され、D-038で次のDay dogfood persistence stagingとしてB1 / B2 / B3がApprovedされた。B1はPR #13で、D-039のB2 runtimeはcommit `316ad0d88f0f88d1445991904da587b1e0987dab`、D-038のB3 runtimeはcommit `2481c4916ca2f694f07d6808a4482bea28c79a80`で`main`へImplemented / Integrated済み。B1 / B2 / B3はlocal + persistent nonprod evidenceがPASS。B3 persistent nonprod raw console exact countは`NOT_VERIFIED`、B3 productionとB1 real Japanese IMEは`NOT_RUN`。`docs/DESIGN.md` Draftのbroader Day Table interaction、broader Settings navigation、icon / accent等は未実装。
+D-031〜D-037でDay planning / Routine target semanticsが追加され、D-038で次のDay dogfood persistence stagingとしてB1 / B2 / B3がApprovedされた。B1はPR #13で、D-039のB2 runtimeはcommit `316ad0d88f0f88d1445991904da587b1e0987dab`、D-038のB3 runtimeはcommit `2481c4916ca2f694f07d6808a4482bea28c79a80`で`main`へImplemented / Integrated済み。B1 / B2 / B3はlocal + persistent nonprod evidenceがPASS。B3 persistent nonprod raw console exact countは`NOT_VERIFIED`、B3 productionとB1 real Japanese IMEは`NOT_RUN`。Day Table foundationはcurrent `docs/DESIGN.md`へcanonical化済みだが、UI-1 realignmentとbroader Settings navigation、icon / accent、historical design branchの未reconcile scopeは未実装・未canonical化の境界を維持する。
 
 以下の具体方式・scopeはOpen:
 

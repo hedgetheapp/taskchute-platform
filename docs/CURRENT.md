@@ -310,6 +310,8 @@ R1 integrated implementation / verification evidence:
 
 First Server + Web vertical slice、D-023 bootstrap lifecycle security、persistent non-production config increment、D-038 B1/B3、D-039 B2、D-040 Minimal Routine R1はcurrent `main`でImplemented / Integratedまで完了済み。R1 persistent nonprod `0006` migration / preservation / deploy / authenticated general browserもPASS。
 
+Day Table foundationは`docs/DESIGN.md`へcurrent canonical UI targetとして復元した。固定左領域はBulk slot / Execution Control / Task、target data columnsはProject以後、独立した`状態` / `並び替え`列は置かない。current runtimeの状態/並び替え列、Task cell内Routine、開始予定/見積の列順、task count / `placement_revision`表示はtemporary vertical-slice UIであり、UI-1 realignmentはまだ未実装である。次のDay Table UI workは、Server-canonical command / persistence semanticsを変えずにこのrealignmentを行い、R2A Web implementationをtemporary Task cell layoutへ積み増さないこととする。
+
 次のProduct development gateはR1後続scopeの選定である。real-browser controlled inclusive end-dateとdeployed non-null inclusive-date subcheckはtooling boundaryにより`NOT_VERIFIED`を維持し、productionは別gateとする。R1のmain integration完了をproduction verification / Product全体のVerified / Releasedへ自動拡張しない。
 
 1. direct bootstrap POST / public signup remote POST、B1 real Japanese IME、B3 next-Day real-browser materialization、B3 remote raw console exact countは未検証の境界を維持する。

@@ -268,14 +268,16 @@ Related: D-020, D-031, D-034, D-039, D-040
 
 Routine default planned startはconversion時のestablished Dayでは有効でも、将来のSection configurationでは対応intervalを持たない可能性がある。またlazy materializationのpre-readとRoutine終了・別loadが競合すると、stale planのcommitやduplicate生成を防ぐ必要がある。
 
-Current local candidate mitigation:
+Current implemented mitigation:
 
 - mutation-time guardでplanned set全件のdaily schedule eligibility、same owner、same definition、missing occurrence、Day revisionを再検証する
 - 1件でもstaleならbatch全体をno-opとし、再読込・再計算へ収束させる
 - incompatible planned startはpartial Occurrence / Entry / revisionを残さずsafe failureする
 - same Routine + origin Day uniquenessとD1 batch assertionをlast line of defenseとする
 
+R1はruntime commit `f9324e866deb74277d2fd83c5945f2df4b2b95da`とevidence docs commit `c63a98f22ab685370d3e20f1f15f480fab951ae8`をPR #14 merge commit `ebaff6d156813ba78b4c5c28818f9f55db9fd970`で`main`へImplemented / Integrated済み。real local APP DB `0006` migration / preservationとsigned-in general browser flow、persistent nonprod `0006` migration / preservation / deploy / authenticated general browser flowは`PASS`した。controlled inclusive date-inputとdeployed non-null inclusive-date subcheckはbrowser automation event mismatchにより`TOOLING_BLOCKED / NOT_VERIFIED`、productionは`NOT_RUN`である。
+
 残存Risk / Open:
 
 - incompatible future Dayからdefaultを修正・skipするProduct recovery UXは未決
-- real local dogfood DB、persistent nonprod、productionでのR1 convergence / platform behaviorは`NOT_RUN`
+- verified current-Day scopeを越えるfuture-Day context change時のrecovery / convergenceとproduction behaviorは未検証であり、productionは`NOT_RUN`

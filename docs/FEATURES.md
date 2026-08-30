@@ -12,23 +12,23 @@ Status values: Planned / In design / Implemented / Verified
 | Core Domain foundations | In design | D-015 Approved。Task / Entry / Project / Section / TaskChuteDay / Execution / first lifecycleは実装。Routine / richer history / advanced Day planningは設計中 |
 | Task / Entry identity | Implemented | separate stable UUIDv7 identityをruntimeへ実装。ID timestampはordering authorityにしない |
 | TaskChuteDay | Implemented | explicit timezone/boundary bootstrap、materialized interval/context、compatible DST semanticsをruntimeへ実装 |
-| Project | Implemented | CreateProject + optional Task project relationを実装。Day UIではProject dropdownからquick create、検索、設定画面でuser-defined orderを扱う方向をDESIGNで定義 |
+| Project | Implemented | CreateProject + optional Task project relationを実装。Day TableのProject列targetは`docs/DESIGN.md`でcanonical化。Project dropdown quick create、検索、設定画面でのuser-defined orderはbroader UI scopeとして設計継続 |
 | Section | In design | user-global stable persistenceとD-038 B1 foundationに加え、B3のrename / boundary edit / add / delete・absorption、immutable configuration version/head lifecycle、next-Day effective Web settingsをcommit `2481c4916ca2f694f07d6808a4482bea28c79a80`で実装。B3 source / automated / real local migration / browser / persistent nonprodはPASS、remote raw console exact countはNOT_VERIFIED、productionはNOT_RUN、Released NO。icon / accent、summary、Day-boundary lifecycle等のbroader scopeは未実装 |
-| Section Day summary | In design | DESIGNでSection summary row、完了/総数、合計見積、Execution実績によるcapacity bar、空Section、Sectionなしgroup、日別collapse、Section直下Task追加を設計 |
+| Section Day summary | In design | `docs/DESIGN.md`でcontinuous table上のSection summary row、完了/総数、合計見積、空Section、Sectionなしgroup、日別collapse、Section直下Task追加をtargetとしてcanonical化。Execution実績によるcapacity barを含むbroader projectionは設計継続 |
 | Mode | In design | D-026 Approved。ユーザー定義で意味を固定せず、1 Entryに0..1 Mode。Day UI quick create / 検索、設定画面でuser-defined orderを設計。persistence / management UIは未実装 |
 | Project / Mode selector search | In design | Project / Mode selectorはdirect文字一致、正規化、かな/カタカナ統一、romaji→かな検索を扱い、例として`tasuku`から`タスクシュート開発`を候補化する方向。漢字読みindexのexact方式は実装設計で詰める |
 | Entry planning metadata | In design | D-026 + D-031 + D-039 Approved。B1のEntry見積はPR #13で、B2 planned startは`planned_start_minute INTEGER NULL`としてcommit `316ad0d88f0f88d1445991904da587b1e0987dab`でmainへImplemented / Integrated済み。B2 source review / automated / real local migration / signed-in browser / persistent nonprod verificationはPASS、production verificationはNOT_RUN、Released NO。broader planning metadata scopeは設計継続 |
 | Planned-start ordering | Implemented | D-031 + D-039のderived canonical order、既存`position`によるmanual tie-break、SetEntryPlannedStart atomicity / retry、Section move時clear、Reorder cohort制約をcommit `316ad0d88f0f88d1445991904da587b1e0987dab`でmainへ実装。source review / automated / real local browser / persistent nonprod verificationはPASS、production verificationはNOT_RUN、Released NO |
 | Start forecast | In design | D-032 Approved。開始予定とは独立したprojection。current progress / Day order / estimateを使いSectionをまたいで連続計算。past / completed / running自身 / Sectionなしは表示対象外 |
 | Today / DayBoard ordering | Implemented | explicit Entry order + placement revision conflict protectionに加え、D-031 / D-039のNULL-first、planned minute昇順、same-minute manual tie-break、cohort-aware ReorderをB2で実装。local + persistent nonprod verification PASS |
-| Day Table interaction | In design | fixed Bulk slot + circular Execution Control + Task sticky領域、configurable columns、header D&D / resize / auto-fit / hide、inline edit、row/Section focus、context menu、Note pane等をDESIGNで定義 |
+| Day Table interaction | In design | `docs/DESIGN.md`でfixed Bulk slot + circular Execution Control + Task sticky領域、target columns、独立した状態/並び替え列を置かない方針、column reorder / resize / auto-fit / hide、Section summary、keyboard/focus targetをcanonical化。current runtimeの状態/並び替え列とTask cell内Routineはtemporary UIで、UI-1 realignmentは未実装 |
 | Day task move / duplicate / delete | In design | D-037 Approved。未実行Taskの日付移動、fresh duplicate、未実行 / running delete、completed / interrupted historical row保護を設計。running deleteはcancelled historical representationを残す |
 | Start / Complete lifecycle | Implemented | current runtimeはplanned -> running -> completed、retry safety、active Execution max 1、no implicit interruptを実装 |
 | Manual Execution correction | In design | D-033 Approved。actual開始/終了の直接入力・訂正、実績derived、valid Execution interval overlap禁止、Section capacity / Review再計算。current runtimeは未実装 |
 | Interrupt / continuation | In design | D-028 Approved target。explicit Interruptでcurrent Executionをinterrupted終了し、割り込みTaskをStart、元Task continuationを直下生成。current runtimeは未実装で通常Startをreject |
 | Quick Interrupt | In design | D-028 Approved。実行中Taskから`（割込）`を即生成・Startし履歴へ残す。発生時刻のcurrent Sectionへ配置し、nested Quick Interruptも許容。exact persistence / command contractは未決 |
 | Revert current Start | In design | D-029 Approved。「未実行に戻す」は現在activeなExecution / 今回のStartだけを取消対象とし、以前のvalid actualや割り込みhistoryは維持。current runtimeは未実装 |
-| Floating Runner | In design | current running TaskをMain content下部付近のcompact floating UIで継続表示。whole logical work chain progress、subtle estimate overrun、Quick Interrupt / revert / Complete、minimizeをDESIGNで定義 |
+| Floating Runner | In design | current running TaskをMain content下部付近のcompact floating UIで継続表示。whole logical work chain progress、subtle estimate overrun、Quick Interrupt / revert / Complete、minimizeはhistorical design referenceに残るbroader UI scopeで、current `docs/DESIGN.md`では未canonical化 |
 | Next Entry projection | Implemented | explicit order上のplanned Entryからlifecycle-aware Nextを算出。Next以外のplanned EntryもStart可能 |
 | Historical fact foundation | In design | TaskChuteDay interval + Execution factは実装。D-028〜D-033 / D-037でinterrupt、Start取消、Section historical semantics、manual time correction、running delete時のnon-destructive cancellationをApproved。D-038でSection version/config/day-context責務分離をApproved。Section以外のsnapshot / cancelled outcome等は未決 |
 | Day planning persistence B1 | Implemented | PR #13でmainへmerge・Integrated済み。local automated + source review + real local APP migration + signed-in browser + persistent nonprod migration/runtime/browser verificationはPASS。production verificationはNOT_RUN、Released NO |
@@ -68,9 +68,9 @@ Status values: Planned / In design / Implemented / Verified
 | Routine generation / materialization | In design | D-034 Approved。必要範囲をprojectし、day-specific edit / move / Skip / execution等でmaterialize。exact persistence / query cachingは未決 |
 | Routine streak / achievement | Planned | exact achievement / delayed completion / continuation semanticsは未決 |
 | Review | Planned | historical factsからのprojection。D-028〜D-033 / D-037のvalid actual / correction / cancellation semanticsに従う |
-| Keyboard-first Day interaction | In design | DESIGNで`J/K`・上下、`S`、`U`、`I`、`D`、`X`、`F`、`Ctrl+C`、`Shift+F10`、Day移動等のmappingとinteraction modeを定義 |
+| Keyboard-first Day interaction | In design | `docs/DESIGN.md`で`J/K`・上下、`Shift+↑/↓`、`S`、Tab traversal、IME safety、Section summary focusをDay Table targetとしてcanonical化。`U` / `I` / `D` / `X` / `F` / `Ctrl+C` / `Shift+F10` / Day移動等のbroader mappingは未canonical化 |
 | Hit-a-Hint | In design | `F`でvisible actionable elementへhintを表示。mode中は通常single-key shortcutを停止し、入力はhint sequence専用 |
-| Bulk Selection | In design | fixed-width selection slotを常時確保しlayout shiftを防止。X toggle、J/K focus、D bulk delete、Esc clearをDESIGNで定義 |
+| Bulk Selection | In design | `docs/DESIGN.md`でfixed-width Bulk slotをDay Table targetとしてcanonical化。Bulk capability / actions自体とX toggle、D bulk delete、Esc clear等のbroader mappingは未実装・未canonical化 |
 | Calendar | Planned | Domain / historyからのprojection。D-034のProjected RoutineOccurrence foundationを将来利用可能。具体Calendar UX / implementationは後続 |
 | Timeline | Planned | planned / actual viewのprojection |
 | Place | In design | planned meaningful destination foundation Approved |
