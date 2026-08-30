@@ -162,7 +162,7 @@ UIでは`30:00`等のextended-time notationを利用できる方向とするが�
 
 過去にhistorically establishedされたTaskChuteDay assignment / intervalを、後のtimezone / boundary設定変更でretroactiveに再分類しない。
 
-initial bootstrapではtimezone / boundaryを明示入力させ、暗黙のProduct defaultを適用しない。DST local-time disambiguationのinitial ruleはD-022で確定する。未来TaskChuteDayをいつmaterialize / freezeするか、timezone変更UX、travel behavior、per-day override / work profile、extended-time入力rangeはOpenとする。
+initial bootstrapではtimezone / boundaryを明示入力させ、暗黙のProduct defaultを適用しない。DST local-time disambiguationのinitial ruleはD-022で確定する。未来TaskChuteDayをいつmaterialize / freezeするかはD-041で確定する。timezone変更UX、travel behavior、per-day override / work profile、extended-time入力rangeはOpenとする。
 
 ## D-018 — Primary Documents and Routine occurrence notes
 Status: Approved
@@ -755,3 +755,35 @@ D-015 / D-027 / D-034 / D-036のRoutine target semanticsを、最初にdogfood�
 - pending / deterministic rejection / ambiguityは既存async mutation conventionに従い、retained ambiguous operationをunrelated actionへ再利用しない。
 
 R1はnon-daily recurrence、holiday calendar、future-range projection UI、schedule editing、field override UX、Skip、Day move、temporary stop/resume、Documents、Interrupt、statistics、native/offline clientを実装しない。これらの既存Approved target semanticsとOpen Questionは維持する。本DecisionはR1 implementation contractをApprovedにするが、runtime実装・migration・verification完了を意味しない。
+
+## D-041 — Non-materializing Day navigation and mutation-time future Day establishment
+Status: Approved
+
+### Read navigation does not establish a future Day
+
+- arbitraryな未来logical TaskChuteDayへのnavigation / viewはread operationであり、それだけではpersistent TaskChuteDay、timezone / DayBoundary context、Section configuration / historical contextを作成・freezeしない。
+- future Dayのrepeated load、previous / next navigation、calendar picker navigationはnon-materializingであり、future TaskChuteDayをunboundedにpre-generateしない。
+- 未来日を見るだけではRoutineOccurrenceまたはRoutine-derived Entryを作成しない。
+
+### Non-established planning preview
+
+- 未establishの未来logical dateをDay UIへ表示するため、non-persistent / non-established planning projectionを返してよい。
+- previewのinterval / Section情報は、その時点でDayをestablishした場合に適用されるconfigurationからderiveする。
+- previewはhistorical authorityではなく、既にfreeze済みのcontextとして保存・表示しない。establishment前に設定が変われば、後のpreviewがnew effective configurationを反映してよい。
+
+### First successful future-Day mutation establishes atomically
+
+- 未来logical dateのcanonical stateを必要とする最初のsuccessful day-specific mutationは、owner-scoped TaskChuteDayをexactly one establishする。
+- establishmentはD-017 / D-038に従い、その時点でeffectiveなtimezone / DayBoundary / Section contextをfreezeする。
+- Day establishmentとtriggering mutationは一つのlogical atomic outcomeとする。successはestablished Dayとmutation effectの両方を残し、validation rejection、stale conflict、deterministic failureはnewly established Dayだけをside effectとして残さない。
+- retry / concurrencyはone owner-scoped TaskChuteDay / context / mutation effectへ収束し、duplicateを作らない。
+- establish後のDay contextはhistorical authorityであり、後のtimezone / boundary / Section settings変更でretroactiveにrewriteしない。
+
+### Routine and execution boundary
+
+- D-040 Minimal Routine R1はcurrent-Day lazy materializationを維持し、Day Navigation v0.1はvirtual future Routine previewを導入しない。
+- manual planningで既にestablishされた未来Dayが後にcurrent Dayになった場合、D-040 current-Day ensureはそのestablished Day contextを利用し、existing exactly-once / convergence ruleを維持する。
+- broader projected future Routine preview / materializationは後続Routine sliceとする。
+- Day Navigation v0.1のview / planning capabilityは、Start / Completeをnon-current Dayへ拡張するDecisionではない。
+
+本DecisionはD-017でOpenだったfuture Dayのread-vs-establishment timingを解決する。historical stability、D-038 Section configuration version semantics、D-040 R1 schedule semantics、D-034 broader projected Routine behavior、timezone travel UX、per-Day boundary override、work profile semanticsは変更しない。exact endpoint / DTO / SQLは別のMaterial Decisionを必要としない限りimplementation detailとする。

@@ -237,6 +237,8 @@ D-031により開始予定時間をSection placement authorityとして利用し
 
 D-038により、一度establishしたTaskChuteDayのSection contextは後のSection設定変更でretroactiveに書き換えず、通常のSection設定変更は原則次TaskChuteDayから有効にする。初回migration/onboardingでvalid Section configurationが未成立の場合だけ、明示したinitial configurationをcurrent Dayへ適用できる。
 
+D-041により、未establishの未来Dayのview / repeated navigationはnon-persistent previewに留め、最初のsuccessful day-specific mutationでDay establishmentとmutation effectをatomicに確定する。失敗したmutationはDayだけを残さず、retry / concurrencyはone owner-scoped Day / context / effectへ収束する。establish後のcontextはhistorical authorityとしてfreezeする。
+
 Current implementationではactual resolved boundary instantでday membershipを判定し、start / next-day endを別々にtimezone ruleからresolveする。materialized intervalとestablishment timezone / boundary contextを保存する。
 
 PR #5ではactive ExecutionをTaskChuteDay境界で分割せず、current dayへ切り替わった後もsame Executionとしてprojection / Completeできる。
@@ -250,7 +252,6 @@ PR #5ではactive ExecutionをTaskChuteDay境界で分割せず、current dayへ
 - travel / timezone change behavior
 - boundary / timezone policy変更のeffective timing UX
 - userがTaskChuteDay boundaryを変更した際、内部Section境界と衝突する場合のexact transaction / recovery UX
-- future TaskChuteDayをいつmaterialize / historically freezeするか
 - per-day boundary override
 - work-shift / profile機能
 - logical-day overlapによるReview / aggregation queryのexact implementation
@@ -265,6 +266,8 @@ D-034でProjected / Materialized Occurrence、field-level day override、Routine
 D-035 / D-036でeffective営業日 / 休日判定とinitial recurrence pattern setがApproved済み。
 
 D-040でdaily-only R1について、existing Entry conversion、minimal RoutineDefinition / RoutineOccurrence / Entry relation、current-Day lazy materialization、placement revision、defaults、inclusive end / Routine終了、minimal Web UXをApprovedした。以下はR1を越えるbroader scopeまたは将来拡張としてOpenのまま維持する。
+
+D-041は未来DayをviewするだけではRoutineOccurrence / Entryをmaterializeせず、Day Navigation v0.1にvirtual future Routine previewを含めない。D-040 current-Day lazy ensure以外のbroader future Routine projection / materializationは後続sliceのOpen scopeとして維持する。
 
 以下はOpen:
 

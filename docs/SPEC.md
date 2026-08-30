@@ -56,7 +56,19 @@ TaskChuteDayはcivil dateとは別のlogical activity dayとする。
 - ambiguous / nonexistent local timeはinitially Temporal-compatibleな`compatible` semanticsで解決する。
 - day startとnext-day boundaryをそれぞれtimezone ruleからinstantへ解決し、`end = start + 24h`とは計算しない。
 - materialized TaskChuteDayはactual `[start, end)` intervalと、そのintervalをestablishしたtimezone / boundary contextを保持する。
-- future dayのmaterialize / freeze時点、travel時timezone UX、per-day override等はOpenとする。
+- future Dayのread-vs-establishment timingはD-041に従う。travel時timezone UX、per-day override等はOpenとする。
+
+### Future Day navigation and establishment
+
+Status: Approved (D-041). Runtime: NOT_IMPLEMENTED.
+
+- 未establishの未来logical dateへのview / repeated read / previous-next / calendar navigationはnon-materializingで、TaskChuteDay、timezone / boundary context、Section historical context、RoutineOccurrence、Routine-derived Entryを作成しない。
+- Day UIは、その時点でestablishした場合に適用されるinterval / Section configurationからnon-persistent planning previewをderiveしてよい。previewはhistorical authorityではなく、establishment前の設定変更を後のpreviewへ反映してよい。
+- 最初のsuccessful day-specific planning mutationは、その時点でeffectiveなtimezone / boundary / Section contextを持つowner-scoped TaskChuteDayをexactly one establishし、triggering mutationと一つのlogical atomic outcomeとしてcommitする。
+- validation rejection、stale conflict、deterministic failureではnewly established Dayだけを残さない。retry / concurrencyはDay、context、mutation effectのduplicateなしへ収束する。
+- establish後のDay contextはhistorical authorityであり、後のtimezone / boundary / Section設定変更でretroactiveにrewriteしない。
+- D-040はcurrent-Day lazy Routine materializationを維持する。未来日viewはRoutineをmaterializeせず、Day Navigation v0.1はfuture Routine previewを提供しない。既にmanual planningでestablishされたDayがcurrentになった場合、R1 ensureはそのhistorical contextを利用する。
+- Day Navigation v0.1はnon-current DayのStart / Completeを有効化しない。current-Day execution semanticsは変更しない。
 
 ## Entry placement and ordering
 

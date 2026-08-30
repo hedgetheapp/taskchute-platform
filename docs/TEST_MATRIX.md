@@ -1,6 +1,6 @@
 # Test Matrix
 
-First Server + Web vertical slice、D-038 B1 / B3、D-039 B2、D-040 Minimal Routine R1、Day Table UI-1は実装・main統合済み。B1 / B2 / B3 / R1 local + persistent non-production verificationはPASS。UI-1 source / automated / real local browser verificationはPASS、persistent nonprod / production UI-1は`NOT_RUN`。B3 remote raw console warning / error exact countは`NOT_VERIFIED`。R1 real-browser controlled inclusive end-dateとdeployed non-null inclusive-date subcheckは`TOOLING_BLOCKED / NOT_VERIFIED`。B1 / B2 / B3 / R1 production verificationは`NOT_RUN`。Product runtime全体はまだVerified / Releasedではない。
+First Server + Web vertical slice、D-038 B1 / B3、D-039 B2、D-040 Minimal Routine R1、Day Table UI-1は実装・main統合済み。D-041 Day navigation semanticsはApprovedだがruntimeは`NOT_IMPLEMENTED`。B1 / B2 / B3 / R1 local + persistent non-production verificationはPASS。UI-1 source / automated / real local browser verificationはPASS、persistent nonprod / production UI-1は`NOT_RUN`。B3 remote raw console warning / error exact countは`NOT_VERIFIED`。R1 real-browser controlled inclusive end-dateとdeployed non-null inclusive-date subcheckは`TOOLING_BLOCKED / NOT_VERIFIED`。B1 / B2 / B3 / R1 production verificationは`NOT_RUN`。Product runtime全体はまだVerified / Releasedではない。
 
 この文書はverification requirementとcurrent evidenceの正本とする。
 
@@ -163,6 +163,24 @@ Remote smoke harnessの前提誤りにより追加test dataとsessionが残っ�
 | HISTORY-02 | History | historical reference中のentityをunsafe hard deleteしてfactを参照不能にしない | Approved (D-016) | NOT_IMPLEMENTED |
 
 Cross-day lifecycle testでは、前日Entryのactive Executionを翌TaskChuteDayでも同一Executionとして保持し、分割せずCompleteできることをPASSしている。ただしlogical day overlapによるReview / aggregation queryは未実装のため`CORE-DAY-04`全体はPASSへ昇格しない。
+
+### Day Navigation v0.1 verification contract
+
+| ID | Area | Requirement | Contract | Evidence |
+|---|---|---|---|---|
+| DAY-NAV-01 | Future read | 未establishの未来logical dateをusable projectionとして返し、TaskChuteDay / Section historical contextを作らず、repeated readもno-writeとする | Approved (D-041) | NOT_IMPLEMENTED |
+| DAY-NAV-02 | Preview | future preview後、establishment前にeffective Section configurationが変わればlater previewはnew configurationを反映でき、first viewはhistorical contextをfreezeしない | Approved (D-038, D-041) | NOT_IMPLEMENTED |
+| DAY-NAV-03 | Establishment | unestablished future Dayへの最初のsuccessful Task追加がthen-effective contextを持つDayをexactly one establishし、valid Task / Entry placementをatomicに保存してreloadできる | Approved (D-020, D-038, D-041) | NOT_IMPLEMENTED |
+| DAY-NAV-04 | Failure | malformed / invalid / stale deterministic failureがrequested mutationなしのnewly established Dayだけを残さない | Approved (D-020, D-041) | NOT_IMPLEMENTED |
+| DAY-NAV-05 | Retry / concurrency | same logical mutation retryとconcurrent first mutationがone owner-scoped Day / context / Task / Entryへduplicateなしで収束する | Approved (D-020, D-041) | NOT_IMPLEMENTED |
+| DAY-NAV-06 | History | successful planningでestablishされた未来Day contextを後のSection / timezone / boundary設定変更でrewriteしない | Approved (D-017, D-038, D-041) | NOT_IMPLEMENTED |
+| DAY-NAV-07 | Routine | future Day viewはRoutineOccurrence / Routine Entryを作らず、既establish future Dayがcurrentになった場合はD-040 ensureがhistorical contextを維持してexactly once収束する | Approved (D-040, D-041) | NOT_IMPLEMENTED |
+| DAY-NAV-08 | Interaction | previous / next、calendar picker、Today return、`Shift+Left / Shift+Right`、accessible label / focusを提供し、text / calendar editing中にglobal shortcutを発火しない | Approved (D-041; canonical DESIGN) | NOT_IMPLEMENTED |
+| DAY-NAV-09 | Execution boundary | non-current Day view / planningからStart / Completeを拡張せず、current-Day execution semanticsを維持する | Approved (D-013, D-017, D-041) | NOT_IMPLEMENTED |
+| DAY-NAV-10 | Security | arbitrary-date query / mutationをauthenticated principalからowner-scopedに解決し、cross-owner accessを拒否する | Approved (D-021, D-041) | NOT_IMPLEMENTED |
+| DAY-NAV-11 | Regression | Settings v0.1、UI-1 7列 / Routine列、Section / estimate / planned-start / reorder、current-Day Start / Completeを維持する | Approved regression contract | NOT_RUN |
+
+Day Navigation v0.1 implementation / local browser / persistent nonprod / production verificationは`NOT_RUN`。future Routine previewはv0.1 scope外である。
 
 ## Runtime command / retry semantics
 
