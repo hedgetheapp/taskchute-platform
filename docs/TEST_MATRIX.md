@@ -1,6 +1,6 @@
 # Test Matrix
 
-First Server + Web vertical slice、D-038 B1 / B3、D-039 B2、D-040 Minimal Routine R1、Day Table UI-1は実装・main統合済み。D-041 / D-042 Day Navigation v0.1 runtimeはlocal reviewed commit `6f183c28242a1cd30211ea8e0c4f1e1dc23329bb`で実装・local verification済みだが、GitHub / remote `main`へは未統合。B1 / B2 / B3 / R1 local + persistent non-production verificationはPASS。UI-1 source / automated / real local browser verificationはPASS、persistent nonprod / production UI-1は`NOT_RUN`。B3 remote raw console warning / error exact countは`NOT_VERIFIED`。R1 real-browser controlled inclusive end-dateとdeployed non-null inclusive-date subcheckは`TOOLING_BLOCKED / NOT_VERIFIED`。B1 / B2 / B3 / R1 production verificationは`NOT_RUN`。Product runtime全体はまだVerified / Releasedではない。
+First Server + Web vertical slice、D-038 B1 / B3、D-039 B2、D-040 Minimal Routine R1、Day Table UI-1、D-041 / D-042 Day Navigation v0.1は実装・GitHub `main`統合済み。Day Navigation v0.1 source / local automated / signed-in general browser verificationはPASS、logout→relogin real-browser subcase / persistent nonprod / productionは`NOT_RUN`。B1 / B2 / B3 / R1 local + persistent non-production verificationはPASS。UI-1 source / automated / real local browser verificationはPASS、persistent nonprod / production UI-1は`NOT_RUN`。B3 remote raw console warning / error exact countは`NOT_VERIFIED`。R1 real-browser controlled inclusive end-dateとdeployed non-null inclusive-date subcheckは`TOOLING_BLOCKED / NOT_VERIFIED`。B1 / B2 / B3 / R1 production verificationは`NOT_RUN`。Product runtime全体はまだVerified / Releasedではない。
 
 この文書はverification requirementとcurrent evidenceの正本とする。
 
@@ -186,7 +186,7 @@ Cross-day lifecycle testでは、前日Entryのactive Executionを翌TaskChuteDa
 
 Day Navigation v0.1 local implementation evidence — 2026-08-31:
 
-- local implementation commit: `6f183c28242a1cd30211ea8e0c4f1e1dc23329bb` / `Implement Day Navigation v0.1`（parent `cd6dfe30321e0b1e88d6e12bb397690d9ad9ef0e`、GitHub / remote未統合）
+- implementation commit: `6f183c28242a1cd30211ea8e0c4f1e1dc23329bb` / `Implement Day Navigation v0.1`（parent `cd6dfe30321e0b1e88d6e12bb397690d9ad9ef0e`）とevidence docs commit `be52305ed98e2dbd213b99dcdddb34602cf69091`はGitHub `main`へIntegrated済み
 - reviewed complete patch: SHA-256 `5773F11C0D11D196FACCFAA35B1FA64F89197A03DA26CA47F76B4EBDD6549CE9`、stable patch-id `7d34646ed3388c5da3db02fa93b1844e7181ba99`、10 files、`1,198 insertions / 97 deletions`
 - ChatGPT final source review: `PASS`
 - focused Day Navigation integration `12 PASS`、Worker / D1 full `113 PASS`、Web full `74 PASS`、focused auth-boundary Web `2 PASS`
