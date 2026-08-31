@@ -10,6 +10,7 @@ const appRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const wrangler = join(appRoot, "node_modules", "wrangler", "bin", "wrangler.js");
 const persistencePath = await mkdtemp(join(tmpdir(), "taskchute-b3-migration-"));
 const failurePersistencePath = await mkdtemp(join(tmpdir(), "taskchute-r2a-migration-failure-"));
+const r2bFailurePersistencePath = await mkdtemp(join(tmpdir(), "taskchute-r2b-migration-failure-"));
 
 function execute(args, expectSuccess = true, persistTo = persistencePath) {
   const result = spawnSync(process.execPath, [wrangler, "d1", "execute", "taskchute-app-local", "--local",
@@ -225,6 +226,70 @@ try {
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
   assert.deepEqual(query("PRAGMA foreign_key_check"), []);
 
+  const preR2BTasks = query("SELECT * FROM tasks ORDER BY id");
+  const preR2BDefinitions = query("SELECT * FROM routine_definitions ORDER BY id");
+  const preR2BOccurrences = query("SELECT * FROM routine_occurrences ORDER BY id");
+  const preR2BEntries = query("SELECT * FROM entries ORDER BY id");
+  const preR2BExecutions = query("SELECT * FROM executions ORDER BY id");
+  const preR2BOperations = query("SELECT * FROM operations ORDER BY operation_id");
+  applyFile("migrations/app/0008_routine_r2b_board.sql");
+  assert.deepEqual(query("SELECT * FROM tasks ORDER BY id"), preR2BTasks);
+  assert.deepEqual(query("SELECT * FROM routine_definitions ORDER BY id"), preR2BDefinitions);
+  assert.deepEqual(query("SELECT * FROM routine_occurrences ORDER BY id"), preR2BOccurrences);
+  assert.deepEqual(query("SELECT * FROM entries ORDER BY id"), preR2BEntries);
+  assert.deepEqual(query("SELECT * FROM executions ORDER BY id"), preR2BExecutions);
+  assert.deepEqual(query("SELECT * FROM operations ORDER BY operation_id"), preR2BOperations);
+  assert.deepEqual(query(`SELECT routine_definition_id, schedule_kind, interval_days, weekdays_mask
+    FROM routine_schedules ORDER BY routine_definition_id`), [
+    { routine_definition_id: "routine-r2a-normalize", schedule_kind: "daily", interval_days: null, weekdays_mask: null },
+  ]);
+  assert.deepEqual(query(`SELECT routine_definition_id, board_position, settings_revision
+    FROM routine_board_items ORDER BY board_position`), [
+    { routine_definition_id: "routine-r2a-normalize", board_position: 1, settings_revision: 0 },
+  ]);
+  assert.deepEqual(query(`SELECT routine_occurrence_id, task_title, project_id, project_title
+    FROM routine_occurrence_task_snapshots ORDER BY routine_occurrence_id`), [
+    { routine_occurrence_id: "occurrence-r2a-preserve", task_title: "R2A protected authority",
+      project_id: null, project_title: null },
+  ]);
+  const duplicateTaskRoutine = execute(["--command", `INSERT INTO routine_definitions
+    (id, app_user_id, task_id, recurrence_type, start_logical_date, end_logical_date,
+     default_section_id, default_estimate_seconds, default_planned_start_minute,
+     materialization_order, defaults_revision, created_at)
+    SELECT 'routine-r2b-duplicate', app_user_id, task_id, recurrence_type, start_logical_date,
+      end_logical_date, default_section_id, default_estimate_seconds, default_planned_start_minute,
+      2, defaults_revision, created_at FROM routine_definitions WHERE id = 'routine-r2a-normalize'`], false);
+  assert.notEqual(duplicateTaskRoutine.status, 0, "Task -> RoutineDefinition must be 0..1");
+  const invalidWeekly = execute(["--command", `UPDATE routine_schedules SET schedule_kind = 'weekly',
+    weekdays_mask = 0 WHERE routine_definition_id = 'routine-r2a-normalize'`], false);
+  assert.notEqual(invalidWeekly.status, 0, "weekly schedule requires at least one weekday");
+  assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
+  assert.deepEqual(query("PRAGMA foreign_key_check"), []);
+
+  for (const migration of ["0001_runtime_bootstrap.sql", "0002_lifecycle_ordering.sql",
+    "0003_dogfood_day_b1.sql", "0004_dogfood_day_b2.sql", "0005_dogfood_day_b3.sql",
+    "0006_minimal_routine_r1.sql", "0007_routine_r2a.sql"])
+    applyFile(`migrations/app/${migration}`, r2bFailurePersistencePath);
+  execute(["--command", `
+    INSERT INTO app_users (id, created_at) VALUES ('r2b-duplicate-user', '2026-09-01T00:00:00Z');
+    INSERT INTO tasks (id, app_user_id, title, created_at)
+      VALUES ('r2b-duplicate-task', 'r2b-duplicate-user', 'Duplicate', '2026-09-01T00:00:00Z');
+    INSERT INTO routine_definitions
+      (id, app_user_id, task_id, recurrence_type, start_logical_date, end_logical_date,
+       default_section_id, default_estimate_seconds, default_planned_start_minute,
+       materialization_order, defaults_revision, created_at)
+      VALUES
+      ('r2b-duplicate-a', 'r2b-duplicate-user', 'r2b-duplicate-task', 'daily', '2026-09-01', NULL,
+       NULL, NULL, NULL, 1, 0, '2026-09-01T00:00:00Z'),
+      ('r2b-duplicate-b', 'r2b-duplicate-user', 'r2b-duplicate-task', 'daily', '2026-09-01', NULL,
+       NULL, NULL, NULL, 2, 0, '2026-09-01T00:00:00Z');
+  `], true, r2bFailurePersistencePath);
+  const failedR2B = execute(["--file", join(appRoot, "migrations/app/0008_routine_r2b_board.sql")], false,
+    r2bFailurePersistencePath);
+  assert.notEqual(failedR2B.status, 0, "duplicate RoutineDefinitions for one Task must fail migration");
+  assert.equal(query("SELECT name FROM sqlite_master WHERE type='table' AND name='routine_schedules'",
+    r2bFailurePersistencePath).length, 0, "failed R2B migration must leave no partial schema");
+
   for (const migration of ["0001_runtime_bootstrap.sql", "0002_lifecycle_ordering.sql",
     "0003_dogfood_day_b1.sql", "0004_dogfood_day_b2.sql", "0005_dogfood_day_b3.sql",
     "0006_minimal_routine_r1.sql"]) applyFile(`migrations/app/${migration}`, failurePersistencePath);
@@ -356,8 +421,9 @@ try {
   assert.notEqual(duplicateActive.status, 0, "the active Execution unique index must reject a second active row");
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
   assert.deepEqual(query("PRAGMA foreign_key_check"), []);
-  console.log("migration regression: 2 scenarios passed (R2A preservation/normalization/constraints and fail-safe rollback; chain through 0007)");
+  console.log("migration regression: 3 scenarios passed (R2A normalization, R2B preservation/constraints, duplicate-Task fail-safe; chain through 0008)");
 } finally {
   await rm(persistencePath, { recursive: true, force: true });
   await rm(failurePersistencePath, { recursive: true, force: true });
+  await rm(r2bFailurePersistencePath, { recursive: true, force: true });
 }

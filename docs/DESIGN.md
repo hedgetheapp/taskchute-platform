@@ -175,7 +175,13 @@ D-044のR2A targetでは、current-Day planned Routine-derived Entryの`Section 
 
 Section + 開始予定は一つのscope choiceを共有し、見積は独立したscope choiceを持つ。overrideがあるunitのediting contextでは`ルーティンの設定に戻す`相当のactionを提示できるが、normal Day Tableへpermanent override badgeを追加しない。
 
-current runtimeはR1 contractどおりRoutine由来EntryのSection / 開始予定 / 見積をread-onlyのまま維持しており、R2A runtimeは`NOT_IMPLEMENTED`である。overrideのphysical persistence、exact command、atomic propagation implementationをこの文書では確定しない。
+R2A runtimeはcurrent-Day planned Routine-derived Entryへexplicit scope UXを実装済みである。R2B candidateではRoutine lifecycle / defaultsのprimary surfaceを独立Routine Boardへ移し、Day Table上のmanual Routine終了actionを撤去する。
+
+## Routine Board
+
+Sidebarの`ルーティン`はRoutine管理のprimary destinationである。initial visible columnsは`ON/OFF | drag handle | Routine | Project | 繰り返し | Section | 開始予定 | 見積 | 期間`とする。Board orderはDay orderと独立し、row clickによるimplicit navigationを行わない。
+
+`＋ ルーティンを追加`はlocal blank OFF rowを作り、空名の間はno-write、名前commit後にpersistする。recurrence / period popoverはexplicit Save / Cancel、inline defaultsはserver-canonical reconciliationを使う。詳細implementation evidenceはCURRENT / FEATURES / TEST_MATRIXをownerとする。
 
 ## Task order and display column order
 

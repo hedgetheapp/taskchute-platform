@@ -4,6 +4,8 @@ Date: 2026-09-01
 
 ## Status
 
+Routine R2B BoardはD-047 / D-048に基づくlocal implementation candidateである。Task 0..1 Routine constraint、typed schedule / pause interval / reversible suppression / Task metadata snapshot、independent Board order、Routine command/read model、Sidebar Routine Boardとinline editingをworking treeへ実装した。Source Reviewで、OFF状態のmetadata更新が既存planned occurrenceを誤ってschedule suppressionする問題を検出・修正し、focused R2B `7 / 7`、Worker / D1 `124 / 124`、Web `84 / 84`、migration regression `3 scenarios`、typecheck / build / `git diff --check`は`PASS`。real local APP DBのprivate backup、backup-copy `0008` dry-run / preservation、live `0008` migration / integrity、signed-in representative browser flowも`PASS`した。controlled browserによるinclusive end-date入力はDOM値がReact stateへ伝播せず`TOOLING_BLOCKED / NOT_VERIFIED`で、historical title / Projectのreal-browser past-Day subcaseは`NOT_RUN`。commit / GitHub integration / persistent nonprod / productionは未実施、Releasedは`NO`である。
+
 First Server + Web vertical sliceは`IMPLEMENTED / INTEGRATED`。D-023 bootstrap lifecycle security incrementも`IMPLEMENTED / INTEGRATED / LOCAL_TESTED`。D-024 persistent non-production verification environmentは`APPROVED`かつremote verification済み。
 
 PR #3でruntime bootstrap sliceを、PR #5でReorder / Start / Complete / Execution lifecycle incrementを`main`へmergeした。PR #6でPR #5 merge後のcanonical docsをcurrent implementation / evidenceへ整合し、PR #7でcurrent-state maintenanceをmergeした。PR #8でD-023 bootstrap lifecycle security incrementを、PR #10でD-024 persistent non-production environment configurationを`main`へmergeし、PR #11でそのmerge後current stateを整合した。persistent non-production remote runtime verificationはPASS。production verificationは未実施。

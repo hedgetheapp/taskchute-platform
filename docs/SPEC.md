@@ -135,7 +135,7 @@ ExecutionがTaskChuteDay境界をまたいでも、境界でExecution fact自体
 
 Routineは以下のconceptual relationを前提とする。
 
-`Task -> 0..* RoutineDefinitions -> RoutineOccurrences -> 0..* Entries`
+`Task -> 0..1 RoutineDefinition -> RoutineOccurrences -> 0..* Entries`
 
 - RoutineDefinitionはTaskの繰り返し定義であり、Task noteとは別の重複noteを必須にしない。
 - RoutineOccurrenceは特定のTaskChuteDay分として成立するlogical occurrenceである。
@@ -188,6 +188,17 @@ Physical invariant:
 - estimate override absentではvalueを`NULL`とし、presentではexplicit `NULL`またはpositive integerを許可する。
 - Section referenceはowner-scoped FKを維持し、planned minuteのhistorical Day Section membershipはapplication transactionで検証する。
 - migration前Occurrenceはno override / inheritとしてidentityを維持する。D-045 normalization authorityを解決できない場合はpartial migrationしない。
+
+### Routine R2B Board slice
+
+Status: Approved (D-047, D-048). Runtime / APP migration: IMPLEMENTED candidate (local working tree only). Integrated / remote / production: NO / NOT_RUN / NOT_RUN.
+
+- Sidebar `ルーティン`からRoutine Boardを開き、initial columns、local-only blank add、inline defaults / recurrence / period editing、search、使用中 / 期間終了tabs、ON/OFF、independent D&D orderを提供する。
+- createはTask + RoutineDefinitionをatomicに作成しOFFで開始する。毎日 / N日ごと / 曜日指定とinclusive periodをtyped persistenceへ保存する。
+- pause/resume、current-Day lazy materialization、schedule suppression / restoreはD-047のexactly-once / no-backfill / historical-protection boundaryに従う。
+- Task title / Projectはcurrent authority、occurrence snapshotはhistorical authorityとし、editable planned current/futureだけを更新する。
+- Section / planned start / estimate propagationはD-043 / D-044 override boundaryを維持し、default editだけでfuture Dayをmaterializeしない。
+- Day Table上のmanual Routine終了UIは表示しない。legacy operation endpointはcompatibilityのため維持する。
 
 ## Historical facts and projections
 

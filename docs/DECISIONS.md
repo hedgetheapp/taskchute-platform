@@ -969,3 +969,21 @@ R2A first-slice fieldsはconceptual physical contractとして次を持つ。
 - 将来override対象がmaterialに拡大した場合、generic table等へのrefactorを禁止しない。その場合は別のcompatibility / design Decisionとする。
 
 本Decisionはphysical persistence directionをApprovedにするが、runtime、APP migration file、command、Web、test evidenceの実装完了を意味しない。実装・migration・verificationは`NOT_IMPLEMENTED / NOT_RUN`のまま維持する。
+
+## D-047 — Routine Board and R2B recurrence lifecycle
+Status: Approved
+
+Routine BoardをRoutine管理のprimary surfaceとし、TaskとRoutineDefinitionのcardinalityを`Task -> 0..1 RoutineDefinition`へ限定する。Board上のRoutine名 / Projectはduplicated defaultではなくTaskのcurrent metadataをauthorityとし、current / future editable planned occurrenceだけへ反映する。established past、running、completed、interrupted等はoccurrence-level snapshotでhistorical title / Projectを保持する。この範囲でD-015の`0..*`cardinalityをsupersedeする。
+
+Boardは`ON/OFF | drag handle | Routine | Project | 繰り返し | Section | 開始予定 | 見積 | 期間`をinitial surfaceとし、Board orderはDay Entry order / `materialization_order`とは独立する。空名の追加rowはlocal-only、名前commitでTask + RoutineDefinitionをatomicに作り、initial stateはOFFとする。
+
+R2B recurrenceは毎日、N日ごと、曜日指定を扱い、start dateとinclusive end dateを持つ。OFFはlogical date interval `[paused, resumed)`として将来generationを停止し、pastをbackfillせず、既存Occurrence / Entry / Executionを削除しない。ONへの復帰日はeligibleならcurrent Dayだけをexactly-once materializeする。schedule / period変更でcurrent planned occurrenceがineligibleになった場合はreversible suppressionでnormal Day planから外し、再eligible化では同一Occurrenceを復帰してduplicateを作らない。running / completed / interrupted / historical factは変更しない。
+
+Board default編集はD-043 / D-044を維持し、対応unitにoverrideを持たないcurrent / future materialized planned occurrenceだけへ反映する。override、historical state、unmaterialized future Dayを変更・生成しない。Day上のmanual `Routineを終了`actionはR2B Board lifecycleへ置き換えるが、legacy command/APIはcompatibilityのため維持する。このUX範囲でD-034 / D-040のmanual end surfaceをsupersedeする。
+
+## D-048 — Routine R2B Board physical persistence
+Status: Approved
+
+R2B first sliceはowner-scoped typed persistenceとして、TaskごとのRoutineDefinition unique constraint、recurrence schedule、Board head/item revisionとindependent order、pause intervals、occurrence suppression、occurrence Task metadata snapshotをAPP DBへ追加する。既存identity/historyを維持し、duplicate legacy RoutineDefinitionを自動mergeせずmigrationをno-partial-effectで停止する。
+
+Board settings / order mutationはexpected revision、operation fingerprint/replay、atomic batch assertionを利用し、silent last-write-winsやpartial propagationを許さない。exact table/column/check/index/SQL statement、HTTP DTOとcommand stringはreview対象のimplementation detailであり、将来のbroader recurrenceを固定しない。

@@ -339,14 +339,20 @@ async function loadEstablishedProjection(
                 rd.end_logical_date AS routine_end_logical_date,
                 rd.default_section_id, rd.default_planned_start_minute, rd.default_estimate_seconds,
                 rd.defaults_revision, ro.section_plan_override_present, ro.estimate_override_present,
-                t.id AS task_id, t.title AS task_title,
-                p.id AS project_id, p.title AS project_title
+                t.id AS task_id,
+                CASE WHEN rs.routine_occurrence_id IS NOT NULL THEN rs.task_title ELSE t.title END AS task_title,
+                CASE WHEN rs.routine_occurrence_id IS NOT NULL THEN rs.project_id ELSE p.id END AS project_id,
+                CASE WHEN rs.routine_occurrence_id IS NOT NULL THEN rs.project_title ELSE p.title END AS project_title
            FROM entries e
            JOIN tasks t ON t.app_user_id = e.app_user_id AND t.id = e.task_id
            LEFT JOIN routine_occurrences ro ON ro.app_user_id = e.app_user_id AND ro.id = e.routine_occurrence_id
            LEFT JOIN routine_definitions rd ON rd.app_user_id = ro.app_user_id AND rd.id = ro.routine_definition_id
            LEFT JOIN projects p ON p.app_user_id = t.app_user_id AND p.id = t.project_id
+           LEFT JOIN routine_occurrence_task_snapshots rs
+             ON rs.app_user_id = e.app_user_id AND rs.routine_occurrence_id = e.routine_occurrence_id
           WHERE e.app_user_id = ? AND e.taskchute_day_id = ?
+            AND NOT EXISTS (SELECT 1 FROM routine_occurrence_suppressions x
+              WHERE x.app_user_id = e.app_user_id AND x.routine_occurrence_id = e.routine_occurrence_id)
           ORDER BY e.section_id, e.position, e.id`,
       )
       .bind(appUserId, day.id),

@@ -31,9 +31,10 @@ import type {
 import { isSamePlannedStartCohort } from "../shared/planned-entry-order";
 import { uuidv7 } from "../shared/uuidv7";
 import { api, ApiClientError } from "./api";
+import { RoutineBoard } from "./RoutineBoard";
 
 type AuthState = "loading" | "signed-out" | "signed-in";
-type AppView = "today" | "settings";
+type AppView = "today" | "routines" | "settings";
 type SettingsDestination = "section" | "project";
 type FocusTarget = { kind: "section" | "entry"; id: string };
 type DraftTask = { sectionId: string | null; title: string };
@@ -1069,14 +1070,6 @@ export function App() {
     } finally { setPending(null); }
   }
 
-  async function endRoutine(entry: EntryProjection) {
-    if (!day?.taskchute_day.id || !day.is_current || mutationLocked || !entry.routine?.can_end) return;
-    const operation: EndRoutineRequest = { operation_id: uuidv7(),
-      routine_definition_id: entry.routine.routine_definition_id, taskchute_day_id: day.taskchute_day.id };
-    setRoutineEndOperation(operation);
-    await executeRoutineEnd(operation);
-  }
-
   if (authState === "loading") return <main className="shell"><p role="status">読み込み中…</p></main>;
   if (authState === "signed-out") {
     return (
@@ -1180,6 +1173,8 @@ export function App() {
         <nav aria-label="メインナビゲーション">
           <button type="button" className={view === "today" ? "active" : ""} aria-current={view === "today" ? "page" : undefined}
             disabled={mutationLocked} onClick={() => void openTodayView()}>今日</button>
+          <button type="button" className={view === "routines" ? "active" : ""} aria-current={view === "routines" ? "page" : undefined}
+            disabled={mutationLocked} onClick={() => { setCalendarOpen(false); setView("routines"); }}>ルーティン</button>
           <button type="button" className={view === "settings" ? "active" : ""} aria-current={view === "settings" ? "page" : undefined}
             disabled={mutationLocked || day.section_configuration_required} onClick={() => void openSettings("section")}>設定</button>
         </nav>
@@ -1188,7 +1183,7 @@ export function App() {
         </button>
       </aside>
 
-      {view === "settings" ? (
+      {view === "routines" ? <RoutineBoard onUnauthorized={transitionToSignedOut} /> : view === "settings" ? (
         <main className="shell settings-shell">
           <header className="settings-header">
             <p className="eyebrow">Settings</p>
@@ -1458,9 +1453,7 @@ export function App() {
                           : <button type="button" className="routine-action" disabled={mutationLocked}
                               onClick={(event) => { event.stopPropagation(); setRoutineDraft({ entryId: entry.id, endDate: "" }); }}>Routine化</button>
                       )}
-                      {day.is_current && entry.routine?.can_end && <button type="button" className="routine-action" disabled={mutationLocked}
-                        onClick={(event) => { event.stopPropagation(); void endRoutine(entry); }}>Routineを終了</button>}
-                      {entry.routine && (!day.is_current || !entry.routine.can_end) && <span className="routine-ended">{entry.routine.can_end ? "Routine" : "終了済み"}</span>}
+                      {entry.routine && <span className="routine-ended">{entry.routine.can_end ? "Routine" : "期間終了"}</span>}
                       {entry.lifecycle_state !== "planned" && entry.routine === null && <span className="muted">—</span>}
                     </div>
                     <span className="estimate-cell">

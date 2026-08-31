@@ -835,3 +835,24 @@ legacy ObsidianでのPASS結果を新PlatformのPASSへ自動継承しない。
 一方、legacy regression scenarioは新Architecture向けTest contractを設計する際のreferenceとして利用する。
 
 変更後の再verification範囲は`DEVELOPMENT_WORKFLOW.md`のimpact analysis原則に従う。
+
+## Routine R2B Board candidate
+
+| ID | Area | Requirement | Contract | Evidence |
+|---|---|---|---|---|
+| ROUTINE-R2B-01 | Migration | duplicate Task Routineをfail-safe rejectし既存identity/historyを保持 | D-047, D-048 | PASS (LOCAL_AUTOMATED + REAL_LOCAL) |
+| ROUTINE-R2B-02 | Domain | new RoutineはOFF、ON resume日はeligible current occurrenceをexactly once作成 | D-047 | PASS (LOCAL_AUTOMATED + REAL_LOCAL) |
+| ROUTINE-R2B-03 | Domain | OFF intervalはpast backfillせずexisting factsを保持 | D-047 | PASS (LOCAL_AUTOMATED + REAL_LOCAL representative) |
+| ROUTINE-R2B-04 | Domain | daily / N-day / weekly + inclusive period eligibility | D-047 | PASS (LOCAL_AUTOMATED + REAL_LOCAL representative; controlled inclusive end-date browserはTOOLING_BLOCKED / NOT_VERIFIED) |
+| ROUTINE-R2B-05 | Domain | current planned occurrenceをschedule suppression / restoreしduplicateを作らない | D-047 | PASS (LOCAL_AUTOMATED + REAL_LOCAL) |
+| ROUTINE-R2B-06 | Domain | Board default propagationはR2A overrideとhistorical stateを保護 | D-043, D-044, D-047 | PASS (LOCAL_AUTOMATED + REAL_LOCAL representative) |
+| ROUTINE-R2B-07 | Domain | Task current title/Projectとhistorical occurrence snapshotを分離 | D-047 | PASS (LOCAL_AUTOMATED; past-Day real browser NOT_RUN) |
+| ROUTINE-R2B-08 | Ordering | Board orderはDay / materialization orderと独立、stale revision/replay safe | D-047, D-048 | PASS (LOCAL_AUTOMATED) |
+| ROUTINE-R2B-09 | Web | Sidebar Board、columns、blank no-write add、inline/popover/toggle/search/tabs | D-047 | PASS (LOCAL_AUTOMATED + REAL_LOCAL representative) |
+| ROUTINE-R2B-10 | Compatibility | Day manual end actionなし、legacy APIとR2A chooser/resetを維持 | D-047 | PASS (LOCAL_AUTOMATED + REAL_LOCAL representative) |
+
+Evidence statusはlocal candidateに限定する。persistent nonprod、productionは`NOT_RUN`、Releasedは`NO`。
+
+2026-09-01 local candidate evidence: Source Review `PASS`。OFF Routineのmetadata更新で既存planned occurrenceを誤suppressionする問題をreal browserで検出し、pauseはfuture generationのみを止め既存factのschedule authorityを変えないよう修正した。focused R2B Worker/D1 `7 / 7 PASS`、full Worker/D1 `124 / 124 PASS`、Web `84 / 84 PASS`、migration regression `3 scenarios PASS`（R2A normalization、R2B preservation/constraints、duplicate-Task fail-safe、chain through `0008`）、typecheck / production build / `git diff --check` `PASS`。Wrangler user-log writeはsandbox `EPERM` warningを出したが各required commandはexit `0`。
+
+Real-local evidence: private ignored APP exportを作成し、size `141,876 bytes` / SHA-256 `EFAD923C08343AF517A5CDBA91CCBD8BF95823A1AAF74B47AA06BB06792820C9`、isolated restore / `0008` dry-run / pre-existing 22 table data fingerprint一致、`quick_check = ok` / FK violations `0`を確認してからlive APP DBへ`0008_routine_r2b_board.sql`のみを適用した。post-migrationで既存Task / Entry / Execution / Routine / Occurrence件数、active Execution `0`、duplicate Task Routine `0`を保持し、existing 3 Routinesにschedule / Board item / snapshotを各3件materializeした。signed-in browserではblank draft cancel no-write、OFF create、Project / Section / planned start / estimate、N-day / weekly / daily、ON exactly-once、OFF fact preservation、current schedule suppression / restore、reload no-duplicateを確認し、console warning / error `0 / 0`。verification RoutineはOFF、current occurrence `1`、suppression `0`で残置した。controlled inclusive end-date inputはDOM `2026-09-03`を確認したがrequest stateへ反映されずDBは`NULL`のため`TOOLING_BLOCKED / NOT_VERIFIED`、past-Day historical title / Project browser subcaseは`NOT_RUN`。APP / AUTHともfinal `quick_check = ok` / FK violations `0`、persistent nonprod / productionは`NOT_RUN`、Releasedは`NO`。

@@ -331,3 +331,90 @@ export interface EndRoutineResult {
   routine_definition_id: string;
   end_logical_date: string;
 }
+
+export type RoutineScheduleInput =
+  | { kind: "daily" }
+  | { kind: "every_n_days"; interval_days: number }
+  | { kind: "weekly"; weekdays: number[] };
+
+export interface RoutineBoardItemProjection {
+  routine_definition_id: string;
+  task_id: string;
+  title: string;
+  project: ProjectSummary | null;
+  enabled: boolean;
+  schedule: RoutineScheduleInput;
+  default_section_id: string | null;
+  default_planned_start_minute: number | null;
+  default_estimate_seconds: number | null;
+  start_logical_date: string;
+  end_logical_date: string | null;
+  board_position: number;
+  settings_revision: number;
+}
+
+export interface RoutineBoardProjection {
+  board_revision: number;
+  current_logical_date: string;
+  sections: Array<{ id: string; title: string; logical_start_minute: number; logical_end_minute: number }>;
+  routines: RoutineBoardItemProjection[];
+}
+
+export interface CreateRoutineRequest {
+  operation_id: string;
+  task_id: string;
+  routine_definition_id: string;
+  title: string;
+  expected_board_revision: number;
+}
+
+export interface CreateRoutineResult {
+  routine_definition_id: string;
+  task_id: string;
+  board_position: number;
+  board_revision: number;
+  settings_revision: number;
+}
+
+export interface SetRoutineEnabledRequest {
+  operation_id: string;
+  routine_definition_id: string;
+  enabled: boolean;
+  expected_settings_revision: number;
+}
+
+export interface SetRoutineEnabledResult {
+  routine_definition_id: string;
+  enabled: boolean;
+  settings_revision: number;
+}
+
+export interface UpdateRoutineRequest {
+  operation_id: string;
+  routine_definition_id: string;
+  expected_settings_revision: number;
+  title: string;
+  project_id: string | null;
+  schedule: RoutineScheduleInput;
+  default_section_id: string | null;
+  default_planned_start_minute: number | null;
+  default_estimate_seconds: number | null;
+  start_logical_date: string;
+  end_logical_date: string | null;
+}
+
+export interface UpdateRoutineResult {
+  routine_definition_id: string;
+  settings_revision: number;
+}
+
+export interface ReorderRoutinesRequest {
+  operation_id: string;
+  routine_definition_ids: string[];
+  expected_board_revision: number;
+}
+
+export interface ReorderRoutinesResult {
+  routine_definition_ids: string[];
+  board_revision: number;
+}

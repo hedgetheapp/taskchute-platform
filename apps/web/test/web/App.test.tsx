@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   establishInitialSectionConfiguration: vi.fn(), moveEntry: vi.fn(), setEntryEstimate: vi.fn(),
   setEntryPlannedStart: vi.fn(),
   convertEntryToRoutine: vi.fn(), endRoutine: vi.fn(), setRoutineEstimate: vi.fn(), setRoutineSectionPlan: vi.fn(),
+  loadRoutines: vi.fn(), createRoutine: vi.fn(), setRoutineEnabled: vi.fn(), updateRoutine: vi.fn(), reorderRoutines: vi.fn(),
   loadSectionConfiguration: vi.fn(), updateSectionConfiguration: vi.fn(),
 }));
 
@@ -137,6 +138,11 @@ beforeEach(() => {
   mocks.endRoutine.mockResolvedValue({});
   mocks.setRoutineEstimate.mockResolvedValue({});
   mocks.setRoutineSectionPlan.mockResolvedValue({});
+  mocks.loadRoutines.mockResolvedValue({ board_revision: 0, current_logical_date: "2026-08-22", sections: [], routines: [] });
+  mocks.createRoutine.mockResolvedValue({});
+  mocks.setRoutineEnabled.mockResolvedValue({});
+  mocks.updateRoutine.mockResolvedValue({});
+  mocks.reorderRoutines.mockResolvedValue({});
   mocks.loadSectionConfiguration.mockResolvedValue({
     configuration_version_id: "019c0000-0000-7000-8000-000000000020",
     day_boundary_minutes: 240,
@@ -1394,14 +1400,7 @@ describe("Dogfood Day shell", () => {
       sections: [{ ...populatedDay.sections[0], entries: [routineEntry, sameStartSecond] }, populatedDay.sections[1]],
       next_entry: routineEntry,
     };
-    const endedEntry: EntryProjection = { ...routineEntry, routine: { ...routineEntry.routine!,
-      end_logical_date: emptyDay.taskchute_day.logical_date, can_end: false } };
-    const endedDay: CurrentTaskChuteDayProjection = {
-      ...routineDay,
-      sections: [{ ...routineDay.sections[0], entries: [endedEntry] }, routineDay.sections[1]],
-      next_entry: endedEntry,
-    };
-    mocks.loadDay.mockResolvedValueOnce(populatedDay).mockResolvedValueOnce(routineDay).mockResolvedValueOnce(endedDay);
+    mocks.loadDay.mockResolvedValueOnce(populatedDay).mockResolvedValueOnce(routineDay);
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Routine化" }));
     expect(screen.getByLabelText("終了日（空欄は終了なし）")).toBeTruthy();
@@ -1423,13 +1422,9 @@ describe("Dogfood Day shell", () => {
     expect(estimate.textContent).toBe("15分");
     expect((screen.getByRole("button", { name: "Canonical taskを開始" }) as HTMLButtonElement).disabled).toBe(false);
     await waitFor(() => expect((screen.getByRole("button", { name: "Canonical taskを下へ" }) as HTMLButtonElement).disabled).toBe(false));
-    fireEvent.click(screen.getByRole("button", { name: "Routineを終了" }));
-    await waitFor(() => expect(mocks.endRoutine).toHaveBeenCalledTimes(1));
-    expect(mocks.endRoutine.mock.calls[0][0]).toMatchObject({
-      routine_definition_id: routineEntry.routine!.routine_definition_id,
-      taskchute_day_id: emptyDay.taskchute_day.id,
-    });
-    expect(await screen.findByText("終了済み")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Routineを終了" })).toBeNull();
+    expect(screen.getAllByText("Routine").length).toBeGreaterThan(0);
+    expect(mocks.endRoutine).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: "Routineを終了" })).toBeNull();
   });
 
@@ -1700,7 +1695,7 @@ describe("Dogfood Day shell", () => {
     expect(screen.queryByRole("button", { name: "保留中のRoutine化を再試行" })).toBeNull();
   });
 
-  it("retains only the exact ambiguous Routine end operation for retry and reconciles after commit", async () => {
+  it("does not expose the legacy Routine end command in the Day Table", async () => {
     const routineEntry: EntryProjection = { ...firstEntry, routine: {
       routine_definition_id: "019c0000-0000-7000-8000-000000000036",
       routine_occurrence_id: "019c0000-0000-7000-8000-000000000037",
@@ -1713,23 +1708,11 @@ describe("Dogfood Day shell", () => {
       sections: [{ ...populatedDay.sections[0], entries: [routineEntry] }, populatedDay.sections[1]],
       next_entry: routineEntry,
     };
-    const endedEntry: EntryProjection = { ...routineEntry, routine: { ...routineEntry.routine!,
-      end_logical_date: emptyDay.taskchute_day.logical_date, can_end: false } };
-    const endedDay: CurrentTaskChuteDayProjection = {
-      ...routineDay,
-      sections: [{ ...routineDay.sections[0], entries: [endedEntry] }, routineDay.sections[1]],
-      next_entry: endedEntry,
-    };
-    mocks.loadDay.mockResolvedValueOnce(routineDay).mockResolvedValueOnce(routineDay).mockResolvedValueOnce(endedDay);
-    mocks.endRoutine.mockRejectedValueOnce(new TypeError("response lost before outcome")).mockResolvedValueOnce({});
+    mocks.loadDay.mockResolvedValueOnce(routineDay);
     render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "Routineを終了" }));
-    const retry = await screen.findByRole("button", { name: "保留中のRoutine終了を再試行" });
-    const original = mocks.endRoutine.mock.calls[0][0];
-    fireEvent.click(retry);
-    await waitFor(() => expect(mocks.endRoutine).toHaveBeenCalledTimes(2));
-    expect(mocks.endRoutine.mock.calls[1][0]).toEqual(original);
-    expect(await screen.findByText("終了済み")).toBeTruthy();
+    await screen.findByText("Canonical task");
+    expect(screen.queryByRole("button", { name: "Routineを終了" })).toBeNull();
     expect(screen.queryByRole("button", { name: "保留中のRoutine終了を再試行" })).toBeNull();
+    expect(mocks.endRoutine).not.toHaveBeenCalled();
   });
 });

@@ -45,6 +45,10 @@ Current First vertical slice implementation / nonprod verification fact:
 
 以下はOpen:
 
+- R2Bで未実装の営業日 / 休日 / 祝日、N-week、monthly recurrenceとcalendar authority
+- Routine archive/deleteのexact lifecycle、復元、retention（R2B pause/resumeとinclusive periodはD-047で解決済み）
+- occurrence-level Task title / Project override UX（R2Bはcurrent Task authority + historical snapshotのみ）
+
 - operation result retention / cleanup policy
 - B1統合後を含むfuture schema evolution / compatibility migration strategy
 - backup / export strategy

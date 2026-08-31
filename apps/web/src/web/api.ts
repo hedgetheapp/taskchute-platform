@@ -31,6 +31,15 @@ import type {
   SetRoutineEstimateResult,
   SetRoutineSectionPlanRequest,
   SetRoutineSectionPlanResult,
+  RoutineBoardProjection,
+  CreateRoutineRequest,
+  CreateRoutineResult,
+  SetRoutineEnabledRequest,
+  SetRoutineEnabledResult,
+  UpdateRoutineRequest,
+  UpdateRoutineResult,
+  ReorderRoutinesRequest,
+  ReorderRoutinesResult,
 } from "../shared/contracts";
 
 export class ApiClientError extends Error {
@@ -124,5 +133,20 @@ export const api = {
   },
   setRoutineSectionPlan(body: SetRoutineSectionPlanRequest): Promise<SetRoutineSectionPlanResult> {
     return requestJson(`/api/v1/entries/${body.entry_id}/routine-section-plan`, jsonPost("", body));
+  },
+  loadRoutines(): Promise<RoutineBoardProjection> {
+    return requestJson("/api/v1/routines");
+  },
+  createRoutine(body: CreateRoutineRequest): Promise<CreateRoutineResult> {
+    return requestJson("/api/v1/routines", jsonPost("", body));
+  },
+  setRoutineEnabled(body: SetRoutineEnabledRequest): Promise<SetRoutineEnabledResult> {
+    return requestJson(`/api/v1/routines/${body.routine_definition_id}/enabled`, jsonPost("", body));
+  },
+  updateRoutine(body: UpdateRoutineRequest): Promise<UpdateRoutineResult> {
+    return requestJson(`/api/v1/routines/${body.routine_definition_id}`, jsonPost("", body));
+  },
+  reorderRoutines(body: ReorderRoutinesRequest): Promise<ReorderRoutinesResult> {
+    return requestJson("/api/v1/routines/reorder", jsonPost("", body));
   },
 };

@@ -17,6 +17,17 @@ import {
   setRoutineSectionPlan,
 } from "./application/routine-planning";
 import {
+  createRoutine,
+  isCreateRoutineRequest,
+  isReorderRoutinesRequest,
+  isSetRoutineEnabledRequest,
+  isUpdateRoutineRequest,
+  loadRoutineBoard,
+  reorderRoutines,
+  setRoutineEnabled,
+  updateRoutine,
+} from "./application/routine-board";
+import {
   establishInitialSectionConfiguration,
   isEstablishInitialSectionConfigurationRequest,
   isUpdateSectionConfigurationRequest,
@@ -66,6 +77,37 @@ async function route(request: Request, env: Env): Promise<Response> {
   }
   if (request.method === "GET" && url.pathname === "/api/v1/projects") {
     return Response.json(await loadProjects(env.APP_DB, principal.appUserId));
+  }
+  if (request.method === "GET" && url.pathname === "/api/v1/routines") {
+    return Response.json(await loadRoutineBoard(env.APP_DB, principal.appUserId));
+  }
+  if (request.method === "POST" && url.pathname === "/api/v1/routines") {
+    const body = await readBoundedJson(request);
+    if (!isCreateRoutineRequest(body)) throw new HttpError(400, "malformed_request", "Invalid CreateRoutine request");
+    return Response.json(await createRoutine(env.APP_DB, principal.appUserId, body));
+  }
+  if (request.method === "POST" && url.pathname === "/api/v1/routines/reorder") {
+    const body = await readBoundedJson(request);
+    if (!isReorderRoutinesRequest(body)) throw new HttpError(400, "malformed_request", "Invalid ReorderRoutines request");
+    return Response.json(await reorderRoutines(env.APP_DB, principal.appUserId, body));
+  }
+  const routineEnabledMatch = url.pathname.match(/^\/api\/v1\/routines\/([^/]+)\/enabled$/);
+  if (request.method === "POST" && routineEnabledMatch) {
+    const body = await readBoundedJson(request);
+    if (routineEnabledMatch[1] !== (body as { routine_definition_id?: unknown })?.routine_definition_id
+      || !isSetRoutineEnabledRequest(body)) {
+      throw new HttpError(400, "malformed_request", "Invalid SetRoutineEnabled request");
+    }
+    return Response.json(await setRoutineEnabled(env.APP_DB, principal.appUserId, body));
+  }
+  const routineUpdateMatch = url.pathname.match(/^\/api\/v1\/routines\/([^/]+)$/);
+  if (request.method === "POST" && routineUpdateMatch) {
+    const body = await readBoundedJson(request);
+    if (routineUpdateMatch[1] !== (body as { routine_definition_id?: unknown })?.routine_definition_id
+      || !isUpdateRoutineRequest(body)) {
+      throw new HttpError(400, "malformed_request", "Invalid UpdateRoutine request");
+    }
+    return Response.json(await updateRoutine(env.APP_DB, principal.appUserId, body));
   }
   if (request.method === "POST" && url.pathname === "/api/v1/projects") {
     const body = await readBoundedJson(request);
