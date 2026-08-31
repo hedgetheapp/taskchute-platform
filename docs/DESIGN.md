@@ -257,7 +257,7 @@ Day Table UI-1では、独立した`状態`列と独立した`並び替え`列�
 
 UI-1は既存のServer-canonical command、retry / reconciliation、placement / ordering、Routine persistence semanticsを変更していない。
 
-current runtimeはcurrent TaskChuteDay中心で、canonicalなTop Navigation date navigation / calendar picker / Left Sidebar / dedicated Settings surfaceは未実装である。DayBoard上のProject作成controlとSection設定editorはtemporary accessであり、target placementではない。
+current runtimeでは、Day Navigation v0.1のTop Navigation date navigation / calendar pickerと、Settings v0.1のLeft Sidebar `今日` / `設定`およびdedicated Section / Project Settings surfaceを実装済みである。DayBoard上のtemporary Project作成controlとSection設定editorは撤去済み。broader Sidebar destination、resize / preference等の実装状態は`docs/FEATURES.md`、`docs/CURRENT.md`、`docs/TEST_MATRIX.md`を正本とする。
 
 full target column modelはcurrent implementationより広い。Bulk slot runtime、sticky / fixed-left final structure、Mode、Note、開始見込、fullerな開始 / 終了 / 実績、column reorder / hide / show / resize / auto-fit / preference、Search / Filter、Section collapse、D&Dまたはfullerなcontext interaction等はUI-2以後のfuture workとして残る。
 
