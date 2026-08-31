@@ -268,13 +268,15 @@ D-034でProjected / Materialized Occurrence、field-level day override、Routine
 
 D-035 / D-036でeffective営業日 / 休日判定とinitial recurrence pattern setがApproved済み。
 
-D-040でdaily-only R1について、existing Entry conversion、minimal RoutineDefinition / RoutineOccurrence / Entry relation、current-Day lazy materialization、placement revision、defaults、inclusive end / Routine終了、minimal Web UXをApprovedした。D-043はRoutine-derived EntryにもSection / planned-start full synchronizationを適用し、D-044はcurrent-Day planned Routine EntryのSection-plan / estimate override、explicit scope choice、reset、default propagationをApprovedした。D-045はlegacy real Section + NULLのnormalization resultとauthority / fail-safe boundaryをApprovedした。いずれもruntime / migrationは未実装であり、以下はphysical implementationまたはbroader scopeとしてOpenのまま維持する。
+D-040でdaily-only R1について、existing Entry conversion、minimal RoutineDefinition / RoutineOccurrence / Entry relation、current-Day lazy materialization、placement revision、defaults、inclusive end / Routine終了、minimal Web UXをApprovedした。D-043はRoutine-derived EntryにもSection / planned-start full synchronizationを適用し、D-044はcurrent-Day planned Routine EntryのSection-plan / estimate override、explicit scope choice、reset、default propagationをApprovedした。D-045はlegacy real Section + NULLのnormalization resultとauthority / fail-safe boundaryをApprovedし、D-046はtyped occurrence override columns、explicit presence、owner-scoped Section reference、Routine default revisionというfirst-slice physical persistence directionをApprovedした。runtime / migrationは未実装であり、以下はexact implementationまたはbroader scopeとしてOpenのまま維持する。
 
 D-041は未来DayをviewするだけではRoutineOccurrence / Entryをmaterializeせず、Day Navigation v0.1にvirtual future Routine previewを含めない。D-040 current-Day lazy ensure以外のbroader future Routine projection / materializationは後続sliceのOpen scopeとして維持する。
 
 以下はOpen:
 
-- R2A occurrence override presence / explicit NULLのexact physical schema、Routine default concurrency control、command / operation shape、index、set-based propagation implementation
+- R2A migrationのexact SQL table rebuild / CHECK expression、HTTP endpoint / DTO / logical command / operation naming、set-based propagation statement layout
+- evidenceに基づくoverride-specific indexの要否と、current D1 safe boundsを越えるlong-range propagation transaction strategy
+- R2Aを越えてoverride対象がmaterialに増えた場合のgeneric storage refactor / compatibility strategy
 - R1 minimal schemaを越えるschedule versionとbroader Routine persistence schema
 - Projected Occurrenceをquery時に算出するexact algorithm / caching / pagination
 - R1 current-Day lazy ensure以外でphysical RoutineOccurrenceをmaterializeするimplementation boundary（Product semanticsはD-034でApproved）

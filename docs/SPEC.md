@@ -167,7 +167,7 @@ non-daily recurrence、future-range projection UI、schedule editing、field-lev
 
 ### Routine R2A current-Day override slice
 
-Status: Approved (D-044, D-045). Runtime / APP migration: NOT_IMPLEMENTED.
+Status: Approved (D-044, D-045, D-046). Runtime / APP migration: NOT_IMPLEMENTED.
 
 - current logical TaskChuteDayのplanned Routine-derived Entryだけを対象に、`Section + 開始予定`の同期unitと、独立した見積unitを編集できる。
 - editはlocal candidateを先に作り、Server write前にunitごとの`今回だけ / ルーティンに反映`をexplicitに選択する。scopeはpreselectせず、cancel / Escape / dismissはno-writeでcanonical valueへ戻す。
@@ -179,7 +179,15 @@ Status: Approved (D-044, D-045). Runtime / APP migration: NOT_IMPLEMENTED.
 - normal Day Tableへpermanent override badgeを要求しない。override stateはediting contextでreset等に必要な範囲だけ示す。
 - future / past Day、running / completed / interrupted、Task名 / Project / Mode / Note、schedule / Skip / stop-resume / broader recurrenceはfirst slice対象外とする。
 - D-045に従い、editable legacy Routine defaultのreal Section + NULLはauthoritative origin / establishment contextからSection startを一意に解決できる場合だけnormalizeし、解決不能ならno-partial-effectで停止する。
-- occurrence override persistenceにAPP migrationを利用することはApprovedだが、exact physical schema、default revision、command shape、index、SQL propagation algorithmは未確定である。
+- occurrence override persistenceにAPP migrationを利用する。D-046に従い、first sliceは`routine_occurrences`上のtyped Section-plan / estimate override columnsとunitごとのoverride-present stateを持ち、no overrideとexplicit `NULL`を区別する。`routine_definitions`はnon-negative・initial `0`のdefault revisionを持ち、Routine default editのsilent last-write-winsを防ぐ。exact SQL statement、HTTP / DTO / command naming、operation command string、propagation queryとevidenceのない追加indexはimplementation detailである。
+
+Physical invariant:
+
+- Section-plan override absentではSection / planned-start override valueをともに`NULL`とする。
+- Section-plan override presentでは`Sectionなし + NULL`、またはreal Section + non-null planned-startだけを許可する。
+- estimate override absentではvalueを`NULL`とし、presentではexplicit `NULL`またはpositive integerを許可する。
+- Section referenceはowner-scoped FKを維持し、planned minuteのhistorical Day Section membershipはapplication transactionで検証する。
+- migration前Occurrenceはno override / inheritとしてidentityを維持する。D-045 normalization authorityを解決できない場合はpartial migrationしない。
 
 ## Historical facts and projections
 

@@ -921,3 +921,51 @@ D-039 / D-040 runtimeで成立し得るlegacy `real Section + planned start NULL
 - running / completed / interrupted等のhistorically protected rowを、新しいeditable invariantへ見かけ上揃えるためにretroactiveに書き換えない。
 - prior runtime behaviorとverification evidenceはhistorical recordとして維持する。
 - 本DecisionはnormalizationのProduct-visible resultとauthority / failure boundaryを確定する。exact migration SQL、physical constraint、batching、diagnostic representationはimplementation designとして別途reviewする。
+
+## D-046 — Routine R2A typed occurrence override persistence
+Status: Approved
+
+D-044のR2A first sliceを永続化し、inheritとexplicit `NULL` overrideを安全に区別するphysical persistence directionとして、次を採用する。
+
+### Typed first-slice schema
+
+- occurrence-level override stateは`routine_occurrences`上のtyped columnsとして保持する。
+- R2A first sliceではgeneric JSON override blobを利用せず、dedicated generic override tableも導入しない。
+- `Section + planned start`を一つのpersisted override unit、estimateを独立した一つのpersisted override unitとする。
+- nullable valueとは別にoverride-present stateを保存し、no override / inheritとexplicit `NULL` overrideを区別する。
+
+R2A first-slice fieldsはconceptual physical contractとして次を持つ。
+
+`routine_occurrences`:
+
+- `section_plan_override_present`: boolean-like `0 / 1`
+- `section_override_id`: nullable owner-scoped Section reference
+- `planned_start_override_minute`: nullable integer
+- `estimate_override_present`: boolean-like `0 / 1`
+- `estimate_override_seconds`: nullable positive integer
+
+`routine_definitions`:
+
+- `defaults_revision`: non-negative integer。initial valueは`0`
+
+`defaults_revision`はRoutine default editのconcurrency controlであり、Product-visible metadataとして表示しない。stale default updateをsilent last-write-winsで確定しないために利用する。
+
+### Constraint semantics
+
+- Section-plan overrideがabsentの場合、Section override IDとplanned-start override minuteはともに`NULL`とする。
+- Section-plan overrideがpresentかつ`Sectionなし`の場合、Section override IDとplanned-start override minuteはともに`NULL`とする。
+- real Section overrideがpresentの場合、Section override IDとplanned-start override minuteはともにnon-nullとする。
+- estimate overrideがabsentの場合、estimate override valueは`NULL`とする。
+- estimate overrideがpresentの場合、estimate override valueはexplicit `NULL`またはpositive integerとする。
+- `section_override_id`はowner-scoped Section referential integrityを維持する。
+- planned-start minuteがorigin TaskChuteDayのhistorical Section contextにある指定Section rangeへ属することはrow-local CHECKだけでは完全に表現できないため、application / transaction validationで保証する。
+
+### Migration and evolution boundary
+
+- D-045のlegacy normalizationを必要な範囲で適用・検証した後にR2A schemaへ移行し、authorityを解決できないlegacy stateではpartial migrationせずfail safelyとする。
+- existing RoutineOccurrence identityを維持し、migration前のOccurrenceは各unitともno override / inheritから開始する。
+- override専用indexの追加を本Decisionの必須要件としない。implementation evidenceで必要性が確認された場合だけ追加する。
+- exact SQL table rebuild / CHECK expression / statement layout、HTTP endpoint / DTO / logical command naming、operation command string、propagation queryはimplementation detailとしてreviewする。
+- 将来override対象がmaterialに拡大した場合、generic table等へのrefactorを禁止しない。その場合は別のcompatibility / design Decisionとする。
+
+本Decisionはphysical persistence directionをApprovedにするが、runtime、APP migration file、command、Web、test evidenceの実装完了を意味しない。実装・migration・verificationは`NOT_IMPLEMENTED / NOT_RUN`のまま維持する。
