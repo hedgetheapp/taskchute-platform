@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CurrentTaskChuteDayProjection, EntryProjection } from "../../src/shared/contracts";
 
@@ -63,6 +63,9 @@ function deferred<T>() {
 }
 
 const emptyDay: CurrentTaskChuteDayProjection = {
+  establishment_state: "established",
+  is_current: true,
+  planning_enabled: true,
   taskchute_day: {
     id: "019c0000-0000-7000-8000-000000000001",
     logical_date: "2026-08-22",
@@ -170,7 +173,7 @@ describe("Dogfood Day shell", () => {
     render(<App />);
     const dayBoard = await screen.findByRole("region", { name: "DayBoard" });
     expect(dayBoard).toBeTruthy();
-    expect(screen.getByText("2026-08-22")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "2026年8月22日（土）、日付を選択" })).toBeTruthy();
     expect(screen.getAllByText("Morning")[0]).toBeTruthy();
     expect(screen.getByText("Canonical task")).toBeTruthy();
     expect(screen.getAllByText("Evening")[0]).toBeTruthy();
@@ -192,6 +195,188 @@ describe("Dogfood Day shell", () => {
     expect(document.querySelector(".interval")).toBeNull();
     expect(screen.getByRole("button", { name: "＋ Taskを追加" })).toBeTruthy();
     expect(screen.getByRole("checkbox", { name: "実行済みを表示" })).toBeTruthy();
+  });
+
+  it("navigates with previous, next, Today, and Shift+Arrow without mutating", async () => {
+    mocks.loadDay.mockImplementation(async (logicalDate?: string) => logicalDate ? {
+      ...emptyDay,
+      establishment_state: logicalDate > "2026-08-22" ? "future_preview" as const : "established" as const,
+      is_current: logicalDate === "2026-08-22",
+      taskchute_day: { ...emptyDay.taskchute_day, id: logicalDate > "2026-08-22" ? null : emptyDay.taskchute_day.id,
+        logical_date: logicalDate },
+    } : emptyDay);
+    render(<App />);
+    const navigation = await screen.findByLabelText("日付ナビゲーション");
+    expect((within(navigation).getByRole("button", { name: "今日" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "前の日" }));
+    await waitFor(() => expect(mocks.loadDay).toHaveBeenLastCalledWith("2026-08-21"));
+    fireEvent.click(within(navigation).getByRole("button", { name: "今日" }));
+    await waitFor(() => expect(mocks.loadDay).toHaveBeenLastCalledWith(undefined));
+    fireEvent.click(screen.getByRole("button", { name: "次の日" }));
+    await waitFor(() => expect(mocks.loadDay).toHaveBeenLastCalledWith("2026-08-23"));
+    fireEvent.keyDown(screen.getByRole("main"), { key: "ArrowLeft", shiftKey: true });
+    await waitFor(() => expect(mocks.loadDay).toHaveBeenLastCalledWith("2026-08-22"));
+
+    fireEvent.click(screen.getByRole("button", { name: "＋ Taskを追加" }));
+    const taskInput = screen.getByRole("textbox", { name: "SectionなしのTask名" });
+    const callsBeforeEditingShortcut = mocks.loadDay.mock.calls.length;
+    fireEvent.keyDown(taskInput, { key: "ArrowRight", shiftKey: true });
+    expect(mocks.loadDay).toHaveBeenCalledTimes(callsBeforeEditingShortcut);
+    expect(mocks.addTask).not.toHaveBeenCalled();
+  });
+
+  it("operates the custom calendar month grid by pointer and keyboard without leaking global shortcuts", async () => {
+    mocks.loadDay.mockImplementation(async (logicalDate?: string) => logicalDate ? {
+      ...emptyDay, is_current: logicalDate === "2026-08-22",
+      establishment_state: logicalDate > "2026-08-22" ? "future_preview" as const : "established" as const,
+      taskchute_day: { ...emptyDay.taskchute_day, id: logicalDate > "2026-08-22" ? null : emptyDay.taskchute_day.id,
+        logical_date: logicalDate },
+    } : emptyDay);
+    render(<App />);
+    let trigger = await screen.findByRole("button", { name: "2026年8月22日（土）、日付を選択" });
+    fireEvent.click(trigger);
+    expect(screen.getByRole("dialog", { name: "2026年8月のカレンダー" })).toBeTruthy();
+    expect(document.activeElement?.getAttribute("aria-label")).toContain("2026年8月22日（土）");
+
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowLeft" });
+    expect(document.activeElement?.getAttribute("aria-label")).toContain("2026年8月21日（金）");
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowRight" });
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowUp" });
+    expect(document.activeElement?.getAttribute("aria-label")).toContain("2026年8月15日（土）");
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
+    fireEvent.keyDown(document.activeElement!, { key: "PageUp" });
+    expect(screen.getByRole("dialog", { name: "2026年7月のカレンダー" })).toBeTruthy();
+    expect(document.activeElement?.getAttribute("aria-label")).toContain("2026年7月22日（水）");
+    fireEvent.keyDown(document.activeElement!, { key: "PageDown" });
+    expect(screen.getByRole("dialog", { name: "2026年8月のカレンダー" })).toBeTruthy();
+
+    const callsBeforeCalendarShift = mocks.loadDay.mock.calls.length;
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowRight", shiftKey: true });
+    expect(mocks.loadDay).toHaveBeenCalledTimes(callsBeforeCalendarShift);
+    expect(document.activeElement?.getAttribute("aria-label")).toContain("2026年8月23日（日）");
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+
+    fireEvent.click(trigger);
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowRight" });
+    fireEvent.keyDown(document.activeElement!, { key: "Enter" });
+    await waitFor(() => expect(mocks.loadDay).toHaveBeenLastCalledWith("2026-08-23"));
+    trigger = screen.getByRole("button", { name: "2026年8月23日（日）、日付を選択" });
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole("gridcell", { name: "2026年8月24日（月）" }));
+    await waitFor(() => expect(mocks.loadDay).toHaveBeenLastCalledWith("2026-08-24"));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("drops a selected non-current Day across explicit logout and reloads the canonical current Day after login", async () => {
+    mocks.loadDay.mockImplementation(async (logicalDate?: string) => logicalDate ? {
+      ...emptyDay,
+      establishment_state: "future_preview" as const,
+      is_current: false,
+      taskchute_day: { ...emptyDay.taskchute_day, id: null, logical_date: logicalDate },
+    } : emptyDay);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "次の日" }));
+    await screen.findByRole("button", { name: "2026年8月23日（日）、日付を選択" });
+
+    fireEvent.click(screen.getByRole("button", { name: "ログアウト" }));
+    const login = await screen.findByRole("button", { name: "ログイン" });
+    fireEvent.change(screen.getByRole("textbox", { name: "メール" }), { target: { value: "user@example.com" } });
+    fireEvent.change(screen.getByLabelText("パスワード"), { target: { value: "password" } });
+    fireEvent.submit(login.closest("form")!);
+
+    await waitFor(() => expect(mocks.loadDay).toHaveBeenLastCalledWith(undefined));
+    const trigger = await screen.findByRole("button", { name: "2026年8月22日（土）、日付を選択" });
+    fireEvent.click(trigger);
+    const current = document.querySelector('[role="gridcell"][aria-current="date"]');
+    expect(current?.getAttribute("data-calendar-date")).toBe("2026-08-22");
+    expect(current?.getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("drops a selected non-current Day when reconciliation gets 401 and reloads current after login", async () => {
+    mocks.loadDay.mockImplementation(async (logicalDate?: string) => logicalDate ? {
+      ...emptyDay,
+      establishment_state: "future_preview" as const,
+      is_current: false,
+      taskchute_day: { ...emptyDay.taskchute_day, id: null, logical_date: logicalDate },
+    } : emptyDay);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "次の日" }));
+    await screen.findByRole("button", { name: "2026年8月23日（日）、日付を選択" });
+    mocks.loadDay.mockRejectedValueOnce(new ApiClientError("expired", 401, false, "unauthenticated"));
+    fireEvent.click(screen.getByRole("button", { name: "MorningにTaskを追加" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "MorningのTask名" }), { target: { value: "Expired session" } });
+    fireEvent.submit(screen.getByRole("form", { name: "Morningの新規Task" }));
+
+    const login = await screen.findByRole("button", { name: "ログイン" });
+    fireEvent.change(screen.getByRole("textbox", { name: "メール" }), { target: { value: "user@example.com" } });
+    fireEvent.change(screen.getByLabelText("パスワード"), { target: { value: "password" } });
+    fireEvent.submit(login.closest("form")!);
+
+    await waitFor(() => expect(mocks.loadDay).toHaveBeenLastCalledWith(undefined));
+    expect(await screen.findByRole("button", { name: "2026年8月22日（土）、日付を選択" })).toBeTruthy();
+  });
+
+  it("establishes a future preview only through its first successful Task addition", async () => {
+    const future: CurrentTaskChuteDayProjection = {
+      ...emptyDay,
+      establishment_state: "future_preview",
+      is_current: false,
+      taskchute_day: { ...emptyDay.taskchute_day, id: null, logical_date: "2026-08-23" },
+    };
+    const established = { ...emptyDay, is_current: false,
+      taskchute_day: { ...emptyDay.taskchute_day, logical_date: "2026-08-23" } };
+    mocks.loadDay.mockResolvedValueOnce(future).mockResolvedValueOnce(established);
+    render(<App />);
+    expect(await screen.findByText(/未来日のプレビュー/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "MorningにTaskを追加" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "MorningのTask名" }), { target: { value: "Plan tomorrow" } });
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "MorningのTask名" }), { key: "ArrowRight", shiftKey: true });
+    expect(mocks.loadDay).toHaveBeenCalledTimes(1);
+    fireEvent.submit(screen.getByRole("form", { name: "Morningの新規Task" }));
+    await waitFor(() => expect(mocks.addTask).toHaveBeenCalledTimes(1));
+    expect(mocks.addTask.mock.calls[0][0]).toMatchObject({
+      logical_date: "2026-08-23", expected_placement_revision: 0, section_id: morningId,
+    });
+    expect(mocks.addTask.mock.calls[0][0].taskchute_day_id).toMatch(/^[0-9a-f-]{36}$/);
+    await waitFor(() => expect(mocks.loadDay).toHaveBeenLastCalledWith("2026-08-23"));
+  });
+
+  it("renders a past historical gap empty and read-only, and hides non-current execution actions", async () => {
+    const past: CurrentTaskChuteDayProjection = {
+      ...emptyDay,
+      establishment_state: "past_record_none",
+      is_current: false,
+      planning_enabled: false,
+      taskchute_day: { id: null, logical_date: "2026-08-20", start_instant: null, end_instant: null,
+        establishment_timezone: null, establishment_boundary_minutes: null },
+      sections: [],
+    };
+    mocks.loadDay.mockResolvedValueOnce(past);
+    render(<App />);
+    expect(await screen.findByText(/記録のない過去日/)).toBeTruthy();
+    expect((screen.getByRole("button", { name: "＋ Taskを追加" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole("button", { name: /を開始$/ })).toBeNull();
+    expect(mocks.addTask).not.toHaveBeenCalled();
+  });
+
+  it("keeps established future planning controls while disabling Start and current-Day Routine actions", async () => {
+    const futureEstablished: CurrentTaskChuteDayProjection = {
+      ...populatedDay,
+      is_current: false,
+      taskchute_day: { ...populatedDay.taskchute_day, logical_date: "2026-08-23" },
+    };
+    mocks.loadDay.mockResolvedValueOnce(futureEstablished);
+    render(<App />);
+    const start = await screen.findByRole("button", { name: "Canonical taskを開始" }) as HTMLButtonElement;
+    expect(start.disabled).toBe(true);
+    expect(screen.getByRole("combobox", { name: "Canonical taskのSection" }).hasAttribute("disabled")).toBe(false);
+    expect((screen.getByRole("button", { name: "Canonical taskの見積" }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole("button", { name: "Canonical taskの開始予定" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByRole("button", { name: "Routine化" })).toBeNull();
   });
 
   it("opens a focused inline draft from the selected Section plus", async () => {
@@ -1020,8 +1205,13 @@ describe("Dogfood Day shell", () => {
   });
 
   it("preserves an unsaved Section draft across Project and Today navigation without reloading canonical configuration", async () => {
-    mocks.loadDay.mockResolvedValue(emptyDay);
+    const future = { ...emptyDay, establishment_state: "future_preview" as const, is_current: false,
+      taskchute_day: { ...emptyDay.taskchute_day, id: null, logical_date: "2026-08-23" } };
+    mocks.loadDay.mockResolvedValueOnce(emptyDay).mockResolvedValueOnce(future).mockResolvedValueOnce(emptyDay);
     render(<App />);
+    await screen.findByRole("region", { name: "DayBoard" });
+    fireEvent.click(screen.getByRole("button", { name: "次の日" }));
+    await screen.findByRole("button", { name: "2026年8月23日（日）、日付を選択" });
     await openSectionSettings();
     expect(mocks.loadSectionConfiguration).toHaveBeenCalledTimes(1);
 
@@ -1033,12 +1223,16 @@ describe("Dogfood Day shell", () => {
     expect(mocks.loadSectionConfiguration).toHaveBeenCalledTimes(1);
 
     fireEvent.click(screen.getByRole("button", { name: "今日" }));
+    await screen.findByRole("button", { name: "2026年8月22日（土）、日付を選択" });
+    expect(mocks.loadDay).toHaveBeenLastCalledWith(undefined);
     fireEvent.click(screen.getByRole("button", { name: "設定" }));
     expect((await screen.findByRole("textbox", { name: "Section 1の名前" }) as HTMLInputElement).value).toBe("Unsaved Focus");
     fireEvent.click(screen.getByRole("button", { name: "Section" }));
     expect((screen.getByRole("textbox", { name: "Section 1の名前" }) as HTMLInputElement).value).toBe("Unsaved Focus");
     expect(mocks.loadSectionConfiguration).toHaveBeenCalledTimes(1);
     expect(mocks.updateSectionConfiguration).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "キャンセル" }));
+    expect(screen.queryByRole("region", { name: "Section設定" })).toBeNull();
   });
 
   it("discards an unsaved Section draft only on explicit Cancel and reloads canonical configuration on return", async () => {

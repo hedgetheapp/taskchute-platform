@@ -1,19 +1,25 @@
 import type {
   CurrentTaskChuteDayProjection,
+  EstablishedTaskChuteDayProjection,
   EntryProjection,
   SectionProjection,
 } from "../../src/shared/contracts";
 import { canonicalizeEntryOrder } from "../../src/shared/planned-entry-order";
-import { resolveSectionIntervals, resolveTaskChuteDay } from "../domain/taskchute-day";
+import {
+  isLogicalDate,
+  resolveSectionIntervals,
+  resolveTaskChuteDay,
+  resolveTaskChuteDayForLogicalDate,
+} from "../domain/taskchute-day";
 import { uuidv7 } from "../domain/uuidv7";
 import { ensureCurrentDayRoutineEntries } from "./routine";
 
-interface SettingsRow {
+export interface SettingsRow {
   timezone: string;
   day_boundary_minutes: number;
 }
 
-interface DayRow {
+export interface DayRow {
   id: string;
   logical_date: string;
   start_instant: string;
@@ -33,7 +39,7 @@ interface SectionRow {
   context_order: number;
 }
 
-interface DaySectionContextRow {
+export interface DaySectionContextRow {
   section_id: string;
   configuration_version_id: string | null;
   title: string;
@@ -121,7 +127,7 @@ function toEntryRow(value: unknown): EntryRow {
   };
 }
 
-async function readDaySectionContexts(db: D1Database, appUserId: string, dayId: string): Promise<DaySectionContextRow[]> {
+export async function readDaySectionContexts(db: D1Database, appUserId: string, dayId: string): Promise<DaySectionContextRow[]> {
   const result = await db.prepare(`SELECT section_id, configuration_version_id, title, logical_start_minute,
     logical_end_minute, actual_start_instant, actual_end_instant, context_order
     FROM taskchute_day_section_contexts WHERE app_user_id = ? AND taskchute_day_id = ?
@@ -129,7 +135,7 @@ async function readDaySectionContexts(db: D1Database, appUserId: string, dayId: 
   return result.results;
 }
 
-async function expectedLegacyContexts(db: D1Database, appUserId: string): Promise<DaySectionContextRow[]> {
+export async function expectedLegacyContexts(db: D1Database, appUserId: string): Promise<DaySectionContextRow[]> {
   const result = await db.prepare(`SELECT id AS section_id, NULL AS configuration_version_id, title,
     NULL AS logical_start_minute, NULL AS logical_end_minute, NULL AS actual_start_instant,
     NULL AS actual_end_instant, sort_order AS context_order FROM sections
@@ -137,7 +143,7 @@ async function expectedLegacyContexts(db: D1Database, appUserId: string): Promis
   return result.results;
 }
 
-async function configuredDefinitionContexts(
+export async function configuredDefinitionContexts(
   db: D1Database,
   appUserId: string,
   versionId: string,
@@ -157,7 +163,7 @@ async function configuredDefinitionContexts(
   }));
 }
 
-async function expectedConfiguredContexts(
+export async function expectedConfiguredContexts(
   db: D1Database,
   appUserId: string,
   day: DayRow,
@@ -183,7 +189,7 @@ function assertMaterializedContext(actual: DaySectionContextRow[], expected: Day
   })) throw new Error("TaskChuteDay Section context is incomplete or inconsistent");
 }
 
-function assertEstablishedContext(day: DayRow, context: DaySectionContextRow[]): void {
+export function assertEstablishedContext(day: DayRow, context: DaySectionContextRow[]): void {
   const versionIds = new Set(context.map((row) => row.configuration_version_id));
   if (versionIds.size !== 1) throw new Error("TaskChuteDay Section context mixes configuration versions");
   const versionId = context[0]?.configuration_version_id ?? null;
@@ -300,17 +306,15 @@ export async function materializeCurrentDay(db: D1Database, appUserId: string, n
   return converged;
 }
 
-export async function loadCurrentTaskChuteDay(
+async function loadEstablishedProjection(
   db: D1Database,
   appUserId: string,
-  nowInstant = new Date().toISOString(),
-): Promise<CurrentTaskChuteDayProjection> {
-  const materializedDay = await materializeCurrentDay(db, appUserId, nowInstant);
-  await ensureCurrentDayRoutineEntries(db, appUserId, materializedDay, nowInstant);
-  const day = await db.prepare(`SELECT id, logical_date, start_instant, end_instant, establishment_timezone,
-      establishment_boundary_minutes, placement_revision FROM taskchute_days WHERE app_user_id = ? AND id = ?`)
-    .bind(appUserId, materializedDay.id).first<DayRow>();
-  if (!day) throw new Error("TaskChuteDay disappeared after Routine materialization");
+  day: DayRow,
+  includeActiveExecution: boolean,
+  planningEnabled: boolean,
+): Promise<EstablishedTaskChuteDayProjection> {
+  const context = await readDaySectionContexts(db, appUserId, day.id);
+  assertEstablishedContext(day, context);
   const [sectionResult, entryResult, executionResult] = await db.batch([
     db.prepare(`SELECT section_id AS id, title, logical_start_minute, logical_end_minute,
       actual_start_instant, actual_end_instant, context_order
@@ -332,8 +336,10 @@ export async function loadCurrentTaskChuteDay(
           ORDER BY e.section_id, e.position, e.id`,
       )
       .bind(appUserId, day.id),
-    db.prepare(`SELECT id, entry_id, started_at, ended_at FROM executions
-      WHERE app_user_id = ? AND ended_at IS NULL LIMIT 1`).bind(appUserId),
+    includeActiveExecution
+      ? db.prepare(`SELECT id, entry_id, started_at, ended_at FROM executions
+          WHERE app_user_id = ? AND ended_at IS NULL LIMIT 1`).bind(appUserId)
+      : db.prepare("SELECT NULL AS id, NULL AS entry_id, NULL AS started_at, NULL AS ended_at WHERE false"),
   ]);
   const entryRows = entryResult.results.map(toEntryRow);
   const entriesBySection = new Map<string, EntryProjection[]>();
@@ -384,6 +390,9 @@ export async function loadCurrentTaskChuteDay(
     .find((entry) => entry.lifecycle_state === "planned") ?? null;
   const activeExecution = executionResult.results[0] as ExecutionRow | undefined;
   return {
+    establishment_state: "established",
+    is_current: includeActiveExecution,
+    planning_enabled: planningEnabled,
     taskchute_day: {
       id: day.id,
       logical_date: day.logical_date,
@@ -404,4 +413,120 @@ export async function loadCurrentTaskChuteDay(
     } : null,
     next_entry: nextEntry,
   };
+}
+
+export interface FutureDayEstablishmentPlan {
+  day: DayRow;
+  configuration_version_id: string | null;
+  contexts: DaySectionContextRow[];
+  settings: SettingsRow;
+}
+
+export async function readFutureDayEstablishmentPlan(
+  db: D1Database,
+  appUserId: string,
+  logicalDate: string,
+  nowInstant = new Date().toISOString(),
+): Promise<FutureDayEstablishmentPlan | null> {
+  if (!isLogicalDate(logicalDate)) return null;
+  const settings = await db.prepare("SELECT timezone, day_boundary_minutes FROM user_settings WHERE app_user_id = ?")
+    .bind(appUserId).first<SettingsRow>();
+  if (!settings) throw new Error("Provisioned user has no TaskChuteDay settings");
+  const current = resolveTaskChuteDay(nowInstant, { timezone: settings.timezone, boundaryMinutes: settings.day_boundary_minutes });
+  if (logicalDate <= current.logicalDate) return null;
+  const resolved = resolveTaskChuteDayForLogicalDate(logicalDate, {
+    timezone: settings.timezone,
+    boundaryMinutes: settings.day_boundary_minutes,
+  });
+  const day: DayRow = {
+    id: "",
+    logical_date: resolved.logicalDate,
+    start_instant: resolved.startInstant,
+    end_instant: resolved.endInstant,
+    establishment_timezone: resolved.timezone,
+    establishment_boundary_minutes: resolved.boundaryMinutes,
+    placement_revision: 0,
+  };
+  const version = await db.prepare(`SELECT v.id FROM section_configuration_heads h
+    JOIN section_configuration_versions v ON v.app_user_id = h.app_user_id AND v.id = h.configuration_version_id
+    WHERE h.app_user_id = ? AND v.day_boundary_minutes = ?`)
+    .bind(appUserId, settings.day_boundary_minutes).first<{ id: string }>();
+  const contexts = version
+    ? await expectedConfiguredContexts(db, appUserId, day, version.id)
+    : await expectedLegacyContexts(db, appUserId);
+  return { day, configuration_version_id: version?.id ?? null, contexts, settings };
+}
+
+function emptyProjection(
+  state: "future_preview" | "past_record_none",
+  logicalDate: string,
+  day: DayRow | null,
+  contexts: DaySectionContextRow[],
+): CurrentTaskChuteDayProjection {
+  const sections: SectionProjection[] = contexts.map((section) => ({
+    id: section.section_id,
+    title: section.title,
+    logical_start_minute: section.logical_start_minute,
+    logical_end_minute: section.logical_end_minute,
+    actual_start_instant: section.actual_start_instant,
+    actual_end_instant: section.actual_end_instant,
+    estimate_total_seconds: 0,
+    entries: [],
+  }));
+  return {
+    establishment_state: state,
+    is_current: false,
+    planning_enabled: state === "future_preview",
+    taskchute_day: {
+      id: null,
+      logical_date: logicalDate,
+      start_instant: day?.start_instant ?? null,
+      end_instant: day?.end_instant ?? null,
+      establishment_timezone: day?.establishment_timezone ?? null,
+      establishment_boundary_minutes: day?.establishment_boundary_minutes ?? null,
+    },
+    placement_revision: 0,
+    section_configuration_required: state === "future_preview"
+      && (sections.length === 0 || sections.some((section) => section.logical_start_minute === null)),
+    sections,
+    unsectioned_entries: [],
+    active_execution: null,
+    next_entry: null,
+  };
+}
+
+export async function loadTaskChuteDayByLogicalDate(
+  db: D1Database,
+  appUserId: string,
+  logicalDate: string,
+  nowInstant = new Date().toISOString(),
+): Promise<CurrentTaskChuteDayProjection> {
+  if (!isLogicalDate(logicalDate)) throw new Error("Invalid logical date");
+  const settings = await db.prepare("SELECT timezone, day_boundary_minutes FROM user_settings WHERE app_user_id = ?")
+    .bind(appUserId).first<SettingsRow>();
+  if (!settings) throw new Error("Provisioned user has no TaskChuteDay settings");
+  const current = resolveTaskChuteDay(nowInstant, { timezone: settings.timezone, boundaryMinutes: settings.day_boundary_minutes });
+  if (logicalDate === current.logicalDate) return loadCurrentTaskChuteDay(db, appUserId, nowInstant);
+  const existing = await db.prepare(`SELECT id, logical_date, start_instant, end_instant, establishment_timezone,
+      establishment_boundary_minutes, placement_revision FROM taskchute_days WHERE app_user_id = ? AND logical_date = ?`)
+    .bind(appUserId, logicalDate).first<DayRow>();
+  if (existing) return loadEstablishedProjection(db, appUserId, existing, false, logicalDate > current.logicalDate);
+  if (logicalDate < current.logicalDate) return emptyProjection("past_record_none", logicalDate, null, []);
+  const preview = await readFutureDayEstablishmentPlan(db, appUserId, logicalDate, nowInstant);
+  if (!preview) throw new Error("Future TaskChuteDay preview could not be resolved");
+  return emptyProjection("future_preview", logicalDate, preview.day, preview.contexts);
+}
+
+export async function loadCurrentTaskChuteDay(
+  db: D1Database,
+  appUserId: string,
+  nowInstant = new Date().toISOString(),
+): Promise<EstablishedTaskChuteDayProjection> {
+  const materializedDay = await materializeCurrentDay(db, appUserId, nowInstant);
+  await ensureCurrentDayRoutineEntries(db, appUserId, materializedDay, nowInstant);
+  const day = await db.prepare(`SELECT id, logical_date, start_instant, end_instant, establishment_timezone,
+      establishment_boundary_minutes, placement_revision FROM taskchute_days WHERE app_user_id = ? AND id = ?`)
+    .bind(appUserId, materializedDay.id).first<DayRow>();
+  if (!day) throw new Error("TaskChuteDay disappeared after Routine materialization");
+  return loadEstablishedProjection(db, appUserId, day, true, true);
 }

@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { Temporal } from "@js-temporal/polyfill";
 import type {
   AddTaskToDayRequest,
   CompleteEntryRequest,
@@ -70,6 +71,26 @@ function canMoveEntry(entries: EntryProjection[], entryId: string, delta: -1 | 1
 
 function groupKey(sectionId: string | null): string { return sectionId ?? "unsectioned"; }
 
+function shiftLogicalDate(logicalDate: string, days: number): string {
+  return Temporal.PlainDate.from(logicalDate).add({ days }).toString();
+}
+
+function formatLogicalDateLabel(logicalDate: string): string {
+  const date = Temporal.PlainDate.from(logicalDate);
+  return `${date.year}年${date.month}月${date.day}日（${["月", "火", "水", "木", "金", "土", "日"][date.dayOfWeek - 1]}）`;
+}
+
+function calendarMonthDates(logicalDate: string): string[] {
+  const monthStart = Temporal.PlainDate.from(logicalDate).with({ day: 1 });
+  const gridStart = monthStart.subtract({ days: monthStart.dayOfWeek - 1 });
+  return Array.from({ length: 42 }, (_, index) => gridStart.add({ days: index }).toString());
+}
+
+function formatCalendarMonth(logicalDate: string): string {
+  const date = Temporal.PlainDate.from(logicalDate);
+  return `${date.year}年${date.month}月`;
+}
+
 function formatLogicalMinute(value: number | null): string {
   if (value === null) return "時刻未設定";
   return `${String(Math.floor(value / 60)).padStart(2, "0")}:${String(value % 60).padStart(2, "0")}`;
@@ -95,6 +116,7 @@ function transientStatusText(pending: string | null): string | null {
     case "planned-start": return "開始予定を保存・照合中…";
     case "routine-convert": return "Routine化・照合中…";
     case "routine-end": return "Routine終了・照合中…";
+    case "day-navigation": return "日付を読み込み中…";
     default: return null;
   }
 }
@@ -187,40 +209,101 @@ export function App() {
   const [editingEstimate, setEditingEstimate] = useState<{ entryId: string; minutes: string } | null>(null);
   const [editingPlannedStart, setEditingPlannedStart] = useState<{ entryId: string; value: string } | null>(null);
   const [routineDraft, setRoutineDraft] = useState<{ entryId: string; endDate: string } | null>(null);
-  const [pending, setPending] = useState<"login" | "project" | "project-settings" | "task" | "reorder" | "start" | "complete" | "configuration" | "section-settings" | "move" | "estimate" | "planned-start" | "routine-convert" | "routine-end" | "logout" | null>(null);
+  const [pending, setPending] = useState<"login" | "project" | "project-settings" | "day-navigation" | "task" | "reorder" | "start" | "complete" | "configuration" | "section-settings" | "move" | "estimate" | "planned-start" | "routine-convert" | "routine-end" | "logout" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draftTask, setDraftTask] = useState<DraftTask | null>(null);
   const [pendingFocusKey, setPendingFocusKey] = useState<string | null>(null);
   const [showCompleted, setShowCompleted] = useState(true);
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [calendarFocusedDate, setCalendarFocusedDate] = useState<string | null>(null);
+  const [currentLogicalDate, setCurrentLogicalDate] = useState<string | null>(null);
   const draftInputRef = useRef<HTMLInputElement | null>(null);
   const draftCompositionRef = useRef(false);
+  const selectedLogicalDateRef = useRef<string | null>(null);
+  const calendarTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const calendarGridRef = useRef<HTMLDivElement | null>(null);
   const retainedOperation = projectOperation ?? taskOperation ?? reorderOperation ?? startOperation ?? completeOperation
     ?? configurationOperation ?? sectionSettingsOperation ?? sectionMoveOperation ?? estimateOperation ?? plannedStartOperation
     ?? routineConversionOperation ?? routineEndOperation;
   const mutationLocked = pending !== null || retainedOperation !== null;
 
-  const reconcile = useCallback(async () => {
+  const transitionToSignedOut = useCallback(() => {
+    selectedLogicalDateRef.current = null;
+    setCurrentLogicalDate(null);
+    setCalendarOpen(false);
+    setCalendarFocusedDate(null);
+    setDay(null);
+    setView("today");
+    setProject(null);
+    setProjects([]);
+    setProjectOperation(null);
+    setTaskOperation(null);
+    setReorderOperation(null);
+    setStartOperation(null);
+    setCompleteOperation(null);
+    setConfigurationOperation(null);
+    setSectionMoveOperation(null);
+    setEstimateOperation(null);
+    setPlannedStartOperation(null);
+    setSectionSettingsOperation(null);
+    setSectionSettings(null);
+    setSectionSettingsDraft(null);
+    setSectionSettingsNotice(null);
+    setRoutineConversionOperation(null);
+    setRoutineEndOperation(null);
+    setRoutineDraft(null);
+    setDraftTask(null);
+    setEditingEstimate(null);
+    setEditingPlannedStart(null);
+    setPendingFocusKey(null);
+    setAuthState("signed-out");
+  }, []);
+
+  const reconcile = useCallback(async (logicalDate = selectedLogicalDateRef.current) => {
     try {
-      const projection = await api.loadDay();
+      const projection = await api.loadDay(logicalDate ?? undefined);
       setDay(projection);
+      selectedLogicalDateRef.current = projection.taskchute_day.logical_date;
+      if (projection.is_current) setCurrentLogicalDate(projection.taskchute_day.logical_date);
       setAuthState("signed-in");
       return projection;
     } catch (caught) {
       if (caught instanceof ApiClientError && caught.status === 401) {
-        setDay(null);
-        setAuthState("signed-out");
+        transitionToSignedOut();
         return null;
       }
       throw caught;
     }
-  }, []);
+  }, [transitionToSignedOut]);
+
+  async function navigateToDay(logicalDate?: string) {
+    if (pending !== null || retainedOperation !== null) return;
+    setCalendarOpen(false);
+    setPending("day-navigation");
+    setError(null);
+    setDraftTask(null);
+    setEditingEstimate(null);
+    setEditingPlannedStart(null);
+    setRoutineDraft(null);
+    try {
+      const projection = await api.loadDay(logicalDate);
+      setDay(projection);
+      selectedLogicalDateRef.current = projection.taskchute_day.logical_date;
+      if (projection.is_current) setCurrentLogicalDate(projection.taskchute_day.logical_date);
+    } catch (caught) {
+      if (caught instanceof ApiClientError && caught.status === 401) transitionToSignedOut();
+      else setError(caught instanceof Error ? caught.message : "日付の読み込みに失敗しました");
+    } finally {
+      setPending(null);
+    }
+  }
 
   useEffect(() => {
     void reconcile().catch((caught: unknown) => {
       setError(caught instanceof Error ? caught.message : "読み込みに失敗しました");
-      setAuthState("signed-out");
+      transitionToSignedOut();
     });
-  }, [reconcile]);
+  }, [reconcile, transitionToSignedOut]);
 
   useEffect(() => {
     if (draftTask) draftInputRef.current?.focus();
@@ -235,6 +318,58 @@ export function App() {
     }
   }, [day, pendingFocusKey, showCompleted]);
 
+  useEffect(() => {
+    if (!calendarOpen || !calendarFocusedDate) return;
+    calendarGridRef.current?.querySelector<HTMLButtonElement>(`[data-calendar-date="${calendarFocusedDate}"]`)?.focus();
+  }, [calendarOpen, calendarFocusedDate]);
+
+  function openCalendar() {
+    if (!day || mutationLocked) return;
+    setCalendarFocusedDate(day.taskchute_day.logical_date);
+    setCalendarOpen(true);
+  }
+
+  function closeCalendar() {
+    setCalendarOpen(false);
+    requestAnimationFrame(() => calendarTriggerRef.current?.focus());
+  }
+
+  async function selectCalendarDate(logicalDate: string) {
+    setCalendarOpen(false);
+    await navigateToDay(logicalDate);
+    requestAnimationFrame(() => calendarTriggerRef.current?.focus());
+  }
+
+  function handleCalendarKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    if (!calendarFocusedDate) return;
+    let nextDate: string | null = null;
+    switch (event.key) {
+      case "ArrowLeft": nextDate = shiftLogicalDate(calendarFocusedDate, -1); break;
+      case "ArrowRight": nextDate = shiftLogicalDate(calendarFocusedDate, 1); break;
+      case "ArrowUp": nextDate = shiftLogicalDate(calendarFocusedDate, -7); break;
+      case "ArrowDown": nextDate = shiftLogicalDate(calendarFocusedDate, 7); break;
+      case "PageUp": nextDate = Temporal.PlainDate.from(calendarFocusedDate).subtract({ months: 1 }).toString(); break;
+      case "PageDown": nextDate = Temporal.PlainDate.from(calendarFocusedDate).add({ months: 1 }).toString(); break;
+      case "Enter":
+        event.preventDefault(); event.stopPropagation();
+        void selectCalendarDate(calendarFocusedDate);
+        return;
+      case "Escape":
+        event.preventDefault(); event.stopPropagation(); closeCalendar();
+        return;
+      default: return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    setCalendarFocusedDate(nextDate);
+  }
+
+  async function openTodayView() {
+    if (mutationLocked) return;
+    setView("today");
+    await navigateToDay();
+  }
+
   async function login(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -242,7 +377,7 @@ export function App() {
     setError(null);
     try {
       await api.login(String(form.get("email")), String(form.get("password")));
-      await reconcile();
+      await reconcile(null);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "ログインに失敗しました");
     } finally {
@@ -319,16 +454,19 @@ export function App() {
 
   async function commitDraft(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!day || !draftTask || mutationLocked) return;
+    if (!day || !draftTask || mutationLocked || !day.planning_enabled) return;
     const title = draftTask.title.trim();
     if (!title) return;
+    const targetingNonCurrentDay = !day.is_current;
+    const targetDayId = day.taskchute_day.id ?? uuidv7();
     const operation: AddTaskToDayRequest = {
       operation_id: uuidv7(),
       task_id: uuidv7(),
       entry_id: uuidv7(),
       project_id: null,
       title,
-      taskchute_day_id: day.taskchute_day.id,
+      taskchute_day_id: targetDayId,
+      ...(targetingNonCurrentDay ? { logical_date: day.taskchute_day.logical_date } : {}),
       section_id: draftTask.sectionId,
       expected_placement_revision: day.placement_revision,
     };
@@ -342,28 +480,7 @@ export function App() {
     setError(null);
     try {
       await api.logout();
-      setDay(null);
-      setView("today");
-      setProject(null);
-      setProjects([]);
-      setProjectOperation(null);
-      setTaskOperation(null);
-      setReorderOperation(null);
-      setStartOperation(null);
-      setCompleteOperation(null);
-      setConfigurationOperation(null);
-      setSectionMoveOperation(null);
-      setEstimateOperation(null);
-      setPlannedStartOperation(null);
-      setSectionSettingsOperation(null);
-      setSectionSettings(null);
-      setSectionSettingsDraft(null);
-      setSectionSettingsNotice(null);
-      setRoutineConversionOperation(null);
-      setRoutineEndOperation(null);
-      setRoutineDraft(null);
-      setDraftTask(null);
-      setAuthState("signed-out");
+      transitionToSignedOut();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "ログアウトに失敗しました");
     } finally {
@@ -397,7 +514,7 @@ export function App() {
   }
 
   async function moveEntry(sectionId: string | null, entryId: string, delta: -1 | 1) {
-    if (!day || mutationLocked) return;
+    if (!day?.taskchute_day.id || !day.planning_enabled || mutationLocked) return;
     const entries = sectionId === null ? day.unsectioned_entries : day.sections.find((candidate) => candidate.id === sectionId)?.entries;
     if (!entries || !canMoveEntry(entries, entryId, delta)) return;
     const ids = entries.map((candidate) => candidate.id);
@@ -441,7 +558,7 @@ export function App() {
   }
 
   async function start(entryId: string) {
-    if (!day || mutationLocked) return;
+    if (!day || !day.is_current || mutationLocked) return;
     const entry = [...day.unsectioned_entries, ...day.sections.flatMap((section) => section.entries)]
       .find((candidate) => candidate.id === entryId);
     if (!entry) return;
@@ -498,7 +615,7 @@ export function App() {
 
   async function submitConfiguration(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!day || mutationLocked) return;
+    if (!day?.taskchute_day.id || !day.is_current || mutationLocked) return;
     const form = new FormData(event.currentTarget);
     const items = day.sections.map((section) => ({
       section_id: section.id,
@@ -540,6 +657,7 @@ export function App() {
 
   async function openSettings(destination: SettingsDestination) {
     if (mutationLocked) return;
+    setCalendarOpen(false);
     setView("settings");
     setSettingsDestination(destination);
     setProject(null);
@@ -653,7 +771,7 @@ export function App() {
   }
 
   async function changeSection(entry: EntryProjection, sectionId: string | null) {
-    if (!day || mutationLocked || entry.lifecycle_state !== "planned" || entry.routine !== null
+    if (!day?.taskchute_day.id || !day.planning_enabled || mutationLocked || entry.lifecycle_state !== "planned" || entry.routine !== null
       || entry.section_id === sectionId) return;
     setEditingPlannedStart((editing) => editing?.entryId === entry.id ? null : editing);
     const operation: MoveEntryRequest = { operation_id: uuidv7(), entry_id: entry.id,
@@ -681,7 +799,7 @@ export function App() {
   async function commitEstimate(entryId: string) {
     const canonical = day ? [...day.unsectioned_entries, ...day.sections.flatMap((section) => section.entries)]
       .find((entry) => entry.id === entryId) : undefined;
-    if (mutationLocked || editingEstimate?.entryId !== entryId || canonical?.routine !== null) {
+    if (!day?.planning_enabled || mutationLocked || editingEstimate?.entryId !== entryId || canonical?.routine !== null) {
       if (canonical?.routine) setEditingEstimate(null);
       return;
     }
@@ -722,7 +840,8 @@ export function App() {
   async function commitPlannedStart(entry: EntryProjection) {
     const canonical = day ? [...day.unsectioned_entries, ...day.sections.flatMap((section) => section.entries)]
       .find((candidate) => candidate.id === entry.id) : undefined;
-    if (!day || mutationLocked || editingPlannedStart?.entryId !== entry.id || canonical?.routine !== null) {
+    if (!day?.taskchute_day.id || !day.planning_enabled || day.taskchute_day.establishment_boundary_minutes === null
+      || mutationLocked || editingPlannedStart?.entryId !== entry.id || canonical?.routine !== null) {
       if (canonical?.routine) setEditingPlannedStart(null);
       return;
     }
@@ -777,7 +896,7 @@ export function App() {
   }
 
   async function commitRoutineConversion(entry: EntryProjection) {
-    if (!day || mutationLocked || routineDraft?.entryId !== entry.id || entry.routine !== null) return;
+    if (!day?.taskchute_day.id || !day.is_current || mutationLocked || routineDraft?.entryId !== entry.id || entry.routine !== null) return;
     const endLogicalDate = routineDraft.endDate.trim() || null;
     if (endLogicalDate !== null && endLogicalDate < day.taskchute_day.logical_date) {
       setError("Routine終了日は今日以降を指定してください");
@@ -813,7 +932,7 @@ export function App() {
   }
 
   async function endRoutine(entry: EntryProjection) {
-    if (!day || mutationLocked || !entry.routine?.can_end) return;
+    if (!day?.taskchute_day.id || !day.is_current || mutationLocked || !entry.routine?.can_end) return;
     const operation: EndRoutineRequest = { operation_id: uuidv7(),
       routine_definition_id: entry.routine.routine_definition_id, taskchute_day_id: day.taskchute_day.id };
     setRoutineEndOperation(operation);
@@ -858,7 +977,7 @@ export function App() {
   }
 
   function openDraft(sectionId: string | null) {
-    if (mutationLocked) return;
+    if (mutationLocked || !day?.planning_enabled || day.section_configuration_required) return;
     if (draftTask?.title.trim()) {
       draftInputRef.current?.focus();
       return;
@@ -884,6 +1003,11 @@ export function App() {
 
   function handleDayKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
     if (event.defaultPrevented || event.nativeEvent.isComposing || isTextEditingTarget(event.target)) return;
+    if (event.shiftKey && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
+      event.preventDefault();
+      void navigateToDay(shiftLogicalDate(currentDay.taskchute_day.logical_date, event.key === "ArrowLeft" ? -1 : 1));
+      return;
+    }
     const key = event.key.toLowerCase();
     const targets = Array.from(event.currentTarget.querySelectorAll<HTMLElement>("[data-day-focus-target]"));
     const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement.closest<HTMLElement>("[data-day-focus-target]") : null;
@@ -917,7 +1041,7 @@ export function App() {
         <div className="product-mark">TaskChute</div>
         <nav aria-label="メインナビゲーション">
           <button type="button" className={view === "today" ? "active" : ""} aria-current={view === "today" ? "page" : undefined}
-            disabled={mutationLocked} onClick={() => { setView("today"); setError(null); }}>今日</button>
+            disabled={mutationLocked} onClick={() => void openTodayView()}>今日</button>
           <button type="button" className={view === "settings" ? "active" : ""} aria-current={view === "settings" ? "page" : undefined}
             disabled={mutationLocked || day.section_configuration_required} onClick={() => void openSettings("section")}>設定</button>
         </nav>
@@ -1023,12 +1147,60 @@ export function App() {
       <header className="day-header">
         <div>
           <p className="eyebrow">TaskChuteDay</p>
-          <h1>{day.taskchute_day.logical_date}</h1>
+          <div className="day-navigation" aria-label="日付ナビゲーション">
+            <button type="button" className="secondary" aria-label="前の日" disabled={mutationLocked}
+              onClick={() => void navigateToDay(shiftLogicalDate(day.taskchute_day.logical_date, -1))}>‹</button>
+            <div className="day-date-picker">
+              <button type="button" className="day-date-trigger" ref={calendarTriggerRef}
+                aria-label={`${formatLogicalDateLabel(day.taskchute_day.logical_date)}、日付を選択`}
+                aria-haspopup="dialog" aria-expanded={calendarOpen} disabled={mutationLocked}
+                onClick={() => calendarOpen ? closeCalendar() : openCalendar()}>
+                {formatLogicalDateLabel(day.taskchute_day.logical_date)}
+              </button>
+              {calendarOpen && calendarFocusedDate && (() => {
+                const focusedMonth = Temporal.PlainDate.from(calendarFocusedDate);
+                return (
+                  <div className="calendar-popover" role="dialog" aria-modal="false"
+                    aria-label={`${formatCalendarMonth(calendarFocusedDate)}のカレンダー`}
+                    onKeyDown={handleCalendarKeyDown}>
+                    <div className="calendar-month-heading" aria-live="polite">{formatCalendarMonth(calendarFocusedDate)}</div>
+                    <div className="calendar-grid" role="grid" aria-label="日付" ref={calendarGridRef}>
+                      {["月", "火", "水", "木", "金", "土", "日"].map((weekday) => (
+                        <span className="calendar-weekday" role="columnheader" key={weekday}>{weekday}</span>
+                      ))}
+                      {calendarMonthDates(calendarFocusedDate).map((logicalDate) => {
+                        const candidate = Temporal.PlainDate.from(logicalDate);
+                        const selected = logicalDate === day.taskchute_day.logical_date;
+                        const today = logicalDate === currentLogicalDate;
+                        const outsideMonth = candidate.month !== focusedMonth.month || candidate.year !== focusedMonth.year;
+                        const suffix = [selected ? "選択中" : "", today ? "今日" : "", outsideMonth ? "表示月外" : ""]
+                          .filter(Boolean).join("、");
+                        return (
+                          <button type="button" role="gridcell" className={`calendar-day${outsideMonth ? " outside-month" : ""}`}
+                            key={logicalDate} data-calendar-date={logicalDate} tabIndex={logicalDate === calendarFocusedDate ? 0 : -1}
+                            aria-selected={selected} aria-current={today ? "date" : undefined}
+                            aria-label={`${formatLogicalDateLabel(logicalDate)}${suffix ? `、${suffix}` : ""}`}
+                            onClick={() => void selectCalendarDate(logicalDate)}>{candidate.day}</button>
+                        );
+                      })}
+                    </div>
+                    <p className="sr-only">矢印キーで日付、PageUpとPageDownで月を移動し、Enterで選択、Escapeで閉じます。</p>
+                  </div>
+                );
+              })()}
+            </div>
+            <button type="button" className="secondary" aria-label="次の日" disabled={mutationLocked}
+              onClick={() => void navigateToDay(shiftLogicalDate(day.taskchute_day.logical_date, 1))}>›</button>
+            <button type="button" className="secondary" disabled={mutationLocked || day.is_current}
+              onClick={() => void navigateToDay()}>今日</button>
+          </div>
         </div>
       </header>
 
       <div className="day-toolbar" aria-label="Day controls">
-        <button type="button" className="secondary" disabled={mutationLocked} onClick={() => openDraft(null)}>＋ Taskを追加</button>
+        <button type="button" className="secondary"
+          disabled={mutationLocked || !day.planning_enabled || day.section_configuration_required}
+          onClick={() => openDraft(null)}>＋ Taskを追加</button>
         <label className="completed-toggle">
           <input type="checkbox" checked={showCompleted} onChange={(event) => setShowCompleted(event.target.checked)} />
           実行済みを表示
@@ -1042,7 +1214,14 @@ export function App() {
       )}
       {error && <p role="alert" className="error">{error}</p>}
 
-      {day.section_configuration_required && (
+      {day.establishment_state === "future_preview" && (
+        <p className="day-state-notice">未来日のプレビューです。見るだけではDayは確定されません。最初のTask追加が成功した時に確定されます。</p>
+      )}
+      {day.establishment_state === "past_record_none" && (
+        <p className="day-state-notice">記録のない過去日です。この日には確定済みのDayがないため、読み取り専用で表示しています。</p>
+      )}
+
+      {day.is_current && day.section_configuration_required && (
         <section className="panel configuration-gate" aria-label="初期Section時間帯設定">
           <h2>Section時間帯を確定</h2>
           <p>既存Sectionの時間を明示してください。全TaskChuteDayを隙間なく連続して覆う必要があります。</p>
@@ -1076,7 +1255,9 @@ export function App() {
                 onClick={(event) => focusSurface(event.currentTarget)}
               >
                 <div><strong>{section.title}</strong><span>{section.id === null ? "時間帯なし" : `${formatLogicalMinute(section.logical_start_minute)}–${formatLogicalMinute(section.logical_end_minute)}`} · {completedCount}/{section.entries.length} 実行済み · 見積 {formatEstimate(section.estimate_total_seconds)}</span></div>
-                <button type="button" className="add-task-button" aria-label={`${section.title}にTaskを追加`} title={`${section.title}にTaskを追加`} disabled={mutationLocked} onClick={(event) => { event.stopPropagation(); openDraft(section.id); }}>＋</button>
+                <button type="button" className="add-task-button" aria-label={`${section.title}にTaskを追加`} title={`${section.title}にTaskを追加`}
+                  disabled={mutationLocked || !day.planning_enabled || day.section_configuration_required}
+                  onClick={(event) => { event.stopPropagation(); openDraft(section.id); }}>＋</button>
               </div>
 
               {draftTask?.sectionId === section.id && (
@@ -1102,7 +1283,7 @@ export function App() {
                     {entry.lifecycle_state === "completed" ? (
                       <span className="execution-control completed" aria-label={executionLabel(entry)} title={executionLabel(entry)}>✓</span>
                     ) : (
-                      <button type="button" className={`execution-control ${isRunning ? "running" : "planned"}`} aria-label={executionLabel(entry)} title={executionLabel(entry)} disabled={mutationLocked || (entry.lifecycle_state === "planned" ? day.active_execution !== null : !canComplete)} onClick={() => {
+                      <button type="button" className={`execution-control ${isRunning ? "running" : "planned"}`} aria-label={executionLabel(entry)} title={executionLabel(entry)} disabled={!day.is_current || mutationLocked || (entry.lifecycle_state === "planned" ? day.active_execution !== null : !canComplete)} onClick={() => {
                         if (entry.lifecycle_state === "planned") void start(entry.id);
                         else if (canComplete) void complete(entry.id);
                       }}>{isRunning ? "■" : "▶"}</button>
@@ -1110,22 +1291,22 @@ export function App() {
                     <div className="task-main">
                       <div className="task-identity"><strong>{entry.task.title}</strong>{day.next_entry?.id === entry.id && <span className="next-label">Next</span>}</div>
                       <div className="task-reorder-controls" role="group" aria-label={`${entry.task.title}の並び替え`} onClick={(event) => event.stopPropagation()}>
-                        <button type="button" className="icon-button" aria-label={`${entry.task.title}を上へ`} title="上へ" disabled={mutationLocked || !canMoveUp}
+                        <button type="button" className="icon-button" aria-label={`${entry.task.title}を上へ`} title="上へ" disabled={mutationLocked || !day.planning_enabled || !canMoveUp}
                           onClick={(event) => { event.stopPropagation(); void moveEntry(section.id, entry.id, -1); }}>↑</button>
-                        <button type="button" className="icon-button" aria-label={`${entry.task.title}を下へ`} title="下へ" disabled={mutationLocked || !canMoveDown}
+                        <button type="button" className="icon-button" aria-label={`${entry.task.title}を下へ`} title="下へ" disabled={mutationLocked || !day.planning_enabled || !canMoveDown}
                           onClick={(event) => { event.stopPropagation(); void moveEntry(section.id, entry.id, 1); }}>↓</button>
                       </div>
                     </div>
                     <span className="project-name">{entry.task.project?.title ?? "—"}</span>
                     <select aria-label={`${entry.task.title}のSection`} value={entry.section_id ?? ""}
-                      disabled={mutationLocked || entry.lifecycle_state !== "planned" || entry.routine !== null}
+                      disabled={mutationLocked || !day.planning_enabled || entry.lifecycle_state !== "planned" || entry.routine !== null}
                       onClick={(event) => event.stopPropagation()} onChange={(event) => void changeSection(entry, event.target.value || null)}>
                       <option value="">Sectionなし</option>
                       {day.sections.map((candidate) => <option value={candidate.id} key={candidate.id}>{candidate.title}</option>)}
                     </select>
                     <div className="routine-cell" onClick={(event) => event.stopPropagation()}>
                       {entry.routine && <span className="routine-badge">Routine</span>}
-                      {entry.lifecycle_state === "planned" && entry.routine === null && (
+                      {day.is_current && entry.lifecycle_state === "planned" && entry.routine === null && (
                         routineDraft?.entryId === entry.id
                           ? <div className="routine-editor">
                               <label>終了日（空欄は終了なし）<input type="date" min={day.taskchute_day.logical_date}
@@ -1136,9 +1317,9 @@ export function App() {
                           : <button type="button" className="routine-action" disabled={mutationLocked}
                               onClick={(event) => { event.stopPropagation(); setRoutineDraft({ entryId: entry.id, endDate: "" }); }}>Routine化</button>
                       )}
-                      {entry.routine?.can_end && <button type="button" className="routine-action" disabled={mutationLocked}
+                      {day.is_current && entry.routine?.can_end && <button type="button" className="routine-action" disabled={mutationLocked}
                         onClick={(event) => { event.stopPropagation(); void endRoutine(entry); }}>Routineを終了</button>}
-                      {entry.routine && !entry.routine.can_end && <span className="routine-ended">終了済み</span>}
+                      {entry.routine && (!day.is_current || !entry.routine.can_end) && <span className="routine-ended">{entry.routine.can_end ? "Routine" : "終了済み"}</span>}
                       {entry.lifecycle_state !== "planned" && entry.routine === null && <span className="muted">—</span>}
                     </div>
                     <span className="estimate-cell">
@@ -1146,7 +1327,7 @@ export function App() {
                         onChange={(event) => setEditingEstimate({ entryId: entry.id, minutes: event.target.value })}
                         onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void commitEstimate(entry.id); }
                           else if (event.key === "Escape") { event.preventDefault(); setEditingEstimate(null); } }} />
-                        : <button type="button" className="estimate-button" aria-label={`${entry.task.title}の見積`} disabled={mutationLocked || entry.lifecycle_state !== "planned" || entry.routine !== null}
+                        : <button type="button" className="estimate-button" aria-label={`${entry.task.title}の見積`} disabled={mutationLocked || !day.planning_enabled || entry.lifecycle_state !== "planned" || entry.routine !== null}
                           onClick={() => setEditingEstimate({ entryId: entry.id, minutes: entry.estimate_seconds ? String(entry.estimate_seconds / 60) : "" })}>{formatEstimate(entry.estimate_seconds)}</button>}
                     </span>
                     <span className="planned-start-cell">
@@ -1156,7 +1337,7 @@ export function App() {
                         onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void commitPlannedStart(entry); }
                           else if (event.key === "Escape") { event.preventDefault(); setEditingPlannedStart(null); } }} />
                         : <button type="button" className="planned-start-button" aria-label={`${entry.task.title}の開始予定`}
-                          disabled={mutationLocked || entry.lifecycle_state !== "planned" || entry.routine !== null}
+                          disabled={mutationLocked || !day.planning_enabled || entry.lifecycle_state !== "planned" || entry.routine !== null}
                           onClick={() => setEditingPlannedStart({ entryId: entry.id,
                             value: entry.planned_start_minute === null ? "" : formatLogicalMinute(entry.planned_start_minute) })}>
                           {entry.planned_start_minute === null ? "—" : formatLogicalMinute(entry.planned_start_minute)}

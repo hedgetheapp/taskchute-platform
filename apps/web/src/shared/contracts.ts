@@ -61,7 +61,19 @@ export interface SectionProjection {
   entries: EntryProjection[];
 }
 
-export interface CurrentTaskChuteDayProjection {
+interface TaskChuteDayProjectionBase {
+  is_current: boolean;
+  planning_enabled: boolean;
+  placement_revision: number;
+  section_configuration_required: boolean;
+  sections: SectionProjection[];
+  unsectioned_entries: EntryProjection[];
+  active_execution: ExecutionProjection | null;
+  next_entry: EntryProjection | null;
+}
+
+export interface EstablishedTaskChuteDayProjection extends TaskChuteDayProjectionBase {
+  establishment_state: "established";
   taskchute_day: {
     id: string;
     logical_date: string;
@@ -70,13 +82,21 @@ export interface CurrentTaskChuteDayProjection {
     establishment_timezone: string;
     establishment_boundary_minutes: number;
   };
-  placement_revision: number;
-  section_configuration_required: boolean;
-  sections: SectionProjection[];
-  unsectioned_entries: EntryProjection[];
-  active_execution: ExecutionProjection | null;
-  next_entry: EntryProjection | null;
 }
+
+export interface VirtualTaskChuteDayProjection extends TaskChuteDayProjectionBase {
+  establishment_state: "future_preview" | "past_record_none";
+  taskchute_day: {
+    id: null;
+    logical_date: string;
+    start_instant: string | null;
+    end_instant: string | null;
+    establishment_timezone: string | null;
+    establishment_boundary_minutes: number | null;
+  };
+}
+
+export type CurrentTaskChuteDayProjection = EstablishedTaskChuteDayProjection | VirtualTaskChuteDayProjection;
 
 export interface ExecutionProjection {
   id: string;
@@ -102,6 +122,7 @@ export interface AddTaskToDayRequest {
   project_id: string | null;
   title: string;
   taskchute_day_id: string;
+  logical_date?: string;
   section_id: string | null;
   expected_placement_revision: number;
 }

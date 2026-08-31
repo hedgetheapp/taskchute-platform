@@ -66,8 +66,10 @@ export const api = {
   logout(): Promise<unknown> {
     return requestJson("/api/auth/sign-out", jsonPost("", {}));
   },
-  loadDay(): Promise<CurrentTaskChuteDayProjection> {
-    return requestJson("/api/v1/taskchute-days/current");
+  loadDay(logicalDate?: string): Promise<CurrentTaskChuteDayProjection> {
+    return requestJson(logicalDate
+      ? `/api/v1/taskchute-days/by-logical-date?logical_date=${encodeURIComponent(logicalDate)}`
+      : "/api/v1/taskchute-days/current");
   },
   loadProjects(): Promise<ProjectListProjection> {
     return requestJson("/api/v1/projects");
@@ -76,7 +78,9 @@ export const api = {
     return requestJson("/api/v1/projects", jsonPost("", body));
   },
   addTask(body: AddTaskToDayRequest): Promise<unknown> {
-    return requestJson("/api/v1/taskchute-days/current/entries", jsonPost("", body));
+    return requestJson(body.logical_date
+      ? "/api/v1/taskchute-days/by-logical-date/entries"
+      : "/api/v1/taskchute-days/current/entries", jsonPost("", body));
   },
   reorderEntries(body: ReorderEntriesRequest): Promise<ReorderEntriesResult> {
     return requestJson("/api/v1/taskchute-days/current/entries/reorder", jsonPost("", body));

@@ -3,7 +3,8 @@ import { addTaskToDay, isAddTaskToDayRequest } from "./application/add-task-to-d
 import { createProject, isCreateProjectRequest } from "./application/create-project";
 import { loadProjects } from "./application/load-projects";
 import { HttpError } from "./application/errors";
-import { loadCurrentTaskChuteDay } from "./application/load-current-day";
+import { loadCurrentTaskChuteDay, loadTaskChuteDayByLogicalDate } from "./application/load-current-day";
+import { isLogicalDate } from "./domain/taskchute-day";
 import { completeEntry, isCompleteEntryRequest, isStartEntryRequest, startEntry } from "./application/entry-lifecycle";
 import { isMoveEntryRequest, isSetEntryEstimateRequest, moveEntry, setEntryEstimate } from "./application/entry-planning";
 import { isReorderEntriesRequest, reorderEntries } from "./application/reorder-entries";
@@ -50,6 +51,13 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (request.method === "GET" && url.pathname === "/api/v1/taskchute-days/current") {
     return Response.json(await loadCurrentTaskChuteDay(env.APP_DB, principal.appUserId));
   }
+  if (request.method === "GET" && url.pathname === "/api/v1/taskchute-days/by-logical-date") {
+    const logicalDate = url.searchParams.get("logical_date");
+    if (!logicalDate || !isLogicalDate(logicalDate)) {
+      throw new HttpError(400, "malformed_request", "Invalid logical date");
+    }
+    return Response.json(await loadTaskChuteDayByLogicalDate(env.APP_DB, principal.appUserId, logicalDate));
+  }
   if (request.method === "GET" && url.pathname === "/api/v1/projects") {
     return Response.json(await loadProjects(env.APP_DB, principal.appUserId));
   }
@@ -60,7 +68,16 @@ async function route(request: Request, env: Env): Promise<Response> {
   }
   if (request.method === "POST" && url.pathname === "/api/v1/taskchute-days/current/entries") {
     const body = await readBoundedJson(request);
-    if (!isAddTaskToDayRequest(body)) throw new HttpError(400, "malformed_request", "Invalid AddTaskToDay request");
+    if (!isAddTaskToDayRequest(body) || body.logical_date !== undefined) {
+      throw new HttpError(400, "malformed_request", "Invalid current-Day AddTaskToDay request");
+    }
+    return Response.json(await addTaskToDay(env.APP_DB, principal.appUserId, body));
+  }
+  if (request.method === "POST" && url.pathname === "/api/v1/taskchute-days/by-logical-date/entries") {
+    const body = await readBoundedJson(request);
+    if (!isAddTaskToDayRequest(body) || body.logical_date === undefined) {
+      throw new HttpError(400, "malformed_request", "Invalid logical-date AddTaskToDay request");
+    }
     return Response.json(await addTaskToDay(env.APP_DB, principal.appUserId, body));
   }
   if (request.method === "POST" && url.pathname === "/api/v1/taskchute-days/current/entries/reorder") {

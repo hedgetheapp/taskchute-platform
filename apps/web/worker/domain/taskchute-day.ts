@@ -50,6 +50,14 @@ interface TemporalNamespace {
   };
 }
 
+export function isLogicalDate(value: string): boolean {
+  try {
+    return /^\d{4}-\d{2}-\d{2}$/.test(value) && PolyfillTemporal.PlainDate.from(value).toString() === value;
+  } catch {
+    return false;
+  }
+}
+
 function temporal(): TemporalNamespace {
   const namespace = (globalThis as typeof globalThis & { Temporal?: TemporalNamespace }).Temporal;
   return namespace ?? PolyfillTemporal;
@@ -144,6 +152,25 @@ export function resolveTaskChuteDay(nowInstant: string, settings: TaskChuteDaySe
     logicalDate: logicalDate.toString(),
     startInstant: resolveBoundaryInstant(logicalDate, settings),
     endInstant: resolveBoundaryInstant(nextDate, settings),
+    timezone: settings.timezone,
+    boundaryMinutes: settings.boundaryMinutes,
+    disambiguation: "compatible",
+  };
+}
+
+export function resolveTaskChuteDayForLogicalDate(
+  logicalDate: string,
+  settings: TaskChuteDaySettings,
+): ResolvedTaskChuteDay {
+  if (!isLogicalDate(logicalDate)) throw new Error("Invalid logical date");
+  if (!Number.isInteger(settings.boundaryMinutes) || settings.boundaryMinutes < 0 || settings.boundaryMinutes > 1439) {
+    throw new Error("Invalid TaskChuteDay boundary");
+  }
+  const date = PolyfillTemporal.PlainDate.from(logicalDate);
+  return {
+    logicalDate,
+    startInstant: resolveBoundaryInstant(date, settings),
+    endInstant: resolveBoundaryInstant(date.add({ days: 1 }), settings),
     timezone: settings.timezone,
     boundaryMinutes: settings.boundaryMinutes,
     disambiguation: "compatible",
