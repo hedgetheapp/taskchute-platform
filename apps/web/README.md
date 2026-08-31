@@ -23,7 +23,28 @@ Cloudflare Access is optional and is not required by this initial posture. The p
 
 D-049 defines the initial production target but does not by itself prove that the resources exist. The target is the named `production` Wrangler environment, Worker `taskchute-web-production`, and separate D1 databases `taskchute-auth-production` / `taskchute-app-production` using the `apac` location hint. The public Worker must keep `BOOTSTRAP_ENABLED=false`; production initialization uses a loopback-only local Worker with explicitly remote production D1 bindings and ignored secret material. Do not copy non-production domain history into production, enable public signup, or enable bootstrap on the public Worker.
 
-After the tracked environment contains the actual created resource IDs, build by setting `CLOUDFLARE_ENV=production` before `npm run build`. The generated config is authoritative for dry-run and deploy. Initial bootstrap, migration, deploy, backup, or recovery remains an explicitly approved operator action; Time Travel restore is never automatic.
+The tracked production bindings are:
+
+- `AUTH_DB`: `taskchute-auth-production` / `c69df774-69c0-43a5-b346-b202ef4a92c3`
+- `APP_DB`: `taskchute-app-production` / `61f07b2b-8bdd-4f5d-853e-6af59afd343c`
+
+Build and inspect the production output with:
+
+```powershell
+$env:CLOUDFLARE_ENV = "production"
+npm run build
+Remove-Item Env:CLOUDFLARE_ENV
+Get-Content -Raw dist/taskchute_web/wrangler.json
+```
+
+The generated config is authoritative for dry-run and deploy:
+
+```text
+npx wrangler deploy --config dist/taskchute_web/wrangler.json --dry-run --outdir .wrangler/production-dry-run
+npx wrangler deploy --config dist/taskchute_web/wrangler.json
+```
+
+Initial bootstrap, migration, deploy, backup, or recovery remains an explicitly approved operator action; Time Travel restore is never automatic. Never deploy the public production Worker with `BOOTSTRAP_ENABLED=true`.
 
 ## Persistent non-production configuration
 

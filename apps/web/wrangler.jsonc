@@ -41,6 +41,28 @@
           "migrations_dir": "migrations/app"
         }
       ]
+    },
+    "production": {
+      "name": "taskchute-web-production",
+      "workers_dev": true,
+      "vars": {
+        "RUNTIME_ENV": "production",
+        "BOOTSTRAP_ENABLED": "false"
+      },
+      "d1_databases": [
+        {
+          "binding": "AUTH_DB",
+          "database_name": "taskchute-auth-production",
+          "database_id": "c69df774-69c0-43a5-b346-b202ef4a92c3",
+          "migrations_dir": "migrations/auth"
+        },
+        {
+          "binding": "APP_DB",
+          "database_name": "taskchute-app-production",
+          "database_id": "61f07b2b-8bdd-4f5d-853e-6af59afd343c",
+          "migrations_dir": "migrations/app"
+        }
+      ]
     }
   },
   "observability": {
