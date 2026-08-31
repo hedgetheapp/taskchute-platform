@@ -1,6 +1,6 @@
 # Test Matrix
 
-First Server + Web vertical slice、D-038 B1 / B3、D-039 B2、D-040 Minimal Routine R1、Day Table UI-1、D-041 / D-042 Day Navigation v0.1は実装・GitHub `main`統合済み。Day Navigation v0.1 source / local automated / signed-in general browser verificationはPASS、logout→relogin real-browser subcase / persistent nonprod / productionは`NOT_RUN`。B1 / B2 / B3 / R1 local + persistent non-production verificationはPASS。UI-1 source / automated / real local browser verificationはPASS、persistent nonprod / production UI-1は`NOT_RUN`。B3 remote raw console warning / error exact countは`NOT_VERIFIED`。R1 real-browser controlled inclusive end-dateとdeployed non-null inclusive-date subcheckは`TOOLING_BLOCKED / NOT_VERIFIED`。B1 / B2 / B3 / R1 production verificationは`NOT_RUN`。Product runtime全体はまだVerified / Releasedではない。
+First Server + Web vertical slice、D-038 B1 / B3、D-039 B2、D-040 Minimal Routine R1、Day Table UI-1、D-041 / D-042 Day Navigation v0.1は実装・GitHub `main`統合済み。Day Navigation v0.1 source / local automated / signed-in general browser / persistent nonprod general verificationはPASS。remote logout→reloginとremote未実施の詳細subcaseは`NOT_RUN`またはlocal-only evidence、productionは`NOT_RUN`。B1 / B2 / B3 / R1 local + persistent non-production verificationはPASS。UI-1 source / automated / real local browser verificationはPASS。B3 remote raw console warning / error exact countは`NOT_VERIFIED`。R1 real-browser controlled inclusive end-dateとdeployed non-null inclusive-date subcheckは`TOOLING_BLOCKED / NOT_VERIFIED`。B1 / B2 / B3 / R1 production verificationは`NOT_RUN`。Product runtime全体はまだVerified / Releasedではない。
 
 この文書はverification requirementとcurrent evidenceの正本とする。
 
@@ -168,21 +168,21 @@ Cross-day lifecycle testでは、前日Entryのactive Executionを翌TaskChuteDa
 
 | ID | Area | Requirement | Contract | Evidence |
 |---|---|---|---|---|
-| DAY-NAV-01 | Future read | 未establishの未来logical dateをusable projectionとして返し、TaskChuteDay / Section historical contextを作らず、repeated readもno-writeとする | Approved (D-041) | PASS |
+| DAY-NAV-01 | Future read | 未establishの未来logical dateをusable projectionとして返し、TaskChuteDay / Section historical contextを作らず、repeated readもno-writeとする | Approved (D-041) | PASS (LOCAL + NONPROD) |
 | DAY-NAV-02 | Preview | future preview後、establishment前にeffective Section configurationが変わればlater previewはnew configurationを反映でき、first viewはhistorical contextをfreezeしない | Approved (D-038, D-041) | PASS |
-| DAY-NAV-03 | Establishment | unestablished future Dayへの最初のsuccessful Task追加がthen-effective contextを持つDayをexactly one establishし、valid Task / Entry placementをatomicに保存してreloadできる | Approved (D-020, D-038, D-041) | PASS |
+| DAY-NAV-03 | Establishment | unestablished future Dayへの最初のsuccessful Task追加がthen-effective contextを持つDayをexactly one establishし、valid Task / Entry placementをatomicに保存してreloadできる | Approved (D-020, D-038, D-041) | PASS (LOCAL + NONPROD) |
 | DAY-NAV-04 | Failure | malformed / invalid / stale deterministic failureがrequested mutationなしのnewly established Dayだけを残さない | Approved (D-020, D-041) | PASS |
 | DAY-NAV-05 | Retry / concurrency | same logical mutation retryとconcurrent first mutationがone owner-scoped Day / context / Task / Entryへduplicateなしで収束する | Approved (D-020, D-041) | PASS |
 | DAY-NAV-06 | History | successful planningでestablishされた未来Day contextを後のSection / timezone / boundary設定変更でrewriteしない | Approved (D-017, D-038, D-041) | PASS |
 | DAY-NAV-07 | Routine | future Day viewはRoutineOccurrence / Routine Entryを作らず、既establish future Dayがcurrentになった場合はD-040 ensureがhistorical contextを維持してexactly once収束する | Approved (D-040, D-041) | PASS |
-| DAY-NAV-08 | Interaction | previous / next、calendar picker、Today return、`Shift+Left / Shift+Right`、accessible label / focusを提供し、text / calendar editing中にglobal shortcutを発火しない | Approved (D-041; canonical DESIGN) | PASS |
-| DAY-NAV-09 | Execution boundary | non-current Day view / planningからStart / Completeを拡張せず、current-Day execution semanticsを維持する | Approved (D-013, D-017, D-041) | PASS |
+| DAY-NAV-08 | Interaction | previous / next、calendar picker、Today return、`Shift+Left / Shift+Right`、accessible label / focusを提供し、text / calendar editing中にglobal shortcutを発火しない | Approved (D-041; canonical DESIGN) | PASS (LOCAL + NONPROD observed interaction) |
+| DAY-NAV-09 | Execution boundary | non-current Day view / planningからStart / Completeを拡張せず、current-Day execution semanticsを維持する | Approved (D-013, D-017, D-041) | PASS (LOCAL + NONPROD) |
 | DAY-NAV-10 | Security | arbitrary-date query / mutationをauthenticated principalからowner-scopedに解決し、cross-owner accessを拒否する | Approved (D-021, D-041) | PASS |
-| DAY-NAV-11 | Regression | Settings v0.1、UI-1 7列 / Routine列、Section / estimate / planned-start / reorder、current-Day Start / Completeを維持する | Approved regression contract | PASS |
-| DAY-NAV-12 | Past unestablished read | TaskChuteDay rowがないpast logical dateをempty / record-none projectionとして返し、Day / Section context / RoutineOccurrence / Routine Entryを作らずrepeated read / reloadもno-writeとする | Approved (D-042) | PASS |
+| DAY-NAV-11 | Regression | Settings v0.1、UI-1 7列 / Routine列、Section / estimate / planned-start / reorder、current-Day Start / Completeを維持する | Approved regression contract | PASS (LOCAL + NONPROD) |
+| DAY-NAV-12 | Past unestablished read | TaskChuteDay rowがないpast logical dateをempty / record-none projectionとして返し、Day / Section context / RoutineOccurrence / Routine Entryを作らずrepeated read / reloadもno-writeとする | Approved (D-042) | PASS (LOCAL + NONPROD) |
 | DAY-NAV-13 | Past non-fabrication | unestablished past dateのview前後にcurrent Section configurationが変わっても、当時存在したかのようなhistorical interval / Section contextをsynthesize / persistしない | Approved (D-017, D-038, D-042) | PASS |
-| DAY-NAV-14 | Past mutation boundary | Webはpast unestablished DayのAdd / planning / reorder / lifecycle / Routine mutationをusableにせず、direct Server mutationもDB変更なしでrejectする | Approved (D-020, D-021, D-042) | PASS |
-| DAY-NAV-15 | Established past regression | established past Dayをexisting frozen canonical context / historyからreadし、later Section settingsでrewriteせず、Day Navigation v0.1はnew past editing semanticsを追加しない | Approved (D-017, D-038, D-042) | PASS |
+| DAY-NAV-14 | Past mutation boundary | Webはpast unestablished DayのAdd / planning / reorder / lifecycle / Routine mutationをusableにせず、direct Server mutationもDB変更なしでrejectする | Approved (D-020, D-021, D-042) | PASS (LOCAL; NONPROD Web read-only only) |
+| DAY-NAV-15 | Established past regression | established past Dayをexisting frozen canonical context / historyからreadし、later Section settingsでrewriteせず、Day Navigation v0.1はnew past editing semanticsを追加しない | Approved (D-017, D-038, D-042) | PASS (LOCAL + NONPROD observed history) |
 
 Day Navigation v0.1 local implementation evidence — 2026-08-31:
 
@@ -196,7 +196,25 @@ Day Navigation v0.1 local implementation evidence — 2026-08-31:
 - logout → relogin → current Day real-browser subcase: `NOT_RUN`（final focused runではcredential handlingを行わず、explicit logout / 401 session-expiry resetのautomated Web `2 PASS`を記録）
 - local APP DB: future preview no-write、first establishmentのexactly one Day / context / Task / Entry、`PRAGMA quick_check = ok`、FK violations `0`、active Execution `0`: `PASS`
 - migration追加 / dependency追加 / new Material Decision: `NO / NO / NO`
-- persistent nonprod / production: `NOT_RUN / NOT_RUN`、Released: `NO`
+- persistent nonprod general verification / production: `PASS / NOT_RUN`、Released: `NO`
+
+Day Navigation v0.1 persistent nonprod evidence — 2026-08-31:
+
+- exact source / deploy: `main@164326d11829faf12659c513037a1e172c3875b7` → existing `taskchute-web-nonprod` Worker version `022e57a5-088f-4d9f-8c3a-ae5b76c3df42`。pre-deploy version `22578f99-6256-4027-a345-ce523c67d241`、rollback `NOT_RUN / NOT_REQUIRED`
+- pre-deploy local gate: focused Day Navigation `12 / 12`、Worker / D1 `113 / 113`、Web `74 / 74`、migration regression `1 scenario / 46 checks`、typecheck / nonprod build / Wrangler dry-run / `git diff --check`: `PASS`。Wrangler sandbox-external log-write warningはあったが各commandはexit 0
+- deployment posture: `RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、tracked canonical APP/AUTH bindings、production resource混入なし、APP/AUTH pending migrationsなし。root `200`、unauthenticated protected API `401`、bootstrap POST `NOT_RUN`
+- private ignored APP export: `98,979 bytes`、SHA-256 `507091E9843B8B87C92BFED48C23217A81A847877D1EF850BA4BCCFDDD2C6B17`、isolated restore / `quick_check=ok` / FK violations `0`: `PASS`。private path / row contentは非公開、commitなし
+- `DAY-NAV-01 NONPROD_PASS`: future preview `2026-09-02`はDay / Entry / RoutineOccurrence `0 -> 0`でrepeated/reloaded viewもno-write。`DAY-NAV-02`のeffective-config-change freshnessはlocal automated evidenceのみ
+- `DAY-NAV-03 NONPROD_PASS`: future `2026-09-03`のfirst successful normal Web Task addがDayをatomic establishしTask / Entry `+1 / +1`、historical Section contexts `+3`。estimate `25分`、Section `Evening`、planned start `21:15`、planned lifecycle、reload persistenceを確認。`DAY-NAV-04 / 05` failure / retry / concurrencyはremote `NOT_RUN`
+- `DAY-NAV-08 / 09 NONPROD_PASS`: calendar picker、previous / next、`Shift+Left / Shift+Right`、Today return、non-current Start disabled、console warnings / errors `0 / 0`。calendar focus / editing isolationの詳細はlocal automated / local browser evidenceを維持
+- `DAY-NAV-11 NONPROD_PASS`: Settings Section / Project、Section draft navigation保持 / explicit Cancel、Sidebar `240px`、UI-1 7列 / independent Routine列、future planning、current-Day Add → Start → Runner → Complete → reloadを確認。final active Execution `0`
+- `DAY-NAV-12 NONPROD_PASS`: past record-none `2026-08-27`はrepeated view後もDay / Entry / RoutineOccurrence `0`、Add disabled、historical context / Routine / Task / Entry backfillなし
+- `DAY-NAV-14`はdeployed Web read-only portionのみ`NONPROD_PASS`。direct Server mutation rejectionはremoteで新規実行せず、local automated evidenceを維持
+- `DAY-NAV-15 NONPROD_PASS`: established past `2026-08-30`のexisting frozen Section / Entry / Routine historyをread-only表示し、placement revision `13`、viewによるOperation追加なし。later-config-rewrite dimensionはremote `NOT_RUN`
+- remote未実施境界: logout → relogin、cross-owner、`DAY-NAV-02` config freshness、`04` failure、`05` retry / concurrency、`06` later-config freeze、`07` future-becomes-current Routine convergence、`13` config-change non-fabrication、`14` direct Server rejection。該当contractのlocal automated `PASS`は維持するがremote PASSへ昇格しない
+- final integrity: APP / AUTH `quick_check=ok`、FK violations `0 / 0`、AUTH users / accounts / sessions `1 / 1 / 2`、active Execution `0`、duplicate active groups `0`
+- intentional APP delta: Days `+2`、Day Section contexts `+6`、Tasks `+2`、Entries `+2`、Executions `+1`、Operations `+8`、RoutineOccurrences `+0`。Section configuration / Routine definitionsは不変。`+2 Days`はcurrent-Day lazy establishment + future verification Day。preview-only `2026-09-02`とpast record-none `2026-08-27`はno-write。verification dataはcleanupせず残置し、Product defaultとして扱わない
+- correctness regression / unexpected migration: `NONE / NONE`。production `NOT_RUN`、Released `NO`
 
 future Routine previewとpast historical correction / backfillはv0.1 scope外である。
 
