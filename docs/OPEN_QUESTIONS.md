@@ -150,7 +150,7 @@ Current implementation fact:
 - revision conflict時はlatest canonical configurationをreloadしてstale draftをresetし、ユーザーが再編集した場合だけnew head基準で保存する
 - infrastructure ambiguityではexact original UpdateSectionConfiguration operationだけをretry対象として保持する
 
-D-031〜D-037でDay planning / Routine target semanticsが追加され、D-038で次のDay dogfood persistence stagingとしてB1 / B2 / B3がApprovedされた。B1はPR #13で、D-039のB2 runtimeはcommit `316ad0d88f0f88d1445991904da587b1e0987dab`、D-038のB3 runtimeはcommit `2481c4916ca2f694f07d6808a4482bea28c79a80`で`main`へImplemented / Integrated済み。B1 / B2 / B3はlocal + persistent nonprod evidenceがPASS。B3 persistent nonprod raw console exact countは`NOT_VERIFIED`、B3 productionとB1 real Japanese IMEは`NOT_RUN`。Day Table foundationはcurrent `docs/DESIGN.md`へcanonical化済みで、UI-1 realignmentはcommit `da4a8c8316d60d942dc73fbd53bb90d15df5517b`として`main`へImplemented / Integrated済み。Settings navigation v0.1はcommit `51242b08e015817108010839cd5234959da2fed5`で`main`へImplemented / Integrated済みで、source review / persistent nonprod verificationはPASS。UI-2以後のbroader table capability、broader Project / Mode Settings、icon / accent、historical design branchの未reconcile scopeは未実装の境界を維持する。UI-1完了はR2Aのstructural prerequisiteを解除するが、D-034 overrideのcross-field coupling等の未決Material Product semanticsを解決しない。
+D-031〜D-037でDay planning / Routine target semanticsが追加され、D-038で次のDay dogfood persistence stagingとしてB1 / B2 / B3がApprovedされた。B1はPR #13で、D-039のB2 runtimeはcommit `316ad0d88f0f88d1445991904da587b1e0987dab`、D-038のB3 runtimeはcommit `2481c4916ca2f694f07d6808a4482bea28c79a80`で`main`へImplemented / Integrated済み。B1 / B2 / B3はlocal + persistent nonprod evidenceがPASS。B3 persistent nonprod raw console exact countは`NOT_VERIFIED`、B3 productionとB1 real Japanese IMEは`NOT_RUN`。Day Table foundationはcurrent `docs/DESIGN.md`へcanonical化済みで、UI-1 realignmentはcommit `da4a8c8316d60d942dc73fbd53bb90d15df5517b`として`main`へImplemented / Integrated済み。Settings navigation v0.1はcommit `51242b08e015817108010839cd5234959da2fed5`で`main`へImplemented / Integrated済みで、source review / persistent nonprod verificationはPASS。UI-2以後のbroader table capability、broader Project / Mode Settings、icon / accent、historical design branchの未reconcile scopeは未実装の境界を維持する。UI-1完了はR2Aのstructural prerequisiteを解除し、D-044 / D-045でfirst-slice Product semanticsとlegacy normalizationは解決した。physical override / command / migration implementationとbroader Routine scopeは引き続きOpenである。
 
 以下の具体方式・scopeはOpen:
 
@@ -268,20 +268,22 @@ D-034でProjected / Materialized Occurrence、field-level day override、Routine
 
 D-035 / D-036でeffective営業日 / 休日判定とinitial recurrence pattern setがApproved済み。
 
-D-040でdaily-only R1について、existing Entry conversion、minimal RoutineDefinition / RoutineOccurrence / Entry relation、current-Day lazy materialization、placement revision、defaults、inclusive end / Routine終了、minimal Web UXをApprovedした。D-043はRoutine-derived EntryにもSection / planned-start full synchronizationを適用し、null planned start + real default Sectionの旧R1 behaviorをsupersedeしたが、runtimeは未実装である。以下はR1を越えるbroader scopeまたは将来拡張としてOpenのまま維持する。
+D-040でdaily-only R1について、existing Entry conversion、minimal RoutineDefinition / RoutineOccurrence / Entry relation、current-Day lazy materialization、placement revision、defaults、inclusive end / Routine終了、minimal Web UXをApprovedした。D-043はRoutine-derived EntryにもSection / planned-start full synchronizationを適用し、D-044はcurrent-Day planned Routine EntryのSection-plan / estimate override、explicit scope choice、reset、default propagationをApprovedした。D-045はlegacy real Section + NULLのnormalization resultとauthority / fail-safe boundaryをApprovedした。いずれもruntime / migrationは未実装であり、以下はphysical implementationまたはbroader scopeとしてOpenのまま維持する。
 
 D-041は未来DayをviewするだけではRoutineOccurrence / Entryをmaterializeせず、Day Navigation v0.1にvirtual future Routine previewを含めない。D-040 current-Day lazy ensure以外のbroader future Routine projection / materializationは後続sliceのOpen scopeとして維持する。
 
 以下はOpen:
 
-- R1 minimal schemaを越えるfield override / schedule versionとbroader Routine persistence schema
+- R2A occurrence override presence / explicit NULLのexact physical schema、Routine default concurrency control、command / operation shape、index、set-based propagation implementation
+- R1 minimal schemaを越えるschedule versionとbroader Routine persistence schema
 - Projected Occurrenceをquery時に算出するexact algorithm / caching / pagination
 - R1 current-Day lazy ensure以外でphysical RoutineOccurrenceをmaterializeするimplementation boundary（Product semanticsはD-034でApproved）
 - Routine defaultからday-specific Task Note templateを適用するcopy / reference / revision strategy
 - Routine Taskのday-specific Task名 / Project overrideをEntry / Occurrence / dedicated contextのどこへ保持するか
 - schedule変更と既materialized Occurrenceをatomicにreconcileするcommand algorithm
 - R1 inclusive endを越えるtemporary stop / resume / delete stateのphysical representation
-- D-034の`今回だけ / Routineへ反映` choice UXとfield-level override persistence。R1ではRoutine由来EntryのSection / 開始予定 / 見積をread-onlyとしてsilent overrideを作らない。Section / planned-start pair自体の同期規則はD-043で解決済みだが、選択scopeへのoccurrence override / Routine default propagationは未決
+- R2A first sliceを越えるTask名 / Project / Mode / Note等のoverride unit、future / past editing、schedule / Skip / stop-resumeとscope-choice UX
+- one RoutineOccurrenceが将来0..* Entriesを持つ場合のfield authority / propagation単位
 - Routine default planned startが将来establishされたDay Section contextと両立しない場合のrecovery UX。R1 local candidateはpartial materializationせずsafe failureするが、default修正 / skip等の復旧導線は未決
 - long-range recurrence projectionのperformance / query limit
 - public holiday source / library / update mechanismとholiday data versioning

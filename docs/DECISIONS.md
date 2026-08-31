@@ -853,3 +853,71 @@ Section / planned-start value、canonical placement / order、manual tie-break c
 本DecisionはD-031の「開始予定clear時に現在Sectionを維持する」および「explicit Section変更時に開始予定をclearし、Sectionから時刻を設定しない」というclausesをsupersedeする。また、そのclausesをB2 command contractへ具体化したD-039のclear / explicit Section move behaviorと、D-040の「default planned startが`NULL`ならavailable default Sectionを使う」というRoutine materialization behaviorも同じ同期範囲でsupersedeする。D-031 / D-039 / D-040の記録と既存B2 / R1 verification evidenceはhistorical implementation recordとして保持し、黙って書き換えない。
 
 本DecisionはProduct / Domain semanticsをApprovedにするが、current runtimeの変更、migration、verification完了を意味しない。current runtimeはD-039の旧clear / move behaviorを実装したままであり、D-043 synchronizationは実装と新しいevidenceが揃うまで`NOT_IMPLEMENTED`とする。現時点ではmigrationを前提とせず、実装調査でschema / compatibility変更が必要と判明した場合は別途Material reviewへ戻す。
+
+## D-044 — Routine R2A current-Day field override and default propagation
+Status: Approved
+
+D-034のfield-level occurrence overrideと`今回だけ / Routineへ反映`を最初に実装するR2A sliceとして、current logical TaskChuteDayのplanned Routine-derived Entryだけを対象にする。
+
+### Editable units and lifecycle boundary
+
+- `Section + 開始予定`をD-043に従う一つの同期unitとして編集できる。
+- 見積は独立した一つのunitとして編集できる。
+- scope choiceはunitごとに行い、Entry全体へ一括適用しない。同じOccurrenceでSection-planを`今回だけ`、見積を`ルーティンに反映`とすることもできる。
+- Task名、Project、Mode、Note、future / past DayのRoutine編集、running / completed / interrupted Entry、future Routine preview、schedule editing、Skip、temporary stop / resume、broader recurrence editingはR2A first sliceへ含めない。
+- D-041 / D-042のnon-current Day boundaryとD-040 current-Day lazy materializationを維持する。
+
+### Candidate and explicit scope choice
+
+- userが対象unitを編集すると、まずlocal candidateを表示し、この時点ではServerへ書き込まない。
+- persistence前に`今回だけ`または`ルーティンに反映`を明示選択する。どちらもpreselectしない。
+- scope選択前のcancel / Escape / dismissはcandidateを破棄し、Server canonical valueへ戻してno-writeとする。
+- silent Routine write-backを行わない。
+
+### `今回だけ`
+
+- `今回だけ`は対象unitのpersistent occurrence overrideを作成または置換し、reload / restart後も維持する。
+- Section-plan overrideはSectionだけ、またはplanned startだけに分割せず、D-043の同期pairとして保持する。
+- estimateの明示`NULL`は「このOccurrenceには見積なし」、Section-planの`Sectionなし + planned start NULL`は「このOccurrenceにはplacement / planned startなし」という有効なoverride値である。
+- overrideなしとexplicit `NULL` overrideはDomain上区別する。exact physical representationは本Decisionで確定しない。
+- 後のRoutine default変更は、そのunitにexplicit overrideを持つOccurrenceを上書きしない。
+
+### `ルーティンに反映`
+
+- current occurrenceは編集値を保持し、対応するRoutineDefinition defaultを更新する。
+- current occurrenceに同unitのoverrideが存在した場合、success後はそのoverrideをclearし、current occurrenceは更新後defaultを継承する状態へ戻る。
+- already-materializedなcurrent / futureのplanned occurrenceのうち、同unitにoverrideがないものへnew defaultを反映する。
+- explicit overrideを持つOccurrence、past、running、completed、interrupted、その他historically protectedなstateはretroactiveに書き換えない。
+- unmaterialized future occurrenceは後にmaterializeされる時点でnew defaultを利用する。default propagationだけを理由にfuture TaskChuteDay / RoutineOccurrenceをmaterializeしない。
+- Section-planのcurrent value、Routine default、propagated effective valueはすべてD-043のpair invariantを満たす。
+
+### Return to current Routine default
+
+- overrideを持つunitのediting contextでは、`ルーティンの設定に戻す`相当のexplicit actionを提供できる。
+- resetは対象unitのOccurrence overrideをclearし、override作成時のhistorical defaultではなく、mutation時点のcurrent RoutineDefinition defaultを適用する。
+- resetはRoutineDefinitionを変更せず、`今回だけ / ルーティンに反映`を再選択させない。
+- Sectionとplanned startは一つのpairとして同時にresetする。
+
+normal Day Tableはeffective valueを表示し、overrideであることだけを示すpermanent badge / status chromeをR2A first sliceの必須要件としない。override stateはediting contextでreset action等に必要な範囲だけ示してよい。
+
+R2A occurrence overrideを永続化するAPP DB migrationはApprovedとする。ただし、exact column / table、override-present表現、default revision、command名 / request / result、operation command string、index、SQL propagation algorithmはimplementation designであり、本DecisionではApproved physical contractにしない。broader compatibility / destructive behaviorがD-045を越えて必要になった場合は、実装前にMaterial reviewへ戻す。
+
+## D-045 — D-043 legacy editable-state normalization
+Status: Approved
+
+D-039 / D-040 runtimeで成立し得るlegacy `real Section + planned start NULL`を、D-043のeditable planning invariantへ移行する際のnormalizationを次のとおり定める。
+
+### Planned editable state
+
+- editable planned recordまたはRoutine defaultがreal Sectionを持ちplanned startが`NULL`の場合、real Sectionを維持し、planned startをそのSectionのauthoritativeな`logical_start_minute`へ設定する。
+- ordinary planned Entryでは、established TaskChuteDayに保存されたhistorical Section contextをauthorityとする。
+- Routine defaultでは、intended Sectionのauthoritative origin / establishment contextを安全かつ一意に解決できる場合だけ、そのSection startを利用する。
+- Section名、sort order、current settings、別Dayのcontext等から時刻を推測しない。
+- authoritative Section startを一意に解決できない場合、値を捏造せず、Sectionを黙って外さず、partial normalizationを行わない。migration / transitionをno-partial-effectで停止し、incompatible legacy stateとしてexplicit reviewへ戻す。
+- legacy `Sectionなし + planned start NULL`はD-043と整合するため変更しない。
+
+### Historical protection and design boundary
+
+- running / completed / interrupted等のhistorically protected rowを、新しいeditable invariantへ見かけ上揃えるためにretroactiveに書き換えない。
+- prior runtime behaviorとverification evidenceはhistorical recordとして維持する。
+- 本DecisionはnormalizationのProduct-visible resultとauthority / failure boundaryを確定する。exact migration SQL、physical constraint、batching、diagnostic representationはimplementation designとして別途reviewする。

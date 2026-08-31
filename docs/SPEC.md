@@ -107,12 +107,13 @@ Status: Approved (D-031, D-039, D-043). D-039 runtime baseline: IMPLEMENTED / IN
 - Section / planned-start、canonical placement / order、manual tie-break consistency、placement revision exactly +1、operation resultをatomicに確定し、partial同期状態を残さない。
 - manual Reorderは開始予定なしcohort内または同一minute cohort内だけを許可し、異なるcohort / minuteやhistorical boundaryを越えない。
 - running / completed等のhistorical rowはplanned-start mutation / reorder対象にしない。
+- D-045 transitionでは、editable planned stateのlegacy `real Section + planned start NULL`を、established Dayのauthoritative historical Section contextにある当該Section startへnormalizeする。authoritative startを一意に解決できない場合は推測やpartial rewriteを行わずfail safelyとする。`Sectionなし + NULL`とhistorically protected rowはrewriteしない。
 
 `SetEntryPlannedStart` logical commandは`operation_id`、`entry_id`、`taskchute_day_id`、integerまたは`null`の`planned_start_minute`、`expected_placement_revision`を受け取る。ownerはauthenticated principalから解決する。同じoperation + semantic requestはreplayし、different-semantic reuseとstale revisionをpartial effectなしでrejectする。planned-start、Section、order、revision increment、operation resultはatomicに確定する。
 
 Startはplanned-startのnot-before制約を持たず、早期Startを許可する。Sectionなし Startのactual current Section配置は開始予定が`NULL`の場合だけ適用する。
 
-Routine由来Entryにも同じSection / planned-start synchronization ruleを適用する。ただしD-034の`今回だけ / Routineへ反映` choice、occurrence override persistence、Routine default propagationは別scopeであり、本節はその選択を確定しない。current runtimeはD-039の「planned-start clearでSection維持 / explicit Section moveでplanned-start clear」を実装したままで、D-043 targetとは一致していない。D-043のruntime実装・test evidence・必要なcompatibility reviewは後続incrementとする。
+Routine由来Entryにも同じSection / planned-start synchronization ruleを適用する。D-044はcurrent-Day planned Routine-derived Entryを対象とする最初のoverride/default propagation sliceを確定し、Section / planned-startを分割不能な一unitとして扱う。current runtimeはD-039の「planned-start clearでSection維持 / explicit Section moveでplanned-start clear」を実装したままで、D-043 / D-044 targetとは一致していない。runtime実装・APP migration・test evidenceは後続incrementとする。
 
 ## Lifecycle and Execution
 
@@ -163,6 +164,22 @@ R1はcurrent-Dayのplanned non-Routine Entryを起点とするdaily-only Routine
 - D-034の`今回だけ / Routineへ反映` choiceとfield override persistenceはR1 scope外のため、Routine由来EntryのSection / 開始予定 / 見積はR1 Day UIでは表示のみとし、既存の`MoveEntry` / `SetEntryPlannedStart` / `SetEntryEstimate` commandもserver mutation-timeでrejectする。Reorder / Start / Complete / `Routineを終了`は既存canonical ruleに従い利用できる。
 
 non-daily recurrence、future-range projection UI、schedule editing、field-level override、Skip、Day move、temporary stop/resume、Documents、Interrupt、statistics、native/offline clientはR1 scope外であり、broader Approved semantics / Open Questionを維持する。
+
+### Routine R2A current-Day override slice
+
+Status: Approved (D-044, D-045). Runtime / APP migration: NOT_IMPLEMENTED.
+
+- current logical TaskChuteDayのplanned Routine-derived Entryだけを対象に、`Section + 開始予定`の同期unitと、独立した見積unitを編集できる。
+- editはlocal candidateを先に作り、Server write前にunitごとの`今回だけ / ルーティンに反映`をexplicitに選択する。scopeはpreselectせず、cancel / Escape / dismissはno-writeでcanonical valueへ戻す。
+- `今回だけ`はreload後も残るfield-level occurrence overrideであり、no overrideとexplicit NULL overrideを区別する。estimate `NULL`と`Sectionなし + planned start NULL`はいずれもvalid explicit overrideである。
+- `ルーティンに反映`はcurrent effective valueとRoutineDefinition defaultを更新し、current occurrenceの同unit overrideをclearする。already-materializedなcurrent / futureのplannedかつnon-overridden occurrenceへnew defaultを反映するが、override済みまたはhistorically protectedなstateは変更しない。
+- default updateだけでfuture Day / Occurrenceをmaterializeしない。unmaterialized future occurrenceは後のD-040 materialization時にcurrent defaultを使う。
+- overrideから`ルーティンの設定に戻す`場合、current RoutineDefinition defaultを適用してoverrideだけをclearする。RoutineDefinition更新やscope再選択は行わない。
+- Section-plan edit / override / reset / propagationはD-043 pair invariantを維持する。
+- normal Day Tableへpermanent override badgeを要求しない。override stateはediting contextでreset等に必要な範囲だけ示す。
+- future / past Day、running / completed / interrupted、Task名 / Project / Mode / Note、schedule / Skip / stop-resume / broader recurrenceはfirst slice対象外とする。
+- D-045に従い、editable legacy Routine defaultのreal Section + NULLはauthoritative origin / establishment contextからSection startを一意に解決できる場合だけnormalizeし、解決不能ならno-partial-effectで停止する。
+- occurrence override persistenceにAPP migrationを利用することはApprovedだが、exact physical schema、default revision、command shape、index、SQL propagation algorithmは未確定である。
 
 ## Historical facts and projections
 

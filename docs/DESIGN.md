@@ -171,9 +171,11 @@ Routineは独立したtarget columnを持つ。
 
 Day Table UI-1でMinimal Routine R1のbadge / editor / end state / actionを独立したRoutine列へ移した。これはpresentation realignmentであり、D-040のpersistence / materialization / lifecycle semanticsを変更しない。
 
-D-034の`今回だけ / Routineへ反映` scope choiceとfield override persistenceが実装されるまで、Routine由来EntryのSection / 開始予定 / 見積はcurrent R1 contractどおりread-onlyとする。後続で編集を提供する場合、選択されたscope内のSection / 開始予定にはD-043の同期規則を適用する。
+D-044のR2A targetでは、current-Day planned Routine-derived Entryの`Section + 開始予定`同期unitと見積unitを編集できる。edit値はまずlocal candidateとして表示し、この時点ではServer writeを行わない。そのunitについて`今回だけ`または`ルーティンに反映`をexplicitに選択した後にだけpersistし、どちらもpreselectしない。cancel / Escape / dismissはcandidateを破棄してcanonical valueへ戻す。
 
-Routine occurrenceとRoutineDefinition defaultのどちらへ同期pairを保存・伝播するか等、未決のR2A persistence / command semanticsをこの文書では確定しない。
+Section + 開始予定は一つのscope choiceを共有し、見積は独立したscope choiceを持つ。overrideがあるunitのediting contextでは`ルーティンの設定に戻す`相当のactionを提示できるが、normal Day Tableへpermanent override badgeを追加しない。
+
+current runtimeはR1 contractどおりRoutine由来EntryのSection / 開始予定 / 見積をread-onlyのまま維持しており、R2A runtimeは`NOT_IMPLEMENTED`である。overrideのphysical persistence、exact command、atomic propagation implementationをこの文書では確定しない。
 
 ## Task order and display column order
 

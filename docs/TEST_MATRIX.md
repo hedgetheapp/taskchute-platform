@@ -1,6 +1,6 @@
 # Test Matrix
 
-First Server + Web vertical slice、D-038 B1 / B3、D-039 B2、D-040 Minimal Routine R1、Day Table UI-1、D-041 / D-042 Day Navigation v0.1は実装・GitHub `main`統合済み。Day Navigation v0.1 source / local automated / signed-in general browser / persistent nonprod general verificationはPASS。remote logout→reloginとremote未実施の詳細subcaseは`NOT_RUN`またはlocal-only evidence、productionは`NOT_RUN`。B1 / B2 / B3 / R1 local + persistent non-production verificationはPASS。UI-1 source / automated / real local browser verificationはPASS。B3 remote raw console warning / error exact countは`NOT_VERIFIED`。R1 real-browser controlled inclusive end-dateとdeployed non-null inclusive-date subcheckは`TOOLING_BLOCKED / NOT_VERIFIED`。B1 / B2 / B3 / R1 production verificationは`NOT_RUN`。Product runtime全体はまだVerified / Releasedではない。
+First Server + Web vertical slice、D-038 B1 / B3、D-039 B2、D-040 Minimal Routine R1、Day Table UI-1、D-041 / D-042 Day Navigation v0.1は実装・GitHub `main`統合済み。D-043 synchronizationとD-044 / D-045 Routine R2A / legacy normalizationはApproved contractだがruntime / APP migrationは`NOT_IMPLEMENTED`、verificationは`NOT_RUN`である。Day Navigation v0.1 source / local automated / signed-in general browser / persistent nonprod general verificationはPASS。remote logout→reloginとremote未実施の詳細subcaseは`NOT_RUN`またはlocal-only evidence、productionは`NOT_RUN`。B1 / B2 / B3 / R1 local + persistent non-production verificationはPASS。UI-1 source / automated / real local browser verificationはPASS。B3 remote raw console warning / error exact countは`NOT_VERIFIED`。R1 real-browser controlled inclusive end-dateとdeployed non-null inclusive-date subcheckは`TOOLING_BLOCKED / NOT_VERIFIED`。B1 / B2 / B3 / R1 production verificationは`NOT_RUN`。Product runtime全体はまだVerified / Releasedではない。
 
 この文書はverification requirementとcurrent evidenceの正本とする。
 
@@ -636,6 +636,26 @@ Final:
 | ROUTINE-R1-WEB-01 | Routine R1 / Web | Routine化、end-date/no-end、indicator、Routine終了をasync canonical reconciliation付きで扱う | Approved (D-040) | PASS / NONPROD_GENERAL_PASS（real-browser controlled inclusive end-dateとdeployed non-null inclusive-date subcheckはTOOLING_BLOCKED / NOT_VERIFIED） |
 | ROUTINE-R1-WEB-RELOAD-01 | Routine R1 / Web | reloadでRoutine relation / indicatorを維持しdaily Entryをduplicateしない | Approved (D-040) | PASS / NONPROD_PASS |
 | ROUTINE-R1-REGRESSION-01 | Routine R1 / Regression | B1/B2/B3 Section context/freeze、Sectionなし、estimate、planned start、order、Move/Reorder、lifecycle、retry/conflictを維持し、D-034 choice未実装中はRoutine由来Entryへの旧planning commandをserver mutation-timeでrejectする | Approved (D-034, D-040) | PASS |
+| ROUTINE-R2A-CANDIDATE-01 | Routine R2A / Web | Routine-derived editable unitのcandidate表示ではServer writeせず、scopeをpreselectしない | Approved (D-044) | NOT_IMPLEMENTED |
+| ROUTINE-R2A-CANCEL-01 | Routine R2A / Web | scope選択前のcancel / Escape / dismissがno-writeでcanonical valueを復元する | Approved (D-044) | NOT_IMPLEMENTED |
+| ROUTINE-R2A-SCOPE-01 | Routine R2A / Scope | Section + planned startを一unit、estimateを別unitとして`今回だけ / ルーティンに反映`を個別選択する | Approved (D-043, D-044) | NOT_IMPLEMENTED |
+| ROUTINE-R2A-ESTIMATE-01 | Routine R2A / Override | `今回だけ`estimate valueとexplicit `NULL`をno-overrideと区別してcurrent occurrenceだけへpersistする | Approved (D-044) | NOT_IMPLEMENTED |
+| ROUTINE-R2A-SECTION-01 | Routine R2A / Override | `今回だけ`real Section + in-range planned startと`Sectionなし + NULL`をD-043同期pairとしてpersistする | Approved (D-043, D-044) | NOT_IMPLEMENTED |
+| ROUTINE-R2A-RELOAD-01 | Routine R2A / Persistence | occurrence overrideとeffective valueがreload / restart後も維持される | Approved (D-044) | NOT_IMPLEMENTED |
+| ROUTINE-R2A-DEFAULT-01 | Routine R2A / Definition | `ルーティンに反映`がcurrent valueとRoutine defaultを更新し、current occurrenceの同unit overrideをclearする | Approved (D-044) | NOT_IMPLEMENTED |
+| ROUTINE-R2A-PROPAGATE-01 | Routine R2A / Propagation | non-overridden materialized current/future planned occurrenceへnew defaultを反映し、explicit overrideを上書きしない | Approved (D-034, D-044) | NOT_IMPLEMENTED |
+| ROUTINE-R2A-HISTORY-01 | Routine R2A / History | past / running / completed / interrupted / otherwise protected stateをdefault propagationでretroactiveにrewriteしない | Approved (D-034, D-044) | NOT_IMPLEMENTED |
+| ROUTINE-R2A-NO-MATERIALIZE-01 | Routine R2A / Materialization | default updateだけでfuture Day / RoutineOccurrenceを作らず、後のD-040 materializationがnew defaultを利用する | Approved (D-040, D-041, D-044) | NOT_IMPLEMENTED |
+| ROUTINE-R2A-RESET-01 | Routine R2A / Reset | overrideをcurrent Routine defaultへ戻し、Definitionを更新せずscope再選択なしでoverrideをclearする | Approved (D-044) | NOT_IMPLEMENTED |
+| ROUTINE-R2A-CHROME-01 | Routine R2A / Presentation | permanent override badgeを必須にせず、override時のreset affordanceをediting contextで提示する | Approved (D-044; canonical DESIGN) | NOT_IMPLEMENTED |
+| ROUTINE-R2A-REVISION-01 | Routine R2A / Atomicity | Section-plan、order、affected Day revision exactly once、override/default/propagation、operation resultをpartial effectなしで確定する | Approved (D-020, D-039, D-043, D-044) | NOT_IMPLEMENTED |
+| ROUTINE-R2A-RETRY-01 | Routine R2A / Retry | same-operation replay、different-semantic misuse、stale revision / concurrency、infrastructure ambiguityでeffectを二重適用しない | Approved (D-020, D-044) | NOT_IMPLEMENTED |
+| ROUTINE-R2A-SCOPE-GUARD-01 | Routine R2A / Server | current logical Dayのplanned Routine-derived Entryだけを許可し、future / past / running / completed / interrupted mutationをServerでno-write rejectする | Approved (D-041, D-042, D-044) | NOT_IMPLEMENTED |
+| ROUTINE-R2A-MIGRATION-01 | Routine R2A / Migration | occurrence override persistenceを追加しexisting identity/contentを保持し、no overrideとexplicit NULLを区別してquick check / FK checkを通す | Approved (D-044) | NOT_IMPLEMENTED / NOT_RUN |
+| ROUTINE-R2A-NORMALIZE-01 | Routine R2A / Migration | editable planned ordinary Entry / Routine defaultのlegacy real Section + NULLをauthoritative Section startへnormalizeし、Sectionなし + NULLは維持する | Approved (D-043, D-045) | NOT_IMPLEMENTED / NOT_RUN |
+| ROUTINE-R2A-NORMALIZE-FAIL-01 | Routine R2A / Migration | authoritative Section startがambiguous / missingなら推測・Section drop・partial normalizationなしでfail safelyする | Approved (D-045) | NOT_IMPLEMENTED / NOT_RUN |
+| ROUTINE-R2A-NORMALIZE-HISTORY-01 | Routine R2A / Migration | running / completed / interrupted等のprotected historyをnormalizationでretroactiveにrewriteしない | Approved (D-045) | NOT_IMPLEMENTED / NOT_RUN |
+| ROUTINE-R2A-REGRESSION-01 | Routine R2A / Regression | D-043 ordinary Entry sync、D-040 conversion/materialization/end、D-041 future no-write、D-042 past gap、placement/order/retry/lifecycleを維持する | Approved regression contract | NOT_IMPLEMENTED / NOT_RUN |
 | ROUTINE-DOC-01 | Documents | Routine共通noteはTask Primary Documentを利用できる | Approved (D-018) | NOT_IMPLEMENTED |
 | ROUTINE-DOC-02 | Documents | RoutineOccurrenceはoptional Documentを持ち、同一Occurrenceの複数Entryで共有できる | Approved (D-018) | NOT_IMPLEMENTED |
 | DOC-01 | Documents | Markdown save/read round-tripでcontent semanticsを保持する | Approved (D-006) | NOT_IMPLEMENTED |
