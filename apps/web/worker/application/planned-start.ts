@@ -65,7 +65,7 @@ export async function setEntryPlannedStart(
   if (entry.routine_occurrence_id !== null) return reject("Routine-derived Entry planned start is read-only");
   if (day.placement_revision !== request.expected_placement_revision) return reject("The placement revision is stale", true);
 
-  let targetSectionId = entry.section_id;
+  let targetSectionId: string | null = null;
   if (request.planned_start_minute !== null) {
     const boundary = day.establishment_boundary_minutes;
     if (request.planned_start_minute < boundary || request.planned_start_minute >= boundary + 1440) {

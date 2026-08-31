@@ -25,6 +25,8 @@ import type {
   UpdateSectionConfigurationRequest,
   ConvertEntryToRoutineRequest,
   EndRoutineRequest,
+  SetRoutineEstimateRequest,
+  SetRoutineSectionPlanRequest,
 } from "../shared/contracts";
 import { isSamePlannedStartCohort } from "../shared/planned-entry-order";
 import { uuidv7 } from "../shared/uuidv7";
@@ -35,6 +37,9 @@ type AppView = "today" | "settings";
 type SettingsDestination = "section" | "project";
 type FocusTarget = { kind: "section" | "entry"; id: string };
 type DraftTask = { sectionId: string | null; title: string };
+type RoutineCandidate =
+  | { entryId: string; unit: "estimate"; estimateSeconds: number | null }
+  | { entryId: string; unit: "section-plan"; sectionId: string | null; plannedStartMinute: number | null };
 
 function isAmbiguousOutcome(caught: unknown): boolean {
   return !(caught instanceof ApiClientError) || caught.code === "infrastructure_ambiguous";
@@ -116,6 +121,7 @@ function transientStatusText(pending: string | null): string | null {
     case "planned-start": return "開始予定を保存・照合中…";
     case "routine-convert": return "Routine化・照合中…";
     case "routine-end": return "Routine終了・照合中…";
+    case "routine-edit": return "Routine設定を保存・照合中…";
     case "day-navigation": return "日付を読み込み中…";
     default: return null;
   }
@@ -203,13 +209,16 @@ export function App() {
   const [sectionSettingsOperation, setSectionSettingsOperation] = useState<UpdateSectionConfigurationRequest | null>(null);
   const [routineConversionOperation, setRoutineConversionOperation] = useState<ConvertEntryToRoutineRequest | null>(null);
   const [routineEndOperation, setRoutineEndOperation] = useState<EndRoutineRequest | null>(null);
+  const [routineEstimateOperation, setRoutineEstimateOperation] = useState<SetRoutineEstimateRequest | null>(null);
+  const [routineSectionPlanOperation, setRoutineSectionPlanOperation] = useState<SetRoutineSectionPlanRequest | null>(null);
   const [, setSectionSettings] = useState<SectionConfigurationProjection | null>(null);
   const [sectionSettingsDraft, setSectionSettingsDraft] = useState<SectionSettingsDraft | null>(null);
   const [sectionSettingsNotice, setSectionSettingsNotice] = useState<string | null>(null);
   const [editingEstimate, setEditingEstimate] = useState<{ entryId: string; minutes: string } | null>(null);
   const [editingPlannedStart, setEditingPlannedStart] = useState<{ entryId: string; value: string } | null>(null);
   const [routineDraft, setRoutineDraft] = useState<{ entryId: string; endDate: string } | null>(null);
-  const [pending, setPending] = useState<"login" | "project" | "project-settings" | "day-navigation" | "task" | "reorder" | "start" | "complete" | "configuration" | "section-settings" | "move" | "estimate" | "planned-start" | "routine-convert" | "routine-end" | "logout" | null>(null);
+  const [routineCandidate, setRoutineCandidate] = useState<RoutineCandidate | null>(null);
+  const [pending, setPending] = useState<"login" | "project" | "project-settings" | "day-navigation" | "task" | "reorder" | "start" | "complete" | "configuration" | "section-settings" | "move" | "estimate" | "planned-start" | "routine-convert" | "routine-end" | "routine-edit" | "logout" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draftTask, setDraftTask] = useState<DraftTask | null>(null);
   const [pendingFocusKey, setPendingFocusKey] = useState<string | null>(null);
@@ -222,9 +231,10 @@ export function App() {
   const selectedLogicalDateRef = useRef<string | null>(null);
   const calendarTriggerRef = useRef<HTMLButtonElement | null>(null);
   const calendarGridRef = useRef<HTMLDivElement | null>(null);
+  const routineScopeChoiceRef = useRef<HTMLSpanElement | null>(null);
   const retainedOperation = projectOperation ?? taskOperation ?? reorderOperation ?? startOperation ?? completeOperation
     ?? configurationOperation ?? sectionSettingsOperation ?? sectionMoveOperation ?? estimateOperation ?? plannedStartOperation
-    ?? routineConversionOperation ?? routineEndOperation;
+    ?? routineConversionOperation ?? routineEndOperation ?? routineEstimateOperation ?? routineSectionPlanOperation;
   const mutationLocked = pending !== null || retainedOperation !== null;
 
   const transitionToSignedOut = useCallback(() => {
@@ -251,7 +261,10 @@ export function App() {
     setSectionSettingsNotice(null);
     setRoutineConversionOperation(null);
     setRoutineEndOperation(null);
+    setRoutineEstimateOperation(null);
+    setRoutineSectionPlanOperation(null);
     setRoutineDraft(null);
+    setRoutineCandidate(null);
     setDraftTask(null);
     setEditingEstimate(null);
     setEditingPlannedStart(null);
@@ -285,6 +298,7 @@ export function App() {
     setEditingEstimate(null);
     setEditingPlannedStart(null);
     setRoutineDraft(null);
+    setRoutineCandidate(null);
     try {
       const projection = await api.loadDay(logicalDate);
       setDay(projection);
@@ -322,6 +336,26 @@ export function App() {
     if (!calendarOpen || !calendarFocusedDate) return;
     calendarGridRef.current?.querySelector<HTMLButtonElement>(`[data-calendar-date="${calendarFocusedDate}"]`)?.focus();
   }, [calendarOpen, calendarFocusedDate]);
+
+  useEffect(() => {
+    if (!routineCandidate) return;
+    routineScopeChoiceRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    const dismissOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setRoutineCandidate(null);
+    };
+    const dismissOnOutsideClick = (event: MouseEvent) => {
+      const choice = routineScopeChoiceRef.current;
+      if (choice && event.target instanceof Node && !choice.contains(event.target)) setRoutineCandidate(null);
+    };
+    document.addEventListener("keydown", dismissOnEscape);
+    document.addEventListener("click", dismissOnOutsideClick);
+    return () => {
+      document.removeEventListener("keydown", dismissOnEscape);
+      document.removeEventListener("click", dismissOnOutsideClick);
+    };
+  }, [routineCandidate]);
 
   function openCalendar() {
     if (!day || mutationLocked) return;
@@ -761,8 +795,10 @@ export function App() {
       try { const projection = await reconcile();
         const canonical = [...(projection?.unsectioned_entries ?? []), ...(projection?.sections.flatMap((section) => section.entries) ?? [])]
           .find((entry) => entry.id === operation.entry_id);
+        const expectedPlannedStart = operation.section_id === null ? null
+          : projection?.sections.find((section) => section.id === operation.section_id)?.logical_start_minute;
         if (ambiguous && canonical?.section_id === operation.section_id
-          && canonical.planned_start_minute === null
+          && canonical.planned_start_minute === expectedPlannedStart
           && projection?.placement_revision === operation.expected_placement_revision + 1) {
           setSectionMoveOperation(null); setError(null);
         }
@@ -799,17 +835,19 @@ export function App() {
   async function commitEstimate(entryId: string) {
     const canonical = day ? [...day.unsectioned_entries, ...day.sections.flatMap((section) => section.entries)]
       .find((entry) => entry.id === entryId) : undefined;
-    if (!day?.planning_enabled || mutationLocked || editingEstimate?.entryId !== entryId || canonical?.routine !== null) {
-      if (canonical?.routine) setEditingEstimate(null);
-      return;
-    }
+    if (!day?.planning_enabled || mutationLocked || editingEstimate?.entryId !== entryId || !canonical) return;
     const raw = editingEstimate.minutes.trim();
     const minutes = raw === "" ? 0 : Number(raw);
     if (!Number.isInteger(minutes) || minutes < 0 || !Number.isSafeInteger(minutes * 60)) {
       setError("見積は0以上の整数（分）で入力してください"); return;
     }
-    const operation: SetEntryEstimateRequest = { operation_id: uuidv7(), entry_id: entryId,
-      estimate_seconds: minutes === 0 ? null : minutes * 60 };
+    const estimateSeconds = minutes === 0 ? null : minutes * 60;
+    if (canonical.routine) {
+      setRoutineCandidate({ entryId, unit: "estimate", estimateSeconds });
+      setEditingEstimate(null);
+      return;
+    }
+    const operation: SetEntryEstimateRequest = { operation_id: uuidv7(), entry_id: entryId, estimate_seconds: estimateSeconds };
     setEstimateOperation(operation); await executeEstimate(operation);
   }
 
@@ -841,10 +879,7 @@ export function App() {
     const canonical = day ? [...day.unsectioned_entries, ...day.sections.flatMap((section) => section.entries)]
       .find((candidate) => candidate.id === entry.id) : undefined;
     if (!day?.taskchute_day.id || !day.planning_enabled || day.taskchute_day.establishment_boundary_minutes === null
-      || mutationLocked || editingPlannedStart?.entryId !== entry.id || canonical?.routine !== null) {
-      if (canonical?.routine) setEditingPlannedStart(null);
-      return;
-    }
+      || mutationLocked || editingPlannedStart?.entryId !== entry.id || !canonical) return;
     const plannedStartMinute = parsePlannedStart(
       editingPlannedStart.value,
       day.taskchute_day.establishment_boundary_minutes,
@@ -854,11 +889,17 @@ export function App() {
       setError(`開始予定は ${formatLogicalMinute(boundary)} 以上 ${formatLogicalMinute(boundary + 1440)} 未満のHH:mmで入力してください`);
       return;
     }
-    const expectedSectionId = plannedStartMinute === null ? entry.section_id
+    const expectedSectionId = plannedStartMinute === null ? null
       : day.sections.find((section) => section.logical_start_minute !== null && section.logical_end_minute !== null
         && section.logical_start_minute <= plannedStartMinute && plannedStartMinute < section.logical_end_minute)?.id;
     if (expectedSectionId === undefined) {
       setError("開始予定を含む確定済みSection時間帯がありません");
+      return;
+    }
+    if (canonical.routine) {
+      setRoutineCandidate({ entryId: entry.id, unit: "section-plan", sectionId: expectedSectionId,
+        plannedStartMinute });
+      setEditingPlannedStart(null);
       return;
     }
     const operation: PlannedStartOperation = {
@@ -868,6 +909,103 @@ export function App() {
     };
     setPlannedStartOperation(operation);
     await executePlannedStart(operation);
+  }
+
+  function changeRoutineSectionCandidate(entry: EntryProjection, sectionId: string | null) {
+    if (!entry.routine || !day?.is_current || !day.planning_enabled || entry.lifecycle_state !== "planned" || mutationLocked) return;
+    const plannedStartMinute = sectionId === null ? null
+      : day.sections.find((section) => section.id === sectionId)?.logical_start_minute;
+    if (plannedStartMinute === undefined || (sectionId !== null && plannedStartMinute === null)) {
+      setError("選択したSectionの確定済み開始時刻がありません");
+      return;
+    }
+    setRoutineCandidate({ entryId: entry.id, unit: "section-plan", sectionId, plannedStartMinute });
+  }
+
+  async function executeRoutineEstimate(operation: SetRoutineEstimateRequest) {
+    setPending("routine-edit"); setError(null);
+    try {
+      await api.setRoutineEstimate(operation);
+      await reconcile();
+      setRoutineEstimateOperation(null); setRoutineCandidate(null); setEditingEstimate(null);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Routine見積の保存に失敗しました");
+      const ambiguous = isAmbiguousOutcome(caught);
+      if (!ambiguous) { setRoutineEstimateOperation(null); setRoutineCandidate(null); }
+      try {
+        const projection = await reconcile();
+        const canonical = [...(projection?.unsectioned_entries ?? []), ...(projection?.sections.flatMap((section) => section.entries) ?? [])]
+          .find((entry) => entry.id === operation.entry_id);
+        const expected = operation.action === "reset" ? canonical?.routine?.default_estimate_seconds : operation.estimate_seconds;
+        const override = operation.action === "occurrence";
+        if (ambiguous && canonical?.estimate_seconds === expected && canonical?.routine?.estimate_override_present === override) {
+          setRoutineEstimateOperation(null); setRoutineCandidate(null); setError(null);
+        }
+      } catch { /* Preserve exact retained operation. */ }
+    } finally { setPending(null); }
+  }
+
+  async function executeRoutineSectionPlan(operation: SetRoutineSectionPlanRequest) {
+    setPending("routine-edit"); setError(null);
+    try {
+      await api.setRoutineSectionPlan(operation);
+      await reconcile();
+      setRoutineSectionPlanOperation(null); setRoutineCandidate(null); setEditingPlannedStart(null);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "RoutineのSection設定保存に失敗しました");
+      const ambiguous = isAmbiguousOutcome(caught);
+      if (!ambiguous) { setRoutineSectionPlanOperation(null); setRoutineCandidate(null); }
+      try {
+        const projection = await reconcile();
+        const canonical = [...(projection?.unsectioned_entries ?? []), ...(projection?.sections.flatMap((section) => section.entries) ?? [])]
+          .find((entry) => entry.id === operation.entry_id);
+        const expectedSection = operation.action === "reset" ? canonical?.routine?.default_section_id : operation.section_id;
+        const expectedStart = operation.action === "reset" ? canonical?.routine?.default_planned_start_minute : operation.planned_start_minute;
+        const override = operation.action === "occurrence";
+        if (ambiguous && canonical?.section_id === expectedSection && canonical?.planned_start_minute === expectedStart
+          && canonical?.routine?.section_plan_override_present === override) {
+          setRoutineSectionPlanOperation(null); setRoutineCandidate(null); setError(null);
+        }
+      } catch { /* Preserve exact retained operation. */ }
+    } finally { setPending(null); }
+  }
+
+  async function commitRoutineCandidate(entry: EntryProjection, action: "occurrence" | "definition") {
+    if (!day?.taskchute_day.id || !entry.routine || routineCandidate?.entryId !== entry.id || mutationLocked) return;
+    if (routineCandidate.unit === "estimate") {
+      const operation: SetRoutineEstimateRequest = action === "occurrence"
+        ? { operation_id: uuidv7(), entry_id: entry.id, taskchute_day_id: day.taskchute_day.id,
+            action, estimate_seconds: routineCandidate.estimateSeconds }
+        : { operation_id: uuidv7(), entry_id: entry.id, taskchute_day_id: day.taskchute_day.id,
+            action, estimate_seconds: routineCandidate.estimateSeconds,
+            expected_defaults_revision: entry.routine.defaults_revision };
+      setRoutineEstimateOperation(operation);
+      await executeRoutineEstimate(operation);
+      return;
+    }
+    const operation: SetRoutineSectionPlanRequest = action === "occurrence"
+      ? { operation_id: uuidv7(), entry_id: entry.id, taskchute_day_id: day.taskchute_day.id,
+          action, section_id: routineCandidate.sectionId, planned_start_minute: routineCandidate.plannedStartMinute,
+          expected_placement_revision: day.placement_revision }
+      : { operation_id: uuidv7(), entry_id: entry.id, taskchute_day_id: day.taskchute_day.id,
+          action, section_id: routineCandidate.sectionId, planned_start_minute: routineCandidate.plannedStartMinute,
+          expected_placement_revision: day.placement_revision,
+          expected_defaults_revision: entry.routine.defaults_revision };
+    setRoutineSectionPlanOperation(operation);
+    await executeRoutineSectionPlan(operation);
+  }
+
+  async function resetRoutineUnit(entry: EntryProjection, unit: "estimate" | "section-plan") {
+    if (!day?.taskchute_day.id || !entry.routine || mutationLocked) return;
+    if (unit === "estimate") {
+      const operation: SetRoutineEstimateRequest = { operation_id: uuidv7(), entry_id: entry.id,
+        taskchute_day_id: day.taskchute_day.id, action: "reset" };
+      setRoutineEstimateOperation(operation); await executeRoutineEstimate(operation);
+      return;
+    }
+    const operation: SetRoutineSectionPlanRequest = { operation_id: uuidv7(), entry_id: entry.id,
+      taskchute_day_id: day.taskchute_day.id, action: "reset", expected_placement_revision: day.placement_revision };
+    setRoutineSectionPlanOperation(operation); await executeRoutineSectionPlan(operation);
   }
 
   async function executeRoutineConversion(operation: ConvertEntryToRoutineRequest) {
@@ -1299,8 +1437,11 @@ export function App() {
                     </div>
                     <span className="project-name">{entry.task.project?.title ?? "—"}</span>
                     <select aria-label={`${entry.task.title}のSection`} value={entry.section_id ?? ""}
-                      disabled={mutationLocked || !day.planning_enabled || entry.lifecycle_state !== "planned" || entry.routine !== null}
-                      onClick={(event) => event.stopPropagation()} onChange={(event) => void changeSection(entry, event.target.value || null)}>
+                      disabled={mutationLocked || !day.planning_enabled || entry.lifecycle_state !== "planned"
+                        || (entry.routine !== null && !day.is_current)}
+                      onClick={(event) => event.stopPropagation()} onChange={(event) => entry.routine
+                        ? changeRoutineSectionCandidate(entry, event.target.value || null)
+                        : void changeSection(entry, event.target.value || null)}>
                       <option value="">Sectionなし</option>
                       {day.sections.map((candidate) => <option value={candidate.id} key={candidate.id}>{candidate.title}</option>)}
                     </select>
@@ -1323,25 +1464,54 @@ export function App() {
                       {entry.lifecycle_state !== "planned" && entry.routine === null && <span className="muted">—</span>}
                     </div>
                     <span className="estimate-cell">
-                      {entry.routine === null && editingEstimate?.entryId === entry.id ? <input autoFocus aria-label={`${entry.task.title}の見積（分）`} inputMode="numeric" value={editingEstimate.minutes}
-                        onChange={(event) => setEditingEstimate({ entryId: entry.id, minutes: event.target.value })}
-                        onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void commitEstimate(entry.id); }
-                          else if (event.key === "Escape") { event.preventDefault(); setEditingEstimate(null); } }} />
-                        : <button type="button" className="estimate-button" aria-label={`${entry.task.title}の見積`} disabled={mutationLocked || !day.planning_enabled || entry.lifecycle_state !== "planned" || entry.routine !== null}
+                      {editingEstimate?.entryId === entry.id ? <>
+                        <input autoFocus aria-label={`${entry.task.title}の見積（分）`} inputMode="numeric" value={editingEstimate.minutes}
+                          onChange={(event) => setEditingEstimate({ entryId: entry.id, minutes: event.target.value })}
+                          onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void commitEstimate(entry.id); }
+                            else if (event.key === "Escape") { event.preventDefault(); setEditingEstimate(null); } }} />
+                        {entry.routine?.estimate_override_present && (
+                          <button type="button" className="routine-reset" aria-label={`${entry.task.title}の見積をルーティンの設定に戻す`}
+                            disabled={mutationLocked} onClick={() => void resetRoutineUnit(entry, "estimate")}>ルーティンの設定に戻す</button>
+                        )}
+                      </>
+                        : <button type="button" className="estimate-button" aria-label={`${entry.task.title}の見積`} disabled={mutationLocked || !day.planning_enabled || entry.lifecycle_state !== "planned" || (entry.routine !== null && !day.is_current)}
                           onClick={() => setEditingEstimate({ entryId: entry.id, minutes: entry.estimate_seconds ? String(entry.estimate_seconds / 60) : "" })}>{formatEstimate(entry.estimate_seconds)}</button>}
+                      {entry.routine && routineCandidate?.entryId === entry.id && routineCandidate.unit === "estimate" && (
+                        <span ref={routineScopeChoiceRef} className="routine-scope-choice" role="group" aria-label={`${entry.task.title}の見積反映先`}>
+                          <span>{formatEstimate(routineCandidate.estimateSeconds)}</span>
+                          <button type="button" disabled={mutationLocked} onClick={() => void commitRoutineCandidate(entry, "occurrence")}>今回だけ</button>
+                          <button type="button" disabled={mutationLocked} onClick={() => void commitRoutineCandidate(entry, "definition")}>ルーティンに反映</button>
+                          <button type="button" className="secondary" disabled={mutationLocked} onClick={() => setRoutineCandidate(null)}>キャンセル</button>
+                        </span>
+                      )}
                     </span>
                     <span className="planned-start-cell">
-                      {entry.routine === null && editingPlannedStart?.entryId === entry.id ? <input autoFocus aria-label={`${entry.task.title}の開始予定`}
-                        value={editingPlannedStart.value} placeholder="HH:mm" inputMode="numeric"
-                        onChange={(event) => setEditingPlannedStart({ entryId: entry.id, value: event.target.value })}
-                        onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void commitPlannedStart(entry); }
-                          else if (event.key === "Escape") { event.preventDefault(); setEditingPlannedStart(null); } }} />
+                      {editingPlannedStart?.entryId === entry.id ? <>
+                        <input autoFocus aria-label={`${entry.task.title}の開始予定`}
+                          value={editingPlannedStart.value} placeholder="HH:mm" inputMode="numeric"
+                          onChange={(event) => setEditingPlannedStart({ entryId: entry.id, value: event.target.value })}
+                          onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void commitPlannedStart(entry); }
+                            else if (event.key === "Escape") { event.preventDefault(); setEditingPlannedStart(null); } }} />
+                        {entry.routine?.section_plan_override_present && (
+                          <button type="button" className="routine-reset" aria-label={`${entry.task.title}のSection・開始予定をルーティンの設定に戻す`}
+                            disabled={mutationLocked} onClick={() => void resetRoutineUnit(entry, "section-plan")}>ルーティンの設定に戻す</button>
+                        )}
+                      </>
                         : <button type="button" className="planned-start-button" aria-label={`${entry.task.title}の開始予定`}
-                          disabled={mutationLocked || !day.planning_enabled || entry.lifecycle_state !== "planned" || entry.routine !== null}
+                          disabled={mutationLocked || !day.planning_enabled || entry.lifecycle_state !== "planned" || (entry.routine !== null && !day.is_current)}
                           onClick={() => setEditingPlannedStart({ entryId: entry.id,
                             value: entry.planned_start_minute === null ? "" : formatLogicalMinute(entry.planned_start_minute) })}>
                           {entry.planned_start_minute === null ? "—" : formatLogicalMinute(entry.planned_start_minute)}
                         </button>}
+                      {entry.routine && routineCandidate?.entryId === entry.id && routineCandidate.unit === "section-plan" && (
+                        <span ref={routineScopeChoiceRef} className="routine-scope-choice" role="group" aria-label={`${entry.task.title}のSection・開始予定反映先`}>
+                          <span>{routineCandidate.sectionId === null ? "Sectionなし / —"
+                            : `${day.sections.find((candidate) => candidate.id === routineCandidate.sectionId)?.title ?? "Section"} / ${formatLogicalMinute(routineCandidate.plannedStartMinute)}`}</span>
+                          <button type="button" disabled={mutationLocked} onClick={() => void commitRoutineCandidate(entry, "occurrence")}>今回だけ</button>
+                          <button type="button" disabled={mutationLocked} onClick={() => void commitRoutineCandidate(entry, "definition")}>ルーティンに反映</button>
+                          <button type="button" className="secondary" disabled={mutationLocked} onClick={() => setRoutineCandidate(null)}>キャンセル</button>
+                        </span>
+                      )}
                     </span>
                   </div>
                 );
@@ -1367,10 +1537,13 @@ export function App() {
           {plannedStartOperation && <button type="button" onClick={() => void executePlannedStart(plannedStartOperation)}>保留中の開始予定保存を再試行</button>}
           {routineConversionOperation && <button type="button" onClick={() => void executeRoutineConversion(routineConversionOperation)}>保留中のRoutine化を再試行</button>}
           {routineEndOperation && <button type="button" onClick={() => void executeRoutineEnd(routineEndOperation)}>保留中のRoutine終了を再試行</button>}
+          {routineEstimateOperation && <button type="button" onClick={() => void executeRoutineEstimate(routineEstimateOperation)}>保留中のRoutine見積を再試行</button>}
+          {routineSectionPlanOperation && <button type="button" onClick={() => void executeRoutineSectionPlan(routineSectionPlanOperation)}>保留中のRoutine配置を再試行</button>}
           <button type="button" className="secondary" onClick={() => {
             setProjectOperation(null); setTaskOperation(null); setReorderOperation(null); setStartOperation(null); setCompleteOperation(null);
             setConfigurationOperation(null); setSectionSettingsOperation(null); setSectionMoveOperation(null); setEstimateOperation(null); setPlannedStartOperation(null);
-            setRoutineConversionOperation(null); setRoutineEndOperation(null); setError(null);
+            setRoutineConversionOperation(null); setRoutineEndOperation(null); setRoutineEstimateOperation(null);
+            setRoutineSectionPlanOperation(null); setRoutineCandidate(null); setError(null);
           }}>保留中のclient操作を破棄</button>
         </section>
       )}

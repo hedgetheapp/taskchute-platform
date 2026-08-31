@@ -390,6 +390,10 @@ describe.sequential("Dogfood Day B1 source-review blockers", () => {
   it("moves without renumbering the old group and leaves stale attempts byte-for-byte unchanged", async () => {
     const { userId, sectionIds, now } = await seedUser(2);
     const dayId = await seedLegacyDay(userId, sectionIds, now);
+    await env.APP_DB.batch(sectionIds.map((sectionId, index) => env.APP_DB.prepare(`UPDATE taskchute_day_section_contexts
+      SET logical_start_minute = ?, logical_end_minute = ?
+      WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id = ?`)
+      .bind(index * 720, (index + 1) * 720, userId, dayId, sectionId)));
     const source = await seedEntries(userId, dayId, sectionIds[0]!, ["planned", "planned", "planned"], 10);
     await env.APP_DB.prepare("UPDATE entries SET position = position * 10 - 90 WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id = ?")
       .bind(userId, dayId, sectionIds[0]).run();
@@ -414,6 +418,10 @@ describe.sequential("Dogfood Day B1 source-review blockers", () => {
   it("validates real Sections against the Day context and never drops an out-of-context Entry from projection", async () => {
     const { userId, sectionIds, now } = await seedUser(3);
     const dayId = await seedLegacyDay(userId, sectionIds.slice(0, 2), now);
+    await env.APP_DB.batch(sectionIds.slice(0, 2).map((sectionId, index) => env.APP_DB.prepare(`UPDATE taskchute_day_section_contexts
+      SET logical_start_minute = ?, logical_end_minute = ?
+      WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id = ?`)
+      .bind(index * 720, (index + 1) * 720, userId, dayId, sectionId)));
     const valid = { operation_id: uuidv7(), task_id: uuidv7(), entry_id: uuidv7(), project_id: null,
       title: "Valid context", taskchute_day_id: dayId, section_id: sectionIds[0]!, expected_placement_revision: 0 };
     expect((await addTaskToDay(env.APP_DB, userId, valid)).placement_revision).toBe(1);

@@ -9,22 +9,23 @@ import { createHash } from "node:crypto";
 const appRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const wrangler = join(appRoot, "node_modules", "wrangler", "bin", "wrangler.js");
 const persistencePath = await mkdtemp(join(tmpdir(), "taskchute-b3-migration-"));
+const failurePersistencePath = await mkdtemp(join(tmpdir(), "taskchute-r2a-migration-failure-"));
 
-function execute(args, expectSuccess = true) {
+function execute(args, expectSuccess = true, persistTo = persistencePath) {
   const result = spawnSync(process.execPath, [wrangler, "d1", "execute", "taskchute-app-local", "--local",
-    "--persist-to", persistencePath, "--yes", ...args], { cwd: appRoot, encoding: "utf8" });
+    "--persist-to", persistTo, "--yes", ...args], { cwd: appRoot, encoding: "utf8" });
   if (expectSuccess && result.status !== 0) {
     throw new Error(`wrangler d1 execute failed\n${result.stdout}\n${result.stderr}`);
   }
   return result;
 }
 
-function applyFile(relativePath) {
-  execute(["--file", join(appRoot, relativePath)]);
+function applyFile(relativePath, persistTo = persistencePath) {
+  execute(["--file", join(appRoot, relativePath)], true, persistTo);
 }
 
-function query(sql) {
-  const output = execute(["--command", sql, "--json"]).stdout.trim();
+function query(sql, persistTo = persistencePath) {
+  const output = execute(["--command", sql, "--json"], true, persistTo).stdout.trim();
   const parsed = JSON.parse(output);
   assert(Array.isArray(parsed) && parsed.length === 1 && Array.isArray(parsed[0].results));
   return parsed[0].results;
@@ -106,6 +107,157 @@ try {
   assert.deepEqual(query("SELECT * FROM routine_definitions"), []);
   assert.deepEqual(query("SELECT * FROM routine_occurrences"), []);
 
+  execute(["--command", `
+    UPDATE entries SET section_id = NULL WHERE id = 'entry-planned';
+    INSERT INTO sections (id, app_user_id, title, sort_order, created_at)
+      VALUES ('section-past-unknown', 'user-v01a', 'Past unknown', 2, '2026-08-28T04:00:00.000Z');
+    INSERT INTO taskchute_days
+      (id, app_user_id, logical_date, start_instant, end_instant, establishment_timezone,
+       establishment_boundary_minutes, establishment_disambiguation, placement_revision, created_at)
+      VALUES
+      ('day-r2a-protected', 'user-v01a', '2000-01-01', '2000-01-01T00:00:00.000Z',
+        '2000-01-02T00:00:00.000Z', 'UTC', 0, 'compatible', 0, '2026-08-28T04:00:00.000Z'),
+      ('day-r2a-editable', 'user-v01a', '2999-01-01', '2999-01-01T00:00:00.000Z',
+        '2999-01-02T00:00:00.000Z', 'UTC', 0, 'compatible', 0, '2026-08-28T04:00:00.000Z');
+    INSERT INTO taskchute_day_section_contexts
+      (app_user_id, taskchute_day_id, section_id, configuration_version_id, title,
+       logical_start_minute, logical_end_minute, actual_start_instant, actual_end_instant, context_order)
+      VALUES
+      ('user-v01a', 'day-r2a-protected', 'section-morning', 'config-b1', 'Morning',
+        240, 720, '2000-01-01T04:00:00.000Z', '2000-01-01T12:00:00.000Z', 0),
+      ('user-v01a', 'day-r2a-protected', 'section-past-unknown', NULL, 'Past unknown',
+        NULL, NULL, NULL, NULL, 1),
+      ('user-v01a', 'day-r2a-editable', 'section-morning', 'config-b1', 'Morning',
+        240, 720, '2999-01-01T04:00:00.000Z', '2999-01-01T12:00:00.000Z', 0);
+    INSERT INTO tasks (id, app_user_id, title, created_at)
+      VALUES
+      ('task-r2a-normalize', 'user-v01a', 'R2A protected authority', '2026-08-28T04:00:00.000Z'),
+      ('task-r2a-past-authority', 'user-v01a', 'R2A protected authority', '2026-08-28T04:00:00.000Z'),
+      ('task-r2a-past-missing', 'user-v01a', 'R2A protected missing', '2026-08-28T04:00:00.000Z'),
+      ('task-r2a-editable', 'user-v01a', 'R2A editable normalize', '2026-08-28T04:00:00.000Z');
+    INSERT INTO entries
+      (id, app_user_id, task_id, taskchute_day_id, section_id, position, lifecycle_state,
+       estimate_seconds, planned_start_minute, created_at)
+      VALUES
+      ('entry-r2a-normalize', 'user-v01a', 'task-r2a-normalize', 'day-configured',
+        'section-morning', 2, 'planned', 600, 240, '2026-08-28T04:00:00.000Z'),
+      ('entry-r2a-past-authority', 'user-v01a', 'task-r2a-past-authority', 'day-r2a-protected',
+        'section-morning', 1, 'planned', 600, NULL, '2026-08-28T04:00:00.000Z'),
+      ('entry-r2a-past-missing', 'user-v01a', 'task-r2a-past-missing', 'day-r2a-protected',
+        'section-past-unknown', 1, 'planned', 300, NULL, '2026-08-28T04:00:00.000Z'),
+      ('entry-r2a-editable', 'user-v01a', 'task-r2a-editable', 'day-r2a-editable',
+        'section-morning', 1, 'planned', 1200, NULL, '2026-08-28T04:00:00.000Z');
+    INSERT INTO routine_definitions
+      (id, app_user_id, task_id, recurrence_type, start_logical_date, end_logical_date,
+       default_section_id, default_estimate_seconds, default_planned_start_minute, materialization_order, created_at)
+      VALUES ('routine-r2a-normalize', 'user-v01a', 'task-r2a-normalize', 'daily', '2026-08-29', NULL,
+        'section-morning', 600, NULL, 1, '2026-08-28T04:00:00.000Z');
+    INSERT INTO routine_occurrences
+      (id, app_user_id, routine_definition_id, origin_taskchute_day_id, created_at)
+      VALUES ('occurrence-r2a-preserve', 'user-v01a', 'routine-r2a-normalize', 'day-configured',
+        '2026-08-28T04:00:00.000Z');
+    UPDATE entries SET routine_occurrence_id = 'occurrence-r2a-preserve' WHERE id = 'entry-r2a-normalize';
+  `]);
+  const preR2AOccurrence = query("SELECT * FROM routine_occurrences WHERE id = 'occurrence-r2a-preserve'")[0];
+  const preR2AProtected = query(`SELECT id, section_id, planned_start_minute, lifecycle_state FROM entries
+    WHERE lifecycle_state <> 'planned' ORDER BY id`);
+  const preR2APastPlanned = query(`SELECT id, section_id, planned_start_minute, lifecycle_state FROM entries
+    WHERE id IN ('entry-r2a-past-authority', 'entry-r2a-past-missing') ORDER BY id`);
+  applyFile("migrations/app/0007_routine_r2a.sql");
+  assert.deepEqual(query(`SELECT id, section_id, planned_start_minute FROM entries
+    WHERE id IN ('entry-planned', 'entry-r2a-editable', 'entry-r2a-normalize', 'entry-r2a-past-authority', 'entry-r2a-past-missing') ORDER BY id`), [
+    { id: "entry-planned", section_id: null, planned_start_minute: null },
+    { id: "entry-r2a-editable", section_id: "section-morning", planned_start_minute: 240 },
+    { id: "entry-r2a-normalize", section_id: "section-morning", planned_start_minute: 240 },
+    { id: "entry-r2a-past-authority", section_id: "section-morning", planned_start_minute: null },
+    { id: "entry-r2a-past-missing", section_id: "section-past-unknown", planned_start_minute: null },
+  ]);
+  assert.deepEqual(query(`SELECT id, section_id, planned_start_minute, lifecycle_state FROM entries
+    WHERE id IN ('entry-r2a-past-authority', 'entry-r2a-past-missing') ORDER BY id`), preR2APastPlanned);
+  assert.deepEqual(query(`SELECT id, default_section_id, default_planned_start_minute, defaults_revision
+    FROM routine_definitions WHERE id = 'routine-r2a-normalize'`), [
+    { id: "routine-r2a-normalize", default_section_id: "section-morning",
+      default_planned_start_minute: 240, defaults_revision: 0 },
+  ]);
+  assert.deepEqual(query(`SELECT id, app_user_id, routine_definition_id, origin_taskchute_day_id, created_at,
+    section_plan_override_present, section_override_id, planned_start_override_minute,
+    estimate_override_present, estimate_override_seconds FROM routine_occurrences
+    WHERE id = 'occurrence-r2a-preserve'`), [{ ...preR2AOccurrence,
+    section_plan_override_present: 0, section_override_id: null, planned_start_override_minute: null,
+    estimate_override_present: 0, estimate_override_seconds: null,
+  }]);
+  assert.deepEqual(query(`SELECT id, section_id, planned_start_minute, lifecycle_state FROM entries
+    WHERE lifecycle_state <> 'planned' ORDER BY id`), preR2AProtected);
+
+  execute(["--command", `UPDATE routine_occurrences SET estimate_override_present = 1,
+    estimate_override_seconds = NULL, section_plan_override_present = 1,
+    section_override_id = NULL, planned_start_override_minute = NULL
+    WHERE id = 'occurrence-r2a-preserve'`]);
+  assert.deepEqual(query(`SELECT estimate_override_present, estimate_override_seconds,
+    section_plan_override_present, section_override_id, planned_start_override_minute
+    FROM routine_occurrences WHERE id = 'occurrence-r2a-preserve'`), [{
+    estimate_override_present: 1, estimate_override_seconds: null, section_plan_override_present: 1,
+    section_override_id: null, planned_start_override_minute: null,
+  }]);
+  const invalidEstimateOverride = execute(["--command", `UPDATE routine_occurrences
+    SET estimate_override_present = 0, estimate_override_seconds = 600
+    WHERE id = 'occurrence-r2a-preserve'`], false);
+  assert.notEqual(invalidEstimateOverride.status, 0, "mixed estimate override state must be rejected");
+  const invalidSectionOverride = execute(["--command", `UPDATE routine_occurrences
+    SET section_plan_override_present = 1, section_override_id = 'section-morning', planned_start_override_minute = NULL
+    WHERE id = 'occurrence-r2a-preserve'`], false);
+  assert.notEqual(invalidSectionOverride.status, 0, "mixed Section-plan override state must be rejected");
+  const crossOwner = execute(["--command", `
+    INSERT INTO app_users (id, created_at) VALUES ('other-r2a-owner', '2026-08-28T04:00:00.000Z');
+    INSERT INTO sections (id, app_user_id, title, sort_order, created_at)
+      VALUES ('other-r2a-section', 'other-r2a-owner', 'Other', 0, '2026-08-28T04:00:00.000Z');
+    UPDATE routine_occurrences SET section_plan_override_present = 1,
+      section_override_id = 'other-r2a-section', planned_start_override_minute = 240
+      WHERE id = 'occurrence-r2a-preserve';
+  `], false);
+  assert.notEqual(crossOwner.status, 0, "Section override must use an owner-scoped Section FK");
+  const invalidDefaultPair = execute(["--command", `UPDATE routine_definitions
+    SET default_planned_start_minute = NULL WHERE id = 'routine-r2a-normalize'`], false);
+  assert.notEqual(invalidDefaultPair.status, 0, "Routine default Section/start pair must stay synchronized");
+  const invalidDefaultsRevision = execute(["--command", `UPDATE routine_definitions
+    SET defaults_revision = -1 WHERE id = 'routine-r2a-normalize'`], false);
+  assert.notEqual(invalidDefaultsRevision.status, 0, "Routine defaults revision must be non-negative");
+  assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
+  assert.deepEqual(query("PRAGMA foreign_key_check"), []);
+
+  for (const migration of ["0001_runtime_bootstrap.sql", "0002_lifecycle_ordering.sql",
+    "0003_dogfood_day_b1.sql", "0004_dogfood_day_b2.sql", "0005_dogfood_day_b3.sql",
+    "0006_minimal_routine_r1.sql"]) applyFile(`migrations/app/${migration}`, failurePersistencePath);
+  execute(["--command", `
+    INSERT INTO app_users (id, created_at) VALUES ('r2a-failure-user', '2026-08-28T00:00:00.000Z');
+    INSERT INTO user_settings (app_user_id, timezone, day_boundary_minutes, updated_at)
+      VALUES ('r2a-failure-user', 'UTC', 0, '2026-08-28T00:00:00.000Z');
+    INSERT INTO sections (id, app_user_id, title, sort_order, created_at)
+      VALUES ('r2a-failure-section', 'r2a-failure-user', 'Unknown', 0, '2026-08-28T00:00:00.000Z');
+    INSERT INTO taskchute_days
+      (id, app_user_id, logical_date, start_instant, end_instant, establishment_timezone,
+       establishment_boundary_minutes, establishment_disambiguation, placement_revision, created_at)
+      VALUES ('r2a-failure-day', 'r2a-failure-user', '2999-01-01', '2999-01-01T00:00:00.000Z',
+        '2999-01-02T00:00:00.000Z', 'UTC', 0, 'compatible', 0, '2026-08-28T00:00:00.000Z');
+    INSERT INTO taskchute_day_section_contexts
+      (app_user_id, taskchute_day_id, section_id, title, context_order)
+      VALUES ('r2a-failure-user', 'r2a-failure-day', 'r2a-failure-section', 'Unknown', 0);
+    INSERT INTO tasks (id, app_user_id, title, created_at)
+      VALUES ('r2a-failure-task', 'r2a-failure-user', 'Must fail', '2026-08-28T00:00:00.000Z');
+    INSERT INTO entries
+      (id, app_user_id, task_id, taskchute_day_id, section_id, position, lifecycle_state,
+       planned_start_minute, created_at)
+      VALUES ('r2a-failure-entry', 'r2a-failure-user', 'r2a-failure-task', 'r2a-failure-day',
+        'r2a-failure-section', 1, 'planned', NULL, '2026-08-28T00:00:00.000Z');
+  `], true, failurePersistencePath);
+  const failedMigration = execute(["--file", join(appRoot, "migrations/app/0007_routine_r2a.sql")], false,
+    failurePersistencePath);
+  assert.notEqual(failedMigration.status, 0, "missing authoritative Section timing must fail migration");
+  assert.deepEqual(query("SELECT section_id, planned_start_minute FROM entries WHERE id = 'r2a-failure-entry'",
+    failurePersistencePath), [{ section_id: "r2a-failure-section", planned_start_minute: null }]);
+  assert.equal(query("PRAGMA table_info(routine_definitions)", failurePersistencePath)
+    .some((column) => column.name === "defaults_revision"), false, "failed migration must leave no partial schema");
+
   const legacyStartRequest = { entry_id: "019d2f00-0000-7000-8000-000000000002",
     execution_id: "019d2f00-0000-7000-8000-000000000003",
     operation_id: "019d2f00-0000-7000-8000-000000000001" };
@@ -115,9 +267,17 @@ try {
   assert.deepEqual(query("SELECT id, lifecycle_state, estimate_seconds, planned_start_minute FROM entries ORDER BY id"), [
     { id: "019d2f00-0000-7000-8000-000000000002", lifecycle_state: "running", estimate_seconds: null, planned_start_minute: null },
     { id: "entry-planned", lifecycle_state: "planned", estimate_seconds: 900, planned_start_minute: null },
+    { id: "entry-r2a-editable", lifecycle_state: "planned", estimate_seconds: 1200, planned_start_minute: 240 },
+    { id: "entry-r2a-normalize", lifecycle_state: "planned", estimate_seconds: 600, planned_start_minute: 240 },
+    { id: "entry-r2a-past-authority", lifecycle_state: "planned", estimate_seconds: 600, planned_start_minute: null },
+    { id: "entry-r2a-past-missing", lifecycle_state: "planned", estimate_seconds: 300, planned_start_minute: null },
   ]);
   assert.deepEqual(query("SELECT id, project_id FROM tasks ORDER BY id"), [
     { id: "task-planned", project_id: "project-v01a" },
+    { id: "task-r2a-editable", project_id: null },
+    { id: "task-r2a-normalize", project_id: null },
+    { id: "task-r2a-past-authority", project_id: null },
+    { id: "task-r2a-past-missing", project_id: null },
     { id: "task-running", project_id: null },
   ]);
   assert.deepEqual(query("SELECT id, entry_id, ended_at FROM executions"), [
@@ -151,7 +311,9 @@ try {
     { app_user_id: "user-v01a", configuration_version_id: "config-b1" },
   ]);
   assert.deepEqual(query("SELECT id, placement_revision FROM taskchute_days ORDER BY id"), [
-    { id: "day-configured", placement_revision: 7 }, { id: "day-v01a", placement_revision: 2 },
+    { id: "day-configured", placement_revision: 7 }, { id: "day-r2a-editable", placement_revision: 0 },
+    { id: "day-r2a-protected", placement_revision: 0 },
+    { id: "day-v01a", placement_revision: 2 },
   ]);
 
   const entryColumns = query("PRAGMA table_info(entries)");
@@ -168,7 +330,7 @@ try {
 
   execute(["--command", `INSERT INTO entries
     (id, app_user_id, task_id, taskchute_day_id, section_id, position, lifecycle_state, estimate_seconds, planned_start_minute, created_at)
-    VALUES ('entry-unsectioned', 'user-v01a', 'task-planned', 'day-v01a', NULL, 1, 'planned', NULL, NULL,
+    VALUES ('entry-unsectioned', 'user-v01a', 'task-planned', 'day-v01a', NULL, 2, 'planned', NULL, NULL,
       '2026-08-28T00:00:00.000Z')`]);
   assert.deepEqual(query("SELECT section_id, estimate_seconds, planned_start_minute FROM entries WHERE id = 'entry-unsectioned'"),
     [{ section_id: null, estimate_seconds: null, planned_start_minute: null }]);
@@ -194,7 +356,8 @@ try {
   assert.notEqual(duplicateActive.status, 0, "the active Execution unique index must reject a second active row");
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
   assert.deepEqual(query("PRAGMA foreign_key_check"), []);
-  console.log("migration regression: 1 scenario passed (46 data/schema checks; 0001 -> 0002 -> v0.1-A fixture -> 0003 -> B1 state -> 0004 -> preservation gate -> 0005 -> 0006 R1)");
+  console.log("migration regression: 2 scenarios passed (R2A preservation/normalization/constraints and fail-safe rollback; chain through 0007)");
 } finally {
   await rm(persistencePath, { recursive: true, force: true });
+  await rm(failurePersistencePath, { recursive: true, force: true });
 }

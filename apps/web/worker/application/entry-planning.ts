@@ -67,8 +67,9 @@ export async function moveEntry(db: D1Database, appUserId: string, request: Move
     db.prepare(`SELECT section_id, lifecycle_state, planned_start_minute, routine_occurrence_id FROM entries
       WHERE app_user_id = ? AND id = ? AND taskchute_day_id = ?`)
       .bind(appUserId, request.entry_id, request.taskchute_day_id),
-    request.section_id ? db.prepare(`SELECT section_id AS id FROM taskchute_day_section_contexts
-      WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id = ?`)
+    request.section_id ? db.prepare(`SELECT section_id AS id, logical_start_minute FROM taskchute_day_section_contexts
+      WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id = ?
+        AND logical_start_minute IS NOT NULL AND logical_end_minute IS NOT NULL`)
       .bind(appUserId, request.taskchute_day_id, request.section_id) : db.prepare("SELECT 1 AS id"),
     db.prepare("SELECT COALESCE(MAX(position), 0) + 1 AS position FROM entries WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id IS ?")
       .bind(appUserId, request.taskchute_day_id, request.section_id),
@@ -85,6 +86,8 @@ export async function moveEntry(db: D1Database, appUserId: string, request: Move
   if (entry.routine_occurrence_id !== null) return reject("Routine-derived Entry placement is read-only");
   if (entry.section_id === request.section_id) return reject("Entry is already in that Section");
   if (day.placement_revision !== request.expected_placement_revision) return reject("The placement revision is stale", true);
+  const targetPlannedStart = request.section_id === null ? null
+    : (sectionResult.results[0] as { logical_start_minute: number }).logical_start_minute;
   const position = (targetPositionResult.results[0] as { position: number }).position;
   const result = { entry_id: request.entry_id, section_id: request.section_id, position,
     placement_revision: request.expected_placement_revision + 1 };
@@ -96,27 +99,27 @@ export async function moveEntry(db: D1Database, appUserId: string, request: Move
       db.prepare(`INSERT INTO placement_command_guards (operation_id, app_user_id, taskchute_day_id, expected_revision)
         SELECT ?, app_user_id, id, ? FROM taskchute_days WHERE app_user_id = ? AND id = ? AND placement_revision = ?`)
         .bind(request.operation_id, request.expected_placement_revision, appUserId, request.taskchute_day_id, request.expected_placement_revision),
-      db.prepare(`UPDATE entries SET section_id = ?, position = ?, planned_start_minute = NULL
+      db.prepare(`UPDATE entries SET section_id = ?, position = ?, planned_start_minute = ?
         WHERE app_user_id = ? AND id = ? AND lifecycle_state = 'planned' AND routine_occurrence_id IS NULL
         AND section_id IS ? AND planned_start_minute IS ?
         AND EXISTS (SELECT 1 FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
-        .bind(request.section_id, position, appUserId, request.entry_id, oldSection, entry.planned_start_minute,
+        .bind(request.section_id, position, targetPlannedStart, appUserId, request.entry_id, oldSection, entry.planned_start_minute,
           appUserId, request.operation_id),
       db.prepare(`UPDATE taskchute_days SET placement_revision = placement_revision + 1 WHERE app_user_id = ? AND id = ?
         AND EXISTS (SELECT 1 FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?)
         AND EXISTS (SELECT 1 FROM entries WHERE app_user_id = ? AND id = ? AND lifecycle_state = 'planned'
           AND routine_occurrence_id IS NULL
-          AND section_id IS ? AND position = ? AND planned_start_minute IS NULL)`)
+          AND section_id IS ? AND position = ? AND planned_start_minute IS ?)`)
         .bind(appUserId, request.taskchute_day_id, appUserId, request.operation_id,
-          appUserId, request.entry_id, request.section_id, position),
+          appUserId, request.entry_id, request.section_id, position, targetPlannedStart),
       db.prepare(`INSERT INTO transaction_assertions (app_user_id, id, ok) SELECT ?, ?, CASE WHEN
         EXISTS (SELECT 1 FROM entries WHERE app_user_id = ? AND id = ? AND lifecycle_state = 'planned'
           AND routine_occurrence_id IS NULL
-          AND section_id IS ? AND position = ? AND planned_start_minute IS NULL)
+          AND section_id IS ? AND position = ? AND planned_start_minute IS ?)
         AND EXISTS (SELECT 1 FROM taskchute_days WHERE app_user_id = ? AND id = ? AND placement_revision = ?)
         THEN 1 ELSE 0 END WHERE EXISTS
         (SELECT 1 FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
-        .bind(appUserId, assertionId, appUserId, request.entry_id, request.section_id, position,
+        .bind(appUserId, assertionId, appUserId, request.entry_id, request.section_id, position, targetPlannedStart,
           appUserId, request.taskchute_day_id, result.placement_revision, appUserId, request.operation_id),
       db.prepare(`INSERT INTO operations (app_user_id, operation_id, command_type, request_fingerprint_version,
         request_fingerprint, outcome_kind, result_json, created_at)

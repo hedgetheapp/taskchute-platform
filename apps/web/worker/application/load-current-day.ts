@@ -64,6 +64,12 @@ interface EntryRow {
   routine_occurrence_id: string | null;
   routine_definition_id: string | null;
   routine_end_logical_date: string | null;
+  default_section_id: string | null;
+  default_planned_start_minute: number | null;
+  section_plan_override_present: number | null;
+  default_estimate_seconds: number | null;
+  estimate_override_present: number | null;
+  defaults_revision: number | null;
 }
 
 interface ExecutionRow {
@@ -124,6 +130,12 @@ function toEntryRow(value: unknown): EntryRow {
     routine_occurrence_id: row.routine_occurrence_id === null ? null : requiredString(row, "routine_occurrence_id"),
     routine_definition_id: row.routine_definition_id === null ? null : requiredString(row, "routine_definition_id"),
     routine_end_logical_date: row.routine_end_logical_date === null ? null : requiredString(row, "routine_end_logical_date"),
+    default_section_id: row.default_section_id === null ? null : requiredString(row, "default_section_id"),
+    default_planned_start_minute: row.default_planned_start_minute === null ? null : requiredNumber(row, "default_planned_start_minute"),
+    section_plan_override_present: row.section_plan_override_present === null ? null : requiredNumber(row, "section_plan_override_present"),
+    default_estimate_seconds: row.default_estimate_seconds === null ? null : requiredNumber(row, "default_estimate_seconds"),
+    estimate_override_present: row.estimate_override_present === null ? null : requiredNumber(row, "estimate_override_present"),
+    defaults_revision: row.defaults_revision === null ? null : requiredNumber(row, "defaults_revision"),
   };
 }
 
@@ -325,6 +337,8 @@ async function loadEstablishedProjection(
         `SELECT e.id AS entry_id, e.section_id, e.position, e.lifecycle_state, e.estimate_seconds, e.planned_start_minute,
                 e.routine_occurrence_id, ro.routine_definition_id,
                 rd.end_logical_date AS routine_end_logical_date,
+                rd.default_section_id, rd.default_planned_start_minute, rd.default_estimate_seconds,
+                rd.defaults_revision, ro.section_plan_override_present, ro.estimate_override_present,
                 t.id AS task_id, t.title AS task_title,
                 p.id AS project_id, p.title AS project_title
            FROM entries e
@@ -357,6 +371,12 @@ async function loadEstablishedProjection(
         routine_occurrence_id: row.routine_occurrence_id,
         end_logical_date: row.routine_end_logical_date,
         can_end: row.routine_end_logical_date === null || row.routine_end_logical_date > day.logical_date,
+        default_section_id: row.default_section_id,
+        default_planned_start_minute: row.default_planned_start_minute,
+        section_plan_override_present: row.section_plan_override_present === 1,
+        default_estimate_seconds: row.default_estimate_seconds,
+        estimate_override_present: row.estimate_override_present === 1,
+        defaults_revision: row.defaults_revision!,
       } : null,
       task: {
         id: row.task_id,

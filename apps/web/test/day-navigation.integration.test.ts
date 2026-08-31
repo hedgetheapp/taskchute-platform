@@ -169,7 +169,7 @@ describe.sequential("Day Navigation v0.1", () => {
       env.APP_DB.prepare(`INSERT INTO routine_definitions
         (id, app_user_id, task_id, recurrence_type, start_logical_date, end_logical_date,
          default_section_id, default_estimate_seconds, default_planned_start_minute, materialization_order, created_at)
-        VALUES (?, ?, ?, 'daily', '2026-08-30', NULL, ?, NULL, NULL, 1, ?)`)
+        VALUES (?, ?, ?, 'daily', '2026-08-30', NULL, ?, NULL, 300, 1, ?)`)
         .bind(uuidv7(), fixture.userId, routineTaskId, fixture.sections[0], now),
     ]);
     await updateSectionConfiguration(env.APP_DB, fixture.userId, {

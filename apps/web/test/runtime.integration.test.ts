@@ -203,6 +203,14 @@ describe.sequential("production runtime bootstrap slice", () => {
     );
     expect(reloadedAfterSettingsChange.taskchute_day).toEqual(projection.taskchute_day);
     await env.APP_DB.prepare("UPDATE user_settings SET timezone = ? WHERE app_user_id = ?").bind(fixture.timezone, appUserId).run();
+    const initialConfiguration = await browser.post("/api/v1/section-configurations/initial", {
+      operation_id: uuidv7(), configuration_version_id: uuidv7(), taskchute_day_id: dayId,
+      items: [
+        { section_id: sectionId, logical_start_minute: fixture.boundary, logical_end_minute: 720 },
+        { section_id: secondSectionId, logical_start_minute: 720, logical_end_minute: fixture.boundary + 1440 },
+      ],
+    });
+    expect(initialConfiguration.status).toBe(200);
   });
 
   it("creates a Project with exact same-operation replay and misuse rejection", async () => {
@@ -696,30 +704,14 @@ describe.sequential("production runtime bootstrap slice", () => {
       .bind(appUserId, taskRequest.operation_id).first()).toEqual(taskRowBefore);
   });
 
-  it("wires initial Section configuration, MoveEntry, and SetEntryEstimate HTTP routes", async () => {
+  it("wires MoveEntry and SetEntryEstimate HTTP routes after initial Section configuration", async () => {
     const before = await json<{
       placement_revision: number;
       section_configuration_required: boolean;
       taskchute_day: { id: string; establishment_boundary_minutes: number };
       sections: Array<{ id: string; entries: Array<{ id: string; lifecycle_state: string }> }>;
     }>(await browser.fetch("/api/v1/taskchute-days/current"));
-    expect(before.section_configuration_required).toBe(true);
-    const configurationVersionId = uuidv7();
-    const configuration = await browser.post("/api/v1/section-configurations/initial", {
-      operation_id: uuidv7(),
-      configuration_version_id: configurationVersionId,
-      taskchute_day_id: before.taskchute_day.id,
-      items: before.sections.map((section, index) => ({
-        section_id: section.id,
-        logical_start_minute: before.taskchute_day.establishment_boundary_minutes + index * (1440 / before.sections.length),
-        logical_end_minute: before.taskchute_day.establishment_boundary_minutes + (index + 1) * (1440 / before.sections.length),
-      })),
-    });
-    expect(configuration.status).toBe(200);
-    expect(await json<object>(configuration)).toEqual({
-      configuration_version_id: configurationVersionId,
-      taskchute_day_id: before.taskchute_day.id,
-    });
+    expect(before.section_configuration_required).toBe(false);
 
     const source = before.sections.flatMap((section) => section.entries)
       .find((entry) => entry.lifecycle_state === "planned");
@@ -781,9 +773,11 @@ describe.sequential("production runtime bootstrap slice", () => {
     const before = await json<{
       placement_revision: number;
       taskchute_day: { id: string };
-      sections: Array<{ entries: Array<{ id: string; lifecycle_state: string; estimate_seconds: number | null;
+      sections: Array<{ entries: Array<{ id: string; section_id: string | null; lifecycle_state: string;
+        estimate_seconds: number | null; planned_start_minute: number | null;
         routine: { routine_definition_id: string } | null }> }>;
-      unsectioned_entries: Array<{ id: string; lifecycle_state: string; estimate_seconds: number | null;
+      unsectioned_entries: Array<{ id: string; section_id: string | null; lifecycle_state: string;
+        estimate_seconds: number | null; planned_start_minute: number | null;
         routine: { routine_definition_id: string } | null }>;
     }>(await browser.fetch("/api/v1/taskchute-days/current"));
     const source = [...before.sections.flatMap((section) => section.entries), ...before.unsectioned_entries]
@@ -795,9 +789,26 @@ describe.sequential("production runtime bootstrap slice", () => {
     });
     expect(converted.status).toBe(200);
 
+    const routineEstimate = await browser.post(`/api/v1/entries/${source.id}/routine-estimate`, {
+      operation_id: uuidv7(), entry_id: source.id, taskchute_day_id: before.taskchute_day.id,
+      action: "occurrence", estimate_seconds: 1200,
+    });
+    expect(routineEstimate.status).toBe(200);
+    expect(await json<object>(routineEstimate)).toMatchObject({ entry_id: source.id,
+      estimate_seconds: 1200, estimate_override_present: true });
+    const routineSection = await browser.post(`/api/v1/entries/${source.id}/routine-section-plan`, {
+      operation_id: uuidv7(), entry_id: source.id, taskchute_day_id: before.taskchute_day.id,
+      action: "occurrence", section_id: source.section_id, planned_start_minute: source.planned_start_minute,
+      expected_placement_revision: before.placement_revision,
+    });
+    expect(routineSection.status).toBe(200);
+    expect(await json<object>(routineSection)).toMatchObject({ entry_id: source.id,
+      section_id: source.section_id, planned_start_minute: source.planned_start_minute,
+      section_plan_override_present: true, placement_revision: before.placement_revision });
+
     const rejected = await browser.post(`/api/v1/entries/${source.id}/estimate`, {
       operation_id: uuidv7(), entry_id: source.id,
-      estimate_seconds: source.estimate_seconds === 1200 ? 1800 : 1200,
+      estimate_seconds: 1800,
     });
     expect(rejected.status).toBe(409);
     expect((await json<{ error: { code: string } }>(rejected)).error.code).toBe("resource_conflict");
@@ -810,7 +821,7 @@ describe.sequential("production runtime bootstrap slice", () => {
     }>(await browser.fetch("/api/v1/taskchute-days/current"));
     const unchanged = [...after.sections.flatMap((section) => section.entries), ...after.unsectioned_entries]
       .find((entry) => entry.id === source.id);
-    expect(unchanged).toMatchObject({ estimate_seconds: source.estimate_seconds,
+    expect(unchanged).toMatchObject({ estimate_seconds: 1200,
       routine: { routine_definition_id: expect.any(String) } });
     expect(after.placement_revision).toBe(before.placement_revision);
   });

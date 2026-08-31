@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   reorderEntries: vi.fn(), startEntry: vi.fn(), completeEntry: vi.fn(),
   establishInitialSectionConfiguration: vi.fn(), moveEntry: vi.fn(), setEntryEstimate: vi.fn(),
   setEntryPlannedStart: vi.fn(),
-  convertEntryToRoutine: vi.fn(), endRoutine: vi.fn(),
+  convertEntryToRoutine: vi.fn(), endRoutine: vi.fn(), setRoutineEstimate: vi.fn(), setRoutineSectionPlan: vi.fn(),
   loadSectionConfiguration: vi.fn(), updateSectionConfiguration: vi.fn(),
 }));
 
@@ -135,6 +135,8 @@ beforeEach(() => {
   mocks.setEntryPlannedStart.mockResolvedValue({});
   mocks.convertEntryToRoutine.mockResolvedValue({});
   mocks.endRoutine.mockResolvedValue({});
+  mocks.setRoutineEstimate.mockResolvedValue({});
+  mocks.setRoutineSectionPlan.mockResolvedValue({});
   mocks.loadSectionConfiguration.mockResolvedValue({
     configuration_version_id: "019c0000-0000-7000-8000-000000000020",
     day_boundary_minutes: 240,
@@ -1382,7 +1384,9 @@ describe("Dogfood Day shell", () => {
     const routineEntry: EntryProjection = { ...firstEntry, estimate_seconds: 900, planned_start_minute: 600, routine: {
       routine_definition_id: "019c0000-0000-7000-8000-000000000030",
       routine_occurrence_id: "019c0000-0000-7000-8000-000000000031",
-      end_logical_date: null, can_end: true,
+      end_logical_date: null, can_end: true, default_section_id: firstEntry.section_id,
+      default_planned_start_minute: 600, section_plan_override_present: false,
+      default_estimate_seconds: 900, estimate_override_present: false, defaults_revision: 0,
     } };
     const sameStartSecond: EntryProjection = { ...secondEntry, planned_start_minute: 600 };
     const routineDay: CurrentTaskChuteDayProjection = {
@@ -1410,12 +1414,12 @@ describe("Dogfood Day shell", () => {
     const routineBadge = document.querySelector<HTMLElement>(".routine-badge")!;
     expect(routineBadge.closest(".routine-cell")).toBeTruthy();
     expect(routineBadge.closest(".task-main")).toBeNull();
-    expect(screen.getByRole("combobox", { name: "Canonical taskのSection" })).toHaveProperty("disabled", true);
+    expect(screen.getByRole("combobox", { name: "Canonical taskのSection" })).toHaveProperty("disabled", false);
     const plannedStart = screen.getByRole("button", { name: "Canonical taskの開始予定" }) as HTMLButtonElement;
-    expect(plannedStart.disabled).toBe(true);
+    expect(plannedStart.disabled).toBe(false);
     expect(plannedStart.textContent).toBe("10:00");
     const estimate = screen.getByRole("button", { name: "Canonical taskの見積" }) as HTMLButtonElement;
-    expect(estimate.disabled).toBe(true);
+    expect(estimate.disabled).toBe(false);
     expect(estimate.textContent).toBe("15分");
     expect((screen.getByRole("button", { name: "Canonical taskを開始" }) as HTMLButtonElement).disabled).toBe(false);
     await waitFor(() => expect((screen.getByRole("button", { name: "Canonical taskを下へ" }) as HTMLButtonElement).disabled).toBe(false));
@@ -1433,7 +1437,9 @@ describe("Dogfood Day shell", () => {
     const routineEntry: EntryProjection = { ...firstEntry, routine: {
       routine_definition_id: "019c0000-0000-7000-8000-00000000003a",
       routine_occurrence_id: "019c0000-0000-7000-8000-00000000003b",
-      end_logical_date: "2026-08-31", can_end: true,
+      end_logical_date: "2026-08-31", can_end: true, default_section_id: firstEntry.section_id,
+      default_planned_start_minute: firstEntry.planned_start_minute, section_plan_override_present: false,
+      default_estimate_seconds: firstEntry.estimate_seconds, estimate_override_present: false, defaults_revision: 0,
     } };
     const routineDay: CurrentTaskChuteDayProjection = {
       ...populatedDay,
@@ -1468,7 +1474,9 @@ describe("Dogfood Day shell", () => {
     const routineEntry: EntryProjection = { ...editableEntry, routine: {
       routine_definition_id: "019c0000-0000-7000-8000-000000000034",
       routine_occurrence_id: "019c0000-0000-7000-8000-000000000035",
-      end_logical_date: null, can_end: true,
+      end_logical_date: null, can_end: true, default_section_id: editableEntry.section_id,
+      default_planned_start_minute: 600, section_plan_override_present: false,
+      default_estimate_seconds: 900, estimate_override_present: false, defaults_revision: 0,
     } };
     const routineDay: CurrentTaskChuteDayProjection = {
       ...editableDay,
@@ -1483,7 +1491,7 @@ describe("Dogfood Day shell", () => {
     fireEvent.click(screen.getByRole("button", { name: "Routine化" }));
     await waitFor(() => expect(document.querySelector(".routine-badge")).toBeTruthy());
     expect(screen.queryByRole("textbox", { name: "Canonical taskの見積（分）" })).toBeNull();
-    expect((screen.getByRole("button", { name: "Canonical taskの見積" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Canonical taskの見積" }) as HTMLButtonElement).disabled).toBe(false);
     fireEvent.keyDown(staleEditor, { key: "Enter" });
     expect(mocks.setEntryEstimate).not.toHaveBeenCalled();
   });
@@ -1498,7 +1506,9 @@ describe("Dogfood Day shell", () => {
     const routineEntry: EntryProjection = { ...editableEntry, routine: {
       routine_definition_id: "019c0000-0000-7000-8000-000000000038",
       routine_occurrence_id: "019c0000-0000-7000-8000-000000000039",
-      end_logical_date: null, can_end: true,
+      end_logical_date: null, can_end: true, default_section_id: editableEntry.section_id,
+      default_planned_start_minute: 600, section_plan_override_present: false,
+      default_estimate_seconds: 900, estimate_override_present: false, defaults_revision: 0,
     } };
     const routineDay: CurrentTaskChuteDayProjection = {
       ...editableDay,
@@ -1513,16 +1523,160 @@ describe("Dogfood Day shell", () => {
     fireEvent.click(screen.getByRole("button", { name: "Routine化" }));
     await waitFor(() => expect(document.querySelector(".routine-badge")).toBeTruthy());
     expect(screen.queryByRole("textbox", { name: "Canonical taskの開始予定" })).toBeNull();
-    expect((screen.getByRole("button", { name: "Canonical taskの開始予定" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Canonical taskの開始予定" }) as HTMLButtonElement).disabled).toBe(false);
     fireEvent.keyDown(staleEditor, { key: "Enter" });
     expect(mocks.setEntryPlannedStart).not.toHaveBeenCalled();
+  });
+
+  it("focuses a local Routine estimate candidate and dismisses it with Escape, outside click, or Cancel", async () => {
+    const routineEntry: EntryProjection = { ...firstEntry, estimate_seconds: 900, planned_start_minute: 300, routine: {
+      routine_definition_id: "019c0000-0000-7000-8000-000000000040",
+      routine_occurrence_id: "019c0000-0000-7000-8000-000000000041",
+      end_logical_date: null, can_end: true, default_section_id: morningId,
+      default_planned_start_minute: 300, section_plan_override_present: false,
+      default_estimate_seconds: 900, estimate_override_present: false, defaults_revision: 4,
+    } };
+    const routineDay = { ...populatedDay,
+      sections: [{ ...populatedDay.sections[0], entries: [routineEntry] }, populatedDay.sections[1]],
+      next_entry: routineEntry };
+    mocks.loadDay.mockResolvedValue(routineDay);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskの見積" }));
+    const input = screen.getByRole("textbox", { name: "Canonical taskの見積（分）" });
+    fireEvent.change(input, { target: { value: "25" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    const choice = await screen.findByRole("group", { name: "Canonical taskの見積反映先" });
+    expect(choice.textContent).toContain("25分");
+    expect(mocks.setRoutineEstimate).not.toHaveBeenCalled();
+    const occurrenceChoice = within(choice).getByRole("button", { name: "今回だけ" });
+    await waitFor(() => expect(document.activeElement).toBe(occurrenceChoice));
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    expect(screen.queryByRole("group", { name: "Canonical taskの見積反映先" })).toBeNull();
+    expect(mocks.setRoutineEstimate).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Canonical taskの見積" }));
+    const secondInput = screen.getByRole("textbox", { name: "Canonical taskの見積（分）" });
+    fireEvent.change(secondInput, { target: { value: "30" } });
+    fireEvent.keyDown(secondInput, { key: "Enter" });
+    const secondChoice = await screen.findByRole("group", { name: "Canonical taskの見積反映先" });
+    fireEvent.click(document.body);
+    expect(screen.queryByRole("group", { name: "Canonical taskの見積反映先" })).toBeNull();
+    expect(mocks.setRoutineEstimate).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Canonical taskの見積" }));
+    const thirdInput = screen.getByRole("textbox", { name: "Canonical taskの見積（分）" });
+    fireEvent.change(thirdInput, { target: { value: "35" } });
+    fireEvent.keyDown(thirdInput, { key: "Enter" });
+    const thirdChoice = await screen.findByRole("group", { name: "Canonical taskの見積反映先" });
+    fireEvent.click(within(thirdChoice).getByRole("button", { name: "キャンセル" }));
+    expect(screen.queryByRole("group", { name: "Canonical taskの見積反映先" })).toBeNull();
+    expect(mocks.setRoutineEstimate).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Canonical taskの見積" }));
+    const finalInput = screen.getByRole("textbox", { name: "Canonical taskの見積（分）" });
+    fireEvent.change(finalInput, { target: { value: "30" } });
+    fireEvent.keyDown(finalInput, { key: "Enter" });
+    const finalChoice = await screen.findByRole("group", { name: "Canonical taskの見積反映先" });
+    fireEvent.click(within(finalChoice).getByRole("button", { name: "ルーティンに反映" }));
+    await waitFor(() => expect(mocks.setRoutineEstimate).toHaveBeenCalledTimes(1));
+    expect(mocks.setRoutineEstimate.mock.calls[0][0]).toMatchObject({
+      entry_id: routineEntry.id, taskchute_day_id: routineDay.taskchute_day.id,
+      action: "definition", estimate_seconds: 1800, expected_defaults_revision: 4,
+    });
+  });
+
+  it("creates a synchronized Routine Section candidate without writing and sends the selected occurrence scope", async () => {
+    const routineEntry: EntryProjection = { ...firstEntry, estimate_seconds: 900, planned_start_minute: 300, routine: {
+      routine_definition_id: "019c0000-0000-7000-8000-000000000042",
+      routine_occurrence_id: "019c0000-0000-7000-8000-000000000043",
+      end_logical_date: null, can_end: true, default_section_id: morningId,
+      default_planned_start_minute: 300, section_plan_override_present: false,
+      default_estimate_seconds: 900, estimate_override_present: false, defaults_revision: 2,
+    } };
+    const routineDay = { ...populatedDay,
+      sections: [{ ...populatedDay.sections[0], entries: [routineEntry] }, populatedDay.sections[1]],
+      next_entry: routineEntry };
+    mocks.loadDay.mockResolvedValue(routineDay);
+    const request = deferred<unknown>();
+    mocks.setRoutineSectionPlan.mockReturnValue(request.promise);
+    render(<App />);
+    fireEvent.change(await screen.findByRole("combobox", { name: "Canonical taskのSection" }),
+      { target: { value: eveningId } });
+    const choice = await screen.findByRole("group", { name: "Canonical taskのSection・開始予定反映先" });
+    expect(choice.textContent).toContain("Evening / 12:00");
+    expect(mocks.setRoutineSectionPlan).not.toHaveBeenCalled();
+    fireEvent.click(within(choice).getByRole("button", { name: "今回だけ" }));
+    await waitFor(() => expect(mocks.setRoutineSectionPlan).toHaveBeenCalledTimes(1));
+    expect(mocks.setRoutineSectionPlan.mock.calls[0][0]).toMatchObject({
+      entry_id: routineEntry.id, action: "occurrence", section_id: eveningId,
+      planned_start_minute: 720, expected_placement_revision: routineDay.placement_revision,
+    });
+    expect((within(choice).getByRole("button", { name: "今回だけ" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByRole("status").textContent).toBe("Routine設定を保存・照合中…");
+    request.resolve({});
+    await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+  });
+
+  it("shows estimate reset only in the overridden unit editor and retains the exact ambiguous operation for retry", async () => {
+    const routineEntry: EntryProjection = { ...firstEntry, estimate_seconds: null, planned_start_minute: 300, routine: {
+      routine_definition_id: "019c0000-0000-7000-8000-000000000044",
+      routine_occurrence_id: "019c0000-0000-7000-8000-000000000045",
+      end_logical_date: null, can_end: true, default_section_id: morningId,
+      default_planned_start_minute: 300, section_plan_override_present: false,
+      default_estimate_seconds: 900, estimate_override_present: true, defaults_revision: 1,
+    } };
+    const routineDay = { ...populatedDay,
+      sections: [{ ...populatedDay.sections[0], entries: [routineEntry] }, populatedDay.sections[1]],
+      next_entry: routineEntry };
+    mocks.loadDay.mockResolvedValue(routineDay);
+    mocks.setRoutineEstimate.mockRejectedValueOnce(new TypeError("response lost before outcome")).mockResolvedValueOnce({});
+    render(<App />);
+    await screen.findByRole("button", { name: "Canonical taskの見積" });
+    expect(screen.queryByRole("button", { name: "Canonical taskの見積をルーティンの設定に戻す" })).toBeNull();
+    expect(screen.queryByText("Override")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Canonical taskの見積" }));
+    const reset = screen.getByRole("button", { name: "Canonical taskの見積をルーティンの設定に戻す" });
+    fireEvent.click(reset);
+    const retry = await screen.findByRole("button", { name: "保留中のRoutine見積を再試行" });
+    const original = mocks.setRoutineEstimate.mock.calls[0][0];
+    expect(original).toMatchObject({ entry_id: routineEntry.id, action: "reset" });
+    fireEvent.click(retry);
+    await waitFor(() => expect(mocks.setRoutineEstimate).toHaveBeenCalledTimes(2));
+    expect(mocks.setRoutineEstimate.mock.calls[1][0]).toEqual(original);
+  });
+
+  it("shows Section-plan reset only in the overridden unit editor and sends reset exactly once", async () => {
+    const routineEntry: EntryProjection = { ...firstEntry, estimate_seconds: 900, planned_start_minute: 300, routine: {
+      routine_definition_id: "019c0000-0000-7000-8000-000000000046",
+      routine_occurrence_id: "019c0000-0000-7000-8000-000000000047",
+      end_logical_date: null, can_end: true, default_section_id: eveningId,
+      default_planned_start_minute: 720, section_plan_override_present: true,
+      default_estimate_seconds: 900, estimate_override_present: false, defaults_revision: 3,
+    } };
+    const routineDay = { ...populatedDay,
+      sections: [{ ...populatedDay.sections[0], entries: [routineEntry] }, populatedDay.sections[1]],
+      next_entry: routineEntry };
+    mocks.loadDay.mockResolvedValue(routineDay);
+    render(<App />);
+    await screen.findByRole("button", { name: "Canonical taskの開始予定" });
+    expect(screen.queryByRole("button", { name: "Canonical taskのSection・開始予定をルーティンの設定に戻す" })).toBeNull();
+    expect(screen.queryByText("Override")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Canonical taskの開始予定" }));
+    fireEvent.click(screen.getByRole("button", { name: "Canonical taskのSection・開始予定をルーティンの設定に戻す" }));
+    await waitFor(() => expect(mocks.setRoutineSectionPlan).toHaveBeenCalledTimes(1));
+    expect(mocks.setRoutineSectionPlan.mock.calls[0][0]).toMatchObject({
+      entry_id: routineEntry.id, taskchute_day_id: routineDay.taskchute_day.id,
+      action: "reset", expected_placement_revision: routineDay.placement_revision,
+    });
   });
 
   it("retains only the exact ambiguous Routine conversion for retry and reconciles after commit", async () => {
     const routineEntry: EntryProjection = { ...firstEntry, routine: {
       routine_definition_id: "019c0000-0000-7000-8000-000000000032",
       routine_occurrence_id: "019c0000-0000-7000-8000-000000000033",
-      end_logical_date: "2026-08-31", can_end: true,
+      end_logical_date: "2026-08-31", can_end: true, default_section_id: firstEntry.section_id,
+      default_planned_start_minute: firstEntry.planned_start_minute, section_plan_override_present: false,
+      default_estimate_seconds: firstEntry.estimate_seconds, estimate_override_present: false, defaults_revision: 0,
     } };
     const routineDay: CurrentTaskChuteDayProjection = {
       ...populatedDay,
@@ -1550,7 +1704,9 @@ describe("Dogfood Day shell", () => {
     const routineEntry: EntryProjection = { ...firstEntry, routine: {
       routine_definition_id: "019c0000-0000-7000-8000-000000000036",
       routine_occurrence_id: "019c0000-0000-7000-8000-000000000037",
-      end_logical_date: null, can_end: true,
+      end_logical_date: null, can_end: true, default_section_id: firstEntry.section_id,
+      default_planned_start_minute: firstEntry.planned_start_minute, section_plan_override_present: false,
+      default_estimate_seconds: firstEntry.estimate_seconds, estimate_override_present: false, defaults_revision: 0,
     } };
     const routineDay: CurrentTaskChuteDayProjection = {
       ...populatedDay,

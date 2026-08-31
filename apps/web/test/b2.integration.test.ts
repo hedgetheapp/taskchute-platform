@@ -103,7 +103,7 @@ describe.sequential("Dogfood Day B2 planned start", () => {
     }
     const clear = await setEntryPlannedStart(env.APP_DB, userId, { operation_id: uuidv7(), entry_id: entryId,
       taskchute_day_id: dayId, planned_start_minute: null, expected_placement_revision: 3 });
-    expect(clear).toMatchObject({ section_id: sectionIds[2], position: 8, planned_start_minute: null, placement_revision: 4 });
+    expect(clear).toMatchObject({ section_id: null, position: 1, planned_start_minute: null, placement_revision: 4 });
   });
 
   it("retains same-Section position, rejects unknown context, ineligible lifecycle, owner, stale, and operation misuse", async () => {
@@ -193,7 +193,7 @@ describe.sequential("Dogfood Day B2 planned start", () => {
     expect(historical).toBeTruthy();
   });
 
-  it("clears planned start in MoveEntry atomically, replays it, and starts a timed Entry early without placement revision", async () => {
+  it("synchronizes planned start in MoveEntry atomically, replays it, and starts a timed Entry early without placement revision", async () => {
     const { userId, dayId, sectionIds } = await seedTimedDay();
     const entryId = await addEntry(userId, dayId, sectionIds[0]!, 3, "planned", 500);
     const moveRequest = { operation_id: uuidv7(), entry_id: entryId, taskchute_day_id: dayId,
@@ -202,7 +202,7 @@ describe.sequential("Dogfood Day B2 planned start", () => {
     expect(moved.placement_revision).toBe(1);
     expect(await moveEntry(env.APP_DB, userId, moveRequest)).toEqual(moved);
     expect(await env.APP_DB.prepare("SELECT section_id, planned_start_minute FROM entries WHERE id = ?")
-      .bind(entryId).first()).toEqual({ section_id: sectionIds[1], planned_start_minute: null });
+      .bind(entryId).first()).toEqual({ section_id: sectionIds[1], planned_start_minute: 540 });
     await expect(moveEntry(env.APP_DB, userId, { ...moveRequest, operation_id: uuidv7(), section_id: sectionIds[2]!,
       expected_placement_revision: 0 })).rejects.toMatchObject({ code: "revision_conflict" });
 

@@ -11,6 +11,12 @@ import { isReorderEntriesRequest, reorderEntries } from "./application/reorder-e
 import { isSetEntryPlannedStartRequest, setEntryPlannedStart } from "./application/planned-start";
 import { convertEntryToRoutine, endRoutine, isConvertEntryToRoutineRequest, isEndRoutineRequest } from "./application/routine";
 import {
+  isSetRoutineEstimateRequest,
+  isSetRoutineSectionPlanRequest,
+  setRoutineEstimate,
+  setRoutineSectionPlan,
+} from "./application/routine-planning";
+import {
   establishInitialSectionConfiguration,
   isEstablishInitialSectionConfigurationRequest,
   isUpdateSectionConfigurationRequest,
@@ -138,6 +144,24 @@ async function route(request: Request, env: Env): Promise<Response> {
       throw new HttpError(400, "malformed_request", "Invalid EndRoutine request");
     }
     return Response.json(await endRoutine(env.APP_DB, principal.appUserId, body));
+  }
+  const routineEstimateMatch = url.pathname.match(/^\/api\/v1\/entries\/([^/]+)\/routine-estimate$/);
+  if (request.method === "POST" && routineEstimateMatch) {
+    const body = await readBoundedJson(request);
+    if (routineEstimateMatch[1] !== (body as { entry_id?: unknown })?.entry_id
+      || !isSetRoutineEstimateRequest(body)) {
+      throw new HttpError(400, "malformed_request", "Invalid SetRoutineEstimate request");
+    }
+    return Response.json(await setRoutineEstimate(env.APP_DB, principal.appUserId, body));
+  }
+  const routineSectionPlanMatch = url.pathname.match(/^\/api\/v1\/entries\/([^/]+)\/routine-section-plan$/);
+  if (request.method === "POST" && routineSectionPlanMatch) {
+    const body = await readBoundedJson(request);
+    if (routineSectionPlanMatch[1] !== (body as { entry_id?: unknown })?.entry_id
+      || !isSetRoutineSectionPlanRequest(body)) {
+      throw new HttpError(400, "malformed_request", "Invalid SetRoutineSectionPlan request");
+    }
+    return Response.json(await setRoutineSectionPlan(env.APP_DB, principal.appUserId, body));
   }
   const lifecycleMatch = url.pathname.match(/^\/api\/v1\/entries\/([^/]+)\/(start|complete)$/);
   if (request.method === "POST" && lifecycleMatch) {

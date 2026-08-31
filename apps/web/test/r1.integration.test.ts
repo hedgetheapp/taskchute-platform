@@ -134,7 +134,7 @@ describe.sequential("Minimal Routine R1", () => {
   it("snapshots mutation-time estimate and placement defaults during conversion", async () => {
     const fixture = await seedR1User();
     const estimated = await insertPlannedEntry(fixture.userId, fixture.day.taskchute_day.id,
-      fixture.sections[1]!, 1, 300, null, "Estimate race");
+      fixture.sections[1]!, 1, 300, 600, "Estimate race");
     const estimateRequest = conversionRequest(estimated.entryId, fixture.day.taskchute_day.id);
     const updateEstimateRequest = {
       operation_id: uuidv7(), entry_id: estimated.entryId, estimate_seconds: 1200,
@@ -170,8 +170,8 @@ describe.sequential("Minimal Routine R1", () => {
       FROM entries e JOIN routine_occurrences o ON o.app_user_id = e.app_user_id AND o.id = e.routine_occurrence_id
       JOIN routine_definitions r ON r.app_user_id = o.app_user_id AND r.id = o.routine_definition_id
       WHERE e.app_user_id = ? AND e.id = ?`).bind(fixture.userId, moved.entryId).first()).toEqual({
-      section_id: fixture.sections[0], planned_start_minute: null,
-      default_section_id: fixture.sections[0], default_planned_start_minute: null,
+      section_id: fixture.sections[0], planned_start_minute: 300,
+      default_section_id: fixture.sections[0], default_planned_start_minute: 300,
     });
 
     const unsectioned = await insertPlannedEntry(fixture.userId, fixture.day.taskchute_day.id,
@@ -282,7 +282,7 @@ describe.sequential("Minimal Routine R1", () => {
   it("does not materialize a stale plan after the Routine ends", async () => {
     const fixture = await seedR1User();
     const original = await insertPlannedEntry(fixture.userId, fixture.day.taskchute_day.id,
-      fixture.sections[0]!, 1, null, null, "Ending race");
+      fixture.sections[0]!, 1, null, 300, "Ending race");
     const request = conversionRequest(original.entryId, fixture.day.taskchute_day.id);
     await convertEntryToRoutine(env.APP_DB, fixture.userId, request, currentInstant);
     const nextDayId = await insertEstablishedDay(fixture.userId, "2026-08-30", 9,
@@ -350,9 +350,9 @@ describe.sequential("Minimal Routine R1", () => {
     const timed = await insertPlannedEntry(fixture.userId, fixture.day.taskchute_day.id,
       fixture.sections[1]!, 1, 1200, 600, "Timed routine");
     const missingSection = await insertPlannedEntry(fixture.userId, fixture.day.taskchute_day.id,
-      fixture.sections[1]!, 2, 300, null, "Fallback routine");
+      null, 1, 300, null, "Unsectioned routine");
     const continuing = await insertPlannedEntry(fixture.userId, fixture.day.taskchute_day.id,
-      fixture.sections[1]!, 3, 600, null, "Continuing routine");
+      null, 2, 600, null, "Continuing routine");
     const timedRequest = conversionRequest(timed.entryId, fixture.day.taskchute_day.id);
     const fallbackRequest = conversionRequest(missingSection.entryId, fixture.day.taskchute_day.id, "2026-08-30");
     const continuingRequest = conversionRequest(continuing.entryId, fixture.day.taskchute_day.id);
@@ -364,20 +364,33 @@ describe.sequential("Minimal Routine R1", () => {
     await updateSectionConfiguration(env.APP_DB, fixture.userId, {
       operation_id: uuidv7(), configuration_version_id: versionB,
       expected_configuration_version_id: fixture.versionId,
-      items: [{ section_id: fixture.sections[0]!, title: "Morning", logical_start_minute: 300, logical_end_minute: 1740 }],
+      items: [
+        { section_id: fixture.sections[0]!, title: "Morning", logical_start_minute: 300, logical_end_minute: 540 },
+        { section_id: fixture.sections[1]!, title: "Day", logical_start_minute: 540, logical_end_minute: 1740 },
+      ],
     });
     const nextDayId = await insertEstablishedDay(fixture.userId, "2026-08-30", 5, versionB, fixture.sections[0]!);
-    const manualTimed = await insertPlannedEntry(fixture.userId, nextDayId, fixture.sections[0]!, 1, null, 600, "Manual timed");
+    await env.APP_DB.batch([
+      env.APP_DB.prepare(`UPDATE taskchute_day_section_contexts SET logical_end_minute = 540,
+        actual_end_instant = '2026-08-30T09:00:00.000Z' WHERE app_user_id = ? AND taskchute_day_id = ?`)
+        .bind(fixture.userId, nextDayId),
+      env.APP_DB.prepare(`INSERT INTO taskchute_day_section_contexts
+        (app_user_id, taskchute_day_id, section_id, configuration_version_id, title,
+         logical_start_minute, logical_end_minute, actual_start_instant, actual_end_instant, context_order)
+        VALUES (?, ?, ?, ?, 'Day', 540, 1740, '2026-08-30T09:00:00.000Z', '2026-08-31T05:00:00.000Z', 1)`)
+        .bind(fixture.userId, nextDayId, fixture.sections[1], versionB),
+    ]);
+    const manualTimed = await insertPlannedEntry(fixture.userId, nextDayId, fixture.sections[1]!, 1, null, 600, "Manual timed");
     const manualUnsectioned = await insertPlannedEntry(fixture.userId, nextDayId, null, 1, null, null, "Manual no section");
     const next = await loadCurrentTaskChuteDay(env.APP_DB, fixture.userId, "2026-08-30T12:00:00.000Z");
     expect(next.placement_revision).toBe(6);
-    expect(next.sections[0]?.entries.map((entry) => entry.id)).toEqual([
+    expect(next.sections[1]?.entries.map((entry) => entry.id)).toEqual([
       manualTimed.entryId,
       expect.any(String),
     ]);
-    const generatedTimed = next.sections[0]?.entries.find((entry) => entry.routine?.routine_definition_id === timedRequest.routine_definition_id);
+    const generatedTimed = next.sections[1]?.entries.find((entry) => entry.routine?.routine_definition_id === timedRequest.routine_definition_id);
     expect(generatedTimed).toMatchObject({ task: { id: timed.taskId }, estimate_seconds: 1200,
-      planned_start_minute: 600, section_id: fixture.sections[0], position: 2 });
+      planned_start_minute: 600, section_id: fixture.sections[1], position: 2 });
     const generatedFallback = next.unsectioned_entries.find((entry) =>
       entry.routine?.routine_definition_id === fallbackRequest.routine_definition_id);
     expect(generatedFallback).toMatchObject({ task: { id: missingSection.taskId }, estimate_seconds: 300,
@@ -411,6 +424,16 @@ describe.sequential("Minimal Routine R1", () => {
       .rejects.toMatchObject({ code: "resource_conflict" });
 
     const dayAfterId = await insertEstablishedDay(fixture.userId, "2026-08-31", 0, versionB, fixture.sections[0]!);
+    await env.APP_DB.batch([
+      env.APP_DB.prepare(`UPDATE taskchute_day_section_contexts SET logical_end_minute = 540,
+        actual_end_instant = '2026-08-31T09:00:00.000Z' WHERE app_user_id = ? AND taskchute_day_id = ?`)
+        .bind(fixture.userId, dayAfterId),
+      env.APP_DB.prepare(`INSERT INTO taskchute_day_section_contexts
+        (app_user_id, taskchute_day_id, section_id, configuration_version_id, title,
+         logical_start_minute, logical_end_minute, actual_start_instant, actual_end_instant, context_order)
+        VALUES (?, ?, ?, ?, 'Day', 540, 1740, '2026-08-31T09:00:00.000Z', '2026-09-01T05:00:00.000Z', 1)`)
+        .bind(fixture.userId, dayAfterId, fixture.sections[1], versionB),
+    ]);
     const dayAfter = await loadCurrentTaskChuteDay(env.APP_DB, fixture.userId, "2026-08-31T12:00:00.000Z");
     expect(dayAfter.taskchute_day.id).toBe(dayAfterId);
     expect(dayAfter.sections.flatMap((section) => section.entries)).toHaveLength(0);
@@ -427,7 +450,7 @@ describe.sequential("Minimal Routine R1", () => {
   it("converges concurrent loads and rolls back an injected materialization failure", async () => {
     const fixture = await seedR1User();
     const original = await insertPlannedEntry(fixture.userId, fixture.day.taskchute_day.id,
-      fixture.sections[0]!, 1, null, null, "Concurrent routine");
+      fixture.sections[0]!, 1, null, 300, "Concurrent routine");
     const request = conversionRequest(original.entryId, fixture.day.taskchute_day.id);
     await convertEntryToRoutine(env.APP_DB, fixture.userId, request, currentInstant);
     const versionB = uuidv7();

@@ -363,9 +363,11 @@ export async function ensureCurrentDayRoutineEntries(
         throw new Error("Routine default planned start is invalid for the established TaskChuteDay context");
       }
       sectionId = matches[0]!.section_id;
-    } else if (definition.default_section_id !== null
-      && contextRows.some((context) => context.section_id === definition.default_section_id)) {
-      sectionId = definition.default_section_id;
+      if (matches[0]!.section_id !== definition.default_section_id) {
+        throw new Error("Routine default Section and planned start are not synchronized for the established TaskChuteDay context");
+      }
+    } else if (definition.default_section_id !== null) {
+      throw new Error("Routine default Section requires a planned start");
     }
     const key = sectionId ?? "";
     const position = nextPosition.get(key) ?? 1;

@@ -113,6 +113,10 @@ input:focus-visible, select:focus-visible { border-color: #2383e2; outline: 2px 
 .routine-editor label { display: grid; grid-column: 1 / -1; gap: 2px; color: #787774; font-size: 10px; }
 .routine-editor input { width: 100%; min-width: 0; padding: 4px; }
 .routine-editor button { padding: 4px 6px; font-size: 11px; }
+.routine-scope-choice { position: relative; z-index: 2; display: grid; min-width: 180px; gap: 4px; padding: 6px; border: 1px solid #d9d4e8; border-radius: 6px; background: #fff; box-shadow: 0 4px 14px rgba(15, 15, 15, .12); text-align: left; }
+.routine-scope-choice > span { color: #575754; font-size: 11px; }
+.routine-scope-choice button, .routine-reset { padding: 4px 6px; font-size: 11px; }
+.routine-reset { width: 100%; background: transparent; color: #6941c6; }
 .project-name, .muted { color: #787774; font-size: 12px; }
 .task-row select { padding: 6px 7px; font-size: 12px; }
 .planned-start-cell input, .estimate-cell input { padding: 6px; text-align: right; }

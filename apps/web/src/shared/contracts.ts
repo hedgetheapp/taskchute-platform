@@ -48,6 +48,12 @@ export interface RoutineEntryProjection {
   routine_occurrence_id: string;
   end_logical_date: string | null;
   can_end: boolean;
+  default_section_id: string | null;
+  default_planned_start_minute: number | null;
+  section_plan_override_present: boolean;
+  default_estimate_seconds: number | null;
+  estimate_override_present: boolean;
+  defaults_revision: number;
 }
 
 export interface SectionProjection {
@@ -260,6 +266,41 @@ export interface SetEntryPlannedStartResult {
   planned_start_minute: number | null;
   position: number;
   placement_revision: number;
+}
+
+interface RoutineEntryMutationBase {
+  operation_id: string;
+  entry_id: string;
+  taskchute_day_id: string;
+}
+
+export type SetRoutineEstimateRequest = RoutineEntryMutationBase & (
+  | { action: "occurrence"; estimate_seconds: number | null }
+  | { action: "definition"; estimate_seconds: number | null; expected_defaults_revision: number }
+  | { action: "reset" }
+);
+
+export interface SetRoutineEstimateResult {
+  entry_id: string;
+  estimate_seconds: number | null;
+  estimate_override_present: boolean;
+  defaults_revision: number;
+}
+
+export type SetRoutineSectionPlanRequest = RoutineEntryMutationBase & { expected_placement_revision: number } & (
+  | { action: "occurrence"; section_id: string | null; planned_start_minute: number | null }
+  | { action: "definition"; section_id: string | null; planned_start_minute: number | null; expected_defaults_revision: number }
+  | { action: "reset" }
+);
+
+export interface SetRoutineSectionPlanResult {
+  entry_id: string;
+  section_id: string | null;
+  planned_start_minute: number | null;
+  position: number;
+  placement_revision: number;
+  section_plan_override_present: boolean;
+  defaults_revision: number;
 }
 
 export interface ConvertEntryToRoutineRequest {

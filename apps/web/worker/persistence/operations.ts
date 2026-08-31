@@ -3,7 +3,8 @@ import { REQUEST_FINGERPRINT_VERSION } from "../application/fingerprint";
 
 export type CommandType = "CreateProject" | "AddTaskToDay" | "ReorderEntries" | "StartEntry" | "CompleteEntry"
   | "EstablishInitialSectionConfiguration" | "MoveEntry" | "SetEntryEstimate" | "SetEntryPlannedStart"
-  | "UpdateSectionConfiguration" | "ConvertEntryToRoutine" | "EndRoutine";
+  | "UpdateSectionConfiguration" | "ConvertEntryToRoutine" | "EndRoutine"
+  | "SetRoutineEstimate" | "SetRoutineSectionPlan";
 export type OutcomeKind = "success" | "domain_rejection" | "revision_conflict";
 
 interface OperationRow {

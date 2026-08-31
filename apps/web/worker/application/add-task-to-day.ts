@@ -72,8 +72,9 @@ async function addTaskToEstablishedDay(
       .prepare("SELECT placement_revision FROM taskchute_days WHERE app_user_id = ? AND id = ?")
       .bind(appUserId, request.taskchute_day_id),
     request.section_id
-      ? db.prepare(`SELECT section_id AS id FROM taskchute_day_section_contexts
-          WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id = ?`)
+      ? db.prepare(`SELECT section_id AS id, logical_start_minute FROM taskchute_day_section_contexts
+          WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id = ?
+            AND logical_start_minute IS NOT NULL AND logical_end_minute IS NOT NULL`)
         .bind(appUserId, request.taskchute_day_id, request.section_id)
       : db.prepare("SELECT 1 AS id"),
     request.project_id
@@ -112,6 +113,9 @@ async function addTaskToEstablishedDay(
   if (typeof position !== "number" || !Number.isInteger(position) || position < 1) {
     throw new Error("Invalid persistence row: next_position");
   }
+  const plannedStartMinute = request.section_id === null
+    ? null
+    : (sectionResult.results[0] as { logical_start_minute: number }).logical_start_minute;
   const result: AddTaskToDayResult = {
     task_id: request.task_id,
     entry_id: request.entry_id,
@@ -165,8 +169,9 @@ async function addTaskToEstablishedDay(
       db
         .prepare(
           `INSERT INTO entries
-            (id, app_user_id, task_id, taskchute_day_id, section_id, position, lifecycle_state, created_at)
-           SELECT ?, ?, ?, ?, ?, ?, 'planned', ?
+            (id, app_user_id, task_id, taskchute_day_id, section_id, position, lifecycle_state,
+             planned_start_minute, created_at)
+           SELECT ?, ?, ?, ?, ?, ?, 'planned', ?, ?
             WHERE EXISTS (SELECT 1 FROM placement_command_guards WHERE operation_id = ? AND app_user_id = ?)`,
         )
         .bind(
@@ -176,6 +181,7 @@ async function addTaskToEstablishedDay(
           request.taskchute_day_id,
           request.section_id,
           position,
+          plannedStartMinute,
           now,
           request.operation_id,
           appUserId,
@@ -294,6 +300,9 @@ async function addTaskToFutureDay(
   const now = nowInstant;
   const contextsJson = JSON.stringify(plan.contexts);
   const configurationVersionId = plan.configuration_version_id;
+  const plannedStartMinute = request.section_id === null
+    ? null
+    : plan.contexts.find((context) => context.section_id === request.section_id)!.logical_start_minute;
   const result: AddTaskToDayResult = {
     task_id: request.task_id,
     entry_id: request.entry_id,
@@ -359,10 +368,12 @@ async function addTaskToFutureDay(
           SELECT 1 FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
         .bind(request.task_id, appUserId, request.project_id, semanticTitle, now, appUserId, request.operation_id),
       db.prepare(`INSERT INTO entries
-        (id, app_user_id, task_id, taskchute_day_id, section_id, position, lifecycle_state, created_at)
-        SELECT ?, ?, ?, ?, ?, 1, 'planned', ? WHERE EXISTS (
+        (id, app_user_id, task_id, taskchute_day_id, section_id, position, lifecycle_state,
+         planned_start_minute, created_at)
+        SELECT ?, ?, ?, ?, ?, 1, 'planned', ?, ? WHERE EXISTS (
           SELECT 1 FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
-        .bind(request.entry_id, appUserId, request.task_id, request.taskchute_day_id, request.section_id, now,
+        .bind(request.entry_id, appUserId, request.task_id, request.taskchute_day_id, request.section_id,
+          plannedStartMinute, now,
           appUserId, request.operation_id),
       db.prepare(`INSERT INTO transaction_assertions (app_user_id, id, ok) VALUES (?, ?, CASE WHEN
           EXISTS (SELECT 1 FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?)

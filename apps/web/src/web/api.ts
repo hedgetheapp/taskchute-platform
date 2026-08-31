@@ -27,6 +27,10 @@ import type {
   ConvertEntryToRoutineResult,
   EndRoutineRequest,
   EndRoutineResult,
+  SetRoutineEstimateRequest,
+  SetRoutineEstimateResult,
+  SetRoutineSectionPlanRequest,
+  SetRoutineSectionPlanResult,
 } from "../shared/contracts";
 
 export class ApiClientError extends Error {
@@ -114,5 +118,11 @@ export const api = {
   },
   endRoutine(body: EndRoutineRequest): Promise<EndRoutineResult> {
     return requestJson(`/api/v1/routines/${body.routine_definition_id}/end`, jsonPost("", body));
+  },
+  setRoutineEstimate(body: SetRoutineEstimateRequest): Promise<SetRoutineEstimateResult> {
+    return requestJson(`/api/v1/entries/${body.entry_id}/routine-estimate`, jsonPost("", body));
+  },
+  setRoutineSectionPlan(body: SetRoutineSectionPlanRequest): Promise<SetRoutineSectionPlanResult> {
+    return requestJson(`/api/v1/entries/${body.entry_id}/routine-section-plan`, jsonPost("", body));
   },
 };
