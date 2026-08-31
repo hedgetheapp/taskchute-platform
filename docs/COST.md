@@ -32,6 +32,12 @@ AuthはD-021によりBetter AuthをWorkers + D1上で利用する方向とする
 
 production deployment前には、Workers / D1のcurrent pricing、quota、storage limit、request limit、platform restrictionを再確認する。
 
+## Initial production posture
+
+D-049によりinitial productionもWorkers Freeから開始する。2026-09-01確認時点のplanning boundaryはWorkers 100,000 requests/day、D1 5 million rows read/day、100,000 rows written/day、total storage 5 GB、Free Time Travel retention 7日である。actual Cloudflare stateをresource作成前に再確認し、limit不足時にpaid planへ自動upgradeしない。
+
+Initial productionはWorker 1つとseparate AUTH / APP D1 2つを追加する。custom domain、Cloudflare Access、paid plan、external backup service、DR automationは今回のapproved cost scopeに含めない。
+
 ## Deferred / optional infrastructure
 
 以下はinitial implementationでは採用しない。

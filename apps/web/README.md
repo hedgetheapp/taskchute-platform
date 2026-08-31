@@ -19,6 +19,12 @@ Public email signup remains disabled in the request-facing Better Auth instance.
 
 Cloudflare Access is optional and is not required by this initial posture. The persistent non-production deployment, initial bootstrap, and pre-B1 runtime verification were performed on 2026-08-22. B1, B2, and B3 persistent non-production migration / runtime / authenticated browser verification passed on 2026-08-29; direct bootstrap POST and public signup remote POST were not rerun in the B2/B3 verification scope. B3 remote browser showed no visible error, while the raw console warning/error exact count is `NOT_VERIFIED`. Production deployment and production verification remain separately unverified and unauthorized unless explicitly approved. See `docs/CURRENT.md` and `docs/TEST_MATRIX.md` for the evidence boundary.
 
+## Approved production target
+
+D-049 defines the initial production target but does not by itself prove that the resources exist. The target is the named `production` Wrangler environment, Worker `taskchute-web-production`, and separate D1 databases `taskchute-auth-production` / `taskchute-app-production` using the `apac` location hint. The public Worker must keep `BOOTSTRAP_ENABLED=false`; production initialization uses a loopback-only local Worker with explicitly remote production D1 bindings and ignored secret material. Do not copy non-production domain history into production, enable public signup, or enable bootstrap on the public Worker.
+
+After the tracked environment contains the actual created resource IDs, build by setting `CLOUDFLARE_ENV=production` before `npm run build`. The generated config is authoritative for dry-run and deploy. Initial bootstrap, migration, deploy, backup, or recovery remains an explicitly approved operator action; Time Travel restore is never automatic.
+
 ## Persistent non-production configuration
 
 `wrangler.jsonc` contains a named `nonprod` environment. Selecting it produces the Worker name `taskchute-web-nonprod`, binds `AUTH_DB` and `APP_DB` to the non-production logical names, sets `RUNTIME_ENV=nonprod`, and keeps `BOOTSTRAP_ENABLED=false`.

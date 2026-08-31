@@ -987,3 +987,16 @@ Status: Approved
 R2B first sliceはowner-scoped typed persistenceとして、TaskごとのRoutineDefinition unique constraint、recurrence schedule、Board head/item revisionとindependent order、pause intervals、occurrence suppression、occurrence Task metadata snapshotをAPP DBへ追加する。既存identity/historyを維持し、duplicate legacy RoutineDefinitionを自動mergeせずmigrationをno-partial-effectで停止する。
 
 Board settings / order mutationはexpected revision、operation fingerprint/replay、atomic batch assertionを利用し、silent last-write-winsやpartial propagationを許さない。exact table/column/check/index/SQL statement、HTTP DTOとcommand stringはreview対象のimplementation detailであり、将来のbroader recurrenceを固定しない。
+
+## D-049 — Initial production Cloudflare environment and release gate
+Status: Approved
+
+Initial production environmentは、named Wrangler environment `production`、Worker `taskchute-web-production`、separate D1 `taskchute-auth-production` / `taskchute-app-production`で構成する。D1は`apac` location hint、jurisdiction lockなしで新規作成し、nonprod dataをcopyせずcleanに開始する。initial endpointは`workers.dev`を利用し、custom domainとCloudflare Accessはfollow-up Decisionとする。
+
+Production Workerは常に`RUNTIME_ENV=production`、`BOOTSTRAP_ENABLED=false`でpublic deployする。initial operator provisioningではpublic Workerをbootstrap-enabledにせず、loopback上でのみ動くlocal Workerから`remote: true`のproduction D1 bindingsへ接続する。unique production `BETTER_AUTH_SECRET`とone-time `BOOTSTRAP_TOKEN`はignored local secret materialとして扱い、operator email/passwordはhidden interactive inputを利用する。public signupは無効のまま維持する。
+
+Bootstrap inputのtimezone、TaskChuteDay boundary、active Section configurationはpersistent nonprodのcurrent canonical valuesをread-onlyで取得し、existing bootstrap commandへexplicit inputとして渡す。nonprod DBをcloneせず、値を推測しない。bootstrap後はtoken materialを除去し、public endpointのbootstrap routeが404 postureであることを確認する。
+
+Initial cost postureはWorkers Freeとし、paid-plan upgradeや新しいrecurring paid serviceを自動採用しない。Free limitsがresource creationまたは運用を妨げる場合は停止してProduct Ownerへ戻す。Time Travelをpoint-in-time recoveryとして利用し、bootstrap後にAUTH / APP両production DBのprivate baseline SQL exportとbookmark/infoを取得する。restoreはdestructive operationであり、別のexplicit recovery approvalなしに実行しない。
+
+Production smokeはsynthetic TaskChute domain dataを作らず、URL、bootstrap-disabled / public-signup-disabled posture、owner login、Today、Routine Board、Settings、bootstrap configuration、authenticated query、reload、browser console/networkを確認する。migration / deploy / smokeがPASSすればRoutine R2Bを`Released: YES`へ進められるが、deep mutation evidenceはlocal / persistent nonprodの境界を維持する。

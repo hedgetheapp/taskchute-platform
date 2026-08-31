@@ -856,3 +856,14 @@ Evidence statusはlocal candidateに限定する。persistent nonprod、producti
 2026-09-01 local candidate evidence: Source Review `PASS`。OFF Routineのmetadata更新で既存planned occurrenceを誤suppressionする問題をreal browserで検出し、pauseはfuture generationのみを止め既存factのschedule authorityを変えないよう修正した。focused R2B Worker/D1 `7 / 7 PASS`、full Worker/D1 `124 / 124 PASS`、Web `84 / 84 PASS`、migration regression `3 scenarios PASS`（R2A normalization、R2B preservation/constraints、duplicate-Task fail-safe、chain through `0008`）、typecheck / production build / `git diff --check` `PASS`。Wrangler user-log writeはsandbox `EPERM` warningを出したが各required commandはexit `0`。
 
 Real-local evidence: private ignored APP exportを作成し、size `141,876 bytes` / SHA-256 `EFAD923C08343AF517A5CDBA91CCBD8BF95823A1AAF74B47AA06BB06792820C9`、isolated restore / `0008` dry-run / pre-existing 22 table data fingerprint一致、`quick_check = ok` / FK violations `0`を確認してからlive APP DBへ`0008_routine_r2b_board.sql`のみを適用した。post-migrationで既存Task / Entry / Execution / Routine / Occurrence件数、active Execution `0`、duplicate Task Routine `0`を保持し、existing 3 Routinesにschedule / Board item / snapshotを各3件materializeした。signed-in browserではblank draft cancel no-write、OFF create、Project / Section / planned start / estimate、N-day / weekly / daily、ON exactly-once、OFF fact preservation、current schedule suppression / restore、reload no-duplicateを確認し、console warning / error `0 / 0`。verification RoutineはOFF、current occurrence `1`、suppression `0`で残置した。controlled inclusive end-date inputはDOM `2026-09-03`を確認したがrequest stateへ反映されずDBは`NULL`のため`TOOLING_BLOCKED / NOT_VERIFIED`、past-Day historical title / Project browser subcaseは`NOT_RUN`。APP / AUTHともfinal `quick_check = ok` / FK violations `0`、persistent nonprod / productionは`NOT_RUN`、Releasedは`NO`。
+
+## Initial production release gate
+
+| ID | Area | Requirement | Contract | Evidence |
+|---|---|---|---|---|
+| PROD-01 | Resource | named production Workerとseparate AUTH / APP D1をapproved naming / locationで作成する | D-049 | NOT_RUN |
+| PROD-02 | Security | public Workerをbootstrap-disabledのまま、loopback local Worker + remote production D1でinitial bootstrapする | D-023, D-049 | NOT_RUN |
+| PROD-03 | Data | productionをcleanに開始し、nonprod historyをcopyせずexplicit timezone / boundary / Sectionsだけをbootstrap inputにする | D-022, D-049 | NOT_RUN |
+| PROD-04 | Recovery | bootstrap後にAUTH / APP baseline exportとTime Travel bookmark/infoを取得し、restoreを自動実行しない | D-049 | NOT_RUN |
+| PROD-05 | Smoke | bootstrap 404、signup disabled、login / Today / Routine Board / Settings / reloadをsynthetic domain dataなしで確認する | D-049 | NOT_RUN |
+| PROD-06 | Cost | current Free limits内で開始し、paid upgradeを暗黙に行わない | D-049 | NOT_RUN |

@@ -424,10 +424,10 @@ Resolved / current fact:
 
 以下はOpen:
 
-- exact production deployment strategyとproduction environmentをいつ作るか
+- D-049でinitial production Worker / D1 naming、clean initialization、secure local bootstrap、Free-plan、baseline backup、low-impact smokeを確定済み。custom domain、Cloudflare Access、paid移行criteria、rate limiting / abuse protection、MFA / Passkey / password reset、DR automationは未決
 - custom domainを採用する時期
 - Cloudflare Accessをpersistent non-production environmentへ後から追加するか
-- production smoke test contract
+- initial production smoke contractはD-049で確定済み。deep production mutation verificationをいつ行うかは未決
 - persistent non-production test data / sessionのretention・cleanup policy
 - current Free-plan limitsがruntimeをmaterialに阻害した場合にpaid planを採用するか
 - actual Cloudflare account subscription tierを独立確認する必要性 / timing

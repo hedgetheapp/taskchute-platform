@@ -44,6 +44,12 @@ D-020によりinitial Server + Web implementationは以下を採用する。
 
 Initial scopeではSSR、Durable Objects、external PostgreSQL、D1 read replication、realtime pushを必須にしない。
 
+### Initial production environment
+
+D-049によりinitial productionはnamed Wrangler environment `production`として、Worker `taskchute-web-production`とseparate D1 `taskchute-auth-production` / `taskchute-app-production`を利用する。nonprod resourceやlocal sentinel IDを再利用せず、productionはclean stateから開始する。initial public endpointは`workers.dev`で、custom domain / Cloudflare Accessは初回releaseの必須要件にしない。
+
+Public production Workerは`BOOTSTRAP_ENABLED=false`を維持する。initial bootstrapだけはloopback local Workerからproduction D1へper-binding `remote: true`で接続し、public bootstrap-enabled deploymentやremote Worker development sessionを行わない。AUTH_DB / APP_DBのcross-database atomicityを仮定せず、existing recoverable bootstrap contractを利用する。
+
 Cloudflare R2等のbinary storageはD-008のままProposedであり、採用未確定。
 
 D-022によりinitial Workerはseparate `AUTH_DB` / `APP_DB` D1 bindingsを同一Worker内で利用する。auth専用Worker/serviceの分離はinitial scopeでは行わない。

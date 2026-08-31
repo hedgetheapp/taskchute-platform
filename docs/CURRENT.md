@@ -193,6 +193,12 @@ Smoke用test dataとsessionがnonprodに一部残っている。active Execution
 
 Production smokeは`NOT_RUN`。Product runtime overallは`NOT_VERIFIED`、Releasedは`NO`。
 
+## Approved initial production release gate
+
+D-049でinitial production environment / release gateをApproved済み。targetはWorker `taskchute-web-production`、separate D1 `taskchute-auth-production` / `taskchute-app-production`、`apac` location hint、initial `workers.dev` endpoint、Workers Free postureである。productionはcleanに開始し、nonprod domain historyをcopyしない。public Workerは常に`BOOTSTRAP_ENABLED=false`とし、initial provisioningはloopback local Worker + remote production D1 bindingsで行う。
+
+この記録時点ではproduction resource creation / migration / deploy / bootstrap / smokeは未実施であり、`NOT_RUN` / Released `NO`を維持する。resource identityとverification evidenceは実行後に追記する。
+
 ## Implemented First Server + Web vertical slice
 
 Current `main`では以下を実装・統合済み。
@@ -346,7 +352,7 @@ Routine R2A persistent nonprod gateは完了した。次のProduct development w
 
 1. direct bootstrap POST / public signup remote POST、B1 real Japanese IME、B3 next-Day real-browser materialization、B3 remote raw console exact countは未検証の境界を維持する。
 2. nonprod test data / session retention・cleanup policyは別Open Questionとして維持する。
-3. production deployment strategy / production smoke contractは別途Material Decision / explicit approvalとして扱い、nonprod PASSを自動継承しない。
+3. initial production deployment / smokeはD-049でApproved済み。custom domain、Access、paid criteria、broader security / DRは別Decisionとし、nonprod PASSをproductionへ自動継承しない。
 4. R1を越えるRoutine recurrence / override / projection、Documents / Review / Android等は別scopeとして維持する。
 
 B1 / B2 / B3 / R1 / Routine R2Aのpersistent nonprod remote PASSをproduction Verified / Product全体のVerified / Releasedと混同しない。Routine R2AはImplemented / Integrated / Local + Real-local Verified / Persistent Nonprod Remote Verifiedだが、remote multi-Day propagationと詳細reliability subcaseは`NOT_RUN`、productionは`NOT_RUN`、Releasedは`NO`。
