@@ -16,7 +16,7 @@ D-024により、継続的なverificationではtracked / reusable configを利�
 
 D-038によりSection persistenceではstable Section identity、versioned Section configuration、established TaskChuteDayごとのhistorical Section contextを責務分離し、`Sectionなし`をnormal timed Sectionのsentinelではなくplacement relationのabsenceとして扱う方向がApproved済み。authoritative time rangeを持たないlegacy historyからSection時間を推測せずunknownとして保持し、通常のSection設定変更はestablished current Dayをretroactiveに書き換えず原則次TaskChuteDayから有効にする。Dogfood実装順はB1（Section time foundation + `Sectionなし` + Entry見積）→B2（planned start + derived placement/order）→B3（Section settings lifecycle）でApproved済み。
 
-D-039によりB2 planned-startの`planned_start_minute INTEGER NULL`、既存`entries.position`を使うmanual tie-break、derived Section / canonical order、SetEntryPlannedStart requestとatomic retry / conflict contractはApproved済み。B2 runtimeはcommit `316ad0d88f0f88d1445991904da587b1e0987dab`で`main`へImplemented / Integrated済みで、source review、automated verification、real local `0004` migration、signed-in browser、persistent nonprod `0004` migration / runtime / authenticated browser verificationはPASS。production verificationは`NOT_RUN`である。D-043はSection / planned-startのfull synchronizationを新しいApproved targetとし、D-039 runtimeのclear / explicit move semanticsをsupersedeしたが、runtime implementation / verificationはまだ`NOT_IMPLEMENTED`である。
+D-039によりB2 planned-startの`planned_start_minute INTEGER NULL`、既存`entries.position`を使うmanual tie-break、derived Section / canonical order、SetEntryPlannedStart requestとatomic retry / conflict contractはApproved済み。B2 runtimeはcommit `316ad0d88f0f88d1445991904da587b1e0987dab`で`main`へImplemented / Integrated済み。D-043のSection / planned-start full synchronizationはlocal commit `7d3c0cb0881dfc11725af6ff45eabad69f86a22a`でordinary EntryとR2A selected scopeへ実装し、source review / local automated / real-local migration・browserはPASS。remote integration pending、persistent nonprod / productionは`NOT_RUN`である。
 
 D-038 B3 Section settings lifecycleはcommit `2481c4916ca2f694f07d6808a4482bea28c79a80`で`main`へImplemented / Integrated済み。immutable configuration version append、expected-head conflict protection付きhead switch、rename / boundary edit / add / delete・absorption、stable Section row retention、established Day context freeze、next-Day effective query/update、Web settings lifecycleを実装し、source review、automated verification、real local `0005` migration、signed-in browser、persistent nonprod `0005` migration / preservation / deploy / authenticated browser verificationはPASS。persistent nonprod raw console exact countは`NOT_VERIFIED`、production verificationは`NOT_RUN`、Releasedは`NO`である。これはcurrent implementation factであり、新しいDecisionではない。
 
@@ -36,7 +36,7 @@ Current First vertical slice implementation / nonprod verification fact:
 - Reorderのcurrent physical strategyは`json_each`へordered Entry IDsを渡すset-based update
 - current Reorder mutation batchはEntry数に比例してstatementを増やさない
 - current B2 canonical projectionはSection内でplanned start NULLを先に`position`順、non-nullをminute昇順・同minute `position`順で返す
-- current SetEntryPlannedStartはestablished Day contextからSectionを解決してplacement / order / revision / operation resultをatomicに確定し、current MoveEntryはplanned startをclear、ReorderはNULLまたは同一minute cohort内へ制限する。D-043 targetへのruntime更新は未実装
+- local R2A candidateのSetEntryPlannedStart / MoveEntryはD-043に従いestablished Day contextからSection / planned startを相互同期し、placement / order / revision / operation resultをatomicに確定する。Routine由来Entryはdedicated R2A commandだけで選択scopeを変更し、ReorderはNULLまたは同一minute cohort内へ制限する。canonical `main`へのintegrationはpending
 - UpdateSectionConfigurationはimmutable version/itemsをappendし、expected current headを検証してheadをatomicに切り替える。新しいactive configurationから削除したSectionもstable row / prior version / established Day contextには保持し、established Dayをrewriteしない
 - persistent nonprod remote migrations `0001`〜`0005` / schema / FK / active Execution partial UNIQUE indexはPASS
 - persistent nonprod remote runtime smokeでCreate Project / Add Task+Entry / Reorder / Start / Complete / retry / conflict / reload recoveryをPASS
@@ -142,15 +142,15 @@ Current implementation fact:
 - client-side retained operation Discard
 - retained operation中はunrelated lifecycle / reorder mutationをdisableし、旧operationを別操作から暗黙再送しない
 - current DayBoard外のEntryに属するactive Executionもheader actionからComplete可能
-- current Day planned Entryのplanned-start editor、blank clear、extended-time入力 / 表示、derived Section placement / orderを実装済み。ただしblank clear時にSectionを維持するcurrent behaviorはD-043 targetと未整合
-- explicit Section move時にvisible planned start editor / valueをclearし、canonical reconcile後に`—`を表示するcurrent behaviorを実装済み。ただしD-043 targetではreal Section選択時にSection開始minuteを設定する
+- local R2A candidateのcurrent Day planned Entry editorは、blank clearで`Sectionなし`へ同期し、extended-time入力 / 表示、derived Section placement / orderを扱う
+- explicit real Section選択は開始予定をSection開始minuteへ設定し、`Sectionなし`選択は開始予定をclearする。Routine由来Entryはcandidate後の明示scope選択またはdefault resetを要求する
 - planned-start NULL / different minuteを越えるillegal Reorder controlを抑止し、same-minute cohort内のmanual reorderを提供する
 - running / completed Entryではplanned-start編集を提供しない
 - inline Section settings panel、next-Day effective timing copy、raw-time validation、explicit Save / Cancel、draft add / delete・absorptionを実装済み
 - revision conflict時はlatest canonical configurationをreloadしてstale draftをresetし、ユーザーが再編集した場合だけnew head基準で保存する
 - infrastructure ambiguityではexact original UpdateSectionConfiguration operationだけをretry対象として保持する
 
-D-031〜D-037でDay planning / Routine target semanticsが追加され、D-038で次のDay dogfood persistence stagingとしてB1 / B2 / B3がApprovedされた。B1はPR #13で、D-039のB2 runtimeはcommit `316ad0d88f0f88d1445991904da587b1e0987dab`、D-038のB3 runtimeはcommit `2481c4916ca2f694f07d6808a4482bea28c79a80`で`main`へImplemented / Integrated済み。B1 / B2 / B3はlocal + persistent nonprod evidenceがPASS。B3 persistent nonprod raw console exact countは`NOT_VERIFIED`、B3 productionとB1 real Japanese IMEは`NOT_RUN`。Day Table foundationはcurrent `docs/DESIGN.md`へcanonical化済みで、UI-1 realignmentはcommit `da4a8c8316d60d942dc73fbd53bb90d15df5517b`として`main`へImplemented / Integrated済み。Settings navigation v0.1はcommit `51242b08e015817108010839cd5234959da2fed5`で`main`へImplemented / Integrated済みで、source review / persistent nonprod verificationはPASS。UI-2以後のbroader table capability、broader Project / Mode Settings、icon / accent、historical design branchの未reconcile scopeは未実装の境界を維持する。UI-1完了はR2Aのstructural prerequisiteを解除し、D-044 / D-045でfirst-slice Product semanticsとlegacy normalizationは解決した。physical override / command / migration implementationとbroader Routine scopeは引き続きOpenである。
+D-031〜D-037でDay planning / Routine target semanticsが追加され、D-038でB1 / B2 / B3がApprovedされた。B1 / B2 / B3、Day Table UI-1、Settings v0.1は`main`へImplemented / Integrated済み。UI-2以後のbroader table capability、broader Project / Mode Settings、icon / accent等は未実装の境界を維持する。D-044 / D-045 / D-046 first sliceはlocal commit `7d3c0cb0881dfc11725af6ff45eabad69f86a22a`でphysical override、command、migration、Web UXまで実装し、source review / local automated / real-local verificationはPASS。remote integrationとpersistent nonprod verificationはpendingで、broader Routine scopeは引き続きOpenである。
 
 以下の具体方式・scopeはOpen:
 
@@ -268,13 +268,12 @@ D-034でProjected / Materialized Occurrence、field-level day override、Routine
 
 D-035 / D-036でeffective営業日 / 休日判定とinitial recurrence pattern setがApproved済み。
 
-D-040でdaily-only R1について、existing Entry conversion、minimal RoutineDefinition / RoutineOccurrence / Entry relation、current-Day lazy materialization、placement revision、defaults、inclusive end / Routine終了、minimal Web UXをApprovedした。D-043はRoutine-derived EntryにもSection / planned-start full synchronizationを適用し、D-044はcurrent-Day planned Routine EntryのSection-plan / estimate override、explicit scope choice、reset、default propagationをApprovedした。D-045はlegacy real Section + NULLのnormalization resultとauthority / fail-safe boundaryをApprovedし、D-046はtyped occurrence override columns、explicit presence、owner-scoped Section reference、Routine default revisionというfirst-slice physical persistence directionをApprovedした。runtime / migrationは未実装であり、以下はexact implementationまたはbroader scopeとしてOpenのまま維持する。
+D-040でdaily-only R1について、existing Entry conversion、minimal RoutineDefinition / RoutineOccurrence / Entry relation、current-Day lazy materialization、placement revision、defaults、inclusive end / Routine終了、minimal Web UXをApprovedした。D-043はRoutine-derived EntryにもSection / planned-start full synchronizationを適用し、D-044はcurrent-Day planned Routine EntryのSection-plan / estimate override、explicit scope choice、reset、default propagationをApprovedした。D-045はlegacy real Section + NULLのnormalization resultとauthority / fail-safe boundaryをApprovedし、D-046はtyped occurrence override columns、explicit presence、owner-scoped Section reference、Routine default revisionというfirst-slice physical persistence directionをApprovedした。first-slice runtime / migrationはlocal commit `7d3c0cb0881dfc11725af6ff45eabad69f86a22a`で実装・real-local verifiedであり、以下はbroader scopeまたは将来のscale / compatibility条件としてOpenのまま維持する。
 
 D-041は未来DayをviewするだけではRoutineOccurrence / Entryをmaterializeせず、Day Navigation v0.1にvirtual future Routine previewを含めない。D-040 current-Day lazy ensure以外のbroader future Routine projection / materializationは後続sliceのOpen scopeとして維持する。
 
 以下はOpen:
 
-- R2A migrationのexact SQL table rebuild / CHECK expression、HTTP endpoint / DTO / logical command / operation naming、set-based propagation statement layout
 - evidenceに基づくoverride-specific indexの要否と、current D1 safe boundsを越えるlong-range propagation transaction strategy
 - R2Aを越えてoverride対象がmaterialに増えた場合のgeneric storage refactor / compatibility strategy
 - R1 minimal schemaを越えるschedule versionとbroader Routine persistence schema

@@ -93,7 +93,7 @@ EntryはTaskChuteDay / Section上のplacement / execution targetとする。
 
 ### Planned start persistence, synchronization, and canonical order
 
-Status: Approved (D-031, D-039, D-043). D-039 runtime baseline: IMPLEMENTED / INTEGRATED. D-043 full synchronization: NOT_IMPLEMENTED.
+Status: Approved (D-031, D-039, D-043). D-039 runtime baseline: IMPLEMENTED / INTEGRATED. D-043 full synchronization: IMPLEMENTED LOCALLY / REMOTE INTEGRATION PENDING.
 
 - Entryの開始予定はnullableな`planned_start_minute INTEGER`として保存する。`NULL`は開始予定なし、non-nullはestablished TaskChuteDayの`logicalDate`を基準にしたextended wall-clock minuteであり、Day開始を0とするoffsetやactual timestampではない。
 - Section contextの`logical_start_minute` / `logical_end_minute`と同じ座標系を使い、valid rangeは`[establishment_boundary_minutes, establishment_boundary_minutes + 1440)`とする。
@@ -113,7 +113,7 @@ Status: Approved (D-031, D-039, D-043). D-039 runtime baseline: IMPLEMENTED / IN
 
 Startはplanned-startのnot-before制約を持たず、早期Startを許可する。Sectionなし Startのactual current Section配置は開始予定が`NULL`の場合だけ適用する。
 
-Routine由来Entryにも同じSection / planned-start synchronization ruleを適用する。D-044はcurrent-Day planned Routine-derived Entryを対象とする最初のoverride/default propagation sliceを確定し、Section / planned-startを分割不能な一unitとして扱う。current runtimeはD-039の「planned-start clearでSection維持 / explicit Section moveでplanned-start clear」を実装したままで、D-043 / D-044 targetとは一致していない。runtime実装・APP migration・test evidenceは後続incrementとする。
+Routine由来Entryにも同じSection / planned-start synchronization ruleを適用する。D-044はcurrent-Day planned Routine-derived Entryを対象とする最初のoverride/default propagation sliceを確定し、Section / planned-startを分割不能な一unitとして扱う。local implementation commit `7d3c0cb0881dfc11725af6ff45eabad69f86a22a`はordinary EntryとRoutine selected-scopeへD-043同期を実装し、Routine由来Entryはdedicated R2A commandだけで変更する。APP `0007` migration、local automated、real-local migration / browser evidenceはPASSで、remote integrationはpendingである。
 
 ## Lifecycle and Execution
 
@@ -156,18 +156,18 @@ R1はcurrent-Dayのplanned non-Routine Entryを起点とするdaily-only Routine
 - persistenceはowner-scoped stable RoutineDefinition / RoutineOccurrenceとnullable Entry relationを持ち、same Routine + origin Dayのduplicate Occurrenceを防ぐ。Occurrenceは将来`0..* Entries`を共有できるrelationとする。
 - current-Day queryはapplicable daily Routineをlazy ensureし、未materializeならOccurrenceとinitial planned Entryをexactly one作る。future Dayをunboundedにpre-generateしない。
 - one ensureで1件以上作成した場合だけDay `placement_revision`をatomicにexactly once増やし、0件なら変更しない。concurrent / repeated loadはduplicateやpartial stateを残さない。
-- current R1 runtimeではgenerated Entryがsame stable Taskを参照し、default estimate / planned startをcopyする。non-null planned startはestablished Day contextとD-031 / D-039でSectionをderiveし、nullならavailable default Sectionを使い、missingなら`Sectionなし`へfallbackする。D-043 targetではこのnull + real Section fallbackをsupersedeし、選択scope内でnon-null planned startからreal Sectionをderiveし、nullなら`Sectionなし`へ同期するが、runtime更新は未実装である。
+- integrated R1 baselineではgenerated Entryがsame stable Taskを参照し、default estimate / planned startをcopyする。local R2A implementationはD-043に従い、ordinary EntryとRoutine selected-scopeでnon-null planned startからreal Sectionをderiveし、nullなら`Sectionなし`へ同期する。remote integrationまではR1 baselineがcanonical `main` runtimeである。
 - generated Entryは既存B2 canonical cohortのmanual member後へstable appendし、複数Routineはstable RoutineDefinition dataでdeterministicに並べる。UUID timestampをProduct ordering authorityにしない。
 - `Routineを終了`はcurrent logical Day後のgenerationを止め、current/past Occurrence、Entry、Execution historyとRoutineDefinitionを保持する。
 - conversion / endはD-020 logical operation replay / misuse / ambiguity / atomicity contractに従う。
 - Webはeligible Entryの`Routine化`、終了なし/inclusive end date、Routine indicator、`Routineを終了`とcanonical reload/reconciliationを提供する。
-- D-034の`今回だけ / Routineへ反映` choiceとfield override persistenceはR1 scope外のため、Routine由来EntryのSection / 開始予定 / 見積はR1 Day UIでは表示のみとし、既存の`MoveEntry` / `SetEntryPlannedStart` / `SetEntryEstimate` commandもserver mutation-timeでrejectする。Reorder / Start / Complete / `Routineを終了`は既存canonical ruleに従い利用できる。
+- D-034の`今回だけ / Routineへ反映` choiceとfield override persistenceはR1 scope外であり、integrated R1 baselineではRoutine由来EntryのSection / 開始予定 / 見積をread-onlyにする。local R2A implementationはcurrent-Day planned Entryだけをdedicated command / explicit scope UXで編集可能にし、既存の`MoveEntry` / `SetEntryPlannedStart` / `SetEntryEstimate`による迂回は引き続きserver mutation-timeでrejectする。Reorder / Start / Complete / `Routineを終了`は既存canonical ruleに従う。
 
 non-daily recurrence、future-range projection UI、schedule editing、field-level override、Skip、Day move、temporary stop/resume、Documents、Interrupt、statistics、native/offline clientはR1 scope外であり、broader Approved semantics / Open Questionを維持する。
 
 ### Routine R2A current-Day override slice
 
-Status: Approved (D-044, D-045, D-046). Runtime / APP migration: NOT_IMPLEMENTED.
+Status: Approved (D-044, D-045, D-046). Runtime / APP migration: IMPLEMENTED LOCALLY / REAL_LOCAL_VERIFIED / REMOTE INTEGRATION PENDING.
 
 - current logical TaskChuteDayのplanned Routine-derived Entryだけを対象に、`Section + 開始予定`の同期unitと、独立した見積unitを編集できる。
 - editはlocal candidateを先に作り、Server write前にunitごとの`今回だけ / ルーティンに反映`をexplicitに選択する。scopeはpreselectせず、cancel / Escape / dismissはno-writeでcanonical valueへ戻す。
