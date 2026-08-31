@@ -45,6 +45,7 @@
     "production": {
       "name": "taskchute-web-production",
       "workers_dev": true,
+      "preview_urls": false,
       "vars": {
         "RUNTIME_ENV": "production",
         "BOOTSTRAP_ENABLED": "false"

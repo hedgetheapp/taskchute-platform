@@ -21,7 +21,7 @@ Cloudflare Access is optional and is not required by this initial posture. The p
 
 ## Approved production target
 
-D-049 defines the initial production target but does not by itself prove that the resources exist. The target is the named `production` Wrangler environment, Worker `taskchute-web-production`, and separate D1 databases `taskchute-auth-production` / `taskchute-app-production` using the `apac` location hint. The public Worker must keep `BOOTSTRAP_ENABLED=false`; production initialization uses a loopback-only local Worker with explicitly remote production D1 bindings and ignored secret material. Do not copy non-production domain history into production, enable public signup, or enable bootstrap on the public Worker.
+D-049 defines the initial production target but does not by itself prove that the resources exist. The target is the named `production` Wrangler environment, Worker `taskchute-web-production`, and separate D1 databases `taskchute-auth-production` / `taskchute-app-production` using the `apac` location hint. The production environment enables its canonical `workers.dev` route and explicitly disables version preview URLs. The public Worker must keep `BOOTSTRAP_ENABLED=false`; production initialization uses a loopback-only local Worker with explicitly remote production D1 bindings and ignored secret material. Do not copy non-production domain history into production, enable public signup, or enable bootstrap on the public Worker.
 
 The tracked production bindings are:
 
