@@ -151,6 +151,8 @@ Taskはtarget column listに含まれるが、固定・非表示不可である�
 
 見積は開始予定より前に置く。Entry placement / canonical orderはD-031 / D-039に従い、visual column orderから新しいDomain orderを作らない。
 
+D-043のtarget interactionでは、開始予定の設定・変更が該当real Sectionをderiveし、real Sectionの明示選択が開始予定をSection開始minuteへ設定する。開始予定のclearと`Sectionなし`の選択はどちらもSection absence + `NULL`へ同期し、通常の編集操作から片方だけが残るstateを作らない。これはProduct / Domain targetであり、current runtimeは未対応である。
+
 ### Capability not implemented
 
 以下はunderlying capabilityまたは十分なrow projection / editingが未実装である。
@@ -169,9 +171,9 @@ Routineは独立したtarget columnを持つ。
 
 Day Table UI-1でMinimal Routine R1のbadge / editor / end state / actionを独立したRoutine列へ移した。これはpresentation realignmentであり、D-040のpersistence / materialization / lifecycle semanticsを変更しない。
 
-D-034の`今回だけ / Routineへ反映` scope choiceとfield override persistenceが実装されるまで、Routine由来EntryのSection / 開始予定 / 見積はcurrent R1 contractどおりread-onlyとする。
+D-034の`今回だけ / Routineへ反映` scope choiceとfield override persistenceが実装されるまで、Routine由来EntryのSection / 開始予定 / 見積はcurrent R1 contractどおりread-onlyとする。後続で編集を提供する場合、選択されたscope内のSection / 開始予定にはD-043の同期規則を適用する。
 
-Routine defaultの一field変更が他のdefaultへ与える影響など、未決のR2A coupling semanticsをこの文書では確定しない。
+Routine occurrenceとRoutineDefinition defaultのどちらへ同期pairを保存・伝播するか等、未決のR2A persistence / command semanticsをこの文書では確定しない。
 
 ## Task order and display column order
 

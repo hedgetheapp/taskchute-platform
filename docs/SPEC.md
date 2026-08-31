@@ -91,24 +91,28 @@ EntryはTaskChuteDay / Section上のplacement / execution targetとする。
 - active Executionが存在しない限り、Next以外のplanned Entryも明示Startできる。
 - stale stateによるplacement overwriteが危険なmutationではrevision / preconditionを利用し、silent last-write-winsを行わない。
 
-### Planned start persistence and canonical order
+### Planned start persistence, synchronization, and canonical order
 
-Status: Approved (D-031, D-039). Runtime: IMPLEMENTED.
+Status: Approved (D-031, D-039, D-043). D-039 runtime baseline: IMPLEMENTED / INTEGRATED. D-043 full synchronization: NOT_IMPLEMENTED.
 
 - Entryの開始予定はnullableな`planned_start_minute INTEGER`として保存する。`NULL`は開始予定なし、non-nullはestablished TaskChuteDayの`logicalDate`を基準にしたextended wall-clock minuteであり、Day開始を0とするoffsetやactual timestampではない。
 - Section contextの`logical_start_minute` / `logical_end_minute`と同じ座標系を使い、valid rangeは`[establishment_boundary_minutes, establishment_boundary_minutes + 1440)`とする。
 - 05:00 boundaryでは05:00 = `300`、翌03:00 = `27:00` = `1620`、翌05:00 = `29:00` = `1740`となり、Day end boundaryの`1740`はplanned startとしてexclusiveである。
 - extended wall-clock timeを許容する。non-null値は上記range内のintegerで、authoritative time rangeを持つexactly one timed Sectionの`[logical_start_minute, logical_end_minute)`へ属する必要がある。legacy unknown timingから値やSectionを推測しない。
-- `Sectionなし`とnon-null開始予定は共存しない。
-- real Section内のplanned Entryは、開始予定なしを`position`順で先に置き、開始予定ありをminute昇順、同minuteを`position`順で置く。`position`をmanual / stable tie-break authorityとして再利用する。
-- 開始予定の設定・変更は該当Sectionへのauto-placementとcanonical orderingをatomicに行う。clearは現在Sectionを維持して開始予定なしcohortへ移す。どちらもplacement revisionをexactly once増やす。
-- explicit Section moveは開始予定をclearし、Sectionから時刻を推測しない。MoveEntry全体でplacement revisionをexactly once増やす。
+- D-043 targetでは`Sectionなし`と開始予定`NULL`を同期し、real Sectionとそのrange内のnon-null開始予定を同期する。通常のuser-editable planned stateでreal Section + `NULL`、`Sectionなし` + non-null、開始予定と異なるSection placementを作らない。
+- 開始予定の設定・変更は、そのminuteを含むreal Sectionを`[start, end)`でderiveする。boundary minuteは後続Sectionへ属し、extended-time coordinateを維持する。
+- real Sectionを明示選択した場合は、そのSectionへ移動すると同時に開始予定をSectionの`logical_start_minute`へ設定し、以前の開始予定を置き換える。
+- 開始予定を直接clearした場合は`Sectionなし`へ移す。`Sectionなし`を明示選択した場合も開始予定を`NULL`へclearする。
+- real Section内では開始予定minute昇順、同minuteを`position`順で置き、`position`をmanual / stable tie-break authorityとして再利用する。`Sectionなし`は`NULL`開始予定としてplacement absenceのmanual orderを持つ。
+- Section / planned-start、canonical placement / order、manual tie-break consistency、placement revision exactly +1、operation resultをatomicに確定し、partial同期状態を残さない。
 - manual Reorderは開始予定なしcohort内または同一minute cohort内だけを許可し、異なるcohort / minuteやhistorical boundaryを越えない。
 - running / completed等のhistorical rowはplanned-start mutation / reorder対象にしない。
 
 `SetEntryPlannedStart` logical commandは`operation_id`、`entry_id`、`taskchute_day_id`、integerまたは`null`の`planned_start_minute`、`expected_placement_revision`を受け取る。ownerはauthenticated principalから解決する。同じoperation + semantic requestはreplayし、different-semantic reuseとstale revisionをpartial effectなしでrejectする。planned-start、Section、order、revision increment、operation resultはatomicに確定する。
 
 Startはplanned-startのnot-before制約を持たず、早期Startを許可する。Sectionなし Startのactual current Section配置は開始予定が`NULL`の場合だけ適用する。
+
+Routine由来Entryにも同じSection / planned-start synchronization ruleを適用する。ただしD-034の`今回だけ / Routineへ反映` choice、occurrence override persistence、Routine default propagationは別scopeであり、本節はその選択を確定しない。current runtimeはD-039の「planned-start clearでSection維持 / explicit Section moveでplanned-start clear」を実装したままで、D-043 targetとは一致していない。D-043のruntime実装・test evidence・必要なcompatibility reviewは後続incrementとする。
 
 ## Lifecycle and Execution
 
@@ -151,7 +155,7 @@ R1はcurrent-Dayのplanned non-Routine Entryを起点とするdaily-only Routine
 - persistenceはowner-scoped stable RoutineDefinition / RoutineOccurrenceとnullable Entry relationを持ち、same Routine + origin Dayのduplicate Occurrenceを防ぐ。Occurrenceは将来`0..* Entries`を共有できるrelationとする。
 - current-Day queryはapplicable daily Routineをlazy ensureし、未materializeならOccurrenceとinitial planned Entryをexactly one作る。future Dayをunboundedにpre-generateしない。
 - one ensureで1件以上作成した場合だけDay `placement_revision`をatomicにexactly once増やし、0件なら変更しない。concurrent / repeated loadはduplicateやpartial stateを残さない。
-- generated Entryはsame stable Taskを参照し、default estimate / planned startをcopyする。non-null planned startはestablished Day contextとD-031 / D-039でSectionをderiveし、nullならavailable default Sectionを使い、missingなら`Sectionなし`へfallbackする。
+- current R1 runtimeではgenerated Entryがsame stable Taskを参照し、default estimate / planned startをcopyする。non-null planned startはestablished Day contextとD-031 / D-039でSectionをderiveし、nullならavailable default Sectionを使い、missingなら`Sectionなし`へfallbackする。D-043 targetではこのnull + real Section fallbackをsupersedeし、選択scope内でnon-null planned startからreal Sectionをderiveし、nullなら`Sectionなし`へ同期するが、runtime更新は未実装である。
 - generated Entryは既存B2 canonical cohortのmanual member後へstable appendし、複数Routineはstable RoutineDefinition dataでdeterministicに並べる。UUID timestampをProduct ordering authorityにしない。
 - `Routineを終了`はcurrent logical Day後のgenerationを止め、current/past Occurrence、Entry、Execution historyとRoutineDefinitionを保持する。
 - conversion / endはD-020 logical operation replay / misuse / ambiguity / atomicity contractに従う。

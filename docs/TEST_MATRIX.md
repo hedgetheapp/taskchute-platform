@@ -335,6 +335,27 @@ Signed-in real local browser evidence — 2026-08-29:
 | B2-REMOTE-01 | Remote nonprod | B2 migration / runtime / authenticated browser flowをpersistent nonprodで検証する | Approved (D-039) | PASS |
 | B2-PROD-01 | Production | B2 production migration / smokeを検証する | Approved (D-039) | NOT_RUN |
 
+### D-043 Section / planned-start full synchronization contract
+
+以下はD-043でApprovedしたfuture runtime requirementである。既存B2 PASSはD-039 runtime baselineのhistorical evidenceとして維持するが、D-043実装のPASSへ読み替えない。現時点では全項目`NOT_IMPLEMENTED`である。
+
+| ID | Area | Requirement | Contract | Evidence |
+|---|---|---|---|---|
+| SECTION-START-SYNC-01 | Section edit | real Sectionを明示選択すると、開始予定を選択Sectionの`logical_start_minute`へexactly設定する | Approved (D-043) | NOT_IMPLEMENTED |
+| SECTION-START-SYNC-02 | Section edit | real Section変更が以前の開始予定を選択Sectionの開始minuteで置き換える | Approved (D-043) | NOT_IMPLEMENTED |
+| SECTION-START-SYNC-03 | Sectionなし | `Sectionなし`の明示選択がSection placementをabsenceにし、開始予定を`NULL`へclearする | Approved (D-038, D-043) | NOT_IMPLEMENTED |
+| SECTION-START-SYNC-04 | Planned-start clear | 開始予定の直接clearが`planned_start_minute = NULL`と`Sectionなし`を同時に確定する | Approved (D-043) | NOT_IMPLEMENTED |
+| SECTION-START-SYNC-05 | Planned-start edit | 開始予定の設定・変更がそのminuteを含むreal Sectionをderiveする | Approved (D-030, D-043) | NOT_IMPLEMENTED |
+| SECTION-START-SYNC-06 | Boundary | Section boundary minuteが`[start, end)`に従って後続Sectionへ属する | Approved (D-030, D-043) | NOT_IMPLEMENTED |
+| SECTION-START-SYNC-07 | Extended time | `24:30` / `28:00`等のextended wall-clock開始予定とSection開始minuteで同じ同期規則を維持する | Approved (D-030, D-039, D-043) | NOT_IMPLEMENTED |
+| SECTION-START-SYNC-08 | Routine parity | ordinary EntryとRoutine-derived Entryの選択済みscope内で同じSection / planned-start invariantを適用する | Approved (D-034, D-043) | NOT_IMPLEMENTED |
+| SECTION-START-SYNC-09 | Atomicity | Section、planned start、canonical order / tie-break、placement revision exactly +1、operation resultをatomicに確定しpartial stateを残さない | Approved (D-020, D-039, D-043) | NOT_IMPLEMENTED |
+| SECTION-START-SYNC-10 | Retry / Conflict | stale revision、same-operation retry / misuse、infrastructure ambiguityをD-020 / D-039に従って安全に処理し同期effectを二重適用しない | Approved (D-020, D-039, D-043) | NOT_IMPLEMENTED |
+| SECTION-START-SYNC-11 | Reload | mutation成功後とreload後にSection / planned-startの同期したcanonical stateを復元する | Approved (D-043) | NOT_IMPLEMENTED |
+| SECTION-START-SYNC-12 | Lifecycle / History | running / completed / interrupted、historical context、non-current execution restrictionを変更せず、許可されたplanned editingだけへ同期規則を適用する | Approved (D-030, D-041, D-042, D-043) | NOT_IMPLEMENTED |
+| SECTION-START-SYNC-13 | Invariant | `Sectionなし` + non-null開始予定をnormal mutation pathとstored canonical stateで作らない | Approved (D-039, D-043) | NOT_IMPLEMENTED |
+| SECTION-START-SYNC-14 | Invariant | real Section + `NULL`開始予定をnormal user-editable mutation pathで作らない | Approved (D-043) | NOT_IMPLEMENTED |
+
 ## Dogfood Day v0.1-B / B3 local implementation evidence
 
 B3 implementation commit `2481c4916ca2f694f07d6808a4482bea28c79a80`（parent `d3061ced6e27cf304fe8375002072bc122ac8d22`、subject `Implement B3 Section settings lifecycle`）は`main`へIntegrated済み。reviewed v3 patchは12 files、`+904 / -9`、SHA-256 `4537423FCEFC1F39E3FD0EAEE00ABA3D60BBADE4A35CA4CBE6BB28F60BA726E4`、stable patch-id `f3b88cf45ed17d19bb21ddcc90844bd28c0d418a`で、source reviewは`PASS`。

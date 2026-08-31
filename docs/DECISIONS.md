@@ -813,3 +813,43 @@ Status: Approved
 - D-037のbroader Day move targetをDay Navigation v0.1へ実装するものではない。unestablished past Dayへのhistorical correction / backfill capabilityは別のexplicit Product Decisionを必要とする。
 
 travel / timezone-change UX、per-Day boundary override、work profile / work shift、broader future Routine projection、established past Dayのnew editing semanticsはOpenのまま維持する。
+
+## D-043 — Section placement and planned start are fully synchronized
+Status: Approved
+
+未実行Entryのeditable planning stateでは、real Section placementと開始予定を独立にずらせる値として扱わず、同じplanning intentの同期した表現として扱う。
+
+### Planned start determines Section
+
+- 開始予定を設定・変更した場合、そのextended wall-clock minuteを含むexactly one real Sectionを、established TaskChuteDay contextの`[logical_start_minute, logical_end_minute)`からderiveする。
+- Section境界minuteはD-030の`[start, end)`に従って後続Sectionへ属する。`24:00`以降を含むextended-time coordinateとD-039のvalid rangeは変更しない。
+
+### Explicit Section determines planned start
+
+- Section dropdown、Section間move等でreal Sectionを明示選択した場合、そのSectionへ移動し、開始予定を選択Sectionの`logical_start_minute`とexactly同じ値へ設定する。
+- 変更前に別の開始予定があった場合も、選択Sectionの開始minuteで置き換える。Section選択後に古い開始予定を保持したり、開始予定を`NULL`へclearしたままreal Sectionへ置いたりしない。
+
+### Clear and Sectionなし are synchronized
+
+- 開始予定を直接clearした場合、`planned_start_minute`を`NULL`にし、Section placementもabsenceである`Sectionなし`へ移す。
+- `Sectionなし`を明示選択した場合も、Section placementをabsenceにし、`planned_start_minute`を`NULL`へclearする。
+- `Sectionなし`はtimed Sectionのsentinelではなく、D-038でApprovedしたplacement relationのabsenceである。
+
+したがって、通常のuser-editableなplanned stateでは次のinvariantを維持する。
+
+- real Sectionに属するEntryはnon-null開始予定を持ち、そのminuteは当該Sectionのrange内にある。
+- `Sectionなし`のEntryは開始予定が`NULL`である。
+- non-null開始予定を持つEntryは、そのminuteからderiveされたreal Sectionに属する。
+- explicit real Section selectionは、そのSection開始minuteを開始予定として持つ。
+
+Section / planned-start value、canonical placement / order、manual tie-break consistency、`placement_revision`のexactly once increment、operation resultは一つのlogical atomic outcomeとして確定する。stale revision、same-operation replay / misuse、unexpected infrastructure ambiguityはD-020 / D-039のsafe retry / reconciliation boundaryを維持し、partial同期状態を残さない。
+
+### Routine and lifecycle boundary
+
+- Routine由来Entryにも通常Entryと同じSection / planned-start synchronization ruleを適用する。
+- D-034の`今回だけ / Routineへ反映` choice UX、occurrence override persistence、RoutineDefinition defaultへのpropagation semanticsは本Decisionでは確定しない。どのscopeを更新するかが別途決まった後、そのscope内のSection / planned-start pairに本Decisionのinvariantを適用する。
+- running / completed / interrupted等のhistorical row、既存のhistorical context、non-current Day execution restrictionは変更しない。本Decisionは、既存Decisionが編集を許可するplanned Entryのplanning mutationに適用する。
+
+本DecisionはD-031の「開始予定clear時に現在Sectionを維持する」および「explicit Section変更時に開始予定をclearし、Sectionから時刻を設定しない」というclausesをsupersedeする。また、そのclausesをB2 command contractへ具体化したD-039のclear / explicit Section move behaviorと、D-040の「default planned startが`NULL`ならavailable default Sectionを使う」というRoutine materialization behaviorも同じ同期範囲でsupersedeする。D-031 / D-039 / D-040の記録と既存B2 / R1 verification evidenceはhistorical implementation recordとして保持し、黙って書き換えない。
+
+本DecisionはProduct / Domain semanticsをApprovedにするが、current runtimeの変更、migration、verification完了を意味しない。current runtimeはD-039の旧clear / move behaviorを実装したままであり、D-043 synchronizationは実装と新しいevidenceが揃うまで`NOT_IMPLEMENTED`とする。現時点ではmigrationを前提とせず、実装調査でschema / compatibility変更が必要と判明した場合は別途Material reviewへ戻す。
