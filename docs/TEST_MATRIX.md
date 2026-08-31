@@ -1,6 +1,6 @@
 # Test Matrix
 
-First Server + Web vertical slice、D-038 B1 / B3、D-039 B2、D-040 Minimal Routine R1、Day Table UI-1、D-041 / D-042 Day Navigation v0.1は実装・GitHub `main`統合済み。D-043 synchronizationとD-044 / D-045 / D-046 Routine R2A first sliceはlocal commit `7d3c0cb0881dfc11725af6ff45eabad69f86a22a`へ実装し、source review / local automated / real-local migration・browserはPASSだがremote integration pendingのため`LOCAL_PASS`とする。persistent nonprod / productionは`NOT_RUN`、Releasedは`NO`。Day Navigation v0.1 source / local automated / signed-in general browser / persistent nonprod general verificationはPASS。B1 / B2 / B3 / R1 local + persistent non-production verificationはPASS。Product runtime全体はまだVerified / Releasedではない。
+First Server + Web vertical slice、D-038 B1 / B3、D-039 B2、D-040 Minimal Routine R1、Day Table UI-1、D-041 / D-042 Day Navigation v0.1、D-043 synchronizationとD-044 / D-045 / D-046 Routine R2A first sliceは実装・GitHub `main`統合済み。R2A implementation commit `7d3c0cb0881dfc11725af6ff45eabad69f86a22a`とevidence docs commit `d1283eb6ef10c9a0997a36427a09b89042250f96`はcanonical `main`へIntegrated。source review / local automated / real-local migration・browserはPASS、persistent nonprod / productionは`NOT_RUN`、Releasedは`NO`。Day Navigation v0.1 source / local automated / signed-in general browser / persistent nonprod general verificationはPASS。B1 / B2 / B3 / R1 local + persistent non-production verificationはPASS。Product runtime全体はまだVerified / Releasedではない。
 
 この文書はverification requirementとcurrent evidenceの正本とする。
 
@@ -337,24 +337,24 @@ Signed-in real local browser evidence — 2026-08-29:
 
 ### D-043 Section / planned-start full synchronization contract
 
-以下はD-043でApprovedしたruntime requirementである。local R2A implementation commit `7d3c0cb0881dfc11725af6ff45eabad69f86a22a`でordinary EntryとRoutine selected scopeへ実装した。Source Review、Worker / D1 `117 / 117`、Web `78 / 78`、migration regression `2 scenarios`、typecheck / build / diff-check、real-local migration / signed-in browserはPASS。remote integration前のためevidenceは`LOCAL_PASS`とする。
+以下はD-043でApprovedしたruntime requirementである。implementation commit `7d3c0cb0881dfc11725af6ff45eabad69f86a22a`でordinary EntryとRoutine selected scopeへ実装し、GitHub `main`へIntegrated済み。Source Review、Worker / D1 `117 / 117`、Web `78 / 78`、migration regression `2 scenarios`、typecheck / build / diff-check、real-local migration / signed-in browserはPASS。
 
 | ID | Area | Requirement | Contract | Evidence |
 |---|---|---|---|---|
-| SECTION-START-SYNC-01 | Section edit | real Sectionを明示選択すると、開始予定を選択Sectionの`logical_start_minute`へexactly設定する | Approved (D-043) | LOCAL_PASS |
-| SECTION-START-SYNC-02 | Section edit | real Section変更が以前の開始予定を選択Sectionの開始minuteで置き換える | Approved (D-043) | LOCAL_PASS |
-| SECTION-START-SYNC-03 | Sectionなし | `Sectionなし`の明示選択がSection placementをabsenceにし、開始予定を`NULL`へclearする | Approved (D-038, D-043) | LOCAL_PASS |
-| SECTION-START-SYNC-04 | Planned-start clear | 開始予定の直接clearが`planned_start_minute = NULL`と`Sectionなし`を同時に確定する | Approved (D-043) | LOCAL_PASS |
-| SECTION-START-SYNC-05 | Planned-start edit | 開始予定の設定・変更がそのminuteを含むreal Sectionをderiveする | Approved (D-030, D-043) | LOCAL_PASS |
-| SECTION-START-SYNC-06 | Boundary | Section boundary minuteが`[start, end)`に従って後続Sectionへ属する | Approved (D-030, D-043) | LOCAL_PASS |
-| SECTION-START-SYNC-07 | Extended time | `24:30` / `28:00`等のextended wall-clock開始予定とSection開始minuteで同じ同期規則を維持する | Approved (D-030, D-039, D-043) | LOCAL_PASS |
-| SECTION-START-SYNC-08 | Routine parity | ordinary EntryとRoutine-derived Entryの選択済みscope内で同じSection / planned-start invariantを適用する | Approved (D-034, D-043) | LOCAL_PASS |
-| SECTION-START-SYNC-09 | Atomicity | Section、planned start、canonical order / tie-break、placement revision exactly +1、operation resultをatomicに確定しpartial stateを残さない | Approved (D-020, D-039, D-043) | LOCAL_PASS |
-| SECTION-START-SYNC-10 | Retry / Conflict | stale revision、same-operation retry / misuse、infrastructure ambiguityをD-020 / D-039に従って安全に処理し同期effectを二重適用しない | Approved (D-020, D-039, D-043) | LOCAL_PASS |
-| SECTION-START-SYNC-11 | Reload | mutation成功後とreload後にSection / planned-startの同期したcanonical stateを復元する | Approved (D-043) | LOCAL_PASS |
-| SECTION-START-SYNC-12 | Lifecycle / History | running / completed / interrupted、historical context、non-current execution restrictionを変更せず、許可されたplanned editingだけへ同期規則を適用する | Approved (D-030, D-041, D-042, D-043) | LOCAL_PASS |
-| SECTION-START-SYNC-13 | Invariant | `Sectionなし` + non-null開始予定をnormal mutation pathとstored canonical stateで作らない | Approved (D-039, D-043) | LOCAL_PASS |
-| SECTION-START-SYNC-14 | Invariant | real Section + `NULL`開始予定をnormal user-editable mutation pathで作らない | Approved (D-043) | LOCAL_PASS |
+| SECTION-START-SYNC-01 | Section edit | real Sectionを明示選択すると、開始予定を選択Sectionの`logical_start_minute`へexactly設定する | Approved (D-043) | PASS (LOCAL + REAL_LOCAL) |
+| SECTION-START-SYNC-02 | Section edit | real Section変更が以前の開始予定を選択Sectionの開始minuteで置き換える | Approved (D-043) | PASS (LOCAL + REAL_LOCAL) |
+| SECTION-START-SYNC-03 | Sectionなし | `Sectionなし`の明示選択がSection placementをabsenceにし、開始予定を`NULL`へclearする | Approved (D-038, D-043) | PASS (LOCAL + REAL_LOCAL) |
+| SECTION-START-SYNC-04 | Planned-start clear | 開始予定の直接clearが`planned_start_minute = NULL`と`Sectionなし`を同時に確定する | Approved (D-043) | PASS (LOCAL + REAL_LOCAL) |
+| SECTION-START-SYNC-05 | Planned-start edit | 開始予定の設定・変更がそのminuteを含むreal Sectionをderiveする | Approved (D-030, D-043) | PASS (LOCAL + REAL_LOCAL) |
+| SECTION-START-SYNC-06 | Boundary | Section boundary minuteが`[start, end)`に従って後続Sectionへ属する | Approved (D-030, D-043) | PASS (LOCAL + REAL_LOCAL) |
+| SECTION-START-SYNC-07 | Extended time | `24:30` / `28:00`等のextended wall-clock開始予定とSection開始minuteで同じ同期規則を維持する | Approved (D-030, D-039, D-043) | PASS (LOCAL_AUTOMATED) |
+| SECTION-START-SYNC-08 | Routine parity | ordinary EntryとRoutine-derived Entryの選択済みscope内で同じSection / planned-start invariantを適用する | Approved (D-034, D-043) | PASS (LOCAL + REAL_LOCAL) |
+| SECTION-START-SYNC-09 | Atomicity | Section、planned start、canonical order / tie-break、placement revision exactly +1、operation resultをatomicに確定しpartial stateを残さない | Approved (D-020, D-039, D-043) | PASS (LOCAL_AUTOMATED + REAL_LOCAL representative) |
+| SECTION-START-SYNC-10 | Retry / Conflict | stale revision、same-operation retry / misuse、infrastructure ambiguityをD-020 / D-039に従って安全に処理し同期effectを二重適用しない | Approved (D-020, D-039, D-043) | PASS (LOCAL_AUTOMATED) |
+| SECTION-START-SYNC-11 | Reload | mutation成功後とreload後にSection / planned-startの同期したcanonical stateを復元する | Approved (D-043) | PASS (LOCAL + REAL_LOCAL) |
+| SECTION-START-SYNC-12 | Lifecycle / History | running / completed / interrupted、historical context、non-current execution restrictionを変更せず、許可されたplanned editingだけへ同期規則を適用する | Approved (D-030, D-041, D-042, D-043) | PASS (LOCAL_AUTOMATED + REAL_LOCAL representative) |
+| SECTION-START-SYNC-13 | Invariant | `Sectionなし` + non-null開始予定をnormal mutation pathとstored canonical stateで作らない | Approved (D-039, D-043) | PASS (LOCAL + REAL_LOCAL) |
+| SECTION-START-SYNC-14 | Invariant | real Section + `NULL`開始予定をnormal user-editable mutation pathで作らない | Approved (D-043) | PASS (LOCAL + REAL_LOCAL) |
 
 ## Dogfood Day v0.1-B / B3 local implementation evidence
 
@@ -636,29 +636,29 @@ Final:
 | ROUTINE-R1-WEB-01 | Routine R1 / Web | Routine化、end-date/no-end、indicator、Routine終了をasync canonical reconciliation付きで扱う | Approved (D-040) | PASS / NONPROD_GENERAL_PASS（real-browser controlled inclusive end-dateとdeployed non-null inclusive-date subcheckはTOOLING_BLOCKED / NOT_VERIFIED） |
 | ROUTINE-R1-WEB-RELOAD-01 | Routine R1 / Web | reloadでRoutine relation / indicatorを維持しdaily Entryをduplicateしない | Approved (D-040) | PASS / NONPROD_PASS |
 | ROUTINE-R1-REGRESSION-01 | Routine R1 / Regression | B1/B2/B3 Section context/freeze、Sectionなし、estimate、planned start、order、Move/Reorder、lifecycle、retry/conflictを維持し、D-034 choice未実装中はRoutine由来Entryへの旧planning commandをserver mutation-timeでrejectする | Approved (D-034, D-040) | PASS |
-| ROUTINE-R2A-CANDIDATE-01 | Routine R2A / Web | Routine-derived editable unitのcandidate表示ではServer writeせず、scopeをpreselectしない | Approved (D-044) | LOCAL_PASS |
-| ROUTINE-R2A-CANCEL-01 | Routine R2A / Web | scope選択前のcancel / Escape / dismissがno-writeでcanonical valueを復元する | Approved (D-044) | LOCAL_PASS |
-| ROUTINE-R2A-SCOPE-01 | Routine R2A / Scope | Section + planned startを一unit、estimateを別unitとして`今回だけ / ルーティンに反映`を個別選択する | Approved (D-043, D-044) | LOCAL_PASS |
-| ROUTINE-R2A-ESTIMATE-01 | Routine R2A / Override | `今回だけ`estimate valueとexplicit `NULL`をno-overrideと区別してcurrent occurrenceだけへpersistする | Approved (D-044) | LOCAL_PASS |
-| ROUTINE-R2A-SECTION-01 | Routine R2A / Override | `今回だけ`real Section + in-range planned startと`Sectionなし + NULL`をD-043同期pairとしてpersistする | Approved (D-043, D-044) | LOCAL_PASS |
-| ROUTINE-R2A-RELOAD-01 | Routine R2A / Persistence | occurrence overrideとeffective valueがreload / restart後も維持される | Approved (D-044) | LOCAL_PASS |
-| ROUTINE-R2A-DEFAULT-01 | Routine R2A / Definition | `ルーティンに反映`がcurrent valueとRoutine defaultを更新し、current occurrenceの同unit overrideをclearする | Approved (D-044) | LOCAL_PASS |
-| ROUTINE-R2A-PROPAGATE-01 | Routine R2A / Propagation | non-overridden materialized current/future planned occurrenceへnew defaultを反映し、explicit overrideを上書きしない | Approved (D-034, D-044) | LOCAL_PASS |
-| ROUTINE-R2A-HISTORY-01 | Routine R2A / History | past / running / completed / interrupted / otherwise protected stateをdefault propagationでretroactiveにrewriteしない | Approved (D-034, D-044) | LOCAL_PASS |
-| ROUTINE-R2A-NO-MATERIALIZE-01 | Routine R2A / Materialization | default updateだけでfuture Day / RoutineOccurrenceを作らず、後のD-040 materializationがnew defaultを利用する | Approved (D-040, D-041, D-044) | LOCAL_PASS |
-| ROUTINE-R2A-RESET-01 | Routine R2A / Reset | overrideをcurrent Routine defaultへ戻し、Definitionを更新せずscope再選択なしでoverrideをclearする | Approved (D-044) | LOCAL_PASS |
-| ROUTINE-R2A-CHROME-01 | Routine R2A / Presentation | permanent override badgeを必須にせず、override時のreset affordanceをediting contextで提示する | Approved (D-044; canonical DESIGN) | LOCAL_PASS |
-| ROUTINE-R2A-REVISION-01 | Routine R2A / Atomicity | Section-plan、order、affected Day revision exactly once、override/default/propagation、operation resultをpartial effectなしで確定する | Approved (D-020, D-039, D-043, D-044) | LOCAL_PASS |
-| ROUTINE-R2A-RETRY-01 | Routine R2A / Retry | same-operation replay、different-semantic misuse、stale revision / concurrency、infrastructure ambiguityでeffectを二重適用しない | Approved (D-020, D-044) | LOCAL_PASS |
-| ROUTINE-R2A-SCOPE-GUARD-01 | Routine R2A / Server | current logical Dayのplanned Routine-derived Entryだけを許可し、future / past / running / completed / interrupted mutationをServerでno-write rejectする | Approved (D-041, D-042, D-044) | LOCAL_PASS |
-| ROUTINE-R2A-SCHEMA-01 | Routine R2A / Schema | typed Section-plan / estimate override columnsとunit別presenceによりno override / inheritとexplicit NULLを区別し、invalid combinationをschema / application constraintでrejectする | Approved (D-044, D-046) | LOCAL_PASS |
-| ROUTINE-R2A-SCHEMA-OWNER-01 | Routine R2A / Schema | Section override referenceがowner-scoped FKを維持し、historical Day Section membershipをtransaction validationする | Approved (D-038, D-043, D-046) | LOCAL_PASS |
-| ROUTINE-R2A-DEFAULT-REVISION-01 | Routine R2A / Concurrency | Routine default revisionがinitial 0から進み、stale default editをsilent LWW / partial propagationなしでrejectする | Approved (D-020, D-044, D-046) | LOCAL_PASS |
-| ROUTINE-R2A-MIGRATION-01 | Routine R2A / Migration | typed occurrence override persistenceを追加しexisting RoutineOccurrence identity/contentを保持し、existing occurrenceを各unit no overrideで開始してquick check / FK checkを通す | Approved (D-044, D-046) | LOCAL_PASS |
-| ROUTINE-R2A-NORMALIZE-01 | Routine R2A / Migration | editable planned ordinary Entry / Routine defaultのlegacy real Section + NULLをauthoritative Section startへnormalizeし、Sectionなし + NULLは維持する | Approved (D-043, D-045) | LOCAL_PASS |
-| ROUTINE-R2A-NORMALIZE-FAIL-01 | Routine R2A / Migration | authoritative Section startがambiguous / missingなら推測・Section drop・partial normalizationなしでfail safelyする | Approved (D-045) | LOCAL_PASS |
-| ROUTINE-R2A-NORMALIZE-HISTORY-01 | Routine R2A / Migration | running / completed / interrupted等のprotected historyをnormalizationでretroactiveにrewriteしない | Approved (D-045) | LOCAL_PASS |
-| ROUTINE-R2A-REGRESSION-01 | Routine R2A / Regression | D-043 ordinary Entry sync、D-040 conversion/materialization/end、D-041 future no-write、D-042 past gap、placement/order/retry/lifecycleを維持する | Approved regression contract | LOCAL_PASS |
+| ROUTINE-R2A-CANDIDATE-01 | Routine R2A / Web | Routine-derived editable unitのcandidate表示ではServer writeせず、scopeをpreselectしない | Approved (D-044) | PASS (LOCAL + REAL_LOCAL) |
+| ROUTINE-R2A-CANCEL-01 | Routine R2A / Web | scope選択前のcancel / Escape / dismissがno-writeでcanonical valueを復元する | Approved (D-044) | PASS (LOCAL + REAL_LOCAL) |
+| ROUTINE-R2A-SCOPE-01 | Routine R2A / Scope | Section + planned startを一unit、estimateを別unitとして`今回だけ / ルーティンに反映`を個別選択する | Approved (D-043, D-044) | PASS (LOCAL + REAL_LOCAL) |
+| ROUTINE-R2A-ESTIMATE-01 | Routine R2A / Override | `今回だけ`estimate valueとexplicit `NULL`をno-overrideと区別してcurrent occurrenceだけへpersistする | Approved (D-044) | PASS (LOCAL + REAL_LOCAL) |
+| ROUTINE-R2A-SECTION-01 | Routine R2A / Override | `今回だけ`real Section + in-range planned startと`Sectionなし + NULL`をD-043同期pairとしてpersistする | Approved (D-043, D-044) | PASS (LOCAL + REAL_LOCAL) |
+| ROUTINE-R2A-RELOAD-01 | Routine R2A / Persistence | occurrence overrideとeffective valueがreload / restart後も維持される | Approved (D-044) | PASS (LOCAL + REAL_LOCAL) |
+| ROUTINE-R2A-DEFAULT-01 | Routine R2A / Definition | `ルーティンに反映`がcurrent valueとRoutine defaultを更新し、current occurrenceの同unit overrideをclearする | Approved (D-044) | PASS (LOCAL + REAL_LOCAL) |
+| ROUTINE-R2A-PROPAGATE-01 | Routine R2A / Propagation | non-overridden materialized current/future planned occurrenceへnew defaultを反映し、explicit overrideを上書きしない | Approved (D-034, D-044) | PASS (LOCAL_AUTOMATED + REAL_LOCAL representative) |
+| ROUTINE-R2A-HISTORY-01 | Routine R2A / History | past / running / completed / interrupted / otherwise protected stateをdefault propagationでretroactiveにrewriteしない | Approved (D-034, D-044) | PASS (LOCAL_AUTOMATED + REAL_LOCAL representative) |
+| ROUTINE-R2A-NO-MATERIALIZE-01 | Routine R2A / Materialization | default updateだけでfuture Day / RoutineOccurrenceを作らず、後のD-040 materializationがnew defaultを利用する | Approved (D-040, D-041, D-044) | PASS (LOCAL + REAL_LOCAL) |
+| ROUTINE-R2A-RESET-01 | Routine R2A / Reset | overrideをcurrent Routine defaultへ戻し、Definitionを更新せずscope再選択なしでoverrideをclearする | Approved (D-044) | PASS (LOCAL + REAL_LOCAL) |
+| ROUTINE-R2A-CHROME-01 | Routine R2A / Presentation | permanent override badgeを必須にせず、override時のreset affordanceをediting contextで提示する | Approved (D-044; canonical DESIGN) | PASS (LOCAL + REAL_LOCAL) |
+| ROUTINE-R2A-REVISION-01 | Routine R2A / Atomicity | Section-plan、order、affected Day revision exactly once、override/default/propagation、operation resultをpartial effectなしで確定する | Approved (D-020, D-039, D-043, D-044) | PASS (LOCAL_AUTOMATED + REAL_LOCAL representative) |
+| ROUTINE-R2A-RETRY-01 | Routine R2A / Retry | same-operation replay、different-semantic misuse、stale revision / concurrency、infrastructure ambiguityでeffectを二重適用しない | Approved (D-020, D-044) | PASS (LOCAL_AUTOMATED) |
+| ROUTINE-R2A-SCOPE-GUARD-01 | Routine R2A / Server | current logical Dayのplanned Routine-derived Entryだけを許可し、future / past / running / completed / interrupted mutationをServerでno-write rejectする | Approved (D-041, D-042, D-044) | PASS (LOCAL_AUTOMATED + REAL_LOCAL representative) |
+| ROUTINE-R2A-SCHEMA-01 | Routine R2A / Schema | typed Section-plan / estimate override columnsとunit別presenceによりno override / inheritとexplicit NULLを区別し、invalid combinationをschema / application constraintでrejectする | Approved (D-044, D-046) | PASS (LOCAL + REAL_LOCAL) |
+| ROUTINE-R2A-SCHEMA-OWNER-01 | Routine R2A / Schema | Section override referenceがowner-scoped FKを維持し、historical Day Section membershipをtransaction validationする | Approved (D-038, D-043, D-046) | PASS (LOCAL_AUTOMATED + REAL_LOCAL) |
+| ROUTINE-R2A-DEFAULT-REVISION-01 | Routine R2A / Concurrency | Routine default revisionがinitial 0から進み、stale default editをsilent LWW / partial propagationなしでrejectする | Approved (D-020, D-044, D-046) | PASS (LOCAL_AUTOMATED + REAL_LOCAL representative) |
+| ROUTINE-R2A-MIGRATION-01 | Routine R2A / Migration | typed occurrence override persistenceを追加しexisting RoutineOccurrence identity/contentを保持し、existing occurrenceを各unit no overrideで開始してquick check / FK checkを通す | Approved (D-044, D-046) | PASS (LOCAL + REAL_LOCAL) |
+| ROUTINE-R2A-NORMALIZE-01 | Routine R2A / Migration | editable planned ordinary Entry / Routine defaultのlegacy real Section + NULLをauthoritative Section startへnormalizeし、Sectionなし + NULLは維持する | Approved (D-043, D-045) | PASS (LOCAL_AUTOMATED + REAL_LOCAL no-candidate gate) |
+| ROUTINE-R2A-NORMALIZE-FAIL-01 | Routine R2A / Migration | authoritative Section startがambiguous / missingなら推測・Section drop・partial normalizationなしでfail safelyする | Approved (D-045) | PASS (LOCAL_AUTOMATED) |
+| ROUTINE-R2A-NORMALIZE-HISTORY-01 | Routine R2A / Migration | running / completed / interrupted等のprotected historyをnormalizationでretroactiveにrewriteしない | Approved (D-045) | PASS (LOCAL_AUTOMATED + REAL_LOCAL) |
+| ROUTINE-R2A-REGRESSION-01 | Routine R2A / Regression | D-043 ordinary Entry sync、D-040 conversion/materialization/end、D-041 future no-write、D-042 past gap、placement/order/retry/lifecycleを維持する | Approved regression contract | PASS (LOCAL_AUTOMATED + REAL_LOCAL representative) |
 | ROUTINE-DOC-01 | Documents | Routine共通noteはTask Primary Documentを利用できる | Approved (D-018) | NOT_IMPLEMENTED |
 | ROUTINE-DOC-02 | Documents | RoutineOccurrenceはoptional Documentを持ち、同一Occurrenceの複数Entryで共有できる | Approved (D-018) | NOT_IMPLEMENTED |
 | DOC-01 | Documents | Markdown save/read round-tripでcontent semanticsを保持する | Approved (D-006) | NOT_IMPLEMENTED |
@@ -676,7 +676,7 @@ Routine R2A local implementation / verification evidence（2026-08-31）:
 - signed-in real-browser A〜M: `PASS`。ordinary EntryのSection / planned-start full sync、Routine estimate / Section-planの`今回だけ`、`ルーティンに反映`、default reset、revision increment、reload、future no-materialization、past read-only、Routine終了を確認。browser console warning / errorは`0 / 0`、exact HTTP statusは`NOT_VERIFIED`
 - browserで確認したrepresentative values: estimate default `900` → occurrence `1500` → reset `900`、definition `900 -> 1800` / defaults revision `0 -> 1`。Section-plan overrideはLunch / `720`、explicit NULL、reset Focus / `540`、definition Evening / `1080` / defaults revision `1 -> 2`。future `2026-09-01`はDay / Occurrenceを生成せず、past `2026-08-30`はread-only
 - multi-Day propagation、same-operation retry / misuse、stale revision / concurrency、infrastructure ambiguity、injected rollback、D-045 fixture normalization / fail-safeはlocal automated evidenceであり、real-browser PASSへ拡張しない
-- persistent nonprod: `NOT_RUN`、production: `NOT_RUN`、Released: `NO`、GitHub `main` integration: `pending`
+- GitHub `main` integration: implementation `7d3c0cb0881dfc11725af6ff45eabad69f86a22a` + evidence docs `d1283eb6ef10c9a0997a36427a09b89042250f96`、persistent nonprod: `NOT_RUN`、production: `NOT_RUN`、Released: `NO`
 
 R1 integrated implementation / verification evidence（2026-08-30）:
 
