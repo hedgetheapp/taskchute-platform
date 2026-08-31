@@ -113,7 +113,7 @@ Status: Approved (D-031, D-039, D-043). D-039 runtime baseline and D-043 full sy
 
 Startはplanned-startのnot-before制約を持たず、早期Startを許可する。Sectionなし Startのactual current Section配置は開始予定が`NULL`の場合だけ適用する。
 
-Routine由来Entryにも同じSection / planned-start synchronization ruleを適用する。D-044はcurrent-Day planned Routine-derived Entryを対象とする最初のoverride/default propagation sliceを確定し、Section / planned-startを分割不能な一unitとして扱う。integrated implementation commit `7d3c0cb0881dfc11725af6ff45eabad69f86a22a`はordinary EntryとRoutine selected-scopeへD-043同期を実装し、Routine由来Entryはdedicated R2A commandだけで変更する。APP `0007` migration、local automated、real-local migration / browser evidenceはPASSである。
+Routine由来Entryにも同じSection / planned-start synchronization ruleを適用する。D-044はcurrent-Day planned Routine-derived Entryを対象とする最初のoverride/default propagation sliceを確定し、Section / planned-startを分割不能な一unitとして扱う。integrated implementation commit `7d3c0cb0881dfc11725af6ff45eabad69f86a22a`はordinary EntryとRoutine selected-scopeへD-043同期を実装し、Routine由来Entryはdedicated R2A commandだけで変更する。APP `0007` migration、local automated、real-local migration / browser、persistent nonprod migration / preservation / deployed runtime / authenticated representative browser evidenceはPASSである。remote multi-Day propagationと詳細reliability subcaseはこのPASSへ含めない。
 
 ## Lifecycle and Execution
 
@@ -167,7 +167,7 @@ non-daily recurrence、future-range projection UI、schedule editing、field-lev
 
 ### Routine R2A current-Day override slice
 
-Status: Approved (D-044, D-045, D-046). Runtime / APP migration: IMPLEMENTED / INTEGRATED. Local automated / real-local migration and browser: PASS. Persistent nonprod / production: NOT_RUN. Released: NO.
+Status: Approved (D-044, D-045, D-046). Runtime / APP migration: IMPLEMENTED / INTEGRATED. Local automated / real-local migration and browser: PASS. Persistent nonprod migration / preservation / deploy / authenticated representative browser: PASS. Remote multi-Day propagation and detailed retry / misuse / concurrency / ambiguity / rollback: NOT_RUN. Production: NOT_RUN. Released: NO.
 
 - current logical TaskChuteDayのplanned Routine-derived Entryだけを対象に、`Section + 開始予定`の同期unitと、独立した見積unitを編集できる。
 - editはlocal candidateを先に作り、Server write前にunitごとの`今回だけ / ルーティンに反映`をexplicitに選択する。scopeはpreselectせず、cancel / Escape / dismissはno-writeでcanonical valueへ戻す。
