@@ -1,6 +1,6 @@
 # Test Matrix
 
-First Server + Web vertical slice、D-038 B1 / B3、D-039 B2、D-040 Minimal Routine R1、Day Table UI-1 / UI-2A、D-041 / D-042 Day Navigation v0.1、D-043 synchronization、D-044 / D-045 / D-046 Routine R2A first slice、D-047 / D-048 Routine R2B Boardは実装・GitHub `main`統合済み。R2B source review / local automated / real-local migration・browser / persistent nonprod migration・preservation・deploy・authenticated representative browserはPASS。D-049 initial production creation / migration / secure bootstrap / smokeもPASSし、initial release scopeでReleasedは`YES`。remote multi-Day propagation、詳細retry / concurrency、R2B inclusive end-date browser、production deep feature mutation等は各sectionの`NOT_RUN` / `NOT_VERIFIED`境界を維持する。
+First Server + Web vertical slice、D-038 B1 / B3、D-039 B2、D-040 Minimal Routine R1、Day Table UI-1 / UI-2A / UI-2B、D-041 / D-042 Day Navigation v0.1、D-043 synchronization、D-044 / D-045 / D-046 Routine R2A first slice、D-047 / D-048 Routine R2B Boardは実装・GitHub `main`統合済み。R2B source review / local automated / real-local migration・browser / persistent nonprod migration・preservation・deploy・authenticated representative browserはPASS。D-049 initial production creation / migration / secure bootstrap / smokeもPASSし、initial release scopeでReleasedは`YES`。remote multi-Day propagation、詳細retry / concurrency、R2B inclusive end-date browser、production deep feature mutation等は各sectionの`NOT_RUN` / `NOT_VERIFIED`境界を維持する。
 
 この文書はverification requirementとcurrent evidenceの正本とする。
 
@@ -786,6 +786,22 @@ Web suiteではdeterministic Reorder / Start conflict後のcanonical refetch、a
 - APP baseline / final: Days `5 -> 5`、Tasks `27 -> 29`、Entries `27 -> 29`、Executions `10 -> 11`、active Execution `0 -> 0`、Routine definitions `4 -> 4`、Occurrences `4 -> 4`。final `quick_check = ok`、FK violations `0`、duplicate Task Routine `0`、UI-2A verification Entryのinvalid placement `0`
 - normal UI verification dataを残置: `UI2A planned verification`（planned / Focus / estimate `900 sec` / planned start `540`）と`UI2A lifecycle verification`（completed / Focus / ended Execution 1）。direct SQL setup / cleanupなし
 - ChatGPT source review: `PASS`。authorized 3 Web pathsのみ、fake capability / new dependency / Material Decisionなし。persistent nonprod / production: `NOT_RUN / NOT_RUN`、Released: `NO`
+
+### Day Table UI-2B integrated evidence — 2026-09-01
+
+- implementation commit: `3861b9839b55a1453b0e2f230f03728e8d85059b`（parent `fc5a967d2c4a5d91aa35eb998f5ad48d48af1a29`、subject `Implement Day Table UI-2B`）はGitHub canonical `main`へIntegrated済み
+- changed runtime/test paths: `apps/web/src/web/App.tsx`、`apps/web/src/web/styles.css`、`apps/web/test/web/App.test.tsx`。Product / Domain / API / persistence semantics、新dependency、migrationは変更なし
+- implementation: normal Section / `Sectionなし`のpointer collapse / expand、focused summary Enter / Space、logical Day別in-session state、collapsed SectionからのAdd展開、non-empty draft保護、focused planned / running Taskの`S` Start / Complete。collapse stateのcross-reload persistenceは`NOT_IMPLEMENTED`
+- focused changed Web: `7 PASS`。full Web: `91 / 91 PASS`。typecheck / production build / `git diff --check`: `PASS`。Wrangler user-log writeはsandbox `EPERM` warningを出したがbuildはexit `0`
+- Worker / D1 / migration: `NOT_RUN / NOT_REQUIRED`（Web runtime / CSS / Web test only impact analysis）
+- signed-in real local browser `http://127.0.0.1:5173/`、logical Day `2026-09-01`: `PASS`。normal Section / `Sectionなし`のpointer、Enter / Space、collapsed row非表示、canonical order復元、collapsed Add、completed表示との独立性、Day A → B → A state復元を確認
+- focused planned Taskの`S` Start → Runner → focused running Taskの`S` Complete、completed no-op、text input中の`S` no-op: `PASS`。key repeat / modifier / IME guardはlocal automated evidenceで`PASS`
+- UI-2A / existing interaction regression: pointer reorder、`Shift+↑/↓`、`J/K`、見積 `10分`、開始予定 `16:00`とSection同期、Routine R2A access、reload canonical reconciliation、medium `980 x 820` horizontal scroll / fixed-left smoke: `PASS`
+- browser console warnings / errors: `0 / 0`
+- private ignored APP backup: `593,920 bytes`、SHA-256 `06DFF19CDDCC427C26604009A9A57A0D8D75591FB9F9465D350050DFCB1801EB`、backup `quick_check = ok` / FK violations `0`。private path / row identifierは記録しない
+- APP baseline / final: Days `5 -> 5`、Tasks `29 -> 31`、Entries `29 -> 31`、Executions `11 -> 12`、Operations `162 -> 170`、active Execution `0 -> 0`。final `quick_check = ok`、FK violations `0`、invalid Section placement `0`、duplicate active Execution group `0`、duplicate Routine occurrence Entry `0`
+- normal UI verification dataを残置: UI-2B reorder verification Task 2件。既存`UI2A planned verification`はStart / Completeでcompletedへ遷移。direct SQL setup / cleanupなし
+- source self-review: `PASS`。persistent nonprod / production: `NOT_RUN / NOT_RUN`、Released: `NO`
 
 ### Settings v0.1 integrated evidence — 2026-08-30
 

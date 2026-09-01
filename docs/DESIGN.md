@@ -257,7 +257,7 @@ Search / Filterはvisible row projectionを変更できるが、canonical Sectio
 
 個々のshortcutのimplementation statusは`FEATURES` / `TEST_MATRIX`で管理する。
 
-## Current implementation after UI-2A
+## Current implementation after UI-2B
 
 current mainで実装済みのvisible heading orderは次である。
 
@@ -269,9 +269,11 @@ UI-1は既存のServer-canonical command、retry / reconciliation、placement / 
 
 UI-2AはDay Tableへ明示的なminimum content widthとtable-owned horizontal scrollを追加し、heading / Task / draftの先頭へnon-interactive reserved Bulk slotを配置した。実用幅ではBulk / Execution Control / Taskをdeterministic CSS offsetでfixed / stickyにし、狭幅ではCSS-only fallbackでstickyを解除して全列へ到達可能にする。Bulk capability / control自体は追加せず、named heading orderとexisting interaction / Domain semanticsを維持する。implementation commit `43789c990ed91febb2bb6036c1f3970dfe8f34a1`とverification / docs commit `b66d6ee2248935fd36d338ea2794762ee51b6515`はGitHub canonical `main`へIntegrated済みであり、詳細な実装・evidence状態は`CURRENT` / `FEATURES` / `TEST_MATRIX`を正本とする。
 
+UI-2BはSection summaryからnormal Section / `Sectionなし`をpointerまたはfocused summaryのEnter / Spaceでcollapse / expandできるようにし、collapse stateをlogical Dayごとのin-session stateとして保持する。focused planned / running Taskの`S`は既存のStart / Complete commandとcanonical reconciliationを使う。text editing / IME composition / key repeat / unsafe modifier中は発火しない。collapse stateのcross-reload / browser-local persistenceはまだ実装せず、broader per-Day preference targetを変更しない。implementation commit `3861b9839b55a1453b0e2f230f03728e8d85059b`はGitHub canonical `main`へIntegrated済みであり、詳細な実装・evidence状態は`CURRENT` / `FEATURES` / `TEST_MATRIX`を正本とする。
+
 current runtimeでは、Day Navigation v0.1のTop Navigation date navigation / calendar pickerと、Settings v0.1のLeft Sidebar `今日` / `設定`およびdedicated Section / Project Settings surfaceを実装済みである。DayBoard上のtemporary Project作成controlとSection設定editorは撤去済み。broader Sidebar destination、resize / preference等の実装状態は`docs/FEATURES.md`、`docs/CURRENT.md`、`docs/TEST_MATRIX.md`を正本とする。
 
-full target column modelはcurrent implementationより広い。Bulk capability、Mode、Note、開始見込、fullerな開始 / 終了 / 実績、column reorder / hide / show / resize / auto-fit / preference、Search / Filter、Section collapse、D&Dまたはfullerなcontext interaction等はUI-2以後のfuture workとして残る。responsive / mobileのexact policyは引き続きOpenであり、UI-2Aの狭幅fallbackをProduct Decisionへ昇格しない。
+full target column modelはcurrent implementationより広い。Bulk capability、Mode、Note、開始見込、fullerな開始 / 終了 / 実績、column reorder / hide / show / resize / auto-fit / preference、Search / Filter、collapse stateのcross-reload persistence、D&Dまたはfullerなcontext interaction等はfuture workとして残る。responsive / mobileのexact policyは引き続きOpenであり、UI-2Aの狭幅fallbackをProduct Decisionへ昇格しない。
 
 ## Unreconciled historical scope
 
