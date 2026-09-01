@@ -769,6 +769,24 @@ Web suiteではdeterministic Reorder / Start conflict後のcanonical refetch、a
 - persistent nonprod UI-1 / production UI-1: `NOT_RUN / NOT_RUN`
 - Released: `NO`
 
+### Day Table UI-2A local candidate evidence — 2026-09-01
+
+- implementation commit: `43789c990ed91febb2bb6036c1f3970dfe8f34a1`（parent `7ca3156c0d7a724c9efc64b258c4ca85b2d11e60`、subject `Implement Day Table UI-2A`）。local `main`のみで、GitHub canonical `main`には未統合
+- changed runtime/test paths: `apps/web/src/web/App.tsx`、`apps/web/src/web/styles.css`、`apps/web/test/web/App.test.tsx`
+- structural contract: named heading order `実行 | Task | Project | Section | Routine | 見積 | 開始予定`を維持し、その前にheading / Task / draftでexactly oneのnon-interactive / non-focusable / unlabeled reserved Bulk slotを配置。Bulk action / fake controlは未実装
+- layout contract: Day Table minimum content width `1040px`、table-owned horizontal overflow、実用幅でBulk `24px` / Execution `52px` / Task `280px`をdeterministic offsetでfixed-left。狭幅ではCSS-onlyでstickyを解除し、horizontal scrollで全列へ到達可能
+- focused changed Web: `PASS`。full Web: `84 / 84 PASS`。typecheck / production build / `git diff --check`: `PASS`。Wrangler user-log writeはsandbox `EPERM` warningを出したがbuildはexit `0`
+- Worker / D1 / migration: `NOT_RUN / NOT_REQUIRED`（Web markup / CSS / Web test only impact analysis。Product / Domain / API / persistence semanticsは変更なし）
+- signed-in real local browser `http://127.0.0.1:5173/`、logical Day `2026-09-01`: `PASS`。wide `1440 x 900`ではtable overflow不要、medium `980 x 820`ではDay Table `client 706px / scroll 1040px`でfixed-left geometryをscroll前後とも維持、narrow `640 x 820`ではsticky fallback後も全列へ到達しbody horizontal overflowなし
+- medium scroll時のBulk / Execution / Task geometryはx `257 / 281 / 333`、width `24 / 52 / 280`でheading / Task / draftが整合。Project以後はfixed-leftの背面をscrollし、Section summary / empty messageは可読性を維持。opaque background / z-index / subtle boundaryにbleed / clipping / overlapなし
+- planned / hover / focus / running / completed rowでfixed-left cellsがrow backgroundを維持。completed title line-through、reorder controls hover、vertical page scroll: `PASS`
+- pointer `↑/↓`と`Shift+↑/↓`でcanonical orderを往復し、Add draft alignment、Section、estimate `15分`、planned start / Section full sync、existing Routine-derived R2A editor access、Start / Runner / Complete、completed hide/show、reload canonical reconciliation: `PASS`
+- browser console warnings / errors: `0 / 0`
+- private ignored APP backup: `593,920 bytes`、SHA-256 `B30F8DB17EC4113CECA16BA13CF8924B2AB36A3A3326F0B3D3049243F7FC7DE7`、backup `quick_check = ok` / FK violations `0`。private path / row contentは記録しない
+- APP baseline / final: Days `5 -> 5`、Tasks `27 -> 29`、Entries `27 -> 29`、Executions `10 -> 11`、active Execution `0 -> 0`、Routine definitions `4 -> 4`、Occurrences `4 -> 4`。final `quick_check = ok`、FK violations `0`、duplicate Task Routine `0`、UI-2A verification Entryのinvalid placement `0`
+- normal UI verification dataを残置: `UI2A planned verification`（planned / Focus / estimate `900 sec` / planned start `540`）と`UI2A lifecycle verification`（completed / Focus / ended Execution 1）。direct SQL setup / cleanupなし
+- source self-check: authorized 3 Web pathsのみ、fake capability / new dependency / Material Decisionなし。persistent nonprod / production: `NOT_RUN / NOT_RUN`、Released: `NO`
+
 ### Settings v0.1 integrated evidence — 2026-08-30
 
 - implementation commit: `51242b08e015817108010839cd5234959da2fed5`（parent `f250a0bb6c0f5da66fd690d451e7f8a7a3e88a29`、subject `Implement Settings v0.1 navigation`）
