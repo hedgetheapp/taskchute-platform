@@ -1,6 +1,6 @@
 # Test Matrix
 
-First Server + Web vertical slice、D-038 B1 / B3、D-039 B2、D-040 Minimal Routine R1、Day Table UI-1、D-041 / D-042 Day Navigation v0.1、D-043 synchronization、D-044 / D-045 / D-046 Routine R2A first slice、D-047 / D-048 Routine R2B Boardは実装・GitHub `main`統合済み。R2B source review / local automated / real-local migration・browser / persistent nonprod migration・preservation・deploy・authenticated representative browserはPASS。D-049 initial production creation / migration / secure bootstrap / smokeもPASSし、initial release scopeでReleasedは`YES`。remote multi-Day propagation、詳細retry / concurrency、R2B inclusive end-date browser、production deep feature mutation等は各sectionの`NOT_RUN` / `NOT_VERIFIED`境界を維持する。
+First Server + Web vertical slice、D-038 B1 / B3、D-039 B2、D-040 Minimal Routine R1、Day Table UI-1 / UI-2A、D-041 / D-042 Day Navigation v0.1、D-043 synchronization、D-044 / D-045 / D-046 Routine R2A first slice、D-047 / D-048 Routine R2B Boardは実装・GitHub `main`統合済み。R2B source review / local automated / real-local migration・browser / persistent nonprod migration・preservation・deploy・authenticated representative browserはPASS。D-049 initial production creation / migration / secure bootstrap / smokeもPASSし、initial release scopeでReleasedは`YES`。remote multi-Day propagation、詳細retry / concurrency、R2B inclusive end-date browser、production deep feature mutation等は各sectionの`NOT_RUN` / `NOT_VERIFIED`境界を維持する。
 
 この文書はverification requirementとcurrent evidenceの正本とする。
 
@@ -769,9 +769,9 @@ Web suiteではdeterministic Reorder / Start conflict後のcanonical refetch、a
 - persistent nonprod UI-1 / production UI-1: `NOT_RUN / NOT_RUN`
 - Released: `NO`
 
-### Day Table UI-2A local candidate evidence — 2026-09-01
+### Day Table UI-2A integrated evidence — 2026-09-01
 
-- implementation commit: `43789c990ed91febb2bb6036c1f3970dfe8f34a1`（parent `7ca3156c0d7a724c9efc64b258c4ca85b2d11e60`、subject `Implement Day Table UI-2A`）。local `main`のみで、GitHub canonical `main`には未統合
+- implementation commit: `43789c990ed91febb2bb6036c1f3970dfe8f34a1`（parent `7ca3156c0d7a724c9efc64b258c4ca85b2d11e60`、subject `Implement Day Table UI-2A`）とverification / docs commit `b66d6ee2248935fd36d338ea2794762ee51b6515`はGitHub canonical `main`へIntegrated済み
 - changed runtime/test paths: `apps/web/src/web/App.tsx`、`apps/web/src/web/styles.css`、`apps/web/test/web/App.test.tsx`
 - structural contract: named heading order `実行 | Task | Project | Section | Routine | 見積 | 開始予定`を維持し、その前にheading / Task / draftでexactly oneのnon-interactive / non-focusable / unlabeled reserved Bulk slotを配置。Bulk action / fake controlは未実装
 - layout contract: Day Table minimum content width `1040px`、table-owned horizontal overflow、実用幅でBulk `24px` / Execution `52px` / Task `280px`をdeterministic offsetでfixed-left。狭幅ではCSS-onlyでstickyを解除し、horizontal scrollで全列へ到達可能
@@ -785,7 +785,7 @@ Web suiteではdeterministic Reorder / Start conflict後のcanonical refetch、a
 - private ignored APP backup: `593,920 bytes`、SHA-256 `B30F8DB17EC4113CECA16BA13CF8924B2AB36A3A3326F0B3D3049243F7FC7DE7`、backup `quick_check = ok` / FK violations `0`。private path / row contentは記録しない
 - APP baseline / final: Days `5 -> 5`、Tasks `27 -> 29`、Entries `27 -> 29`、Executions `10 -> 11`、active Execution `0 -> 0`、Routine definitions `4 -> 4`、Occurrences `4 -> 4`。final `quick_check = ok`、FK violations `0`、duplicate Task Routine `0`、UI-2A verification Entryのinvalid placement `0`
 - normal UI verification dataを残置: `UI2A planned verification`（planned / Focus / estimate `900 sec` / planned start `540`）と`UI2A lifecycle verification`（completed / Focus / ended Execution 1）。direct SQL setup / cleanupなし
-- source self-check: authorized 3 Web pathsのみ、fake capability / new dependency / Material Decisionなし。persistent nonprod / production: `NOT_RUN / NOT_RUN`、Released: `NO`
+- ChatGPT source review: `PASS`。authorized 3 Web pathsのみ、fake capability / new dependency / Material Decisionなし。persistent nonprod / production: `NOT_RUN / NOT_RUN`、Released: `NO`
 
 ### Settings v0.1 integrated evidence — 2026-08-30
 
