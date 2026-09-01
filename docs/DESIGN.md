@@ -257,11 +257,11 @@ Search / Filterはvisible row projectionを変更できるが、canonical Sectio
 
 個々のshortcutのimplementation statusは`FEATURES` / `TEST_MATRIX`で管理する。
 
-## Current implementation after UI-2C
+## Current implementation after Start Forecast v0.1
 
 current mainで実装済みのvisible heading orderは次である。
 
-`実行 | Task | Project | Section | Routine | 見積 | 開始予定`
+`実行 | Task | Project | Section | Routine | 見積 | 開始予定 | 開始見込`
 
 Day Table UI-1では、独立した`状態`列と独立した`並び替え`列を除き、Execution Controlへlifecycle action / state presentationを維持し、Routineを独立列へ移し、見積を開始予定より前へ配置した。pointer `↑/↓`はTask cell内のtemporary affordanceとして、keyboard `Shift+↑/↓`は既存interactionとして維持する。task count、`placement_revision`、raw TaskChuteDay intervalはnormal toolbar / Day headerから除いた。
 
@@ -273,9 +273,11 @@ UI-2BはSection summaryからnormal Section / `Sectionなし`をpointerまたは
 
 UI-2CはTask cell内のcompact drag handleから、同じSectionかつ同じcanonical planned-start cohort内のplanned Entryをrow上半分 / 下半分へbefore / after配置するD&Dを実装した。最終orderは既存`ReorderEntries` commandとServer-canonical reconciliationから取得し、invalid / no-op / cross-Section dropはmutationしない。pointer `↑/↓`とkeyboard `Shift+↑/↓`は維持する。implementation commit `95701371d6fe25be1a966789254944b3a1f41eca`はGitHub canonical `main`へIntegrated済みであり、詳細な実装・evidence状態は`CURRENT` / `FEATURES` / `TEST_MATRIX`を正本とする。
 
+Start Forecast v0.1はD-032のderived projectionとして、`開始予定`の後ろへread-onlyの`開始見込`列を追加した。current Dayはserver projection生成時刻をanchorにactive Executionの見積残時間とtimed Section内planned Entryの見積を累積し、future established DayはDay startをanchorにする。planned startはforecast barrierではなく、completed / running自身、`Sectionなし`、past / record-noneは`—`表示とする。implementation commit `8939c4d6af95e2fd21b7d91e0e946bee29a6c1fb`はGitHub canonical `main`へIntegrated済みであり、詳細な実装・evidence状態は`CURRENT` / `FEATURES` / `TEST_MATRIX`を正本とする。
+
 current runtimeでは、Day Navigation v0.1のTop Navigation date navigation / calendar pickerと、Settings v0.1のLeft Sidebar `今日` / `設定`およびdedicated Section / Project Settings surfaceを実装済みである。DayBoard上のtemporary Project作成controlとSection設定editorは撤去済み。broader Sidebar destination、resize / preference等の実装状態は`docs/FEATURES.md`、`docs/CURRENT.md`、`docs/TEST_MATRIX.md`を正本とする。
 
-full target column modelはcurrent implementationより広い。Bulk capability、Mode、Note、開始見込、fullerな開始 / 終了 / 実績、column reorder / hide / show / resize / auto-fit / preference、Search / Filter、collapse stateのcross-reload persistence、cross-Section D&Dまたはfullerなcontext interaction等はfuture workとして残る。responsive / mobileのexact policyは引き続きOpenであり、UI-2Aの狭幅fallbackをProduct Decisionへ昇格しない。
+full target column modelはcurrent implementationより広い。Bulk capability、Mode、Note、fullerな開始 / 終了 / 実績、column reorder / hide / show / resize / auto-fit / preference、Search / Filter、collapse stateのcross-reload persistence、cross-Section D&Dまたはfullerなcontext interaction等はfuture workとして残る。responsive / mobileのexact policyは引き続きOpenであり、UI-2Aの狭幅fallbackをProduct Decisionへ昇格しない。
 
 ## Unreconciled historical scope
 

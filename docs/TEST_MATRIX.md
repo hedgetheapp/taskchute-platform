@@ -839,6 +839,28 @@ Web suiteではdeterministic Reorder / Start conflict後のcanonical refetch、a
 - GitHub canonical integration: implementation commit `51242b08e015817108010839cd5234959da2fed5`を`main`へIntegrated
 - production / Released: `NOT_RUN / NO`
 
+## Start Forecast v0.1 integrated evidence — 2026-09-01
+
+- implementation commit: `8939c4d6af95e2fd21b7d91e0e946bee29a6c1fb`（subject `Implement Start Forecast v0.1`）はGitHub canonical `main`へIntegrated済み
+- focused shared forecast `9 / 9 PASS`、focused Day Navigation `12 / 12 PASS`、focused Web forecast / surface `3 / 3 PASS`
+- Worker / D1 `133 / 133 PASS`、Web `103 / 103 PASS`、typecheck / production build / `git diff --check` `PASS`
+- signed-in real-local browser: current / future established / future preview / established past、actual pointer D&D、Start / Complete、`S`、Section collapse、R2A editor、medium-width horizontal scroll / sticky Taskを`PASS`
+- real-local APP: private ignored backup validation、final `quick_check = ok`、FK violations `0`、active Execution `0`、duplicate active group `0`、forecast schema object `0`
+- fresh-tab console warnings / errors: `0 / 0`
+- extended wall-clock forecast formatはautomated `PASS`、controlled real-browserは`NOT_RUN`
+- migration / dependency: `NOT_REQUIRED`、persistent nonprod / production: `NOT_RUN`、Released: `NO`
+
+| ID | Area | Requirement | Contract | Evidence |
+|---|---|---|---|---|
+| START-FORECAST-01 | Current anchor | current Dayはserver projection生成時刻を基準とし、client clockはAPI pollingやDB writeなしに前進する | Approved (D-032) | PASS (LOCAL_AUTOMATED + REAL_LOCAL) |
+| START-FORECAST-02 | Active Execution | running Entryの見積残時間をactual instant arithmeticで算出し、超過は0、見積NULLはcurrent instantを使う | Approved (D-032) | PASS (LOCAL_AUTOMATED + REAL_LOCAL) |
+| START-FORECAST-03 | Queue | timed Section内のplanned Entryをcanonical Section / Entry orderで見積累積し、planned startをbarrierにしない | Approved (D-032) | PASS (LOCAL_AUTOMATED + REAL_LOCAL) |
+| START-FORECAST-04 | Exclusion | completed / running自身、`Sectionなし`、untimed legacy、past / record-noneをforecast対象外として`—`表示する | Approved (D-032) | PASS (LOCAL_AUTOMATED + REAL_LOCAL) |
+| START-FORECAST-05 | Future | established future DayはDay startをanchorにし、preview readはDay / Entry / RoutineOccurrenceをmaterializeしない | Approved (D-032, D-041) | PASS (LOCAL_AUTOMATED + REAL_LOCAL) |
+| START-FORECAST-06 | Display | Day timezoneとlogical dateからsame-day / post-midnight extended `HH:mm`を表示し、Day endを越えてもclampしない | Approved (D-032) | PASS (LOCAL_AUTOMATED; real-browser extended time NOT_RUN) |
+| START-FORECAST-07 | Compatibility | reorder / lifecycle / Section collapse / Routine R2A / responsive horizontal-scroll behaviorを維持する | Approved (D-032; canonical DESIGN) | PASS (LOCAL_AUTOMATED + REAL_LOCAL) |
+| START-FORECAST-08 | Boundary | D-028 Interrupt / D-033 manual actual correction等の未実装scopeを暗黙に追加しない | Approved (D-028, D-032, D-033) | PASS (SOURCE_REVIEW) |
+
 ## Authentication / Authorization
 
 | ID | Area | Requirement | Contract | Evidence |

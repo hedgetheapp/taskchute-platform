@@ -281,3 +281,16 @@ R1はruntime commit `f9324e866deb74277d2fd83c5945f2df4b2b95da`とevidence docs c
 
 - incompatible future Dayからdefaultを修正・skipするProduct recovery UXは未決
 - verified current-Day scopeを越えるfuture-Day context change時のrecovery / convergenceとproduction behaviorは未検証であり、productionは`NOT_RUN`
+
+## R-016 — Established future Dayへの後続Task追加経路
+Related: D-020, D-041
+
+Start Forecast v0.1のreal-local browser regression中、未establish future Dayへの最初のTask追加はDay establishmentとともに成功したが、同じfuture Dayへの2件目のTask追加は既存Day Navigation mutation routeでrevision 0前提のvalidationによりrejectされた。Day / Task / Entryのpartial writeやforecast誤表示はなく、future forecastのread projection自体は正常だった。
+
+Current boundary:
+
+- Start Forecast v0.1はmutation endpointを変更せず、このfindingをforecast semanticsのPASSから分離する
+- failed requestでpartial stateを残さないD-020 / D-041 safetyは維持されている
+- established future Dayへの後続planning mutationがcurrent canonical revisionを使う経路を、Day Navigationのfollow-up correctionとしてsource review / automated / browserで再検証する
+
+このRisk記録はfuture DayのProduct semanticsを変更せず、既存Approved Decisionを越えるfallbackやclient-side revision推測を承認しない。
