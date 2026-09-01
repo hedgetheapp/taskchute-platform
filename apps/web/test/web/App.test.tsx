@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CurrentTaskChuteDayProjection, EntryProjection } from "../../src/shared/contracts";
 
@@ -61,6 +61,37 @@ function deferred<T>() {
     reject = rejectPromise;
   });
   return { promise, resolve, reject };
+}
+
+function dragDataTransfer() {
+  const values = new Map<string, string>();
+  return {
+    dropEffect: "none",
+    effectAllowed: "none",
+    setData: vi.fn((type: string, value: string) => values.set(type, value)),
+    getData: vi.fn((type: string) => values.get(type) ?? ""),
+  };
+}
+
+function setDragRowBounds(row: HTMLElement) {
+  vi.spyOn(row, "getBoundingClientRect").mockReturnValue({
+    x: 0, y: 0, width: 600, height: 100, top: 0, right: 600, bottom: 100, left: 0,
+    toJSON: () => ({}),
+  });
+}
+
+function dragEntry(handle: HTMLElement, targetRow: HTMLElement, clientY: number) {
+  const dataTransfer = dragDataTransfer();
+  setDragRowBounds(targetRow);
+  fireEvent.dragStart(handle, { dataTransfer });
+  const dragOver = createEvent.dragOver(targetRow, { dataTransfer });
+  Object.defineProperty(dragOver, "clientY", { value: clientY });
+  fireEvent(targetRow, dragOver);
+  const drop = createEvent.drop(targetRow, { dataTransfer });
+  Object.defineProperty(drop, "clientY", { value: clientY });
+  fireEvent(targetRow, drop);
+  fireEvent.dragEnd(handle, { dataTransfer });
+  return dataTransfer;
 }
 
 const emptyDay: CurrentTaskChuteDayProjection = {
@@ -701,6 +732,161 @@ describe("Dogfood Day shell", () => {
     fireEvent.click(down);
     await waitFor(() => expect(mocks.reorderEntries).toHaveBeenCalledTimes(1));
     expect(mocks.reorderEntries.mock.calls[0][0].entry_ids).toEqual([secondEntry.id, firstEntry.id]);
+  });
+
+  it("renders a Task-cell drag handle while retaining pointer arrows and no reorder column", async () => {
+    mocks.loadDay.mockResolvedValue(twoPlannedDay);
+    render(<App />);
+    const handle = (await screen.findAllByTitle("ドラッグして並び替え"))[0]!;
+    expect(handle.closest(".task-main")).toBeTruthy();
+    expect(handle.getAttribute("draggable")).toBe("true");
+    expect(screen.getByRole("button", { name: "Canonical taskを下へ" })).toBeTruthy();
+    expect(screen.queryByRole("columnheader", { name: "並び替え" })).toBeNull();
+  });
+
+  it("drags a NULL-start Entry multiple positions after a target through one canonical Reorder", async () => {
+    const threeEntries = { ...twoPlannedDay,
+      sections: [{ ...twoPlannedDay.sections[0], entries: [firstEntry, secondEntry, thirdEntry] }, emptyDay.sections[1]],
+    };
+    const reordered = { ...threeEntries, placement_revision: 2,
+      sections: [{ ...threeEntries.sections[0], entries: [{ ...secondEntry, position: 1 }, { ...thirdEntry, position: 2 }, { ...firstEntry, position: 3 }] }, emptyDay.sections[1]],
+    };
+    mocks.loadDay.mockResolvedValueOnce(threeEntries).mockResolvedValueOnce(reordered);
+    render(<App />);
+    const handles = await screen.findAllByTitle("ドラッグして並び替え");
+    const target = screen.getByText("Third task").closest<HTMLElement>("[data-entry-id]")!;
+    setDragRowBounds(target);
+    const dataTransfer = dragDataTransfer();
+    fireEvent.dragStart(handles[0]!, { dataTransfer });
+    const dragOver = createEvent.dragOver(target, { dataTransfer });
+    Object.defineProperty(dragOver, "clientY", { value: 75 });
+    fireEvent(target, dragOver);
+    expect(target.classList.contains("drop-after")).toBe(true);
+    const drop = createEvent.drop(target, { dataTransfer });
+    Object.defineProperty(drop, "clientY", { value: 75 });
+    fireEvent(target, drop);
+    fireEvent.dragEnd(handles[0]!, { dataTransfer });
+    await waitFor(() => expect(mocks.reorderEntries).toHaveBeenCalledTimes(1));
+    expect(mocks.reorderEntries.mock.calls[0][0]).toMatchObject({
+      section_id: morningId,
+      entry_ids: [secondEntry.id, thirdEntry.id, firstEntry.id],
+      expected_placement_revision: 1,
+    });
+    await waitFor(() => expect(Array.from(document.querySelectorAll("[data-entry-id]")).map((row) => row.getAttribute("data-entry-id"))).toEqual([secondEntry.id, thirdEntry.id, firstEntry.id]));
+    expect(document.activeElement?.getAttribute("data-entry-id")).toBe(firstEntry.id);
+  });
+
+  it("supports the actual mouse gesture path with a transient insertion indicator", async () => {
+    const threeEntries = { ...twoPlannedDay,
+      sections: [{ ...twoPlannedDay.sections[0], entries: [firstEntry, secondEntry, thirdEntry] }, emptyDay.sections[1]],
+    };
+    mocks.loadDay.mockResolvedValue(threeEntries);
+    render(<App />);
+    const handle = (await screen.findAllByTitle("ドラッグして並び替え"))[0]!;
+    const target = screen.getByText("Third task").closest<HTMLElement>("[data-entry-id]")!;
+    setDragRowBounds(target);
+    fireEvent.mouseDown(handle, { button: 0 });
+    fireEvent.mouseMove(target, { buttons: 1, clientY: 75 });
+    expect(target.classList.contains("drop-after")).toBe(true);
+    fireEvent.mouseUp(target, { button: 0, clientY: 75 });
+    await waitFor(() => expect(mocks.reorderEntries).toHaveBeenCalledTimes(1));
+    expect(mocks.reorderEntries.mock.calls[0][0].entry_ids).toEqual([secondEntry.id, thirdEntry.id, firstEntry.id]);
+    expect(target.classList.contains("drop-after")).toBe(false);
+  });
+
+  it("uses upper-half before placement for an equal non-null planned-start cohort", async () => {
+    const timedFirst = { ...firstEntry, planned_start_minute: 600 };
+    const timedSecond = { ...secondEntry, planned_start_minute: 600 };
+    const timedThird = { ...thirdEntry, planned_start_minute: 600 };
+    const timedDay = { ...twoPlannedDay,
+      sections: [{ ...twoPlannedDay.sections[0], entries: [timedFirst, timedSecond, timedThird] }, emptyDay.sections[1]],
+    };
+    mocks.loadDay.mockResolvedValue(timedDay);
+    render(<App />);
+    const handles = await screen.findAllByTitle("ドラッグして並び替え");
+    const target = screen.getByText("Canonical task").closest<HTMLElement>("[data-entry-id]")!;
+    dragEntry(handles[2]!, target, 25);
+    await waitFor(() => expect(mocks.reorderEntries).toHaveBeenCalledTimes(1));
+    expect(mocks.reorderEntries.mock.calls[0][0].entry_ids).toEqual([thirdEntry.id, firstEntry.id, secondEntry.id]);
+  });
+
+  it.each([
+    ["different planned-start minute", { ...secondEntry, planned_start_minute: 660 }],
+    ["NULL versus non-null planned start", { ...secondEntry, planned_start_minute: 600 }],
+  ])("rejects D&D for %s", async (_label, invalidTarget) => {
+    const source = _label === "different planned-start minute" ? { ...firstEntry, planned_start_minute: 600 } : firstEntry;
+    const day = { ...twoPlannedDay,
+      sections: [{ ...twoPlannedDay.sections[0], entries: [source, invalidTarget] }, emptyDay.sections[1]],
+    };
+    mocks.loadDay.mockResolvedValue(day);
+    render(<App />);
+    const handle = (await screen.findAllByTitle("ドラッグして並び替え"))[0]!;
+    const target = screen.getByText("Second task").closest<HTMLElement>("[data-entry-id]")!;
+    dragEntry(handle, target, 75);
+    expect(target.classList.contains("drop-after")).toBe(false);
+    expect(mocks.reorderEntries).not.toHaveBeenCalled();
+  });
+
+  it("rejects cross-Section and no-op drops", async () => {
+    const eveningEntry = { ...secondEntry, section_id: eveningId };
+    const day = { ...twoPlannedDay,
+      sections: [{ ...twoPlannedDay.sections[0], entries: [firstEntry] }, { ...emptyDay.sections[1], entries: [eveningEntry] }],
+    };
+    mocks.loadDay.mockResolvedValue(day);
+    render(<App />);
+    const handles = await screen.findAllByTitle("ドラッグして並び替え");
+    const sourceRow = screen.getByText("Canonical task").closest<HTMLElement>("[data-entry-id]")!;
+    const crossSectionRow = screen.getByText("Second task").closest<HTMLElement>("[data-entry-id]")!;
+    dragEntry(handles[0]!, crossSectionRow, 75);
+    dragEntry(handles[0]!, sourceRow, 25);
+    expect(mocks.reorderEntries).not.toHaveBeenCalled();
+  });
+
+  it("does not cross an intervening canonical cohort even when source and target match", async () => {
+    const timedMiddle = { ...secondEntry, planned_start_minute: 600 };
+    const day = { ...twoPlannedDay,
+      sections: [{ ...twoPlannedDay.sections[0], entries: [firstEntry, timedMiddle, thirdEntry] }, emptyDay.sections[1]],
+    };
+    mocks.loadDay.mockResolvedValue(day);
+    render(<App />);
+    const handle = (await screen.findAllByTitle("ドラッグして並び替え"))[0]!;
+    const target = screen.getByText("Third task").closest<HTMLElement>("[data-entry-id]")!;
+    dragEntry(handle, target, 75);
+    expect(mocks.reorderEntries).not.toHaveBeenCalled();
+  });
+
+  it("does not expose a drag handle for running, completed, or read-only Entries", async () => {
+    const readOnlyDay = { ...twoPlannedDay, is_current: false, planning_enabled: false };
+    mocks.loadDay.mockResolvedValueOnce(runningDay);
+    const view = render(<App />);
+    await screen.findByRole("button", { name: "Canonical taskを完了" });
+    expect(screen.queryByTitle("ドラッグして並び替え")).toBeNull();
+    view.unmount();
+    mocks.loadDay.mockResolvedValueOnce(completedDay);
+    const completedView = render(<App />);
+    await screen.findByLabelText("Canonical taskは完了済み");
+    expect(screen.queryByTitle("ドラッグして並び替え")).toBeNull();
+    completedView.unmount();
+    mocks.loadDay.mockResolvedValueOnce(readOnlyDay);
+    render(<App />);
+    await screen.findByRole("button", { name: "Canonical taskを開始" });
+    expect(screen.queryByTitle("ドラッグして並び替え")).toBeNull();
+  });
+
+  it("blocks a new drag reorder while another mutation is pending", async () => {
+    const request = deferred<unknown>();
+    mocks.loadDay.mockResolvedValue(twoPlannedDay);
+    mocks.reorderEntries.mockReturnValue(request.promise);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskを下へ" }));
+    await waitFor(() => expect(mocks.reorderEntries).toHaveBeenCalledTimes(1));
+    const handle = screen.getAllByTitle("ドラッグして並び替え")[1]!;
+    expect(handle.getAttribute("draggable")).toBe("false");
+    const target = screen.getByText("Canonical task").closest<HTMLElement>("[data-entry-id]")!;
+    dragEntry(handle, target, 25);
+    expect(mocks.reorderEntries).toHaveBeenCalledTimes(1);
+    request.resolve({});
+    await waitFor(() => expect(screen.queryByText("並び替え・照合中…")).toBeNull());
   });
 
   it("shows placement reconciliation in the shared floating status", async () => {

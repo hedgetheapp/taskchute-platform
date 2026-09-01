@@ -147,6 +147,10 @@ input:focus-visible, select:focus-visible { border-color: #2383e2; outline: 2px 
 .execution-cell { display: grid; height: 100%; place-items: center; }
 .task-main { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px; overflow: hidden; }
 .task-identity { display: flex; min-width: 0; align-items: center; gap: 6px; }
+.task-drag-handle { display: inline-flex; flex: none; width: 14px; color: #9b9a97; cursor: grab; font-size: 14px; line-height: 1; user-select: none; -webkit-user-drag: element; }
+.task-drag-handle:active { cursor: grabbing; }
+.task-row.drop-before { box-shadow: inset 0 2px #2383e2; }
+.task-row.drop-after { box-shadow: inset 0 -2px #2383e2; }
 .task-main strong, .project-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .next-label { flex: none; padding: 2px 5px; border-radius: 4px; background: #edf5fc; color: #2383e2; font-size: 10px; font-weight: 700; }
 .task-reorder-controls { display: flex; flex: none; gap: 2px; opacity: .58; }

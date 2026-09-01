@@ -1,6 +1,8 @@
 import {
+  DragEvent as ReactDragEvent,
   FormEvent,
   KeyboardEvent as ReactKeyboardEvent,
+  MouseEvent as ReactMouseEvent,
   useCallback,
   useEffect,
   useRef,
@@ -38,6 +40,8 @@ type AppView = "today" | "routines" | "settings";
 type SettingsDestination = "section" | "project";
 type FocusTarget = { kind: "section" | "entry"; id: string };
 type DraftTask = { sectionId: string | null; title: string };
+type DragEdge = "before" | "after";
+type EntryDragState = { entryId: string; sectionId: string | null; targetEntryId: string | null; edge: DragEdge | null };
 type RoutineCandidate =
   | { entryId: string; unit: "estimate"; estimateSeconds: number | null }
   | { entryId: string; unit: "section-plan"; sectionId: string | null; plannedStartMinute: number | null };
@@ -73,6 +77,29 @@ function canMoveEntry(entries: EntryProjection[], entryId: string, delta: -1 | 1
   const entry = entries[from];
   const neighbor = entries[from + delta];
   return isSamePlannedStartCohort(entry, neighbor);
+}
+
+function buildDraggedEntryOrder(
+  entries: EntryProjection[],
+  sectionId: string | null,
+  sourceEntryId: string,
+  targetEntryId: string,
+  edge: DragEdge,
+): string[] | null {
+  const source = entries.find((entry) => entry.id === sourceEntryId);
+  const target = entries.find((entry) => entry.id === targetEntryId);
+  if (!source || !target || source.id === target.id || source.section_id !== sectionId || target.section_id !== sectionId
+    || !isSamePlannedStartCohort(source, target)) return null;
+  const sourceIndex = entries.indexOf(source);
+  const targetIndexInCanonical = entries.indexOf(target);
+  const crossedEntries = entries.slice(Math.min(sourceIndex, targetIndexInCanonical), Math.max(sourceIndex, targetIndexInCanonical) + 1);
+  if (!crossedEntries.every((entry) => isSamePlannedStartCohort(source, entry))) return null;
+  const currentIds = entries.map((entry) => entry.id);
+  const reorderedIds = currentIds.filter((id) => id !== sourceEntryId);
+  const targetIndex = reorderedIds.indexOf(targetEntryId);
+  if (targetIndex < 0) return null;
+  reorderedIds.splice(targetIndex + (edge === "after" ? 1 : 0), 0, sourceEntryId);
+  return reorderedIds.every((id, index) => id === currentIds[index]) ? null : reorderedIds;
 }
 
 function groupKey(sectionId: string | null): string { return sectionId ?? "unsectioned"; }
@@ -225,12 +252,14 @@ export function App() {
   const [pendingFocusKey, setPendingFocusKey] = useState<string | null>(null);
   const [showCompleted, setShowCompleted] = useState(true);
   const [collapsedSectionsByDay, setCollapsedSectionsByDay] = useState<Record<string, Record<string, true>>>({});
+  const [entryDrag, setEntryDrag] = useState<EntryDragState | null>(null);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [calendarFocusedDate, setCalendarFocusedDate] = useState<string | null>(null);
   const [currentLogicalDate, setCurrentLogicalDate] = useState<string | null>(null);
   const draftInputRef = useRef<HTMLInputElement | null>(null);
   const draftCompositionRef = useRef(false);
   const selectedLogicalDateRef = useRef<string | null>(null);
+  const mouseDragRef = useRef<Pick<EntryDragState, "entryId" | "sectionId"> | null>(null);
   const calendarTriggerRef = useRef<HTMLButtonElement | null>(null);
   const calendarGridRef = useRef<HTMLDivElement | null>(null);
   const routineScopeChoiceRef = useRef<HTMLSpanElement | null>(null);
@@ -272,6 +301,8 @@ export function App() {
     setEditingPlannedStart(null);
     setPendingFocusKey(null);
     setCollapsedSectionsByDay({});
+    mouseDragRef.current = null;
+    setEntryDrag(null);
     setAuthState("signed-out");
   }, []);
 
@@ -334,6 +365,27 @@ export function App() {
       setPendingFocusKey(null);
     }
   }, [day, pendingFocusKey, showCompleted]);
+
+  useEffect(() => {
+    if (!entryDrag || !day) return;
+    const draggedEntry = [...day.unsectioned_entries, ...day.sections.flatMap((section) => section.entries)]
+      .find((entry) => entry.id === entryDrag.entryId);
+    if (!draggedEntry || draggedEntry.lifecycle_state !== "planned" || draggedEntry.section_id !== entryDrag.sectionId) {
+      mouseDragRef.current = null;
+      setEntryDrag(null);
+    }
+  }, [day, entryDrag?.entryId, entryDrag?.sectionId]);
+
+  useEffect(() => {
+    if (!entryDrag) return;
+    const clearMouseDrag = () => {
+      if (!mouseDragRef.current) return;
+      mouseDragRef.current = null;
+      setEntryDrag(null);
+    };
+    window.addEventListener("mouseup", clearMouseDrag);
+    return () => window.removeEventListener("mouseup", clearMouseDrag);
+  }, [entryDrag?.entryId]);
 
   useEffect(() => {
     if (!calendarOpen || !calendarFocusedDate) return;
@@ -550,6 +602,24 @@ export function App() {
     }
   }
 
+  async function reorderSectionEntries(sectionId: string | null, entryIds: string[], focusEntryId: string) {
+    if (!day?.taskchute_day.id || !day.planning_enabled || mutationLocked) return;
+    const entries = sectionId === null ? day.unsectioned_entries : day.sections.find((candidate) => candidate.id === sectionId)?.entries;
+    const canonicalIds = entries?.map((entry) => entry.id);
+    if (!entries || entryIds.length !== entries.length || new Set(entryIds).size !== entries.length
+      || entryIds.some((id) => !canonicalIds?.includes(id)) || entryIds.every((id, index) => id === canonicalIds?.[index])) return;
+    const operation: ReorderEntriesRequest = {
+      operation_id: uuidv7(),
+      taskchute_day_id: day.taskchute_day.id,
+      section_id: sectionId,
+      entry_ids: entryIds,
+      expected_placement_revision: day.placement_revision,
+    };
+    setPendingFocusKey(focusKey({ kind: "entry", id: focusEntryId }));
+    setReorderOperation(operation);
+    await executeReorder(operation);
+  }
+
   async function moveEntry(sectionId: string | null, entryId: string, delta: -1 | 1) {
     if (!day?.taskchute_day.id || !day.planning_enabled || mutationLocked) return;
     const entries = sectionId === null ? day.unsectioned_entries : day.sections.find((candidate) => candidate.id === sectionId)?.entries;
@@ -559,16 +629,82 @@ export function App() {
     const to = from + delta;
     if (from < 0 || to < 0 || to >= ids.length) return;
     [ids[from], ids[to]] = [ids[to]!, ids[from]!];
-    const operation: ReorderEntriesRequest = {
-      operation_id: uuidv7(),
-      taskchute_day_id: day.taskchute_day.id,
-      section_id: sectionId,
-      entry_ids: ids,
-      expected_placement_revision: day.placement_revision,
-    };
-    setPendingFocusKey(focusKey({ kind: "entry", id: entryId }));
-    setReorderOperation(operation);
-    await executeReorder(operation);
+    await reorderSectionEntries(sectionId, ids, entryId);
+  }
+
+  function dragEdge(event: ReactDragEvent<HTMLElement>): DragEdge {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    return event.clientY < bounds.top + bounds.height / 2 ? "before" : "after";
+  }
+
+  function dragOrder(sectionId: string | null, targetEntryId: string, edge: DragEdge): string[] | null {
+    if (!entryDrag || entryDrag.sectionId !== sectionId || !day?.taskchute_day.id || !day.planning_enabled || mutationLocked) return null;
+    const entries = sectionId === null ? day.unsectioned_entries : day.sections.find((candidate) => candidate.id === sectionId)?.entries;
+    return entries ? buildDraggedEntryOrder(entries, sectionId, entryDrag.entryId, targetEntryId, edge) : null;
+  }
+
+  function startEntryMouseDrag(event: ReactMouseEvent<HTMLElement>, sectionId: string | null, entry: EntryProjection) {
+    if (event.button !== 0 || !day?.taskchute_day.id || !day.planning_enabled || mutationLocked || entry.lifecycle_state !== "planned") return;
+    event.preventDefault();
+    mouseDragRef.current = { entryId: entry.id, sectionId };
+    setEntryDrag({ entryId: entry.id, sectionId, targetEntryId: null, edge: null });
+  }
+
+  function updateEntryMouseTarget(event: ReactMouseEvent<HTMLElement>, sectionId: string | null, targetEntryId: string) {
+    const drag = mouseDragRef.current;
+    if (!drag) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const edge: DragEdge = event.clientY < bounds.top + bounds.height / 2 ? "before" : "after";
+    const entries = drag.sectionId === null ? day?.unsectioned_entries : day?.sections.find((candidate) => candidate.id === drag.sectionId)?.entries;
+    const order = drag.sectionId === sectionId && entries
+      ? buildDraggedEntryOrder(entries, drag.sectionId, drag.entryId, targetEntryId, edge)
+      : null;
+    setEntryDrag({ ...drag, targetEntryId: order ? targetEntryId : null, edge: order ? edge : null });
+  }
+
+  function finishEntryMouseDrag(event: ReactMouseEvent<HTMLElement>, sectionId: string | null, targetEntryId: string) {
+    const drag = mouseDragRef.current;
+    if (!drag) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const edge: DragEdge = event.clientY < bounds.top + bounds.height / 2 ? "before" : "after";
+    const entries = drag.sectionId === null ? day?.unsectioned_entries : day?.sections.find((candidate) => candidate.id === drag.sectionId)?.entries;
+    const order = drag.sectionId === sectionId && entries && day?.taskchute_day.id && day.planning_enabled && !mutationLocked
+      ? buildDraggedEntryOrder(entries, drag.sectionId, drag.entryId, targetEntryId, edge)
+      : null;
+    mouseDragRef.current = null;
+    setEntryDrag(null);
+    if (order) void reorderSectionEntries(drag.sectionId, order, drag.entryId);
+  }
+
+  function startEntryDrag(event: ReactDragEvent<HTMLElement>, sectionId: string | null, entry: EntryProjection) {
+    if (!day?.taskchute_day.id || !day.planning_enabled || mutationLocked || entry.lifecycle_state !== "planned") {
+      event.preventDefault();
+      return;
+    }
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", entry.id);
+    setEntryDrag({ entryId: entry.id, sectionId, targetEntryId: null, edge: null });
+  }
+
+  function updateEntryDropTarget(event: ReactDragEvent<HTMLElement>, sectionId: string | null, targetEntryId: string) {
+    const edge = dragEdge(event);
+    if (!dragOrder(sectionId, targetEntryId, edge)) {
+      if (entryDrag?.targetEntryId !== null) setEntryDrag((current) => current ? { ...current, targetEntryId: null, edge: null } : null);
+      return;
+    }
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setEntryDrag((current) => current ? { ...current, targetEntryId, edge } : null);
+  }
+
+  function dropEntry(event: ReactDragEvent<HTMLElement>, sectionId: string | null, targetEntryId: string) {
+    const edge = dragEdge(event);
+    const ids = dragOrder(sectionId, targetEntryId, edge);
+    const draggedEntryId = entryDrag?.entryId;
+    setEntryDrag(null);
+    if (!ids || !draggedEntryId) return;
+    event.preventDefault();
+    void reorderSectionEntries(sectionId, ids, draggedEntryId);
   }
 
   async function executeStart(operation: StartEntryRequest) {
@@ -1464,7 +1600,17 @@ export function App() {
                 const canMoveUp = canMoveEntry(section.entries, entry.id, -1);
                 const canMoveDown = canMoveEntry(section.entries, entry.id, 1);
                 return (
-                  <div className={`task-row state-${entry.lifecycle_state}`} key={entry.id} tabIndex={0} data-entry-id={entry.id} data-day-focus-target data-focus-key={focusKey(entryTarget)} onClick={(event) => {
+                  <div className={`task-row state-${entry.lifecycle_state}${entryDrag?.targetEntryId === entry.id && entryDrag.edge ? ` drop-${entryDrag.edge}` : ""}`} key={entry.id} tabIndex={0} data-entry-id={entry.id} data-section-id={section.id ?? ""} data-day-focus-target data-focus-key={focusKey(entryTarget)}
+                    onMouseMove={(event) => updateEntryMouseTarget(event, section.id, entry.id)}
+                    onMouseUp={(event) => finishEntryMouseDrag(event, section.id, entry.id)}
+                    onDragOver={(event) => updateEntryDropTarget(event, section.id, entry.id)}
+                    onDrop={(event) => dropEntry(event, section.id, entry.id)}
+                    onDragLeave={(event) => {
+                      if (entryDrag?.targetEntryId === entry.id && !event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                        setEntryDrag((current) => current ? { ...current, targetEntryId: null, edge: null } : null);
+                      }
+                    }}
+                    onClick={(event) => {
                     if (event.target === event.currentTarget || (event.target as HTMLElement).closest(".task-main")) focusSurface(event.currentTarget);
                   }}>
                     <span className="bulk-slot" aria-hidden="true" />
@@ -1479,7 +1625,16 @@ export function App() {
                       )}
                     </span>
                     <div className="task-main">
-                      <div className="task-identity"><strong>{entry.task.title}</strong>{day.next_entry?.id === entry.id && <span className="next-label">Next</span>}</div>
+                      <div className="task-identity">
+                        {entry.lifecycle_state === "planned" && day.planning_enabled && day.taskchute_day.id ? (
+                          <span className="task-drag-handle" draggable={!mutationLocked} aria-hidden="true" title="ドラッグして並び替え"
+                            onClick={(event) => event.stopPropagation()}
+                            onMouseDown={(event) => startEntryMouseDrag(event, section.id, entry)}
+                            onDragStart={(event) => startEntryDrag(event, section.id, entry)}
+                            onDragEnd={() => { mouseDragRef.current = null; setEntryDrag(null); }}>⠿</span>
+                        ) : null}
+                        <strong>{entry.task.title}</strong>{day.next_entry?.id === entry.id && <span className="next-label">Next</span>}
+                      </div>
                       <div className="task-reorder-controls" role="group" aria-label={`${entry.task.title}の並び替え`} onClick={(event) => event.stopPropagation()}>
                         <button type="button" className="icon-button" aria-label={`${entry.task.title}を上へ`} title="上へ" disabled={mutationLocked || !day.planning_enabled || !canMoveUp}
                           onClick={(event) => { event.stopPropagation(); void moveEntry(section.id, entry.id, -1); }}>↑</button>
