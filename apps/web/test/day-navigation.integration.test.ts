@@ -67,6 +67,7 @@ describe.sequential("Day Navigation v0.1", () => {
     const first = await loadTaskChuteDayByLogicalDate(env.APP_DB, fixture.userId, "2026-08-31", now);
     const second = await loadTaskChuteDayByLogicalDate(env.APP_DB, fixture.userId, "2026-08-31", now);
     expect(first).toMatchObject({ establishment_state: "future_preview", is_current: false,
+      projection_generated_at: now,
       taskchute_day: { id: null, logical_date: "2026-08-31" }, placement_revision: 0 });
     expect(first.sections.map((section) => section.title)).toEqual(["Morning", "Evening"]);
     expect(second).toEqual(first);
@@ -121,6 +122,7 @@ describe.sequential("Day Navigation v0.1", () => {
     const fixture = await seedNavigationUser();
     const first = await loadTaskChuteDayByLogicalDate(env.APP_DB, fixture.userId, "2026-08-28", now);
     expect(first).toMatchObject({
+      projection_generated_at: now,
       establishment_state: "past_record_none",
       is_current: false,
       planning_enabled: false,
@@ -202,7 +204,7 @@ describe.sequential("Day Navigation v0.1", () => {
       section_id: fixture.sections[0], position: 1, placement_revision: 1 });
     const projection = await loadTaskChuteDayByLogicalDate(env.APP_DB, fixture.userId, request.logical_date, now);
     expect(projection).toMatchObject({ establishment_state: "established", is_current: false,
-      taskchute_day: { id: request.taskchute_day_id }, placement_revision: 1 });
+      projection_generated_at: now, taskchute_day: { id: request.taskchute_day_id }, placement_revision: 1 });
     expect(projection.sections[0]?.entries[0]?.id).toBe(request.entry_id);
     expect(await env.APP_DB.prepare(`SELECT COUNT(*) AS count FROM taskchute_day_section_contexts
       WHERE app_user_id = ? AND taskchute_day_id = ?`).bind(fixture.userId, request.taskchute_day_id).first<number>("count")).toBe(2);

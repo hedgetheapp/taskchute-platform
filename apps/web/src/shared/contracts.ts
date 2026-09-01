@@ -68,13 +68,14 @@ export interface SectionProjection {
 }
 
 interface TaskChuteDayProjectionBase {
+  projection_generated_at: string;
   is_current: boolean;
   planning_enabled: boolean;
   placement_revision: number;
   section_configuration_required: boolean;
   sections: SectionProjection[];
   unsectioned_entries: EntryProjection[];
-  active_execution: ExecutionProjection | null;
+  active_execution: ActiveExecutionProjection | null;
   next_entry: EntryProjection | null;
 }
 
@@ -109,6 +110,10 @@ export interface ExecutionProjection {
   entry_id: string;
   started_at: string;
   ended_at: string | null;
+}
+
+export interface ActiveExecutionProjection extends ExecutionProjection {
+  entry_estimate_seconds: number | null;
 }
 
 export interface CreateProjectRequest {

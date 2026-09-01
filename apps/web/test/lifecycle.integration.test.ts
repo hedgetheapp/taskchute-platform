@@ -284,7 +284,7 @@ describe.sequential("ordering and lifecycle increment", () => {
         .bind(nextEntryId, userId, nextTaskId, nextDayInitial.taskchute_day.id, sectionId, "2026-08-23T12:00:00.000Z"),
     ]);
     const acrossBoundary = await loadCurrentTaskChuteDay(env.APP_DB, userId, "2026-08-23T12:00:00.000Z");
-    expect(acrossBoundary.active_execution).toEqual(started.execution);
+    expect(acrossBoundary.active_execution).toMatchObject({ ...started.execution, entry_estimate_seconds: null });
     expect(acrossBoundary.sections.flatMap((section) => section.entries).some((entry) => entry.id === priorDayEntry)).toBe(false);
     expect(acrossBoundary.next_entry?.id).toBe(nextEntryId);
     const executionCount = await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM executions WHERE app_user_id = ?")

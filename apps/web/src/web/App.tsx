@@ -31,6 +31,7 @@ import type {
   SetRoutineSectionPlanRequest,
 } from "../shared/contracts";
 import { isSamePlannedStartCohort } from "../shared/planned-entry-order";
+import { advanceProjectionClock, calculateStartForecast, formatStartForecast } from "../shared/start-forecast";
 import { uuidv7 } from "../shared/uuidv7";
 import { api, ApiClientError } from "./api";
 import { RoutineBoard } from "./RoutineBoard";
@@ -256,6 +257,7 @@ export function App() {
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [calendarFocusedDate, setCalendarFocusedDate] = useState<string | null>(null);
   const [currentLogicalDate, setCurrentLogicalDate] = useState<string | null>(null);
+  const [forecastNowInstant, setForecastNowInstant] = useState<string | null>(null);
   const draftInputRef = useRef<HTMLInputElement | null>(null);
   const draftCompositionRef = useRef(false);
   const selectedLogicalDateRef = useRef<string | null>(null);
@@ -263,6 +265,7 @@ export function App() {
   const calendarTriggerRef = useRef<HTMLButtonElement | null>(null);
   const calendarGridRef = useRef<HTMLDivElement | null>(null);
   const routineScopeChoiceRef = useRef<HTMLSpanElement | null>(null);
+  const forecastClockRef = useRef<{ serverInstant: string; monotonicMilliseconds: number } | null>(null);
   const retainedOperation = projectOperation ?? taskOperation ?? reorderOperation ?? startOperation ?? completeOperation
     ?? configurationOperation ?? sectionSettingsOperation ?? sectionMoveOperation ?? estimateOperation ?? plannedStartOperation
     ?? routineConversionOperation ?? routineEndOperation ?? routineEstimateOperation ?? routineSectionPlanOperation;
@@ -274,6 +277,8 @@ export function App() {
     setCalendarOpen(false);
     setCalendarFocusedDate(null);
     setDay(null);
+    forecastClockRef.current = null;
+    setForecastNowInstant(null);
     setView("today");
     setProject(null);
     setProjects([]);
@@ -356,6 +361,23 @@ export function App() {
   useEffect(() => {
     if (draftTask) draftInputRef.current?.focus();
   }, [draftTask?.sectionId]);
+
+  useEffect(() => {
+    if (!day) {
+      forecastClockRef.current = null;
+      setForecastNowInstant(null);
+      return;
+    }
+    const anchor = { serverInstant: day.projection_generated_at, monotonicMilliseconds: performance.now() };
+    forecastClockRef.current = anchor;
+    setForecastNowInstant(anchor.serverInstant);
+    if (!day.is_current) return;
+    const timer = window.setInterval(() => {
+      if (forecastClockRef.current !== anchor) return;
+      setForecastNowInstant(advanceProjectionClock(anchor.serverInstant, performance.now() - anchor.monotonicMilliseconds));
+    }, 15_000);
+    return () => window.clearInterval(timer);
+  }, [day]);
 
   useEffect(() => {
     if (!pendingFocusKey || !day) return;
@@ -1230,6 +1252,10 @@ export function App() {
   const currentDay = day;
   const allEntries = [...currentDay.unsectioned_entries, ...currentDay.sections.flatMap((section) => section.entries)];
   const activeEntry = currentDay.active_execution ? allEntries.find((entry) => entry.id === currentDay.active_execution?.entry_id) : null;
+  const forecastByEntryId = calculateStartForecast(
+    currentDay,
+    forecastNowInstant ?? currentDay.projection_generated_at,
+  );
   const parsedSectionSettingsDraft = parseSectionSettingsDraft(sectionSettingsDraft);
   const transientStatus = transientStatusText(pending);
   const groups = [
@@ -1550,7 +1576,7 @@ export function App() {
 
       <section className="day-surface" aria-label="DayBoard">
         <div className="table-heading" aria-hidden="true">
-          <span className="bulk-slot" /><span className="execution-heading">実行</span><span className="task-heading">Task</span><span>Project</span><span>Section</span><span>Routine</span><span>見積</span><span>開始予定</span>
+          <span className="bulk-slot" /><span className="execution-heading">実行</span><span className="task-heading">Task</span><span>Project</span><span>Section</span><span>Routine</span><span>見積</span><span>開始予定</span><span>開始見込</span>
         </div>
         {groups.map((section) => {
           const visibleEntries = showCompleted ? section.entries : section.entries.filter((entry) => entry.lifecycle_state !== "completed");
@@ -1589,7 +1615,7 @@ export function App() {
                   <label className="draft-name"><span className="sr-only">Task名</span><input ref={draftInputRef} name="title" maxLength={300} value={draftTask.title} placeholder="Task名を入力…" aria-label={`${section.title}のTask名`} disabled={pending === "task" || taskOperation !== null} onChange={(event) => setDraftTask({ ...draftTask, title: event.target.value })} onCompositionStart={() => { draftCompositionRef.current = true; }} onCompositionEnd={() => { draftCompositionRef.current = false; }} onKeyDown={handleDraftKeyDown} onBlur={(event) => {
                     if (!draftTask.title.trim() && !event.currentTarget.form?.contains(event.relatedTarget as Node | null)) setDraftTask(null);
                   }} /></label>
-                  <span className="muted">—</span><span>{section.title}</span><span className="muted">—</span><span className="muted">—</span><span className="muted">—</span>
+                  <span className="muted">—</span><span>{section.title}</span><span className="muted">—</span><span className="muted">—</span><span className="muted">—</span><span className="muted" aria-hidden="true">—</span>
                 </form>
               )}
 
@@ -1716,6 +1742,13 @@ export function App() {
                           <button type="button" disabled={mutationLocked} onClick={() => void commitRoutineCandidate(entry, "definition")}>ルーティンに反映</button>
                           <button type="button" className="secondary" disabled={mutationLocked} onClick={() => setRoutineCandidate(null)}>キャンセル</button>
                         </span>
+                      )}
+                    </span>
+                    <span className="forecast-cell" aria-label={`${entry.task.title}の開始見込`}>
+                      {formatStartForecast(
+                        forecastByEntryId[entry.id],
+                        currentDay.taskchute_day.logical_date,
+                        currentDay.taskchute_day.establishment_timezone,
                       )}
                     </span>
                   </div>

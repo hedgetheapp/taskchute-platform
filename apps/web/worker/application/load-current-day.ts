@@ -75,6 +75,7 @@ interface EntryRow {
 interface ExecutionRow {
   id: string;
   entry_id: string;
+  entry_estimate_seconds: number | null;
   started_at: string;
   ended_at: string | null;
 }
@@ -324,6 +325,7 @@ async function loadEstablishedProjection(
   day: DayRow,
   includeActiveExecution: boolean,
   planningEnabled: boolean,
+  projectionGeneratedAt: string,
 ): Promise<EstablishedTaskChuteDayProjection> {
   const context = await readDaySectionContexts(db, appUserId, day.id);
   assertEstablishedContext(day, context);
@@ -357,9 +359,11 @@ async function loadEstablishedProjection(
       )
       .bind(appUserId, day.id),
     includeActiveExecution
-      ? db.prepare(`SELECT id, entry_id, started_at, ended_at FROM executions
-          WHERE app_user_id = ? AND ended_at IS NULL LIMIT 1`).bind(appUserId)
-      : db.prepare("SELECT NULL AS id, NULL AS entry_id, NULL AS started_at, NULL AS ended_at WHERE false"),
+      ? db.prepare(`SELECT x.id, x.entry_id, e.estimate_seconds AS entry_estimate_seconds, x.started_at, x.ended_at
+          FROM executions x JOIN entries e ON e.app_user_id = x.app_user_id AND e.id = x.entry_id
+          WHERE x.app_user_id = ? AND x.ended_at IS NULL LIMIT 1`).bind(appUserId)
+      : db.prepare(`SELECT NULL AS id, NULL AS entry_id, NULL AS entry_estimate_seconds,
+          NULL AS started_at, NULL AS ended_at WHERE false`),
   ]);
   const entryRows = entryResult.results.map(toEntryRow);
   const entriesBySection = new Map<string, EntryProjection[]>();
@@ -416,6 +420,7 @@ async function loadEstablishedProjection(
     .find((entry) => entry.lifecycle_state === "planned") ?? null;
   const activeExecution = executionResult.results[0] as ExecutionRow | undefined;
   return {
+    projection_generated_at: projectionGeneratedAt,
     establishment_state: "established",
     is_current: includeActiveExecution,
     planning_enabled: planningEnabled,
@@ -434,6 +439,7 @@ async function loadEstablishedProjection(
     active_execution: activeExecution ? {
       id: activeExecution.id,
       entry_id: activeExecution.entry_id,
+      entry_estimate_seconds: activeExecution.entry_estimate_seconds,
       started_at: activeExecution.started_at,
       ended_at: activeExecution.ended_at,
     } : null,
@@ -488,6 +494,7 @@ function emptyProjection(
   logicalDate: string,
   day: DayRow | null,
   contexts: DaySectionContextRow[],
+  projectionGeneratedAt: string,
 ): CurrentTaskChuteDayProjection {
   const sections: SectionProjection[] = contexts.map((section) => ({
     id: section.section_id,
@@ -500,6 +507,7 @@ function emptyProjection(
     entries: [],
   }));
   return {
+    projection_generated_at: projectionGeneratedAt,
     establishment_state: state,
     is_current: false,
     planning_enabled: state === "future_preview",
@@ -536,11 +544,11 @@ export async function loadTaskChuteDayByLogicalDate(
   const existing = await db.prepare(`SELECT id, logical_date, start_instant, end_instant, establishment_timezone,
       establishment_boundary_minutes, placement_revision FROM taskchute_days WHERE app_user_id = ? AND logical_date = ?`)
     .bind(appUserId, logicalDate).first<DayRow>();
-  if (existing) return loadEstablishedProjection(db, appUserId, existing, false, logicalDate > current.logicalDate);
-  if (logicalDate < current.logicalDate) return emptyProjection("past_record_none", logicalDate, null, []);
+  if (existing) return loadEstablishedProjection(db, appUserId, existing, false, logicalDate > current.logicalDate, nowInstant);
+  if (logicalDate < current.logicalDate) return emptyProjection("past_record_none", logicalDate, null, [], nowInstant);
   const preview = await readFutureDayEstablishmentPlan(db, appUserId, logicalDate, nowInstant);
   if (!preview) throw new Error("Future TaskChuteDay preview could not be resolved");
-  return emptyProjection("future_preview", logicalDate, preview.day, preview.contexts);
+  return emptyProjection("future_preview", logicalDate, preview.day, preview.contexts, nowInstant);
 }
 
 export async function loadCurrentTaskChuteDay(
@@ -554,5 +562,5 @@ export async function loadCurrentTaskChuteDay(
       establishment_boundary_minutes, placement_revision FROM taskchute_days WHERE app_user_id = ? AND id = ?`)
     .bind(appUserId, materializedDay.id).first<DayRow>();
   if (!day) throw new Error("TaskChuteDay disappeared after Routine materialization");
-  return loadEstablishedProjection(db, appUserId, day, true, true);
+  return loadEstablishedProjection(db, appUserId, day, true, true, nowInstant);
 }

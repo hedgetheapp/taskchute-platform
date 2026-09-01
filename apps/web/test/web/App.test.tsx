@@ -1,4 +1,4 @@
-import { createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CurrentTaskChuteDayProjection, EntryProjection } from "../../src/shared/contracts";
 
@@ -95,6 +95,7 @@ function dragEntry(handle: HTMLElement, targetRow: HTMLElement, clientY: number)
 }
 
 const emptyDay: CurrentTaskChuteDayProjection = {
+  projection_generated_at: "2026-08-22T12:00:00.000Z",
   establishment_state: "established",
   is_current: true,
   planning_enabled: true,
@@ -139,6 +140,7 @@ const runningDay: CurrentTaskChuteDayProjection = {
   active_execution: {
     id: "019c0000-0000-7000-8000-000000000005",
     entry_id: firstEntry.id,
+    entry_estimate_seconds: null,
     started_at: "2026-08-22T12:00:00.000Z",
     ended_at: null,
   },
@@ -221,7 +223,7 @@ describe("Dogfood Day shell", () => {
     const heading = dayBoard.querySelector<HTMLElement>(".table-heading")!;
     const headingCells = Array.from(heading.children) as HTMLElement[];
     expect(headingCells.filter((cell) => !cell.classList.contains("bulk-slot")).map((cell) => cell.textContent)).toEqual([
-      "実行", "Task", "Project", "Section", "Routine", "見積", "開始予定",
+      "実行", "Task", "Project", "Section", "Routine", "見積", "開始予定", "開始見込",
     ]);
     expect(headingCells[0]?.classList.contains("bulk-slot")).toBe(true);
     expect(heading.querySelectorAll(":scope > .bulk-slot")).toHaveLength(1);
@@ -232,6 +234,7 @@ describe("Dogfood Day shell", () => {
     expect(taskRow.querySelectorAll(":scope > .bulk-slot")).toHaveLength(1);
     expect(taskRow.children[1]?.classList.contains("execution-cell")).toBe(true);
     expect(taskRow.children[2]?.classList.contains("task-main")).toBe(true);
+    expect(taskRow.children).toHaveLength(headingCells.length);
     expect(heading.textContent).not.toContain("状態");
     expect(heading.textContent).not.toContain("並び替え");
     expect(dayBoard.querySelector(".lifecycle-label")).toBeNull();
@@ -244,6 +247,48 @@ describe("Dogfood Day shell", () => {
     expect(document.querySelector(".interval")).toBeNull();
     expect(screen.getByRole("button", { name: "＋ Taskを追加" })).toBeTruthy();
     expect(screen.getByRole("checkbox", { name: "実行済みを表示" })).toBeTruthy();
+  });
+
+  it("renders read-only forecast from the server anchor without using planned start as a barrier", async () => {
+    const forecastDay: CurrentTaskChuteDayProjection = {
+      ...twoPlannedDay,
+      projection_generated_at: "2026-08-22T09:00:30.000Z",
+      sections: [{ ...twoPlannedDay.sections[0], entries: [
+        { ...firstEntry, estimate_seconds: 600, planned_start_minute: 1200 },
+        { ...secondEntry, estimate_seconds: 300, planned_start_minute: null },
+      ] }, twoPlannedDay.sections[1]],
+    };
+    mocks.loadDay.mockResolvedValue(forecastDay);
+    render(<App />);
+    expect((await screen.findByLabelText("Canonical taskの開始見込")).textContent).toBe("09:00");
+    expect(screen.getByLabelText("Second taskの開始見込").textContent).toBe("09:10");
+    expect(screen.getByRole("button", { name: "Canonical taskの開始予定" }).textContent).toBe("20:00");
+    expect(screen.queryByText(/警告|遅延/)).toBeNull();
+    expect(screen.queryByRole("textbox", { name: /開始見込/ })).toBeNull();
+  });
+
+  it("advances the local forecast clock without polling and cleans the timer on unmount", async () => {
+    let tick: (() => void) | null = null;
+    const performanceSpy = vi.spyOn(performance, "now").mockReturnValue(1_000);
+    const setIntervalSpy = vi.spyOn(window, "setInterval").mockImplementation((handler) => {
+      tick = handler as () => void;
+      return 42 as unknown as ReturnType<typeof window.setInterval>;
+    });
+    const clearIntervalSpy = vi.spyOn(window, "clearInterval");
+    mocks.loadDay.mockResolvedValue(populatedDay);
+    const rendered = render(<App />);
+    expect((await screen.findByLabelText("Canonical taskの開始見込")).textContent).toBe("12:00");
+    expect(mocks.loadDay).toHaveBeenCalledTimes(1);
+    expect(setIntervalSpy).toHaveBeenCalledWith(expect.any(Function), 15_000);
+    performanceSpy.mockReturnValue(62_000);
+    await act(async () => { tick?.(); });
+    expect(screen.getByLabelText("Canonical taskの開始見込").textContent).toBe("12:01");
+    expect(mocks.loadDay).toHaveBeenCalledTimes(1);
+    rendered.unmount();
+    expect(clearIntervalSpy).toHaveBeenCalledWith(42);
+    performanceSpy.mockRestore();
+    setIntervalSpy.mockRestore();
+    clearIntervalSpy.mockRestore();
   });
 
   it("navigates with previous, next, Today, and Shift+Arrow without mutating", async () => {
@@ -435,7 +480,7 @@ describe("Dogfood Day shell", () => {
     const input = screen.getByRole("textbox", { name: "EveningのTask名" });
     expect(document.activeElement).toBe(input);
     const draftRow = input.closest(".draft-row")!;
-    expect(draftRow.children).toHaveLength(8);
+    expect(draftRow.children).toHaveLength(9);
     expect(draftRow.firstElementChild?.classList.contains("bulk-slot")).toBe(true);
     expect(draftRow.querySelectorAll(":scope > .bulk-slot")).toHaveLength(1);
     expect(screen.queryByRole("textbox", { name: "MorningのTask名" })).toBeNull();

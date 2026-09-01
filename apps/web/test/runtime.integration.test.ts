@@ -889,6 +889,16 @@ describe.sequential("production runtime bootstrap slice", () => {
     expect(started.status).toBe(200);
     expect(await json<object>(started)).toMatchObject({ entry_id: entryId, lifecycle_state: "running",
       execution: { id: executionId, entry_id: entryId, ended_at: null } });
+    const expectedEstimate = await env.APP_DB.prepare("SELECT estimate_seconds FROM entries WHERE app_user_id = ? AND id = ?")
+      .bind(appUserId, entryId).first<number | null>("estimate_seconds");
+    const activeProjection = await json<{
+      projection_generated_at: string;
+      active_execution: { id: string; entry_id: string; entry_estimate_seconds: number | null };
+    }>(await browser.fetch("/api/v1/taskchute-days/current"));
+    expect(Number.isNaN(Date.parse(activeProjection.projection_generated_at))).toBe(false);
+    expect(activeProjection.active_execution).toMatchObject({
+      id: executionId, entry_id: entryId, entry_estimate_seconds: expectedEstimate,
+    });
 
     const completeMismatch = await browser.post(`/api/v1/entries/${reorderedIds[1]}/complete`, {
       operation_id: uuidv7(), entry_id: entryId, execution_id: executionId,
