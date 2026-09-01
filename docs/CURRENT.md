@@ -4,11 +4,11 @@ Date: 2026-09-01
 
 ## Status
 
-Routine R2B BoardはD-047 / D-048に基づくlocal implementation candidateである。Task 0..1 Routine constraint、typed schedule / pause interval / reversible suppression / Task metadata snapshot、independent Board order、Routine command/read model、Sidebar Routine Boardとinline editingをworking treeへ実装した。Source Reviewで、OFF状態のmetadata更新が既存planned occurrenceを誤ってschedule suppressionする問題を検出・修正し、focused R2B `7 / 7`、Worker / D1 `124 / 124`、Web `84 / 84`、migration regression `3 scenarios`、typecheck / build / `git diff --check`は`PASS`。real local APP DBのprivate backup、backup-copy `0008` dry-run / preservation、live `0008` migration / integrity、signed-in representative browser flowも`PASS`した。controlled browserによるinclusive end-date入力はDOM値がReact stateへ伝播せず`TOOLING_BLOCKED / NOT_VERIFIED`で、historical title / Projectのreal-browser past-Day subcaseは`NOT_RUN`。commit / GitHub integration / persistent nonprod / productionは未実施、Releasedは`NO`である。
+Routine R2B BoardはD-047 / D-048に基づきcommit `304e73f`（`Implement Routine R2B Board`）で`IMPLEMENTED / INTEGRATED`。Task 0..1 Routine constraint、typed schedule / pause interval / reversible suppression / Task metadata snapshot、independent Board order、Routine command/read model、Sidebar Routine Boardとinline editingを実装した。Source Review、focused R2B `7 / 7`、Worker / D1 `124 / 124`、Web `84 / 84`、migration regression `3 scenarios`、typecheck / build / `git diff --check`、real-local `0008` migration / preservation / signed-in representative browserは`PASS`。persistent nonprodでもprivate backup / isolated `0008` dry-run / preservation gate、remote `0008` migration、exact `main@0228573d67c75305c94a632d2d3d75999b14a19a` deploy、authenticated representative browser、APP/AUTH integrityを`PASS`し、Worker versionは`4257b1ff-1be1-416d-aed5-699c46c914f0`である。controlled browserによるinclusive end-date入力はReact event tooling boundaryにより`TOOLING_BLOCKED / NOT_VERIFIED`、historical title / Projectのpast-Day browser subcaseとproductionのdeep mutation verificationは`NOT_RUN`。D-049 initial production release gateはPASSし、Releasedは`YES`である。
 
 First Server + Web vertical sliceは`IMPLEMENTED / INTEGRATED`。D-023 bootstrap lifecycle security incrementも`IMPLEMENTED / INTEGRATED / LOCAL_TESTED`。D-024 persistent non-production verification environmentは`APPROVED`かつremote verification済み。
 
-PR #3でruntime bootstrap sliceを、PR #5でReorder / Start / Complete / Execution lifecycle incrementを`main`へmergeした。PR #6でPR #5 merge後のcanonical docsをcurrent implementation / evidenceへ整合し、PR #7でcurrent-state maintenanceをmergeした。PR #8でD-023 bootstrap lifecycle security incrementを、PR #10でD-024 persistent non-production environment configurationを`main`へmergeし、PR #11でそのmerge後current stateを整合した。persistent non-production remote runtime verificationはPASS。production verificationは未実施。
+PR #3でruntime bootstrap sliceを、PR #5でReorder / Start / Complete / Execution lifecycle incrementを`main`へmergeした。PR #6でPR #5 merge後のcanonical docsをcurrent implementation / evidenceへ整合し、PR #7でcurrent-state maintenanceをmergeした。PR #8でD-023 bootstrap lifecycle security incrementを、PR #10でD-024 persistent non-production environment configurationを`main`へmergeし、PR #11でそのmerge後current stateを整合した。persistent non-production remote runtime verificationはPASS。D-049 initial production release verificationもPASSし、個別featureのdeep production verificationとは境界を分けている。
 
 その後、Day planning / Routine設計をcanonical docsへ進め、D-026〜D-037をApproved。2026-08-28にD-038をApprovedし、Section persistence foundationと次のDay dogfood implementation順を確定した。Dogfood Day v0.1-A UI shellとB1はPR #13で`main`へmerge済み。B1は`IMPLEMENTED / INTEGRATED`で、source review、local automated verification、real local APP DB migration、signed-in browser verification、persistent non-production migration / runtime / browser verificationはPASSした。B1 production verificationとreal Japanese IMEは`NOT_RUN`、Releasedは`NO`。D-039でApprovedしたB2 planned-start persistence / command contractはcommit `316ad0d88f0f88d1445991904da587b1e0987dab`で`main`へ`IMPLEMENTED / INTEGRATED`となり、source review、local automated verification、real local APP DB migration、signed-in browser verification、persistent non-production migration / runtime / authenticated browser verificationはPASSした。B2 production verificationは`NOT_RUN`、Releasedは`NO`。D-038 B3 Section settings lifecycleはcommit `2481c4916ca2f694f07d6808a4482bea28c79a80`で`main`へ`IMPLEMENTED / INTEGRATED`となり、source review、automated verification、real local APP DB `0005` migration、signed-in browser verification、persistent non-production APP `0005` migration / preservation / deployed runtime / authenticated browser verificationはPASSした。B3 production verificationは`NOT_RUN`、Releasedは`NO`。D-040 Minimal Routine R1 daily dogfood sliceはruntime commit `f9324e866deb74277d2fd83c5945f2df4b2b95da`とnonprod evidence docs commit `c63a98f22ab685370d3e20f1f15f480fab951ae8`をPR #14 merge commit `ebaff6d156813ba78b4c5c28818f9f55db9fd970`で`main`へ統合済み。source review、isolated migration / Worker-D1 / Web automated evidence、real local APP DB `0006` migration / preservation、signed-in real-browserのgeneral R1 flowは`PASS`。v6でserver-canonical reconciliation semanticsを変えず、transient pending statusによるDayBoard layout shiftを解消し、ChatGPT source review `PASS`、focused / full Web `65 / 65 PASS`、typecheck / build / `git diff --check` `PASS`を確認した。persistent nonprod APP `0006` migration / preservation、PR head deploy、authenticated general R1 browser flowは`PASS`で、deployed Worker versionは`be96301c-f131-47b4-bf78-11d4433716b1`。real-browser controlled inclusive end-dateとdeployed non-null inclusive-date subcheckはbrowser automation event mismatchにより`TOOLING_BLOCKED / NOT_VERIFIED`、productionは`NOT_RUN`、Releasedは`NO`。
 
@@ -57,7 +57,7 @@ Relevant merge commits:
 - PR #13 Dogfood Day v0.1-A + B1: `1609331ae32d3db36091ac0e4b0322c3757e3a9a`
 - PR #14 Minimal Routine R1: `ebaff6d156813ba78b4c5c28818f9f55db9fd970`
 
-D1 feasibility gateは引き続きPASS / Verified。current Product runtimeはFirst vertical slice scopeでImplemented + Integratedかつlocal automated evidence / implementation review / GitHub PR diff reviewがPASSしている。persistent non-production remote D1 Product runtime / deployed Worker verificationもPASSした。ただしproduction smokeは未実施であり、Product runtime全体をVerified / Releasedとは扱わない。
+D1 feasibility gateは引き続きPASS / Verified。current Product runtimeはFirst vertical slice scopeでImplemented + Integratedかつlocal automated evidence / implementation review / GitHub PR diff reviewがPASSしている。persistent non-production remote D1 Product runtime / deployed Worker verificationとD-049 initial production smokeもPASSし、initial release scopeでVerified / Releasedとする。個別featureのdeep production verificationは別evidence boundaryを維持する。
 
 ## Current source-of-truth state
 
@@ -85,7 +85,7 @@ D1 feasibility gateは引き続きPASS / Verified。current Product runtimeはFi
 - D-038 B1はPR #13でcurrent `main`へIntegrated済みで、Implemented / Integrated / Local Tested / Source Reviewed / Signed-in Local Browser Verified / Persistent Nonprod Remote Verified。B1 production verificationは`NOT_RUN`。
 - D-038 B2はcommit `316ad0d88f0f88d1445991904da587b1e0987dab`でcurrent `main`へImplemented / Integrated済み。source review、automated/local migration、signed-in local browser、persistent nonprod migration / runtime / authenticated browser evidenceはPASS。B2 production verificationは`NOT_RUN`。
 - D-038 B3はcommit `2481c4916ca2f694f07d6808a4482bea28c79a80`でcurrent `main`へImplemented / Integrated済み。source review、automated verification、real local `0005` migration、signed-in local browser、persistent nonprod `0005` migration / preservation / deployed runtime / authenticated browser、current-Day freeze evidenceはPASS。next-Day materializationのautomated evidenceはPASSだがreal browserは`NOT_RUN`。persistent nonprodのraw console warning/error exact countは`NOT_VERIFIED`、production verificationは`NOT_RUN`、Releasedは`NO`。
-- production smokeは`NOT_RUN`。
+- initial production environment / migration / bootstrap / smokeはD-049に従い`PASS`。productionのfeature-specific deep mutation verificationは`NOT_RUN`。
 
 ## Dogfood Day v0.1-B / B1 integrated state
 
@@ -191,13 +191,13 @@ Remote verification中、bootstrap disable deploy直後に旧enabled version由�
 
 Smoke用test dataとsessionがnonprodに一部残っている。active Executionは0。cleanup / retention policyはOpen Questionとして扱い、承認なしに直接削除しない。
 
-Production smokeは`NOT_RUN`。Product runtime overallは`NOT_VERIFIED`、Releasedは`NO`。
+Initial production smokeは`PASS`。Product runtimeはD-049のinitial release scopeで`VERIFIED / RELEASED`、feature-specific deep mutation verificationは`NOT_RUN`。
 
 ## Approved initial production release gate
 
 D-049でinitial production environment / release gateをApproved済み。targetはWorker `taskchute-web-production`、separate D1 `taskchute-auth-production` / `taskchute-app-production`、`apac` location hint、initial `workers.dev` endpoint、Workers Free postureである。productionはcleanに開始し、nonprod domain historyをcopyしない。public Workerは常に`BOOTSTRAP_ENABLED=false`とし、initial provisioningはloopback local Worker + remote production D1 bindingsで行う。
 
-この記録時点ではproduction resource creation / migration / deploy / bootstrap / smokeは未実施であり、`NOT_RUN` / Released `NO`を維持する。resource identityとverification evidenceは実行後に追記する。
+Initial production releaseは完了した。Worker `taskchute-web-production`（version `0cab9b2c-2984-4dcd-b784-719a6b8ced1d`）、AUTH D1 `c69df774-69c0-43a5-b346-b202ef4a92c3`、APP D1 `61f07b2b-8bdd-4f5d-853e-6af59afd343c`を`apac`で確立し、AUTH `0001` / APP `0001`〜`0008` migration、loopback-only bootstrap、baseline backup / isolated restore verification、public bootstrap 404、unauthenticated protected API 401、login / Today / Routine Board / Settings / reloadを`PASS`した。public Workerは`BOOTSTRAP_ENABLED=false`、preview URL disabled、production domain dataはclean startで、initial Section configurationはnormal Settings UIからMorning `04:00–12:00` / Day `12:00–20:00` / Evening `20:00–28:00`として保存した。synthetic Project / Task / Routine mutationとproduction deep feature verificationは`NOT_RUN`、Releasedは`YES`。
 
 ## Implemented First Server + Web vertical slice
 
@@ -268,9 +268,9 @@ Current evidence:
 - Deployed Worker verification: `PASS`
 - Persistent nonprod bootstrap lifecycle verification: `PASS`
 - Free-plan-shaped runtime feasibility evidence: `PASS` for observed smoke scope; actual account plan tier independently `NOT_VERIFIED`
-- Production smoke test: `NOT_RUN`
-- Product runtime overall: `NOT_VERIFIED`
-- Released: `NO`
+- Initial production smoke test: `PASS`
+- Product runtime overall: `VERIFIED`（D-049 initial release scope。deep feature mutationは`NOT_RUN`）
+- Released: `YES`
 
 Local / nonprod PASSをproduction verificationへ自動拡張しない。
 
@@ -352,7 +352,7 @@ Routine R2A persistent nonprod gateは完了した。次のProduct development w
 
 1. direct bootstrap POST / public signup remote POST、B1 real Japanese IME、B3 next-Day real-browser materialization、B3 remote raw console exact countは未検証の境界を維持する。
 2. nonprod test data / session retention・cleanup policyは別Open Questionとして維持する。
-3. initial production deployment / smokeはD-049でApproved済み。custom domain、Access、paid criteria、broader security / DRは別Decisionとし、nonprod PASSをproductionへ自動継承しない。
+3. D-049 initial production deployment / bootstrap / smokeは`PASS`しReleased `YES`。custom domain、Access、paid criteria、broader security / DRとproduction deep feature mutationは別Decision / verification scopeとし、nonprod PASSを自動継承しない。
 4. R1を越えるRoutine recurrence / override / projection、Documents / Review / Android等は別scopeとして維持する。
 
-B1 / B2 / B3 / R1 / Routine R2Aのpersistent nonprod remote PASSをproduction Verified / Product全体のVerified / Releasedと混同しない。Routine R2AはImplemented / Integrated / Local + Real-local Verified / Persistent Nonprod Remote Verifiedだが、remote multi-Day propagationと詳細reliability subcaseは`NOT_RUN`、productionは`NOT_RUN`、Releasedは`NO`。
+B1 / B2 / B3 / R1 / Routine R2A / R2Bのpersistent nonprod remote PASSを個別featureのproduction deep verificationと混同しない。D-049 initial production release scopeは`PASS` / Released `YES`だが、Routine R2Bを含むfeature-specific production mutation、remote multi-Day propagation、詳細reliability subcaseは`NOT_RUN`または既存の限定evidenceを維持する。

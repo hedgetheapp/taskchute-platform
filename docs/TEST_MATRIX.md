@@ -1,6 +1,6 @@
 # Test Matrix
 
-First Server + Web vertical slice、D-038 B1 / B3、D-039 B2、D-040 Minimal Routine R1、Day Table UI-1、D-041 / D-042 Day Navigation v0.1、D-043 synchronizationとD-044 / D-045 / D-046 Routine R2A first sliceは実装・GitHub `main`統合済み。R2A implementation commit `7d3c0cb0881dfc11725af6ff45eabad69f86a22a`とevidence docs commit `d1283eb6ef10c9a0997a36427a09b89042250f96`はcanonical `main`へIntegrated。source review / local automated / real-local migration・browser / persistent nonprod migration・preservation・deploy・authenticated representative browserはPASS。remote multi-Day propagationと詳細retry / misuse / concurrency / ambiguity / rollbackは`NOT_RUN`、productionは`NOT_RUN`、Releasedは`NO`。Day Navigation v0.1 source / local automated / signed-in general browser / persistent nonprod general verificationはPASS。B1 / B2 / B3 / R1 local + persistent non-production verificationはPASS。Product runtime全体はまだVerified / Releasedではない。
+First Server + Web vertical slice、D-038 B1 / B3、D-039 B2、D-040 Minimal Routine R1、Day Table UI-1、D-041 / D-042 Day Navigation v0.1、D-043 synchronization、D-044 / D-045 / D-046 Routine R2A first slice、D-047 / D-048 Routine R2B Boardは実装・GitHub `main`統合済み。R2B source review / local automated / real-local migration・browser / persistent nonprod migration・preservation・deploy・authenticated representative browserはPASS。D-049 initial production creation / migration / secure bootstrap / smokeもPASSし、initial release scopeでReleasedは`YES`。remote multi-Day propagation、詳細retry / concurrency、R2B inclusive end-date browser、production deep feature mutation等は各sectionの`NOT_RUN` / `NOT_VERIFIED`境界を維持する。
 
 この文書はverification requirementとcurrent evidenceの正本とする。
 
@@ -49,7 +49,7 @@ Contractが`Approved`でも、実装やverificationが未実施ならPASS扱い�
 - persistent nonprod GitHub PR diff review: `PASS`
 - remote D1 Product runtime verification: `PASS`
 - deployed Worker verification: `PASS`
-- production smoke test: `NOT_RUN`
+- initial production smoke test: `PASS`（D-049 scope。deep feature mutationは`NOT_RUN`）
 
 この73 PASSはexplicit bootstrap mode、token rejection、cross-DB recovery、public signup regressionを含むcurrent local suiteである。local / nonprod evidenceをproduction verificationへ自動拡張しない。
 
@@ -840,30 +840,42 @@ legacy ObsidianでのPASS結果を新PlatformのPASSへ自動継承しない。
 
 | ID | Area | Requirement | Contract | Evidence |
 |---|---|---|---|---|
-| ROUTINE-R2B-01 | Migration | duplicate Task Routineをfail-safe rejectし既存identity/historyを保持 | D-047, D-048 | PASS (LOCAL_AUTOMATED + REAL_LOCAL) |
-| ROUTINE-R2B-02 | Domain | new RoutineはOFF、ON resume日はeligible current occurrenceをexactly once作成 | D-047 | PASS (LOCAL_AUTOMATED + REAL_LOCAL) |
-| ROUTINE-R2B-03 | Domain | OFF intervalはpast backfillせずexisting factsを保持 | D-047 | PASS (LOCAL_AUTOMATED + REAL_LOCAL representative) |
-| ROUTINE-R2B-04 | Domain | daily / N-day / weekly + inclusive period eligibility | D-047 | PASS (LOCAL_AUTOMATED + REAL_LOCAL representative; controlled inclusive end-date browserはTOOLING_BLOCKED / NOT_VERIFIED) |
-| ROUTINE-R2B-05 | Domain | current planned occurrenceをschedule suppression / restoreしduplicateを作らない | D-047 | PASS (LOCAL_AUTOMATED + REAL_LOCAL) |
-| ROUTINE-R2B-06 | Domain | Board default propagationはR2A overrideとhistorical stateを保護 | D-043, D-044, D-047 | PASS (LOCAL_AUTOMATED + REAL_LOCAL representative) |
+| ROUTINE-R2B-01 | Migration | duplicate Task Routineをfail-safe rejectし既存identity/historyを保持 | D-047, D-048 | PASS (LOCAL_AUTOMATED + REAL_LOCAL + NONPROD_MIGRATION) |
+| ROUTINE-R2B-02 | Domain | new RoutineはOFF、ON resume日はeligible current occurrenceをexactly once作成 | D-047 | PASS (LOCAL_AUTOMATED + REAL_LOCAL + NONPROD representative) |
+| ROUTINE-R2B-03 | Domain | OFF intervalはpast backfillせずexisting factsを保持 | D-047 | PASS (LOCAL_AUTOMATED + REAL_LOCAL + NONPROD representative) |
+| ROUTINE-R2B-04 | Domain | daily / N-day / weekly + inclusive period eligibility | D-047 | PASS (LOCAL_AUTOMATED + REAL_LOCAL + NONPROD representative; controlled inclusive end-date browserはTOOLING_BLOCKED / NOT_VERIFIED) |
+| ROUTINE-R2B-05 | Domain | current planned occurrenceをschedule suppression / restoreしduplicateを作らない | D-047 | PASS (LOCAL_AUTOMATED + REAL_LOCAL + NONPROD representative) |
+| ROUTINE-R2B-06 | Domain | Board default propagationはR2A overrideとhistorical stateを保護 | D-043, D-044, D-047 | PASS (LOCAL_AUTOMATED + REAL_LOCAL + NONPROD representative) |
 | ROUTINE-R2B-07 | Domain | Task current title/Projectとhistorical occurrence snapshotを分離 | D-047 | PASS (LOCAL_AUTOMATED; past-Day real browser NOT_RUN) |
 | ROUTINE-R2B-08 | Ordering | Board orderはDay / materialization orderと独立、stale revision/replay safe | D-047, D-048 | PASS (LOCAL_AUTOMATED) |
-| ROUTINE-R2B-09 | Web | Sidebar Board、columns、blank no-write add、inline/popover/toggle/search/tabs | D-047 | PASS (LOCAL_AUTOMATED + REAL_LOCAL representative) |
-| ROUTINE-R2B-10 | Compatibility | Day manual end actionなし、legacy APIとR2A chooser/resetを維持 | D-047 | PASS (LOCAL_AUTOMATED + REAL_LOCAL representative) |
+| ROUTINE-R2B-09 | Web | Sidebar Board、columns、blank no-write add、inline/popover/toggle/search/tabs | D-047 | PASS (LOCAL_AUTOMATED + REAL_LOCAL + NONPROD representative) |
+| ROUTINE-R2B-10 | Compatibility | Day manual end actionなし、legacy APIとR2A chooser/resetを維持 | D-047 | PASS (LOCAL_AUTOMATED + REAL_LOCAL + NONPROD representative) |
 
-Evidence statusはlocal candidateに限定する。persistent nonprod、productionは`NOT_RUN`、Releasedは`NO`。
+R2Bはcommit `304e73f`でmainへIntegrated。local / real-local / persistent nonprod representative evidenceは`PASS`。productionはinitial release smokeのみ`PASS`で、R2B deep mutationは`NOT_RUN`。D-049 initial releaseとしてReleasedは`YES`。
 
 2026-09-01 local candidate evidence: Source Review `PASS`。OFF Routineのmetadata更新で既存planned occurrenceを誤suppressionする問題をreal browserで検出し、pauseはfuture generationのみを止め既存factのschedule authorityを変えないよう修正した。focused R2B Worker/D1 `7 / 7 PASS`、full Worker/D1 `124 / 124 PASS`、Web `84 / 84 PASS`、migration regression `3 scenarios PASS`（R2A normalization、R2B preservation/constraints、duplicate-Task fail-safe、chain through `0008`）、typecheck / production build / `git diff --check` `PASS`。Wrangler user-log writeはsandbox `EPERM` warningを出したが各required commandはexit `0`。
 
-Real-local evidence: private ignored APP exportを作成し、size `141,876 bytes` / SHA-256 `EFAD923C08343AF517A5CDBA91CCBD8BF95823A1AAF74B47AA06BB06792820C9`、isolated restore / `0008` dry-run / pre-existing 22 table data fingerprint一致、`quick_check = ok` / FK violations `0`を確認してからlive APP DBへ`0008_routine_r2b_board.sql`のみを適用した。post-migrationで既存Task / Entry / Execution / Routine / Occurrence件数、active Execution `0`、duplicate Task Routine `0`を保持し、existing 3 Routinesにschedule / Board item / snapshotを各3件materializeした。signed-in browserではblank draft cancel no-write、OFF create、Project / Section / planned start / estimate、N-day / weekly / daily、ON exactly-once、OFF fact preservation、current schedule suppression / restore、reload no-duplicateを確認し、console warning / error `0 / 0`。verification RoutineはOFF、current occurrence `1`、suppression `0`で残置した。controlled inclusive end-date inputはDOM `2026-09-03`を確認したがrequest stateへ反映されずDBは`NULL`のため`TOOLING_BLOCKED / NOT_VERIFIED`、past-Day historical title / Project browser subcaseは`NOT_RUN`。APP / AUTHともfinal `quick_check = ok` / FK violations `0`、persistent nonprod / productionは`NOT_RUN`、Releasedは`NO`。
+Real-local evidence: private ignored APP exportを作成し、size `141,876 bytes` / SHA-256 `EFAD923C08343AF517A5CDBA91CCBD8BF95823A1AAF74B47AA06BB06792820C9`、isolated restore / `0008` dry-run / pre-existing 22 table data fingerprint一致、`quick_check = ok` / FK violations `0`を確認してからlive APP DBへ`0008_routine_r2b_board.sql`のみを適用した。post-migrationで既存Task / Entry / Execution / Routine / Occurrence件数、active Execution `0`、duplicate Task Routine `0`を保持し、existing 3 Routinesにschedule / Board item / snapshotを各3件materializeした。signed-in browserではblank draft cancel no-write、OFF create、Project / Section / planned start / estimate、N-day / weekly / daily、ON exactly-once、OFF fact preservation、current schedule suppression / restore、reload no-duplicateを確認し、console warning / error `0 / 0`。verification RoutineはOFF、current occurrence `1`、suppression `0`で残置した。controlled inclusive end-date inputはDOM `2026-09-03`を確認したがrequest stateへ反映されずDBは`NULL`のため`TOOLING_BLOCKED / NOT_VERIFIED`、past-Day historical title / Project browser subcaseは`NOT_RUN`。APP / AUTHともfinal `quick_check = ok` / FK violations `0`。persistent nonprod evidenceとD-049 production release evidenceは後続blockを正本とする。
+
+Persistent nonprod release evidence（2026-09-01）: APP private export `125,596 bytes` / SHA-256 `B5273005EBF86A056799E55919A9C8AE4EB2E899C107A8811B23F3C9EFE85240`をisolated restoreし、`0008` dry-run / preservation / quick check / FKをPASSしてからremote `0008`のみを適用した。exact `main@0228573d67c75305c94a632d2d3d75999b14a19a`をWorker version `4257b1ff-1be1-416d-aed5-699c46c914f0`としてdeploy。authenticated browserでblank no-write、OFF create、Project / Section / planned start / estimate、N-day / weekly / daily、ON exactly-once、OFF fact preservation、schedule suppression / restore、R2A今回だけ / default reset、future no-materialization、established-past read-only、reload no-duplicateをPASSし、console warning / errorは`0 / 0`。controlled inclusive end-dateはtooling boundaryにより`NOT_VERIFIED`。verification RoutineはOFFで残置し、APP/AUTH final quick check / FK、active Execution `0`、bootstrap disabledをPASSした。
 
 ## Initial production release gate
 
 | ID | Area | Requirement | Contract | Evidence |
 |---|---|---|---|---|
-| PROD-01 | Resource | named production Workerとseparate AUTH / APP D1をapproved naming / locationで作成する | D-049 | NOT_RUN |
-| PROD-02 | Security | public Workerをbootstrap-disabledのまま、loopback local Worker + remote production D1でinitial bootstrapする | D-023, D-049 | NOT_RUN |
-| PROD-03 | Data | productionをcleanに開始し、nonprod historyをcopyせずexplicit timezone / boundary / Sectionsだけをbootstrap inputにする | D-022, D-049 | NOT_RUN |
-| PROD-04 | Recovery | bootstrap後にAUTH / APP baseline exportとTime Travel bookmark/infoを取得し、restoreを自動実行しない | D-049 | NOT_RUN |
-| PROD-05 | Smoke | bootstrap 404、signup disabled、login / Today / Routine Board / Settings / reloadをsynthetic domain dataなしで確認する | D-049 | NOT_RUN |
-| PROD-06 | Cost | current Free limits内で開始し、paid upgradeを暗黙に行わない | D-049 | NOT_RUN |
+| PROD-01 | Resource | named production Workerとseparate AUTH / APP D1をapproved naming / locationで作成する | D-049 | PASS |
+| PROD-02 | Security | public Workerをbootstrap-disabledのまま、loopback local Worker + remote production D1でinitial bootstrapする | D-023, D-049 | PASS |
+| PROD-03 | Data | productionをcleanに開始し、nonprod historyをcopyせずexplicit timezone / boundary / Sectionsだけをbootstrap inputにする | D-022, D-049 | PASS |
+| PROD-04 | Recovery | bootstrap後にAUTH / APP baseline exportとTime Travel bookmark/infoを取得し、restoreを自動実行しない | D-049 | PASS |
+| PROD-05 | Smoke | bootstrap 404、signup disabled、login / Today / Routine Board / Settings / reloadをsynthetic domain dataなしで確認する | D-049 | PASS |
+| PROD-06 | Cost | current Free limits内で開始し、paid upgradeを暗黙に行わない | D-049 | PASS |
+
+Initial production release evidence（2026-09-01）:
+
+- exact canonical `main@0228573d67c75305c94a632d2d3d75999b14a19a`からWorker `taskchute-web-production` version `0cab9b2c-2984-4dcd-b784-719a6b8ced1d`をdeploy。`workers_dev=true`、preview URLs disabled、`BOOTSTRAP_ENABLED=false`
+- separate production AUTH / APP D1（`apac`）へAUTH `0001` / APP `0001`〜`0008`を適用しpending `0`。nonprod historyはcopyせずclean start
+- loopback-only bootstrapとnormal loginをPASS。public bootstrap endpoint `404`、unauthenticated protected API `401`、public signup disabled postureを維持。credential / token / hashはcanonical docsへ記録していない
+- initial Section configurationをnormal Settings UI / canonical APIでMorning `04:00–12:00`、Day `12:00–20:00`、Evening `20:00–28:00`として保存。version `1` / items `3`、APP quick check / FKをPASS
+- Time Travel bookmarkとprivate ignored AUTH / APP exportを取得しisolated restoreをPASS。restoreは実行していない
+- signed-in production smokeでToday、empty Routine Board、Settings Section / Project、reload、console warning / error `0 / 0`をPASS。synthetic Project / Task / Routine dataは作成していない
+- final APP / AUTH quick check `ok`、FK violations `0`、active Execution `0`。production deep mutationは`NOT_RUN`、Released `YES`
