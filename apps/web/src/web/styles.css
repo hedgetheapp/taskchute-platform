@@ -107,11 +107,14 @@ input:focus-visible, select:focus-visible { border-color: #2383e2; outline: 2px 
 .table-heading span { padding: 0 10px; }
 .section-group + .section-group { border-top: 1px solid #dcdcd9; }
 .section-summary { --section-summary-background: #f7f7f5; display: flex; min-width: var(--day-table-min-width); min-height: 40px; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 10px 6px 14px; border-bottom: 1px solid #e9e9e7; background: var(--section-summary-background); outline: none; }
-.section-summary > div { position: sticky; z-index: 1; left: 14px; display: flex; align-items: baseline; gap: 10px; padding-right: 10px; background: var(--section-summary-background); }
+.section-summary-content { position: sticky; z-index: 1; left: 14px; display: flex; align-items: baseline; gap: 10px; padding-right: 10px; background: var(--section-summary-background); }
 .section-summary strong { font-size: 13px; font-weight: 650; }
 .section-summary span { color: #787774; font-size: 11px; }
 .section-summary:hover { --section-summary-background: #f2f2ef; }
 .section-summary:focus { --section-summary-background: #f0f6fc; box-shadow: inset 3px 0 #2383e2; }
+.section-summary-actions { display: flex; align-items: center; gap: 2px; }
+.section-collapse-button { width: 30px; height: 28px; padding: 0; background: transparent; color: #575754; font-size: 14px; line-height: 1; }
+.section-collapse-button:hover { background: #e9e9e7; }
 .add-task-button { width: 30px; height: 28px; padding: 0; background: transparent; color: #575754; font-size: 18px; line-height: 1; }
 .add-task-button:hover { background: #e9e9e7; }
 

@@ -499,6 +499,90 @@ describe("Dogfood Day shell", () => {
     expect((document.activeElement as HTMLElement).dataset.entryId).toBe(firstEntry.id);
   });
 
+  it("collapses and expands one Section by pointer without changing other Sections or canonical order", async () => {
+    mocks.loadDay.mockResolvedValue(twoPlannedDay);
+    render(<App />);
+    const collapse = await screen.findByRole("button", { name: "Morningを折りたたむ" });
+    expect(collapse.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.click(collapse);
+    expect(screen.queryByText("Canonical task")).toBeNull();
+    expect(screen.queryByText("Second task")).toBeNull();
+    expect(screen.getAllByText("Evening")[0]).toBeTruthy();
+    const expand = screen.getByRole("button", { name: "Morningを展開" });
+    expect(expand.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(expand);
+    expect(Array.from(document.querySelectorAll("[data-entry-id]")).map((row) => row.getAttribute("data-entry-id")))
+      .toEqual([firstEntry.id, secondEntry.id]);
+  });
+
+  it("toggles a focused Section summary with Enter and Space without nested-button double toggles", async () => {
+    mocks.loadDay.mockResolvedValue(populatedDay);
+    render(<App />);
+    const summary = (await screen.findByRole("button", { name: "Morningを折りたたむ" })).closest<HTMLElement>(".section-summary")!;
+    summary.focus();
+    fireEvent.keyDown(summary, { key: "Enter" });
+    expect(screen.queryByText("Canonical task")).toBeNull();
+    fireEvent.keyDown(summary, { key: " " });
+    expect(screen.getByText("Canonical task")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Morningを折りたたむ" }));
+    expect(screen.queryByText("Canonical task")).toBeNull();
+  });
+
+  it("expands a collapsed Section for Add Task and protects a non-empty draft from collapse", async () => {
+    mocks.loadDay.mockResolvedValue(emptyDay);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Morningを折りたたむ" }));
+    expect(screen.queryAllByText("表示するTaskはありません")).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "MorningにTaskを追加" }));
+    const input = screen.getByRole("textbox", { name: "MorningのTask名" });
+    expect(document.activeElement).toBe(input);
+    expect(screen.getByRole("button", { name: "Morningを折りたたむ" }).getAttribute("aria-expanded")).toBe("true");
+    fireEvent.change(input, { target: { value: "Keep visible" } });
+    fireEvent.click(screen.getByRole("button", { name: "Morningを折りたたむ" }));
+    expect(screen.getByDisplayValue("Keep visible")).toBeTruthy();
+    expect(document.activeElement).toBe(input);
+
+    fireEvent.change(input, { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Morningを折りたたむ" }));
+    expect(screen.queryByRole("textbox", { name: "MorningのTask名" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Morningを展開" })).toBeTruthy();
+    expect(mocks.addTask).not.toHaveBeenCalled();
+  });
+
+  it("isolates collapse state by logical Day and restores it when navigating back in-session", async () => {
+    mocks.loadDay.mockImplementation(async (logicalDate?: string) => ({
+      ...populatedDay,
+      is_current: logicalDate === undefined || logicalDate === "2026-08-22",
+      taskchute_day: { ...populatedDay.taskchute_day, logical_date: logicalDate ?? "2026-08-22" },
+    }));
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Morningを折りたたむ" }));
+    expect(screen.queryByText("Canonical task")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "次の日" }));
+    await screen.findByRole("button", { name: "2026年8月23日（日）、日付を選択" });
+    expect(screen.getByText("Canonical task")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Morningを折りたたむ" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "前の日" }));
+    await screen.findByRole("button", { name: "2026年8月22日（土）、日付を選択" });
+    expect(screen.queryByText("Canonical task")).toBeNull();
+    expect(screen.getByRole("button", { name: "Morningを展開" })).toBeTruthy();
+  });
+
+  it("keeps completed visibility orthogonal to Section collapse", async () => {
+    const mixedDay = { ...twoPlannedDay, sections: [{ ...twoPlannedDay.sections[0], entries: [
+      firstEntry, { ...secondEntry, lifecycle_state: "completed" as const },
+    ] }, emptyDay.sections[1]] };
+    mocks.loadDay.mockResolvedValue(mixedDay);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Morningを折りたたむ" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "実行済みを表示" }));
+    fireEvent.click(screen.getByRole("button", { name: "Morningを展開" }));
+    expect(screen.getByText("Canonical task")).toBeTruthy();
+    expect(screen.queryByText("Second task")).toBeNull();
+    fireEvent.click(screen.getByRole("checkbox", { name: "実行済みを表示" }));
+    expect(screen.getByText("Second task")).toBeTruthy();
+  });
+
   it("does not run global navigation while editing text or during IME composition", async () => {
     mocks.loadDay.mockResolvedValue(populatedDay);
     render(<App />);
@@ -522,6 +606,59 @@ describe("Dogfood Day shell", () => {
     expect(mocks.startEntry.mock.calls[0][0].entry_id).toBe(firstEntry.id);
     expect(mocks.startEntry.mock.calls[0][0]).not.toHaveProperty("expected_placement_revision");
     expect(await screen.findByRole("button", { name: "Canonical taskを完了" })).toBeTruthy();
+  });
+
+  it("starts and completes a focused Entry with S through the existing lifecycle paths", async () => {
+    mocks.loadDay.mockResolvedValueOnce(populatedDay).mockResolvedValueOnce(runningDay).mockResolvedValueOnce(completedDay);
+    render(<App />);
+    let row = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
+    row.focus();
+    fireEvent.keyDown(row, { key: "s", code: "KeyS" });
+    await waitFor(() => expect(mocks.startEntry).toHaveBeenCalledTimes(1));
+    expect(mocks.startEntry.mock.calls[0][0].entry_id).toBe(firstEntry.id);
+    row = (await screen.findByRole("button", { name: "Canonical taskを完了" })).closest<HTMLElement>("[data-entry-id]")!;
+    row.focus();
+    fireEvent.keyDown(row, { key: "S", code: "KeyS", shiftKey: true });
+    await waitFor(() => expect(mocks.completeEntry).toHaveBeenCalledTimes(1));
+    expect(mocks.completeEntry.mock.calls[0][0]).toMatchObject({ entry_id: firstEntry.id, execution_id: runningDay.active_execution?.id });
+    expect(await screen.findByLabelText("Canonical taskは完了済み")).toBeTruthy();
+  });
+
+  it("does not run the S lifecycle shortcut for completed/non-current rows or unsafe key events", async () => {
+    mocks.loadDay.mockResolvedValue(completedDay);
+    const completedView = render(<App />);
+    let row = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
+    row.focus();
+    fireEvent.keyDown(row, { key: "s" });
+    expect(mocks.startEntry).not.toHaveBeenCalled();
+    expect(mocks.completeEntry).not.toHaveBeenCalled();
+    completedView.unmount();
+
+    const futureDay = { ...populatedDay, is_current: false,
+      taskchute_day: { ...populatedDay.taskchute_day, logical_date: "2026-08-23" } };
+    mocks.loadDay.mockResolvedValue(futureDay);
+    const futureView = render(<App />);
+    row = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
+    row.focus();
+    fireEvent.keyDown(row, { key: "s" });
+    expect(mocks.startEntry).not.toHaveBeenCalled();
+    futureView.unmount();
+
+    mocks.loadDay.mockResolvedValue(populatedDay);
+    render(<App />);
+    row = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
+    row.focus();
+    fireEvent.keyDown(row, { key: "s", repeat: true });
+    fireEvent.keyDown(row, { key: "s", ctrlKey: true });
+    fireEvent.keyDown(row, { key: "s", altKey: true });
+    fireEvent.keyDown(row, { key: "s", metaKey: true });
+    fireEvent.keyDown(row, { key: "s", isComposing: true });
+    expect(mocks.startEntry).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "EveningにTaskを追加" }));
+    const input = screen.getByRole("textbox", { name: "EveningのTask名" });
+    fireEvent.keyDown(input, { key: "s" });
+    expect(mocks.startEntry).not.toHaveBeenCalled();
   });
 
   it("completes from the Row and runner through the canonical lifecycle path", async () => {

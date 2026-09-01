@@ -224,6 +224,7 @@ export function App() {
   const [draftTask, setDraftTask] = useState<DraftTask | null>(null);
   const [pendingFocusKey, setPendingFocusKey] = useState<string | null>(null);
   const [showCompleted, setShowCompleted] = useState(true);
+  const [collapsedSectionsByDay, setCollapsedSectionsByDay] = useState<Record<string, Record<string, true>>>({});
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [calendarFocusedDate, setCalendarFocusedDate] = useState<string | null>(null);
   const [currentLogicalDate, setCurrentLogicalDate] = useState<string | null>(null);
@@ -270,6 +271,7 @@ export function App() {
     setEditingEstimate(null);
     setEditingPlannedStart(null);
     setPendingFocusKey(null);
+    setCollapsedSectionsByDay({});
     setAuthState("signed-out");
   }, []);
 
@@ -1107,12 +1109,37 @@ export function App() {
     element.focus();
   }
 
+  function setSectionCollapsed(sectionId: string | null, collapsed: boolean) {
+    const logicalDate = currentDay.taskchute_day.logical_date;
+    const sectionKey = groupKey(sectionId);
+    setCollapsedSectionsByDay((current) => {
+      const dayState = { ...(current[logicalDate] ?? {}) };
+      if (collapsed) dayState[sectionKey] = true;
+      else delete dayState[sectionKey];
+      return { ...current, [logicalDate]: dayState };
+    });
+  }
+
+  function toggleSection(sectionId: string | null) {
+    const sectionKey = groupKey(sectionId);
+    const collapsed = collapsedSectionsByDay[currentDay.taskchute_day.logical_date]?.[sectionKey] === true;
+    if (!collapsed && draftTask?.sectionId === sectionId) {
+      if (draftTask.title.trim()) {
+        draftInputRef.current?.focus();
+        return;
+      }
+      setDraftTask(null);
+    }
+    setSectionCollapsed(sectionId, !collapsed);
+  }
+
   function openDraft(sectionId: string | null) {
     if (mutationLocked || !day?.planning_enabled || day.section_configuration_required) return;
     if (draftTask?.title.trim()) {
       draftInputRef.current?.focus();
       return;
     }
+    setSectionCollapsed(sectionId, false);
     setDraftTask({ sectionId, title: "" });
   }
 
@@ -1143,6 +1170,21 @@ export function App() {
     const targets = Array.from(event.currentTarget.querySelectorAll<HTMLElement>("[data-day-focus-target]"));
     const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement.closest<HTMLElement>("[data-day-focus-target]") : null;
     const activeIndex = targets.findIndex((target) => target.dataset.focusKey === activeElement?.dataset.focusKey);
+
+    if (key === "s") {
+      if (event.repeat || event.ctrlKey || event.altKey || event.metaKey || document.activeElement !== activeElement) return;
+      const entryId = activeElement?.dataset.entryId;
+      const entry = entryId ? allEntries.find((candidate) => candidate.id === entryId) : undefined;
+      if (!entry || !currentDay.is_current || mutationLocked) return;
+      if (entry.lifecycle_state === "planned" && currentDay.active_execution === null) {
+        event.preventDefault();
+        void start(entry.id);
+      } else if (entry.lifecycle_state === "running" && currentDay.active_execution?.entry_id === entry.id) {
+        event.preventDefault();
+        void complete(entry.id);
+      }
+      return;
+    }
 
     if (event.shiftKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
       const entryId = activeElement?.dataset.entryId;
@@ -1378,6 +1420,7 @@ export function App() {
           const visibleEntries = showCompleted ? section.entries : section.entries.filter((entry) => entry.lifecycle_state !== "completed");
           const completedCount = section.entries.filter((entry) => entry.lifecycle_state === "completed").length;
           const sectionTarget: FocusTarget = { kind: "section", id: groupKey(section.id) };
+          const sectionCollapsed = collapsedSectionsByDay[currentDay.taskchute_day.logical_date]?.[groupKey(section.id)] === true;
           return (
             <div className="section-group" key={groupKey(section.id)}>
               <div
@@ -1386,14 +1429,24 @@ export function App() {
                 data-day-focus-target
                 data-focus-key={focusKey(sectionTarget)}
                 onClick={(event) => focusSurface(event.currentTarget)}
+                onKeyDown={(event) => {
+                  if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " ")) return;
+                  event.preventDefault();
+                  toggleSection(section.id);
+                }}
               >
-                <div><strong>{section.title}</strong><span>{section.id === null ? "時間帯なし" : `${formatLogicalMinute(section.logical_start_minute)}–${formatLogicalMinute(section.logical_end_minute)}`} · {completedCount}/{section.entries.length} 実行済み · 見積 {formatEstimate(section.estimate_total_seconds)}</span></div>
-                <button type="button" className="add-task-button" aria-label={`${section.title}にTaskを追加`} title={`${section.title}にTaskを追加`}
-                  disabled={mutationLocked || !day.planning_enabled || day.section_configuration_required}
-                  onClick={(event) => { event.stopPropagation(); openDraft(section.id); }}>＋</button>
+                <div className="section-summary-content"><strong>{section.title}</strong><span>{section.id === null ? "時間帯なし" : `${formatLogicalMinute(section.logical_start_minute)}–${formatLogicalMinute(section.logical_end_minute)}`} · {completedCount}/{section.entries.length} 実行済み · 見積 {formatEstimate(section.estimate_total_seconds)}</span></div>
+                <div className="section-summary-actions">
+                  <button type="button" className="section-collapse-button" aria-label={`${section.title}を${sectionCollapsed ? "展開" : "折りたたむ"}`}
+                    aria-expanded={!sectionCollapsed} title={sectionCollapsed ? "展開" : "折りたたむ"}
+                    onClick={(event) => { event.stopPropagation(); toggleSection(section.id); }}>{sectionCollapsed ? "▸" : "▾"}</button>
+                  <button type="button" className="add-task-button" aria-label={`${section.title}にTaskを追加`} title={`${section.title}にTaskを追加`}
+                    disabled={mutationLocked || !day.planning_enabled || day.section_configuration_required}
+                    onClick={(event) => { event.stopPropagation(); openDraft(section.id); }}>＋</button>
+                </div>
               </div>
 
-              {draftTask?.sectionId === section.id && (
+              {!sectionCollapsed && draftTask?.sectionId === section.id && (
                 <form className="task-row draft-row" aria-label={`${section.title}の新規Task`} onSubmit={commitDraft}>
                   <span className="bulk-slot" aria-hidden="true" />
                   <span className="execution-cell" aria-hidden="true"><span className="execution-control is-draft">○</span></span>
@@ -1404,7 +1457,7 @@ export function App() {
                 </form>
               )}
 
-              {visibleEntries.map((entry) => {
+              {!sectionCollapsed && visibleEntries.map((entry) => {
                 const entryTarget: FocusTarget = { kind: "entry", id: entry.id };
                 const isRunning = entry.lifecycle_state === "running";
                 const canComplete = isRunning && day.active_execution?.entry_id === entry.id;
@@ -1513,7 +1566,7 @@ export function App() {
                   </div>
                 );
               })}
-              {visibleEntries.length === 0 && draftTask?.sectionId !== section.id && <p className="empty-row"><span>表示するTaskはありません</span></p>}
+              {!sectionCollapsed && visibleEntries.length === 0 && draftTask?.sectionId !== section.id && <p className="empty-row"><span>表示するTaskはありません</span></p>}
             </div>
           );
         })}
