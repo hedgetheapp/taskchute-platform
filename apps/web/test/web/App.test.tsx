@@ -188,9 +188,19 @@ describe("Dogfood Day shell", () => {
     expect(screen.getAllByText("表示するTaskはありません")).toHaveLength(1);
 
     const heading = dayBoard.querySelector<HTMLElement>(".table-heading")!;
-    expect(Array.from(heading.children).map((cell) => cell.textContent)).toEqual([
+    const headingCells = Array.from(heading.children) as HTMLElement[];
+    expect(headingCells.filter((cell) => !cell.classList.contains("bulk-slot")).map((cell) => cell.textContent)).toEqual([
       "実行", "Task", "Project", "Section", "Routine", "見積", "開始予定",
     ]);
+    expect(headingCells[0]?.classList.contains("bulk-slot")).toBe(true);
+    expect(heading.querySelectorAll(":scope > .bulk-slot")).toHaveLength(1);
+    expect(headingCells[0]?.getAttribute("tabindex")).toBeNull();
+    expect(headingCells[0]?.querySelector("button, input, select, textarea, a[href], [tabindex]")).toBeNull();
+    const taskRow = dayBoard.querySelector<HTMLElement>("[data-entry-id]")!;
+    expect(taskRow.firstElementChild?.classList.contains("bulk-slot")).toBe(true);
+    expect(taskRow.querySelectorAll(":scope > .bulk-slot")).toHaveLength(1);
+    expect(taskRow.children[1]?.classList.contains("execution-cell")).toBe(true);
+    expect(taskRow.children[2]?.classList.contains("task-main")).toBe(true);
     expect(heading.textContent).not.toContain("状態");
     expect(heading.textContent).not.toContain("並び替え");
     expect(dayBoard.querySelector(".lifecycle-label")).toBeNull();
@@ -393,7 +403,10 @@ describe("Dogfood Day shell", () => {
     fireEvent.click(await screen.findByRole("button", { name: "EveningにTaskを追加" }));
     const input = screen.getByRole("textbox", { name: "EveningのTask名" });
     expect(document.activeElement).toBe(input);
-    expect(input.closest(".draft-row")?.children).toHaveLength(7);
+    const draftRow = input.closest(".draft-row")!;
+    expect(draftRow.children).toHaveLength(8);
+    expect(draftRow.firstElementChild?.classList.contains("bulk-slot")).toBe(true);
+    expect(draftRow.querySelectorAll(":scope > .bulk-slot")).toHaveLength(1);
     expect(screen.queryByRole("textbox", { name: "MorningのTask名" })).toBeNull();
     expect(screen.getAllByText("表示するTaskはありません")).toHaveLength(1);
   });

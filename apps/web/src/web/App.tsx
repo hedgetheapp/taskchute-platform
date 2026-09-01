@@ -1372,7 +1372,7 @@ export function App() {
 
       <section className="day-surface" aria-label="DayBoard">
         <div className="table-heading" aria-hidden="true">
-          <span>実行</span><span>Task</span><span>Project</span><span>Section</span><span>Routine</span><span>見積</span><span>開始予定</span>
+          <span className="bulk-slot" /><span className="execution-heading">実行</span><span className="task-heading">Task</span><span>Project</span><span>Section</span><span>Routine</span><span>見積</span><span>開始予定</span>
         </div>
         {groups.map((section) => {
           const visibleEntries = showCompleted ? section.entries : section.entries.filter((entry) => entry.lifecycle_state !== "completed");
@@ -1395,7 +1395,8 @@ export function App() {
 
               {draftTask?.sectionId === section.id && (
                 <form className="task-row draft-row" aria-label={`${section.title}の新規Task`} onSubmit={commitDraft}>
-                  <span className="execution-control is-draft" aria-hidden="true">○</span>
+                  <span className="bulk-slot" aria-hidden="true" />
+                  <span className="execution-cell" aria-hidden="true"><span className="execution-control is-draft">○</span></span>
                   <label className="draft-name"><span className="sr-only">Task名</span><input ref={draftInputRef} name="title" maxLength={300} value={draftTask.title} placeholder="Task名を入力…" aria-label={`${section.title}のTask名`} disabled={pending === "task" || taskOperation !== null} onChange={(event) => setDraftTask({ ...draftTask, title: event.target.value })} onCompositionStart={() => { draftCompositionRef.current = true; }} onCompositionEnd={() => { draftCompositionRef.current = false; }} onKeyDown={handleDraftKeyDown} onBlur={(event) => {
                     if (!draftTask.title.trim() && !event.currentTarget.form?.contains(event.relatedTarget as Node | null)) setDraftTask(null);
                   }} /></label>
@@ -1413,14 +1414,17 @@ export function App() {
                   <div className={`task-row state-${entry.lifecycle_state}`} key={entry.id} tabIndex={0} data-entry-id={entry.id} data-day-focus-target data-focus-key={focusKey(entryTarget)} onClick={(event) => {
                     if (event.target === event.currentTarget || (event.target as HTMLElement).closest(".task-main")) focusSurface(event.currentTarget);
                   }}>
-                    {entry.lifecycle_state === "completed" ? (
-                      <span className="execution-control completed" aria-label={executionLabel(entry)} title={executionLabel(entry)}>✓</span>
-                    ) : (
-                      <button type="button" className={`execution-control ${isRunning ? "running" : "planned"}`} aria-label={executionLabel(entry)} title={executionLabel(entry)} disabled={!day.is_current || mutationLocked || (entry.lifecycle_state === "planned" ? day.active_execution !== null : !canComplete)} onClick={() => {
-                        if (entry.lifecycle_state === "planned") void start(entry.id);
-                        else if (canComplete) void complete(entry.id);
-                      }}>{isRunning ? "■" : "▶"}</button>
-                    )}
+                    <span className="bulk-slot" aria-hidden="true" />
+                    <span className="execution-cell">
+                      {entry.lifecycle_state === "completed" ? (
+                        <span className="execution-control completed" aria-label={executionLabel(entry)} title={executionLabel(entry)}>✓</span>
+                      ) : (
+                        <button type="button" className={`execution-control ${isRunning ? "running" : "planned"}`} aria-label={executionLabel(entry)} title={executionLabel(entry)} disabled={!day.is_current || mutationLocked || (entry.lifecycle_state === "planned" ? day.active_execution !== null : !canComplete)} onClick={() => {
+                          if (entry.lifecycle_state === "planned") void start(entry.id);
+                          else if (canComplete) void complete(entry.id);
+                        }}>{isRunning ? "■" : "▶"}</button>
+                      )}
+                    </span>
                     <div className="task-main">
                       <div className="task-identity"><strong>{entry.task.title}</strong>{day.next_entry?.id === entry.id && <span className="next-label">Next</span>}</div>
                       <div className="task-reorder-controls" role="group" aria-label={`${entry.task.title}の並び替え`} onClick={(event) => event.stopPropagation()}>
@@ -1509,7 +1513,7 @@ export function App() {
                   </div>
                 );
               })}
-              {visibleEntries.length === 0 && draftTask?.sectionId !== section.id && <p className="empty-row">表示するTaskはありません</p>}
+              {visibleEntries.length === 0 && draftTask?.sectionId !== section.id && <p className="empty-row"><span>表示するTaskはありません</span></p>}
             </div>
           );
         })}
