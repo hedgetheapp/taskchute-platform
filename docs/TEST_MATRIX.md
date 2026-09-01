@@ -1,6 +1,6 @@
 # Test Matrix
 
-First Server + Web vertical slice、D-038 B1 / B3、D-039 B2、D-040 Minimal Routine R1、Day Table UI-1 / UI-2A / UI-2B、D-041 / D-042 Day Navigation v0.1、D-043 synchronization、D-044 / D-045 / D-046 Routine R2A first slice、D-047 / D-048 Routine R2B Boardは実装・GitHub `main`統合済み。R2B source review / local automated / real-local migration・browser / persistent nonprod migration・preservation・deploy・authenticated representative browserはPASS。D-049 initial production creation / migration / secure bootstrap / smokeもPASSし、initial release scopeでReleasedは`YES`。remote multi-Day propagation、詳細retry / concurrency、R2B inclusive end-date browser、production deep feature mutation等は各sectionの`NOT_RUN` / `NOT_VERIFIED`境界を維持する。
+First Server + Web vertical slice、D-038 B1 / B3、D-039 B2、D-040 Minimal Routine R1、Day Table UI-1 / UI-2A / UI-2B / UI-2C、D-041 / D-042 Day Navigation v0.1、D-043 synchronization、D-044 / D-045 / D-046 Routine R2A first slice、D-047 / D-048 Routine R2B Boardは実装・GitHub `main`統合済み。R2B source review / local automated / real-local migration・browser / persistent nonprod migration・preservation・deploy・authenticated representative browserはPASS。D-049 initial production creation / migration / secure bootstrap / smokeもPASSし、initial release scopeでReleasedは`YES`。remote multi-Day propagation、詳細retry / concurrency、R2B inclusive end-date browser、production deep feature mutation等は各sectionの`NOT_RUN` / `NOT_VERIFIED`境界を維持する。
 
 この文書はverification requirementとcurrent evidenceの正本とする。
 
@@ -802,6 +802,23 @@ Web suiteではdeterministic Reorder / Start conflict後のcanonical refetch、a
 - APP baseline / final: Days `5 -> 5`、Tasks `29 -> 31`、Entries `29 -> 31`、Executions `11 -> 12`、Operations `162 -> 170`、active Execution `0 -> 0`。final `quick_check = ok`、FK violations `0`、invalid Section placement `0`、duplicate active Execution group `0`、duplicate Routine occurrence Entry `0`
 - normal UI verification dataを残置: UI-2B reorder verification Task 2件。既存`UI2A planned verification`はStart / Completeでcompletedへ遷移。direct SQL setup / cleanupなし
 - source self-review: `PASS`。persistent nonprod / production: `NOT_RUN / NOT_RUN`、Released: `NO`
+
+### Day Table UI-2C integrated evidence — 2026-09-01
+
+- implementation commit: `95701371d6fe25be1a966789254944b3a1f41eca`（parent `60aeefb1651c773bd6c727666b3efd0541e9e262`、subject `Implement Day Table UI-2C`）はGitHub canonical `main`へIntegrated済み
+- changed runtime/test paths: `apps/web/src/web/App.tsx`、`apps/web/src/web/styles.css`、`apps/web/test/web/App.test.tsx`。Product / Domain / API / shared contract / persistence semantics、新dependency、migrationは変更なし
+- implementation: planned / planning-enabled / persistent DayのTask cell内handleだけをdrag sourceとし、same Section / same canonical planned-start cohort内でrow上半分=`before`、下半分=`after`のfull `entry_ids`を作る。invalid / no-op / intervening different cohort / cross-Sectionはno mutation。既存`ReorderEntries` operation / placement revision / retry / reconciliation / focus restorationを共有し、pointer `↑/↓`と`Shift+↑/↓`を維持
+- focused Web: `4 PASS`。full Web: `101 / 101 PASS`。typecheck / production build / `git diff --check`: `PASS`。Wrangler user-log writeはsandbox `EPERM` warningを出したがbuildはexit `0`
+- Worker / D1 / migration: `NOT_RUN / NOT_REQUIRED`（Web runtime / CSS / Web test only impact analysis）
+- signed-in real local browser `http://127.0.0.1:5173/`、logical Day `2026-09-01`: `PASS`。actual mouse dragでplanned-startなしcohortを複数行移動し、canonical reconciliation / reload persistence / actual reverse restoreを確認。equal non-null planned-start cohortもactual mouse dragで往復確認
+- different planned-start cohortとcross-Sectionへのactual attempted drag: valid indicatorなし、order不変、Operations `180 -> 180`。running / completedはhandleなし。automatedではNULL/non-null、different minute、intervening cohort、cross-Section、no-op、read-only、mutation lockを確認
+- existing interaction regression: pointer `↑/↓`、`Shift+↑/↓`、`J/K`、Section collapse / expand、`S` Start / Complete、estimate / planned-start editor、Section / Routine controls、canonical reload: `PASS`。input / select / button descendantsはdraggableではない
+- medium `900 x 700`: Day Table `client 611px / scroll 1040px`。horizontal scroll `7 -> 327`後もTask x `333`、handle x `343`を維持し、fixed-left / horizontal scroll conflictなし
+- fresh-tab browser console warnings / errors: `0 / 0`
+- private ignored APP backup: `593,920 bytes`、SHA-256 `2D2A334929A0CB78AC1261B0500B5B4D61E12D65A967E3269E282847DF8C9BDA`、backup `quick_check = ok` / FK violations `0`。private path / row identifierは記録しない
+- APP baseline / final: Days `5 -> 5`、Tasks `31 -> 34`、Entries `31 -> 34`、Executions `12 -> 13`、Operations `170 -> 186`、active Execution `0 -> 0`。final `quick_check = ok`、FK violations `0`、invalid planned reorder cohort `0`、duplicate active Execution group `0`、duplicate Routine occurrence `0`
+- normal UI verification dataを3 Task残置。Task追加、planned start設定、reorder、Start / Completeはすべてnormal UI / existing command経由で、direct SQL setup / cleanupなし
+- source self-review: `PASS`。same-cohort boundary、full order、one drop / one operation、transient state、control safety、authorized 3 Web pathsのみを確認。persistent nonprod / production: `NOT_RUN / NOT_RUN`、Released: `NO`
 
 ### Settings v0.1 integrated evidence — 2026-08-30
 
