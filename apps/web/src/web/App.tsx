@@ -43,7 +43,14 @@ type SettingsDestination = "section" | "project";
 type FocusTarget = { kind: "section" | "entry"; id: string };
 type DraftTask = { sectionId: string | null; title: string };
 type DragEdge = "before" | "after";
-type EntryDragState = { entryId: string; sectionId: string | null; targetEntryId: string | null; edge: DragEdge | null };
+type EntryDragState = {
+  entryId: string;
+  sectionId: string | null;
+  targetEntryId: string | null;
+  edge: DragEdge | null;
+  targetSectionKey: string | null;
+};
+type MouseDragState = { entryId: string; sectionId: string | null; startX: number; startY: number; active: boolean };
 type RoutineCandidate =
   | { entryId: string; unit: "estimate"; estimateSeconds: number | null }
   | { entryId: string; unit: "section-plan"; sectionId: string | null; plannedStartMinute: number | null };
@@ -136,6 +143,11 @@ function projectionContainsOperation(projection: CurrentTaskChuteDayProjection, 
 function isTextEditingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return target.isContentEditable || target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
+}
+
+function isInteractiveDragTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.isContentEditable || Boolean(target.closest("button, a, input, select, textarea, [contenteditable]"));
 }
 
 function focusKey(target: FocusTarget): string {
@@ -339,7 +351,7 @@ export function App() {
   const draftInputRef = useRef<HTMLInputElement | null>(null);
   const draftCompositionRef = useRef(false);
   const selectedLogicalDateRef = useRef<string | null>(null);
-  const mouseDragRef = useRef<Pick<EntryDragState, "entryId" | "sectionId"> | null>(null);
+  const mouseDragRef = useRef<MouseDragState | null>(null);
   const calendarTriggerRef = useRef<HTMLButtonElement | null>(null);
   const calendarGridRef = useRef<HTMLDivElement | null>(null);
   const routineScopeChoiceRef = useRef<HTMLSpanElement | null>(null);
@@ -508,7 +520,6 @@ export function App() {
   }, [day, entryDrag?.entryId, entryDrag?.sectionId]);
 
   useEffect(() => {
-    if (!entryDrag) return;
     const clearMouseDrag = () => {
       if (!mouseDragRef.current) return;
       mouseDragRef.current = null;
@@ -516,7 +527,7 @@ export function App() {
     };
     window.addEventListener("mouseup", clearMouseDrag);
     return () => window.removeEventListener("mouseup", clearMouseDrag);
-  }, [entryDrag?.entryId]);
+  }, []);
 
   useEffect(() => {
     if (!calendarOpen || !calendarFocusedDate) return;
@@ -810,15 +821,41 @@ export function App() {
     return entries ? buildDraggedEntryOrder(entries, sectionId, entryDrag.entryId, targetEntryId, edge) : null;
   }
 
+  function draggedEntry(drag: Pick<EntryDragState, "entryId" | "sectionId"> | null = entryDrag): EntryProjection | undefined {
+    if (!drag || !day) return undefined;
+    const entries = drag.sectionId === null ? day.unsectioned_entries : day.sections.find((section) => section.id === drag.sectionId)?.entries;
+    return entries?.find((entry) => entry.id === drag.entryId);
+  }
+
+  function canDropOnSection(sectionId: string | null, drag: Pick<EntryDragState, "entryId" | "sectionId"> | null = entryDrag): boolean {
+    const entry = draggedEntry(drag);
+    if (!drag || !entry || !day?.taskchute_day.id || !day.planning_enabled || mutationLocked
+      || entry.lifecycle_state !== "planned" || entry.routine !== null || entry.section_id === sectionId) return false;
+    return sectionId === null || day.sections.some((section) => section.id === sectionId);
+  }
+
+  function activateMouseDrag(event: ReactMouseEvent<HTMLElement>): MouseDragState | null {
+    const current = mouseDragRef.current;
+    if (!current) return null;
+    if (!current.active) {
+      const moved = Math.hypot(event.clientX - current.startX, event.clientY - current.startY);
+      if (moved < 4) return null;
+      current.active = true;
+      mouseDragRef.current = current;
+      setEntryDrag({ entryId: current.entryId, sectionId: current.sectionId, targetEntryId: null, edge: null, targetSectionKey: null });
+    }
+    return current;
+  }
+
   function startEntryMouseDrag(event: ReactMouseEvent<HTMLElement>, sectionId: string | null, entry: EntryProjection) {
-    if (event.button !== 0 || !day?.taskchute_day.id || !day.planning_enabled || mutationLocked || entry.lifecycle_state !== "planned") return;
-    event.preventDefault();
-    mouseDragRef.current = { entryId: entry.id, sectionId };
-    setEntryDrag({ entryId: entry.id, sectionId, targetEntryId: null, edge: null });
+    if (event.button !== 0 || isInteractiveDragTarget(event.target) || !day?.taskchute_day.id || !day.planning_enabled
+      || mutationLocked || entry.lifecycle_state !== "planned") return;
+    mouseDragRef.current = { entryId: entry.id, sectionId, startX: event.clientX, startY: event.clientY, active: false };
   }
 
   function updateEntryMouseTarget(event: ReactMouseEvent<HTMLElement>, sectionId: string | null, targetEntryId: string) {
-    const drag = mouseDragRef.current;
+    if (isInteractiveDragTarget(event.target)) return;
+    const drag = activateMouseDrag(event);
     if (!drag) return;
     const bounds = event.currentTarget.getBoundingClientRect();
     const edge: DragEdge = event.clientY < bounds.top + bounds.height / 2 ? "before" : "after";
@@ -826,12 +863,21 @@ export function App() {
     const order = drag.sectionId === sectionId && entries
       ? buildDraggedEntryOrder(entries, drag.sectionId, drag.entryId, targetEntryId, edge)
       : null;
-    setEntryDrag({ ...drag, targetEntryId: order ? targetEntryId : null, edge: order ? edge : null });
+    setEntryDrag({ entryId: drag.entryId, sectionId: drag.sectionId, targetEntryId: order ? targetEntryId : null,
+      edge: order ? edge : null, targetSectionKey: null });
   }
 
   function finishEntryMouseDrag(event: ReactMouseEvent<HTMLElement>, sectionId: string | null, targetEntryId: string) {
-    const drag = mouseDragRef.current;
-    if (!drag) return;
+    if (isInteractiveDragTarget(event.target)) {
+      mouseDragRef.current = null;
+      setEntryDrag(null);
+      return;
+    }
+    const drag = activateMouseDrag(event);
+    if (!drag) {
+      mouseDragRef.current = null;
+      return;
+    }
     const bounds = event.currentTarget.getBoundingClientRect();
     const edge: DragEdge = event.clientY < bounds.top + bounds.height / 2 ? "before" : "after";
     const entries = drag.sectionId === null ? day?.unsectioned_entries : day?.sections.find((candidate) => candidate.id === drag.sectionId)?.entries;
@@ -844,24 +890,27 @@ export function App() {
   }
 
   function startEntryDrag(event: ReactDragEvent<HTMLElement>, sectionId: string | null, entry: EntryProjection) {
-    if (!day?.taskchute_day.id || !day.planning_enabled || mutationLocked || entry.lifecycle_state !== "planned") {
+    if (isInteractiveDragTarget(event.target) || !day?.taskchute_day.id || !day.planning_enabled || mutationLocked || entry.lifecycle_state !== "planned") {
       event.preventDefault();
       return;
     }
+    mouseDragRef.current = null;
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData("text/plain", entry.id);
-    setEntryDrag({ entryId: entry.id, sectionId, targetEntryId: null, edge: null });
+    setEntryDrag({ entryId: entry.id, sectionId, targetEntryId: null, edge: null, targetSectionKey: null });
   }
 
   function updateEntryDropTarget(event: ReactDragEvent<HTMLElement>, sectionId: string | null, targetEntryId: string) {
     const edge = dragEdge(event);
     if (!dragOrder(sectionId, targetEntryId, edge)) {
-      if (entryDrag?.targetEntryId !== null) setEntryDrag((current) => current ? { ...current, targetEntryId: null, edge: null } : null);
+      if (entryDrag?.targetEntryId !== null || entryDrag?.targetSectionKey !== null) {
+        setEntryDrag((current) => current ? { ...current, targetEntryId: null, edge: null, targetSectionKey: null } : null);
+      }
       return;
     }
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
-    setEntryDrag((current) => current ? { ...current, targetEntryId, edge } : null);
+    setEntryDrag((current) => current ? { ...current, targetEntryId, edge, targetSectionKey: null } : null);
   }
 
   function dropEntry(event: ReactDragEvent<HTMLElement>, sectionId: string | null, targetEntryId: string) {
@@ -872,6 +921,55 @@ export function App() {
     if (!ids || !draggedEntryId) return;
     event.preventDefault();
     void reorderSectionEntries(sectionId, ids, draggedEntryId);
+  }
+
+  function updateSectionMouseTarget(event: ReactMouseEvent<HTMLElement>, sectionId: string | null) {
+    const drag = activateMouseDrag(event);
+    if (!drag) {
+      mouseDragRef.current = null;
+      return;
+    }
+    if (!canDropOnSection(sectionId, drag)) {
+      setEntryDrag((current) => current ? { ...current, targetEntryId: null, edge: null, targetSectionKey: null } : null);
+      return;
+    }
+    setEntryDrag({ entryId: drag.entryId, sectionId: drag.sectionId, targetEntryId: null, edge: null, targetSectionKey: groupKey(sectionId) });
+  }
+
+  function finishSectionMouseDrag(event: ReactMouseEvent<HTMLElement>, sectionId: string | null) {
+    const drag = activateMouseDrag(event);
+    if (!drag) {
+      mouseDragRef.current = null;
+      return;
+    }
+    const valid = canDropOnSection(sectionId, drag);
+    mouseDragRef.current = null;
+    setEntryDrag(null);
+    if (valid) void moveEntryToSection(drag.entryId, sectionId);
+  }
+
+  function updateSectionDropTarget(event: ReactDragEvent<HTMLElement>, sectionId: string | null) {
+    if (!canDropOnSection(sectionId)) {
+      if (entryDrag?.targetSectionKey !== null) {
+        setEntryDrag((current) => current ? { ...current, targetEntryId: null, edge: null, targetSectionKey: null } : null);
+      }
+      return;
+    }
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setEntryDrag((current) => current ? { ...current, targetEntryId: null, edge: null, targetSectionKey: groupKey(sectionId) } : null);
+  }
+
+  function dropSection(event: ReactDragEvent<HTMLElement>, sectionId: string | null) {
+    if (!canDropOnSection(sectionId)) {
+      setEntryDrag((current) => current ? { ...current, targetEntryId: null, edge: null, targetSectionKey: null } : null);
+      return;
+    }
+    event.preventDefault();
+    const draggedEntryId = entryDrag?.entryId;
+    mouseDragRef.current = null;
+    setEntryDrag(null);
+    if (draggedEntryId) void moveEntryToSection(draggedEntryId, sectionId);
   }
 
   async function executeStart(operation: StartEntryRequest) {
@@ -1093,7 +1191,13 @@ export function App() {
 
   async function executeSectionMove(operation: MoveEntryRequest) {
     setPending("move"); setError(null);
-    try { await api.moveEntry(operation); await reconcile(); setSectionMoveOperation(null); }
+    try {
+      await api.moveEntry(operation);
+      await reconcile();
+      setSectionMoveOperation(null);
+      const collapsed = collapsedSectionsByDay[day?.taskchute_day.logical_date ?? ""]?.[groupKey(operation.section_id)] === true;
+      setPendingFocusKey(focusKey(collapsed ? { kind: "section", id: groupKey(operation.section_id) } : { kind: "entry", id: operation.entry_id }));
+    }
     catch (caught) {
       setError(caught instanceof Error ? caught.message : "Section移動に失敗しました");
       const ambiguous = isAmbiguousOutcome(caught);
@@ -1107,18 +1211,26 @@ export function App() {
           && canonical.planned_start_minute === expectedPlannedStart
           && projection?.placement_revision === operation.expected_placement_revision + 1) {
           setSectionMoveOperation(null); setError(null);
+          const collapsed = collapsedSectionsByDay[projection.taskchute_day.logical_date]?.[groupKey(operation.section_id)] === true;
+          setPendingFocusKey(focusKey(collapsed ? { kind: "section", id: groupKey(operation.section_id) } : { kind: "entry", id: operation.entry_id }));
         }
       } catch { /* Preserve retained operation. */ }
     } finally { setPending(null); }
   }
 
-  async function changeSection(entry: EntryProjection, sectionId: string | null) {
-    if (!day?.taskchute_day.id || !day.planning_enabled || mutationLocked || entry.lifecycle_state !== "planned" || entry.routine !== null
+  async function moveEntryToSection(entryId: string, sectionId: string | null) {
+    const entry = [...(day?.unsectioned_entries ?? []), ...(day?.sections.flatMap((section) => section.entries) ?? [])]
+      .find((candidate) => candidate.id === entryId);
+    if (!entry || !day?.taskchute_day.id || !day.planning_enabled || mutationLocked || entry.lifecycle_state !== "planned" || entry.routine !== null
       || entry.section_id === sectionId) return;
     setEditingPlannedStart((editing) => editing?.entryId === entry.id ? null : editing);
     const operation: MoveEntryRequest = { operation_id: uuidv7(), entry_id: entry.id,
       taskchute_day_id: day.taskchute_day.id, section_id: sectionId, expected_placement_revision: day.placement_revision };
     setSectionMoveOperation(operation); await executeSectionMove(operation);
+  }
+
+  async function changeSection(entry: EntryProjection, sectionId: string | null) {
+    await moveEntryToSection(entry.id, sectionId);
   }
 
   async function executeEstimate(operation: SetEntryEstimateRequest) {
@@ -1731,13 +1843,27 @@ export function App() {
           const completedCount = section.entries.filter((entry) => entry.lifecycle_state === "completed").length;
           const sectionTarget: FocusTarget = { kind: "section", id: groupKey(section.id) };
           const sectionCollapsed = collapsedSectionsByDay[currentDay.taskchute_day.logical_date]?.[groupKey(section.id)] === true;
+          const sectionDropActive = entryDrag?.targetSectionKey === groupKey(section.id) && canDropOnSection(section.id);
+          const sectionDropPlaceholder = sectionDropActive && !sectionCollapsed ? (
+            <div className="section-drop-placeholder" aria-hidden="true"><span>ここに追加</span></div>
+          ) : null;
           return (
             <div className="section-group" key={groupKey(section.id)}>
               <div
-                className="section-summary"
+                className={`section-summary${sectionDropActive ? " drop-target" : ""}${sectionDropActive && sectionCollapsed ? " drop-target-collapsed" : ""}`}
                 tabIndex={0}
                 data-day-focus-target
                 data-focus-key={focusKey(sectionTarget)}
+                data-drop-target={sectionDropActive ? "valid" : undefined}
+                onMouseMove={(event) => updateSectionMouseTarget(event, section.id)}
+                onMouseUp={(event) => finishSectionMouseDrag(event, section.id)}
+                onDragOver={(event) => updateSectionDropTarget(event, section.id)}
+                onDrop={(event) => dropSection(event, section.id)}
+                onDragLeave={(event) => {
+                  if (entryDrag?.targetSectionKey === groupKey(section.id) && !event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                    setEntryDrag((current) => current ? { ...current, targetSectionKey: null } : null);
+                  }
+                }}
                 onClick={(event) => focusSurface(event.currentTarget)}
                 onKeyDown={(event) => {
                   if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " ")) return;
@@ -1756,6 +1882,9 @@ export function App() {
                 </div>
               </div>
 
+              {sectionDropPlaceholder && visibleEntries.length === 0 && sectionDropPlaceholder}
+              {sectionDropActive && sectionCollapsed && <div className="section-drop-cue" aria-hidden="true">このSectionへ移動</div>}
+
               {!sectionCollapsed && draftTask?.sectionId === section.id && (
                 <form className="task-row draft-row" aria-label={`${section.title}の新規Task`} onSubmit={commitDraft}>
                   <span className="bulk-slot" aria-hidden="true" />
@@ -1771,17 +1900,20 @@ export function App() {
                 const entryTarget: FocusTarget = { kind: "entry", id: entry.id };
                 const isRunning = entry.lifecycle_state === "running";
                 const canComplete = isRunning && day.active_execution?.entry_id === entry.id;
-                const canMoveUp = canMoveEntry(section.entries, entry.id, -1);
-                const canMoveDown = canMoveEntry(section.entries, entry.id, 1);
+                const canDrag = day.planning_enabled && Boolean(day.taskchute_day.id) && entry.lifecycle_state === "planned";
                 return (
-                  <div className={`task-row state-${entry.lifecycle_state}${entryDrag?.targetEntryId === entry.id && entryDrag.edge ? ` drop-${entryDrag.edge}` : ""}`} key={entry.id} tabIndex={0} data-entry-id={entry.id} data-section-id={section.id ?? ""} data-day-focus-target data-focus-key={focusKey(entryTarget)}
+                  <div className={`task-row state-${entry.lifecycle_state}${entryDrag?.entryId === entry.id ? " is-dragging" : ""}${entryDrag?.targetEntryId === entry.id && entryDrag.edge ? ` drop-${entryDrag.edge}` : ""}`} key={entry.id} tabIndex={0} draggable={canDrag && !mutationLocked}
+                    data-entry-id={entry.id} data-section-id={section.id ?? ""} data-day-focus-target data-focus-key={focusKey(entryTarget)}
+                    onMouseDown={(event) => startEntryMouseDrag(event, section.id, entry)}
                     onMouseMove={(event) => updateEntryMouseTarget(event, section.id, entry.id)}
                     onMouseUp={(event) => finishEntryMouseDrag(event, section.id, entry.id)}
+                    onDragStart={(event) => startEntryDrag(event, section.id, entry)}
+                    onDragEnd={() => { mouseDragRef.current = null; setEntryDrag(null); }}
                     onDragOver={(event) => updateEntryDropTarget(event, section.id, entry.id)}
                     onDrop={(event) => dropEntry(event, section.id, entry.id)}
                     onDragLeave={(event) => {
                       if (entryDrag?.targetEntryId === entry.id && !event.currentTarget.contains(event.relatedTarget as Node | null)) {
-                        setEntryDrag((current) => current ? { ...current, targetEntryId: null, edge: null } : null);
+                        setEntryDrag((current) => current ? { ...current, targetEntryId: null, edge: null, targetSectionKey: null } : null);
                       }
                     }}
                     onClick={(event) => {
@@ -1801,19 +1933,12 @@ export function App() {
                     <div className="task-main">
                       <div className="task-identity">
                         {entry.lifecycle_state === "planned" && day.planning_enabled && day.taskchute_day.id ? (
-                          <span className="task-drag-handle" draggable={!mutationLocked} aria-hidden="true" title="ドラッグして並び替え"
-                            onClick={(event) => event.stopPropagation()}
-                            onMouseDown={(event) => startEntryMouseDrag(event, section.id, entry)}
-                            onDragStart={(event) => startEntryDrag(event, section.id, entry)}
-                            onDragEnd={() => { mouseDragRef.current = null; setEntryDrag(null); }}>⠿</span>
+                          <span className="task-drag-handle" aria-hidden="true" title="ドラッグして並び替え"
+                            onClick={(event) => event.stopPropagation()}>⠿</span>
                         ) : null}
                         <strong>{entry.task.title}</strong>{day.next_entry?.id === entry.id && <span className="next-label">Next</span>}
                       </div>
-                      <div className="task-reorder-controls" role="group" aria-label={`${entry.task.title}の並び替え`} onClick={(event) => event.stopPropagation()}>
-                        <button type="button" className="icon-button" aria-label={`${entry.task.title}を上へ`} title="上へ" disabled={mutationLocked || !day.planning_enabled || !canMoveUp}
-                          onClick={(event) => { event.stopPropagation(); void moveEntry(section.id, entry.id, -1); }}>↑</button>
-                        <button type="button" className="icon-button" aria-label={`${entry.task.title}を下へ`} title="下へ" disabled={mutationLocked || !day.planning_enabled || !canMoveDown}
-                          onClick={(event) => { event.stopPropagation(); void moveEntry(section.id, entry.id, 1); }}>↓</button>
+                      <div className="task-actions" onClick={(event) => event.stopPropagation()}>
                         <button type="button" className="icon-button" aria-label={`${entry.task.title}を複製`} title="Task名を複製"
                           disabled={mutationLocked || !day.planning_enabled || entry.lifecycle_state !== "planned"}
                           onClick={(event) => { event.stopPropagation(); duplicate(entry); }}>⧉</button>
@@ -1905,6 +2030,7 @@ export function App() {
                   </div>
                 );
               })}
+              {sectionDropPlaceholder && visibleEntries.length > 0 && sectionDropPlaceholder}
               {!sectionCollapsed && visibleEntries.length === 0 && draftTask?.sectionId !== section.id && <p className="empty-row"><span>表示するTaskはありません</span></p>}
             </div>
           );
