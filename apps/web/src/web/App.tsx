@@ -144,6 +144,7 @@ function transientStatusText(pending: string | null): string | null {
     case "section-settings": return "Section設定を読み込み・照合中…";
     case "reorder": return "並び替え・照合中…";
     case "task": return "Taskを追加・照合中…";
+    case "duplicate": return "Taskを複製・照合中…";
     case "start": return "開始・照合中…";
     case "complete": return "完了・照合中…";
     case "move": return "Section移動・照合中…";

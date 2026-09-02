@@ -2120,6 +2120,24 @@ describe("Dogfood Day shell", () => {
     expect(screen.queryByRole("button", { name: "Canonical taskを複製" })).toBeTruthy();
   });
 
+  it("shows Duplicate reconciliation in the dedicated floating status while preserving DayBoard", async () => {
+    const request = deferred<unknown>();
+    mocks.loadDay.mockResolvedValue(populatedDay);
+    mocks.duplicateEntry.mockReturnValue(request.promise);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskを複製" }));
+
+    const status = await screen.findByRole("status");
+    expect(status.textContent).toBe("Taskを複製・照合中…");
+    expect(status.tagName).toBe("DIV");
+    expect(status.classList.contains("transient-status")).toBe(true);
+    expect(document.querySelector("p.transient-status")).toBeNull();
+    expect(screen.getByRole("region", { name: "DayBoard" })).toBeTruthy();
+
+    request.resolve({});
+    await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+  });
+
   it("retains only the exact ambiguous Duplicate operation and blocks unrelated actions", async () => {
     mocks.loadDay.mockResolvedValue(twoPlannedDay);
     mocks.duplicateEntry.mockRejectedValueOnce(new ApiClientError("ambiguous", 503, true, "infrastructure_ambiguous"))
