@@ -1000,3 +1000,29 @@ Bootstrap inputのtimezone、TaskChuteDay boundary、active Section configuratio
 Initial cost postureはWorkers Freeとし、paid-plan upgradeや新しいrecurring paid serviceを自動採用しない。Free limitsがresource creationまたは運用を妨げる場合は停止してProduct Ownerへ戻す。Time Travelをpoint-in-time recoveryとして利用し、bootstrap後にAUTH / APP両production DBのprivate baseline SQL exportとbookmark/infoを取得する。restoreはdestructive operationであり、別のexplicit recovery approvalなしに実行しない。
 
 Production smokeはsynthetic TaskChute domain dataを作らず、URL、bootstrap-disabled / public-signup-disabled posture、owner login、Today、Routine Board、Settings、bootstrap configuration、authenticated query、reload、browser console/networkを確認する。migration / deploy / smokeがPASSすればRoutine R2Bを`Released: YES`へ進められるが、deep mutation evidenceはlocal / persistent nonprodの境界を維持する。
+
+## D-050 — Duplicate first-slice command and APP compatibility migration
+Status: Approved
+
+D-037のlong-term duplicate targetを狭めず、first sliceではplanned source Entryを通常Taskとして同一Dayへ複製する`DuplicateEntry` logical commandを採用する。
+
+### APP compatibility migration
+
+- APP migration `0009`は`operations.command_type`のCHECK compatibility extensionとして`DuplicateEntry`を追加する。
+- migrationは全existing operation row、APP data、stable identity、historical factを保持する。
+- 本sliceでは追加schema、destructive migration、既存command rename、operation row rewriteを行わない。
+
+### Source and copied state
+
+- sourceはcurrent established Dayまたはfuture established Dayのplanning-enabledなplanned Entryに限定する。past Day、running、completed、interruptedその他historically protected stateは対象にしない。
+- duplicateは新しいTask / Entry identityを作り、sourceのtitle、Project、Section、estimate、planned startをcopyする。
+- Routine relation / RoutineOccurrence、history、Execution、actual state、forecast、operation recordはcopyしない。duplicateは通常Taskのplanned Entryとする。
+- ModeとNoteは未実装であり、本first sliceではcopy対象にしない。
+
+### Placement and mutation safety
+
+- duplicateはsourceとsame Day、same Section、same canonical planned-start cohortへ配置し、sourceのimmediate-afterをinitial insertion pointとする。
+- source / duplicateのcanonical order、Day `placement_revision`のexactly once increment、operation resultを一つのatomic outcomeとして確定する。
+- same operation + same semantic requestはreplayし、different-semantic operation reuseはrejectする。stale revision、source change、identity collision、concurrent request、unexpected infrastructure ambiguityはpartial effectを残さず、D-020のsafe retry / canonical reconciliation boundaryに従う。
+
+exact HTTP / DTO / SQL / iconはimplementation detailとする。本DecisionはProduct / Domain command contractとcompatibility migration directionをApprovedにするが、runtime、APP migration、Web、test evidenceの実装完了を意味しない。

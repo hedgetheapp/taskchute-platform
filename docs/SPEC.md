@@ -115,6 +115,18 @@ Startはplanned-startのnot-before制約を持たず、早期Startを許可す�
 
 Routine由来Entryにも同じSection / planned-start synchronization ruleを適用する。D-044はcurrent-Day planned Routine-derived Entryを対象とする最初のoverride/default propagation sliceを確定し、Section / planned-startを分割不能な一unitとして扱う。integrated implementation commit `7d3c0cb0881dfc11725af6ff45eabad69f86a22a`はordinary EntryとRoutine selected-scopeへD-043同期を実装し、Routine由来Entryはdedicated R2A commandだけで変更する。APP `0007` migration、local automated、real-local migration / browser、persistent nonprod migration / preservation / deployed runtime / authenticated representative browser evidenceはPASSである。remote multi-Day propagationと詳細reliability subcaseはこのPASSへ含めない。
 
+### Duplicate first slice
+
+Status: Approved (D-037, D-050). Runtime / APP migration: `NOT_IMPLEMENTED / NOT_RUN`.
+
+- `DuplicateEntry`はcurrent established Dayまたはfuture established Dayのplanning-enabledなplanned Entryだけをsourceにできる。past Day、running、completed、interruptedその他historically protected stateは対象外とする。
+- 新しいTask / Entry identityを作り、title、Project、Section、estimate、planned startをcopyする。Routine relation / RoutineOccurrence、history、Execution、actual state、forecast、operation recordはcopyせず、duplicateは通常Taskのplanned Entryとする。Mode / Noteは未実装でありcopyしない。
+- duplicateはsourceとsame Day、same Section、same canonical planned-start cohortに置き、sourceのimmediate-afterをinitial insertion pointとする。
+- source / duplicateのcanonical order、Day `placement_revision`のexactly once increment、operation resultはatomicに確定する。same-operation replay、misuse rejection、stale revision、source change、identity collision、concurrency、unexpected infrastructure ambiguityはD-020のsafe retry / canonical reconciliation boundaryに従い、partial effectを残さない。
+- APP migration `0009`は`operations.command_type` CHECK compatibility extensionとして`DuplicateEntry`を追加し、全existing operation / data / identity / historyを保持する。追加schema、destructive migration、既存command rename、operation row rewriteはfirst sliceに含めない。
+
+D-037のMode、day-specific Task Note、long-term duplicate / move / delete targetは本first sliceによって狭めない。exact HTTP / DTO / SQL / iconはimplementation detailとする。
+
 ## Lifecycle and Execution
 
 First vertical sliceのEntry lifecycleは以下に限定する。
