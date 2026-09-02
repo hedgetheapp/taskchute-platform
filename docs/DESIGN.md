@@ -196,9 +196,9 @@ manual Task reorderはcanonicalに許可されたcohort内だけで行う。
 - keyboard targetは`Shift+↑/↓`とする。
 - pointer利用者向けにはD&Dまたは同等のaccessible interactionを提供する。
 - target Day Tableに独立した`並び替え`data columnは置かない。
-- current runtimeの`↑/↓`buttonsはTask cell内に置くtemporary pointer affordanceであり、独立したdata columnではない。
+- current runtimeのvisible `↑/↓`buttonsはcross-Section D&D v0.1で撤去した。独立したdata columnではなく、keyboard `Shift+↑/↓`は維持する。
 
-UI-2CでTask cell内handleによるsame-Section / same-cohort D&Dを実装した。pointer `↑/↓`とkeyboard `Shift+↑/↓`はaccessible alternativesとして維持する。cross-Section D&Dとfinal drag-and-drop library / implementation detailは引き続きfuture scopeである。
+UI-2CでTask cell内handleによるsame-Section / same-cohort D&Dを実装した。cross-Section D&D v0.1では、ordinary planned Entryをrow surface / existing handleから別のvisible Section summary（`Sectionなし`を含む）へappendできる。expanded targetは末尾placeholder、collapsed targetはcueのみでauto-expandせず、successは既存`MoveEntry`を1回だけ使ってfull-Day canonical reconciliationを行う。Routine-derived、running / completed、read-only / preview / locked stateはno-writeとする。keyboard `Shift+↑/↓`は維持し、final drag-and-drop library / fuller context interactionはfuture scopeである。
 
 ### Display column reorder
 
@@ -263,7 +263,7 @@ current mainで実装済みのvisible heading orderは次である。
 
 `実行 | Task | Project | Section | Routine | 見積 | 開始予定 | 開始見込`
 
-Day Table UI-1では、独立した`状態`列と独立した`並び替え`列を除き、Execution Controlへlifecycle action / state presentationを維持し、Routineを独立列へ移し、見積を開始予定より前へ配置した。pointer `↑/↓`はTask cell内のtemporary affordanceとして、keyboard `Shift+↑/↓`は既存interactionとして維持する。task count、`placement_revision`、raw TaskChuteDay intervalはnormal toolbar / Day headerから除いた。
+Day Table UI-1では、独立した`状態`列と独立した`並び替え`列を除き、Execution Controlへlifecycle action / state presentationを維持し、Routineを独立列へ移し、見積を開始予定より前へ配置した。keyboard `Shift+↑/↓`は既存interactionとして維持し、task count、`placement_revision`、raw TaskChuteDay intervalはnormal toolbar / Day headerから除いた。
 
 UI-1は既存のServer-canonical command、retry / reconciliation、placement / ordering、Routine persistence semanticsを変更していない。
 
@@ -271,13 +271,15 @@ UI-2AはDay Tableへ明示的なminimum content widthとtable-owned horizontal s
 
 UI-2BはSection summaryからnormal Section / `Sectionなし`をpointerまたはfocused summaryのEnter / Spaceでcollapse / expandできるようにし、collapse stateをlogical Dayごとのin-session stateとして保持する。focused planned / running Taskの`S`は既存のStart / Complete commandとcanonical reconciliationを使う。text editing / IME composition / key repeat / unsafe modifier中は発火しない。collapse stateのcross-reload / browser-local persistenceはまだ実装せず、broader per-Day preference targetを変更しない。implementation commit `3861b9839b55a1453b0e2f230f03728e8d85059b`はGitHub canonical `main`へIntegrated済みであり、詳細な実装・evidence状態は`CURRENT` / `FEATURES` / `TEST_MATRIX`を正本とする。
 
-UI-2CはTask cell内のcompact drag handleから、同じSectionかつ同じcanonical planned-start cohort内のplanned Entryをrow上半分 / 下半分へbefore / after配置するD&Dを実装した。最終orderは既存`ReorderEntries` commandとServer-canonical reconciliationから取得し、invalid / no-op / cross-Section dropはmutationしない。pointer `↑/↓`とkeyboard `Shift+↑/↓`は維持する。implementation commit `95701371d6fe25be1a966789254944b3a1f41eca`はGitHub canonical `main`へIntegrated済みであり、詳細な実装・evidence状態は`CURRENT` / `FEATURES` / `TEST_MATRIX`を正本とする。
+UI-2CはTask cell内のcompact drag handleから、同じSectionかつ同じcanonical planned-start cohort内のplanned Entryをrow上半分 / 下半分へbefore / after配置するD&Dを実装した。最終orderは既存`ReorderEntries` commandとServer-canonical reconciliationから取得し、invalid / no-op dropはmutationしない。keyboard `Shift+↑/↓`は維持する。cross-Section D&D v0.1は後続の`MoveEntry` first sliceとして実装し、詳細な実装・evidence状態は`CURRENT` / `FEATURES` / `TEST_MATRIX`を正本とする。
+
+cross-Section D&D v0.1はimplementation commit `89d4784fddca891421d3619def352ee1156f1c89`で、ordinary planned Entryの別Section append、`Sectionなし`の`NULL` planned-start同期、collapsed cue / no auto-expand、floating row visual、既存`MoveEntry` 1回、full-Day reconciliation / focus restorationを追加した。visible pointer `↑/↓`buttonsは撤去し、same-Section `ReorderEntries` semanticsと`Shift+↑/↓`は維持する。これは同一Day内のWeb-only first sliceであり、cross-Day move、Routine-derived write、running / completed / read-only / preview / locked mutation、fuller context interactionは含まない。
 
 Start Forecast v0.1はD-032のderived projectionとして、`開始予定`の後ろへread-onlyの`開始見込`列を追加した。current Dayはserver projection生成時刻をanchorにactive Executionの見積残時間とtimed Section内planned Entryの見積を累積し、future established DayはDay startをanchorにする。planned startはforecast barrierではなく、completed / running自身、`Sectionなし`、past / record-noneは`—`表示とする。implementation commit `8939c4d6af95e2fd21b7d91e0e946bee29a6c1fb`はGitHub canonical `main`へIntegrated済みであり、詳細な実装・evidence状態は`CURRENT` / `FEATURES` / `TEST_MATRIX`を正本とする。
 
 current runtimeでは、Day Navigation v0.1のTop Navigation date navigation / calendar pickerと、Settings v0.1のLeft Sidebar `今日` / `設定`およびdedicated Section / Project Settings surfaceを実装済みである。DayBoard上のtemporary Project作成controlとSection設定editorは撤去済み。broader Sidebar destination、resize / preference等の実装状態は`docs/FEATURES.md`、`docs/CURRENT.md`、`docs/TEST_MATRIX.md`を正本とする。
 
-full target column modelはcurrent implementationより広い。Bulk capability、Mode、Note、fullerな開始 / 終了 / 実績、column reorder / hide / show / resize / auto-fit / preference、Search / Filter、collapse stateのcross-reload persistence、cross-Section D&Dまたはfullerなcontext interaction等はfuture workとして残る。responsive / mobileのexact policyは引き続きOpenであり、UI-2Aの狭幅fallbackをProduct Decisionへ昇格しない。
+full target column modelはcurrent implementationより広い。Bulk capability、Mode、Note、fullerな開始 / 終了 / 実績、column reorder / hide / show / resize / auto-fit / preference、Search / Filter、fullerなcontext interaction等はfuture workとして残る。responsive / mobileのexact policyは引き続きOpenであり、UI-2Aの狭幅fallbackをProduct Decisionへ昇格しない。
 
 ## Unreconciled historical scope
 

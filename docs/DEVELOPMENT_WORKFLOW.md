@@ -122,6 +122,8 @@ Codexの利用量を抑えつつ品質を維持するため、通常は以下の
 - Terraは原則使用しない。
 - Product / Domainの新しいMaterial DecisionはCodex内で決めずSTOPして報告する。
 
+通常のTask Contract実行はspeed mode `Fast (1.5x)`を基本とし、主実装をLuna xhigh、探索・軽量実行をLuna Low〜Mediumへ配分する。品質・安全性・STOP条件の判定はspeed modeによって省略しない。
+
 ### Luna xhigh
 
 主に以下を担当する。
