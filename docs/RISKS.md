@@ -285,12 +285,14 @@ R1はruntime commit `f9324e866deb74277d2fd83c5945f2df4b2b95da`とevidence docs c
 ## R-016 — Established future Dayへの後続Task追加経路
 Related: D-020, D-041
 
-Start Forecast v0.1のreal-local browser regression中、未establish future Dayへの最初のTask追加はDay establishmentとともに成功したが、同じfuture Dayへの2件目のTask追加は既存Day Navigation mutation routeでrevision 0前提のvalidationによりrejectされた。Day / Task / Entryのpartial writeやforecast誤表示はなく、future forecastのread projection自体は正常だった。
+Start Forecast v0.1のreal-local browser regression中、未establish future Dayへの最初のTask追加はDay establishmentとともに成功したが、同じfuture Dayへの2件目のTask追加は既存Day Navigation mutation routeでrevision 0前提のvalidationによりrejectされた。原因はfuture Add経路がowner-scoped existing Dayを解決する前にrevision 0 validationとestablishment plan読込を行っていたことだった。Day / Task / Entryのpartial writeやforecast誤表示はなく、future forecastのread projection自体は正常だった。
 
-Current boundary:
+Mitigation / current boundary:
 
 - Start Forecast v0.1はmutation endpointを変更せず、このfindingをforecast semanticsのPASSから分離する
 - failed requestでpartial stateを残さないD-020 / D-041 safetyは維持されている
-- established future Dayへの後続planning mutationがcurrent canonical revisionを使う経路を、Day Navigationのfollow-up correctionとしてsource review / automated / browserで再検証する
+- commit `04254f60b1dfb25e66550b940b9df6b28fdf616f`でowner-scoped existing Dayを先に解決し、既存Dayならcurrent canonical revisionとfrozen historical contextを使うestablished-Day mutationへ委譲した。未establish Dayだけがrevision 0のatomic establishmentへ進む
+- sequential follow-up、stale revision rejection / no partial write、exact retry、configuration change後のfrozen context、concurrent distinct operationをautomated testで確認し、real-local browserでも同じfuture Dayへの1件目 → 2件目 → 3件目 → reload / navigation復元とAPP integrityを`PASS`した
+- migration / dependency / Product semantics変更は不要。persistent nonprod / productionは`NOT_RUN`
 
-このRisk記録はfuture DayのProduct semanticsを変更せず、既存Approved Decisionを越えるfallbackやclient-side revision推測を承認しない。
+このRiskはcurrent `main`のlocal evidence範囲でmitigatedである。記録はfuture DayのProduct semanticsを変更せず、既存Approved Decisionを越えるfallbackやclient-side revision推測を承認しない。

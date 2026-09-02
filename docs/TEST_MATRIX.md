@@ -861,6 +861,26 @@ Web suiteではdeterministic Reorder / Start conflict後のcanonical refetch、a
 | START-FORECAST-07 | Compatibility | reorder / lifecycle / Section collapse / Routine R2A / responsive horizontal-scroll behaviorを維持する | Approved (D-032; canonical DESIGN) | PASS (LOCAL_AUTOMATED + REAL_LOCAL) |
 | START-FORECAST-08 | Boundary | D-028 Interrupt / D-033 manual actual correction等の未実装scopeを暗黙に追加しない | Approved (D-028, D-032, D-033) | PASS (SOURCE_REVIEW) |
 
+## R-016 established future Day follow-up Add evidence — 2026-09-02
+
+- implementation commit: `04254f60b1dfb25e66550b940b9df6b28fdf616f`（subject `Fix established future Day task addition`）はGitHub canonical `main`へIntegrated済み
+- changed runtime / test paths: `apps/web/worker/application/add-task-to-day.ts`、`apps/web/test/day-navigation.integration.test.ts`、`apps/web/test/web/App.test.tsx`。migration / dependency / shared contract / forecast semantics変更なし
+- focused Day Navigation `14 / 14 PASS`、focused Start Forecast `9 / 9 PASS`、focused Web established-future request `1 PASS`、Worker / D1 `135 / 135 PASS`、Web `103 / 103 PASS`
+- typecheck / production build / `git diff --check`: `PASS`
+- signed-in real-local browser: future preview no-write、同じfuture Dayへのnormal UI 1件目 → 2件目 → 3件目Add、後続estimate更新、forecast更新、reload / navigation復元、non-current Start disabledを`PASS`。console warnings / errorsは`0 / 0`
+- real-local APP: private ignored backup validation、final `quick_check = ok`、FK violations `0`、active Execution `0`、tested logical dateのDay exactly 1、Entry / Task exactly 3、historical Section context重複 `0`、orphan `0`
+- persistent nonprod / production: `NOT_RUN / NOT_RUN`、Released: `NO`
+
+| ID | Area | Requirement | Contract | Evidence |
+|---|---|---|---|---|
+| R016-01 | Routing | owner-scoped established future Dayが存在すれば、revision 0 establishment validationより先に解決してestablished-Day mutationへ委譲する | Approved (D-020, D-041) | PASS (LOCAL_AUTOMATED + REAL_LOCAL) |
+| R016-02 | Establishment | Dayが存在しない場合だけrevision 0でSection contextと最初のTaskをatomicにestablishする | Approved (D-020, D-038, D-041) | PASS (LOCAL_AUTOMATED + REAL_LOCAL) |
+| R016-03 | Revision | established future Dayへの後続Addはcurrent canonical placement revisionを要求し、成功ごとにexactly +1、stale revisionはno partial writeでrejectする | Approved (D-020, D-041) | PASS (LOCAL_AUTOMATED + REAL_LOCAL) |
+| R016-04 | Historical context | establishment後のSection configuration変更を後続Addへ再materializeせず、frozen historical contextを維持する | Approved (D-038, D-041) | PASS (LOCAL_AUTOMATED + REAL_LOCAL) |
+| R016-05 | Retry / concurrency | exact same-operation retryは重複を作らず、同revisionのdistinct concurrent follow-upは一方だけ成功してcanonical stateへ収束する | Approved (D-020, D-041) | PASS (LOCAL_AUTOMATED) |
+| R016-06 | Web request | established future DayへのWeb Addはcanonical Day ID、logical date、current placement revisionを送る | Approved (D-020, D-041) | PASS (LOCAL_AUTOMATED + REAL_LOCAL) |
+| R016-07 | Compatibility | preview no-write、Start Forecast、non-current execution boundary、reload / navigation recoveryを維持する | Approved (D-032, D-041) | PASS (LOCAL_AUTOMATED + REAL_LOCAL) |
+
 ## Authentication / Authorization
 
 | ID | Area | Requirement | Contract | Evidence |
