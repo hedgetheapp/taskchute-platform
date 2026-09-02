@@ -48,6 +48,81 @@ type RoutineCandidate =
   | { entryId: string; unit: "estimate"; estimateSeconds: number | null }
   | { entryId: string; unit: "section-plan"; sectionId: string | null; plannedStartMinute: number | null };
 
+/**
+ * Collapse state is a presentation-only preference. Keep it in a versioned
+ * browser-local envelope so a future preference shape can be introduced
+ * without interpreting an old value as current state.
+ */
+export const DAY_SECTION_COLLAPSE_STORAGE_KEY = "taskchute.web.day-section-collapse.v1";
+const DAY_SECTION_COLLAPSE_STORAGE_VERSION = 1;
+const UNSECTIONED_SECTION_KEY = "unsectioned";
+type CollapsedSectionsByDay = Record<string, Record<string, true>>;
+type PersistedDaySectionCollapse = {
+  version: 1;
+  days: Record<string, string[]>;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isCanonicalLogicalDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  try {
+    return Temporal.PlainDate.from(value).toString() === value;
+  } catch {
+    return false;
+  }
+}
+
+function readPersistedCollapsedSections(): CollapsedSectionsByDay {
+  if (typeof window === "undefined") return {};
+  let raw: string | null;
+  try {
+    raw = window.localStorage.getItem(DAY_SECTION_COLLAPSE_STORAGE_KEY);
+  } catch {
+    return {};
+  }
+  if (raw === null) return {};
+
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!isRecord(parsed) || parsed.version !== DAY_SECTION_COLLAPSE_STORAGE_VERSION || !isRecord(parsed.days)) return {};
+    const restored: CollapsedSectionsByDay = {};
+    for (const [logicalDate, rawSectionKeys] of Object.entries(parsed.days)) {
+      if (!isCanonicalLogicalDate(logicalDate) || !Array.isArray(rawSectionKeys)) continue;
+      const sectionKeys = rawSectionKeys.filter(
+        (sectionKey): sectionKey is string => typeof sectionKey === "string" && sectionKey.length > 0,
+      );
+      if (sectionKeys.length === 0) continue;
+      restored[logicalDate] = Object.fromEntries(
+        [...new Set(sectionKeys)].map((sectionKey) => [sectionKey, true]),
+      );
+    }
+    return restored;
+  } catch {
+    return {};
+  }
+}
+
+function persistCollapsedSections(collapsedSectionsByDay: CollapsedSectionsByDay): void {
+  if (typeof window === "undefined") return;
+  const days: Record<string, string[]> = {};
+  for (const [logicalDate, sectionState] of Object.entries(collapsedSectionsByDay)) {
+    const sectionKeys = Object.keys(sectionState).filter((sectionKey) => sectionState[sectionKey] === true);
+    if (isCanonicalLogicalDate(logicalDate) && sectionKeys.length > 0) days[logicalDate] = sectionKeys;
+  }
+  const value: PersistedDaySectionCollapse = {
+    version: DAY_SECTION_COLLAPSE_STORAGE_VERSION,
+    days,
+  };
+  try {
+    window.localStorage.setItem(DAY_SECTION_COLLAPSE_STORAGE_KEY, JSON.stringify(value));
+  } catch {
+    // localStorage may be unavailable or full; collapse interaction still works in memory.
+  }
+}
+
 function isAmbiguousOutcome(caught: unknown): boolean {
   return !(caught instanceof ApiClientError) || caught.code === "infrastructure_ambiguous";
 }
@@ -255,7 +330,7 @@ export function App() {
   const [draftTask, setDraftTask] = useState<DraftTask | null>(null);
   const [pendingFocusKey, setPendingFocusKey] = useState<string | null>(null);
   const [showCompleted, setShowCompleted] = useState(true);
-  const [collapsedSectionsByDay, setCollapsedSectionsByDay] = useState<Record<string, Record<string, true>>>({});
+  const [collapsedSectionsByDay, setCollapsedSectionsByDay] = useState<CollapsedSectionsByDay>(readPersistedCollapsedSections);
   const [entryDrag, setEntryDrag] = useState<EntryDragState | null>(null);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [calendarFocusedDate, setCalendarFocusedDate] = useState<string | null>(null);
@@ -309,7 +384,10 @@ export function App() {
     setEditingEstimate(null);
     setEditingPlannedStart(null);
     setPendingFocusKey(null);
-    setCollapsedSectionsByDay({});
+    // Keep browser-local presentation preferences across an auth transition;
+    // the next authenticated Day projection prunes keys that are not valid
+    // for that owner's stable Sections.
+    setCollapsedSectionsByDay(readPersistedCollapsedSections());
     mouseDragRef.current = null;
     setEntryDrag(null);
     setAuthState("signed-out");
@@ -361,6 +439,33 @@ export function App() {
       transitionToSignedOut();
     });
   }, [reconcile, transitionToSignedOut]);
+
+  useEffect(() => {
+    persistCollapsedSections(collapsedSectionsByDay);
+  }, [collapsedSectionsByDay]);
+
+  useEffect(() => {
+    if (!day) return;
+    const logicalDate = day.taskchute_day.logical_date;
+    const validSectionKeys = new Set([
+      UNSECTIONED_SECTION_KEY,
+      ...day.sections.map((section) => section.id),
+    ]);
+    setCollapsedSectionsByDay((current) => {
+      const dayState = current[logicalDate];
+      if (!dayState) return current;
+      const retained = Object.fromEntries(
+        Object.entries(dayState).filter(([sectionKey, collapsed]) => collapsed === true && validSectionKeys.has(sectionKey)),
+      ) as Record<string, true>;
+      const currentKeys = Object.keys(dayState);
+      const retainedKeys = Object.keys(retained);
+      if (currentKeys.length === retainedKeys.length && currentKeys.every((key) => retained[key] === true)) return current;
+      const next = { ...current };
+      if (retainedKeys.length > 0) next[logicalDate] = retained;
+      else delete next[logicalDate];
+      return next;
+    });
+  }, [day]);
 
   useEffect(() => {
     if (draftTask) draftInputRef.current?.focus();
@@ -1318,7 +1423,10 @@ export function App() {
       const dayState = { ...(current[logicalDate] ?? {}) };
       if (collapsed) dayState[sectionKey] = true;
       else delete dayState[sectionKey];
-      return { ...current, [logicalDate]: dayState };
+      const next = { ...current };
+      if (Object.keys(dayState).length > 0) next[logicalDate] = dayState;
+      else delete next[logicalDate];
+      return next;
     });
   }
 

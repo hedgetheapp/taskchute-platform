@@ -17,7 +17,7 @@ vi.mock("../../src/web/api", async () => {
   return { ...actual, api: mocks };
 });
 
-import { App } from "../../src/web/App";
+import { App, DAY_SECTION_COLLAPSE_STORAGE_KEY } from "../../src/web/App";
 import { ApiClientError } from "../../src/web/api";
 
 const morningId = "019c0000-0000-7000-8000-000000000002";
@@ -154,8 +154,16 @@ const completedDay: CurrentTaskChuteDayProjection = {
   sections: [{ ...runningDay.sections[0], entries: [{ ...firstEntry, lifecycle_state: "completed" }] }, emptyDay.sections[1]],
 };
 
+const unsectionedDay: CurrentTaskChuteDayProjection = {
+  ...twoPlannedDay,
+  sections: [emptyDay.sections[0], emptyDay.sections[1]],
+  unsectioned_entries: [{ ...firstEntry, section_id: null }],
+  next_entry: { ...firstEntry, section_id: null },
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
+  window.localStorage.clear();
   mocks.logout.mockResolvedValue({});
   mocks.loadProjects.mockResolvedValue({ projects: [{ id: "existing-project", title: "Existing Project" }] });
   mocks.createProject.mockResolvedValue({ project: { id: "project", title: "Project" } });
@@ -600,6 +608,94 @@ describe("Dogfood Day shell", () => {
     fireEvent.click(expand);
     expect(Array.from(document.querySelectorAll("[data-entry-id]")).map((row) => row.getAttribute("data-entry-id")))
       .toEqual([firstEntry.id, secondEntry.id]);
+  });
+
+  it("restores collapse state after a browser reload using logical Day and stable Section identity", async () => {
+    mocks.loadDay.mockResolvedValue(twoPlannedDay);
+    const firstRender = render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Morningを折りたたむ" }));
+    expect(screen.queryByText("Canonical task")).toBeNull();
+
+    const persisted = JSON.parse(window.localStorage.getItem(DAY_SECTION_COLLAPSE_STORAGE_KEY) ?? "null") as {
+      version: number; days: Record<string, string[]>;
+    };
+    expect(persisted).toEqual({ version: 1, days: { "2026-08-22": [morningId] } });
+
+    firstRender.unmount();
+    render(<App />);
+    expect((await screen.findByRole("button", { name: "Morningを展開" })).getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByText("Canonical task")).toBeNull();
+    expect(screen.getByText("Evening")).toBeTruthy();
+  });
+
+  it("restores an expanded Section after re-expanding it and reloading", async () => {
+    mocks.loadDay.mockResolvedValue(twoPlannedDay);
+    const firstRender = render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Morningを折りたたむ" }));
+    fireEvent.click(screen.getByRole("button", { name: "Morningを展開" }));
+    expect(screen.getByRole("button", { name: "Morningを折りたたむ" }).getAttribute("aria-expanded")).toBe("true");
+
+    firstRender.unmount();
+    render(<App />);
+    expect((await screen.findByRole("button", { name: "Morningを折りたたむ" })).getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByText("Canonical task")).toBeTruthy();
+  });
+
+  it("keeps each logical Day preference across a remount", async () => {
+    mocks.loadDay.mockImplementation(async (logicalDate?: string) => ({
+      ...twoPlannedDay,
+      is_current: logicalDate === undefined || logicalDate === "2026-08-22",
+      taskchute_day: { ...twoPlannedDay.taskchute_day, logical_date: logicalDate ?? "2026-08-22" },
+    }));
+    const firstRender = render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Morningを折りたたむ" }));
+    fireEvent.click(screen.getByRole("button", { name: "次の日" }));
+    await screen.findByRole("button", { name: "2026年8月23日（日）、日付を選択" });
+    fireEvent.click(screen.getByRole("button", { name: "Morningを折りたたむ" }));
+    firstRender.unmount();
+
+    render(<App />);
+    expect((await screen.findByRole("button", { name: "Morningを展開" })).getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(screen.getByRole("button", { name: "次の日" }));
+    await screen.findByRole("button", { name: "2026年8月23日（日）、日付を選択" });
+    expect((await screen.findByRole("button", { name: "Morningを展開" })).getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("persists Sectionなし with its absence sentinel independently from normal Sections", async () => {
+    mocks.loadDay.mockResolvedValue(unsectionedDay);
+    const firstRender = render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Sectionなしを折りたたむ" }));
+    expect(screen.queryByText("Canonical task")).toBeNull();
+    expect(JSON.parse(window.localStorage.getItem(DAY_SECTION_COLLAPSE_STORAGE_KEY) ?? "null")).toEqual({
+      version: 1, days: { "2026-08-22": ["unsectioned"] },
+    });
+
+    firstRender.unmount();
+    render(<App />);
+    expect((await screen.findByRole("button", { name: "Sectionなしを展開" })).getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByText("Canonical task")).toBeNull();
+  });
+
+  it("ignores malformed collapse storage and rewrites it to a valid empty envelope", async () => {
+    window.localStorage.setItem(DAY_SECTION_COLLAPSE_STORAGE_KEY, "{not-json");
+    mocks.loadDay.mockResolvedValue(twoPlannedDay);
+    render(<App />);
+    expect(await screen.findByText("Canonical task")).toBeTruthy();
+    expect(JSON.parse(window.localStorage.getItem(DAY_SECTION_COLLAPSE_STORAGE_KEY) ?? "null")).toEqual({ version: 1, days: {} });
+  });
+
+  it("drops stale Section keys while retaining a valid stable Section key", async () => {
+    window.localStorage.setItem(DAY_SECTION_COLLAPSE_STORAGE_KEY, JSON.stringify({
+      version: 1,
+      days: { "2026-08-22": ["stale-section-id", morningId], "not-a-date": [eveningId] },
+    }));
+    mocks.loadDay.mockResolvedValue(twoPlannedDay);
+    render(<App />);
+    expect(await screen.findByRole("button", { name: "Morningを展開" })).toBeTruthy();
+    expect(screen.queryByText("Canonical task")).toBeNull();
+    await waitFor(() => expect(JSON.parse(window.localStorage.getItem(DAY_SECTION_COLLAPSE_STORAGE_KEY) ?? "null")).toEqual({
+      version: 1, days: { "2026-08-22": [morningId] },
+    }));
   });
 
   it("toggles a focused Section summary with Enter and Space without nested-button double toggles", async () => {
