@@ -463,7 +463,7 @@ describe("Dogfood Day shell", () => {
       is_current: false,
       taskchute_day: { ...populatedDay.taskchute_day, logical_date: "2026-08-23" },
     };
-    mocks.loadDay.mockResolvedValueOnce(futureEstablished);
+    mocks.loadDay.mockResolvedValue(futureEstablished);
     render(<App />);
     const start = await screen.findByRole("button", { name: "Canonical taskを開始" }) as HTMLButtonElement;
     expect(start.disabled).toBe(true);
@@ -471,6 +471,16 @@ describe("Dogfood Day shell", () => {
     expect((screen.getByRole("button", { name: "Canonical taskの見積" }) as HTMLButtonElement).disabled).toBe(false);
     expect((screen.getByRole("button", { name: "Canonical taskの開始予定" }) as HTMLButtonElement).disabled).toBe(false);
     expect(screen.queryByRole("button", { name: "Routine化" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "MorningにTaskを追加" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "MorningのTask名" }), { target: { value: "Follow-up future task" } });
+    fireEvent.submit(screen.getByRole("form", { name: "Morningの新規Task" }));
+    await waitFor(() => expect(mocks.addTask).toHaveBeenCalledTimes(1));
+    expect(mocks.addTask.mock.calls[0][0]).toMatchObject({
+      taskchute_day_id: futureEstablished.taskchute_day.id,
+      logical_date: "2026-08-23",
+      expected_placement_revision: 1,
+      section_id: morningId,
+    });
   });
 
   it("opens a focused inline draft from the selected Section plus", async () => {

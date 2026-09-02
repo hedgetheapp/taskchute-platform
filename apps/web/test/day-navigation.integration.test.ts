@@ -256,10 +256,17 @@ describe.sequential("Day Navigation v0.1", () => {
     const fixture = await seedNavigationUser();
     const first = futureRequest(fixture.sections[0]!);
     await addTaskToDay(env.APP_DB, fixture.userId, first, now);
-    const { logical_date: _logicalDate, ...secondBase } = futureRequest(fixture.sections[0]!);
-    const second = { ...secondBase, taskchute_day_id: first.taskchute_day_id,
+    const second = { ...futureRequest(fixture.sections[0]!), taskchute_day_id: first.taskchute_day_id,
       title: "Second future task", expected_placement_revision: 1 };
-    await addTaskToDay(env.APP_DB, fixture.userId, second, now);
+    const secondResult = await addTaskToDay(env.APP_DB, fixture.userId, second, now);
+    expect(secondResult).toMatchObject({ taskchute_day_id: first.taskchute_day_id, position: 2, placement_revision: 2 });
+    expect(await addTaskToDay(env.APP_DB, fixture.userId, second, now)).toEqual(secondResult);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM taskchute_days WHERE app_user_id = ? AND logical_date = ?")
+      .bind(fixture.userId, first.logical_date).first<number>("count")).toBe(1);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM entries WHERE app_user_id = ? AND taskchute_day_id = ?")
+      .bind(fixture.userId, first.taskchute_day_id).first<number>("count")).toBe(2);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM taskchute_day_section_contexts WHERE app_user_id = ? AND taskchute_day_id = ?")
+      .bind(fixture.userId, first.taskchute_day_id).first<number>("count")).toBe(2);
     await reorderEntries(env.APP_DB, fixture.userId, {
       operation_id: uuidv7(), taskchute_day_id: first.taskchute_day_id, section_id: fixture.sections[0]!,
       entry_ids: [second.entry_id, first.entry_id], expected_placement_revision: 2,
@@ -305,8 +312,63 @@ describe.sequential("Day Navigation v0.1", () => {
       FROM taskchute_day_section_contexts WHERE app_user_id = ? AND taskchute_day_id = ? ORDER BY context_order`)
       .bind(fixture.userId, request.taskchute_day_id).all();
     expect(after.results).toEqual(before.results);
-    expect((await loadTaskChuteDayByLogicalDate(env.APP_DB, fixture.userId, request.logical_date, now)).sections
-      .map((section) => section.title)).toEqual(["Morning", "Evening"]);
+    const followUp = { ...futureRequest(fixture.sections[0]!, request.logical_date),
+      taskchute_day_id: request.taskchute_day_id, title: "Frozen-context follow-up", expected_placement_revision: 1 };
+    expect(await addTaskToDay(env.APP_DB, fixture.userId, followUp, now)).toMatchObject({
+      taskchute_day_id: request.taskchute_day_id, section_id: fixture.sections[0], placement_revision: 2,
+    });
+    const projection = await loadTaskChuteDayByLogicalDate(env.APP_DB, fixture.userId, request.logical_date, now);
+    expect(projection.sections.map((section) => section.title)).toEqual(["Morning", "Evening"]);
+    expect(projection.sections[0]?.entries.map((entry) => entry.id)).toEqual([request.entry_id, followUp.entry_id]);
+    expect((await env.APP_DB.prepare(`SELECT title, logical_start_minute, logical_end_minute
+      FROM taskchute_day_section_contexts WHERE app_user_id = ? AND taskchute_day_id = ? ORDER BY context_order`)
+      .bind(fixture.userId, request.taskchute_day_id).all()).results).toEqual(before.results);
+  });
+
+  it("rejects a stale follow-up Add without partial state and replays a successful follow-up exactly", async () => {
+    const fixture = await seedNavigationUser();
+    const first = futureRequest(fixture.sections[0]!);
+    await addTaskToDay(env.APP_DB, fixture.userId, first, now);
+    const stale = { ...futureRequest(fixture.sections[0]!, first.logical_date), taskchute_day_id: first.taskchute_day_id,
+      title: "Stale follow-up", expected_placement_revision: 0 };
+    await expect(addTaskToDay(env.APP_DB, fixture.userId, stale, now)).rejects.toMatchObject({ code: "revision_conflict" });
+    expect(await env.APP_DB.prepare("SELECT placement_revision FROM taskchute_days WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, first.taskchute_day_id).first<number>("placement_revision")).toBe(1);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM tasks WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, stale.task_id).first<number>("count")).toBe(0);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM entries WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, stale.entry_id).first<number>("count")).toBe(0);
+
+    const successful = { ...futureRequest(fixture.sections[0]!, first.logical_date), taskchute_day_id: first.taskchute_day_id,
+      title: "Successful follow-up", expected_placement_revision: 1 };
+    const result = await addTaskToDay(env.APP_DB, fixture.userId, successful, now);
+    expect(await addTaskToDay(env.APP_DB, fixture.userId, successful, now)).toEqual(result);
+    expect(await env.APP_DB.prepare("SELECT placement_revision FROM taskchute_days WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, first.taskchute_day_id).first<number>("placement_revision")).toBe(2);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM entries WHERE app_user_id = ? AND taskchute_day_id = ?")
+      .bind(fixture.userId, first.taskchute_day_id).first<number>("count")).toBe(2);
+  });
+
+  it("allows exactly one of two concurrent established-future follow-up Adds at the same revision", async () => {
+    const fixture = await seedNavigationUser();
+    const first = futureRequest(fixture.sections[0]!);
+    await addTaskToDay(env.APP_DB, fixture.userId, first, now);
+    const candidates = ["Concurrent A", "Concurrent B"].map((title) => ({
+      ...futureRequest(fixture.sections[0]!, first.logical_date), taskchute_day_id: first.taskchute_day_id,
+      title, expected_placement_revision: 1,
+    }));
+    const settled = await Promise.allSettled(candidates.map((request) => addTaskToDay(env.APP_DB, fixture.userId, request, now)));
+    expect(settled.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(settled.filter((result) => result.status === "rejected")).toHaveLength(1);
+    expect(settled.find((result) => result.status === "rejected")).toMatchObject({
+      status: "rejected", reason: { code: "revision_conflict" },
+    });
+    expect(await env.APP_DB.prepare("SELECT placement_revision FROM taskchute_days WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, first.taskchute_day_id).first<number>("placement_revision")).toBe(2);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM entries WHERE app_user_id = ? AND taskchute_day_id = ?")
+      .bind(fixture.userId, first.taskchute_day_id).first<number>("count")).toBe(2);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM taskchute_days WHERE app_user_id = ? AND logical_date = ?")
+      .bind(fixture.userId, first.logical_date).first<number>("count")).toBe(1);
   });
 
   it("keeps arbitrary-date reads owner-scoped", async () => {

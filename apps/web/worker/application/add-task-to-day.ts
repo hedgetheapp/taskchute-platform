@@ -265,6 +265,12 @@ async function addTaskToFutureDay(
   nowInstant: string,
   attempt = 0,
 ): Promise<AddTaskToDayResult> {
+  const existing = await db.prepare(`SELECT id, placement_revision FROM taskchute_days
+    WHERE app_user_id = ? AND logical_date = ?`).bind(appUserId, request.logical_date)
+    .first<{ id: string; placement_revision: number }>();
+  if (existing) {
+    return addTaskToEstablishedDay(db, appUserId, { ...request, taskchute_day_id: existing.id }, requestFingerprint, semanticTitle);
+  }
   if (request.expected_placement_revision !== 0) {
     throw new HttpError(409, "revision_conflict", "An unestablished future Day starts at revision 0", true);
   }
@@ -276,12 +282,6 @@ async function addTaskToFutureDay(
   const context = { appUserId, request, requestFingerprint };
   if (plan.configuration_version_id === null) {
     return reject(db, context, "resource_conflict", "Section configuration is required before future planning");
-  }
-  const existing = await db.prepare(`SELECT id, placement_revision FROM taskchute_days
-    WHERE app_user_id = ? AND logical_date = ?`).bind(appUserId, request.logical_date)
-    .first<{ id: string; placement_revision: number }>();
-  if (existing) {
-    return addTaskToEstablishedDay(db, appUserId, { ...request, taskchute_day_id: existing.id }, requestFingerprint, semanticTitle);
   }
   const [projectResult, taskCollisionResult, entryCollisionResult] = await db.batch([
     request.project_id
