@@ -133,7 +133,7 @@ describe.sequential("DuplicateEntry first slice", () => {
       .first<number>("count")).toBe(1);
   });
 
-  it("allows an established future Day and rejects a past Day without writes", async () => {
+  it("allows an established future Day and rejects a logical-past Day without partial writes", async () => {
     const future = await seed();
     await env.APP_DB.prepare(`UPDATE taskchute_days SET logical_date = '2026-09-04',
       start_instant = '2026-09-04T00:00:00.000Z', end_instant = '2026-09-05T00:00:00.000Z' WHERE id = ?`)
@@ -142,12 +142,30 @@ describe.sequential("DuplicateEntry first slice", () => {
 
     const past = await seed();
     await env.APP_DB.prepare(`UPDATE taskchute_days SET logical_date = '2026-09-01',
-      start_instant = '2026-09-01T00:00:00.000Z', end_instant = '2026-09-02T00:00:00.000Z' WHERE id = ?`)
+      start_instant = '2026-09-01T00:00:00.000Z', end_instant = '2026-09-04T00:00:00.000Z' WHERE id = ?`)
       .bind(past.dayId).run();
     const before = await mutationCounts(past);
     await expect(duplicateEntry(env.APP_DB, past.userId, requestFor(past), now))
       .rejects.toMatchObject({ code: "resource_conflict" });
     expect(await mutationCounts(past)).toEqual({ ...before, operations: before.operations + 1 });
+  });
+
+  it("duplicates a Sectionなし source with no planned start immediately after the source", async () => {
+    const fixture = await seed();
+    await env.APP_DB.batch([
+      env.APP_DB.prepare("UPDATE entries SET section_id = NULL, planned_start_minute = NULL WHERE taskchute_day_id = ?")
+        .bind(fixture.dayId),
+    ]);
+    const request = requestFor(fixture);
+    await expect(duplicateEntry(env.APP_DB, fixture.userId, request, now)).resolves.toMatchObject({
+      section_id: null, position: 4, placement_revision: 1,
+    });
+    expect((await env.APP_DB.prepare(`SELECT id, section_id, planned_start_minute, position FROM entries
+      WHERE taskchute_day_id = ? AND section_id IS NULL ORDER BY position`).bind(fixture.dayId).all()).results).toEqual([
+      { id: fixture.entryId, section_id: null, planned_start_minute: null, position: 3 },
+      { id: request.new_entry_id, section_id: null, planned_start_minute: null, position: 4 },
+      expect.objectContaining({ section_id: null, planned_start_minute: null, position: 5 }),
+    ]);
   });
 
   it.each(["running", "completed"] as const)("rejects a %s source without partial copy", async (state) => {
@@ -169,6 +187,10 @@ describe.sequential("DuplicateEntry first slice", () => {
       .bind(collidingTaskId, otherUserId, now).run();
     await expect(duplicateEntry(env.APP_DB, fixture.userId, { ...requestFor(fixture), new_task_id: collidingTaskId }, now))
       .rejects.toMatchObject({ code: "resource_conflict" });
+    const entryCollision = requestFor(fixture); const before = await mutationCounts(fixture);
+    await expect(duplicateEntry(env.APP_DB, fixture.userId, { ...entryCollision, new_entry_id: fixture.entryId }, now))
+      .rejects.toMatchObject({ code: "resource_conflict" });
+    expect(await mutationCounts(fixture)).toEqual({ ...before, operations: before.operations + 1 });
   });
 
   it("rejects invalid D-043 source state and mutation-time source changes", async () => {
@@ -177,12 +199,11 @@ describe.sequential("DuplicateEntry first slice", () => {
     await expect(duplicateEntry(env.APP_DB, invalid.userId, requestFor(invalid), now))
       .rejects.toMatchObject({ code: "resource_conflict" });
 
-    const raced = await seed(); const request = requestFor(raced);
-    const db = mutateBeforeCommandBatch(env.APP_DB, () => env.APP_DB.prepare("UPDATE entries SET estimate_seconds = 1200 WHERE id = ?")
+    const raced = await seed(); const request = requestFor(raced); const before = await mutationCounts(raced);
+    const db = mutateBeforeCommandBatch(env.APP_DB, () => env.APP_DB.prepare("UPDATE entries SET lifecycle_state = 'running' WHERE id = ?")
       .bind(raced.entryId).run());
     await expect(duplicateEntry(db, raced.userId, request, now)).rejects.toMatchObject({ code: "resource_conflict" });
-    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM entries WHERE id = ?").bind(request.new_entry_id)
-      .first<number>("count")).toBe(0);
+    expect(await mutationCounts(raced)).toEqual({ ...before, operations: before.operations + 1 });
   });
 
   it("rolls back an injected command failure and retries the exact operation", async () => {

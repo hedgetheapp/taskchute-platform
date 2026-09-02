@@ -254,6 +254,7 @@ try {
       '2026-08-28T03:30:00.000Z')`]);
   assert.deepEqual(query("SELECT command_type FROM operations WHERE operation_id = 'operation-duplicate-entry'"),
     [{ command_type: "DuplicateEntry" }]);
+  execute(["--command", "DELETE FROM operations WHERE operation_id = 'operation-duplicate-entry'"]);
   assert.deepEqual(query(`SELECT routine_definition_id, schedule_kind, interval_days, weekdays_mask
     FROM routine_schedules ORDER BY routine_definition_id`), [
     { routine_definition_id: "routine-r2a-normalize", schedule_kind: "daily", interval_days: null, weekdays_mask: null },
