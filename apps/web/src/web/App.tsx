@@ -62,11 +62,17 @@ type RoutineCandidate =
  */
 export const DAY_SECTION_COLLAPSE_STORAGE_KEY = "taskchute.web.day-section-collapse.v1";
 const DAY_SECTION_COLLAPSE_STORAGE_VERSION = 1;
+export const SIDEBAR_STORAGE_KEY = "taskchute.web.sidebar.v1";
+const SIDEBAR_STORAGE_VERSION = 1;
 const UNSECTIONED_SECTION_KEY = "unsectioned";
 type CollapsedSectionsByDay = Record<string, Record<string, true>>;
 type PersistedDaySectionCollapse = {
   version: 1;
   days: Record<string, string[]>;
+};
+type PersistedSidebarPreference = {
+  version: 1;
+  open: boolean;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -79,6 +85,35 @@ function isCanonicalLogicalDate(value: string): boolean {
     return Temporal.PlainDate.from(value).toString() === value;
   } catch {
     return false;
+  }
+}
+
+function readPersistedSidebarOpen(): boolean {
+  if (typeof window === "undefined") return true;
+  let raw: string | null;
+  try {
+    raw = window.localStorage.getItem(SIDEBAR_STORAGE_KEY);
+  } catch {
+    return true;
+  }
+  if (raw === null) return true;
+
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!isRecord(parsed) || parsed.version !== SIDEBAR_STORAGE_VERSION || typeof parsed.open !== "boolean") return true;
+    return parsed.open;
+  } catch {
+    return true;
+  }
+}
+
+function persistSidebarOpen(open: boolean): void {
+  if (typeof window === "undefined") return;
+  const value: PersistedSidebarPreference = { version: SIDEBAR_STORAGE_VERSION, open };
+  try {
+    window.localStorage.setItem(SIDEBAR_STORAGE_KEY, JSON.stringify(value));
+  } catch {
+    // localStorage may be unavailable or full; navigation remains usable in memory.
   }
 }
 
@@ -343,6 +378,7 @@ export function App() {
   const [pendingFocusKey, setPendingFocusKey] = useState<string | null>(null);
   const [showCompleted, setShowCompleted] = useState(true);
   const [collapsedSectionsByDay, setCollapsedSectionsByDay] = useState<CollapsedSectionsByDay>(readPersistedCollapsedSections);
+  const [sidebarOpen, setSidebarOpen] = useState(readPersistedSidebarOpen);
   const [entryDrag, setEntryDrag] = useState<EntryDragState | null>(null);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [calendarFocusedDate, setCalendarFocusedDate] = useState<string | null>(null);
@@ -455,6 +491,10 @@ export function App() {
   useEffect(() => {
     persistCollapsedSections(collapsedSectionsByDay);
   }, [collapsedSectionsByDay]);
+
+  useEffect(() => {
+    persistSidebarOpen(sidebarOpen);
+  }, [sidebarOpen]);
 
   useEffect(() => {
     if (!day) return;
@@ -1631,9 +1671,13 @@ export function App() {
   }
 
   return (
-    <div className="app-layout">
-      <aside className="primary-sidebar">
-        <div className="product-mark">TaskChute</div>
+    <div className={`app-layout${sidebarOpen ? "" : " sidebar-closed"}`} data-sidebar-state={sidebarOpen ? "open" : "closed"}>
+      {sidebarOpen && <aside className="primary-sidebar">
+        <div className="sidebar-header">
+          <div className="product-mark">TaskChute</div>
+          <button type="button" className="sidebar-toggle" aria-label="サイドバーを閉じる" title="サイドバーを閉じる"
+            disabled={mutationLocked} onClick={() => setSidebarOpen(false)}>‹</button>
+        </div>
         <nav aria-label="メインナビゲーション">
           <button type="button" className={view === "today" ? "active" : ""} aria-current={view === "today" ? "page" : undefined}
             disabled={mutationLocked} onClick={() => void openTodayView()}>今日</button>
@@ -1646,9 +1690,13 @@ export function App() {
           {pending === "logout" ? "ログアウト中…" : "ログアウト"}
         </button>
       </aside>
+      }
 
-      {view === "routines" ? <RoutineBoard onUnauthorized={transitionToSignedOut} /> : view === "settings" ? (
-        <main className="shell settings-shell">
+      <div className="authenticated-content">
+        {!sidebarOpen && <button type="button" className="sidebar-reopen" aria-label="サイドバーを開く" title="サイドバーを開く"
+          onClick={() => setSidebarOpen(true)}>›</button>}
+        {view === "routines" ? <RoutineBoard onUnauthorized={transitionToSignedOut} /> : view === "settings" ? (
+          <main className="shell settings-shell">
           <header className="settings-header">
             <p className="eyebrow">Settings</p>
             <h1>設定</h1>
@@ -1738,9 +1786,9 @@ export function App() {
               }}>保留中のclient操作を破棄</button>
             </section>
           )}
-        </main>
-      ) : (
-    <main className="shell day-shell" onKeyDown={handleDayKeyDown}>
+          </main>
+        ) : (
+          <main className="shell day-shell" onKeyDown={handleDayKeyDown}>
       <header className="day-header">
         <div>
           <p className="eyebrow">TaskChuteDay</p>
@@ -2070,8 +2118,9 @@ export function App() {
           <button type="button" aria-label="実行中のTaskを完了" disabled={mutationLocked} onClick={() => void complete(day.active_execution!.entry_id)}>完了</button>
         </aside>
       )}
-    </main>
-      )}
+          </main>
+        )}
+      </div>
     </div>
   );
 }

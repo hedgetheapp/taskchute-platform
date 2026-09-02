@@ -17,7 +17,7 @@ vi.mock("../../src/web/api", async () => {
   return { ...actual, api: mocks };
 });
 
-import { App, DAY_SECTION_COLLAPSE_STORAGE_KEY } from "../../src/web/App";
+import { App, DAY_SECTION_COLLAPSE_STORAGE_KEY, SIDEBAR_STORAGE_KEY } from "../../src/web/App";
 import { ApiClientError } from "../../src/web/api";
 
 const morningId = "019c0000-0000-7000-8000-000000000002";
@@ -224,6 +224,78 @@ describe("Dogfood Day shell", () => {
     const status = screen.getByRole("status");
     expect(status.textContent).toBe("読み込み中…");
     expect(screen.queryByText(/Server canonical state/)).toBeNull();
+  });
+
+  it("closes and reopens the authenticated Sidebar while releasing its layout track", async () => {
+    mocks.loadDay.mockResolvedValue(populatedDay);
+    render(<App />);
+    await screen.findByRole("region", { name: "DayBoard" });
+
+    const layout = document.querySelector<HTMLElement>(".app-layout")!;
+    expect(layout.dataset.sidebarState).toBe("open");
+    expect(screen.getByRole("button", { name: "サイドバーを閉じる" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "サイドバーを閉じる" }));
+    expect(layout.dataset.sidebarState).toBe("closed");
+    expect(layout.classList.contains("sidebar-closed")).toBe(true);
+    expect(screen.queryByRole("button", { name: "サイドバーを閉じる" })).toBeNull();
+    expect(screen.getByRole("button", { name: "サイドバーを開く" })).toBeTruthy();
+    await waitFor(() => expect(JSON.parse(window.localStorage.getItem(SIDEBAR_STORAGE_KEY) ?? "null")).toEqual({ version: 1, open: false }));
+
+    fireEvent.click(screen.getByRole("button", { name: "サイドバーを開く" }));
+    expect(layout.dataset.sidebarState).toBe("open");
+    expect(screen.getByRole("button", { name: "サイドバーを閉じる" })).toBeTruthy();
+  });
+
+  it("shares the closed preference across Today, Routine, and Settings views", async () => {
+    mocks.loadDay.mockResolvedValue(populatedDay);
+    render(<App />);
+    await screen.findByRole("region", { name: "DayBoard" });
+
+    fireEvent.click(screen.getByRole("button", { name: "サイドバーを閉じる" }));
+    fireEvent.click(screen.getByRole("button", { name: "サイドバーを開く" }));
+    fireEvent.click(screen.getByRole("button", { name: "ルーティン" }));
+    await screen.findByRole("heading", { name: "ルーティン" });
+    fireEvent.click(screen.getByRole("button", { name: "サイドバーを閉じる" }));
+    expect(screen.getByRole("button", { name: "サイドバーを開く" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "サイドバーを開く" }));
+    fireEvent.click(screen.getByRole("button", { name: "設定" }));
+    await screen.findByRole("heading", { name: "設定" });
+    fireEvent.click(screen.getByRole("button", { name: "サイドバーを閉じる" }));
+    expect(screen.getByRole("button", { name: "サイドバーを開く" })).toBeTruthy();
+    expect(document.querySelector(".primary-sidebar")).toBeNull();
+  });
+
+  it("restores a closed Sidebar after remount and safely falls back to open for malformed storage", async () => {
+    window.localStorage.setItem(SIDEBAR_STORAGE_KEY, JSON.stringify({ version: 1, open: false }));
+    mocks.loadDay.mockResolvedValue(populatedDay);
+    const firstRender = render(<App />);
+    await screen.findByRole("region", { name: "DayBoard" });
+    expect(screen.getByRole("button", { name: "サイドバーを開く" })).toBeTruthy();
+    firstRender.unmount();
+
+    window.localStorage.setItem(SIDEBAR_STORAGE_KEY, "{not-json");
+    render(<App />);
+    await screen.findByRole("region", { name: "DayBoard" });
+    expect(screen.getByRole("button", { name: "サイドバーを閉じる" })).toBeTruthy();
+    await waitFor(() => expect(JSON.parse(window.localStorage.getItem(SIDEBAR_STORAGE_KEY) ?? "null")).toEqual({ version: 1, open: true }));
+  });
+
+  it("keeps authenticated navigation usable when Sidebar storage access fails", async () => {
+    const getItemSpy = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("storage unavailable"); });
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("storage unavailable"); });
+    try {
+      mocks.loadDay.mockResolvedValue(populatedDay);
+      render(<App />);
+      await screen.findByRole("region", { name: "DayBoard" });
+      expect(screen.getByRole("button", { name: "サイドバーを閉じる" })).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: "サイドバーを閉じる" }));
+      expect(screen.getByRole("button", { name: "サイドバーを開く" })).toBeTruthy();
+    } finally {
+      getItemSpy.mockRestore();
+      setItemSpy.mockRestore();
+    }
   });
 
   it("renders the logical Day as one surface with current Sections, Entries, and empty Sections", async () => {
