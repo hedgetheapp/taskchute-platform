@@ -117,13 +117,14 @@ Routine由来Entryにも同じSection / planned-start synchronization ruleを適
 
 ### Duplicate first slice
 
-Status: Approved (D-037, D-050). Runtime / APP migration: `NOT_IMPLEMENTED / NOT_RUN`.
+Status: Approved (D-037, D-050). Runtime / APP migration: `IMPLEMENTED / INTEGRATED`.
 
 - `DuplicateEntry`はcurrent established Dayまたはfuture established Dayのplanning-enabledなplanned Entryだけをsourceにできる。past Day、running、completed、interruptedその他historically protected stateは対象外とする。
 - 新しいTask / Entry identityを作り、title、Project、Section、estimate、planned startをcopyする。Routine relation / RoutineOccurrence、history、Execution、actual state、forecast、operation recordはcopyせず、duplicateは通常Taskのplanned Entryとする。Mode / Noteは未実装でありcopyしない。
 - duplicateはsourceとsame Day、same Section、same canonical planned-start cohortに置き、sourceのimmediate-afterをinitial insertion pointとする。
 - source / duplicateのcanonical order、Day `placement_revision`のexactly once increment、operation resultはatomicに確定する。same-operation replay、misuse rejection、stale revision、source change、identity collision、concurrency、unexpected infrastructure ambiguityはD-020のsafe retry / canonical reconciliation boundaryに従い、partial effectを残さない。
 - APP migration `0009`は`operations.command_type` CHECK compatibility extensionとして`DuplicateEntry`を追加し、全existing operation / data / identity / historyを保持する。追加schema、destructive migration、既存command rename、operation row rewriteはfirst sliceに含めない。
+- implementation commits `1d68a74148da211bfae76b6f36b86cb18f23e7fc` / `47d998e37bd12fc591b43c3624324ad237f3ca46` / `3573aaafcfcda651bc850dae706f8dd5157efe65`で`main`へIntegrated済み。local automated、real-local migration / browser、persistent nonprod migration / deploy / authenticated browser / integrityは`PASS`、productionは`NOT_RUN`、Releasedは`NO`。詳細retry / misuse / stale revision / concurrency / ambiguityはlocal automated evidenceに限定する。
 
 D-037のMode、day-specific Task Note、long-term duplicate / move / delete targetは本first sliceによって狭めない。exact HTTP / DTO / SQL / iconはimplementation detailとする。
 

@@ -296,3 +296,18 @@ Mitigation / current boundary:
 - migration / dependency / Product semantics変更は不要。productionは`NOT_RUN`。remote detailed retry / misuse / concurrency / ambiguity / rollbackはlocal automated evidenceのみである
 
 このRiskはcurrent `main`のlocal + persistent nonprod representative evidence範囲でmitigatedである。記録はfuture DayのProduct semanticsを変更せず、既存Approved Decisionを越えるfallbackやclient-side revision推測を承認しない。
+
+## R-017 — Duplicate source eligibility / canonical convergence risk
+Related: D-020, D-037, D-042, D-050
+
+Duplicateはsourceのlifecycle、logical Day、planned-start cohort、Routine relationを誤って越えると、historical stateの書換え、Routine identityの複製、order revisionの競合を起こし得る。current / established futureのplanned Entryだけを対象とし、past / running / completed / interruptedを保護する境界が必要である。
+
+Current implemented mitigation:
+
+- mutation-timeにowner、Day establishment、source lifecycle、planned state、same-Day / same-Section / same-cohort placementを再検証し、1つのD1 batchでTask / Entry / order / operationを確定する
+- Routine-derived sourceのduplicateはnormal Task / Entryとして作成し、Routine relation / Occurrence / history / Executionをcopyしない
+- same-operation replay、semantic misuse、stale revision、source change、identity collision、same-base concurrency、infrastructure ambiguityはD-020のsafe retry / canonical reconciliation境界でpartial effectを残さない
+- APP `0009` migrationで`DuplicateEntry` command typeだけを追加し、existing operations / identity / historyを保持する
+- visible / accessible pending feedbackとcanonical reloadをWebへ提供し、established past / record-none pastではwrite surfaceを無効化する
+
+Duplicate first sliceはcurrent `main`のlocal automated、real-local、persistent nonprod representative verificationでPASSした。remote detailed retry / misuse / concurrency / ambiguity、cross-Day move、protected-source mutation、production feature verificationは`NOT_RUN`であり、nonprod PASSをproductionへ自動拡張しない。Mode / Note / Bulk / Delete等のbroader semanticsは未実装のまま維持する。

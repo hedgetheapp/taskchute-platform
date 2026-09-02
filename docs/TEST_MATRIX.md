@@ -1,6 +1,6 @@
 # Test Matrix
 
-First Server + Web vertical slice、D-038 B1 / B3、D-039 B2、D-040 Minimal Routine R1、Day Table UI-1 / UI-2A / UI-2B / UI-2C、D-041 / D-042 Day Navigation v0.1、D-043 synchronization、D-044 / D-045 / D-046 Routine R2A first slice、D-047 / D-048 Routine R2B Boardは実装・GitHub `main`統合済み。R2B source review / local automated / real-local migration・browser / persistent nonprod migration・preservation・deploy・authenticated representative browserはPASS。D-049 initial production creation / migration / secure bootstrap / smokeもPASSし、initial release scopeでReleasedは`YES`。remote multi-Day propagation、詳細retry / concurrency、R2B inclusive end-date browser、production deep feature mutation等は各sectionの`NOT_RUN` / `NOT_VERIFIED`境界を維持する。
+First Server + Web vertical slice、D-038 B1 / B3、D-039 B2、D-040 Minimal Routine R1、Day Table UI-1 / UI-2A / UI-2B / UI-2C、D-041 / D-042 Day Navigation v0.1、D-043 synchronization、D-044 / D-045 / D-046 Routine R2A first slice、D-047 / D-048 Routine R2B Board、D-050 Duplicate first sliceは実装・GitHub `main`統合済み。R2B source review / local automated / real-local migration・browser / persistent nonprod migration・preservation・deploy・authenticated representative browserはPASS。D-049 initial production creation / migration / secure bootstrap / smokeもPASSし、initial release scopeでReleasedは`YES`。remote multi-Day propagation、詳細retry / concurrency、R2B inclusive end-date browser、production deep feature mutation等は各sectionの`NOT_RUN` / `NOT_VERIFIED`境界を維持する。
 
 この文書はverification requirementとcurrent evidenceの正本とする。
 
@@ -512,7 +512,7 @@ Local / preflight gate:
 
 Backup / migration / preservation:
 
-- private ignored APP export: `.wrangler/private-backups/taskchute-app-nonprod-pre-b2-20260829-165630.sql`、27,490 bytes、SHA-256 `492AFF9D4179420E16738867D336EF34A68C4D65DAC7CAA1A5716D5CC51FAB70`
+- private ignored APP exportを作成・検証: `PASS`（27,490 bytes、SHA-256 `492AFF9D4179420E16738867D336EF34A68C4D65DAC7CAA1A5716D5CC51FAB70`。private filesystem pathは記録しない）
 - isolated restore: `PASS`。pre-existing countsはapp_users 1 / projects 1 / sections 3 / taskchute_days 2 / tasks 4 / entries 4 / executions 2 / operations 15 / configuration versions 1 / heads 1 / items 3 / contexts 6
 - `0004_dogfood_day_b2.sql`: `PASS`、9 commands、pending after 0
 - preservation gate: 全12 tableのpre-existing identity / content、placement revision、estimate、historical Section contextを保持 `PASS`
@@ -612,6 +612,33 @@ Final:
 - `B1-IME-01`: `NOT_RUN`
 - `B1-PROD-01` / production verification: `NOT_RUN`
 - Released: `NO`
+
+## Duplicate first slice
+
+| ID | Area | Requirement | Contract | Evidence |
+|---|---|---|---|---|
+| DUPLICATE-01 | Eligibility | current established Dayまたはestablished future Dayのplanned Entryだけをsourceにでき、past / running / completed / interruptedは対象外とする | Approved (D-050) | PASS (LOCAL_AUTOMATED + REAL_LOCAL + NONPROD) |
+| DUPLICATE-02 | Identity / fields | 新Task / Entry identityを作り、title、Project、Section、estimate、planned startをcopyする。sourceは変更しない | Approved (D-050) | PASS (LOCAL_AUTOMATED + REAL_LOCAL + NONPROD) |
+| DUPLICATE-03 | Placement | sourceとsame Day / Section / planned-start cohortのimmediate-afterへatomicに挿入し、canonical orderとplacement revisionを維持する | Approved (D-050) | PASS (LOCAL_AUTOMATED + REAL_LOCAL + NONPROD) |
+| DUPLICATE-04 | Sectionなし | `Sectionなし` + planned start `NULL`のsourceをduplicateしてもSectionなし / `NULL`を維持する | Approved (D-050, D-043) | PASS (LOCAL_AUTOMATED + REAL_LOCAL + NONPROD) |
+| DUPLICATE-05 | Routine | Routine-derived sourceから作るduplicateはnormal planned Entryとなり、Routine relation / Occurrenceを持たずsource Routineを変更しない | Approved (D-050, D-040) | PASS (LOCAL_AUTOMATED + REAL_LOCAL + NONPROD) |
+| DUPLICATE-06 | Lifecycle | current DayでduplicateをStart → Completeでき、active Executionが最終的に0へ戻る。non-current DayのStartはdisabled | Approved (D-013, D-050) | PASS (LOCAL_AUTOMATED + REAL_LOCAL + NONPROD) |
+| DUPLICATE-07 | Reload / feedback | Duplicate pending中にvisible / accessible `Taskを複製・照合中…`を表示し、full-page reloadなしで成功、reload後もduplicateを復元する | Approved (D-020, D-050) | PASS (LOCAL_AUTOMATED + REAL_LOCAL + NONPROD) |
+| DUPLICATE-08 | Past boundary | established past / record-none pastではDuplicate write surfaceを提供せず、history / Dayをfabricateしない | Approved (D-042, D-050) | PASS (LOCAL_AUTOMATED + REAL_LOCAL + NONPROD) |
+| DUPLICATE-09 | Retry / concurrency | same-operation replay、semantic misuse、stale revision、source lifecycle change、identity collision、same-base concurrency、infrastructure ambiguityでpartial / duplicate effectを残さない | Approved (D-020, D-050) | PASS (LOCAL_AUTOMATED) |
+| DUPLICATE-10 | Migration | `0009_duplicate_entry.sql`がexisting operations / data / identity / historyを保持し、`DuplicateEntry` command typeを受理する | Approved (D-050) | PASS (LOCAL + REAL_LOCAL + NONPROD_MIGRATION) |
+| DUPLICATE-11 | Regression | B1 / B2 / B3、R1 / R2A / R2B、Day Navigation、UI-1 / UI-2、Start Forecastの既存semanticsを維持する | Approved regression contract | PASS (LOCAL_AUTOMATED + REAL_LOCAL + NONPROD representative) |
+
+Duplicate first slice local / persistent nonprod evidence（2026-09-02）:
+
+- implementation commits `1d68a74148da211bfae76b6f36b86cb18f23e7fc` / `47d998e37bd12fc591b43c3624324ad237f3ca46` / `3573aaafcfcda651bc850dae706f8dd5157efe65`で`main`へ`IMPLEMENTED / INTEGRATED`。APP `0009_duplicate_entry.sql` migration、source review、local automated、real-local、persistent nonprod migration / deploy / authenticated browser / APP integrityは`PASS`
+- local focused Duplicate integration `11 / 11 PASS`、Worker / D1 `147 / 147 PASS`、Web `109 / 109 PASS`、migration regression `3 scenarios PASS`、typecheck / build / `git diff --check` `PASS`
+- persistent nonprod pre/post migrationでAPP pending `0009 -> 0`、quick check `ok`、FK `0`、baseline aggregates Days / Tasks / Entries / Executions / Operations / Routines / Occurrences `8 / 32 / 32 / 15 / 168 / 6 / 6`を保持。isolated restore quick check / FK / aggregates一致、APP `0009` schema constraintで`DuplicateEntry`を受理
+- exact pushed `main`からWorker version `1dda19d4-5212-4d69-96a8-b6b2656de8bb`へdeployし、root `200`、protected API `401`、bootstrap route `404`、`RUNTIME_ENV=nonprod` / `BOOTSTRAP_ENABLED=false` / expected bindingsを確認
+- authenticated browserでordinary planned、`Sectionなし`、Routine-derived、established future sourceのDuplicate、pending feedback、immediate-below placement、field copy、reload、current-Day Start / Complete、past read-onlyを確認。browser console warnings / errors `0 / 0`
+- final APP aggregates Days / Tasks / Entries / Executions / Operations / Routines / Occurrences `8 / 38 / 38 / 16 / 177 / 7 / 7`（delta `+0 / +6 / +6 / +1 / +9 / +1 / +1`）。DuplicateEntry operations `5`、active Execution / duplicate active group / orphan Entry `0`。verification dataはcleanupせず残置
+- final AUTH quick check `ok`、FK `0`、users / accounts / sessions `1 / 1 / 2`。AUTH migration / credential / session resetなし
+- detailed retry / misuse / stale revision / concurrency / ambiguity / logical-past overlapはlocal automated evidenceに限定し、production feature verificationは`NOT_RUN`、Releasedは`NO`
 
 ## Routine / Documents
 
