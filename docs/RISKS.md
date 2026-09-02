@@ -292,7 +292,7 @@ Mitigation / current boundary:
 - Start Forecast v0.1はmutation endpointを変更せず、このfindingをforecast semanticsのPASSから分離する
 - failed requestでpartial stateを残さないD-020 / D-041 safetyは維持されている
 - commit `04254f60b1dfb25e66550b940b9df6b28fdf616f`でowner-scoped existing Dayを先に解決し、既存Dayならcurrent canonical revisionとfrozen historical contextを使うestablished-Day mutationへ委譲した。未establish Dayだけがrevision 0のatomic establishmentへ進む
-- sequential follow-up、stale revision rejection / no partial write、exact retry、configuration change後のfrozen context、concurrent distinct operationをautomated testで確認し、real-local browserでも同じfuture Dayへの1件目 → 2件目 → 3件目 → reload / navigation復元とAPP integrityを`PASS`した
-- migration / dependency / Product semantics変更は不要。persistent nonprod / productionは`NOT_RUN`
+- sequential follow-up、stale revision rejection / no partial write、exact retry、configuration change後のfrozen context、concurrent distinct operationをautomated testで確認し、real-local browserでも同じfuture Dayへの1件目 → 2件目 → 3件目 → reload / navigation復元とAPP integrityを`PASS`した。2026-09-02にはexact `main@59fd1f97` / Worker `1cf68d11-b878-42f1-9a90-f9585d6f3d4d`のpersistent nonprod representative verificationでもsequential Add、DB / frozen context preservation、final APP/AUTH integrityを`PASS`した
+- migration / dependency / Product semantics変更は不要。productionは`NOT_RUN`。remote detailed retry / misuse / concurrency / ambiguity / rollbackはlocal automated evidenceのみである
 
-このRiskはcurrent `main`のlocal evidence範囲でmitigatedである。記録はfuture DayのProduct semanticsを変更せず、既存Approved Decisionを越えるfallbackやclient-side revision推測を承認しない。
+このRiskはcurrent `main`のlocal + persistent nonprod representative evidence範囲でmitigatedである。記録はfuture DayのProduct semanticsを変更せず、既存Approved Decisionを越えるfallbackやclient-side revision推測を承認しない。

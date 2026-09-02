@@ -785,7 +785,7 @@ Web suiteではdeterministic Reorder / Start conflict後のcanonical refetch、a
 - private ignored APP backup: `593,920 bytes`、SHA-256 `B30F8DB17EC4113CECA16BA13CF8924B2AB36A3A3326F0B3D3049243F7FC7DE7`、backup `quick_check = ok` / FK violations `0`。private path / row contentは記録しない
 - APP baseline / final: Days `5 -> 5`、Tasks `27 -> 29`、Entries `27 -> 29`、Executions `10 -> 11`、active Execution `0 -> 0`、Routine definitions `4 -> 4`、Occurrences `4 -> 4`。final `quick_check = ok`、FK violations `0`、duplicate Task Routine `0`、UI-2A verification Entryのinvalid placement `0`
 - normal UI verification dataを残置: `UI2A planned verification`（planned / Focus / estimate `900 sec` / planned start `540`）と`UI2A lifecycle verification`（completed / Focus / ended Execution 1）。direct SQL setup / cleanupなし
-- ChatGPT source review: `PASS`。authorized 3 Web pathsのみ、fake capability / new dependency / Material Decisionなし。persistent nonprod / production: `NOT_RUN / NOT_RUN`、Released: `NO`
+- ChatGPT source review: `PASS`。authorized 3 Web pathsのみ、fake capability / new dependency / Material Decisionなし。persistent nonprod representative verification: `PASS`（2026-09-02 consolidated block参照）、production: `NOT_RUN`、Released: `NO`
 
 ### Day Table UI-2B integrated evidence — 2026-09-01
 
@@ -801,7 +801,7 @@ Web suiteではdeterministic Reorder / Start conflict後のcanonical refetch、a
 - private ignored APP backup: `593,920 bytes`、SHA-256 `06DFF19CDDCC427C26604009A9A57A0D8D75591FB9F9465D350050DFCB1801EB`、backup `quick_check = ok` / FK violations `0`。private path / row identifierは記録しない
 - APP baseline / final: Days `5 -> 5`、Tasks `29 -> 31`、Entries `29 -> 31`、Executions `11 -> 12`、Operations `162 -> 170`、active Execution `0 -> 0`。final `quick_check = ok`、FK violations `0`、invalid Section placement `0`、duplicate active Execution group `0`、duplicate Routine occurrence Entry `0`
 - normal UI verification dataを残置: UI-2B reorder verification Task 2件。既存`UI2A planned verification`はStart / Completeでcompletedへ遷移。direct SQL setup / cleanupなし
-- source self-review: `PASS`。persistent nonprod / production: `NOT_RUN / NOT_RUN`、Released: `NO`
+- source self-review: `PASS`。persistent nonprod representative verification: `PASS`（2026-09-02 consolidated block参照）、production: `NOT_RUN`、Released: `NO`
 
 ### Day Table UI-2C integrated evidence — 2026-09-01
 
@@ -818,7 +818,7 @@ Web suiteではdeterministic Reorder / Start conflict後のcanonical refetch、a
 - private ignored APP backup: `593,920 bytes`、SHA-256 `2D2A334929A0CB78AC1261B0500B5B4D61E12D65A967E3269E282847DF8C9BDA`、backup `quick_check = ok` / FK violations `0`。private path / row identifierは記録しない
 - APP baseline / final: Days `5 -> 5`、Tasks `31 -> 34`、Entries `31 -> 34`、Executions `12 -> 13`、Operations `170 -> 186`、active Execution `0 -> 0`。final `quick_check = ok`、FK violations `0`、invalid planned reorder cohort `0`、duplicate active Execution group `0`、duplicate Routine occurrence `0`
 - normal UI verification dataを3 Task残置。Task追加、planned start設定、reorder、Start / Completeはすべてnormal UI / existing command経由で、direct SQL setup / cleanupなし
-- source self-review: `PASS`。same-cohort boundary、full order、one drop / one operation、transient state、control safety、authorized 3 Web pathsのみを確認。persistent nonprod / production: `NOT_RUN / NOT_RUN`、Released: `NO`
+- source self-review: `PASS`。same-cohort boundary、full order、one drop / one operation、transient state、control safety、authorized 3 Web pathsのみを確認。persistent nonprod representative verification: `PASS`（2026-09-02 consolidated block参照）、production: `NOT_RUN`、Released: `NO`
 
 ### Settings v0.1 integrated evidence — 2026-08-30
 
@@ -848,7 +848,7 @@ Web suiteではdeterministic Reorder / Start conflict後のcanonical refetch、a
 - real-local APP: private ignored backup validation、final `quick_check = ok`、FK violations `0`、active Execution `0`、duplicate active group `0`、forecast schema object `0`
 - fresh-tab console warnings / errors: `0 / 0`
 - extended wall-clock forecast formatはautomated `PASS`、controlled real-browserは`NOT_RUN`
-- migration / dependency: `NOT_REQUIRED`、persistent nonprod / production: `NOT_RUN`、Released: `NO`
+- migration / dependency: `NOT_REQUIRED`、persistent nonprod representative verification: `PASS`（2026-09-02 consolidated block参照）、production: `NOT_RUN`、Released: `NO`
 
 | ID | Area | Requirement | Contract | Evidence |
 |---|---|---|---|---|
@@ -869,7 +869,7 @@ Web suiteではdeterministic Reorder / Start conflict後のcanonical refetch、a
 - typecheck / production build / `git diff --check`: `PASS`
 - signed-in real-local browser: future preview no-write、同じfuture Dayへのnormal UI 1件目 → 2件目 → 3件目Add、後続estimate更新、forecast更新、reload / navigation復元、non-current Start disabledを`PASS`。console warnings / errorsは`0 / 0`
 - real-local APP: private ignored backup validation、final `quick_check = ok`、FK violations `0`、active Execution `0`、tested logical dateのDay exactly 1、Entry / Task exactly 3、historical Section context重複 `0`、orphan `0`
-- persistent nonprod / production: `NOT_RUN / NOT_RUN`、Released: `NO`
+- persistent nonprod representative verification: `PASS`（2026-09-02 consolidated block参照）、production: `NOT_RUN`、Released: `NO`
 
 | ID | Area | Requirement | Contract | Evidence |
 |---|---|---|---|---|
@@ -880,6 +880,22 @@ Web suiteではdeterministic Reorder / Start conflict後のcanonical refetch、a
 | R016-05 | Retry / concurrency | exact same-operation retryは重複を作らず、同revisionのdistinct concurrent follow-upは一方だけ成功してcanonical stateへ収束する | Approved (D-020, D-041) | PASS (LOCAL_AUTOMATED) |
 | R016-06 | Web request | established future DayへのWeb Addはcanonical Day ID、logical date、current placement revisionを送る | Approved (D-020, D-041) | PASS (LOCAL_AUTOMATED + REAL_LOCAL) |
 | R016-07 | Compatibility | preview no-write、Start Forecast、non-current execution boundary、reload / navigation recoveryを維持する | Approved (D-032, D-041) | PASS (LOCAL_AUTOMATED + REAL_LOCAL) |
+
+## Persistent nonprod current-main consolidated verification — 2026-09-02
+
+- exact source / deploy: `main@59fd1f97a936bfc26946d454b44edaaa28df21b2` → existing `taskchute-web-nonprod` Worker version `1cf68d11-b878-42f1-9a90-f9585d6f3d4d`。pre-deploy versionは`4257b1ff-1be1-416d-aed5-699c46c914f0`、rollbackは`NOT_RUN / NOT_REQUIRED`
+- migration / preservation: AUTH / APP pending migrations `0 / 0`でremote migrationは不要。private ignored APP export `157,714 bytes` / SHA-256 `D4BEA62AE37D5EB66C7C34BBC77A8B32659BA898B8B245F6D0242AF23DC7875B`をisolated restoreし、`quick_check = ok`、FK violations `0`、baseline counts一致を`PASS`。private path、signed URL、user data、credential / session content、secret valueは記録しない
+- automated / static: focused Day Navigation `14 / 14`、focused Start Forecast `9 / 9`、Worker / D1 `135 / 135`、Web `103 / 103`、migration regression `3 scenarios`、typecheck、exact nonprod build、Wrangler dry-run、`git diff --check`は`PASS`。upload `1854.86 KiB` / gzip `376.16 KiB`、Worker startup `39 ms`
+- UI-2A: wide / medium / narrowでtable-owned horizontal scroll、applicable widthのfixed-left Bulk / Execution / Task foundation、narrow static fallback、rightmost column到達、presentation-only Bulk slotをauthenticated browserで`PASS`
+- UI-2B: normal Section / `Sectionなし`のpointer・keyboard collapse / expand、logical Day A → B → Aのin-session state復元、focused planned Taskの`S` Startとrunning Taskの`S` Complete、lifecycle guardを`PASS`。collapse stateのcross-reload persistenceは`NOT_IMPLEMENTED`
+- UI-2C: same Section / same canonical planned-start cohort内のactual pointer D&D、canonical reorder / reload persistence / reverse restore、cross-Sectionとdifferent-cohort invalid drop no-op、pointer `↑/↓`維持を`PASS`。`Shift+↑/↓`はautomated regression `PASS`、cross-Section D&Dは`NOT_IMPLEMENTED`
+- Start Forecast v0.1: current Dayの10m / 20m chaining、planned start非barrier、reorder recalculation、active Execution残見積、Complete reconciliation、`Sectionなし` / non-current / pastの`—`・read-only境界、`開始見込`列を含むtable usabilityを`PASS`。D-028 Interrupt / D-033 manual actual correctionへscopeを拡張しない
+- R-016 representative: future `2026-09-10` preview前後のDay / Entry / RoutineOccurrenceは`0 -> 0`。normal Webの1件目Addでatomic establishmentし、2件目 / 3件目、reload、navigate away / back、non-current Start disabledを`PASS`。final Day `1`、Entries `3`、historical Section contexts `3`、duplicate context `0`、placement revision `5`
+- representative regression: calendar picker、previous / next、`Shift+Left / Shift+Right`、Today return、future preview / establishment / reload、past record-none read-only、established past frozen history、Settings Section / Project、Routine Board、duplicate RoutineOccurrence `0`、authenticated general flowを`PASS`。browser console warnings / errorsは`0 / 0`
+- final APP integrity: `quick_check = ok`、FK violations / active Executions / duplicate active groups / duplicate RoutineOccurrences / orphan Entriesはすべて`0`。Days `7 -> 8`、Tasks `26 -> 32`、Entries `26 -> 32`、Executions `13 -> 15`、Operations `147 -> 167`、RoutineOccurrences `6 -> 6`。verification dataはcleanupせず残置
+- final AUTH integrity: `quick_check = ok`、FK violations `0`、pending migrations `0`、users / accounts / sessions `1 / 1 / 2`。credential / session contentは記録しない
+- security / deployment posture: root `200`、unauthenticated protected API `401`、bootstrap route `404`、`BOOTSTRAP_ENABLED=false`、production resource混入なし、secret value未取得を`PASS`。productionは`NOT_RUN`、Releasedは既存scopeを越えて変更しない
+- remote logout → reloginは`NOT_RUN`。R016 detailed retry / misuse / concurrency / ambiguity / rollbackは`LOCAL_AUTOMATED` evidenceのみで、remote representative PASSへ拡張しない
 
 ## Authentication / Authorization
 
