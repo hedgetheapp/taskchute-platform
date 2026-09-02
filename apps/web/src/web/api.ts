@@ -1,5 +1,7 @@
 import type {
   AddTaskToDayRequest,
+  DuplicateEntryRequest,
+  DuplicateEntryResult,
   ApiErrorCode,
   ApiErrorBody,
   CreateProjectRequest,
@@ -94,6 +96,9 @@ export const api = {
     return requestJson(body.logical_date
       ? "/api/v1/taskchute-days/by-logical-date/entries"
       : "/api/v1/taskchute-days/current/entries", jsonPost("", body));
+  },
+  duplicateEntry(body: DuplicateEntryRequest): Promise<DuplicateEntryResult> {
+    return requestJson(`/api/v1/entries/${body.source_entry_id}/duplicate`, jsonPost("", body));
   },
   reorderEntries(body: ReorderEntriesRequest): Promise<ReorderEntriesResult> {
     return requestJson("/api/v1/taskchute-days/current/entries/reorder", jsonPost("", body));

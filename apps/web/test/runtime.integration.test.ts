@@ -850,6 +850,31 @@ describe.sequential("production runtime bootstrap slice", () => {
     expect((await exports.default.fetch(`${origin}/api/v1/section-configuration`)).status).toBe(401);
   });
 
+  it("wires authenticated DuplicateEntry and rejects path/body mismatch", async () => {
+    const before = await json<{
+      placement_revision: number;
+      taskchute_day: { id: string };
+      sections: Array<{ entries: Array<{ id: string; lifecycle_state: string }> }>;
+      unsectioned_entries: Array<{ id: string; lifecycle_state: string }>;
+    }>(await browser.fetch("/api/v1/taskchute-days/current"));
+    const source = [...before.unsectioned_entries, ...before.sections.flatMap((section) => section.entries)]
+      .find((entry) => entry.lifecycle_state === "planned");
+    if (!source) throw new Error("Missing planned HTTP Duplicate fixture");
+    const body = { operation_id: uuidv7(), source_entry_id: source.id, new_task_id: uuidv7(), new_entry_id: uuidv7(),
+      taskchute_day_id: before.taskchute_day.id, expected_placement_revision: before.placement_revision };
+    const mismatch = await browser.post(`/api/v1/entries/${uuidv7()}/duplicate`, body);
+    expect(mismatch.status).toBe(400);
+    expect((await json<{ error: { code: string } }>(mismatch)).error.code).toBe("malformed_request");
+    const duplicated = await browser.post(`/api/v1/entries/${source.id}/duplicate`, body);
+    expect(duplicated.status).toBe(200);
+    expect(await json<object>(duplicated)).toMatchObject({ task_id: body.new_task_id, entry_id: body.new_entry_id,
+      taskchute_day_id: before.taskchute_day.id, placement_revision: before.placement_revision + 1 });
+    const unauthenticated = await exports.default.fetch(new Request(`${origin}/api/v1/entries/${source.id}/duplicate`, {
+      method: "POST", headers: { "content-type": "application/json", origin }, body: JSON.stringify(body),
+    }));
+    expect(unauthenticated.status).toBe(401);
+  });
+
   it("wires Reorder, Start, and Complete HTTP routes and rejects path/body Entry mismatch", async () => {
     const before = await json<{
       placement_revision: number;

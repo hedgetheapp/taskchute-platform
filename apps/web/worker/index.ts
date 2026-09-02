@@ -1,5 +1,6 @@
 import type { ApiErrorBody } from "../src/shared/contracts";
 import { addTaskToDay, isAddTaskToDayRequest } from "./application/add-task-to-day";
+import { duplicateEntry, isDuplicateEntryRequest } from "./application/duplicate-entry";
 import { createProject, isCreateProjectRequest } from "./application/create-project";
 import { loadProjects } from "./application/load-projects";
 import { HttpError } from "./application/errors";
@@ -152,6 +153,14 @@ async function route(request: Request, env: Env): Promise<Response> {
     const body = await readBoundedJson(request);
     if (!isMoveEntryRequest(body)) throw new HttpError(400, "malformed_request", "Invalid MoveEntry request");
     return Response.json(await moveEntry(env.APP_DB, principal.appUserId, body));
+  }
+  const duplicateMatch = url.pathname.match(/^\/api\/v1\/entries\/([^/]+)\/duplicate$/);
+  if (request.method === "POST" && duplicateMatch) {
+    const body = await readBoundedJson(request);
+    if (duplicateMatch[1] !== (body as { source_entry_id?: unknown })?.source_entry_id || !isDuplicateEntryRequest(body)) {
+      throw new HttpError(400, "malformed_request", "Invalid DuplicateEntry request");
+    }
+    return Response.json(await duplicateEntry(env.APP_DB, principal.appUserId, body));
   }
   const estimateMatch = url.pathname.match(/^\/api\/v1\/entries\/([^/]+)\/estimate$/);
   if (request.method === "POST" && estimateMatch) {

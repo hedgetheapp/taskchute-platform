@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CurrentTaskChuteDayProjection, EntryProjection } from "../../src/shared/contracts";
 
 const mocks = vi.hoisted(() => ({
-  login: vi.fn(), logout: vi.fn(), loadDay: vi.fn(), loadProjects: vi.fn(), createProject: vi.fn(), addTask: vi.fn(),
+  login: vi.fn(), logout: vi.fn(), loadDay: vi.fn(), loadProjects: vi.fn(), createProject: vi.fn(), addTask: vi.fn(), duplicateEntry: vi.fn(),
   reorderEntries: vi.fn(), startEntry: vi.fn(), completeEntry: vi.fn(),
   establishInitialSectionConfiguration: vi.fn(), moveEntry: vi.fn(), setEntryEstimate: vi.fn(),
   setEntryPlannedStart: vi.fn(),
@@ -160,6 +160,7 @@ beforeEach(() => {
   mocks.loadProjects.mockResolvedValue({ projects: [{ id: "existing-project", title: "Existing Project" }] });
   mocks.createProject.mockResolvedValue({ project: { id: "project", title: "Project" } });
   mocks.addTask.mockResolvedValue({});
+  mocks.duplicateEntry.mockResolvedValue({});
   mocks.reorderEntries.mockResolvedValue({});
   mocks.startEntry.mockResolvedValue({});
   mocks.completeEntry.mockResolvedValue({});
@@ -2105,5 +2106,84 @@ describe("Dogfood Day shell", () => {
     expect(screen.queryByRole("button", { name: "Routineを終了" })).toBeNull();
     expect(screen.queryByRole("button", { name: "保留中のRoutine終了を再試行" })).toBeNull();
     expect(mocks.endRoutine).not.toHaveBeenCalled();
+  });
+
+  it("duplicates a planned Entry through the retained-operation path", async () => {
+    mocks.loadDay.mockResolvedValue(populatedDay);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskを複製" }));
+    await waitFor(() => expect(mocks.duplicateEntry).toHaveBeenCalledTimes(1));
+    expect(mocks.duplicateEntry.mock.calls[0][0]).toMatchObject({
+      source_entry_id: firstEntry.id, taskchute_day_id: populatedDay.taskchute_day.id,
+      expected_placement_revision: populatedDay.placement_revision,
+    });
+    expect(screen.queryByRole("button", { name: "Canonical taskを複製" })).toBeTruthy();
+  });
+
+  it("retains only the exact ambiguous Duplicate operation and blocks unrelated actions", async () => {
+    mocks.loadDay.mockResolvedValue(twoPlannedDay);
+    mocks.duplicateEntry.mockRejectedValueOnce(new ApiClientError("ambiguous", 503, true, "infrastructure_ambiguous"))
+      .mockResolvedValueOnce({});
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskを複製" }));
+    const retry = await screen.findByRole("button", { name: "保留中のTask複製を再試行" });
+    expect((screen.getByRole("button", { name: "Second taskを複製" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(retry);
+    await waitFor(() => expect(mocks.duplicateEntry).toHaveBeenCalledTimes(2));
+    expect(mocks.duplicateEntry.mock.calls[1][0]).toEqual(mocks.duplicateEntry.mock.calls[0][0]);
+  });
+
+  it("drops an ambiguous Duplicate operation when reconciliation expires the session", async () => {
+    mocks.loadDay.mockResolvedValueOnce(populatedDay)
+      .mockRejectedValueOnce(new ApiClientError("expired", 401, false, "unauthenticated"))
+      .mockResolvedValueOnce(populatedDay);
+    mocks.duplicateEntry.mockRejectedValueOnce(new ApiClientError("ambiguous", 503, true, "infrastructure_ambiguous"));
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskを複製" }));
+
+    const login = await screen.findByRole("button", { name: "ログイン" });
+    fireEvent.change(screen.getByRole("textbox", { name: "メール" }), { target: { value: "user@example.com" } });
+    fireEvent.change(screen.getByLabelText("パスワード"), { target: { value: "password" } });
+    fireEvent.submit(login.closest("form")!);
+
+    await screen.findByRole("button", { name: "Canonical taskを複製" });
+    expect(screen.queryByRole("button", { name: "保留中のTask複製を再試行" })).toBeNull();
+  });
+
+  it("settles an ambiguous Duplicate from canonical state and focuses the new row", async () => {
+    mocks.loadDay.mockResolvedValueOnce(populatedDay).mockImplementationOnce(async () => {
+      const operation = mocks.duplicateEntry.mock.calls[0][0];
+      return {
+        ...populatedDay,
+        placement_revision: populatedDay.placement_revision + 1,
+        sections: [{
+          ...populatedDay.sections[0],
+          entries: [firstEntry, { ...firstEntry, id: operation.new_entry_id, position: firstEntry.position + 1,
+            task: { ...firstEntry.task, id: operation.new_task_id } }],
+        }, emptyDay.sections[1]],
+      };
+    });
+    mocks.duplicateEntry.mockRejectedValueOnce(new TypeError("response lost after commit"));
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskを複製" }));
+    await waitFor(() => expect(mocks.loadDay).toHaveBeenCalledTimes(2));
+    const operation = mocks.duplicateEntry.mock.calls[0][0];
+    await waitFor(() => expect((document.activeElement as HTMLElement).dataset.focusKey).toBe(`entry:${operation.new_entry_id}`));
+    expect(screen.queryByRole("button", { name: "保留中のTask複製を再試行" })).toBeNull();
+    expect(mocks.duplicateEntry).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears a deterministically rejected Duplicate and keeps non-planned actions disabled", async () => {
+    mocks.loadDay.mockResolvedValue(completedDay);
+    const completed = render(<App />);
+    expect((await screen.findByRole("button", { name: "Canonical taskを複製" }) as HTMLButtonElement).disabled).toBe(true);
+    completed.unmount();
+
+    mocks.loadDay.mockResolvedValue(populatedDay);
+    mocks.duplicateEntry.mockRejectedValueOnce(new ApiClientError("conflict", 409, true, "resource_conflict"));
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskを複製" }));
+    await waitFor(() => expect(mocks.duplicateEntry).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("button", { name: "保留中のTask複製を再試行" })).toBeNull();
   });
 });

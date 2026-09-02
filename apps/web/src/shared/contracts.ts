@@ -147,6 +147,24 @@ export interface AddTaskToDayResult {
   placement_revision: number;
 }
 
+export interface DuplicateEntryRequest {
+  operation_id: string;
+  source_entry_id: string;
+  new_task_id: string;
+  new_entry_id: string;
+  taskchute_day_id: string;
+  expected_placement_revision: number;
+}
+
+export interface DuplicateEntryResult {
+  task_id: string;
+  entry_id: string;
+  taskchute_day_id: string;
+  section_id: string | null;
+  position: number;
+  placement_revision: number;
+}
+
 export interface ReorderEntriesRequest {
   operation_id: string;
   taskchute_day_id: string;

@@ -239,6 +239,21 @@ try {
   assert.deepEqual(query("SELECT * FROM entries ORDER BY id"), preR2BEntries);
   assert.deepEqual(query("SELECT * FROM executions ORDER BY id"), preR2BExecutions);
   assert.deepEqual(query("SELECT * FROM operations ORDER BY operation_id"), preR2BOperations);
+  const preDuplicateOperations = query("SELECT * FROM operations ORDER BY operation_id");
+  const preDuplicateEntries = query("SELECT * FROM entries ORDER BY id");
+  const preDuplicateTasks = query("SELECT * FROM tasks ORDER BY id");
+  const preDuplicateExecutions = query("SELECT * FROM executions ORDER BY id");
+  applyFile("migrations/app/0009_duplicate_entry.sql");
+  assert.deepEqual(query("SELECT * FROM operations ORDER BY operation_id"), preDuplicateOperations);
+  assert.deepEqual(query("SELECT * FROM entries ORDER BY id"), preDuplicateEntries);
+  assert.deepEqual(query("SELECT * FROM tasks ORDER BY id"), preDuplicateTasks);
+  assert.deepEqual(query("SELECT * FROM executions ORDER BY id"), preDuplicateExecutions);
+  execute(["--command", `INSERT INTO operations
+    (app_user_id, operation_id, command_type, request_fingerprint_version, request_fingerprint, outcome_kind, result_json, created_at)
+    VALUES ('user-v01a', 'operation-duplicate-entry', 'DuplicateEntry', 1, 'duplicate-fingerprint', 'success', '{}',
+      '2026-08-28T03:30:00.000Z')`]);
+  assert.deepEqual(query("SELECT command_type FROM operations WHERE operation_id = 'operation-duplicate-entry'"),
+    [{ command_type: "DuplicateEntry" }]);
   assert.deepEqual(query(`SELECT routine_definition_id, schedule_kind, interval_days, weekdays_mask
     FROM routine_schedules ORDER BY routine_definition_id`), [
     { routine_definition_id: "routine-r2a-normalize", schedule_kind: "daily", interval_days: null, weekdays_mask: null },
@@ -421,7 +436,7 @@ try {
   assert.notEqual(duplicateActive.status, 0, "the active Execution unique index must reject a second active row");
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
   assert.deepEqual(query("PRAGMA foreign_key_check"), []);
-  console.log("migration regression: 3 scenarios passed (R2A normalization, R2B preservation/constraints, duplicate-Task fail-safe; chain through 0008)");
+  console.log("migration regression: 3 scenarios passed (R2A normalization, R2B preservation/constraints, duplicate-Task fail-safe; chain through 0009)");
 } finally {
   await rm(persistencePath, { recursive: true, force: true });
   await rm(failurePersistencePath, { recursive: true, force: true });

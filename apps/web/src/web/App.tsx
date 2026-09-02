@@ -11,6 +11,7 @@ import {
 import { Temporal } from "@js-temporal/polyfill";
 import type {
   AddTaskToDayRequest,
+  DuplicateEntryRequest,
   CompleteEntryRequest,
   CreateProjectRequest,
   CurrentTaskChuteDayProjection,
@@ -228,6 +229,7 @@ export function App() {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [projectOperation, setProjectOperation] = useState<CreateProjectRequest | null>(null);
   const [taskOperation, setTaskOperation] = useState<AddTaskToDayRequest | null>(null);
+  const [duplicateOperation, setDuplicateOperation] = useState<DuplicateEntryRequest | null>(null);
   const [reorderOperation, setReorderOperation] = useState<ReorderEntriesRequest | null>(null);
   const [startOperation, setStartOperation] = useState<StartEntryRequest | null>(null);
   const [completeOperation, setCompleteOperation] = useState<CompleteEntryRequest | null>(null);
@@ -247,7 +249,7 @@ export function App() {
   const [editingPlannedStart, setEditingPlannedStart] = useState<{ entryId: string; value: string } | null>(null);
   const [routineDraft, setRoutineDraft] = useState<{ entryId: string; endDate: string } | null>(null);
   const [routineCandidate, setRoutineCandidate] = useState<RoutineCandidate | null>(null);
-  const [pending, setPending] = useState<"login" | "project" | "project-settings" | "day-navigation" | "task" | "reorder" | "start" | "complete" | "configuration" | "section-settings" | "move" | "estimate" | "planned-start" | "routine-convert" | "routine-end" | "routine-edit" | "logout" | null>(null);
+  const [pending, setPending] = useState<"login" | "project" | "project-settings" | "day-navigation" | "task" | "duplicate" | "reorder" | "start" | "complete" | "configuration" | "section-settings" | "move" | "estimate" | "planned-start" | "routine-convert" | "routine-end" | "routine-edit" | "logout" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draftTask, setDraftTask] = useState<DraftTask | null>(null);
   const [pendingFocusKey, setPendingFocusKey] = useState<string | null>(null);
@@ -266,7 +268,7 @@ export function App() {
   const calendarGridRef = useRef<HTMLDivElement | null>(null);
   const routineScopeChoiceRef = useRef<HTMLSpanElement | null>(null);
   const forecastClockRef = useRef<{ serverInstant: string; monotonicMilliseconds: number } | null>(null);
-  const retainedOperation = projectOperation ?? taskOperation ?? reorderOperation ?? startOperation ?? completeOperation
+  const retainedOperation = projectOperation ?? taskOperation ?? duplicateOperation ?? reorderOperation ?? startOperation ?? completeOperation
     ?? configurationOperation ?? sectionSettingsOperation ?? sectionMoveOperation ?? estimateOperation ?? plannedStartOperation
     ?? routineConversionOperation ?? routineEndOperation ?? routineEstimateOperation ?? routineSectionPlanOperation;
   const mutationLocked = pending !== null || retainedOperation !== null;
@@ -284,6 +286,7 @@ export function App() {
     setProjects([]);
     setProjectOperation(null);
     setTaskOperation(null);
+    setDuplicateOperation(null);
     setReorderOperation(null);
     setStartOperation(null);
     setCompleteOperation(null);
@@ -561,6 +564,42 @@ export function App() {
     } finally {
       setPending(null);
     }
+  }
+
+  async function executeDuplicate(operation: DuplicateEntryRequest) {
+    setPending("duplicate");
+    setError(null);
+    try {
+      await api.duplicateEntry(operation);
+      await reconcile();
+      setDuplicateOperation(null);
+      setPendingFocusKey(focusKey({ kind: "entry", id: operation.new_entry_id }));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Task複製に失敗しました");
+      const ambiguous = isAmbiguousOutcome(caught);
+      if (!ambiguous) setDuplicateOperation(null);
+      try {
+        const projection = await reconcile();
+        if (ambiguous && projection && [...projection.unsectioned_entries, ...projection.sections.flatMap((section) => section.entries)]
+          .some((entry) => entry.id === operation.new_entry_id && entry.task.id === operation.new_task_id)) {
+          setDuplicateOperation(null);
+          setError(null);
+          setPendingFocusKey(focusKey({ kind: "entry", id: operation.new_entry_id }));
+        }
+      } catch { /* Keep the exact logical operation for retry. */ }
+    } finally {
+      setPending(null);
+    }
+  }
+
+  function duplicate(entry: EntryProjection) {
+    if (!day?.taskchute_day.id || !day.planning_enabled || entry.lifecycle_state !== "planned" || mutationLocked) return;
+    const operation: DuplicateEntryRequest = {
+      operation_id: uuidv7(), source_entry_id: entry.id, new_task_id: uuidv7(), new_entry_id: uuidv7(),
+      taskchute_day_id: day.taskchute_day.id, expected_placement_revision: day.placement_revision,
+    };
+    setDuplicateOperation(operation);
+    void executeDuplicate(operation);
   }
 
   async function commitDraft(event: FormEvent<HTMLFormElement>) {
@@ -1666,6 +1705,9 @@ export function App() {
                           onClick={(event) => { event.stopPropagation(); void moveEntry(section.id, entry.id, -1); }}>↑</button>
                         <button type="button" className="icon-button" aria-label={`${entry.task.title}を下へ`} title="下へ" disabled={mutationLocked || !day.planning_enabled || !canMoveDown}
                           onClick={(event) => { event.stopPropagation(); void moveEntry(section.id, entry.id, 1); }}>↓</button>
+                        <button type="button" className="icon-button" aria-label={`${entry.task.title}を複製`} title="Task名を複製"
+                          disabled={mutationLocked || !day.planning_enabled || entry.lifecycle_state !== "planned"}
+                          onClick={(event) => { event.stopPropagation(); duplicate(entry); }}>⧉</button>
                       </div>
                     </div>
                     <span className="project-name">{entry.task.project?.title ?? "—"}</span>
@@ -1765,6 +1807,7 @@ export function App() {
           <p>結果未確定の操作があります。元の操作だけを再試行するか、client側の保留を破棄してください。</p>
           {projectOperation && <button type="button" onClick={() => void executeCreateProject(projectOperation)}>保留中のProject作成を再試行</button>}
           {taskOperation && <button type="button" onClick={() => void executeAddTask(taskOperation)}>保留中のTask追加を再試行</button>}
+          {duplicateOperation && <button type="button" onClick={() => void executeDuplicate(duplicateOperation)}>保留中のTask複製を再試行</button>}
           {reorderOperation && <button type="button" onClick={() => void executeReorder(reorderOperation)}>保留中のReorderを再試行</button>}
           {startOperation && <button type="button" onClick={() => void executeStart(startOperation)}>保留中のStartを再試行</button>}
           {completeOperation && <button type="button" onClick={() => void executeComplete(completeOperation)}>保留中のCompleteを再試行</button>}
@@ -1778,7 +1821,7 @@ export function App() {
           {routineEstimateOperation && <button type="button" onClick={() => void executeRoutineEstimate(routineEstimateOperation)}>保留中のRoutine見積を再試行</button>}
           {routineSectionPlanOperation && <button type="button" onClick={() => void executeRoutineSectionPlan(routineSectionPlanOperation)}>保留中のRoutine配置を再試行</button>}
           <button type="button" className="secondary" onClick={() => {
-            setProjectOperation(null); setTaskOperation(null); setReorderOperation(null); setStartOperation(null); setCompleteOperation(null);
+            setProjectOperation(null); setTaskOperation(null); setDuplicateOperation(null); setReorderOperation(null); setStartOperation(null); setCompleteOperation(null);
             setConfigurationOperation(null); setSectionSettingsOperation(null); setSectionMoveOperation(null); setEstimateOperation(null); setPlannedStartOperation(null);
             setRoutineConversionOperation(null); setRoutineEndOperation(null); setRoutineEstimateOperation(null);
             setRoutineSectionPlanOperation(null); setRoutineCandidate(null); setError(null);
