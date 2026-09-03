@@ -1043,3 +1043,18 @@ APP migration `0010_bulk_selection_delete.sql`は、既存`operations.command_ty
 本DecisionはProduct / Domain scope、APP compatibility migration、atomicity、owner scope、revision、retry、Routine Skip semanticsをApprovedにするが、runtime、migration、Web、test、non-production verificationの完了を意味しない。running delete / cancelled Execution representation、completed / interrupted delete、Bulk Section / date / Project / Mode変更、group drag、persisted selection、undo / restore、production verificationは後続scopeとする。
 
 実装・検証状態は`docs/CURRENT.md`、`docs/FEATURES.md`、`docs/TEST_MATRIX.md`に記録する。本DecisionのProduct / Domain semanticsと後続scopeは変更しない。
+
+## D-052 — Bulk Selection v0.2A ordinary planned-entry Section change
+Status: Approved
+
+Bulk Selection v0.2Aでは、現在表示中のestablished Day projectionにあるordinaryなplanned Entryだけを選択し、一つのlogical commandで同一Day内のSectionを一括変更する。running、completed、historical / read-only、未establishのdraftまたはpreview、mutation-locked stateは対象外とする。選択集合にRoutine-derived Entryが含まれる場合はSection変更全体を拒否し、Routine occurrenceをsilent skipしたり、default planを変更したりしない。
+
+新しいBulk Section commandは、owner-scopedな`taskchute_day_id`、non-emptyで重複のない`entry_ids`、`section_id`（Sectionなしは`NULL`）、`expected_placement_revision`、logicalな`operation_id`を受け取る。target SectionはそのDayのestablished Section contextから解決し、clientがplanned startの権限を持たない。D-043に従い、real Sectionを指定した場合は`section_id`をtargetへ移し、`planned_start_minute`をtarget contextの`logical_start_minute`へ同期する。Sectionなしの場合は`section_id`と`planned_start_minute`をともに`NULL`へ同期する。
+
+commandはN件の個別MoveEntryではなく、一つのatomicなserver-canonical mutationとする。対象全件のowner、Day、planned / ordinary state、snapshot、expected placement revisionをtransaction内で検証し、一件でも不正またはstaleならpartial effectを残さずrejectする。実際に変更されたEntryがある場合だけDayの`placement_revision`をcommand全体でexactly +1し、target Sectionへ移るEntryはcommand直前のDay display orderを保ったままtarget groupの末尾へappendする。既にtarget Sectionとそのcanonical planned startへ同期済みのEntryはno-opとし、同一Sectionでstartだけが異なる場合はstart同期だけを行い、任意のposition churnを起こさない。
+
+operation fingerprintとD-020のretry / reconciliation境界を利用し、同一operationの同一requestは同じresultへreplayし、異なるrequestへのoperation ID再利用はrejectする。clientはexact operationを保持して再試行でき、成功後はcanonical Day projectionへreconcileしてselectionを維持し、不在またはineligibleになったIDだけをpruneする。collapse、column customization、Sidebar変更ではselectionを維持し、reload・Day navigation・logout / identity changeでは従来どおりclearする。
+
+APP migration `0011_bulk_section_change.sql`は、既存`operations.command_type`のcompatibility CHECKへ`BulkMoveEntriesToSection`だけを追加する。既存operation row、Entry / Routine / Section schema、stable identity、historical fact、既存migration semanticsは保持し、追加tableやD-043変更、Routine bulk Section UX、date / Project / Mode / Note変更は本Decisionに含めない。
+
+本DecisionはProduct / Domain scope、APP compatibility migration direction、D-043 synchronization、atomicity、owner scope、revision、retry、stable append order、Routine boundaryをApprovedにするが、runtime、migration、Web、test、non-production verificationの完了を意味しない。実装・検証状態は`docs/CURRENT.md`、`docs/FEATURES.md`、`docs/TEST_MATRIX.md`に記録する。
