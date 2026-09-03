@@ -1026,3 +1026,18 @@ D-037のlong-term duplicate targetを狭めず、first sliceではplanned source
 - same operation + same semantic requestはreplayし、different-semantic operation reuseはrejectする。stale revision、source change、identity collision、concurrent request、unexpected infrastructure ambiguityはpartial effectを残さず、D-020のsafe retry / canonical reconciliation boundaryに従う。
 
 exact HTTP / DTO / SQL / iconはimplementation detailとする。本DecisionはProduct / Domain command contractとcompatibility migration directionをApprovedにするが、runtime、APP migration、Web、test evidenceの実装完了を意味しない。
+
+## D-051 — Bulk Selection v0.1 planned-entry delete and Routine occurrence skip
+Status: Approved
+
+Bulk Selection v0.1では、現在表示中のDay projectionにある、planning mutationが許可された`planned` Entryだけを選択し、一つのlogical commandで処理する。row checkboxはreserved Bulk slotに置き、headerのselect-allは表示上のviewportではなく、collapseされたSectionを含むDay projection全体のeligible Entryへ適用する。running、completed、historical / read-only、未establishのdraftまたはpreview、mutation-locked stateは対象外とする。
+
+新しい`BulkDeleteEntries` commandは、owner-scopedな`taskchute_day_id`、non-emptyな`entry_ids`、`expected_placement_revision`、logical`operation_id`を受け取る。targetが全件そのDayに属し、現在plannedであり、ordinary Entryに安全でないExecution factがないことをtransaction内で検証する。一件でも不正、owner / Day不一致、stale placement revisionがあれば全体をrejectし、partial effectを残さない。成功時はDayの`placement_revision`をcommand全体でexactly once増加し、remaining Entryのrelative orderを維持する。
+
+ordinary planned EntryはEntry rowだけをそのDayからphysical deleteし、Task、Project、他Day、Execution / cancellation historyは変更しない。Routine-derived planned EntryはEntryまたはRoutineDefinitionを削除・変更せず、既存の`routine_occurrence_suppressions`へそのOccurrenceの`reason = 'skip'`を保存して当日のprojectionから除外する。RoutineDefinition、recurrence、future Occurrence、stable RoutineOccurrence / Entry identityは維持し、同一Dayのreload / ensureでskip済みOccurrenceを再生成しない。
+
+operation fingerprintと既存D-020のretry / reconciliation境界を利用し、同一operationの同一requestは同じ結果へreplayし、異なるrequestへのoperation ID再利用はrejectする。clientはN件の個別deleteを送らず、一件のBulk commandを送信する。成功後はcanonical Day projectionへreconcileし、local selectionをclearする。selection自体はstable Entry IDによるephemeral Web UI stateとし、localStorage / Serverには保存せず、reload・Day navigation・logout / identity changeでclearする。collapse、column customization、Sidebarの変更では維持し、reconcileで不在またはineligibleになったIDをpruneする。
+
+APP migration `0010_bulk_selection_delete.sql`は、既存`operations.command_type`のcompatibility CHECKへ`BulkDeleteEntries`だけを追加し、既存operation row / command typeを保持する。また既存`routine_occurrence_suppressions.reason`へ`skip`だけを追加し、PK、owner scope、RoutineOccurrence FK、`suppressed_at`、既存`schedule` / `period` / `paused` rowを保持する。selection persistence、Task tombstone / hard delete、running cancellation、completed / interrupted delete、Mode / Note schema、追加audit tableは本Decisionに含めない。
+
+本DecisionはProduct / Domain scope、APP compatibility migration、atomicity、owner scope、revision、retry、Routine Skip semanticsをApprovedにするが、runtime、migration、Web、test、non-production verificationの完了を意味しない。running delete / cancelled Execution representation、completed / interrupted delete、Bulk Section / date / Project / Mode変更、group drag、persisted selection、undo / restore、production verificationは後続scopeとする。
