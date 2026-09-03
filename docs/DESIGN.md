@@ -116,6 +116,8 @@ Desktop Dayだけはcommon `.shell`の`1120px` capを外し、main content内で
 
 Day TableのTask trackは`minmax(280px, 1fr)`とし、Project / Section / Routine / estimate / planned-start / forecastのcompact trackを維持したままsurplus widthの主な受け手とする。列順、fixed-left Bulk / Execution / Task、Section summary、placeholder、collapse、D&D、calendar、Floating Runnerのpositioningは変更しない。Page-level horizontal overflowを新たに作らず、`max-width: 720px`では既存のsticky解除とtable-owned scrollを維持する。
 
+Day Table column customization v0.1では、`.day-surface`が引き続きhorizontal overflowを所有し、resolved column tracksをheading / draft / normal rowで共有する。実用幅では固定左領域を維持し、720px以下ではhidden accessibility labelを含むpage-level overflowを作らず、table-owned scrollへ閉じ込める。
+
 ## Fixed left structure
 
 Day Tableの固定左領域は次とする。
@@ -156,10 +158,12 @@ Taskはtarget column listに含まれるが、固定・非表示不可である�
 - Routine
 - 見積
 - 開始予定
+- 開始見込（read-only projection）
+- 開始 / 終了 / 実績（read-only Execution projection）
 
 見積は開始予定より前に置く。Entry placement / canonical orderはD-031 / D-039に従い、visual column orderから新しいDomain orderを作らない。
 
-D-043のtarget interactionでは、開始予定の設定・変更が該当real Sectionをderiveし、real Sectionの明示選択が開始予定をSection開始minuteへ設定する。開始予定のclearと`Sectionなし`の選択はどちらもSection absence + `NULL`へ同期し、通常の編集操作から片方だけが残るstateを作らない。これはProduct / Domain targetであり、current runtimeは未対応である。
+D-043のtarget interactionでは、開始予定の設定・変更が該当real Sectionをderiveし、real Sectionの明示選択が開始予定をSection開始minuteへ設定する。開始予定のclearと`Sectionなし`の選択はどちらもSection absence + `NULL`へ同期し、通常の編集操作から片方だけが残るstateを作らない。これはcurrent runtimeへ実装済みである。
 
 ### Capability not implemented
 
@@ -167,8 +171,7 @@ D-043のtarget interactionでは、開始予定の設定・変更が該当real S
 
 - Mode
 - Note / Documents
-- 開始見込
-- fullerな開始 / 終了 / 実績row projectionとediting
+- actual timeの直接編集 / manual correction
 - Bulk Selection actions
 
 これらはtarget column modelから削除しない。一方、capability実装前にfake valueやdisabled placeholderだけの列を出さない。
@@ -178,6 +181,8 @@ D-043のtarget interactionでは、開始予定の設定・変更が該当real S
 Routineは独立したtarget columnを持つ。
 
 Day Table UI-1でMinimal Routine R1のbadge / editor / end state / actionを独立したRoutine列へ移した。これはpresentation realignmentであり、D-040のpersistence / materialization / lifecycle semanticsを変更しない。
+
+Routine columnは、current planned ordinary Entryではmutedなinline SVG iconを既存のRoutine化 editorへ開くactionとして表示する。Routine-derived Entryではaccent iconを表示し、visibleな`Routine化`buttonや冗長なbadgeを出さない。running / completed / non-current / locked等のprotected stateではmuted non-interactive iconとaccessible explanationだけを表示し、fake no-op actionを出さない。
 
 D-044のR2A targetでは、current-Day planned Routine-derived Entryの`Section + 開始予定`同期unitと見積unitを編集できる。edit値はまずlocal candidateとして表示し、この時点ではServer writeを行わない。そのunitについて`今回だけ`または`ルーティンに反映`をexplicitに選択した後にだけpersistし、どちらもpreselectしない。cancel / Escape / dismissはcandidateを破棄してcanonical valueへ戻す。
 
@@ -218,13 +223,22 @@ display column reorderはTask planning orderと別機能である。
 
 ## Column customization target
 
-- Project以後のdata columnsはreorder / hide / show / resize対象とする。
+- Project以後のdata columnsはreorder / resize / auto-fit対象とする。hide / showはfuture scopeである。
 - Taskはfixedかつnon-hideableとする。
 - Bulk slotとExecution Controlはfixed UI slotsとする。
 - resizeとauto-fitをtargetとする。
-- 初期実装ではdisplay order / width / visibility等をbrowser-local preferenceとして保持してよい。
+- display order / widthはbrowser-local preferenceとして保持し、Server / API / D1 / cross-device同期を行わない。
+- preference keyは`taskchute.web.day-columns.v1`、envelopeは`{version:1,order:[...],widths:{...}}`とし、malformed / incompatible / duplicate / unknown / missing keyは安全にrepairする。
 
-column customization runtimeは未実装である。実装状態は`docs/FEATURES.md`で管理する。
+column customization v0.1は実装済みである。registryがheading label、stable key、default/min/max width、cell class、renderer、reorder / resize / auto-fit behaviorを共有し、header drag-and-dropはProject以後だけを対象とする。実装・verification状態は`docs/CURRENT.md` / `docs/FEATURES.md` / `docs/TEST_MATRIX.md`で管理する。
+
+## Execution actual projection
+
+開始 / 終了 / 実績は、Entryへ値を書き戻す列ではなく、current-valid Execution factsからのread-only projectionとする。conceptual shapeは次である。
+
+`execution_summary = { first_started_at, last_ended_at, completed_duration_seconds, active_started_at }`
+
+複数のvalid Execution rowがある場合、開始は最初のstart、終了は最新のended time（active中は`—`）、実績はcompleted intervalの合計にcurrent display referenceからのactive elapsedを加える。logical Dayのtimezoneで表示し、Day boundaryを越える時刻は`25:10`のようなextended timeとする。現在のruntimeにはcancel / revert / correction outcomeがないため、manual correctionやhistory rewriteをこの列から導入しない。
 
 ## Day toolbar target
 
@@ -265,11 +279,11 @@ Search / Filterはvisible row projectionを変更できるが、canonical Sectio
 
 個々のshortcutのimplementation statusは`FEATURES` / `TEST_MATRIX`で管理する。
 
-## Current implementation after Start Forecast v0.1
+## Current implementation summary
 
-current mainで実装済みのvisible heading orderは次である。
+current mainで実装済みのdefault visible heading orderは次である。
 
-`実行 | Task | Project | Section | Routine | 見積 | 開始予定 | 開始見込`
+`実行 | Task | Project | Section | Routine | 見積 | 開始予定 | 開始見込 | 開始 | 終了 | 実績`
 
 Day Table UI-1では、独立した`状態`列と独立した`並び替え`列を除き、Execution Controlへlifecycle action / state presentationを維持し、Routineを独立列へ移し、見積を開始予定より前へ配置した。keyboard `Shift+↑/↓`は既存interactionとして維持し、task count、`placement_revision`、raw TaskChuteDay intervalはnormal toolbar / Day headerから除いた。
 
@@ -277,7 +291,7 @@ UI-1は既存のServer-canonical command、retry / reconciliation、placement / 
 
 UI-2AはDay Tableへ明示的なminimum content widthとtable-owned horizontal scrollを追加し、heading / Task / draftの先頭へnon-interactive reserved Bulk slotを配置した。実用幅ではBulk / Execution Control / Taskをdeterministic CSS offsetでfixed / stickyにし、狭幅ではCSS-only fallbackでstickyを解除して全列へ到達可能にする。Bulk capability / control自体は追加せず、named heading orderとexisting interaction / Domain semanticsを維持する。implementation commit `43789c990ed91febb2bb6036c1f3970dfe8f34a1`とverification / docs commit `b66d6ee2248935fd36d338ea2794762ee51b6515`はGitHub canonical `main`へIntegrated済みであり、詳細な実装・evidence状態は`CURRENT` / `FEATURES` / `TEST_MATRIX`を正本とする。
 
-UI-2BはSection summaryからnormal Section / `Sectionなし`をpointerまたはfocused summaryのEnter / Spaceでcollapse / expandできるようにし、collapse stateをlogical Dayごとのin-session stateとして保持する。focused planned / running Taskの`S`は既存のStart / Complete commandとcanonical reconciliationを使う。text editing / IME composition / key repeat / unsafe modifier中は発火しない。collapse stateのcross-reload / browser-local persistenceはまだ実装せず、broader per-Day preference targetを変更しない。implementation commit `3861b9839b55a1453b0e2f230f03728e8d85059b`はGitHub canonical `main`へIntegrated済みであり、詳細な実装・evidence状態は`CURRENT` / `FEATURES` / `TEST_MATRIX`を正本とする。
+UI-2BはSection summaryからnormal Section / `Sectionなし`をpointerまたはfocused summaryのEnter / Spaceでcollapse / expandできるようにし、collapse stateをlogical Dayごとのin-session stateとして保持する。focused planned / running Taskの`S`は既存のStart / Complete commandとcanonical reconciliationを使う。text editing / IME composition / key repeat / unsafe modifier中は発火しない。collapse stateはbrowser-local key `taskchute.web.day-section-collapse.v1`へlogical Day + stable Section identityでreload persistenceする。implementation commit `3861b9839b55a1453b0e2f230f03728e8d85059b`とpersistence commit `b81ea533c27dbcf81e3baae865f361d0f40f66e3`はGitHub canonical `main`へIntegrated済みであり、詳細な実装・evidence状態は`CURRENT` / `FEATURES` / `TEST_MATRIX`を正本とする。
 
 UI-2CはTask cell内のcompact drag handleから、同じSectionかつ同じcanonical planned-start cohort内のplanned Entryをrow上半分 / 下半分へbefore / after配置するD&Dを実装した。最終orderは既存`ReorderEntries` commandとServer-canonical reconciliationから取得し、invalid / no-op dropはmutationしない。keyboard `Shift+↑/↓`は維持する。cross-Section D&D v0.1は後続の`MoveEntry` first sliceとして実装し、詳細な実装・evidence状態は`CURRENT` / `FEATURES` / `TEST_MATRIX`を正本とする。
 
@@ -285,9 +299,11 @@ cross-Section D&D v0.1はimplementation commit `89d4784fddca891421d3619def352ee1
 
 Start Forecast v0.1はD-032のderived projectionとして、`開始予定`の後ろへread-onlyの`開始見込`列を追加した。current Dayはserver projection生成時刻をanchorにactive Executionの見積残時間とtimed Section内planned Entryの見積を累積し、future established DayはDay startをanchorにする。planned startはforecast barrierではなく、completed / running自身、`Sectionなし`、past / record-noneは`—`表示とする。implementation commit `8939c4d6af95e2fd21b7d91e0e946bee29a6c1fb`はGitHub canonical `main`へIntegrated済みであり、詳細な実装・evidence状態は`CURRENT` / `FEATURES` / `TEST_MATRIX`を正本とする。
 
+Day Table column customization v0.1は、Project / Section / Routine / 見積 / 開始予定 / 開始見込 / 開始 / 終了 / 実績のregistry-driven heading / row / draft alignment、header reorder、shared width resize、handle double-click auto-fit、browser-local order / width persistenceを実装した。fixed Bulk / Execution / Taskは対象外であり、Mode / Noteはruntime projectionへ追加していない。実績列はExecution summaryのread-only projectionであり、manual correctionは行わない。implementation / fix commits `10584ba`、`6100d20`、`6316b0d`、`60eecdd`はGitHub canonical `main`へIntegrated済みで、詳細なevidence状態は`CURRENT` / `FEATURES` / `TEST_MATRIX`を正本とする。
+
 current runtimeでは、Day Navigation v0.1のTop Navigation date navigation / calendar pickerと、Settings v0.1のLeft Sidebar `今日` / `設定`およびdedicated Section / Project Settings surfaceを実装済みである。DayBoard上のtemporary Project作成controlとSection設定editorは撤去済み。Desktop Day wide layoutとauthenticated Sidebar open / closed preferenceの実装状態は`docs/FEATURES.md`、`docs/CURRENT.md`、`docs/TEST_MATRIX.md`を正本とする。
 
-full target column modelはcurrent implementationより広い。Bulk capability、Mode、Note、fullerな開始 / 終了 / 実績、column reorder / hide / show / resize / auto-fit / preference、Search / Filter、fullerなcontext interaction等はfuture workとして残る。responsive / mobileのexact policyは引き続きOpenであり、UI-2Aの狭幅fallbackをProduct Decisionへ昇格しない。
+full target column modelはcurrent implementationより広い。Bulk capability、Mode、Note、hide / show、actual timeのmanual correction、Search / Filter、fullerなcontext interaction等はfuture workとして残る。browser-local preferenceはServer / API / D1 / cross-device同期を行わず、responsive / mobileのexact policyは引き続きOpenであり、UI-2Aの狭幅fallbackをProduct Decisionへ昇格しない。
 
 ## Unreconciled historical scope
 

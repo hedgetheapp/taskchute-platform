@@ -764,6 +764,13 @@ R1 integrated implementation / verification evidence（2026-08-30）:
 | WEB-07 | Web | ambiguous Reorder / Start / Completeは元operationだけを明示retryでき、別操作から旧operationを暗黙再送しない | Approved (D-020) | PASS |
 | WEB-08 | Web | current DayBoard外のEntryに属するactive ExecutionもWebからCompleteできる | Approved (D-013, D-017) | PASS |
 | WEB-DAY-STATUS-LAYOUT-01 | Web / DayBoard | startup loading copyは不要なserver実装用語を露出せず、Add Taskと代表的なplacement / lifecycle / Routine mutationはshared transient statusを使う。pending表示 / 消去でDayBoard直前のin-flow rowを増減させず、canonical reconciliation / retryとdeterministic error / conflict表示を維持する | Approved UX invariant | PASS |
+| WEB-DAY-COLUMNS-REGISTRY-01 | Web / Day Table | target orderをfixed Bulk / Execution / TaskとProject以後のstable registry keyへ分離し、heading / draft / normal rowが同じresolved order / tracksを共有する | Approved (Task Contract) | PASS (LOCAL_AUTOMATED + NONPROD) |
+| WEB-DAY-COLUMNS-PREFERENCE-01 | Web / Day Table | order / widthをversioned browser-local envelopeへ保存し、duplicate / unknown / missing / malformed / incompatible payloadとStorage failureをsafeに扱う。Server / API / D1 / cross-device同期は行わない | Approved (Task Contract) | PASS (LOCAL_AUTOMATED + NONPROD) |
+| WEB-DAY-COLUMNS-INTERACTION-01 | Web / Day Table | Project以後だけをheader D&D reorder対象とし、fixed slots / Entry order / placement / lifecycleをmutationしない。resizeはshared heading / row trackをmin/max内で更新する | Approved (Task Contract) | PASS (LOCAL_AUTOMATED); browser D&D `NOT_VERIFIED` |
+| WEB-DAY-COLUMNS-AUTOFIT-01 | Web / Day Table | resize handleのdouble-click auto-fitがlabel / cell contentを考慮し、既存幅から縮小・拡大でき、同じbrowser-local width preferenceへ保存する | Approved (Task Contract) | PASS (LOCAL_AUTOMATED + NONPROD) |
+| WEB-DAY-COLUMNS-ROUTINE-01 | Web / Day Table / Routine | ordinary current planned / derived / protected stateをcompact inline SVG icon、accessible label、existing Routine editor / no-op boundaryで表示する | Approved (Task Contract) | PASS (LOCAL_AUTOMATED + NONPROD) |
+| WEB-DAY-ACTUAL-PROJECTION-01 | Web / Day Table / Execution | multiple current-valid Execution factsからfirst start、last ended、completed interval合計、active elapsedをread-only projectionし、active end `—`とlogical extended timeを表示する | Approved (D-016, D-032, Task Contract) | PASS (LOCAL_AUTOMATED + NONPROD lifecycle) |
+| WEB-DAY-COLUMNS-RESPONSIVE-01 | Web / Day Table | 1920 / 1440 / 1280 / 720pxでpage-level overflowを作らず、wide table ownership、narrow sticky fallback、Sidebar open / close / reopen、既存row / editor interactionを維持する | Approved (Task Contract) | PASS (NONPROD) |
 
 Web suiteではdeterministic Reorder / Start conflict後のcanonical refetch、ambiguous operationのRetry / Discard、unrelated button guard、cross-day active Execution completionを明示的にcoverageしている。
 
@@ -894,6 +901,24 @@ Web suiteではdeterministic Reorder / Start conflict後のcanonical refetch、a
 - source self-review: `PASS`。Day-only widening、non-Day `.shell` preservation、elastic minimum-safe Task track、table-owned scroll、sticky fallback、released Sidebar track、browser-local safe storage、shared reopen control、no Domain/API/Worker/data/dependency changeを確認
 - Product / Domain / Architecture / Policy Decision: `UNCHANGED / NONE`
 - classification: Desktop Day wide layout + Sidebar collapse v0.1 `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / PERSISTENT_NONPROD_VERIFIED`、production `NOT_RUN`、Released `NO`
+
+## Day Table column customization + actual projection v0.1 integrated evidence — 2026-09-03
+
+- implementation commits: `10584ba`（`Customize Day Table columns`）、`6100d20`（auto-fit縮小修正）、`6316b0d`（mobile overflow修正）、`60eecdd`（hidden label containment修正）をGitHub canonical `main`へIntegrated済み
+- changed runtime / test paths: `apps/web/src/shared/contracts.ts`、`apps/web/src/web/day-columns.ts`、`apps/web/src/web/App.tsx`、`apps/web/src/web/styles.css`、`apps/web/src/web/worker/application/load-current-day.ts`、`apps/web/test/web/App.test.tsx`、`apps/web/test/web/day-columns.test.ts`、`apps/web/test/b2.integration.test.ts`
+- source review: `PASS`。fixed Bulk / Execution / Taskとcustomizable Project以後の分離、registry-driven heading / draft / normal row alignment、stable storage repair、handle resize / auto-fit、Routine action boundary、read-only Execution projection、existing command / lifecycle pathの再利用を確認
+- structural contract: default order `実行 | Task | Project | Section | Routine | 見積 | 開始予定 | 開始見込 | 開始 | 終了 | 実績`。Project以後の9 data columnsだけがreorder / resize / auto-fit対象で、fixed slotsは不変。Mode / Note、hide / show、manual actual correctionは未実装
+- browser-local preference: key `taskchute.web.day-columns.v1`、envelope `{version:1,order:[...],widths:{...}}`。local automatedでduplicate / unknown / missing / version repair、reorder persistence、Storage-safe boundaryを確認。Server / API / D1 / cross-device同期なし
+- actual projection contract: `execution_summary = { first_started_at, last_ended_at, completed_duration_seconds, active_started_at }`。複数completed intervalを合計し、active中はcurrent display referenceからelapsedを加算、終了は`—`、logical Day boundary越えはextended timeで表示。projectionはread-onlyでEntry / Executionへderived valueを書き戻さない
+- local automated: Web focused changed suites / full Web `129 / 129 PASS`、focused Worker projection `8 / 8 PASS`、full Worker / D1 `151 / 151 PASS`、typecheck、production build、`git diff --check` `PASS`。migration / new dependencyは`NOT_REQUIRED`
+- persistent nonprod deployment: exact pushed `main@60eecdd`を`CLOUDFLARE_ENV=nonprod`でbuildし、generated target `taskchute-web-nonprod`（`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、AUTH `60085f8d-0c4e-4c15-98e9-3ce178398041`、APP `6ad7e35f-5d03-4be3-9b00-46cd713a51c3`）を確認。pending migrationはAUTH / APP `0 / 0`、Worker version `75a19e18-1311-4620-9cc6-8374c8bb740d`
+- authenticated nonprod browser: default order、Project resize `100 → 220 → reload保持 → 150復元`、auto-fit縮小、derived / ordinary / protected Routine icon、normal UI Start → running → Complete → reloadでactual列保持を`PASS`。runningは開始 `10:04` / 終了 `—` / 実績 `0分`、complete後は開始 `10:04` / 終了 `10:04` / 実績 `0分`
+- browser D&D boundary: header column Cua dragはorder / visible indicator / data mutationとも変化しないno-opだったため`NOT_VERIFIED`。local automated D&D reorder / persistenceは`PASS`であり、browser no-opをmutation successへ昇格しない。row D&D / existing entry reorder regressionはlocal suiteのcoverageを維持
+- responsive browser: page `docScroll`は1920 / 1440 / 1280 / 720pxで各viewport内、Day Table `client / scroll`は`1646 / 1646`、`1166 / 1280`、`1006 / 1280`、`462 / 1280`。720pxはsticky static + table-owned scroll、Sidebar close / reopenも`PASS`
+- browser console warnings / errors: `0 / 0`
+- API / DB safety: root `200`、unauthenticated protected API `401`、disabled bootstrap POST `404`。AUTH / APP remote read-only `PRAGMA quick_check = ok`、FK violations `0`、read-only query `rows_written = 0`。layout preferenceはDBへ書き込まず、Start → Completeは既存nonprod verification Taskへの意図的normal UI lifecycle write 1件
+- production / release: production feature-specific verification `NOT_RUN`、Released `NO`
+- classification: Day Table column customization + actual projection v0.1 `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / PERSISTENT_NONPROD_VERIFIED`。remaining boundariesはhide / show、Mode / Note、fixed slot reorder、Sidebar resize、Server / cross-device preference、manual correction、cross-Day / fuller context interaction
 
 ### Settings v0.1 integrated evidence — 2026-08-30
 
