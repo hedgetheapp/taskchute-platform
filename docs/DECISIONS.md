@@ -1077,3 +1077,26 @@ D-020に従い、同一operationの同一requestはresultをreplayし、異な�
 APP compatibility migration `0012_bulk_routine_section_occurrence.sql`は、`operations.command_type`のCHECKへ`BulkMoveEntriesToSectionOccurrence`だけを追加する。既存command type、既存operation row、RoutineOccurrence、RoutineDefinition、Entry、Section、Day schema、suppression stateを保持し、新しいRoutine schema / Entry schema / Section schema / Day schema / tableは追加しない。実装・migration・verificationの完了は本Decisionだけでは意味せず、状態はcanonical evidence docsへ記録する。
 
 本DecisionではBulk `Routineへ反映`、複数RoutineDefinitionへのdefault propagation、future / past Routine bulk Section edit、Bulk date / Project / Mode / Note、undo / restore、production verificationを扱わない。D-044の歴史的文言は変更せず、D-052のordinary-only semanticsも変更しない。
+
+## D-054 — Bulk Selection v0.2B2 per-Routine Section propagation scope
+Status: Approved
+
+Bulk Selection v0.2B2では、establishedな現在の論理TaskChuteDayにあるplanned Entryを対象に、ordinary Entry、Routine-derived Entry、または両者の混在を、一つのlogical commandで同一DayのSectionへ変更できる。ordinary EntryはD-052に従い表示中のcurrent Dayだけを変更する。running、completed、historical / protected、preview、未establish Day、suppressed / unavailable、mutation-locked stateは対象外とし、一件でも不適格なら全体をrejectする。
+
+Routine-derived Entryごとに、`今回だけ`または`ルーティンに反映`を独立して明示選択する。scopeはpreselectしない。選択面には`すべて今回だけ`と`すべてルーティンに反映`の明示的なfill-all helperを用意し、helper後も各Routine rowを個別に変更できる。選択中Routineのscopeが一つでも未選択ならfinal confirmをdisabledとし、cancel、Escape、dismissはwriteせずselectionを維持する。ordinary Entryを表示する場合、そのscopeはcurrent Dayだけに固定する。
+
+scopeを確定したselectionは、N件の個別commandではなく一件の`BulkMoveEntriesToSectionScoped` logical commandとしてatomicに処理する。requestはowner-scopedなcurrent `taskchute_day_id`、全selected `entry_ids`、target `section_id`（`Sectionなし`は`NULL`）、Routineごとのscopeとdefinition scopeで必要な`expected_defaults_revision`、current Dayの`expected_placement_revision`、logicalな`operation_id`を持つ。RoutineDefinition identityはEntry relationからServerが解決し、planned startはclient authorityにせず、current DayのSection contextからServerがtarget pairをderiveする。routine scopeの配列はsemantically unorderedな内容をfingerprint前に正規化し、duplicate、ordinaryの混入、欠落、invalid scope、definition scopeのrevision欠落を拒否する。
+
+`今回だけ`はD-053 / D-044のcurrent occurrence semanticsを再利用し、current occurrenceのSection-plan overrideをcreateまたはreplaceする。overrideがなくeffective pairが同じ場合も明示的なoverride意図を保存し、同じ既存overrideの場合だけtrue no-opとする。RoutineDefinition、default、defaults revision、future / other occurrence、schedule、enabled / pause、Board order、suppression、historical stateは変更しない。
+
+`ルーティンに反映`はD-044のcurrent single-Routine definition semanticsを再利用する。対象RoutineDefinitionのdefault Section / planned startを更新し、`defaults_revision`をそのDefinitionごとに一回だけ増加させる。selected current occurrenceのSection-plan overrideはclearされ、new defaultを継承する。already-materializedなcurrent / futureのplanned Entryのうち同unitにexplicit overrideがないものへpropagateし、他のOccurrenceのexplicit override、past、running、completed、protected stateは上書きしない。default propagationだけを理由にfuture TaskChuteDay、RoutineOccurrence、Entryをmaterializeしない。複数のRoutineDefinitionを含む場合も、各Definitionのdefault更新とpropagationは一つのatomic outcomeへ含める。same-definitionが複数Entryとして現れる場合はDefinition更新を一回に限定し、scopeの不一致を安全にrejectまたは一つのscope decisionへgroupする。
+
+real Sectionでは各affected Dayのfrozen Section contextが持つ`logical_start_minute`をtarget pairとして利用し、`Sectionなし`ではSection / planned startをともに`NULL`へ同期する。affected Dayがtarget pairを安全に受理できない場合やfrozen context / protected stateを変更する必要がある場合は全体をrejectし、contextやfuture stateを捏造しない。D-043 Section + planned-start invariantを維持する。
+
+各affected Dayのcanonical pre-mutation display orderを一度読み、そのDayのordinary / occurrence / definition propagationによる全moverをRoutineDefinition単位で分けず一緒にtarget group末尾へstable appendする。target non-moverのrelative orderを保持し、same-Section start-only change、occurrence override-only change、metadata/default-only changeはpositionを変更しない。visibleなEntryのSection / planned start / position changeが一つでもある場合だけ、そのDayの`placement_revision`をBulk command全体でexactly一回増加させ、override-only / metadata-onlyなら増加させない。
+
+owner、Day、Entry lifecycle / snapshot、RoutineOccurrence relation / override snapshot、RoutineDefinition default pair / defaults revision、propagation target、全affected Day revision、Section context、suppression / protectionをtransaction内でguardする。stale state、invalid target、concurrent default / placement change、injected failure、unexpected ambiguityはdefinition update、occurrence override、ordinary Entry、future propagation、Day revisionのpartial effectを残さずrejectまたは既存D-020のambiguous retry boundaryへ収束させる。同一operationの同一semantic requestはresultをreplayし、operation IDの異なるrequestへの再利用をrejectする。retryでdefaults revision、Day revision、propagationを二重適用しない。
+
+APP compatibility migration `0013_bulk_routine_section_scoped.sql`は、既存`operations.command_type`のCHECKへ`BulkMoveEntriesToSectionScoped`だけを追加するrebuildとする。既存command type、operation row / field、RoutineDefinition、RoutineOccurrence、Entry、TaskChuteDay、Section、suppression schema、PK / FKを保持し、新しいRoutine / Entry / Day / Section schemaやtableは追加しない。本Decisionはcompatibility-only migrationをApprovedにするが、runtime、migration、Web、test、non-production verificationの完了を意味しない。
+
+本DecisionはD-044、D-052、D-053の歴史的文言を変更しない。Bulk date / Project / Mode / Note、cross-Day move、undo / restore、production operationは扱わない。実装・検証状態は`docs/CURRENT.md`、`docs/FEATURES.md`、`docs/TEST_MATRIX.md`へ記録する。
