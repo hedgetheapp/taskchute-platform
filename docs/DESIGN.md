@@ -244,6 +244,14 @@ column customization v0.1は実装済みである。registryがheading label、s
 - success後はcanonical Day projectionへreconcileし、relative order、Routine identity、future generation semanticsを維持する。atomic guard、owner scope、stale revision、operation replay / ambiguityは既存command conventionへ従う。Task hard delete、running cancellation、completed / interrupted delete、undo / restore、persisted selectionはこのsliceに含めない。
 - narrow viewportではtoolbarをwrapし、Columns popoverをviewport内へ収める。Day Table自身がhorizontal scrollを所有し、既存のsticky / narrow fallbackとfixed slot alignmentを維持する。
 
+## Bulk Selection v0.2A — Section change
+
+D-052に基づくBulk Section changeは、D-051のselection surfaceを再利用する追加sliceである。toolbarは`N件選択中 | Section変更 | 削除 | 選択解除`とし、pickerはcurrent DayのSection orderと`Sectionなし`を提示する。Escape / outside click / cancelはwriteせず、成功後はselectionを維持する。Routine-derived Entryを含むselectionでは`Section変更`をdisabledにし、明示した理由をaccessible descriptionへ出す。running / completed / historical / preview / locked stateはselection / mutation対象外とする。
+
+Section変更はN件の個別MoveEntryではなく、一つの`BulkMoveEntriesToSection` commandで行う。serverはowner-scoped Day、selected Entry、expected `placement_revision`、planned ordinary state、snapshotをatomicに検証する。real SectionはDay Section contextの`logical_start_minute`から`section_id + planned_start_minute`を同期し、`Sectionなし`は`section_id + planned_start_minute`をともに`NULL`へ同期する。実変更があるときだけDay revisionをcommand全体でexactly `+1`し、moverはcommand前のDay display orderを保ってtarget group末尾へappendする。同一Sectionのstart-only syncはpositionを変更せず、既にcanonicalなtargetはno-opとする。
+
+operation fingerprint / replay、misuse rejection、stale revision、snapshot guard、rollback / ambiguous retryは既存D-020 command conventionへ従う。APP compatibility migration `0011_bulk_section_change.sql`は`operations.command_type`のCHECKだけを拡張し、既存rowsとEntry / Routine / Section schemaを変更しない。Bulk date / Project / Mode / Note、Routine bulk Section、cross-Day move、undo / restoreはこのsliceへ含めない。
+
 ## Execution actual projection
 
 開始 / 終了 / 実績は、Entryへ値を書き戻す列ではなく、current-valid Execution factsからのread-only projectionとする。conceptual shapeは次である。
