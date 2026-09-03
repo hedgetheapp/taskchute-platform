@@ -51,6 +51,8 @@ underlying capabilityが未実装のdestinationについて、fake screenや無�
 
 SidebarはDesktop初期幅約240pxをstarting pointとし、180〜420px程度のresize、open / closed stateとwidthの分離、閉じる直前のwidth復元をtargetとする。初期Desktop WebではSidebar preferenceをbrowser-localに保持してよい。
 
+Current authenticated shellではSidebarを約240pxでopenし、close時はSidebarをrenderせずmain contentのgrid trackを1列へ戻す。open / closed preferenceはversioned browser-local storageへ保持し、Today / Routine Board / Settingsで共有する。Sidebar resize、saved custom width、icon-only railは未実装である。
+
 ## Settings information architecture
 
 Section / Projectの管理はDayBoardの常設controlではなく、dedicated Settings surfaceで行う。
@@ -107,6 +109,12 @@ Dayは一つの連続したDay Tableとして表示する。
 - 通常SectionはTaskが0件でもsummary rowを表示する。
 - Sectionごとのcard layoutには分割しない。
 - 必要な列数がviewport幅を超える場合、列を黙って削るのではなく、固定領域を維持したhorizontal scrollを許容する。
+
+## Desktop Day wide layout
+
+Desktop Dayだけはcommon `.shell`の`1120px` capを外し、main content内で`calc(100% - 32px)`の左右gutterを保って利用可能幅へ広げる。Settings / Routine Board / Authのcommon `.shell`幅は変更しない。Day Tableは引き続き`.day-surface`がhorizontal scrollを所有し、minimum useful widthを下回るviewportでは既存のscroll fallbackを使う。
+
+Day TableのTask trackは`minmax(280px, 1fr)`とし、Project / Section / Routine / estimate / planned-start / forecastのcompact trackを維持したままsurplus widthの主な受け手とする。列順、fixed-left Bulk / Execution / Task、Section summary、placeholder、collapse、D&D、calendar、Floating Runnerのpositioningは変更しない。Page-level horizontal overflowを新たに作らず、`max-width: 720px`では既存のsticky解除とtable-owned scrollを維持する。
 
 ## Fixed left structure
 
@@ -277,7 +285,7 @@ cross-Section D&D v0.1はimplementation commit `89d4784fddca891421d3619def352ee1
 
 Start Forecast v0.1はD-032のderived projectionとして、`開始予定`の後ろへread-onlyの`開始見込`列を追加した。current Dayはserver projection生成時刻をanchorにactive Executionの見積残時間とtimed Section内planned Entryの見積を累積し、future established DayはDay startをanchorにする。planned startはforecast barrierではなく、completed / running自身、`Sectionなし`、past / record-noneは`—`表示とする。implementation commit `8939c4d6af95e2fd21b7d91e0e946bee29a6c1fb`はGitHub canonical `main`へIntegrated済みであり、詳細な実装・evidence状態は`CURRENT` / `FEATURES` / `TEST_MATRIX`を正本とする。
 
-current runtimeでは、Day Navigation v0.1のTop Navigation date navigation / calendar pickerと、Settings v0.1のLeft Sidebar `今日` / `設定`およびdedicated Section / Project Settings surfaceを実装済みである。DayBoard上のtemporary Project作成controlとSection設定editorは撤去済み。broader Sidebar destination、resize / preference等の実装状態は`docs/FEATURES.md`、`docs/CURRENT.md`、`docs/TEST_MATRIX.md`を正本とする。
+current runtimeでは、Day Navigation v0.1のTop Navigation date navigation / calendar pickerと、Settings v0.1のLeft Sidebar `今日` / `設定`およびdedicated Section / Project Settings surfaceを実装済みである。DayBoard上のtemporary Project作成controlとSection設定editorは撤去済み。Desktop Day wide layoutとauthenticated Sidebar open / closed preferenceの実装状態は`docs/FEATURES.md`、`docs/CURRENT.md`、`docs/TEST_MATRIX.md`を正本とする。
 
 full target column modelはcurrent implementationより広い。Bulk capability、Mode、Note、fullerな開始 / 終了 / 実績、column reorder / hide / show / resize / auto-fit / preference、Search / Filter、fullerなcontext interaction等はfuture workとして残る。responsive / mobileのexact policyは引き続きOpenであり、UI-2Aの狭幅fallbackをProduct Decisionへ昇格しない。
 

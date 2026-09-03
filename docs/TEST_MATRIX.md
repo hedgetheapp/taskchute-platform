@@ -872,6 +872,29 @@ Web suiteではdeterministic Reorder / Start conflict後のcanonical refetch、a
 - source self-review: `PASS`。new Domain semantics / migration / dependency / policy変更なし、existing `MoveEntry` call pathとsame-Section Reorder pathを分離、no implicit routine scope、pending mutation lock、full reconcile / focus restorationを確認
 - classification: cross-Section D&D v0.1 `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / PERSISTENT_NONPROD_VERIFIED`、production `NOT_RUN`、Released `NO`
 
+## Desktop Day wide layout + Sidebar collapse v0.1 integrated evidence — 2026-09-03
+
+- implementation commit: `74f7b24`（subject `Widen Desktop Day layout`）をGitHub canonical `main`へpush済み。changed runtime / test pathsは`apps/web/src/web/App.tsx`、`apps/web/src/web/styles.css`、`apps/web/test/web/App.test.tsx`。Worker / API / shared contract / D1 / migration / dependencyは変更なし
+- implementation: Day-only `.day-shell`は`width: calc(100% - 32px); max-width: none`、common `.shell`は`1120px` capを維持。`.day-surface`は`overflow-x: auto`のownerを維持し、Task trackは`minmax(280px, 1fr)`、その他のcompact trackと列順、Bulk / Execution / Task sticky foundation、narrow fallbackを維持
+- Sidebar: open stateは`240px minmax(0, 1fr)`、closed stateはSidebarをrenderせず`minmax(0, 1fr)`の1列。reopen controlはauthenticated content内でToday / Routine / Settingsに共有。storage keyは`taskchute.web.sidebar.v1`、envelopeは`{version:1,open:boolean}`、malformed / incompatible / Storage exceptionはopen fallback、read/write failureはnavigationを壊さない。resize / saved width / server syncは未実装
+- local automated: focused Web `120 / 120 PASS`、full Web `126 / 126 PASS`、typecheck、production build、`git diff --check` `PASS`。Worker / D1 / migration suiteはpresentation-only impact analysisで`NOT_REQUIRED`
+- persistent nonprod: generated config / dry-run、Worker `taskchute-web-nonprod` version `2886e754-6266-4eda-8260-76d7703f8f29`、exact pushed main `74f7b24`、AUTH / APP pending migrations `0`、`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、AUTH_DB / APP_DB bindingを`PASS`
+
+| viewport | Sidebar state | Day shell | Task track | table scroll | page overflow |
+|---|---|---:|---:|---|---|
+| 1920px | open | 1648px | 848px | none (`1646 / 1646`) | none (`1920 / 1920`) |
+| 1920px | closed | 1888px | 1088px | none (`1886 / 1886`) | none (`1920 / 1920`) |
+| 1440px | open | 1168px | 368px | none (`1166 / 1166`) | none (`1440 / 1440`) |
+| 1280px | open | 1008px | 332px within `1130px` minimum | owned by `.day-surface` (`1006 / 1130`) | none (`1280 / 1280`) |
+| 720px | open | 464px | 332px within `1130px` minimum | owned by `.day-surface` (`462 / 1130`), sticky `static` | none (`720 / 720`) |
+
+- authenticated browser `https://taskchute-web-nonprod.taskfulness-sync.workers.dev/`、logical date `2026-09-03`: 1920 open / close / reopen、closed reload persistence、1440 / 1280 / 720 responsive width、720 sticky fallback、Routine / Settings non-Day shell glance、Today / Routine / Settings preference sharing、calendar month grid `42` cells、Section collapse / expand、empty Add Task draft cancel、rightmost `開始見込` reachabilityを`PASS`。console warnings / errors `0 / 0`
+- D&D / alignment regression: local full Webのexisting same-Section / cross-Section / no-write / keyboard D&D coverageは`126 / 126 PASS`、browserではwidened table / Section summary alignment / placeholder-compatible surfaceをstatic確認。Cua actual dragはtarget / UI / DB writeの変化がないno-opだったためmutation successとは扱わず、nonprod Domain dataを追加変更していない
+- API / DB safety: root `200`、unauthenticated protected API `401`、disabled bootstrap POST `404`。AUTH / APP remote read-only `PRAGMA quick_check = ok`、FK violations `0`、`changes=0`、`rows_written=0`。layout verificationによるdirect SQL write / migration / cleanupなし
+- source self-review: `PASS`。Day-only widening、non-Day `.shell` preservation、elastic minimum-safe Task track、table-owned scroll、sticky fallback、released Sidebar track、browser-local safe storage、shared reopen control、no Domain/API/Worker/data/dependency changeを確認
+- Product / Domain / Architecture / Policy Decision: `UNCHANGED / NONE`
+- classification: Desktop Day wide layout + Sidebar collapse v0.1 `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / PERSISTENT_NONPROD_VERIFIED`、production `NOT_RUN`、Released `NO`
+
 ### Settings v0.1 integrated evidence — 2026-08-30
 
 - implementation commit: `51242b08e015817108010839cd5234959da2fed5`（parent `f250a0bb6c0f5da66fd690d451e7f8a7a3e88a29`、subject `Implement Settings v0.1 navigation`）
