@@ -2644,6 +2644,11 @@ describe("Dogfood Day shell", () => {
     fireEvent.doubleClick(projectHandle);
     await waitFor(() => expect(dayBoard.style.getPropertyValue("--day-table-grid-template-columns")).toContain("340px"));
     expect(JSON.parse(window.localStorage.getItem("taskchute.web.day-columns.v1")!).widths.project).toBe(340);
+
+    Object.defineProperty(projectCell, "scrollWidth", { configurable: true, value: 10 });
+    fireEvent.doubleClick(projectHandle);
+    await waitFor(() => expect(dayBoard.style.getPropertyValue("--day-table-grid-template-columns")).toContain("100px"));
+    expect(JSON.parse(window.localStorage.getItem("taskchute.web.day-columns.v1")!).widths.project).toBe(100);
   });
 
   it("uses compact Routine icons and projects read-only actual facts with logical extended time", async () => {

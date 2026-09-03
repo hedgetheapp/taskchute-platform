@@ -1761,12 +1761,15 @@ export function App() {
     event.preventDefault();
     event.stopPropagation();
     const definition = columnDefinition(key);
+    const currentWidth = dayColumnPreference.widths[key];
     const elements = [
       ...Array.from(document.querySelectorAll<HTMLElement>(`[data-day-column-header="${key}"], [data-day-column-cell="${key}"]`)),
     ];
     const measured = elements.reduce((maximum, element) => {
       const textWidth = (element.textContent?.trim().length ?? 0) * 7.5;
-      return Math.max(maximum, element.scrollWidth, element.getBoundingClientRect().width, textWidth + 20);
+      const labelWidth = element.querySelector<HTMLElement>(".column-heading-label")?.scrollWidth ?? 0;
+      const overflowingContentWidth = element.scrollWidth > currentWidth ? element.scrollWidth : 0;
+      return Math.max(maximum, labelWidth + 20, overflowingContentWidth, textWidth + 20);
     }, definition.minWidth);
     setDayColumnPreference((current) => ({
       ...current,
