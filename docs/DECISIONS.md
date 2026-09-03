@@ -1058,3 +1058,22 @@ operation fingerprintとD-020のretry / reconciliation境界を利用し、同�
 APP migration `0011_bulk_section_change.sql`は、既存`operations.command_type`のcompatibility CHECKへ`BulkMoveEntriesToSection`だけを追加する。既存operation row、Entry / Routine / Section schema、stable identity、historical fact、既存migration semanticsは保持し、追加tableやD-043変更、Routine bulk Section UX、date / Project / Mode / Note変更は本Decisionに含めない。
 
 本DecisionはProduct / Domain scope、APP compatibility migration direction、D-043 synchronization、atomicity、owner scope、revision、retry、stable append order、Routine boundaryをApprovedにするが、runtime、migration、Web、test、non-production verificationの完了を意味しない。実装・検証状態は`docs/CURRENT.md`、`docs/FEATURES.md`、`docs/TEST_MATRIX.md`に記録する。
+
+## D-053 — Bulk Selection v0.2B1 Routine occurrence-only Section change
+Status: Approved
+
+Bulk Selection v0.2B1では、establishedな現在の論理TaskChuteDayにあるplanned Entryを対象に、ordinary Entry、Routine-derived Entry、または両者の混在を一つのlogical commandで同一Day内のSectionへ変更できる。running、completed、historical / protected、preview、未establish Day、suppressed / unavailable、mutation-locked stateは対象外とし、一件でも不適格なら全体をrejectする。Routine targetを含む場合、Serverはcurrent logical Dayであることを検証する。ordinary-only selectionはD-052の`BulkMoveEntriesToSection`を維持する。
+
+Routine-derived Entryを含むselectionでは、Section選択をlocal candidateとして扱い、write前にRoutineを含むこと、現在のOccurrenceだけ`今回だけ`変更し、Routine設定や他の日へ反映しないことを明示するacknowledgementを要求する。`Routineへ反映`は提供しない。cancel / Escape / dismissはno-writeでcandidateを破棄し、selectionを維持する。確認後は新しい`BulkMoveEntriesToSectionOccurrence` commandを一件だけ送信し、成功後もselectionを維持する。
+
+新commandはowner-scopedな`taskchute_day_id`、non-emptyで重複のない`entry_ids`、`section_id`（`Sectionなし`は`NULL`）、`expected_placement_revision`、logicalな`operation_id`だけを受け取る。planned startやRoutineDefinition IDをclient authorityとして受け取らず、real Sectionの`logical_start_minute`はcurrent DayのSection contextからServerが解決する。real SectionではSectionとplanned startをD-043に従って同期し、`Sectionなし`では両方を`NULL`へ同期する。
+
+Routine targetの`今回だけ`は、既存のR2A typed `routine_occurrences` overrideを作成または置換する。real Sectionでは`section_plan_override_present = 1`、target Section、target Sectionのlogical startを保存し、`Sectionなし`ではpresent `1`かつSection / planned startをともに`NULL`で保存する。effective pairが同じでもoverrideが未設定なら明示的な今回だけの意図を保存し、同じpairの同じoverrideが既にある場合だけtrue no-opとする。RoutineDefinitionのdefault Section / planned start、`defaults_revision`、recurrence、enabled / pause、Board order、future / other occurrences、historical occurrencesは変更しない。RoutineのSection planはcurrent DayのOccurrence-only scopeに限定し、future / past Dayへ伝播させない。
+
+全selected targetについてowner、current Day、planned state、Entry snapshot、RoutineOccurrenceとRoutineDefinitionのowner-scoped relation、override snapshot、Day revision、target Section contextをtransaction内で検証し、ordinary Entry更新、RoutineOccurrence override更新、mover position、Day revision、operation resultを一つのatomic outcomeとして確定する。Section groupが変わるmoverはcanonical pre-mutation Day display orderで普通 / Routineを分けずにstable appendする。同一Sectionのstart-only syncとoverride-only mutationはpositionを変更しない。visibleなSection / planned start / position変更が一つでもある場合だけDay `placement_revision`をcommand全体でexactly `+1`し、override-only mutationではrevisionを増やさない。
+
+D-020に従い、同一operationの同一requestはresultをreplayし、異なるrequestへのoperation ID再利用をrejectする。stale Day revision、Entry snapshot、RoutineOccurrence override snapshot、owner / Day / lifecycle / Section不一致、rollback / ambiguity、同base concurrent mutationはpartial writeや二重revisionを残さず安全に扱う。Task identity、Entry identity、RoutineOccurrence identityは変更しない。
+
+APP compatibility migration `0012_bulk_routine_section_occurrence.sql`は、`operations.command_type`のCHECKへ`BulkMoveEntriesToSectionOccurrence`だけを追加する。既存command type、既存operation row、RoutineOccurrence、RoutineDefinition、Entry、Section、Day schema、suppression stateを保持し、新しいRoutine schema / Entry schema / Section schema / Day schema / tableは追加しない。実装・migration・verificationの完了は本Decisionだけでは意味せず、状態はcanonical evidence docsへ記録する。
+
+本DecisionではBulk `Routineへ反映`、複数RoutineDefinitionへのdefault propagation、future / past Routine bulk Section edit、Bulk date / Project / Mode / Note、undo / restore、production verificationを扱わない。D-044の歴史的文言は変更せず、D-052のordinary-only semanticsも変更しない。
