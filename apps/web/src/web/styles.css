@@ -275,6 +275,7 @@ button.execution-control:hover { border-color: #2383e2; color: #2383e2; }
   .bulk-confirmation { margin: 8px 0; }
   .bulk-confirmation-actions { justify-content: stretch; }
   .bulk-confirmation-actions button { flex: 1; }
+  .columns-popover { left: auto; right: 0; }
   .bulk-slot,
   .execution-heading,
   .task-heading,
