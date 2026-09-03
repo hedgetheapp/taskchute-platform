@@ -127,7 +127,7 @@ Day Tableの固定左領域は次とする。
 - Bulk selection slotはlayout shiftを防ぐために予約するUI slotであり、data columnではない。
 - Execution Controlはaction / stateを表す固定UI slotであり、通常のdata column customization対象ではない。
 - Taskはfixed / stickyとし、hideまたはcolumn reorderの対象にしない。
-- Bulk Selection capabilityはv0.1 / v0.2A / v0.2B1を実装済みである。固定slotはtarget structureを定め、詳細なselection / Section commandの実装状態は下記専用sectionと`CURRENT` / `FEATURES` / `TEST_MATRIX`で管理する。
+- Bulk Selection capabilityはv0.1 / v0.2A / v0.2B1 / v0.2B2を実装済みである。固定slotはtarget structureを定め、詳細なselection / Section commandの実装状態は下記専用sectionと`CURRENT` / `FEATURES` / `TEST_MATRIX`で管理する。
 
 ## Execution state presentation
 
@@ -261,6 +261,18 @@ request authorityは`operation_id`、current `taskchute_day_id`、selected `entr
 同じeffective Section / startでもexisting overrideがない場合はoverride-only mutationとしてpersistし、visible placementとDay revisionは変更しない。既存overrideがtarget pairと同じ場合だけtrue no-opとする。visible Section / start / position change時はDay `placement_revision`をcommand全体でexactly `+1`し、override-onlyまたはtrue no-opでは増分しない。mixed moverはcommand前のcurrent Day display orderを保ってtarget group末尾へappendし、ordinaryとRoutineを別groupに分けない。owner / current-Day / lifecycle / Routine relation / origin Day / suppression / snapshot / stale revisionをatomicにguardし、operation fingerprint / replay / ambiguity / rollbackはD-020 conventionに従う。
 
 APP compatibility migration `0012_bulk_routine_section_occurrence.sql`は`operations` tableの`command_type` CHECKへ`BulkMoveEntriesToSectionOccurrence`を追加するrebuildだけで、existing operation rows、Entry / Routine / Section / Day schema、新tableを変更・追加しない。Bulk `Routineへ反映`、multi-RoutineDefinition default propagation、future / past Routine bulk edit、Bulk date / Project / Mode / Note、cross-Day move、undo / restoreはこのsliceへ含めない。
+
+## Bulk Selection v0.2B2 — per-Routine Section propagation scope
+
+D-054に基づくv0.2B2は、D-052 / D-053のcurrent-Day Section pickerとselectionを再利用し、ordinary / Routine / mixedのplanned Entryを一つの`BulkMoveEntriesToSectionScoped` commandで処理する。ordinaryはcurrent Dayだけを対象とし、selected Routineごとにscopeをpreselectせず、`今回だけ`または`ルーティンに反映`を明示選択する。`すべて今回だけ` / `すべてルーティンに反映`はexplicit fill-all helperであり、helper後も各Routine rowを個別にoverrideできる。未選択Routineがある間はconfirmをdisabledとし、cancel / Escape / dismissはno-write、成功後はselectionを維持する。
+
+request authorityは`operation_id`、current `taskchute_day_id`、全selected `entry_ids`、target `section_id`、Routineごとのscope、definition scopeの`expected_defaults_revision`、current `expected_placement_revision`とし、planned startやRoutineDefinition IDをclient authorityにしない。routine scopeはserverがEntry relationから解決し、duplicate / ordinary混入 / 欠落 / invalid scope / revision欠落を拒否する。semantically unorderedな配列はfingerprint前に正規化し、同一operationの同一requestをreplayする。
+
+Occurrence scopeはD-053のcurrent occurrence override semanticsを再利用する。Definition scopeはD-044のcurrent single-Routine definition semanticsを再利用し、Definition default pairと`defaults_revision`をDefinitionごとに一回だけ更新し、selected current overrideをclearする。already-materializedなcurrent / future planned Entryのうちexplicit overrideのないものへpropagateし、他のexplicit override、past、running、completed、protected stateは維持する。default propagationを理由にfuture Day / Occurrence / Entryはmaterializeしない。複数Definitionのmutationも一つのatomic outcomeとする。
+
+各affected Dayではpre-mutation canonical display orderを一度読み、ordinary / Occurrence / Definition propagationのmoverをDefinition単位で分けずtarget group末尾へstable appendする。target non-moverのrelative orderを保持し、same-start-only / override-only / metadata-onlyはpositionを変えない。visible EntryのSection / planned start / position changeがあるDayだけplacement revisionをcommand全体でexactly `+1`する。owner、lifecycle、suppression、Entry / Occurrence / Definition snapshot、全affected Day revision、Section contextをatomic guardし、partial writeを残さない。
+
+APP compatibility migration `0013_bulk_routine_section_scoped.sql`はoperations command CHECK-onlyで、既存operation row / command type、Entry / Routine / Day / Section schema、PK / FKを変更しない。実装・verification状態は`docs/CURRENT.md`、`docs/FEATURES.md`、`docs/TEST_MATRIX.md`で管理する。
 
 ## Execution actual projection
 

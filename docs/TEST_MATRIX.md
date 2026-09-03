@@ -1,6 +1,6 @@
 # Test Matrix
 
-First Server + Web vertical slice、D-038 B1 / B3、D-039 B2、D-040 Minimal Routine R1、Day Table UI-1 / UI-2A / UI-2B / UI-2C / cross-Section D&D v0.1、D-041 / D-042 Day Navigation v0.1、D-043 synchronization、D-044 / D-045 / D-046 Routine R2A first slice、D-047 / D-048 Routine R2B Board、D-050 Duplicate first slice、D-052 Bulk Selection v0.2A、D-053 Bulk Selection v0.2B1は実装・GitHub `main`統合済み。R2B source review / local automated / real-local migration・browser / persistent nonprod migration・preservation・deploy・authenticated representative browserはPASS。D-049 initial production creation / migration / secure bootstrap / smokeもPASSし、initial release scopeでReleasedは`YES`。remote multi-Day propagation、詳細retry / concurrency、R2B inclusive end-date browser、production deep feature mutation、Bulk v0.2B1を超える拡張等は各sectionの`NOT_RUN` / `NOT_VERIFIED`境界を維持する。
+First Server + Web vertical slice、D-038 B1 / B3、D-039 B2、D-040 Minimal Routine R1、Day Table UI-1 / UI-2A / UI-2B / UI-2C / cross-Section D&D v0.1、D-041 / D-042 Day Navigation v0.1、D-043 synchronization、D-044 / D-045 / D-046 Routine R2A first slice、D-047 / D-048 Routine R2B Board、D-050 Duplicate first slice、D-052 Bulk Selection v0.2A、D-053 Bulk Selection v0.2B1、D-054 Bulk Selection v0.2B2は実装・GitHub `main`統合済み。R2B source review / local automated / real-local migration・browser / persistent nonprod migration・preservation・deploy・authenticated representative browserはPASS。D-049 initial production creation / migration / secure bootstrap / smokeもPASSし、initial release scopeでReleasedは`YES`。remote materialized-future propagation、remote exact scoped-command replay、詳細retry / concurrency、R2B inclusive end-date browser、production deep feature mutation等は各sectionの`NOT_RUN` / `NOT_VERIFIED`境界を維持する。
 
 この文書はverification requirementとcurrent evidenceの正本とする。
 
@@ -19,6 +19,30 @@ First Server + Web vertical slice、D-038 B1 / B3、D-039 B2、D-040 Minimal Rou
 - `LOCAL_PASS`: local working tree / commit candidateではPASSだが、mainへ未統合
 
 Contractが`Approved`でも、実装やverificationが未実施ならPASS扱いしない。
+
+## Bulk Selection v0.2B2 — per-Routine Section propagation scope — 2026-09-04
+
+Contract: D-054 `Approved`。ordinary / Routine / mixed planned Entryを一件の`BulkMoveEntriesToSectionScoped` commandへまとめ、Routineごとのno-preselection scope、fill-all helper、個別override、D-053 occurrence、D-044 definition propagation、multi-definition atomicity、per-Day placement revision、per-Definition defaults revision、D-020 replay / owner / snapshot safetyを対象とする。
+
+Local automated evidence:
+
+- B2 focused Worker integration: `2 / 2 PASS`。current mixed move、Occurrence override、multi-Definition propagation、future established Day、explicit override protection、stable ordering、scope validation、duplicate / ordinary / stale revision rejection、semantic array-order replayを含む。
+- full local: `npm test` `164 / 164 PASS`、Web `140 / 140 PASS`、migration regression `4 scenarios PASS`（fresh `0001 -> 0013`、representative `0012 -> 0013` preservation / constraints）、typecheck、production build、`git diff --check`、source review `PASS`。
+- migration `0013_bulk_routine_section_scoped.sql`: operations command CHECK-only、existing rows / commands / schema / table count preservation、new command accept、unknown command reject、`quick_check` / FK checkをPASS。
+
+Real-local evidence:
+
+- APP `0013` migration後、target Sectionのno-write candidate、Routine rows initially `未選択`、fill-all、個別`今回だけ` override、confirm disabled / enabled、one command、selection retention、reload persistence、Routine Board defaultをbrowserでPASS。
+- local D1でOccurrence scopeはcurrent override present、Definition scopeはselected override clear・default pair・`defaults_revision +1`、ordinaryはcurrent Day only、affected Day placement revision、operation row、`PRAGMA quick_check = ok`、FK `0`を確認。future propagation、protected explicit override、same-future-Day ordering、future no-materializationはfocused fixtureでPASS。console warnings / errors `0 / 0`。
+
+Persistent non-production evidence:
+
+- pre-migration pending APP `0013` only / AUTH `0`を確認後、fresh private ignored backupsを取得してHARD GATEをPASSした。APP `b2-app-pre-0013-20260904.sql` `231,555 bytes` / SHA-256 `87BEDF1A0030707E7C673DB441E590D009555A239BAB307DD5595E553F568510`、AUTH `b2-auth-pre-0013-20260904.sql` `3,862 bytes` / SHA-256 `30475F539BE52CD1C80EDD5956E8FDCADD03441EF392BE3942FCFB75625F468D`。readability / D1 schema markers / ignore状態を確認し、restoreは行っていない。
+- APP `0013`を適用、post pending APP / AUTH `0 / 0`、`d1_migrations` `0013`、APP / AUTH `quick_check = ok`、FK `0`を確認。exact implementation mainをdeployし、Worker `taskchute-web-nonprod` version `432ba02e-2d95-4d0d-a026-5f5afc2383c5`、nonprod runtime config、root `200`、protected API `401`を確認。
+- authenticated browserでRoutine-only operation `01a06955-b70c-77f2-a274-c15b4569c9d9`（Occurrence 1 / Definition 2、Evening `20:00`、Day revision `1 -> 2`、Definition defaults `0 -> 1`）と、ordinary + Routine mixed operation `01a0695b-3452-7736-afd4-e3ff574cc000`（ordinary current-Day only、Occurrence 1、Definition 1、Day target `12:00`、revision `3 -> 4`、Definition revision `1 -> 2`）を確認した。reload後のSection / planned start、Routine Board defaults、identity / relationを確認し、console warnings / errors `0 / 0`、1280px viewportをPASS。
+- remote DBに既存materialized future Routine occurrenceが無く、future日はD-041 previewのまま非materializingだったため、remote future propagationは`NOT_VERIFIED`。future propagation / protected override / cross-definition orderingはreal-local focused fixtureでPASS。same-operation exact replayはlocal Worker replayでPASSし、remote browser page evaluationはread-onlyのためremote request replayは`NOT_VERIFIED`。
+
+Classification: B2 `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / PERSISTENT_NONPROD_MIGRATED / PERSISTENT_NONPROD_VERIFIED`、production `NOT_RUN`、Released `NO`。Bulk estimate / date / Project / Mode / Note、cross-Day move、future / past direct Routine bulk edit、undo / restore、production deep mutationはremaining boundary。
 
 ## Current First Server + Web vertical slice evidence
 
