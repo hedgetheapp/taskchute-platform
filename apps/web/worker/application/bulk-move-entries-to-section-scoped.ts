@@ -364,11 +364,31 @@ export async function bulkMoveEntriesToSectionScoped(
       appUserId, definitionIdsJson, currentDay.logical_date, selectedDefinitionOccurrenceIdsJson,
     ).all<EntryState>()).results;
 
+  const candidateAffectedDayIds = [...new Set([request.taskchute_day_id, ...propagatedRows.map((row) => row.taskchute_day_id)])];
+  const targetStartByDay = new Map<string, number | null>();
+  if (request.section_id === null) {
+    candidateAffectedDayIds.forEach((dayId) => targetStartByDay.set(dayId, null));
+  } else {
+    const contexts = (await db.prepare(`SELECT taskchute_day_id, logical_start_minute, logical_end_minute
+      FROM taskchute_day_section_contexts
+      WHERE app_user_id = ? AND section_id = ?
+        AND taskchute_day_id IN (SELECT value FROM json_each(?))
+        AND logical_start_minute IS NOT NULL AND logical_end_minute IS NOT NULL`)
+      .bind(appUserId, request.section_id, JSON.stringify(candidateAffectedDayIds))
+      .all<{ taskchute_day_id: string; logical_start_minute: number; logical_end_minute: number }>()).results;
+    const contextByDay = new Map(contexts.map((context) => [context.taskchute_day_id, context]));
+    if (candidateAffectedDayIds.some((dayId) => !contextByDay.has(dayId))) return reject(
+      db, appUserId, request, requestFingerprint, "resource_conflict",
+      "The target Section is unavailable in an affected established TaskChuteDay context",
+    );
+    candidateAffectedDayIds.forEach((dayId) => targetStartByDay.set(dayId, contextByDay.get(dayId)!.logical_start_minute));
+  }
+
   const entryPlans = new Map<string, EntryPlan>();
   for (const target of targets) entryPlans.set(target.id, {
     ...target,
     target_section_id: request.section_id,
-    target_planned_start_minute: targetPlannedStart,
+    target_planned_start_minute: targetStartByDay.get(target.taskchute_day_id) ?? null,
     target_position: target.position,
     selected: true,
   });
@@ -376,7 +396,7 @@ export async function bulkMoveEntriesToSectionScoped(
     if (!entryPlans.has(target.id)) entryPlans.set(target.id, {
       ...target,
       target_section_id: request.section_id,
-      target_planned_start_minute: targetPlannedStart,
+      target_planned_start_minute: targetStartByDay.get(target.taskchute_day_id) ?? null,
       target_position: target.position,
       selected: false,
     });
@@ -384,23 +404,6 @@ export async function bulkMoveEntriesToSectionScoped(
   const plans = [...entryPlans.values()];
   const affectedDayIds = [...new Set(plans.map((plan) => plan.taskchute_day_id))];
   const affectedDayIdsJson = JSON.stringify(affectedDayIds);
-  if (request.section_id !== null) {
-    const contexts = (await db.prepare(`SELECT taskchute_day_id, logical_start_minute, logical_end_minute
-      FROM taskchute_day_section_contexts
-      WHERE app_user_id = ? AND section_id = ?
-        AND taskchute_day_id IN (SELECT value FROM json_each(?))
-        AND logical_start_minute IS NOT NULL AND logical_end_minute IS NOT NULL`)
-      .bind(appUserId, request.section_id, affectedDayIdsJson).all<{ taskchute_day_id: string; logical_start_minute: number; logical_end_minute: number }>()).results;
-    const contextByDay = new Map(contexts.map((context) => [context.taskchute_day_id, context]));
-    if (plans.some((plan) => {
-      const context = contextByDay.get(plan.taskchute_day_id);
-      return !context || targetPlannedStart === null
-        || targetPlannedStart < context.logical_start_minute || targetPlannedStart >= context.logical_end_minute;
-    })) return reject(
-      db, appUserId, request, requestFingerprint, "resource_conflict",
-      "The target Section is unavailable in an affected established TaskChuteDay context",
-    );
-  }
 
   const displayRows = (await db.prepare(`SELECT e.id, e.taskchute_day_id, e.section_id, e.position,
       COALESCE(c.context_order, -1) AS context_order
@@ -469,9 +472,13 @@ export async function bulkMoveEntriesToSectionScoped(
     return !sameNullable(plan.section_id, plan.target_section_id)
       || !sameNullable(plan.planned_start_minute, plan.target_planned_start_minute);
   });
-  const propagatedEntryIds = positionUpdates
-    .filter(({ entry_id }) => !entryPlans.get(entry_id)?.selected)
-    .map(({ entry_id }) => entry_id);
+  const propagatedEntryIds = plans
+    .filter((plan) => !plan.selected && (
+      !sameNullable(plan.section_id, plan.target_section_id)
+      || !sameNullable(plan.planned_start_minute, plan.target_planned_start_minute)
+      || plan.position !== plan.target_position
+    ))
+    .map((plan) => plan.id);
   const definitionChangedIds = definitionPlans.map((plan) => plan.routine_definition_id).sort();
   const defaultsRevisions = definitionPlans.map((plan) => ({
     routine_definition_id: plan.routine_definition_id,

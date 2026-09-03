@@ -42,10 +42,14 @@ async function seed() {
        establishment_disambiguation, placement_revision, created_at)
       VALUES (?, ?, ?, ?, ?, 'UTC', 0, 'compatible', ?, ?)`)
       .bind(id, userId, date, `${date}T00:00:00.000Z`, `${nextDate}T00:00:00.000Z`, revision, now)),
-    ...[dayId, futureDayId].flatMap((targetDayId) => sections.map((id, index) => env.APP_DB.prepare(`INSERT INTO taskchute_day_section_contexts
+    ...sections.map((id, index) => env.APP_DB.prepare(`INSERT INTO taskchute_day_section_contexts
       (app_user_id, taskchute_day_id, section_id, configuration_version_id, title, logical_start_minute, logical_end_minute,
        actual_start_instant, actual_end_instant, context_order) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?)`)
-      .bind(userId, targetDayId, id, configurationVersionId, sectionNames[index], index * 480, (index + 1) * 480, index))),
+      .bind(userId, dayId, id, configurationVersionId, sectionNames[index], index * 480, (index + 1) * 480, index)),
+    ...sections.map((id, index) => env.APP_DB.prepare(`INSERT INTO taskchute_day_section_contexts
+      (app_user_id, taskchute_day_id, section_id, configuration_version_id, title, logical_start_minute, logical_end_minute,
+       actual_start_instant, actual_end_instant, context_order) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?)`)
+      .bind(userId, futureDayId, id, configurationVersionId, sectionNames[index], [0, 450, 900][index], [450, 900, 1440][index], index)),
     ...[[ordinaryTaskId, "Ordinary"], [aTaskId, "Routine A"], [bTaskId, "Routine B"], [cTaskId, "Routine C"]]
       .map(([id, title]) => env.APP_DB.prepare("INSERT INTO tasks (id, app_user_id, title, created_at) VALUES (?, ?, ?, ?)").bind(id, userId, title, now)),
     ...[
@@ -71,8 +75,8 @@ async function seed() {
       [ordinaryEntryId, ordinaryTaskId, dayId, sections[0], 1, 0, null], [aEntryId, aTaskId, dayId, sections[0], 2, 0, aOccurrenceId],
       [bEntryId, bTaskId, dayId, sections[0], 3, 0, bOccurrenceId], [cEntryId, cTaskId, dayId, sections[1], 1, 480, cOccurrenceId],
       [bFutureEntryId, bTaskId, futureDayId, sections[0], 1, 0, bFutureOccurrenceId],
-      [cFutureEntryId, cTaskId, futureDayId, sections[0], 2, 0, cFutureOccurrenceId],
-      [cProtectedEntryId, cTaskId, futureDayId, sections[0], 3, 0, cProtectedOccurrenceId],
+      [cFutureEntryId, cTaskId, futureDayId, sections[2], 1, 960, cFutureOccurrenceId],
+      [cProtectedEntryId, cTaskId, futureDayId, sections[0], 2, 0, cProtectedOccurrenceId],
     ].map(([id, taskId, targetDayId, sectionId, position, plannedStart, occurrenceId]) => env.APP_DB.prepare(`INSERT INTO entries
       (id, app_user_id, task_id, taskchute_day_id, section_id, position, lifecycle_state, estimate_seconds,
        planned_start_minute, created_at, routine_occurrence_id) VALUES (?, ?, ?, ?, ?, ?, 'planned', 600, ?, ?, ?)`)
@@ -111,7 +115,7 @@ describe.sequential("BulkMoveEntriesToSectionScoped", () => {
     const result = await bulkMoveEntriesToSectionScoped(env.APP_DB, fixture.userId, request, now);
     expect(result).toMatchObject({
       changed_entry_ids: [fixture.ordinaryEntryId, fixture.aEntryId, fixture.bEntryId, fixture.cEntryId],
-      propagated_entry_ids: [fixture.bFutureEntryId, fixture.cFutureEntryId],
+      propagated_entry_ids: expect.arrayContaining([fixture.bFutureEntryId, fixture.cFutureEntryId]),
       routine_override_changed_entry_ids: [fixture.aEntryId, fixture.bEntryId, fixture.cEntryId],
       definition_changed_routine_definition_ids: [fixture.bDefinitionId, fixture.cDefinitionId].sort(),
       placement_revision: 1,
@@ -133,11 +137,11 @@ describe.sequential("BulkMoveEntriesToSectionScoped", () => {
       { id: fixture.cEntryId, section_id: fixture.sections[2], planned_start_minute: 960, position: 4 },
     ] });
     expect(await env.APP_DB.prepare(`SELECT id, section_id, planned_start_minute, position FROM entries
-      WHERE app_user_id = ? AND taskchute_day_id = ? ORDER BY position`).bind(fixture.userId, fixture.futureDayId).all()).toMatchObject({ results: [
-      { id: fixture.bFutureEntryId, section_id: fixture.sections[2], planned_start_minute: 960, position: 1 },
-      { id: fixture.cFutureEntryId, section_id: fixture.sections[2], planned_start_minute: 960, position: 2 },
-      { id: fixture.cProtectedEntryId, section_id: fixture.sections[0], planned_start_minute: 0, position: 3 },
-    ] });
+      WHERE app_user_id = ? AND taskchute_day_id = ?`).bind(fixture.userId, fixture.futureDayId).all()).toMatchObject({ results: expect.arrayContaining([
+      { id: fixture.bFutureEntryId, section_id: fixture.sections[2], planned_start_minute: 900, position: 2 },
+      { id: fixture.cFutureEntryId, section_id: fixture.sections[2], planned_start_minute: 900, position: 1 },
+      { id: fixture.cProtectedEntryId, section_id: fixture.sections[0], planned_start_minute: 0, position: 2 },
+    ]) });
     expect(await env.APP_DB.prepare(`SELECT section_plan_override_present, section_override_id, planned_start_override_minute
       FROM routine_occurrences WHERE id IN (?, ?, ?) ORDER BY CASE id WHEN ? THEN 0 WHEN ? THEN 1 WHEN ? THEN 2 END`)
       .bind(fixture.aOccurrenceId, fixture.bOccurrenceId, fixture.cOccurrenceId,
@@ -192,8 +196,53 @@ describe.sequential("BulkMoveEntriesToSectionScoped", () => {
     await env.APP_DB.prepare("UPDATE routine_definitions SET defaults_revision = 1 WHERE id = ?").bind(fixture.bDefinitionId).run();
     await expect(bulkMoveEntriesToSectionScoped(env.APP_DB, fixture.userId, { ...request, operation_id: uuidv7() }, now))
       .rejects.toMatchObject({ code: "revision_conflict" });
-    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM entries WHERE app_user_id = ? AND section_id = ?")
-      .bind(fixture.userId, fixture.sections[2]).first<number>("count")).toBe(0);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM entries WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id = ?")
+      .bind(fixture.userId, fixture.dayId, fixture.sections[2]).first<number>("count")).toBe(0);
     expect(await env.APP_DB.prepare("SELECT defaults_revision FROM routine_definitions WHERE id = ?").bind(fixture.cDefinitionId).first<number>("defaults_revision")).toBe(0);
+  });
+
+  it("rejects an unavailable affected-Day target context atomically", async () => {
+    const fixture = await seed();
+    const request = requestFor(fixture);
+    await env.APP_DB.prepare(`DELETE FROM taskchute_day_section_contexts
+      WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id = ?`)
+      .bind(fixture.userId, fixture.futureDayId, fixture.sections[2]).run();
+
+    await expect(bulkMoveEntriesToSectionScoped(env.APP_DB, fixture.userId, request, now))
+      .rejects.toMatchObject({ code: "resource_conflict" });
+    expect(await env.APP_DB.prepare("SELECT placement_revision FROM taskchute_days WHERE id IN (?, ?) ORDER BY logical_date")
+      .bind(fixture.dayId, fixture.futureDayId).all()).toMatchObject({ results: [
+      { placement_revision: 0 }, { placement_revision: 4 },
+    ] });
+    expect(await env.APP_DB.prepare("SELECT defaults_revision FROM routine_definitions WHERE id IN (?, ?) ORDER BY id")
+      .bind(fixture.bDefinitionId, fixture.cDefinitionId).all()).toMatchObject({ results: [
+      { defaults_revision: 0 }, { defaults_revision: 0 },
+    ] });
+    expect(await env.APP_DB.prepare("SELECT section_id, planned_start_minute FROM entries WHERE id IN (?, ?) ORDER BY id")
+      .bind(fixture.bEntryId, fixture.cEntryId).all()).toMatchObject({ results: expect.arrayContaining([
+      { section_id: fixture.sections[0], planned_start_minute: 0 },
+      { section_id: fixture.sections[1], planned_start_minute: 480 },
+    ]) });
+  });
+
+  it("keeps Sectionなし targets as null without requiring a section context", async () => {
+    const fixture = await seed();
+    const request = { ...requestFor(fixture), operation_id: uuidv7(), section_id: null };
+    const result = await bulkMoveEntriesToSectionScoped(env.APP_DB, fixture.userId, request, now);
+
+    expect(result).toMatchObject({
+      changed_entry_ids: [fixture.ordinaryEntryId, fixture.aEntryId, fixture.bEntryId, fixture.cEntryId],
+      propagated_entry_ids: expect.arrayContaining([fixture.bFutureEntryId, fixture.cFutureEntryId]),
+      placement_revision: 1,
+    });
+    expect(await env.APP_DB.prepare("SELECT section_id, planned_start_minute FROM entries WHERE app_user_id = ? AND id IN (?, ?, ?, ?) ")
+      .bind(fixture.userId, fixture.ordinaryEntryId, fixture.aEntryId, fixture.bEntryId, fixture.cEntryId).all()).toMatchObject({ results: expect.arrayContaining([
+      { section_id: null, planned_start_minute: null },
+    ]) });
+    expect(await env.APP_DB.prepare("SELECT section_id, planned_start_minute FROM entries WHERE id IN (?, ?, ?) ")
+      .bind(fixture.bFutureEntryId, fixture.cFutureEntryId, fixture.cProtectedEntryId).all()).toMatchObject({ results: expect.arrayContaining([
+      { section_id: null, planned_start_minute: null },
+      { section_id: fixture.sections[0], planned_start_minute: 0 },
+    ]) });
   });
 });
