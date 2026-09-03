@@ -4,6 +4,18 @@ Date: 2026-09-04
 
 ## Status
 
+### D-054 corrective fix — per-affected-Day frozen Section start — 2026-09-04
+
+GitHub independent reviewで、D-054のfuture propagationがselected current DayのSection `logical_start_minute`をaffected future Dayへ再利用する仕様不一致を検出した。これは新しいProduct / Domain Decisionではなく、Approved D-043 / D-044 / D-054内のreversible bugfixであり、migration / schema / dependency変更は行っていない。implementation commit `c0eed8452c340a2798fc6d2e62532cc7affd1c4f`（`Fix per-Day future Section start propagation`）を`main`へfast-forward push済みである。
+
+runtimeはcurrent DayのDefinition default pairをcurrent Day frozen contextから解決する既存semanticsを維持し、各affected established Dayのtarget Section contextから`logical_start_minute`を個別に解決する。target contextが一つでも欠落する場合はoperation全体をrejectし、`Sectionなし`はaffected Day contextを要求せずSection / planned startをともに`NULL`へ同期する。same-Section start-only propagationもvisible changeとして`propagated_entry_ids`へ含めるが、position churnは発生させない。
+
+local evidenceはcorrective focused Worker `4 / 4 PASS`（current / futureで異なるGamma start `960 / 900`、same-Section start-only、position不変、propagated id、missing context atomic reject、Sectionなし、replay）、full Worker `166 / 166 PASS`、Web `140 / 140 PASS`、typecheck、production build、`git diff --check`、source review `PASS`である。APP migration regressionは今回migration / schema変更がないため`NOT_REQUIRED`とした（既存D-054 `0013` migration evidenceは前段のcanonical blockを参照）。
+
+exact pushed mainを`CLOUDFLARE_ENV=nonprod`でbuildし、`taskchute-web-nonprod`へdeployしたWorker versionは`34b11179-8562-4aba-825b-abe8dc185ddf`である。generated configは`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、canonical AUTH / APP bindingを示し、root `200`、protected API `401`、disabled bootstrap POST `404`を確認した。persistent nonprod APP / AUTHはread-onlyで`PRAGMA quick_check = ok`、FK violations `0`、`rows_written = 0`、APP latest migration `0013`、future materialized Routine Entry `0`を確認した。今回はremote authenticated mutationを実行せず、remoteにestablished future Routine occurrenceが存在しないためfuture-specific remote propagationは`NOT_VERIFIED`とし、future differing-context / ordering / no-materializationはlocal focused fixtureを根拠とする。productionは`NOT_RUN`、Releasedは`NO`である。
+
+classification: D-054 corrective fix `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_SAFETY_VERIFIED`。remote authenticated feature mutation、remote future propagation、remote exact replay、production deep mutationはremaining boundaryである。
+
 ### Bulk Selection v0.2B2 — per-Routine Section propagation scope — 2026-09-04
 
 D-054をcanonicalなApproved Decisionとしてcommit `73bd8b597189083dcb39e04a6d69b22f4cee456a`（`Approve per-Routine Bulk Section scope`）で`main`へpushし、runtime implementation commit `ddbf882e2ec9487175ccdc96e5d27184d8a1b5b2`（`Implement per-Routine Bulk Section scope`）も`main`へpush済みである。APP compatibility migrationは`apps/web/migrations/app/0013_bulk_routine_section_scoped.sql`で、`operations.command_type`のCHECKへ`BulkMoveEntriesToSectionScoped`だけを追加するrebuildとし、既存command type / operation row / field、RoutineDefinition、RoutineOccurrence、Entry、TaskChuteDay、Section、suppression、PK / FKとtable数を保持した。

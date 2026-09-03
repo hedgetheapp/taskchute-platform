@@ -20,6 +20,24 @@ First Server + Web vertical slice、D-038 B1 / B3、D-039 B2、D-040 Minimal Rou
 
 Contractが`Approved`でも、実装やverificationが未実施ならPASS扱いしない。
 
+## D-054 corrective fix — per-affected-Day frozen Section start — 2026-09-04
+
+Contract: D-054 `Approved`。本件は新しいDecisionではなく、future propagationでcurrent DayのSection startをaffected future Dayへ再利用していたreversible bugfixである。schema / migration / dependency変更はない。
+
+Local automated evidence:
+
+- corrective focused Worker integration: `4 / 4 PASS`。current Gamma `960`、future Gamma `900`のdiffering-context fixtureで、future Entryのtarget start `900`、same-Section start-onlyのposition不変と`propagated_entry_ids`、missing affected-Day contextのatomic reject、Sectionなし `NULL + NULL`、semantic replayを確認した。
+- full local: `npm test` `166 / 166 PASS`、Web `140 / 140 PASS`、typecheck、production build、`git diff --check`、source review `PASS`。
+- APP migration regression: `NOT_REQUIRED`（このcorrective changeではmigration / schemaを変更していない）。既存`0013` migration chain / preservation / constraintsのPASS evidenceは直下のD-054 v0.2B2 sectionに保持する。
+
+Persistent non-production evidence:
+
+- exact pushed `main@c0eed8452c340a2798fc6d2e62532cc7affd1c4f`を`CLOUDFLARE_ENV=nonprod`でbuildし、`taskchute-web-nonprod` version `34b11179-8562-4aba-825b-abe8dc185ddf`へdeployした。generated configは`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、canonical AUTH / APP bindingを示した。
+- root `200`、unauthenticated protected API `401`、disabled bootstrap POST `404`、APP / AUTH `PRAGMA quick_check = ok`、FK violations `0`、read-only remote query `rows_written = 0`をPASSした。APP latest migrationは`0013_bulk_routine_section_scoped.sql`、future materialized Routine Entryは`0`である。
+- remoteにestablished future Routine occurrenceがなく、browser authenticated mutation / remote differing-context propagation / exact replayは`NOT_VERIFIED`。D-041に従いfuture fixtureをremoteへ直接SQL投入していない。production `NOT_RUN`、Released `NO`。
+
+Classification: corrective fix `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_SAFETY_VERIFIED`。remote authenticated feature mutation、remote future propagation、remote exact replay、production deep mutationはremaining boundary。
+
 ## Bulk Selection v0.2B2 — per-Routine Section propagation scope — 2026-09-04
 
 Contract: D-054 `Approved`。ordinary / Routine / mixed planned Entryを一件の`BulkMoveEntriesToSectionScoped` commandへまとめ、Routineごとのno-preselection scope、fill-all helper、個別override、D-053 occurrence、D-044 definition propagation、multi-definition atomicity、per-Day placement revision、per-Definition defaults revision、D-020 replay / owner / snapshot safetyを対象とする。
