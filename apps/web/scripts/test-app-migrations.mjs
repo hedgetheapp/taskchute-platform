@@ -349,6 +349,36 @@ try {
     VALUES ('user-v01a', 'operation-bulk-routine-section-invalid', 'NotACommand', 1, 'invalid-fingerprint', 'success', '{}',
       '2026-08-28T07:31:00.000Z')`], false);
   assert.notEqual(invalidScopedCommand.status, 0, "unknown operation command must remain rejected after 0013");
+  execute(["--command", `INSERT INTO routine_command_guards (app_user_id, operation_id, command_type)
+    VALUES ('user-v01a', 'operation-guard-preserve', 'SetRoutineEstimate')`]);
+  const preBulkEstimateOperations = query("SELECT * FROM operations ORDER BY operation_id");
+  const preBulkEstimateGuards = query("SELECT * FROM routine_command_guards ORDER BY operation_id");
+  const preBulkEstimateTables = query("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name");
+  applyFile("migrations/app/0014_bulk_estimate_scoped.sql");
+  assert.deepEqual(query("SELECT * FROM operations ORDER BY operation_id"), preBulkEstimateOperations,
+    "0014 must preserve every operation row");
+  assert.deepEqual(query("SELECT * FROM routine_command_guards ORDER BY operation_id"), preBulkEstimateGuards,
+    "0014 must preserve every routine guard row");
+  assert.deepEqual(query("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name"), preBulkEstimateTables,
+    "0014 must not add or remove application tables");
+  const estimateOperationTable = query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'operations'")[0]?.sql ?? "";
+  const estimateGuardTable = query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'routine_command_guards'")[0]?.sql ?? "";
+  assert(estimateOperationTable.includes("BulkSetEntriesEstimateScoped"), "0014 must add the Bulk estimate command CHECK entry");
+  assert(estimateGuardTable.includes("BulkSetEntriesEstimateScoped"), "0014 must add the Bulk estimate guard CHECK entry");
+  execute(["--command", `INSERT INTO operations
+    (app_user_id, operation_id, command_type, request_fingerprint_version, request_fingerprint, outcome_kind, result_json, created_at)
+    VALUES ('user-v01a', 'operation-bulk-estimate-scoped', 'BulkSetEntriesEstimateScoped', 1, 'bulk-estimate-fingerprint', 'success', '{}',
+      '2026-08-28T07:45:00.000Z')`]);
+  execute(["--command", `INSERT INTO routine_command_guards (app_user_id, operation_id, command_type)
+    VALUES ('user-v01a', 'operation-bulk-estimate-guard', 'BulkSetEntriesEstimateScoped')`]);
+  const invalidEstimateCommand = execute(["--command", `INSERT INTO operations
+    (app_user_id, operation_id, command_type, request_fingerprint_version, request_fingerprint, outcome_kind, result_json, created_at)
+    VALUES ('user-v01a', 'operation-bulk-estimate-invalid', 'NotACommand', 1, 'invalid-estimate-fingerprint', 'success', '{}',
+      '2026-08-28T07:46:00.000Z')`], false);
+  assert.notEqual(invalidEstimateCommand.status, 0, "unknown operation command must remain rejected after 0014");
+  const invalidEstimateGuard = execute(["--command", `INSERT INTO routine_command_guards (app_user_id, operation_id, command_type)
+    VALUES ('user-v01a', 'operation-bulk-estimate-invalid-guard', 'NotACommand')`], false);
+  assert.notEqual(invalidEstimateGuard.status, 0, "unknown routine guard command must remain rejected after 0014");
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
   assert.deepEqual(query("PRAGMA foreign_key_check"), []);
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
@@ -443,6 +473,8 @@ try {
       request_fingerprint: "ae7259e4469236b36922e6e8b2cd9158b82602cd05777af2ed81d6599583c8c9",
       outcome_kind: "success",
       result_json: "{\"entry_id\":\"019d2f00-0000-7000-8000-000000000002\",\"lifecycle_state\":\"running\",\"execution\":{\"id\":\"019d2f00-0000-7000-8000-000000000003\",\"entry_id\":\"019d2f00-0000-7000-8000-000000000002\",\"started_at\":\"2026-08-28T09:00:00.000Z\",\"ended_at\":null}}" },
+    { operation_id: "operation-bulk-estimate-scoped", command_type: "BulkSetEntriesEstimateScoped",
+      request_fingerprint: "bulk-estimate-fingerprint", outcome_kind: "success", result_json: "{}" },
     { operation_id: "operation-bulk-routine-section", command_type: "BulkMoveEntriesToSectionOccurrence",
       request_fingerprint: "bulk-routine-section-fingerprint", outcome_kind: "success", result_json: "{}" },
     { operation_id: "operation-bulk-routine-section-scoped", command_type: "BulkMoveEntriesToSectionScoped",
@@ -517,7 +549,7 @@ try {
   assert.notEqual(duplicateActive.status, 0, "the active Execution unique index must reject a second active row");
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
   assert.deepEqual(query("PRAGMA foreign_key_check"), []);
-  console.log("migration regression: 4 scenarios passed (R2A normalization, R2B preservation/constraints, duplicate-Task fail-safe, Bulk Selection 0010/0011/0012/0013 preservation/constraints; fresh 0001 -> 0013 chain)");
+  console.log("migration regression: 4 scenarios passed (R2A normalization, R2B preservation/constraints, duplicate-Task fail-safe, Bulk Selection 0010/0011/0012/0013/0014 preservation/constraints; fresh 0001 -> 0014 chain)");
 } finally {
   await rm(persistencePath, { recursive: true, force: true });
   await rm(failurePersistencePath, { recursive: true, force: true });

@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CurrentTaskChuteDayProjection, EntryProjection } from "../../src/shared/contracts";
 
 const mocks = vi.hoisted(() => ({
-  login: vi.fn(), logout: vi.fn(), loadDay: vi.fn(), loadProjects: vi.fn(), createProject: vi.fn(), addTask: vi.fn(), duplicateEntry: vi.fn(), bulkDeleteEntries: vi.fn(), bulkMoveEntriesToSection: vi.fn(), bulkMoveEntriesToSectionOccurrence: vi.fn(), bulkMoveEntriesToSectionScoped: vi.fn(),
+  login: vi.fn(), logout: vi.fn(), loadDay: vi.fn(), loadProjects: vi.fn(), createProject: vi.fn(), addTask: vi.fn(), duplicateEntry: vi.fn(), bulkDeleteEntries: vi.fn(), bulkMoveEntriesToSection: vi.fn(), bulkMoveEntriesToSectionOccurrence: vi.fn(), bulkMoveEntriesToSectionScoped: vi.fn(), bulkSetEntriesEstimateScoped: vi.fn(),
   reorderEntries: vi.fn(), startEntry: vi.fn(), completeEntry: vi.fn(),
   establishInitialSectionConfiguration: vi.fn(), moveEntry: vi.fn(), setEntryEstimate: vi.fn(),
   setEntryPlannedStart: vi.fn(),
@@ -187,6 +187,7 @@ beforeEach(() => {
   mocks.bulkDeleteEntries.mockResolvedValue({});
   mocks.bulkMoveEntriesToSection.mockResolvedValue({});
   mocks.bulkMoveEntriesToSectionScoped.mockResolvedValue({});
+  mocks.bulkSetEntriesEstimateScoped.mockResolvedValue({});
   mocks.reorderEntries.mockResolvedValue({});
   mocks.startEntry.mockResolvedValue({});
   mocks.completeEntry.mockResolvedValue({});
@@ -2986,6 +2987,58 @@ describe("Dogfood Day shell", () => {
     expect(mocks.bulkDeleteEntries.mock.calls[0][0]).toMatchObject({ taskchute_day_id: emptyDay.taskchute_day.id,
       entry_ids: [firstEntry.id, routineEntry.id], expected_placement_revision: twoPlannedDay.placement_revision });
     expect(screen.queryByText("2件選択中")).toBeNull();
+  });
+
+  it("opens Bulk estimate confirmation without writing, then sends one ordinary command and keeps selection", async () => {
+    const multiSectionDay = { ...twoPlannedDay, sections: [
+      { ...twoPlannedDay.sections[0], entries: [firstEntry] },
+      { ...twoPlannedDay.sections[1], entries: [secondEntry] },
+    ] };
+    mocks.loadDay.mockResolvedValue(multiSectionDay);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("checkbox", { name: "「Canonical task」を選択" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "「Second task」を選択" }));
+    fireEvent.click(screen.getByRole("button", { name: "見積変更" }));
+    const confirmation = await screen.findByRole("dialog", { name: "選択したTaskの見積変更" });
+    expect(mocks.bulkSetEntriesEstimateScoped).not.toHaveBeenCalled();
+    const input = within(confirmation).getByRole("spinbutton", { name: "共通見積（分）" });
+    fireEvent.change(input, { target: { value: "30" } });
+    fireEvent.click(within(confirmation).getByRole("button", { name: "見積変更を確定" }));
+    await waitFor(() => expect(mocks.bulkSetEntriesEstimateScoped).toHaveBeenCalledTimes(1));
+    expect(mocks.bulkSetEntriesEstimateScoped.mock.calls[0][0]).toMatchObject({
+      taskchute_day_id: emptyDay.taskchute_day.id,
+      entry_ids: [firstEntry.id, secondEntry.id],
+      estimate_seconds: 1800,
+      routine_scopes: [],
+    });
+    expect(mocks.bulkSetEntriesEstimateScoped.mock.calls[0][1]).toBeUndefined();
+    expect(screen.getByText("2件選択中")).toBeTruthy();
+  });
+
+  it("requires per-Routine estimate scope selection and supports NULL plus fill-all", async () => {
+    const routineEntry: EntryProjection = { ...secondEntry, task: { ...secondEntry.task, title: "Routine estimate task" }, routine: {
+      routine_definition_id: "019c0000-0000-7000-8000-000000000050", routine_occurrence_id: "019c0000-0000-7000-8000-000000000051",
+      end_logical_date: null, can_end: true, default_section_id: secondEntry.section_id,
+      default_planned_start_minute: secondEntry.planned_start_minute, section_plan_override_present: false,
+      default_estimate_seconds: 900, estimate_override_present: false, defaults_revision: 3,
+    } };
+    mocks.loadDay.mockResolvedValue({ ...twoPlannedDay, sections: [{ ...twoPlannedDay.sections[0], entries: [firstEntry, routineEntry] }, twoPlannedDay.sections[1]] });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("checkbox", { name: "「Canonical task」を選択" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "「Routine estimate task」を選択" }));
+    fireEvent.click(screen.getByRole("button", { name: "見積変更" }));
+    const confirmation = await screen.findByRole("dialog", { name: "選択したTaskの見積変更" });
+    expect((within(confirmation).getByRole("button", { name: "見積変更を確定" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(within(confirmation).getByRole("button", { name: "すべてルーティンに反映" }));
+    expect(within(within(confirmation).getByRole("group", { name: "Routine estimate taskの見積scope" }))
+      .getByRole("button", { name: "ルーティンに反映" }).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(within(confirmation).getByRole("button", { name: "見積変更を確定" }));
+    await waitFor(() => expect(mocks.bulkSetEntriesEstimateScoped).toHaveBeenCalledTimes(1));
+    expect(mocks.bulkSetEntriesEstimateScoped.mock.calls[0][0]).toMatchObject({
+      estimate_seconds: null,
+      routine_scopes: [{ entry_id: routineEntry.id, scope: "definition", expected_defaults_revision: 3 }],
+    });
+    expect(screen.getByText("2件選択中")).toBeTruthy();
   });
 
   it("clears selection on Day navigation", async () => {

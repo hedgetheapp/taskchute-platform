@@ -5,6 +5,7 @@ import { bulkDeleteEntries, isBulkDeleteEntriesRequest } from "./application/bul
 import { bulkMoveEntriesToSection, isBulkMoveEntriesToSectionRequest } from "./application/bulk-move-entries-to-section";
 import { bulkMoveEntriesToSectionOccurrence, isBulkMoveEntriesToSectionOccurrenceRequest } from "./application/bulk-move-entries-to-section-occurrence";
 import { bulkMoveEntriesToSectionScoped, isBulkMoveEntriesToSectionScopedRequest } from "./application/bulk-move-entries-to-section-scoped";
+import { bulkSetEntriesEstimateScoped, isBulkSetEntriesEstimateScopedRequest } from "./application/bulk-set-entries-estimate-scoped";
 import { createProject, isCreateProjectRequest } from "./application/create-project";
 import { loadProjects } from "./application/load-projects";
 import { HttpError } from "./application/errors";
@@ -157,6 +158,12 @@ async function route(request: Request, env: Env): Promise<Response> {
     const body = await readBoundedJson(request);
     if (!isBulkMoveEntriesToSectionScopedRequest(body)) throw new HttpError(400, "malformed_request", "Invalid BulkMoveEntriesToSectionScoped request");
     return Response.json(await bulkMoveEntriesToSectionScoped(env.APP_DB, principal.appUserId, body));
+  }
+  if (request.method === "POST" && (url.pathname === "/api/v1/taskchute-days/current/entries/bulk-estimate"
+    || url.pathname === "/api/v1/taskchute-days/by-logical-date/entries/bulk-estimate")) {
+    const body = await readBoundedJson(request);
+    if (!isBulkSetEntriesEstimateScopedRequest(body)) throw new HttpError(400, "malformed_request", "Invalid BulkSetEntriesEstimateScoped request");
+    return Response.json(await bulkSetEntriesEstimateScoped(env.APP_DB, principal.appUserId, body));
   }
   if (request.method === "POST" && url.pathname === "/api/v1/section-configurations/initial") {
     const body = await readBoundedJson(request);

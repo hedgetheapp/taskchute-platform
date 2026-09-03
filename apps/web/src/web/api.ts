@@ -10,6 +10,8 @@ import type {
   BulkMoveEntriesToSectionOccurrenceResult,
   BulkMoveEntriesToSectionScopedRequest,
   BulkMoveEntriesToSectionScopedResult,
+  BulkSetEntriesEstimateScopedRequest,
+  BulkSetEntriesEstimateScopedResult,
   ApiErrorCode,
   ApiErrorBody,
   CreateProjectRequest,
@@ -119,6 +121,12 @@ export const api = {
   },
   bulkMoveEntriesToSectionScoped(body: BulkMoveEntriesToSectionScopedRequest): Promise<BulkMoveEntriesToSectionScopedResult> {
     return requestJson("/api/v1/taskchute-days/current/entries/bulk-section-scoped", jsonPost("", body));
+  },
+  bulkSetEntriesEstimateScoped(body: BulkSetEntriesEstimateScopedRequest, logicalDate?: string): Promise<BulkSetEntriesEstimateScopedResult> {
+    const path = logicalDate
+      ? `/api/v1/taskchute-days/by-logical-date/entries/bulk-estimate?logical_date=${encodeURIComponent(logicalDate)}`
+      : "/api/v1/taskchute-days/current/entries/bulk-estimate";
+    return requestJson(path, jsonPost("", body));
   },
   reorderEntries(body: ReorderEntriesRequest): Promise<ReorderEntriesResult> {
     return requestJson("/api/v1/taskchute-days/current/entries/reorder", jsonPost("", body));

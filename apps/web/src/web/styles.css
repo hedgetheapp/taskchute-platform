@@ -120,6 +120,9 @@ input:focus-visible, select:focus-visible { border-color: #2383e2; outline: 2px 
 .bulk-confirmation h2 { margin: 0; font-size: 16px; }
 .bulk-confirmation p { margin: 0; color: #575754; font-size: 13px; }
 .bulk-confirmation-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.bulk-estimate-input { display: grid; gap: 4px; max-width: 240px; color: #373735; font-size: 13px; font-weight: 700; }
+.bulk-estimate-input input { min-width: 0; }
+.bulk-estimate-confirmation .bulk-routine-scope-list { margin: 0; }
 .bulk-scope-fill-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .bulk-routine-scope-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
 .bulk-routine-scope-row { display: grid; grid-template-columns: minmax(120px, 1fr) auto auto; align-items: center; gap: 8px; padding: 7px 8px; border: 1px solid #e5e1d7; border-radius: 6px; background: #fff; }

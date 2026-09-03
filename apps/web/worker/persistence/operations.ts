@@ -7,6 +7,7 @@ export type CommandType = "CreateProject" | "AddTaskToDay" | "ReorderEntries" | 
   | "BulkMoveEntriesToSection"
   | "BulkMoveEntriesToSectionOccurrence"
   | "BulkMoveEntriesToSectionScoped"
+  | "BulkSetEntriesEstimateScoped"
   | "EstablishInitialSectionConfiguration" | "MoveEntry" | "SetEntryEstimate" | "SetEntryPlannedStart"
   | "UpdateSectionConfiguration" | "ConvertEntryToRoutine" | "EndRoutine"
   | "SetRoutineEstimate" | "SetRoutineSectionPlan"

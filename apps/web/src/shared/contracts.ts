@@ -250,6 +250,29 @@ export interface BulkMoveEntriesToSectionScopedResult {
   placement_revision: number;
 }
 
+export type BulkEstimateScopeInput =
+  | { entry_id: string; scope: "occurrence" }
+  | { entry_id: string; scope: "definition"; expected_defaults_revision: number };
+
+export interface BulkSetEntriesEstimateScopedRequest {
+  operation_id: string;
+  taskchute_day_id: string;
+  entry_ids: string[];
+  estimate_seconds: number | null;
+  routine_scopes: BulkEstimateScopeInput[];
+}
+
+export interface BulkSetEntriesEstimateScopedResult {
+  taskchute_day_id: string;
+  entry_ids: string[];
+  estimate_seconds: number | null;
+  changed_entry_ids: string[];
+  propagated_entry_ids: string[];
+  routine_override_changed_entry_ids: string[];
+  definition_changed_routine_definition_ids: string[];
+  defaults_revisions: Array<{ routine_definition_id: string; defaults_revision: number }>;
+}
+
 export interface ReorderEntriesRequest {
   operation_id: string;
   taskchute_day_id: string;
