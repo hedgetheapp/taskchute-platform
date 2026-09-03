@@ -223,14 +223,17 @@ display column reorderはTask planning orderと別機能である。
 
 ## Column customization target
 
-- Project以後のdata columnsはreorder / resize / auto-fit対象とする。hide / showはfuture scopeである。
+- Project以後の9 data columnsはreorder / resize / auto-fit / hide / show対象とする。`列` menuのcheckboxは即時反映し、popoverはtoggle中に開いたまま保持する。
 - Taskはfixedかつnon-hideableとする。
 - Bulk slotとExecution Controlはfixed UI slotsとする。
 - resizeとauto-fitをtargetとする。
-- display order / widthはbrowser-local preferenceとして保持し、Server / API / D1 / cross-device同期を行わない。
-- preference keyは`taskchute.web.day-columns.v1`、envelopeは`{version:1,order:[...],widths:{...}}`とし、malformed / incompatible / duplicate / unknown / missing keyは安全にrepairする。
+- display order / width / visibilityはbrowser-local preferenceとして保持し、Server / API / D1 / cross-device同期を行わない。
+- preference keyは`taskchute.web.day-columns.v2`、envelopeは`{version:2,order:[...],widths:{...},hidden:[...]}`とする。validな`taskchute.web.day-columns.v1`はv2へ移行し、全列visibleで開始する。malformed / incompatible / duplicate / unknown / missing keyは安全にrepairする。
+- full orderはhidden columnを含む順序として保持し、visible orderはfull orderからhiddenを除いた解決順とする。hideはorder / widthを保持し、showは元位置・元幅へ戻す。`すべて表示`はhiddenだけをclearし、order / widthを変更しない。
+- `初期状態に戻す`はcurrent data columnsのdefault order / width / visible stateだけを戻し、Sidebar、Section collapse、completed visibility、Task / Day dataは変更しない。
+- effective grid tracks / table minimum widthはvisible columnsだけから算出し、heading / normal / draft / summary / placeholder / empty rowで共有する。hidden columnはaccessibility treeにも出さない。
 
-column customization v0.1は実装済みである。registryがheading label、stable key、default/min/max width、cell class、renderer、reorder / resize / auto-fit behaviorを共有し、header drag-and-dropはProject以後だけを対象とする。実装・verification状態は`docs/CURRENT.md` / `docs/FEATURES.md` / `docs/TEST_MATRIX.md`で管理する。
+column customization v0.1は実装済みである。registryがheading label、stable key、default/min/max width、cell class、renderer、reorder / resize / auto-fit / visibility behaviorを共有し、header drag-and-dropはvisibleなProject以後だけを対象とする。`列` triggerは明示accessible name、expanded state、real checkbox、Escape / outside click / trigger re-click dismissalを持つ。実装・verification状態は`docs/CURRENT.md` / `docs/FEATURES.md` / `docs/TEST_MATRIX.md`で管理する。
 
 ## Execution actual projection
 

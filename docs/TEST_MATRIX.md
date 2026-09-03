@@ -902,6 +902,33 @@ Web suiteではdeterministic Reorder / Start conflict後のcanonical refetch、a
 - Product / Domain / Architecture / Policy Decision: `UNCHANGED / NONE`
 - classification: Desktop Day wide layout + Sidebar collapse v0.1 `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / PERSISTENT_NONPROD_VERIFIED`、production `NOT_RUN`、Released `NO`
 
+## Day Table columns menu v0.1 integrated evidence — 2026-09-03
+
+- implementation commit: `2bf40a046941856e9ee8bb738f6abef5f923eb1c`（`Add Day Table columns menu`）をGitHub canonical `main`へpush済み
+- changed runtime / test paths: `apps/web/src/web/day-columns.ts`、`apps/web/src/web/App.tsx`、`apps/web/src/web/styles.css`、`apps/web/test/web/day-columns.test.ts`、`apps/web/test/web/App.test.tsx`。Worker / API / shared contract / D1 / migration / dependencyは変更なし
+- preference contract: current key `taskchute.web.day-columns.v2`、envelope `{version:2,order:[...],widths:{...},hidden:[...]}`。valid v1 order / widthはv2へ安全に移行し全列visible、unknown / duplicate / missing / malformedはrepairまたはdefault fallback。full orderはhiddenを含み、visible orderはhidden filter後。hide/showはposition / widthを保持し、`すべて表示`はhiddenだけclear、`初期状態に戻す`はorder / width / visibilityだけdefaultへ戻す
+- UI / fixed boundary: Day Toolbarの`列` trigger、9 real data columnsのreal checkbox、`すべて表示`、`初期状態に戻す`を実装。fixed `[Bulk slot] [Execution] [Task]`は常時visible・reorder/hide対象外。Mode / Note、row checkbox、select-all、bulk actionは出していない。completed visibilityは独立controlのまま
+- local automated: focused column / affected Web `127 / 127 PASS`、full Web `133 / 133 PASS`、typecheck、production build、`git diff --check`、source review `PASS`。Worker / D1 / migration / new dependencyはWeb-only impact analysisにより`NOT_REQUIRED`
+- automated coverage: v1 migration、hidden normalization、visible grid/min-width、show-all/reset、immediate hide/show、normal/draft removal and restore、full-order D&D regression、width persistence、all-hidden fixed slots、no mutation API calls、Escape / outside click / trigger re-click、Mode / Note absence、completed visibility separationを確認
+- browser-local nonprod browser: Columns menu open、Project / Routine / 開始 / 終了 / 実績 hide/show、hide時table width縮小、Project width `150 → 220`のhide/show・reload保持、`すべて表示`、`初期状態に戻す`、normal/draft/fixed alignment、Routine icon / completed actual保持を`PASS`
+- responsive browser: viewport `1920 / 1440 / 1280 / 720`でpopover within viewport、page `docScroll`は各viewport内。Day Table `client / scroll`は`1646 / 1646`、`1166 / 1280`、`1006 / 1280`、`462 / 1280`。720pxはsticky static + table-owned scroll、Sidebar close / reopenも`PASS`
+- browser D&D boundary: header Cua dragはorder / visible indicator / DB mutationとも変化しないno-opだったため`NOT_VERIFIED`。local automated D&D reorder / persistenceは`PASS`であり、browser no-opをsuccessへ昇格しない
+- authenticated nonprod deployment: exact `main@2bf40a0`を`CLOUDFLARE_ENV=nonprod`でbuildし、generated `taskchute-web-nonprod`（`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、canonical AUTH_DB / APP_DB binding）をdry-run `PASS`後deploy。Worker version `e6d9691b-c3e4-4334-9b06-96379bea5e9d`、pending migrations AUTH / APP `0 / 0`
+- browser console / API / DB: console warnings / errors `0 / 0`、root `200`、unauthenticated protected API `401`、disabled bootstrap POST `404`、AUTH / APP remote read-only `PRAGMA quick_check = ok`、FK violations `0`、rows_written `0`。visibility / layout preferenceはDBへ書き込んでいない
+- product / domain / architecture / policy decision: `UNCHANGED / NONE`。production feature verification `NOT_RUN`、Released `NO`
+- classification: Day Table columns menu + customization + actual projection v0.1 `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / PERSISTENT_NONPROD_VERIFIED`
+
+| ID | Area | Requirement | Contract | Evidence |
+|---|---|---|---|---|
+| DAY-COLUMNS-MENU-01 | Preference | defaultは9 real columns visible、fixed UI slotsは別管理 | Approved (Task Contract; DESIGN) | PASS (LOCAL_AUTOMATED) |
+| DAY-COLUMNS-MENU-02 | Migration | valid v1 order / widthをv2へ移行し、hiddenは空で開始する | Approved (Task Contract) | PASS (LOCAL_AUTOMATED) |
+| DAY-COLUMNS-MENU-03 | Visibility | heading / normal / draftからhidden columnを除き、showで元位置へ戻す | Approved (Task Contract) | PASS (LOCAL_AUTOMATED + NONPROD_BROWSER) |
+| DAY-COLUMNS-MENU-04 | Presentation | hidden widthは保存するがeffective grid / min-widthから除外する | Approved (Task Contract) | PASS (LOCAL_AUTOMATED + NONPROD_BROWSER) |
+| DAY-COLUMNS-MENU-05 | Controls | `すべて表示`はorder / widthを保持し、resetはcolumn presentationだけをdefaultへ戻す | Approved (Task Contract) | PASS (LOCAL_AUTOMATED + NONPROD_BROWSER) |
+| DAY-COLUMNS-MENU-06 | Accessibility | explicit trigger name / expanded state、real checkbox、Escape / outside click、Mode / Note absent | Approved (Task Contract) | PASS (LOCAL_AUTOMATED + NONPROD_BROWSER) |
+| DAY-COLUMNS-MENU-07 | Compatibility | fixed slots、completed visibility、Routine、forecast、actual、draft、Sidebar、no mutation APIを維持する | Approved (Task Contract; D-032, D-040, D-043) | PASS (LOCAL_AUTOMATED + NONPROD_BROWSER) |
+| DAY-COLUMNS-MENU-08 | D&D boundary | visible header reorderはlocalで維持し、browser Cua no-opをPASSへ昇格しない | Approved (Task Contract) | PASS (LOCAL_AUTOMATED); NOT_VERIFIED (NONPROD_BROWSER) |
+
 ## Day Table column customization + actual projection v0.1 integrated evidence — 2026-09-03
 
 - implementation commits: `10584ba`（`Customize Day Table columns`）、`6100d20`（auto-fit縮小修正）、`6316b0d`（mobile overflow修正）、`60eecdd`（hidden label containment修正）をGitHub canonical `main`へIntegrated済み
