@@ -640,6 +640,31 @@ Duplicate first slice local / persistent nonprod evidence（2026-09-02）:
 - final AUTH quick check `ok`、FK `0`、users / accounts / sessions `1 / 1 / 2`。AUTH migration / credential / session resetなし
 - detailed retry / misuse / stale revision / concurrency / ambiguity / logical-past overlapはlocal automated evidenceに限定し、production feature verificationは`NOT_RUN`、Releasedは`NO`
 
+## Bulk Selection v0.1
+
+| ID | Area | Requirement | Contract | Evidence |
+|---|---|---|---|---|
+| BULK-01 | Eligibility | established Dayのplanning-enabled planned Entryだけを選択可能とし、running / completed / historical / preview / locked stateは対象外とする | Approved (D-051) | PASS (LOCAL_AUTOMATED + REAL_LOCAL_BROWSER + NONPROD_BROWSER) |
+| BULK-02 | Selection state | stable Entry IDによるephemeral selection、collapse Sectionを含むselect-all、clear、reconcile prune、collapse / columns / Sidebar変更時の保持、reload / Day navigation / logout境界でのclearを満たす | Approved (D-051) | PASS (LOCAL_AUTOMATED + REAL_LOCAL_BROWSER + NONPROD_BROWSER) |
+| BULK-03 | Confirmation / accessibility | ordinary / Routine-derived / mixed selectionの処理内容を明示確認し、cancel / Escapeはno-writeで閉じてfocusを戻す | Approved (D-051) | PASS (LOCAL_AUTOMATED + REAL_LOCAL_BROWSER + NONPROD_BROWSER) |
+| BULK-04 | Command boundary | N件の個別deleteではなく、owner-scoped Day / Entry IDs / placement revisionを一つの`BulkDeleteEntries` commandで送る | Approved (D-051, D-020) | PASS (LOCAL_AUTOMATED + REAL_LOCAL_BROWSER request mock) |
+| BULK-05 | Ordinary delete | planned ordinary EntryだけをDayからremoveし、Task identity / Project / other Day / Execution factsを保持する | Approved (D-051) | PASS (LOCAL_AUTOMATED) |
+| BULK-06 | Routine skip | Routine-derived Entry / RoutineDefinitionを保持し、Occurrenceへ当日だけの`reason = 'skip'`を保存してreload / ensureで再生成しない | Approved (D-051, D-040) | PASS (LOCAL_AUTOMATED) |
+| BULK-07 | Atomicity / retry | mixed batchのall-or-nothing、stale / owner / Day / lifecycle / execution guard、duplicate ID reject、same-operation replay、injected rollbackを満たす | Approved (D-051, D-020) | PASS (LOCAL_AUTOMATED) |
+| BULK-08 | Migration | `0001 -> 0010` fresh chainと`0009 -> 0010` upgradeでexisting operation / suppression row、PK / owner / FK / timestampsを保持し、新command / `skip` reasonを受理する | Approved (D-051) | PASS (MIGRATION_REGRESSION + REAL_LOCAL + NONPROD_MIGRATION) |
+| BULK-09 | Regression | existing Worker / Web behavior、fixed slots、columns / collapse、typecheck / buildを維持する | Approved (D-051; regression contract) | PASS (WORKER + WEB + TYPECHECK + BUILD + DIFF_CHECK) |
+| BULK-10 | Persistent nonprod safety | backup後にAPP migration / deployを行い、nonprod identity、bootstrap-disabled boundary、D1 integrity、authenticated browserを確認する | Approved (D-024, D-051) | PASS (NONPROD_BACKUP + NONPROD_MIGRATION + NONPROD_DEPLOY + NONPROD_BROWSER) |
+
+Bulk Selection v0.1 integrated evidence（2026-09-03）:
+
+- canonical Decision commit `a7ef32b2f99263c705306b1c5caeca2a535c89f8`、runtime implementation commit `c0c8799f1ae5fd1b14fd5f87259adda02ffca504`、narrow responsive fix commit `ae7cd5c980f202bad5ca36e2967a010d8457cc1e`をGitHub `main`へpush済み。changed pathsはBulk migration / shared contract / API route / Worker application / Web UI・CSS / focused tests / migration harness / Vitest suite boundaryである
+- local focused Bulk Worker `6 / 6 PASS`、Worker全体 `154 / 154 PASS`、Web App focused `132 / 132 PASS`、Web全体 `138 / 138 PASS`、migration regression `4 scenarios PASS`（fresh `0001 -> 0010`、existing `0009 -> 0010` preservation / constraintsを含む）、typecheck、production build、`git diff --check`、source review `PASS`
+- real-local APP `0010_bulk_selection_delete.sql` migrationは`PASS`。authenticated browserでselection、select-all mixed state、collapse / column persistence、reload selection clear、explicit confirmation、cancel / Escape focus、responsive `1920 / 1440 / 1280 / 720`、page overflow / popover viewport、console warnings / errors `0 / 0`を確認した
+- persistent nonprodではmigration前にAPP / AUTHのprivate ignored SQL backupを取得し、非空・readableを確認。APP `0010` migrationは`PASS`、AUTH migrationは未変更、pending migrationsは`0 / 0`。APP `quick_check = ok`、FK violations `0`、read-only query `rows_written = 0`
+- exact latest `main@ae7cd5c`を`CLOUDFLARE_ENV=nonprod`でbuildし、生成configのWorker `taskchute-web-nonprod`、`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、canonical AUTH / APP bindingを確認してdeploy。Worker version `1eed0ee4-313f-46f9-9e7b-4bd884fcf7ec`。root `200`、unauthenticated protected API `401`、disabled bootstrap POST `404`
+- authenticated nonprod browserでordinary / Routine-derived mixed selection、処理説明、cancel、Day navigationによるselection clear、同じresponsive matrix、console warnings / errors `0 / 0`を確認した。persistent nonprodのdata mutation、cleanup、production accessは行っていない
+- browser safety policy上、実データを削除するconfirmation dialogの最終`削除` actionは`NOT_RUN`。atomic ordinary delete / Routine skip、Task / Routine identity preservation、exactly-once revision、replay、rollback、guard semanticsはlocal Worker automatedでPASS。production feature verification `NOT_RUN`、Released `NO`
+
 ## Routine / Documents
 
 | ID | Area | Requirement | Contract | Evidence |

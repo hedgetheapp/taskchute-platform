@@ -172,9 +172,8 @@ D-043のtarget interactionでは、開始予定の設定・変更が該当real S
 - Mode
 - Note / Documents
 - actual timeの直接編集 / manual correction
-- Bulk Selection actions
 
-これらはtarget column modelから削除しない。一方、capability実装前にfake valueやdisabled placeholderだけの列を出さない。
+これらはtarget column modelから削除しない。一方、capability実装前にfake valueやdisabled placeholderだけの列を出さない。Bulk Selection v0.1は下記の専用sectionとD-051でcanonical化する。
 
 ## Routine placement
 
@@ -234,6 +233,16 @@ display column reorderはTask planning orderと別機能である。
 - effective grid tracks / table minimum widthはvisible columnsだけから算出し、heading / normal / draft / summary / placeholder / empty rowで共有する。hidden columnはaccessibility treeにも出さない。
 
 column customization v0.1は実装済みである。registryがheading label、stable key、default/min/max width、cell class、renderer、reorder / resize / auto-fit / visibility behaviorを共有し、header drag-and-dropはvisibleなProject以後だけを対象とする。`列` triggerは明示accessible name、expanded state、real checkbox、Escape / outside click / trigger re-click dismissalを持つ。実装・verification状態は`docs/CURRENT.md` / `docs/FEATURES.md` / `docs/TEST_MATRIX.md`で管理する。
+
+## Bulk Selection v0.1
+
+- Day Table先頭のfixed-width Bulk slotへ、eligibleなplanned Entryのrow checkboxとheader select-allを置く。Bulk slot、Execution、Taskはfixed UI slotとして常時表示し、column customizationのhide / reorder対象にしない。
+- eligibleはestablished Dayのplanning mutationが許可されたplanned Entryとする。running、completed、historical / read-only、未establishのdraft / preview、mutation-locked stateはdisabledまたは選択対象外とする。header select-allはviewportやexpanded Sectionだけでなく、collapse中を含むcurrent Day projection全体へ適用する。
+- 選択はstable Entry IDのephemeral Web stateとし、localStorage、Server、API、D1へ保存しない。collapse、column customization、Sidebarの変更では維持し、reconcileで不在 / ineligibleをpruneし、reload、Day navigation、logout / identity change、成功後にclearする。
+- selection toolbarは件数、`選択解除`、`削除`を提供する。削除は必ず明示確認を経由し、ordinaryのみ、Routine-derivedのみ、mixed selectionで処理内容を説明する。Escape / cancelでno-writeのまま確認を閉じ、triggerへfocusを戻す。
+- 実行時はN件の個別mutationではなく、selected Entry IDsとDay placement revisionを一つの`BulkDeleteEntries` commandへ送る。ordinary planned EntryはそのDayのEntry rowだけをremoveし、Task identity、Project、他Day、Execution factsを保持する。Routine-derived planned EntryはEntry / RoutineDefinitionを変更せず、Occurrenceへ当日だけの`skip` suppressionを保存する。
+- success後はcanonical Day projectionへreconcileし、relative order、Routine identity、future generation semanticsを維持する。atomic guard、owner scope、stale revision、operation replay / ambiguityは既存command conventionへ従う。Task hard delete、running cancellation、completed / interrupted delete、undo / restore、persisted selectionはこのsliceに含めない。
+- narrow viewportではtoolbarをwrapし、Columns popoverをviewport内へ収める。Day Table自身がhorizontal scrollを所有し、既存のsticky / narrow fallbackとfixed slot alignmentを維持する。
 
 ## Execution actual projection
 
@@ -306,7 +315,7 @@ Day Table column customization v0.1は、Project / Section / Routine / 見積 / 
 
 current runtimeでは、Day Navigation v0.1のTop Navigation date navigation / calendar pickerと、Settings v0.1のLeft Sidebar `今日` / `設定`およびdedicated Section / Project Settings surfaceを実装済みである。DayBoard上のtemporary Project作成controlとSection設定editorは撤去済み。Desktop Day wide layoutとauthenticated Sidebar open / closed preferenceの実装状態は`docs/FEATURES.md`、`docs/CURRENT.md`、`docs/TEST_MATRIX.md`を正本とする。
 
-full target column modelはcurrent implementationより広い。Bulk capability、Mode、Note、hide / show、actual timeのmanual correction、Search / Filter、fullerなcontext interaction等はfuture workとして残る。browser-local preferenceはServer / API / D1 / cross-device同期を行わず、responsive / mobileのexact policyは引き続きOpenであり、UI-2Aの狭幅fallbackをProduct Decisionへ昇格しない。
+full target column modelはcurrent implementationより広い。Mode、Note、actual timeのmanual correction、Search / Filter、fullerなcontext interaction、D-051を超えるBulk capability等はfuture workとして残る。browser-local preferenceはServer / API / D1 / cross-device同期を行わず、responsive / mobileのexact policyは引き続きOpenであり、UI-2Aの狭幅fallbackをProduct Decisionへ昇格しない。
 
 ## Unreconciled historical scope
 

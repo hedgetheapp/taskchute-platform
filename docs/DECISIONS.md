@@ -1041,3 +1041,5 @@ operation fingerprintと既存D-020のretry / reconciliation境界を利用し�
 APP migration `0010_bulk_selection_delete.sql`は、既存`operations.command_type`のcompatibility CHECKへ`BulkDeleteEntries`だけを追加し、既存operation row / command typeを保持する。また既存`routine_occurrence_suppressions.reason`へ`skip`だけを追加し、PK、owner scope、RoutineOccurrence FK、`suppressed_at`、既存`schedule` / `period` / `paused` rowを保持する。selection persistence、Task tombstone / hard delete、running cancellation、completed / interrupted delete、Mode / Note schema、追加audit tableは本Decisionに含めない。
 
 本DecisionはProduct / Domain scope、APP compatibility migration、atomicity、owner scope、revision、retry、Routine Skip semanticsをApprovedにするが、runtime、migration、Web、test、non-production verificationの完了を意味しない。running delete / cancelled Execution representation、completed / interrupted delete、Bulk Section / date / Project / Mode変更、group drag、persisted selection、undo / restore、production verificationは後続scopeとする。
+
+実装・検証状態は`docs/CURRENT.md`、`docs/FEATURES.md`、`docs/TEST_MATRIX.md`に記録する。本DecisionのProduct / Domain semanticsと後続scopeは変更しない。
