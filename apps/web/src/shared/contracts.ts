@@ -174,6 +174,20 @@ export interface DuplicateEntryResult {
   placement_revision: number;
 }
 
+export interface BulkDeleteEntriesRequest {
+  operation_id: string;
+  taskchute_day_id: string;
+  entry_ids: string[];
+  expected_placement_revision: number;
+}
+
+export interface BulkDeleteEntriesResult {
+  taskchute_day_id: string;
+  deleted_entry_ids: string[];
+  skipped_routine_entry_ids: string[];
+  placement_revision: number;
+}
+
 export interface ReorderEntriesRequest {
   operation_id: string;
   taskchute_day_id: string;

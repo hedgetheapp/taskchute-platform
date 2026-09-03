@@ -2,6 +2,8 @@ import type {
   AddTaskToDayRequest,
   DuplicateEntryRequest,
   DuplicateEntryResult,
+  BulkDeleteEntriesRequest,
+  BulkDeleteEntriesResult,
   ApiErrorCode,
   ApiErrorBody,
   CreateProjectRequest,
@@ -99,6 +101,9 @@ export const api = {
   },
   duplicateEntry(body: DuplicateEntryRequest): Promise<DuplicateEntryResult> {
     return requestJson(`/api/v1/entries/${body.source_entry_id}/duplicate`, jsonPost("", body));
+  },
+  bulkDeleteEntries(body: BulkDeleteEntriesRequest): Promise<BulkDeleteEntriesResult> {
+    return requestJson("/api/v1/taskchute-days/current/entries/bulk-delete", jsonPost("", body));
   },
   reorderEntries(body: ReorderEntriesRequest): Promise<ReorderEntriesResult> {
     return requestJson("/api/v1/taskchute-days/current/entries/reorder", jsonPost("", body));

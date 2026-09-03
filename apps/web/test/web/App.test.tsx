@@ -1,9 +1,9 @@
-import { act, createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CurrentTaskChuteDayProjection, EntryProjection } from "../../src/shared/contracts";
 
 const mocks = vi.hoisted(() => ({
-  login: vi.fn(), logout: vi.fn(), loadDay: vi.fn(), loadProjects: vi.fn(), createProject: vi.fn(), addTask: vi.fn(), duplicateEntry: vi.fn(),
+  login: vi.fn(), logout: vi.fn(), loadDay: vi.fn(), loadProjects: vi.fn(), createProject: vi.fn(), addTask: vi.fn(), duplicateEntry: vi.fn(), bulkDeleteEntries: vi.fn(),
   reorderEntries: vi.fn(), startEntry: vi.fn(), completeEntry: vi.fn(),
   establishInitialSectionConfiguration: vi.fn(), moveEntry: vi.fn(), setEntryEstimate: vi.fn(),
   setEntryPlannedStart: vi.fn(),
@@ -184,6 +184,7 @@ beforeEach(() => {
   mocks.createProject.mockResolvedValue({ project: { id: "project", title: "Project" } });
   mocks.addTask.mockResolvedValue({});
   mocks.duplicateEntry.mockResolvedValue({});
+  mocks.bulkDeleteEntries.mockResolvedValue({});
   mocks.reorderEntries.mockResolvedValue({});
   mocks.startEntry.mockResolvedValue({});
   mocks.completeEntry.mockResolvedValue({});
@@ -324,7 +325,7 @@ describe("Dogfood Day shell", () => {
     expect(headingCells[0]?.classList.contains("bulk-slot")).toBe(true);
     expect(heading.querySelectorAll(":scope > .bulk-slot")).toHaveLength(1);
     expect(headingCells[0]?.getAttribute("tabindex")).toBeNull();
-    expect(headingCells[0]?.querySelector("button, input, select, textarea, a[href], [tabindex]")).toBeNull();
+    expect((headingCells[0]?.querySelector("input") as HTMLInputElement)?.checked).toBe(false);
     const taskRow = dayBoard.querySelector<HTMLElement>("[data-entry-id]")!;
     expect(taskRow.firstElementChild?.classList.contains("bulk-slot")).toBe(true);
     expect(taskRow.querySelectorAll(":scope > .bulk-slot")).toHaveLength(1);
@@ -2820,5 +2821,102 @@ describe("Dogfood Day shell", () => {
     expect(await screen.findByLabelText("Canonical taskはルーティン")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Routine化" })).toBeNull();
     rerendered.unmount();
+  });
+
+  it("selects eligible Entry IDs without starting, editing, or dragging the row", async () => {
+    mocks.loadDay.mockResolvedValue(twoPlannedDay);
+    render(<App />);
+    const checkbox = await screen.findByRole("checkbox", { name: "「Canonical task」を選択" });
+    fireEvent.click(checkbox);
+    expect((checkbox as HTMLInputElement).checked).toBe(true);
+    expect(screen.getByText("1件選択中")).toBeTruthy();
+    expect(mocks.startEntry).not.toHaveBeenCalled();
+    expect(mocks.duplicateEntry).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "選択解除" }));
+    expect(screen.queryByText("1件選択中")).toBeNull();
+  });
+
+  it("renders Routine selection and excludes running, completed, and read-only rows", async () => {
+    const routineEntry: EntryProjection = { ...firstEntry, task: { ...firstEntry.task, title: "Routine task" }, routine: {
+      routine_definition_id: "019c0000-0000-7000-8000-000000000050",
+      routine_occurrence_id: "019c0000-0000-7000-8000-000000000051",
+      end_logical_date: null, can_end: true, default_section_id: firstEntry.section_id,
+      default_planned_start_minute: firstEntry.planned_start_minute, section_plan_override_present: false,
+      default_estimate_seconds: firstEntry.estimate_seconds, estimate_override_present: false, defaults_revision: 0,
+    } };
+    mocks.loadDay.mockResolvedValue({ ...populatedDay, sections: [{ ...populatedDay.sections[0], entries: [routineEntry] }, populatedDay.sections[1]] });
+    render(<App />);
+    expect(await screen.findByRole("checkbox", { name: "「Routine task」を選択" })).toBeTruthy();
+    expect(screen.getByRole("checkbox", { name: "すべての未実行Taskを選択" })).toBeTruthy();
+
+    const cases = [
+      { projection: runningDay, label: "Canonical taskは選択不可（未実行の計画Taskではありません）" },
+      { projection: completedDay, label: "Canonical taskは選択不可（未実行の計画Taskではありません）" },
+      { projection: { ...populatedDay, planning_enabled: false }, label: "Canonical taskは選択不可（未実行の計画Taskではありません）" },
+    ];
+    for (const item of cases) {
+      cleanup();
+      mocks.loadDay.mockReset();
+      mocks.loadDay.mockResolvedValue(item.projection);
+      render(<App />);
+      expect((await screen.findByRole("checkbox", { name: item.label }) as HTMLInputElement).disabled).toBe(true);
+      expect(screen.queryByRole("checkbox", { name: "すべての未実行Taskを選択" })).toBeNull();
+    }
+  });
+
+  it("selects all eligible Entries across Sections, reports indeterminate state, and preserves selection through collapse and columns", async () => {
+    const multiSectionDay = { ...twoPlannedDay, sections: [
+      { ...twoPlannedDay.sections[0], entries: [firstEntry] },
+      { ...twoPlannedDay.sections[1], entries: [secondEntry] },
+    ] };
+    mocks.loadDay.mockResolvedValue(multiSectionDay);
+    render(<App />);
+    const header = await screen.findByRole("checkbox", { name: "すべての未実行Taskを選択" }) as HTMLInputElement;
+    const first = screen.getByRole("checkbox", { name: "「Canonical task」を選択" });
+    fireEvent.click(first);
+    await waitFor(() => expect(header.indeterminate).toBe(true));
+    fireEvent.click(header);
+    expect((screen.getByRole("checkbox", { name: "「Canonical task」を選択" }) as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByRole("checkbox", { name: "「Second task」を選択" }) as HTMLInputElement).checked).toBe(true);
+    expect(screen.getByText("2件選択中")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Morningを折りたたむ" }));
+    expect(screen.getByText("2件選択中")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "表示列" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "表示列" })).getByRole("checkbox", { name: "Project" }));
+    expect(screen.getByText("2件選択中")).toBeTruthy();
+  });
+
+  it("requires confirmation, keeps cancel side-effect free, and sends one mixed bulk command", async () => {
+    const routineEntry: EntryProjection = { ...secondEntry, task: { ...secondEntry.task, title: "Routine task" }, routine: {
+      routine_definition_id: "019c0000-0000-7000-8000-000000000050", routine_occurrence_id: "019c0000-0000-7000-8000-000000000051",
+      end_logical_date: null, can_end: true, default_section_id: secondEntry.section_id,
+      default_planned_start_minute: secondEntry.planned_start_minute, section_plan_override_present: false,
+      default_estimate_seconds: secondEntry.estimate_seconds, estimate_override_present: false, defaults_revision: 0,
+    } };
+    mocks.loadDay.mockResolvedValue({ ...twoPlannedDay, sections: [{ ...twoPlannedDay.sections[0], entries: [firstEntry, routineEntry] }, twoPlannedDay.sections[1]] });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("checkbox", { name: "「Canonical task」を選択" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "「Routine task」を選択" }));
+    fireEvent.click(screen.getByRole("button", { name: "削除" }));
+    expect((await screen.findByRole("dialog", { name: "選択したTaskを削除" })).textContent).toContain("通常Task 1件はこの日から削除し、Routine Task 1件はこの日のみスキップします。");
+    expect(mocks.bulkDeleteEntries).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "キャンセル" }));
+    expect(screen.queryByRole("dialog", { name: "選択したTaskを削除" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "削除" }));
+    const confirmation = screen.getByRole("dialog", { name: "選択したTaskを削除" });
+    fireEvent.click(within(confirmation).getByRole("button", { name: "削除" }));
+    await waitFor(() => expect(mocks.bulkDeleteEntries).toHaveBeenCalledTimes(1));
+    expect(mocks.bulkDeleteEntries.mock.calls[0][0]).toMatchObject({ taskchute_day_id: emptyDay.taskchute_day.id,
+      entry_ids: [firstEntry.id, routineEntry.id], expected_placement_revision: twoPlannedDay.placement_revision });
+    expect(screen.queryByText("2件選択中")).toBeNull();
+  });
+
+  it("clears selection on Day navigation", async () => {
+    mocks.loadDay.mockResolvedValueOnce(populatedDay).mockResolvedValueOnce(emptyDay);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("checkbox", { name: "「Canonical task」を選択" }));
+    expect(screen.getByText("1件選択中")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "次の日" }));
+    await waitFor(() => expect(screen.queryByText("1件選択中")).toBeNull());
   });
 });

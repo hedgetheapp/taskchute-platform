@@ -19,5 +19,6 @@ export default defineConfig({
     setupFiles: ["./test/setup-worker.ts"],
     maxWorkers: 1,
     include: ["test/**/*.test.ts"],
+    exclude: ["test/web/**"],
   },
 });

@@ -1,6 +1,7 @@
 import type { ApiErrorBody } from "../src/shared/contracts";
 import { addTaskToDay, isAddTaskToDayRequest } from "./application/add-task-to-day";
 import { duplicateEntry, isDuplicateEntryRequest } from "./application/duplicate-entry";
+import { bulkDeleteEntries, isBulkDeleteEntriesRequest } from "./application/bulk-delete-entries";
 import { createProject, isCreateProjectRequest } from "./application/create-project";
 import { loadProjects } from "./application/load-projects";
 import { HttpError } from "./application/errors";
@@ -133,6 +134,11 @@ async function route(request: Request, env: Env): Promise<Response> {
     const body = await readBoundedJson(request);
     if (!isReorderEntriesRequest(body)) throw new HttpError(400, "malformed_request", "Invalid ReorderEntries request");
     return Response.json(await reorderEntries(env.APP_DB, principal.appUserId, body));
+  }
+  if (request.method === "POST" && url.pathname === "/api/v1/taskchute-days/current/entries/bulk-delete") {
+    const body = await readBoundedJson(request);
+    if (!isBulkDeleteEntriesRequest(body)) throw new HttpError(400, "malformed_request", "Invalid BulkDeleteEntries request");
+    return Response.json(await bulkDeleteEntries(env.APP_DB, principal.appUserId, body));
   }
   if (request.method === "POST" && url.pathname === "/api/v1/section-configurations/initial") {
     const body = await readBoundedJson(request);

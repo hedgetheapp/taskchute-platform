@@ -13,6 +13,7 @@ import { Temporal } from "@js-temporal/polyfill";
 import type {
   AddTaskToDayRequest,
   DuplicateEntryRequest,
+  BulkDeleteEntriesRequest,
   CompleteEntryRequest,
   CreateProjectRequest,
   CurrentTaskChuteDayProjection,
@@ -202,6 +203,17 @@ function isTextEditingTarget(target: EventTarget | null): boolean {
   return target.isContentEditable || target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
 }
 
+function projectionEntries(projection: CurrentTaskChuteDayProjection): EntryProjection[] {
+  return [...projection.unsectioned_entries, ...projection.sections.flatMap((section) => section.entries)];
+}
+
+function isBulkSelectableProjectionEntry(projection: CurrentTaskChuteDayProjection, entry: EntryProjection): boolean {
+  return projection.establishment_state === "established"
+    && projection.taskchute_day.id !== null
+    && projection.planning_enabled
+    && entry.lifecycle_state === "planned";
+}
+
 function isInteractiveDragTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return target.isContentEditable || Boolean(target.closest("button, a, input, select, textarea, [contenteditable]"));
@@ -289,6 +301,7 @@ function transientStatusText(pending: string | null): string | null {
     case "reorder": return "並び替え・照合中…";
     case "task": return "Taskを追加・照合中…";
     case "duplicate": return "Taskを複製・照合中…";
+    case "bulk-delete": return "選択したTaskを削除・照合中…";
     case "start": return "開始・照合中…";
     case "complete": return "完了・照合中…";
     case "move": return "Section移動・照合中…";
@@ -375,6 +388,13 @@ export function App() {
   const [projectOperation, setProjectOperation] = useState<CreateProjectRequest | null>(null);
   const [taskOperation, setTaskOperation] = useState<AddTaskToDayRequest | null>(null);
   const [duplicateOperation, setDuplicateOperation] = useState<DuplicateEntryRequest | null>(null);
+  const [bulkDeleteOperation, setBulkDeleteOperation] = useState<BulkDeleteEntriesRequest | null>(null);
+  const [bulkConfirmation, setBulkConfirmation] = useState<{
+    entryIds: string[];
+    ordinaryCount: number;
+    routineCount: number;
+  } | null>(null);
+  const [selectedEntryIds, setSelectedEntryIds] = useState<string[]>([]);
   const [reorderOperation, setReorderOperation] = useState<ReorderEntriesRequest | null>(null);
   const [startOperation, setStartOperation] = useState<StartEntryRequest | null>(null);
   const [completeOperation, setCompleteOperation] = useState<CompleteEntryRequest | null>(null);
@@ -394,7 +414,7 @@ export function App() {
   const [editingPlannedStart, setEditingPlannedStart] = useState<{ entryId: string; value: string } | null>(null);
   const [routineDraft, setRoutineDraft] = useState<{ entryId: string; endDate: string } | null>(null);
   const [routineCandidate, setRoutineCandidate] = useState<RoutineCandidate | null>(null);
-  const [pending, setPending] = useState<"login" | "project" | "project-settings" | "day-navigation" | "task" | "duplicate" | "reorder" | "start" | "complete" | "configuration" | "section-settings" | "move" | "estimate" | "planned-start" | "routine-convert" | "routine-end" | "routine-edit" | "logout" | null>(null);
+  const [pending, setPending] = useState<"login" | "project" | "project-settings" | "day-navigation" | "task" | "duplicate" | "bulk-delete" | "reorder" | "start" | "complete" | "configuration" | "section-settings" | "move" | "estimate" | "planned-start" | "routine-convert" | "routine-end" | "routine-edit" | "logout" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draftTask, setDraftTask] = useState<DraftTask | null>(null);
   const [pendingFocusKey, setPendingFocusKey] = useState<string | null>(null);
@@ -418,12 +438,15 @@ export function App() {
   const calendarGridRef = useRef<HTMLDivElement | null>(null);
   const columnsMenuRef = useRef<HTMLDivElement | null>(null);
   const columnsTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const bulkHeaderRef = useRef<HTMLInputElement | null>(null);
+  const bulkDeleteTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const bulkConfirmationRef = useRef<HTMLDivElement | null>(null);
   const routineScopeChoiceRef = useRef<HTMLSpanElement | null>(null);
   const forecastClockRef = useRef<{ serverInstant: string; monotonicMilliseconds: number } | null>(null);
-  const retainedOperation = projectOperation ?? taskOperation ?? duplicateOperation ?? reorderOperation ?? startOperation ?? completeOperation
+  const retainedOperation = projectOperation ?? taskOperation ?? duplicateOperation ?? bulkDeleteOperation ?? reorderOperation ?? startOperation ?? completeOperation
     ?? configurationOperation ?? sectionSettingsOperation ?? sectionMoveOperation ?? estimateOperation ?? plannedStartOperation
     ?? routineConversionOperation ?? routineEndOperation ?? routineEstimateOperation ?? routineSectionPlanOperation;
-  const mutationLocked = pending !== null || retainedOperation !== null;
+  const mutationLocked = pending !== null || retainedOperation !== null || bulkConfirmation !== null;
 
   const transitionToSignedOut = useCallback(() => {
     selectedLogicalDateRef.current = null;
@@ -439,6 +462,9 @@ export function App() {
     setProjectOperation(null);
     setTaskOperation(null);
     setDuplicateOperation(null);
+    setBulkDeleteOperation(null);
+    setBulkConfirmation(null);
+    setSelectedEntryIds([]);
     setReorderOperation(null);
     setStartOperation(null);
     setCompleteOperation(null);
@@ -474,6 +500,10 @@ export function App() {
       const projection = await api.loadDay(logicalDate ?? undefined);
       setDay(projection);
       selectedLogicalDateRef.current = projection.taskchute_day.logical_date;
+      setSelectedEntryIds((current) => current.filter((id) => {
+        const entry = projectionEntries(projection).find((candidate) => candidate.id === id);
+        return entry ? isBulkSelectableProjectionEntry(projection, entry) : false;
+      }));
       if (projection.is_current) setCurrentLogicalDate(projection.taskchute_day.logical_date);
       setAuthState("signed-in");
       return projection;
@@ -492,6 +522,8 @@ export function App() {
     setPending("day-navigation");
     setError(null);
     setDraftTask(null);
+    setSelectedEntryIds([]);
+    setBulkConfirmation(null);
     setEditingEstimate(null);
     setEditingPlannedStart(null);
     setRoutineDraft(null);
@@ -577,6 +609,30 @@ export function App() {
       return next;
     });
   }, [day]);
+
+  useEffect(() => {
+    const eligibleCount = day
+      ? projectionEntries(day).filter((entry) => isBulkSelectableProjectionEntry(day, entry)).length
+      : 0;
+    const selectedCount = day
+      ? selectedEntryIds.filter((id) => projectionEntries(day).some((entry) => entry.id === id
+        && isBulkSelectableProjectionEntry(day, entry))).length
+      : 0;
+    if (bulkHeaderRef.current) bulkHeaderRef.current.indeterminate = selectedCount > 0 && selectedCount < eligibleCount;
+  }, [day, selectedEntryIds]);
+
+  useEffect(() => {
+    if (!bulkConfirmation) return;
+    bulkConfirmationRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    const dismissOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setBulkConfirmation(null);
+      requestAnimationFrame(() => bulkDeleteTriggerRef.current?.focus());
+    };
+    document.addEventListener("keydown", dismissOnEscape);
+    return () => document.removeEventListener("keydown", dismissOnEscape);
+  }, [bulkConfirmation]);
 
   useEffect(() => {
     if (draftTask) draftInputRef.current?.focus();
@@ -806,6 +862,91 @@ export function App() {
     } finally {
       setPending(null);
     }
+  }
+
+  async function executeBulkDelete(operation: BulkDeleteEntriesRequest) {
+    setPending("bulk-delete");
+    setBulkConfirmation(null);
+    setError(null);
+    try {
+      await api.bulkDeleteEntries(operation);
+      const projection = await reconcile();
+      setBulkDeleteOperation(null);
+      setSelectedEntryIds([]);
+      const focusGroup = projection?.unsectioned_entries.length
+        ? groupKey(null)
+        : projection?.sections[0] ? groupKey(projection.sections[0].id) : null;
+      if (focusGroup) setPendingFocusKey(focusKey({ kind: "section", id: focusGroup }));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "選択したTaskの削除に失敗しました");
+      const ambiguous = isAmbiguousOutcome(caught);
+      if (!ambiguous) setBulkDeleteOperation(null);
+      try {
+        const projection = await reconcile();
+        const remaining = projection
+          ? operation.entry_ids.some((id) => projectionEntries(projection).some((entry) => entry.id === id))
+          : true;
+        if (ambiguous && projection && !remaining) {
+          setBulkDeleteOperation(null);
+          setSelectedEntryIds([]);
+          setError(null);
+        } else if (caught instanceof ApiClientError && caught.code === "revision_conflict") {
+          setBulkDeleteOperation(null);
+          setError("Dayの内容が変わったため、選択状態を確認してから再度実行してください。");
+        }
+      } catch {
+        // Preserve the exact logical operation for retry when reconciliation is unavailable.
+      }
+    } finally {
+      setPending(null);
+    }
+  }
+
+  function toggleBulkEntry(entry: EntryProjection) {
+    if (!day || mutationLocked || !isBulkSelectableProjectionEntry(day, entry)) return;
+    setSelectedEntryIds((current) => current.includes(entry.id)
+      ? current.filter((id) => id !== entry.id)
+      : [...current, entry.id]);
+  }
+
+  function clearBulkSelection() {
+    if (mutationLocked) return;
+    setSelectedEntryIds([]);
+  }
+
+  function toggleAllBulkEntries() {
+    if (!day || mutationLocked) return;
+    const eligibleIds = projectionEntries(day)
+      .filter((entry) => isBulkSelectableProjectionEntry(day, entry))
+      .map((entry) => entry.id);
+    const allSelected = eligibleIds.length > 0 && eligibleIds.every((id) => selectedEntryIds.includes(id));
+    setSelectedEntryIds(allSelected ? [] : eligibleIds);
+  }
+
+  function openBulkConfirmation() {
+    if (!day || mutationLocked) return;
+    const eligibleEntries = new Map(projectionEntries(day)
+      .filter((entry) => isBulkSelectableProjectionEntry(day, entry))
+      .map((entry) => [entry.id, entry]));
+    const entryIds = selectedEntryIds.filter((id) => eligibleEntries.has(id));
+    if (entryIds.length === 0) return;
+    setBulkConfirmation({
+      entryIds,
+      ordinaryCount: entryIds.filter((id) => eligibleEntries.get(id)?.routine === null).length,
+      routineCount: entryIds.filter((id) => eligibleEntries.get(id)?.routine !== null).length,
+    });
+  }
+
+  function confirmBulkDelete() {
+    if (!day?.taskchute_day.id || !bulkConfirmation || pending !== null || bulkDeleteOperation !== null) return;
+    const operation: BulkDeleteEntriesRequest = {
+      operation_id: uuidv7(),
+      taskchute_day_id: day.taskchute_day.id,
+      entry_ids: bulkConfirmation.entryIds,
+      expected_placement_revision: day.placement_revision,
+    };
+    setBulkDeleteOperation(operation);
+    void executeBulkDelete(operation);
   }
 
   function duplicate(entry: EntryProjection) {
@@ -1606,7 +1747,13 @@ export function App() {
   if (!day) return null;
 
   const currentDay = day;
-  const allEntries = [...currentDay.unsectioned_entries, ...currentDay.sections.flatMap((section) => section.entries)];
+  const allEntries = projectionEntries(currentDay);
+  const eligibleBulkEntries = allEntries.filter((entry) => isBulkSelectableProjectionEntry(currentDay, entry));
+  const selectedBulkEntries = selectedEntryIds
+    .map((id) => allEntries.find((entry) => entry.id === id))
+    .filter((entry): entry is EntryProjection => entry !== undefined && isBulkSelectableProjectionEntry(currentDay, entry));
+  const allEligibleBulkSelected = eligibleBulkEntries.length > 0 && selectedBulkEntries.length === eligibleBulkEntries.length;
+  const bulkSelectionIndeterminate = selectedBulkEntries.length > 0 && !allEligibleBulkSelected;
   const activeEntry = currentDay.active_execution ? allEntries.find((entry) => entry.id === currentDay.active_execution?.entry_id) : null;
   const resolvedColumnDefinitions = visibleDayColumnOrder(dayColumnPreference)
     .map((key) => DAY_COLUMN_DEFINITIONS.find((definition) => definition.key === key)!).filter(Boolean);
@@ -2122,6 +2269,13 @@ export function App() {
         <button type="button" className="secondary"
           disabled={mutationLocked || !day.planning_enabled || day.section_configuration_required}
           onClick={() => openDraft(null)}>＋ Taskを追加</button>
+        {selectedBulkEntries.length > 0 && (
+          <div className="bulk-selection-toolbar" aria-label="選択中のTask">
+            <span role="status" aria-live="polite">{selectedBulkEntries.length}件選択中</span>
+            <button ref={bulkDeleteTriggerRef} type="button" disabled={mutationLocked} onClick={openBulkConfirmation}>削除</button>
+            <button type="button" className="secondary" disabled={mutationLocked} onClick={clearBulkSelection}>選択解除</button>
+          </div>
+        )}
         <div className="columns-menu" ref={columnsMenuRef}>
           <button type="button" className="secondary columns-trigger" ref={columnsTriggerRef}
             aria-label="表示列" aria-expanded={columnsMenuOpen} aria-controls="day-columns-menu"
@@ -2156,6 +2310,26 @@ export function App() {
         </label>
       </div>
 
+      {bulkConfirmation && (
+        <div className="bulk-confirmation panel" ref={bulkConfirmationRef} role="dialog" aria-modal="true" aria-labelledby="bulk-confirmation-title" tabIndex={-1}>
+          <h2 id="bulk-confirmation-title">選択したTaskを削除</h2>
+          <p>
+            {bulkConfirmation.ordinaryCount > 0 && bulkConfirmation.routineCount > 0
+              ? `${bulkConfirmation.entryIds.length}件の未実行Taskを処理します。通常Task ${bulkConfirmation.ordinaryCount}件はこの日から削除し、Routine Task ${bulkConfirmation.routineCount}件はこの日のみスキップします。`
+              : bulkConfirmation.routineCount > 0
+                ? `${bulkConfirmation.routineCount}件のRoutine Taskをこの日のみスキップします。`
+                : `${bulkConfirmation.ordinaryCount}件の未実行Taskをこの日から削除します。`}
+          </p>
+          <div className="bulk-confirmation-actions">
+            <button type="button" className="secondary" onClick={() => {
+              setBulkConfirmation(null);
+              requestAnimationFrame(() => bulkDeleteTriggerRef.current?.focus());
+            }}>キャンセル</button>
+            <button type="button" onClick={confirmBulkDelete}>削除</button>
+          </div>
+        </div>
+      )}
+
       {transientStatus && (
         <div className="transient-status" role="status" aria-live="polite" aria-atomic="true">
           {transientStatus}
@@ -2188,7 +2362,12 @@ export function App() {
 
       <section className="day-surface" aria-label="DayBoard" style={dayTableStyle(dayColumnPreference)}>
         <div className="table-heading">
-          <span className="bulk-slot" aria-hidden="true" /><span className="execution-heading">実行</span><span className="task-heading">Task</span>
+          <span className="bulk-slot">
+            {eligibleBulkEntries.length > 0 ? (
+              <input ref={bulkHeaderRef} type="checkbox" checked={allEligibleBulkSelected} aria-label="すべての未実行Taskを選択"
+                disabled={mutationLocked} onChange={toggleAllBulkEntries} />
+            ) : <span className="bulk-placeholder" aria-hidden="true" />}
+          </span><span className="execution-heading">実行</span><span className="task-heading">Task</span>
           {resolvedColumnDefinitions.map((definition) => {
             const isDropTarget = columnDrag?.targetKey === definition.key && columnDrag.edge;
             return <span key={definition.key} className={`column-heading${columnDrag?.sourceKey === definition.key ? " is-column-dragging" : ""}${isDropTarget ? ` drop-${columnDrag.edge}` : ""}`}
@@ -2268,7 +2447,7 @@ export function App() {
                 const canComplete = isRunning && day.active_execution?.entry_id === entry.id;
                 const canDrag = day.planning_enabled && Boolean(day.taskchute_day.id) && entry.lifecycle_state === "planned";
                 return (
-                  <div className={`task-row state-${entry.lifecycle_state}${entryDrag?.entryId === entry.id ? " is-dragging" : ""}${entryDrag?.targetEntryId === entry.id && entryDrag.edge ? ` drop-${entryDrag.edge}` : ""}`} key={entry.id} tabIndex={0} draggable={canDrag && !mutationLocked}
+                  <div className={`task-row state-${entry.lifecycle_state}${selectedEntryIds.includes(entry.id) ? " is-selected" : ""}${entryDrag?.entryId === entry.id ? " is-dragging" : ""}${entryDrag?.targetEntryId === entry.id && entryDrag.edge ? ` drop-${entryDrag.edge}` : ""}`} key={entry.id} tabIndex={0} aria-selected={selectedEntryIds.includes(entry.id)} draggable={canDrag && !mutationLocked}
                     data-entry-id={entry.id} data-section-id={section.id ?? ""} data-day-focus-target data-focus-key={focusKey(entryTarget)}
                     onMouseDown={(event) => startEntryMouseDrag(event, section.id, entry)}
                     onMouseMove={(event) => updateEntryMouseTarget(event, section.id, entry.id)}
@@ -2285,7 +2464,17 @@ export function App() {
                     onClick={(event) => {
                     if (event.target === event.currentTarget || (event.target as HTMLElement).closest(".task-main")) focusSurface(event.currentTarget);
                   }}>
-                    <span className="bulk-slot" aria-hidden="true" />
+                    <span className="bulk-slot">
+                      <input type="checkbox" checked={selectedEntryIds.includes(entry.id)}
+                        disabled={!isBulkSelectableProjectionEntry(currentDay, entry) || mutationLocked}
+                        aria-label={isBulkSelectableProjectionEntry(currentDay, entry)
+                          ? `「${entry.task.title}」を選択`
+                          : `${entry.task.title}は選択不可（未実行の計画Taskではありません）`}
+                        onClick={(event) => event.stopPropagation()}
+                        onMouseDown={(event) => event.stopPropagation()}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onChange={() => toggleBulkEntry(entry)} />
+                    </span>
                     <span className="execution-cell">
                       {entry.lifecycle_state === "completed" ? (
                         <span className="execution-control completed" aria-label={executionLabel(entry)} title={executionLabel(entry)}>✓</span>
@@ -2327,6 +2516,7 @@ export function App() {
           {projectOperation && <button type="button" onClick={() => void executeCreateProject(projectOperation)}>保留中のProject作成を再試行</button>}
           {taskOperation && <button type="button" onClick={() => void executeAddTask(taskOperation)}>保留中のTask追加を再試行</button>}
           {duplicateOperation && <button type="button" onClick={() => void executeDuplicate(duplicateOperation)}>保留中のTask複製を再試行</button>}
+          {bulkDeleteOperation && <button type="button" onClick={() => void executeBulkDelete(bulkDeleteOperation)}>保留中のBulk削除を再試行</button>}
           {reorderOperation && <button type="button" onClick={() => void executeReorder(reorderOperation)}>保留中のReorderを再試行</button>}
           {startOperation && <button type="button" onClick={() => void executeStart(startOperation)}>保留中のStartを再試行</button>}
           {completeOperation && <button type="button" onClick={() => void executeComplete(completeOperation)}>保留中のCompleteを再試行</button>}
@@ -2340,7 +2530,7 @@ export function App() {
           {routineEstimateOperation && <button type="button" onClick={() => void executeRoutineEstimate(routineEstimateOperation)}>保留中のRoutine見積を再試行</button>}
           {routineSectionPlanOperation && <button type="button" onClick={() => void executeRoutineSectionPlan(routineSectionPlanOperation)}>保留中のRoutine配置を再試行</button>}
           <button type="button" className="secondary" onClick={() => {
-            setProjectOperation(null); setTaskOperation(null); setDuplicateOperation(null); setReorderOperation(null); setStartOperation(null); setCompleteOperation(null);
+            setProjectOperation(null); setTaskOperation(null); setDuplicateOperation(null); setBulkDeleteOperation(null); setBulkConfirmation(null); setSelectedEntryIds([]); setReorderOperation(null); setStartOperation(null); setCompleteOperation(null);
             setConfigurationOperation(null); setSectionSettingsOperation(null); setSectionMoveOperation(null); setEstimateOperation(null); setPlannedStartOperation(null);
             setRoutineConversionOperation(null); setRoutineEndOperation(null); setRoutineEstimateOperation(null);
             setRoutineSectionPlanOperation(null); setRoutineCandidate(null); setError(null);

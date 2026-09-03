@@ -279,6 +279,40 @@ try {
   const invalidWeekly = execute(["--command", `UPDATE routine_schedules SET schedule_kind = 'weekly',
     weekdays_mask = 0 WHERE routine_definition_id = 'routine-r2a-normalize'`], false);
   assert.notEqual(invalidWeekly.status, 0, "weekly schedule requires at least one weekday");
+  execute(["--command", `
+    INSERT INTO routine_occurrences
+      (id, app_user_id, routine_definition_id, origin_taskchute_day_id, created_at)
+    VALUES
+      ('occurrence-bulk-schedule', 'user-v01a', 'routine-r2a-normalize', 'day-v01a', '2026-08-28T04:00:00.000Z'),
+      ('occurrence-bulk-period', 'user-v01a', 'routine-r2a-normalize', 'day-r2a-protected', '2026-08-28T04:00:00.000Z'),
+      ('occurrence-bulk-paused', 'user-v01a', 'routine-r2a-normalize', 'day-r2a-editable', '2026-08-28T04:00:00.000Z');
+    INSERT INTO routine_occurrence_suppressions
+      (app_user_id, routine_occurrence_id, suppressed_at, reason)
+    VALUES
+      ('user-v01a', 'occurrence-bulk-schedule', '2026-08-28T05:00:00.000Z', 'schedule'),
+      ('user-v01a', 'occurrence-bulk-period', '2026-08-28T05:00:00.000Z', 'period'),
+      ('user-v01a', 'occurrence-bulk-paused', '2026-08-28T05:00:00.000Z', 'paused');
+  `]);
+  const preBulkOperations = query("SELECT * FROM operations ORDER BY operation_id");
+  const preBulkSuppressions = query("SELECT * FROM routine_occurrence_suppressions ORDER BY routine_occurrence_id");
+  applyFile("migrations/app/0010_bulk_selection_delete.sql");
+  assert.deepEqual(query("SELECT * FROM operations ORDER BY operation_id"), preBulkOperations);
+  assert.deepEqual(query("SELECT * FROM routine_occurrence_suppressions ORDER BY routine_occurrence_id"), preBulkSuppressions);
+  execute(["--command", `INSERT INTO operations
+    (app_user_id, operation_id, command_type, request_fingerprint_version, request_fingerprint, outcome_kind, result_json, created_at)
+    VALUES ('user-v01a', 'operation-bulk-selection', 'BulkDeleteEntries', 1, 'bulk-fingerprint', 'success', '{}',
+      '2026-08-28T06:00:00.000Z')`]);
+  assert.deepEqual(query("SELECT command_type FROM operations WHERE operation_id = 'operation-bulk-selection'"),
+    [{ command_type: "BulkDeleteEntries" }]);
+  execute(["--command", `INSERT INTO routine_occurrence_suppressions
+      (app_user_id, routine_occurrence_id, suppressed_at, reason)
+      VALUES ('user-v01a', 'occurrence-r2a-preserve', '2026-08-28T06:00:00.000Z', 'skip');`]);
+  const invalidSuppressionReason = execute(["--command", `UPDATE routine_occurrence_suppressions
+    SET reason = 'manual' WHERE app_user_id = 'user-v01a'
+      AND routine_occurrence_id = 'occurrence-r2a-preserve'`], false);
+  assert.notEqual(invalidSuppressionReason.status, 0, "unknown suppression reason must be rejected");
+  assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
+  assert.deepEqual(query("PRAGMA foreign_key_check"), []);
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
   assert.deepEqual(query("PRAGMA foreign_key_check"), []);
 
@@ -371,6 +405,8 @@ try {
       request_fingerprint: "ae7259e4469236b36922e6e8b2cd9158b82602cd05777af2ed81d6599583c8c9",
       outcome_kind: "success",
       result_json: "{\"entry_id\":\"019d2f00-0000-7000-8000-000000000002\",\"lifecycle_state\":\"running\",\"execution\":{\"id\":\"019d2f00-0000-7000-8000-000000000003\",\"entry_id\":\"019d2f00-0000-7000-8000-000000000002\",\"started_at\":\"2026-08-28T09:00:00.000Z\",\"ended_at\":null}}" },
+    { operation_id: "operation-bulk-selection", command_type: "BulkDeleteEntries",
+      request_fingerprint: "bulk-fingerprint", outcome_kind: "success", result_json: "{}" },
     { operation_id: "operation-existing", command_type: "AddTaskToDay", request_fingerprint: "fixture-fingerprint",
       outcome_kind: "success", result_json: "{\"fixture\":true}" },
   ]);
@@ -437,7 +473,7 @@ try {
   assert.notEqual(duplicateActive.status, 0, "the active Execution unique index must reject a second active row");
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
   assert.deepEqual(query("PRAGMA foreign_key_check"), []);
-  console.log("migration regression: 3 scenarios passed (R2A normalization, R2B preservation/constraints, duplicate-Task fail-safe; chain through 0009)");
+  console.log("migration regression: 4 scenarios passed (R2A normalization, R2B preservation/constraints, duplicate-Task fail-safe, Bulk Selection 0010 preservation/constraints; fresh 0001 -> 0010 chain)");
 } finally {
   await rm(persistencePath, { recursive: true, force: true });
   await rm(failurePersistencePath, { recursive: true, force: true });
