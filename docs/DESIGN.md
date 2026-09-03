@@ -127,7 +127,7 @@ Day Tableの固定左領域は次とする。
 - Bulk selection slotはlayout shiftを防ぐために予約するUI slotであり、data columnではない。
 - Execution Controlはaction / stateを表す固定UI slotであり、通常のdata column customization対象ではない。
 - Taskはfixed / stickyとし、hideまたはcolumn reorderの対象にしない。
-- Bulk Selection capability自体は未実装である。固定slotはtarget structureを定めるもので、現在の実装状態を示さない。
+- Bulk Selection capabilityはv0.1 / v0.2A / v0.2B1を実装済みである。固定slotはtarget structureを定め、詳細なselection / Section commandの実装状態は下記専用sectionと`CURRENT` / `FEATURES` / `TEST_MATRIX`で管理する。
 
 ## Execution state presentation
 
@@ -173,7 +173,7 @@ D-043のtarget interactionでは、開始予定の設定・変更が該当real S
 - Note / Documents
 - actual timeの直接編集 / manual correction
 
-これらはtarget column modelから削除しない。一方、capability実装前にfake valueやdisabled placeholderだけの列を出さない。Bulk Selection v0.1は下記の専用sectionとD-051でcanonical化する。
+これらはtarget column modelから削除しない。一方、capability実装前にfake valueやdisabled placeholderだけの列を出さない。Bulk Selection v0.1 / v0.2A / v0.2B1の実装・verification状態は下記の専用sectionと`CURRENT` / `FEATURES` / `TEST_MATRIX`で管理する。
 
 ## Routine placement
 
@@ -252,6 +252,16 @@ Section変更はN件の個別MoveEntryではなく、一つの`BulkMoveEntriesTo
 
 operation fingerprint / replay、misuse rejection、stale revision、snapshot guard、rollback / ambiguous retryは既存D-020 command conventionへ従う。APP compatibility migration `0011_bulk_section_change.sql`は`operations.command_type`のCHECKだけを拡張し、既存rowsとEntry / Routine / Section schemaを変更しない。Bulk date / Project / Mode / Note、Routine bulk Section、cross-Day move、undo / restoreはこのsliceへ含めない。
 
+## Bulk Selection v0.2B1 — Routine-inclusive Section occurrence change
+
+D-053に基づくv0.2B1は、D-052のcurrent-Day Section pickerとselectionを再利用し、ordinary / Routine / mixedのplanned Entryを一つの`BulkMoveEntriesToSectionOccurrence` commandで処理する。Routine-derived Entryを含む場合、Section変更はcurrent occurrenceだけを対象とするexplicit `今回だけ変更` acknowledgementを必須にし、`Routineへ反映`を提示しない。pickerでのSection候補選択はlocal candidateであり、cancel / Escape / outside dismissはno-write、成功後はselectionを維持する。
+
+request authorityは`operation_id`、current `taskchute_day_id`、selected `entry_ids`、target `section_id`、expected `placement_revision`だけとし、planned startやRoutineDefinition IDをclient authorityにしない。serverはDay Section contextの`logical_start_minute`をderiveする。real Sectionは`section_id + planned_start_minute`、`Sectionなし`は`NULL + NULL`へ同期し、RoutineはR2A typed fields `section_plan_override_present` / `section_override_id` / `planned_start_override_minute`へOccurrence単位で保存する。RoutineDefinition default、defaults revision、future / other Occurrence、schedule、pause / suppression、Routine Boardは変更しない。
+
+同じeffective Section / startでもexisting overrideがない場合はoverride-only mutationとしてpersistし、visible placementとDay revisionは変更しない。既存overrideがtarget pairと同じ場合だけtrue no-opとする。visible Section / start / position change時はDay `placement_revision`をcommand全体でexactly `+1`し、override-onlyまたはtrue no-opでは増分しない。mixed moverはcommand前のcurrent Day display orderを保ってtarget group末尾へappendし、ordinaryとRoutineを別groupに分けない。owner / current-Day / lifecycle / Routine relation / origin Day / suppression / snapshot / stale revisionをatomicにguardし、operation fingerprint / replay / ambiguity / rollbackはD-020 conventionに従う。
+
+APP compatibility migration `0012_bulk_routine_section_occurrence.sql`は`operations` tableの`command_type` CHECKへ`BulkMoveEntriesToSectionOccurrence`を追加するrebuildだけで、existing operation rows、Entry / Routine / Section / Day schema、新tableを変更・追加しない。Bulk `Routineへ反映`、multi-RoutineDefinition default propagation、future / past Routine bulk edit、Bulk date / Project / Mode / Note、cross-Day move、undo / restoreはこのsliceへ含めない。
+
 ## Execution actual projection
 
 開始 / 終了 / 実績は、Entryへ値を書き戻す列ではなく、current-valid Execution factsからのread-only projectionとする。conceptual shapeは次である。
@@ -323,7 +333,7 @@ Day Table column customization v0.1は、Project / Section / Routine / 見積 / 
 
 current runtimeでは、Day Navigation v0.1のTop Navigation date navigation / calendar pickerと、Settings v0.1のLeft Sidebar `今日` / `設定`およびdedicated Section / Project Settings surfaceを実装済みである。DayBoard上のtemporary Project作成controlとSection設定editorは撤去済み。Desktop Day wide layoutとauthenticated Sidebar open / closed preferenceの実装状態は`docs/FEATURES.md`、`docs/CURRENT.md`、`docs/TEST_MATRIX.md`を正本とする。
 
-full target column modelはcurrent implementationより広い。Mode、Note、actual timeのmanual correction、Search / Filter、fullerなcontext interaction、D-051を超えるBulk capability等はfuture workとして残る。browser-local preferenceはServer / API / D1 / cross-device同期を行わず、responsive / mobileのexact policyは引き続きOpenであり、UI-2Aの狭幅fallbackをProduct Decisionへ昇格しない。
+full target column modelはcurrent implementationより広い。Mode、Note、actual timeのmanual correction、Search / Filter、fullerなcontext interaction、D-053を超えるBulk capability等はfuture workとして残る。browser-local preferenceはServer / API / D1 / cross-device同期を行わず、responsive / mobileのexact policyは引き続きOpenであり、UI-2Aの狭幅fallbackをProduct Decisionへ昇格しない。
 
 ## Unreconciled historical scope
 
