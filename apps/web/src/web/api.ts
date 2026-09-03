@@ -4,6 +4,8 @@ import type {
   DuplicateEntryResult,
   BulkDeleteEntriesRequest,
   BulkDeleteEntriesResult,
+  BulkMoveEntriesToSectionRequest,
+  BulkMoveEntriesToSectionResult,
   ApiErrorCode,
   ApiErrorBody,
   CreateProjectRequest,
@@ -104,6 +106,9 @@ export const api = {
   },
   bulkDeleteEntries(body: BulkDeleteEntriesRequest): Promise<BulkDeleteEntriesResult> {
     return requestJson("/api/v1/taskchute-days/current/entries/bulk-delete", jsonPost("", body));
+  },
+  bulkMoveEntriesToSection(body: BulkMoveEntriesToSectionRequest): Promise<BulkMoveEntriesToSectionResult> {
+    return requestJson("/api/v1/taskchute-days/current/entries/bulk-section", jsonPost("", body));
   },
   reorderEntries(body: ReorderEntriesRequest): Promise<ReorderEntriesResult> {
     return requestJson("/api/v1/taskchute-days/current/entries/reorder", jsonPost("", body));

@@ -2,6 +2,7 @@ import type { ApiErrorBody } from "../src/shared/contracts";
 import { addTaskToDay, isAddTaskToDayRequest } from "./application/add-task-to-day";
 import { duplicateEntry, isDuplicateEntryRequest } from "./application/duplicate-entry";
 import { bulkDeleteEntries, isBulkDeleteEntriesRequest } from "./application/bulk-delete-entries";
+import { bulkMoveEntriesToSection, isBulkMoveEntriesToSectionRequest } from "./application/bulk-move-entries-to-section";
 import { createProject, isCreateProjectRequest } from "./application/create-project";
 import { loadProjects } from "./application/load-projects";
 import { HttpError } from "./application/errors";
@@ -139,6 +140,11 @@ async function route(request: Request, env: Env): Promise<Response> {
     const body = await readBoundedJson(request);
     if (!isBulkDeleteEntriesRequest(body)) throw new HttpError(400, "malformed_request", "Invalid BulkDeleteEntries request");
     return Response.json(await bulkDeleteEntries(env.APP_DB, principal.appUserId, body));
+  }
+  if (request.method === "POST" && url.pathname === "/api/v1/taskchute-days/current/entries/bulk-section") {
+    const body = await readBoundedJson(request);
+    if (!isBulkMoveEntriesToSectionRequest(body)) throw new HttpError(400, "malformed_request", "Invalid BulkMoveEntriesToSection request");
+    return Response.json(await bulkMoveEntriesToSection(env.APP_DB, principal.appUserId, body));
   }
   if (request.method === "POST" && url.pathname === "/api/v1/section-configurations/initial") {
     const body = await readBoundedJson(request);

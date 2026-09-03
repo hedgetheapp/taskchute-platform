@@ -188,6 +188,23 @@ export interface BulkDeleteEntriesResult {
   placement_revision: number;
 }
 
+export interface BulkMoveEntriesToSectionRequest {
+  operation_id: string;
+  taskchute_day_id: string;
+  entry_ids: string[];
+  section_id: string | null;
+  expected_placement_revision: number;
+}
+
+export interface BulkMoveEntriesToSectionResult {
+  taskchute_day_id: string;
+  entry_ids: string[];
+  changed_entry_ids: string[];
+  section_id: string | null;
+  planned_start_minute: number | null;
+  placement_revision: number;
+}
+
 export interface ReorderEntriesRequest {
   operation_id: string;
   taskchute_day_id: string;

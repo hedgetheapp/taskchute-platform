@@ -311,6 +311,15 @@ try {
     SET reason = 'manual' WHERE app_user_id = 'user-v01a'
       AND routine_occurrence_id = 'occurrence-r2a-preserve'`], false);
   assert.notEqual(invalidSuppressionReason.status, 0, "unknown suppression reason must be rejected");
+  const preBulkSectionOperations = query("SELECT * FROM operations ORDER BY operation_id");
+  applyFile("migrations/app/0011_bulk_section_change.sql");
+  assert.deepEqual(query("SELECT * FROM operations ORDER BY operation_id"), preBulkSectionOperations);
+  execute(["--command", `INSERT INTO operations
+    (app_user_id, operation_id, command_type, request_fingerprint_version, request_fingerprint, outcome_kind, result_json, created_at)
+    VALUES ('user-v01a', 'operation-bulk-section', 'BulkMoveEntriesToSection', 1, 'bulk-section-fingerprint', 'success', '{}',
+      '2026-08-28T06:30:00.000Z')`]);
+  assert.deepEqual(query("SELECT command_type FROM operations WHERE operation_id = 'operation-bulk-section'"),
+    [{ command_type: "BulkMoveEntriesToSection" }]);
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
   assert.deepEqual(query("PRAGMA foreign_key_check"), []);
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
@@ -405,6 +414,8 @@ try {
       request_fingerprint: "ae7259e4469236b36922e6e8b2cd9158b82602cd05777af2ed81d6599583c8c9",
       outcome_kind: "success",
       result_json: "{\"entry_id\":\"019d2f00-0000-7000-8000-000000000002\",\"lifecycle_state\":\"running\",\"execution\":{\"id\":\"019d2f00-0000-7000-8000-000000000003\",\"entry_id\":\"019d2f00-0000-7000-8000-000000000002\",\"started_at\":\"2026-08-28T09:00:00.000Z\",\"ended_at\":null}}" },
+    { operation_id: "operation-bulk-section", command_type: "BulkMoveEntriesToSection",
+      request_fingerprint: "bulk-section-fingerprint", outcome_kind: "success", result_json: "{}" },
     { operation_id: "operation-bulk-selection", command_type: "BulkDeleteEntries",
       request_fingerprint: "bulk-fingerprint", outcome_kind: "success", result_json: "{}" },
     { operation_id: "operation-existing", command_type: "AddTaskToDay", request_fingerprint: "fixture-fingerprint",
@@ -473,7 +484,7 @@ try {
   assert.notEqual(duplicateActive.status, 0, "the active Execution unique index must reject a second active row");
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
   assert.deepEqual(query("PRAGMA foreign_key_check"), []);
-  console.log("migration regression: 4 scenarios passed (R2A normalization, R2B preservation/constraints, duplicate-Task fail-safe, Bulk Selection 0010 preservation/constraints; fresh 0001 -> 0010 chain)");
+  console.log("migration regression: 4 scenarios passed (R2A normalization, R2B preservation/constraints, duplicate-Task fail-safe, Bulk Selection 0010/0011 preservation/constraints; fresh 0001 -> 0011 chain)");
 } finally {
   await rm(persistencePath, { recursive: true, force: true });
   await rm(failurePersistencePath, { recursive: true, force: true });

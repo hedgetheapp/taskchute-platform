@@ -4,6 +4,7 @@ import { REQUEST_FINGERPRINT_VERSION } from "../application/fingerprint";
 export type CommandType = "CreateProject" | "AddTaskToDay" | "ReorderEntries" | "StartEntry" | "CompleteEntry"
   | "DuplicateEntry"
   | "BulkDeleteEntries"
+  | "BulkMoveEntriesToSection"
   | "EstablishInitialSectionConfiguration" | "MoveEntry" | "SetEntryEstimate" | "SetEntryPlannedStart"
   | "UpdateSectionConfiguration" | "ConvertEntryToRoutine" | "EndRoutine"
   | "SetRoutineEstimate" | "SetRoutineSectionPlan"
