@@ -271,4 +271,41 @@ describe.sequential("Dogfood Day B2 planned start", () => {
     await expect(startEntry(env.APP_DB, userId, { operation_id: uuidv7(), entry_id: entryId, execution_id: uuidv7(),
       expected_placement_revision: 0 })).rejects.toMatchObject({ code: "resource_conflict" });
   });
+
+  it("projects completed and active Execution intervals into deterministic Entry summaries", async () => {
+    const { userId, dayId, sectionIds } = await seedTimedDay();
+    const completed = await addEntry(userId, dayId, sectionIds[0]!, 1, "completed");
+    const running = await addEntry(userId, dayId, sectionIds[0]!, 2, "running");
+    const planned = await addEntry(userId, dayId, sectionIds[0]!, 3, "planned");
+    await env.APP_DB.batch([
+      env.APP_DB.prepare(`INSERT INTO executions (id, app_user_id, entry_id, started_at, ended_at, created_at)
+        VALUES (?, ?, ?, '2026-08-28T06:00:00.000Z', '2026-08-28T06:10:00.000Z', ?)`)
+        .bind(uuidv7(), userId, completed, createdAt),
+      env.APP_DB.prepare(`INSERT INTO executions (id, app_user_id, entry_id, started_at, ended_at, created_at)
+        VALUES (?, ?, ?, '2026-08-28T08:00:00.000Z', '2026-08-28T08:15:00.000Z', ?)`)
+        .bind(uuidv7(), userId, completed, createdAt),
+      env.APP_DB.prepare(`INSERT INTO executions (id, app_user_id, entry_id, started_at, ended_at, created_at)
+        VALUES (?, ?, ?, '2026-08-28T11:30:00.000Z', NULL, ?)`)
+        .bind(uuidv7(), userId, running, createdAt),
+    ]);
+
+    const projection = await loadCurrentTaskChuteDay(env.APP_DB, userId, "2026-08-28T12:00:00.000Z");
+    const entries = projection.sections[0]!.entries;
+    expect(entries.find((entry) => entry.id === completed)?.execution_summary).toEqual({
+      first_started_at: "2026-08-28T06:00:00.000Z",
+      last_ended_at: "2026-08-28T08:15:00.000Z",
+      completed_duration_seconds: 1_500,
+      active_started_at: null,
+    });
+    expect(entries.find((entry) => entry.id === running)?.execution_summary).toEqual({
+      first_started_at: "2026-08-28T11:30:00.000Z",
+      last_ended_at: null,
+      completed_duration_seconds: 0,
+      active_started_at: "2026-08-28T11:30:00.000Z",
+    });
+    expect(entries.find((entry) => entry.id === planned)?.execution_summary).toEqual({
+      first_started_at: null, last_ended_at: null, completed_duration_seconds: 0, active_started_at: null,
+    });
+    expect(projection.active_execution?.entry_id).toBe(running);
+  });
 });

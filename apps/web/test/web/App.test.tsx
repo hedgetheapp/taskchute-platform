@@ -94,6 +94,13 @@ function dragEntry(handle: HTMLElement, targetRow: HTMLElement, clientY: number)
   return dataTransfer;
 }
 
+function setColumnBounds(column: HTMLElement, left: number, width: number) {
+  vi.spyOn(column, "getBoundingClientRect").mockReturnValue({
+    x: left, y: 0, width, height: 34, top: 0, right: left + width, bottom: 34, left,
+    toJSON: () => ({}),
+  });
+}
+
 function sectionSummary(title: string): HTMLElement {
   const summary = screen.getAllByText(title)
     .map((element) => element.closest<HTMLElement>(".section-summary"))
@@ -312,7 +319,7 @@ describe("Dogfood Day shell", () => {
     const heading = dayBoard.querySelector<HTMLElement>(".table-heading")!;
     const headingCells = Array.from(heading.children) as HTMLElement[];
     expect(headingCells.filter((cell) => !cell.classList.contains("bulk-slot")).map((cell) => cell.textContent)).toEqual([
-      "実行", "Task", "Project", "Section", "Routine", "見積", "開始予定", "開始見込",
+      "実行", "Task", "Project", "Section", "Routine", "見積", "開始予定", "開始見込", "開始", "終了", "実績",
     ]);
     expect(headingCells[0]?.classList.contains("bulk-slot")).toBe(true);
     expect(heading.querySelectorAll(":scope > .bulk-slot")).toHaveLength(1);
@@ -579,7 +586,7 @@ describe("Dogfood Day shell", () => {
     const input = screen.getByRole("textbox", { name: "EveningのTask名" });
     expect(document.activeElement).toBe(input);
     const draftRow = input.closest(".draft-row")!;
-    expect(draftRow.children).toHaveLength(9);
+    expect(draftRow.children).toHaveLength(12);
     expect(draftRow.firstElementChild?.classList.contains("bulk-slot")).toBe(true);
     expect(draftRow.querySelectorAll(":scope > .bulk-slot")).toHaveLength(1);
     expect(screen.queryByRole("textbox", { name: "MorningのTask名" })).toBeNull();
@@ -2586,5 +2593,92 @@ describe("Dogfood Day shell", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Canonical taskを複製" }));
     await waitFor(() => expect(mocks.duplicateEntry).toHaveBeenCalledTimes(1));
     expect(screen.queryByRole("button", { name: "保留中のTask複製を再試行" })).toBeNull();
+  });
+
+  it("reorders customizable columns, persists the order, and never calls a mutation API", async () => {
+    mocks.loadDay.mockResolvedValue(populatedDay);
+    const rendered = render(<App />);
+    const dayBoard = await screen.findByRole("region", { name: "DayBoard" });
+    const projectHeader = dayBoard.querySelector<HTMLElement>('[data-day-column-header="project"]')!;
+    const routineHeader = dayBoard.querySelector<HTMLElement>('[data-day-column-header="routine"]')!;
+    setColumnBounds(projectHeader, 0, 150);
+    setColumnBounds(routineHeader, 150, 82);
+    const dataTransfer = dragDataTransfer();
+    fireEvent.dragStart(projectHeader, { dataTransfer });
+    const dragOver = createEvent.dragOver(routineHeader, { dataTransfer });
+    Object.defineProperty(dragOver, "clientX", { value: 160 });
+    fireEvent(routineHeader, dragOver);
+    const drop = createEvent.drop(routineHeader, { dataTransfer });
+    Object.defineProperty(drop, "clientX", { value: 160 });
+    fireEvent(routineHeader, drop);
+    fireEvent.dragEnd(projectHeader, { dataTransfer });
+
+    const headingKeys = () => Array.from(dayBoard.querySelectorAll<HTMLElement>("[data-day-column-header]"))
+      .map((header) => header.dataset.dayColumnHeader);
+    await waitFor(() => expect(headingKeys().slice(0, 3)).toEqual(["section", "project", "routine"]));
+    expect(mocks.reorderEntries).not.toHaveBeenCalled();
+    expect(mocks.setEntryEstimate).not.toHaveBeenCalled();
+    expect(JSON.parse(window.localStorage.getItem("taskchute.web.day-columns.v1")!).order.slice(0, 3))
+      .toEqual(["section", "project", "routine"]);
+
+    rendered.unmount();
+    render(<App />);
+    const reloadedBoard = await screen.findByRole("region", { name: "DayBoard" });
+    expect(Array.from(reloadedBoard.querySelectorAll<HTMLElement>("[data-day-column-header]"))
+      .map((header) => header.dataset.dayColumnHeader).slice(0, 3)).toEqual(["section", "project", "routine"]);
+  });
+
+  it("resizes and auto-fits a data column through the shared table track and local preference", async () => {
+    mocks.loadDay.mockResolvedValue(populatedDay);
+    render(<App />);
+    const dayBoard = await screen.findByRole("region", { name: "DayBoard" });
+    const projectHandle = screen.getByRole("button", { name: "Project列の幅を変更" });
+    fireEvent.mouseDown(projectHandle, { button: 0, clientX: 100 });
+    fireEvent.mouseMove(window, { clientX: 210 });
+    fireEvent.mouseUp(window);
+    await waitFor(() => expect(dayBoard.style.getPropertyValue("--day-table-grid-template-columns")).toContain("260px"));
+    expect(JSON.parse(window.localStorage.getItem("taskchute.web.day-columns.v1")!).widths.project).toBe(260);
+
+    const projectCell = dayBoard.querySelector<HTMLElement>('[data-day-column-cell="project"]')!;
+    Object.defineProperty(projectCell, "scrollWidth", { configurable: true, value: 500 });
+    fireEvent.doubleClick(projectHandle);
+    await waitFor(() => expect(dayBoard.style.getPropertyValue("--day-table-grid-template-columns")).toContain("340px"));
+    expect(JSON.parse(window.localStorage.getItem("taskchute.web.day-columns.v1")!).widths.project).toBe(340);
+  });
+
+  it("uses compact Routine icons and projects read-only actual facts with logical extended time", async () => {
+    const routineEntry: EntryProjection = { ...firstEntry, routine: {
+      routine_definition_id: "019c0000-0000-7000-8000-000000000050",
+      routine_occurrence_id: "019c0000-0000-7000-8000-000000000051",
+      end_logical_date: null, can_end: true, default_section_id: firstEntry.section_id,
+      default_planned_start_minute: firstEntry.planned_start_minute, section_plan_override_present: false,
+      default_estimate_seconds: firstEntry.estimate_seconds, estimate_override_present: false, defaults_revision: 0,
+    } };
+    const actualDay: CurrentTaskChuteDayProjection = {
+      ...populatedDay,
+      sections: [{ ...populatedDay.sections[0], entries: [{ ...firstEntry, lifecycle_state: "completed", execution_summary: {
+        first_started_at: "2026-08-22T23:40:00.000Z", last_ended_at: "2026-08-23T01:10:00.000Z",
+        completed_duration_seconds: 5_400, active_started_at: null,
+      } }, { ...secondEntry, execution_summary: {
+        first_started_at: null, last_ended_at: null, completed_duration_seconds: 0, active_started_at: null,
+      } }] }, populatedDay.sections[1]],
+    };
+    mocks.loadDay.mockResolvedValueOnce(actualDay);
+    const actualRendered = render(<App />);
+    expect((await screen.findByLabelText("Canonical taskの開始")).textContent).toBe("23:40");
+    expect(screen.getByLabelText("Canonical taskの終了").textContent).toBe("25:10");
+    expect(screen.getByLabelText("Canonical taskの実績").textContent).toBe("1時間30分");
+    expect(screen.getByLabelText("Second taskの開始").textContent).toBe("—");
+    expect(screen.getByLabelText("Second taskの終了").textContent).toBe("—");
+    expect(screen.getByLabelText("Second taskの実績").textContent).toBe("—");
+
+    actualRendered.unmount();
+    const activeRoutineDay = { ...actualDay, sections: [{ ...actualDay.sections[0], entries: [routineEntry] }, actualDay.sections[1]] };
+    mocks.loadDay.mockReset();
+    mocks.loadDay.mockResolvedValue(activeRoutineDay);
+    const rerendered = render(<App />);
+    expect(await screen.findByLabelText("Canonical taskはルーティン")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Routine化" })).toBeNull();
+    rerendered.unmount();
   });
 });

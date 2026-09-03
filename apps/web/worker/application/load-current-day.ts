@@ -70,6 +70,10 @@ interface EntryRow {
   default_estimate_seconds: number | null;
   estimate_override_present: number | null;
   defaults_revision: number | null;
+  execution_first_started_at: string | null;
+  execution_last_ended_at: string | null;
+  execution_completed_duration_seconds: number | null;
+  execution_active_started_at: string | null;
 }
 
 interface ExecutionRow {
@@ -137,6 +141,10 @@ function toEntryRow(value: unknown): EntryRow {
     default_estimate_seconds: row.default_estimate_seconds === null ? null : requiredNumber(row, "default_estimate_seconds"),
     estimate_override_present: row.estimate_override_present === null ? null : requiredNumber(row, "estimate_override_present"),
     defaults_revision: row.defaults_revision === null ? null : requiredNumber(row, "defaults_revision"),
+    execution_first_started_at: row.execution_first_started_at === null ? null : requiredString(row, "execution_first_started_at"),
+    execution_last_ended_at: row.execution_last_ended_at === null ? null : requiredString(row, "execution_last_ended_at"),
+    execution_completed_duration_seconds: row.execution_completed_duration_seconds === null ? null : requiredNumber(row, "execution_completed_duration_seconds"),
+    execution_active_started_at: row.execution_active_started_at === null ? null : requiredString(row, "execution_active_started_at"),
   };
 }
 
@@ -341,6 +349,10 @@ async function loadEstablishedProjection(
                 rd.end_logical_date AS routine_end_logical_date,
                 rd.default_section_id, rd.default_planned_start_minute, rd.default_estimate_seconds,
                 rd.defaults_revision, ro.section_plan_override_present, ro.estimate_override_present,
+                execution_summary.first_started_at AS execution_first_started_at,
+                execution_summary.last_ended_at AS execution_last_ended_at,
+                COALESCE(execution_summary.completed_duration_seconds, 0) AS execution_completed_duration_seconds,
+                execution_summary.active_started_at AS execution_active_started_at,
                 t.id AS task_id,
                 CASE WHEN rs.routine_occurrence_id IS NOT NULL THEN rs.task_title ELSE t.title END AS task_title,
                 CASE WHEN rs.routine_occurrence_id IS NOT NULL THEN rs.project_id ELSE p.id END AS project_id,
@@ -352,12 +364,23 @@ async function loadEstablishedProjection(
            LEFT JOIN projects p ON p.app_user_id = t.app_user_id AND p.id = t.project_id
            LEFT JOIN routine_occurrence_task_snapshots rs
              ON rs.app_user_id = e.app_user_id AND rs.routine_occurrence_id = e.routine_occurrence_id
+           LEFT JOIN (
+             SELECT entry_id,
+                    MIN(started_at) AS first_started_at,
+                    MAX(CASE WHEN ended_at IS NOT NULL THEN ended_at END) AS last_ended_at,
+                    SUM(CASE WHEN ended_at IS NOT NULL THEN unixepoch(ended_at) - unixepoch(started_at) ELSE 0 END)
+                      AS completed_duration_seconds,
+                    MAX(CASE WHEN ended_at IS NULL THEN started_at END) AS active_started_at
+               FROM executions
+              WHERE app_user_id = ?
+              GROUP BY entry_id
+           ) execution_summary ON execution_summary.entry_id = e.id
           WHERE e.app_user_id = ? AND e.taskchute_day_id = ?
             AND NOT EXISTS (SELECT 1 FROM routine_occurrence_suppressions x
               WHERE x.app_user_id = e.app_user_id AND x.routine_occurrence_id = e.routine_occurrence_id)
           ORDER BY e.section_id, e.position, e.id`,
       )
-      .bind(appUserId, day.id),
+      .bind(appUserId, appUserId, day.id),
     includeActiveExecution
       ? db.prepare(`SELECT x.id, x.entry_id, e.estimate_seconds AS entry_estimate_seconds, x.started_at, x.ended_at
           FROM executions x JOIN entries e ON e.app_user_id = x.app_user_id AND e.id = x.entry_id
@@ -376,6 +399,12 @@ async function loadEstablishedProjection(
       lifecycle_state: row.lifecycle_state,
       estimate_seconds: row.estimate_seconds,
       planned_start_minute: row.planned_start_minute,
+      execution_summary: {
+        first_started_at: row.execution_first_started_at,
+        last_ended_at: row.execution_last_ended_at,
+        completed_duration_seconds: row.execution_completed_duration_seconds ?? 0,
+        active_started_at: row.execution_active_started_at,
+      },
       routine: row.routine_occurrence_id && row.routine_definition_id ? {
         routine_definition_id: row.routine_definition_id,
         routine_occurrence_id: row.routine_occurrence_id,

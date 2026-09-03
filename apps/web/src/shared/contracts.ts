@@ -32,6 +32,13 @@ export interface TaskSummary {
   project: ProjectSummary | null;
 }
 
+export interface ExecutionSummaryProjection {
+  first_started_at: string | null;
+  last_ended_at: string | null;
+  completed_duration_seconds: number;
+  active_started_at: string | null;
+}
+
 export interface EntryProjection {
   id: string;
   task: TaskSummary;
@@ -41,6 +48,8 @@ export interface EntryProjection {
   estimate_seconds: number | null;
   planned_start_minute: number | null;
   routine: RoutineEntryProjection | null;
+  /** Read-only projection of current-valid Execution facts; absent is tolerated by older clients/fixtures. */
+  execution_summary?: ExecutionSummaryProjection;
 }
 
 export interface RoutineEntryProjection {

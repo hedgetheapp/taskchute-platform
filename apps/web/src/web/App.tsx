@@ -1,5 +1,6 @@
 import {
   DragEvent as ReactDragEvent,
+  Fragment,
   FormEvent,
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
@@ -35,7 +36,22 @@ import { isSamePlannedStartCohort } from "../shared/planned-entry-order";
 import { advanceProjectionClock, calculateStartForecast, formatStartForecast } from "../shared/start-forecast";
 import { uuidv7 } from "../shared/uuidv7";
 import { api, ApiClientError } from "./api";
+import {
+  DAY_COLUMN_DEFINITIONS,
+  actualDurationSeconds,
+  clampDayColumnWidth,
+  dayTableStyle,
+  formatActualDuration,
+  formatActualTime,
+  persistDayColumnPreference,
+  readPersistedDayColumnPreference,
+  reorderDayColumns,
+  type DayColumnKey,
+  type DayColumnPreference,
+} from "./day-columns";
 import { RoutineBoard } from "./RoutineBoard";
+
+export { DAY_COLUMNS_STORAGE_KEY } from "./day-columns";
 
 type AuthState = "loading" | "signed-out" | "signed-in";
 type AppView = "today" | "routines" | "settings";
@@ -51,6 +67,8 @@ type EntryDragState = {
   targetSectionKey: string | null;
 };
 type MouseDragState = { entryId: string; sectionId: string | null; startX: number; startY: number; active: boolean };
+type ColumnDragState = { sourceKey: DayColumnKey; targetKey: DayColumnKey | null; edge: DragEdge | null };
+type ColumnResizeState = { key: DayColumnKey; startX: number; startWidth: number };
 type RoutineCandidate =
   | { entryId: string; unit: "estimate"; estimateSeconds: number | null }
   | { entryId: string; unit: "section-plan"; sectionId: string | null; plannedStartMinute: number | null };
@@ -379,6 +397,9 @@ export function App() {
   const [showCompleted, setShowCompleted] = useState(true);
   const [collapsedSectionsByDay, setCollapsedSectionsByDay] = useState<CollapsedSectionsByDay>(readPersistedCollapsedSections);
   const [sidebarOpen, setSidebarOpen] = useState(readPersistedSidebarOpen);
+  const [dayColumnPreference, setDayColumnPreference] = useState<DayColumnPreference>(readPersistedDayColumnPreference);
+  const [columnDrag, setColumnDrag] = useState<ColumnDragState | null>(null);
+  const [columnResize, setColumnResize] = useState<ColumnResizeState | null>(null);
   const [entryDrag, setEntryDrag] = useState<EntryDragState | null>(null);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [calendarFocusedDate, setCalendarFocusedDate] = useState<string | null>(null);
@@ -495,6 +516,28 @@ export function App() {
   useEffect(() => {
     persistSidebarOpen(sidebarOpen);
   }, [sidebarOpen]);
+
+  useEffect(() => {
+    persistDayColumnPreference(dayColumnPreference);
+  }, [dayColumnPreference]);
+
+  useEffect(() => {
+    if (!columnResize) return;
+    const handleMouseMove = (event: globalThis.MouseEvent) => {
+      const delta = event.clientX - columnResize.startX;
+      setDayColumnPreference((current) => ({
+        ...current,
+        widths: { ...current.widths, [columnResize.key]: clampDayColumnWidth(columnResize.key, columnResize.startWidth + delta) },
+      }));
+    };
+    const handleMouseUp = () => setColumnResize(null);
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [columnResize]);
 
   useEffect(() => {
     if (!day) return;
@@ -1549,6 +1592,7 @@ export function App() {
   const currentDay = day;
   const allEntries = [...currentDay.unsectioned_entries, ...currentDay.sections.flatMap((section) => section.entries)];
   const activeEntry = currentDay.active_execution ? allEntries.find((entry) => entry.id === currentDay.active_execution?.entry_id) : null;
+  const resolvedColumnDefinitions = dayColumnPreference.order.map((key) => DAY_COLUMN_DEFINITIONS.find((definition) => definition.key === key)!).filter(Boolean);
   const forecastByEntryId = calculateStartForecast(
     currentDay,
     forecastNowInstant ?? currentDay.projection_generated_at,
@@ -1668,6 +1712,206 @@ export function App() {
       const nextIndex = activeIndex < 0 ? (delta > 0 ? 0 : targets.length - 1) : Math.max(0, Math.min(targets.length - 1, activeIndex + delta));
       targets[nextIndex]?.focus();
     }
+  }
+
+  function columnDefinition(key: DayColumnKey) {
+    return DAY_COLUMN_DEFINITIONS.find((definition) => definition.key === key)!;
+  }
+
+  function columnDropEdge(event: ReactDragEvent<HTMLSpanElement>): DragEdge {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    return event.clientX < bounds.left + bounds.width / 2 ? "before" : "after";
+  }
+
+  function startColumnDrag(event: ReactDragEvent<HTMLSpanElement>, key: DayColumnKey) {
+    if ((event.target as HTMLElement).closest(".column-resize-handle")) {
+      event.preventDefault();
+      return;
+    }
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", key);
+    setColumnDrag({ sourceKey: key, targetKey: null, edge: null });
+  }
+
+  function updateColumnDropTarget(event: ReactDragEvent<HTMLSpanElement>, key: DayColumnKey) {
+    if (!columnDrag || columnDrag.sourceKey === key) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setColumnDrag({ sourceKey: columnDrag.sourceKey, targetKey: key, edge: columnDropEdge(event) });
+  }
+
+  function dropColumn(event: ReactDragEvent<HTMLSpanElement>, targetKey: DayColumnKey) {
+    event.preventDefault();
+    const sourceKey = columnDrag?.sourceKey ?? event.dataTransfer.getData("text/plain") as DayColumnKey;
+    if (sourceKey && sourceKey !== targetKey && dayColumnPreference.order.includes(sourceKey)) {
+      const edge = columnDrag?.targetKey === targetKey && columnDrag.edge ? columnDrag.edge : columnDropEdge(event);
+      setDayColumnPreference((current) => ({ ...current, order: reorderDayColumns(current.order, sourceKey, targetKey, edge) }));
+    }
+    setColumnDrag(null);
+  }
+
+  function startColumnResize(event: ReactMouseEvent<HTMLButtonElement>, key: DayColumnKey) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setColumnResize({ key, startX: event.clientX, startWidth: dayColumnPreference.widths[key] });
+  }
+
+  function autoFitColumn(event: ReactMouseEvent<HTMLButtonElement>, key: DayColumnKey) {
+    event.preventDefault();
+    event.stopPropagation();
+    const definition = columnDefinition(key);
+    const elements = [
+      ...Array.from(document.querySelectorAll<HTMLElement>(`[data-day-column-header="${key}"], [data-day-column-cell="${key}"]`)),
+    ];
+    const measured = elements.reduce((maximum, element) => {
+      const textWidth = (element.textContent?.trim().length ?? 0) * 7.5;
+      return Math.max(maximum, element.scrollWidth, element.getBoundingClientRect().width, textWidth + 20);
+    }, definition.minWidth);
+    setDayColumnPreference((current) => ({
+      ...current,
+      widths: { ...current.widths, [key]: clampDayColumnWidth(key, measured) },
+    }));
+  }
+
+  function actualSummaryFor(entry: EntryProjection) {
+    return entry.execution_summary;
+  }
+
+  function actualDurationFor(entry: EntryProjection): string {
+    const seconds = actualDurationSeconds(
+      actualSummaryFor(entry),
+      forecastNowInstant ?? currentDay.projection_generated_at,
+      currentDay.is_current,
+    );
+    return formatActualDuration(seconds);
+  }
+
+  function routineCell(entry: EntryProjection) {
+    const routineActionAvailable = currentDay.is_current
+      && currentDay.taskchute_day.id !== null
+      && currentDay.planning_enabled
+      && entry.lifecycle_state === "planned"
+      && entry.routine === null;
+    const routineEditorOpen = routineDraft?.entryId === entry.id;
+    return (
+      <div className="routine-cell" data-day-column-cell="routine" onClick={(event) => event.stopPropagation()}>
+        {entry.routine ? (
+          <span className="routine-badge routine-icon routine-active" aria-label={`${entry.task.title}はルーティン`} title="ルーティン">
+            <RoutineIcon /><span className="sr-only">Routine</span>
+          </span>
+        ) : routineEditorOpen ? (
+          <div className="routine-editor">
+            <label>終了日（空欄は終了なし）<input type="date" min={currentDay.taskchute_day.logical_date}
+              value={routineDraft.endDate} onChange={(event) => setRoutineDraft({ entryId: entry.id, endDate: event.target.value })} /></label>
+            <button type="button" disabled={mutationLocked} onClick={() => void commitRoutineConversion(entry)}>Routine化</button>
+            <button type="button" className="secondary" disabled={mutationLocked} onClick={() => setRoutineDraft(null)}>Cancel</button>
+          </div>
+        ) : routineActionAvailable ? (
+          <button type="button" className="routine-action routine-icon routine-muted" aria-label="Routine化" title={`${entry.task.title}をRoutine化`} disabled={mutationLocked}
+            onClick={(event) => { event.stopPropagation(); setRoutineDraft({ entryId: entry.id, endDate: "" }); }}>
+            <RoutineIcon />
+          </button>
+        ) : (
+          <span className="routine-icon routine-muted" aria-label={`${entry.task.title}のRoutine化は利用不可`} title="Routine化は利用不可">
+            <RoutineIcon /><span className="sr-only">Routine</span>
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  function renderEntryColumn(entry: EntryProjection, key: DayColumnKey) {
+    const summary = actualSummaryFor(entry);
+    switch (key) {
+      case "project":
+        return <span className="project-name" data-day-column-cell={key}>{entry.task.project?.title ?? "—"}</span>;
+      case "section":
+        return <select className="section-cell" data-day-column-cell={key} aria-label={`${entry.task.title}のSection`} value={entry.section_id ?? ""}
+          disabled={mutationLocked || !currentDay.planning_enabled || entry.lifecycle_state !== "planned"
+            || (entry.routine !== null && !currentDay.is_current)}
+          onClick={(event) => event.stopPropagation()} onChange={(event) => entry.routine
+            ? changeRoutineSectionCandidate(entry, event.target.value || null)
+            : void changeSection(entry, event.target.value || null)}>
+          <option value="">Sectionなし</option>
+          {currentDay.sections.map((candidate) => <option value={candidate.id} key={candidate.id}>{candidate.title}</option>)}
+        </select>;
+      case "routine":
+        return routineCell(entry);
+      case "estimate":
+        return <span className="estimate-cell" data-day-column-cell={key}>
+          {editingEstimate?.entryId === entry.id ? <>
+            <input autoFocus aria-label={`${entry.task.title}の見積（分）`} inputMode="numeric" value={editingEstimate.minutes}
+              onChange={(event) => setEditingEstimate({ entryId: entry.id, minutes: event.target.value })}
+              onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void commitEstimate(entry.id); }
+                else if (event.key === "Escape") { event.preventDefault(); setEditingEstimate(null); } }} />
+            {entry.routine?.estimate_override_present && (
+              <button type="button" className="routine-reset" aria-label={`${entry.task.title}の見積をルーティンの設定に戻す`}
+                disabled={mutationLocked} onClick={() => void resetRoutineUnit(entry, "estimate")}>ルーティンの設定に戻す</button>
+            )}
+          </>
+            : <button type="button" className="estimate-button" aria-label={`${entry.task.title}の見積`} disabled={mutationLocked || !currentDay.planning_enabled || entry.lifecycle_state !== "planned" || (entry.routine !== null && !currentDay.is_current)}
+              onClick={() => setEditingEstimate({ entryId: entry.id, minutes: entry.estimate_seconds ? String(entry.estimate_seconds / 60) : "" })}>{formatEstimate(entry.estimate_seconds)}</button>}
+          {entry.routine && routineCandidate?.entryId === entry.id && routineCandidate.unit === "estimate" && (
+            <span ref={routineScopeChoiceRef} className="routine-scope-choice" role="group" aria-label={`${entry.task.title}の見積反映先`}>
+              <span>{formatEstimate(routineCandidate.estimateSeconds)}</span>
+              <button type="button" disabled={mutationLocked} onClick={() => void commitRoutineCandidate(entry, "occurrence")}>今回だけ</button>
+              <button type="button" disabled={mutationLocked} onClick={() => void commitRoutineCandidate(entry, "definition")}>ルーティンに反映</button>
+              <button type="button" className="secondary" disabled={mutationLocked} onClick={() => setRoutineCandidate(null)}>キャンセル</button>
+            </span>
+          )}
+        </span>;
+      case "plannedStart":
+        return <span className="planned-start-cell" data-day-column-cell={key}>
+          {editingPlannedStart?.entryId === entry.id ? <>
+            <input autoFocus aria-label={`${entry.task.title}の開始予定`} value={editingPlannedStart.value} placeholder="HH:mm" inputMode="numeric"
+              onChange={(event) => setEditingPlannedStart({ entryId: entry.id, value: event.target.value })}
+              onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void commitPlannedStart(entry); }
+                else if (event.key === "Escape") { event.preventDefault(); setEditingPlannedStart(null); } }} />
+            {entry.routine?.section_plan_override_present && (
+              <button type="button" className="routine-reset" aria-label={`${entry.task.title}のSection・開始予定をルーティンの設定に戻す`}
+                disabled={mutationLocked} onClick={() => void resetRoutineUnit(entry, "section-plan")}>ルーティンの設定に戻す</button>
+            )}
+          </>
+            : <button type="button" className="planned-start-button" aria-label={`${entry.task.title}の開始予定`}
+              disabled={mutationLocked || !currentDay.planning_enabled || entry.lifecycle_state !== "planned" || (entry.routine !== null && !currentDay.is_current)}
+              onClick={() => setEditingPlannedStart({ entryId: entry.id,
+                value: entry.planned_start_minute === null ? "" : formatLogicalMinute(entry.planned_start_minute) })}>
+              {entry.planned_start_minute === null ? "—" : formatLogicalMinute(entry.planned_start_minute)}
+            </button>}
+          {entry.routine && routineCandidate?.entryId === entry.id && routineCandidate.unit === "section-plan" && (
+            <span ref={routineScopeChoiceRef} className="routine-scope-choice" role="group" aria-label={`${entry.task.title}のSection・開始予定反映先`}>
+              <span>{routineCandidate.sectionId === null ? "Sectionなし / —"
+                : `${currentDay.sections.find((candidate) => candidate.id === routineCandidate.sectionId)?.title ?? "Section"} / ${formatLogicalMinute(routineCandidate.plannedStartMinute)}`}</span>
+              <button type="button" disabled={mutationLocked} onClick={() => void commitRoutineCandidate(entry, "occurrence")}>今回だけ</button>
+              <button type="button" disabled={mutationLocked} onClick={() => void commitRoutineCandidate(entry, "definition")}>ルーティンに反映</button>
+              <button type="button" className="secondary" disabled={mutationLocked} onClick={() => setRoutineCandidate(null)}>キャンセル</button>
+            </span>
+          )}
+        </span>;
+      case "forecast":
+        return <span className="forecast-cell" data-day-column-cell={key} aria-label={`${entry.task.title}の開始見込`}>
+          {formatStartForecast(forecastByEntryId[entry.id], currentDay.taskchute_day.logical_date, currentDay.taskchute_day.establishment_timezone)}
+        </span>;
+      case "actualStart":
+        return <span className="actual-start-cell actual-time-cell" data-day-column-cell={key} aria-label={`${entry.task.title}の開始`}>
+          {formatActualTime(summary?.first_started_at ?? null, currentDay.taskchute_day.logical_date, currentDay.taskchute_day.establishment_timezone)}
+        </span>;
+      case "actualEnd":
+        return <span className="actual-end-cell actual-time-cell" data-day-column-cell={key} aria-label={`${entry.task.title}の終了`}>
+          {summary?.active_started_at ? "—" : formatActualTime(summary?.last_ended_at ?? null, currentDay.taskchute_day.logical_date, currentDay.taskchute_day.establishment_timezone)}
+        </span>;
+      case "actualDuration":
+        return <span className="actual-duration-cell actual-duration" data-day-column-cell={key} aria-label={`${entry.task.title}の実績`}>
+          {actualDurationFor(entry)}
+        </span>;
+    }
+  }
+
+  function renderDraftColumn(section: { title: string }, key: DayColumnKey) {
+    if (key === "section") return <span className="section-cell" data-day-column-cell={key}>{section.title}</span>;
+    const definition = columnDefinition(key);
+    return <span className={`${definition.cellClassName} muted`} data-day-column-cell={key}>—</span>;
   }
 
   return (
@@ -1882,9 +2126,23 @@ export function App() {
         </section>
       )}
 
-      <section className="day-surface" aria-label="DayBoard">
-        <div className="table-heading" aria-hidden="true">
-          <span className="bulk-slot" /><span className="execution-heading">実行</span><span className="task-heading">Task</span><span>Project</span><span>Section</span><span>Routine</span><span>見積</span><span>開始予定</span><span>開始見込</span>
+      <section className="day-surface" aria-label="DayBoard" style={dayTableStyle(dayColumnPreference)}>
+        <div className="table-heading">
+          <span className="bulk-slot" aria-hidden="true" /><span className="execution-heading">実行</span><span className="task-heading">Task</span>
+          {resolvedColumnDefinitions.map((definition) => {
+            const isDropTarget = columnDrag?.targetKey === definition.key && columnDrag.edge;
+            return <span key={definition.key} className={`column-heading${columnDrag?.sourceKey === definition.key ? " is-column-dragging" : ""}${isDropTarget ? ` drop-${columnDrag.edge}` : ""}`}
+              data-day-column-header={definition.key} draggable={definition.reorderable}
+              onDragStart={(event) => startColumnDrag(event, definition.key)}
+              onDragOver={(event) => updateColumnDropTarget(event, definition.key)}
+              onDrop={(event) => dropColumn(event, definition.key)}
+              onDragEnd={() => setColumnDrag(null)}>
+              <span className="column-heading-label">{definition.label}</span>
+              <button type="button" className="column-resize-handle" aria-label={`${definition.label}列の幅を変更`} title={`${definition.label}列の幅を変更。ダブルクリックで自動調整`}
+                onMouseDown={(event) => startColumnResize(event, definition.key)}
+                onDoubleClick={(event) => autoFitColumn(event, definition.key)} />
+            </span>;
+          })}
         </div>
         {groups.map((section) => {
           const visibleEntries = showCompleted ? section.entries : section.entries.filter((entry) => entry.lifecycle_state !== "completed");
@@ -1940,7 +2198,7 @@ export function App() {
                   <label className="draft-name"><span className="sr-only">Task名</span><input ref={draftInputRef} name="title" maxLength={300} value={draftTask.title} placeholder="Task名を入力…" aria-label={`${section.title}のTask名`} disabled={pending === "task" || taskOperation !== null} onChange={(event) => setDraftTask({ ...draftTask, title: event.target.value })} onCompositionStart={() => { draftCompositionRef.current = true; }} onCompositionEnd={() => { draftCompositionRef.current = false; }} onKeyDown={handleDraftKeyDown} onBlur={(event) => {
                     if (!draftTask.title.trim() && !event.currentTarget.form?.contains(event.relatedTarget as Node | null)) setDraftTask(null);
                   }} /></label>
-                  <span className="muted">—</span><span>{section.title}</span><span className="muted">—</span><span className="muted">—</span><span className="muted">—</span><span className="muted" aria-hidden="true">—</span>
+                  {resolvedColumnDefinitions.map((definition) => renderDraftColumn(section, definition.key))}
                 </form>
               )}
 
@@ -1992,89 +2250,7 @@ export function App() {
                           onClick={(event) => { event.stopPropagation(); duplicate(entry); }}>⧉</button>
                       </div>
                     </div>
-                    <span className="project-name">{entry.task.project?.title ?? "—"}</span>
-                    <select aria-label={`${entry.task.title}のSection`} value={entry.section_id ?? ""}
-                      disabled={mutationLocked || !day.planning_enabled || entry.lifecycle_state !== "planned"
-                        || (entry.routine !== null && !day.is_current)}
-                      onClick={(event) => event.stopPropagation()} onChange={(event) => entry.routine
-                        ? changeRoutineSectionCandidate(entry, event.target.value || null)
-                        : void changeSection(entry, event.target.value || null)}>
-                      <option value="">Sectionなし</option>
-                      {day.sections.map((candidate) => <option value={candidate.id} key={candidate.id}>{candidate.title}</option>)}
-                    </select>
-                    <div className="routine-cell" onClick={(event) => event.stopPropagation()}>
-                      {entry.routine && <span className="routine-badge">Routine</span>}
-                      {day.is_current && entry.lifecycle_state === "planned" && entry.routine === null && (
-                        routineDraft?.entryId === entry.id
-                          ? <div className="routine-editor">
-                              <label>終了日（空欄は終了なし）<input type="date" min={day.taskchute_day.logical_date}
-                                value={routineDraft.endDate} onChange={(event) => setRoutineDraft({ entryId: entry.id, endDate: event.target.value })} /></label>
-                              <button type="button" disabled={mutationLocked} onClick={() => void commitRoutineConversion(entry)}>Routine化</button>
-                              <button type="button" className="secondary" disabled={mutationLocked} onClick={() => setRoutineDraft(null)}>Cancel</button>
-                            </div>
-                          : <button type="button" className="routine-action" disabled={mutationLocked}
-                              onClick={(event) => { event.stopPropagation(); setRoutineDraft({ entryId: entry.id, endDate: "" }); }}>Routine化</button>
-                      )}
-                      {entry.routine && <span className="routine-ended">{entry.routine.can_end ? "Routine" : "期間終了"}</span>}
-                      {entry.lifecycle_state !== "planned" && entry.routine === null && <span className="muted">—</span>}
-                    </div>
-                    <span className="estimate-cell">
-                      {editingEstimate?.entryId === entry.id ? <>
-                        <input autoFocus aria-label={`${entry.task.title}の見積（分）`} inputMode="numeric" value={editingEstimate.minutes}
-                          onChange={(event) => setEditingEstimate({ entryId: entry.id, minutes: event.target.value })}
-                          onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void commitEstimate(entry.id); }
-                            else if (event.key === "Escape") { event.preventDefault(); setEditingEstimate(null); } }} />
-                        {entry.routine?.estimate_override_present && (
-                          <button type="button" className="routine-reset" aria-label={`${entry.task.title}の見積をルーティンの設定に戻す`}
-                            disabled={mutationLocked} onClick={() => void resetRoutineUnit(entry, "estimate")}>ルーティンの設定に戻す</button>
-                        )}
-                      </>
-                        : <button type="button" className="estimate-button" aria-label={`${entry.task.title}の見積`} disabled={mutationLocked || !day.planning_enabled || entry.lifecycle_state !== "planned" || (entry.routine !== null && !day.is_current)}
-                          onClick={() => setEditingEstimate({ entryId: entry.id, minutes: entry.estimate_seconds ? String(entry.estimate_seconds / 60) : "" })}>{formatEstimate(entry.estimate_seconds)}</button>}
-                      {entry.routine && routineCandidate?.entryId === entry.id && routineCandidate.unit === "estimate" && (
-                        <span ref={routineScopeChoiceRef} className="routine-scope-choice" role="group" aria-label={`${entry.task.title}の見積反映先`}>
-                          <span>{formatEstimate(routineCandidate.estimateSeconds)}</span>
-                          <button type="button" disabled={mutationLocked} onClick={() => void commitRoutineCandidate(entry, "occurrence")}>今回だけ</button>
-                          <button type="button" disabled={mutationLocked} onClick={() => void commitRoutineCandidate(entry, "definition")}>ルーティンに反映</button>
-                          <button type="button" className="secondary" disabled={mutationLocked} onClick={() => setRoutineCandidate(null)}>キャンセル</button>
-                        </span>
-                      )}
-                    </span>
-                    <span className="planned-start-cell">
-                      {editingPlannedStart?.entryId === entry.id ? <>
-                        <input autoFocus aria-label={`${entry.task.title}の開始予定`}
-                          value={editingPlannedStart.value} placeholder="HH:mm" inputMode="numeric"
-                          onChange={(event) => setEditingPlannedStart({ entryId: entry.id, value: event.target.value })}
-                          onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void commitPlannedStart(entry); }
-                            else if (event.key === "Escape") { event.preventDefault(); setEditingPlannedStart(null); } }} />
-                        {entry.routine?.section_plan_override_present && (
-                          <button type="button" className="routine-reset" aria-label={`${entry.task.title}のSection・開始予定をルーティンの設定に戻す`}
-                            disabled={mutationLocked} onClick={() => void resetRoutineUnit(entry, "section-plan")}>ルーティンの設定に戻す</button>
-                        )}
-                      </>
-                        : <button type="button" className="planned-start-button" aria-label={`${entry.task.title}の開始予定`}
-                          disabled={mutationLocked || !day.planning_enabled || entry.lifecycle_state !== "planned" || (entry.routine !== null && !day.is_current)}
-                          onClick={() => setEditingPlannedStart({ entryId: entry.id,
-                            value: entry.planned_start_minute === null ? "" : formatLogicalMinute(entry.planned_start_minute) })}>
-                          {entry.planned_start_minute === null ? "—" : formatLogicalMinute(entry.planned_start_minute)}
-                        </button>}
-                      {entry.routine && routineCandidate?.entryId === entry.id && routineCandidate.unit === "section-plan" && (
-                        <span ref={routineScopeChoiceRef} className="routine-scope-choice" role="group" aria-label={`${entry.task.title}のSection・開始予定反映先`}>
-                          <span>{routineCandidate.sectionId === null ? "Sectionなし / —"
-                            : `${day.sections.find((candidate) => candidate.id === routineCandidate.sectionId)?.title ?? "Section"} / ${formatLogicalMinute(routineCandidate.plannedStartMinute)}`}</span>
-                          <button type="button" disabled={mutationLocked} onClick={() => void commitRoutineCandidate(entry, "occurrence")}>今回だけ</button>
-                          <button type="button" disabled={mutationLocked} onClick={() => void commitRoutineCandidate(entry, "definition")}>ルーティンに反映</button>
-                          <button type="button" className="secondary" disabled={mutationLocked} onClick={() => setRoutineCandidate(null)}>キャンセル</button>
-                        </span>
-                      )}
-                    </span>
-                    <span className="forecast-cell" aria-label={`${entry.task.title}の開始見込`}>
-                      {formatStartForecast(
-                        forecastByEntryId[entry.id],
-                        currentDay.taskchute_day.logical_date,
-                        currentDay.taskchute_day.establishment_timezone,
-                      )}
-                    </span>
+                    {resolvedColumnDefinitions.map((definition) => <Fragment key={definition.key}>{renderEntryColumn(entry, definition.key)}</Fragment>)}
                   </div>
                 );
               })}
@@ -2122,5 +2298,13 @@ export function App() {
         )}
       </div>
     </div>
+  );
+}
+
+function RoutineIcon() {
+  return (
+    <svg className="routine-icon-svg" viewBox="0 0 20 20" width="16" height="16" aria-hidden="true" focusable="false">
+      <path d="M6.2 5.2h7.1l-1.8-1.8 1.1-1.1L16.3 6l-3.7 3.7-1.1-1.1 1.8-1.8H6.2a3.2 3.2 0 0 0 0 6.4h1.5v1.6H6.2a4.8 4.8 0 1 1 0-9.6Zm7.6 9.6H6.7l1.8 1.8-1.1 1.1L3.7 14l3.7-3.7 1.1 1.1-1.8 1.8h4.9a3.2 3.2 0 0 0 0-6.4h-1.5V5.2h1.5a4.8 4.8 0 1 1 0 9.6Z" fill="currentColor" />
+    </svg>
   );
 }
