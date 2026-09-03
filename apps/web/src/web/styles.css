@@ -120,6 +120,17 @@ input:focus-visible, select:focus-visible { border-color: #2383e2; outline: 2px 
 .bulk-confirmation h2 { margin: 0; font-size: 16px; }
 .bulk-confirmation p { margin: 0; color: #575754; font-size: 13px; }
 .bulk-confirmation-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.bulk-scope-fill-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.bulk-routine-scope-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.bulk-routine-scope-row { display: grid; grid-template-columns: minmax(120px, 1fr) auto auto; align-items: center; gap: 8px; padding: 7px 8px; border: 1px solid #e5e1d7; border-radius: 6px; background: #fff; }
+.bulk-routine-scope-identity { display: grid; gap: 1px; min-width: 0; color: #373735; }
+.bulk-routine-scope-identity strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bulk-routine-scope-identity small { color: #8b8983; font-size: 11px; }
+.bulk-routine-scope-controls { display: flex; flex-wrap: wrap; gap: 4px; }
+.bulk-routine-scope-controls button { padding: 5px 7px; font-size: 12px; }
+.bulk-routine-scope-controls button[aria-pressed="true"] { border-color: #8b6f47; background: #efe4d0; color: #5a4324; }
+.bulk-routine-scope-value { min-width: 96px; color: #5a4324; font-size: 12px; font-weight: 700; text-align: right; }
+.bulk-routine-scope-value.unselected { color: #a13d2d; }
 .columns-menu { position: relative; }
 .columns-trigger { min-width: 42px; }
 .columns-popover { position: absolute; z-index: 30; top: calc(100% + 6px); left: 0; display: grid; width: min(260px, calc(100vw - 32px)); gap: 10px; padding: 12px; border: 1px solid #d8d8d5; border-radius: 8px; background: #fff; box-shadow: 0 10px 24px rgb(15 15 15 / 16%); color: #373735; }
@@ -282,6 +293,8 @@ button.execution-control:hover { border-color: #2383e2; color: #2383e2; }
   .bulk-confirmation { margin: 8px 0; }
   .bulk-confirmation-actions { justify-content: stretch; }
   .bulk-confirmation-actions button { flex: 1; }
+  .bulk-routine-scope-row { grid-template-columns: 1fr; }
+  .bulk-routine-scope-value { text-align: left; }
   .columns-popover { left: auto; right: 0; }
   .bulk-slot,
   .execution-heading,

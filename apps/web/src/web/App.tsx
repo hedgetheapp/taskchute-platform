@@ -16,6 +16,8 @@ import type {
   BulkDeleteEntriesRequest,
   BulkMoveEntriesToSectionRequest,
   BulkMoveEntriesToSectionOccurrenceRequest,
+  BulkMoveEntriesToSectionScopedRequest,
+  BulkRoutineSectionScopeInput,
   CompleteEntryRequest,
   CreateProjectRequest,
   CurrentTaskChuteDayProjection,
@@ -79,6 +81,14 @@ type ColumnResizeState = { key: DayColumnKey; startX: number; startWidth: number
 type RoutineCandidate =
   | { entryId: string; unit: "estimate"; estimateSeconds: number | null }
   | { entryId: string; unit: "section-plan"; sectionId: string | null; plannedStartMinute: number | null };
+type BulkRoutineScopeChoice = "occurrence" | "definition";
+type BulkRoutineScopeDraft = {
+  entryId: string;
+  title: string;
+  routineDefinitionId: string;
+  expectedDefaultsRevision: number;
+  scope: BulkRoutineScopeChoice | null;
+};
 
 /**
  * Collapse state is a presentation-only preference. Keep it in a versioned
@@ -394,6 +404,7 @@ export function App() {
   const [bulkDeleteOperation, setBulkDeleteOperation] = useState<BulkDeleteEntriesRequest | null>(null);
   const [bulkSectionOperation, setBulkSectionOperation] = useState<BulkMoveEntriesToSectionRequest | null>(null);
   const [bulkSectionOccurrenceOperation, setBulkSectionOccurrenceOperation] = useState<BulkMoveEntriesToSectionOccurrenceRequest | null>(null);
+  const [bulkSectionScopedOperation, setBulkSectionScopedOperation] = useState<BulkMoveEntriesToSectionScopedRequest | null>(null);
   const [bulkSectionPickerOpen, setBulkSectionPickerOpen] = useState(false);
   const [bulkConfirmation, setBulkConfirmation] = useState<{
     entryIds: string[];
@@ -405,6 +416,7 @@ export function App() {
     sectionId: string | null;
     ordinaryCount: number;
     routineCount: number;
+    routineScopes: BulkRoutineScopeDraft[];
   } | null>(null);
   const [selectedEntryIds, setSelectedEntryIds] = useState<string[]>([]);
   const [reorderOperation, setReorderOperation] = useState<ReorderEntriesRequest | null>(null);
@@ -426,7 +438,7 @@ export function App() {
   const [editingPlannedStart, setEditingPlannedStart] = useState<{ entryId: string; value: string } | null>(null);
   const [routineDraft, setRoutineDraft] = useState<{ entryId: string; endDate: string } | null>(null);
   const [routineCandidate, setRoutineCandidate] = useState<RoutineCandidate | null>(null);
-  const [pending, setPending] = useState<"login" | "project" | "project-settings" | "day-navigation" | "task" | "duplicate" | "bulk-delete" | "bulk-section" | "bulk-section-occurrence" | "reorder" | "start" | "complete" | "configuration" | "section-settings" | "move" | "estimate" | "planned-start" | "routine-convert" | "routine-end" | "routine-edit" | "logout" | null>(null);
+  const [pending, setPending] = useState<"login" | "project" | "project-settings" | "day-navigation" | "task" | "duplicate" | "bulk-delete" | "bulk-section" | "bulk-section-occurrence" | "bulk-section-scoped" | "reorder" | "start" | "complete" | "configuration" | "section-settings" | "move" | "estimate" | "planned-start" | "routine-convert" | "routine-end" | "routine-edit" | "logout" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draftTask, setDraftTask] = useState<DraftTask | null>(null);
   const [pendingFocusKey, setPendingFocusKey] = useState<string | null>(null);
@@ -458,7 +470,7 @@ export function App() {
   const bulkSectionPickerRef = useRef<HTMLDivElement | null>(null);
   const routineScopeChoiceRef = useRef<HTMLSpanElement | null>(null);
   const forecastClockRef = useRef<{ serverInstant: string; monotonicMilliseconds: number } | null>(null);
-  const retainedOperation = projectOperation ?? taskOperation ?? duplicateOperation ?? bulkDeleteOperation ?? bulkSectionOperation ?? bulkSectionOccurrenceOperation ?? reorderOperation ?? startOperation ?? completeOperation
+  const retainedOperation = projectOperation ?? taskOperation ?? duplicateOperation ?? bulkDeleteOperation ?? bulkSectionOperation ?? bulkSectionOccurrenceOperation ?? bulkSectionScopedOperation ?? reorderOperation ?? startOperation ?? completeOperation
     ?? configurationOperation ?? sectionSettingsOperation ?? sectionMoveOperation ?? estimateOperation ?? plannedStartOperation
     ?? routineConversionOperation ?? routineEndOperation ?? routineEstimateOperation ?? routineSectionPlanOperation;
   const mutationLocked = pending !== null || retainedOperation !== null || bulkConfirmation !== null || bulkSectionConfirmation !== null;
@@ -480,6 +492,7 @@ export function App() {
     setBulkDeleteOperation(null);
     setBulkSectionOperation(null);
     setBulkSectionOccurrenceOperation(null);
+    setBulkSectionScopedOperation(null);
     setBulkSectionPickerOpen(false);
     setBulkConfirmation(null);
     setBulkSectionConfirmation(null);
@@ -545,6 +558,7 @@ export function App() {
     setBulkConfirmation(null);
     setBulkSectionConfirmation(null);
     setBulkSectionPickerOpen(false);
+    setBulkSectionScopedOperation(null);
     setEditingEstimate(null);
     setEditingPlannedStart(null);
     setRoutineDraft(null);
@@ -1043,6 +1057,42 @@ export function App() {
     }
   }
 
+  async function executeBulkSectionScopedChange(operation: BulkMoveEntriesToSectionScopedRequest) {
+    setPending("bulk-section-scoped");
+    setBulkSectionConfirmation(null);
+    setBulkSectionPickerOpen(false);
+    setError(null);
+    try {
+      await api.bulkMoveEntriesToSectionScoped(operation);
+      await reconcile();
+      setBulkSectionScopedOperation(null);
+    } catch (caught) {
+      setError(caught instanceof ApiClientError && caught.code === "revision_conflict"
+        ? "Routine設定またはDayの内容が変わったため、scopeを確認してから再度実行してください。"
+        : caught instanceof Error ? caught.message : "RoutineごとのSection変更に失敗しました");
+      const ambiguous = isAmbiguousOutcome(caught);
+      if (!ambiguous) setBulkSectionScopedOperation(null);
+      try {
+        const projection = await reconcile();
+        const targetPlannedStart = operation.section_id === null
+          ? null
+          : projection?.sections.find((section) => section.id === operation.section_id)?.logical_start_minute;
+        const converged = projection && operation.entry_ids.every((id) => {
+          const entry = projectionEntries(projection).find((candidate) => candidate.id === id);
+          return entry?.section_id === operation.section_id && entry.planned_start_minute === targetPlannedStart;
+        });
+        if (ambiguous && converged) {
+          setBulkSectionScopedOperation(null);
+          setError(null);
+        }
+      } catch {
+        // Preserve the exact scoped operation for retry when reconciliation is unavailable.
+      }
+    } finally {
+      setPending(null);
+    }
+  }
+
   function toggleBulkEntry(entry: EntryProjection) {
     if (!day || mutationLocked || !isBulkSelectableProjectionEntry(day, entry)) return;
     setSelectedEntryIds((current) => current.includes(entry.id)
@@ -1115,6 +1165,13 @@ export function App() {
         sectionId,
         ordinaryCount: selectedBulkEntries.length - routineCount,
         routineCount,
+        routineScopes: selectedBulkEntries.filter((entry) => entry.routine !== null).map((entry) => ({
+          entryId: entry.id,
+          title: entry.task.title,
+          routineDefinitionId: entry.routine!.routine_definition_id,
+          expectedDefaultsRevision: entry.routine!.defaults_revision,
+          scope: null,
+        })),
       });
       return;
     }
@@ -1129,18 +1186,46 @@ export function App() {
     void executeBulkSectionChange(operation);
   }
 
-  function confirmBulkSectionOccurrenceChange() {
+  function setBulkRoutineScope(entryId: string, scope: BulkRoutineScopeChoice) {
+    setBulkSectionConfirmation((current) => {
+      if (!current) return current;
+      const target = current.routineScopes.find((item) => item.entryId === entryId);
+      if (!target) return current;
+      return {
+        ...current,
+        routineScopes: current.routineScopes.map((item) => item.routineDefinitionId === target.routineDefinitionId
+          ? { ...item, scope }
+          : item),
+      };
+    });
+  }
+
+  function fillBulkRoutineScopes(scope: BulkRoutineScopeChoice) {
+    setBulkSectionConfirmation((current) => current
+      ? { ...current, routineScopes: current.routineScopes.map((item) => ({ ...item, scope })) }
+      : current);
+  }
+
+  function confirmBulkSectionScopedChange() {
     if (!day?.taskchute_day.id || !bulkSectionConfirmation || pending !== null
-      || bulkSectionOccurrenceOperation !== null) return;
-    const operation: BulkMoveEntriesToSectionOccurrenceRequest = {
+      || bulkSectionScopedOperation !== null
+      || bulkSectionConfirmation.routineScopes.some((item) => item.scope === null)) return;
+    const routineScopes: BulkRoutineSectionScopeInput[] = bulkSectionConfirmation.routineScopes.map((item) => {
+      if (item.scope === "definition") return {
+        entry_id: item.entryId, scope: item.scope, expected_defaults_revision: item.expectedDefaultsRevision,
+      };
+      return { entry_id: item.entryId, scope: "occurrence" };
+    });
+    const operation: BulkMoveEntriesToSectionScopedRequest = {
       operation_id: uuidv7(),
       taskchute_day_id: day.taskchute_day.id,
       entry_ids: bulkSectionConfirmation.entryIds,
       section_id: bulkSectionConfirmation.sectionId,
+      routine_scopes: routineScopes,
       expected_placement_revision: day.placement_revision,
     };
-    setBulkSectionOccurrenceOperation(operation);
-    void executeBulkSectionOccurrenceChange(operation);
+    setBulkSectionScopedOperation(operation);
+    void executeBulkSectionScopedChange(operation);
   }
 
   function duplicate(entry: EntryProjection) {
@@ -2529,8 +2614,8 @@ export function App() {
       </div>
 
       {bulkSectionConfirmation && (
-        <div className="bulk-confirmation panel" ref={bulkSectionConfirmationRef} role="dialog" aria-modal="true" aria-labelledby="bulk-section-confirmation-title" tabIndex={-1}>
-          <h2 id="bulk-section-confirmation-title">Sectionを一括変更</h2>
+        <div className="bulk-confirmation panel bulk-section-scoped-confirmation" ref={bulkSectionConfirmationRef} role="dialog" aria-modal="true" aria-labelledby="bulk-section-confirmation-title" tabIndex={-1}>
+          <h2 id="bulk-section-confirmation-title">RoutineごとのSection変更</h2>
           <p>
             {bulkSectionConfirmation.entryIds.length}件を
             {bulkSectionConfirmation.sectionId === null
@@ -2538,17 +2623,35 @@ export function App() {
               : `${currentDay.sections.find((section) => section.id === bulkSectionConfirmation.sectionId)?.title ?? "選択したSection"}`}
             に変更します。
           </p>
-          <ul>
-            <li>Routine Task {bulkSectionConfirmation.routineCount}件を含む選択です。</li>
-            <li>現在のOccurrenceだけを「今回だけ」変更します。</li>
-            <li>Routine設定・デフォルト・将来の日・他のOccurrenceは変更しません。</li>
+          {bulkSectionConfirmation.ordinaryCount > 0 && <p>通常Task {bulkSectionConfirmation.ordinaryCount}件は今日だけ変更します。</p>}
+          <p id="bulk-section-scope-help">Routine Taskごとにscopeを選択してください。未選択のまま確定することはできません。</p>
+          <div className="bulk-scope-fill-actions" aria-label="Routine scope一括入力">
+            <button type="button" className="secondary" onClick={() => fillBulkRoutineScopes("occurrence")}>すべて今回だけ</button>
+            <button type="button" className="secondary" onClick={() => fillBulkRoutineScopes("definition")}>すべてルーティンに反映</button>
+          </div>
+          <ul className="bulk-routine-scope-list" aria-describedby="bulk-section-scope-help">
+            {bulkSectionConfirmation.routineScopes.map((item) => (
+              <li key={item.entryId} className="bulk-routine-scope-row">
+                <span className="bulk-routine-scope-identity"><strong>{item.title}</strong><small>Routine</small></span>
+                <span role="group" aria-label={`${item.title}のscope`} className="bulk-routine-scope-controls">
+                  <button type="button" aria-pressed={item.scope === "occurrence"} onClick={() => setBulkRoutineScope(item.entryId, "occurrence")}>今回だけ</button>
+                  <button type="button" aria-pressed={item.scope === "definition"} onClick={() => setBulkRoutineScope(item.entryId, "definition")}>ルーティンに反映</button>
+                </span>
+                <span className={`bulk-routine-scope-value${item.scope === null ? " unselected" : ""}`}>
+                  {item.scope === null ? "未選択" : item.scope === "occurrence" ? "今回だけ" : "ルーティンに反映"}
+                </span>
+              </li>
+            ))}
           </ul>
           <div className="bulk-confirmation-actions">
             <button type="button" className="secondary" onClick={() => {
               setBulkSectionConfirmation(null);
               requestAnimationFrame(() => bulkSectionTriggerRef.current?.focus());
             }}>キャンセル</button>
-            <button type="button" onClick={confirmBulkSectionOccurrenceChange}>今回だけ変更</button>
+            <button type="button"
+              disabled={bulkSectionConfirmation.routineScopes.some((item) => item.scope === null)}
+              title={bulkSectionConfirmation.routineScopes.some((item) => item.scope === null) ? "すべてのRoutine scopeを選択してください" : undefined}
+              onClick={confirmBulkSectionScopedChange}>Section変更を確定</button>
           </div>
         </div>
       )}
@@ -2760,8 +2863,9 @@ export function App() {
           {taskOperation && <button type="button" onClick={() => void executeAddTask(taskOperation)}>保留中のTask追加を再試行</button>}
           {duplicateOperation && <button type="button" onClick={() => void executeDuplicate(duplicateOperation)}>保留中のTask複製を再試行</button>}
           {bulkDeleteOperation && <button type="button" onClick={() => void executeBulkDelete(bulkDeleteOperation)}>保留中のBulk削除を再試行</button>}
-          {bulkSectionOperation && <button type="button" onClick={() => void executeBulkSectionChange(bulkSectionOperation)}>保留中のBulk Section変更を再試行</button>}
-          {bulkSectionOccurrenceOperation && <button type="button" onClick={() => void executeBulkSectionOccurrenceChange(bulkSectionOccurrenceOperation)}>保留中のRoutine含むBulk Section変更を再試行</button>}
+           {bulkSectionOperation && <button type="button" onClick={() => void executeBulkSectionChange(bulkSectionOperation)}>保留中のBulk Section変更を再試行</button>}
+           {bulkSectionOccurrenceOperation && <button type="button" onClick={() => void executeBulkSectionOccurrenceChange(bulkSectionOccurrenceOperation)}>保留中のRoutine含むBulk Section変更を再試行</button>}
+           {bulkSectionScopedOperation && <button type="button" onClick={() => void executeBulkSectionScopedChange(bulkSectionScopedOperation)}>保留中のRoutineごとのBulk Section変更を再試行</button>}
           {reorderOperation && <button type="button" onClick={() => void executeReorder(reorderOperation)}>保留中のReorderを再試行</button>}
           {startOperation && <button type="button" onClick={() => void executeStart(startOperation)}>保留中のStartを再試行</button>}
           {completeOperation && <button type="button" onClick={() => void executeComplete(completeOperation)}>保留中のCompleteを再試行</button>}
@@ -2775,7 +2879,7 @@ export function App() {
           {routineEstimateOperation && <button type="button" onClick={() => void executeRoutineEstimate(routineEstimateOperation)}>保留中のRoutine見積を再試行</button>}
           {routineSectionPlanOperation && <button type="button" onClick={() => void executeRoutineSectionPlan(routineSectionPlanOperation)}>保留中のRoutine配置を再試行</button>}
           <button type="button" className="secondary" onClick={() => {
-            setProjectOperation(null); setTaskOperation(null); setDuplicateOperation(null); setBulkDeleteOperation(null); setBulkSectionOperation(null); setBulkSectionOccurrenceOperation(null); setBulkSectionPickerOpen(false); setBulkConfirmation(null); setBulkSectionConfirmation(null); setSelectedEntryIds([]); setReorderOperation(null); setStartOperation(null); setCompleteOperation(null);
+             setProjectOperation(null); setTaskOperation(null); setDuplicateOperation(null); setBulkDeleteOperation(null); setBulkSectionOperation(null); setBulkSectionOccurrenceOperation(null); setBulkSectionScopedOperation(null); setBulkSectionPickerOpen(false); setBulkConfirmation(null); setBulkSectionConfirmation(null); setSelectedEntryIds([]); setReorderOperation(null); setStartOperation(null); setCompleteOperation(null);
             setConfigurationOperation(null); setSectionSettingsOperation(null); setSectionMoveOperation(null); setEstimateOperation(null); setPlannedStartOperation(null);
             setRoutineConversionOperation(null); setRoutineEndOperation(null); setRoutineEstimateOperation(null);
             setRoutineSectionPlanOperation(null); setRoutineCandidate(null); setError(null);

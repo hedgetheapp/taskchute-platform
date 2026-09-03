@@ -223,6 +223,33 @@ export interface BulkMoveEntriesToSectionOccurrenceResult {
   placement_revision: number;
 }
 
+export type BulkRoutineSectionScopeInput =
+  | { entry_id: string; scope: "occurrence" }
+  | { entry_id: string; scope: "definition"; expected_defaults_revision: number };
+
+export interface BulkMoveEntriesToSectionScopedRequest {
+  operation_id: string;
+  taskchute_day_id: string;
+  entry_ids: string[];
+  section_id: string | null;
+  routine_scopes: BulkRoutineSectionScopeInput[];
+  expected_placement_revision: number;
+}
+
+export interface BulkMoveEntriesToSectionScopedResult {
+  taskchute_day_id: string;
+  entry_ids: string[];
+  changed_entry_ids: string[];
+  propagated_entry_ids: string[];
+  routine_override_changed_entry_ids: string[];
+  definition_changed_routine_definition_ids: string[];
+  affected_day_revisions: Array<{ taskchute_day_id: string; placement_revision: number }>;
+  defaults_revisions: Array<{ routine_definition_id: string; defaults_revision: number }>;
+  section_id: string | null;
+  planned_start_minute: number | null;
+  placement_revision: number;
+}
+
 export interface ReorderEntriesRequest {
   operation_id: string;
   taskchute_day_id: string;

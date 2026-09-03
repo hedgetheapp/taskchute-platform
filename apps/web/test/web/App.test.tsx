@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CurrentTaskChuteDayProjection, EntryProjection } from "../../src/shared/contracts";
 
 const mocks = vi.hoisted(() => ({
-  login: vi.fn(), logout: vi.fn(), loadDay: vi.fn(), loadProjects: vi.fn(), createProject: vi.fn(), addTask: vi.fn(), duplicateEntry: vi.fn(), bulkDeleteEntries: vi.fn(), bulkMoveEntriesToSection: vi.fn(), bulkMoveEntriesToSectionOccurrence: vi.fn(),
+  login: vi.fn(), logout: vi.fn(), loadDay: vi.fn(), loadProjects: vi.fn(), createProject: vi.fn(), addTask: vi.fn(), duplicateEntry: vi.fn(), bulkDeleteEntries: vi.fn(), bulkMoveEntriesToSection: vi.fn(), bulkMoveEntriesToSectionOccurrence: vi.fn(), bulkMoveEntriesToSectionScoped: vi.fn(),
   reorderEntries: vi.fn(), startEntry: vi.fn(), completeEntry: vi.fn(),
   establishInitialSectionConfiguration: vi.fn(), moveEntry: vi.fn(), setEntryEstimate: vi.fn(),
   setEntryPlannedStart: vi.fn(),
@@ -186,6 +186,7 @@ beforeEach(() => {
   mocks.duplicateEntry.mockResolvedValue({});
   mocks.bulkDeleteEntries.mockResolvedValue({});
   mocks.bulkMoveEntriesToSection.mockResolvedValue({});
+  mocks.bulkMoveEntriesToSectionScoped.mockResolvedValue({});
   mocks.reorderEntries.mockResolvedValue({});
   mocks.startEntry.mockResolvedValue({});
   mocks.completeEntry.mockResolvedValue({});
@@ -2913,7 +2914,7 @@ describe("Dogfood Day shell", () => {
     expect(screen.queryByRole("dialog", { name: "変更先Section" })).toBeNull();
   });
 
-  it("requires an explicit one-time acknowledgement for a mixed Routine Section change", async () => {
+  it("requires per-Routine scope selection, supports fill-and-override, and sends one scoped command", async () => {
     const routineEntry: EntryProjection = { ...secondEntry, task: { ...secondEntry.task, title: "Routine task" }, routine: {
       routine_definition_id: "019c0000-0000-7000-0000-000000000050", routine_occurrence_id: "019c0000-0000-7000-0000-000000000051",
       end_logical_date: null, can_end: true, default_section_id: secondEntry.section_id,
@@ -2932,23 +2933,33 @@ describe("Dogfood Day shell", () => {
     fireEvent.click(sectionButton);
     const picker = await screen.findByRole("dialog", { name: "変更先Section" });
     fireEvent.click(within(picker).getByRole("button", { name: "Evening" }));
-    const acknowledgement = await screen.findByRole("dialog", { name: "Sectionを一括変更" });
-    expect(acknowledgement.textContent).toContain("現在のOccurrenceだけを「今回だけ」変更します。");
-    expect(acknowledgement.textContent).toContain("Routine設定・デフォルト・将来の日・他のOccurrenceは変更しません。");
+    const confirmation = await screen.findByRole("dialog", { name: "RoutineごとのSection変更" });
+    expect(confirmation.textContent).toContain("Routine Taskごとにscopeを選択してください。未選択のまま確定することはできません。");
+    expect(confirmation.textContent).toContain("未選択");
+    expect((within(confirmation).getByRole("button", { name: "Section変更を確定" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(mocks.bulkMoveEntriesToSectionScoped).not.toHaveBeenCalled();
     expect(mocks.bulkMoveEntriesToSectionOccurrence).not.toHaveBeenCalled();
-    fireEvent.click(within(acknowledgement).getByRole("button", { name: "キャンセル" }));
-    expect(screen.queryByRole("dialog", { name: "Sectionを一括変更" })).toBeNull();
+    fireEvent.click(within(confirmation).getByRole("button", { name: "キャンセル" }));
+    expect(screen.queryByRole("dialog", { name: "RoutineごとのSection変更" })).toBeNull();
     expect(screen.getByText("2件選択中")).toBeTruthy();
     fireEvent.click(sectionButton);
     fireEvent.click(within(await screen.findByRole("dialog", { name: "変更先Section" })).getByRole("button", { name: "Evening" }));
-    fireEvent.click(within(await screen.findByRole("dialog", { name: "Sectionを一括変更" })).getByRole("button", { name: "今回だけ変更" }));
-    await waitFor(() => expect(mocks.bulkMoveEntriesToSectionOccurrence).toHaveBeenCalledTimes(1));
-    expect(mocks.bulkMoveEntriesToSectionOccurrence.mock.calls[0][0]).toMatchObject({
+    const scopedConfirmation = await screen.findByRole("dialog", { name: "RoutineごとのSection変更" });
+    fireEvent.click(within(scopedConfirmation).getByRole("button", { name: "すべてルーティンに反映" }));
+    const routineScopeGroup = within(scopedConfirmation).getByRole("group", { name: "Routine taskのscope" });
+    expect(within(routineScopeGroup).getByRole("button", { name: "ルーティンに反映" }).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(within(routineScopeGroup).getByRole("button", { name: "今回だけ" }));
+    expect((within(scopedConfirmation).getByRole("button", { name: "Section変更を確定" }) as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(within(scopedConfirmation).getByRole("button", { name: "Section変更を確定" }));
+    await waitFor(() => expect(mocks.bulkMoveEntriesToSectionScoped).toHaveBeenCalledTimes(1));
+    expect(mocks.bulkMoveEntriesToSectionScoped.mock.calls[0][0]).toMatchObject({
       taskchute_day_id: emptyDay.taskchute_day.id,
       entry_ids: [firstEntry.id, routineEntry.id],
       section_id: eveningId,
       expected_placement_revision: twoPlannedDay.placement_revision,
+      routine_scopes: [{ entry_id: routineEntry.id, scope: "occurrence" }],
     });
+    expect(mocks.bulkMoveEntriesToSectionOccurrence).not.toHaveBeenCalled();
     expect(screen.getByText("2件選択中")).toBeTruthy();
   });
 

@@ -329,8 +329,26 @@ try {
       '2026-08-28T07:00:00.000Z')`]);
   assert.deepEqual(query("SELECT command_type FROM operations WHERE operation_id = 'operation-bulk-routine-section'"),
     [{ command_type: "BulkMoveEntriesToSectionOccurrence" }]);
+  const preBulkRoutineScopedOperations = query("SELECT * FROM operations ORDER BY operation_id");
+  const preBulkRoutineScopedTables = query("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name");
+  applyFile("migrations/app/0013_bulk_routine_section_scoped.sql");
+  assert.deepEqual(query("SELECT * FROM operations ORDER BY operation_id"), preBulkRoutineScopedOperations);
+  assert.deepEqual(query("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name"), preBulkRoutineScopedTables,
+    "0013 must not add or remove application tables");
   const operationTable = query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'operations'")[0]?.sql ?? "";
-  assert(operationTable.includes("BulkMoveEntriesToSectionOccurrence"), "0012 must extend only the operations command CHECK");
+  assert(operationTable.includes("BulkMoveEntriesToSectionOccurrence"), "0013 must preserve the 0012 command CHECK entry");
+  assert(operationTable.includes("BulkMoveEntriesToSectionScoped"), "0013 must add only the scoped command CHECK entry");
+  execute(["--command", `INSERT INTO operations
+    (app_user_id, operation_id, command_type, request_fingerprint_version, request_fingerprint, outcome_kind, result_json, created_at)
+    VALUES ('user-v01a', 'operation-bulk-routine-section-scoped', 'BulkMoveEntriesToSectionScoped', 1, 'bulk-routine-section-scoped-fingerprint', 'success', '{}',
+      '2026-08-28T07:30:00.000Z')`]);
+  assert.deepEqual(query("SELECT command_type FROM operations WHERE operation_id = 'operation-bulk-routine-section-scoped'"),
+    [{ command_type: "BulkMoveEntriesToSectionScoped" }]);
+  const invalidScopedCommand = execute(["--command", `INSERT INTO operations
+    (app_user_id, operation_id, command_type, request_fingerprint_version, request_fingerprint, outcome_kind, result_json, created_at)
+    VALUES ('user-v01a', 'operation-bulk-routine-section-invalid', 'NotACommand', 1, 'invalid-fingerprint', 'success', '{}',
+      '2026-08-28T07:31:00.000Z')`], false);
+  assert.notEqual(invalidScopedCommand.status, 0, "unknown operation command must remain rejected after 0013");
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
   assert.deepEqual(query("PRAGMA foreign_key_check"), []);
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
@@ -427,6 +445,8 @@ try {
       result_json: "{\"entry_id\":\"019d2f00-0000-7000-8000-000000000002\",\"lifecycle_state\":\"running\",\"execution\":{\"id\":\"019d2f00-0000-7000-8000-000000000003\",\"entry_id\":\"019d2f00-0000-7000-8000-000000000002\",\"started_at\":\"2026-08-28T09:00:00.000Z\",\"ended_at\":null}}" },
     { operation_id: "operation-bulk-routine-section", command_type: "BulkMoveEntriesToSectionOccurrence",
       request_fingerprint: "bulk-routine-section-fingerprint", outcome_kind: "success", result_json: "{}" },
+    { operation_id: "operation-bulk-routine-section-scoped", command_type: "BulkMoveEntriesToSectionScoped",
+      request_fingerprint: "bulk-routine-section-scoped-fingerprint", outcome_kind: "success", result_json: "{}" },
     { operation_id: "operation-bulk-section", command_type: "BulkMoveEntriesToSection",
       request_fingerprint: "bulk-section-fingerprint", outcome_kind: "success", result_json: "{}" },
     { operation_id: "operation-bulk-selection", command_type: "BulkDeleteEntries",
@@ -497,7 +517,7 @@ try {
   assert.notEqual(duplicateActive.status, 0, "the active Execution unique index must reject a second active row");
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
   assert.deepEqual(query("PRAGMA foreign_key_check"), []);
-  console.log("migration regression: 4 scenarios passed (R2A normalization, R2B preservation/constraints, duplicate-Task fail-safe, Bulk Selection 0010/0011/0012 preservation/constraints; fresh 0001 -> 0012 chain)");
+  console.log("migration regression: 4 scenarios passed (R2A normalization, R2B preservation/constraints, duplicate-Task fail-safe, Bulk Selection 0010/0011/0012/0013 preservation/constraints; fresh 0001 -> 0013 chain)");
 } finally {
   await rm(persistencePath, { recursive: true, force: true });
   await rm(failurePersistencePath, { recursive: true, force: true });
