@@ -17,7 +17,7 @@ vi.mock("../../src/web/api", async () => {
   return { ...actual, api: mocks };
 });
 
-import { App, DAY_SECTION_COLLAPSE_STORAGE_KEY, SIDEBAR_STORAGE_KEY } from "../../src/web/App";
+import { App, DAY_COLUMNS_STORAGE_KEY, DAY_SECTION_COLLAPSE_STORAGE_KEY, SIDEBAR_STORAGE_KEY } from "../../src/web/App";
 import { ApiClientError } from "../../src/web/api";
 
 const morningId = "019c0000-0000-7000-8000-000000000002";
@@ -2618,7 +2618,7 @@ describe("Dogfood Day shell", () => {
     await waitFor(() => expect(headingKeys().slice(0, 3)).toEqual(["section", "project", "routine"]));
     expect(mocks.reorderEntries).not.toHaveBeenCalled();
     expect(mocks.setEntryEstimate).not.toHaveBeenCalled();
-    expect(JSON.parse(window.localStorage.getItem("taskchute.web.day-columns.v1")!).order.slice(0, 3))
+    expect(JSON.parse(window.localStorage.getItem(DAY_COLUMNS_STORAGE_KEY)!).order.slice(0, 3))
       .toEqual(["section", "project", "routine"]);
 
     rendered.unmount();
@@ -2637,18 +2637,153 @@ describe("Dogfood Day shell", () => {
     fireEvent.mouseMove(window, { clientX: 210 });
     fireEvent.mouseUp(window);
     await waitFor(() => expect(dayBoard.style.getPropertyValue("--day-table-grid-template-columns")).toContain("260px"));
-    expect(JSON.parse(window.localStorage.getItem("taskchute.web.day-columns.v1")!).widths.project).toBe(260);
+    expect(JSON.parse(window.localStorage.getItem(DAY_COLUMNS_STORAGE_KEY)!).widths.project).toBe(260);
 
     const projectCell = dayBoard.querySelector<HTMLElement>('[data-day-column-cell="project"]')!;
     Object.defineProperty(projectCell, "scrollWidth", { configurable: true, value: 500 });
     fireEvent.doubleClick(projectHandle);
     await waitFor(() => expect(dayBoard.style.getPropertyValue("--day-table-grid-template-columns")).toContain("340px"));
-    expect(JSON.parse(window.localStorage.getItem("taskchute.web.day-columns.v1")!).widths.project).toBe(340);
+    expect(JSON.parse(window.localStorage.getItem(DAY_COLUMNS_STORAGE_KEY)!).widths.project).toBe(340);
 
     Object.defineProperty(projectCell, "scrollWidth", { configurable: true, value: 10 });
     fireEvent.doubleClick(projectHandle);
     await waitFor(() => expect(dayBoard.style.getPropertyValue("--day-table-grid-template-columns")).toContain("100px"));
-    expect(JSON.parse(window.localStorage.getItem("taskchute.web.day-columns.v1")!).widths.project).toBe(100);
+    expect(JSON.parse(window.localStorage.getItem(DAY_COLUMNS_STORAGE_KEY)!).widths.project).toBe(100);
+  });
+
+  it("opens the accessible Columns menu, hides data cells immediately, and restores focus on Escape", async () => {
+    mocks.loadDay.mockResolvedValue(populatedDay);
+    render(<App />);
+    const dayBoard = await screen.findByRole("region", { name: "DayBoard" });
+    const trigger = screen.getByRole("button", { name: "表示列" });
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(trigger);
+    const menu = screen.getByRole("dialog", { name: "表示列" });
+    expect(menu.querySelectorAll('input[type="checkbox"]')).toHaveLength(9);
+    expect(within(menu).getByText("表示する列")).toBeTruthy();
+    expect(within(menu).getByRole("checkbox", { name: "Project" })).toBeTruthy();
+    expect(screen.queryByText("Mode")).toBeNull();
+    expect(screen.queryByText("Note")).toBeNull();
+
+    const projectCheckbox = within(menu).getByRole("checkbox", { name: "Project" }) as HTMLInputElement;
+    fireEvent.click(projectCheckbox);
+    expect(projectCheckbox.checked).toBe(false);
+    expect(dayBoard.querySelector('[data-day-column-header="project"]')).toBeNull();
+    expect(dayBoard.querySelector('[data-day-column-cell="project"]')).toBeNull();
+    expect(screen.getByText("Canonical task")).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "表示列" })).toBeTruthy();
+    expect(mocks.reorderEntries).not.toHaveBeenCalled();
+    expect(mocks.setEntryEstimate).not.toHaveBeenCalled();
+
+    fireEvent.click(projectCheckbox);
+    expect(dayBoard.querySelector('[data-day-column-header="project"]')).toBeTruthy();
+    fireEvent.keyDown(projectCheckbox, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "表示列" })).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("preserves custom order and width across hide/show, Show all, and reload", async () => {
+    mocks.loadDay.mockResolvedValue(populatedDay);
+    const rendered = render(<App />);
+    const dayBoard = await screen.findByRole("region", { name: "DayBoard" });
+    const projectHandle = screen.getByRole("button", { name: "Project列の幅を変更" });
+    fireEvent.mouseDown(projectHandle, { button: 0, clientX: 100 });
+    fireEvent.mouseMove(window, { clientX: 170 });
+    fireEvent.mouseUp(window);
+    await waitFor(() => expect(dayBoard.style.getPropertyValue("--day-table-grid-template-columns")).toContain("220px"));
+
+    const projectHeader = dayBoard.querySelector<HTMLElement>('[data-day-column-header="project"]')!;
+    const routineHeader = dayBoard.querySelector<HTMLElement>('[data-day-column-header="routine"]')!;
+    setColumnBounds(projectHeader, 0, 150);
+    setColumnBounds(routineHeader, 150, 82);
+    const dataTransfer = dragDataTransfer();
+    fireEvent.dragStart(projectHeader, { dataTransfer });
+    const dragOver = createEvent.dragOver(routineHeader, { dataTransfer });
+    Object.defineProperty(dragOver, "clientX", { value: 160 });
+    fireEvent(routineHeader, dragOver);
+    const drop = createEvent.drop(routineHeader, { dataTransfer });
+    Object.defineProperty(drop, "clientX", { value: 160 });
+    fireEvent(routineHeader, drop);
+    fireEvent.dragEnd(projectHeader, { dataTransfer });
+    await waitFor(() => expect(Array.from(dayBoard.querySelectorAll<HTMLElement>("[data-day-column-header]"))
+      .map((header) => header.dataset.dayColumnHeader).slice(0, 3)).toEqual(["section", "project", "routine"]));
+
+    const trigger = screen.getByRole("button", { name: "表示列" });
+    fireEvent.click(trigger);
+    const menu = screen.getByRole("dialog", { name: "表示列" });
+    const projectCheckbox = within(menu).getByRole("checkbox", { name: "Project" }) as HTMLInputElement;
+    fireEvent.click(projectCheckbox);
+    expect(dayBoard.querySelector('[data-day-column-header="project"]')).toBeNull();
+    expect(dayBoard.style.getPropertyValue("--day-table-grid-template-columns")).not.toContain("220px");
+    fireEvent.click(projectCheckbox);
+    await waitFor(() => expect(dayBoard.style.getPropertyValue("--day-table-grid-template-columns")).toContain("220px"));
+    expect(Array.from(dayBoard.querySelectorAll<HTMLElement>("[data-day-column-header]"))
+      .map((header) => header.dataset.dayColumnHeader).slice(0, 3)).toEqual(["section", "project", "routine"]);
+
+    fireEvent.click(within(menu).getByRole("checkbox", { name: "Routine" }));
+    fireEvent.click(within(menu).getByRole("button", { name: "すべて表示" }));
+    await waitFor(() => expect((within(menu).getByRole("checkbox", { name: "Routine" }) as HTMLInputElement).checked).toBe(true));
+    expect(dayBoard.style.getPropertyValue("--day-table-grid-template-columns")).toContain("220px");
+
+    rendered.unmount();
+    render(<App />);
+    const reloadedBoard = await screen.findByRole("region", { name: "DayBoard" });
+    expect(Array.from(reloadedBoard.querySelectorAll<HTMLElement>("[data-day-column-header]"))
+      .map((header) => header.dataset.dayColumnHeader).slice(0, 3)).toEqual(["section", "project", "routine"]);
+    expect(reloadedBoard.style.getPropertyValue("--day-table-grid-template-columns")).toContain("220px");
+  });
+
+  it("resets only Day column presentation and keeps fixed slots usable when all data columns are hidden", async () => {
+    mocks.loadDay.mockResolvedValue(populatedDay);
+    render(<App />);
+    const dayBoard = await screen.findByRole("region", { name: "DayBoard" });
+    const projectHandle = screen.getByRole("button", { name: "Project列の幅を変更" });
+    fireEvent.mouseDown(projectHandle, { button: 0, clientX: 100 });
+    fireEvent.mouseMove(window, { clientX: 170 });
+    fireEvent.mouseUp(window);
+    const trigger = screen.getByRole("button", { name: "表示列" });
+    fireEvent.click(trigger);
+    const menu = screen.getByRole("dialog", { name: "表示列" });
+    fireEvent.click(within(menu).getByRole("checkbox", { name: "Project" }));
+    fireEvent.click(within(menu).getByRole("button", { name: "初期状態に戻す" }));
+    await waitFor(() => expect((within(menu).getByRole("checkbox", { name: "Project" }) as HTMLInputElement).checked).toBe(true));
+    expect(dayBoard.style.getPropertyValue("--day-table-grid-template-columns")).toContain("150px");
+    expect(dayBoard.style.getPropertyValue("--day-table-grid-template-columns")).not.toContain("220px");
+
+    for (const label of ["Project", "Section", "Routine", "見積", "開始予定", "開始見込", "開始", "終了", "実績"]) {
+      const checkbox = within(menu).getByRole("checkbox", { name: label }) as HTMLInputElement;
+      if (checkbox.checked) fireEvent.click(checkbox);
+    }
+    expect(dayBoard.querySelectorAll("[data-day-column-header]")).toHaveLength(0);
+    const heading = dayBoard.querySelector<HTMLElement>(".table-heading")!;
+    const taskRow = dayBoard.querySelector<HTMLElement>("[data-entry-id]")!;
+    expect(heading.querySelector(":scope > .bulk-slot")).toBeTruthy();
+    expect(heading.textContent).toContain("実行");
+    expect(heading.textContent).toContain("Task");
+    expect(taskRow.children).toHaveLength(3);
+    expect(screen.getByRole("button", { name: "Canonical taskを開始" })).toBeTruthy();
+  });
+
+  it("closes the Columns popover from outside click or trigger re-click and keeps draft alignment", async () => {
+    mocks.loadDay.mockResolvedValue(emptyDay);
+    render(<App />);
+    const dayBoard = await screen.findByRole("region", { name: "DayBoard" });
+    const trigger = await screen.findByRole("button", { name: "表示列" });
+    fireEvent.click(trigger);
+    expect(screen.getByRole("dialog", { name: "表示列" })).toBeTruthy();
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByRole("dialog", { name: "表示列" })).toBeNull();
+    fireEvent.click(trigger);
+    fireEvent.click(trigger);
+    expect(screen.queryByRole("dialog", { name: "表示列" })).toBeNull();
+
+    fireEvent.click(trigger);
+    const menu = screen.getByRole("dialog", { name: "表示列" });
+    fireEvent.click(within(menu).getByRole("checkbox", { name: "Project" }));
+    fireEvent.click(screen.getByRole("button", { name: "MorningにTaskを追加" }));
+    const draftRow = screen.getByRole("textbox", { name: "MorningのTask名" }).closest<HTMLElement>(".draft-row")!;
+    expect(draftRow.querySelector('[data-day-column-cell="project"]')).toBeNull();
+    expect(draftRow.children).toHaveLength(dayBoard.querySelector<HTMLElement>(".table-heading")!.children.length);
   });
 
   it("uses compact Routine icons and projects read-only actual facts with logical extended time", async () => {

@@ -45,7 +45,11 @@ import {
   formatActualTime,
   persistDayColumnPreference,
   readPersistedDayColumnPreference,
+  resetDayColumnPreference,
   reorderDayColumns,
+  setDayColumnVisibility,
+  showAllDayColumns,
+  visibleDayColumnOrder,
   type DayColumnKey,
   type DayColumnPreference,
 } from "./day-columns";
@@ -398,6 +402,7 @@ export function App() {
   const [collapsedSectionsByDay, setCollapsedSectionsByDay] = useState<CollapsedSectionsByDay>(readPersistedCollapsedSections);
   const [sidebarOpen, setSidebarOpen] = useState(readPersistedSidebarOpen);
   const [dayColumnPreference, setDayColumnPreference] = useState<DayColumnPreference>(readPersistedDayColumnPreference);
+  const [columnsMenuOpen, setColumnsMenuOpen] = useState(false);
   const [columnDrag, setColumnDrag] = useState<ColumnDragState | null>(null);
   const [columnResize, setColumnResize] = useState<ColumnResizeState | null>(null);
   const [entryDrag, setEntryDrag] = useState<EntryDragState | null>(null);
@@ -411,6 +416,8 @@ export function App() {
   const mouseDragRef = useRef<MouseDragState | null>(null);
   const calendarTriggerRef = useRef<HTMLButtonElement | null>(null);
   const calendarGridRef = useRef<HTMLDivElement | null>(null);
+  const columnsMenuRef = useRef<HTMLDivElement | null>(null);
+  const columnsTriggerRef = useRef<HTMLButtonElement | null>(null);
   const routineScopeChoiceRef = useRef<HTMLSpanElement | null>(null);
   const forecastClockRef = useRef<{ serverInstant: string; monotonicMilliseconds: number } | null>(null);
   const retainedOperation = projectOperation ?? taskOperation ?? duplicateOperation ?? reorderOperation ?? startOperation ?? completeOperation
@@ -520,6 +527,15 @@ export function App() {
   useEffect(() => {
     persistDayColumnPreference(dayColumnPreference);
   }, [dayColumnPreference]);
+
+  useEffect(() => {
+    if (!columnsMenuOpen) return;
+    const handleOutsideMouseDown = (event: globalThis.MouseEvent) => {
+      if (!columnsMenuRef.current?.contains(event.target as Node)) setColumnsMenuOpen(false);
+    };
+    document.addEventListener("mousedown", handleOutsideMouseDown);
+    return () => document.removeEventListener("mousedown", handleOutsideMouseDown);
+  }, [columnsMenuOpen]);
 
   useEffect(() => {
     if (!columnResize) return;
@@ -1592,7 +1608,8 @@ export function App() {
   const currentDay = day;
   const allEntries = [...currentDay.unsectioned_entries, ...currentDay.sections.flatMap((section) => section.entries)];
   const activeEntry = currentDay.active_execution ? allEntries.find((entry) => entry.id === currentDay.active_execution?.entry_id) : null;
-  const resolvedColumnDefinitions = dayColumnPreference.order.map((key) => DAY_COLUMN_DEFINITIONS.find((definition) => definition.key === key)!).filter(Boolean);
+  const resolvedColumnDefinitions = visibleDayColumnOrder(dayColumnPreference)
+    .map((key) => DAY_COLUMN_DEFINITIONS.find((definition) => definition.key === key)!).filter(Boolean);
   const forecastByEntryId = calculateStartForecast(
     currentDay,
     forecastNowInstant ?? currentDay.projection_generated_at,
@@ -1716,6 +1733,18 @@ export function App() {
 
   function columnDefinition(key: DayColumnKey) {
     return DAY_COLUMN_DEFINITIONS.find((definition) => definition.key === key)!;
+  }
+
+  function closeColumnsMenu(returnFocus = false) {
+    setColumnsMenuOpen(false);
+    if (returnFocus) columnsTriggerRef.current?.focus();
+  }
+
+  function handleColumnsMenuKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    event.stopPropagation();
+    closeColumnsMenu(true);
   }
 
   function columnDropEdge(event: ReactDragEvent<HTMLSpanElement>): DragEdge {
@@ -2093,6 +2122,34 @@ export function App() {
         <button type="button" className="secondary"
           disabled={mutationLocked || !day.planning_enabled || day.section_configuration_required}
           onClick={() => openDraft(null)}>＋ Taskを追加</button>
+        <div className="columns-menu" ref={columnsMenuRef}>
+          <button type="button" className="secondary columns-trigger" ref={columnsTriggerRef}
+            aria-label="表示列" aria-expanded={columnsMenuOpen} aria-controls="day-columns-menu"
+            onClick={() => setColumnsMenuOpen((open) => !open)}
+            onKeyDown={(event) => {
+              if (event.key !== "Escape" || !columnsMenuOpen) return;
+              event.preventDefault();
+              closeColumnsMenu(true);
+            }}>列</button>
+          {columnsMenuOpen && (
+            <div id="day-columns-menu" className="columns-popover" role="dialog" aria-label="表示列" onKeyDown={handleColumnsMenuKeyDown}>
+              <p id="day-columns-menu-title" className="columns-popover-title">表示する列</p>
+              <div className="columns-options">
+                {DAY_COLUMN_DEFINITIONS.map((definition) => (
+                  <label className="columns-option" key={definition.key}>
+                    <input type="checkbox" checked={!dayColumnPreference.hidden.includes(definition.key)}
+                      onChange={(event) => setDayColumnPreference((current) => setDayColumnVisibility(current, definition.key, event.target.checked))} />
+                    <span>{definition.label}</span>
+                  </label>
+                ))}
+              </div>
+              <div className="columns-actions">
+                <button type="button" className="secondary" onClick={() => setDayColumnPreference((current) => showAllDayColumns(current))}>すべて表示</button>
+                <button type="button" className="secondary" onClick={() => setDayColumnPreference(resetDayColumnPreference)}>初期状態に戻す</button>
+              </div>
+            </div>
+          )}
+        </div>
         <label className="completed-toggle">
           <input type="checkbox" checked={showCompleted} onChange={(event) => setShowCompleted(event.target.checked)} />
           実行済みを表示

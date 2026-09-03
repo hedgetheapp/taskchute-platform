@@ -2,8 +2,9 @@ import { Temporal } from "@js-temporal/polyfill";
 import type { CSSProperties } from "react";
 import type { ExecutionSummaryProjection } from "../shared/contracts";
 
-export const DAY_COLUMNS_STORAGE_KEY = "taskchute.web.day-columns.v1";
-export const DAY_COLUMNS_STORAGE_VERSION = 1 as const;
+export const DAY_COLUMNS_STORAGE_KEY = "taskchute.web.day-columns.v2";
+export const DAY_COLUMNS_V1_STORAGE_KEY = "taskchute.web.day-columns.v1";
+export const DAY_COLUMNS_STORAGE_VERSION = 2 as const;
 
 export type DayColumnKey =
   | "project"
@@ -47,6 +48,7 @@ export interface DayColumnPreference {
   version: typeof DAY_COLUMNS_STORAGE_VERSION;
   order: DayColumnKey[];
   widths: DayColumnWidths;
+  hidden: DayColumnKey[];
 }
 
 const definitionByKey = new Map(DAY_COLUMN_DEFINITIONS.map((definition) => [definition.key, definition]));
@@ -62,6 +64,7 @@ export function defaultDayColumnPreference(): DayColumnPreference {
     version: DAY_COLUMNS_STORAGE_VERSION,
     order: [...DEFAULT_DAY_COLUMN_ORDER],
     widths: Object.fromEntries(DAY_COLUMN_DEFINITIONS.map(({ key, defaultWidth }) => [key, defaultWidth])) as DayColumnWidths,
+    hidden: [],
   };
 }
 
@@ -71,7 +74,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export function normalizeDayColumnPreference(value: unknown): DayColumnPreference {
   const fallback = defaultDayColumnPreference();
-  if (!isRecord(value) || value.version !== DAY_COLUMNS_STORAGE_VERSION) return fallback;
+  if (!isRecord(value) || (value.version !== 1 && value.version !== DAY_COLUMNS_STORAGE_VERSION)) return fallback;
 
   const knownKeys = new Set<DayColumnKey>(DEFAULT_DAY_COLUMN_ORDER);
   const order: DayColumnKey[] = [];
@@ -91,20 +94,35 @@ export function normalizeDayColumnPreference(value: unknown): DayColumnPreferenc
       if (typeof width === "number" && Number.isFinite(width)) widths[key] = clampDayColumnWidth(key, width);
     }
   }
-  return { version: DAY_COLUMNS_STORAGE_VERSION, order, widths };
+  const hidden: DayColumnKey[] = [];
+  if (value.version === DAY_COLUMNS_STORAGE_VERSION && Array.isArray(value.hidden)) {
+    for (const key of value.hidden) {
+      if (typeof key === "string" && knownKeys.has(key as DayColumnKey) && !hidden.includes(key as DayColumnKey)) {
+        hidden.push(key as DayColumnKey);
+      }
+    }
+  }
+  return { version: DAY_COLUMNS_STORAGE_VERSION, order, widths, hidden };
 }
 
 export function readPersistedDayColumnPreference(): DayColumnPreference {
   if (typeof window === "undefined") return defaultDayColumnPreference();
-  let raw: string | null;
   try {
-    raw = window.localStorage.getItem(DAY_COLUMNS_STORAGE_KEY);
-  } catch {
-    return defaultDayColumnPreference();
-  }
-  if (raw === null) return defaultDayColumnPreference();
-  try {
-    return normalizeDayColumnPreference(JSON.parse(raw));
+    const raw = window.localStorage.getItem(DAY_COLUMNS_STORAGE_KEY);
+    if (raw !== null) {
+      try {
+        return normalizeDayColumnPreference(JSON.parse(raw));
+      } catch {
+        return defaultDayColumnPreference();
+      }
+    }
+    const legacyRaw = window.localStorage.getItem(DAY_COLUMNS_V1_STORAGE_KEY);
+    if (legacyRaw === null) return defaultDayColumnPreference();
+    try {
+      return normalizeDayColumnPreference(JSON.parse(legacyRaw));
+    } catch {
+      return defaultDayColumnPreference();
+    }
   } catch {
     return defaultDayColumnPreference();
   }
@@ -128,12 +146,32 @@ export function reorderDayColumns(order: readonly DayColumnKey[], sourceKey: Day
   return withoutSource;
 }
 
+export function visibleDayColumnOrder(preference: DayColumnPreference): DayColumnKey[] {
+  const hidden = new Set(preference.hidden);
+  return preference.order.filter((key) => !hidden.has(key));
+}
+
+export function setDayColumnVisibility(preference: DayColumnPreference, key: DayColumnKey, visible: boolean): DayColumnPreference {
+  const hidden = visible
+    ? preference.hidden.filter((hiddenKey) => hiddenKey !== key)
+    : preference.hidden.includes(key) ? [...preference.hidden] : [...preference.hidden, key];
+  return { ...preference, hidden };
+}
+
+export function showAllDayColumns(preference: DayColumnPreference): DayColumnPreference {
+  return { ...preference, hidden: [] };
+}
+
+export function resetDayColumnPreference(): DayColumnPreference {
+  return defaultDayColumnPreference();
+}
+
 export function buildDayTableGridTemplate(preference: DayColumnPreference): string {
-  return ["24px", "52px", "minmax(280px, 1fr)", ...preference.order.map((key) => `${preference.widths[key]}px`)].join(" ");
+  return ["24px", "52px", "minmax(280px, 1fr)", ...visibleDayColumnOrder(preference).map((key) => `${preference.widths[key]}px`)].join(" ");
 }
 
 export function calculateDayTableMinWidth(preference: DayColumnPreference): number {
-  return 24 + 52 + 280 + preference.order.reduce((sum, key) => sum + preference.widths[key], 0);
+  return 24 + 52 + 280 + visibleDayColumnOrder(preference).reduce((sum, key) => sum + preference.widths[key], 0);
 }
 
 export function dayTableStyle(preference: DayColumnPreference): CSSProperties {
