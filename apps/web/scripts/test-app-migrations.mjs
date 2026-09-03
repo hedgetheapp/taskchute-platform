@@ -320,6 +320,17 @@ try {
       '2026-08-28T06:30:00.000Z')`]);
   assert.deepEqual(query("SELECT command_type FROM operations WHERE operation_id = 'operation-bulk-section'"),
     [{ command_type: "BulkMoveEntriesToSection" }]);
+  const preBulkRoutineSectionOperations = query("SELECT * FROM operations ORDER BY operation_id");
+  applyFile("migrations/app/0012_bulk_routine_section_occurrence.sql");
+  assert.deepEqual(query("SELECT * FROM operations ORDER BY operation_id"), preBulkRoutineSectionOperations);
+  execute(["--command", `INSERT INTO operations
+    (app_user_id, operation_id, command_type, request_fingerprint_version, request_fingerprint, outcome_kind, result_json, created_at)
+    VALUES ('user-v01a', 'operation-bulk-routine-section', 'BulkMoveEntriesToSectionOccurrence', 1, 'bulk-routine-section-fingerprint', 'success', '{}',
+      '2026-08-28T07:00:00.000Z')`]);
+  assert.deepEqual(query("SELECT command_type FROM operations WHERE operation_id = 'operation-bulk-routine-section'"),
+    [{ command_type: "BulkMoveEntriesToSectionOccurrence" }]);
+  const operationTable = query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'operations'")[0]?.sql ?? "";
+  assert(operationTable.includes("BulkMoveEntriesToSectionOccurrence"), "0012 must extend only the operations command CHECK");
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
   assert.deepEqual(query("PRAGMA foreign_key_check"), []);
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
@@ -414,6 +425,8 @@ try {
       request_fingerprint: "ae7259e4469236b36922e6e8b2cd9158b82602cd05777af2ed81d6599583c8c9",
       outcome_kind: "success",
       result_json: "{\"entry_id\":\"019d2f00-0000-7000-8000-000000000002\",\"lifecycle_state\":\"running\",\"execution\":{\"id\":\"019d2f00-0000-7000-8000-000000000003\",\"entry_id\":\"019d2f00-0000-7000-8000-000000000002\",\"started_at\":\"2026-08-28T09:00:00.000Z\",\"ended_at\":null}}" },
+    { operation_id: "operation-bulk-routine-section", command_type: "BulkMoveEntriesToSectionOccurrence",
+      request_fingerprint: "bulk-routine-section-fingerprint", outcome_kind: "success", result_json: "{}" },
     { operation_id: "operation-bulk-section", command_type: "BulkMoveEntriesToSection",
       request_fingerprint: "bulk-section-fingerprint", outcome_kind: "success", result_json: "{}" },
     { operation_id: "operation-bulk-selection", command_type: "BulkDeleteEntries",
@@ -484,7 +497,7 @@ try {
   assert.notEqual(duplicateActive.status, 0, "the active Execution unique index must reject a second active row");
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
   assert.deepEqual(query("PRAGMA foreign_key_check"), []);
-  console.log("migration regression: 4 scenarios passed (R2A normalization, R2B preservation/constraints, duplicate-Task fail-safe, Bulk Selection 0010/0011 preservation/constraints; fresh 0001 -> 0011 chain)");
+  console.log("migration regression: 4 scenarios passed (R2A normalization, R2B preservation/constraints, duplicate-Task fail-safe, Bulk Selection 0010/0011/0012 preservation/constraints; fresh 0001 -> 0012 chain)");
 } finally {
   await rm(persistencePath, { recursive: true, force: true });
   await rm(failurePersistencePath, { recursive: true, force: true });

@@ -205,6 +205,24 @@ export interface BulkMoveEntriesToSectionResult {
   placement_revision: number;
 }
 
+export interface BulkMoveEntriesToSectionOccurrenceRequest {
+  operation_id: string;
+  taskchute_day_id: string;
+  entry_ids: string[];
+  section_id: string | null;
+  expected_placement_revision: number;
+}
+
+export interface BulkMoveEntriesToSectionOccurrenceResult {
+  taskchute_day_id: string;
+  entry_ids: string[];
+  changed_entry_ids: string[];
+  routine_override_changed_entry_ids: string[];
+  section_id: string | null;
+  planned_start_minute: number | null;
+  placement_revision: number;
+}
+
 export interface ReorderEntriesRequest {
   operation_id: string;
   taskchute_day_id: string;

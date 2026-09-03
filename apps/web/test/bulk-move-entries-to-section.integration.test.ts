@@ -4,6 +4,10 @@ import {
   bulkMoveEntriesToSection,
   isBulkMoveEntriesToSectionRequest,
 } from "../worker/application/bulk-move-entries-to-section";
+import {
+  bulkMoveEntriesToSectionOccurrence,
+  isBulkMoveEntriesToSectionOccurrenceRequest,
+} from "../worker/application/bulk-move-entries-to-section-occurrence";
 import { loadTaskChuteDayByLogicalDate } from "../worker/application/load-current-day";
 import { uuidv7 } from "../src/shared/uuidv7";
 
@@ -87,7 +91,7 @@ async function seed() {
       VALUES (?, ?, ?, ?, ?, ?, ?, 600, ?, ?, ?)`)
       .bind(entryId, userId, taskId, dayId, sectionId, position, lifecycle, plannedStart, now, routineId ?? null)),
   ]);
-  return { userId, otherUserId, dayId, sectionA, sectionB, sectionC, ordinaryTaskIds, ordinaryEntryIds, routineEntryId, runningEntryId, completedEntryId };
+  return { userId, otherUserId, dayId, sectionA, sectionB, sectionC, ordinaryTaskIds, ordinaryEntryIds, routineDefinitionId, routineOccurrenceId, routineEntryId, runningEntryId, completedEntryId };
 }
 
 function requestFor(fixture: Awaited<ReturnType<typeof seed>>, entryIds: string[], sectionId: string | null, revision = 0) {
@@ -195,5 +199,102 @@ describe.sequential("BulkMoveEntriesToSection", () => {
     expect(entry).toMatchObject({ id: fixture.ordinaryEntryIds[0], section_id: fixture.sectionC, planned_start_minute: 720 });
     expect(projection.placement_revision).toBe(1);
     expect(projection.sections.find((section) => section.id === fixture.sectionA)?.entries.some((candidate) => candidate.id === fixture.routineEntryId)).toBe(true);
+  });
+
+  it("moves mixed ordinary and Routine Entries in display order, persists only the current occurrence override, and replays", async () => {
+    const fixture = await seed();
+    const request = { ...requestFor(fixture, [fixture.routineEntryId, fixture.ordinaryEntryIds[1]!], fixture.sectionB),
+      operation_id: uuidv7() };
+    expect(isBulkMoveEntriesToSectionOccurrenceRequest({ ...request, user_id: fixture.userId })).toBe(false);
+    expect(isBulkMoveEntriesToSectionOccurrenceRequest({ ...request, entry_ids: [request.entry_ids[0], request.entry_ids[0]] })).toBe(false);
+    const routineDefaultsBefore = await env.APP_DB.prepare(`SELECT default_section_id, default_planned_start_minute, defaults_revision
+      FROM routine_definitions WHERE app_user_id = ? AND id = ?`).bind(fixture.userId, await env.APP_DB.prepare(
+      "SELECT routine_definition_id FROM routine_occurrences WHERE id = ?").bind(fixture.routineOccurrenceId).first<string>("routine_definition_id")).first();
+
+    const result = await bulkMoveEntriesToSectionOccurrence(env.APP_DB, fixture.userId, request, now);
+    expect(result).toEqual({ taskchute_day_id: fixture.dayId, entry_ids: request.entry_ids,
+      changed_entry_ids: request.entry_ids, routine_override_changed_entry_ids: [fixture.routineEntryId],
+      section_id: fixture.sectionB, planned_start_minute: 480, placement_revision: 1 });
+    expect(await env.APP_DB.prepare(`SELECT id, section_id, position, planned_start_minute
+      FROM entries WHERE app_user_id = ? AND id IN (?, ?) ORDER BY position`)
+      .bind(fixture.userId, fixture.ordinaryEntryIds[1], fixture.routineEntryId).all()).toMatchObject({ results: [
+        { id: fixture.ordinaryEntryIds[1], section_id: fixture.sectionB, position: 3, planned_start_minute: 480 },
+        { id: fixture.routineEntryId, section_id: fixture.sectionB, position: 4, planned_start_minute: 480 },
+      ] });
+    expect(await env.APP_DB.prepare(`SELECT section_plan_override_present, section_override_id, planned_start_override_minute
+      FROM routine_occurrences WHERE app_user_id = ? AND id = ?`).bind(fixture.userId, fixture.routineOccurrenceId).first()).toEqual({
+      section_plan_override_present: 1, section_override_id: fixture.sectionB, planned_start_override_minute: 480,
+    });
+    expect(await env.APP_DB.prepare(`SELECT default_section_id, default_planned_start_minute, defaults_revision
+      FROM routine_definitions WHERE app_user_id = ? AND id = (SELECT routine_definition_id FROM routine_occurrences WHERE id = ?)`)
+      .bind(fixture.userId, fixture.routineOccurrenceId).first()).toEqual(routineDefaultsBefore);
+    expect(await env.APP_DB.prepare("SELECT placement_revision FROM taskchute_days WHERE id = ?").bind(fixture.dayId).first<number>("placement_revision")).toBe(1);
+    expect(await env.APP_DB.prepare("SELECT command_type, outcome_kind FROM operations WHERE app_user_id = ? AND operation_id = ?")
+      .bind(fixture.userId, request.operation_id).first()).toEqual({ command_type: "BulkMoveEntriesToSectionOccurrence", outcome_kind: "success" });
+    expect(await bulkMoveEntriesToSectionOccurrence(env.APP_DB, fixture.userId, request, now)).toEqual(result);
+    const projection = await loadTaskChuteDayByLogicalDate(env.APP_DB, fixture.userId, "2026-09-02", now);
+    expect(projection.sections.find((section) => section.id === fixture.sectionB)?.entries.map((entry) => entry.id))
+      .toContain(fixture.routineEntryId);
+  });
+
+  it("supports Sectionなし, override-only changes, and rejects a suppressed or non-current Routine occurrence atomically", async () => {
+    const fixture = await seed();
+    await env.APP_DB.prepare("UPDATE entries SET planned_start_minute = 0 WHERE id = ?").bind(fixture.routineEntryId).run();
+    const overrideOnly = requestFor(fixture, [fixture.routineEntryId], fixture.sectionA);
+    const overrideOnlyResult = await bulkMoveEntriesToSectionOccurrence(env.APP_DB, fixture.userId, overrideOnly, now);
+    expect(overrideOnlyResult).toMatchObject({ changed_entry_ids: [], routine_override_changed_entry_ids: [fixture.routineEntryId], placement_revision: 0 });
+    expect(await env.APP_DB.prepare("SELECT section_id, planned_start_minute FROM entries WHERE id = ?").bind(fixture.routineEntryId).first())
+      .toEqual({ section_id: fixture.sectionA, planned_start_minute: 0 });
+    expect(await env.APP_DB.prepare("SELECT section_plan_override_present, section_override_id, planned_start_override_minute FROM routine_occurrences WHERE id = ?")
+      .bind(fixture.routineOccurrenceId).first()).toEqual({ section_plan_override_present: 1, section_override_id: fixture.sectionA, planned_start_override_minute: 0 });
+    expect(await env.APP_DB.prepare("SELECT placement_revision FROM taskchute_days WHERE id = ?").bind(fixture.dayId).first<number>("placement_revision")).toBe(0);
+
+    const sectionless = requestFor(fixture, [fixture.routineEntryId, fixture.ordinaryEntryIds[0]!], null);
+    const sectionlessResult = await bulkMoveEntriesToSectionOccurrence(env.APP_DB, fixture.userId, sectionless, now);
+    expect(sectionlessResult).toMatchObject({ section_id: null, planned_start_minute: null, placement_revision: 1 });
+    expect(await env.APP_DB.prepare("SELECT section_id, planned_start_minute FROM entries WHERE id IN (?, ?) ORDER BY id")
+      .bind(fixture.routineEntryId, fixture.ordinaryEntryIds[0]).all()).toMatchObject({ results: [
+        { section_id: null, planned_start_minute: null }, { section_id: null, planned_start_minute: null },
+      ] });
+    expect(await env.APP_DB.prepare("SELECT section_plan_override_present, section_override_id, planned_start_override_minute FROM routine_occurrences WHERE id = ?")
+      .bind(fixture.routineOccurrenceId).first()).toEqual({ section_plan_override_present: 1, section_override_id: null, planned_start_override_minute: null });
+
+    const suppressedFixture = await seed();
+    await env.APP_DB.prepare("INSERT INTO routine_occurrence_suppressions (app_user_id, routine_occurrence_id, suppressed_at, reason) VALUES (?, ?, ?, 'skip')")
+      .bind(suppressedFixture.userId, suppressedFixture.routineOccurrenceId, now).run();
+    await expect(bulkMoveEntriesToSectionOccurrence(env.APP_DB, suppressedFixture.userId,
+      requestFor(suppressedFixture, [suppressedFixture.routineEntryId], suppressedFixture.sectionB), now))
+      .rejects.toMatchObject({ code: "resource_conflict" });
+    expect(await env.APP_DB.prepare("SELECT section_id, planned_start_minute FROM entries WHERE id = ?")
+      .bind(suppressedFixture.routineEntryId).first()).toEqual({ section_id: suppressedFixture.sectionA, planned_start_minute: 60 });
+
+    const nonCurrentFixture = await seed();
+    await env.APP_DB.prepare("UPDATE taskchute_days SET logical_date = '2026-09-01' WHERE id = ?").bind(nonCurrentFixture.dayId).run();
+    await expect(bulkMoveEntriesToSectionOccurrence(env.APP_DB, nonCurrentFixture.userId,
+      requestFor(nonCurrentFixture, [nonCurrentFixture.routineEntryId], nonCurrentFixture.sectionB), now))
+      .rejects.toMatchObject({ code: "resource_conflict" });
+    expect(await env.APP_DB.prepare("SELECT placement_revision FROM taskchute_days WHERE id = ?").bind(nonCurrentFixture.dayId).first<number>("placement_revision")).toBe(0);
+  });
+
+  it("rolls back mixed Entry and occurrence writes together and retries the exact operation", async () => {
+    const fixture = await seed();
+    const request = requestFor(fixture, [fixture.routineEntryId, fixture.ordinaryEntryIds[0]!], fixture.sectionB);
+    await env.APP_DB.prepare(`CREATE TRIGGER fail_bulk_section_occurrence BEFORE UPDATE OF section_id ON entries
+      WHEN NEW.id = '${fixture.ordinaryEntryIds[0]}' BEGIN SELECT RAISE(ABORT, 'injected bulk section occurrence failure'); END`).run();
+    await expect(bulkMoveEntriesToSectionOccurrence(env.APP_DB, fixture.userId, request, now))
+      .rejects.toMatchObject({ code: "infrastructure_ambiguous" });
+    expect(await env.APP_DB.prepare("SELECT section_id, position, planned_start_minute FROM entries WHERE app_user_id = ? AND id IN (?, ?) ORDER BY id")
+      .bind(fixture.userId, fixture.routineEntryId, fixture.ordinaryEntryIds[0]).all()).toMatchObject({ results: [
+        { section_id: fixture.sectionA, planned_start_minute: 60 }, { section_id: fixture.sectionA, planned_start_minute: 60 },
+      ] });
+    expect(await env.APP_DB.prepare("SELECT section_plan_override_present, section_override_id, planned_start_override_minute FROM routine_occurrences WHERE id = ?")
+      .bind(fixture.routineOccurrenceId).first()).toEqual({ section_plan_override_present: 0, section_override_id: null, planned_start_override_minute: null });
+    expect(await env.APP_DB.prepare("SELECT placement_revision FROM taskchute_days WHERE id = ?").bind(fixture.dayId).first<number>("placement_revision")).toBe(0);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM operations WHERE app_user_id = ? AND operation_id = ?")
+      .bind(fixture.userId, request.operation_id).first<number>("count")).toBe(0);
+    await env.APP_DB.prepare("DROP TRIGGER fail_bulk_section_occurrence").run();
+    const result = await bulkMoveEntriesToSectionOccurrence(env.APP_DB, fixture.userId, request, now);
+    expect(result.placement_revision).toBe(1);
+    expect(await bulkMoveEntriesToSectionOccurrence(env.APP_DB, fixture.userId, request, now)).toEqual(result);
   });
 });

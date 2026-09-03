@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CurrentTaskChuteDayProjection, EntryProjection } from "../../src/shared/contracts";
 
 const mocks = vi.hoisted(() => ({
-  login: vi.fn(), logout: vi.fn(), loadDay: vi.fn(), loadProjects: vi.fn(), createProject: vi.fn(), addTask: vi.fn(), duplicateEntry: vi.fn(), bulkDeleteEntries: vi.fn(), bulkMoveEntriesToSection: vi.fn(),
+  login: vi.fn(), logout: vi.fn(), loadDay: vi.fn(), loadProjects: vi.fn(), createProject: vi.fn(), addTask: vi.fn(), duplicateEntry: vi.fn(), bulkDeleteEntries: vi.fn(), bulkMoveEntriesToSection: vi.fn(), bulkMoveEntriesToSectionOccurrence: vi.fn(),
   reorderEntries: vi.fn(), startEntry: vi.fn(), completeEntry: vi.fn(),
   establishInitialSectionConfiguration: vi.fn(), moveEntry: vi.fn(), setEntryEstimate: vi.fn(),
   setEntryPlannedStart: vi.fn(),
@@ -2913,7 +2913,7 @@ describe("Dogfood Day shell", () => {
     expect(screen.queryByRole("dialog", { name: "変更先Section" })).toBeNull();
   });
 
-  it("disables Section変更 for a mixed Routine selection while keeping Delete available", async () => {
+  it("requires an explicit one-time acknowledgement for a mixed Routine Section change", async () => {
     const routineEntry: EntryProjection = { ...secondEntry, task: { ...secondEntry.task, title: "Routine task" }, routine: {
       routine_definition_id: "019c0000-0000-7000-0000-000000000050", routine_occurrence_id: "019c0000-0000-7000-0000-000000000051",
       end_logical_date: null, can_end: true, default_section_id: secondEntry.section_id,
@@ -2925,11 +2925,31 @@ describe("Dogfood Day shell", () => {
     fireEvent.click(await screen.findByRole("checkbox", { name: "「Canonical task」を選択" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "「Routine task」を選択" }));
     const sectionButton = screen.getByRole("button", { name: "Section変更" }) as HTMLButtonElement;
-    expect(sectionButton.disabled).toBe(true);
-    expect(sectionButton.getAttribute("aria-describedby")).toBe("bulk-section-disabled-hint");
-    expect(screen.getByText("Routine Taskを含む選択ではSectionを一括変更できません")).toBeTruthy();
+    expect(sectionButton.disabled).toBe(false);
+    expect(sectionButton.getAttribute("aria-describedby")).toBe("bulk-section-routine-hint");
     expect((screen.getByRole("button", { name: "削除" }) as HTMLButtonElement).disabled).toBe(false);
     expect(mocks.bulkMoveEntriesToSection).not.toHaveBeenCalled();
+    fireEvent.click(sectionButton);
+    const picker = await screen.findByRole("dialog", { name: "変更先Section" });
+    fireEvent.click(within(picker).getByRole("button", { name: "Evening" }));
+    const acknowledgement = await screen.findByRole("dialog", { name: "Sectionを一括変更" });
+    expect(acknowledgement.textContent).toContain("現在のOccurrenceだけを「今回だけ」変更します。");
+    expect(acknowledgement.textContent).toContain("Routine設定・デフォルト・将来の日・他のOccurrenceは変更しません。");
+    expect(mocks.bulkMoveEntriesToSectionOccurrence).not.toHaveBeenCalled();
+    fireEvent.click(within(acknowledgement).getByRole("button", { name: "キャンセル" }));
+    expect(screen.queryByRole("dialog", { name: "Sectionを一括変更" })).toBeNull();
+    expect(screen.getByText("2件選択中")).toBeTruthy();
+    fireEvent.click(sectionButton);
+    fireEvent.click(within(await screen.findByRole("dialog", { name: "変更先Section" })).getByRole("button", { name: "Evening" }));
+    fireEvent.click(within(await screen.findByRole("dialog", { name: "Sectionを一括変更" })).getByRole("button", { name: "今回だけ変更" }));
+    await waitFor(() => expect(mocks.bulkMoveEntriesToSectionOccurrence).toHaveBeenCalledTimes(1));
+    expect(mocks.bulkMoveEntriesToSectionOccurrence.mock.calls[0][0]).toMatchObject({
+      taskchute_day_id: emptyDay.taskchute_day.id,
+      entry_ids: [firstEntry.id, routineEntry.id],
+      section_id: eveningId,
+      expected_placement_revision: twoPlannedDay.placement_revision,
+    });
+    expect(screen.getByText("2件選択中")).toBeTruthy();
   });
 
   it("requires confirmation, keeps cancel side-effect free, and sends one mixed bulk command", async () => {
