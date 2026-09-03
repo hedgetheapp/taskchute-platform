@@ -181,7 +181,7 @@ input:focus-visible, select:focus-visible { border-color: #2383e2; outline: 2px 
 .task-actions { display: flex; flex: none; gap: 2px; opacity: .58; }
 .task-row:hover .task-actions,
 .task-row:focus-within .task-actions { opacity: 1; }
-.routine-cell { display: flex; min-width: 0; align-items: center; gap: 4px; flex-wrap: wrap; }
+.routine-cell { position: relative; display: flex; min-width: 0; align-items: center; gap: 4px; flex-wrap: wrap; }
 .routine-badge { flex: none; padding: 2px 5px; border-radius: 999px; background: #f1edff; color: #6941c6; font-size: 10px; font-weight: 700; }
 .routine-icon { display: inline-flex; width: 26px; height: 26px; align-items: center; justify-content: center; padding: 0; border-radius: 6px; }
 .routine-icon-svg { display: block; }
