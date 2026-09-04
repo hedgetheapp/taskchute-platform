@@ -20,6 +20,26 @@ First Server + Web vertical slice、D-038 B1 / B3、D-039 B2、D-040 Minimal Rou
 
 Contractが`Approved`でも、実装やverificationが未実施ならPASS扱いしない。
 
+## D-056 corrective resume — moved Routine occurrence Section start propagation — 2026-09-04
+
+Contract: D-056 `Approved`。本件は新しいDecisionではなく、moved Routine occurrenceのSection default propagationがcurrent / Board default planned startをaffected Dayへ再利用していたD-043 / D-044適合bugのreversible fixである。D-056 implementationは`b325580d720099e93a9036d5091b267889e4753b`、correctiveは`72321c7b51a7aec2e1123d216262e9dd8b88d497`。correctiveに新migration / schema変更はない。
+
+Local automated evidence:
+
+- corrective focused Worker `5 / 5 PASS`。moved Routine Entryのaffected Day frozen Section start、RoutineDefinition default pair保持、explicit occurrence override保護、same-Section start-onlyのposition不変、missing Section contextのatomic reject、Sectionなし`NULL + NULL`、moved occurrence protection、replayを確認した。
+- full Worker `175 / 175 PASS`、D-047 `7 / 7 PASS`、migration regression `4 scenarios PASS`、typecheck、production build、`git diff --check`、source reviewは`PASS`。Webは`143 PASS / 3 FAIL`で、3件は変更前から再現する既存ambiguous Reorder tests（D-056経路外）。
+- real-local safety smokeはroot `200`、protected API `401`、disabled bootstrap POST `404`をPASSした。
+
+Persistent non-production evidence:
+
+- initial read-only migration listはCloudflare API 7403で停止した。同じstored OAuth / existing account / existing `d1 (write)` scope、credential env未設定、canonical bindingをread-onlyで確認し、elevated retryでread accessを回復した。新API token、permission / role / binding変更、re-loginは不要・未実施である。Wranglerは`4.125.0`。
+- migration前pendingはAPP `0015_day_move.sql` / AUTH `0`。HARD GATEとしてfresh private ignored APP export `apps/web/.wrangler/private-backups/d056-corrective-pre-0015-20260904-app.sql`を取得し、`242,432 bytes` / SHA-256 `B4D6D409105736F0D4DAD23DA853528DAD49EC13BE0A7DABFC181585CDBCE584`、非空、SQL marker、ignoreを確認してからAPP `0015`を適用した。AUTH migrationはないため追加export / writeは行っていない。
+- post pending APP / AUTH `0 / 0`、APP latest migration `0015_day_move.sql`、operation rows `224`（backup INSERT statements `224`）、`BulkMoveEntriesToDay` operations CHECK、APP `quick_check = ok`、FK violations `0`、read-only `rows_written = 0`を確認した。restore / cleanup / production accessは行っていない。
+- exact `main@72321c7b51a7aec2e1123d216262e9dd8b88d497`をnonprod buildし、generated `RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、canonical bindingsを確認して`taskchute-web-nonprod` version `3bddabf9-1c44-495b-97d3-686342241a5a`へdeployした。root `200`、protected API `401`、disabled bootstrap `404`を確認した。
+- authenticated browser connectorがないためremote D-056 mutation、reload persistence、remote future propagation、remote exact replayは`NOT_VERIFIED`。synthetic future fixture / direct SQL feature mutationは行わず、local focused fixtureをfeature semanticsのevidenceとした。production `NOT_RUN`、Released `NO`。
+
+Classification: D-056 corrective resume `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / PERSISTENT_NONPROD_MIGRATED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_SAFETY_VERIFIED`。remote authenticated feature mutation / replayはremaining boundary。
+
 ## D-055 — Bulk Estimate change with per-Routine scope — 2026-09-04
 
 Contract: D-055 `Approved`。ordinary / Routine / mixed planned Entryへcommon positive / explicit `NULL` estimateを一件の`BulkSetEntriesEstimateScoped` commandで適用し、Routineごとのscope指定、D-044 occurrence / definition semantics、propagation、no materialization、placement revision不変、atomicity、replayを対象とする。

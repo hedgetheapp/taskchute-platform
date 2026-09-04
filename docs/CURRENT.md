@@ -4,6 +4,22 @@ Date: 2026-09-04
 
 ## Status
 
+### D-056 corrective resume — moved Routine occurrence Section start propagation — 2026-09-04
+
+D-056はApproved済みで、implementation commit `b325580d720099e93a9036d5091b267889e4753b`（`Implement Day Operations date move`）を`main`へpush済みである。独立reviewで、moved Routine occurrenceのDefinition default propagationがcurrent / Board defaultのplanned startをaffected Dayへ再利用し、D-043 / D-044のper-Day frozen Section contextと不一致になるbugを確認した。これは新しいProduct / Domain Decisionではなく、D-043 / D-044 / D-056に適合するreversible corrective fixであり、corrective commit `72321c7b51a7aec2e1123d216262e9dd8b88d497`（`Fix moved Routine Section propagation`）を`main`へfast-forward push済みである。correctiveでは新migration / schema / dependency変更を行っていない。
+
+`sectionPlansForUpdate`は、伝播対象の各materialized EntryについてEntry自身の`taskchute_day_id`からstable Section contextを解決し、そのDayのfrozen `logical_start_minute`をeffective planned startへ使う。RoutineDefinitionのdefault pair保存はBoard authorityどおり維持し、explicit occurrence Section-plan overrideは保護する。affected DayでSection contextが欠落する場合は全体reject、SectionなしはSection / planned startをともに`NULL`へ同期する。moved occurrenceはorigin Task / Routine identityを保持し、schedule suppressionを発生させない。
+
+local evidenceはcorrective focused Worker `5 / 5 PASS`（current / moved futureの異なるfrozen Section start、Routine default保持、explicit override保護、same-Section start-onlyのposition不変、missing context atomic reject、Sectionなし、moved occurrence protection）である。full Worker `175 / 175 PASS`、D-047 `7 / 7 PASS`、migration regression `4 scenarios PASS`、typecheck、production build、`git diff --check`、source reviewもPASSした。Web全体は`143 PASS / 3 FAIL`で、失敗は変更前から再現する既存ambiguous Reorder 3件（D-056経路外）であり、新しいD-056 failureはない。real-local safety smokeはroot `200`、protected API `401`、disabled bootstrap POST `404`を確認した。
+
+persistent nonprodでは初回read-only migration listがCloudflare API 7403で停止したが、Wrangler `4.125.0`のstored OAuth（既存account、既存`d1 (write)` scope）を再確認し、credential envは未設定、binding UUIDも既存nonprod D1と一致した。同じOAuth / profile / bindingを使うelevated read-only retryでAPP / AUTH read accessが回復し、token作成、permission拡張、role変更、binding変更、re-loginは行っていない。migration前pendingはAPP `0015_day_move.sql` / AUTH `0`。HARD GATEとしてfresh private ignored APP backup `apps/web/.wrangler/private-backups/d056-corrective-pre-0015-20260904-app.sql`（`242,432 bytes` / SHA-256 `B4D6D409105736F0D4DAD23DA853528DAD49EC13BE0A7DABFC181585CDBCE584`、非空、SQL marker、ignore）を取得してからAPP `0015`だけを適用した。
+
+post-migrationはAPP / AUTH pending `0 / 0`、APP `d1_migrations` latest `0015_day_move.sql`、operations row count `224`（backup内pre-migration INSERT `224`）、`BulkMoveEntriesToDay` operations CHECK、APP `PRAGMA quick_check = ok`、FK violations `0`、read-only query `rows_written = 0`を確認した。exact `main@72321c7b51a7aec2e1123d216262e9dd8b88d497`を`CLOUDFLARE_ENV=nonprod`でbuildし、`taskchute-web-nonprod` version `3bddabf9-1c44-495b-97d3-686342241a5a`へdeployした。generated configは`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、canonical AUTH / APP bindingを示し、remote safety probeはroot `200`、protected API `401`、disabled bootstrap `404`である。
+
+authenticated nonprod browser connectorがないため、remoteのD-056 feature mutation、reload persistence、remote exact same-operation replay、remote future differing-context propagationは`NOT_VERIFIED`。D-041に反するsynthetic future fixtureやdirect SQL feature mutationは行っていない。local focused fixtureでrequired semanticsを確認済みである。productionは`NOT_RUN`、Releasedは`NO`である。
+
+classification: D-056 corrective resume `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / PERSISTENT_NONPROD_MIGRATED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_SAFETY_VERIFIED`。remote authenticated feature mutation / replayはremaining boundaryである。
+
 ### D-054 corrective fix — per-affected-Day frozen Section start — 2026-09-04
 
 GitHub independent reviewで、D-054のfuture propagationがselected current DayのSection `logical_start_minute`をaffected future Dayへ再利用する仕様不一致を検出した。これは新しいProduct / Domain Decisionではなく、Approved D-043 / D-044 / D-054内のreversible bugfixであり、migration / schema / dependency変更は行っていない。implementation commit `c0eed8452c340a2798fc6d2e62532cc7affd1c4f`（`Fix per-Day future Section start propagation`）を`main`へfast-forward push済みである。
