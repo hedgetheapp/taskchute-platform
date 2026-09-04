@@ -167,11 +167,11 @@ export function resetDayColumnPreference(): DayColumnPreference {
 }
 
 export function buildDayTableGridTemplate(preference: DayColumnPreference): string {
-  return ["24px", "52px", "minmax(280px, 1fr)", ...visibleDayColumnOrder(preference).map((key) => `${preference.widths[key]}px`)].join(" ");
+  return ["24px", "52px", "minmax(280px, 1fr)", ...visibleDayColumnOrder(preference).map((key) => `${preference.widths[key]}px`), "40px"].join(" ");
 }
 
 export function calculateDayTableMinWidth(preference: DayColumnPreference): number {
-  return 24 + 52 + 280 + visibleDayColumnOrder(preference).reduce((sum, key) => sum + preference.widths[key], 0);
+  return 24 + 52 + 280 + visibleDayColumnOrder(preference).reduce((sum, key) => sum + preference.widths[key], 0) + 40;
 }
 
 export function dayTableStyle(preference: DayColumnPreference): CSSProperties {

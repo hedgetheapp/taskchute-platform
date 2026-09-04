@@ -4,7 +4,7 @@ import type { CurrentTaskChuteDayProjection, EntryProjection } from "../../src/s
 
 const mocks = vi.hoisted(() => ({
   login: vi.fn(), logout: vi.fn(), loadDay: vi.fn(), loadProjects: vi.fn(), createProject: vi.fn(), addTask: vi.fn(), duplicateEntry: vi.fn(), bulkDeleteEntries: vi.fn(), bulkMoveEntriesToDay: vi.fn(), bulkMoveEntriesToSection: vi.fn(), bulkMoveEntriesToSectionOccurrence: vi.fn(), bulkMoveEntriesToSectionScoped: vi.fn(), bulkSetEntriesEstimateScoped: vi.fn(),
-  reorderEntries: vi.fn(), startEntry: vi.fn(), completeEntry: vi.fn(), revertEntryStart: vi.fn(), setExecutionTimes: vi.fn(),
+  reorderEntries: vi.fn(), startEntry: vi.fn(), completeEntry: vi.fn(),
   establishInitialSectionConfiguration: vi.fn(), moveEntry: vi.fn(), setEntryEstimate: vi.fn(),
   setEntryPlannedStart: vi.fn(),
   convertEntryToRoutine: vi.fn(), endRoutine: vi.fn(), setRoutineEstimate: vi.fn(), setRoutineSectionPlan: vi.fn(),
@@ -94,6 +94,10 @@ function dragEntry(handle: HTMLElement, targetRow: HTMLElement, clientY: number)
   return dataTransfer;
 }
 
+function dragSurface(row: HTMLElement): HTMLElement {
+  return row.querySelector<HTMLElement>(".task-drag-surface") ?? row;
+}
+
 function setColumnBounds(column: HTMLElement, left: number, width: number) {
   vi.spyOn(column, "getBoundingClientRect").mockReturnValue({
     x: left, y: 0, width, height: 34, top: 0, right: left + width, bottom: 34, left,
@@ -107,6 +111,11 @@ function sectionSummary(title: string): HTMLElement {
     .find((element): element is HTMLElement => element !== null);
   if (!summary) throw new Error(`Section summary not found: ${title}`);
   return summary;
+}
+
+async function openOverflowMenu(title = "Canonical task"): Promise<HTMLElement> {
+  fireEvent.click(await screen.findByRole("button", { name: `${title}のその他の操作` }));
+  return screen.getByRole("menu", { name: `${title}の操作` });
 }
 
 const emptyDay: CurrentTaskChuteDayProjection = {
@@ -163,39 +172,10 @@ const runningDay: CurrentTaskChuteDayProjection = {
   next_entry: null,
 };
 
-const runningCorrectionDay: CurrentTaskChuteDayProjection = {
-  ...runningDay,
-  sections: [{ ...runningDay.sections[0], entries: [{ ...firstEntry, lifecycle_state: "running", execution_summary: {
-    first_started_at: "2026-08-22T12:00:00.000Z", last_ended_at: null, completed_duration_seconds: 0,
-    active_started_at: "2026-08-22T12:00:00.000Z", active_execution_id: runningDay.active_execution!.id,
-  } }] }, emptyDay.sections[1]],
-};
-
 const completedDay: CurrentTaskChuteDayProjection = {
   ...runningDay,
   active_execution: null,
   sections: [{ ...runningDay.sections[0], entries: [{ ...firstEntry, lifecycle_state: "completed" }] }, emptyDay.sections[1]],
-};
-
-const completedCorrectionDay: CurrentTaskChuteDayProjection = {
-  ...completedDay,
-  sections: [{ ...completedDay.sections[0], entries: [{ ...firstEntry, lifecycle_state: "completed", execution_summary: {
-    first_started_at: "2026-08-22T12:00:00.000Z", last_ended_at: "2026-08-22T12:30:00.000Z", completed_duration_seconds: 1800,
-    active_started_at: null, single_execution_id: "019c0000-0000-7000-8000-000000000005",
-    executions: [{ id: "019c0000-0000-7000-8000-000000000005", entry_id: firstEntry.id,
-      started_at: "2026-08-22T12:00:00.000Z", ended_at: "2026-08-22T12:30:00.000Z" }],
-  } }] }, emptyDay.sections[1]],
-};
-
-const multiExecutionCorrectionDay: CurrentTaskChuteDayProjection = {
-  ...completedCorrectionDay,
-  sections: [{ ...completedCorrectionDay.sections[0], entries: [{ ...firstEntry, lifecycle_state: "completed", execution_summary: {
-    first_started_at: "2026-08-22T10:00:00.000Z", last_ended_at: "2026-08-22T12:30:00.000Z", completed_duration_seconds: 9000,
-    active_started_at: null, single_execution_id: null, executions: [
-      { id: "019c0000-0000-7000-8000-000000000021", entry_id: firstEntry.id, started_at: "2026-08-22T10:00:00.000Z", ended_at: "2026-08-22T10:30:00.000Z" },
-      { id: "019c0000-0000-7000-8000-000000000022", entry_id: firstEntry.id, started_at: "2026-08-22T12:00:00.000Z", ended_at: "2026-08-22T12:30:00.000Z" },
-    ],
-  } }] }, emptyDay.sections[1]],
 };
 
 const unsectionedDay: CurrentTaskChuteDayProjection = {
@@ -221,8 +201,6 @@ beforeEach(() => {
   mocks.reorderEntries.mockResolvedValue({});
   mocks.startEntry.mockResolvedValue({});
   mocks.completeEntry.mockResolvedValue({});
-  mocks.revertEntryStart.mockResolvedValue({});
-  mocks.setExecutionTimes.mockResolvedValue({});
   mocks.establishInitialSectionConfiguration.mockResolvedValue({});
   mocks.moveEntry.mockResolvedValue({});
   mocks.setEntryEstimate.mockResolvedValue({});
@@ -354,7 +332,7 @@ describe("Dogfood Day shell", () => {
 
     const heading = dayBoard.querySelector<HTMLElement>(".table-heading")!;
     const headingCells = Array.from(heading.children) as HTMLElement[];
-    expect(headingCells.filter((cell) => !cell.classList.contains("bulk-slot")).map((cell) => cell.textContent)).toEqual([
+    expect(headingCells.filter((cell) => !cell.classList.contains("bulk-slot") && !cell.classList.contains("row-actions-heading")).map((cell) => cell.textContent)).toEqual([
       "実行", "Task", "Project", "Section", "Routine", "見積", "開始予定", "開始見込", "開始", "終了", "実績",
     ]);
     expect(headingCells[0]?.classList.contains("bulk-slot")).toBe(true);
@@ -622,7 +600,7 @@ describe("Dogfood Day shell", () => {
     const input = screen.getByRole("textbox", { name: "EveningのTask名" });
     expect(document.activeElement).toBe(input);
     const draftRow = input.closest(".draft-row")!;
-    expect(draftRow.children).toHaveLength(12);
+    expect(draftRow.children).toHaveLength(13);
     expect(draftRow.firstElementChild?.classList.contains("bulk-slot")).toBe(true);
     expect(draftRow.querySelectorAll(":scope > .bulk-slot")).toHaveLength(1);
     expect(screen.queryByRole("textbox", { name: "MorningのTask名" })).toBeNull();
@@ -1002,10 +980,10 @@ describe("Dogfood Day shell", () => {
     render(<App />);
     const handle = (await screen.findAllByTitle("ドラッグして並び替え"))[0]!;
     expect(handle.closest(".task-main")).toBeTruthy();
-    expect(handle.closest<HTMLElement>("[data-entry-id]")?.getAttribute("draggable")).toBe("true");
+    expect(handle.getAttribute("draggable")).toBe("true");
     expect(screen.queryByRole("button", { name: "Canonical taskを上へ" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Canonical taskを下へ" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Canonical taskを複製" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Canonical taskのその他の操作" })).toBeTruthy();
     expect(screen.queryByRole("columnheader", { name: "並び替え" })).toBeNull();
   });
 
@@ -1137,13 +1115,13 @@ describe("Dogfood Day shell", () => {
     const source = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
     const targetSummary = sectionSummary("Evening");
     const dataTransfer = dragDataTransfer();
-    fireEvent.dragStart(source, { dataTransfer });
+    fireEvent.dragStart(dragSurface(source), { dataTransfer });
     fireEvent.dragOver(targetSummary, { dataTransfer });
     expect(targetSummary.dataset.dropTarget).toBe("valid");
     const targetGroup = targetSummary.parentElement!;
     expect(targetGroup.querySelector(".section-drop-placeholder")).toBeTruthy();
     fireEvent.drop(targetSummary, { dataTransfer });
-    fireEvent.dragEnd(source, { dataTransfer });
+    fireEvent.dragEnd(dragSurface(source), { dataTransfer });
 
     await waitFor(() => expect(mocks.moveEntry).toHaveBeenCalledTimes(1));
     expect(mocks.moveEntry.mock.calls[0][0]).toMatchObject({
@@ -1175,11 +1153,11 @@ describe("Dogfood Day shell", () => {
     const sourceSummary = sectionSummary("Sectionなし");
     expect(sourceSummary).toBeTruthy();
     const dataTransfer = dragDataTransfer();
-    fireEvent.dragStart(source, { dataTransfer });
+    fireEvent.dragStart(dragSurface(source), { dataTransfer });
     fireEvent.dragOver(targetSummary, { dataTransfer });
     expect(targetSummary.parentElement?.querySelector(".section-drop-placeholder")).toBeTruthy();
     fireEvent.drop(targetSummary, { dataTransfer });
-    fireEvent.dragEnd(source, { dataTransfer });
+    fireEvent.dragEnd(dragSurface(source), { dataTransfer });
     await waitFor(() => expect(mocks.moveEntry).toHaveBeenCalledTimes(1));
     expect(mocks.moveEntry.mock.calls[0][0]).toMatchObject({ section_id: morningId, expected_placement_revision: 1 });
     await waitFor(() => expect(screen.getByRole("button", { name: "Canonical taskの開始予定" }).textContent).toContain("04:00"));
@@ -1206,10 +1184,10 @@ describe("Dogfood Day shell", () => {
     const source = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
     const targetSummary = sectionSummary("Sectionなし");
     const dataTransfer = dragDataTransfer();
-    fireEvent.dragStart(source, { dataTransfer });
+    fireEvent.dragStart(dragSurface(source), { dataTransfer });
     fireEvent.dragOver(targetSummary, { dataTransfer });
     fireEvent.drop(targetSummary, { dataTransfer });
-    fireEvent.dragEnd(source, { dataTransfer });
+    fireEvent.dragEnd(dragSurface(source), { dataTransfer });
     await waitFor(() => expect(mocks.moveEntry).toHaveBeenCalledTimes(1));
     expect(mocks.moveEntry.mock.calls[0][0]).toMatchObject({ section_id: null, expected_placement_revision: 1 });
     await waitFor(() => expect(screen.getByRole("button", { name: "Canonical taskの開始予定" }).textContent).toContain("—"));
@@ -1222,11 +1200,11 @@ describe("Dogfood Day shell", () => {
     const source = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
     const sourceSummary = sectionSummary("Morning");
     const dataTransfer = dragDataTransfer();
-    fireEvent.dragStart(source, { dataTransfer });
+    fireEvent.dragStart(dragSurface(source), { dataTransfer });
     fireEvent.dragOver(sourceSummary, { dataTransfer });
     expect(sourceSummary.dataset.dropTarget).toBeUndefined();
     fireEvent.drop(sourceSummary, { dataTransfer });
-    fireEvent.dragEnd(source, { dataTransfer });
+    fireEvent.dragEnd(dragSurface(source), { dataTransfer });
     expect(mocks.moveEntry).not.toHaveBeenCalled();
     expect(mocks.reorderEntries).not.toHaveBeenCalled();
   });
@@ -1246,14 +1224,14 @@ describe("Dogfood Day shell", () => {
     const sourceSummary = sectionSummary("Morning");
     const targetSummary = sectionSummary("Evening");
     const dataTransfer = dragDataTransfer();
-    fireEvent.dragStart(source, { dataTransfer });
+    fireEvent.dragStart(dragSurface(source), { dataTransfer });
     fireEvent.dragOver(sourceSummary, { dataTransfer });
     expect(sourceSummary.dataset.dropTarget).toBeUndefined();
     fireEvent.drop(sourceSummary, { dataTransfer });
     fireEvent.dragOver(targetSummary, { dataTransfer });
     expect(targetSummary.dataset.dropTarget).toBeUndefined();
     fireEvent.drop(targetSummary, { dataTransfer });
-    fireEvent.dragEnd(source, { dataTransfer });
+    fireEvent.dragEnd(dragSurface(source), { dataTransfer });
     expect(mocks.moveEntry).not.toHaveBeenCalled();
   });
 
@@ -1297,12 +1275,12 @@ describe("Dogfood Day shell", () => {
     const source = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
     const targetSummary = sectionSummary("Evening");
     const dataTransfer = dragDataTransfer();
-    fireEvent.dragStart(source, { dataTransfer });
+    fireEvent.dragStart(dragSurface(source), { dataTransfer });
     fireEvent.dragOver(targetSummary, { dataTransfer });
     expect(targetSummary.classList.contains("drop-target-collapsed")).toBe(true);
     expect(targetSummary.parentElement?.querySelector(".section-drop-cue")?.textContent).toBe("このSectionへ移動");
     fireEvent.drop(targetSummary, { dataTransfer });
-    fireEvent.dragEnd(source, { dataTransfer });
+    fireEvent.dragEnd(dragSurface(source), { dataTransfer });
     await waitFor(() => expect(mocks.moveEntry).toHaveBeenCalledTimes(1));
     await waitFor(() => expect((screen.getByRole("button", { name: "Eveningを展開" }) as HTMLButtonElement).getAttribute("aria-expanded")).toBe("false"));
     expect(screen.queryByText("Canonical task")).toBeNull();
@@ -1317,13 +1295,13 @@ describe("Dogfood Day shell", () => {
     const source = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
     const targetSummary = sectionSummary("Evening");
     const dataTransfer = dragDataTransfer();
-    fireEvent.dragStart(source, { dataTransfer });
+    fireEvent.dragStart(dragSurface(source), { dataTransfer });
     fireEvent.dragOver(targetSummary, { dataTransfer });
     fireEvent.drop(targetSummary, { dataTransfer });
-    fireEvent.dragEnd(source, { dataTransfer });
+    fireEvent.dragEnd(dragSurface(source), { dataTransfer });
     await waitFor(() => expect(mocks.moveEntry).toHaveBeenCalledTimes(1));
-    expect(source.getAttribute("draggable")).toBe("false");
-    fireEvent.dragStart(source, { dataTransfer: dragDataTransfer() });
+    expect(source.querySelector<HTMLElement>(".task-drag-surface")?.getAttribute("draggable")).toBe("false");
+    fireEvent.dragStart(dragSurface(source), { dataTransfer: dragDataTransfer() });
     expect(mocks.moveEntry).toHaveBeenCalledTimes(1);
     request.resolve({});
     await waitFor(() => expect(screen.queryByText("Section移動・照合中…")).toBeNull());
@@ -1333,7 +1311,7 @@ describe("Dogfood Day shell", () => {
     const readOnlyDay = { ...twoPlannedDay, is_current: false, planning_enabled: false };
     mocks.loadDay.mockResolvedValueOnce(runningDay);
     const view = render(<App />);
-    await screen.findByRole("button", { name: "Canonical taskを完了" });
+    await screen.findAllByText("Canonical task");
     expect(screen.queryByTitle("ドラッグして並び替え")).toBeNull();
     view.unmount();
     mocks.loadDay.mockResolvedValueOnce(completedDay);
@@ -1357,7 +1335,7 @@ describe("Dogfood Day shell", () => {
     dragEntry(handles[0]!, target, 75);
     await waitFor(() => expect(mocks.reorderEntries).toHaveBeenCalledTimes(1));
     const handle = screen.getAllByTitle("ドラッグして並び替え")[1]!;
-    expect(handle.closest<HTMLElement>("[data-entry-id]")?.getAttribute("draggable")).toBe("false");
+    expect(handle.getAttribute("draggable")).toBe("false");
     const source = screen.getByText("Canonical task").closest<HTMLElement>("[data-entry-id]")!;
     dragEntry(handle, source, 25);
     expect(mocks.reorderEntries).toHaveBeenCalledTimes(1);
@@ -2537,13 +2515,13 @@ describe("Dogfood Day shell", () => {
   it("duplicates a planned Entry through the retained-operation path", async () => {
     mocks.loadDay.mockResolvedValue(populatedDay);
     render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskを複製" }));
+    fireEvent.click(within(await openOverflowMenu()).getByRole("menuitem", { name: "複製" }));
     await waitFor(() => expect(mocks.duplicateEntry).toHaveBeenCalledTimes(1));
     expect(mocks.duplicateEntry.mock.calls[0][0]).toMatchObject({
       source_entry_id: firstEntry.id, taskchute_day_id: populatedDay.taskchute_day.id,
       expected_placement_revision: populatedDay.placement_revision,
     });
-    expect(screen.queryByRole("button", { name: "Canonical taskを複製" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Canonical taskのその他の操作" })).toBeTruthy();
   });
 
   it("shows Duplicate reconciliation in the dedicated floating status while preserving DayBoard", async () => {
@@ -2551,7 +2529,7 @@ describe("Dogfood Day shell", () => {
     mocks.loadDay.mockResolvedValue(populatedDay);
     mocks.duplicateEntry.mockReturnValue(request.promise);
     render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskを複製" }));
+    fireEvent.click(within(await openOverflowMenu()).getByRole("menuitem", { name: "複製" }));
 
     const status = await screen.findByRole("status");
     expect(status.textContent).toBe("Taskを複製・照合中…");
@@ -2569,9 +2547,9 @@ describe("Dogfood Day shell", () => {
     mocks.duplicateEntry.mockRejectedValueOnce(new ApiClientError("ambiguous", 503, true, "infrastructure_ambiguous"))
       .mockResolvedValueOnce({});
     render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskを複製" }));
+    fireEvent.click(within(await openOverflowMenu()).getByRole("menuitem", { name: "複製" }));
     const retry = await screen.findByRole("button", { name: "保留中のTask複製を再試行" });
-    expect((screen.getByRole("button", { name: "Second taskを複製" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Second taskのその他の操作" }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(retry);
     await waitFor(() => expect(mocks.duplicateEntry).toHaveBeenCalledTimes(2));
     expect(mocks.duplicateEntry.mock.calls[1][0]).toEqual(mocks.duplicateEntry.mock.calls[0][0]);
@@ -2583,14 +2561,14 @@ describe("Dogfood Day shell", () => {
       .mockResolvedValueOnce(populatedDay);
     mocks.duplicateEntry.mockRejectedValueOnce(new ApiClientError("ambiguous", 503, true, "infrastructure_ambiguous"));
     render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskを複製" }));
+    fireEvent.click(within(await openOverflowMenu()).getByRole("menuitem", { name: "複製" }));
 
     const login = await screen.findByRole("button", { name: "ログイン" });
     fireEvent.change(screen.getByRole("textbox", { name: "メール" }), { target: { value: "user@example.com" } });
     fireEvent.change(screen.getByLabelText("パスワード"), { target: { value: "password" } });
     fireEvent.submit(login.closest("form")!);
 
-    await screen.findByRole("button", { name: "Canonical taskを複製" });
+    await screen.findByRole("button", { name: "Canonical taskのその他の操作" });
     expect(screen.queryByRole("button", { name: "保留中のTask複製を再試行" })).toBeNull();
   });
 
@@ -2609,7 +2587,7 @@ describe("Dogfood Day shell", () => {
     });
     mocks.duplicateEntry.mockRejectedValueOnce(new TypeError("response lost after commit"));
     render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskを複製" }));
+    fireEvent.click(within(await openOverflowMenu()).getByRole("menuitem", { name: "複製" }));
     await waitFor(() => expect(mocks.loadDay).toHaveBeenCalledTimes(2));
     const operation = mocks.duplicateEntry.mock.calls[0][0];
     await waitFor(() => expect((document.activeElement as HTMLElement).dataset.focusKey).toBe(`entry:${operation.new_entry_id}`));
@@ -2620,13 +2598,14 @@ describe("Dogfood Day shell", () => {
   it("clears a deterministically rejected Duplicate and keeps non-planned actions disabled", async () => {
     mocks.loadDay.mockResolvedValue(completedDay);
     const completed = render(<App />);
-    expect((await screen.findByRole("button", { name: "Canonical taskを複製" }) as HTMLButtonElement).disabled).toBe(true);
+    await screen.findByLabelText("Canonical taskの開始");
+    expect(screen.queryByRole("button", { name: "Canonical taskのその他の操作" })).toBeNull();
     completed.unmount();
 
     mocks.loadDay.mockResolvedValue(populatedDay);
     mocks.duplicateEntry.mockRejectedValueOnce(new ApiClientError("conflict", 409, true, "resource_conflict"));
     render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskを複製" }));
+    fireEvent.click(within(await openOverflowMenu()).getByRole("menuitem", { name: "複製" }));
     await waitFor(() => expect(mocks.duplicateEntry).toHaveBeenCalledTimes(1));
     expect(screen.queryByRole("button", { name: "保留中のTask複製を再試行" })).toBeNull();
   });
@@ -2715,7 +2694,7 @@ describe("Dogfood Day shell", () => {
     expect(dayBoard.querySelector('[data-day-column-header="project"]')).toBeTruthy();
     fireEvent.keyDown(projectCheckbox, { key: "Escape" });
     expect(screen.queryByRole("dialog", { name: "表示列" })).toBeNull();
-    expect(document.activeElement).toBe(trigger);
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
   });
 
   it("preserves custom order and width across hide/show, Show all, and reload", async () => {
@@ -2796,7 +2775,7 @@ describe("Dogfood Day shell", () => {
     expect(heading.querySelector(":scope > .bulk-slot")).toBeTruthy();
     expect(heading.textContent).toContain("実行");
     expect(heading.textContent).toContain("Task");
-    expect(taskRow.children).toHaveLength(3);
+    expect(taskRow.children).toHaveLength(4);
     expect(screen.getByRole("button", { name: "Canonical taskを開始" })).toBeTruthy();
   });
 
@@ -2906,7 +2885,7 @@ describe("Dogfood Day shell", () => {
     const pastCheckbox = await screen.findByRole("checkbox", { name: "「Canonical task」を選択" }) as HTMLInputElement;
     expect(pastCheckbox.disabled).toBe(false);
     fireEvent.click(pastCheckbox);
-    expect(screen.getByRole("button", { name: "日付変更" })).toBeTruthy();
+    expect(within(await openOverflowMenu()).getByRole("menuitem", { name: "日付変更" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "見積変更" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Section変更" })).toBeNull();
     expect(screen.queryByRole("button", { name: "削除" })).toBeNull();
@@ -3102,7 +3081,7 @@ describe("Dogfood Day shell", () => {
       taskchute_day: { ...future.taskchute_day, id: "019c0000-0000-7000-8000-000000000011" } };
     mocks.loadDay.mockResolvedValueOnce(populatedDay).mockResolvedValueOnce(future).mockResolvedValueOnce(moved);
     render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskの日付変更" }));
+    fireEvent.click(within(await openOverflowMenu()).getByRole("menuitem", { name: "日付変更" }));
     const dialog = await screen.findByRole("dialog", { name: "Taskの日付を変更" });
     expect(mocks.bulkMoveEntriesToDay).not.toHaveBeenCalled();
     expect((within(dialog).getByLabelText("変更先の日付") as HTMLInputElement).value).toBe("2026-08-23");
@@ -3123,7 +3102,7 @@ describe("Dogfood Day shell", () => {
       sections: [emptyDay.sections[1]] };
     mocks.loadDay.mockResolvedValueOnce(populatedDay).mockResolvedValueOnce(target);
     render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskの日付変更" }));
+    fireEvent.click(within(await openOverflowMenu()).getByRole("menuitem", { name: "日付変更" }));
     const dialog = await screen.findByRole("dialog", { name: "Taskの日付を変更" });
     expect((within(dialog).getByRole("button", { name: "日付変更を確定" }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(within(dialog).getByRole("checkbox", { name: "この変更を了承する" }));
@@ -3139,17 +3118,17 @@ describe("Dogfood Day shell", () => {
     render(<App />);
     expect((await screen.findByRole("checkbox", { name: "「Canonical task」を選択" }) as HTMLInputElement).disabled).toBe(false);
     fireEvent.click(screen.getByRole("checkbox", { name: "「Canonical task」を選択" }));
-    expect(screen.getByRole("button", { name: "日付変更" })).toBeTruthy();
+    expect(within(await openOverflowMenu()).getByRole("menuitem", { name: "日付変更" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "見積変更" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Section変更" })).toBeNull();
     expect(screen.queryByRole("button", { name: "削除" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Canonical taskを削除" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "削除" })).toBeNull();
   });
 
   it("uses the existing BulkDeleteEntries path for a single planned delete", async () => {
     mocks.loadDay.mockResolvedValue(populatedDay);
     render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskを削除" }));
+    fireEvent.click(within(await openOverflowMenu()).getByRole("menuitem", { name: "削除" }));
     const dialog = await screen.findByRole("dialog", { name: "選択したTaskを削除" });
     expect(mocks.bulkDeleteEntries).not.toHaveBeenCalled();
     fireEvent.click(within(dialog).getByRole("button", { name: "削除" }));
@@ -3157,63 +3136,39 @@ describe("Dogfood Day shell", () => {
     expect(mocks.bulkDeleteEntries.mock.calls[0][0]).toMatchObject({ entry_ids: [firstEntry.id], taskchute_day_id: emptyDay.taskchute_day.id });
   });
 
-  it("opens a timezone-aware actual editor for planned Entry and writes only on save", async () => {
-    mocks.loadDay.mockResolvedValueOnce(populatedDay).mockResolvedValueOnce(populatedDay);
+  it("withdraws current Execution correction capability while retaining read-only actual projection", async () => {
+    mocks.loadDay.mockResolvedValue(runningDay);
     render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskの実績時刻を編集" }));
-    const dialog = await screen.findByRole("dialog", { name: "実績時刻を入力・訂正" });
-    expect(mocks.setExecutionTimes).not.toHaveBeenCalled();
-    fireEvent.change(within(dialog).getByLabelText("実績開始"), { target: { value: "2026-08-22T10:00:00" } });
-    fireEvent.change(within(dialog).getByLabelText("実績終了（任意）"), { target: { value: "2026-08-22T10:30:00" } });
-    fireEvent.click(within(dialog).getByRole("button", { name: "実績を保存" }));
-    await waitFor(() => expect(mocks.setExecutionTimes).toHaveBeenCalledTimes(1));
-    expect(mocks.setExecutionTimes.mock.calls[0][0]).toMatchObject({
-      entry_id: firstEntry.id, expected_lifecycle_state: "planned", started_at: "2026-08-22T10:00:00.000Z",
-      ended_at: "2026-08-22T10:30:00.000Z", expected_started_at: null, expected_ended_at: null,
-    });
-    expect(mocks.setExecutionTimes.mock.calls[0][0]).not.toHaveProperty("expected_placement_revision");
+    await screen.findByLabelText("Canonical taskの開始");
+    expect(screen.queryByRole("button", { name: /実績時刻を編集/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /開始を取り消す/ })).toBeNull();
+    expect(screen.queryByText("実績入力")).toBeNull();
+    expect(screen.queryByText("実績訂正")).toBeNull();
+    expect(screen.getByLabelText("Canonical taskの開始").tagName).toBe("SPAN");
+    expect(screen.getByLabelText("Canonical taskの終了").tagName).toBe("SPAN");
   });
 
-  it("requires confirmation before reverting the current active Start", async () => {
-    mocks.loadDay.mockResolvedValue(runningCorrectionDay);
+  it("uses one far-right overflow menu for eligible planned row actions", async () => {
+    mocks.loadDay.mockResolvedValue(populatedDay);
     render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskの開始を取り消す" }));
-    const dialog = await screen.findByRole("dialog", { name: "今回の開始を取り消す" });
-    fireEvent.click(within(dialog).getByRole("button", { name: "キャンセル" }));
-    expect(mocks.revertEntryStart).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Canonical taskの開始を取り消す" }));
-    fireEvent.click(within(await screen.findByRole("dialog", { name: "今回の開始を取り消す" })).getByRole("button", { name: "未実行に戻す" }));
-    await waitFor(() => expect(mocks.revertEntryStart).toHaveBeenCalledTimes(1));
-    expect(mocks.revertEntryStart.mock.calls[0][0]).toMatchObject({ entry_id: firstEntry.id,
-      execution_id: runningCorrectionDay.active_execution!.id, expected_started_at: "2026-08-22T12:00:00.000Z" });
+    const trigger = await screen.findByRole("button", { name: "Canonical taskのその他の操作" });
+    fireEvent.click(trigger);
+    const menu = screen.getByRole("menu", { name: "Canonical taskの操作" });
+    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["日付変更", "複製", "削除"]);
+    expect(screen.queryByRole("button", { name: "Canonical taskを複製" })).toBeNull();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("menu")).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
   });
 
-  it("allows completed correction only with a non-empty end and uses the single Execution identity", async () => {
-    mocks.loadDay.mockResolvedValueOnce(completedCorrectionDay).mockResolvedValueOnce(completedCorrectionDay);
+  it("toggles a whole Section summary without a chevron and isolates Add", async () => {
+    mocks.loadDay.mockResolvedValue(emptyDay);
     render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskの実績時刻を編集" }));
-    const dialog = await screen.findByRole("dialog", { name: "実績時刻を入力・訂正" });
-    expect((within(dialog).getByLabelText("実績終了（必須）") as HTMLInputElement).value).toBe("2026-08-22T12:30");
-    fireEvent.change(within(dialog).getByLabelText("実績終了（必須）"), { target: { value: "2026-08-22T12:45:00" } });
-    fireEvent.click(within(dialog).getByRole("button", { name: "実績を保存" }));
-    await waitFor(() => expect(mocks.setExecutionTimes).toHaveBeenCalledTimes(1));
-    expect(mocks.setExecutionTimes.mock.calls[0][0]).toMatchObject({ expected_lifecycle_state: "completed",
-      execution_id: "019c0000-0000-7000-8000-000000000005", ended_at: "2026-08-22T12:45:00.000Z" });
-  });
-
-  it("requires explicit Execution selection when a completed Entry has multiple segments", async () => {
-    mocks.loadDay.mockResolvedValue(multiExecutionCorrectionDay);
-    render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskの実績時刻を編集" }));
-    const dialog = await screen.findByRole("dialog", { name: "実績時刻を入力・訂正" });
-    fireEvent.click(within(dialog).getByRole("button", { name: "実績を保存" }));
-    expect(mocks.setExecutionTimes).not.toHaveBeenCalled();
-    fireEvent.change(within(dialog).getByLabelText("補正対象Execution"), { target: { value: "019c0000-0000-7000-8000-000000000022" } });
-    fireEvent.click(within(dialog).getByRole("button", { name: "実績を保存" }));
-    await waitFor(() => expect(mocks.setExecutionTimes).toHaveBeenCalledTimes(1));
-    expect(mocks.setExecutionTimes.mock.calls[0][0]).toMatchObject({
-      execution_id: "019c0000-0000-7000-8000-000000000022", expected_started_at: "2026-08-22T12:00:00.000Z",
-      expected_ended_at: "2026-08-22T12:30:00.000Z",
-    });
+    const summary = await screen.findByRole("button", { name: "Morningを折りたたむ" });
+    expect(summary.querySelector(".section-collapse-button")).toBeNull();
+    fireEvent.click(summary);
+    expect(screen.getAllByText("表示するTaskはありません")).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "MorningにTaskを追加" }));
+    expect(screen.getByRole("textbox", { name: "MorningのTask名" })).toBeTruthy();
   });
 });

@@ -22,7 +22,6 @@ import type {
   BulkSetEntriesEstimateScopedRequest,
   BulkEstimateScopeInput,
   CompleteEntryRequest,
-  RevertEntryStartRequest,
   CreateProjectRequest,
   CurrentTaskChuteDayProjection,
   EntryProjection,
@@ -40,7 +39,6 @@ import type {
   EndRoutineRequest,
   SetRoutineEstimateRequest,
   SetRoutineSectionPlanRequest,
-  SetExecutionTimesRequest,
 } from "../shared/contracts";
 import { isSamePlannedStartCohort } from "../shared/planned-entry-order";
 import { advanceProjectionClock, calculateStartForecast, formatStartForecast } from "../shared/start-forecast";
@@ -109,17 +107,6 @@ type BulkDateMoveConfirmation = {
   previewLoading: boolean;
   fallbackAcknowledged: boolean;
 };
-type ExecutionTimesDraft = {
-  entryId: string;
-  executionId: string | null;
-  executionOptions: Array<{ id: string; started_at: string; ended_at: string | null }>;
-  expectedLifecycleState: SetExecutionTimesRequest["expected_lifecycle_state"];
-  expectedStartedAt: string | null;
-  expectedEndedAt: string | null;
-  startedLocal: string;
-  endedLocal: string;
-};
-
 /**
  * Collapse state is a presentation-only preference. Keep it in a versioned
  * browser-local envelope so a future preference shape can be introduced
@@ -328,27 +315,18 @@ function formatLogicalMinute(value: number | null): string {
   return `${String(Math.floor(value / 60)).padStart(2, "0")}:${String(value % 60).padStart(2, "0")}`;
 }
 
-function formatActualInput(value: string | null, timezone: string): string {
-  if (!value) return "";
-  const local = Temporal.Instant.from(value).toZonedDateTimeISO(timezone);
-  const date = `${String(local.year).padStart(4, "0")}-${String(local.month).padStart(2, "0")}-${String(local.day).padStart(2, "0")}`;
-  const time = `${String(local.hour).padStart(2, "0")}:${String(local.minute).padStart(2, "0")}:${String(local.second).padStart(2, "0")}`;
-  return `${date}T${time}`;
-}
-
-function parseActualInput(value: string, timezone: string, field: string): string {
-  try {
-    return Temporal.PlainDateTime.from(value).toZonedDateTime(timezone).toInstant()
-      .toString({ smallestUnit: "millisecond" });
-  } catch {
-    throw new Error(`${field}を正しい日時で入力してください`);
-  }
-}
-
 function formatEstimate(seconds: number | null): string {
   if (!seconds) return "—";
   const minutes = Math.floor(seconds / 60);
   return minutes >= 60 ? `${Math.floor(minutes / 60)}時間${minutes % 60 ? `${minutes % 60}分` : ""}` : `${minutes}分`;
+}
+
+function EmptyValue({ label = "未設定" }: { label?: string }) {
+  return <span className="empty-value" aria-label={label}>—</span>;
+}
+
+function renderEmptyValue(value: string, label?: string) {
+  return value === "—" ? <EmptyValue label={label} /> : value;
 }
 
 function transientStatusText(pending: string | null): string | null {
@@ -365,8 +343,6 @@ function transientStatusText(pending: string | null): string | null {
     case "bulk-estimate": return "選択したTaskの見積を変更・照合中…";
     case "start": return "開始・照合中…";
     case "complete": return "完了・照合中…";
-    case "revert-start": return "開始取消・照合中…";
-    case "execution-times": return "実績時刻を保存・照合中…";
     case "move": return "Section移動・照合中…";
     case "estimate": return "見積を保存・照合中…";
     case "planned-start": return "開始予定を保存・照合中…";
@@ -476,8 +452,6 @@ export function App() {
   const [reorderOperation, setReorderOperation] = useState<ReorderEntriesRequest | null>(null);
   const [startOperation, setStartOperation] = useState<StartEntryRequest | null>(null);
   const [completeOperation, setCompleteOperation] = useState<CompleteEntryRequest | null>(null);
-  const [revertOperation, setRevertOperation] = useState<RevertEntryStartRequest | null>(null);
-  const [executionTimesOperation, setExecutionTimesOperation] = useState<SetExecutionTimesRequest | null>(null);
   const [configurationOperation, setConfigurationOperation] = useState<EstablishInitialSectionConfigurationRequest | null>(null);
   const [sectionMoveOperation, setSectionMoveOperation] = useState<MoveEntryRequest | null>(null);
   const [estimateOperation, setEstimateOperation] = useState<SetEntryEstimateRequest | null>(null);
@@ -487,8 +461,7 @@ export function App() {
   const [routineEndOperation, setRoutineEndOperation] = useState<EndRoutineRequest | null>(null);
   const [routineEstimateOperation, setRoutineEstimateOperation] = useState<SetRoutineEstimateRequest | null>(null);
   const [routineSectionPlanOperation, setRoutineSectionPlanOperation] = useState<SetRoutineSectionPlanRequest | null>(null);
-  const [executionTimesDraft, setExecutionTimesDraft] = useState<ExecutionTimesDraft | null>(null);
-  const [revertConfirmation, setRevertConfirmation] = useState<RevertEntryStartRequest | null>(null);
+  const [overflowEntryId, setOverflowEntryId] = useState<string | null>(null);
   const [, setSectionSettings] = useState<SectionConfigurationProjection | null>(null);
   const [sectionSettingsDraft, setSectionSettingsDraft] = useState<SectionSettingsDraft | null>(null);
   const [sectionSettingsNotice, setSectionSettingsNotice] = useState<string | null>(null);
@@ -496,7 +469,7 @@ export function App() {
   const [editingPlannedStart, setEditingPlannedStart] = useState<{ entryId: string; value: string } | null>(null);
   const [routineDraft, setRoutineDraft] = useState<{ entryId: string; endDate: string } | null>(null);
   const [routineCandidate, setRoutineCandidate] = useState<RoutineCandidate | null>(null);
-  const [pending, setPending] = useState<"login" | "project" | "project-settings" | "day-navigation" | "task" | "duplicate" | "bulk-delete" | "bulk-date-move" | "bulk-section" | "bulk-section-occurrence" | "bulk-section-scoped" | "bulk-estimate" | "reorder" | "start" | "complete" | "revert-start" | "execution-times" | "configuration" | "section-settings" | "move" | "estimate" | "planned-start" | "routine-convert" | "routine-end" | "routine-edit" | "logout" | null>(null);
+  const [pending, setPending] = useState<"login" | "project" | "project-settings" | "day-navigation" | "task" | "duplicate" | "bulk-delete" | "bulk-date-move" | "bulk-section" | "bulk-section-occurrence" | "bulk-section-scoped" | "bulk-estimate" | "reorder" | "start" | "complete" | "configuration" | "section-settings" | "move" | "estimate" | "planned-start" | "routine-convert" | "routine-end" | "routine-edit" | "logout" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draftTask, setDraftTask] = useState<DraftTask | null>(null);
   const [pendingFocusKey, setPendingFocusKey] = useState<string | null>(null);
@@ -531,11 +504,13 @@ export function App() {
   const bulkSectionPickerRef = useRef<HTMLDivElement | null>(null);
   const bulkEstimateTriggerRef = useRef<HTMLButtonElement | null>(null);
   const routineScopeChoiceRef = useRef<HTMLSpanElement | null>(null);
+  const overflowMenuRef = useRef<HTMLDivElement | null>(null);
+  const overflowMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const forecastClockRef = useRef<{ serverInstant: string; monotonicMilliseconds: number } | null>(null);
-  const retainedOperation = projectOperation ?? taskOperation ?? duplicateOperation ?? bulkDeleteOperation ?? bulkDateMoveOperation ?? bulkSectionOperation ?? bulkSectionOccurrenceOperation ?? bulkSectionScopedOperation ?? bulkEstimateOperation ?? reorderOperation ?? startOperation ?? completeOperation ?? revertOperation ?? executionTimesOperation
+  const retainedOperation = projectOperation ?? taskOperation ?? duplicateOperation ?? bulkDeleteOperation ?? bulkDateMoveOperation ?? bulkSectionOperation ?? bulkSectionOccurrenceOperation ?? bulkSectionScopedOperation ?? bulkEstimateOperation ?? reorderOperation ?? startOperation ?? completeOperation
     ?? configurationOperation ?? sectionSettingsOperation ?? sectionMoveOperation ?? estimateOperation ?? plannedStartOperation
     ?? routineConversionOperation ?? routineEndOperation ?? routineEstimateOperation ?? routineSectionPlanOperation;
-  const mutationLocked = pending !== null || retainedOperation !== null || bulkConfirmation !== null || bulkSectionConfirmation !== null || bulkEstimateConfirmation !== null || bulkDateMoveConfirmation !== null || executionTimesDraft !== null || revertConfirmation !== null;
+  const mutationLocked = pending !== null || retainedOperation !== null || bulkConfirmation !== null || bulkSectionConfirmation !== null || bulkEstimateConfirmation !== null || bulkDateMoveConfirmation !== null;
 
   const transitionToSignedOut = useCallback(() => {
     selectedLogicalDateRef.current = null;
@@ -566,10 +541,7 @@ export function App() {
     setReorderOperation(null);
     setStartOperation(null);
     setCompleteOperation(null);
-    setRevertOperation(null);
-    setExecutionTimesOperation(null);
-    setExecutionTimesDraft(null);
-    setRevertConfirmation(null);
+    setOverflowEntryId(null);
     setConfigurationOperation(null);
     setSectionMoveOperation(null);
     setEstimateOperation(null);
@@ -587,8 +559,7 @@ export function App() {
     setDraftTask(null);
     setEditingEstimate(null);
     setEditingPlannedStart(null);
-    setExecutionTimesDraft(null);
-    setRevertConfirmation(null);
+    setOverflowEntryId(null);
     setPendingFocusKey(null);
     // Keep browser-local presentation preferences across an auth transition;
     // the next authenticated Day projection prunes keys that are not valid
@@ -603,6 +574,7 @@ export function App() {
     try {
       const projection = await api.loadDay(logicalDate ?? undefined);
       setDay(projection);
+      setOverflowEntryId(null);
       selectedLogicalDateRef.current = projection.taskchute_day.logical_date;
       setSelectedEntryIds((current) => current.filter((id) => {
         const entry = projectionEntries(projection).find((candidate) => candidate.id === id);
@@ -623,6 +595,7 @@ export function App() {
   async function navigateToDay(logicalDate?: string) {
     if (pending !== null || retainedOperation !== null) return;
     setCalendarOpen(false);
+    setOverflowEntryId(null);
     setPending("day-navigation");
     setError(null);
     setDraftTask(null);
@@ -678,6 +651,27 @@ export function App() {
     document.addEventListener("mousedown", handleOutsideMouseDown);
     return () => document.removeEventListener("mousedown", handleOutsideMouseDown);
   }, [columnsMenuOpen]);
+
+  useEffect(() => {
+    if (!overflowEntryId) return;
+    overflowMenuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
+    const dismissOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setOverflowEntryId(null);
+      requestAnimationFrame(() => overflowMenuTriggerRef.current?.focus());
+    };
+    const dismissOnOutsideMouseDown = (event: globalThis.MouseEvent) => {
+      if (overflowMenuRef.current?.contains(event.target as Node) || overflowMenuTriggerRef.current?.contains(event.target as Node)) return;
+      setOverflowEntryId(null);
+    };
+    document.addEventListener("keydown", dismissOnEscape);
+    document.addEventListener("mousedown", dismissOnOutsideMouseDown);
+    return () => {
+      document.removeEventListener("keydown", dismissOnEscape);
+      document.removeEventListener("mousedown", dismissOnOutsideMouseDown);
+    };
+  }, [overflowEntryId]);
 
   useEffect(() => {
     if (!columnResize) return;
@@ -1887,162 +1881,6 @@ export function App() {
     await executeComplete(operation);
   }
 
-  function entryForId(projection: CurrentTaskChuteDayProjection | null, entryId: string): EntryProjection | null {
-    if (!projection) return null;
-    return [...projection.unsectioned_entries, ...projection.sections.flatMap((section) => section.entries)]
-      .find((entry) => entry.id === entryId) ?? null;
-  }
-
-  function canEditExecutionTimes(entry: EntryProjection): boolean {
-    const summary = entry.execution_summary;
-    if (!day?.taskchute_day.id || day.establishment_state !== "established") return false;
-    if (entry.lifecycle_state === "planned") return true;
-    if (entry.lifecycle_state === "running") return summary?.active_execution_id != null && summary.active_started_at != null;
-    return summary?.single_execution_id != null || (summary?.executions?.length ?? 0) > 0;
-  }
-
-  function openExecutionTimesEditor(entry: EntryProjection) {
-    if (!day || !canEditExecutionTimes(entry) || mutationLocked) return;
-    const timezone = day.taskchute_day.establishment_timezone;
-    if (!timezone) return;
-    const summary = entry.execution_summary;
-    const expectedLifecycleState = entry.lifecycle_state;
-    const executionId: string | null = (entry.lifecycle_state === "planned"
-      ? uuidv7()
-      : entry.lifecycle_state === "running" ? summary?.active_execution_id : summary?.single_execution_id) ?? null;
-    const executionOptions = summary?.executions ?? [];
-    if (entry.lifecycle_state !== "planned" && executionOptions.length === 0) return;
-    const selectedExecution = executionId ? executionOptions.find((candidate) => candidate.id === executionId) : undefined;
-    const expectedStartedAt = entry.lifecycle_state === "planned"
-      ? null : selectedExecution?.started_at ?? (entry.lifecycle_state === "running" ? summary?.active_started_at ?? null : null);
-    const expectedEndedAt = entry.lifecycle_state === "completed" ? selectedExecution?.ended_at ?? null : null;
-    setError(null);
-    setExecutionTimesDraft({ entryId: entry.id, executionId, expectedLifecycleState,
-      expectedStartedAt, expectedEndedAt,
-      startedLocal: formatActualInput(expectedStartedAt, timezone),
-      endedLocal: formatActualInput(expectedEndedAt, timezone),
-      executionOptions });
-  }
-
-  function selectExecutionForCorrection(executionId: string) {
-    setExecutionTimesDraft((current) => {
-      if (!current) return current;
-      const selected = current.executionOptions.find((candidate) => candidate.id === executionId);
-      if (!selected || !day?.taskchute_day.establishment_timezone) return current;
-      return { ...current, executionId, expectedStartedAt: selected.started_at, expectedEndedAt: selected.ended_at,
-        startedLocal: formatActualInput(selected.started_at, day.taskchute_day.establishment_timezone),
-        endedLocal: formatActualInput(selected.ended_at, day.taskchute_day.establishment_timezone) };
-    });
-  }
-
-  async function executeExecutionTimes(operation: SetExecutionTimesRequest) {
-    setPending("execution-times");
-    setError(null);
-    try {
-      await api.setExecutionTimes(operation);
-      await reconcile();
-      setExecutionTimesOperation(null);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "実績時刻の保存に失敗しました");
-      const ambiguous = isAmbiguousOutcome(caught);
-      if (!ambiguous) setExecutionTimesOperation(null);
-      try {
-        const projection = await reconcile();
-        const canonical = entryForId(projection, operation.entry_id);
-        const summary = canonical?.execution_summary;
-        const expectedStarted = operation.expected_lifecycle_state === "running"
-          ? summary?.active_started_at : summary?.first_started_at;
-        const expectedEnded = operation.ended_at;
-        if (ambiguous && canonical && canonical.lifecycle_state === (expectedEnded === null ? "running" : "completed")
-          && expectedStarted === operation.started_at
-          && (expectedEnded === null ? summary?.active_started_at !== null : summary?.last_ended_at === expectedEnded)) {
-          setExecutionTimesOperation(null);
-          setError(null);
-        }
-      } catch { /* Preserve the logical operation. */ }
-    } finally {
-      setPending(null);
-    }
-  }
-
-  function submitExecutionTimes(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!day || !executionTimesDraft || pending !== null || retainedOperation !== null || revertConfirmation !== null) return;
-    if (!executionTimesDraft.executionId) {
-      setError("補正対象のExecutionを選択してください");
-      return;
-    }
-    const timezone = day.taskchute_day.establishment_timezone;
-    if (!timezone) return;
-    let startedAt: string;
-    let endedAt: string | null = null;
-    try {
-      startedAt = parseActualInput(executionTimesDraft.startedLocal, timezone, "開始時刻");
-      if (executionTimesDraft.endedLocal.trim() !== "") endedAt = parseActualInput(executionTimesDraft.endedLocal, timezone, "終了時刻");
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "実績時刻を正しく入力してください");
-      return;
-    }
-    if (executionTimesDraft.expectedLifecycleState === "completed" && endedAt === null) {
-      setError("完了済みEntryの終了時刻は空にできません");
-      return;
-    }
-    const entry = entryForId(day, executionTimesDraft.entryId);
-    if (!entry) return;
-    const operation: SetExecutionTimesRequest = {
-      operation_id: uuidv7(), entry_id: executionTimesDraft.entryId, execution_id: executionTimesDraft.executionId,
-      expected_lifecycle_state: executionTimesDraft.expectedLifecycleState, started_at: startedAt, ended_at: endedAt,
-      expected_started_at: executionTimesDraft.expectedStartedAt, expected_ended_at: executionTimesDraft.expectedEndedAt,
-      ...(executionTimesDraft.expectedLifecycleState === "planned" && entry.section_id === null
-        ? { expected_placement_revision: day.placement_revision } : {}),
-    };
-    setExecutionTimesDraft(null);
-    setExecutionTimesOperation(operation);
-    void executeExecutionTimes(operation);
-  }
-
-  function openRevertConfirmation(entry: EntryProjection) {
-    if (mutationLocked || entry.lifecycle_state !== "running") return;
-    const executionId = entry.execution_summary?.active_execution_id;
-    const expectedStartedAt = entry.execution_summary?.active_started_at;
-    if (!executionId || !expectedStartedAt) return;
-    setError(null);
-    setRevertConfirmation({ operation_id: uuidv7(), entry_id: entry.id, execution_id: executionId, expected_started_at: expectedStartedAt });
-  }
-
-  async function executeRevert(operation: RevertEntryStartRequest) {
-    setPending("revert-start");
-    setError(null);
-    try {
-      await api.revertEntryStart(operation);
-      await reconcile();
-      setRevertOperation(null);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "開始の取消に失敗しました");
-      const ambiguous = isAmbiguousOutcome(caught);
-      if (!ambiguous) setRevertOperation(null);
-      try {
-        const projection = await reconcile();
-        const canonical = entryForId(projection, operation.entry_id);
-        if (ambiguous && canonical?.lifecycle_state === "planned"
-          && canonical.execution_summary?.active_execution_id !== operation.execution_id) {
-          setRevertOperation(null);
-          setError(null);
-        }
-      } catch { /* Preserve the logical operation. */ }
-    } finally {
-      setPending(null);
-    }
-  }
-
-  function confirmRevert() {
-    if (!revertConfirmation || pending !== null || retainedOperation !== null || executionTimesDraft !== null) return;
-    const operation = revertConfirmation;
-    setRevertConfirmation(null);
-    setRevertOperation(operation);
-    void executeRevert(operation);
-  }
-
   async function executeConfiguration(operation: EstablishInitialSectionConfigurationRequest) {
     setPending("configuration"); setError(null);
     try { await api.establishInitialSectionConfiguration(operation); await reconcile(); setConfigurationOperation(null); }
@@ -2769,7 +2607,7 @@ export function App() {
     const summary = actualSummaryFor(entry);
     switch (key) {
       case "project":
-        return <span className="project-name" data-day-column-cell={key}>{entry.task.project?.title ?? "—"}</span>;
+        return <span className="project-name" data-day-column-cell={key}>{entry.task.project?.title ?? <EmptyValue label="Project未設定" />}</span>;
       case "section":
         return <select className="section-cell" data-day-column-cell={key} aria-label={`${entry.task.title}のSection`} value={entry.section_id ?? ""}
           disabled={mutationLocked || !currentDay.planning_enabled || entry.lifecycle_state !== "planned"
@@ -2795,7 +2633,7 @@ export function App() {
             )}
           </>
             : <button type="button" className="estimate-button" aria-label={`${entry.task.title}の見積`} disabled={mutationLocked || !currentDay.planning_enabled || entry.lifecycle_state !== "planned" || (entry.routine !== null && !currentDay.is_current)}
-              onClick={() => setEditingEstimate({ entryId: entry.id, minutes: entry.estimate_seconds ? String(entry.estimate_seconds / 60) : "" })}>{formatEstimate(entry.estimate_seconds)}</button>}
+              onClick={() => setEditingEstimate({ entryId: entry.id, minutes: entry.estimate_seconds ? String(entry.estimate_seconds / 60) : "" })}>{renderEmptyValue(formatEstimate(entry.estimate_seconds), "見積なし")}</button>}
           {entry.routine && routineCandidate?.entryId === entry.id && routineCandidate.unit === "estimate" && (
             <span ref={routineScopeChoiceRef} className="routine-scope-choice" role="group" aria-label={`${entry.task.title}の見積反映先`}>
               <span>{formatEstimate(routineCandidate.estimateSeconds)}</span>
@@ -2821,7 +2659,7 @@ export function App() {
               disabled={mutationLocked || !currentDay.planning_enabled || entry.lifecycle_state !== "planned" || (entry.routine !== null && !currentDay.is_current)}
               onClick={() => setEditingPlannedStart({ entryId: entry.id,
                 value: entry.planned_start_minute === null ? "" : formatLogicalMinute(entry.planned_start_minute) })}>
-              {entry.planned_start_minute === null ? "—" : formatLogicalMinute(entry.planned_start_minute)}
+              {entry.planned_start_minute === null ? <EmptyValue label="開始予定なし" /> : formatLogicalMinute(entry.planned_start_minute)}
             </button>}
           {entry.routine && routineCandidate?.entryId === entry.id && routineCandidate.unit === "section-plan" && (
             <span ref={routineScopeChoiceRef} className="routine-scope-choice" role="group" aria-label={`${entry.task.title}のSection・開始予定反映先`}>
@@ -2835,19 +2673,21 @@ export function App() {
         </span>;
       case "forecast":
         return <span className="forecast-cell" data-day-column-cell={key} aria-label={`${entry.task.title}の開始見込`}>
-          {formatStartForecast(forecastByEntryId[entry.id], currentDay.taskchute_day.logical_date, currentDay.taskchute_day.establishment_timezone)}
+          {renderEmptyValue(formatStartForecast(forecastByEntryId[entry.id], currentDay.taskchute_day.logical_date, currentDay.taskchute_day.establishment_timezone), "開始見込なし")}
         </span>;
       case "actualStart":
         return <span className="actual-start-cell actual-time-cell" data-day-column-cell={key} aria-label={`${entry.task.title}の開始`}>
-          {formatActualTime(summary?.first_started_at ?? null, currentDay.taskchute_day.logical_date, currentDay.taskchute_day.establishment_timezone)}
+          {renderEmptyValue(formatActualTime(summary?.first_started_at ?? null, currentDay.taskchute_day.logical_date, currentDay.taskchute_day.establishment_timezone), "実績開始なし")}
         </span>;
       case "actualEnd":
         return <span className="actual-end-cell actual-time-cell" data-day-column-cell={key} aria-label={`${entry.task.title}の終了`}>
-          {summary?.active_started_at ? "—" : formatActualTime(summary?.last_ended_at ?? null, currentDay.taskchute_day.logical_date, currentDay.taskchute_day.establishment_timezone)}
+          {summary?.active_started_at
+            ? <EmptyValue label="実績終了なし（実行中）" />
+            : renderEmptyValue(formatActualTime(summary?.last_ended_at ?? null, currentDay.taskchute_day.logical_date, currentDay.taskchute_day.establishment_timezone), "実績終了なし")}
         </span>;
       case "actualDuration":
         return <span className="actual-duration-cell actual-duration" data-day-column-cell={key} aria-label={`${entry.task.title}の実績`}>
-          {actualDurationFor(entry)}
+          {renderEmptyValue(actualDurationFor(entry), "実績なし")}
         </span>;
     }
   }
@@ -2855,7 +2695,7 @@ export function App() {
   function renderDraftColumn(section: { title: string }, key: DayColumnKey) {
     if (key === "section") return <span className="section-cell" data-day-column-cell={key}>{section.title}</span>;
     const definition = columnDefinition(key);
-    return <span className={`${definition.cellClassName} muted`} data-day-column-cell={key}>—</span>;
+    return <span className={`${definition.cellClassName} muted`} data-day-column-cell={key}><EmptyValue /></span>;
   }
 
   return (
@@ -3268,50 +3108,6 @@ export function App() {
         </div>
       )}
 
-      {executionTimesDraft && (
-        <div className="bulk-confirmation panel execution-times-dialog" role="dialog" aria-modal="true" aria-labelledby="execution-times-title" tabIndex={-1}>
-          <h2 id="execution-times-title">実績時刻を入力・訂正</h2>
-          <p>{entryForId(currentDay, executionTimesDraft.entryId)?.task.title ?? "Entry"}の実績を保存します。</p>
-          <p className="dialog-hint">入力 timezone: {currentDay.taskchute_day.establishment_timezone}。終了時刻は空欄にすると実行中のままです。</p>
-          <form onSubmit={submitExecutionTimes}>
-            {executionTimesDraft.executionOptions.length > 1 && (
-              <label>補正対象Execution
-                <select required value={executionTimesDraft.executionId ?? ""} onChange={(event) => selectExecutionForCorrection(event.target.value)}>
-                  <option value="">Executionを選択してください</option>
-                  {executionTimesDraft.executionOptions.map((execution) => (
-                    <option value={execution.id} key={execution.id}>{execution.started_at} → {execution.ended_at ?? "実行中"}</option>
-                  ))}
-                </select>
-              </label>
-            )}
-            <label>実績開始
-              <input autoFocus type="datetime-local" step="1" required value={executionTimesDraft.startedLocal}
-                onChange={(event) => setExecutionTimesDraft((current) => current ? { ...current, startedLocal: event.target.value } : current)} />
-            </label>
-            <label>実績終了{executionTimesDraft.expectedLifecycleState === "completed" ? "（必須）" : "（任意）"}
-              <input type="datetime-local" step="1" required={executionTimesDraft.expectedLifecycleState === "completed"} value={executionTimesDraft.endedLocal}
-                onChange={(event) => setExecutionTimesDraft((current) => current ? { ...current, endedLocal: event.target.value } : current)} />
-            </label>
-            <div className="bulk-confirmation-actions">
-              <button type="button" className="secondary" onClick={() => { setExecutionTimesDraft(null); setError(null); }}>キャンセル</button>
-              <button type="submit" disabled={pending !== null}>実績を保存</button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {revertConfirmation && (
-        <div className="bulk-confirmation panel execution-times-dialog" role="dialog" aria-modal="true" aria-labelledby="revert-start-title" tabIndex={-1}>
-          <h2 id="revert-start-title">今回の開始を取り消す</h2>
-          <p>{entryForId(currentDay, revertConfirmation.entry_id)?.task.title ?? "Entry"}を未実行に戻します。</p>
-          <p>現在の開始Executionだけを削除します。Section・開始予定・position・placement revisionは変更せず、過去の実行履歴は残します。</p>
-          <div className="bulk-confirmation-actions">
-            <button type="button" className="secondary" onClick={() => { setRevertConfirmation(null); setError(null); }}>キャンセル</button>
-            <button type="button" onClick={confirmRevert}>未実行に戻す</button>
-          </div>
-        </div>
-      )}
-
       {transientStatus && (
         <div className="transient-status" role="status" aria-live="polite" aria-atomic="true">
           {transientStatus}
@@ -3364,6 +3160,7 @@ export function App() {
                 onDoubleClick={(event) => autoFitColumn(event, definition.key)} />
             </span>;
           })}
+          <span className="row-actions-heading" aria-hidden="true" />
         </div>
         {groups.map((section) => {
           const visibleEntries = showCompleted ? section.entries : section.entries.filter((entry) => entry.lifecycle_state !== "completed");
@@ -3379,6 +3176,9 @@ export function App() {
               <div
                 className={`section-summary${sectionDropActive ? " drop-target" : ""}${sectionDropActive && sectionCollapsed ? " drop-target-collapsed" : ""}`}
                 tabIndex={0}
+                role="button"
+                aria-expanded={!sectionCollapsed}
+                aria-label={`${section.title}を${sectionCollapsed ? "展開" : "折りたたむ"}`}
                 data-day-focus-target
                 data-focus-key={focusKey(sectionTarget)}
                 data-drop-target={sectionDropActive ? "valid" : undefined}
@@ -3391,7 +3191,11 @@ export function App() {
                     setEntryDrag((current) => current ? { ...current, targetSectionKey: null } : null);
                   }
                 }}
-                onClick={(event) => focusSurface(event.currentTarget)}
+                onClick={(event) => {
+                  if (isInteractiveDragTarget(event.target) || entryDrag || mouseDragRef.current) return;
+                  focusSurface(event.currentTarget);
+                  toggleSection(section.id);
+                }}
                 onKeyDown={(event) => {
                   if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " ")) return;
                   event.preventDefault();
@@ -3400,9 +3204,6 @@ export function App() {
               >
                 <div className="section-summary-content"><strong>{section.title}</strong><span>{section.id === null ? "時間帯なし" : `${formatLogicalMinute(section.logical_start_minute)}–${formatLogicalMinute(section.logical_end_minute)}`} · {completedCount}/{section.entries.length} 実行済み · 見積 {formatEstimate(section.estimate_total_seconds)}</span></div>
                 <div className="section-summary-actions">
-                  <button type="button" className="section-collapse-button" aria-label={`${section.title}を${sectionCollapsed ? "展開" : "折りたたむ"}`}
-                    aria-expanded={!sectionCollapsed} title={sectionCollapsed ? "展開" : "折りたたむ"}
-                    onClick={(event) => { event.stopPropagation(); toggleSection(section.id); }}>{sectionCollapsed ? "▸" : "▾"}</button>
                   <button type="button" className="add-task-button" aria-label={`${section.title}にTaskを追加`} title={`${section.title}にTaskを追加`}
                     disabled={mutationLocked || !day.planning_enabled || day.section_configuration_required}
                     onClick={(event) => { event.stopPropagation(); openDraft(section.id); }}>＋</button>
@@ -3420,6 +3221,7 @@ export function App() {
                     if (!draftTask.title.trim() && !event.currentTarget.form?.contains(event.relatedTarget as Node | null)) setDraftTask(null);
                   }} /></label>
                   {resolvedColumnDefinitions.map((definition) => <Fragment key={definition.key}>{renderDraftColumn(section, definition.key)}</Fragment>)}
+                  <span className="row-actions-slot" aria-hidden="true" />
                 </form>
               )}
 
@@ -3427,15 +3229,15 @@ export function App() {
                 const entryTarget: FocusTarget = { kind: "entry", id: entry.id };
                 const isRunning = entry.lifecycle_state === "running";
                 const canComplete = isRunning && day.active_execution?.entry_id === entry.id;
-                const canRevert = isRunning && entry.execution_summary?.active_execution_id != null;
                 const canDrag = day.planning_enabled && Boolean(day.taskchute_day.id) && entry.lifecycle_state === "planned";
+                const canMoveDate = isBulkSelectableProjectionEntry(currentDay, entry);
+                const canEditPlanning = day.planning_enabled && entry.lifecycle_state === "planned";
+                const hasOverflowActions = canMoveDate || canEditPlanning;
                 return (
-                  <div className={`task-row state-${entry.lifecycle_state}${selectedEntryIds.includes(entry.id) ? " is-selected" : ""}${entryDrag?.entryId === entry.id ? " is-dragging" : ""}${entryDrag?.targetEntryId === entry.id && entryDrag.edge ? ` drop-${entryDrag.edge}` : ""}`} key={entry.id} tabIndex={0} aria-selected={selectedEntryIds.includes(entry.id)} draggable={canDrag && !mutationLocked}
+                  <div className={`task-row state-${entry.lifecycle_state}${selectedEntryIds.includes(entry.id) ? " is-selected" : ""}${entryDrag?.entryId === entry.id ? " is-dragging" : ""}${entryDrag?.targetEntryId === entry.id && entryDrag.edge ? ` drop-${entryDrag.edge}` : ""}`} key={entry.id} tabIndex={0} aria-selected={selectedEntryIds.includes(entry.id)}
                     data-entry-id={entry.id} data-section-id={section.id ?? ""} data-day-focus-target data-focus-key={focusKey(entryTarget)}
-                    onMouseDown={(event) => startEntryMouseDrag(event, section.id, entry)}
                     onMouseMove={(event) => updateEntryMouseTarget(event, section.id, entry.id)}
                     onMouseUp={(event) => finishEntryMouseDrag(event, section.id, entry.id)}
-                    onDragStart={(event) => startEntryDrag(event, section.id, entry)}
                     onDragEnd={() => { mouseDragRef.current = null; setEntryDrag(null); }}
                     onDragOver={(event) => updateEntryDropTarget(event, section.id, entry.id)}
                     onDrop={(event) => dropEntry(event, section.id, entry.id)}
@@ -3468,31 +3270,45 @@ export function App() {
                         }}>{isRunning ? "■" : "▶"}</button>
                       )}
                     </span>
-                    <div className="task-main">
+                    <div className="task-main task-drag-surface" draggable={canDrag && !mutationLocked}
+                      onMouseDown={(event) => startEntryMouseDrag(event, section.id, entry)}
+                      onDragStart={(event) => startEntryDrag(event, section.id, entry)}
+                      data-drag-surface="task" title={canDrag ? "ドラッグして並び替え" : undefined}>
                       <div className="task-identity">
-                        {entry.lifecycle_state === "planned" && day.planning_enabled && day.taskchute_day.id ? (
-                          <span className="task-drag-handle" aria-hidden="true" title="ドラッグして並び替え"
-                            onClick={(event) => event.stopPropagation()}>⠿</span>
-                        ) : null}
                         <strong>{entry.task.title}</strong>{day.next_entry?.id === entry.id && <span className="next-label">Next</span>}
-                      </div>
-                      <div className="task-actions" onClick={(event) => event.stopPropagation()}>
-                        {entry.lifecycle_state === "planned" && <button type="button" aria-label={`${entry.task.title}の日付変更`} className="secondary task-action-button"
-                          disabled={mutationLocked} onClick={(event) => { event.stopPropagation(); openBulkDateMove([entry.id]); }}>日付変更</button>}
-                        {canRevert && <button type="button" aria-label={`${entry.task.title}の開始を取り消す`} className="secondary task-action-button"
-                          disabled={mutationLocked} onClick={(event) => { event.stopPropagation(); openRevertConfirmation(entry); }}>開始を取り消す</button>}
-                        {canEditExecutionTimes(entry) && <button type="button" aria-label={`${entry.task.title}の実績時刻を編集`} className="secondary task-action-button"
-                          disabled={mutationLocked} onClick={(event) => { event.stopPropagation(); openExecutionTimesEditor(entry); }}>
-                          {entry.lifecycle_state === "planned" ? "実績入力" : "実績訂正"}
-                        </button>}
-                        {day.planning_enabled && entry.lifecycle_state === "planned" && <button type="button" aria-label={`${entry.task.title}を削除`} className="secondary task-action-button"
-                          disabled={mutationLocked} onClick={(event) => { event.stopPropagation(); openSingleDelete(entry); }}>削除</button>}
-                        <button type="button" className="icon-button" aria-label={`${entry.task.title}を複製`} title="Task名を複製"
-                          disabled={mutationLocked || !day.planning_enabled || entry.lifecycle_state !== "planned"}
-                          onClick={(event) => { event.stopPropagation(); duplicate(entry); }}>⧉</button>
                       </div>
                     </div>
                     {resolvedColumnDefinitions.map((definition) => <Fragment key={definition.key}>{renderEntryColumn(entry, definition.key)}</Fragment>)}
+                    {hasOverflowActions ? (
+                      <div className="row-actions-slot" ref={overflowEntryId === entry.id ? overflowMenuRef : undefined}
+                        onClick={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()}
+                        onPointerDown={(event) => event.stopPropagation()}>
+                        <button type="button" className="row-overflow-button" aria-haspopup="menu" aria-expanded={overflowEntryId === entry.id}
+                          aria-label={`${entry.task.title}のその他の操作`} title="その他の操作" disabled={mutationLocked}
+                          onClick={(event) => {
+                            overflowMenuTriggerRef.current = event.currentTarget;
+                            setOverflowEntryId((current) => current === entry.id ? null : entry.id);
+                          }}>
+                          …
+                        </button>
+                        {overflowEntryId === entry.id && (
+                          <div className="row-overflow-menu" role="menu" aria-label={`${entry.task.title}の操作`}>
+                            {canMoveDate && <button type="button" role="menuitem" onClick={() => {
+                              setOverflowEntryId(null);
+                              openBulkDateMove([entry.id]);
+                            }}>日付変更</button>}
+                            {canEditPlanning && <button type="button" role="menuitem" onClick={() => {
+                              setOverflowEntryId(null);
+                              duplicate(entry);
+                            }}>複製</button>}
+                            {canEditPlanning && <button type="button" role="menuitem" onClick={() => {
+                              setOverflowEntryId(null);
+                              openSingleDelete(entry);
+                            }}>削除</button>}
+                          </div>
+                        )}
+                      </div>
+                    ) : <span className="row-actions-slot" aria-hidden="true" />}
                   </div>
                 );
               })}
@@ -3518,8 +3334,6 @@ export function App() {
           {reorderOperation && <button type="button" onClick={() => void executeReorder(reorderOperation)}>保留中のReorderを再試行</button>}
           {startOperation && <button type="button" onClick={() => void executeStart(startOperation)}>保留中のStartを再試行</button>}
           {completeOperation && <button type="button" onClick={() => void executeComplete(completeOperation)}>保留中のCompleteを再試行</button>}
-          {revertOperation && <button type="button" onClick={() => void executeRevert(revertOperation)}>保留中の開始取消を再試行</button>}
-          {executionTimesOperation && <button type="button" onClick={() => void executeExecutionTimes(executionTimesOperation)}>保留中の実績時刻保存を再試行</button>}
           {configurationOperation && <button type="button" onClick={() => void executeConfiguration(configurationOperation)}>保留中のSection設定を再試行</button>}
           {sectionSettingsOperation && <button type="button" onClick={() => void executeSectionSettings(sectionSettingsOperation)}>保留中の次Day Section設定を再試行</button>}
           {sectionMoveOperation && <button type="button" onClick={() => void executeSectionMove(sectionMoveOperation)}>保留中のSection移動を再試行</button>}
@@ -3530,7 +3344,7 @@ export function App() {
           {routineEstimateOperation && <button type="button" onClick={() => void executeRoutineEstimate(routineEstimateOperation)}>保留中のRoutine見積を再試行</button>}
           {routineSectionPlanOperation && <button type="button" onClick={() => void executeRoutineSectionPlan(routineSectionPlanOperation)}>保留中のRoutine配置を再試行</button>}
           <button type="button" className="secondary" onClick={() => {
-             setProjectOperation(null); setTaskOperation(null); setDuplicateOperation(null); setBulkDeleteOperation(null); setBulkDateMoveOperation(null); setBulkSectionOperation(null); setBulkSectionOccurrenceOperation(null); setBulkSectionScopedOperation(null); setBulkEstimateOperation(null); setBulkSectionPickerOpen(false); setBulkConfirmation(null); setBulkSectionConfirmation(null); setBulkEstimateConfirmation(null); setBulkDateMoveConfirmation(null); setSelectedEntryIds([]); setReorderOperation(null); setStartOperation(null); setCompleteOperation(null); setRevertOperation(null); setExecutionTimesOperation(null);
+             setProjectOperation(null); setTaskOperation(null); setDuplicateOperation(null); setBulkDeleteOperation(null); setBulkDateMoveOperation(null); setBulkSectionOperation(null); setBulkSectionOccurrenceOperation(null); setBulkSectionScopedOperation(null); setBulkEstimateOperation(null); setBulkSectionPickerOpen(false); setBulkConfirmation(null); setBulkSectionConfirmation(null); setBulkEstimateConfirmation(null); setBulkDateMoveConfirmation(null); setSelectedEntryIds([]); setReorderOperation(null); setStartOperation(null); setCompleteOperation(null);
             setConfigurationOperation(null); setSectionSettingsOperation(null); setSectionMoveOperation(null); setEstimateOperation(null); setPlannedStartOperation(null);
             setRoutineConversionOperation(null); setRoutineEndOperation(null); setRoutineEstimateOperation(null);
             setRoutineSectionPlanOperation(null); setRoutineCandidate(null); setError(null);

@@ -22,10 +22,6 @@ import type {
   CurrentTaskChuteDayProjection,
   CompleteEntryRequest,
   CompleteEntryResult,
-  RevertEntryStartRequest,
-  RevertEntryStartResult,
-  SetExecutionTimesRequest,
-  SetExecutionTimesResult,
   EstablishInitialSectionConfigurationRequest,
   EstablishInitialSectionConfigurationResult,
   SectionConfigurationProjection,
@@ -145,12 +141,6 @@ export const api = {
   },
   completeEntry(body: CompleteEntryRequest): Promise<CompleteEntryResult> {
     return requestJson(`/api/v1/entries/${body.entry_id}/complete`, jsonPost("", body));
-  },
-  revertEntryStart(body: RevertEntryStartRequest): Promise<RevertEntryStartResult> {
-    return requestJson(`/api/v1/entries/${body.entry_id}/revert-start`, jsonPost("", body));
-  },
-  setExecutionTimes(body: SetExecutionTimesRequest): Promise<SetExecutionTimesResult> {
-    return requestJson(`/api/v1/entries/${body.entry_id}/execution-times`, jsonPost("", body));
   },
   establishInitialSectionConfiguration(body: EstablishInitialSectionConfigurationRequest): Promise<EstablishInitialSectionConfigurationResult> {
     return requestJson("/api/v1/section-configurations/initial", jsonPost("", body));

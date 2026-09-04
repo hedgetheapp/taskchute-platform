@@ -172,6 +172,21 @@ describe.sequential("production runtime bootstrap slice", () => {
     expect(expiryMillis - Date.now()).toBeLessThan(7.1 * 24 * 60 * 60 * 1000);
   });
 
+  it("keeps withdrawn Execution correction endpoints unreachable", async () => {
+    const entryId = uuidv7();
+    const revert = await browser.post(`/api/v1/entries/${entryId}/revert-start`, {
+      operation_id: uuidv7(), entry_id: entryId, taskchute_day_id: uuidv7(), execution_id: uuidv7(),
+    });
+    expect(revert.status).toBe(404);
+    expect(await json(revert)).toEqual({ error: { code: "resource_not_found", message: "Not found", reconcile: false } });
+
+    const correction = await browser.post(`/api/v1/entries/${entryId}/execution-times`, {
+      operation_id: uuidv7(), entry_id: entryId, taskchute_day_id: uuidv7(), actual_started_at: null, actual_ended_at: null,
+    });
+    expect(correction.status).toBe(404);
+    expect(await json(correction)).toEqual({ error: { code: "resource_not_found", message: "Not found", reconcile: false } });
+  });
+
   it("represents the Approved rolling 7-day/1-day session policy", () => {
     expect(sessionPolicy).toEqual({ expiresIn: 604800, updateAge: 86400 });
   });
