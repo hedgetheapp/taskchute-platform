@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CurrentTaskChuteDayProjection, EntryProjection } from "../../src/shared/contracts";
 
 const mocks = vi.hoisted(() => ({
-  login: vi.fn(), logout: vi.fn(), loadDay: vi.fn(), loadProjects: vi.fn(), createProject: vi.fn(), addTask: vi.fn(), duplicateEntry: vi.fn(), bulkDeleteEntries: vi.fn(), bulkMoveEntriesToSection: vi.fn(), bulkMoveEntriesToSectionOccurrence: vi.fn(), bulkMoveEntriesToSectionScoped: vi.fn(), bulkSetEntriesEstimateScoped: vi.fn(),
+  login: vi.fn(), logout: vi.fn(), loadDay: vi.fn(), loadProjects: vi.fn(), createProject: vi.fn(), addTask: vi.fn(), duplicateEntry: vi.fn(), bulkDeleteEntries: vi.fn(), bulkMoveEntriesToDay: vi.fn(), bulkMoveEntriesToSection: vi.fn(), bulkMoveEntriesToSectionOccurrence: vi.fn(), bulkMoveEntriesToSectionScoped: vi.fn(), bulkSetEntriesEstimateScoped: vi.fn(),
   reorderEntries: vi.fn(), startEntry: vi.fn(), completeEntry: vi.fn(),
   establishInitialSectionConfiguration: vi.fn(), moveEntry: vi.fn(), setEntryEstimate: vi.fn(),
   setEntryPlannedStart: vi.fn(),
@@ -185,6 +185,7 @@ beforeEach(() => {
   mocks.addTask.mockResolvedValue({});
   mocks.duplicateEntry.mockResolvedValue({});
   mocks.bulkDeleteEntries.mockResolvedValue({});
+  mocks.bulkMoveEntriesToDay.mockResolvedValue({});
   mocks.bulkMoveEntriesToSection.mockResolvedValue({});
   mocks.bulkMoveEntriesToSectionScoped.mockResolvedValue({});
   mocks.bulkSetEntriesEstimateScoped.mockResolvedValue({});
@@ -2839,7 +2840,7 @@ describe("Dogfood Day shell", () => {
     expect(screen.queryByText("1件選択中")).toBeNull();
   });
 
-  it("renders Routine selection and excludes running, completed, and read-only rows", async () => {
+  it("renders Routine selection and excludes running and completed rows while allowing established planned rows", async () => {
     const routineEntry: EntryProjection = { ...firstEntry, task: { ...firstEntry.task, title: "Routine task" }, routine: {
       routine_definition_id: "019c0000-0000-7000-8000-000000000050",
       routine_occurrence_id: "019c0000-0000-7000-8000-000000000051",
@@ -2855,7 +2856,6 @@ describe("Dogfood Day shell", () => {
     const cases = [
       { projection: runningDay, label: "Canonical taskは選択不可（未実行の計画Taskではありません）" },
       { projection: completedDay, label: "Canonical taskは選択不可（未実行の計画Taskではありません）" },
-      { projection: { ...populatedDay, planning_enabled: false }, label: "Canonical taskは選択不可（未実行の計画Taskではありません）" },
     ];
     for (const item of cases) {
       cleanup();
@@ -2865,6 +2865,20 @@ describe("Dogfood Day shell", () => {
       expect((await screen.findByRole("checkbox", { name: item.label }) as HTMLInputElement).disabled).toBe(true);
       expect(screen.queryByRole("checkbox", { name: "すべての未実行Taskを選択" })).toBeNull();
     }
+
+    cleanup();
+    const establishedPast = { ...populatedDay, is_current: false, planning_enabled: false,
+      taskchute_day: { ...populatedDay.taskchute_day, logical_date: "2026-08-21" } };
+    mocks.loadDay.mockReset();
+    mocks.loadDay.mockResolvedValue(establishedPast);
+    render(<App />);
+    const pastCheckbox = await screen.findByRole("checkbox", { name: "「Canonical task」を選択" }) as HTMLInputElement;
+    expect(pastCheckbox.disabled).toBe(false);
+    fireEvent.click(pastCheckbox);
+    expect(screen.getByRole("button", { name: "日付変更" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "見積変更" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Section変更" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "削除" })).toBeNull();
   });
 
   it("selects all eligible Entries across Sections, reports indeterminate state, and preserves selection through collapse and columns", async () => {
@@ -3048,5 +3062,67 @@ describe("Dogfood Day shell", () => {
     expect(screen.getByText("1件選択中")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "次の日" }));
     await waitFor(() => expect(screen.queryByText("1件選択中")).toBeNull());
+  });
+
+  it("previews a single date move without writing, then submits one logical command", async () => {
+    const future = { ...emptyDay, establishment_state: "future_preview" as const, is_current: false,
+      taskchute_day: { ...emptyDay.taskchute_day, id: null, logical_date: "2026-08-23" } };
+    const moved = { ...future, establishment_state: "established" as const,
+      taskchute_day: { ...future.taskchute_day, id: "019c0000-0000-7000-8000-000000000011" } };
+    mocks.loadDay.mockResolvedValueOnce(populatedDay).mockResolvedValueOnce(future).mockResolvedValueOnce(moved);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskの日付変更" }));
+    const dialog = await screen.findByRole("dialog", { name: "Taskの日付を変更" });
+    expect(mocks.bulkMoveEntriesToDay).not.toHaveBeenCalled();
+    expect((within(dialog).getByLabelText("変更先の日付") as HTMLInputElement).value).toBe("2026-08-23");
+    fireEvent.click(within(dialog).getByRole("button", { name: "日付変更を確定" }));
+    await waitFor(() => expect(mocks.bulkMoveEntriesToDay).toHaveBeenCalledTimes(1));
+    expect(mocks.bulkMoveEntriesToDay.mock.calls[0][0]).toMatchObject({
+      source_taskchute_day_id: emptyDay.taskchute_day.id,
+      entry_ids: [firstEntry.id], target_logical_date: "2026-08-23",
+      expected_source_placement_revision: populatedDay.placement_revision,
+      allow_section_fallback: false,
+    });
+    await waitFor(() => expect(screen.queryByText("1件選択中")).toBeNull());
+  });
+
+  it("requires explicit acknowledgement when the target lacks the source Section", async () => {
+    const target = { ...emptyDay, is_current: false,
+      taskchute_day: { ...emptyDay.taskchute_day, logical_date: "2026-08-23" },
+      sections: [emptyDay.sections[1]] };
+    mocks.loadDay.mockResolvedValueOnce(populatedDay).mockResolvedValueOnce(target);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskの日付変更" }));
+    const dialog = await screen.findByRole("dialog", { name: "Taskの日付を変更" });
+    expect((within(dialog).getByRole("button", { name: "日付変更を確定" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: "この変更を了承する" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "日付変更を確定" }));
+    await waitFor(() => expect(mocks.bulkMoveEntriesToDay).toHaveBeenCalledTimes(1));
+    expect(mocks.bulkMoveEntriesToDay.mock.calls[0][0].allow_section_fallback).toBe(true);
+  });
+
+  it("allows planned rows on an established past Day only for date move", async () => {
+    const past = { ...populatedDay, is_current: false, planning_enabled: false,
+      taskchute_day: { ...populatedDay.taskchute_day, logical_date: "2026-08-21" } };
+    mocks.loadDay.mockResolvedValue(past);
+    render(<App />);
+    expect((await screen.findByRole("checkbox", { name: "「Canonical task」を選択" }) as HTMLInputElement).disabled).toBe(false);
+    fireEvent.click(screen.getByRole("checkbox", { name: "「Canonical task」を選択" }));
+    expect(screen.getByRole("button", { name: "日付変更" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "見積変更" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Section変更" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "削除" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Canonical taskを削除" })).toBeNull();
+  });
+
+  it("uses the existing BulkDeleteEntries path for a single planned delete", async () => {
+    mocks.loadDay.mockResolvedValue(populatedDay);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskを削除" }));
+    const dialog = await screen.findByRole("dialog", { name: "選択したTaskを削除" });
+    expect(mocks.bulkDeleteEntries).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "削除" }));
+    await waitFor(() => expect(mocks.bulkDeleteEntries).toHaveBeenCalledTimes(1));
+    expect(mocks.bulkDeleteEntries.mock.calls[0][0]).toMatchObject({ entry_ids: [firstEntry.id], taskchute_day_id: emptyDay.taskchute_day.id });
   });
 });

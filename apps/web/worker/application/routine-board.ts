@@ -472,6 +472,7 @@ interface PlannedOccurrenceRow {
   section_plan_override_present: number;
   estimate_override_present: number;
   suppressed: number;
+  origin_taskchute_day_id: string;
 }
 
 function scheduleEligible(schedule: RoutineScheduleInput, start: string, end: string | null, date: string): boolean {
@@ -495,6 +496,7 @@ async function pausedOn(db: D1Database, appUserId: string, routineId: string, da
 async function readPlannedOccurrences(db: D1Database, appUserId: string, routineId: string,
   currentDate: string): Promise<PlannedOccurrenceRow[]> {
   const rows = await db.prepare(`SELECT o.id AS occurrence_id, e.id AS entry_id, e.taskchute_day_id,
+      o.origin_taskchute_day_id,
       d.logical_date, d.placement_revision, e.section_id, e.planned_start_minute, e.position,
       o.section_plan_override_present, o.estimate_override_present,
       CASE WHEN x.routine_occurrence_id IS NULL THEN 0 ELSE 1 END AS suppressed
@@ -588,7 +590,8 @@ export async function updateRoutine(db: D1Database, appUserId: string, request: 
   const occurrences = await readPlannedOccurrences(db, appUserId, request.routine_definition_id, context.logicalDate);
   const desired = new Map<string, boolean>();
   for (const row of occurrences) {
-    desired.set(row.occurrence_id, scheduleEligible(request.schedule, request.start_logical_date,
+    const moved = row.taskchute_day_id !== row.origin_taskchute_day_id;
+    desired.set(row.occurrence_id, moved || scheduleEligible(request.schedule, request.start_logical_date,
       request.end_logical_date, row.logical_date));
   }
   const eligibleRows = occurrences.filter((row) => desired.get(row.occurrence_id));
@@ -626,7 +629,7 @@ export async function updateRoutine(db: D1Database, appUserId: string, request: 
           LEFT JOIN routine_occurrences o ON o.app_user_id = ?
             AND o.id = json_extract(j.value, '$.occurrence_id')
           LEFT JOIN entries e ON e.app_user_id = o.app_user_id AND e.routine_occurrence_id = o.id
-          LEFT JOIN taskchute_days d ON d.app_user_id = o.app_user_id AND d.id = o.origin_taskchute_day_id
+          LEFT JOIN taskchute_days d ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
           WHERE o.id IS NULL OR e.id IS NULL OR d.id IS NULL OR e.lifecycle_state <> 'planned'
             OR d.placement_revision <> CAST(json_extract(j.value, '$.placement_revision') AS INTEGER)
             OR o.section_plan_override_present <>

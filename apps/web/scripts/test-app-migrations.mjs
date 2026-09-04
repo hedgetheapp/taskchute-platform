@@ -379,6 +379,32 @@ try {
   const invalidEstimateGuard = execute(["--command", `INSERT INTO routine_command_guards (app_user_id, operation_id, command_type)
     VALUES ('user-v01a', 'operation-bulk-estimate-invalid-guard', 'NotACommand')`], false);
   assert.notEqual(invalidEstimateGuard.status, 0, "unknown routine guard command must remain rejected after 0014");
+  const preDayMoveOperations = query("SELECT * FROM operations ORDER BY operation_id");
+  const preDayMoveTables = query("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name");
+  const preDayMovePlacementGuard = query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'placement_command_guards'");
+  const preDayMoveRoutineGuard = query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'routine_command_guards'");
+  applyFile("migrations/app/0015_day_move.sql");
+  assert.deepEqual(query("SELECT * FROM operations ORDER BY operation_id"), preDayMoveOperations,
+    "0015 must preserve every operation row");
+  assert.deepEqual(query("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name"), preDayMoveTables,
+    "0015 must not add or remove application tables");
+  assert.deepEqual(query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'placement_command_guards'"), preDayMovePlacementGuard,
+    "0015 must preserve placement guard schema");
+  assert.deepEqual(query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'routine_command_guards'"), preDayMoveRoutineGuard,
+    "0015 must preserve Routine guard schema");
+  const dayMoveOperationTable = query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'operations'")[0]?.sql ?? "";
+  assert(dayMoveOperationTable.includes("BulkMoveEntriesToDay"), "0015 must add the Day move command CHECK entry");
+  execute(["--command", `INSERT INTO operations
+    (app_user_id, operation_id, command_type, request_fingerprint_version, request_fingerprint, outcome_kind, result_json, created_at)
+    VALUES ('user-v01a', 'operation-day-move', 'BulkMoveEntriesToDay', 1, 'day-move-fingerprint', 'success', '{}',
+      '2026-08-28T08:00:00.000Z')`]);
+  assert.deepEqual(query("SELECT command_type FROM operations WHERE operation_id = 'operation-day-move'"),
+    [{ command_type: "BulkMoveEntriesToDay" }]);
+  const invalidDayMoveCommand = execute(["--command", `INSERT INTO operations
+    (app_user_id, operation_id, command_type, request_fingerprint_version, request_fingerprint, outcome_kind, result_json, created_at)
+    VALUES ('user-v01a', 'operation-day-move-invalid', 'NotACommand', 1, 'invalid-day-move-fingerprint', 'success', '{}',
+      '2026-08-28T08:01:00.000Z')`], false);
+  assert.notEqual(invalidDayMoveCommand.status, 0, "unknown operation command must remain rejected after 0015");
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
   assert.deepEqual(query("PRAGMA foreign_key_check"), []);
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
@@ -483,6 +509,8 @@ try {
       request_fingerprint: "bulk-section-fingerprint", outcome_kind: "success", result_json: "{}" },
     { operation_id: "operation-bulk-selection", command_type: "BulkDeleteEntries",
       request_fingerprint: "bulk-fingerprint", outcome_kind: "success", result_json: "{}" },
+    { operation_id: "operation-day-move", command_type: "BulkMoveEntriesToDay",
+      request_fingerprint: "day-move-fingerprint", outcome_kind: "success", result_json: "{}" },
     { operation_id: "operation-existing", command_type: "AddTaskToDay", request_fingerprint: "fixture-fingerprint",
       outcome_kind: "success", result_json: "{\"fixture\":true}" },
   ]);
@@ -549,7 +577,7 @@ try {
   assert.notEqual(duplicateActive.status, 0, "the active Execution unique index must reject a second active row");
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
   assert.deepEqual(query("PRAGMA foreign_key_check"), []);
-  console.log("migration regression: 4 scenarios passed (R2A normalization, R2B preservation/constraints, duplicate-Task fail-safe, Bulk Selection 0010/0011/0012/0013/0014 preservation/constraints; fresh 0001 -> 0014 chain)");
+  console.log("migration regression: 4 scenarios passed (R2A normalization, R2B preservation/constraints, duplicate-Task fail-safe, Bulk Selection 0010/0011/0012/0013/0014/0015 preservation/constraints; fresh 0001 -> 0015 chain)");
 } finally {
   await rm(persistencePath, { recursive: true, force: true });
   await rm(failurePersistencePath, { recursive: true, force: true });

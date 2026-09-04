@@ -188,6 +188,25 @@ export interface BulkDeleteEntriesResult {
   placement_revision: number;
 }
 
+export interface BulkMoveEntriesToDayRequest {
+  operation_id: string;
+  source_taskchute_day_id: string;
+  entry_ids: string[];
+  target_logical_date: string;
+  expected_source_placement_revision: number;
+  allow_section_fallback: boolean;
+}
+
+export interface BulkMoveEntriesToDayResult {
+  source_taskchute_day_id: string;
+  target_taskchute_day_id: string;
+  target_logical_date: string;
+  moved_entry_ids: string[];
+  fallback_entry_ids: string[];
+  source_placement_revision: number;
+  target_placement_revision: number;
+}
+
 export interface BulkMoveEntriesToSectionRequest {
   operation_id: string;
   taskchute_day_id: string;
