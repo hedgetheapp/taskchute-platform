@@ -6,7 +6,7 @@ Date: 2026-09-04
 
 ### D-057 — Execution Correction Batch v0.1 — 2026-09-04
 
-D-057はApproved Decisionとしてcanonical化済みで、Decision commit `bcacc599b477b4eea56dd1ca158eb085360265e2`（`Approve Execution Correction v0.1`）を`main`へpush済みである。implementation commit `b3370d3d2e3de3ba113b1e3a55fbed893f3cc068`（`Implement Execution Correction v0.1`）も`main`へpush済みである。D-029の「未実行に戻す」は、現在のactiveなStartだけを対象とする狭い実装境界へ具体化した。新しいProduct Decisionではなく、Approved D-029 / D-033の実装である。
+D-057はApproved Decisionとしてcanonical化済みで、Decision commit `bcacc599b477b4eea56dd1ca158eb085360265e2`（`Approve Execution Correction v0.1`）を`main`へpush済みである。implementation commit `b3370d3d2e3de3ba113b1e3a55fbed893f3cc068`（`Implement Execution Correction v0.1`）も`main`へpush済みである。D-029の「未実行に戻す」は、現在のactiveなStartだけを対象とする狭い実装境界へ具体化した。D-057はD-029 / D-033を基礎としつつ、current Start Revertにおけるhistorical-retention semanticsを狭くsupersedeするApproved Product Decisionである。
 
 current StartのRevertはactive Executionだけを削除し、Entryを`running -> planned`へ戻す。Section、開始予定、position、`placement_revision`は保持し、取消Executionの履歴は残さない。operation logはretry / idempotencyのため保持する。actual開始・終了時刻はplanned / running / completed Entryへ直接入力・訂正でき、derived実績、user-global no-overlap、Start Forecast reconciliationを維持する。completed Entryのactual endを消して再openする経路は拒否する。
 
