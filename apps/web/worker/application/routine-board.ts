@@ -515,14 +515,17 @@ async function sectionPlansForUpdate(db: D1Database, appUserId: string, rows: Pl
   request: UpdateRoutineRequest): Promise<Array<PlannedOccurrenceRow & { target_section_id: string | null;
     target_planned_start_minute: number | null; target_position: number }> | null> {
   const targets = rows.filter((row) => row.section_plan_override_present === 0);
+  const targetStartByDay = new Map<string, number | null>();
   if (request.default_section_id !== null) {
     for (const row of targets) {
-      const valid = await db.prepare(`SELECT COUNT(*) AS count FROM taskchute_day_section_contexts
+      const context = await db.prepare(`SELECT logical_start_minute, logical_end_minute
+        FROM taskchute_day_section_contexts
         WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id = ?
-          AND logical_start_minute <= ? AND ? < logical_end_minute`)
-        .bind(appUserId, row.taskchute_day_id, request.default_section_id,
-          request.default_planned_start_minute, request.default_planned_start_minute).first<{ count: number }>();
-      if (valid?.count !== 1) return null;
+          AND logical_start_minute IS NOT NULL AND logical_end_minute IS NOT NULL`)
+        .bind(appUserId, row.taskchute_day_id, request.default_section_id)
+        .first<{ logical_start_minute: number; logical_end_minute: number }>();
+      if (!context) return null;
+      targetStartByDay.set(row.taskchute_day_id, context.logical_start_minute);
     }
   }
   const positions = await db.prepare(`SELECT taskchute_day_id, section_id, MAX(position) AS max_position
@@ -537,7 +540,9 @@ async function sectionPlansForUpdate(db: D1Database, appUserId: string, rows: Pl
       next.set(key, position + 1);
     }
     return { ...row, target_section_id: request.default_section_id,
-      target_planned_start_minute: request.default_planned_start_minute, target_position: position };
+      target_planned_start_minute: request.default_section_id === null
+        ? null : targetStartByDay.get(row.taskchute_day_id) ?? null,
+      target_position: position };
   });
 }
 
