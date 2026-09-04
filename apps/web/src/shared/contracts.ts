@@ -37,6 +37,12 @@ export interface ExecutionSummaryProjection {
   last_ended_at: string | null;
   completed_duration_seconds: number;
   active_started_at: string | null;
+  /** Present when the Entry has exactly one editable Execution. */
+  single_execution_id?: string | null;
+  /** The current active Execution id, when one exists. */
+  active_execution_id?: string | null;
+  /** Existing Execution facts for explicit correction selection; never inferred by the client. */
+  executions?: ExecutionProjection[];
 }
 
 export interface EntryProjection {
@@ -332,6 +338,47 @@ export interface CompleteEntryResult {
   entry_id: string;
   lifecycle_state: "completed";
   execution: ExecutionProjection;
+}
+
+export interface RevertEntryStartRequest {
+  operation_id: string;
+  entry_id: string;
+  execution_id: string;
+  expected_started_at: string;
+}
+
+export interface RevertEntryStartResult {
+  entry_id: string;
+  lifecycle_state: "planned";
+  execution_id: string;
+  section_id: string | null;
+  planned_start_minute: number | null;
+  position: number;
+  placement_revision: number;
+}
+
+export type ExecutionCorrectionLifecycleState = "planned" | "running" | "completed";
+
+export interface SetExecutionTimesRequest {
+  operation_id: string;
+  entry_id: string;
+  execution_id: string;
+  expected_lifecycle_state: ExecutionCorrectionLifecycleState;
+  started_at: string;
+  ended_at: string | null;
+  expected_started_at: string | null;
+  expected_ended_at: string | null;
+  expected_placement_revision?: number;
+}
+
+export interface SetExecutionTimesResult {
+  entry_id: string;
+  lifecycle_state: "running" | "completed";
+  execution: ExecutionProjection;
+  section_id: string | null;
+  planned_start_minute: number | null;
+  position: number;
+  placement_revision: number;
 }
 
 export interface SectionConfigurationItemInput {

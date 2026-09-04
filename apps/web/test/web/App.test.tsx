@@ -4,7 +4,7 @@ import type { CurrentTaskChuteDayProjection, EntryProjection } from "../../src/s
 
 const mocks = vi.hoisted(() => ({
   login: vi.fn(), logout: vi.fn(), loadDay: vi.fn(), loadProjects: vi.fn(), createProject: vi.fn(), addTask: vi.fn(), duplicateEntry: vi.fn(), bulkDeleteEntries: vi.fn(), bulkMoveEntriesToDay: vi.fn(), bulkMoveEntriesToSection: vi.fn(), bulkMoveEntriesToSectionOccurrence: vi.fn(), bulkMoveEntriesToSectionScoped: vi.fn(), bulkSetEntriesEstimateScoped: vi.fn(),
-  reorderEntries: vi.fn(), startEntry: vi.fn(), completeEntry: vi.fn(),
+  reorderEntries: vi.fn(), startEntry: vi.fn(), completeEntry: vi.fn(), revertEntryStart: vi.fn(), setExecutionTimes: vi.fn(),
   establishInitialSectionConfiguration: vi.fn(), moveEntry: vi.fn(), setEntryEstimate: vi.fn(),
   setEntryPlannedStart: vi.fn(),
   convertEntryToRoutine: vi.fn(), endRoutine: vi.fn(), setRoutineEstimate: vi.fn(), setRoutineSectionPlan: vi.fn(),
@@ -163,10 +163,39 @@ const runningDay: CurrentTaskChuteDayProjection = {
   next_entry: null,
 };
 
+const runningCorrectionDay: CurrentTaskChuteDayProjection = {
+  ...runningDay,
+  sections: [{ ...runningDay.sections[0], entries: [{ ...firstEntry, lifecycle_state: "running", execution_summary: {
+    first_started_at: "2026-08-22T12:00:00.000Z", last_ended_at: null, completed_duration_seconds: 0,
+    active_started_at: "2026-08-22T12:00:00.000Z", active_execution_id: runningDay.active_execution!.id,
+  } }] }, emptyDay.sections[1]],
+};
+
 const completedDay: CurrentTaskChuteDayProjection = {
   ...runningDay,
   active_execution: null,
   sections: [{ ...runningDay.sections[0], entries: [{ ...firstEntry, lifecycle_state: "completed" }] }, emptyDay.sections[1]],
+};
+
+const completedCorrectionDay: CurrentTaskChuteDayProjection = {
+  ...completedDay,
+  sections: [{ ...completedDay.sections[0], entries: [{ ...firstEntry, lifecycle_state: "completed", execution_summary: {
+    first_started_at: "2026-08-22T12:00:00.000Z", last_ended_at: "2026-08-22T12:30:00.000Z", completed_duration_seconds: 1800,
+    active_started_at: null, single_execution_id: "019c0000-0000-7000-8000-000000000005",
+    executions: [{ id: "019c0000-0000-7000-8000-000000000005", entry_id: firstEntry.id,
+      started_at: "2026-08-22T12:00:00.000Z", ended_at: "2026-08-22T12:30:00.000Z" }],
+  } }] }, emptyDay.sections[1]],
+};
+
+const multiExecutionCorrectionDay: CurrentTaskChuteDayProjection = {
+  ...completedCorrectionDay,
+  sections: [{ ...completedCorrectionDay.sections[0], entries: [{ ...firstEntry, lifecycle_state: "completed", execution_summary: {
+    first_started_at: "2026-08-22T10:00:00.000Z", last_ended_at: "2026-08-22T12:30:00.000Z", completed_duration_seconds: 9000,
+    active_started_at: null, single_execution_id: null, executions: [
+      { id: "019c0000-0000-7000-8000-000000000021", entry_id: firstEntry.id, started_at: "2026-08-22T10:00:00.000Z", ended_at: "2026-08-22T10:30:00.000Z" },
+      { id: "019c0000-0000-7000-8000-000000000022", entry_id: firstEntry.id, started_at: "2026-08-22T12:00:00.000Z", ended_at: "2026-08-22T12:30:00.000Z" },
+    ],
+  } }] }, emptyDay.sections[1]],
 };
 
 const unsectionedDay: CurrentTaskChuteDayProjection = {
@@ -192,6 +221,8 @@ beforeEach(() => {
   mocks.reorderEntries.mockResolvedValue({});
   mocks.startEntry.mockResolvedValue({});
   mocks.completeEntry.mockResolvedValue({});
+  mocks.revertEntryStart.mockResolvedValue({});
+  mocks.setExecutionTimes.mockResolvedValue({});
   mocks.establishInitialSectionConfiguration.mockResolvedValue({});
   mocks.moveEntry.mockResolvedValue({});
   mocks.setEntryEstimate.mockResolvedValue({});
@@ -3124,5 +3155,65 @@ describe("Dogfood Day shell", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "削除" }));
     await waitFor(() => expect(mocks.bulkDeleteEntries).toHaveBeenCalledTimes(1));
     expect(mocks.bulkDeleteEntries.mock.calls[0][0]).toMatchObject({ entry_ids: [firstEntry.id], taskchute_day_id: emptyDay.taskchute_day.id });
+  });
+
+  it("opens a timezone-aware actual editor for planned Entry and writes only on save", async () => {
+    mocks.loadDay.mockResolvedValueOnce(populatedDay).mockResolvedValueOnce(populatedDay);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskの実績時刻を編集" }));
+    const dialog = await screen.findByRole("dialog", { name: "実績時刻を入力・訂正" });
+    expect(mocks.setExecutionTimes).not.toHaveBeenCalled();
+    fireEvent.change(within(dialog).getByLabelText("実績開始"), { target: { value: "2026-08-22T10:00:00" } });
+    fireEvent.change(within(dialog).getByLabelText("実績終了（任意）"), { target: { value: "2026-08-22T10:30:00" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "実績を保存" }));
+    await waitFor(() => expect(mocks.setExecutionTimes).toHaveBeenCalledTimes(1));
+    expect(mocks.setExecutionTimes.mock.calls[0][0]).toMatchObject({
+      entry_id: firstEntry.id, expected_lifecycle_state: "planned", started_at: "2026-08-22T10:00:00.000Z",
+      ended_at: "2026-08-22T10:30:00.000Z", expected_started_at: null, expected_ended_at: null,
+    });
+    expect(mocks.setExecutionTimes.mock.calls[0][0]).not.toHaveProperty("expected_placement_revision");
+  });
+
+  it("requires confirmation before reverting the current active Start", async () => {
+    mocks.loadDay.mockResolvedValue(runningCorrectionDay);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskの開始を取り消す" }));
+    const dialog = await screen.findByRole("dialog", { name: "今回の開始を取り消す" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "キャンセル" }));
+    expect(mocks.revertEntryStart).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Canonical taskの開始を取り消す" }));
+    fireEvent.click(within(await screen.findByRole("dialog", { name: "今回の開始を取り消す" })).getByRole("button", { name: "未実行に戻す" }));
+    await waitFor(() => expect(mocks.revertEntryStart).toHaveBeenCalledTimes(1));
+    expect(mocks.revertEntryStart.mock.calls[0][0]).toMatchObject({ entry_id: firstEntry.id,
+      execution_id: runningCorrectionDay.active_execution!.id, expected_started_at: "2026-08-22T12:00:00.000Z" });
+  });
+
+  it("allows completed correction only with a non-empty end and uses the single Execution identity", async () => {
+    mocks.loadDay.mockResolvedValueOnce(completedCorrectionDay).mockResolvedValueOnce(completedCorrectionDay);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskの実績時刻を編集" }));
+    const dialog = await screen.findByRole("dialog", { name: "実績時刻を入力・訂正" });
+    expect((within(dialog).getByLabelText("実績終了（必須）") as HTMLInputElement).value).toBe("2026-08-22T12:30");
+    fireEvent.change(within(dialog).getByLabelText("実績終了（必須）"), { target: { value: "2026-08-22T12:45:00" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "実績を保存" }));
+    await waitFor(() => expect(mocks.setExecutionTimes).toHaveBeenCalledTimes(1));
+    expect(mocks.setExecutionTimes.mock.calls[0][0]).toMatchObject({ expected_lifecycle_state: "completed",
+      execution_id: "019c0000-0000-7000-8000-000000000005", ended_at: "2026-08-22T12:45:00.000Z" });
+  });
+
+  it("requires explicit Execution selection when a completed Entry has multiple segments", async () => {
+    mocks.loadDay.mockResolvedValue(multiExecutionCorrectionDay);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskの実績時刻を編集" }));
+    const dialog = await screen.findByRole("dialog", { name: "実績時刻を入力・訂正" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "実績を保存" }));
+    expect(mocks.setExecutionTimes).not.toHaveBeenCalled();
+    fireEvent.change(within(dialog).getByLabelText("補正対象Execution"), { target: { value: "019c0000-0000-7000-8000-000000000022" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "実績を保存" }));
+    await waitFor(() => expect(mocks.setExecutionTimes).toHaveBeenCalledTimes(1));
+    expect(mocks.setExecutionTimes.mock.calls[0][0]).toMatchObject({
+      execution_id: "019c0000-0000-7000-8000-000000000022", expected_started_at: "2026-08-22T12:00:00.000Z",
+      expected_ended_at: "2026-08-22T12:30:00.000Z",
+    });
   });
 });

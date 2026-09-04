@@ -22,6 +22,7 @@ import type {
   BulkSetEntriesEstimateScopedRequest,
   BulkEstimateScopeInput,
   CompleteEntryRequest,
+  RevertEntryStartRequest,
   CreateProjectRequest,
   CurrentTaskChuteDayProjection,
   EntryProjection,
@@ -39,6 +40,7 @@ import type {
   EndRoutineRequest,
   SetRoutineEstimateRequest,
   SetRoutineSectionPlanRequest,
+  SetExecutionTimesRequest,
 } from "../shared/contracts";
 import { isSamePlannedStartCohort } from "../shared/planned-entry-order";
 import { advanceProjectionClock, calculateStartForecast, formatStartForecast } from "../shared/start-forecast";
@@ -106,6 +108,16 @@ type BulkDateMoveConfirmation = {
   preview: CurrentTaskChuteDayProjection | null;
   previewLoading: boolean;
   fallbackAcknowledged: boolean;
+};
+type ExecutionTimesDraft = {
+  entryId: string;
+  executionId: string | null;
+  executionOptions: Array<{ id: string; started_at: string; ended_at: string | null }>;
+  expectedLifecycleState: SetExecutionTimesRequest["expected_lifecycle_state"];
+  expectedStartedAt: string | null;
+  expectedEndedAt: string | null;
+  startedLocal: string;
+  endedLocal: string;
 };
 
 /**
@@ -316,6 +328,23 @@ function formatLogicalMinute(value: number | null): string {
   return `${String(Math.floor(value / 60)).padStart(2, "0")}:${String(value % 60).padStart(2, "0")}`;
 }
 
+function formatActualInput(value: string | null, timezone: string): string {
+  if (!value) return "";
+  const local = Temporal.Instant.from(value).toZonedDateTimeISO(timezone);
+  const date = `${String(local.year).padStart(4, "0")}-${String(local.month).padStart(2, "0")}-${String(local.day).padStart(2, "0")}`;
+  const time = `${String(local.hour).padStart(2, "0")}:${String(local.minute).padStart(2, "0")}:${String(local.second).padStart(2, "0")}`;
+  return `${date}T${time}`;
+}
+
+function parseActualInput(value: string, timezone: string, field: string): string {
+  try {
+    return Temporal.PlainDateTime.from(value).toZonedDateTime(timezone).toInstant()
+      .toString({ smallestUnit: "millisecond" });
+  } catch {
+    throw new Error(`${field}を正しい日時で入力してください`);
+  }
+}
+
 function formatEstimate(seconds: number | null): string {
   if (!seconds) return "—";
   const minutes = Math.floor(seconds / 60);
@@ -336,6 +365,8 @@ function transientStatusText(pending: string | null): string | null {
     case "bulk-estimate": return "選択したTaskの見積を変更・照合中…";
     case "start": return "開始・照合中…";
     case "complete": return "完了・照合中…";
+    case "revert-start": return "開始取消・照合中…";
+    case "execution-times": return "実績時刻を保存・照合中…";
     case "move": return "Section移動・照合中…";
     case "estimate": return "見積を保存・照合中…";
     case "planned-start": return "開始予定を保存・照合中…";
@@ -445,6 +476,8 @@ export function App() {
   const [reorderOperation, setReorderOperation] = useState<ReorderEntriesRequest | null>(null);
   const [startOperation, setStartOperation] = useState<StartEntryRequest | null>(null);
   const [completeOperation, setCompleteOperation] = useState<CompleteEntryRequest | null>(null);
+  const [revertOperation, setRevertOperation] = useState<RevertEntryStartRequest | null>(null);
+  const [executionTimesOperation, setExecutionTimesOperation] = useState<SetExecutionTimesRequest | null>(null);
   const [configurationOperation, setConfigurationOperation] = useState<EstablishInitialSectionConfigurationRequest | null>(null);
   const [sectionMoveOperation, setSectionMoveOperation] = useState<MoveEntryRequest | null>(null);
   const [estimateOperation, setEstimateOperation] = useState<SetEntryEstimateRequest | null>(null);
@@ -454,6 +487,8 @@ export function App() {
   const [routineEndOperation, setRoutineEndOperation] = useState<EndRoutineRequest | null>(null);
   const [routineEstimateOperation, setRoutineEstimateOperation] = useState<SetRoutineEstimateRequest | null>(null);
   const [routineSectionPlanOperation, setRoutineSectionPlanOperation] = useState<SetRoutineSectionPlanRequest | null>(null);
+  const [executionTimesDraft, setExecutionTimesDraft] = useState<ExecutionTimesDraft | null>(null);
+  const [revertConfirmation, setRevertConfirmation] = useState<RevertEntryStartRequest | null>(null);
   const [, setSectionSettings] = useState<SectionConfigurationProjection | null>(null);
   const [sectionSettingsDraft, setSectionSettingsDraft] = useState<SectionSettingsDraft | null>(null);
   const [sectionSettingsNotice, setSectionSettingsNotice] = useState<string | null>(null);
@@ -461,7 +496,7 @@ export function App() {
   const [editingPlannedStart, setEditingPlannedStart] = useState<{ entryId: string; value: string } | null>(null);
   const [routineDraft, setRoutineDraft] = useState<{ entryId: string; endDate: string } | null>(null);
   const [routineCandidate, setRoutineCandidate] = useState<RoutineCandidate | null>(null);
-  const [pending, setPending] = useState<"login" | "project" | "project-settings" | "day-navigation" | "task" | "duplicate" | "bulk-delete" | "bulk-date-move" | "bulk-section" | "bulk-section-occurrence" | "bulk-section-scoped" | "bulk-estimate" | "reorder" | "start" | "complete" | "configuration" | "section-settings" | "move" | "estimate" | "planned-start" | "routine-convert" | "routine-end" | "routine-edit" | "logout" | null>(null);
+  const [pending, setPending] = useState<"login" | "project" | "project-settings" | "day-navigation" | "task" | "duplicate" | "bulk-delete" | "bulk-date-move" | "bulk-section" | "bulk-section-occurrence" | "bulk-section-scoped" | "bulk-estimate" | "reorder" | "start" | "complete" | "revert-start" | "execution-times" | "configuration" | "section-settings" | "move" | "estimate" | "planned-start" | "routine-convert" | "routine-end" | "routine-edit" | "logout" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draftTask, setDraftTask] = useState<DraftTask | null>(null);
   const [pendingFocusKey, setPendingFocusKey] = useState<string | null>(null);
@@ -497,10 +532,10 @@ export function App() {
   const bulkEstimateTriggerRef = useRef<HTMLButtonElement | null>(null);
   const routineScopeChoiceRef = useRef<HTMLSpanElement | null>(null);
   const forecastClockRef = useRef<{ serverInstant: string; monotonicMilliseconds: number } | null>(null);
-  const retainedOperation = projectOperation ?? taskOperation ?? duplicateOperation ?? bulkDeleteOperation ?? bulkDateMoveOperation ?? bulkSectionOperation ?? bulkSectionOccurrenceOperation ?? bulkSectionScopedOperation ?? bulkEstimateOperation ?? startOperation ?? completeOperation
+  const retainedOperation = projectOperation ?? taskOperation ?? duplicateOperation ?? bulkDeleteOperation ?? bulkDateMoveOperation ?? bulkSectionOperation ?? bulkSectionOccurrenceOperation ?? bulkSectionScopedOperation ?? bulkEstimateOperation ?? reorderOperation ?? startOperation ?? completeOperation ?? revertOperation ?? executionTimesOperation
     ?? configurationOperation ?? sectionSettingsOperation ?? sectionMoveOperation ?? estimateOperation ?? plannedStartOperation
     ?? routineConversionOperation ?? routineEndOperation ?? routineEstimateOperation ?? routineSectionPlanOperation;
-  const mutationLocked = pending !== null || retainedOperation !== null || bulkConfirmation !== null || bulkSectionConfirmation !== null || bulkEstimateConfirmation !== null || bulkDateMoveConfirmation !== null;
+  const mutationLocked = pending !== null || retainedOperation !== null || bulkConfirmation !== null || bulkSectionConfirmation !== null || bulkEstimateConfirmation !== null || bulkDateMoveConfirmation !== null || executionTimesDraft !== null || revertConfirmation !== null;
 
   const transitionToSignedOut = useCallback(() => {
     selectedLogicalDateRef.current = null;
@@ -531,6 +566,10 @@ export function App() {
     setReorderOperation(null);
     setStartOperation(null);
     setCompleteOperation(null);
+    setRevertOperation(null);
+    setExecutionTimesOperation(null);
+    setExecutionTimesDraft(null);
+    setRevertConfirmation(null);
     setConfigurationOperation(null);
     setSectionMoveOperation(null);
     setEstimateOperation(null);
@@ -548,6 +587,8 @@ export function App() {
     setDraftTask(null);
     setEditingEstimate(null);
     setEditingPlannedStart(null);
+    setExecutionTimesDraft(null);
+    setRevertConfirmation(null);
     setPendingFocusKey(null);
     // Keep browser-local presentation preferences across an auth transition;
     // the next authenticated Day projection prunes keys that are not valid
@@ -1846,6 +1887,162 @@ export function App() {
     await executeComplete(operation);
   }
 
+  function entryForId(projection: CurrentTaskChuteDayProjection | null, entryId: string): EntryProjection | null {
+    if (!projection) return null;
+    return [...projection.unsectioned_entries, ...projection.sections.flatMap((section) => section.entries)]
+      .find((entry) => entry.id === entryId) ?? null;
+  }
+
+  function canEditExecutionTimes(entry: EntryProjection): boolean {
+    const summary = entry.execution_summary;
+    if (!day?.taskchute_day.id || day.establishment_state !== "established") return false;
+    if (entry.lifecycle_state === "planned") return true;
+    if (entry.lifecycle_state === "running") return summary?.active_execution_id != null && summary.active_started_at != null;
+    return summary?.single_execution_id != null || (summary?.executions?.length ?? 0) > 0;
+  }
+
+  function openExecutionTimesEditor(entry: EntryProjection) {
+    if (!day || !canEditExecutionTimes(entry) || mutationLocked) return;
+    const timezone = day.taskchute_day.establishment_timezone;
+    if (!timezone) return;
+    const summary = entry.execution_summary;
+    const expectedLifecycleState = entry.lifecycle_state;
+    const executionId: string | null = (entry.lifecycle_state === "planned"
+      ? uuidv7()
+      : entry.lifecycle_state === "running" ? summary?.active_execution_id : summary?.single_execution_id) ?? null;
+    const executionOptions = summary?.executions ?? [];
+    if (entry.lifecycle_state !== "planned" && executionOptions.length === 0) return;
+    const selectedExecution = executionId ? executionOptions.find((candidate) => candidate.id === executionId) : undefined;
+    const expectedStartedAt = entry.lifecycle_state === "planned"
+      ? null : selectedExecution?.started_at ?? (entry.lifecycle_state === "running" ? summary?.active_started_at ?? null : null);
+    const expectedEndedAt = entry.lifecycle_state === "completed" ? selectedExecution?.ended_at ?? null : null;
+    setError(null);
+    setExecutionTimesDraft({ entryId: entry.id, executionId, expectedLifecycleState,
+      expectedStartedAt, expectedEndedAt,
+      startedLocal: formatActualInput(expectedStartedAt, timezone),
+      endedLocal: formatActualInput(expectedEndedAt, timezone),
+      executionOptions });
+  }
+
+  function selectExecutionForCorrection(executionId: string) {
+    setExecutionTimesDraft((current) => {
+      if (!current) return current;
+      const selected = current.executionOptions.find((candidate) => candidate.id === executionId);
+      if (!selected || !day?.taskchute_day.establishment_timezone) return current;
+      return { ...current, executionId, expectedStartedAt: selected.started_at, expectedEndedAt: selected.ended_at,
+        startedLocal: formatActualInput(selected.started_at, day.taskchute_day.establishment_timezone),
+        endedLocal: formatActualInput(selected.ended_at, day.taskchute_day.establishment_timezone) };
+    });
+  }
+
+  async function executeExecutionTimes(operation: SetExecutionTimesRequest) {
+    setPending("execution-times");
+    setError(null);
+    try {
+      await api.setExecutionTimes(operation);
+      await reconcile();
+      setExecutionTimesOperation(null);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "実績時刻の保存に失敗しました");
+      const ambiguous = isAmbiguousOutcome(caught);
+      if (!ambiguous) setExecutionTimesOperation(null);
+      try {
+        const projection = await reconcile();
+        const canonical = entryForId(projection, operation.entry_id);
+        const summary = canonical?.execution_summary;
+        const expectedStarted = operation.expected_lifecycle_state === "running"
+          ? summary?.active_started_at : summary?.first_started_at;
+        const expectedEnded = operation.ended_at;
+        if (ambiguous && canonical && canonical.lifecycle_state === (expectedEnded === null ? "running" : "completed")
+          && expectedStarted === operation.started_at
+          && (expectedEnded === null ? summary?.active_started_at !== null : summary?.last_ended_at === expectedEnded)) {
+          setExecutionTimesOperation(null);
+          setError(null);
+        }
+      } catch { /* Preserve the logical operation. */ }
+    } finally {
+      setPending(null);
+    }
+  }
+
+  function submitExecutionTimes(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!day || !executionTimesDraft || pending !== null || retainedOperation !== null || revertConfirmation !== null) return;
+    if (!executionTimesDraft.executionId) {
+      setError("補正対象のExecutionを選択してください");
+      return;
+    }
+    const timezone = day.taskchute_day.establishment_timezone;
+    if (!timezone) return;
+    let startedAt: string;
+    let endedAt: string | null = null;
+    try {
+      startedAt = parseActualInput(executionTimesDraft.startedLocal, timezone, "開始時刻");
+      if (executionTimesDraft.endedLocal.trim() !== "") endedAt = parseActualInput(executionTimesDraft.endedLocal, timezone, "終了時刻");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "実績時刻を正しく入力してください");
+      return;
+    }
+    if (executionTimesDraft.expectedLifecycleState === "completed" && endedAt === null) {
+      setError("完了済みEntryの終了時刻は空にできません");
+      return;
+    }
+    const entry = entryForId(day, executionTimesDraft.entryId);
+    if (!entry) return;
+    const operation: SetExecutionTimesRequest = {
+      operation_id: uuidv7(), entry_id: executionTimesDraft.entryId, execution_id: executionTimesDraft.executionId,
+      expected_lifecycle_state: executionTimesDraft.expectedLifecycleState, started_at: startedAt, ended_at: endedAt,
+      expected_started_at: executionTimesDraft.expectedStartedAt, expected_ended_at: executionTimesDraft.expectedEndedAt,
+      ...(executionTimesDraft.expectedLifecycleState === "planned" && entry.section_id === null
+        ? { expected_placement_revision: day.placement_revision } : {}),
+    };
+    setExecutionTimesDraft(null);
+    setExecutionTimesOperation(operation);
+    void executeExecutionTimes(operation);
+  }
+
+  function openRevertConfirmation(entry: EntryProjection) {
+    if (mutationLocked || entry.lifecycle_state !== "running") return;
+    const executionId = entry.execution_summary?.active_execution_id;
+    const expectedStartedAt = entry.execution_summary?.active_started_at;
+    if (!executionId || !expectedStartedAt) return;
+    setError(null);
+    setRevertConfirmation({ operation_id: uuidv7(), entry_id: entry.id, execution_id: executionId, expected_started_at: expectedStartedAt });
+  }
+
+  async function executeRevert(operation: RevertEntryStartRequest) {
+    setPending("revert-start");
+    setError(null);
+    try {
+      await api.revertEntryStart(operation);
+      await reconcile();
+      setRevertOperation(null);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "開始の取消に失敗しました");
+      const ambiguous = isAmbiguousOutcome(caught);
+      if (!ambiguous) setRevertOperation(null);
+      try {
+        const projection = await reconcile();
+        const canonical = entryForId(projection, operation.entry_id);
+        if (ambiguous && canonical?.lifecycle_state === "planned"
+          && canonical.execution_summary?.active_execution_id !== operation.execution_id) {
+          setRevertOperation(null);
+          setError(null);
+        }
+      } catch { /* Preserve the logical operation. */ }
+    } finally {
+      setPending(null);
+    }
+  }
+
+  function confirmRevert() {
+    if (!revertConfirmation || pending !== null || retainedOperation !== null || executionTimesDraft !== null) return;
+    const operation = revertConfirmation;
+    setRevertConfirmation(null);
+    setRevertOperation(operation);
+    void executeRevert(operation);
+  }
+
   async function executeConfiguration(operation: EstablishInitialSectionConfigurationRequest) {
     setPending("configuration"); setError(null);
     try { await api.establishInitialSectionConfiguration(operation); await reconcile(); setConfigurationOperation(null); }
@@ -3071,6 +3268,50 @@ export function App() {
         </div>
       )}
 
+      {executionTimesDraft && (
+        <div className="bulk-confirmation panel execution-times-dialog" role="dialog" aria-modal="true" aria-labelledby="execution-times-title" tabIndex={-1}>
+          <h2 id="execution-times-title">実績時刻を入力・訂正</h2>
+          <p>{entryForId(currentDay, executionTimesDraft.entryId)?.task.title ?? "Entry"}の実績を保存します。</p>
+          <p className="dialog-hint">入力 timezone: {currentDay.taskchute_day.establishment_timezone}。終了時刻は空欄にすると実行中のままです。</p>
+          <form onSubmit={submitExecutionTimes}>
+            {executionTimesDraft.executionOptions.length > 1 && (
+              <label>補正対象Execution
+                <select required value={executionTimesDraft.executionId ?? ""} onChange={(event) => selectExecutionForCorrection(event.target.value)}>
+                  <option value="">Executionを選択してください</option>
+                  {executionTimesDraft.executionOptions.map((execution) => (
+                    <option value={execution.id} key={execution.id}>{execution.started_at} → {execution.ended_at ?? "実行中"}</option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <label>実績開始
+              <input autoFocus type="datetime-local" step="1" required value={executionTimesDraft.startedLocal}
+                onChange={(event) => setExecutionTimesDraft((current) => current ? { ...current, startedLocal: event.target.value } : current)} />
+            </label>
+            <label>実績終了{executionTimesDraft.expectedLifecycleState === "completed" ? "（必須）" : "（任意）"}
+              <input type="datetime-local" step="1" required={executionTimesDraft.expectedLifecycleState === "completed"} value={executionTimesDraft.endedLocal}
+                onChange={(event) => setExecutionTimesDraft((current) => current ? { ...current, endedLocal: event.target.value } : current)} />
+            </label>
+            <div className="bulk-confirmation-actions">
+              <button type="button" className="secondary" onClick={() => { setExecutionTimesDraft(null); setError(null); }}>キャンセル</button>
+              <button type="submit" disabled={pending !== null}>実績を保存</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {revertConfirmation && (
+        <div className="bulk-confirmation panel execution-times-dialog" role="dialog" aria-modal="true" aria-labelledby="revert-start-title" tabIndex={-1}>
+          <h2 id="revert-start-title">今回の開始を取り消す</h2>
+          <p>{entryForId(currentDay, revertConfirmation.entry_id)?.task.title ?? "Entry"}を未実行に戻します。</p>
+          <p>現在の開始Executionだけを削除します。Section・開始予定・position・placement revisionは変更せず、過去の実行履歴は残します。</p>
+          <div className="bulk-confirmation-actions">
+            <button type="button" className="secondary" onClick={() => { setRevertConfirmation(null); setError(null); }}>キャンセル</button>
+            <button type="button" onClick={confirmRevert}>未実行に戻す</button>
+          </div>
+        </div>
+      )}
+
       {transientStatus && (
         <div className="transient-status" role="status" aria-live="polite" aria-atomic="true">
           {transientStatus}
@@ -3186,6 +3427,7 @@ export function App() {
                 const entryTarget: FocusTarget = { kind: "entry", id: entry.id };
                 const isRunning = entry.lifecycle_state === "running";
                 const canComplete = isRunning && day.active_execution?.entry_id === entry.id;
+                const canRevert = isRunning && entry.execution_summary?.active_execution_id != null;
                 const canDrag = day.planning_enabled && Boolean(day.taskchute_day.id) && entry.lifecycle_state === "planned";
                 return (
                   <div className={`task-row state-${entry.lifecycle_state}${selectedEntryIds.includes(entry.id) ? " is-selected" : ""}${entryDrag?.entryId === entry.id ? " is-dragging" : ""}${entryDrag?.targetEntryId === entry.id && entryDrag.edge ? ` drop-${entryDrag.edge}` : ""}`} key={entry.id} tabIndex={0} aria-selected={selectedEntryIds.includes(entry.id)} draggable={canDrag && !mutationLocked}
@@ -3237,6 +3479,12 @@ export function App() {
                       <div className="task-actions" onClick={(event) => event.stopPropagation()}>
                         {entry.lifecycle_state === "planned" && <button type="button" aria-label={`${entry.task.title}の日付変更`} className="secondary task-action-button"
                           disabled={mutationLocked} onClick={(event) => { event.stopPropagation(); openBulkDateMove([entry.id]); }}>日付変更</button>}
+                        {canRevert && <button type="button" aria-label={`${entry.task.title}の開始を取り消す`} className="secondary task-action-button"
+                          disabled={mutationLocked} onClick={(event) => { event.stopPropagation(); openRevertConfirmation(entry); }}>開始を取り消す</button>}
+                        {canEditExecutionTimes(entry) && <button type="button" aria-label={`${entry.task.title}の実績時刻を編集`} className="secondary task-action-button"
+                          disabled={mutationLocked} onClick={(event) => { event.stopPropagation(); openExecutionTimesEditor(entry); }}>
+                          {entry.lifecycle_state === "planned" ? "実績入力" : "実績訂正"}
+                        </button>}
                         {day.planning_enabled && entry.lifecycle_state === "planned" && <button type="button" aria-label={`${entry.task.title}を削除`} className="secondary task-action-button"
                           disabled={mutationLocked} onClick={(event) => { event.stopPropagation(); openSingleDelete(entry); }}>削除</button>}
                         <button type="button" className="icon-button" aria-label={`${entry.task.title}を複製`} title="Task名を複製"
@@ -3270,6 +3518,8 @@ export function App() {
           {reorderOperation && <button type="button" onClick={() => void executeReorder(reorderOperation)}>保留中のReorderを再試行</button>}
           {startOperation && <button type="button" onClick={() => void executeStart(startOperation)}>保留中のStartを再試行</button>}
           {completeOperation && <button type="button" onClick={() => void executeComplete(completeOperation)}>保留中のCompleteを再試行</button>}
+          {revertOperation && <button type="button" onClick={() => void executeRevert(revertOperation)}>保留中の開始取消を再試行</button>}
+          {executionTimesOperation && <button type="button" onClick={() => void executeExecutionTimes(executionTimesOperation)}>保留中の実績時刻保存を再試行</button>}
           {configurationOperation && <button type="button" onClick={() => void executeConfiguration(configurationOperation)}>保留中のSection設定を再試行</button>}
           {sectionSettingsOperation && <button type="button" onClick={() => void executeSectionSettings(sectionSettingsOperation)}>保留中の次Day Section設定を再試行</button>}
           {sectionMoveOperation && <button type="button" onClick={() => void executeSectionMove(sectionMoveOperation)}>保留中のSection移動を再試行</button>}
@@ -3280,7 +3530,7 @@ export function App() {
           {routineEstimateOperation && <button type="button" onClick={() => void executeRoutineEstimate(routineEstimateOperation)}>保留中のRoutine見積を再試行</button>}
           {routineSectionPlanOperation && <button type="button" onClick={() => void executeRoutineSectionPlan(routineSectionPlanOperation)}>保留中のRoutine配置を再試行</button>}
           <button type="button" className="secondary" onClick={() => {
-             setProjectOperation(null); setTaskOperation(null); setDuplicateOperation(null); setBulkDeleteOperation(null); setBulkDateMoveOperation(null); setBulkSectionOperation(null); setBulkSectionOccurrenceOperation(null); setBulkSectionScopedOperation(null); setBulkEstimateOperation(null); setBulkSectionPickerOpen(false); setBulkConfirmation(null); setBulkSectionConfirmation(null); setBulkEstimateConfirmation(null); setBulkDateMoveConfirmation(null); setSelectedEntryIds([]); setReorderOperation(null); setStartOperation(null); setCompleteOperation(null);
+             setProjectOperation(null); setTaskOperation(null); setDuplicateOperation(null); setBulkDeleteOperation(null); setBulkDateMoveOperation(null); setBulkSectionOperation(null); setBulkSectionOccurrenceOperation(null); setBulkSectionScopedOperation(null); setBulkEstimateOperation(null); setBulkSectionPickerOpen(false); setBulkConfirmation(null); setBulkSectionConfirmation(null); setBulkEstimateConfirmation(null); setBulkDateMoveConfirmation(null); setSelectedEntryIds([]); setReorderOperation(null); setStartOperation(null); setCompleteOperation(null); setRevertOperation(null); setExecutionTimesOperation(null);
             setConfigurationOperation(null); setSectionSettingsOperation(null); setSectionMoveOperation(null); setEstimateOperation(null); setPlannedStartOperation(null);
             setRoutineConversionOperation(null); setRoutineEndOperation(null); setRoutineEstimateOperation(null);
             setRoutineSectionPlanOperation(null); setRoutineCandidate(null); setError(null);

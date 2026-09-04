@@ -2,6 +2,7 @@ import type {
   CurrentTaskChuteDayProjection,
   EstablishedTaskChuteDayProjection,
   EntryProjection,
+  ExecutionProjection,
   SectionProjection,
 } from "../../src/shared/contracts";
 import { canonicalizeEntryOrder } from "../../src/shared/planned-entry-order";
@@ -74,6 +75,8 @@ interface EntryRow {
   execution_last_ended_at: string | null;
   execution_completed_duration_seconds: number | null;
   execution_active_started_at: string | null;
+  execution_single_id: string | null;
+  execution_active_id: string | null;
 }
 
 interface ExecutionRow {
@@ -145,6 +148,8 @@ function toEntryRow(value: unknown): EntryRow {
     execution_last_ended_at: row.execution_last_ended_at === null ? null : requiredString(row, "execution_last_ended_at"),
     execution_completed_duration_seconds: row.execution_completed_duration_seconds === null ? null : requiredNumber(row, "execution_completed_duration_seconds"),
     execution_active_started_at: row.execution_active_started_at === null ? null : requiredString(row, "execution_active_started_at"),
+    execution_single_id: row.execution_single_id === null ? null : requiredString(row, "execution_single_id"),
+    execution_active_id: row.execution_active_id === null ? null : requiredString(row, "execution_active_id"),
   };
 }
 
@@ -337,7 +342,7 @@ async function loadEstablishedProjection(
 ): Promise<EstablishedTaskChuteDayProjection> {
   const context = await readDaySectionContexts(db, appUserId, day.id);
   assertEstablishedContext(day, context);
-  const [sectionResult, entryResult, executionResult] = await db.batch([
+  const [sectionResult, entryResult, executionResult, entryExecutionResult] = await db.batch([
     db.prepare(`SELECT section_id AS id, title, logical_start_minute, logical_end_minute,
       actual_start_instant, actual_end_instant, context_order
       FROM taskchute_day_section_contexts WHERE app_user_id = ? AND taskchute_day_id = ? ORDER BY context_order, section_id`)
@@ -353,6 +358,8 @@ async function loadEstablishedProjection(
                 execution_summary.last_ended_at AS execution_last_ended_at,
                 COALESCE(execution_summary.completed_duration_seconds, 0) AS execution_completed_duration_seconds,
                 execution_summary.active_started_at AS execution_active_started_at,
+                execution_summary.single_execution_id AS execution_single_id,
+                execution_summary.active_execution_id AS execution_active_id,
                 t.id AS task_id,
                 CASE WHEN rs.routine_occurrence_id IS NOT NULL THEN rs.task_title ELSE t.title END AS task_title,
                 CASE WHEN rs.routine_occurrence_id IS NOT NULL THEN rs.project_id ELSE p.id END AS project_id,
@@ -370,7 +377,9 @@ async function loadEstablishedProjection(
                     MAX(CASE WHEN ended_at IS NOT NULL THEN ended_at END) AS last_ended_at,
                     SUM(CASE WHEN ended_at IS NOT NULL THEN unixepoch(ended_at) - unixepoch(started_at) ELSE 0 END)
                       AS completed_duration_seconds,
-                    MAX(CASE WHEN ended_at IS NULL THEN started_at END) AS active_started_at
+                    MAX(CASE WHEN ended_at IS NULL THEN started_at END) AS active_started_at,
+                    CASE WHEN COUNT(*) = 1 THEN MIN(id) ELSE NULL END AS single_execution_id,
+                    MAX(CASE WHEN ended_at IS NULL THEN id END) AS active_execution_id
                FROM executions
               WHERE app_user_id = ?
               GROUP BY entry_id
@@ -387,11 +396,23 @@ async function loadEstablishedProjection(
           WHERE x.app_user_id = ? AND x.ended_at IS NULL LIMIT 1`).bind(appUserId)
       : db.prepare(`SELECT NULL AS id, NULL AS entry_id, NULL AS entry_estimate_seconds,
           NULL AS started_at, NULL AS ended_at WHERE false`),
+    db.prepare(`SELECT x.id, x.entry_id, x.started_at, x.ended_at
+      FROM executions x JOIN entries e ON e.app_user_id = x.app_user_id AND e.id = x.entry_id
+      WHERE x.app_user_id = ? AND e.taskchute_day_id = ? ORDER BY x.entry_id, x.started_at, x.id`)
+      .bind(appUserId, day.id),
   ]);
+  const executionsByEntryId = new Map<string, ExecutionProjection[]>();
+  for (const value of entryExecutionResult.results) {
+    const fact = value as { id: string; entry_id: string; started_at: string; ended_at: string | null };
+    const list = executionsByEntryId.get(fact.entry_id) ?? [];
+    list.push({ id: fact.id, entry_id: fact.entry_id, started_at: fact.started_at, ended_at: fact.ended_at });
+    executionsByEntryId.set(fact.entry_id, list);
+  }
   const entryRows = entryResult.results.map(toEntryRow);
   const entriesBySection = new Map<string, EntryProjection[]>();
   const unsectionedEntries: EntryProjection[] = [];
   for (const row of entryRows) {
+    const executionSegments = executionsByEntryId.get(row.entry_id);
     const entry: EntryProjection = {
       id: row.entry_id,
       section_id: row.section_id,
@@ -404,6 +425,9 @@ async function loadEstablishedProjection(
         last_ended_at: row.execution_last_ended_at,
         completed_duration_seconds: row.execution_completed_duration_seconds ?? 0,
         active_started_at: row.execution_active_started_at,
+        single_execution_id: row.execution_single_id,
+        active_execution_id: row.execution_active_id,
+        ...(executionSegments && executionSegments.length > 0 ? { executions: executionSegments } : {}),
       },
       routine: row.routine_occurrence_id && row.routine_definition_id ? {
         routine_definition_id: row.routine_definition_id,

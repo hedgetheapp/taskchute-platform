@@ -13,6 +13,12 @@ import { HttpError } from "./application/errors";
 import { loadCurrentTaskChuteDay, loadTaskChuteDayByLogicalDate } from "./application/load-current-day";
 import { isLogicalDate } from "./domain/taskchute-day";
 import { completeEntry, isCompleteEntryRequest, isStartEntryRequest, startEntry } from "./application/entry-lifecycle";
+import {
+  isRevertEntryStartRequest,
+  isSetExecutionTimesRequest,
+  revertEntryStart,
+  setExecutionTimes,
+} from "./application/execution-correction";
 import { isMoveEntryRequest, isSetEntryEstimateRequest, moveEntry, setEntryEstimate } from "./application/entry-planning";
 import { isReorderEntriesRequest, reorderEntries } from "./application/reorder-entries";
 import { isSetEntryPlannedStartRequest, setEntryPlannedStart } from "./application/planned-start";
@@ -251,7 +257,7 @@ async function route(request: Request, env: Env): Promise<Response> {
     }
     return Response.json(await setRoutineSectionPlan(env.APP_DB, principal.appUserId, body));
   }
-  const lifecycleMatch = url.pathname.match(/^\/api\/v1\/entries\/([^/]+)\/(start|complete)$/);
+  const lifecycleMatch = url.pathname.match(/^\/api\/v1\/entries\/([^/]+)\/(start|complete|revert-start|execution-times)$/);
   if (request.method === "POST" && lifecycleMatch) {
     const body = await readBoundedJson(request);
     if (lifecycleMatch[1] !== (body as { entry_id?: unknown })?.entry_id) {
@@ -261,8 +267,16 @@ async function route(request: Request, env: Env): Promise<Response> {
       if (!isStartEntryRequest(body)) throw new HttpError(400, "malformed_request", "Invalid StartEntry request");
       return Response.json(await startEntry(env.APP_DB, principal.appUserId, body));
     }
-    if (!isCompleteEntryRequest(body)) throw new HttpError(400, "malformed_request", "Invalid CompleteEntry request");
-    return Response.json(await completeEntry(env.APP_DB, principal.appUserId, body));
+    if (lifecycleMatch[2] === "complete") {
+      if (!isCompleteEntryRequest(body)) throw new HttpError(400, "malformed_request", "Invalid CompleteEntry request");
+      return Response.json(await completeEntry(env.APP_DB, principal.appUserId, body));
+    }
+    if (lifecycleMatch[2] === "revert-start") {
+      if (!isRevertEntryStartRequest(body)) throw new HttpError(400, "malformed_request", "Invalid RevertEntryStart request");
+      return Response.json(await revertEntryStart(env.APP_DB, principal.appUserId, body));
+    }
+    if (!isSetExecutionTimesRequest(body)) throw new HttpError(400, "malformed_request", "Invalid SetExecutionTimes request");
+    return Response.json(await setExecutionTimes(env.APP_DB, principal.appUserId, body));
   }
   return Response.json({ error: { code: "resource_not_found", message: "Not found", reconcile: false } }, { status: 404 });
 }

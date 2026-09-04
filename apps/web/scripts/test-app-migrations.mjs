@@ -405,6 +405,44 @@ try {
     VALUES ('user-v01a', 'operation-day-move-invalid', 'NotACommand', 1, 'invalid-day-move-fingerprint', 'success', '{}',
       '2026-08-28T08:01:00.000Z')`], false);
   assert.notEqual(invalidDayMoveCommand.status, 0, "unknown operation command must remain rejected after 0015");
+  const preExecutionCorrectionOperations = query("SELECT * FROM operations ORDER BY operation_id");
+  const preExecutionCorrectionLifecycleGuards = query("SELECT * FROM lifecycle_command_guards ORDER BY operation_id");
+  const preExecutionCorrectionTables = query("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name");
+  applyFile("migrations/app/0016_execution_correction.sql");
+  assert.deepEqual(query("SELECT * FROM operations ORDER BY operation_id"), preExecutionCorrectionOperations,
+    "0016 must preserve every operation row");
+  assert.deepEqual(query("SELECT * FROM lifecycle_command_guards ORDER BY operation_id"), preExecutionCorrectionLifecycleGuards,
+    "0016 must preserve every lifecycle guard row");
+  assert.deepEqual(query("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name"), preExecutionCorrectionTables,
+    "0016 must not add or remove application tables");
+  const executionCorrectionOperationTable = query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'operations'")[0]?.sql ?? "";
+  const executionCorrectionGuardTable = query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'lifecycle_command_guards'")[0]?.sql ?? "";
+  assert(executionCorrectionOperationTable.includes("RevertEntryStart"), "0016 must add the RevertEntryStart command CHECK entry");
+  assert(executionCorrectionOperationTable.includes("SetExecutionTimes"), "0016 must add the SetExecutionTimes command CHECK entry");
+  assert(executionCorrectionGuardTable.includes("RevertEntryStart"), "0016 must add the RevertEntryStart guard CHECK entry");
+  assert(executionCorrectionGuardTable.includes("SetExecutionTimes"), "0016 must add the SetExecutionTimes guard CHECK entry");
+  execute(["--command", `INSERT INTO operations
+    (app_user_id, operation_id, command_type, request_fingerprint_version, request_fingerprint, outcome_kind, result_json, created_at)
+    VALUES ('user-v01a', 'operation-revert-start', 'RevertEntryStart', 1, 'revert-fingerprint', 'success', '{}',
+      '2026-08-28T08:10:00.000Z'),
+      ('user-v01a', 'operation-set-execution-times', 'SetExecutionTimes', 1, 'execution-times-fingerprint', 'success', '{}',
+      '2026-08-28T08:11:00.000Z')`]);
+  execute(["--command", `INSERT INTO lifecycle_command_guards
+    (app_user_id, operation_id, entry_id, execution_id, command_type)
+    VALUES ('user-v01a', 'guard-revert-start', '019d2f00-0000-7000-8000-000000000002',
+      '019d2f00-0000-7000-8000-000000000003', 'RevertEntryStart'),
+      ('user-v01a', 'guard-set-execution-times', '019d2f00-0000-7000-8000-000000000002',
+      '019d2f00-0000-7000-8000-000000000003', 'SetExecutionTimes')`]);
+  const invalidExecutionCorrectionCommand = execute(["--command", `INSERT INTO operations
+    (app_user_id, operation_id, command_type, request_fingerprint_version, request_fingerprint, outcome_kind, result_json, created_at)
+    VALUES ('user-v01a', 'operation-execution-correction-invalid', 'NotACommand', 1, 'invalid-d057-fingerprint', 'success', '{}',
+      '2026-08-28T08:12:00.000Z')`], false);
+  assert.notEqual(invalidExecutionCorrectionCommand.status, 0, "unknown operation command must remain rejected after 0016");
+  const invalidExecutionCorrectionGuard = execute(["--command", `INSERT INTO lifecycle_command_guards
+    (app_user_id, operation_id, entry_id, execution_id, command_type)
+    VALUES ('user-v01a', 'guard-execution-correction-invalid', '019d2f00-0000-7000-8000-000000000002',
+      '019d2f00-0000-7000-8000-000000000003', 'NotACommand')`], false);
+  assert.notEqual(invalidExecutionCorrectionGuard.status, 0, "unknown lifecycle guard command must remain rejected after 0016");
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
   assert.deepEqual(query("PRAGMA foreign_key_check"), []);
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
@@ -513,6 +551,10 @@ try {
       request_fingerprint: "day-move-fingerprint", outcome_kind: "success", result_json: "{}" },
     { operation_id: "operation-existing", command_type: "AddTaskToDay", request_fingerprint: "fixture-fingerprint",
       outcome_kind: "success", result_json: "{\"fixture\":true}" },
+    { operation_id: "operation-revert-start", command_type: "RevertEntryStart", request_fingerprint: "revert-fingerprint",
+      outcome_kind: "success", result_json: "{}" },
+    { operation_id: "operation-set-execution-times", command_type: "SetExecutionTimes", request_fingerprint: "execution-times-fingerprint",
+      outcome_kind: "success", result_json: "{}" },
   ]);
   const contexts = query(`SELECT section_id, logical_start_minute, logical_end_minute,
     actual_start_instant, actual_end_instant FROM taskchute_day_section_contexts
@@ -577,7 +619,7 @@ try {
   assert.notEqual(duplicateActive.status, 0, "the active Execution unique index must reject a second active row");
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
   assert.deepEqual(query("PRAGMA foreign_key_check"), []);
-  console.log("migration regression: 4 scenarios passed (R2A normalization, R2B preservation/constraints, duplicate-Task fail-safe, Bulk Selection 0010/0011/0012/0013/0014/0015 preservation/constraints; fresh 0001 -> 0015 chain)");
+  console.log("migration regression: 4 scenarios passed (R2A normalization, R2B preservation/constraints, duplicate-Task fail-safe, Bulk Selection 0010/0011/0012/0013/0014/0015/0016 preservation/constraints; fresh 0001 -> 0016 chain)");
 } finally {
   await rm(persistencePath, { recursive: true, force: true });
   await rm(failurePersistencePath, { recursive: true, force: true });

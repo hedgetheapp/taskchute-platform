@@ -291,19 +291,21 @@ describe.sequential("Dogfood Day B2 planned start", () => {
 
     const projection = await loadCurrentTaskChuteDay(env.APP_DB, userId, "2026-08-28T12:00:00.000Z");
     const entries = projection.sections[0]!.entries;
-    expect(entries.find((entry) => entry.id === completed)?.execution_summary).toEqual({
+    expect(entries.find((entry) => entry.id === completed)?.execution_summary).toMatchObject({
       first_started_at: "2026-08-28T06:00:00.000Z",
       last_ended_at: "2026-08-28T08:15:00.000Z",
       completed_duration_seconds: 1_500,
       active_started_at: null,
     });
-    expect(entries.find((entry) => entry.id === running)?.execution_summary).toEqual({
+    expect(entries.find((entry) => entry.id === completed)?.execution_summary?.single_execution_id).toBeNull();
+    expect(entries.find((entry) => entry.id === running)?.execution_summary).toMatchObject({
       first_started_at: "2026-08-28T11:30:00.000Z",
       last_ended_at: null,
       completed_duration_seconds: 0,
       active_started_at: "2026-08-28T11:30:00.000Z",
     });
-    expect(entries.find((entry) => entry.id === planned)?.execution_summary).toEqual({
+    expect(entries.find((entry) => entry.id === running)?.execution_summary?.active_execution_id).toBeTruthy();
+    expect(entries.find((entry) => entry.id === planned)?.execution_summary).toMatchObject({
       first_started_at: null, last_ended_at: null, completed_duration_seconds: 0, active_started_at: null,
     });
     expect(projection.active_execution?.entry_id).toBe(running);
