@@ -159,11 +159,11 @@ Taskはtarget column listに含まれるが、固定・非表示不可である�
 - 見積
 - 開始予定
 - 開始見込（read-only projection）
-- 開始 / 終了 / 実績（Execution projection。表示はderived、actualの入力・訂正はD-057 command / editor）
+- 開始 / 終了 / 実績（Execution projection。表示はderived read-only。D-057の入力・訂正はhistorical compatibilityとして保持するが、current UI / API capabilityではない）
 
 見積は開始予定より前に置く。Entry placement / canonical orderはD-031 / D-039に従い、visual column orderから新しいDomain orderを作らない。
 
-D-043のtarget interactionでは、開始予定の設定・変更が該当real Sectionをderiveし、real Sectionの明示選択が開始予定をSection開始minuteへ設定する。開始予定のclearと`Sectionなし`の選択はどちらもSection absence + `NULL`へ同期し、通常の編集操作から片方だけが残るstateを作らない。これはcurrent runtimeへ実装済みである。
+D-043のtarget interactionでは、開始予定の設定・変更が該当real Sectionをderiveし、real Sectionの明示選択が開始予定をSection開始minuteへ設定する。開始予定のclearと`Sectionなし`の選択はどちらもSection absence + `NULL`へ同期し、通常の編集操作から片方だけが残るstateを作らない。これはcurrent runtimeへ実装済みである。D-057のmanual actual correctionはcurrent capabilityから撤去し、開始 / 終了 / 実績はread-only projectionとして表示する。
 
 ### Capability not implemented
 
@@ -172,7 +172,7 @@ D-043のtarget interactionでは、開始予定の設定・変更が該当real S
 - Mode
 - Note / Documents
 
-これらはtarget column modelから削除しない。一方、capability実装前にfake valueやdisabled placeholderだけの列を出さない。D-057のactual correctionはExecution factを更新する独立mutationとして実装済みであり、表のactual列はそのderived projectionを表示する。Bulk Selection v0.1 / v0.2A / v0.2B1 / v0.2B2の実装・verification状態は下記の専用sectionと`CURRENT` / `FEATURES` / `TEST_MATRIX`で管理する。
+これらはtarget column modelから削除しない。一方、capability実装前にfake valueやdisabled placeholderだけの列を出さない。表のactual列はExecution factからのderived read-only projectionを表示する。Bulk Selection v0.1 / v0.2A / v0.2B1 / v0.2B2の実装・verification状態は下記の専用sectionと`CURRENT` / `FEATURES` / `TEST_MATRIX`で管理する。
 
 ## Routine placement
 
@@ -209,7 +209,7 @@ manual Task reorderはcanonicalに許可されたcohort内だけで行う。
 - target Day Tableに独立した`並び替え`data columnは置かない。
 - current runtimeのvisible `↑/↓`buttonsはcross-Section D&D v0.1で撤去した。独立したdata columnではなく、keyboard `Shift+↑/↓`は維持する。
 
-UI-2CでTask cell内handleによるsame-Section / same-cohort D&Dを実装した。cross-Section D&D v0.1では、ordinary planned Entryをrow surface / existing handleから別のvisible Section summary（`Sectionなし`を含む）へappendできる。expanded targetは末尾placeholder、collapsed targetはcueのみでauto-expandせず、successは既存`MoveEntry`を1回だけ使ってfull-Day canonical reconciliationを行う。Routine-derived、running / completed、read-only / preview / locked stateはno-writeとする。keyboard `Shift+↑/↓`は維持し、final drag-and-drop library / fuller context interactionはfuture scopeである。
+UI-2CでTask cell内handleによるsame-Section / same-cohort D&Dを実装した。D-058ではvisible handleを撤去し、Task identity cell全体をplanned D&D surfaceとした。cross-Section D&D v0.1では、ordinary planned EntryをTask surfaceから別のvisible Section summary（`Sectionなし`を含む）へappendできる。expanded targetは末尾placeholder、collapsed targetはcueのみでauto-expandせず、successは既存`MoveEntry`を1回だけ使ってfull-Day canonical reconciliationを行う。interactive descendantからdragを開始せず、Routine-derived、running / completed、read-only / preview / locked stateはno-writeとする。keyboard `Shift+↑/↓`は維持し、final drag-and-drop library / fuller context interactionはfuture scopeである。
 
 ### Display column reorder
 
@@ -283,11 +283,11 @@ ordinary-only selectionはestablished displayed current / future Dayを許可す
 
 ## Execution actual projection
 
-開始 / 終了 / 実績は、Entryへ値を書き戻す列ではなく、current-valid Execution factsからのread-only projectionとする。conceptual shapeは次である。
+開始 / 終了 / 実績は、Entryへ値を書き戻す列ではなく、current-valid Execution factsからのread-only projectionとする。D-058によりcurrent manual correction / Start Revert commandは提供しない。conceptual shapeは次である。
 
 `execution_summary = { first_started_at, last_ended_at, completed_duration_seconds, active_started_at }`
 
-複数のvalid Execution rowがある場合、開始は最初のstart、終了は最新のended time（active中は`—`）、実績はcompleted intervalの合計にcurrent display referenceからのactive elapsedを加える。logical Dayのtimezoneで表示し、Day boundaryを越える時刻は`25:10`のようなextended timeとする。現在のruntimeにはcancel / revert / correction outcomeがないため、manual correctionやhistory rewriteをこの列から導入しない。
+複数のvalid Execution rowがある場合、開始は最初のstart、終了は最新のended time（active中は`—`）、実績はcompleted intervalの合計にcurrent display referenceからのactive elapsedを加える。logical Dayのtimezoneで表示し、Day boundaryを越える時刻は`25:10`のようなextended timeとする。D-057のmanual correction / Start Revertのhistorical migration・rowsはこのprojectionを壊さず保持するが、current UI / APIからhistory rewriteを導入しない。
 
 ## Day toolbar target
 
@@ -348,7 +348,19 @@ cross-Section D&D v0.1はimplementation commit `89d4784fddca891421d3619def352ee1
 
 Start Forecast v0.1はD-032のderived projectionとして、`開始予定`の後ろへread-onlyの`開始見込`列を追加した。current Dayはserver projection生成時刻をanchorにactive Executionの見積残時間とtimed Section内planned Entryの見積を累積し、future established DayはDay startをanchorにする。planned startはforecast barrierではなく、completed / running自身、`Sectionなし`、past / record-noneは`—`表示とする。implementation commit `8939c4d6af95e2fd21b7d91e0e946bee29a6c1fb`はGitHub canonical `main`へIntegrated済みであり、詳細な実装・evidence状態は`CURRENT` / `FEATURES` / `TEST_MATRIX`を正本とする。
 
-Day Table column customization v0.1は、Project / Section / Routine / 見積 / 開始予定 / 開始見込 / 開始 / 終了 / 実績のregistry-driven heading / row / draft alignment、header reorder、shared width resize、handle double-click auto-fit、browser-local order / width persistenceを実装した。fixed Bulk / Execution / Taskは対象外であり、Mode / Noteはruntime projectionへ追加していない。実績列はExecution summaryからのderived projectionであり、D-057のactual time editor / commandによる入力・訂正結果を表示する。D-057はcurrent active StartのRevertも提供するが、表のcanonical orderやplacement semanticsを変更しない。implementation / fix commits `10584ba`、`6100d20`、`6316b0d`、`60eecdd`、`b3370d3d2e3de3ba113b1e3a55fbed893f3cc068`はGitHub canonical `main`へIntegrated済みで、詳細なevidence状態は`CURRENT` / `FEATURES` / `TEST_MATRIX`を正本とする。
+Day Table column customization v0.1は、Project / Section / Routine / 見積 / 開始予定 / 開始見込 / 開始 / 終了 / 実績のregistry-driven heading / row / draft alignment、header reorder、shared width resize、handle double-click auto-fit、browser-local order / width persistenceを実装した。fixed Bulk / Execution / Taskは対象外であり、Mode / Noteはruntime projectionへ追加していない。実績列はExecution summaryからのderived read-only projectionを表示する。D-057のactual time editor / commandとcurrent active StartのRevertはD-058で撤去し、0016と既存historical dataだけを保持する。implementation / fix commits `10584ba`、`6100d20`、`6316b0d`、`60eecdd`、`b3370d3d2e3de3ba113b1e3a55fbed893f3cc068`、`66d63efa790c06d2efefa769595508b7c5d6dbb5`はGitHub canonical `main`へIntegrated済みで、詳細なevidence状態は`CURRENT` / `FEATURES` / `TEST_MATRIX`を正本とする。
+
+## D-058 Day Table simplification and capability withdrawal
+
+D-058では、Day Tableのcurrent interactionを簡素化し、D-057で追加されたcurrent Product capabilityの`開始を取り消す`と`実績入力 / 実績訂正`を撤去する。撤去対象はvisible controlだけでなく、client contract / method、Web state / dialog / editor、Worker route / handler、command execution pathである。旧API pathはmutationを実行せず`404`とし、適用済み`0016_execution_correction.sql`と既存operations / lifecycle guards / executions / schema / rowsは変更しない。
+
+- Bulk checkboxはreserved slotでunchecked / hover / checked / indeterminate / focus / disabledを表現し、row alignmentを変えない。
+- planned EntryのTask identity cell全体をD&D surfaceとし、button / inputなどのinteractive descendantではdragを開始しない。keyboard `Shift+↑/↓`、same-cohort、cross-Section、owner / lifecycle / revision semanticsは維持する。
+- Section summary row全体をpointer / Enter / Spaceでtoggleし、`aria-expanded`を更新する。`＋` Addはtoggleから分離する。
+- eligible planned rowの右端に一つの`…` overflow menuを置き、既存の`日付変更` / `複製` / `削除` flowだけを収める。removed D-057 actionsは含めない。outside / Escape / stale closeとfocus restorationを扱う。
+- data empty valueには小さくmutedな専用`EmptyValue`を使い、意味のあるhyphen・range・user textは置換しない。
+
+開始 / 終了 / 実績は引き続きvalid Execution factsからのread-only projectionである。D-057のDecision・実装・migration・evidenceはhistorical recordとして保持し、D-058 implementation / verification状態は`docs/CURRENT.md`、`docs/FEATURES.md`、`docs/TEST_MATRIX.md`を正本とする。
 
 current runtimeでは、Day Navigation v0.1のTop Navigation date navigation / calendar pickerと、Settings v0.1のLeft Sidebar `今日` / `設定`およびdedicated Section / Project Settings surfaceを実装済みである。DayBoard上のtemporary Project作成controlとSection設定editorは撤去済み。Desktop Day wide layoutとauthenticated Sidebar open / closed preferenceの実装状態は`docs/FEATURES.md`、`docs/CURRENT.md`、`docs/TEST_MATRIX.md`を正本とする。
 

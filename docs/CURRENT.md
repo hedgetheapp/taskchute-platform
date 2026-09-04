@@ -4,6 +4,20 @@ Date: 2026-09-04
 
 ## Status
 
+### D-058 — Day Table simplification and Execution-correction capability withdrawal — 2026-09-04
+
+D-058はApproved Decisionとしてcanonical化済みで、Decision commit `44001b63b1704e52bc193eea5fe8ee606c663acb`（`Approve Day Table interaction simplification`）を含む実装 commit `66d63efa790c06d2efefa769595508b7c5d6dbb`（`Implement Day Table simplification`）を`main`へpush済みである。これはD-057の`開始を取り消す`と`実績入力 / 実績訂正`をUIから隠すだけでなく、current Web / API / Workerから撤去するcapability withdrawalである。normal Start / Complete、active Execution最大1、derived actual / Start Forecast、read-onlyの開始 / 終了 / 実績projectionは維持した。
+
+Day Tableは、Bulk checkboxのunchecked / hover / checked / indeterminate / focus / disabled状態、Task identity cell全体のplanned D&D surface（interactive descendantからの誤発火なし）、Section summary row全体のpointer / keyboard collapse、eligible planned rowのfar-right `…` overflow menu（`日付変更` / `複製` / `削除`のみ）、empty data valueの専用`EmptyValue`表示へ簡素化した。既存のkeyboard reorder、same-cohort / cross-Section semantics、selection、D&D、collapse、column customization、retry / reconciliationは保持した。
+
+`RevertEntryStart` / `SetExecutionTimes`のclient method、request/result contracts、Web state / dialog / editor、Worker handler / command path、UI専用CSSを撤去し、旧API pathはauthenticated boundaryで`404`となる。適用済み`0016_execution_correction.sql`、historical operations / lifecycle guard rows、Execution facts、schema / existing D1 dataは変更せず、reverse migration・CHECK allow-list縮小・history削除は行っていない。0016のcommand CHECK値はhistorical compatibility residueであり、現行Product capabilityへの到達経路ではない。
+
+Local evidenceはWeb `149 / 149 PASS`、Worker / runtime `176 / 176 PASS`（withdrawn endpoint negative boundaryを含む）、migration regression `4 scenarios PASS`、typecheck、production build、`git diff --check`、source reviewをPASSした。real-local safety smokeはroot `200`、protected API `401`、disabled bootstrap POST `404`をPASSした。認証済みbrowser connectorがないため、real-local / remoteのauthenticated UI mutation、overflow / checkbox / D&D / collapseのvisual interaction、removed APIのauthenticated HTTP実環境確認以外は`NOT_VERIFIED`とし、local automated evidenceを採用した。
+
+persistent non-productionでは、既存Cloudflare account・既存OAuth scopeの期限切れ認証を再認証してread/deploy accessを復旧した。新API token、permission / OAuth scope拡張、account / role変更、APP / AUTH binding変更は行っていない。APP / AUTH migration listは`0 / 0`（追加migrationなし、0016は再適用なし）。generated configの`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、canonical bindingを確認し、exact `main@66d63efa790c06d2efefa769595508b7c5d6dbb5`を`taskchute-web-nonprod` version `6b9a0c23-caa2-4734-afa3-f1a3e762caa5`へdeployした。APP / AUTHのread-only `PRAGMA quick_check = ok`、FK violations `0`、`rows_written = 0`、APP latest `0016_execution_correction.sql`、operations `224`、executions `19`、AUTH users / accounts / sessions `1 / 1 / 3`を確認した。安全probeはroot `200`、protected API `401`、disabled bootstrap `404`である。
+
+classification: D-058 `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_SAFETY_VERIFIED`。persistent nonprod migrationは`NOT_REQUIRED`、authenticated feature verificationは`NOT_VERIFIED`、productionは`NOT_RUN`、Releasedは`NO`である。
+
 ### D-057 — Execution Correction Batch v0.1 — 2026-09-04
 
 D-057はApproved Decisionとしてcanonical化済みで、Decision commit `bcacc599b477b4eea56dd1ca158eb085360265e2`（`Approve Execution Correction v0.1`）を`main`へpush済みである。implementation commit `b3370d3d2e3de3ba113b1e3a55fbed893f3cc068`（`Implement Execution Correction v0.1`）も`main`へpush済みである。D-029の「未実行に戻す」は、現在のactiveなStartだけを対象とする狭い実装境界へ具体化した。D-057はD-029 / D-033を基礎としつつ、current Start Revertにおけるhistorical-retention semanticsを狭くsupersedeするApproved Product Decisionである。

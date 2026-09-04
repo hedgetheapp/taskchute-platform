@@ -1,5 +1,25 @@
 # Test Matrix
 
+## D-058 — Day Table simplification and Execution-correction capability withdrawal — 2026-09-04
+
+Contract: D-058 `Approved`。D-057の`開始を取り消す` / `実績入力・実績訂正`をcurrent Product capabilityから撤去し、適用済み`0016_execution_correction.sql`と既存dataはhistorical compatibilityとして保持した。Day Tableのcheckbox polish、Task identity drag surface、whole Section summary toggle、far-right `…` overflow menu、dedicated `EmptyValue`を実装した。
+
+Local / real-local evidence:
+
+- Web全体 `149 / 149 PASS`。checkbox state、Task D&D surface、Section summary keyboard / pointer、overflow menu accessibility / focus restoration、read-only actual projection、removed capabilityのUI negative boundaryを含む。
+- Worker / runtime全体 `176 / 176 PASS`。authenticated `revert-start` / `execution-times` pathが`404 resource_not_found`となる負のAPI境界、既存Start / Complete・retry・projection・owner / lifecycle / D1 integrity regressionを含む。
+- migration regression `4 scenarios PASS`。fresh `0001 -> 0016` chain、existing operations / historical command CHECK compatibility、Execution / schema / constraint preservation、quick_check / FKを確認した。D-058自体はmigration変更なしで、0016の再適用・rollbackは行っていない。
+- typecheck、production build、`git diff --check`、source reviewは`PASS`。real-local safety smokeはroot `200`、protected API `401`、disabled bootstrap POST `404`を確認した。
+
+Persistent non-production evidence:
+
+- Cloudflare API 7403に対して、既存account・既存OAuth scopeの期限切れ認証を再認証した。新API token、permission / OAuth scope拡張、account / role変更、APP / AUTH binding変更は行っていない。credential値・token・一時URLは出力・保存していない。
+- APP / AUTH migration listは`0 / 0`。追加migrationはなく、適用済みAPP `0016_execution_correction.sql`は再適用していない。generated configは`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、canonical APP / AUTH bindingを確認した。
+- exact `main@66d63efa790c06d2efefa769595508b7c5d6dbb5`を`taskchute-web-nonprod` version `6b9a0c23-caa2-4734-afa3-f1a3e762caa5`へdeployした。APP / AUTH read-only `PRAGMA quick_check = ok`、FK violations `0`、`rows_written = 0`、APP latest `0016_execution_correction.sql`、operations `224`、executions `19`、AUTH users / accounts / sessions `1 / 1 / 3`を確認した。安全probeはroot `200`、protected API `401`、disabled bootstrap `404`。
+- authenticated browser connectorはこの実行環境にないため、persistent nonprodのUI mutation / visual interaction / reload persistenceは`NOT_VERIFIED`。synthetic fixture投入、direct SQLによるfeature mutation、production accessは行っていない。
+
+Classification: D-058 `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_SAFETY_VERIFIED`、migration `NOT_REQUIRED`、authenticated feature verification `NOT_VERIFIED`、production `NOT_RUN`、Released `NO`。
+
 First Server + Web vertical slice、D-038 B1 / B3、D-039 B2、D-040 Minimal Routine R1、Day Table UI-1 / UI-2A / UI-2B / UI-2C / cross-Section D&D v0.1、D-041 / D-042 Day Navigation v0.1、D-043 synchronization、D-044 / D-045 / D-046 Routine R2A first slice、D-047 / D-048 Routine R2B Board、D-050 Duplicate first slice、D-052 Bulk Selection v0.2A、D-053 Bulk Selection v0.2B1、D-054 Bulk Selection v0.2B2は実装・GitHub `main`統合済み。R2B source review / local automated / real-local migration・browser / persistent nonprod migration・preservation・deploy・authenticated representative browserはPASS。D-049 initial production creation / migration / secure bootstrap / smokeもPASSし、initial release scopeでReleasedは`YES`。remote materialized-future propagation、remote exact scoped-command replay、詳細retry / concurrency、R2B inclusive end-date browser、production deep feature mutation等は各sectionの`NOT_RUN` / `NOT_VERIFIED`境界を維持する。
 
 この文書はverification requirementとcurrent evidenceの正本とする。
