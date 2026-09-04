@@ -1148,3 +1148,47 @@ Bulk selectionではpast established Dayのplanned movable rowだけをdate move
 APP compatibility migration `0015_day_move.sql`は、既存`operations.command_type`のCHECKへ`BulkMoveEntriesToDay`だけを追加するrebuildとする。既存operation row / command type、Entry / Routine / Day / Section / Execution schema、`placement_command_guards`、`routine_command_guards`、PK / FK、table countを保持し、新しいDomain table / column、scheduled-date override、running / cancelled schemaは追加しない。D-037、D-041、D-042、D-043、D-044、D-047、D-051、D-055の歴史的文言は書き換えず、本Decisionがdate moveのpast-source、current/future target、Section preservation、Routine moved protection、single planned deleteについて必要な範囲だけをnarrowに確定する。
 
 本Decisionはdate move、single planned delete、compatibility migration directionをApprovedにするが、runtime、migration、Web、test、real-local、persistent nonprod verificationの完了を意味しない。target-past move、past backfill、running / completed / interrupted delete、Project / Mode / Note change、undo / restore、production operationは後続scopeとする。実装・検証状態は`docs/CURRENT.md`、`docs/FEATURES.md`、`docs/TEST_MATRIX.md`へ記録する。
+
+## D-057 — Execution Correction v0.1
+Status: Approved
+
+Execution Correction v0.1では、現在のStartを取り消す`RevertEntryStart`と、actual Executionの開始・終了時刻を手入力・訂正する`SetExecutionTimes`を提供する。これはD-016のhistorical factを一般に削除する権限ではなく、今回のStartだけをinvalidated inputとして扱う狭いcorrection scopeである。
+
+### Revert current Start
+
+`未実行に戻す`はlogical work chain全体の巻き戻しではなく、対象Entryの現在activeなExecutionだけを取り消す。Entryが`running`で、指定ExecutionがそのEntry / userに属するcurrent active Executionであり、`started_at` snapshotも一致する場合に限り、同一atomic commandで次を確定する。
+
+- 対象active Execution rowを削除する。
+- Entryを`running`から`planned`へ戻す。
+- Entryの現在の`section_id`、`planned_start_minute`、`position`を変更しない。
+- Day `placement_revision`を変更しない。Revertでは`expected_placement_revision`を要求しない。
+- operation log / resultはretry / idempotencyのため保持する。
+
+したがって、running `午後 / 13:00`はplanned `午後 / 13:00`へ、running `午後 / 開始予定なし`はplanned `午後 / 開始予定なし`へ戻る。SectionなしからStart時に自動配置されたEntryも、RevertによってSectionなしへ再移動・planned-start clear・position再配分を行わず、Start直前ではなくRevert直前の現在placementを保持する。これはD-043の通常planned-state synchronizationを変更せず、RevertEntryStartだけに適用する明示的な例外である。
+
+取消されたcurrent Startはvalid historical Execution fact、actual duration、Review / forecast historyへ含めない。earlier valid Execution factsは保持し、completed / interrupted valid historyやrunning-delete historyを削除しない。completed Entry、別EntryのExecution、owner不一致、stale snapshot、activeでないExecutionはrejectする。同一operationの同一semantic requestは保存済みresultへreplayし、異なるrequestのoperation ID再利用はmisuseとする。取消Executionを表すcancelled outcome、tombstone、`cancelled_at`、correction audit tableは追加しない。
+
+### Manual actual start / end
+
+`SetExecutionTimes`は既存`executions(id, app_user_id, entry_id, started_at, ended_at, created_at)`を再利用し、durationを保存せずvalid intervalからderived projectionを更新する。
+
+- planned Entryのstart-onlyはactive Executionを作成し、Entryを`running`へ遷移する。
+- planned Entryのstart + endはcompleted Executionを作成し、Entryを`completed`へ遷移する。
+- running Entryはstartを訂正でき、end `NULL`ならrunningを維持し、end入力でcompletedへ遷移する。
+- completed Entryはstart / endを訂正でき、endをclearしてReopenする操作はrejectする。
+- planned / running / completed EntryのSection、planned start、positionはactual correctionで変更しない。planned `Sectionなし`だけは、manual startのactual Section解決が必要な場合に限り、既存D-030 / D-038のfrozen actual Section intervalから一つのSectionへ配置し、planned startは`NULL`のままとする。このplacement changeはrevision `+1`を一回だけ要求する。
+- Routine-derived EntryもExecution factだけを訂正し、RoutineDefinition、default、schedule、Occurrence override、identityを変更しない。
+
+Serverは入力instantをparse・canonicalizeし、`started_at <= ended_at`、両方がcommand now以下であることを検証する。future instantをnowへsilent shiftしない。new manual Executionのstartはownerのestablished TaskChuteDay `[start_instant, end_instant)`内に置き、endはDay boundaryを越えてよい。既存running / completed Executionのcorrected startも所属Entryのestablished Day内とし、endはDay boundaryを越えてよい。future Dayとnon-established past Dayではactual editingを提供しない。browser-local timezoneをauthorityにせず、Entryのestablishment timezoneと既存`compatible` disambiguationを使う。
+
+### No-overlap, atomicity, and projection
+
+valid completed intervalは`[started_at, ended_at)`、running intervalは`[started_at, +∞)`として扱い、同一userの他Executionとのoverlapをrejectする。adjacent intervalは許可し、対象Execution自身はupdate collision checkから除外する。既存intervalをshift / truncateしない。owner isolation、previous / later / enclosing overlap、backdated running overlap、self update、exact adjacency、concurrent raceをguarded transaction内で検証し、二つのoverlapping Executionがcommitできる場合はSTOP対象とする。既存のuser-wide active Execution max 1 invariantも維持する。
+
+成功時はowner / Entry snapshot、Execution snapshot、active invariant、overlap validation、必要なSection placement、Execution create/update、Entry lifecycle、operation resultを一つのatomic outcomeとする。D-020のoperation fingerprint / replay / misuse / ambiguity boundaryを維持し、既存Executionのin-place correctionに対して別revisionやaudit tableを導入しない。projectionはfirst start、last end、active start、completed durationを既存Executionから再計算し、revert後は削除されたExecution由来のactual / forecastを消す。Start Forecastは同じcanonical projectionからreconcileする。
+
+### APP compatibility migration and boundary
+
+APP compatibility migration `0016_execution_correction.sql`は、既存`operations.command_type`と`lifecycle_command_guards.command_type`（既存guardを再利用する場合）のCHECKへ`RevertEntryStart`と`SetExecutionTimes`を追加するrebuildだけとする。existing operations、lifecycle guards、executions schema / indexes、entries lifecycle、PK / FK、active Execution unique index、table countを保持する。新しいDomain column / table、cancelled / tombstone / audit / revision schema、新lifecycle stateは追加しない。
+
+本DecisionはD-029の「current Start取消後もhistorical representationを持つ方向」を、current active StartのRevertに限って明示的にsupersedeする。D-029のearlier valid history保持、D-016のvalid historical fact保護、D-033のderived actual / no-overlap semantics、D-043の通常planned synchronizationは維持する。Interrupt、Quick Interrupt、continuation、running / completed / interrupted delete、Reopen、Pause、advanced multi-segment editor、correction audit timeline、production operationは本sliceに含めない。runtime、migration、Web、test、real-local、persistent nonprod verificationの状態は`docs/CURRENT.md`、`docs/FEATURES.md`、`docs/TEST_MATRIX.md`へ記録する。
