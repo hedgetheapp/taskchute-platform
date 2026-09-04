@@ -4,6 +4,26 @@ Date: 2026-09-04
 
 ## Status
 
+### D-057 — Execution Correction Batch v0.1 — 2026-09-04
+
+D-057はApproved Decisionとしてcanonical化済みで、Decision commit `bcacc599b477b4eea56dd1ca158eb085360265e2`（`Approve Execution Correction v0.1`）を`main`へpush済みである。implementation commit `b3370d3d2e3de3ba113b1e3a55fbed893f3cc068`（`Implement Execution Correction v0.1`）も`main`へpush済みである。D-029の「未実行に戻す」は、現在のactiveなStartだけを対象とする狭い実装境界へ具体化した。新しいProduct Decisionではなく、Approved D-029 / D-033の実装である。
+
+current StartのRevertはactive Executionだけを削除し、Entryを`running -> planned`へ戻す。Section、開始予定、position、`placement_revision`は保持し、取消Executionの履歴は残さない。operation logはretry / idempotencyのため保持する。actual開始・終了時刻はplanned / running / completed Entryへ直接入力・訂正でき、derived実績、user-global no-overlap、Start Forecast reconciliationを維持する。completed Entryのactual endを消して再openする経路は拒否する。
+
+APP compatibility migration `apps/web/migrations/app/0016_execution_correction.sql`は`operations`と`lifecycle_command_guards`のcommand CHECKだけを拡張し、functional table / column / indexを追加しない。既存operations、lifecycle guards、executions、table / index構成を保持する。
+
+Local evidenceはD-057 focused Worker `5 / 5 PASS`（sectioned / sectionless Start→Revert、planned / running / completed actual入力・訂正、overlap rejection、forecast reconciliation、placement revision不変、Execution preservation、operation replay、completed reopen guard）、full Worker `180 / 180 PASS`、Web `150 / 150 PASS`、migration regression `4 scenarios PASS`、typecheck、production build、`git diff --check`、source reviewをPASSした。real-local safety smokeはroot `200`、protected API `401`、disabled bootstrap POST `404`を確認した。
+
+Persistent non-productionでは、初回read-only migration listのCloudflare API 7403に対し、同じCloudflare account・既存OAuth scopeで期限切れ認証を再認証しread accessを復旧した。新API token作成、permission / OAuth scope拡張、account / role変更、APP / AUTH binding変更、その他security posture変更は行っていない。migration前pendingはAPP `0016_execution_correction.sql` / AUTH `0`。HARD GATEとしてfresh private ignored backupを取得した。APP `apps/web/.wrangler/private-backups/d057-app-pre-0016-20260904.sql`は`242,569 bytes` / SHA-256 `51EB91ADCF29614CF5516493C4028A01E29FB4E19A6932E9A9DF3C01ECA234AF`、AUTH `apps/web/.wrangler/private-backups/d057-auth-pre-0016-20260904.sql`は`3,862 bytes` / SHA-256 `30475F539BE52CD1C80EDD5956E8FDCADD03441EF392BE3942FCFB75625F468D`で、readability、schema / migration marker、SQL終端、git ignoreをPASSした。
+
+HARD GATE PASS後にAPP `0016`だけを適用した。post-migration pendingはAPP / AUTH `0 / 0`、operations rowsは`224 -> 224`、lifecycle guardsは`0 -> 0`、executionsは`19 -> 19`で、各preservation hash、table / index names、`PRAGMA quick_check = ok`、FK violations `0`、read-only query `rows_written = 0`を確認した。operations / lifecycle guardsの新command CHECKも確認済みである。restoreは行っていない。
+
+exact `main@b3370d3d2e3de3ba113b1e3a55fbed893f3cc068`をnonprod buildし、generated configの`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、canonical APP / AUTH bindingを確認して`taskchute-web-nonprod` version `25e289fc-3eac-48b6-a063-706e8dcfb165`へdeployした。post-deploy APP / AUTH `quick_check = ok`、FK `0`、operations `224`、executions `19`、active executions `0`、lifecycle guards `0`、`0016` recordedを確認した。
+
+authenticated browser connectorがこの実行環境にないため、remoteのsectioned / sectionless Start→Revert、manual actual correction、overlap / forecast / reload persistence、Routine correction、exact remote operation replayは`NOT_VERIFIED`である。synthetic fixture投入やdirect SQLによるfeature mutationは行わず、feature semanticsはlocal automated evidenceに限定した。productionは`NOT_RUN`、Releasedは`NO`である。
+
+classification: D-057 `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / PERSISTENT_NONPROD_MIGRATED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_SAFETY_VERIFIED`。authenticated remote feature mutation / replayはremaining boundaryである。
+
 ### D-056 corrective resume — moved Routine occurrence Section start propagation — 2026-09-04
 
 D-056はApproved済みで、implementation commit `b325580d720099e93a9036d5091b267889e4753b`（`Implement Day Operations date move`）を`main`へpush済みである。独立reviewで、moved Routine occurrenceのDefinition default propagationがcurrent / Board defaultのplanned startをaffected Dayへ再利用し、D-043 / D-044のper-Day frozen Section contextと不一致になるbugを確認した。これは新しいProduct / Domain Decisionではなく、D-043 / D-044 / D-056に適合するreversible corrective fixであり、corrective commit `72321c7b51a7aec2e1123d216262e9dd8b88d497`（`Fix moved Routine Section propagation`）を`main`へfast-forward push済みである。correctiveでは新migration / schema / dependency変更を行っていない。

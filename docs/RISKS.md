@@ -145,7 +145,10 @@ Current mitigation / implementation:
 - active Execution最大1をapplication codeだけでなく`executions(app_user_id) WHERE ended_at IS NULL` partial UNIQUE indexでもenforceする
 - Start / Completeで`placement_revision`を変更しない
 - Complete retryでfirst `ended_at`を維持する
+- D-057の`RevertEntryStart` / `SetExecutionTimes`はlifecycle command guardとoperation fingerprintを使い、Revertはactive Executionだけを削除してEntryのSection / planned start / position / `placement_revision`を変更しない
+- actual intervalのoverlap判定を同一のguarded D1 batch内で行い、planned / running / completedの訂正とderived forecast再計算をatomicに扱う。completed Entryの不正な再openはrejectし、取消Executionのhistoryは生成しない
 - current lifecycle / ordering local suiteでstale conflict replay、cross-owner、concurrent Start、same-operation retry、64 Entry Reorder等をcoverageする
+- D-057 focused Workerでsectioned / sectionless Revert、actual correction、overlap、forecast reconciliation、Execution preservation、same-operation replay、completed reopen guardをcoverageする
 - persistent nonprod remote runtimeでactual D1 / Worker behaviorをverificationする
 
 実装review中には、runtime bootstrapでbroad catch後のstate観測からunexpected infrastructure failureをdeterministic Domain rejectionへ誤分類し得るpath、およびsame-operation rejection raceでstored successを捨て得るpathを検出し修正した。lifecycle reviewではcross-day Complete UI欠落、ambiguous retained operationの誤再送、O(N) Reorder statements / 200 Entry capを検出し、PR #5 merge前に修正・回帰testを追加した。
@@ -164,6 +167,7 @@ Mitigation direction:
 - spike PASSをProduct runtime verificationへ自動継承しない
 - local / nonprod PASSをproduction PASSへ自動継承しない
 - current evidenceは`docs/TEST_MATRIX.md`へ記録する
+- D-057のpersistent nonprodではmigration / deploy / DB integrity / safety probeをPASSしたが、authenticated browser connectorがないためfeature mutation / reload persistence / remote replayは`NOT_VERIFIED`とし、local PASSをremote feature PASSへ自動継承しない
 - future commandでもinfrastructure failureとDomain rejectionを分離し、safe retry / reconciliation余地を残す
 
 D1 feasibility gateはPASS / Verified。First Server + Web vertical sliceはImplemented + Integrated + local Testedで、persistent nonprod remote runtime / deployed Worker verificationもPASS。Product runtime全体はproduction未検証のためVerified / Releasedではない。

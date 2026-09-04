@@ -20,6 +20,25 @@ First Server + Web vertical slice、D-038 B1 / B3、D-039 B2、D-040 Minimal Rou
 
 Contractが`Approved`でも、実装やverificationが未実施ならPASS扱いしない。
 
+## D-057 — Execution Correction Batch v0.1 — 2026-09-04
+
+Contract: D-057 `Approved`。D-029のcurrent active Start Revertと、D-033のactual開始・終了時刻の手入力・訂正を実装し、D-057 execution correction semanticsをmainへintegrateした。実装 commitは`b3370d3d2e3de3ba113b1e3a55fbed893f3cc068`、Decision canonicalizationは`bcacc599b477b4eea56dd1ca158eb085360265e2`である。
+
+Local automated evidence:
+
+- focused Worker `5 / 5 PASS`。sectioned / sectionless Start→Revert、Entryの`running -> planned`、Section / planned start / position / placement revision不変、取消Executionをhistoryへ残さない境界、operation log保持、planned / running / completed actual入力・訂正、derived actual、user-global no-overlap、Start Forecast reconciliation、Execution preservation、same-operation replay、completed reopen guardを確認した。
+- full Worker `180 / 180 PASS`、Web `150 / 150 PASS`、migration regression `4 scenarios PASS`、typecheck、production build、`git diff --check`、source reviewは`PASS`。real-local safety smokeはroot `200`、protected API `401`、disabled bootstrap POST `404`をPASSした。
+
+Persistent non-production evidence:
+
+- initial read-only migration listはCloudflare API 7403で停止した。同じ既存account・既存OAuth scopeの期限切れ認証を再認証してread accessを復旧した。新API token、permission / OAuth scope拡張、account / role / APP-AUTH binding変更は行っていない。migration前pendingはAPP `0016_execution_correction.sql` / AUTH `0`。
+- HARD GATEとしてfresh private ignored backupを取得した。APP `d057-app-pre-0016-20260904.sql`は`242,569 bytes` / SHA-256 `51EB91ADCF29614CF5516493C4028A01E29FB4E19A6932E9A9DF3C01ECA234AF`、AUTH `d057-auth-pre-0016-20260904.sql`は`3,862 bytes` / SHA-256 `30475F539BE52CD1C80EDD5956E8FDCADD03441EF392BE3942FCFB75625F468D`。readability、schema / migration marker、SQL終端、ignoreをPASSした。
+- APP `0016`を適用後、post pending APP / AUTH `0 / 0`、operations `224 -> 224`、lifecycle guards `0 -> 0`、executions `19 -> 19`、preservation hash、table / index構成、new command CHECK、APP / AUTH `quick_check = ok`、FK `0`、read-only `rows_written = 0`を確認した。restoreは行っていない。
+- exact `main@b3370d3d2e3de3ba113b1e3a55fbed893f3cc068`をnonprod buildし、`taskchute-web-nonprod` version `25e289fc-3eac-48b6-a063-706e8dcfb165`へdeployした。generated configは`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、canonical APP / AUTH bindingを示した。post-deploy DB safetyはAPP / AUTH `quick_check = ok`、FK `0`、operations `224`、executions `19`、active executions `0`、lifecycle guards `0`、`0016` recordedである。
+- root `200`、protected API `401`、disabled bootstrap POST `404`を確認した。authenticated browser connectorがないためremote feature mutation、reload persistence、remote overlap / forecast、Routine correction、exact remote replayは`NOT_VERIFIED`。synthetic fixture / direct SQL feature mutationは行っていない。
+
+Classification: D-057 `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / PERSISTENT_NONPROD_MIGRATED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_SAFETY_VERIFIED`。production `NOT_RUN`、Released `NO`。authenticated remote feature mutation / replayはremaining boundary。
+
 ## D-056 corrective resume — moved Routine occurrence Section start propagation — 2026-09-04
 
 Contract: D-056 `Approved`。本件は新しいDecisionではなく、moved Routine occurrenceのSection default propagationがcurrent / Board default planned startをaffected Dayへ再利用していたD-043 / D-044適合bugのreversible fixである。D-056 implementationは`b325580d720099e93a9036d5091b267889e4753b`、correctiveは`72321c7b51a7aec2e1123d216262e9dd8b88d497`。correctiveに新migration / schema変更はない。

@@ -159,7 +159,7 @@ Taskはtarget column listに含まれるが、固定・非表示不可である�
 - 見積
 - 開始予定
 - 開始見込（read-only projection）
-- 開始 / 終了 / 実績（read-only Execution projection）
+- 開始 / 終了 / 実績（Execution projection。表示はderived、actualの入力・訂正はD-057 command / editor）
 
 見積は開始予定より前に置く。Entry placement / canonical orderはD-031 / D-039に従い、visual column orderから新しいDomain orderを作らない。
 
@@ -171,9 +171,8 @@ D-043のtarget interactionでは、開始予定の設定・変更が該当real S
 
 - Mode
 - Note / Documents
-- actual timeの直接編集 / manual correction
 
-これらはtarget column modelから削除しない。一方、capability実装前にfake valueやdisabled placeholderだけの列を出さない。Bulk Selection v0.1 / v0.2A / v0.2B1の実装・verification状態は下記の専用sectionと`CURRENT` / `FEATURES` / `TEST_MATRIX`で管理する。
+これらはtarget column modelから削除しない。一方、capability実装前にfake valueやdisabled placeholderだけの列を出さない。D-057のactual correctionはExecution factを更新する独立mutationとして実装済みであり、表のactual列はそのderived projectionを表示する。Bulk Selection v0.1 / v0.2A / v0.2B1 / v0.2B2の実装・verification状態は下記の専用sectionと`CURRENT` / `FEATURES` / `TEST_MATRIX`で管理する。
 
 ## Routine placement
 
@@ -349,11 +348,11 @@ cross-Section D&D v0.1はimplementation commit `89d4784fddca891421d3619def352ee1
 
 Start Forecast v0.1はD-032のderived projectionとして、`開始予定`の後ろへread-onlyの`開始見込`列を追加した。current Dayはserver projection生成時刻をanchorにactive Executionの見積残時間とtimed Section内planned Entryの見積を累積し、future established DayはDay startをanchorにする。planned startはforecast barrierではなく、completed / running自身、`Sectionなし`、past / record-noneは`—`表示とする。implementation commit `8939c4d6af95e2fd21b7d91e0e946bee29a6c1fb`はGitHub canonical `main`へIntegrated済みであり、詳細な実装・evidence状態は`CURRENT` / `FEATURES` / `TEST_MATRIX`を正本とする。
 
-Day Table column customization v0.1は、Project / Section / Routine / 見積 / 開始予定 / 開始見込 / 開始 / 終了 / 実績のregistry-driven heading / row / draft alignment、header reorder、shared width resize、handle double-click auto-fit、browser-local order / width persistenceを実装した。fixed Bulk / Execution / Taskは対象外であり、Mode / Noteはruntime projectionへ追加していない。実績列はExecution summaryのread-only projectionであり、manual correctionは行わない。implementation / fix commits `10584ba`、`6100d20`、`6316b0d`、`60eecdd`はGitHub canonical `main`へIntegrated済みで、詳細なevidence状態は`CURRENT` / `FEATURES` / `TEST_MATRIX`を正本とする。
+Day Table column customization v0.1は、Project / Section / Routine / 見積 / 開始予定 / 開始見込 / 開始 / 終了 / 実績のregistry-driven heading / row / draft alignment、header reorder、shared width resize、handle double-click auto-fit、browser-local order / width persistenceを実装した。fixed Bulk / Execution / Taskは対象外であり、Mode / Noteはruntime projectionへ追加していない。実績列はExecution summaryからのderived projectionであり、D-057のactual time editor / commandによる入力・訂正結果を表示する。D-057はcurrent active StartのRevertも提供するが、表のcanonical orderやplacement semanticsを変更しない。implementation / fix commits `10584ba`、`6100d20`、`6316b0d`、`60eecdd`、`b3370d3d2e3de3ba113b1e3a55fbed893f3cc068`はGitHub canonical `main`へIntegrated済みで、詳細なevidence状態は`CURRENT` / `FEATURES` / `TEST_MATRIX`を正本とする。
 
 current runtimeでは、Day Navigation v0.1のTop Navigation date navigation / calendar pickerと、Settings v0.1のLeft Sidebar `今日` / `設定`およびdedicated Section / Project Settings surfaceを実装済みである。DayBoard上のtemporary Project作成controlとSection設定editorは撤去済み。Desktop Day wide layoutとauthenticated Sidebar open / closed preferenceの実装状態は`docs/FEATURES.md`、`docs/CURRENT.md`、`docs/TEST_MATRIX.md`を正本とする。
 
-full target column modelはcurrent implementationより広い。Mode、Note、actual timeのmanual correction、Search / Filter、fullerなcontext interaction、D-053を超えるBulk capability等はfuture workとして残る。browser-local preferenceはServer / API / D1 / cross-device同期を行わず、responsive / mobileのexact policyは引き続きOpenであり、UI-2Aの狭幅fallbackをProduct Decisionへ昇格しない。
+full target column modelはcurrent implementationより広い。Mode、Note、Search / Filter、fullerなcontext interaction、D-053を超えるBulk capability等はfuture workとして残る。browser-local preferenceはServer / API / D1 / cross-device同期を行わず、responsive / mobileのexact policyは引き続きOpenであり、UI-2Aの狭幅fallbackをProduct Decisionへ昇格しない。
 
 ## Unreconciled historical scope
 
