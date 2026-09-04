@@ -1,5 +1,23 @@
 # Test Matrix
 
+## D-059 — Day Table vertical space, stable scrollbar gutter, and full-row D&D surface — 2026-09-04
+
+Contract: D-059 `Approved`。D-058のD&D開始面だけをTask cellからeligible planned Task row全体のnon-interactive surfaceへsupersedeし、Day Table containerのviewport vertical space、stable scrollbar gutter、Bulk checkbox geometryをpolishした。Task rowのheight / density、D&D domain / eligibility / ordering semantics、API / Domain / persistenceは変更していない。
+
+Local evidence:
+
+- focused Web / D-059 layout source checks `156 / 156 PASS`。`.shell.day-shell`の`100dvh` flex fill、`.day-surface`の`flex: 1 0 auto`、既存Task row `min-height: 44px`、horizontal-only ownership、root `scrollbar-gutter: stable`、checkbox square / centered markを確認した。
+- row rootからTask / Project / forecast / actual / EmptyValue系のnon-interactive cell D&Dを確認し、checkbox、Execution control、Section select、planned-start input、Routine control、overflow trigger / menu itemからdragを開始しないことを確認した。threshold click、same-cohort / cross-Section、invalid drop、pending mutation、running / completed / read-only、keyboard `Shift+↑/↓`、Section collapse、column resize / reorder、Bulk selection regressionを含む。
+- full Worker / runtime `176 / 176 PASS`、migration regression `4 scenarios PASS`、typecheck、production build、`git diff --check`、source review `PASS`。D-059はWeb-onlyでmigration / schema impact `NOT_REQUIRED`。
+
+Real-local / persistent nonprod evidence:
+
+- real-local Vite safety smokeはroot `200`、protected API `401`、disabled bootstrap `404`をPASS。authenticated browser connectorがないため、1920×1080 / 1440×900 / 1280×720 / 720pxのvisual viewport、page-scroll transition、zoom、actual pointer gesture、console evidenceは`NOT_VERIFIED`。local automated / source evidenceへ限定した。
+- exact `main@39cf674c44db2857aa649a18b480f695a6382112`をexisting `taskchute-web-nonprod` Worker version `2632d168-7b8f-4793-8502-f68295e05c65`へdeploy。generated nonprod configは`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、canonical APP / AUTH binding、`migrations=[]`。APP / AUTH pending `0 / 0`、APP latest `0016_execution_correction.sql`、APP operations / executions / lifecycle guards / active executions `225 / 19 / 0 / 0`、AUTH users / accounts / sessions `1 / 1 / 3`。
+- APP / AUTH `PRAGMA quick_check = ok`、FK violations `0`、read-only `rows_written = 0`。safety probe root `200`、protected `401`、bootstrap `404`。D-059 no migrationのためpre-migration backup / migration / restoreは`NOT_REQUIRED / NOT_RUN`。new API token、scope / permission、account / role、binding、security posture changeなし。
+
+Classification: D-059 `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_SAFETY_VERIFIED`、migration `NOT_REQUIRED`、authenticated feature / visual verification `NOT_VERIFIED`、production `NOT_RUN`、Released `NO`。
+
 ## D-058 — Day Table simplification and Execution-correction capability withdrawal — 2026-09-04
 
 Contract: D-058 `Approved`。D-057の`開始を取り消す` / `実績入力・実績訂正`をcurrent Product capabilityから撤去し、適用済み`0016_execution_correction.sql`と既存dataはhistorical compatibilityとして保持した。Day Tableのcheckbox polish、Task identity drag surface、whole Section summary toggle、far-right `…` overflow menu、dedicated `EmptyValue`を実装した。

@@ -362,6 +362,16 @@ D-058では、Day Tableのcurrent interactionを簡素化し、D-057で追加さ
 
 開始 / 終了 / 実績は引き続きvalid Execution factsからのread-only projectionである。D-057のDecision・実装・migration・evidenceはhistorical recordとして保持し、D-058 implementation / verification状態は`docs/CURRENT.md`、`docs/FEATURES.md`、`docs/TEST_MATRIX.md`を正本とする。
 
+## D-059 Day Table vertical space, stable scrollbar gutter, and full-row D&D surface
+
+D-059はD-058のうちD&Dの開始面だけを具体的にsupersedeする。Day Tableは`.shell.day-shell`のcolumn flex layoutと`100dvh` minimumを使い、`.day-surface`がheader / toolbar下のviewport残余を`flex: 1 0 auto`で白いsurfaceとして使う。Task rowは既存の`min-height: 44px`、padding、densityを維持し、Taskが少なくてもsurfaceを下へ伸ばし、Taskが多い場合はcontentに応じて自然にpageへ伸ばす。固定height、clip、不要なinner vertical scrollbar / double scrollbarは導入しない。horizontal overflowは引き続きDay Tableが所有する。
+
+page scrolling boundaryには`html { scrollbar-gutter: stable; }`を適用し、page vertical scrollbarの出現 / 消滅でDayのcentered positionやSidebar alignmentをshiftさせない。Settings / Routine / Authのcommon `.shell`幅は変更しない。Bulk slotのheader / row checkboxは同一の16×16 square、`aspect-ratio: 1 / 1`、paddingなし、grid centerを使い、checked / indeterminate markも同じbox内で中央表示する。
+
+eligible planned Entryのrow rootがpointer D&D開始面であり、Task identityだけでなくProject、read-only Section / Routine、estimate、planned start / forecast、actual projection、EmptyValue、row whitespaceから開始できる。`isInteractiveDragTarget`が認識するcheckbox、Execution control、button、link、input、select、textarea、contenteditable、Routine control、inline editor、overflow trigger / menu itemは開始面から除外する。movement threshold、normal click / focus、planned-only、current planning boundary、Routine-derived / running / completed / read-only protection、same-cohort / same-Section Reorder、cross-Section Move、collapsed target、`Shift+↑/↓`、existing command / revision / retry semanticsは変更しない。
+
+これはpresentation / interaction-onlyのDecisionであり、新しいProduct / API / Domain / persistence behavior、migration / schema、dependency、security posture changeを含まない。D-058の他のinteraction simplificationは維持する。
+
 current runtimeでは、Day Navigation v0.1のTop Navigation date navigation / calendar pickerと、Settings v0.1のLeft Sidebar `今日` / `設定`およびdedicated Section / Project Settings surfaceを実装済みである。DayBoard上のtemporary Project作成controlとSection設定editorは撤去済み。Desktop Day wide layoutとauthenticated Sidebar open / closed preferenceの実装状態は`docs/FEATURES.md`、`docs/CURRENT.md`、`docs/TEST_MATRIX.md`を正本とする。
 
 full target column modelはcurrent implementationより広い。Mode、Note、Search / Filter、fullerなcontext interaction、D-053を超えるBulk capability等はfuture workとして残る。browser-local preferenceはServer / API / D1 / cross-device同期を行わず、responsive / mobileのexact policyは引き続きOpenであり、UI-2Aの狭幅fallbackをProduct Decisionへ昇格しない。

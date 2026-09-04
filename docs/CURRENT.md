@@ -4,6 +4,22 @@ Date: 2026-09-04
 
 ## Status
 
+### D-059 — Day Table vertical space, stable scrollbar gutter, and full-row D&D surface — 2026-09-04
+
+D-059はApproved Decisionとしてcanonical化済みで、Decision commit `19a3281e76631de32dd0bae2439bb0cb4b6cb22b`（`Approve Day Table viewport polish`）とimplementation commits `ccc93a98e2586a9e1f0649ac761811faed512d16`（`Polish Day Table viewport interactions`） / `39cf674c44db2857aa649a18b480f695a6382112`（interactive SVG guard hardening）をGitHub canonical `main`へfast-forward push済みである。D-058のD&D開始面だけをTask identity / Task cellからeligible planned Task row全体のnon-interactive surfaceへsupersedeし、D-058の他のinteraction・Domain / ordering semanticsは維持した。
+
+`.shell.day-shell`をcolumn flexとして`100dvh`のminimum viewportを持たせ、`.day-surface`が`flex: 1 0 auto`でheader / toolbar下の残りを白いtable surfaceとして使うようにした。Task rowの既存`min-height: 44px`、padding、密度は意図的に増やしていない。surfaceはcontentで自然に伸び、固定height・clip・inner vertical scrollbarを追加せず、horizontal scroll ownershipは維持した。root `html`には`scrollbar-gutter: stable`を設定し、page scrollbar出現時のcentered Day UI / Sidebar横位置のshiftを防ぐ。
+
+eligible planned row rootをD&D surface（`data-drag-surface="row"`）とし、Task / Project / read-only Section・Routine・estimate・planned-start・forecast・actual・EmptyValue・row whitespaceから既存threshold付きpointer D&Dを開始できる。checkbox、Execution control、button / link / input / select / textarea / contenteditable、Routine control、inline editor、overflow trigger / menu item、既存`isInteractiveDragTarget`対象はguardで除外した。same-cohort / same-Section Reorder、cross-Section Move、collapsed cue、keyboard `Shift+↑/↓`、planned-only / current planning boundary / retry / revision semanticsは変更していない。Bulk checkboxはheader / row共通の16×16、`aspect-ratio: 1 / 1`、paddingなし、grid中央揃えとし、checked markをdeterministic clip-path、indeterminate markを同じ中央gridで表示する。
+
+Local evidenceはfocused Web `156 / 156 PASS`（新規D-059 layout CSS source checks、row-wide read-only cell D&D、interactive descendant no-drag、既存D&D回帰を含む）、Worker / runtime `176 / 176 PASS`、migration regression `4 scenarios PASS`、typecheck、production build、`git diff --check`、source reviewをPASSした。D-059はWeb-onlyでmigration / schema / API / Domain変更がなく、migration適用・backup・restoreは`NOT_REQUIRED / NOT_RUN`である。
+
+persistent non-productionではexisting `taskchute-web-nonprod`へexact `main@39cf674c44db2857aa649a18b480f695a6382112`をdeployし、Worker version `2632d168-7b8f-4793-8502-f68295e05c65`を確認した。generated configは`targetEnvironment=nonprod`、`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、canonical APP / AUTH D1 binding、`migrations=[]`を示した。deploy前後のAPP / AUTH pending migrationは`0 / 0`、APP latest `0016_execution_correction.sql`、APP operations / executions / lifecycle guards / active executionsは`225 / 19 / 0 / 0`、AUTH users / accounts / sessionsは`1 / 1 / 3`。APP / AUTH `PRAGMA quick_check = ok`、FK violations `0`、read-only `rows_written = 0`を確認し、安全probeはroot `200`、protected API `401`、disabled bootstrap `404`である。既存OAuth / account / scopeをそのまま利用し、新API token、permission / scope拡張、account / role変更、binding変更、security posture変更は行っていない。
+
+real-local Vite safety smokeはroot `200`、protected API `401`、disabled bootstrap `404`をPASSした。認証済みbrowser connectorがないため、1920×1080 / 1440×900 / 1280×720 / 720pxでのvisual viewport、actual page-scroll transition、checkbox zoom、pointer D&D gesture、consoleのreal-local UI evidenceは`NOT_VERIFIED`であり、local automated / source evidenceに限定した。productionは`NOT_RUN`、Releasedは`NO`である。
+
+classification: D-059 `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_SAFETY_VERIFIED`。migration `NOT_REQUIRED`、authenticated feature verification `NOT_VERIFIED`、production `NOT_RUN`、Released `NO`である。
+
 ### D-058 — Day Table simplification and Execution-correction capability withdrawal — 2026-09-04
 
 D-058はApproved Decisionとしてcanonical化済みで、Decision commit `44001b63b1704e52bc193eea5fe8ee606c663acb`（`Approve Day Table interaction simplification`）を含む実装 commit `66d63efa790c06d2efefa769595508b7c5d6dbb`（`Implement Day Table simplification`）を`main`へpush済みである。これはD-057の`開始を取り消す`と`実績入力 / 実績訂正`をUIから隠すだけでなく、current Web / API / Workerから撤去するcapability withdrawalである。normal Start / Complete、active Execution最大1、derived actual / Start Forecast、read-onlyの開始 / 終了 / 実績projectionは維持した。
