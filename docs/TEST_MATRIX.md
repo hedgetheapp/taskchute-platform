@@ -20,6 +20,30 @@ First Server + Web vertical slice、D-038 B1 / B3、D-039 B2、D-040 Minimal Rou
 
 Contractが`Approved`でも、実装やverificationが未実施ならPASS扱いしない。
 
+## D-055 — Bulk Estimate change with per-Routine scope — 2026-09-04
+
+Contract: D-055 `Approved`。ordinary / Routine / mixed planned Entryへcommon positive / explicit `NULL` estimateを一件の`BulkSetEntriesEstimateScoped` commandで適用し、Routineごとのscope指定、D-044 occurrence / definition semantics、propagation、no materialization、placement revision不変、atomicity、replayを対象とする。
+
+Local automated evidence:
+
+- D-055 focused Worker integration: `4 / 4 PASS`。mixed positive、explicit NULL、ordinary established future Day、Routine scope coverage / same-definition consistency、stale defaults、atomic no-partial-write、semantic array-order replay、placement revision不変を確認した。
+- D-055 focused Web: `2 / 2 PASS`。confirm前no-write、Routine scope未選択時disabled、fill-all、explicit NULL、one command、success後selection retentionを確認した。
+- full Worker: `170 / 170 PASS`。full Webは`139 PASS / 3 FAIL`で、3件は変更前から再現した既存ambiguous Reorder tests（D-055経路外）。typecheck、production build、`git diff --check`、source reviewは`PASS`。
+- migration regression: `4 scenarios PASS`。fresh `0001 -> 0014`、representative operation / guard preservation、table構成、new CHECK accept / unknown reject、quick_check / FKを確認した。
+
+Real-local evidence:
+
+- local Vite Worker smokeでroot `200`、protected API `401`、disabled bootstrap `404`を確認した。authenticated real-local browser connectorがこの実行環境にないため、browser UI mutation / visual responsive verificationは`NOT_VERIFIED`とし、local automated / Worker evidenceを採用した。
+
+Persistent non-production evidence:
+
+- migration前pending APP `0014_bulk_estimate_scoped.sql` / AUTH `0`を確認し、HARD GATEとしてfresh private ignored backupを取得した。APP `.wrangler/private-backups/d055-app-pre-0014-20260904.sql`は`242,239 bytes` / SHA-256 `6117341C22F425413DF46CA15A609AC0728FEC83687D222DFB5B59C7A73D7854`、AUTH `.wrangler/private-backups/d055-auth-pre-0014-20260904.sql`は`3,862 bytes` / SHA-256 `30475F539BE52CD1C80EDD5956E8FDCADD03441EF392BE3942FCFB75625F468D`で、非空・readable・schema / migration marker・SQL終端・ignore状態をPASSした。
+- APP `0014`を適用し、post pending APP / AUTH `0 / 0`、APP migration `0014`、operation row count `224`（backup内pre-migration insert statements `224`）、table構成保持、operations / routine guard CHECK、新command accept、APP / AUTH `quick_check = ok`、FK `0`、read-only `rows_written = 0`を確認した。AUTH migration / writeは行っていない。
+- exact `main@2eba5907455b92d301e57cc8b2eee087fa1aeebd`をnonprod buildし、`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、canonical bindingsを確認して`taskchute-web-nonprod` version `e41085e0-792e-4ec1-a4b3-35990505949a`へdeployした。root `200`、protected API `401`、disabled bootstrap `404`、future materialized Routine Entry `0`を確認した。
+- existing authenticated nonprod credential / browser connectorがないためremote D-055 feature mutation、reload UI、remote exact operation replayは`NOT_VERIFIED`。D-041に反するsynthetic future fixtureやdirect SQL feature mutationは行っていない。production `NOT_RUN`、Released `NO`。
+
+Classification: D-055 `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / PERSISTENT_NONPROD_MIGRATED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_SAFETY_VERIFIED`。authenticated remote feature mutation、remote exact replay、production deep mutationはremaining boundary。
+
 ## D-054 corrective fix — per-affected-Day frozen Section start — 2026-09-04
 
 Contract: D-054 `Approved`。本件は新しいDecisionではなく、future propagationでcurrent DayのSection startをaffected future Dayへ再利用していたreversible bugfixである。schema / migration / dependency変更はない。

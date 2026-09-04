@@ -274,6 +274,14 @@ Occurrence scopeはD-053のcurrent occurrence override semanticsを再利用す�
 
 APP compatibility migration `0013_bulk_routine_section_scoped.sql`はoperations command CHECK-onlyで、既存operation row / command type、Entry / Routine / Day / Section schema、PK / FKを変更しない。実装・verification状態は`docs/CURRENT.md`、`docs/FEATURES.md`、`docs/TEST_MATRIX.md`で管理する。
 
+## Bulk Estimate change with per-Routine scope
+
+D-055に基づくBulk Estimate changeは、D-051〜D-054のselection surfaceを再利用し、ordinary / Routine / mixedのeligible planned Entryへ一つのcommon positive estimateまたは明示的な`見積なし`（`NULL`）を適用する。Routineを含む場合、各selected Routine rowはpreselectせず、`今回だけ`または`ルーティンに反映`を明示選択する。`すべて今回だけ` / `すべてルーティンに反映`はfill-all helperであり、helper後のrow単位overrideを許可する。全Routine scopeが埋まるまでconfirmをdisabledにし、candidate表示・cancel・Escape・dismissはno-write、success後はselectionを維持する。
+
+Occurrence scopeはD-044 / D-046のtyped occurrence estimate overrideを再利用し、`estimate_override_present = 1`とtarget（`NULL`を含む）をselected current occurrenceへ保存する。Definition scopeはselected current occurrence overrideをclearし、Definitionごとのdefault estimateと`defaults_revision`を一回だけ更新する。already-materializedなcurrent / future planned Entryのうちexplicit overrideがないものだけへpropagateし、past、running、completed、suppressed、protected stateは変更しない。unmaterialized future Day / occurrence / Entryは作成しない。same Definitionのscope不一致、stale defaults、selected state変更、owner / Day / lifecycle / snapshot不一致は一つのatomic rejectまたは既存のambiguous retry boundaryへ収束させる。
+
+ordinary-only selectionはestablished displayed current / future Dayを許可する。Routine-inclusive selectionはserverがcanonical timezone / Day boundaryからcurrent Dayを解決し、non-current Dayを拒否する。estimate commandはSection、planned start、position、Day `placement_revision`をauthorityにもmutationにもせず、resultはselected effective value change、occurrence override change、non-selected propagation、Definition revisionを区別する。APP `0014_bulk_estimate_scoped.sql`は既存`operations`と、実装で再利用する`routine_command_guards`のcommand CHECK拡張だけを行うcompatibility-only migrationであり、新しいestimate persistence table / column / sentinelを追加しない。実装・verification状態は`docs/CURRENT.md`、`docs/FEATURES.md`、`docs/TEST_MATRIX.md`で管理する。
+
 ## Execution actual projection
 
 開始 / 終了 / 実績は、Entryへ値を書き戻す列ではなく、current-valid Execution factsからのread-only projectionとする。conceptual shapeは次である。
