@@ -1336,6 +1336,9 @@ describe("Dogfood Day shell", () => {
       expect(row.classList.contains("is-dragging")).toBe(false);
       fireEvent.dragEnd(source, { dataTransfer: dragDataTransfer() });
     }
+    const routineIcon = screen.getByRole("button", { name: "Routine化" }).querySelector("svg")!;
+    fireEvent.dragStart(routineIcon, { dataTransfer: dragDataTransfer() });
+    expect(row.classList.contains("is-dragging")).toBe(false);
     expect(mocks.reorderEntries).not.toHaveBeenCalled();
     expect(mocks.moveEntry).not.toHaveBeenCalled();
   });

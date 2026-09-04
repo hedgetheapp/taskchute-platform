@@ -243,8 +243,9 @@ function isBulkSelectableProjectionEntry(projection: CurrentTaskChuteDayProjecti
 }
 
 function isInteractiveDragTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return target.isContentEditable || Boolean(target.closest("button, a, input, select, textarea, [contenteditable]"));
+  if (!(target instanceof Element)) return false;
+  return (target instanceof HTMLElement && target.isContentEditable)
+    || Boolean(target.closest("button, a, input, select, textarea, [contenteditable]"));
 }
 
 function focusKey(target: FocusTarget): string {
