@@ -1215,3 +1215,29 @@ D-058では、Day Tableのinteractionを簡素化し、D-057で追加したcurre
 - empty data valueの`—`は専用presentationで小さく、normal weight、muted gray、vertical alignmentを保つ。意味のあるhyphen / range、Section time、user textは変更しない。
 
 UI simplificationは新しいdependency、APP / AUTH migration、schema変更、Start / Complete semantics変更、action eligibility拡張、production operationを含めない。実装・local / real-local・persistent nonprod verification・remote feature verificationの状態は`docs/CURRENT.md`、`docs/FEATURES.md`、`docs/DESIGN.md`、`docs/TEST_MATRIX.md`へ記録する。productionは別途承認なしに実施しない。
+
+## D-059 — Day Table vertical space, stable scrollbar gutter, and full-row D&D surface
+Status: Approved
+
+D-059では、Day Tableの見た目とpointer interactionを、既存のDay / Entry / D&D domain semanticsを変えずにpolishする。対象はDay Table containerのvertical space、page scrollbar gutter、Bulk checkbox geometry、eligible planned Task rowのD&D開始面である。
+
+### Day Table vertical space and stable page layout
+
+- `.day-surface`はheader / toolbarの下で利用可能なviewportの残りを実質的に使うminimum vertical spaceを持ち、Task数が少なくても白いtable surface / borderを下方向へ広げる。
+- Task rowのheight / densityをこのDecisionのtargetにしない。既存rowは上から順に並べ、Task数が増えた場合はtableが自然に下へ伸び、通常のpage vertical scrollingを使う。
+- Day Tableはhorizontal scrollingを引き続き所有し、Taskをclipせず、不要なinner vertical scrollbarやdouble scrollbarを導入しない。Section summary / Task rowはtable上端から配置し、余白はcleanな白いsurfaceとする。
+- page scrolling boundaryにはstable scrollbar gutterを確保し、vertical scrollbarの出現 / 消滅でcentered Day UIやSidebarのhorizontal positionを変えない。Settings / Routine / Authのcommon layoutを退行させない。
+
+### Checkbox presentation
+
+- Bulk Selection checkboxはDay TableのBulk slotに限定し、header / rowで同一のcompact square geometryを使う。outer boxは明示的な正方形、flex / grid stretchなし、inherited paddingなしとする。
+- checked / indeterminate markはhorizontal / verticalに決定的にcenterし、unchecked / hover / focus-visible / disabled stateと既存accentを維持する。checked状態のlayout shiftを起こさない。
+
+### Full-row Task D&D initiation
+
+- eligibleなcurrent planning boundary内のplanned Taskは、Task nameだけでなくrow全体のnon-interactive area（Project、Sectionのread-only領域、Routine/read-only表示、見積、開始予定 / forecast、actual projection、EmptyValue、row whitespace）からpointer D&Dを開始できる。
+- checkbox、Execution Start / Complete、button、link、input、select、textarea、contenteditable、Routine interactive control、inline editor、overflow trigger / menu item、既存`isInteractiveDragTarget`が認識する要素からはD&Dを開始しない。
+- normal click / focusとmovement threshold、eligible planned-only、current Day / planning boundary、Routine-derived / running / completed / read-only protection、same-cohort / same-Section Reorder、cross-Section Move、Section drop cue、collapsed target、keyboard `Shift+↑/↓`、server command / revision / retry semanticsは変更しない。
+- D-058のTask identity / Task cell開始面の記述だけを本Decisionでsupersedeし、D-058の他のinteraction simplificationとD&D domain / eligibility / ordering semanticsは維持する。
+
+D-059は新しいProduct / API / Domain / persistence change、新dependency、migration / schema change、security posture change、production operationを含めない。実装・local / real-local・persistent nonprod safety・remote feature verificationの状態は`docs/CURRENT.md`、`docs/FEATURES.md`、`docs/DESIGN.md`、`docs/TEST_MATRIX.md`を正本とする。productionは別途承認なしに実施しない。
