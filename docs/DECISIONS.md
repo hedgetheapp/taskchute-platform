@@ -1192,3 +1192,26 @@ valid completed intervalは`[started_at, ended_at)`、running intervalは`[start
 APP compatibility migration `0016_execution_correction.sql`は、既存`operations.command_type`と`lifecycle_command_guards.command_type`（既存guardを再利用する場合）のCHECKへ`RevertEntryStart`と`SetExecutionTimes`を追加するrebuildだけとする。existing operations、lifecycle guards、executions schema / indexes、entries lifecycle、PK / FK、active Execution unique index、table countを保持する。新しいDomain column / table、cancelled / tombstone / audit / revision schema、新lifecycle stateは追加しない。
 
 本DecisionはD-029の「current Start取消後もhistorical representationを持つ方向」を、current active StartのRevertに限って明示的にsupersedeする。D-029のearlier valid history保持、D-016のvalid historical fact保護、D-033のderived actual / no-overlap semantics、D-043の通常planned synchronizationは維持する。Interrupt、Quick Interrupt、continuation、running / completed / interrupted delete、Reopen、Pause、advanced multi-segment editor、correction audit timeline、production operationは本sliceに含めない。runtime、migration、Web、test、real-local、persistent nonprod verificationの状態は`docs/CURRENT.md`、`docs/FEATURES.md`、`docs/TEST_MATRIX.md`へ記録する。
+
+## D-058 — Day Table interaction simplification and Execution-correction capability withdrawal
+Status: Approved
+
+D-058では、Day Tableのinteractionを簡素化し、D-057で追加したcurrent Product capabilityのうち`開始を取り消す`（current Start Revert）と`実績入力 / 実績訂正`（manual actual Execution time entry / correction）を撤去する。これはボタンを隠すだけのUI変更ではなく、current Web / API / Workerから到達可能なProduct command pathを削除・無効化するcapability withdrawalである。
+
+### Capability withdrawal and retained history
+
+- D-029のcurrent Product requirementである`未実行に戻す`、D-033 / D-057のmanual actual start / end entry・correction、D-057の`RevertEntryStart` / `SetExecutionTimes`のcurrent Product exposureは本Decisionでsuperseded / removedとする。
+- D-057のApproved Decision、implementation、test、migration、nonprod evidenceはhistorical recordとして保持し、既存docsのD-057記録を過去の事実として書き換えない。
+- normal Start / Complete lifecycle、active Execution最大1、valid Execution no-overlap principle、valid historical Execution fact protection、derived actual duration、Start Forecast、開始 / 終了 / 実績のread-only projectionは維持する。
+- current client method、route、Web editor / dialog、Worker command execution pathは撤去する。router architecture上のcompatibility responseが必要な場合も、removed mutationを実行せず、route unavailable / `404`を優先し、新しいpublic compatibility promiseを追加しない。
+- 適用済み`0016_execution_correction.sql`はimmutable historical compatibility migrationとして保持する。operations / lifecycle guardsの既存row、Execution fact、既存D1 dataは保持し、reverse migration、CHECK allow-listを狭めるrebuild、historical operation削除、Execution変更、schema rollbackは行わない。`0016`に残るcommand CHECK valuesはhistorical compatibility residueであり、現行Product capabilityへの到達経路ではない。
+
+### Day Table interaction simplification
+
+- Bulk Selection checkboxはDay TableのBulk slotだけをscoped custom presentationとし、unchecked / hover / checked / indeterminate / focus-visible / disabled stateを識別可能にする。selection semantics、layout、global checkbox styleは変更しない。
+- visibleなTask drag glyph / `.task-drag-handle`を撤去し、Task identity / Task cell surfaceをpointer D&Dの開始面とする。checkbox、Execution control、link / button、select / input、Routine control、row overflow menu等のinteractive descendantからはdragを開始しない。same-Section / same-cohort、cross-Section、keyboard `Shift+↑/↓`、既存D&D command / eligibilityは維持する。
+- dedicated Section collapse chevron buttonを撤去し、Section summary row自身をpointer / keyboard Enter / Spaceのcollapse targetとする。`＋` Add Taskは右側に残し、クリック時はcollapseを発火させない。ARIAとbrowser-local collapse persistenceは維持する。
+- eligible Task rowの右端に一つの`…` overflow interaction slotを置き、既存eligibilityの範囲で`日付変更`、`複製`、`削除`を既存flowへ接続する。outside click / Escape / stale reconciliation、focus restoration、menu semantics、horizontal scrollを維持する。Revert、manual actual entry / correctionはmenuへ移さず、capabilityとして撤去する。
+- empty data valueの`—`は専用presentationで小さく、normal weight、muted gray、vertical alignmentを保つ。意味のあるhyphen / range、Section time、user textは変更しない。
+
+UI simplificationは新しいdependency、APP / AUTH migration、schema変更、Start / Complete semantics変更、action eligibility拡張、production operationを含めない。実装・local / real-local・persistent nonprod verification・remote feature verificationの状態は`docs/CURRENT.md`、`docs/FEATURES.md`、`docs/DESIGN.md`、`docs/TEST_MATRIX.md`へ記録する。productionは別途承認なしに実施しない。
