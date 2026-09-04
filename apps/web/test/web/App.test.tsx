@@ -359,6 +359,19 @@ describe("Dogfood Day shell", () => {
     expect(screen.getByRole("checkbox", { name: "実行済みを表示" })).toBeTruthy();
   });
 
+  it("fills the available Day viewport without increasing Task row density", async () => {
+    mocks.loadDay.mockResolvedValue(populatedDay);
+    render(<App />);
+    const dayBoard = await screen.findByRole("region", { name: "DayBoard" });
+    const dayShell = dayBoard.closest<HTMLElement>(".day-shell")!;
+    const taskRow = dayBoard.querySelector<HTMLElement>("[data-entry-id]")!;
+
+    expect(dayShell.classList.contains("day-shell")).toBe(true);
+    expect(dayBoard.classList.contains("day-surface")).toBe(true);
+    expect(taskRow.classList.contains("task-row")).toBe(true);
+    expect(dayBoard.querySelectorAll("[data-entry-id]")).toHaveLength(1);
+  });
+
   it("renders read-only forecast from the server anchor without using planned start as a barrier", async () => {
     const forecastDay: CurrentTaskChuteDayProjection = {
       ...twoPlannedDay,
@@ -979,7 +992,9 @@ describe("Dogfood Day shell", () => {
     mocks.loadDay.mockResolvedValue(twoPlannedDay);
     render(<App />);
     const handle = (await screen.findAllByTitle("ドラッグして並び替え"))[0]!;
-    expect(handle.closest(".task-main")).toBeTruthy();
+    expect(handle.classList.contains("task-row")).toBe(true);
+    expect(handle.getAttribute("data-drag-surface")).toBe("row");
+    expect(handle.querySelector(".task-main")?.getAttribute("draggable")).toBeNull();
     expect(handle.getAttribute("draggable")).toBe("true");
     expect(screen.queryByRole("button", { name: "Canonical taskを上へ" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Canonical taskを下へ" })).toBeNull();
@@ -1265,6 +1280,66 @@ describe("Dogfood Day shell", () => {
     expect(source.classList.contains("is-dragging")).toBe(false);
   });
 
+  it("starts D&D from eligible non-interactive cells across the full Task row", async () => {
+    const rowEntry: EntryProjection = { ...firstEntry,
+      task: { ...firstEntry.task, project: { id: "019c0000-0000-7000-8000-000000000011", title: "Project display" } },
+      execution_summary: {
+        first_started_at: "2026-08-22T10:00:00.000Z", last_ended_at: "2026-08-22T10:10:00.000Z",
+        completed_duration_seconds: 600, active_started_at: null,
+      },
+    };
+    const rowDay = { ...populatedDay, sections: [{ ...populatedDay.sections[0], entries: [rowEntry] }, emptyDay.sections[1]] };
+    mocks.loadDay.mockResolvedValue(rowDay);
+    render(<App />);
+    const row = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
+    const sources = [
+      row.querySelector<HTMLElement>('[data-day-column-cell="project"]'),
+      row.querySelector<HTMLElement>('[data-day-column-cell="forecast"]'),
+      row.querySelector<HTMLElement>('[data-day-column-cell="actualStart"]'),
+      row.querySelector<HTMLElement>('[data-day-column-cell="actualEnd"]'),
+      row.querySelector<HTMLElement>('[data-day-column-cell="actualDuration"]'),
+    ];
+    expect(sources.every((source) => source !== null)).toBe(true);
+
+    for (const source of sources) {
+      const dataTransfer = dragDataTransfer();
+      fireEvent.dragStart(source!, { dataTransfer });
+      expect(row.classList.contains("is-dragging")).toBe(true);
+      expect(dataTransfer.setData).toHaveBeenCalledWith("text/plain", firstEntry.id);
+      fireEvent.dragEnd(source!, { dataTransfer });
+      expect(row.classList.contains("is-dragging")).toBe(false);
+    }
+  });
+
+  it("does not start row D&D from interactive descendants", async () => {
+    mocks.loadDay.mockResolvedValue(populatedDay);
+    render(<App />);
+    const row = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
+    const interactiveSources: HTMLElement[] = [
+      screen.getByRole("checkbox", { name: "「Canonical task」を選択" }),
+      screen.getByRole("button", { name: "Canonical taskを開始" }),
+      screen.getByRole("combobox", { name: "Canonical taskのSection" }),
+      screen.getByRole("button", { name: "Canonical taskの開始予定" }),
+      screen.getByRole("button", { name: "Canonical taskの見積" }),
+      screen.getByRole("button", { name: "Routine化" }),
+      screen.getByRole("button", { name: "Canonical taskのその他の操作" }),
+    ];
+
+    fireEvent.click(screen.getByRole("button", { name: "Canonical taskの開始予定" }));
+    interactiveSources.push(screen.getByRole("textbox", { name: "Canonical taskの開始予定" }));
+    fireEvent.keyDown(interactiveSources.at(-1)!, { key: "Escape" });
+    fireEvent.click(screen.getByRole("button", { name: "Canonical taskのその他の操作" }));
+    interactiveSources.push(screen.getByRole("menuitem", { name: "削除" }));
+
+    for (const source of interactiveSources) {
+      fireEvent.dragStart(source, { dataTransfer: dragDataTransfer() });
+      expect(row.classList.contains("is-dragging")).toBe(false);
+      fireEvent.dragEnd(source, { dataTransfer: dragDataTransfer() });
+    }
+    expect(mocks.reorderEntries).not.toHaveBeenCalled();
+    expect(mocks.moveEntry).not.toHaveBeenCalled();
+  });
+
   it("keeps a collapsed target collapsed and focuses its summary after a cross-Section move", async () => {
     window.localStorage.setItem(DAY_SECTION_COLLAPSE_STORAGE_KEY, JSON.stringify({ version: 1, days: { [twoPlannedDay.taskchute_day.logical_date]: [eveningId] } }));
     const moved = { ...firstEntry, section_id: eveningId, planned_start_minute: 720 };
@@ -1300,7 +1375,7 @@ describe("Dogfood Day shell", () => {
     fireEvent.drop(targetSummary, { dataTransfer });
     fireEvent.dragEnd(dragSurface(source), { dataTransfer });
     await waitFor(() => expect(mocks.moveEntry).toHaveBeenCalledTimes(1));
-    expect(source.querySelector<HTMLElement>(".task-drag-surface")?.getAttribute("draggable")).toBe("false");
+    expect(source.getAttribute("draggable")).toBe("false");
     fireEvent.dragStart(dragSurface(source), { dataTransfer: dragDataTransfer() });
     expect(mocks.moveEntry).toHaveBeenCalledTimes(1);
     request.resolve({});

@@ -3234,8 +3234,12 @@ export function App() {
                 const canEditPlanning = day.planning_enabled && entry.lifecycle_state === "planned";
                 const hasOverflowActions = canMoveDate || canEditPlanning;
                 return (
-                  <div className={`task-row state-${entry.lifecycle_state}${selectedEntryIds.includes(entry.id) ? " is-selected" : ""}${entryDrag?.entryId === entry.id ? " is-dragging" : ""}${entryDrag?.targetEntryId === entry.id && entryDrag.edge ? ` drop-${entryDrag.edge}` : ""}`} key={entry.id} tabIndex={0} aria-selected={selectedEntryIds.includes(entry.id)}
+                  <div className={`task-row task-drag-surface state-${entry.lifecycle_state}${selectedEntryIds.includes(entry.id) ? " is-selected" : ""}${entryDrag?.entryId === entry.id ? " is-dragging" : ""}${entryDrag?.targetEntryId === entry.id && entryDrag.edge ? ` drop-${entryDrag.edge}` : ""}`} key={entry.id} tabIndex={0} aria-selected={selectedEntryIds.includes(entry.id)}
                     data-entry-id={entry.id} data-section-id={section.id ?? ""} data-day-focus-target data-focus-key={focusKey(entryTarget)}
+                    draggable={canDrag && !mutationLocked}
+                    data-drag-surface="row" title={canDrag ? "ドラッグして並び替え" : undefined}
+                    onMouseDown={(event) => startEntryMouseDrag(event, section.id, entry)}
+                    onDragStart={(event) => startEntryDrag(event, section.id, entry)}
                     onMouseMove={(event) => updateEntryMouseTarget(event, section.id, entry.id)}
                     onMouseUp={(event) => finishEntryMouseDrag(event, section.id, entry.id)}
                     onDragEnd={() => { mouseDragRef.current = null; setEntryDrag(null); }}
@@ -3247,7 +3251,8 @@ export function App() {
                       }
                     }}
                     onClick={(event) => {
-                    if (event.target === event.currentTarget || (event.target as HTMLElement).closest(".task-main")) focusSurface(event.currentTarget);
+                    if (isInteractiveDragTarget(event.target) || entryDrag || mouseDragRef.current) return;
+                    focusSurface(event.currentTarget);
                   }}>
                     <span className="bulk-slot">
                       <input type="checkbox" checked={selectedEntryIds.includes(entry.id)}
@@ -3270,10 +3275,7 @@ export function App() {
                         }}>{isRunning ? "■" : "▶"}</button>
                       )}
                     </span>
-                    <div className="task-main task-drag-surface" draggable={canDrag && !mutationLocked}
-                      onMouseDown={(event) => startEntryMouseDrag(event, section.id, entry)}
-                      onDragStart={(event) => startEntryDrag(event, section.id, entry)}
-                      data-drag-surface="task" title={canDrag ? "ドラッグして並び替え" : undefined}>
+                    <div className="task-main">
                       <div className="task-identity">
                         <strong>{entry.task.title}</strong>{day.next_entry?.id === entry.id && <span className="next-label">Next</span>}
                       </div>
