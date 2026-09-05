@@ -52,7 +52,9 @@ input:focus-visible, select:focus-visible { border-color: #2383e2; outline: 2px 
 .day-navigation .day-date-trigger:hover:not(:disabled),
 .day-navigation .day-date-trigger[aria-expanded="true"] { border-color: #d8d8d5; background: #fff; }
 .calendar-popover { position: absolute; z-index: 30; top: calc(100% + 6px); left: 50%; width: 304px; transform: translateX(-50%); border: 1px solid #d8d8d5; border-radius: 8px; background: #fff; box-shadow: 0 12px 32px rgb(15 15 15 / 18%); padding: 12px; }
-.calendar-month-heading { margin-bottom: 8px; text-align: center; font-size: 14px; font-weight: 650; }
+.calendar-month-toolbar { display: grid; grid-template-columns: 28px 28px minmax(0, 1fr) 28px 28px; align-items: center; gap: 3px; margin-bottom: 8px; }
+.calendar-nav-button { min-width: 0 !important; min-height: 28px !important; padding: 2px 0 !important; font-size: 16px !important; line-height: 1; }
+.calendar-month-heading { text-align: center; font-size: 14px; font-weight: 650; }
 .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
 .calendar-weekday { display: grid; min-height: 26px; place-items: center; color: #787774; font-size: 11px; font-weight: 650; }
 .day-navigation .calendar-day { display: grid; min-width: 0; min-height: 34px; place-items: center; padding: 0; border: 1px solid transparent; background: transparent; color: #383836; font-size: 12px; }
@@ -163,6 +165,8 @@ input:focus-visible, select:focus-visible { border-color: #2383e2; outline: 2px 
 .column-heading-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .column-resize-handle { flex: none; width: 10px; height: 24px; margin-right: -7px; padding: 0; border: 0; border-right: 2px solid transparent; border-radius: 0; background: transparent; cursor: col-resize; }
 .column-resize-handle:hover, .column-resize-handle:focus-visible { border-right-color: #a7c9e8; background: #edf5fc; outline: none; }
+.task-heading { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+.task-column-resize-handle { margin-right: -7px; }
 .column-heading.drop-before, .column-heading.drop-after { background: #f0f6fc; }
 .section-group + .section-group { border-top: 1px solid #dcdcd9; }
 .section-summary { --section-summary-background: #f7f7f5; display: flex; min-width: var(--day-table-min-width); min-height: 40px; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 10px 6px 14px; border-bottom: 1px solid #e9e9e7; background: var(--section-summary-background); outline: none; }
@@ -239,7 +243,7 @@ input:focus-visible, select:focus-visible { border-color: #2383e2; outline: 2px 
 .task-metadata-editor { display: grid; width: 100%; min-width: 0; gap: 2px; }
 .task-metadata-editor input { min-width: 0; width: 100%; height: 32px; margin: 0; padding: 4px 6px; }
 .project-selector { width: 100%; min-width: 0; margin: 0; padding: 4px 5px; }
-.actual-time-button { min-width: 0; max-width: 100%; overflow: hidden; padding: 4px 5px; border: 0; background: transparent; color: inherit; font: inherit; text-overflow: ellipsis; white-space: nowrap; }
+.actual-time-button { width: 100%; min-width: 0; max-width: 100%; overflow: hidden; padding: 4px 5px; border: 0; background: transparent; color: inherit; font: inherit; text-overflow: ellipsis; white-space: nowrap; }
 .actual-time-button:not(:disabled):hover { background: #edf5fc; color: #2383e2; }
 .actual-time-editor { display: grid; width: 100%; min-width: 0; gap: 3px; }
 .actual-time-editor input, .actual-time-editor select { min-width: 0; width: 100%; height: 32px; margin: 0; padding: 4px 5px; font-size: 11px; }
@@ -274,6 +278,14 @@ input:focus-visible, select:focus-visible { border-color: #2383e2; outline: 2px 
 .project-name, .muted { color: #787774; font-size: 12px; }
 .empty-value { display: inline-flex; align-items: center; color: #9b9b97; font-size: 10px; font-weight: 400; line-height: 1; vertical-align: middle; }
 .task-row select { padding: 6px 7px; font-size: 12px; }
+.shortcut-help { display: grid; gap: 12px; margin: 10px 0; }
+.shortcut-help-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.shortcut-help-heading h2 { margin: 0; font-size: 16px; }
+.shortcut-help-heading button { padding: 5px 8px; font-size: 12px; }
+.shortcut-help-list { display: grid; gap: 5px; margin: 0; color: #575754; font-size: 12px; }
+.shortcut-help-list > div { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 10px; }
+.shortcut-help-list dt { color: #383836; font-weight: 700; }
+.shortcut-help-list dd { margin: 0; }
 .planned-start-cell input, .estimate-cell input { width: 100%; height: 32px; padding: 6px; text-align: right; }
 .forecast-cell, .actual-time-cell, .actual-duration { color: #575754; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .actual-time-cell { display: flex; min-width: 0; align-items: center; gap: 4px; }

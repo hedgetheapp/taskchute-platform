@@ -492,6 +492,25 @@ describe("Dogfood Day shell", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
+  it("supports visible calendar year controls and outside-click dismissal", async () => {
+    mocks.loadDay.mockResolvedValue(emptyDay);
+    render(<App />);
+    const trigger = await screen.findByRole("button", { name: "2026年8月22日（土）、日付を選択" });
+    fireEvent.click(trigger);
+    expect(screen.getByRole("button", { name: "前年" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "翌年" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "前の月" }));
+    expect(screen.getByRole("dialog", { name: "2026年7月のカレンダー" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "次の月" }));
+    expect(screen.getByRole("dialog", { name: "2026年8月のカレンダー" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "前年" }));
+    expect(screen.getByRole("dialog", { name: "2025年8月のカレンダー" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "翌年" }));
+    expect(screen.getByRole("dialog", { name: "2026年8月のカレンダー" })).toBeTruthy();
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByRole("dialog", { name: /カレンダー/ })).toBeNull();
+  });
+
   it("drops a selected non-current Day across explicit logout and reloads the canonical current Day after login", async () => {
     mocks.loadDay.mockImplementation(async (logicalDate?: string) => logicalDate ? {
       ...emptyDay,
@@ -899,6 +918,48 @@ describe("Dogfood Day shell", () => {
     expect(document.activeElement).toBe(summary);
   });
 
+  it("moves from a neutral surface and routes N/E/D/? without upgrading D to bulk delete", async () => {
+    mocks.loadDay.mockResolvedValue(twoPlannedDay);
+    render(<App />);
+    await screen.findByRole("region", { name: "DayBoard" });
+    const main = screen.getByRole("main");
+    main.tabIndex = -1;
+    main.focus();
+    fireEvent.keyDown(main, { key: "ArrowDown" });
+    expect(document.activeElement?.getAttribute("data-entry-id")).toBe(firstEntry.id);
+
+    main.focus();
+    fireEvent.keyDown(main, { key: "ArrowUp" });
+    expect(document.activeElement?.getAttribute("data-entry-id")).toBe(secondEntry.id);
+    fireEvent.keyDown(document.activeElement!, { key: "k" });
+    expect(document.activeElement?.getAttribute("data-entry-id")).toBe(firstEntry.id);
+
+    fireEvent.keyDown(document.activeElement!, { key: "n" });
+    expect(screen.getByRole("textbox", { name: "MorningのTask名" })).toBeTruthy();
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "MorningのTask名" }), { key: "Escape" });
+
+    const row = (screen.getByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
+    row.focus();
+    fireEvent.keyDown(row, { key: "e" });
+    const title = screen.getByRole("textbox", { name: "Canonical taskのTask名" });
+    fireEvent.keyDown(title, { key: "s" });
+    expect(mocks.startEntry).not.toHaveBeenCalled();
+    fireEvent.keyDown(title, { key: "Escape" });
+
+    row.focus();
+    fireEvent.keyDown(row, { key: "d" });
+    expect(screen.getByRole("dialog", { name: "選択したTaskを削除" })).toBeTruthy();
+    expect(mocks.bulkDeleteEntries).not.toHaveBeenCalled();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "選択したTaskを削除" })).toBeNull();
+
+    main.focus();
+    fireEvent.keyDown(main, { key: "?" });
+    expect(screen.getByRole("dialog", { name: "キーボードショートカット" }).textContent).toContain("Shift + ↑ / ↓");
+    fireEvent.keyDown(screen.getByRole("dialog", { name: "キーボードショートカット" }), { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "キーボードショートカット" })).toBeNull();
+  });
+
   it("starts through the existing operation path and reconciles running state", async () => {
     mocks.loadDay.mockResolvedValueOnce(populatedDay).mockResolvedValueOnce(runningDay);
     render(<App />);
@@ -1209,7 +1270,7 @@ describe("Dogfood Day shell", () => {
     fireEvent.dragEnd(dragSurface(source), { dataTransfer });
     await waitFor(() => expect(mocks.moveEntry).toHaveBeenCalledTimes(1));
     expect(mocks.moveEntry.mock.calls[0][0]).toMatchObject({ section_id: null, expected_placement_revision: 1 });
-    await waitFor(() => expect(screen.getByRole("button", { name: "Canonical taskの開始予定" }).textContent).toContain("—"));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Canonical taskの開始予定" }).textContent).toContain("--:--"));
     expect(screen.getByText("Canonical task").closest("[data-section-id]")?.getAttribute("data-section-id")).toBe("");
   });
 
@@ -1925,7 +1986,7 @@ describe("Dogfood Day shell", () => {
     fireEvent.change(screen.getByRole("combobox", { name: "Canonical taskのSection" }), { target: { value: eveningId } });
     await waitFor(() => expect(mocks.moveEntry).toHaveBeenCalledTimes(1));
     await waitFor(() => expect((screen.getByRole("combobox", { name: "Canonical taskのSection" }) as unknown as HTMLSelectElement).value).toBe(eveningId));
-    expect(screen.getByRole("button", { name: "Canonical taskの開始予定" }).textContent).toContain("—");
+    expect(screen.getByRole("button", { name: "Canonical taskの開始予定" }).textContent).toContain("--:--");
   });
 
   it("closes an open planned-start editor and shows the canonical clear after explicit Section move", async () => {
@@ -1946,7 +2007,7 @@ describe("Dogfood Day shell", () => {
     await waitFor(() => expect((screen.getByRole("combobox", { name: "Canonical taskのSection" }) as unknown as HTMLSelectElement).value)
       .toBe(eveningId));
     expect(screen.queryByRole("textbox", { name: "Canonical taskの開始予定" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Canonical taskの開始予定" }).textContent).toContain("—");
+    expect(screen.getByRole("button", { name: "Canonical taskの開始予定" }).textContent).toContain("--:--");
   });
 
   it("allows reorder only inside the same planned-start cohort", async () => {
@@ -2016,7 +2077,7 @@ describe("Dogfood Day shell", () => {
     await screen.findByText("Canonical task");
     expect(Array.from(document.querySelectorAll("[data-entry-id]")).map((row) => row.getAttribute("data-entry-id")))
       .toEqual([firstEntry.id, secondEntry.id]);
-    expect(screen.getByRole("button", { name: "Canonical taskの開始予定" }).textContent).toContain("—");
+    expect(screen.getByRole("button", { name: "Canonical taskの開始予定" }).textContent).toContain("--:--");
     expect(screen.getByRole("button", { name: "Second taskの開始予定" }).textContent).toContain("10:00");
   });
 
@@ -2756,6 +2817,42 @@ describe("Dogfood Day shell", () => {
     expect(JSON.parse(window.localStorage.getItem(DAY_COLUMNS_STORAGE_KEY)!).widths.project).toBe(100);
   });
 
+  it("resizes the fixed Task column and restores its browser-local width after reload", async () => {
+    mocks.loadDay.mockResolvedValue(populatedDay);
+    const rendered = render(<App />);
+    const dayBoard = await screen.findByRole("region", { name: "DayBoard" });
+    const heading = dayBoard.querySelector<HTMLElement>(".table-heading")!;
+    const taskHeading = heading.querySelector<HTMLElement>(".task-heading")!;
+    setColumnBounds(taskHeading, 84, 320);
+    vi.spyOn(heading, "getBoundingClientRect").mockReturnValue({
+      x: 0, y: 0, width: 1500, height: 34, top: 0, right: 1500, bottom: 34, left: 0,
+      toJSON: () => ({}),
+    });
+    fireEvent.mouseDown(screen.getByRole("button", { name: "Task列の幅を変更" }), { button: 0, clientX: 404 });
+    fireEvent.mouseMove(window, { clientX: 504 });
+    fireEvent.mouseUp(window);
+    await waitFor(() => expect(dayBoard.style.getPropertyValue("--day-table-grid-template-columns")).toContain("420px"));
+    expect(JSON.parse(window.localStorage.getItem(DAY_COLUMNS_STORAGE_KEY)!).taskWidth).toBe(420);
+
+    rendered.unmount();
+    render(<App />);
+    const reloadedBoard = await screen.findByRole("region", { name: "DayBoard" });
+    expect(reloadedBoard.style.getPropertyValue("--day-table-grid-template-columns")).toContain("420px");
+    expect(reloadedBoard.querySelector(".task-column-resize-handle")).toBeTruthy();
+  });
+
+  it("uses muted Day Table placeholders for unset time and minute cells", async () => {
+    mocks.loadDay.mockResolvedValue(populatedDay);
+    render(<App />);
+    await screen.findByRole("region", { name: "DayBoard" });
+    expect(screen.getByRole("button", { name: "Canonical taskの開始予定" }).textContent).toBe("--:--");
+    expect(screen.getByRole("button", { name: "Canonical taskの見積" }).textContent).toBe("--分");
+    expect(screen.getByLabelText("Canonical taskの開始").textContent).toBe("--:--");
+    expect(screen.getByLabelText("Canonical taskの終了").textContent).toBe("--:--");
+    expect(screen.getByLabelText("Canonical taskの実績").textContent).toBe("--分");
+    expect(screen.getByRole("button", { name: "Canonical taskの開始予定" }).querySelector(".empty-value")?.getAttribute("aria-label")).toBe("開始予定なし");
+  });
+
   it("opens the accessible Columns menu, hides data cells immediately, and restores focus on Escape", async () => {
     mocks.loadDay.mockResolvedValue(populatedDay);
     render(<App />);
@@ -2913,9 +3010,9 @@ describe("Dogfood Day shell", () => {
     expect((await screen.findByLabelText("Canonical taskの開始")).textContent).toBe("23:40");
     expect(screen.getByLabelText("Canonical taskの終了").textContent).toBe("25:10");
     expect(screen.getByLabelText("Canonical taskの実績").textContent).toBe("1時間30分");
-    expect(screen.getByLabelText("Second taskの開始").textContent).toBe("—");
-    expect(screen.getByLabelText("Second taskの終了").textContent).toBe("—");
-    expect(screen.getByLabelText("Second taskの実績").textContent).toBe("—");
+    expect(screen.getByLabelText("Second taskの開始").textContent).toBe("--:--");
+    expect(screen.getByLabelText("Second taskの終了").textContent).toBe("--:--");
+    expect(screen.getByLabelText("Second taskの実績").textContent).toBe("--分");
 
     actualRendered.unmount();
     const activeRoutineDay = { ...actualDay, sections: [{ ...actualDay.sections[0], entries: [routineEntry] }, actualDay.sections[1]] };
@@ -3315,19 +3412,23 @@ describe("Dogfood Day shell", () => {
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Canonical taskの開始" }));
     const start = screen.getByRole("textbox", { name: "Canonical taskの開始" }) as HTMLInputElement;
-    const end = screen.getByRole("textbox", { name: "Canonical taskの終了" }) as HTMLInputElement;
     expect(start.type).toBe("text");
     expect(start.inputMode).toBe("numeric");
     expect(document.querySelector('input[type="datetime-local"]')).toBeNull();
     expect(start.value).toBe("1200");
+    expect(screen.getByRole("button", { name: "Canonical taskの終了" })).toBeTruthy();
+    expect(screen.queryByRole("textbox", { name: "Canonical taskの終了" })).toBeNull();
     fireEvent.change(start, { target: { value: "1215" } });
-    fireEvent.blur(start, { relatedTarget: end });
+    fireEvent.keyDown(start, { key: "Escape" });
     expect(mocks.setExecutionTimes).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Canonical taskの終了" }));
+    const end = screen.getByRole("textbox", { name: "Canonical taskの終了" }) as HTMLInputElement;
+    expect(screen.queryByRole("textbox", { name: "Canonical taskの開始" })).toBeNull();
     fireEvent.change(end, { target: { value: "1230" } });
     fireEvent.blur(end, { relatedTarget: document.body });
     await waitFor(() => expect(mocks.setExecutionTimes).toHaveBeenCalledTimes(1));
     expect(mocks.setExecutionTimes.mock.calls[0][0]).toMatchObject({
-      started_at: "2026-08-22T12:15:00.000Z",
+      started_at: "2026-08-22T12:00:00.000Z",
       ended_at: "2026-08-22T12:30:00.000Z",
     });
   });
@@ -3345,6 +3446,7 @@ describe("Dogfood Day shell", () => {
     expect(parseActualClockInput("0010", "UTC", "2026-09-05", 240, null, "2026-09-05T23:50:00.000Z", "終了時刻"))
       .toBe("2026-09-06T00:10:00.000Z");
     expect(formatActualClockInput("2026-09-05T23:45:00.000Z", "UTC")).toBe("2345");
+    expect(formatActualClockInput("2026-09-05T09:00:00.000Z", "UTC")).toBe("0900");
     expect(formatEstimate(5 * 60)).toBe("5分");
     expect(formatEstimate(30 * 60)).toBe("30分");
     expect(formatEstimate(90 * 60)).toBe("90分");

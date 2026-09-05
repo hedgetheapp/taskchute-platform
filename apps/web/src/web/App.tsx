@@ -50,6 +50,7 @@ import {
   DAY_COLUMN_DEFINITIONS,
   actualDurationSeconds,
   clampDayColumnWidth,
+  clampTaskColumnWidth,
   dayTableStyle,
   formatActualDuration,
   formatActualTime,
@@ -84,7 +85,7 @@ type EntryDragState = {
 type MouseDragState = { entryId: string; sectionId: string | null; startX: number; startY: number; active: boolean };
 type ColumnDragState = { sourceKey: DayColumnKey; targetKey: DayColumnKey | null; edge: DragEdge | null };
 type ColumnResizeState = {
-  key: DayColumnKey;
+  key: DayColumnKey | "task";
   startX: number;
   startWidth: number;
   startTaskWidth: number;
@@ -119,6 +120,7 @@ type BulkDateMoveConfirmation = {
 };
 type ExecutionTimesDraft = {
   entryId: string;
+  activeField: "start" | "end";
   executionId: string | null;
   executionOptions: Array<{ id: string; started_at: string; ended_at: string | null }>;
   expectedLifecycleState: SetExecutionTimesRequest["expected_lifecycle_state"];
@@ -404,17 +406,17 @@ export function parseActualClockInput(value: string, timezone: string, logicalDa
 }
 
 export function formatEstimate(seconds: number | null): string {
-  if (!seconds) return "—";
+  if (!seconds) return "--分";
   const minutes = Math.floor(seconds / 60);
   return `${minutes}分`;
 }
 
-function EmptyValue({ label = "未設定" }: { label?: string }) {
-  return <span className="empty-value" aria-label={label}>—</span>;
+function EmptyValue({ label = "未設定", display = "—" }: { label?: string; display?: string }) {
+  return <span className="empty-value" aria-label={label}>{display}</span>;
 }
 
-function renderEmptyValue(value: string, label?: string) {
-  return value === "—" ? <EmptyValue label={label} /> : value;
+function renderEmptyValue(value: string, label?: string, placeholder = "—") {
+  return value === placeholder ? <EmptyValue label={label} display={placeholder} /> : value;
 }
 
 function transientStatusText(pending: string | null): string | null {
@@ -577,6 +579,7 @@ export function App() {
   const [entryDrag, setEntryDrag] = useState<EntryDragState | null>(null);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [calendarFocusedDate, setCalendarFocusedDate] = useState<string | null>(null);
+  const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false);
   const [currentLogicalDate, setCurrentLogicalDate] = useState<string | null>(null);
   const [forecastNowInstant, setForecastNowInstant] = useState<string | null>(null);
   const draftInputRef = useRef<HTMLInputElement | null>(null);
@@ -585,6 +588,8 @@ export function App() {
   const mouseDragRef = useRef<MouseDragState | null>(null);
   const calendarTriggerRef = useRef<HTMLButtonElement | null>(null);
   const calendarGridRef = useRef<HTMLDivElement | null>(null);
+  const calendarPopoverRef = useRef<HTMLDivElement | null>(null);
+  const shortcutHelpRef = useRef<HTMLDivElement | null>(null);
   const columnsMenuRef = useRef<HTMLDivElement | null>(null);
   const columnsTriggerRef = useRef<HTMLButtonElement | null>(null);
   const bulkHeaderRef = useRef<HTMLInputElement | null>(null);
@@ -632,6 +637,7 @@ export function App() {
     setCurrentLogicalDate(null);
     setCalendarOpen(false);
     setCalendarFocusedDate(null);
+    setShortcutHelpOpen(false);
     setDay(null);
     forecastClockRef.current = null;
     setForecastNowInstant(null);
@@ -715,6 +721,7 @@ export function App() {
   async function navigateToDay(logicalDate?: string) {
     if (pending !== null || retainedOperation !== null) return;
     setCalendarOpen(false);
+    setShortcutHelpOpen(false);
     setOverflowEntryId(null);
     setPending("day-navigation");
     setError(null);
@@ -800,14 +807,15 @@ export function App() {
     if (!columnResize) return;
     const handleMouseMove = (event: globalThis.MouseEvent) => {
       const delta = event.clientX - columnResize.startX;
-      const resizedWidth = clampDayColumnWidth(columnResize.key, columnResize.startWidth + delta);
+      const resizedWidth = columnResize.key === "task"
+        ? clampTaskColumnWidth(columnResize.startWidth + delta)
+        : clampDayColumnWidth(columnResize.key, columnResize.startWidth + delta);
       const effectiveDelta = resizedWidth - columnResize.startWidth;
-      setDayColumnPreference((current) => ({
-        ...current,
-        widths: { ...current.widths, [columnResize.key]: resizedWidth },
-      }));
+      setDayColumnPreference((current) => columnResize.key === "task"
+        ? { ...current, taskWidth: resizedWidth }
+        : { ...current, widths: { ...current.widths, [columnResize.key]: resizedWidth } });
       setDayTableResizeLayout({
-        taskWidth: columnResize.startTaskWidth,
+        taskWidth: columnResize.key === "task" ? resizedWidth : columnResize.startTaskWidth,
         tableWidth: columnResize.startTableWidth + effectiveDelta,
       });
     };
@@ -1012,6 +1020,27 @@ export function App() {
   }, [calendarOpen, calendarFocusedDate]);
 
   useEffect(() => {
+    if (!calendarOpen) return;
+    const dismissOnOutsideMouseDown = (event: globalThis.MouseEvent) => {
+      const target = event.target as Node;
+      if (calendarPopoverRef.current?.contains(target) || calendarTriggerRef.current?.contains(target)) return;
+      closeCalendar();
+    };
+    document.addEventListener("mousedown", dismissOnOutsideMouseDown);
+    return () => document.removeEventListener("mousedown", dismissOnOutsideMouseDown);
+  }, [calendarOpen]);
+
+  useEffect(() => {
+    if (!shortcutHelpOpen) return;
+    shortcutHelpRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    const dismissOnOutsideMouseDown = (event: globalThis.MouseEvent) => {
+      if (!shortcutHelpRef.current?.contains(event.target as Node)) setShortcutHelpOpen(false);
+    };
+    document.addEventListener("mousedown", dismissOnOutsideMouseDown);
+    return () => document.removeEventListener("mousedown", dismissOnOutsideMouseDown);
+  }, [shortcutHelpOpen]);
+
+  useEffect(() => {
     if (!routineCandidate) return;
     routineScopeChoiceRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
     const dismissOnEscape = (event: KeyboardEvent) => {
@@ -1056,8 +1085,8 @@ export function App() {
       case "ArrowRight": nextDate = shiftLogicalDate(calendarFocusedDate, 1); break;
       case "ArrowUp": nextDate = shiftLogicalDate(calendarFocusedDate, -7); break;
       case "ArrowDown": nextDate = shiftLogicalDate(calendarFocusedDate, 7); break;
-      case "PageUp": nextDate = Temporal.PlainDate.from(calendarFocusedDate).subtract({ months: 1 }).toString(); break;
-      case "PageDown": nextDate = Temporal.PlainDate.from(calendarFocusedDate).add({ months: 1 }).toString(); break;
+      case "PageUp": nextDate = Temporal.PlainDate.from(calendarFocusedDate).subtract(event.shiftKey ? { years: 1 } : { months: 1 }).toString(); break;
+      case "PageDown": nextDate = Temporal.PlainDate.from(calendarFocusedDate).add(event.shiftKey ? { years: 1 } : { months: 1 }).toString(); break;
       case "Enter":
         event.preventDefault(); event.stopPropagation();
         void selectCalendarDate(calendarFocusedDate);
@@ -1070,6 +1099,11 @@ export function App() {
     event.preventDefault();
     event.stopPropagation();
     setCalendarFocusedDate(nextDate);
+  }
+
+  function shiftCalendarViewport(unit: "month" | "year", amount: number) {
+    if (!calendarFocusedDate) return;
+    setCalendarFocusedDate(Temporal.PlainDate.from(calendarFocusedDate).add(unit === "month" ? { months: amount } : { years: amount }).toString());
   }
 
   async function openTodayView() {
@@ -2109,11 +2143,19 @@ export function App() {
     return summary?.single_execution_id != null || (summary?.executions?.length ?? 0) > 0;
   }
 
-  function openExecutionTimesEditor(entry: EntryProjection) {
+  function hasCanonicalActualStart(entry: EntryProjection): boolean {
+    const summary = entry.execution_summary;
+    return Boolean(summary?.first_started_at
+      ?? summary?.active_started_at
+      ?? (day?.active_execution?.entry_id === entry.id ? day.active_execution.started_at : null));
+  }
+
+  function openExecutionTimesEditor(entry: EntryProjection, activeField: "start" | "end") {
     if (!day || !canEditExecutionTimes(entry) || mutationLocked) return;
     const timezone = day.taskchute_day.establishment_timezone;
     if (!timezone) return;
     const summary = entry.execution_summary;
+    if (activeField === "end" && (entry.lifecycle_state === "planned" || !hasCanonicalActualStart(entry))) return;
     const expectedLifecycleState = entry.lifecycle_state;
     const executionId: string | null = (entry.lifecycle_state === "planned"
       ? uuidv7() : entry.lifecycle_state === "running"
@@ -2134,7 +2176,7 @@ export function App() {
     setError(null);
     setExecutionEditorError(null);
     beginInlineEditor(`execution-times:${entry.id}`);
-    setExecutionTimesDraft({ entryId: entry.id, executionId, expectedLifecycleState, expectedStartedAt, expectedEndedAt,
+    setExecutionTimesDraft({ entryId: entry.id, activeField, executionId, expectedLifecycleState, expectedStartedAt, expectedEndedAt,
       startedLocal: formatActualClockInput(expectedStartedAt, timezone), endedLocal: formatActualClockInput(expectedEndedAt, timezone), executionOptions });
   }
 
@@ -2796,6 +2838,14 @@ export function App() {
 
   function handleDayKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
     if (event.defaultPrevented || event.nativeEvent.isComposing || isTextEditingTarget(event.target)) return;
+    if (shortcutHelpOpen) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        setShortcutHelpOpen(false);
+      }
+      return;
+    }
     if (event.shiftKey && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
       event.preventDefault();
       void navigateToDay(shiftLogicalDate(currentDay.taskchute_day.logical_date, event.key === "ArrowLeft" ? -1 : 1));
@@ -2805,6 +2855,24 @@ export function App() {
     const targets = Array.from(event.currentTarget.querySelectorAll<HTMLElement>("[data-day-focus-target]"));
     const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement.closest<HTMLElement>("[data-day-focus-target]") : null;
     const activeIndex = targets.findIndex((target) => target.dataset.focusKey === activeElement?.dataset.focusKey);
+    const activeEntry = activeElement?.dataset.entryId
+      ? allEntries.find((entry) => entry.id === activeElement.dataset.entryId)
+      : undefined;
+
+    if (key === "?" && !event.repeat && !event.ctrlKey && !event.altKey && !event.metaKey) {
+      event.preventDefault();
+      setShortcutHelpOpen(true);
+      return;
+    }
+
+    if ((key === "n" || key === "e" || key === "d")
+      && !event.repeat && !event.ctrlKey && !event.altKey && !event.metaKey && activeEntry) {
+      event.preventDefault();
+      if (key === "n") openDraft(activeEntry.section_id);
+      else if (key === "e") openTaskMetadataEditor(activeEntry);
+      else openSingleDelete(activeEntry);
+      return;
+    }
 
     if (key === "s") {
       if (event.repeat || event.ctrlKey || event.altKey || event.metaKey || document.activeElement !== activeElement) return;
@@ -2835,11 +2903,15 @@ export function App() {
     }
 
     if (key === "j" || event.key === "ArrowDown" || key === "k" || event.key === "ArrowUp") {
-      if (targets.length === 0) return;
+      const navigationTargets = activeElement ? targets : targets.filter((target) => target.dataset.entryId);
+      if (navigationTargets.length === 0) return;
       event.preventDefault();
       const delta = key === "j" || event.key === "ArrowDown" ? 1 : -1;
-      const nextIndex = activeIndex < 0 ? (delta > 0 ? 0 : targets.length - 1) : Math.max(0, Math.min(targets.length - 1, activeIndex + delta));
-      targets[nextIndex]?.focus();
+      const navigationIndex = activeElement ? activeIndex : -1;
+      const nextIndex = navigationIndex < 0
+        ? (delta > 0 ? 0 : navigationTargets.length - 1)
+        : Math.max(0, Math.min(navigationTargets.length - 1, navigationIndex + delta));
+      navigationTargets[nextIndex]?.focus();
     }
   }
 
@@ -2899,10 +2971,22 @@ export function App() {
     event.stopPropagation();
     const heading = event.currentTarget.closest<HTMLElement>(".table-heading");
     const taskHeading = heading?.querySelector<HTMLElement>(".task-heading");
-    const startTaskWidth = Math.max(280, taskHeading?.getBoundingClientRect().width ?? 280);
+    const startTaskWidth = Math.max(280, taskHeading?.getBoundingClientRect().width || dayColumnPreference.taskWidth);
     const startTableWidth = Math.max(0, heading?.getBoundingClientRect().width ?? 0);
     setDayTableResizeLayout({ taskWidth: startTaskWidth, tableWidth: startTableWidth });
     setColumnResize({ key, startX: event.clientX, startWidth: dayColumnPreference.widths[key], startTaskWidth, startTableWidth });
+  }
+
+  function startTaskColumnResize(event: ReactMouseEvent<HTMLButtonElement>) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const heading = event.currentTarget.closest<HTMLElement>(".table-heading");
+    const taskHeading = event.currentTarget.closest<HTMLElement>(".task-heading");
+    const startTaskWidth = Math.max(280, taskHeading?.getBoundingClientRect().width || dayColumnPreference.taskWidth);
+    const startTableWidth = Math.max(0, heading?.getBoundingClientRect().width ?? 0);
+    setDayTableResizeLayout({ taskWidth: startTaskWidth, tableWidth: startTableWidth });
+    setColumnResize({ key: "task", startX: event.clientX, startWidth: startTaskWidth, startTaskWidth, startTableWidth });
   }
 
   function autoFitColumn(event: ReactMouseEvent<HTMLButtonElement>, key: DayColumnKey) {
@@ -2936,7 +3020,7 @@ export function App() {
       forecastNowInstant ?? currentDay.projection_generated_at,
       currentDay.is_current,
     );
-    return formatActualDuration(seconds);
+    return seconds === null ? "--分" : formatActualDuration(seconds);
   }
 
   function routineCell(entry: EntryProjection) {
@@ -2975,6 +3059,7 @@ export function App() {
 
   function executionTimeCell(entry: EntryProjection, field: "start" | "end") {
     const draft = executionTimesDraft?.entryId === entry.id ? executionTimesDraft : null;
+    const editingThisField = draft?.activeField === field;
     const value = field === "start" ? draft?.startedLocal ?? "" : draft?.endedLocal ?? "";
     const summary = actualSummaryFor(entry);
     const displayed = field === "start"
@@ -2983,7 +3068,9 @@ export function App() {
         ? "実行中"
         : formatActualTime(summary?.last_ended_at ?? null, currentDay.taskchute_day.logical_date, currentDay.taskchute_day.establishment_timezone);
     const label = field === "start" ? `${entry.task.title}の開始` : `${entry.task.title}の終了`;
-    if (draft) {
+    const canEditField = canEditExecutionTimes(entry)
+      && !(field === "end" && (entry.lifecycle_state === "planned" || !hasCanonicalActualStart(entry)));
+    if (draft && editingThisField) {
       const inlineKey = `execution-times:${entry.id}`;
       return <span className="actual-time-editor" data-execution-editing={field} data-execution-entry={entry.id}
         onBlur={(event) => {
@@ -2998,7 +3085,7 @@ export function App() {
             {draft.executionOptions.map((execution) => <option value={execution.id} key={execution.id}>{execution.started_at} → {execution.ended_at ?? "実行中"}</option>)}
           </select>
         )}
-        <input autoFocus={field === "start"} type="text" inputMode="numeric" maxLength={4} pattern="[0-9]{4}" placeholder="HHMM"
+        <input autoFocus type="text" inputMode="numeric" maxLength={4} pattern="[0-9]{4}" placeholder="HHMM"
           data-inline-navigation data-execution-entry={entry.id} value={value}
           aria-label={label} required={field === "start" || draft.expectedLifecycleState === "completed"}
           onChange={(event) => setExecutionTimesDraft((current) => current
@@ -3017,9 +3104,9 @@ export function App() {
       </span>;
     }
     return <button type="button" className="actual-time-button" aria-label={label}
-      disabled={!canEditExecutionTimes(entry) || mutationLocked}
-      onClick={() => openExecutionTimesEditor(entry)}>
-      {displayed === "—" ? <EmptyValue label={field === "start" ? "実績開始なし" : "実績終了なし"} /> : displayed}
+      disabled={!canEditField || mutationLocked}
+      onClick={() => openExecutionTimesEditor(entry, field)}>
+      {displayed === "—" ? <EmptyValue display="--:--" label={field === "start" ? "実績開始なし" : "実績終了なし"} /> : displayed}
     </button>;
   }
 
@@ -3086,7 +3173,7 @@ export function App() {
             )}
           </>
             : <button type="button" className="estimate-button" aria-label={`${entry.task.title}の見積`} disabled={mutationLocked || !currentDay.planning_enabled || entry.lifecycle_state !== "planned" || (entry.routine !== null && !currentDay.is_current)}
-              onClick={() => { beginInlineEditor(`estimate:${entry.id}`); setEditingEstimate({ entryId: entry.id, minutes: entry.estimate_seconds ? String(entry.estimate_seconds / 60) : "" }); }}>{renderEmptyValue(formatEstimate(entry.estimate_seconds), "見積なし")}</button>}
+              onClick={() => { beginInlineEditor(`estimate:${entry.id}`); setEditingEstimate({ entryId: entry.id, minutes: entry.estimate_seconds ? String(entry.estimate_seconds / 60) : "" }); }}>{renderEmptyValue(formatEstimate(entry.estimate_seconds), "見積なし", "--分")}</button>}
           {entry.routine && routineCandidate?.entryId === entry.id && routineCandidate.unit === "estimate" && (
             <span ref={routineScopeChoiceRef} className="routine-scope-choice" role="group" aria-label={`${entry.task.title}の見積反映先`}>
               <span>{formatEstimate(routineCandidate.estimateSeconds)}</span>
@@ -3125,7 +3212,7 @@ export function App() {
               disabled={mutationLocked || !currentDay.planning_enabled || entry.lifecycle_state !== "planned" || (entry.routine !== null && !currentDay.is_current)}
               onClick={() => { beginInlineEditor(`planned-start:${entry.id}`); setEditingPlannedStart({ entryId: entry.id,
                 value: entry.planned_start_minute === null ? "" : formatClockInputFromLogicalMinute(entry.planned_start_minute) }); }}>
-              {entry.planned_start_minute === null ? <EmptyValue label="開始予定なし" /> : formatLogicalMinute(entry.planned_start_minute)}
+              {entry.planned_start_minute === null ? <EmptyValue display="--:--" label="開始予定なし" /> : formatLogicalMinute(entry.planned_start_minute)}
             </button>}
           {entry.routine && routineCandidate?.entryId === entry.id && routineCandidate.unit === "section-plan" && (
             <span ref={routineScopeChoiceRef} className="routine-scope-choice" role="group" aria-label={`${entry.task.title}のSection・開始予定反映先`}>
@@ -3151,7 +3238,7 @@ export function App() {
         </span>;
       case "actualDuration":
         return <span className="actual-duration-cell actual-duration" data-day-column-cell={key} aria-label={`${entry.task.title}の実績`}>
-          {renderEmptyValue(actualDurationFor(entry), "実績なし")}
+          {renderEmptyValue(actualDurationFor(entry), "実績なし", "--分")}
         </span>;
     }
   }
@@ -3297,10 +3384,20 @@ export function App() {
               {calendarOpen && calendarFocusedDate && (() => {
                 const focusedMonth = Temporal.PlainDate.from(calendarFocusedDate);
                 return (
-                  <div className="calendar-popover" role="dialog" aria-modal="false"
+                  <div className="calendar-popover" ref={calendarPopoverRef} role="dialog" aria-modal="false"
                     aria-label={`${formatCalendarMonth(calendarFocusedDate)}のカレンダー`}
                     onKeyDown={handleCalendarKeyDown}>
-                    <div className="calendar-month-heading" aria-live="polite">{formatCalendarMonth(calendarFocusedDate)}</div>
+                    <div className="calendar-month-toolbar">
+                      <button type="button" className="secondary calendar-nav-button" aria-label="前年"
+                        onClick={() => shiftCalendarViewport("year", -1)}>«</button>
+                      <button type="button" className="secondary calendar-nav-button" aria-label="前の月"
+                        onClick={() => shiftCalendarViewport("month", -1)}>‹</button>
+                      <div className="calendar-month-heading" aria-live="polite">{formatCalendarMonth(calendarFocusedDate)}</div>
+                      <button type="button" className="secondary calendar-nav-button" aria-label="次の月"
+                        onClick={() => shiftCalendarViewport("month", 1)}>›</button>
+                      <button type="button" className="secondary calendar-nav-button" aria-label="翌年"
+                        onClick={() => shiftCalendarViewport("year", 1)}>»</button>
+                    </div>
                     <div className="calendar-grid" role="grid" aria-label="日付" ref={calendarGridRef}>
                       {["月", "火", "水", "木", "金", "土", "日"].map((weekday) => (
                         <span className="calendar-weekday" role="columnheader" key={weekday}>{weekday}</span>
@@ -3321,7 +3418,7 @@ export function App() {
                         );
                       })}
                     </div>
-                    <p className="sr-only">矢印キーで日付、PageUpとPageDownで月を移動し、Enterで選択、Escapeで閉じます。</p>
+                    <p className="sr-only">矢印キーで日付、PageUpとPageDownで月、Shiftを併用すると年を移動し、Enterで選択、Escapeで閉じます。</p>
                   </div>
                 );
               })()}
@@ -3333,6 +3430,33 @@ export function App() {
           </div>
         </div>
       </header>
+
+      {shortcutHelpOpen && (
+        <div className="shortcut-help panel" ref={shortcutHelpRef} role="dialog" aria-modal="false" aria-labelledby="shortcut-help-title" tabIndex={-1}
+          onKeyDown={(event) => {
+            if (event.key !== "Escape") return;
+            event.preventDefault();
+            event.stopPropagation();
+            setShortcutHelpOpen(false);
+          }}>
+          <div className="shortcut-help-heading">
+            <h2 id="shortcut-help-title">キーボードショートカット</h2>
+            <button type="button" className="secondary" onClick={() => setShortcutHelpOpen(false)}>閉じる</button>
+          </div>
+          <dl className="shortcut-help-list">
+            <div><dt>↓ / J</dt><dd>次のvisible Taskへ移動</dd></div>
+            <div><dt>↑ / K</dt><dd>前のvisible Taskへ移動</dd></div>
+            <div><dt>S</dt><dd>Taskを開始 / 実行中Taskを完了</dd></div>
+            <div><dt>N</dt><dd>現在のSectionにTaskを追加</dd></div>
+            <div><dt>E</dt><dd>ordinary planned Taskの名前を編集</dd></div>
+            <div><dt>D</dt><dd>single planned Taskの削除確認</dd></div>
+            <div><dt>Shift + ← / →</dt><dd>前日 / 翌日へ移動</dd></div>
+            <div><dt>Shift + ↑ / ↓</dt><dd>同じcohort内で並び替え</dd></div>
+            <div><dt>?</dt><dd>このhelpを表示</dd></div>
+            <div><dt>Esc</dt><dd>開いているeditor / menu / calendarを閉じる</dd></div>
+          </dl>
+        </div>
+      )}
 
       <div className="day-toolbar" aria-label="Day controls">
         <button type="button" className="secondary"
@@ -3609,7 +3733,11 @@ export function App() {
               <input ref={bulkHeaderRef} type="checkbox" checked={allEligibleBulkSelected} aria-label="すべての未実行Taskを選択"
                 disabled={mutationLocked} onChange={toggleAllBulkEntries} />
             ) : <span className="bulk-placeholder" aria-hidden="true" />}
-          </span><span className="execution-heading">実行</span><span className="task-heading">Task</span>
+          </span><span className="execution-heading">実行</span><span className="task-heading" data-task-column-header>
+            <span className="column-heading-label">Task</span>
+            <button type="button" className="column-resize-handle task-column-resize-handle" aria-label="Task列の幅を変更"
+              title="Task列の幅を変更" onMouseDown={startTaskColumnResize} />
+          </span>
           {resolvedColumnDefinitions.map((definition) => {
             const isDropTarget = columnDrag?.targetKey === definition.key && columnDrag.edge;
             return <span key={definition.key} className={`column-heading${columnDrag?.sourceKey === definition.key ? " is-column-dragging" : ""}${isDropTarget ? ` drop-${columnDrag.edge}` : ""}`}

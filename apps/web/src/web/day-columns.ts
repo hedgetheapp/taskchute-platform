@@ -49,6 +49,8 @@ export interface DayColumnPreference {
   order: DayColumnKey[];
   widths: DayColumnWidths;
   hidden: DayColumnKey[];
+  /** D-062: Task is fixed in order/visibility but its width is user-resizable. */
+  taskWidth: number;
 }
 
 const definitionByKey = new Map(DAY_COLUMN_DEFINITIONS.map((definition) => [definition.key, definition]));
@@ -59,12 +61,18 @@ export function clampDayColumnWidth(key: DayColumnKey, value: number): number {
   return Math.round(Math.max(definition.minWidth, Math.min(definition.maxWidth, value)));
 }
 
+export function clampTaskColumnWidth(value: number): number {
+  if (!Number.isFinite(value)) return 280;
+  return Math.round(Math.max(280, Math.min(640, value)));
+}
+
 export function defaultDayColumnPreference(): DayColumnPreference {
   return {
     version: DAY_COLUMNS_STORAGE_VERSION,
     order: [...DEFAULT_DAY_COLUMN_ORDER],
     widths: Object.fromEntries(DAY_COLUMN_DEFINITIONS.map(({ key, defaultWidth }) => [key, defaultWidth])) as DayColumnWidths,
     hidden: [],
+    taskWidth: 280,
   };
 }
 
@@ -102,7 +110,9 @@ export function normalizeDayColumnPreference(value: unknown): DayColumnPreferenc
       }
     }
   }
-  return { version: DAY_COLUMNS_STORAGE_VERSION, order, widths, hidden };
+  const taskWidth = typeof value.taskWidth === "number" && Number.isFinite(value.taskWidth)
+    ? clampTaskColumnWidth(value.taskWidth) : fallback.taskWidth;
+  return { version: DAY_COLUMNS_STORAGE_VERSION, order, widths, hidden, taskWidth };
 }
 
 export function readPersistedDayColumnPreference(): DayColumnPreference {
@@ -172,7 +182,9 @@ export type DayTableResizeLayout = {
 };
 
 export function buildDayTableGridTemplate(preference: DayColumnPreference, taskWidth?: number): string {
-  const taskTrack = taskWidth === undefined ? "minmax(280px, 1fr)" : `${Math.max(280, Math.round(taskWidth))}px`;
+  const taskTrack = taskWidth === undefined && preference.taskWidth === 280
+    ? "minmax(280px, 1fr)"
+    : `${clampTaskColumnWidth(taskWidth ?? preference.taskWidth)}px`;
   return ["32px", "52px", taskTrack, ...visibleDayColumnOrder(preference).map((key) => `${preference.widths[key]}px`), "40px"].join(" ");
 }
 
@@ -181,7 +193,7 @@ export function calculateDayTableMinWidth(preference: DayColumnPreference, taskW
 }
 
 export function dayTableStyle(preference: DayColumnPreference, resizeLayout?: DayTableResizeLayout): CSSProperties {
-  const taskWidth = resizeLayout?.taskWidth;
+  const taskWidth = resizeLayout?.taskWidth ?? preference.taskWidth;
   const minimumWidth = calculateDayTableMinWidth(preference, taskWidth);
   return {
     "--day-table-grid-template-columns": buildDayTableGridTemplate(preference, taskWidth),
