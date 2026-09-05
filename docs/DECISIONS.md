@@ -1276,3 +1276,33 @@ APP migration `0017_task_metadata_update.sql`（repository-conventional equivale
 D-059のfull-row D&Dは維持し、Task title input、Project selector、actual Start / End input、checkbox、button、select、menu等のinteractive controlからdragを開始しない。Task title display surfaceのclick-to-editとthreshold後D&Dは両立させる。D-059の16×16 square / centered checkboxは維持し、Bulk slotの左側breathing roomを増やす。
 
 D-057 / D-058のhistorical recordsは変更せず、D-058の`RevertEntryStart` withdrawal境界を明示的に維持する。本Decisionは新lifecycle state、Reopen、Interrupt / Pause、running / completed delete、Routine title / Project edit、Project quick-create/search、production operationを含めない。実装・migration・local / real-local・persistent nonprod evidenceは`docs/CURRENT.md`、`docs/FEATURES.md`、`docs/DESIGN.md`、`docs/TEST_MATRIX.md`へ記録する。productionは別途承認なしに実施しない。
+
+## D-061 — Day Table inline-editor ergonomics and resize anchoring
+Status: Approved
+
+D-061では、Day Tableの入力と列幅変更の操作感を一つのUI polish batchとして改善する。既存のD-043 planned-start、D-057 / D-060 SetExecutionTimes、D-059 layout / D&D、D-060 metadata / duplicate semanticsは維持し、API / Domain / persistence semanticsを変更しない。No production operation。
+
+### Four-digit clock inputs
+
+- `開始予定`、actual `開始`、actual `終了`のinline editorはdate picker / `datetime-local`ではなく、`inputMode="numeric"`のplain text four-digit clock inputを使う。commit時は厳密に4桁の`HHMM`だけを受け付け、`0930` / `1745` / `0000`をそれぞれ`09:30` / `17:45` / `00:00`として表示する。`930`、`9:30`、`2460`等はrejectし、silent clampしない。
+- planned startはselected TaskChuteDayのestablishment boundaryを使い、boundary後のclockを当日logical minute、boundary前のclockを同じDay内の翌civil date相当へmapする。D-043のSection synchronization、ordering、clear semanticsは変更しない。
+- 新規actual Startはestablished Day内の一意なlocal occurrenceへmapし、既存actual Start / End correctionは可能な限り既存civil-date contextを保持してclockだけを置き換える。runningの新規EndはStart以後で最初に有効なlocal occurrenceを選ぶ。timezone、DST compatible disambiguation、future / out-of-Day / overlap / ordering validationはserver authorityとしてD-057 / D-060を維持する。
+
+### Estimate, input, and interaction polish
+
+- Day Tableの見積表示は保存秒数 / APIを変更せず、分単位で`5分`、`30分`、`90分`のように表示する。時間表記へ変換せず、Routine Board等の共有外部表示へ不用意に拡張しない。
+- Task title、estimate、planned start、actual Start / Endのinline inputはusable cell widthを埋める`width: 100%`相当とし、control heightは約30〜32pxとする。Task rowは既存44px、font size、text alignment、interactive controlのD&D除外を維持し、新しいhorizontal overflowを作らない。
+- valid changed inline editはoutside click / blur、Enter、Tab、Shift+Tabでcommitし、Escapeはcancelだけにする。Enter / Tab後のblur二重送信、Escape後のblur commit、unchanged valueの不要writeを防ぐ。existing blank / clear / lifecycle validationは各fieldの既存semanticsを維持する。
+- Day Tableの`削除` actionはcommon destructive tokenがあれば再利用し、red textとsubtle destructive hover / focusを表示する。`複製` / `日付変更`はneutralのまま、eligibility / Domainを変更しない。
+
+### Resize anchoring
+
+- column resize handleはcolumnのright boundaryとし、resize中はresized columnのleft boundaryとそれ以前の全column boundaryを固定する。pointer deltaはresized column widthへ適用し、それ以後のcolumnだけを右 / 左へ移動させる。
+- flexible Task trackがresize deltaを吸収してleft-side boundaryをずらさないよう、resize中のtable width / Task trackをsnapshotしてdeterministicにfreezeする。minimum / maximum width、browser-local preference、reorder、auto-fit、sticky Bulk / Execution / Task、table-owned horizontal scroll、720px fallbackは維持する。before / after boundaryのregression evidenceを追加する。
+
+### Nonprod cleanup and boundaries
+
+- persistent nonprodは開発データであるため、cleanup前にenvironment・APP/AUTH bindingを確認し、変更対象DBごとにfresh private ignored backup、非空・readability・hash・ignore、before countsを取得する。cleanupはAPPのfeature data（Tasks / Entries / Executions / operation history / Routine / Project等）に限り、AUTH login identity、APP user identity、timezone、Day boundary、baseline Section/configを保持する。restoreは行わない。
+- cleanup後はquick_check、FK、login、supported app/API flowでのminimal fixture recreationを確認し、D-060 save / reload / completed duplicate verificationへ利用してよい。local migration preservation regressionは弱めない。
+
+D-061は新migration / schema / API / Domain semantics、新dependency、security posture change、production operationを含めない。これらが必要になった場合はSTOPする。実装・local / real-local・persistent nonprod cleanup / deploy / authenticated verificationの状態は`docs/CURRENT.md`、`docs/FEATURES.md`、`docs/DESIGN.md`、`docs/TEST_MATRIX.md`へ記録する。
