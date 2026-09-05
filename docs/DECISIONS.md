@@ -1306,3 +1306,28 @@ D-061では、Day Tableの入力と列幅変更の操作感を一つのUI polish
 - cleanup後はquick_check、FK、login、supported app/API flowでのminimal fixture recreationを確認し、D-060 save / reload / completed duplicate verificationへ利用してよい。local migration preservation regressionは弱めない。
 
 D-061は新migration / schema / API / Domain semantics、新dependency、security posture change、production operationを含めない。これらが必要になった場合はSTOPする。実装・local / real-local・persistent nonprod cleanup / deploy / authenticated verificationの状態は`docs/CURRENT.md`、`docs/FEATURES.md`、`docs/DESIGN.md`、`docs/TEST_MATRIX.md`へ記録する。
+
+## D-062 — Day Table keyboard workflow, single-cell actual editing, Task-column resize, and calendar polish
+Status: Approved
+
+D-062では、既存のDay Table capabilityとD-043 / D-057 / D-060 / D-061の意味論を維持したまま、keyboard workflow、actual時刻の単セルinline編集、Task列resize、calendarの可視操作をpolishする。対象はWeb UIとそのlocal verificationに限り、新しいserver/API/Domain semanticsは追加しない。
+
+### Single-cell actual editing
+
+- actual `開始` / `終了`は同時に複数inputを表示せず、クリックした一方のcellだけをplain text numeric inputとして編集する。表示上の入力値は厳密な4桁`HHMM`（例:`0900`）とし、read-only projectionは従来どおり`09:00`形式を維持する。
+- planned / running / completedの既存D-057 / D-060 `SetExecutionTimes` semantics、overlap protection、retry / idempotency、projection reconciliationを再利用する。planned EntryではStartからのみactual入力を開始でき、End編集はcanonical actual Startが存在する場合に限る。Start編集中にEndをinput化しない。
+- Enter、Tab、Shift+Tab、outside blurは既存のinline commit境界を維持し、Escapeはcancelのみとする。modal、旧dialog、`RevertEntryStart`は追加しない。
+
+### Keyboard workflow
+
+- Task focusがない状態でも、Day Tableのneutral surfaceから`↓` / `J`で最初のvisible Task、`↑` / `K`で最後のvisible Taskへ移動する。focused Taskからはvisible orderの隣接Taskへ移動する。
+- focused eligible Taskでは`S`が既存のStart / Complete flow、`N`がfocused rowのSectionへのTask追加、`E`がordinary planned Taskのtitle editor、`D`が既存のsingle planned delete confirmationを呼び出す。`D`はbulk deleteへ昇格せず、running / completed / read-onlyではdestructive writeを行わない。
+- `?`は全shortcutを列挙するaccessibleな軽量help surfaceを開き、`Esc`はactive inline editor、menu / confirmation / help / calendarを優先順に閉じる。input / textarea / select / contenteditable、IME中、modal / calendar / help中（許可されたEscapeとcalendar操作を除く）にはglobal shortcutを伝播させない。既存のShift+矢印操作は維持する。
+
+### Task column resize and calendar
+
+- Task列は固定されたBulk / Execution列の直後に置かれるuser-resizable columnとし、header右端のhandleから幅を変更できる。min width、following columnsの移動、horizontal scroll、sticky Bulk / Execution / Task、browser-local preference、reload後の保持、resetを維持する。Task列の順序変更・非表示は追加しない。
+- Calendar popoverは表示中month/yearの前後移動controlを持ち、month labelを表示する。viewport変更は日付選択を実行せず、date selection / Enterでのみ既存Day navigationを行って閉じる。month/year境界、keyboard PageUp / PageDown（Shiftでyear）、grid arrows、Escape、trigger / outside click close、focus restorationを扱う。
+- Day Tableの未設定値は対象cellで`--:--`（時刻）と`--分`（見積）をmuted placeholderとして表示する。row height、Task density、既存の意味あるhyphen / range、Section時間、user textは変更しない。
+
+D-062はschema / migration / API / Domain変更、新dependency、security posture変更、production operationを含めない。これらが必要になった場合はSTOPする。実装・impact-based tests・main push・persistent nonprod deploy / browser verification・canonical evidenceは`docs/CURRENT.md`、`docs/FEATURES.md`、`docs/DESIGN.md`、`docs/TEST_MATRIX.md`へ記録し、production / restoreは別途承認なしに実施しない。
