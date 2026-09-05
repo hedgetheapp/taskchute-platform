@@ -4,6 +4,16 @@ Date: 2026-09-05
 
 ## Status
 
+### D-065 Web corrective — Project retry / reconcile and Delete focus restoration — 2026-09-05
+
+Approved D-020 / D-065のWeb correctiveとして、Project BoardのCreate / rename / archive・restore / reorder / hard deleteを、失敗後のcanonical Project Board / active Project list reloadへ統一した。response lost後のcanonical projectionがexact intentへ既に収束している場合は成功として扱い、未収束の`infrastructure_ambiguous`だけが元のoperation ID・request fingerprint・revision・semantic payloadを保持して再試行できる。revision conflict等のdeterministic rejectionはretry対象にしない。API / Domain / schema / migration / dependency / security postureは変更していない。
+
+Delete modalはrow-end actionをopen前に明示的originとして保持する。cancel / Escape / backdrop / deterministic failureではconnected originへ戻し、成功またはcanonical convergenceでorigin rowが消えた場合は次のvisible row、前のvisible row、toolbarの順へfocusをrestoreする。Help originとは分離し、既存dialog / focus trap / background shortcut suppressionを維持した。
+
+implementationはGitHub canonical `main@45d398bb282e6d892e63a31706722783c7693b31`へfast-forward integrated済み。Web `184 / 184 PASS`、Worker / D1 `184 / 184 PASS`、typecheck、production build、exact nonprod build、Wrangler nonprod dry-run、`git diff --check`、source reviewをPASSした。generated configはWorker `taskchute-web-nonprod`、canonical APP / AUTH binding、`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`である。
+
+persistent nonprod deployは実行環境のnetwork approvalがWrangler deploy通信を開始前に拒否したため`NOT_RUN`。認証済みbrowser sessionとclean Todayは確認したがlive runtimeはcorrective未deployのため、corrective browser mutation / focus / console evidenceへ昇格していない。fixture作成、APP / AUTH write、migration、restore、production、auxiliary Worker、branch / PR / merge / tag / releaseは`NOT_RUN`、Released `NO`。
+
 ### D-065 — Project management — 2026-09-05
 
 D-065をApproved Decisionとしてcanonical化し、Decision commit `09934a48e9d39126f4b377d9376977a5a45270d9`、runtime implementation commit `af5a3bd46e3f490e23fafe62c24d54f119584f3c`をGitHub canonical `main`へfast-forward pushした。Projectはdedicated Settings Boardで管理し、stable Project identity、Task / Routine assignment、Entry / Execution / operation historyを保持したまま、server-owned board order、archive relation、settings revisionを追加した。Project archiveはreversibleで、hard deleteはProjectだけを除去し、Taskのassignmentを`Projectなし`へnull化する一方、Task / Entry / Execution / RoutineOccurrence / snapshot / historyを削除しない。Project-owned Documentは未実装のため追加していない。

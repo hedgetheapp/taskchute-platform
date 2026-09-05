@@ -1,5 +1,21 @@
 # Test Matrix
 
+## D-065 Web corrective — Project retry / reconcile and Delete focus restoration — 2026-09-05
+
+Contract: Approved D-020 / D-065のWeb-only corrective。Project commandのexact ambiguous retry、canonical convergence、deterministic rejection後のreconcile、Delete modal focus restorationを対象とし、API / Domain / schema / migration / dependency / security postureは変更しない。implementation commitはGitHub `main@45d398bb282e6d892e63a31706722783c7693b31`。
+
+| ID | Verification target | Evidence |
+| --- | --- | --- |
+| PROJECT-CORRECTIVE-01 | Create / rename / archive・restore / reorder / delete失敗後にProject Boardとactive selector listをcanonical reloadする | PASS (WEB + SOURCE REVIEW) |
+| PROJECT-CORRECTIVE-02 | response lost後にcanonical stateがexact intentへ収束済みならsuccessとし、未収束の`infrastructure_ambiguous`だけexact original commandをretryする | PASS (WEB) |
+| PROJECT-CORRECTIVE-03 | revision conflict等のdeterministic rejectionをretryとして保持しない | PASS (WEB) |
+| PROJECT-CORRECTIVE-04 | Delete cancel / failureはorigin action、row消失時はnext / previous / toolbarへfocus restoreする | PASS (WEB) |
+| PROJECT-CORRECTIVE-05 | persistent nonprod corrective deploy / authenticated mutation / focus / console | NOT_RUN (Wrangler deploy network approval rejected before deployment) |
+
+Local evidence: focused Project regression追加後のWeb `184 / 184 PASS`、Worker / D1 `184 / 184 PASS`、typecheck、production build、exact `CLOUDFLARE_ENV=nonprod` build、Wrangler dry-run、`git diff --check`、source review `PASS`。nonprod generated configはWorker `taskchute-web-nonprod`、APP `6ad7e35f-5d03-4be3-9b00-46cd713a51c3`、AUTH `60085f8d-0c4e-4c15-98e9-3ce178398041`、`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`。
+
+Remote boundary: GitHub `main`へのfast-forward integration後、Wrangler deployはnetwork approvalにより開始前に拒否された。認証済みbrowser sessionとclean Todayは確認したが、live runtimeがcorrective未deployのためcorrective evidenceとしては扱わず、fixture / APP writeも実施していない。Classification: `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / MAIN_PUSHED / NONPROD_BUILD_VERIFIED / NONPROD_DRY_RUN_PASS / PERSISTENT_NONPROD_DEPLOY_NOT_RUN / AUTHENTICATED_CORRECTIVE_BROWSER_NOT_RUN`。migration / backup `NOT_REQUIRED`、production / restore / branch / PR / merge / tag / release `NOT_RUN`、Released `NO`。
+
 ## D-065 — Project management — 2026-09-05
 
 Contract: D-065 `Approved`。Project Boardのserver-owned order / archive / restore、Project metadata編集、active-only assignment、Project hard deleteのTask assignment null化とhistory preservation、APP `0019_project_management.sql`を対象とする。Decision commit `09934a48e9d39126f4b377d9376977a5a45270d9`、implementation commit `af5a3bd46e3f490e23fafe62c24d54f119584f3c`をGitHub `main`へfast-forward pushした。
