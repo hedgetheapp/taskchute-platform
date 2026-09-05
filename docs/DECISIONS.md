@@ -1331,3 +1331,29 @@ D-062では、既存のDay Table capabilityとD-043 / D-057 / D-060 / D-061の�
 - Day Tableの未設定値は対象cellで`--:--`（時刻）と`--分`（見積）をmuted placeholderとして表示する。row height、Task density、既存の意味あるhyphen / range、Section時間、user textは変更しない。
 
 D-062はschema / migration / API / Domain変更、新dependency、security posture変更、production operationを含めない。これらが必要になった場合はSTOPする。実装・impact-based tests・main push・persistent nonprod deploy / browser verification・canonical evidenceは`docs/CURRENT.md`、`docs/FEATURES.md`、`docs/DESIGN.md`、`docs/TEST_MATRIX.md`へ記録し、production / restoreは別途承認なしに実施しない。
+
+## D-063 — Modal confirmations, row Tab workflow, and non-blocking Day mutations
+Status: Approved
+
+D-063では、Day Tableのconfirmation / choice surface、row内keyboard workflow、single-cell commit boundary、bulk selection shortcut、background mutation UXを改善する。既存API・Domain・retry / idempotency・CAS・placement revision・active Execution・overlap semanticsは変更せず、presentationとclient-side mutation coordinationだけを対象とする。No production operation、schema migration、API contract change、new dependency。
+
+### Common modal presentation
+
+- shortcut help、single planned delete、bulk delete、date-move confirmation / fallback acknowledgement、Routine conversion、Routineの`今回だけ` / `ルーティンに反映` scope choice、Bulk Routine Section / Estimate scope choiceは、共通のcentered modal primitiveで表示する。modalは`role="dialog"`、`aria-modal="true"`、backdrop、initial focus、focus trap、Escape / backdrop cancel、close後のtrigger focus restoreを持ち、背景Day UIを操作・tab移動の対象にしない。
+- Calendar、Columns、row `…`、transient save status、retained ambiguous-operation recoveryはpopover / status surfaceとして維持し、モーダル化による意味論変更をしない。Routine conversion / scope choiceもexisting API / D-034 semanticsをそのまま呼び出す。
+
+### Row keyboard workflow
+
+- Task rowの通常Tab順はvisual column orderに従い、Bulk checkboxとExecution Start / Completeはpointer / screen-reader / `X` / `S`では操作可能なまま通常Tabから除外する。hidden / read-only / disabled cellを飛ばし、Project / Section変更後のTabは同じrowの次のrelevant cellへ進み、Bulkへ戻らない。Shift+Tab、column reorder / hide、inline commit後の継続を同じ規則で扱う。
+- `X / x`はfocused eligible visible TaskのBulk checkbox toggleだけを行い、bulk commandを実行しない。input / select / textarea / contenteditable、IME、modal、calendar、help中は抑制する。helpには`X`を含める。
+- actual Start / End single-cell editorはvalid outside click / blur、Enter、Tab、Shift+Tabで一度だけcommitし、Escape後のblur、Enter / Tab後の二重送信、unchanged write、invalid persistを防ぐ。counterpart cellへの移動は現在値をcommitしてから次cellを開く。
+
+### Scoped non-blocking mutation coordination
+
+- successful saveはeditorを閉じ、submitted valueをpending overlayまたは同等の表示で保持し、成功時にcanonical reconcile、rejection時に対象scopeだけrollbackする。save-statusは複数pendingをtruthfulに示し、ambiguous operationはexact operation identity / intentを保持してretry可能にする。
+- global Day-wide `mutationLocked`を単純に外さず、client-side coordinatorでconflict scopeを分離する。同一Entry / Taskの競合metadata・estimate・planned-start・actual編集は直列化し、同一Dayのplacement / revision-sensitive commandもfresh canonical preconditionで直列化する。同一Routine definitionも直列化する。
+- Start / Complete / SetExecutionTimesはglobal execution laneで直列化し、Complete A pending中のStart Bは許可可能な場合だけqueueし、Aの成功reconcile後にfresh stateでdispatchする。active Execution最大1、overlap、CAS、operation idempotency、retry / ambiguityを弱めず、failed prerequisiteのqueued intentを黙って実行・破棄しない。
+- independent row / cell mutation、keyboard navigation、Add Task、logicalに許可されたStart / Completeは、必要scopeに競合しない限り継続可能とする。ambiguous outcomeは必要scopeだけをlockし、全Dayをfreezeしない。background navigation / logout等はcorrectness上必要なら保守的にblockしてよい。
+- D-063のdeferred testsはsame Entry / Day / Routine conflict、independent row、Project/Section pending中のTab、Add Task、multiple pending、rollback、ambiguous retry、Complete→Start queue、truthful statusを検証する。Complete A→Start Bが既存契約で安全に実装できない場合はSTOPし、lifecycle semanticsを変更しない。
+
+D-063はpresentation / client coordinationの変更に限り、API / Domain / schema / migration / dependency / security posture変更が必要になった場合、またはrevision / CAS / retry / active Execution safetyを弱める必要がある場合はSTOPする。実装・tests・persistent nonprod browser verification・evidenceはcanonical docsへ記録する。
