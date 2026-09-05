@@ -62,6 +62,7 @@ import {
   visibleDayColumnOrder,
   type DayColumnKey,
   type DayColumnPreference,
+  type DayTableResizeLayout,
 } from "./day-columns";
 import { RoutineBoard } from "./RoutineBoard";
 
@@ -82,7 +83,14 @@ type EntryDragState = {
 };
 type MouseDragState = { entryId: string; sectionId: string | null; startX: number; startY: number; active: boolean };
 type ColumnDragState = { sourceKey: DayColumnKey; targetKey: DayColumnKey | null; edge: DragEdge | null };
-type ColumnResizeState = { key: DayColumnKey; startX: number; startWidth: number };
+type ColumnResizeState = {
+  key: DayColumnKey;
+  startX: number;
+  startWidth: number;
+  startTaskWidth: number;
+  startTableWidth: number;
+};
+type InlineEditorAction = { key: string; action: "none" | "commit" | "cancel" };
 type RoutineCandidate =
   | { entryId: string; unit: "estimate"; estimateSeconds: number | null }
   | { entryId: string; unit: "section-plan"; sectionId: string | null; plannedStartMinute: number | null };
@@ -336,27 +344,69 @@ function formatLogicalMinute(value: number | null): string {
   return `${String(Math.floor(value / 60)).padStart(2, "0")}:${String(value % 60).padStart(2, "0")}`;
 }
 
-function formatActualInput(value: string | null, timezone: string): string {
-  if (!value) return "";
-  const local = Temporal.Instant.from(value).toZonedDateTimeISO(timezone);
-  const date = `${String(local.year).padStart(4, "0")}-${String(local.month).padStart(2, "0")}-${String(local.day).padStart(2, "0")}`;
-  const time = `${String(local.hour).padStart(2, "0")}:${String(local.minute).padStart(2, "0")}:${String(local.second).padStart(2, "0")}`;
-  return `${date}T${time}`;
+export function formatClockInputFromLogicalMinute(value: number | null): string {
+  if (value === null) return "";
+  const normalized = ((value % 1440) + 1440) % 1440;
+  const hours = Math.floor(normalized / 60);
+  const minutes = normalized % 60;
+  return `${String(hours).padStart(2, "0")}${String(minutes).padStart(2, "0")}`;
 }
 
-function parseActualInput(value: string, timezone: string, field: string): string {
+export function parseFourDigitClock(value: string): number | "invalid" {
+  const trimmed = value.trim();
+  if (!/^\d{4}$/.test(trimmed)) return "invalid";
+  const hours = Number(trimmed.slice(0, 2));
+  const minutes = Number(trimmed.slice(2, 4));
+  return hours <= 23 && minutes <= 59 ? hours * 60 + minutes : "invalid";
+}
+
+export function logicalMinuteFromClock(clockMinute: number, boundaryMinutes: number): number {
+  const boundaryClock = ((boundaryMinutes % 1440) + 1440) % 1440;
+  return clockMinute < boundaryClock ? clockMinute + 1440 : clockMinute;
+}
+
+export function formatActualClockInput(value: string | null, timezone: string): string {
+  if (!value) return "";
+  const local = Temporal.Instant.from(value).toZonedDateTimeISO(timezone);
+  return `${String(local.hour).padStart(2, "0")}${String(local.minute).padStart(2, "0")}`;
+}
+
+function instantForClock(date: Temporal.PlainDate, clockMinute: number, timezone: string): string {
+  return Temporal.PlainDateTime.from({ year: date.year, month: date.month, day: date.day,
+    hour: Math.floor(clockMinute / 60), minute: clockMinute % 60, second: 0, millisecond: 0 })
+    .toZonedDateTime(timezone).toInstant().toString({ smallestUnit: "millisecond" });
+}
+
+export function parseActualClockInput(value: string, timezone: string, logicalDate: string, boundaryMinutes: number,
+  existingInstant: string | null, referenceStartInstant: string | null, field: string): string {
+  const clockMinute = parseFourDigitClock(value);
+  if (clockMinute === "invalid") throw new Error(`${field}は4桁のHHMMで入力してください`);
   try {
-    return Temporal.PlainDateTime.from(value).toZonedDateTime(timezone).toInstant()
-      .toString({ smallestUnit: "millisecond" });
+    const existingLocalDate = existingInstant
+      ? Temporal.Instant.from(existingInstant).toZonedDateTimeISO(timezone).toPlainDate()
+      : null;
+    const referenceLocalDate = referenceStartInstant
+      ? Temporal.Instant.from(referenceStartInstant).toZonedDateTimeISO(timezone).toPlainDate()
+      : null;
+    let date = existingLocalDate ?? referenceLocalDate;
+    if (!date) {
+      const logicalMinute = logicalMinuteFromClock(clockMinute, boundaryMinutes);
+      date = Temporal.PlainDate.from(logicalDate).add({ days: Math.floor(logicalMinute / 1440) });
+    }
+    let candidate = instantForClock(date, clockMinute, timezone);
+    if (!existingInstant && referenceStartInstant && Temporal.Instant.compare(candidate, referenceStartInstant) <= 0) {
+      candidate = instantForClock(date.add({ days: 1 }), clockMinute, timezone);
+    }
+    return candidate;
   } catch {
-    throw new Error(`${field}を正しい日時で入力してください`);
+    throw new Error(`${field}を正しい時刻で入力してください`);
   }
 }
 
-function formatEstimate(seconds: number | null): string {
+export function formatEstimate(seconds: number | null): string {
   if (!seconds) return "—";
   const minutes = Math.floor(seconds / 60);
-  return minutes >= 60 ? `${Math.floor(minutes / 60)}時間${minutes % 60 ? `${minutes % 60}分` : ""}` : `${minutes}分`;
+  return `${minutes}分`;
 }
 
 function EmptyValue({ label = "未設定" }: { label?: string }) {
@@ -405,12 +455,10 @@ function parseLogicalTime(value: FormDataEntryValue | null): number | null {
 function parsePlannedStart(value: string, boundaryMinutes: number): number | null | "invalid" {
   const trimmed = value.trim();
   if (trimmed === "") return null;
-  const match = trimmed.match(/^(\d{1,2}):(\d{2})$/);
-  if (!match) return "invalid";
-  const hours = Number(match[1]);
-  const minutes = Number(match[2]);
-  const logicalMinute = hours * 60 + minutes;
-  return minutes <= 59 && Number.isSafeInteger(logicalMinute)
+  const clockMinute = parseFourDigitClock(trimmed);
+  if (clockMinute === "invalid") return "invalid";
+  const logicalMinute = logicalMinuteFromClock(clockMinute, boundaryMinutes);
+  return Number.isSafeInteger(logicalMinute)
     && logicalMinute >= boundaryMinutes && logicalMinute < boundaryMinutes + 1440
     ? logicalMinute : "invalid";
 }
@@ -525,6 +573,7 @@ export function App() {
   const [columnsMenuOpen, setColumnsMenuOpen] = useState(false);
   const [columnDrag, setColumnDrag] = useState<ColumnDragState | null>(null);
   const [columnResize, setColumnResize] = useState<ColumnResizeState | null>(null);
+  const [dayTableResizeLayout, setDayTableResizeLayout] = useState<DayTableResizeLayout | null>(null);
   const [entryDrag, setEntryDrag] = useState<EntryDragState | null>(null);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [calendarFocusedDate, setCalendarFocusedDate] = useState<string | null>(null);
@@ -552,10 +601,31 @@ export function App() {
   const overflowMenuRef = useRef<HTMLDivElement | null>(null);
   const overflowMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const forecastClockRef = useRef<{ serverInstant: string; monotonicMilliseconds: number } | null>(null);
+  const inlineEditorActionRef = useRef<InlineEditorAction | null>(null);
   const retainedOperation = projectOperation ?? taskOperation ?? duplicateOperation ?? bulkDeleteOperation ?? bulkDateMoveOperation ?? bulkSectionOperation ?? bulkSectionOccurrenceOperation ?? bulkSectionScopedOperation ?? bulkEstimateOperation ?? reorderOperation ?? startOperation ?? completeOperation ?? executionTimesOperation ?? taskMetadataOperation
     ?? configurationOperation ?? sectionSettingsOperation ?? sectionMoveOperation ?? estimateOperation ?? plannedStartOperation
     ?? routineConversionOperation ?? routineEndOperation ?? routineEstimateOperation ?? routineSectionPlanOperation;
   const mutationLocked = pending !== null || retainedOperation !== null || bulkConfirmation !== null || bulkSectionConfirmation !== null || bulkEstimateConfirmation !== null || bulkDateMoveConfirmation !== null;
+
+  function beginInlineEditor(key: string) {
+    inlineEditorActionRef.current = { key, action: "none" };
+  }
+
+  function markInlineEditorAction(key: string, action: "commit" | "cancel") {
+    inlineEditorActionRef.current = { key, action };
+  }
+
+  function shouldSkipInlineEditorBlur(key: string): boolean {
+    const action = inlineEditorActionRef.current;
+    if (!action || action.key !== key || action.action === "none") return false;
+    inlineEditorActionRef.current = null;
+    return true;
+  }
+
+  function handleInlineEditorEscape(key: string, close: () => void) {
+    markInlineEditorAction(key, "cancel");
+    close();
+  }
 
   const transitionToSignedOut = useCallback(() => {
     selectedLogicalDateRef.current = null;
@@ -730,10 +800,16 @@ export function App() {
     if (!columnResize) return;
     const handleMouseMove = (event: globalThis.MouseEvent) => {
       const delta = event.clientX - columnResize.startX;
+      const resizedWidth = clampDayColumnWidth(columnResize.key, columnResize.startWidth + delta);
+      const effectiveDelta = resizedWidth - columnResize.startWidth;
       setDayColumnPreference((current) => ({
         ...current,
-        widths: { ...current.widths, [columnResize.key]: clampDayColumnWidth(columnResize.key, columnResize.startWidth + delta) },
+        widths: { ...current.widths, [columnResize.key]: resizedWidth },
       }));
+      setDayTableResizeLayout({
+        taskWidth: columnResize.startTaskWidth,
+        tableWidth: columnResize.startTableWidth + effectiveDelta,
+      });
     };
     const handleMouseUp = () => setColumnResize(null);
     window.addEventListener("mousemove", handleMouseMove);
@@ -1946,6 +2022,7 @@ export function App() {
 
   function openTaskMetadataEditor(entry: EntryProjection) {
     if (!canEditTaskMetadata(entry) || mutationLocked) return;
+    beginInlineEditor(`task-metadata:${entry.id}`);
     setError(null);
     setTaskMetadataDraft({ entryId: entry.id, taskId: entry.task.id, expectedTitle: entry.task.title,
       expectedProjectId: entry.task.project?.id ?? null, title: entry.task.title, projectId: entry.task.project?.id ?? null });
@@ -1991,6 +2068,11 @@ export function App() {
     }
     if (title.length > 300) {
       setError("Task名は300文字以内で入力してください");
+      return;
+    }
+    if (title === draft.expectedTitle && nextProjectId === draft.expectedProjectId) {
+      setTaskMetadataDraft(null);
+      setError(null);
       return;
     }
     const operation: UpdateTaskMetadataRequest = {
@@ -2051,8 +2133,9 @@ export function App() {
     const expectedEndedAt = entry.lifecycle_state === "completed" ? selectedExecution?.ended_at ?? null : null;
     setError(null);
     setExecutionEditorError(null);
+    beginInlineEditor(`execution-times:${entry.id}`);
     setExecutionTimesDraft({ entryId: entry.id, executionId, expectedLifecycleState, expectedStartedAt, expectedEndedAt,
-      startedLocal: formatActualInput(expectedStartedAt, timezone), endedLocal: formatActualInput(expectedEndedAt, timezone), executionOptions });
+      startedLocal: formatActualClockInput(expectedStartedAt, timezone), endedLocal: formatActualClockInput(expectedEndedAt, timezone), executionOptions });
   }
 
   function selectExecutionForCorrection(executionId: string) {
@@ -2062,8 +2145,8 @@ export function App() {
       const selected = current.executionOptions.find((candidate) => candidate.id === executionId);
       if (!selected) return current;
       return { ...current, executionId, expectedStartedAt: selected.started_at, expectedEndedAt: selected.ended_at,
-        startedLocal: formatActualInput(selected.started_at, timezone),
-        endedLocal: formatActualInput(selected.ended_at, timezone) };
+        startedLocal: formatActualClockInput(selected.started_at, timezone),
+        endedLocal: formatActualClockInput(selected.ended_at, timezone) };
     });
   }
 
@@ -2104,11 +2187,24 @@ export function App() {
     }
     const timezone = day.taskchute_day.establishment_timezone;
     if (!timezone) return;
+    if (draft.expectedLifecycleState !== "planned"
+      && draft.startedLocal === formatActualClockInput(draft.expectedStartedAt, timezone)
+      && draft.endedLocal === formatActualClockInput(draft.expectedEndedAt, timezone)) {
+      setExecutionTimesDraft(null);
+      setExecutionEditorError(null);
+      return;
+    }
     let startedAt: string;
     let endedAt: string | null = null;
     try {
-      startedAt = parseActualInput(draft.startedLocal, timezone, "開始時刻");
-      if (draft.endedLocal.trim() !== "") endedAt = parseActualInput(draft.endedLocal, timezone, "終了時刻");
+      const boundaryMinutes = day.taskchute_day.establishment_boundary_minutes;
+      if (boundaryMinutes === null) throw new Error("確定済みDayの開始境界がありません");
+      startedAt = parseActualClockInput(draft.startedLocal, timezone, day.taskchute_day.logical_date,
+        boundaryMinutes, draft.expectedStartedAt, null, "開始時刻");
+      if (draft.endedLocal.trim() !== "") {
+        endedAt = parseActualClockInput(draft.endedLocal, timezone, day.taskchute_day.logical_date,
+          boundaryMinutes, draft.expectedEndedAt, startedAt, "終了時刻");
+      }
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "実績時刻を正しく入力してください";
       setExecutionEditorError(message);
@@ -2116,6 +2212,12 @@ export function App() {
     }
     if (draft.expectedLifecycleState === "completed" && endedAt === null) {
       setExecutionEditorError("完了済みEntryの終了時刻は空にできません");
+      return;
+    }
+    if (draft.expectedLifecycleState !== "planned"
+      && startedAt === draft.expectedStartedAt && endedAt === draft.expectedEndedAt) {
+      setExecutionTimesDraft(null);
+      setExecutionEditorError(null);
       return;
     }
     const operation: SetExecutionTimesRequest = {
@@ -2353,6 +2455,11 @@ export function App() {
       setError("見積は0以上の整数（分）で入力してください"); return;
     }
     const estimateSeconds = minutes === 0 ? null : minutes * 60;
+    if (canonical.estimate_seconds === estimateSeconds) {
+      setEditingEstimate(null);
+      setError(null);
+      return;
+    }
     if (canonical.routine) {
       setRoutineCandidate({ entryId, unit: "estimate", estimateSeconds });
       setEditingEstimate(null);
@@ -2397,7 +2504,7 @@ export function App() {
     );
     if (plannedStartMinute === "invalid") {
       const boundary = day.taskchute_day.establishment_boundary_minutes;
-      setError(`開始予定は ${formatLogicalMinute(boundary)} 以上 ${formatLogicalMinute(boundary + 1440)} 未満のHH:mmで入力してください`);
+      setError(`開始予定は4桁のHHMMで入力してください（${formatLogicalMinute(boundary)} 以上 ${formatLogicalMinute(boundary + 1440)} 未満）`);
       return;
     }
     const expectedSectionId = plannedStartMinute === null ? null
@@ -2405,6 +2512,11 @@ export function App() {
         && section.logical_start_minute <= plannedStartMinute && plannedStartMinute < section.logical_end_minute)?.id;
     if (expectedSectionId === undefined) {
       setError("開始予定を含む確定済みSection時間帯がありません");
+      return;
+    }
+    if (canonical.planned_start_minute === plannedStartMinute) {
+      setEditingPlannedStart(null);
+      setError(null);
       return;
     }
     if (canonical.routine) {
@@ -2759,6 +2871,7 @@ export function App() {
     }
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData("text/plain", key);
+    setDayTableResizeLayout(null);
     setColumnDrag({ sourceKey: key, targetKey: null, edge: null });
   }
 
@@ -2774,6 +2887,7 @@ export function App() {
     const sourceKey = columnDrag?.sourceKey ?? event.dataTransfer.getData("text/plain") as DayColumnKey;
     if (sourceKey && sourceKey !== targetKey && dayColumnPreference.order.includes(sourceKey)) {
       const edge = columnDrag?.targetKey === targetKey && columnDrag.edge ? columnDrag.edge : columnDropEdge(event);
+      setDayTableResizeLayout(null);
       setDayColumnPreference((current) => ({ ...current, order: reorderDayColumns(current.order, sourceKey, targetKey, edge) }));
     }
     setColumnDrag(null);
@@ -2783,13 +2897,19 @@ export function App() {
     if (event.button !== 0) return;
     event.preventDefault();
     event.stopPropagation();
-    setColumnResize({ key, startX: event.clientX, startWidth: dayColumnPreference.widths[key] });
+    const heading = event.currentTarget.closest<HTMLElement>(".table-heading");
+    const taskHeading = heading?.querySelector<HTMLElement>(".task-heading");
+    const startTaskWidth = Math.max(280, taskHeading?.getBoundingClientRect().width ?? 280);
+    const startTableWidth = Math.max(0, heading?.getBoundingClientRect().width ?? 0);
+    setDayTableResizeLayout({ taskWidth: startTaskWidth, tableWidth: startTableWidth });
+    setColumnResize({ key, startX: event.clientX, startWidth: dayColumnPreference.widths[key], startTaskWidth, startTableWidth });
   }
 
   function autoFitColumn(event: ReactMouseEvent<HTMLButtonElement>, key: DayColumnKey) {
     event.preventDefault();
     event.stopPropagation();
     const definition = columnDefinition(key);
+    setDayTableResizeLayout(null);
     const currentWidth = dayColumnPreference.widths[key];
     const elements = [
       ...Array.from(document.querySelectorAll<HTMLElement>(`[data-day-column-header="${key}"], [data-day-column-cell="${key}"]`)),
@@ -2864,19 +2984,34 @@ export function App() {
         : formatActualTime(summary?.last_ended_at ?? null, currentDay.taskchute_day.logical_date, currentDay.taskchute_day.establishment_timezone);
     const label = field === "start" ? `${entry.task.title}の開始` : `${entry.task.title}の終了`;
     if (draft) {
-      return <span className="actual-time-editor" data-execution-editing={field}>
+      const inlineKey = `execution-times:${entry.id}`;
+      return <span className="actual-time-editor" data-execution-editing={field} data-execution-entry={entry.id}
+        onBlur={(event) => {
+          const related = event.relatedTarget as HTMLElement | null;
+          if (related?.dataset.executionEntry === entry.id) return;
+          if (shouldSkipInlineEditorBlur(inlineKey)) return;
+          markInlineEditorAction(inlineKey, "commit");
+          commitExecutionTimes(entry);
+        }}>
         {field === "start" && draft.executionOptions.length > 1 && (
           <select aria-label={`${entry.task.title}のExecution`} value={draft.executionId ?? ""} onChange={(event) => selectExecutionForCorrection(event.target.value)}>
             {draft.executionOptions.map((execution) => <option value={execution.id} key={execution.id}>{execution.started_at} → {execution.ended_at ?? "実行中"}</option>)}
           </select>
         )}
-        <input autoFocus={field === "start"} type="datetime-local" step="1" value={value}
+        <input autoFocus={field === "start"} type="text" inputMode="numeric" maxLength={4} pattern="[0-9]{4}" placeholder="HHMM"
+          data-inline-navigation value={value}
           aria-label={label} required={field === "start" || draft.expectedLifecycleState === "completed"}
           onChange={(event) => setExecutionTimesDraft((current) => current
             ? { ...current, [field === "start" ? "startedLocal" : "endedLocal"]: event.target.value } : current)}
           onKeyDown={(event) => {
-            if (event.key === "Enter") { event.preventDefault(); commitExecutionTimes(entry); }
-            else if (event.key === "Escape") { event.preventDefault(); setExecutionTimesDraft(null); setExecutionEditorError(null); }
+            if (event.key === "Enter" || event.key === "Tab") {
+              if (event.key === "Enter") event.preventDefault();
+              markInlineEditorAction(inlineKey, "commit");
+              commitExecutionTimes(entry);
+            } else if (event.key === "Escape") {
+              event.preventDefault();
+              handleInlineEditorEscape(inlineKey, () => { setExecutionTimesDraft(null); setExecutionEditorError(null); });
+            }
           }} />
         {field === "end" && executionEditorError && <span className="inline-field-error" role="alert">{executionEditorError}</span>}
       </span>;
@@ -2926,19 +3061,32 @@ export function App() {
       case "routine":
         return routineCell(entry);
       case "estimate":
-        return <span className="estimate-cell" data-day-column-cell={key}>
+        return <span className="estimate-cell" data-day-column-cell={key}
+          onBlur={(event) => {
+            if ((event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null)) return;
+            const inlineKey = `estimate:${entry.id}`;
+            if (shouldSkipInlineEditorBlur(inlineKey)) return;
+            markInlineEditorAction(inlineKey, "commit");
+            void commitEstimate(entry.id);
+          }}>
           {editingEstimate?.entryId === entry.id ? <>
-            <input autoFocus aria-label={`${entry.task.title}の見積（分）`} inputMode="numeric" value={editingEstimate.minutes}
+            <input autoFocus aria-label={`${entry.task.title}の見積（分）`} inputMode="numeric" data-inline-navigation value={editingEstimate.minutes}
               onChange={(event) => setEditingEstimate({ entryId: entry.id, minutes: event.target.value })}
-              onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void commitEstimate(entry.id); }
-                else if (event.key === "Escape") { event.preventDefault(); setEditingEstimate(null); } }} />
+              onKeyDown={(event) => { if (event.key === "Enter" || event.key === "Tab") {
+                if (event.key === "Enter") event.preventDefault();
+                markInlineEditorAction(`estimate:${entry.id}`, "commit");
+                void commitEstimate(entry.id);
+              } else if (event.key === "Escape") {
+                event.preventDefault();
+                handleInlineEditorEscape(`estimate:${entry.id}`, () => { setEditingEstimate(null); setError(null); });
+              } }} />
             {entry.routine?.estimate_override_present && (
               <button type="button" className="routine-reset" aria-label={`${entry.task.title}の見積をルーティンの設定に戻す`}
                 disabled={mutationLocked} onClick={() => void resetRoutineUnit(entry, "estimate")}>ルーティンの設定に戻す</button>
             )}
           </>
             : <button type="button" className="estimate-button" aria-label={`${entry.task.title}の見積`} disabled={mutationLocked || !currentDay.planning_enabled || entry.lifecycle_state !== "planned" || (entry.routine !== null && !currentDay.is_current)}
-              onClick={() => setEditingEstimate({ entryId: entry.id, minutes: entry.estimate_seconds ? String(entry.estimate_seconds / 60) : "" })}>{renderEmptyValue(formatEstimate(entry.estimate_seconds), "見積なし")}</button>}
+              onClick={() => { beginInlineEditor(`estimate:${entry.id}`); setEditingEstimate({ entryId: entry.id, minutes: entry.estimate_seconds ? String(entry.estimate_seconds / 60) : "" }); }}>{renderEmptyValue(formatEstimate(entry.estimate_seconds), "見積なし")}</button>}
           {entry.routine && routineCandidate?.entryId === entry.id && routineCandidate.unit === "estimate" && (
             <span ref={routineScopeChoiceRef} className="routine-scope-choice" role="group" aria-label={`${entry.task.title}の見積反映先`}>
               <span>{formatEstimate(routineCandidate.estimateSeconds)}</span>
@@ -2949,12 +3097,25 @@ export function App() {
           )}
         </span>;
       case "plannedStart":
-        return <span className="planned-start-cell" data-day-column-cell={key}>
+        return <span className="planned-start-cell" data-day-column-cell={key}
+          onBlur={(event) => {
+            if ((event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null)) return;
+            const inlineKey = `planned-start:${entry.id}`;
+            if (shouldSkipInlineEditorBlur(inlineKey)) return;
+            markInlineEditorAction(inlineKey, "commit");
+            void commitPlannedStart(entry);
+          }}>
           {editingPlannedStart?.entryId === entry.id ? <>
-            <input autoFocus aria-label={`${entry.task.title}の開始予定`} value={editingPlannedStart.value} placeholder="HH:mm" inputMode="numeric"
+            <input autoFocus aria-label={`${entry.task.title}の開始予定`} data-inline-navigation value={editingPlannedStart.value} placeholder="HHMM" inputMode="numeric" maxLength={4} pattern="[0-9]{4}"
               onChange={(event) => setEditingPlannedStart({ entryId: entry.id, value: event.target.value })}
-              onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void commitPlannedStart(entry); }
-                else if (event.key === "Escape") { event.preventDefault(); setEditingPlannedStart(null); } }} />
+              onKeyDown={(event) => { if (event.key === "Enter" || event.key === "Tab") {
+                if (event.key === "Enter") event.preventDefault();
+                markInlineEditorAction(`planned-start:${entry.id}`, "commit");
+                void commitPlannedStart(entry);
+              } else if (event.key === "Escape") {
+                event.preventDefault();
+                handleInlineEditorEscape(`planned-start:${entry.id}`, () => { setEditingPlannedStart(null); setError(null); });
+              } }} />
             {entry.routine?.section_plan_override_present && (
               <button type="button" className="routine-reset" aria-label={`${entry.task.title}のSection・開始予定をルーティンの設定に戻す`}
                 disabled={mutationLocked} onClick={() => void resetRoutineUnit(entry, "section-plan")}>ルーティンの設定に戻す</button>
@@ -2962,8 +3123,8 @@ export function App() {
           </>
             : <button type="button" className="planned-start-button" aria-label={`${entry.task.title}の開始予定`}
               disabled={mutationLocked || !currentDay.planning_enabled || entry.lifecycle_state !== "planned" || (entry.routine !== null && !currentDay.is_current)}
-              onClick={() => setEditingPlannedStart({ entryId: entry.id,
-                value: entry.planned_start_minute === null ? "" : formatLogicalMinute(entry.planned_start_minute) })}>
+              onClick={() => { beginInlineEditor(`planned-start:${entry.id}`); setEditingPlannedStart({ entryId: entry.id,
+                value: entry.planned_start_minute === null ? "" : formatClockInputFromLogicalMinute(entry.planned_start_minute) }); }}>
               {entry.planned_start_minute === null ? <EmptyValue label="開始予定なし" /> : formatLogicalMinute(entry.planned_start_minute)}
             </button>}
           {entry.routine && routineCandidate?.entryId === entry.id && routineCandidate.unit === "section-plan" && (
@@ -3212,7 +3373,7 @@ export function App() {
                 </div>
               )}
             </div>}
-            {day.planning_enabled && <button ref={bulkDeleteTriggerRef} type="button" disabled={mutationLocked} onClick={openBulkConfirmation}>削除</button>}
+            {day.planning_enabled && <button ref={bulkDeleteTriggerRef} type="button" className="destructive-action" disabled={mutationLocked} onClick={openBulkConfirmation}>削除</button>}
             <button type="button" className="secondary" disabled={mutationLocked} onClick={clearBulkSelection}>選択解除</button>
           </div>
         )}
@@ -3232,14 +3393,14 @@ export function App() {
                 {DAY_COLUMN_DEFINITIONS.map((definition) => (
                   <label className="columns-option" key={definition.key}>
                     <input type="checkbox" checked={!dayColumnPreference.hidden.includes(definition.key)}
-                      onChange={(event) => setDayColumnPreference((current) => setDayColumnVisibility(current, definition.key, event.target.checked))} />
+                    onChange={(event) => { setDayTableResizeLayout(null); setDayColumnPreference((current) => setDayColumnVisibility(current, definition.key, event.target.checked)); }} />
                     <span>{definition.label}</span>
                   </label>
                 ))}
               </div>
               <div className="columns-actions">
-                <button type="button" className="secondary" onClick={() => setDayColumnPreference((current) => showAllDayColumns(current))}>すべて表示</button>
-                <button type="button" className="secondary" onClick={() => setDayColumnPreference(resetDayColumnPreference)}>初期状態に戻す</button>
+                <button type="button" className="secondary" onClick={() => { setDayTableResizeLayout(null); setDayColumnPreference((current) => showAllDayColumns(current)); }}>すべて表示</button>
+                <button type="button" className="secondary" onClick={() => { setDayTableResizeLayout(null); setDayColumnPreference(resetDayColumnPreference); }}>初期状態に戻す</button>
               </div>
             </div>
           )}
@@ -3406,7 +3567,7 @@ export function App() {
               setBulkConfirmation(null);
               requestAnimationFrame(() => bulkDeleteTriggerRef.current?.focus());
             }}>キャンセル</button>
-            <button type="button" onClick={confirmBulkDelete}>削除</button>
+            <button type="button" className="destructive-action" onClick={confirmBulkDelete}>削除</button>
           </div>
         </div>
       )}
@@ -3441,7 +3602,7 @@ export function App() {
         </section>
       )}
 
-      <section className="day-surface" aria-label="DayBoard" style={dayTableStyle(dayColumnPreference)}>
+      <section className="day-surface" aria-label="DayBoard" style={dayTableStyle(dayColumnPreference, dayTableResizeLayout ?? undefined)}>
         <div className="table-heading">
           <span className="bulk-slot">
             {eligibleBulkEntries.length > 0 ? (
@@ -3582,12 +3743,25 @@ export function App() {
                     <div className="task-main">
                       <div className="task-identity">
                         {taskMetadataDraft?.entryId === entry.id ? (
-                          <span className="task-metadata-editor">
-                            <input autoFocus maxLength={300} aria-label={`${entry.task.title}のTask名`} value={taskMetadataDraft.title}
+                          <span className="task-metadata-editor"
+                            onBlur={(event) => {
+                              if ((event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null)) return;
+                              const inlineKey = `task-metadata:${entry.id}`;
+                              if (shouldSkipInlineEditorBlur(inlineKey)) return;
+                              markInlineEditorAction(inlineKey, "commit");
+                              commitTaskMetadata(entry);
+                            }}>
+                            <input autoFocus maxLength={300} data-inline-navigation aria-label={`${entry.task.title}のTask名`} value={taskMetadataDraft.title}
                               onChange={(event) => setTaskMetadataDraft((current) => current ? { ...current, title: event.target.value } : current)}
                               onKeyDown={(event) => {
-                                if (event.key === "Enter") { event.preventDefault(); commitTaskMetadata(entry); }
-                                else if (event.key === "Escape") { event.preventDefault(); setTaskMetadataDraft(null); setError(null); }
+                                if (event.key === "Enter" || event.key === "Tab") {
+                                  if (event.key === "Enter") event.preventDefault();
+                                  markInlineEditorAction(`task-metadata:${entry.id}`, "commit");
+                                  commitTaskMetadata(entry);
+                                } else if (event.key === "Escape") {
+                                  event.preventDefault();
+                                  handleInlineEditorEscape(`task-metadata:${entry.id}`, () => { setTaskMetadataDraft(null); setError(null); });
+                                }
                               }} />
                             {error && <span className="inline-field-error" role="alert">{error}</span>}
                           </span>
@@ -3631,7 +3805,7 @@ export function App() {
                             {canEditPlanning && <button type="button" role="menuitem" onClick={() => {
                               setOverflowEntryId(null);
                               openSingleDelete(entry);
-                            }}>削除</button>}
+                            }} className="destructive-action">削除</button>}
                           </div>
                         )}
                       </div>

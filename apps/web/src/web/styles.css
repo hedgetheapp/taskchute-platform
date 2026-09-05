@@ -122,6 +122,8 @@ input:focus-visible, select:focus-visible { border-color: #2383e2; outline: 2px 
 .bulk-confirmation h2 { margin: 0; font-size: 16px; }
 .bulk-confirmation p { margin: 0; color: #575754; font-size: 13px; }
 .bulk-confirmation-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.destructive-action { border-color: #e6b8b2 !important; background: #fff7f5 !important; color: #b42318 !important; }
+.destructive-action:hover:not(:disabled), .destructive-action:focus-visible { border-color: #d14343 !important; background: #ffebe8 !important; color: #9d2e2e !important; }
 .bulk-estimate-input { display: grid; gap: 4px; max-width: 240px; color: #373735; font-size: 13px; font-weight: 700; }
 .bulk-estimate-input input { min-width: 0; }
 .bulk-estimate-confirmation .bulk-routine-scope-list { margin: 0; }
@@ -234,13 +236,13 @@ input:focus-visible, select:focus-visible { border-color: #2383e2; outline: 2px 
 .task-title-display { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .task-title-display.is-editable { cursor: text; }
 .task-title-display.is-editable:hover { color: #2383e2; }
-.task-metadata-editor { display: grid; min-width: 0; gap: 2px; }
-.task-metadata-editor input { min-width: 0; width: 100%; margin: 0; padding: 4px 6px; }
+.task-metadata-editor { display: grid; width: 100%; min-width: 0; gap: 2px; }
+.task-metadata-editor input { min-width: 0; width: 100%; height: 32px; margin: 0; padding: 4px 6px; }
 .project-selector { width: 100%; min-width: 0; margin: 0; padding: 4px 5px; }
 .actual-time-button { min-width: 0; max-width: 100%; overflow: hidden; padding: 4px 5px; border: 0; background: transparent; color: inherit; font: inherit; text-overflow: ellipsis; white-space: nowrap; }
 .actual-time-button:not(:disabled):hover { background: #edf5fc; color: #2383e2; }
-.actual-time-editor { display: grid; min-width: 0; gap: 3px; }
-.actual-time-editor input, .actual-time-editor select { min-width: 0; width: 100%; margin: 0; padding: 4px 5px; font-size: 11px; }
+.actual-time-editor { display: grid; width: 100%; min-width: 0; gap: 3px; }
+.actual-time-editor input, .actual-time-editor select { min-width: 0; width: 100%; height: 32px; margin: 0; padding: 4px 5px; font-size: 11px; }
 .inline-field-error { display: block; color: #b42318; font-size: 10px; line-height: 1.25; white-space: normal; }
 .next-label { flex: none; padding: 2px 5px; border-radius: 4px; background: #edf5fc; color: #2383e2; font-size: 10px; font-weight: 700; }
 .row-actions-heading { padding: 0 !important; }
@@ -250,6 +252,7 @@ input:focus-visible, select:focus-visible { border-color: #2383e2; outline: 2px 
 .row-overflow-menu { position: absolute; z-index: 12; top: calc(100% - 2px); right: 8px; display: grid; min-width: 116px; padding: 4px; border: 1px solid #d8d8d5; border-radius: 7px; background: #fff; box-shadow: 0 8px 22px rgb(15 15 15 / 16%); }
 .row-overflow-menu button { padding: 7px 9px; border: 0; border-radius: 4px; background: transparent; color: #373735; text-align: left; font-size: 12px; white-space: nowrap; }
 .row-overflow-menu button:hover, .row-overflow-menu button:focus-visible { background: #f0f6fc; color: #1769aa; outline: none; }
+.row-overflow-menu button.destructive-action:hover, .row-overflow-menu button.destructive-action:focus-visible { background: #ffebe8; color: #9d2e2e; }
 .routine-cell { position: relative; display: flex; min-width: 0; align-items: center; gap: 4px; flex-wrap: wrap; }
 .routine-badge { flex: none; padding: 2px 5px; border-radius: 999px; background: #f1edff; color: #6941c6; font-size: 10px; font-weight: 700; }
 .routine-icon { display: inline-flex; width: 26px; height: 26px; align-items: center; justify-content: center; padding: 0; border-radius: 6px; }
@@ -271,9 +274,9 @@ input:focus-visible, select:focus-visible { border-color: #2383e2; outline: 2px 
 .project-name, .muted { color: #787774; font-size: 12px; }
 .empty-value { display: inline-flex; align-items: center; color: #9b9b97; font-size: 10px; font-weight: 400; line-height: 1; vertical-align: middle; }
 .task-row select { padding: 6px 7px; font-size: 12px; }
-.planned-start-cell input, .estimate-cell input { padding: 6px; text-align: right; }
+.planned-start-cell input, .estimate-cell input { width: 100%; height: 32px; padding: 6px; text-align: right; }
 .forecast-cell, .actual-time-cell, .actual-duration { color: #575754; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.actual-time-cell { display: inline-flex; align-items: center; gap: 4px; }
+.actual-time-cell { display: flex; min-width: 0; align-items: center; gap: 4px; }
 .planned-start-button,
 .estimate-button { width: 100%; padding: 6px; background: transparent; color: #575754; text-align: right; }
 .planned-start-button:hover:not(:disabled),

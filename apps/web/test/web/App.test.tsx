@@ -17,8 +17,10 @@ vi.mock("../../src/web/api", async () => {
   return { ...actual, api: mocks };
 });
 
-import { App, DAY_COLUMNS_STORAGE_KEY, DAY_SECTION_COLLAPSE_STORAGE_KEY, SIDEBAR_STORAGE_KEY } from "../../src/web/App";
+import { App, DAY_COLUMNS_STORAGE_KEY, DAY_SECTION_COLLAPSE_STORAGE_KEY, SIDEBAR_STORAGE_KEY,
+  formatActualClockInput, formatClockInputFromLogicalMinute, formatEstimate, logicalMinuteFromClock, parseActualClockInput, parseFourDigitClock } from "../../src/web/App";
 import { ApiClientError } from "../../src/web/api";
+import { dayTableStyle, defaultDayColumnPreference } from "../../src/web/day-columns";
 
 const morningId = "019c0000-0000-7000-8000-000000000002";
 const eveningId = "019c0000-0000-7000-8000-000000000008";
@@ -1830,15 +1832,15 @@ describe("Dogfood Day shell", () => {
     expect(mocks.addTask.mock.calls[0][0]).toMatchObject({ title: "Unsectioned task", section_id: null });
   });
 
-  it("normalizes zero estimate minutes to null before sending the operation", async () => {
+  it("does not send an unchanged zero estimate operation", async () => {
     mocks.loadDay.mockResolvedValue(populatedDay);
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Canonical taskの見積" }));
     const input = screen.getByRole("textbox", { name: "Canonical taskの見積（分）" });
     fireEvent.change(input, { target: { value: "0" } });
     fireEvent.keyDown(input, { key: "Enter", code: "Enter" });
-    await waitFor(() => expect(mocks.setEntryEstimate).toHaveBeenCalledTimes(1));
-    expect(mocks.setEntryEstimate.mock.calls[0][0]).toMatchObject({ entry_id: firstEntry.id, estimate_seconds: null });
+    await waitFor(() => expect(screen.queryByRole("textbox", { name: "Canonical taskの見積（分）" })).toBeNull());
+    expect(mocks.setEntryEstimate).not.toHaveBeenCalled();
   });
 
   it("retains only the exact ambiguous estimate operation and blocks unrelated Start", async () => {
@@ -1879,7 +1881,7 @@ describe("Dogfood Day shell", () => {
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Canonical taskの開始予定" }));
     const input = screen.getByRole("textbox", { name: "Canonical taskの開始予定" });
-    fireEvent.change(input, { target: { value: "27:00" } });
+    fireEvent.change(input, { target: { value: "0300" } });
     fireEvent.keyDown(input, { key: "Enter", code: "Enter" });
     await waitFor(() => expect(mocks.setEntryPlannedStart).toHaveBeenCalledTimes(1));
     expect(mocks.setEntryPlannedStart.mock.calls[0][0]).toMatchObject({
@@ -1897,9 +1899,9 @@ describe("Dogfood Day shell", () => {
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Canonical taskの開始予定" }));
     const input = screen.getByRole("textbox", { name: "Canonical taskの開始予定" });
-    fireEvent.change(input, { target: { value: "28:00" } });
+    fireEvent.change(input, { target: { value: "2460" } });
     fireEvent.keyDown(input, { key: "Enter", code: "Enter" });
-    expect((await screen.findByRole("alert")).textContent).toContain("28:00 未満");
+    expect((await screen.findByRole("alert")).textContent).toContain("4桁のHHMM");
     expect(mocks.setEntryPlannedStart).not.toHaveBeenCalled();
   });
 
@@ -1937,7 +1939,7 @@ describe("Dogfood Day shell", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Canonical taskの開始予定" }));
-    expect((screen.getByRole("textbox", { name: "Canonical taskの開始予定" }) as unknown as HTMLInputElement).value).toBe("10:00");
+    expect((screen.getByRole("textbox", { name: "Canonical taskの開始予定" }) as unknown as HTMLInputElement).value).toBe("1000");
     fireEvent.change(screen.getByRole("combobox", { name: "Canonical taskのSection" }), { target: { value: eveningId } });
 
     await waitFor(() => expect(mocks.moveEntry).toHaveBeenCalledTimes(1));
@@ -1979,7 +1981,7 @@ describe("Dogfood Day shell", () => {
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Canonical taskの開始予定" }));
     const input = screen.getByRole("textbox", { name: "Canonical taskの開始予定" });
-    fireEvent.change(input, { target: { value: "10:00" } });
+    fireEvent.change(input, { target: { value: "1000" } });
     fireEvent.keyDown(input, { key: "Enter", code: "Enter" });
     const retry = await screen.findByRole("button", { name: "保留中の開始予定保存を再試行" });
     expect((screen.getByRole("button", { name: "Canonical taskを開始" }) as HTMLButtonElement).disabled).toBe(true);
@@ -1998,7 +2000,7 @@ describe("Dogfood Day shell", () => {
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Canonical taskの開始予定" }));
     const input = screen.getByRole("textbox", { name: "Canonical taskの開始予定" });
-    fireEvent.change(input, { target: { value: "10:00" } });
+    fireEvent.change(input, { target: { value: "1000" } });
     fireEvent.keyDown(input, { key: "Enter", code: "Enter" });
     await waitFor(() => expect(screen.queryByRole("button", { name: "保留中の開始予定保存を再試行" })).toBeNull());
     expect((await screen.findByRole("button", { name: "Canonical taskの開始予定" })).textContent).toContain("10:00");
@@ -2727,11 +2729,19 @@ describe("Dogfood Day shell", () => {
     mocks.loadDay.mockResolvedValue(populatedDay);
     render(<App />);
     const dayBoard = await screen.findByRole("region", { name: "DayBoard" });
+    const heading = dayBoard.querySelector<HTMLElement>(".table-heading")!;
+    const taskHeading = heading.querySelector<HTMLElement>(".task-heading")!;
+    setColumnBounds(taskHeading, 84, 420);
+    vi.spyOn(heading, "getBoundingClientRect").mockReturnValue({
+      x: 0, y: 0, width: 1500, height: 34, top: 0, right: 1500, bottom: 34, left: 0,
+      toJSON: () => ({}),
+    });
     const projectHandle = screen.getByRole("button", { name: "Project列の幅を変更" });
     fireEvent.mouseDown(projectHandle, { button: 0, clientX: 100 });
     fireEvent.mouseMove(window, { clientX: 210 });
     fireEvent.mouseUp(window);
-    await waitFor(() => expect(dayBoard.style.getPropertyValue("--day-table-grid-template-columns")).toContain("260px"));
+    await waitFor(() => expect(dayBoard.style.getPropertyValue("--day-table-grid-template-columns")).toContain("32px 52px 420px 260px"));
+    expect(dayBoard.style.getPropertyValue("--day-table-min-width")).toBe("1610px");
     expect(JSON.parse(window.localStorage.getItem(DAY_COLUMNS_STORAGE_KEY)!).widths.project).toBe(260);
 
     const projectCell = dayBoard.querySelector<HTMLElement>('[data-day-column-cell="project"]')!;
@@ -3268,5 +3278,76 @@ describe("Dogfood Day shell", () => {
     expect(screen.getAllByText("表示するTaskはありません")).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: "MorningにTaskを追加" }));
     expect(screen.getByRole("textbox", { name: "MorningのTask名" })).toBeTruthy();
+  });
+
+  it("commits Day Table text editors on blur and Tab, cancels on Escape, and uses four-digit planned clocks", async () => {
+    mocks.loadDay.mockResolvedValue(populatedDay);
+    const rendered = render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskを編集" }));
+    const title = screen.getByRole("textbox", { name: "Canonical taskのTask名" });
+    fireEvent.change(title, { target: { value: "Tab committed" } });
+    fireEvent.keyDown(title, { key: "Tab" });
+    await waitFor(() => expect(mocks.updateTaskMetadata).toHaveBeenCalledTimes(1));
+    expect(mocks.updateTaskMetadata.mock.calls[0][0]).toMatchObject({ title: "Tab committed" });
+
+    rendered.unmount();
+    mocks.updateTaskMetadata.mockClear();
+    mocks.setEntryPlannedStart.mockClear();
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskを編集" }));
+    const unchangedTitle = screen.getByRole("textbox", { name: "Canonical taskのTask名" });
+    fireEvent.change(unchangedTitle, { target: { value: "Canceled" } });
+    fireEvent.keyDown(unchangedTitle, { key: "Escape" });
+    expect(mocks.updateTaskMetadata).not.toHaveBeenCalled();
+    expect(screen.queryByRole("textbox", { name: "Canonical taskのTask名" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Canonical taskの開始予定" }));
+    const planned = screen.getByRole("textbox", { name: "Canonical taskの開始予定" }) as HTMLInputElement;
+    expect(planned.value).toBe("");
+    fireEvent.change(planned, { target: { value: "0930" } });
+    fireEvent.blur(planned, { relatedTarget: document.body });
+    await waitFor(() => expect(mocks.setEntryPlannedStart).toHaveBeenCalledTimes(1));
+    expect(mocks.setEntryPlannedStart.mock.calls[0][0]).toMatchObject({ planned_start_minute: 570 });
+  });
+
+  it("uses text HHMM controls for actual Start/End and commits one running execution from the cell", async () => {
+    mocks.loadDay.mockResolvedValue(runningDay);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskの開始" }));
+    const start = screen.getByRole("textbox", { name: "Canonical taskの開始" }) as HTMLInputElement;
+    const end = screen.getByRole("textbox", { name: "Canonical taskの終了" }) as HTMLInputElement;
+    expect(start.type).toBe("text");
+    expect(start.inputMode).toBe("numeric");
+    expect(document.querySelector('input[type="datetime-local"]')).toBeNull();
+    expect(start.value).toBe("1200");
+    fireEvent.change(start, { target: { value: "1215" } });
+    fireEvent.change(end, { target: { value: "1230" } });
+    fireEvent.blur(end, { relatedTarget: document.body });
+    await waitFor(() => expect(mocks.setExecutionTimes).toHaveBeenCalledTimes(1));
+    expect(mocks.setExecutionTimes.mock.calls[0][0]).toMatchObject({
+      started_at: "2026-08-22T12:15:00.000Z",
+      ended_at: "2026-08-22T12:30:00.000Z",
+    });
+  });
+
+  it("covers D-061 clock mapping, minute estimate presentation, and anchored resize layout", () => {
+    expect(parseFourDigitClock("0930")).toBe(570);
+    expect(parseFourDigitClock("930")).toBe("invalid");
+    expect(parseFourDigitClock("09:30")).toBe("invalid");
+    expect(parseFourDigitClock("2460")).toBe("invalid");
+    expect(logicalMinuteFromClock(9 * 60, 5 * 60)).toBe(540);
+    expect(logicalMinuteFromClock(1 * 60, 5 * 60)).toBe(1500);
+    expect(formatClockInputFromLogicalMinute(1500)).toBe("0100");
+    expect(parseActualClockInput("0100", "UTC", "2026-09-05", 240, null, null, "開始時刻"))
+      .toBe("2026-09-06T01:00:00.000Z");
+    expect(parseActualClockInput("0010", "UTC", "2026-09-05", 240, null, "2026-09-05T23:50:00.000Z", "終了時刻"))
+      .toBe("2026-09-06T00:10:00.000Z");
+    expect(formatActualClockInput("2026-09-05T23:45:00.000Z", "UTC")).toBe("2345");
+    expect(formatEstimate(5 * 60)).toBe("5分");
+    expect(formatEstimate(30 * 60)).toBe("30分");
+    expect(formatEstimate(90 * 60)).toBe("90分");
+    const customStyle = dayTableStyle(defaultDayColumnPreference(), { taskWidth: 420, tableWidth: 1610 }) as Record<string, string>;
+    expect(customStyle["--day-table-grid-template-columns"]).toContain("32px 52px 420px");
+    expect(customStyle["--day-table-min-width"]).toBe("1610px");
   });
 });
