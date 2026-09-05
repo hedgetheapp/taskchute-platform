@@ -4,6 +4,22 @@ Date: 2026-09-05
 
 ## Status
 
+### D-062 — Day Table keyboard workflow, single-cell actual editing, Task-column resize, and calendar polish — 2026-09-05
+
+D-062はApproved Decisionとしてcanonical化済みで、Decision commit `5eae737`（`Record D-062 Day Table keyboard and calendar decision`）と実装 commits `327dd7f` / `0344e65`をGitHub canonical `main`へpush済みである。D-062はWeb-onlyのinteraction polishであり、既存API・Domain semantics・schema・migrationを変更していない。
+
+Day Tableでは、neutralなDay surfaceから`↓ / J`で最初のvisible Task、`↑ / K`で最後のvisible Taskへ移動できる。focused Taskでは`S`（planned Start / running Complete）、`N`（current SectionへTask追加）、`E`（ordinary planned Task metadata編集）、`D`（既存single planned delete確認）を提供し、`?`でshortcut help、`Esc`でeditor / menu / calendarを閉じる。input / select / textarea / contenteditableとIME composition中はglobal shortcutを発火させない。D-057 / D-060の既存lifecycle、overlap、retry、forecast reconciliation、delete semanticsは再利用し、new capabilityは追加していない。
+
+actual Start / Endはrow内のsingle-cell editorとして4桁`HHMM`（numeric text、例`0900`）を受け付ける。Start編集中もEndはread-only buttonのままで、Endを明示的に選択した時だけEnd inputになる。未設定のplanned / actual timeは`--:--`、未設定のEstimate / actual durationは`--分`と表示する。Task列は専用resize handleで280〜640pxの範囲を変更でき、`taskchute.web.day-columns.v2`のbrowser-local preferenceへ保存し、reload後も復元する。calendarは表示中のmonth / yearを`前年 / 前の月 / 次の月 / 翌年`で移動でき、outside click / Escapeで閉じる。
+
+Local evidenceはWeb `164 / 164 PASS`、Worker / runtime `180 / 180 PASS`、typecheck、production build、`git diff --check`、source review、real-local Vite safety smoke（root `200`、protected API `401`、disabled bootstrap POST `404`）をPASSした。persistent nonprodはmigration / schema / API / Domain変更なしのためAPP / AUTH migration `0 / 0`、pre-migration backup / migration / restoreは`NOT_REQUIRED / NOT_RUN`である。exact `main@0344e656c2e011b91d5af045257f51636c7754cf`をcanonical `taskchute-web-nonprod`へdeployし、generated `RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、canonical APP / AUTH binding、Worker version `a910aa25-b405-4be4-97f7-b8f89921cedc`を確認した。remote safety probeはroot `200`、protected API `401`、disabled bootstrap POST `404`、productionは`NOT_RUN`である。
+
+authenticated persistent nonprod browserでは、actual Start inputのvalue / displayed inputを`0900`、Start編集中のEndをbutton、End inputのvalueを`0915`として確認した。Task列を`280px → 290px`へresizeし、新規tab / reload後も`290px`を保持した。neutral surfaceの`↓ / ↑ / J / K`、`S / N / E / D / ? / Esc`、input中の`S`抑制、calendarの前後月・前年翌年、outside click close、`--:-- / --分`を実機で確認した。S確認で開始した開発用ordinary fixtureは同じrunで完了へ戻し、active executionを残していない。Dの削除確認は開くところまでとし、最終削除は実行していない。
+
+このrunでは、deploy commandの環境変数指定ミスにより一時的に非canonical名`taskchute-web-nonprod-nonprod` version `b0351e9f-de9b-4947-a9a4-3efb361ce5df`も同じnonprod bindingでpublishされた。これはverification対象にせず、canonical Workerをversion `a910aa25-b405-4be4-97f7-b8f89921cedc`へ再deployした。補助Workerの削除・restore・production accessは行っていない。
+
+classification: D-062 `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / REAL_LOCAL_SAFETY_VERIFIED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_SAFETY_VERIFIED / AUTHENTICATED_BROWSER_VERIFIED`。migration `NOT_REQUIRED`、production `NOT_RUN`、Released `NO`である。新API token、permission / OAuth scope拡張、account / role変更、APP / AUTH binding変更、security posture変更は行っていない。
+
 ### D-061 — Day Table inline-editor ergonomics and resize anchoring — 2026-09-05
 
 D-061はApproved Decisionとしてcanonical化済みで、Decision commit `4e468fc632dfcf68b39f3f2b8b2e91283a223711`（`Approve Day Table editor polish`）とimplementation commit `e4cea330f0e369ef5449d8596dd8bc0d40360df8`をGitHub canonical `main`へpushした。その後、実機で発見した二つのD-061範囲内の収束不具合を`1c07467173e17e232d46cdd704a3c200409b665e`（SQLiteのmillisecond-safe execution guard）と`7b435ec3d31ccbd627d5adb46d86defeece16955`（Start→End focus遷移での早期commit防止）で修正し、exact latest `main@7b435ec3d31ccbd627d5adb46d86defee16955`をpush済みである。

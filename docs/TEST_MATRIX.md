@@ -1,5 +1,22 @@
 # Test Matrix
 
+## D-062 — Day Table keyboard workflow, single-cell actual editing, Task-column resize, and calendar polish — 2026-09-05
+
+Contract: D-062 `Approved`。Day Tableのkeyboard workflow、actual単セル編集、Task列resize、calendar month / year操作、placeholder表示を実装した。D-057 / D-060のexisting lifecycle / overlap / retry / forecast semanticsを再利用し、API / Domain / schema / migrationは変更していない。
+
+Local evidence:
+
+- Web `164 / 164 PASS`、Worker / runtime `180 / 180 PASS`、typecheck、production build、`git diff --check`、source reviewを`PASS`。Web regressionは4桁`HHMM` actual input、Start編集中のEnd read-only、neutral navigation、shortcut help / input・IME guard、Task width persistence、calendar month / year controls、outside click close、`--:-- / --分` placeholderを含む。
+- real-local Vite safety smokeはroot `200`、protected API `401`、disabled bootstrap POST `404`をPASS。D-062はWeb-onlyのためAPP / AUTH migration `0 / 0`、backup / migration / restoreは`NOT_REQUIRED / NOT_RUN`。
+
+Persistent non-production evidence:
+
+- exact `main@0344e656c2e011b91d5af045257f51636c7754cf`をcanonical `taskchute-web-nonprod`へdeploy。generated configは`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、canonical APP / AUTH binding、`migrations=[]`を示し、Worker versionは`a910aa25-b405-4be4-97f7-b8f89921cedc`。remote safety probeはroot `200`、protected API `401`、disabled bootstrap POST `404`。
+- authenticated browserではactual Start inputのvalue / displayed value `0900`、Start編集中のEnd button、End inputの`0915`、Task width`280px → 290px`とreload / new-tab後の`290px`保持を確認した。neutral surfaceの`↓ / ↑ / J / K`、`S / N / E / D / ? / Esc`、input中S抑制、calendarの前後月・前年翌年、outside click close、`--:-- / --分`を確認した。Sで開始したordinary fixtureは同じrunで完了へ戻し、active executionを残していない。Dは削除確認までで、最終削除は行っていない。
+- deploy commandの環境変数指定ミスにより一時的に`taskchute-web-nonprod-nonprod` version `b0351e9f-de9b-4947-a9a4-3efb361ce5df`もpublishされたが、verification対象にせずcanonical Workerを上記versionへ再deployした。補助Worker削除、restore、production accessは行っていない。
+
+Classification: D-062 `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / REAL_LOCAL_SAFETY_VERIFIED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_SAFETY_VERIFIED / AUTHENTICATED_BROWSER_VERIFIED`、migration `NOT_REQUIRED`、production `NOT_RUN`、Released `NO`。new API token、permission / scope拡張、account / role変更、binding変更、security posture変更は行っていない。
+
 ## D-061 — Day Table inline-editor ergonomics and resize anchoring — 2026-09-05
 
 Contract: D-061 `Approved`。Day Tableのplanned / actual Start・Endを4桁`HHMM` inline inputへ統一し、Estimateの分表示、cell幅入力、commit / cancel key semantics、left-edge anchored resize、destructive delete styleを実装した。API / Domain / schema / migrationは変更していない。

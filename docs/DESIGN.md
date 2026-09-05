@@ -12,6 +12,16 @@
 - implementation / verification statusは`docs/FEATURES.md`、`docs/CURRENT.md`、`docs/TEST_MATRIX.md`を正本とする。
 - この文書は新しいDomain semanticsを作らず、上記canonical docsと矛盾する場合は上記を優先する。
 
+## D-062 Day Table keyboard workflow, single-cell actual editing, Task-column resize, and calendar polish
+
+Day TableのneutralなDay surfaceはkeyboard focusの入口とし、Task未フォーカス状態では`↓ / J`が最初のvisible Task、`↑ / K`が最後のvisible Taskへ移動する。focused Taskでは`S`をStart / Complete、`N`をcurrent SectionへのTask追加、`E`をordinary planned Task metadata editor、`D`を既存single planned delete confirmationへ割り当てる。`?`はshortcut help、`Esc`はeditor / menu / calendar closeとする。input / select / textarea / contenteditableまたはIME composition中はこのglobal workflowを抑制し、calendar内のkeyboard操作と混線させない。
+
+actual Start / Endは同時に複数fieldを開かず、選択したcellだけを4桁`HHMM`のnumeric text inputへ切り替える。Startを編集してもEndはread-only projection buttonのままとし、End cellの選択で初めてEnd inputを開く。表示される値と入力値は`0900`のようにcolonなしとし、unset valueはtime `--:--`、estimate / actual duration `--分`とする。既存D-057 / D-060のactual validation、overlap、lifecycle、retry、forecast semanticsを変更しない。
+
+Task headingには独立したright-edge resize handleを置き、Task columnのwidthを280〜640pxでbrowser-localに保持する。storageは既存`taskchute.web.day-columns.v2`へoptional `taskWidth`を加える後方互換のpreference拡張であり、server / D1同期、schema / API / Domain変更ではない。calendarはmonth gridとmonth / year navigation（`前年 / 前の月 / 次の月 / 翌年`）を同時に表示し、popover外クリックとEscapeで閉じる。
+
+D-062はvisual / interaction polishに限定し、新migration・schema・API・Domain semanticsを追加しない。
+
 ## D-061 Day Table inline-editor ergonomics and resize anchoring
 
 Day Tableのplanned Start、actual Start、actual Endはnative date pickerを使わない4桁`HHMM` text inputとする。入力は`inputMode="numeric"`、最大4文字、`HHMM` placeholderを持ち、4桁の時計値だけを受け付ける。planned Startは既存のDay boundaryを基準にlogical minuteへmapし、actualは既存のestablished Day / timezone / civil-date semanticsを再利用する。保存処理はAPI・Domain contractを拡張せず、既存`SetExecutionTimes`を呼ぶ。
