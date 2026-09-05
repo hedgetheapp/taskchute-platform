@@ -362,8 +362,10 @@ async function loadEstablishedProjection(
                 execution_summary.active_execution_id AS execution_active_id,
                 t.id AS task_id,
                 CASE WHEN rs.routine_occurrence_id IS NOT NULL THEN rs.task_title ELSE t.title END AS task_title,
-                CASE WHEN rs.routine_occurrence_id IS NOT NULL THEN rs.project_id ELSE p.id END AS project_id,
-                CASE WHEN rs.routine_occurrence_id IS NOT NULL THEN rs.project_title ELSE p.title END AS project_title
+                CASE WHEN rs.routine_occurrence_id IS NOT NULL THEN rs.project_id
+                     WHEN eps.entry_id IS NOT NULL THEN eps.project_id ELSE p.id END AS project_id,
+                CASE WHEN rs.routine_occurrence_id IS NOT NULL THEN rs.project_title
+                     WHEN eps.entry_id IS NOT NULL THEN eps.project_title ELSE p.title END AS project_title
            FROM entries e
            JOIN tasks t ON t.app_user_id = e.app_user_id AND t.id = e.task_id
            LEFT JOIN routine_occurrences ro ON ro.app_user_id = e.app_user_id AND ro.id = e.routine_occurrence_id
@@ -371,6 +373,8 @@ async function loadEstablishedProjection(
            LEFT JOIN projects p ON p.app_user_id = t.app_user_id AND p.id = t.project_id
            LEFT JOIN routine_occurrence_task_snapshots rs
              ON rs.app_user_id = e.app_user_id AND rs.routine_occurrence_id = e.routine_occurrence_id
+           LEFT JOIN entry_project_snapshots eps
+             ON eps.app_user_id = e.app_user_id AND eps.entry_id = e.id
            LEFT JOIN (
              SELECT entry_id,
                     MIN(started_at) AS first_started_at,

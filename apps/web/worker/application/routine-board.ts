@@ -472,10 +472,13 @@ export async function setRoutineEnabled(db: D1Database, appUserId: string, reque
   }
 }
 
-async function validateBoardDefaults(db: D1Database, appUserId: string, request: UpdateRoutineRequest): Promise<boolean> {
+async function validateBoardDefaults(db: D1Database, appUserId: string, request: UpdateRoutineRequest,
+  existingProjectId: string | null = null): Promise<boolean> {
   if (request.project_id !== null) {
-    const project = await db.prepare("SELECT id FROM projects WHERE app_user_id = ? AND id = ?")
-      .bind(appUserId, request.project_id).first();
+    const project = await db.prepare(`SELECT p.id FROM projects p WHERE p.app_user_id = ? AND p.id = ?
+      AND (NOT EXISTS (SELECT 1 FROM project_archives a
+        WHERE a.app_user_id = p.app_user_id AND a.project_id = p.id) OR p.id = ?)`)
+      .bind(appUserId, request.project_id, existingProjectId).first();
     if (!project) return false;
   }
   if (request.default_section_id === null) return true;
@@ -609,14 +612,15 @@ export async function updateRoutine(db: D1Database, appUserId: string, request: 
   const prior = await readOperation(db, appUserId, request.operation_id);
   if (prior) return replayOperation(prior, "UpdateRoutine", requestFingerprint);
   const context = await currentContext(db, appUserId, nowInstant);
-  const item = await db.prepare(`SELECT r.task_id, b.settings_revision FROM routine_definitions r
+  const item = await db.prepare(`SELECT r.task_id, t.project_id, b.settings_revision FROM routine_definitions r
+    JOIN tasks t ON t.app_user_id = r.app_user_id AND t.id = r.task_id
     JOIN routine_board_items b ON b.app_user_id = r.app_user_id AND b.routine_definition_id = r.id
     WHERE r.app_user_id = ? AND r.id = ?`).bind(appUserId, request.routine_definition_id)
-    .first<{ task_id: string; settings_revision: number }>();
+    .first<{ task_id: string; project_id: string | null; settings_revision: number }>();
   if (!item) return reject(db, appUserId, request.operation_id, "UpdateRoutine", requestFingerprint, "Routine is unavailable");
   if (item.settings_revision !== request.expected_settings_revision) return reject(db, appUserId,
     request.operation_id, "UpdateRoutine", requestFingerprint, "The Routine settings revision is stale", true);
-  if (!await validateBoardDefaults(db, appUserId, request)) return reject(db, appUserId,
+  if (!await validateBoardDefaults(db, appUserId, request, item.project_id)) return reject(db, appUserId,
     request.operation_id, "UpdateRoutine", requestFingerprint, "Project or Section settings are unavailable");
 
   const schedule = scheduleColumns(request.schedule);

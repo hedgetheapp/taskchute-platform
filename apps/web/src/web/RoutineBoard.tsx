@@ -369,9 +369,13 @@ export function RoutineBoard({ onUnauthorized }: RoutineBoardProps) {
         disabled={pending} placeholder="—" onBlur={(event) => { const minutes = event.target.value === "" ? null : Number(event.target.value);
           if (minutes !== null && (!Number.isSafeInteger(minutes) || minutes <= 0)) { setError("見積は1分以上の整数で入力してください"); return; }
           const seconds = minutes === null ? null : minutes * 60; if (seconds !== routine.default_estimate_seconds) void save(routine, { default_estimate_seconds: seconds }); }} /></div>;
-      case "project": return <div role="cell" className="routine-cell"><select aria-label={`${routine.title}のProject`} value={routine.project?.id ?? ""} disabled={pending}
-        onChange={(event) => void save(routine, { project_id: event.target.value || null })}><option value="">Projectなし</option>
-        {projects.map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}</select></div>;
+      case "project": {
+        const projectOptions = [...projects];
+        if (routine.project && !projectOptions.some((project) => project.id === routine.project?.id)) projectOptions.unshift(routine.project);
+        return <div role="cell" className="routine-cell"><select aria-label={`${routine.title}のProject`} value={routine.project?.id ?? ""} disabled={pending}
+          onChange={(event) => void save(routine, { project_id: event.target.value || null })}><option value="">Projectなし</option>
+          {projectOptions.map((project) => <option key={project.id} value={project.id} disabled={routine.project?.id === project.id && !projects.some((candidate) => candidate.id === project.id)}>{project.title}{routine.project?.id === project.id && !projects.some((candidate) => candidate.id === project.id) ? "（アーカイブ）" : ""}</option>)}</select></div>;
+      }
       case "section": return <div role="cell" className="routine-cell"><select aria-label={`${routine.title}のSection`} value={routine.default_section_id ?? ""} disabled={pending}
         onChange={(event) => void saveSection(routine, event.target.value || null)}><option value="">Sectionなし</option>
         {board?.sections.map((section) => <option key={section.id} value={section.id}>{section.title}</option>)}</select></div>;

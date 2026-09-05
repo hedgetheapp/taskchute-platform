@@ -51,11 +51,18 @@ export async function createProject(
         .prepare("INSERT INTO projects (id, app_user_id, title, created_at) VALUES (?, ?, ?, ?)")
         .bind(request.project_id, appUserId, semantic.title, now),
       db
+        .prepare(`INSERT INTO project_board_items (app_user_id, project_id, board_position, settings_revision)
+          SELECT ?, ?, COALESCE(MAX(board_position), 0) + 1, 0
+            FROM project_board_items WHERE app_user_id = ?`)
+        .bind(appUserId, request.project_id, appUserId),
+      db.prepare("UPDATE project_board_heads SET board_revision = board_revision + 1 WHERE app_user_id = ?").bind(appUserId),
+      db
         .prepare(
           `INSERT INTO operations
             (app_user_id, operation_id, command_type, request_fingerprint_version, request_fingerprint,
              outcome_kind, result_json, created_at)
-           VALUES (?, ?, 'CreateProject', ?, ?, 'success', ?, ?)`,
+           SELECT ?, ?, 'CreateProject', ?, ?, 'success', ?, ?
+            WHERE EXISTS (SELECT 1 FROM project_board_items WHERE app_user_id = ? AND project_id = ?)`,
         )
         .bind(
           appUserId,
@@ -64,6 +71,8 @@ export async function createProject(
           requestFingerprint,
           JSON.stringify(result),
           now,
+          appUserId,
+          request.project_id,
         ),
     ]);
     return result;

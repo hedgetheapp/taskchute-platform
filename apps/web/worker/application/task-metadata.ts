@@ -78,7 +78,10 @@ export async function updateTaskMetadata(
   }
   const project = request.project_id === null
     ? null
-    : await db.prepare("SELECT id, title FROM projects WHERE app_user_id = ? AND id = ?").bind(appUserId, request.project_id).first<ProjectRow>();
+    : await db.prepare(`SELECT p.id, p.title FROM projects p WHERE p.app_user_id = ? AND p.id = ?
+        AND (NOT EXISTS (SELECT 1 FROM project_archives a
+          WHERE a.app_user_id = p.app_user_id AND a.project_id = p.id) OR p.id = ?)`)
+      .bind(appUserId, request.project_id, request.expected_project_id).first<ProjectRow>();
   if (request.project_id !== null && !project) {
     return reject(db, appUserId, request, requestFingerprint, "resource_not_found", "Project is unavailable");
   }

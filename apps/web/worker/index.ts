@@ -9,6 +9,17 @@ import { bulkMoveEntriesToSectionScoped, isBulkMoveEntriesToSectionScopedRequest
 import { bulkSetEntriesEstimateScoped, isBulkSetEntriesEstimateScopedRequest } from "./application/bulk-set-entries-estimate-scoped";
 import { createProject, isCreateProjectRequest } from "./application/create-project";
 import { loadProjects } from "./application/load-projects";
+import {
+  deleteProject,
+  isDeleteProjectRequest,
+  isReorderProjectsRequest,
+  isSetProjectArchivedRequest,
+  isUpdateProjectRequest,
+  loadProjectBoard,
+  reorderProjects,
+  setProjectArchived,
+  updateProject,
+} from "./application/project-management";
 import { HttpError } from "./application/errors";
 import { loadCurrentTaskChuteDay, loadTaskChuteDayByLogicalDate } from "./application/load-current-day";
 import { isLogicalDate } from "./domain/taskchute-day";
@@ -89,6 +100,9 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (request.method === "GET" && url.pathname === "/api/v1/projects") {
     return Response.json(await loadProjects(env.APP_DB, principal.appUserId));
   }
+  if (request.method === "GET" && url.pathname === "/api/v1/project-board") {
+    return Response.json(await loadProjectBoard(env.APP_DB, principal.appUserId));
+  }
   if (request.method === "GET" && url.pathname === "/api/v1/routines") {
     return Response.json(await loadRoutineBoard(env.APP_DB, principal.appUserId));
   }
@@ -133,6 +147,38 @@ async function route(request: Request, env: Env): Promise<Response> {
     const body = await readBoundedJson(request);
     if (!isCreateProjectRequest(body)) throw new HttpError(400, "malformed_request", "Invalid CreateProject request");
     return Response.json(await createProject(env.APP_DB, principal.appUserId, body));
+  }
+  if (request.method === "POST" && url.pathname === "/api/v1/projects/reorder") {
+    const body = await readBoundedJson(request);
+    if (!isReorderProjectsRequest(body)) throw new HttpError(400, "malformed_request", "Invalid ReorderProjects request");
+    return Response.json(await reorderProjects(env.APP_DB, principal.appUserId, body));
+  }
+  const projectArchiveMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/archive$/);
+  if (request.method === "POST" && projectArchiveMatch) {
+    const body = await readBoundedJson(request);
+    if (projectArchiveMatch[1] !== (body as { project_id?: unknown })?.project_id
+      || !isSetProjectArchivedRequest(body)) {
+      throw new HttpError(400, "malformed_request", "Invalid SetProjectArchived request");
+    }
+    return Response.json(await setProjectArchived(env.APP_DB, principal.appUserId, body));
+  }
+  const projectUpdateMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)$/);
+  if (request.method === "POST" && projectUpdateMatch) {
+    const body = await readBoundedJson(request);
+    if (projectUpdateMatch[1] !== (body as { project_id?: unknown })?.project_id
+      || !isUpdateProjectRequest(body)) {
+      throw new HttpError(400, "malformed_request", "Invalid UpdateProject request");
+    }
+    return Response.json(await updateProject(env.APP_DB, principal.appUserId, body));
+  }
+  const projectDeleteMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/delete$/);
+  if (request.method === "POST" && projectDeleteMatch) {
+    const body = await readBoundedJson(request);
+    if (projectDeleteMatch[1] !== (body as { project_id?: unknown })?.project_id
+      || !isDeleteProjectRequest(body)) {
+      throw new HttpError(400, "malformed_request", "Invalid DeleteProject request");
+    }
+    return Response.json(await deleteProject(env.APP_DB, principal.appUserId, body));
   }
   if (request.method === "POST" && url.pathname === "/api/v1/taskchute-days/current/entries") {
     const body = await readBoundedJson(request);

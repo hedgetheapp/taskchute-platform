@@ -13,7 +13,8 @@ export type CommandType = "CreateProject" | "AddTaskToDay" | "ReorderEntries" | 
   | "UpdateSectionConfiguration" | "ConvertEntryToRoutine" | "EndRoutine"
   | "SetRoutineEstimate" | "SetRoutineSectionPlan"
   | "CreateRoutine" | "SetRoutineEnabled" | "UpdateRoutine" | "ReorderRoutines" | "DeleteRoutine"
-  | "SetExecutionTimes" | "UpdateTaskMetadata";
+  | "SetExecutionTimes" | "UpdateTaskMetadata"
+  | "UpdateProject" | "SetProjectArchived" | "ReorderProjects" | "DeleteProject";
 export type OutcomeKind = "success" | "domain_rejection" | "revision_conflict";
 
 interface OperationRow {

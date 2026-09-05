@@ -18,6 +18,7 @@ interface SourceRow {
   task_id: string; title: string; project_id: string | null; section_id: string | null;
   estimate_seconds: number | null; planned_start_minute: number | null; position: number; placement_revision: number;
   lifecycle_state: "planned" | "completed"; routine_occurrence_id: string | null; establishment_boundary_minutes: number;
+  project_archived: number;
 }
 
 interface UserSettingsRow {
@@ -51,14 +52,17 @@ export async function duplicateEntry(
   }).logicalDate;
 
   const source = await db.prepare(`SELECT e.task_id, t.title, t.project_id, e.section_id, e.estimate_seconds,
-      e.planned_start_minute, e.position, e.lifecycle_state, e.routine_occurrence_id, d.placement_revision, d.establishment_boundary_minutes
+      e.planned_start_minute, e.position, e.lifecycle_state, e.routine_occurrence_id, d.placement_revision, d.establishment_boundary_minutes,
+      CASE WHEN pa.project_id IS NULL THEN 0 ELSE 1 END AS project_archived
     FROM entries e JOIN tasks t ON t.app_user_id = e.app_user_id AND t.id = e.task_id
     JOIN taskchute_days d ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
+    LEFT JOIN project_archives pa ON pa.app_user_id = t.app_user_id AND pa.project_id = t.project_id
     WHERE e.app_user_id = ? AND e.id = ? AND e.taskchute_day_id = ?
       AND ((e.lifecycle_state = 'planned' AND d.logical_date >= ?)
         OR (e.lifecycle_state = 'completed' AND d.logical_date = ?))`).bind(appUserId, request.source_entry_id, request.taskchute_day_id, currentLogicalDate, currentLogicalDate)
     .first<SourceRow>();
   if (!source) return reject(db, appUserId, request, requestFingerprint, "resource_conflict", "Entry is not an eligible planned source");
+  if (source.project_archived === 1) return reject(db, appUserId, request, requestFingerprint, "resource_conflict", "An archived Project cannot be newly assigned");
   const pairValid = source.section_id === null
     ? source.planned_start_minute === null
     : source.planned_start_minute !== null
@@ -104,6 +108,7 @@ export async function duplicateEntry(
           AND EXISTS (SELECT 1 FROM user_settings WHERE app_user_id = ? AND timezone = ? AND day_boundary_minutes = ?)
           AND e.id = ? AND e.lifecycle_state = ? AND e.position = ? AND e.routine_occurrence_id IS ?
           AND t.title = ? AND t.project_id IS ? AND e.section_id IS ? AND e.estimate_seconds IS ? AND e.planned_start_minute IS ?
+          AND NOT EXISTS (SELECT 1 FROM project_archives pa WHERE pa.app_user_id = t.app_user_id AND pa.project_id = t.project_id)
           AND ((e.section_id IS NULL AND e.planned_start_minute IS NULL) OR (e.section_id IS NOT NULL
             AND e.planned_start_minute >= d.establishment_boundary_minutes
             AND e.planned_start_minute < d.establishment_boundary_minutes + 1440

@@ -67,6 +67,7 @@ import {
   type DayTableResizeLayout,
 } from "./day-columns";
 import { RoutineBoard } from "./RoutineBoard";
+import { ProjectBoard } from "./ProjectBoard";
 
 export { DAY_COLUMNS_STORAGE_KEY } from "./day-columns";
 
@@ -3487,8 +3488,10 @@ export function App() {
       case "project": {
         const metadataEditing = taskMetadataDraft?.entryId === entry.id;
         const metadataOverlay = pendingTaskMetadataOverlays[entry.id];
-        const projectOptions = [...projects];
-        if (entry.task.project && !projectOptions.some((candidate) => candidate.id === entry.task.project?.id)) projectOptions.unshift(entry.task.project);
+        const projectOptions: Array<ProjectSummary & { archived?: boolean }> = [...projects];
+        if (entry.task.project && !projectOptions.some((candidate) => candidate.id === entry.task.project?.id)) {
+          projectOptions.unshift({ ...entry.task.project, archived: true });
+        }
         const projectId = metadataOverlay ? metadataOverlay.project_id : entry.task.project?.id ?? null;
         const projectTitle = projectId === null ? null : projectOptions.find((candidate) => candidate.id === projectId)?.title ?? entry.task.project?.title ?? null;
         return <span className="project-name" data-day-column-cell={key}>
@@ -3501,13 +3504,13 @@ export function App() {
               commitTaskMetadata(entry, projectId);
             }}>
             <option value="">Projectなし</option>
-            {projectOptions.map((candidate) => <option value={candidate.id} key={candidate.id}>{candidate.title}</option>)}
+            {projectOptions.map((candidate) => <option value={candidate.id} key={candidate.id} disabled={candidate.archived === true}>{candidate.title}{candidate.archived ? "（アーカイブ）" : ""}</option>)}
           </select> : canEditTaskMetadata(entry) ? <select className="project-selector" aria-label={`${entry.task.title}のProject`} value={projectId ?? ""}
             disabled={isMutationScopeBusy(entryMutationScope(entry.id, entry.task.id))}
             onClick={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()}
             onChange={(event) => commitProjectMetadata(entry, event.target.value || null)}>
             <option value="">Projectなし</option>
-            {projectOptions.map((candidate) => <option value={candidate.id} key={candidate.id}>{candidate.title}</option>)}
+            {projectOptions.map((candidate) => <option value={candidate.id} key={candidate.id} disabled={candidate.archived === true}>{candidate.title}{candidate.archived ? "（アーカイブ）" : ""}</option>)}
           </select> : projectTitle ?? <EmptyValue label="Project未設定" />}
         </span>;
       }
@@ -3674,21 +3677,7 @@ export function App() {
               {error && <p role="alert" className="error">{error}</p>}
 
               {settingsDestination === "project" && (
-                <section aria-label="Project設定">
-                  <div className="settings-section-heading">
-                    <div><h2>Project</h2><p>Projectの一覧と新規作成を管理します。</p></div>
-                  </div>
-                  <form className="settings-project-form" onSubmit={createProject} aria-busy={pending === "project"}>
-                    <label>Project名<input name="title" maxLength={200} required /></label>
-                    <button disabled={mutationLocked}>{pending === "project" ? "作成中…" : "Projectを作成"}</button>
-                  </form>
-                  {project && <p className="success">作成済み: {project.title}</p>}
-                  <div className="project-list" aria-label="Project一覧">
-                    {projects.map((candidate) => <div className="project-list-item" key={candidate.id}>{candidate.title}</div>)}
-                    {projects.length === 0 && pending !== "project-settings" && <p className="muted">Projectはまだありません。</p>}
-                  </div>
-                  <p className="settings-capability-note">rename・delete・archive・並び替えは現在未対応です。</p>
-                </section>
+                <ProjectBoard onUnauthorized={transitionToSignedOut} onProjectsChanged={setProjects} />
               )}
 
               {settingsDestination === "section" && !sectionSettingsDraft && pending !== "section-settings" && (

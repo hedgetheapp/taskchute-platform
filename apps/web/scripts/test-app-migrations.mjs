@@ -530,6 +530,56 @@ try {
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
   assert.deepEqual(query("PRAGMA foreign_key_check"), []);
 
+  const preProjectManagementOperations = query("SELECT * FROM operations ORDER BY operation_id");
+  const preProjectManagementTasks = query("SELECT * FROM tasks ORDER BY id");
+  const preProjectManagementRoutineSnapshots = query("SELECT * FROM routine_occurrence_task_snapshots ORDER BY routine_occurrence_id");
+  applyFile("migrations/app/0019_project_management.sql");
+  assert.deepEqual(query("SELECT * FROM operations ORDER BY operation_id"), preProjectManagementOperations,
+    "0019 must preserve every operation row");
+  assert.deepEqual(query("SELECT * FROM tasks ORDER BY id"), preProjectManagementTasks,
+    "0019 must preserve Task assignments");
+  assert.deepEqual(query("SELECT * FROM routine_occurrence_task_snapshots ORDER BY routine_occurrence_id"),
+    preProjectManagementRoutineSnapshots, "0019 must copy Routine historical snapshots exactly");
+  assert.deepEqual(query("SELECT app_user_id, project_id, board_position, settings_revision FROM project_board_items"),
+    [{ app_user_id: "user-v01a", project_id: "project-v01a", board_position: 1, settings_revision: 0 }]);
+  assert.deepEqual(query("SELECT app_user_id, board_revision FROM project_board_heads"),
+    [{ app_user_id: "user-v01a", board_revision: 0 }]);
+  assert.equal(query("PRAGMA foreign_key_list(routine_occurrence_task_snapshots)")
+    .some((row) => row.table === "projects"), false, "Routine historical Project snapshot must not retain a live Project FK");
+  const projectOperationTable = query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'operations'")[0]?.sql ?? "";
+  for (const command of ["UpdateProject", "SetProjectArchived", "ReorderProjects", "DeleteProject"])
+    assert(projectOperationTable.includes(command), `0019 must add ${command} to the operation CHECK`);
+  execute(["--command", `
+    INSERT INTO projects (id, app_user_id, title, created_at)
+      VALUES ('project-d065-delete', 'user-v01a', 'D065 disposable', '2026-08-28T00:01:00.000Z');
+    INSERT INTO project_board_items (app_user_id, project_id, board_position, settings_revision)
+      VALUES ('user-v01a', 'project-d065-delete', 2, 0);
+    INSERT INTO tasks (id, app_user_id, project_id, title, created_at)
+      VALUES ('task-d065-delete', 'user-v01a', 'project-d065-delete', 'D065 disposable task', '2026-08-28T00:01:00.000Z');
+    INSERT INTO entries (id, app_user_id, task_id, taskchute_day_id, section_id, position, lifecycle_state,
+      estimate_seconds, planned_start_minute, created_at)
+      VALUES ('entry-d065-delete', 'user-v01a', 'task-d065-delete', 'day-v01a', 'section-morning', 2, 'completed',
+        600, 300, '2026-08-28T00:01:00.000Z');
+    INSERT INTO executions (id, app_user_id, entry_id, started_at, ended_at, created_at)
+      VALUES ('execution-d065-delete', 'user-v01a', 'entry-d065-delete', '2026-08-28T05:00:00Z', '2026-08-28T05:10:00Z', '2026-08-28T05:10:00Z');
+    INSERT INTO entry_project_snapshots (app_user_id, entry_id, project_id, project_title, captured_at)
+      VALUES ('user-v01a', 'entry-d065-delete', 'project-d065-delete', 'D065 disposable', '2026-08-28T05:00:00Z');
+    UPDATE routine_occurrence_task_snapshots SET project_id = 'project-d065-delete', project_title = 'D065 disposable'
+      WHERE app_user_id = 'user-v01a' AND routine_occurrence_id = 'occurrence-r2a-preserve';
+  `]);
+  execute(["--command", `
+    UPDATE tasks SET project_id = NULL WHERE app_user_id = 'user-v01a' AND project_id = 'project-d065-delete';
+    DELETE FROM project_archives WHERE app_user_id = 'user-v01a' AND project_id = 'project-d065-delete';
+    DELETE FROM project_board_items WHERE app_user_id = 'user-v01a' AND project_id = 'project-d065-delete';
+    DELETE FROM projects WHERE app_user_id = 'user-v01a' AND id = 'project-d065-delete';
+  `]);
+  assert.deepEqual(query("SELECT project_id FROM tasks WHERE id = 'task-d065-delete'"), [{ project_id: null }]);
+  assert.deepEqual(query("SELECT id FROM entries WHERE id = 'entry-d065-delete'"), [{ id: "entry-d065-delete" }]);
+  assert.deepEqual(query("SELECT id FROM executions WHERE id = 'execution-d065-delete'"), [{ id: "execution-d065-delete" }]);
+  assert.deepEqual(query(`SELECT project_id, project_title FROM routine_occurrence_task_snapshots
+    WHERE app_user_id = 'user-v01a' AND routine_occurrence_id = 'occurrence-r2a-preserve'`),
+    [{ project_id: "project-d065-delete", project_title: "D065 disposable" }]);
+
   for (const migration of ["0001_runtime_bootstrap.sql", "0002_lifecycle_ordering.sql",
     "0003_dogfood_day_b1.sql", "0004_dogfood_day_b2.sql", "0005_dogfood_day_b3.sql",
     "0006_minimal_routine_r1.sql", "0007_routine_r2a.sql"])
@@ -595,6 +645,7 @@ try {
 
   assert.deepEqual(query("SELECT id, lifecycle_state, estimate_seconds, planned_start_minute FROM entries ORDER BY id"), [
     { id: "019d2f00-0000-7000-8000-000000000002", lifecycle_state: "running", estimate_seconds: null, planned_start_minute: null },
+    { id: "entry-d065-delete", lifecycle_state: "completed", estimate_seconds: 600, planned_start_minute: 300 },
     { id: "entry-planned", lifecycle_state: "planned", estimate_seconds: 900, planned_start_minute: null },
     { id: "entry-r2a-editable", lifecycle_state: "planned", estimate_seconds: 1200, planned_start_minute: 240 },
     { id: "entry-r2a-normalize", lifecycle_state: "planned", estimate_seconds: 600, planned_start_minute: 240 },
@@ -602,6 +653,7 @@ try {
     { id: "entry-r2a-past-missing", lifecycle_state: "planned", estimate_seconds: 300, planned_start_minute: null },
   ]);
   assert.deepEqual(query("SELECT id, project_id FROM tasks ORDER BY id"), [
+    { id: "task-d065-delete", project_id: null },
     { id: "task-planned", project_id: "project-v01a" },
     { id: "task-r2a-editable", project_id: null },
     { id: "task-r2a-normalize", project_id: null },
@@ -612,6 +664,7 @@ try {
   assert.deepEqual(query("SELECT id, entry_id, ended_at FROM executions"), [
     { id: "019d2f00-0000-7000-8000-000000000003",
       entry_id: "019d2f00-0000-7000-8000-000000000002", ended_at: null },
+    { id: "execution-d065-delete", entry_id: "entry-d065-delete", ended_at: "2026-08-28T05:10:00Z" },
   ]);
   assert.deepEqual(query(`SELECT operation_id, command_type, request_fingerprint, outcome_kind, result_json
     FROM operations ORDER BY operation_id`), [
@@ -707,7 +760,7 @@ try {
   assert.notEqual(duplicateActive.status, 0, "the active Execution unique index must reject a second active row");
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
   assert.deepEqual(query("PRAGMA foreign_key_check"), []);
-  console.log("migration regression: 4 scenarios passed (R2A normalization, R2B preservation/constraints, duplicate-Task fail-safe, Bulk Selection 0010/0011/0012/0013/0014/0015/0016/0017/0018 preservation/constraints; fresh 0001 -> 0018 chain)");
+  console.log("migration regression: 4 scenarios passed (R2A normalization, R2B preservation/constraints, duplicate-Task fail-safe, Bulk Selection 0010/0011/0012/0013/0014/0015/0016/0017/0018/0019 preservation/constraints; fresh 0001 -> 0019 chain)");
 } finally {
   await rm(persistencePath, { recursive: true, force: true });
   await rm(failurePersistencePath, { recursive: true, force: true });

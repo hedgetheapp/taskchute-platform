@@ -4,9 +4,12 @@ export async function loadProjects(db: D1Database, appUserId: string): Promise<P
   const { results } = await db
     .prepare(
       `SELECT id, title
-         FROM projects
-        WHERE app_user_id = ?
-        ORDER BY created_at ASC, id ASC`,
+         FROM projects p
+         JOIN project_board_items i ON i.app_user_id = p.app_user_id AND i.project_id = p.id
+        WHERE p.app_user_id = ?
+          AND NOT EXISTS (SELECT 1 FROM project_archives a
+            WHERE a.app_user_id = p.app_user_id AND a.project_id = p.id)
+        ORDER BY i.board_position, p.id`,
     )
     .bind(appUserId)
     .all<ProjectSummary>();

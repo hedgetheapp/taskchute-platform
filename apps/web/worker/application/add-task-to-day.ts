@@ -78,7 +78,9 @@ async function addTaskToEstablishedDay(
         .bind(appUserId, request.taskchute_day_id, request.section_id)
       : db.prepare("SELECT 1 AS id"),
     request.project_id
-      ? db.prepare("SELECT id FROM projects WHERE app_user_id = ? AND id = ?").bind(appUserId, request.project_id)
+      ? db.prepare(`SELECT p.id FROM projects p WHERE p.app_user_id = ? AND p.id = ?
+          AND NOT EXISTS (SELECT 1 FROM project_archives a WHERE a.app_user_id = p.app_user_id AND a.project_id = p.id)`)
+        .bind(appUserId, request.project_id)
       : db.prepare("SELECT 1 AS id"),
     db.prepare("SELECT id FROM tasks WHERE id = ?").bind(request.task_id),
     db.prepare("SELECT id FROM entries WHERE id = ?").bind(request.entry_id),
@@ -285,7 +287,9 @@ async function addTaskToFutureDay(
   }
   const [projectResult, taskCollisionResult, entryCollisionResult] = await db.batch([
     request.project_id
-      ? db.prepare("SELECT id FROM projects WHERE app_user_id = ? AND id = ?").bind(appUserId, request.project_id)
+      ? db.prepare(`SELECT p.id FROM projects p WHERE p.app_user_id = ? AND p.id = ?
+          AND NOT EXISTS (SELECT 1 FROM project_archives a WHERE a.app_user_id = p.app_user_id AND a.project_id = p.id)`)
+        .bind(appUserId, request.project_id)
       : db.prepare("SELECT 1 AS id"),
     db.prepare("SELECT id FROM tasks WHERE id = ?").bind(request.task_id),
     db.prepare("SELECT id FROM entries WHERE id = ?").bind(request.entry_id),
@@ -349,7 +353,8 @@ async function addTaskToFutureDay(
           AND (SELECT COUNT(*) FROM taskchute_day_section_contexts c
             WHERE c.app_user_id = d.app_user_id AND c.taskchute_day_id = d.id) = ?
           AND ${configurationStillCurrent}
-          AND (? IS NULL OR EXISTS (SELECT 1 FROM projects WHERE app_user_id = ? AND id = ?))
+          AND (? IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.app_user_id = ? AND p.id = ?
+            AND NOT EXISTS (SELECT 1 FROM project_archives a WHERE a.app_user_id = p.app_user_id AND a.project_id = p.id)))
           AND (? IS NULL OR EXISTS (SELECT 1 FROM taskchute_day_section_contexts
             WHERE app_user_id = ? AND taskchute_day_id = d.id AND section_id = ?))
           AND NOT EXISTS (SELECT 1 FROM tasks WHERE id = ?)

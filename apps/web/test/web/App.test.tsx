@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CurrentTaskChuteDayProjection, EntryProjection } from "../../src/shared/contracts";
 
 const mocks = vi.hoisted(() => ({
-  login: vi.fn(), logout: vi.fn(), loadDay: vi.fn(), loadProjects: vi.fn(), createProject: vi.fn(), addTask: vi.fn(), duplicateEntry: vi.fn(), bulkDeleteEntries: vi.fn(), bulkMoveEntriesToDay: vi.fn(), bulkMoveEntriesToSection: vi.fn(), bulkMoveEntriesToSectionOccurrence: vi.fn(), bulkMoveEntriesToSectionScoped: vi.fn(), bulkSetEntriesEstimateScoped: vi.fn(),
+  login: vi.fn(), logout: vi.fn(), loadDay: vi.fn(), loadProjects: vi.fn(), loadProjectBoard: vi.fn(), createProject: vi.fn(), updateProject: vi.fn(), setProjectArchived: vi.fn(), reorderProjects: vi.fn(), deleteProject: vi.fn(), addTask: vi.fn(), duplicateEntry: vi.fn(), bulkDeleteEntries: vi.fn(), bulkMoveEntriesToDay: vi.fn(), bulkMoveEntriesToSection: vi.fn(), bulkMoveEntriesToSectionOccurrence: vi.fn(), bulkMoveEntriesToSectionScoped: vi.fn(), bulkSetEntriesEstimateScoped: vi.fn(),
   reorderEntries: vi.fn(), startEntry: vi.fn(), completeEntry: vi.fn(), setExecutionTimes: vi.fn(), updateTaskMetadata: vi.fn(),
   establishInitialSectionConfiguration: vi.fn(), moveEntry: vi.fn(), setEntryEstimate: vi.fn(),
   setEntryPlannedStart: vi.fn(),
@@ -197,7 +197,12 @@ beforeEach(() => {
   window.localStorage.clear();
   mocks.logout.mockResolvedValue({});
   mocks.loadProjects.mockResolvedValue({ projects: [{ id: "existing-project", title: "Existing Project" }] });
+  mocks.loadProjectBoard.mockResolvedValue({ board_revision: 0, projects: [{ id: "existing-project", title: "Existing Project", archived: false, board_position: 1, settings_revision: 0 }] });
   mocks.createProject.mockResolvedValue({ project: { id: "project", title: "Project" } });
+  mocks.updateProject.mockResolvedValue({ project: { id: "existing-project", title: "Renamed" }, settings_revision: 1 });
+  mocks.setProjectArchived.mockResolvedValue({ project_id: "existing-project", archived: true, settings_revision: 1 });
+  mocks.reorderProjects.mockResolvedValue({ project_ids: ["existing-project"], board_revision: 1 });
+  mocks.deleteProject.mockResolvedValue({ project_id: "existing-project", board_revision: 1, unassigned_task_count: 0 });
   mocks.addTask.mockResolvedValue({});
   mocks.duplicateEntry.mockResolvedValue({});
   mocks.bulkDeleteEntries.mockResolvedValue({});
@@ -1834,7 +1839,7 @@ describe("Dogfood Day shell", () => {
     expect(screen.getByText(/1\/1 実行済み/)).toBeTruthy();
   });
 
-  it("lists and creates Projects in dedicated Settings while keeping DayBoard controls focused", async () => {
+  it("lists and creates Projects in the D-065 Project board while keeping DayBoard controls focused", async () => {
     mocks.loadDay.mockResolvedValue(emptyDay);
     render(<App />);
     await screen.findByRole("region", { name: "DayBoard" });
@@ -1842,12 +1847,12 @@ describe("Dogfood Day shell", () => {
     expect(screen.queryByRole("button", { name: "Section設定" })).toBeNull();
     const settings = await openProjectSettings();
     expect(settings.textContent).toContain("Existing Project");
-    expect(settings.textContent).toContain("rename・delete・archive・並び替えは現在未対応");
     expect(screen.queryByRole("region", { name: "DayBoard" })).toBeNull();
-    fireEvent.change(screen.getByRole("textbox", { name: "Project名" }), { target: { value: "Project" } });
-    fireEvent.click(screen.getByRole("button", { name: "Projectを作成" }));
+    fireEvent.click(screen.getByRole("button", { name: "＋ プロジェクトを追加" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "新しいプロジェクト名" }), { target: { value: "Project" } });
+    fireEvent.click(screen.getByRole("button", { name: "追加" }));
     await waitFor(() => expect(mocks.createProject).toHaveBeenCalledTimes(1));
-    expect(await screen.findByText("作成済み: Project")).toBeTruthy();
+    expect(await screen.findByText("Projectを作成しました")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "今日" }));
     expect(await screen.findByRole("region", { name: "DayBoard" })).toBeTruthy();
   });
@@ -1858,16 +1863,17 @@ describe("Dogfood Day shell", () => {
     mocks.createProject.mockReturnValue(request.promise);
     render(<App />);
     await openProjectSettings();
-    const input = screen.getByRole("textbox", { name: "Project名" });
+    fireEvent.click(screen.getByRole("button", { name: "＋ プロジェクトを追加" }));
+    const input = screen.getByRole("textbox", { name: "新しいプロジェクト名" });
     fireEvent.change(input, { target: { value: "One request" } });
     const form = input.closest("form")!;
     fireEvent.submit(form);
     await waitFor(() => expect(mocks.createProject).toHaveBeenCalledTimes(1));
-    expect((screen.getByRole("button", { name: "作成中…" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "追加" }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.submit(form);
     expect(mocks.createProject).toHaveBeenCalledTimes(1);
     request.resolve({ project: { id: "project", title: "One request" } });
-    await screen.findByText("作成済み: One request");
+    await screen.findByText("Projectを作成しました");
   });
 
   it("retries an ambiguous Project with the exact original identity and semantic title", async () => {
@@ -1875,7 +1881,8 @@ describe("Dogfood Day shell", () => {
     mocks.createProject.mockRejectedValueOnce(new ApiClientError("ambiguous", 503, true, "infrastructure_ambiguous")).mockResolvedValueOnce({ project: { id: "project", title: "Original title" } });
     render(<App />);
     await openProjectSettings();
-    const input = screen.getByRole("textbox", { name: "Project名" });
+    fireEvent.click(screen.getByRole("button", { name: "＋ プロジェクトを追加" }));
+    const input = screen.getByRole("textbox", { name: "新しいプロジェクト名" });
     fireEvent.change(input, { target: { value: "Original title" } });
     fireEvent.submit(input.closest("form")!);
     const retry = await screen.findByRole("button", { name: "保留中のProject作成を再試行" });

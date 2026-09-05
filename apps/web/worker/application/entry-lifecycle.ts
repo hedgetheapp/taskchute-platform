@@ -123,6 +123,16 @@ export async function startEntry(
       db.prepare(`INSERT INTO executions (id, app_user_id, entry_id, started_at, ended_at, created_at)
         SELECT ?, ?, ?, ?, NULL, ? WHERE EXISTS (SELECT 1 FROM lifecycle_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
         .bind(request.execution_id, appUserId, request.entry_id, now, now, appUserId, request.operation_id),
+      db.prepare(`INSERT INTO entry_project_snapshots
+        (app_user_id, entry_id, project_id, project_title, captured_at)
+        SELECT e.app_user_id, e.id, t.project_id, p.title, ?
+          FROM entries e JOIN tasks t ON t.app_user_id = e.app_user_id AND t.id = e.task_id
+          LEFT JOIN projects p ON p.app_user_id = t.app_user_id AND p.id = t.project_id
+         WHERE e.app_user_id = ? AND e.id = ?
+           AND NOT EXISTS (SELECT 1 FROM entry_project_snapshots s
+             WHERE s.app_user_id = e.app_user_id AND s.entry_id = e.id)
+           AND EXISTS (SELECT 1 FROM lifecycle_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(now, appUserId, request.entry_id, appUserId, request.operation_id),
       db.prepare(`UPDATE entries SET lifecycle_state = 'running' WHERE app_user_id = ? AND id = ? AND lifecycle_state = 'planned'
         AND EXISTS (SELECT 1 FROM lifecycle_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
         .bind(appUserId, request.entry_id, appUserId, request.operation_id),

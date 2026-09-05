@@ -26,6 +26,67 @@ export interface ProjectListProjection {
   projects: ProjectSummary[];
 }
 
+export interface ProjectBoardItemProjection extends ProjectSummary {
+  archived: boolean;
+  board_position: number;
+  settings_revision: number;
+}
+
+export interface ProjectBoardProjection {
+  board_revision: number;
+  projects: ProjectBoardItemProjection[];
+}
+
+export interface UpdateProjectRequest {
+  operation_id: string;
+  project_id: string;
+  expected_settings_revision: number;
+  expected_title: string;
+  title: string;
+}
+
+export interface UpdateProjectResult {
+  project: ProjectSummary;
+  settings_revision: number;
+}
+
+export interface SetProjectArchivedRequest {
+  operation_id: string;
+  project_id: string;
+  archived: boolean;
+  expected_settings_revision: number;
+}
+
+export interface SetProjectArchivedResult {
+  project_id: string;
+  archived: boolean;
+  settings_revision: number;
+}
+
+export interface ReorderProjectsRequest {
+  operation_id: string;
+  project_ids: string[];
+  expected_board_revision: number;
+}
+
+export interface ReorderProjectsResult {
+  project_ids: string[];
+  board_revision: number;
+}
+
+export interface DeleteProjectRequest {
+  operation_id: string;
+  project_id: string;
+  expected_settings_revision: number;
+  expected_board_revision: number;
+}
+
+export interface DeleteProjectResult {
+  project_id: string;
+  board_revision: number;
+  unassigned_task_count: number;
+}
+
 export interface TaskSummary {
   id: string;
   title: string;

@@ -19,6 +19,15 @@ import type {
   CreateProjectRequest,
   CreateProjectResult,
   ProjectListProjection,
+  ProjectBoardProjection,
+  UpdateProjectRequest,
+  UpdateProjectResult,
+  SetProjectArchivedRequest,
+  SetProjectArchivedResult,
+  ReorderProjectsRequest,
+  ReorderProjectsResult,
+  DeleteProjectRequest,
+  DeleteProjectResult,
   CurrentTaskChuteDayProjection,
   CompleteEntryRequest,
   CompleteEntryResult,
@@ -107,8 +116,23 @@ export const api = {
   loadProjects(): Promise<ProjectListProjection> {
     return requestJson("/api/v1/projects");
   },
+  loadProjectBoard(): Promise<ProjectBoardProjection> {
+    return requestJson("/api/v1/project-board");
+  },
   createProject(body: CreateProjectRequest): Promise<CreateProjectResult> {
     return requestJson("/api/v1/projects", jsonPost("", body));
+  },
+  updateProject(body: UpdateProjectRequest): Promise<UpdateProjectResult> {
+    return requestJson(`/api/v1/projects/${body.project_id}`, jsonPost("", body));
+  },
+  setProjectArchived(body: SetProjectArchivedRequest): Promise<SetProjectArchivedResult> {
+    return requestJson(`/api/v1/projects/${body.project_id}/archive`, jsonPost("", body));
+  },
+  reorderProjects(body: ReorderProjectsRequest): Promise<ReorderProjectsResult> {
+    return requestJson("/api/v1/projects/reorder", jsonPost("", body));
+  },
+  deleteProject(body: DeleteProjectRequest): Promise<DeleteProjectResult> {
+    return requestJson(`/api/v1/projects/${body.project_id}/delete`, jsonPost("", body));
   },
   addTask(body: AddTaskToDayRequest): Promise<unknown> {
     return requestJson(body.logical_date
