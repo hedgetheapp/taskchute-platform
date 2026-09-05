@@ -12,11 +12,21 @@
 - implementation / verification statusは`docs/FEATURES.md`、`docs/CURRENT.md`、`docs/TEST_MATRIX.md`を正本とする。
 - この文書は新しいDomain semanticsを作らず、上記canonical docsと矛盾する場合は上記を優先する。
 
+## D-061 Day Table inline-editor ergonomics and resize anchoring
+
+Day Tableのplanned Start、actual Start、actual Endはnative date pickerを使わない4桁`HHMM` text inputとする。入力は`inputMode="numeric"`、最大4文字、`HHMM` placeholderを持ち、4桁の時計値だけを受け付ける。planned Startは既存のDay boundaryを基準にlogical minuteへmapし、actualは既存のestablished Day / timezone / civil-date semanticsを再利用する。保存処理はAPI・Domain contractを拡張せず、既存`SetExecutionTimes`を呼ぶ。
+
+Task名、Estimate、planned Start、actual timeのinline controlはcell幅を使い、行の高さ・font・alignmentは変更しない。blur、Enter、Tab、Shift+Tabはcommit、Escapeはcancel-onlyとする。同じEntryのactual Start inputからEnd inputへ移るfocusは同一editor内として扱い、早期commitせず、editor外へのblurまたは明示的commitで一度だけ保存する。入力中のD&D開始は既存のinteractive-target guardで除外する。
+
+Column resizeは対象列のright boundaryを動かす。対象列のleft edgeとそれ以前の列を固定し、対象列と後続列の幅・位置だけをdeltaに応じて更新する。Task trackをflex余白の吸収先にせず、min/max width、local persistence、reorder、auto-fit、sticky / horizontal scrollを維持する。Delete actionだけはdestructive red styleとし、eligibilityやdomain semanticsは変更しない。
+
+D-061は新migration / schema / API / Domain semanticsを追加しない。既存execution guardのSQLite比較精度修正はcanonical Instantの保存値を正確に照合する実装補正であり、D-057 / D-060の契約を変更しない。
+
 ## D-060 Day row editing
 
 Day Tableのrow編集は、current-Dayのordinary planned Entryに限定する。Task名は表示文字列からinline text fieldへ切り替え、Enterでtrim済み値をcommit、Escapeでcancelする。Projectは同じrowのowner-scoped native selectorで既存候補だけを選択する。Routine、running / completed、past / future read-only、mutation-locked rowは編集controlを出さない。Task displayのclickとrow D&Dのthresholdは分離し、input / select / buttonをD&D開始面から除外する。
 
-actualの開始 / 終了は旧dialogではなく、row内のStart / End cellを押すと同時に開く2つの`datetime-local` fieldで直接編集する。focus移動で早期commitせず、Enterでcommit、Escapeでcancelする。エラーはrow近傍へ表示し、D-057のactual ordering、Day boundary、user-global no-overlap、active execution、retry / atomicity、forecast reconciliationをそのまま適用する。RevertEntryStartはD-058どおりcurrent UI capabilityへ戻さない。
+actualの開始 / 終了は旧dialogではなく、row内のStart / End cellを押すと同時に開く2つのinline fieldで直接編集する（表示形式はD-061で4桁`HHMM`へ更新）。focus移動で早期commitせず、Enterでcommit、Escapeでcancelする。エラーはrow近傍へ表示し、D-057のactual ordering、Day boundary、user-global no-overlap、active execution、retry / atomicity、forecast reconciliationをそのまま適用する。RevertEntryStartはD-058どおりcurrent UI capabilityへ戻さない。
 
 completed current-Day rowのfar-right overflowは`複製`だけを提供する。複製先は新しいordinary planned Task / Entryであり、actual fact・Routine relation・completed lifecycleをコピーしない。completed sourceのdelete / date moveや、invalid planning pairの自動normalizationはUIから提供しない。D-060のProject selector、actual editor、completed duplicateのvisual polishは既存Day Tableのcolumn order、surface fill、stable scrollbar gutter、checkbox geometry、full-row D&Dと共存させる。
 

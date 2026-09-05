@@ -4,6 +4,20 @@ Date: 2026-09-05
 
 ## Status
 
+### D-061 — Day Table inline-editor ergonomics and resize anchoring — 2026-09-05
+
+D-061はApproved Decisionとしてcanonical化済みで、Decision commit `4e468fc632dfcf68b39f3f2b8b2e91283a223711`（`Approve Day Table editor polish`）とimplementation commit `e4cea330f0e369ef5449d8596dd8bc0d40360df8`をGitHub canonical `main`へpushした。その後、実機で発見した二つのD-061範囲内の収束不具合を`1c07467173e17e232d46cdd704a3c200409b665e`（SQLiteのmillisecond-safe execution guard）と`7b435ec3d31ccbd627d5adb46d86defeece16955`（Start→End focus遷移での早期commit防止）で修正し、exact latest `main@7b435ec3d31ccbd627d5adb46d86defee16955`をpush済みである。
+
+Day Tableのplanned Start / actual Start / actual Endは4桁`HHMM`のtext input（numeric input mode、4桁以外・不正時刻を拒否）へ統一し、planned Startの既存Day boundary mapping、actualのcivil-date / cross-Day / overlap / future / owner / retry semanticsは変更していない。EstimateはDay Table内だけ分表示、Task metadata / time inputはcell幅を使い、blur / Enter / Tab / Shift+Tabでcommit、Escapeはcancel-onlyとした。actual StartからEndへのfocus移動では中間commitせず、Endから外へ出た時に一度だけcommitする。Column resizeは左端固定・右境界移動で後続列だけを押し、Task trackが余白を吸収しない。Delete actionは赤いdestructive styleとした。
+
+追加のserver修正はAPI / Domain semantics / schemaを変更せず、既存`SetExecutionTimes` lifecycle guardのmillisecond付きcanonical Instant比較をSQLiteの文字列等値比較へ直しただけである。focused Web / D-061 `160 / 160`、Worker `180 / 180`、typecheck、production build、`git diff --check`、source reviewはPASSした。
+
+persistent non-productionはmigration / schema変更なしのためAPP / AUTH migration listはgenerated config使用で`0 / 0`、cleanup / reset・pre-migration backup・restoreは`NOT_REQUIRED / NOT_RUN`とした。exact mainを`CLOUDFLARE_ENV=nonprod`でbuildし、`taskchute-web-nonprod`（`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、canonical APP / AUTH binding）version `633f747b-d0d3-4773-8257-306b296adfb4`へdeployした。safety probeはroot `200`、protected API `401`、disabled bootstrap POST `404`、APP / AUTH `quick_check = ok`、FK violations `0`、read-only query `rows_written = 0`である。
+
+authenticated nonprod browserでは、既存current-Day ordinary fixtureのplanned Startを`0930`へ変更し、D1で`planned_start_minute = 570`とreload persistenceを確認した。fixtureをStart / Completeしてactive executionを残さず、actual editorの4桁値`1139` / `1142`、Start→End間の早期保存なし、`0900` / `0915`へのEnter commit、表示実績`15分`、reload後の`0900` / `0915`保持を確認した。B2はcompleted、Section Morning、placement_revision `9`、active executions `0`であり、SetExecutionTimes operation logは`5` rows（success `1`、domain rejection `4`）を保持している。既存nonprod dataのcleanupは行っていない。
+
+classification: D-061 `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_SAFETY_VERIFIED / AUTHENTICATED_BROWSER_VERIFIED`。migration `NOT_REQUIRED`、production `NOT_RUN`、Released `NO`である。新API token、permission / OAuth scope拡張、account / role変更、APP / AUTH binding変更、security posture変更は行っていない。
+
 ### D-060 — Day row editing, inline actual entry, and completed duplicate — 2026-09-05
 
 D-060はApproved Decisionとしてcanonical化済みで、Decision commit `18de3b692e69be1544b1f175b9a48a3777106da4`（`Approve Day row editing and inline actual entry`）とimplementation commit `18c2d6a1f41f9eeff7eba56ecb2ba3781d13658e`（`Implement D-060 Day row editing`）をGitHub canonical `main`へfast-forward push済みである。D-058で撤去したexecution correctionのうち、current capabilityへ再有効化したのは`SetExecutionTimes`だけであり、`RevertEntryStart`はclient / API / Worker / UIへ復活させていない。

@@ -1,5 +1,28 @@
 # Test Matrix
 
+## D-061 — Day Table inline-editor ergonomics and resize anchoring — 2026-09-05
+
+Contract: D-061 `Approved`。Day Tableのplanned / actual Start・Endを4桁`HHMM` inline inputへ統一し、Estimateの分表示、cell幅入力、commit / cancel key semantics、left-edge anchored resize、destructive delete styleを実装した。API / Domain / schema / migrationは変更していない。
+
+Local evidence:
+
+- focused D-061 Web `160 / 160 PASS`、Worker / runtime `180 / 180 PASS`、typecheck、production build、`git diff --check`、source review `PASS`。
+- Web testsはplanned `0930` mapping、actual Start / End text numeric control、invalid `HHMM`、actual date rollover、minute-only estimate、Start→End focus移動でのno-early-commit、Enter / blur / Escape、anchored resizeを含む。Worker regressionはmillisecond付きexisting Execution correction、lifecycle / overlap / owner / retry / atomicityを含む。
+
+Persistent non-production evidence:
+
+- D-061はmigration / schema changeなし。generated nonprod configでAPP / AUTH migration pending `0 / 0`、cleanup / reset・backup・restoreは`NOT_REQUIRED / NOT_RUN`。
+- exact `main@7b435ec3d31ccbd627d5adb46d86defeece16955`を`CLOUDFLARE_ENV=nonprod`でbuildし、`taskchute-web-nonprod` version `633f747b-d0d3-4773-8257-306b296adfb4`へdeploy。generated bindingはcanonical APP / AUTH、`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`。safety probeはroot `200`、protected API `401`、disabled bootstrap `404`。
+- APP / AUTH `PRAGMA quick_check = ok`、FK violations `0`、read-only queries `rows_written = 0`。APP executions `23`、active executions `0`、B2 `lifecycle_state = completed`、`planned_start_minute = 570`、actual `2026-09-05T00:00:00.000Z → 2026-09-05T00:15:00.000Z`、Section Morning、placement_revision `9`。SetExecutionTimes operation logは5 rows（success 1、domain rejection 4）。
+
+Authenticated nonprod browser evidence:
+
+- existing ordinary current-Day fixtureのplanned Startを`0930`へ入力し、表示 / reload後の保存を確認（D1 `planned_start_minute = 570`）。
+- Start / Complete後にactive executionを残さず、actual editorで4桁`1139` / `1142`を表示確認。Startへ`0900`、Endへ`0915`を入力し、Start→End移動時の早期保存なし、End Enter commit、表示実績`15分`、reload後の`0900` / `0915`保持を確認。Escapeはcancel-onlyで確認した。
+- browser console error / warningは0件。production、restore、cleanup、new API token、permission / scope拡張、account / role変更、binding変更は行っていない。
+
+Classification: D-061 `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_SAFETY_VERIFIED / AUTHENTICATED_BROWSER_VERIFIED`、migration `NOT_REQUIRED`、production `NOT_RUN`、Released `NO`。
+
 ## D-060 — Day row editing, inline actual entry, and completed duplicate — 2026-09-05
 
 Contract: D-060 `Approved`。D-058で撤去したexecution correctionのうち`SetExecutionTimes`だけを、旧dialogなしのDay Table inline Start / End editorとして再有効化した。Task名inline編集、ordinary planned Entryのowner-scoped Project選択、completed current-Day Taskの`… → 複製`、checkbox left spacingを実装し、`RevertEntryStart`はcurrent capabilityへ戻していない。APP `0017_task_metadata_update.sql`は`operations.command_type` allow-listだけを追加し、Task / Entry schema・revisionは変更していない。
