@@ -1,5 +1,47 @@
 # Test Matrix
 
+## D-063 corrective — conflict-scope retention and single queued Start — 2026-09-05
+
+Contract: Approved D-063のcorrective bugfix。新しいProduct Decisionではなく、retry identityとexecution queue safetyの収束修正であり、API / Domain / schema / migration / dependency / security postureは変更していない。implementation commit `bef893e03a6f62047ab6610c9a53749f7166a669`をmainへpushした。
+
+Mutation-family audit:
+
+| Family | Accepted conflict scope | Retention decision / evidence |
+| --- | --- | --- |
+| Task metadata | Entry / Task | 既存multi-retained exact operationを維持 |
+| ordinary Estimate | Entry | disjoint Entryの同時 accepted operationをmulti-retained化。operation id条件付きclearと個別retryを確認 |
+| Routine Estimate | Entry + current Routine definition | independent reset controlsのdisjoint operationをmulti-retained化。各ambiguous identityを保持し個別retry可能 |
+| Bulk Estimate | current bulk / placement | UIのsingle pending gateで同時acceptedなし。singleton維持 |
+| Routine end | Routine / Entry lifecycle lane | 現行UIでaccepted commandなし。singleton compatibility pathを維持 |
+| placement / Section / Reorder / Bulk variants | Day placement / placement revision | CAS共有scopeでsingleton維持 |
+| Start / Complete / SetExecutionTimes | global execution lane | active Execution / overlap / lifecycleをserializedするsingleton維持 |
+| Project / settings / RoutineBoard | global scope / conservative board gate | singleton維持 |
+
+Queue corrective:
+
+- Complete A pending中にStart Bだけを受理し、C以降はdisabled / ignored。旧stale FIFO arrayは使用しない。
+- A success後はBをclearしてからfresh reconcileし、planned・projection・active Executionを確認できた場合だけBを一度dispatchする。不正化Bは破棄する。
+- Aのnon-ambiguous / ambiguous failure時はBを破棄し、visible errorを表示する。後続CompleteでCが自動実行されない。
+
+Local evidence:
+
+- focused corrective Web `4 / 4 PASS`：ordinary / Routine Estimateのdisjoint ambiguous retention、B受理 / C拒否、Complete failure時のqueue破棄とvisible message。
+- full Web `174 / 174 PASS`、typecheck、production build、`git diff --check`、source review `PASS`。
+- Worker full suiteはWeb-only changeのimpact boundaryにより`NOT_REQUIRED`。Worker canonical safety smokeとD1 read-only checksは下記でPASS。
+
+Persistent non-production evidence:
+
+- exact `main@bef893e03a6f62047ab6610c9a53749f7166a669`を正しいnonprod generated configでcanonical `taskchute-web-nonprod`へdeploy。Worker version `6bfef882-5172-4c6f-9804-f8c7282aa2c9`、canonical APP / AUTH D1 binding、`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`。
+- APP / AUTH pending migration `0 / 0`。APP `quick_check = ok`、FK violations `0`、`rows_written = 0`、operations / executions / entries / tasks `287 / 25 / 61 / 54`、active executions `0`。AUTH `quick_check = ok`、FK violations `0`、`rows_written = 0`、users / accounts / sessions `1 / 1 / 4`。
+- HTTP safety probeはroot `200`、protected API `401`、disabled bootstrap POST `404`。初回local-generated binding deployはversion作成前に拒否され、nonprod build再生成後の上記deployだけをverification対象とした。auxiliary Worker、production、restore、cleanupは未実施。
+
+Authenticated browser evidence:
+
+- 既存development dataのordinary planned EntryでProject change → restore、Section change → restore、Projectから`TAB`でSectionへ移動、X selection toggle / clear、Add draftのEscape cancelをPASS。
+- reload後も復元したProject / Sectionを保持し、active Executionを残していない。Complete A→Start B→Cのremote lifecycle mutationとremote ambiguous retry inductionは安全境界上`NOT_VERIFIED`。browser console zero-error collectionも`NOT_VERIFIED`。該当状態遷移はlocal deferred regressionでPASS。
+
+Classification: D-063 corrective `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / MAIN_PUSHED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_SAFETY_VERIFIED / AUTHENTICATED_BROWSER_PARTIAL`。remaining authenticated lifecycle / ambiguous retry `NOT_VERIFIED`、Worker full suite `NOT_REQUIRED`、migration `NOT_REQUIRED`、production `NOT_RUN`、Released `NO`。security posture changeなし。
+
 ## D-063 — Modal confirmations, row Tab workflow, and non-blocking Day mutations — 2026-09-05
 
 Contract: D-063 `Approved`。Web-onlyのpresentation / client mutation coordinationを実装し、既存API・Domain・schema・migration・dependency・security postureは変更していない。

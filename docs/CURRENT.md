@@ -4,6 +4,22 @@ Date: 2026-09-05
 
 ## Status
 
+### D-063 corrective — conflict-scope retention and single queued Start — 2026-09-05
+
+Approved D-063のretry identity / execution queue safetyに対するcorrective bugfixを実装し、implementation commit `bef893e03a6f62047ab6610c9a53749f7166a669`をGitHub canonical `main`へfast-forward pushした。これは新しいProduct Decisionではなく、API・Domain semantics・schema・migration・dependency・security postureを変更しないWeb client coordinationの収束修正である。
+
+mutation familyごとにaccepted concurrencyとconflict scopeを監査した。Task metadataは既存のEntry / Task単位のretentionを維持し、通常EstimateはEntry scope、Routine EstimateはEntry + current Routine definition scopeのexact operationを複数保持する。これらだけが現行UI上でdisjoint scopeの同時accepted mutationを許すため、current operationに加えて各retained operationを保持し、success / non-ambiguous failure / ambiguous convergenceをoperation id条件付きでclearし、各operationを個別retry可能とした。Bulk EstimateはUIの単一pending gate、Routine endは現行UIでaccepted commandなし、配置・Section・Reorder・Bulk系はDay placement / placement revision、Start / Complete / SetExecutionTimesはglobal execution laneでserializedであり、singleton保持を維持した。Project / settingsはglobal scope、RoutineBoard controlsは既存の保守的なpending gateを維持した。機械的な全state array化は行っていない。
+
+Complete後のStart待機は旧array / FIFOを廃止し、accepted queued intentを最大1件だけ保持する。Complete A pending中はBを受理し、C以降はdisabled / ignoredとする。A success後にqueueを先にclearし、fresh reconcileでBのplanned・target projection・active executionを再確認して一度だけdispatchする。不正化したBは破棄し、Aのnon-ambiguous / ambiguous failure時も待機Startを破棄してvisible errorを表示する。stale queued Cが後続Completeで自動実行される経路はない。
+
+Local evidenceはfocused corrective Web `4 / 4 PASS`、full Web `174 / 174 PASS`、typecheck、production build、`git diff --check`、source reviewをPASSした。focused regressionは通常EstimateとRoutine Estimateのdisjoint ambiguous operation identity保持、Complete後のB受理 / C拒否、Complete failure時のqueue破棄とvisible messageを含む。Worker full suiteはWeb-only変更のimpact boundaryにより`NOT_REQUIRED`とし、canonical Worker safety smokeとD1 read-only verificationを実施した。
+
+Persistent non-productionではexact `main@bef893e03a6f62047ab6610c9a53749f7166a669`をnonprod buildし、canonical `taskchute-web-nonprod`へdeployした。Worker versionは`6bfef882-5172-4c6f-9804-f8c7282aa2c9`、APP / AUTH bindingはそれぞれ`taskchute-app-nonprod` / `taskchute-auth-nonprod`、`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`である。APP / AUTH migration pendingは`0 / 0`（追加migrationなし）、両DBのread-only `PRAGMA quick_check = ok`、FK violations `0`、`rows_written = 0`。APP aggregateはoperations `287` / executions `25` / entries `61` / tasks `54`、active executions `0`、AUTHはusers / accounts / sessions `1 / 1 / 4`。HTTP safety probeはroot `200`、protected API `401`、disabled bootstrap POST `404`をPASSした。初回のlocal-generated bindingによるdeploy試行はWorker version作成前にCloudflareが拒否し、正しいnonprod buildで再試行した。auxiliary Worker、production、restore、cleanupは触れていない。
+
+Authenticated nonprod browserでは、既存development dataのordinary planned EntryでProjectを変更して元へ戻し、Sectionを変更して元へ戻すmutation / reconcile、Projectから`TAB`でSectionへ進むrow workflow、Xによるselection toggle / clear、Add draftのEscape cancelを確認した。reload後も復元したProject / Section状態を維持し、active Executionを残していない。Complete A→Start B→Cのremote lifecycle mutationとremote ambiguous retry inductionは不可逆なfixture mutationを避けて`NOT_VERIFIED`とし、上記local deferred regressionを根拠とする。browser consoleのzero-error収集は`NOT_VERIFIED`である。
+
+classification: D-063 corrective `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / MAIN_PUSHED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_SAFETY_VERIFIED / AUTHENTICATED_BROWSER_PARTIAL`。remaining authenticated lifecycle / ambiguous retry `NOT_VERIFIED`、Worker full suite `NOT_REQUIRED`、migration `NOT_REQUIRED`、production `NOT_RUN`、Released `NO`である。new API token、permission / OAuth scope拡張、account / role変更、binding変更、security posture変更は行っていない。
+
 ### D-063 — Modal confirmations, row Tab workflow, and non-blocking Day mutations — 2026-09-05
 
 D-063はApproved Decisionとしてcanonical化済みで、Decision commit `dfaad7c0ff1fc9687025a1e3f28399d139552cca`（`Approve D-063 modal and non-blocking Day workflow`）と実装 commit `79c2a7cff88b36886f275f635ff9cccdd5d58f83`（`Implement D-063 modal and scoped non-blocking Day mutations`）をGitHub canonical `main`へpush済みである。D-063はWeb-onlyのpresentation / client coordination変更であり、既存API・Domain semantics・schema・migration・dependency・security postureは変更していない。
