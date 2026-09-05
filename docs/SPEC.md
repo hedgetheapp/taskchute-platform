@@ -220,10 +220,18 @@ DayBoard、Calendar、Timeline、Review、Mapはcanonical task stateを別系統
 - planned placementとactual Executionを区別する。
 - Task / Project / Routine等の現在metadata変更で、過去Execution / RoutineOccurrence等の意味を黙って再分類しない。
 - historical factsを参照不能にする破壊的hard deleteを前提としない。
-- First sliceではdestructive hard-delete APIを提供しない。
+- 初期の一般Task / Entry sliceではdestructive hard-delete APIを提供しない。D-065はこの境界のProject限定例外であり、Project hard delete後もTask / Entry / Execution / RoutineOccurrence / operation historyを保持し、Task assignmentだけを`NULL`へ更新するbounded commandを提供する。
 - Reviewはlogical day / week / month、Project、Task、Routine、Section、estimate / actual等へ将来集計できることをtargetとする。
 
-historical contextのexact snapshot / reference fields、Review UI、qualitative Review semanticsはOpenとする。Execution時点のTask / Project / Section metadata snapshotのexact fieldsは、rename / move / delete / Reviewを導入する前に別途Decisionする。
+historical contextのgeneral exact snapshot / reference fields、Review UI、qualitative Review semanticsはOpenとする。D-065で追加したbounded `entry_project_snapshots`（既にExecutionを持つordinary Entryの初回Project ID / title）と、live Project FKをauthorityとしないRoutine occurrence snapshotのProject ID / title pairはこのgeneral Review modelへ昇格させない。Execution時点のTask / Section metadata等の未定義snapshot fieldsは、rename / move / delete / Reviewのbroader scopeで別途Decisionする。
+
+### D-065 Project lifecycle and historical identity
+
+- Projectはstable owner-scoped identityを持ち、active / archived stateとProject Board orderを別のserver-owned management stateとして持つ。archiveはreversibleで、Task / Routine assignmentやhistoryを変更しない。
+- active Projectだけを新規assignment候補とする。既存のarchived assignmentはcurrent projection上でProject名とarchive状態を表示し、restore後は再び通常候補となる。
+- hard deleteは明示確認付きの不可逆Project commandであり、現行TaskのProject FKだけをNULLへする。Task、Entry、Execution、RoutineDefinition、RoutineOccurrence、operation、historical snapshotは削除しない。
+- Routine occurrence snapshotのProject ID / titleはProject hard delete後もhistorical factとして利用可能であり、ordinary executed Entryはbounded entry snapshotで同じ意味を保持する。Project-owned DocumentはこのDecisionのscope外である。
+- Project Board commandはowner、Project / Board revision、operation fingerprint、atomicityを検証し、同一operationのretryは既存command conventionに従って同じ結果へ収束する。
 
 ## Notes / Documents
 

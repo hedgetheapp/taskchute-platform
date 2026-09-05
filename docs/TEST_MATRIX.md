@@ -1,5 +1,31 @@
 # Test Matrix
 
+## D-065 — Project management — 2026-09-05
+
+Contract: D-065 `Approved`。Project Boardのserver-owned order / archive / restore、Project metadata編集、active-only assignment、Project hard deleteのTask assignment null化とhistory preservation、APP `0019_project_management.sql`を対象とする。Decision commit `09934a48e9d39126f4b377d9376977a5a45270d9`、implementation commit `af5a3bd46e3f490e23fafe62c24d54f119584f3c`をGitHub `main`へfast-forward pushした。
+
+| ID | Verification target | Evidence |
+| --- | --- | --- |
+| PROJECT-MGMT-01 | existing Project identity / title / created_at、Task assignment、Routine snapshot、Entry / Execution / operation historyのpreservation、initial active Board order / revision | PASS (MIGRATION_REGRESSION + WORKER + NONPROD_D1) |
+| PROJECT-MGMT-02 | create、inline rename、owner / revision / operation retry boundary、active / archived tab、search | PASS (WORKER + WEB + NONPROD_BROWSER) |
+| PROJECT-MGMT-03 | reversible archive / restore、active-only new selector、existing archived assignmentの理解可能な表示 | PASS (WORKER + WEB + NONPROD_BROWSER structure) / selector order再選択は`NOT_VERIFIED` |
+| PROJECT-MGMT-04 | whole-row non-interactive reorder、interactive descendant drag suppression、J / ↓ / K / ↑、? / Esc、no X | PASS (WORKER + WEB + NONPROD_BROWSER keyboard / AX); actual coordinate reorder `NOT_VERIFIED` |
+| PROJECT-MGMT-05 | centered hard-delete confirmation、cancel、Project row / management relation removal、Task `project_id=NULL`、Task / Entry / Execution / Routine history preservation、operation retention | PASS (WORKER + WEB + NONPROD_BROWSER empty disposable Project + NONPROD_D1); remote Task-assigned disposable fixture `NOT_VERIFIED` |
+| PROJECT-MGMT-06 | APP `0019` fresh chain、existing rows / IDs / history、routine snapshot FK compatibility、entry snapshot CHECK、operations command CHECK、quick_check / FK | PASS (MIGRATION_REGRESSION + NONPROD_MIGRATION + NONPROD_D1) |
+
+Local evidence:
+
+- focused Project integration `3 / 3 PASS`、Worker `184 / 184 PASS`、Web `180 / 180 PASS`、migration regression `4 scenarios PASS`、typecheck、production build、`git diff --check`をPASSした。real-local safety smokeはroot `200`、protected API `401`、disabled bootstrap POST `404`をPASSした。
+
+Persistent non-production evidence:
+
+- migration前 pendingはAPP `0019_project_management.sql` / AUTH `0`。HARD GATEとしてfresh private ignored backupを取得し、APP `302,501 bytes` / SHA-256 `999B9A049E237D3BBB2EFB2E9DB0DA4C82E3081B9AAFAD217CF6D94E07FA7D`、AUTH `4,280 bytes` / SHA-256 `53D9BAA8A4D3F2EC2789627DE03C2BDB539A58E68F90E5AEE8501C9B26D618A4`の非空・readability・ignoreをPASSした。remoteへrestoreせずisolated recoveryでAPP / AUTH `quick_check = ok`、FK `0`を確認した。
+- HARD GATE後にAPP `0019`だけを適用し、post pending `0 / 0`、APP / AUTH `quick_check = ok`、FK `0`を確認した。migration後 aggregateはProjects / Board items / Archives `2 / 2 / 0`、Tasks / Entries / Executions `55 / 62 / 25`、Routine occurrences / snapshots `20 / 20`、Entry snapshots `25`、operations `307`。D-065 operationはCreateProject `3`、UpdateProject `1`、SetProjectArchived `2`、DeleteProject `1`。削除対象Project row / board item / archive rowは`0`、Taskの削除対象Projectへの残存assignmentは`0`、historical Project snapshot参照はEntry `1` / Routine `2`である。
+- exact pushed `main@af5a3bd46e3f490e23fafe62c24d54f119584f3c`を`CLOUDFLARE_ENV=nonprod`でbuildし、canonical `taskchute-web-nonprod`へdeployした。Worker version `2627c53b-d990-4e2b-bcc1-e67d8e2ddc9e`、`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、canonical APP / AUTH bindingを確認した。HTTP safety probeはroot `200`、protected Project Board `401`、disabled bootstrap POST `404`。
+- authenticated browserでは使い捨てProjectのcreate / rename / search / archive / archived tab / restore / active tab / row-end menu / centered delete modal / cancel / hard delete / reload不在をPASSした。hard delete後もDay / Routine projectionをreloadでき、削除Projectはselectorから消えた。Project BoardのJ / ↓・K / ↑、? help、Esc close、X no-op、browser console error / warning空集合をPASSした。座標row reorderは既定幅と一時1200px幅の双方で試行したが`ReorderProjects` operationが発火せず`NOT_VERIFIED`。Taskを削除対象Projectへ割り当てるremote disposable fixtureは作成していないため、そのmutationはlocal integrationを根拠としbrowser `NOT_VERIFIED`とした。
+
+Classification: D-065 `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / REAL_LOCAL_SAFETY_VERIFIED / MAIN_PUSHED / PERSISTENT_NONPROD_BACKUP_VERIFIED / PERSISTENT_NONPROD_MIGRATED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_SAFETY_VERIFIED / AUTHENTICATED_BROWSER_PARTIAL`、browserの座標reorder・Task-assigned hard-delete・selector order再選択は`NOT_VERIFIED`、production `NOT_RUN`、remote restore、branch / PR / merge / tag / release、auxiliary Worker操作 `NOT_RUN`、Released `NO`。security posture changeなし。
+
 ## D-064 — Routine delete and Routine Board table UX — 2026-09-05
 
 Contract: D-064 `Approved`。Routine deleteのsoft archive、future generation停止、history preservation、Routine Boardの9列・reorder・resize・keyboard help・X negative boundary・retry safetyを対象とする。Decision commit `2e8685de2321f4a2e6c39dd0276ef726806a45d6`、implementation commit `573f3a72394988442f8482bb183136b95b831242`をGitHub `main`へpushした。

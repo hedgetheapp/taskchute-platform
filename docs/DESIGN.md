@@ -139,6 +139,16 @@ Projectのquick createとProject管理を分ける。
 - quick create時はユーザーが入力したProject名をauthorityとし、検索用normalization等を保存名へ勝手に変換しない。
 - Project SettingsをDayBoardの常設editorとして置かない。
 
+## D-065 Project management
+
+D-065ではProject Settingsをdedicated management boardとして実装する。Projectはstable identityを維持し、Taskのoptional assignment、Routine occurrence snapshot、Entry / Execution / operation historyをProject管理の都合で削除・再分類しない。Board order、archive state、settings revisionはowner-scoped server stateとし、active Projectだけを新規assignment selectorへ提示する。既存Task / Routineがarchived Projectを参照する場合は、current assignmentとしてProject名とarchive状態を理解可能に表示する。
+
+Project Boardはtop-level `＋ プロジェクトを追加`、local draft、inline rename、search、active / archived tabs、whole-row non-interactive drag、row-end `…` menu、archive / restore、centered destructive delete confirmationを提供する。J / ↓で次のvisible row、K / ↑で前のvisible row、focusなしでは最初 / 最後のvisible rowへ移動し、`?` helpとEsc closeを持つ。input / select / textarea / contenteditable / IME / menu / dialog中はglobal shortcutを抑制し、interactive descendantからdragを開始しない。
+
+Project archiveはreversibleなrelationであり、Board itemをactive projectionから除外するだけでTask assignmentを変更しない。Project hard deleteは明示確認を必要とするirreversible commandで、Project rowと管理用relationsだけを除去し、現行Taskの`project_id`をNULLへ更新する。Task / Entry / Execution / RoutineDefinition / RoutineOccurrence / operation historyは削除しない。Routine occurrence snapshotはProject ID / title pairをhistorical factとして保持し、ordinary executed Entryはbounded `entry_project_snapshots`で初回実行時のProject meaningを保持する。Project-owned Primary Documentは未実装であり、D-065は新設しない。
+
+APP `0019_project_management.sql`は上記を支えるBoard head / item、archive relation、bounded Entry snapshot、Routine snapshotのlive Project FK除去、Project command allow-listだけを追加するcompatibility migrationである。AUTH / binding / security postureは変更しない。
+
 ## Day Table foundation
 
 Dayは一つの連続したDay Tableとして表示する。
