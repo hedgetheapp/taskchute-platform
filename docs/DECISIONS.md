@@ -1357,3 +1357,32 @@ D-063では、Day Tableのconfirmation / choice surface、row内keyboard workflo
 - D-063のdeferred testsはsame Entry / Day / Routine conflict、independent row、Project/Section pending中のTab、Add Task、multiple pending、rollback、ambiguous retry、Complete→Start queue、truthful statusを検証する。Complete A→Start Bが既存契約で安全に実装できない場合はSTOPし、lifecycle semanticsを変更しない。
 
 D-063はpresentation / client coordinationの変更に限り、API / Domain / schema / migration / dependency / security posture変更が必要になった場合、またはrevision / CAS / retry / active Execution safetyを弱める必要がある場合はSTOPする。実装・tests・persistent nonprod browser verification・evidenceはcanonical docsへ記録する。
+
+## D-064 — Routine soft-delete and Day-Table-like Routine Board interaction
+Status: Approved
+
+D-064では、Routine BoardからRoutineを削除できるsoft-delete / archive capabilityと、Day Tableに準じた広い表面・列操作・keyboard interactionを追加する。D-034のRoutine delete semantics、D-047のR2B Board / pause / period / historical snapshot semanticsを維持し、RoutineDefinition、Task、materialized RoutineOccurrence / Entry、Execution、snapshot、明示移動済みOccurrenceをhard deleteしない。削除後はfuture recurrence eligibilityと通常Routine Board projectionから除外し、過去・currentの既存materialized stateは保持する。restore / undo、deleted archive UIは本Decisionに含めない。
+
+### Routine delete command
+
+- authenticated `DeleteRoutine` commandは`operation_id`、`routine_definition_id`、expected Routine settings revision、expected Routine Board revisionを受け取り、ownerはauthenticated principalから解決する。clientからauthoritative user idを受け取らない。
+- owner isolation、malformed request、unauthenticated request、既存APIと同じanti-leak posture、D-020のfingerprint / replay / operation ID misuse / ambiguity / revision conflict boundaryを維持する。
+- 成功時はowner-scoped archive relationへtombstoneをatomicに保存し、Routine Board itemを通常projectionから除外する。残るBoard orderはdeterministicに再詰めし、Board revisionとRoutine settings revisionをstale-write protectionのため更新する。
+- archiveはfuture projected occurrenceのeligibility、current-Day ensure / materialization、Board、search、`使用中` / `期間終了`のいずれにも権威的に反映する。既にmaterializedされたcurrent / past occurrence、planned / running / completed Entry、Execution、snapshot、Task、明示移動済みOccurrenceは削除・書換えしない。
+- `終了日`はfinite recurrence period、`有効 OFF`はpause / resume、`削除`はarchiveであり、deleteをend-date変更やpauseへ代替しない。archived Routineの再有効化・編集・schedule変更・restoreは本sliceでは提供しない。
+
+### Routine Board surface
+
+- default columnsは正確に`有効 | タスク名 | 繰り返し | 開始予定 | 見積 | プロジェクト | セクション | 開始日 | 終了日`とする。旧`移動`列と専用Actions/Delete列は廃止する。
+- `有効`は既存pause / resume semanticsのcheckbox-like controlとし、`タスク名` cellへrow reorder drag handleとoverflow `…` menuを配置する。`… → 削除`はcentered destructive modal（`ルーティンを削除しますか？`）で確認し、future生成停止と既存history保持を伝える。Escape / backdrop / Cancelはno-writeで閉じる。
+- headerは9列すべてをdrag reorder、right-edge resizeでき、row cellも同じorder / widthへ追従する。order / widthはDay Tableと分離したbrowser-local versioned preference（`taskchute.web.routine-columns.v1`）へ保存し、resetとcorrupt-storage fallbackを提供する。presentation orderはDomain / Board orderへ影響しない。
+- Routine Boardはcontent width / viewport heightを広く使用し、必要時のhorizontal overflowと自然なvertical scrollを許す。row heightは密度を保ち、small centered card-like tableや不要なnested scrollerは追加しない。
+
+### Keyboard / accessibility
+
+- `J / ArrowDown`はvisible Routineの次、`K / ArrowUp`は前へ移動し、focusなしではそれぞれ最初 / 最後へ移動する。query / tabで非表示のrowは対象外とする。
+- `?`はD-063 modal semanticsのcentered help dialogを開き、表示は`J/↓`、`K/↑`、`?`、`Esc`だけとする。`X`、Day shortcut、Day reorder shortcutはRoutine Boardへ追加しない。
+- Escapeはlocal editor / popover / menu / modalを閉じる。input / select / textarea / contenteditable / IME composition中はshortcutを抑制し、Arrowを処理した時だけpage scrollを抑制する。focused Routineで`X`を押してもenabled toggleやmutationを起こさない。
+- row reorderのserver-canonical order、expected Board revision、retry / conflict semanticsは維持する。header presentation reorder / resize後もrow reorderは同じDomain orderを使う。
+
+D-064では、APP compatibility/archive migration `0018`として、既存identity / historyを保持するowner-scoped archive relationと`DeleteRoutine`を許可するoperation / guard CHECK compatibilityだけを追加する。既存operation rows、Task / RoutineOccurrence / Entry / Execution schema、R2B generation semanticsを破壊的に変更しない。別のDomain model、restore、production operation、new dependency、security posture changeは含めず、必要になった場合はSTOPする。実装・migration・tests・persistent nonprod backup / migration / browser verification・canonical evidenceは`docs/CURRENT.md`、`docs/FEATURES.md`、`docs/DESIGN.md`、`docs/TEST_MATRIX.md`へ記録する。
