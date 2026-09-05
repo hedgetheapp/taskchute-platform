@@ -1386,3 +1386,30 @@ D-064では、Routine BoardからRoutineを削除できるsoft-delete / archive 
 - row reorderのserver-canonical order、expected Board revision、retry / conflict semanticsは維持する。header presentation reorder / resize後もrow reorderは同じDomain orderを使う。
 
 D-064では、APP compatibility/archive migration `0018`として、既存identity / historyを保持するowner-scoped archive relationと`DeleteRoutine`を許可するoperation / guard CHECK compatibilityだけを追加する。既存operation rows、Task / RoutineOccurrence / Entry / Execution schema、R2B generation semanticsを破壊的に変更しない。別のDomain model、restore、production operation、new dependency、security posture changeは含めず、必要になった場合はSTOPする。実装・migration・tests・persistent nonprod backup / migration / browser verification・canonical evidenceは`docs/CURRENT.md`、`docs/FEATURES.md`、`docs/DESIGN.md`、`docs/TEST_MATRIX.md`へ記録する。
+
+## D-065 — Project management
+Status: Approved
+
+D-065はProjectをdedicated Settings Boardで管理する。Projectのstable identity、Taskのoptional Project assignment、Routine occurrence snapshot、Execution / operation historyは維持し、Projectの表示順・archive state・settings revisionだけをProject Boardのserver-owned stateとして追加する。Day / Routineのassignment selectorはactive Projectだけを新規選択対象とし、既存のarchived assignmentは意味を失わないよう表示する。
+
+### Project Board and commands
+
+- `CreateProject`は既存のowner-scoped create / retry semanticsを維持し、Project Boardの末尾へdeterministicに追加する。
+- `UpdateProject`はowner、current title、settings revisionのcompare-and-setを検証し、titleだけを変更する。`SetProjectArchived`はreversible archive / restoreであり、Project、Task、Entry、RoutineDefinition、RoutineOccurrence、Execution、snapshot、operationを削除しない。
+- `ReorderProjects`はowned Project集合を一括で受け取り、board revision compare-and-set、stable order、atomic operation replayを使う。archiveは表示対象をactive assignmentから除外するが、Boardのarchive tabには残す。
+- `DeleteProject`はirreversibleなProject hard deleteとする。ただし同一ownerの全Taskについて`project_id`だけを`NULL`へ更新し、Task / Entry / Execution / RoutineDefinition / RoutineOccurrence / moved occurrence / operation historyは削除しない。delete成功時もProject Board revisionを更新し、affected Task数を結果へ含める。
+- 全commandはauthenticated principal、owner isolation、malformed input、request fingerprint、same-operation replay / misuse、revision conflict、ambiguous retry、atomicityを既存D-020境界で扱う。UIはoperation resultを受けてfull-page reloadなしにreconcileする。
+
+### Historical Project identity
+
+- `routine_occurrence_task_snapshots`のProject ID / title pairはhistorical factとして保持する。live `projects` FKをauthorityにせず、Project hard delete後もsnapshotのProject identity / titleをそのまま投影できるようにする。
+- ordinary Entryについては、既にExecutionを持つものだけを対象にbounded `entry_project_snapshots`へ初回実行時のProject ID / titleを保存し、Project hard delete後のhistorical Entry / Executionの意味を保つ。これはgeneral Review snapshot modelへ昇格させない。
+- D-065 migrationは既存Project ID / title / created_at、Task assignment、Routine snapshot、Entry / Execution / operation rowsをpreserveし、既存Projectをarchive / deleteへ暗黙変換しない。初期Board orderは`created_at ASC, id ASC`、revisionsは0から開始する。
+
+### Project Board surface
+
+- SettingsのProject surfaceはtop-level `＋ プロジェクトを追加`、local draft、inline rename、active / archived tabs、search、whole-row non-interactive drag、row-end `…` menu、archive / restore、centered destructive delete confirmationを提供する。Project row heightは密度を保つ。
+- keyboardはJ / ↓、K / ↑、?、Escを提供し、focusなしでは最初 / 最後のvisible rowへ移動する。input / select / textarea / contenteditable / IME / menu / dialog中のshortcutは抑制する。dragはinteractive descendantから開始しない。
+- active-only Project selector、current archived assignmentの理解可能な表示、delete後のTask `Projectなし`、restore後の再選択可能性を維持する。Project-owned Primary Document等の未実装capabilityをD-065で新設しない。
+
+APP compatibility migration `0019_project_management.sql`は、Project Board head / item / archive relation、bounded ordinary historical Project snapshot、Routine snapshotのlive Project FK除去、Project commandを許可するoperations CHECKの互換拡張をatomicに導入する。既存のTask / Entry / Execution / Routine identityと歴史的operationは破壊的に変更しない。AUTH migration、binding変更、new dependency、security posture、production operation、restore、branch / PR / merge / tag / releaseは含めず、必要になった場合はSTOPする。実装・migration・local / real-local・persistent nonprod backup / deploy / browser / DB evidenceはcanonical docsへ記録する。
