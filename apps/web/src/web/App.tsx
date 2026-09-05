@@ -4,6 +4,7 @@ import {
   FormEvent,
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
+  type ReactNode,
   useCallback,
   useEffect,
   useRef,
@@ -92,6 +93,8 @@ type ColumnResizeState = {
   startTableWidth: number;
 };
 type InlineEditorAction = { key: string; action: "none" | "commit" | "cancel" };
+type MutationScope = readonly string[];
+type ActiveMutation = { token: string; scope: MutationScope; label: string };
 type RoutineCandidate =
   | { entryId: string; unit: "estimate"; estimateSeconds: number | null }
   | { entryId: string; unit: "section-plan"; sectionId: string | null; plannedStartMinute: number | null };
@@ -446,6 +449,89 @@ function transientStatusText(pending: string | null): string | null {
   }
 }
 
+type ModalProps = {
+  title: string;
+  titleId: string;
+  onClose: () => void;
+  className?: string;
+  id?: string;
+  children: ReactNode;
+};
+
+function Modal({ title, titleId, onClose, className = "", id, children }: ModalProps) {
+  const modalRef = useRef<HTMLDivElement | null>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const firstFocusable = modalRef.current?.querySelector<HTMLElement>(
+      "button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [href], [tabindex]:not([tabindex='-1'])",
+    );
+    (firstFocusable ?? modalRef.current)?.focus();
+    return () => {
+      if (previousFocusRef.current?.isConnected) previousFocusRef.current.focus();
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleDocumentKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      onClose();
+    };
+    const handleDocumentClick = (event: globalThis.MouseEvent) => {
+      if (modalRef.current && !modalRef.current.contains(event.target as Node)) onClose();
+    };
+    document.addEventListener("keydown", handleDocumentKeyDown);
+    document.addEventListener("click", handleDocumentClick);
+    return () => {
+      document.removeEventListener("keydown", handleDocumentKeyDown);
+      document.removeEventListener("click", handleDocumentClick);
+    };
+  }, [onClose]);
+
+  function handleKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    event.stopPropagation();
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onClose();
+      return;
+    }
+    if (event.key !== "Tab") return;
+    const focusable = Array.from(modalRef.current?.querySelectorAll<HTMLElement>(
+      "button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [href], [tabindex]:not([tabindex='-1'])",
+    ) ?? []);
+    if (focusable.length === 0) {
+      event.preventDefault();
+      modalRef.current?.focus();
+      return;
+    }
+    const currentIndex = focusable.indexOf(document.activeElement as HTMLElement);
+    const nextIndex = event.shiftKey
+      ? (currentIndex <= 0 ? focusable.length - 1 : currentIndex - 1)
+      : (currentIndex < 0 || currentIndex === focusable.length - 1 ? 0 : currentIndex + 1);
+    event.preventDefault();
+    focusable[nextIndex]?.focus();
+  }
+
+  return (
+    <div className="modal-backdrop" onMouseDown={(event) => {
+      if (event.target === event.currentTarget) onClose();
+    }} onClick={(event) => {
+      if (event.target === event.currentTarget) onClose();
+    }}>
+      <div ref={modalRef} id={id} className={`modal panel ${className}`.trim()} role="dialog" aria-modal="true"
+        aria-labelledby={titleId} tabIndex={-1} onKeyDown={handleKeyDown}>
+        <div className="modal-heading">
+          <h2 id={titleId}>{title}</h2>
+          <button type="button" className="secondary modal-close" aria-label="閉じる" onClick={onClose}>×</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function parseLogicalTime(value: FormDataEntryValue | null): number | null {
   const match = String(value ?? "").trim().match(/^(\d{1,2}):(\d{2})$/);
   if (!match) return null;
@@ -544,6 +630,7 @@ export function App() {
   const [completeOperation, setCompleteOperation] = useState<CompleteEntryRequest | null>(null);
   const [executionTimesOperation, setExecutionTimesOperation] = useState<SetExecutionTimesRequest | null>(null);
   const [taskMetadataOperation, setTaskMetadataOperation] = useState<UpdateTaskMetadataRequest | null>(null);
+  const [retainedTaskMetadataOperations, setRetainedTaskMetadataOperations] = useState<UpdateTaskMetadataRequest[]>([]);
   const [configurationOperation, setConfigurationOperation] = useState<EstablishInitialSectionConfigurationRequest | null>(null);
   const [sectionMoveOperation, setSectionMoveOperation] = useState<MoveEntryRequest | null>(null);
   const [estimateOperation, setEstimateOperation] = useState<SetEntryEstimateRequest | null>(null);
@@ -553,6 +640,10 @@ export function App() {
   const [routineEndOperation, setRoutineEndOperation] = useState<EndRoutineRequest | null>(null);
   const [routineEstimateOperation, setRoutineEstimateOperation] = useState<SetRoutineEstimateRequest | null>(null);
   const [routineSectionPlanOperation, setRoutineSectionPlanOperation] = useState<SetRoutineSectionPlanRequest | null>(null);
+  const [pendingTaskMetadataOverlays, setPendingTaskMetadataOverlays] = useState<Record<string, UpdateTaskMetadataRequest>>({});
+  const [pendingEstimateOverlays, setPendingEstimateOverlays] = useState<Record<string, SetEntryEstimateRequest>>({});
+  const [pendingPlannedStartOverlays, setPendingPlannedStartOverlays] = useState<Record<string, PlannedStartOperation>>({});
+  const [pendingExecutionTimesOverlays, setPendingExecutionTimesOverlays] = useState<Record<string, SetExecutionTimesRequest>>({});
   const [overflowEntryId, setOverflowEntryId] = useState<string | null>(null);
   const [, setSectionSettings] = useState<SectionConfigurationProjection | null>(null);
   const [sectionSettingsDraft, setSectionSettingsDraft] = useState<SectionSettingsDraft | null>(null);
@@ -582,6 +673,8 @@ export function App() {
   const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false);
   const [currentLogicalDate, setCurrentLogicalDate] = useState<string | null>(null);
   const [forecastNowInstant, setForecastNowInstant] = useState<string | null>(null);
+  const [pendingMutationCount, setPendingMutationCount] = useState(0);
+  const [queuedMutationCount, setQueuedMutationCount] = useState(0);
   const draftInputRef = useRef<HTMLInputElement | null>(null);
   const draftCompositionRef = useRef(false);
   const selectedLogicalDateRef = useRef<string | null>(null);
@@ -589,28 +682,115 @@ export function App() {
   const calendarTriggerRef = useRef<HTMLButtonElement | null>(null);
   const calendarGridRef = useRef<HTMLDivElement | null>(null);
   const calendarPopoverRef = useRef<HTMLDivElement | null>(null);
-  const shortcutHelpRef = useRef<HTMLDivElement | null>(null);
   const columnsMenuRef = useRef<HTMLDivElement | null>(null);
   const columnsTriggerRef = useRef<HTMLButtonElement | null>(null);
   const bulkHeaderRef = useRef<HTMLInputElement | null>(null);
   const bulkDeleteTriggerRef = useRef<HTMLButtonElement | null>(null);
   const bulkDateMoveTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const bulkConfirmationRef = useRef<HTMLDivElement | null>(null);
-  const bulkSectionConfirmationRef = useRef<HTMLDivElement | null>(null);
-  const bulkEstimateConfirmationRef = useRef<HTMLDivElement | null>(null);
-  const bulkDateMoveConfirmationRef = useRef<HTMLDivElement | null>(null);
   const bulkSectionTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const bulkSectionPickerRef = useRef<HTMLDivElement | null>(null);
   const bulkEstimateTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const routineScopeChoiceRef = useRef<HTMLSpanElement | null>(null);
   const overflowMenuRef = useRef<HTMLDivElement | null>(null);
   const overflowMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const forecastClockRef = useRef<{ serverInstant: string; monotonicMilliseconds: number } | null>(null);
   const inlineEditorActionRef = useRef<InlineEditorAction | null>(null);
-  const retainedOperation = projectOperation ?? taskOperation ?? duplicateOperation ?? bulkDeleteOperation ?? bulkDateMoveOperation ?? bulkSectionOperation ?? bulkSectionOccurrenceOperation ?? bulkSectionScopedOperation ?? bulkEstimateOperation ?? reorderOperation ?? startOperation ?? completeOperation ?? executionTimesOperation ?? taskMetadataOperation
+  const activeMutationsRef = useRef<ActiveMutation[]>([]);
+  const reconcileSequenceRef = useRef(0);
+  const queuedStartEntriesRef = useRef<string[]>([]);
+  const drainingQueuedStartsRef = useRef(false);
+  const retainedOperation = projectOperation ?? taskOperation ?? duplicateOperation ?? bulkDeleteOperation ?? bulkDateMoveOperation ?? bulkSectionOperation ?? bulkSectionOccurrenceOperation ?? bulkSectionScopedOperation ?? bulkEstimateOperation ?? reorderOperation ?? startOperation ?? completeOperation ?? executionTimesOperation ?? taskMetadataOperation ?? retainedTaskMetadataOperations[0]
     ?? configurationOperation ?? sectionSettingsOperation ?? sectionMoveOperation ?? estimateOperation ?? plannedStartOperation
     ?? routineConversionOperation ?? routineEndOperation ?? routineEstimateOperation ?? routineSectionPlanOperation;
-  const mutationLocked = pending !== null || retainedOperation !== null || bulkConfirmation !== null || bulkSectionConfirmation !== null || bulkEstimateConfirmation !== null || bulkDateMoveConfirmation !== null;
+  const globalPending = pending === "login" || pending === "project" || pending === "project-settings"
+    || pending === "day-navigation" || pending === "configuration" || pending === "section-settings" || pending === "logout";
+  const globalRetainedOperation = projectOperation !== null || configurationOperation !== null || sectionSettingsOperation !== null;
+  const decisionModalOpen = shortcutHelpOpen || bulkSectionPickerOpen || bulkConfirmation !== null
+    || bulkSectionConfirmation !== null || bulkEstimateConfirmation !== null || bulkDateMoveConfirmation !== null
+    || routineDraft !== null || routineCandidate !== null;
+  const mutationLocked = globalPending || globalRetainedOperation;
+
+  function scopesConflict(left: MutationScope, right: MutationScope): boolean {
+    return left.some((key) => right.includes(key));
+  }
+
+  function hasActiveMutationScope(scope: MutationScope): boolean {
+    return activeMutationsRef.current.some((mutation) => scopesConflict(mutation.scope, scope));
+  }
+
+  function retainedMutationScopes(): MutationScope[] {
+    const scopes: MutationScope[] = [];
+    if (taskOperation) scopes.push(placementMutationScope(taskOperation.taskchute_day_id));
+    if (duplicateOperation) scopes.push(placementMutationScope(duplicateOperation.taskchute_day_id));
+    if (bulkDeleteOperation) scopes.push(placementMutationScope(bulkDeleteOperation.taskchute_day_id));
+    if (bulkDateMoveOperation) scopes.push(placementMutationScope(bulkDateMoveOperation.source_taskchute_day_id));
+    if (bulkSectionOperation) scopes.push(placementMutationScope(bulkSectionOperation.taskchute_day_id));
+    if (bulkSectionOccurrenceOperation) scopes.push(placementMutationScope(bulkSectionOccurrenceOperation.taskchute_day_id));
+    if (bulkSectionScopedOperation) scopes.push(placementMutationScope(bulkSectionScopedOperation.taskchute_day_id));
+    if (bulkEstimateOperation) scopes.push(bulkEntryMutationScope(bulkEstimateOperation.entry_ids));
+    if (reorderOperation) scopes.push(placementMutationScope(reorderOperation.taskchute_day_id));
+    if (startOperation) scopes.push(executionMutationScope(startOperation.entry_id));
+    if (completeOperation) scopes.push(executionMutationScope(completeOperation.entry_id));
+    if (executionTimesOperation) scopes.push(executionMutationScope(executionTimesOperation.entry_id));
+    if (taskMetadataOperation) scopes.push(entryMutationScope(taskMetadataOperation.entry_id, taskMetadataOperation.task_id));
+    retainedTaskMetadataOperations.forEach((operation) => scopes.push(entryMutationScope(operation.entry_id, operation.task_id)));
+    if (sectionMoveOperation) scopes.push(placementMutationScope(sectionMoveOperation.taskchute_day_id));
+    if (estimateOperation) scopes.push(entryMutationScope(estimateOperation.entry_id));
+    if (plannedStartOperation) scopes.push(placementMutationScope(plannedStartOperation.request.taskchute_day_id));
+    if (routineConversionOperation) scopes.push(placementMutationScope(routineConversionOperation.taskchute_day_id));
+    if (routineEndOperation) scopes.push([`routine:${routineEndOperation.routine_definition_id}`]);
+    if (routineEstimateOperation) scopes.push(routineMutationScope(routineEstimateOperation.entry_id));
+    if (routineSectionPlanOperation) scopes.push([...placementMutationScope(routineSectionPlanOperation.taskchute_day_id), `entry:${routineSectionPlanOperation.entry_id}`]);
+    return scopes;
+  }
+
+  function isMutationScopeBusy(scope: MutationScope): boolean {
+    return hasActiveMutationScope(scope) || retainedMutationScopes().some((retained) => scopesConflict(retained, scope));
+  }
+
+  function beginMutationScope(scope: MutationScope, label: string): string | null {
+    if (hasActiveMutationScope(scope)) return null;
+    const token = uuidv7();
+    activeMutationsRef.current = [...activeMutationsRef.current, { token, scope, label }];
+    setPendingMutationCount(activeMutationsRef.current.length);
+    return token;
+  }
+
+  function endMutationScope(token: string): void {
+    activeMutationsRef.current = activeMutationsRef.current.filter((mutation) => mutation.token !== token);
+    setPendingMutationCount(activeMutationsRef.current.length);
+  }
+
+  function retainTaskMetadataOperation(operation: UpdateTaskMetadataRequest): void {
+    setRetainedTaskMetadataOperations((current) => current.some((item) => item.operation_id === operation.operation_id)
+      ? current : [...current, operation]);
+  }
+
+  function releaseTaskMetadataOperation(operationId: string): void {
+    setRetainedTaskMetadataOperations((current) => current.filter((operation) => operation.operation_id !== operationId));
+  }
+
+  function clearTaskMetadataOperationIfCurrent(operationId: string): void {
+    setTaskMetadataOperation((current) => current?.operation_id === operationId ? null : current);
+  }
+
+  function entryMutationScope(entryId: string, taskId?: string): MutationScope {
+    return [`entry:${entryId}`, ...(taskId ? [`task:${taskId}`] : [])];
+  }
+
+  function executionMutationScope(entryId: string): MutationScope {
+    return ["execution-lane", `entry:${entryId}`];
+  }
+
+  function placementMutationScope(taskchuteDayId = day?.taskchute_day.id ?? "selected-day"): MutationScope {
+    return [`placement:${taskchuteDayId}`];
+  }
+
+  function routineMutationScope(entryId: string, routineDefinitionId?: string): MutationScope {
+    return [`entry:${entryId}`, ...(routineDefinitionId ? [`routine:${routineDefinitionId}`] : [])];
+  }
+
+  function bulkEntryMutationScope(entryIds: string[], routineDefinitionIds: string[] = []): MutationScope {
+    return [...new Set([...entryIds.map((entryId) => `entry:${entryId}`), ...routineDefinitionIds.map((id) => `routine:${id}`)])];
+  }
 
   function beginInlineEditor(key: string) {
     inlineEditorActionRef.current = { key, action: "none" };
@@ -697,8 +877,10 @@ export function App() {
   }, []);
 
   const reconcile = useCallback(async (logicalDate = selectedLogicalDateRef.current) => {
+    const requestSequence = ++reconcileSequenceRef.current;
     try {
       const projection = await api.loadDay(logicalDate ?? undefined);
+      if (requestSequence !== reconcileSequenceRef.current) return projection;
       setDay(projection);
       setOverflowEntryId(null);
       selectedLogicalDateRef.current = projection.taskchute_day.logical_date;
@@ -863,108 +1045,6 @@ export function App() {
   }, [day, selectedEntryIds]);
 
   useEffect(() => {
-    if (!bulkConfirmation) return;
-    bulkConfirmationRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
-    const dismissOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      setBulkConfirmation(null);
-      requestAnimationFrame(() => bulkDeleteTriggerRef.current?.focus());
-    };
-    document.addEventListener("keydown", dismissOnEscape);
-    return () => document.removeEventListener("keydown", dismissOnEscape);
-  }, [bulkConfirmation]);
-
-  useEffect(() => {
-    if (!bulkSectionConfirmation) return;
-    bulkSectionConfirmationRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
-    const dismissOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      setBulkSectionConfirmation(null);
-      requestAnimationFrame(() => bulkSectionTriggerRef.current?.focus());
-    };
-    const dismissOnOutsideMouseDown = (event: globalThis.MouseEvent) => {
-      if (bulkSectionConfirmationRef.current?.contains(event.target as Node)) return;
-      setBulkSectionConfirmation(null);
-      requestAnimationFrame(() => bulkSectionTriggerRef.current?.focus());
-    };
-    document.addEventListener("keydown", dismissOnEscape);
-    document.addEventListener("mousedown", dismissOnOutsideMouseDown);
-    return () => {
-      document.removeEventListener("keydown", dismissOnEscape);
-      document.removeEventListener("mousedown", dismissOnOutsideMouseDown);
-    };
-  }, [bulkSectionConfirmation]);
-
-  useEffect(() => {
-    if (!bulkEstimateConfirmation) return;
-    bulkEstimateConfirmationRef.current?.querySelector<HTMLInputElement>("input, button")?.focus();
-    const dismissOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      setBulkEstimateConfirmation(null);
-      requestAnimationFrame(() => bulkEstimateTriggerRef.current?.focus());
-    };
-    const dismissOnOutsideMouseDown = (event: globalThis.MouseEvent) => {
-      if (bulkEstimateConfirmationRef.current?.contains(event.target as Node)) return;
-      setBulkEstimateConfirmation(null);
-      requestAnimationFrame(() => bulkEstimateTriggerRef.current?.focus());
-    };
-    document.addEventListener("keydown", dismissOnEscape);
-    document.addEventListener("mousedown", dismissOnOutsideMouseDown);
-    return () => {
-      document.removeEventListener("keydown", dismissOnEscape);
-      document.removeEventListener("mousedown", dismissOnOutsideMouseDown);
-    };
-  }, [bulkEstimateConfirmation]);
-
-  useEffect(() => {
-    if (!bulkDateMoveConfirmation) return;
-    bulkDateMoveConfirmationRef.current?.querySelector<HTMLInputElement>("input, button")?.focus();
-    const dismissOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      setBulkDateMoveConfirmation(null);
-      requestAnimationFrame(() => bulkDateMoveTriggerRef.current?.focus());
-    };
-    const dismissOnOutsideMouseDown = (event: globalThis.MouseEvent) => {
-      if (bulkDateMoveConfirmationRef.current?.contains(event.target as Node)) return;
-      setBulkDateMoveConfirmation(null);
-      requestAnimationFrame(() => bulkDateMoveTriggerRef.current?.focus());
-    };
-    document.addEventListener("keydown", dismissOnEscape);
-    document.addEventListener("mousedown", dismissOnOutsideMouseDown);
-    return () => {
-      document.removeEventListener("keydown", dismissOnEscape);
-      document.removeEventListener("mousedown", dismissOnOutsideMouseDown);
-    };
-  }, [bulkDateMoveConfirmation]);
-
-  useEffect(() => {
-    if (!bulkSectionPickerOpen) return;
-    bulkSectionPickerRef.current?.querySelector<HTMLButtonElement>("#bulk-section-picker button")?.focus();
-    const dismissOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      event.stopPropagation();
-      setBulkSectionPickerOpen(false);
-      requestAnimationFrame(() => bulkSectionTriggerRef.current?.focus());
-    };
-    const dismissOnOutsideMouseDown = (event: globalThis.MouseEvent) => {
-      if (bulkSectionPickerRef.current?.contains(event.target as Node) || bulkSectionTriggerRef.current?.contains(event.target as Node)) return;
-      setBulkSectionPickerOpen(false);
-      requestAnimationFrame(() => bulkSectionTriggerRef.current?.focus());
-    };
-    document.addEventListener("keydown", dismissOnEscape);
-    document.addEventListener("mousedown", dismissOnOutsideMouseDown);
-    return () => {
-      document.removeEventListener("keydown", dismissOnEscape);
-      document.removeEventListener("mousedown", dismissOnOutsideMouseDown);
-    };
-  }, [bulkSectionPickerOpen]);
-
-  useEffect(() => {
     if (draftTask) draftInputRef.current?.focus();
   }, [draftTask?.sectionId]);
 
@@ -1029,36 +1109,6 @@ export function App() {
     document.addEventListener("mousedown", dismissOnOutsideMouseDown);
     return () => document.removeEventListener("mousedown", dismissOnOutsideMouseDown);
   }, [calendarOpen]);
-
-  useEffect(() => {
-    if (!shortcutHelpOpen) return;
-    shortcutHelpRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
-    const dismissOnOutsideMouseDown = (event: globalThis.MouseEvent) => {
-      if (!shortcutHelpRef.current?.contains(event.target as Node)) setShortcutHelpOpen(false);
-    };
-    document.addEventListener("mousedown", dismissOnOutsideMouseDown);
-    return () => document.removeEventListener("mousedown", dismissOnOutsideMouseDown);
-  }, [shortcutHelpOpen]);
-
-  useEffect(() => {
-    if (!routineCandidate) return;
-    routineScopeChoiceRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
-    const dismissOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      setRoutineCandidate(null);
-    };
-    const dismissOnOutsideClick = (event: MouseEvent) => {
-      const choice = routineScopeChoiceRef.current;
-      if (choice && event.target instanceof Node && !choice.contains(event.target)) setRoutineCandidate(null);
-    };
-    document.addEventListener("keydown", dismissOnEscape);
-    document.addEventListener("click", dismissOnOutsideClick);
-    return () => {
-      document.removeEventListener("keydown", dismissOnEscape);
-      document.removeEventListener("click", dismissOnOutsideClick);
-    };
-  }, [routineCandidate]);
 
   function openCalendar() {
     if (!day || mutationLocked) return;
@@ -1166,6 +1216,8 @@ export function App() {
   }
 
   async function executeAddTask(operation: AddTaskToDayRequest) {
+    const mutationToken = beginMutationScope(placementMutationScope(operation.taskchute_day_id), "Task追加");
+    if (!mutationToken) return;
     setPending("task");
     setError(null);
     try {
@@ -1190,11 +1242,14 @@ export function App() {
         // Keep the original mutation outcome visible and preserve its logical identity.
       }
     } finally {
+      endMutationScope(mutationToken);
       setPending(null);
     }
   }
 
   async function executeDuplicate(operation: DuplicateEntryRequest) {
+    const mutationToken = beginMutationScope(placementMutationScope(operation.taskchute_day_id), "Task複製");
+    if (!mutationToken) return;
     setPending("duplicate");
     setError(null);
     try {
@@ -1216,11 +1271,14 @@ export function App() {
         }
       } catch { /* Keep the exact logical operation for retry. */ }
     } finally {
+      endMutationScope(mutationToken);
       setPending(null);
     }
   }
 
   async function executeBulkDelete(operation: BulkDeleteEntriesRequest) {
+    const mutationToken = beginMutationScope(placementMutationScope(operation.taskchute_day_id), "Bulk削除");
+    if (!mutationToken) return;
     setPending("bulk-delete");
     setBulkConfirmation(null);
     setError(null);
@@ -1254,11 +1312,14 @@ export function App() {
         // Preserve the exact logical operation for retry when reconciliation is unavailable.
       }
     } finally {
+      endMutationScope(mutationToken);
       setPending(null);
     }
   }
 
   async function executeBulkDateMove(operation: BulkMoveEntriesToDayRequest) {
+    const mutationToken = beginMutationScope(placementMutationScope(operation.source_taskchute_day_id), "Bulk日付変更");
+    if (!mutationToken) return;
     setPending("bulk-date-move");
     setBulkDateMoveConfirmation(null);
     setError(null);
@@ -1287,11 +1348,14 @@ export function App() {
         // Preserve the exact logical operation when reconciliation is unavailable.
       }
     } finally {
+      endMutationScope(mutationToken);
       setPending(null);
     }
   }
 
   async function executeBulkSectionChange(operation: BulkMoveEntriesToSectionRequest) {
+    const mutationToken = beginMutationScope(placementMutationScope(operation.taskchute_day_id), "Bulk Section変更");
+    if (!mutationToken) return;
     setPending("bulk-section");
     setBulkSectionPickerOpen(false);
     setError(null);
@@ -1323,11 +1387,14 @@ export function App() {
         // Preserve the exact logical operation for retry when reconciliation is unavailable.
       }
     } finally {
+      endMutationScope(mutationToken);
       setPending(null);
     }
   }
 
   async function executeBulkSectionOccurrenceChange(operation: BulkMoveEntriesToSectionOccurrenceRequest) {
+    const mutationToken = beginMutationScope(placementMutationScope(operation.taskchute_day_id), "Bulk Routine Section変更");
+    if (!mutationToken) return;
     setPending("bulk-section-occurrence");
     setBulkSectionConfirmation(null);
     setBulkSectionPickerOpen(false);
@@ -1362,11 +1429,14 @@ export function App() {
         // Preserve the exact logical operation for retry when reconciliation is unavailable.
       }
     } finally {
+      endMutationScope(mutationToken);
       setPending(null);
     }
   }
 
   async function executeBulkSectionScopedChange(operation: BulkMoveEntriesToSectionScopedRequest) {
+    const mutationToken = beginMutationScope(placementMutationScope(operation.taskchute_day_id), "RoutineごとのBulk Section変更");
+    if (!mutationToken) return;
     setPending("bulk-section-scoped");
     setBulkSectionConfirmation(null);
     setBulkSectionPickerOpen(false);
@@ -1398,11 +1468,17 @@ export function App() {
         // Preserve the exact scoped operation for retry when reconciliation is unavailable.
       }
     } finally {
+      endMutationScope(mutationToken);
       setPending(null);
     }
   }
 
   async function executeBulkEstimateChange(operation: BulkSetEntriesEstimateScopedRequest) {
+    const mutationToken = beginMutationScope(bulkEntryMutationScope(operation.entry_ids, operation.routine_scopes.map((scope) => {
+      const entry = entryForId(day, scope.entry_id);
+      return entry?.routine?.routine_definition_id ?? "";
+    }).filter(Boolean)), "Bulk見積変更");
+    if (!mutationToken) return;
     setPending("bulk-estimate");
     setBulkEstimateConfirmation(null);
     setError(null);
@@ -1437,6 +1513,7 @@ export function App() {
         // Preserve the exact logical operation for retry when reconciliation is unavailable.
       }
     } finally {
+      endMutationScope(mutationToken);
       setPending(null);
     }
   }
@@ -1463,7 +1540,7 @@ export function App() {
   }
 
   function openBulkConfirmation() {
-    if (!day || mutationLocked || !day.planning_enabled) return;
+    if (!day || mutationLocked || isMutationScopeBusy(placementMutationScope()) || !day.planning_enabled) return;
     const eligibleEntries = new Map(projectionEntries(day)
       .filter((entry) => isBulkSelectableProjectionEntry(day, entry))
       .map((entry) => [entry.id, entry]));
@@ -1521,7 +1598,7 @@ export function App() {
   }
 
   function openBulkDateMove(entryIds = selectedBulkEntries.map((entry) => entry.id)) {
-    if (!day || mutationLocked || entryIds.length === 0
+    if (!day || mutationLocked || isMutationScopeBusy(placementMutationScope()) || entryIds.length === 0
       || !entryIds.every((entryId) => projectionEntries(day).some((entry) => entry.id === entryId
         && isBulkSelectableProjectionEntry(day, entry)))) return;
     const sourceDate = day.taskchute_day.logical_date;
@@ -1537,7 +1614,7 @@ export function App() {
       || bulkDateMoveConfirmation.preview.establishment_state === "past_record_none"
       || bulkDateMoveConfirmation.previewLoading
       || (bulkDateMoveConfirmation.fallbackEntryIds.length > 0 && !bulkDateMoveConfirmation.fallbackAcknowledged)
-      || pending !== null || bulkDateMoveOperation !== null) return;
+      || isMutationScopeBusy(placementMutationScope()) || bulkDateMoveOperation !== null) return;
     const operation: BulkMoveEntriesToDayRequest = {
       operation_id: uuidv7(),
       source_taskchute_day_id: day.taskchute_day.id,
@@ -1551,13 +1628,14 @@ export function App() {
   }
 
   function openSingleDelete(entry: EntryProjection) {
-    if (!day?.planning_enabled || !isBulkSelectableProjectionEntry(day, entry) || mutationLocked) return;
+    if (!day?.planning_enabled || !isBulkSelectableProjectionEntry(day, entry) || mutationLocked
+      || isMutationScopeBusy(placementMutationScope())) return;
     setSelectedEntryIds([entry.id]);
     setBulkConfirmation({ entryIds: [entry.id], ordinaryCount: entry.routine === null ? 1 : 0, routineCount: entry.routine === null ? 0 : 1 });
   }
 
   function confirmBulkDelete() {
-    if (!day?.taskchute_day.id || !bulkConfirmation || pending !== null || bulkDeleteOperation !== null) return;
+    if (!day?.taskchute_day.id || !bulkConfirmation || isMutationScopeBusy(placementMutationScope()) || bulkDeleteOperation !== null) return;
     const operation: BulkDeleteEntriesRequest = {
       operation_id: uuidv7(),
       taskchute_day_id: day.taskchute_day.id,
@@ -1574,7 +1652,7 @@ export function App() {
   }
 
   function openBulkSectionPicker() {
-    if (!day || !day.planning_enabled || mutationLocked || selectedBulkEntries.length === 0
+    if (!day || !day.planning_enabled || mutationLocked || isMutationScopeBusy(placementMutationScope()) || selectedBulkEntries.length === 0
       || selectedBulkEntries.length !== selectedEntryIds.length
       || (selectedBulkEntries.some((entry) => entry.routine !== null) && !day.is_current)) return;
     setError(null);
@@ -1582,7 +1660,7 @@ export function App() {
   }
 
   function chooseBulkSection(sectionId: string | null) {
-    if (!day?.taskchute_day.id || mutationLocked || selectedBulkEntries.length === 0
+    if (!day?.taskchute_day.id || mutationLocked || isMutationScopeBusy(placementMutationScope()) || selectedBulkEntries.length === 0
       || selectedBulkEntries.length !== selectedEntryIds.length) return;
     const routineCount = selectedBulkEntries.filter((entry) => entry.routine !== null).length;
     if (routineCount > 0) {
@@ -1635,7 +1713,7 @@ export function App() {
   }
 
   function confirmBulkSectionScopedChange() {
-    if (!day?.taskchute_day.id || !bulkSectionConfirmation || pending !== null
+    if (!day?.taskchute_day.id || !bulkSectionConfirmation || isMutationScopeBusy(placementMutationScope())
       || bulkSectionScopedOperation !== null
       || bulkSectionConfirmation.routineScopes.some((item) => item.scope === null)) return;
     const routineScopes: BulkRoutineSectionScopeInput[] = bulkSectionConfirmation.routineScopes.map((item) => {
@@ -1657,7 +1735,7 @@ export function App() {
   }
 
   function openBulkEstimateConfirmation() {
-    if (!day || !day.planning_enabled || mutationLocked || selectedBulkEntries.length === 0
+    if (!day || !day.planning_enabled || mutationLocked || isMutationScopeBusy(bulkEntryMutationScope(selectedBulkEntries.map((entry) => entry.id))) || selectedBulkEntries.length === 0
       || selectedBulkEntries.length !== selectedEntryIds.length
       || (selectedBulkEntries.some((entry) => entry.routine !== null) && !day.is_current)) return;
     setError(null);
@@ -1689,7 +1767,7 @@ export function App() {
   }
 
   function confirmBulkEstimateChange() {
-    if (!day?.taskchute_day.id || !bulkEstimateConfirmation || pending !== null || bulkEstimateOperation !== null
+    if (!day?.taskchute_day.id || !bulkEstimateConfirmation || isMutationScopeBusy(bulkEntryMutationScope(bulkEstimateConfirmation.entryIds)) || bulkEstimateOperation !== null
       || bulkEstimateConfirmation.routineScopes.some((item) => item.scope === null)) return;
     const trimmedMinutes = bulkEstimateConfirmation.estimateMinutes.trim();
     let estimateSeconds: number | null = null;
@@ -1717,7 +1795,8 @@ export function App() {
 
   function duplicate(entry: EntryProjection) {
     const eligibleCompleted = day?.is_current && entry.lifecycle_state === "completed";
-    if (!day?.taskchute_day.id || !day.planning_enabled || (!eligibleCompleted && entry.lifecycle_state !== "planned") || mutationLocked) return;
+    if (!day?.taskchute_day.id || !day.planning_enabled || (!eligibleCompleted && entry.lifecycle_state !== "planned") || mutationLocked
+      || isMutationScopeBusy(placementMutationScope())) return;
     const operation: DuplicateEntryRequest = {
       operation_id: uuidv7(), source_entry_id: entry.id, new_task_id: uuidv7(), new_entry_id: uuidv7(),
       taskchute_day_id: day.taskchute_day.id, expected_placement_revision: day.placement_revision,
@@ -1728,7 +1807,7 @@ export function App() {
 
   async function commitDraft(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!day || !draftTask || mutationLocked || !day.planning_enabled) return;
+    if (!day || !draftTask || mutationLocked || isMutationScopeBusy(placementMutationScope()) || !day.planning_enabled) return;
     const title = draftTask.title.trim();
     if (!title) return;
     const targetingNonCurrentDay = !day.is_current;
@@ -1763,6 +1842,8 @@ export function App() {
   }
 
   async function executeReorder(operation: ReorderEntriesRequest) {
+    const mutationToken = beginMutationScope(placementMutationScope(operation.taskchute_day_id), "並び替え");
+    if (!mutationToken) return;
     setPending("reorder");
     setError(null);
     try {
@@ -1783,12 +1864,13 @@ export function App() {
         }
       } catch { /* Preserve the logical operation. */ }
     } finally {
+      endMutationScope(mutationToken);
       setPending(null);
     }
   }
 
   async function reorderSectionEntries(sectionId: string | null, entryIds: string[], focusEntryId: string) {
-    if (!day?.taskchute_day.id || !day.planning_enabled || mutationLocked) return;
+    if (!day?.taskchute_day.id || !day.planning_enabled || mutationLocked || isMutationScopeBusy(placementMutationScope())) return;
     const entries = sectionId === null ? day.unsectioned_entries : day.sections.find((candidate) => candidate.id === sectionId)?.entries;
     const canonicalIds = entries?.map((entry) => entry.id);
     if (!entries || entryIds.length !== entries.length || new Set(entryIds).size !== entries.length
@@ -1806,7 +1888,7 @@ export function App() {
   }
 
   async function moveEntry(sectionId: string | null, entryId: string, delta: -1 | 1) {
-    if (!day?.taskchute_day.id || !day.planning_enabled || mutationLocked) return;
+    if (!day?.taskchute_day.id || !day.planning_enabled || mutationLocked || isMutationScopeBusy(placementMutationScope())) return;
     const entries = sectionId === null ? day.unsectioned_entries : day.sections.find((candidate) => candidate.id === sectionId)?.entries;
     if (!entries || !canMoveEntry(entries, entryId, delta)) return;
     const ids = entries.map((candidate) => candidate.id);
@@ -1823,7 +1905,8 @@ export function App() {
   }
 
   function dragOrder(sectionId: string | null, targetEntryId: string, edge: DragEdge): string[] | null {
-    if (!entryDrag || entryDrag.sectionId !== sectionId || !day?.taskchute_day.id || !day.planning_enabled || mutationLocked) return null;
+    if (!entryDrag || entryDrag.sectionId !== sectionId || !day?.taskchute_day.id || !day.planning_enabled || mutationLocked
+      || isMutationScopeBusy(placementMutationScope())) return null;
     const entries = sectionId === null ? day.unsectioned_entries : day.sections.find((candidate) => candidate.id === sectionId)?.entries;
     return entries ? buildDraggedEntryOrder(entries, sectionId, entryDrag.entryId, targetEntryId, edge) : null;
   }
@@ -1837,6 +1920,7 @@ export function App() {
   function canDropOnSection(sectionId: string | null, drag: Pick<EntryDragState, "entryId" | "sectionId"> | null = entryDrag): boolean {
     const entry = draggedEntry(drag);
     if (!drag || !entry || !day?.taskchute_day.id || !day.planning_enabled || mutationLocked
+      || isMutationScopeBusy(placementMutationScope())
       || entry.lifecycle_state !== "planned" || entry.routine !== null || entry.section_id === sectionId) return false;
     return sectionId === null || day.sections.some((section) => section.id === sectionId);
   }
@@ -1856,7 +1940,7 @@ export function App() {
 
   function startEntryMouseDrag(event: ReactMouseEvent<HTMLElement>, sectionId: string | null, entry: EntryProjection) {
     if (event.button !== 0 || isInteractiveDragTarget(event.target) || !day?.taskchute_day.id || !day.planning_enabled
-      || mutationLocked || entry.lifecycle_state !== "planned") return;
+      || mutationLocked || isMutationScopeBusy(placementMutationScope()) || entry.lifecycle_state !== "planned") return;
     mouseDragRef.current = { entryId: entry.id, sectionId, startX: event.clientX, startY: event.clientY, active: false };
   }
 
@@ -1889,6 +1973,7 @@ export function App() {
     const edge: DragEdge = event.clientY < bounds.top + bounds.height / 2 ? "before" : "after";
     const entries = drag.sectionId === null ? day?.unsectioned_entries : day?.sections.find((candidate) => candidate.id === drag.sectionId)?.entries;
     const order = drag.sectionId === sectionId && entries && day?.taskchute_day.id && day.planning_enabled && !mutationLocked
+      && !isMutationScopeBusy(placementMutationScope())
       ? buildDraggedEntryOrder(entries, drag.sectionId, drag.entryId, targetEntryId, edge)
       : null;
     mouseDragRef.current = null;
@@ -1897,7 +1982,8 @@ export function App() {
   }
 
   function startEntryDrag(event: ReactDragEvent<HTMLElement>, sectionId: string | null, entry: EntryProjection) {
-    if (isInteractiveDragTarget(event.target) || !day?.taskchute_day.id || !day.planning_enabled || mutationLocked || entry.lifecycle_state !== "planned") {
+    if (isInteractiveDragTarget(event.target) || !day?.taskchute_day.id || !day.planning_enabled || mutationLocked
+      || isMutationScopeBusy(placementMutationScope()) || entry.lifecycle_state !== "planned") {
       event.preventDefault();
       return;
     }
@@ -1980,6 +2066,8 @@ export function App() {
   }
 
   async function executeStart(operation: StartEntryRequest) {
+    const mutationToken = beginMutationScope(executionMutationScope(operation.entry_id), "Start");
+    if (!mutationToken) return;
     setPending("start");
     setError(null);
     try {
@@ -1998,12 +2086,22 @@ export function App() {
         }
       } catch { /* Preserve the logical operation. */ }
     } finally {
+      endMutationScope(mutationToken);
       setPending(null);
     }
   }
 
   async function start(entryId: string) {
     if (!day || !day.is_current || mutationLocked) return;
+    if (hasActiveMutationScope(["execution-lane"])) {
+      if (completeOperation && !queuedStartEntriesRef.current.includes(entryId)) {
+        queuedStartEntriesRef.current = [...queuedStartEntriesRef.current, entryId];
+        setQueuedMutationCount(queuedStartEntriesRef.current.length);
+        setError(null);
+      }
+      return;
+    }
+    if (isMutationScopeBusy(["execution-lane"])) return;
     const entry = [...day.unsectioned_entries, ...day.sections.flatMap((section) => section.entries)]
       .find((candidate) => candidate.id === entryId);
     if (!entry) return;
@@ -2013,13 +2111,45 @@ export function App() {
     await executeStart(operation);
   }
 
+  async function drainQueuedStarts() {
+    if (drainingQueuedStartsRef.current || queuedStartEntriesRef.current.length === 0) return;
+    drainingQueuedStartsRef.current = true;
+    try {
+      const entryId = queuedStartEntriesRef.current.shift();
+      setQueuedMutationCount(queuedStartEntriesRef.current.length);
+      if (!entryId) return;
+      const projection = await reconcile();
+      const entry = entryForId(projection, entryId);
+      if (!projection || !entry || entry.lifecycle_state !== "planned" || projection.active_execution !== null) {
+        queuedStartEntriesRef.current = [];
+        setQueuedMutationCount(0);
+        setError("完了後に開始するTaskの前提条件が変わったため、キューを破棄しました。対象Taskを確認して再度開始してください。");
+        return;
+      }
+      const operation: StartEntryRequest = { operation_id: uuidv7(), entry_id: entry.id, execution_id: uuidv7(),
+        ...(entry.section_id === null ? { expected_placement_revision: projection.placement_revision } : {}) };
+      setStartOperation(operation);
+      await executeStart(operation);
+    } catch (caught) {
+      queuedStartEntriesRef.current = [];
+      setQueuedMutationCount(0);
+      setError(caught instanceof Error ? caught.message : "キューに入ったStartの再開に失敗しました");
+    } finally {
+      drainingQueuedStartsRef.current = false;
+    }
+  }
+
   async function executeComplete(operation: CompleteEntryRequest) {
+    const mutationToken = beginMutationScope(executionMutationScope(operation.entry_id), "Complete");
+    if (!mutationToken) return;
+    let completed = false;
     setPending("complete");
     setError(null);
     try {
       await api.completeEntry(operation);
       await reconcile();
       setCompleteOperation(null);
+      completed = true;
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "完了に失敗しました");
       const ambiguous = isAmbiguousOutcome(caught);
@@ -2034,12 +2164,19 @@ export function App() {
         }
       } catch { /* Preserve the logical operation. */ }
     } finally {
+      endMutationScope(mutationToken);
       setPending(null);
+      if (completed) void drainQueuedStarts();
+      else if (queuedStartEntriesRef.current.length > 0) {
+        queuedStartEntriesRef.current = [];
+        setQueuedMutationCount(0);
+      }
     }
   }
 
   async function complete(entryId: string) {
-    if (!day?.active_execution || day.active_execution.entry_id !== entryId || mutationLocked) return;
+    if (!day?.active_execution || day.active_execution.entry_id !== entryId || mutationLocked
+      || isMutationScopeBusy(["execution-lane"])) return;
     const operation = { operation_id: uuidv7(), entry_id: entryId, execution_id: day.active_execution.id };
     setCompleteOperation(operation);
     await executeComplete(operation);
@@ -2055,7 +2192,7 @@ export function App() {
   }
 
   function openTaskMetadataEditor(entry: EntryProjection) {
-    if (!canEditTaskMetadata(entry) || mutationLocked) return;
+    if (!canEditTaskMetadata(entry) || mutationLocked || isMutationScopeBusy(entryMutationScope(entry.id, entry.task.id))) return;
     beginInlineEditor(`task-metadata:${entry.id}`);
     setError(null);
     setTaskMetadataDraft({ entryId: entry.id, taskId: entry.task.id, expectedTitle: entry.task.title,
@@ -2068,33 +2205,51 @@ export function App() {
   }
 
   async function executeTaskMetadata(operation: UpdateTaskMetadataRequest) {
+    const mutationToken = beginMutationScope(entryMutationScope(operation.entry_id, operation.task_id), "Task情報保存");
+    if (!mutationToken) return;
     setPending("task-metadata");
     setError(null);
     try {
       await api.updateTaskMetadata(operation);
       await reconcile();
-      setTaskMetadataOperation(null);
+      clearTaskMetadataOperationIfCurrent(operation.operation_id);
+      releaseTaskMetadataOperation(operation.operation_id);
+      setPendingTaskMetadataOverlays((current) => current[operation.entry_id]?.operation_id === operation.operation_id
+        ? Object.fromEntries(Object.entries(current).filter(([entryId]) => entryId !== operation.entry_id))
+        : current);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Task情報の保存に失敗しました");
       const ambiguous = isAmbiguousOutcome(caught);
-      if (!ambiguous) setTaskMetadataOperation(null);
+      if (ambiguous) retainTaskMetadataOperation(operation);
+      if (!ambiguous) {
+        clearTaskMetadataOperationIfCurrent(operation.operation_id);
+        releaseTaskMetadataOperation(operation.operation_id);
+        setPendingTaskMetadataOverlays((current) => current[operation.entry_id]?.operation_id === operation.operation_id
+          ? Object.fromEntries(Object.entries(current).filter(([entryId]) => entryId !== operation.entry_id))
+          : current);
+      }
       try {
         const projection = await reconcile();
         const canonical = entryForId(projection, operation.entry_id);
         if (ambiguous && canonical && canonical.task.id === operation.task_id
           && canonical.task.title === operation.title && (canonical.task.project?.id ?? null) === operation.project_id) {
-          setTaskMetadataOperation(null);
+          clearTaskMetadataOperationIfCurrent(operation.operation_id);
+          releaseTaskMetadataOperation(operation.operation_id);
+          setPendingTaskMetadataOverlays((current) => current[operation.entry_id]?.operation_id === operation.operation_id
+            ? Object.fromEntries(Object.entries(current).filter(([entryId]) => entryId !== operation.entry_id))
+            : current);
           setError(null);
         }
       } catch { /* Preserve the exact operation for retry when reconciliation is unavailable. */ }
     } finally {
+      endMutationScope(mutationToken);
       setPending(null);
     }
   }
 
   function commitTaskMetadata(entry: EntryProjection, nextProjectId = taskMetadataDraft?.projectId ?? null) {
     const draft = taskMetadataDraft;
-    if (!day || !draft || draft.entryId !== entry.id || pending !== null || retainedOperation !== null) return;
+    if (!day || !draft || draft.entryId !== entry.id || isMutationScopeBusy(entryMutationScope(entry.id, entry.task.id))) return;
     const title = draft.title.trim();
     if (!title) {
       setError("Task名は空欄にできません");
@@ -2115,12 +2270,13 @@ export function App() {
       title, project_id: nextProjectId,
     };
     setTaskMetadataDraft(null);
+    setPendingTaskMetadataOverlays((current) => ({ ...current, [operation.entry_id]: operation }));
     setTaskMetadataOperation(operation);
     void executeTaskMetadata(operation);
   }
 
   function commitProjectMetadata(entry: EntryProjection, nextProjectId: string | null) {
-    if (!day || !canEditTaskMetadata(entry) || pending !== null || retainedOperation !== null
+    if (!day || !canEditTaskMetadata(entry) || isMutationScopeBusy(entryMutationScope(entry.id, entry.task.id))
       || (entry.task.project?.id ?? null) === nextProjectId) return;
     const operation: UpdateTaskMetadataRequest = {
       operation_id: uuidv7(), entry_id: entry.id, task_id: entry.task.id,
@@ -2128,6 +2284,7 @@ export function App() {
       title: entry.task.title, project_id: nextProjectId,
     };
     setError(null);
+    setPendingTaskMetadataOverlays((current) => ({ ...current, [operation.entry_id]: operation }));
     setTaskMetadataOperation(operation);
     void executeTaskMetadata(operation);
   }
@@ -2151,7 +2308,7 @@ export function App() {
   }
 
   function openExecutionTimesEditor(entry: EntryProjection, activeField: "start" | "end") {
-    if (!day || !canEditExecutionTimes(entry) || mutationLocked) return;
+    if (!day || !canEditExecutionTimes(entry) || mutationLocked || isMutationScopeBusy(executionMutationScope(entry.id))) return;
     const timezone = day.taskchute_day.establishment_timezone;
     if (!timezone) return;
     const summary = entry.execution_summary;
@@ -2193,16 +2350,24 @@ export function App() {
   }
 
   async function executeExecutionTimes(operation: SetExecutionTimesRequest) {
+    const mutationToken = beginMutationScope(executionMutationScope(operation.entry_id), "実績時刻保存");
+    if (!mutationToken) return;
     setPending("execution-times");
     setError(null);
     try {
       await api.setExecutionTimes(operation);
       await reconcile();
       setExecutionTimesOperation(null);
+      setPendingExecutionTimesOverlays((current) => current[operation.entry_id]?.operation_id === operation.operation_id
+        ? Object.fromEntries(Object.entries(current).filter(([entryId]) => entryId !== operation.entry_id)) : current);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "実績時刻の保存に失敗しました");
       const ambiguous = isAmbiguousOutcome(caught);
-      if (!ambiguous) setExecutionTimesOperation(null);
+      if (!ambiguous) {
+        setExecutionTimesOperation(null);
+        setPendingExecutionTimesOverlays((current) => current[operation.entry_id]?.operation_id === operation.operation_id
+          ? Object.fromEntries(Object.entries(current).filter(([entryId]) => entryId !== operation.entry_id)) : current);
+      }
       try {
         const projection = await reconcile();
         const canonical = entryForId(projection, operation.entry_id);
@@ -2212,17 +2377,20 @@ export function App() {
           && expectedStarted === operation.started_at
           && (operation.ended_at === null ? summary?.active_started_at !== null : summary?.last_ended_at === operation.ended_at)) {
           setExecutionTimesOperation(null);
+          setPendingExecutionTimesOverlays((current) => current[operation.entry_id]?.operation_id === operation.operation_id
+            ? Object.fromEntries(Object.entries(current).filter(([entryId]) => entryId !== operation.entry_id)) : current);
           setError(null);
         }
       } catch { /* Preserve the exact operation for retry. */ }
     } finally {
+      endMutationScope(mutationToken);
       setPending(null);
     }
   }
 
   function commitExecutionTimes(entry: EntryProjection) {
     const draft = executionTimesDraft;
-    if (!day || !draft || draft.entryId !== entry.id || pending !== null || retainedOperation !== null) return;
+    if (!day || !draft || draft.entryId !== entry.id || isMutationScopeBusy(executionMutationScope(entry.id))) return;
     if (!draft.executionId) {
       setExecutionEditorError("補正対象のExecutionを選択してください");
       return;
@@ -2271,6 +2439,7 @@ export function App() {
     };
     setExecutionEditorError(null);
     setExecutionTimesDraft(null);
+    setPendingExecutionTimesOverlays((current) => ({ ...current, [operation.entry_id]: operation }));
     setExecutionTimesOperation(operation);
     void executeExecutionTimes(operation);
   }
@@ -2427,6 +2596,8 @@ export function App() {
   }
 
   async function executeSectionMove(operation: MoveEntryRequest) {
+    const mutationToken = beginMutationScope(placementMutationScope(operation.taskchute_day_id), "Section移動");
+    if (!mutationToken) return;
     setPending("move"); setError(null);
     try {
       await api.moveEntry(operation);
@@ -2452,13 +2623,14 @@ export function App() {
           setPendingFocusKey(focusKey(collapsed ? { kind: "section", id: groupKey(operation.section_id) } : { kind: "entry", id: operation.entry_id }));
         }
       } catch { /* Preserve retained operation. */ }
-    } finally { setPending(null); }
+    } finally { endMutationScope(mutationToken); setPending(null); }
   }
 
   async function moveEntryToSection(entryId: string, sectionId: string | null) {
     const entry = [...(day?.unsectioned_entries ?? []), ...(day?.sections.flatMap((section) => section.entries) ?? [])]
       .find((candidate) => candidate.id === entryId);
-    if (!entry || !day?.taskchute_day.id || !day.planning_enabled || mutationLocked || entry.lifecycle_state !== "planned" || entry.routine !== null
+    if (!entry || !day?.taskchute_day.id || !day.planning_enabled || mutationLocked || isMutationScopeBusy(placementMutationScope())
+      || entry.lifecycle_state !== "planned" || entry.routine !== null
       || entry.section_id === sectionId) return;
     setEditingPlannedStart((editing) => editing?.entryId === entry.id ? null : editing);
     const operation: MoveEntryRequest = { operation_id: uuidv7(), entry_id: entry.id,
@@ -2471,26 +2643,39 @@ export function App() {
   }
 
   async function executeEstimate(operation: SetEntryEstimateRequest) {
+    const mutationToken = beginMutationScope(entryMutationScope(operation.entry_id), "見積保存");
+    if (!mutationToken) return;
     setPending("estimate"); setError(null);
-    try { await api.setEntryEstimate(operation); await reconcile(); setEstimateOperation(null); setEditingEstimate(null); }
+    try {
+      await api.setEntryEstimate(operation); await reconcile(); setEstimateOperation(null); setEditingEstimate(null);
+      setPendingEstimateOverlays((current) => current[operation.entry_id]?.operation_id === operation.operation_id
+        ? Object.fromEntries(Object.entries(current).filter(([entryId]) => entryId !== operation.entry_id)) : current);
+    }
     catch (caught) {
       setError(caught instanceof Error ? caught.message : "見積の保存に失敗しました");
       const ambiguous = isAmbiguousOutcome(caught);
-      if (!ambiguous) setEstimateOperation(null);
+      if (!ambiguous) {
+        setEstimateOperation(null);
+        setPendingEstimateOverlays((current) => current[operation.entry_id]?.operation_id === operation.operation_id
+          ? Object.fromEntries(Object.entries(current).filter(([entryId]) => entryId !== operation.entry_id)) : current);
+      }
       try { const projection = await reconcile();
         const canonical = [...(projection?.unsectioned_entries ?? []), ...(projection?.sections.flatMap((section) => section.entries) ?? [])]
           .find((entry) => entry.id === operation.entry_id);
         if (ambiguous && canonical?.estimate_seconds === operation.estimate_seconds) {
           setEstimateOperation(null); setEditingEstimate(null); setError(null);
+          setPendingEstimateOverlays((current) => current[operation.entry_id]?.operation_id === operation.operation_id
+            ? Object.fromEntries(Object.entries(current).filter(([entryId]) => entryId !== operation.entry_id)) : current);
         }
       } catch { /* Preserve retained operation. */ }
-    } finally { setPending(null); }
+    } finally { endMutationScope(mutationToken); setPending(null); }
   }
 
   async function commitEstimate(entryId: string) {
     const canonical = day ? [...day.unsectioned_entries, ...day.sections.flatMap((section) => section.entries)]
       .find((entry) => entry.id === entryId) : undefined;
-    if (!day?.planning_enabled || mutationLocked || editingEstimate?.entryId !== entryId || !canonical) return;
+    if (!day?.planning_enabled || mutationLocked || isMutationScopeBusy(entryMutationScope(entryId))
+      || editingEstimate?.entryId !== entryId || !canonical) return;
     const raw = editingEstimate.minutes.trim();
     const minutes = raw === "" ? 0 : Number(raw);
     if (!Number.isInteger(minutes) || minutes < 0 || !Number.isSafeInteger(minutes * 60)) {
@@ -2508,20 +2693,29 @@ export function App() {
       return;
     }
     const operation: SetEntryEstimateRequest = { operation_id: uuidv7(), entry_id: entryId, estimate_seconds: estimateSeconds };
+    setPendingEstimateOverlays((current) => ({ ...current, [operation.entry_id]: operation }));
     setEstimateOperation(operation); await executeEstimate(operation);
   }
 
   async function executePlannedStart(operation: PlannedStartOperation) {
+    const mutationToken = beginMutationScope(placementMutationScope(operation.request.taskchute_day_id), "開始予定保存");
+    if (!mutationToken) return;
     setPending("planned-start"); setError(null);
     try {
       await api.setEntryPlannedStart(operation.request);
       await reconcile();
       setPlannedStartOperation(null);
       setEditingPlannedStart(null);
+      setPendingPlannedStartOverlays((current) => current[operation.request.entry_id]?.request.operation_id === operation.request.operation_id
+        ? Object.fromEntries(Object.entries(current).filter(([entryId]) => entryId !== operation.request.entry_id)) : current);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "開始予定の保存に失敗しました");
       const ambiguous = isAmbiguousOutcome(caught);
-      if (!ambiguous) setPlannedStartOperation(null);
+      if (!ambiguous) {
+        setPlannedStartOperation(null);
+        setPendingPlannedStartOverlays((current) => current[operation.request.entry_id]?.request.operation_id === operation.request.operation_id
+          ? Object.fromEntries(Object.entries(current).filter(([entryId]) => entryId !== operation.request.entry_id)) : current);
+      }
       try {
         const projection = await reconcile();
         const canonical = [...(projection?.unsectioned_entries ?? []), ...(projection?.sections.flatMap((section) => section.entries) ?? [])]
@@ -2530,16 +2724,19 @@ export function App() {
           && canonical.section_id === operation.expectedSectionId
           && projection?.placement_revision === operation.request.expected_placement_revision + 1) {
           setPlannedStartOperation(null); setEditingPlannedStart(null); setError(null);
+          setPendingPlannedStartOverlays((current) => current[operation.request.entry_id]?.request.operation_id === operation.request.operation_id
+            ? Object.fromEntries(Object.entries(current).filter(([entryId]) => entryId !== operation.request.entry_id)) : current);
         }
       } catch { /* Preserve retained operation. */ }
-    } finally { setPending(null); }
+    } finally { endMutationScope(mutationToken); setPending(null); }
   }
 
   async function commitPlannedStart(entry: EntryProjection) {
     const canonical = day ? [...day.unsectioned_entries, ...day.sections.flatMap((section) => section.entries)]
       .find((candidate) => candidate.id === entry.id) : undefined;
     if (!day?.taskchute_day.id || !day.planning_enabled || day.taskchute_day.establishment_boundary_minutes === null
-      || mutationLocked || editingPlannedStart?.entryId !== entry.id || !canonical) return;
+      || mutationLocked || isMutationScopeBusy(placementMutationScope())
+      || editingPlannedStart?.entryId !== entry.id || !canonical) return;
     const plannedStartMinute = parsePlannedStart(
       editingPlannedStart.value,
       day.taskchute_day.establishment_boundary_minutes,
@@ -2572,12 +2769,14 @@ export function App() {
         planned_start_minute: plannedStartMinute, expected_placement_revision: day.placement_revision },
       expectedSectionId,
     };
+    setPendingPlannedStartOverlays((current) => ({ ...current, [operation.request.entry_id]: operation }));
     setPlannedStartOperation(operation);
     await executePlannedStart(operation);
   }
 
   function changeRoutineSectionCandidate(entry: EntryProjection, sectionId: string | null) {
-    if (!entry.routine || !day?.is_current || !day.planning_enabled || entry.lifecycle_state !== "planned" || mutationLocked) return;
+    if (!entry.routine || !day?.is_current || !day.planning_enabled || entry.lifecycle_state !== "planned" || mutationLocked
+      || isMutationScopeBusy(routineMutationScope(entry.id, entry.routine.routine_definition_id))) return;
     const plannedStartMinute = sectionId === null ? null
       : day.sections.find((section) => section.id === sectionId)?.logical_start_minute;
     if (plannedStartMinute === undefined || (sectionId !== null && plannedStartMinute === null)) {
@@ -2588,6 +2787,9 @@ export function App() {
   }
 
   async function executeRoutineEstimate(operation: SetRoutineEstimateRequest) {
+    const entry = entryForId(day, operation.entry_id);
+    const mutationToken = beginMutationScope(routineMutationScope(operation.entry_id, entry?.routine?.routine_definition_id), "Routine見積保存");
+    if (!mutationToken) return;
     setPending("routine-edit"); setError(null);
     try {
       await api.setRoutineEstimate(operation);
@@ -2607,10 +2809,13 @@ export function App() {
           setRoutineEstimateOperation(null); setRoutineCandidate(null); setError(null);
         }
       } catch { /* Preserve exact retained operation. */ }
-    } finally { setPending(null); }
+    } finally { endMutationScope(mutationToken); setPending(null); }
   }
 
   async function executeRoutineSectionPlan(operation: SetRoutineSectionPlanRequest) {
+    const entry = entryForId(day, operation.entry_id);
+    const mutationToken = beginMutationScope([...placementMutationScope(operation.taskchute_day_id), ...routineMutationScope(operation.entry_id, entry?.routine?.routine_definition_id)], "Routine配置保存");
+    if (!mutationToken) return;
     setPending("routine-edit"); setError(null);
     try {
       await api.setRoutineSectionPlan(operation);
@@ -2632,11 +2837,12 @@ export function App() {
           setRoutineSectionPlanOperation(null); setRoutineCandidate(null); setError(null);
         }
       } catch { /* Preserve exact retained operation. */ }
-    } finally { setPending(null); }
+    } finally { endMutationScope(mutationToken); setPending(null); }
   }
 
   async function commitRoutineCandidate(entry: EntryProjection, action: "occurrence" | "definition") {
-    if (!day?.taskchute_day.id || !entry.routine || routineCandidate?.entryId !== entry.id || mutationLocked) return;
+    if (!day?.taskchute_day.id || !entry.routine || routineCandidate?.entryId !== entry.id || mutationLocked
+      || isMutationScopeBusy(routineMutationScope(entry.id, entry.routine.routine_definition_id))) return;
     if (routineCandidate.unit === "estimate") {
       const operation: SetRoutineEstimateRequest = action === "occurrence"
         ? { operation_id: uuidv7(), entry_id: entry.id, taskchute_day_id: day.taskchute_day.id,
@@ -2661,7 +2867,8 @@ export function App() {
   }
 
   async function resetRoutineUnit(entry: EntryProjection, unit: "estimate" | "section-plan") {
-    if (!day?.taskchute_day.id || !entry.routine || mutationLocked) return;
+    if (!day?.taskchute_day.id || !entry.routine || mutationLocked
+      || isMutationScopeBusy(routineMutationScope(entry.id, entry.routine.routine_definition_id))) return;
     if (unit === "estimate") {
       const operation: SetRoutineEstimateRequest = { operation_id: uuidv7(), entry_id: entry.id,
         taskchute_day_id: day.taskchute_day.id, action: "reset" };
@@ -2674,6 +2881,8 @@ export function App() {
   }
 
   async function executeRoutineConversion(operation: ConvertEntryToRoutineRequest) {
+    const mutationToken = beginMutationScope([...placementMutationScope(operation.taskchute_day_id), `entry:${operation.entry_id}`, `routine:${operation.routine_definition_id}`], "Routine化");
+    if (!mutationToken) return;
     setPending("routine-convert"); setError(null);
     try {
       await api.convertEntryToRoutine(operation);
@@ -2695,7 +2904,7 @@ export function App() {
           setEditingPlannedStart((editing) => editing?.entryId === operation.entry_id ? null : editing);
         }
       } catch { /* Preserve retained operation identity. */ }
-    } finally { setPending(null); }
+    } finally { endMutationScope(mutationToken); setPending(null); }
   }
 
   async function commitRoutineConversion(entry: EntryProjection) {
@@ -2714,6 +2923,8 @@ export function App() {
   }
 
   async function executeRoutineEnd(operation: EndRoutineRequest) {
+    const mutationToken = beginMutationScope([`routine:${operation.routine_definition_id}`], "Routine終了");
+    if (!mutationToken) return;
     setPending("routine-end"); setError(null);
     try {
       await api.endRoutine(operation);
@@ -2731,7 +2942,7 @@ export function App() {
           setRoutineEndOperation(null); setError(null);
         }
       } catch { /* Preserve retained operation identity. */ }
-    } finally { setPending(null); }
+    } finally { endMutationScope(mutationToken); setPending(null); }
   }
 
   if (authState === "loading") return <main className="shell"><p role="status">読み込み中…</p></main>;
@@ -2769,7 +2980,13 @@ export function App() {
     forecastNowInstant ?? currentDay.projection_generated_at,
   );
   const parsedSectionSettingsDraft = parseSectionSettingsDraft(sectionSettingsDraft);
-  const transientStatus = transientStatusText(pending);
+  const transientStatus = pendingMutationCount + queuedMutationCount > 1
+    ? `保存中…（${pendingMutationCount + queuedMutationCount}件）`
+    : queuedMutationCount > 0
+      ? "完了後のStartを待機中…"
+      : pendingMutationCount > 0
+        ? transientStatusText(pending) ?? "保存中…"
+        : transientStatusText(pending);
   const groups = [
     ...(currentDay.unsectioned_entries.length > 0 || draftTask?.sectionId === null ? [{
       id: null, title: "Sectionなし", logical_start_minute: null, logical_end_minute: null,
@@ -2836,8 +3053,78 @@ export function App() {
     }
   }
 
+  function rowTabStops(row: HTMLElement): HTMLElement[] {
+    return Array.from(row.querySelectorAll<HTMLElement>(
+      "button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [href], [tabindex]",
+    )).filter((element) => element.tabIndex >= 0
+      && !element.hasAttribute("aria-hidden")
+      && !element.closest(".bulk-slot, .execution-cell")
+      && !element.hasAttribute("data-tab-skip"));
+  }
+
+  function focusInlineTabDestination(row: HTMLElement, originCell: HTMLElement, backwards: boolean): void {
+    const originIndex = Array.from(row.children).indexOf(originCell);
+    requestAnimationFrame(() => {
+      const currentRow = row.isConnected ? row : null;
+      if (!currentRow) return;
+      if (originCell.isConnected && originCell.querySelector("input[data-inline-navigation]")) return;
+      const stops = rowTabStops(currentRow);
+      const candidates = stops.filter((stop) => {
+        const cell = stop.closest<HTMLElement>("[data-day-column-cell], .task-main");
+        const cellIndex = cell ? Array.from(currentRow.children).indexOf(cell) : -1;
+        return backwards ? cellIndex >= 0 && cellIndex < originIndex : cellIndex > originIndex;
+      });
+      const destination = backwards ? candidates.at(-1) : candidates[0];
+      if (destination) {
+        destination.focus();
+        return;
+      }
+      const rows = Array.from(currentRow.closest<HTMLElement>(".day-surface")?.querySelectorAll<HTMLElement>("[data-entry-id]") ?? []);
+      const rowIndex = rows.indexOf(currentRow);
+      const adjacentRow = rows[rowIndex + (backwards ? -1 : 1)];
+      if (!adjacentRow) return;
+      const adjacentStops = rowTabStops(adjacentRow);
+      (backwards ? adjacentStops.at(-1) : adjacentStops[0])?.focus();
+    });
+  }
+
+  function handleTaskRowKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    if (event.key !== "Tab" || event.nativeEvent.isComposing || decisionModalOpen) return;
+    const row = event.currentTarget;
+    const stops = rowTabStops(row);
+    const target = event.target instanceof HTMLElement ? event.target : document.activeElement;
+    const currentIndex = stops.findIndex((stop) => stop === target || stop.contains(target));
+    if (currentIndex < 0) {
+      const firstOrLast = event.shiftKey ? stops.at(-1) : stops[0];
+      if (firstOrLast) {
+        event.preventDefault();
+        firstOrLast.focus();
+      }
+      return;
+    }
+    const nextIndex = event.shiftKey ? currentIndex - 1 : currentIndex + 1;
+    if (currentIndex >= 0 && nextIndex >= 0 && nextIndex < stops.length) {
+      event.preventDefault();
+      stops[nextIndex]?.focus();
+      return;
+    }
+    const rows = Array.from(row.closest<HTMLElement>(".day-surface")?.querySelectorAll<HTMLElement>("[data-entry-id]") ?? []);
+    const rowIndex = rows.indexOf(row);
+    const adjacentRow = rows[rowIndex + (event.shiftKey ? -1 : 1)];
+    if (adjacentRow) {
+      const adjacentStops = rowTabStops(adjacentRow);
+      const next = event.shiftKey ? adjacentStops.at(-1) : adjacentStops[0];
+      if (next) {
+        event.preventDefault();
+        next.focus();
+      }
+      return;
+    }
+  }
+
   function handleDayKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
     if (event.defaultPrevented || event.nativeEvent.isComposing || isTextEditingTarget(event.target)) return;
+    if (decisionModalOpen) return;
     if (shortcutHelpOpen) {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -2871,6 +3158,14 @@ export function App() {
       if (key === "n") openDraft(activeEntry.section_id);
       else if (key === "e") openTaskMetadataEditor(activeEntry);
       else openSingleDelete(activeEntry);
+      return;
+    }
+
+    if (key === "x" && !event.repeat && !event.ctrlKey && !event.altKey && !event.metaKey) {
+      if (activeEntry && isBulkSelectableProjectionEntry(currentDay, activeEntry)) {
+        event.preventDefault();
+        toggleBulkEntry(activeEntry);
+      }
       return;
     }
 
@@ -3011,7 +3306,21 @@ export function App() {
   }
 
   function actualSummaryFor(entry: EntryProjection) {
-    return entry.execution_summary;
+    const operation = pendingExecutionTimesOverlays[entry.id];
+    if (!operation) return entry.execution_summary;
+    const startedAt = operation.started_at;
+    const endedAt = operation.ended_at;
+    const completedDuration = endedAt === null ? entry.execution_summary?.completed_duration_seconds ?? 0
+      : Math.max(0, Math.floor((Date.parse(endedAt) - Date.parse(startedAt)) / 1000));
+    return {
+      first_started_at: startedAt,
+      last_ended_at: endedAt,
+      completed_duration_seconds: completedDuration,
+      active_started_at: endedAt === null ? startedAt : null,
+      single_execution_id: operation.execution_id,
+      active_execution_id: endedAt === null ? operation.execution_id : null,
+      executions: entry.execution_summary?.executions,
+    };
   }
 
   function actualDurationFor(entry: EntryProjection): string {
@@ -3037,14 +3346,9 @@ export function App() {
             <RoutineIcon /><span className="sr-only">Routine</span>
           </span>
         ) : routineEditorOpen ? (
-          <div className="routine-editor">
-            <label>終了日（空欄は終了なし）<input type="date" min={currentDay.taskchute_day.logical_date}
-              value={routineDraft.endDate} onChange={(event) => setRoutineDraft({ entryId: entry.id, endDate: event.target.value })} /></label>
-            <button type="button" disabled={mutationLocked} onClick={() => void commitRoutineConversion(entry)}>Routine化</button>
-            <button type="button" className="secondary" disabled={mutationLocked} onClick={() => setRoutineDraft(null)}>Cancel</button>
-          </div>
+          <span className="routine-editor-status" aria-live="polite">Routine設定中…</span>
         ) : routineActionAvailable ? (
-          <button type="button" className="routine-action routine-icon routine-muted" aria-label="Routine化" title={`${entry.task.title}をRoutine化`} disabled={mutationLocked}
+          <button type="button" className="routine-action routine-icon routine-muted" aria-label="Routine化" title={`${entry.task.title}をRoutine化`} disabled={mutationLocked || isMutationScopeBusy(placementMutationScope())}
             onClick={(event) => { event.stopPropagation(); setRoutineDraft({ entryId: entry.id, endDate: "" }); }}>
             <RoutineIcon />
           </button>
@@ -3093,6 +3397,12 @@ export function App() {
           onKeyDown={(event) => {
             if (event.key === "Enter" || event.key === "Tab") {
               if (event.key === "Enter") event.preventDefault();
+              else {
+                event.preventDefault();
+                const row = event.currentTarget.closest<HTMLElement>("[data-entry-id]");
+                const cell = event.currentTarget.closest<HTMLElement>("[data-day-column-cell]");
+                if (row && cell) focusInlineTabDestination(row, cell, event.shiftKey);
+              }
               markInlineEditorAction(inlineKey, "commit");
               commitExecutionTimes(entry);
             } else if (event.key === "Escape") {
@@ -3104,7 +3414,7 @@ export function App() {
       </span>;
     }
     return <button type="button" className="actual-time-button" aria-label={label}
-      disabled={!canEditField || mutationLocked}
+      disabled={!canEditField || mutationLocked || isMutationScopeBusy(executionMutationScope(entry.id))}
       onClick={() => openExecutionTimesEditor(entry, field)}>
       {displayed === "—" ? <EmptyValue display="--:--" label={field === "start" ? "実績開始なし" : "実績終了なし"} /> : displayed}
     </button>;
@@ -3115,10 +3425,14 @@ export function App() {
     switch (key) {
       case "project": {
         const metadataEditing = taskMetadataDraft?.entryId === entry.id;
+        const metadataOverlay = pendingTaskMetadataOverlays[entry.id];
         const projectOptions = [...projects];
         if (entry.task.project && !projectOptions.some((candidate) => candidate.id === entry.task.project?.id)) projectOptions.unshift(entry.task.project);
+        const projectId = metadataOverlay ? metadataOverlay.project_id : entry.task.project?.id ?? null;
+        const projectTitle = projectId === null ? null : projectOptions.find((candidate) => candidate.id === projectId)?.title ?? entry.task.project?.title ?? null;
         return <span className="project-name" data-day-column-cell={key}>
           {metadataEditing ? <select className="project-selector" aria-label={`${entry.task.title}のProject`} value={taskMetadataDraft.projectId ?? ""}
+            disabled={isMutationScopeBusy(entryMutationScope(entry.id, entry.task.id))}
             onClick={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()}
             onChange={(event) => {
               const projectId = event.target.value || null;
@@ -3127,17 +3441,19 @@ export function App() {
             }}>
             <option value="">Projectなし</option>
             {projectOptions.map((candidate) => <option value={candidate.id} key={candidate.id}>{candidate.title}</option>)}
-          </select> : canEditTaskMetadata(entry) ? <select className="project-selector" aria-label={`${entry.task.title}のProject`} value={entry.task.project?.id ?? ""}
+          </select> : canEditTaskMetadata(entry) ? <select className="project-selector" aria-label={`${entry.task.title}のProject`} value={projectId ?? ""}
+            disabled={isMutationScopeBusy(entryMutationScope(entry.id, entry.task.id))}
             onClick={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()}
             onChange={(event) => commitProjectMetadata(entry, event.target.value || null)}>
             <option value="">Projectなし</option>
             {projectOptions.map((candidate) => <option value={candidate.id} key={candidate.id}>{candidate.title}</option>)}
-          </select> : entry.task.project?.title ?? <EmptyValue label="Project未設定" />}
+          </select> : projectTitle ?? <EmptyValue label="Project未設定" />}
         </span>;
       }
       case "section":
         return <select className="section-cell" data-day-column-cell={key} aria-label={`${entry.task.title}のSection`} value={entry.section_id ?? ""}
-          disabled={mutationLocked || !currentDay.planning_enabled || entry.lifecycle_state !== "planned"
+          disabled={mutationLocked || isMutationScopeBusy(entry.routine ? routineMutationScope(entry.id, entry.routine.routine_definition_id) : placementMutationScope())
+            || !currentDay.planning_enabled || entry.lifecycle_state !== "planned"
             || (entry.routine !== null && !currentDay.is_current)}
           onClick={(event) => event.stopPropagation()} onChange={(event) => entry.routine
             ? changeRoutineSectionCandidate(entry, event.target.value || null)
@@ -3147,7 +3463,9 @@ export function App() {
         </select>;
       case "routine":
         return routineCell(entry);
-      case "estimate":
+      case "estimate": {
+        const estimateOverlay = pendingEstimateOverlays[entry.id];
+        const estimateSeconds = estimateOverlay ? estimateOverlay.estimate_seconds : entry.estimate_seconds;
         return <span className="estimate-cell" data-day-column-cell={key}
           onBlur={(event) => {
             if ((event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null)) return;
@@ -3161,6 +3479,12 @@ export function App() {
               onChange={(event) => setEditingEstimate({ entryId: entry.id, minutes: event.target.value })}
               onKeyDown={(event) => { if (event.key === "Enter" || event.key === "Tab") {
                 if (event.key === "Enter") event.preventDefault();
+                else {
+                  event.preventDefault();
+                  const row = event.currentTarget.closest<HTMLElement>("[data-entry-id]");
+                  const cell = event.currentTarget.closest<HTMLElement>("[data-day-column-cell]");
+                  if (row && cell) focusInlineTabDestination(row, cell, event.shiftKey);
+                }
                 markInlineEditorAction(`estimate:${entry.id}`, "commit");
                 void commitEstimate(entry.id);
               } else if (event.key === "Escape") {
@@ -3169,21 +3493,16 @@ export function App() {
               } }} />
             {entry.routine?.estimate_override_present && (
               <button type="button" className="routine-reset" aria-label={`${entry.task.title}の見積をルーティンの設定に戻す`}
-                disabled={mutationLocked} onClick={() => void resetRoutineUnit(entry, "estimate")}>ルーティンの設定に戻す</button>
+                disabled={mutationLocked || isMutationScopeBusy(routineMutationScope(entry.id, entry.routine?.routine_definition_id))} onClick={() => void resetRoutineUnit(entry, "estimate")}>ルーティンの設定に戻す</button>
             )}
           </>
-            : <button type="button" className="estimate-button" aria-label={`${entry.task.title}の見積`} disabled={mutationLocked || !currentDay.planning_enabled || entry.lifecycle_state !== "planned" || (entry.routine !== null && !currentDay.is_current)}
-              onClick={() => { beginInlineEditor(`estimate:${entry.id}`); setEditingEstimate({ entryId: entry.id, minutes: entry.estimate_seconds ? String(entry.estimate_seconds / 60) : "" }); }}>{renderEmptyValue(formatEstimate(entry.estimate_seconds), "見積なし", "--分")}</button>}
-          {entry.routine && routineCandidate?.entryId === entry.id && routineCandidate.unit === "estimate" && (
-            <span ref={routineScopeChoiceRef} className="routine-scope-choice" role="group" aria-label={`${entry.task.title}の見積反映先`}>
-              <span>{formatEstimate(routineCandidate.estimateSeconds)}</span>
-              <button type="button" disabled={mutationLocked} onClick={() => void commitRoutineCandidate(entry, "occurrence")}>今回だけ</button>
-              <button type="button" disabled={mutationLocked} onClick={() => void commitRoutineCandidate(entry, "definition")}>ルーティンに反映</button>
-              <button type="button" className="secondary" disabled={mutationLocked} onClick={() => setRoutineCandidate(null)}>キャンセル</button>
-            </span>
-          )}
+            : <button type="button" className="estimate-button" aria-label={`${entry.task.title}の見積`} disabled={mutationLocked || isMutationScopeBusy(entry.routine ? routineMutationScope(entry.id, entry.routine.routine_definition_id) : entryMutationScope(entry.id)) || !currentDay.planning_enabled || entry.lifecycle_state !== "planned" || (entry.routine !== null && !currentDay.is_current)}
+              onClick={() => { beginInlineEditor(`estimate:${entry.id}`); setEditingEstimate({ entryId: entry.id, minutes: estimateSeconds ? String(estimateSeconds / 60) : "" }); }}>{renderEmptyValue(formatEstimate(estimateSeconds), "見積なし", "--分")}</button>}
         </span>;
-      case "plannedStart":
+      }
+      case "plannedStart": {
+        const plannedStartOverlay = pendingPlannedStartOverlays[entry.id];
+        const plannedStartMinute = plannedStartOverlay ? plannedStartOverlay.request.planned_start_minute : entry.planned_start_minute;
         return <span className="planned-start-cell" data-day-column-cell={key}
           onBlur={(event) => {
             if ((event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null)) return;
@@ -3197,6 +3516,12 @@ export function App() {
               onChange={(event) => setEditingPlannedStart({ entryId: entry.id, value: event.target.value })}
               onKeyDown={(event) => { if (event.key === "Enter" || event.key === "Tab") {
                 if (event.key === "Enter") event.preventDefault();
+                else {
+                  event.preventDefault();
+                  const row = event.currentTarget.closest<HTMLElement>("[data-entry-id]");
+                  const cell = event.currentTarget.closest<HTMLElement>("[data-day-column-cell]");
+                  if (row && cell) focusInlineTabDestination(row, cell, event.shiftKey);
+                }
                 markInlineEditorAction(`planned-start:${entry.id}`, "commit");
                 void commitPlannedStart(entry);
               } else if (event.key === "Escape") {
@@ -3205,25 +3530,17 @@ export function App() {
               } }} />
             {entry.routine?.section_plan_override_present && (
               <button type="button" className="routine-reset" aria-label={`${entry.task.title}のSection・開始予定をルーティンの設定に戻す`}
-                disabled={mutationLocked} onClick={() => void resetRoutineUnit(entry, "section-plan")}>ルーティンの設定に戻す</button>
+                disabled={mutationLocked || isMutationScopeBusy(routineMutationScope(entry.id, entry.routine?.routine_definition_id))} onClick={() => void resetRoutineUnit(entry, "section-plan")}>ルーティンの設定に戻す</button>
             )}
           </>
             : <button type="button" className="planned-start-button" aria-label={`${entry.task.title}の開始予定`}
-              disabled={mutationLocked || !currentDay.planning_enabled || entry.lifecycle_state !== "planned" || (entry.routine !== null && !currentDay.is_current)}
+              disabled={mutationLocked || isMutationScopeBusy(entry.routine ? [...placementMutationScope(), ...routineMutationScope(entry.id, entry.routine.routine_definition_id)] : placementMutationScope()) || !currentDay.planning_enabled || entry.lifecycle_state !== "planned" || (entry.routine !== null && !currentDay.is_current)}
               onClick={() => { beginInlineEditor(`planned-start:${entry.id}`); setEditingPlannedStart({ entryId: entry.id,
-                value: entry.planned_start_minute === null ? "" : formatClockInputFromLogicalMinute(entry.planned_start_minute) }); }}>
-              {entry.planned_start_minute === null ? <EmptyValue display="--:--" label="開始予定なし" /> : formatLogicalMinute(entry.planned_start_minute)}
+                value: plannedStartMinute === null ? "" : formatClockInputFromLogicalMinute(plannedStartMinute) }); }}>
+              {plannedStartMinute === null ? <EmptyValue display="--:--" label="開始予定なし" /> : formatLogicalMinute(plannedStartMinute)}
             </button>}
-          {entry.routine && routineCandidate?.entryId === entry.id && routineCandidate.unit === "section-plan" && (
-            <span ref={routineScopeChoiceRef} className="routine-scope-choice" role="group" aria-label={`${entry.task.title}のSection・開始予定反映先`}>
-              <span>{routineCandidate.sectionId === null ? "Sectionなし / —"
-                : `${currentDay.sections.find((candidate) => candidate.id === routineCandidate.sectionId)?.title ?? "Section"} / ${formatLogicalMinute(routineCandidate.plannedStartMinute)}`}</span>
-              <button type="button" disabled={mutationLocked} onClick={() => void commitRoutineCandidate(entry, "occurrence")}>今回だけ</button>
-              <button type="button" disabled={mutationLocked} onClick={() => void commitRoutineCandidate(entry, "definition")}>ルーティンに反映</button>
-              <button type="button" className="secondary" disabled={mutationLocked} onClick={() => setRoutineCandidate(null)}>キャンセル</button>
-            </span>
-          )}
         </span>;
+      }
       case "forecast":
         return <span className="forecast-cell" data-day-column-cell={key} aria-label={`${entry.task.title}の開始見込`}>
           {renderEmptyValue(formatStartForecast(forecastByEntryId[entry.id], currentDay.taskchute_day.logical_date, currentDay.taskchute_day.establishment_timezone), "開始見込なし")}
@@ -3432,17 +3749,8 @@ export function App() {
       </header>
 
       {shortcutHelpOpen && (
-        <div className="shortcut-help panel" ref={shortcutHelpRef} role="dialog" aria-modal="false" aria-labelledby="shortcut-help-title" tabIndex={-1}
-          onKeyDown={(event) => {
-            if (event.key !== "Escape") return;
-            event.preventDefault();
-            event.stopPropagation();
-            setShortcutHelpOpen(false);
-          }}>
-          <div className="shortcut-help-heading">
-            <h2 id="shortcut-help-title">キーボードショートカット</h2>
-            <button type="button" className="secondary" onClick={() => setShortcutHelpOpen(false)}>閉じる</button>
-          </div>
+        <Modal title="キーボードショートカット" titleId="shortcut-help-title" className="shortcut-help"
+          onClose={() => setShortcutHelpOpen(false)}>
           <dl className="shortcut-help-list">
             <div><dt>↓ / J</dt><dd>次のvisible Taskへ移動</dd></div>
             <div><dt>↑ / K</dt><dd>前のvisible Taskへ移動</dd></div>
@@ -3453,28 +3761,71 @@ export function App() {
             <div><dt>Shift + ← / →</dt><dd>前日 / 翌日へ移動</dd></div>
             <div><dt>Shift + ↑ / ↓</dt><dd>同じcohort内で並び替え</dd></div>
             <div><dt>?</dt><dd>このhelpを表示</dd></div>
+            <div><dt>X</dt><dd>focused eligible Taskの選択を切り替え</dd></div>
             <div><dt>Esc</dt><dd>開いているeditor / menu / calendarを閉じる</dd></div>
           </dl>
-        </div>
+        </Modal>
       )}
 
+      {routineDraft && (() => {
+        const entry = allEntries.find((candidate) => candidate.id === routineDraft.entryId);
+        if (!entry) return null;
+        return (
+          <Modal title="Routine化" titleId="routine-conversion-title" className="routine-editor"
+            onClose={() => setRoutineDraft(null)}>
+            <p>{entry.task.title}をRoutineに変換します。</p>
+            <label>終了日（空欄は終了なし）
+              <input type="date" min={currentDay.taskchute_day.logical_date}
+                value={routineDraft.endDate}
+                onChange={(event) => setRoutineDraft({ entryId: entry.id, endDate: event.target.value })} />
+            </label>
+            <div className="bulk-confirmation-actions">
+              <button type="button" className="secondary" onClick={() => setRoutineDraft(null)}>キャンセル</button>
+              <button type="button" disabled={mutationLocked || isMutationScopeBusy(placementMutationScope())}
+                onClick={() => void commitRoutineConversion(entry)}>Routine化</button>
+            </div>
+          </Modal>
+        );
+      })()}
+
+      {routineCandidate && (() => {
+        const entry = allEntries.find((candidate) => candidate.id === routineCandidate.entryId);
+        if (!entry) return null;
+        const value = routineCandidate.unit === "estimate"
+          ? formatEstimate(routineCandidate.estimateSeconds)
+          : routineCandidate.sectionId === null ? "Sectionなし / —"
+            : `${currentDay.sections.find((section) => section.id === routineCandidate.sectionId)?.title ?? "Section"} / ${formatLogicalMinute(routineCandidate.plannedStartMinute)}`;
+        return (
+          <Modal title="Routine設定の反映先" titleId="routine-scope-choice-title" className="routine-scope-choice"
+            onClose={() => setRoutineCandidate(null)}>
+            <p>{entry.task.title} · {value}</p>
+            <div role="group" aria-label={`${entry.task.title}の${routineCandidate.unit === "estimate" ? "見積" : "Section・開始予定"}反映先`} className="bulk-confirmation-actions">
+              <span>{value}</span>
+              <button type="button" disabled={mutationLocked || isMutationScopeBusy(routineMutationScope(entry.id, entry.routine?.routine_definition_id))} onClick={() => void commitRoutineCandidate(entry, "occurrence")}>今回だけ</button>
+              <button type="button" disabled={mutationLocked || isMutationScopeBusy(routineMutationScope(entry.id, entry.routine?.routine_definition_id))} onClick={() => void commitRoutineCandidate(entry, "definition")}>ルーティンに反映</button>
+              <button type="button" className="secondary" onClick={() => setRoutineCandidate(null)}>キャンセル</button>
+            </div>
+          </Modal>
+        );
+      })()}
+
       <div className="day-toolbar" aria-label="Day controls">
-        <button type="button" className="secondary"
-          disabled={mutationLocked || !day.planning_enabled || day.section_configuration_required}
+          <button type="button" className="secondary"
+          disabled={mutationLocked || isMutationScopeBusy(placementMutationScope()) || !day.planning_enabled || day.section_configuration_required}
           onClick={() => openDraft(null)}>＋ Taskを追加</button>
         {selectedBulkEntries.length > 0 && (
           <div className="bulk-selection-toolbar" aria-label="選択中のTask">
             <span role="status" aria-live="polite">{selectedBulkEntries.length}件選択中</span>
-            <button ref={bulkDateMoveTriggerRef} type="button" className="secondary" disabled={mutationLocked || selectedBulkEntries.length !== selectedEntryIds.length}
+            <button ref={bulkDateMoveTriggerRef} type="button" className="secondary" disabled={mutationLocked || isMutationScopeBusy(placementMutationScope()) || selectedBulkEntries.length !== selectedEntryIds.length}
               title="選択したTaskの日付を変更" onClick={() => openBulkDateMove()}>日付変更</button>
             {day.planning_enabled && <button ref={bulkEstimateTriggerRef} type="button" className="secondary"
-              disabled={mutationLocked || selectedBulkEntries.length !== selectedEntryIds.length
+              disabled={mutationLocked || isMutationScopeBusy(bulkEntryMutationScope(selectedBulkEntries.map((entry) => entry.id))) || selectedBulkEntries.length !== selectedEntryIds.length
                 || (selectedBulkEntries.some((entry) => entry.routine !== null) && !day.is_current)}
               title={selectedBulkEntries.some((entry) => entry.routine !== null) && !day.is_current
                 ? "Routine Taskを含む見積変更は今日だけ実行できます" : "選択したTaskの見積を変更"}
               onClick={openBulkEstimateConfirmation}>見積変更</button>}
-            {day.planning_enabled && <div className="bulk-section-menu" ref={bulkSectionPickerRef}>
-              <button ref={bulkSectionTriggerRef} type="button" className="secondary" disabled={mutationLocked || selectedBulkEntries.length !== selectedEntryIds.length || (selectedBulkEntries.some((entry) => entry.routine !== null) && !day.is_current)}
+            {day.planning_enabled && <div className="bulk-section-menu">
+              <button ref={bulkSectionTriggerRef} type="button" className="secondary" disabled={mutationLocked || isMutationScopeBusy(placementMutationScope()) || selectedBulkEntries.length !== selectedEntryIds.length || (selectedBulkEntries.some((entry) => entry.routine !== null) && !day.is_current)}
                 aria-label="Section変更" aria-expanded={bulkSectionPickerOpen} aria-controls="bulk-section-picker"
                 aria-describedby={selectedBulkEntries.some((entry) => entry.routine !== null) ? "bulk-section-routine-hint" : undefined}
                 title={selectedBulkEntries.some((entry) => entry.routine !== null)
@@ -3485,7 +3836,8 @@ export function App() {
                 <span id="bulk-section-routine-hint" className="sr-only">Routine Taskを含む選択では現在のOccurrenceだけを今回だけ変更します</span>
               )}
               {bulkSectionPickerOpen && (
-                <div id="bulk-section-picker" className="bulk-section-picker" role="dialog" aria-label="変更先Section" tabIndex={-1}>
+                <Modal id="bulk-section-picker" title="変更先Section"
+                  titleId="bulk-section-picker-title" className="bulk-section-picker" onClose={() => closeBulkSectionPicker(true)}>
                   <p className="bulk-section-picker-title">変更先Section{selectedBulkEntries.some((entry) => entry.routine !== null) ? "（Routineは今回だけ）" : ""}</p>
                   <div className="bulk-section-options">
                     {currentDay.sections.map((section) => (
@@ -3494,11 +3846,11 @@ export function App() {
                     <button type="button" className="secondary" onClick={() => chooseBulkSection(null)}>Sectionなし</button>
                   </div>
                   <button type="button" className="secondary bulk-section-cancel" onClick={() => closeBulkSectionPicker(true)}>キャンセル</button>
-                </div>
+                </Modal>
               )}
             </div>}
-            {day.planning_enabled && <button ref={bulkDeleteTriggerRef} type="button" className="destructive-action" disabled={mutationLocked} onClick={openBulkConfirmation}>削除</button>}
-            <button type="button" className="secondary" disabled={mutationLocked} onClick={clearBulkSelection}>選択解除</button>
+            {day.planning_enabled && <button ref={bulkDeleteTriggerRef} type="button" className="destructive-action" disabled={mutationLocked || isMutationScopeBusy(placementMutationScope())} onClick={openBulkConfirmation}>削除</button>}
+            <button type="button" className="secondary" disabled={mutationLocked || isMutationScopeBusy(placementMutationScope())} onClick={clearBulkSelection}>選択解除</button>
           </div>
         )}
         <div className="columns-menu" ref={columnsMenuRef}>
@@ -3536,8 +3888,8 @@ export function App() {
       </div>
 
       {bulkDateMoveConfirmation && (
-        <div className="bulk-confirmation panel bulk-date-move-confirmation" ref={bulkDateMoveConfirmationRef} role="dialog" aria-modal="true" aria-labelledby="bulk-date-move-title" tabIndex={-1}>
-          <h2 id="bulk-date-move-title">Taskの日付を変更</h2>
+        <Modal title="Taskの日付を変更" titleId="bulk-date-move-title" className="bulk-confirmation bulk-date-move-confirmation"
+          onClose={() => setBulkDateMoveConfirmation(null)}>
           <p>{bulkDateMoveConfirmation.entryIds.length}件を別のDayへ移動します。対象Dayのプレビューは読み取り専用です。</p>
           <label>変更先の日付
             <input type="date" value={bulkDateMoveConfirmation.targetLogicalDate}
@@ -3582,12 +3934,12 @@ export function App() {
               || (bulkDateMoveConfirmation.fallbackEntryIds.length > 0 && !bulkDateMoveConfirmation.fallbackAcknowledged)}
               onClick={confirmBulkDateMove}>日付変更を確定</button>
           </div>
-        </div>
+        </Modal>
       )}
 
       {bulkSectionConfirmation && (
-        <div className="bulk-confirmation panel bulk-section-scoped-confirmation" ref={bulkSectionConfirmationRef} role="dialog" aria-modal="true" aria-labelledby="bulk-section-confirmation-title" tabIndex={-1}>
-          <h2 id="bulk-section-confirmation-title">RoutineごとのSection変更</h2>
+        <Modal title="RoutineごとのSection変更" titleId="bulk-section-confirmation-title" className="bulk-confirmation bulk-section-scoped-confirmation"
+          onClose={() => setBulkSectionConfirmation(null)}>
           <p>
             {bulkSectionConfirmation.entryIds.length}件を
             {bulkSectionConfirmation.sectionId === null
@@ -3625,12 +3977,12 @@ export function App() {
               title={bulkSectionConfirmation.routineScopes.some((item) => item.scope === null) ? "すべてのRoutine scopeを選択してください" : undefined}
               onClick={confirmBulkSectionScopedChange}>Section変更を確定</button>
           </div>
-        </div>
+        </Modal>
       )}
 
       {bulkEstimateConfirmation && (
-        <div className="bulk-confirmation panel bulk-estimate-confirmation" ref={bulkEstimateConfirmationRef} role="dialog" aria-modal="true" aria-labelledby="bulk-estimate-confirmation-title" tabIndex={-1}>
-          <h2 id="bulk-estimate-confirmation-title">選択したTaskの見積変更</h2>
+        <Modal title="選択したTaskの見積変更" titleId="bulk-estimate-confirmation-title" className="bulk-confirmation bulk-estimate-confirmation"
+          onClose={() => setBulkEstimateConfirmation(null)}>
           <label className="bulk-estimate-input">共通見積（分）
             <input autoFocus type="number" min="1" step="1" inputMode="numeric" placeholder="空欄は見積なし"
               value={bulkEstimateConfirmation.estimateMinutes}
@@ -3673,12 +4025,12 @@ export function App() {
                     || !Number.isSafeInteger(Number(bulkEstimateConfirmation.estimateMinutes))))}
               onClick={confirmBulkEstimateChange}>見積変更を確定</button>
           </div>
-        </div>
+        </Modal>
       )}
 
       {bulkConfirmation && (
-        <div className="bulk-confirmation panel" ref={bulkConfirmationRef} role="dialog" aria-modal="true" aria-labelledby="bulk-confirmation-title" tabIndex={-1}>
-          <h2 id="bulk-confirmation-title">選択したTaskを削除</h2>
+        <Modal title="選択したTaskを削除" titleId="bulk-confirmation-title" className="bulk-confirmation"
+          onClose={() => setBulkConfirmation(null)}>
           <p>
             {bulkConfirmation.ordinaryCount > 0 && bulkConfirmation.routineCount > 0
               ? `${bulkConfirmation.entryIds.length}件の未実行Taskを処理します。通常Task ${bulkConfirmation.ordinaryCount}件はこの日から削除し、Routine Task ${bulkConfirmation.routineCount}件はこの日のみスキップします。`
@@ -3693,7 +4045,7 @@ export function App() {
             }}>キャンセル</button>
             <button type="button" className="destructive-action" onClick={confirmBulkDelete}>削除</button>
           </div>
-        </div>
+        </Modal>
       )}
 
       {transientStatus && (
@@ -3730,7 +4082,7 @@ export function App() {
         <div className="table-heading">
           <span className="bulk-slot">
             {eligibleBulkEntries.length > 0 ? (
-              <input ref={bulkHeaderRef} type="checkbox" checked={allEligibleBulkSelected} aria-label="すべての未実行Taskを選択"
+              <input ref={bulkHeaderRef} type="checkbox" tabIndex={-1} checked={allEligibleBulkSelected} aria-label="すべての未実行Taskを選択"
                 disabled={mutationLocked} onChange={toggleAllBulkEntries} />
             ) : <span className="bulk-placeholder" aria-hidden="true" />}
           </span><span className="execution-heading">実行</span><span className="task-heading" data-task-column-header>
@@ -3797,7 +4149,7 @@ export function App() {
                 <div className="section-summary-content"><strong>{section.title}</strong><span>{section.id === null ? "時間帯なし" : `${formatLogicalMinute(section.logical_start_minute)}–${formatLogicalMinute(section.logical_end_minute)}`} · {completedCount}/{section.entries.length} 実行済み · 見積 {formatEstimate(section.estimate_total_seconds)}</span></div>
                 <div className="section-summary-actions">
                   <button type="button" className="add-task-button" aria-label={`${section.title}にTaskを追加`} title={`${section.title}にTaskを追加`}
-                    disabled={mutationLocked || !day.planning_enabled || day.section_configuration_required}
+                    disabled={mutationLocked || isMutationScopeBusy(placementMutationScope()) || !day.planning_enabled || day.section_configuration_required}
                     onClick={(event) => { event.stopPropagation(); openDraft(section.id); }}>＋</button>
                 </div>
               </div>
@@ -3829,7 +4181,7 @@ export function App() {
                 return (
                   <div className={`task-row task-drag-surface state-${entry.lifecycle_state}${selectedEntryIds.includes(entry.id) ? " is-selected" : ""}${entryDrag?.entryId === entry.id ? " is-dragging" : ""}${entryDrag?.targetEntryId === entry.id && entryDrag.edge ? ` drop-${entryDrag.edge}` : ""}`} key={entry.id} tabIndex={0} aria-selected={selectedEntryIds.includes(entry.id)}
                     data-entry-id={entry.id} data-section-id={section.id ?? ""} data-day-focus-target data-focus-key={focusKey(entryTarget)}
-                    draggable={canDrag && !mutationLocked}
+                    draggable={canDrag && !mutationLocked && !isMutationScopeBusy(placementMutationScope())}
                     data-drag-surface="row" title={canDrag ? "ドラッグして並び替え" : undefined}
                     onMouseDown={(event) => startEntryMouseDrag(event, section.id, entry)}
                     onDragStart={(event) => startEntryDrag(event, section.id, entry)}
@@ -3846,10 +4198,11 @@ export function App() {
                     onClick={(event) => {
                     if (isInteractiveDragTarget(event.target) || entryDrag || mouseDragRef.current) return;
                     focusSurface(event.currentTarget);
-                  }}>
+                  }} onKeyDown={handleTaskRowKeyDown}>
                     <span className="bulk-slot">
                       <input type="checkbox" checked={selectedEntryIds.includes(entry.id)}
-                        disabled={!isBulkSelectableProjectionEntry(currentDay, entry) || mutationLocked}
+                        tabIndex={-1}
+                        disabled={!isBulkSelectableProjectionEntry(currentDay, entry) || mutationLocked || isMutationScopeBusy(placementMutationScope())}
                         aria-label={isBulkSelectableProjectionEntry(currentDay, entry)
                           ? `「${entry.task.title}」を選択`
                           : `${entry.task.title}は選択不可（未実行の計画Taskではありません）`}
@@ -3862,7 +4215,7 @@ export function App() {
                       {entry.lifecycle_state === "completed" ? (
                         <span className="execution-control completed" aria-label={executionLabel(entry)} title={executionLabel(entry)}>✓</span>
                       ) : (
-                        <button type="button" className={`execution-control ${isRunning ? "running" : "planned"}`} aria-label={executionLabel(entry)} title={executionLabel(entry)} disabled={!day.is_current || mutationLocked || (entry.lifecycle_state === "planned" ? day.active_execution !== null : !canComplete)} onClick={() => {
+                        <button type="button" tabIndex={-1} className={`execution-control ${isRunning ? "running" : "planned"}`} aria-label={executionLabel(entry)} title={executionLabel(entry)} disabled={!day.is_current || mutationLocked || (isMutationScopeBusy(["execution-lane"]) && completeOperation === null) || (entry.lifecycle_state === "planned" ? day.active_execution !== null && completeOperation === null : !canComplete)} onClick={() => {
                           if (entry.lifecycle_state === "planned") void start(entry.id);
                           else if (canComplete) void complete(entry.id);
                         }}>{isRunning ? "■" : "▶"}</button>
@@ -3870,40 +4223,50 @@ export function App() {
                     </span>
                     <div className="task-main">
                       <div className="task-identity">
-                        {taskMetadataDraft?.entryId === entry.id ? (
-                          <span className="task-metadata-editor"
-                            onBlur={(event) => {
-                              if ((event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null)) return;
-                              const inlineKey = `task-metadata:${entry.id}`;
-                              if (shouldSkipInlineEditorBlur(inlineKey)) return;
-                              markInlineEditorAction(inlineKey, "commit");
-                              commitTaskMetadata(entry);
-                            }}>
-                            <input autoFocus maxLength={300} data-inline-navigation aria-label={`${entry.task.title}のTask名`} value={taskMetadataDraft.title}
-                              onChange={(event) => setTaskMetadataDraft((current) => current ? { ...current, title: event.target.value } : current)}
-                              onKeyDown={(event) => {
+                        {(() => {
+                          const metadataOverlay = pendingTaskMetadataOverlays[entry.id];
+                          const displayedTitle = metadataOverlay?.title ?? entry.task.title;
+                          return taskMetadataDraft?.entryId === entry.id ? (
+                            <span className="task-metadata-editor"
+                              onBlur={(event) => {
+                                if ((event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null)) return;
+                                const inlineKey = `task-metadata:${entry.id}`;
+                                if (shouldSkipInlineEditorBlur(inlineKey)) return;
+                                markInlineEditorAction(inlineKey, "commit");
+                                commitTaskMetadata(entry);
+                              }}>
+                              <input autoFocus maxLength={300} data-inline-navigation aria-label={`${entry.task.title}のTask名`} value={taskMetadataDraft.title}
+                                onChange={(event) => setTaskMetadataDraft((current) => current ? { ...current, title: event.target.value } : current)}
+                                onKeyDown={(event) => {
                                 if (event.key === "Enter" || event.key === "Tab") {
                                   if (event.key === "Enter") event.preventDefault();
+                                  else {
+                                    event.preventDefault();
+                                    const row = event.currentTarget.closest<HTMLElement>("[data-entry-id]");
+                                    const cell = event.currentTarget.closest<HTMLElement>(".task-main");
+                                    if (row && cell) focusInlineTabDestination(row, cell, event.shiftKey);
+                                  }
                                   markInlineEditorAction(`task-metadata:${entry.id}`, "commit");
-                                  commitTaskMetadata(entry);
-                                } else if (event.key === "Escape") {
-                                  event.preventDefault();
-                                  handleInlineEditorEscape(`task-metadata:${entry.id}`, () => { setTaskMetadataDraft(null); setError(null); });
+                                    commitTaskMetadata(entry);
+                                  } else if (event.key === "Escape") {
+                                    event.preventDefault();
+                                    handleInlineEditorEscape(`task-metadata:${entry.id}`, () => { setTaskMetadataDraft(null); setError(null); });
+                                  }
+                                }} />
+                              {error && <span className="inline-field-error" role="alert">{error}</span>}
+                            </span>
+                          ) : (
+                            <span className={`task-title-display${canEditTaskMetadata(entry) ? " is-editable" : ""}`}
+                              role={canEditTaskMetadata(entry) ? "button" : undefined} tabIndex={canEditTaskMetadata(entry) ? 0 : undefined}
+                              aria-label={canEditTaskMetadata(entry) ? `${entry.task.title}を編集` : undefined}
+                              onClick={(event) => { if (canEditTaskMetadata(entry)) { event.stopPropagation(); openTaskMetadataEditor(entry); } }}
+                              onKeyDown={(event) => {
+                                if (canEditTaskMetadata(entry) && (event.key === "Enter" || event.key === " ")) {
+                                  event.preventDefault(); event.stopPropagation(); openTaskMetadataEditor(entry);
                                 }
-                              }} />
-                            {error && <span className="inline-field-error" role="alert">{error}</span>}
-                          </span>
-                        ) : (
-                          <span className={`task-title-display${canEditTaskMetadata(entry) ? " is-editable" : ""}`}
-                            role={canEditTaskMetadata(entry) ? "button" : undefined} tabIndex={canEditTaskMetadata(entry) ? 0 : undefined}
-                            aria-label={canEditTaskMetadata(entry) ? `${entry.task.title}を編集` : undefined}
-                            onClick={(event) => { if (canEditTaskMetadata(entry)) { event.stopPropagation(); openTaskMetadataEditor(entry); } }}
-                            onKeyDown={(event) => {
-                              if (canEditTaskMetadata(entry) && (event.key === "Enter" || event.key === " ")) {
-                                event.preventDefault(); event.stopPropagation(); openTaskMetadataEditor(entry);
-                              }
-                            }}><strong>{entry.task.title}</strong></span>
-                        )}
+                              }}><strong>{displayedTitle}</strong></span>
+                          );
+                        })()}
                         {day.next_entry?.id === entry.id && <span className="next-label">Next</span>}
                       </div>
                     </div>
@@ -3913,7 +4276,7 @@ export function App() {
                         onClick={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()}
                         onPointerDown={(event) => event.stopPropagation()}>
                         <button type="button" className="row-overflow-button" aria-haspopup="menu" aria-expanded={overflowEntryId === entry.id}
-                          aria-label={`${entry.task.title}のその他の操作`} title="その他の操作" disabled={mutationLocked}
+                          aria-label={`${entry.task.title}のその他の操作`} title="その他の操作" disabled={mutationLocked || isMutationScopeBusy(placementMutationScope())}
                           onClick={(event) => {
                             overflowMenuTriggerRef.current = event.currentTarget;
                             setOverflowEntryId((current) => current === entry.id ? null : entry.id);
@@ -3965,6 +4328,9 @@ export function App() {
           {completeOperation && <button type="button" onClick={() => void executeComplete(completeOperation)}>保留中のCompleteを再試行</button>}
           {executionTimesOperation && <button type="button" onClick={() => void executeExecutionTimes(executionTimesOperation)}>保留中の実績時刻保存を再試行</button>}
           {taskMetadataOperation && <button type="button" onClick={() => void executeTaskMetadata(taskMetadataOperation)}>保留中のTask情報保存を再試行</button>}
+          {retainedTaskMetadataOperations.filter((operation) => operation.operation_id !== taskMetadataOperation?.operation_id).map((operation) => (
+            <button type="button" key={operation.operation_id} onClick={() => void executeTaskMetadata(operation)}>保留中のTask情報保存を再試行</button>
+          ))}
           {configurationOperation && <button type="button" onClick={() => void executeConfiguration(configurationOperation)}>保留中のSection設定を再試行</button>}
           {sectionSettingsOperation && <button type="button" onClick={() => void executeSectionSettings(sectionSettingsOperation)}>保留中の次Day Section設定を再試行</button>}
           {sectionMoveOperation && <button type="button" onClick={() => void executeSectionMove(sectionMoveOperation)}>保留中のSection移動を再試行</button>}
@@ -3976,6 +4342,7 @@ export function App() {
           {routineSectionPlanOperation && <button type="button" onClick={() => void executeRoutineSectionPlan(routineSectionPlanOperation)}>保留中のRoutine配置を再試行</button>}
           <button type="button" className="secondary" onClick={() => {
              setProjectOperation(null); setTaskOperation(null); setDuplicateOperation(null); setBulkDeleteOperation(null); setBulkDateMoveOperation(null); setBulkSectionOperation(null); setBulkSectionOccurrenceOperation(null); setBulkSectionScopedOperation(null); setBulkEstimateOperation(null); setBulkSectionPickerOpen(false); setBulkConfirmation(null); setBulkSectionConfirmation(null); setBulkEstimateConfirmation(null); setBulkDateMoveConfirmation(null); setSelectedEntryIds([]); setReorderOperation(null); setStartOperation(null); setCompleteOperation(null); setExecutionTimesOperation(null); setTaskMetadataOperation(null);
+            setRetainedTaskMetadataOperations([]); setPendingTaskMetadataOverlays({}); setPendingEstimateOverlays({}); setPendingPlannedStartOverlays({}); setPendingExecutionTimesOverlays({});
             setConfigurationOperation(null); setSectionSettingsOperation(null); setSectionMoveOperation(null); setEstimateOperation(null); setPlannedStartOperation(null);
             setRoutineConversionOperation(null); setRoutineEndOperation(null); setRoutineEstimateOperation(null);
             setRoutineSectionPlanOperation(null); setRoutineCandidate(null); setError(null);
@@ -3986,7 +4353,7 @@ export function App() {
       {day.active_execution && (
         <aside className="floating-runner" aria-label="実行中のTask">
           <div><span className="runner-state">実行中</span><strong>{activeEntry?.task.title ?? "別日の実行中Task"}</strong><small>{day.active_execution.started_at} から</small></div>
-          <button type="button" aria-label="実行中のTaskを完了" disabled={mutationLocked} onClick={() => void complete(day.active_execution!.entry_id)}>完了</button>
+          <button type="button" aria-label="実行中のTaskを完了" disabled={mutationLocked || isMutationScopeBusy(["execution-lane"])} onClick={() => void complete(day.active_execution!.entry_id)}>完了</button>
         </aside>
       )}
           </main>

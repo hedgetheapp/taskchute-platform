@@ -121,6 +121,13 @@ input:focus-visible, select:focus-visible { border-color: #2383e2; outline: 2px 
 .bulk-section-options button { min-width: 0; padding: 6px 8px; text-align: left; }
 .bulk-section-cancel { justify-self: end; padding: 5px 7px; font-size: 11px; }
 .bulk-confirmation { display: grid; gap: 10px; margin: 10px 0; border-color: #d9d4c6; background: #fffdf7; }
+.modal-backdrop { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 24px; background: rgb(24 24 22 / 36%); }
+.modal { width: min(560px, calc(100vw - 32px)); max-height: min(720px, calc(100vh - 32px)); overflow: auto; margin: 0; }
+.modal-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.modal-heading h2 { margin: 0; font-size: 16px; }
+.modal-close { min-width: 32px; padding: 4px 8px; font-size: 18px; line-height: 1; }
+.modal.bulk-confirmation { margin: 0; }
+.modal.bulk-section-picker { position: relative; top: auto; left: auto; right: auto; min-width: 0; }
 .bulk-confirmation h2 { margin: 0; font-size: 16px; }
 .bulk-confirmation p { margin: 0; color: #575754; font-size: 13px; }
 .bulk-confirmation-actions { display: flex; justify-content: flex-end; gap: 8px; }

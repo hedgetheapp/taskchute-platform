@@ -1630,7 +1630,7 @@ describe("Dogfood Day shell", () => {
     expect(mocks.startEntry.mock.calls[1][0]).toEqual(mocks.startEntry.mock.calls[0][0]);
   });
 
-  it("keeps a non-empty draft but blocks its submit while an ambiguous Start is retained", async () => {
+  it("keeps a non-empty draft and allows its independent submit while an ambiguous Start is retained", async () => {
     mocks.loadDay.mockResolvedValue(twoPlannedDay);
     mocks.startEntry.mockRejectedValueOnce(new ApiClientError("ambiguous", 503, true, "infrastructure_ambiguous"));
     render(<App />);
@@ -1641,10 +1641,10 @@ describe("Dogfood Day shell", () => {
     await screen.findByRole("button", { name: "保留中のStartを再試行" });
     expect(screen.getByDisplayValue("Keep this draft")).toBeTruthy();
     fireEvent.keyDown(input, { key: "Enter", code: "Enter" });
-    expect(mocks.addTask).not.toHaveBeenCalled();
+    await waitFor(() => expect(mocks.addTask).toHaveBeenCalledTimes(1));
   });
 
-  it("keeps a non-empty draft but blocks its Enter submit while another mutation is pending", async () => {
+  it("keeps a non-empty draft and allows its independent Enter submit while another mutation is pending", async () => {
     const request = deferred<unknown>();
     mocks.loadDay.mockResolvedValue(twoPlannedDay);
     mocks.startEntry.mockReturnValue(request.promise);
@@ -1658,8 +1658,8 @@ describe("Dogfood Day shell", () => {
     expect(status.textContent).toBe("開始・照合中…");
     expect(status.classList.contains("transient-status")).toBe(true);
     fireEvent.keyDown(input, { key: "Enter", code: "Enter" });
-    expect(mocks.addTask).not.toHaveBeenCalled();
-    expect(screen.getByDisplayValue("Keep pending draft")).toBeTruthy();
+    await waitFor(() => expect(mocks.addTask).toHaveBeenCalledTimes(1));
+    expect(screen.queryByDisplayValue("Keep pending draft")).toBeNull();
     request.resolve({});
     await waitFor(() => expect(screen.queryByText("開始・照合中…")).toBeNull());
   });
@@ -1757,7 +1757,7 @@ describe("Dogfood Day shell", () => {
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "実行中のTaskを完了" }));
     const discard = await screen.findByRole("button", { name: "保留中のclient操作を破棄" });
-    expect((screen.getByRole("button", { name: "EveningにTaskを追加" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "EveningにTaskを追加" }) as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(discard);
     expect(mocks.completeEntry).toHaveBeenCalledTimes(1);
     expect((screen.getByRole("button", { name: "EveningにTaskを追加" }) as HTMLButtonElement).disabled).toBe(false);
@@ -1913,7 +1913,7 @@ describe("Dogfood Day shell", () => {
     fireEvent.change(input, { target: { value: "10" } });
     fireEvent.keyDown(input, { key: "Enter", code: "Enter" });
     const retry = await screen.findByRole("button", { name: "保留中の見積保存を再試行" });
-    expect((screen.getByRole("button", { name: "Canonical taskを開始" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Canonical taskを開始" }) as HTMLButtonElement).disabled).toBe(false);
     const original = mocks.setEntryEstimate.mock.calls[0][0];
     fireEvent.click(retry);
     await waitFor(() => expect(mocks.setEntryEstimate).toHaveBeenCalledTimes(2));
@@ -2045,7 +2045,7 @@ describe("Dogfood Day shell", () => {
     fireEvent.change(input, { target: { value: "1000" } });
     fireEvent.keyDown(input, { key: "Enter", code: "Enter" });
     const retry = await screen.findByRole("button", { name: "保留中の開始予定保存を再試行" });
-    expect((screen.getByRole("button", { name: "Canonical taskを開始" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Canonical taskを開始" }) as HTMLButtonElement).disabled).toBe(false);
     const original = mocks.setEntryPlannedStart.mock.calls[0][0];
     fireEvent.click(retry);
     await waitFor(() => expect(mocks.setEntryPlannedStart).toHaveBeenCalledTimes(2));
@@ -2483,7 +2483,7 @@ describe("Dogfood Day shell", () => {
     expect(choice.textContent).toContain("25分");
     expect(mocks.setRoutineEstimate).not.toHaveBeenCalled();
     const occurrenceChoice = within(choice).getByRole("button", { name: "今回だけ" });
-    await waitFor(() => expect(document.activeElement).toBe(occurrenceChoice));
+    await waitFor(() => expect(choice.closest('[role="dialog"]')).toContain(document.activeElement));
     fireEvent.keyDown(document.activeElement!, { key: "Escape" });
     expect(screen.queryByRole("group", { name: "Canonical taskの見積反映先" })).toBeNull();
     expect(mocks.setRoutineEstimate).not.toHaveBeenCalled();
@@ -3453,5 +3453,179 @@ describe("Dogfood Day shell", () => {
     const customStyle = dayTableStyle(defaultDayColumnPreference(), { taskWidth: 420, tableWidth: 1610 }) as Record<string, string>;
     expect(customStyle["--day-table-grid-template-columns"]).toContain("32px 52px 420px");
     expect(customStyle["--day-table-min-width"]).toBe("1610px");
+  });
+
+  it("uses the common centered help modal with focus restore, trap, backdrop close, and X ownership", async () => {
+    mocks.loadDay.mockResolvedValue(twoPlannedDay);
+    render(<App />);
+    await screen.findByRole("region", { name: "DayBoard" });
+    const main = screen.getByRole("main");
+    main.focus();
+    fireEvent.keyDown(main, { key: "?" });
+    const dialog = await screen.findByRole("dialog", { name: "キーボードショートカット" });
+    expect(dialog.getAttribute("aria-modal")).toBe("true");
+    expect(dialog.textContent).toContain("X");
+    expect(dialog).toContain(document.activeElement);
+    fireEvent.keyDown(dialog, { key: "Tab" });
+    expect(dialog).toContain(document.activeElement);
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "キーボードショートカット" })).toBeNull());
+    expect(document.activeElement).toBe(main);
+
+    fireEvent.keyDown(main, { key: "?" });
+    const backdrop = document.querySelector<HTMLElement>(".modal-backdrop")!;
+    fireEvent.click(backdrop);
+    expect(screen.queryByRole("dialog", { name: "キーボードショートカット" })).toBeNull();
+  });
+
+  it("keeps row Tab in visual cell order while skipping Bulk and Execution", async () => {
+    mocks.loadDay.mockResolvedValue(twoPlannedDay);
+    render(<App />);
+    const dayBoard = await screen.findByRole("region", { name: "DayBoard" });
+    const rows = Array.from(dayBoard.querySelectorAll<HTMLElement>("[data-entry-id]"));
+    const firstRow = rows[0]!;
+    const secondRow = rows[1]!;
+    const firstProject = screen.getByRole("combobox", { name: "Canonical taskのProject" });
+    const firstSection = screen.getByRole("combobox", { name: "Canonical taskのSection" });
+    firstRow.focus();
+    fireEvent.keyDown(firstRow, { key: "Tab" });
+    expect(document.activeElement).toBe(firstRow.querySelector<HTMLElement>(".task-title-display"));
+    fireEvent.change(firstProject, { target: { value: "existing-project" } });
+    firstProject.focus();
+    fireEvent.keyDown(firstProject, { key: "Tab" });
+    expect(document.activeElement).toBe(firstSection);
+    fireEvent.keyDown(firstSection, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(firstProject);
+    const rowStops = Array.from(firstRow.querySelectorAll<HTMLElement>("button, input, select")).filter((element) => element.tabIndex >= 0);
+    expect(rowStops.every((element) => !element.closest(".bulk-slot, .execution-cell"))).toBe(true);
+    const lastStop = rowStops.at(-1)!;
+    lastStop.focus();
+    fireEvent.keyDown(lastStop, { key: "Tab" });
+    expect(secondRow).toContain(document.activeElement);
+    expect((document.activeElement as HTMLElement).closest(".bulk-slot, .execution-cell")).toBeNull();
+  });
+
+  it("implements X selection semantics and suppresses it in inputs and modal ownership", async () => {
+    mocks.loadDay.mockResolvedValue(twoPlannedDay);
+    render(<App />);
+    const firstRow = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
+    const checkbox = screen.getByRole("checkbox", { name: "「Canonical task」を選択" }) as HTMLInputElement;
+    firstRow.focus();
+    fireEvent.keyDown(firstRow, { key: "x" });
+    expect(checkbox.checked).toBe(true);
+    fireEvent.keyDown(firstRow, { key: "X" });
+    expect(checkbox.checked).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Canonical taskを編集" }));
+    const title = screen.getByRole("textbox", { name: "Canonical taskのTask名" });
+    fireEvent.keyDown(title, { key: "x" });
+    expect(checkbox.checked).toBe(false);
+    fireEvent.keyDown(title, { key: "Escape" });
+
+    const main = screen.getByRole("main");
+    main.focus();
+    fireEvent.keyDown(main, { key: "?" });
+    fireEvent.keyDown(main, { key: "x" });
+    expect(checkbox.checked).toBe(false);
+  });
+
+  it("commits actual Start/End once on an outside pointer and keeps Escape cancel-only", async () => {
+    mocks.loadDay.mockResolvedValue(runningDay);
+    render(<App />);
+    const startButton = await screen.findByRole("button", { name: "Canonical taskの開始" });
+    fireEvent.click(startButton);
+    const start = screen.getByRole("textbox", { name: "Canonical taskの開始" });
+    fireEvent.change(start, { target: { value: "1215" } });
+    fireEvent.pointerDown(document.body);
+    fireEvent.blur(start, { relatedTarget: document.body });
+    fireEvent.click(document.body);
+    await waitFor(() => expect(mocks.setExecutionTimes).toHaveBeenCalledTimes(1));
+    expect(mocks.setExecutionTimes.mock.calls[0][0]).toMatchObject({ started_at: "2026-08-22T12:15:00.000Z" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Canonical taskの終了" }));
+    const end = screen.getByRole("textbox", { name: "Canonical taskの終了" });
+    fireEvent.change(end, { target: { value: "1230" } });
+    fireEvent.pointerDown(document.body);
+    fireEvent.blur(end, { relatedTarget: document.body });
+    fireEvent.click(document.body);
+    await waitFor(() => expect(mocks.setExecutionTimes).toHaveBeenCalledTimes(2));
+
+    fireEvent.click(screen.getByRole("button", { name: "Canonical taskの開始" }));
+    const canceled = screen.getByRole("textbox", { name: "Canonical taskの開始" });
+    fireEvent.change(canceled, { target: { value: "1245" } });
+    fireEvent.keyDown(canceled, { key: "Escape" });
+    fireEvent.pointerDown(document.body);
+    fireEvent.click(document.body);
+    expect(mocks.setExecutionTimes).toHaveBeenCalledTimes(2);
+  });
+
+  it("allows independent deferred row saves and Add Task while one cell is pending", async () => {
+    const firstRequest = deferred<unknown>();
+    mocks.loadDay.mockResolvedValue(twoPlannedDay);
+    mocks.updateTaskMetadata.mockReturnValueOnce(firstRequest.promise).mockResolvedValueOnce({});
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskを編集" }));
+    const firstTitle = screen.getByRole("textbox", { name: "Canonical taskのTask名" });
+    fireEvent.change(firstTitle, { target: { value: "Pending A" } });
+    fireEvent.keyDown(firstTitle, { key: "Enter" });
+    fireEvent.click(screen.getByRole("button", { name: "Second taskを編集" }));
+    const secondTitle = screen.getByRole("textbox", { name: "Second taskのTask名" });
+    fireEvent.change(secondTitle, { target: { value: "Saved B" } });
+    fireEvent.keyDown(secondTitle, { key: "Enter" });
+    await waitFor(() => expect(mocks.updateTaskMetadata).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole("status").textContent).toContain("保存中");
+
+    fireEvent.click(screen.getByRole("button", { name: "EveningにTaskを追加" }));
+    const addInput = screen.getByRole("textbox", { name: "EveningのTask名" });
+    fireEvent.change(addInput, { target: { value: "Independent add" } });
+    fireEvent.keyDown(addInput, { key: "Enter" });
+    await waitFor(() => expect(mocks.addTask).toHaveBeenCalledTimes(1));
+    firstRequest.resolve({});
+    await waitFor(() => expect(screen.queryByText("保存中…")).toBeNull());
+  });
+
+  it("accounts for two ambiguous same-command Task metadata intents without overwriting either", async () => {
+    const firstRequest = deferred<unknown>();
+    const secondRequest = deferred<unknown>();
+    mocks.loadDay.mockResolvedValue(twoPlannedDay);
+    mocks.updateTaskMetadata.mockReturnValueOnce(firstRequest.promise).mockReturnValueOnce(secondRequest.promise);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskを編集" }));
+    const firstTitle = screen.getByRole("textbox", { name: "Canonical taskのTask名" });
+    fireEvent.change(firstTitle, { target: { value: "Ambiguous A" } });
+    fireEvent.keyDown(firstTitle, { key: "Enter" });
+    fireEvent.click(screen.getByRole("button", { name: "Second taskを編集" }));
+    const secondTitle = screen.getByRole("textbox", { name: "Second taskのTask名" });
+    fireEvent.change(secondTitle, { target: { value: "Ambiguous B" } });
+    fireEvent.keyDown(secondTitle, { key: "Enter" });
+    await waitFor(() => expect(mocks.updateTaskMetadata).toHaveBeenCalledTimes(2));
+    const ambiguous = new ApiClientError("response lost", 503, true, "infrastructure_ambiguous");
+    firstRequest.reject(ambiguous);
+    secondRequest.reject(ambiguous);
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "保留中のTask情報保存を再試行" })).toHaveLength(2));
+    expect(mocks.updateTaskMetadata.mock.calls[0][0].operation_id).not.toBe(mocks.updateTaskMetadata.mock.calls[1][0].operation_id);
+  });
+
+  it("queues Start B behind a pending Complete A and dispatches it only after fresh reconciliation", async () => {
+    const completeRequest = deferred<unknown>();
+    const runningWithNext = { ...runningDay,
+      sections: [{ ...runningDay.sections[0], entries: [{ ...firstEntry, lifecycle_state: "running" as const }, secondEntry] }, emptyDay.sections[1]],
+    };
+    const afterComplete = { ...runningWithNext,
+      active_execution: null,
+      sections: [{ ...runningWithNext.sections[0], entries: [{ ...firstEntry, lifecycle_state: "completed" as const }, secondEntry] }, emptyDay.sections[1]],
+      next_entry: secondEntry,
+    };
+    mocks.loadDay.mockResolvedValueOnce(runningWithNext).mockResolvedValue(afterComplete);
+    mocks.completeEntry.mockReturnValue(completeRequest.promise);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "実行中のTaskを完了" }));
+    const startB = screen.getByRole("button", { name: "Second taskを開始" });
+    expect((startB as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(startB);
+    expect(mocks.startEntry).not.toHaveBeenCalled();
+    expect(screen.getByRole("status").textContent).toContain("保存中");
+    completeRequest.resolve({});
+    await waitFor(() => expect(mocks.startEntry).toHaveBeenCalledTimes(1));
+    expect(mocks.startEntry.mock.calls[0][0].entry_id).toBe(secondEntry.id);
   });
 });
