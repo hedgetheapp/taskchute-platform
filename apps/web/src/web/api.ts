@@ -58,6 +58,8 @@ import type {
   UpdateRoutineResult,
   ReorderRoutinesRequest,
   ReorderRoutinesResult,
+  DeleteRoutineRequest,
+  DeleteRoutineResult,
 } from "../shared/contracts";
 
 export class ApiClientError extends Error {
@@ -196,5 +198,8 @@ export const api = {
   },
   reorderRoutines(body: ReorderRoutinesRequest): Promise<ReorderRoutinesResult> {
     return requestJson("/api/v1/routines/reorder", jsonPost("", body));
+  },
+  deleteRoutine(body: DeleteRoutineRequest): Promise<DeleteRoutineResult> {
+    return requestJson(`/api/v1/routines/${body.routine_definition_id}/delete`, jsonPost("", body));
   },
 };

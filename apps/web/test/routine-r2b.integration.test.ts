@@ -2,9 +2,11 @@ import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { uuidv7 } from "../src/shared/uuidv7";
 import { loadCurrentTaskChuteDay, loadTaskChuteDayByLogicalDate } from "../worker/application/load-current-day";
+import { completeEntry, startEntry } from "../worker/application/entry-lifecycle";
 import { convertEntryToRoutine } from "../worker/application/routine";
 import {
   createRoutine,
+  deleteRoutine,
   loadRoutineBoard,
   reorderRoutines,
   setRoutineEnabled,
@@ -192,6 +194,56 @@ describe.sequential("Routine R2B Board", () => {
     expect((await env.APP_DB.prepare(`SELECT id, materialization_order FROM routine_definitions
       WHERE app_user_id = ? ORDER BY materialization_order`).bind(fixture.userId)
       .all<{ id: string; materialization_order: number }>()).results).toEqual(materializationBefore.results);
+  });
+
+  it("archives a Routine without deleting materialized Task, Occurrence, Entry, or Execution history", async () => {
+    const fixture = await seedUser();
+    const created = await createOff(fixture.userId, "Delete me");
+    await updateRoutine(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), routine_definition_id: created.result.routine_definition_id,
+      expected_settings_revision: 0, title: "Delete me", project_id: null, schedule: { kind: "daily" },
+      default_section_id: fixture.sectionId, default_planned_start_minute: 300, default_estimate_seconds: 600,
+      start_logical_date: "2026-09-01", end_logical_date: null,
+    }, now);
+    await setRoutineEnabled(env.APP_DB, fixture.userId, { operation_id: uuidv7(),
+      routine_definition_id: created.result.routine_definition_id, enabled: true, expected_settings_revision: 1 }, now);
+    const before = await loadCurrentTaskChuteDay(env.APP_DB, fixture.userId, now);
+    const entry = before.sections.flatMap((section) => section.entries).concat(before.unsectioned_entries)[0];
+    if (!entry) throw new Error("missing materialized Routine entry");
+    const started = await startEntry(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), entry_id: entry.id, execution_id: uuidv7(),
+    });
+    await completeEntry(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), entry_id: entry.id, execution_id: started.execution.id,
+    });
+    const request = { operation_id: uuidv7(), routine_definition_id: created.result.routine_definition_id,
+      expected_settings_revision: 2, expected_board_revision: created.result.board_revision };
+    const deleted = await deleteRoutine(env.APP_DB, fixture.userId, request, now);
+    expect(deleted).toEqual({ routine_definition_id: request.routine_definition_id, board_revision: request.expected_board_revision + 1 });
+    expect(await deleteRoutine(env.APP_DB, fixture.userId, request, now)).toEqual(deleted);
+    await expect(deleteRoutine(env.APP_DB, fixture.userId, { ...request, expected_board_revision: 99 }, now))
+      .rejects.toMatchObject({ code: "operation_id_misuse" });
+    expect((await loadRoutineBoard(env.APP_DB, fixture.userId, now)).routines).toEqual([]);
+    const after = await loadCurrentTaskChuteDay(env.APP_DB, fixture.userId, now);
+    const preserved = after.sections.flatMap((section) => section.entries).concat(after.unsectioned_entries)
+      .find((item) => item.id === entry.id);
+    expect(preserved).toMatchObject({ id: entry.id, lifecycle_state: "completed" });
+    expect(await env.APP_DB.prepare("SELECT routine_occurrence_id FROM entries WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, entry.id).first<string>("routine_occurrence_id")).toEqual(expect.any(String));
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM routine_definitions WHERE app_user_id = ?")
+      .bind(fixture.userId).first<number>("count")).toBe(1);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM routine_occurrences WHERE app_user_id = ?")
+      .bind(fixture.userId).first<number>("count")).toBe(1);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM entries WHERE app_user_id = ?")
+      .bind(fixture.userId).first<number>("count")).toBe(1);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM executions WHERE app_user_id = ?")
+      .bind(fixture.userId).first<number>("count")).toBe(1);
+    expect(await env.APP_DB.prepare(`SELECT command_type FROM operations
+      WHERE app_user_id = ? AND operation_id = ?`).bind(fixture.userId, request.operation_id)
+      .first<string>("command_type")).toBe("DeleteRoutine");
+    await loadCurrentTaskChuteDay(env.APP_DB, fixture.userId, now);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM routine_occurrences WHERE app_user_id = ?")
+      .bind(fixture.userId).first<number>("count")).toBe(1);
   });
 
   it("keeps an explicit historical no-Project snapshot when the current Task later gains a Project", async () => {

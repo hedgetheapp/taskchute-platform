@@ -27,7 +27,9 @@ import {
 } from "./application/routine-planning";
 import {
   createRoutine,
+  deleteRoutine,
   isCreateRoutineRequest,
+  isDeleteRoutineRequest,
   isReorderRoutinesRequest,
   isSetRoutineEnabledRequest,
   isUpdateRoutineRequest,
@@ -117,6 +119,15 @@ async function route(request: Request, env: Env): Promise<Response> {
       throw new HttpError(400, "malformed_request", "Invalid UpdateRoutine request");
     }
     return Response.json(await updateRoutine(env.APP_DB, principal.appUserId, body));
+  }
+  const routineDeleteMatch = url.pathname.match(/^\/api\/v1\/routines\/([^/]+)\/delete$/);
+  if (request.method === "POST" && routineDeleteMatch) {
+    const body = await readBoundedJson(request);
+    if (routineDeleteMatch[1] !== (body as { routine_definition_id?: unknown })?.routine_definition_id
+      || !isDeleteRoutineRequest(body)) {
+      throw new HttpError(400, "malformed_request", "Invalid DeleteRoutine request");
+    }
+    return Response.json(await deleteRoutine(env.APP_DB, principal.appUserId, body));
   }
   if (request.method === "POST" && url.pathname === "/api/v1/projects") {
     const body = await readBoundedJson(request);

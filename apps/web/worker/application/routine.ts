@@ -308,7 +308,9 @@ export async function endRoutine(
     return rejectEnd(db, appUserId, request, requestFingerprint, "Routine can only be ended from the current TaskChuteDay");
   }
   const definition = await db.prepare(`SELECT end_logical_date FROM routine_definitions
-    WHERE app_user_id = ? AND id = ?`).bind(appUserId, request.routine_definition_id)
+    WHERE app_user_id = ? AND id = ? AND NOT EXISTS (SELECT 1 FROM routine_definition_archives a
+      WHERE a.app_user_id = routine_definitions.app_user_id AND a.routine_definition_id = routine_definitions.id)`)
+    .bind(appUserId, request.routine_definition_id)
     .first<{ end_logical_date: string | null }>();
   if (!definition) return rejectEnd(db, appUserId, request, requestFingerprint, "Routine is unavailable");
   if (definition.end_logical_date !== null && definition.end_logical_date <= currentDay.logical_date) {
@@ -322,8 +324,10 @@ export async function endRoutine(
   try {
     const [guard, , boardItem, assertion, operation] = await db.batch([
       db.prepare(`INSERT INTO routine_command_guards (app_user_id, operation_id, command_type)
-        SELECT ?, ?, 'EndRoutine' WHERE EXISTS (SELECT 1 FROM routine_definitions
-          WHERE app_user_id = ? AND id = ? AND (end_logical_date IS NULL OR end_logical_date > ?))`)
+        SELECT ?, ?, 'EndRoutine' WHERE EXISTS (SELECT 1 FROM routine_definitions r
+          WHERE r.app_user_id = ? AND r.id = ? AND (r.end_logical_date IS NULL OR r.end_logical_date > ?)
+            AND NOT EXISTS (SELECT 1 FROM routine_definition_archives a
+              WHERE a.app_user_id = r.app_user_id AND a.routine_definition_id = r.id))`)
         .bind(appUserId, request.operation_id, appUserId, request.routine_definition_id, currentDay.logical_date),
       db.prepare(`UPDATE routine_definitions SET end_logical_date = ? WHERE app_user_id = ? AND id = ?
         AND (end_logical_date IS NULL OR end_logical_date > ?) AND EXISTS (
@@ -380,6 +384,8 @@ async function missingRoutineCount(db: D1Database, appUserId: string, dayId: str
       AND NOT EXISTS (SELECT 1 FROM routine_pause_intervals p WHERE p.app_user_id = r.app_user_id
         AND p.routine_definition_id = r.id AND p.paused_logical_date <= ?
         AND (p.resumed_logical_date IS NULL OR ? < p.resumed_logical_date))
+      AND NOT EXISTS (SELECT 1 FROM routine_definition_archives a
+        WHERE a.app_user_id = r.app_user_id AND a.routine_definition_id = r.id)
       AND NOT EXISTS (SELECT 1 FROM routine_occurrences o WHERE o.app_user_id = r.app_user_id
         AND o.routine_definition_id = r.id AND o.origin_taskchute_day_id = ?)`)
     .bind(appUserId, logicalDate, logicalDate, logicalDate, logicalDate, logicalDate, logicalDate, dayId)
@@ -412,6 +418,8 @@ export async function ensureCurrentDayRoutineEntries(
       AND NOT EXISTS (SELECT 1 FROM routine_pause_intervals pi WHERE pi.app_user_id = r.app_user_id
         AND pi.routine_definition_id = r.id AND pi.paused_logical_date <= ?
         AND (pi.resumed_logical_date IS NULL OR ? < pi.resumed_logical_date))
+      AND NOT EXISTS (SELECT 1 FROM routine_definition_archives a
+        WHERE a.app_user_id = r.app_user_id AND a.routine_definition_id = r.id)
       AND NOT EXISTS (SELECT 1 FROM routine_occurrences o WHERE o.app_user_id = r.app_user_id
         AND o.routine_definition_id = r.id AND o.origin_taskchute_day_id = ?)
     ORDER BY r.materialization_order, r.id`)
@@ -483,6 +491,8 @@ export async function ensureCurrentDayRoutineEntries(
             LEFT JOIN routine_schedules s ON s.app_user_id = r.app_user_id AND s.routine_definition_id = r.id
             WHERE r.id IS NULL OR r.start_logical_date > ?
               OR (r.end_logical_date IS NOT NULL AND r.end_logical_date < ?)
+              OR EXISTS (SELECT 1 FROM routine_definition_archives a
+                WHERE a.app_user_id = r.app_user_id AND a.routine_definition_id = r.id)
               OR (s.schedule_kind = 'every_n_days'
                 AND CAST(julianday(?) - julianday(r.start_logical_date) AS INTEGER) % s.interval_days <> 0)
               OR (s.schedule_kind = 'weekly'

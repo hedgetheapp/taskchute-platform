@@ -1,6 +1,8 @@
 import type {
   CreateRoutineRequest,
   CreateRoutineResult,
+  DeleteRoutineRequest,
+  DeleteRoutineResult,
   ReorderRoutinesRequest,
   ReorderRoutinesResult,
   RoutineBoardProjection,
@@ -117,6 +119,14 @@ export function isReorderRoutinesRequest(value: unknown): value is ReorderRoutin
     && Number.isSafeInteger(body.expected_board_revision) && Number(body.expected_board_revision) >= 0;
 }
 
+export function isDeleteRoutineRequest(value: unknown): value is DeleteRoutineRequest {
+  if (!value || typeof value !== "object") return false;
+  const body = value as Record<string, unknown>;
+  return !('user_id' in body) && isUuid(body.operation_id) && isUuid(body.routine_definition_id)
+    && Number.isSafeInteger(body.expected_settings_revision) && Number(body.expected_settings_revision) >= 0
+    && Number.isSafeInteger(body.expected_board_revision) && Number(body.expected_board_revision) >= 0;
+}
+
 function scheduleColumns(schedule: RoutineScheduleInput): { kind: string; interval: number | null; mask: number | null } {
   if (schedule.kind === "daily") return { kind: "daily", interval: null, mask: null };
   if (schedule.kind === "every_n_days") return { kind: schedule.kind, interval: schedule.interval_days, mask: null };
@@ -163,7 +173,9 @@ export async function loadRoutineBoard(
       JOIN routine_schedules s ON s.app_user_id = r.app_user_id AND s.routine_definition_id = r.id
       JOIN routine_board_items b ON b.app_user_id = r.app_user_id AND b.routine_definition_id = r.id
       LEFT JOIN projects p ON p.app_user_id = t.app_user_id AND p.id = t.project_id
-      WHERE r.app_user_id = ? ORDER BY b.board_position, r.id`)
+      WHERE r.app_user_id = ? AND NOT EXISTS (SELECT 1 FROM routine_definition_archives a
+        WHERE a.app_user_id = r.app_user_id AND a.routine_definition_id = r.id)
+      ORDER BY b.board_position, r.id`)
       .bind(context.logicalDate, context.logicalDate, appUserId),
     db.prepare(`SELECT i.section_id AS id, i.title, i.logical_start_minute, i.logical_end_minute
       FROM section_configuration_heads h JOIN section_configuration_items i
@@ -208,6 +220,18 @@ async function persistSuccess<T>(db: D1Database, input: { appUserId: string; ope
     if (prior) return replayOperation(prior, input.commandType, input.requestFingerprint);
     throw new HttpError(503, "infrastructure_ambiguous", "The Routine outcome is unknown; reload and retry", true);
   }
+}
+
+async function rejectDelete(
+  db: D1Database,
+  appUserId: string,
+  request: DeleteRoutineRequest,
+  requestFingerprint: string,
+  message: string,
+  conflict = false,
+): Promise<DeleteRoutineResult> {
+  return reject<DeleteRoutineResult>(db, appUserId, request.operation_id, "DeleteRoutine",
+    requestFingerprint, message, conflict);
 }
 
 export async function createRoutine(db: D1Database, appUserId: string, request: CreateRoutineRequest,
@@ -284,7 +308,9 @@ function eligibleExpression(alias: string): string {
       OR (s.schedule_kind = 'weekly' AND (s.weekdays_mask & (1 << CAST(strftime('%w', ?) AS INTEGER))) <> 0))
     AND NOT EXISTS (SELECT 1 FROM routine_pause_intervals pi WHERE pi.app_user_id = ${alias}.app_user_id
       AND pi.routine_definition_id = ${alias}.id AND pi.paused_logical_date <= ?
-      AND (pi.resumed_logical_date IS NULL OR ? < pi.resumed_logical_date))`;
+      AND (pi.resumed_logical_date IS NULL OR ? < pi.resumed_logical_date))
+    AND NOT EXISTS (SELECT 1 FROM routine_definition_archives a
+      WHERE a.app_user_id = ${alias}.app_user_id AND a.routine_definition_id = ${alias}.id)`;
 }
 
 async function currentMaterializationPlan(db: D1Database, appUserId: string, routineId: string,
@@ -308,6 +334,8 @@ async function currentMaterializationPlan(db: D1Database, appUserId: string, rou
     JOIN tasks t ON t.app_user_id = r.app_user_id AND t.id = r.task_id
     LEFT JOIN projects p ON p.app_user_id = t.app_user_id AND p.id = t.project_id
     WHERE r.app_user_id = ? AND r.id = ? AND ${eligibility}
+      AND NOT EXISTS (SELECT 1 FROM routine_definition_archives a
+        WHERE a.app_user_id = r.app_user_id AND a.routine_definition_id = r.id)
       AND NOT EXISTS (SELECT 1 FROM routine_occurrences o WHERE o.app_user_id = r.app_user_id
         AND o.routine_definition_id = r.id AND o.origin_taskchute_day_id = ?)`)
     .bind(...bindings)
@@ -835,5 +863,123 @@ export async function reorderRoutines(db: D1Database, appUserId: string, request
     const committed = await readOperation(db, appUserId, request.operation_id);
     if (committed) return replayOperation(committed, "ReorderRoutines", requestFingerprint);
     throw new HttpError(503, "infrastructure_ambiguous", "The Routine reorder outcome is unknown; reload and retry", true);
+  }
+}
+
+export async function deleteRoutine(db: D1Database, appUserId: string, request: DeleteRoutineRequest,
+  nowInstant = new Date().toISOString()): Promise<DeleteRoutineResult> {
+  const requestFingerprint = await fingerprint(request);
+  const prior = await readOperation(db, appUserId, request.operation_id);
+  if (prior) return replayOperation(prior, "DeleteRoutine", requestFingerprint);
+  const [head, item, order] = await Promise.all([
+    db.prepare("SELECT board_revision FROM routine_board_heads WHERE app_user_id = ?")
+      .bind(appUserId).first<{ board_revision: number }>(),
+    db.prepare(`SELECT b.settings_revision FROM routine_board_items b
+      JOIN routine_definitions r ON r.app_user_id = b.app_user_id AND r.id = b.routine_definition_id
+      WHERE b.app_user_id = ? AND b.routine_definition_id = ?
+        AND NOT EXISTS (SELECT 1 FROM routine_definition_archives a
+          WHERE a.app_user_id = b.app_user_id AND a.routine_definition_id = b.routine_definition_id)`)
+      .bind(appUserId, request.routine_definition_id).first<{ settings_revision: number }>(),
+    db.prepare("SELECT routine_definition_id FROM routine_board_items WHERE app_user_id = ? ORDER BY board_position, routine_definition_id")
+      .bind(appUserId).all<{ routine_definition_id: string }>(),
+  ]);
+  if (!head || !item) return rejectDelete(db, appUserId, request, requestFingerprint, "Routine is unavailable");
+  if (head.board_revision !== request.expected_board_revision) {
+    return rejectDelete(db, appUserId, request, requestFingerprint, "The Routine board revision is stale", true);
+  }
+  if (item.settings_revision !== request.expected_settings_revision) {
+    return rejectDelete(db, appUserId, request, requestFingerprint, "The Routine settings revision is stale", true);
+  }
+  const remainingIds = order.results.map((row) => row.routine_definition_id)
+    .filter((id) => id !== request.routine_definition_id);
+  const remainingJson = JSON.stringify(remainingIds);
+  const result: DeleteRoutineResult = {
+    routine_definition_id: request.routine_definition_id,
+    board_revision: request.expected_board_revision + 1,
+  };
+  const assertionId = `routine-delete:${request.operation_id}`;
+  try {
+    const results = await db.batch([
+      db.prepare(`INSERT INTO routine_command_guards (app_user_id, operation_id, command_type)
+        SELECT ?, ?, 'DeleteRoutine' WHERE EXISTS (SELECT 1 FROM routine_board_heads
+          WHERE app_user_id = ? AND board_revision = ?)
+          AND EXISTS (SELECT 1 FROM routine_board_items
+            WHERE app_user_id = ? AND routine_definition_id = ? AND settings_revision = ?)
+          AND EXISTS (SELECT 1 FROM routine_definitions
+            WHERE app_user_id = ? AND id = ?)
+          AND NOT EXISTS (SELECT 1 FROM routine_definition_archives
+            WHERE app_user_id = ? AND routine_definition_id = ?)`)
+        .bind(appUserId, request.operation_id, appUserId, request.expected_board_revision,
+          appUserId, request.routine_definition_id, request.expected_settings_revision,
+          appUserId, request.routine_definition_id, appUserId, request.routine_definition_id),
+      db.prepare(`INSERT INTO routine_definition_archives (app_user_id, routine_definition_id, archived_at)
+        SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM routine_command_guards
+          WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(appUserId, request.routine_definition_id, nowInstant, appUserId, request.operation_id),
+      db.prepare(`DELETE FROM routine_board_items WHERE app_user_id = ? AND routine_definition_id = ?
+        AND EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(appUserId, request.routine_definition_id, appUserId, request.operation_id),
+      db.prepare(`UPDATE routine_board_items SET board_position = board_position + 1000000
+        WHERE app_user_id = ? AND EXISTS (SELECT 1 FROM routine_command_guards
+          WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(appUserId, appUserId, request.operation_id),
+      db.prepare(`UPDATE routine_board_items SET board_position = (
+          SELECT CAST(j.key AS INTEGER) + 1 FROM json_each(?) j
+          WHERE j.value = routine_board_items.routine_definition_id)
+        WHERE app_user_id = ? AND EXISTS (SELECT 1 FROM routine_command_guards
+          WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(remainingJson, appUserId, appUserId, request.operation_id),
+      db.prepare(`UPDATE routine_board_heads SET board_revision = board_revision + 1
+        WHERE app_user_id = ? AND board_revision = ? AND EXISTS (
+          SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(appUserId, request.expected_board_revision, appUserId, request.operation_id),
+      db.prepare(`INSERT INTO transaction_assertions (app_user_id, id, ok)
+        SELECT ?, ?, CASE WHEN
+          EXISTS (SELECT 1 FROM routine_definition_archives
+            WHERE app_user_id = ? AND routine_definition_id = ?)
+          AND NOT EXISTS (SELECT 1 FROM routine_board_items
+            WHERE app_user_id = ? AND routine_definition_id = ?)
+          AND EXISTS (SELECT 1 FROM routine_board_heads
+            WHERE app_user_id = ? AND board_revision = ?)
+          AND (SELECT COUNT(*) FROM routine_board_items WHERE app_user_id = ?) = json_array_length(?)
+          AND NOT EXISTS (SELECT 1 FROM routine_board_items b
+            WHERE b.app_user_id = ? AND NOT EXISTS (SELECT 1 FROM json_each(?) j
+              WHERE j.value = b.routine_definition_id
+                AND b.board_position = CAST(j.key AS INTEGER) + 1))
+          THEN 1 ELSE 0 END
+        WHERE EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(appUserId, assertionId, appUserId, request.routine_definition_id,
+          appUserId, request.routine_definition_id, appUserId, result.board_revision,
+          appUserId, remainingJson, appUserId, remainingJson, appUserId, request.operation_id),
+      db.prepare(`INSERT INTO operations (app_user_id, operation_id, command_type,
+        request_fingerprint_version, request_fingerprint, outcome_kind, result_json, created_at)
+        SELECT ?, ?, 'DeleteRoutine', ?, ?, 'success', ?, ? WHERE EXISTS (
+          SELECT 1 FROM transaction_assertions WHERE app_user_id = ? AND id = ? AND ok = 1)`)
+        .bind(appUserId, request.operation_id, REQUEST_FINGERPRINT_VERSION, requestFingerprint,
+          JSON.stringify(result), nowInstant, appUserId, assertionId),
+      db.prepare("DELETE FROM transaction_assertions WHERE app_user_id = ? AND id = ?")
+        .bind(appUserId, assertionId),
+      db.prepare("DELETE FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?")
+        .bind(appUserId, request.operation_id),
+    ]);
+    if (results[0]?.meta.changes === 0 || results[1]?.meta.changes === 0
+      || results[2]?.meta.changes === 0 || results[5]?.meta.changes === 0
+      || results[6]?.meta.changes === 0 || results[7]?.meta.changes === 0) {
+      const committed = await readOperation(db, appUserId, request.operation_id);
+      if (committed) return replayOperation(committed, "DeleteRoutine", requestFingerprint);
+      const latestHead = await db.prepare("SELECT board_revision FROM routine_board_heads WHERE app_user_id = ?")
+        .bind(appUserId).first<{ board_revision: number }>();
+      if (latestHead?.board_revision !== request.expected_board_revision) {
+        return rejectDelete(db, appUserId, request, requestFingerprint, "The Routine board revision is stale", true);
+      }
+      return rejectDelete(db, appUserId, request, requestFingerprint, "Routine changed before delete could commit");
+    }
+    const committed = await readOperation(db, appUserId, request.operation_id);
+    if (!committed) throw new Error("Routine delete committed without an operation result");
+    return replayOperation(committed, "DeleteRoutine", requestFingerprint);
+  } catch {
+    const committed = await readOperation(db, appUserId, request.operation_id);
+    if (committed) return replayOperation(committed, "DeleteRoutine", requestFingerprint);
+    throw new HttpError(503, "infrastructure_ambiguous", "The Routine delete outcome is unknown; reload and retry", true);
   }
 }

@@ -615,3 +615,15 @@ export interface ReorderRoutinesResult {
   routine_definition_ids: string[];
   board_revision: number;
 }
+
+export interface DeleteRoutineRequest {
+  operation_id: string;
+  routine_definition_id: string;
+  expected_settings_revision: number;
+  expected_board_revision: number;
+}
+
+export interface DeleteRoutineResult {
+  routine_definition_id: string;
+  board_revision: number;
+}

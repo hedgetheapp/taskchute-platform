@@ -468,6 +468,63 @@ try {
     VALUES ('user-v01a', 'operation-task-metadata-invalid', 'NotACommand', 1, 'invalid-d060-fingerprint', 'success', '{}',
       '2026-08-28T08:13:00.000Z')`], false);
   assert.notEqual(invalidTaskMetadataCommand.status, 0, "unknown operation command must remain rejected after 0017");
+  const preRoutineDeleteOperations = query("SELECT * FROM operations ORDER BY operation_id");
+  const preRoutineDeleteGuards = query("SELECT * FROM routine_command_guards ORDER BY operation_id");
+  const preRoutineDeleteDefinitions = query("SELECT * FROM routine_definitions ORDER BY id");
+  const preRoutineDeleteOccurrences = query("SELECT * FROM routine_occurrences ORDER BY id");
+  const preRoutineDeleteEntries = query("SELECT * FROM entries ORDER BY id");
+  const preRoutineDeleteExecutions = query("SELECT * FROM executions ORDER BY id");
+  const preRoutineDeleteTables = query("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name");
+  applyFile("migrations/app/0018_routine_archive.sql");
+  assert.deepEqual(query("SELECT * FROM operations ORDER BY operation_id"), preRoutineDeleteOperations,
+    "0018 must preserve every operation row");
+  assert.deepEqual(query("SELECT * FROM routine_command_guards ORDER BY operation_id"), preRoutineDeleteGuards,
+    "0018 must preserve every Routine guard row");
+  assert.deepEqual(query("SELECT * FROM routine_definitions ORDER BY id"), preRoutineDeleteDefinitions,
+    "0018 must preserve RoutineDefinition identity");
+  assert.deepEqual(query("SELECT * FROM routine_occurrences ORDER BY id"), preRoutineDeleteOccurrences,
+    "0018 must preserve RoutineOccurrence history");
+  assert.deepEqual(query("SELECT * FROM entries ORDER BY id"), preRoutineDeleteEntries,
+    "0018 must preserve materialized Entries");
+  assert.deepEqual(query("SELECT * FROM executions ORDER BY id"), preRoutineDeleteExecutions,
+    "0018 must preserve Execution history");
+  const postRoutineDeleteTables = query("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name");
+  assert.equal(postRoutineDeleteTables.length, preRoutineDeleteTables.length + 1,
+    "0018 must add one application table");
+  assert.deepEqual(postRoutineDeleteTables.filter((row) => row.name !== "routine_definition_archives"),
+    preRoutineDeleteTables.filter((row) => row.name !== "routine_definition_archives"),
+    "0018 must add only the Routine archive table");
+  assert.deepEqual(postRoutineDeleteTables.filter((row) => row.name === "routine_definition_archives"),
+    [{ name: "routine_definition_archives" }]);
+  const routineDeleteOperationTable = query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'operations'")[0]?.sql ?? "";
+  const routineDeleteGuardTable = query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'routine_command_guards'")[0]?.sql ?? "";
+  assert(routineDeleteOperationTable.includes("DeleteRoutine"), "0018 must add the DeleteRoutine operation CHECK entry");
+  assert(routineDeleteGuardTable.includes("DeleteRoutine"), "0018 must add the DeleteRoutine guard CHECK entry");
+  execute(["--command", `INSERT INTO operations
+    (app_user_id, operation_id, command_type, request_fingerprint_version, request_fingerprint, outcome_kind, result_json, created_at)
+    VALUES ('user-v01a', 'operation-routine-delete', 'DeleteRoutine', 1, 'routine-delete-fingerprint', 'success', '{}',
+      '2026-08-28T08:14:00.000Z')`]);
+  execute(["--command", `INSERT INTO routine_command_guards
+    (app_user_id, operation_id, command_type)
+    VALUES ('user-v01a', 'guard-routine-delete', 'DeleteRoutine')`]);
+  execute(["--command", `INSERT INTO routine_definition_archives
+    (app_user_id, routine_definition_id, archived_at)
+    VALUES ('user-v01a', 'routine-r2a-normalize', '2026-08-28T08:14:00.000Z')`]);
+  const invalidRoutineDeleteCommand = execute(["--command", `INSERT INTO operations
+    (app_user_id, operation_id, command_type, request_fingerprint_version, request_fingerprint, outcome_kind, result_json, created_at)
+    VALUES ('user-v01a', 'operation-routine-delete-invalid', 'NotACommand', 1, 'invalid-d064-fingerprint', 'success', '{}',
+      '2026-08-28T08:15:00.000Z')`], false);
+  assert.notEqual(invalidRoutineDeleteCommand.status, 0, "unknown operation command must remain rejected after 0018");
+  const invalidRoutineDeleteGuard = execute(["--command", `INSERT INTO routine_command_guards
+    (app_user_id, operation_id, command_type)
+    VALUES ('user-v01a', 'guard-routine-delete-invalid', 'NotACommand')`], false);
+  assert.notEqual(invalidRoutineDeleteGuard.status, 0, "unknown Routine guard command must remain rejected after 0018");
+  assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
+  assert.deepEqual(query("PRAGMA foreign_key_check"), []);
+  execute(["--command", `DELETE FROM routine_definition_archives
+    WHERE app_user_id = 'user-v01a' AND routine_definition_id = 'routine-r2a-normalize';
+    DELETE FROM routine_command_guards WHERE app_user_id = 'user-v01a' AND operation_id = 'guard-routine-delete';
+    DELETE FROM operations WHERE app_user_id = 'user-v01a' AND operation_id = 'operation-routine-delete';`]);
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
   assert.deepEqual(query("PRAGMA foreign_key_check"), []);
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
@@ -650,7 +707,7 @@ try {
   assert.notEqual(duplicateActive.status, 0, "the active Execution unique index must reject a second active row");
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
   assert.deepEqual(query("PRAGMA foreign_key_check"), []);
-  console.log("migration regression: 4 scenarios passed (R2A normalization, R2B preservation/constraints, duplicate-Task fail-safe, Bulk Selection 0010/0011/0012/0013/0014/0015/0016/0017 preservation/constraints; fresh 0001 -> 0017 chain)");
+  console.log("migration regression: 4 scenarios passed (R2A normalization, R2B preservation/constraints, duplicate-Task fail-safe, Bulk Selection 0010/0011/0012/0013/0014/0015/0016/0017/0018 preservation/constraints; fresh 0001 -> 0018 chain)");
 } finally {
   await rm(persistencePath, { recursive: true, force: true });
   await rm(failurePersistencePath, { recursive: true, force: true });
