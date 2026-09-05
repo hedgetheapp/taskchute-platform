@@ -45,6 +45,24 @@ The fresh export was taken after the cleanup effects were already present; it is
 
 Classification: D-065 cleanup follow-up `NONPROD_DOMAIN_CLEANUP_RECONCILED / APP_POST_CLEANUP_BACKUP_VERIFIED / APP_POST_CLEANUP_RECOVERY_VERIFIED / APP_INTEGRITY_VERIFIED / AUTH_PRESERVED`; pre-cleanup fresh backup gate `NOT_ATTESTED`, additional destructive command in this resume run `NOT_RUN`, production / restore / branch / PR / merge / tag / release `NOT_RUN`, Released `NO`.
 
+## persistent nonprod APP development-data clean reset — 2026-09-05
+
+Product Owner承認済みの開発用APP Domain reset。開始時点はexact `main@448664b70e6682f4f4c16e64652fde1453d73f32`、APP / AUTH migration pending `0 / 0`、対象はAPP `taskchute-app-nonprod`のみ。AUTH user/login identity、APP user mapping、timezone、day boundary、stable Section/config、migration metadata、board headsを保持し、fixtureは再作成しない。
+
+| ID | Verification target | Evidence |
+| --- | --- | --- |
+| RESET-01 | canonical Worker、APP/AUTH binding、nonprod env、migration pending | PASS: `taskchute-web-nonprod`、APP `6ad7e35f-5d03-4be3-9b00-46cd713a51c3`、AUTH `60085f8d-0c4e-4c15-98e9-3ce178398041`、`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、pending `0 / 0` |
+| RESET-02 | fresh private APP/AUTH backup HARD GATE、size / SHA-256 / readability / ignore | PASS: APP `d065-reset-pre-cleanup-app-20260905.sql` `313,540 bytes` / `0E1B8FE0278671609E42A1D788B0E584FBEF15AC7E4CC7CFC49183F67152A936`、AUTH `d065-reset-pre-cleanup-auth-20260905.sql` `4,280 bytes` / `6293171FAF25CE7C3E0B6906E50502B819F5E76D33D617AC86FEA99608BFF6DD`、両方`.wrangler/` ignored |
+| RESET-03 | isolated local recovery/readability、quick_check / FK / aggregate | PASS: APP / AUTHをremoteへrestoreせずimport、両方`quick_check = ok`・FK violationsなし、APP `app_users 1 / tasks 55 / entries 62 / executions 25 / routines 11 / operations 309`、AUTH `user 1 / account 1 / session 4` |
+| RESET-04 | cleanup scope classification and deletion count | PASS: APPのみ、Domain / history / routine / Day rowsを削除。`entry_project_snapshots 25 / executions 25 / entries 62 / routine_occurrences 20 / routine_definitions 11 / tasks 55 / taskchute_day_section_contexts 30 / operations 309`、guards / assertionsは`0`、Project系は前turn中断時点で`0` |
+| RESET-05 | APP user identity、auth mapping、settings、stable Section/config、board heads preservation | PASS: `app_users 1 / auth_subject_mappings 1 / user_settings 1 / sections 3 / config versions 7 / head 1 / items 21 / project board head 1 / routine board head 1`、`Asia/Tokyo / 240`、Morning `240-720`、Day `720-1200`、Evening `1200-1680`一致 |
+| RESET-06 | post-cleanup APP integrity and empty Domain aggregate | PASS: `quick_check = ok`、FK violationsなし、Projects / Tasks / Entries / Executions / Routines / Occurrences / Days / operations / guards全て`0` |
+| RESET-07 | AUTH read-only preservation and login data | PASS: AUTH writeなし、pending `0`、`quick_check = ok`、FK violationsなし、user / account / session `1 / 1 / 4` |
+| RESET-08 | authenticated browser login / Today / Routine / Project / Section smoke、reload | PASS: existing session reload、Logout表示、Today 3 Section empty、Routine `該当するRoutineはありません。`、Project `該当するProjectはありません。`、Section設定保持 |
+| RESET-09 | browser console and no fixture recreation | PASS: error / warning空集合、fixture再作成なし。production / restore / AUTH cleanup / binding / security posture changeは`NOT_RUN` |
+
+Cleanup transaction note: D1 CLI query APIが`BEGIN IMMEDIATE`を拒否したため、transaction内DELETEは実行されず変更なしで終了した。その後、FKを有効にした依存順の個別DELETEへ切り替え、occurrence先行DELETEのFK拒否をread-only integrity確認後に修正してcleanupを完了した。remote restoreは行っていない。D-065 corrective code、schema、migration、APIは変更していない。Classification: `PRE_CLEANUP_BACKUP_HARD_GATE_PASS / ISOLATED_RECOVERY_VERIFIED / APP_CLEAN_RESET_PASS / APP_INTEGRITY_PASS / AUTH_PRESERVED / BROWSER_EMPTY_STATE_PASS`、production / restore / Released `NOT_RUN / NOT_RUN / NO`。
+
 ## D-064 — Routine delete and Routine Board table UX — 2026-09-05
 
 Contract: D-064 `Approved`。Routine deleteのsoft archive、future generation停止、history preservation、Routine Boardの9列・reorder・resize・keyboard help・X negative boundary・retry safetyを対象とする。Decision commit `2e8685de2321f4a2e6c39dd0276ef726806a45d6`、implementation commit `573f3a72394988442f8482bb183136b95b831242`をGitHub `main`へpushした。
