@@ -3367,7 +3367,7 @@ export function App() {
           )}
           </main>
         ) : (
-          <main className="shell day-shell" onKeyDown={handleDayKeyDown}>
+          <main className="shell day-shell" tabIndex={-1} onKeyDown={handleDayKeyDown}>
       <header className="day-header">
         <div>
           <p className="eyebrow">TaskChuteDay</p>
