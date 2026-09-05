@@ -1241,3 +1241,38 @@ D-059では、Day Tableの見た目とpointer interactionを、既存のDay / En
 - D-058のTask identity / Task cell開始面の記述だけを本Decisionでsupersedeし、D-058の他のinteraction simplificationとD&D domain / eligibility / ordering semanticsは維持する。
 
 D-059は新しいProduct / API / Domain / persistence change、新dependency、migration / schema change、security posture change、production operationを含めない。実装・local / real-local・persistent nonprod safety・remote feature verificationの状態は`docs/CURRENT.md`、`docs/FEATURES.md`、`docs/DESIGN.md`、`docs/TEST_MATRIX.md`を正本とする。productionは別途承認なしに実施しない。
+
+## D-060 — Day row editing, inline actual entry, and completed duplicate
+Status: Approved
+
+D-060では、Day Tableのordinary planned Taskに限定したTask metadata編集、actual開始 / 終了時刻のinline entry・correction、completed current-Day Taskの狭い複製をcurrent capabilityとして追加する。D-058のcapability withdrawalのうち`SetExecutionTimes`だけを本Decisionでsupersedeし、`開始を取り消す` / `RevertEntryStart`は復活させない。旧実績入力 / 訂正dialog・buttonも戻さず、開始 / 終了セル内の直接編集だけを提供する。
+
+### Task metadata inline editing
+
+- planning enabled、current editable boundary内のordinary（`routine === null`）planned EntryだけがTask title inline editとProject selectorの対象である。running / completed / Routine-derived / past / read-only / mutation locked Entryはread-onlyとする。
+- Task titleはTask cell内のinputで編集し、Enterでcommit、Escapeでcancelする。trim後non-empty、最大300文字を検証し、canonical server response / projectionへreconcileする。Task / Entry identityは変更しない。
+- Projectは既存のowner-scoped Projectまたは`Projectなし`を即時保存できる。quick create / searchは含めず、cross-owner Projectはserver-sideにrejectする。
+- commandはretry-safeな`UpdateTaskMetadata`（またはrepository-conventional equivalent）とし、authenticated owner、Entry / Task relationship、ordinary planned eligibility、current-value compare-and-set precondition、request fingerprint / replay / misuseを検証する。Task revision column等の新schemaが必要になる場合は採用しない。
+- metadata-only changeではEntryのplacementや`placement_revision`を変更しない。新しいTask / Entry schema、revision、Project quick-create/searchは含めない。
+
+### Inline actual Start / End
+
+`SetExecutionTimes`はD-057の既存API / Worker / client command pathを現行仕様へ再有効化するが、意味論と安全性はD-057から変更しない。planned / running / completed Entryの開始・終了セルでinline editorを使い、Enter commit、Escape cancel、row内Start / End間のfocus移動を維持する。modal、旧button、Revert pathは追加しない。
+
+- planned start-onlyはrunning active Execution、start + endはcompleted Executionとなる。runningはstart correctionまたはend入力を許可し、completedはstart / end correctionを許可するが、end clearによるReopenはrejectする。
+- `started_at <= ended_at`、両値のcommand now以下、startの所属established Day内、endのDay boundary越境、future / non-established past Day拒否、owner isolation、active Execution最大1、user-global no-overlap、exact adjacency許可、atomicity、retry / replay / misuse、projection / Start Forecast reconciliationを維持する。
+- actual correctionではplanned / Section / planned start / positionを変更しない。ただしD-057で承認済みのSectionなしactual-start resolutionだけは既存例外を維持する。Routine-derived EntryもRoutine definition / default / schedule / occurrence identityを変更しない。
+- `RevertEntryStart`はcurrent route / client / Worker capabilityとして復活させず、historical migration / operation valuesだけを保持する。
+
+### Completed current-Day duplicate
+
+- current logical Dayのcompleted ordinary / Routine-derived sourceだけに`…`を表示し、menuは`複製`だけとする。`削除`と`日付変更`は提供しない。running / completed delete、past / cross-Day duplicate、Reopenは含めない。
+- existing `DuplicateEntry`を狭く拡張し、新Task / Entry identity、planned lifecycle、actual / Execution非コピー、Routine relation非コピーのordinary duplicateを作成する。title、Project、estimate、Section / planned-startはvalidなplanned stateを形成できる場合だけcopyし、invalidなhistorical planning pairには新しいnormalization ruleを発明せずrejectする。既存のinsertion、placement revision、retry、atomicityを維持する。
+
+### APP compatibility boundary and interaction
+
+APP migration `0017_task_metadata_update.sql`（repository-conventional equivalent）は`operations.command_type`のCHECK allow-listにTask metadata update commandを追加するoperations-only rebuildとする。existing operations、historical `RevertEntryStart` / `SetExecutionTimes`、PK / FK / fingerprint / outcome fields、row count、table / index構成を保持し、Task / Entry column・table・revision、AUTH schema、lifecycle guard変更は追加しない。これを超えるmigrationが必要ならSTOPする。
+
+D-059のfull-row D&Dは維持し、Task title input、Project selector、actual Start / End input、checkbox、button、select、menu等のinteractive controlからdragを開始しない。Task title display surfaceのclick-to-editとthreshold後D&Dは両立させる。D-059の16×16 square / centered checkboxは維持し、Bulk slotの左側breathing roomを増やす。
+
+D-057 / D-058のhistorical recordsは変更せず、D-058の`RevertEntryStart` withdrawal境界を明示的に維持する。本Decisionは新lifecycle state、Reopen、Interrupt / Pause、running / completed delete、Routine title / Project edit、Project quick-create/search、production operationを含めない。実装・migration・local / real-local・persistent nonprod evidenceは`docs/CURRENT.md`、`docs/FEATURES.md`、`docs/DESIGN.md`、`docs/TEST_MATRIX.md`へ記録する。productionは別途承認なしに実施しない。
