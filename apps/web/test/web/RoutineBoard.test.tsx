@@ -13,6 +13,7 @@ vi.mock("../../src/web/api", async () => {
 });
 
 import { RoutineBoard } from "../../src/web/RoutineBoard";
+import { ApiClientError } from "../../src/web/api";
 
 const routineId = "019d0000-0000-7000-8000-000000000001";
 const secondId = "019d0000-0000-7000-8000-000000000002";
@@ -20,6 +21,14 @@ const projectId = "019d0000-0000-7000-8000-000000000003";
 const sectionId = "019d0000-0000-7000-8000-000000000004";
 
 let board: RoutineBoardProjection;
+
+function routineRow(title: string): HTMLElement {
+  return screen.getByLabelText(`${title}のRoutine名`).closest('[role="row"]') as HTMLElement;
+}
+
+function dragData() {
+  return { effectAllowed: "", dropEffect: "", setData: vi.fn() };
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -128,7 +137,7 @@ describe("Routine Board", () => {
     await waitFor(() => expect(mocks.updateRoutine).toHaveBeenCalledWith(expect.objectContaining({ end_logical_date: "2026-09-30" })));
   });
 
-  it("toggles and reorders through explicit command APIs", async () => {
+  it("toggles and reorders from task/non-task row surfaces without keyboard reorder", async () => {
     board.routines[1]!.end_logical_date = null;
     render(<RoutineBoard onUnauthorized={vi.fn()} />);
     await screen.findByDisplayValue("Active Routine");
@@ -136,15 +145,54 @@ describe("Routine Board", () => {
     await waitFor(() => expect(mocks.setRoutineEnabled).toHaveBeenCalledWith(expect.objectContaining({
       routine_definition_id: routineId, enabled: false, expected_settings_revision: 3,
     })));
-    const handle = screen.getByRole("button", { name: "Active Routineを並び替え" });
-    fireEvent.dragStart(handle);
-    fireEvent.drop(screen.getByDisplayValue("Ended Routine").closest("[role=row]")!);
-    fireEvent.dragEnd(handle);
+    const source = routineRow("Active Routine");
+    const target = routineRow("Ended Routine");
+    fireEvent.dragStart(within(source).getAllByRole("cell")[1]!, { dataTransfer: dragData() });
+    fireEvent.drop(target, { dataTransfer: dragData() });
+    fireEvent.dragEnd(source, { dataTransfer: dragData() });
     await waitFor(() => expect(mocks.reorderRoutines).toHaveBeenCalledWith(expect.objectContaining({
       routine_definition_ids: [secondId, routineId], expected_board_revision: 2,
     })));
-    fireEvent.keyDown(screen.getByRole("button", { name: "Active Routineを並び替え" }), { key: "ArrowDown" });
-    await waitFor(() => expect(mocks.reorderRoutines).toHaveBeenCalledTimes(2));
+    expect(screen.queryByRole("button", { name: "Active Routineを並び替え" })).toBeNull();
+    fireEvent.keyDown(source, { key: "ArrowDown" });
+    expect(mocks.reorderRoutines).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not start a Routine row drag from interactive descendants and keeps actions outside the Task cell", async () => {
+    board.routines[1]!.end_logical_date = null;
+    render(<RoutineBoard onUnauthorized={vi.fn()} />);
+    const table = await screen.findByRole("table", { name: "Routine Board" });
+    const source = routineRow("Active Routine");
+    const target = routineRow("Ended Routine");
+    const taskCell = within(source).getAllByRole("cell")[1]!;
+    const action = within(source).getByRole("button", { name: "Active Routineのメニュー" });
+    expect(taskCell.contains(action)).toBe(false);
+    expect(source.lastElementChild?.className).toContain("routine-row-actions");
+
+    const blockedTargets: HTMLElement[] = [
+      within(taskCell).getByLabelText("Active RoutineのRoutine名"),
+      within(source).getByRole("checkbox", { name: "Active Routineの有効" }),
+      within(source).getByRole("combobox", { name: "Active RoutineのProject" }),
+      within(source).getByRole("combobox", { name: "Active RoutineのSection" }),
+      within(source).getByRole("button", { name: "毎日" }),
+      action,
+    ];
+    for (const blockedTarget of blockedTargets) {
+      mocks.reorderRoutines.mockClear();
+      fireEvent.dragStart(blockedTarget, { dataTransfer: dragData() });
+      fireEvent.drop(target, { dataTransfer: dragData() });
+      fireEvent.dragEnd(blockedTarget, { dataTransfer: dragData() });
+      expect(mocks.reorderRoutines).not.toHaveBeenCalled();
+    }
+
+    for (const heading of ["有効", "タスク名", "繰り返し", "開始予定", "見積", "プロジェクト", "セクション", "開始日", "終了日"]) {
+      expect(within(table).getByRole("columnheader", { name: new RegExp(`^${heading}`) })).toBeTruthy();
+    }
+    expect(within(table).getAllByRole("columnheader")).toHaveLength(9);
+    const resize = within(table).getByRole("button", { name: "タスク名の幅を変更" });
+    fireEvent.dragStart(resize, { dataTransfer: dragData() });
+    fireEvent.drop(target, { dataTransfer: dragData() });
+    expect(mocks.reorderRoutines).not.toHaveBeenCalled();
   });
 
   it("resets uncontrolled inline text to server canonical state after a rejected mutation", async () => {
@@ -179,8 +227,71 @@ describe("Routine Board", () => {
     expect(screen.getByText("Routineを削除しました")).toBeTruthy();
   });
 
+  it("restores Help focus to the row or toolbar origin and restores delete cancel focus", async () => {
+    render(<RoutineBoard onUnauthorized={vi.fn()} />);
+    await screen.findByDisplayValue("Active Routine");
+    const row = routineRow("Active Routine");
+    row.focus();
+    fireEvent.keyDown(window, { key: "?" });
+    expect(screen.getByRole("dialog", { name: "Routine Boardショートカット" })).toBeTruthy();
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(document.activeElement).toBe(row));
+
+    const help = screen.getByRole("button", { name: "?" });
+    fireEvent.click(help);
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Routine Boardショートカット" })).getByRole("button", { name: "閉じる" }));
+    await waitFor(() => expect(document.activeElement).toBe(help));
+
+    const action = screen.getByRole("button", { name: "Active Routineのメニュー" });
+    fireEvent.click(action);
+    fireEvent.click(within(screen.getByRole("menu", { name: "Active Routineの操作" })).getByRole("menuitem", { name: "削除" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Routine削除確認" })).getByRole("button", { name: "キャンセル" }));
+    await waitFor(() => expect(document.activeElement).toBe(action));
+
+    fireEvent.click(action);
+    fireEvent.click(within(screen.getByRole("menu", { name: "Active Routineの操作" })).getByRole("menuitem", { name: "削除" }));
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(document.activeElement).toBe(action));
+
+    fireEvent.click(action);
+    fireEvent.click(within(screen.getByRole("menu", { name: "Active Routineの操作" })).getByRole("menuitem", { name: "削除" }));
+    const backdrop = screen.getByRole("dialog", { name: "Routine削除確認" }).parentElement!;
+    fireEvent.mouseDown(backdrop);
+    await waitFor(() => expect(document.activeElement).toBe(action));
+  });
+
+  it("moves delete focus to the next visible row when the origin row is removed", async () => {
+    board.routines[1]!.end_logical_date = null;
+    const afterDelete = structuredClone(board);
+    afterDelete.routines = afterDelete.routines.filter((routine) => routine.routine_definition_id !== routineId);
+    mocks.loadRoutines.mockReset();
+    mocks.loadRoutines.mockResolvedValueOnce(structuredClone(board)).mockResolvedValue(afterDelete);
+    render(<RoutineBoard onUnauthorized={vi.fn()} />);
+    await screen.findByDisplayValue("Active Routine");
+    const action = screen.getByRole("button", { name: "Active Routineのメニュー" });
+    fireEvent.click(action);
+    fireEvent.click(within(screen.getByRole("menu", { name: "Active Routineの操作" })).getByRole("menuitem", { name: "削除" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Routine削除確認" })).getByRole("button", { name: "削除" }));
+    await waitFor(() => expect(screen.queryByDisplayValue("Active Routine")).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Ended Routineのメニュー" })));
+  });
+
+  it("restores delete focus after a failed delete and keeps the retry path available", async () => {
+    mocks.deleteRoutine.mockRejectedValueOnce(new ApiClientError("delete conflict", 503, true, "infrastructure_ambiguous"));
+    render(<RoutineBoard onUnauthorized={vi.fn()} />);
+    await screen.findByDisplayValue("Active Routine");
+    const action = screen.getByRole("button", { name: "Active Routineのメニュー" });
+    fireEvent.click(action);
+    fireEvent.click(within(screen.getByRole("menu", { name: "Active Routineの操作" })).getByRole("menuitem", { name: "削除" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Routine削除確認" })).getByRole("button", { name: "削除" }));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("delete conflict"));
+    expect(document.activeElement).toBe(action);
+    expect(screen.getByRole("button", { name: "削除を再試行" })).toBeTruthy();
+  });
+
   it("persists column resize and supports no-focus J/K navigation and the limited help shortcuts", async () => {
     localStorage.clear();
+    board.routines[1]!.end_logical_date = null;
     render(<RoutineBoard onUnauthorized={vi.fn()} />);
     const table = await screen.findByRole("table", { name: "Routine Board" });
     const resize = within(table).getByRole("button", { name: "タスク名の幅を変更" });

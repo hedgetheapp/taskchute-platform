@@ -94,9 +94,13 @@ input:focus-visible, select:focus-visible { border-color: #2383e2; outline: 2px 
 .routine-board { flex: 1 0 auto; min-height: calc(100dvh - 220px); border: 1px solid #e1e1df; border-radius: 8px; background: #fff; }
 .routine-board-scroll { width: 100%; overflow-x: auto; overflow-y: visible; }
 .routine-board-grid { min-width: max-content; }
-.routine-board-row { position: relative; display: grid; grid-template-columns: var(--routine-table-grid-template-columns); gap: 0; align-items: stretch; min-height: 48px; border-bottom: 1px solid #efefed; }
+.routine-board-row { position: relative; display: grid; grid-template-columns: var(--routine-table-grid-template-columns); gap: 0; align-items: stretch; min-height: 48px; padding-inline-end: 44px; border-bottom: 1px solid #efefed; cursor: grab; }
 .routine-board-row:last-child { border-bottom: 0; }
-.routine-board-columns { position: sticky; top: 0; z-index: 4; min-height: 38px; background: #f7f7f5; color: #787774; font-size: 11px; font-weight: 650; }
+.routine-board-row.is-dragging { cursor: grabbing; opacity: .72; }
+.routine-board-row.is-drop-target { background: #f1f7fd; box-shadow: inset 0 -2px #2383e2; }
+.routine-board-row button, .routine-board-row input, .routine-board-row select, .routine-board-row textarea, .routine-board-row a,
+.routine-board-row [contenteditable], .routine-board-row [role="menu"], .routine-board-row [role="dialog"] { cursor: auto; }
+.routine-board-columns { position: sticky; top: 0; z-index: 4; min-height: 38px; padding-inline-end: 44px; background: #f7f7f5; color: #787774; font-size: 11px; font-weight: 650; cursor: default; }
 .routine-column-header { position: relative; display: flex; align-items: center; justify-content: space-between; min-width: 0; padding: 6px 10px; border-right: 1px solid #e4e4e1; cursor: grab; }
 .routine-column-header:active { cursor: grabbing; }
 .routine-column-resize { position: absolute; top: 0; right: -4px; z-index: 2; width: 9px; height: 100%; padding: 0; border: 0; background: transparent; cursor: col-resize; }
@@ -107,13 +111,12 @@ input:focus-visible, select:focus-visible { border-color: #2383e2; outline: 2px 
 .routine-enabled-control input { width: 16px; height: 16px; margin: 0; accent-color: #2383e2; }
 .routine-task-cell { gap: 4px; }
 .routine-task-cell input { flex: 1 1 auto; min-width: 0; padding: 6px; font-size: 12px; }
-.routine-drag { cursor: grab; background: transparent; color: #8b8b87; }
-.routine-drag:active { cursor: grabbing; }
+.routine-row-actions { position: absolute; inset-inline-end: 4px; top: 0; bottom: 0; display: flex; align-items: center; }
 .routine-schedule-cell { position: relative; min-width: 0; }
 .routine-schedule-cell > button { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .routine-overflow { min-width: 30px; padding: 5px; background: transparent; color: #575754; font-size: 18px; line-height: 1; }
 .routine-overflow:hover:not(:disabled), .routine-overflow:focus-visible { background: #ececea; }
-.routine-overflow-menu { position: absolute; z-index: 20; top: calc(100% - 2px); right: 8px; display: grid; min-width: 96px; padding: 4px; border: 1px solid #d8d8d5; border-radius: 6px; background: #fff; box-shadow: 0 8px 20px rgb(15 15 15 / 16%); }
+.routine-overflow-menu { position: absolute; z-index: 20; top: calc(100% - 2px); inset-inline-end: 0; display: grid; min-width: 96px; padding: 4px; border: 1px solid #d8d8d5; border-radius: 6px; background: #fff; box-shadow: 0 8px 20px rgb(15 15 15 / 16%); }
 .routine-overflow-menu button { padding: 6px 9px; border: 0; background: transparent; color: #b42318; text-align: left; }
 .routine-overflow-menu button:hover, .routine-overflow-menu button:focus-visible { background: #fff0ed; outline: none; }
 .routine-popover { position: absolute; z-index: 10; top: calc(100% + 4px); left: 0; display: grid; min-width: 250px; gap: 8px; padding: 12px; border: 1px solid #d8d8d5; border-radius: 8px; background: #fff; box-shadow: 0 8px 28px rgba(15,15,15,.16); }
