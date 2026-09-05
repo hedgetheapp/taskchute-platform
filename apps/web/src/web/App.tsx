@@ -634,11 +634,13 @@ export function App() {
   const [configurationOperation, setConfigurationOperation] = useState<EstablishInitialSectionConfigurationRequest | null>(null);
   const [sectionMoveOperation, setSectionMoveOperation] = useState<MoveEntryRequest | null>(null);
   const [estimateOperation, setEstimateOperation] = useState<SetEntryEstimateRequest | null>(null);
+  const [retainedEstimateOperations, setRetainedEstimateOperations] = useState<SetEntryEstimateRequest[]>([]);
   const [plannedStartOperation, setPlannedStartOperation] = useState<PlannedStartOperation | null>(null);
   const [sectionSettingsOperation, setSectionSettingsOperation] = useState<UpdateSectionConfigurationRequest | null>(null);
   const [routineConversionOperation, setRoutineConversionOperation] = useState<ConvertEntryToRoutineRequest | null>(null);
   const [routineEndOperation, setRoutineEndOperation] = useState<EndRoutineRequest | null>(null);
   const [routineEstimateOperation, setRoutineEstimateOperation] = useState<SetRoutineEstimateRequest | null>(null);
+  const [retainedRoutineEstimateOperations, setRetainedRoutineEstimateOperations] = useState<SetRoutineEstimateRequest[]>([]);
   const [routineSectionPlanOperation, setRoutineSectionPlanOperation] = useState<SetRoutineSectionPlanRequest | null>(null);
   const [pendingTaskMetadataOverlays, setPendingTaskMetadataOverlays] = useState<Record<string, UpdateTaskMetadataRequest>>({});
   const [pendingEstimateOverlays, setPendingEstimateOverlays] = useState<Record<string, SetEntryEstimateRequest>>({});
@@ -695,11 +697,12 @@ export function App() {
   const inlineEditorActionRef = useRef<InlineEditorAction | null>(null);
   const activeMutationsRef = useRef<ActiveMutation[]>([]);
   const reconcileSequenceRef = useRef(0);
-  const queuedStartEntriesRef = useRef<string[]>([]);
+  const queuedStartEntryRef = useRef<string | null>(null);
+  const [queuedStartEntryId, setQueuedStartEntryId] = useState<string | null>(null);
   const drainingQueuedStartsRef = useRef(false);
-  const retainedOperation = projectOperation ?? taskOperation ?? duplicateOperation ?? bulkDeleteOperation ?? bulkDateMoveOperation ?? bulkSectionOperation ?? bulkSectionOccurrenceOperation ?? bulkSectionScopedOperation ?? bulkEstimateOperation ?? reorderOperation ?? startOperation ?? completeOperation ?? executionTimesOperation ?? taskMetadataOperation ?? retainedTaskMetadataOperations[0]
+  const retainedOperation = projectOperation ?? taskOperation ?? duplicateOperation ?? bulkDeleteOperation ?? bulkDateMoveOperation ?? bulkSectionOperation ?? bulkSectionOccurrenceOperation ?? bulkSectionScopedOperation ?? bulkEstimateOperation ?? reorderOperation ?? startOperation ?? completeOperation ?? executionTimesOperation ?? taskMetadataOperation ?? retainedTaskMetadataOperations[0] ?? retainedEstimateOperations[0]
     ?? configurationOperation ?? sectionSettingsOperation ?? sectionMoveOperation ?? estimateOperation ?? plannedStartOperation
-    ?? routineConversionOperation ?? routineEndOperation ?? routineEstimateOperation ?? routineSectionPlanOperation;
+    ?? routineConversionOperation ?? routineEndOperation ?? routineEstimateOperation ?? retainedRoutineEstimateOperations[0] ?? routineSectionPlanOperation;
   const globalPending = pending === "login" || pending === "project" || pending === "project-settings"
     || pending === "day-navigation" || pending === "configuration" || pending === "section-settings" || pending === "logout";
   const globalRetainedOperation = projectOperation !== null || configurationOperation !== null || sectionSettingsOperation !== null;
@@ -734,10 +737,12 @@ export function App() {
     retainedTaskMetadataOperations.forEach((operation) => scopes.push(entryMutationScope(operation.entry_id, operation.task_id)));
     if (sectionMoveOperation) scopes.push(placementMutationScope(sectionMoveOperation.taskchute_day_id));
     if (estimateOperation) scopes.push(entryMutationScope(estimateOperation.entry_id));
+    retainedEstimateOperations.forEach((operation) => scopes.push(entryMutationScope(operation.entry_id)));
     if (plannedStartOperation) scopes.push(placementMutationScope(plannedStartOperation.request.taskchute_day_id));
     if (routineConversionOperation) scopes.push(placementMutationScope(routineConversionOperation.taskchute_day_id));
     if (routineEndOperation) scopes.push([`routine:${routineEndOperation.routine_definition_id}`]);
-    if (routineEstimateOperation) scopes.push(routineMutationScope(routineEstimateOperation.entry_id));
+    if (routineEstimateOperation) scopes.push(routineEstimateMutationScope(routineEstimateOperation));
+    retainedRoutineEstimateOperations.forEach((operation) => scopes.push(routineEstimateMutationScope(operation)));
     if (routineSectionPlanOperation) scopes.push([...placementMutationScope(routineSectionPlanOperation.taskchute_day_id), `entry:${routineSectionPlanOperation.entry_id}`]);
     return scopes;
   }
@@ -772,6 +777,38 @@ export function App() {
     setTaskMetadataOperation((current) => current?.operation_id === operationId ? null : current);
   }
 
+  function retainEstimateOperation(operation: SetEntryEstimateRequest): void {
+    setRetainedEstimateOperations((current) => current.some((item) => item.operation_id === operation.operation_id)
+      ? current : [...current, operation]);
+  }
+
+  function releaseEstimateOperation(operationId: string): void {
+    setRetainedEstimateOperations((current) => current.filter((operation) => operation.operation_id !== operationId));
+  }
+
+  function clearEstimateOperationIfCurrent(operationId: string): void {
+    setEstimateOperation((current) => current?.operation_id === operationId ? null : current);
+  }
+
+  function retainRoutineEstimateOperation(operation: SetRoutineEstimateRequest): void {
+    setRetainedRoutineEstimateOperations((current) => current.some((item) => item.operation_id === operation.operation_id)
+      ? current : [...current, operation]);
+  }
+
+  function releaseRoutineEstimateOperation(operationId: string): void {
+    setRetainedRoutineEstimateOperations((current) => current.filter((operation) => operation.operation_id !== operationId));
+  }
+
+  function clearRoutineEstimateOperationIfCurrent(operationId: string): void {
+    setRoutineEstimateOperation((current) => current?.operation_id === operationId ? null : current);
+  }
+
+  function setQueuedStartEntry(entryId: string | null): void {
+    queuedStartEntryRef.current = entryId;
+    setQueuedStartEntryId(entryId);
+    setQueuedMutationCount(entryId ? 1 : 0);
+  }
+
   function entryMutationScope(entryId: string, taskId?: string): MutationScope {
     return [`entry:${entryId}`, ...(taskId ? [`task:${taskId}`] : [])];
   }
@@ -786,6 +823,10 @@ export function App() {
 
   function routineMutationScope(entryId: string, routineDefinitionId?: string): MutationScope {
     return [`entry:${entryId}`, ...(routineDefinitionId ? [`routine:${routineDefinitionId}`] : [])];
+  }
+
+  function routineEstimateMutationScope(operation: SetRoutineEstimateRequest): MutationScope {
+    return routineMutationScope(operation.entry_id, entryForId(day, operation.entry_id)?.routine?.routine_definition_id);
   }
 
   function bulkEntryMutationScope(entryIds: string[], routineDefinitionIds: string[] = []): MutationScope {
@@ -844,10 +885,12 @@ export function App() {
     setCompleteOperation(null);
     setExecutionTimesOperation(null);
     setTaskMetadataOperation(null);
+    setRetainedTaskMetadataOperations([]);
     setOverflowEntryId(null);
     setConfigurationOperation(null);
     setSectionMoveOperation(null);
     setEstimateOperation(null);
+    setRetainedEstimateOperations([]);
     setPlannedStartOperation(null);
     setSectionSettingsOperation(null);
     setSectionSettings(null);
@@ -856,9 +899,11 @@ export function App() {
     setRoutineConversionOperation(null);
     setRoutineEndOperation(null);
     setRoutineEstimateOperation(null);
+    setRetainedRoutineEstimateOperations([]);
     setRoutineSectionPlanOperation(null);
     setRoutineDraft(null);
     setRoutineCandidate(null);
+    setQueuedStartEntry(null);
     setDraftTask(null);
     setEditingEstimate(null);
     setEditingPlannedStart(null);
@@ -2093,18 +2138,17 @@ export function App() {
 
   async function start(entryId: string) {
     if (!day || !day.is_current || mutationLocked) return;
+    const entry = [...day.unsectioned_entries, ...day.sections.flatMap((section) => section.entries)]
+      .find((candidate) => candidate.id === entryId);
+    if (!entry || entry.lifecycle_state !== "planned") return;
     if (hasActiveMutationScope(["execution-lane"])) {
-      if (completeOperation && !queuedStartEntriesRef.current.includes(entryId)) {
-        queuedStartEntriesRef.current = [...queuedStartEntriesRef.current, entryId];
-        setQueuedMutationCount(queuedStartEntriesRef.current.length);
+      if (completeOperation && queuedStartEntryRef.current === null) {
+        setQueuedStartEntry(entryId);
         setError(null);
       }
       return;
     }
-    if (isMutationScopeBusy(["execution-lane"])) return;
-    const entry = [...day.unsectioned_entries, ...day.sections.flatMap((section) => section.entries)]
-      .find((candidate) => candidate.id === entryId);
-    if (!entry) return;
+    if (isMutationScopeBusy(["execution-lane"]) || queuedStartEntryRef.current !== null) return;
     const operation: StartEntryRequest = { operation_id: uuidv7(), entry_id: entryId, execution_id: uuidv7(),
       ...(entry.section_id === null ? { expected_placement_revision: day.placement_revision } : {}) };
     setStartOperation(operation);
@@ -2112,17 +2156,14 @@ export function App() {
   }
 
   async function drainQueuedStarts() {
-    if (drainingQueuedStartsRef.current || queuedStartEntriesRef.current.length === 0) return;
+    if (drainingQueuedStartsRef.current || queuedStartEntryRef.current === null) return;
     drainingQueuedStartsRef.current = true;
     try {
-      const entryId = queuedStartEntriesRef.current.shift();
-      setQueuedMutationCount(queuedStartEntriesRef.current.length);
-      if (!entryId) return;
+      const entryId = queuedStartEntryRef.current;
+      setQueuedStartEntry(null);
       const projection = await reconcile();
       const entry = entryForId(projection, entryId);
       if (!projection || !entry || entry.lifecycle_state !== "planned" || projection.active_execution !== null) {
-        queuedStartEntriesRef.current = [];
-        setQueuedMutationCount(0);
         setError("完了後に開始するTaskの前提条件が変わったため、キューを破棄しました。対象Taskを確認して再度開始してください。");
         return;
       }
@@ -2131,8 +2172,6 @@ export function App() {
       setStartOperation(operation);
       await executeStart(operation);
     } catch (caught) {
-      queuedStartEntriesRef.current = [];
-      setQueuedMutationCount(0);
       setError(caught instanceof Error ? caught.message : "キューに入ったStartの再開に失敗しました");
     } finally {
       drainingQueuedStartsRef.current = false;
@@ -2163,14 +2202,16 @@ export function App() {
           setError(null);
         }
       } catch { /* Preserve the logical operation. */ }
+      if (queuedStartEntryRef.current !== null) {
+        setQueuedStartEntry(null);
+        setError(ambiguous
+          ? "Completeの結果が未確定のため、待機中のStartを破棄しました。Completeを再試行・確認後、対象Taskを明示的に開始してください。"
+          : "Completeに失敗したため、待機中のStartを破棄しました。対象Taskを明示的に開始してください。");
+      }
     } finally {
       endMutationScope(mutationToken);
       setPending(null);
       if (completed) void drainQueuedStarts();
-      else if (queuedStartEntriesRef.current.length > 0) {
-        queuedStartEntriesRef.current = [];
-        setQueuedMutationCount(0);
-      }
     }
   }
 
@@ -2647,15 +2688,21 @@ export function App() {
     if (!mutationToken) return;
     setPending("estimate"); setError(null);
     try {
-      await api.setEntryEstimate(operation); await reconcile(); setEstimateOperation(null); setEditingEstimate(null);
+      await api.setEntryEstimate(operation); await reconcile();
+      clearEstimateOperationIfCurrent(operation.operation_id);
+      releaseEstimateOperation(operation.operation_id);
+      setEditingEstimate((current) => current?.entryId === operation.entry_id ? null : current);
       setPendingEstimateOverlays((current) => current[operation.entry_id]?.operation_id === operation.operation_id
         ? Object.fromEntries(Object.entries(current).filter(([entryId]) => entryId !== operation.entry_id)) : current);
     }
     catch (caught) {
       setError(caught instanceof Error ? caught.message : "見積の保存に失敗しました");
       const ambiguous = isAmbiguousOutcome(caught);
+      if (ambiguous) retainEstimateOperation(operation);
       if (!ambiguous) {
-        setEstimateOperation(null);
+        clearEstimateOperationIfCurrent(operation.operation_id);
+        releaseEstimateOperation(operation.operation_id);
+        setEditingEstimate((current) => current?.entryId === operation.entry_id ? null : current);
         setPendingEstimateOverlays((current) => current[operation.entry_id]?.operation_id === operation.operation_id
           ? Object.fromEntries(Object.entries(current).filter(([entryId]) => entryId !== operation.entry_id)) : current);
       }
@@ -2663,7 +2710,10 @@ export function App() {
         const canonical = [...(projection?.unsectioned_entries ?? []), ...(projection?.sections.flatMap((section) => section.entries) ?? [])]
           .find((entry) => entry.id === operation.entry_id);
         if (ambiguous && canonical?.estimate_seconds === operation.estimate_seconds) {
-          setEstimateOperation(null); setEditingEstimate(null); setError(null);
+          clearEstimateOperationIfCurrent(operation.operation_id);
+          releaseEstimateOperation(operation.operation_id);
+          setEditingEstimate((current) => current?.entryId === operation.entry_id ? null : current);
+          setError(null);
           setPendingEstimateOverlays((current) => current[operation.entry_id]?.operation_id === operation.operation_id
             ? Object.fromEntries(Object.entries(current).filter(([entryId]) => entryId !== operation.entry_id)) : current);
         }
@@ -2794,11 +2844,19 @@ export function App() {
     try {
       await api.setRoutineEstimate(operation);
       await reconcile();
-      setRoutineEstimateOperation(null); setRoutineCandidate(null); setEditingEstimate(null);
+      clearRoutineEstimateOperationIfCurrent(operation.operation_id);
+      releaseRoutineEstimateOperation(operation.operation_id);
+      setRoutineCandidate((current) => current?.entryId === operation.entry_id ? null : current);
+      setEditingEstimate((current) => current?.entryId === operation.entry_id ? null : current);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Routine見積の保存に失敗しました");
       const ambiguous = isAmbiguousOutcome(caught);
-      if (!ambiguous) { setRoutineEstimateOperation(null); setRoutineCandidate(null); }
+      if (ambiguous) retainRoutineEstimateOperation(operation);
+      if (!ambiguous) {
+        clearRoutineEstimateOperationIfCurrent(operation.operation_id);
+        releaseRoutineEstimateOperation(operation.operation_id);
+        setRoutineCandidate((current) => current?.entryId === operation.entry_id ? null : current);
+      }
       try {
         const projection = await reconcile();
         const canonical = [...(projection?.unsectioned_entries ?? []), ...(projection?.sections.flatMap((section) => section.entries) ?? [])]
@@ -2806,7 +2864,10 @@ export function App() {
         const expected = operation.action === "reset" ? canonical?.routine?.default_estimate_seconds : operation.estimate_seconds;
         const override = operation.action === "occurrence";
         if (ambiguous && canonical?.estimate_seconds === expected && canonical?.routine?.estimate_override_present === override) {
-          setRoutineEstimateOperation(null); setRoutineCandidate(null); setError(null);
+          clearRoutineEstimateOperationIfCurrent(operation.operation_id);
+          releaseRoutineEstimateOperation(operation.operation_id);
+          setRoutineCandidate((current) => current?.entryId === operation.entry_id ? null : current);
+          setError(null);
         }
       } catch { /* Preserve exact retained operation. */ }
     } finally { endMutationScope(mutationToken); setPending(null); }
@@ -4215,7 +4276,7 @@ export function App() {
                       {entry.lifecycle_state === "completed" ? (
                         <span className="execution-control completed" aria-label={executionLabel(entry)} title={executionLabel(entry)}>✓</span>
                       ) : (
-                        <button type="button" tabIndex={-1} className={`execution-control ${isRunning ? "running" : "planned"}`} aria-label={executionLabel(entry)} title={executionLabel(entry)} disabled={!day.is_current || mutationLocked || (isMutationScopeBusy(["execution-lane"]) && completeOperation === null) || (entry.lifecycle_state === "planned" ? day.active_execution !== null && completeOperation === null : !canComplete)} onClick={() => {
+                        <button type="button" tabIndex={-1} className={`execution-control ${isRunning ? "running" : "planned"}`} aria-label={executionLabel(entry)} title={executionLabel(entry)} disabled={!day.is_current || mutationLocked || (isMutationScopeBusy(["execution-lane"]) && completeOperation === null) || (entry.lifecycle_state === "planned" ? (day.active_execution !== null && completeOperation === null) || queuedStartEntryId !== null : !canComplete)} onClick={() => {
                           if (entry.lifecycle_state === "planned") void start(entry.id);
                           else if (canComplete) void complete(entry.id);
                         }}>{isRunning ? "■" : "▶"}</button>
@@ -4335,14 +4396,21 @@ export function App() {
           {sectionSettingsOperation && <button type="button" onClick={() => void executeSectionSettings(sectionSettingsOperation)}>保留中の次Day Section設定を再試行</button>}
           {sectionMoveOperation && <button type="button" onClick={() => void executeSectionMove(sectionMoveOperation)}>保留中のSection移動を再試行</button>}
           {estimateOperation && <button type="button" onClick={() => void executeEstimate(estimateOperation)}>保留中の見積保存を再試行</button>}
+          {retainedEstimateOperations.filter((operation) => operation.operation_id !== estimateOperation?.operation_id).map((operation) => (
+            <button type="button" key={operation.operation_id} onClick={() => void executeEstimate(operation)}>保留中の見積保存を再試行</button>
+          ))}
           {plannedStartOperation && <button type="button" onClick={() => void executePlannedStart(plannedStartOperation)}>保留中の開始予定保存を再試行</button>}
           {routineConversionOperation && <button type="button" onClick={() => void executeRoutineConversion(routineConversionOperation)}>保留中のRoutine化を再試行</button>}
           {routineEndOperation && <button type="button" onClick={() => void executeRoutineEnd(routineEndOperation)}>保留中のRoutine終了を再試行</button>}
           {routineEstimateOperation && <button type="button" onClick={() => void executeRoutineEstimate(routineEstimateOperation)}>保留中のRoutine見積を再試行</button>}
+          {retainedRoutineEstimateOperations.filter((operation) => operation.operation_id !== routineEstimateOperation?.operation_id).map((operation) => (
+            <button type="button" key={operation.operation_id} onClick={() => void executeRoutineEstimate(operation)}>保留中のRoutine見積を再試行</button>
+          ))}
           {routineSectionPlanOperation && <button type="button" onClick={() => void executeRoutineSectionPlan(routineSectionPlanOperation)}>保留中のRoutine配置を再試行</button>}
           <button type="button" className="secondary" onClick={() => {
              setProjectOperation(null); setTaskOperation(null); setDuplicateOperation(null); setBulkDeleteOperation(null); setBulkDateMoveOperation(null); setBulkSectionOperation(null); setBulkSectionOccurrenceOperation(null); setBulkSectionScopedOperation(null); setBulkEstimateOperation(null); setBulkSectionPickerOpen(false); setBulkConfirmation(null); setBulkSectionConfirmation(null); setBulkEstimateConfirmation(null); setBulkDateMoveConfirmation(null); setSelectedEntryIds([]); setReorderOperation(null); setStartOperation(null); setCompleteOperation(null); setExecutionTimesOperation(null); setTaskMetadataOperation(null);
-            setRetainedTaskMetadataOperations([]); setPendingTaskMetadataOverlays({}); setPendingEstimateOverlays({}); setPendingPlannedStartOverlays({}); setPendingExecutionTimesOverlays({});
+            setRetainedTaskMetadataOperations([]); setPendingTaskMetadataOverlays({}); setPendingEstimateOverlays({}); setPendingPlannedStartOverlays({}); setPendingExecutionTimesOverlays({}); setRetainedEstimateOperations([]); setRetainedRoutineEstimateOperations([]);
+            setQueuedStartEntry(null);
             setConfigurationOperation(null); setSectionSettingsOperation(null); setSectionMoveOperation(null); setEstimateOperation(null); setPlannedStartOperation(null);
             setRoutineConversionOperation(null); setRoutineEndOperation(null); setRoutineEstimateOperation(null);
             setRoutineSectionPlanOperation(null); setRoutineCandidate(null); setError(null);

@@ -161,6 +161,11 @@ const twoPlannedDay: CurrentTaskChuteDayProjection = {
   sections: [{ ...populatedDay.sections[0], entries: [firstEntry, secondEntry] }, emptyDay.sections[1]],
 };
 
+const threePlannedDay: CurrentTaskChuteDayProjection = {
+  ...populatedDay,
+  sections: [{ ...populatedDay.sections[0], entries: [firstEntry, secondEntry, thirdEntry] }, emptyDay.sections[1]],
+};
+
 const runningDay: CurrentTaskChuteDayProjection = {
   ...populatedDay,
   active_execution: {
@@ -1920,6 +1925,37 @@ describe("Dogfood Day shell", () => {
     expect(mocks.setEntryEstimate.mock.calls[1][0]).toEqual(original);
   });
 
+  it("retains two ambiguous disjoint Estimate intents without overwriting either identity", async () => {
+    const firstRequest = deferred<unknown>();
+    const secondRequest = deferred<unknown>();
+    mocks.loadDay.mockResolvedValue(twoPlannedDay);
+    mocks.setEntryEstimate.mockReturnValueOnce(firstRequest.promise).mockReturnValueOnce(secondRequest.promise).mockResolvedValue({});
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskの見積" }));
+    const firstInput = screen.getByRole("textbox", { name: "Canonical taskの見積（分）" });
+    fireEvent.change(firstInput, { target: { value: "10" } });
+    fireEvent.keyDown(firstInput, { key: "Enter", code: "Enter" });
+    fireEvent.click(screen.getByRole("button", { name: "Second taskの見積" }));
+    const secondInput = screen.getByRole("textbox", { name: "Second taskの見積（分）" });
+    fireEvent.change(secondInput, { target: { value: "20" } });
+    fireEvent.keyDown(secondInput, { key: "Enter", code: "Enter" });
+    await waitFor(() => expect(mocks.setEntryEstimate).toHaveBeenCalledTimes(2));
+
+    const ambiguous = new ApiClientError("response lost", 503, true, "infrastructure_ambiguous");
+    firstRequest.reject(ambiguous);
+    secondRequest.reject(ambiguous);
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "保留中の見積保存を再試行" })).toHaveLength(2));
+    expect(mocks.setEntryEstimate.mock.calls[0][0].operation_id).not.toBe(mocks.setEntryEstimate.mock.calls[1][0].operation_id);
+
+    fireEvent.click(screen.getAllByRole("button", { name: "保留中の見積保存を再試行" })[0]);
+    await waitFor(() => expect(mocks.setEntryEstimate).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "保留中の見積保存を再試行" })).toHaveLength(1));
+    fireEvent.click(screen.getByRole("button", { name: "保留中の見積保存を再試行" }));
+    await waitFor(() => expect(mocks.setEntryEstimate).toHaveBeenCalledTimes(4));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "保留中の見積保存を再試行" })).toBeNull());
+  });
+
   it("moves a planned Entry directly to Sectionなし with the current placement revision", async () => {
     mocks.loadDay.mockResolvedValue(populatedDay);
     render(<App />);
@@ -2577,6 +2613,51 @@ describe("Dogfood Day shell", () => {
     fireEvent.click(retry);
     await waitFor(() => expect(mocks.setRoutineEstimate).toHaveBeenCalledTimes(2));
     expect(mocks.setRoutineEstimate.mock.calls[1][0]).toEqual(original);
+  });
+
+  it("retains two ambiguous disjoint Routine Estimate intents from independent reset controls", async () => {
+    const firstRequest = deferred<unknown>();
+    const secondRequest = deferred<unknown>();
+    const firstRoutine: EntryProjection = { ...firstEntry, estimate_seconds: 1200, routine: {
+      routine_definition_id: "019c0000-0000-7000-8000-000000000048",
+      routine_occurrence_id: "019c0000-0000-7000-8000-000000000049",
+      end_logical_date: null, can_end: true, default_section_id: morningId,
+      default_planned_start_minute: 300, section_plan_override_present: false,
+      default_estimate_seconds: 900, estimate_override_present: true, defaults_revision: 1,
+    } };
+    const secondRoutine: EntryProjection = { ...secondEntry, estimate_seconds: 1800, routine: {
+      routine_definition_id: "019c0000-0000-7000-8000-00000000004a",
+      routine_occurrence_id: "019c0000-0000-7000-8000-00000000004b",
+      end_logical_date: null, can_end: true, default_section_id: morningId,
+      default_planned_start_minute: 360, section_plan_override_present: false,
+      default_estimate_seconds: 1200, estimate_override_present: true, defaults_revision: 2,
+    } };
+    const routineDay = { ...populatedDay,
+      sections: [{ ...populatedDay.sections[0], entries: [firstRoutine, secondRoutine] }, populatedDay.sections[1]],
+      next_entry: firstRoutine,
+    };
+    mocks.loadDay.mockResolvedValue(routineDay);
+    mocks.setRoutineEstimate.mockReturnValueOnce(firstRequest.promise).mockReturnValueOnce(secondRequest.promise).mockResolvedValue({});
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskの見積" }));
+    fireEvent.click(screen.getByRole("button", { name: "Canonical taskの見積をルーティンの設定に戻す" }));
+    fireEvent.click(screen.getByRole("button", { name: "Second taskの見積" }));
+    fireEvent.click(screen.getByRole("button", { name: "Second taskの見積をルーティンの設定に戻す" }));
+    await waitFor(() => expect(mocks.setRoutineEstimate).toHaveBeenCalledTimes(2));
+
+    const ambiguous = new ApiClientError("response lost", 503, true, "infrastructure_ambiguous");
+    firstRequest.reject(ambiguous);
+    secondRequest.reject(ambiguous);
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "保留中のRoutine見積を再試行" })).toHaveLength(2));
+    expect(mocks.setRoutineEstimate.mock.calls[0][0].operation_id).not.toBe(mocks.setRoutineEstimate.mock.calls[1][0].operation_id);
+
+    fireEvent.click(screen.getAllByRole("button", { name: "保留中のRoutine見積を再試行" })[0]);
+    await waitFor(() => expect(mocks.setRoutineEstimate).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "保留中のRoutine見積を再試行" })).toHaveLength(1));
+    fireEvent.click(screen.getByRole("button", { name: "保留中のRoutine見積を再試行" }));
+    await waitFor(() => expect(mocks.setRoutineEstimate).toHaveBeenCalledTimes(4));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "保留中のRoutine見積を再試行" })).toBeNull());
   });
 
   it("shows Section-plan reset only in the overridden unit editor and sends reset exactly once", async () => {
@@ -3608,11 +3689,11 @@ describe("Dogfood Day shell", () => {
   it("queues Start B behind a pending Complete A and dispatches it only after fresh reconciliation", async () => {
     const completeRequest = deferred<unknown>();
     const runningWithNext = { ...runningDay,
-      sections: [{ ...runningDay.sections[0], entries: [{ ...firstEntry, lifecycle_state: "running" as const }, secondEntry] }, emptyDay.sections[1]],
+      sections: [{ ...runningDay.sections[0], entries: [{ ...firstEntry, lifecycle_state: "running" as const }, secondEntry, thirdEntry] }, emptyDay.sections[1]],
     };
     const afterComplete = { ...runningWithNext,
       active_execution: null,
-      sections: [{ ...runningWithNext.sections[0], entries: [{ ...firstEntry, lifecycle_state: "completed" as const }, secondEntry] }, emptyDay.sections[1]],
+      sections: [{ ...runningWithNext.sections[0], entries: [{ ...firstEntry, lifecycle_state: "completed" as const }, secondEntry, thirdEntry] }, emptyDay.sections[1]],
       next_entry: secondEntry,
     };
     mocks.loadDay.mockResolvedValueOnce(runningWithNext).mockResolvedValue(afterComplete);
@@ -3622,10 +3703,29 @@ describe("Dogfood Day shell", () => {
     const startB = screen.getByRole("button", { name: "Second taskを開始" });
     expect((startB as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(startB);
+    const startC = screen.getByRole("button", { name: "Third taskを開始" });
+    expect((startC as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(startC);
     expect(mocks.startEntry).not.toHaveBeenCalled();
     expect(screen.getByRole("status").textContent).toContain("保存中");
     completeRequest.resolve({});
     await waitFor(() => expect(mocks.startEntry).toHaveBeenCalledTimes(1));
     expect(mocks.startEntry.mock.calls[0][0].entry_id).toBe(secondEntry.id);
+  });
+
+  it("clears the single queued Start with a visible message when Complete fails", async () => {
+    const completeRequest = deferred<unknown>();
+    const runningWithNext = { ...runningDay,
+      sections: [{ ...runningDay.sections[0], entries: [{ ...firstEntry, lifecycle_state: "running" as const }, secondEntry] }, emptyDay.sections[1]],
+    };
+    mocks.loadDay.mockResolvedValue(runningWithNext);
+    mocks.completeEntry.mockReturnValue(completeRequest.promise);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "実行中のTaskを完了" }));
+    fireEvent.click(screen.getByRole("button", { name: "Second taskを開始" }));
+    completeRequest.reject(new ApiClientError("revision conflict", 409, false, "revision_conflict"));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("待機中のStartを破棄しました"));
+    expect(mocks.startEntry).not.toHaveBeenCalled();
+    expect(screen.queryByText("完了後のStartを待機中…")).toBeNull();
   });
 });
