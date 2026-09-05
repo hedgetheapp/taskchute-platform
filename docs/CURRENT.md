@@ -4,6 +4,22 @@ Date: 2026-09-05
 
 ## Status
 
+### D-063 — Modal confirmations, row Tab workflow, and non-blocking Day mutations — 2026-09-05
+
+D-063はApproved Decisionとしてcanonical化済みで、Decision commit `dfaad7c0ff1fc9687025a1e3f28399d139552cca`（`Approve D-063 modal and non-blocking Day workflow`）と実装 commit `79c2a7cff88b36886f275f635ff9cccdd5d58f83`（`Implement D-063 modal and scoped non-blocking Day mutations`）をGitHub canonical `main`へpush済みである。D-063はWeb-onlyのpresentation / client coordination変更であり、既存API・Domain semantics・schema・migration・dependency・security postureは変更していない。
+
+Day Tableのshortcut help、single planned delete、bulk confirmation / choice、Routine conversion / scope choiceを共通centered Modalへ統一した。Modalは`role="dialog"`、`aria-modal="true"`、initial focus、focus trap、Escape / backdrop / X close、close後のfocus restoreを持ち、背景Day UIの操作を受け付けない。row Tabはvisual column orderに従い、Bulk / Execution controlを通常Tabから除外し、Project / Sectionから次のrelevant cellへ進む。`X`はfocused eligible Taskのselection toggleに限定し、input / IME / modalでは抑制する。
+
+single-cell actual Start / Endはvalid outside blur、Enter、Tab、Shift+Tabで一度だけcommitし、Escapeはcancel-onlyとした。Start編集中はEndをinputへ切り替えず、invalid write・unchanged write・double submitを抑制する。client coordinatorはEntry / Task、Day placement、Routine definition、global execution laneのscopeで競合を分離し、pending overlay、複数件status、fresh reconcile、ambiguous operationのexact retry identityを保持する。Complete A pending中のStart Bは安全な場合にqueueし、Aのsuccess reconcile後にfresh stateでdispatchする。既存CAS、operation idempotency、active Execution最大1、overlap、placement revision semanticsは変更していない。
+
+Local evidenceはWeb `171 / 171 PASS`（D-063 focused regressionを含む）、Worker / runtime `180 / 180 PASS`、typecheck、production build、`git diff --check`、source reviewをPASSした。D-063はserver / migration変更なしのためAPP / AUTH migration `0 / 0`、migration適用・backup・restoreは`NOT_REQUIRED / NOT_RUN`である。migration regression scriptは今回のschema変更がないため影響範囲外として完走対象にしていない。
+
+Persistent non-productionでは、exact pushed `main@79c2a7cff88b36886f275f635ff9cccdd5d58f83`を`CLOUDFLARE_ENV=nonprod`でbuildし、canonical `taskchute-web-nonprod`（`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、AUTH_DB=`taskchute-auth-nonprod`、APP_DB=`taskchute-app-nonprod`、generated `migrations=[]`）へdeployした。Worker versionは`68261024-e3ef-4e43-beb1-5ff579e53e85`。HTTP safety probeはroot `200`、unauthenticated protected API `401`、disabled bootstrap POST `404`。APP / AUTHのread-only `PRAGMA quick_check = ok`、FK violations `0`、`rows_written = 0`を確認し、APP migration記録は既存`0017_task_metadata_update.sql`まで、AUTHは既存`0001_better_auth_1_7_1.sql`のみである。
+
+認証済みpersistent nonprod browserでは、Helpのcentered modal / X / backdrop表示、actual Start inputのvalue `0900`、Start編集中のEnd button維持、Escape cancelを確認した。browser tabが途中で認証なし状態へリセットされたため、remoteでのrow Tab全順序、X selection、複数同時保存・ambiguous retry・Complete→Start queue、save/reload mutationは`NOT_VERIFIED`とし、local Web regressionを根拠とする。production、restore、cleanup、auxiliary Worker操作は行っていない。
+
+classification: D-063 `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_SAFETY_VERIFIED / AUTHENTICATED_BROWSER_PARTIAL`。migration `NOT_REQUIRED`、authenticated feature verificationの未実施部分 `NOT_VERIFIED`、production `NOT_RUN`、Released `NO`である。new API token、permission / scope拡張、account / role変更、binding変更、security posture変更は行っていない。
+
 ### D-062 — Day Table keyboard workflow, single-cell actual editing, Task-column resize, and calendar polish — 2026-09-05
 
 D-062はApproved Decisionとしてcanonical化済みで、Decision commit `5eae737`（`Record D-062 Day Table keyboard and calendar decision`）と実装 commits `327dd7f` / `0344e65`をGitHub canonical `main`へpush済みである。D-062はWeb-onlyのinteraction polishであり、既存API・Domain semantics・schema・migrationを変更していない。

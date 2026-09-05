@@ -12,6 +12,18 @@
 - implementation / verification statusは`docs/FEATURES.md`、`docs/CURRENT.md`、`docs/TEST_MATRIX.md`を正本とする。
 - この文書は新しいDomain semanticsを作らず、上記canonical docsと矛盾する場合は上記を優先する。
 
+## D-063 Modal / row Tab / non-blocking mutation interaction
+
+D-063はDay Tableのpresentationとclient-side coordinationを対象とし、既存API・Domain・schema・migration・retry semanticsを変更しない。shortcut help、single / bulk confirmation、Routine conversion / scope choiceは共通centered Modal primitiveを使い、`role="dialog"`、`aria-modal="true"`、backdrop、initial focus、focus trap、Escape / backdrop / X close、trigger focus restoreを備える。Modal表示中は背景Day UIのshortcut・Tab・mutationを発火させない。
+
+通常のrow Tab順はresolved visual column orderに従い、Bulk checkboxとExecution controlを通常Tabから除外する。disabled / hidden / read-only cellを飛ばし、Project / Sectionの変更後は同一row内の次のrelevant cellへ進み、端では隣接rowへ移る。`X / x`はfocused eligible visible Taskのselection toggleだけを行い、input / select / textarea / contenteditable、IME composition、Modal、calendar / helpでは抑制する。
+
+actual Start / Endのsingle-cell editorは`HHMM` text inputを使い、valid outside blur、Enter、Tab、Shift+Tabで一度だけcommit、Escapeでcancelする。Start編集中にEndをinput化せず、invalid・unchanged・二重送信を保存しない。保存中はsubmitted valueをpending overlayで表示し、複数pendingを件数付きで示し、成功時にfresh canonical projectionへ収束させる。
+
+client mutation coordinatorはEntry / Task、Day placement、Routine definition、global execution laneをconflict scopeとする。同一scopeだけを直列化し、独立row / cellは継続可能にする。ambiguous operationはexact operation identity / intentをretry registryへ保持し、後続の同じcommandを上書きしない。Complete A pending中のStart Bは、Aのsuccess reconcile後にfresh stateを再確認してqueue dispatchする。CAS、operation idempotency、active Execution最大1、overlap、placement revisionは既存契約のまま維持し、安全に満たせない場合は新しいlifecycle semanticsを追加せず停止する。
+
+D-063はWeb-onlyであり、server / migration / schema変更、API contract変更、dependency追加、security posture変更を含めない。
+
 ## D-062 Day Table keyboard workflow, single-cell actual editing, Task-column resize, and calendar polish
 
 Day TableのneutralなDay surfaceはkeyboard focusの入口とし、Task未フォーカス状態では`↓ / J`が最初のvisible Task、`↑ / K`が最後のvisible Taskへ移動する。focused Taskでは`S`をStart / Complete、`N`をcurrent SectionへのTask追加、`E`をordinary planned Task metadata editor、`D`を既存single planned delete confirmationへ割り当てる。`?`はshortcut help、`Esc`はeditor / menu / calendar closeとする。input / select / textarea / contenteditableまたはIME composition中はこのglobal workflowを抑制し、calendar内のkeyboard操作と混線させない。

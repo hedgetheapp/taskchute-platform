@@ -1,5 +1,22 @@
 # Test Matrix
 
+## D-063 — Modal confirmations, row Tab workflow, and non-blocking Day mutations — 2026-09-05
+
+Contract: D-063 `Approved`。Web-onlyのpresentation / client mutation coordinationを実装し、既存API・Domain・schema・migration・dependency・security postureは変更していない。
+
+Local evidence:
+
+- Web `171 / 171 PASS`。common Modalのdialog semantics / focus trap / close、row Tab visual order、Bulk / Execution skip、Project / Section traversal、X suppression、actual Start / End one-shot commit、invalid / Escape boundary、independent deferred saves、ambiguous same-command retention、pending overlay、Complete→Start queueを含むD-063 regressionをPASSした。
+- Worker / runtime `180 / 180 PASS`、typecheck、production build、`git diff --check`、source reviewをPASS。D-063はserver / migration変更なしのためAPP / AUTH migration、backup、restoreは`NOT_REQUIRED / NOT_RUN`。
+
+Persistent non-production evidence:
+
+- exact pushed `main@79c2a7cff88b36886f275f635ff9cccdd5d58f83`を`CLOUDFLARE_ENV=nonprod`でbuildし、generated target `taskchute-web-nonprod`、`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、AUTH_DB=`taskchute-auth-nonprod`、APP_DB=`taskchute-app-nonprod`、`migrations=[]`を確認してdeploy。Worker version `68261024-e3ef-4e43-beb1-5ff579e53e85`。
+- HTTP safety probeはroot `200`、unauthenticated protected API `401`、disabled bootstrap POST `404`。APP / AUTH read-only `PRAGMA quick_check = ok`、FK violations `0`、`rows_written = 0`。APP migration recordは既存`0017_task_metadata_update.sql`まで、AUTHは既存`0001_better_auth_1_7_1.sql`のみ。
+- authenticated browserではHelp centered modal / X / backdrop、actual Start input `0900`、Start編集中End button維持、Escape cancelを確認。browser tabが途中で認証なし状態へリセットされたため、remote row Tab全順序、X selection mutation、複数同時保存、ambiguous retry、Complete→Start queue、save/reload mutationは`NOT_VERIFIED`。production / restore / cleanup / auxiliary Worker operationは未実施。
+
+Classification: D-063 `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_SAFETY_VERIFIED / AUTHENTICATED_BROWSER_PARTIAL`、migration `NOT_REQUIRED`、remaining authenticated feature verification `NOT_VERIFIED`、production `NOT_RUN`、Released `NO`。new API token、permission / scope拡張、account / role変更、binding変更、security posture変更は行っていない。
+
 ## D-062 — Day Table keyboard workflow, single-cell actual editing, Task-column resize, and calendar polish — 2026-09-05
 
 Contract: D-062 `Approved`。Day Tableのkeyboard workflow、actual単セル編集、Task列resize、calendar month / year操作、placeholder表示を実装した。D-057 / D-060のexisting lifecycle / overlap / retry / forecast semanticsを再利用し、API / Domain / schema / migrationは変更していない。
