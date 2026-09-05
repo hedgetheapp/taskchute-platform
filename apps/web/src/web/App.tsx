@@ -2999,7 +2999,7 @@ export function App() {
           </select>
         )}
         <input autoFocus={field === "start"} type="text" inputMode="numeric" maxLength={4} pattern="[0-9]{4}" placeholder="HHMM"
-          data-inline-navigation value={value}
+          data-inline-navigation data-execution-entry={entry.id} value={value}
           aria-label={label} required={field === "start" || draft.expectedLifecycleState === "completed"}
           onChange={(event) => setExecutionTimesDraft((current) => current
             ? { ...current, [field === "start" ? "startedLocal" : "endedLocal"]: event.target.value } : current)}

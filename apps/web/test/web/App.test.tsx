@@ -3321,6 +3321,8 @@ describe("Dogfood Day shell", () => {
     expect(document.querySelector('input[type="datetime-local"]')).toBeNull();
     expect(start.value).toBe("1200");
     fireEvent.change(start, { target: { value: "1215" } });
+    fireEvent.blur(start, { relatedTarget: end });
+    expect(mocks.setExecutionTimes).not.toHaveBeenCalled();
     fireEvent.change(end, { target: { value: "1230" } });
     fireEvent.blur(end, { relatedTarget: document.body });
     await waitFor(() => expect(mocks.setExecutionTimes).toHaveBeenCalledTimes(1));
