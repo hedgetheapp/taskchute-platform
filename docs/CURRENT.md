@@ -10,7 +10,7 @@ D-061はApproved Decisionとしてcanonical化済みで、Decision commit `4e468
 
 Day Tableのplanned Start / actual Start / actual Endは4桁`HHMM`のtext input（numeric input mode、4桁以外・不正時刻を拒否）へ統一し、planned Startの既存Day boundary mapping、actualのcivil-date / cross-Day / overlap / future / owner / retry semanticsは変更していない。EstimateはDay Table内だけ分表示、Task metadata / time inputはcell幅を使い、blur / Enter / Tab / Shift+Tabでcommit、Escapeはcancel-onlyとした。actual StartからEndへのfocus移動では中間commitせず、Endから外へ出た時に一度だけcommitする。Column resizeは左端固定・右境界移動で後続列だけを押し、Task trackが余白を吸収しない。Delete actionは赤いdestructive styleとした。
 
-追加のserver修正はAPI / Domain semantics / schemaを変更せず、既存`SetExecutionTimes` lifecycle guardのmillisecond付きcanonical Instant比較をSQLiteの文字列等値比較へ直しただけである。focused Web / D-061 `160 / 160`、Worker `180 / 180`、typecheck、production build、`git diff --check`、source reviewはPASSした。
+追加のserver修正はAPI / Domain semantics / schemaを変更せず、既存`SetExecutionTimes` lifecycle guardのmillisecond付きcanonical Instant比較をSQLiteの文字列等値比較へ直しただけである。focused Web / D-061 `160 / 160`、Worker `180 / 180`、typecheck、production build、real-local Vite safety smoke、`git diff --check`、source reviewはPASSした。real-local safety probeはroot `200`、protected API `401`、disabled bootstrap POST `404`である。
 
 persistent non-productionはmigration / schema変更なしのためAPP / AUTH migration listはgenerated config使用で`0 / 0`、cleanup / reset・pre-migration backup・restoreは`NOT_REQUIRED / NOT_RUN`とした。exact mainを`CLOUDFLARE_ENV=nonprod`でbuildし、`taskchute-web-nonprod`（`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、canonical APP / AUTH binding）version `633f747b-d0d3-4773-8257-306b296adfb4`へdeployした。safety probeはroot `200`、protected API `401`、disabled bootstrap POST `404`、APP / AUTH `quick_check = ok`、FK violations `0`、read-only query `rows_written = 0`である。
 

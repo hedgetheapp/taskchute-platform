@@ -6,7 +6,7 @@ Contract: D-061 `Approved`。Day Tableのplanned / actual Start・Endを4桁`HHM
 
 Local evidence:
 
-- focused D-061 Web `160 / 160 PASS`、Worker / runtime `180 / 180 PASS`、typecheck、production build、`git diff --check`、source review `PASS`。
+- focused D-061 Web `160 / 160 PASS`、Worker / runtime `180 / 180 PASS`、typecheck、production build、real-local Vite safety smoke、`git diff --check`、source review `PASS`。real-local safety probeはroot `200`、protected API `401`、disabled bootstrap POST `404`。
 - Web testsはplanned `0930` mapping、actual Start / End text numeric control、invalid `HHMM`、actual date rollover、minute-only estimate、Start→End focus移動でのno-early-commit、Enter / blur / Escape、anchored resizeを含む。Worker regressionはmillisecond付きexisting Execution correction、lifecycle / overlap / owner / retry / atomicityを含む。
 
 Persistent non-production evidence:
