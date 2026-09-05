@@ -230,9 +230,13 @@ R2A runtimeはcurrent-Day planned Routine-derived Entryへexplicit scope UXを�
 
 ## Routine Board
 
-Sidebarの`ルーティン`はRoutine管理のprimary destinationである。initial visible columnsは`ON/OFF | drag handle | Routine | Project | 繰り返し | Section | 開始予定 | 見積 | 期間`とする。Board orderはDay orderと独立し、row clickによるimplicit navigationを行わない。
+Sidebarの`ルーティン`はRoutine管理のprimary destinationである。D-064のcurrent visible columnsは`有効 | タスク名 | 繰り返し | 開始予定 | 見積 | プロジェクト | セクション | 開始日 | 終了日`とする。Task-name cellにdrag handleを置き、専用の移動列は持たない。Board orderはDay orderと独立し、row clickによるimplicit navigationを行わない。
 
 `＋ ルーティンを追加`はlocal blank OFF rowを作り、空名の間はno-write、名前commit後にpersistする。recurrence / period popoverはexplicit Save / Cancel、inline defaultsはserver-canonical reconciliationを使う。詳細implementation evidenceはCURRENT / FEATURES / TEST_MATRIXをownerとする。
+
+D-064のRoutine deleteはTask-name cellの`…`メニューから明示確認を経由して実行する。DeleteRoutineはowner・Routine・Board revision・settings revision・operation fingerprintを検証し、同一transactionでarchive tombstoneを作成してBoard itemを除去し、残りのBoard orderをreconcileする。RoutineDefinition、Task、RoutineOccurrence、Entry、Execution、operation history、snapshot、moved occurrenceはhard deleteしない。archive済みRoutineはBoard projectionとfuture recurrence eligibilityから除外し、すでにmaterializedされたcurrent / past historyは保持する。restore / undo UIは提供しない。
+
+Board headerは9列をdrag reorderし、各列のright edgeをresizeできる。order / widthはServerへ送らず、browser-local key `taskchute.web.routine-columns.v1`へversionedに保存する。欠損・未知・重複・壊れたpreferenceはdefault order / widthへ安全にfallbackする。J / ↓は次、K / ↑は前へ移動し、未focus時は最初 / 最後をfocusする。`?`はcentered help、Escはmenu / modal / editorを閉じる。input / select / textarea / contenteditable / IME中はglobal shortcutを抑制し、Routine BoardにはX selection shortcutを持たせない。
 
 ## Task order and display column order
 

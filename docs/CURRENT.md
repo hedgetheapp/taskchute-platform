@@ -4,6 +4,20 @@ Date: 2026-09-05
 
 ## Status
 
+### D-064 — Routine delete and Routine Board table UX — 2026-09-05
+
+D-064はApproved Decisionとしてcanonical化し、Decision commit `2e8685de2321f4a2e6c39dd0276ef726806a45d6`、runtime implementation commit `573f3a72394988442f8482bb183136b95b831242`をGitHub canonical `main`へfast-forward pushした。Routine deleteはhard deleteではなくowner-scoped archive relationによるsoft archiveとし、Board itemを除去してfuture generationを停止する。RoutineDefinition、Task、Occurrence、Entry、Execution、operation history、snapshot、moved occurrenceは保持する。APP compatibility migration `0018_routine_archive.sql`はarchive table追加と`DeleteRoutine`のoperations / routine guard CHECK拡張だけを行い、既存identity / historyを破壊的に変更しない。
+
+Routine Boardのcurrent columnsは`有効 | タスク名 | 繰り返し | 開始予定 | 見積 | プロジェクト | セクション | 開始日 | 終了日`である。Task-name cellのdrag handle、enabled checkbox、inline defaults、Project / Section / dates / estimate編集、header reorder / right-edge resize、browser-local preference `taskchute.web.routine-columns.v1`、J / ↓ / K / ↑ navigation、`?` help、Esc closeを実装した。Routine Boardに`X` selection shortcutはなく、既存Routine semantics / Board revision / retry identityを維持する。
+
+Local evidenceはfocused Routine Board Web `8 / 8 PASS`、full Worker `181 / 181 PASS`、full Web `176 / 176 PASS`、migration regression `4 scenarios PASS`（fresh `0001 -> 0018` chain、0018 preservation / constraints）、typecheck、production build、`git diff --check`、source reviewをPASSした。real-local Vite safety probeはroot `200`、protected API `401`、disabled bootstrap POST `404`をPASSした。
+
+Persistent non-productionではmigration前pending APP `0018_routine_archive.sql` / AUTH `0`を確認した。HARD GATEとしてfresh private ignored backupを取得し、APP `294,445 bytes` / SHA-256 `7076FE8C3D50EC7FE0F9F3347351231F28B453DCBC67F81A286308CE1FB0C8C2`、AUTH `4,280 bytes` / SHA-256 `53D9BAA8A4D3F2EC2789627DE03C2BDB539A58E68F90E5AEE8501C9B26D618A4`の非空・readability・D1 migration marker・SQL終端・`.wrangler/` ignoreをPASSした。両backupをremoteへ書き戻さないisolated D1へ復元し、APP / AUTH `quick_check = ok`、FK violations `0`、aggregate読込をPASSした。HARD GATE後にAPP `0018`だけを適用し、post pending APP / AUTH `0 / 0`、APP / AUTH `quick_check = ok`、FK `0`を確認した。
+
+APP post-migrationのRoutineDefinition / Task / Entry / Execution / operationsは`10 / 54 / 62 / 25 / 293`でmigration前と一致し、archive rowは初期`0`だった。認証済みnonprod browserでは使い捨てRoutineを作成し、`… → 削除`、中央確認モーダル、confirm、notice、Routine Board reload後の不在を確認した。APP read-onlyでは、delete後にRoutineDefinition / Task / Entry / Execution / operations `11 / 55 / 62 / 25 / 295`、`DeleteRoutine` operation `1`、archive `1`、Board item `10`、archived Definition relation `1`を確認し、既存historyを保持した。HelpのJ/↓・K/↑・?・EscとRoutine BoardでのX no-opも確認した。browser consoleのzero-error exact collectionは`NOT_VERIFIED`である。
+
+Classification: D-064 `IMPLEMENTED / INTEGRATED / MAIN_PUSHED / LOCAL_TESTED / REAL_LOCAL_SAFETY_VERIFIED / PERSISTENT_NONPROD_BACKUP_VERIFIED / PERSISTENT_NONPROD_MIGRATED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_SAFETY_VERIFIED / AUTHENTICATED_BROWSER_VERIFIED`。production、restore、branch / PR / merge / tag / release、auxiliary Worker操作は行っていない。new API token、permission / OAuth scope拡張、account / role変更、APP / AUTH binding変更、security posture変更は行っていない。Released `NO`。
+
 ### D-063 corrective — conflict-scope retention and single queued Start — 2026-09-05
 
 Approved D-063のretry identity / execution queue safetyに対するcorrective bugfixを実装し、implementation commit `bef893e03a6f62047ab6610c9a53749f7166a669`をGitHub canonical `main`へfast-forward pushした。これは新しいProduct Decisionではなく、API・Domain semantics・schema・migration・dependency・security postureを変更しないWeb client coordinationの収束修正である。

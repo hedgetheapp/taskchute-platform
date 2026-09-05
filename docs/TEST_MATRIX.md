@@ -1,5 +1,33 @@
 # Test Matrix
 
+## D-064 — Routine delete and Routine Board table UX — 2026-09-05
+
+Contract: D-064 `Approved`。Routine deleteのsoft archive、future generation停止、history preservation、Routine Boardの9列・reorder・resize・keyboard help・X negative boundary・retry safetyを対象とする。Decision commit `2e8685de2321f4a2e6c39dd0276ef726806a45d6`、implementation commit `573f3a72394988442f8482bb183136b95b831242`をGitHub `main`へpushした。
+
+| ID | Verification target | Evidence |
+| --- | --- | --- |
+| ROUTINE-DELETE-01 | owner-scoped Routine archive、Board item除去、future generation停止、RoutineDefinition / Task / Occurrence / Entry / Execution / history / snapshot保持 | PASS (WORKER + REAL_LOCAL + NONPROD_BROWSER + NONPROD_D1) |
+| ROUTINE-DELETE-02 | `… → 削除`、centered confirmation、cancel / Escape / backdrop boundary、削除後reload不在 | PASS (WEB + NONPROD_BROWSER) |
+| ROUTINE-DELETE-03 | operation fingerprint、replay / misuse、revision / guard、atomic Board reorder | PASS (WORKER + ROUTINE INTEGRATION) |
+| ROUTINE-BOARD-01 | exact columns `有効 \| タスク名 \| 繰り返し \| 開始予定 \| 見積 \| プロジェクト \| セクション \| 開始日 \| 終了日`、移動列なし、Task-name drag handle、checkbox | PASS (WEB + NONPROD_BROWSER) |
+| ROUTINE-BOARD-02 | header reorder、right-edge resize、`taskchute.web.routine-columns.v1` order / width persistence、malformed fallback | PASS (WEB) / browser visual persistenceは`NOT_VERIFIED` |
+| ROUTINE-BOARD-03 | J / ↓ next、K / ↑ previous、no-focus first / last、`?` help、Esc close、input / IME suppression、X no-op | PASS (WEB + NONPROD_BROWSER; OS IMEはNOT_RUN) |
+| ROUTINE-DELETE-04 | APP `0018_routine_archive.sql`のfresh chain、既存rows / identity / history、operations / routine guards CHECK、quick_check / FK | PASS (MIGRATION_REGRESSION + NONPROD_MIGRATION + NONPROD_D1) |
+
+Local evidence:
+
+- focused Routine Board Web `8 / 8 PASS`、Worker `181 / 181 PASS`、Web `176 / 176 PASS`、migration regression `4 scenarios PASS`（fresh `0001 -> 0018` chain）、typecheck、production build、`git diff --check`、source reviewをPASSした。
+- real-local Vite safety probeはroot `200`、protected API `401`、disabled bootstrap POST `404`をPASSした。
+
+Persistent non-production evidence:
+
+- migration前 pendingはAPP `0018_routine_archive.sql` / AUTH `0`。HARD GATEとしてfresh private ignored backupを取得し、APP `294,445 bytes` / SHA-256 `7076FE8C3D50EC7FE0F9F3347351231F28B453DCBC67F81A286308CE1FB0C8C2`、AUTH `4,280 bytes` / SHA-256 `53D9BAA8A4D3F2EC2789627DE03C2BDB539A58E68F90E5AEE8501C9B26D618A4`の非空・readability・D1 migration marker・SQL終端・`.wrangler/` ignoreをPASSした。remoteへ書き戻さないisolated recoveryでAPP / AUTH `quick_check = ok`、FK violations `0`、aggregate読込をPASSし、restoreはremoteへ実行していない。
+- APP `0018`だけを適用し、post pending APP / AUTH `0 / 0`、APP / AUTH `quick_check = ok`、FK `0`。migration前後のAPP aggregateはRoutineDefinition / Task / Entry / Execution / operations `10 / 54 / 62 / 25 / 293`で保持した。
+- exact pushed `main@573f3a72394988442f8482bb183136b95b831242`を`CLOUDFLARE_ENV=nonprod`でbuildし、generated canonical `taskchute-web-nonprod`（`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、canonical APP / AUTH binding、`migrations=[]`）へdeployした。Worker version `522a096c-a12f-4745-98ea-3ce67eb0bd87`。HTTP safety probeはroot `200`、protected API `401`、disabled bootstrap POST `404`。
+- authenticated browserで使い捨てRoutineを作成し、`… → 削除`、確認モーダル、削除、notice、reload後の不在を確認した。APP read-onlyではdelete後のaggregate RoutineDefinition / Task / Entry / Execution / operations `11 / 55 / 62 / 25 / 295`、`DeleteRoutine` operation `1`、archive `1`、Board item `10`、archived Definition relation `1`を確認し、既存historyを保持した。HelpのJ/↓・K/↑・?・EscとRoutine BoardでのX no-opもPASS。browser consoleのzero-error exact collectionとreal-browser resize persistenceは`NOT_VERIFIED`、OS Japanese IMEは`NOT_RUN`。
+
+Classification: D-064 `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / REAL_LOCAL_SAFETY_VERIFIED / MAIN_PUSHED / PERSISTENT_NONPROD_BACKUP_VERIFIED / PERSISTENT_NONPROD_MIGRATED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_SAFETY_VERIFIED / AUTHENTICATED_BROWSER_VERIFIED`、production `NOT_RUN`、restore / branch / PR / merge / tag / release / auxiliary Worker操作 `NOT_RUN`、Released `NO`。security posture changeなし。
+
 ## D-063 corrective — conflict-scope retention and single queued Start — 2026-09-05
 
 Contract: Approved D-063のcorrective bugfix。新しいProduct Decisionではなく、retry identityとexecution queue safetyの収束修正であり、API / Domain / schema / migration / dependency / security postureは変更していない。implementation commit `bef893e03a6f62047ab6610c9a53749f7166a669`をmainへpushした。
