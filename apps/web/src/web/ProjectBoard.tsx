@@ -4,6 +4,8 @@ import type {
   DeleteProjectRequest,
   ProjectBoardItemProjection,
   ProjectBoardProjection,
+  ReorderProjectsRequest,
+  SetProjectArchivedRequest,
   UpdateProjectRequest,
 } from "../shared/contracts";
 import { uuidv7 } from "../shared/uuidv7";
@@ -29,6 +31,13 @@ function connected(element: HTMLElement | null): HTMLElement | null {
   return element?.isConnected ? element : null;
 }
 
+type RetryOperation =
+  | { kind: "create"; request: CreateProjectRequest }
+  | { kind: "rename"; request: UpdateProjectRequest }
+  | { kind: "archive"; request: SetProjectArchivedRequest; success: string }
+  | { kind: "reorder"; request: ReorderProjectsRequest }
+  | { kind: "delete"; request: DeleteProjectRequest };
+
 export function ProjectBoard({ onUnauthorized, onProjectsChanged }: ProjectBoardProps) {
   const [board, setBoard] = useState<ProjectBoardProjection | null>(null);
   const [pending, setPending] = useState(false);
@@ -45,15 +54,15 @@ export function ProjectBoard({ onUnauthorized, onProjectsChanged }: ProjectBoard
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ProjectBoardItemProjection | null>(null);
-  const [deleteOperation, setDeleteOperation] = useState<DeleteProjectRequest | null>(null);
-  const [createOperation, setCreateOperation] = useState<CreateProjectRequest | null>(null);
+  const [retryOperation, setRetryOperation] = useState<RetryOperation | null>(null);
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const actionRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const addRef = useRef<HTMLButtonElement | null>(null);
   const helpRef = useRef<HTMLButtonElement | null>(null);
   const modalRef = useRef<HTMLDivElement | null>(null);
-  const modalOriginRef = useRef<HTMLElement | null>(null);
-  const fallbackRef = useRef<HTMLElement | null>(null);
+  const helpOriginRef = useRef<HTMLElement | null>(null);
+  const deleteOriginRef = useRef<HTMLElement | null>(null);
+  const deleteFallbackRef = useRef<HTMLElement | null>(null);
 
   const reload = useCallback(async () => {
     try {
@@ -61,9 +70,11 @@ export function ProjectBoard({ onUnauthorized, onProjectsChanged }: ProjectBoard
       setBoard(nextBoard);
       onProjectsChanged(nextProjects.projects);
       setFocusedId((current) => current && nextBoard.projects.some((item) => item.id === current) ? current : null);
+      return nextBoard;
     } catch (caught) {
       if (caught instanceof ApiClientError && caught.status === 401) onUnauthorized();
       else setError(caught instanceof Error ? caught.message : "Project設定の読み込みに失敗しました");
+      return null;
     }
   }, [onProjectsChanged, onUnauthorized]);
 
@@ -79,7 +90,8 @@ export function ProjectBoard({ onUnauthorized, onProjectsChanged }: ProjectBoard
   useEffect(() => {
     if (!helpOpen && deleteTarget === null) return;
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    if (modalOriginRef.current === null) modalOriginRef.current = connected(previous) ?? connected(helpRef.current);
+    if (helpOpen && helpOriginRef.current === null) helpOriginRef.current = connected(previous) ?? connected(helpRef.current);
+    if (deleteTarget !== null && deleteOriginRef.current === null) deleteOriginRef.current = connected(previous) ?? connected(helpRef.current);
     const timer = window.setTimeout(() => modalRef.current?.focus(), 0);
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -100,9 +112,14 @@ export function ProjectBoard({ onUnauthorized, onProjectsChanged }: ProjectBoard
       window.clearTimeout(timer);
       document.removeEventListener("keydown", onKeyDown);
       if (helpOpen || deleteTarget !== null) {
-        (connected(modalOriginRef.current) ?? connected(fallbackRef.current) ?? connected(helpRef.current) ?? connected(addRef.current))?.focus();
-        modalOriginRef.current = null;
-        fallbackRef.current = null;
+        const closingDelete = deleteTarget !== null;
+        const origin = connected(closingDelete ? deleteOriginRef.current : helpOriginRef.current);
+        const fallback = connected(closingDelete ? deleteFallbackRef.current : null);
+        (origin ?? fallback ?? connected(helpRef.current) ?? connected(addRef.current) ?? connected(previous))?.focus();
+        if (closingDelete) {
+          deleteOriginRef.current = null;
+          deleteFallbackRef.current = null;
+        } else helpOriginRef.current = null;
       }
     };
   }, [deleteTarget, helpOpen]);
@@ -116,7 +133,11 @@ export function ProjectBoard({ onUnauthorized, onProjectsChanged }: ProjectBoard
         else if (editingId !== null) { event.preventDefault(); setEditingId(null); }
         return;
       }
-      if (event.key === "?") { event.preventDefault(); setHelpOpen(true); return; }
+      if (event.key === "?") {
+        event.preventDefault();
+        helpOriginRef.current = connected(document.activeElement instanceof HTMLElement ? document.activeElement : null) ?? connected(helpRef.current);
+        setHelpOpen(true); return;
+      }
       if (event.key !== "j" && event.key !== "J" && event.key !== "k" && event.key !== "K"
         && event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
       if (visible.length === 0) return;
@@ -138,58 +159,97 @@ export function ProjectBoard({ onUnauthorized, onProjectsChanged }: ProjectBoard
       ? { operation_id: uuidv7(), project_id: uuidv7(), title: titleOrRequest.trim() }
       : titleOrRequest;
     if (!request.title || pending) return;
-    setCreateOperation(request);
     setPending(true); setError(null); setNotice(null);
     try {
       await api.createProject(request);
-      setCreateOperation(null); setDraft(false); await reload(); setNotice("Projectを作成しました");
+      setRetryOperation(null); setDraft(false); await reload(); setNotice("Projectを作成しました");
     } catch (caught) {
       if (caught instanceof ApiClientError && caught.status === 401) onUnauthorized();
       else {
-        if (caught instanceof ApiClientError && caught.reconcile) setCreateOperation(request);
-        setError(caught instanceof Error ? caught.message : "Projectの作成に失敗しました");
+        const nextBoard = await reload();
+        const converged = nextBoard?.projects.some((item) => item.id === request.project_id && item.title === request.title) ?? false;
+        setRetryOperation(!converged && caught instanceof ApiClientError && caught.code === "infrastructure_ambiguous" ? { kind: "create", request } : null);
+        if (converged) { setDraft(false); setError(null); setNotice("Projectを作成しました"); }
+        else setError(caught instanceof Error ? caught.message : "Projectの作成に失敗しました");
       }
     } finally { setPending(false); }
   }
 
-  async function renameProject(project: ProjectBoardItemProjection) {
+  async function renameProject(project: ProjectBoardItemProjection, retryRequest?: UpdateProjectRequest) {
     const title = editingTitle.trim();
-    if (!title || title === project.title || pending) { setEditingId(null); return; }
-    const request: UpdateProjectRequest = { operation_id: uuidv7(), project_id: project.id,
+    if (!retryRequest && (!title || title === project.title || pending)) { setEditingId(null); return; }
+    const request: UpdateProjectRequest = retryRequest ?? { operation_id: uuidv7(), project_id: project.id,
       expected_settings_revision: project.settings_revision, expected_title: project.title, title };
     setPending(true); setError(null); setNotice(null);
-    try { await api.updateProject(request); setEditingId(null); await reload(); setNotice("Project名を更新しました"); }
+    try { await api.updateProject(request); setRetryOperation(null); setEditingId(null); await reload(); setNotice("Project名を更新しました"); }
     catch (caught) {
       if (caught instanceof ApiClientError && caught.status === 401) onUnauthorized();
-      else setError(caught instanceof Error ? caught.message : "Project名の更新に失敗しました");
+      else {
+        const nextBoard = await reload();
+        const converged = nextBoard?.projects.some((item) => item.id === request.project_id && item.title === request.title) ?? false;
+        setRetryOperation(!converged && caught instanceof ApiClientError && caught.code === "infrastructure_ambiguous" ? { kind: "rename", request } : null);
+        setEditingId(null);
+        if (converged) { setError(null); setNotice("Project名を更新しました"); }
+        else setError(caught instanceof Error ? caught.message : "Project名の更新に失敗しました");
+      }
     } finally { setPending(false); }
   }
 
-  async function toggleArchive(project: ProjectBoardItemProjection) {
+  async function toggleArchive(project: ProjectBoardItemProjection, retryRequest?: SetProjectArchivedRequest, retrySuccess?: string) {
     if (!board || pending) return;
+    const request = retryRequest ?? { operation_id: uuidv7(), project_id: project.id,
+      archived: !project.archived, expected_settings_revision: project.settings_revision };
+    const success = retrySuccess ?? (project.archived ? "Projectを復元しました" : "Projectをアーカイブしました");
     setPending(true); setError(null); setNotice(null); setOpenMenuId(null);
     try {
-      await api.setProjectArchived({ operation_id: uuidv7(), project_id: project.id,
-        archived: !project.archived, expected_settings_revision: project.settings_revision });
-      await reload(); setNotice(project.archived ? "Projectを復元しました" : "Projectをアーカイブしました");
+      await api.setProjectArchived(request);
+      setRetryOperation(null); await reload(); setNotice(success);
     } catch (caught) {
       if (caught instanceof ApiClientError && caught.status === 401) onUnauthorized();
-      else setError(caught instanceof Error ? caught.message : "Projectの状態更新に失敗しました");
+      else {
+        const nextBoard = await reload();
+        const converged = nextBoard?.projects.some((item) => item.id === request.project_id && item.archived === request.archived) ?? false;
+        setRetryOperation(!converged && caught instanceof ApiClientError && caught.code === "infrastructure_ambiguous" ? { kind: "archive", request, success } : null);
+        if (converged) { setError(null); setNotice(success); }
+        else setError(caught instanceof Error ? caught.message : "Projectの状態更新に失敗しました");
+      }
     } finally { setPending(false); }
   }
 
   async function executeDelete(request: DeleteProjectRequest) {
     if (!board || pending) return;
-    setPending(true); setError(null); setNotice(null); setDeleteOperation(request);
+    setPending(true); setError(null); setNotice(null);
     const index = visible.findIndex((project) => project.id === request.project_id);
     const fallback = visible[index + 1] ?? visible[index - 1];
-    fallbackRef.current = connected(fallback ? actionRefs.current[fallback.id] : null) ?? connected(addRef.current);
+    deleteFallbackRef.current = connected(fallback ? actionRefs.current[fallback.id] : null) ?? connected(addRef.current);
     try {
       await api.deleteProject(request);
-      setDeleteOperation(null); setDeleteTarget(null); await reload(); setNotice("Projectを削除しました");
+      setRetryOperation(null); await reload(); setDeleteTarget(null); setNotice("Projectを削除しました");
     } catch (caught) {
       if (caught instanceof ApiClientError && caught.status === 401) onUnauthorized();
-      else setError(caught instanceof Error ? caught.message : "Projectの削除に失敗しました");
+      else {
+        const nextBoard = await reload();
+        const converged = nextBoard !== null && !nextBoard.projects.some((item) => item.id === request.project_id);
+        setRetryOperation(!converged && caught instanceof ApiClientError && caught.code === "infrastructure_ambiguous" ? { kind: "delete", request } : null);
+        if (converged) { setError(null); setNotice("Projectを削除しました"); }
+        else setError(caught instanceof Error ? caught.message : "Projectの削除に失敗しました");
+        setDeleteTarget(null);
+      }
+    } finally { setPending(false); }
+  }
+
+  async function executeReorder(request: ReorderProjectsRequest) {
+    setPending(true); setError(null); setNotice(null);
+    try { await api.reorderProjects(request); setRetryOperation(null); await reload(); setNotice("Projectの順序を更新しました"); }
+    catch (caught) {
+      if (caught instanceof ApiClientError && caught.status === 401) onUnauthorized();
+      else {
+        const nextBoard = await reload();
+        const converged = nextBoard !== null && nextBoard.projects.map((item) => item.id).join("\0") === request.project_ids.join("\0");
+        setRetryOperation(!converged && caught instanceof ApiClientError && caught.code === "infrastructure_ambiguous" ? { kind: "reorder", request } : null);
+        if (converged) { setError(null); setNotice("Projectの順序を更新しました"); }
+        else setError(caught instanceof Error ? caught.message : "Projectの順序更新に失敗しました");
+      }
     } finally { setPending(false); }
   }
 
@@ -205,12 +265,32 @@ export function ProjectBoard({ onUnauthorized, onProjectsChanged }: ProjectBoard
     const visibleSet = new Set(reorderedVisible); let cursor = 0;
     const projectIds = board.projects.map((project) => visibleSet.has(project.id) ? reorderedVisible[cursor++]! : project.id);
     if (projectIds.every((id, index) => id === board.projects[index]?.id)) return;
-    setDraggingId(null); setDragOverId(null); setPending(true); setError(null); setNotice(null);
-    void api.reorderProjects({ operation_id: uuidv7(), project_ids: projectIds, expected_board_revision: board.board_revision })
-      .then(async () => { await reload(); setNotice("Projectの順序を更新しました"); })
-      .catch((caught) => { setError(caught instanceof Error ? caught.message : "Projectの順序更新に失敗しました"); })
-      .finally(() => setPending(false));
+    setDraggingId(null); setDragOverId(null);
+    void executeReorder({ operation_id: uuidv7(), project_ids: projectIds, expected_board_revision: board.board_revision });
   }
+
+  function retryPendingOperation() {
+    if (!retryOperation || !board || pending) return;
+    switch (retryOperation.kind) {
+      case "create": void createProject(retryOperation.request); break;
+      case "rename": {
+        const project = board.projects.find((item) => item.id === retryOperation.request.project_id);
+        if (project) void renameProject(project, retryOperation.request);
+        break;
+      }
+      case "archive": {
+        const project = board.projects.find((item) => item.id === retryOperation.request.project_id);
+        if (project) void toggleArchive(project, retryOperation.request, retryOperation.success);
+        break;
+      }
+      case "reorder": void executeReorder(retryOperation.request); break;
+      case "delete": void executeDelete(retryOperation.request); break;
+    }
+  }
+
+  const retryLabel = retryOperation?.kind === "create" ? "保留中のProject作成を再試行"
+    : retryOperation?.kind === "delete" ? "保留中のProject削除を再試行"
+      : "保留中のProject操作を再試行";
 
   if (!board) return <main className="shell settings-project-shell"><p role="status">Project設定を読み込み中…</p></main>;
 
@@ -223,12 +303,11 @@ export function ProjectBoard({ onUnauthorized, onProjectsChanged }: ProjectBoard
         <button type="button" role="tab" aria-selected={tab === "active"} onClick={() => setTab("active")}>使用中</button>
         <button type="button" role="tab" aria-selected={tab === "archived"} onClick={() => setTab("archived")}>アーカイブ</button>
       </div>
-      <button ref={helpRef} type="button" className="secondary" onClick={() => setHelpOpen(true)}>?</button>
+      <button ref={helpRef} type="button" className="secondary" onClick={(event) => { helpOriginRef.current = event.currentTarget; setHelpOpen(true); }}>?</button>
     </div>
     {notice && <p className="success" role="status">{notice}</p>}
     {error && <p className="error" role="alert">{error}</p>}
-    {createOperation && <p className="error project-create-retry" role="status">作成結果を照合できませんでした。<button type="button" onClick={() => void createProject(createOperation)}>保留中のProject作成を再試行</button></p>}
-    {deleteOperation && <p className="error project-delete-retry" role="status">削除結果を照合できませんでした。<button type="button" onClick={() => void executeDelete(deleteOperation)}>削除を再試行</button></p>}
+    {retryOperation && <p className="error project-operation-retry" role="status">操作結果を照合できませんでした。<button type="button" onClick={retryPendingOperation}>{retryLabel}</button></p>}
     <div className="project-board-table" role="table" aria-label="Project一覧">
       <div className="project-board-row project-board-heading" role="row"><span role="columnheader">プロジェクト名</span><span aria-hidden="true" /></div>
       {draft && tab === "active" && <form className="project-board-row project-board-draft" role="row" onSubmit={(event) => { event.preventDefault(); const input = event.currentTarget.elements.namedItem("title"); if (input instanceof HTMLInputElement) void createProject(input.value); }}>
@@ -241,7 +320,7 @@ export function ProjectBoard({ onUnauthorized, onProjectsChanged }: ProjectBoard
         onDrop={(event) => { event.preventDefault(); const source = draggingId ?? event.dataTransfer.getData("text/plain"); const rect = event.currentTarget.getBoundingClientRect(); reorder(source, project.id, event.clientY > rect.top + rect.height / 2); }}>
         <span className="project-board-name">{editingId === project.id ? <input autoFocus aria-label={`${project.title}の名前`} value={editingTitle} maxLength={200} onChange={(event) => setEditingTitle(event.target.value)} onBlur={() => void renameProject(project)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void renameProject(project); } else if (event.key === "Escape") { event.preventDefault(); setEditingId(null); } }} /> : <button type="button" className="project-name-button" onClick={() => { setEditingId(project.id); setEditingTitle(project.title); }}>{project.title}</button>}</span>
         <span className="project-board-actions"><button ref={(element) => { actionRefs.current[project.id] = element; }} type="button" className="project-overflow" aria-label={`${project.title}のメニュー`} aria-expanded={openMenuId === project.id} disabled={pending} onClick={() => setOpenMenuId((current) => current === project.id ? null : project.id)}>…</button>
-          {openMenuId === project.id && <span className="project-overflow-menu" role="menu"><button type="button" role="menuitem" onClick={() => void toggleArchive(project)}>{project.archived ? "復元" : "アーカイブ"}</button><button type="button" role="menuitem" className="destructive-action" onClick={() => { setOpenMenuId(null); setDeleteTarget(project); }}>削除</button></span>}</span>
+          {openMenuId === project.id && <span className="project-overflow-menu" role="menu"><button type="button" role="menuitem" onClick={() => void toggleArchive(project)}>{project.archived ? "復元" : "アーカイブ"}</button><button type="button" role="menuitem" className="destructive-action" onClick={() => { deleteOriginRef.current = connected(actionRefs.current[project.id]); deleteFallbackRef.current = null; setOpenMenuId(null); setDeleteTarget(project); }}>削除</button></span>}</span>
       </div>)}
       {visible.length === 0 && !draft && <p className="muted project-empty">該当するProjectはありません。</p>}
     </div>

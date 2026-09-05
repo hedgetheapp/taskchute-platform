@@ -1894,6 +1894,79 @@ describe("Dogfood Day shell", () => {
     expect(original).toMatchObject({ title: "Original title" });
   });
 
+  it("reconciles and retries an ambiguous Project rename with the exact original command", async () => {
+    mocks.loadDay.mockResolvedValue(emptyDay);
+    mocks.updateProject.mockRejectedValueOnce(new ApiClientError("ambiguous", 503, true, "infrastructure_ambiguous"))
+      .mockResolvedValueOnce({ project: { id: "existing-project", title: "Renamed" }, settings_revision: 1 });
+    render(<App />);
+    await openProjectSettings();
+    fireEvent.click(screen.getByRole("button", { name: "Existing Project" }));
+    const input = screen.getByRole("textbox", { name: "Existing Projectの名前" });
+    fireEvent.change(input, { target: { value: "Renamed" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    const retry = await screen.findByRole("button", { name: "保留中のProject操作を再試行" });
+    const original = mocks.updateProject.mock.calls[0][0];
+    expect(mocks.loadProjectBoard).toHaveBeenCalledTimes(2);
+    fireEvent.click(retry);
+    await waitFor(() => expect(mocks.updateProject).toHaveBeenCalledTimes(2));
+    expect(mocks.updateProject.mock.calls[1][0]).toEqual(original);
+  });
+
+  it("accepts canonical Project state as success after an ambiguous response without retrying", async () => {
+    mocks.loadDay.mockResolvedValue(emptyDay);
+    mocks.createProject.mockRejectedValueOnce(new ApiClientError("response lost", 503, true, "infrastructure_ambiguous"));
+    mocks.loadProjectBoard.mockResolvedValueOnce({ board_revision: 0, projects: [] }).mockImplementation(async () => {
+      const request = mocks.createProject.mock.calls[0][0];
+      return { board_revision: 1, projects: [{ id: request.project_id, title: request.title, archived: false, board_position: 1, settings_revision: 0 }] };
+    });
+    render(<App />);
+    await openProjectSettings();
+    fireEvent.click(screen.getByRole("button", { name: "＋ プロジェクトを追加" }));
+    const input = screen.getByRole("textbox", { name: "新しいプロジェクト名" });
+    fireEvent.change(input, { target: { value: "Converged Project" } });
+    fireEvent.submit(input.closest("form")!);
+    expect(await screen.findByText("Projectを作成しました")).toBeTruthy();
+    expect(mocks.createProject).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: /Project.*再試行/ })).toBeNull();
+  });
+
+  it("restores Delete modal focus to its row action and reconciles deterministic failure without retry", async () => {
+    mocks.loadDay.mockResolvedValue(emptyDay);
+    render(<App />);
+    await openProjectSettings();
+    const action = screen.getByRole("button", { name: "Existing Projectのメニュー" });
+    fireEvent.click(action);
+    fireEvent.click(screen.getByRole("menuitem", { name: "削除" }));
+    await screen.findByRole("dialog", { name: "Project削除確認" });
+    fireEvent.click(screen.getByRole("button", { name: "キャンセル" }));
+    await waitFor(() => expect(document.activeElement).toBe(action));
+
+    mocks.deleteProject.mockRejectedValueOnce(new ApiClientError("conflict", 409, true, "revision_conflict"));
+    fireEvent.click(action);
+    fireEvent.click(screen.getByRole("menuitem", { name: "削除" }));
+    fireEvent.click(screen.getByRole("button", { name: "削除" }));
+    await screen.findByText("conflict");
+    expect(mocks.loadProjectBoard).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole("button", { name: /Project.*再試行/ })).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(action));
+  });
+
+  it("moves focus to the next Project action after successful deletion removes the origin row", async () => {
+    const first = { id: "first-project", title: "First Project", archived: false, board_position: 1, settings_revision: 0 };
+    const second = { id: "second-project", title: "Second Project", archived: false, board_position: 2, settings_revision: 0 };
+    mocks.loadDay.mockResolvedValue(emptyDay);
+    mocks.loadProjectBoard.mockResolvedValueOnce({ board_revision: 0, projects: [first, second] })
+      .mockResolvedValue({ board_revision: 1, projects: [second] });
+    mocks.loadProjects.mockResolvedValueOnce({ projects: [first, second] }).mockResolvedValue({ projects: [second] });
+    render(<App />);
+    await openProjectSettings();
+    fireEvent.click(screen.getByRole("button", { name: "First Projectのメニュー" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "削除" }));
+    fireEvent.click(screen.getByRole("button", { name: "削除" }));
+    await screen.findByText("Projectを削除しました");
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Second Projectのメニュー" })));
+  });
+
   it("creates the first Sectionなし Task from the Day toolbar", async () => {
     mocks.loadDay.mockResolvedValue(emptyDay);
     render(<App />);
