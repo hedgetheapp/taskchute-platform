@@ -1,5 +1,24 @@
 # Test Matrix
 
+## D-060 — Day row editing, inline actual entry, and completed duplicate — 2026-09-05
+
+Contract: D-060 `Approved`。D-058で撤去したexecution correctionのうち`SetExecutionTimes`だけを、旧dialogなしのDay Table inline Start / End editorとして再有効化した。Task名inline編集、ordinary planned Entryのowner-scoped Project選択、completed current-Day Taskの`… → 複製`、checkbox left spacingを実装し、`RevertEntryStart`はcurrent capabilityへ戻していない。APP `0017_task_metadata_update.sql`は`operations.command_type` allow-listだけを追加し、Task / Entry schema・revisionは変更していない。
+
+Local evidence:
+
+- focused SetExecutionTimes `2 / 2 PASS`（planned → completed、completed correction、reopen拒否、Sectionなし placement revision、retry / owner / future / overlap boundary）。focused Task metadata `2 / 2 PASS`（CAS、owner Project、Routine / cross-owner拒否、replay / misuse）。
+- Web `157 / 157 PASS`、Worker / runtime `180 / 180 PASS`、migration regression `4 scenarios PASS`（fresh `0001 -> 0017` chain、0017 row / schema preservation、operations allow-list）、typecheck、production build、`git diff --check`、source review `PASS`。
+- real-local safety smokeはroot `200`、protected API `401`、disabled bootstrap POST `404`。Revert route / type / client pathが復活していないことをsource / runtime negative boundaryで確認した。
+
+Persistent non-production evidence:
+
+- migration前 pendingはAPP `0017_task_metadata_update.sql` / AUTH `0`。HARD GATEとしてfresh private ignored backupを取得し、APP `d060-app-pre-0017-20260905.sql` `255,713 bytes` / SHA-256 `4F9FFBB0072B7A51BDA01CF4D27AAFA5D9EAFB113DC08F85CCF154831162AD8B`、AUTH `d060-auth-pre-0017-20260905.sql` `3,862 bytes` / SHA-256 `0FF8B268288B6EF675B2EAFDB867ED4FF63D27A8F321B3B06641FAC3D7E87028`の非空・readability・`.wrangler/` ignoreをPASSした。restoreは行っていない。
+- APP `0017`だけを適用し、post pending APP / AUTH `0 / 0`、APP latest `0017_task_metadata_update.sql`、operations `235 -> 235`、lifecycle guards `0 -> 0`、executions `21 -> 21`、active executions `0 -> 0`、APP / AUTH `quick_check = ok`、FK `0`、read-only `rows_written = 0`を確認した。Task / Entry column・index構成は不変で、operations CHECKへ`UpdateTaskMetadata`だけが追加された。
+- exact `main@18c2d6a1f41f9eeff7eba56ecb2ba3781d13658e`を`CLOUDFLARE_ENV=nonprod`でbuildし、canonical APP / AUTH binding、`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`を確認して`taskchute-web-nonprod` version `0772b58e-23d1-4bef-bd49-8bd5c3e8d9b0`へdeploy。remote safety probeはroot `200`、protected API `401`、disabled bootstrap `404`。
+- authenticated in-app browserでは既存current-Day ordinary planned fixtureでTask名editor（Escape cancel）、owner Project choices、Start / End direct datetime editor（Escape cancel）を表示確認した。current Dayにcompleted eligible fixtureがなく、save mutation、reload persistence、completed duplicate、actual persisted correctionは不可逆な既存data mutationを避けて`NOT_VERIFIED`。synthetic fixture / direct SQL feature mutationは行っていない。
+
+Classification: D-060 `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / PERSISTENT_NONPROD_MIGRATED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_SAFETY_VERIFIED`、authenticated feature save / reload / completed duplicate `NOT_VERIFIED`、production `NOT_RUN`、Released `NO`。
+
 ## D-059 — Day Table vertical space, stable scrollbar gutter, and full-row D&D surface — 2026-09-04
 
 Contract: D-059 `Approved`。D-058のD&D開始面だけをTask cellからeligible planned Task row全体のnon-interactive surfaceへsupersedeし、Day Table containerのviewport vertical space、stable scrollbar gutter、Bulk checkbox geometryをpolishした。Task rowのheight / density、D&D domain / eligibility / ordering semantics、API / Domain / persistenceは変更していない。

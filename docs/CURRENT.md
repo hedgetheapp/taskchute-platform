@@ -1,8 +1,26 @@
 # Current
 
-Date: 2026-09-04
+Date: 2026-09-05
 
 ## Status
+
+### D-060 — Day row editing, inline actual entry, and completed duplicate — 2026-09-05
+
+D-060はApproved Decisionとしてcanonical化済みで、Decision commit `18de3b692e69be1544b1f175b9a48a3777106da4`（`Approve Day row editing and inline actual entry`）とimplementation commit `18c2d6a1f41f9eeff7eba56ecb2ba3781d13658e`（`Implement D-060 Day row editing`）をGitHub canonical `main`へfast-forward push済みである。D-058で撤去したexecution correctionのうち、current capabilityへ再有効化したのは`SetExecutionTimes`だけであり、`RevertEntryStart`はclient / API / Worker / UIへ復活させていない。
+
+Day Tableでは、current-Dayのordinary planned Entryだけを対象にTask名inline編集とowner-scoped Project選択を提供する。Task名はtrim後non-empty・300文字以内、Enter commit / Escape cancel、Task / Entry identityとplacement revisionを変更しない。Projectは既存owner-scoped候補のselectのみで、quick create / searchは追加していない。Routine、running / completed、past / future read-only、mutation-locked Entryはread-onlyのままである。実績開始 / 終了は旧dialogを戻さず、同じrow内のStart / End `datetime-local` editorで直接入力・訂正する。D-057のplanned / running / completed遷移、actual / overlap / owner / retry / atomicity / forecast reconciliation semanticsを再利用し、completed end clear、future / unavailable Day、invalid orderingを拒否する。
+
+completed current-Day Entryのfar-right `…` menuは`複製`だけを提供し、source actualはcopyせず、新しいordinary planned Task / Entryを作る。completed sourceのdelete / date move、Routine relationのcopy、planning pairの無断normalizationは行わない。D-059のsurface fill、stable scrollbar gutter、square centered checkbox、eligible planned rowのfull-row D&Dと、D-058の他のread-only / overflow / ordering semanticsは維持した。
+
+APP compatibility migration `apps/web/migrations/app/0017_task_metadata_update.sql`は`operations.command_type`のallow-listへ`UpdateTaskMetadata`を追加するoperations table rebuildだけで、Task / Entryのcolumn・table・revision・indexを追加していない。適用前APP / AUTH pendingは`0017_task_metadata_update.sql / 0`。pre-migration fresh private ignored backupはAPP `apps/web/.wrangler/private-backups/d060-app-pre-0017-20260905.sql`（`255,713 bytes` / SHA-256 `4F9FFBB0072B7A51BDA01CF4D27AAFA5D9EAFB113DC08F85CCF154831162AD8B`）、AUTH `apps/web/.wrangler/private-backups/d060-auth-pre-0017-20260905.sql`（`3,862 bytes` / SHA-256 `0FF8B268288B6EF675B2EAFDB867ED4FF63D27A8F321B3B06641FAC3D7E87028`）で、非空、readable、`.wrangler/` ignoreをPASSした。restoreは行っていない。
+
+HARD GATE PASS後にAPP `0017`だけを適用し、post pending APP / AUTH `0 / 0`、APP latest `0017_task_metadata_update.sql`、operations `235 -> 235`、lifecycle guards `0 -> 0`、executions `21 -> 21`、active executions `0 -> 0`を確認した。APP `PRAGMA quick_check = ok`、FK violations `0`、read-only `rows_written = 0`、Task / Entry column・index構成不変、operations CHECKへの`UpdateTaskMetadata`追加、existing `RevertEntryStart` / `SetExecutionTimes` compatibility residue保持を確認した。AUTHも`quick_check = ok`、FK `0`、users / accounts / sessions `1 / 1 / 3`を保持した。
+
+exact `main@18c2d6a1f41f9eeff7eba56ecb2ba3781d13658e`を`CLOUDFLARE_ENV=nonprod`でbuildし、generated configの`taskchute-web-nonprod`、`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、canonical APP / AUTH bindingを確認してdeployした。Worker versionは`0772b58e-23d1-4bef-bd49-8bd5c3e8d9b0`。safety probeはroot `200`、protected API `401`、disabled bootstrap POST `404`である。
+
+Local evidenceはfocused SetExecutionTimes `2 / 2 PASS`、focused Task metadata `2 / 2 PASS`、Web `157 / 157 PASS`、Worker / runtime `180 / 180 PASS`、migration regression `4 scenarios PASS`、typecheck、production build、nonprod dry-run、`git diff --check`、source reviewをPASSした。real-local safety smokeはroot `200`、protected API `401`、disabled bootstrap POST `404`。authenticated nonprod in-app browserでは既存のcurrent-Day ordinary planned fixtureでTask名editor（Escape cancel）、owner Project choices、Start / End direct datetime editor（Escape cancel）を確認したが、既存current Dayにcompleted eligible fixtureがなく、save mutation、reload persistence、completed duplicate、actual persisted correctionは不可逆な既存data mutationを避けて`NOT_VERIFIED`とした。synthetic fixture、direct SQL feature mutation、restore、production accessは行っていない。新API token、permission / OAuth scope拡張、account / role変更、APP / AUTH binding変更、security posture変更は行っていない。
+
+classification: D-060 `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / PERSISTENT_NONPROD_MIGRATED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_SAFETY_VERIFIED`。authenticated feature mutation / reload / completed duplicate `NOT_VERIFIED`、production `NOT_RUN`、Released `NO`である。
 
 ### D-059 — Day Table vertical space, stable scrollbar gutter, and full-row D&D surface — 2026-09-04
 
