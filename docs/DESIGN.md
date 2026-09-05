@@ -230,13 +230,16 @@ R2A runtimeはcurrent-Day planned Routine-derived Entryへexplicit scope UXを�
 
 ## Routine Board
 
-Sidebarの`ルーティン`はRoutine管理のprimary destinationである。D-064のcurrent visible columnsは`有効 | タスク名 | 繰り返し | 開始予定 | 見積 | プロジェクト | セクション | 開始日 | 終了日`とする。Task-name cellにdrag handleを置き、専用の移動列は持たない。Board orderはDay orderと独立し、row clickによるimplicit navigationを行わない。
+Sidebarの`ルーティン`はRoutine管理のprimary destinationである。D-064のcurrent visible columnsは`有効 | タスク名 | 繰り返し | 開始予定 | 見積 | プロジェクト | セクション | 開始日 | 終了日`とする。専用の移動列・drag handle・semantic Actions columnは持たない。Board orderはDay orderと独立し、row clickによるimplicit navigationを行わない。
 
 `＋ ルーティンを追加`はlocal blank OFF rowを作り、空名の間はno-write、名前commit後にpersistする。recurrence / period popoverはexplicit Save / Cancel、inline defaultsはserver-canonical reconciliationを使う。詳細implementation evidenceはCURRENT / FEATURES / TEST_MATRIXをownerとする。
 
-D-064のRoutine deleteはTask-name cellの`…`メニューから明示確認を経由して実行する。DeleteRoutineはowner・Routine・Board revision・settings revision・operation fingerprintを検証し、同一transactionでarchive tombstoneを作成してBoard itemを除去し、残りのBoard orderをreconcileする。RoutineDefinition、Task、RoutineOccurrence、Entry、Execution、operation history、snapshot、moved occurrenceはhard deleteしない。archive済みRoutineはBoard projectionとfuture recurrence eligibilityから除外し、すでにmaterializedされたcurrent / past historyは保持する。restore / undo UIは提供しない。
+D-064のRoutine deleteはrow末尾の`…`メニューから明示確認を経由して実行する。DeleteRoutineはowner・Routine・Board revision・settings revision・operation fingerprintを検証し、同一transactionでarchive tombstoneを作成してBoard itemを除去し、残りのBoard orderをreconcileする。RoutineDefinition、Task、RoutineOccurrence、Entry、Execution、operation history、snapshot、moved occurrenceはhard deleteしない。archive済みRoutineはBoard projectionとfuture recurrence eligibilityから除外し、すでにmaterializedされたcurrent / past historyは保持する。restore / undo UIは提供しない。
 
 Board headerは9列をdrag reorderし、各列のright edgeをresizeできる。order / widthはServerへ送らず、browser-local key `taskchute.web.routine-columns.v1`へversionedに保存する。欠損・未知・重複・壊れたpreferenceはdefault order / widthへ安全にfallbackする。J / ↓は次、K / ↑は前へ移動し、未focus時は最初 / 最後をfocusする。`?`はcentered help、Escはmenu / modal / editorを閉じる。input / select / textarea / contenteditable / IME中はglobal shortcutを抑制し、Routine BoardにはX selection shortcutを持たせない。
+Board headerは9列をdrag reorderし、各列のright edgeをresizeできる。order / widthはServerへ送らず、browser-local key `taskchute.web.routine-columns.v1`へversionedに保存する。欠損・未知・重複・壊れたpreferenceはdefault order / widthへ安全にfallbackする。Routine rowはsubtleなrow-level drag cursorを持ち、非interactiveなcell background / plain text / whitespaceからdragを開始できる。button / link / input / select / textarea / label / contenteditable / menu / popover / dialog / resize handleなどのinteractive descendantからは開始しない。成功時は既存`ReorderRoutines`、current Board revision、pending gateを使う。J / ↓は次、K / ↑は前へ移動し、未focus時は最初 / 最後をfocusする。`?`はcentered help、Escはmenu / modal / editorを閉じる。input / select / textarea / contenteditable / IME中はglobal shortcutを抑制し、Routine BoardにはX selection shortcutを持たせない。
+
+row末尾の`…` actionはresolved column order / widthに依存しないrow-end gutterへ置き、9つのpresentation data columnとActions headerを分離する。Helpはopen時の実focusをoriginとして保持し、Deleteはtrigger row actionをoriginとして保持する。close時はconnected originを優先し、deleted rowがdetachした場合は次のvisible row、前のvisible row、toolbarへfallbackする。これはD-064の既存delete / Board / retry semanticsを変えないUI correctiveである。
 
 ## Task order and display column order
 

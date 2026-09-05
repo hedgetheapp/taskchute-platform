@@ -9,7 +9,7 @@ Contract: D-064 `Approved`。Routine deleteのsoft archive、future generation�
 | ROUTINE-DELETE-01 | owner-scoped Routine archive、Board item除去、future generation停止、RoutineDefinition / Task / Occurrence / Entry / Execution / history / snapshot保持 | PASS (WORKER + REAL_LOCAL + NONPROD_BROWSER + NONPROD_D1) |
 | ROUTINE-DELETE-02 | `… → 削除`、centered confirmation、cancel / Escape / backdrop boundary、削除後reload不在 | PASS (WEB + NONPROD_BROWSER) |
 | ROUTINE-DELETE-03 | operation fingerprint、replay / misuse、revision / guard、atomic Board reorder | PASS (WORKER + ROUTINE INTEGRATION) |
-| ROUTINE-BOARD-01 | exact columns `有効 \| タスク名 \| 繰り返し \| 開始予定 \| 見積 \| プロジェクト \| セクション \| 開始日 \| 終了日`、移動列なし、Task-name drag handle、checkbox | PASS (WEB + NONPROD_BROWSER) |
+| ROUTINE-BOARD-01 | exact columns `有効 \| タスク名 \| 繰り返し \| 開始予定 \| 見積 \| プロジェクト \| セクション \| 開始日 \| 終了日`、移動列 / semantic Actions header / dedicated drag handleなし、checkbox | PASS (WEB + NONPROD_BROWSER) |
 | ROUTINE-BOARD-02 | header reorder、right-edge resize、`taskchute.web.routine-columns.v1` order / width persistence、malformed fallback | PASS (WEB) / browser visual persistenceは`NOT_VERIFIED` |
 | ROUTINE-BOARD-03 | J / ↓ next、K / ↑ previous、no-focus first / last、`?` help、Esc close、input / IME suppression、X no-op | PASS (WEB + NONPROD_BROWSER; OS IMEはNOT_RUN) |
 | ROUTINE-DELETE-04 | APP `0018_routine_archive.sql`のfresh chain、既存rows / identity / history、operations / routine guards CHECK、quick_check / FK | PASS (MIGRATION_REGRESSION + NONPROD_MIGRATION + NONPROD_D1) |
@@ -27,6 +27,24 @@ Persistent non-production evidence:
 - authenticated browserで使い捨てRoutineを作成し、`… → 削除`、確認モーダル、削除、notice、reload後の不在を確認した。APP read-onlyではdelete後のaggregate RoutineDefinition / Task / Entry / Execution / operations `11 / 55 / 62 / 25 / 295`、`DeleteRoutine` operation `1`、archive `1`、Board item `10`、archived Definition relation `1`を確認し、既存historyを保持した。HelpのJ/↓・K/↑・?・EscとRoutine BoardでのX no-opもPASS。browser consoleのzero-error exact collectionとreal-browser resize persistenceは`NOT_VERIFIED`、OS Japanese IMEは`NOT_RUN`。
 
 Classification: D-064 `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / REAL_LOCAL_SAFETY_VERIFIED / MAIN_PUSHED / PERSISTENT_NONPROD_BACKUP_VERIFIED / PERSISTENT_NONPROD_MIGRATED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_SAFETY_VERIFIED / AUTHENTICATED_BROWSER_VERIFIED`、production `NOT_RUN`、restore / branch / PR / merge / tag / release / auxiliary Worker操作 `NOT_RUN`、Released `NO`。security posture changeなし。
+
+## D-064 corrective — Routine row drag surface, row-end actions, and modal focus — 2026-09-05
+
+Contract: Approved D-064のWeb-only corrective。API / Domain / schema / migration / dependency / security postureは変更していない。implementation commit `783f461b71e10d18ae459be192ce175bb1256291`を`main`へfast-forward pushした。
+
+| ID | Verification target | Evidence |
+| --- | --- | --- |
+| ROUTINE-BOARD-CORRECTIVE-01 | dedicated `⋮⋮` handleを撤去し、Task / non-Task cell background・plain text・row whitespaceからrow reorderを開始する | PASS (LOCAL WEB; NONPROD AX structural smoke) / actual browser dragは`NOT_VERIFIED` |
+| ROUTINE-BOARD-CORRECTIVE-02 | input / select / checkbox / label / button / link / contenteditable / menu / popover / dialog / resize handleからdragを開始しない | PASS (FOCUSED WEB) |
+| ROUTINE-BOARD-CORRECTIVE-03 | row末尾の`…` actionを9 data column外へ置き、column order / widthに依存する10th semantic columnを追加しない | PASS (FOCUSED WEB + NONPROD AX structural smoke) / browser resize visualは`NOT_VERIFIED` |
+| ROUTINE-BOARD-CORRECTIVE-04 | Help origin、Delete cancel / Escape / backdrop、successful detach fallback、failed / ambiguous retryのfocusを安全に復元する | PASS (FOCUSED WEB + NONPROD AX smoke) |
+| ROUTINE-BOARD-CORRECTIVE-05 | J / ↓ / K / ↑ focus navigation、`?` / Esc、Routine Board X no-opを維持し、Arrowでreorder commandを発火しない | PASS (FOCUSED WEB + NONPROD AX smoke) |
+
+Local corrective evidence: focused Routine Board Web `12 / 12 PASS`、full Web `180 / 180 PASS`、typecheck、production build、`git diff --check`、source reviewをPASSした。Worker full / migrationはWeb-only impact boundaryにより`NOT_REQUIRED`。Build時のWrangler user-log `EPERM` warningは出力されたがbuild exitは`0`で、生成物は正常に作成された。
+
+Persistent non-production corrective evidence: exact `main@783f461b71e10d18ae459be192ce175bb1256291`を`CLOUDFLARE_ENV=nonprod`でbuildし、generated configの`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、canonical APP / AUTH binding、migrationなしを確認したうえで`taskchute-web-nonprod`へdeployした。Worker version `eae7107a-18df-4ffe-b9d9-4e59c2796f8d`。root `200`、protected API `401`、disabled bootstrap POST `404`をPASSした。authenticated browser AX smokeではdedicated handleなし、9 data cellの後のrow-end menu、Delete Escape後のaction focus、focused rowのHelp Escape後のrow focus、J / K / Arrow focus移動、X no-opをPASSした。座標依存の実drag / resize visual、console zero-error exact collectionはbrowser tooling boundaryにより`NOT_VERIFIED`。migration / backup / restore / productionは`NOT_REQUIRED / NOT_RUN`。
+
+Classification: D-064 corrective `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / MAIN_PUSHED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_SAFETY_VERIFIED / AUTHENTICATED_BROWSER_PARTIAL`、production `NOT_RUN`、Released `NO`。security posture changeなし。
 
 ## D-063 corrective — conflict-scope retention and single queued Start — 2026-09-05
 

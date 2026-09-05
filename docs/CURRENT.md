@@ -8,7 +8,7 @@ Date: 2026-09-05
 
 D-064はApproved Decisionとしてcanonical化し、Decision commit `2e8685de2321f4a2e6c39dd0276ef726806a45d6`、runtime implementation commit `573f3a72394988442f8482bb183136b95b831242`をGitHub canonical `main`へfast-forward pushした。Routine deleteはhard deleteではなくowner-scoped archive relationによるsoft archiveとし、Board itemを除去してfuture generationを停止する。RoutineDefinition、Task、Occurrence、Entry、Execution、operation history、snapshot、moved occurrenceは保持する。APP compatibility migration `0018_routine_archive.sql`はarchive table追加と`DeleteRoutine`のoperations / routine guard CHECK拡張だけを行い、既存identity / historyを破壊的に変更しない。
 
-Routine Boardのcurrent columnsは`有効 | タスク名 | 繰り返し | 開始予定 | 見積 | プロジェクト | セクション | 開始日 | 終了日`である。Task-name cellのdrag handle、enabled checkbox、inline defaults、Project / Section / dates / estimate編集、header reorder / right-edge resize、browser-local preference `taskchute.web.routine-columns.v1`、J / ↓ / K / ↑ navigation、`?` help、Esc closeを実装した。Routine Boardに`X` selection shortcutはなく、既存Routine semantics / Board revision / retry identityを維持する。
+Routine Boardのcurrent columnsは`有効 | タスク名 | 繰り返し | 開始予定 | 見積 | プロジェクト | セクション | 開始日 | 終了日`である。enabled checkbox、inline defaults、Project / Section / dates / estimate編集、header reorder / right-edge resize、browser-local preference `taskchute.web.routine-columns.v1`、J / ↓ / K / ↑ navigation、`?` help、Esc closeを実装した。Routine rowはdedicated drag handleを持たず、非interactiveなrow surfaceから並び替えを開始し、row-end `…` actionは9つのdata column外へ配置する。Routine Boardに`X` selection shortcutはなく、既存Routine semantics / Board revision / retry identityを維持する。
 
 Local evidenceはfocused Routine Board Web `8 / 8 PASS`、full Worker `181 / 181 PASS`、full Web `176 / 176 PASS`、migration regression `4 scenarios PASS`（fresh `0001 -> 0018` chain、0018 preservation / constraints）、typecheck、production build、`git diff --check`、source reviewをPASSした。real-local Vite safety probeはroot `200`、protected API `401`、disabled bootstrap POST `404`をPASSした。
 
@@ -17,6 +17,18 @@ Persistent non-productionではmigration前pending APP `0018_routine_archive.sql
 APP post-migrationのRoutineDefinition / Task / Entry / Execution / operationsは`10 / 54 / 62 / 25 / 293`でmigration前と一致し、archive rowは初期`0`だった。認証済みnonprod browserでは使い捨てRoutineを作成し、`… → 削除`、中央確認モーダル、confirm、notice、Routine Board reload後の不在を確認した。APP read-onlyでは、delete後にRoutineDefinition / Task / Entry / Execution / operations `11 / 55 / 62 / 25 / 295`、`DeleteRoutine` operation `1`、archive `1`、Board item `10`、archived Definition relation `1`を確認し、既存historyを保持した。HelpのJ/↓・K/↑・?・EscとRoutine BoardでのX no-opも確認した。browser consoleのzero-error exact collectionは`NOT_VERIFIED`である。
 
 Classification: D-064 `IMPLEMENTED / INTEGRATED / MAIN_PUSHED / LOCAL_TESTED / REAL_LOCAL_SAFETY_VERIFIED / PERSISTENT_NONPROD_BACKUP_VERIFIED / PERSISTENT_NONPROD_MIGRATED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_SAFETY_VERIFIED / AUTHENTICATED_BROWSER_VERIFIED`。production、restore、branch / PR / merge / tag / release、auxiliary Worker操作は行っていない。new API token、permission / OAuth scope拡張、account / role変更、APP / AUTH binding変更、security posture変更は行っていない。Released `NO`。
+
+### D-064 corrective — Routine row drag surface, row-end actions, and modal focus — 2026-09-05
+
+Approved D-064のUI correctiveとして、dedicated `⋮⋮` drag handleとhandle起点のArrow reorderを撤去した。Routine row全体をdrag sourceとし、button / link / input / select / textarea / label / contenteditable / menu / popover / dialog / resize handleなどのinteractive descendantからはdragを開始しない。row-end `…` actionはTask-name cellから分離し、最後のpresentation columnの外側へabsolute配置した。semantic data columnは9列のままで、Actions header / 10列目は追加していない。
+
+Helpはkeyboard起点の実focus（Routine rowを含む）またはtoolbar buttonをoriginとして保持し、Deleteはrow-end actionをoriginとして保持する。cancel / Escape / backdropではconnected originへ戻し、削除でorigin rowが消えた場合は次のvisible row、前のvisible row、toolbarへfallbackする。dialog role、aria-modal、centered layout、focus trap、background shortcut suppressionは維持した。API / Domain / schema / migration / dependency / security posture変更はない。
+
+implementation commit `783f461b71e10d18ae459be192ce175bb1256291`を`main`へfast-forward pushした。focused Routine Board Web `12 / 12 PASS`、full Web `180 / 180 PASS`、typecheck、production build、`git diff --check`、source reviewをPASSした。Worker full / migrationはWeb-only correctiveのimpact boundaryにより`NOT_REQUIRED`である。
+
+exact `main@783f461b71e10d18ae459be192ce175bb1256291`を`CLOUDFLARE_ENV=nonprod`でbuildし、canonical `taskchute-web-nonprod`へdeployした。Worker versionは`eae7107a-18df-4ffe-b9d9-4e59c2796f8d`、generated configは`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、canonical APP / AUTH binding、migrationなしである。root `200`、protected API `401`、disabled bootstrap POST `404`をPASSした。認証済みnonprod browserのAX smokeでは、9 data cellの後のrow-end menu、dedicated handleなし、Delete Escape後のaction focus、focused rowのHelp Escape後のrow focus、J / K / Arrow focus移動、X no-opをPASSした。実drag / resizeの座標操作とconsole zero-error収集はbrowser tooling boundaryにより`NOT_VERIFIED`である。
+
+classification: D-064 corrective `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / MAIN_PUSHED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_SAFETY_VERIFIED / AUTHENTICATED_BROWSER_PARTIAL`。migration / backup / restore / production / branch / PR / merge / tag / release / auxiliary Worker操作は`NOT_REQUIRED / NOT_RUN`。new API token、permission / OAuth scope拡張、account / role変更、binding変更、security posture変更は行っていない。Released `NO`。
 
 ### D-063 corrective — conflict-scope retention and single queued Start — 2026-09-05
 
