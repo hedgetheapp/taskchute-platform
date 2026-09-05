@@ -4,7 +4,7 @@ import type { CurrentTaskChuteDayProjection, EntryProjection } from "../../src/s
 
 const mocks = vi.hoisted(() => ({
   login: vi.fn(), logout: vi.fn(), loadDay: vi.fn(), loadProjects: vi.fn(), createProject: vi.fn(), addTask: vi.fn(), duplicateEntry: vi.fn(), bulkDeleteEntries: vi.fn(), bulkMoveEntriesToDay: vi.fn(), bulkMoveEntriesToSection: vi.fn(), bulkMoveEntriesToSectionOccurrence: vi.fn(), bulkMoveEntriesToSectionScoped: vi.fn(), bulkSetEntriesEstimateScoped: vi.fn(),
-  reorderEntries: vi.fn(), startEntry: vi.fn(), completeEntry: vi.fn(),
+  reorderEntries: vi.fn(), startEntry: vi.fn(), completeEntry: vi.fn(), setExecutionTimes: vi.fn(), updateTaskMetadata: vi.fn(),
   establishInitialSectionConfiguration: vi.fn(), moveEntry: vi.fn(), setEntryEstimate: vi.fn(),
   setEntryPlannedStart: vi.fn(),
   convertEntryToRoutine: vi.fn(), endRoutine: vi.fn(), setRoutineEstimate: vi.fn(), setRoutineSectionPlan: vi.fn(),
@@ -201,6 +201,8 @@ beforeEach(() => {
   mocks.reorderEntries.mockResolvedValue({});
   mocks.startEntry.mockResolvedValue({});
   mocks.completeEntry.mockResolvedValue({});
+  mocks.setExecutionTimes.mockResolvedValue({});
+  mocks.updateTaskMetadata.mockResolvedValue({});
   mocks.establishInitialSectionConfiguration.mockResolvedValue({});
   mocks.moveEntry.mockResolvedValue({});
   mocks.setEntryEstimate.mockResolvedValue({});
@@ -2677,7 +2679,7 @@ describe("Dogfood Day shell", () => {
     mocks.loadDay.mockResolvedValue(completedDay);
     const completed = render(<App />);
     await screen.findByLabelText("Canonical taskの開始");
-    expect(screen.queryByRole("button", { name: "Canonical taskのその他の操作" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Canonical taskのその他の操作" })).toBeTruthy();
     completed.unmount();
 
     mocks.loadDay.mockResolvedValue(populatedDay);
@@ -3214,16 +3216,34 @@ describe("Dogfood Day shell", () => {
     expect(mocks.bulkDeleteEntries.mock.calls[0][0]).toMatchObject({ entry_ids: [firstEntry.id], taskchute_day_id: emptyDay.taskchute_day.id });
   });
 
-  it("withdraws current Execution correction capability while retaining read-only actual projection", async () => {
+  it("re-enables current SetExecutionTimes inline while retaining Revert withdrawal", async () => {
     mocks.loadDay.mockResolvedValue(runningDay);
     render(<App />);
     await screen.findByLabelText("Canonical taskの開始");
-    expect(screen.queryByRole("button", { name: /実績時刻を編集/ })).toBeNull();
+    expect(screen.getByRole("button", { name: "Canonical taskの開始" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /開始を取り消す/ })).toBeNull();
     expect(screen.queryByText("実績入力")).toBeNull();
     expect(screen.queryByText("実績訂正")).toBeNull();
-    expect(screen.getByLabelText("Canonical taskの開始").tagName).toBe("SPAN");
-    expect(screen.getByLabelText("Canonical taskの終了").tagName).toBe("SPAN");
+    expect(screen.getByLabelText("Canonical taskの開始").tagName).toBe("BUTTON");
+    expect(screen.getByLabelText("Canonical taskの終了").tagName).toBe("BUTTON");
+    fireEvent.click(screen.getByRole("button", { name: "Canonical taskの開始" }));
+    expect(screen.getByLabelText("Canonical taskの開始")).toBeTruthy();
+    fireEvent.keyDown(screen.getByLabelText("Canonical taskの開始"), { key: "Escape" });
+  });
+
+  it("edits an ordinary planned Task title inline and selects an existing Project in its cell", async () => {
+    mocks.loadDay.mockResolvedValue(populatedDay);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskを編集" }));
+    const title = screen.getByRole("textbox", { name: "Canonical taskのTask名" });
+    fireEvent.change(title, { target: { value: "Renamed task" } });
+    fireEvent.keyDown(title, { key: "Enter" });
+    await waitFor(() => expect(mocks.updateTaskMetadata).toHaveBeenCalledTimes(1));
+    expect(mocks.updateTaskMetadata.mock.calls[0][0]).toMatchObject({ expected_title: "Canonical task", title: "Renamed task", project_id: null });
+    const project = await screen.findByRole("combobox", { name: "Canonical taskのProject" });
+    fireEvent.change(project, { target: { value: "existing-project" } });
+    await waitFor(() => expect(mocks.updateTaskMetadata).toHaveBeenCalledTimes(2));
+    expect(mocks.updateTaskMetadata.mock.calls[1][0]).toMatchObject({ expected_title: "Canonical task", expected_project_id: null, title: "Canonical task", project_id: "existing-project" });
   });
 
   it("uses one far-right overflow menu for eligible planned row actions", async () => {

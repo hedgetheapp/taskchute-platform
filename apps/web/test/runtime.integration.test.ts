@@ -172,7 +172,7 @@ describe.sequential("production runtime bootstrap slice", () => {
     expect(expiryMillis - Date.now()).toBeLessThan(7.1 * 24 * 60 * 60 * 1000);
   });
 
-  it("keeps withdrawn Execution correction endpoints unreachable", async () => {
+  it("keeps Revert withdrawn while requiring the current SetExecutionTimes contract", async () => {
     const entryId = uuidv7();
     const revert = await browser.post(`/api/v1/entries/${entryId}/revert-start`, {
       operation_id: uuidv7(), entry_id: entryId, taskchute_day_id: uuidv7(), execution_id: uuidv7(),
@@ -183,8 +183,8 @@ describe.sequential("production runtime bootstrap slice", () => {
     const correction = await browser.post(`/api/v1/entries/${entryId}/execution-times`, {
       operation_id: uuidv7(), entry_id: entryId, taskchute_day_id: uuidv7(), actual_started_at: null, actual_ended_at: null,
     });
-    expect(correction.status).toBe(404);
-    expect(await json(correction)).toEqual({ error: { code: "resource_not_found", message: "Not found", reconcile: false } });
+    expect(correction.status).toBe(400);
+    expect((await json<{ error: { code: string } }>(correction)).error.code).toBe("malformed_request");
   });
 
   it("represents the Approved rolling 7-day/1-day session policy", () => {

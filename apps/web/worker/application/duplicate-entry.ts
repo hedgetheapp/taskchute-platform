@@ -17,7 +17,7 @@ export function isDuplicateEntryRequest(value: unknown): value is DuplicateEntry
 interface SourceRow {
   task_id: string; title: string; project_id: string | null; section_id: string | null;
   estimate_seconds: number | null; planned_start_minute: number | null; position: number; placement_revision: number;
-  routine_occurrence_id: string | null; establishment_boundary_minutes: number;
+  lifecycle_state: "planned" | "completed"; routine_occurrence_id: string | null; establishment_boundary_minutes: number;
 }
 
 interface UserSettingsRow {
@@ -51,11 +51,12 @@ export async function duplicateEntry(
   }).logicalDate;
 
   const source = await db.prepare(`SELECT e.task_id, t.title, t.project_id, e.section_id, e.estimate_seconds,
-      e.planned_start_minute, e.position, e.routine_occurrence_id, d.placement_revision, d.establishment_boundary_minutes
+      e.planned_start_minute, e.position, e.lifecycle_state, e.routine_occurrence_id, d.placement_revision, d.establishment_boundary_minutes
     FROM entries e JOIN tasks t ON t.app_user_id = e.app_user_id AND t.id = e.task_id
     JOIN taskchute_days d ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
-    WHERE e.app_user_id = ? AND e.id = ? AND e.taskchute_day_id = ? AND e.lifecycle_state = 'planned'
-      AND d.logical_date >= ?`).bind(appUserId, request.source_entry_id, request.taskchute_day_id, currentLogicalDate)
+    WHERE e.app_user_id = ? AND e.id = ? AND e.taskchute_day_id = ?
+      AND ((e.lifecycle_state = 'planned' AND d.logical_date >= ?)
+        OR (e.lifecycle_state = 'completed' AND d.logical_date = ?))`).bind(appUserId, request.source_entry_id, request.taskchute_day_id, currentLogicalDate, currentLogicalDate)
     .first<SourceRow>();
   if (!source) return reject(db, appUserId, request, requestFingerprint, "resource_conflict", "Entry is not an eligible planned source");
   const pairValid = source.section_id === null
@@ -97,9 +98,11 @@ export async function duplicateEntry(
       db.prepare(`INSERT INTO placement_command_guards (operation_id, app_user_id, taskchute_day_id, expected_revision)
         SELECT ?, ?, d.id, ? FROM taskchute_days d JOIN entries e ON e.app_user_id = d.app_user_id AND e.taskchute_day_id = d.id
           JOIN tasks t ON t.app_user_id = e.app_user_id AND t.id = e.task_id
-        WHERE d.app_user_id = ? AND d.id = ? AND d.placement_revision = ? AND d.logical_date >= ?
+        WHERE d.app_user_id = ? AND d.id = ? AND d.placement_revision = ?
+          AND ((e.lifecycle_state = 'planned' AND d.logical_date >= ?)
+            OR (e.lifecycle_state = 'completed' AND d.logical_date = ?))
           AND EXISTS (SELECT 1 FROM user_settings WHERE app_user_id = ? AND timezone = ? AND day_boundary_minutes = ?)
-          AND e.id = ? AND e.lifecycle_state = 'planned' AND e.position = ? AND e.routine_occurrence_id IS ?
+          AND e.id = ? AND e.lifecycle_state = ? AND e.position = ? AND e.routine_occurrence_id IS ?
           AND t.title = ? AND t.project_id IS ? AND e.section_id IS ? AND e.estimate_seconds IS ? AND e.planned_start_minute IS ?
           AND ((e.section_id IS NULL AND e.planned_start_minute IS NULL) OR (e.section_id IS NOT NULL
             AND e.planned_start_minute >= d.establishment_boundary_minutes
@@ -110,8 +113,8 @@ export async function duplicateEntry(
               AND e.planned_start_minute >= c.logical_start_minute AND e.planned_start_minute < c.logical_end_minute) = 1))
           AND NOT EXISTS (SELECT 1 FROM tasks WHERE id = ?) AND NOT EXISTS (SELECT 1 FROM entries WHERE id = ?)`)
         .bind(request.operation_id, appUserId, request.expected_placement_revision, appUserId, request.taskchute_day_id,
-          request.expected_placement_revision, currentLogicalDate, appUserId, settings.timezone, settings.day_boundary_minutes,
-          request.source_entry_id, source.position, source.routine_occurrence_id,
+          request.expected_placement_revision, currentLogicalDate, currentLogicalDate, appUserId, settings.timezone, settings.day_boundary_minutes,
+          request.source_entry_id, source.lifecycle_state, source.position, source.routine_occurrence_id,
           source.title, source.project_id, source.section_id, source.estimate_seconds, source.planned_start_minute,
           request.new_task_id, request.new_entry_id),
       db.prepare(`UPDATE entries SET position = position + ? WHERE app_user_id = ? AND taskchute_day_id = ?

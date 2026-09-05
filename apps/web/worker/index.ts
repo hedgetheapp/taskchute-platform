@@ -13,6 +13,8 @@ import { HttpError } from "./application/errors";
 import { loadCurrentTaskChuteDay, loadTaskChuteDayByLogicalDate } from "./application/load-current-day";
 import { isLogicalDate } from "./domain/taskchute-day";
 import { completeEntry, isCompleteEntryRequest, isStartEntryRequest, startEntry } from "./application/entry-lifecycle";
+import { isSetExecutionTimesRequest, setExecutionTimes } from "./application/execution-correction";
+import { isUpdateTaskMetadataRequest, updateTaskMetadata } from "./application/task-metadata";
 import { isMoveEntryRequest, isSetEntryEstimateRequest, moveEntry, setEntryEstimate } from "./application/entry-planning";
 import { isReorderEntriesRequest, reorderEntries } from "./application/reorder-entries";
 import { isSetEntryPlannedStartRequest, setEntryPlannedStart } from "./application/planned-start";
@@ -250,6 +252,22 @@ async function route(request: Request, env: Env): Promise<Response> {
       throw new HttpError(400, "malformed_request", "Invalid SetRoutineSectionPlan request");
     }
     return Response.json(await setRoutineSectionPlan(env.APP_DB, principal.appUserId, body));
+  }
+  const taskMetadataMatch = url.pathname.match(/^\/api\/v1\/entries\/([^/]+)\/task-metadata$/);
+  if (request.method === "POST" && taskMetadataMatch) {
+    const body = await readBoundedJson(request);
+    if (taskMetadataMatch[1] !== (body as { entry_id?: unknown })?.entry_id || !isUpdateTaskMetadataRequest(body)) {
+      throw new HttpError(400, "malformed_request", "Invalid UpdateTaskMetadata request");
+    }
+    return Response.json(await updateTaskMetadata(env.APP_DB, principal.appUserId, body));
+  }
+  const executionTimesMatch = url.pathname.match(/^\/api\/v1\/entries\/([^/]+)\/execution-times$/);
+  if (request.method === "POST" && executionTimesMatch) {
+    const body = await readBoundedJson(request);
+    if (executionTimesMatch[1] !== (body as { entry_id?: unknown })?.entry_id || !isSetExecutionTimesRequest(body)) {
+      throw new HttpError(400, "malformed_request", "Invalid SetExecutionTimes request");
+    }
+    return Response.json(await setExecutionTimes(env.APP_DB, principal.appUserId, body));
   }
   const lifecycleMatch = url.pathname.match(/^\/api\/v1\/entries\/([^/]+)\/(start|complete)$/);
   if (request.method === "POST" && lifecycleMatch) {

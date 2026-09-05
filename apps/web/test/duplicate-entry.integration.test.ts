@@ -168,13 +168,34 @@ describe.sequential("DuplicateEntry first slice", () => {
     ]);
   });
 
-  it.each(["running", "completed"] as const)("rejects a %s source without partial copy", async (state) => {
+  it("rejects a running source without partial copy", async () => {
     const fixture = await seed();
-    await env.APP_DB.prepare("UPDATE entries SET lifecycle_state = ? WHERE id = ?").bind(state, fixture.entryId).run();
+    await env.APP_DB.prepare("UPDATE entries SET lifecycle_state = 'running' WHERE id = ?").bind(fixture.entryId).run();
     const before = await mutationCounts(fixture);
     await expect(duplicateEntry(env.APP_DB, fixture.userId, requestFor(fixture), now))
       .rejects.toMatchObject({ code: "resource_conflict" });
     expect(await mutationCounts(fixture)).toEqual({ ...before, operations: before.operations + 1 });
+  });
+
+  it("duplicates a completed source only on the current logical Day as a fresh planned Entry", async () => {
+    const fixture = await seed();
+    const executionId = uuidv7();
+    await env.APP_DB.batch([
+      env.APP_DB.prepare("UPDATE entries SET lifecycle_state = 'completed' WHERE id = ?").bind(fixture.entryId),
+      env.APP_DB.prepare(`INSERT INTO executions (id, app_user_id, entry_id, started_at, ended_at, created_at)
+        VALUES (?, ?, ?, '2026-09-02T09:00:00.000Z', '2026-09-02T09:10:00.000Z', ?)`)
+        .bind(executionId, fixture.userId, fixture.entryId, now),
+    ]);
+    const request = requestFor(fixture);
+    await expect(duplicateEntry(env.APP_DB, fixture.userId, request, now)).resolves.toMatchObject({
+      task_id: request.new_task_id, entry_id: request.new_entry_id, section_id: fixture.sectionId, position: 4, placement_revision: 1,
+    });
+    expect(await env.APP_DB.prepare("SELECT lifecycle_state FROM entries WHERE id = ?").bind(request.new_entry_id)
+      .first<string>("lifecycle_state")).toBe("planned");
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM executions WHERE entry_id = ?").bind(request.new_entry_id)
+      .first<number>("count")).toBe(0);
+    expect(await env.APP_DB.prepare("SELECT lifecycle_state FROM entries WHERE id = ?").bind(fixture.entryId)
+      .first<string>("lifecycle_state")).toBe("completed");
   });
 
   it("rejects cross-owner access and global identity collisions", async () => {

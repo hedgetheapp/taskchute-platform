@@ -443,6 +443,31 @@ try {
     VALUES ('user-v01a', 'guard-execution-correction-invalid', '019d2f00-0000-7000-8000-000000000002',
       '019d2f00-0000-7000-8000-000000000003', 'NotACommand')`], false);
   assert.notEqual(invalidExecutionCorrectionGuard.status, 0, "unknown lifecycle guard command must remain rejected after 0016");
+  const preTaskMetadataOperations = query("SELECT * FROM operations ORDER BY operation_id");
+  const preTaskMetadataLifecycleGuards = query("SELECT * FROM lifecycle_command_guards ORDER BY operation_id");
+  const preTaskMetadataTables = query("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name");
+  const preTaskMetadataTaskColumns = query("PRAGMA table_info(tasks)");
+  const preTaskMetadataEntryColumns = query("PRAGMA table_info(entries)");
+  applyFile("migrations/app/0017_task_metadata_update.sql");
+  assert.deepEqual(query("SELECT * FROM operations ORDER BY operation_id"), preTaskMetadataOperations,
+    "0017 must preserve every operation row");
+  assert.deepEqual(query("SELECT * FROM lifecycle_command_guards ORDER BY operation_id"), preTaskMetadataLifecycleGuards,
+    "0017 must not alter lifecycle guard rows");
+  assert.deepEqual(query("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name"), preTaskMetadataTables,
+    "0017 must not add or remove application tables");
+  assert.deepEqual(query("PRAGMA table_info(tasks)"), preTaskMetadataTaskColumns,
+    "0017 must not alter Task columns");
+  assert.deepEqual(query("PRAGMA table_info(entries)"), preTaskMetadataEntryColumns,
+    "0017 must not alter Entry columns");
+  const taskMetadataOperationTable = query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'operations'")[0]?.sql ?? "";
+  assert(taskMetadataOperationTable.includes("UpdateTaskMetadata"), "0017 must add only the Task metadata command CHECK entry");
+  assert(taskMetadataOperationTable.includes("RevertEntryStart"), "0017 must preserve historical RevertEntryStart compatibility");
+  assert(taskMetadataOperationTable.includes("SetExecutionTimes"), "0017 must preserve SetExecutionTimes compatibility");
+  const invalidTaskMetadataCommand = execute(["--command", `INSERT INTO operations
+    (app_user_id, operation_id, command_type, request_fingerprint_version, request_fingerprint, outcome_kind, result_json, created_at)
+    VALUES ('user-v01a', 'operation-task-metadata-invalid', 'NotACommand', 1, 'invalid-d060-fingerprint', 'success', '{}',
+      '2026-08-28T08:13:00.000Z')`], false);
+  assert.notEqual(invalidTaskMetadataCommand.status, 0, "unknown operation command must remain rejected after 0017");
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
   assert.deepEqual(query("PRAGMA foreign_key_check"), []);
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
@@ -556,6 +581,12 @@ try {
     { operation_id: "operation-set-execution-times", command_type: "SetExecutionTimes", request_fingerprint: "execution-times-fingerprint",
       outcome_kind: "success", result_json: "{}" },
   ]);
+  execute(["--command", `INSERT INTO operations
+    (app_user_id, operation_id, command_type, request_fingerprint_version, request_fingerprint, outcome_kind, result_json, created_at)
+    VALUES ('user-v01a', 'operation-task-metadata', 'UpdateTaskMetadata', 1, 'task-metadata-fingerprint', 'success', '{}',
+      '2026-08-28T08:14:00.000Z')`]);
+  assert.deepEqual(query("SELECT command_type FROM operations WHERE operation_id = 'operation-task-metadata'"),
+    [{ command_type: "UpdateTaskMetadata" }]);
   const contexts = query(`SELECT section_id, logical_start_minute, logical_end_minute,
     actual_start_instant, actual_end_instant FROM taskchute_day_section_contexts
     WHERE taskchute_day_id = 'day-v01a' ORDER BY section_id`);
@@ -619,7 +650,7 @@ try {
   assert.notEqual(duplicateActive.status, 0, "the active Execution unique index must reject a second active row");
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
   assert.deepEqual(query("PRAGMA foreign_key_check"), []);
-  console.log("migration regression: 4 scenarios passed (R2A normalization, R2B preservation/constraints, duplicate-Task fail-safe, Bulk Selection 0010/0011/0012/0013/0014/0015/0016 preservation/constraints; fresh 0001 -> 0016 chain)");
+  console.log("migration regression: 4 scenarios passed (R2A normalization, R2B preservation/constraints, duplicate-Task fail-safe, Bulk Selection 0010/0011/0012/0013/0014/0015/0016/0017 preservation/constraints; fresh 0001 -> 0017 chain)");
 } finally {
   await rm(persistencePath, { recursive: true, force: true });
   await rm(failurePersistencePath, { recursive: true, force: true });

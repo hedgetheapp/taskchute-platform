@@ -22,6 +22,10 @@ import type {
   CurrentTaskChuteDayProjection,
   CompleteEntryRequest,
   CompleteEntryResult,
+  SetExecutionTimesRequest,
+  SetExecutionTimesResult,
+  UpdateTaskMetadataRequest,
+  UpdateTaskMetadataResult,
   EstablishInitialSectionConfigurationRequest,
   EstablishInitialSectionConfigurationResult,
   SectionConfigurationProjection,
@@ -141,6 +145,12 @@ export const api = {
   },
   completeEntry(body: CompleteEntryRequest): Promise<CompleteEntryResult> {
     return requestJson(`/api/v1/entries/${body.entry_id}/complete`, jsonPost("", body));
+  },
+  setExecutionTimes(body: SetExecutionTimesRequest): Promise<SetExecutionTimesResult> {
+    return requestJson(`/api/v1/entries/${body.entry_id}/execution-times`, jsonPost("", body));
+  },
+  updateTaskMetadata(body: UpdateTaskMetadataRequest): Promise<UpdateTaskMetadataResult> {
+    return requestJson(`/api/v1/entries/${body.entry_id}/task-metadata`, jsonPost("", body));
   },
   establishInitialSectionConfiguration(body: EstablishInitialSectionConfigurationRequest): Promise<EstablishInitialSectionConfigurationResult> {
     return requestJson("/api/v1/section-configurations/initial", jsonPost("", body));
