@@ -256,8 +256,8 @@ export async function setExecutionTimes(
           FROM entries e JOIN executions x ON x.app_user_id = e.app_user_id AND x.entry_id = e.id
           JOIN taskchute_days d ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
          WHERE e.app_user_id = ? AND e.id = ? AND e.lifecycle_state = ? AND x.id = ?
-           AND julianday(x.started_at) = julianday(?)
-           AND ((? IS NULL AND x.ended_at IS NULL) OR (? IS NOT NULL AND julianday(x.ended_at) = julianday(?)))
+           AND x.started_at = ?
+           AND ((? IS NULL AND x.ended_at IS NULL) OR (? IS NOT NULL AND x.ended_at = ?))
            AND (? IS NULL OR d.placement_revision = ?)
            AND ${overlapsSql("e")}`)
       .bind(appUserId, request.operation_id, appUserId, request.entry_id, request.expected_lifecycle_state, request.execution_id,

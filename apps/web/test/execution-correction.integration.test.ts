@@ -75,7 +75,7 @@ describe.sequential("D-060 SetExecutionTimes", () => {
     const request = {
       operation_id: uuidv7(), entry_id: fixture.entryId, execution_id: executionId,
       expected_lifecycle_state: "planned" as const,
-      started_at: "2026-08-28T06:00:00.000Z", ended_at: "2026-08-28T06:15:00.000Z",
+      started_at: "2026-08-28T06:00:00.312Z", ended_at: "2026-08-28T06:15:00.512Z",
       expected_started_at: null, expected_ended_at: null,
     };
     const first = await setExecutionTimes(env.APP_DB, fixture.userId, request, now);
@@ -91,7 +91,7 @@ describe.sequential("D-060 SetExecutionTimes", () => {
 
     const correction = { ...request, operation_id: uuidv7(), expected_lifecycle_state: "completed" as const,
       expected_started_at: request.started_at, expected_ended_at: request.ended_at,
-      started_at: "2026-08-28T06:05:00.000Z", ended_at: "2026-08-28T06:20:00.000Z" };
+      started_at: "2026-08-28T06:05:00.312Z", ended_at: "2026-08-28T06:20:00.512Z" };
     await expect(setExecutionTimes(env.APP_DB, fixture.userId, correction, now)).resolves.toMatchObject({
       lifecycle_state: "completed", placement_revision: 0,
       execution: { started_at: correction.started_at, ended_at: correction.ended_at },
