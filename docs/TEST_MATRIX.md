@@ -1,5 +1,27 @@
 # Test Matrix
 
+## D-065 Project operation notification layer / no layout shift corrective — 2026-09-06
+
+Contract: Approved D-065のWeb-only corrective。Project Boardのsuccess / error / retry・reconcile通知を通常document flowから固定top-center layerへ移し、table位置を不変にする。API / Domain / schema / migration / dependency / binding / security postureは変更しない。開始時点は`main@dfb62ec64c35a4f63b3c8c47e56392799aa30006`、実装commitは`2e58331601082ce3ca3af183217e5a358b81d4fd`。
+
+| ID | Verification target | Evidence |
+| --- | --- | --- |
+| PROJECT-NOTIFY-01 | success / error / retry notificationの通常flowからの分離 | PASS (SOURCE + WEB): `.project-notification-stack` fixed top-center、success / error / retryをfixed layerへ配置。retry identity、reconcile、retry button、modal focus semanticsは既存のまま |
+| PROJECT-NOTIFY-02 | success accessibility / auto-dismiss / timer reset | PASS (WEB + LOCAL): `role=status`、`aria-live=polite`、`aria-atomic=true`、2.5秒auto-dismiss、連続successのtimer reset、unmount cleanup |
+| PROJECT-NOTIFY-03 | error / retry persistence and accessibility | PASS (LOCAL + SOURCE): error `role=alert`、retry statusとbuttonをpersistent fixed layerで保持。retry / reconcile pathのsemantic変更なし |
+| PROJECT-NOTIFY-04 | table no-layout-shift invariant | PASS (NONPROD_BROWSER): Project table top before / during / after `505 / 505 / 505px`; success notification computed `position=fixed` / `top=12px` / `z-index=80` |
+| PROJECT-NOTIFY-05 | authenticated Project operation smoke | PASS (NONPROD_BROWSER): disposable Project 2件のcreate、rename 1件、archive / restore、success text、success auto-dismiss、reload後のboard確認。hard deleteは実行していない |
+| PROJECT-NOTIFY-06 | runtime safety / D1 integrity / auth preservation | PASS (NONPROD_HTTP + NONPROD_D1): root `200`、protected API `401`、bootstrap POST `404`、APP / AUTH `quick_check=ok`、FK `0`、rows_written `0`、AUTH users / accounts / sessions `1 / 1 / 5` |
+| PROJECT-NOTIFY-07 | browser console and boundary | PASS: console error / warning `[]`。production、restore、cleanup、migration、schema、new token、permission / scope、account / role、binding changeは`NOT_RUN` |
+
+Local evidence: focused Web `171 / 171 PASS`、full Web `187 / 187 PASS`、full Worker / D1 `184 / 184 PASS`、typecheck、production build、exact nonprod build、Wrangler dry-run、`git diff --check`、source review `PASS`。既知のWrangler log `EPERM`とclient chunk-size warningは非致命で各command exit `0`。migration regression / backup / restoreはschema変更なしのため`NOT_REQUIRED / NOT_RUN`。
+
+Persistent non-production evidence: APP / AUTH pending `0 / 0`。exact pushed mainをcanonical `taskchute-web-nonprod`（Worker version `dd85ad38-baef-43a7-b8b5-8e94be11cac3`、`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、canonical APP / AUTH binding）へdeployした。browser後APP aggregateはProjects / board items / archives / Tasks / Entries / Executions / operations `2 / 2 / 0 / 3 / 2 / 0 / 42`、`quick_check=ok`、FK `0`、全query `rows_written=0`。AUTHは`quick_check=ok`、FK `0`、rows_written `0`、users / accounts / sessions `1 / 1 / 5`。既存Domain dataのcleanup、remote restore、productionは行っていない。
+
+Deploy時に同一shellの環境変数処理で補助Worker `taskchute-web-nonprod-nonprod` version `cd5edd0d-2a97-4caa-a1e7-98693cf698c8`がpublishされたが、canonical verificationから除外し、削除はしていない。環境変数を除去してcanonical Workerを再deployし、browser / safety probeはcanonical Workerだけで実施した。この境界は既存D-062 historical evidenceとも整合する。
+
+Classification: `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / MAIN_PUSHED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_SAFETY_VERIFIED / AUTHENTICATED_BROWSER_VERIFIED / PROJECT_NOTIFICATION_FIXED_LAYER_VERIFIED / SUCCESS_AUTO_DISMISS_VERIFIED / LAYOUT_INVARIANT_VERIFIED / ARCHIVE_RESTORE_VERIFIED / HARD_DELETE_NOT_RUN / PRODUCTION_NOT_RUN / RELEASED_NO`。Features statusは変更していない。
+
 ## D-065 Final persistent nonprod verification — 2026-09-06
 
 Contract: Approved D-065のremaining persistent nonprod verification。runtime code / API / Domain / schema / migration変更なし。開始時点のGitHub canonical `main@be90a2833a3a12774e47f58785cc01783b2aa046`、current Worker `taskchute-web-nonprod` version `78bf3f21-84a2-4c3b-ba10-ec38bfcd4f2a`、APP / AUTH pending `0 / 0`。

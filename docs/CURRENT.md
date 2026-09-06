@@ -4,6 +4,22 @@ Date: 2026-09-06
 
 ## Status
 
+### D-065 Project operation notification layer / no layout shift corrective — 2026-09-06
+
+Approved D-065のWeb-only correctiveとして、Project Boardのsuccess / error / retry・reconcile通知を通常document flowからviewport固定のtop-center notification layerへ移した。開始時点のGitHub canonicalは`main@dfb62ec64c35a4f63b3c8c47e56392799aa30006`、実装commitは`2e58331601082ce3ca3af183217e5a358b81d4fd`で、local / origin / GitHubの最終stateは一致している。API、Domain、schema、migration、dependency、binding、security posture、Product Decisionは変更していない。
+
+BeforeはProject Board内でnotice / error / retry panelがtable前の通常flowに配置され、表示中にtable位置を押し下げ得た。Afterは`.project-notification-stack`を`position: fixed`、top-center、`z-index: 80`、`pointer-events: none`（各notificationは`auto`）として配置し、通常flowから分離した。Modal backdropは既存の`z-index: 100`を維持し、modalがnotificationより上位で、focus trap / focus restore / background shortcut suppressionも変更していない。successは`role=status`、`aria-live=polite`、`aria-atomic=true`で2.5秒後に自動dismissし、連続successではtimerをreset、unmount時にcleanupする。errorは`role=alert`でpersistent、retry / reconcileは既存のoperation identity・retry button・fresh reconcile semanticsを保持したまま固定layerへ移した。
+
+Local evidenceはfocused Web `171 / 171 PASS`、full Web `187 / 187 PASS`、full Worker / D1 `184 / 184 PASS`、typecheck、production build、exact nonprod build、Wrangler dry-run、`git diff --check`、source reviewをPASSした。production buildのWrangler log `EPERM`とclient chunk-size warningは既知の非致命warningで各command exitは`0`。migration regressionはschema変更なしのため`NOT_REQUIRED`で、migration / backup / restoreは実施していない。
+
+Persistent nonprodではAPP / AUTH pending `0 / 0`、canonical Worker `taskchute-web-nonprod`へexact pushed mainをdeployし、Worker version `dd85ad38-baef-43a7-b8b5-8e94be11cac3`、`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、canonical APP / AUTH bindingを確認した。HTTP safety probeはroot `200`、protected Project Board `401`、disabled bootstrap POST `404`。authenticated browserではdisposable Project 2件のcreate、1件のrename、archive / restoreを行い、success notificationのcomputed style `position=fixed / top=12px / z-index=80`を確認した。Project table topはnotification before / during / afterで`505 / 505 / 505px`、successは自動dismiss、archive / restore success textも確認し、console error / warningは`[]`だった。
+
+Browser後のAPP read-only aggregateはProjects / board items / archives / Tasks / Entries / Executions / operations `2 / 2 / 0 / 3 / 2 / 0 / 42`、`quick_check=ok`、FK violations `0`、全query `rows_written=0`。AUTHは`quick_check=ok`、FK `0`、rows_written `0`、users / accounts / sessions `1 / 1 / 5`でlogin capabilityを保持した。hard delete、既存Domain data cleanup、remote restore、production操作は行っていない。
+
+Deploy時の同一shell環境変数処理により、verification対象外の補助Worker `taskchute-web-nonprod-nonprod`（version `cd5edd0d-2a97-4caa-a1e7-98693cf698c8`）が一時的にpublishされた。これはcanonical Workerではなく、既存のD-062 historical precedentと同様に削除せず、verification対象から除外した。環境変数を除去してcanonical `taskchute-web-nonprod`を再deployし、上記canonical Workerだけをbrowser / safety verificationに使用した。新API token、permission / OAuth scope拡張、account / role変更、binding変更、その他security posture変更はない。
+
+Classification: `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / MAIN_PUSHED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_SAFETY_VERIFIED / AUTHENTICATED_BROWSER_VERIFIED / PROJECT_NOTIFICATION_FIXED_LAYER_VERIFIED / SUCCESS_AUTO_DISMISS_VERIFIED / LAYOUT_INVARIANT_VERIFIED / ARCHIVE_RESTORE_VERIFIED / HARD_DELETE_NOT_RUN / PRODUCTION_NOT_RUN / RELEASED_NO`。Featuresのstatusは今回変更していない。
+
 ### D-065 Final persistent nonprod verification — 2026-09-06
 
 D-065のremaining persistent nonprod verificationを、実行開始時のGitHub canonical `main@be90a2833a3a12774e47f58785cc01783b2aa046`（local / origin / GitHub一致、ahead / behind `0 / 0`）から完了した。今回のruntime code、API、Domain、schema、migration、dependency、binding、security posture、Product Decisionは変更していない。current Worker `taskchute-web-nonprod` version `78bf3f21-84a2-4c3b-ba10-ec38bfcd4f2a`を使用し、APP / AUTH migration pendingは`0 / 0`、nonprod envは`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`だった。
