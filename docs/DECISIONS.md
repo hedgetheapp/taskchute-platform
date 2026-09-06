@@ -1413,3 +1413,27 @@ D-065はProjectをdedicated Settings Boardで管理する。Projectのstable ide
 - active-only Project selector、current archived assignmentの理解可能な表示、delete後のTask `Projectなし`、restore後の再選択可能性を維持する。Project-owned Primary Document等の未実装capabilityをD-065で新設しない。
 
 APP compatibility migration `0019_project_management.sql`は、Project Board head / item / archive relation、bounded ordinary historical Project snapshot、Routine snapshotのlive Project FK除去、Project commandを許可するoperations CHECKの互換拡張をatomicに導入する。既存のTask / Entry / Execution / Routine identityと歴史的operationは破壊的に変更しない。AUTH migration、binding変更、new dependency、security posture、production operation、restore、branch / PR / merge / tag / releaseは含めず、必要になった場合はSTOPする。実装・migration・local / real-local・persistent nonprod backup / deploy / browser / DB evidenceはcanonical docsへ記録する。
+
+## D-066 — Non-blocking ordinary current-Day mutation UX v0.1
+Status: Approved
+
+D-066では、ordinary current-Day操作をServer応答待ちで全面停止させず、Serverをcanonical authorityとして維持したまま、Web memory-onlyのclient-side pending intent overlayとsingle serial dispatcherで連続操作できるUXを提供する。既存API、Domain、operation identity、retry / ambiguity、placement revision、active Executionおよびoverlap semanticsは変更しない。
+
+### Canonical state, intent and dispatcher
+
+- Dayのcanonical projectionはServerが保持し、UIはcanonical stateへ未送信intent / in-flight operationのoverlayをderiveする。既存のmetadata、estimate、planned-start等のoverlay設計を再利用し、Client clockでactual timestampを捏造しない。
+- v0.1は通常Day mutation HTTP requestを同時に1件だけ送るmemory-onlyのsingle global serial dispatcherとする。各Command成功後にcanonical reconcileを行い、次のintentをlatest canonical preconditionからbuildする。新しいstate libraryやdependency、永続queue、offline/PWA、localStorage/IndexedDB、realtime/multitab coordinationは導入しない。
+- unsent intentは同一fieldのlatest valueへのcoalesceやdispatch前のrebaseが許されるが、dispatch済みoperationはoperation_idとexact payloadをfreezeし、retryでは同一identity / requestを使う。revision conflictはcanonical reconcile後にoverlayとunsent queueを止め、silent overwriteしない。`infrastructure_ambiguous`はdispatcherをpauseし、convergedでない限りexact operationを保持して再試行可能にする。
+
+### Scope and interaction safety
+
+- 対象はordinary current-DayのTask追加、planned Taskのtitle / Project / Section / planned start / estimate、planned Entry reorder、current-Day Start / Complete、および既存queued Startの統合とする。Section / planned startはD-043の同期unit、placement mutationはcurrent revision、Start / Completeはactive Execution最大1・implicit interrupt禁止を維持する。
+- ordinary Day mutationだけを理由にDay全体をdisabledにしない。同一Task / Entry / dependent targetだけをconflict scopeとして直列化し、他Taskの安全な操作、keyboard navigation、追加操作は継続可能にする。auth、navigation、initial configuration、settings等のglobal transition barrierは維持する。
+- Task追加はsubmit時にdraftをclearし、stable client UUIDv7のprovisional rowとpending表示を置く。dependent intentはAdd成功後のcanonical stateからdispatchし、Add失敗時はdependent intentを安全にcancelする。Start後のCompleteおよびComplete A後のStart Bはqueue順とfresh canonical stateで処理し、前提失敗を黙って実行・破棄しない。
+- pending status / persistent errorはlayout shiftせず、focusを奪わない。Day navigation、logout、reload / closeはpending intentを黙ってdiscardせず、drainまたは安全なbarrier / native unload guardを使う。reload後はServer canonical stateから復元する。
+
+### Non-goals and stop boundary
+
+Bulk、Routine scope/conversion/reset/end、Section / Project settings、Project Board mutation、Day move、duplicate、destructive delete、manual execution correction、non-current-Day broad mutation、Web offline、persistent queue、new server queue、API / schema / migration / dependency / security posture変更、production operation、restore、branch / PR / merge / tag / releaseはD-066のscope外とする。これらが必要になった場合、またはretry / revision / conflict safetyを維持できない場合はSTOPする。
+
+実装・automated test・real-local latency / browser verification・persistent nonprod deploy / API / DB evidenceは`docs/CURRENT.md`、`docs/FEATURES.md`、`docs/SPEC.md`、`docs/ARCHITECTURE.md`、`docs/DESIGN.md`、`docs/TEST_MATRIX.md`へ記録する。

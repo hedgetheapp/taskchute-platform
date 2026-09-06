@@ -4,6 +4,13 @@ Date: 2026-09-06
 
 ## Status
 
+### D-066 non-blocking ordinary current-Day mutation UX v0.1
+
+- D-066 is canonicalized as Approved. The target is a Server-canonical, memory-only client pending overlay with a single serial dispatcher for ordinary current-Day Task add, planned Task metadata / Project / Section / planned start / estimate, reorder, Start, and Complete.
+- In-scope Day intents are accepted without a Day-wide mutation freeze. Same-target / dependent-target conflicts remain scoped; global auth, settings, navigation, and initialization barriers remain conservative.
+- Sent operations keep frozen `operation_id` and exact payload for retry. Placement revision, D-043 Section/planned-start pairing, active Execution maximum-one, no implicit interrupt, revision conflict barrier, and ambiguous-operation retention remain unchanged.
+- No API, schema, migration, new dependency, persistent/offline queue, security posture, production, restore, branch/PR/merge/tag/release operation is part of D-066. Verification evidence will be appended after implementation and nonprod checks.
+
 ### Today display menu color corrective — 2026-09-06
 
 Approved `taskchute-platform_today-display-menu-color-corrective.md`を、開始時点の`main@7874fe53c4a20ddb53af6b0d8de7c05b7ff1300a`から実装し、CSS-only corrective commit `3890efc`をGitHub `main`へfast-forward pushした。原因はglobal `button`の`background: #2383e2; color: #fff`が`.display-menu-item`へ継承され、既存selectorが文字色だけをneutralへ上書きしていたことだった。global button style、menu structure、submenu / keyboard / focus semantics、column / completed visibility semantics、API、Domain、schema、migration、dependency、binding、security postureは変更していない。
