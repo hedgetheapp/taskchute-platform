@@ -4,6 +4,20 @@ Date: 2026-09-06
 
 ## Status
 
+### Today display menu consolidation — 2026-09-06
+
+Approved `taskchute-platform_today-display-menu-consolidation.md`を、開始時点の`main@75efd34093c7c3d1c9290668f50a5d173cf84d2d`から実装し、実装commit `87b467a`をGitHub `main`へfast-forward pushした。今回の変更はWeb UI / local preferenceと対応testだけで、API、Domain、schema、migration、dependency、binding、security posture、Product Decisionは変更していない。production、restore、destructive cleanup、branch / PR / merge / tag / releaseは実施していない。
+
+BeforeはDay toolbar右側に独立した`列` buttonと`実行済みを表示` checkboxが並び、列popoverに`すべて表示`と`初期状態に戻す`があった。Afterは右側の単一`表示` menuに統合し、top-levelのcheckable `実行済みを表示`、`列表示` submenu、`デフォルトに戻す`を提供する。`列表示`には既存9列（Project / Section / Routine / 見積 / 開始予定 / 開始見込 / 開始 / 終了 / 実績）のvisibility checkboxを保持し、`デフォルトに戻す`は既存のcolumn preference reset semanticsだけを実行し、completed visibilityは変更しない。`すべて表示`は今回のapproved menu構造から撤去した。
+
+Accessibility / interactionは`aria-haspopup="menu"`、`aria-expanded`、menu / menuitem semantics、click、focus、hover handler、click-awayを実装した。Escapeはsubmenu → 親menu → closeの順で動作し、focusをsubmenu trigger / 表示 triggerへ戻す。submenu focus復帰時に再openしないregressionも追加した。local focused Web `171 / 171 PASS`、full Web `187 / 187 PASS`、full Worker / D1 `184 / 184 PASS`、typecheck、production build、exact `CLOUDFLARE_ENV=nonprod` build、Wrangler dry-run、`git diff --check`、source reviewをPASSした。build / dry-run時に既知のWrangler log `EPERM`とclient chunk-size warningは出たが、各command exitは`0`。
+
+Exact pushed mainを生成configでcanonical persistent nonprod Worker `taskchute-web-nonprod`へdeployし、Worker version `65365fa0-047b-4ff9-b4de-4a0cb9bdf8cd`、`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、既存canonical APP / AUTH bindingを確認した。APP / AUTH migrationは双方`No migrations to apply`。HTTP safety probeはroot `200`、未認証 Project API `401`、disabled bootstrap POST `404`。APP / AUTH read-only integrityはともに`quick_check=ok`、FK violations `0`、`rows_written=0`。
+
+Authenticated browserでは`表示` menuのrole / aria、completed toggleのoff / on、9列submenuの表示、Project hide / show、`デフォルトに戻す`による復元、Escape階層、click-awayを確認した。current fixtureはplanned Taskだったためcompleted rowの可視数変化は発生せず、completed filtering semanticsはlocal testで確認した。browser console error / warningは`[]`。`onMouseEnter` hover handlerはsource reviewで確認したが、利用可能なbrowser操作APIにhover actionがないためhover展開自体は`NOT_VERIFIED`として区別する。
+
+Classification: `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / MAIN_PUSHED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_SAFETY_VERIFIED / AUTHENTICATED_BROWSER_VERIFIED / DISPLAY_MENU_CONSOLIDATED / COLUMN_SUBMENU_VERIFIED / COMPLETED_TOGGLE_VERIFIED / RESET_BEHAVIOR_VERIFIED / HOVER_HANDLER_SOURCE_VERIFIED / HOVER_BROWSER_NOT_VERIFIED / PRODUCTION_NOT_RUN / RELEASED_NO`。Featuresのstatusは変更していない。
+
 ### Accidental auxiliary Worker cleanup — 2026-09-06
 
 Product Ownerの明示承認に基づき、D-065 Project notification correctiveのdeploy時に誤ってpublishされた補助Worker `taskchute-web-nonprod-nonprod`だけを削除した。開始時点は`main@db8cb53fe1a3fe0b59b18135b0b0a2c8c1951d8c`（local HEAD / GitHub `main`一致、tracked worktree clean、untracked review artifacts `58`件）で、runtime code、API、Domain、schema、migration、binding、security posture、canonical Workerのdeployは変更していない。

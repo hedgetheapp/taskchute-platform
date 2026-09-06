@@ -1,5 +1,23 @@
 # Test Matrix
 
+## Today display menu consolidation — 2026-09-06
+
+Contract: Approved Today UI display-menu consolidation。開始時点は`main@75efd34093c7c3d1c9290668f50a5d173cf84d2d`、implementation commitは`87b467a`。API / Domain / schema / migration / dependency / binding / security postureは変更していない。
+
+| ID | Verification target | Evidence |
+| --- | --- | --- |
+| TODAY-DISPLAY-01 | single right-side `表示` trigger and menu composition | PASS (LOCAL + NONPROD_BROWSER): standalone `列` buttonとcompleted checkboxを撤去し、`表示` menu内に`実行済みを表示`、`列表示`、`デフォルトに戻す`を配置。`すべて表示`は新構造に含めない |
+| TODAY-DISPLAY-02 | completed visibility semantics | PASS (LOCAL + NONPROD_BROWSER): existing `showCompleted` stateをtop-level checkable itemへ移し、browserでoff / onを確認。current nonprod fixtureはplanned Taskのみで、completed-row count changeは`NOT_APPLICABLE` |
+| TODAY-DISPLAY-03 | 9-column submenu and visibility | PASS (LOCAL + NONPROD_BROWSER): Project / Section / Routine / 見積 / 開始予定 / 開始見込 / 開始 / 終了 / 実績の9 checkbox、Project hideでheader / cells消失、showで復元 |
+| TODAY-DISPLAY-04 | default reset semantics | PASS (LOCAL + NONPROD_BROWSER): `デフォルトに戻す`でcolumn order / widths / visibilityを既存defaultへ復元し、completed visibility stateは別管理のまま維持 |
+| TODAY-DISPLAY-05 | accessibility and keyboard boundary | PASS (LOCAL + NONPROD_BROWSER): menu / menuitem role、`aria-haspopup` / `aria-expanded`、submenu → parent → closeのEscape、focus restore、click-awayを確認。submenu focus復帰の再open regressionをlocal testで固定 |
+| TODAY-DISPLAY-06 | hover / click opening boundary | PASS (SOURCE + LOCAL): submenu triggerに`onMouseEnter`、`onFocus`、click openを実装し、click / focus / Escapeをtest。browser hover actionは利用可能APIにないため直接hoverは`NOT_VERIFIED` |
+| TODAY-DISPLAY-07 | local regression and build | PASS: focused Web `171 / 171`、full Web `187 / 187`、Worker / D1 `184 / 184`、typecheck、production build、exact nonprod build、Wrangler dry-run、`git diff --check` |
+| TODAY-DISPLAY-08 | persistent nonprod safety / integrity | PASS (NONPROD): Worker `taskchute-web-nonprod` version `65365fa0-047b-4ff9-b4de-4a0cb9bdf8cd`、APP / AUTH migration pending `0 / 0`、root `200`、Project API `401`、bootstrap POST `404`、APP / AUTH `quick_check=ok`、FK `0`、rows_written `0` |
+| TODAY-DISPLAY-09 | browser console and change boundary | PASS: authenticated browser console error / warning `[]`。production、restore、destructive cleanup、migration apply、new token、permission / scope、account / role、binding changeは`NOT_RUN` |
+
+Classification: `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / MAIN_PUSHED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_SAFETY_VERIFIED / AUTHENTICATED_BROWSER_VERIFIED / DISPLAY_MENU_CONSOLIDATED / COLUMN_SUBMENU_VERIFIED / COMPLETED_TOGGLE_VERIFIED / RESET_BEHAVIOR_VERIFIED / HOVER_HANDLER_SOURCE_VERIFIED / HOVER_BROWSER_NOT_VERIFIED / PRODUCTION_NOT_RUN / RELEASED_NO`。
+
 ## Accidental auxiliary Worker cleanup — 2026-09-06
 
 Contract: Product Owner承認済みの補助Worker cleanup。runtime code / API / Domain / schema / migration / canonical Worker deploy変更なし。開始時点は`main@db8cb53fe1a3fe0b59b18135b0b0a2c8c1951d8c`、local HEAD / GitHub `main`一致、tracked worktree clean、untracked review artifacts `58`件。
