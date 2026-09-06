@@ -1,5 +1,22 @@
 # Test Matrix
 
+## D-066 retry exposure boundary corrective — 2026-09-06
+
+Contract: Approved D-066内のreversible Web corrective。ambiguous rootの後ろに保持された未送信descendantが個別retry UIへ露出する不具合を修正し、実際にdispatch済みで結果未確定のrootだけをretry可能とする。API / Domain / schema / migration / dependency / binding / security postureは変更していない。開始時点は`main@955a90e1cf01088f824a3d53a885d9e95eb8f06f`。
+
+| ID | Verification target | Evidence |
+| --- | --- | --- |
+| D066-RETRY-01 | ambiguous Start chain exposure | PASS (LOCAL_WEB): Start Aだけがretry UIに残り、Complete A / Start B / Complete Bの個別retryは表示せず、root retry前のdescendant HTTP dispatchは`0`。exact root requestでretry後、Complete A → Start B → Complete Bを元順序で再開 |
+| D066-RETRY-02 | ambiguous Complete chain exposure | PASS (LOCAL_WEB): Complete Aだけがretry UIに残り、Start B / Complete Bの個別retryは表示せず、root retry前のdescendant HTTP dispatchは`0`。exact Complete requestでretry後に元順序で再開 |
+| D066-RETRY-03 | ambiguous Add dependency exposure | PASS (LOCAL_WEB): Task Add rootだけがretry UIに残り、Project / Section / estimate descendantの個別retryは表示せず、root retry前のdependent HTTP dispatchは`0`。exact Add identityでretry後、dependent queueをmetadata → Section → estimate順に再開 |
+| D066-RETRY-04 | direct retry regression | PASS (LOCAL_WEB): direct ambiguous Task metadata / estimate / planned-start / Section / reorder / Start / Completeのexact retry、same-operation payload、existing discardを維持 |
+| D066-RETRY-05 | unsent-only panel boundary | PASS (SOURCE + LOCAL_WEB): queue内operation identityをretryable判定から除外し、descendantだけが残る状態ではpending panel / individual retryを生成しない。non-D066 retry pathsは既存判定を維持 |
+| D066-RETRY-06 | local regression / build | PASS: focused targeted `29 PASS`、full Web `202 / 202 PASS`、full Worker / D1 `184 / 184 PASS`、typecheck、production build、exact nonprod build、Wrangler dry-run、diff-check、source review |
+| D066-RETRY-07 | persistent nonprod deploy / browser / DB | PASS (NONPROD): Worker `1e18e60f-edce-4e08-8ac8-7824fc2ec019`、root `200`、Project API `401`、bootstrap POST `404`、APP/AUTH pending `0 / 0`、APP quick_check `ok`、FK empty、rows_written `0`; authenticated Add → Start → Complete、fresh-tab completed reload persistence、clean pending panel / retry button absence; final APP counts `0 / 15 / 14 / 13 / 102`, active executions `0`, AUTH `1 / 1 / 5` |
+| D066-RETRY-08 | prohibited boundary | PASS (SOURCE / OPERATIONS): production、restore、destructive cleanup、new token、permission / scope、account / role、binding変更、branch / PR / merge / tag / releaseは未実施。browser console exact countはCUA surface制約により`NOT_VERIFIED` |
+
+Classification: `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / MAIN_PUSHED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_SAFETY_VERIFIED / AUTHENTICATED_BROWSER_REPRESENTATIVE_VERIFIED / DB_INTEGRITY_VERIFIED / CONSOLE_NOT_VERIFIED / MIGRATION_NOT_REQUIRED / PRODUCTION_NOT_RUN / RESTORE_NOT_RUN / RELEASED_NO`。
+
 ## D-066 transitive dependency corrective — 2026-09-06
 
 Contract: Approved D-066内のreversible Web corrective。`dependsOnOperationId`のdirect child限定処理をtransitive closureへ修正し、API / Domain / schema / migration / dependency / binding / security postureは変更していない。開始時点は`main@1631931a17e96c7acce3569bf5a1c89e05c23cfc`、implementation commitは`2711af983edaa3240a1d726a7c81314e4155ea40`。
