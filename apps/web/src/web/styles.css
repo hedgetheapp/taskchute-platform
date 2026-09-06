@@ -218,7 +218,7 @@ input:focus-visible, select:focus-visible { border-color: #2383e2; outline: 2px 
 .display-menu { position: relative; margin-left: auto; }
 .display-trigger { min-width: 52px; }
 .display-popover { position: absolute; z-index: 30; top: calc(100% + 6px); right: 0; display: grid; width: min(220px, calc(100vw - 32px)); gap: 3px; padding: 6px; border: 1px solid #d8d8d5; border-radius: 8px; background: #fff; box-shadow: 0 10px 24px rgb(15 15 15 / 16%); color: #373735; }
-.display-menu-checkbox, .display-menu-item { display: flex; width: 100%; min-height: 32px; align-items: center; justify-content: space-between; gap: 8px; margin: 0; padding: 6px 8px; border-radius: 4px; color: #373735; font-size: 12px; text-align: left; }
+.display-menu-checkbox, .display-menu-item { display: flex; width: 100%; min-height: 32px; align-items: center; justify-content: space-between; gap: 8px; margin: 0; padding: 6px 8px; border: 0; border-radius: 4px; background: transparent; color: #373735; font-size: 12px; text-align: left; }
 .display-menu-checkbox { cursor: pointer; }
 .display-menu-checkbox:hover, .display-menu-item:hover, .display-menu-item:focus-visible { background: #f7f7f5; color: #1769aa; outline: none; }
 .display-menu-checkbox input { width: auto; flex: none; margin: 0; }
