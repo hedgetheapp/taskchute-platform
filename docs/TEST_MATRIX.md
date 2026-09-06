@@ -1838,3 +1838,17 @@ Authenticated browserではStart→Complete後に対象rowのoverflow→`削除`
 Read-only post-delete APP evidence: target Entry `0`、target Execution `0`、Task `1`保持（Project `NULL`のまま）、Projects / Tasks / Entries / Executions / operations `0 / 16 / 13 / 12 / 107`、active Execution `0`、orphan Execution `0`、`PRAGMA quick_check = ok`、`PRAGMA foreign_key_check` empty。削除前revision `23`に対し、成功operation `01a076d6-7b90-7012-9c90-ab77869cdd81`のresultは対象Entry / Executionを参照し`placement_revision:24`を返したため、revisionはexactly `+1`。既存のunrelated Domain dataはbaseline countsを維持し、AUTHもusers / accounts / sessions `1 / 1 / 5`、quick check `ok`、FK emptyでlogin capabilityを保持した。read-only queryの`rows_written`は全て`0`。
 
 Prior unexpected operation `01a0769e-1496-73d0-802b-d94f0172d8b5`は変更・再分類しておらず、actorは`UNKNOWN`のまま。今回のcontrolled operationと混同しない。Classification: `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / MAIN_PUSHED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_DESTRUCTIVE_E2E_VERIFIED / DB_INTEGRITY_VERIFIED / PRODUCTION_NOT_RUN / RELEASED_NO`。restore、migration apply、production、branch / PR / merge / tag / release、credential / permission / OAuth scope / account-role / binding / security-posture変更は`NOT_RUN`。
+
+## D-068 Mode Management / Entry Mode v0.1
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D068-DOM-01 | Worker/D1 | owner-scoped Mode create / inline rename / server-canonical reorder、duplicate title許容、stable identity | focused Worker/D1 + dedicated integration | PASS |
+| D068-DOM-02 | Worker/D1 | ordinary planned EntryのMode set / clear、CAS、placement revision非変更、retry identity | focused Worker/D1 + dedicated integration | PASS |
+| D068-DOM-03 | Worker/D1 | Start snapshot、planned live title、running/completed snapshot title、rename後のhistorical保持 | focused Worker/D1 + fresh browser + read-only D1 | PASS |
+| D068-DOM-04 | Compatibility | fresh / upgrade `0021`、既存operation / identity / FK preservation、AUTH no-op | isolated migration + recovery import | PASS |
+| D068-WEB-01 | Web | Mode column、selector boundary、Mode Board、browser preference v3、reload recovery | Web `207 / 207` + focused corrective | PASS |
+| D068-ENV-01 | Persistent nonprod | backup HARD GATE、APP `0021`、pending `0 / 0`、deploy、安全probe、APP/AUTH integrity | Wrangler / D1 / Worker | PASS |
+| D068-ENV-02 | Browser | fresh authenticated tabでMode order、planned live title、completed snapshot titleをreload後も保持 | persistent nonprod browser | PASS |
+
+D-068 local totals: focused relevant Worker/D1 `32 / 32 PASS`、dedicated mode-management `1 / 1 PASS`、focused corrective Web `1 / 1 PASS`、Web full `207 / 207 PASS`、typecheck / production build / exact nonprod build / diff-check `PASS`。backend fullは`182 / 192 PASS`で、既存`day-navigation.integration.test.ts`の10件のinfrastructure-ambiguous failureにより全体PASSではない。migration helperはtooling-hungのため未完了で、isolated direct fresh / upgrade checksを採用する。production verification、Mode browser-local preferenceのcross-device sync、Routine / past / future writeは`NOT_RUN`。
