@@ -1,5 +1,24 @@
 # Test Matrix
 
+## D-066 queued Complete → Start acceptance corrective — 2026-09-06
+
+Contract: Approved D-066内のreversible corrective。ordinary mutation Xの後ろでqueued-but-not-activeなComplete Aを通常pendingとして扱い、Complete A → Start BおよびStart A → Complete A → Start Bのdependency orderを保つ。ambiguous retained Completeはimplicit success扱いせず、Start control / handlerをdisabledで一致させる。API / Domain / schema / migration / dependency / binding / security postureは変更していない。開始時点は`main@3cd01de111cbaea3f53ee528046828d86b875418`、implementation commitは`57bc8b98320764b18eb7fd2ecd000220272630a0`。
+
+| ID | Verification target | Evidence |
+| --- | --- | --- |
+| D066-QUEUE-01 | Complete A queued behind unrelated mutation X | PASS (LOCAL_WEB): `X → Complete A → Start B`をdeferred promiseで検証。X解決前はComplete / StartともHTTP `0`、X解決後にComplete、fresh reconcile後にStart |
+| D066-QUEUE-02 | Start A → Complete A → Start B dependency chain | PASS (LOCAL_WEB): `X → Start A → Complete A → Start B`の全intentを受理し、各dependency orderとStart / Complete entry identityを維持 |
+| D066-QUEUE-03 | single in-flight invariant | PASS (LOCAL_WEB): Case 1 / 2のdeferred mutation instrumentationでglobal max in-flight `1` |
+| D066-QUEUE-04 | ambiguous Complete boundary | PASS (LOCAL_WEB): ambiguous Complete retained中はStart B button disabled、handler HTTP count `0`; existing exact Complete retry identity regressionもPASS |
+| D066-QUEUE-05 | deterministic / existing D-066 regression | PASS (LOCAL_WEB): focused App `180 / 180`、full Web `196 / 196`。deterministic failure cancellation、existing active Complete → Start、queued Start → Complete、provisional Add、logout / settings defer、beforeunloadを含む |
+| D066-QUEUE-06 | Worker / D1 regression and build | PASS: full Worker / D1 `184 / 184`、typecheck、production build、exact nonprod build、Wrangler dry-run、`git diff --check`、source review |
+| D066-QUEUE-07 | persistent nonprod deployment / HTTP safety | PASS (NONPROD): Worker `taskchute-web-nonprod` version `38abdb22-5dae-49cb-bb24-b7642e17f072`、root `200`、Project API `401`、bootstrap POST `404`、APP / AUTH migration pending `0 / 0` |
+| D066-QUEUE-08 | authenticated browser representative flow | PASS (NONPROD_BROWSER): A Start → B metadata edit → A Complete直後のB Start → B Complete、reload後A / B completed、B title `D066 corrective B edited`を確認 |
+| D066-QUEUE-09 | APP / AUTH integrity and preservation | PASS (NONPROD_D1_READ_ONLY): APP counts Projects / Tasks / Entries / Executions / operations `1 / 11 / 10 / 8 / 82`、active executions `0`、quick_check `ok`、FK empty、rows_written `0`; AUTH users / accounts / sessions `1 / 1 / 5`、同じintegrity / rows_written evidence |
+| D066-QUEUE-10 | console / prohibited boundary | NOT_VERIFIED (NONPROD_BROWSER): CUA surfaceではconsole exact countを取得できず。production、restore、destructive cleanup、migration apply、new token、permission / scope、account / role、binding changeは`NOT_RUN` |
+
+Classification: `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / MAIN_PUSHED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_SAFETY_VERIFIED / AUTHENTICATED_BROWSER_REPRESENTATIVE_VERIFIED / DB_INTEGRITY_VERIFIED / CONSOLE_NOT_VERIFIED / MIGRATION_NOT_REQUIRED / PRODUCTION_NOT_RUN / RESTORE_NOT_RUN / RELEASED_NO`。
+
 ## Today display menu color corrective — 2026-09-06
 
 Contract: Approved Web-only visual corrective。開始時点は`main@7874fe53c4a20ddb53af6b0d8de7c05b7ff1300a`、implementation commitは`3890efc`。menu structure / interaction semantics、API / Domain / schema / migration / dependency / binding / security postureは変更していない。
