@@ -4,6 +4,16 @@ Date: 2026-09-06
 
 ## Status
 
+### Accidental auxiliary Worker cleanup — 2026-09-06
+
+Product Ownerの明示承認に基づき、D-065 Project notification correctiveのdeploy時に誤ってpublishされた補助Worker `taskchute-web-nonprod-nonprod`だけを削除した。開始時点は`main@db8cb53fe1a3fe0b59b18135b0b0a2c8c1951d8c`（local HEAD / GitHub `main`一致、tracked worktree clean、untracked review artifacts `58`件）で、runtime code、API、Domain、schema、migration、binding、security posture、canonical Workerのdeployは変更していない。
+
+削除前のCloudflare read-only inventoryでは、canonical `taskchute-web-nonprod`は100% deployment version `dd85ad38-baef-43a7-b8b5-8e94be11cac3`（version number `53`）で、APP `6ad7e35f-5d03-4be3-9b00-46cd713a51c3`、AUTH `60085f8d-0c4e-4c15-98e9-3ce178398041`、`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`を確認した。補助Workerはcanonicalと異なるWorker identity / workers.dev endpointを持つ`taskchute-web-nonprod-nonprod`の100% deployment version `cd5edd0d-2a97-4caa-a1e7-98693cf698c8`（version number `2`）だった。canonical config / docsはcanonical Worker `taskchute-web-nonprod`だけを参照し、Project verificationもcanonical endpointだけで実施済みだった。補助Workerのversion detailは同じnonprod APP / AUTH resourceを参照していたが、削除はWorker resourceだけに限定し、D1へwriteしていない。削除前probeはcanonical `200 / 401 / 404`、補助Worker root `200`（非canonical protected API `503`）だった。
+
+対象名をcanonical `taskchute-web-nonprod`と再比較してから、`taskchute-web-nonprod-nonprod`だけをCloudflareから削除した。削除後はCloudflare inventoryが`Worker does not exist`、補助workers.dev endpointが`404`となり、canonicalは同じversion `dd85ad38-baef-43a7-b8b5-8e94be11cac3`・同じAPP / AUTH binding・同じnonprod varsで存続した。canonical post-delete probeはroot `200`、protected Project Board `401`、disabled bootstrap POST `404`。APP / AUTH migration pendingは`0 / 0`、両方`quick_check=ok`、FK violations `0`、read-only queryの`rows_written=0`で、補助Worker cleanupによるAPP / AUTH data mutationはない。production Worker / route、restore、migration、runtime deploy、production dataには触れていない。
+
+Historical recordとして、補助Workerが一時publishされた事実は直前のD-065 notification evidenceに残し、このcleanupで削除済みとした。Classification: `AUXILIARY_WORKER_IDENTITY_VERIFIED / AUXILIARY_WORKER_DELETED / CANONICAL_WORKER_PRESERVED / NONPROD_SAFETY_VERIFIED / APP_INTEGRITY_VERIFIED / AUTH_PRESERVED / NO_RUNTIME_CHANGE / NO_CANONICAL_REDEPLOY / PRODUCTION_NOT_RUN / RELEASED_NO`。
+
 ### D-065 Project operation notification layer / no layout shift corrective — 2026-09-06
 
 Approved D-065のWeb-only correctiveとして、Project Boardのsuccess / error / retry・reconcile通知を通常document flowからviewport固定のtop-center notification layerへ移した。開始時点のGitHub canonicalは`main@dfb62ec64c35a4f63b3c8c47e56392799aa30006`、実装commitは`2e58331601082ce3ca3af183217e5a358b81d4fd`で、local / origin / GitHubの最終stateは一致している。API、Domain、schema、migration、dependency、binding、security posture、Product Decisionは変更していない。

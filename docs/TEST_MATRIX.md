@@ -1,5 +1,22 @@
 # Test Matrix
 
+## Accidental auxiliary Worker cleanup — 2026-09-06
+
+Contract: Product Owner承認済みの補助Worker cleanup。runtime code / API / Domain / schema / migration / canonical Worker deploy変更なし。開始時点は`main@db8cb53fe1a3fe0b59b18135b0b0a2c8c1951d8c`、local HEAD / GitHub `main`一致、tracked worktree clean、untracked review artifacts `58`件。
+
+| ID | Verification target | Evidence |
+| --- | --- | --- |
+| AUX-CLEAN-01 | canonical / auxiliary identity separation | PASS (CLOUDFLARE_READ_ONLY + SOURCE): canonical `taskchute-web-nonprod` version `dd85ad38-baef-43a7-b8b5-8e94be11cac3` / deployment `100%`、auxiliary `taskchute-web-nonprod-nonprod` version `cd5edd0d-2a97-4caa-a1e7-98693cf698c8` / deployment `100%`。Worker名、deployment identity、workers.dev endpointが別で、canonical config / docsはcanonical Workerのみを参照 |
+| AUX-CLEAN-02 | canonical env / binding / pre-delete safety | PASS: canonical version detailはAPP `6ad7e35f-5d03-4be3-9b00-46cd713a51c3`、AUTH `60085f8d-0c4e-4c15-98e9-3ce178398041`、`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`。pre-delete canonical probe `200 / 401 / 404` |
+| AUX-CLEAN-03 | exact scoped deletion | PASS: target nameをcanonicalと再比較後、`taskchute-web-nonprod-nonprod`のみ削除。canonical Worker、APP / AUTH、production resourceにはdelete operationを実施していない |
+| AUX-CLEAN-04 | post-delete auxiliary absence / canonical preservation | PASS: auxiliary inventoryはCloudflare `Worker does not exist`、auxiliary endpoint `404`。canonicalはversion `dd85...`、binding、vars不変で存続し、post-delete probe `200 / 401 / 404` |
+| AUX-CLEAN-05 | APP / AUTH integrity and no data mutation | PASS (NONPROD_D1_READ_ONLY): migration pending `0 / 0`、APP / AUTH `quick_check=ok`、FK `0`、全read-only query `rows_written=0` |
+| AUX-CLEAN-06 | production / runtime / docs boundary | PASS: production Worker / route、restore、migration、runtime code変更、canonical redeploy、production data mutationは`NOT_RUN`。historical accidental publish recordは削除せずcleanup済みへ更新 |
+
+削除前の補助Worker rootは`200`、非canonical protected APIは`503`だった。これは補助publishがcanonical traffic targetではないことと、canonical safety evidenceをcanonical endpointだけで取得したことの境界として記録する。補助Worker version detailはnonprod APP / AUTH resourceを参照していたが、削除はWorker resourceだけであり、D1 writeは発生していない。
+
+Classification: `AUXILIARY_WORKER_IDENTITY_VERIFIED / AUXILIARY_WORKER_DELETED / CANONICAL_WORKER_PRESERVED / NONPROD_SAFETY_VERIFIED / APP_INTEGRITY_VERIFIED / AUTH_PRESERVED / NO_RUNTIME_CHANGE / NO_CANONICAL_REDEPLOY / PRODUCTION_NOT_RUN / RELEASED_NO`。
+
 ## D-065 Project operation notification layer / no layout shift corrective — 2026-09-06
 
 Contract: Approved D-065のWeb-only corrective。Project Boardのsuccess / error / retry・reconcile通知を通常document flowから固定top-center layerへ移し、table位置を不変にする。API / Domain / schema / migration / dependency / binding / security postureは変更しない。開始時点は`main@dfb62ec64c35a4f63b3c8c47e56392799aa30006`、実装commitは`2e58331601082ce3ca3af183217e5a358b81d4fd`。
