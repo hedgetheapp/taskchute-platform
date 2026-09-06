@@ -1,5 +1,25 @@
 # Test Matrix
 
+## D-065 Final persistent nonprod verification — 2026-09-06
+
+Contract: Approved D-065のremaining persistent nonprod verification。runtime code / API / Domain / schema / migration変更なし。開始時点のGitHub canonical `main@be90a2833a3a12774e47f58785cc01783b2aa046`、current Worker `taskchute-web-nonprod` version `78bf3f21-84a2-4c3b-ba10-ec38bfcd4f2a`、APP / AUTH pending `0 / 0`。
+
+| ID | Verification target | Evidence |
+| --- | --- | --- |
+| PROJECT-FINAL-01 | destructive Project hard delete前のAPP / AUTH fresh private backup HARD GATEとisolated recovery | PASS: APP `52,578 bytes` / SHA-256 `095E382FCE688F911F4FADF0DA2F5C468A83585BC1A191DC36E357C387AD5A90`、AUTH `4,704 bytes` / SHA-256 `A7CCF8729DDCC1BEAB0441D1C8C6112A72F8203B1F399E91E02DF0D35B80BA06`、両方non-empty / readable / `.wrangler/` ignored、isolated APP / AUTH `quick_check=ok` / FK `0`、remote restoreなし |
+| PROJECT-FINAL-02 | disposable fixture identity、Board order、active Project selector order | PASS (NONPROD_BROWSER + NONPROD_D1): target Project first、next-row Project second、Task assigned target、selector `Projectなし → target → next-row`がBoard順と一致。archived relationは`0` |
+| PROJECT-FINAL-03 | Project hard delete confirmation / one logical command / false-error boundary | PASS (NONPROD_BROWSER + NONPROD_D1): targetだけをConfirm、success notice、false-error / reconcile errorなし、`DeleteProject` `1`件増加、result `board_revision=26` / `unassigned_task_count=1` |
+| PROJECT-FINAL-04 | successful delete focus fallback | PASS (NONPROD_BROWSER): target row消失後、document focusがnext visible Project row actionへ移動 |
+| PROJECT-FINAL-05 | Task identity / Project assignment nullification / Day projection | PASS (NONPROD_BROWSER + NONPROD_D1): Task `01a07483-2467-7e2b-a714-088205e789e2` / title保持、`project_id=NULL`、Entry保持、Day projection継続 |
+| PROJECT-FINAL-06 | selector post-delete / reload persistence | PASS (NONPROD_BROWSER): selectorは`Projectなし → next-row Project`、削除Project不在、Dayへの遷移とreload後もTask `Projectなし` |
+| PROJECT-FINAL-07 | APP history / Routine / Entry / Execution preservation | PASS (NONPROD_D1 read-only): Entries `2`、Executions `0`、RoutineDefinitions `1`、RoutineOccurrences `0`、historical snapshots `0 / 0`をdelete前後で保持。既存Domain dataの意図しない削除なし |
+| PROJECT-FINAL-08 | APP / AUTH integrity and query write boundary | PASS (NONPROD_D1 read-only): APP / AUTH `quick_check=ok`、FK `0`、orphan Project refs `0`、全query `rows_written=0`、AUTH user / account / session `1 / 1 / 5` |
+| PROJECT-FINAL-09 | browser console and production boundary | PASS: browser console error / warning `[]`、production / restore / branch / PR / merge / tag / Release `NOT_RUN / NOT_RUN / NOT_RUN / NOT_RUN / NOT_RUN / NO` |
+
+Local evidence: focused Web `169 / 169 PASS`、full Worker / D1 `184 / 184 PASS`、full Web `185 / 185 PASS`、migration regression `4 scenarios PASS`、typecheck、production build、exact nonprod build、Wrangler nonprod dry-run、`git diff --check` `PASS`。既知のWrangler log `EPERM`とclient chunk-size warningは非致命で各command exit `0`。fixture Project `D065-final-next-row-20260906`はverification用に残置し、対象Project `D065-final-delete-20260906`のみを削除した。
+
+Classification: `PERSISTENT_NONPROD_BACKUP_VERIFIED / ISOLATED_RECOVERY_VERIFIED / AUTHENTICATED_BROWSER_VERIFIED / SELECTOR_ORDER_VERIFIED / HARD_DELETE_BROWSER_VERIFIED / TASK_PROJECT_NULLIFICATION_VERIFIED / DELETE_SUCCESS_FOCUS_VERIFIED / APP_INTEGRITY_VERIFIED / AUTH_PRESERVED / PRODUCTION_NOT_RUN / RELEASED_NO`。
+
 ## D-065 Web corrective — persistent nonprod verification — 2026-09-06
 
 Contract: Approved D-020 / D-065のWeb-only corrective verification。latest implementationはbackdrop close時の既定focus移動を抑止するreversible Web-only fixを含む`main@3208d1edde6b1db4ebd4272cf5c4e16d00a385e0`で、API / Domain / schema / migration / dependency / security postureは変更していない。
