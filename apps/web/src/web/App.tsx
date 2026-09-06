@@ -994,6 +994,26 @@ export function App() {
       && item.scope.includes("execution-lane"));
   }
 
+  function isNormalPendingComplete(operation: CompleteEntryRequest | null): boolean {
+    if (!operation) return false;
+    const queued = dayMutationQueueRef.current.some((item) => item.operationId === operation.operation_id);
+    const active = activeMutationsRef.current.some((mutation) => mutation.label === "Complete"
+      && mutation.scope.includes("execution-lane") && mutation.scope.includes(`entry:${operation.entry_id}`));
+    return queued || active;
+  }
+
+  function isNormalPendingStart(operation: StartEntryRequest | null): boolean {
+    if (!operation) return false;
+    const queued = dayMutationQueueRef.current.some((item) => item.operationId === operation.operation_id);
+    const active = activeMutationsRef.current.some((mutation) => mutation.label === "Start"
+      && mutation.scope.includes("execution-lane") && mutation.scope.includes(`entry:${operation.entry_id}`));
+    return queued || active;
+  }
+
+  function isRetainedComplete(operation: CompleteEntryRequest | null): boolean {
+    return operation !== null && !isNormalPendingComplete(operation);
+  }
+
   function entryMutationScope(entryId: string, taskId?: string): MutationScope {
     return [`entry:${entryId}`, ...(taskId ? [`task:${taskId}`] : [])];
   }
@@ -2474,9 +2494,10 @@ export function App() {
     const entry = [...day.unsectioned_entries, ...day.sections.flatMap((section) => section.entries)]
       .find((candidate) => candidate.id === entryId);
     if (!entry || entry.lifecycle_state !== "planned") return;
-    if (hasRetainedMutationScope(executionMutationScope(entryId))) return;
-    if (hasActiveMutationScope(["execution-lane"])) {
-      if (completeOperation && !hasQueuedDependentStart(completeOperation.operation_id)) {
+    const pendingComplete = completeOperation?.entry_id !== entryId && isNormalPendingComplete(completeOperation);
+    if (hasRetainedMutationScope(executionMutationScope(entryId)) && !pendingComplete) return;
+    if (hasActiveMutationScope(["execution-lane"]) || pendingComplete) {
+      if (pendingComplete && completeOperation && !hasQueuedDependentStart(completeOperation.operation_id)) {
         const operation: StartEntryRequest = { operation_id: uuidv7(), entry_id: entryId, execution_id: uuidv7(),
           ...(entry.section_id === null ? { expected_placement_revision: day.placement_revision } : {}) };
         setStartOperation(operation);
@@ -2494,8 +2515,9 @@ export function App() {
           setStartOperation(rebased);
           await executeStart(rebased);
         };
+        const completeIsQueued = dayMutationQueueRef.current.some((item) => item.operationId === completeOperation.operation_id);
         enqueueDayMutation({ scope: executionMutationScope(operation.entry_id), label: "Start", operationId: operation.operation_id,
-          dependsOnOperationId: completeOperation.operation_id, dispatch }, { front: true });
+          dependsOnOperationId: completeOperation.operation_id, dispatch }, { front: !completeIsQueued });
         setError(null);
       }
       return;
@@ -2554,8 +2576,8 @@ export function App() {
   }
 
   async function complete(entryId: string) {
-    if (mutationLocked || hasRetainedMutationScope(executionMutationScope(entryId))) return;
     const pendingStart = startOperation?.entry_id === entryId ? startOperation : null;
+    if (mutationLocked || (hasRetainedMutationScope(executionMutationScope(entryId)) && !isNormalPendingStart(pendingStart))) return;
     const executionId = day?.active_execution?.entry_id === entryId ? day.active_execution.id : pendingStart?.execution_id;
     if (!executionId || (day?.active_execution?.entry_id !== entryId && !pendingStart)) return;
     const operation = { operation_id: uuidv7(), entry_id: entryId, execution_id: executionId };
@@ -4728,6 +4750,7 @@ export function App() {
                 const canEditPlanning = day.planning_enabled && entry.lifecycle_state === "planned";
                 const canDuplicate = day.is_current && Boolean(day.taskchute_day.id) && entry.lifecycle_state === "completed";
                 const hasOverflowActions = canMoveDate || canEditPlanning || canDuplicate;
+                const completeRetained = isRetainedComplete(completeOperation);
                 return (
                   <div className={`task-row task-drag-surface state-${entry.lifecycle_state}${selectedEntryIds.includes(entry.id) ? " is-selected" : ""}${entryDrag?.entryId === entry.id ? " is-dragging" : ""}${entryDrag?.targetEntryId === entry.id && entryDrag.edge ? ` drop-${entryDrag.edge}` : ""}`} key={entry.id} tabIndex={0} aria-selected={selectedEntryIds.includes(entry.id)}
                     data-entry-id={entry.id} data-section-id={section.id ?? ""} data-day-focus-target data-focus-key={focusKey(entryTarget)}
@@ -4765,7 +4788,7 @@ export function App() {
                       {entry.lifecycle_state === "completed" ? (
                         <span className="execution-control completed" aria-label={executionLabel(entry)} title={executionLabel(entry)}>✓</span>
                       ) : (
-                        <button type="button" tabIndex={-1} className={`execution-control ${isRunning ? "running" : "planned"}`} aria-label={pendingStartForEntry ? `${entry.task.title}を完了` : executionLabel(entry)} title={pendingStartForEntry ? `${entry.task.title}を完了` : executionLabel(entry)} disabled={!day.is_current || mutationLocked || (isMutationScopeBusy(["execution-lane"]) && completeOperation === null && !pendingStartForEntry) || (entry.lifecycle_state === "planned" && !pendingStartForEntry ? (day.active_execution !== null && completeOperation === null) || hasQueuedExecutionMutation(entry.id) || (completeOperation !== null && hasQueuedDependentStart(completeOperation.operation_id)) : !canComplete)} onClick={() => {
+                        <button type="button" tabIndex={-1} className={`execution-control ${isRunning ? "running" : "planned"}`} aria-label={pendingStartForEntry ? `${entry.task.title}を完了` : executionLabel(entry)} title={pendingStartForEntry ? `${entry.task.title}を完了` : executionLabel(entry)} disabled={!day.is_current || mutationLocked || (isMutationScopeBusy(["execution-lane"]) && completeOperation === null && !pendingStartForEntry) || (entry.lifecycle_state === "planned" && !pendingStartForEntry ? completeRetained || (day.active_execution !== null && completeOperation === null) || hasQueuedExecutionMutation(entry.id) || (completeOperation !== null && hasQueuedDependentStart(completeOperation.operation_id)) : !canComplete)} onClick={() => {
                           if (entry.lifecycle_state === "planned" && !pendingStartForEntry) void start(entry.id);
                           else if (canComplete) void complete(entry.id);
                         }}>{isRunning ? "■" : "▶"}</button>

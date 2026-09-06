@@ -3911,6 +3911,150 @@ describe("Dogfood Day shell", () => {
     expect(mocks.startEntry.mock.calls[0][0].entry_id).toBe(secondEntry.id);
   });
 
+  it("accepts Start B when Complete A is queued behind an unrelated mutation", async () => {
+    const metadataRequest = deferred<unknown>();
+    const completeRequest = deferred<unknown>();
+    const runningWithNext = { ...runningDay,
+      sections: [{ ...runningDay.sections[0], entries: [{ ...firstEntry, lifecycle_state: "running" as const }, secondEntry] }, emptyDay.sections[1]],
+    };
+    const afterComplete = { ...runningWithNext,
+      active_execution: null,
+      sections: [{ ...runningWithNext.sections[0], entries: [{ ...firstEntry, lifecycle_state: "completed" as const }, secondEntry] }, emptyDay.sections[1]],
+      next_entry: secondEntry,
+    };
+    const order: string[] = [];
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const enter = () => { inFlight += 1; maxInFlight = Math.max(maxInFlight, inFlight); };
+    const leave = () => { inFlight -= 1; };
+    mocks.loadDay.mockResolvedValueOnce(runningWithNext).mockResolvedValueOnce(runningWithNext).mockResolvedValueOnce(afterComplete).mockResolvedValue(afterComplete);
+    mocks.updateTaskMetadata.mockImplementationOnce(async () => {
+      order.push("X");
+      enter();
+      await metadataRequest.promise;
+      leave();
+    });
+    mocks.completeEntry.mockImplementation(async () => {
+      order.push("Complete A");
+      enter();
+      await completeRequest.promise;
+      leave();
+    });
+    mocks.startEntry.mockImplementation(async () => {
+      order.push("Start B");
+      enter();
+      leave();
+    });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Second taskを編集" }));
+    const title = screen.getByRole("textbox", { name: "Second taskのTask名" });
+    fireEvent.change(title, { target: { value: "Unrelated X" } });
+    fireEvent.keyDown(title, { key: "Enter" });
+    await waitFor(() => expect(mocks.updateTaskMetadata).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "実行中のTaskを完了" }));
+    expect(mocks.completeEntry).not.toHaveBeenCalled();
+    const startB = screen.getByRole("button", { name: "Second taskを開始" });
+    expect((startB as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(startB);
+    expect(mocks.startEntry).not.toHaveBeenCalled();
+
+    metadataRequest.resolve({});
+    await waitFor(() => expect(mocks.completeEntry).toHaveBeenCalledTimes(1));
+    expect(order).toEqual(["X", "Complete A"]);
+    expect(mocks.startEntry).not.toHaveBeenCalled();
+    completeRequest.resolve({});
+    await waitFor(() => expect(mocks.startEntry).toHaveBeenCalledTimes(1));
+    expect(order).toEqual(["X", "Complete A", "Start B"]);
+    expect(maxInFlight).toBe(1);
+  });
+
+  it("keeps Start A, Complete A, and Start B in dependency order behind an earlier mutation", async () => {
+    const metadataRequest = deferred<unknown>();
+    const startARequest = deferred<unknown>();
+    const completeRequest = deferred<unknown>();
+    const startBRequest = deferred<unknown>();
+    const afterStartA = { ...threePlannedDay,
+      active_execution: { ...runningDay.active_execution!, entry_id: firstEntry.id },
+      sections: [{ ...threePlannedDay.sections[0], entries: [{ ...firstEntry, lifecycle_state: "running" as const }, secondEntry, thirdEntry] }, emptyDay.sections[1]],
+      next_entry: null,
+    };
+    const afterComplete = { ...afterStartA,
+      active_execution: null,
+      sections: [{ ...afterStartA.sections[0], entries: [{ ...firstEntry, lifecycle_state: "completed" as const }, secondEntry, thirdEntry] }, emptyDay.sections[1]],
+      next_entry: secondEntry,
+    };
+    const order: string[] = [];
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const enter = () => { inFlight += 1; maxInFlight = Math.max(maxInFlight, inFlight); };
+    const leave = () => { inFlight -= 1; };
+    let startCalls = 0;
+    mocks.loadDay.mockResolvedValueOnce(threePlannedDay).mockResolvedValueOnce(threePlannedDay).mockResolvedValueOnce(afterStartA).mockResolvedValueOnce(afterComplete).mockResolvedValue(afterComplete);
+    mocks.updateTaskMetadata.mockImplementationOnce(async () => {
+      order.push("X");
+      enter();
+      await metadataRequest.promise;
+      leave();
+    });
+    mocks.startEntry.mockImplementation(async () => {
+      startCalls += 1;
+      order.push(startCalls === 1 ? "Start A" : "Start B");
+      enter();
+      await (startCalls === 1 ? startARequest.promise : startBRequest.promise);
+      leave();
+    });
+    mocks.completeEntry.mockImplementation(async () => {
+      order.push("Complete A");
+      enter();
+      await completeRequest.promise;
+      leave();
+    });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Third taskを編集" }));
+    const title = screen.getByRole("textbox", { name: "Third taskのTask名" });
+    fireEvent.change(title, { target: { value: "Unrelated X" } });
+    fireEvent.keyDown(title, { key: "Enter" });
+    await waitFor(() => expect(mocks.updateTaskMetadata).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "Canonical taskを開始" }));
+    await screen.findByRole("button", { name: "Canonical taskを完了" });
+    fireEvent.click(screen.getByRole("button", { name: "Canonical taskを完了" }));
+    fireEvent.click(screen.getByRole("button", { name: "Second taskを開始" }));
+    expect(mocks.startEntry).not.toHaveBeenCalled();
+    expect(mocks.completeEntry).not.toHaveBeenCalled();
+
+    metadataRequest.resolve({});
+    await waitFor(() => expect(mocks.startEntry).toHaveBeenCalledTimes(1));
+    expect(order).toEqual(["X", "Start A"]);
+    expect(mocks.completeEntry).not.toHaveBeenCalled();
+    startARequest.resolve({});
+    await waitFor(() => expect(mocks.completeEntry).toHaveBeenCalledTimes(1));
+    expect(order).toEqual(["X", "Start A", "Complete A"]);
+    expect(mocks.startEntry).toHaveBeenCalledTimes(1);
+    completeRequest.resolve({});
+    await waitFor(() => expect(mocks.startEntry).toHaveBeenCalledTimes(2));
+    expect(order).toEqual(["X", "Start A", "Complete A", "Start B"]);
+    startBRequest.resolve({});
+    await waitFor(() => expect(inFlight).toBe(0));
+    expect(maxInFlight).toBe(1);
+  });
+
+  it("disables Start B while Complete A has an ambiguous retained result", async () => {
+    const runningWithNext = { ...runningDay,
+      sections: [{ ...runningDay.sections[0], entries: [{ ...firstEntry, lifecycle_state: "running" as const }, secondEntry] }, emptyDay.sections[1]],
+    };
+    mocks.loadDay.mockResolvedValue(runningWithNext);
+    mocks.completeEntry.mockRejectedValueOnce(new ApiClientError("response lost", 503, true, "infrastructure_ambiguous"));
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "実行中のTaskを完了" }));
+    await screen.findByRole("button", { name: "保留中のCompleteを再試行" });
+    const startB = screen.getByRole("button", { name: "Second taskを開始" });
+    expect((startB as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(startB);
+    expect(mocks.startEntry).not.toHaveBeenCalled();
+  });
+
   it("clears the single queued Start with a visible message when Complete fails", async () => {
     const completeRequest = deferred<unknown>();
     const runningWithNext = { ...runningDay,
