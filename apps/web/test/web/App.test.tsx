@@ -4055,6 +4055,255 @@ describe("Dogfood Day shell", () => {
     expect(mocks.startEntry).not.toHaveBeenCalled();
   });
 
+  it("cancels a complete Start chain transitively after deterministic Start failure", async () => {
+    const unrelatedRequest = deferred<unknown>();
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const enter = () => { inFlight += 1; maxInFlight = Math.max(maxInFlight, inFlight); };
+    const leave = () => { inFlight -= 1; };
+    mocks.loadDay.mockResolvedValue(threePlannedDay);
+    mocks.updateTaskMetadata.mockImplementation(async () => {
+      enter();
+      await unrelatedRequest.promise;
+      leave();
+    });
+    mocks.startEntry.mockImplementation(async () => {
+      enter();
+      try {
+        throw new ApiClientError("resource conflict", 409, false, "resource_conflict");
+      } finally {
+        leave();
+      }
+    });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Third taskを編集" }));
+    const unrelatedTitle = screen.getByRole("textbox", { name: "Third taskのTask名" });
+    fireEvent.change(unrelatedTitle, { target: { value: "Unrelated X" } });
+    fireEvent.keyDown(unrelatedTitle, { key: "Enter" });
+    await waitFor(() => expect(mocks.updateTaskMetadata).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "Canonical taskを開始" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskを完了" }));
+    fireEvent.click(screen.getByRole("button", { name: "Second taskを開始" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Second taskを完了" }));
+    expect(mocks.startEntry).not.toHaveBeenCalled();
+    expect(mocks.completeEntry).not.toHaveBeenCalled();
+
+    unrelatedRequest.resolve({});
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("resource conflict"));
+    expect(mocks.startEntry).toHaveBeenCalledTimes(1);
+    expect(mocks.completeEntry).not.toHaveBeenCalled();
+    expect(maxInFlight).toBe(1);
+    expect(screen.queryByRole("button", { name: "Second taskを完了" })).toBeNull();
+  });
+
+  it("cancels Start and Complete descendants transitively after deterministic Complete failure", async () => {
+    const completeRequest = deferred<unknown>();
+    const runningWithNext = { ...runningDay,
+      sections: [{ ...runningDay.sections[0], entries: [{ ...firstEntry, lifecycle_state: "running" as const }, secondEntry, thirdEntry] }, emptyDay.sections[1]],
+    };
+    mocks.loadDay.mockResolvedValue(runningWithNext);
+    mocks.completeEntry.mockReturnValue(completeRequest.promise);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "実行中のTaskを完了" }));
+    fireEvent.click(screen.getByRole("button", { name: "Second taskを開始" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Second taskを完了" }));
+    completeRequest.reject(new ApiClientError("complete conflict", 409, false, "resource_conflict"));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("待機中のStartは送信せず破棄しました"));
+    expect(mocks.completeEntry).toHaveBeenCalledTimes(1);
+    expect(mocks.startEntry).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Second taskを完了" })).toBeNull();
+  });
+
+  it("preserves and retries a full ambiguous Start dependency chain in order", async () => {
+    const firstStartRequest = deferred<unknown>();
+    const retryStartRequest = deferred<unknown>();
+    const completeARequest = deferred<unknown>();
+    const startBRequest = deferred<unknown>();
+    const completeBRequest = deferred<unknown>();
+    let rootStart: any = null;
+    let rootRetrySucceeded = false;
+    let completeASucceeded = false;
+    let startBSucceeded = false;
+    let completeBSucceeded = false;
+    let startCalls = 0;
+    let completeCalls = 0;
+    const order: string[] = [];
+    const afterStartA = () => ({ ...twoPlannedDay,
+      active_execution: { ...runningDay.active_execution!, id: rootStart?.execution_id ?? "", entry_id: firstEntry.id },
+      sections: [{ ...twoPlannedDay.sections[0], entries: [{ ...firstEntry, lifecycle_state: "running" as const }, secondEntry] }, emptyDay.sections[1]],
+      next_entry: null,
+    });
+    const afterCompleteA = () => ({ ...afterStartA(), active_execution: null,
+      sections: [{ ...twoPlannedDay.sections[0], entries: [{ ...firstEntry, lifecycle_state: "completed" as const }, secondEntry] }, emptyDay.sections[1]],
+      next_entry: secondEntry,
+    });
+    const afterStartB = () => ({ ...afterCompleteA(),
+      active_execution: { ...runningDay.active_execution!, id: "019c0000-0000-7000-8000-000000000011", entry_id: secondEntry.id },
+      sections: [{ ...twoPlannedDay.sections[0], entries: [{ ...firstEntry, lifecycle_state: "completed" as const }, { ...secondEntry, lifecycle_state: "running" as const }] }, emptyDay.sections[1]],
+      next_entry: null,
+    });
+    const afterCompleteB = () => ({ ...afterStartB(), active_execution: null,
+      sections: [{ ...twoPlannedDay.sections[0], entries: [{ ...firstEntry, lifecycle_state: "completed" as const }, { ...secondEntry, lifecycle_state: "completed" as const }] }, emptyDay.sections[1]],
+    });
+    mocks.loadDay.mockImplementation(async () => {
+      if (!rootRetrySucceeded) return twoPlannedDay;
+      if (!completeASucceeded) return afterStartA();
+      if (!startBSucceeded) return afterCompleteA();
+      if (!completeBSucceeded) return afterStartB();
+      return afterCompleteB();
+    });
+    mocks.startEntry.mockImplementation(async (operation) => {
+      startCalls += 1;
+      if (startCalls === 1) {
+        rootStart = operation;
+        order.push("Start A");
+        return firstStartRequest.promise;
+      }
+      if (operation.entry_id === firstEntry.id) {
+        order.push("Retry Start A");
+        await retryStartRequest.promise;
+        rootRetrySucceeded = true;
+        return {};
+      }
+      order.push("Start B");
+      await startBRequest.promise;
+      startBSucceeded = true;
+      return {};
+    });
+    mocks.completeEntry.mockImplementation(async (operation) => {
+      completeCalls += 1;
+      if (completeCalls === 1) {
+        order.push("Complete A");
+        await completeARequest.promise;
+        completeASucceeded = true;
+        return {};
+      }
+      order.push("Complete B");
+      await completeBRequest.promise;
+      completeBSucceeded = true;
+      return {};
+    });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskを開始" }));
+    await waitFor(() => expect(mocks.startEntry).toHaveBeenCalledTimes(1));
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskを完了" }));
+    fireEvent.click(screen.getByRole("button", { name: "Second taskを開始" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Second taskを完了" }));
+
+    firstStartRequest.reject(new ApiClientError("response lost", 503, true, "infrastructure_ambiguous"));
+    const retry = await screen.findByRole("button", { name: "保留中のStartを再試行" });
+    expect(mocks.completeEntry).not.toHaveBeenCalled();
+    expect(mocks.startEntry).toHaveBeenCalledTimes(1);
+    const retained = mocks.startEntry.mock.calls[0][0];
+    fireEvent.click(retry);
+    await waitFor(() => expect(mocks.startEntry).toHaveBeenCalledTimes(2));
+    expect(mocks.startEntry.mock.calls[1][0]).toEqual(retained);
+    expect(mocks.completeEntry).not.toHaveBeenCalled();
+
+    retryStartRequest.resolve({});
+    await waitFor(() => expect(mocks.completeEntry).toHaveBeenCalledTimes(1));
+    completeARequest.resolve({});
+    await waitFor(() => expect(mocks.startEntry).toHaveBeenCalledTimes(3));
+    startBRequest.resolve({});
+    await waitFor(() => expect(mocks.completeEntry).toHaveBeenCalledTimes(2));
+    completeBRequest.resolve({});
+    await waitFor(() => expect(order).toEqual(["Start A", "Retry Start A", "Complete A", "Start B", "Complete B"]));
+  });
+
+  it("preserves and retries ambiguous Complete descendants in order", async () => {
+    const firstCompleteRequest = deferred<unknown>();
+    const retryCompleteRequest = deferred<unknown>();
+    const startBRequest = deferred<unknown>();
+    const completeBRequest = deferred<unknown>();
+    let rootCompleteSucceeded = false;
+    let startBSucceeded = false;
+    let completeBSucceeded = false;
+    let completeCalls = 0;
+    const order: string[] = [];
+    const runningWithNext = { ...runningDay,
+      sections: [{ ...runningDay.sections[0], entries: [{ ...firstEntry, lifecycle_state: "running" as const }, secondEntry] }, emptyDay.sections[1]],
+    };
+    const afterCompleteA = { ...runningWithNext, active_execution: null,
+      sections: [{ ...runningWithNext.sections[0], entries: [{ ...firstEntry, lifecycle_state: "completed" as const }, secondEntry] }, emptyDay.sections[1]],
+      next_entry: secondEntry,
+    };
+    const afterStartB = { ...afterCompleteA,
+      active_execution: { ...runningDay.active_execution!, id: "019c0000-0000-0000-0000-000000000012", entry_id: secondEntry.id },
+      sections: [{ ...afterCompleteA.sections[0], entries: [{ ...firstEntry, lifecycle_state: "completed" as const }, { ...secondEntry, lifecycle_state: "running" as const }] }, emptyDay.sections[1]],
+      next_entry: null,
+    };
+    const afterCompleteB = { ...afterStartB, active_execution: null,
+      sections: [{ ...afterStartB.sections[0], entries: [{ ...firstEntry, lifecycle_state: "completed" as const }, { ...secondEntry, lifecycle_state: "completed" as const }] }, emptyDay.sections[1]],
+    };
+    mocks.loadDay.mockImplementation(async () => {
+      if (!rootCompleteSucceeded) return runningWithNext;
+      if (!startBSucceeded) return afterCompleteA;
+      if (!completeBSucceeded) return afterStartB;
+      return afterCompleteB;
+    });
+    mocks.completeEntry.mockImplementation(async () => {
+      completeCalls += 1;
+      if (completeCalls === 1) {
+        order.push("Complete A");
+        return firstCompleteRequest.promise;
+      }
+      if (completeCalls === 2) {
+        order.push("Retry Complete A");
+        await retryCompleteRequest.promise;
+        rootCompleteSucceeded = true;
+        return {};
+      }
+      order.push("Complete B");
+      await completeBRequest.promise;
+      completeBSucceeded = true;
+      return {};
+    });
+    mocks.startEntry.mockImplementation(async () => {
+      order.push("Start B");
+      await startBRequest.promise;
+      startBSucceeded = true;
+      return {};
+    });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "実行中のTaskを完了" }));
+    fireEvent.click(screen.getByRole("button", { name: "Second taskを開始" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Second taskを完了" }));
+    await waitFor(() => expect(mocks.completeEntry).toHaveBeenCalledTimes(1));
+    firstCompleteRequest.reject(new ApiClientError("response lost", 503, true, "infrastructure_ambiguous"));
+    const retry = await screen.findByRole("button", { name: "保留中のCompleteを再試行" });
+    expect(mocks.startEntry).not.toHaveBeenCalled();
+    const retained = mocks.completeEntry.mock.calls[0][0];
+    fireEvent.click(retry);
+    await waitFor(() => expect(mocks.completeEntry).toHaveBeenCalledTimes(2));
+    expect(mocks.completeEntry.mock.calls[1][0]).toEqual(retained);
+    retryCompleteRequest.resolve({});
+    await waitFor(() => expect(mocks.startEntry).toHaveBeenCalledTimes(1));
+    startBRequest.resolve({});
+    await waitFor(() => expect(mocks.completeEntry).toHaveBeenCalledTimes(3));
+    completeBRequest.resolve({});
+    await waitFor(() => expect(order).toEqual(["Complete A", "Retry Complete A", "Start B", "Complete B"]));
+  });
+
+  it("discards an ambiguous root and its full dependency subtree", async () => {
+    const rootRequest = deferred<unknown>();
+    mocks.loadDay.mockResolvedValue(twoPlannedDay);
+    mocks.startEntry.mockReturnValue(rootRequest.promise);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskを開始" }));
+    await waitFor(() => expect(mocks.startEntry).toHaveBeenCalledTimes(1));
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskを完了" }));
+    fireEvent.click(screen.getByRole("button", { name: "Second taskを開始" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Second taskを完了" }));
+    rootRequest.reject(new ApiClientError("response lost", 503, true, "infrastructure_ambiguous"));
+    const discard = await screen.findByRole("button", { name: "保留中のclient操作を破棄" });
+    fireEvent.click(discard);
+    expect(mocks.startEntry).toHaveBeenCalledTimes(1);
+    expect(mocks.completeEntry).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "保留中のStartを再試行" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Second taskを完了" })).toBeNull();
+  });
+
   it("clears the single queued Start with a visible message when Complete fails", async () => {
     const completeRequest = deferred<unknown>();
     const runningWithNext = { ...runningDay,

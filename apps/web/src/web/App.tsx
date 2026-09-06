@@ -823,20 +823,38 @@ export function App() {
     setPendingPlannedStartOverlays((current) => Object.fromEntries(Object.entries(current).filter(([, operation]) => !isCanceled(operation.request.operation_id))));
   }
 
-  function cancelQueuedDayMutationDependents(operationId: string): void {
-    const canceledOperationIds = new Set(dayMutationQueueRef.current
-      .filter((item) => item.dependsOnOperationId === operationId)
-      .map((item) => item.operationId)
-      .filter((id): id is string => Boolean(id)));
-    dayMutationQueueRef.current = dayMutationQueueRef.current.filter((item) => item.dependsOnOperationId !== operationId);
+  function collectDependentOperationIds(rootOperationId: string): Set<string> {
+    const descendants = new Set<string>();
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const item of dayMutationQueueRef.current) {
+        if (!item.operationId || !item.dependsOnOperationId) continue;
+        if (item.dependsOnOperationId !== rootOperationId && !descendants.has(item.dependsOnOperationId)) continue;
+        if (descendants.has(item.operationId)) continue;
+        descendants.add(item.operationId);
+        changed = true;
+      }
+    }
+    return descendants;
+  }
+
+  function cancelQueuedDayMutationDependents(operationId: string): Set<string> {
+    const canceledOperationIds = collectDependentOperationIds(operationId);
+    dayMutationQueueRef.current = dayMutationQueueRef.current.filter((item) =>
+      item.operationId === undefined || !canceledOperationIds.has(item.operationId));
     updateDayMutationQueueCount();
     clearCanceledDayMutationState(canceledOperationIds);
+    return canceledOperationIds;
   }
 
   function pauseDayMutationQueue(preserveDependentsOf?: string): void {
     dayMutationPausedRef.current = true;
+    const preservedOperationIds = preserveDependentsOf
+      ? collectDependentOperationIds(preserveDependentsOf)
+      : new Set<string>();
     const preserved = preserveDependentsOf
-      ? dayMutationQueueRef.current.filter((item) => item.dependsOnOperationId === preserveDependentsOf)
+      ? dayMutationQueueRef.current.filter((item) => item.operationId !== undefined && preservedOperationIds.has(item.operationId))
       : [];
     const canceledOperationIds = new Set(dayMutationQueueRef.current
       .filter((item) => !preserved.includes(item))
@@ -2473,7 +2491,7 @@ export function App() {
       if (ambiguous) pauseDayMutationQueue(operation.operation_id);
       else if (revisionConflict) pauseDayMutationQueue();
       else cancelQueuedDayMutationDependents(operation.operation_id);
-      if (ambiguous) setStartOperation((current) => current?.operation_id === operation.operation_id ? current : null);
+      if (ambiguous) setStartOperation((current) => current?.operation_id === operation.operation_id ? current : operation);
       if (!ambiguous) setStartOperation((current) => current?.operation_id === operation.operation_id ? null : current);
       try {
         const projection = await reconcile();
@@ -2550,10 +2568,10 @@ export function App() {
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "完了に失敗しました");
       const ambiguous = isAmbiguousOutcome(caught);
-      const hadDependentStart = dayMutationQueueRef.current.some((item) => item.dependsOnOperationId === operation.operation_id);
+      const hadDependentStart = collectDependentOperationIds(operation.operation_id).size > 0;
       if (ambiguous) pauseDayMutationQueue(operation.operation_id);
       else if (caught instanceof ApiClientError && caught.code === "revision_conflict") pauseDayMutationQueue();
-      if (ambiguous) setCompleteOperation((current) => current?.operation_id === operation.operation_id ? current : null);
+      if (ambiguous) setCompleteOperation((current) => current?.operation_id === operation.operation_id ? current : operation);
       if (!ambiguous) setCompleteOperation((current) => current?.operation_id === operation.operation_id ? null : current);
       try {
         const projection = await reconcile();
