@@ -549,6 +549,28 @@ try {
   const projectOperationTable = query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'operations'")[0]?.sql ?? "";
   for (const command of ["UpdateProject", "SetProjectArchived", "ReorderProjects", "DeleteProject"])
     assert(projectOperationTable.includes(command), `0019 must add ${command} to the operation CHECK`);
+  const preDeleteCompletedOperations = query("SELECT * FROM operations ORDER BY operation_id");
+  const preDeleteCompletedIndexes = query("PRAGMA index_list(operations)");
+  applyFile("migrations/app/0020_delete_completed_entry.sql");
+  assert.deepEqual(query("SELECT * FROM operations ORDER BY operation_id"), preDeleteCompletedOperations,
+    "0020 must preserve every existing operation row");
+  const deleteCompletedOperationTable = query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'operations'")[0]?.sql ?? "";
+  assert(deleteCompletedOperationTable.includes("DeleteCompletedEntry"), "0020 must add DeleteCompletedEntry to the operation CHECK");
+  assert.deepEqual(query("PRAGMA index_list(operations)"), preDeleteCompletedIndexes,
+    "0020 must preserve operations primary-key index expectations");
+  execute(["--command", `INSERT INTO operations
+    (app_user_id, operation_id, command_type, request_fingerprint_version, request_fingerprint, outcome_kind, result_json, created_at)
+    VALUES ('user-v01a', 'operation-delete-completed', 'DeleteCompletedEntry', 1, 'delete-completed-fingerprint', 'success', '{}',
+      '2026-08-28T08:15:00.000Z')`]);
+  assert.deepEqual(query("SELECT command_type FROM operations WHERE operation_id = 'operation-delete-completed'"),
+    [{ command_type: "DeleteCompletedEntry" }]);
+  const invalidDeleteCompletedCommand = execute(["--command", `INSERT INTO operations
+    (app_user_id, operation_id, command_type, request_fingerprint_version, request_fingerprint, outcome_kind, result_json, created_at)
+    VALUES ('user-v01a', 'operation-delete-completed-invalid', 'UnknownDeleteCommand', 1, 'invalid', 'success', '{}',
+      '2026-08-28T08:16:00.000Z')`], false);
+  assert.notEqual(invalidDeleteCompletedCommand.status, 0, "0020 must reject unknown operation commands");
+  assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
+  assert.deepEqual(query("PRAGMA foreign_key_check"), []);
   execute(["--command", `
     INSERT INTO projects (id, app_user_id, title, created_at)
       VALUES ('project-d065-delete', 'user-v01a', 'D065 disposable', '2026-08-28T00:01:00.000Z');

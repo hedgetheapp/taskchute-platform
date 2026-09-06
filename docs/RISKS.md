@@ -315,3 +315,8 @@ Current implemented mitigation:
 - visible / accessible pending feedbackとcanonical reloadをWebへ提供し、established past / record-none pastではwrite surfaceを無効化する
 
 Duplicate first sliceはcurrent `main`のlocal automated、real-local、persistent nonprod representative verificationでPASSした。remote detailed retry / misuse / concurrency / ambiguity、cross-Day move、protected-source mutation、production feature verificationは`NOT_RUN`であり、nonprod PASSをproductionへ自動拡張しない。Mode / Note / Bulk / Delete等のbroader semanticsは未実装のまま維持する。
+
+## R-018 — Completed Entry hard-delete fact loss / reference integrity risk
+Related: D-016, D-020, D-034, D-063, D-066, D-067
+
+D-067 intentionally removes a completed Entry and its Execution facts, so an incorrect eligibility check or partial FK cleanup could cause irreversible historical loss, orphaned operation history, or routine rematerialization. Mitigations are a server-authoritative current-Day boundary, exact completed/no-active checks, placement CAS, frozen operation replay, one atomic transaction, explicit deletion ordering for `ON DELETE RESTRICT` references, and retention assertions for Task / Project / Routine identity. The same-day RoutineOccurrence is retained and materializer no-regeneration is tested. Persistent nonprod hard-delete E2E is a separate Product Owner approval gate; production remains untouched.

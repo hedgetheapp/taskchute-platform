@@ -1787,3 +1787,16 @@ Initial production release evidence（2026-09-01）:
 - Time Travel bookmarkとprivate ignored AUTH / APP exportを取得しisolated restoreをPASS。restoreは実行していない
 - signed-in production smokeでToday、empty Routine Board、Settings Section / Project、reload、console warning / error `0 / 0`をPASS。synthetic Project / Task / Routine dataは作成していない
 - final APP / AUTH quick check `ok`、FK violations `0`、active Execution `0`。production deep mutationは`NOT_RUN`、Released `YES`
+
+## D-067 Completed Entry hard delete v0.1
+
+| ID | Area | Requirement | Evidence target |
+|---|---|---|---|
+| D067-DOM-01 | Worker/D1 | current completed ordinary Entry deletes all attached Executions, keeps Task/Project/unrelated data, revision exactly +1, and persists operation | LOCAL_AUTOMATED |
+| D067-DOM-02 | Worker/D1 | Routine-derived Entry deletes Entry/Executions while retaining Definition, Occurrence, snapshot and preventing same-day rematerialization | LOCAL_AUTOMATED + REAL_LOCAL |
+| D067-DOM-03 | Boundaries | planned/running/past/future/owner mismatch/active anomaly/stale revision reject with no partial mutation | LOCAL_AUTOMATED |
+| D067-DOM-04 | Retry/concurrency | exact replay, misuse, stale placement, same-entry race, injected atomic failure and D-066 max-one-in-flight boundary | LOCAL_AUTOMATED + REAL_LOCAL |
+| D067-MIG-01 | Migration | fresh/upgrade 0019→0020 preserve rows, prior command types, keys/FKs/indexes; accept DeleteCompletedEntry and reject unknown | MIGRATION_REGRESSION |
+| D067-WEB-01 | Web | current completed overflow/modal wording, cancel/Escape no-write, planned delete regression, completed excluded from bulk | WEB_FOCUSED + FULL_WEB |
+| D067-ENV-01 | Nonprod | backup gate, 0020 pending 0, deploy, API/DB/browser non-destructive verification and modal open→cancel | PERSISTENT_NONPROD |
+| D067-ENV-02 | Destructive gate | first persistent nonprod DeleteCompletedEntry write is explicitly stopped before dispatch | NOT_RUN_BY_CONTRACT |

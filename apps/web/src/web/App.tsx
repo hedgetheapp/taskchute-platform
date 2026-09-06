@@ -15,6 +15,7 @@ import type {
   AddTaskToDayRequest,
   DuplicateEntryRequest,
   BulkDeleteEntriesRequest,
+  DeleteCompletedEntryRequest,
   BulkMoveEntriesToDayRequest,
   BulkMoveEntriesToSectionRequest,
   BulkMoveEntriesToSectionOccurrenceRequest,
@@ -448,6 +449,7 @@ function transientStatusText(pending: string | null): string | null {
     case "task": return "Taskを追加・照合中…";
     case "duplicate": return "Taskを複製・照合中…";
     case "bulk-delete": return "選択したTaskを削除・照合中…";
+    case "delete-completed": return "完了したTaskを完全に削除・照合中…";
     case "bulk-date-move": return "選択したTaskの日付を変更・照合中…";
     case "bulk-section": return "選択したTaskのSectionを変更・照合中…";
     case "bulk-estimate": return "選択したTaskの見積を変更・照合中…";
@@ -621,6 +623,7 @@ export function App() {
   const [taskOperation, setTaskOperation] = useState<AddTaskToDayRequest | null>(null);
   const [duplicateOperation, setDuplicateOperation] = useState<DuplicateEntryRequest | null>(null);
   const [bulkDeleteOperation, setBulkDeleteOperation] = useState<BulkDeleteEntriesRequest | null>(null);
+  const [deleteCompletedOperation, setDeleteCompletedOperation] = useState<DeleteCompletedEntryRequest | null>(null);
   const [bulkDateMoveOperation, setBulkDateMoveOperation] = useState<BulkMoveEntriesToDayRequest | null>(null);
   const [bulkSectionOperation, setBulkSectionOperation] = useState<BulkMoveEntriesToSectionRequest | null>(null);
   const [bulkSectionOccurrenceOperation, setBulkSectionOccurrenceOperation] = useState<BulkMoveEntriesToSectionOccurrenceRequest | null>(null);
@@ -641,6 +644,7 @@ export function App() {
   } | null>(null);
   const [bulkEstimateConfirmation, setBulkEstimateConfirmation] = useState<BulkEstimateConfirmation | null>(null);
   const [bulkDateMoveConfirmation, setBulkDateMoveConfirmation] = useState<BulkDateMoveConfirmation | null>(null);
+  const [completedDeleteConfirmation, setCompletedDeleteConfirmation] = useState<EntryProjection | null>(null);
   const [selectedEntryIds, setSelectedEntryIds] = useState<string[]>([]);
   const [reorderOperation, setReorderOperation] = useState<ReorderEntriesRequest | null>(null);
   const [startOperation, setStartOperation] = useState<StartEntryRequest | null>(null);
@@ -677,7 +681,7 @@ export function App() {
   const [executionEditorError, setExecutionEditorError] = useState<string | null>(null);
   const [routineDraft, setRoutineDraft] = useState<{ entryId: string; endDate: string } | null>(null);
   const [routineCandidate, setRoutineCandidate] = useState<RoutineCandidate | null>(null);
-  const [pending, setPending] = useState<"login" | "project" | "project-settings" | "day-navigation" | "task" | "duplicate" | "bulk-delete" | "bulk-date-move" | "bulk-section" | "bulk-section-occurrence" | "bulk-section-scoped" | "bulk-estimate" | "reorder" | "start" | "complete" | "execution-times" | "task-metadata" | "configuration" | "section-settings" | "move" | "estimate" | "planned-start" | "routine-convert" | "routine-end" | "routine-edit" | "logout" | null>(null);
+  const [pending, setPending] = useState<"login" | "project" | "project-settings" | "day-navigation" | "task" | "duplicate" | "bulk-delete" | "delete-completed" | "bulk-date-move" | "bulk-section" | "bulk-section-occurrence" | "bulk-section-scoped" | "bulk-estimate" | "reorder" | "start" | "complete" | "execution-times" | "task-metadata" | "configuration" | "section-settings" | "move" | "estimate" | "planned-start" | "routine-convert" | "routine-end" | "routine-edit" | "logout" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draftTask, setDraftTask] = useState<DraftTask | null>(null);
   const [pendingFocusKey, setPendingFocusKey] = useState<string | null>(null);
@@ -748,18 +752,18 @@ export function App() {
   const retryableDayOperation = retryableTaskOperation ?? retryableReorderOperation ?? retryableStartOperation ?? retryableCompleteOperation
     ?? retryableTaskMetadataOperation ?? retryableRetainedTaskMetadataOperations[0] ?? retryableSectionMoveOperation
     ?? retryableEstimateOperation ?? retryableRetainedEstimateOperations[0] ?? retryablePlannedStartOperation;
-  const nonD066RetainedOperation = projectOperation ?? duplicateOperation ?? bulkDeleteOperation ?? bulkDateMoveOperation ?? bulkSectionOperation
+  const nonD066RetainedOperation = projectOperation ?? duplicateOperation ?? bulkDeleteOperation ?? deleteCompletedOperation ?? bulkDateMoveOperation ?? bulkSectionOperation
     ?? bulkSectionOccurrenceOperation ?? bulkSectionScopedOperation ?? bulkEstimateOperation ?? executionTimesOperation
     ?? configurationOperation ?? sectionSettingsOperation ?? routineConversionOperation ?? routineEndOperation ?? routineEstimateOperation
     ?? retainedRoutineEstimateOperations[0] ?? routineSectionPlanOperation;
   const retryablePanelOperation = nonD066RetainedOperation ?? retryableDayOperation;
-  const retainedOperation = projectOperation ?? taskOperation ?? duplicateOperation ?? bulkDeleteOperation ?? bulkDateMoveOperation ?? bulkSectionOperation ?? bulkSectionOccurrenceOperation ?? bulkSectionScopedOperation ?? bulkEstimateOperation ?? reorderOperation ?? startOperation ?? completeOperation ?? executionTimesOperation ?? taskMetadataOperation ?? retainedTaskMetadataOperations[0] ?? retainedEstimateOperations[0]
+  const retainedOperation = projectOperation ?? taskOperation ?? duplicateOperation ?? bulkDeleteOperation ?? deleteCompletedOperation ?? bulkDateMoveOperation ?? bulkSectionOperation ?? bulkSectionOccurrenceOperation ?? bulkSectionScopedOperation ?? bulkEstimateOperation ?? reorderOperation ?? startOperation ?? completeOperation ?? executionTimesOperation ?? taskMetadataOperation ?? retainedTaskMetadataOperations[0] ?? retainedEstimateOperations[0]
     ?? configurationOperation ?? sectionSettingsOperation ?? sectionMoveOperation ?? estimateOperation ?? plannedStartOperation
     ?? routineConversionOperation ?? routineEndOperation ?? routineEstimateOperation ?? retainedRoutineEstimateOperations[0] ?? routineSectionPlanOperation;
   const globalPending = pending === "login" || pending === "project" || pending === "project-settings"
     || pending === "day-navigation" || pending === "configuration" || pending === "section-settings" || pending === "logout";
   const globalRetainedOperation = projectOperation !== null || configurationOperation !== null || sectionSettingsOperation !== null;
-  const decisionModalOpen = shortcutHelpOpen || bulkSectionPickerOpen || bulkConfirmation !== null
+  const decisionModalOpen = shortcutHelpOpen || bulkSectionPickerOpen || bulkConfirmation !== null || completedDeleteConfirmation !== null
     || bulkSectionConfirmation !== null || bulkEstimateConfirmation !== null || bulkDateMoveConfirmation !== null
     || routineDraft !== null || routineCandidate !== null;
   const mutationLocked = globalPending || globalRetainedOperation;
@@ -795,6 +799,7 @@ export function App() {
     if (taskOperation) scopes.push(placementMutationScope(taskOperation.taskchute_day_id));
     if (duplicateOperation) scopes.push(placementMutationScope(duplicateOperation.taskchute_day_id));
     if (bulkDeleteOperation) scopes.push(placementMutationScope(bulkDeleteOperation.taskchute_day_id));
+    if (deleteCompletedOperation) scopes.push([...placementMutationScope(deleteCompletedOperation.taskchute_day_id), ...entryMutationScope(deleteCompletedOperation.entry_id)]);
     if (bulkDateMoveOperation) scopes.push(placementMutationScope(bulkDateMoveOperation.source_taskchute_day_id));
     if (bulkSectionOperation) scopes.push(placementMutationScope(bulkSectionOperation.taskchute_day_id));
     if (bulkSectionOccurrenceOperation) scopes.push(placementMutationScope(bulkSectionOccurrenceOperation.taskchute_day_id));
@@ -838,6 +843,7 @@ export function App() {
     setReorderOperation((current) => isCanceled(current?.operation_id) ? null : current);
     setStartOperation((current) => isCanceled(current?.operation_id) ? null : current);
     setCompleteOperation((current) => isCanceled(current?.operation_id) ? null : current);
+    setDeleteCompletedOperation((current) => isCanceled(current?.operation_id) ? null : current);
     setTaskMetadataOperation((current) => isCanceled(current?.operation_id) ? null : current);
     setEstimateOperation((current) => isCanceled(current?.operation_id) ? null : current);
     setPlannedStartOperation((current) => isCanceled(current?.request.operation_id) ? null : current);
@@ -1012,6 +1018,7 @@ export function App() {
       || activeMutationsRef.current.length > 0
       || startOperation !== null
       || completeOperation !== null
+      || deleteCompletedOperation !== null
       || taskOperation !== null
       || reorderOperation !== null
       || sectionMoveOperation !== null
@@ -1118,6 +1125,7 @@ export function App() {
     setTaskOperation(null);
     setDuplicateOperation(null);
     setBulkDeleteOperation(null);
+    setDeleteCompletedOperation(null);
     setBulkDateMoveOperation(null);
     setBulkSectionOperation(null);
     setBulkSectionOccurrenceOperation(null);
@@ -1125,6 +1133,7 @@ export function App() {
     setBulkEstimateOperation(null);
     setBulkSectionPickerOpen(false);
     setBulkConfirmation(null);
+    setCompletedDeleteConfirmation(null);
     setBulkSectionConfirmation(null);
     setBulkEstimateConfirmation(null);
     setBulkDateMoveConfirmation(null);
@@ -1222,6 +1231,7 @@ export function App() {
     setDraftTask(null);
     setSelectedEntryIds([]);
     setBulkConfirmation(null);
+    setCompletedDeleteConfirmation(null);
     setBulkDateMoveConfirmation(null);
     setBulkSectionConfirmation(null);
     setBulkSectionPickerOpen(false);
@@ -1646,6 +1656,35 @@ export function App() {
     }
   }
 
+  async function executeDeleteCompletedEntry(operation: DeleteCompletedEntryRequest) {
+    const mutationToken = beginMutationScope([...placementMutationScope(operation.taskchute_day_id), ...entryMutationScope(operation.entry_id)], "完了Task削除");
+    if (!mutationToken) return;
+    setPending("delete-completed");
+    setCompletedDeleteConfirmation(null);
+    setError(null);
+    try {
+      await api.deleteCompletedEntry(operation);
+      await reconcile();
+      setDeleteCompletedOperation(null);
+    } catch (caught) {
+      const ambiguous = isAmbiguousOutcome(caught);
+      setError(caught instanceof Error ? caught.message : "完了Taskの削除に失敗しました");
+      if (!ambiguous) setDeleteCompletedOperation(null);
+      try {
+        await reconcile();
+        if (caught instanceof ApiClientError && caught.code === "revision_conflict") {
+          setDeleteCompletedOperation(null);
+          setError("Dayの内容が変わったため、Taskを確認してから再度実行してください。");
+        }
+      } catch {
+        // Preserve the exact sent operation for an ambiguous retry.
+      }
+    } finally {
+      endMutationScope(mutationToken);
+      setPending(null);
+    }
+  }
+
   async function executeBulkDateMove(operation: BulkMoveEntriesToDayRequest) {
     const mutationToken = beginMutationScope(placementMutationScope(operation.source_taskchute_day_id), "Bulk日付変更");
     if (!mutationToken) return;
@@ -1963,6 +2002,12 @@ export function App() {
     setBulkConfirmation({ entryIds: [entry.id], ordinaryCount: entry.routine === null ? 1 : 0, routineCount: entry.routine === null ? 0 : 1 });
   }
 
+  function openCompletedDelete(entry: EntryProjection) {
+    if (!day?.is_current || !day.taskchute_day.id || entry.lifecycle_state !== "completed" || mutationLocked
+      || isMutationScopeBusy([...placementMutationScope(day.taskchute_day.id), ...entryMutationScope(entry.id)])) return;
+    setCompletedDeleteConfirmation(entry);
+  }
+
   function confirmBulkDelete() {
     if (!day?.taskchute_day.id || !bulkConfirmation || isMutationScopeBusy(placementMutationScope()) || bulkDeleteOperation !== null) return;
     const operation: BulkDeleteEntriesRequest = {
@@ -1973,6 +2018,21 @@ export function App() {
     };
     setBulkDeleteOperation(operation);
     void executeBulkDelete(operation);
+  }
+
+  function confirmCompletedDelete() {
+    if (!day?.is_current || !day.taskchute_day.id || !completedDeleteConfirmation
+      || completedDeleteConfirmation.lifecycle_state !== "completed"
+      || isMutationScopeBusy([...placementMutationScope(day.taskchute_day.id), ...entryMutationScope(completedDeleteConfirmation.id)])
+      || deleteCompletedOperation !== null) return;
+    const operation: DeleteCompletedEntryRequest = {
+      operation_id: uuidv7(),
+      taskchute_day_id: day.taskchute_day.id,
+      entry_id: completedDeleteConfirmation.id,
+      expected_placement_revision: day.placement_revision,
+    };
+    setDeleteCompletedOperation(operation);
+    void executeDeleteCompletedEntry(operation);
   }
 
   function closeBulkSectionPicker(returnFocus = false) {
@@ -4621,6 +4681,21 @@ export function App() {
         </Modal>
       )}
 
+      {completedDeleteConfirmation && (
+        <Modal title="完了したTaskを完全に削除しますか？" titleId="completed-delete-confirmation-title" className="bulk-confirmation completed-delete-confirmation"
+          onClose={() => setCompletedDeleteConfirmation(null)}>
+          <p>このTaskの開始・終了記録と実績時間も削除されます。この操作は元に戻せません。</p>
+          {completedDeleteConfirmation.routine !== null && <p>Routine自体や他の日のTaskは削除されません。</p>}
+          <div className="bulk-confirmation-actions">
+            <button type="button" className="secondary" onClick={() => {
+              setCompletedDeleteConfirmation(null);
+              requestAnimationFrame(() => overflowMenuTriggerRef.current?.focus());
+            }}>キャンセル</button>
+            <button type="button" className="destructive-action" onClick={confirmCompletedDelete}>完全に削除</button>
+          </div>
+        </Modal>
+      )}
+
       {transientStatus && (
         <div className="transient-status" role="status" aria-live="polite" aria-atomic="true">
           {transientStatus}
@@ -4793,7 +4868,8 @@ export function App() {
                 const canMoveDate = isBulkSelectableProjectionEntry(currentDay, entry);
                 const canEditPlanning = day.planning_enabled && entry.lifecycle_state === "planned";
                 const canDuplicate = day.is_current && Boolean(day.taskchute_day.id) && entry.lifecycle_state === "completed";
-                const hasOverflowActions = canMoveDate || canEditPlanning || canDuplicate;
+                const canDeleteCompleted = day.is_current && Boolean(day.taskchute_day.id) && entry.lifecycle_state === "completed";
+                const hasOverflowActions = canMoveDate || canEditPlanning || canDuplicate || canDeleteCompleted;
                 const completeRetained = isRetainedComplete(completeOperation);
                 return (
                   <div className={`task-row task-drag-surface state-${entry.lifecycle_state}${selectedEntryIds.includes(entry.id) ? " is-selected" : ""}${entryDrag?.entryId === entry.id ? " is-dragging" : ""}${entryDrag?.targetEntryId === entry.id && entryDrag.edge ? ` drop-${entryDrag.edge}` : ""}`} key={entry.id} tabIndex={0} aria-selected={selectedEntryIds.includes(entry.id)}
@@ -4914,6 +4990,10 @@ export function App() {
                               setOverflowEntryId(null);
                               openSingleDelete(entry);
                             }} className="destructive-action">削除</button>}
+                            {canDeleteCompleted && <button type="button" role="menuitem" onClick={() => {
+                              setOverflowEntryId(null);
+                              openCompletedDelete(entry);
+                            }} className="destructive-action">削除</button>}
                           </div>
                         )}
                       </div>
@@ -4935,6 +5015,7 @@ export function App() {
           {retryableTaskOperation && <button type="button" onClick={() => enqueueRetainedRetry("Task追加", placementMutationScope(retryableTaskOperation.taskchute_day_id), () => executeAddTask(retryableTaskOperation))}>保留中のTask追加を再試行</button>}
           {duplicateOperation && <button type="button" onClick={() => void executeDuplicate(duplicateOperation)}>保留中のTask複製を再試行</button>}
           {bulkDeleteOperation && <button type="button" onClick={() => void executeBulkDelete(bulkDeleteOperation)}>保留中のBulk削除を再試行</button>}
+          {deleteCompletedOperation && <button type="button" onClick={() => void executeDeleteCompletedEntry(deleteCompletedOperation)}>保留中の完了Task削除を再試行</button>}
           {bulkDateMoveOperation && <button type="button" onClick={() => void executeBulkDateMove(bulkDateMoveOperation)}>保留中の日付変更を再試行</button>}
            {bulkSectionOperation && <button type="button" onClick={() => void executeBulkSectionChange(bulkSectionOperation)}>保留中のBulk Section変更を再試行</button>}
            {bulkSectionOccurrenceOperation && <button type="button" onClick={() => void executeBulkSectionOccurrenceChange(bulkSectionOccurrenceOperation)}>保留中のRoutine含むBulk Section変更を再試行</button>}
@@ -4964,7 +5045,7 @@ export function App() {
           ))}
           {routineSectionPlanOperation && <button type="button" onClick={() => void executeRoutineSectionPlan(routineSectionPlanOperation)}>保留中のRoutine配置を再試行</button>}
           <button type="button" className="secondary" onClick={() => {
-             setProjectOperation(null); setTaskOperation(null); setDuplicateOperation(null); setBulkDeleteOperation(null); setBulkDateMoveOperation(null); setBulkSectionOperation(null); setBulkSectionOccurrenceOperation(null); setBulkSectionScopedOperation(null); setBulkEstimateOperation(null); setBulkSectionPickerOpen(false); setBulkConfirmation(null); setBulkSectionConfirmation(null); setBulkEstimateConfirmation(null); setBulkDateMoveConfirmation(null); setSelectedEntryIds([]); setReorderOperation(null); setStartOperation(null); setCompleteOperation(null); setExecutionTimesOperation(null); setTaskMetadataOperation(null);
+             setProjectOperation(null); setTaskOperation(null); setDuplicateOperation(null); setBulkDeleteOperation(null); setDeleteCompletedOperation(null); setCompletedDeleteConfirmation(null); setBulkDateMoveOperation(null); setBulkSectionOperation(null); setBulkSectionOccurrenceOperation(null); setBulkSectionScopedOperation(null); setBulkEstimateOperation(null); setBulkSectionPickerOpen(false); setBulkConfirmation(null); setBulkSectionConfirmation(null); setBulkEstimateConfirmation(null); setBulkDateMoveConfirmation(null); setSelectedEntryIds([]); setReorderOperation(null); setStartOperation(null); setCompleteOperation(null); setExecutionTimesOperation(null); setTaskMetadataOperation(null);
             dayMutationQueueRef.current = []; dayMutationPausedRef.current = false; updateDayMutationQueueCount();
             setRetainedTaskMetadataOperations([]); setPendingTaskMetadataOverlays({}); setPendingEstimateOverlays({}); setPendingPlannedStartOverlays({}); setPendingSectionOverlays({}); setPendingReorderOverlays({}); setPendingAddTasks([]); setPendingExecutionTimesOverlays({}); setRetainedEstimateOperations([]); setRetainedRoutineEstimateOperations([]);
             setConfigurationOperation(null); setSectionSettingsOperation(null); setSectionMoveOperation(null); setEstimateOperation(null); setPlannedStartOperation(null);

@@ -447,3 +447,9 @@ Current Dayのordinary mutationは、操作を受理した直後に対象rowのo
 ## Unreconciled historical scope
 
 historical design branchにあるFloating Runner、context menu、Hit-a-Hint、Bulk actions、responsive / mobile等は、この文書へまだcanonicalizeしていない。必要なscopeごとにcurrent Product / Domain Decisionと再照合してから追加する。
+
+## D-067 completed Entry deletion UI
+
+Only a completed row on the displayed canonical current Day exposes `… → 削除`. Planned rows continue using the existing planned-delete path; running, historical, future, read-only, and bulk-selected completed rows do not expose this action. The destructive confirmation is the common centered modal with title `完了したTaskを完全に削除しますか？`, body `このTaskの開始・終了記録と実績時間も削除されます。この操作は元に戻せません。`, and buttons `キャンセル` / `完全に削除`. Routine-derived rows additionally state that the Routine itself and other days are retained. Initial focus is non-destructive, Escape/backdrop cancel without an API call, and close restores the overflow trigger focus.
+
+After confirmation the client enqueues the frozen request through D-066's single serial dispatcher. It does not claim success from an optimistic hide; canonical reconcile determines the final row state. Deterministic rejection restores the row and shows the error, while an ambiguous sent request retains only the exact retry identity. Completed rows remain excluded from Bulk Selection.

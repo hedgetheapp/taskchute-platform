@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CurrentTaskChuteDayProjection, EntryProjection } from "../../src/shared/contracts";
 
 const mocks = vi.hoisted(() => ({
-  login: vi.fn(), logout: vi.fn(), loadDay: vi.fn(), loadProjects: vi.fn(), loadProjectBoard: vi.fn(), createProject: vi.fn(), updateProject: vi.fn(), setProjectArchived: vi.fn(), reorderProjects: vi.fn(), deleteProject: vi.fn(), addTask: vi.fn(), duplicateEntry: vi.fn(), bulkDeleteEntries: vi.fn(), bulkMoveEntriesToDay: vi.fn(), bulkMoveEntriesToSection: vi.fn(), bulkMoveEntriesToSectionOccurrence: vi.fn(), bulkMoveEntriesToSectionScoped: vi.fn(), bulkSetEntriesEstimateScoped: vi.fn(),
+  login: vi.fn(), logout: vi.fn(), loadDay: vi.fn(), loadProjects: vi.fn(), loadProjectBoard: vi.fn(), createProject: vi.fn(), updateProject: vi.fn(), setProjectArchived: vi.fn(), reorderProjects: vi.fn(), deleteProject: vi.fn(), addTask: vi.fn(), duplicateEntry: vi.fn(), bulkDeleteEntries: vi.fn(), deleteCompletedEntry: vi.fn(), bulkMoveEntriesToDay: vi.fn(), bulkMoveEntriesToSection: vi.fn(), bulkMoveEntriesToSectionOccurrence: vi.fn(), bulkMoveEntriesToSectionScoped: vi.fn(), bulkSetEntriesEstimateScoped: vi.fn(),
   reorderEntries: vi.fn(), startEntry: vi.fn(), completeEntry: vi.fn(), setExecutionTimes: vi.fn(), updateTaskMetadata: vi.fn(),
   establishInitialSectionConfiguration: vi.fn(), moveEntry: vi.fn(), setEntryEstimate: vi.fn(),
   setEntryPlannedStart: vi.fn(),
@@ -216,6 +216,7 @@ beforeEach(() => {
   mocks.addTask.mockResolvedValue({});
   mocks.duplicateEntry.mockResolvedValue({});
   mocks.bulkDeleteEntries.mockResolvedValue({});
+  mocks.deleteCompletedEntry.mockResolvedValue({});
   mocks.bulkMoveEntriesToDay.mockResolvedValue({});
   mocks.bulkMoveEntriesToSection.mockResolvedValue({});
   mocks.bulkMoveEntriesToSectionScoped.mockResolvedValue({});
@@ -3601,6 +3602,24 @@ describe("Dogfood Day shell", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "削除" }));
     await waitFor(() => expect(mocks.bulkDeleteEntries).toHaveBeenCalledTimes(1));
     expect(mocks.bulkDeleteEntries.mock.calls[0][0]).toMatchObject({ entry_ids: [firstEntry.id], taskchute_day_id: emptyDay.taskchute_day.id });
+  });
+
+  it("exposes completed hard delete in the current row menu and cancel/Escape never sends it", async () => {
+    mocks.loadDay.mockResolvedValue(completedDay);
+    render(<App />);
+    const menu = await openOverflowMenu();
+    expect(menu.getAttribute("role")).toBe("menu");
+    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["複製", "削除"]);
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "削除" }));
+    const dialog = await screen.findByRole("dialog", { name: "完了したTaskを完全に削除しますか？" });
+    expect(within(dialog).getByText("このTaskの開始・終了記録と実績時間も削除されます。この操作は元に戻せません。")).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "キャンセル" }));
+    expect(mocks.deleteCompletedEntry).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskのその他の操作" }));
+    fireEvent.click(within(screen.getByRole("menu", { name: "Canonical taskの操作" })).getByRole("menuitem", { name: "削除" }));
+    await screen.findByRole("dialog", { name: "完了したTaskを完全に削除しますか？" });
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(mocks.deleteCompletedEntry).not.toHaveBeenCalled();
   });
 
   it("re-enables current SetExecutionTimes inline while retaining Revert withdrawal", async () => {

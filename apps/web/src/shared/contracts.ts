@@ -255,6 +255,20 @@ export interface BulkDeleteEntriesResult {
   placement_revision: number;
 }
 
+export interface DeleteCompletedEntryRequest {
+  operation_id: string;
+  taskchute_day_id: string;
+  entry_id: string;
+  expected_placement_revision: number;
+}
+
+export interface DeleteCompletedEntryResult {
+  entry_id: string;
+  deleted_execution_ids: string[];
+  taskchute_day_id: string;
+  placement_revision: number;
+}
+
 export interface BulkMoveEntriesToDayRequest {
   operation_id: string;
   source_taskchute_day_id: string;

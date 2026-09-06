@@ -886,3 +886,9 @@ Routine R2A persistent nonprod gateは完了した。次のProduct development w
 4. R1を越えるRoutine recurrence / override / projection、Documents / Review / Android等は別scopeとして維持する。
 
 B1 / B2 / B3 / R1 / Routine R2A / R2Bのpersistent nonprod remote PASSを個別featureのproduction deep verificationと混同しない。D-049 initial production release scopeは`PASS` / Released `YES`だが、Routine R2Bを含むfeature-specific production mutation、remote multi-Day propagation、詳細reliability subcaseは`NOT_RUN`または既存の限定evidenceを維持する。
+
+## D-067 — Completed Entry hard delete v0.1
+
+Canonicalized from the Product Owner Approved Task Contract at the start SHA `2edcf4408fcd747cf80c11e217091675578f49e2`. D-067 adds the separate `DeleteCompletedEntry` command for one explicitly confirmed `completed` Entry on the server-authoritative current Day. It deletes the Entry and all attached Executions atomically, increments placement revision exactly once, retains Task / Project / Routine identity and the RoutineOccurrence, and relies on the retained occurrence to prevent same-day rematerialization. Planned delete remains `BulkDeleteEntries`; completed bulk, undo/restore, past/future/running mutation, production operation, and schema/FK weakening are excluded.
+
+At this stage the canonical decision is recorded and implementation is pending. APP migration `0020_delete_completed_entry.sql` is approved as an operations command CHECK-only compatibility extension. Persistent nonprod hard-delete E2E is a HARD STOP before the first destructive write; until a later explicit approval it must remain `NOT_RUN`.

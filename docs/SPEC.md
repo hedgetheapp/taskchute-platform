@@ -375,3 +375,11 @@ D-066はcurrent Dayのordinary Task mutationに限るWeb UX contractである。
 - `dependsOnOperationId`はqueued dependency graphとして扱う。deterministic failureではrootの全queued descendantsを送信せずcancelし、ambiguous rootではfull descendant subtreeを保持する。rootのexact retry / canonical convergence後にだけ、保持したdescendantsをqueue orderどおりdispatchする。root discard時はsubtreeもclearする。
 - mutation scopeはtarget / dependent target単位で衝突判定し、ordinary Day全体を`mutationLocked`でfreezeしない。auth、Day navigation、initial Section、settings等のglobal barrierは維持する。
 - sent operationのrevision conflict / ambiguous outcomeではoverlayと未送信queueを止め、canonical reconcile後に成功を確定できなければexact operationを保持してretryする。navigation / reloadではpending stateを誤って破棄しない。
+
+## D-067 Completed Entry hard delete contract
+
+`DeleteCompletedEntry` accepts `{ operation_id, taskchute_day_id, entry_id, expected_placement_revision }` and returns `{ entry_id, deleted_execution_ids, taskchute_day_id, placement_revision }`. The authenticated principal is derived server-side. The Worker accepts the command only for the server-authoritative current Day and an Entry owned by that principal whose lifecycle is exactly `completed`, whose Executions have no active row, and whose execution relation is canonical. Past/future Day, planned/running Entry, owner mismatch, stale revision, changed target, and active-execution anomalies reject.
+
+The command is one atomic D1 mutation. It deletes all target Executions first, removes Entry-bound `lifecycle_command_guards` and `entry_project_snapshots` required by existing `ON DELETE RESTRICT` references, deletes the Entry, increments `placement_revision` exactly once, and stores the success operation. On any failure the transaction leaves the Entry, Executions, revision, and operation state converged; the operation is not inferred as successful from an absent Entry. Exact operation replay returns the original result, while operation-id misuse rejects.
+
+The target Task, Project, unrelated Entries/Executions, RoutineDefinition, RoutineOccurrence, occurrence snapshot, schedule and future materialization remain. Routine occurrence identity is retained so current-Day routine materialization does not recreate the deleted Entry. D-067 does not create Skip semantics, undo/restore, or a completed bulk path. `0020_delete_completed_entry.sql` is a compatibility-only operations CHECK migration.
