@@ -3922,8 +3922,102 @@ describe("Dogfood Day shell", () => {
     fireEvent.click(await screen.findByRole("button", { name: "実行中のTaskを完了" }));
     fireEvent.click(screen.getByRole("button", { name: "Second taskを開始" }));
     completeRequest.reject(new ApiClientError("revision conflict", 409, false, "revision_conflict"));
-    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("待機中のStartを破棄しました"));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("待機中のStartは送信せず破棄しました"));
     expect(mocks.startEntry).not.toHaveBeenCalled();
     expect(screen.queryByText("完了後のStartを待機中…")).toBeNull();
+  });
+
+  it("never sends a dependent Complete after deterministic Start failure", async () => {
+    const startRequest = deferred<unknown>();
+    mocks.loadDay.mockResolvedValue(twoPlannedDay);
+    mocks.startEntry.mockReturnValue(startRequest.promise);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskを開始" }));
+    await waitFor(() => expect(mocks.startEntry).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "Canonical taskを完了" }));
+    startRequest.reject(new ApiClientError("resource conflict", 409, false, "resource_conflict"));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("resource conflict"));
+    expect(mocks.completeEntry).not.toHaveBeenCalled();
+  });
+
+  it("defers logout until the ordinary Day queue has drained", async () => {
+    const startRequest = deferred<unknown>();
+    mocks.loadDay.mockResolvedValue(twoPlannedDay);
+    mocks.startEntry.mockReturnValue(startRequest.promise);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskを開始" }));
+    await waitFor(() => expect(mocks.startEntry).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "ログアウト" }));
+    expect(mocks.logout).not.toHaveBeenCalled();
+    startRequest.resolve({});
+    await waitFor(() => expect(mocks.logout).toHaveBeenCalledTimes(1));
+  });
+
+  it("defers Settings while an ordinary Day mutation is in flight", async () => {
+    const startRequest = deferred<unknown>();
+    mocks.loadDay.mockResolvedValue(twoPlannedDay);
+    mocks.startEntry.mockReturnValue(startRequest.promise);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskを開始" }));
+    await waitFor(() => expect(mocks.startEntry).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "設定" }));
+    expect(screen.queryByRole("region", { name: "Section設定" })).toBeNull();
+    expect(mocks.loadSectionConfiguration).not.toHaveBeenCalled();
+    startRequest.resolve({});
+    await waitFor(() => expect(screen.getByRole("region", { name: "Section設定" })).toBeTruthy());
+  });
+
+  it("accepts provisional Add Project, Section, and estimate edits only after Add succeeds", async () => {
+    const addRequest = deferred<unknown>();
+    let addOperation: any = null;
+    mocks.loadDay.mockImplementation(async () => addOperation ? {
+      ...emptyDay,
+      sections: [{ ...emptyDay.sections[1], entries: [{ ...firstEntry, id: addOperation.entry_id, section_id: eveningId,
+        task: { ...firstEntry.task, id: addOperation.task_id, title: addOperation.title } }] }, emptyDay.sections[0]],
+    } : emptyDay);
+    mocks.addTask.mockImplementation((operation: unknown) => {
+      addOperation = operation;
+      return addRequest.promise;
+    });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "EveningにTaskを追加" }));
+    const draft = screen.getByRole("textbox", { name: "EveningのTask名" });
+    fireEvent.change(draft, { target: { value: "Pending add" } });
+    fireEvent.keyDown(draft, { key: "Enter", code: "Enter" });
+    await waitFor(() => expect(mocks.addTask).toHaveBeenCalledTimes(1));
+    const project = await screen.findByRole("combobox", { name: "Pending addのProject" });
+    fireEvent.change(project, { target: { value: "existing-project" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Pending addのSection" }), { target: { value: morningId } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Pending addの見積（分）" }), { target: { value: "15" } });
+    expect(mocks.updateTaskMetadata).not.toHaveBeenCalled();
+    expect(mocks.moveEntry).not.toHaveBeenCalled();
+    expect(mocks.setEntryEstimate).not.toHaveBeenCalled();
+    addRequest.resolve({});
+    await waitFor(() => expect(mocks.updateTaskMetadata).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mocks.moveEntry).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mocks.setEntryEstimate).toHaveBeenCalledTimes(1));
+    expect(mocks.updateTaskMetadata.mock.calls[0][0]).toMatchObject({ entry_id: addOperation.entry_id, project_id: "existing-project" });
+    expect(mocks.moveEntry.mock.calls[0][0]).toMatchObject({ entry_id: addOperation.entry_id, section_id: morningId });
+    expect(mocks.setEntryEstimate.mock.calls[0][0]).toMatchObject({ entry_id: addOperation.entry_id, estimate_seconds: 900 });
+  });
+
+  it("cancels all provisional Add dependent edits on deterministic Add failure", async () => {
+    const addRequest = deferred<unknown>();
+    mocks.loadDay.mockResolvedValue(emptyDay);
+    mocks.addTask.mockReturnValue(addRequest.promise);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "EveningにTaskを追加" }));
+    const draft = screen.getByRole("textbox", { name: "EveningのTask名" });
+    fireEvent.change(draft, { target: { value: "Failed add" } });
+    fireEvent.keyDown(draft, { key: "Enter", code: "Enter" });
+    await waitFor(() => expect(mocks.addTask).toHaveBeenCalledTimes(1));
+    fireEvent.change(await screen.findByRole("combobox", { name: "Failed addのProject" }), { target: { value: "existing-project" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Failed addのSection" }), { target: { value: morningId } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Failed addの見積（分）" }), { target: { value: "20" } });
+    addRequest.reject(new ApiClientError("conflict", 409, false, "resource_conflict"));
+    await waitFor(() => expect(screen.queryByText("Failed add")).toBeNull());
+    expect(mocks.updateTaskMetadata).not.toHaveBeenCalled();
+    expect(mocks.moveEntry).not.toHaveBeenCalled();
+    expect(mocks.setEntryEstimate).not.toHaveBeenCalled();
   });
 });

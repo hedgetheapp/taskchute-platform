@@ -100,9 +100,16 @@ type QueuedDayMutation = {
   label: string;
   coalesceKey?: string;
   operationId?: string;
+  dependsOnOperationId?: string;
   dispatch: () => Promise<void>;
 };
-type PendingAddTask = { operation: AddTaskToDayRequest; title: string };
+type PendingAddTask = {
+  operation: AddTaskToDayRequest;
+  title: string;
+  projectId: string | null;
+  sectionId: string | null;
+  estimateSeconds: number | null;
+};
 type PendingSectionOverlay = { operation: MoveEntryRequest; plannedStartMinute: number | null };
 type PendingReorderOverlay = { operation: ReorderEntriesRequest };
 type RoutineCandidate =
@@ -690,7 +697,6 @@ export function App() {
   const [currentLogicalDate, setCurrentLogicalDate] = useState<string | null>(null);
   const [forecastNowInstant, setForecastNowInstant] = useState<string | null>(null);
   const [pendingMutationCount, setPendingMutationCount] = useState(0);
-  const [queuedMutationCount, setQueuedMutationCount] = useState(0);
   const [dayMutationQueueCount, setDayMutationQueueCount] = useState(0);
   const draftInputRef = useRef<HTMLInputElement | null>(null);
   const draftCompositionRef = useRef(false);
@@ -720,9 +726,7 @@ export function App() {
   const dayMutationInFlightRef = useRef(false);
   const dayMutationPausedRef = useRef(false);
   const deferredNavigationRef = useRef<{ logicalDate?: string } | null>(null);
-  const queuedStartEntryRef = useRef<string | null>(null);
-  const [queuedStartEntryId, setQueuedStartEntryId] = useState<string | null>(null);
-  const drainingQueuedStartsRef = useRef(false);
+  const deferredTransitionRef = useRef<{ kind: "logout" } | { kind: "settings"; destination: SettingsDestination } | null>(null);
   const retainedOperation = projectOperation ?? taskOperation ?? duplicateOperation ?? bulkDeleteOperation ?? bulkDateMoveOperation ?? bulkSectionOperation ?? bulkSectionOccurrenceOperation ?? bulkSectionScopedOperation ?? bulkEstimateOperation ?? reorderOperation ?? startOperation ?? completeOperation ?? executionTimesOperation ?? taskMetadataOperation ?? retainedTaskMetadataOperations[0] ?? retainedEstimateOperations[0]
     ?? configurationOperation ?? sectionSettingsOperation ?? sectionMoveOperation ?? estimateOperation ?? plannedStartOperation
     ?? routineConversionOperation ?? routineEndOperation ?? routineEstimateOperation ?? retainedRoutineEstimateOperations[0] ?? routineSectionPlanOperation;
@@ -743,15 +747,14 @@ export function App() {
       const hasUnsavedMutation = activeMutationsRef.current.length > 0
         || dayMutationInFlightRef.current
         || dayMutationQueueRef.current.length > 0
-        || retainedOperation !== null
-        || queuedStartEntryRef.current !== null;
+        || retainedOperation !== null;
       if (!hasUnsavedMutation) return;
       event.preventDefault();
       event.returnValue = "";
     };
     window.addEventListener("beforeunload", guardBeforeUnload);
     return () => window.removeEventListener("beforeunload", guardBeforeUnload);
-  }, [retainedOperation, pendingMutationCount, queuedMutationCount, dayMutationQueueCount, queuedStartEntryId]);
+  }, [retainedOperation, pendingMutationCount, dayMutationQueueCount]);
 
   function scopesConflict(left: MutationScope, right: MutationScope): boolean {
     return left.some((key) => right.includes(key));
@@ -802,11 +805,7 @@ export function App() {
     setDayMutationQueueCount(dayMutationQueueRef.current.length);
   }
 
-  function pauseDayMutationQueue(): void {
-    dayMutationPausedRef.current = true;
-    const canceledOperationIds = new Set(dayMutationQueueRef.current.map((item) => item.operationId).filter((id): id is string => Boolean(id)));
-    dayMutationQueueRef.current = [];
-    updateDayMutationQueueCount();
+  function clearCanceledDayMutationState(canceledOperationIds: Set<string>): void {
     if (canceledOperationIds.size === 0) return;
     const isCanceled = (operationId: string | undefined): boolean => operationId !== undefined && canceledOperationIds.has(operationId);
     setTaskOperation((current) => isCanceled(current?.operation_id) ? null : current);
@@ -822,6 +821,30 @@ export function App() {
     setPendingTaskMetadataOverlays((current) => Object.fromEntries(Object.entries(current).filter(([, operation]) => !isCanceled(operation.operation_id))));
     setPendingEstimateOverlays((current) => Object.fromEntries(Object.entries(current).filter(([, operation]) => !isCanceled(operation.operation_id))));
     setPendingPlannedStartOverlays((current) => Object.fromEntries(Object.entries(current).filter(([, operation]) => !isCanceled(operation.request.operation_id))));
+  }
+
+  function cancelQueuedDayMutationDependents(operationId: string): void {
+    const canceledOperationIds = new Set(dayMutationQueueRef.current
+      .filter((item) => item.dependsOnOperationId === operationId)
+      .map((item) => item.operationId)
+      .filter((id): id is string => Boolean(id)));
+    dayMutationQueueRef.current = dayMutationQueueRef.current.filter((item) => item.dependsOnOperationId !== operationId);
+    updateDayMutationQueueCount();
+    clearCanceledDayMutationState(canceledOperationIds);
+  }
+
+  function pauseDayMutationQueue(preserveDependentsOf?: string): void {
+    dayMutationPausedRef.current = true;
+    const preserved = preserveDependentsOf
+      ? dayMutationQueueRef.current.filter((item) => item.dependsOnOperationId === preserveDependentsOf)
+      : [];
+    const canceledOperationIds = new Set(dayMutationQueueRef.current
+      .filter((item) => !preserved.includes(item))
+      .map((item) => item.operationId)
+      .filter((id): id is string => Boolean(id)));
+    dayMutationQueueRef.current = preserved;
+    updateDayMutationQueueCount();
+    clearCanceledDayMutationState(canceledOperationIds);
   }
 
   function resumeDayMutationQueue(): void {
@@ -852,10 +875,17 @@ export function App() {
         deferredNavigationRef.current = null;
         void Promise.resolve().then(() => navigateToDay(deferredNavigation.logicalDate));
       }
+      const deferredTransition = deferredTransitionRef.current;
+      if (deferredTransition && dayMutationQueueRef.current.length === 0 && !dayMutationPausedRef.current) {
+        deferredTransitionRef.current = null;
+        void Promise.resolve().then(() => deferredTransition.kind === "logout"
+          ? logout()
+          : openSettings(deferredTransition.destination));
+      }
     }
   }
 
-  function enqueueDayMutation(mutation: QueuedDayMutation): void {
+  function enqueueDayMutation(mutation: QueuedDayMutation, options?: { front?: boolean }): void {
     if (dayMutationPausedRef.current && retainedOperation === null) dayMutationPausedRef.current = false;
     if (mutation.coalesceKey) {
       const existing = dayMutationQueueRef.current.find((item) => item.coalesceKey === mutation.coalesceKey);
@@ -867,7 +897,8 @@ export function App() {
         return;
       }
     }
-    dayMutationQueueRef.current.push(mutation);
+    if (options?.front) dayMutationQueueRef.current.unshift(mutation);
+    else dayMutationQueueRef.current.push(mutation);
     updateDayMutationQueueCount();
     void drainDayMutationQueue();
   }
@@ -931,10 +962,36 @@ export function App() {
     setRoutineEstimateOperation((current) => current?.operation_id === operationId ? null : current);
   }
 
-  function setQueuedStartEntry(entryId: string | null): void {
-    queuedStartEntryRef.current = entryId;
-    setQueuedStartEntryId(entryId);
-    setQueuedMutationCount(entryId ? 1 : 0);
+  function hasDayMutationBarrier(): boolean {
+    return dayMutationInFlightRef.current
+      || dayMutationQueueRef.current.length > 0
+      || activeMutationsRef.current.length > 0
+      || startOperation !== null
+      || completeOperation !== null
+      || taskOperation !== null
+      || reorderOperation !== null
+      || sectionMoveOperation !== null
+      || estimateOperation !== null
+      || plannedStartOperation !== null
+      || pendingAddTasks.length > 0
+      || retainedTaskMetadataOperations.length > 0
+      || retainedEstimateOperations.length > 0;
+  }
+
+  function deferGlobalTransition(transition: { kind: "logout" } | { kind: "settings"; destination: SettingsDestination }): void {
+    deferredTransitionRef.current = transition;
+    setError(transition.kind === "logout"
+      ? "保存中のDay操作が完了してからログアウトします。"
+      : "保存中のDay操作が完了してから設定を開きます。");
+  }
+
+  function hasQueuedExecutionMutation(entryId: string): boolean {
+    return dayMutationQueueRef.current.some((item) => item.scope.includes("execution-lane") && item.scope.includes(`entry:${entryId}`));
+  }
+
+  function hasQueuedDependentStart(operationId: string | undefined): boolean {
+    return operationId !== undefined && dayMutationQueueRef.current.some((item) => item.dependsOnOperationId === operationId
+      && item.scope.includes("execution-lane"));
   }
 
   function entryMutationScope(entryId: string, taskId?: string): MutationScope {
@@ -1031,7 +1088,21 @@ export function App() {
     setRoutineSectionPlanOperation(null);
     setRoutineDraft(null);
     setRoutineCandidate(null);
-    setQueuedStartEntry(null);
+    dayMutationQueueRef.current = [];
+    dayMutationInFlightRef.current = false;
+    dayMutationPausedRef.current = false;
+    deferredNavigationRef.current = null;
+    deferredTransitionRef.current = null;
+    activeMutationsRef.current = [];
+    setPendingMutationCount(0);
+    setDayMutationQueueCount(0);
+    setPendingAddTasks([]);
+    setPendingSectionOverlays({});
+    setPendingReorderOverlays({});
+    setPendingTaskMetadataOverlays({});
+    setPendingEstimateOverlays({});
+    setPendingPlannedStartOverlays({});
+    setPendingExecutionTimesOverlays({});
     setDraftTask(null);
     setEditingEstimate(null);
     setEditingPlannedStart(null);
@@ -1410,7 +1481,10 @@ export function App() {
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Task追加に失敗しました");
       const ambiguous = isAmbiguousOutcome(caught);
-      if (ambiguous || (caught instanceof ApiClientError && caught.code === "revision_conflict")) pauseDayMutationQueue();
+      const revisionConflict = caught instanceof ApiClientError && caught.code === "revision_conflict";
+      if (ambiguous) pauseDayMutationQueue(operation.operation_id);
+      else if (revisionConflict) pauseDayMutationQueue();
+      else cancelQueuedDayMutationDependents(operation.operation_id);
       if (ambiguous) {
         setTaskOperation((current) => current?.operation_id === operation.operation_id ? current : null);
         setPendingAddTasks((current) => current.filter((item) => item.operation.operation_id === operation.operation_id));
@@ -2016,7 +2090,10 @@ export function App() {
     };
     setTaskOperation(operation);
     setDraftTask(null);
-    setPendingAddTasks((current) => [...current, { operation, title }]);
+    setPendingAddTasks((current) => [...current, { operation, title, projectId: operation.project_id, sectionId: operation.section_id, estimateSeconds: null }]);
+    if (projects.length === 0) {
+      void Promise.resolve(api.loadProjects()).then((projection) => setProjects(projection.projects)).catch(() => { /* Keep Projectなし selectable; server validates dependent edits. */ });
+    }
     const dispatch = async () => {
       const latest = dayRef.current;
       const rebased = latest?.taskchute_day.id === operation.taskchute_day_id
@@ -2029,7 +2106,77 @@ export function App() {
     else await dispatch();
   }
 
+  function updatePendingAdd(entryId: string, update: Partial<Pick<PendingAddTask, "projectId" | "sectionId" | "estimateSeconds">>): void {
+    setPendingAddTasks((current) => current.map((item) => item.operation.entry_id === entryId ? { ...item, ...update } : item));
+  }
+
+  function queuePendingAddProject(item: PendingAddTask, projectId: string | null): void {
+    if (item.projectId === projectId) return;
+    updatePendingAdd(item.operation.entry_id, { projectId });
+    const operation: UpdateTaskMetadataRequest = {
+      operation_id: uuidv7(), entry_id: item.operation.entry_id, task_id: item.operation.task_id,
+      expected_title: item.title, expected_project_id: item.operation.project_id,
+      title: item.title, project_id: projectId,
+    };
+    setPendingTaskMetadataOverlays((current) => ({ ...current, [operation.entry_id]: operation }));
+    setTaskMetadataOperation(operation);
+    enqueueDayMutation({
+      scope: entryMutationScope(operation.entry_id, operation.task_id), label: "Task情報保存", operationId: operation.operation_id,
+      dependsOnOperationId: item.operation.operation_id, coalesceKey: `pending-add-project:${operation.entry_id}`,
+      dispatch: async () => {
+        const latest = entryForId(dayRef.current, operation.entry_id);
+        const rebased = latest ? { ...operation, expected_title: latest.task.title, expected_project_id: latest.task.project?.id ?? null } : operation;
+        setTaskMetadataOperation(rebased);
+        await executeTaskMetadata(rebased);
+      },
+    });
+  }
+
+  function queuePendingAddSection(item: PendingAddTask, sectionId: string | null): void {
+    if (item.sectionId === sectionId || !day?.taskchute_day.id) return;
+    updatePendingAdd(item.operation.entry_id, { sectionId });
+    const operation: MoveEntryRequest = {
+      operation_id: uuidv7(), entry_id: item.operation.entry_id, taskchute_day_id: item.operation.taskchute_day_id,
+      section_id: sectionId, expected_placement_revision: day.placement_revision,
+    };
+    setSectionMoveOperation(operation);
+    setPendingSectionOverlays((current) => ({ ...current, [operation.entry_id]: {
+      operation, plannedStartMinute: sectionId === null ? null : day.sections.find((section) => section.id === sectionId)?.logical_start_minute ?? null,
+    } }));
+    enqueueDayMutation({
+      scope: placementMutationScope(operation.taskchute_day_id), label: "Section移動", operationId: operation.operation_id,
+      dependsOnOperationId: item.operation.operation_id, coalesceKey: `pending-add-section:${operation.entry_id}`,
+      dispatch: async () => {
+        const latest = dayRef.current;
+        const rebased = latest?.taskchute_day.id === operation.taskchute_day_id
+          ? { ...operation, expected_placement_revision: latest.placement_revision } : operation;
+        setSectionMoveOperation(rebased);
+        await executeSectionMove(rebased);
+      },
+    });
+  }
+
+  function queuePendingAddEstimate(item: PendingAddTask, estimateSeconds: number | null): void {
+    if (item.estimateSeconds === estimateSeconds) return;
+    updatePendingAdd(item.operation.entry_id, { estimateSeconds });
+    const operation: SetEntryEstimateRequest = { operation_id: uuidv7(), entry_id: item.operation.entry_id, estimate_seconds: estimateSeconds };
+    setEstimateOperation(operation);
+    setPendingEstimateOverlays((current) => ({ ...current, [operation.entry_id]: operation }));
+    enqueueDayMutation({
+      scope: entryMutationScope(operation.entry_id), label: "見積保存", operationId: operation.operation_id,
+      dependsOnOperationId: item.operation.operation_id, coalesceKey: `pending-add-estimate:${operation.entry_id}`,
+      dispatch: async () => {
+        setEstimateOperation(operation);
+        await executeEstimate(operation);
+      },
+    });
+  }
+
   async function logout() {
+    if (hasDayMutationBarrier()) {
+      deferGlobalTransition({ kind: "logout" });
+      return;
+    }
     if (mutationLocked) return;
     setPending("logout");
     setError(null);
@@ -2302,7 +2449,10 @@ export function App() {
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "開始に失敗しました");
       const ambiguous = isAmbiguousOutcome(caught);
-      if (ambiguous || (caught instanceof ApiClientError && caught.code === "revision_conflict")) pauseDayMutationQueue();
+      const revisionConflict = caught instanceof ApiClientError && caught.code === "revision_conflict";
+      if (ambiguous) pauseDayMutationQueue(operation.operation_id);
+      else if (revisionConflict) pauseDayMutationQueue();
+      else cancelQueuedDayMutationDependents(operation.operation_id);
       if (ambiguous) setStartOperation((current) => current?.operation_id === operation.operation_id ? current : null);
       if (!ambiguous) setStartOperation((current) => current?.operation_id === operation.operation_id ? null : current);
       try {
@@ -2326,13 +2476,31 @@ export function App() {
     if (!entry || entry.lifecycle_state !== "planned") return;
     if (hasRetainedMutationScope(executionMutationScope(entryId))) return;
     if (hasActiveMutationScope(["execution-lane"])) {
-      if (completeOperation && queuedStartEntryRef.current === null) {
-        setQueuedStartEntry(entryId);
+      if (completeOperation && !hasQueuedDependentStart(completeOperation.operation_id)) {
+        const operation: StartEntryRequest = { operation_id: uuidv7(), entry_id: entryId, execution_id: uuidv7(),
+          ...(entry.section_id === null ? { expected_placement_revision: day.placement_revision } : {}) };
+        setStartOperation(operation);
+        const dispatch = async () => {
+          const projection = await reconcile();
+          const latestEntry = entryForId(projection, operation.entry_id);
+          if (!projection || !latestEntry || latestEntry.lifecycle_state !== "planned" || projection.active_execution !== null) {
+            setStartOperation((current) => current?.operation_id === operation.operation_id ? null : current);
+            setError("完了後に開始するTaskの前提条件が変わったため、対象Taskを確認して再度開始してください。");
+            return;
+          }
+          const rebased: StartEntryRequest = latestEntry.section_id === null
+            ? { ...operation, expected_placement_revision: projection.placement_revision }
+            : operation;
+          setStartOperation(rebased);
+          await executeStart(rebased);
+        };
+        enqueueDayMutation({ scope: executionMutationScope(operation.entry_id), label: "Start", operationId: operation.operation_id,
+          dependsOnOperationId: completeOperation.operation_id, dispatch }, { front: true });
         setError(null);
       }
       return;
     }
-    if (hasRetainedMutationScope(["execution-lane"]) || queuedStartEntryRef.current !== null) return;
+    if (hasRetainedMutationScope(["execution-lane"]) || hasQueuedExecutionMutation(entryId)) return;
     const operation: StartEntryRequest = { operation_id: uuidv7(), entry_id: entryId, execution_id: uuidv7(),
       ...(entry.section_id === null ? { expected_placement_revision: day.placement_revision } : {}) };
     setStartOperation(operation);
@@ -2348,44 +2516,21 @@ export function App() {
     enqueueDayMutation({ scope: executionMutationScope(operation.entry_id), label: "Start", operationId: operation.operation_id, dispatch });
   }
 
-  async function drainQueuedStarts() {
-    if (drainingQueuedStartsRef.current || queuedStartEntryRef.current === null) return;
-    drainingQueuedStartsRef.current = true;
-    try {
-      const entryId = queuedStartEntryRef.current;
-      setQueuedStartEntry(null);
-      const projection = await reconcile();
-      const entry = entryForId(projection, entryId);
-      if (!projection || !entry || entry.lifecycle_state !== "planned" || projection.active_execution !== null) {
-        setError("完了後に開始するTaskの前提条件が変わったため、キューを破棄しました。対象Taskを確認して再度開始してください。");
-        return;
-      }
-      const operation: StartEntryRequest = { operation_id: uuidv7(), entry_id: entry.id, execution_id: uuidv7(),
-        ...(entry.section_id === null ? { expected_placement_revision: projection.placement_revision } : {}) };
-      setStartOperation(operation);
-      await executeStart(operation);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "キューに入ったStartの再開に失敗しました");
-    } finally {
-      drainingQueuedStartsRef.current = false;
-    }
-  }
-
   async function executeComplete(operation: CompleteEntryRequest) {
     const mutationToken = beginMutationScope(executionMutationScope(operation.entry_id), "Complete");
     if (!mutationToken) return;
-    let completed = false;
     setPending("complete");
     setError(null);
     try {
       await api.completeEntry(operation);
       await reconcile();
       setCompleteOperation((current) => current?.operation_id === operation.operation_id ? null : current);
-      completed = true;
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "完了に失敗しました");
       const ambiguous = isAmbiguousOutcome(caught);
-      if (ambiguous || (caught instanceof ApiClientError && caught.code === "revision_conflict")) pauseDayMutationQueue();
+      const hadDependentStart = dayMutationQueueRef.current.some((item) => item.dependsOnOperationId === operation.operation_id);
+      if (ambiguous) pauseDayMutationQueue(operation.operation_id);
+      else if (caught instanceof ApiClientError && caught.code === "revision_conflict") pauseDayMutationQueue();
       if (ambiguous) setCompleteOperation((current) => current?.operation_id === operation.operation_id ? current : null);
       if (!ambiguous) setCompleteOperation((current) => current?.operation_id === operation.operation_id ? null : current);
       try {
@@ -2398,16 +2543,13 @@ export function App() {
           resumeDayMutationQueue();
         }
       } catch { /* Preserve the logical operation. */ }
-      if (queuedStartEntryRef.current !== null) {
-        setQueuedStartEntry(null);
-        setError(ambiguous
-          ? "Completeの結果が未確定のため、待機中のStartを破棄しました。Completeを再試行・確認後、対象Taskを明示的に開始してください。"
-          : "Completeに失敗したため、待機中のStartを破棄しました。対象Taskを明示的に開始してください。");
+      if (!ambiguous) {
+        cancelQueuedDayMutationDependents(operation.operation_id);
+        if (hadDependentStart) setError("Completeに失敗したため、待機中のStartは送信せず破棄しました。");
       }
     } finally {
       endMutationScope(mutationToken);
       setPending(null);
-      if (completed) void drainQueuedStarts();
     }
   }
 
@@ -2418,7 +2560,8 @@ export function App() {
     if (!executionId || (day?.active_execution?.entry_id !== entryId && !pendingStart)) return;
     const operation = { operation_id: uuidv7(), entry_id: entryId, execution_id: executionId };
     setCompleteOperation(operation);
-    enqueueDayMutation({ scope: executionMutationScope(entryId), label: "Complete", operationId: operation.operation_id, dispatch: () => executeComplete(operation) });
+    enqueueDayMutation({ scope: executionMutationScope(entryId), label: "Complete", operationId: operation.operation_id,
+      ...(pendingStart ? { dependsOnOperationId: pendingStart.operation_id } : {}), dispatch: () => executeComplete(operation) });
   }
 
   function entryForId(projection: CurrentTaskChuteDayProjection | null, entryId: string): EntryProjection | null {
@@ -2760,6 +2903,10 @@ export function App() {
   }
 
   async function openSettings(destination: SettingsDestination) {
+    if (hasDayMutationBarrier()) {
+      deferGlobalTransition({ kind: "settings", destination });
+      return;
+    }
     if (mutationLocked) return;
     setCalendarOpen(false);
     setView("settings");
@@ -3310,18 +3457,16 @@ export function App() {
     forecastNowInstant ?? currentDay.projection_generated_at,
   );
   const parsedSectionSettingsDraft = parseSectionSettingsDraft(sectionSettingsDraft);
-  const totalQueuedMutations = pendingMutationCount + queuedMutationCount + dayMutationQueueCount;
+  const totalQueuedMutations = pendingMutationCount + dayMutationQueueCount;
   const transientStatus = totalQueuedMutations > 1
     ? `保存中…（${totalQueuedMutations}件）`
-    : queuedMutationCount > 0
-      ? "完了後のStartを待機中…"
-      : dayMutationQueueCount > 0
+    : dayMutationQueueCount > 0
         ? `保存待ち…（${dayMutationQueueCount}件）`
         : pendingMutationCount > 0
         ? transientStatusText(pending) ?? "保存中…"
         : transientStatusText(pending);
   const groups = [
-    ...(currentDay.unsectioned_entries.length > 0 || draftTask?.sectionId === null || pendingAddTasks.some((item) => item.operation.section_id === null) ? [{
+    ...(currentDay.unsectioned_entries.length > 0 || draftTask?.sectionId === null || pendingAddTasks.some((item) => item.sectionId === null) ? [{
       id: null, title: "Sectionなし", logical_start_minute: null, logical_end_minute: null,
       estimate_total_seconds: currentDay.unsectioned_entries.reduce((sum, entry) => sum + (entry.estimate_seconds ?? 0), 0),
       entries: currentDay.unsectioned_entries,
@@ -4474,7 +4619,7 @@ export function App() {
             ? reorderOverlay.operation.entry_ids.map((entryId) => section.entries.find((entry) => entry.id === entryId)).filter((entry): entry is EntryProjection => entry !== undefined)
             : section.entries;
           const visibleEntries = showCompleted ? orderedEntries : orderedEntries.filter((entry) => entry.lifecycle_state !== "completed");
-          const pendingAdds = pendingAddTasks.filter((item) => item.operation.section_id === section.id);
+          const pendingAdds = pendingAddTasks.filter((item) => item.sectionId === section.id);
           const completedCount = section.entries.filter((entry) => entry.lifecycle_state === "completed").length;
           const sectionTarget: FocusTarget = { kind: "section", id: groupKey(section.id) };
           const sectionCollapsed = collapsedSectionsByDay[currentDay.taskchute_day.logical_date]?.[groupKey(section.id)] === true;
@@ -4541,7 +4686,34 @@ export function App() {
                   <span className="bulk-slot" aria-hidden="true" />
                   <span className="execution-cell" aria-hidden="true"><span className="execution-control is-draft">○</span></span>
                   <div className="task-main"><div className="task-identity"><strong>{item.title}</strong><span className="pending-row-label">保存中…</span></div></div>
-                  {resolvedColumnDefinitions.map((definition) => <span className="pending-cell" data-day-column-cell={definition.key} key={definition.key}>—</span>)}
+                  {resolvedColumnDefinitions.map((definition) => {
+                    if (definition.key === "project") return <span className="project-name pending-cell" data-day-column-cell={definition.key} key={definition.key}>
+                      <select className="project-selector" aria-label={`${item.title}のProject`} value={item.projectId ?? ""}
+                        onClick={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()}
+                        onChange={(event) => queuePendingAddProject(item, event.target.value || null)}>
+                        <option value="">Projectなし</option>
+                        {projects.map((candidate) => <option value={candidate.id} key={candidate.id}>{candidate.title}</option>)}
+                      </select>
+                    </span>;
+                    if (definition.key === "section") return <span className="pending-cell" data-day-column-cell={definition.key} key={definition.key}>
+                      <select className="section-cell" aria-label={`${item.title}のSection`} value={item.sectionId ?? ""}
+                        onClick={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()}
+                        onChange={(event) => queuePendingAddSection(item, event.target.value || null)}>
+                        <option value="">Sectionなし</option>
+                        {currentDay.sections.map((candidate) => <option value={candidate.id} key={candidate.id}>{candidate.title}</option>)}
+                      </select>
+                    </span>;
+                    if (definition.key === "estimate") return <span className="estimate-cell pending-cell" data-day-column-cell={definition.key} key={definition.key}>
+                      <input aria-label={`${item.title}の見積（分）`} inputMode="numeric" value={item.estimateSeconds === null ? "" : String(item.estimateSeconds / 60)}
+                        placeholder="--分" onClick={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()}
+                        onChange={(event) => {
+                          const value = event.target.value.trim();
+                          if (value === "") queuePendingAddEstimate(item, null);
+                          else if (/^\d+$/.test(value)) queuePendingAddEstimate(item, Number(value) * 60);
+                        }} />
+                    </span>;
+                    return <span className="pending-cell" data-day-column-cell={definition.key} key={definition.key}>—</span>;
+                  })}
                   <span className="row-actions-slot" aria-hidden="true" />
                 </div>
               ))}
@@ -4593,7 +4765,7 @@ export function App() {
                       {entry.lifecycle_state === "completed" ? (
                         <span className="execution-control completed" aria-label={executionLabel(entry)} title={executionLabel(entry)}>✓</span>
                       ) : (
-                        <button type="button" tabIndex={-1} className={`execution-control ${isRunning ? "running" : "planned"}`} aria-label={pendingStartForEntry ? `${entry.task.title}を完了` : executionLabel(entry)} title={pendingStartForEntry ? `${entry.task.title}を完了` : executionLabel(entry)} disabled={!day.is_current || mutationLocked || (isMutationScopeBusy(["execution-lane"]) && completeOperation === null && !pendingStartForEntry) || (entry.lifecycle_state === "planned" && !pendingStartForEntry ? (day.active_execution !== null && completeOperation === null) || queuedStartEntryId !== null : !canComplete)} onClick={() => {
+                        <button type="button" tabIndex={-1} className={`execution-control ${isRunning ? "running" : "planned"}`} aria-label={pendingStartForEntry ? `${entry.task.title}を完了` : executionLabel(entry)} title={pendingStartForEntry ? `${entry.task.title}を完了` : executionLabel(entry)} disabled={!day.is_current || mutationLocked || (isMutationScopeBusy(["execution-lane"]) && completeOperation === null && !pendingStartForEntry) || (entry.lifecycle_state === "planned" && !pendingStartForEntry ? (day.active_execution !== null && completeOperation === null) || hasQueuedExecutionMutation(entry.id) || (completeOperation !== null && hasQueuedDependentStart(completeOperation.operation_id)) : !canComplete)} onClick={() => {
                           if (entry.lifecycle_state === "planned" && !pendingStartForEntry) void start(entry.id);
                           else if (canComplete) void complete(entry.id);
                         }}>{isRunning ? "■" : "▶"}</button>
@@ -4728,7 +4900,6 @@ export function App() {
              setProjectOperation(null); setTaskOperation(null); setDuplicateOperation(null); setBulkDeleteOperation(null); setBulkDateMoveOperation(null); setBulkSectionOperation(null); setBulkSectionOccurrenceOperation(null); setBulkSectionScopedOperation(null); setBulkEstimateOperation(null); setBulkSectionPickerOpen(false); setBulkConfirmation(null); setBulkSectionConfirmation(null); setBulkEstimateConfirmation(null); setBulkDateMoveConfirmation(null); setSelectedEntryIds([]); setReorderOperation(null); setStartOperation(null); setCompleteOperation(null); setExecutionTimesOperation(null); setTaskMetadataOperation(null);
             dayMutationQueueRef.current = []; dayMutationPausedRef.current = false; updateDayMutationQueueCount();
             setRetainedTaskMetadataOperations([]); setPendingTaskMetadataOverlays({}); setPendingEstimateOverlays({}); setPendingPlannedStartOverlays({}); setPendingSectionOverlays({}); setPendingReorderOverlays({}); setPendingAddTasks([]); setPendingExecutionTimesOverlays({}); setRetainedEstimateOperations([]); setRetainedRoutineEstimateOperations([]);
-            setQueuedStartEntry(null);
             setConfigurationOperation(null); setSectionSettingsOperation(null); setSectionMoveOperation(null); setEstimateOperation(null); setPlannedStartOperation(null);
             setRoutineConversionOperation(null); setRoutineEndOperation(null); setRoutineEstimateOperation(null);
             setRoutineSectionPlanOperation(null); setRoutineCandidate(null); setError(null);
