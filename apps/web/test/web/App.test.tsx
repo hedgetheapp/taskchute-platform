@@ -1695,6 +1695,26 @@ describe("Dogfood Day shell", () => {
     await waitFor(() => expect(screen.queryByText("開始・照合中…")).toBeNull());
   });
 
+  it("guards browser unload while a Day mutation is in flight and releases after drain", async () => {
+    const request = deferred<unknown>();
+    mocks.loadDay.mockResolvedValue(twoPlannedDay);
+    mocks.startEntry.mockReturnValue(request.promise);
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskを開始" }));
+    await waitFor(() => expect(screen.getByText("開始・照合中…")).toBeTruthy());
+
+    const pendingUnload = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(pendingUnload);
+    expect(pendingUnload.defaultPrevented).toBe(true);
+
+    request.resolve({});
+    await waitFor(() => expect(screen.queryByText("開始・照合中…")).toBeNull());
+    const drainedUnload = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(drainedUnload);
+    expect(drainedUnload.defaultPrevented).toBe(false);
+  });
+
   it("discards ambiguous Start without mutation and then creates fresh Start identities", async () => {
     mocks.loadDay.mockResolvedValue(twoPlannedDay);
     mocks.startEntry.mockRejectedValueOnce(new ApiClientError("ambiguous", 503, true, "infrastructure_ambiguous")).mockResolvedValueOnce({});

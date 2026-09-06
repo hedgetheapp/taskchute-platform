@@ -738,6 +738,21 @@ export function App() {
     dayRef.current = day;
   }, [day]);
 
+  useEffect(() => {
+    const guardBeforeUnload = (event: BeforeUnloadEvent) => {
+      const hasUnsavedMutation = activeMutationsRef.current.length > 0
+        || dayMutationInFlightRef.current
+        || dayMutationQueueRef.current.length > 0
+        || retainedOperation !== null
+        || queuedStartEntryRef.current !== null;
+      if (!hasUnsavedMutation) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", guardBeforeUnload);
+    return () => window.removeEventListener("beforeunload", guardBeforeUnload);
+  }, [retainedOperation, pendingMutationCount, queuedMutationCount, dayMutationQueueCount, queuedStartEntryId]);
+
   function scopesConflict(left: MutationScope, right: MutationScope): boolean {
     return left.some((key) => right.includes(key));
   }
