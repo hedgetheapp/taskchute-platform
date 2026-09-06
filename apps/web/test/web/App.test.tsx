@@ -1453,7 +1453,7 @@ describe("Dogfood Day shell", () => {
     expect(document.activeElement?.getAttribute("data-focus-key")).toBe(`section:${eveningId}`);
   });
 
-  it("blocks a second cross-Section drag while MoveEntry is pending", async () => {
+  it("accepts a second cross-Section drag and dispatches it after MoveEntry", async () => {
     const request = deferred<unknown>();
     mocks.loadDay.mockResolvedValue(populatedDay);
     mocks.moveEntry.mockReturnValue(request.promise);
@@ -1466,7 +1466,7 @@ describe("Dogfood Day shell", () => {
     fireEvent.drop(targetSummary, { dataTransfer });
     fireEvent.dragEnd(dragSurface(source), { dataTransfer });
     await waitFor(() => expect(mocks.moveEntry).toHaveBeenCalledTimes(1));
-    expect(source.getAttribute("draggable")).toBe("false");
+    expect(source.getAttribute("draggable")).toBe("true");
     fireEvent.dragStart(dragSurface(source), { dataTransfer: dragDataTransfer() });
     expect(mocks.moveEntry).toHaveBeenCalledTimes(1);
     request.resolve({});
@@ -1491,7 +1491,7 @@ describe("Dogfood Day shell", () => {
     expect(screen.queryByTitle("ドラッグして並び替え")).toBeNull();
   });
 
-  it("blocks a new drag reorder while another mutation is pending", async () => {
+  it("accepts a new drag reorder while another mutation is pending", async () => {
     const request = deferred<unknown>();
     mocks.loadDay.mockResolvedValue(twoPlannedDay);
     mocks.reorderEntries.mockReturnValue(request.promise);
@@ -1501,7 +1501,7 @@ describe("Dogfood Day shell", () => {
     dragEntry(handles[0]!, target, 75);
     await waitFor(() => expect(mocks.reorderEntries).toHaveBeenCalledTimes(1));
     const handle = screen.getAllByTitle("ドラッグして並び替え")[1]!;
-    expect(handle.getAttribute("draggable")).toBe("false");
+    expect(handle.getAttribute("draggable")).toBe("true");
     const source = screen.getByText("Canonical task").closest<HTMLElement>("[data-entry-id]")!;
     dragEntry(handle, source, 25);
     expect(mocks.reorderEntries).toHaveBeenCalledTimes(1);
@@ -1633,7 +1633,10 @@ describe("Dogfood Day shell", () => {
     fireEvent.change(input, { target: { value: "Conflict then retry" } });
     fireEvent.keyDown(input, { key: "Enter", code: "Enter" });
     await waitFor(() => expect(mocks.loadDay).toHaveBeenCalledTimes(2));
-    fireEvent.keyDown(screen.getByRole("textbox", { name: "MorningのTask名" }), { key: "Enter", code: "Enter" });
+    fireEvent.click(screen.getByRole("button", { name: "MorningにTaskを追加" }));
+    const retryInput = screen.getByRole("textbox", { name: "MorningのTask名" });
+    fireEvent.change(retryInput, { target: { value: "Conflict retry" } });
+    fireEvent.keyDown(retryInput, { key: "Enter", code: "Enter" });
     await waitFor(() => expect(mocks.addTask).toHaveBeenCalledTimes(2));
     const first = mocks.addTask.mock.calls[0][0];
     const second = mocks.addTask.mock.calls[1][0];
@@ -1656,7 +1659,7 @@ describe("Dogfood Day shell", () => {
     expect(mocks.startEntry.mock.calls[1][0]).toEqual(mocks.startEntry.mock.calls[0][0]);
   });
 
-  it("keeps a non-empty draft and allows its independent submit while an ambiguous Start is retained", async () => {
+  it("accepts an independent draft while an ambiguous Start pauses the serial dispatcher", async () => {
     mocks.loadDay.mockResolvedValue(twoPlannedDay);
     mocks.startEntry.mockRejectedValueOnce(new ApiClientError("ambiguous", 503, true, "infrastructure_ambiguous"));
     render(<App />);
@@ -1667,10 +1670,11 @@ describe("Dogfood Day shell", () => {
     await screen.findByRole("button", { name: "保留中のStartを再試行" });
     expect(screen.getByDisplayValue("Keep this draft")).toBeTruthy();
     fireEvent.keyDown(input, { key: "Enter", code: "Enter" });
-    await waitFor(() => expect(mocks.addTask).toHaveBeenCalledTimes(1));
+    expect(mocks.addTask).not.toHaveBeenCalled();
+    expect(screen.getByText("Keep this draft")).toBeTruthy();
   });
 
-  it("keeps a non-empty draft and allows its independent Enter submit while another mutation is pending", async () => {
+  it("accepts Add Task while another Day mutation is pending and dispatches it serially", async () => {
     const request = deferred<unknown>();
     mocks.loadDay.mockResolvedValue(twoPlannedDay);
     mocks.startEntry.mockReturnValue(request.promise);
@@ -1684,9 +1688,10 @@ describe("Dogfood Day shell", () => {
     expect(status.textContent).toBe("開始・照合中…");
     expect(status.classList.contains("transient-status")).toBe(true);
     fireEvent.keyDown(input, { key: "Enter", code: "Enter" });
-    await waitFor(() => expect(mocks.addTask).toHaveBeenCalledTimes(1));
+    expect(mocks.addTask).not.toHaveBeenCalled();
     expect(screen.queryByDisplayValue("Keep pending draft")).toBeNull();
     request.resolve({});
+    await waitFor(() => expect(mocks.addTask).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(screen.queryByText("開始・照合中…")).toBeNull());
   });
 
@@ -2097,11 +2102,10 @@ describe("Dogfood Day shell", () => {
     expect(mocks.setEntryEstimate.mock.calls[1][0]).toEqual(original);
   });
 
-  it("retains two ambiguous disjoint Estimate intents without overwriting either identity", async () => {
+  it("pauses and cancels unsent Estimate intents after an ambiguous outcome", async () => {
     const firstRequest = deferred<unknown>();
-    const secondRequest = deferred<unknown>();
     mocks.loadDay.mockResolvedValue(twoPlannedDay);
-    mocks.setEntryEstimate.mockReturnValueOnce(firstRequest.promise).mockReturnValueOnce(secondRequest.promise).mockResolvedValue({});
+    mocks.setEntryEstimate.mockReturnValueOnce(firstRequest.promise).mockResolvedValue({});
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Canonical taskの見積" }));
@@ -2112,19 +2116,14 @@ describe("Dogfood Day shell", () => {
     const secondInput = screen.getByRole("textbox", { name: "Second taskの見積（分）" });
     fireEvent.change(secondInput, { target: { value: "20" } });
     fireEvent.keyDown(secondInput, { key: "Enter", code: "Enter" });
-    await waitFor(() => expect(mocks.setEntryEstimate).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(mocks.setEntryEstimate).toHaveBeenCalledTimes(1));
 
     const ambiguous = new ApiClientError("response lost", 503, true, "infrastructure_ambiguous");
     firstRequest.reject(ambiguous);
-    secondRequest.reject(ambiguous);
-    await waitFor(() => expect(screen.getAllByRole("button", { name: "保留中の見積保存を再試行" })).toHaveLength(2));
-    expect(mocks.setEntryEstimate.mock.calls[0][0].operation_id).not.toBe(mocks.setEntryEstimate.mock.calls[1][0].operation_id);
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "保留中の見積保存を再試行" })).toHaveLength(1));
 
     fireEvent.click(screen.getAllByRole("button", { name: "保留中の見積保存を再試行" })[0]);
-    await waitFor(() => expect(mocks.setEntryEstimate).toHaveBeenCalledTimes(3));
-    await waitFor(() => expect(screen.getAllByRole("button", { name: "保留中の見積保存を再試行" })).toHaveLength(1));
-    fireEvent.click(screen.getByRole("button", { name: "保留中の見積保存を再試行" }));
-    await waitFor(() => expect(mocks.setEntryEstimate).toHaveBeenCalledTimes(4));
+    await waitFor(() => expect(mocks.setEntryEstimate).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.queryByRole("button", { name: "保留中の見積保存を再試行" })).toBeNull());
   });
 
@@ -3832,23 +3831,24 @@ describe("Dogfood Day shell", () => {
     const secondTitle = screen.getByRole("textbox", { name: "Second taskのTask名" });
     fireEvent.change(secondTitle, { target: { value: "Saved B" } });
     fireEvent.keyDown(secondTitle, { key: "Enter" });
-    await waitFor(() => expect(mocks.updateTaskMetadata).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(mocks.updateTaskMetadata).toHaveBeenCalledTimes(1));
     expect(screen.getByRole("status").textContent).toContain("保存中");
 
     fireEvent.click(screen.getByRole("button", { name: "EveningにTaskを追加" }));
     const addInput = screen.getByRole("textbox", { name: "EveningのTask名" });
     fireEvent.change(addInput, { target: { value: "Independent add" } });
     fireEvent.keyDown(addInput, { key: "Enter" });
-    await waitFor(() => expect(mocks.addTask).toHaveBeenCalledTimes(1));
+    expect(mocks.addTask).not.toHaveBeenCalled();
     firstRequest.resolve({});
+    await waitFor(() => expect(mocks.updateTaskMetadata).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(mocks.addTask).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(screen.queryByText("保存中…")).toBeNull());
   });
 
-  it("accounts for two ambiguous same-command Task metadata intents without overwriting either", async () => {
+  it("cancels an unsent Task metadata intent when an earlier sent operation is ambiguous", async () => {
     const firstRequest = deferred<unknown>();
-    const secondRequest = deferred<unknown>();
     mocks.loadDay.mockResolvedValue(twoPlannedDay);
-    mocks.updateTaskMetadata.mockReturnValueOnce(firstRequest.promise).mockReturnValueOnce(secondRequest.promise);
+    mocks.updateTaskMetadata.mockReturnValueOnce(firstRequest.promise).mockResolvedValue({});
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Canonical taskを編集" }));
     const firstTitle = screen.getByRole("textbox", { name: "Canonical taskのTask名" });
@@ -3858,12 +3858,10 @@ describe("Dogfood Day shell", () => {
     const secondTitle = screen.getByRole("textbox", { name: "Second taskのTask名" });
     fireEvent.change(secondTitle, { target: { value: "Ambiguous B" } });
     fireEvent.keyDown(secondTitle, { key: "Enter" });
-    await waitFor(() => expect(mocks.updateTaskMetadata).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(mocks.updateTaskMetadata).toHaveBeenCalledTimes(1));
     const ambiguous = new ApiClientError("response lost", 503, true, "infrastructure_ambiguous");
     firstRequest.reject(ambiguous);
-    secondRequest.reject(ambiguous);
-    await waitFor(() => expect(screen.getAllByRole("button", { name: "保留中のTask情報保存を再試行" })).toHaveLength(2));
-    expect(mocks.updateTaskMetadata.mock.calls[0][0].operation_id).not.toBe(mocks.updateTaskMetadata.mock.calls[1][0].operation_id);
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "保留中のTask情報保存を再試行" })).toHaveLength(1));
   });
 
   it("queues Start B behind a pending Complete A and dispatches it only after fresh reconciliation", async () => {

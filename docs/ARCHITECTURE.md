@@ -386,3 +386,22 @@ identity、lifecycle、Routine、ordering、offline/retry、Ack ambiguity、idem
 - Vault-as-platform-authority
 - Obsidian DOM UI code
 - `data.json`-centric runtime design
+
+## D-066 client mutation scheduler
+
+The ordinary current-Day Web mutations use a client-only scheduler layered over the existing Server-canonical command contract. The scheduler is intentionally ephemeral: it owns no persistence, service worker, offline queue, or cross-tab coordination.
+
+```text
+user intent
+  -> optimistic overlay / provisional row
+  -> one global serial dispatcher
+  -> existing operation command with frozen identity + precondition
+  -> canonical Day reconciliation
+  -> overlay convergence / retry barrier
+```
+
+There is at most one ordinary Day command in flight. Unsent intents may be replaced by a newer intent for the same coalesce key; once dispatched, the operation identity and semantic payload are immutable for retry safety. The queue rebases only the latest expected placement revision immediately before dispatch and never rewrites a sent operation.
+
+Conflict scopes are represented separately from the global barriers used for authentication, navigation, initial Section configuration, and settings. This permits unrelated Task metadata / estimate / placement intents to be accepted while another command is in flight while still preventing unsafe dependent execution transitions. A revision conflict or ambiguous response pauses the serial queue, reconciles against the Server projection, cancels unsent dependents, and retains the exact sent operation until deterministic success or explicit retry/discard.
+
+The scheduler is a Web presentation/orchestration concern. No Worker route, D1 table, migration, operation command type, dependency, binding, or security posture is introduced by D-066.

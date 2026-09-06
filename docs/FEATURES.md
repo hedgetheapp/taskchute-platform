@@ -97,3 +97,5 @@ Status values: Planned / In design / Implemented / Verified / Withdrawn (histori
 | Continuous location tracking | Planned | Separate future opt-in capability。initial Location scope外 |
 | Obsidian integration | Planned | optional client |
 | Legacy Vault importer | Planned | exact migration contractは未決 |
+
+| Non-blocking ordinary Day mutation UX | Implemented locally | D-066 Approved。current-Day ordinary Task add、Task title / Project、Section / planned start、estimate、reorder、Start / Completeをmemory-only optimistic overlayとsingle serial client dispatcherで処理する。unsent intentのcoalesce、sent operationのexact retry identity、placement revision rebasing、scoped conflict barrier、provisional Add、dependent execution queue、navigation guardを実装。Bulk、Routine scope、Project Board、日付移動、duplicate、destructive delete、manual execution correction、offline / persisted queueは対象外。local implementation / full automated evidenceは`docs/CURRENT.md`のD-066 blockを正本とする |

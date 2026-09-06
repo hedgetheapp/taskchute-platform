@@ -1660,6 +1660,22 @@ D1 feasibility gateは`spike/d1-feasibility@eda694e22fd742827da5b90967c6b0305b88
 
 このPASSはD1で必要なatomicity / concurrency / idempotency strategyのfeasibility verificationであり、Product runtimeのremote / deployed verificationを代替しない。
 
+## D-066 ordinary Day mutation UX
+
+| ID | Area | Requirement | Evidence |
+|---|---|---|---|
+| D066-WEB-01 | Scheduler | accepted ordinary Day intents are dispatched with at most one in-flight command | PASS (Web automated) |
+| D066-WEB-02 | Add | draft clears immediately, provisional UUIDv7 row is visible, dependent edits wait, and Add failure cancels dependents | PASS (Web automated) |
+| D066-WEB-03 | Metadata | title / Project overlays are immediate; same-field unsent intents coalesce; sent operation identity is preserved | PASS (Web automated) |
+| D066-WEB-04 | Placement | Section + planned start overlay atomically, reorder is optimistic, expected placement revision is rebased immediately before dispatch | PASS (Web automated) |
+| D066-WEB-05 | Lifecycle | pending Start + Complete preserves execution identity and does not fabricate actual timestamps or implicit interruption | PASS (Worker/D1 + Web automated) |
+| D066-WEB-06 | Failure | revision conflict rolls back / reconciles and pauses related unsent queue; ambiguous outcome retains exact retry operation | PASS (Web automated) |
+| D066-WEB-07 | UX boundary | unrelated ordinary edits are accepted without broad `mutationLocked`; transient feedback does not add layout flow | PASS (Web automated) |
+| D066-WEB-08 | Navigation | navigation is deferred while queue drains and reload/close guard does not persist a client queue | PASS (Web automated) |
+| D066-WEB-09 | Regression | existing Worker/D1 command, lifecycle, operation, migration, and auth suites remain green | PASS (full local suite) |
+
+The D-066 browser / persistent nonprod evidence, exact pushed main, Worker version, API safety probe, and read-only D1 integrity are recorded in the dated D-066 block of `docs/CURRENT.md`. No migration is required for this Web-only change.
+
 ## Android / Migration
 
 | ID | Area | Requirement | Contract | Evidence |

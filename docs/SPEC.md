@@ -362,3 +362,15 @@ First sliceのNon-goals:
 - Pause / Resume / Interrupt / Cancel / Reopen
 - realtime push
 - binary attachment storage
+
+## D-066 Non-blocking ordinary Day mutation UX
+
+D-066はcurrent Dayのordinary Task mutationに限るWeb UX contractである。Server stateをcanonicalとし、clientはmemory-onlyのoptimistic / pending overlayを表示する。永続queue、offline/PWA、realtime、multitab同期、API / Domain / schema変更は含めない。
+
+- Task add、Task title / Project、Section、planned start、estimate、planned reorder、current-Day Start / Completeを対象とする。Bulk、Routine scope変更、Project Board、日付移動、duplicate、destructive delete、manual execution correctionは対象外。
+- Clientはsingle global serial dispatcher（同時in-flight最大1）で、受理済みintentをqueueする。未送信intentは同一field / targetの最新値へcoalesceできるが、送信済みoperationの`operation_id`、payload、expected revisionは凍結する。
+- Addはclient UUIDv7のprovisional Task / Entryを即時表示し、dependent mutationを後続queueへ積む。Add failure時はprovisional rowとdependent intentを取り消す。
+- Section / planned startはpairとしてoptimistic表示し、reorderはvisible orderを先に更新する。各command後にcanonical Dayを再取得してoverlayを収束させる。
+- Start / Completeは既存Domain commandを再利用し、clientでactual timestampやlifecycle stateを捏造しない。pending Start後のCompleteは同じexecution identityでqueueし、Start failure時はCompleteを送らない。
+- mutation scopeはtarget / dependent target単位で衝突判定し、ordinary Day全体を`mutationLocked`でfreezeしない。auth、Day navigation、initial Section、settings等のglobal barrierは維持する。
+- sent operationのrevision conflict / ambiguous outcomeではoverlayと未送信queueを止め、canonical reconcile後に成功を確定できなければexact operationを保持してretryする。navigation / reloadではpending stateを誤って破棄しない。

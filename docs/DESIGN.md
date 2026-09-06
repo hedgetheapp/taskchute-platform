@@ -433,6 +433,16 @@ current runtimeでは、Day Navigation v0.1のTop Navigation date navigation / c
 
 full target column modelはcurrent implementationより広い。Mode、Note、Search / Filter、fullerなcontext interaction、D-053を超えるBulk capability等はfuture workとして残る。browser-local preferenceはServer / API / D1 / cross-device同期を行わず、responsive / mobileのexact policyは引き続きOpenであり、UI-2Aの狭幅fallbackをProduct Decisionへ昇格しない。
 
+## D-066 Non-blocking Day mutation feedback
+
+Current Dayのordinary mutationは、操作を受理した直後に対象rowのoverlayまたはprovisional rowを表示し、Day Tableの高さや通常のlayout flowを変えないtransient statusで進行を示す。成功toastを必須にせず、保存中・保存待ち・error / conflict / retryを同じ非blocking status領域へ表示する。
+
+- 一つのglobal serial dispatcherが保存順序を決めるが、同一Day全体はfreezeしない。別Taskのtitle / Project / estimate / SectionやAddはqueueへ受理できる。
+- 同一targetの未送信metadata / estimate intentは最新値へ畳み込む。Sectionとplanned startは一つのplacement contextとして表示し、reorderはSection単位のoptimistic orderを表示する。
+- 送信済みcommandはexact `operation_id`とrequestを変更せず、network ambiguityでは再送またはcanonical reconcileまでstatusを保持する。revision conflictでは関連する未送信queueを止め、false-successを残さない。
+- Addはprovisional client UUIDv7 rowを即時表示し、draftをclearして次のAddを受理する。Add failureはprovisional rowとそのdependent queued intentを取り消す。
+- pending中のDay navigationはdrain後へ延期する。reload / closeはunsaved workを警告できるが、queueをlocalStorage / IndexedDBへ永続化しない。
+
 ## Unreconciled historical scope
 
 historical design branchにあるFloating Runner、context menu、Hit-a-Hint、Bulk actions、responsive / mobile等は、この文書へまだcanonicalizeしていない。必要なscopeごとにcurrent Product / Domain Decisionと再照合してから追加する。

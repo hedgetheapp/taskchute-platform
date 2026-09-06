@@ -270,6 +270,10 @@ input:focus-visible, select:focus-visible { border-color: #2383e2; outline: 2px 
 .task-row.state-completed { color: #8b8b87; }
 .task-row.state-completed:hover { --day-row-background: #fafaf8; }
 .task-row.state-completed .task-main strong { text-decoration: line-through; text-decoration-color: #c7c7c4; }
+.task-row-pending { --day-row-background: #fbfdff; color: #787774; }
+.task-row-pending .task-main { opacity: .82; }
+.pending-row-label { color: #2383e2; font-size: 10px; white-space: nowrap; }
+.pending-cell { color: #b5b5b2; font-size: 11px; }
 .task-row.is-selected { --day-row-background: #edf5fc; }
 .task-row.is-selected:hover { --day-row-background: #e5f1fc; }
 .task-row[draggable="true"] { cursor: grab; }
