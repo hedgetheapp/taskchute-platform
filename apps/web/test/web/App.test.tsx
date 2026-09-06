@@ -364,7 +364,7 @@ describe("Dogfood Day shell", () => {
     const heading = dayBoard.querySelector<HTMLElement>(".table-heading")!;
     const headingCells = Array.from(heading.children) as HTMLElement[];
     expect(headingCells.filter((cell) => !cell.classList.contains("bulk-slot") && !cell.classList.contains("row-actions-heading")).map((cell) => cell.textContent)).toEqual([
-      "実行", "Task", "Project", "Section", "Routine", "見積", "開始予定", "開始見込", "開始", "終了", "実績",
+      "実行", "Task", "Project", "Mode", "Section", "Routine", "見積", "開始予定", "開始見込", "開始", "終了", "実績",
     ]);
     expect(headingCells[0]?.classList.contains("bulk-slot")).toBe(true);
     expect(heading.querySelectorAll(":scope > .bulk-slot")).toHaveLength(1);
@@ -665,7 +665,7 @@ describe("Dogfood Day shell", () => {
     const input = screen.getByRole("textbox", { name: "EveningのTask名" });
     expect(document.activeElement).toBe(input);
     const draftRow = input.closest(".draft-row")!;
-    expect(draftRow.children).toHaveLength(13);
+    expect(draftRow.children).toHaveLength(14);
     expect(draftRow.firstElementChild?.classList.contains("bulk-slot")).toBe(true);
     expect(draftRow.querySelectorAll(":scope > .bulk-slot")).toHaveLength(1);
     expect(screen.queryByRole("textbox", { name: "MorningのTask名" })).toBeNull();
@@ -3052,17 +3052,17 @@ describe("Dogfood Day shell", () => {
 
     const headingKeys = () => Array.from(dayBoard.querySelectorAll<HTMLElement>("[data-day-column-header]"))
       .map((header) => header.dataset.dayColumnHeader);
-    await waitFor(() => expect(headingKeys().slice(0, 3)).toEqual(["section", "project", "routine"]));
+    await waitFor(() => expect(headingKeys().slice(0, 3)).toEqual(["mode", "section", "project"]));
     expect(mocks.reorderEntries).not.toHaveBeenCalled();
     expect(mocks.setEntryEstimate).not.toHaveBeenCalled();
     expect(JSON.parse(window.localStorage.getItem(DAY_COLUMNS_STORAGE_KEY)!).order.slice(0, 3))
-      .toEqual(["section", "project", "routine"]);
+      .toEqual(["mode", "section", "project"]);
 
     rendered.unmount();
     render(<App />);
     const reloadedBoard = await screen.findByRole("region", { name: "DayBoard" });
     expect(Array.from(reloadedBoard.querySelectorAll<HTMLElement>("[data-day-column-header]"))
-      .map((header) => header.dataset.dayColumnHeader).slice(0, 3)).toEqual(["section", "project", "routine"]);
+      .map((header) => header.dataset.dayColumnHeader).slice(0, 3)).toEqual(["mode", "section", "project"]);
   });
 
   it("resizes and auto-fits a data column through the shared table track and local preference", async () => {
@@ -3081,7 +3081,7 @@ describe("Dogfood Day shell", () => {
     fireEvent.mouseMove(window, { clientX: 210 });
     fireEvent.mouseUp(window);
     await waitFor(() => expect(dayBoard.style.getPropertyValue("--day-table-grid-template-columns")).toContain("32px 52px 420px 260px"));
-    expect(dayBoard.style.getPropertyValue("--day-table-min-width")).toBe("1610px");
+    expect(dayBoard.style.getPropertyValue("--day-table-min-width")).toBe("1690px");
     expect(JSON.parse(window.localStorage.getItem(DAY_COLUMNS_STORAGE_KEY)!).widths.project).toBe(260);
 
     const projectCell = dayBoard.querySelector<HTMLElement>('[data-day-column-cell="project"]')!;
@@ -3144,10 +3144,10 @@ describe("Dogfood Day shell", () => {
     const displayMenu = screen.getByRole("menu", { name: "表示" });
     expect(within(displayMenu).getByRole("checkbox", { name: "実行済みを表示" })).toBeTruthy();
     const menu = openColumnSubmenu(displayMenu);
-    expect(menu.querySelectorAll('input[type="checkbox"]')).toHaveLength(9);
+    expect(menu.querySelectorAll('input[type="checkbox"]')).toHaveLength(10);
     expect(within(menu).getByText("表示する列")).toBeTruthy();
     expect(within(menu).getByRole("checkbox", { name: "Project" })).toBeTruthy();
-    expect(screen.queryByText("Mode")).toBeNull();
+    expect(within(menu).getByRole("checkbox", { name: "Mode" })).toBeTruthy();
     expect(screen.queryByText("Note")).toBeNull();
 
     const projectCheckbox = within(menu).getByRole("checkbox", { name: "Project" }) as HTMLInputElement;
@@ -3196,7 +3196,7 @@ describe("Dogfood Day shell", () => {
     fireEvent(routineHeader, drop);
     fireEvent.dragEnd(projectHeader, { dataTransfer });
     await waitFor(() => expect(Array.from(dayBoard.querySelectorAll<HTMLElement>("[data-day-column-header]"))
-      .map((header) => header.dataset.dayColumnHeader).slice(0, 3)).toEqual(["section", "project", "routine"]));
+      .map((header) => header.dataset.dayColumnHeader).slice(0, 3)).toEqual(["mode", "section", "project"]));
 
     const displayMenu = await openDisplayMenu();
     const menu = openColumnSubmenu(displayMenu);
@@ -3207,7 +3207,7 @@ describe("Dogfood Day shell", () => {
     fireEvent.click(projectCheckbox);
     await waitFor(() => expect(dayBoard.style.getPropertyValue("--day-table-grid-template-columns")).toContain("220px"));
     expect(Array.from(dayBoard.querySelectorAll<HTMLElement>("[data-day-column-header]"))
-      .map((header) => header.dataset.dayColumnHeader).slice(0, 3)).toEqual(["section", "project", "routine"]);
+      .map((header) => header.dataset.dayColumnHeader).slice(0, 3)).toEqual(["mode", "section", "project"]);
 
     fireEvent.click(within(menu).getByRole("checkbox", { name: "Routine" }));
     fireEvent.click(within(menu).getByRole("checkbox", { name: "Routine" }));
@@ -3218,7 +3218,7 @@ describe("Dogfood Day shell", () => {
     render(<App />);
     const reloadedBoard = await screen.findByRole("region", { name: "DayBoard" });
     expect(Array.from(reloadedBoard.querySelectorAll<HTMLElement>("[data-day-column-header]"))
-      .map((header) => header.dataset.dayColumnHeader).slice(0, 3)).toEqual(["section", "project", "routine"]);
+      .map((header) => header.dataset.dayColumnHeader).slice(0, 3)).toEqual(["mode", "section", "project"]);
     expect(reloadedBoard.style.getPropertyValue("--day-table-grid-template-columns")).toContain("220px");
   });
 
@@ -3238,7 +3238,7 @@ describe("Dogfood Day shell", () => {
     expect(dayBoard.style.getPropertyValue("--day-table-grid-template-columns")).toContain("150px");
     expect(dayBoard.style.getPropertyValue("--day-table-grid-template-columns")).not.toContain("220px");
 
-    for (const label of ["Project", "Section", "Routine", "見積", "開始予定", "開始見込", "開始", "終了", "実績"]) {
+    for (const label of ["Project", "Mode", "Section", "Routine", "見積", "開始予定", "開始見込", "開始", "終了", "実績"]) {
       const checkbox = within(menu).getByRole("checkbox", { name: label }) as HTMLInputElement;
       if (checkbox.checked) fireEvent.click(checkbox);
     }
@@ -3869,6 +3869,7 @@ describe("Dogfood Day shell", () => {
     const firstRow = rows[0]!;
     const secondRow = rows[1]!;
     const firstProject = screen.getByRole("combobox", { name: "Canonical taskのProject" });
+    const firstMode = screen.getByRole("combobox", { name: "Canonical taskのMode" });
     const firstSection = screen.getByRole("combobox", { name: "Canonical taskのSection" });
     firstRow.focus();
     fireEvent.keyDown(firstRow, { key: "Tab" });
@@ -3876,9 +3877,11 @@ describe("Dogfood Day shell", () => {
     fireEvent.change(firstProject, { target: { value: "existing-project" } });
     firstProject.focus();
     fireEvent.keyDown(firstProject, { key: "Tab" });
+    expect(document.activeElement).toBe(firstMode);
+    fireEvent.keyDown(firstMode, { key: "Tab" });
     expect(document.activeElement).toBe(firstSection);
     fireEvent.keyDown(firstSection, { key: "Tab", shiftKey: true });
-    expect(document.activeElement).toBe(firstProject);
+    expect(document.activeElement).toBe(firstMode);
     const rowStops = Array.from(firstRow.querySelectorAll<HTMLElement>("button, input, select")).filter((element) => element.tabIndex >= 0);
     expect(rowStops.every((element) => !element.closest(".bulk-slot, .execution-cell"))).toBe(true);
     const lastStop = rowStops.at(-1)!;

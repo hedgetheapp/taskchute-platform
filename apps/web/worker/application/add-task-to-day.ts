@@ -18,6 +18,7 @@ export function isAddTaskToDayRequest(value: unknown): value is AddTaskToDayRequ
     typeof body.entry_id === "string" &&
     isUuidV7(body.entry_id) &&
     (body.project_id === null || (typeof body.project_id === "string" && isUuidV7(body.project_id))) &&
+    (body.mode_id === undefined || body.mode_id === null || (typeof body.mode_id === "string" && isUuidV7(body.mode_id))) &&
     typeof body.title === "string" &&
     body.title.trim().length > 0 &&
     body.title.length <= 300 &&
@@ -67,7 +68,7 @@ async function addTaskToEstablishedDay(
 ): Promise<AddTaskToDayResult> {
   const context = { appUserId, request, requestFingerprint };
 
-  const [dayResult, sectionResult, projectResult, taskCollisionResult, entryCollisionResult, positionResult] = await db.batch([
+  const [dayResult, sectionResult, projectResult, modeResult, taskCollisionResult, entryCollisionResult, positionResult] = await db.batch([
     db
       .prepare("SELECT placement_revision FROM taskchute_days WHERE app_user_id = ? AND id = ?")
       .bind(appUserId, request.taskchute_day_id),
@@ -82,6 +83,9 @@ async function addTaskToEstablishedDay(
           AND NOT EXISTS (SELECT 1 FROM project_archives a WHERE a.app_user_id = p.app_user_id AND a.project_id = p.id)`)
         .bind(appUserId, request.project_id)
       : db.prepare("SELECT 1 AS id"),
+    request.mode_id
+      ? db.prepare("SELECT id FROM mode_definitions WHERE app_user_id = ? AND id = ?").bind(appUserId, request.mode_id)
+      : db.prepare("SELECT 1 AS id"),
     db.prepare("SELECT id FROM tasks WHERE id = ?").bind(request.task_id),
     db.prepare("SELECT id FROM entries WHERE id = ?").bind(request.entry_id),
     db
@@ -94,6 +98,7 @@ async function addTaskToEstablishedDay(
   if (!day) return reject(db, context, "resource_not_found", "TaskChuteDay is unavailable");
   if (sectionResult.results.length === 0) return reject(db, context, "resource_not_found", "Section is unavailable");
   if (projectResult.results.length === 0) return reject(db, context, "resource_not_found", "Project is unavailable");
+  if (modeResult.results.length === 0) return reject(db, context, "resource_not_found", "Mode is unavailable");
   if (taskCollisionResult.results.length > 0 || entryCollisionResult.results.length > 0) {
     return reject(db, context, "resource_conflict", "task_id or entry_id is already in use");
   }
@@ -168,6 +173,10 @@ async function addTaskToEstablishedDay(
           request.operation_id,
           appUserId,
         ),
+      db.prepare(`INSERT INTO entry_modes (app_user_id, entry_id, mode_id)
+        SELECT ?, ?, ? WHERE ? IS NOT NULL
+          AND EXISTS (SELECT 1 FROM placement_command_guards WHERE operation_id = ? AND app_user_id = ?)`)
+        .bind(appUserId, request.entry_id, request.mode_id ?? null, request.mode_id ?? null, request.operation_id, appUserId),
       db
         .prepare(
           `INSERT INTO entries
@@ -285,11 +294,14 @@ async function addTaskToFutureDay(
   if (plan.configuration_version_id === null) {
     return reject(db, context, "resource_conflict", "Section configuration is required before future planning");
   }
-  const [projectResult, taskCollisionResult, entryCollisionResult] = await db.batch([
+  const [projectResult, modeResult, taskCollisionResult, entryCollisionResult] = await db.batch([
     request.project_id
       ? db.prepare(`SELECT p.id FROM projects p WHERE p.app_user_id = ? AND p.id = ?
           AND NOT EXISTS (SELECT 1 FROM project_archives a WHERE a.app_user_id = p.app_user_id AND a.project_id = p.id)`)
         .bind(appUserId, request.project_id)
+      : db.prepare("SELECT 1 AS id"),
+    request.mode_id
+      ? db.prepare("SELECT id FROM mode_definitions WHERE app_user_id = ? AND id = ?").bind(appUserId, request.mode_id)
       : db.prepare("SELECT 1 AS id"),
     db.prepare("SELECT id FROM tasks WHERE id = ?").bind(request.task_id),
     db.prepare("SELECT id FROM entries WHERE id = ?").bind(request.entry_id),
@@ -297,6 +309,7 @@ async function addTaskToFutureDay(
   const sectionAvailable = request.section_id === null || plan.contexts.some((context) => context.section_id === request.section_id);
   if (!sectionAvailable) return reject(db, context, "resource_not_found", "Section is unavailable");
   if (projectResult.results.length === 0) return reject(db, context, "resource_not_found", "Project is unavailable");
+  if (modeResult.results.length === 0) return reject(db, context, "resource_not_found", "Mode is unavailable");
   if (taskCollisionResult.results.length > 0 || entryCollisionResult.results.length > 0) {
     return reject(db, context, "resource_conflict", "task_id or entry_id is already in use");
   }
@@ -353,15 +366,17 @@ async function addTaskToFutureDay(
           AND (SELECT COUNT(*) FROM taskchute_day_section_contexts c
             WHERE c.app_user_id = d.app_user_id AND c.taskchute_day_id = d.id) = ?
           AND ${configurationStillCurrent}
-          AND (? IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.app_user_id = ? AND p.id = ?
-            AND NOT EXISTS (SELECT 1 FROM project_archives a WHERE a.app_user_id = p.app_user_id AND a.project_id = p.id)))
-          AND (? IS NULL OR EXISTS (SELECT 1 FROM taskchute_day_section_contexts
-            WHERE app_user_id = ? AND taskchute_day_id = d.id AND section_id = ?))
+              AND (? IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.app_user_id = ? AND p.id = ?
+                AND NOT EXISTS (SELECT 1 FROM project_archives a WHERE a.app_user_id = p.app_user_id AND a.project_id = p.id)))
+              AND (? IS NULL OR EXISTS (SELECT 1 FROM mode_definitions m WHERE m.app_user_id = ? AND m.id = ?))
+              AND (? IS NULL OR EXISTS (SELECT 1 FROM taskchute_day_section_contexts
+                WHERE app_user_id = ? AND taskchute_day_id = d.id AND section_id = ?))
           AND NOT EXISTS (SELECT 1 FROM tasks WHERE id = ?)
           AND NOT EXISTS (SELECT 1 FROM entries WHERE id = ?)`).bind(
           request.operation_id, appUserId, appUserId, request.taskchute_day_id, request.logical_date, plan.contexts.length,
           configurationVersionId, appUserId, appUserId, configurationVersionId, plan.settings.day_boundary_minutes,
           request.project_id, appUserId, request.project_id,
+          request.mode_id, appUserId, request.mode_id,
           request.section_id, appUserId, request.section_id,
           request.task_id, request.entry_id,
         ),
@@ -380,6 +395,10 @@ async function addTaskToFutureDay(
         .bind(request.entry_id, appUserId, request.task_id, request.taskchute_day_id, request.section_id,
           plannedStartMinute, now,
           appUserId, request.operation_id),
+      db.prepare(`INSERT INTO entry_modes (app_user_id, entry_id, mode_id)
+        SELECT ?, ?, ? WHERE ? IS NOT NULL
+          AND EXISTS (SELECT 1 FROM placement_command_guards WHERE operation_id = ? AND app_user_id = ?)`)
+        .bind(appUserId, request.entry_id, request.mode_id ?? null, request.mode_id ?? null, request.operation_id, appUserId),
       db.prepare(`INSERT INTO transaction_assertions (app_user_id, id, ok) VALUES (?, ?, CASE WHEN
           EXISTS (SELECT 1 FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?)
           AND EXISTS (SELECT 1 FROM taskchute_days WHERE app_user_id = ? AND id = ? AND placement_revision = 1)

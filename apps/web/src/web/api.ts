@@ -71,6 +71,15 @@ import type {
   ReorderRoutinesResult,
   DeleteRoutineRequest,
   DeleteRoutineResult,
+  ModeBoardProjection,
+  CreateModeRequest,
+  CreateModeResult,
+  UpdateModeRequest,
+  UpdateModeResult,
+  ReorderModesRequest,
+  ReorderModesResult,
+  SetEntryModeRequest,
+  SetEntryModeResult,
 } from "../shared/contracts";
 
 export class ApiClientError extends Error {
@@ -120,6 +129,21 @@ export const api = {
   },
   loadProjectBoard(): Promise<ProjectBoardProjection> {
     return requestJson("/api/v1/project-board");
+  },
+  loadModeBoard(): Promise<ModeBoardProjection> {
+    return requestJson("/api/v1/mode-board");
+  },
+  createMode(body: CreateModeRequest): Promise<CreateModeResult> {
+    return requestJson("/api/v1/modes", jsonPost("", body));
+  },
+  updateMode(body: UpdateModeRequest): Promise<UpdateModeResult> {
+    return requestJson(`/api/v1/modes/${body.mode_id}`, jsonPost("", body));
+  },
+  reorderModes(body: ReorderModesRequest): Promise<ReorderModesResult> {
+    return requestJson("/api/v1/modes/reorder", jsonPost("", body));
+  },
+  setEntryMode(body: SetEntryModeRequest): Promise<SetEntryModeResult> {
+    return requestJson(`/api/v1/entries/${body.entry_id}/mode`, jsonPost("", body));
   },
   createProject(body: CreateProjectRequest): Promise<CreateProjectResult> {
     return requestJson("/api/v1/projects", jsonPost("", body));

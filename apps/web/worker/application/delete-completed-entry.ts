@@ -119,7 +119,7 @@ export async function deleteCompletedEntry(
   const assertionId = `delete-completed-entry:${request.operation_id}`;
 
   try {
-    const [guard, , , , , , assertion, operationPersist] = await db.batch([
+    const [guard, , , , , , , , assertion, operationPersist] = await db.batch([
       db.prepare(`INSERT INTO placement_command_guards (operation_id, app_user_id, taskchute_day_id, expected_revision)
         SELECT ?, app_user_id, id, ? FROM taskchute_days
         WHERE app_user_id = ? AND id = ? AND logical_date = ? AND placement_revision = ?
@@ -137,6 +137,14 @@ export async function deleteCompletedEntry(
           AND EXISTS (SELECT 1 FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
         .bind(appUserId, request.entry_id, appUserId, request.operation_id),
       db.prepare(`DELETE FROM lifecycle_command_guards
+        WHERE app_user_id = ? AND entry_id = ?
+          AND EXISTS (SELECT 1 FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(appUserId, request.entry_id, appUserId, request.operation_id),
+      db.prepare(`DELETE FROM entry_mode_snapshots
+        WHERE app_user_id = ? AND entry_id = ?
+          AND EXISTS (SELECT 1 FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(appUserId, request.entry_id, appUserId, request.operation_id),
+      db.prepare(`DELETE FROM entry_modes
         WHERE app_user_id = ? AND entry_id = ?
           AND EXISTS (SELECT 1 FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
         .bind(appUserId, request.entry_id, appUserId, request.operation_id),

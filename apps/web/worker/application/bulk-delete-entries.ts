@@ -144,7 +144,7 @@ export async function bulkDeleteEntries(
   const assertionId = `bulk-delete:${request.operation_id}`;
 
   try {
-    const [guard, , , , assertion, operationPersist] = await db.batch([
+    const [guard, , , , , assertion, operationPersist] = await db.batch([
       db.prepare(`INSERT INTO placement_command_guards (operation_id, app_user_id, taskchute_day_id, expected_revision)
         SELECT ?, app_user_id, id, ? FROM taskchute_days
         WHERE app_user_id = ? AND id = ? AND placement_revision = ? AND logical_date >= ?
@@ -164,6 +164,10 @@ export async function bulkDeleteEntries(
           )`)
         .bind(request.operation_id, request.expected_placement_revision, appUserId, request.taskchute_day_id,
           request.expected_placement_revision, currentLogicalDate, snapshotJson, appUserId, request.taskchute_day_id),
+      db.prepare(`DELETE FROM entry_modes
+        WHERE app_user_id = ? AND entry_id IN (SELECT value FROM json_each(?))
+          AND EXISTS (SELECT 1 FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(appUserId, ordinaryIdsJson, appUserId, request.operation_id),
       db.prepare(`DELETE FROM entries
         WHERE app_user_id = ? AND taskchute_day_id = ? AND lifecycle_state = 'planned'
           AND routine_occurrence_id IS NULL AND id IN (SELECT value FROM json_each(?))

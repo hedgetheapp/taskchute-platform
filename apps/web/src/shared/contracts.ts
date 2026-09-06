@@ -37,6 +37,66 @@ export interface ProjectBoardProjection {
   projects: ProjectBoardItemProjection[];
 }
 
+export interface ModeBoardItemProjection {
+  id: string;
+  title: string;
+  board_position: number;
+  settings_revision: number;
+}
+
+export interface ModeBoardProjection {
+  board_revision: number;
+  modes: ModeBoardItemProjection[];
+}
+
+export interface CreateModeRequest {
+  operation_id: string;
+  mode_id: string;
+  title: string;
+}
+
+export interface CreateModeResult {
+  mode: { id: string; title: string };
+  board_revision: number;
+}
+
+export interface UpdateModeRequest {
+  operation_id: string;
+  mode_id: string;
+  expected_settings_revision: number;
+  expected_title: string;
+  title: string;
+}
+
+export interface UpdateModeResult {
+  mode: { id: string; title: string };
+  settings_revision: number;
+}
+
+export interface ReorderModesRequest {
+  operation_id: string;
+  mode_ids: string[];
+  expected_board_revision: number;
+}
+
+export interface ReorderModesResult {
+  mode_ids: string[];
+  board_revision: number;
+}
+
+export interface SetEntryModeRequest {
+  operation_id: string;
+  entry_id: string;
+  expected_mode_id: string | null;
+  mode_id: string | null;
+}
+
+export interface SetEntryModeResult {
+  entry_id: string;
+  mode_id: string | null;
+  mode_title: string | null;
+}
+
 export interface UpdateProjectRequest {
   operation_id: string;
   project_id: string;
@@ -114,6 +174,8 @@ export interface EntryProjection {
   lifecycle_state: "planned" | "running" | "completed";
   estimate_seconds: number | null;
   planned_start_minute: number | null;
+  /** D-068 Mode projection; optional for compatibility with older fixtures/clients. */
+  mode?: { id: string; title: string; source: "live" | "snapshot" } | null;
   routine: RoutineEntryProjection | null;
   /** Read-only projection of current-valid Execution facts; absent is tolerated by older clients/fixtures. */
   execution_summary?: ExecutionSummaryProjection;
@@ -207,6 +269,7 @@ export interface AddTaskToDayRequest {
   task_id: string;
   entry_id: string;
   project_id: string | null;
+  mode_id?: string | null;
   title: string;
   taskchute_day_id: string;
   logical_date?: string;

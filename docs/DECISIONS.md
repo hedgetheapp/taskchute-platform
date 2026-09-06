@@ -1452,3 +1452,40 @@ D-067 is a narrow, explicit correction exception to D-016 historical fact preser
 - APP migration `0020_delete_completed_entry.sql` only extends the existing `operations.command_type` compatibility CHECK with `DeleteCompletedEntry`; it preserves existing rows, keys, indexes, FKs, and prior command types. No new Domain table, dependency, binding, auth/security change, or FK weakening is approved.
 - D-066's global serial current-Day dispatcher remains the only Web mutation path. Production migration/deploy/mutation, undo/restore, Task/Project/Routine deletion, implicit interrupt/cancel/reopen, branch/PR/merge/tag/release are outside this Decision.
 - D-067 corrective convergence (2026-09-06): the completed-delete UI must enter D-066's existing global serial dispatcher for both initial dispatch and retained retry. An unsent delete intent is not a result-uncertain operation and is not individually retryable. The dispatcher reconciles the latest canonical current Day before first send and may rebase only the expected placement revision; sent identity and semantic payload remain immutable. Ambiguous outcome pauses the queue and retains the exact sent request, while revision conflict cancels stale unsent work after reconciliation. This is a Web-only corrective; no migration, Worker command semantics, Domain table, binding, or security posture change is approved.
+
+## D-068 — Mode Management / Entry Mode v0.1
+Status: Approved
+
+D-068はD-026のEntry-scoped planning metadataとして、ユーザー定義の再利用可能なModeを管理し、Entryごとに0..1のMode identityを持たせる。Modeの意味を感情・難易度・場所・仕事種別等へProduct側で固定せず、titleをidentityとして扱わない。同じtitleのModeはstable IDの異なる別Modeとして許容し、Product default Modeは作成しない。
+
+### Mode definition and Settings Board
+
+- `ModeDefinition`はowner-scopedなstable UUIDv7 identity、trimmed non-empty title、created_atを持つ。titleはmutableであり、title uniquenessは要求しない。archive、restore、delete、search、color/icon、selector quick createはD-068 v0.1に含めない。
+- SettingsへMode destinationを追加し、create、inline rename、server-canonical reorderを提供する。BoardはownerごとのrevisionとModeごとのposition / settings revisionを持ち、createは末尾append、renameはpositionを変えず、reorderはowned setをatomicに置換する。same-name rowsはstable IDで区別する。
+- `CreateMode`、`UpdateMode`、`ReorderModes`はauthenticated owner、request fingerprint、same-operation replay / misuse、revision CAS、ambiguity / retryを既存D-020 / Project Board conventionで処理する。
+
+### Entry relation and SetEntryMode
+
+- EntryとModeはrelation tableによる0..1 relation（Mode未設定はrelation rowなし）とし、TaskDefinitionへModeを埋め込まない。`entry_modes`はowner / Entry / Modeの整合性をFKで守り、Entryのidentity、order、Section、planned start、estimateを変更しない。
+- `SetEntryMode`はcurrent canonical Dayのordinary planned Entryだけを対象に、owner、Entry lifecycle、Routine-derivedでないこと、target Modeのowner、`expected_mode_id` CASをserver transaction内で検証する。set / replace / clearをatomicに行い、placement revisionは変更しない。running / completed / Routine-derived / past / future / owner mismatch / stale relationはrejectする。
+- Mode relationはsingle date moveで保持し、DuplicateEntryはsourceのlive Mode identityだけをplanned duplicateへcopyする。historical snapshotはcopyしない。planned Entry delete / BulkDeleteEntriesはrelationをEntry削除と同じatomic outcomeで除去し、ModeDefinitionは保持する。Routine Skip / default / override semantics、Bulk Mode変更は対象外とする。
+
+### Historical Mode snapshot and projection
+
+- Mode付きEntryの最初の成功Startでは、current ModeDefinitionのIDとtitleを`entry_mode_snapshots`へExecution lifecycle transitionと同じatomic outcomeで保存する。Start success後にsnapshotが欠けるwindowを作らない。ModeなしStartではsnapshotを作らない。
+- planned Entryはlive ModeDefinition title、running / completed Entryはimmutable snapshot titleを表示する。Mode renameはsnapshotをretroactiveに書き換えず、planned rowsだけが新titleへreconcileする。renameとStartの競合はD1 commit orderに応じて旧titleまたは新titleの一貫したsnapshotを許容するが、Mode IDとtitleのtorn state、snapshot欠落は許容しない。
+- D-067 DeleteCompletedEntryでは、Mode付きEntryのExecution、`entry_mode_snapshots`、`entry_modes`をEntry削除と同一atomic outcomeで除去し、ModeDefinition、Task、Project、unrelated relation / snapshotは保持する。これはD-067のcompleted Entry hard-delete semanticsを拡張せず、Entry-bound FK cleanupを追加するものとする。
+
+### Day Table and D-066 integration
+
+- Day Tableのdefault column orderは`実行 | Task | Project | Mode | Section | Routine | 見積 | 開始予定 | 開始見込 | 開始 | 終了 | 実績`とし、ModeはvisibleでProject直後に追加する。existing valid browser-local column preferenceはrelative order / widths / hidden stateを保ち、Modeだけをfull orderへProject直後・visibleでinsertする。malformed preferenceは既存fallbackを使う。
+- current canonical Dayのordinary planned Entryだけcompact native selectorでModeをset / clearでき、optionsはMode Board orderを使う。running / completed / Routine / past / futureはread-onlyで、未設定は`—`。Mode selectorはvisual row Tabへ参加し、selectorからD&Dを開始しない。新しいsingle-key Mode shortcutは追加しない。
+- `SetEntryMode`はD-066 global serial dispatcherのordinary current-Day metadata laneへ統合する。same Entry scopeでunsent latest-value coalesce、sent operation identity / payload freeze、exact retry、canonical reconcile、revision / CAS / ambiguity barrier、navigation/settings/logout/unload barrierを維持する。Provisional Add後のMode intentはAdd成功後だけdispatchし、Add deterministic failureではcancel、ambiguous Addでは依存を保持する。同時Day mutation HTTPは常に最大1件とする。
+
+### Migration and boundaries
+
+- APP compatibility migration `0021_mode_management.sql`はModeDefinition、Mode Board head / item、Entry relation、historical snapshotを追加し、既存`operations.command_type`へ`CreateMode`、`UpdateMode`、`ReorderModes`、`SetEntryMode`を追加する。既存userごとにBoard headを1行だけ初期化するが、ModeDefinitionやfake Modeはbackfillしない。既存Task / Entry / Execution / Routine / Project / operation rows、PK / FK / index、AUTH schema、bindings、security postureは保持する。FKを弱めず、新dependencyを追加しない。
+- migration regressionはfresh `0001 -> 0021`、upgrade `0020 -> 0021`、operation preservation、four new command types、unknown rejection、existing row counts、one board head per app user、empty Mode tables、indexes / FKs、quick_check、foreign_key_checkを検証する。
+- Routine Mode default / override、Routine occurrence Mode、Bulk Mode、past / future / running / completed editing、Mode deletion/archive、production migration / deploy / mutation、restore、branch / PR / merge / tag / releaseはout of scopeであり、必要になった場合はSTOPする。
+
+Implementation, local / real-local verification, persistent nonprod backup / migration / deploy / authenticated representative verification, and canonical evidence are recorded in `docs/CURRENT.md`, `docs/FEATURES.md`, `docs/DESIGN.md`, and `docs/TEST_MATRIX.md`. Production remains outside this Decision.

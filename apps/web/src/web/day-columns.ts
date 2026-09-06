@@ -2,12 +2,14 @@ import { Temporal } from "@js-temporal/polyfill";
 import type { CSSProperties } from "react";
 import type { ExecutionSummaryProjection } from "../shared/contracts";
 
-export const DAY_COLUMNS_STORAGE_KEY = "taskchute.web.day-columns.v2";
+export const DAY_COLUMNS_STORAGE_KEY = "taskchute.web.day-columns.v3";
+export const DAY_COLUMNS_V2_STORAGE_KEY = "taskchute.web.day-columns.v2";
 export const DAY_COLUMNS_V1_STORAGE_KEY = "taskchute.web.day-columns.v1";
-export const DAY_COLUMNS_STORAGE_VERSION = 2 as const;
+export const DAY_COLUMNS_STORAGE_VERSION = 3 as const;
 
 export type DayColumnKey =
   | "project"
+  | "mode"
   | "section"
   | "routine"
   | "estimate"
@@ -30,6 +32,7 @@ export interface DayColumnDefinition {
 
 export const DAY_COLUMN_DEFINITIONS: readonly DayColumnDefinition[] = [
   { key: "project", label: "Project", defaultWidth: 150, minWidth: 100, maxWidth: 340, cellClassName: "project-name", resizable: true, reorderable: true },
+  { key: "mode", label: "Mode", defaultWidth: 112, minWidth: 90, maxWidth: 220, cellClassName: "mode-cell", resizable: true, reorderable: true },
   { key: "section", label: "Section", defaultWidth: 130, minWidth: 110, maxWidth: 280, cellClassName: "section-cell", resizable: true, reorderable: true },
   { key: "routine", label: "Routine", defaultWidth: 82, minWidth: 72, maxWidth: 180, cellClassName: "routine-cell", resizable: true, reorderable: true },
   { key: "estimate", label: "見積", defaultWidth: 90, minWidth: 72, maxWidth: 180, cellClassName: "estimate-cell", resizable: true, reorderable: true },
@@ -82,7 +85,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export function normalizeDayColumnPreference(value: unknown): DayColumnPreference {
   const fallback = defaultDayColumnPreference();
-  if (!isRecord(value) || (value.version !== 1 && value.version !== DAY_COLUMNS_STORAGE_VERSION)) return fallback;
+  if (!isRecord(value) || (value.version !== 1 && value.version !== 2 && value.version !== DAY_COLUMNS_STORAGE_VERSION)) return fallback;
 
   const knownKeys = new Set<DayColumnKey>(DEFAULT_DAY_COLUMN_ORDER);
   const order: DayColumnKey[] = [];
@@ -94,6 +97,12 @@ export function normalizeDayColumnPreference(value: unknown): DayColumnPreferenc
     }
   }
   for (const key of DEFAULT_DAY_COLUMN_ORDER) if (!order.includes(key)) order.push(key);
+  if (value.version !== DAY_COLUMNS_STORAGE_VERSION) {
+    const withoutMode: DayColumnKey[] = order.filter((key) => key !== "mode") as DayColumnKey[];
+    const projectIndex = withoutMode.indexOf("project");
+    withoutMode.splice(projectIndex >= 0 ? projectIndex + 1 : 0, 0, "mode");
+    order.splice(0, order.length, ...withoutMode);
+  }
 
   const widths = { ...fallback.widths };
   if (isRecord(value.widths)) {
@@ -103,7 +112,7 @@ export function normalizeDayColumnPreference(value: unknown): DayColumnPreferenc
     }
   }
   const hidden: DayColumnKey[] = [];
-  if (value.version === DAY_COLUMNS_STORAGE_VERSION && Array.isArray(value.hidden)) {
+  if ((value.version === 2 || value.version === DAY_COLUMNS_STORAGE_VERSION) && Array.isArray(value.hidden)) {
     for (const key of value.hidden) {
       if (typeof key === "string" && knownKeys.has(key as DayColumnKey) && !hidden.includes(key as DayColumnKey)) {
         hidden.push(key as DayColumnKey);
@@ -126,7 +135,8 @@ export function readPersistedDayColumnPreference(): DayColumnPreference {
         return defaultDayColumnPreference();
       }
     }
-    const legacyRaw = window.localStorage.getItem(DAY_COLUMNS_V1_STORAGE_KEY);
+    const legacyRaw = window.localStorage.getItem(DAY_COLUMNS_V2_STORAGE_KEY)
+      ?? window.localStorage.getItem(DAY_COLUMNS_V1_STORAGE_KEY);
     if (legacyRaw === null) return defaultDayColumnPreference();
     try {
       return normalizeDayColumnPreference(JSON.parse(legacyRaw));

@@ -18,7 +18,7 @@ interface SourceRow {
   task_id: string; title: string; project_id: string | null; section_id: string | null;
   estimate_seconds: number | null; planned_start_minute: number | null; position: number; placement_revision: number;
   lifecycle_state: "planned" | "completed"; routine_occurrence_id: string | null; establishment_boundary_minutes: number;
-  project_archived: number;
+  project_archived: number; mode_id: string | null;
 }
 
 interface UserSettingsRow {
@@ -53,10 +53,12 @@ export async function duplicateEntry(
 
   const source = await db.prepare(`SELECT e.task_id, t.title, t.project_id, e.section_id, e.estimate_seconds,
       e.planned_start_minute, e.position, e.lifecycle_state, e.routine_occurrence_id, d.placement_revision, d.establishment_boundary_minutes,
-      CASE WHEN pa.project_id IS NULL THEN 0 ELSE 1 END AS project_archived
+      CASE WHEN pa.project_id IS NULL THEN 0 ELSE 1 END AS project_archived,
+      em.mode_id
     FROM entries e JOIN tasks t ON t.app_user_id = e.app_user_id AND t.id = e.task_id
     JOIN taskchute_days d ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
     LEFT JOIN project_archives pa ON pa.app_user_id = t.app_user_id AND pa.project_id = t.project_id
+    LEFT JOIN entry_modes em ON em.app_user_id = e.app_user_id AND em.entry_id = e.id
     WHERE e.app_user_id = ? AND e.id = ? AND e.taskchute_day_id = ?
       AND ((e.lifecycle_state = 'planned' AND d.logical_date >= ?)
         OR (e.lifecycle_state = 'completed' AND d.logical_date = ?))`).bind(appUserId, request.source_entry_id, request.taskchute_day_id, currentLogicalDate, currentLogicalDate)
@@ -98,7 +100,7 @@ export async function duplicateEntry(
     placement_revision: request.expected_placement_revision + 1 };
   const assertionId = `duplicate-entry:${request.operation_id}`;
   try {
-    const [guard, , , , , , , assertion, operationPersist] = await db.batch([
+    const [guard, , , , , , , , assertion, operationPersist] = await db.batch([
       db.prepare(`INSERT INTO placement_command_guards (operation_id, app_user_id, taskchute_day_id, expected_revision)
         SELECT ?, ?, d.id, ? FROM taskchute_days d JOIN entries e ON e.app_user_id = d.app_user_id AND e.taskchute_day_id = d.id
           JOIN tasks t ON t.app_user_id = e.app_user_id AND t.id = e.task_id
@@ -108,6 +110,7 @@ export async function duplicateEntry(
           AND EXISTS (SELECT 1 FROM user_settings WHERE app_user_id = ? AND timezone = ? AND day_boundary_minutes = ?)
           AND e.id = ? AND e.lifecycle_state = ? AND e.position = ? AND e.routine_occurrence_id IS ?
           AND t.title = ? AND t.project_id IS ? AND e.section_id IS ? AND e.estimate_seconds IS ? AND e.planned_start_minute IS ?
+          AND (SELECT mode_id FROM entry_modes em2 WHERE em2.app_user_id = e.app_user_id AND em2.entry_id = e.id) IS ?
           AND NOT EXISTS (SELECT 1 FROM project_archives pa WHERE pa.app_user_id = t.app_user_id AND pa.project_id = t.project_id)
           AND ((e.section_id IS NULL AND e.planned_start_minute IS NULL) OR (e.section_id IS NOT NULL
             AND e.planned_start_minute >= d.establishment_boundary_minutes
@@ -120,7 +123,7 @@ export async function duplicateEntry(
         .bind(request.operation_id, appUserId, request.expected_placement_revision, appUserId, request.taskchute_day_id,
           request.expected_placement_revision, currentLogicalDate, currentLogicalDate, appUserId, settings.timezone, settings.day_boundary_minutes,
           request.source_entry_id, source.lifecycle_state, source.position, source.routine_occurrence_id,
-          source.title, source.project_id, source.section_id, source.estimate_seconds, source.planned_start_minute,
+          source.title, source.project_id, source.section_id, source.estimate_seconds, source.planned_start_minute, source.mode_id,
           request.new_task_id, request.new_entry_id),
       db.prepare(`UPDATE entries SET position = position + ? WHERE app_user_id = ? AND taskchute_day_id = ?
         AND section_id IS ? AND position > ? AND EXISTS (
@@ -141,6 +144,10 @@ export async function duplicateEntry(
         WHERE EXISTS (SELECT 1 FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
         .bind(request.new_entry_id, appUserId, request.new_task_id, request.taskchute_day_id, source.section_id,
           source.position + 1, source.estimate_seconds, source.planned_start_minute, now, appUserId, request.operation_id),
+      db.prepare(`INSERT INTO entry_modes (app_user_id, entry_id, mode_id)
+        SELECT ?, ?, ? WHERE ? IS NOT NULL
+          AND EXISTS (SELECT 1 FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(appUserId, request.new_entry_id, source.mode_id, source.mode_id, appUserId, request.operation_id),
       db.prepare(`INSERT INTO transaction_assertions (app_user_id, id, ok) SELECT ?, ?, CASE WHEN
         EXISTS (SELECT 1 FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?)
         AND EXISTS (SELECT 1 FROM taskchute_days WHERE app_user_id = ? AND id = ? AND placement_revision = ?)
@@ -148,6 +155,8 @@ export async function duplicateEntry(
         AND EXISTS (SELECT 1 FROM entries WHERE app_user_id = ? AND id = ? AND task_id = ? AND taskchute_day_id = ?
           AND section_id IS ? AND position = ? AND lifecycle_state = 'planned' AND estimate_seconds IS ?
           AND planned_start_minute IS ? AND routine_occurrence_id IS NULL)
+        AND ((? IS NULL AND NOT EXISTS (SELECT 1 FROM entry_modes WHERE app_user_id = ? AND entry_id = ?))
+          OR (? IS NOT NULL AND EXISTS (SELECT 1 FROM entry_modes WHERE app_user_id = ? AND entry_id = ? AND mode_id = ?)))
         AND EXISTS (SELECT 1 FROM entries WHERE app_user_id = ? AND id = ? AND task_id = ? AND position = ?
           AND section_id IS ? AND estimate_seconds IS ? AND planned_start_minute IS ? AND routine_occurrence_id IS ?)
         AND (SELECT COUNT(*) FROM entries WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id IS ?) = json_array_length(?) + 1
@@ -165,7 +174,9 @@ export async function duplicateEntry(
         .bind(appUserId, assertionId, appUserId, request.operation_id, appUserId, request.taskchute_day_id,
           result.placement_revision, appUserId, request.new_task_id, source.project_id, source.title,
           appUserId, request.new_entry_id, request.new_task_id, request.taskchute_day_id, source.section_id, source.position + 1,
-          source.estimate_seconds, source.planned_start_minute, appUserId, request.source_entry_id, source.task_id, source.position,
+          source.estimate_seconds, source.planned_start_minute,
+          source.mode_id, appUserId, request.new_entry_id, source.mode_id, appUserId, request.new_entry_id, source.mode_id,
+          appUserId, request.source_entry_id, source.task_id, source.position,
           source.section_id, source.estimate_seconds, source.planned_start_minute, source.routine_occurrence_id,
           appUserId, request.taskchute_day_id, source.section_id, sectionSnapshot,
           sectionSnapshot, appUserId, request.taskchute_day_id, source.section_id, source.position,

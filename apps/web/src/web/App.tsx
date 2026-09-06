@@ -25,6 +25,8 @@ import type {
   BulkEstimateScopeInput,
   CompleteEntryRequest,
   CreateProjectRequest,
+  ModeBoardProjection,
+  SetEntryModeRequest,
   CurrentTaskChuteDayProjection,
   EntryProjection,
   EstablishInitialSectionConfigurationRequest,
@@ -68,14 +70,15 @@ import {
 } from "./day-columns";
 import { RoutineBoard } from "./RoutineBoard";
 import { ProjectBoard } from "./ProjectBoard";
+import { ModeBoard } from "./ModeBoard";
 
 export { DAY_COLUMNS_STORAGE_KEY } from "./day-columns";
 
 type AuthState = "loading" | "signed-out" | "signed-in";
 type AppView = "today" | "routines" | "settings";
-type SettingsDestination = "section" | "project";
+type SettingsDestination = "section" | "project" | "mode";
 type FocusTarget = { kind: "section" | "entry"; id: string };
-type DraftTask = { sectionId: string | null; title: string };
+type DraftTask = { sectionId: string | null; title: string; modeId: string | null };
 type DragEdge = "before" | "after";
 type EntryDragState = {
   entryId: string;
@@ -110,6 +113,7 @@ type PendingAddTask = {
   projectId: string | null;
   sectionId: string | null;
   estimateSeconds: number | null;
+  modeId: string | null;
 };
 type PendingSectionOverlay = { operation: MoveEntryRequest; plannedStartMinute: number | null };
 type PendingReorderOverlay = { operation: ReorderEntriesRequest };
@@ -619,6 +623,9 @@ export function App() {
   const [day, setDay] = useState<CurrentTaskChuteDayProjection | null>(null);
   const [project, setProject] = useState<ProjectSummary | null>(null);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [modeBoard, setModeBoard] = useState<ModeBoardProjection | null>(null);
+  const [modeOperation, setModeOperation] = useState<SetEntryModeRequest | null>(null);
+  const [pendingModeOverlays, setPendingModeOverlays] = useState<Record<string, SetEntryModeRequest>>({});
   const [projectOperation, setProjectOperation] = useState<CreateProjectRequest | null>(null);
   const [taskOperation, setTaskOperation] = useState<AddTaskToDayRequest | null>(null);
   const [duplicateOperation, setDuplicateOperation] = useState<DuplicateEntryRequest | null>(null);
@@ -682,7 +689,7 @@ export function App() {
   const [executionEditorError, setExecutionEditorError] = useState<string | null>(null);
   const [routineDraft, setRoutineDraft] = useState<{ entryId: string; endDate: string } | null>(null);
   const [routineCandidate, setRoutineCandidate] = useState<RoutineCandidate | null>(null);
-  const [pending, setPending] = useState<"login" | "project" | "project-settings" | "day-navigation" | "task" | "duplicate" | "bulk-delete" | "delete-completed" | "bulk-date-move" | "bulk-section" | "bulk-section-occurrence" | "bulk-section-scoped" | "bulk-estimate" | "reorder" | "start" | "complete" | "execution-times" | "task-metadata" | "configuration" | "section-settings" | "move" | "estimate" | "planned-start" | "routine-convert" | "routine-end" | "routine-edit" | "logout" | null>(null);
+  const [pending, setPending] = useState<"login" | "project" | "project-settings" | "day-navigation" | "task" | "duplicate" | "bulk-delete" | "delete-completed" | "bulk-date-move" | "bulk-section" | "bulk-section-occurrence" | "bulk-section-scoped" | "bulk-estimate" | "reorder" | "start" | "complete" | "execution-times" | "task-metadata" | "mode" | "configuration" | "section-settings" | "move" | "estimate" | "planned-start" | "routine-convert" | "routine-end" | "routine-edit" | "logout" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draftTask, setDraftTask] = useState<DraftTask | null>(null);
   const [pendingFocusKey, setPendingFocusKey] = useState<string | null>(null);
@@ -756,11 +763,11 @@ export function App() {
   const nonD066RetainedOperation = projectOperation ?? duplicateOperation ?? bulkDeleteOperation ?? deleteCompletedOperation ?? bulkDateMoveOperation ?? bulkSectionOperation
     ?? bulkSectionOccurrenceOperation ?? bulkSectionScopedOperation ?? bulkEstimateOperation ?? executionTimesOperation
     ?? configurationOperation ?? sectionSettingsOperation ?? routineConversionOperation ?? routineEndOperation ?? routineEstimateOperation
-    ?? retainedRoutineEstimateOperations[0] ?? routineSectionPlanOperation;
+    ?? retainedRoutineEstimateOperations[0] ?? routineSectionPlanOperation ?? modeOperation;
   const retryablePanelOperation = nonD066RetainedOperation ?? retryableDayOperation;
   const retainedOperation = projectOperation ?? taskOperation ?? duplicateOperation ?? bulkDeleteOperation ?? deleteCompletedOperation ?? bulkDateMoveOperation ?? bulkSectionOperation ?? bulkSectionOccurrenceOperation ?? bulkSectionScopedOperation ?? bulkEstimateOperation ?? reorderOperation ?? startOperation ?? completeOperation ?? executionTimesOperation ?? taskMetadataOperation ?? retainedTaskMetadataOperations[0] ?? retainedEstimateOperations[0]
     ?? configurationOperation ?? sectionSettingsOperation ?? sectionMoveOperation ?? estimateOperation ?? plannedStartOperation
-    ?? routineConversionOperation ?? routineEndOperation ?? routineEstimateOperation ?? retainedRoutineEstimateOperations[0] ?? routineSectionPlanOperation;
+    ?? routineConversionOperation ?? routineEndOperation ?? routineEstimateOperation ?? retainedRoutineEstimateOperations[0] ?? routineSectionPlanOperation ?? modeOperation;
   const globalPending = pending === "login" || pending === "project" || pending === "project-settings"
     || pending === "day-navigation" || pending === "configuration" || pending === "section-settings" || pending === "logout";
   const globalRetainedOperation = projectOperation !== null || configurationOperation !== null || sectionSettingsOperation !== null;
@@ -811,6 +818,7 @@ export function App() {
     if (completeOperation) scopes.push(executionMutationScope(completeOperation.entry_id));
     if (executionTimesOperation) scopes.push(executionMutationScope(executionTimesOperation.entry_id));
     if (taskMetadataOperation) scopes.push(entryMutationScope(taskMetadataOperation.entry_id, taskMetadataOperation.task_id));
+    if (modeOperation) scopes.push(entryMutationScope(modeOperation.entry_id));
     retainedTaskMetadataOperations.forEach((operation) => scopes.push(entryMutationScope(operation.entry_id, operation.task_id)));
     if (sectionMoveOperation) scopes.push(placementMutationScope(sectionMoveOperation.taskchute_day_id));
     if (estimateOperation) scopes.push(entryMutationScope(estimateOperation.entry_id));
@@ -1123,6 +1131,8 @@ export function App() {
     setView("today");
     setProject(null);
     setProjects([]);
+    setModeBoard(null);
+    setModeOperation(null);
     setProjectOperation(null);
     setTaskOperation(null);
     setDuplicateOperation(null);
@@ -1176,6 +1186,7 @@ export function App() {
     setPendingSectionOverlays({});
     setPendingReorderOverlays({});
     setPendingTaskMetadataOverlays({});
+    setPendingModeOverlays({});
     setPendingEstimateOverlays({});
     setPendingPlannedStartOverlays({});
     setPendingExecutionTimesOverlays({});
@@ -1210,6 +1221,7 @@ export function App() {
       }));
       if (projection.is_current) setCurrentLogicalDate(projection.taskchute_day.logical_date);
       setAuthState("signed-in");
+      if (typeof api.loadModeBoard === "function") void api.loadModeBoard().then(setModeBoard).catch(() => { /* Mode selector remains read-only until settings reload. */ });
       return projection;
     } catch (caught) {
       if (caught instanceof ApiClientError && caught.status === 401) {
@@ -1253,6 +1265,7 @@ export function App() {
       setDay(projection);
       selectedLogicalDateRef.current = projection.taskchute_day.logical_date;
       if (projection.is_current) setCurrentLogicalDate(projection.taskchute_day.logical_date);
+      if (typeof api.loadModeBoard === "function") void api.loadModeBoard().then(setModeBoard).catch(() => { /* Keep the Day projection usable. */ });
     } catch (caught) {
       if (caught instanceof ApiClientError && caught.status === 401) transitionToSignedOut();
       else setError(caught instanceof Error ? caught.message : "日付の読み込みに失敗しました");
@@ -2246,6 +2259,7 @@ export function App() {
       task_id: uuidv7(),
       entry_id: uuidv7(),
       project_id: null,
+      mode_id: draftTask.modeId,
       title,
       taskchute_day_id: targetDayId,
       ...(targetingNonCurrentDay ? { logical_date: day.taskchute_day.logical_date } : {}),
@@ -2254,7 +2268,7 @@ export function App() {
     };
     setTaskOperation(operation);
     setDraftTask(null);
-    setPendingAddTasks((current) => [...current, { operation, title, projectId: operation.project_id, sectionId: operation.section_id, estimateSeconds: null }]);
+    setPendingAddTasks((current) => [...current, { operation, title, projectId: operation.project_id, sectionId: operation.section_id, estimateSeconds: null, modeId: operation.mode_id ?? null }]);
     if (projects.length === 0) {
       void Promise.resolve(api.loadProjects()).then((projection) => setProjects(projection.projects)).catch(() => { /* Keep Projectなし selectable; server validates dependent edits. */ });
     }
@@ -2918,6 +2932,56 @@ export function App() {
     });
   }
 
+  async function executeEntryMode(operation: SetEntryModeRequest) {
+    const mutationToken = beginMutationScope(entryMutationScope(operation.entry_id), "Mode保存");
+    if (!mutationToken) return;
+    setPending("mode"); setError(null);
+    try {
+      await api.setEntryMode(operation);
+      await reconcile();
+      setModeOperation((current) => current?.operation_id === operation.operation_id ? null : current);
+      setPendingModeOverlays((current) => current[operation.entry_id]?.operation_id === operation.operation_id
+        ? Object.fromEntries(Object.entries(current).filter(([entryId]) => entryId !== operation.entry_id)) : current);
+    } catch (caught) {
+      const ambiguous = isAmbiguousOutcome(caught);
+      setError(caught instanceof Error ? caught.message : "Modeの保存に失敗しました");
+      if (!ambiguous) {
+        setModeOperation((current) => current?.operation_id === operation.operation_id ? null : current);
+        setPendingModeOverlays((current) => current[operation.entry_id]?.operation_id === operation.operation_id
+          ? Object.fromEntries(Object.entries(current).filter(([entryId]) => entryId !== operation.entry_id)) : current);
+      }
+      try {
+        const projection = await reconcile();
+        const canonical = entryForId(projection, operation.entry_id);
+        if (ambiguous && canonical && (canonical.mode?.id ?? null) === operation.mode_id) {
+          setModeOperation(null);
+          setPendingModeOverlays((current) => Object.fromEntries(Object.entries(current).filter(([entryId]) => entryId !== operation.entry_id)));
+          setError(null);
+        }
+      } catch { /* Keep the exact operation for retry. */ }
+    } finally {
+      endMutationScope(mutationToken); setPending(null);
+    }
+  }
+
+  function commitEntryMode(entry: EntryProjection, modeId: string | null) {
+    if (!day || !day.is_current || !day.planning_enabled || entry.lifecycle_state !== "planned" || entry.routine !== null
+      || isMutationScopeBusy(entryMutationScope(entry.id))) return;
+    const currentModeId = entry.mode?.id ?? null;
+    if (currentModeId === modeId) return;
+    const operation: SetEntryModeRequest = { operation_id: uuidv7(), entry_id: entry.id,
+      expected_mode_id: currentModeId, mode_id: modeId };
+    setPendingModeOverlays((current) => ({ ...current, [entry.id]: operation }));
+    setModeOperation(operation);
+    enqueueDayMutation({ scope: entryMutationScope(entry.id), label: "Mode保存", operationId: operation.operation_id,
+      coalesceKey: `mode:${entry.id}`, dispatch: async () => {
+        const latest = entryForId(dayRef.current, entry.id);
+        const rebased = latest ? { ...operation, expected_mode_id: latest.mode?.id ?? null } : operation;
+        setModeOperation(rebased);
+        await executeEntryMode(rebased);
+      } });
+  }
+
   async function executeExecutionTimes(operation: SetExecutionTimesRequest) {
     const mutationToken = beginMutationScope(executionMutationScope(operation.entry_id), "実績時刻保存");
     if (!mutationToken) return;
@@ -3068,6 +3132,18 @@ export function App() {
     } finally { setPending(null); }
   }
 
+  async function openModeSettings() {
+    if (mutationLocked) return;
+    setPending("project-settings"); setError(null);
+    try {
+      if (typeof api.loadModeBoard !== "function") return;
+      setModeBoard(await api.loadModeBoard());
+    } catch (caught) {
+      if (caught instanceof ApiClientError && caught.status === 401) transitionToSignedOut();
+      else setError(caught instanceof Error ? caught.message : "Mode設定の読み込みに失敗しました");
+    } finally { setPending(null); }
+  }
+
   async function openSettings(destination: SettingsDestination) {
     if (hasDayMutationBarrier()) {
       deferGlobalTransition({ kind: "settings", destination });
@@ -3081,7 +3157,8 @@ export function App() {
     setSectionSettingsNotice(null);
     if (destination === "section") {
       if (sectionSettingsDraft === null) await openSectionSettings();
-    } else await openProjectSettings();
+    } else if (destination === "project") await openProjectSettings();
+    else await openModeSettings();
   }
 
   function updateSectionBoundary(index: number, edge: "start" | "end", value: string) {
@@ -3678,7 +3755,7 @@ export function App() {
       return;
     }
     setSectionCollapsed(sectionId, false);
-    setDraftTask({ sectionId, title: "" });
+    setDraftTask({ sectionId, title: "", modeId: null });
   }
 
   function handleDraftKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
@@ -4113,6 +4190,20 @@ export function App() {
           </select> : projectTitle ?? <EmptyValue label="Project未設定" />}
         </span>;
       }
+      case "mode": {
+        const overlay = pendingModeOverlays[entry.id];
+        const modeId = overlay ? overlay.mode_id : entry.mode?.id ?? null;
+        const modeTitle = modeId === null ? null : modeBoard?.modes.find((mode) => mode.id === modeId)?.title ?? entry.mode?.title ?? null;
+        const editable = currentDay.is_current && currentDay.planning_enabled && entry.lifecycle_state === "planned" && entry.routine === null;
+        return <span className="mode-cell" data-day-column-cell={key} onClick={(event) => event.stopPropagation()}>
+          {editable ? <select className="mode-selector" aria-label={`${entry.task.title}のMode`} value={modeId ?? ""}
+            disabled={hasRetainedMutationScope(entryMutationScope(entry.id))}
+            onChange={(event) => commitEntryMode(entry, event.target.value || null)}>
+            <option value="">Modeなし</option>
+            {(modeBoard?.modes ?? []).map((mode) => <option value={mode.id} key={mode.id}>{mode.title}</option>)}
+          </select> : modeTitle ?? <EmptyValue label="Mode未設定" />}
+        </span>;
+      }
       case "section":
         return <select className="section-cell" data-day-column-cell={key} aria-label={`${entry.task.title}のSection`} value={pendingSectionOverlays[entry.id]?.operation.section_id ?? entry.section_id ?? ""}
           disabled={mutationLocked || (entry.routine
@@ -4232,6 +4323,13 @@ export function App() {
 
   function renderDraftColumn(section: { title: string }, key: DayColumnKey) {
     if (key === "section") return <span className="section-cell" data-day-column-cell={key}>{section.title}</span>;
+    if (key === "mode") return <span className="mode-cell" data-day-column-cell={key} onClick={(event) => event.stopPropagation()}>
+      <select className="mode-selector" aria-label="新しいTaskのMode" value={draftTask?.modeId ?? ""}
+        onChange={(event) => setDraftTask((current) => current ? { ...current, modeId: event.target.value || null } : current)}>
+        <option value="">Modeなし</option>
+        {(modeBoard?.modes ?? []).map((mode) => <option value={mode.id} key={mode.id}>{mode.title}</option>)}
+      </select>
+    </span>;
     const definition = columnDefinition(key);
     return <span className={`${definition.cellClassName} muted`} data-day-column-cell={key}><EmptyValue /></span>;
   }
@@ -4275,6 +4373,9 @@ export function App() {
               <button type="button" className={settingsDestination === "project" ? "active" : ""}
                 aria-current={settingsDestination === "project" ? "page" : undefined} disabled={mutationLocked}
                 onClick={() => void openSettings("project")}>Project</button>
+              <button type="button" className={settingsDestination === "mode" ? "active" : ""}
+                aria-current={settingsDestination === "mode" ? "page" : undefined} disabled={mutationLocked}
+                onClick={() => void openSettings("mode")}>Mode</button>
             </nav>
 
             <section className="settings-content" aria-label="設定内容">
@@ -4284,6 +4385,13 @@ export function App() {
 
               {settingsDestination === "project" && (
                 <ProjectBoard onUnauthorized={transitionToSignedOut} onProjectsChanged={setProjects} />
+              )}
+
+              {settingsDestination === "mode" && (
+                <ModeBoard board={modeBoard} onReload={async () => {
+                  if (typeof api.loadModeBoard !== "function") return null;
+                  return api.loadModeBoard();
+                }} onBoardChange={setModeBoard} onUnauthorized={transitionToSignedOut} />
               )}
 
               {settingsDestination === "section" && !sectionSettingsDraft && pending !== "section-settings" && (
@@ -4883,6 +4991,9 @@ export function App() {
                         <option value="">Sectionなし</option>
                         {currentDay.sections.map((candidate) => <option value={candidate.id} key={candidate.id}>{candidate.title}</option>)}
                       </select>
+                    </span>;
+                    if (definition.key === "mode") return <span className="mode-cell pending-cell" data-day-column-cell={definition.key} key={definition.key}>
+                      {item.modeId ? modeBoard?.modes.find((mode) => mode.id === item.modeId)?.title ?? "Mode" : <EmptyValue label="Mode未設定" />}
                     </span>;
                     if (definition.key === "estimate") return <span className="estimate-cell pending-cell" data-day-column-cell={definition.key} key={definition.key}>
                       <input aria-label={`${item.title}の見積（分）`} inputMode="numeric" value={item.estimateSeconds === null ? "" : String(item.estimateSeconds / 60)}

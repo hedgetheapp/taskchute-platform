@@ -38,8 +38,11 @@ export async function startEntry(
   if (prior) return replayOperation(prior, "StartEntry", requestFingerprint);
   const now = nowInstant;
   const [entryResult, activeResult, collisionResult] = await db.batch([
-    db.prepare(`SELECT e.lifecycle_state, e.section_id, e.planned_start_minute, e.taskchute_day_id, d.placement_revision
+    db.prepare(`SELECT e.lifecycle_state, e.section_id, e.planned_start_minute, e.taskchute_day_id, d.placement_revision,
+          em.mode_id, md.title AS mode_title
       FROM entries e JOIN taskchute_days d ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
+      LEFT JOIN entry_modes em ON em.app_user_id = e.app_user_id AND em.entry_id = e.id
+      LEFT JOIN mode_definitions md ON md.app_user_id = em.app_user_id AND md.id = em.mode_id
       WHERE e.app_user_id = ? AND e.id = ?`).bind(appUserId, request.entry_id),
     db.prepare("SELECT id, entry_id, started_at FROM executions WHERE app_user_id = ? AND ended_at IS NULL LIMIT 1").bind(appUserId),
     db.prepare("SELECT id FROM executions WHERE id = ?").bind(request.execution_id),
@@ -48,7 +51,8 @@ export async function startEntry(
   if (convergedBeforeStart) return replayOperation(convergedBeforeStart, "StartEntry", requestFingerprint);
   if (entryResult.results.length === 0) return reject(db, appUserId, request, "StartEntry", requestFingerprint, "resource_not_found", "Entry is unavailable");
   const entry = entryResult.results[0] as { lifecycle_state: string; section_id: string | null;
-    planned_start_minute: number | null; taskchute_day_id: string; placement_revision: number };
+    planned_start_minute: number | null; taskchute_day_id: string; placement_revision: number;
+    mode_id: string | null; mode_title: string | null };
   if (entry.section_id === null && entry.planned_start_minute !== null) {
     return reject(db, appUserId, request, "StartEntry", requestFingerprint, "resource_conflict",
       "Section-less Entry cannot have a planned start");
@@ -133,6 +137,15 @@ export async function startEntry(
              WHERE s.app_user_id = e.app_user_id AND s.entry_id = e.id)
            AND EXISTS (SELECT 1 FROM lifecycle_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
         .bind(now, appUserId, request.entry_id, appUserId, request.operation_id),
+      db.prepare(`INSERT INTO entry_mode_snapshots
+        (app_user_id, entry_id, mode_id, mode_title, captured_at)
+        SELECT e.app_user_id, e.id, em.mode_id, md.title, ?
+          FROM entries e JOIN entry_modes em ON em.app_user_id = e.app_user_id AND em.entry_id = e.id
+          JOIN mode_definitions md ON md.app_user_id = em.app_user_id AND md.id = em.mode_id
+         WHERE e.app_user_id = ? AND e.id = ?
+           AND NOT EXISTS (SELECT 1 FROM entry_mode_snapshots s WHERE s.app_user_id = e.app_user_id AND s.entry_id = e.id)
+           AND EXISTS (SELECT 1 FROM lifecycle_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(now, appUserId, request.entry_id, appUserId, request.operation_id),
       db.prepare(`UPDATE entries SET lifecycle_state = 'running' WHERE app_user_id = ? AND id = ? AND lifecycle_state = 'planned'
         AND EXISTS (SELECT 1 FROM lifecycle_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
         .bind(appUserId, request.entry_id, appUserId, request.operation_id),
@@ -141,10 +154,14 @@ export async function startEntry(
         AND EXISTS (SELECT 1 FROM executions WHERE app_user_id = ? AND id = ? AND entry_id = ? AND ended_at IS NULL)
         AND EXISTS (SELECT 1 FROM entries WHERE app_user_id = ? AND id = ? AND section_id = ?
           AND (? = 0 OR planned_start_minute IS NULL))
+        AND ((? IS NULL AND NOT EXISTS (SELECT 1 FROM entry_mode_snapshots WHERE app_user_id = ? AND entry_id = ?))
+          OR (? IS NOT NULL AND EXISTS (SELECT 1 FROM entry_mode_snapshots WHERE app_user_id = ? AND entry_id = ?
+            AND mode_id = ? AND mode_title = ?)))
         AND (? = 0 OR EXISTS (SELECT 1 FROM taskchute_days WHERE app_user_id = ? AND id = ? AND placement_revision = ?))
         THEN 1 ELSE 0 END WHERE EXISTS (SELECT 1 FROM lifecycle_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
         .bind(appUserId, assertionId, appUserId, request.entry_id, appUserId, request.execution_id, request.entry_id,
           appUserId, request.entry_id, targetSectionId, movesFromUnsectioned ? 1 : 0,
+          entry.mode_id, appUserId, request.entry_id, entry.mode_id, appUserId, request.entry_id, entry.mode_id, entry.mode_title,
           movesFromUnsectioned ? 1 : 0, appUserId,
           entry.taskchute_day_id, result.placement_revision, appUserId, request.operation_id),
       db.prepare(`INSERT INTO operations (app_user_id, operation_id, command_type, request_fingerprint_version, request_fingerprint, outcome_kind, result_json, created_at)

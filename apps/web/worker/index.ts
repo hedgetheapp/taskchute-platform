@@ -61,6 +61,10 @@ import { createRequestAuth } from "./auth/better-auth";
 import { bootstrapInitialUser, isBootstrapModeEnabled } from "./auth/bootstrap";
 import { resolvePrincipal } from "./auth/principal";
 import { readBoundedJson } from "./http/json";
+import {
+  createMode, isCreateModeRequest, isReorderModesRequest, isSetEntryModeRequest, isUpdateModeRequest,
+  loadModeBoard, reorderModes, setEntryMode, updateMode,
+} from "./application/mode-management";
 
 const SECURITY_HEADERS: Record<string, string> = {
   "cache-control": "no-store",
@@ -103,6 +107,27 @@ async function route(request: Request, env: Env): Promise<Response> {
   }
   if (request.method === "GET" && url.pathname === "/api/v1/project-board") {
     return Response.json(await loadProjectBoard(env.APP_DB, principal.appUserId));
+  }
+  if (request.method === "GET" && url.pathname === "/api/v1/mode-board") {
+    return Response.json(await loadModeBoard(env.APP_DB, principal.appUserId));
+  }
+  if (request.method === "POST" && url.pathname === "/api/v1/modes") {
+    const body = await readBoundedJson(request);
+    if (!isCreateModeRequest(body)) throw new HttpError(400, "malformed_request", "Invalid CreateMode request");
+    return Response.json(await createMode(env.APP_DB, principal.appUserId, body));
+  }
+  if (request.method === "POST" && url.pathname === "/api/v1/modes/reorder") {
+    const body = await readBoundedJson(request);
+    if (!isReorderModesRequest(body)) throw new HttpError(400, "malformed_request", "Invalid ReorderModes request");
+    return Response.json(await reorderModes(env.APP_DB, principal.appUserId, body));
+  }
+  const modeUpdateMatch = url.pathname.match(/^\/api\/v1\/modes\/([^/]+)$/);
+  if (request.method === "POST" && modeUpdateMatch) {
+    const body = await readBoundedJson(request);
+    if (modeUpdateMatch[1] !== (body as { mode_id?: unknown })?.mode_id || !isUpdateModeRequest(body)) {
+      throw new HttpError(400, "malformed_request", "Invalid UpdateMode request");
+    }
+    return Response.json(await updateMode(env.APP_DB, principal.appUserId, body));
   }
   if (request.method === "GET" && url.pathname === "/api/v1/routines") {
     return Response.json(await loadRoutineBoard(env.APP_DB, principal.appUserId));
@@ -267,6 +292,14 @@ async function route(request: Request, env: Env): Promise<Response> {
       throw new HttpError(400, "malformed_request", "Invalid DuplicateEntry request");
     }
     return Response.json(await duplicateEntry(env.APP_DB, principal.appUserId, body));
+  }
+  const entryModeMatch = url.pathname.match(/^\/api\/v1\/entries\/([^/]+)\/mode$/);
+  if (request.method === "POST" && entryModeMatch) {
+    const body = await readBoundedJson(request);
+    if (entryModeMatch[1] !== (body as { entry_id?: unknown })?.entry_id || !isSetEntryModeRequest(body)) {
+      throw new HttpError(400, "malformed_request", "Invalid SetEntryMode request");
+    }
+    return Response.json(await setEntryMode(env.APP_DB, principal.appUserId, body));
   }
   const estimateMatch = url.pathname.match(/^\/api\/v1\/entries\/([^/]+)\/estimate$/);
   if (request.method === "POST" && estimateMatch) {

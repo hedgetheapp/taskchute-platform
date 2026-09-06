@@ -62,6 +62,10 @@ interface EntryRow {
   project_title: string | null;
   estimate_seconds: number | null;
   planned_start_minute: number | null;
+  live_mode_id: string | null;
+  live_mode_title: string | null;
+  snapshot_mode_id: string | null;
+  snapshot_mode_title: string | null;
   routine_occurrence_id: string | null;
   routine_definition_id: string | null;
   routine_end_logical_date: string | null;
@@ -135,6 +139,10 @@ function toEntryRow(value: unknown): EntryRow {
     project_title: projectTitle,
     estimate_seconds: row.estimate_seconds === null ? null : requiredNumber(row, "estimate_seconds"),
     planned_start_minute: row.planned_start_minute === null ? null : requiredNumber(row, "planned_start_minute"),
+    live_mode_id: row.live_mode_id === null ? null : requiredString(row, "live_mode_id"),
+    live_mode_title: row.live_mode_title === null ? null : requiredString(row, "live_mode_title"),
+    snapshot_mode_id: row.snapshot_mode_id === null ? null : requiredString(row, "snapshot_mode_id"),
+    snapshot_mode_title: row.snapshot_mode_title === null ? null : requiredString(row, "snapshot_mode_title"),
     routine_occurrence_id: row.routine_occurrence_id === null ? null : requiredString(row, "routine_occurrence_id"),
     routine_definition_id: row.routine_definition_id === null ? null : requiredString(row, "routine_definition_id"),
     routine_end_logical_date: row.routine_end_logical_date === null ? null : requiredString(row, "routine_end_logical_date"),
@@ -366,6 +374,8 @@ async function loadEstablishedProjection(
                      WHEN eps.entry_id IS NOT NULL THEN eps.project_id ELSE p.id END AS project_id,
                 CASE WHEN rs.routine_occurrence_id IS NOT NULL THEN rs.project_title
                      WHEN eps.entry_id IS NOT NULL THEN eps.project_title ELSE p.title END AS project_title
+                ,em.mode_id AS live_mode_id, md.title AS live_mode_title
+                ,ems.mode_id AS snapshot_mode_id, ems.mode_title AS snapshot_mode_title
            FROM entries e
            JOIN tasks t ON t.app_user_id = e.app_user_id AND t.id = e.task_id
            LEFT JOIN routine_occurrences ro ON ro.app_user_id = e.app_user_id AND ro.id = e.routine_occurrence_id
@@ -375,6 +385,12 @@ async function loadEstablishedProjection(
              ON rs.app_user_id = e.app_user_id AND rs.routine_occurrence_id = e.routine_occurrence_id
            LEFT JOIN entry_project_snapshots eps
              ON eps.app_user_id = e.app_user_id AND eps.entry_id = e.id
+           LEFT JOIN entry_modes em
+             ON em.app_user_id = e.app_user_id AND em.entry_id = e.id
+           LEFT JOIN mode_definitions md
+             ON md.app_user_id = em.app_user_id AND md.id = em.mode_id
+           LEFT JOIN entry_mode_snapshots ems
+             ON ems.app_user_id = e.app_user_id AND ems.entry_id = e.id
            LEFT JOIN (
              SELECT entry_id,
                     MIN(started_at) AS first_started_at,
@@ -424,6 +440,13 @@ async function loadEstablishedProjection(
       lifecycle_state: row.lifecycle_state,
       estimate_seconds: row.estimate_seconds,
       planned_start_minute: row.planned_start_minute,
+      mode: (row.lifecycle_state === "planned"
+        ? (row.live_mode_id && row.live_mode_title ? { id: row.live_mode_id, title: row.live_mode_title, source: "live" as const } : null)
+        : (row.snapshot_mode_id && row.snapshot_mode_title
+          ? { id: row.snapshot_mode_id, title: row.snapshot_mode_title, source: "snapshot" as const }
+          : row.live_mode_id && row.live_mode_title
+            ? { id: row.live_mode_id, title: row.live_mode_title, source: "live" as const }
+            : null)),
       execution_summary: {
         first_started_at: row.execution_first_started_at,
         last_ended_at: row.execution_last_ended_at,

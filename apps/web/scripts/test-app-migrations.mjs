@@ -569,6 +569,30 @@ try {
     VALUES ('user-v01a', 'operation-delete-completed-invalid', 'UnknownDeleteCommand', 1, 'invalid', 'success', '{}',
       '2026-08-28T08:16:00.000Z')`], false);
   assert.notEqual(invalidDeleteCompletedCommand.status, 0, "0020 must reject unknown operation commands");
+  const preModeEntries = query("SELECT id, lifecycle_state FROM entries ORDER BY id");
+  const preModeTasks = query("SELECT id, title FROM tasks ORDER BY id");
+  const preModeExecutions = query("SELECT id, entry_id FROM executions ORDER BY id");
+  const preModeOperations = query("SELECT * FROM operations ORDER BY operation_id");
+  applyFile("migrations/app/0021_mode_management.sql");
+  assert.deepEqual(query("SELECT id, lifecycle_state FROM entries ORDER BY id"), preModeEntries,
+    "0021 must preserve Entry rows");
+  assert.deepEqual(query("SELECT id, title FROM tasks ORDER BY id"), preModeTasks,
+    "0021 must preserve Task rows");
+  assert.deepEqual(query("SELECT id, entry_id FROM executions ORDER BY id"), preModeExecutions,
+    "0021 must preserve Execution rows");
+  assert.deepEqual(query("SELECT * FROM operations ORDER BY operation_id"), preModeOperations,
+    "0021 must preserve every operation row");
+  assert.deepEqual(query("SELECT app_user_id, board_revision FROM mode_board_heads"),
+    [{ app_user_id: "user-v01a", board_revision: 0 }]);
+  assert.deepEqual(query("SELECT * FROM mode_definitions"), []);
+  assert.deepEqual(query("SELECT * FROM mode_board_items"), []);
+  assert.deepEqual(query("SELECT * FROM entry_modes"), []);
+  assert.deepEqual(query("SELECT * FROM entry_mode_snapshots"), []);
+  const modeOperationTable = query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'operations'")[0]?.sql ?? "";
+  for (const command of ["CreateMode", "UpdateMode", "ReorderModes", "SetEntryMode"])
+    assert(modeOperationTable.includes(command), `0021 must add ${command} to the operation CHECK`);
+  assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
+  assert.deepEqual(query("PRAGMA foreign_key_check"), []);
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
   assert.deepEqual(query("PRAGMA foreign_key_check"), []);
   execute(["--command", `
@@ -706,6 +730,8 @@ try {
       request_fingerprint: "bulk-fingerprint", outcome_kind: "success", result_json: "{}" },
     { operation_id: "operation-day-move", command_type: "BulkMoveEntriesToDay",
       request_fingerprint: "day-move-fingerprint", outcome_kind: "success", result_json: "{}" },
+    { operation_id: "operation-delete-completed", command_type: "DeleteCompletedEntry",
+      request_fingerprint: "delete-completed-fingerprint", outcome_kind: "success", result_json: "{}" },
     { operation_id: "operation-existing", command_type: "AddTaskToDay", request_fingerprint: "fixture-fingerprint",
       outcome_kind: "success", result_json: "{\"fixture\":true}" },
     { operation_id: "operation-revert-start", command_type: "RevertEntryStart", request_fingerprint: "revert-fingerprint",

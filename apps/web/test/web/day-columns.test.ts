@@ -27,9 +27,9 @@ describe("Day Table column preference", () => {
       order: ["section", "project"],
       widths: { project: 220 },
     });
-    expect(preference.version).toBe(2);
+    expect(preference.version).toBe(3);
     expect(preference.hidden).toEqual([]);
-    expect(preference.order.slice(0, 2)).toEqual(["section", "project"]);
+    expect(preference.order.slice(0, 3)).toEqual(["section", "project", "mode"]);
     expect(preference.widths.project).toBe(220);
     expect(defaultDayColumnPreference().hidden).toEqual([]);
   });
@@ -53,8 +53,8 @@ describe("Day Table column preference", () => {
     window.localStorage.setItem(DAY_COLUMNS_V1_STORAGE_KEY, JSON.stringify({
       version: 1, order: ["routine", "project"], widths: { project: 220 },
     }));
-    expect(readPersistedDayColumnPreference()).toMatchObject({ version: 2, hidden: [], widths: { project: 220 } });
-    expect(readPersistedDayColumnPreference().order.slice(0, 2)).toEqual(["routine", "project"]);
+    expect(readPersistedDayColumnPreference()).toMatchObject({ version: 3, hidden: [], widths: { project: 220 } });
+    expect(readPersistedDayColumnPreference().order.slice(0, 3)).toEqual(["routine", "project", "mode"]);
 
     window.localStorage.setItem(DAY_COLUMNS_STORAGE_KEY, JSON.stringify({
       version: 2, order: ["actualDuration"], widths: { actualDuration: 140 }, hidden: ["project", "project", "unknown"],
@@ -66,7 +66,7 @@ describe("Day Table column preference", () => {
     const preference = setDayColumnVisibility(defaultDayColumnPreference(), "project", false);
     const resized = { ...preference, widths: { ...preference.widths, project: 220 } };
     expect(resized.order.slice(0, 2)).toEqual(["project", "section"]);
-    expect(visibleDayColumnOrder(resized).slice(0, 2)).toEqual(["section", "routine"]);
+    expect(visibleDayColumnOrder(resized).slice(0, 2)).toEqual(["mode", "section"]);
     expect(buildDayTableGridTemplate(resized)).not.toContain("220px");
     expect(calculateDayTableMinWidth(resized)).toBe(calculateDayTableMinWidth(defaultDayColumnPreference()) - 150);
     const shown = setDayColumnVisibility(resized, "project", true);
@@ -81,7 +81,7 @@ describe("Day Table column preference", () => {
       widths: { ...defaultDayColumnPreference().widths, project: 220 },
     }, "project", false);
     const shown = showAllDayColumns(customized);
-    expect(shown.order.slice(0, 3)).toEqual(["section", "project", "routine"]);
+    expect(shown.order.slice(0, 4)).toEqual(["mode", "section", "project", "routine"]);
     expect(shown.widths.project).toBe(220);
     expect(shown.hidden).toEqual([]);
     expect(resetDayColumnPreference()).toEqual(defaultDayColumnPreference());
@@ -90,7 +90,7 @@ describe("Day Table column preference", () => {
   it("reorders only the customizable region and clamps width/grid tracks", () => {
     const preference = defaultDayColumnPreference();
     const order = reorderDayColumns(preference.order, "project", "routine", "before");
-    expect(order.slice(0, 3)).toEqual(["section", "project", "routine"]);
+    expect(order.slice(0, 4)).toEqual(["mode", "section", "project", "routine"]);
     expect(clampDayColumnWidth("project", 1)).toBe(100);
     expect(clampDayColumnWidth("project", 9999)).toBe(340);
     const resized = { ...preference, order, widths: { ...preference.widths, project: 200 } };
