@@ -4,6 +4,20 @@ Date: 2026-09-06
 
 ## Status
 
+### Today display menu color corrective — 2026-09-06
+
+Approved `taskchute-platform_today-display-menu-color-corrective.md`を、開始時点の`main@7874fe53c4a20ddb53af6b0d8de7c05b7ff1300a`から実装し、CSS-only corrective commit `3890efc`をGitHub `main`へfast-forward pushした。原因はglobal `button`の`background: #2383e2; color: #fff`が`.display-menu-item`へ継承され、既存selectorが文字色だけをneutralへ上書きしていたことだった。global button style、menu structure、submenu / keyboard / focus semantics、column / completed visibility semantics、API、Domain、schema、migration、dependency、binding、security postureは変更していない。
+
+`.display-menu-checkbox, .display-menu-item`へ`border: 0`と`background: transparent`を追加し、通常時はtransparent background・`#373735` neutral text・borderなしとした。既存のhover / focus-visible rule（`#f7f7f5` highlight、`#1769aa` text）とneutral submenu arrow（`#787774`）を維持したため、青ベタ背景は通常時に発生しない。production、restore、destructive operation、migration apply、branch / PR / merge / tag / releaseは実施していない。
+
+focused menu regression `1 / 1 PASS`、full Web `187 / 187 PASS`、typecheck、production build、exact `CLOUDFLARE_ENV=nonprod` build、Wrangler dry-run、`git diff --check`、source reviewをPASSした。build / dry-run時の既知のWrangler log `EPERM`、client chunk-size warning、generated configのenvironment warningは非致命で各command exitは`0`。
+
+Exact pushed mainをcanonical persistent nonprod Worker `taskchute-web-nonprod`へdeployし、Worker version `075567fc-2cda-4ead-b95e-52b1b48e589b`、`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、既存APP / AUTH bindingを確認した。HTTP safety probeはroot `200`、未認証 Project API `401`、disabled bootstrap POST `404`。
+
+Authenticated browserでは通常時の`列表示` / `デフォルトに戻す`が`rgba(0,0,0,0)` background、`rgb(55,55,53)` text、`0px none` borderであること、focus-visible時の`rgb(247,247,245)` background / `rgb(23,105,170)` text、submenu arrowのneutral colorを確認した。submenu open、reset、Escape（submenu → parent → close）、click-away、browser console error / warning `[]`もPASSした。hover highlightは同じCSS ruleをsourceで確認し、直接hoverは利用可能なbrowser APIの範囲外として前回同様に区別している。
+
+Classification: `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / MAIN_PUSHED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_SAFETY_VERIFIED / AUTHENTICATED_BROWSER_VERIFIED / MENU_COLOR_CORRECTED / NORMAL_BACKGROUND_VERIFIED / FOCUS_BACKGROUND_VERIFIED / SUBMENU_ARROW_COLOR_VERIFIED / PRODUCTION_NOT_RUN / RELEASED_NO`。Featuresのstatusは変更していない。
+
 ### Today display menu consolidation — 2026-09-06
 
 Approved `taskchute-platform_today-display-menu-consolidation.md`を、開始時点の`main@75efd34093c7c3d1c9290668f50a5d173cf84d2d`から実装し、実装commit `87b467a`をGitHub `main`へfast-forward pushした。今回の変更はWeb UI / local preferenceと対応testだけで、API、Domain、schema、migration、dependency、binding、security posture、Product Decisionは変更していない。production、restore、destructive cleanup、branch / PR / merge / tag / releaseは実施していない。

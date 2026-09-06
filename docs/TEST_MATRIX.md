@@ -1,5 +1,22 @@
 # Test Matrix
 
+## Today display menu color corrective — 2026-09-06
+
+Contract: Approved Web-only visual corrective。開始時点は`main@7874fe53c4a20ddb53af6b0d8de7c05b7ff1300a`、implementation commitは`3890efc`。menu structure / interaction semantics、API / Domain / schema / migration / dependency / binding / security postureは変更していない。
+
+| ID | Verification target | Evidence |
+| --- | --- | --- |
+| TODAY-COLOR-01 | root cause and scoped CSS fix | PASS (SOURCE): global button blue backgroundの継承を`.display-menu-item`側の`background: transparent` / `border: 0`でreset。global `button`は変更なし |
+| TODAY-COLOR-02 | normal menu item visual | PASS (NONPROD_BROWSER): `列表示` / `デフォルトに戻す`のcomputed background `rgba(0,0,0,0)`、text `rgb(55,55,53)`、border `0px none` |
+| TODAY-COLOR-03 | hover / focus visual | PASS (SOURCE + NONPROD_BROWSER):既存hover / focus-visible ruleの薄いneutral background `rgb(247,247,245)`、focus text `rgb(23,105,170)`を確認。直接hover操作はbrowser API制約により`NOT_VERIFIED` |
+| TODAY-COLOR-04 | submenu arrow color | PASS (NONPROD_BROWSER): arrow computed color `rgb(120,119,116)`、background transparent |
+| TODAY-COLOR-05 | interaction regression boundary | PASS (NONPROD_BROWSER): submenu open、reset、Escapeのsubmenu → parent → close、click-away。menu structure / completed toggle / column semanticsは変更なし |
+| TODAY-COLOR-06 | local regression and build | PASS: focused menu `1 / 1`、full Web `187 / 187`、typecheck、production build、exact nonprod build、Wrangler dry-run、`git diff --check` |
+| TODAY-COLOR-07 | persistent nonprod deploy and safety | PASS: canonical Worker `taskchute-web-nonprod` version `075567fc-2cda-4ead-b95e-52b1b48e589b`、root `200`、Project API `401`、bootstrap POST `404` |
+| TODAY-COLOR-08 | console and prohibited boundary | PASS: browser console error / warning `[]`。production、restore、destructive operation、migration apply、new token、permission / scope、account / role、binding changeは`NOT_RUN` |
+
+Classification: `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / MAIN_PUSHED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_SAFETY_VERIFIED / AUTHENTICATED_BROWSER_VERIFIED / MENU_COLOR_CORRECTED / NORMAL_BACKGROUND_VERIFIED / FOCUS_BACKGROUND_VERIFIED / SUBMENU_ARROW_COLOR_VERIFIED / PRODUCTION_NOT_RUN / RELEASED_NO`。
+
 ## Today display menu consolidation — 2026-09-06
 
 Contract: Approved Today UI display-menu consolidation。開始時点は`main@75efd34093c7c3d1c9290668f50a5d173cf84d2d`、implementation commitは`87b467a`。API / Domain / schema / migration / dependency / binding / security postureは変更していない。
