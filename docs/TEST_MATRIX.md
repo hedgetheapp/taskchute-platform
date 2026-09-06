@@ -1799,7 +1799,7 @@ Initial production release evidence（2026-09-01）:
 | D067-MIG-01 | Migration | fresh/upgrade 0019→0020 preserve rows, prior command types, keys/FKs/indexes; accept DeleteCompletedEntry and reject unknown | MIGRATION_REGRESSION |
 | D067-WEB-01 | Web | current completed overflow/modal wording, cancel/Escape no-write, planned delete regression, completed excluded from bulk | WEB_FOCUSED + FULL_WEB |
 | D067-ENV-01 | Nonprod | backup gate, 0020 pending 0, deploy, API/DB/browser non-destructive verification and modal open→cancel | PERSISTENT_NONPROD |
-| D067-ENV-02 | Destructive gate | first persistent nonprod DeleteCompletedEntry write is explicitly stopped before dispatch | NOT_RUN_BY_CONTRACT |
+| D067-ENV-02 | Destructive E2E | approved first persistent nonprod DeleteCompletedEntry against a newly created disposable ordinary Entry; canonical reconcile, retention, reload and DB integrity | PERSISTENT_NONPROD_DESTRUCTIVE_E2E |
 
 D-067 evidence closeout before destructive handoff (2026-09-06):
 
@@ -1826,3 +1826,15 @@ Contract: Approved D-067 corrective. The existing `DeleteCompletedEntry` migrati
 | D067-SERIAL-07 | Local regression, deploy, and non-destructive persistent verification | PASS: focused serial `5 / 5`, focused App `190 / 190`, full Web `206 / 206`, full Worker / D1 `191 / 191`, typecheck, builds, nonprod dry-run, diff-check, source review; canonical Worker `d92bf003-baec-4e7d-bda5-b170fe08fd42`; APP/AUTH pending `0 / 0`; APP/AUTH quick check `ok`, FK `0`, rows_written `0`; browser modal open → cancel PASS |
 
 Corrective boundary: the read-only APP audit found one successful `DeleteCompletedEntry` operation created before this corrective run. No new persistent hard-delete request was sent by this run; the destructive button was not activated. Further persistent nonprod destructive verification remains stopped before any additional `DeleteCompletedEntry` write. Production, restore, migration apply, branch, PR, merge, tag, release, credential, permission, OAuth scope, account/role, binding, and security-posture changes were not run.
+
+## D-067 persistent nonprod destructive E2E — 2026-09-06
+
+Product Owner承認の範囲どおり、このrunでは新規作成した使い捨て通常Task/Entryだけを対象に、persistent nonprodで最初のcontrolled `DeleteCompletedEntry`を1回実行した。開始時点は`main@57ea84a223dbf89802df0f8b31157665d77fb221`、docs commit前の終了時点も同SHAで、GitHub `origin/main`と一致していた。既存dogfood Entry、Task、Project、Routine、past / future Day、productionには触れていない。corrective Worker `d92bf003-baec-4e7d-bda5-b170fe08fd42`がcanonical `taskchute-web-nonprod`の100% deploymentであること、APP / AUTH migration pending `0 / 0`、既存binding / nonprod varsを再確認した。
+
+Disposable fixture: Task `01a076d5-6d74-759a-b85e-de5e19ff1484` / title `D067 destructive verification disposable 20260906-1`、Entry `01a076d5-6d74-70aa-ae90-fc43a4e0ac12`、Execution `01a076d5-e7fe-7012-b559-4cb724c34504`、Day `01a07445-ed40-7ba8-9320-c6c6587953c0` / logical date `2026-09-06`、Evening、Project `NULL`、RoutineOccurrence `NULL`。作成直後はplanned・Day revision `23`、Start `2026-09-06T13:08:45.762Z`、Complete `2026-09-06T13:08:51.622Z`、削除直前はcompleted・active Execution `0`だった。
+
+Authenticated browserではStart→Complete後に対象rowのoverflow→`削除`を実行し、modal title `完了したTaskを完全に削除しますか？`、body `このTaskの開始・終了記録と実績時間も削除されます。この操作は元に戻せません。`、buttons `キャンセル` / `完全に削除`を確認した。`完全に削除`は1回だけ押下し、clean successとしてretry UIは出ず、`完全に削除・照合中…`からcanonical reconcile後にrowが消失した。same tabのreload後も不在、fresh authenticated tabでも不在だった。
+
+Read-only post-delete APP evidence: target Entry `0`、target Execution `0`、Task `1`保持（Project `NULL`のまま）、Projects / Tasks / Entries / Executions / operations `0 / 16 / 13 / 12 / 107`、active Execution `0`、orphan Execution `0`、`PRAGMA quick_check = ok`、`PRAGMA foreign_key_check` empty。削除前revision `23`に対し、成功operation `01a076d6-7b90-7012-9c90-ab77869cdd81`のresultは対象Entry / Executionを参照し`placement_revision:24`を返したため、revisionはexactly `+1`。既存のunrelated Domain dataはbaseline countsを維持し、AUTHもusers / accounts / sessions `1 / 1 / 5`、quick check `ok`、FK emptyでlogin capabilityを保持した。read-only queryの`rows_written`は全て`0`。
+
+Prior unexpected operation `01a0769e-1496-73d0-802b-d94f0172d8b5`は変更・再分類しておらず、actorは`UNKNOWN`のまま。今回のcontrolled operationと混同しない。Classification: `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / MAIN_PUSHED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_DESTRUCTIVE_E2E_VERIFIED / DB_INTEGRITY_VERIFIED / PRODUCTION_NOT_RUN / RELEASED_NO`。restore、migration apply、production、branch / PR / merge / tag / release、credential / permission / OAuth scope / account-role / binding / security-posture変更は`NOT_RUN`。
