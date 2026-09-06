@@ -60,7 +60,6 @@ import {
   resetDayColumnPreference,
   reorderDayColumns,
   setDayColumnVisibility,
-  showAllDayColumns,
   visibleDayColumnOrder,
   type DayColumnKey,
   type DayColumnPreference,
@@ -667,6 +666,7 @@ export function App() {
   const [sidebarOpen, setSidebarOpen] = useState(readPersistedSidebarOpen);
   const [dayColumnPreference, setDayColumnPreference] = useState<DayColumnPreference>(readPersistedDayColumnPreference);
   const [columnsMenuOpen, setColumnsMenuOpen] = useState(false);
+  const [columnSubmenuOpen, setColumnSubmenuOpen] = useState(false);
   const [columnDrag, setColumnDrag] = useState<ColumnDragState | null>(null);
   const [columnResize, setColumnResize] = useState<ColumnResizeState | null>(null);
   const [dayTableResizeLayout, setDayTableResizeLayout] = useState<DayTableResizeLayout | null>(null);
@@ -687,6 +687,9 @@ export function App() {
   const calendarPopoverRef = useRef<HTMLDivElement | null>(null);
   const columnsMenuRef = useRef<HTMLDivElement | null>(null);
   const columnsTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const columnSubmenuTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const columnSubmenuRef = useRef<HTMLDivElement | null>(null);
+  const suppressColumnSubmenuFocusRef = useRef(false);
   const bulkHeaderRef = useRef<HTMLInputElement | null>(null);
   const bulkDeleteTriggerRef = useRef<HTMLButtonElement | null>(null);
   const bulkDateMoveTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -1004,7 +1007,10 @@ export function App() {
   useEffect(() => {
     if (!columnsMenuOpen) return;
     const handleOutsideMouseDown = (event: globalThis.MouseEvent) => {
-      if (!columnsMenuRef.current?.contains(event.target as Node)) setColumnsMenuOpen(false);
+      if (!columnsMenuRef.current?.contains(event.target as Node)) {
+        setColumnSubmenuOpen(false);
+        setColumnsMenuOpen(false);
+      }
     };
     document.addEventListener("mousedown", handleOutsideMouseDown);
     return () => document.removeEventListener("mousedown", handleOutsideMouseDown);
@@ -3277,6 +3283,7 @@ export function App() {
   }
 
   function closeColumnsMenu(returnFocus = false) {
+    setColumnSubmenuOpen(false);
     setColumnsMenuOpen(false);
     if (returnFocus) columnsTriggerRef.current?.focus();
   }
@@ -3285,7 +3292,23 @@ export function App() {
     if (event.key !== "Escape") return;
     event.preventDefault();
     event.stopPropagation();
+    if (columnSubmenuOpen) {
+      setColumnSubmenuOpen(false);
+      suppressColumnSubmenuFocusRef.current = true;
+      requestAnimationFrame(() => {
+        columnSubmenuTriggerRef.current?.focus();
+        suppressColumnSubmenuFocusRef.current = false;
+      });
+      return;
+    }
     closeColumnsMenu(true);
+  }
+
+  function openColumnSubmenu(focusFirst = false) {
+    setColumnSubmenuOpen(true);
+    if (focusFirst) {
+      requestAnimationFrame(() => columnSubmenuRef.current?.querySelector<HTMLInputElement>("input")?.focus());
+    }
   }
 
   function columnDropEdge(event: ReactDragEvent<HTMLSpanElement>): DragEdge {
@@ -3903,38 +3926,55 @@ export function App() {
             <button type="button" className="secondary" disabled={mutationLocked || isMutationScopeBusy(placementMutationScope())} onClick={clearBulkSelection}>選択解除</button>
           </div>
         )}
-        <div className="columns-menu" ref={columnsMenuRef}>
-          <button type="button" className="secondary columns-trigger" ref={columnsTriggerRef}
-            aria-label="表示列" aria-expanded={columnsMenuOpen} aria-controls="day-columns-menu"
-            onClick={() => setColumnsMenuOpen((open) => !open)}
+        <div className="display-menu" ref={columnsMenuRef}>
+          <button type="button" className="secondary display-trigger" ref={columnsTriggerRef}
+            aria-label="表示" aria-haspopup="menu" aria-expanded={columnsMenuOpen} aria-controls="day-display-menu"
+            onClick={() => {
+              if (columnsMenuOpen) closeColumnsMenu();
+              else {
+                setColumnSubmenuOpen(false);
+                setColumnsMenuOpen(true);
+              }
+            }}
             onKeyDown={(event) => {
               if (event.key !== "Escape" || !columnsMenuOpen) return;
               event.preventDefault();
               closeColumnsMenu(true);
-            }}>列</button>
+            }}>表示</button>
           {columnsMenuOpen && (
-            <div id="day-columns-menu" className="columns-popover" role="dialog" aria-label="表示列" onKeyDown={handleColumnsMenuKeyDown}>
-              <p id="day-columns-menu-title" className="columns-popover-title">表示する列</p>
-              <div className="columns-options">
-                {DAY_COLUMN_DEFINITIONS.map((definition) => (
-                  <label className="columns-option" key={definition.key}>
-                    <input type="checkbox" checked={!dayColumnPreference.hidden.includes(definition.key)}
-                    onChange={(event) => { setDayTableResizeLayout(null); setDayColumnPreference((current) => setDayColumnVisibility(current, definition.key, event.target.checked)); }} />
-                    <span>{definition.label}</span>
-                  </label>
-                ))}
+            <div id="day-display-menu" className="display-popover" role="menu" aria-label="表示" onKeyDown={handleColumnsMenuKeyDown}>
+              <label className="display-menu-checkbox">
+                <input type="checkbox" checked={showCompleted} onChange={(event) => setShowCompleted(event.target.checked)} />
+                <span>実行済みを表示</span>
+              </label>
+              <div className="display-submenu">
+                <button type="button" className="display-menu-item" role="menuitem" ref={columnSubmenuTriggerRef}
+                  aria-haspopup="menu" aria-expanded={columnSubmenuOpen} aria-controls="day-column-submenu"
+                  onMouseEnter={() => openColumnSubmenu()}
+                  onFocus={() => { if (!suppressColumnSubmenuFocusRef.current) openColumnSubmenu(); }}
+                  onClick={() => openColumnSubmenu(true)}>
+                  <span>列表示</span><span className="display-submenu-arrow" aria-hidden="true">›</span>
+                </button>
+                {columnSubmenuOpen && (
+                  <div id="day-column-submenu" className="display-submenu-popover" ref={columnSubmenuRef} role="menu" aria-label="列表示">
+                    <p className="display-menu-heading">表示する列</p>
+                    <div className="display-column-options">
+                      {DAY_COLUMN_DEFINITIONS.map((definition) => (
+                        <label className="display-column-option" key={definition.key}>
+                          <input type="checkbox" checked={!dayColumnPreference.hidden.includes(definition.key)}
+                            onChange={(event) => { setDayTableResizeLayout(null); setDayColumnPreference((current) => setDayColumnVisibility(current, definition.key, event.target.checked)); }} />
+                          <span>{definition.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
-              <div className="columns-actions">
-                <button type="button" className="secondary" onClick={() => { setDayTableResizeLayout(null); setDayColumnPreference((current) => showAllDayColumns(current)); }}>すべて表示</button>
-                <button type="button" className="secondary" onClick={() => { setDayTableResizeLayout(null); setDayColumnPreference(resetDayColumnPreference); }}>初期状態に戻す</button>
-              </div>
+              <button type="button" className="display-menu-item" role="menuitem"
+                onClick={() => { setDayTableResizeLayout(null); setDayColumnPreference(resetDayColumnPreference); }}>デフォルトに戻す</button>
             </div>
           )}
         </div>
-        <label className="completed-toggle">
-          <input type="checkbox" checked={showCompleted} onChange={(event) => setShowCompleted(event.target.checked)} />
-          実行済みを表示
-        </label>
       </div>
 
       {bulkDateMoveConfirmation && (

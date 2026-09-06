@@ -215,18 +215,21 @@ input:focus-visible, select:focus-visible { border-color: #2383e2; outline: 2px 
 .bulk-routine-scope-controls button[aria-pressed="true"] { border-color: #8b6f47; background: #efe4d0; color: #5a4324; }
 .bulk-routine-scope-value { min-width: 96px; color: #5a4324; font-size: 12px; font-weight: 700; text-align: right; }
 .bulk-routine-scope-value.unselected { color: #a13d2d; }
-.columns-menu { position: relative; }
-.columns-trigger { min-width: 42px; }
-.columns-popover { position: absolute; z-index: 30; top: calc(100% + 6px); left: 0; display: grid; width: min(260px, calc(100vw - 32px)); gap: 10px; padding: 12px; border: 1px solid #d8d8d5; border-radius: 8px; background: #fff; box-shadow: 0 10px 24px rgb(15 15 15 / 16%); color: #373735; }
-.columns-popover-title { margin: 0; color: #575754; font-size: 12px; font-weight: 700; }
-.columns-options { display: grid; gap: 2px; }
-.columns-option { display: flex; min-height: 28px; align-items: center; gap: 8px; padding: 3px 4px; border-radius: 4px; cursor: pointer; }
-.columns-option:hover { background: #f7f7f5; }
-.columns-option input { width: auto; margin: 0; }
-.columns-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; padding-top: 8px; border-top: 1px solid #e9e9e7; }
-.columns-actions button { padding: 5px 7px; font-size: 11px; }
-.completed-toggle { display: flex; grid-template-columns: auto 1fr; align-items: center; gap: 6px; margin-left: auto; color: #575754; cursor: pointer; }
-.completed-toggle input { width: auto; margin: 0; }
+.display-menu { position: relative; margin-left: auto; }
+.display-trigger { min-width: 52px; }
+.display-popover { position: absolute; z-index: 30; top: calc(100% + 6px); right: 0; display: grid; width: min(220px, calc(100vw - 32px)); gap: 3px; padding: 6px; border: 1px solid #d8d8d5; border-radius: 8px; background: #fff; box-shadow: 0 10px 24px rgb(15 15 15 / 16%); color: #373735; }
+.display-menu-checkbox, .display-menu-item { display: flex; width: 100%; min-height: 32px; align-items: center; justify-content: space-between; gap: 8px; margin: 0; padding: 6px 8px; border-radius: 4px; color: #373735; font-size: 12px; text-align: left; }
+.display-menu-checkbox { cursor: pointer; }
+.display-menu-checkbox:hover, .display-menu-item:hover, .display-menu-item:focus-visible { background: #f7f7f5; color: #1769aa; outline: none; }
+.display-menu-checkbox input { width: auto; flex: none; margin: 0; }
+.display-submenu { position: relative; }
+.display-submenu-arrow { flex: none; color: #787774; font-size: 18px; line-height: 12px; }
+.display-menu-heading { margin: 2px 4px 4px; color: #575754; font-size: 12px; font-weight: 700; }
+.display-submenu-popover { position: absolute; z-index: 31; top: -6px; right: calc(100% + 6px); display: grid; width: min(260px, calc(100vw - 32px)); gap: 4px; padding: 8px; border: 1px solid #d8d8d5; border-radius: 8px; background: #fff; box-shadow: 0 10px 24px rgb(15 15 15 / 16%); color: #373735; }
+.display-column-options { display: grid; gap: 2px; }
+.display-column-option { display: flex; min-height: 28px; align-items: center; gap: 8px; margin: 0; padding: 3px 4px; border-radius: 4px; cursor: pointer; }
+.display-column-option:hover { background: #f7f7f5; }
+.display-column-option input { width: auto; margin: 0; }
 
 .day-surface { --bulk-slot-width: 32px; --execution-slot-width: 52px; --task-column-width: minmax(280px, 1fr); --day-table-min-width: 1364px; --day-table-grid-template-columns: var(--bulk-slot-width) var(--execution-slot-width) var(--task-column-width) 150px 130px 82px 90px 102px 102px 86px 86px 96px 40px; flex: 1 0 auto; overflow-x: auto; border: 1px solid #e1e1df; border-radius: 8px; background: #fff; }
 .table-heading, .task-row { display: grid; min-width: var(--day-table-min-width); grid-template-columns: var(--day-table-grid-template-columns); align-items: center; }
@@ -421,7 +424,7 @@ button.execution-control:hover { border-color: #2383e2; color: #2383e2; }
   .project-board { min-height: 420px; }
   .project-board-header, .project-board-toolbar { align-items: stretch; flex-direction: column; }
   .project-board-toolbar label { min-width: 0; }
-  .columns-popover { left: auto; right: 0; }
+  .display-submenu-popover { top: calc(100% + 6px); right: 0; }
   .bulk-slot,
   .execution-heading,
   .task-heading,

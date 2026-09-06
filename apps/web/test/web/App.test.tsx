@@ -120,6 +120,16 @@ async function openOverflowMenu(title = "Canonical task"): Promise<HTMLElement> 
   return screen.getByRole("menu", { name: `${title}の操作` });
 }
 
+async function openDisplayMenu(): Promise<HTMLElement> {
+  fireEvent.click(await screen.findByRole("button", { name: "表示" }));
+  return screen.getByRole("menu", { name: "表示" });
+}
+
+function openColumnSubmenu(displayMenu: HTMLElement): HTMLElement {
+  fireEvent.click(within(displayMenu).getByRole("menuitem", { name: "列表示" }));
+  return screen.getByRole("menu", { name: "列表示" });
+}
+
 const emptyDay: CurrentTaskChuteDayProjection = {
   projection_generated_at: "2026-08-22T12:00:00.000Z",
   establishment_state: "established",
@@ -370,7 +380,9 @@ describe("Dogfood Day shell", () => {
     )).toBeNull();
     expect(document.querySelector(".interval")).toBeNull();
     expect(screen.getByRole("button", { name: "＋ Taskを追加" })).toBeTruthy();
-    expect(screen.getByRole("checkbox", { name: "実行済みを表示" })).toBeTruthy();
+    const displayMenu = await openDisplayMenu();
+    expect(within(displayMenu).getByRole("checkbox", { name: "実行済みを表示" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "列" })).toBeNull();
   });
 
   it("fills the available Day viewport without increasing Task row density", async () => {
@@ -905,11 +917,12 @@ describe("Dogfood Day shell", () => {
     mocks.loadDay.mockResolvedValue(mixedDay);
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Morningを折りたたむ" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: "実行済みを表示" }));
+    const displayMenu = await openDisplayMenu();
+    fireEvent.click(within(displayMenu).getByRole("checkbox", { name: "実行済みを表示" }));
     fireEvent.click(screen.getByRole("button", { name: "Morningを展開" }));
     expect(screen.getByText("Canonical task")).toBeTruthy();
     expect(screen.queryByText("Second task")).toBeNull();
-    fireEvent.click(screen.getByRole("checkbox", { name: "実行済みを表示" }));
+    fireEvent.click(within(displayMenu).getByRole("checkbox", { name: "実行済みを表示" }));
     expect(screen.getByText("Second task")).toBeTruthy();
   });
 
@@ -1520,7 +1533,8 @@ describe("Dogfood Day shell", () => {
     };
     mocks.loadDay.mockResolvedValue(day);
     render(<App />);
-    fireEvent.click(await screen.findByRole("checkbox", { name: "実行済みを表示" }));
+    const displayMenu = await openDisplayMenu();
+    fireEvent.click(within(displayMenu).getByRole("checkbox", { name: "実行済みを表示" }));
     const row = screen.getByText("Canonical task").closest<HTMLElement>("[data-entry-id]")!;
     fireEvent.keyDown(row, { key: "ArrowDown", shiftKey: true });
     expect(mocks.reorderEntries).not.toHaveBeenCalled();
@@ -1533,7 +1547,8 @@ describe("Dogfood Day shell", () => {
     };
     mocks.loadDay.mockResolvedValue(day);
     render(<App />);
-    fireEvent.click(await screen.findByRole("checkbox", { name: "実行済みを表示" }));
+    const displayMenu = await openDisplayMenu();
+    fireEvent.click(within(displayMenu).getByRole("checkbox", { name: "実行済みを表示" }));
     const row = screen.getByText("Second task").closest<HTMLElement>("[data-entry-id]")!;
     fireEvent.keyDown(row, { key: "ArrowUp", shiftKey: true });
     expect(mocks.reorderEntries).not.toHaveBeenCalled();
@@ -1549,7 +1564,8 @@ describe("Dogfood Day shell", () => {
     };
     mocks.loadDay.mockResolvedValue(day);
     render(<App />);
-    fireEvent.click(await screen.findByRole("checkbox", { name: "実行済みを表示" }));
+    const displayMenu = await openDisplayMenu();
+    fireEvent.click(within(displayMenu).getByRole("checkbox", { name: "実行済みを表示" }));
     const row = screen.getByText("Third task").closest<HTMLElement>("[data-entry-id]")!;
     fireEvent.keyDown(row, { key: "ArrowUp", shiftKey: true });
     expect(mocks.reorderEntries).not.toHaveBeenCalled();
@@ -1833,7 +1849,8 @@ describe("Dogfood Day shell", () => {
     mocks.loadDay.mockResolvedValue(completedDay);
     render(<App />);
     expect(await screen.findByText("Canonical task")).toBeTruthy();
-    fireEvent.click(screen.getByRole("checkbox", { name: "実行済みを表示" }));
+    const displayMenu = await openDisplayMenu();
+    fireEvent.click(within(displayMenu).getByRole("checkbox", { name: "実行済みを表示" }));
     expect(screen.queryByText("Canonical task")).toBeNull();
     expect(screen.getAllByText("Morning")[0]).toBeTruthy();
     expect(screen.getByText(/1\/1 実行済み/)).toBeTruthy();
@@ -3089,14 +3106,18 @@ describe("Dogfood Day shell", () => {
     expect(screen.getByRole("button", { name: "Canonical taskの開始予定" }).querySelector(".empty-value")?.getAttribute("aria-label")).toBe("開始予定なし");
   });
 
-  it("opens the accessible Columns menu, hides data cells immediately, and restores focus on Escape", async () => {
+  it("consolidates Today display settings into an accessible menu and submenu", async () => {
     mocks.loadDay.mockResolvedValue(populatedDay);
     render(<App />);
     const dayBoard = await screen.findByRole("region", { name: "DayBoard" });
-    const trigger = screen.getByRole("button", { name: "表示列" });
+    const trigger = screen.getByRole("button", { name: "表示" });
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("button", { name: "列" })).toBeNull();
+    expect(screen.queryByRole("checkbox", { name: "実行済みを表示" })).toBeNull();
     fireEvent.click(trigger);
-    const menu = screen.getByRole("dialog", { name: "表示列" });
+    const displayMenu = screen.getByRole("menu", { name: "表示" });
+    expect(within(displayMenu).getByRole("checkbox", { name: "実行済みを表示" })).toBeTruthy();
+    const menu = openColumnSubmenu(displayMenu);
     expect(menu.querySelectorAll('input[type="checkbox"]')).toHaveLength(9);
     expect(within(menu).getByText("表示する列")).toBeTruthy();
     expect(within(menu).getByRole("checkbox", { name: "Project" })).toBeTruthy();
@@ -3109,18 +3130,23 @@ describe("Dogfood Day shell", () => {
     expect(dayBoard.querySelector('[data-day-column-header="project"]')).toBeNull();
     expect(dayBoard.querySelector('[data-day-column-cell="project"]')).toBeNull();
     expect(screen.getByText("Canonical task")).toBeTruthy();
-    expect(screen.getByRole("dialog", { name: "表示列" })).toBeTruthy();
+    expect(screen.getByRole("menu", { name: "列表示" })).toBeTruthy();
     expect(mocks.reorderEntries).not.toHaveBeenCalled();
     expect(mocks.setEntryEstimate).not.toHaveBeenCalled();
 
     fireEvent.click(projectCheckbox);
     expect(dayBoard.querySelector('[data-day-column-header="project"]')).toBeTruthy();
     fireEvent.keyDown(projectCheckbox, { key: "Escape" });
-    expect(screen.queryByRole("dialog", { name: "表示列" })).toBeNull();
+    expect(screen.queryByRole("menu", { name: "列表示" })).toBeNull();
+    expect(screen.getByRole("menu", { name: "表示" })).toBeTruthy();
+    const submenuTrigger = within(displayMenu).getByRole("menuitem", { name: "列表示" });
+    await waitFor(() => expect(document.activeElement).toBe(submenuTrigger));
+    fireEvent.keyDown(submenuTrigger, { key: "Escape" });
+    expect(screen.queryByRole("menu", { name: "表示" })).toBeNull();
     await waitFor(() => expect(document.activeElement).toBe(trigger));
   });
 
-  it("preserves custom order and width across hide/show, Show all, and reload", async () => {
+  it("preserves custom order and width across hide/show and reload from the column submenu", async () => {
     mocks.loadDay.mockResolvedValue(populatedDay);
     const rendered = render(<App />);
     const dayBoard = await screen.findByRole("region", { name: "DayBoard" });
@@ -3146,9 +3172,8 @@ describe("Dogfood Day shell", () => {
     await waitFor(() => expect(Array.from(dayBoard.querySelectorAll<HTMLElement>("[data-day-column-header]"))
       .map((header) => header.dataset.dayColumnHeader).slice(0, 3)).toEqual(["section", "project", "routine"]));
 
-    const trigger = screen.getByRole("button", { name: "表示列" });
-    fireEvent.click(trigger);
-    const menu = screen.getByRole("dialog", { name: "表示列" });
+    const displayMenu = await openDisplayMenu();
+    const menu = openColumnSubmenu(displayMenu);
     const projectCheckbox = within(menu).getByRole("checkbox", { name: "Project" }) as HTMLInputElement;
     fireEvent.click(projectCheckbox);
     expect(dayBoard.querySelector('[data-day-column-header="project"]')).toBeNull();
@@ -3159,7 +3184,7 @@ describe("Dogfood Day shell", () => {
       .map((header) => header.dataset.dayColumnHeader).slice(0, 3)).toEqual(["section", "project", "routine"]);
 
     fireEvent.click(within(menu).getByRole("checkbox", { name: "Routine" }));
-    fireEvent.click(within(menu).getByRole("button", { name: "すべて表示" }));
+    fireEvent.click(within(menu).getByRole("checkbox", { name: "Routine" }));
     await waitFor(() => expect((within(menu).getByRole("checkbox", { name: "Routine" }) as HTMLInputElement).checked).toBe(true));
     expect(dayBoard.style.getPropertyValue("--day-table-grid-template-columns")).toContain("220px");
 
@@ -3179,11 +3204,10 @@ describe("Dogfood Day shell", () => {
     fireEvent.mouseDown(projectHandle, { button: 0, clientX: 100 });
     fireEvent.mouseMove(window, { clientX: 170 });
     fireEvent.mouseUp(window);
-    const trigger = screen.getByRole("button", { name: "表示列" });
-    fireEvent.click(trigger);
-    const menu = screen.getByRole("dialog", { name: "表示列" });
+    const displayMenu = await openDisplayMenu();
+    const menu = openColumnSubmenu(displayMenu);
     fireEvent.click(within(menu).getByRole("checkbox", { name: "Project" }));
-    fireEvent.click(within(menu).getByRole("button", { name: "初期状態に戻す" }));
+    fireEvent.click(within(displayMenu).getByRole("menuitem", { name: "デフォルトに戻す" }));
     await waitFor(() => expect((within(menu).getByRole("checkbox", { name: "Project" }) as HTMLInputElement).checked).toBe(true));
     expect(dayBoard.style.getPropertyValue("--day-table-grid-template-columns")).toContain("150px");
     expect(dayBoard.style.getPropertyValue("--day-table-grid-template-columns")).not.toContain("220px");
@@ -3202,21 +3226,22 @@ describe("Dogfood Day shell", () => {
     expect(screen.getByRole("button", { name: "Canonical taskを開始" })).toBeTruthy();
   });
 
-  it("closes the Columns popover from outside click or trigger re-click and keeps draft alignment", async () => {
+  it("closes the Display menu from outside click or trigger re-click and keeps draft alignment", async () => {
     mocks.loadDay.mockResolvedValue(emptyDay);
     render(<App />);
     const dayBoard = await screen.findByRole("region", { name: "DayBoard" });
-    const trigger = await screen.findByRole("button", { name: "表示列" });
+    const trigger = await screen.findByRole("button", { name: "表示" });
     fireEvent.click(trigger);
-    expect(screen.getByRole("dialog", { name: "表示列" })).toBeTruthy();
+    expect(screen.getByRole("menu", { name: "表示" })).toBeTruthy();
     fireEvent.mouseDown(document.body);
-    expect(screen.queryByRole("dialog", { name: "表示列" })).toBeNull();
+    expect(screen.queryByRole("menu", { name: "表示" })).toBeNull();
     fireEvent.click(trigger);
     fireEvent.click(trigger);
-    expect(screen.queryByRole("dialog", { name: "表示列" })).toBeNull();
+    expect(screen.queryByRole("menu", { name: "表示" })).toBeNull();
 
     fireEvent.click(trigger);
-    const menu = screen.getByRole("dialog", { name: "表示列" });
+    const displayMenu = screen.getByRole("menu", { name: "表示" });
+    const menu = openColumnSubmenu(displayMenu);
     fireEvent.click(within(menu).getByRole("checkbox", { name: "Project" }));
     fireEvent.click(screen.getByRole("button", { name: "MorningにTaskを追加" }));
     const draftRow = screen.getByRole("textbox", { name: "MorningのTask名" }).closest<HTMLElement>(".draft-row")!;
@@ -3331,8 +3356,8 @@ describe("Dogfood Day shell", () => {
     expect(screen.getByText("2件選択中")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Morningを折りたたむ" }));
     expect(screen.getByText("2件選択中")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "表示列" }));
-    fireEvent.click(within(screen.getByRole("dialog", { name: "表示列" })).getByRole("checkbox", { name: "Project" }));
+    const displayMenu = await openDisplayMenu();
+    fireEvent.click(within(openColumnSubmenu(displayMenu)).getByRole("checkbox", { name: "Project" }));
     expect(screen.getByText("2件選択中")).toBeTruthy();
   });
 
