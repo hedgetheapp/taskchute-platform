@@ -20,6 +20,34 @@ Local evidence: focused Web `169 / 169 PASS`、full Worker / D1 `184 / 184 PASS`
 
 Classification: `PERSISTENT_NONPROD_BACKUP_VERIFIED / ISOLATED_RECOVERY_VERIFIED / AUTHENTICATED_BROWSER_VERIFIED / SELECTOR_ORDER_VERIFIED / HARD_DELETE_BROWSER_VERIFIED / TASK_PROJECT_NULLIFICATION_VERIFIED / DELETE_SUCCESS_FOCUS_VERIFIED / APP_INTEGRITY_VERIFIED / AUTH_PRESERVED / PRODUCTION_NOT_RUN / RELEASED_NO`。
 
+## D-065 persistent nonprod state reconciliation closeout — 2026-09-06
+
+Contract: D-065 final verification後のAPP / AUTH state reconciliation。read-only query、既存backupのreadability / isolated recovery確認、canonical docs maintenanceのみを許可し、APP / AUTH write、new backup、restore、cleanup、migration、deploy、runtime変更、production操作は行わない。
+
+| ID | Verification target | Evidence |
+| --- | --- | --- |
+| PROJECT-RECONCILE-01 | Snapshot A canonical baseline | PASS: Projects / project board items / archives `3 / 3 / 0`、Board revision `16`、operations `22`、order `B → A-renamed → C`。A / B / C IDsを記録 |
+| PROJECT-RECONCILE-02 | Snapshot A→Bのoperation delta | PASS: retained operation historyのseq23〜29に7件を特定し、CreateProject `2` + DeleteProject `5`で完全一致 |
+| PROJECT-RECONCILE-03 | 3 Project disappearance explanation | PASS: A / B / Cはそれぞれsuccessful DeleteProject seq25 / seq24 / seq26で説明。全件unassigned_task_count `0`、actor / purposeの推測なし |
+| PROJECT-RECONCILE-04 | APP integrity and non-Project preservation | PASS: Snapshot B `0 / 0 / 0` Projects / board items / archives、operations `29`。isolated recovery `quick_check=ok` / FK `0`。closeout current APPも`quick_check=ok` / FK `0` / orphan Project refs `0` / rows_written `0` |
+| PROJECT-RECONCILE-05 | AUTH preservation and write boundary | PASS: AUTH `quick_check=ok` / FK `0`、users / accounts / sessions `1 / 1 / 5`、rows_written `0`、login capability保持。APP / AUTH migration pending `0 / 0` |
+
+Snapshot Bのexisting APP backupは`apps/web/.wrangler/private-backups/d065-final-pre-delete-app-20260906.sql`、`52,578 bytes`、SHA-256 `095E382FCE688F911F4FADF0DA2F5C468A83585BC1A191DC36E357C387AD5A90`、readable / ignored。isolated SQLite importはlatest migration `0019_project_management.sql`、`quick_check=ok`、FK `0`だった。Snapshot B後の別verification fixtureにより、closeout current APPはProjects / board items / archives `1 / 1 / 0`、Tasks / Entries / Executions / RoutineDefinitions / RoutineOccurrences `3 / 2 / 0 / 1 / 0`、operations `34`、Board revision `26`であり、Snapshot Bとは区別する。
+
+| seq | operation_id | command / result |
+| --- | --- | --- |
+| 23 | `01a07477-5cb5-7691-a24d-985526c75154` | `CreateProject` temporary `01a07477-5cb5-768f-b2be-3836caec7398`、title `てst` |
+| 24 | `01a07477-976c-70a6-8e11-c0ad5fb2edd4` | `DeleteProject` B `01a0745e-3cee-7551-b240-4a803fbaaa14`、Board revision `18`、unassigned `0` |
+| 25 | `01a07477-a4be-7554-93d5-367980982a60` | `DeleteProject` A `01a0745e-14f5-7f8a-8b25-202c0fb117e8`、Board revision `19`、unassigned `0` |
+| 26 | `01a07477-b085-7b58-8e03-11202a232e81` | `DeleteProject` C `01a0745e-590e-7104-b79f-c653946f1b13`、Board revision `20`、unassigned `0` |
+| 27 | `01a07477-bd04-7e5c-bce9-e2b2755d3ad5` | `DeleteProject` temporary `01a07477-5cb5-768f-b2be-3836caec7398`、Board revision `21`、unassigned `0` |
+| 28 | `01a07477-cd48-7f43-8d82-3d257f283c8e` | `CreateProject` temporary `01a07477-cd48-76e5-b8fe-97075fc5e9eb`、title `てst` |
+| 29 | `01a07477-d6fe-7f05-80bf-fd419101761f` | `DeleteProject` temporary `01a07477-cd48-76e5-b8fe-97075fc5e9eb`、Board revision `23`、unassigned `0` |
+
+Conclusion: Snapshot A→BのProject消失とoperation増分は retained canonical operation historyで完全にaccountされ、direct DB mutationを示す証拠はない。全reconciliation queryはread-onlyで`rows_written=0`。historical baselineの重複IDは`PROJECT-CORRECTIVE-BASELINE-05`へ改名し、latest correctiveの`PROJECT-CORRECTIVE-05`は維持した。
+
+Classification: `READ_ONLY_RECONCILED / SNAPSHOT_A_RECORDED / SNAPSHOT_B_RECORDED / SEVEN_OPERATION_DELTA_EXPLAINED / THREE_PROJECT_DISAPPEARANCE_EXPLAINED / APP_INTEGRITY_VERIFIED / AUTH_PRESERVED / NO_DIRECT_DB_MUTATION_EVIDENCE / NO_RUNTIME_CHANGE / NO_DEPLOY / PRODUCTION_NOT_RUN / RESTORE_NOT_RUN / RELEASED_NO`。
+
 ## D-065 Web corrective — persistent nonprod verification — 2026-09-06
 
 Contract: Approved D-020 / D-065のWeb-only corrective verification。latest implementationはbackdrop close時の既定focus移動を抑止するreversible Web-only fixを含む`main@3208d1edde6b1db4ebd4272cf5c4e16d00a385e0`で、API / Domain / schema / migration / dependency / security postureは変更していない。
@@ -49,7 +77,7 @@ Contract: Approved D-020 / D-065のWeb-only corrective。Project commandのexact
 | PROJECT-CORRECTIVE-02 | response lost後にcanonical stateがexact intentへ収束済みならsuccessとし、未収束の`infrastructure_ambiguous`だけexact original commandをretryする | PASS (WEB) |
 | PROJECT-CORRECTIVE-03 | revision conflict等のdeterministic rejectionをretryとして保持しない | PASS (WEB) |
 | PROJECT-CORRECTIVE-04 | Delete cancel / failureはorigin action、row消失時はnext / previous / toolbarへfocus restoreする | PASS (WEB) |
-| PROJECT-CORRECTIVE-05 | persistent nonprod corrective deploy / authenticated mutation / focus / console | NOT_RUN (Wrangler deploy network approval rejected before deployment) |
+| PROJECT-CORRECTIVE-BASELINE-05 | persistent nonprod corrective deploy / authenticated mutation / focus / console | NOT_RUN (Wrangler deploy network approval rejected before deployment) |
 
 Local evidence: focused Project regression追加後のWeb `184 / 184 PASS`、Worker / D1 `184 / 184 PASS`、typecheck、production build、exact `CLOUDFLARE_ENV=nonprod` build、Wrangler dry-run、`git diff --check`、source review `PASS`。nonprod generated configはWorker `taskchute-web-nonprod`、APP `6ad7e35f-5d03-4be3-9b00-46cd713a51c3`、AUTH `60085f8d-0c4e-4c15-98e9-3ce178398041`、`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`。
 
