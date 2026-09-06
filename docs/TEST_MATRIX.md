@@ -1,5 +1,24 @@
 # Test Matrix
 
+## D-066 transitive dependency corrective — 2026-09-06
+
+Contract: Approved D-066内のreversible Web corrective。`dependsOnOperationId`のdirect child限定処理をtransitive closureへ修正し、API / Domain / schema / migration / dependency / binding / security postureは変更していない。開始時点は`main@1631931a17e96c7acce3569bf5a1c89e05c23cfc`、implementation commitは`2711af983edaa3240a1d726a7c81314e4155ea40`。
+
+| ID | Verification target | Evidence |
+| --- | --- | --- |
+| D066-TRANS-01 | deterministic Start failure cascade | PASS (LOCAL_WEB): `X → Start A → Complete A → Start B → Complete B`でStart A failure後、Complete A / Start B / Complete B HTTP `0`、pending UI clear、visible error、max in-flight `1` |
+| D066-TRANS-02 | deterministic Complete failure cascade | PASS (LOCAL_WEB): `Complete A → Start B → Complete B`でComplete A failure後、Start B / Complete B HTTP `0`、transitive cancellation feedbackを確認 |
+| D066-TRANS-03 | ambiguous Start subtree preservation | PASS (LOCAL_WEB): full descendant chainを未送信のまま保持し、root Startをexact request identityでretry、成功 / canonical convergence後にComplete A → Start B → Complete Bを元queue orderで再開 |
+| D066-TRANS-04 | ambiguous Complete subtree preservation | PASS (LOCAL_WEB): ambiguous Complete A後にStart B / Complete Bを送信せず保持し、exact Complete retry成功後に元orderで再開 |
+| D066-TRANS-05 | discard retained root | PASS (LOCAL_WEB): `保留中のclient操作を破棄`でroot retained operation、full dependency subtree、pending overlayをclearし、descendant HTTP `0` |
+| D066-TRANS-06 | closure / queue safety | PASS (SOURCE + LOCAL_WEB): rootからqueue内operation identityを反復収集、undefined operationIdを除外、queue order不変、single serial dispatcher max in-flight `1` |
+| D066-TRANS-07 | local regression / build | PASS: added focused `5 / 5`、full Web `201 / 201`、full Worker / D1 `184 / 184`、typecheck、production build、exact nonprod build、Wrangler dry-run、diff-check、source review |
+| D066-TRANS-08 | persistent nonprod deploy / safety / DB | PASS (NONPROD): Worker `abe8605f-1613-4c3b-ab4f-39de68605ec7`、root `200`、Project API `401`、bootstrap POST `404`、APP/AUTH pending `0 / 0`、APP/AUTH quick_check `ok`、FK empty、rows_written `0` |
+| D066-TRANS-09 | authenticated representative chain / reload | PASS (NONPROD_BROWSER): A Start → A Complete → B Start → B Complete、reload後A / B completed。console exact countはCUA surface制約により`NOT_VERIFIED` |
+| D066-TRANS-10 | prohibited boundary | PASS (SOURCE / OPERATIONS): production、restore、destructive cleanup、new token、permission / scope、account / role、binding変更、branch / PR / merge / tag / releaseは未実施 |
+
+Classification: `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / MAIN_PUSHED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_SAFETY_VERIFIED / AUTHENTICATED_BROWSER_REPRESENTATIVE_VERIFIED / DB_INTEGRITY_VERIFIED / CONSOLE_NOT_VERIFIED / MIGRATION_NOT_REQUIRED / PRODUCTION_NOT_RUN / RESTORE_NOT_RUN / RELEASED_NO`。
+
 ## D-066 queued Complete → Start acceptance corrective — 2026-09-06
 
 Contract: Approved D-066内のreversible corrective。ordinary mutation Xの後ろでqueued-but-not-activeなComplete Aを通常pendingとして扱い、Complete A → Start BおよびStart A → Complete A → Start Bのdependency orderを保つ。ambiguous retained Completeはimplicit success扱いせず、Start control / handlerをdisabledで一致させる。API / Domain / schema / migration / dependency / binding / security postureは変更していない。開始時点は`main@3cd01de111cbaea3f53ee528046828d86b875418`、implementation commitは`57bc8b98320764b18eb7fd2ecd000220272630a0`。

@@ -404,4 +404,6 @@ There is at most one ordinary Day command in flight. Unsent intents may be repla
 
 Conflict scopes are represented separately from the global barriers used for authentication, navigation, initial Section configuration, and settings. This permits unrelated Task metadata / estimate / placement intents to be accepted while another command is in flight while still preventing unsafe dependent execution transitions. A revision conflict or ambiguous response pauses the serial queue, reconciles against the Server projection, cancels unsent dependents, and retains the exact sent operation until deterministic success or explicit retry/discard.
 
+Dependency edges inside the ephemeral queue are treated as a graph rather than a direct-child hint. Deterministic failure computes the full queued descendant closure and removes that subtree with its pending overlays; an ambiguous root preserves the full descendant closure and original queue order until the exact root retry converges. This remains client-only orchestration and does not create a server dependency, persistent queue, or new operation semantics.
+
 The scheduler is a Web presentation/orchestration concern. No Worker route, D1 table, migration, operation command type, dependency, binding, or security posture is introduced by D-066.

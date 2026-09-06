@@ -442,6 +442,7 @@ Current Dayのordinary mutationは、操作を受理した直後に対象rowのo
 - 送信済みcommandはexact `operation_id`とrequestを変更せず、network ambiguityでは再送またはcanonical reconcileまでstatusを保持する。revision conflictでは関連する未送信queueを止め、false-successを残さない。
 - Addはprovisional client UUIDv7 rowを即時表示し、draftをclearして次のAddを受理する。Add failureはprovisional rowとそのdependent queued intentを取り消す。
 - pending中のDay navigationはdrain後へ延期する。reload / closeはunsaved workを警告できるが、queueをlocalStorage / IndexedDBへ永続化しない。
+- Start / Completeのdependency chainはdirect childだけでなくqueued descendant全体をclosureとして扱う。deterministic prerequisite failureはsubtreeを一括cancelし、ambiguous rootはfull subtreeを元の順序で保持してexact retry成功後に再開する。
 
 ## Unreconciled historical scope
 
