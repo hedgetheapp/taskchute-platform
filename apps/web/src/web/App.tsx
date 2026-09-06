@@ -4193,7 +4193,10 @@ export function App() {
       case "mode": {
         const overlay = pendingModeOverlays[entry.id];
         const modeId = overlay ? overlay.mode_id : entry.mode?.id ?? null;
-        const modeTitle = modeId === null ? null : modeBoard?.modes.find((mode) => mode.id === modeId)?.title ?? entry.mode?.title ?? null;
+        const modeTitle = modeId === null ? null
+          : !overlay && entry.mode?.source === "snapshot"
+            ? entry.mode.title
+            : modeBoard?.modes.find((mode) => mode.id === modeId)?.title ?? entry.mode?.title ?? null;
         const editable = currentDay.is_current && currentDay.planning_enabled && entry.lifecycle_state === "planned" && entry.routine === null;
         return <span className="mode-cell" data-day-column-cell={key} onClick={(event) => event.stopPropagation()}>
           {editable ? <select className="mode-selector" aria-label={`${entry.task.title}のMode`} value={modeId ?? ""}

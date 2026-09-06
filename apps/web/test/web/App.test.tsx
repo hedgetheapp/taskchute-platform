@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
   setEntryPlannedStart: vi.fn(),
   convertEntryToRoutine: vi.fn(), endRoutine: vi.fn(), setRoutineEstimate: vi.fn(), setRoutineSectionPlan: vi.fn(),
   loadRoutines: vi.fn(), createRoutine: vi.fn(), setRoutineEnabled: vi.fn(), updateRoutine: vi.fn(), reorderRoutines: vi.fn(),
-  loadSectionConfiguration: vi.fn(), updateSectionConfiguration: vi.fn(),
+  loadSectionConfiguration: vi.fn(), updateSectionConfiguration: vi.fn(), loadModeBoard: vi.fn(),
 }));
 
 vi.mock("../../src/web/api", async () => {
@@ -254,6 +254,7 @@ beforeEach(() => {
     ],
   });
   mocks.updateSectionConfiguration.mockResolvedValue({ configuration_version_id: "new-version" });
+  mocks.loadModeBoard.mockResolvedValue({ board_revision: 0, modes: [] });
 });
 
 async function openSectionSettings() {
@@ -3889,6 +3890,21 @@ describe("Dogfood Day shell", () => {
     fireEvent.keyDown(lastStop, { key: "Tab" });
     expect(secondRow).toContain(document.activeElement);
     expect((document.activeElement as HTMLElement).closest(".bulk-slot, .execution-cell")).toBeNull();
+  });
+
+  it("keeps a completed Entry's Mode snapshot title after the live Mode is renamed", async () => {
+    const modeId = "019c0000-0000-7000-8000-000000000011";
+    const completedWithSnapshot: CurrentTaskChuteDayProjection = {
+      ...completedDay,
+      sections: [{ ...emptyDay.sections[0], entries: [{ ...firstEntry, lifecycle_state: "completed",
+        mode: { id: modeId, title: "D068 Focus verification", source: "snapshot" } }] }, emptyDay.sections[1]],
+    };
+    mocks.loadDay.mockResolvedValue(completedWithSnapshot);
+    mocks.loadModeBoard.mockResolvedValue({ board_revision: 1,
+      modes: [{ id: modeId, title: "D068 Deep verification", board_position: 1, settings_revision: 0 }] });
+    render(<App />);
+    expect(await screen.findByText("D068 Focus verification")).toBeTruthy();
+    expect(screen.queryByText("D068 Deep verification")).toBeNull();
   });
 
   it("implements X selection semantics and suppresses it in inputs and modal ownership", async () => {
