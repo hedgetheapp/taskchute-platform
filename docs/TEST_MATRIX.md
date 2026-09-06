@@ -1,6 +1,25 @@
 # Test Matrix
 
-## D-065 Web corrective — Project retry / reconcile and Delete focus restoration — 2026-09-05
+## D-065 Web corrective — persistent nonprod verification — 2026-09-06
+
+Contract: Approved D-020 / D-065のWeb-only corrective verification。latest implementationはbackdrop close時の既定focus移動を抑止するreversible Web-only fixを含む`main@3208d1edde6b1db4ebd4272cf5c4e16d00a385e0`で、API / Domain / schema / migration / dependency / security postureは変更していない。
+
+| ID | Verification target | Evidence |
+| --- | --- | --- |
+| PROJECT-CORRECTIVE-05 | exact current mainのpersistent nonprod deploy、binding / env / safety probe | PASS: Worker `78bf3f21-84a2-4c3b-ba10-ec38bfcd4f2a`、root `200`、protected Project API `401`、disabled `/api/internal/bootstrap` POST `404`、APP / AUTH pending `0 / 0` |
+| PROJECT-CORRECTIVE-06 | authenticated create / rename / archive / restore / reload、false-error、console | PASS (NONPROD_BROWSER): disposable A / B / C create、A rename、B archive → archived tab → restore、reload consistency、false-errorなし、console error / warning `[]` |
+| PROJECT-CORRECTIVE-07 | Delete modalのCancel / Escape / backdrop non-destructive focus restoration | PASS (NONPROD_BROWSER): 3 pathともdialog close、origin row action focus restore、Confirm delete未実行 |
+| PROJECT-CORRECTIVE-08 | actual coordinate row reorderとreload / server order / operation | PASS (NONPROD_BROWSER + NONPROD_D1): Sidebar close後のnon-interactive row surfaceからA / B / Cをpointer D&D、visible / reload order `B → A-renamed → C`、`ReorderProjects` success |
+| PROJECT-CORRECTIVE-09 | active selector order | NOT_VERIFIED: Day draft UIにProject selectorがなく、Task / Routine fixtureを追加しなかった |
+| PROJECT-CORRECTIVE-10 | APP / AUTH D1 integrityと既存データ非変更 | PASS (NONPROD_D1 read-only): APP / AUTH `quick_check=ok`、FK `0`、全query `rows_written=0`、existing Tasks / Entries `2 / 1` unchanged |
+
+Local evidence: focused Web regression `169 / 169 PASS`、full Worker / D1 `184 / 184 PASS`、full Web `185 / 185 PASS`、migration regression `4 scenarios PASS`、typecheck、production build、exact nonprod build、Wrangler dry-run、`git diff --check`、source review `PASS`。build時のWrangler log `EPERM`とclient chunk size warningは既知の非致命warningで各commandはexit `0`。
+
+Persistent non-production evidence: reset後のAPP baselineはProjects / board items / archives `0 / 0 / 0`、Board head / revision `1 / 12`、app_users / Sections / Tasks / Entries / Executions / operations `1 / 3 / 2 / 1 / 0 / 15`。browser後はProjects / board items / archives `3 / 3 / 0`、Board revision `16`、operations `22`。当runのdeltaはCreateProject `3`、UpdateProject `1`、SetProjectArchived `2`、ReorderProjects `1`で、DeleteProject `0`。Project rowsはD1でB position `1`、A-renamed position `2`、C position `3`、active archive `0`を確認した。検証fixture 3件はcleanupせず残置した。AUTH read-onlyはusers / accounts / sessions `1 / 1 / 5`、`quick_check=ok`、FK `0`でlogin capabilityを保持した。
+
+Classification: D-065 corrective `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / MAIN_PUSHED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_SAFETY_VERIFIED / AUTHENTICATED_BROWSER_PARTIAL / DELETE_MODAL_NON_DESTRUCTIVE_FOCUS_VERIFIED / ROW_REORDER_VERIFIED / SELECTOR_ORDER_NOT_VERIFIED / HARD_DELETE_BROWSER_NOT_RUN / PRODUCTION_NOT_RUN / RELEASED_NO`。migration / backup / restore / existing persistent data deletion / production / branch / PR / merge / tag / release / auxiliary Worker操作は行っていない。new API token、permission / OAuth scope拡張、account / role変更、binding変更、security posture変更も行っていない。
+
+## D-065 Web corrective implementation baseline — 2026-09-05
 
 Contract: Approved D-020 / D-065のWeb-only corrective。Project commandのexact ambiguous retry、canonical convergence、deterministic rejection後のreconcile、Delete modal focus restorationを対象とし、API / Domain / schema / migration / dependency / security postureは変更しない。implementation commitはGitHub `main@45d398bb282e6d892e63a31706722783c7693b31`。
 

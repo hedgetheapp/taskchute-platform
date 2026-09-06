@@ -1,8 +1,24 @@
 # Current
 
-Date: 2026-09-05
+Date: 2026-09-06
 
 ## Status
+
+### D-065 Web corrective — persistent nonprod verification — 2026-09-06
+
+D-065 Approved範囲のWeb correctiveについて、current GitHub `main@fc8918f359e04c9b7332ad15570d19d7b2bdb4df`を起点に、backdrop click時の既定focus移動を抑止するreversible Web-only fixを追加した。Delete modalのCancel / Escape / backdrop closeはいずれもorigin row actionへfocusを戻し、hard delete自体は実行していない。focused regressionを追加し、修正commit `3208d1edde6b1db4ebd4272cf5c4e16d00a385e0`を`main`へfast-forward pushした。API / Domain / schema / migration / compatibility / dependency / security postureは変更していない。
+
+Local evidenceはfocused regressionを含むWeb `169 / 169 PASS`、full Worker / D1 `184 / 184 PASS`、full Web `185 / 185 PASS`、migration regression `4 scenarios PASS`、typecheck、production build、exact `CLOUDFLARE_ENV=nonprod` build、Wrangler nonprod dry-run、`git diff --check`、source reviewをPASSした。build時のWrangler log `EPERM`とclient chunk size warningは既知の非致命warningで、各commandはexit `0`である。
+
+exact pushed `main@3208d1edde6b1db4ebd4272cf5c4e16d00a385e0`をcanonical generated configでdeployし、Worker `taskchute-web-nonprod` version `78bf3f21-84a2-4c3b-ba10-ec38bfcd4f2a`を確認した。configは`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、canonical APP / AUTH bindingで、migration pendingはAPP / AUTH `0 / 0`。HTTP safety probeはroot `200`、未認証 protected Project API `401`、disabled `/api/internal/bootstrap` POST `404`をPASSした。
+
+Authenticated nonprod browserでは、reset後の既存sessionを再認証なしで利用した。disposable Project `D065-corrective-20260906-A` / `B` / `C`をcreateし、Aを`D065-corrective-20260906-A-renamed`へrename、Bをarchive → archived tab確認 → restoreし、各状態をreload後も確認した。成功notice後にfalse-error / reconcile errorは表示されず、browser console error / warningは空集合だった。Delete modalはAでCancel、Escape、backdropの3つを確認し、いずれもdialogを閉じ、origin actionへfocusをrestoreした。Confirm deleteは押していない。
+
+Sidebarを閉じてrowのnon-interactive領域を確保したうえで、A / B / Cの3行を実座標pointer D&Dし、visible order `B → A-renamed → C`、reload後のserver-canonical order、`ReorderProjects` successを確認した。active Project selector orderは、保存なしのDay draft UIにProject selectorがなく、Task / Routine fixtureを追加しなかったため`NOT_VERIFIED`。fixtureはactive Project 3件として残置し、勝手なcleanupは行っていない。hard-delete mutation、delete後focus fallback、Task-assigned hard deleteはこのContract境界により`NOT_RUN`である。
+
+Browser前のAPP read-only baselineは`quick_check=ok`、FK violations `0`、Projects / board items / archives `0 / 0 / 0`、Project Board head `1` / revision `12`、app_users / Sections / Tasks / Entries / Executions / operations `1 / 3 / 2 / 1 / 0 / 15`だった。browser後は`quick_check=ok`、FK violations `0`、Projects / board items / archives `3 / 3 / 0`、Board revision `16`、app_users / Sections / Tasks / Entries / Executions `1 / 3 / 2 / 1 / 0`、operations `22`。deltaはCreateProject `3`、UpdateProject `1`、SetProjectArchived `2`、ReorderProjects `1`のみで、当runのDeleteProjectは`0`。Project order / IDsはD1 read-onlyで`B (position 1) → A-renamed (position 2) → C (position 3)`と一致した。全D1 queryの`rows_written=0`で、既存Task / Entry等の件数変化はない。AUTHはread-onlyで`quick_check=ok`、FK `0`、users / accounts / sessions `1 / 1 / 5`を確認し、login capabilityを保持した。
+
+Classification: D-065 corrective `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / MAIN_PUSHED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_SAFETY_VERIFIED / AUTHENTICATED_BROWSER_PARTIAL / DELETE_MODAL_NON_DESTRUCTIVE_FOCUS_VERIFIED / ROW_REORDER_VERIFIED / HARD_DELETE_BROWSER_NOT_RUN / SELECTOR_ORDER_NOT_VERIFIED / PRODUCTION_NOT_RUN / RELEASED_NO`。このrunではmigration / backup / restore / existing persistent data deletion / production / branch / PR / merge / tag / release / auxiliary Worker操作を行っていない。new API token、permission / OAuth scope拡張、account / role変更、APP / AUTH binding変更、security posture変更も行っていない。
 
 ### D-065 Web corrective — Project retry / reconcile and Delete focus restoration — 2026-09-05
 
@@ -12,7 +28,7 @@ Delete modalはrow-end actionをopen前に明示的originとして保持する�
 
 implementationはGitHub canonical `main@45d398bb282e6d892e63a31706722783c7693b31`へfast-forward integrated済み。Web `184 / 184 PASS`、Worker / D1 `184 / 184 PASS`、typecheck、production build、exact nonprod build、Wrangler nonprod dry-run、`git diff --check`、source reviewをPASSした。generated configはWorker `taskchute-web-nonprod`、canonical APP / AUTH binding、`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`である。
 
-persistent nonprod deployは実行環境のnetwork approvalがWrangler deploy通信を開始前に拒否したため`NOT_RUN`。認証済みbrowser sessionとclean Todayは確認したがlive runtimeはcorrective未deployのため、corrective browser mutation / focus / console evidenceへ昇格していない。fixture作成、APP / AUTH write、migration、restore、production、auxiliary Worker、branch / PR / merge / tag / releaseは`NOT_RUN`、Released `NO`。
+persistent nonprod deployはこの2026-09-05 snapshot時点では実行環境のnetwork approvalがWrangler deploy通信を開始前に拒否したため`NOT_RUN`だった。このbaselineは上記2026-09-06のdeploy / browser evidenceでsupersedeされる。fixture作成、APP / AUTH write、migration、restore、production、auxiliary Worker、branch / PR / merge / tag / releaseは当時`NOT_RUN`、Released `NO`。
 
 ### D-065 — Project management — 2026-09-05
 
