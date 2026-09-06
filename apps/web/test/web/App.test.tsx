@@ -1951,6 +1951,21 @@ describe("Dogfood Day shell", () => {
     await waitFor(() => expect(document.activeElement).toBe(action));
   });
 
+  it("restores Delete modal focus after a backdrop close without mutating the Project", async () => {
+    mocks.loadDay.mockResolvedValue(emptyDay);
+    render(<App />);
+    await openProjectSettings();
+    const action = screen.getByRole("button", { name: "Existing Projectのメニュー" });
+    fireEvent.click(action);
+    fireEvent.click(screen.getByRole("menuitem", { name: "削除" }));
+    const dialog = await screen.findByRole("dialog", { name: "Project削除確認" });
+    const backdrop = dialog.parentElement!;
+    fireEvent.mouseDown(backdrop);
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Project削除確認" })).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(action));
+    expect(mocks.deleteProject).not.toHaveBeenCalled();
+  });
+
   it("moves focus to the next Project action after successful deletion removes the origin row", async () => {
     const first = { id: "first-project", title: "First Project", archived: false, board_position: 1, settings_revision: 0 };
     const second = { id: "second-project", title: "Second Project", archived: false, board_position: 2, settings_revision: 0 };
