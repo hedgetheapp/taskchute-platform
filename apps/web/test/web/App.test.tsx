@@ -195,6 +195,12 @@ const completedDay: CurrentTaskChuteDayProjection = {
   sections: [{ ...runningDay.sections[0], entries: [{ ...firstEntry, lifecycle_state: "completed" }] }, emptyDay.sections[1]],
 };
 
+const serialDeleteDay: CurrentTaskChuteDayProjection = {
+  ...twoPlannedDay,
+  placement_revision: 5,
+  sections: [{ ...twoPlannedDay.sections[0], entries: [firstEntry, { ...secondEntry, lifecycle_state: "completed" }] }, emptyDay.sections[1]],
+};
+
 const unsectionedDay: CurrentTaskChuteDayProjection = {
   ...twoPlannedDay,
   sections: [emptyDay.sections[0], emptyDay.sections[1]],
@@ -3620,6 +3626,84 @@ describe("Dogfood Day shell", () => {
     await screen.findByRole("dialog", { name: "完了したTaskを完全に削除しますか？" });
     fireEvent.keyDown(document, { key: "Escape" });
     expect(mocks.deleteCompletedEntry).not.toHaveBeenCalled();
+  });
+
+  it("serializes completed delete behind an ordinary mutation and rebases the first dispatch revision", async () => {
+    const addRequest = deferred<unknown>();
+    const latest = { ...serialDeleteDay, placement_revision: 7 };
+    mocks.loadDay.mockResolvedValueOnce(serialDeleteDay).mockResolvedValue(latest);
+    mocks.addTask.mockReturnValue(addRequest.promise);
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "EveningにTaskを追加" }));
+    const addInput = screen.getByRole("textbox", { name: "EveningのTask名" });
+    fireEvent.change(addInput, { target: { value: "Ordinary X" } });
+    fireEvent.keyDown(addInput, { key: "Enter", code: "Enter" });
+    await waitFor(() => expect(mocks.addTask).toHaveBeenCalledTimes(1));
+    const menu = await openOverflowMenu("Second task");
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "削除" }));
+    const dialog = await screen.findByRole("dialog", { name: "完了したTaskを完全に削除しますか？" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "完全に削除" }));
+
+    expect(mocks.deleteCompletedEntry).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "保留中の完了Task削除を再試行" })).toBeNull();
+    addRequest.resolve({});
+    await waitFor(() => expect(mocks.deleteCompletedEntry).toHaveBeenCalledTimes(1));
+    expect(mocks.deleteCompletedEntry.mock.calls[0][0]).toMatchObject({
+      entry_id: secondEntry.id,
+      taskchute_day_id: serialDeleteDay.taskchute_day.id,
+      expected_placement_revision: 7,
+    });
+  });
+
+  it("pauses later ordinary work on ambiguous delete and retries the exact sent request through the dispatcher", async () => {
+    const deleteRequest = deferred<unknown>();
+    mocks.loadDay.mockResolvedValue(serialDeleteDay);
+    mocks.deleteCompletedEntry.mockReturnValueOnce(deleteRequest.promise).mockResolvedValueOnce({});
+    render(<App />);
+
+    const menu = await openOverflowMenu("Second task");
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "削除" }));
+    const dialog = await screen.findByRole("dialog", { name: "完了したTaskを完全に削除しますか？" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "完全に削除" }));
+    await waitFor(() => expect(mocks.deleteCompletedEntry).toHaveBeenCalledTimes(1));
+    const sent = mocks.deleteCompletedEntry.mock.calls[0][0];
+
+    fireEvent.click(screen.getByRole("button", { name: "EveningにTaskを追加" }));
+    const addInput = screen.getByRole("textbox", { name: "EveningのTask名" });
+    fireEvent.change(addInput, { target: { value: "Must wait" } });
+    fireEvent.keyDown(addInput, { key: "Enter", code: "Enter" });
+    expect(mocks.addTask).not.toHaveBeenCalled();
+
+    deleteRequest.reject(new ApiClientError("ambiguous", 503, true, "infrastructure_ambiguous"));
+    const retry = await screen.findByRole("button", { name: "保留中の完了Task削除を再試行" });
+    expect(mocks.addTask).not.toHaveBeenCalled();
+    fireEvent.click(retry);
+    await waitFor(() => expect(mocks.deleteCompletedEntry).toHaveBeenCalledTimes(2));
+    expect(mocks.deleteCompletedEntry.mock.calls[1][0]).toEqual(sent);
+  });
+
+  it("clears a conflicted delete and cancels stale queued work without exposing a retry", async () => {
+    const deleteRequest = deferred<unknown>();
+    mocks.loadDay.mockResolvedValue(serialDeleteDay);
+    mocks.deleteCompletedEntry.mockReturnValueOnce(deleteRequest.promise);
+    render(<App />);
+
+    const menu = await openOverflowMenu("Second task");
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "削除" }));
+    const dialog = await screen.findByRole("dialog", { name: "完了したTaskを完全に削除しますか？" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "完全に削除" }));
+    await waitFor(() => expect(mocks.deleteCompletedEntry).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "EveningにTaskを追加" }));
+    const addInput = screen.getByRole("textbox", { name: "EveningのTask名" });
+    fireEvent.change(addInput, { target: { value: "Stale queued" } });
+    fireEvent.keyDown(addInput, { key: "Enter", code: "Enter" });
+    expect(mocks.addTask).not.toHaveBeenCalled();
+    deleteRequest.reject(new ApiClientError("revision conflict", 409, true, "revision_conflict"));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Dayの内容が変わったため"));
+    expect(mocks.addTask).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "保留中の完了Task削除を再試行" })).toBeNull();
   });
 
   it("re-enables current SetExecutionTimes inline while retaining Revert withdrawal", async () => {
