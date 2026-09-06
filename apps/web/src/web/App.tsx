@@ -727,6 +727,32 @@ export function App() {
   const dayMutationPausedRef = useRef(false);
   const deferredNavigationRef = useRef<{ logicalDate?: string } | null>(null);
   const deferredTransitionRef = useRef<{ kind: "logout" } | { kind: "settings"; destination: SettingsDestination } | null>(null);
+  function isQueuedDayMutationOperation(operationId: string | undefined): boolean {
+    return operationId !== undefined && dayMutationQueueRef.current.some((item) => item.operationId === operationId);
+  }
+
+  function isRetryableRetainedDayOperation(operationId: string | undefined): boolean {
+    return operationId !== undefined && !isQueuedDayMutationOperation(operationId);
+  }
+
+  const retryableTaskOperation = taskOperation && isRetryableRetainedDayOperation(taskOperation.operation_id) ? taskOperation : null;
+  const retryableReorderOperation = reorderOperation && isRetryableRetainedDayOperation(reorderOperation.operation_id) ? reorderOperation : null;
+  const retryableStartOperation = startOperation && isRetryableRetainedDayOperation(startOperation.operation_id) ? startOperation : null;
+  const retryableCompleteOperation = completeOperation && isRetryableRetainedDayOperation(completeOperation.operation_id) ? completeOperation : null;
+  const retryableTaskMetadataOperation = taskMetadataOperation && isRetryableRetainedDayOperation(taskMetadataOperation.operation_id) ? taskMetadataOperation : null;
+  const retryableRetainedTaskMetadataOperations = retainedTaskMetadataOperations.filter((operation) => isRetryableRetainedDayOperation(operation.operation_id));
+  const retryableSectionMoveOperation = sectionMoveOperation && isRetryableRetainedDayOperation(sectionMoveOperation.operation_id) ? sectionMoveOperation : null;
+  const retryableEstimateOperation = estimateOperation && isRetryableRetainedDayOperation(estimateOperation.operation_id) ? estimateOperation : null;
+  const retryableRetainedEstimateOperations = retainedEstimateOperations.filter((operation) => isRetryableRetainedDayOperation(operation.operation_id));
+  const retryablePlannedStartOperation = plannedStartOperation && isRetryableRetainedDayOperation(plannedStartOperation.request.operation_id) ? plannedStartOperation : null;
+  const retryableDayOperation = retryableTaskOperation ?? retryableReorderOperation ?? retryableStartOperation ?? retryableCompleteOperation
+    ?? retryableTaskMetadataOperation ?? retryableRetainedTaskMetadataOperations[0] ?? retryableSectionMoveOperation
+    ?? retryableEstimateOperation ?? retryableRetainedEstimateOperations[0] ?? retryablePlannedStartOperation;
+  const nonD066RetainedOperation = projectOperation ?? duplicateOperation ?? bulkDeleteOperation ?? bulkDateMoveOperation ?? bulkSectionOperation
+    ?? bulkSectionOccurrenceOperation ?? bulkSectionScopedOperation ?? bulkEstimateOperation ?? executionTimesOperation
+    ?? configurationOperation ?? sectionSettingsOperation ?? routineConversionOperation ?? routineEndOperation ?? routineEstimateOperation
+    ?? retainedRoutineEstimateOperations[0] ?? routineSectionPlanOperation;
+  const retryablePanelOperation = nonD066RetainedOperation ?? retryableDayOperation;
   const retainedOperation = projectOperation ?? taskOperation ?? duplicateOperation ?? bulkDeleteOperation ?? bulkDateMoveOperation ?? bulkSectionOperation ?? bulkSectionOccurrenceOperation ?? bulkSectionScopedOperation ?? bulkEstimateOperation ?? reorderOperation ?? startOperation ?? completeOperation ?? executionTimesOperation ?? taskMetadataOperation ?? retainedTaskMetadataOperations[0] ?? retainedEstimateOperations[0]
     ?? configurationOperation ?? sectionSettingsOperation ?? sectionMoveOperation ?? estimateOperation ?? plannedStartOperation
     ?? routineConversionOperation ?? routineEndOperation ?? routineEstimateOperation ?? retainedRoutineEstimateOperations[0] ?? routineSectionPlanOperation;
@@ -4902,11 +4928,11 @@ export function App() {
         })}
       </section>
 
-      {retainedOperation && pending === null && (
+      {retryablePanelOperation && pending === null && (
         <section className="panel pending-intent" aria-label="結果未確定の操作">
           <p>結果未確定の操作があります。元の操作だけを再試行するか、client側の保留を破棄してください。</p>
           {projectOperation && <button type="button" onClick={() => void executeCreateProject(projectOperation)}>保留中のProject作成を再試行</button>}
-          {taskOperation && <button type="button" onClick={() => enqueueRetainedRetry("Task追加", placementMutationScope(taskOperation.taskchute_day_id), () => executeAddTask(taskOperation))}>保留中のTask追加を再試行</button>}
+          {retryableTaskOperation && <button type="button" onClick={() => enqueueRetainedRetry("Task追加", placementMutationScope(retryableTaskOperation.taskchute_day_id), () => executeAddTask(retryableTaskOperation))}>保留中のTask追加を再試行</button>}
           {duplicateOperation && <button type="button" onClick={() => void executeDuplicate(duplicateOperation)}>保留中のTask複製を再試行</button>}
           {bulkDeleteOperation && <button type="button" onClick={() => void executeBulkDelete(bulkDeleteOperation)}>保留中のBulk削除を再試行</button>}
           {bulkDateMoveOperation && <button type="button" onClick={() => void executeBulkDateMove(bulkDateMoveOperation)}>保留中の日付変更を再試行</button>}
@@ -4914,22 +4940,22 @@ export function App() {
            {bulkSectionOccurrenceOperation && <button type="button" onClick={() => void executeBulkSectionOccurrenceChange(bulkSectionOccurrenceOperation)}>保留中のRoutine含むBulk Section変更を再試行</button>}
            {bulkSectionScopedOperation && <button type="button" onClick={() => void executeBulkSectionScopedChange(bulkSectionScopedOperation)}>保留中のRoutineごとのBulk Section変更を再試行</button>}
           {bulkEstimateOperation && <button type="button" onClick={() => void executeBulkEstimateChange(bulkEstimateOperation)}>保留中のBulk見積変更を再試行</button>}
-          {reorderOperation && <button type="button" onClick={() => enqueueRetainedRetry("並び替え", placementMutationScope(reorderOperation.taskchute_day_id), () => executeReorder(reorderOperation))}>保留中のReorderを再試行</button>}
-          {startOperation && <button type="button" onClick={() => enqueueRetainedRetry("Start", executionMutationScope(startOperation.entry_id), () => executeStart(startOperation))}>保留中のStartを再試行</button>}
-          {completeOperation && <button type="button" onClick={() => enqueueRetainedRetry("Complete", executionMutationScope(completeOperation.entry_id), () => executeComplete(completeOperation))}>保留中のCompleteを再試行</button>}
+          {retryableReorderOperation && <button type="button" onClick={() => enqueueRetainedRetry("並び替え", placementMutationScope(retryableReorderOperation.taskchute_day_id), () => executeReorder(retryableReorderOperation))}>保留中のReorderを再試行</button>}
+          {retryableStartOperation && <button type="button" onClick={() => enqueueRetainedRetry("Start", executionMutationScope(retryableStartOperation.entry_id), () => executeStart(retryableStartOperation))}>保留中のStartを再試行</button>}
+          {retryableCompleteOperation && <button type="button" onClick={() => enqueueRetainedRetry("Complete", executionMutationScope(retryableCompleteOperation.entry_id), () => executeComplete(retryableCompleteOperation))}>保留中のCompleteを再試行</button>}
           {executionTimesOperation && <button type="button" onClick={() => void executeExecutionTimes(executionTimesOperation)}>保留中の実績時刻保存を再試行</button>}
-          {taskMetadataOperation && <button type="button" onClick={() => enqueueRetainedRetry("Task情報保存", entryMutationScope(taskMetadataOperation.entry_id, taskMetadataOperation.task_id), () => executeTaskMetadata(taskMetadataOperation))}>保留中のTask情報保存を再試行</button>}
-          {retainedTaskMetadataOperations.filter((operation) => operation.operation_id !== taskMetadataOperation?.operation_id).map((operation) => (
+          {retryableTaskMetadataOperation && <button type="button" onClick={() => enqueueRetainedRetry("Task情報保存", entryMutationScope(retryableTaskMetadataOperation.entry_id, retryableTaskMetadataOperation.task_id), () => executeTaskMetadata(retryableTaskMetadataOperation))}>保留中のTask情報保存を再試行</button>}
+          {retryableRetainedTaskMetadataOperations.filter((operation) => operation.operation_id !== retryableTaskMetadataOperation?.operation_id).map((operation) => (
             <button type="button" key={operation.operation_id} onClick={() => enqueueRetainedRetry("Task情報保存", entryMutationScope(operation.entry_id, operation.task_id), () => executeTaskMetadata(operation))}>保留中のTask情報保存を再試行</button>
           ))}
           {configurationOperation && <button type="button" onClick={() => void executeConfiguration(configurationOperation)}>保留中のSection設定を再試行</button>}
           {sectionSettingsOperation && <button type="button" onClick={() => void executeSectionSettings(sectionSettingsOperation)}>保留中の次Day Section設定を再試行</button>}
-          {sectionMoveOperation && <button type="button" onClick={() => enqueueRetainedRetry("Section移動", placementMutationScope(sectionMoveOperation.taskchute_day_id), () => executeSectionMove(sectionMoveOperation))}>保留中のSection移動を再試行</button>}
-          {estimateOperation && <button type="button" onClick={() => enqueueRetainedRetry("見積保存", entryMutationScope(estimateOperation.entry_id), () => executeEstimate(estimateOperation))}>保留中の見積保存を再試行</button>}
-          {retainedEstimateOperations.filter((operation) => operation.operation_id !== estimateOperation?.operation_id).map((operation) => (
+          {retryableSectionMoveOperation && <button type="button" onClick={() => enqueueRetainedRetry("Section移動", placementMutationScope(retryableSectionMoveOperation.taskchute_day_id), () => executeSectionMove(retryableSectionMoveOperation))}>保留中のSection移動を再試行</button>}
+          {retryableEstimateOperation && <button type="button" onClick={() => enqueueRetainedRetry("見積保存", entryMutationScope(retryableEstimateOperation.entry_id), () => executeEstimate(retryableEstimateOperation))}>保留中の見積保存を再試行</button>}
+          {retryableRetainedEstimateOperations.filter((operation) => operation.operation_id !== retryableEstimateOperation?.operation_id).map((operation) => (
             <button type="button" key={operation.operation_id} onClick={() => enqueueRetainedRetry("見積保存", entryMutationScope(operation.entry_id), () => executeEstimate(operation))}>保留中の見積保存を再試行</button>
           ))}
-          {plannedStartOperation && <button type="button" onClick={() => enqueueRetainedRetry("開始予定保存", placementMutationScope(plannedStartOperation.request.taskchute_day_id), () => executePlannedStart(plannedStartOperation))}>保留中の開始予定保存を再試行</button>}
+          {retryablePlannedStartOperation && <button type="button" onClick={() => enqueueRetainedRetry("開始予定保存", placementMutationScope(retryablePlannedStartOperation.request.taskchute_day_id), () => executePlannedStart(retryablePlannedStartOperation))}>保留中の開始予定保存を再試行</button>}
           {routineConversionOperation && <button type="button" onClick={() => void executeRoutineConversion(routineConversionOperation)}>保留中のRoutine化を再試行</button>}
           {routineEndOperation && <button type="button" onClick={() => void executeRoutineEnd(routineEndOperation)}>保留中のRoutine終了を再試行</button>}
           {routineEstimateOperation && <button type="button" onClick={() => void executeRoutineEstimate(routineEstimateOperation)}>保留中のRoutine見積を再試行</button>}

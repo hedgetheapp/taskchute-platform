@@ -4192,11 +4192,12 @@ describe("Dogfood Day shell", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Second taskを完了" }));
 
     firstStartRequest.reject(new ApiClientError("response lost", 503, true, "infrastructure_ambiguous"));
-    const retry = await screen.findByRole("button", { name: "保留中のStartを再試行" });
+    expect(await screen.findAllByRole("button", { name: "保留中のStartを再試行" })).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "保留中のCompleteを再試行" })).toBeNull();
     expect(mocks.completeEntry).not.toHaveBeenCalled();
     expect(mocks.startEntry).toHaveBeenCalledTimes(1);
     const retained = mocks.startEntry.mock.calls[0][0];
-    fireEvent.click(retry);
+    fireEvent.click(screen.getByRole("button", { name: "保留中のStartを再試行" }));
     await waitFor(() => expect(mocks.startEntry).toHaveBeenCalledTimes(2));
     expect(mocks.startEntry.mock.calls[1][0]).toEqual(retained);
     expect(mocks.completeEntry).not.toHaveBeenCalled();
@@ -4271,10 +4272,11 @@ describe("Dogfood Day shell", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Second taskを完了" }));
     await waitFor(() => expect(mocks.completeEntry).toHaveBeenCalledTimes(1));
     firstCompleteRequest.reject(new ApiClientError("response lost", 503, true, "infrastructure_ambiguous"));
-    const retry = await screen.findByRole("button", { name: "保留中のCompleteを再試行" });
+    expect(await screen.findAllByRole("button", { name: "保留中のCompleteを再試行" })).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "保留中のStartを再試行" })).toBeNull();
     expect(mocks.startEntry).not.toHaveBeenCalled();
     const retained = mocks.completeEntry.mock.calls[0][0];
-    fireEvent.click(retry);
+    fireEvent.click(screen.getByRole("button", { name: "保留中のCompleteを再試行" }));
     await waitFor(() => expect(mocks.completeEntry).toHaveBeenCalledTimes(2));
     expect(mocks.completeEntry.mock.calls[1][0]).toEqual(retained);
     retryCompleteRequest.resolve({});
@@ -4392,6 +4394,51 @@ describe("Dogfood Day shell", () => {
     expect(mocks.updateTaskMetadata.mock.calls[0][0]).toMatchObject({ entry_id: addOperation.entry_id, project_id: "existing-project" });
     expect(mocks.moveEntry.mock.calls[0][0]).toMatchObject({ entry_id: addOperation.entry_id, section_id: morningId });
     expect(mocks.setEntryEstimate.mock.calls[0][0]).toMatchObject({ entry_id: addOperation.entry_id, estimate_seconds: 900 });
+  });
+
+  it("exposes only the dispatched ambiguous Add root while retaining dependent edits in order", async () => {
+    const firstAddRequest = deferred<unknown>();
+    const retryAddRequest = deferred<unknown>();
+    let addOperation: any = null;
+    let addSucceeded = false;
+    const dependentCalls: string[] = [];
+    mocks.loadDay.mockImplementation(async () => addSucceeded ? {
+      ...emptyDay,
+      sections: [{ ...emptyDay.sections[1], entries: [{ ...firstEntry, id: addOperation.entry_id, section_id: eveningId,
+        task: { ...firstEntry.task, id: addOperation.task_id, title: addOperation.title } }] }, emptyDay.sections[0]],
+    } : emptyDay);
+    mocks.addTask.mockImplementation((operation: unknown) => {
+      addOperation = operation;
+      if (mocks.addTask.mock.calls.length === 1) return firstAddRequest.promise;
+      addSucceeded = true;
+      return retryAddRequest.promise;
+    });
+    mocks.updateTaskMetadata.mockImplementation(async () => { dependentCalls.push("metadata"); return {}; });
+    mocks.moveEntry.mockImplementation(async () => { dependentCalls.push("section"); return {}; });
+    mocks.setEntryEstimate.mockImplementation(async () => { dependentCalls.push("estimate"); return {}; });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "EveningにTaskを追加" }));
+    const draft = screen.getByRole("textbox", { name: "EveningのTask名" });
+    fireEvent.change(draft, { target: { value: "Ambiguous add" } });
+    fireEvent.keyDown(draft, { key: "Enter", code: "Enter" });
+    await waitFor(() => expect(mocks.addTask).toHaveBeenCalledTimes(1));
+    fireEvent.change(await screen.findByRole("combobox", { name: "Ambiguous addのProject" }), { target: { value: "existing-project" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Ambiguous addのSection" }), { target: { value: morningId } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Ambiguous addの見積（分）" }), { target: { value: "15" } });
+    firstAddRequest.reject(new ApiClientError("response lost", 503, true, "infrastructure_ambiguous"));
+    expect(await screen.findAllByRole("button", { name: "保留中のTask追加を再試行" })).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "保留中のTask情報保存を再試行" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "保留中のSection移動を再試行" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "保留中の見積保存を再試行" })).toBeNull();
+    expect(mocks.updateTaskMetadata).not.toHaveBeenCalled();
+    expect(mocks.moveEntry).not.toHaveBeenCalled();
+    expect(mocks.setEntryEstimate).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "保留中のTask追加を再試行" }));
+    await waitFor(() => expect(mocks.addTask).toHaveBeenCalledTimes(2));
+    expect(mocks.addTask.mock.calls[1][0]).toEqual(mocks.addTask.mock.calls[0][0]);
+    retryAddRequest.resolve({});
+    await waitFor(() => expect(dependentCalls).toEqual(["metadata", "section", "estimate"]));
   });
 
   it("cancels all provisional Add dependent edits on deterministic Add failure", async () => {
