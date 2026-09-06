@@ -63,6 +63,20 @@ export function ProjectBoard({ onUnauthorized, onProjectsChanged }: ProjectBoard
   const helpOriginRef = useRef<HTMLElement | null>(null);
   const deleteOriginRef = useRef<HTMLElement | null>(null);
   const deleteFallbackRef = useRef<HTMLElement | null>(null);
+  const noticeTimerRef = useRef<number | null>(null);
+
+  function showNotice(message: string) {
+    if (noticeTimerRef.current !== null) window.clearTimeout(noticeTimerRef.current);
+    setNotice(message);
+    noticeTimerRef.current = window.setTimeout(() => {
+      noticeTimerRef.current = null;
+      setNotice(null);
+    }, 2500);
+  }
+
+  useEffect(() => () => {
+    if (noticeTimerRef.current !== null) window.clearTimeout(noticeTimerRef.current);
+  }, []);
 
   const reload = useCallback(async () => {
     try {
@@ -162,14 +176,14 @@ export function ProjectBoard({ onUnauthorized, onProjectsChanged }: ProjectBoard
     setPending(true); setError(null); setNotice(null);
     try {
       await api.createProject(request);
-      setRetryOperation(null); setDraft(false); await reload(); setNotice("Projectを作成しました");
+      setRetryOperation(null); setDraft(false); await reload(); showNotice("Projectを作成しました");
     } catch (caught) {
       if (caught instanceof ApiClientError && caught.status === 401) onUnauthorized();
       else {
         const nextBoard = await reload();
         const converged = nextBoard?.projects.some((item) => item.id === request.project_id && item.title === request.title) ?? false;
         setRetryOperation(!converged && caught instanceof ApiClientError && caught.code === "infrastructure_ambiguous" ? { kind: "create", request } : null);
-        if (converged) { setDraft(false); setError(null); setNotice("Projectを作成しました"); }
+        if (converged) { setDraft(false); setError(null); showNotice("Projectを作成しました"); }
         else setError(caught instanceof Error ? caught.message : "Projectの作成に失敗しました");
       }
     } finally { setPending(false); }
@@ -181,7 +195,7 @@ export function ProjectBoard({ onUnauthorized, onProjectsChanged }: ProjectBoard
     const request: UpdateProjectRequest = retryRequest ?? { operation_id: uuidv7(), project_id: project.id,
       expected_settings_revision: project.settings_revision, expected_title: project.title, title };
     setPending(true); setError(null); setNotice(null);
-    try { await api.updateProject(request); setRetryOperation(null); setEditingId(null); await reload(); setNotice("Project名を更新しました"); }
+    try { await api.updateProject(request); setRetryOperation(null); setEditingId(null); await reload(); showNotice("Project名を更新しました"); }
     catch (caught) {
       if (caught instanceof ApiClientError && caught.status === 401) onUnauthorized();
       else {
@@ -189,7 +203,7 @@ export function ProjectBoard({ onUnauthorized, onProjectsChanged }: ProjectBoard
         const converged = nextBoard?.projects.some((item) => item.id === request.project_id && item.title === request.title) ?? false;
         setRetryOperation(!converged && caught instanceof ApiClientError && caught.code === "infrastructure_ambiguous" ? { kind: "rename", request } : null);
         setEditingId(null);
-        if (converged) { setError(null); setNotice("Project名を更新しました"); }
+        if (converged) { setError(null); showNotice("Project名を更新しました"); }
         else setError(caught instanceof Error ? caught.message : "Project名の更新に失敗しました");
       }
     } finally { setPending(false); }
@@ -203,14 +217,14 @@ export function ProjectBoard({ onUnauthorized, onProjectsChanged }: ProjectBoard
     setPending(true); setError(null); setNotice(null); setOpenMenuId(null);
     try {
       await api.setProjectArchived(request);
-      setRetryOperation(null); await reload(); setNotice(success);
+      setRetryOperation(null); await reload(); showNotice(success);
     } catch (caught) {
       if (caught instanceof ApiClientError && caught.status === 401) onUnauthorized();
       else {
         const nextBoard = await reload();
         const converged = nextBoard?.projects.some((item) => item.id === request.project_id && item.archived === request.archived) ?? false;
         setRetryOperation(!converged && caught instanceof ApiClientError && caught.code === "infrastructure_ambiguous" ? { kind: "archive", request, success } : null);
-        if (converged) { setError(null); setNotice(success); }
+        if (converged) { setError(null); showNotice(success); }
         else setError(caught instanceof Error ? caught.message : "Projectの状態更新に失敗しました");
       }
     } finally { setPending(false); }
@@ -224,14 +238,14 @@ export function ProjectBoard({ onUnauthorized, onProjectsChanged }: ProjectBoard
     deleteFallbackRef.current = connected(fallback ? actionRefs.current[fallback.id] : null) ?? connected(addRef.current);
     try {
       await api.deleteProject(request);
-      setRetryOperation(null); await reload(); setDeleteTarget(null); setNotice("Projectを削除しました");
+      setRetryOperation(null); await reload(); setDeleteTarget(null); showNotice("Projectを削除しました");
     } catch (caught) {
       if (caught instanceof ApiClientError && caught.status === 401) onUnauthorized();
       else {
         const nextBoard = await reload();
         const converged = nextBoard !== null && !nextBoard.projects.some((item) => item.id === request.project_id);
         setRetryOperation(!converged && caught instanceof ApiClientError && caught.code === "infrastructure_ambiguous" ? { kind: "delete", request } : null);
-        if (converged) { setError(null); setNotice("Projectを削除しました"); }
+        if (converged) { setError(null); showNotice("Projectを削除しました"); }
         else setError(caught instanceof Error ? caught.message : "Projectの削除に失敗しました");
         setDeleteTarget(null);
       }
@@ -240,14 +254,14 @@ export function ProjectBoard({ onUnauthorized, onProjectsChanged }: ProjectBoard
 
   async function executeReorder(request: ReorderProjectsRequest) {
     setPending(true); setError(null); setNotice(null);
-    try { await api.reorderProjects(request); setRetryOperation(null); await reload(); setNotice("Projectの順序を更新しました"); }
+    try { await api.reorderProjects(request); setRetryOperation(null); await reload(); showNotice("Projectの順序を更新しました"); }
     catch (caught) {
       if (caught instanceof ApiClientError && caught.status === 401) onUnauthorized();
       else {
         const nextBoard = await reload();
         const converged = nextBoard !== null && nextBoard.projects.map((item) => item.id).join("\0") === request.project_ids.join("\0");
         setRetryOperation(!converged && caught instanceof ApiClientError && caught.code === "infrastructure_ambiguous" ? { kind: "reorder", request } : null);
-        if (converged) { setError(null); setNotice("Projectの順序を更新しました"); }
+        if (converged) { setError(null); showNotice("Projectの順序を更新しました"); }
         else setError(caught instanceof Error ? caught.message : "Projectの順序更新に失敗しました");
       }
     } finally { setPending(false); }
@@ -305,9 +319,11 @@ export function ProjectBoard({ onUnauthorized, onProjectsChanged }: ProjectBoard
       </div>
       <button ref={helpRef} type="button" className="secondary" onClick={(event) => { helpOriginRef.current = event.currentTarget; setHelpOpen(true); }}>?</button>
     </div>
-    {notice && <p className="success" role="status">{notice}</p>}
-    {error && <p className="error" role="alert">{error}</p>}
-    {retryOperation && <p className="error project-operation-retry" role="status">操作結果を照合できませんでした。<button type="button" onClick={retryPendingOperation}>{retryLabel}</button></p>}
+    {(notice || error || retryOperation) && <div className="project-notification-stack" aria-live="polite">
+      {notice && <div className="project-notification project-notification-success success" role="status" aria-live="polite" aria-atomic="true">{notice}</div>}
+      {error && <div className="project-notification project-notification-error error" role="alert">{error}</div>}
+      {retryOperation && <div className="project-notification project-notification-retry error" role="status">操作結果を照合できませんでした。<button type="button" onClick={retryPendingOperation}>{retryLabel}</button></div>}
+    </div>}
     <div className="project-board-table" role="table" aria-label="Project一覧">
       <div className="project-board-row project-board-heading" role="row"><span role="columnheader">プロジェクト名</span><span aria-hidden="true" /></div>
       {draft && tab === "active" && <form className="project-board-row project-board-draft" role="row" onSubmit={(event) => { event.preventDefault(); const input = event.currentTarget.elements.namedItem("title"); if (input instanceof HTMLInputElement) void createProject(input.value); }}>

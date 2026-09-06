@@ -1857,6 +1857,61 @@ describe("Dogfood Day shell", () => {
     expect(await screen.findByRole("region", { name: "DayBoard" })).toBeTruthy();
   });
 
+  it("keeps the Project table position stable while success notification floats and auto-dismisses", async () => {
+    mocks.loadDay.mockResolvedValue(emptyDay);
+    render(<App />);
+    await openProjectSettings();
+    const table = screen.getByRole("table", { name: "Project一覧" });
+    vi.spyOn(table, "getBoundingClientRect").mockReturnValue({
+      x: 0, y: 240, width: 600, height: 320, top: 240, right: 600, bottom: 560, left: 0,
+      toJSON: () => ({}),
+    });
+    const tableTop = table.getBoundingClientRect().top;
+    vi.useFakeTimers();
+    try {
+      fireEvent.click(screen.getByRole("button", { name: "＋ プロジェクトを追加" }));
+      fireEvent.change(screen.getByRole("textbox", { name: "新しいプロジェクト名" }), { target: { value: "Floating Project" } });
+      fireEvent.click(screen.getByRole("button", { name: "追加" }));
+      await act(async () => {
+        for (let index = 0; index < 6; index += 1) await Promise.resolve();
+      });
+      const notice = screen.getByText("Projectを作成しました");
+      const notification = notice.closest<HTMLElement>(".project-notification");
+      expect(notification).not.toBeNull();
+      expect(notification?.classList.contains("project-notification-success")).toBe(true);
+      expect(notification?.getAttribute("role")).toBe("status");
+      expect(notification?.getAttribute("aria-live")).toBe("polite");
+      expect(notification?.getAttribute("aria-atomic")).toBe("true");
+      expect(notification?.closest(".project-notification-stack")).not.toBeNull();
+      expect(table.contains(notification)).toBe(false);
+      expect(table.getBoundingClientRect().top).toBe(tableTop);
+
+      act(() => { vi.advanceTimersByTime(2499); });
+      expect(screen.getByText("Projectを作成しました")).toBeTruthy();
+      act(() => { vi.advanceTimersByTime(1); });
+      expect(screen.queryByText("Projectを作成しました")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps Project errors persistent in the floating notification layer", async () => {
+    mocks.loadDay.mockResolvedValue(emptyDay);
+    mocks.updateProject.mockRejectedValueOnce(new ApiClientError("rename failed", 409, true, "revision_conflict"));
+    render(<App />);
+    await openProjectSettings();
+    const table = screen.getByRole("table", { name: "Project一覧" });
+    fireEvent.click(screen.getByRole("button", { name: "Existing Project" }));
+    const input = screen.getByRole("textbox", { name: "Existing Projectの名前" });
+    fireEvent.change(input, { target: { value: "Renamed Project" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    const alert = await screen.findByRole("alert");
+    expect(alert.classList.contains("project-notification")).toBe(true);
+    expect(alert.classList.contains("project-notification-error")).toBe(true);
+    expect(alert.closest(".project-notification-stack")).not.toBeNull();
+    expect(table.contains(alert)).toBe(false);
+  });
+
   it("blocks concurrent Project primary submits while the first request is pending", async () => {
     const request = deferred<{ project: { id: string; title: string } }>();
     mocks.loadDay.mockResolvedValue(emptyDay);
@@ -1886,6 +1941,11 @@ describe("Dogfood Day shell", () => {
     fireEvent.change(input, { target: { value: "Original title" } });
     fireEvent.submit(input.closest("form")!);
     const retry = await screen.findByRole("button", { name: "保留中のProject作成を再試行" });
+    const retryPanel = retry.closest<HTMLElement>(".project-notification");
+    expect(retryPanel).not.toBeNull();
+    expect(retryPanel?.classList.contains("project-notification-retry")).toBe(true);
+    expect(retryPanel?.closest(".project-notification-stack")).not.toBeNull();
+    expect(screen.getByRole("table", { name: "Project一覧" }).contains(retryPanel)).toBe(false);
     const original = mocks.createProject.mock.calls[0][0];
     fireEvent.change(input, { target: { value: "Changed form text" } });
     fireEvent.click(retry);
