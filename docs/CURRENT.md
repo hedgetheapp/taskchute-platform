@@ -986,3 +986,25 @@ Persistent non-production:
 - Final read-only APP auditはDay `01a07996-38cf-7b2c-b50a-073daa3c3b97`、`placement_revision=2`、target Task/Entry `2 / 2`、positions `1 / 2`、lifecycle `planned`、orphan placement guard / transaction assertion `0 / 0`、`quick_check=ok`、FK empty、全query `rows_written=0`。AUTH users / accounts / sessions `1 / 1 / 6`、`quick_check=ok`、FK empty、全query `rows_written=0`。fixtureはnonprodに残置し、production / restore / destructive cleanupは`NOT_RUN`。
 
 Docs-only canonical maintenanceはこのsectionを含む別commitで実施する。Released `NO`。
+
+## D-070 Future established-Day Mode assignment — 2026-09-07
+
+D-070はD-068のEntry-scoped Mode boundaryを、D-069と同じplanning directionでestablished future Dayへ狭く拡張した。current DayはD-066 global serial dispatcher / unsent coalesce / latest expected relation rebase / exact retryを維持し、future established Dayは新しいqueueやschemaを追加せず同一Entry scopeのdirect mutationとexact retained retryを使う。future preview、past、record-none、running、completed、Routine-derived、owner外はread-only / rejectである。
+
+Implementation / Git:
+
+- Task Contract start `main@3a42dccf5a585c0f8293dc6df6552ccd855430b2`、implementation commit `663e65d30a81102c9a8e89b7e44ae190ec87a14f`を`main`へfast-forward push済み。実装前canonicalizationはdocs-only commit `9b70de6`。branchは`main`、PR / branch / merge / tag / releaseは実施していない。既存untracked review artifactは変更・stageしていない。
+- Workerはread時のexact TaskChuteDay ID / logical date、planned / ordinary / owner / expected live relationをDELETE / INSERT / success operationへguardし、Day move / lifecycle / relation競合でrelation-only partial successを残さない。no-opもauthority guard後にoperation successを保存する。APP / AUTH migration、table / column / index / FK、command / API schema、dependencyは変更していない。
+
+Local evidence:
+
+- D-070 focused Worker `4 / 4 PASS`、focused Web `3 / 3 PASS`、D-068 Mode integration `4 / 4 PASS`、Day Navigation `15 / 15 PASS`、full Worker / D1 `23 files / 199 tests PASS`、full Web `3 files / 212 tests PASS`、typecheck、production build、exact `CLOUDFLARE_ENV=nonprod` build、Wrangler nonprod dry-run、migration regression `4 scenarios PASS`、`git diff --check`をPASSした。Wranglerのlog file EPERMは各test/build exit codeと無関係の既知環境警告。
+- focused/local Webはfuture Mode set / replace / clear、Mode Board order、live rename、future preview barrier、future ambiguous exact retry / double-submit blockを確認した。Workerはplacement / Task / Project / Section / planned start / estimate保持、CAS / no-op / owner / missing / non-existent Mode / lifecycle / Routine / past境界、Day move / lifecycle / relation race no-partial、quick_check / FK emptyを確認した。AddTaskToDay既存future Mode compatibilityはfull Worker / Day Navigation regressionでPASS。
+- real-local Vite root / login screenは確認した。local APP / AUTHは既存userのemailだけをread-only確認し、passwordの取得・推測・再設定は行わなかった。認証済みlocal tabがなかったため、real-local authenticated set / replace / clearとlocal read-only target evidenceは`NOT_VERIFIED`とする。自動Web testsは別途PASSしている。
+
+Persistent non-production evidence:
+
+- APP / AUTH migration pendingはretry後ともに`0 / 0`（No migrations to apply）。Backup HARD GATEとしてAPP `d070-pre-0070-app-20260907.sql` `155,619 bytes` / SHA-256 `3E329C9CB247CB2B408D4CAFA9A151C152B7285D3D62EADD45304387A05CCE13`、AUTH `d070-pre-0070-auth-20260907.sql` `5,136 bytes` / SHA-256 `3B7091CAE15F6D8493B411BE139914E818B4F5EC6D237AF501A79CAD20BEE1AB`をprivate ignored pathへ取得し、isolated recoveryでAPP / AUTH `quick_check = ok`、FK empty、APP entries / operations `22 / 146`、AUTH users / accounts / sessions `1 / 1 / 6`を確認した。restoreは実行していない。
+- exact generated nonprod configはWorker `taskchute-web-nonprod`、canonical APP / AUTH binding、`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、`migrations=[]`。Worker version `4beb5cb1-c936-41d4-bc2a-1c0537d93f0d`へdeployし、root `200`、protected API `401`、disabled bootstrap `404`を確認した。
+- deploy後read-only APPは`quick_check = ok`、FK empty、全query `rows_written = 0`、Projects / Tasks / Entries / Executions / operations `1 / 31 / 22 / 13 / 146`、active Executions `0`、orphan Executions `0`、Mode definitions / relations `2 / 2`。AUTHは`quick_check = ok`、FK empty、users / accounts / sessions `1 / 1 / 6`、全query `rows_written = 0`でlogin capabilityを保持した。remote feature mutationは実行していない。
+- authenticated nonprod browser set / replace / clear、reload / fresh-tab persistence、live rename displayは既存credential/passwordを取得・変更せず、CUA authenticated tabもなかったため`NOT_VERIFIED`。非認証safety / DB integrity / backup gateのみをPASSとし、fixture cleanup、restore、production操作は行っていない。Released `NO`。

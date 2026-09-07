@@ -1894,3 +1894,24 @@ Corrective evidence closeout:
 - Operation classification remains canonical: exact committed operation replays, deterministic stale / authority outcomes reject, and only truly unknown post-batch outcomes remain `infrastructure_ambiguous`. Local target was `15 / 15 PASS` on three runs; focused Mode/D-069 Worker was `6 / 6 PASS`; full Worker was `23 files / 196 tests PASS`; full Web was `3 files / 209 tests PASS`.
 - Persistent nonprod used APP backup `145,291 bytes` / SHA-256 `241158C38483A38E8308B924D7FE5A3EA669EC6EA2C34180495EB5B5F8B6F4FF` and AUTH backup `5,136 bytes` / SHA-256 `3B7091CAE15F6D8493B411BE139914E818B4F5EC6D237AF501A79CAD20BEE1AB`, both private ignored; restore was not run. Worker `cd622d4b-17cd-48e7-8d60-83edd9682cc9` had nonprod bindings / vars, migration pending `0 / 0`, root `200`, protected API `401`, bootstrap `404`. Deploy後APP migration listの初回read-only requestはCloudflare API `7403`だったが、即時retryは`No migrations to apply`、AUTHも`No migrations to apply`だった。
 - Authenticated browser created disposable future Day `2026-10-01`, added two ordinary planned Tasks, verified `placement_revision = 2`, same-tab reload and fresh-tab restoration, with console warning / error `0 / 0`. APP read-only audit found two Tasks / Entries at positions 1/2, orphan guards / assertions `0 / 0`, `quick_check = ok`, FK empty, `rows_written = 0`; AUTH users / accounts / sessions `1 / 1 / 6`, `quick_check = ok`, FK empty, `rows_written = 0`.
+
+## D-070 Future established-Day Mode assignment — 2026-09-07
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D070-DOM-01 | Worker/D1 | current / established future ordinary planned Entryのowner-scoped Mode set / replace / clear、live relation、placement / identity保持 | focused Worker `4 / 4` + full Worker `199 / 199` | PASS |
+| D070-DOM-02 | Authority / boundaries | exact Day ID / logical date、expected Mode CAS、no-op authority、past / preview / running / completed / Routine / owner / missing / invalid Mode reject | focused Worker `4 / 4` | PASS |
+| D070-DOM-03 | Atomic concurrency | Day move、lifecycle、expected relation競合でrelation-only partial successを残さず、operation successとrelationをatomicに扱う | focused Worker `4 / 4` race proxies + quick/FK | PASS |
+| D070-WEB-01 | Web | future selector、unset `—`、Mode Board order、set / replace / clear、live rename、preview barrier、Project → Mode → Section | focused Web `3 / 3` + full Web `212 / 212` | PASS |
+| D070-WEB-02 | Coordination | current D-066 dispatcher/coalesce/rebase、future direct scoped path、same-target double-submit block、ambiguous exact retry、navigation/auth/unload barrier | focused Web `3 / 3` + source review | PASS |
+| D070-ADD-01 | Compatibility | existing AddTaskToDay future Mode path / Day Navigation corrective baseline remains green | Day Navigation `15 / 15` + full Worker | PASS |
+| D070-MIG-01 | Migration | no APP/AUTH migration or schema/API/dependency change; pending remains `0 / 0` | migration `4 scenarios PASS` + remote list | PASS |
+| D070-ENV-01 | Persistent nonprod safety | backup HARD GATE, exact nonprod build/dry-run/deploy, root/protected/bootstrap safety, read-only APP/AUTH integrity | Worker `4beb5cb1-c936-41d4-bc2a-1c0537d93f0d` + D1 | PASS |
+| D070-ENV-02 | Authenticated browser | future established Day Mode set / replace / clear, reload/fresh-tab, live rename | no authorized credential / authenticated tab; no mutation attempted | NOT_VERIFIED |
+
+D-070 evidence closeout boundary:
+
+- Start `main@3a42dccf5a585c0f8293dc6df6552ccd855430b2`; implementation `663e65d30a81102c9a8e89b7e44ae190ec87a14f`; implementation前canonicalization `9b70de6`。`main`へfast-forward push済み。APP / AUTH schema、migration、command / API schema、dependency、productionは変更・実行していない。
+- Local totals: focused Worker `4 / 4`、focused Web `3 / 3`、D-068 Mode integration `4 / 4`、Day Navigation `15 / 15`、full Worker `23 files / 199 tests`、full Web `3 files / 212 tests`、typecheck / production build / exact nonprod build / Wrangler dry-run / migration regression `4 scenarios` / diff-check `PASS`。Wrangler log EPERMはruntime test/buildのexit codeを変えない既知警告。
+- Persistent nonprod: APP / AUTH pending `0 / 0`、APP backup `155,619 bytes` / SHA-256 `3E329C9CB247CB2B408D4CAFA9A151C152B7285D3D62EADD45304387A05CCE13`、AUTH backup `5,136 bytes` / SHA-256 `3B7091CAE15F6D8493B411BE139914E818B4F5EC6D237AF501A79CAD20BEE1AB`、isolated recovery quick_check `ok` / FK empty、Worker `4beb5cb1-c936-41d4-bc2a-1c0537d93f0d`、root `200`、protected API `401`、bootstrap `404`、APP / AUTH read-only rows_written `0`。restore / cleanupは行っていない。
+- Authenticated browser verificationは、existing nonprod credential/passwordを取得・推測・再設定せず、CUA authenticated tabがなかったため未実施。したがって D070-ENV-02 は`NOT_VERIFIED`であり、local automated UI PASSやremote safety / integrity PASSからauthenticated future feature PASSへ自動昇格しない。production `NOT_RUN`、Released `NO`。

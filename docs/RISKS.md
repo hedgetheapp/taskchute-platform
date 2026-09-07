@@ -320,3 +320,17 @@ Duplicate first sliceはcurrent `main`のlocal automated、real-local、persiste
 Related: D-016, D-020, D-034, D-063, D-066, D-067
 
 D-067 intentionally removes a completed Entry and its Execution facts, so an incorrect eligibility check or partial FK cleanup could cause irreversible historical loss, orphaned operation history, or routine rematerialization. Mitigations are a server-authoritative current-Day boundary, exact completed/no-active checks, placement CAS, frozen operation replay, one atomic transaction, explicit deletion ordering for `ON DELETE RESTRICT` references, and retention assertions for Task / Project / Routine identity. The same-day RoutineOccurrence is retained and materializer no-regeneration is tested. Persistent nonprod hard-delete E2E is a separate Product Owner approval gate; production remains untouched.
+
+## R-019 — Future Mode direct-path verification boundary
+Related: D-020, D-041, D-066, D-068, D-069, D-070
+
+D-070 adds an established-future ordinary planned Entry Mode mutation while preserving current-Day serial dispatch. The future path is direct and Entry-scoped, so exact observed Day identity / logical date guards, live relation CAS, atomic relation + operation commit, ambiguity reconciliation, and same-entry retry must remain aligned with the current operation architecture. A remote authenticated browser run is also needed to prove the deployed future selector and reload/fresh-tab behavior against the persistent nonprod runtime.
+
+Current mitigation / evidence:
+
+- Worker focused `4 / 4`, Web focused `3 / 3`, full Worker `199 / 199`, full Web `212 / 212`, Day Navigation `15 / 15`, typecheck / build / migration regression / dry-run PASS
+- local race proxies cover concurrent Day move, lifecycle, and relation changes with no relation-only partial mutation; APP / AUTH isolated recovery and persistent nonprod read-only integrity are PASS
+- persistent nonprod exact deploy, safety probes, migration pending `0 / 0`, backup HARD GATE, quick check / FK / rows-written checks are PASS
+- persistent authenticated set / replace / clear, reload / fresh-tab, and live-rename browser evidence is `NOT_VERIFIED` because this run had no authorized credential or authenticated browser tab; credential retrieval, password reset, bootstrap, direct SQL feature mutation, restore, and production access were not used as substitutes
+
+This is a verification boundary, not approval for a broader Mode capability. Re-run the authenticated nonprod representative flow with an authorized existing credential before classifying D-070 as fully remote browser verified. Production remains `NOT_RUN`.
