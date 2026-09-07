@@ -173,10 +173,6 @@ async function addTaskToEstablishedDay(
           request.operation_id,
           appUserId,
         ),
-      db.prepare(`INSERT INTO entry_modes (app_user_id, entry_id, mode_id)
-        SELECT ?, ?, ? WHERE ? IS NOT NULL
-          AND EXISTS (SELECT 1 FROM placement_command_guards WHERE operation_id = ? AND app_user_id = ?)`)
-        .bind(appUserId, request.entry_id, request.mode_id ?? null, request.mode_id ?? null, request.operation_id, appUserId),
       db
         .prepare(
           `INSERT INTO entries
@@ -197,6 +193,10 @@ async function addTaskToEstablishedDay(
           request.operation_id,
           appUserId,
         ),
+      db.prepare(`INSERT INTO entry_modes (app_user_id, entry_id, mode_id)
+        SELECT ?, ?, ? WHERE ? IS NOT NULL
+          AND EXISTS (SELECT 1 FROM placement_command_guards WHERE operation_id = ? AND app_user_id = ?)`)
+        .bind(appUserId, request.entry_id, request.mode_id ?? null, request.mode_id ?? null, request.operation_id, appUserId),
       db
         .prepare(
           `INSERT INTO transaction_assertions (app_user_id, id, ok)
@@ -376,7 +376,7 @@ async function addTaskToFutureDay(
           request.operation_id, appUserId, appUserId, request.taskchute_day_id, request.logical_date, plan.contexts.length,
           configurationVersionId, appUserId, appUserId, configurationVersionId, plan.settings.day_boundary_minutes,
           request.project_id, appUserId, request.project_id,
-          request.mode_id, appUserId, request.mode_id,
+          request.mode_id ?? null, appUserId, request.mode_id ?? null,
           request.section_id, appUserId, request.section_id,
           request.task_id, request.entry_id,
         ),

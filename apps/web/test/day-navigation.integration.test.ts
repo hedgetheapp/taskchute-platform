@@ -36,6 +36,17 @@ async function seedNavigationUser() {
   return { userId, sections, versionId };
 }
 
+async function seedNavigationMode(userId: string, title = "Deep work") {
+  const modeId = uuidv7();
+  await env.APP_DB.batch([
+    env.APP_DB.prepare("INSERT INTO mode_definitions (id, app_user_id, title, created_at) VALUES (?, ?, ?, ?)")
+      .bind(modeId, userId, title, now),
+    env.APP_DB.prepare("INSERT INTO mode_board_items (app_user_id, mode_id, board_position) VALUES (?, ?, 1)")
+      .bind(userId, modeId),
+  ]);
+  return modeId;
+}
+
 async function counts(userId: string) {
   const tables = ["taskchute_days", "taskchute_day_section_contexts", "tasks", "entries", "routine_occurrences", "operations"];
   return Object.fromEntries(await Promise.all(tables.map(async (table) => [table,
@@ -45,6 +56,7 @@ async function counts(userId: string) {
 function futureRequest(sectionId: string | null, logicalDate = "2026-08-31") {
   return {
     operation_id: uuidv7(), task_id: uuidv7(), entry_id: uuidv7(), project_id: null,
+    mode_id: null,
     title: "Future task", taskchute_day_id: uuidv7(), logical_date: logicalDate,
     section_id: sectionId, expected_placement_revision: 0,
   };
@@ -223,7 +235,7 @@ describe.sequential("Day Navigation v0.1", () => {
     const failing = new Proxy(env.APP_DB, {
       get(target, property) {
         if (property === "batch") return async (statements: D1PreparedStatement[]) => {
-          if (statements.length > 3) throw new Error("injected future establishment failure");
+          if (statements.length > 4) throw new Error("injected future establishment failure");
           return target.batch(statements);
         };
         const value = Reflect.get(target, property, target);
@@ -250,6 +262,35 @@ describe.sequential("Day Navigation v0.1", () => {
       .bind(fixture.userId).first<number>("placement_revision")).toBe(1);
     expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM entries WHERE app_user_id = ?")
       .bind(fixture.userId).first<number>("count")).toBe(1);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM placement_command_guards WHERE app_user_id = ?")
+      .bind(fixture.userId).first<number>("count")).toBe(0);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM transaction_assertions WHERE app_user_id = ?")
+      .bind(fixture.userId).first<number>("count")).toBe(0);
+    expect(await env.APP_DB.prepare("PRAGMA quick_check").first()).toEqual({ quick_check: "ok" });
+    expect((await env.APP_DB.prepare("PRAGMA foreign_key_check").all()).results).toEqual([]);
+  });
+
+  it("supports a valid Mode during future establishment and established follow-up Add", async () => {
+    const fixture = await seedNavigationUser();
+    const modeId = await seedNavigationMode(fixture.userId);
+    const first = { ...futureRequest(fixture.sections[0]!), mode_id: modeId };
+    await expect(addTaskToDay(env.APP_DB, fixture.userId, first, now)).resolves.toMatchObject({
+      taskchute_day_id: first.taskchute_day_id, placement_revision: 1,
+    });
+    expect(await env.APP_DB.prepare("SELECT mode_id FROM entry_modes WHERE app_user_id = ? AND entry_id = ?")
+      .bind(fixture.userId, first.entry_id).first()).toEqual({ mode_id: modeId });
+
+    const followUp = { ...futureRequest(fixture.sections[0]!, first.logical_date), taskchute_day_id: first.taskchute_day_id,
+      mode_id: modeId, title: "Mode follow-up", expected_placement_revision: 1 };
+    await expect(addTaskToDay(env.APP_DB, fixture.userId, followUp, now)).resolves.toMatchObject({
+      taskchute_day_id: first.taskchute_day_id, placement_revision: 2,
+    });
+    expect(await env.APP_DB.prepare("SELECT mode_id FROM entry_modes WHERE app_user_id = ? AND entry_id = ?")
+      .bind(fixture.userId, followUp.entry_id).first()).toEqual({ mode_id: modeId });
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM placement_command_guards WHERE app_user_id = ?")
+      .bind(fixture.userId).first<number>("count")).toBe(0);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM transaction_assertions WHERE app_user_id = ?")
+      .bind(fixture.userId).first<number>("count")).toBe(0);
   });
 
   it("keeps established future Day planning available without enabling execution or Routine materialization", async () => {
@@ -347,6 +388,10 @@ describe.sequential("Day Navigation v0.1", () => {
       .bind(fixture.userId, first.taskchute_day_id).first<number>("placement_revision")).toBe(2);
     expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM entries WHERE app_user_id = ? AND taskchute_day_id = ?")
       .bind(fixture.userId, first.taskchute_day_id).first<number>("count")).toBe(2);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM placement_command_guards WHERE app_user_id = ?")
+      .bind(fixture.userId).first<number>("count")).toBe(0);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM transaction_assertions WHERE app_user_id = ?")
+      .bind(fixture.userId).first<number>("count")).toBe(0);
   });
 
   it("allows exactly one of two concurrent established-future follow-up Adds at the same revision", async () => {
@@ -369,6 +414,16 @@ describe.sequential("Day Navigation v0.1", () => {
       .bind(fixture.userId, first.taskchute_day_id).first<number>("count")).toBe(2);
     expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM taskchute_days WHERE app_user_id = ? AND logical_date = ?")
       .bind(fixture.userId, first.logical_date).first<number>("count")).toBe(1);
+    const rejectedIndex = settled.findIndex((result) => result.status === "rejected");
+    const rejectedRequest = candidates[rejectedIndex]!;
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM tasks WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, rejectedRequest.task_id).first<number>("count")).toBe(0);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM entries WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, rejectedRequest.entry_id).first<number>("count")).toBe(0);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM placement_command_guards WHERE app_user_id = ?")
+      .bind(fixture.userId).first<number>("count")).toBe(0);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM transaction_assertions WHERE app_user_id = ?")
+      .bind(fixture.userId).first<number>("count")).toBe(0);
   });
 
   it("keeps arbitrary-date reads owner-scoped", async () => {
