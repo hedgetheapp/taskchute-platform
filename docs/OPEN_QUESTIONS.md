@@ -452,3 +452,5 @@ remote production writeは明示承認なしに実施しない。
 D-073で、current-Day ordinary A/BのInterrupt / Continuation v0.1のatomic transaction、retry identity、same-minute / different-minute placement、chain estimate、legacy snapshot非捏造をApprovedとして実装した。これらの未決だったphysical modelはAPP `0023`、Worker integration、Web exact retry testsで解消した。
 
 引き続きOpenなのは、Routine-aware interruption、Quick Interrupt、pause / resume、auto-resume、non-current Day interruption、複数continuationのProduct semantics、continuationのReview UI、persistent client queue、production mutation verificationである。これらをD-073 v0.1へ拡張しない。
+
+2026-09-07 placement corrective investigation: started ordinary continuationは現在のsource guard上、後続のInterruptのsourceになり得る。今回のD-073 placement correctiveではこの挙動を変更せず、複数continuation / sequential interruptionのProduct semanticsを決定しない。これは引き続き本Open Questionとして扱い、今回のsame-Section later-minute B placement修正のblocking issueとはしない。

@@ -342,8 +342,8 @@ Interrupting a running Entry while starting another can otherwise lose the sourc
 
 Current mitigation / evidence:
 
-- Worker full `24 files / 204 tests`、Web full `4 files / 229 tests`、migration `4 scenarios`、typecheck / exact nonprod build / dry-run PASS。focused integration covers same-minute / different-minute placement, stale guards, replay / misuse、injected failure ambiguity、no-partial behavior。
+- Worker full `24 files / 206 tests`、focused placement `6 / 6`、Web full `4 files / 229 tests`、focused D-073 Web `3 / 3`、migration `4 scenarios`、typecheck / exact nonprod build / dry-run PASS。focused integration covers same-minute / different-minute placement、same-Section later-minute B insertion、stale guards、replay / misuse、injected failure ambiguity、no-partial behavior。
 - APP `0023`をbackup HARD GATE後にpersistent nonprodへ適用し、APP/AUTH pending `0 / 0`、final generated-config Worker `dfe9d4e3-99f9-4f23-bfe8-2be6a27b358f`、safety `200 / 401 / 404`、APP/AUTH quick_check `ok`、FK empty、all read-only rows_written `0`を確認した。
-- Existing authenticated sessionでsame-tab A Start → B normal Start（confirmationなし）→ A visible `中断済み` / B running / continuation planned → B Complete → continuation planned、reload / fresh authenticated tab、console warning / error emptyをPASSした。Persistent rowsでもsource outcome、target completion、same chain / parent、Section / position / logical minuteを突合した。
+- Existing authenticated sessionでsame-SectionのA Start → 同一interrupt minute cohort → later-minute B normal Start（confirmationなし）を実施し、A visible `中断済み` / B running / continuation plannedを確認した。B Complete後もcontinuationはplannedのまま残り、reload / fresh authenticated tab、console warning / error emptyをPASSした。Persistent rowsでもsource outcome、target completion、same chain / parent、Section / position / logical minute、Bのplanned minute不変とinsertion後positionを突合した。複数continuationのProduct semanticsは引き続きOpen Questionであり、今回のplacement correctiveでは決定していない。
 
 Routine / Quick Interrupt / non-current Day / auto-resume / Review UI / production remain outside the mitigated scope.

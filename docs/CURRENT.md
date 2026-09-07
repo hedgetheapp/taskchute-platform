@@ -1109,3 +1109,17 @@ Read-only APP evidenceはDay `01a07723-7b48-7e96-9ebe-1edb9897743b`、logical da
 Production、restore、destructive cleanup、credential / permission / OAuth scope / account-role / binding / security-posture変更、tag / releaseは行っていない。Routine / Quick Interrupt / non-current Day / auto-resume / Review UIは引き続きscope外で、Releasedは`NO`。
 
 Classification: `APPROVED / IMPLEMENTED / INTEGRATED / LOCAL_TESTED / MAIN_PUSHED / PERSISTENT_NONPROD_MIGRATED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_BROWSER_VERIFIED / DB_INTEGRITY_VERIFIED / PRODUCTION_NOT_RUN / RESTORE_NOT_RUN / RELEASED_NO`。
+
+### D-073 placement corrective closeout — 2026-09-07
+
+D-073のsame-Section / different-minute placement bugを、`main@d0c3561`から`8c94e30e4c9488e99626f461aae1f260a5162189`へ実装した。`origin/main`も同じ`8c94e30e4c9488e99626f461aae1f260a5162189`である。原因は、interrupt-minute cohortへcontinuationを挿入した後、後続のplanned Bを挿入前のstale positionへ戻していたため、continuationとBが同じpositionになり、post-write assertionが`infrastructure_ambiguous`へ収束していたことである。修正は`apps/web/worker/application/interrupt-entry.ts`と`apps/web/test/interrupt-continuation.integration.test.ts`だけに限定し、同一minute、別Section、stale guard、replay / misuse、注入D1 failureの既存境界を維持した。
+
+Focused Workerは`6 / 6 PASS`（same-Section later-minute B with existing cohort、no exact cohort、既存D-073 safety / retryを含む）、focused D-073 Webは`3 / 3 PASS`、full Workerは`24 files / 206 tests PASS`、full Webは`4 files / 229 tests PASS`。typecheck、build、exact `CLOUDFLARE_ENV=nonprod` build、Wrangler dry-run、`git diff --check`もPASSした。migrationは新規追加せず、既存`0023_interrupt_continuation.sql`を変更していない。migration regressionは`4 scenarios passed`（fresh `0001 -> 0023` chain、R2A / R2B、duplicate-Task fail-safe、Bulk / Mode / Interrupt constraints）。APP / AUTH remote pendingは`0 / 0`。
+
+exact pushed mainからgenerated nonprod configで`taskchute-web-nonprod`へdeployしたWorker versionは`22adba9c-104b-4de9-89bc-ab0afc27ab5b`。`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、既存APP / AUTH bindingを維持し、safety probeはroot / protected API / disabled bootstrap `200 / 401 / 404`だった。production、restore、cleanup、credential / bootstrap変更、security posture変更は行っていない。
+
+Persistent authenticated browserでは、current Dayの同一Section EveningにA、interrupt-minute cohort、later-minute B（planned `22:00`）をUIだけで作り、A Start → B normal Startを実施した。確認modalは表示されず、Aはvisible `中断済み`、Bはrunning後にcompleted、continuationはplannedで残った。reload後とfresh authenticated tabでも、cohort → continuation → Bの順序、Bのplanned `22:00`不変を確認し、両tabのconsole logsは空集合だった。read-only APP evidenceはtarget rowsのposition `5 / 6 / 7`、logical minute `1256 / 1256 / 1320`、placement revision `18`、active executions `0`、duplicate positions `[]`、guards / assertions `0 / 0`。APP / AUTHのquick checkは`ok`、FK violationsは空、全read-only queryの`rows_written=0`だった。UI fixtureはnonprodに残しており、direct SQL cleanupは行っていない。
+
+複数continuationについては、started continuationが現行source guardを通過して後続Interruptのsourceになり得ることを調査で確認したが、Product semanticsを決定する変更は行っていない。`docs/OPEN_QUESTIONS.md`のOpen Questionを正本とする。Routine / Quick Interrupt / non-current Day / auto-resume / Review UI / production mutationはscope外である。
+
+Classification: `APPROVED / IMPLEMENTED / LOCAL_TESTED / MAIN_PUSHED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_BROWSER_VERIFIED / DB_READ_ONLY_VERIFIED / MIGRATION_NO_CHANGE / PRODUCTION_NOT_RUN / RESTORE_NOT_RUN / CLEANUP_NOT_RUN / RELEASED_NO`。

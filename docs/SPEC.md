@@ -419,7 +419,7 @@ Mode archive / deleteのAPI、権限、revision、target identity、operation re
 
 ## D-073 Interrupt / Continuation v0.1
 
-Status: Approved / implementation in progress.
+Status: Approved / implemented / persistent nonprod corrective verified.
 
 - Current logical Dayのrunning ordinary Entry Aから、同じDayのordinary planned Entry Bを通常のStart controlで開始する場合、確認modalを出さずdedicated `InterruptEntry`を送信する。Routine source / target、Quick Interrupt、non-current Day、auto-resume、pause-resumeは対象外で既存boundaryを維持する。
 - Requestは`operation_id`、source / target Entry、source active Execution identity、target Execution UUIDv7、continuation Entry UUIDv7、Day、`expected_placement_revision`を含む。source Executionは`terminal_outcome = interrupted`で終了し、Bはplanned startを変えず新しいactive Executionへ遷移する。active Executionは常に最大一件とする。

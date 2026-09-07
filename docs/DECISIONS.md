@@ -417,6 +417,10 @@ TaskChuteの実行ではuser全体でactive Execution最大1つを維持しつ�
 
 D-015の「別Entryがrunning中の通常Startはrejectする」は維持する。D-028はその通常Startを暗黙interruptへ変更するものではなく、別の明示Interrupt operationを定義する。D-013のFirst vertical sliceがInterruptを含まないこと、およびcurrent implementationが通常Startをrejectすることも変更しない。
 
+#### D-073 narrow supersession
+
+D-073 v0.1のcurrent-Day ordinary scopeは、D-028のうち「continuationをBの直下へ配置する」および「continuationのplanned startを自動入力しない」という二つの記述だけを、D-073の明示ルール（同一logical minuteではB直後、異なるminuteではinterrupt-minute cohort末尾、Bのplanned startは不変、continuationのplanned startはinterrupt実時刻のlogical minute）へ狭く置き換える。D-028のQuick Interrupt / Routine / broader interruption semanticsはD-073の対象外として維持し、複数continuationのProduct semanticsは`docs/OPEN_QUESTIONS.md`のOpen Questionのままとする。
+
 ## D-029 — Revert the current Start without erasing earlier execution history
 Status: Approved
 
