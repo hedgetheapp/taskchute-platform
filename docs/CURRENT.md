@@ -1077,3 +1077,17 @@ backup HARD GATEはmigration前に通過した。APP backupは`160077 bytes` / S
 破壊的操作は承認済み使い捨てfixture `D072 Delete verification`だけに限定した。削除前にMode definition、planned `D072 delete planned`のlive relation、completed `D072 delete completed`のlive relation / snapshotを確認した。削除後は対象Mode definition / board item / archive / live relationが全て`0`、planned entryはModeなし、completed snapshotはmode id/titleを保持し、Task / Entry / Executionは保持された。DeleteMode operationは`cleared_entry_count=2`、board revision `7 -> 8`、残存board positionは`1..4`でcompactされた。対象Day `2026-09-07`のplacement revisionは、削除前に行った追加fixtureのrevision確定後からMode削除では変化していない。quick_checkは`ok`、foreign-key violationsは空、mode command guardは`0`、audit queryの`rows_written`は`0`。
 
 Classification: `APPROVED / IMPLEMENTED / INTEGRATED / LOCAL_TESTED / MAIN_PUSHED / PERSISTENT_NONPROD_MIGRATED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_BROWSER_VERIFIED / DB_INTEGRITY_VERIFIED / PRODUCTION_NOT_RUN / RESTORE_NOT_RUN / RELEASED_NO`。既存Modeの削除、production mutation、AUTH migration、credential / permission / binding変更、tag / releaseは行っていない。
+
+### D-072 UI corrective: Mode toolbar alignment parity — 2026-09-07
+
+D-071で追加された`.mode-board-toolbar { justify-content: flex-end; }`を削除し、Mode toolbarは既存の`.project-board-toolbar` layoutをそのまま継承するようにした。Mode専用のright-align override以外のProject / Mode board geometry、API、Domain、schema、migration、binding、security postureは変更していない。実装commitは`ead214c`（`Fix Mode toolbar alignment parity`）で、既存の未push D-072実装・verification commitを含めて`main`へfast-forward push済みである。
+
+Local gateはfocused Mode Board `13 / 13 PASS`（toolbar共有class、検索 → 使用中 / アーカイブ → `?`のDOM順を回帰確認）、full Web `226 / 226 PASS`、typecheck、production build、exact `CLOUDFLARE_ENV=nonprod` build、Wrangler nonprod dry-run、`git diff --check`をPASSした。build時のWrangler debug logはsandboxの`EPERM`表示があったが、buildはexit `0`で成果物を生成し、dry-runもexit `0`である。
+
+exact nonprod buildをcanonical Worker `taskchute-web-nonprod`へdeployし、Worker versionは`c3b77649-c9f2-4262-897e-c5f0bdbf3afe`。generated configは`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、既存APP / AUTH binding、`migrations=[]`。deploy後のroot / unauthenticated protected API / disabled bootstrapは`200 / 401 / 404`、APP / AUTH migration pendingは`0 / 0`。
+
+persistent in-app browser sessionは認証済み状態を保持しており、credential取得・推測・再設定、bootstrap再有効化、feature mutationなしでSettings > ProjectとSettings > Modeを実際に切り替えた。両toolbarの左端は同じ`358px`、computed `display=flex`、`flex-direction=column`（tabのresponsive幅）、`gap=12px`、`align-items=stretch`、`justify-content=normal`。direct childは両方とも`LABEL`（検索） → `DIV[role=tablist]`（使用中 / アーカイブ） → `BUTTON`（`?`）で、各childのleft offsetと隣接間隔`12px`が一致した。Modeのclassは`project-board-toolbar mode-board-toolbar`だが、専用right-align ruleはなく、Projectと同じlayout computed valueになった。browser console error / warningは`0 / 0`。
+
+browser後のread-only APPはProjects / Tasks / Entries / Executions / operations `1 / 34 / 25 / 14 / 169`、Mode definitions / board items / entry_modes / snapshots / archives / guards `4 / 4 / 3 / 2 / 0 / 0`、`PRAGMA quick_check=ok`、foreign-key violations empty、各query `rows_written=0`。AUTHはusers / accounts / sessions `1 / 1 / 6`、`quick_check=ok`、FK empty、`rows_written=0`。このUI-only correctiveでD1 dataは変更していない。production、restore、destructive cleanup、credential / permission / binding変更、tag / releaseは`NOT_RUN`。
+
+UI corrective classification: `APPROVED / IMPLEMENTED / LOCAL_TESTED / MAIN_PUSHED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_BROWSER_VERIFIED / DB_READ_ONLY_VERIFIED / PRODUCTION_NOT_RUN / RELEASED_NO`。

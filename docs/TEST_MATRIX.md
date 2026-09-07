@@ -30,6 +30,20 @@ Classification at this checkpoint: `IMPLEMENTED / LOCAL_TESTED / PERSISTENT_NONP
 
 D-072 persistent closeout classification: `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / PERSISTENT_NONPROD_MIGRATED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_BROWSER_VERIFIED / DB_INTEGRITY_VERIFIED / PRODUCTION_NOT_RUN / RESTORE_NOT_RUN / RELEASED_NO`。これはnonprod verificationであり、production Verified / Releasedを意味しない。
 
+## D-072 UI corrective — toolbar alignment parity — 2026-09-07
+
+Contract: D-071で追加されたMode専用のright-align overrideを削除し、Project Boardと同じ`.project-board-toolbar` layoutで検索 → 使用中 / アーカイブ → `?`を左揃えにする。API / Domain / schema / migration / binding / security postureは変更しない。
+
+| ID | Verification target | Evidence | Status |
+|---|---|---|---|
+| D072-UI-01 | Shared toolbar layout | `.mode-board-toolbar { justify-content: flex-end; }`を削除。Modeは`.project-board-toolbar`を共有し、DOM direct child順はLABEL → tablist DIV → BUTTON | PASS |
+| D072-UI-02 | Local regression | focused Mode Board `13 / 13`、full Web `226 / 226`、typecheck、production build、exact nonprod build、Wrangler dry-run、diff check | PASS |
+| D072-UI-ENV-01 | Persistent browser comparison | Worker `c3b77649-c9f2-4262-897e-c5f0bdbf3afe`。Project / Modeを実切替し、両方left `358px`、`gap=12px`、`flex-direction=column`、`justify-content=normal`、child order / intervals一致、console error / warning `0 / 0` | PASS |
+| D072-DB-02 | Read-only post-browser evidence | APP / AUTH pending `0 / 0`、quick_check `ok`、FK empty、APP `rows_written=0`、AUTH `rows_written=0`、counts preserved | PASS |
+| D072-BOUNDARY-02 | Corrective boundary | credential / bootstrap / feature mutation / production / restore / destructive cleanup / tag / releaseは未実施 | PASS |
+
+D-072 UI corrective classification: `IMPLEMENTED / LOCAL_TESTED / MAIN_PUSHED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_BROWSER_VERIFIED / DB_READ_ONLY_VERIFIED / PRODUCTION_NOT_RUN / RELEASED_NO`。これはnonprod UI verificationであり、production Verified / Releasedを意味しない。
+
 ## D-066 retry exposure boundary corrective — 2026-09-06
 
 Contract: Approved D-066内のreversible Web corrective。ambiguous rootの後ろに保持された未送信descendantが個別retry UIへ露出する不具合を修正し、実際にdispatch済みで結果未確定のrootだけをretry可能とする。API / Domain / schema / migration / dependency / binding / security postureは変更していない。開始時点は`main@955a90e1cf01088f824a3d53a885d9e95eb8f06f`。
