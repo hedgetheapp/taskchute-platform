@@ -340,4 +340,10 @@ Related: D-020, D-028, D-066, D-073
 
 Interrupting a running Entry while starting another can otherwise lose the source history, create two active Executions, place the continuation in the wrong cohort, or fabricate legacy Task-title facts. D-073 mitigates this with a dedicated command, exact source active-Execution and placement guards, one D1 mutation batch, explicit interrupted outcome, stable continuation chain / parent fields, frozen Section context, snapshot-only historical title projection, and post-write assertions for one active Execution and exact operation identity.
 
-Current status is local implementation / automated verification; persistent nonprod deploy, authenticated browser evidence, remote read-only DB evidence, and canonical docs push remain `NOT_RUN` until the closeout gates complete. Routine / Quick Interrupt / non-current Day / auto-resume / production remain outside the mitigated scope.
+Current mitigation / evidence:
+
+- Worker full `24 files / 204 tests`、Web full `4 files / 229 tests`、migration `4 scenarios`、typecheck / exact nonprod build / dry-run PASS。focused integration covers same-minute / different-minute placement, stale guards, replay / misuse、injected failure ambiguity、no-partial behavior。
+- APP `0023`をbackup HARD GATE後にpersistent nonprodへ適用し、APP/AUTH pending `0 / 0`、final generated-config Worker `dfe9d4e3-99f9-4f23-bfe8-2be6a27b358f`、safety `200 / 401 / 404`、APP/AUTH quick_check `ok`、FK empty、all read-only rows_written `0`を確認した。
+- Existing authenticated sessionでsame-tab A Start → B normal Start（confirmationなし）→ A visible `中断済み` / B running / continuation planned → B Complete → continuation planned、reload / fresh authenticated tab、console warning / error emptyをPASSした。Persistent rowsでもsource outcome、target completion、same chain / parent、Section / position / logical minuteを突合した。
+
+Routine / Quick Interrupt / non-current Day / auto-resume / Review UI / production remain outside the mitigated scope.

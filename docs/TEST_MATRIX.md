@@ -1984,14 +1984,14 @@ D-070 unset-label corrective / authenticated browser closeout（2026-09-07）:
 
 | ID | Area | Requirement | Evidence | Status |
 |---|---|---|---|---|
-| D073-DOM-01 | Atomic lifecycle | ordinary running A -> interrupted history, ordinary planned B -> active, one planned same-Task continuation, max one active Execution | focused Worker interrupt integration: same-minute / different-minute / replay / misuse | PASS local |
-| D073-DOM-02 | Placement / estimate | B planned start unchanged; same-minute direct-after-B; different-minute interruption cohort; chain residual estimate; frozen Section | focused Worker integration assertions and projection checks | PASS local |
-| D073-DOM-03 | Safety / retry | stale active / placement reject, operation replay / misuse, injected D1 ambiguity leaves no partial rows | focused Worker integration and D-066 exact retry coverage | PASS local |
-| D073-WEB-01 | Start interaction | normal Start of B while A runs calls dedicated InterruptEntry without confirmation modal and preserves exact request | focused Web Interrupt tests | PASS local |
-| D073-REG-01 | Regression | normal Start / Complete, execution correction, delete completed FK cleanup, Mode management, D-072 toolbar | focused lifecycle / mode tests, full Worker / Web / typecheck / build | PENDING |
-| D073-MIG-01 | Migration | APP 0023 preserves core rows, legacy singleton chains, NULL legacy outcomes, allow-list, trigger, FK / quick check | migration harness | PENDING |
-| D073-ENV-01 | Persistent nonprod | backup HARD GATE, exact pushed-main deploy, safety probes, APP 0023 pending, read-only APP/AUTH integrity | closeout evidence in `docs/CURRENT.md` | NOT_RUN |
-| D073-ENV-02 | Authenticated browser | current-Day ordinary A/B Start, visible interrupted history / running B / planned continuation, reload / fresh authenticated tab | existing authenticated persistent nonprod session | NOT_RUN |
+| D073-DOM-01 | Atomic lifecycle | ordinary running A -> interrupted history, ordinary planned B -> active, one planned same-Task continuation, max one active Execution | focused Worker `4 / 4` + persistent APP rows; post-closeout active `0` | PASS |
+| D073-DOM-02 | Placement / estimate | B planned start unchanged; same-minute direct-after-B; different-minute interruption cohort; chain residual estimate; frozen Section | focused Worker placement assertions + persistent continuation Section / position `3` / logical minute `1216` | PASS |
+| D073-DOM-03 | Safety / retry | stale active / placement reject, operation replay / misuse, injected D1 ambiguity leaves no partial rows | focused Worker `4 / 4`, APP guards / assertions `0 / 0`, all audit queries rows_written `0` | PASS |
+| D073-WEB-01 | Start interaction | normal Start of B while A runs calls dedicated InterruptEntry without confirmation modal and preserves exact request | focused D-073 Web `3 / 3`; same-tab authenticated browser no modal | PASS |
+| D073-REG-01 | Regression | normal Start / Complete, execution correction, delete completed FK cleanup, Mode management, D-072 toolbar | full Worker `24 files / 204 tests`, full Web `4 files / 229 tests`, typecheck / build / dry-run / diff-check | PASS |
+| D073-MIG-01 | Migration | APP 0023 preserves core rows, legacy singleton chains, NULL legacy outcomes, allow-list, trigger, FK / quick check | migration regression `4 scenarios PASS`; APP 0023 applied, APP/AUTH pending `0 / 0` | PASS |
+| D073-ENV-01 | Persistent nonprod | backup HARD GATE, exact pushed-main deploy, safety probes, APP 0023 pending, read-only APP/AUTH integrity | Worker `dfe9d4e3-99f9-4f23-bfe8-2be6a27b358f`, `200 / 401 / 404`, read-only APP/AUTH | PASS |
+| D073-ENV-02 | Authenticated browser | current-Day ordinary A/B Start, visible interrupted history / running B / planned continuation, reload / fresh authenticated tab | existing authenticated persistent session, same-tab + reload + fresh tab, console logs empty | PASS |
 
 D-071 closeout evidence:
 
