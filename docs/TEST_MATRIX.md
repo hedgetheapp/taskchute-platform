@@ -1851,7 +1851,7 @@ Prior unexpected operation `01a0769e-1496-73d0-802b-d94f0172d8b5`は変更・再
 | D068-ENV-01 | Persistent nonprod | backup HARD GATE、APP `0021`、pending `0 / 0`、deploy、安全probe、APP/AUTH integrity | Wrangler / D1 / Worker | PASS |
 | D068-ENV-02 | Browser | fresh authenticated tabでMode order、planned live title、completed snapshot titleをreload後も保持 | persistent nonprod browser | PASS |
 
-D-068 local totals: focused relevant Worker/D1 `32 / 32 PASS`、dedicated mode-management `1 / 1 PASS`、focused corrective Web `1 / 1 PASS`、Web full `207 / 207 PASS`、typecheck / production build / exact nonprod build / diff-check `PASS`。backend fullは`182 / 192 PASS`で、既存`day-navigation.integration.test.ts`の10件のinfrastructure-ambiguous failureにより全体PASSではない。migration helperはtooling-hungのため未完了で、isolated direct fresh / upgrade checksを採用する。production verification、Mode browser-local preferenceのcross-device sync、Routine / past / future writeは`NOT_RUN`。
+D-068 local totals: focused relevant Worker/D1 `32 / 32 PASS`、dedicated mode-management `1 / 1 PASS`、focused corrective Web `1 / 1 PASS`、Web full `207 / 207 PASS`、typecheck / production build / exact nonprod build / diff-check `PASS`。backend fullはD-068 closeout時点のhistorical baselineとして`182 / 192 PASS`で、既存`day-navigation.integration.test.ts`の10件のfailureが残っていたが、Day Navigation full-suite corrective（2026-09-07）で解消済みである。migration helperはtooling-hungのため未完了で、isolated direct fresh / upgrade checksを採用する。production verification、Mode browser-local preferenceのcross-device sync、Routine / past / future writeは`NOT_RUN`。
 
 ## D-069 Future-Day Project assignment — 2026-09-07
 
@@ -1864,10 +1864,33 @@ D-068 local totals: focused relevant Worker/D1 `32 / 32 PASS`、dedicated mode-m
 | D069-WEB-01 | Web | future rowではProject selectorだけを表示し、title editorを隠し、set / clear payloadをcanonical reconcileする | focused Web `3 / 3` + authenticated browser | PASS |
 | D069-MIG-01 | Migration | APP / AUTH schemaとmigration chainを変更せず、pending `0 / 0`を維持する | remote migration list + read-only D1 | PASS |
 | D069-ENV-01 | Persistent nonprod | backup HARD GATE、exact nonprod dry-run / deploy、安全probe、browser、APP/AUTH integrityを確認する | Wrangler / Worker / D1 / browser | PASS |
-| D069-REG-01 | Regression | Web full `209 / 209`、Worker full baseline `185 / 195`で既存10 failure以外の増加がないことを確認する | local full suites | PASS (baseline unchanged) |
+| D069-REG-01 | Regression | Web full `209 / 209`、D-069 baseline Worker `185 / 195`に対してDay Navigation corrective後のWorker full `196 / 196`を確認する | local full suites | PASS |
 
 Local / nonprod evidence closeout:
 
-- Start `main@413dafe4db843b5c9f448dee5821a4578e303c6f`、implementation `bbcdcbdea14564f688065207462489fbdb349392`。focused Worker `5 / 5`、focused Web `3 / 3`、Web full `209 / 209`、typecheck / builds / diff-check `PASS`。Worker fullは`185 / 195`で、既存`day-navigation.integration.test.ts`の10件がbaselineどおり残るため全体PASSではない。
+- Start `main@413dafe4db843b5c9f448dee5821a4578e303c6f`、D-069 implementation `bbcdcbdea14564f688065207462489fbdb349392`。D-069 focused Worker `5 / 5`、focused Web `3 / 3`、Web full `209 / 209`、typecheck / builds / diff-check `PASS`。この時点のWorker fullは`185 / 195`で、Day Navigation corrective前のbaselineである。
 - Persistent nonprod backupはAPP `144,201 bytes` / SHA-256 `264290C5017F3A40423A5BE0F99990F48E9ED380F5AD2EBD20C019550B4C9F19`、AUTH `5,136 bytes` / SHA-256 `3B7091CAE15F6D8493B411BE139914E818B4F5EC6D237AF501A79CAD20BEE1AB`。isolated recovery、remote read-only integrity、migration pending `0 / 0`、rows_written `0`を確認し、restoreは実行していない。
 - Worker `taskchute-web-nonprod` version `17068a98-396c-4dc0-97c2-4af44ae367c1`。root `200`、protected API `401`、bootstrap `404`。Authenticated browserで2026-09-08 future Project set / clear、future title read-only、reload後のarchived assignment read、console warning / error `0 / 0`を確認した。Final APP `quick_check = ok` / FK empty、Projects / Tasks / Entries / Executions / operations `1 / 27 / 18 / 13 / 142`、AUTH users / accounts / sessions `1 / 1 / 6`。production、restore、destructive cleanup、releaseは`NOT_RUN`。
+
+## Day Navigation full-suite corrective — 2026-09-07
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| DNAV-COR-01 | Baseline | untouched current main target reproduces exact 10 failures and full Worker `185 / 195` baseline | 3 target runs + full Worker | PASS (baseline reproduced) |
+| DNAV-COR-02 | Root cause | D-068 optional Mode bind and established-path FK statement order are identified from history / diff | `2c800c4` diff + source review | PASS |
+| DNAV-COR-03 | Runtime correction | future `mode_id` null normalization and `Entry → entry_modes` ordering preserve existing D-020/D-041 semantics | focused target / Mode tests | PASS |
+| DNAV-COR-04 | Mode compatibility | future first Add and established follow-up pass with `mode_id = NULL` and valid `mode_id` | target `15 / 15` | PASS |
+| DNAV-COR-05 | Retry / concurrency | exact retry, stale revision, equivalent first mutation convergence, one-winner follow-up concurrency, loser no-partial-state | target `15 / 15` + orphan checks | PASS |
+| DNAV-COR-06 | Isolation / authority | past gap, frozen context, owner isolation, cross-owner Section / Project / Day authority remain protected | target `15 / 15` | PASS |
+| DNAV-COR-07 | Regression | target repeated 3 times, focused Mode/Project `6 / 6`, full Worker `196 / 196`, full Web `209 / 209` | local full suites | PASS |
+| DNAV-COR-08 | Persistent nonprod | exact nonprod deploy, safety probe, disposable future 1st/2nd Add, reload/fresh tab, read-only integrity | Worker/D1/browser | PASS |
+
+Corrective evidence closeout:
+
+- The 10 baseline failures were deterministic. Nine were D1 bind failures caused by passing optional `undefined` `request.mode_id` into the future establishment guard; the catch then retried and returned `infrastructure_ambiguous`. The tenth was a test proxy threshold invalidated by D-068's additional validation statement. A second runtime issue in the same D-068 diff inserted `entry_modes` before its required Entry FK target on the established path.
+- Last-known-good evidence is the parent of D-068 (`2c800c4^`) with the D-067 canonical record showing full Worker / D1 `191 / 191`; first bad is D-068 implementation `2c800c4dde651ded80c4e3a2d868a2b40ab77e0`, whose diff introduced the optional Mode bind and ordering changes. Canonical Day Navigation / future Day / owner / retry / placement semantics were not changed.
+- Runtime commit `1c1d742f487647790b6a9c24b2de770403ef8eb0` changed only `apps/web/worker/application/add-task-to-day.ts`; regression coverage changed only `apps/web/test/day-navigation.integration.test.ts`. No migration, table, column, index, FK weakening, dependency, branch, PR, tag, release, or production operation was added.
+- Statement / FK ordering after correction is Day → frozen contexts → placement guard → Day revision → Task → Entry → optional `entry_modes` → transaction assertion → operation success → guard cleanup. Both `mode_id = NULL` and valid Mode paths pass; `Task.project_id` remains owner-scoped and unchanged.
+- Operation classification remains canonical: exact committed operation replays, deterministic stale / authority outcomes reject, and only truly unknown post-batch outcomes remain `infrastructure_ambiguous`. Local target was `15 / 15 PASS` on three runs; focused Mode/D-069 Worker was `6 / 6 PASS`; full Worker was `23 files / 196 tests PASS`; full Web was `3 files / 209 tests PASS`.
+- Persistent nonprod used APP backup `145,291 bytes` / SHA-256 `241158C38483A38E8308B924D7FE5A3EA669EC6EA2C34180495EB5B5F8B6F4FF` and AUTH backup `5,136 bytes` / SHA-256 `3B7091CAE15F6D8493B411BE139914E818B4F5EC6D237AF501A79CAD20BEE1AB`, both private ignored; restore was not run. Worker `cd622d4b-17cd-48e7-8d60-83edd9682cc9` had nonprod bindings / vars, migration pending `0 / 0`, root `200`, protected API `401`, bootstrap `404`.
+- Authenticated browser created disposable future Day `2026-10-01`, added two ordinary planned Tasks, verified `placement_revision = 2`, same-tab reload and fresh-tab restoration, with console warning / error `0 / 0`. APP read-only audit found two Tasks / Entries at positions 1/2, orphan guards / assertions `0 / 0`, `quick_check = ok`, FK empty, `rows_written = 0`; AUTH users / accounts / sessions `1 / 1 / 6`, `quick_check = ok`, FK empty, `rows_written = 0`.

@@ -927,7 +927,7 @@ Prior unexpected operation `01a0769e-1496-73d0-802b-d94f0172d8b5`は変更・再
 
 D-068は`docs/DECISIONS.md`へcanonicalize済み。start SHA `d7cc7436f038adc8bb5e0dcafb270ac6e85184e4`から、APP compatibility migration `0021_mode_management.sql`、owner-scoped Mode Board、inline rename / server-canonical reorder、ordinary planned EntryのMode relation、Start時のimmutable snapshot、Day Table Mode列を実装した。initial implementation commit `2c800c4dde651ded80c4e3a2d868a2b40ab77e0`と、completed snapshot titleがlive Mode renameで上書きされる不一致を修正した corrective commit `142ad5288c27409471abe2a777c7089336d5c1dc`を`main`へfast-forward push済み。Modeはdefault / archive / delete / search / quick-createを持たず、Routine・running・completed・past・futureはread-only境界を維持する。
 
-Local evidence: D-068 focused Worker/D1 `32 / 32 PASS`、dedicated mode-management integration `1 / 1 PASS`、focused corrective Web `1 / 1 PASS`、Web全体 `207 / 207 PASS`、typecheck、production build、exact nonprod build、`git diff --check`をPASS。fresh / upgrade migrationの直接isolated checks、既存operation / identity / FK preservation、APP/AUTH recovery quick checkをPASSした。repository migration helperはtooling runで完走せず、migration PASSの根拠にはしていない。backend全体は`182 / 192 PASS`で、既存の`day-navigation.integration.test.ts`にある10件のinfrastructure-ambiguous failureが残るため、全体PASSとは記録しない。
+Local evidence: D-068 focused Worker/D1 `32 / 32 PASS`、dedicated mode-management integration `1 / 1 PASS`、focused corrective Web `1 / 1 PASS`、Web全体 `207 / 207 PASS`、typecheck、production build、exact nonprod build、`git diff --check`をPASS。fresh / upgrade migrationの直接isolated checks、既存operation / identity / FK preservation、APP/AUTH recovery quick checkをPASSした。repository migration helperはtooling runで完走せず、migration PASSの根拠にはしていない。backend全体はD-068 closeout時点のhistorical baselineとして`182 / 192 PASS`で、既存の`day-navigation.integration.test.ts`にある10件のfailureが残っていたが、Day Navigation full-suite corrective（2026-09-07）で解消済みである。
 
 ## D-069 Future-Day Project assignment — 2026-09-07
 
@@ -941,7 +941,7 @@ Implementation / Git:
 Local verification:
 
 - D-069 focused Worker `5 / 5 PASS`、focused Web `3 / 3 PASS`、Web full `209 / 209 PASS`、typecheck、production build、exact `CLOUDFLARE_ENV=nonprod` build、diff checkは`PASS`。
-- Full Worker / D1は`185 / 195 PASS`。残る10 failureは実装前baselineと同じ`test/day-navigation.integration.test.ts`の既存infrastructure-ambiguous failureであり、D-069追加failureではない。full suiteをPASSとは扱わない。repository migration helperはtooling-hungのため証拠に採用せず、D-069はmigrationなし・remote migration list（APP / AUTH）は`No migrations to apply`を確認した。
+- Full Worker / D1はD-069実装直後のbaselineが`185 / 195 PASS`だった。Day Navigation corrective後は`196 / 196 PASS`へ回復した。baselineの10 failureは本correctiveで解消し、repository migration helperはtooling-hungのため証拠に採用せず、D-069自体はmigrationなし・remote migration list（APP / AUTH）は`No migrations to apply`を確認した。
 
 Persistent non-production verification:
 
@@ -955,3 +955,34 @@ Classification: D-069 `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / MAIN_PUSHED / P
 Persistent nonprod evidence: APP `0021` pending / AUTH pending `1 / 0`を確認後、fresh private backup HARD GATEをPASSした。APP backup `apps/web/.wrangler/private-backups/d068-pre-0021-app-20260906.sql`は`133,594 bytes` / SHA-256 `306BC18C5700CA3000F8D0AB3DFBB3A36675B96EF221B27DA0258E924DF76135`、AUTH backup `d068-pre-0021-auth-20260906.sql`は`5,136 bytes` / SHA-256 `3B7091CAE15F6D8493B411BE139914E818B4F5EC6D237AF501A79CAD20BEE1AB`。両方ともreadable・non-empty・`.wrangler/` ignoredで、isolated import後のquick check `ok` / FK `0`を確認し、restoreは実行していない。APP `0021`適用後のmigration pendingはAPP / AUTH `0 / 0`、remote APP quick check `ok`、FK empty、rows_written `0`。
 
 Correctiveを含むexact main buildをWorker `9f980357-fbea-4ccf-beef-fb3ceb8f2330`として`taskchute-web-nonprod`へdeploy。root `200`、unauthenticated protected API `401`、disabled bootstrap `404`。authenticated fresh browserではDay Tableの列順が`Project → Mode → Section`となり、planned EntryはMode selectorを表示。Mode Boardではcreate済みModeのserver order `D068 Deep verification` → `D068 Light verification`を確認し、fresh tabのreload後もplanned Entryはlive title `D068 Deep verification`、completed Entryはsnapshot title `D068 Focus verification`を保持した。DB read-onlyでもlive titleとsnapshot titleを分離確認し、APP `quick_check = ok` / FK empty、operation log、AUTH login capabilityを保持した。fixtureのMode / Entryはcleanupせず残置前提であり、production、restore、credential / permission / OAuth scope / account-role / binding / security-posture変更は`NOT_RUN`。
+
+## Day Navigation full-suite corrective — 2026-09-07
+
+これは新しいProduct feature / Material Decisionではなく、current canonical semanticsを変更しないD-068 regression correctiveである。開始時はContract記載どおり`main@e80ec9610babcc0347cd96c9ece8df20778fa688`で、GitHub `origin/main`と一致し、tracked worktree / index差分はなかった。既存の未追跡patch/zip artifactは変更・stageしていない。
+
+Baseline / reproduction:
+
+- untouched current mainのtargetは14 tests中`4 PASS / 10 FAIL`。追加2回も同じ10件・同じstackで再現し、order-dependent / flakyではなかった。Full Worker / D1は`23 files / 195 tests`中`185 PASS / 10 FAIL`。
+- 失敗10件は、`returns an established past Day from frozen history without Section rewrite or Routine backfill`、`atomically establishes a future Day and adds its first Task using the current configuration`、`does not leave an establishment-only Day after deterministic rejection or injected batch failure`、`converges concurrent equivalent first mutations and exact retry to one Day and one revision increment`、`keeps established future Day planning available without enabling execution or Routine materialization`、`keeps established future Section context frozen after a later configuration change`、`rejects a stale follow-up Add without partial state and replays a successful follow-up exactly`、`allows exactly one of two concurrent established-future follow-up Adds at the same revision`、`keeps arbitrary-date reads owner-scoped`、`rejects cross-owner Section, Project, and Day authority without attacker planning writes`。
+- 9件は`addTaskToFutureDay` line 430の`HttpError(503, infrastructure_ambiguous)`で、最初のfuture mutationまたはfollow-up pathのbatch後に発生した。注入failure 1件は、D-068でvalidation batchが3→4 statementsへ増えたため、test proxyの`>3`条件がmutationではなくvalidation batchを先に壊し、raw `Error: injected future establishment failure`を返していた。
+
+Root cause / corrective:
+
+- First bad rangeはD-068 implementation commit `2c800c4dde651ded80c4e3a2d868a2b40ab77e0a`。同commitのdiffで、future establishment guardのoptional `request.mode_id`を`undefined`のままD1 bindしていたこと、established pathでFK対象の`entry_modes`を`entries`より先にinsertしていたことを確認した。直前の`2c800c4^`はD-067 canonical evidence上のfull Worker / D1 `191 / 191 PASS`である。
+- Runtime fixはfuture guard bindを`request.mode_id ?? null`へ正規化し、established pathの順序を`TaskChuteDay → placement guard → revision → Task → Entry → optional entry_modes → transaction assertion → operation → cleanup`へ修正した。future pathも同じEntry-bound relation順序を確認した。FKを弱める変更、schema / migration / dependency変更はない。
+- Test fixは、D-068追加の4-statement validationを通過させてmutation batchだけを注入するよう`>3`を`>4`へ修正した。これはtest-harness isolation correctionであり、deterministic domain rejectionをambiguityへ弱めていない。
+- Operation / ambiguity reviewでは、same-operation committed successは既存replay、stale revision / authority mismatchは既存deterministic rejection、未知のpost-batch outcomeだけを`infrastructure_ambiguous`とする境界を維持した。past record-none rejectionはoperation rowを作らない。
+
+Regression evidence:
+
+- Changed files: `apps/web/worker/application/add-task-to-day.ts`、`apps/web/test/day-navigation.integration.test.ts`。canonical semantics `NO`、migration required `NO`、runtime fix classification `YES`、harness regression coverage `YES`。
+- Targetは`15 / 15 PASS`を初回修正後＋追加2回の計3回確認。Mode null / non-nullのfuture first Add、established future follow-up、exact retry、stale revision、concurrent loserのTask/Entry absence、orphan guard/assertion `0`、APP quick check / FK emptyを追加・確認した。D-068 Mode focusedとD-069 Project focusedは`6 / 6 PASS`。
+- Full Worker / D1は`23 files / 196 tests PASS`、Full Webは`3 files / 209 tests PASS`、typecheck、production build、exact nonprod build、`git diff --check`、Wrangler nonprod dry-runはPASS。known Wrangler log `EPERM`とclient chunk-size warningは非致命で、required commandはexit `0`。
+
+Persistent non-production:
+
+- Implementation commit `1c1d742f487647790b6a9c24b2de770403ef8eb0`をmainへfast-forward push後、APP/AUTH migration pending `0 / 0`、canonical nonprod bindings / vars、private ignored backup APP `145,291 bytes` / SHA-256 `241158C38483A38E8308B924D7FE5A3EA669EC6EA2C34180495EB5B5F8B6F4FF`、AUTH `5,136 bytes` / SHA-256 `3B7091CAE15F6D8493B411BE139914E818B4F5EC6D237AF501A79CAD20BEE1AB`を確認した。restoreは実行していない。
+- `taskchute-web-nonprod` version `cd622d4b-17cd-48e7-8d60-83edd9682cc9`へdeploy。root `200`、protected API `401`、disabled bootstrap `404`。Authenticated browserで新規future Day `2026-10-01`へdisposable ordinary Taskを1件追加してDayをestablishし、2件目のfollow-up Add、same-tab reload、fresh authenticated tab復元を確認した。browser console warning / errorは両tab`0 / 0`。
+- Final read-only APP auditはDay `01a07996-38cf-7b2c-b50a-073daa3c3b97`、`placement_revision=2`、target Task/Entry `2 / 2`、positions `1 / 2`、lifecycle `planned`、orphan placement guard / transaction assertion `0 / 0`、`quick_check=ok`、FK empty、全query `rows_written=0`。AUTH users / accounts / sessions `1 / 1 / 6`、`quick_check=ok`、FK empty、全query `rows_written=0`。fixtureはnonprodに残置し、production / restore / destructive cleanupは`NOT_RUN`。
+
+Docs-only canonical maintenanceはこのsectionを含む別commitで実施する。Released `NO`。
