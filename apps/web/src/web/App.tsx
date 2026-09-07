@@ -1282,6 +1282,17 @@ export function App() {
   }, [reconcile, transitionToSignedOut]);
 
   useEffect(() => {
+    if (!day || day.is_current || projects.length > 0
+      || !day.taskchute_day.id || day.establishment_state !== "established" || !day.planning_enabled
+      || !projectionEntries(day).some((entry) => entry.lifecycle_state === "planned" && entry.routine === null)) return;
+    let active = true;
+    void Promise.resolve(api.loadProjects()).then((projection) => {
+      if (active) setProjects(projection.projects);
+    }).catch(() => { /* Keep Projectなし selectable; the server remains authoritative. */ });
+    return () => { active = false; };
+  }, [day, projects.length]);
+
+  useEffect(() => {
     persistCollapsedSections(collapsedSectionsByDay);
   }, [collapsedSectionsByDay]);
 
@@ -2305,7 +2316,7 @@ export function App() {
         const latest = entryForId(dayRef.current, operation.entry_id);
         const rebased = latest ? { ...operation, expected_title: latest.task.title, expected_project_id: latest.task.project?.id ?? null } : operation;
         setTaskMetadataOperation(rebased);
-        await executeTaskMetadata(rebased);
+        await executeTaskMetadata(rebased, dayRef.current?.is_current === true ? "current" : "future");
       },
     });
   }
@@ -2748,13 +2759,18 @@ export function App() {
     return projection ? projectionEntries(projection).find((entry) => entry.id === entryId) ?? null : null;
   }
 
-  function canEditTaskMetadata(entry: EntryProjection): boolean {
+  function canEditTaskTitleMetadata(entry: EntryProjection): boolean {
     return Boolean(day?.is_current && day.taskchute_day.id && day.establishment_state === "established"
       && day.planning_enabled && entry.lifecycle_state === "planned" && entry.routine === null);
   }
 
+  function canEditProjectMetadata(entry: EntryProjection): boolean {
+    return Boolean(day?.taskchute_day.id && day.establishment_state === "established"
+      && day.planning_enabled && entry.lifecycle_state === "planned" && entry.routine === null);
+  }
+
   function openTaskMetadataEditor(entry: EntryProjection) {
-    if (!canEditTaskMetadata(entry) || mutationLocked || hasRetainedMutationScope(entryMutationScope(entry.id, entry.task.id))) return;
+    if (!canEditTaskTitleMetadata(entry) || mutationLocked || hasRetainedMutationScope(entryMutationScope(entry.id, entry.task.id))) return;
     beginInlineEditor(`task-metadata:${entry.id}`);
     setError(null);
     setTaskMetadataDraft({ entryId: entry.id, taskId: entry.task.id, expectedTitle: entry.task.title,
@@ -2766,7 +2782,7 @@ export function App() {
     }
   }
 
-  async function executeTaskMetadata(operation: UpdateTaskMetadataRequest) {
+  async function executeTaskMetadata(operation: UpdateTaskMetadataRequest, dayKind: "current" | "future" = "current") {
     const mutationToken = beginMutationScope(entryMutationScope(operation.entry_id, operation.task_id), "Task情報保存");
     if (!mutationToken) return;
     setPending("task-metadata");
@@ -2782,7 +2798,7 @@ export function App() {
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Task情報の保存に失敗しました");
       const ambiguous = isAmbiguousOutcome(caught);
-      if (ambiguous || (caught instanceof ApiClientError && caught.code === "revision_conflict")) pauseDayMutationQueue();
+      if (dayKind === "current" && (ambiguous || (caught instanceof ApiClientError && caught.code === "revision_conflict"))) pauseDayMutationQueue();
       if (ambiguous) {
         setTaskMetadataOperation((current) => current?.operation_id === operation.operation_id ? current : null);
         setPendingTaskMetadataOverlays((current) => current[operation.entry_id]?.operation_id === operation.operation_id
@@ -2809,7 +2825,7 @@ export function App() {
             ? Object.fromEntries(Object.entries(current).filter(([entryId]) => entryId !== operation.entry_id))
             : current);
           setError(null);
-          resumeDayMutationQueue();
+          if (dayKind === "current") resumeDayMutationQueue();
         }
       } catch { /* Preserve the exact operation for retry when reconciliation is unavailable. */ }
     } finally {
@@ -2853,7 +2869,7 @@ export function App() {
   }
 
   function commitProjectMetadata(entry: EntryProjection, nextProjectId: string | null) {
-    if (!day || !canEditTaskMetadata(entry) || hasRetainedMutationScope(entryMutationScope(entry.id, entry.task.id))
+    if (!day || !canEditProjectMetadata(entry) || hasRetainedMutationScope(entryMutationScope(entry.id, entry.task.id))
       || (entry.task.project?.id ?? null) === nextProjectId) return;
     const operation: UpdateTaskMetadataRequest = {
       operation_id: uuidv7(), entry_id: entry.id, task_id: entry.task.id,
@@ -2863,13 +2879,30 @@ export function App() {
     setError(null);
     setPendingTaskMetadataOverlays((current) => ({ ...current, [operation.entry_id]: operation }));
     setTaskMetadataOperation(operation);
-    enqueueDayMutation({ scope: entryMutationScope(operation.entry_id, operation.task_id), label: "Task情報保存", operationId: operation.operation_id,
-      coalesceKey: `task-metadata:${operation.entry_id}`, dispatch: async () => {
-        const latest = entryForId(dayRef.current, operation.entry_id);
-        const rebased = latest ? { ...operation, expected_title: latest.task.title, expected_project_id: latest.task.project?.id ?? null } : operation;
-        setTaskMetadataOperation(rebased);
-        await executeTaskMetadata(rebased);
-      } });
+    const dispatch = async () => {
+      const latest = entryForId(dayRef.current, operation.entry_id);
+      const isCurrent = dayRef.current?.is_current === true;
+      const rebased = isCurrent && latest
+        ? { ...operation, expected_title: latest.task.title, expected_project_id: latest.task.project?.id ?? null }
+        : operation;
+      setTaskMetadataOperation(rebased);
+      await executeTaskMetadata(rebased, isCurrent ? "current" : "future");
+    };
+    if (day.is_current) {
+      enqueueDayMutation({ scope: entryMutationScope(operation.entry_id, operation.task_id), label: "Task情報保存", operationId: operation.operation_id,
+        coalesceKey: `task-metadata:${operation.entry_id}`, dispatch });
+    } else {
+      void dispatch();
+    }
+  }
+
+  function retryTaskMetadata(operation: UpdateTaskMetadataRequest): void {
+    if (day?.is_current) {
+      enqueueRetainedRetry("Task情報保存", entryMutationScope(operation.entry_id, operation.task_id),
+        () => executeTaskMetadata(operation, "current"));
+    } else {
+      void executeTaskMetadata(operation, "future");
+    }
   }
 
   function canEditExecutionTimes(entry: EntryProjection): boolean {
@@ -4181,7 +4214,7 @@ export function App() {
             }}>
             <option value="">Projectなし</option>
             {projectOptions.map((candidate) => <option value={candidate.id} key={candidate.id} disabled={candidate.archived === true}>{candidate.title}{candidate.archived ? "（アーカイブ）" : ""}</option>)}
-          </select> : canEditTaskMetadata(entry) ? <select className="project-selector" aria-label={`${entry.task.title}のProject`} value={projectId ?? ""}
+          </select> : canEditProjectMetadata(entry) ? <select className="project-selector" aria-label={`${entry.task.title}のProject`} value={projectId ?? ""}
             disabled={hasRetainedMutationScope(entryMutationScope(entry.id, entry.task.id))}
             onClick={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()}
             onChange={(event) => commitProjectMetadata(entry, event.target.value || null)}>
@@ -5103,12 +5136,12 @@ export function App() {
                               {error && <span className="inline-field-error" role="alert">{error}</span>}
                             </span>
                           ) : (
-                            <span className={`task-title-display${canEditTaskMetadata(entry) ? " is-editable" : ""}`}
-                              role={canEditTaskMetadata(entry) ? "button" : undefined} tabIndex={canEditTaskMetadata(entry) ? 0 : undefined}
-                              aria-label={canEditTaskMetadata(entry) ? `${entry.task.title}を編集` : undefined}
-                              onClick={(event) => { if (canEditTaskMetadata(entry)) { event.stopPropagation(); openTaskMetadataEditor(entry); } }}
+                            <span className={`task-title-display${canEditTaskTitleMetadata(entry) ? " is-editable" : ""}`}
+                              role={canEditTaskTitleMetadata(entry) ? "button" : undefined} tabIndex={canEditTaskTitleMetadata(entry) ? 0 : undefined}
+                              aria-label={canEditTaskTitleMetadata(entry) ? `${entry.task.title}を編集` : undefined}
+                              onClick={(event) => { if (canEditTaskTitleMetadata(entry)) { event.stopPropagation(); openTaskMetadataEditor(entry); } }}
                               onKeyDown={(event) => {
-                                if (canEditTaskMetadata(entry) && (event.key === "Enter" || event.key === " ")) {
+                                if (canEditTaskTitleMetadata(entry) && (event.key === "Enter" || event.key === " ")) {
                                   event.preventDefault(); event.stopPropagation(); openTaskMetadataEditor(entry);
                                 }
                               }}><strong>{displayedTitle}</strong></span>
@@ -5179,9 +5212,9 @@ export function App() {
           {retryableStartOperation && <button type="button" onClick={() => enqueueRetainedRetry("Start", executionMutationScope(retryableStartOperation.entry_id), () => executeStart(retryableStartOperation))}>保留中のStartを再試行</button>}
           {retryableCompleteOperation && <button type="button" onClick={() => enqueueRetainedRetry("Complete", executionMutationScope(retryableCompleteOperation.entry_id), () => executeComplete(retryableCompleteOperation))}>保留中のCompleteを再試行</button>}
           {executionTimesOperation && <button type="button" onClick={() => void executeExecutionTimes(executionTimesOperation)}>保留中の実績時刻保存を再試行</button>}
-          {retryableTaskMetadataOperation && <button type="button" onClick={() => enqueueRetainedRetry("Task情報保存", entryMutationScope(retryableTaskMetadataOperation.entry_id, retryableTaskMetadataOperation.task_id), () => executeTaskMetadata(retryableTaskMetadataOperation))}>保留中のTask情報保存を再試行</button>}
+          {retryableTaskMetadataOperation && <button type="button" onClick={() => retryTaskMetadata(retryableTaskMetadataOperation)}>保留中のTask情報保存を再試行</button>}
           {retryableRetainedTaskMetadataOperations.filter((operation) => operation.operation_id !== retryableTaskMetadataOperation?.operation_id).map((operation) => (
-            <button type="button" key={operation.operation_id} onClick={() => enqueueRetainedRetry("Task情報保存", entryMutationScope(operation.entry_id, operation.task_id), () => executeTaskMetadata(operation))}>保留中のTask情報保存を再試行</button>
+            <button type="button" key={operation.operation_id} onClick={() => retryTaskMetadata(operation)}>保留中のTask情報保存を再試行</button>
           ))}
           {configurationOperation && <button type="button" onClick={() => void executeConfiguration(configurationOperation)}>保留中のSection設定を再試行</button>}
           {sectionSettingsOperation && <button type="button" onClick={() => void executeSectionSettings(sectionSettingsOperation)}>保留中の次Day Section設定を再試行</button>}

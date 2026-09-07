@@ -30,6 +30,27 @@ async function seed() {
   return { userId, dayId, taskId, entryId, projectId, nextProjectId };
 }
 
+async function seedEstablishedFuture() {
+  const fixture = await seed();
+  const futureDayId = uuidv7();
+  const futureEntryId = uuidv7();
+  await env.APP_DB.batch([
+    env.APP_DB.prepare(`INSERT INTO taskchute_days
+      (id, app_user_id, logical_date, start_instant, end_instant, establishment_timezone,
+       establishment_boundary_minutes, establishment_disambiguation, placement_revision, created_at)
+      VALUES (?, ?, '2026-09-06', '2026-09-06T00:00:00.000Z', '2026-09-07T00:00:00.000Z', 'UTC', 0, 'compatible', 11, ?)`)
+      .bind(futureDayId, fixture.userId, createdAt),
+    env.APP_DB.prepare(`INSERT INTO entries
+      (id, app_user_id, task_id, taskchute_day_id, section_id, position, lifecycle_state,
+       estimate_seconds, planned_start_minute, created_at)
+      VALUES (?, ?, ?, ?, ?, 2, 'planned', 900, 360, ?)`)
+      .bind(futureEntryId, fixture.userId, fixture.taskId, futureDayId, (await env.APP_DB.prepare(
+        "SELECT id FROM sections WHERE app_user_id = ? ORDER BY sort_order LIMIT 1",
+      ).bind(fixture.userId).first<{ id: string }>())!.id, createdAt),
+  ]);
+  return { ...fixture, futureDayId, futureEntryId };
+}
+
 describe.sequential("D-060 UpdateTaskMetadata", () => {
   it("updates title and Project by owner-scoped CAS, preserves placement, and replays once", async () => {
     const fixture = await seed();
@@ -80,5 +101,104 @@ describe.sequential("D-060 UpdateTaskMetadata", () => {
       .rejects.toMatchObject({ code: "resource_not_found" });
     expect(await env.APP_DB.prepare("SELECT title, project_id FROM tasks WHERE id = ?").bind(fixture.taskId).first())
       .toEqual({ title: "Before", project_id: fixture.projectId });
+  });
+
+  it("allows established future Project set and clear without changing Task/Entry placement", async () => {
+    const fixture = await seedEstablishedFuture();
+    const setRequest = { operation_id: uuidv7(), entry_id: fixture.futureEntryId, task_id: fixture.taskId,
+      expected_title: "Before", expected_project_id: fixture.projectId, title: "Before", project_id: fixture.nextProjectId };
+    const before = await env.APP_DB.prepare(`SELECT e.taskchute_day_id, e.section_id, e.position, e.lifecycle_state,
+        e.estimate_seconds, e.planned_start_minute, d.placement_revision
+      FROM entries e JOIN taskchute_days d ON d.id = e.taskchute_day_id WHERE e.id = ?`).bind(fixture.futureEntryId).first();
+
+    const assigned = await updateTaskMetadata(env.APP_DB, fixture.userId, setRequest, now);
+    expect(assigned).toEqual({ entry_id: fixture.futureEntryId, task_id: fixture.taskId, title: "Before",
+      project: { id: fixture.nextProjectId, title: "New project" } });
+    expect(await updateTaskMetadata(env.APP_DB, fixture.userId, setRequest, now)).toEqual(assigned);
+    expect(await env.APP_DB.prepare("SELECT project_id FROM tasks WHERE id = ?").bind(fixture.taskId).first())
+      .toEqual({ project_id: fixture.nextProjectId });
+    expect(await env.APP_DB.prepare(`SELECT e.taskchute_day_id, e.section_id, e.position, e.lifecycle_state,
+        e.estimate_seconds, e.planned_start_minute, d.placement_revision
+      FROM entries e JOIN taskchute_days d ON d.id = e.taskchute_day_id WHERE e.id = ?`).bind(fixture.futureEntryId).first())
+      .toEqual(before);
+
+    const clearRequest = { ...setRequest, operation_id: uuidv7(), expected_project_id: fixture.nextProjectId, project_id: null };
+    expect(await updateTaskMetadata(env.APP_DB, fixture.userId, clearRequest, now)).toEqual({
+      entry_id: fixture.futureEntryId, task_id: fixture.taskId, title: "Before", project: null,
+    });
+    expect(await env.APP_DB.prepare("SELECT project_id FROM tasks WHERE id = ?").bind(fixture.taskId).first())
+      .toEqual({ project_id: null });
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM operations WHERE app_user_id = ? AND command_type = 'UpdateTaskMetadata'")
+      .bind(fixture.userId).first<number>("count")).toBe(2);
+  });
+
+  it("protects future title, archived assignment, Routine, lifecycle, and past boundaries", async () => {
+    const fixture = await seedEstablishedFuture();
+    const base = { entry_id: fixture.futureEntryId, task_id: fixture.taskId,
+      expected_title: "Before", expected_project_id: fixture.projectId, title: "Before" };
+    await expect(updateTaskMetadata(env.APP_DB, fixture.userId, { ...base, operation_id: uuidv7(), project_id: fixture.nextProjectId, title: "Renamed" }, now))
+      .rejects.toMatchObject({ code: "resource_conflict" });
+    await expect(updateTaskMetadata(env.APP_DB, fixture.userId, { ...base, operation_id: uuidv7(), project_id: fixture.nextProjectId, expected_title: "Other" }, now))
+      .rejects.toMatchObject({ code: "resource_conflict" });
+
+    await env.APP_DB.prepare("INSERT INTO project_archives (app_user_id, project_id, archived_at) VALUES (?, ?, ?)")
+      .bind(fixture.userId, fixture.nextProjectId, now).run();
+    await expect(updateTaskMetadata(env.APP_DB, fixture.userId, { ...base, operation_id: uuidv7(), project_id: fixture.nextProjectId }, now))
+      .rejects.toMatchObject({ code: "resource_not_found" });
+
+    const routineId = uuidv7(); const occurrenceId = uuidv7();
+    await env.APP_DB.batch([
+      env.APP_DB.prepare(`INSERT INTO routine_definitions
+        (id, app_user_id, task_id, recurrence_type, start_logical_date, materialization_order, created_at)
+        VALUES (?, ?, ?, 'daily', '2026-09-06', 1, ?)`).bind(routineId, fixture.userId, fixture.taskId, createdAt),
+      env.APP_DB.prepare(`INSERT INTO routine_occurrences
+        (id, app_user_id, routine_definition_id, origin_taskchute_day_id, created_at) VALUES (?, ?, ?, ?, ?)`)
+        .bind(occurrenceId, fixture.userId, routineId, fixture.futureDayId, createdAt),
+      env.APP_DB.prepare("UPDATE entries SET routine_occurrence_id = ? WHERE id = ?").bind(occurrenceId, fixture.futureEntryId),
+    ]);
+    await expect(updateTaskMetadata(env.APP_DB, fixture.userId, { ...base, operation_id: uuidv7(), project_id: null }, now))
+      .rejects.toMatchObject({ code: "resource_conflict" });
+
+    await env.APP_DB.prepare("UPDATE entries SET routine_occurrence_id = NULL, lifecycle_state = 'running' WHERE id = ?")
+      .bind(fixture.futureEntryId).run();
+    await expect(updateTaskMetadata(env.APP_DB, fixture.userId, { ...base, operation_id: uuidv7(), project_id: null }, now))
+      .rejects.toMatchObject({ code: "resource_conflict" });
+    await env.APP_DB.prepare("UPDATE entries SET lifecycle_state = 'completed' WHERE id = ?").bind(fixture.futureEntryId).run();
+    await expect(updateTaskMetadata(env.APP_DB, fixture.userId, { ...base, operation_id: uuidv7(), project_id: null }, now))
+      .rejects.toMatchObject({ code: "resource_conflict" });
+    await env.APP_DB.prepare("UPDATE entries SET lifecycle_state = 'planned' WHERE id = ?").bind(fixture.futureEntryId).run();
+    await env.APP_DB.prepare("UPDATE taskchute_days SET logical_date = '2026-09-04' WHERE id = ?").bind(fixture.futureDayId).run();
+    await expect(updateTaskMetadata(env.APP_DB, fixture.userId, { ...base, operation_id: uuidv7(), project_id: null }, now))
+      .rejects.toMatchObject({ code: "resource_conflict" });
+  });
+
+  it("rejects a stale future target moved to another Day without changing metadata", async () => {
+    const fixture = await seedEstablishedFuture();
+    const otherDayId = uuidv7();
+    await env.APP_DB.prepare(`INSERT INTO taskchute_days
+      (id, app_user_id, logical_date, start_instant, end_instant, establishment_timezone,
+       establishment_boundary_minutes, establishment_disambiguation, placement_revision, created_at)
+      VALUES (?, ?, '2026-09-07', '2026-09-07T00:00:00.000Z', '2026-09-08T00:00:00.000Z', 'UTC', 0, 'compatible', 0, ?)`)
+      .bind(otherDayId, fixture.userId, createdAt).run();
+    const request = { operation_id: uuidv7(), entry_id: fixture.futureEntryId, task_id: fixture.taskId,
+      expected_title: "Before", expected_project_id: fixture.projectId, title: "Before", project_id: fixture.nextProjectId };
+    const originalBatch = env.APP_DB.batch.bind(env.APP_DB);
+    const moved = new Proxy(env.APP_DB, {
+      get(target, property, receiver) {
+        if (property === "batch") {
+          return async (statements: D1PreparedStatement[]) => {
+            await env.APP_DB.prepare("UPDATE entries SET taskchute_day_id = ? WHERE id = ?")
+              .bind(otherDayId, fixture.futureEntryId).run();
+            return originalBatch(statements);
+          };
+        }
+        return Reflect.get(target, property, receiver);
+      },
+    });
+    await expect(updateTaskMetadata(moved, fixture.userId, request, now)).rejects.toMatchObject({ code: "resource_conflict" });
+    expect(await env.APP_DB.prepare("SELECT project_id FROM tasks WHERE id = ?").bind(fixture.taskId).first())
+      .toEqual({ project_id: fixture.projectId });
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM operations WHERE app_user_id = ? AND operation_id = ?")
+      .bind(fixture.userId, request.operation_id).first<number>("count")).toBe(1);
   });
 });

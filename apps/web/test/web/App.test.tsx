@@ -602,6 +602,7 @@ describe("Dogfood Day shell", () => {
     mocks.loadDay.mockResolvedValueOnce(future).mockResolvedValueOnce(established);
     render(<App />);
     expect(await screen.findByText(/未来日のプレビュー/)).toBeTruthy();
+    expect(screen.queryByRole("combobox", { name: /Project/ })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "MorningにTaskを追加" }));
     fireEvent.change(screen.getByRole("textbox", { name: "MorningのTask名" }), { target: { value: "Plan tomorrow" } });
     fireEvent.keyDown(screen.getByRole("textbox", { name: "MorningのTask名" }), { key: "ArrowRight", shiftKey: true });
@@ -3737,6 +3738,78 @@ describe("Dogfood Day shell", () => {
     expect(mocks.updateTaskMetadata.mock.calls[1][0]).toMatchObject({ expected_title: "Canonical task", expected_project_id: null, title: "Canonical task", project_id: "existing-project" });
   });
 
+  it("allows Project-only assignment on an established future ordinary planned Entry", async () => {
+    let projectId: string | null = null;
+    const futureDay = () => {
+      const entry = {
+        ...firstEntry,
+        task: { ...firstEntry.task, project: projectId ? { id: projectId, title: "Existing Project" } : null },
+      };
+      return {
+        ...populatedDay,
+        is_current: false,
+        taskchute_day: { ...populatedDay.taskchute_day, logical_date: "2026-08-23" },
+        sections: [{ ...populatedDay.sections[0], entries: [entry] }, populatedDay.sections[1]],
+        next_entry: entry,
+      };
+    };
+    mocks.loadDay.mockImplementation(async () => futureDay());
+    mocks.updateTaskMetadata.mockImplementation(async (operation) => {
+      projectId = operation.project_id;
+      return {};
+    });
+    render(<App />);
+
+    const project = await screen.findByRole("combobox", { name: "Canonical taskのProject" });
+    expect((project as unknown as HTMLSelectElement).value).toBe("");
+    expect(within(project).getByRole("option", { name: "Projectなし" })).toBeTruthy();
+    await within(project).findByRole("option", { name: "Existing Project" });
+    expect(screen.queryByRole("button", { name: "Canonical taskを編集" })).toBeNull();
+    const row = screen.getByText("Canonical task").closest<HTMLElement>("[data-entry-id]")!;
+    row.focus();
+    fireEvent.keyDown(row, { key: "e" });
+    expect(screen.queryByRole("textbox", { name: "Canonical taskのTask名" })).toBeNull();
+
+    fireEvent.change(project, { target: { value: "existing-project" } });
+    await waitFor(() => expect(mocks.updateTaskMetadata).toHaveBeenCalledTimes(1));
+    expect(mocks.updateTaskMetadata.mock.calls[0][0]).toMatchObject({
+      expected_title: "Canonical task", expected_project_id: null,
+      title: "Canonical task", project_id: "existing-project",
+    });
+    await waitFor(() => expect((screen.getByRole("combobox", { name: "Canonical taskのProject" }) as unknown as HTMLSelectElement).value).toBe("existing-project"));
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Canonical taskのProject" }), { target: { value: "" } });
+    await waitFor(() => expect(mocks.updateTaskMetadata).toHaveBeenCalledTimes(2));
+    expect(mocks.updateTaskMetadata.mock.calls[1][0]).toMatchObject({
+      expected_title: "Canonical task", expected_project_id: "existing-project",
+      title: "Canonical task", project_id: null,
+    });
+    await waitFor(() => expect((screen.getByRole("combobox", { name: "Canonical taskのProject" }) as unknown as HTMLSelectElement).value).toBe(""));
+  });
+
+  it("retries an ambiguous future Project assignment with the exact retained operation", async () => {
+    const futureDay = {
+      ...populatedDay,
+      is_current: false,
+      taskchute_day: { ...populatedDay.taskchute_day, logical_date: "2026-08-23" },
+    };
+    const request = deferred<unknown>();
+    mocks.loadDay.mockResolvedValue(futureDay);
+    mocks.updateTaskMetadata.mockReturnValueOnce(request.promise).mockResolvedValueOnce({});
+    render(<App />);
+
+    const project = await screen.findByRole("combobox", { name: "Canonical taskのProject" });
+    await within(project).findByRole("option", { name: "Existing Project" });
+    fireEvent.change(project, { target: { value: "existing-project" } });
+    await waitFor(() => expect(mocks.updateTaskMetadata).toHaveBeenCalledTimes(1));
+    const retained = mocks.updateTaskMetadata.mock.calls[0][0];
+    request.reject(new ApiClientError("response lost", 503, true, "infrastructure_ambiguous"));
+    const retry = await screen.findByRole("button", { name: "保留中のTask情報保存を再試行" });
+    fireEvent.click(retry);
+    await waitFor(() => expect(mocks.updateTaskMetadata).toHaveBeenCalledTimes(2));
+    expect(mocks.updateTaskMetadata.mock.calls[1][0]).toEqual(retained);
+  });
+
   it("uses one far-right overflow menu for eligible planned row actions", async () => {
     mocks.loadDay.mockResolvedValue(populatedDay);
     render(<App />);
@@ -3974,7 +4047,7 @@ describe("Dogfood Day shell", () => {
     fireEvent.change(secondTitle, { target: { value: "Saved B" } });
     fireEvent.keyDown(secondTitle, { key: "Enter" });
     await waitFor(() => expect(mocks.updateTaskMetadata).toHaveBeenCalledTimes(1));
-    expect(screen.getByRole("status").textContent).toContain("保存中");
+    expect(screen.getByRole("status").textContent).toContain("保存");
 
     fireEvent.click(screen.getByRole("button", { name: "EveningにTaskを追加" }));
     const addInput = screen.getByRole("textbox", { name: "EveningのTask名" });

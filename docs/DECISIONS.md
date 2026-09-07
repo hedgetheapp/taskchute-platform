@@ -1489,3 +1489,27 @@ D-068はD-026のEntry-scoped planning metadataとして、ユーザー定義の�
 - Routine Mode default / override、Routine occurrence Mode、Bulk Mode、past / future / running / completed editing、Mode deletion/archive、production migration / deploy / mutation、restore、branch / PR / merge / tag / releaseはout of scopeであり、必要になった場合はSTOPする。
 
 Implementation, local / real-local verification, persistent nonprod backup / migration / deploy / authenticated representative verification, and canonical evidence are recorded in `docs/CURRENT.md`, `docs/FEATURES.md`, `docs/DESIGN.md`, and `docs/TEST_MATRIX.md`. Production remains outside this Decision.
+
+## D-069 — Future established-Day Project assignment
+Status: Approved
+
+D-069はD-060のTask metadata編集のうちProject assignmentだけを、established future Dayのordinary planned Entryへ狭く拡張する。D-060のcurrent-Day-only boundaryが原因で、未来日へ最初のTaskを追加してDayがcanonicalにestablishedされた後もProject selectorが表示されず、`Projectなし`と未設定表示の区別もできなかったためである。これはCSSだけの表示補正ではなく、server / Webの編集eligibility boundaryの変更である。
+
+### Eligibility and Project semantics
+
+- authenticated owner、established、planning enabled、lifecycleが`planned`、ordinary（`routine_occurrence_id IS NULL`）のEntryだけを対象とする。canonical current Dayに加えてestablished future Dayを許可し、established past Day、future preview、record-none past、running、completed、Routine-derived、owner mismatch、missing Entryは引き続きreject / read-onlyとする。
+- Projectは既存どおりTask-levelの`Task.project_id`であり、Entry-level metadataへ変更しない。`null`は`Projectなし`、active owned Projectは選択可能、archived Projectは新規assignment不可、既存archived assignmentはD-065の理解可能な表示を維持する。search、quick create、bulk変更、Routine default / propagationは含めない。
+- future established DayではProject-only mutationだけを許可し、Task titleはrequest title / expected titleともcanonical current titleと一致しなければrejectする。future Task title editing、past Project editing、Mode変更、placement / Section / planned start / estimate / Day / `placement_revision`変更は含めない。
+
+### Atomicity, CAS, and coordination
+
+- 既存の`UpdateTaskMetadata` command、operation fingerprint / replay / misuse、owner / archive validationを再利用する。`expected_title`と`expected_project_id`はcurrent / futureともauthoritative CASであり、同時変更時はpartial effectなしのconflictとする。
+- guarded mutationはread時に観測したEntryのTaskChuteDay identityとlogical date、Entry / Task relation、lifecycle、Routine relation、CASをcommit時に再確認する。Entryが別Dayへ移動したstale requestを成功させない。Project-only updateはplacement revisionやEntry placementを変更しない。
+- current DayはD-066のglobal serial dispatcher、latest canonical expected-value rebase、exact retryを維持する。future established Dayは既存のnon-current direct / scoped mutation patternを使い、D-066をfuture queueへ広げない。同一targetの二重送信を防ぎ、ambiguous outcomeではsent operationのexact requestを保持し、canonical reconcile後に同じoperationをretryする。navigation、reload、logout、unloadで未解決operationを黙って破棄しない。
+
+### Web boundary and migration
+
+- WebはTask title eligibilityとProject eligibilityを分離する。title / `E` shortcutはcurrent ordinary plannedだけ、Project selectorはcurrentまたはestablished future ordinary plannedだけとする。eligible future Entryのnull表示は実selectorの選択肢`Projectなし`であり、`—`ではない。future previewにはfake Project editorを追加しない。
+- APP / AUTH migrationは不要である。`UpdateTaskMetadata` command、`Task.project_id`、future Day / Entry persistence、active Project loading / archive behaviorは既存schemaで表現できる。new dependency、new command、D-066 broadening、production operation、restore、branch / PR / merge / tag / releaseは対象外で、必要になった場合はSTOPする。
+
+Implementation, focused / regression tests, local and persistent nonprod evidence, and the unchanged day-navigation baseline are recorded in `docs/CURRENT.md`, `docs/FEATURES.md`, `docs/SPEC.md`, `docs/ARCHITECTURE.md`, `docs/DESIGN.md`, `docs/TEST_MATRIX.md`, and `docs/RISKS.md` as applicable. Production remains untouched and Released remains `NO`.

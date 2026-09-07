@@ -37,6 +37,7 @@ async function reject<T>(
 }
 
 interface MetadataRow {
+  taskchute_day_id: string;
   task_id: string;
   task_title: string;
   task_project_id: string | null;
@@ -64,14 +65,19 @@ export async function updateTaskMetadata(
     ? resolveTaskChuteDay(nowInstant, { timezone: settings.timezone, boundaryMinutes: settings.day_boundary_minutes }).logicalDate
     : null;
   const row = await db.prepare(`SELECT e.task_id, t.title AS task_title, t.project_id AS task_project_id,
-      e.lifecycle_state, e.routine_occurrence_id, d.logical_date
+      e.taskchute_day_id, e.lifecycle_state, e.routine_occurrence_id, d.logical_date
     FROM entries e JOIN tasks t ON t.app_user_id = e.app_user_id AND t.id = e.task_id
     JOIN taskchute_days d ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
     WHERE e.app_user_id = ? AND e.id = ? AND e.task_id = ?`).bind(appUserId, request.entry_id, request.task_id)
     .first<MetadataRow>();
   if (!row) return reject(db, appUserId, request, requestFingerprint, "resource_not_found", "Entry or Task is unavailable");
-  if (!settings || row.logical_date !== currentLogicalDate || row.lifecycle_state !== "planned" || row.routine_occurrence_id !== null) {
-    return reject(db, appUserId, request, requestFingerprint, "resource_conflict", "Only an ordinary planned current-Day Entry can edit Task metadata");
+  const isCurrent = settings !== null && row.logical_date === currentLogicalDate;
+  const isFuture = settings !== null && currentLogicalDate !== null && row.logical_date > currentLogicalDate;
+  if (!settings || (!isCurrent && !isFuture) || row.lifecycle_state !== "planned" || row.routine_occurrence_id !== null) {
+    return reject(db, appUserId, request, requestFingerprint, "resource_conflict", "Only an ordinary planned current-Day or established future-Day Entry can edit Task metadata");
+  }
+  if (isFuture && (request.title !== row.task_title || request.expected_title !== row.task_title)) {
+    return reject(db, appUserId, request, requestFingerprint, "resource_conflict", "Future-Day Task title is read-only; only Project assignment can change");
   }
   if (row.task_title !== request.expected_title || row.task_project_id !== request.expected_project_id) {
     return reject(db, appUserId, request, requestFingerprint, "resource_conflict", "Task metadata changed before editing");
@@ -92,24 +98,38 @@ export async function updateTaskMetadata(
     project: project ? { id: project.id, title: project.title } : null,
   };
   const now = new Date().toISOString();
+  const assertionId = `task-metadata:${request.operation_id}`;
   try {
-    const [update, operation] = await db.batch([
+    const [update, assertion, operation] = await db.batch([
       db.prepare(`UPDATE tasks SET title = ?, project_id = ?
         WHERE app_user_id = ? AND id = ? AND title = ? AND project_id IS ?
           AND EXISTS (SELECT 1 FROM entries e JOIN taskchute_days d
             ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
-            WHERE e.app_user_id = ? AND e.id = ? AND e.task_id = ? AND e.lifecycle_state = 'planned'
-              AND e.routine_occurrence_id IS NULL AND d.logical_date = ?)`)
+            WHERE e.app_user_id = ? AND e.id = ? AND e.task_id = ? AND e.taskchute_day_id = ?
+              AND e.lifecycle_state = 'planned' AND e.routine_occurrence_id IS NULL
+              AND d.id = ? AND d.logical_date = ?)`)
         .bind(request.title, request.project_id, appUserId, request.task_id, request.expected_title, request.expected_project_id,
-          appUserId, request.entry_id, request.task_id, currentLogicalDate),
+          appUserId, request.entry_id, request.task_id, row.taskchute_day_id, row.taskchute_day_id, row.logical_date),
+      db.prepare(`INSERT INTO transaction_assertions (app_user_id, id, ok)
+        SELECT ?, ?, CASE WHEN
+          EXISTS (SELECT 1 FROM tasks WHERE app_user_id = ? AND id = ? AND title = ? AND project_id IS ?)
+          AND EXISTS (SELECT 1 FROM entries e JOIN taskchute_days d
+            ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
+            WHERE e.app_user_id = ? AND e.id = ? AND e.task_id = ? AND e.taskchute_day_id = ?
+              AND e.lifecycle_state = 'planned' AND e.routine_occurrence_id IS NULL
+              AND d.id = ? AND d.logical_date = ?)
+          THEN 1 ELSE 0 END`)
+        .bind(appUserId, assertionId, appUserId, request.task_id, request.title, request.project_id,
+          appUserId, request.entry_id, request.task_id, row.taskchute_day_id, row.taskchute_day_id, row.logical_date),
       db.prepare(`INSERT INTO operations (app_user_id, operation_id, command_type, request_fingerprint_version,
         request_fingerprint, outcome_kind, result_json, created_at)
-        SELECT ?, ?, 'UpdateTaskMetadata', ?, ?, 'success', ?, ?
-        WHERE EXISTS (SELECT 1 FROM tasks WHERE app_user_id = ? AND id = ? AND title = ? AND project_id IS ?)`)
+        SELECT ?, ?, 'UpdateTaskMetadata', ?, ?, 'success', ?, ? WHERE EXISTS
+          (SELECT 1 FROM transaction_assertions WHERE app_user_id = ? AND id = ? AND ok = 1)`)
         .bind(appUserId, request.operation_id, REQUEST_FINGERPRINT_VERSION, requestFingerprint, JSON.stringify(result), now,
-          appUserId, request.task_id, request.title, request.project_id),
+          appUserId, assertionId),
+      db.prepare("DELETE FROM transaction_assertions WHERE app_user_id = ? AND id = ?").bind(appUserId, assertionId),
     ]);
-    if (update.meta.changes === 0 || operation.meta.changes === 0) {
+    if (update.meta.changes === 0 || assertion.meta.changes === 0 || operation.meta.changes === 0) {
       const committed = await readOperation(db, appUserId, request.operation_id);
       if (committed) return replayOperation<UpdateTaskMetadataResult>(committed, "UpdateTaskMetadata", requestFingerprint);
       return reject(db, appUserId, request, requestFingerprint, "resource_conflict", "Task metadata changed before editing");
@@ -118,6 +138,18 @@ export async function updateTaskMetadata(
   } catch {
     const committed = await readOperation(db, appUserId, request.operation_id);
     if (committed) return replayOperation<UpdateTaskMetadataResult>(committed, "UpdateTaskMetadata", requestFingerprint);
+    const latest = await db.prepare(`SELECT e.taskchute_day_id, e.task_id, t.title AS task_title, t.project_id AS task_project_id,
+        e.lifecycle_state, e.routine_occurrence_id, d.logical_date
+      FROM entries e JOIN tasks t ON t.app_user_id = e.app_user_id AND t.id = e.task_id
+      JOIN taskchute_days d ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
+      WHERE e.app_user_id = ? AND e.id = ? AND e.task_id = ?`)
+      .bind(appUserId, request.entry_id, request.task_id).first<MetadataRow>();
+    if (!latest) return reject(db, appUserId, request, requestFingerprint, "resource_not_found", "Entry or Task is unavailable");
+    if (latest.taskchute_day_id !== row.taskchute_day_id || latest.logical_date !== row.logical_date
+      || latest.lifecycle_state !== "planned" || latest.routine_occurrence_id !== null
+      || latest.task_title !== request.expected_title || latest.task_project_id !== request.expected_project_id) {
+      return reject(db, appUserId, request, requestFingerprint, "resource_conflict", "Task metadata target changed before editing");
+    }
     throw new HttpError(503, "infrastructure_ambiguous", "The outcome is unknown; reload canonical state and retry", true);
   }
 }
