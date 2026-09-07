@@ -1852,3 +1852,22 @@ Prior unexpected operation `01a0769e-1496-73d0-802b-d94f0172d8b5`は変更・再
 | D068-ENV-02 | Browser | fresh authenticated tabでMode order、planned live title、completed snapshot titleをreload後も保持 | persistent nonprod browser | PASS |
 
 D-068 local totals: focused relevant Worker/D1 `32 / 32 PASS`、dedicated mode-management `1 / 1 PASS`、focused corrective Web `1 / 1 PASS`、Web full `207 / 207 PASS`、typecheck / production build / exact nonprod build / diff-check `PASS`。backend fullは`182 / 192 PASS`で、既存`day-navigation.integration.test.ts`の10件のinfrastructure-ambiguous failureにより全体PASSではない。migration helperはtooling-hungのため未完了で、isolated direct fresh / upgrade checksを採用する。production verification、Mode browser-local preferenceのcross-device sync、Routine / past / future writeは`NOT_RUN`。
+
+## D-069 Future-Day Project assignment — 2026-09-07
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D069-DOM-01 | Worker/D1 | established current / future ordinary planned Entryだけがowner-scoped Project set / clearを受け、Task / Entry / Day identityと`placement_revision`を保持する | focused Worker / D1 `5 / 5` | PASS |
+| D069-DOM-02 | Boundaries | preview / record-none / past / running / completed / Routine-derived / owner mismatch / missing target / archived-new-assignmentをno-write rejectする | focused Worker / D1 `5 / 5` | PASS |
+| D069-DOM-03 | Future title | future Task titleはread-onlyで、canonical title mismatchをrejectし、Project-only mutationを許可する | focused Worker + Web `3 / 3` | PASS |
+| D069-DOM-04 | Atomic retry | TaskChuteDay ID / logical date / Entry / Task / lifecycle / Routine relationをguardし、stale target、exact replay、ambiguous outcomeを既存retry / reconcile境界へ収束させる | focused Worker / Web `3 / 3` | PASS |
+| D069-WEB-01 | Web | future rowではProject selectorだけを表示し、title editorを隠し、set / clear payloadをcanonical reconcileする | focused Web `3 / 3` + authenticated browser | PASS |
+| D069-MIG-01 | Migration | APP / AUTH schemaとmigration chainを変更せず、pending `0 / 0`を維持する | remote migration list + read-only D1 | PASS |
+| D069-ENV-01 | Persistent nonprod | backup HARD GATE、exact nonprod dry-run / deploy、安全probe、browser、APP/AUTH integrityを確認する | Wrangler / Worker / D1 / browser | PASS |
+| D069-REG-01 | Regression | Web full `209 / 209`、Worker full baseline `185 / 195`で既存10 failure以外の増加がないことを確認する | local full suites | PASS (baseline unchanged) |
+
+Local / nonprod evidence closeout:
+
+- Start `main@413dafe4db843b5c9f448dee5821a4578e303c6f`、implementation `bbcdcbdea14564f688065207462489fbdb349392`。focused Worker `5 / 5`、focused Web `3 / 3`、Web full `209 / 209`、typecheck / builds / diff-check `PASS`。Worker fullは`185 / 195`で、既存`day-navigation.integration.test.ts`の10件がbaselineどおり残るため全体PASSではない。
+- Persistent nonprod backupはAPP `144,201 bytes` / SHA-256 `264290C5017F3A40423A5BE0F99990F48E9ED380F5AD2EBD20C019550B4C9F19`、AUTH `5,136 bytes` / SHA-256 `3B7091CAE15F6D8493B411BE139914E818B4F5EC6D237AF501A79CAD20BEE1AB`。isolated recovery、remote read-only integrity、migration pending `0 / 0`、rows_written `0`を確認し、restoreは実行していない。
+- Worker `taskchute-web-nonprod` version `17068a98-396c-4dc0-97c2-4af44ae367c1`。root `200`、protected API `401`、bootstrap `404`。Authenticated browserで2026-09-08 future Project set / clear、future title read-only、reload後のarchived assignment read、console warning / error `0 / 0`を確認した。Final APP `quick_check = ok` / FK empty、Projects / Tasks / Entries / Executions / operations `1 / 27 / 18 / 13 / 142`、AUTH users / accounts / sessions `1 / 1 / 6`。production、restore、destructive cleanup、releaseは`NOT_RUN`。

@@ -46,7 +46,7 @@ D-061は新migration / schema / API / Domain semanticsを追加しない。既�
 
 ## D-060 Day row editing
 
-Day Tableのrow編集は、current-Dayのordinary planned Entryに限定する。Task名は表示文字列からinline text fieldへ切り替え、Enterでtrim済み値をcommit、Escapeでcancelする。Projectは同じrowのowner-scoped native selectorで既存候補だけを選択する。Routine、running / completed、past / future read-only、mutation-locked rowは編集controlを出さない。Task displayのclickとrow D&Dのthresholdは分離し、input / select / buttonをD&D開始面から除外する。
+Day Tableのrow編集は、current-Dayのordinary planned EntryではTask名とProjectを、established future Dayのordinary planned EntryではProjectだけを対象とする。Task名はcurrent-Dayで表示文字列からinline text fieldへ切り替え、Enterでtrim済み値をcommit、Escapeでcancelする。Projectは同じrowのowner-scoped native selectorで既存候補だけを選択する。Routine、running / completed、past、futureのTask名、preview / record-none、mutation-locked rowは該当する編集controlを出さない。Task displayのclickとrow D&Dのthresholdは分離し、input / select / buttonをD&D開始面から除外する。
 
 actualの開始 / 終了は旧dialogではなく、row内のStart / End cellを押すと同時に開く2つのinline fieldで直接編集する（表示形式はD-061で4桁`HHMM`へ更新）。focus移動で早期commitせず、Enterでcommit、Escapeでcancelする。エラーはrow近傍へ表示し、D-057のactual ordering、Day boundary、user-global no-overlap、active execution、retry / atomicity、forecast reconciliationをそのまま適用する。RevertEntryStartはD-058どおりcurrent UI capabilityへ戻さない。
 
@@ -463,3 +463,9 @@ Day Tableでは既存column preferenceへModeを追加し、default visible orde
 Startはその時点のMode titleを`entry_mode_snapshots`へimmutableに保存する。planned rowはcurrent live Mode title、running / completed rowはsnapshot titleを表示し、live Mode renameでhistorical titleを上書きしない。Duplicateはlive relationだけをcopyしてsnapshotを作らず、planned delete / bulk deleteはrelationを消し、completed hard deleteはModeDefinitionを保持したままEntry relation / snapshotを消す。既存D-066のserial dispatcher、operation identity、retry / revision / reconciliation semanticsを再利用する。
 
 APP compatibility migration `0021_mode_management.sql`はModeDefinition、Mode Board head / item、Entry relation、snapshotを追加し、operations CHECKへ`CreateMode` / `UpdateMode` / `ReorderModes` / `SetEntryMode`だけを追加する。既存Domain / Execution / operation identity、AUTH schema、binding、security postureは変更しない。新たなschema / migrationが必要な拡張は別Decisionとする。
+
+## D-069 Future-Day Project assignment
+
+Established future Dayのordinary planned Entryでは、Task-level Projectだけを編集可能とする。Task名はfuture Dayでもread-onlyのcanonical titleを維持し、Section、planned start、estimate、Mode、Day、`placement_revision`は変更しない。未establish preview、record-none / past、running / completed、Routine-derived、owner外、archived Projectの新規選択は編集controlを提供せず、既存archived assignmentはread-onlyで表示する。
+
+Future-DayのProject mutationは既存`UpdateTaskMetadata`とTask.project_idを再利用し、TaskChuteDay ID、logical date、Entry、Task、planned lifecycle、ordinary relationを一つのCAS / atomic guardで検証する。成功してもEntry identity、placement、Day revisionは変えない。current DayはD-066のglobal serial dispatcherを継続利用し、future Dayは同じoperation identity / exact retry / canonical reconciliation boundaryを使うdirect scoped pathとする。新migration、new command、future queue、production changeは含めない。

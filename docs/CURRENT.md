@@ -929,6 +929,29 @@ D-068は`docs/DECISIONS.md`へcanonicalize済み。start SHA `d7cc7436f038adc8bb
 
 Local evidence: D-068 focused Worker/D1 `32 / 32 PASS`、dedicated mode-management integration `1 / 1 PASS`、focused corrective Web `1 / 1 PASS`、Web全体 `207 / 207 PASS`、typecheck、production build、exact nonprod build、`git diff --check`をPASS。fresh / upgrade migrationの直接isolated checks、既存operation / identity / FK preservation、APP/AUTH recovery quick checkをPASSした。repository migration helperはtooling runで完走せず、migration PASSの根拠にはしていない。backend全体は`182 / 192 PASS`で、既存の`day-navigation.integration.test.ts`にある10件のinfrastructure-ambiguous failureが残るため、全体PASSとは記録しない。
 
+## D-069 Future-Day Project assignment — 2026-09-07
+
+Contract: D-069 `Approved`。D-060のcurrent-Day-only Task metadata editorを、established future Dayのordinary planned Entryに対するProject set / clearへ拡張した。Task-level `Task.project_id`、owner-scoped active Project、`Projectなし`、archived assignmentのread-only表示を維持し、future Task title、Section、planned start、estimate、Mode、Day、`placement_revision`は変更しない。preview / record-none、past、running / completed、Routine-derived、owner外はrejectする。既存`UpdateTaskMetadata`をTaskChuteDay ID / logical date / Entry / Task / lifecycle / Routine relationでatomic guardし、新migration / new command / future queueは追加していない。Decisionは`docs/DECISIONS.md`のD-069 blockを正本とする。
+
+Implementation / Git:
+
+- Startは最新GitHub canonical `main@413dafe4db843b5c9f448dee5821a4578e303c6f`。実装commit `bbcdcbdea14564f688065207462489fbdb349392`をmainへfast-forward push済み。既存の未追跡review artifactは変更・stageしていない。
+- 実装対象はWorker metadata CAS、Webのfuture Project-only UI / direct dispatch、Worker / Web integration tests、Decision記録であり、APP / AUTH schema・migration file・production設定は変更していない。
+
+Local verification:
+
+- D-069 focused Worker `5 / 5 PASS`、focused Web `3 / 3 PASS`、Web full `209 / 209 PASS`、typecheck、production build、exact `CLOUDFLARE_ENV=nonprod` build、diff checkは`PASS`。
+- Full Worker / D1は`185 / 195 PASS`。残る10 failureは実装前baselineと同じ`test/day-navigation.integration.test.ts`の既存infrastructure-ambiguous failureであり、D-069追加failureではない。full suiteをPASSとは扱わない。repository migration helperはtooling-hungのため証拠に採用せず、D-069はmigrationなし・remote migration list（APP / AUTH）は`No migrations to apply`を確認した。
+
+Persistent non-production verification:
+
+- Backup HARD GATEとしてprivate ignored APP export `144,201 bytes` / SHA-256 `264290C5017F3A40423A5BE0F99990F48E9ED380F5AD2EBD20C019550B4C9F19`、AUTH export `5,136 bytes` / SHA-256 `3B7091CAE15F6D8493B411BE139914E818B4F5EC6D237AF501A79CAD20BEE1AB`を取得し、isolated recovery importで両方`quick_check = ok` / FK emptyを確認した。restoreは実行していない。
+- exact nonprod bindings / varsをdry-run確認後、`taskchute-web-nonprod`へ`main`実装commitのbuildをdeploy。Worker versionは`17068a98-396c-4dc0-97c2-4af44ae367c1`。root `200`、protected API `401`、disabled bootstrap `404`、APP / AUTH migration pending `0 / 0`。
+- Authenticated in-app browserでfuture established Day `2026-09-08`のordinary planned fixture `あああ`を確認し、future title editor / edit affordanceがなくProject selectorだけが表示されること、active Project set → canonical reconcile → clearを確認した。reload後のarchived assignment表示も確認し、final clear後はProject `NULL`へ収束した。browser console warning / errorは`0 / 0`。
+- Final read-only APP auditはProjects / Tasks / Entries / Executions / operations `1 / 27 / 18 / 13 / 142`、target future Taskの`project_id = NULL`、`placement_revision = 13`、`lifecycle_state = planned`、`routine_occurrence_id = NULL`、`quick_check = ok`、FK empty、全query `rows_written = 0`。AUTH users / accounts / sessions `1 / 1 / 6`、`quick_check = ok`、FK empty、全query `rows_written = 0`。fixtureはcontractどおりnonprodに残置し、production / restore / destructive cleanup / credential・permission・binding変更は`NOT_RUN`。
+
+Classification: D-069 `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / MAIN_PUSHED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_BROWSER_VERIFIED / DB_INTEGRITY_VERIFIED`、APP / AUTH migration `NO_MIGRATION`、production `NOT_RUN`、Released `NO`。
+
 Persistent nonprod evidence: APP `0021` pending / AUTH pending `1 / 0`を確認後、fresh private backup HARD GATEをPASSした。APP backup `apps/web/.wrangler/private-backups/d068-pre-0021-app-20260906.sql`は`133,594 bytes` / SHA-256 `306BC18C5700CA3000F8D0AB3DFBB3A36675B96EF221B27DA0258E924DF76135`、AUTH backup `d068-pre-0021-auth-20260906.sql`は`5,136 bytes` / SHA-256 `3B7091CAE15F6D8493B411BE139914E818B4F5EC6D237AF501A79CAD20BEE1AB`。両方ともreadable・non-empty・`.wrangler/` ignoredで、isolated import後のquick check `ok` / FK `0`を確認し、restoreは実行していない。APP `0021`適用後のmigration pendingはAPP / AUTH `0 / 0`、remote APP quick check `ok`、FK empty、rows_written `0`。
 
 Correctiveを含むexact main buildをWorker `9f980357-fbea-4ccf-beef-fb3ceb8f2330`として`taskchute-web-nonprod`へdeploy。root `200`、unauthenticated protected API `401`、disabled bootstrap `404`。authenticated fresh browserではDay Tableの列順が`Project → Mode → Section`となり、planned EntryはMode selectorを表示。Mode Boardではcreate済みModeのserver order `D068 Deep verification` → `D068 Light verification`を確認し、fresh tabのreload後もplanned Entryはlive title `D068 Deep verification`、completed Entryはsnapshot title `D068 Focus verification`を保持した。DB read-onlyでもlive titleとsnapshot titleを分離確認し、APP `quick_check = ok` / FK empty、operation log、AUTH login capabilityを保持した。fixtureのMode / Entryはcleanupせず残置前提であり、production、restore、credential / permission / OAuth scope / account-role / binding / security-posture変更は`NOT_RUN`。
