@@ -416,3 +416,13 @@ Mode archive / deleteのAPI、権限、revision、target identity、operation re
 - current DayはD-066のglobal serial dispatcher、unsent coalesce、latest canonical expected relation rebase、sent exact retry、canonical reconcileを維持する。future established Dayは同一Entry scopeのdirect mutationで一件ずつ実行し、D-066 queueへ投入しない。ambiguous outcomeではcanonical requested relationならsuccessへ収束し、それ以外は同じoperation ID / exact payloadをretryする。
 - planned future rowはlive Mode titleを表示し、Mode rename後は新titleへ追随する。Start時だけその時点のlive titleをsnapshotへ保存する。move / duplicate、D-068 current behavior、D-069 Project assignment、AddTaskToDayの既存Mode pathは変更しない。
 - D-070はexisting command / request / result / relation / operationsを再利用し、APP / AUTH migration、schema変更、新command、API schema、dependency、persistent queue、future executionを追加しない。
+
+## D-073 Interrupt / Continuation v0.1
+
+Status: Approved / implementation in progress.
+
+- Current logical Dayのrunning ordinary Entry Aから、同じDayのordinary planned Entry Bを通常のStart controlで開始する場合、確認modalを出さずdedicated `InterruptEntry`を送信する。Routine source / target、Quick Interrupt、non-current Day、auto-resume、pause-resumeは対象外で既存boundaryを維持する。
+- Requestは`operation_id`、source / target Entry、source active Execution identity、target Execution UUIDv7、continuation Entry UUIDv7、Day、`expected_placement_revision`を含む。source Executionは`terminal_outcome = interrupted`で終了し、Bはplanned startを変えず新しいactive Executionへ遷移する。active Executionは常に最大一件とする。
+- Aの同じTaskのcontinuationを一つだけplannedで作成する。planned startは実際のinterrupt instantのlogical minute、Sectionはその時点のfrozen current-Day Section context。Bと同じminute cohortならBの直後、異なるminuteならinterrupt minute cohortの末尾へ置き、unrelated same-minute orderは書き換えない。
+- Continuation estimateはchain rootのoriginal estimateからchain内累積actualを控除し、original estimateがNULLまたは残量が`<= 0`ならNULL。stable chain / parent relationとsourceのlive Mode relationを引き継ぐ。BのTask / Project / Mode snapshotは新規実行時に作り、legacy historical Task title snapshotはbackfillしない。
+- 成功、replay、operation-id misuse、stale active / placement、同時実行、D1 failure ambiguityはいずれも一つのatomic batchと既存D-066 exact retry / reconcile boundaryで扱う。APP `0023_interrupt_continuation.sql`のみを追加し、AUTH、既存active Execution制約、production境界は変更しない。

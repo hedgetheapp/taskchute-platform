@@ -446,3 +446,9 @@ remote production writeは明示承認なしに実施しない。
 - legacy Task Note / Project Note mapping
 - legacy Obsidian versionとのcoexistence period
 - importerのexact contract
+
+## D-073 resolved / remaining
+
+D-073で、current-Day ordinary A/BのInterrupt / Continuation v0.1のatomic transaction、retry identity、same-minute / different-minute placement、chain estimate、legacy snapshot非捏造をApprovedとして実装した。これらの未決だったphysical modelはAPP `0023`、Worker integration、Web exact retry testsで解消した。
+
+引き続きOpenなのは、Routine-aware interruption、Quick Interrupt、pause / resume、auto-resume、non-current Day interruption、複数continuationのProduct semantics、continuationのReview UI、persistent client queue、production mutation verificationである。これらをD-073 v0.1へ拡張しない。

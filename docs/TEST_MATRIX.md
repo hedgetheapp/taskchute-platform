@@ -1980,6 +1980,19 @@ D-070 unset-label corrective / authenticated browser closeout（2026-09-07）:
 | D071-REG-01 | Boundaries | no search / tabs / archive / restore / delete / quick create、新command / API / Worker / migrationなし、Project regression | focused Project `14 / 14`、D-070 `3 / 3`、full Web `225 / 225`、full Worker / D1 `199 / 199`、Day Navigation `15 / 15`、typecheck / builds / dry-run / diff-check | PASS |
 | D071-ENV-01 | Persistent nonprod | exact main deploy、authenticated visual / interaction、reload order persistence、console、APP/AUTH read-only integrity | Worker `4af4efed-00f6-49de-b950-5745d64db0c4`、authenticated browser、APP/AUTH read-only audit | PASS |
 
+## D-073 Interrupt / Continuation v0.1
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D073-DOM-01 | Atomic lifecycle | ordinary running A -> interrupted history, ordinary planned B -> active, one planned same-Task continuation, max one active Execution | focused Worker interrupt integration: same-minute / different-minute / replay / misuse | PASS local |
+| D073-DOM-02 | Placement / estimate | B planned start unchanged; same-minute direct-after-B; different-minute interruption cohort; chain residual estimate; frozen Section | focused Worker integration assertions and projection checks | PASS local |
+| D073-DOM-03 | Safety / retry | stale active / placement reject, operation replay / misuse, injected D1 ambiguity leaves no partial rows | focused Worker integration and D-066 exact retry coverage | PASS local |
+| D073-WEB-01 | Start interaction | normal Start of B while A runs calls dedicated InterruptEntry without confirmation modal and preserves exact request | focused Web Interrupt tests | PASS local |
+| D073-REG-01 | Regression | normal Start / Complete, execution correction, delete completed FK cleanup, Mode management, D-072 toolbar | focused lifecycle / mode tests, full Worker / Web / typecheck / build | PENDING |
+| D073-MIG-01 | Migration | APP 0023 preserves core rows, legacy singleton chains, NULL legacy outcomes, allow-list, trigger, FK / quick check | migration harness | PENDING |
+| D073-ENV-01 | Persistent nonprod | backup HARD GATE, exact pushed-main deploy, safety probes, APP 0023 pending, read-only APP/AUTH integrity | closeout evidence in `docs/CURRENT.md` | NOT_RUN |
+| D073-ENV-02 | Authenticated browser | current-Day ordinary A/B Start, visible interrupted history / running B / planned continuation, reload / fresh authenticated tab | existing authenticated persistent nonprod session | NOT_RUN |
+
 D-071 closeout evidence:
 
 - exact `main@b8c0428d2b097a4540131bc80c34616100381bff`をcanonical generated nonprod configからdeploy。Worker `taskchute-web-nonprod` version `4af4efed-00f6-49de-b950-5745d64db0c4`、`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、既存APP/AUTH binding、`migrations=[]`。APP/AUTH pendingはdeploy前後`0 / 0`、root / protected / bootstrapは`200 / 401 / 404`。

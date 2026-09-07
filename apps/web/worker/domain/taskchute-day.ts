@@ -101,6 +101,24 @@ export function resolveLogicalMinuteInstant(
     .toString();
 }
 
+/** Convert an actual instant to the extended wall-clock minute of a logical Day. */
+export function resolveLogicalMinuteAtInstant(
+  logicalDate: string,
+  timezone: string,
+  instant: string,
+): number {
+  if (!isLogicalDate(logicalDate)) throw new Error("Invalid logical date");
+  const zoned = temporal().Instant.from(instant).toZonedDateTimeISO(timezone);
+  const logical = PolyfillTemporal.PlainDate.from(logicalDate);
+  const local = zoned.toPlainDate();
+  const dayOffset = logical.until(local).days;
+  const minute = dayOffset * 1440 + zoned.hour * 60 + zoned.minute;
+  if (!Number.isInteger(minute) || minute < 0 || minute > 2879) {
+    throw new Error("Instant is outside the logical TaskChuteDay range");
+  }
+  return minute;
+}
+
 export function resolveSectionIntervals(
   day: Pick<ResolvedTaskChuteDay, "logicalDate" | "timezone" | "startInstant" | "endInstant">,
   ranges: Array<{ logicalStartMinute: number; logicalEndMinute: number }>,

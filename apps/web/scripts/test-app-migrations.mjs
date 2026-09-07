@@ -601,6 +601,32 @@ try {
   for (const command of ["SetModeArchived", "DeleteMode"])
     assert(archiveOperationTable.includes(command), `0022 must add ${command} to the operation CHECK`);
   assert.deepEqual(query("SELECT COUNT(*) AS count FROM mode_archives"), [{ count: 0 }]);
+  const preInterruptEntries = query("SELECT id, task_id, lifecycle_state, estimate_seconds, planned_start_minute FROM entries ORDER BY id");
+  const preInterruptExecutions = query("SELECT id, entry_id, started_at, ended_at, created_at FROM executions ORDER BY id");
+  const preInterruptOperations = query("SELECT * FROM operations ORDER BY operation_id");
+  applyFile("migrations/app/0023_interrupt_continuation.sql");
+  assert.deepEqual(query("SELECT id, task_id, lifecycle_state, estimate_seconds, planned_start_minute FROM entries ORDER BY id"), preInterruptEntries,
+    "0023 must preserve every Entry fact");
+  assert.deepEqual(query("SELECT id, entry_id, started_at, ended_at, created_at FROM executions ORDER BY id"), preInterruptExecutions,
+    "0023 must preserve every Execution fact");
+  assert.deepEqual(query("SELECT * FROM operations ORDER BY operation_id"), preInterruptOperations,
+    "0023 must preserve every operation row");
+  assert.deepEqual(query("SELECT id, continuation_chain_id, continuation_parent_entry_id FROM entries ORDER BY id"),
+    preInterruptEntries.map((entry) => ({ id: entry.id, continuation_chain_id: entry.id, continuation_parent_entry_id: null })),
+    "0023 must give legacy Entries singleton chains without fabricating parents");
+  assert.deepEqual(query("SELECT terminal_outcome FROM executions ORDER BY id"), preInterruptExecutions.map(() => ({ terminal_outcome: null })),
+    "0023 must not fabricate legacy Execution outcomes");
+  assert.deepEqual(query("SELECT * FROM entry_task_snapshots"), [], "0023 must not fabricate legacy Task snapshots");
+  const interruptOperationTable = query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'operations'")[0]?.sql ?? "";
+  assert(interruptOperationTable.includes("InterruptEntry"), "0023 must add InterruptEntry to the operation CHECK");
+  assert.deepEqual(query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'interrupt_command_guards'"),
+    [{ name: "interrupt_command_guards" }]);
+  execute(["--command", `INSERT INTO entries
+    (id, app_user_id, task_id, taskchute_day_id, section_id, position, lifecycle_state, created_at)
+    VALUES ('entry-0023-trigger', 'user-v01a', 'task-planned', 'day-v01a', 'section-morning', 3, 'planned', '2026-08-28T00:00:00.000Z')`]);
+  assert.deepEqual(query("SELECT continuation_chain_id, continuation_parent_entry_id FROM entries WHERE id = 'entry-0023-trigger'"),
+    [{ continuation_chain_id: "entry-0023-trigger", continuation_parent_entry_id: null }]);
+  execute(["--command", "DELETE FROM entries WHERE id = 'entry-0023-trigger'"]);
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
   assert.deepEqual(query("PRAGMA foreign_key_check"), []);
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
@@ -820,7 +846,7 @@ try {
   assert.notEqual(duplicateActive.status, 0, "the active Execution unique index must reject a second active row");
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
   assert.deepEqual(query("PRAGMA foreign_key_check"), []);
-  console.log("migration regression: 4 scenarios passed (R2A normalization, R2B preservation/constraints, duplicate-Task fail-safe, Bulk Selection 0010/0011/0012/0013/0014/0015/0016/0017/0018/0019 preservation/constraints, Mode 0021/0022 preservation/constraints; fresh 0001 -> 0022 chain)");
+  console.log("migration regression: 4 scenarios passed (R2A normalization, R2B preservation/constraints, duplicate-Task fail-safe, Bulk Selection 0010/0011/0012/0013/0014/0015/0016/0017/0018/0019 preservation/constraints, Mode 0021/0022 preservation/constraints, Interrupt/Continuation 0023 preservation/constraints; fresh 0001 -> 0023 chain)");
 } finally {
   await rm(persistencePath, { recursive: true, force: true });
   await rm(failurePersistencePath, { recursive: true, force: true });

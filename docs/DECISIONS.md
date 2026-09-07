@@ -1564,3 +1564,19 @@ D-071はSettings Mode Boardのvisual / interactionを、shared capabilityの範�
 - Worker、APP / AUTH schema・migration、API contract、dependency、Project Board behavior、productionは変更しない。これらが必要になった場合はSTOPする。
 
 Implementation、focused / full regression、persistent nonprod authenticated browser verification、read-only integrity evidenceは`docs/CURRENT.md`、`docs/FEATURES.md`、`docs/DESIGN.md`、`docs/TEST_MATRIX.md`へ記録する。Releasedは`NO`のままとする。
+
+## D-073 — Interrupt / Continuation v0.1
+
+Status: Approved
+
+D-073はcurrent logical Dayのordinary planned Entry Bを、running ordinary Entry Aの通常Start controlから開始するときの明示的な中断・継続操作を定義する。確認modalは追加せず、Webはdedicated `InterruptEntry`を送信する。Aのactive Executionを`terminal_outcome = interrupted`で終了し、Aのhistorical rowを保持したまま、Bの新しいactive ExecutionとAと同じTaskのplanned continuation Entryを一つのD1 batchで確定する。
+
+- 対象はcurrent Day、ordinary source A、ordinary planned target Bだけとする。Routine / Quick Interrupt / non-current Day / auto-resume / pause-resume / Review UIは対象外であり、Routineがsourceまたはtargetなら既存のnormal Start boundaryを維持する。
+- requestは`operation_id`、Day、source Entry、source active Execution identity、target Entry、target Execution UUIDv7、continuation Entry UUIDv7、`expected_placement_revision`を含む。operation fingerprint、same-operation exact replay、operation_id misuse、stale active / placement guard、unknown outcome retryを既存command conventionで扱う。
+- success後はA lifecycleをterminal `completed`として残し、Execution outcomeで`interrupted`を区別する。Bはrequestのplanned startを変更せずrunning、continuationは実際の中断instantをlogical minuteへ変換し、そのminuteが属するfrozen Day Sectionへplannedで置く。Bと同じminute cohortならBの直後、異なるminuteなら中断minute cohortの末尾へ置き、unrelated same-minute orderは保持する。
+- continuation estimateはchain rootのoriginal estimateからchain内の累積actual秒を差し引き、残量が`<= 0`なら`NULL`、original estimateがNULLならNULLとする。continuationはsourceのstable chain identity / parent relation / live Mode relationを引き継ぐ。Bの新規実行ではTask / Project / Mode snapshotをatomicに作る。
+- `executions.terminal_outcome`は新規Complete / Interruptが明示的に書く。pre-0023 ExecutionのNULL outcomeはlegacy unknownとして保持し、`entry_task_snapshots`は新しい実行事実だけへ作成し、既存historyへTask titleをbackfillしない。historical projectionはsnapshotが存在するときだけそのtitleを使う。
+- APP `0023_interrupt_continuation.sql`はoutcome、chain fields、task-title snapshot、Interrupt guard、operations allow-listを追加する。existing Entry / Execution / operation identity、AUTH、binding、dependency、active Execution partial UNIQUE indexを保持し、migration失敗・partial effect・legacy snapshot捏造を許さない。
+- D-066へInterruptをsingle logical queued mutationとして統合し、execution lane + source / target Entry + placement Dayをscopeとする。sent payloadはfreezeし、ambiguous outcomeではexact requestを保持する。normal Start / Complete、Mode D-068〜D-072、Day Navigationは回帰対象として維持する。
+
+Persistent nonprod / production boundaries、exact evidence、NOT_VERIFIEDは`docs/CURRENT.md`、`docs/FEATURES.md`、`docs/SPEC.md`、`docs/ARCHITECTURE.md`、`docs/DESIGN.md`、`docs/TEST_MATRIX.md`、`docs/OPEN_QUESTIONS.md`、`docs/RISKS.md`へ記録する。production、restore、branch / PR / merge / tag / releaseは本Decisionの対象外であり、Releasedは`NO`のままとする。

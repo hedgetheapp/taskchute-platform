@@ -1091,3 +1091,11 @@ persistent in-app browser sessionは認証済み状態を保持しており、cr
 browser後のread-only APPはProjects / Tasks / Entries / Executions / operations `1 / 34 / 25 / 14 / 169`、Mode definitions / board items / entry_modes / snapshots / archives / guards `4 / 4 / 3 / 2 / 0 / 0`、`PRAGMA quick_check=ok`、foreign-key violations empty、各query `rows_written=0`。AUTHはusers / accounts / sessions `1 / 1 / 6`、`quick_check=ok`、FK empty、`rows_written=0`。このUI-only correctiveでD1 dataは変更していない。production、restore、destructive cleanup、credential / permission / binding変更、tag / releaseは`NOT_RUN`。
 
 UI corrective classification: `APPROVED / IMPLEMENTED / LOCAL_TESTED / MAIN_PUSHED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_BROWSER_VERIFIED / DB_READ_ONLY_VERIFIED / PRODUCTION_NOT_RUN / RELEASED_NO`。
+
+### D-073 Interrupt / Continuation v0.1 — local implementation status — 2026-09-07
+
+D-073のcurrent-Day ordinary Interrupt / Continuation v0.1を実装した。APP `0023_interrupt_continuation.sql`でExecution outcome、continuation chain / parent、new-execution Task snapshot、temporary Interrupt guard、operations allow-listを追加し、AUTHは変更していない。Workerはdedicated `InterruptEntry`でsource active Executionを`interrupted`として履歴保持し、planned target Bを新規active化し、同じTaskのcontinuationをlogical interrupt minute / frozen Sectionへatomicに作成する。Webはordinary AがrunningのときBの通常Startをconfirmation modalなしでInterruptEntryへ送る。Routine / Quick Interrupt / non-current Day / auto-resume / pause-resumeは対象外。
+
+Local focused evidenceはWorker interrupt integration `4 / 4 PASS`（same-minute direct-after-B、different-minute cohort、stale guard、replay / misuse、injected failure no-partial）、Web `4 / 4 PASS`（dedicated request、no modal、exact retry）、Mode management `5 / 5 PASS`、lifecycle `14 / 14 PASS`、typecheck `PASS`。Migration regression、full Worker / Web、build / dry-run、persistent nonprod、authenticated browser、remote DB evidenceはこの記録時点で`PENDING / NOT_RUN`であり、完了後に同じD-073 sectionを更新する。Production、restore、credential / bootstrap変更、releaseは行わない。
+
+Classification: `APPROVED / IMPLEMENTED / LOCAL_FOCUSED_TESTED / PERSISTENT_NONPROD_NOT_RUN / PRODUCTION_NOT_RUN / RELEASED_NO`。

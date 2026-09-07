@@ -288,13 +288,16 @@ export async function setExecutionTimes(
           .bind(appUserId, dayId, expectedRevision, appUserId, request.operation_id, appUserId, request.operation_id)
         : db.prepare("SELECT 1 AS no_placement_revision"),
       request.expected_lifecycle_state === "planned"
-        ? db.prepare(`INSERT INTO executions (id, app_user_id, entry_id, started_at, ended_at, created_at)
-            SELECT ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM lifecycle_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
-          .bind(request.execution_id, appUserId, request.entry_id, request.started_at, request.ended_at, now, appUserId, request.operation_id)
-        : db.prepare(`UPDATE executions SET started_at = ?, ended_at = ?
+        ? db.prepare(`INSERT INTO executions (id, app_user_id, entry_id, started_at, ended_at, created_at, terminal_outcome)
+            SELECT ?, ?, ?, ?, ?, ?, CASE WHEN ? IS NULL THEN NULL ELSE 'completed' END
+              WHERE EXISTS (SELECT 1 FROM lifecycle_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+          .bind(request.execution_id, appUserId, request.entry_id, request.started_at, request.ended_at, now,
+            request.ended_at, appUserId, request.operation_id)
+        : db.prepare(`UPDATE executions SET started_at = ?, ended_at = ?,
+            terminal_outcome = CASE WHEN ? IS NULL THEN NULL ELSE 'completed' END
             WHERE app_user_id = ? AND id = ? AND entry_id = ?
               AND EXISTS (SELECT 1 FROM lifecycle_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
-          .bind(request.started_at, request.ended_at, appUserId, request.execution_id, request.entry_id, appUserId, request.operation_id),
+          .bind(request.started_at, request.ended_at, request.ended_at, appUserId, request.execution_id, request.entry_id, appUserId, request.operation_id),
       db.prepare(`UPDATE entries SET lifecycle_state = ? WHERE app_user_id = ? AND id = ?
         AND lifecycle_state = ? AND EXISTS (SELECT 1 FROM lifecycle_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
         .bind(targetState, appUserId, request.entry_id, request.expected_lifecycle_state, appUserId, request.operation_id),

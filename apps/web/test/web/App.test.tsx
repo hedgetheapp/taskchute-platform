@@ -4,7 +4,7 @@ import type { CurrentTaskChuteDayProjection, EntryProjection } from "../../src/s
 
 const mocks = vi.hoisted(() => ({
   login: vi.fn(), logout: vi.fn(), loadDay: vi.fn(), loadProjects: vi.fn(), loadProjectBoard: vi.fn(), createProject: vi.fn(), updateProject: vi.fn(), setProjectArchived: vi.fn(), reorderProjects: vi.fn(), deleteProject: vi.fn(), addTask: vi.fn(), duplicateEntry: vi.fn(), bulkDeleteEntries: vi.fn(), deleteCompletedEntry: vi.fn(), bulkMoveEntriesToDay: vi.fn(), bulkMoveEntriesToSection: vi.fn(), bulkMoveEntriesToSectionOccurrence: vi.fn(), bulkMoveEntriesToSectionScoped: vi.fn(), bulkSetEntriesEstimateScoped: vi.fn(),
-  reorderEntries: vi.fn(), startEntry: vi.fn(), completeEntry: vi.fn(), setExecutionTimes: vi.fn(), updateTaskMetadata: vi.fn(), setEntryMode: vi.fn(),
+  reorderEntries: vi.fn(), startEntry: vi.fn(), interruptEntry: vi.fn(), completeEntry: vi.fn(), setExecutionTimes: vi.fn(), updateTaskMetadata: vi.fn(), setEntryMode: vi.fn(),
   establishInitialSectionConfiguration: vi.fn(), moveEntry: vi.fn(), setEntryEstimate: vi.fn(),
   setEntryPlannedStart: vi.fn(),
   convertEntryToRoutine: vi.fn(), endRoutine: vi.fn(), setRoutineEstimate: vi.fn(), setRoutineSectionPlan: vi.fn(),
@@ -229,6 +229,7 @@ beforeEach(() => {
   mocks.bulkSetEntriesEstimateScoped.mockResolvedValue({});
   mocks.reorderEntries.mockResolvedValue({});
   mocks.startEntry.mockResolvedValue({});
+  mocks.interruptEntry.mockResolvedValue({});
   mocks.completeEntry.mockResolvedValue({});
   mocks.setExecutionTimes.mockResolvedValue({});
   mocks.updateTaskMetadata.mockResolvedValue({});
@@ -1017,6 +1018,68 @@ describe("Dogfood Day shell", () => {
     await waitFor(() => expect(mocks.completeEntry).toHaveBeenCalledTimes(1));
     expect(mocks.completeEntry.mock.calls[0][0]).toMatchObject({ entry_id: firstEntry.id, execution_id: runningDay.active_execution?.id });
     expect(await screen.findByLabelText("Canonical taskは完了済み")).toBeTruthy();
+  });
+
+  it("routes ordinary Start B through InterruptEntry without a confirmation modal and renders the continuation", async () => {
+    const runningWithNext = {
+      ...runningDay,
+      sections: [{ ...runningDay.sections[0], entries: [{ ...firstEntry, lifecycle_state: "running" as const }, secondEntry] }, emptyDay.sections[1]],
+    };
+    let afterInterrupt = runningWithNext;
+    mocks.loadDay.mockResolvedValueOnce(runningWithNext).mockImplementation(async () => afterInterrupt);
+    mocks.interruptEntry.mockImplementation(async (operation: any) => {
+      const continuation: EntryProjection = {
+        ...firstEntry,
+        id: operation.continuation_entry_id,
+        position: 3,
+        planned_start_minute: 615,
+        estimate_seconds: 2670,
+      };
+      afterInterrupt = {
+        ...runningWithNext,
+        placement_revision: runningWithNext.placement_revision + 1,
+        active_execution: { ...runningDay.active_execution!, id: operation.target_execution_id, entry_id: secondEntry.id },
+        sections: [{ ...runningWithNext.sections[0], entries: [
+          { ...firstEntry, lifecycle_state: "completed" as const, execution_summary: { first_started_at: "2026-08-22T09:00:00Z", last_ended_at: "2026-08-22T10:15:30Z", completed_duration_seconds: 4530, active_started_at: null, last_outcome: "interrupted" } },
+          { ...secondEntry, lifecycle_state: "running" as const },
+          continuation,
+        ] }, emptyDay.sections[1]],
+      };
+    });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Second taskを開始" }));
+    await waitFor(() => expect(mocks.interruptEntry).toHaveBeenCalledTimes(1));
+    const request = mocks.interruptEntry.mock.calls[0][0];
+    expect(request).toMatchObject({
+      taskchute_day_id: runningWithNext.taskchute_day.id,
+      source_entry_id: firstEntry.id,
+      active_execution_id: runningDay.active_execution?.id,
+      target_entry_id: secondEntry.id,
+      expected_placement_revision: runningWithNext.placement_revision,
+    });
+    expect(request.target_execution_id).not.toBe(request.active_execution_id);
+    expect(request.continuation_entry_id).not.toBe(request.target_entry_id);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(await screen.findByRole("button", { name: "Second taskを完了" })).toBeTruthy();
+    expect(await screen.findByLabelText("Canonical taskは中断済み")).toBeTruthy();
+    expect((await screen.findAllByText("Canonical task")).length).toBeGreaterThanOrEqual(2);
+    expect(mocks.startEntry).not.toHaveBeenCalled();
+  });
+
+  it("retains and retries the exact ambiguous InterruptEntry payload", async () => {
+    const runningWithNext = {
+      ...runningDay,
+      sections: [{ ...runningDay.sections[0], entries: [{ ...firstEntry, lifecycle_state: "running" as const }, secondEntry] }, emptyDay.sections[1]],
+    };
+    mocks.loadDay.mockResolvedValue(runningWithNext);
+    mocks.interruptEntry.mockRejectedValueOnce(new ApiClientError("response lost", 503, true, "infrastructure_ambiguous")).mockResolvedValue({});
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Second taskを開始" }));
+    const retry = await screen.findByRole("button", { name: "保留中の中断・継続を再試行" });
+    const sent = mocks.interruptEntry.mock.calls[0][0];
+    fireEvent.click(retry);
+    await waitFor(() => expect(mocks.interruptEntry).toHaveBeenCalledTimes(2));
+    expect(mocks.interruptEntry.mock.calls[1][0]).toEqual(sent);
   });
 
   it("does not run the S lifecycle shortcut for completed/non-current rows or unsafe key events", async () => {

@@ -81,6 +81,7 @@ interface EntryRow {
   execution_active_started_at: string | null;
   execution_single_id: string | null;
   execution_active_id: string | null;
+  execution_last_outcome: "completed" | "interrupted" | null;
 }
 
 interface ExecutionRow {
@@ -89,6 +90,7 @@ interface ExecutionRow {
   entry_estimate_seconds: number | null;
   started_at: string;
   ended_at: string | null;
+  terminal_outcome: "completed" | "interrupted" | null;
 }
 
 function persistenceRecord(value: unknown): Record<string, unknown> {
@@ -158,6 +160,7 @@ function toEntryRow(value: unknown): EntryRow {
     execution_active_started_at: row.execution_active_started_at === null ? null : requiredString(row, "execution_active_started_at"),
     execution_single_id: row.execution_single_id === null ? null : requiredString(row, "execution_single_id"),
     execution_active_id: row.execution_active_id === null ? null : requiredString(row, "execution_active_id"),
+    execution_last_outcome: row.execution_last_outcome === null ? null : requiredString(row, "execution_last_outcome") as "completed" | "interrupted",
   };
 }
 
@@ -368,8 +371,10 @@ async function loadEstablishedProjection(
                 execution_summary.active_started_at AS execution_active_started_at,
                 execution_summary.single_execution_id AS execution_single_id,
                 execution_summary.active_execution_id AS execution_active_id,
+                execution_summary.last_outcome AS execution_last_outcome,
                 t.id AS task_id,
-                CASE WHEN rs.routine_occurrence_id IS NOT NULL THEN rs.task_title ELSE t.title END AS task_title,
+                CASE WHEN rs.routine_occurrence_id IS NOT NULL THEN rs.task_title
+                     WHEN ets.entry_id IS NOT NULL THEN ets.task_title ELSE t.title END AS task_title,
                 CASE WHEN rs.routine_occurrence_id IS NOT NULL THEN rs.project_id
                      WHEN eps.entry_id IS NOT NULL THEN eps.project_id ELSE p.id END AS project_id,
                 CASE WHEN rs.routine_occurrence_id IS NOT NULL THEN rs.project_title
@@ -385,6 +390,8 @@ async function loadEstablishedProjection(
              ON rs.app_user_id = e.app_user_id AND rs.routine_occurrence_id = e.routine_occurrence_id
            LEFT JOIN entry_project_snapshots eps
              ON eps.app_user_id = e.app_user_id AND eps.entry_id = e.id
+           LEFT JOIN entry_task_snapshots ets
+             ON ets.app_user_id = e.app_user_id AND ets.entry_id = e.id
            LEFT JOIN entry_modes em
              ON em.app_user_id = e.app_user_id AND em.entry_id = e.id
            LEFT JOIN mode_definitions md
@@ -399,7 +406,11 @@ async function loadEstablishedProjection(
                       AS completed_duration_seconds,
                     MAX(CASE WHEN ended_at IS NULL THEN started_at END) AS active_started_at,
                     CASE WHEN COUNT(*) = 1 THEN MIN(id) ELSE NULL END AS single_execution_id,
-                    MAX(CASE WHEN ended_at IS NULL THEN id END) AS active_execution_id
+                    MAX(CASE WHEN ended_at IS NULL THEN id END) AS active_execution_id,
+                    (SELECT x2.terminal_outcome FROM executions x2
+                      WHERE x2.app_user_id = ? AND x2.entry_id = executions.entry_id
+                      ORDER BY CASE WHEN x2.ended_at IS NOT NULL THEN x2.ended_at ELSE x2.started_at END DESC, x2.id DESC
+                      LIMIT 1) AS last_outcome
                FROM executions
               WHERE app_user_id = ?
               GROUP BY entry_id
@@ -409,23 +420,23 @@ async function loadEstablishedProjection(
               WHERE x.app_user_id = e.app_user_id AND x.routine_occurrence_id = e.routine_occurrence_id)
           ORDER BY e.section_id, e.position, e.id`,
       )
-      .bind(appUserId, appUserId, day.id),
+      .bind(appUserId, appUserId, appUserId, day.id),
     includeActiveExecution
-      ? db.prepare(`SELECT x.id, x.entry_id, e.estimate_seconds AS entry_estimate_seconds, x.started_at, x.ended_at
+      ? db.prepare(`SELECT x.id, x.entry_id, e.estimate_seconds AS entry_estimate_seconds, x.started_at, x.ended_at, x.terminal_outcome
           FROM executions x JOIN entries e ON e.app_user_id = x.app_user_id AND e.id = x.entry_id
           WHERE x.app_user_id = ? AND x.ended_at IS NULL LIMIT 1`).bind(appUserId)
       : db.prepare(`SELECT NULL AS id, NULL AS entry_id, NULL AS entry_estimate_seconds,
           NULL AS started_at, NULL AS ended_at WHERE false`),
-    db.prepare(`SELECT x.id, x.entry_id, x.started_at, x.ended_at
+    db.prepare(`SELECT x.id, x.entry_id, x.started_at, x.ended_at, x.terminal_outcome
       FROM executions x JOIN entries e ON e.app_user_id = x.app_user_id AND e.id = x.entry_id
       WHERE x.app_user_id = ? AND e.taskchute_day_id = ? ORDER BY x.entry_id, x.started_at, x.id`)
       .bind(appUserId, day.id),
   ]);
   const executionsByEntryId = new Map<string, ExecutionProjection[]>();
   for (const value of entryExecutionResult.results) {
-    const fact = value as { id: string; entry_id: string; started_at: string; ended_at: string | null };
+    const fact = value as { id: string; entry_id: string; started_at: string; ended_at: string | null; terminal_outcome: "completed" | "interrupted" | null };
     const list = executionsByEntryId.get(fact.entry_id) ?? [];
-    list.push({ id: fact.id, entry_id: fact.entry_id, started_at: fact.started_at, ended_at: fact.ended_at });
+    list.push({ id: fact.id, entry_id: fact.entry_id, started_at: fact.started_at, ended_at: fact.ended_at, outcome: fact.terminal_outcome });
     executionsByEntryId.set(fact.entry_id, list);
   }
   const entryRows = entryResult.results.map(toEntryRow);
@@ -454,6 +465,7 @@ async function loadEstablishedProjection(
         active_started_at: row.execution_active_started_at,
         single_execution_id: row.execution_single_id,
         active_execution_id: row.execution_active_id,
+        last_outcome: row.execution_last_outcome,
         ...(executionSegments && executionSegments.length > 0 ? { executions: executionSegments } : {}),
       },
       routine: row.routine_occurrence_id && row.routine_definition_id ? {

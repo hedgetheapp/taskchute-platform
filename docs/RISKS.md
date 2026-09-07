@@ -334,3 +334,10 @@ Current mitigation / evidence:
 - 初回runではpersistent authenticated set / replace / clear、reload / fresh-tab、live-rename browser evidenceが`NOT_VERIFIED`だったが、2026-09-07のD-070 unset-label corrective closeoutでauthorized existing nonprod sessionを使ったfuture Day set / replace / clear、fresh-tab persistence、final unset `—`、console log空集合をPASSした。credential retrieval / reset、bootstrap再有効化、direct SQL feature mutation、restore、production accessは引き続き行っていない。target Day `placement_revision`は`13 -> 13`、APP/AUTH quick check / FK / rows-writtenもPASSである。
 
 This remains a verification boundary, not approval for a broader Mode capability. D-070-ENV-02 is now authenticated-browser verified for the established future ordinary planned Entry closeout; Mode search, bulk/default/archive/delete/Routine semantics, and production remain outside scope and `NOT_RUN`.
+
+## R-020 — Interrupt / Continuation atomicity and historical-fact risk
+Related: D-020, D-028, D-066, D-073
+
+Interrupting a running Entry while starting another can otherwise lose the source history, create two active Executions, place the continuation in the wrong cohort, or fabricate legacy Task-title facts. D-073 mitigates this with a dedicated command, exact source active-Execution and placement guards, one D1 mutation batch, explicit interrupted outcome, stable continuation chain / parent fields, frozen Section context, snapshot-only historical title projection, and post-write assertions for one active Execution and exact operation identity.
+
+Current status is local implementation / automated verification; persistent nonprod deploy, authenticated browser evidence, remote read-only DB evidence, and canonical docs push remain `NOT_RUN` until the closeout gates complete. Routine / Quick Interrupt / non-current Day / auto-resume / production remain outside the mitigated scope.

@@ -479,3 +479,9 @@ Established future Dayのordinary planned Entryでは、Mode columnをread-only 
 Mode selectorはProjectの後、Sectionの前に配置され、visual Tab order `Project -> Mode -> Section`へ参加する。selector、option、その他のinteractive descendantからrow D&Dを開始せず、select focus中はJ/K/single-key shortcutを発火させない。current DayのMode mutationはD-066 dispatcherへ入り、future DayのMode mutationは同一Entry scopeのdirect scoped pathで一件ずつ実行する。
 
 set / replace / clearの各成功後はcanonical Dayへreconcileし、future rowはlive Mode titleを表示する。ModeDefinition rename後にfuture planned rowは新titleへ追随し、Startまではsnapshotを作らない。ambiguous outcomeではcanonical relationへ収束できる場合だけ保留を消し、未収束時は同じoperation identityのretry panelを表示する。navigation、Settings、logout、unload barrierは保留中のfuture Mode operationを破棄しない。
+
+## D-073 Interrupt / Continuation Web interaction
+
+When an ordinary planned row B is started while ordinary row A is running on the current Day, the existing Start affordance sends `InterruptEntry` directly; there is no confirmation modal and no implicit `StartEntry` retry. The request freezes source active Execution identity, target Entry identity, target / continuation UUIDv7s, Day placement revision, and operation ID. Routine rows retain their existing disabled / normal boundary.
+
+The optimistic presentation reconciles to the canonical Day after one atomic response. A is shown as interrupted history, B as running, and the continuation as planned with its canonical logical minute, Section, estimate, and inherited Mode. A pending or ambiguous InterruptEntry retains the exact request in the existing retry panel and is not silently discarded on navigation, reload, logout, or unload. The continuation remains planned after B completes.

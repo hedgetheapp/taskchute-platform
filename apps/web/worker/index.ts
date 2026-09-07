@@ -25,6 +25,7 @@ import { HttpError } from "./application/errors";
 import { loadCurrentTaskChuteDay, loadTaskChuteDayByLogicalDate } from "./application/load-current-day";
 import { isLogicalDate } from "./domain/taskchute-day";
 import { completeEntry, isCompleteEntryRequest, isStartEntryRequest, startEntry } from "./application/entry-lifecycle";
+import { interruptEntry, isInterruptEntryRequest } from "./application/interrupt-entry";
 import { isSetExecutionTimesRequest, setExecutionTimes } from "./application/execution-correction";
 import { isUpdateTaskMetadataRequest, updateTaskMetadata } from "./application/task-metadata";
 import { isMoveEntryRequest, isSetEntryEstimateRequest, moveEntry, setEntryEstimate } from "./application/entry-planning";
@@ -386,10 +387,13 @@ async function route(request: Request, env: Env): Promise<Response> {
     }
     return Response.json(await setExecutionTimes(env.APP_DB, principal.appUserId, body));
   }
-  const lifecycleMatch = url.pathname.match(/^\/api\/v1\/entries\/([^/]+)\/(start|complete)$/);
+  const lifecycleMatch = url.pathname.match(/^\/api\/v1\/entries\/([^/]+)\/(start|complete|interrupt)$/);
   if (request.method === "POST" && lifecycleMatch) {
     const body = await readBoundedJson(request);
-    if (lifecycleMatch[1] !== (body as { entry_id?: unknown })?.entry_id) {
+    const requestEntryId = lifecycleMatch[2] === "interrupt"
+      ? (body as { source_entry_id?: unknown })?.source_entry_id
+      : (body as { entry_id?: unknown })?.entry_id;
+    if (lifecycleMatch[1] !== requestEntryId) {
       throw new HttpError(400, "malformed_request", "Path Entry and request Entry must match");
     }
     if (lifecycleMatch[2] === "start") {
@@ -399,6 +403,10 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (lifecycleMatch[2] === "complete") {
       if (!isCompleteEntryRequest(body)) throw new HttpError(400, "malformed_request", "Invalid CompleteEntry request");
       return Response.json(await completeEntry(env.APP_DB, principal.appUserId, body));
+    }
+    if (lifecycleMatch[2] === "interrupt") {
+      if (!isInterruptEntryRequest(body)) throw new HttpError(400, "malformed_request", "Invalid InterruptEntry request");
+      return Response.json(await interruptEntry(env.APP_DB, principal.appUserId, body));
     }
     throw new HttpError(400, "malformed_request", "Invalid lifecycle request");
   }

@@ -33,6 +33,8 @@ import type {
   CurrentTaskChuteDayProjection,
   CompleteEntryRequest,
   CompleteEntryResult,
+  InterruptEntryRequest,
+  InterruptEntryResult,
   SetExecutionTimesRequest,
   SetExecutionTimesResult,
   UpdateTaskMetadataRequest,
@@ -210,6 +212,9 @@ export const api = {
   },
   completeEntry(body: CompleteEntryRequest): Promise<CompleteEntryResult> {
     return requestJson(`/api/v1/entries/${body.entry_id}/complete`, jsonPost("", body));
+  },
+  interruptEntry(body: InterruptEntryRequest): Promise<InterruptEntryResult> {
+    return requestJson(`/api/v1/entries/${body.source_entry_id}/interrupt`, jsonPost("", body));
   },
   setExecutionTimes(body: SetExecutionTimesRequest): Promise<SetExecutionTimesResult> {
     return requestJson(`/api/v1/entries/${body.entry_id}/execution-times`, jsonPost("", body));

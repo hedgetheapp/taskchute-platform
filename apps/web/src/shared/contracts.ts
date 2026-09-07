@@ -191,6 +191,8 @@ export interface ExecutionSummaryProjection {
   active_execution_id?: string | null;
   /** Existing Execution facts for explicit correction selection; never inferred by the client. */
   executions?: ExecutionProjection[];
+  /** Explicit D-073 outcome for new terminal facts; null means legacy/unknown. */
+  last_outcome?: "completed" | "interrupted" | null;
 }
 
 export interface EntryProjection {
@@ -275,6 +277,8 @@ export interface ExecutionProjection {
   entry_id: string;
   started_at: string;
   ended_at: string | null;
+  /** Null is retained for pre-D-073 facts whose terminal outcome was not stored. */
+  outcome?: "completed" | "interrupted" | null;
 }
 
 export interface ActiveExecutionProjection extends ExecutionProjection {
@@ -503,6 +507,37 @@ export interface CompleteEntryResult {
   entry_id: string;
   lifecycle_state: "completed";
   execution: ExecutionProjection;
+}
+
+export interface InterruptEntryRequest {
+  operation_id: string;
+  taskchute_day_id: string;
+  source_entry_id: string;
+  active_execution_id: string;
+  target_entry_id: string;
+  target_execution_id: string;
+  continuation_entry_id: string;
+  expected_placement_revision: number;
+}
+
+export interface InterruptEntryResult {
+  taskchute_day_id: string;
+  source_entry_id: string;
+  target_entry_id: string;
+  continuation_entry_id: string;
+  interruption_instant: string;
+  interruption_logical_minute: number;
+  placement_revision: number;
+  source_execution: ExecutionProjection;
+  target_execution: ExecutionProjection;
+  continuation: {
+    entry_id: string;
+    task_id: string;
+    section_id: string;
+    position: number;
+    planned_start_minute: number;
+    estimate_seconds: number | null;
+  };
 }
 
 export type ExecutionCorrectionLifecycleState = "planned" | "running" | "completed";

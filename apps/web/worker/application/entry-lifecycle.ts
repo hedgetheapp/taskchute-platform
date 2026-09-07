@@ -124,8 +124,8 @@ export async function startEntry(
         AND EXISTS (SELECT 1 FROM lifecycle_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
         .bind(appUserId, entry.taskchute_day_id, movesFromUnsectioned ? 1 : 0, request.expected_placement_revision ?? null,
           appUserId, request.operation_id, appUserId, request.operation_id),
-      db.prepare(`INSERT INTO executions (id, app_user_id, entry_id, started_at, ended_at, created_at)
-        SELECT ?, ?, ?, ?, NULL, ? WHERE EXISTS (SELECT 1 FROM lifecycle_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+      db.prepare(`INSERT INTO executions (id, app_user_id, entry_id, started_at, ended_at, created_at, terminal_outcome)
+        SELECT ?, ?, ?, ?, NULL, ?, NULL WHERE EXISTS (SELECT 1 FROM lifecycle_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
         .bind(request.execution_id, appUserId, request.entry_id, now, now, appUserId, request.operation_id),
       db.prepare(`INSERT INTO entry_project_snapshots
         (app_user_id, entry_id, project_id, project_title, captured_at)
@@ -134,6 +134,15 @@ export async function startEntry(
           LEFT JOIN projects p ON p.app_user_id = t.app_user_id AND p.id = t.project_id
          WHERE e.app_user_id = ? AND e.id = ?
            AND NOT EXISTS (SELECT 1 FROM entry_project_snapshots s
+             WHERE s.app_user_id = e.app_user_id AND s.entry_id = e.id)
+           AND EXISTS (SELECT 1 FROM lifecycle_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(now, appUserId, request.entry_id, appUserId, request.operation_id),
+      db.prepare(`INSERT INTO entry_task_snapshots
+        (app_user_id, entry_id, task_id, task_title, captured_at)
+        SELECT e.app_user_id, e.id, t.id, t.title, ?
+          FROM entries e JOIN tasks t ON t.app_user_id = e.app_user_id AND t.id = e.task_id
+         WHERE e.app_user_id = ? AND e.id = ?
+           AND NOT EXISTS (SELECT 1 FROM entry_task_snapshots s
              WHERE s.app_user_id = e.app_user_id AND s.entry_id = e.id)
            AND EXISTS (SELECT 1 FROM lifecycle_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
         .bind(now, appUserId, request.entry_id, appUserId, request.operation_id),
@@ -157,11 +166,14 @@ export async function startEntry(
         AND ((? IS NULL AND NOT EXISTS (SELECT 1 FROM entry_mode_snapshots WHERE app_user_id = ? AND entry_id = ?))
           OR (? IS NOT NULL AND EXISTS (SELECT 1 FROM entry_mode_snapshots WHERE app_user_id = ? AND entry_id = ?
             AND mode_id = ? AND mode_title = ?)))
+        AND EXISTS (SELECT 1 FROM entry_task_snapshots WHERE app_user_id = ? AND entry_id = ?
+          AND task_id = (SELECT task_id FROM entries WHERE app_user_id = ? AND id = ?))
         AND (? = 0 OR EXISTS (SELECT 1 FROM taskchute_days WHERE app_user_id = ? AND id = ? AND placement_revision = ?))
         THEN 1 ELSE 0 END WHERE EXISTS (SELECT 1 FROM lifecycle_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
         .bind(appUserId, assertionId, appUserId, request.entry_id, appUserId, request.execution_id, request.entry_id,
           appUserId, request.entry_id, targetSectionId, movesFromUnsectioned ? 1 : 0,
           entry.mode_id, appUserId, request.entry_id, entry.mode_id, appUserId, request.entry_id, entry.mode_id, entry.mode_title,
+          appUserId, request.entry_id, appUserId, request.entry_id,
           movesFromUnsectioned ? 1 : 0, appUserId,
           entry.taskchute_day_id, result.placement_revision, appUserId, request.operation_id),
       db.prepare(`INSERT INTO operations (app_user_id, operation_id, command_type, request_fingerprint_version, request_fingerprint, outcome_kind, result_json, created_at)
@@ -211,7 +223,7 @@ export async function completeEntry(db: D1Database, appUserId: string, request: 
   }
   const now = new Date().toISOString();
   const result: CompleteEntryResult = { entry_id: request.entry_id, lifecycle_state: "completed",
-    execution: { id: request.execution_id, entry_id: request.entry_id, started_at: execution.started_at, ended_at: now } };
+    execution: { id: request.execution_id, entry_id: request.entry_id, started_at: execution.started_at, ended_at: now, outcome: "completed" } };
   const assertionId = `complete:${request.operation_id}`;
   try {
     const [guard] = await db.batch([
@@ -219,7 +231,7 @@ export async function completeEntry(db: D1Database, appUserId: string, request: 
         SELECT ?, ?, e.id, x.id, 'CompleteEntry' FROM entries e JOIN executions x ON x.app_user_id = e.app_user_id AND x.entry_id = e.id
         WHERE e.app_user_id = ? AND e.id = ? AND e.lifecycle_state = 'running' AND x.id = ? AND x.ended_at IS NULL`)
         .bind(appUserId, request.operation_id, appUserId, request.entry_id, request.execution_id),
-      db.prepare(`UPDATE executions SET ended_at = ? WHERE app_user_id = ? AND id = ? AND entry_id = ? AND ended_at IS NULL
+      db.prepare(`UPDATE executions SET ended_at = ?, terminal_outcome = 'completed' WHERE app_user_id = ? AND id = ? AND entry_id = ? AND ended_at IS NULL
         AND EXISTS (SELECT 1 FROM lifecycle_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
         .bind(now, appUserId, request.execution_id, request.entry_id, appUserId, request.operation_id),
       db.prepare(`UPDATE entries SET lifecycle_state = 'completed' WHERE app_user_id = ? AND id = ? AND lifecycle_state = 'running'

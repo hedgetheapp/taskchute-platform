@@ -152,6 +152,10 @@ export async function deleteCompletedEntry(
         WHERE app_user_id = ? AND entry_id = ?
           AND EXISTS (SELECT 1 FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
         .bind(appUserId, request.entry_id, appUserId, request.operation_id),
+      db.prepare(`DELETE FROM entry_task_snapshots
+        WHERE app_user_id = ? AND entry_id = ?
+          AND EXISTS (SELECT 1 FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(appUserId, request.entry_id, appUserId, request.operation_id),
       db.prepare(`DELETE FROM entries
         WHERE app_user_id = ? AND taskchute_day_id = ? AND id = ? AND lifecycle_state = 'completed'
           AND NOT EXISTS (SELECT 1 FROM executions x WHERE x.app_user_id = entries.app_user_id AND x.entry_id = entries.id)
