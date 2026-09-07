@@ -469,3 +469,11 @@ APP compatibility migration `0021_mode_management.sql`はModeDefinition、Mode B
 Established future Dayのordinary planned Entryでは、Task-level Projectだけを編集可能とする。Task名はfuture Dayでもread-onlyのcanonical titleを維持し、Section、planned start、estimate、Mode、Day、`placement_revision`は変更しない。未establish preview、record-none / past、running / completed、Routine-derived、owner外、archived Projectの新規選択は編集controlを提供せず、既存archived assignmentはread-onlyで表示する。
 
 Future-DayのProject mutationは既存`UpdateTaskMetadata`とTask.project_idを再利用し、TaskChuteDay ID、logical date、Entry、Task、planned lifecycle、ordinary relationを一つのCAS / atomic guardで検証する。成功してもEntry identity、placement、Day revisionは変えない。current DayはD-066のglobal serial dispatcherを継続利用し、future Dayは同じoperation identity / exact retry / canonical reconciliation boundaryを使うdirect scoped pathとする。新migration、new command、future queue、production changeは含めない。
+
+## D-070 Future-Day Mode assignment
+
+Established future Dayのordinary planned Entryでは、Mode columnをread-only textではなくcompact native selectorとして表示する。未設定値は既存の`—` option、候補はMode Boardのserver-canonical order、same-title候補はstable IDで区別する。future previewにはfake Entry / selectorを描画せず、past、record-none、Routine-derived、running、completedは既存のcanonical display text / `—`を維持する。
+
+Mode selectorはProjectの後、Sectionの前に配置され、visual Tab order `Project -> Mode -> Section`へ参加する。selector、option、その他のinteractive descendantからrow D&Dを開始せず、select focus中はJ/K/single-key shortcutを発火させない。current DayのMode mutationはD-066 dispatcherへ入り、future DayのMode mutationは同一Entry scopeのdirect scoped pathで一件ずつ実行する。
+
+set / replace / clearの各成功後はcanonical Dayへreconcileし、future rowはlive Mode titleを表示する。ModeDefinition rename後にfuture planned rowは新titleへ追随し、Startまではsnapshotを作らない。ambiguous outcomeではcanonical relationへ収束できる場合だけ保留を消し、未収束時は同じoperation identityのretry panelを表示する。navigation、Settings、logout、unload barrierは保留中のfuture Mode operationを破棄しない。

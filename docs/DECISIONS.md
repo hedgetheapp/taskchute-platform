@@ -1513,3 +1513,27 @@ D-069はD-060のTask metadata編集のうちProject assignmentだけを、establ
 - APP / AUTH migrationは不要である。`UpdateTaskMetadata` command、`Task.project_id`、future Day / Entry persistence、active Project loading / archive behaviorは既存schemaで表現できる。new dependency、new command、D-066 broadening、production operation、restore、branch / PR / merge / tag / releaseは対象外で、必要になった場合はSTOPする。
 
 Implementation, focused / regression tests, local and persistent nonprod evidence, and the unchanged day-navigation baseline are recorded in `docs/CURRENT.md`, `docs/FEATURES.md`, `docs/SPEC.md`, `docs/ARCHITECTURE.md`, `docs/DESIGN.md`, `docs/TEST_MATRIX.md`, and `docs/RISKS.md` as applicable. Production remains untouched and Released remains `NO`.
+
+## D-070 — Future established-Day Mode assignment
+Status: Approved
+
+D-070はD-068のEntry-scoped Mode assignment boundaryを、D-069のProject assignmentと同じplanning directionで狭く拡張する。Modeは引き続きTask-levelではなくEntry-scopedであり、D-068のlive planned title / immutable Start snapshot semantics、move / duplicate semantics、current-Day behaviorは変更しない。
+
+### Eligibility and relation semantics
+
+- authenticated ownerのestablished currentまたはfuture Dayに属する、lifecycleが`planned`でRoutine-derivedでないordinary Entryだけを対象とする。future preview、record-none / past、running、completed、Routine-derived、owner mismatch、missing EntryはWorkerでrejectし、Webはread-onlyとする。
+- `mode_id = null`はclear、owned existing ModeDefinitionはset / replaceに使う。Mode Boardのserver-canonical orderをselector optionsへ使い、同titleのModeはstable IDで区別する。Mode assignmentはEntry / Task / Day / Section / planned start / estimate / Project / `placement_revision`を変更せず、Start snapshotは作成しない。
+- `SetEntryMode`はread時に観測したEntryのTaskChuteDay identityとexact `logical_date`をguardへbindし、同時Day move / lifecycle change / relation changeがあればconflictとしてrelation-only partial successを残さない。no-opもtarget authorityを再確認してからsuccess operationを保存する。
+
+### Coordination and UI boundary
+
+- current DayはD-066 global serial dispatcher、unsent coalesce、latest canonical expected relation rebase、sent exact retry、canonical reconcileを維持する。future established DayはD-066へ投入せず、同一Entry scopeのdirect mutationで一件ずつ実行する。
+- future ambiguous outcomeではcanonical Modeが要求値ならsuccessへ収束し、そうでなければ`operation_id`、`entry_id`、`expected_mode_id`、`mode_id`を凍結したexact retryを保持する。deterministic conflictは再送せず、navigation / settings / logout / unload barrierで保護する。永続queue / IndexedDB / localStorageは追加しない。
+- future planned rowではMode selectorを表示し、unsetは既存の`—`選択肢で表す。future previewにはfake selectorを追加しない。Project → Mode → SectionのTab順、selectorからのD&D除外、J/K/single-key suppressionを維持する。
+
+### Compatibility and boundaries
+
+- 既存`SetEntryMode`、`SetEntryModeRequest`、`SetEntryModeResult`、`entry_modes`、`operations.command_type = SetEntryMode`を再利用する。APP / AUTH migration、table / column / index / FK変更、新command / API schema、新dependency、D-066のfuture queue化は不要であり、必要になった場合はSTOPする。
+- AddTaskToDayの既存`mode_id` compatibility、future first Add / established follow-up Add、D-069 Project behavior、D-068 historical snapshot、move / duplicate semanticsは維持する。Routine default / override、bulk、past / running / completed correction、Mode search / quick create / archive / delete、future execution、productionは対象外とする。
+
+Implementation, focused / regression tests, real-local / persistent nonprod evidence, and canonical evidence are recorded in `docs/CURRENT.md`, `docs/FEATURES.md`, `docs/SPEC.md`, `docs/DESIGN.md`, and `docs/TEST_MATRIX.md`. Production remains untouched and Released remains `NO`.
