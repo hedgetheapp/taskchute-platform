@@ -1062,6 +1062,18 @@ Local verification:
 
 未実施境界:
 
-- persistent nonprod migration 0022、deploy、authenticated browserのsearch / archive / restore / delete E2E、persistent DB integrityはこのsection更新時点で`NOT_RUN`。
+- persistent nonprod migration 0022、deploy、authenticated browserのsearch / archive / restore / delete E2E、persistent DB integrityは、このsection作成時点では`NOT_RUN`だった。実施結果は下記のcloseoutへ記録する。
 - production、restore、既存Modeの破壊的cleanup、credential / permission / binding変更、releaseは`NOT_RUN`。D-072のhard delete検証は、backup HARD GATE後に明示した使い捨てfixtureだけを対象にする。
 - Classification: `IMPLEMENTED / LOCAL_TESTED / PERSISTENT_NONPROD_NOT_RUN / PRODUCTION_NOT_RUN / RELEASED_NO`。
+
+### D-072 persistent nonprod closeout — 2026-09-07
+
+実装commit `5ec893ae1e1e434437da7ff446361c51459b69aa`を`main`へpushしたexact buildを対象に、canonical nonprod `taskchute-web-nonprod`へdeployした。APP/AUTH binding、`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`を確認し、Worker versionは`56788308-0fc5-4549-8270-bc16aab0b8b8`。root / protected API / disabled bootstrapは`200 / 401 / 404`。APP migration `0022_mode_archive_delete.sql`だけを適用し、AUTH migrationは追加・適用していない。適用後のpendingはAPP/AUTH `0 / 0`。
+
+backup HARD GATEはmigration前に通過した。APP backupは`160077 bytes` / SHA-256 `CE090DDD76E21A5DB014A99C6F2A30116F1745419BC14150B25AA6C41D3765FF`、AUTH backupは`5136 bytes` / SHA-256 `9B76AF435863B1E7C698D9587887239198464C7E9AEEE0443E55558A97176CFD`で、private ignored pathへ保存し、各backupをisolated sqlite recoveryで検証した。restoreは実行していない。
+
+既存認証sessionを使ったauthenticated browserで、`D072 Active verification`、`D072 Archive verification`、`D072 Delete verification`を作成し、`D072`のcurrent-tab search、active / archived tab、archive、archived menuの`復元 / 削除`、restore、reload/fresh loadを確認した。`D072 archived assignment verification`では、archive後に既存assignmentが`D072 Archive verification（アーカイブ）`として読め、候補がdisabledとなり、active Modeへのreplaceが可能であることを確認してからModeをrestoreした。browser console warning/errorは`0 / 0`。
+
+破壊的操作は承認済み使い捨てfixture `D072 Delete verification`だけに限定した。削除前にMode definition、planned `D072 delete planned`のlive relation、completed `D072 delete completed`のlive relation / snapshotを確認した。削除後は対象Mode definition / board item / archive / live relationが全て`0`、planned entryはModeなし、completed snapshotはmode id/titleを保持し、Task / Entry / Executionは保持された。DeleteMode operationは`cleared_entry_count=2`、board revision `7 -> 8`、残存board positionは`1..4`でcompactされた。対象Day `2026-09-07`のplacement revisionは、削除前に行った追加fixtureのrevision確定後からMode削除では変化していない。quick_checkは`ok`、foreign-key violationsは空、mode command guardは`0`、audit queryの`rows_written`は`0`。
+
+Classification: `APPROVED / IMPLEMENTED / INTEGRATED / LOCAL_TESTED / MAIN_PUSHED / PERSISTENT_NONPROD_MIGRATED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_BROWSER_VERIFIED / DB_INTEGRITY_VERIFIED / PRODUCTION_NOT_RUN / RESTORE_NOT_RUN / RELEASED_NO`。既存Modeの削除、production mutation、AUTH migration、credential / permission / binding変更、tag / releaseは行っていない。

@@ -15,7 +15,20 @@ Contract: Approved D-072。D-071のvisual / interaction parityを維持し、Mod
 | D072-DB-01 | persistent read-only integrity | NOT_RUN: APP / AUTH quick_check、FK、orphan guard / assertion、snapshot / Task / Entry / Execution retention、placement revision / board revision、rows_written audit待ち |
 | D072-BOUNDARY-01 | prohibited operations | PASS (SOURCE): production、restore、既存Modeのhard delete、AUTH migration、credentials / permissions / bindings、tag / releaseは未実施 |
 
-Classification at this checkpoint: `IMPLEMENTED / LOCAL_TESTED / PERSISTENT_NONPROD_NOT_RUN / PRODUCTION_NOT_RUN / RELEASED_NO`。D-072のpersistent evidence取得後も、実装済みとproduction Verified / Releasedを混同しない。
+Classification at this checkpoint: `IMPLEMENTED / LOCAL_TESTED / PERSISTENT_NONPROD_NOT_RUN / PRODUCTION_NOT_RUN / RELEASED_NO`。この表は実施前checkpointの履歴として保持する。実施結果は下記のcloseoutへ記録する。
+
+## D-072 persistent nonprod closeout — 2026-09-07
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D072-ENV-01 | Persistent nonprod safety | backup HARD GATE、APP-only 0022、pending、exact deploy、safety probes | APP/AUTH private backup + isolated recovery、APP migration `0022_mode_archive_delete.sql`、pending `0 / 0`、Worker `56788308-0fc5-4549-8270-bc16aab0b8b8`、root/protected/bootstrap `200 / 401 / 404` | PASS |
+| D072-ENV-02 | Authenticated browser | current-tab search、active/archive tab、archive、restore、reload/fresh load、delete modal | disposable D072 Modes、`D072` search、archive menu、archived `復元 / 削除`、restore、fresh load、console warning/error `0 / 0` | PASS |
+| D072-ENV-03 | Archived assignment boundary | archived existing assignment readable/disabled、active replace、restore | `D072 archived assignment verification`で`D072 Archive verification（アーカイブ）`表示、候補disabled、`D072 Active verification`へreplace、Mode restore | PASS |
+| D072-DELETE-01 | Approved destructive E2E | disposable Mode hard delete、planned live relation clear、completed snapshot retention | `D072 Delete verification` only。planned `D072 delete planned`、completed `D072 delete completed`、DeleteMode `cleared_entry_count=2` | PASS |
+| D072-DB-01 | Persistent read-only integrity | target absence、Task/Entry/Execution retention、snapshot、board compaction/revision、placement、quick/FK/guards、audit | target definition/board/archive/live relation `0`、planned `—`、completed snapshot id/title retained、Task/Entry/Execution retained、board `7 -> 8` and positions `1..4`、quick_check `ok`、FK empty、guards `0`、rows_written `0` | PASS |
+| D072-BOUNDARY-01 | Prohibited operations | production、restore、pre-existing Mode deletion、AUTH migration、release | production / restore / existing Mode deletion / AUTH migration / tag / release all not run | PASS |
+
+D-072 persistent closeout classification: `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / PERSISTENT_NONPROD_MIGRATED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_BROWSER_VERIFIED / DB_INTEGRITY_VERIFIED / PRODUCTION_NOT_RUN / RESTORE_NOT_RUN / RELEASED_NO`。これはnonprod verificationであり、production Verified / Releasedを意味しない。
 
 ## D-066 retry exposure boundary corrective — 2026-09-06
 
