@@ -458,6 +458,8 @@ After confirmation the client enqueues an unsent intent through D-066's single s
 
 ModeはEntry-scoped planning metadataであり、ModeDefinitionのstable identityとmutable titleを分離する。Settings Mode Boardはowner-scopedなModeのcreate、inline rename、drag reorderを提供し、board orderをserver-canonicalなselector orderとして使う。同じtitleのModeは別identityとして許容し、default / archive / delete / search / quick-createはv0.1に含めない。
 
+D-071ではSettings Mode Boardのshared UI capabilityをProject Board conventionへ揃える。header / add、48px row、name column、52px action column、title-click inline rename、whole-row D&Dとmidpoint before / after feedback、focused row、row-end `…`、notification stack、J/K/Arrow、`?` help、Escape / focus restorationを共通のvisual / interaction patternとして使う。`…` menuは既存の`名前変更`だけを表示し、visible `board_position`、`順序` heading、常設rename buttonは表示しない。search、archive / restore / delete、quick create等のProject-only capabilityはModeへ追加しない。
+
 Day Tableでは既存column preferenceへModeを追加し、default visible orderは`実行 | Task | Project | Mode | Section | Routine | 見積 | 開始予定 | 開始見込 | 開始 | 終了 | 実績`とする。browser preference schema v3は既存のrelative order / width / hidden stateを保持し、ModeはProjectの後ろへ追加する。Mode selectorはcurrent canonical Dayのordinary planned Entryだけに表示し、running / completed / Routine-derived / past / futureはread-only projectionとする。Mode changeはplacement revisionを変更しない。
 
 Startはその時点のMode titleを`entry_mode_snapshots`へimmutableに保存する。planned rowはcurrent live Mode title、running / completed rowはsnapshot titleを表示し、live Mode renameでhistorical titleを上書きしない。Duplicateはlive relationだけをcopyしてsnapshotを作らず、planned delete / bulk deleteはrelationを消し、completed hard deleteはModeDefinitionを保持したままEntry relation / snapshotを消す。既存D-066のserial dispatcher、operation identity、retry / revision / reconciliation semanticsを再利用する。

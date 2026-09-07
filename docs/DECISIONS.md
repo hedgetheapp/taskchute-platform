@@ -1537,3 +1537,17 @@ D-070はD-068のEntry-scoped Mode assignment boundaryを、D-069のProject assig
 - AddTaskToDayの既存`mode_id` compatibility、future first Add / established follow-up Add、D-069 Project behavior、D-068 historical snapshot、move / duplicate semanticsは維持する。Routine default / override、bulk、past / running / completed correction、Mode search / quick create / archive / delete、future execution、productionは対象外とする。
 
 Implementation, focused / regression tests, real-local / persistent nonprod evidence, and canonical evidence are recorded in `docs/CURRENT.md`, `docs/FEATURES.md`, `docs/SPEC.md`, `docs/DESIGN.md`, and `docs/TEST_MATRIX.md`. Production remains untouched and Released remains `NO`.
+
+## D-071 — Mode Settings Board UI parity
+
+Status: Approved
+
+D-071はSettings Mode Boardのvisual / interactionを、shared capabilityの範囲だけProject Board conventionへ揃える。Mode domain semantics、stable identity、server-canonical `board_position` / board revision、`CreateMode` / `UpdateMode` / `ReorderModes`のCAS・retry・reconcile authorityは変更しない。
+
+- header、add placement、dense 48px row、name first column、far-right 52px action column、inline rename、whole-row D&D、focused-row treatment、before / after drop feedback、notification stack、J/K/Arrow navigation、`?` help、Escape / focus restoration、loading / empty toneをProject Board conventionへ合わせる。
+- visible `board_position`と`順序` heading、常設`名前変更`buttonを撤去し、row-end `…` menuには既存capabilityの`名前変更`だけを置く。title clickもinline renameを開始する。
+- D&Dはinteractive descendantから開始せず、pointer midpointでbefore / afterを決定する。same source / targetおよびunchanged canonical orderではAPIを呼ばない。
+- Mode search、active/archive tabs、archive / restore / delete、selector quick create、color / icon、Routine default / override、bulk Mode、新しいMode commandは追加しない。
+- Worker、APP / AUTH schema・migration、API contract、dependency、Project Board behavior、productionは変更しない。これらが必要になった場合はSTOPする。
+
+Implementation、focused / full regression、persistent nonprod authenticated browser verification、read-only integrity evidenceは`docs/CURRENT.md`、`docs/FEATURES.md`、`docs/DESIGN.md`、`docs/TEST_MATRIX.md`へ記録する。Releasedは`NO`のままとする。
