@@ -981,7 +981,7 @@ Regression evidence:
 
 Persistent non-production:
 
-- Implementation commit `1c1d742f487647790b6a9c24b2de770403ef8eb0`をmainへfast-forward push後、APP/AUTH migration pending `0 / 0`、canonical nonprod bindings / vars、private ignored backup APP `145,291 bytes` / SHA-256 `241158C38483A38E8308B924D7FE5A3EA669EC6EA2C34180495EB5B5F8B6F4FF`、AUTH `5,136 bytes` / SHA-256 `3B7091CAE15F6D8493B411BE139914E818B4F5EC6D237AF501A79CAD20BEE1AB`を確認した。restoreは実行していない。
+- Implementation commit `1c1d742f487647790b6a9c24b2de770403ef8eb0`をmainへfast-forward push後、APP/AUTH migration pending `0 / 0`、canonical nonprod bindings / vars、private ignored backup APP `145,291 bytes` / SHA-256 `241158C38483A38E8308B924D7FE5A3EA669EC6EA2C34180495EB5B5F8B6F4FF`、AUTH `5,136 bytes` / SHA-256 `3B7091CAE15F6D8493B411BE139914E818B4F5EC6D237AF501A79CAD20BEE1AB`を確認した。deploy後のAPP migration list初回read-only requestはCloudflare API `7403`で失敗したが、同一commandの即時retryは`No migrations to apply`、AUTHも`No migrations to apply`だった。restoreは実行していない。
 - `taskchute-web-nonprod` version `cd622d4b-17cd-48e7-8d60-83edd9682cc9`へdeploy。root `200`、protected API `401`、disabled bootstrap `404`。Authenticated browserで新規future Day `2026-10-01`へdisposable ordinary Taskを1件追加してDayをestablishし、2件目のfollow-up Add、same-tab reload、fresh authenticated tab復元を確認した。browser console warning / errorは両tab`0 / 0`。
 - Final read-only APP auditはDay `01a07996-38cf-7b2c-b50a-073daa3c3b97`、`placement_revision=2`、target Task/Entry `2 / 2`、positions `1 / 2`、lifecycle `planned`、orphan placement guard / transaction assertion `0 / 0`、`quick_check=ok`、FK empty、全query `rows_written=0`。AUTH users / accounts / sessions `1 / 1 / 6`、`quick_check=ok`、FK empty、全query `rows_written=0`。fixtureはnonprodに残置し、production / restore / destructive cleanupは`NOT_RUN`。
 
