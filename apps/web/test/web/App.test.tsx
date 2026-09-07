@@ -408,6 +408,22 @@ describe("Dogfood Day shell", () => {
     expect(dayBoard.querySelectorAll("[data-entry-id]")).toHaveLength(1);
   });
 
+  it("keeps Day chrome outside the single scroll owner and the column header inside it", async () => {
+    mocks.loadDay.mockResolvedValue(twoPlannedDay);
+    render(<App />);
+    const dayBoard = await screen.findByRole("region", { name: "DayBoard" });
+    const dayShell = dayBoard.closest<HTMLElement>(".day-shell")!;
+    const fixedHeader = dayShell.querySelector<HTMLElement>('[data-day-fixed-region="header"]')!;
+    const fixedToolbar = dayShell.querySelector<HTMLElement>('[data-day-fixed-region="toolbar"]')!;
+    const tableHeading = dayBoard.querySelector<HTMLElement>('[data-day-scroll-header="true"]')!;
+
+    expect(dayShell.querySelectorAll('[data-day-scroll-owner="true"]')).toHaveLength(1);
+    expect(fixedHeader.compareDocumentPosition(dayBoard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(fixedToolbar.compareDocumentPosition(dayBoard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(tableHeading.closest('[data-day-scroll-owner="true"]')).toBe(dayBoard);
+    expect(dayBoard.querySelectorAll("[data-entry-id]")).toHaveLength(2);
+  });
+
   it("renders read-only forecast from the server anchor without using planned start as a barrier", async () => {
     const forecastDay: CurrentTaskChuteDayProjection = {
       ...twoPlannedDay,

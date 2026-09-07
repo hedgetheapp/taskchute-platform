@@ -17,18 +17,38 @@ function rule(selector: string): string {
   return styles.slice(markerOffset, end);
 }
 
-describe("D-059 Day Table layout CSS", () => {
-  it("fills the available viewport without changing the Task row height or adding an inner vertical scroller", () => {
+describe("D-075 Day fixed header / task-list scroll CSS", () => {
+  it("keeps the Day shell fixed and makes the Day surface the single vertical/horizontal scroll owner", () => {
     const shell = rule(".shell.day-shell");
     const surface = rule(".day-surface");
     const row = rule(".task-row");
     expect(shell).toContain("display: flex");
+    expect(shell).toContain("height: 100dvh");
     expect(shell).toContain("min-height: 100dvh");
     expect(shell).toContain("flex-direction: column");
-    expect(surface).toContain("flex: 1 0 auto");
-    expect(surface).toContain("overflow-x: auto");
-    expect(surface).not.toContain("overflow-y");
+    expect(shell).toContain("overflow: hidden");
+    expect(surface).toContain("flex: 1 1 auto");
+    expect(surface).toContain("min-height: 0");
+    expect(surface).toContain("overflow: auto");
+    expect(surface).toContain("overscroll-behavior: contain");
+    expect(surface).toContain("scroll-padding: 38px 0 12px");
     expect(row).toContain("min-height: 44px");
+  });
+
+  it("keeps the column header opaque and fixed inside the shared scroll owner", () => {
+    const heading = rule(".table-heading");
+    expect(heading).toContain("position: sticky");
+    expect(heading).toContain("z-index: 5");
+    expect(heading).toContain("top: 0");
+    expect(heading).toContain("background: var(--day-row-background)");
+  });
+
+  it("keeps the Task overflow menu above the body scroller", () => {
+    const menu = rule(".row-overflow-menu-floating");
+    expect(menu).toContain("position: fixed");
+    expect(menu).toContain("z-index: 60");
+    expect(menu).toContain("max-height: calc(100dvh - 16px)");
+    expect(menu).toContain("overflow: auto");
   });
 
   it("reserves a stable page scrollbar gutter", () => {

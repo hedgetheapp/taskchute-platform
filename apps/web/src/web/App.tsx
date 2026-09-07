@@ -10,6 +10,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import { Temporal } from "@js-temporal/polyfill";
 import type {
   AddTaskToDayRequest,
@@ -84,6 +85,7 @@ type DraftPlacement =
   | { kind: "after-entry"; anchorEntryId: string; restoreFocus: FocusTarget }
   | { kind: "section-start"; restoreFocus: FocusTarget };
 type DraftTask = { sectionId: string | null; title: string; modeId: string | null; placement: DraftPlacement };
+type OverflowMenuPosition = { left: number; top: number };
 type DragEdge = "before" | "after";
 type EntryDragState = {
   entryId: string;
@@ -687,6 +689,7 @@ export function App() {
   const [pendingAddTasks, setPendingAddTasks] = useState<PendingAddTask[]>([]);
   const [pendingExecutionTimesOverlays, setPendingExecutionTimesOverlays] = useState<Record<string, SetExecutionTimesRequest>>({});
   const [overflowEntryId, setOverflowEntryId] = useState<string | null>(null);
+  const [overflowMenuPosition, setOverflowMenuPosition] = useState<OverflowMenuPosition | null>(null);
   const [, setSectionSettings] = useState<SectionConfigurationProjection | null>(null);
   const [sectionSettingsDraft, setSectionSettingsDraft] = useState<SectionSettingsDraft | null>(null);
   const [sectionSettingsNotice, setSectionSettingsNotice] = useState<string | null>(null);
@@ -1348,6 +1351,10 @@ export function App() {
 
   useEffect(() => {
     if (!overflowEntryId) return;
+    const trigger = overflowMenuTriggerRef.current;
+    if (!trigger) return;
+    const updatePosition = () => setOverflowMenuPosition(getOverflowMenuPosition(trigger, overflowMenuRef.current));
+    updatePosition();
     overflowMenuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
     const dismissOnEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
@@ -1361,9 +1368,14 @@ export function App() {
     };
     document.addEventListener("keydown", dismissOnEscape);
     document.addEventListener("mousedown", dismissOnOutsideMouseDown);
+    const scrollOwner = trigger.closest<HTMLElement>(".day-surface");
+    scrollOwner?.addEventListener("scroll", updatePosition, { passive: true });
+    window.addEventListener("resize", updatePosition);
     return () => {
       document.removeEventListener("keydown", dismissOnEscape);
       document.removeEventListener("mousedown", dismissOnOutsideMouseDown);
+      scrollOwner?.removeEventListener("scroll", updatePosition);
+      window.removeEventListener("resize", updatePosition);
     };
   }, [overflowEntryId]);
 
@@ -3891,6 +3903,20 @@ export function App() {
     element.focus();
   }
 
+  function getOverflowMenuPosition(trigger: HTMLElement, menu: HTMLElement | null = null): OverflowMenuPosition {
+    const rect = trigger.getBoundingClientRect();
+    const width = menu?.offsetWidth || 160;
+    const height = menu?.offsetHeight || 144;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const left = Math.min(Math.max(8, rect.right - width), Math.max(8, viewportWidth - width - 8));
+    const opensUp = rect.bottom + height + 8 > viewportHeight && rect.top - height - 8 >= 8;
+    const top = opensUp
+      ? Math.max(8, rect.top - height + 2)
+      : Math.min(Math.max(8, rect.bottom - 2), Math.max(8, viewportHeight - height - 8));
+    return { left, top };
+  }
+
   function setSectionCollapsed(sectionId: string | null, collapsed: boolean) {
     const logicalDate = currentDay.taskchute_day.logical_date;
     const sectionKey = groupKey(sectionId);
@@ -4687,7 +4713,7 @@ export function App() {
           </main>
         ) : (
           <main className="shell day-shell" tabIndex={-1} onKeyDown={handleDayKeyDown}>
-      <header className="day-header">
+      <header className="day-header" data-day-fixed-region="header">
         <div>
           <p className="eyebrow">TaskChuteDay</p>
           <div className="day-navigation" aria-label="日付ナビゲーション">
@@ -4812,7 +4838,7 @@ export function App() {
         );
       })()}
 
-      <div className="day-toolbar" aria-label="Day controls">
+      <div className="day-toolbar" aria-label="Day controls" data-day-fixed-region="toolbar">
           <button type="button" className="secondary"
           disabled={mutationLocked || isMutationScopeBusy(placementMutationScope()) || !day.planning_enabled || day.section_configuration_required}
           onClick={() => openDraft(null)}>＋ Taskを追加</button>
@@ -5113,8 +5139,8 @@ export function App() {
         </section>
       )}
 
-      <section className="day-surface" aria-label="DayBoard" style={dayTableStyle(dayColumnPreference, dayTableResizeLayout ?? undefined)}>
-        <div className="table-heading">
+      <section className="day-surface" aria-label="DayBoard" data-day-scroll-owner="true" style={dayTableStyle(dayColumnPreference, dayTableResizeLayout ?? undefined)}>
+        <div className="table-heading" data-day-scroll-header="true">
           <span className="bulk-slot">
             {eligibleBulkEntries.length > 0 ? (
               <input ref={bulkHeaderRef} type="checkbox" tabIndex={-1} checked={allEligibleBulkSelected} aria-label="すべての未実行Taskを選択"
@@ -5360,19 +5386,26 @@ export function App() {
                     </div>
                     {resolvedColumnDefinitions.map((definition) => <Fragment key={definition.key}>{renderEntryColumn(entry, definition.key)}</Fragment>)}
                     {hasOverflowActions ? (
-                      <div className="row-actions-slot" ref={overflowEntryId === entry.id ? overflowMenuRef : undefined}
+                      <div className="row-actions-slot"
                         onClick={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()}
                         onPointerDown={(event) => event.stopPropagation()}>
                         <button type="button" className="row-overflow-button" aria-haspopup="menu" aria-expanded={overflowEntryId === entry.id}
                           aria-label={`${entry.task.title}のその他の操作`} title="その他の操作" disabled={mutationLocked || hasRetainedMutationScope(placementMutationScope())}
                           onClick={(event) => {
                             overflowMenuTriggerRef.current = event.currentTarget;
-                            setOverflowEntryId((current) => current === entry.id ? null : entry.id);
+                            if (overflowEntryId === entry.id) {
+                              setOverflowMenuPosition(null);
+                              setOverflowEntryId(null);
+                            } else {
+                              setOverflowMenuPosition(getOverflowMenuPosition(event.currentTarget));
+                              setOverflowEntryId(entry.id);
+                            }
                           }}>
                           …
                         </button>
-                        {overflowEntryId === entry.id && (
-                          <div className="row-overflow-menu" role="menu" aria-label={`${entry.task.title}の操作`}>
+                        {overflowEntryId === entry.id && typeof document !== "undefined" && createPortal(
+                          <div ref={overflowMenuRef} className="row-overflow-menu row-overflow-menu-floating" role="menu" aria-label={`${entry.task.title}の操作`}
+                            style={overflowMenuPosition ? { left: overflowMenuPosition.left, top: overflowMenuPosition.top } : undefined}>
                             {canMoveDate && <button type="button" role="menuitem" onClick={() => {
                               setOverflowEntryId(null);
                               openBulkDateMove([entry.id]);
@@ -5389,8 +5422,7 @@ export function App() {
                               setOverflowEntryId(null);
                               openCompletedDelete(entry);
                             }} className="destructive-action">削除</button>}
-                          </div>
-                        )}
+                          </div>, document.body)}
                       </div>
                     ) : <span className="row-actions-slot" aria-hidden="true" />}
                   </div>

@@ -34,7 +34,7 @@ button.secondary { border: 1px solid #d8d8d5; background: #fff; color: #383836; 
 .primary-sidebar nav button.active { background: #deded9; color: #191919; font-weight: 650; }
 .sidebar-logout { margin-top: auto; }
 .shell { width: min(1120px, calc(100% - 32px)); margin: 0 auto; padding: 28px 0 104px; }
-.shell.day-shell { width: calc(100% - 32px); max-width: none; position: relative; display: flex; min-height: 100dvh; flex-direction: column; }
+.shell.day-shell { width: calc(100% - 32px); max-width: none; position: relative; display: flex; height: 100dvh; min-height: 100dvh; flex-direction: column; overflow: hidden; }
 .auth-shell { display: grid; min-height: 100vh; place-items: center; }
 .panel { border: 1px solid #e9e9e7; border-radius: 8px; padding: 20px; background: #fff; }
 .auth-shell .panel { width: min(420px, 100%); }
@@ -231,9 +231,9 @@ input:focus-visible, select:focus-visible { border-color: #2383e2; outline: 2px 
 .display-column-option:hover { background: #f7f7f5; }
 .display-column-option input { width: auto; margin: 0; }
 
-.day-surface { --bulk-slot-width: 32px; --execution-slot-width: 52px; --task-column-width: minmax(280px, 1fr); --day-table-min-width: 1364px; --day-table-grid-template-columns: var(--bulk-slot-width) var(--execution-slot-width) var(--task-column-width) 150px 130px 82px 90px 102px 102px 86px 86px 96px 40px; flex: 1 0 auto; overflow-x: auto; border: 1px solid #e1e1df; border-radius: 8px; background: #fff; }
+.day-surface { --bulk-slot-width: 32px; --execution-slot-width: 52px; --task-column-width: minmax(280px, 1fr); --day-table-min-width: 1364px; --day-table-grid-template-columns: var(--bulk-slot-width) var(--execution-slot-width) var(--task-column-width) 150px 130px 82px 90px 102px 102px 86px 86px 96px 40px; flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; scroll-padding: 38px 0 12px; border: 1px solid #e1e1df; border-radius: 8px; background: #fff; }
 .table-heading, .task-row { display: grid; min-width: var(--day-table-min-width); grid-template-columns: var(--day-table-grid-template-columns); align-items: center; }
-.table-heading { --day-row-background: #f7f7f5; min-height: 34px; border-bottom: 1px solid #e9e9e7; background: var(--day-row-background); color: #787774; font-size: 11px; font-weight: 600; }
+.table-heading { --day-row-background: #f7f7f5; position: sticky; z-index: 5; top: 0; min-height: 34px; border-bottom: 1px solid #e9e9e7; background: var(--day-row-background); color: #787774; font-size: 11px; font-weight: 600; }
 .table-heading > span { padding: 0 10px; }
 .column-heading { position: relative; display: flex; min-width: 0; height: 100%; align-items: center; justify-content: space-between; gap: 4px; cursor: grab; user-select: none; }
 .column-heading.is-column-dragging { opacity: .72; transform: translateY(-1px); box-shadow: 0 4px 10px rgb(15 15 15 / 16%); }
@@ -339,6 +339,7 @@ input:focus-visible, select:focus-visible { border-color: #2383e2; outline: 2px 
 .row-overflow-button { width: 30px; height: 28px; padding: 0 4px; border: 1px solid transparent; border-radius: 5px; background: transparent; color: #787774; font-size: 18px; line-height: 1; }
 .row-overflow-button:hover:not(:disabled), .row-overflow-button:focus-visible { border-color: #e1e1df; background: #f7f7f5; color: #191919; }
 .row-overflow-menu { position: absolute; z-index: 12; top: calc(100% - 2px); right: 8px; display: grid; min-width: 116px; padding: 4px; border: 1px solid #d8d8d5; border-radius: 7px; background: #fff; box-shadow: 0 8px 22px rgb(15 15 15 / 16%); }
+.row-overflow-menu-floating { position: fixed; z-index: 60; top: 0; right: auto; left: 0; max-height: calc(100dvh - 16px); overflow: auto; }
 .row-overflow-menu button { padding: 7px 9px; border: 0; border-radius: 4px; background: transparent; color: #373735; text-align: left; font-size: 12px; white-space: nowrap; }
 .row-overflow-menu button:hover, .row-overflow-menu button:focus-visible { background: #f0f6fc; color: #1769aa; outline: none; }
 .row-overflow-menu button.destructive-action:hover, .row-overflow-menu button.destructive-action:focus-visible { background: #ffebe8; color: #9d2e2e; }
