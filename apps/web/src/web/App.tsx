@@ -4284,7 +4284,8 @@ export function App() {
             disabled={modeMutationBusy}
             onChange={(event) => commitEntryMode(entry, event.target.value || null)}>
             <option value="">—</option>
-            {(modeBoard?.modes ?? []).map((mode) => <option value={mode.id} key={mode.id}>{mode.title}</option>)}
+            {(modeBoard?.modes ?? []).map((mode) => <option value={mode.id} key={mode.id}
+              disabled={mode.archived && mode.id !== modeId}>{mode.title}{mode.archived ? "（アーカイブ）" : ""}</option>)}
           </select> : modeTitle ?? <EmptyValue label="Mode未設定" />}
         </span>;
       }
@@ -4411,7 +4412,8 @@ export function App() {
       <select className="mode-selector" aria-label="新しいTaskのMode" value={draftTask?.modeId ?? ""}
         onChange={(event) => setDraftTask((current) => current ? { ...current, modeId: event.target.value || null } : current)}>
         <option value="">—</option>
-        {(modeBoard?.modes ?? []).map((mode) => <option value={mode.id} key={mode.id}>{mode.title}</option>)}
+        {(modeBoard?.modes ?? []).map((mode) => <option value={mode.id} key={mode.id}
+          disabled={mode.archived}>{mode.title}{mode.archived ? "（アーカイブ）" : ""}</option>)}
       </select>
     </span>;
     const definition = columnDefinition(key);

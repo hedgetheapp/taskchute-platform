@@ -78,6 +78,10 @@ import type {
   UpdateModeResult,
   ReorderModesRequest,
   ReorderModesResult,
+  SetModeArchivedRequest,
+  SetModeArchivedResult,
+  DeleteModeRequest,
+  DeleteModeResult,
   SetEntryModeRequest,
   SetEntryModeResult,
 } from "../shared/contracts";
@@ -141,6 +145,12 @@ export const api = {
   },
   reorderModes(body: ReorderModesRequest): Promise<ReorderModesResult> {
     return requestJson("/api/v1/modes/reorder", jsonPost("", body));
+  },
+  setModeArchived(body: SetModeArchivedRequest): Promise<SetModeArchivedResult> {
+    return requestJson(`/api/v1/modes/${body.mode_id}/archive`, jsonPost("", body));
+  },
+  deleteMode(body: DeleteModeRequest): Promise<DeleteModeResult> {
+    return requestJson(`/api/v1/modes/${body.mode_id}/delete`, jsonPost("", body));
   },
   setEntryMode(body: SetEntryModeRequest): Promise<SetEntryModeResult> {
     return requestJson(`/api/v1/entries/${body.entry_id}/mode`, jsonPost("", body));

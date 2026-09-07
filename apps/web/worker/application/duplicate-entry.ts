@@ -65,6 +65,10 @@ export async function duplicateEntry(
     .first<SourceRow>();
   if (!source) return reject(db, appUserId, request, requestFingerprint, "resource_conflict", "Entry is not an eligible planned source");
   if (source.project_archived === 1) return reject(db, appUserId, request, requestFingerprint, "resource_conflict", "An archived Project cannot be newly assigned");
+  if (source.mode_id !== null && await db.prepare("SELECT 1 FROM mode_archives WHERE app_user_id = ? AND mode_id = ?")
+    .bind(appUserId, source.mode_id).first()) {
+    return reject(db, appUserId, request, requestFingerprint, "resource_conflict", "An archived Mode cannot be newly assigned");
+  }
   const pairValid = source.section_id === null
     ? source.planned_start_minute === null
     : source.planned_start_minute !== null
@@ -112,6 +116,9 @@ export async function duplicateEntry(
           AND t.title = ? AND t.project_id IS ? AND e.section_id IS ? AND e.estimate_seconds IS ? AND e.planned_start_minute IS ?
           AND (SELECT mode_id FROM entry_modes em2 WHERE em2.app_user_id = e.app_user_id AND em2.entry_id = e.id) IS ?
           AND NOT EXISTS (SELECT 1 FROM project_archives pa WHERE pa.app_user_id = t.app_user_id AND pa.project_id = t.project_id)
+          AND ((SELECT mode_id FROM entry_modes em3 WHERE em3.app_user_id = e.app_user_id AND em3.entry_id = e.id) IS NULL
+            OR NOT EXISTS (SELECT 1 FROM mode_archives ma WHERE ma.app_user_id = e.app_user_id
+              AND ma.mode_id = (SELECT mode_id FROM entry_modes em4 WHERE em4.app_user_id = e.app_user_id AND em4.entry_id = e.id)))
           AND ((e.section_id IS NULL AND e.planned_start_minute IS NULL) OR (e.section_id IS NOT NULL
             AND e.planned_start_minute >= d.establishment_boundary_minutes
             AND e.planned_start_minute < d.establishment_boundary_minutes + 1440

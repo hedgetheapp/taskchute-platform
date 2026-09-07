@@ -1,5 +1,22 @@
 # Test Matrix
 
+## D-072 Mode search / archive / restore / delete — local gate
+
+Contract: Approved D-072。D-071のvisual / interaction parityを維持し、Mode Settingsのcurrent-tab search、active / archived tab、archive / restore、確認付きhard delete、active-only assignmentを追加する。D-071のout-of-scope記載はhistorical evidenceとして保持し、D-072がcurrent scopeをsupersedeする。
+
+| ID | Verification target | Evidence |
+| --- | --- | --- |
+| D072-WEB-01 | search / tab / menu / confirmation | PASS (LOCAL_WEB): focused Mode Board `13 / 13`; active / archived tab、case-insensitive title search、archive / restore menu、delete confirmation / cancel、existing title-click rename |
+| D072-WORKER-01 | archive / restore / delete command | PASS (LOCAL_WORKER): focused Mode Worker `5 / 5`; owner / CAS / replay、archive restore、live relation clear、definition / Board removal、historical snapshot / Task / Entry / Execution retention、quick check / FK |
+| D072-MIG-01 | APP 0022 fresh / upgrade migration | PASS (LOCAL_MIGRATION): migration regression completed with archive tables, guard tables, operations CHECK compatibility, quick check / FK assertions |
+| D072-REG-01 | existing Mode / Project / lifecycle regression | PASS (LOCAL): typecheck、production build、full Worker `23 files / 200 tests`、existing Project / Mode integration |
+| D072-ENV-01 | persistent nonprod migration / deploy safety | NOT_RUN: backup HARD GATE、APP-only 0022 apply、exact nonprod deploy、root / protected API / bootstrap probes待ち |
+| D072-ENV-02 | authenticated browser E2E | NOT_RUN: search → archive → archived tab → restore → reload → delete disposable fixtures待ち。既存Modeは対象外 |
+| D072-DB-01 | persistent read-only integrity | NOT_RUN: APP / AUTH quick_check、FK、orphan guard / assertion、snapshot / Task / Entry / Execution retention、placement revision / board revision、rows_written audit待ち |
+| D072-BOUNDARY-01 | prohibited operations | PASS (SOURCE): production、restore、既存Modeのhard delete、AUTH migration、credentials / permissions / bindings、tag / releaseは未実施 |
+
+Classification at this checkpoint: `IMPLEMENTED / LOCAL_TESTED / PERSISTENT_NONPROD_NOT_RUN / PRODUCTION_NOT_RUN / RELEASED_NO`。D-072のpersistent evidence取得後も、実装済みとproduction Verified / Releasedを混同しない。
+
 ## D-066 retry exposure boundary corrective — 2026-09-06
 
 Contract: Approved D-066内のreversible Web corrective。ambiguous rootの後ろに保持された未送信descendantが個別retry UIへ露出する不具合を修正し、実際にdispatch済みで結果未確定のrootだけをretry可能とする。API / Domain / schema / migration / dependency / binding / security postureは変更していない。開始時点は`main@955a90e1cf01088f824a3d53a885d9e95eb8f06f`。

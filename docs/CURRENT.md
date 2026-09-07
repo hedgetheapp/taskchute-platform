@@ -1040,3 +1040,28 @@ Product Owner承認済み。Settings Mode Boardのshared visual / interactionを
 - generated canonical nonprod config（`taskchute-web-nonprod`、`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、既存APP/AUTH binding、`migrations=[]`）からWorker version `4af4efed-00f6-49de-b950-5745d64db0c4`へdeployした。APP / AUTH pendingはdeploy前後とも`0 / 0`。root / unauthenticated protected API / disabled bootstrapは`200 / 401 / 404`。
 - existing authorized sessionによるauthenticated desktop browserで、Project referenceに対するMode row高`48px`、action列`52px`、header / table / draft geometry、visible orderなし、`… -> 名前変更`、title-click rename、before / after D&D、reload persistence、J/K、`?` help、Escape focus restoration、禁止機能不在を確認した。rename / reorderは各2 successful operationsで元title / orderへ復帰し、console warning / errorは`0 / 0`。
 - read-only APPはMode identity 2件を維持し、最終orderはDeep / Light、settings revision `3 / 0`、board revision `4`。Projects / Tasks / Entries / Executions / operations `1 / 31 / 22 / 13 / 155`、Mode definitions / relations `2 / 2`、active Execution / orphan entry_mode `0 / 0`、quick_check `ok`、FK empty、全query rows_written `0`。AUTHはusers / accounts / sessions `1 / 1 / 6`、quick_check `ok`、FK empty、rows_written `0`。production、restore、cleanup、credential / bootstrap変更、releaseは`NOT_RUN`。current statusは`APPROVED / IMPLEMENTED / LOCAL_VERIFIED / NONPROD_VERIFIED / RELEASED_NO`。
+
+## D-072 Mode search / archive / restore / delete — current implementation status
+
+D-072はD-071のUI parityを維持したまま、Mode Settingsの検索、active / archived tab、archive / restore、明示確認付きhard deleteを追加するcontractである。D-071に記録された「search / archive / restore / deleteは対象外」という記述は、D-071時点の履歴として保持し、このsectionがD-072のcurrent scopeをsupersedeする。
+
+実装済みの範囲:
+
+- current tab内のclient-side case-insensitive title search（placeholder `Mode名`）。検索用endpointは追加していない。
+- active `使用中` / archived `アーカイブ` tab、既定値はactive。
+- active rowの`アーカイブ`、archived rowの`復元`、両方の`削除`、title clickによる既存renameの維持。
+- archiveはowner-scoped reversible stateであり、Mode definition、Board item、Entry relation、historical snapshotを削除しない。
+- archived Modeは新規assignment候補から除外し、既存assignmentは読める。clear / activeへのreplaceは可能で、restore後に再選択可能。
+- deleteは不可逆の確認付きcommand。live `entry_modes`をclearし、archive / Board item / definitionを削除し、Board positionをcompactし、board revisionを一度だけincrementする。Task / Entry / Execution / historical Mode snapshot / Day placementは保持する。
+- reorderは表示中のsubsetを操作しても、serverへはcanonical full Mode orderを送り、hidden / other tab / search filtered rowsの相対順を保持する。
+
+Local verification:
+
+- focused Mode Board `13 / 13 PASS`、focused Mode Worker `5 / 5 PASS`、Worker full `23 files / 200 tests PASS`、typecheck、production build、migration regression、`git diff --check`を確認済み。
+- D-072 focused testsにはactive / archived search、archive / restore / delete confirmation、archive/delete persistence、entry relation clear、historical snapshot / Task / Entry / Execution保持、quick check / FK検証を含む。
+
+未実施境界:
+
+- persistent nonprod migration 0022、deploy、authenticated browserのsearch / archive / restore / delete E2E、persistent DB integrityはこのsection更新時点で`NOT_RUN`。
+- production、restore、既存Modeの破壊的cleanup、credential / permission / binding変更、releaseは`NOT_RUN`。D-072のhard delete検証は、backup HARD GATE後に明示した使い捨てfixtureだけを対象にする。
+- Classification: `IMPLEMENTED / LOCAL_TESTED / PERSISTENT_NONPROD_NOT_RUN / PRODUCTION_NOT_RUN / RELEASED_NO`。

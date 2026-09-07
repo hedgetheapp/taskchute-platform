@@ -2,7 +2,7 @@ import { createEvent, fireEvent, render, screen, waitFor, within } from "@testin
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ModeBoardProjection } from "../../src/shared/contracts";
 
-const mocks = vi.hoisted(() => ({ createMode: vi.fn(), updateMode: vi.fn(), reorderModes: vi.fn() }));
+const mocks = vi.hoisted(() => ({ createMode: vi.fn(), updateMode: vi.fn(), reorderModes: vi.fn(), setModeArchived: vi.fn(), deleteMode: vi.fn() }));
 
 vi.mock("../../src/web/api", async () => {
   const actual = await vi.importActual<typeof import("../../src/web/api")>("../../src/web/api");
@@ -38,14 +38,14 @@ beforeEach(() => {
   board = {
     board_revision: 7,
     modes: [
-      { id: firstId, title: "Focus", board_position: 1, settings_revision: 2 },
-      { id: secondId, title: "Light", board_position: 2, settings_revision: 3 },
-      { id: thirdId, title: "Admin", board_position: 3, settings_revision: 4 },
+      { id: firstId, title: "Focus", archived: false, board_position: 1, settings_revision: 2 },
+      { id: secondId, title: "Light", archived: false, board_position: 2, settings_revision: 3 },
+      { id: thirdId, title: "Admin", archived: false, board_position: 3, settings_revision: 4 },
     ],
   };
   mocks.createMode.mockImplementation(async (request) => {
     board = { board_revision: board.board_revision + 1, modes: [...board.modes,
-      { id: request.mode_id, title: request.title, board_position: board.modes.length + 1, settings_revision: 0 }] };
+      { id: request.mode_id, title: request.title, archived: false, board_position: board.modes.length + 1, settings_revision: 0 }] };
     return {};
   });
   mocks.updateMode.mockImplementation(async (request) => {
@@ -59,6 +59,14 @@ beforeEach(() => {
     })) };
     return {};
   });
+  mocks.setModeArchived.mockImplementation(async (request) => {
+    board = { ...board, modes: board.modes.map((mode) => mode.id === request.mode_id ? { ...mode, archived: request.archived, settings_revision: mode.settings_revision + 1 } : mode) };
+    return {};
+  });
+  mocks.deleteMode.mockImplementation(async (request) => {
+    board = { ...board, board_revision: board.board_revision + 1, modes: board.modes.filter((mode) => mode.id !== request.mode_id).map((mode, index) => ({ ...mode, board_position: index + 1 })) };
+    return {};
+  });
 });
 
 describe("D-071 Mode Settings Board UI parity", () => {
@@ -70,23 +78,49 @@ describe("D-071 Mode Settings Board UI parity", () => {
     expect(within(table).getAllByRole("columnheader").map((item) => item.textContent)).toEqual(["Mode名"]);
     expect(within(table).queryByText("順序")).toBeNull();
     expect(within(table).queryByText("1")).toBeNull();
-    expect(screen.queryByRole("searchbox")).toBeNull();
-    expect(screen.queryByRole("tablist")).toBeNull();
-    expect(screen.queryByText(/アーカイブ|復元|削除/)).toBeNull();
+    expect(screen.getByPlaceholderText("Mode名")).toBeTruthy();
+    expect(screen.getByRole("tablist", { name: "Mode表示" })).toBeTruthy();
     expect(row("Focus").classList.contains("project-board-row")).toBe(true);
     expect(row("Focus").classList.contains("mode-board-row")).toBe(true);
     expect(screen.getAllByLabelText(/のメニュー$/)).toHaveLength(3);
   });
 
-  it("exposes only rename in the accessible row-end overflow", () => {
+  it("supports search, active/archive tabs, archive/restore, and destructive delete without overflow rename", async () => {
+    const rendered = renderBoard();
+    fireEvent.click(screen.getByRole("button", { name: "Focusのメニュー" }));
+    expect(screen.getByRole("menuitem", { name: "アーカイブ" })).toBeTruthy();
+    expect(screen.queryByRole("menuitem", { name: "名前変更" })).toBeNull();
+    fireEvent.click(screen.getByRole("menuitem", { name: "アーカイブ" }));
+    await waitFor(() => expect(mocks.setModeArchived).toHaveBeenCalledTimes(1));
+    expect(mocks.setModeArchived.mock.calls[0]![0]).toMatchObject({ mode_id: firstId, archived: true, expected_settings_revision: 2 });
+    rendered.rerender(<ModeBoard board={board} onReload={async () => structuredClone(board)} onBoardChange={vi.fn()} onUnauthorized={vi.fn()} />);
+    expect(screen.getByPlaceholderText("Mode名")).toBeTruthy();
+    fireEvent.click(screen.getByRole("tab", { name: "アーカイブ" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Focus" })).toBeTruthy());
+    fireEvent.change(screen.getByPlaceholderText("Mode名"), { target: { value: "light" } });
+    expect(screen.queryByRole("button", { name: "Focus" })).toBeNull();
+    fireEvent.change(screen.getByPlaceholderText("Mode名"), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Focusのメニュー" }));
+    expect(screen.getByRole("menuitem", { name: "復元" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("menuitem", { name: "復元" }));
+    await waitFor(() => expect(mocks.setModeArchived).toHaveBeenCalledTimes(2));
+    rendered.rerender(<ModeBoard board={board} onReload={async () => structuredClone(board)} onBoardChange={vi.fn()} onUnauthorized={vi.fn()} />);
+    fireEvent.click(screen.getByRole("tab", { name: "使用中" }));
+    fireEvent.click(screen.getByRole("button", { name: "Lightのメニュー" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "削除" }));
+    expect(screen.getByRole("dialog", { name: "Mode削除確認" })).toBeTruthy();
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Mode削除確認" })).getByRole("button", { name: "キャンセル" }));
+    expect(mocks.deleteMode).not.toHaveBeenCalled();
+  });
+
+  it("exposes archive/delete in the accessible row-end overflow", () => {
     renderBoard();
     const trigger = screen.getByRole("button", { name: "Focusのメニュー" });
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
     fireEvent.click(trigger);
     expect(trigger.getAttribute("aria-expanded")).toBe("true");
     const menu = screen.getByRole("menu");
-    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["名前変更"]);
-    expect(within(menu).queryByText(/アーカイブ|復元|削除/)).toBeNull();
+    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["アーカイブ", "削除"]);
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByRole("menu")).toBeNull();
     return waitFor(() => expect(document.activeElement).toBe(trigger));
@@ -104,12 +138,11 @@ describe("D-071 Mode Settings Board UI parity", () => {
     expect(await screen.findByText("Mode名を更新しました")).toBeTruthy();
   });
 
-  it("renames from overflow on blur and keeps same-title identities independent", async () => {
+  it("renames from title click on blur and keeps same-title identities independent", async () => {
     board.modes[1] = { ...board.modes[1]!, title: "Focus" };
     renderBoard();
-    const menus = screen.getAllByRole("button", { name: "Focusのメニュー" });
-    fireEvent.click(menus[1]!);
-    fireEvent.click(screen.getByRole("menuitem", { name: "名前変更" }));
+    const titles = screen.getAllByRole("button", { name: "Focus" });
+    fireEvent.click(titles[1]!);
     const input = screen.getAllByRole("textbox", { name: "Focusの名前" })[0]!;
     fireEvent.change(input, { target: { value: "Second Focus" } });
     fireEvent.blur(input);
@@ -150,9 +183,9 @@ describe("D-071 Mode Settings Board UI parity", () => {
     rendered.unmount();
 
     board = { board_revision: 8, modes: [
-      { id: firstId, title: "Focus", board_position: 1, settings_revision: 2 },
-      { id: secondId, title: "Light", board_position: 2, settings_revision: 3 },
-      { id: thirdId, title: "Admin", board_position: 3, settings_revision: 4 },
+      { id: firstId, title: "Focus", archived: false, board_position: 1, settings_revision: 2 },
+      { id: secondId, title: "Light", archived: false, board_position: 2, settings_revision: 3 },
+      { id: thirdId, title: "Admin", archived: false, board_position: 3, settings_revision: 4 },
     ] };
     mocks.reorderModes.mockClear();
     renderBoard();
@@ -267,6 +300,6 @@ describe("D-071 Mode Settings Board UI parity", () => {
     first.unmount();
     board = { board_revision: 0, modes: [] };
     renderBoard();
-    expect(screen.getByText("Modeはまだありません。")).toBeTruthy();
+    expect(screen.getByText("該当するModeはありません。")).toBeTruthy();
   });
 });

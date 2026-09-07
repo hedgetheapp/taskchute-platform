@@ -2,6 +2,19 @@
 
 Statuses: Approved / Proposed / Superseded
 
+## D-072 — Mode search / archive / restore / delete parity
+Status: Approved
+
+D-072はD-071のMode Settings visual / interaction parityを保ったまま、Mode lifecycle管理の不足分を追加する。Searchはcurrent tab内のclient-side title filterに限定し、server searchやpersistent query stateは追加しない。Active / archived tabを持ち、archiveはowner-scoped reversible state、restoreは保持したBoard位置へ戻す。
+
+Deleteは明示確認付きの不可逆live Mode commandとする。live `entry_modes`だけをclearし、Mode archive、Board item、definitionを削除する一方、Task / Entry / Execution、`entry_mode_snapshots`、Day placement / placement revision、他のmetadataは保持する。Board revisionはsuccess時に一度だけ進め、残存Modeのpositionをcompactする。これは一般Task / Entry / historical factのhard deleteを広げるDecisionではない。
+
+Archived Modeは新規assignment候補から除外する。既存assignmentは読める状態を維持し、clearまたはactive Modeへのreplaceを許可する。Archived Modeへの同一値のno-opは既存assignmentを壊さず、restore後に再び通常候補とする。
+
+Reorderは検索 / tabで可視なsubsetを受けてもfull canonical orderをserverへ送る。隠れたModeの相対順は保持し、entry / historical snapshotをreorderやarchiveで書き換えない。UI menu、API、Worker、D1 command、migrationを同じowner / CAS / operation replay境界で扱う。
+
+Verification boundary: local automated verificationは実装確認であり、persistent nonprod migration / deploy / authenticated browser E2E / DB integrityとは分離する。破壊的nonprod E2Eはbackup HARD GATE後に作成したdisposable D-072 fixtureのModeだけを対象とし、既存Mode、production、restore操作、credentials / permissions / bindingsは触らない。
+
 ## D-001 — Independent TaskChute Platform
 Status: Approved
 

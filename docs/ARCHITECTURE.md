@@ -29,6 +29,16 @@
 
 TaskChute Serverをstructured TaskChute stateのcanonical authorityとし、各Clientは同じDomain / API semanticsを共有する。
 
+## D-072 Mode Settings command flow
+
+Mode BoardのsearchはWeb clientの現在tab内filterであり、Worker queryを増やさない。Board queryはowner-scoped Mode definitionをarchive join付きで返し、各projectionは`archived` booleanを持つ。Webはvisible rowsから操作後のcanonical full `mode_ids` orderを再構成して既存のrevision/CAS reorder commandへ渡す。
+
+Archive / restoreは`mode_archives`のowner + mode primary keyを使うreversible stateである。Delete対象のlive Mode definitionへ直接FKを張るguardは置かず、`mode_command_guards`にowner / operation / command identityを一時保持する。これにより、command batch内でlive `entry_modes`をclearし、archive / Board item / definitionをdeleteしてもtransaction assertionとoperation replay identityを検証できる。既存の`entry_mode_snapshots`、Task / Entry / Execution、Day placementは削除対象外である。
+
+Worker routesは`POST /api/v1/modes/:mode_id/archive`と`POST /api/v1/modes/:mode_id/delete`で、server authority、owner、expected settings / board revision、operation fingerprintを検証する。Archiveはassignment historyを変更せず、AddTaskToDayはactive Modeだけを新規候補とする。SetEntryModeはarchived targetを新規setできないが、既存archived relationのexact no-op、clear、activeへのreplaceは許可する。
+
+APP migration `0022_mode_archive_delete.sql`はarchive state、delete command guard、既存operations command CHECKへの`SetModeArchived` / `DeleteMode`追加だけを行う。AUTH schema、production binding、offline queueは変更しない。Migration適用後はquick check、foreign-key check、orphan guard / assertion checkをread-onlyで確認する。
+
 WebのReact implementationをnative clientへそのまま流用することは前提としない。Android / Wear OS / native iOSはplatform-native UIを第一候補とし、共有対象はServer API、identity、lifecycle、Domain semanticsとする。
 
 ## Initial technology

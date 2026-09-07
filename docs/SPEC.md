@@ -398,6 +398,20 @@ Status: Approved. Runtime / APP migration: IMPLEMENTED / INTEGRATED / NO MIGRATI
 `SetEntryMode`はauthenticated ownerのestablished currentまたはfuture Dayに属するordinary planned Entryへ適用できる。future previewにはcanonical Entryが存在しないためMode editorを表示せず、established past、record-none past、running、completed、Routine-derived、owner外、missing targetはWorkerでrejectしWebでread-onlyとする。
 
 - `mode_id = null`はrelation clear、owner-scoped existing ModeDefinitionはset / replaceである。Mode Boardのserver orderをoptionsへ使い、same-title Modeはstable IDで扱う。assignmentはEntry、Task、Day、Section、planned start、estimate、Project、`placement_revision`を変更せず、future assignment時にhistorical snapshotを作らない。
+
+## D-072 Mode Settings search / archive / restore / delete
+
+D-072はMode Settingsのcurrent behaviorを次のように定義する。Searchは現在選択中のtabだけを対象にしたclient-side title filterで、case-insensitiveである。Search queryは永続化せず、server search endpointも追加しない。既定tabはactive `使用中`、archived tabは`アーカイブ`である。
+
+Active Modeはarchiveまたはdelete、archived Modeはrestoreまたはdeleteをrow menuから開始できる。既存のtitle click renameは維持し、archive / deleteをrename操作へ混在させない。
+
+Archiveはowner-scoped reversible stateである。Mode definition、Board item、existing `entry_modes`、historical snapshot、Task / Entry / Executionは保持する。Archived Modeは新規のAddTaskToDayまたは新規assignment候補にならないが、既存assignmentの表示は許可する。既存assignmentのclear、またはactive Modeへのreplaceは許可する。Archived Modeへの同一ModeのSetは新しいAssignmentを作らず、restore後は通常候補へ戻る。
+
+Deleteは明示確認付きの不可逆live Mode commandである。command成功時はowner-scoped live `entry_modes`をclearし、Mode archive、Board item、Mode definitionを削除して、残るModeのpositionをcompactし、Mode board revisionを一度だけincrementする。Task、Entry、Execution、`entry_mode_snapshots`、Day placement / placement revision、他のmetadataは削除・更新しない。結果は`mode_id`、新しい`board_revision`、`cleared_entry_count`を返す。対象が既に存在しないexact operation replayは既存operation resultへ収束し、別意味のoperation-id再利用は拒否する。
+
+Mode Boardのreorderはvisible subsetの操作をserver-owned canonical full orderへ復元して送る。検索、active / archived tabで隠れているModeの相対順は保持し、archiveはboard位置を保持し、restoreは保持位置へ戻す。Deleteだけは削除後にpositionをcompactする。
+
+Mode archive / deleteのAPI、権限、revision、target identity、operation replay、DB保存後検証のexact detailsは実装と`docs/ARCHITECTURE.md`を正本とする。Productionでの破壊的deleteはD-072のscope外であり、nonprod検証では明示したdisposable fixtureだけを対象にする。
 - Workerはread時のTaskChuteDay IDとexact logical date、Entry lifecycle、Routine relation、expected live relationをmutation batchのDELETE / INSERT / success operation全てでguardする。EntryのDay move、lifecycle change、expected relation changeとの競合はdeterministic conflictまたはtrue ambiguityへ収束し、relationだけのpartial successを残さない。canonical no-opもtarget authorityをguardしてsuccessを保存する。
 - current DayはD-066のglobal serial dispatcher、unsent coalesce、latest canonical expected relation rebase、sent exact retry、canonical reconcileを維持する。future established Dayは同一Entry scopeのdirect mutationで一件ずつ実行し、D-066 queueへ投入しない。ambiguous outcomeではcanonical requested relationならsuccessへ収束し、それ以外は同じoperation ID / exact payloadをretryする。
 - planned future rowはlive Mode titleを表示し、Mode rename後は新titleへ追随する。Start時だけその時点のlive titleをsnapshotへ保存する。move / duplicate、D-068 current behavior、D-069 Project assignment、AddTaskToDayの既存Mode pathは変更しない。

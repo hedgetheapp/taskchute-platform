@@ -1,7 +1,8 @@
 import type {
   CreateModeRequest, CreateModeResult, ModeBoardProjection, ModeBoardItemProjection,
   ReorderModesRequest, ReorderModesResult, SetEntryModeRequest, SetEntryModeResult,
-  UpdateModeRequest, UpdateModeResult,
+  UpdateModeRequest, UpdateModeResult, SetModeArchivedRequest, SetModeArchivedResult,
+  DeleteModeRequest, DeleteModeResult,
 } from "../../src/shared/contracts";
 import { isUuidV7 } from "../domain/uuidv7";
 import { persistRejection, readOperation, replayOperation, type CommandType } from "../persistence/operations";
@@ -41,8 +42,18 @@ export function isSetEntryModeRequest(value: unknown): value is SetEntryModeRequ
     && (value.expected_mode_id === null || (typeof value.expected_mode_id === "string" && isUuidV7(value.expected_mode_id)))
     && (value.mode_id === null || (typeof value.mode_id === "string" && isUuidV7(value.mode_id)));
 }
+export function isSetModeArchivedRequest(value: unknown): value is SetModeArchivedRequest {
+  return isRecord(value) && !('user_id' in value) && operationId(value.operation_id)
+    && typeof value.mode_id === 'string' && isUuidV7(value.mode_id)
+    && typeof value.archived === 'boolean' && isRevision(value.expected_settings_revision);
+}
+export function isDeleteModeRequest(value: unknown): value is DeleteModeRequest {
+  return isRecord(value) && !('user_id' in value) && operationId(value.operation_id)
+    && typeof value.mode_id === 'string' && isUuidV7(value.mode_id)
+    && isRevision(value.expected_settings_revision) && isRevision(value.expected_board_revision);
+}
 
-type ModeRow = { id: string; title: string; board_position: number; settings_revision: number };
+type ModeRow = { id: string; title: string; board_position: number; settings_revision: number; archived: number };
 
 async function reject<T>(db: D1Database, appUserId: string, request: { operation_id: string }, commandType: CommandType,
   requestFingerprint: string, code: "resource_not_found" | "resource_conflict", message: string): Promise<T> {
@@ -67,12 +78,18 @@ export async function loadModeBoard(db: D1Database, appUserId: string): Promise<
   const [head, rows] = await db.batch([
     db.prepare("SELECT board_revision FROM mode_board_heads WHERE app_user_id = ?").bind(appUserId),
     db.prepare(`SELECT m.id, m.title, i.board_position, i.settings_revision
+        , CASE WHEN a.mode_id IS NULL THEN 0 ELSE 1 END AS archived
       FROM mode_definitions m JOIN mode_board_items i ON i.app_user_id = m.app_user_id AND i.mode_id = m.id
+      LEFT JOIN mode_archives a ON a.app_user_id = m.app_user_id AND a.mode_id = m.id
       WHERE m.app_user_id = ? ORDER BY i.board_position, m.id`).bind(appUserId),
   ]);
   return {
     board_revision: (head.results[0] as { board_revision?: number } | undefined)?.board_revision ?? 0,
-    modes: rows.results.map((row) => row as ModeBoardItemProjection),
+    modes: rows.results.map((row) => {
+      const item = row as ModeRow;
+      return { id: item.id, title: item.title, archived: item.archived === 1,
+        board_position: item.board_position, settings_revision: item.settings_revision } satisfies ModeBoardItemProjection;
+    }),
   };
 }
 
@@ -207,6 +224,148 @@ export async function reorderModes(db: D1Database, appUserId: string, request: R
   }
 }
 
+export async function setModeArchived(db: D1Database, appUserId: string, request: SetModeArchivedRequest,
+  nowInstant = new Date().toISOString()): Promise<SetModeArchivedResult> {
+  const requestFingerprint = await fingerprint(request);
+  const prior = await readOperation(db, appUserId, request.operation_id);
+  if (prior) return replayOperation<SetModeArchivedResult>(prior, "SetModeArchived", requestFingerprint);
+  const row = await db.prepare(`SELECT m.id, m.title, i.board_position, i.settings_revision,
+      CASE WHEN a.mode_id IS NULL THEN 0 ELSE 1 END AS archived
+    FROM mode_definitions m JOIN mode_board_items i ON i.app_user_id = m.app_user_id AND i.mode_id = m.id
+    LEFT JOIN mode_archives a ON a.app_user_id = m.app_user_id AND a.mode_id = m.id
+    WHERE m.app_user_id = ? AND m.id = ?`).bind(appUserId, request.mode_id).first<ModeRow>();
+  if (!row) return reject(db, appUserId, request, "SetModeArchived", requestFingerprint, "resource_not_found", "Mode is unavailable");
+  if (row.settings_revision !== request.expected_settings_revision) {
+    return revisionReject(db, appUserId, request, "SetModeArchived", requestFingerprint, "The Mode settings revision is stale");
+  }
+  if ((row.archived === 1) === request.archived) {
+    return persistSuccess(db, appUserId, request.operation_id, "SetModeArchived", requestFingerprint,
+      { mode_id: request.mode_id, archived: request.archived, settings_revision: row.settings_revision }, nowInstant);
+  }
+  const result: SetModeArchivedResult = { mode_id: request.mode_id, archived: request.archived,
+    settings_revision: row.settings_revision + 1 };
+  try {
+    const [guard, archive, remove, revision, operation, cleanup] = await db.batch([
+      db.prepare(`INSERT INTO mode_command_guards (app_user_id, operation_id, mode_id, command_type)
+        SELECT ?, ?, ?, 'SetModeArchived' WHERE EXISTS
+          (SELECT 1 FROM mode_board_items WHERE app_user_id = ? AND mode_id = ? AND settings_revision = ?)`)
+        .bind(appUserId, request.operation_id, request.mode_id, appUserId, request.mode_id, request.expected_settings_revision),
+      request.archived
+        ? db.prepare(`INSERT INTO mode_archives (app_user_id, mode_id, archived_at)
+            SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM mode_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+          .bind(appUserId, request.mode_id, nowInstant, appUserId, request.operation_id)
+        : db.prepare("SELECT 1 AS noop"),
+      request.archived
+        ? db.prepare("SELECT 1 AS noop")
+        : db.prepare(`DELETE FROM mode_archives WHERE app_user_id = ? AND mode_id = ?
+            AND EXISTS (SELECT 1 FROM mode_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+          .bind(appUserId, request.mode_id, appUserId, request.operation_id),
+      db.prepare(`UPDATE mode_board_items SET settings_revision = settings_revision + 1
+        WHERE app_user_id = ? AND mode_id = ? AND settings_revision = ?
+          AND EXISTS (SELECT 1 FROM mode_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(appUserId, request.mode_id, request.expected_settings_revision, appUserId, request.operation_id),
+      db.prepare(`INSERT INTO operations
+        (app_user_id, operation_id, command_type, request_fingerprint_version, request_fingerprint,
+         outcome_kind, result_json, created_at) SELECT ?, ?, 'SetModeArchived', ?, ?, 'success', ?, ?
+        WHERE EXISTS (SELECT 1 FROM mode_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(appUserId, request.operation_id, REQUEST_FINGERPRINT_VERSION, requestFingerprint, JSON.stringify(result), nowInstant,
+          appUserId, request.operation_id),
+      db.prepare("DELETE FROM mode_command_guards WHERE app_user_id = ? AND operation_id = ?")
+        .bind(appUserId, request.operation_id),
+    ]);
+    if (guard.meta.changes === 0 || revision.meta.changes === 0 || operation.meta.changes === 0) {
+      const committed = await readOperation(db, appUserId, request.operation_id);
+      if (committed) return replayOperation<SetModeArchivedResult>(committed, "SetModeArchived", requestFingerprint);
+      return revisionReject(db, appUserId, request, "SetModeArchived", requestFingerprint, "The Mode changed before archive state could commit");
+    }
+    void archive; void remove; void cleanup;
+    return result;
+  } catch {
+    const committed = await readOperation(db, appUserId, request.operation_id);
+    if (committed) return replayOperation<SetModeArchivedResult>(committed, "SetModeArchived", requestFingerprint);
+    throw new HttpError(503, "infrastructure_ambiguous", "The Mode archive outcome is unknown; reload canonical state and retry", true);
+  }
+}
+
+export async function deleteMode(db: D1Database, appUserId: string, request: DeleteModeRequest,
+  nowInstant = new Date().toISOString()): Promise<DeleteModeResult> {
+  const requestFingerprint = await fingerprint(request);
+  const prior = await readOperation(db, appUserId, request.operation_id);
+  if (prior) return replayOperation<DeleteModeResult>(prior, "DeleteMode", requestFingerprint);
+  const row = await db.prepare(`SELECT m.id, m.title, i.board_position, i.settings_revision,
+      CASE WHEN a.mode_id IS NULL THEN 0 ELSE 1 END AS archived
+    FROM mode_definitions m JOIN mode_board_items i ON i.app_user_id = m.app_user_id AND i.mode_id = m.id
+    LEFT JOIN mode_archives a ON a.app_user_id = m.app_user_id AND a.mode_id = m.id
+    WHERE m.app_user_id = ? AND m.id = ?`).bind(appUserId, request.mode_id).first<ModeRow>();
+  if (!row) return reject(db, appUserId, request, "DeleteMode", requestFingerprint, "resource_not_found", "Mode is unavailable");
+  const head = await db.prepare("SELECT board_revision FROM mode_board_heads WHERE app_user_id = ?")
+    .bind(appUserId).first<{ board_revision: number }>();
+  if (row.settings_revision !== request.expected_settings_revision) {
+    return revisionReject(db, appUserId, request, "DeleteMode", requestFingerprint, "The Mode settings revision is stale");
+  }
+  if (!head || head.board_revision !== request.expected_board_revision) {
+    return revisionReject(db, appUserId, request, "DeleteMode", requestFingerprint, "The Mode board revision is stale");
+  }
+  const count = await db.prepare("SELECT COUNT(*) AS count FROM entry_modes WHERE app_user_id = ? AND mode_id = ?")
+    .bind(appUserId, request.mode_id).first<number>("count") ?? 0;
+  const result: DeleteModeResult = { mode_id: request.mode_id, board_revision: request.expected_board_revision + 1,
+    cleared_entry_count: count };
+  try {
+    const [guard, shift, clear, archive, item, definition, compact, bump, operation, cleanup] = await db.batch([
+      db.prepare(`INSERT INTO mode_command_guards (app_user_id, operation_id, mode_id, command_type)
+        SELECT ?, ?, ?, 'DeleteMode' FROM mode_board_items i JOIN mode_board_heads h
+          ON h.app_user_id = i.app_user_id
+        WHERE i.app_user_id = ? AND i.mode_id = ? AND i.settings_revision = ? AND h.board_revision = ?`)
+        .bind(appUserId, request.operation_id, request.mode_id, appUserId, request.mode_id,
+          request.expected_settings_revision, request.expected_board_revision),
+      db.prepare(`UPDATE mode_board_items SET board_position = board_position + 1000000
+        WHERE app_user_id = ? AND EXISTS (SELECT 1 FROM mode_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(appUserId, appUserId, request.operation_id),
+      db.prepare(`DELETE FROM entry_modes WHERE app_user_id = ? AND mode_id = ?
+        AND EXISTS (SELECT 1 FROM mode_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(appUserId, request.mode_id, appUserId, request.operation_id),
+      db.prepare(`DELETE FROM mode_archives WHERE app_user_id = ? AND mode_id = ?
+        AND EXISTS (SELECT 1 FROM mode_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(appUserId, request.mode_id, appUserId, request.operation_id),
+      db.prepare(`DELETE FROM mode_board_items WHERE app_user_id = ? AND mode_id = ?
+        AND EXISTS (SELECT 1 FROM mode_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(appUserId, request.mode_id, appUserId, request.operation_id),
+      db.prepare(`DELETE FROM mode_definitions WHERE app_user_id = ? AND id = ?
+        AND EXISTS (SELECT 1 FROM mode_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(appUserId, request.mode_id, appUserId, request.operation_id),
+      db.prepare(`UPDATE mode_board_items SET board_position = (
+          SELECT COUNT(*) FROM mode_board_items later
+           WHERE later.app_user_id = mode_board_items.app_user_id
+             AND later.board_position <= mode_board_items.board_position)
+        WHERE app_user_id = ? AND EXISTS (SELECT 1 FROM mode_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(appUserId, appUserId, request.operation_id),
+      db.prepare(`UPDATE mode_board_heads SET board_revision = board_revision + 1
+        WHERE app_user_id = ? AND board_revision = ?
+          AND EXISTS (SELECT 1 FROM mode_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(appUserId, request.expected_board_revision, appUserId, request.operation_id),
+      db.prepare(`INSERT INTO operations
+        (app_user_id, operation_id, command_type, request_fingerprint_version, request_fingerprint,
+         outcome_kind, result_json, created_at) SELECT ?, ?, 'DeleteMode', ?, ?, 'success', ?, ?
+        WHERE EXISTS (SELECT 1 FROM mode_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(appUserId, request.operation_id, REQUEST_FINGERPRINT_VERSION, requestFingerprint, JSON.stringify(result), nowInstant,
+          appUserId, request.operation_id),
+      db.prepare("DELETE FROM mode_command_guards WHERE app_user_id = ? AND operation_id = ?")
+        .bind(appUserId, request.operation_id),
+    ]);
+    if (guard.meta.changes === 0 || definition.meta.changes === 0 || bump.meta.changes === 0 || operation.meta.changes === 0) {
+      const committed = await readOperation(db, appUserId, request.operation_id);
+      if (committed) return replayOperation<DeleteModeResult>(committed, "DeleteMode", requestFingerprint);
+      return revisionReject(db, appUserId, request, "DeleteMode", requestFingerprint, "The Mode changed before deletion");
+    }
+    void shift; void clear; void archive; void item; void compact; void cleanup;
+    return result;
+  } catch {
+    const committed = await readOperation(db, appUserId, request.operation_id);
+    if (committed) return replayOperation<DeleteModeResult>(committed, "DeleteMode", requestFingerprint);
+    throw new HttpError(503, "infrastructure_ambiguous", "The Mode delete outcome is unknown; reload canonical state and retry", true);
+  }
+}
+
 export async function setEntryMode(db: D1Database, appUserId: string, input: SetEntryModeRequest,
   nowInstant = new Date().toISOString()): Promise<SetEntryModeResult> {
   const fp = await fingerprint(input);
@@ -233,8 +392,13 @@ export async function setEntryMode(db: D1Database, appUserId: string, input: Set
   if (entry.mode_id !== input.expected_mode_id) return revisionReject(db, appUserId, input, "SetEntryMode", fp, "The Entry Mode changed before editing");
   let title: string | null = null;
   if (input.mode_id !== null) {
-    const mode = await db.prepare("SELECT title FROM mode_definitions WHERE app_user_id = ? AND id = ?").bind(appUserId, input.mode_id).first<{ title: string }>();
+    const mode = await db.prepare(`SELECT m.title, CASE WHEN a.mode_id IS NULL THEN 0 ELSE 1 END AS archived
+      FROM mode_definitions m LEFT JOIN mode_archives a ON a.app_user_id = m.app_user_id AND a.mode_id = m.id
+      WHERE m.app_user_id = ? AND m.id = ?`).bind(appUserId, input.mode_id).first<{ title: string; archived: number }>();
     if (!mode) return reject(db, appUserId, input, "SetEntryMode", fp, "resource_not_found", "Mode is unavailable");
+    if (mode.archived === 1 && input.mode_id !== entry.mode_id) {
+      return reject(db, appUserId, input, "SetEntryMode", fp, "resource_conflict", "An archived Mode cannot be newly assigned");
+    }
     title = mode.title;
   }
   const result: SetEntryModeResult = { entry_id: input.entry_id, mode_id: input.mode_id, mode_title: title };

@@ -63,7 +63,8 @@ import { resolvePrincipal } from "./auth/principal";
 import { readBoundedJson } from "./http/json";
 import {
   createMode, isCreateModeRequest, isReorderModesRequest, isSetEntryModeRequest, isUpdateModeRequest,
-  loadModeBoard, reorderModes, setEntryMode, updateMode,
+  loadModeBoard, reorderModes, setEntryMode, updateMode, isSetModeArchivedRequest, setModeArchived,
+  isDeleteModeRequest, deleteMode,
 } from "./application/mode-management";
 
 const SECURITY_HEADERS: Record<string, string> = {
@@ -120,6 +121,22 @@ async function route(request: Request, env: Env): Promise<Response> {
     const body = await readBoundedJson(request);
     if (!isReorderModesRequest(body)) throw new HttpError(400, "malformed_request", "Invalid ReorderModes request");
     return Response.json(await reorderModes(env.APP_DB, principal.appUserId, body));
+  }
+  const modeArchiveMatch = url.pathname.match(/^\/api\/v1\/modes\/([^/]+)\/archive$/);
+  if (request.method === "POST" && modeArchiveMatch) {
+    const body = await readBoundedJson(request);
+    if (modeArchiveMatch[1] !== (body as { mode_id?: unknown })?.mode_id || !isSetModeArchivedRequest(body)) {
+      throw new HttpError(400, "malformed_request", "Invalid SetModeArchived request");
+    }
+    return Response.json(await setModeArchived(env.APP_DB, principal.appUserId, body));
+  }
+  const modeDeleteMatch = url.pathname.match(/^\/api\/v1\/modes\/([^/]+)\/delete$/);
+  if (request.method === "POST" && modeDeleteMatch) {
+    const body = await readBoundedJson(request);
+    if (modeDeleteMatch[1] !== (body as { mode_id?: unknown })?.mode_id || !isDeleteModeRequest(body)) {
+      throw new HttpError(400, "malformed_request", "Invalid DeleteMode request");
+    }
+    return Response.json(await deleteMode(env.APP_DB, principal.appUserId, body));
   }
   const modeUpdateMatch = url.pathname.match(/^\/api\/v1\/modes\/([^/]+)$/);
   if (request.method === "POST" && modeUpdateMatch) {

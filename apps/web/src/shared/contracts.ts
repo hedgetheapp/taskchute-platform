@@ -40,6 +40,7 @@ export interface ProjectBoardProjection {
 export interface ModeBoardItemProjection {
   id: string;
   title: string;
+  archived: boolean;
   board_position: number;
   settings_revision: number;
 }
@@ -82,6 +83,32 @@ export interface ReorderModesRequest {
 export interface ReorderModesResult {
   mode_ids: string[];
   board_revision: number;
+}
+
+export interface SetModeArchivedRequest {
+  operation_id: string;
+  mode_id: string;
+  archived: boolean;
+  expected_settings_revision: number;
+}
+
+export interface SetModeArchivedResult {
+  mode_id: string;
+  archived: boolean;
+  settings_revision: number;
+}
+
+export interface DeleteModeRequest {
+  operation_id: string;
+  mode_id: string;
+  expected_settings_revision: number;
+  expected_board_revision: number;
+}
+
+export interface DeleteModeResult {
+  mode_id: string;
+  board_revision: number;
+  cleared_entry_count: number;
 }
 
 export interface SetEntryModeRequest {

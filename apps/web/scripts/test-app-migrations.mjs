@@ -591,6 +591,18 @@ try {
   const modeOperationTable = query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'operations'")[0]?.sql ?? "";
   for (const command of ["CreateMode", "UpdateMode", "ReorderModes", "SetEntryMode"])
     assert(modeOperationTable.includes(command), `0021 must add ${command} to the operation CHECK`);
+  const preArchiveOperations = query("SELECT * FROM operations ORDER BY operation_id");
+  applyFile("migrations/app/0022_mode_archive_delete.sql");
+  assert.deepEqual(query("SELECT * FROM operations ORDER BY operation_id"), preArchiveOperations,
+    "0022 must preserve every operation row");
+  assert.deepEqual(query("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('mode_archives', 'mode_command_guards') ORDER BY name"),
+    [{ name: "mode_archives" }, { name: "mode_command_guards" }]);
+  const archiveOperationTable = query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'operations'")[0]?.sql ?? "";
+  for (const command of ["SetModeArchived", "DeleteMode"])
+    assert(archiveOperationTable.includes(command), `0022 must add ${command} to the operation CHECK`);
+  assert.deepEqual(query("SELECT COUNT(*) AS count FROM mode_archives"), [{ count: 0 }]);
+  assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
+  assert.deepEqual(query("PRAGMA foreign_key_check"), []);
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
   assert.deepEqual(query("PRAGMA foreign_key_check"), []);
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
@@ -808,7 +820,7 @@ try {
   assert.notEqual(duplicateActive.status, 0, "the active Execution unique index must reject a second active row");
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
   assert.deepEqual(query("PRAGMA foreign_key_check"), []);
-  console.log("migration regression: 4 scenarios passed (R2A normalization, R2B preservation/constraints, duplicate-Task fail-safe, Bulk Selection 0010/0011/0012/0013/0014/0015/0016/0017/0018/0019 preservation/constraints; fresh 0001 -> 0019 chain)");
+  console.log("migration regression: 4 scenarios passed (R2A normalization, R2B preservation/constraints, duplicate-Task fail-safe, Bulk Selection 0010/0011/0012/0013/0014/0015/0016/0017/0018/0019 preservation/constraints, Mode 0021/0022 preservation/constraints; fresh 0001 -> 0022 chain)");
 } finally {
   await rm(persistencePath, { recursive: true, force: true });
   await rm(failurePersistencePath, { recursive: true, force: true });

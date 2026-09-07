@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { uuidv7 } from "../src/shared/uuidv7";
 import { loadCurrentTaskChuteDay } from "../worker/application/load-current-day";
 import { completeEntry, startEntry } from "../worker/application/entry-lifecycle";
-import { createMode, loadModeBoard, reorderModes, setEntryMode, updateMode } from "../worker/application/mode-management";
+import { createMode, deleteMode, loadModeBoard, reorderModes, setEntryMode, setModeArchived, updateMode } from "../worker/application/mode-management";
 import { deleteCompletedEntry } from "../worker/application/delete-completed-entry";
 
 const now = "2026-09-05T12:00:00.000Z";
@@ -205,6 +205,41 @@ describe.sequential("D-068 Mode management", () => {
     await expect(setEntryMode(env.APP_DB, fixture.userId, { ...request, operation_id: uuidv7() }, now))
       .rejects.toMatchObject({ code: "revision_conflict" });
     expect(await env.APP_DB.prepare("SELECT mode_id FROM entry_modes WHERE entry_id = ?").bind(fixture.futureEntryId).first()).toEqual({ mode_id: modeId });
+    expect(await env.APP_DB.prepare("PRAGMA quick_check").first()).toEqual({ quick_check: "ok" });
+    expect((await env.APP_DB.prepare("PRAGMA foreign_key_check").all()).results).toEqual([]);
+  });
+
+  it("archives/restores and deletes live Mode state while retaining historical snapshot", async () => {
+    const fixture = await seed();
+    const modeId = await seedMode(fixture.userId, "Disposable");
+    const createBoard = await loadModeBoard(env.APP_DB, fixture.userId);
+    expect(createBoard.modes[0]).toMatchObject({ id: modeId, archived: false, settings_revision: 0 });
+    await setEntryMode(env.APP_DB, fixture.userId, { operation_id: uuidv7(), entry_id: fixture.entryId, expected_mode_id: null, mode_id: modeId }, now);
+    const started = await startEntry(env.APP_DB, fixture.userId, { operation_id: uuidv7(), entry_id: fixture.entryId, execution_id: uuidv7() }, now);
+    await completeEntry(env.APP_DB, fixture.userId, { operation_id: uuidv7(), entry_id: fixture.entryId, execution_id: started.execution.id });
+    const archive = await setModeArchived(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), mode_id: modeId, archived: true, expected_settings_revision: 0,
+    }, now);
+    expect(archive).toEqual({ mode_id: modeId, archived: true, settings_revision: 1 });
+    expect((await loadModeBoard(env.APP_DB, fixture.userId)).modes[0]?.archived).toBe(true);
+    const restore = await setModeArchived(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), mode_id: modeId, archived: false, expected_settings_revision: 1,
+    }, now);
+    expect(restore).toEqual({ mode_id: modeId, archived: false, settings_revision: 2 });
+    expect((await loadModeBoard(env.APP_DB, fixture.userId)).modes[0]?.archived).toBe(false);
+    const archiveAgain = await setModeArchived(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), mode_id: modeId, archived: true, expected_settings_revision: 2,
+    }, now);
+    expect(archiveAgain).toEqual({ mode_id: modeId, archived: true, settings_revision: 3 });
+    const deleted = await deleteMode(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), mode_id: modeId, expected_settings_revision: 3, expected_board_revision: 0,
+    }, now);
+    expect(deleted).toEqual({ mode_id: modeId, board_revision: 1, cleared_entry_count: 1 });
+    expect(await env.APP_DB.prepare("SELECT id FROM mode_definitions WHERE id = ?").bind(modeId).first()).toBeNull();
+    expect(await env.APP_DB.prepare("SELECT mode_id FROM entry_modes WHERE entry_id = ?").bind(fixture.entryId).first()).toBeNull();
+    expect(await env.APP_DB.prepare("SELECT mode_id, mode_title FROM entry_mode_snapshots WHERE entry_id = ?")
+      .bind(fixture.entryId).first()).toEqual({ mode_id: modeId, mode_title: "Disposable" });
+    expect(await env.APP_DB.prepare("SELECT id FROM executions WHERE entry_id = ?").bind(fixture.entryId).first()).not.toBeNull();
     expect(await env.APP_DB.prepare("PRAGMA quick_check").first()).toEqual({ quick_check: "ok" });
     expect((await env.APP_DB.prepare("PRAGMA foreign_key_check").all()).results).toEqual([]);
   });

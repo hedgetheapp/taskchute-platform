@@ -84,7 +84,9 @@ async function addTaskToEstablishedDay(
         .bind(appUserId, request.project_id)
       : db.prepare("SELECT 1 AS id"),
     request.mode_id
-      ? db.prepare("SELECT id FROM mode_definitions WHERE app_user_id = ? AND id = ?").bind(appUserId, request.mode_id)
+      ? db.prepare(`SELECT m.id FROM mode_definitions m WHERE m.app_user_id = ? AND m.id = ?
+          AND NOT EXISTS (SELECT 1 FROM mode_archives a WHERE a.app_user_id = m.app_user_id AND a.mode_id = m.id)`)
+        .bind(appUserId, request.mode_id)
       : db.prepare("SELECT 1 AS id"),
     db.prepare("SELECT id FROM tasks WHERE id = ?").bind(request.task_id),
     db.prepare("SELECT id FROM entries WHERE id = ?").bind(request.entry_id),
@@ -368,7 +370,8 @@ async function addTaskToFutureDay(
           AND ${configurationStillCurrent}
               AND (? IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.app_user_id = ? AND p.id = ?
                 AND NOT EXISTS (SELECT 1 FROM project_archives a WHERE a.app_user_id = p.app_user_id AND a.project_id = p.id)))
-              AND (? IS NULL OR EXISTS (SELECT 1 FROM mode_definitions m WHERE m.app_user_id = ? AND m.id = ?))
+              AND (? IS NULL OR EXISTS (SELECT 1 FROM mode_definitions m WHERE m.app_user_id = ? AND m.id = ?
+                AND NOT EXISTS (SELECT 1 FROM mode_archives a WHERE a.app_user_id = m.app_user_id AND a.mode_id = m.id)))
               AND (? IS NULL OR EXISTS (SELECT 1 FROM taskchute_day_section_contexts
                 WHERE app_user_id = ? AND taskchute_day_id = d.id AND section_id = ?))
           AND NOT EXISTS (SELECT 1 FROM tasks WHERE id = ?)

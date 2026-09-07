@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### D-072 Mode Settings management
+
+- Mode Settingsへcurrent-tab title search、`使用中` / `アーカイブ` tab、archive / restore、確認付きhard deleteを追加。
+- archived Modeは新規assignment候補から除外し、既存assignmentの表示、clear、activeへのreplaceを維持。
+- Mode deleteはlive relationだけをclearし、Task / Entry / Execution / historical snapshot / Day placementを保持するAPP `0022_mode_archive_delete.sql`を追加。
+- 検索やtabで絞り込まれたreorderでもcanonical full orderを維持し、archiveは位置を保持、delete後だけpositionをcompact。
+- local focused / migration / full regressionは確認済み。persistent nonprod migration、authenticated browser E2E、DB integrityは実施前であり、production / releaseは未実施。
+
 ### Bootstrap
 
 - Obsidian依存から独立したTaskChute Platform repositoryを初期化。
