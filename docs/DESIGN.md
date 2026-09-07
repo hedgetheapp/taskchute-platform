@@ -480,6 +480,14 @@ Mode selectorはProjectの後、Sectionの前に配置され、visual Tab order 
 
 set / replace / clearの各成功後はcanonical Dayへreconcileし、future rowはlive Mode titleを表示する。ModeDefinition rename後にfuture planned rowは新titleへ追随し、Startまではsnapshotを作らない。ambiguous outcomeではcanonical relationへ収束できる場合だけ保留を消し、未収束時は同じoperation identityのretry panelを表示する。navigation、Settings、logout、unload barrierは保留中のfuture Mode operationを破棄しない。
 
+## D-074 Day keyboard S / I
+
+DayBoard keyboard handling resolves the focused Entry's effective lifecycle from canonical projection plus the memory-only pending normal Start overlay. `S` dispatches the existing Start / Complete / D-073 Interrupt command and does not create client timestamps or synthetic lifecycle facts. After Start, Complete, or Interrupt reconciliation, the focused Entry is restored through the existing `data-focus-key` mechanism. A pending Start followed by `S` queues Complete with `dependsOnOperationId` and the pending Start's `execution_id`.
+
+`I` opens a memory-only draft with a local placement descriptor. Entry insertion uses an anchor Entry; Section insertion uses a Section-start descriptor. Draft rendering is placed directly after the anchor or between the Section's NULL planned-start area and its first scheduled row, while pending / canonical rows continue to come from the Day projection. Escape discards the draft and restores the source `data-focus-key`. Commit sends only title, explicit Mode choice, and the optional server placement intent; Project, estimate, and unrelated metadata are not copied.
+
+The Worker keeps AddTaskToDay as the single atomic command. For insertion, it reads the Section-scoped placement rows, verifies ordinary planned anchor / historical boundaries, computes the authoritative target planned minute and position, temporarily offsets planned rows to satisfy the existing unique position index, then writes their final positions and the new Entry in the same D1 batch. The Day revision, transaction assertion, operation record, and cleanup retain the existing D-066 placement pattern. `N` and ordinary append Add remain unchanged.
+
 ## D-073 Interrupt / Continuation Web interaction
 
 When an ordinary planned row B is started while ordinary row A is running on the current Day, the existing Start affordance sends `InterruptEntry` directly; there is no confirmation modal and no implicit `StartEntry` retry. The request freezes source active Execution identity, target Entry identity, target / continuation UUIDv7s, Day placement revision, and operation ID. Routine rows retain their existing disabled / normal boundary.

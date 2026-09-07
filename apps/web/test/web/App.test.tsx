@@ -1007,17 +1007,121 @@ describe("Dogfood Day shell", () => {
   it("starts and completes a focused Entry with S through the existing lifecycle paths", async () => {
     mocks.loadDay.mockResolvedValueOnce(populatedDay).mockResolvedValueOnce(runningDay).mockResolvedValueOnce(completedDay);
     render(<App />);
-    let row = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
+    const row = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
     row.focus();
     fireEvent.keyDown(row, { key: "s", code: "KeyS" });
     await waitFor(() => expect(mocks.startEntry).toHaveBeenCalledTimes(1));
     expect(mocks.startEntry.mock.calls[0][0].entry_id).toBe(firstEntry.id);
-    row = (await screen.findByRole("button", { name: "Canonical taskを完了" })).closest<HTMLElement>("[data-entry-id]")!;
-    row.focus();
-    fireEvent.keyDown(row, { key: "S", code: "KeyS", shiftKey: true });
+    await waitFor(() => expect(document.activeElement?.getAttribute("data-entry-id")).toBe(firstEntry.id));
+    fireEvent.keyDown(document.activeElement!, { key: "S", code: "KeyS", shiftKey: true });
     await waitFor(() => expect(mocks.completeEntry).toHaveBeenCalledTimes(1));
     expect(mocks.completeEntry.mock.calls[0][0]).toMatchObject({ entry_id: firstEntry.id, execution_id: runningDay.active_execution?.id });
     expect(await screen.findByLabelText("Canonical taskは完了済み")).toBeTruthy();
+  });
+
+  it("queues Complete from a second S while the focused Start is still pending", async () => {
+    const startRequest = deferred<void>();
+    let canonical = populatedDay;
+    mocks.loadDay.mockImplementation(async () => canonical);
+    mocks.startEntry.mockImplementation(async () => {
+      await startRequest.promise;
+      canonical = runningDay;
+    });
+    mocks.completeEntry.mockImplementation(async () => {
+      canonical = completedDay;
+    });
+    render(<App />);
+    const row = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
+    row.focus();
+    fireEvent.keyDown(row, { key: "s" });
+    await waitFor(() => expect(mocks.startEntry).toHaveBeenCalledTimes(1));
+    fireEvent.keyDown(document.activeElement!, { key: "s" });
+    expect(mocks.completeEntry).not.toHaveBeenCalled();
+    startRequest.resolve();
+    await waitFor(() => expect(mocks.completeEntry).toHaveBeenCalledTimes(1));
+    expect(mocks.completeEntry.mock.calls[0][0]).toMatchObject({
+      entry_id: firstEntry.id,
+      execution_id: mocks.startEntry.mock.calls[0][0].execution_id,
+    });
+  });
+
+  it("routes focused planned B through InterruptEntry with S while A is running", async () => {
+    const runningWithNext = {
+      ...runningDay,
+      sections: [{ ...runningDay.sections[0], entries: [{ ...firstEntry, lifecycle_state: "running" as const }, secondEntry] }, emptyDay.sections[1]],
+    };
+    mocks.loadDay.mockResolvedValue(runningWithNext);
+    render(<App />);
+    const row = (await screen.findByText("Second task")).closest<HTMLElement>("[data-entry-id]")!;
+    row.focus();
+    fireEvent.keyDown(row, { key: "s" });
+    await waitFor(() => expect(mocks.interruptEntry).toHaveBeenCalledTimes(1));
+    expect(mocks.interruptEntry.mock.calls[0][0]).toMatchObject({
+      source_entry_id: firstEntry.id,
+      target_entry_id: secondEntry.id,
+    });
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("opens I below a focused Task, preserves the source on Escape, and sends an after-entry intent", async () => {
+    mocks.loadDay.mockResolvedValue(twoPlannedDay);
+    render(<App />);
+    const row = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
+    row.focus();
+    fireEvent.keyDown(row, { key: "i" });
+    const input = screen.getByRole("textbox", { name: "MorningのTask名" });
+    const sectionGroup = row.closest<HTMLElement>(".section-group")!;
+    const rows = () => Array.from(sectionGroup.querySelectorAll<HTMLElement>(":scope > .task-row"));
+    expect(rows().findIndex((candidate) => candidate.classList.contains("draft-row")))
+      .toBe(rows().findIndex((candidate) => candidate.dataset.entryId === firstEntry.id) + 1);
+    fireEvent.keyDown(input, { key: "Escape" });
+    await waitFor(() => expect(document.activeElement).toBe(row));
+
+    fireEvent.keyDown(row, { key: "i" });
+    const secondInput = screen.getByRole("textbox", { name: "MorningのTask名" });
+    fireEvent.change(secondInput, { target: { value: "Inserted directly below" } });
+    fireEvent.keyDown(secondInput, { key: "Enter" });
+    await waitFor(() => expect(mocks.addTask).toHaveBeenCalledTimes(1));
+    expect(mocks.addTask.mock.calls[0][0]).toMatchObject({
+      title: "Inserted directly below",
+      section_id: morningId,
+      placement: { kind: "after_entry", anchor_entry_id: firstEntry.id },
+    });
+  });
+
+  it("opens I at the top of a Section scheduled area and sends a section-start intent", async () => {
+    const sectionStartDay: CurrentTaskChuteDayProjection = {
+      ...twoPlannedDay,
+      sections: [{ ...twoPlannedDay.sections[0], entries: [
+        firstEntry,
+        { ...secondEntry, planned_start_minute: 240 },
+        { ...thirdEntry, planned_start_minute: 720 },
+      ] }, emptyDay.sections[1]],
+    };
+    mocks.loadDay.mockResolvedValue(sectionStartDay);
+    render(<App />);
+    const summary = (await screen.findByRole("button", { name: "MorningにTaskを追加" }))
+      .closest<HTMLElement>(".section-summary")!;
+    summary.focus();
+    fireEvent.keyDown(summary, { key: "i" });
+    const input = screen.getByRole("textbox", { name: "MorningのTask名" });
+    const sectionGroup = summary.closest<HTMLElement>(".section-group")!;
+    const rows = Array.from(sectionGroup.querySelectorAll<HTMLElement>(":scope > .task-row"));
+    expect(rows.findIndex((candidate) => candidate.classList.contains("draft-row")))
+      .toBe(rows.findIndex((candidate) => candidate.dataset.entryId === secondEntry.id) - 1);
+    fireEvent.keyDown(input, { key: "Escape" });
+    await waitFor(() => expect(document.activeElement).toBe(summary));
+
+    fireEvent.keyDown(summary, { key: "i" });
+    const secondInput = screen.getByRole("textbox", { name: "MorningのTask名" });
+    fireEvent.change(secondInput, { target: { value: "First scheduled task" } });
+    fireEvent.keyDown(secondInput, { key: "Enter" });
+    await waitFor(() => expect(mocks.addTask).toHaveBeenCalledTimes(1));
+    expect(mocks.addTask.mock.calls[0][0]).toMatchObject({
+      title: "First scheduled task",
+      section_id: morningId,
+      placement: { kind: "section_start" },
+    });
   });
 
   it("routes ordinary Start B through InterruptEntry without a confirmation modal and renders the continuation", async () => {

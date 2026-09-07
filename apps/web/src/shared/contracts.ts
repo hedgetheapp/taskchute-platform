@@ -295,6 +295,10 @@ export interface CreateProjectResult {
   project: ProjectSummary;
 }
 
+export type AddTaskPlacementIntent =
+  | { kind: "after_entry"; anchor_entry_id: string }
+  | { kind: "section_start" };
+
 export interface AddTaskToDayRequest {
   operation_id: string;
   task_id: string;
@@ -306,6 +310,8 @@ export interface AddTaskToDayRequest {
   logical_date?: string;
   section_id: string | null;
   expected_placement_revision: number;
+  /** D-074: optional server-authoritative insertion intent for current-Day keyboard insertion. */
+  placement?: AddTaskPlacementIntent;
 }
 
 export interface AddTaskToDayResult {

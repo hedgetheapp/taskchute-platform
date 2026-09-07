@@ -333,6 +333,50 @@ describe.sequential("Day Navigation v0.1", () => {
       .bind(fixture.userId).first<number>("count")).toBe(0);
   });
 
+  it("atomically inserts after an ordinary planned Entry or at the Section scheduled start", async () => {
+    const fixture = await seedNavigationUser();
+    const first = futureRequest(fixture.sections[0]!);
+    await addTaskToDay(env.APP_DB, fixture.userId, first, now);
+    const second = {
+      operation_id: uuidv7(), task_id: uuidv7(), entry_id: uuidv7(), project_id: null, mode_id: null,
+      title: "Second task", taskchute_day_id: first.taskchute_day_id, section_id: fixture.sections[0]!,
+      expected_placement_revision: 1,
+    };
+    await addTaskToDay(env.APP_DB, fixture.userId, second, now);
+
+    const afterFirst = {
+      operation_id: uuidv7(), task_id: uuidv7(), entry_id: uuidv7(), project_id: null, mode_id: null,
+      title: "Inserted after first", taskchute_day_id: first.taskchute_day_id, section_id: fixture.sections[0]!,
+      expected_placement_revision: 2,
+      placement: { kind: "after_entry" as const, anchor_entry_id: first.entry_id },
+    };
+    await expect(addTaskToDay(env.APP_DB, fixture.userId, afterFirst, now)).resolves.toMatchObject({ position: 2, placement_revision: 3 });
+
+    const atStart = {
+      operation_id: uuidv7(), task_id: uuidv7(), entry_id: uuidv7(), project_id: null, mode_id: null,
+      title: "Inserted at start", taskchute_day_id: first.taskchute_day_id, section_id: fixture.sections[0]!,
+      expected_placement_revision: 3,
+      placement: { kind: "section_start" as const },
+    };
+    await expect(addTaskToDay(env.APP_DB, fixture.userId, atStart, now)).resolves.toMatchObject({ position: 1, placement_revision: 4 });
+
+    const projection = await loadTaskChuteDayByLogicalDate(env.APP_DB, fixture.userId, first.logical_date, now);
+    expect(projection.sections[0]?.entries.map((entry) => entry.id)).toEqual([
+      atStart.entry_id, first.entry_id, afterFirst.entry_id, second.entry_id,
+    ]);
+    expect(projection.sections[0]?.entries.map((entry) => entry.position)).toEqual([1, 2, 3, 4]);
+    expect(projection.sections[0]?.entries.every((entry) => entry.planned_start_minute === 300)).toBe(true);
+    expect(await env.APP_DB.prepare(`SELECT COUNT(*) AS count FROM entries
+      WHERE app_user_id = ? AND taskchute_day_id = ?`).bind(fixture.userId, first.taskchute_day_id).first<number>("count")).toBe(4);
+    expect(await env.APP_DB.prepare(`SELECT COUNT(DISTINCT position) AS count, COUNT(*) AS total FROM entries
+      WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id = ?`)
+      .bind(fixture.userId, first.taskchute_day_id, fixture.sections[0]).first()).toEqual({ count: 4, total: 4 });
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM placement_command_guards WHERE app_user_id = ?")
+      .bind(fixture.userId).first<number>("count")).toBe(0);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM transaction_assertions WHERE app_user_id = ?")
+      .bind(fixture.userId).first<number>("count")).toBe(0);
+  });
+
   it("keeps established future Section context frozen after a later configuration change", async () => {
     const fixture = await seedNavigationUser();
     const request = futureRequest(fixture.sections[0]!);

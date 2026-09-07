@@ -1,4 +1,4 @@
-import type { AddTaskToDayRequest, AddTaskToDayResult } from "../../src/shared/contracts";
+import type { AddTaskPlacementIntent, AddTaskToDayRequest, AddTaskToDayResult } from "../../src/shared/contracts";
 import { isLogicalDate } from "../domain/taskchute-day";
 import { isUuidV7 } from "../domain/uuidv7";
 import { persistRejection, readOperation, replayOperation } from "../persistence/operations";
@@ -26,12 +26,31 @@ export function isAddTaskToDayRequest(value: unknown): value is AddTaskToDayRequ
     isUuidV7(body.taskchute_day_id) &&
     (body.logical_date === undefined || (typeof body.logical_date === "string" && isLogicalDate(body.logical_date))) &&
     (body.section_id === null || (typeof body.section_id === "string" && isUuidV7(body.section_id))) &&
+    (body.placement === undefined || isAddTaskPlacementIntent(body.placement)) &&
     Number.isInteger(body.expected_placement_revision) &&
     Number(body.expected_placement_revision) >= 0
   );
 }
 
+function isAddTaskPlacementIntent(value: unknown): value is AddTaskPlacementIntent {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const placement = value as Record<string, unknown>;
+  if (placement.kind === "section_start") return Object.keys(placement).length === 1;
+  return placement.kind === "after_entry"
+    && typeof placement.anchor_entry_id === "string"
+    && isUuidV7(placement.anchor_entry_id)
+    && Object.keys(placement).length === 2;
+}
+
 interface DayCheck { placement_revision: number }
+
+interface PlacementRow {
+  id: string;
+  position: number;
+  lifecycle_state: "planned" | "running" | "completed";
+  planned_start_minute: number | null;
+  routine_occurrence_id: string | null;
+}
 
 function readDayCheck(rows: unknown[]): DayCheck | undefined {
   const row = rows[0];
@@ -41,6 +60,72 @@ function readDayCheck(rows: unknown[]): DayCheck | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== "number") throw new Error("Invalid persistence row: placement_revision");
   return { placement_revision: value };
+}
+
+function readPlacementRows(rows: unknown[]): PlacementRow[] {
+  return rows.map((row) => {
+    if (!row || typeof row !== "object" || Array.isArray(row)) throw new Error("Invalid persistence row: placement");
+    const value = row as Record<string, unknown>;
+    if (typeof value.id !== "string" || typeof value.position !== "number" || !Number.isInteger(value.position)
+      || (value.lifecycle_state !== "planned" && value.lifecycle_state !== "running" && value.lifecycle_state !== "completed")
+      || (value.planned_start_minute !== null && typeof value.planned_start_minute !== "number")
+      || (value.routine_occurrence_id !== null && typeof value.routine_occurrence_id !== "string")) {
+      throw new Error("Invalid persistence row: placement");
+    }
+    return {
+      id: value.id,
+      position: value.position,
+      lifecycle_state: value.lifecycle_state,
+      planned_start_minute: value.planned_start_minute,
+      routine_occurrence_id: value.routine_occurrence_id,
+    };
+  });
+}
+
+interface PlacementPlan {
+  position: number;
+  plannedStartMinute: number | null;
+  shiftFromPosition: number | null;
+  shiftOffset: number;
+}
+
+function derivePlacementPlan(
+  request: AddTaskToDayRequest,
+  sectionLogicalStartMinute: number | null,
+  rows: PlacementRow[],
+): PlacementPlan | { conflict: string } {
+  let plannedStartMinute = request.section_id === null ? null : sectionLogicalStartMinute;
+  const appendPosition = rows.reduce((max, row) => Math.max(max, row.position), 0) + 1;
+  if (!request.placement) return { position: appendPosition, plannedStartMinute, shiftFromPosition: null, shiftOffset: 0 };
+
+  let position: number;
+  if (request.placement.kind === "after_entry") {
+    const placement = request.placement;
+    const anchor = rows.find((row) => row.id === placement.anchor_entry_id);
+    if (!anchor || anchor.lifecycle_state !== "planned" || anchor.routine_occurrence_id !== null) {
+      return { conflict: "The insertion anchor is no longer a planned ordinary Task" };
+    }
+    position = anchor.position + 1;
+    plannedStartMinute = anchor.planned_start_minute;
+  } else {
+    const cohort = rows.filter((row) => row.lifecycle_state === "planned" && row.planned_start_minute === plannedStartMinute);
+    if (cohort.length > 0) {
+      position = Math.min(...cohort.map((row) => row.position));
+    } else if (plannedStartMinute === null) {
+      position = Math.min(...rows.filter((row) => row.lifecycle_state === "planned").map((row) => row.position), appendPosition);
+    } else {
+      position = Math.min(
+        ...rows.filter((row) => row.lifecycle_state === "planned" && row.planned_start_minute !== null)
+          .map((row) => row.position),
+        appendPosition,
+      );
+    }
+  }
+
+  if (rows.some((row) => row.lifecycle_state !== "planned" && row.position >= position)) {
+    return { conflict: "The requested insertion would reorder a historical execution" };
+  }
+  return { position, plannedStartMinute, shiftFromPosition: position, shiftOffset: appendPosition + rows.length + 1 };
 }
 
 async function reject(
@@ -68,7 +153,7 @@ async function addTaskToEstablishedDay(
 ): Promise<AddTaskToDayResult> {
   const context = { appUserId, request, requestFingerprint };
 
-  const [dayResult, sectionResult, projectResult, modeResult, taskCollisionResult, entryCollisionResult, positionResult] = await db.batch([
+  const [dayResult, sectionResult, projectResult, modeResult, taskCollisionResult, entryCollisionResult, placementRowsResult] = await db.batch([
     db
       .prepare("SELECT placement_revision FROM taskchute_days WHERE app_user_id = ? AND id = ?")
       .bind(appUserId, request.taskchute_day_id),
@@ -90,11 +175,9 @@ async function addTaskToEstablishedDay(
       : db.prepare("SELECT 1 AS id"),
     db.prepare("SELECT id FROM tasks WHERE id = ?").bind(request.task_id),
     db.prepare("SELECT id FROM entries WHERE id = ?").bind(request.entry_id),
-    db
-      .prepare(
-        "SELECT COALESCE(MAX(position), 0) + 1 AS next_position FROM entries WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id IS ?",
-      )
-      .bind(appUserId, request.taskchute_day_id, request.section_id),
+    db.prepare(`SELECT id, position, lifecycle_state, planned_start_minute, routine_occurrence_id
+      FROM entries WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id IS ?
+      ORDER BY position, id`).bind(appUserId, request.taskchute_day_id, request.section_id),
   ]);
   const day = readDayCheck(dayResult.results);
   if (!day) return reject(db, context, "resource_not_found", "TaskChuteDay is unavailable");
@@ -114,17 +197,13 @@ async function addTaskToEstablishedDay(
       result: { code: "revision_conflict", message: "The placement revision is stale" },
     });
   }
-  const positionRow = positionResult.results[0];
-  if (!positionRow || typeof positionRow !== "object" || Array.isArray(positionRow)) {
-    throw new Error("Invalid persistence row: next_position");
-  }
-  const position = (positionRow as Record<string, unknown>).next_position;
-  if (typeof position !== "number" || !Number.isInteger(position) || position < 1) {
-    throw new Error("Invalid persistence row: next_position");
-  }
-  const plannedStartMinute = request.section_id === null
+  const placementRows = readPlacementRows(placementRowsResult.results);
+  const sectionLogicalStartMinute = request.section_id === null
     ? null
     : (sectionResult.results[0] as { logical_start_minute: number }).logical_start_minute;
+  const placementPlan = derivePlacementPlan(request, sectionLogicalStartMinute, placementRows);
+  if ("conflict" in placementPlan) return reject(db, context, "resource_conflict", placementPlan.conflict);
+  const { position, plannedStartMinute } = placementPlan;
   const result: AddTaskToDayResult = {
     task_id: request.task_id,
     entry_id: request.entry_id,
@@ -160,6 +239,20 @@ async function addTaskToEstablishedDay(
               )`,
         )
         .bind(appUserId, request.taskchute_day_id, request.operation_id, appUserId),
+      ...(placementPlan.shiftFromPosition === null ? [] : [
+        db.prepare(`UPDATE entries SET position = position + ?
+          WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id IS ?
+            AND lifecycle_state = 'planned' AND position >= ?
+            AND EXISTS (SELECT 1 FROM placement_command_guards WHERE operation_id = ? AND app_user_id = ?)`)
+          .bind(placementPlan.shiftOffset, appUserId, request.taskchute_day_id, request.section_id,
+            placementPlan.shiftFromPosition, request.operation_id, appUserId),
+        db.prepare(`UPDATE entries SET position = position - ? + 1
+          WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id IS ?
+            AND lifecycle_state = 'planned' AND position >= ?
+            AND EXISTS (SELECT 1 FROM placement_command_guards WHERE operation_id = ? AND app_user_id = ?)`)
+          .bind(placementPlan.shiftOffset, appUserId, request.taskchute_day_id, request.section_id,
+            placementPlan.shiftFromPosition + placementPlan.shiftOffset, request.operation_id, appUserId),
+      ]),
       db
         .prepare(
           `INSERT INTO tasks (id, app_user_id, project_id, title, created_at)
@@ -207,6 +300,9 @@ async function addTaskToEstablishedDay(
              AND EXISTS (SELECT 1 FROM taskchute_days WHERE app_user_id = ? AND id = ? AND placement_revision = ?)
              AND EXISTS (SELECT 1 FROM tasks WHERE app_user_id = ? AND id = ?)
              AND EXISTS (SELECT 1 FROM entries WHERE app_user_id = ? AND id = ?)
+             AND EXISTS (SELECT 1 FROM entries WHERE app_user_id = ? AND id = ? AND position = ? AND planned_start_minute IS ?)
+             AND (SELECT COUNT(*) FROM entries WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id IS ?)
+               = (SELECT COUNT(DISTINCT position) FROM entries WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id IS ?)
            THEN 1 ELSE 0 END
             WHERE EXISTS (SELECT 1 FROM placement_command_guards WHERE operation_id = ? AND app_user_id = ?)`,
         )
@@ -223,6 +319,16 @@ async function addTaskToEstablishedDay(
           request.task_id,
           appUserId,
           request.entry_id,
+          appUserId,
+          request.entry_id,
+          position,
+          plannedStartMinute,
+          appUserId,
+          request.taskchute_day_id,
+          request.section_id,
+          appUserId,
+          request.taskchute_day_id,
+          request.section_id,
           request.operation_id,
           appUserId,
         ),
@@ -444,6 +550,9 @@ export async function addTaskToDay(
   const requestFingerprint = await fingerprint(semantic);
   const prior = await readOperation(db, appUserId, request.operation_id);
   if (prior) return replayOperation<AddTaskToDayResult>(prior, "AddTaskToDay", requestFingerprint);
+  if (request.logical_date && request.placement) {
+    return reject(db, { appUserId, request, requestFingerprint }, "resource_conflict", "Keyboard insertion is available only for an established current Day");
+  }
   return request.logical_date
     ? addTaskToFutureDay(db, appUserId, request as AddTaskToDayRequest & { logical_date: string }, requestFingerprint, semantic.title, nowInstant)
     : addTaskToEstablishedDay(db, appUserId, request, requestFingerprint, semantic.title);

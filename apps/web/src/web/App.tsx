@@ -79,7 +79,11 @@ type AuthState = "loading" | "signed-out" | "signed-in";
 type AppView = "today" | "routines" | "settings";
 type SettingsDestination = "section" | "project" | "mode";
 type FocusTarget = { kind: "section" | "entry"; id: string };
-type DraftTask = { sectionId: string | null; title: string; modeId: string | null };
+type DraftPlacement =
+  | { kind: "section-end"; restoreFocus: FocusTarget }
+  | { kind: "after-entry"; anchorEntryId: string; restoreFocus: FocusTarget }
+  | { kind: "section-start"; restoreFocus: FocusTarget };
+type DraftTask = { sectionId: string | null; title: string; modeId: string | null; placement: DraftPlacement };
 type DragEdge = "before" | "after";
 type EntryDragState = {
   entryId: string;
@@ -1424,7 +1428,7 @@ export function App() {
 
   useEffect(() => {
     if (draftTask) draftInputRef.current?.focus();
-  }, [draftTask?.sectionId]);
+  }, [draftTask?.sectionId, draftTask?.placement.kind, draftTask?.placement.kind === "after-entry" ? draftTask.placement.anchorEntryId : null]);
 
   useEffect(() => {
     if (!day) {
@@ -2302,6 +2306,11 @@ export function App() {
       ...(targetingNonCurrentDay ? { logical_date: day.taskchute_day.logical_date } : {}),
       section_id: draftTask.sectionId,
       expected_placement_revision: day.placement_revision,
+      ...(day.is_current && draftTask.placement.kind === "after-entry"
+        ? { placement: { kind: "after_entry" as const, anchor_entry_id: draftTask.placement.anchorEntryId } }
+        : day.is_current && draftTask.placement.kind === "section-start"
+          ? { placement: { kind: "section_start" as const } }
+          : {}),
     };
     setTaskOperation(operation);
     setDraftTask(null);
@@ -2661,6 +2670,7 @@ export function App() {
       await api.startEntry(operation);
       await reconcile();
       setStartOperation((current) => current?.operation_id === operation.operation_id ? null : current);
+      setPendingFocusKey(focusKey({ kind: "entry", id: operation.entry_id }));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "開始に失敗しました");
       const ambiguous = isAmbiguousOutcome(caught);
@@ -2694,6 +2704,7 @@ export function App() {
       await api.interruptEntry(operation);
       await reconcile();
       setInterruptOperation((current) => current?.operation_id === operation.operation_id ? null : current);
+      setPendingFocusKey(focusKey({ kind: "entry", id: operation.target_entry_id }));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "中断・継続作成に失敗しました");
       const ambiguous = isAmbiguousOutcome(caught);
@@ -2815,6 +2826,7 @@ export function App() {
       await api.completeEntry(operation);
       await reconcile();
       setCompleteOperation((current) => current?.operation_id === operation.operation_id ? null : current);
+      setPendingFocusKey(focusKey({ kind: "entry", id: operation.entry_id }));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "完了に失敗しました");
       const ambiguous = isAmbiguousOutcome(caught);
@@ -3913,7 +3925,30 @@ export function App() {
       return;
     }
     setSectionCollapsed(sectionId, false);
-    setDraftTask({ sectionId, title: "", modeId: null });
+    setDraftTask({ sectionId, title: "", modeId: null, placement: { kind: "section-end", restoreFocus: { kind: "section", id: groupKey(sectionId) } } });
+  }
+
+  function openTaskInsertDraft(entry: EntryProjection) {
+    if (!day?.is_current || mutationLocked || !day.planning_enabled || day.section_configuration_required
+      || entry.lifecycle_state !== "planned" || entry.routine !== null) return;
+    setSectionCollapsed(entry.section_id, false);
+    setDraftTask({
+      sectionId: entry.section_id,
+      title: "",
+      modeId: null,
+      placement: { kind: "after-entry", anchorEntryId: entry.id, restoreFocus: { kind: "entry", id: entry.id } },
+    });
+  }
+
+  function openSectionInsertDraft(section: { id: string | null }) {
+    if (!day?.is_current || mutationLocked || !day.planning_enabled || day.section_configuration_required) return;
+    setSectionCollapsed(section.id, false);
+    setDraftTask({
+      sectionId: section.id,
+      title: "",
+      modeId: null,
+      placement: { kind: "section-start", restoreFocus: { kind: "section", id: groupKey(section.id) } },
+    });
   }
 
   function handleDraftKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
@@ -3927,8 +3962,7 @@ export function App() {
     if (event.key === "Escape") {
       event.preventDefault();
       setDraftTask(null);
-      const sectionId = draftTask?.sectionId;
-      if (sectionId !== undefined) setPendingFocusKey(focusKey({ kind: "section", id: groupKey(sectionId) }));
+      if (draftTask) setPendingFocusKey(focusKey(draftTask.placement.restoreFocus));
     }
   }
 
@@ -4040,6 +4074,25 @@ export function App() {
       return;
     }
 
+    if (key === "i" && !event.repeat && !event.ctrlKey && !event.altKey && !event.metaKey) {
+      if (activeEntry) {
+        if (activeEntry.lifecycle_state === "planned" && activeEntry.routine === null) {
+          event.preventDefault();
+          openTaskInsertDraft(activeEntry);
+        }
+        return;
+      }
+      const sectionId = activeElement?.dataset.sectionId;
+      if (activeElement?.getAttribute("role") === "button" && sectionId !== undefined) {
+        event.preventDefault();
+        const section = sectionId === ""
+          ? { id: null }
+          : currentDay.sections.find((candidate) => candidate.id === sectionId);
+        if (section) openSectionInsertDraft(section);
+      }
+      return;
+    }
+
     if (key === "x" && !event.repeat && !event.ctrlKey && !event.altKey && !event.metaKey) {
       if (activeEntry && isBulkSelectableProjectionEntry(currentDay, activeEntry)) {
         event.preventDefault();
@@ -4053,12 +4106,15 @@ export function App() {
       const entryId = activeElement?.dataset.entryId;
       const entry = entryId ? allEntries.find((candidate) => candidate.id === entryId) : undefined;
       if (!entry || !currentDay.is_current || mutationLocked) return;
-      if (entry.lifecycle_state === "planned" && currentDay.active_execution === null) {
-        event.preventDefault();
-        void start(entry.id);
-      } else if (entry.lifecycle_state === "running" && currentDay.active_execution?.entry_id === entry.id) {
+      const pendingStart = startOperation?.entry_id === entry.id && isNormalPendingStart(startOperation) ? startOperation : null;
+      const effectiveComplete = pendingStart !== null
+        || (entry.lifecycle_state === "running" && currentDay.active_execution?.entry_id === entry.id);
+      if (effectiveComplete) {
         event.preventDefault();
         void complete(entry.id);
+      } else if (entry.lifecycle_state === "planned") {
+        event.preventDefault();
+        void start(entry.id);
       }
       return;
     }
@@ -4500,6 +4556,22 @@ export function App() {
     return <span className={`${definition.cellClassName} muted`} data-day-column-cell={key}><EmptyValue /></span>;
   }
 
+  function renderDraftRow(section: { id: string | null; title: string }) {
+    if (!draftTask || draftTask.sectionId !== section.id) return null;
+    const draft = draftTask;
+    return (
+      <form className="task-row draft-row" aria-label={`${section.title}の新規Task`} onSubmit={commitDraft}>
+        <span className="bulk-slot" aria-hidden="true" />
+        <span className="execution-cell" aria-hidden="true"><span className="execution-control is-draft">○</span></span>
+        <label className="draft-name"><span className="sr-only">Task名</span><input ref={draftInputRef} name="title" maxLength={300} value={draft.title} placeholder="Task名を入力…" aria-label={`${section.title}のTask名`} onChange={(event) => setDraftTask({ ...draft, title: event.target.value })} onCompositionStart={() => { draftCompositionRef.current = true; }} onCompositionEnd={() => { draftCompositionRef.current = false; }} onKeyDown={handleDraftKeyDown} onBlur={(event) => {
+          if (!draft.title.trim() && !event.currentTarget.form?.contains(event.relatedTarget as Node | null)) setDraftTask(null);
+        }} /></label>
+        {resolvedColumnDefinitions.map((definition) => <Fragment key={definition.key}>{renderDraftColumn(section, definition.key)}</Fragment>)}
+        <span className="row-actions-slot" aria-hidden="true" />
+      </form>
+    );
+  }
+
   return (
     <div className={`app-layout${sidebarOpen ? "" : " sidebar-closed"}`} data-sidebar-state={sidebarOpen ? "open" : "closed"}>
       {sidebarOpen && <aside className="primary-sidebar">
@@ -4684,8 +4756,9 @@ export function App() {
           <dl className="shortcut-help-list">
             <div><dt>↓ / J</dt><dd>次のvisible Taskへ移動</dd></div>
             <div><dt>↑ / K</dt><dd>前のvisible Taskへ移動</dd></div>
-            <div><dt>S</dt><dd>Taskを開始 / 実行中Taskを完了</dd></div>
+            <div><dt>S</dt><dd>Taskを開始 / 実行中Taskを完了（別Task実行中は中断・継続）</dd></div>
             <div><dt>N</dt><dd>現在のSectionにTaskを追加</dd></div>
+            <div><dt>I</dt><dd>Taskの直下 / Sectionの予定領域先頭にTaskを挿入</dd></div>
             <div><dt>E</dt><dd>ordinary planned Taskの名前を編集</dd></div>
             <div><dt>D</dt><dd>single planned Taskの削除確認</dd></div>
             <div><dt>Shift + ← / →</dt><dd>前日 / 翌日へ移動</dd></div>
@@ -5091,6 +5164,7 @@ export function App() {
                 aria-expanded={!sectionCollapsed}
                 aria-label={`${section.title}を${sectionCollapsed ? "展開" : "折りたたむ"}`}
                 data-day-focus-target
+                data-section-id={section.id ?? ""}
                 data-focus-key={focusKey(sectionTarget)}
                 data-drop-target={sectionDropActive ? "valid" : undefined}
                 onMouseMove={(event) => updateSectionMouseTarget(event, section.id)}
@@ -5124,17 +5198,7 @@ export function App() {
               {sectionDropPlaceholder && visibleEntries.length === 0 && sectionDropPlaceholder}
               {sectionDropActive && sectionCollapsed && <div className="section-drop-cue" aria-hidden="true">このSectionへ移動</div>}
 
-              {!sectionCollapsed && draftTask?.sectionId === section.id && (
-                <form className="task-row draft-row" aria-label={`${section.title}の新規Task`} onSubmit={commitDraft}>
-                  <span className="bulk-slot" aria-hidden="true" />
-                  <span className="execution-cell" aria-hidden="true"><span className="execution-control is-draft">○</span></span>
-                  <label className="draft-name"><span className="sr-only">Task名</span><input ref={draftInputRef} name="title" maxLength={300} value={draftTask.title} placeholder="Task名を入力…" aria-label={`${section.title}のTask名`} onChange={(event) => setDraftTask({ ...draftTask, title: event.target.value })} onCompositionStart={() => { draftCompositionRef.current = true; }} onCompositionEnd={() => { draftCompositionRef.current = false; }} onKeyDown={handleDraftKeyDown} onBlur={(event) => {
-                    if (!draftTask.title.trim() && !event.currentTarget.form?.contains(event.relatedTarget as Node | null)) setDraftTask(null);
-                  }} /></label>
-                  {resolvedColumnDefinitions.map((definition) => <Fragment key={definition.key}>{renderDraftColumn(section, definition.key)}</Fragment>)}
-                  <span className="row-actions-slot" aria-hidden="true" />
-                </form>
-              )}
+              {!sectionCollapsed && draftTask?.placement.kind === "section-end" && renderDraftRow(section)}
 
               {!sectionCollapsed && pendingAdds.map((item) => (
                 <div className="task-row task-row-pending" key={`pending:${item.operation.entry_id}`} data-entry-id={item.operation.entry_id} aria-busy="true">
@@ -5176,9 +5240,9 @@ export function App() {
                 </div>
               ))}
 
-              {!sectionCollapsed && visibleEntries.map((entry) => {
+              {!sectionCollapsed && visibleEntries.map((entry, entryIndex) => {
                 const entryTarget: FocusTarget = { kind: "entry", id: entry.id };
-                const pendingStartForEntry = startOperation?.entry_id === entry.id;
+                const pendingStartForEntry = startOperation?.entry_id === entry.id && isNormalPendingStart(startOperation);
                 const isRunning = entry.lifecycle_state === "running" || pendingStartForEntry;
                 const canComplete = (entry.lifecycle_state === "running" && day.active_execution?.entry_id === entry.id) || pendingStartForEntry;
                 const activeEntryForRow = day.active_execution ? entryForId(day, day.active_execution.entry_id) : null;
@@ -5191,8 +5255,19 @@ export function App() {
                 const canDeleteCompleted = day.is_current && Boolean(day.taskchute_day.id) && entry.lifecycle_state === "completed";
                 const hasOverflowActions = canMoveDate || canEditPlanning || canDuplicate || canDeleteCompleted;
                 const completeRetained = isRetainedComplete(completeOperation);
+                const draftPlacement = draftTask?.placement;
+                const sectionStartIndex = draftPlacement?.kind === "section-start"
+                  ? visibleEntries.findIndex((candidate) => section.id === null
+                    ? candidate.planned_start_minute !== null
+                    : candidate.planned_start_minute !== null)
+                  : -1;
+                const shouldRenderBefore = draftTask?.sectionId === section.id
+                  && ((draftPlacement?.kind === "section-start" && (sectionStartIndex < 0 ? entryIndex === visibleEntries.length - 1 : entryIndex === sectionStartIndex))
+                    || (draftPlacement?.kind === "after-entry" && draftPlacement.anchorEntryId === entry.id));
                 return (
-                  <div className={`task-row task-drag-surface state-${entry.lifecycle_state}${selectedEntryIds.includes(entry.id) ? " is-selected" : ""}${entryDrag?.entryId === entry.id ? " is-dragging" : ""}${entryDrag?.targetEntryId === entry.id && entryDrag.edge ? ` drop-${entryDrag.edge}` : ""}`} key={entry.id} tabIndex={0} aria-selected={selectedEntryIds.includes(entry.id)}
+                  <Fragment key={entry.id}>
+                  {shouldRenderBefore && draftPlacement?.kind === "section-start" && renderDraftRow(section)}
+                  <div className={`task-row task-drag-surface state-${entry.lifecycle_state}${selectedEntryIds.includes(entry.id) ? " is-selected" : ""}${entryDrag?.entryId === entry.id ? " is-dragging" : ""}${entryDrag?.targetEntryId === entry.id && entryDrag.edge ? ` drop-${entryDrag.edge}` : ""}`} tabIndex={0} aria-selected={selectedEntryIds.includes(entry.id)}
                     data-entry-id={entry.id} data-section-id={section.id ?? ""} data-day-focus-target data-focus-key={focusKey(entryTarget)}
                     draggable={canDrag && !mutationLocked && !hasRetainedMutationScope(placementMutationScope())}
                     data-drag-surface="row" title={canDrag ? "ドラッグして並び替え" : undefined}
@@ -5319,8 +5394,11 @@ export function App() {
                       </div>
                     ) : <span className="row-actions-slot" aria-hidden="true" />}
                   </div>
+                  {shouldRenderBefore && draftPlacement?.kind === "after-entry" && renderDraftRow(section)}
+                  </Fragment>
                 );
               })}
+              {!sectionCollapsed && draftTask?.placement.kind === "section-start" && visibleEntries.length === 0 && renderDraftRow(section)}
               {sectionDropPlaceholder && visibleEntries.length > 0 && sectionDropPlaceholder}
               {!sectionCollapsed && visibleEntries.length === 0 && pendingAdds.length === 0 && draftTask?.sectionId !== section.id && <p className="empty-row"><span>表示するTaskはありません</span></p>}
             </div>

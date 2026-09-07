@@ -1584,3 +1584,18 @@ D-073はcurrent logical Dayのordinary planned Entry Bを、running ordinary Ent
 - D-066へInterruptをsingle logical queued mutationとして統合し、execution lane + source / target Entry + placement Dayをscopeとする。sent payloadはfreezeし、ambiguous outcomeではexact requestを保持する。normal Start / Complete、Mode D-068〜D-072、Day Navigationは回帰対象として維持する。
 
 Persistent nonprod / production boundaries、exact evidence、NOT_VERIFIEDは`docs/CURRENT.md`、`docs/FEATURES.md`、`docs/SPEC.md`、`docs/ARCHITECTURE.md`、`docs/DESIGN.md`、`docs/TEST_MATRIX.md`、`docs/OPEN_QUESTIONS.md`、`docs/RISKS.md`へ記録する。production、restore、branch / PR / merge / tag / releaseは本Decisionの対象外であり、Releasedは`NO`のままとする。
+
+## D-074 — Day keyboard S / I insertion workflow
+
+Status: Approved
+
+D-074はcurrent Dayのordinary planned Taskに対するキーボード操作を、既存D-066 / D-073のcommand・dispatcher・focus boundary内で補正する。新しい永続queue、認証、schema、migration、実行semanticsは追加しない。
+
+- `S`はfocused ordinary Taskのeffective stateをserver canonical projectionとpending Start overlayの組み合わせで解決する。plannedなら既存`StartEntry`、runningなら既存`CompleteEntry`、pending Startなら同じ`execution_id`を使うCompleteをdependent queueへ置く。Aがrunning中にplanned ordinary Bへ`S`を送った場合は、既存D-073と同じ`InterruptEntry` pathを使い、確認modalを追加しない。Start / Complete / Interrupt成功後は対象Taskのfocusを復帰し、manual refocusを要求しない。
+- `S`はrepeat、modifier、IME、input / textarea / select / contenteditable、completed / non-current / Routine / modal等のunsafe surfaceではmutationを送らない。既存のD-066 serial dispatcher、exact operation identity、ambiguous retry、canonical reconcileを維持する。
+- `I`はcurrent Dayのfocused ordinary planned Taskでは同じSection・同じplanned startのdirect-after draft、focused Section summaryでは同Sectionのscheduled area先頭 draftを開く。Sectionのplanned-start-NULL rowsはscheduled rowsより前に保持し、同じplanned-start cohortの先頭へ置く。`Sectionなし`はNULL planned-start unscheduled cohortの先頭とする。Routine / completed / non-current / modal / text editingは対象外とする。
+- IのdraftはTask title / Modeだけを入力し、Project、estimate、その他metadataをanchorから継承しない。Escapeはwriteなしでsource EntryまたはSection summaryへfocusを戻す。既存N / plusの通常末尾追加は不変である。
+- AddTaskToDayはoptional `placement` intent（`after_entry`または`section_start`）を後方互換で受け、serverがanchor / Section context、planned start、positionをcanonicalに再計算する。shiftは同一atomic D1 batch内で行い、Day `placement_revision`は一回だけ増やす。historical completed / running rowを跨ぐ挿入、anchorの変化、stale revision、owner / relation不一致はpartial writeなしでreject / retry boundaryへ収束する。成功operationのexact fingerprint / replay、guard、assertion、duplicate position防止を維持する。
+- APP / AUTH migration、既存schema変更、new command、D-066のfuture queue化、historical rowの再設計、dependency、production / restore / cleanup、branch / PR / merge / tag / releaseは対象外であり、必要になった場合はSTOPする。
+
+Implementation、focused / full regression、persistent nonprod browser / read-only DB evidenceは`docs/CURRENT.md`、`docs/FEATURES.md`、`docs/SPEC.md`、`docs/DESIGN.md`、`docs/TEST_MATRIX.md`、`docs/RISKS.md`へ記録する。Releasedは`NO`のままとする。
