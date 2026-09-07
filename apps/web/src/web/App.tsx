@@ -4283,7 +4283,7 @@ export function App() {
            {editable ? <select className="mode-selector" aria-label={`${entry.task.title}のMode`} value={modeId ?? ""}
             disabled={modeMutationBusy}
             onChange={(event) => commitEntryMode(entry, event.target.value || null)}>
-            <option value="">Modeなし</option>
+            <option value="">—</option>
             {(modeBoard?.modes ?? []).map((mode) => <option value={mode.id} key={mode.id}>{mode.title}</option>)}
           </select> : modeTitle ?? <EmptyValue label="Mode未設定" />}
         </span>;
@@ -4410,7 +4410,7 @@ export function App() {
     if (key === "mode") return <span className="mode-cell" data-day-column-cell={key} onClick={(event) => event.stopPropagation()}>
       <select className="mode-selector" aria-label="新しいTaskのMode" value={draftTask?.modeId ?? ""}
         onChange={(event) => setDraftTask((current) => current ? { ...current, modeId: event.target.value || null } : current)}>
-        <option value="">Modeなし</option>
+        <option value="">—</option>
         {(modeBoard?.modes ?? []).map((mode) => <option value={mode.id} key={mode.id}>{mode.title}</option>)}
       </select>
     </span>;

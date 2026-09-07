@@ -3836,6 +3836,7 @@ describe("Dogfood Day shell", () => {
     const modeSelect = mode as unknown as HTMLSelectElement;
     await within(mode).findByRole("option", { name: "Focus" });
     expect(modeSelect.value).toBe("");
+    expect(within(mode).getByRole("option", { name: "—" })).toBeTruthy();
     fireEvent.change(mode, { target: { value: firstModeId } });
     await waitFor(() => expect(mocks.setEntryMode).toHaveBeenCalledTimes(1));
     expect(mocks.setEntryMode.mock.calls[0][0]).toMatchObject({ expected_mode_id: null, mode_id: firstModeId });
@@ -3850,6 +3851,7 @@ describe("Dogfood Day shell", () => {
     await waitFor(() => expect(mocks.setEntryMode).toHaveBeenCalledTimes(3));
     expect(mocks.setEntryMode.mock.calls[2][0]).toMatchObject({ expected_mode_id: secondModeId, mode_id: null });
     await waitFor(() => expect((screen.getByRole("combobox", { name: "Canonical taskのMode" }) as unknown as HTMLSelectElement).value).toBe(""));
+    expect(within(screen.getByRole("combobox", { name: "Canonical taskのMode" })).getByRole("option", { name: "—" })).toBeTruthy();
 
     modeId = firstModeId;
     modeTitle = "Deep Work";
@@ -3860,6 +3862,16 @@ describe("Dogfood Day shell", () => {
     const renamedMode = screen.getByRole("combobox", { name: "Canonical taskのMode" });
     expect((renamedMode as unknown as HTMLSelectElement).value).toBe(firstModeId);
     expect(within(renamedMode).getByRole("option", { name: "Deep Work" })).toBeTruthy();
+  });
+
+  it("shows the canonical unset Mode label for a current ordinary planned Entry", async () => {
+    mocks.loadDay.mockResolvedValue(populatedDay);
+    mocks.loadModeBoard.mockResolvedValue({ board_revision: 1, modes: [{ id: "mode", title: "Focus", board_position: 1, settings_revision: 0 }] });
+    render(<App />);
+
+    const mode = await screen.findByRole("combobox", { name: "Canonical taskのMode" });
+    expect((mode as unknown as HTMLSelectElement).value).toBe("");
+    expect(within(mode).getByRole("option", { name: "—" })).toBeTruthy();
   });
 
   it("retains one exact future Mode retry and blocks a second same-entry submit while unresolved", async () => {
