@@ -2000,3 +2000,23 @@ D-071 closeout evidence:
 - exact `main@b8c0428d2b097a4540131bc80c34616100381bff`をcanonical generated nonprod configからdeploy。Worker `taskchute-web-nonprod` version `4af4efed-00f6-49de-b950-5745d64db0c4`、`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、既存APP/AUTH binding、`migrations=[]`。APP/AUTH pendingはdeploy前後`0 / 0`、root / protected / bootstrapは`200 / 401 / 404`。
 - authenticated browserはMode row高`48px`、action列`52px`、header / table / draft parity、visible orderなし、overflow rename、title-click rename、before / after D&D、reload persistence、J/K、help / focus restore、search / tabs / archive / delete不在をPASS。検証用rename / reorderは各2回successで元title / orderへ復帰し、console warning / error `0 / 0`。
 - APP read-onlyはMode IDs `01a07731-b966-73eb-81a2-4db9208ca237` / `01a07731-d597-7fad-86c8-3a9677e951cc`を維持し、最終position `1 / 2`、settings revision `3 / 0`、board revision `4`。Projects / Tasks / Entries / Executions / operations `1 / 31 / 22 / 13 / 155`、Mode definitions / relations `2 / 2`、active Execution / orphan entry_mode `0 / 0`。APP/AUTH quick_check `ok`、FK empty、rows_written `0`、AUTH users / accounts / sessions `1 / 1 / 6`。production、restore、cleanup、credential / bootstrap変更、releaseは`NOT_RUN`。
+
+## D-074 Day keyboard S / I insertion — 2026-09-07
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D074-DOM-01 | S lifecycle | focused ordinary planned Taskの`S` Start → focusを変えない2回目`S` Complete、pending Startのdependent Complete、execution identity保持 | focused Web `4 / 4` + APP executions / operations | PASS |
+| D074-DOM-02 | Interrupt routing | running ordinary A中のplanned ordinary Bへの`S`がmodalなしでD-073 `InterruptEntry`へ進み、A history / B active / continuation plannedを保持 | focused Web + persistent authenticated browser + APP rows | PASS |
+| D074-DOM-03 | Task insertion | Task focusの`I`がsame Section / planned-start cohortのdirect-below draftを開き、server-authoritative atomic placementを行う。Escapeはno-write / focus restore | focused Web + focused placement Worker `6 / 6` | PASS |
+| D074-DOM-04 | Section insertion | real Section summaryの`I`がSection logical startのscheduled area先頭へ挿入し、NULL planned rowsを先行保持する | focused Web + focused placement Worker `6 / 6` | PASS |
+| D074-REG-01 | Regression | N / append Add、D-066 / D-073、planned ordering、Mode / Project metadata、history safety | full Web `4 files / 233 tests` + full Worker `24 files / 207 tests` | PASS |
+| D074-MIG-01 | Migration | new migration / schema changeなし、既存migration chain / constraints / pendingを維持 | migration regression `4 scenarios PASS`、APP/AUTH pending `0 / 0` | PASS |
+| D074-ENV-01 | Persistent nonprod | backup HARD GATE、exact nonprod build / dry-run / deploy、安全probe、read-only APP/AUTH integrity | Worker `aebc48f2-0b23-4073-9d18-4aa055f5ec17`、`200 / 401 / 404`、quick/FK/rows_written | PASS |
+| D074-ENV-02 | Authenticated browser | S Start → S Complete、A/B Interrupt、Task I、Section I、reload / fresh authenticated tab、console | existing authenticated session、same-tab reload、fresh tab、console warning/error `0 / 0` | PASS |
+
+D-074 evidence closeout:
+
+- Canonical remote `main`は実装前後に確認し、実装commit `231510858202ceef354921d313f1290204f3d194`をfast-forward pushした。docs closeoutはこのcommit上で行う。既存のuntracked review artifactsは変更・stageしない。
+- APP backupは`233140 bytes` / SHA-256 `17B39FD0ACF33834DE7AC7B62F946533CC927A5C4A3310B6DE458DF6A0F1D40D`、AUTH backupは`5136 bytes` / SHA-256 `9B76AF435863B1E7C698D9587887239198464C7E9AEEE0443E55558A97176CFD`。両方をisolated sqlite recoveryへimportし、quick check `ok`、FK empty、migration metadata保持を確認した。restoreは行っていない。
+- APP read-onlyではlogical Day `2026-09-07`のplacement revision `39`、Section I / Task I / Task I child / Interrupt Aのpositions `17 / 18 / 19 / 20`、continuation position `21`、planned minute `1200 / 1200 / 1200 / 1200 / 1356`、source / target / childのterminal outcome、same continuation chain / parent、duplicate positions emptyを確認した。APP / AUTH全audit queryの`rows_written`は`0`、APP quick check `ok`、FK empty、AUTH users / accounts / sessions `1 / 1 / 6`、quick check `ok`、FK emptyである。
+- Existing authenticated sessionをcredential操作なしで利用し、UI fixtureをnonprodへ残した。production、restore、destructive cleanup、bootstrap変更、credential / permission / binding変更、tag / releaseは`NOT_RUN`。Classification: `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / MAIN_PUSHED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_BROWSER_VERIFIED / DB_INTEGRITY_VERIFIED / MIGRATION_NOT_REQUIRED / PRODUCTION_NOT_RUN / RESTORE_NOT_RUN / CLEANUP_NOT_RUN / RELEASED_NO`。

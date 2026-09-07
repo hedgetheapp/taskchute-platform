@@ -347,3 +347,17 @@ Current mitigation / evidence:
 - Existing authenticated sessionでsame-SectionのA Start → 同一interrupt minute cohort → later-minute B normal Start（confirmationなし）を実施し、A visible `中断済み` / B running / continuation plannedを確認した。B Complete後もcontinuationはplannedのまま残り、reload / fresh authenticated tab、console warning / error emptyをPASSした。Persistent rowsでもsource outcome、target completion、same chain / parent、Section / position / logical minute、Bのplanned minute不変とinsertion後positionを突合した。複数continuationのProduct semanticsは引き続きOpen Questionであり、今回のplacement correctiveでは決定していない。
 
 Routine / Quick Interrupt / non-current Day / auto-resume / Review UI / production remain outside the mitigated scope.
+
+## R-021 — Day keyboard shortcut focus / insertion convergence risk
+Related: D-020, D-031, D-039, D-066, D-073, D-074
+
+Keyboard shortcuts combine browser focus, an in-memory draft, execution identity, interrupt routing, and server-authoritative placement. A regression could complete the wrong Entry, create a duplicate dependent execution, route a planned B through a confirmation modal instead of `InterruptEntry`, or place a new row outside the canonical NULL-first / planned-start / manual-position order.
+
+Current mitigation / evidence:
+
+- `S` is accepted only inside the existing safe current-Day ordinary Task boundary. A normal pending Start queues a dependent Complete against the same execution identity; a planned B while ordinary A is running uses the existing D-073 interrupt path. Modifiers, input / IME, repeat, modal, non-current, completed, and unsafe focus paths remain no-write.
+- `I` opens only a memory-only draft. Task insertion uses an explicit `after_entry` intent; Section insertion uses `section_start`. The Worker revalidates Day / Section / lifecycle / planned-start authority and performs the shift, Task / Entry, optional Mode, assertion, operation, and revision exactly once in one batch. Existing metadata is not copied and N / append Add is unchanged.
+- focused Web `4 / 4`、focused placement Worker `6 / 6`、full Web `4 files / 233 tests`、full Worker `24 files / 207 tests`、migration regression `4 scenarios`、typecheck / builds / dry-run / diff-check PASS。Persistent nonprod authenticated browserではS Start → S Complete、A/B Interrupt、Task I、Section I、same-tab reload / fresh-tabを確認し、console warning / errorは`0 / 0`。
+- APP read-only evidenceはplacement revision `39`、target positions `17..21`、same Section / planned-start cohort、continuation chain / parent、duplicate positions empty、active Execution `0`、quick check `ok`、FK empty、rows_written `0`。AUTH quick check / FK / rows_writtenもPASSした。D-074ではnew migration / schema change、production、restore、cleanupは行っていない。
+
+This is a current-Day ordinary-entry verification boundary, not approval for global keyboard commands, Routine insertion, non-current Day mutation, bulk insertion, auto-resume, or production rollout. Those broader semantics remain outside scope and `NOT_RUN`.
