@@ -214,19 +214,21 @@ export async function setEntryMode(db: D1Database, appUserId: string, input: Set
   if (prior) return replayOperation<SetEntryModeResult>(prior, "SetEntryMode", fp);
   const settings = await db.prepare("SELECT timezone, day_boundary_minutes FROM user_settings WHERE app_user_id = ?")
     .bind(appUserId).first<{ timezone: string; day_boundary_minutes: number }>();
-  const entry = await db.prepare(`SELECT e.lifecycle_state, e.routine_occurrence_id, em.mode_id, d.logical_date
+  const entry = await db.prepare(`SELECT e.lifecycle_state, e.routine_occurrence_id, em.mode_id, d.id AS taskchute_day_id, d.logical_date
     FROM entries e JOIN taskchute_days d ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
     LEFT JOIN entry_modes em ON em.app_user_id = e.app_user_id AND em.entry_id = e.id
     WHERE e.app_user_id = ? AND e.id = ?`).bind(appUserId, input.entry_id).first<{
-      lifecycle_state: string; routine_occurrence_id: string | null; mode_id: string | null; logical_date: string;
+      lifecycle_state: string; routine_occurrence_id: string | null; mode_id: string | null; taskchute_day_id: string; logical_date: string;
     }>();
   if (!settings || !entry) return reject(db, appUserId, input, "SetEntryMode", fp, "resource_not_found", "Entry is unavailable");
   const currentDate = resolveTaskChuteDay(nowInstant, {
     timezone: settings.timezone,
     boundaryMinutes: settings.day_boundary_minutes,
   }).logicalDate;
-  if (entry.logical_date !== currentDate || entry.lifecycle_state !== "planned" || entry.routine_occurrence_id !== null) {
-    return reject(db, appUserId, input, "SetEntryMode", fp, "resource_conflict", "Only an ordinary planned Entry on the current Day can change Mode");
+  const isCurrent = entry.logical_date === currentDate;
+  const isFuture = entry.logical_date > currentDate;
+  if ((!isCurrent && !isFuture) || entry.lifecycle_state !== "planned" || entry.routine_occurrence_id !== null) {
+    return reject(db, appUserId, input, "SetEntryMode", fp, "resource_conflict", "Only an ordinary planned Entry on the current or an established future Day can change Mode");
   }
   if (entry.mode_id !== input.expected_mode_id) return revisionReject(db, appUserId, input, "SetEntryMode", fp, "The Entry Mode changed before editing");
   let title: string | null = null;
@@ -236,22 +238,49 @@ export async function setEntryMode(db: D1Database, appUserId: string, input: Set
     title = mode.title;
   }
   const result: SetEntryModeResult = { entry_id: input.entry_id, mode_id: input.mode_id, mode_title: title };
-  if (input.mode_id === input.expected_mode_id) return persistSuccess(db, appUserId, input.operation_id, "SetEntryMode", fp, result, nowInstant);
+  const targetGuard = `EXISTS (SELECT 1 FROM entries e JOIN taskchute_days d
+    ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
+    WHERE e.app_user_id = ? AND e.id = ? AND e.taskchute_day_id = ?
+      AND e.lifecycle_state = 'planned' AND e.routine_occurrence_id IS NULL
+      AND d.id = ? AND d.logical_date = ?)`;
+  if (input.mode_id === input.expected_mode_id) {
+    try {
+      const operation = await db.prepare(`INSERT INTO operations
+          (app_user_id, operation_id, command_type, request_fingerprint_version, request_fingerprint, outcome_kind, result_json, created_at)
+        SELECT ?, ?, 'SetEntryMode', ?, ?, 'success', ?, ? WHERE ${targetGuard}
+          AND (SELECT mode_id FROM entry_modes WHERE app_user_id = ? AND entry_id = ?) IS ?`)
+        .bind(appUserId, input.operation_id, REQUEST_FINGERPRINT_VERSION, fp, JSON.stringify(result), nowInstant,
+          appUserId, input.entry_id, entry.taskchute_day_id, entry.taskchute_day_id, entry.logical_date,
+          appUserId, input.entry_id, input.mode_id).run();
+      if (operation.meta.changes > 0) return result;
+      const committed = await readOperation(db, appUserId, input.operation_id);
+      if (committed) return replayOperation<SetEntryModeResult>(committed, "SetEntryMode", fp);
+      return revisionReject(db, appUserId, input, "SetEntryMode", fp, "The Entry changed before Mode assignment could commit");
+    } catch {
+      const committed = await readOperation(db, appUserId, input.operation_id);
+      if (committed) return replayOperation<SetEntryModeResult>(committed, "SetEntryMode", fp);
+      throw new HttpError(503, "infrastructure_ambiguous", "The Entry Mode outcome is unknown; reload canonical state before retrying", true);
+    }
+  }
   try {
     const [, relation, operation] = await db.batch([
-      db.prepare("DELETE FROM entry_modes WHERE app_user_id = ? AND entry_id = ? AND mode_id IS ?").bind(appUserId, input.entry_id, input.expected_mode_id),
+      db.prepare(`DELETE FROM entry_modes WHERE app_user_id = ? AND entry_id = ? AND mode_id IS ? AND ${targetGuard}`)
+        .bind(appUserId, input.entry_id, input.expected_mode_id,
+          appUserId, input.entry_id, entry.taskchute_day_id, entry.taskchute_day_id, entry.logical_date),
       input.mode_id === null
         ? db.prepare("SELECT 1 AS noop")
         : db.prepare(`INSERT INTO entry_modes (app_user_id, entry_id, mode_id)
-            SELECT ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM entry_modes WHERE app_user_id = ? AND entry_id = ?)`)
-          .bind(appUserId, input.entry_id, input.mode_id, appUserId, input.entry_id),
+            SELECT ?, ?, ? WHERE ${targetGuard}
+              AND NOT EXISTS (SELECT 1 FROM entry_modes WHERE app_user_id = ? AND entry_id = ?)`)
+          .bind(appUserId, input.entry_id, input.mode_id,
+            appUserId, input.entry_id, entry.taskchute_day_id, entry.taskchute_day_id, entry.logical_date,
+            appUserId, input.entry_id),
       db.prepare(`INSERT INTO operations (app_user_id, operation_id, command_type, request_fingerprint_version, request_fingerprint, outcome_kind, result_json, created_at)
-        SELECT ?, ?, 'SetEntryMode', ?, ?, 'success', ?, ? WHERE
-          EXISTS (SELECT 1 FROM entries e JOIN taskchute_days d ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
-            WHERE e.app_user_id = ? AND e.id = ? AND e.lifecycle_state = 'planned' AND e.routine_occurrence_id IS NULL AND d.logical_date = ?)
+        SELECT ?, ?, 'SetEntryMode', ?, ?, 'success', ?, ? WHERE ${targetGuard}
           AND (SELECT mode_id FROM entry_modes WHERE app_user_id = ? AND entry_id = ?) IS ?`)
         .bind(appUserId, input.operation_id, REQUEST_FINGERPRINT_VERSION, fp, JSON.stringify(result), nowInstant,
-          appUserId, input.entry_id, currentDate, appUserId, input.entry_id, input.mode_id),
+          appUserId, input.entry_id, entry.taskchute_day_id, entry.taskchute_day_id, entry.logical_date,
+          appUserId, input.entry_id, input.mode_id),
     ]);
     if (relation.meta.changes === 0 && input.mode_id !== null) {
       const committed = await readOperation(db, appUserId, input.operation_id);

@@ -625,6 +625,7 @@ export function App() {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [modeBoard, setModeBoard] = useState<ModeBoardProjection | null>(null);
   const [modeOperation, setModeOperation] = useState<SetEntryModeRequest | null>(null);
+  const [retainedModeOperations, setRetainedModeOperations] = useState<SetEntryModeRequest[]>([]);
   const [pendingModeOverlays, setPendingModeOverlays] = useState<Record<string, SetEntryModeRequest>>({});
   const [projectOperation, setProjectOperation] = useState<CreateProjectRequest | null>(null);
   const [taskOperation, setTaskOperation] = useState<AddTaskToDayRequest | null>(null);
@@ -757,17 +758,18 @@ export function App() {
   const retryableEstimateOperation = estimateOperation && isRetryableRetainedDayOperation(estimateOperation.operation_id) ? estimateOperation : null;
   const retryableRetainedEstimateOperations = retainedEstimateOperations.filter((operation) => isRetryableRetainedDayOperation(operation.operation_id));
   const retryablePlannedStartOperation = plannedStartOperation && isRetryableRetainedDayOperation(plannedStartOperation.request.operation_id) ? plannedStartOperation : null;
+  const retryableModeOperation = modeOperation && isRetryableRetainedDayOperation(modeOperation.operation_id) ? modeOperation : retainedModeOperations.find((operation) => isRetryableRetainedDayOperation(operation.operation_id)) ?? null;
   const retryableDayOperation = retryableTaskOperation ?? retryableReorderOperation ?? retryableStartOperation ?? retryableCompleteOperation
     ?? retryableTaskMetadataOperation ?? retryableRetainedTaskMetadataOperations[0] ?? retryableSectionMoveOperation
     ?? retryableEstimateOperation ?? retryableRetainedEstimateOperations[0] ?? retryablePlannedStartOperation;
   const nonD066RetainedOperation = projectOperation ?? duplicateOperation ?? bulkDeleteOperation ?? deleteCompletedOperation ?? bulkDateMoveOperation ?? bulkSectionOperation
     ?? bulkSectionOccurrenceOperation ?? bulkSectionScopedOperation ?? bulkEstimateOperation ?? executionTimesOperation
     ?? configurationOperation ?? sectionSettingsOperation ?? routineConversionOperation ?? routineEndOperation ?? routineEstimateOperation
-    ?? retainedRoutineEstimateOperations[0] ?? routineSectionPlanOperation ?? modeOperation;
-  const retryablePanelOperation = nonD066RetainedOperation ?? retryableDayOperation;
+    ?? retainedRoutineEstimateOperations[0] ?? routineSectionPlanOperation;
+  const retryablePanelOperation = nonD066RetainedOperation ?? retryableDayOperation ?? retryableModeOperation;
   const retainedOperation = projectOperation ?? taskOperation ?? duplicateOperation ?? bulkDeleteOperation ?? deleteCompletedOperation ?? bulkDateMoveOperation ?? bulkSectionOperation ?? bulkSectionOccurrenceOperation ?? bulkSectionScopedOperation ?? bulkEstimateOperation ?? reorderOperation ?? startOperation ?? completeOperation ?? executionTimesOperation ?? taskMetadataOperation ?? retainedTaskMetadataOperations[0] ?? retainedEstimateOperations[0]
     ?? configurationOperation ?? sectionSettingsOperation ?? sectionMoveOperation ?? estimateOperation ?? plannedStartOperation
-    ?? routineConversionOperation ?? routineEndOperation ?? routineEstimateOperation ?? retainedRoutineEstimateOperations[0] ?? routineSectionPlanOperation ?? modeOperation;
+    ?? routineConversionOperation ?? routineEndOperation ?? routineEstimateOperation ?? retainedRoutineEstimateOperations[0] ?? routineSectionPlanOperation ?? modeOperation ?? retainedModeOperations[0] ?? null;
   const globalPending = pending === "login" || pending === "project" || pending === "project-settings"
     || pending === "day-navigation" || pending === "configuration" || pending === "section-settings" || pending === "logout";
   const globalRetainedOperation = projectOperation !== null || configurationOperation !== null || sectionSettingsOperation !== null;
@@ -819,6 +821,7 @@ export function App() {
     if (executionTimesOperation) scopes.push(executionMutationScope(executionTimesOperation.entry_id));
     if (taskMetadataOperation) scopes.push(entryMutationScope(taskMetadataOperation.entry_id, taskMetadataOperation.task_id));
     if (modeOperation) scopes.push(entryMutationScope(modeOperation.entry_id));
+    retainedModeOperations.forEach((operation) => scopes.push(entryMutationScope(operation.entry_id)));
     retainedTaskMetadataOperations.forEach((operation) => scopes.push(entryMutationScope(operation.entry_id, operation.task_id)));
     if (sectionMoveOperation) scopes.push(placementMutationScope(sectionMoveOperation.taskchute_day_id));
     if (estimateOperation) scopes.push(entryMutationScope(estimateOperation.entry_id));
@@ -855,6 +858,8 @@ export function App() {
     setDeleteCompletedOperation((current) => isCanceled(current?.operation_id) ? null : current);
     setQueuedDeleteCompletedOperation((current) => isCanceled(current?.operation_id) ? null : current);
     setTaskMetadataOperation((current) => isCanceled(current?.operation_id) ? null : current);
+    setModeOperation((current) => isCanceled(current?.operation_id) ? null : current);
+    setRetainedModeOperations((current) => current.filter((operation) => !isCanceled(operation.operation_id)));
     setEstimateOperation((current) => isCanceled(current?.operation_id) ? null : current);
     setPlannedStartOperation((current) => isCanceled(current?.request.operation_id) ? null : current);
     setPendingSectionOverlays((current) => Object.fromEntries(Object.entries(current).filter(([, overlay]) => !isCanceled(overlay.operation.operation_id))));
@@ -996,6 +1001,17 @@ export function App() {
     setTaskMetadataOperation((current) => current?.operation_id === operationId ? null : current);
   }
 
+  function retainModeOperation(operation: SetEntryModeRequest): void {
+    setModeOperation(operation);
+    setRetainedModeOperations((current) => current.some((item) => item.operation_id === operation.operation_id)
+      ? current : [...current, operation]);
+  }
+
+  function releaseModeOperation(operationId: string): void {
+    setModeOperation((current) => current?.operation_id === operationId ? null : current);
+    setRetainedModeOperations((current) => current.filter((operation) => operation.operation_id !== operationId));
+  }
+
   function retainEstimateOperation(operation: SetEntryEstimateRequest): void {
     setRetainedEstimateOperations((current) => current.some((item) => item.operation_id === operation.operation_id)
       ? current : [...current, operation]);
@@ -1036,7 +1052,9 @@ export function App() {
       || plannedStartOperation !== null
       || pendingAddTasks.length > 0
       || retainedTaskMetadataOperations.length > 0
-      || retainedEstimateOperations.length > 0;
+      || retainedEstimateOperations.length > 0
+      || modeOperation !== null
+      || retainedModeOperations.length > 0;
   }
 
   function deferGlobalTransition(transition: { kind: "logout" } | { kind: "settings"; destination: SettingsDestination }): void {
@@ -1132,7 +1150,6 @@ export function App() {
     setProject(null);
     setProjects([]);
     setModeBoard(null);
-    setModeOperation(null);
     setProjectOperation(null);
     setTaskOperation(null);
     setDuplicateOperation(null);
@@ -1157,6 +1174,8 @@ export function App() {
     setExecutionTimesOperation(null);
     setTaskMetadataOperation(null);
     setRetainedTaskMetadataOperations([]);
+    setModeOperation(null);
+    setRetainedModeOperations([]);
     setOverflowEntryId(null);
     setConfigurationOperation(null);
     setSectionMoveOperation(null);
@@ -2769,6 +2788,11 @@ export function App() {
       && day.planning_enabled && entry.lifecycle_state === "planned" && entry.routine === null);
   }
 
+  function canEditModeMetadata(entry: EntryProjection): boolean {
+    return Boolean(day?.taskchute_day.id && day.establishment_state === "established"
+      && day.planning_enabled && entry.lifecycle_state === "planned" && entry.routine === null);
+  }
+
   function openTaskMetadataEditor(entry: EntryProjection) {
     if (!canEditTaskTitleMetadata(entry) || mutationLocked || hasRetainedMutationScope(entryMutationScope(entry.id, entry.task.id))) return;
     beginInlineEditor(`task-metadata:${entry.id}`);
@@ -2965,21 +2989,26 @@ export function App() {
     });
   }
 
-  async function executeEntryMode(operation: SetEntryModeRequest) {
+  async function executeEntryMode(operation: SetEntryModeRequest, dayKind: "current" | "future" = "current") {
     const mutationToken = beginMutationScope(entryMutationScope(operation.entry_id), "Mode保存");
     if (!mutationToken) return;
     setPending("mode"); setError(null);
     try {
       await api.setEntryMode(operation);
       await reconcile();
-      setModeOperation((current) => current?.operation_id === operation.operation_id ? null : current);
+      releaseModeOperation(operation.operation_id);
       setPendingModeOverlays((current) => current[operation.entry_id]?.operation_id === operation.operation_id
         ? Object.fromEntries(Object.entries(current).filter(([entryId]) => entryId !== operation.entry_id)) : current);
     } catch (caught) {
       const ambiguous = isAmbiguousOutcome(caught);
       setError(caught instanceof Error ? caught.message : "Modeの保存に失敗しました");
-      if (!ambiguous) {
-        setModeOperation((current) => current?.operation_id === operation.operation_id ? null : current);
+      if (dayKind === "current" && (ambiguous || (caught instanceof ApiClientError && caught.code === "revision_conflict"))) {
+        pauseDayMutationQueue();
+      }
+      if (ambiguous) {
+        retainModeOperation(operation);
+      } else {
+        releaseModeOperation(operation.operation_id);
         setPendingModeOverlays((current) => current[operation.entry_id]?.operation_id === operation.operation_id
           ? Object.fromEntries(Object.entries(current).filter(([entryId]) => entryId !== operation.entry_id)) : current);
       }
@@ -2987,9 +3016,10 @@ export function App() {
         const projection = await reconcile();
         const canonical = entryForId(projection, operation.entry_id);
         if (ambiguous && canonical && (canonical.mode?.id ?? null) === operation.mode_id) {
-          setModeOperation(null);
+          releaseModeOperation(operation.operation_id);
           setPendingModeOverlays((current) => Object.fromEntries(Object.entries(current).filter(([entryId]) => entryId !== operation.entry_id)));
           setError(null);
+          if (dayKind === "current") resumeDayMutationQueue();
         }
       } catch { /* Keep the exact operation for retry. */ }
     } finally {
@@ -2997,22 +3027,37 @@ export function App() {
     }
   }
 
+  function retryEntryMode(operation: SetEntryModeRequest): void {
+    if (day?.is_current) {
+      enqueueRetainedRetry("Mode保存", entryMutationScope(operation.entry_id), () => executeEntryMode(operation, "current"));
+    } else {
+      void executeEntryMode(operation, "future");
+    }
+  }
+
   function commitEntryMode(entry: EntryProjection, modeId: string | null) {
-    if (!day || !day.is_current || !day.planning_enabled || entry.lifecycle_state !== "planned" || entry.routine !== null
-      || isMutationScopeBusy(entryMutationScope(entry.id))) return;
+    if (!day || !canEditModeMetadata(entry) || (day.is_current
+      ? hasRetainedMutationScope(entryMutationScope(entry.id))
+      : isMutationScopeBusy(entryMutationScope(entry.id)))) return;
     const currentModeId = entry.mode?.id ?? null;
     if (currentModeId === modeId) return;
     const operation: SetEntryModeRequest = { operation_id: uuidv7(), entry_id: entry.id,
       expected_mode_id: currentModeId, mode_id: modeId };
     setPendingModeOverlays((current) => ({ ...current, [entry.id]: operation }));
     setModeOperation(operation);
-    enqueueDayMutation({ scope: entryMutationScope(entry.id), label: "Mode保存", operationId: operation.operation_id,
-      coalesceKey: `mode:${entry.id}`, dispatch: async () => {
-        const latest = entryForId(dayRef.current, entry.id);
-        const rebased = latest ? { ...operation, expected_mode_id: latest.mode?.id ?? null } : operation;
-        setModeOperation(rebased);
-        await executeEntryMode(rebased);
-      } });
+    const dispatch = async () => {
+      const latest = entryForId(dayRef.current, entry.id);
+      const isCurrent = dayRef.current?.is_current === true;
+      const rebased = isCurrent && latest ? { ...operation, expected_mode_id: latest.mode?.id ?? null } : operation;
+      setModeOperation(rebased);
+      await executeEntryMode(rebased, isCurrent ? "current" : "future");
+    };
+    if (day.is_current) {
+      enqueueDayMutation({ scope: entryMutationScope(operation.entry_id), label: "Mode保存", operationId: operation.operation_id,
+        coalesceKey: `mode:${entry.id}`, dispatch });
+    } else {
+      void dispatch();
+    }
   }
 
   async function executeExecutionTimes(operation: SetExecutionTimesRequest) {
@@ -4230,10 +4275,13 @@ export function App() {
           : !overlay && entry.mode?.source === "snapshot"
             ? entry.mode.title
             : modeBoard?.modes.find((mode) => mode.id === modeId)?.title ?? entry.mode?.title ?? null;
-        const editable = currentDay.is_current && currentDay.planning_enabled && entry.lifecycle_state === "planned" && entry.routine === null;
+        const editable = canEditModeMetadata(entry);
+        const modeMutationBusy = currentDay.is_current
+          ? hasRetainedMutationScope(entryMutationScope(entry.id))
+          : isMutationScopeBusy(entryMutationScope(entry.id));
         return <span className="mode-cell" data-day-column-cell={key} onClick={(event) => event.stopPropagation()}>
-          {editable ? <select className="mode-selector" aria-label={`${entry.task.title}のMode`} value={modeId ?? ""}
-            disabled={hasRetainedMutationScope(entryMutationScope(entry.id))}
+           {editable ? <select className="mode-selector" aria-label={`${entry.task.title}のMode`} value={modeId ?? ""}
+            disabled={modeMutationBusy}
             onChange={(event) => commitEntryMode(entry, event.target.value || null)}>
             <option value="">Modeなし</option>
             {(modeBoard?.modes ?? []).map((mode) => <option value={mode.id} key={mode.id}>{mode.title}</option>)}
@@ -5211,8 +5259,9 @@ export function App() {
           {retryableReorderOperation && <button type="button" onClick={() => enqueueRetainedRetry("並び替え", placementMutationScope(retryableReorderOperation.taskchute_day_id), () => executeReorder(retryableReorderOperation))}>保留中のReorderを再試行</button>}
           {retryableStartOperation && <button type="button" onClick={() => enqueueRetainedRetry("Start", executionMutationScope(retryableStartOperation.entry_id), () => executeStart(retryableStartOperation))}>保留中のStartを再試行</button>}
           {retryableCompleteOperation && <button type="button" onClick={() => enqueueRetainedRetry("Complete", executionMutationScope(retryableCompleteOperation.entry_id), () => executeComplete(retryableCompleteOperation))}>保留中のCompleteを再試行</button>}
-          {executionTimesOperation && <button type="button" onClick={() => void executeExecutionTimes(executionTimesOperation)}>保留中の実績時刻保存を再試行</button>}
-          {retryableTaskMetadataOperation && <button type="button" onClick={() => retryTaskMetadata(retryableTaskMetadataOperation)}>保留中のTask情報保存を再試行</button>}
+           {executionTimesOperation && <button type="button" onClick={() => void executeExecutionTimes(executionTimesOperation)}>保留中の実績時刻保存を再試行</button>}
+           {retryableModeOperation && <button type="button" onClick={() => retryEntryMode(retryableModeOperation)}>保留中のMode保存を再試行</button>}
+           {retryableTaskMetadataOperation && <button type="button" onClick={() => retryTaskMetadata(retryableTaskMetadataOperation)}>保留中のTask情報保存を再試行</button>}
           {retryableRetainedTaskMetadataOperations.filter((operation) => operation.operation_id !== retryableTaskMetadataOperation?.operation_id).map((operation) => (
             <button type="button" key={operation.operation_id} onClick={() => retryTaskMetadata(operation)}>保留中のTask情報保存を再試行</button>
           ))}
@@ -5237,7 +5286,7 @@ export function App() {
             setRetainedTaskMetadataOperations([]); setPendingTaskMetadataOverlays({}); setPendingEstimateOverlays({}); setPendingPlannedStartOverlays({}); setPendingSectionOverlays({}); setPendingReorderOverlays({}); setPendingAddTasks([]); setPendingExecutionTimesOverlays({}); setRetainedEstimateOperations([]); setRetainedRoutineEstimateOperations([]);
             setConfigurationOperation(null); setSectionSettingsOperation(null); setSectionMoveOperation(null); setEstimateOperation(null); setPlannedStartOperation(null);
             setRoutineConversionOperation(null); setRoutineEndOperation(null); setRoutineEstimateOperation(null);
-            setRoutineSectionPlanOperation(null); setRoutineCandidate(null); setError(null);
+             setRoutineSectionPlanOperation(null); setModeOperation(null); setRetainedModeOperations([]); setPendingModeOverlays({}); setRoutineCandidate(null); setError(null);
           }}>保留中のclient操作を破棄</button>
         </section>
       )}

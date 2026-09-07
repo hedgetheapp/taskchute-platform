@@ -4,7 +4,7 @@ import type { CurrentTaskChuteDayProjection, EntryProjection } from "../../src/s
 
 const mocks = vi.hoisted(() => ({
   login: vi.fn(), logout: vi.fn(), loadDay: vi.fn(), loadProjects: vi.fn(), loadProjectBoard: vi.fn(), createProject: vi.fn(), updateProject: vi.fn(), setProjectArchived: vi.fn(), reorderProjects: vi.fn(), deleteProject: vi.fn(), addTask: vi.fn(), duplicateEntry: vi.fn(), bulkDeleteEntries: vi.fn(), deleteCompletedEntry: vi.fn(), bulkMoveEntriesToDay: vi.fn(), bulkMoveEntriesToSection: vi.fn(), bulkMoveEntriesToSectionOccurrence: vi.fn(), bulkMoveEntriesToSectionScoped: vi.fn(), bulkSetEntriesEstimateScoped: vi.fn(),
-  reorderEntries: vi.fn(), startEntry: vi.fn(), completeEntry: vi.fn(), setExecutionTimes: vi.fn(), updateTaskMetadata: vi.fn(),
+  reorderEntries: vi.fn(), startEntry: vi.fn(), completeEntry: vi.fn(), setExecutionTimes: vi.fn(), updateTaskMetadata: vi.fn(), setEntryMode: vi.fn(),
   establishInitialSectionConfiguration: vi.fn(), moveEntry: vi.fn(), setEntryEstimate: vi.fn(),
   setEntryPlannedStart: vi.fn(),
   convertEntryToRoutine: vi.fn(), endRoutine: vi.fn(), setRoutineEstimate: vi.fn(), setRoutineSectionPlan: vi.fn(),
@@ -232,6 +232,7 @@ beforeEach(() => {
   mocks.completeEntry.mockResolvedValue({});
   mocks.setExecutionTimes.mockResolvedValue({});
   mocks.updateTaskMetadata.mockResolvedValue({});
+  mocks.setEntryMode.mockResolvedValue({});
   mocks.establishInitialSectionConfiguration.mockResolvedValue({});
   mocks.moveEntry.mockResolvedValue({});
   mocks.setEntryEstimate.mockResolvedValue({});
@@ -3808,6 +3809,92 @@ describe("Dogfood Day shell", () => {
     fireEvent.click(retry);
     await waitFor(() => expect(mocks.updateTaskMetadata).toHaveBeenCalledTimes(2));
     expect(mocks.updateTaskMetadata.mock.calls[1][0]).toEqual(retained);
+  });
+
+  it("allows established future Mode set, replace, clear, canonical reload, and live-title display", async () => {
+    const firstModeId = "019c0000-0000-7000-8000-000000000021";
+    const secondModeId = "019c0000-0000-7000-8000-000000000022";
+    let modeId: string | null = null;
+    let modeTitle = "Focus";
+    const futureDay = (logicalDate = "2026-08-23") => {
+      const entry = { ...firstEntry, mode: modeId ? { id: modeId, title: modeId === firstModeId ? modeTitle : "Light", source: "live" as const } : null };
+      return { ...populatedDay, is_current: false, taskchute_day: { ...populatedDay.taskchute_day, logical_date: logicalDate },
+        sections: [{ ...populatedDay.sections[0], entries: [entry] }, populatedDay.sections[1]], next_entry: entry };
+    };
+    mocks.loadDay.mockImplementation(async (logicalDate) => futureDay(logicalDate ?? "2026-08-23"));
+    mocks.loadModeBoard.mockImplementation(async () => ({ board_revision: 2, modes: [
+      { id: firstModeId, title: modeTitle, board_position: 1, settings_revision: 0 },
+      { id: secondModeId, title: "Light", board_position: 2, settings_revision: 0 },
+    ] }));
+    mocks.setEntryMode.mockImplementation(async (operation) => {
+      modeId = operation.mode_id;
+      return { entry_id: operation.entry_id, mode_id: operation.mode_id, mode_title: operation.mode_id === firstModeId ? modeTitle : "Light" };
+    });
+    render(<App />);
+
+    const mode = await screen.findByRole("combobox", { name: "Canonical taskのMode" });
+    const modeSelect = mode as unknown as HTMLSelectElement;
+    await within(mode).findByRole("option", { name: "Focus" });
+    expect(modeSelect.value).toBe("");
+    fireEvent.change(mode, { target: { value: firstModeId } });
+    await waitFor(() => expect(mocks.setEntryMode).toHaveBeenCalledTimes(1));
+    expect(mocks.setEntryMode.mock.calls[0][0]).toMatchObject({ expected_mode_id: null, mode_id: firstModeId });
+    await waitFor(() => expect((screen.getByRole("combobox", { name: "Canonical taskのMode" }) as unknown as HTMLSelectElement).value).toBe(firstModeId));
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Canonical taskのMode" }), { target: { value: secondModeId } });
+    await waitFor(() => expect(mocks.setEntryMode).toHaveBeenCalledTimes(2));
+    expect(mocks.setEntryMode.mock.calls[1][0]).toMatchObject({ expected_mode_id: firstModeId, mode_id: secondModeId });
+    await waitFor(() => expect((screen.getByRole("combobox", { name: "Canonical taskのMode" }) as unknown as HTMLSelectElement).value).toBe(secondModeId));
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Canonical taskのMode" }), { target: { value: "" } });
+    await waitFor(() => expect(mocks.setEntryMode).toHaveBeenCalledTimes(3));
+    expect(mocks.setEntryMode.mock.calls[2][0]).toMatchObject({ expected_mode_id: secondModeId, mode_id: null });
+    await waitFor(() => expect((screen.getByRole("combobox", { name: "Canonical taskのMode" }) as unknown as HTMLSelectElement).value).toBe(""));
+
+    modeId = firstModeId;
+    modeTitle = "Deep Work";
+    fireEvent.click(screen.getByRole("button", { name: "次の日" }));
+    await screen.findByRole("button", { name: "2026年8月24日（月）、日付を選択" });
+    fireEvent.click(screen.getByRole("button", { name: "前の日" }));
+    await screen.findByRole("button", { name: "2026年8月23日（日）、日付を選択" });
+    const renamedMode = screen.getByRole("combobox", { name: "Canonical taskのMode" });
+    expect((renamedMode as unknown as HTMLSelectElement).value).toBe(firstModeId);
+    expect(within(renamedMode).getByRole("option", { name: "Deep Work" })).toBeTruthy();
+  });
+
+  it("retains one exact future Mode retry and blocks a second same-entry submit while unresolved", async () => {
+    const futureDay = { ...populatedDay, is_current: false,
+      taskchute_day: { ...populatedDay.taskchute_day, logical_date: "2026-08-23" } };
+    const modeId = "019c0000-0000-7000-8000-000000000023";
+    const request = deferred<unknown>();
+    mocks.loadDay.mockResolvedValue(futureDay);
+    mocks.loadModeBoard.mockResolvedValue({ board_revision: 1, modes: [{ id: modeId, title: "Focus", board_position: 1, settings_revision: 0 }] });
+    mocks.setEntryMode.mockReturnValueOnce(request.promise).mockResolvedValueOnce({});
+    render(<App />);
+    const mode = await screen.findByRole("combobox", { name: "Canonical taskのMode" });
+    await within(mode).findByRole("option", { name: "Focus" });
+    fireEvent.change(mode, { target: { value: modeId } });
+    await waitFor(() => expect(mocks.setEntryMode).toHaveBeenCalledTimes(1));
+    const sent = mocks.setEntryMode.mock.calls[0][0];
+    expect((mode as unknown as HTMLSelectElement).disabled).toBe(true);
+    fireEvent.change(mode, { target: { value: "" } });
+    expect(mocks.setEntryMode).toHaveBeenCalledTimes(1);
+    request.reject(new ApiClientError("response lost", 503, true, "infrastructure_ambiguous"));
+    const retry = await screen.findByRole("button", { name: "保留中のMode保存を再試行" });
+    fireEvent.click(retry);
+    await waitFor(() => expect(mocks.setEntryMode).toHaveBeenCalledTimes(2));
+    expect(mocks.setEntryMode.mock.calls[1][0]).toEqual(sent);
+  });
+
+  it("does not render a Mode editor on an unestablished future preview", async () => {
+    const preview: CurrentTaskChuteDayProjection = { ...emptyDay, establishment_state: "future_preview", is_current: false,
+      taskchute_day: { ...emptyDay.taskchute_day, id: null, logical_date: "2026-08-23" } };
+    mocks.loadDay.mockResolvedValue(preview);
+    mocks.loadModeBoard.mockResolvedValue({ board_revision: 1, modes: [{ id: "mode", title: "Focus", board_position: 1, settings_revision: 0 }] });
+    render(<App />);
+    await screen.findByText(/未来日のプレビュー/);
+    expect(screen.queryByRole("combobox", { name: /Mode/ })).toBeNull();
+    expect(mocks.setEntryMode).not.toHaveBeenCalled();
   });
 
   it("uses one far-right overflow menu for eligible planned row actions", async () => {
