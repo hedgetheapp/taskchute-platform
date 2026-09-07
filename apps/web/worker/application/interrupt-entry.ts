@@ -195,11 +195,12 @@ export async function interruptEntry(
   const sameMinutePositions = currentSection.filter((entry) => entry.planned_start_minute === interruptionLogicalMinute).map((entry) => entry.position);
   const maxPosition = Math.max(0, ...currentSection.map((entry) => entry.position));
   const maxSameMinutePosition = Math.max(0, ...sameMinutePositions);
-  const targetPosition = target.section_id === null ? maxPosition + 1 : target.position;
   const continuationPosition = sameMinuteTarget
     ? target.position + 1
     : (maxSameMinutePosition > 0 ? maxSameMinutePosition + 1
       : maxPosition + 1 + (target.section_id === null ? 1 : 0));
+  const targetPosition = target.section_id === null ? maxPosition + 1
+    : target.position + (target.section_id === context.section_id && !sameMinuteTarget && target.position >= continuationPosition ? 1 : 0);
   const shiftFrom = continuationPosition;
   const shiftOffset = Math.max(maxPosition, targetPosition, continuationPosition) + currentSection.length + 100;
 

@@ -132,6 +132,59 @@ describe.sequential("D-073 InterruptEntry / Continuation v0.1", () => {
     expect(morning.results.map((row) => row.id)).toEqual([fixture.sourceEntryId, fixture.neighborEntryId, result.continuation_entry_id]);
   });
 
+  it("shifts a later-minute B in the same Section after the new interruption cohort", async () => {
+    const fixture = await fixtureForTest(900, "morning");
+    await env.APP_DB.batch([
+      env.APP_DB.prepare("UPDATE entries SET position = position + 100 WHERE app_user_id = ? AND taskchute_day_id = ? AND id IN (?, ?)")
+        .bind(fixture.userId, fixture.dayId, fixture.targetEntryId, fixture.neighborEntryId),
+      env.APP_DB.prepare("UPDATE entries SET position = 2 WHERE app_user_id = ? AND id = ?")
+        .bind(fixture.userId, fixture.neighborEntryId),
+      env.APP_DB.prepare("UPDATE entries SET position = 3 WHERE app_user_id = ? AND id = ?")
+        .bind(fixture.userId, fixture.targetEntryId),
+    ]);
+    const request = interruptRequest(fixture);
+    const result = await interruptEntry(env.APP_DB, fixture.userId, request, now);
+    expect(result.continuation.position).toBe(3);
+    expect(await env.APP_DB.prepare("SELECT position, planned_start_minute, section_id FROM entries WHERE id = ?").bind(fixture.targetEntryId)
+      .first<{ position: number; planned_start_minute: number; section_id: string }>()).toMatchObject({
+        position: 4,
+        planned_start_minute: 900,
+        section_id: fixture.morningId,
+      });
+    const rows = await env.APP_DB.prepare("SELECT id, position, planned_start_minute FROM entries WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id = ? ORDER BY position")
+      .bind(fixture.userId, fixture.dayId, fixture.morningId).all<{ id: string; position: number; planned_start_minute: number | null }>();
+    expect(rows.results.map((row) => row.id)).toEqual([fixture.sourceEntryId, fixture.neighborEntryId, result.continuation_entry_id, fixture.targetEntryId]);
+    expect(new Set(rows.results.map((row) => row.position)).size).toBe(rows.results.length);
+    expect(await interruptEntry(env.APP_DB, fixture.userId, request, now)).toEqual(result);
+    expect(await env.APP_DB.prepare("SELECT placement_revision FROM taskchute_days WHERE id = ?").bind(fixture.dayId).first<number>("placement_revision")).toBe(1);
+  });
+
+  it("keeps a later-minute B coherent when the interruption minute has no existing cohort", async () => {
+    const fixture = await fixtureForTest(900, "morning");
+    await env.APP_DB.batch([
+      env.APP_DB.prepare("UPDATE entries SET position = position + 100 WHERE app_user_id = ? AND taskchute_day_id = ? AND id IN (?, ?)")
+        .bind(fixture.userId, fixture.dayId, fixture.targetEntryId, fixture.neighborEntryId),
+      env.APP_DB.prepare("UPDATE entries SET position = 2, planned_start_minute = 610 WHERE app_user_id = ? AND id = ?")
+        .bind(fixture.userId, fixture.neighborEntryId),
+      env.APP_DB.prepare("UPDATE entries SET position = 3 WHERE app_user_id = ? AND id = ?")
+        .bind(fixture.userId, fixture.targetEntryId),
+    ]);
+    const request = interruptRequest(fixture);
+    const result = await interruptEntry(env.APP_DB, fixture.userId, request, now);
+    expect(result.continuation.position).toBe(4);
+    expect(await env.APP_DB.prepare("SELECT position, planned_start_minute, section_id FROM entries WHERE id = ?").bind(fixture.targetEntryId)
+      .first<{ position: number; planned_start_minute: number; section_id: string }>()).toMatchObject({
+        position: 3,
+        planned_start_minute: 900,
+        section_id: fixture.morningId,
+    });
+    const projection = await loadCurrentTaskChuteDay(env.APP_DB, fixture.userId, now);
+    expect(projection.sections.find((section) => section.id === fixture.morningId)?.entries
+      .filter((entry) => entry.lifecycle_state === "planned").map((entry) => entry.id))
+      .toEqual([fixture.neighborEntryId, result.continuation_entry_id]);
+    expect(await interruptEntry(env.APP_DB, fixture.userId, request, now)).toEqual(result);
+  });
+
   it("rejects stale placement or active identity without writing lifecycle facts", async () => {
     const fixture = await fixtureForTest(615, "morning");
     const request = { ...interruptRequest(fixture), expected_placement_revision: 1 };
