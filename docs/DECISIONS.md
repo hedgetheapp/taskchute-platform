@@ -1599,3 +1599,17 @@ D-074はcurrent Dayのordinary planned Taskに対するキーボード操作を�
 - APP / AUTH migration、既存schema変更、new command、D-066のfuture queue化、historical rowの再設計、dependency、production / restore / cleanup、branch / PR / merge / tag / releaseは対象外であり、必要になった場合はSTOPする。
 
 Implementation、focused / full regression、persistent nonprod browser / read-only DB evidenceは`docs/CURRENT.md`、`docs/FEATURES.md`、`docs/SPEC.md`、`docs/DESIGN.md`、`docs/TEST_MATRIX.md`、`docs/RISKS.md`へ記録する。Releasedは`NO`のままとする。
+
+## D-075 — Day fixed header and task-list scroll boundary
+
+Status: Approved
+
+D-075はDay画面のpresentation / usability correctiveであり、date navigation、Day toolbar、table column headerを常時見えるfixed regionとして維持し、Section summaryとTask rowだけを一つのDay surface内で縦横scrollさせる。Section summaryはstickyにしない。D-059の「Day surfaceに不要なinner vertical scrollbarを導入しない」というpresentation ruleは、D-075のDay-only fixed-chrome / body-scroll boundaryによってこのscopeに限りsupersedeされる。
+
+- `.shell.day-shell`はviewport高を使うcolumn flex containerとなり、header / toolbarの下の`.day-surface`が唯一のscroll ownerとしてavailable heightを使う。page rootは二重scrollを作らず、短いDayは自然に余白を残し、viewport height変更に追従する。
+- table column headerはopaque background付き`position: sticky; top: 0`とし、header / toolbarは通常のfixed region外へ流れない。Section summaryはstickyにせず、Task rowだけがvertical scrollで移動する。
+- Day Tableが既に所有するhorizontal overflowとcolumn heading / draft / rowのshared tracksは維持する。column order、resize、auto-fit、hide/show、browser-local preference、keyboard focus / overlay semanticsは変更しない。
+- row overflow menuはbodyへportalし、fixed viewport positionへ配置する。これは新しいproduct behaviorではなく、scroll ownerのclippingを避けるmechanical overlay fixである。calendar、Display / column submenu、modal、shortcut help、D-074 `S` / `I`およびJ/K / Arrow focus boundaryは既存semanticsを維持する。
+- API、Domain、ordering、persisted data、schema、migration、dependency、authentication、security posture、productionは変更しない。新しいdata / migration / APIが必要になった場合はD-075のSTOP条件とする。
+
+Implementation、focused / full regression、persistent nonprod browser / read-only DB evidence、viewport resize tooling boundaryは`docs/CURRENT.md`、`docs/FEATURES.md`、`docs/DESIGN.md`、`docs/TEST_MATRIX.md`、`docs/RISKS.md`へ記録する。Releasedは`NO`のままとする。

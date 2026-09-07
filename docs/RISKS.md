@@ -361,3 +361,14 @@ Current mitigation / evidence:
 - APP read-only evidenceはplacement revision `39`、target positions `17..21`、same Section / planned-start cohort、continuation chain / parent、duplicate positions empty、active Execution `0`、quick check `ok`、FK empty、rows_written `0`。AUTH quick check / FK / rows_writtenもPASSした。D-074ではnew migration / schema change、production、restore、cleanupは行っていない。
 
 This is a current-Day ordinary-entry verification boundary, not approval for global keyboard commands, Routine insertion, non-current Day mutation, bulk insertion, auto-resume, or production rollout. Those broader semantics remain outside scope and `NOT_RUN`.
+
+## R-022 — Day fixed-scroll viewport transition coverage boundary
+Related: D-059, D-062, D-075
+
+D-075 changes the Day-only presentation boundary from natural page growth to a single task-list scroll owner beneath fixed date/navigation, toolbar, and table heading regions. A regression at an untested viewport transition could reintroduce overlap, hide the heading, or create a second vertical scrollbar even when the 1280 × 720 long-Day case is correct.
+
+Current mitigation / evidence:
+
+- CSS uses `100dvh` flex sizing, `min-height: 0`, one `.day-surface { overflow: auto }`, opaque sticky heading, and no sticky Section summary. Focused layout / DOM tests and full Web / Worker regression pass.
+- Persistent nonprod at `1280 × 720` measured top/middle/bottom scroll, fixed header / toolbar / heading rects, bottom row visibility, horizontal heading / row alignment, row overflow body portal, reload / fresh tab, D-074 keyboard / overlays, and console warning / error `0 / 0`.
+- The current browser connector has no viewport resize API, so the actual resize gesture is `NOT_RUN`. Until a resize-capable browser run covers a shorter and taller viewport, this remains a verification boundary; it is not permission to change Day / Settings / Routine layout policy or introduce JS scroll synchronization.

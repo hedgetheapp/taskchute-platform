@@ -493,3 +493,13 @@ The Worker keeps AddTaskToDay as the single atomic command. For insertion, it re
 When an ordinary planned row B is started while ordinary row A is running on the current Day, the existing Start affordance sends `InterruptEntry` directly; there is no confirmation modal and no implicit `StartEntry` retry. The request freezes source active Execution identity, target Entry identity, target / continuation UUIDv7s, Day placement revision, and operation ID. Routine rows retain their existing disabled / normal boundary.
 
 The optimistic presentation reconciles to the canonical Day after one atomic response. A is shown as interrupted history, B as running, and the continuation as planned with its canonical logical minute, Section, estimate, and inherited Mode. A pending or ambiguous InterruptEntry retains the exact request in the existing retry panel and is not silently discarded on navigation, reload, logout, or unload. The continuation remains planned after B completes.
+
+## D-075 Day fixed header and task-list scroll
+
+D-075ではDay画面だけをcolumn flex viewportにし、date navigationとDay toolbarをscroll ownerの外側に残す。table column headingはDay surfaceの上端にopaque sticky headerとして残し、Section summaryはstickyにしない。Section summaryとTask rowは`.day-surface`という単一の`overflow: auto` owner内で縦横に移動する。root page scrollやnested vertical scrollを追加せず、short Dayは自然な空き、long Dayはsurface内のtask-list scrollになる。
+
+`.shell.day-shell`は`height: 100dvh` / `overflow: hidden`のflex column、`.day-surface`は`flex: 1 1 auto` / `min-height: 0` / `overflow: auto` / `overscroll-behavior: contain`とし、fixed region下のavailable viewportを自然に受ける。table headingは`position: sticky; top: 0`、opaque background、既存z-indexでrowsとの視覚的重なりを防ぐ。horizontal table tracksは既存のheading / draft / row共有モデルをそのまま使い、Project以後のcolumn customizationやlocal preferenceを変更しない。
+
+vertical scroll ownerがrowのabsolute overflow menuをclipするため、row overflow menuだけは`document.body`へportalし、triggerのviewport rectとmenu dimensionsからfixed positionを計算する。viewport境界内へclampし、scroll / resizeで再配置する。これはDayのordering / keyboard / mutation semanticsを変えないmechanical layering ruleである。
+
+D-075はWeb-only layout correctiveであり、API / Domain / persisted data / schema / migration / dependency / auth / security posture / production scopeは含まない。D-059の旧vertical presentation ruleとの関係と、persistent nonprod evidenceは`docs/DECISIONS.md`、`docs/CURRENT.md`、`docs/TEST_MATRIX.md`、`docs/RISKS.md`を参照する。
