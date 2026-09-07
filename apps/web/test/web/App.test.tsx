@@ -1066,6 +1066,22 @@ describe("Dogfood Day shell", () => {
     expect(mocks.startEntry).not.toHaveBeenCalled();
   });
 
+  it("keeps ordinary planned B startable after A's successful Start reconciliation", async () => {
+    let canonical = twoPlannedDay;
+    mocks.loadDay.mockImplementation(async () => canonical);
+    mocks.startEntry.mockImplementation(async () => {
+      canonical = {
+        ...runningDay,
+        sections: [{ ...runningDay.sections[0], entries: [{ ...firstEntry, lifecycle_state: "running" as const }, secondEntry] }, emptyDay.sections[1]],
+      };
+    });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskを開始" }));
+    await waitFor(() => expect(mocks.startEntry).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect((screen.getByRole("button", { name: "Second taskを開始" }) as HTMLButtonElement).disabled).toBe(false));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
   it("retains and retries the exact ambiguous InterruptEntry payload", async () => {
     const runningWithNext = {
       ...runningDay,
