@@ -80,6 +80,10 @@ describe("D-071 Mode Settings Board UI parity", () => {
     expect(within(table).queryByText("1")).toBeNull();
     expect(screen.getByPlaceholderText("Mode名")).toBeTruthy();
     expect(screen.getByRole("tablist", { name: "Mode表示" })).toBeTruthy();
+    const toolbar = document.querySelector<HTMLElement>(".mode-board-toolbar");
+    expect(toolbar?.classList.contains("project-board-toolbar")).toBe(true);
+    expect(Array.from(toolbar?.children ?? []).map((child) => child.tagName)).toEqual(["LABEL", "DIV", "BUTTON"]);
+    expect(toolbar?.querySelector('[role="tablist"]')?.textContent).toBe("使用中アーカイブ");
     expect(row("Focus").classList.contains("project-board-row")).toBe(true);
     expect(row("Focus").classList.contains("mode-board-row")).toBe(true);
     expect(screen.getAllByLabelText(/のメニュー$/)).toHaveLength(3);

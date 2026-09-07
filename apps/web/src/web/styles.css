@@ -328,7 +328,6 @@ input:focus-visible, select:focus-visible { border-color: #2383e2; outline: 2px 
 .mode-cell { min-width: 0; width: 100%; padding: 6px 8px; }
 .mode-selector { width: 100%; min-width: 0; margin: 0; padding: 4px 5px; }
 .mode-title-button { overflow: hidden; max-width: 100%; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
-.mode-board-toolbar { justify-content: flex-end; }
 .actual-time-button { width: 100%; min-width: 0; max-width: 100%; overflow: hidden; padding: 4px 5px; border: 0; background: transparent; color: inherit; font: inherit; text-overflow: ellipsis; white-space: nowrap; }
 .actual-time-button:not(:disabled):hover { background: #edf5fc; color: #2383e2; }
 .actual-time-editor { display: grid; width: 100%; min-width: 0; gap: 3px; }
