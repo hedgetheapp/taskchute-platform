@@ -1007,4 +1007,28 @@ Persistent non-production evidence:
 - APP / AUTH migration pendingはretry後ともに`0 / 0`（No migrations to apply）。Backup HARD GATEとしてAPP `d070-pre-0070-app-20260907.sql` `155,619 bytes` / SHA-256 `3E329C9CB247CB2B408D4CAFA9A151C152B7285D3D62EADD45304387A05CCE13`、AUTH `d070-pre-0070-auth-20260907.sql` `5,136 bytes` / SHA-256 `3B7091CAE15F6D8493B411BE139914E818B4F5EC6D237AF501A79CAD20BEE1AB`をprivate ignored pathへ取得し、isolated recoveryでAPP / AUTH `quick_check = ok`、FK empty、APP entries / operations `22 / 146`、AUTH users / accounts / sessions `1 / 1 / 6`を確認した。restoreは実行していない。
 - exact generated nonprod configはWorker `taskchute-web-nonprod`、canonical APP / AUTH binding、`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、`migrations=[]`。Worker version `4beb5cb1-c936-41d4-bc2a-1c0537d93f0d`へdeployし、root `200`、protected API `401`、disabled bootstrap `404`を確認した。
 - deploy後read-only APPは`quick_check = ok`、FK empty、全query `rows_written = 0`、Projects / Tasks / Entries / Executions / operations `1 / 31 / 22 / 13 / 146`、active Executions `0`、orphan Executions `0`、Mode definitions / relations `2 / 2`。AUTHは`quick_check = ok`、FK empty、users / accounts / sessions `1 / 1 / 6`、全query `rows_written = 0`でlogin capabilityを保持した。remote feature mutationは実行していない。
-- authenticated nonprod browser set / replace / clear、reload / fresh-tab persistence、live rename displayは既存credential/passwordを取得・変更せず、CUA authenticated tabもなかったため`NOT_VERIFIED`。非認証safety / DB integrity / backup gateのみをPASSとし、fixture cleanup、restore、production操作は行っていない。Released `NO`。
+- authenticated nonprod browser set / replace / clear、reload / fresh-tab persistence、live rename displayは初回D-070 runではexisting credential/passwordを取得・変更せず、CUA authenticated tabもなかったため`NOT_VERIFIED`だった。後続closeoutは次sectionに記録する。Released `NO`。
+
+## D-070 unset-label corrective + authenticated browser closeout — 2026-09-07
+
+D-070のcanonical unset label不一致をWeb-onlyでcorrectiveし、authorized existing nonprod sessionでbrowser closeoutを完了した。Product / Domain / persistence semantics、schema / migration / API contractは変更していない。
+
+Implementation / Git:
+
+- `apps/web/src/web/App.tsx`のcurrent / future / draft Mode selector null optionを`Modeなし`からcanonical `—`へ変更し、`apps/web/test/web/App.test.tsx`へcurrent unset、future unset、future clearのvisible selected option regressionを追加した。corrective commit `13af655250ecd7718e61591d33f01dc3c2df9285`をremote main `91895be2cb09c58da737633bdc0f721f3f982a92`からfast-forward push済み。branchは`main`、PR / merge / tag / releaseは実施していない。既存untracked review artifactは変更・stageしていない。
+- focused D-070 Web `3 / 3`、D-068 Mode Web `5 / 5`、focused Worker Mode `4 / 4`、full Worker / D1 `23 files / 199 tests`、full Web `3 files / 213 tests`、Day Navigation `15 / 15`、typecheck、production build、exact nonprod build、Wrangler nonprod dry-run、`git diff --check`をPASSした。migration regressionは既存D-070 baseline `4 scenarios PASS`を維持するが、今回のcorrective後helper再実行はWindows Wrangler subprocessが無出力のままtooling-hungとなり中断した。migration / schemaは変更しておらず、source / full Worker / remote pending evidenceに影響しない。
+
+Persistent non-production:
+
+- exact generated nonprod configはWorker `taskchute-web-nonprod`、canonical APP / AUTH binding、`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、`migrations=[]`。Worker `b312bacb-f529-4c2a-9433-2095a5b3cc39`へdeployし、deploy前後のAPP / AUTH pending `0 / 0`、root `200`、protected API `401`、disabled bootstrap `404`を確認した。
+- fresh backup HARD GATEとしてAPP `d070-closeout-pre-deploy-app-20260907.sql` `155,619 bytes` / SHA-256 `3E329C9CB247CB2B408D4CAFA9A151C152B7285D3D62EADD45304387A05CCE13`、AUTH `d070-closeout-pre-deploy-auth-20260907.sql` `5,136 bytes` / SHA-256 `0250A77BBD964065CA785315AE4E14F0489ECEB4AA612160E2C670607A5D0BF3`をprivate ignored pathへ取得した。restore / cleanupは実行していない。
+
+Authenticated browser closeout:
+
+- credentialの取得・推測・再設定、bootstrap再有効化は行わず、既存authorized sessionを共有するauthenticated in-app browser tabで確認した。2026-09-08 established future ordinary planned Entry（Task `01a07726-8846-707b-af03-8e0dd71d6760`、Entry `01a07726-8846-7009-bf80-eee709b5daf2`、TaskChuteDay `01a07724-839c-718f-addf-baab70224268`）を対象に、initial unset selectorのvisible AX value `—`、Mode A `D068 Deep verification` set → fresh authenticated tab保持、Mode B `D068 Light verification` replace → fresh authenticated tab保持、clear → fresh authenticated tabでvisible `—`を確認した。fresh-tab evidence取得のためA/Bを追加で一度ずつ再確認したが、final target relationは不在である。
+- browser console logsは対象tab / final fresh tabとも空集合。Mode-only operations前のbackup Day `placement_revision=13`とfinal read-only Day `placement_revision=13`を比較し、set / replace / clear中にrevision不変を確認した。SetEntryMode successful operationsはtarget EntryについてA→B→A→B→NULL。final target `entry_modes` relationは不在である。
+
+Read-only final DB evidence:
+
+- APP countsはProjects / Tasks / Entries / Executions / operations `1 / 31 / 22 / 13 / 151`、Mode definitions / relations `2 / 2`、active Execution `0`、orphan Execution / entry_mode `0 / 0`。APP `PRAGMA quick_check = ok`、foreign-key violations empty。AUTH users / accounts / sessions `1 / 1 / 6`、quick check `ok`、FK empty。各audit queryの`rows_written=0`。
+- D070-ENV-02は`PASS`へ更新。production、restore、destructive cleanup、credential / permission / OAuth scope / account-role / binding / security-posture変更、releaseは`NOT_RUN`。fixtureはnonprodに残置した。
