@@ -105,14 +105,15 @@ type ColumnResizeState = {
 };
 type InlineEditorAction = { key: string; action: "none" | "commit" | "cancel" };
 type MutationScope = readonly string[];
-type ActiveMutation = { token: string; scope: MutationScope; label: string; kind?: "reorder"; sectionId?: string | null };
+type ActiveMutation = { token: string; scope: MutationScope; label: string; kind?: "move" | "reorder"; sectionId?: string | null };
 type QueuedDayMutation = {
   scope: MutationScope;
   label: string;
   coalesceKey?: string;
   operationId?: string;
   dependsOnOperationId?: string;
-  kind?: "reorder";
+  kind?: "move" | "reorder";
+  entryId?: string;
   sectionId?: string | null;
   dispatch: () => Promise<void>;
 };
@@ -125,6 +126,11 @@ type PendingAddTask = {
   modeId: string | null;
 };
 type PendingSectionOverlay = { operation: MoveEntryRequest; plannedStartMinute: number | null };
+type PendingSectionMoveIntent = {
+  operation: MoveEntryRequest;
+  sourceSectionId: string | null;
+  sourcePlannedStartMinute: number | null;
+};
 type PendingReorderOverlay = { operation: ReorderEntriesRequest; baseEntryIds: string[] };
 type RoutineCandidate =
   | { entryId: string; unit: "estimate"; estimateSeconds: number | null }
@@ -402,6 +408,44 @@ function applyPendingReorderOverlays(
     unsectioned_entries: reorder(null, projection.unsectioned_entries),
     sections: projection.sections.map((section) => ({ ...section, entries: reorder(section.id, section.entries) })),
   };
+}
+
+function applyPendingSectionMoveOverlays(
+  projection: CurrentTaskChuteDayProjection,
+  intents: PendingSectionMoveIntent[],
+): CurrentTaskChuteDayProjection {
+  if (intents.length === 0) return projection;
+
+  const groups = new Map<string, EntryProjection[]>();
+  groups.set(groupKey(null), [...projection.unsectioned_entries]);
+  for (const section of projection.sections) groups.set(groupKey(section.id), [...section.entries]);
+
+  for (const intent of intents) {
+    const operation = intent.operation;
+    const sourceGroup = [...groups.entries()].find(([, entries]) => entries.some((entry) => entry.id === operation.entry_id));
+    if (!sourceGroup) continue;
+    const entry = sourceGroup[1].find((candidate) => candidate.id === operation.entry_id);
+    if (!entry) continue;
+    const targetKey = groupKey(operation.section_id);
+    const targetEntries = groups.get(targetKey);
+    if (!targetEntries) continue;
+    const targetPlannedStartMinute = operation.section_id === null
+      ? null
+      : projection.sections.find((section) => section.id === operation.section_id)?.logical_start_minute ?? null;
+    if (entry.section_id === operation.section_id && entry.planned_start_minute === targetPlannedStartMinute) continue;
+    sourceGroup[1].splice(sourceGroup[1].indexOf(entry), 1);
+    const nextPosition = targetEntries.reduce((maximum, candidate) => Math.max(maximum, candidate.position), 0) + 1;
+    targetEntries.push({ ...entry, section_id: operation.section_id, planned_start_minute: targetPlannedStartMinute, position: nextPosition });
+  }
+
+  const nextSections = projection.sections.map((section) => {
+    const entries = groups.get(groupKey(section.id)) ?? [];
+    return { ...section, entries, estimate_total_seconds: entries.reduce((sum, entry) => sum + (entry.estimate_seconds ?? 0), 0) };
+  });
+  const unsectionedEntries = groups.get(groupKey(null)) ?? [];
+  const nextEntry = [...unsectionedEntries, ...nextSections.flatMap((section) => section.entries)]
+    .find((entry) => entry.lifecycle_state === "planned") ?? null;
+  return { ...projection, unsectioned_entries: unsectionedEntries, sections: nextSections, next_entry: nextEntry };
 }
 
 function shiftLogicalDate(logicalDate: string, days: number): string {
@@ -722,6 +766,7 @@ export function App() {
   const [retainedTaskMetadataOperations, setRetainedTaskMetadataOperations] = useState<UpdateTaskMetadataRequest[]>([]);
   const [configurationOperation, setConfigurationOperation] = useState<EstablishInitialSectionConfigurationRequest | null>(null);
   const [sectionMoveOperation, setSectionMoveOperation] = useState<MoveEntryRequest | null>(null);
+  const [pendingSectionMoveIntents, setPendingSectionMoveIntents] = useState<PendingSectionMoveIntent[]>([]);
   const [estimateOperation, setEstimateOperation] = useState<SetEntryEstimateRequest | null>(null);
   const [retainedEstimateOperations, setRetainedEstimateOperations] = useState<SetEntryEstimateRequest[]>([]);
   const [plannedStartOperation, setPlannedStartOperation] = useState<PlannedStartOperation | null>(null);
@@ -797,6 +842,8 @@ export function App() {
   const dayRef = useRef<CurrentTaskChuteDayProjection | null>(null);
   const dayMutationQueueRef = useRef<QueuedDayMutation[]>([]);
   const pendingReorderOverlaysRef = useRef<Record<string, PendingReorderOverlay>>({});
+  const pendingSectionMoveIntentsRef = useRef<PendingSectionMoveIntent[]>([]);
+  const sectionMoveInFlightRef = useRef<MoveEntryRequest | null>(null);
   const reorderInFlightRef = useRef<ReorderEntriesRequest | null>(null);
   const dayMutationInFlightRef = useRef(false);
   const dayMutationPausedRef = useRef(false);
@@ -809,6 +856,13 @@ export function App() {
     const next = updater(pendingReorderOverlaysRef.current);
     pendingReorderOverlaysRef.current = next;
     setPendingReorderOverlays(next);
+  }
+  function updatePendingSectionMoveIntents(
+    updater: (current: PendingSectionMoveIntent[]) => PendingSectionMoveIntent[],
+  ): void {
+    const next = updater(pendingSectionMoveIntentsRef.current);
+    pendingSectionMoveIntentsRef.current = next;
+    setPendingSectionMoveIntents(next);
   }
   function isQueuedDayMutationOperation(operationId: string | undefined): boolean {
     return operationId !== undefined && dayMutationQueueRef.current.some((item) => item.operationId === operationId);
@@ -941,12 +995,14 @@ export function App() {
     setCompleteOperation((current) => isCanceled(current?.operation_id) ? null : current);
     setDeleteCompletedOperation((current) => isCanceled(current?.operation_id) ? null : current);
     setQueuedDeleteCompletedOperation((current) => isCanceled(current?.operation_id) ? null : current);
+    setSectionMoveOperation((current) => isCanceled(current?.operation_id) ? null : current);
     setTaskMetadataOperation((current) => isCanceled(current?.operation_id) ? null : current);
     setModeOperation((current) => isCanceled(current?.operation_id) ? null : current);
     setRetainedModeOperations((current) => current.filter((operation) => !isCanceled(operation.operation_id)));
     setEstimateOperation((current) => isCanceled(current?.operation_id) ? null : current);
     setPlannedStartOperation((current) => isCanceled(current?.request.operation_id) ? null : current);
     setPendingSectionOverlays((current) => Object.fromEntries(Object.entries(current).filter(([, overlay]) => !isCanceled(overlay.operation.operation_id))));
+    updatePendingSectionMoveIntents((current) => current.filter((intent) => !isCanceled(intent.operation.operation_id)));
     updatePendingReorderOverlays((current) => Object.fromEntries(Object.entries(current).filter(([, overlay]) => !isCanceled(overlay.operation.operation_id))));
     setPendingAddTasks((current) => current.filter((item) => !isCanceled(item.operation.operation_id)));
     setPendingTaskMetadataOverlays((current) => Object.fromEntries(Object.entries(current).filter(([, operation]) => !isCanceled(operation.operation_id))));
@@ -1091,6 +1147,24 @@ export function App() {
     void drainDayMutationQueue();
   }
 
+  function enqueueSectionMoveMutation(mutation: QueuedDayMutation, intent: PendingSectionMoveIntent): void {
+    if (dayMutationPausedRef.current && retainedOperation === null) dayMutationPausedRef.current = false;
+    const lastIndex = dayMutationQueueRef.current.length - 1;
+    const last = lastIndex >= 0 ? dayMutationQueueRef.current[lastIndex] : undefined;
+    if (last?.kind === "move" && last.entryId === intent.operation.entry_id) {
+      const previousOperationId = last.operationId;
+      dayMutationQueueRef.current[lastIndex] = mutation;
+      updatePendingSectionMoveIntents((current) => current.map((candidate) => candidate.operation.operation_id === previousOperationId
+        ? { ...intent, sourceSectionId: candidate.sourceSectionId, sourcePlannedStartMinute: candidate.sourcePlannedStartMinute }
+        : candidate));
+    } else {
+      dayMutationQueueRef.current.push(mutation);
+      updatePendingSectionMoveIntents((current) => [...current, intent]);
+    }
+    updateDayMutationQueueCount();
+    void drainDayMutationQueue();
+  }
+
   function hasReorderPlacementBarrier(sectionId: string | null, taskchuteDayId: string): boolean {
     const placementScope = `placement:${taskchuteDayId}`;
     if (hasRetainedMutationScope([placementScope])) return true;
@@ -1105,17 +1179,35 @@ export function App() {
       || (completeOperation !== null && !isQueuedDayMutationOperation(completeOperation.operation_id));
   }
 
+  function hasCrossSectionMoveBarrier(taskchuteDayId: string): boolean {
+    const placementScope = `placement:${taskchuteDayId}`;
+    const ordinaryMoveInFlight = sectionMoveInFlightRef.current?.taskchute_day_id === taskchuteDayId
+      && activeMutationsRef.current.some((mutation) => mutation.kind === "move" && mutation.scope.includes(placementScope));
+    if (hasRetainedMutationScope([placementScope]) && !ordinaryMoveInFlight) return true;
+    if (activeMutationsRef.current.some((mutation) => mutation.scope.includes(placementScope) && mutation.kind !== "move")) return true;
+    if (dayMutationQueueRef.current.some((mutation) => {
+      if (mutation.kind === "move" && mutation.scope.includes(placementScope)) return false;
+      return mutation.scope.includes(placementScope)
+        || mutation.label === "Start" || mutation.label === "Complete" || mutation.label === "Interrupt";
+    })) return true;
+    return (startOperation !== null && !isQueuedDayMutationOperation(startOperation.operation_id))
+      || (interruptOperation !== null && !isQueuedDayMutationOperation(interruptOperation.operation_id))
+      || (completeOperation !== null && !isQueuedDayMutationOperation(completeOperation.operation_id));
+  }
+
   function isReorderBlockedForProjection(sectionId: string | null, projection: CurrentTaskChuteDayProjection | null): boolean {
     const taskchuteDayId = projection?.taskchute_day.id;
     if (!projection || !taskchuteDayId) return true;
-    if (projection.is_current) return hasReorderPlacementBarrier(sectionId, taskchuteDayId);
+    if (projection.is_current) return pendingSectionMoveIntentsRef.current.length > 0
+      || hasReorderPlacementBarrier(sectionId, taskchuteDayId);
     const scope = placementMutationScope(taskchuteDayId);
     return hasRetainedMutationScope(scope) || hasQueuedMutationScope(scope);
   }
 
   function effectiveSectionEntries(sectionId: string | null, projection: CurrentTaskChuteDayProjection | null = dayRef.current ?? day): EntryProjection[] {
     if (!projection) return [];
-    const entries = sectionEntriesForProjection(projection, sectionId);
+    const movedProjection = applyPendingSectionMoveOverlays(projection, pendingSectionMoveIntentsRef.current);
+    const entries = sectionEntriesForProjection(movedProjection, sectionId);
     const overlay = pendingReorderOverlaysRef.current[groupKey(sectionId)];
     if (!overlay || !isValidManualReorderOrder(entries, overlay.operation.entry_ids)) return entries;
     const byId = new Map(entries.map((entry) => [entry.id, entry]));
@@ -1341,6 +1433,7 @@ export function App() {
     setOverflowEntryId(null);
     setConfigurationOperation(null);
     setSectionMoveOperation(null);
+    updatePendingSectionMoveIntents(() => []);
     setEstimateOperation(null);
     setRetainedEstimateOperations([]);
     setPlannedStartOperation(null);
@@ -1359,6 +1452,7 @@ export function App() {
     dayMutationInFlightRef.current = false;
     dayMutationPausedRef.current = false;
     reorderInFlightRef.current = null;
+    sectionMoveInFlightRef.current = null;
     deferredNavigationRef.current = null;
     deferredTransitionRef.current = null;
     activeMutationsRef.current = [];
@@ -2732,9 +2826,12 @@ export function App() {
   function canDropOnSection(sectionId: string | null, drag: Pick<EntryDragState, "entryId" | "sectionId"> | null = entryDrag): boolean {
     const entry = draggedEntry(drag);
     const projection = dayRef.current ?? day;
-    const placementBlocked = isReorderBlockedForProjection(sectionId, projection);
-    if (!drag || !entry || !projection?.taskchute_day.id || !projection.planning_enabled || mutationLocked || placementBlocked
+    if (!drag || !entry || !projection?.taskchute_day.id || !projection.planning_enabled || mutationLocked
       || entry.lifecycle_state !== "planned" || entry.routine !== null || entry.section_id === sectionId) return false;
+    const placementBlocked = projection.is_current
+      ? hasCrossSectionMoveBarrier(projection.taskchute_day.id)
+      : hasRetainedMutationScope(placementMutationScope(projection.taskchute_day.id)) || hasQueuedMutationScope(placementMutationScope(projection.taskchute_day.id));
+    if (placementBlocked) return false;
     return sectionId === null || projection.sections.some((section) => section.id === sectionId);
   }
 
@@ -2753,9 +2850,11 @@ export function App() {
 
   function startEntryMouseDrag(event: ReactMouseEvent<HTMLElement>, sectionId: string | null, entry: EntryProjection) {
     const projection = dayRef.current ?? day;
-    const placementBlocked = isReorderBlockedForProjection(sectionId, projection);
+    const reorderBlocked = isReorderBlockedForProjection(sectionId, projection);
+    const crossSectionMoveAvailable = projection?.is_current === true && projection.taskchute_day.id !== null
+      && !hasCrossSectionMoveBarrier(projection.taskchute_day.id);
     if (event.button !== 0 || isInteractiveDragTarget(event.target) || !projection?.taskchute_day.id || !projection.planning_enabled
-      || mutationLocked || placementBlocked || entry.lifecycle_state !== "planned") return;
+      || mutationLocked || (!crossSectionMoveAvailable && reorderBlocked) || entry.lifecycle_state !== "planned" || entry.routine !== null) return;
     mouseDragRef.current = { entryId: entry.id, sectionId, startX: event.clientX, startY: event.clientY, active: false };
   }
 
@@ -2801,9 +2900,11 @@ export function App() {
 
   function startEntryDrag(event: ReactDragEvent<HTMLElement>, sectionId: string | null, entry: EntryProjection) {
     const projection = dayRef.current ?? day;
-    const placementBlocked = isReorderBlockedForProjection(sectionId, projection);
+    const reorderBlocked = isReorderBlockedForProjection(sectionId, projection);
+    const crossSectionMoveAvailable = projection?.is_current === true && projection.taskchute_day.id !== null
+      && !hasCrossSectionMoveBarrier(projection.taskchute_day.id);
     if (isInteractiveDragTarget(event.target) || !projection?.taskchute_day.id || !projection.planning_enabled || mutationLocked
-      || placementBlocked || entry.lifecycle_state !== "planned") {
+      || (!crossSectionMoveAvailable && reorderBlocked) || entry.lifecycle_state !== "planned" || entry.routine !== null) {
       event.preventDefault();
       return;
     }
@@ -2955,9 +3056,10 @@ export function App() {
 
   async function start(entryId: string) {
     if (!day || !day.is_current || mutationLocked) return;
-    const entry = [...day.unsectioned_entries, ...day.sections.flatMap((section) => section.entries)]
-      .find((candidate) => candidate.id === entryId);
+    const effectiveProjection = applyPendingSectionMoveOverlays(day, pendingSectionMoveIntentsRef.current);
+    const entry = entryForId(effectiveProjection, entryId);
     if (!entry || entry.lifecycle_state !== "planned") return;
+    const pendingMoveForEntry = pendingSectionMoveIntentsRef.current.filter((intent) => intent.operation.entry_id === entryId).at(-1);
     const pendingComplete = completeOperation?.entry_id !== entryId && isNormalPendingComplete(completeOperation);
     if (hasRetainedMutationScope(executionMutationScope(entryId)) && !pendingComplete) return;
     const activeExecution = day.active_execution;
@@ -2978,7 +3080,7 @@ export function App() {
       setInterruptOperation(operation);
       enqueueDayMutation({
         scope: ["execution-lane", `entry:${operation.source_entry_id}`, `entry:${operation.target_entry_id}`, `placement:${operation.taskchute_day_id}`],
-        label: "Interrupt",
+        label: "Interrupt", ...(pendingMoveForEntry ? { dependsOnOperationId: pendingMoveForEntry.operation.operation_id } : {}),
         operationId: operation.operation_id,
         dispatch: async () => {
           const latest = dayRef.current;
@@ -3038,7 +3140,8 @@ export function App() {
       setStartOperation(rebased);
       await executeStart(rebased);
     };
-    enqueueDayMutation({ scope: executionMutationScope(operation.entry_id), label: "Start", operationId: operation.operation_id, dispatch });
+    enqueueDayMutation({ scope: executionMutationScope(operation.entry_id), label: "Start", operationId: operation.operation_id,
+      ...(pendingMoveForEntry ? { dependsOnOperationId: pendingMoveForEntry.operation.operation_id } : {}), dispatch });
   }
 
   async function executeComplete(operation: CompleteEntryRequest) {
@@ -3643,73 +3746,128 @@ export function App() {
     await executeSectionSettings(operation);
   }
 
+  function removePendingSectionMoveIntent(operationId: string): void {
+    updatePendingSectionMoveIntents((current) => current.filter((intent) => intent.operation.operation_id !== operationId));
+    setPendingSectionOverlays((current) => Object.fromEntries(Object.entries(current).filter(([, overlay]) => overlay.operation.operation_id !== operationId)));
+  }
+
   async function executeSectionMove(operation: MoveEntryRequest) {
-    const mutationToken = beginMutationScope(placementMutationScope(operation.taskchute_day_id), "Section移動");
+    const mutationToken = beginMutationScope(placementMutationScope(operation.taskchute_day_id), "Section移動", { kind: "move" });
     if (!mutationToken) return;
+    sectionMoveInFlightRef.current = operation;
+    setSectionMoveOperation(operation);
     setPending("move"); setError(null);
     try {
       await api.moveEntry(operation);
-      await reconcile();
+      const projection = await reconcile();
+      removePendingSectionMoveIntent(operation.operation_id);
       setSectionMoveOperation((current) => current?.operation_id === operation.operation_id ? null : current);
-      setPendingSectionOverlays((current) => current[operation.entry_id]?.operation.operation_id === operation.operation_id
-        ? Object.fromEntries(Object.entries(current).filter(([entryId]) => entryId !== operation.entry_id)) : current);
-      const collapsed = collapsedSectionsByDay[day?.taskchute_day.logical_date ?? ""]?.[groupKey(operation.section_id)] === true;
-      setPendingFocusKey(focusKey(collapsed ? { kind: "section", id: groupKey(operation.section_id) } : { kind: "entry", id: operation.entry_id }));
+      const latestIntent = pendingSectionMoveIntentsRef.current.find((intent) => intent.operation.entry_id === operation.entry_id);
+      const latestDestination = latestIntent?.operation.section_id ?? operation.section_id;
+      const collapsed = collapsedSectionsByDay[projection?.taskchute_day.logical_date ?? day?.taskchute_day.logical_date ?? ""]?.[groupKey(latestDestination)] === true;
+      setPendingFocusKey(focusKey(collapsed ? { kind: "section", id: groupKey(latestDestination) } : { kind: "entry", id: operation.entry_id }));
     }
     catch (caught) {
       setError(caught instanceof Error ? caught.message : "Section移動に失敗しました");
       const ambiguous = isAmbiguousOutcome(caught);
-      if (ambiguous || (caught instanceof ApiClientError && caught.code === "revision_conflict")) pauseDayMutationQueue();
+      const revisionConflict = caught instanceof ApiClientError && caught.code === "revision_conflict";
+      if (ambiguous) pauseDayMutationQueue(operation.operation_id);
+      else if (revisionConflict) pauseDayMutationQueue();
+      else cancelQueuedDayMutationDependents(operation.operation_id);
       if (!ambiguous) {
+        removePendingSectionMoveIntent(operation.operation_id);
         setSectionMoveOperation((current) => current?.operation_id === operation.operation_id ? null : current);
-        setPendingSectionOverlays((current) => current[operation.entry_id]?.operation.operation_id === operation.operation_id
-          ? Object.fromEntries(Object.entries(current).filter(([entryId]) => entryId !== operation.entry_id)) : current);
       }
-      try { const projection = await reconcile();
-        const canonical = [...(projection?.unsectioned_entries ?? []), ...(projection?.sections.flatMap((section) => section.entries) ?? [])]
-          .find((entry) => entry.id === operation.entry_id);
+      try {
+        const projection = await reconcile();
+        const canonical = projection ? entryForId(projection, operation.entry_id) : null;
         const expectedPlannedStart = operation.section_id === null ? null
           : projection?.sections.find((section) => section.id === operation.section_id)?.logical_start_minute;
         if (ambiguous && canonical?.section_id === operation.section_id
           && canonical.planned_start_minute === expectedPlannedStart
           && projection?.placement_revision === operation.expected_placement_revision + 1) {
+          removePendingSectionMoveIntent(operation.operation_id);
           setSectionMoveOperation(null); setError(null);
-          setPendingSectionOverlays((current) => current[operation.entry_id]?.operation.operation_id === operation.operation_id
-            ? Object.fromEntries(Object.entries(current).filter(([entryId]) => entryId !== operation.entry_id)) : current);
           resumeDayMutationQueue();
-          const collapsed = collapsedSectionsByDay[projection.taskchute_day.logical_date]?.[groupKey(operation.section_id)] === true;
-          setPendingFocusKey(focusKey(collapsed ? { kind: "section", id: groupKey(operation.section_id) } : { kind: "entry", id: operation.entry_id }));
+          const latestIntent = pendingSectionMoveIntentsRef.current.find((intent) => intent.operation.entry_id === operation.entry_id);
+          const latestDestination = latestIntent?.operation.section_id ?? operation.section_id;
+          const collapsed = collapsedSectionsByDay[projection.taskchute_day.logical_date]?.[groupKey(latestDestination)] === true;
+          setPendingFocusKey(focusKey(collapsed ? { kind: "section", id: groupKey(latestDestination) } : { kind: "entry", id: operation.entry_id }));
         }
       } catch { /* Preserve retained operation. */ }
-    } finally { endMutationScope(mutationToken); setPending(null); }
+    } finally {
+      if (sectionMoveInFlightRef.current?.operation_id === operation.operation_id) sectionMoveInFlightRef.current = null;
+      endMutationScope(mutationToken); setPending(null);
+    }
   }
 
   async function moveEntryToSection(entryId: string, sectionId: string | null) {
-    const entry = [...(day?.unsectioned_entries ?? []), ...(day?.sections.flatMap((section) => section.entries) ?? [])]
-      .find((candidate) => candidate.id === entryId);
-    if (!entry || !day?.taskchute_day.id || !day.planning_enabled || mutationLocked || hasRetainedMutationScope(placementMutationScope())
-      || entry.lifecycle_state !== "planned" || entry.routine !== null
-      || entry.section_id === sectionId) return;
+    const baseProjection = dayRef.current ?? day;
+    const projection = baseProjection ? applyPendingSectionMoveOverlays(baseProjection, pendingSectionMoveIntentsRef.current) : null;
+    const entry = projection ? entryForId(projection, entryId) : null;
+    if (!entry || !projection?.taskchute_day.id || !projection.planning_enabled || mutationLocked
+      || entry.lifecycle_state !== "planned" || entry.routine !== null || entry.section_id === sectionId) return;
+    const targetSection = sectionId === null ? null : projection.sections.find((section) => section.id === sectionId);
+    if (sectionId !== null && !targetSection) return;
+    if (projection.is_current
+      ? hasCrossSectionMoveBarrier(projection.taskchute_day.id)
+      : hasRetainedMutationScope(placementMutationScope(projection.taskchute_day.id)) || hasQueuedMutationScope(placementMutationScope(projection.taskchute_day.id))) return;
+
+    const latestIntent = pendingSectionMoveIntentsRef.current.filter((intent) => intent.operation.entry_id === entry.id).at(-1);
+    const latestQueued = latestIntent && isQueuedDayMutationOperation(latestIntent.operation.operation_id);
+    const lastQueued = dayMutationQueueRef.current.at(-1);
+    if (latestIntent && latestQueued && latestIntent.sourceSectionId === sectionId
+      && lastQueued?.kind === "move" && lastQueued.entryId === entry.id
+      && lastQueued.operationId === latestIntent.operation.operation_id) {
+      dayMutationQueueRef.current = dayMutationQueueRef.current.filter((item) => item.operationId !== latestIntent.operation.operation_id);
+      updateDayMutationQueueCount();
+      removePendingSectionMoveIntent(latestIntent.operation.operation_id);
+      setPendingFocusKey(focusKey({ kind: "entry", id: entry.id }));
+      return;
+    }
+
     setEditingPlannedStart((editing) => editing?.entryId === entry.id ? null : editing);
     const operation: MoveEntryRequest = { operation_id: uuidv7(), entry_id: entry.id,
-      taskchute_day_id: day.taskchute_day.id, section_id: sectionId, expected_placement_revision: day.placement_revision };
-    setSectionMoveOperation(operation);
-    setPendingSectionOverlays((current) => ({ ...current, [operation.entry_id]: {
+      taskchute_day_id: projection.taskchute_day.id, section_id: sectionId, expected_placement_revision: projection.placement_revision };
+    const intent: PendingSectionMoveIntent = {
       operation,
-      plannedStartMinute: sectionId === null ? null : day.sections.find((section) => section.id === sectionId)?.logical_start_minute ?? null,
+      sourceSectionId: entry.section_id,
+      sourcePlannedStartMinute: entry.planned_start_minute,
+    };
+    setPendingSectionOverlays((current) => ({ ...current, [operation.entry_id]: {
+      operation, plannedStartMinute: sectionId === null ? null : targetSection?.logical_start_minute ?? null,
     } }));
+    const inFlight = sectionMoveInFlightRef.current;
+    const dependsOnOperationId = inFlight?.entry_id === operation.entry_id ? inFlight.operation_id : undefined;
     const dispatch = async () => {
       const latest = dayRef.current;
-      const rebased = latest?.taskchute_day.id === operation.taskchute_day_id
-        ? { ...operation, expected_placement_revision: latest.placement_revision }
-        : operation;
-      setSectionMoveOperation(rebased);
-      await executeSectionMove(rebased);
+      const currentIntent = pendingSectionMoveIntentsRef.current.find((candidate) => candidate.operation.operation_id === operation.operation_id) ?? intent;
+      const latestEntry = latest ? entryForId(latest, operation.entry_id) : null;
+      const targetStart = operation.section_id === null ? null
+        : latest?.sections.find((section) => section.id === operation.section_id)?.logical_start_minute ?? null;
+      if (!latest || latest.taskchute_day.id !== operation.taskchute_day_id || !latestEntry
+        || latestEntry.lifecycle_state !== "planned" || latestEntry.routine !== null
+        || latestEntry.section_id !== currentIntent.sourceSectionId
+        || latestEntry.planned_start_minute !== currentIntent.sourcePlannedStartMinute) {
+        setError("Section移動の前提が変わったため、保存を取り消しました。もう一度お試しください");
+        removePendingSectionMoveIntent(operation.operation_id);
+        cancelQueuedDayMutationDependents(operation.operation_id);
+        return;
+      }
+      if (latestEntry.section_id === operation.section_id && latestEntry.planned_start_minute === targetStart) {
+        removePendingSectionMoveIntent(operation.operation_id);
+        return;
+      }
+      await executeSectionMove({ ...operation, expected_placement_revision: latest.placement_revision });
     };
-    if (day.is_current) enqueueDayMutation({
-      scope: placementMutationScope(operation.taskchute_day_id), label: "Section移動", operationId: operation.operation_id, coalesceKey: `section:${entry.id}`, dispatch,
-    });
-    else await dispatch();
+    if (projection.is_current) enqueueSectionMoveMutation({
+      scope: placementMutationScope(operation.taskchute_day_id), label: "Section移動", operationId: operation.operation_id,
+      kind: "move", entryId: operation.entry_id, dependsOnOperationId, dispatch,
+    }, intent);
+    else {
+      updatePendingSectionMoveIntents((current) => [...current, intent]);
+      await dispatch();
+    }
   }
 
   async function changeSection(entry: EntryProjection, sectionId: string | null) {
@@ -4083,7 +4241,10 @@ export function App() {
   if (!day) return null;
 
   const currentDay = day;
-  const effectiveDay = applyPendingReorderOverlays(currentDay, pendingReorderOverlays);
+  const effectiveDay = applyPendingReorderOverlays(
+    applyPendingSectionMoveOverlays(currentDay, pendingSectionMoveIntents),
+    pendingReorderOverlays,
+  );
   const allEntries = projectionEntries(effectiveDay);
   const eligibleBulkEntries = allEntries.filter((entry) => isBulkSelectableProjectionEntry(currentDay, entry));
   const selectedBulkEntries = selectedEntryIds
@@ -4677,7 +4838,9 @@ export function App() {
         return <select className="section-cell" data-day-column-cell={key} aria-label={`${entry.task.title}のSection`} value={pendingSectionOverlays[entry.id]?.operation.section_id ?? entry.section_id ?? ""}
           disabled={mutationLocked || (entry.routine
             ? isMutationScopeBusy(routineMutationScope(entry.id, entry.routine.routine_definition_id))
-            : hasRetainedMutationScope(placementMutationScope()))
+            : currentDay.is_current
+              ? hasCrossSectionMoveBarrier(currentDay.taskchute_day.id ?? "selected-day")
+              : hasRetainedMutationScope(placementMutationScope(currentDay.taskchute_day.id ?? "selected-day")))
             || !currentDay.planning_enabled || entry.lifecycle_state !== "planned"
             || (entry.routine !== null && !currentDay.is_current)}
           onClick={(event) => event.stopPropagation()} onChange={(event) => entry.routine
@@ -4764,7 +4927,9 @@ export function App() {
             : <button type="button" className="planned-start-button" aria-label={`${entry.task.title}の開始予定`}
               disabled={mutationLocked || (entry.routine
                 ? isMutationScopeBusy([...placementMutationScope(), ...routineMutationScope(entry.id, entry.routine.routine_definition_id)])
-                : hasRetainedMutationScope(placementMutationScope())) || !currentDay.planning_enabled || entry.lifecycle_state !== "planned" || (entry.routine !== null && !currentDay.is_current)}
+                : currentDay.is_current
+                  ? hasRetainedMutationScope(placementMutationScope()) || pendingSectionMoveIntentsRef.current.length > 0
+                  : hasRetainedMutationScope(placementMutationScope(currentDay.taskchute_day.id ?? "selected-day"))) || !currentDay.planning_enabled || entry.lifecycle_state !== "planned" || (entry.routine !== null && !currentDay.is_current)}
               onClick={() => { beginInlineEditor(`planned-start:${entry.id}`); setEditingPlannedStart({ entryId: entry.id,
                 value: plannedStartMinute === null ? "" : formatClockInputFromLogicalMinute(plannedStartMinute) }); }}>
               {plannedStartMinute === null ? <EmptyValue display="--:--" label="開始予定なし" /> : formatLogicalMinute(plannedStartMinute)}
@@ -5494,7 +5659,10 @@ export function App() {
                 const canInterrupt = entry.lifecycle_state === "planned" && day.active_execution !== null
                   && activeEntryForRow?.routine === null && entry.routine === null && entry.id !== day.active_execution.entry_id;
                 const reorderBlocked = isReorderBlockedForProjection(section.id, day);
-                const canDrag = day.planning_enabled && Boolean(day.taskchute_day.id) && entry.lifecycle_state === "planned" && !reorderBlocked;
+                const crossSectionMoveAvailable = day.is_current && Boolean(day.taskchute_day.id)
+                  && !hasCrossSectionMoveBarrier(day.taskchute_day.id ?? "selected-day");
+                const canDrag = day.planning_enabled && Boolean(day.taskchute_day.id) && entry.lifecycle_state === "planned"
+                  && entry.routine === null && (!reorderBlocked || crossSectionMoveAvailable);
                 const canMoveDate = isBulkSelectableProjectionEntry(currentDay, entry);
                 const canEditPlanning = day.planning_enabled && entry.lifecycle_state === "planned";
                 const canDuplicate = day.is_current && Boolean(day.taskchute_day.id) && entry.lifecycle_state === "completed";

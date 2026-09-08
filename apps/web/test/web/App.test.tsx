@@ -1700,7 +1700,7 @@ describe("Dogfood Day shell", () => {
     expect(targetSummary.dataset.dropTarget).toBe("valid");
     fireEvent.mouseUp(targetSummary, { button: 0, clientX: 20, clientY: 20 });
     await waitFor(() => expect(mocks.moveEntry).toHaveBeenCalledTimes(1));
-    expect(source.classList.contains("is-dragging")).toBe(false);
+    await waitFor(() => expect(document.querySelector<HTMLElement>(`[data-entry-id="${firstEntry.id}"]`)?.classList.contains("is-dragging")).toBe(false));
   });
 
   it("starts D&D from eligible non-interactive cells across the full Task row", async () => {
@@ -1788,24 +1788,132 @@ describe("Dogfood Day shell", () => {
     expect(document.activeElement?.getAttribute("data-focus-key")).toBe(`section:${eveningId}`);
   });
 
-  it("accepts a second cross-Section drag and dispatches it after MoveEntry", async () => {
-    const request = deferred<unknown>();
-    mocks.loadDay.mockResolvedValue(populatedDay);
-    mocks.moveEntry.mockReturnValue(request.promise);
+  it("accepts a second cross-Section drag and dispatches it after the first MoveEntry", async () => {
+    const firstRequest = deferred<unknown>();
+    const secondRequest = deferred<unknown>();
+    const firstMoved = { ...firstEntry, section_id: eveningId, planned_start_minute: 720 };
+    const secondMoved = { ...secondEntry, section_id: eveningId, planned_start_minute: 720 };
+    const movedDay = { ...twoPlannedDay, placement_revision: 2,
+      sections: [{ ...twoPlannedDay.sections[0], entries: [secondEntry] }, { ...emptyDay.sections[1], entries: [firstMoved] }], next_entry: secondEntry };
+    const movedBothDay = { ...twoPlannedDay, placement_revision: 3,
+      sections: [{ ...twoPlannedDay.sections[0], entries: [] }, { ...emptyDay.sections[1], entries: [firstMoved, secondMoved] }], next_entry: firstMoved };
+    mocks.loadDay.mockResolvedValueOnce(twoPlannedDay).mockResolvedValueOnce(movedDay).mockResolvedValueOnce(movedBothDay);
+    mocks.moveEntry.mockReturnValueOnce(firstRequest.promise).mockReturnValueOnce(secondRequest.promise);
     render(<App />);
     const source = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
     const targetSummary = sectionSummary("Evening");
-    const dataTransfer = dragDataTransfer();
-    fireEvent.dragStart(dragSurface(source), { dataTransfer });
-    fireEvent.dragOver(targetSummary, { dataTransfer });
-    fireEvent.drop(targetSummary, { dataTransfer });
-    fireEvent.dragEnd(dragSurface(source), { dataTransfer });
+    fireEvent.mouseDown(dragSurface(source), { button: 0, clientX: 0, clientY: 0 });
+    fireEvent.mouseMove(targetSummary, { buttons: 1, clientX: 20, clientY: 20 });
+    fireEvent.mouseUp(targetSummary, { button: 0, clientX: 20, clientY: 20 });
     await waitFor(() => expect(mocks.moveEntry).toHaveBeenCalledTimes(1));
-    expect(source.getAttribute("draggable")).toBe("false");
-    fireEvent.dragStart(dragSurface(source), { dataTransfer: dragDataTransfer() });
+    await waitFor(() => expect(screen.getByRole("status").textContent).toContain("保存中 1件"));
+    const secondSource = document.querySelector<HTMLElement>(`[data-entry-id="${secondEntry.id}"][data-section-id="${morningId}"]`)!;
+    expect(secondSource.getAttribute("draggable")).toBe("true");
+    fireEvent.mouseDown(dragSurface(secondSource), { button: 0, clientX: 0, clientY: 0 });
+    fireEvent.mouseMove(targetSummary, { buttons: 1, clientX: 20, clientY: 20 });
+    fireEvent.mouseUp(targetSummary, { button: 0, clientX: 20, clientY: 20 });
     expect(mocks.moveEntry).toHaveBeenCalledTimes(1);
-    request.resolve({});
+    firstRequest.resolve({});
+    await waitFor(() => expect(mocks.moveEntry).toHaveBeenCalledTimes(2));
+    expect(mocks.moveEntry.mock.calls[1]?.[0]).toMatchObject({ entry_id: secondEntry.id, section_id: eveningId });
+    secondRequest.resolve({});
     await waitFor(() => expect(screen.queryByText("Section移動・照合中…")).toBeNull());
+  });
+
+  it("cancels an unsent cross-Section Move when the effective row returns to its canonical Section", async () => {
+    const metadataRequest = deferred<unknown>();
+    mocks.loadDay.mockResolvedValue(twoPlannedDay);
+    mocks.updateTaskMetadata.mockReturnValue(metadataRequest.promise);
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskを編集" }));
+    const titleInput = screen.getByRole("textbox", { name: "Canonical taskのTask名" });
+    fireEvent.change(titleInput, { target: { value: "Queued Move base" } });
+    fireEvent.keyDown(titleInput, { key: "Enter" });
+    await waitFor(() => expect(mocks.updateTaskMetadata).toHaveBeenCalledTimes(1));
+
+    const sectionSelect = screen.getByRole("combobox", { name: "Canonical taskのSection" });
+    fireEvent.change(sectionSelect, { target: { value: eveningId } });
+    await waitFor(() => expect(screen.getByRole("status").textContent).toContain("保存中 2件"));
+    expect(mocks.moveEntry).not.toHaveBeenCalled();
+
+    const effectiveSectionSelect = screen.getByRole("combobox", { name: "Canonical taskのSection" });
+    fireEvent.change(effectiveSectionSelect, { target: { value: morningId } });
+    await waitFor(() => expect(screen.getByRole("status").textContent).toContain("保存中 1件"));
+    expect(mocks.moveEntry).not.toHaveBeenCalled();
+
+    metadataRequest.resolve({});
+    await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+  });
+
+  it("accepts a same-Entry Move back after the first Move is already in flight", async () => {
+    const firstRequest = deferred<unknown>();
+    const secondRequest = deferred<unknown>();
+    const movedEntry = { ...firstEntry, section_id: eveningId, planned_start_minute: 720 };
+    const movedBackEntry = { ...firstEntry, section_id: morningId, planned_start_minute: null };
+    const movedDay = { ...populatedDay, placement_revision: 2,
+      sections: [{ ...emptyDay.sections[0], entries: [] }, { ...emptyDay.sections[1], entries: [movedEntry] }], next_entry: movedEntry };
+    const movedBackDay = { ...populatedDay, placement_revision: 3,
+      sections: [{ ...emptyDay.sections[0], entries: [movedBackEntry] }, emptyDay.sections[1]], next_entry: movedBackEntry };
+    mocks.loadDay.mockResolvedValueOnce(populatedDay).mockResolvedValueOnce(movedDay).mockResolvedValueOnce(movedBackDay);
+    mocks.moveEntry.mockReturnValueOnce(firstRequest.promise).mockReturnValueOnce(secondRequest.promise);
+    render(<App />);
+
+    fireEvent.change(await screen.findByRole("combobox", { name: "Canonical taskのSection" }), { target: { value: eveningId } });
+    await waitFor(() => expect(mocks.moveEntry).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByRole("status").textContent).toContain("保存中 1件"));
+    await waitFor(() => expect(document.querySelector<HTMLElement>(`[data-entry-id="${firstEntry.id}"][data-section-id="${eveningId}"]`)).toBeTruthy());
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Canonical taskのSection" }), { target: { value: morningId } });
+    expect(mocks.moveEntry).toHaveBeenCalledTimes(1);
+    firstRequest.resolve({});
+    await waitFor(() => expect(mocks.moveEntry).toHaveBeenCalledTimes(2));
+    expect(mocks.moveEntry.mock.calls[1]?.[0]).toMatchObject({ entry_id: firstEntry.id, section_id: morningId });
+    secondRequest.resolve({});
+    await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+  });
+
+  it("queues Start behind an in-flight cross-Section Move and starts from the reconciled Section", async () => {
+    const moveRequest = deferred<unknown>();
+    const startRequest = deferred<unknown>();
+    const movedEntry = { ...firstEntry, section_id: eveningId, planned_start_minute: 720 };
+    const movedDay = { ...populatedDay, placement_revision: 2,
+      sections: [{ ...emptyDay.sections[0], entries: [] }, { ...emptyDay.sections[1], entries: [movedEntry] }], next_entry: movedEntry };
+    const startedDay = { ...movedDay, active_execution: {
+      id: "019c0000-0000-7000-8000-000000000050", entry_id: firstEntry.id, entry_estimate_seconds: null,
+      started_at: "2026-08-22T12:00:00.000Z", ended_at: null,
+    }, sections: [{ ...movedDay.sections[0], entries: [] }, { ...movedDay.sections[1], entries: [{ ...movedEntry, lifecycle_state: "running" }] }], next_entry: null };
+    mocks.loadDay.mockResolvedValueOnce(populatedDay).mockResolvedValueOnce(movedDay).mockResolvedValueOnce(startedDay);
+    mocks.moveEntry.mockReturnValue(moveRequest.promise);
+    mocks.startEntry.mockReturnValue(startRequest.promise);
+    render(<App />);
+
+    fireEvent.change(await screen.findByRole("combobox", { name: "Canonical taskのSection" }), { target: { value: eveningId } });
+    await waitFor(() => expect(mocks.moveEntry).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "Canonical taskを開始" }));
+    expect(mocks.startEntry).not.toHaveBeenCalled();
+
+    moveRequest.resolve({});
+    await waitFor(() => expect(mocks.startEntry).toHaveBeenCalledTimes(1));
+    expect(mocks.startEntry.mock.calls[0]?.[0]).toMatchObject({ entry_id: firstEntry.id });
+    startRequest.resolve({});
+    await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+  });
+
+  it("cancels a queued Start when its prerequisite cross-Section Move deterministically fails", async () => {
+    const moveRequest = deferred<unknown>();
+    mocks.loadDay.mockResolvedValue(populatedDay);
+    mocks.moveEntry.mockReturnValue(moveRequest.promise);
+    render(<App />);
+
+    fireEvent.change(await screen.findByRole("combobox", { name: "Canonical taskのSection" }), { target: { value: eveningId } });
+    await waitFor(() => expect(mocks.moveEntry).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "Canonical taskを開始" }));
+    expect(mocks.startEntry).not.toHaveBeenCalled();
+
+    moveRequest.reject(new ApiClientError("move conflict", 409, false, "resource_conflict"));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("move conflict"));
+    expect(mocks.startEntry).not.toHaveBeenCalled();
   });
 
   it("does not expose a drag handle for running, completed, or read-only Entries", async () => {
