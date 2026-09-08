@@ -1245,7 +1245,7 @@ D-078 adds a dedicated barrier-aware reorder intent coordinator. A pointer or ke
 
 - Deployed `taskchute-web-nonprod` from the exact nonprod build. Worker version: `500e93af-0308-45b5-84da-627eb44eeaab`. Generated config used `RUNTIME_ENV=nonprod`, `BOOTSTRAP_ENABLED=false`, nonprod APP/AUTH D1 bindings, and no migrations.
 - Authenticated persistent tab verified two rapid `Shift + ArrowDown` moves on the same logical Entry, immediate visible reorder, focus retention, `保存中 1件` during drain, disappearance at convergence, and same-tab reload persistence. A fresh authenticated tab loaded the same persisted order. Console logs were `0 errors / 0 warnings` for persistent and fresh tabs.
-- Pointer D&D race was not measurable in the current in-app browser connector because its active content viewport was approximately `332px` wide while the task columns were horizontally clipped. The contract permits deferred-response automated evidence for this timing race; the focused tests are PASS. Runner-visible overlay was not opened in this D-078 browser run; existing D-075/D-077 closeout evidence remains unchanged.
+- The initial D-078 browser run had a pointer/Runner evidence gap because its active content viewport was approximately `332px` wide and task columns were clipped. The verification-only closeout below supersedes that initial status using a normal-width `1280 × 720` authenticated surface; no code or redeploy was needed.
 - D-075 fixed-chrome regression geometry remained stable in the same nonprod session: short Day header `top 16 / bottom 94 / height 78`, toolbar `top 110 / bottom 251 / height 141`, Day surface `top 259 / bottom 910 / height 651`, table heading `top 260`; long Day had the same top geometry and only a larger surface `scrollHeight` (`953` vs `634`). Toolbar-to-surface gap was `8px` in both cases.
 
 ### Read-only APP / AUTH evidence
@@ -1254,4 +1254,29 @@ D-078 adds a dedicated barrier-aware reorder intent coordinator. A pointer or ke
 - APP Day `2026-09-08` is `01a07724-839c-718f-addf-baab70224268`, with placement revision `34`. The browser keyboard reorder persisted the Sectionなし order and the duplicate-position query was empty.
 - Latest `ReorderEntries` operation rows were two distinct successful operations: revisions `33` and `34`, with unique operation IDs and coherent full Section order results. Operations count was `283`, with `283` distinct operation IDs. No production database was queried.
 
-Classification: `APPROVED / IMPLEMENTED / INTEGRATED / LOCAL_TESTED / MAIN_PUSHED / PERSISTENT_NONPROD_DEPLOYED / KEYBOARD_BROWSER_VERIFIED / RELOAD_PERSISTENCE_VERIFIED / FRESH_TAB_VERIFIED / DB_INTEGRITY_VERIFIED / MIGRATION_NOT_REQUIRED / MIGRATION_HELPER_NOT_RUN / DEPENDENCY_UNCHANGED / POINTER_DND_BROWSER_NOT_VERIFIED / RUNNER_VISIBLE_NOT_VERIFIED / PRODUCTION_NOT_RUN / RESTORE_NOT_RUN / DESTRUCTIVE_CLEANUP_NOT_RUN / RELEASED_NO`.
+Classification: `APPROVED / IMPLEMENTED / INTEGRATED / LOCAL_TESTED / MAIN_PUSHED / PERSISTENT_NONPROD_DEPLOYED / KEYBOARD_BROWSER_VERIFIED / POINTER_DND_BROWSER_VERIFIED / RUNNER_VISIBLE_BROWSER_VERIFIED / RELOAD_PERSISTENCE_VERIFIED / FRESH_TAB_VERIFIED / DB_INTEGRITY_VERIFIED / MIGRATION_NOT_REQUIRED / MIGRATION_HELPER_NOT_RUN / DEPENDENCY_UNCHANGED / PRODUCTION_NOT_RUN / RESTORE_NOT_RUN / DESTRUCTIVE_CLEANUP_NOT_RUN / RELEASED_NO`.
+
+### D-078 persistent browser verification gap closeout
+
+- Starting docs/main SHA was `d003df3320680582a56ad505bd4d1aa4ace2b38c` (`Record D-078 non-blocking reorder closeout`). No code change or redeploy was needed. Existing nonprod Worker `taskchute-web-nonprod` version `500e93af-0308-45b5-84da-627eb44eeaab` remained in use with `RUNTIME_ENV=nonprod`, `BOOTSTRAP_ENABLED=false`, and nonprod APP/AUTH D1 bindings.
+- The usable browser surface was an authenticated persistent in-app browser tab with product Sidebar closed: viewport `1280 × 720`, DPR `1`, normal zoom. `.day-surface` was `1233px` wide; Task drag source and drop targets were visibly reachable. The earlier `332 × 910` clipped surface was retained as a limitation record only and was not used for the PASS claim.
+
+#### Pointer D&D
+
+- Dedicated fixture IDs included `D078 Browser A` (`01a0804d-e88f-7f32-9900-e462296bc27e`), `D078 Browser Runner` (`01a0804e-1121-7b98-b1e0-3b9218b25472`), `D078 Browser B` (`01a0804e-09d7-7458-b735-bce8f2056d1a`), `D078 Browser C` (`01a0804e-0d7e-7f1b-9193-918b2abfadb0`), and `D078 Browser Runner2` (`01a08057-9d45-7fdd-aa5f-fe5d125484da`). B/C/Runner2D were established in the same Day Section and `planned_start=720` cohort; initial relevant planned order was B → C → Runner2D after the historical fixture rows.
+- A real browser pointer drag B→C changed the visible order immediately and preserved the logical focus on B. A two-drag pointer burst then produced `B → Runner2D → C`, with `保存中 2件` visible before drain; the final order did not rewind, the drop indicator count was zero, and save status returned to empty.
+- Same-tab Ctrl+R and a fresh authenticated tab both preserved the final pointer order. The fresh tab had no login form and, after opening the existing sidebar, showed `ログアウト`; no credential retrieval, reset, or new login was used.
+
+#### Floating Runner
+
+- A second dedicated set used `D078 Browser P1`, `D078 Browser P2`, and `D078 Browser Runner4`, all in the Day Section with `planned_start=720`. Runner4 was started and later completed, leaving active execution count zero.
+- In the same normal-width viewport, Runner OFF geometry was header `64..121 / 57px`, toolbar `137..186 / 49px`, surface `194..720 / 526px`, and sticky heading `195..229 / 34px`. Runner ON retained all four geometry invariants exactly. The fixed Runner overlay measured `left 392.5 .. right 872.5`, `top 618 .. bottom 696`, height `78px`; `.day-surface` gained only conditional `88px` bottom escape padding.
+- With Runner4 visible, a real P1→P2 pointer reorder produced `保存中 1件`, preserved focus, and left no stale indicator. A P1→Runner4 crossing attempt left order and save status unchanged. At max scroll `1014`, final planned P1 bottom was `440`, below Runner top `618` in the visual sense (fully above it); planned-row focus also remained above Runner. Completing Runner4 removed the overlay and conditional escape.
+
+#### Final browser / DB evidence
+
+- All final verification tabs reported empty console logs: `0 errors / 0 warnings`. Same-tab reload and fresh authenticated tab showed no active execution and preserved planned fixture order `P2 → P1` after the Runner4 run.
+- APP read-only evidence: `PRAGMA quick_check=ok`, FK empty, Day `2026-09-08` placement revision `77`, duplicate positions empty, active executions `0`, APP migrations `23`. AUTH: quick check `ok`, FK empty, AUTH migrations `1`. Every successful audit query reported `rows_written=0`; operations total `338`, distinct operation IDs `338`.
+- Final relevant fixture positions were coherent: B position `7` planned / `720`, P2 position `10` planned / `720`, P1 position `11` planned / `720`, Runner4 position `13` completed / `720`; no production database was queried. Existing fixture rows were not destructively cleaned.
+
+Classification update: `POINTER_DND_BROWSER_VERIFIED / POINTER_BURST_BROWSER_VERIFIED / RUNNER_VISIBLE_BROWSER_VERIFIED / RUNNER_GEOMETRY_STABLE / RUNNER_TRAILING_ESCAPE_VERIFIED / RUNNING_BOUNDARY_REJECTION_VERIFIED / RELOAD_PERSISTENCE_VERIFIED / FRESH_TAB_VERIFIED / CONSOLE_CLEAN / DB_INTEGRITY_VERIFIED / NO_CODE_CHANGE / NO_REDEPLOY / PRODUCTION_NOT_RUN / RELEASED_NO`. The earlier R-024 evidence gap is closed; `MIGRATION_HELPER_NOT_RUN` remains unchanged and is not a D-078 migration requirement.

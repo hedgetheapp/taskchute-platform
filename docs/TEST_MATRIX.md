@@ -2088,7 +2088,18 @@ Local verification summary: focused Web `212 / 212`, full Web `244`, full Worker
 | D078-REG-02 | Worker regressions | Reorder/Lifecycle focused suite and full Worker suite | PASS; `4 files / 38 tests`, `24 files / 207 tests` |
 | D078-BUILD-01 | Static verification | typecheck, normal build, exact nonprod build, Wrangler nonprod dry-run, `git diff --check` | PASS |
 | D078-ENV-01 | Persistent nonprod | Worker `500e93af-0308-45b5-84da-627eb44eeaab`; nonprod bindings; bootstrap disabled; no production operation | PASS |
-| D078-ENV-02 | Authenticated browser | Rapid `Shift + ArrowDown`, logical focus retention, save drain, same-tab reload, fresh authenticated tab persistence, console `0 / 0`; pointer D&D race could not be measured because task columns were clipped by the narrow connector viewport | PASS for keyboard/persistence; pointer D&D browser `NOT_VERIFIED`, deferred automated evidence PASS |
+| D078-ENV-02 | Authenticated browser | normal-width `1280 × 720`, DPR 1, sidebar closed; real pointer D&D, same-cohort burst, save status, focus, no stale indicator, same-tab reload, fresh authenticated tab, Runner overlay/trailing escape/boundary rejection, console `0 / 0` | PASS; browser race observable as `保存中 2件` during two real pointer drags |
 | D078-DB-01 | Read-only APP/AUTH | quick check, FK, migration pending, full Section positions, placement revision, duplicate positions, operation identity/results, rows-written audit | PASS; all successful audit queries `rows_written=0` |
 | D078-MIG-01 | Migration helper | `npm run test:migrations` emitted no output in the Windows/Wrangler helper and was safely interrupted | NOT_RUN; D-078 remains `MIGRATION_NOT_REQUIRED` |
 | D078-BOUNDARY-01 | Explicit non-goals | no API/Worker/schema/migration/dependency/security change; future direct reorder unchanged; no production/credential/bootstrap/restore/destructive cleanup | PASS |
+
+## D-078 persistent browser verification gap closeout
+
+| ID | Scope | Evidence | Result |
+|---|---|---|---|
+| D078-BROWSER-POINTER-01 | Real pointer D&D | At normal-width `1280 × 720` / DPR 1 / sidebar closed, Task source and drop target were visible and pointer-reachable. Fixture B/C/Runner2D was in Day / `planned_start=720`; B→C changed order immediately, focus stayed on B, and no stale drop indicator remained | PASS; real browser pointer drag, not synthetic DOM events |
+| D078-BROWSER-POINTER-02 | Repeated pointer burst | Two real drags in one burst produced effective order `B → Runner2D → C`, showed `保存中 2件`, kept the latest order during drain, then converged with status cleared | PASS; timing observable in browser |
+| D078-BROWSER-PERSIST-01 | Persistence | Final pointer order survived same-tab Ctrl+R and a fresh authenticated tab. Fresh tab showed no login form; opening the existing sidebar exposed `ログアウト` without credential work | PASS |
+| D078-BROWSER-RUNNER-01 | Runner ON/OFF geometry | Dedicated Runner4 in the same Day / `planned_start=720` cohort. Normal-width OFF geometry was header `64..121 / 57px`, toolbar `137..186 / 49px`, surface `194..720 / 526px`, heading `195..229 / 34px`; ON geometry kept all four invariants unchanged. Runner overlay was `top 618..696 / 78px`; conditional surface padding was `88px` | PASS |
+| D078-BROWSER-RUNNER-02 | Runner interaction | P1/P2 remained planned on the same side of running Runner4. Real P1→P2 pointer reorder showed `保存中 1件`; P1→Runner4 crossing attempt left order/status unchanged. At max scroll `1014`, P1 bottom `440` and Runner top `618`; planned focus remained above Runner. Runner4 Complete removed overlay and escape | PASS |
+| D078-BROWSER-DB-01 | Final integrity | APP quick `ok`, FK empty, placement revision `77`, duplicate positions empty, active executions `0`, APP migrations `23`, AUTH quick `ok`, FK empty, AUTH migrations `1`; every successful query `rows_written=0`; operations `338 / 338` distinct IDs | PASS |
