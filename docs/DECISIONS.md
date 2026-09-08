@@ -1643,3 +1643,19 @@ D-077は、D-066の既存memory-only overlayとglobal serial dispatcherを維持
 - provisional Add、Start / Complete / Interrupt、D-074 current-Day `I`、D-076 established-future `I`、past / preview / Routine / historical boundaryは既存Decisionどおりとする。Project Board / Mode Board、future-Day D-066 queue、offline persistence、multi-tab coordination、API / Domain / schema / migration / dependency / security posture変更、production operationは対象外とする。
 
 本DecisionはWeb-onlyのreversible interaction correctiveであり、既存API / Worker command、D1 schema、migration、dependency、binding、authentication、security postureは変更しない。実装、automated regression、persistent nonprod evidenceは`docs/CURRENT.md`、`docs/FEATURES.md`、`docs/SPEC.md`、`docs/ARCHITECTURE.md`、`docs/DESIGN.md`、`docs/TEST_MATRIX.md`、`docs/RISKS.md`へ記録する。Releasedは`NO`のままとする。
+
+## D-078 — Non-blocking repeated same-Section reorder v0.1
+
+Status: **Approved**
+
+D-078は、D-066 / D-077のcurrent-Day mutation safetyを維持したまま、current established Dayの同一Section・同一planned-start cohort内のmanual reorderを、先行Server responseの完了待ちなしで連続受理する。対象はpointer D&Dと`Shift + ArrowUp / ArrowDown`であり、future Day、past Day、preview、cross-Section reorderは拡張しない。
+
+- 次のgestureは、canonical Section全体にstill-validなpending Reorder overlayを重ねたeffective orderをbaseにする。`showCompleted`などのpresentation filterでpayloadを欠落させない。
+- sent Reorderの`operation_id`、semantic payload、expected placement revisionはimmutableとする。後続gestureは別のlogical intentとして扱う。
+- unsent Reorderは、同じorder-preserving reorder segment内で、非commutative barrierを跨がない場合に限りlatest desired orderへcoalesceする。Start / Complete / Interrupt、Add / move / planned-start / delete / bulk / Routine placement等のbarrierを跨いでgeneric coalesceしない。
+- canonical baseへのunsent no-opはqueue itemとoverlayを取り除き、sent済みのReorderへは後続logical intentとして別途保持する。
+- deterministic failure / revision conflictはcanonical Dayをreconcileし、失敗したReorderに依存する後続intentをcancelする。infrastructure ambiguityではsent operationをexact identity / payloadのままretainし、後続Reorderをholdして既存retry境界を守る。
+- unexpected external order changeに対してrevisionだけを差し替えてsilent rebaseしない。Section membership、historical boundary、planned-start cohortの前提が変わった場合は既存conflict/reconcile authorityへ戻す。
+- D-077の`保存中 n件`はsent Reorderとlatest unsent Reorderをlogical workとして一度だけ数え、coalesced obsolete intentやunsent no-opを数えない。
+
+Worker/API/domain command、schema、migration、dependency、security postureは変更しない。future established Dayは既存direct reorderを維持し、current-Day queueへ拡張しない。D-075 fixed chrome / Runner overlay、D-073 / D-074 / D-076 lifecycle・insertion semanticsは不変とする。実装とevidenceはcanonical docsへ記録し、production / restore / destructive cleanup / releaseは対象外とする。Releasedは`NO`のままとする。

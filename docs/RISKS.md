@@ -391,3 +391,11 @@ Current mitigation / evidence:
 - Focused Web `212 / 212`, full Web `244`, full Worker `207`, typecheck / build / exact nonprod build / dry-run, persistent authenticated browser rapid-edit / reload / fresh-tab, console `0 / 0`, and APP/AUTH read-only integrity all PASS. No API / Domain / schema / migration / dependency / security change was introduced.
 
 Remaining boundary: D&D / reorder was deliberately left on its existing busy behavior because safe non-blocking placement acceptance would require additional semantic proof. Multi-tab coordination, true offline / persisted queues, future / past / Routine broadening, viewport resize gesture, production, credential operations, bootstrap changes, restore, and destructive cleanup remain outside this risk mitigation and `NOT_RUN`.
+
+## R-024 — D-078 pointer D&D browser evidence gap
+
+D-078 automated deferred-response coverage verifies effective-order calculation, barrier-aware coalescing, sent-operation immutability, failure/conflict/ambiguity handling, and bounded save count. Persistent nonprod browser verification confirms rapid keyboard reorder, logical focus retention, save drain, reload, fresh-tab persistence, and console `0 / 0`.
+
+The current in-app browser connector exposed an approximately `332px` active content viewport, while the Day task columns were horizontally clipped. Direct pointer drag could therefore not be exercised as a trustworthy real-user D&D gesture in that session. This is an evidence gap, not a product acceptance claim: the deferred automated tests are authoritative for the response race, while pointer D&D browser evidence remains `NOT_VERIFIED`. Runner-visible overlay was also not opened in this D-078 run; the existing D-075/D-077 evidence remains the applicable regression evidence.
+
+No production action, credential operation, bootstrap change, restore, destructive cleanup, API/schema/migration/dependency change, or security posture change was performed. Follow-up is to repeat pointer D&D and visible Runner checks in a browser session with a usable task-column viewport if that evidence is required for a future closeout.

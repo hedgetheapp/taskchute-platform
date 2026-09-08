@@ -1220,3 +1220,38 @@ Before the fix, at the same authenticated viewport `1280 × 720`, sidebar and vi
 - Target Start / Complete timestamps were server-derived (`2026-09-08T02:14:50.731Z` / `2026-09-08T02:15:31.795Z`); execution count was `0` active at evidence time. Day placement revision was `32`; duplicate-position query was empty. Recent operation rows for metadata / Mode / move / estimate / planned start / Start / Complete were coherent `success` rows. APP counts were entries `67`, tasks `72`, operations `281`; AUTH counts were users `1`, accounts `1`, sessions `6`.
 
 Classification: `APPROVED / IMPLEMENTED / INTEGRATED / LOCAL_TESTED / MAIN_PUSHED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_BROWSER_VERIFIED / DB_INTEGRITY_VERIFIED / MIGRATION_NOT_REQUIRED / DEPENDENCY_UNCHANGED / BOOTSTRAP_PROBE_NOT_RUN / PRODUCTION_NOT_RUN / RESTORE_NOT_RUN / DESTRUCTIVE_CLEANUP_NOT_RUN / RELEASED_NO`.
+
+## D-078 — Non-blocking repeated same-Section reorder v0.1 closeout
+
+### Git / implementation
+
+- Contract baseline was `2f611a18021d87e30d2d6cc4c8f4cea1b96efee0`; final implementation commit is `7bdfc4be82439f8518672e0bc120f374c435a5e6`, message `Implement D-078 non-blocking same-Section reorder`.
+- Branch is `main`; local `main`, `HEAD`, `origin/main`, and `git ls-remote origin refs/heads/main` agree at `7bdfc4be82439f8518672e0bc120f374c435a5e6`. Remote is `https://github.com/hedgetheapp/taskchute-platform.git`. Tracked worktree and index are clean; pre-existing untracked review artifacts were preserved and not staged.
+- Changed implementation files are `apps/web/src/web/App.tsx` and `apps/web/test/web/App.test.tsx`. Worker/API/schema/migration/dependency files are unchanged.
+
+### Implementation result
+
+D-078 adds a dedicated barrier-aware reorder intent coordinator. A pointer or keyboard gesture on an eligible current-Day same-Section / same-planned-start cohort uses the full canonical Section order plus the still-valid pending overlay, so a second gesture is calculated from the effective order. Sent Reorder operation identity, exact payload, and expected revision remain immutable. Only unsent desired order within the same reorder segment coalesces; Start / Complete / Interrupt and membership / placement mutations remain barriers. Unsent return-to-base cancels without HTTP; sent return-to-base becomes a later intent. Failure/conflict cancels dependent reorder intent, while ambiguity retains exact retry identity. Future-Day direct reorder and all historical / preview boundaries remain unchanged.
+
+`保存中 n件` counts sent and latest unsent reorder logical work once, excluding obsolete coalesced intents and unsent no-ops. Next / forecast derivations use the effective pending order where applicable. Focus stays on the logical Entry for keyboard movement, and lifecycle / Section invalidation clears stale drag state safely.
+
+### Automated verification
+
+- D-078 focused Web coverage: `6 / 6` targeted tests PASS, including effective pointer/keyboard order, focus retention, unsent no-op cancellation, Start barrier, and dependent failure cancellation.
+- Full Web: `4 files / 249 tests` PASS. Full Worker: `24 files / 207 tests` PASS. Relevant Worker reorder/lifecycle: `4 files / 38 tests` PASS.
+- Typecheck, normal build, exact nonprod build, Wrangler nonprod dry-run, and `git diff --check`: PASS. The migration helper produced no output on Windows and was safely interrupted; it is reported as `NOT_RUN`, not PASS. Since D-078 is Web-only, status is `MIGRATION_NOT_REQUIRED`; dependency change is `NONE`.
+
+### Persistent nonprod
+
+- Deployed `taskchute-web-nonprod` from the exact nonprod build. Worker version: `500e93af-0308-45b5-84da-627eb44eeaab`. Generated config used `RUNTIME_ENV=nonprod`, `BOOTSTRAP_ENABLED=false`, nonprod APP/AUTH D1 bindings, and no migrations.
+- Authenticated persistent tab verified two rapid `Shift + ArrowDown` moves on the same logical Entry, immediate visible reorder, focus retention, `保存中 1件` during drain, disappearance at convergence, and same-tab reload persistence. A fresh authenticated tab loaded the same persisted order. Console logs were `0 errors / 0 warnings` for persistent and fresh tabs.
+- Pointer D&D race was not measurable in the current in-app browser connector because its active content viewport was approximately `332px` wide while the task columns were horizontally clipped. The contract permits deferred-response automated evidence for this timing race; the focused tests are PASS. Runner-visible overlay was not opened in this D-078 browser run; existing D-075/D-077 closeout evidence remains unchanged.
+- D-075 fixed-chrome regression geometry remained stable in the same nonprod session: short Day header `top 16 / bottom 94 / height 78`, toolbar `top 110 / bottom 251 / height 141`, Day surface `top 259 / bottom 910 / height 651`, table heading `top 260`; long Day had the same top geometry and only a larger surface `scrollHeight` (`953` vs `634`). Toolbar-to-surface gap was `8px` in both cases.
+
+### Read-only APP / AUTH evidence
+
+- APP and AUTH `PRAGMA quick_check` returned `ok`; foreign-key checks were empty; every successful audit query reported `rows_written=0`. Local and remote migration lists both indicated pending `0 / 0` (APP local/remote 23 migrations; AUTH local/remote 1 migration).
+- APP Day `2026-09-08` is `01a07724-839c-718f-addf-baab70224268`, with placement revision `34`. The browser keyboard reorder persisted the Sectionなし order and the duplicate-position query was empty.
+- Latest `ReorderEntries` operation rows were two distinct successful operations: revisions `33` and `34`, with unique operation IDs and coherent full Section order results. Operations count was `283`, with `283` distinct operation IDs. No production database was queried.
+
+Classification: `APPROVED / IMPLEMENTED / INTEGRATED / LOCAL_TESTED / MAIN_PUSHED / PERSISTENT_NONPROD_DEPLOYED / KEYBOARD_BROWSER_VERIFIED / RELOAD_PERSISTENCE_VERIFIED / FRESH_TAB_VERIFIED / DB_INTEGRITY_VERIFIED / MIGRATION_NOT_REQUIRED / MIGRATION_HELPER_NOT_RUN / DEPENDENCY_UNCHANGED / POINTER_DND_BROWSER_NOT_VERIFIED / RUNNER_VISIBLE_NOT_VERIFIED / PRODUCTION_NOT_RUN / RESTORE_NOT_RUN / DESTRUCTIVE_CLEANUP_NOT_RUN / RELEASED_NO`.

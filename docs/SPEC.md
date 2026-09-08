@@ -454,3 +454,13 @@ Eligible scope is an established, planning-enabled current Day ordinary planned 
 - A transient `保存中 n件` status counts unresolved logical active + queued work once after coalescing. It is non-blocking, does not steal focus, and reaches zero only after convergence or deterministic rejection/rollback. Retained ambiguous work is not reported as successfully saved.
 
 Past, future, Routine-derived, completed/running, Project Board / Mode Board, offline persistence, multi-tab coordination, and D&D/reorder semantics are outside this slice. D&D retains the existing placement busy boundary and is a follow-up candidate rather than a D-077 behavior expansion.
+
+## D-078 Non-blocking repeated same-Section reorder v0.1
+
+Current established Dayでmanual reorderが既に許可されているEntryについて、同一Sectionかつ同一planned-start cohort内のpointer D&D / `Shift + ArrowUp / ArrowDown`を、先行ReorderのServer convergence前でも受理する。visible orderはgesture直後に更新し、保存は既存のserial current-Day dispatcherで順序を保って進める。
+
+Effective orderはcanonical Section全体のEntry sequenceとpending Reorder intentの合成である。hidden completed / running rows、historical segment、planned-start cohort境界を越えない。次のgestureはstale canonical rowsではなくeffective orderから計算する。running / completed Entry、cross-Section、future / past / previewはこのqueue capabilityの対象外とする。
+
+同じreorder segment内のunsent latest desired orderはcoalesceできるが、Start / Complete / Interrupt、Add、Section move、planned-start変更、Duplicate / delete / bulk、Routine placement等のnon-commutative barrierを跨がない。sent Reorderのoperation identity、payload、expected revisionは変更しない。unsent no-opは送信せず除去し、sent operation後のreturn-to-baseは後続intentとして扱う。
+
+successful reconcile後は最新canonical orderに対して後続intentを再検証する。deterministic error / revision conflictは依存intentをcancelしてcanonical表示へ戻し、ambiguous resultはexact retry identityを保持して後続Reorderを停止する。unexpected external order changeをrevision番号だけでsilent rebaseしない。`保存中 n件`はsent + latest unsentのlogical unresolved workを重複なく表示する。

@@ -519,3 +519,11 @@ D-075 correctiveでは、long Dayのcontent sizeがfixed chromeをshrinkしな�
 Floating RunnerはDay surfaceのviewportを縮めないfixed overlayとし、visible時だけ`.day-surface.has-floating-runner`へ`Runner min-height 64px + bottom offset 24px = 88px`のtrailing scroll escapeを付与する。最後のTaskをRunner上端より完全に上へscrollでき、Runner消失時にはpaddingが消える。retry panelは既存の外側配置を変更しない。fixed header / toolbar / DayBoard top / sticky column headingのgeometryはRunner表示・消失とtask countで変化しない。
 
 D-076では、established future Dayのordinary planned Task / Section summaryへcurrent-Dayと同じmemory-only `I` draftを許可する。Taskはsame Section / same planned-start direct-after、Sectionはfrozen logical startのscheduled-area先頭とし、NULL-start rowsを先行保持する。Project、estimate、Routine relation、execution factsは継承せず、past / preview / running / completed / Routine-derivedは対象外。既存AddTaskToDay placement intentとexact operation / revision / retry boundaryを再利用する。
+
+## D-078 repeated same-Section reorder interaction
+
+同じSection・同じplanned-start cohort内の合法なD&D / `Shift + ArrowUp / ArrowDown`は、Server保存の完了を待たずeffective orderへ即時反映する。連続gestureでは画面に見えているcanonical rowsではなく、直前のpending orderを次の操作対象にする。keyboard focusは同じEntry identityへ残し、pointer dropはdrop対象のlogical Entryを保つ。
+
+保存中表示は既存のtransient status languageで`保存中 n件`を示し、layoutをshiftせず、focusやpointer / keyboard操作をblockしない。sent Reorderは不変で、unsent desired orderだけが同一barrier-free segment内で圧縮される。canonicalへ戻るunsent操作は保存表示を増やさず取り消す。
+
+Start / Complete / Interrupt、Add、Section move、planned-start変更、delete / bulk / Routine placementなどの非可換operationが前後に存在する場合はReorderを跨がせない。deterministic failure / conflictは依存するpending orderを解除し、ambiguous outcomeは既存retry panel / retained-operation境界を維持する。future Dayのdirect reorder、past / previewのread-only境界、D-075 fixed chrome / Runner overlayは変更しない。

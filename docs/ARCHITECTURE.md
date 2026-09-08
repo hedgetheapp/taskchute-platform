@@ -445,3 +445,15 @@ D-077 reuses the D-066 in-memory coordinator. `dayMutationQueueRef` remains the 
 After a successful reconcile, the imperative `dayRef` is updated before React render/effect completion so the next queued dispatch rebases from the latest canonical projection. Metadata overlays and drafts merge title / Project intent per field, while sent payloads remain immutable. The logical save count is derived from active mutation scopes plus queued logical items, with unsent coalescing represented once.
 
 No Worker/API/schema/migration/dependency/binding change is introduced. Placement D&D keeps an explicit queued-placement guard, so D-077 does not change reorder acceptance semantics.
+
+## D-078 dedicated reorder intent coordinator
+
+D-078はgeneric `enqueueDayMutation()`のwhole-item coalesceをReorderへ盲目的に適用せず、専用のreorder intent coordinationをWeb内に持つ。current-Dayのsame-Section / same-planned-start cohortだけが対象で、HTTP送信自体は既存のglobal serial `dayMutationQueueRef`を再利用する。
+
+Effective Section orderはcanonical Section全体のEntry identity sequenceに、same-Sectionのstill-valid pending Reorder overlayを重ねて導出する。未表示のcompleted / running rowもbaseとprotected boundaryに含め、`showCompleted`の表示状態からpayloadを再構成しない。pointer dropとkeyboard moveの次の入力はこのeffective orderを使用し、logical Entryのfocusはidentityで維持する。
+
+Reorder overlayはsent/in-flight operationとlatest unsent desired orderを区別する。sent payload・operation identity・placement revisionは凍結し、後続gestureは同一order-preserving segment内でのみlatest unsent intentへcoalesceする。queue内のStart / Complete / Interruptやmembership / placementを変えるoperationはbarrierとなり、その前後を入れ替えない。unsent desired orderがそのvalid canonical baseと同じになった場合はHTTPなしでcancelする。
+
+成功後はlatest canonical projectionへreconcileして後続intentを再検証し、canonical no-opなら除去する。deterministic rejection / revision conflictは依存する後続Reorderをcancelし、ambiguityはexact sent operationをretainしてretry boundaryをpauseする。D-020のno-silent-placement-overwriteを維持し、unexpected external orderに対するrevision-only rebaseは行わない。D-077 save statusはこのcoordinatorのlogical unresolved itemを一度だけ数える。
+
+この設計はWeb-onlyで、ReorderEntriesのWorker/API contract、schema、migration、dependency、security postureを変更しない。future established Dayは従来のdirect path、past / preview / cross-Sectionは従来のmutation boundaryを維持する。

@@ -2074,3 +2074,21 @@ Classification: `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / MAIN_PUSHED / PERSIST
 | D077-BOUNDARY-01 | Explicit non-goals | no API / schema / migration / dependency / security change; D&D/reorder remains unchanged; no production / credential / restore / destructive cleanup | source diff and generated config review; migration `NOT_REQUIRED`; prohibited actions not run | PASS |
 
 Local verification summary: focused Web `212 / 212`, full Web `244`, full Worker `207`, typecheck / build / exact nonprod build / dry-run / diff-check PASS. Migration helper produced no output and was safely interrupted; because D-077 requires no migration, remote pending `0 / 0` is the authoritative migration result.
+
+## D-078 — Non-blocking repeated same-Section reorder v0.1
+
+| ID | Scope | Evidence | Result |
+|---|---|---|---|
+| D078-WEB-01 | Effective pending order | Deferred-response tests prove the second pointer/keyboard reorder is based on the effective full Section order, not stale canonical rows; focus remains on the logical Entry | PASS (`6 / 6` focused D-078 tests) |
+| D078-WEB-02 | Bounded reorder intent | Tests cover unsent same-segment coalescing, key burst boundedness, sent payload immutability, unsent return-to-base cancellation, and sent return-to-base as a later intent | PASS |
+| D078-WEB-03 | Barrier / lifecycle ordering | Tests cover reorder versus Start / incompatible placement barrier, unsectioned Start boundary, deterministic failure/cancel, revision conflict, ambiguity retention/retry, and lifecycle invalidation | PASS |
+| D078-WEB-04 | Placement boundaries | Hidden completed/running rows, historical segment, planned-start cohort, `showCompleted`, Routine same-Section and Routine cross-Section constraints remain covered | PASS |
+| D078-WEB-05 | Derived presentation / status | Effective Next/forecast and logical `保存中 n件` count remain coherent and bounded without layout/focus shift | PASS |
+| D078-REG-01 | Existing Web capabilities | Add, current `I`, future established `I`, metadata rapid edits, Start/Complete/Interrupt, D-075 chrome/Runner, retry panel, menus, calendar, modal, and keyboard regressions | PASS; full Web `4 files / 249 tests` |
+| D078-REG-02 | Worker regressions | Reorder/Lifecycle focused suite and full Worker suite | PASS; `4 files / 38 tests`, `24 files / 207 tests` |
+| D078-BUILD-01 | Static verification | typecheck, normal build, exact nonprod build, Wrangler nonprod dry-run, `git diff --check` | PASS |
+| D078-ENV-01 | Persistent nonprod | Worker `500e93af-0308-45b5-84da-627eb44eeaab`; nonprod bindings; bootstrap disabled; no production operation | PASS |
+| D078-ENV-02 | Authenticated browser | Rapid `Shift + ArrowDown`, logical focus retention, save drain, same-tab reload, fresh authenticated tab persistence, console `0 / 0`; pointer D&D race could not be measured because task columns were clipped by the narrow connector viewport | PASS for keyboard/persistence; pointer D&D browser `NOT_VERIFIED`, deferred automated evidence PASS |
+| D078-DB-01 | Read-only APP/AUTH | quick check, FK, migration pending, full Section positions, placement revision, duplicate positions, operation identity/results, rows-written audit | PASS; all successful audit queries `rows_written=0` |
+| D078-MIG-01 | Migration helper | `npm run test:migrations` emitted no output in the Windows/Wrangler helper and was safely interrupted | NOT_RUN; D-078 remains `MIGRATION_NOT_REQUIRED` |
+| D078-BOUNDARY-01 | Explicit non-goals | no API/Worker/schema/migration/dependency/security change; future direct reorder unchanged; no production/credential/bootstrap/restore/destructive cleanup | PASS |
