@@ -1140,6 +1140,113 @@ describe("Dogfood Day shell", () => {
     });
   });
 
+  it("chains I from provisional Add rows without waiting and preserves each stable anchor", async () => {
+    const addA = deferred<unknown>();
+    const addB = deferred<unknown>();
+    const addC = deferred<unknown>();
+    let canonical = emptyDay;
+    mocks.loadDay.mockImplementation(async () => canonical);
+    mocks.addTask
+      .mockReturnValueOnce(addA.promise)
+      .mockReturnValueOnce(addB.promise)
+      .mockReturnValueOnce(addC.promise);
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "MorningにTaskを追加" }));
+    const firstDraft = screen.getByRole("textbox", { name: "MorningのTask名" });
+    fireEvent.change(firstDraft, { target: { value: "D080 Chain A" } });
+    fireEvent.keyDown(firstDraft, { key: "Enter" });
+    await waitFor(() => expect(mocks.addTask).toHaveBeenCalledTimes(1));
+    const entryA = mocks.addTask.mock.calls[0][0].entry_id as string;
+    const taskA = mocks.addTask.mock.calls[0][0].task_id as string;
+    const rowA = await screen.findByText("D080 Chain A");
+    expect(rowA.closest<HTMLElement>("[data-entry-id]")?.dataset.entryId).toBe(entryA);
+
+    rowA.closest<HTMLElement>("[data-entry-id]")!.focus();
+    fireEvent.keyDown(rowA.closest<HTMLElement>("[data-entry-id]")!, { key: "i" });
+    const secondDraft = screen.getByRole("textbox", { name: "MorningのTask名" });
+    fireEvent.change(secondDraft, { target: { value: "D080 Chain B" } });
+    fireEvent.keyDown(secondDraft, { key: "Enter" });
+    await waitFor(() => expect(screen.getByText("D080 Chain B")).toBeTruthy());
+    expect(mocks.addTask).toHaveBeenCalledTimes(1);
+
+    const rowB = screen.getByText("D080 Chain B").closest<HTMLElement>("[data-entry-id]")!;
+    rowB.focus();
+    fireEvent.keyDown(rowB, { key: "i" });
+    const thirdDraft = screen.getByRole("textbox", { name: "MorningのTask名" });
+    fireEvent.change(thirdDraft, { target: { value: "D080 Chain C" } });
+    fireEvent.keyDown(thirdDraft, { key: "Enter" });
+    await waitFor(() => expect(screen.getByText("D080 Chain C")).toBeTruthy());
+    expect(mocks.addTask).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("status").textContent).toContain("3件");
+
+    canonical = {
+      ...emptyDay,
+      placement_revision: 1,
+      sections: [{ ...emptyDay.sections[0], entries: [{ ...firstEntry, id: entryA, task: { ...firstEntry.task, id: taskA, title: "D080 Chain A" } }] }, emptyDay.sections[1]],
+    };
+    addA.resolve({});
+    await waitFor(() => expect(mocks.addTask).toHaveBeenCalledTimes(2));
+    expect(mocks.addTask.mock.calls[1][0]).toMatchObject({
+      title: "D080 Chain B",
+      placement: { kind: "after_entry", anchor_entry_id: entryA },
+    });
+    expect(screen.getByText("D080 Chain C")).toBeTruthy();
+    canonical = {
+      ...canonical,
+      placement_revision: 2,
+      sections: [{ ...canonical.sections[0], entries: [canonical.sections[0].entries[0]!, { ...secondEntry, id: mocks.addTask.mock.calls[1][0].entry_id, task: { ...secondEntry.task, id: mocks.addTask.mock.calls[1][0].task_id, title: "D080 Chain B" } }] }, canonical.sections[1]],
+    };
+    addB.resolve({});
+    await waitFor(() => expect(mocks.addTask).toHaveBeenCalledTimes(3));
+    const entryB = mocks.addTask.mock.calls[1][0].entry_id as string;
+    expect(mocks.addTask.mock.calls[2][0]).toMatchObject({
+      title: "D080 Chain C",
+      placement: { kind: "after_entry", anchor_entry_id: entryB },
+    });
+    canonical = {
+      ...canonical,
+      placement_revision: 3,
+      sections: [{ ...canonical.sections[0], entries: [...canonical.sections[0].entries, { ...thirdEntry, id: mocks.addTask.mock.calls[2][0].entry_id, task: { ...thirdEntry.task, id: mocks.addTask.mock.calls[2][0].task_id, title: "D080 Chain C" } }] }, canonical.sections[1]],
+    };
+    addC.resolve({});
+    await waitFor(() => expect(screen.getByText("D080 Chain C")).toBeTruthy());
+    expect(Array.from(document.querySelectorAll<HTMLElement>(".section-group [data-entry-id]"))
+      .map((row) => row.textContent?.includes("D080 Chain") ? row.textContent?.match(/D080 Chain [ABC]/)?.[0] : null)
+      .filter(Boolean)).toEqual(["D080 Chain A", "D080 Chain B", "D080 Chain C"]);
+  });
+
+  it("does not let an earlier Add response steal a newer provisional draft focus", async () => {
+    const addA = deferred<unknown>();
+    let canonical = emptyDay;
+    mocks.loadDay.mockImplementation(async () => canonical);
+    mocks.addTask.mockReturnValueOnce(addA.promise).mockResolvedValue({});
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "MorningにTaskを追加" }));
+    const firstDraft = screen.getByRole("textbox", { name: "MorningのTask名" });
+    fireEvent.change(firstDraft, { target: { value: "D080 Focus A" } });
+    fireEvent.keyDown(firstDraft, { key: "Enter" });
+    await waitFor(() => expect(mocks.addTask).toHaveBeenCalledTimes(1));
+    const entryA = mocks.addTask.mock.calls[0][0].entry_id as string;
+    canonical = {
+      ...emptyDay,
+      placement_revision: 1,
+      sections: [{ ...emptyDay.sections[0], entries: [{ ...firstEntry, id: entryA, task: { ...firstEntry.task, title: "D080 Focus A" } }] }, emptyDay.sections[1]],
+    };
+    const rowA = screen.getByText("D080 Focus A").closest<HTMLElement>("[data-entry-id]")!;
+    rowA.focus();
+    fireEvent.keyDown(rowA, { key: "i" });
+    const secondDraft = screen.getByRole("textbox", { name: "MorningのTask名" });
+    fireEvent.change(secondDraft, { target: { value: "D080 Focus B" } });
+    expect(document.activeElement).toBe(secondDraft);
+
+    addA.resolve({});
+    await waitFor(() => expect(screen.getByText("D080 Focus A")).toBeTruthy());
+    expect(mocks.addTask).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByDisplayValue("D080 Focus B")));
+  });
+
   it("extends focused Task I insertion to an established future Day", async () => {
     const future = {
       ...twoPlannedDay,

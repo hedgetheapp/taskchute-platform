@@ -818,6 +818,9 @@ export function App() {
   const [dayMutationQueueCount, setDayMutationQueueCount] = useState(0);
   const draftInputRef = useRef<HTMLInputElement | null>(null);
   const draftCompositionRef = useRef(false);
+  const draftTaskRef = useRef<DraftTask | null>(null);
+  const focusIntentGenerationRef = useRef(0);
+  const addFocusGenerationRef = useRef(new Map<string, number>());
   const selectedLogicalDateRef = useRef<string | null>(null);
   const mouseDragRef = useRef<MouseDragState | null>(null);
   const calendarTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -1008,6 +1011,22 @@ export function App() {
     setPendingTaskMetadataOverlays((current) => Object.fromEntries(Object.entries(current).filter(([, operation]) => !isCanceled(operation.operation_id))));
     setPendingEstimateOverlays((current) => Object.fromEntries(Object.entries(current).filter(([, operation]) => !isCanceled(operation.operation_id))));
     setPendingPlannedStartOverlays((current) => Object.fromEntries(Object.entries(current).filter(([, operation]) => !isCanceled(operation.request.operation_id))));
+  }
+
+  function cancelDraftAnchoredToPendingAdds(operationIds: Set<string>): void {
+    if (operationIds.size === 0) return;
+    const canceledEntryIds = new Set(pendingAddTasks
+      .filter((item) => operationIds.has(item.operation.operation_id))
+      .map((item) => item.operation.entry_id));
+    const draft = draftTaskRef.current;
+    if (!draft || draft.placement.kind !== "after-entry" || !canceledEntryIds.has(draft.placement.anchorEntryId)) return;
+    draftTaskRef.current = null;
+    focusIntentGenerationRef.current += 1;
+    setDraftTask(null);
+    const anchorSection = dayRef.current?.sections.find((section) => section.id === draft.sectionId);
+    if (anchorSection || draft.sectionId === null) {
+      setPendingFocusKey(focusKey({ kind: "section", id: groupKey(draft.sectionId) }));
+    }
   }
 
   function collectDependentOperationIds(rootOperationId: string): Set<string> {
@@ -1466,6 +1485,8 @@ export function App() {
     setPendingEstimateOverlays({});
     setPendingPlannedStartOverlays({});
     setPendingExecutionTimesOverlays({});
+    draftTaskRef.current = null;
+    focusIntentGenerationRef.current += 1;
     setDraftTask(null);
     setEditingEstimate(null);
     setEditingPlannedStart(null);
@@ -1523,6 +1544,8 @@ export function App() {
     setOverflowEntryId(null);
     setPending("day-navigation");
     setError(null);
+    draftTaskRef.current = null;
+    focusIntentGenerationRef.current += 1;
     setDraftTask(null);
     setSelectedEntryIds([]);
     setBulkConfirmation(null);
@@ -1688,6 +1711,10 @@ export function App() {
   useEffect(() => {
     if (draftTask) draftInputRef.current?.focus();
   }, [draftTask?.sectionId, draftTask?.placement.kind, draftTask?.placement.kind === "after-entry" ? draftTask.placement.anchorEntryId : null]);
+
+  useEffect(() => {
+    if (draftTask && document.activeElement === document.body) draftInputRef.current?.focus();
+  }, [day, draftTask]);
 
   useEffect(() => {
     if (!day) {
@@ -1859,26 +1886,34 @@ export function App() {
   async function executeAddTask(operation: AddTaskToDayRequest) {
     const mutationToken = beginMutationScope(placementMutationScope(operation.taskchute_day_id), "Task追加");
     if (!mutationToken) return;
+    setTaskOperation(operation);
     setPending("task");
     setError(null);
     try {
       await api.addTask(operation);
       await reconcile();
       setTaskOperation((current) => current?.operation_id === operation.operation_id ? null : current);
-      setDraftTask(null);
       setPendingAddTasks((current) => current.filter((item) => item.operation.operation_id !== operation.operation_id));
-      setPendingFocusKey(focusKey({ kind: "entry", id: operation.entry_id }));
+      const committedGeneration = addFocusGenerationRef.current.get(operation.operation_id);
+      if (draftTaskRef.current === null && committedGeneration !== undefined
+        && focusIntentGenerationRef.current === committedGeneration) {
+        setPendingFocusKey(focusKey({ kind: "entry", id: operation.entry_id }));
+      }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Task追加に失敗しました");
       const ambiguous = isAmbiguousOutcome(caught);
       const revisionConflict = caught instanceof ApiClientError && caught.code === "revision_conflict";
       if (ambiguous) pauseDayMutationQueue(operation.operation_id);
       else if (revisionConflict) pauseDayMutationQueue();
-      else cancelQueuedDayMutationDependents(operation.operation_id);
+      else {
+        const canceledOperationIds = cancelQueuedDayMutationDependents(operation.operation_id);
+        canceledOperationIds.add(operation.operation_id);
+        cancelDraftAnchoredToPendingAdds(canceledOperationIds);
+      }
       if (ambiguous) {
         setTaskOperation((current) => current?.operation_id === operation.operation_id ? current : null);
-        setPendingAddTasks((current) => current.filter((item) => item.operation.operation_id === operation.operation_id));
       } else if (caught instanceof ApiClientError && caught.code === "revision_conflict") {
+        cancelDraftAnchoredToPendingAdds(new Set(pendingAddTasks.map((item) => item.operation.operation_id)));
         setPendingAddTasks([]);
       }
       if (!ambiguous) setTaskOperation((current) => current?.operation_id === operation.operation_id ? null : current);
@@ -1886,11 +1921,14 @@ export function App() {
       try {
         const projection = await reconcile();
         if (ambiguous && projection && projectionContainsOperation(projection, operation)) {
-          setTaskOperation(null);
-          setDraftTask(null);
+          setTaskOperation((current) => current?.operation_id === operation.operation_id ? null : current);
           setPendingAddTasks((current) => current.filter((item) => item.operation.operation_id !== operation.operation_id));
           setError(null);
-          setPendingFocusKey(focusKey({ kind: "entry", id: operation.entry_id }));
+          const committedGeneration = addFocusGenerationRef.current.get(operation.operation_id);
+          if (draftTaskRef.current === null && committedGeneration !== undefined
+            && focusIntentGenerationRef.current === committedGeneration) {
+            setPendingFocusKey(focusKey({ kind: "entry", id: operation.entry_id }));
+          }
           resumeDayMutationQueue();
         }
       } catch {
@@ -2571,7 +2609,13 @@ export function App() {
           ? { placement: { kind: "section_start" as const } }
           : {}),
     };
-    setTaskOperation(operation);
+    const draftPlacement = draftTask.placement;
+    const parentPendingAdd = draftPlacement.kind === "after-entry"
+      ? pendingAddTasks.find((item) => item.operation.entry_id === draftPlacement.anchorEntryId)
+      : undefined;
+    const focusGeneration = ++focusIntentGenerationRef.current;
+    addFocusGenerationRef.current.set(operation.operation_id, focusGeneration);
+    draftTaskRef.current = null;
     setDraftTask(null);
     setPendingAddTasks((current) => [...current, { operation, title, projectId: operation.project_id, sectionId: operation.section_id, estimateSeconds: null, modeId: operation.mode_id ?? null }]);
     if (projects.length === 0) {
@@ -2582,10 +2626,13 @@ export function App() {
       const rebased = latest?.taskchute_day.id === operation.taskchute_day_id
         ? { ...operation, expected_placement_revision: latest.placement_revision }
         : operation;
-      setTaskOperation(rebased);
       await executeAddTask(rebased);
     };
-    if (day.is_current) enqueueDayMutation({ scope: placementMutationScope(operation.taskchute_day_id), label: "Task追加", operationId: operation.operation_id, dispatch });
+    if (day.is_current) enqueueDayMutation({
+      scope: placementMutationScope(operation.taskchute_day_id), label: "Task追加", operationId: operation.operation_id,
+      ...(parentPendingAdd ? { dependsOnOperationId: parentPendingAdd.operation.operation_id } : {}),
+      dispatch,
+    });
     else await dispatch();
   }
 
@@ -4263,7 +4310,8 @@ export function App() {
   const parsedSectionSettingsDraft = parseSectionSettingsDraft(sectionSettingsDraft);
   const totalQueuedMutations = pendingMutationCount + dayMutationQueueCount;
   const instantPlanningSave = pending === "task-metadata" || pending === "mode" || pending === "move"
-    || pending === "estimate" || pending === "planned-start" || pending === "reorder";
+    || pending === "estimate" || pending === "planned-start" || pending === "reorder"
+    || (pending === "task" && totalQueuedMutations > 1);
   const transientStatus = instantPlanningSave && totalQueuedMutations > 0
     ? `保存中 ${totalQueuedMutations}件`
     : totalQueuedMutations > 1
@@ -4283,6 +4331,7 @@ export function App() {
   ];
 
   function focusSurface(element: HTMLElement) {
+    focusIntentGenerationRef.current += 1;
     element.focus();
   }
 
@@ -4322,6 +4371,8 @@ export function App() {
         draftInputRef.current?.focus();
         return;
       }
+      draftTaskRef.current = null;
+      focusIntentGenerationRef.current += 1;
       setDraftTask(null);
     }
     setSectionCollapsed(sectionId, !collapsed);
@@ -4334,30 +4385,62 @@ export function App() {
       return;
     }
     setSectionCollapsed(sectionId, false);
-    setDraftTask({ sectionId, title: "", modeId: null, placement: { kind: "section-end", restoreFocus: { kind: "section", id: groupKey(sectionId) } } });
+    const nextDraft = { sectionId, title: "", modeId: null, placement: { kind: "section-end" as const, restoreFocus: { kind: "section" as const, id: groupKey(sectionId) } } };
+    draftTaskRef.current = nextDraft;
+    focusIntentGenerationRef.current += 1;
+    setDraftTask(nextDraft);
   }
 
   function openTaskInsertDraft(entry: EntryProjection) {
     if (!day?.taskchute_day.id || day.establishment_state !== "established" || mutationLocked || !day.planning_enabled || day.section_configuration_required
       || entry.lifecycle_state !== "planned" || entry.routine !== null) return;
     setSectionCollapsed(entry.section_id, false);
-    setDraftTask({
+    const nextDraft = {
       sectionId: entry.section_id,
       title: "",
       modeId: null,
       placement: { kind: "after-entry", anchorEntryId: entry.id, restoreFocus: { kind: "entry", id: entry.id } },
-    });
+    } satisfies DraftTask;
+    draftTaskRef.current = nextDraft;
+    focusIntentGenerationRef.current += 1;
+    setDraftTask(nextDraft);
+  }
+
+  function pendingAddHasPlacementBarrier(item: PendingAddTask): boolean {
+    return dayMutationQueueRef.current.some((mutation) => mutation.dependsOnOperationId === item.operation.operation_id
+      && mutation.label === "Section移動")
+      || pendingSectionMoveIntentsRef.current.some((intent) => intent.operation.entry_id === item.operation.entry_id)
+      || sectionMoveOperation?.entry_id === item.operation.entry_id;
+  }
+
+  function openPendingAddInsertDraft(item: PendingAddTask) {
+    if (!day?.taskchute_day.id || day.establishment_state !== "established" || mutationLocked || !day.planning_enabled
+      || day.section_configuration_required || hasRetainedMutationScope(placementMutationScope())
+      || pendingAddHasPlacementBarrier(item)) return;
+    setSectionCollapsed(item.sectionId, false);
+    const nextDraft = {
+      sectionId: item.sectionId,
+      title: "",
+      modeId: null,
+      placement: { kind: "after-entry", anchorEntryId: item.operation.entry_id, restoreFocus: { kind: "entry", id: item.operation.entry_id } },
+    } satisfies DraftTask;
+    draftTaskRef.current = nextDraft;
+    focusIntentGenerationRef.current += 1;
+    setDraftTask(nextDraft);
   }
 
   function openSectionInsertDraft(section: { id: string | null }) {
     if (!day?.taskchute_day.id || day.establishment_state !== "established" || mutationLocked || !day.planning_enabled || day.section_configuration_required) return;
     setSectionCollapsed(section.id, false);
-    setDraftTask({
+    const nextDraft = {
       sectionId: section.id,
       title: "",
       modeId: null,
       placement: { kind: "section-start", restoreFocus: { kind: "section", id: groupKey(section.id) } },
-    });
+    } satisfies DraftTask;
+    draftTaskRef.current = nextDraft;
+    focusIntentGenerationRef.current += 1;
+    setDraftTask(nextDraft);
   }
 
   function handleDraftKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
@@ -4370,8 +4453,11 @@ export function App() {
     if (composing) return;
     if (event.key === "Escape") {
       event.preventDefault();
+      const canceledDraft = draftTaskRef.current ?? draftTask;
+      draftTaskRef.current = null;
+      focusIntentGenerationRef.current += 1;
       setDraftTask(null);
-      if (draftTask) setPendingFocusKey(focusKey(draftTask.placement.restoreFocus));
+      if (canceledDraft) setPendingFocusKey(focusKey(canceledDraft.placement.restoreFocus));
     }
   }
 
@@ -4467,6 +4553,9 @@ export function App() {
     const activeEntry = activeElement?.dataset.entryId
       ? allEntries.find((entry) => entry.id === activeElement.dataset.entryId)
       : undefined;
+    const activePendingAdd = activeElement?.dataset.entryId
+      ? pendingAddTasks.find((item) => item.operation.entry_id === activeElement.dataset.entryId)
+      : undefined;
 
     if (key === "?" && !event.repeat && !event.ctrlKey && !event.altKey && !event.metaKey) {
       event.preventDefault();
@@ -4484,6 +4573,11 @@ export function App() {
     }
 
     if (key === "i" && !event.repeat && !event.ctrlKey && !event.altKey && !event.metaKey) {
+      if (activePendingAdd) {
+        event.preventDefault();
+        openPendingAddInsertDraft(activePendingAdd);
+        return;
+      }
       if (activeEntry) {
         if (activeEntry.lifecycle_state === "planned" && activeEntry.routine === null) {
           event.preventDefault();
@@ -4977,7 +5071,11 @@ export function App() {
         <span className="bulk-slot" aria-hidden="true" />
         <span className="execution-cell" aria-hidden="true"><span className="execution-control is-draft">○</span></span>
         <label className="draft-name"><span className="sr-only">Task名</span><input ref={draftInputRef} name="title" maxLength={300} value={draft.title} placeholder="Task名を入力…" aria-label={`${section.title}のTask名`} onChange={(event) => setDraftTask({ ...draft, title: event.target.value })} onCompositionStart={() => { draftCompositionRef.current = true; }} onCompositionEnd={() => { draftCompositionRef.current = false; }} onKeyDown={handleDraftKeyDown} onBlur={(event) => {
-          if (!draft.title.trim() && !event.currentTarget.form?.contains(event.relatedTarget as Node | null)) setDraftTask(null);
+          if (!draft.title.trim() && !event.currentTarget.form?.contains(event.relatedTarget as Node | null)) {
+            draftTaskRef.current = null;
+            focusIntentGenerationRef.current += 1;
+            setDraftTask(null);
+          }
         }} /></label>
         {resolvedColumnDefinitions.map((definition) => <Fragment key={definition.key}>{renderDraftColumn(section, definition.key)}</Fragment>)}
         <span className="row-actions-slot" aria-hidden="true" />
@@ -5558,6 +5656,103 @@ export function App() {
           const orderedEntries = section.entries;
           const visibleEntries = showCompleted ? orderedEntries : orderedEntries.filter((entry) => entry.lifecycle_state !== "completed");
           const pendingAdds = pendingAddTasks.filter((item) => item.sectionId === section.id);
+          const pendingAnchorId = (item: PendingAddTask): string | null => {
+            const placement = item.operation.placement;
+            return placement?.kind === "after_entry" ? placement.anchor_entry_id : null;
+          };
+          const pendingByAnchor = new Map<string, PendingAddTask[]>();
+          pendingAdds.forEach((item) => {
+            const anchorEntryId = pendingAnchorId(item);
+            if (anchorEntryId === null) return;
+            const current = pendingByAnchor.get(anchorEntryId) ?? [];
+            current.push(item);
+            pendingByAnchor.set(anchorEntryId, current);
+          });
+          const pendingEntryIds = new Set(pendingAdds.map((item) => item.operation.entry_id));
+          const renderedPendingIds = new Set<string>();
+          const pendingPlannedStart = (item: PendingAddTask, visited = new Set<string>()): number | null => {
+            if (visited.has(item.operation.entry_id)) return section.id === null ? null : section.logical_start_minute;
+            const nextVisited = new Set(visited).add(item.operation.entry_id);
+            const anchorEntryId = pendingAnchorId(item);
+            if (anchorEntryId !== null) {
+              const pendingAnchor = pendingAddTasks.find((candidate) => candidate.operation.entry_id === anchorEntryId);
+              if (pendingAnchor) return pendingPlannedStart(pendingAnchor, nextVisited);
+              return allEntries.find((entry) => entry.id === anchorEntryId)?.planned_start_minute
+                ?? (section.id === null ? null : section.logical_start_minute);
+            }
+            return section.id === null ? null : section.logical_start_minute;
+          };
+          const renderPendingAddRow = (item: PendingAddTask): ReactNode => {
+            const plannedStartMinute = pendingPlannedStart(item);
+            return <div className="task-row task-row-pending" key={`pending:${item.operation.entry_id}`} tabIndex={0}
+              data-entry-id={item.operation.entry_id} data-section-id={section.id ?? ""} data-day-focus-target
+              data-focus-key={focusKey({ kind: "entry", id: item.operation.entry_id })} aria-busy="true"
+              onClick={(event) => { if (!isInteractiveDragTarget(event.target)) focusSurface(event.currentTarget); }}
+              onKeyDown={handleTaskRowKeyDown}>
+              <span className="bulk-slot" aria-hidden="true" />
+              <span className="execution-cell" aria-hidden="true"><span className="execution-control is-draft">○</span></span>
+              <div className="task-main"><div className="task-identity"><strong>{item.title}</strong><span className="pending-row-label">保存中…</span></div></div>
+              {resolvedColumnDefinitions.map((definition) => {
+                if (definition.key === "project") return <span className="project-name pending-cell" data-day-column-cell={definition.key} key={definition.key}>
+                  <select className="project-selector" aria-label={`${item.title}のProject`} value={item.projectId ?? ""}
+                    onClick={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()}
+                    onChange={(event) => queuePendingAddProject(item, event.target.value || null)}>
+                    <option value="">Projectなし</option>
+                    {projects.map((candidate) => <option value={candidate.id} key={candidate.id}>{candidate.title}</option>)}
+                  </select>
+                </span>;
+                if (definition.key === "section") return <span className="pending-cell" data-day-column-cell={definition.key} key={definition.key}>
+                  <select className="section-cell" aria-label={`${item.title}のSection`} value={item.sectionId ?? ""}
+                    onClick={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()}
+                    onChange={(event) => queuePendingAddSection(item, event.target.value || null)}>
+                    <option value="">Sectionなし</option>
+                    {currentDay.sections.map((candidate) => <option value={candidate.id} key={candidate.id}>{candidate.title}</option>)}
+                  </select>
+                </span>;
+                if (definition.key === "mode") return <span className="mode-cell pending-cell" data-day-column-cell={definition.key} key={definition.key}>
+                  {item.modeId ? modeBoard?.modes.find((mode) => mode.id === item.modeId)?.title ?? "Mode" : <EmptyValue label="Mode未設定" />}
+                </span>;
+                if (definition.key === "estimate") return <span className="estimate-cell pending-cell" data-day-column-cell={definition.key} key={definition.key}>
+                  <input aria-label={`${item.title}の見積（分）`} inputMode="numeric" value={item.estimateSeconds === null ? "" : String(item.estimateSeconds / 60)}
+                    placeholder="--分" onClick={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()}
+                    onChange={(event) => {
+                      const value = event.target.value.trim();
+                      if (value === "") queuePendingAddEstimate(item, null);
+                      else if (/^\d+$/.test(value)) queuePendingAddEstimate(item, Number(value) * 60);
+                    }} />
+                </span>;
+                if (definition.key === "plannedStart") return <span className="planned-start-cell pending-cell" data-day-column-cell={definition.key} key={definition.key}>
+                  {plannedStartMinute === null ? <EmptyValue display="--:--" label="開始予定なし" /> : formatLogicalMinute(plannedStartMinute)}
+                </span>;
+                return <span className="pending-cell" data-day-column-cell={definition.key} key={definition.key}>—</span>;
+              })}
+              <span className="row-actions-slot" aria-hidden="true" />
+            </div>;
+          };
+          const renderPendingAddTree = (item: PendingAddTask, stack = new Set<string>()): ReactNode => {
+            if (renderedPendingIds.has(item.operation.entry_id) || stack.has(item.operation.entry_id)) return null;
+            renderedPendingIds.add(item.operation.entry_id);
+            const nextStack = new Set(stack).add(item.operation.entry_id);
+            const draftAfter = draftTask?.sectionId === section.id && draftTask.placement.kind === "after-entry"
+              && draftTask.placement.anchorEntryId === item.operation.entry_id ? renderDraftRow(section) : null;
+            return <Fragment key={`pending-chain:${item.operation.entry_id}`}>
+              {renderPendingAddRow(item)}
+              {draftAfter}
+              {(pendingByAnchor.get(item.operation.entry_id) ?? []).map((child) => renderPendingAddTree(child, nextStack))}
+            </Fragment>;
+          };
+          const renderPendingAfter = (anchorEntryId: string): ReactNode =>
+            (pendingByAnchor.get(anchorEntryId) ?? []).map((item) => renderPendingAddTree(item));
+          const rootPendingAdds = pendingAdds.filter((item) => {
+            const anchorEntryId = pendingAnchorId(item);
+            return anchorEntryId === null || !pendingEntryIds.has(anchorEntryId);
+          });
+          const pendingStartRoots = rootPendingAdds.filter((item) => item.operation.placement?.kind === "section_start");
+          const pendingEndRoots = rootPendingAdds.filter((item) => {
+            if (item.operation.placement?.kind === "section_start") return false;
+            const anchorEntryId = pendingAnchorId(item);
+            return anchorEntryId === null || !visibleEntries.some((entry) => entry.id === anchorEntryId);
+          });
           const completedCount = section.entries.filter((entry) => entry.lifecycle_state === "completed").length;
           const sectionTarget: FocusTarget = { kind: "section", id: groupKey(section.id) };
           const sectionCollapsed = collapsedSectionsByDay[currentDay.taskchute_day.logical_date]?.[groupKey(section.id)] === true;
@@ -5597,7 +5792,7 @@ export function App() {
                   toggleSection(section.id);
                 }}
               >
-                <div className="section-summary-content"><strong>{section.title}</strong><span>{section.id === null ? "時間帯なし" : `${formatLogicalMinute(section.logical_start_minute)}–${formatLogicalMinute(section.logical_end_minute)}`} · {completedCount}/{section.entries.length} 実行済み · 見積 {formatEstimate(section.estimate_total_seconds)}</span></div>
+                <div className="section-summary-content"><strong>{section.title}</strong><span>{section.id === null ? "時間帯なし" : `${formatLogicalMinute(section.logical_start_minute)}–${formatLogicalMinute(section.logical_end_minute)}`} · {completedCount}/{section.entries.length + pendingAdds.length} 実行済み · 見積 {formatEstimate(section.estimate_total_seconds + pendingAdds.reduce((sum, item) => sum + (item.estimateSeconds ?? 0), 0))}</span></div>
                 <div className="section-summary-actions">
                   <button type="button" className="add-task-button" aria-label={`${section.title}にTaskを追加`} title={`${section.title}にTaskを追加`}
                     disabled={mutationLocked || hasRetainedMutationScope(placementMutationScope()) || !day.planning_enabled || day.section_configuration_required}
@@ -5610,45 +5805,7 @@ export function App() {
 
               {!sectionCollapsed && draftTask?.placement.kind === "section-end" && renderDraftRow(section)}
 
-              {!sectionCollapsed && pendingAdds.map((item) => (
-                <div className="task-row task-row-pending" key={`pending:${item.operation.entry_id}`} data-entry-id={item.operation.entry_id} aria-busy="true">
-                  <span className="bulk-slot" aria-hidden="true" />
-                  <span className="execution-cell" aria-hidden="true"><span className="execution-control is-draft">○</span></span>
-                  <div className="task-main"><div className="task-identity"><strong>{item.title}</strong><span className="pending-row-label">保存中…</span></div></div>
-                  {resolvedColumnDefinitions.map((definition) => {
-                    if (definition.key === "project") return <span className="project-name pending-cell" data-day-column-cell={definition.key} key={definition.key}>
-                      <select className="project-selector" aria-label={`${item.title}のProject`} value={item.projectId ?? ""}
-                        onClick={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()}
-                        onChange={(event) => queuePendingAddProject(item, event.target.value || null)}>
-                        <option value="">Projectなし</option>
-                        {projects.map((candidate) => <option value={candidate.id} key={candidate.id}>{candidate.title}</option>)}
-                      </select>
-                    </span>;
-                    if (definition.key === "section") return <span className="pending-cell" data-day-column-cell={definition.key} key={definition.key}>
-                      <select className="section-cell" aria-label={`${item.title}のSection`} value={item.sectionId ?? ""}
-                        onClick={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()}
-                        onChange={(event) => queuePendingAddSection(item, event.target.value || null)}>
-                        <option value="">Sectionなし</option>
-                        {currentDay.sections.map((candidate) => <option value={candidate.id} key={candidate.id}>{candidate.title}</option>)}
-                      </select>
-                    </span>;
-                    if (definition.key === "mode") return <span className="mode-cell pending-cell" data-day-column-cell={definition.key} key={definition.key}>
-                      {item.modeId ? modeBoard?.modes.find((mode) => mode.id === item.modeId)?.title ?? "Mode" : <EmptyValue label="Mode未設定" />}
-                    </span>;
-                    if (definition.key === "estimate") return <span className="estimate-cell pending-cell" data-day-column-cell={definition.key} key={definition.key}>
-                      <input aria-label={`${item.title}の見積（分）`} inputMode="numeric" value={item.estimateSeconds === null ? "" : String(item.estimateSeconds / 60)}
-                        placeholder="--分" onClick={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()}
-                        onChange={(event) => {
-                          const value = event.target.value.trim();
-                          if (value === "") queuePendingAddEstimate(item, null);
-                          else if (/^\d+$/.test(value)) queuePendingAddEstimate(item, Number(value) * 60);
-                        }} />
-                    </span>;
-                    return <span className="pending-cell" data-day-column-cell={definition.key} key={definition.key}>—</span>;
-                  })}
-                  <span className="row-actions-slot" aria-hidden="true" />
-                </div>
-              ))}
+              {!sectionCollapsed && pendingStartRoots.map((item) => renderPendingAddTree(item))}
 
               {!sectionCollapsed && visibleEntries.map((entry, entryIndex) => {
                 const entryTarget: FocusTarget = { kind: "entry", id: entry.id };
@@ -5815,9 +5972,11 @@ export function App() {
                     ) : <span className="row-actions-slot" aria-hidden="true" />}
                   </div>
                   {shouldRenderBefore && draftPlacement?.kind === "after-entry" && renderDraftRow(section)}
+                  {renderPendingAfter(entry.id)}
                   </Fragment>
                 );
               })}
+              {!sectionCollapsed && pendingEndRoots.map((item) => renderPendingAddTree(item))}
               {!sectionCollapsed && draftTask?.placement.kind === "section-start" && visibleEntries.length === 0 && renderDraftRow(section)}
               {sectionDropPlaceholder && visibleEntries.length > 0 && sectionDropPlaceholder}
               {!sectionCollapsed && visibleEntries.length === 0 && pendingAdds.length === 0 && draftTask?.sectionId !== section.id && <p className="empty-row"><span>表示するTaskはありません</span></p>}
