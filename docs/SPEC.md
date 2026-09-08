@@ -442,3 +442,15 @@ An authenticated owner may use `I` on an established, planning-enabled future Da
 The future established path sends the existing TaskChuteDay identity, logical date, placement revision, and either `{ kind: "after_entry", anchor_entry_id }` or `{ kind: "section_start" }`. The Worker accepts the logical date with placement only when it identifies the same established Day, then reuses the existing atomic placement command. It derives final position and planned start server-side and does not copy Project, estimate, Routine relation, or execution facts.
 
 Past Days, running / completed / Routine-derived Entries, and unestablished future previews remain no-write for `I`. Preview navigation does not materialize a Day solely to support this shortcut. No APP / AUTH migration, schema, dependency, command, or security change is introduced.
+
+## D-077 current-Day planning interaction
+
+Eligible scope is an established, planning-enabled current Day ordinary planned Entry. The client accepts title, Project, Mode, Section, estimate, and planned-start intents immediately into the existing memory-only pending model; it does not create a persistent or offline queue. The global D-066 dispatcher remains serial and canonical Server state remains authoritative.
+
+- For unsent same-field work, latest intent wins where the existing command/CAS contract permits coalescing. A sent operation's identity and exact semantic request remain frozen.
+- `UpdateTaskMetadata` title / Project work is merged per field from latest canonical state plus still-valid pending field intent. Reconcile of an earlier request cannot erase a later title or Project value.
+- Section / planned-start dependencies are accepted visually when safe and dispatched only after the required placement prerequisite can rebase against the latest canonical Day. Start follows accepted planning intent when its historical or eligibility authority depends on that result; no client-generated actual timestamp is allowed.
+- The effective projection is canonical state plus valid pending / in-flight intents. Deterministic rejection rolls back only affected work; revision conflict and infrastructure ambiguity retain the existing D-066 stop/retry boundary.
+- A transient `保存中 n件` status counts unresolved logical active + queued work once after coalescing. It is non-blocking, does not steal focus, and reaches zero only after convergence or deterministic rejection/rollback. Retained ambiguous work is not reported as successfully saved.
+
+Past, future, Routine-derived, completed/running, Project Board / Mode Board, offline persistence, multi-tab coordination, and D&D/reorder semantics are outside this slice. D&D retains the existing placement busy boundary and is a follow-up candidate rather than a D-077 behavior expansion.

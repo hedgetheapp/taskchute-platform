@@ -437,3 +437,11 @@ D-073 adds APP migration `0023_interrupt_continuation.sql`. `executions.terminal
 The Worker pre-reads current-Day identity, source active Execution identity, target planned identity, frozen Section context, placement revision, chain estimate facts, and operation replay state. The mutation batch then inserts the guard, shifts only affected placement positions, ends A with interrupted outcome, preserves its historical Entry row, inserts one continuation and B's snapshots, starts B, copies the source live Mode relation, increments Day revision once, asserts one active Execution and exact identities, and stores the operation result. Any failed assertion or D1 error is treated as conflict or ambiguity; no lifecycle / Entry / Execution / operation partial success is accepted.
 
 Same-minute placement uses B's immediate successor position. Different-minute placement uses the canonical end of the interruption-minute cohort, preserving unrelated order. The client treats InterruptEntry as one D-066 queued mutation scoped by execution lane, source / target Entry, and placement Day; a sent payload is immutable for exact retry.
+
+## D-077 dispatcher / projection corrective
+
+D-077 reuses the D-066 in-memory coordinator. `dayMutationQueueRef` remains the single serial HTTP queue; ordinary queued operation state is no longer treated as an ambiguous retained scope merely because it is waiting behind another request. Active scope conflicts, global transition barriers, revision conflicts, and retained ambiguity continue to block or pause only where required.
+
+After a successful reconcile, the imperative `dayRef` is updated before React render/effect completion so the next queued dispatch rebases from the latest canonical projection. Metadata overlays and drafts merge title / Project intent per field, while sent payloads remain immutable. The logical save count is derived from active mutation scopes plus queued logical items, with unsent coalescing represented once.
+
+No Worker/API/schema/migration/dependency/binding change is introduced. Placement D&D keeps an explicit queued-placement guard, so D-077 does not change reorder acceptance semantics.

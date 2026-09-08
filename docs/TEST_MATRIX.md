@@ -2057,3 +2057,20 @@ D-075 evidence closeout:
 | D075-D076-BOUNDARY-01 | Prohibited / not run | production, credentials, bootstrap changes, restore, destructive cleanup, tag / release | not run; existing untracked review artifacts preserved | PASS |
 
 Classification: `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / MAIN_PUSHED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_BROWSER_VERIFIED / DB_INTEGRITY_VERIFIED / MIGRATION_NOT_REQUIRED / PRODUCTION_NOT_RUN / RELEASED_NO`。
+
+## D-077 Instant Day interaction v0.1 — latest closeout
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D077-WEB-01 | Rapid planning | Current-Day ordinary planned Task title / Project / Mode / Section / estimate / planned start accept rapid intent without waiting for prior HTTP | focused `App.test.tsx 212 / 212`; deferred responses; effective overlays and cross-Task-safe scope behavior | PASS |
+| D077-WEB-02 | Metadata race | Project ↔ title delayed responses preserve both fields; same-field later intent and earlier reconcile cannot rewind the DOM | deferred `UpdateTaskMetadata` tests; immutable sent payload and field-level pending merge | PASS |
+| D077-WEB-03 | Planning → Start | Mode / planning intent accepted immediately but required Start dispatch waits for the prerequisite and preserves logical order | deferred Mode → `S` test; dispatch order `mode`, `start`; server timestamps unchanged | PASS |
+| D077-WEB-04 | Regression | inline commit / escape, Add, D-074 S/I, D-076 future I, lifecycle, overlays, navigation barriers and retry boundaries remain intact | full Web `4 files / 244 tests`; full Worker `24 files / 207 tests`; typecheck / build | PASS |
+| D077-WEB-05 | Save feedback | `保存中 n件` counts unresolved logical work once, coalesces unsent same-field work, reaches zero after convergence, and does not shift layout or steal focus | focused deferred queue/status assertions; existing transient status surface | PASS |
+| D077-D075-01 | Fixed chrome / Runner | short / long Day fixed geometry, single scroll owner, no permanent bottom reservation, Runner overlay / trailing escape / focus clearance | authenticated nonprod `1280 × 720`; header `28..85`, toolbar `101..150`, surface `158..720`, heading `159..193`; console empty | PASS |
+| D077-ENV-01 | Nonprod safety | exact nonprod build, Wrangler dry-run, deploy, root / protected probes, no bootstrap state change | Worker `2adadb66-67db-4232-8769-cb87840b02e6`; root `200`, protected `401`, `BOOTSTRAP_ENABLED=false`; bootstrap POST NOT_RUN by safety policy | PASS |
+| D077-ENV-02 | Persistence / console | rapid final values survive same-tab reload and fresh authenticated tab; browser has no errors or warnings | current Day target persisted title / Project / Mode / Section / estimate / planned start; console `0 / 0` | PASS |
+| D077-DB-01 | Read-only integrity | APP / AUTH quick check, FK, pending migrations, affected Entry / snapshot / operation evidence, and rows-written audit | quick `ok`, FK empty, migration `0 / 0`, APP/AUTH queries `rows_written=0`, coherent target / operation rows | PASS |
+| D077-BOUNDARY-01 | Explicit non-goals | no API / schema / migration / dependency / security change; D&D/reorder remains unchanged; no production / credential / restore / destructive cleanup | source diff and generated config review; migration `NOT_REQUIRED`; prohibited actions not run | PASS |
+
+Local verification summary: focused Web `212 / 212`, full Web `244`, full Worker `207`, typecheck / build / exact nonprod build / dry-run / diff-check PASS. Migration helper produced no output and was safely interrupted; because D-077 requires no migration, remote pending `0 / 0` is the authoritative migration result.

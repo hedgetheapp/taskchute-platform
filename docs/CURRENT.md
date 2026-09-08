@@ -1187,3 +1187,36 @@ Before the fix, at the same authenticated viewport `1280 × 720`, sidebar and vi
 
 - Focused Web `App.test.tsx + day-table-layout.test.tsx`: `214 / 214 PASS`; full Web `4 files / 240 tests PASS`; focused Worker Day Navigation `16 / 16 PASS`; full Worker `24 files / 207 tests PASS`; migration regression `4 scenarios PASS` through `0023`; typecheck, production / exact nonprod build, Wrangler dry-run, and `git diff --check` PASS.
 - Classification: `IMPLEMENTED / INTEGRATED / MAIN_PUSHED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_BROWSER_VERIFIED / DB_INTEGRITY_VERIFIED / MIGRATION_NOT_REQUIRED / DEPENDENCY_UNCHANGED / PRODUCTION_NOT_RUN / RESTORE_NOT_RUN / DESTRUCTIVE_CLEANUP_NOT_RUN / RELEASED_NO`. D-076 is the new Approved Decision; D-075 geometry is corrective closeout under the existing Decision.
+
+## D-077 Instant Day interaction v0.1 — 2026-09-08
+
+### Git / scope
+
+- Contract starting canonical `main` was `79e9782be408dbd65680931ea22946c9b8e37d5e`. Implementation commit `e9d644abf5e9a9d057c58fe77c70936e954c502c` (`Implement D-077 instant Day interaction v0.1`) was fast-forward pushed to canonical `main`. Before docs closeout, `local main == origin/main == git ls-remote origin refs/heads/main == e9d644abf5e9a9d057c58fe77c70936e954c502c`; remote is `https://github.com/hedgetheapp/taskchute-platform.git`. Existing untracked review artifacts were preserved and not staged.
+- D-077 is Web-only. Changed implementation files are `apps/web/src/web/App.tsx` and `apps/web/test/web/App.test.tsx`; no Worker, API, schema, migration, dependency, binding, or security posture change.
+
+### Implementation / coordination boundary
+
+- Current-Day ordinary planned Task title, Project, Mode, Section, estimate, and planned start accept safe intents immediately into effective pending overlays. The existing global serial dispatcher remains the only D-066 HTTP sender; sent operation IDs and exact payloads remain immutable, while unsent same-field work coalesces where safe.
+- `UpdateTaskMetadata` now merges title / Project at field level from the latest canonical base plus still-valid pending field intents, so delayed Project ↔ title responses cannot lose or rewind either value. `dayRef` is reconciled synchronously before the next dispatch, and Start waits behind required planning prerequisites. Earlier reconcile never visually overwrites a newer accepted intent.
+- Queued ordinary scopes are no longer treated as retained ambiguous scopes. D&D / reorder retains its existing busy behavior because it remains outside D-077; future, past, Routine, offline, persistent queue, boards, and API / Domain expansion remain out of scope.
+- Save feedback uses the existing transient status surface as `保存中 n件`; it is non-blocking, focus-neutral, layout-neutral, and derived from logical unresolved queue work rather than raw React collections. Deterministic failure, revision conflict, ambiguity, navigation barriers, provisional Add, Start / Complete / Interrupt retain D-066 / D-073 / D-074 semantics.
+
+### Local verification
+
+- Focused `App.test.tsx`: `212 / 212 PASS`, including deferred Project → title and title → Project convergence, in-flight Mode editing / no-rewind, Mode → immediate Start ordering, and logical save-count assertions.
+- Full Web: `4 files / 244 tests PASS`. Full Worker: `24 files / 207 tests PASS`. Typecheck, normal build, exact `CLOUDFLARE_ENV=nonprod` build, Wrangler nonprod dry-run, and `git diff --check` PASS. `npm run test:migrations` was safely interrupted after tooling produced no output; D-077 has no migration, and remote APP/AUTH migration listing is authoritative `0 / 0` (`No migrations to apply!`). No dependency changed.
+
+### Persistent nonprod / browser evidence
+
+- Exact nonprod generated config used `taskchute-web-nonprod`, `RUNTIME_ENV=nonprod`, `BOOTSTRAP_ENABLED=false`, and canonical nonprod APP/AUTH D1 bindings. Deployed Worker version: `2adadb66-67db-4232-8769-cb87840b02e6`. Root `GET` returned `200`; protected projects `GET` returned `401`. The bootstrap POST probe was `NOT_RUN` because safety policy rejected a state-changing probe; no bootstrap change was attempted.
+- Existing authenticated tab verified a current-Day ordinary Task through rapid Project, Mode, Section, estimate, planned-start, and title edits; the final visible state was Project `Life`, Mode `D068 Deep verification`, Section `Morning`, estimate `25`, planned start `04:15`, title `D077 rapid planning`. Same-tab reload and a fresh authenticated tab preserved the state. The task was then Start → Complete tested for Runner overlay behavior; no production, credential, bootstrap, restore, or destructive cleanup operation was performed.
+- At the same `1280 × 720` viewport, short and long Day fixed geometry was stable: header `28..85 / 57px`, toolbar `101..150 / 49px`, add / Display `108..143 / 35px`, surface `158..720 / 562px`, sticky heading `159..193 / 34px`, toolbar→surface gap `8px`. Short surface scroll height was `545px`; long was `953px`; body scroll height stayed `720px`; there was one vertical scroll owner. Runner visible kept the same surface geometry, overlaid at `618..696 / 78px`, and conditional escape allowed the final row / focused row to remain above it. Runner completion removed the escape without a geometry jump.
+- Existing authenticated and fresh tabs had no console error / warning logs. D-075 fixed-chrome and D-076 future-Day `I` behavior were revalidated through the full regression suites and retained existing closeout evidence; D-077 did not broaden future-Day mutation.
+
+### Read-only APP / AUTH evidence
+
+- APP and AUTH `PRAGMA quick_check` returned `ok`; FK checks were empty; every audit query reported `rows_written=0`; remote migration pending was `0 / 0`. APP target Entry `01a07c4c-af00-70e3-aafc-375651afad07` / Task `01a07c4c-af00-796c-a9f0-a0404fe94f6a` on Day `01a07724-839c-718f-addf-baab70224268` ended with Section Morning, position `4`, planned start `255`, estimate `1500`, title `D077 rapid planning`, Project Life, Mode D068, lifecycle `completed`.
+- Target Start / Complete timestamps were server-derived (`2026-09-08T02:14:50.731Z` / `2026-09-08T02:15:31.795Z`); execution count was `0` active at evidence time. Day placement revision was `32`; duplicate-position query was empty. Recent operation rows for metadata / Mode / move / estimate / planned start / Start / Complete were coherent `success` rows. APP counts were entries `67`, tasks `72`, operations `281`; AUTH counts were users `1`, accounts `1`, sessions `6`.
+
+Classification: `APPROVED / IMPLEMENTED / INTEGRATED / LOCAL_TESTED / MAIN_PUSHED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_BROWSER_VERIFIED / DB_INTEGRITY_VERIFIED / MIGRATION_NOT_REQUIRED / DEPENDENCY_UNCHANGED / BOOTSTRAP_PROBE_NOT_RUN / PRODUCTION_NOT_RUN / RESTORE_NOT_RUN / DESTRUCTIVE_CLEANUP_NOT_RUN / RELEASED_NO`.

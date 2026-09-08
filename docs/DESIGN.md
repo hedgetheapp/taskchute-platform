@@ -448,6 +448,14 @@ Current Dayのordinary mutationは、操作を受理した直後に対象rowのo
 
 historical design branchにあるFloating Runner、context menu、Hit-a-Hint、Bulk actions、responsive / mobile等は、この文書へまだcanonicalizeしていない。必要なscopeごとにcurrent Product / Domain Decisionと再照合してから追加する。
 
+## D-077 Instant Day interaction
+
+Current-Day ordinary planned Taskのtitle、Project、Mode、Section、estimate、planned startは、保存round-tripを待たずにeffective overlayを表示する。別Taskへのfocus移動と編集を妨げず、同一Taskの独立fieldもqueueへ受理する。固定Day chrome、Day surfaceのscroll owner、Runner overlay、row height、toolbar spacingは変更しない。
+
+通常の未解決保存は既存transient status領域へ小さく`保存中 n件`を表示する。statusはlayout flow外または既存領域内で、focusを奪わず、pointer / keyboard interactionを遮らない。coalesceで消えたobsolete intentは数えず、ambiguous retained stateはsuccess表示へ収束させない。
+
+先行responseが返っても、effective projectionはcanonical projectionへ残存pending intentを重ねる。Task title / Project editorはpending overlayをdraft sourceとして使用し、同じ`UpdateTaskMetadata` command familyでもfield-level convergenceを保つ。D&D/reorderは既存placement busy境界を維持する。
+
 ## D-067 completed Entry deletion UI
 
 Only a completed row on the displayed canonical current Day exposes `… → 削除`. Planned rows continue using the existing planned-delete path; running, historical, future, read-only, and bulk-selected completed rows do not expose this action. The destructive confirmation is the common centered modal with title `完了したTaskを完全に削除しますか？`, body `このTaskの開始・終了記録と実績時間も削除されます。この操作は元に戻せません。`, and buttons `キャンセル` / `完全に削除`. Routine-derived rows additionally state that the Routine itself and other days are retained. Initial focus is non-destructive, Escape/backdrop cancel without an API call, and close restores the overflow trigger focus.

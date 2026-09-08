@@ -1627,3 +1627,19 @@ D-076はD-074の`I` insertion semanticsを、planning-enabledなestablished futu
 - D-075のfixed chrome / single Day surface correctiveはpresentation closeoutであり、新しいDomain Decisionではない。D-076に新migration、schema、dependency、security posture変更はなく、production / restore / destructive cleanup / branch / PR / merge / tag / releaseは対象外とする。
 
 Implementation、persistent nonprod browser / DB evidence、D-075 geometry corrective evidenceは`docs/CURRENT.md`、`docs/FEATURES.md`、`docs/SPEC.md`、`docs/DESIGN.md`、`docs/TEST_MATRIX.md`、`docs/RISKS.md`へ記録する。Releasedは`NO`のままとする。
+
+## D-077 — Instant Day interaction v0.1
+
+Status: Approved
+
+D-077は、D-066の既存memory-only overlayとglobal serial dispatcherを維持したまま、current Dayのordinary planned Taskに対する安全なplanning intent受理とHTTP送信を分離する。目的はtrue offlineではなく、操作直後にvisible stateを更新し、Server保存をbackgroundで順序どおり進めることである。
+
+- current Dayのordinary planned Taskでは、Task title、Project、Mode、Section、estimate、planned startの安全なintentを、先行HTTPの完了待ちなしで受理する。別Taskの安全な編集も受理する。global dispatcherのHTTP同時実行上限1、scope conflict、dependency、coalesce、canonical reconcile、revision conflict、ambiguous retentionは変更しない。
+- unsent same-field intentは既存command semanticsが許す範囲で最新値へcoalesceする。sent operationの`operation_id`とsemantic payloadはimmutableとする。Task title / Projectが共有する`UpdateTaskMetadata`はwhole-requestのblind coalesceをせず、latest canonical baseへ未解決field intentをfield単位でmergeして次requestを組み立てる。
+- planning intentの後にStartが受理された場合、必要な前提operationよりStartを先に送らず、前提がcanonical reconcileした後にlatest canonical stateからStartをdispatchする。失敗時に古いstateで暗黙にStartしない。actual timestampはServer authorityのままとする。
+- rendered effective projectionはlatest canonical stateにstill-valid pending / in-flight intentを重ね、先行responseで新しいintentをvisual rewindしない。inline editorはEnter / Tab / blur / Escapeの既存semanticsとsingle commitを維持する。
+- 通常のoutstanding logical workは既存status visual languageで`保存中 n件`として示す。countはactive + queueのlogical itemをcoalescing後に一度だけ数え、ambiguous retained operationをsuccess扱いしない。focusを奪わず、Day layoutをshiftせず、pointer / keyboardをblockしない。
+- D&D / reorderはplacement scopeのordering semanticsを新たに広げず、D-077 v0.1では既存のbusy / retry境界を維持する。placement queueを利用したnon-blocking reorderはfollow-upとする。
+- provisional Add、Start / Complete / Interrupt、D-074 current-Day `I`、D-076 established-future `I`、past / preview / Routine / historical boundaryは既存Decisionどおりとする。Project Board / Mode Board、future-Day D-066 queue、offline persistence、multi-tab coordination、API / Domain / schema / migration / dependency / security posture変更、production operationは対象外とする。
+
+本DecisionはWeb-onlyのreversible interaction correctiveであり、既存API / Worker command、D1 schema、migration、dependency、binding、authentication、security postureは変更しない。実装、automated regression、persistent nonprod evidenceは`docs/CURRENT.md`、`docs/FEATURES.md`、`docs/SPEC.md`、`docs/ARCHITECTURE.md`、`docs/DESIGN.md`、`docs/TEST_MATRIX.md`、`docs/RISKS.md`へ記録する。Releasedは`NO`のままとする。
