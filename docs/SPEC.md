@@ -472,3 +472,11 @@ Current established Dayのordinary planned Entryは、既存`MoveEntry` command�
 sent Moveのoperation identity / destination / payload / expected revisionはimmutableであり、後続Moveは別logical intentとする。unsent same-Entry Moveのcoalesceは同一order-preserving tail segment内に限り、different-Entry MoveやStart等のbarrierを跨がない。different-Entry Moveはglobal serial dispatcherでユーザー順を維持し、same-Entryのeffective destinationを次のsourceとして扱う。unsent return-to-canonicalはcancelし、sent済みのreturnは後続Moveとして扱う。
 
 Move unresolved中は同じEntryのsame-Section Reorder / `Shift + Arrow`、planned-start direct edit、Move→target-Section Reorder chainを許可しない。StartはMove成功後の最新canonical stateからdispatchし、Move failure / ambiguityではstale Section stateで実行しない。running / completed / Routine-derived / future / past / preview / provisional Addの既存eligibilityは不変である。API、Worker semantics、schema、migration、dependency、security postureは変更しない。
+
+## D-080 Provisional Add → I keyboard chaining
+
+Current established Dayのordinary planned Taskへ`I`でAdd draftをcommitした直後、そのprovisional rowをlogical focus targetとして扱う。provisional row上の`I`は同じSection・同じplanned-start cohort内でrow直下へchild draftを作り、親provisional Entryのstable IDを`{ kind: "after_entry", anchor_entry_id }`へ使用する。child Addは親Addのoperationへ依存し、親成功後にcanonical placement revisionを使ってdispatchする。A→B→Cのような連鎖では、各childは直前のeffective provisional orderをanchorとして計算し、parent-before-child orderを保持する。
+
+sent / retained parent requestのoperation identity、payload、placement intentは変更せず、後続draftで上書きしない。Add成功はexact rootだけをreconcileし、newer draftとfocusを消さない。deterministic failure / revision conflictは依存childと親anchor上のopen draftをcancelし、ambiguous outcomeは親のexact retry identityとdescendant subtreeをretainして後続dispatchをholdする。unsent dependent Addを親なしで独立送信しない。
+
+provisional rowには`aria-busy`とstable Entry identityを持つpending表示を出すが、`S`/lifecycle、reorder、move、delete、duplicate、Routine、bulk、actual-time操作はno-writeである。pending Section Moveなどplacement anchorを不安定化するbarrier中の`I`は受理しない。EscapeはAddを送信せずsource focusをrestoreする。既存のcurrent-Day D-074、future established-Day D-076、past / preview read-only境界は変更しない。Worker/API、schema、migration、dependency、security postureの変更はない。

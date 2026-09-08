@@ -1674,3 +1674,15 @@ D-079は、D-066 / D-077 / D-078のcurrent-Day mutation safetyを維持したま
 - canceled unsent / dependent Moveはoperation state、retained state、navigation / settings / unload barrierにghostを残さない。collapsed Sectionは自動expandせず、`Sectionなし`の出現 / 消滅、focus、drag stateはsurviving effective projectionに安全にreconcileする。
 
 Worker/API/domain command、API schema、APP / AUTH schema、migration、dependency、security postureは変更しない。既存`MoveEntry` command、placement revision / CAS、operation fingerprint / exact replay authorityを再利用する。実装、automated regression、persistent nonprod evidenceはcanonical docsへ記録する。production / restore / destructive cleanup / releaseは対象外で、Releasedは`NO`のままとする。
+
+## D-080 — Provisional Add → I keyboard chaining v0.1
+
+Status: **Approved / implemented**
+
+D-080は、D-074のcurrent-Day ordinary Task `I` insertion semanticsを、commit済みのprovisional Add rowへ拡張する。対象はcurrent established Dayだけであり、future / past / preview、Routine-derived、lifecycle、reorder、move、delete、duplicate、bulk、actual-time semanticsは拡張しない。
+
+- Add commitはstable Entry identityを確定し、rowを即時表示してlogical focusを保つ。focused provisional rowの`I`は、親Addのstable Entry IDを`after_entry` anchorにしたchild Addを作り、親operationへ`dependsOnOperationId`で接続する。childは親の成功とcanonical placement revision確認後にだけdispatchする。
+- sent / retained Addの`operation_id`とexact semantic requestはimmutableであり、後続B/C intentで親の`taskOperation`を上書きしない。pending provisional chainは再帰的にeffective placementを計算し、同一Section・同一planned-start cohort内の親子順を保つ。reconcileは新しいdraftやfocusを奪わず、`保存中 n件`はlogical unresolved Add workを重複なく数える。
+- 親Addのsuccessはexact rootだけをclearし、newer draftを消さない。deterministic failure / revision conflictは親に依存するchildとanchored draftをcancelしてcanonicalへ戻し、ambiguous outcomeは親のexact retry identityとdescendant subtreeを保持してdispatchを停止する。pending Section Moveなどanchorを不安定化するbarrier中は`I`を受理しない。
+- provisional rowでは`I`、safeなProject / Section / estimate編集、focus移動だけを許可し、`S`やlifecycle、reorder、move、delete、duplicate、Routine、bulk、actual-time操作は開始しない。parent failure / discard後にghost operation、ghost focus、ghost pending rowを残さない。
+- 既存`AddTaskToDay` placement contract、D-066 global serial dispatcher、exact operation / revision / retry / ambiguity boundaryを再利用する。Worker/API/domain command、API schema、APP / AUTH schema、migration、dependency、security postureの変更はない。D-076 established future-Day semanticsは不変である。

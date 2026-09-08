@@ -2122,3 +2122,26 @@ Local verification summary: focused Web `212 / 212`, full Web `244`, full Worker
 | D079-DB-01 | Read-only APP/AUTH | APP/AUTH quick `ok`, FK empty, pending migrations `0 / 0`, APP placement revision `90`, duplicate positions empty, active executions `0`, MoveEntry success `30`, all query meta `rows_written=0` | PASS |
 | D079-MIG-01 | Migration helper | `npm run test:migrations` emitted no output twice on Windows and was safely interrupted | NOT_RUN; D-079 remains `MIGRATION_NOT_REQUIRED` |
 | D079-BOUNDARY-01 | Explicit non-goals | no Worker/API/schema/migration/dependency/security change; no future/past/Routine/provisional broadening; no production/credential/bootstrap/restore/destructive cleanup | PASS |
+
+### D-079 manual browser evidence maintenance
+
+The connector-run pointer D&D result remains `NOT_VERIFIED` because its custom cross-Section drop was not accepted and synthetic DOM events are invalid evidence. A separate Product Owner manual browser observation on `2026-09-08` reported one real cross-Section pointer drag followed by reload persistence. Record this as `USER_MANUAL_BROWSER_VERIFIED` only; repeated race timing and connector reproducibility remain `NOT_VERIFIED`.
+
+## D-080 — Provisional Add → I keyboard chaining v0.1
+
+| ID | Scope | Evidence | Result |
+|---|---|---|---|
+| D080-WEB-01 | Provisional focus and I chain | Focused tests cover Add commit, stable provisional identity, parent-anchored child Add, three-level chaining, effective placement, and no stale draft/focus overwrite | PASS (`2 / 2` focused new tests) |
+| D080-WEB-02 | Parent dependency / exact operation | Child Add waits on parent operation; sent/retained parent identity and payload are immutable; success clears only exact root; descendants survive for retry/discard | PASS (focused tests + implementation review) |
+| D080-WEB-03 | Failure / conflict / ambiguity boundaries | Deterministic parent failure/conflict cancels dependent subtree and anchored draft; ambiguous parent retains exact identity and descendants; pending Section Move blocks unsafe I | PASS (focused/full Web regression) |
+| D080-WEB-04 | Provisional control boundary | Provisional `S` has no write/Runner effect; lifecycle, reorder, move, delete, duplicate, Routine, bulk, and actual-time shortcuts remain unavailable | PASS (focused/full Web regression + browser) |
+| D080-REG-01 | Existing capabilities | Full Web `4 files / 255 tests`; full Worker/D1 `24 files / 207 tests`; D-074/D-076 insertion, D-075 chrome/Runner, D-077 planning, D-078 reorder, D-079 Move, lifecycle and retry regressions | PASS |
+| D080-BUILD-01 | Static verification | migration regression `4 scenarios`; typecheck; normal and exact nonprod build; Wrangler nonprod dry-run; `git diff --check` | PASS |
+| D080-ENV-01 | Persistent nonprod | Worker `2c13f640-a31c-4680-bb39-fe5e36091c68`; `RUNTIME_ENV=nonprod`; `BOOTSTRAP_ENABLED=false`; existing authenticated session; no production operation | PASS |
+| D080-BROWSER-01 | A/B/C/D chain | Current established Day fixture A/B/C/D, same Section/cohort; actual keyboard A Enter→I→B Enter→I→C Enter→I→D Enter without intentional waits; immediate order and no visible rewind | PASS |
+| D080-BROWSER-02 | Provisional S boundary | Focused provisional S produced no active execution, no Runner, and no lifecycle write; row reconciled to planned state | PASS |
+| D080-BROWSER-PERSIST-01 | Persistence | Same-tab reload and fresh authenticated tab restored A/B/C/D order | PASS |
+| D080-BROWSER-RACE-01 | Natural timing race | Browser response latency was too fast to observe `保存中 n件` across multiple chain operations | NOT_OBSERVED; deferred automated tests are authoritative |
+| D080-DB-01 | Read-only APP/AUTH | quick check, FK, migration pending `0 / 0`, final IDs/order/planned starts, operation rows, active execution state, duplicate positions, all audit `rows_written=0` | PASS |
+| D080-CONSOLE-01 | Browser console | Persistent and fresh authenticated browser logs | PASS (`0 errors / 0 warnings`) |
+| D080-BOUNDARY-01 | Explicit non-goals | no API/Worker/schema/migration/dependency/security change; future/past/preview semantics unchanged; no production/credential/bootstrap/restore/destructive cleanup | PASS |

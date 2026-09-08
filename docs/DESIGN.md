@@ -535,3 +535,11 @@ current established Dayのordinary planned Entryをreal Sectionまたは`Section
 Move専用のpending intent coordinatorはsent Moveとlatest unsent Moveを分離する。sent requestはimmutable、同一Entryのunsent tailだけが安全なsegment内でcoalesceされ、different-Entry Moveはユーザー順のserial queueから外さない。次のgestureはstale canonical rowではなくeffective destinationをsourceとして扱い、unsent return-to-baseはcancel、sent後のreturnは後続Moveとする。
 
 Move unresolved中のsame-Section Reorder / `Shift + Arrow`とplanned-start direct editはblockし、Move→target-Section-Reorder chainingは実装しない。StartはMove成功後のcanonical stateに依存し、Start / Interrupt等のlifecycle barrierが先に存在する場合は後続Moveを受理しない。collapsed targetは自動expandせず、`Sectionなし`のgroup生成・消滅とfocus / drag highlightはsafeにreconcileする。`保存中 n件`はsent + latest unsentのlogical workを重複なく数え、layout shiftやfocus stealを起こさない。
+
+## D-080 provisional Add → I interaction
+
+Add draftのcommit時にstable provisional Entry IDを確定し、rowを即時Day projectionへ挿入してlogical focusをそのrowへ移す。focus generationとdraft refを使って、親Addのreconcileや後続child Addが新しいdraft入力・focusを奪わないようにする。provisional rowは`[data-day-focus-target]`としてkeyboard navigationに参加し、`I`はそのrowをanchorにしたchild draftを開く。
+
+Child Addは親operation IDへ依存するpending intentとして保持し、親成功前はHTTPを送らない。effective provisional placementはcanonical rowsへpending Add chainを再帰的に重ね、親子のSection・planned start・direct-after順を表示する。親のsuccessはrootだけをclearし、後続draftは残す。deterministic failure / conflictではdependent subtreeとanchor draftをcancelし、ambiguous parentはexact operation / payloadをretained stateへ移してdescendantsをholdする。
+
+provisional rowではsafeなProject / Section / estimate操作と`I`だけを有効化し、`S`はactive canonical Entryを持たないためwriteしない。pending Section Moveのようにanchorを不安定化するplacement barrierがある場合はchild draftを開かない。`保存中 n件`はpending Add operation / dependent logical intentを一度だけ数え、layout shift・focus steal・ghost rowを起こさない。既存のD-066 serial dispatch、D-074 insertion、D-076 future boundary、retry / unload barrierを再利用し、API / Worker / storageは変更しない。
