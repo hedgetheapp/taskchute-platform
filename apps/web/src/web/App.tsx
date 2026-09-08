@@ -105,13 +105,15 @@ type ColumnResizeState = {
 };
 type InlineEditorAction = { key: string; action: "none" | "commit" | "cancel" };
 type MutationScope = readonly string[];
-type ActiveMutation = { token: string; scope: MutationScope; label: string };
+type ActiveMutation = { token: string; scope: MutationScope; label: string; kind?: "reorder"; sectionId?: string | null };
 type QueuedDayMutation = {
   scope: MutationScope;
   label: string;
   coalesceKey?: string;
   operationId?: string;
   dependsOnOperationId?: string;
+  kind?: "reorder";
+  sectionId?: string | null;
   dispatch: () => Promise<void>;
 };
 type PendingAddTask = {
@@ -123,7 +125,7 @@ type PendingAddTask = {
   modeId: string | null;
 };
 type PendingSectionOverlay = { operation: MoveEntryRequest; plannedStartMinute: number | null };
-type PendingReorderOverlay = { operation: ReorderEntriesRequest };
+type PendingReorderOverlay = { operation: ReorderEntriesRequest; baseEntryIds: string[] };
 type RoutineCandidate =
   | { entryId: string; unit: "estimate"; estimateSeconds: number | null }
   | { entryId: string; unit: "section-plan"; sectionId: string | null; plannedStartMinute: number | null };
@@ -353,6 +355,54 @@ function buildDraggedEntryOrder(
 }
 
 function groupKey(sectionId: string | null): string { return sectionId ?? "unsectioned"; }
+
+function sameEntryIdOrder(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((entryId, index) => entryId === right[index]);
+}
+
+function sectionEntriesForProjection(projection: CurrentTaskChuteDayProjection, sectionId: string | null): EntryProjection[] {
+  return sectionId === null
+    ? projection.unsectioned_entries
+    : projection.sections.find((section) => section.id === sectionId)?.entries ?? [];
+}
+
+function isValidManualReorderOrder(entries: EntryProjection[], desiredIds: string[]): boolean {
+  const canonicalIds = entries.map((entry) => entry.id);
+  if (desiredIds.length !== canonicalIds.length || new Set(desiredIds).size !== canonicalIds.length
+    || desiredIds.some((entryId) => !canonicalIds.includes(entryId))) return false;
+  let segment = 0;
+  const segmentById = new Map<string, number>();
+  for (const entry of entries) {
+    segmentById.set(entry.id, segment);
+    if (entry.lifecycle_state !== "planned") segment += 1;
+  }
+  const entriesById = new Map(entries.map((entry) => [entry.id, entry]));
+  return desiredIds.every((entryId, index) => {
+    const requested = entriesById.get(entryId);
+    const slot = entries[index];
+    if (!requested || !slot) return false;
+    if (slot.lifecycle_state !== "planned") return requested.id === slot.id;
+    return segmentById.get(requested.id) === segmentById.get(slot.id)
+      && isSamePlannedStartCohort(requested, slot);
+  });
+}
+
+function applyPendingReorderOverlays(
+  projection: CurrentTaskChuteDayProjection,
+  overlays: Record<string, PendingReorderOverlay>,
+): CurrentTaskChuteDayProjection {
+  const reorder = (sectionId: string | null, entries: EntryProjection[]): EntryProjection[] => {
+    const overlay = overlays[groupKey(sectionId)];
+    if (!overlay || !isValidManualReorderOrder(entries, overlay.operation.entry_ids)) return entries;
+    const byId = new Map(entries.map((entry) => [entry.id, entry]));
+    return overlay.operation.entry_ids.map((entryId) => byId.get(entryId)!).filter(Boolean);
+  };
+  return {
+    ...projection,
+    unsectioned_entries: reorder(null, projection.unsectioned_entries),
+    sections: projection.sections.map((section) => ({ ...section, entries: reorder(section.id, section.entries) })),
+  };
+}
 
 function shiftLogicalDate(logicalDate: string, days: number): string {
   return Temporal.PlainDate.from(logicalDate).add({ days }).toString();
@@ -746,10 +796,20 @@ export function App() {
   const reconcileSequenceRef = useRef(0);
   const dayRef = useRef<CurrentTaskChuteDayProjection | null>(null);
   const dayMutationQueueRef = useRef<QueuedDayMutation[]>([]);
+  const pendingReorderOverlaysRef = useRef<Record<string, PendingReorderOverlay>>({});
+  const reorderInFlightRef = useRef<ReorderEntriesRequest | null>(null);
   const dayMutationInFlightRef = useRef(false);
   const dayMutationPausedRef = useRef(false);
   const deferredNavigationRef = useRef<{ logicalDate?: string } | null>(null);
   const deferredTransitionRef = useRef<{ kind: "logout" } | { kind: "settings"; destination: SettingsDestination } | null>(null);
+
+  function updatePendingReorderOverlays(
+    updater: (current: Record<string, PendingReorderOverlay>) => Record<string, PendingReorderOverlay>,
+  ): void {
+    const next = updater(pendingReorderOverlaysRef.current);
+    pendingReorderOverlaysRef.current = next;
+    setPendingReorderOverlays(next);
+  }
   function isQueuedDayMutationOperation(operationId: string | undefined): boolean {
     return operationId !== undefined && dayMutationQueueRef.current.some((item) => item.operationId === operationId);
   }
@@ -887,7 +947,7 @@ export function App() {
     setEstimateOperation((current) => isCanceled(current?.operation_id) ? null : current);
     setPlannedStartOperation((current) => isCanceled(current?.request.operation_id) ? null : current);
     setPendingSectionOverlays((current) => Object.fromEntries(Object.entries(current).filter(([, overlay]) => !isCanceled(overlay.operation.operation_id))));
-    setPendingReorderOverlays((current) => Object.fromEntries(Object.entries(current).filter(([, overlay]) => !isCanceled(overlay.operation.operation_id))));
+    updatePendingReorderOverlays((current) => Object.fromEntries(Object.entries(current).filter(([, overlay]) => !isCanceled(overlay.operation.operation_id))));
     setPendingAddTasks((current) => current.filter((item) => !isCanceled(item.operation.operation_id)));
     setPendingTaskMetadataOverlays((current) => Object.fromEntries(Object.entries(current).filter(([, operation]) => !isCanceled(operation.operation_id))));
     setPendingEstimateOverlays((current) => Object.fromEntries(Object.entries(current).filter(([, operation]) => !isCanceled(operation.operation_id))));
@@ -992,6 +1052,83 @@ export function App() {
     void drainDayMutationQueue();
   }
 
+  function isReorderQueueItem(item: QueuedDayMutation, taskchuteDayId: string, sectionId: string | null): boolean {
+    return item.kind === "reorder" && item.scope.includes(`placement:${taskchuteDayId}`) && item.sectionId === sectionId;
+  }
+
+  function isReorderBarrierQueueItem(item: QueuedDayMutation, taskchuteDayId: string, sectionId: string | null): boolean {
+    if (item.kind === "reorder") return item.scope.includes(`placement:${taskchuteDayId}`) && item.sectionId !== sectionId;
+    return item.scope.includes(`placement:${taskchuteDayId}`)
+      || item.label === "Start" || item.label === "Complete" || item.label === "Interrupt";
+  }
+
+  function enqueueReorderMutation(mutation: QueuedDayMutation): void {
+    if (dayMutationPausedRef.current && retainedOperation === null) dayMutationPausedRef.current = false;
+    const taskchuteDayId = mutation.scope.find((scope) => scope.startsWith("placement:"))?.slice("placement:".length);
+    const sectionId = mutation.sectionId ?? null;
+    if (mutation.kind !== "reorder" || !taskchuteDayId) {
+      enqueueDayMutation(mutation);
+      return;
+    }
+    let barrierIndex = -1;
+    for (let index = 0; index < dayMutationQueueRef.current.length; index += 1) {
+      if (isReorderBarrierQueueItem(dayMutationQueueRef.current[index]!, taskchuteDayId, sectionId)) barrierIndex = index;
+    }
+    const existingIndex = dayMutationQueueRef.current.findIndex((item, index) => index > barrierIndex
+      && isReorderQueueItem(item, taskchuteDayId, sectionId));
+    if (existingIndex >= 0) {
+      const existing = dayMutationQueueRef.current[existingIndex]!;
+      dayMutationQueueRef.current[existingIndex] = {
+        ...mutation,
+        dependsOnOperationId: existing.dependsOnOperationId ?? mutation.dependsOnOperationId,
+      };
+      updateDayMutationQueueCount();
+      void drainDayMutationQueue();
+      return;
+    }
+    dayMutationQueueRef.current.push(mutation);
+    updateDayMutationQueueCount();
+    void drainDayMutationQueue();
+  }
+
+  function hasReorderPlacementBarrier(sectionId: string | null, taskchuteDayId: string): boolean {
+    const placementScope = `placement:${taskchuteDayId}`;
+    if (hasRetainedMutationScope([placementScope])) return true;
+    if (activeMutationsRef.current.some((mutation) => {
+      if (mutation.kind === "reorder") return mutation.scope.includes(placementScope) && mutation.sectionId !== sectionId;
+      return mutation.scope.includes(placementScope)
+        || mutation.label === "Start" || mutation.label === "Complete" || mutation.label === "Interrupt";
+    })) return true;
+    if (dayMutationQueueRef.current.some((mutation) => isReorderBarrierQueueItem(mutation, taskchuteDayId, sectionId))) return true;
+    return (startOperation !== null && !isQueuedDayMutationOperation(startOperation.operation_id))
+      || (interruptOperation !== null && !isQueuedDayMutationOperation(interruptOperation.operation_id))
+      || (completeOperation !== null && !isQueuedDayMutationOperation(completeOperation.operation_id));
+  }
+
+  function isReorderBlockedForProjection(sectionId: string | null, projection: CurrentTaskChuteDayProjection | null): boolean {
+    const taskchuteDayId = projection?.taskchute_day.id;
+    if (!projection || !taskchuteDayId) return true;
+    if (projection.is_current) return hasReorderPlacementBarrier(sectionId, taskchuteDayId);
+    const scope = placementMutationScope(taskchuteDayId);
+    return hasRetainedMutationScope(scope) || hasQueuedMutationScope(scope);
+  }
+
+  function effectiveSectionEntries(sectionId: string | null, projection: CurrentTaskChuteDayProjection | null = dayRef.current ?? day): EntryProjection[] {
+    if (!projection) return [];
+    const entries = sectionEntriesForProjection(projection, sectionId);
+    const overlay = pendingReorderOverlaysRef.current[groupKey(sectionId)];
+    if (!overlay || !isValidManualReorderOrder(entries, overlay.operation.entry_ids)) return entries;
+    const byId = new Map(entries.map((entry) => [entry.id, entry]));
+    return overlay.operation.entry_ids.map((entryId) => byId.get(entryId)!).filter(Boolean);
+  }
+
+  function cancelQueuedReorder(operation: ReorderEntriesRequest): void {
+    dayMutationQueueRef.current = dayMutationQueueRef.current.filter((item) => item.operationId !== operation.operation_id);
+    updateDayMutationQueueCount();
+    updatePendingReorderOverlays((current) => current[groupKey(operation.section_id)]?.operation.operation_id === operation.operation_id
+      ? Object.fromEntries(Object.entries(current).filter(([key]) => key !== groupKey(operation.section_id))) : current);
+  }
+
   function enqueueRetainedRetry(label: string, scope: MutationScope, dispatch: () => Promise<void>): void {
     dayMutationPausedRef.current = false;
     dayMutationQueueRef.current.unshift({ label, scope, dispatch });
@@ -999,10 +1136,10 @@ export function App() {
     void drainDayMutationQueue();
   }
 
-  function beginMutationScope(scope: MutationScope, label: string): string | null {
+  function beginMutationScope(scope: MutationScope, label: string, metadata?: Pick<ActiveMutation, "kind" | "sectionId">): string | null {
     if (hasActiveMutationScope(scope)) return null;
     const token = uuidv7();
-    activeMutationsRef.current = [...activeMutationsRef.current, { token, scope, label }];
+    activeMutationsRef.current = [...activeMutationsRef.current, { token, scope, label, ...metadata }];
     setPendingMutationCount(activeMutationsRef.current.length);
     return token;
   }
@@ -1221,6 +1358,7 @@ export function App() {
     dayMutationQueueRef.current = [];
     dayMutationInFlightRef.current = false;
     dayMutationPausedRef.current = false;
+    reorderInFlightRef.current = null;
     deferredNavigationRef.current = null;
     deferredTransitionRef.current = null;
     activeMutationsRef.current = [];
@@ -1228,7 +1366,7 @@ export function App() {
     setDayMutationQueueCount(0);
     setPendingAddTasks([]);
     setPendingSectionOverlays({});
-    setPendingReorderOverlays({});
+    updatePendingReorderOverlays(() => ({}));
     setPendingTaskMetadataOverlays({});
     setPendingModeOverlays({});
     setPendingEstimateOverlays({});
@@ -2442,79 +2580,123 @@ export function App() {
   }
 
   async function executeReorder(operation: ReorderEntriesRequest) {
-    const mutationToken = beginMutationScope(placementMutationScope(operation.taskchute_day_id), "並び替え");
+    const mutationToken = beginMutationScope(placementMutationScope(operation.taskchute_day_id), "並び替え", {
+      kind: "reorder", sectionId: operation.section_id,
+    });
     if (!mutationToken) return;
+    reorderInFlightRef.current = operation;
+    setReorderOperation(operation);
     setPending("reorder");
     setError(null);
     try {
       await api.reorderEntries(operation);
       await reconcile();
       setReorderOperation((current) => current?.operation_id === operation.operation_id ? null : current);
-      setPendingReorderOverlays((current) => current[groupKey(operation.section_id)]?.operation.operation_id === operation.operation_id
+      updatePendingReorderOverlays((current) => current[groupKey(operation.section_id)]?.operation.operation_id === operation.operation_id
         ? Object.fromEntries(Object.entries(current).filter(([key]) => key !== groupKey(operation.section_id))) : current);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "並び替えに失敗しました");
       const ambiguous = isAmbiguousOutcome(caught);
-      if (ambiguous || (caught instanceof ApiClientError && caught.code === "revision_conflict")) pauseDayMutationQueue();
+      if (ambiguous) pauseDayMutationQueue(operation.operation_id);
+      else cancelQueuedDayMutationDependents(operation.operation_id);
       if (ambiguous) {
         setReorderOperation((current) => current?.operation_id === operation.operation_id ? current : null);
       }
       if (!ambiguous) {
         setReorderOperation((current) => current?.operation_id === operation.operation_id ? null : current);
-        setPendingReorderOverlays((current) => current[groupKey(operation.section_id)]?.operation.operation_id === operation.operation_id
+        updatePendingReorderOverlays((current) => current[groupKey(operation.section_id)]?.operation.operation_id === operation.operation_id
           ? Object.fromEntries(Object.entries(current).filter(([key]) => key !== groupKey(operation.section_id))) : current);
       }
       try {
         const projection = await reconcile();
-        const canonical = (operation.section_id === null ? projection?.unsectioned_entries
-          : projection?.sections.find((candidate) => candidate.id === operation.section_id)?.entries)?.map((entry) => entry.id);
-        if (ambiguous && canonical?.join("\0") === operation.entry_ids.join("\0")) {
-          setReorderOperation(null);
-          setPendingReorderOverlays((current) => current[groupKey(operation.section_id)]?.operation.operation_id === operation.operation_id
+        const canonical = projection ? sectionEntriesForProjection(projection, operation.section_id).map((entry) => entry.id) : null;
+        if (ambiguous && canonical && sameEntryIdOrder(canonical, operation.entry_ids)) {
+          setReorderOperation((current) => current?.operation_id === operation.operation_id ? null : current);
+          updatePendingReorderOverlays((current) => current[groupKey(operation.section_id)]?.operation.operation_id === operation.operation_id
             ? Object.fromEntries(Object.entries(current).filter(([key]) => key !== groupKey(operation.section_id))) : current);
           setError(null);
           resumeDayMutationQueue();
         }
       } catch { /* Preserve the logical operation. */ }
     } finally {
+      if (reorderInFlightRef.current?.operation_id === operation.operation_id) reorderInFlightRef.current = null;
       endMutationScope(mutationToken);
       setPending(null);
     }
   }
 
   async function reorderSectionEntries(sectionId: string | null, entryIds: string[], focusEntryId: string) {
-    if (!day?.taskchute_day.id || !day.planning_enabled || mutationLocked
-      || hasRetainedMutationScope(placementMutationScope()) || hasQueuedMutationScope(placementMutationScope())) return;
-    const entries = sectionId === null ? day.unsectioned_entries : day.sections.find((candidate) => candidate.id === sectionId)?.entries;
-    const canonicalIds = entries?.map((entry) => entry.id);
-    if (!entries || entryIds.length !== entries.length || new Set(entryIds).size !== entries.length
-      || entryIds.some((id) => !canonicalIds?.includes(id)) || entryIds.every((id, index) => id === canonicalIds?.[index])) return;
+    const projection = dayRef.current ?? day;
+    if (!projection?.taskchute_day.id || !projection.planning_enabled || mutationLocked) return;
+    if (projection.is_current) {
+      if (hasReorderPlacementBarrier(sectionId, projection.taskchute_day.id)) return;
+    } else if (hasRetainedMutationScope(placementMutationScope(projection.taskchute_day.id))
+      || hasQueuedMutationScope(placementMutationScope(projection.taskchute_day.id))) return;
+    const entries = effectiveSectionEntries(sectionId, projection);
+    const canonicalEntries = sectionEntriesForProjection(projection, sectionId);
+    const canonicalIds = canonicalEntries.map((entry) => entry.id);
+    if (!entries.length || !isValidManualReorderOrder(entries, entryIds) || sameEntryIdOrder(entryIds, entries.map((entry) => entry.id))) return;
+    const currentOverlay = pendingReorderOverlaysRef.current[groupKey(sectionId)];
+    const currentOperationIsUnsent = currentOverlay
+      ? isQueuedDayMutationOperation(currentOverlay.operation.operation_id)
+      : false;
+    if (currentOverlay && currentOperationIsUnsent && sameEntryIdOrder(entryIds, currentOverlay.baseEntryIds)) {
+      cancelQueuedReorder(currentOverlay.operation);
+      setPendingFocusKey(focusKey({ kind: "entry", id: focusEntryId }));
+      return;
+    }
+    const baseEntryIds = currentOverlay && !currentOperationIsUnsent
+      ? entries.map((entry) => entry.id)
+      : currentOverlay?.baseEntryIds ?? canonicalIds;
     const operation: ReorderEntriesRequest = {
       operation_id: uuidv7(),
-      taskchute_day_id: day.taskchute_day.id,
+      taskchute_day_id: projection.taskchute_day.id,
       section_id: sectionId,
       entry_ids: entryIds,
-      expected_placement_revision: day.placement_revision,
+      expected_placement_revision: projection.placement_revision,
     };
     setPendingFocusKey(focusKey({ kind: "entry", id: focusEntryId }));
-    setReorderOperation(operation);
-    setPendingReorderOverlays((current) => ({ ...current, [groupKey(sectionId)]: { operation } }));
+    updatePendingReorderOverlays((current) => ({ ...current, [groupKey(sectionId)]: { operation, baseEntryIds } }));
+    const inFlight = reorderInFlightRef.current;
+    const dependsOnOperationId = inFlight?.taskchute_day_id === operation.taskchute_day_id && inFlight.section_id === sectionId
+      ? inFlight.operation_id : undefined;
     const dispatch = async () => {
       const latest = dayRef.current;
-      const rebased = latest?.taskchute_day.id === operation.taskchute_day_id
-        ? { ...operation, expected_placement_revision: latest.placement_revision }
-        : operation;
-      setReorderOperation(rebased);
-      await executeReorder(rebased);
+      if (!latest || latest.taskchute_day.id !== operation.taskchute_day_id) {
+        setError("並び替え対象の日が変わったため、保存を取り消しました");
+        cancelQueuedDayMutationDependents(operation.operation_id);
+        updatePendingReorderOverlays((current) => current[groupKey(operation.section_id)]?.operation.operation_id === operation.operation_id
+          ? Object.fromEntries(Object.entries(current).filter(([key]) => key !== groupKey(operation.section_id))) : current);
+        return;
+      }
+      const latestEntries = sectionEntriesForProjection(latest, operation.section_id);
+      const latestIds = latestEntries.map((entry) => entry.id);
+      if (sameEntryIdOrder(latestIds, operation.entry_ids)) {
+        updatePendingReorderOverlays((current) => current[groupKey(operation.section_id)]?.operation.operation_id === operation.operation_id
+          ? Object.fromEntries(Object.entries(current).filter(([key]) => key !== groupKey(operation.section_id))) : current);
+        return;
+      }
+      if (!sameEntryIdOrder(latestIds, baseEntryIds) || !isValidManualReorderOrder(latestEntries, operation.entry_ids)) {
+        setError("並び替えの前提が変わったため、保存を取り消しました。もう一度お試しください");
+        cancelQueuedDayMutationDependents(operation.operation_id);
+        updatePendingReorderOverlays((current) => current[groupKey(operation.section_id)]?.operation.operation_id === operation.operation_id
+          ? Object.fromEntries(Object.entries(current).filter(([key]) => key !== groupKey(operation.section_id))) : current);
+        return;
+      }
+      await executeReorder({ ...operation, expected_placement_revision: latest.placement_revision });
     };
-    if (day.is_current) enqueueDayMutation({ scope: placementMutationScope(operation.taskchute_day_id), label: "並び替え", operationId: operation.operation_id, dispatch });
+    if (projection.is_current) enqueueReorderMutation({
+      scope: placementMutationScope(operation.taskchute_day_id), label: "並び替え", operationId: operation.operation_id,
+      dependsOnOperationId, kind: "reorder", sectionId, dispatch,
+    });
     else await dispatch();
   }
 
   async function moveEntry(sectionId: string | null, entryId: string, delta: -1 | 1) {
-    if (!day?.taskchute_day.id || !day.planning_enabled || mutationLocked
-      || hasRetainedMutationScope(placementMutationScope()) || hasQueuedMutationScope(placementMutationScope())) return;
-    const entries = sectionId === null ? day.unsectioned_entries : day.sections.find((candidate) => candidate.id === sectionId)?.entries;
+    const projection = dayRef.current ?? day;
+    if (!projection?.taskchute_day.id || !projection.planning_enabled || mutationLocked) return;
+    if (projection.is_current && hasReorderPlacementBarrier(sectionId, projection.taskchute_day.id)) return;
+    const entries = effectiveSectionEntries(sectionId, projection);
     if (!entries || !canMoveEntry(entries, entryId, delta)) return;
     const ids = entries.map((candidate) => candidate.id);
     const from = ids.indexOf(entryId);
@@ -2530,24 +2712,30 @@ export function App() {
   }
 
   function dragOrder(sectionId: string | null, targetEntryId: string, edge: DragEdge): string[] | null {
-    if (!entryDrag || entryDrag.sectionId !== sectionId || !day?.taskchute_day.id || !day.planning_enabled || mutationLocked
-      || hasRetainedMutationScope(placementMutationScope()) || hasQueuedMutationScope(placementMutationScope())) return null;
-    const entries = sectionId === null ? day.unsectioned_entries : day.sections.find((candidate) => candidate.id === sectionId)?.entries;
+    const projection = dayRef.current ?? day;
+    if (!entryDrag || entryDrag.sectionId !== sectionId || !projection?.taskchute_day.id || !projection.planning_enabled || mutationLocked) return null;
+    if (projection.is_current
+      ? hasReorderPlacementBarrier(sectionId, projection.taskchute_day.id)
+      : hasRetainedMutationScope(placementMutationScope(projection.taskchute_day.id))
+        || hasQueuedMutationScope(placementMutationScope(projection.taskchute_day.id))) return null;
+    const entries = effectiveSectionEntries(sectionId, projection);
     return entries ? buildDraggedEntryOrder(entries, sectionId, entryDrag.entryId, targetEntryId, edge) : null;
   }
 
   function draggedEntry(drag: Pick<EntryDragState, "entryId" | "sectionId"> | null = entryDrag): EntryProjection | undefined {
-    if (!drag || !day) return undefined;
-    const entries = drag.sectionId === null ? day.unsectioned_entries : day.sections.find((section) => section.id === drag.sectionId)?.entries;
+    const projection = dayRef.current ?? day;
+    if (!drag || !projection) return undefined;
+    const entries = effectiveSectionEntries(drag.sectionId, projection);
     return entries?.find((entry) => entry.id === drag.entryId);
   }
 
   function canDropOnSection(sectionId: string | null, drag: Pick<EntryDragState, "entryId" | "sectionId"> | null = entryDrag): boolean {
     const entry = draggedEntry(drag);
-    if (!drag || !entry || !day?.taskchute_day.id || !day.planning_enabled || mutationLocked
-      || hasRetainedMutationScope(placementMutationScope()) || hasQueuedMutationScope(placementMutationScope())
+    const projection = dayRef.current ?? day;
+    const placementBlocked = isReorderBlockedForProjection(sectionId, projection);
+    if (!drag || !entry || !projection?.taskchute_day.id || !projection.planning_enabled || mutationLocked || placementBlocked
       || entry.lifecycle_state !== "planned" || entry.routine !== null || entry.section_id === sectionId) return false;
-    return sectionId === null || day.sections.some((section) => section.id === sectionId);
+    return sectionId === null || projection.sections.some((section) => section.id === sectionId);
   }
 
   function activateMouseDrag(event: ReactMouseEvent<HTMLElement>): MouseDragState | null {
@@ -2564,9 +2752,10 @@ export function App() {
   }
 
   function startEntryMouseDrag(event: ReactMouseEvent<HTMLElement>, sectionId: string | null, entry: EntryProjection) {
-    if (event.button !== 0 || isInteractiveDragTarget(event.target) || !day?.taskchute_day.id || !day.planning_enabled
-      || mutationLocked || hasRetainedMutationScope(placementMutationScope()) || hasQueuedMutationScope(placementMutationScope())
-      || entry.lifecycle_state !== "planned") return;
+    const projection = dayRef.current ?? day;
+    const placementBlocked = isReorderBlockedForProjection(sectionId, projection);
+    if (event.button !== 0 || isInteractiveDragTarget(event.target) || !projection?.taskchute_day.id || !projection.planning_enabled
+      || mutationLocked || placementBlocked || entry.lifecycle_state !== "planned") return;
     mouseDragRef.current = { entryId: entry.id, sectionId, startX: event.clientX, startY: event.clientY, active: false };
   }
 
@@ -2576,7 +2765,8 @@ export function App() {
     if (!drag) return;
     const bounds = event.currentTarget.getBoundingClientRect();
     const edge: DragEdge = event.clientY < bounds.top + bounds.height / 2 ? "before" : "after";
-    const entries = drag.sectionId === null ? day?.unsectioned_entries : day?.sections.find((candidate) => candidate.id === drag.sectionId)?.entries;
+    const projection = dayRef.current ?? day;
+    const entries = projection ? effectiveSectionEntries(drag.sectionId, projection) : [];
     const order = drag.sectionId === sectionId && entries
       ? buildDraggedEntryOrder(entries, drag.sectionId, drag.entryId, targetEntryId, edge)
       : null;
@@ -2597,9 +2787,11 @@ export function App() {
     }
     const bounds = event.currentTarget.getBoundingClientRect();
     const edge: DragEdge = event.clientY < bounds.top + bounds.height / 2 ? "before" : "after";
-    const entries = drag.sectionId === null ? day?.unsectioned_entries : day?.sections.find((candidate) => candidate.id === drag.sectionId)?.entries;
-    const order = drag.sectionId === sectionId && entries && day?.taskchute_day.id && day.planning_enabled && !mutationLocked
-      && !hasRetainedMutationScope(placementMutationScope()) && !hasQueuedMutationScope(placementMutationScope())
+    const projection = dayRef.current ?? day;
+    const entries = projection ? effectiveSectionEntries(drag.sectionId, projection) : [];
+    const placementBlocked = isReorderBlockedForProjection(drag.sectionId, projection);
+    const order = drag.sectionId === sectionId && entries.length > 0 && projection?.taskchute_day.id && projection.planning_enabled && !mutationLocked
+      && !placementBlocked
       ? buildDraggedEntryOrder(entries, drag.sectionId, drag.entryId, targetEntryId, edge)
       : null;
     mouseDragRef.current = null;
@@ -2608,9 +2800,10 @@ export function App() {
   }
 
   function startEntryDrag(event: ReactDragEvent<HTMLElement>, sectionId: string | null, entry: EntryProjection) {
-    if (isInteractiveDragTarget(event.target) || !day?.taskchute_day.id || !day.planning_enabled || mutationLocked
-      || hasRetainedMutationScope(placementMutationScope()) || hasQueuedMutationScope(placementMutationScope())
-      || entry.lifecycle_state !== "planned") {
+    const projection = dayRef.current ?? day;
+    const placementBlocked = isReorderBlockedForProjection(sectionId, projection);
+    if (isInteractiveDragTarget(event.target) || !projection?.taskchute_day.id || !projection.planning_enabled || mutationLocked
+      || placementBlocked || entry.lifecycle_state !== "planned") {
       event.preventDefault();
       return;
     }
@@ -3890,7 +4083,8 @@ export function App() {
   if (!day) return null;
 
   const currentDay = day;
-  const allEntries = projectionEntries(currentDay);
+  const effectiveDay = applyPendingReorderOverlays(currentDay, pendingReorderOverlays);
+  const allEntries = projectionEntries(effectiveDay);
   const eligibleBulkEntries = allEntries.filter((entry) => isBulkSelectableProjectionEntry(currentDay, entry));
   const selectedBulkEntries = selectedEntryIds
     .map((id) => allEntries.find((entry) => entry.id === id))
@@ -3901,13 +4095,14 @@ export function App() {
   const resolvedColumnDefinitions = visibleDayColumnOrder(dayColumnPreference)
     .map((key) => DAY_COLUMN_DEFINITIONS.find((definition) => definition.key === key)!).filter(Boolean);
   const forecastByEntryId = calculateStartForecast(
-    currentDay,
+    effectiveDay,
     forecastNowInstant ?? currentDay.projection_generated_at,
   );
+  const effectiveNextEntryId = allEntries.find((entry) => entry.lifecycle_state === "planned")?.id ?? null;
   const parsedSectionSettingsDraft = parseSectionSettingsDraft(sectionSettingsDraft);
   const totalQueuedMutations = pendingMutationCount + dayMutationQueueCount;
   const instantPlanningSave = pending === "task-metadata" || pending === "mode" || pending === "move"
-    || pending === "estimate" || pending === "planned-start";
+    || pending === "estimate" || pending === "planned-start" || pending === "reorder";
   const transientStatus = instantPlanningSave && totalQueuedMutations > 0
     ? `保存中 ${totalQueuedMutations}件`
     : totalQueuedMutations > 1
@@ -3918,12 +4113,12 @@ export function App() {
           ? transientStatusText(pending) ?? "保存中…"
           : transientStatusText(pending);
   const groups = [
-    ...(currentDay.unsectioned_entries.length > 0 || draftTask?.sectionId === null || pendingAddTasks.some((item) => item.sectionId === null) ? [{
+    ...(effectiveDay.unsectioned_entries.length > 0 || draftTask?.sectionId === null || pendingAddTasks.some((item) => item.sectionId === null) ? [{
       id: null, title: "Sectionなし", logical_start_minute: null, logical_end_minute: null,
-      estimate_total_seconds: currentDay.unsectioned_entries.reduce((sum, entry) => sum + (entry.estimate_seconds ?? 0), 0),
-      entries: currentDay.unsectioned_entries,
+      estimate_total_seconds: effectiveDay.unsectioned_entries.reduce((sum, entry) => sum + (entry.estimate_seconds ?? 0), 0),
+      entries: effectiveDay.unsectioned_entries,
     }] : []),
-    ...currentDay.sections,
+    ...effectiveDay.sections,
   ];
 
   function focusSurface(element: HTMLElement) {
@@ -4177,9 +4372,9 @@ export function App() {
       if (!entryId) return;
       const section = currentDay.sections.find((candidate) => candidate.entries.some((entry) => entry.id === entryId));
       const sectionId = section?.id ?? (currentDay.unsectioned_entries.some((entry) => entry.id === entryId) ? null : undefined);
-      const entries = sectionId === null ? currentDay.unsectioned_entries : section?.entries;
+      const entries = sectionId === undefined ? [] : effectiveSectionEntries(sectionId, currentDay);
       const delta = event.key === "ArrowUp" ? -1 : 1;
-      if (sectionId === undefined || !entries || !canMoveEntry(entries, entryId, delta)) return;
+      if (sectionId === undefined || !canMoveEntry(entries, entryId, delta)) return;
       event.preventDefault();
       void moveEntry(sectionId, entryId, delta);
       return;
@@ -5195,10 +5390,7 @@ export function App() {
           <span className="row-actions-heading" aria-hidden="true" />
         </div>
         {groups.map((section) => {
-          const reorderOverlay = pendingReorderOverlays[groupKey(section.id)];
-          const orderedEntries = reorderOverlay
-            ? reorderOverlay.operation.entry_ids.map((entryId) => section.entries.find((entry) => entry.id === entryId)).filter((entry): entry is EntryProjection => entry !== undefined)
-            : section.entries;
+          const orderedEntries = section.entries;
           const visibleEntries = showCompleted ? orderedEntries : orderedEntries.filter((entry) => entry.lifecycle_state !== "completed");
           const pendingAdds = pendingAddTasks.filter((item) => item.sectionId === section.id);
           const completedCount = section.entries.filter((entry) => entry.lifecycle_state === "completed").length;
@@ -5301,7 +5493,8 @@ export function App() {
                 const activeEntryForRow = day.active_execution ? entryForId(day, day.active_execution.entry_id) : null;
                 const canInterrupt = entry.lifecycle_state === "planned" && day.active_execution !== null
                   && activeEntryForRow?.routine === null && entry.routine === null && entry.id !== day.active_execution.entry_id;
-                const canDrag = day.planning_enabled && Boolean(day.taskchute_day.id) && entry.lifecycle_state === "planned";
+                const reorderBlocked = isReorderBlockedForProjection(section.id, day);
+                const canDrag = day.planning_enabled && Boolean(day.taskchute_day.id) && entry.lifecycle_state === "planned" && !reorderBlocked;
                 const canMoveDate = isBulkSelectableProjectionEntry(currentDay, entry);
                 const canEditPlanning = day.planning_enabled && entry.lifecycle_state === "planned";
                 const canDuplicate = day.is_current && Boolean(day.taskchute_day.id) && entry.lifecycle_state === "completed";
@@ -5322,7 +5515,7 @@ export function App() {
                   {shouldRenderBefore && draftPlacement?.kind === "section-start" && renderDraftRow(section)}
                   <div className={`task-row task-drag-surface state-${entry.lifecycle_state}${selectedEntryIds.includes(entry.id) ? " is-selected" : ""}${entryDrag?.entryId === entry.id ? " is-dragging" : ""}${entryDrag?.targetEntryId === entry.id && entryDrag.edge ? ` drop-${entryDrag.edge}` : ""}`} tabIndex={0} aria-selected={selectedEntryIds.includes(entry.id)}
                     data-entry-id={entry.id} data-section-id={section.id ?? ""} data-day-focus-target data-focus-key={focusKey(entryTarget)}
-                    draggable={canDrag && !mutationLocked && !hasRetainedMutationScope(placementMutationScope())}
+                    draggable={canDrag && !mutationLocked}
                     data-drag-surface="row" title={canDrag ? "ドラッグして並び替え" : undefined}
                     onMouseDown={(event) => startEntryMouseDrag(event, section.id, entry)}
                     onDragStart={(event) => startEntryDrag(event, section.id, entry)}
@@ -5408,7 +5601,7 @@ export function App() {
                               }}><strong>{displayedTitle}</strong></span>
                           );
                         })()}
-                        {day.next_entry?.id === entry.id && <span className="next-label">Next</span>}
+                        {effectiveNextEntryId === entry.id && <span className="next-label">Next</span>}
                       </div>
                     </div>
                     {resolvedColumnDefinitions.map((definition) => <Fragment key={definition.key}>{renderEntryColumn(entry, definition.key)}</Fragment>)}
@@ -5506,7 +5699,7 @@ export function App() {
           <button type="button" className="secondary" onClick={() => {
              setProjectOperation(null); setTaskOperation(null); setDuplicateOperation(null); setBulkDeleteOperation(null); setDeleteCompletedOperation(null); setQueuedDeleteCompletedOperation(null); setCompletedDeleteConfirmation(null); setBulkDateMoveOperation(null); setBulkSectionOperation(null); setBulkSectionOccurrenceOperation(null); setBulkSectionScopedOperation(null); setBulkEstimateOperation(null); setBulkSectionPickerOpen(false); setBulkConfirmation(null); setBulkSectionConfirmation(null); setBulkEstimateConfirmation(null); setBulkDateMoveConfirmation(null); setSelectedEntryIds([]); setReorderOperation(null); setStartOperation(null); setInterruptOperation(null); setCompleteOperation(null); setExecutionTimesOperation(null); setTaskMetadataOperation(null);
             dayMutationQueueRef.current = []; dayMutationPausedRef.current = false; updateDayMutationQueueCount();
-            setRetainedTaskMetadataOperations([]); setPendingTaskMetadataOverlays({}); setPendingEstimateOverlays({}); setPendingPlannedStartOverlays({}); setPendingSectionOverlays({}); setPendingReorderOverlays({}); setPendingAddTasks([]); setPendingExecutionTimesOverlays({}); setRetainedEstimateOperations([]); setRetainedRoutineEstimateOperations([]);
+            setRetainedTaskMetadataOperations([]); setPendingTaskMetadataOverlays({}); setPendingEstimateOverlays({}); setPendingPlannedStartOverlays({}); setPendingSectionOverlays({}); updatePendingReorderOverlays(() => ({})); setPendingAddTasks([]); setPendingExecutionTimesOverlays({}); setRetainedEstimateOperations([]); setRetainedRoutineEstimateOperations([]);
             setConfigurationOperation(null); setSectionSettingsOperation(null); setSectionMoveOperation(null); setEstimateOperation(null); setPlannedStartOperation(null);
             setRoutineConversionOperation(null); setRoutineEndOperation(null); setRoutineEstimateOperation(null);
              setRoutineSectionPlanOperation(null); setModeOperation(null); setRetainedModeOperations([]); setPendingModeOverlays({}); setRoutineCandidate(null); setError(null);

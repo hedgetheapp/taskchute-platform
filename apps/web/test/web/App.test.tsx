@@ -1801,7 +1801,7 @@ describe("Dogfood Day shell", () => {
     fireEvent.drop(targetSummary, { dataTransfer });
     fireEvent.dragEnd(dragSurface(source), { dataTransfer });
     await waitFor(() => expect(mocks.moveEntry).toHaveBeenCalledTimes(1));
-    expect(source.getAttribute("draggable")).toBe("true");
+    expect(source.getAttribute("draggable")).toBe("false");
     fireEvent.dragStart(dragSurface(source), { dataTransfer: dragDataTransfer() });
     expect(mocks.moveEntry).toHaveBeenCalledTimes(1);
     request.resolve({});
@@ -1844,6 +1844,152 @@ describe("Dogfood Day shell", () => {
     await waitFor(() => expect(screen.queryByText("並び替え・照合中…")).toBeNull());
   });
 
+  it("builds the second pointer reorder from the effective pending order", async () => {
+    const request = deferred<unknown>();
+    const firstReordered = {
+      ...threePlannedDay,
+      placement_revision: 2,
+      sections: [{ ...threePlannedDay.sections[0], entries: [secondEntry, thirdEntry, firstEntry] }, emptyDay.sections[1]],
+    };
+    const finalReordered = {
+      ...threePlannedDay,
+      placement_revision: 3,
+      sections: [{ ...threePlannedDay.sections[0], entries: [thirdEntry, firstEntry, secondEntry] }, emptyDay.sections[1]],
+    };
+    mocks.loadDay.mockResolvedValueOnce(threePlannedDay).mockResolvedValueOnce(firstReordered).mockResolvedValueOnce(finalReordered);
+    mocks.reorderEntries.mockReturnValueOnce(request.promise).mockResolvedValue({});
+    render(<App />);
+
+    dragEntry(
+      dragSurface((await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!),
+      screen.getByText("Third task").closest<HTMLElement>("[data-entry-id]")!,
+      75,
+    );
+    await waitFor(() => expect(mocks.reorderEntries).toHaveBeenCalledTimes(1));
+    expect(mocks.reorderEntries.mock.calls[0][0].entry_ids).toEqual([secondEntry.id, thirdEntry.id, firstEntry.id]);
+
+    const secondSource = screen.getByText("Second task").closest<HTMLElement>("[data-entry-id]")!;
+    const secondTarget = screen.getByText("Canonical task").closest<HTMLElement>("[data-entry-id]")!;
+    dragEntry(dragSurface(secondSource), secondTarget, 75);
+    expect(Array.from(document.querySelectorAll(".task-row[data-entry-id]"), (row) => row.getAttribute("data-entry-id")))
+      .toEqual([thirdEntry.id, firstEntry.id, secondEntry.id]);
+    expect(mocks.reorderEntries).toHaveBeenCalledTimes(1);
+
+    request.resolve({});
+    await waitFor(() => expect(mocks.reorderEntries).toHaveBeenCalledTimes(2));
+    expect(mocks.reorderEntries.mock.calls[1][0].entry_ids).toEqual([thirdEntry.id, firstEntry.id, secondEntry.id]);
+    await waitFor(() => expect(Array.from(document.querySelectorAll(".task-row[data-entry-id]"), (row) => row.getAttribute("data-entry-id")))
+      .toEqual([thirdEntry.id, firstEntry.id, secondEntry.id]));
+  });
+
+  it("chains repeated Shift+Arrow reorder from the effective order and keeps focus", async () => {
+    const request = deferred<unknown>();
+    const firstReordered = {
+      ...threePlannedDay,
+      placement_revision: 2,
+      sections: [{ ...threePlannedDay.sections[0], entries: [secondEntry, firstEntry, thirdEntry] }, emptyDay.sections[1]],
+    };
+    const finalReordered = {
+      ...threePlannedDay,
+      placement_revision: 3,
+      sections: [{ ...threePlannedDay.sections[0], entries: [secondEntry, thirdEntry, firstEntry] }, emptyDay.sections[1]],
+    };
+    mocks.loadDay.mockResolvedValueOnce(threePlannedDay).mockResolvedValueOnce(firstReordered).mockResolvedValueOnce(finalReordered);
+    mocks.reorderEntries.mockReturnValueOnce(request.promise).mockResolvedValue({});
+    render(<App />);
+
+    const row = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
+    row.focus();
+    fireEvent.keyDown(row, { key: "ArrowDown", shiftKey: true });
+    await waitFor(() => expect(mocks.reorderEntries).toHaveBeenCalledTimes(1));
+    fireEvent.keyDown(row, { key: "ArrowDown", shiftKey: true });
+    expect(document.activeElement?.getAttribute("data-entry-id")).toBe(firstEntry.id);
+    expect(Array.from(document.querySelectorAll(".task-row[data-entry-id]"), (item) => item.getAttribute("data-entry-id")))
+      .toEqual([secondEntry.id, thirdEntry.id, firstEntry.id]);
+    expect(mocks.reorderEntries).toHaveBeenCalledTimes(1);
+
+    request.resolve({});
+    await waitFor(() => expect(mocks.reorderEntries).toHaveBeenCalledTimes(2));
+    expect(mocks.reorderEntries.mock.calls[1][0].entry_ids).toEqual([secondEntry.id, thirdEntry.id, firstEntry.id]);
+  });
+
+  it("cancels an unsent reorder when the user returns to the canonical order", async () => {
+    const metadataRequest = deferred<unknown>();
+    mocks.loadDay.mockResolvedValue(twoPlannedDay);
+    mocks.updateTaskMetadata.mockReturnValue(metadataRequest.promise);
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskを編集" }));
+    const title = screen.getByRole("textbox", { name: "Canonical taskのTask名" });
+    fireEvent.change(title, { target: { value: "Metadata pending" } });
+    fireEvent.keyDown(title, { key: "Enter" });
+    await waitFor(() => expect(mocks.updateTaskMetadata).toHaveBeenCalledTimes(1));
+
+    const source = screen.getByText("Metadata pending").closest<HTMLElement>("[data-entry-id]")!;
+    const target = screen.getByText("Second task").closest<HTMLElement>("[data-entry-id]")!;
+    dragEntry(dragSurface(source), target, 75);
+    expect(mocks.reorderEntries).not.toHaveBeenCalled();
+    dragEntry(
+      dragSurface(screen.getByText("Second task").closest<HTMLElement>("[data-entry-id]")!),
+      screen.getByText("Metadata pending").closest<HTMLElement>("[data-entry-id]")!,
+      75,
+    );
+    expect(mocks.reorderEntries).not.toHaveBeenCalled();
+    expect(Array.from(document.querySelectorAll(".task-row[data-entry-id]"), (row) => row.getAttribute("data-entry-id")))
+      .toEqual([firstEntry.id, secondEntry.id]);
+
+    metadataRequest.resolve({});
+    await waitFor(() => expect(mocks.updateTaskMetadata).toHaveBeenCalledTimes(1));
+  });
+
+  it("does not let a queued Start become a reorder coalescing barrier crossing", async () => {
+    const request = deferred<unknown>();
+    mocks.loadDay.mockResolvedValue(threePlannedDay);
+    mocks.reorderEntries.mockReturnValue(request.promise);
+    render(<App />);
+
+    const first = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
+    first.focus();
+    fireEvent.keyDown(first, { key: "ArrowDown", shiftKey: true });
+    await waitFor(() => expect(mocks.reorderEntries).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "Second taskを開始" }));
+    expect(mocks.startEntry).not.toHaveBeenCalled();
+
+    const second = screen.getByText("Second task").closest<HTMLElement>("[data-entry-id]")!;
+    second.focus();
+    fireEvent.keyDown(second, { key: "ArrowDown", shiftKey: true });
+    expect(mocks.reorderEntries).toHaveBeenCalledTimes(1);
+
+    request.resolve({});
+    await waitFor(() => expect(mocks.startEntry).toHaveBeenCalledTimes(1));
+  });
+
+  it("cancels a dependent reorder after deterministic failure of the sent reorder", async () => {
+    const request = deferred<unknown>();
+    mocks.loadDay.mockResolvedValue(threePlannedDay);
+    mocks.reorderEntries.mockReturnValueOnce(request.promise);
+    render(<App />);
+
+    dragEntry(
+      dragSurface((await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!),
+      screen.getByText("Third task").closest<HTMLElement>("[data-entry-id]")!,
+      75,
+    );
+    await waitFor(() => expect(mocks.reorderEntries).toHaveBeenCalledTimes(1));
+    dragEntry(
+      dragSurface(screen.getByText("Second task").closest<HTMLElement>("[data-entry-id]")!),
+      screen.getByText("Canonical task").closest<HTMLElement>("[data-entry-id]")!,
+      75,
+    );
+    expect(mocks.reorderEntries).toHaveBeenCalledTimes(1);
+
+    request.reject(new ApiClientError("invalid reorder", 400, false, "resource_conflict"));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "保留中のReorderを再試行" })).toBeNull());
+    expect(mocks.reorderEntries).toHaveBeenCalledTimes(1);
+    expect(Array.from(document.querySelectorAll(".task-row[data-entry-id]"), (row) => row.getAttribute("data-entry-id")))
+      .toEqual([firstEntry.id, secondEntry.id, thirdEntry.id]);
+  });
+
   it("shows placement reconciliation in the shared floating status", async () => {
     const request = deferred<unknown>();
     mocks.loadDay.mockResolvedValue(twoPlannedDay);
@@ -1854,7 +2000,7 @@ describe("Dogfood Day shell", () => {
     dragEntry(handles[0]!, target, 75);
 
     const status = await screen.findByRole("status");
-    expect(status.textContent).toBe("並び替え・照合中…");
+    expect(status.textContent).toBe("保存中 1件");
     expect(status.classList.contains("transient-status")).toBe(true);
 
     request.resolve({});
