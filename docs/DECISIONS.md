@@ -1613,3 +1613,17 @@ D-075はDay画面のpresentation / usability correctiveであり、date navigati
 - API、Domain、ordering、persisted data、schema、migration、dependency、authentication、security posture、productionは変更しない。新しいdata / migration / APIが必要になった場合はD-075のSTOP条件とする。
 
 Implementation、focused / full regression、persistent nonprod browser / read-only DB evidence、viewport resize tooling boundaryは`docs/CURRENT.md`、`docs/FEATURES.md`、`docs/DESIGN.md`、`docs/TEST_MATRIX.md`、`docs/RISKS.md`へ記録する。Releasedは`NO`のままとする。
+
+## D-076 — Established future-Day keyboard I parity
+
+Status: Approved
+
+D-076はD-074の`I` insertion semanticsを、planning-enabledなestablished future Dayのordinary planned Entry / Sectionへ狭く拡張する。current Dayの既存動作、AddTaskToDayのplacement authority、focus / retry / reconciliation boundaryは変更しない。
+
+- established future Dayのfocused ordinary planned Taskでは、`I`が同Section・同planned-start cohortのdirect-after draftを開く。focused Section summaryでは、frozen Section logical startのscheduled area先頭へdraftを開き、planned-start `NULL` rowsをscheduled rowsより前に保持する。Task / SectionともEscapeはno-writeでsource focusを復元する。
+- Project、estimate、Routine relation、execution facts、historical stateは継承・変更しない。past Day、running / completed / Routine-derived Entryはread-only / no-writeとする。
+- unestablished future previewには`I`のmaterialization capabilityを追加しない。既存の通常`＋ Taskを追加`のestablishment semanticsは変更しない。
+- 既存`AddTaskToDay`の`after_entry` / `section_start` placement intentを再利用し、established targetではTaskChuteDay IDとlogical dateをguardしたうえでserverがposition / planned startを確定する。未確立targetへplacementを持ち込むrequestは従来どおりrejectする。
+- D-075のfixed chrome / single Day surface correctiveはpresentation closeoutであり、新しいDomain Decisionではない。D-076に新migration、schema、dependency、security posture変更はなく、production / restore / destructive cleanup / branch / PR / merge / tag / releaseは対象外とする。
+
+Implementation、persistent nonprod browser / DB evidence、D-075 geometry corrective evidenceは`docs/CURRENT.md`、`docs/FEATURES.md`、`docs/SPEC.md`、`docs/DESIGN.md`、`docs/TEST_MATRIX.md`、`docs/RISKS.md`へ記録する。Releasedは`NO`のままとする。

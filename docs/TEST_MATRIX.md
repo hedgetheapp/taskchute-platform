@@ -2039,3 +2039,21 @@ D-075 evidence closeout:
 - Contract creation main was `a8b6de81a385974837e1b35e0deaa0fd02b59f29`; before push, `main`, explicit `origin/main`, and `git ls-remote origin refs/heads/main` matched. Implementation commit `8f7d00cefb5899164b6221ed5e55b277967e88df` was pushed by fast-forward. Existing untracked review artifacts were preserved.
 - The exact pushed main was rebuilt with `CLOUDFLARE_ENV=nonprod`, generated config was verified as `taskchute-web-nonprod` / `RUNTIME_ENV=nonprod` / `BOOTSTRAP_ENABLED=false`, Wrangler dry-run passed, and the final generated-config deploy was Worker `2a1536fb-549c-423f-96d4-01777d95da22`.
 - D-075 is Web-only. No production, credential, bootstrap, restore, destructive cleanup, API / schema / migration / dependency change was performed. The UI fixtures created through the authenticated browser remain in nonprod.
+
+## D-075 corrective + D-076 established future-Day I parity — latest closeout
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D075-COR-01 | Geometry diagnosis | Same viewport short / long Day geometry is measured before CSS change; identify actual cause rather than scrollbar guess | Long toolbar `38px`, surface top `147`; short toolbar `49px`, surface top `158`; same `8px` toolbar gap; content-dependent `flex: 1 1 auto` shrink identified | PASS |
+| D075-COR-02 | Fixed chrome | Task count / vertical overflow do not change header, toolbar, buttons, DayBoard top, or sticky heading | Both cases after fix: header `28..85`, toolbar `101..150`, buttons `108..143`, surface `158..720`, heading `159..193`, gap `8px` | PASS |
+| D075-RUNNER-01 | Floating Runner | Absent uses full viewport; visible overlays without resize; trailing escape reaches last row / focus; disappearance removes escape | Absent padding `0`; visible surface client `545` unchanged, padding `88px`, Runner `615..696`, final row and focused row remain above Runner; completion returns padding `0` | PASS |
+| D075-REG-01 | Web regressions | single scroll owner, sticky / horizontal alignment, Display, calendar, overflow portal, modal / D-074 behavior | DOM / layout contracts, full Web `4 files / 240 tests`, persistent Display / calendar / overflow checks, console `0 / 0` | PASS |
+| D076-WEB-01 | Future Task I | Established future ordinary planned Task opens direct-after draft and sends canonical placement with identity / date / revision | `2026-09-10`: `D075 future Task I` follows `あああ` in `Sectionなし`, `planned_start=NULL`; focused Web coverage | PASS |
+| D076-WEB-02 | Future Section I | Established future Section I opens scheduled-area-first draft at frozen Section start and preserves NULL-start barrier | `Day` Section: `D075 future Section I`, planned start `12:00`; NULL-start Section rows remained before scheduled rows; focused Web coverage | PASS |
+| D076-BOUNDARY-01 | Boundaries | past / running / completed / Routine / preview do not gain this `I` write; preview is not materialized | Web boundary tests `PASS`; preview and past no-write; no preview establishment performed | PASS |
+| D076-ENV-01 | Deploy / safety | exact main nonprod build, dry-run, deploy, safety probes, no migration / dependency | final `main@c9f2fe7`, Worker `a6f1a16f-4835-4a27-ac89-bcc055fb3303`, root `200`, protected `401`, `BOOTSTRAP_ENABLED=false`, no migrations | PASS |
+| D076-ENV-02 | Persistence | same-tab reload and fresh authenticated tab preserve Task / Section order and planned starts | both authenticated tabs restored `2026-09-10` canonical order; console warning/error `0 / 0` | PASS |
+| D076-DB-01 | Read-only integrity | APP / AUTH quick check, FK, migrations, affected rows, operations, rows-written audit | quick `ok`, FK empty, migrations `No migrations to apply!`, target rows / success operations coherent, all query `rows_written=0` | PASS |
+| D075-D076-BOUNDARY-01 | Prohibited / not run | production, credentials, bootstrap changes, restore, destructive cleanup, tag / release | not run; existing untracked review artifacts preserved | PASS |
+
+Classification: `IMPLEMENTED / INTEGRATED / LOCAL_TESTED / MAIN_PUSHED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_BROWSER_VERIFIED / DB_INTEGRITY_VERIFIED / MIGRATION_NOT_REQUIRED / PRODUCTION_NOT_RUN / RELEASED_NO`。

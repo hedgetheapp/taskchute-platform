@@ -503,3 +503,11 @@ D-075ではDay画面だけをcolumn flex viewportにし、date navigationとDay 
 vertical scroll ownerがrowのabsolute overflow menuをclipするため、row overflow menuだけは`document.body`へportalし、triggerのviewport rectとmenu dimensionsからfixed positionを計算する。viewport境界内へclampし、scroll / resizeで再配置する。これはDayのordering / keyboard / mutation semanticsを変えないmechanical layering ruleである。
 
 D-075はWeb-only layout correctiveであり、API / Domain / persisted data / schema / migration / dependency / auth / security posture / production scopeは含まない。D-059の旧vertical presentation ruleとの関係と、persistent nonprod evidenceは`docs/DECISIONS.md`、`docs/CURRENT.md`、`docs/TEST_MATRIX.md`、`docs/RISKS.md`を参照する。
+
+## D-075 corrective closeout / D-076 future-Day I parity
+
+D-075 correctiveでは、long Dayのcontent sizeがfixed chromeをshrinkしないよう、`.day-header`と`.day-toolbar`を`flex: 0 0 auto`、`.day-surface`を`flex: 1 1 0`とした。原因はscrollbar幅ではなく、旧`.day-surface { flex: 1 1 auto }`のauto flex basisがcontent overflow時にtoolbarを`49px`から`38px`へ縮めていたことである。`.shell.day-shell`の恒久的なbottom paddingは`0`へ戻した。
+
+Floating RunnerはDay surfaceのviewportを縮めないfixed overlayとし、visible時だけ`.day-surface.has-floating-runner`へ`Runner min-height 64px + bottom offset 24px = 88px`のtrailing scroll escapeを付与する。最後のTaskをRunner上端より完全に上へscrollでき、Runner消失時にはpaddingが消える。retry panelは既存の外側配置を変更しない。fixed header / toolbar / DayBoard top / sticky column headingのgeometryはRunner表示・消失とtask countで変化しない。
+
+D-076では、established future Dayのordinary planned Task / Section summaryへcurrent-Dayと同じmemory-only `I` draftを許可する。Taskはsame Section / same planned-start direct-after、Sectionはfrozen logical startのscheduled-area先頭とし、NULL-start rowsを先行保持する。Project、estimate、Routine relation、execution factsは継承せず、past / preview / running / completed / Routine-derivedは対象外。既存AddTaskToDay placement intentとexact operation / revision / retry boundaryを再利用する。

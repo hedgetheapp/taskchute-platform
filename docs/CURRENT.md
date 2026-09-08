@@ -1155,3 +1155,35 @@ APP backupは`263634 bytes` / SHA-256 `09AB123D5CFF07BCD4B45EB1397E51CDE72B20CDB
 read-only DB evidenceはAPP / AUTH backup recovery quick check `ok`、FK empty、remote pending `0 / 0`。UI fixtureはnonprodに残し、production、restore、destructive cleanup、credential / permission / binding変更、tag / releaseは行っていない。current browser connectorにはviewport resize APIがないため、手動resize gestureだけは`NOT_RUN`として残す。
 
 Classification: `APPROVED / IMPLEMENTED / INTEGRATED / LOCAL_TESTED / MAIN_PUSHED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_BROWSER_VERIFIED / DB_INTEGRITY_VERIFIED / MIGRATION_NOT_REQUIRED / VIEWPORT_RESIZE_NOT_RUN / PRODUCTION_NOT_RUN / RESTORE_NOT_RUN / CLEANUP_NOT_RUN / RELEASED_NO`。
+
+## D-075 corrective + D-076 established future-Day I parity — 2026-09-08
+
+### Git / scope
+
+- Contract starting canonical `main` was `1c5f8395ead3e58119cd550d79338aa565206e43`. Final implementation state is `main@c9f2fe7206b22bed10244ecdf65ffafc9f84afbe`; `local main == origin/main == git ls-remote origin refs/heads/main == c9f2fe7206b22bed10244ecdf65ffafc9f84afbe` after the explicit tracking ref sync. Remote is canonical `https://github.com/hedgetheapp/taskchute-platform.git`.
+- Implementation commit `ba18d72bf5040c5f84dc40f05ad86cba4ba72b15` has the expected subject `Record D-075 fixed header scroll closeout`. The established future-Day routing correction is `c9f2fe7206b22bed10244ecdf65ffafc9f84afbe` (`Fix established future Day keyboard insertion routing`). Existing untracked review artifacts were preserved and not staged.
+
+### D-075 geometry evidence and corrective
+
+Before the fix, at the same authenticated viewport `1280 × 720`, sidebar and visible columns, a long Day (`2026-09-08`, 15 rows) measured header `top 28 / bottom 85 / height 57`, toolbar `101 / 139 / 38`, add / Display buttons `102.5 / 137.5`, Day surface `147 / 616`, layout height `469`, client height `452`, scroll height `999`, and sticky heading `148 / 182`. A short Day (`2026-09-09`, 0 rows) measured the same header but toolbar `101 / 150 / 49`, add / Display `108 / 143`, surface `158 / 616`, client height `441`, scroll height `441`, and heading `159 / 193`. The toolbar-to-surface gap remained `8px`; the mismatch was not scrollbar width.
+- Root cause was flex sizing: `.day-surface { flex: 1 1 auto }` used content-dependent flex basis and overflow pressure shrank the toolbar from its natural `49px` to `38px`. The corrective sets header / toolbar to `flex: 0 0 auto`, surface to `flex: 1 1 0`, and shell bottom padding to `0`; fixed chrome spacing and row heights were not redesigned.
+- After the fix, both short and long cases measured header `28..85 / 57`, toolbar `101..150 / 49`, add / Display `108..143 / 35`, surface `158..720 / client 545`, sticky heading `159..193`, toolbar-to-surface gap `8px`, and exactly one vertical scroll owner. Short scroll height was `545`; long scroll height was `999`. Root document/body scroll height stayed `720`.
+
+### Floating Runner evidence
+
+- Runner absent: Day surface used the full available viewport to `bottom 720`, shell padding-bottom was `0`, and no permanent legacy `104px` reservation remained.
+- Runner visible: fixed Runner measured `top 615 / bottom 696 / height 81`; Day surface remained `top 158 / bottom 720 / client 545` with the same toolbar and heading geometry. Conditional surface padding was `88px` (`64px` minimum Runner height + `24px` offset), and scroll height increased to `1041`. At bottom, the final Task measured `bottom 440`, above Runner top `615`; after keyboard focus via Escape on the final row it measured `bottom 466`, still above Runner. Runner completion removed the conditional padding and returned the surface to `padding-bottom: 0` without a fixed-geometry jump.
+- Retry panel placement was not redesigned. Viewport resize gesture remains `NOT_RUN` because the current browser connector exposes no viewport-resize API; static responsive flex rules and DOM tests remain PASS.
+
+### D-076 implementation and persistent nonprod
+
+- The first browser attempt exposed a remaining Worker boundary: Web sent the established future Day's existing `taskchute_day_id` plus `logical_date` and placement, while Worker rejected every `logical_date + placement` request with the old current-Day-only message. The minimal corrective verifies owner-scoped established Day ID/date equality, then reuses `addTaskToFutureDay`'s existing-Day delegation and `addTaskToEstablishedDay` placement path; an unestablished target with placement remains rejected. No new API, schema, migration, dependency, or security change was added.
+- On existing established future Day `2026-09-10`, authenticated browser verification passed: focused Task `I` created `D075 future Task I` directly after `あああ` in `Sectionなし` with planned start `NULL`; focused `Day` Section `I` created `D075 future Section I` at the Section's scheduled start `12:00`. Escape restored source focus without a write. After same-tab reload and a fresh authenticated tab, order and planned starts remained canonical.
+- Final read-only APP evidence for the fixture: `taskchute_day_id=01a079a5-3a15-7a92-bcdc-f0f0faae610d`, `logical_date=2026-09-10`, `placement_revision=5`; `D075 future Section I` position `1`, section `01a02936-efda-726f-a239-cf27f2538c74`, `planned_start_minute=720`; `D075 future Task I` `section_id=NULL`, position `4`, `planned_start_minute=NULL`, both lifecycle `planned`. The two final AddTaskToDay operation rows were `success`; the pre-fix diagnostic rejection was recorded as a coherent domain rejection with no partial write.
+- Exact nonprod build / dry-run used `RUNTIME_ENV=nonprod`, `BOOTSTRAP_ENABLED=false`, canonical APP/AUTH bindings, and no migrations. Worker `taskchute-web-nonprod` version `a6f1a16f-4835-4a27-ac89-bcc055fb3303` deployed successfully. Root / protected safety probes were `200 / 401`; production, credential operations, bootstrap changes, restore, destructive cleanup, tag, release were not run.
+- APP/AUTH read-only evidence: both `PRAGMA quick_check` returned `ok`, both `PRAGMA foreign_key_check` result sets were empty, all queries reported `rows_written=0`, and remote migration listing reported `No migrations to apply!` for both databases. Existing authenticated and fresh tabs reported console warning/error logs `0 / 0`.
+
+### Verification summary
+
+- Focused Web `App.test.tsx + day-table-layout.test.tsx`: `214 / 214 PASS`; full Web `4 files / 240 tests PASS`; focused Worker Day Navigation `16 / 16 PASS`; full Worker `24 files / 207 tests PASS`; migration regression `4 scenarios PASS` through `0023`; typecheck, production / exact nonprod build, Wrangler dry-run, and `git diff --check` PASS.
+- Classification: `IMPLEMENTED / INTEGRATED / MAIN_PUSHED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_BROWSER_VERIFIED / DB_INTEGRITY_VERIFIED / MIGRATION_NOT_REQUIRED / DEPENDENCY_UNCHANGED / PRODUCTION_NOT_RUN / RESTORE_NOT_RUN / DESTRUCTIVE_CLEANUP_NOT_RUN / RELEASED_NO`. D-076 is the new Approved Decision; D-075 geometry is corrective closeout under the existing Decision.
