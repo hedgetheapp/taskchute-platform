@@ -347,6 +347,7 @@ describe.sequential("Day Navigation v0.1", () => {
     const afterFirst = {
       operation_id: uuidv7(), task_id: uuidv7(), entry_id: uuidv7(), project_id: null, mode_id: null,
       title: "Inserted after first", taskchute_day_id: first.taskchute_day_id, section_id: fixture.sections[0]!,
+      logical_date: first.logical_date,
       expected_placement_revision: 2,
       placement: { kind: "after_entry" as const, anchor_entry_id: first.entry_id },
     };
@@ -355,6 +356,7 @@ describe.sequential("Day Navigation v0.1", () => {
     const atStart = {
       operation_id: uuidv7(), task_id: uuidv7(), entry_id: uuidv7(), project_id: null, mode_id: null,
       title: "Inserted at start", taskchute_day_id: first.taskchute_day_id, section_id: fixture.sections[0]!,
+      logical_date: first.logical_date,
       expected_placement_revision: 3,
       placement: { kind: "section_start" as const },
     };

@@ -551,7 +551,13 @@ export async function addTaskToDay(
   const prior = await readOperation(db, appUserId, request.operation_id);
   if (prior) return replayOperation<AddTaskToDayResult>(prior, "AddTaskToDay", requestFingerprint);
   if (request.logical_date && request.placement) {
-    return reject(db, { appUserId, request, requestFingerprint }, "resource_conflict", "Keyboard insertion is available only for an established current Day");
+    const establishedTarget = await db.prepare(`SELECT 1 AS id FROM taskchute_days
+      WHERE app_user_id = ? AND id = ? AND logical_date = ?`)
+      .bind(appUserId, request.taskchute_day_id, request.logical_date)
+      .first();
+    if (!establishedTarget) {
+      return reject(db, { appUserId, request, requestFingerprint }, "resource_conflict", "Keyboard insertion is available only for an established Day");
+    }
   }
   return request.logical_date
     ? addTaskToFutureDay(db, appUserId, request as AddTaskToDayRequest & { logical_date: string }, requestFingerprint, semantic.title, nowInstant)
