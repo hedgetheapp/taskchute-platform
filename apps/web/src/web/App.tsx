@@ -2318,9 +2318,9 @@ export function App() {
       ...(targetingNonCurrentDay ? { logical_date: day.taskchute_day.logical_date } : {}),
       section_id: draftTask.sectionId,
       expected_placement_revision: day.placement_revision,
-      ...(day.is_current && draftTask.placement.kind === "after-entry"
+      ...(day.establishment_state === "established" && draftTask.placement.kind === "after-entry"
         ? { placement: { kind: "after_entry" as const, anchor_entry_id: draftTask.placement.anchorEntryId } }
-        : day.is_current && draftTask.placement.kind === "section-start"
+        : day.establishment_state === "established" && draftTask.placement.kind === "section-start"
           ? { placement: { kind: "section_start" as const } }
           : {}),
     };
@@ -3955,7 +3955,7 @@ export function App() {
   }
 
   function openTaskInsertDraft(entry: EntryProjection) {
-    if (!day?.is_current || mutationLocked || !day.planning_enabled || day.section_configuration_required
+    if (!day?.taskchute_day.id || day.establishment_state !== "established" || mutationLocked || !day.planning_enabled || day.section_configuration_required
       || entry.lifecycle_state !== "planned" || entry.routine !== null) return;
     setSectionCollapsed(entry.section_id, false);
     setDraftTask({
@@ -3967,7 +3967,7 @@ export function App() {
   }
 
   function openSectionInsertDraft(section: { id: string | null }) {
-    if (!day?.is_current || mutationLocked || !day.planning_enabled || day.section_configuration_required) return;
+    if (!day?.taskchute_day.id || day.establishment_state !== "established" || mutationLocked || !day.planning_enabled || day.section_configuration_required) return;
     setSectionCollapsed(section.id, false);
     setDraftTask({
       sectionId: section.id,
@@ -5139,7 +5139,7 @@ export function App() {
         </section>
       )}
 
-      <section className="day-surface" aria-label="DayBoard" data-day-scroll-owner="true" style={dayTableStyle(dayColumnPreference, dayTableResizeLayout ?? undefined)}>
+      <section className={`day-surface${day.active_execution ? " has-floating-runner" : ""}`} aria-label="DayBoard" data-day-scroll-owner="true" style={dayTableStyle(dayColumnPreference, dayTableResizeLayout ?? undefined)}>
         <div className="table-heading" data-day-scroll-header="true">
           <span className="bulk-slot">
             {eligibleBulkEntries.length > 0 ? (

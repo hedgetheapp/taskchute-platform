@@ -1140,6 +1140,132 @@ describe("Dogfood Day shell", () => {
     });
   });
 
+  it("extends focused Task I insertion to an established future Day", async () => {
+    const future = {
+      ...twoPlannedDay,
+      is_current: false,
+      taskchute_day: { ...twoPlannedDay.taskchute_day, logical_date: "2026-08-23" },
+    };
+    const insertedEntry = { ...thirdEntry, id: "019c0000-0000-7000-8000-000000000011",
+      position: 2, task: { ...thirdEntry.task, title: "Inserted future below" } };
+    const inserted = {
+      ...future,
+      placement_revision: 2,
+      sections: [{ ...future.sections[0], entries: [firstEntry, insertedEntry, { ...secondEntry, position: 3 }] }, future.sections[1]],
+    };
+    mocks.loadDay.mockResolvedValueOnce(future).mockResolvedValueOnce(inserted);
+    render(<App />);
+
+    const row = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
+    row.focus();
+    fireEvent.keyDown(row, { key: "i" });
+    const input = screen.getByRole("textbox", { name: "MorningのTask名" });
+    fireEvent.keyDown(input, { key: "Escape" });
+    await waitFor(() => expect(document.activeElement).toBe(row));
+
+    fireEvent.keyDown(row, { key: "i" });
+    const secondInput = screen.getByRole("textbox", { name: "MorningのTask名" });
+    fireEvent.change(secondInput, { target: { value: "Inserted future below" } });
+    fireEvent.keyDown(secondInput, { key: "Enter" });
+    await waitFor(() => expect(mocks.addTask).toHaveBeenCalledTimes(1));
+    expect(mocks.addTask.mock.calls[0][0]).toMatchObject({
+      title: "Inserted future below",
+      project_id: null,
+      mode_id: null,
+      taskchute_day_id: future.taskchute_day.id,
+      logical_date: "2026-08-23",
+      section_id: morningId,
+      expected_placement_revision: 1,
+      placement: { kind: "after_entry", anchor_entry_id: firstEntry.id },
+    });
+    await waitFor(() => expect(screen.getByText("Inserted future below")).toBeTruthy());
+    expect(Array.from(document.querySelectorAll<HTMLElement>(`.section-group [data-entry-id]`)).map((candidate) => candidate.dataset.entryId))
+      .toEqual([firstEntry.id, insertedEntry.id, secondEntry.id]);
+  });
+
+  it("extends Section I insertion to an established future Day and preserves the NULL-start barrier", async () => {
+    const future = {
+      ...twoPlannedDay,
+      is_current: false,
+      sections: [{ ...twoPlannedDay.sections[0], entries: [
+        firstEntry,
+        { ...secondEntry, planned_start_minute: 240 },
+        { ...thirdEntry, planned_start_minute: 720 },
+      ] }, twoPlannedDay.sections[1]],
+      taskchute_day: { ...twoPlannedDay.taskchute_day, logical_date: "2026-08-23" },
+    };
+    const insertedEntry = { ...thirdEntry, id: "019c0000-0000-7000-8000-000000000012", position: 2,
+      planned_start_minute: 240, task: { ...thirdEntry.task, title: "First future scheduled task" } };
+    const inserted = {
+      ...future,
+      placement_revision: 2,
+      sections: [{ ...future.sections[0], entries: [
+        firstEntry,
+        insertedEntry,
+        { ...secondEntry, position: 3, planned_start_minute: 240 },
+        { ...thirdEntry, position: 4, planned_start_minute: 720 },
+      ] }, future.sections[1]],
+    };
+    mocks.loadDay.mockResolvedValueOnce(future).mockResolvedValueOnce(inserted);
+    render(<App />);
+
+    const summary = (await screen.findByRole("button", { name: "MorningにTaskを追加" }))
+      .closest<HTMLElement>(".section-summary")!;
+    summary.focus();
+    fireEvent.keyDown(summary, { key: "i" });
+    const draft = screen.getByRole("textbox", { name: "MorningのTask名" });
+    const sectionGroup = summary.closest<HTMLElement>(".section-group")!;
+    expect(Array.from(sectionGroup.querySelectorAll<HTMLElement>(":scope > .task-row"))[0]?.classList.contains("draft-row")).toBe(false);
+    fireEvent.keyDown(draft, { key: "Escape" });
+    await waitFor(() => expect(document.activeElement).toBe(summary));
+
+    fireEvent.keyDown(summary, { key: "i" });
+    const secondDraft = screen.getByRole("textbox", { name: "MorningのTask名" });
+    fireEvent.change(secondDraft, { target: { value: "First future scheduled task" } });
+    fireEvent.keyDown(secondDraft, { key: "Enter" });
+    await waitFor(() => expect(mocks.addTask).toHaveBeenCalledTimes(1));
+    expect(mocks.addTask.mock.calls[0][0]).toMatchObject({
+      title: "First future scheduled task",
+      taskchute_day_id: future.taskchute_day.id,
+      logical_date: "2026-08-23",
+      section_id: morningId,
+      expected_placement_revision: 1,
+      placement: { kind: "section_start" },
+    });
+    await waitFor(() => expect(screen.getByText("First future scheduled task")).toBeTruthy());
+    expect(Array.from(sectionGroup.querySelectorAll<HTMLElement>(":scope > .task-row")).map((candidate) => candidate.dataset.entryId))
+      .toEqual([firstEntry.id, insertedEntry.id, secondEntry.id, thirdEntry.id]);
+    expect((sectionGroup.querySelectorAll<HTMLElement>(":scope > .task-row")[1]?.querySelector(".planned-start-cell")?.textContent ?? ""))
+      .toContain("04:00");
+  });
+
+  it("keeps I no-write on a past Day and an unestablished future preview", async () => {
+    const past = { ...populatedDay, is_current: false, planning_enabled: false };
+    mocks.loadDay.mockResolvedValue(past);
+    const pastView = render(<App />);
+    const pastRow = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
+    pastRow.focus();
+    fireEvent.keyDown(pastRow, { key: "i" });
+    expect(screen.queryByRole("textbox", { name: "MorningのTask名" })).toBeNull();
+    expect(mocks.addTask).not.toHaveBeenCalled();
+    pastView.unmount();
+
+    const preview: CurrentTaskChuteDayProjection = {
+      ...populatedDay,
+      establishment_state: "future_preview",
+      is_current: false,
+      taskchute_day: { ...populatedDay.taskchute_day, id: null, logical_date: "2026-08-23" },
+    };
+    mocks.loadDay.mockResolvedValue(preview);
+    mocks.addTask.mockClear();
+    render(<App />);
+    const previewRow = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
+    previewRow.focus();
+    fireEvent.keyDown(previewRow, { key: "i" });
+    expect(screen.queryByRole("textbox", { name: "MorningのTask名" })).toBeNull();
+    expect(mocks.addTask).not.toHaveBeenCalled();
+  });
+
   it("routes ordinary Start B through InterruptEntry without a confirmation modal and renders the continuation", async () => {
     const runningWithNext = {
       ...runningDay,

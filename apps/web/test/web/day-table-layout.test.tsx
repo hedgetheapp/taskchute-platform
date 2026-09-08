@@ -20,6 +20,8 @@ function rule(selector: string): string {
 describe("D-075 Day fixed header / task-list scroll CSS", () => {
   it("keeps the Day shell fixed and makes the Day surface the single vertical/horizontal scroll owner", () => {
     const shell = rule(".shell.day-shell");
+    const header = rule(".day-header");
+    const toolbar = rule(".day-toolbar");
     const surface = rule(".day-surface");
     const row = rule(".task-row");
     expect(shell).toContain("display: flex");
@@ -27,12 +29,23 @@ describe("D-075 Day fixed header / task-list scroll CSS", () => {
     expect(shell).toContain("min-height: 100dvh");
     expect(shell).toContain("flex-direction: column");
     expect(shell).toContain("overflow: hidden");
-    expect(surface).toContain("flex: 1 1 auto");
+    expect(shell).toContain("padding-bottom: 0");
+    expect(header).toContain("flex: 0 0 auto");
+    expect(toolbar).toContain("flex: 0 0 auto");
+    expect(surface).toContain("flex: 1 1 0");
     expect(surface).toContain("min-height: 0");
     expect(surface).toContain("overflow: auto");
     expect(surface).toContain("overscroll-behavior: contain");
     expect(surface).toContain("scroll-padding: 38px 0 12px");
     expect(row).toContain("min-height: 44px");
+  });
+
+  it("adds runner clearance only to the scroll content while keeping the overlay dimensions shared", () => {
+    expect(rule(".day-surface.has-floating-runner")).toContain("padding-bottom: var(--floating-runner-clearance)");
+    expect(rule(".shell.day-shell")).toContain("--floating-runner-height: 64px");
+    expect(rule(".shell.day-shell")).toContain("--floating-runner-offset: 24px");
+    expect(rule(".floating-runner")).toContain("min-height: var(--floating-runner-height)");
+    expect(rule(".floating-runner")).toContain("bottom: var(--floating-runner-offset)");
   });
 
   it("keeps the column header opaque and fixed inside the shared scroll owner", () => {
