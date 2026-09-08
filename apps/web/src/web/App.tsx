@@ -815,35 +815,46 @@ export function App() {
     return activeMutationsRef.current.some((mutation) => scopesConflict(mutation.scope, scope));
   }
 
+  function hasQueuedMutationScope(scope: MutationScope): boolean {
+    return dayMutationQueueRef.current.some((mutation) => scopesConflict(mutation.scope, scope));
+  }
+
   function retainedMutationScopes(): MutationScope[] {
     const scopes: MutationScope[] = [];
-    if (taskOperation) scopes.push(placementMutationScope(taskOperation.taskchute_day_id));
-    if (duplicateOperation) scopes.push(placementMutationScope(duplicateOperation.taskchute_day_id));
-    if (bulkDeleteOperation) scopes.push(placementMutationScope(bulkDeleteOperation.taskchute_day_id));
-    if (deleteCompletedOperation) scopes.push([...placementMutationScope(deleteCompletedOperation.taskchute_day_id), ...entryMutationScope(deleteCompletedOperation.entry_id)]);
-    if (bulkDateMoveOperation) scopes.push(placementMutationScope(bulkDateMoveOperation.source_taskchute_day_id));
-    if (bulkSectionOperation) scopes.push(placementMutationScope(bulkSectionOperation.taskchute_day_id));
-    if (bulkSectionOccurrenceOperation) scopes.push(placementMutationScope(bulkSectionOccurrenceOperation.taskchute_day_id));
-    if (bulkSectionScopedOperation) scopes.push(placementMutationScope(bulkSectionScopedOperation.taskchute_day_id));
-    if (bulkEstimateOperation) scopes.push(bulkEntryMutationScope(bulkEstimateOperation.entry_ids));
-    if (reorderOperation) scopes.push(placementMutationScope(reorderOperation.taskchute_day_id));
-    if (startOperation) scopes.push(executionMutationScope(startOperation.entry_id));
-    if (interruptOperation) scopes.push(["execution-lane", `entry:${interruptOperation.source_entry_id}`, `entry:${interruptOperation.target_entry_id}`, `placement:${interruptOperation.taskchute_day_id}`]);
-    if (completeOperation) scopes.push(executionMutationScope(completeOperation.entry_id));
-    if (executionTimesOperation) scopes.push(executionMutationScope(executionTimesOperation.entry_id));
-    if (taskMetadataOperation) scopes.push(entryMutationScope(taskMetadataOperation.entry_id, taskMetadataOperation.task_id));
-    if (modeOperation) scopes.push(entryMutationScope(modeOperation.entry_id));
-    retainedModeOperations.forEach((operation) => scopes.push(entryMutationScope(operation.entry_id)));
-    retainedTaskMetadataOperations.forEach((operation) => scopes.push(entryMutationScope(operation.entry_id, operation.task_id)));
-    if (sectionMoveOperation) scopes.push(placementMutationScope(sectionMoveOperation.taskchute_day_id));
-    if (estimateOperation) scopes.push(entryMutationScope(estimateOperation.entry_id));
-    retainedEstimateOperations.forEach((operation) => scopes.push(entryMutationScope(operation.entry_id)));
-    if (plannedStartOperation) scopes.push(placementMutationScope(plannedStartOperation.request.taskchute_day_id));
-    if (routineConversionOperation) scopes.push(placementMutationScope(routineConversionOperation.taskchute_day_id));
-    if (routineEndOperation) scopes.push([`routine:${routineEndOperation.routine_definition_id}`]);
-    if (routineEstimateOperation) scopes.push(routineEstimateMutationScope(routineEstimateOperation));
-    retainedRoutineEstimateOperations.forEach((operation) => scopes.push(routineEstimateMutationScope(operation)));
-    if (routineSectionPlanOperation) scopes.push([...placementMutationScope(routineSectionPlanOperation.taskchute_day_id), `entry:${routineSectionPlanOperation.entry_id}`]);
+    const add = (scope: MutationScope, operationId?: string) => {
+      // A normal current-Day operation is represented by the dispatcher queue.
+      // It must not be mistaken for a retained ambiguous operation while it is
+      // waiting behind another serial request.
+      if (operationId && isQueuedDayMutationOperation(operationId)) return;
+      scopes.push(scope);
+    };
+    if (taskOperation) add(placementMutationScope(taskOperation.taskchute_day_id), taskOperation.operation_id);
+    if (duplicateOperation) add(placementMutationScope(duplicateOperation.taskchute_day_id), duplicateOperation.operation_id);
+    if (bulkDeleteOperation) add(placementMutationScope(bulkDeleteOperation.taskchute_day_id), bulkDeleteOperation.operation_id);
+    if (deleteCompletedOperation) add([...placementMutationScope(deleteCompletedOperation.taskchute_day_id), ...entryMutationScope(deleteCompletedOperation.entry_id)], deleteCompletedOperation.operation_id);
+    if (bulkDateMoveOperation) add(placementMutationScope(bulkDateMoveOperation.source_taskchute_day_id), bulkDateMoveOperation.operation_id);
+    if (bulkSectionOperation) add(placementMutationScope(bulkSectionOperation.taskchute_day_id), bulkSectionOperation.operation_id);
+    if (bulkSectionOccurrenceOperation) add(placementMutationScope(bulkSectionOccurrenceOperation.taskchute_day_id), bulkSectionOccurrenceOperation.operation_id);
+    if (bulkSectionScopedOperation) add(placementMutationScope(bulkSectionScopedOperation.taskchute_day_id), bulkSectionScopedOperation.operation_id);
+    if (bulkEstimateOperation) add(bulkEntryMutationScope(bulkEstimateOperation.entry_ids), bulkEstimateOperation.operation_id);
+    if (reorderOperation) add(placementMutationScope(reorderOperation.taskchute_day_id), reorderOperation.operation_id);
+    if (startOperation) add(executionMutationScope(startOperation.entry_id), startOperation.operation_id);
+    if (interruptOperation) add(["execution-lane", `entry:${interruptOperation.source_entry_id}`, `entry:${interruptOperation.target_entry_id}`, `placement:${interruptOperation.taskchute_day_id}`], interruptOperation.operation_id);
+    if (completeOperation) add(executionMutationScope(completeOperation.entry_id), completeOperation.operation_id);
+    if (executionTimesOperation) add(executionMutationScope(executionTimesOperation.entry_id), executionTimesOperation.operation_id);
+    if (taskMetadataOperation) add(entryMutationScope(taskMetadataOperation.entry_id, taskMetadataOperation.task_id), taskMetadataOperation.operation_id);
+    if (modeOperation) add(entryMutationScope(modeOperation.entry_id), modeOperation.operation_id);
+    retainedModeOperations.forEach((operation) => add(entryMutationScope(operation.entry_id), operation.operation_id));
+    retainedTaskMetadataOperations.forEach((operation) => add(entryMutationScope(operation.entry_id, operation.task_id), operation.operation_id));
+    if (sectionMoveOperation) add(placementMutationScope(sectionMoveOperation.taskchute_day_id), sectionMoveOperation.operation_id);
+    if (estimateOperation) add(entryMutationScope(estimateOperation.entry_id), estimateOperation.operation_id);
+    retainedEstimateOperations.forEach((operation) => add(entryMutationScope(operation.entry_id), operation.operation_id));
+    if (plannedStartOperation) add(placementMutationScope(plannedStartOperation.request.taskchute_day_id), plannedStartOperation.request.operation_id);
+    if (routineConversionOperation) add(placementMutationScope(routineConversionOperation.taskchute_day_id), routineConversionOperation.operation_id);
+    if (routineEndOperation) add([`routine:${routineEndOperation.routine_definition_id}`], routineEndOperation.operation_id);
+    if (routineEstimateOperation) add(routineEstimateMutationScope(routineEstimateOperation), routineEstimateOperation.operation_id);
+    retainedRoutineEstimateOperations.forEach((operation) => add(routineEstimateMutationScope(operation), operation.operation_id));
+    if (routineSectionPlanOperation) add([...placementMutationScope(routineSectionPlanOperation.taskchute_day_id), `entry:${routineSectionPlanOperation.entry_id}`], routineSectionPlanOperation.operation_id);
     return scopes;
   }
 
@@ -1245,6 +1256,10 @@ export function App() {
     try {
       const projection = await api.loadDay(logicalDate ?? undefined);
       if (requestSequence !== reconcileSequenceRef.current) return projection;
+      // The serial Day dispatcher may start its next item immediately after
+      // reconcile resolves, before React has committed the render/effect that
+      // mirrors `day`. Keep the imperative rebase source current now.
+      dayRef.current = projection;
       setDay(projection);
       setOverflowEntryId(null);
       selectedLogicalDateRef.current = projection.taskchute_day.logical_date;
@@ -2468,7 +2483,8 @@ export function App() {
   }
 
   async function reorderSectionEntries(sectionId: string | null, entryIds: string[], focusEntryId: string) {
-    if (!day?.taskchute_day.id || !day.planning_enabled || mutationLocked || hasRetainedMutationScope(placementMutationScope())) return;
+    if (!day?.taskchute_day.id || !day.planning_enabled || mutationLocked
+      || hasRetainedMutationScope(placementMutationScope()) || hasQueuedMutationScope(placementMutationScope())) return;
     const entries = sectionId === null ? day.unsectioned_entries : day.sections.find((candidate) => candidate.id === sectionId)?.entries;
     const canonicalIds = entries?.map((entry) => entry.id);
     if (!entries || entryIds.length !== entries.length || new Set(entryIds).size !== entries.length
@@ -2496,7 +2512,8 @@ export function App() {
   }
 
   async function moveEntry(sectionId: string | null, entryId: string, delta: -1 | 1) {
-    if (!day?.taskchute_day.id || !day.planning_enabled || mutationLocked || hasRetainedMutationScope(placementMutationScope())) return;
+    if (!day?.taskchute_day.id || !day.planning_enabled || mutationLocked
+      || hasRetainedMutationScope(placementMutationScope()) || hasQueuedMutationScope(placementMutationScope())) return;
     const entries = sectionId === null ? day.unsectioned_entries : day.sections.find((candidate) => candidate.id === sectionId)?.entries;
     if (!entries || !canMoveEntry(entries, entryId, delta)) return;
     const ids = entries.map((candidate) => candidate.id);
@@ -2514,7 +2531,7 @@ export function App() {
 
   function dragOrder(sectionId: string | null, targetEntryId: string, edge: DragEdge): string[] | null {
     if (!entryDrag || entryDrag.sectionId !== sectionId || !day?.taskchute_day.id || !day.planning_enabled || mutationLocked
-      || hasRetainedMutationScope(placementMutationScope())) return null;
+      || hasRetainedMutationScope(placementMutationScope()) || hasQueuedMutationScope(placementMutationScope())) return null;
     const entries = sectionId === null ? day.unsectioned_entries : day.sections.find((candidate) => candidate.id === sectionId)?.entries;
     return entries ? buildDraggedEntryOrder(entries, sectionId, entryDrag.entryId, targetEntryId, edge) : null;
   }
@@ -2528,7 +2545,7 @@ export function App() {
   function canDropOnSection(sectionId: string | null, drag: Pick<EntryDragState, "entryId" | "sectionId"> | null = entryDrag): boolean {
     const entry = draggedEntry(drag);
     if (!drag || !entry || !day?.taskchute_day.id || !day.planning_enabled || mutationLocked
-      || hasRetainedMutationScope(placementMutationScope())
+      || hasRetainedMutationScope(placementMutationScope()) || hasQueuedMutationScope(placementMutationScope())
       || entry.lifecycle_state !== "planned" || entry.routine !== null || entry.section_id === sectionId) return false;
     return sectionId === null || day.sections.some((section) => section.id === sectionId);
   }
@@ -2548,7 +2565,8 @@ export function App() {
 
   function startEntryMouseDrag(event: ReactMouseEvent<HTMLElement>, sectionId: string | null, entry: EntryProjection) {
     if (event.button !== 0 || isInteractiveDragTarget(event.target) || !day?.taskchute_day.id || !day.planning_enabled
-      || mutationLocked || hasRetainedMutationScope(placementMutationScope()) || entry.lifecycle_state !== "planned") return;
+      || mutationLocked || hasRetainedMutationScope(placementMutationScope()) || hasQueuedMutationScope(placementMutationScope())
+      || entry.lifecycle_state !== "planned") return;
     mouseDragRef.current = { entryId: entry.id, sectionId, startX: event.clientX, startY: event.clientY, active: false };
   }
 
@@ -2581,7 +2599,7 @@ export function App() {
     const edge: DragEdge = event.clientY < bounds.top + bounds.height / 2 ? "before" : "after";
     const entries = drag.sectionId === null ? day?.unsectioned_entries : day?.sections.find((candidate) => candidate.id === drag.sectionId)?.entries;
     const order = drag.sectionId === sectionId && entries && day?.taskchute_day.id && day.planning_enabled && !mutationLocked
-      && !hasRetainedMutationScope(placementMutationScope())
+      && !hasRetainedMutationScope(placementMutationScope()) && !hasQueuedMutationScope(placementMutationScope())
       ? buildDraggedEntryOrder(entries, drag.sectionId, drag.entryId, targetEntryId, edge)
       : null;
     mouseDragRef.current = null;
@@ -2591,7 +2609,8 @@ export function App() {
 
   function startEntryDrag(event: ReactDragEvent<HTMLElement>, sectionId: string | null, entry: EntryProjection) {
     if (isInteractiveDragTarget(event.target) || !day?.taskchute_day.id || !day.planning_enabled || mutationLocked
-      || hasRetainedMutationScope(placementMutationScope()) || entry.lifecycle_state !== "planned") {
+      || hasRetainedMutationScope(placementMutationScope()) || hasQueuedMutationScope(placementMutationScope())
+      || entry.lifecycle_state !== "planned") {
       event.preventDefault();
       return;
     }
@@ -2901,8 +2920,11 @@ export function App() {
     if (!canEditTaskTitleMetadata(entry) || mutationLocked || hasRetainedMutationScope(entryMutationScope(entry.id, entry.task.id))) return;
     beginInlineEditor(`task-metadata:${entry.id}`);
     setError(null);
-    setTaskMetadataDraft({ entryId: entry.id, taskId: entry.task.id, expectedTitle: entry.task.title,
-      expectedProjectId: entry.task.project?.id ?? null, title: entry.task.title, projectId: entry.task.project?.id ?? null });
+    const overlay = pendingTaskMetadataOverlays[entry.id];
+    const title = overlay?.title ?? entry.task.title;
+    const projectId = overlay?.project_id ?? entry.task.project?.id ?? null;
+    setTaskMetadataDraft({ entryId: entry.id, taskId: entry.task.id, expectedTitle: title,
+      expectedProjectId: projectId, title, projectId });
     if (projects.length === 0) {
       void Promise.resolve(api.loadProjects()).then((projection) => {
         if (projection) setProjects(projection.projects);
@@ -2929,10 +2951,10 @@ export function App() {
       if (dayKind === "current" && (ambiguous || (caught instanceof ApiClientError && caught.code === "revision_conflict"))) pauseDayMutationQueue();
       if (ambiguous) {
         setTaskMetadataOperation((current) => current?.operation_id === operation.operation_id ? current : null);
-        setPendingTaskMetadataOverlays((current) => current[operation.entry_id]?.operation_id === operation.operation_id
-          ? current : {});
       } else if (caught instanceof ApiClientError && caught.code === "revision_conflict") {
-        setPendingTaskMetadataOverlays({});
+        setPendingTaskMetadataOverlays((current) => current[operation.entry_id]?.operation_id === operation.operation_id
+          ? Object.fromEntries(Object.entries(current).filter(([entryId]) => entryId !== operation.entry_id))
+          : current);
       }
       if (ambiguous) retainTaskMetadataOperation(operation);
       if (!ambiguous) {
@@ -2981,7 +3003,7 @@ export function App() {
     }
     const operation: UpdateTaskMetadataRequest = {
       operation_id: uuidv7(), entry_id: draft.entryId, task_id: draft.taskId,
-      expected_title: draft.expectedTitle, expected_project_id: draft.expectedProjectId,
+      expected_title: entry.task.title, expected_project_id: entry.task.project?.id ?? null,
       title, project_id: nextProjectId,
     };
     setTaskMetadataDraft(null);
@@ -2998,11 +3020,12 @@ export function App() {
 
   function commitProjectMetadata(entry: EntryProjection, nextProjectId: string | null) {
     if (!day || !canEditProjectMetadata(entry) || hasRetainedMutationScope(entryMutationScope(entry.id, entry.task.id))
-      || (entry.task.project?.id ?? null) === nextProjectId) return;
+      || (pendingTaskMetadataOverlays[entry.id]?.project_id ?? entry.task.project?.id ?? null) === nextProjectId) return;
+    const effective = pendingTaskMetadataOverlays[entry.id];
     const operation: UpdateTaskMetadataRequest = {
       operation_id: uuidv7(), entry_id: entry.id, task_id: entry.task.id,
       expected_title: entry.task.title, expected_project_id: entry.task.project?.id ?? null,
-      title: entry.task.title, project_id: nextProjectId,
+      title: effective?.title ?? entry.task.title, project_id: nextProjectId,
     };
     setError(null);
     setPendingTaskMetadataOverlays((current) => ({ ...current, [operation.entry_id]: operation }));
@@ -3883,13 +3906,17 @@ export function App() {
   );
   const parsedSectionSettingsDraft = parseSectionSettingsDraft(sectionSettingsDraft);
   const totalQueuedMutations = pendingMutationCount + dayMutationQueueCount;
-  const transientStatus = totalQueuedMutations > 1
-    ? `保存中…（${totalQueuedMutations}件）`
-    : dayMutationQueueCount > 0
+  const instantPlanningSave = pending === "task-metadata" || pending === "mode" || pending === "move"
+    || pending === "estimate" || pending === "planned-start";
+  const transientStatus = instantPlanningSave && totalQueuedMutations > 0
+    ? `保存中 ${totalQueuedMutations}件`
+    : totalQueuedMutations > 1
+      ? `保存中…（${totalQueuedMutations}件）`
+      : dayMutationQueueCount > 0
         ? `保存待ち…（${dayMutationQueueCount}件）`
         : pendingMutationCount > 0
-        ? transientStatusText(pending) ?? "保存中…"
-        : transientStatusText(pending);
+          ? transientStatusText(pending) ?? "保存中…"
+          : transientStatusText(pending);
   const groups = [
     ...(currentDay.unsectioned_entries.length > 0 || draftTask?.sectionId === null || pendingAddTasks.some((item) => item.sectionId === null) ? [{
       id: null, title: "Sectionなし", logical_start_minute: null, logical_end_minute: null,

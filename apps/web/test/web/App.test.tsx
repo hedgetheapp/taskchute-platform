@@ -5079,4 +5079,156 @@ describe("Dogfood Day shell", () => {
     expect(mocks.moveEntry).not.toHaveBeenCalled();
     expect(mocks.setEntryEstimate).not.toHaveBeenCalled();
   });
+
+  it("accepts Project then Task title while the shared metadata request is in flight", async () => {
+    let canonical = populatedDay;
+    const requests: Array<{ operation: any; response: ReturnType<typeof deferred<unknown>> }> = [];
+    mocks.loadDay.mockImplementation(async () => canonical);
+    mocks.updateTaskMetadata.mockImplementation(async (operation: any) => {
+      const response = deferred<unknown>();
+      requests.push({ operation, response });
+      await response.promise;
+      const current = canonical.sections[0]!.entries[0]!;
+      const project = operation.project_id === null ? null : { id: operation.project_id, title: "Existing Project" };
+      canonical = {
+        ...canonical,
+        sections: [{ ...canonical.sections[0]!, entries: [{ ...current, task: { ...current.task, title: operation.title, project } }] }, ...canonical.sections.slice(1)],
+      };
+    });
+    render(<App />);
+
+    const titleButton = await screen.findByRole("button", { name: "Canonical taskを編集" });
+    fireEvent.click(titleButton);
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Canonical taskのTask名" }), { key: "Escape" });
+    await waitFor(() => expect(screen.getByRole("option", { name: "Existing Project" })).toBeTruthy());
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Canonical taskのProject" }), { target: { value: "existing-project" } });
+    await waitFor(() => expect(mocks.updateTaskMetadata).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole("status").textContent).toBe("保存中 1件");
+
+    fireEvent.click(screen.getByRole("button", { name: "Canonical taskを編集" }));
+    const titleInput = screen.getByRole("textbox", { name: "Canonical taskのTask名" });
+    fireEvent.change(titleInput, { target: { value: "New title" } });
+    fireEvent.keyDown(titleInput, { key: "Enter" });
+    expect(screen.getByText("New title")).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toBe("保存中 2件");
+    expect(mocks.updateTaskMetadata).toHaveBeenCalledTimes(1);
+
+    requests[0]!.response.resolve({});
+    await waitFor(() => expect(mocks.updateTaskMetadata).toHaveBeenCalledTimes(2));
+    expect(requests[1]!.operation).toMatchObject({ title: "New title", project_id: "existing-project" });
+    expect(screen.getByText("New title")).toBeTruthy();
+    requests[1]!.response.resolve({});
+    await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+    expect(canonical.sections[0]!.entries[0]!.task).toMatchObject({ title: "New title", project: { id: "existing-project" } });
+  });
+
+  it("accepts Task title then Project without reverting the title after the first reconcile", async () => {
+    let canonical = populatedDay;
+    const requests: Array<{ operation: any; response: ReturnType<typeof deferred<unknown>> }> = [];
+    mocks.loadDay.mockImplementation(async () => canonical);
+    mocks.updateTaskMetadata.mockImplementation(async (operation: any) => {
+      const response = deferred<unknown>();
+      requests.push({ operation, response });
+      await response.promise;
+      const current = canonical.sections[0]!.entries[0]!;
+      const project = operation.project_id === null ? null : { id: operation.project_id, title: "Existing Project" };
+      canonical = {
+        ...canonical,
+        sections: [{ ...canonical.sections[0]!, entries: [{ ...current, task: { ...current.task, title: operation.title, project } }] }, ...canonical.sections.slice(1)],
+      };
+    });
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskを編集" }));
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Canonical taskのTask名" }), { key: "Escape" });
+    await waitFor(() => expect(screen.getByRole("option", { name: "Existing Project" })).toBeTruthy());
+
+    fireEvent.click(screen.getByRole("button", { name: "Canonical taskを編集" }));
+    const titleInput = screen.getByRole("textbox", { name: "Canonical taskのTask名" });
+    fireEvent.change(titleInput, { target: { value: "New title" } });
+    fireEvent.keyDown(titleInput, { key: "Enter" });
+    await waitFor(() => expect(mocks.updateTaskMetadata).toHaveBeenCalledTimes(1));
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Canonical taskのProject" }), { target: { value: "existing-project" } });
+    expect(screen.getByText("New title")).toBeTruthy();
+    expect(mocks.updateTaskMetadata).toHaveBeenCalledTimes(1);
+    requests[0]!.response.resolve({});
+    await waitFor(() => expect(mocks.updateTaskMetadata).toHaveBeenCalledTimes(2));
+    expect(requests[1]!.operation).toMatchObject({ title: "New title", project_id: "existing-project" });
+    expect(screen.getByText("New title")).toBeTruthy();
+    requests[1]!.response.resolve({});
+    await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+    expect(canonical.sections[0]!.entries[0]!.task).toMatchObject({ title: "New title", project: { id: "existing-project" } });
+  });
+
+  it("keeps Mode editing enabled during an in-flight save and preserves the latest value", async () => {
+    const modeA = { id: "019c0000-0000-7000-8000-000000000030", title: "Mode A", archived: false, board_position: 1 };
+    const modeB = { id: "019c0000-0000-7000-8000-000000000031", title: "Mode B", archived: false, board_position: 2 };
+    const modeC = { id: "019c0000-0000-7000-8000-000000000032", title: "Mode C", archived: false, board_position: 3 };
+    let canonical: CurrentTaskChuteDayProjection = { ...populatedDay, sections: [{ ...populatedDay.sections[0]!, entries: [{ ...firstEntry, mode: { id: modeA.id, title: modeA.title, source: "live" as const } }] }, ...populatedDay.sections.slice(1)] };
+    const requests: Array<{ operation: any; response: ReturnType<typeof deferred<unknown>> }> = [];
+    mocks.loadDay.mockImplementation(async () => canonical);
+    mocks.loadModeBoard.mockResolvedValue({ board_revision: 1, modes: [modeA, modeB, modeC] });
+    mocks.setEntryMode.mockImplementation(async (operation: any) => {
+      const response = deferred<unknown>();
+      requests.push({ operation, response });
+      await response.promise;
+      const current = canonical.sections[0]!.entries[0]!;
+      const mode = [modeA, modeB, modeC].find((candidate) => candidate.id === operation.mode_id);
+      canonical = { ...canonical, sections: [{ ...canonical.sections[0]!, entries: [{ ...current, mode: mode ? { id: mode.id, title: mode.title, source: "live" as const } : null }] }, ...canonical.sections.slice(1)] };
+    });
+    render(<App />);
+
+    const selector = await screen.findByRole("combobox", { name: "Canonical taskのMode" }) as unknown as HTMLSelectElement;
+    fireEvent.change(selector, { target: { value: modeB.id } });
+    await waitFor(() => expect(mocks.setEntryMode).toHaveBeenCalledTimes(1));
+    expect((selector as HTMLSelectElement).disabled).toBe(false);
+    fireEvent.change(selector, { target: { value: modeC.id } });
+    expect((selector as HTMLSelectElement).value).toBe(modeC.id);
+    expect(screen.getByRole("status").textContent).toBe("保存中 2件");
+    expect(mocks.setEntryMode).toHaveBeenCalledTimes(1);
+
+    requests[0]!.response.resolve({});
+    await waitFor(() => expect(mocks.setEntryMode).toHaveBeenCalledTimes(2));
+    expect(requests[1]!.operation).toMatchObject({ expected_mode_id: modeB.id, mode_id: modeC.id });
+    expect((screen.getByRole("combobox", { name: "Canonical taskのMode" }) as unknown as HTMLSelectElement).value).toBe(modeC.id);
+    requests[1]!.response.resolve({});
+    await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+    expect(canonical.sections[0]!.entries[0]!.mode?.id).toBe(modeC.id);
+  });
+
+  it("queues Start behind an accepted current-Day Mode intent", async () => {
+    const modeA = { id: "019c0000-0000-7000-8000-000000000040", title: "Mode A", archived: false, board_position: 1 };
+    const modeB = { id: "019c0000-0000-7000-8000-000000000041", title: "Mode B", archived: false, board_position: 2 };
+    let canonical: CurrentTaskChuteDayProjection = { ...populatedDay, sections: [{ ...populatedDay.sections[0]!, entries: [{ ...firstEntry, mode: { id: modeA.id, title: modeA.title, source: "live" as const } }] }, ...populatedDay.sections.slice(1)] };
+    const modeResponse = deferred<unknown>();
+    const dispatchOrder: string[] = [];
+    mocks.loadDay.mockImplementation(async () => canonical);
+    mocks.loadModeBoard.mockResolvedValue({ board_revision: 1, modes: [modeA, modeB] });
+    mocks.setEntryMode.mockImplementation(async (operation: any) => {
+      dispatchOrder.push("mode");
+      await modeResponse.promise;
+      const current = canonical.sections[0]!.entries[0]!;
+      canonical = { ...canonical, sections: [{ ...canonical.sections[0]!, entries: [{ ...current, mode: { id: modeB.id, title: modeB.title, source: "live" as const } }] }, ...canonical.sections.slice(1)] };
+    });
+    mocks.startEntry.mockImplementation(async () => {
+      dispatchOrder.push("start");
+      canonical = runningDay;
+    });
+    render(<App />);
+
+    const mode = await screen.findByRole("combobox", { name: "Canonical taskのMode" });
+    fireEvent.change(mode, { target: { value: modeB.id } });
+    await waitFor(() => expect(mocks.setEntryMode).toHaveBeenCalledTimes(1));
+    const row = (screen.getByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
+    row.focus();
+    fireEvent.keyDown(row, { key: "s", code: "KeyS" });
+    expect(dispatchOrder).toEqual(["mode"]);
+    expect(mocks.startEntry).not.toHaveBeenCalled();
+
+    modeResponse.resolve({});
+    await waitFor(() => expect(mocks.startEntry).toHaveBeenCalledTimes(1));
+    expect(dispatchOrder).toEqual(["mode", "start"]);
+  });
 });
