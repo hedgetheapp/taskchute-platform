@@ -2103,3 +2103,22 @@ Local verification summary: focused Web `212 / 212`, full Web `244`, full Worker
 | D078-BROWSER-RUNNER-01 | Runner ON/OFF geometry | Dedicated Runner4 in the same Day / `planned_start=720` cohort. Normal-width OFF geometry was header `64..121 / 57px`, toolbar `137..186 / 49px`, surface `194..720 / 526px`, heading `195..229 / 34px`; ON geometry kept all four invariants unchanged. Runner overlay was `top 618..696 / 78px`; conditional surface padding was `88px` | PASS |
 | D078-BROWSER-RUNNER-02 | Runner interaction | P1/P2 remained planned on the same side of running Runner4. Real P1→P2 pointer reorder showed `保存中 1件`; P1→Runner4 crossing attempt left order/status unchanged. At max scroll `1014`, P1 bottom `440` and Runner top `618`; planned focus remained above Runner. Runner4 Complete removed overlay and escape | PASS |
 | D078-BROWSER-DB-01 | Final integrity | APP quick `ok`, FK empty, placement revision `77`, duplicate positions empty, active executions `0`, APP migrations `23`, AUTH quick `ok`, FK empty, AUTH migrations `1`; every successful query `rows_written=0`; operations `338 / 338` distinct IDs | PASS |
+
+## D-079 — Non-blocking cross-Section Move v0.1
+
+| ID | Scope | Evidence | Result |
+|---|---|---|---|
+| D079-WEB-01 | Effective Move projection | Move overlays reparent full Day row membership, Section, planned start, Section summary/derived presentation; second same-Entry Move uses effective destination; Sectionなし uses NULL start and real Sections use frozen start | PASS; focused Move regression |
+| D079-WEB-02 | Move coordinator ordering | Sent Move identity/payload immutable; same-Entry unsent tail coalescing is barrier-aware; different-Entry Move queue retains `A1 -> B1 -> A2` order; return-to-base and canceled Move ghost-state paths covered | PASS |
+| D079-WEB-03 | Barriers / lifecycle | Move→same-Section Reorder, Shift+Arrow, and planned-start direct edit remain blocked; Move→Start dependency and lifecycle-before-Move boundaries remain safe; target-Section Reorder chaining is out of scope | PASS |
+| D079-WEB-04 | Failure / conflict / ambiguity | Deterministic dependent cancellation, revision conflict stop, external-placement protection, exact ambiguous retry/discard, focus/drag cleanup and save-count derivation remain covered | PASS |
+| D079-REG-01 | Existing capabilities | Full Web `4 files / 253 tests`; full Worker/D1 `24 files / 207 tests`; D-077 metadata, D-078 reorder, Add/I, lifecycle, fixed chrome/Runner regressions | PASS |
+| D079-BUILD-01 | Static verification | typecheck, normal build, exact nonprod build, Wrangler dry-run, `git diff --check` | PASS |
+| D079-ENV-01 | Persistent nonprod | Worker `4963f000-68a3-45fc-95dc-fc7eafbba582`; nonprod bindings; `BOOTSTRAP_ENABLED=false`; no production operation | PASS |
+| D079-BROWSER-SELECTOR-01 | Section selector Move | Authenticated 1440 × 900 / DPR 1 / Sidebar open; A/B/C cross-Section moves reparented immediately and converged; planned starts followed target Section / NULL | PASS |
+| D079-BROWSER-POINTER-01 | Real pointer D&D | Actual pointer drag gestures were attempted with visible/reachable source and target, but the custom cross-Section drop was not accepted by the connector; no synthetic DOM event was used | NOT_VERIFIED; tooling/gesture gap |
+| D079-BROWSER-BARRIER-01 | Runner / placement barrier | Runner ON/OFF geometry stable; valid same-side planned reorder with Runner2 showed `保存中 1件` and focus stayed on D; crossing running Runner2 did not change order/status; trailing escape cleared after completion | PASS |
+| D079-BROWSER-PERSIST-01 | Persistence / console | Same-tab reload and fresh authenticated tab restored final Section membership/order; console `0 errors / 0 warnings` | PASS |
+| D079-DB-01 | Read-only APP/AUTH | APP/AUTH quick `ok`, FK empty, pending migrations `0 / 0`, APP placement revision `90`, duplicate positions empty, active executions `0`, MoveEntry success `30`, all query meta `rows_written=0` | PASS |
+| D079-MIG-01 | Migration helper | `npm run test:migrations` emitted no output twice on Windows and was safely interrupted | NOT_RUN; D-079 remains `MIGRATION_NOT_REQUIRED` |
+| D079-BOUNDARY-01 | Explicit non-goals | no Worker/API/schema/migration/dependency/security change; no future/past/Routine/provisional broadening; no production/credential/bootstrap/restore/destructive cleanup | PASS |

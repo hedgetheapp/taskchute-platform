@@ -527,3 +527,11 @@ D-076では、established future Dayのordinary planned Task / Section summary�
 保存中表示は既存のtransient status languageで`保存中 n件`を示し、layoutをshiftせず、focusやpointer / keyboard操作をblockしない。sent Reorderは不変で、unsent desired orderだけが同一barrier-free segment内で圧縮される。canonicalへ戻るunsent操作は保存表示を増やさず取り消す。
 
 Start / Complete / Interrupt、Add、Section move、planned-start変更、delete / bulk / Routine placementなどの非可換operationが前後に存在する場合はReorderを跨がせない。deterministic failure / conflictは依存するpending orderを解除し、ambiguous outcomeは既存retry panel / retained-operation境界を維持する。future Dayのdirect reorder、past / previewのread-only境界、D-075 fixed chrome / Runner overlayは変更しない。
+
+## D-079 cross-Section Move interaction
+
+current established Dayのordinary planned Entryをreal Sectionまたは`Sectionなし`へ移すと、rowはHTTP response待ちなしにeffective destinationへreparentされ、Section cellとplanned startも同じ瞬間に更新される。real Sectionはfrozen logical start、`Sectionなし`はNULL startであり、Section summary / estimate / Next / forecastはeffective membershipと矛盾しない。
+
+Move専用のpending intent coordinatorはsent Moveとlatest unsent Moveを分離する。sent requestはimmutable、同一Entryのunsent tailだけが安全なsegment内でcoalesceされ、different-Entry Moveはユーザー順のserial queueから外さない。次のgestureはstale canonical rowではなくeffective destinationをsourceとして扱い、unsent return-to-baseはcancel、sent後のreturnは後続Moveとする。
+
+Move unresolved中のsame-Section Reorder / `Shift + Arrow`とplanned-start direct editはblockし、Move→target-Section-Reorder chainingは実装しない。StartはMove成功後のcanonical stateに依存し、Start / Interrupt等のlifecycle barrierが先に存在する場合は後続Moveを受理しない。collapsed targetは自動expandせず、`Sectionなし`のgroup生成・消滅とfocus / drag highlightはsafeにreconcileする。`保存中 n件`はsent + latest unsentのlogical workを重複なく数え、layout shiftやfocus stealを起こさない。

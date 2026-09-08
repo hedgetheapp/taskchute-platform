@@ -464,3 +464,11 @@ Effective orderはcanonical Section全体のEntry sequenceとpending Reorder int
 同じreorder segment内のunsent latest desired orderはcoalesceできるが、Start / Complete / Interrupt、Add、Section move、planned-start変更、Duplicate / delete / bulk、Routine placement等のnon-commutative barrierを跨がない。sent Reorderのoperation identity、payload、expected revisionは変更しない。unsent no-opは送信せず除去し、sent operation後のreturn-to-baseは後続intentとして扱う。
 
 successful reconcile後は最新canonical orderに対して後続intentを再検証する。deterministic error / revision conflictは依存intentをcancelしてcanonical表示へ戻し、ambiguous resultはexact retry identityを保持して後続Reorderを停止する。unexpected external order changeをrevision番号だけでsilent rebaseしない。`保存中 n件`はsent + latest unsentのlogical unresolved workを重複なく表示する。
+
+## D-079 cross-Section Move interaction
+
+Current established Dayのordinary planned Entryは、既存`MoveEntry` commandの意味を変えずに、pointer D&DまたはSection selectorでcross-Sectionへ即時移動できる。effective projectionはcanonical Dayへstill-valid pending MoveとD-078 Reorder overlayを重ね、row membership、Section、planned start、Section summary、Next / forecastを同じprojectionから導出する。real SectionへのMoveはfrozen Section logical start、`Sectionなし`へのMoveは`NULL` planned startへ同期する。
+
+sent Moveのoperation identity / destination / payload / expected revisionはimmutableであり、後続Moveは別logical intentとする。unsent same-Entry Moveのcoalesceは同一order-preserving tail segment内に限り、different-Entry MoveやStart等のbarrierを跨がない。different-Entry Moveはglobal serial dispatcherでユーザー順を維持し、same-Entryのeffective destinationを次のsourceとして扱う。unsent return-to-canonicalはcancelし、sent済みのreturnは後続Moveとして扱う。
+
+Move unresolved中は同じEntryのsame-Section Reorder / `Shift + Arrow`、planned-start direct edit、Move→target-Section Reorder chainを許可しない。StartはMove成功後の最新canonical stateからdispatchし、Move failure / ambiguityではstale Section stateで実行しない。running / completed / Routine-derived / future / past / preview / provisional Addの既存eligibilityは不変である。API、Worker semantics、schema、migration、dependency、security postureは変更しない。

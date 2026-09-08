@@ -1659,3 +1659,18 @@ D-078は、D-066 / D-077のcurrent-Day mutation safetyを維持したまま、cu
 - D-077の`保存中 n件`はsent Reorderとlatest unsent Reorderをlogical workとして一度だけ数え、coalesced obsolete intentやunsent no-opを数えない。
 
 Worker/API/domain command、schema、migration、dependency、security postureは変更しない。future established Dayは既存direct reorderを維持し、current-Day queueへ拡張しない。D-075 fixed chrome / Runner overlay、D-073 / D-074 / D-076 lifecycle・insertion semanticsは不変とする。実装とevidenceはcanonical docsへ記録し、production / restore / destructive cleanup / releaseは対象外とする。Releasedは`NO`のままとする。
+
+## D-079 — Non-blocking cross-Section Move v0.1
+
+Status: **Approved**
+
+D-079は、D-066 / D-077 / D-078のcurrent-Day mutation safetyを維持したまま、current established Dayのordinary planned Entryに対するcross-Section Moveを、先行MoveのServer convergence完了待ちなしで受理する。対象はpointer D&Dと既存Section selectorの同じMove command pathであり、future / past / preview、Routine-derived、running / completed、provisional Addは拡張しない。
+
+- Moveはrow membership、Section cell、planned startを同時にeffective projectionへ反映する。real SectionはD-043どおりfrozen `logical_start_minute`、`Sectionなし`は`planned_start_minute = NULL`とする。Section summary、estimate、Next / forecastなどmembershipから導出される表示もeffective projectionと整合させる。
+- 次のMoveはlatest effective placementをsourceにする。sent Moveの`operation_id`、destination、semantic payload、expected placement revisionはimmutableとし、後続intentで上書きしない。unsent same-Entry Moveは、同じorder-preserving segmentのtailで、intervening operationやnon-commutative barrierを跨がない場合だけlatest intentへcoalesceできる。
+- different-Entry Moveはcommutativeとは扱わず、HTTPは既存global serial dispatcherで順序どおり送る。`A1 -> B1 -> A2`を`A2 -> B1`へ並べ替えない。同じEntryのreturn-to-canonicalは、unsentならstale Moveをcancelし、sent済みなら後続logical Moveとして保持する。
+- successful reconcileは後続intentを最新canonical placementで再検証する。deterministic failure / revision conflictは依存するMove / Startをcancelまたはstopしてcanonicalへreconcileし、unexpected external placementをrevision番号だけでsilent rebaseしない。ambiguous outcomeはexact sent identity / payloadをretainし、後続placement workをholdしてexact retry / discard境界を維持する。
+- Move-only pending中もsafeなmetadata編集はresponsiveに保つが、same-Section Reorder、`Shift + Arrow`、planned-start direct edit、Add / Duplicate / delete / bulk / Routine placement、Start / Complete / Interruptの非可換barrierは跨がせない。Moveからtarget-Section Reorderへの依存chainはv0.1の対象外とする。Reorder -> Moveおよびlifecycle -> Moveの既存barrierも維持する。
+- canceled unsent / dependent Moveはoperation state、retained state、navigation / settings / unload barrierにghostを残さない。collapsed Sectionは自動expandせず、`Sectionなし`の出現 / 消滅、focus、drag stateはsurviving effective projectionに安全にreconcileする。
+
+Worker/API/domain command、API schema、APP / AUTH schema、migration、dependency、security postureは変更しない。既存`MoveEntry` command、placement revision / CAS、operation fingerprint / exact replay authorityを再利用する。実装、automated regression、persistent nonprod evidenceはcanonical docsへ記録する。production / restore / destructive cleanup / releaseは対象外で、Releasedは`NO`のままとする。

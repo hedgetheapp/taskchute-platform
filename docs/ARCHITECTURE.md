@@ -457,3 +457,13 @@ Reorder overlayはsent/in-flight operationとlatest unsent desired orderを区�
 成功後はlatest canonical projectionへreconcileして後続intentを再検証し、canonical no-opなら除去する。deterministic rejection / revision conflictは依存する後続Reorderをcancelし、ambiguityはexact sent operationをretainしてretry boundaryをpauseする。D-020のno-silent-placement-overwriteを維持し、unexpected external orderに対するrevision-only rebaseは行わない。D-077 save statusはこのcoordinatorのlogical unresolved itemを一度だけ数える。
 
 この設計はWeb-onlyで、ReorderEntriesのWorker/API contract、schema、migration、dependency、security postureを変更しない。future established Dayは従来のdirect path、past / preview / cross-Sectionは従来のmutation boundaryを維持する。
+
+## D-079 dedicated Move intent coordinator
+
+D-079はgeneric `enqueueDayMutation()`のwhole-item coalesceをMoveへ盲目的に適用せず、Web内にMove intent coordinatorを持つ。Move intentはeffective row membership / Section / planned start overlayとして保持し、同一Entryのunsent tailだけをorder-preserving segment内で置換する。different-Entry MoveやStart / Reorder / Add / planned-start / lifecycle等のnon-commutative operationを跨いでqueue positionを変更しない。
+
+送信済みMoveはexact operation identity、destination、payload、expected placement revisionを凍結する。後続Moveは別logical intentとして保持し、dispatch前に最新canonical Day、source membership、lifecycle、Routine、target Section、placement revisionを再検証する。成功後はcanonical projectionへreconcileして後続intentを再検証し、deterministic failure / revision conflictは依存Move / Startをcancelまたはstopする。ambiguityはretained exact operationとしてretry / discard barrierを維持する。
+
+effective Day projectionはcanonical full Section membershipへpending Moveを順に適用してからD-078 Reorder overlayを適用する。source groupから除去し、target groupへ既存MoveEntryのappend / historical-boundary semanticsに沿って追加し、real Sectionのfrozen startまたは`Sectionなし`のNULL startを設定する。Section summary、estimate、Next / forecast、focus、drag stateはこのprojectionから導出し、collapsed targetを自動expandしない。Move unresolved中はsame-Section Reorderとplanned-start direct editをbarrierとして保持する。
+
+Section selectorとcross-Section D&Dは同じcoordinatorを使い、safe metadata editingは阻害しない。canceled Moveはoperation / retained state / unload-navigation barrierを確実に解放する。この設計はWeb-onlyで、MoveEntry Worker/API contract、schema、migration、dependency、security postureを変更しない。
