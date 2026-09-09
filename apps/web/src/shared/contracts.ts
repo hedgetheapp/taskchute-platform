@@ -629,6 +629,19 @@ export interface UpdateSectionConfigurationResult {
   configuration_version_id: string;
 }
 
+export interface AutoCarryOverduePlannedSettingProjection {
+  auto_carry_overdue_planned: boolean;
+  updated_at: string;
+}
+
+export interface SetAutoCarryOverduePlannedRequest {
+  operation_id: string;
+  enabled: boolean;
+  expected_updated_at: string;
+}
+
+export interface SetAutoCarryOverduePlannedResult extends AutoCarryOverduePlannedSettingProjection {}
+
 export interface MoveEntryRequest {
   operation_id: string;
   entry_id: string;

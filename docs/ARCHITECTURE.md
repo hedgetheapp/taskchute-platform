@@ -475,3 +475,15 @@ D-081のStartは既存StartEntry commandのatomic boundary内で、frozen establ
 Projection layerはSectionの保存順を先に適用し、Section内でExecution summaryの`first_started_at`をcanonical keyとするhistorical groupをplanned groupより前に構成する。planned groupはD-043のplanned startとmanual `position` tie-breakを使う。ReorderEntriesはこの表示順をphysical positionへ直接保存せず、historical positionsを不変にしたまま、同一planned-start cohortの既存physical slotsへdesired planned IDsを割り当てる。これによりD-078のeffective-order queueとD-079のplacement barrierは維持され、hidden historical rowsやcohort境界を越えない。
 
 InterruptEntryはtarget Bのactual Section解決・planned start保持をStartと共有し、continuationをinterrupt logical minute cohortの通常tailへ配置する。B-direct-after専用のshiftは使わず、source interruption、target move、continuation、revision exactly-once、replay / ambiguityを一つのlogical atomic outcomeとして扱う。D-081は既存schema / migration / API command familyを拡張しない。
+
+## D-082 current-Day auto-carry convergence
+
+D-082はAPP `user_settings.auto_carry_overdue_planned`（INTEGER `NOT NULL DEFAULT 0`, `CHECK (0,1)`）とoperations command CHECKの互換拡張だけをmigration `0024`で追加する。AUTH、Entry / TaskChuteDayのcheckpoint column、追加checkpoint table、Routine Definition schema、dependencyは変更しない。operations table rebuildでは既存全row、fingerprint、outcome、FK / PK、command typeを保存する。
+
+Workerのcurrent-Day loadはmaterialize / context ensure、Routine lazy materialization、auto-carry convergence、latest Day rowの再読込、projection構築の順序を守る。auto-carryはfrozen `taskchute_day_section_contexts`のactual intervalからunique current Sectionを解決し、client / browser timeをplacement authorityにしない。境界を解決できない場合はload成功を優先してno-opとし、checkpointをsuccessにしない。
+
+`AutoCarryOverduePlanned`はuser・Day・current Section・setting `updated_at`を含むdeterministic operation identityで、既存operations persistenceをexactly-once boundary checkpointとして再利用する。mutation batchはDay placement revision CAS、candidate / target snapshot guard、Entry Section / planned-start / position更新、Routine occurrence typed override、assertion、logical revision increment、checkpoint保存を一つのatomic outcomeにする。guard lossはpartial writeではなくcanonical reread後のbounded retry / convergeとし、infrastructure failureをdomain rejectionへ変換しない。
+
+target planned orderはsource context order、planned start、physical position、Entry identityで決定する。historical running / completed positionsは固定し、target Sectionのplanned slotsのみをsafeに一時退避・再割当する。Routine occurrenceは当日origin・suppression・definition relationをguardし、overrideだけを更新してRoutine Definition / defaults revisionを変更しない。D-081のexecution-first projectionとD-078 / D-079のplacement revision / barrier semanticsを維持する。
+
+`SetAutoCarryOverduePlanned`はauthenticated owner scopeの`updated_at` CAS mutationであり、setting更新とcarry outcomeは別logical operationとして扱う。same-operation replay、payload misuse、stale conflict、ambiguous retryは既存operations helperを利用する。current Webはsetting enable成功後またはserver-anchored projection clockでSection keyが変化した時にcurrent-Day reconcileを要求するが、Day mutation queueのactive / queued / retained ambiguityをunsafeに割り込ませず、安全なbarrier後へdeferする。non-current Day loadはauto-carryを呼ばない。

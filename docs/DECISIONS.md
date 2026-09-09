@@ -1700,3 +1700,18 @@ D-081は、planned stateのD-043 Section / planned-start synchronizationを維�
 - D-043はplanned stateの同期規則として維持し、running / completedのSection = actual Start Section・planned start = original planned valueを追加で許可する。D-073のtarget Bをplanned Sectionのままrunningにする部分とB-direct-after placementだけを狭くsupersedeする。D-060のSetExecutionTimes actual correction semantics、既存historical rows、retroactive backfillは変更しない。
 
 実装、automated regression、real-local / persistent nonprod evidenceはcanonical docsへ記録する。production / restore / destructive cleanup / releaseは対象外で、Releasedは`NO`のままとする。
+
+## D-082 — Auto-carry overdue planned Tasks to current Section
+
+Status: **Approved**
+
+D-082は、account canonicalな`未実行Taskを現在Sectionに自動移動する`settingを追加し、ONの場合だけcurrent established DayのSection boundary / enable catch-up eventで過去timed Sectionに残るplanned Entryをcurrent Sectionへ移動する。defaultはOFFで、browser-local storageへ保存しない。既存の手動Moveとcontinuous invariantで競合させず、同じSection・同じsetting versionで成功したboundary eventは再実行しない。
+
+- 対象はcurrent Dayのnormal planned Entryと、current DayでmaterializeされたRoutine-derived planned Entry。running、completed、current / future Section、Sectionなし、past / future Day、suppressed / unavailable Routine occurrence、historical protected stateは対象外とする。client clockはtriggerにだけ使い、current Sectionはfrozen Day Section intervalの`[actual_start_instant, actual_end_instant)`からWorkerが解決する。解決不能時はno-opでcheckpointを確定しない。
+- carry時はEntryのSectionをcurrent Sectionへ移し、planned startをcurrent Sectionのlogical startへ同期する。複数source Sectionのcanonical planned orderを維持し、target同時刻の既存planned cohortより前へ置く。D-081のhistorical physical positionsは変更せず、target Sectionのplanned position slotsだけをsafeに再構成し、placement revisionはlogical carry outcomeにつきexactly once増分する。
+- Routine-derived Entryは当日の`routine_occurrences` typed override（Section override present、current Section、current logical start）もEntry placementとatomicに更新する。Routine Definition、default、defaults revision、schedule、recurrence、enabled state、Task / Routine identity、他日のOccurrenceは変更しない。origin-Dayを安全に検証できない既存caseはsilent skip / ordinary化せずSTOP対象とする。
+- current-Day loadはDay materialization、Routine ensure、D-082 catch-up、latest placement revision再読込、projectionの順で行う。non-current Day queryはauto-carryしない。boundary checkpointは既存`operations`を`AutoCarryOverduePlanned` commandのdeterministic semantic operationとして再利用し、追加checkpoint table / Day columnは作らない。
+- setting更新は`SetAutoCarryOverduePlanned`としてoperation fingerprint / exact replay、owner scope、`updated_at` CAS、stale conflict、ambiguous retryを持つ。ON保存成功後は安全にcurrent-Day reconcileを行い、OFF保存は既存placementをrollbackしない。Settings > Sectionに独立subsectionを置く。
+- APP migration `0024`で`user_settings`へdefault OFFのboolean-like fieldを追加し、operations command CHECKへsetting / auto-carry commandを追加する。existing operations、Routine override、Entry / Execution / Section / Project / Mode dataを保持し、AUTH migration、new checkpoint table、historical rewrite、new dependency、security posture、production operationは含めない。D-043 planned synchronization、D-078 / D-079 placement safety、D-081 execution-first semanticsは維持する。
+
+実装、migration regression、Worker / Web regression、persistent nonprod backup / recovery validation、browser / read-only DB evidenceはcanonical evidence docsへ記録する。production / restore / destructive cleanup / branch / PR / merge / tag / releaseは対象外で、Releasedは`NO`のままとする。

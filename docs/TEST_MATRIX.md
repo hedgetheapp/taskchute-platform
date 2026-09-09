@@ -2184,3 +2184,14 @@ The original D-080 rows remain historical evidence for the A/B/C/D chain, but th
 - Persistent nonprod authenticated browser used existing session only. Current established Day `2026-09-09`で、Morning 08:30 planned Entryのactual Day移動とplanned start保持、same-Section Start、Sectionなし Startを各Start→Completeで確認。専用Interrupt Source→TargetではSourceが中断、Targetが完了、continuationが生成され、active executionは残らなかった。D-081 fixture rows and Section/planned-start/lifecycle were restored after same-tab reload and fresh authenticated tab.
 - Browser console logsはmain / fresh tabとも空（`0 errors / 0 warnings`）。Exact deployed Workerは`8ff2080f-afe6-48b9-a5ac-fdfba05d6a45`、nonprod varsは`RUNTIME_ENV=nonprod` / `BOOTSTRAP_ENABLED=false`。D081-ENV-02のexact method/path safety probeはroot `GET /` `200`、unauthenticated `GET /api/v1/projects` `401`、unauthenticated `POST /api/internal/bootstrap` `404`。以前のbootstrap `GET` `401`はmethod mismatchであり、disabled bootstrapの証跡とは扱わない。APP/AUTH read-only evidenceはquick `ok`、FK empty、APP/AUTH applied migrations `23/23`・`1/1`（pending `0 / 0`）、active execution `0`、duplicate positions empty、全成功query `rows_written=0`、APP placement revision `63`。
 - Real-local browserは`NOT_RUN`。migration regression helperはWindows/Wrangler log filesystem EPERM / 無出力状態を安全に中断したため`NOT_RUN`だが、D-081はschema / migration `NOT_REQUIRED`。production / restore / destructive cleanup / credential / bootstrap操作は行っていない。
+
+## D-082 Auto-carry overdue planned Tasks to current Section
+
+| ID | Scope | Evidence | Result |
+|---|---|---|---|
+| D082-WORKER-01 | Setting / checkpoint / auto-carry | setting owner scope、default OFF、CAS、exact replay / misuse、current Section interval、ordinary + Routine candidate、relative order、target cohort後置、Routine override、revision exactly once、reload projection | PASS; focused Worker `2 / 2` |
+| D082-REG-01 | Existing regressions | full Worker `25 files / 212 tests`; full Web `4 files / 256 tests`; typecheck / normal build / exact nonprod build / Wrangler nonprod dry-run / diff-check | PASS |
+| D082-MIG-01 | APP migration 0024 | migration helperはWindows/Wranglerの無出力・log filesystem EPERM状態を安全に中断 | NOT_RUN; APP migrationは実装済み、AUTH unchanged |
+| D082-ENV-01 | Persistent nonprod browser / Worker | authenticated Settings toggle、boundary trigger、carry結果、reload / fresh tab、console | NOT_RUN |
+| D082-DB-01 | Persistent nonprod read-only integrity | APP/AUTH quick check、FK、pending migrations、affected Entry / Routine override / placement revision / checkpoint、`rows_written=0` | NOT_RUN |
+| D082-BOUNDARY-01 | Safety | current established Day only、no production / restore / destructive cleanup / credential / bootstrap / branch / PR / merge / tag / Release | PASS（未実施） |

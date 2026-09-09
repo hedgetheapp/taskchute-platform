@@ -386,6 +386,10 @@ input:focus-visible, select:focus-visible { border-color: #2383e2; outline: 2px 
 .configuration-gate form { display: grid; gap: 8px; }
 .configuration-row { display: grid; grid-template-columns: minmax(100px, 1fr) 130px auto 130px; align-items: end; gap: 8px; }
 .section-settings { margin: 0; }
+.auto-carry-settings { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 0 20px; padding: 12px 14px; border: 1px solid #e1e1df; border-radius: 8px; background: #fafaf8; }
+.auto-carry-settings h3 { margin: 0 0 4px; font-size: 14px; }
+.auto-carry-settings p { margin: 0; color: #787774; font-size: 12px; }
+.settings-checkbox { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
 .section-settings-list { display: grid; gap: 8px; }
 .section-settings-row { display: grid; grid-template-columns: minmax(140px, 1fr) repeat(4, auto); align-items: end; gap: 8px; }
 .section-settings-row label { margin: 0; }
@@ -441,4 +445,5 @@ button.execution-control:hover { border-color: #2383e2; color: #2383e2; }
   .task-row > .task-main,
   .task-row > .draft-name { position: static; box-shadow: none; }
   .section-settings-row { grid-template-columns: 1fr 1fr; }
+  .auto-carry-settings { align-items: flex-start; flex-direction: column; }
 }

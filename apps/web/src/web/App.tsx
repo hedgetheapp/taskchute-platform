@@ -47,6 +47,8 @@ import type {
   EndRoutineRequest,
   SetRoutineEstimateRequest,
   SetRoutineSectionPlanRequest,
+  AutoCarryOverduePlannedSettingProjection,
+  SetAutoCarryOverduePlannedRequest,
 } from "../shared/contracts";
 import { isSamePlannedStartCohort } from "../shared/planned-entry-order";
 import { advanceProjectionClock, calculateStartForecast, formatStartForecast } from "../shared/start-forecast";
@@ -768,6 +770,9 @@ export function App() {
   const [retainedEstimateOperations, setRetainedEstimateOperations] = useState<SetEntryEstimateRequest[]>([]);
   const [plannedStartOperation, setPlannedStartOperation] = useState<PlannedStartOperation | null>(null);
   const [sectionSettingsOperation, setSectionSettingsOperation] = useState<UpdateSectionConfigurationRequest | null>(null);
+  const [autoCarrySetting, setAutoCarrySetting] = useState<AutoCarryOverduePlannedSettingProjection | null>(null);
+  const [autoCarrySettingOperation, setAutoCarrySettingOperation] = useState<SetAutoCarryOverduePlannedRequest | null>(null);
+  const [autoCarrySettingNotice, setAutoCarrySettingNotice] = useState<string | null>(null);
   const [routineConversionOperation, setRoutineConversionOperation] = useState<ConvertEntryToRoutineRequest | null>(null);
   const [routineEndOperation, setRoutineEndOperation] = useState<EndRoutineRequest | null>(null);
   const [routineEstimateOperation, setRoutineEstimateOperation] = useState<SetRoutineEstimateRequest | null>(null);
@@ -792,7 +797,7 @@ export function App() {
   const [executionEditorError, setExecutionEditorError] = useState<string | null>(null);
   const [routineDraft, setRoutineDraft] = useState<{ entryId: string; endDate: string } | null>(null);
   const [routineCandidate, setRoutineCandidate] = useState<RoutineCandidate | null>(null);
-  const [pending, setPending] = useState<"login" | "project" | "project-settings" | "day-navigation" | "task" | "duplicate" | "bulk-delete" | "delete-completed" | "bulk-date-move" | "bulk-section" | "bulk-section-occurrence" | "bulk-section-scoped" | "bulk-estimate" | "reorder" | "start" | "interrupt" | "complete" | "execution-times" | "task-metadata" | "mode" | "configuration" | "section-settings" | "move" | "estimate" | "planned-start" | "routine-convert" | "routine-end" | "routine-edit" | "logout" | null>(null);
+  const [pending, setPending] = useState<"login" | "project" | "project-settings" | "day-navigation" | "task" | "duplicate" | "bulk-delete" | "delete-completed" | "bulk-date-move" | "bulk-section" | "bulk-section-occurrence" | "bulk-section-scoped" | "bulk-estimate" | "reorder" | "start" | "interrupt" | "complete" | "execution-times" | "task-metadata" | "mode" | "configuration" | "section-settings" | "auto-carry-setting" | "move" | "estimate" | "planned-start" | "routine-convert" | "routine-end" | "routine-edit" | "logout" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draftTask, setDraftTask] = useState<DraftTask | null>(null);
   const [pendingFocusKey, setPendingFocusKey] = useState<string | null>(null);
@@ -849,6 +854,8 @@ export function App() {
   const dayMutationPausedRef = useRef(false);
   const deferredNavigationRef = useRef<{ logicalDate?: string } | null>(null);
   const deferredTransitionRef = useRef<{ kind: "logout" } | { kind: "settings"; destination: SettingsDestination } | null>(null);
+  const observedAutoCarrySectionRef = useRef<string | null>(null);
+  const deferredAutoCarryBoundaryRef = useRef(false);
 
   function updatePendingReorderOverlays(
     updater: (current: Record<string, PendingReorderOverlay>) => Record<string, PendingReorderOverlay>,
@@ -890,14 +897,17 @@ export function App() {
   const nonD066RetainedOperation = projectOperation ?? duplicateOperation ?? bulkDeleteOperation ?? deleteCompletedOperation ?? bulkDateMoveOperation ?? bulkSectionOperation
     ?? bulkSectionOccurrenceOperation ?? bulkSectionScopedOperation ?? bulkEstimateOperation ?? executionTimesOperation
     ?? configurationOperation ?? sectionSettingsOperation ?? routineConversionOperation ?? routineEndOperation ?? routineEstimateOperation
-    ?? retainedRoutineEstimateOperations[0] ?? routineSectionPlanOperation;
+    ?? retainedRoutineEstimateOperations[0] ?? routineSectionPlanOperation ?? autoCarrySettingOperation;
   const retryablePanelOperation = nonD066RetainedOperation ?? retryableDayOperation ?? retryableModeOperation;
   const retainedOperation = projectOperation ?? taskOperation ?? duplicateOperation ?? bulkDeleteOperation ?? deleteCompletedOperation ?? bulkDateMoveOperation ?? bulkSectionOperation ?? bulkSectionOccurrenceOperation ?? bulkSectionScopedOperation ?? bulkEstimateOperation ?? reorderOperation ?? startOperation ?? interruptOperation ?? completeOperation ?? executionTimesOperation ?? taskMetadataOperation ?? retainedTaskMetadataOperations[0] ?? retainedEstimateOperations[0]
     ?? configurationOperation ?? sectionSettingsOperation ?? sectionMoveOperation ?? estimateOperation ?? plannedStartOperation
-    ?? routineConversionOperation ?? routineEndOperation ?? routineEstimateOperation ?? retainedRoutineEstimateOperations[0] ?? routineSectionPlanOperation ?? modeOperation ?? retainedModeOperations[0] ?? null;
+    ?? routineConversionOperation ?? routineEndOperation ?? routineEstimateOperation ?? retainedRoutineEstimateOperations[0] ?? routineSectionPlanOperation
+    ?? autoCarrySettingOperation ?? modeOperation ?? retainedModeOperations[0] ?? null;
   const globalPending = pending === "login" || pending === "project" || pending === "project-settings"
-    || pending === "day-navigation" || pending === "configuration" || pending === "section-settings" || pending === "logout";
-  const globalRetainedOperation = projectOperation !== null || configurationOperation !== null || sectionSettingsOperation !== null;
+    || pending === "day-navigation" || pending === "configuration" || pending === "section-settings"
+    || pending === "auto-carry-setting" || pending === "logout";
+  const globalRetainedOperation = projectOperation !== null || configurationOperation !== null
+    || sectionSettingsOperation !== null || autoCarrySettingOperation !== null;
   const decisionModalOpen = shortcutHelpOpen || bulkSectionPickerOpen || bulkConfirmation !== null || completedDeleteConfirmation !== null
     || bulkSectionConfirmation !== null || bulkEstimateConfirmation !== null || bulkDateMoveConfirmation !== null
     || routineDraft !== null || routineCandidate !== null;
@@ -1454,6 +1464,9 @@ export function App() {
     setRetainedEstimateOperations([]);
     setPlannedStartOperation(null);
     setSectionSettingsOperation(null);
+    setAutoCarrySettingOperation(null);
+    setAutoCarrySetting(null);
+    setAutoCarrySettingNotice(null);
     setSectionSettings(null);
     setSectionSettingsDraft(null);
     setSectionSettingsNotice(null);
@@ -1498,6 +1511,8 @@ export function App() {
     setCollapsedSectionsByDay(readPersistedCollapsedSections());
     mouseDragRef.current = null;
     setEntryDrag(null);
+    observedAutoCarrySectionRef.current = null;
+    deferredAutoCarryBoundaryRef.current = false;
     setAuthState("signed-out");
   }, []);
 
@@ -1580,6 +1595,15 @@ export function App() {
       transitionToSignedOut();
     });
   }, [reconcile, transitionToSignedOut]);
+
+  useEffect(() => {
+    if (authState !== "signed-in" || typeof api.loadAutoCarryOverduePlannedSetting !== "function") return;
+    let active = true;
+    void api.loadAutoCarryOverduePlannedSetting().then((setting) => {
+      if (active) setAutoCarrySetting(setting);
+    }).catch(() => { /* The Day remains usable; Settings will retry on open. */ });
+    return () => { active = false; };
+  }, [authState]);
 
   useEffect(() => {
     if (!day || day.is_current || projects.length > 0
@@ -1717,6 +1741,8 @@ export function App() {
     if (!day) {
       forecastClockRef.current = null;
       setForecastNowInstant(null);
+      observedAutoCarrySectionRef.current = null;
+      deferredAutoCarryBoundaryRef.current = false;
       return;
     }
     const anchor = { serverInstant: day.projection_generated_at, monotonicMilliseconds: performance.now() };
@@ -1729,6 +1755,33 @@ export function App() {
     }, 15_000);
     return () => window.clearInterval(timer);
   }, [day]);
+
+  useEffect(() => {
+    if (!day || !day.is_current || day.establishment_state !== "established"
+      || !day.planning_enabled || !autoCarrySetting?.auto_carry_overdue_planned || !forecastNowInstant) {
+      observedAutoCarrySectionRef.current = null;
+      deferredAutoCarryBoundaryRef.current = false;
+      return;
+    }
+    const now = Date.parse(forecastNowInstant);
+    const currentSection = Number.isFinite(now)
+      ? day.sections.find((section) => section.actual_start_instant !== null && section.actual_end_instant !== null
+        && Date.parse(section.actual_start_instant) <= now && now < Date.parse(section.actual_end_instant))
+      : undefined;
+    if (!currentSection) return;
+    const sectionKey = `${day.taskchute_day.logical_date}:${currentSection.id}`;
+    const previous = observedAutoCarrySectionRef.current;
+    observedAutoCarrySectionRef.current = sectionKey;
+    if (!previous || previous === sectionKey) return;
+    if (hasDayMutationBarrier()) deferredAutoCarryBoundaryRef.current = true;
+    else void reconcile().catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Section移動の反映確認に失敗しました"));
+  }, [autoCarrySetting?.auto_carry_overdue_planned, day, forecastNowInstant, reconcile]);
+
+  useEffect(() => {
+    if (!deferredAutoCarryBoundaryRef.current || hasDayMutationBarrier()) return;
+    deferredAutoCarryBoundaryRef.current = false;
+    void reconcile().catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Section移動の反映確認に失敗しました"));
+  }, [dayMutationQueueCount, pendingMutationCount, day, pending, reconcile]);
 
   useEffect(() => {
     if (!pendingFocusKey || !day) return;
@@ -3661,6 +3714,11 @@ export function App() {
       const configuration = await api.loadSectionConfiguration();
       setSectionSettings(configuration);
       setSectionSettingsDraft(sectionSettingsDraftFrom(configuration));
+      if (typeof api.loadAutoCarryOverduePlannedSetting === "function") {
+        setAutoCarrySetting(await api.loadAutoCarryOverduePlannedSetting());
+      } else {
+        setAutoCarrySetting({ auto_carry_overdue_planned: false, updated_at: "" });
+      }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Section設定の読み込みに失敗しました");
     } finally { setPending(null); }
@@ -3788,6 +3846,46 @@ export function App() {
     };
     setSectionSettingsOperation(operation);
     await executeSectionSettings(operation);
+  }
+
+  async function executeAutoCarrySetting(operation: SetAutoCarryOverduePlannedRequest) {
+    if (typeof api.setAutoCarryOverduePlanned !== "function") {
+      setError("このWeb版では未実装の設定です。");
+      return;
+    }
+    setPending("auto-carry-setting"); setError(null); setAutoCarrySettingNotice(null);
+    try {
+      const canonical = await api.setAutoCarryOverduePlanned(operation);
+      setAutoCarrySetting(canonical);
+      setAutoCarrySettingOperation(null);
+      setAutoCarrySettingNotice(operation.enabled ? "自動移動を有効にしました。現在のDayを確認します。" : "自動移動を無効にしました。");
+      if (operation.enabled) await reconcile();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "自動移動設定の保存に失敗しました");
+      const ambiguous = isAmbiguousOutcome(caught);
+      if (!ambiguous) setAutoCarrySettingOperation(null);
+      try {
+        if (typeof api.loadAutoCarryOverduePlannedSetting !== "function") return;
+        const canonical = await api.loadAutoCarryOverduePlannedSetting();
+        setAutoCarrySetting(canonical);
+        if (ambiguous && canonical.auto_carry_overdue_planned === operation.enabled
+          && canonical.updated_at !== operation.expected_updated_at) {
+          setAutoCarrySettingOperation(null);
+          setError(null);
+          setAutoCarrySettingNotice(operation.enabled ? "自動移動を有効にしました。現在のDayを確認します。" : "自動移動を無効にしました。");
+          if (operation.enabled) await reconcile();
+        }
+      } catch { /* Preserve the original mutation outcome and operation identity. */ }
+    } finally { setPending(null); }
+  }
+
+  function toggleAutoCarrySetting(enabled: boolean) {
+    if (!autoCarrySetting || mutationLocked) return;
+    const operation: SetAutoCarryOverduePlannedRequest = {
+      operation_id: uuidv7(), enabled, expected_updated_at: autoCarrySetting.updated_at,
+    };
+    setAutoCarrySettingOperation(operation);
+    void executeAutoCarrySetting(operation);
   }
 
   function removePendingSectionMoveIntent(operationId: string): void {
@@ -5127,6 +5225,7 @@ export function App() {
             <section className="settings-content" aria-label="設定内容">
               {transientStatus && <div className="transient-status" role="status" aria-live="polite" aria-atomic="true">{transientStatus}</div>}
               {sectionSettingsNotice && <p role="status" className="success">{sectionSettingsNotice}</p>}
+              {autoCarrySettingNotice && <p role="status" className="success">{autoCarrySettingNotice}</p>}
               {error && <p role="alert" className="error">{error}</p>}
 
               {settingsDestination === "project" && (
@@ -5151,6 +5250,18 @@ export function App() {
               {settingsDestination === "section" && sectionSettingsDraft && (
                 <section className="section-settings" aria-label="Section設定">
                   <div className="settings-section-heading"><div><h2>Section</h2><p>変更は次に確立されるTaskChuteDayから反映されます。現在のDayとTask配置は変わりません。</p></div></div>
+                  <section className="auto-carry-settings" aria-label="未実行Taskの自動移動設定">
+                    <div>
+                      <h3>未実行Taskを現在Sectionに自動移動</h3>
+                      <p>Sectionの開始時に、過去Sectionの未実行Taskを現在Sectionの開始位置へ移動します。Server側で現在時刻とDayを確認します。</p>
+                    </div>
+                    <label className="settings-checkbox">
+                      <input type="checkbox" checked={autoCarrySetting?.auto_carry_overdue_planned ?? false}
+                        disabled={mutationLocked || autoCarrySetting === null}
+                        onChange={(event) => toggleAutoCarrySetting(event.target.checked)} />
+                      <span>有効にする</span>
+                    </label>
+                  </section>
                   <div className="section-settings-list">
                     {sectionSettingsDraft.items.map((item, index) => (
                       <div className="section-settings-row" key={item.section_id}>
@@ -5187,8 +5298,9 @@ export function App() {
               <p>結果未確定の操作があります。元の操作だけを再試行するか、client側の保留を破棄してください。</p>
               {projectOperation && <button type="button" onClick={() => void executeCreateProject(projectOperation)}>保留中のProject作成を再試行</button>}
               {sectionSettingsOperation && <button type="button" onClick={() => void executeSectionSettings(sectionSettingsOperation)}>保留中の次Day Section設定を再試行</button>}
+              {autoCarrySettingOperation && <button type="button" onClick={() => void executeAutoCarrySetting(autoCarrySettingOperation)}>保留中の自動移動設定を再試行</button>}
               <button type="button" className="secondary" onClick={() => {
-                setProjectOperation(null); setSectionSettingsOperation(null); setError(null);
+                setProjectOperation(null); setSectionSettingsOperation(null); setAutoCarrySettingOperation(null); setError(null);
               }}>保留中のclient操作を破棄</button>
             </section>
           )}

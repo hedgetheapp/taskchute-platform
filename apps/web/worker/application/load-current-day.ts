@@ -14,6 +14,7 @@ import {
 } from "../domain/taskchute-day";
 import { uuidv7 } from "../domain/uuidv7";
 import { ensureCurrentDayRoutineEntries } from "./routine";
+import { autoCarryCurrentDay } from "./auto-carry-overdue";
 
 export interface SettingsRow {
   timezone: string;
@@ -650,6 +651,7 @@ export async function loadCurrentTaskChuteDay(
 ): Promise<EstablishedTaskChuteDayProjection> {
   const materializedDay = await materializeCurrentDay(db, appUserId, nowInstant);
   await ensureCurrentDayRoutineEntries(db, appUserId, materializedDay, nowInstant);
+  await autoCarryCurrentDay(db, appUserId, materializedDay, nowInstant);
   const day = await db.prepare(`SELECT id, logical_date, start_instant, end_instant, establishment_timezone,
       establishment_boundary_minutes, placement_revision FROM taskchute_days WHERE app_user_id = ? AND id = ?`)
     .bind(appUserId, materializedDay.id).first<DayRow>();

@@ -492,3 +492,17 @@ running / completed Entryは元の`planned_start_minute`（Sectionなしは`NULL
 Reorderはrunning / completedを対象外とし、historical physical positionを変更しない。planned Entryだけを同一planned-start cohort内で並べ替え、display indexをphysical positionへ直接変換せず、各cohortの既存physical position slotsをtie-break再割当へ再利用する。D-078 / D-079のbarrier、revision/CAS、exact retry、external order protectionを維持する。
 
 Interrupt targetにもactual Section解決とplanned start保持を適用する。continuationはinterrupt actual logical minuteの通常planned Entryとしてcohort tailへ置き、D-073のB-direct-after special placementを廃止する。D-060のSetExecutionTimes、既存historical rows、retroactive backfillは変更しない。Routine-derived normal Startにもactual Section ruleを適用するが、Routine Definition / occurrenceのplanned defaultsは変更しない。新command、API schema、schema / migration、dependency、security postureは追加しない。
+
+## D-082 Auto-carry overdue planned Tasks to current Section
+
+`未実行Taskを現在Sectionに自動移動する`はaccount / Server canonical settingで、default OFFとする。ON/OFFは複数deviceで共有し、localStorage / IndexedDBへcanonical valueを保存しない。OFFへの変更は既存placementをrollbackせず、ON保存成功後はcurrent-Dayを安全にreconcileする。
+
+ON時のcarryはcontinuous invariantではなく、Section boundaryまたはsetting enableによるedge-triggerである。同一current Section・同一setting versionの成功eventは既存`operations`へ`AutoCarryOverduePlanned`として記録し、同じDay loadで再度Entry mutationを行わない。複数Sectionを跨いだ閉鎖後の次回current-Day loadでは一度のcatch-upで全past timed Sectionを処理する。non-current Day queryでは実行しない。
+
+対象はcurrent established Dayのplanned Entryで、frozen context上の過去timed Sectionに所属するnormal Entryおよび当日materializeされたRoutine occurrence。current / future Section、Sectionなし、running、completed、past / future Day、suppressed / unavailable Routine occurrence、historical protected stateは対象外とする。current timed SectionはWorkerが`actual_start_instant <= now < actual_end_instant`を満たすunique contextから解決し、解決不能ならloadを壊さずcarryとcheckpointをno-opにする。
+
+carry結果は`section_id = current Section`、`planned_start_minute = current Section logical_start_minute`。source Section orderとsource内のplanned start / physical position orderを維持し、target Sectionの同一planned startに存在するplanned cohortより前へ置く。D-081 historical physical positionsは固定し、planned slotsだけをsafeに再割当する。placement revisionは1 logical outcomeにつきexactly once増分し、candidateなしでは増分しない。
+
+Routine-derived Entryでは当日の`routine_occurrences`へ`section_plan_override_present = 1`、current Section、current logical startをEntry placementと同じatomic outcomeで保存する。Routine Definition、default Section / planned start、defaults revision、schedule、recurrence、enabled state、Task / Routine identity、他日のOccurrenceは変更しない。origin-Dayを安全にtyped overrideへ結び付けられないcaseはsilent skipせずSTOPする。
+
+Settings APIはauthenticated owner scopeのread / updateを提供し、updateは`operation_id`、enabled、expected `updated_at`を受ける。same-operation exact replay、different-payload misuse、stale CAS conflict、ambiguous exact retryを既存operation semanticsで扱う。Settings > Sectionの独立subsectionはaccessible checkbox / switchとし、保存中はdouble submitを防ぎ、Section configurationの「次のDayから反映」と混同させない。current-Day loadはmaterialize → Routine ensure → auto-carry → latest Day reload → projectionの順とする。D-043 planned synchronization、D-078 / D-079 placement barriers、D-081 execution-first projectionは維持する。

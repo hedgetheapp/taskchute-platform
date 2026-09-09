@@ -551,3 +551,12 @@ D-080 correctiveでは、valid current established-Day draftのEnter commit直�
 Start / Interruptのactual Sectionは、Webが送る表示上のSectionではなく、Workerがestablished DayへfreezeしたSection intervalとServer actual instantから解決する。Start requestはcurrent established Dayのplacement revisionを持ち、same-Sectionなら不要なphysical move / revision incrementを避ける。cross-Section / SectionなしならEntry Section、unique physical position、lifecycle、Execution、snapshot、operation resultを一つのatomic command outcomeとして確定し、planned startは元の値を維持する。sent operationのidentity / payloadと既存retry・ambiguity boundaryは変更しない。
 
 Day projectionの表示順はphysical `position`をそのまま行順とはせず、Section順、actual Execution start順のhistorical group、D-043 planned-start / manual-position順のplanned groupからderiveする。Reorderはhistorical rowsを固定し、planned cohortの既存physical slotsだけを入れ替えるため、display indexを永続positionへ直接写像しない。Interrupt continuationは通常planned rowとしてinterrupt minute cohortのtailへ置き、target Bのactual Section moveを同じatomic placement boundaryへ含める。D-043 planned同期とD-078 / D-079 queue safetyをこのprojectionへ整合させる。
+
+
+## D-082 auto-carry setting and Section behavior
+
+Settings > SectionにはSection configuration editorと独立した「未実行Taskの自動移動」subsectionを置く。checkbox / switchはServerから読み込んだdefault OFFを表示し、helper textでSection boundary時に過去Sectionの未実行Taskをcurrent Sectionへ移すことだけを説明する。Section configurationの「次のTaskChuteDayから反映」と混同させず、Routine Definitionを書き換えるような表現は使わない。保存中はcontrolを二重送信不可にし、deterministic errorは表示、ambiguous outcomeは同一operationを保ったretry / reloadへ収束させる。
+
+current Dayのprojection clockは既存`projection_generated_at`とmonotonic clockを利用し、frozen Section intervalからclient-sideの観測Section keyを導出する。前回keyから変化したときに一回だけserver reconcileを要求し、15秒tickやvisibility resumeで同じkeyのrequest stormを作らない。Entryをclient-sideで直接移動せず、server loadのmaterialize → Routine ensure → auto-carry → projectionをauthorityとする。active draft、focus、provisional Add、pending overlay、retained retryはreconcileで消去しない。
+
+Server carryはpast timed Sectionのplanned Entryをsource context / planned start / physical position orderで収集し、target current Sectionのhistorical rowsを固定したままplanned position slotsを再構成する。carried cohortはtarget existing same-time planned cohortの前へ置き、later cohortのrelative orderを保持する。Routine rowは当日のtyped occurrence overrideも同じbatchで更新し、Definition defaultsは不変とする。setting enable、boundary checkpoint、placement mutationはoperation identityを分離して保存し、placement revisionはvisible carry outcomeにつき一度だけ進める。

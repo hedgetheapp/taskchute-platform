@@ -86,6 +86,9 @@ import type {
   DeleteModeResult,
   SetEntryModeRequest,
   SetEntryModeResult,
+  AutoCarryOverduePlannedSettingProjection,
+  SetAutoCarryOverduePlannedRequest,
+  SetAutoCarryOverduePlannedResult,
 } from "../shared/contracts";
 
 export class ApiClientError extends Error {
@@ -230,6 +233,12 @@ export const api = {
   },
   updateSectionConfiguration(body: UpdateSectionConfigurationRequest): Promise<UpdateSectionConfigurationResult> {
     return requestJson("/api/v1/section-configuration", jsonPost("", body));
+  },
+  loadAutoCarryOverduePlannedSetting(): Promise<AutoCarryOverduePlannedSettingProjection> {
+    return requestJson("/api/v1/settings/auto-carry-overdue-planned");
+  },
+  setAutoCarryOverduePlanned(body: SetAutoCarryOverduePlannedRequest): Promise<SetAutoCarryOverduePlannedResult> {
+    return requestJson("/api/v1/settings/auto-carry-overdue-planned", jsonPost("", body));
   },
   moveEntry(body: MoveEntryRequest): Promise<MoveEntryResult> {
     return requestJson("/api/v1/taskchute-days/current/entries/move", jsonPost("", body));

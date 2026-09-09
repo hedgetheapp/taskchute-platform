@@ -627,6 +627,15 @@ try {
   assert.deepEqual(query("SELECT continuation_chain_id, continuation_parent_entry_id FROM entries WHERE id = 'entry-0023-trigger'"),
     [{ continuation_chain_id: "entry-0023-trigger", continuation_parent_entry_id: null }]);
   execute(["--command", "DELETE FROM entries WHERE id = 'entry-0023-trigger'"]);
+  const preD082Operations = query("SELECT * FROM operations ORDER BY operation_id");
+  applyFile("migrations/app/0024_auto_carry_overdue_planned.sql");
+  assert.deepEqual(query("SELECT * FROM operations ORDER BY operation_id"), preD082Operations,
+    "0024 must preserve every operation row");
+  assert.deepEqual(query("SELECT auto_carry_overdue_planned FROM user_settings WHERE app_user_id = 'user-v01a'"),
+    [{ auto_carry_overdue_planned: 0 }], "0024 must default the account setting to OFF");
+  const autoCarryOperationTable = query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'operations'")[0]?.sql ?? "";
+  assert(autoCarryOperationTable.includes("SetAutoCarryOverduePlanned"), "0024 must add the setting command to the operation CHECK");
+  assert(autoCarryOperationTable.includes("AutoCarryOverduePlanned"), "0024 must add the checkpoint command to the operation CHECK");
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
   assert.deepEqual(query("PRAGMA foreign_key_check"), []);
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
@@ -846,7 +855,7 @@ try {
   assert.notEqual(duplicateActive.status, 0, "the active Execution unique index must reject a second active row");
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
   assert.deepEqual(query("PRAGMA foreign_key_check"), []);
-  console.log("migration regression: 4 scenarios passed (R2A normalization, R2B preservation/constraints, duplicate-Task fail-safe, Bulk Selection 0010/0011/0012/0013/0014/0015/0016/0017/0018/0019 preservation/constraints, Mode 0021/0022 preservation/constraints, Interrupt/Continuation 0023 preservation/constraints; fresh 0001 -> 0023 chain)");
+  console.log("migration regression: 4 scenarios passed (R2A normalization, R2B preservation/constraints, duplicate-Task fail-safe, Bulk Selection 0010/0011/0012/0013/0014/0015/0016/0017/0018/0019 preservation/constraints, Mode 0021/0022 preservation/constraints, Interrupt/Continuation 0023 preservation/constraints, Auto Carry 0024 preservation/constraints; fresh 0001 -> 0024 chain)");
 } finally {
   await rm(persistencePath, { recursive: true, force: true });
   await rm(failurePersistencePath, { recursive: true, force: true });

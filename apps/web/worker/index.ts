@@ -23,6 +23,11 @@ import {
 } from "./application/project-management";
 import { HttpError } from "./application/errors";
 import { loadCurrentTaskChuteDay, loadTaskChuteDayByLogicalDate } from "./application/load-current-day";
+import {
+  isSetAutoCarryOverduePlannedRequest,
+  loadAutoCarryOverduePlannedSetting,
+  setAutoCarryOverduePlanned,
+} from "./application/auto-carry-overdue";
 import { isLogicalDate } from "./domain/taskchute-day";
 import { completeEntry, isCompleteEntryRequest, isStartEntryRequest, startEntry } from "./application/entry-lifecycle";
 import { interruptEntry, isInterruptEntryRequest } from "./application/interrupt-entry";
@@ -96,6 +101,16 @@ async function route(request: Request, env: Env): Promise<Response> {
   const principal = await resolvePrincipal(request, env);
   if (request.method === "GET" && url.pathname === "/api/v1/taskchute-days/current") {
     return Response.json(await loadCurrentTaskChuteDay(env.APP_DB, principal.appUserId));
+  }
+  if (request.method === "GET" && url.pathname === "/api/v1/settings/auto-carry-overdue-planned") {
+    return Response.json(await loadAutoCarryOverduePlannedSetting(env.APP_DB, principal.appUserId));
+  }
+  if (request.method === "POST" && url.pathname === "/api/v1/settings/auto-carry-overdue-planned") {
+    const body = await readBoundedJson(request);
+    if (!isSetAutoCarryOverduePlannedRequest(body)) {
+      throw new HttpError(400, "malformed_request", "Invalid SetAutoCarryOverduePlanned request");
+    }
+    return Response.json(await setAutoCarryOverduePlanned(env.APP_DB, principal.appUserId, body));
   }
   if (request.method === "GET" && url.pathname === "/api/v1/taskchute-days/by-logical-date") {
     const logicalDate = url.searchParams.get("logical_date");
