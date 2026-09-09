@@ -2189,7 +2189,7 @@ The original D-080 rows remain historical evidence for the A/B/C/D chain, but th
 
 | ID | Scope | Evidence | Result |
 |---|---|---|---|
-| D082-WORKER-01 | Setting / checkpoint / auto-carry | setting owner scope、default OFF、CAS、exact replay / misuse、current Section interval、ordinary + Routine candidate、relative order、target cohort後置、Routine override、revision exactly once、reload projection | PASS; focused Worker `2 / 2` |
+| D082-WORKER-01 | Setting / checkpoint / auto-carry | setting owner scope、default OFF、CAS、exact replay / misuse、current Section interval、ordinary + Routine candidate、relative order、target same-time cohortより前、Routine override、revision exactly once、reload projection | PASS; focused Worker `2 / 2` |
 | D082-REG-01 | Existing regressions | focused Web `1 / 1`; full Worker `25 files / 212 tests`; full Web `4 files / 257 tests`; typecheck / normal build / exact nonprod build / Wrangler nonprod dry-run / diff-check | PASS |
 | D082-MIG-01 | APP migration 0024 | remote APP apply succeeded; APP/AUTH migration lists report no pending migrations; local migration helperはWindows/Wranglerの無出力・log filesystem EPERM状態を安全に中断 | PASS remote apply / pending `0 / 0`; local helper NOT_RUN |
 | D082-ENV-01 | Persistent nonprod browser / Worker | authenticated Settings toggle、Morning fixtureのEvening carry、reload / fresh authenticated tab、server setting persistence | PASS; Worker `e9f79149-78c5-4a61-9cc6-bc5fe5aa30ea`; exact console counts NOT_VERIFIED |
@@ -2197,3 +2197,10 @@ The original D-080 rows remain historical evidence for the A/B/C/D chain, but th
 | D082-SAFETY-01 | Deployment / bootstrap safety | nonprod root and unauthenticated API safety probes; bootstrap remains disabled | PASS root `GET /` `200`, unauth `GET /api/v1/projects` `401`; exact bootstrap `POST` NOT_RUN |
 | D082-BACKUP-01 | APP migration recovery boundary | Time Travel metadata/bookmark and existing private recovery artifact observed; no restore executed | PARTIAL evidence; full export and isolated recovery validation NOT_RUN |
 | D082-BOUNDARY-01 | Safety | current established Day only、no production / restore / destructive cleanup / credential / bootstrap / branch / PR / merge / tag / Release | PASS（未実施） |
+| D082-CORR-01 | Moved Routine candidate boundary | cross-Day moved Routine excluded; ordinary and same-Day-origin Routine still carry; moved Entry / Occurrence / Definition unchanged | PASS; corrective Worker suite `5 / 5` |
+| D082-CORR-02 | Candidate-zero checkpoint | zero result checkpoint、exact replay、placement revision unchanged、stale revision CAS retry、post-checkpoint manual Move no-bounce | PASS; corrective Worker suite `5 / 5` |
+| D082-CORR-03 | Corrective local regression | full Worker `25 files / 215 tests`; full Web `4 files / 257 tests`; typecheck / build / exact nonprod build / dry-run / diff-check | PASS |
+| D082-CORR-ENV-01 | Corrective persistent nonprod browser | ordinary carry Morning→Evening、same-tab reload、fresh authenticated tab、Worker `81b9b401-27a6-44c7-a8ba-a5261e287b45` | PASS; moved Routine browser `NOT_RUN`, natural race `NOT_OBSERVED`, exact console `NOT_VERIFIED` |
+| D082-CORR-DB-01 | Corrective APP/AUTH read-only integrity | quick check / FK / pending migrations / active execution / guard cleanup / duplicate positions / operation coherence / rows_written | PASS; quick `ok`, FK empty, pending `0 / 0`, active `0`, guards/assertions `0 / 0`, rows_written `0` |
+| D082-CORR-SAFETY-01 | Corrective nonprod safety | root `200`, protected API `401`, unauthenticated bootstrap POST `404`, bootstrap disabled | PASS |
+| D082-CORR-MIG-01 | Corrective migration / dependency boundary | no new migration or dependency; existing `0024` remains applied | NOT_REQUIRED; local migration helper `NOT_RUN` |

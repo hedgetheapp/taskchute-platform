@@ -1709,9 +1709,17 @@ D-082は、account canonicalな`未実行Taskを現在Sectionに自動移動す�
 
 - 対象はcurrent Dayのnormal planned Entryと、current DayでmaterializeされたRoutine-derived planned Entry。running、completed、current / future Section、Sectionなし、past / future Day、suppressed / unavailable Routine occurrence、historical protected stateは対象外とする。client clockはtriggerにだけ使い、current Sectionはfrozen Day Section intervalの`[actual_start_instant, actual_end_instant)`からWorkerが解決する。解決不能時はno-opでcheckpointを確定しない。
 - carry時はEntryのSectionをcurrent Sectionへ移し、planned startをcurrent Sectionのlogical startへ同期する。複数source Sectionのcanonical planned orderを維持し、target同時刻の既存planned cohortより前へ置く。D-081のhistorical physical positionsは変更せず、target Sectionのplanned position slotsだけをsafeに再構成し、placement revisionはlogical carry outcomeにつきexactly once増分する。
-- Routine-derived Entryは当日の`routine_occurrences` typed override（Section override present、current Section、current logical start）もEntry placementとatomicに更新する。Routine Definition、default、defaults revision、schedule、recurrence、enabled state、Task / Routine identity、他日のOccurrenceは変更しない。origin-Dayを安全に検証できない既存caseはsilent skip / ordinary化せずSTOP対象とする。
+- Routine-derived Entryは当日の`routine_occurrences` typed override（Section override present、current Section、current logical start）もEntry placementとatomicに更新する。Routine Definition、default、defaults revision、schedule、recurrence、enabled state、Task / Routine identity、他日のOccurrenceは変更しない。cross-Dayへ移動済みのRoutine Entryはcandidateから除外し、load failureやordinary化を起こさない。除外Entry、Occurrence、Routine Definitionは変更しない。
 - current-Day loadはDay materialization、Routine ensure、D-082 catch-up、latest placement revision再読込、projectionの順で行う。non-current Day queryはauto-carryしない。boundary checkpointは既存`operations`を`AutoCarryOverduePlanned` commandのdeterministic semantic operationとして再利用し、追加checkpoint table / Day columnは作らない。
 - setting更新は`SetAutoCarryOverduePlanned`としてoperation fingerprint / exact replay、owner scope、`updated_at` CAS、stale conflict、ambiguous retryを持つ。ON保存成功後は安全にcurrent-Day reconcileを行い、OFF保存は既存placementをrollbackしない。Settings > Sectionに独立subsectionを置く。
 - APP migration `0024`で`user_settings`へdefault OFFのboolean-like fieldを追加し、operations command CHECKへsetting / auto-carry commandを追加する。existing operations、Routine override、Entry / Execution / Section / Project / Mode dataを保持し、AUTH migration、new checkpoint table、historical rewrite、new dependency、security posture、production operationは含めない。D-043 planned synchronization、D-078 / D-079 placement safety、D-081 execution-first semanticsは維持する。
 
 実装、migration regression、Worker / Web regression、persistent nonprod backup / recovery validation、browser / read-only DB evidenceはcanonical evidence docsへ記録する。production / restore / destructive cleanup / branch / PR / merge / tag / releaseは対象外で、Releasedは`NO`のままとする。
+
+### D-082 corrective addendum — moved Routine exclusion and zero-candidate checkpoint
+
+D-082のcorrectiveでは、current Dayの同一Day-origin Routine、normal planned Entryは従来どおりcarry対象とし、別Dayへ移動済みのRoutine-derived Entry（`origin_taskchute_day_id != current Day`）をcandidate setから明示的に除外する。除外対象を理由にDay loadを失敗させず、Entry、Occurrence、Routine Definitionを変更しない。
+
+candidateが0件でも、current Day・current Section・setting versionに対する成功checkpointを既存`operations`へ保存する。結果は`carried_entry_ids=[]`、placement revisionは不変、同一eventの再実行はexact replayとなる。candidate-read時のplacement revisionをCAS guardに使い、競合時はbounded re-read/retryしてstale zero checkpointを防ぐ。checkpoint後のmanual Moveも同一setting versionで再carryされない。
+
+carryされたEntryはtarget Sectionの同一planned-start cohortより前へ置く。このtarget ordering表現をD-082のcanonical wordingとし、D-081 / D-078 / D-079のplacement safetyは変更しない。新command、API / schema、migration、dependency、security postureは追加しない。

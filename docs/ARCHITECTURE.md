@@ -482,8 +482,15 @@ D-082はAPP `user_settings.auto_carry_overdue_planned`（INTEGER `NOT NULL DEFAU
 
 Workerのcurrent-Day loadはmaterialize / context ensure、Routine lazy materialization、auto-carry convergence、latest Day rowの再読込、projection構築の順序を守る。auto-carryはfrozen `taskchute_day_section_contexts`のactual intervalからunique current Sectionを解決し、client / browser timeをplacement authorityにしない。境界を解決できない場合はload成功を優先してno-opとし、checkpointをsuccessにしない。
 
-`AutoCarryOverduePlanned`はuser・Day・current Section・setting `updated_at`を含むdeterministic operation identityで、既存operations persistenceをexactly-once boundary checkpointとして再利用する。mutation batchはDay placement revision CAS、candidate / target snapshot guard、Entry Section / planned-start / position更新、Routine occurrence typed override、assertion、logical revision increment、checkpoint保存を一つのatomic outcomeにする。guard lossはpartial writeではなくcanonical reread後のbounded retry / convergeとし、infrastructure failureをdomain rejectionへ変換しない。
+`AutoCarryOverduePlanned`はuser・Day・current Section・setting `updated_at`を含むdeterministic operation identityで、既存operations persistenceをexactly-once boundary checkpointとして再利用する。mutation batchはDay placement revision CAS、candidate / target snapshot guard、Entry Section / planned-start / position更新、Routine occurrence typed override、assertion、logical revision increment、checkpoint保存を一つのatomic outcomeにする。candidateが空の場合もcandidate-read placement revisionをCAS guardにした空結果checkpointを同じatomic boundaryで保存し、logical revisionは増分しない。guard lossはpartial writeではなくcanonical reread後のbounded retry / convergeとし、infrastructure failureをdomain rejectionへ変換しない。
 
 target planned orderはsource context order、planned start、physical position、Entry identityで決定する。historical running / completed positionsは固定し、target Sectionのplanned slotsのみをsafeに一時退避・再割当する。Routine occurrenceは当日origin・suppression・definition relationをguardし、overrideだけを更新してRoutine Definition / defaults revisionを変更しない。D-081のexecution-first projectionとD-078 / D-079のplacement revision / barrier semanticsを維持する。
 
-`SetAutoCarryOverduePlanned`はauthenticated owner scopeの`updated_at` CAS mutationであり、setting更新とcarry outcomeは別logical operationとして扱う。same-operation replay、payload misuse、stale conflict、ambiguous retryは既存operations helperを利用する。current Webはsetting enable成功後またはserver-anchored projection clockでSection keyが変化した時にcurrent-Day reconcileを要求するが、Day mutation queueのactive / queued / retained ambiguityをunsafeに割り込ませず、安全なbarrier後へdeferする。non-current Day loadはauto-carryを呼ばない。
+`SetAutoCarryOverduePlanned`はauthenticated owner scopeの`updated_at` CAS mutationであり、setting更新とcarry outcomeは別logical operationとして扱う。same-operation replay、payload misuse、stale conflict、ambiguous retryは既存operations helperを利用する。current Webはsetting enable成功後またはserver-anchored projection clockでSection keyが変化した時にcurrent-Day reconcileを要求するが、Day mutation queueのactive / queued / retained ambiguityをunsafeに割り込ませず、安全なbarrier後へdeferする。non-current Day loadはauto-carryを呼ばない。cross-Day moved Routineはcandidate query段階で除外し、load failureや別Entry種別への変換を起こさない。manual Move後も同一Day・Section・setting versionのcheckpointにより再carryしない。
+
+#### D-082 corrective invariants
+
+- carry ordering is before the existing target same-time planned cohort;
+- candidate-zero success is an operations checkpoint with `carried_entry_ids=[]` and unchanged placement revision;
+- stale zero-candidate reads are rejected by the placement CAS guard and retried from a fresh canonical read;
+- moved Routine Entry / Occurrence / Definition remain untouched.
