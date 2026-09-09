@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   convertEntryToRoutine: vi.fn(), endRoutine: vi.fn(), setRoutineEstimate: vi.fn(), setRoutineSectionPlan: vi.fn(),
   loadRoutines: vi.fn(), createRoutine: vi.fn(), setRoutineEnabled: vi.fn(), updateRoutine: vi.fn(), reorderRoutines: vi.fn(),
   loadSectionConfiguration: vi.fn(), updateSectionConfiguration: vi.fn(), loadModeBoard: vi.fn(),
+  loadAutoCarryOverduePlannedSetting: vi.fn(), setAutoCarryOverduePlanned: vi.fn(),
 }));
 
 vi.mock("../../src/web/api", async () => {
@@ -257,6 +258,8 @@ beforeEach(() => {
   });
   mocks.updateSectionConfiguration.mockResolvedValue({ configuration_version_id: "new-version" });
   mocks.loadModeBoard.mockResolvedValue({ board_revision: 0, modes: [] });
+  mocks.loadAutoCarryOverduePlannedSetting.mockResolvedValue({ auto_carry_overdue_planned: false, updated_at: "2026-08-22T12:00:00.000Z" });
+  mocks.setAutoCarryOverduePlanned.mockResolvedValue({ auto_carry_overdue_planned: true, updated_at: "2026-08-22T12:00:01.000Z" });
 });
 
 async function openSectionSettings() {
@@ -3885,6 +3888,22 @@ describe("Dogfood Day shell", () => {
     fireEvent.keyDown(submenuTrigger, { key: "Escape" });
     expect(screen.queryByRole("menu", { name: "表示" })).toBeNull();
     await waitFor(() => expect(document.activeElement).toBe(trigger));
+  });
+
+  it("loads the D-082 setting as OFF and persists an explicit ON change with its CAS timestamp", async () => {
+    mocks.loadDay.mockResolvedValue(emptyDay);
+    render(<App />);
+    const settingsRegion = await openSectionSettings();
+    const toggle = within(settingsRegion).getByRole("checkbox", { name: "有効にする" }) as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+    fireEvent.click(toggle);
+    await waitFor(() => expect(mocks.setAutoCarryOverduePlanned).toHaveBeenCalledTimes(1));
+    expect(mocks.setAutoCarryOverduePlanned.mock.calls[0][0]).toMatchObject({
+      enabled: true,
+      expected_updated_at: "2026-08-22T12:00:00.000Z",
+    });
+    await waitFor(() => expect((within(settingsRegion).getByRole("checkbox", { name: "有効にする" }) as HTMLInputElement).checked).toBe(true));
+    expect(screen.getByRole("status").textContent).toContain("自動移動を有効にしました");
   });
 
   it("preserves custom order and width across hide/show and reload from the column submenu", async () => {
