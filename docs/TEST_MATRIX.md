@@ -2172,9 +2172,13 @@ The original D-080 rows remain historical evidence for the A/B/C/D chain, but th
 | D081-PROJECTION-01 | Execution-first order | Section order、historical actual start ASC、stable tie-break、planned start / position order、Next / forecast planned-only、reload-compatible projection | PASS; focused Worker coverage |
 | D081-REORDER-01 | D-078 compatibility | historical physical positions unchanged、planned cohort slots reuse、cohort crossing / historical crossing reject、D-078 repeated queue regression | PASS; focused Worker coverage |
 | D081-INTERRUPT-01 | D-073 compatibility | target actual Section / planned start保持、continuation ordinary cohort tail、no B-direct-after special、atomic revision / replay | PASS; focused Worker coverage |
-| D081-REG-01 | Existing regressions | full Worker `24 files / 210 tests`; full Web / build / typecheck / nonprod dry-run | PARTIAL; typecheck and Worker PASS, remaining local gates pending |
-| D081-ENV-01 | Persistent nonprod | exact nonprod deploy, current / cross / Sectionなし Start, execution-first order, reload / fresh tab, console | NOT_RUN |
-| D081-DB-01 | Read-only integrity | APP/AUTH quick check, FK, pending migrations `0 / 0`, affected rows / operations, active execution, position uniqueness, `rows_written=0` | NOT_RUN |
-| D081-BOUNDARY-01 | Safety | no production, credentials, bootstrap, restore, destructive cleanup, branch / PR / merge / tag / Release | NOT_RUN / NOT_REQUIRED |
+| D081-REG-01 | Existing regressions | full Worker `24 files / 210 tests`; full Web `4 files / 256 tests`; typecheck / normal build / exact nonprod build / Wrangler dry-run / diff-check | PASS（migration helperのみNOT_RUN） |
+| D081-ENV-01 | Persistent nonprod | Worker `8ff2080f-afe6-48b9-a5ac-fdfba05d6a45`; current / cross / Sectionなし Start, execution-first order, Interrupt, reload / fresh tab, console | PASS |
+| D081-DB-01 | Read-only integrity | APP/AUTH quick check, FK, pending migrations `0 / 0`, affected rows / operations, active execution, position uniqueness, `rows_written=0` | PASS |
+| D081-BOUNDARY-01 | Safety | no production, credentials, bootstrap, restore, destructive cleanup, branch / PR / merge / tag / Release | PASS（NOT_RUN / NOT_REQUIRED） |
 
-The browser confirmed the required pending-row focus handoff, while deferred automated evidence remains authoritative for the unresolved-response timing race. Connector viewport/zoom metrics were not exposed and are `NOT_AVAILABLE` for this corrective.
+### D-081 verification closeout
+
+- Persistent nonprod authenticated browser used existing session only. Current established Day `2026-09-09`で、Morning 08:30 planned Entryのactual Day移動とplanned start保持、same-Section Start、Sectionなし Startを各Start→Completeで確認。専用Interrupt Source→TargetではSourceが中断、Targetが完了、continuationが生成され、active executionは残らなかった。D-081 fixture rows and Section/planned-start/lifecycle were restored after same-tab reload and fresh authenticated tab.
+- Browser console logsはmain / fresh tabとも空（`0 errors / 0 warnings`）。Exact deployed Workerは`8ff2080f-afe6-48b9-a5ac-fdfba05d6a45`、nonprod varsは`RUNTIME_ENV=nonprod` / `BOOTSTRAP_ENABLED=false`。APP/AUTH read-only evidenceはquick `ok`、FK empty、APP/AUTH applied migrations `23/23`・`1/1`（pending `0 / 0`）、active execution `0`、duplicate positions empty、全成功query `rows_written=0`、APP placement revision `63`。
+- Real-local browserは`NOT_RUN`。migration regression helperはWindows/Wrangler log filesystem EPERM / 無出力状態を安全に中断したため`NOT_RUN`だが、D-081はschema / migration `NOT_REQUIRED`。production / restore / destructive cleanup / credential / bootstrap操作は行っていない。
