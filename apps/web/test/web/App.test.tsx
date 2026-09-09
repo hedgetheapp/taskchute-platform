@@ -1140,6 +1140,32 @@ describe("Dogfood Day shell", () => {
     });
   });
 
+  it("focuses an unresolved provisional Add row so I opens a child draft without a response", async () => {
+    const addA = deferred<unknown>();
+    mocks.loadDay.mockResolvedValue(emptyDay);
+    mocks.addTask.mockReturnValue(addA.promise);
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "MorningにTaskを追加" }));
+    const firstDraft = screen.getByRole("textbox", { name: "MorningのTask名" });
+    fireEvent.change(firstDraft, { target: { value: "D080 Pending Focus A" } });
+    fireEvent.keyDown(firstDraft, { key: "Enter" });
+
+    const rowTitle = await screen.findByText("D080 Pending Focus A");
+    const provisionalRow = rowTitle.closest<HTMLElement>("[data-entry-id]")!;
+    await waitFor(() => {
+      expect(provisionalRow.getAttribute("aria-busy")).toBe("true");
+      expect(document.activeElement).toBe(provisionalRow);
+    });
+    expect(mocks.addTask).toHaveBeenCalledTimes(1);
+
+    fireEvent.keyDown(provisionalRow, { key: "I" });
+    expect(await screen.findByRole("textbox", { name: "MorningのTask名" })).toBeTruthy();
+    expect(mocks.addTask).toHaveBeenCalledTimes(1);
+
+    addA.resolve({});
+  });
+
   it("chains I from provisional Add rows without waiting and preserves each stable anchor", async () => {
     const addA = deferred<unknown>();
     const addB = deferred<unknown>();
@@ -1160,10 +1186,10 @@ describe("Dogfood Day shell", () => {
     const entryA = mocks.addTask.mock.calls[0][0].entry_id as string;
     const taskA = mocks.addTask.mock.calls[0][0].task_id as string;
     const rowA = await screen.findByText("D080 Chain A");
-    expect(rowA.closest<HTMLElement>("[data-entry-id]")?.dataset.entryId).toBe(entryA);
-
-    rowA.closest<HTMLElement>("[data-entry-id]")!.focus();
-    fireEvent.keyDown(rowA.closest<HTMLElement>("[data-entry-id]")!, { key: "i" });
+    const provisionalRowA = rowA.closest<HTMLElement>("[data-entry-id]")!;
+    expect(provisionalRowA.dataset.entryId).toBe(entryA);
+    await waitFor(() => expect(document.activeElement).toBe(provisionalRowA));
+    fireEvent.keyDown(provisionalRowA, { key: "i" });
     const secondDraft = screen.getByRole("textbox", { name: "MorningのTask名" });
     fireEvent.change(secondDraft, { target: { value: "D080 Chain B" } });
     fireEvent.keyDown(secondDraft, { key: "Enter" });
@@ -1171,7 +1197,7 @@ describe("Dogfood Day shell", () => {
     expect(mocks.addTask).toHaveBeenCalledTimes(1);
 
     const rowB = screen.getByText("D080 Chain B").closest<HTMLElement>("[data-entry-id]")!;
-    rowB.focus();
+    await waitFor(() => expect(document.activeElement).toBe(rowB));
     fireEvent.keyDown(rowB, { key: "i" });
     const thirdDraft = screen.getByRole("textbox", { name: "MorningのTask名" });
     fireEvent.change(thirdDraft, { target: { value: "D080 Chain C" } });

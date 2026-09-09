@@ -2617,6 +2617,9 @@ export function App() {
     addFocusGenerationRef.current.set(operation.operation_id, focusGeneration);
     draftTaskRef.current = null;
     setDraftTask(null);
+    if (day.is_current && day.establishment_state === "established") {
+      setPendingFocusKey(focusKey({ kind: "entry", id: operation.entry_id }));
+    }
     setPendingAddTasks((current) => [...current, { operation, title, projectId: operation.project_id, sectionId: operation.section_id, estimateSeconds: null, modeId: operation.mode_id ?? null }]);
     if (projects.length === 0) {
       void Promise.resolve(api.loadProjects()).then((projection) => setProjects(projection.projects)).catch(() => { /* Keep Projectなし selectable; server validates dependent edits. */ });
