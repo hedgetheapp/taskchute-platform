@@ -2191,7 +2191,9 @@ The original D-080 rows remain historical evidence for the A/B/C/D chain, but th
 |---|---|---|---|
 | D082-WORKER-01 | Setting / checkpoint / auto-carry | setting owner scope、default OFF、CAS、exact replay / misuse、current Section interval、ordinary + Routine candidate、relative order、target cohort後置、Routine override、revision exactly once、reload projection | PASS; focused Worker `2 / 2` |
 | D082-REG-01 | Existing regressions | full Worker `25 files / 212 tests`; full Web `4 files / 256 tests`; typecheck / normal build / exact nonprod build / Wrangler nonprod dry-run / diff-check | PASS |
-| D082-MIG-01 | APP migration 0024 | migration helperはWindows/Wranglerの無出力・log filesystem EPERM状態を安全に中断 | NOT_RUN; APP migrationは実装済み、AUTH unchanged |
-| D082-ENV-01 | Persistent nonprod browser / Worker | authenticated Settings toggle、boundary trigger、carry結果、reload / fresh tab、console | NOT_RUN |
-| D082-DB-01 | Persistent nonprod read-only integrity | APP/AUTH quick check、FK、pending migrations、affected Entry / Routine override / placement revision / checkpoint、`rows_written=0` | NOT_RUN |
+| D082-MIG-01 | APP migration 0024 | remote APP apply succeeded; APP/AUTH migration lists report no pending migrations; local migration helperはWindows/Wranglerの無出力・log filesystem EPERM状態を安全に中断 | PASS remote apply / pending `0 / 0`; local helper NOT_RUN |
+| D082-ENV-01 | Persistent nonprod browser / Worker | authenticated Settings toggle、Morning fixtureのEvening carry、reload / fresh authenticated tab、server setting persistence | PASS; Worker `e9f79149-78c5-4a61-9cc6-bc5fe5aa30ea`; exact console counts NOT_VERIFIED |
+| D082-DB-01 | Persistent nonprod read-only integrity | APP/AUTH quick check、FK、pending migrations、fixture Entry / planned start / placement revision / checkpoint、active execution、position uniqueness、`rows_written=0` | PASS; APP revision `66`, setting ON, guards/assertions `0`, active execution `0` |
+| D082-SAFETY-01 | Deployment / bootstrap safety | nonprod root and unauthenticated API safety probes; bootstrap remains disabled | PASS root `GET /` `200`, unauth `GET /api/v1/projects` `401`; exact bootstrap `POST` NOT_RUN |
+| D082-BACKUP-01 | APP migration recovery boundary | Time Travel metadata/bookmark and existing private recovery artifact observed; no restore executed | PARTIAL evidence; full export and isolated recovery validation NOT_RUN |
 | D082-BOUNDARY-01 | Safety | current established Day only、no production / restore / destructive cleanup / credential / bootstrap / branch / PR / merge / tag / Release | PASS（未実施） |
