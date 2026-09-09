@@ -417,3 +417,12 @@ Mitigation / evidence:
 - Focused D080 tests, full Web/Worker suites, exact nonprod build/deploy, authenticated A/B/C/D chain, same/fresh-tab persistence, provisional `S` no-write, console `0 / 0`, and APP/AUTH read-only integrity passed. Browser natural-latency race timing was not observable; deferred tests remain the timing authority.
 
 D-080 remains current-Day only and introduces no API/domain/schema/migration/dependency/security change. Future/past/preview, lifecycle, reorder, move, delete, duplicate, Routine, bulk, offline persistence, multi-tab coordination, production, credential operations, bootstrap, restore, and destructive cleanup remain outside scope and `NOT_RUN`.
+## R-027 — D-080 immediate post-Enter focus handoff corrective
+
+The prior D-080 browser chain PASS did not prove that `I` was accepted while the parent Add was still unresolved. The Product Owner subsequently observed the exact gap: after Enter the row remained in `照合中` and could not immediately continue to `I`. The cause was a Web focus handoff omission in `commitDraft()`: the provisional row was rendered with a stable focus target, but `pendingFocusKey` was only set by the later Add success path.
+
+Corrective commit `98c9c39ac4f1ca7303b1c71c7c3d6f37f05f34f8` schedules the exact stable provisional Entry focus key at valid current established-Day commit time. The mandatory deferred regression proves DOM focus and child `I` acceptance while the parent promise remains unresolved, with no timer or Server wait. Existing focus-generation/no-rewind, parent dependency, failure/conflict cancellation, ambiguous retry, Section Move barrier, and provisional `S` no-write protections remain covered.
+
+Persistent nonprod observed the focused `保存中…` row immediately before each A/B/C `I`; natural latency was too fast to keep the parent pending in the post-action snapshot, so browser prolonged race timing remains `NOT_OBSERVED` and deferred tests are authoritative. Same-tab/fresh-tab persistence and console `0 / 0` passed. APP/AUTH quick checks and FK checks passed, migrations were pending `0 / 0`, and every successful audit query reported `rows_written=0`. The corrective migration helper was safely interrupted on Windows and is `NOT_RUN`; D-080 remains `MIGRATION_NOT_REQUIRED`.
+
+No API, Worker, Domain, schema, migration, dependency, binding, security, production, credential, bootstrap, restore, or destructive action was introduced or performed. Numeric browser viewport/zoom was not exposed by the connector and remains `NOT_AVAILABLE` for this evidence.

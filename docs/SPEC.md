@@ -480,3 +480,5 @@ Current established Dayのordinary planned Taskへ`I`でAdd draftをcommitした
 sent / retained parent requestのoperation identity、payload、placement intentは変更せず、後続draftで上書きしない。Add成功はexact rootだけをreconcileし、newer draftとfocusを消さない。deterministic failure / revision conflictは依存childと親anchor上のopen draftをcancelし、ambiguous outcomeは親のexact retry identityとdescendant subtreeをretainして後続dispatchをholdする。unsent dependent Addを親なしで独立送信しない。
 
 provisional rowには`aria-busy`とstable Entry identityを持つpending表示を出すが、`S`/lifecycle、reorder、move、delete、duplicate、Routine、bulk、actual-time操作はno-writeである。pending Section Moveなどplacement anchorを不安定化するbarrier中の`I`は受理しない。EscapeはAddを送信せずsource focusをrestoreする。既存のcurrent-Day D-074、future established-Day D-076、past / preview read-only境界は変更しない。Worker/API、schema、migration、dependency、security postureの変更はない。
+
+有効なcurrent established-Day Add draftのEnter commitでは、clientは親AddのServer responseを待たず、同じrender-safe focus handoffで確定したprovisional Entryをkeyboard focus targetにする。従って`保存中…`中でもそのrowへの`I`はchild draftを開ける。これはfocus timingの補正であり、Add placement、parent dependency、exact operation identity、retry / ambiguity、failure/conflict、future/past eligibilityの意味は変更しない。

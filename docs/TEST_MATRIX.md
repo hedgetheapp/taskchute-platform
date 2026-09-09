@@ -2145,3 +2145,23 @@ The connector-run pointer D&D result remains `NOT_VERIFIED` because its custom c
 | D080-DB-01 | Read-only APP/AUTH | quick check, FK, migration pending `0 / 0`, final IDs/order/planned starts, operation rows, active execution state, duplicate positions, all audit `rows_written=0` | PASS |
 | D080-CONSOLE-01 | Browser console | Persistent and fresh authenticated browser logs | PASS (`0 errors / 0 warnings`) |
 | D080-BOUNDARY-01 | Explicit non-goals | no API/Worker/schema/migration/dependency/security change; future/past/preview semantics unchanged; no production/credential/bootstrap/restore/destructive cleanup | PASS |
+
+## D-080 corrective — immediate post-Enter focus handoff
+
+The original D-080 rows remain historical evidence for the A/B/C/D chain, but they did not assert the exact unresolved-promise DOM focus boundary later reported by the Product Owner. The following corrective evidence closes that specific gap without erasing the prior record.
+
+| ID | Scope | Evidence | Result |
+|---|---|---|---|
+| D080-CORR-WEB-01 | Immediate provisional focus | Deferred `AddTaskToDay` promise remains unresolved after Enter; provisional `保存中…` row is focused without a manual `.focus()`; `I` opens child draft and parent request remains unresolved | PASS; new mandatory regression |
+| D080-CORR-WEB-02 | Deferred chain / no rewind | Existing A/B/C chain, focus-generation guards, and earlier-response no-focus-rewind remain green under deferred responses | PASS |
+| D080-CORR-WEB-03 | Safety boundaries | Deterministic failure/conflict cancellation, ambiguous exact retry, pending Section Move barrier, provisional `S` no-write, and unsafe provisional controls remain covered | PASS |
+| D080-CORR-REG-01 | Regression / build | Focused provisional Add `4 / 4`; full Web `4 files / 256`; full Worker/D1 `24 files / 207`; `test:all`, typecheck, normal build, exact nonprod build, Wrangler dry-run, `git diff --check` | PASS |
+| D080-CORR-ENV-01 | Deployed nonprod | Worker `cc940824-5d8e-4c90-88f8-20347fe0dff5`; `RUNTIME_ENV=nonprod`; `BOOTSTRAP_ENABLED=false`; existing authenticated session; no credential/bootstrap/production action | PASS |
+| D080-CORR-BROWSER-01 | Pending-row `I` | After each disposable A/B/C Enter, the browser visibly showed the focused provisional `保存中…` row; immediate `I` opened the next draft. Response latency was too fast to prove a prolonged browser race after the action | PASS for pending observation; `BROWSER_RACE_TIMING_NOT_OBSERVED` |
+| D080-CORR-PERSIST-01 | Persistence | Same-tab reload and fresh authenticated tab retained A → B → C; fresh tab remained authenticated without login | PASS |
+| D080-CORR-CONSOLE-01 | Console | Main and fresh persistent authenticated tabs | PASS; `0 errors / 0 warnings` |
+| D080-CORR-DB-01 | APP/AUTH integrity | APP/AUTH quick `ok`, FK empty, migration pending `0 / 0`, D080 positions `4/5/6`, placement revision `32`, active execution `0`, duplicate positions empty, coherent Add operation rows, every audit `rows_written=0` | PASS |
+| D080-CORR-MIG-01 | Migration helper | Corrective `npm run test:migrations` produced no output and was safely interrupted by the Windows/Wrangler helper | NOT_RUN; D-080 remains `MIGRATION_NOT_REQUIRED` |
+| D080-CORR-BOUNDARY-01 | Explicit non-goals | No API/Worker/schema/migration/dependency/security change; future/past behavior unchanged; no production/restore/destructive cleanup | PASS |
+
+The browser confirmed the required pending-row focus handoff, while deferred automated evidence remains authoritative for the unresolved-response timing race. Connector viewport/zoom metrics were not exposed and are `NOT_AVAILABLE` for this corrective.
