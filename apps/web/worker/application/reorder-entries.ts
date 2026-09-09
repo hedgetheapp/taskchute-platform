@@ -31,8 +31,10 @@ export async function reorderEntries(db: D1Database, appUserId: string, request:
     request.section_id ? db.prepare(`SELECT section_id AS id FROM taskchute_day_section_contexts
       WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id = ?`)
       .bind(appUserId, request.taskchute_day_id, request.section_id) : db.prepare("SELECT 1 AS id"),
-    db.prepare(`SELECT id, position, lifecycle_state, planned_start_minute FROM entries
-      WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id IS ? ORDER BY position, id`)
+    db.prepare(`SELECT e.id, e.position, e.lifecycle_state, e.planned_start_minute,
+        (SELECT MIN(x.started_at) FROM executions x WHERE x.app_user_id = e.app_user_id AND x.entry_id = e.id) AS first_started_at
+      FROM entries e
+      WHERE e.app_user_id = ? AND e.taskchute_day_id = ? AND e.section_id IS ? ORDER BY e.position, e.id`)
       .bind(appUserId, request.taskchute_day_id, request.section_id),
   ]);
   const convergedBeforeMutation = await readOperation(db, appUserId, request.operation_id);
@@ -40,7 +42,8 @@ export async function reorderEntries(db: D1Database, appUserId: string, request:
   const day = dayResult.results[0] as { placement_revision?: unknown } | undefined;
   if (!day || typeof day.placement_revision !== "number") return reject("resource_not_found", "TaskChuteDay is unavailable");
   if (sectionResult.results.length === 0) return reject("resource_not_found", "Section is unavailable");
-  type ReorderRow = { id: string; position: number; lifecycle_state: "planned" | "running" | "completed"; planned_start_minute: number | null };
+  type ReorderRow = { id: string; position: number; lifecycle_state: "planned" | "running" | "completed";
+    planned_start_minute: number | null; first_started_at: string | null };
   const currentEntries = entriesResult.results as ReorderRow[];
   if (request.section_id === null && currentEntries.some((entry) => entry.planned_start_minute !== null)) {
     return reject("resource_conflict", "Section-less Entries cannot have a planned start");
@@ -50,28 +53,36 @@ export async function reorderEntries(db: D1Database, appUserId: string, request:
   if (currentIds.length !== request.entry_ids.length || !request.entry_ids.every((id) => currentIds.includes(id))) {
     return reject("resource_conflict", "Reorder must contain every Entry in the Section exactly once");
   }
-  if (canonicalEntries.some((entry, index) => entry.lifecycle_state !== "planned" && request.entry_ids[index] !== entry.id)) {
-    return reject("resource_conflict", "Running or completed Entries must remain at their canonical positions");
-  }
-  let segment = 0;
-  const plannedSegments = new Map<string, number>();
-  const positionSegments: number[] = [];
-  for (const entry of canonicalEntries) {
-    positionSegments.push(segment);
-    if (entry.lifecycle_state === "planned") plannedSegments.set(entry.id, segment);
-    else segment += 1;
-  }
-  if (request.entry_ids.some((entryId, index) => {
-    const plannedSegment = plannedSegments.get(entryId);
-    return plannedSegment !== undefined && plannedSegment !== positionSegments[index];
-  })) return reject("resource_conflict", "Planned Entries cannot cross running or completed Entries");
   const entriesById = new Map(canonicalEntries.map((entry) => [entry.id, entry]));
-  if (request.entry_ids.some((entryId, index) => {
-    const requestedEntry = entriesById.get(entryId);
+  const historicalEntries = canonicalEntries.filter((entry) => entry.lifecycle_state !== "planned");
+  if (request.entry_ids.slice(0, historicalEntries.length).some((entryId, index) => entryId !== historicalEntries[index]?.id)) {
+    return reject("resource_conflict", "Running or completed Entries must remain in the execution-first group");
+  }
+  const cohortKey = (entry: ReorderRow) => entry.planned_start_minute === null ? "null" : String(entry.planned_start_minute);
+  const cohortSlots = new Map<string, number[]>();
+  for (const entry of currentEntries.filter((candidate) => candidate.lifecycle_state === "planned")) {
+    const slots = cohortSlots.get(cohortKey(entry)) ?? [];
+    slots.push(entry.position);
+    cohortSlots.set(cohortKey(entry), slots);
+  }
+  for (const slots of cohortSlots.values()) slots.sort((a, b) => a - b);
+  const cohortOffsets = new Map<string, number>();
+  const plannedTargets: Array<{ entry_id: string; target_position: number }> = [];
+  for (let index = historicalEntries.length; index < canonicalEntries.length; index += 1) {
     const canonicalSlot = canonicalEntries[index];
-    return canonicalSlot?.lifecycle_state === "planned"
-      && !isSamePlannedStartCohort(requestedEntry, canonicalSlot);
-  })) return reject("resource_conflict", "Manual Reorder cannot cross planned-start cohorts");
+    const requestedEntry = entriesById.get(request.entry_ids[index]);
+    if (!canonicalSlot || canonicalSlot.lifecycle_state !== "planned" || !requestedEntry
+      || requestedEntry.lifecycle_state !== "planned"
+      || !isSamePlannedStartCohort(requestedEntry, canonicalSlot)) {
+      return reject("resource_conflict", "Manual Reorder cannot cross planned-start cohorts");
+    }
+    const key = cohortKey(requestedEntry);
+    const offset = cohortOffsets.get(key) ?? 0;
+    const targetPosition = cohortSlots.get(key)?.[offset];
+    if (targetPosition === undefined) return reject("resource_conflict", "Manual Reorder cohort slots are unavailable");
+    cohortOffsets.set(key, offset + 1);
+    plannedTargets.push({ entry_id: requestedEntry.id, target_position: targetPosition });
+  }
   if (day.placement_revision !== request.expected_placement_revision) {
     return persistRejection(db, { appUserId, operationId: request.operation_id, commandType: "ReorderEntries", requestFingerprint,
       outcomeKind: "revision_conflict", result: { code: "revision_conflict", message: "The placement revision is stale" } });
@@ -81,9 +92,7 @@ export async function reorderEntries(db: D1Database, appUserId: string, request:
   const assertionId = `reorder:${request.operation_id}`;
   const now = new Date().toISOString();
   const cohortJson = JSON.stringify(currentEntries);
-  const plannedTargetsJson = JSON.stringify(currentEntries.flatMap((entry, index) => entry.lifecycle_state === "planned"
-    ? [{ entry_id: request.entry_ids[index], target_position: entry.position }]
-    : []));
+  const plannedTargetsJson = JSON.stringify(plannedTargets);
   const shiftOffset = Math.max(...currentEntries.map((entry) => entry.position), 0) + currentEntries.length + 1;
   try {
     const statements: D1PreparedStatement[] = [
@@ -162,8 +171,10 @@ export async function reorderEntries(db: D1Database, appUserId: string, request:
       const [latestDay, latestEntries] = await db.batch([
         db.prepare("SELECT placement_revision FROM taskchute_days WHERE app_user_id = ? AND id = ?")
           .bind(appUserId, request.taskchute_day_id),
-        db.prepare(`SELECT id, position, lifecycle_state, planned_start_minute FROM entries
-          WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id IS ? ORDER BY position, id`)
+        db.prepare(`SELECT e.id, e.position, e.lifecycle_state, e.planned_start_minute,
+            (SELECT MIN(x.started_at) FROM executions x WHERE x.app_user_id = e.app_user_id AND x.entry_id = e.id) AS first_started_at
+          FROM entries e
+          WHERE e.app_user_id = ? AND e.taskchute_day_id = ? AND e.section_id IS ? ORDER BY e.position, e.id`)
           .bind(appUserId, request.taskchute_day_id, request.section_id),
       ]);
       if ((latestDay.results[0] as { placement_revision?: unknown } | undefined)?.placement_revision

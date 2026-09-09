@@ -545,3 +545,9 @@ Child Addは親operation IDへ依存するpending intentとして保持し、親
 provisional rowではsafeなProject / Section / estimate操作と`I`だけを有効化し、`S`はactive canonical Entryを持たないためwriteしない。pending Section Moveのようにanchorを不安定化するplacement barrierがある場合はchild draftを開かない。`保存中 n件`はpending Add operation / dependent logical intentを一度だけ数え、layout shift・focus steal・ghost rowを起こさない。既存のD-066 serial dispatch、D-074 insertion、D-076 future boundary、retry / unload barrierを再利用し、API / Worker / storageは変更しない。
 
 D-080 correctiveでは、valid current established-Day draftのEnter commit直後に、そのcommitで確定したstable provisional Entryの`focusKey`をpending focus targetへ登録する。したがってrowの`保存中…` / `照合中…`表示や親Addの未解決状態は`I`のkeyboard transitionをblockせず、child draftは親response前に開ける。後続reconcileによるfocus steal防止、focus generation、sent exact request、dependent failure / ambiguity境界は従来どおり維持する。
+
+## D-081 actual Section and execution-first Day presentation
+
+Start / Interruptのactual Sectionは、Webが送る表示上のSectionではなく、Workerがestablished DayへfreezeしたSection intervalとServer actual instantから解決する。Start requestはcurrent established Dayのplacement revisionを持ち、same-Sectionなら不要なphysical move / revision incrementを避ける。cross-Section / SectionなしならEntry Section、unique physical position、lifecycle、Execution、snapshot、operation resultを一つのatomic command outcomeとして確定し、planned startは元の値を維持する。sent operationのidentity / payloadと既存retry・ambiguity boundaryは変更しない。
+
+Day projectionの表示順はphysical `position`をそのまま行順とはせず、Section順、actual Execution start順のhistorical group、D-043 planned-start / manual-position順のplanned groupからderiveする。Reorderはhistorical rowsを固定し、planned cohortの既存physical slotsだけを入れ替えるため、display indexを永続positionへ直接写像しない。Interrupt continuationは通常planned rowとしてinterrupt minute cohortのtailへ置き、target Bのactual Section moveを同じatomic placement boundaryへ含める。D-043 planned同期とD-078 / D-079 queue safetyをこのprojectionへ整合させる。

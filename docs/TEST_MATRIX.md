@@ -2164,4 +2164,17 @@ The original D-080 rows remain historical evidence for the A/B/C/D chain, but th
 | D080-CORR-MIG-01 | Migration helper | Corrective `npm run test:migrations` produced no output and was safely interrupted by the Windows/Wrangler helper | NOT_RUN; D-080 remains `MIGRATION_NOT_REQUIRED` |
 | D080-CORR-BOUNDARY-01 | Explicit non-goals | No API/Worker/schema/migration/dependency/security change; future/past behavior unchanged; no production/restore/destructive cleanup | PASS |
 
+## D-081 Actual-Section Start + execution-first Day Table
+
+| ID | Scope | Evidence | Result |
+|---|---|---|---|
+| D081-WORKER-01 | StartEntry actual Section | same / cross / Sectionなし Start、planned start保持、frozen interval境界、required stale revision、no-context fail-safe、replay / misuse / active collision | PASS; focused Worker coverage |
+| D081-PROJECTION-01 | Execution-first order | Section order、historical actual start ASC、stable tie-break、planned start / position order、Next / forecast planned-only、reload-compatible projection | PASS; focused Worker coverage |
+| D081-REORDER-01 | D-078 compatibility | historical physical positions unchanged、planned cohort slots reuse、cohort crossing / historical crossing reject、D-078 repeated queue regression | PASS; focused Worker coverage |
+| D081-INTERRUPT-01 | D-073 compatibility | target actual Section / planned start保持、continuation ordinary cohort tail、no B-direct-after special、atomic revision / replay | PASS; focused Worker coverage |
+| D081-REG-01 | Existing regressions | full Worker `24 files / 210 tests`; full Web / build / typecheck / nonprod dry-run | PARTIAL; typecheck and Worker PASS, remaining local gates pending |
+| D081-ENV-01 | Persistent nonprod | exact nonprod deploy, current / cross / Sectionなし Start, execution-first order, reload / fresh tab, console | NOT_RUN |
+| D081-DB-01 | Read-only integrity | APP/AUTH quick check, FK, pending migrations `0 / 0`, affected rows / operations, active execution, position uniqueness, `rows_written=0` | NOT_RUN |
+| D081-BOUNDARY-01 | Safety | no production, credentials, bootstrap, restore, destructive cleanup, branch / PR / merge / tag / Release | NOT_RUN / NOT_REQUIRED |
+
 The browser confirmed the required pending-row focus handoff, while deferred automated evidence remains authoritative for the unresolved-response timing race. Connector viewport/zoom metrics were not exposed and are `NOT_AVAILABLE` for this corrective.

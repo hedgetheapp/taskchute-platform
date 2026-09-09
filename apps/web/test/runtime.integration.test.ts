@@ -911,21 +911,18 @@ describe.sequential("production runtime bootstrap slice", () => {
 
     const entryId = reorderedIds[0];
     const executionId = uuidv7();
-    const nonCanonical = await browser.post(`/api/v1/entries/${entryId}/start`, {
-      operation_id: uuidv7(), entry_id: entryId, execution_id: uuidv7(),
+    const startWithRevision = await browser.post(`/api/v1/entries/${entryId}/start`, {
+      operation_id: uuidv7(), entry_id: entryId, execution_id: executionId,
       expected_placement_revision: before.placement_revision + 1,
     });
-    expect(nonCanonical.status).toBe(400);
-    expect((await json<{ error: { code: string } }>(nonCanonical)).error.code).toBe("malformed_request");
+    expect(startWithRevision.status).toBe(200);
     const mismatch = await browser.post(`/api/v1/entries/${reorderedIds[1]}/start`, {
       operation_id: uuidv7(), entry_id: entryId, execution_id: executionId,
     });
     expect(mismatch.status).toBe(400);
     expect((await json<{ error: { code: string } }>(mismatch)).error.code).toBe("malformed_request");
 
-    const started = await browser.post(`/api/v1/entries/${entryId}/start`, {
-      operation_id: uuidv7(), entry_id: entryId, execution_id: executionId,
-    });
+    const started = startWithRevision;
     expect(started.status).toBe(200);
     expect(await json<object>(started)).toMatchObject({ entry_id: entryId, lifecycle_state: "running",
       execution: { id: executionId, entry_id: entryId, ended_at: null } });

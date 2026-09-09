@@ -76,6 +76,69 @@ async function revision(dayId: string) {
 }
 
 describe.sequential("Dogfood Day B2 planned start", () => {
+  it("D-081 resolves actual Section at Start, preserves planned start, and keeps same-Section placement stable", async () => {
+    const cross = await seedTimedDay();
+    const crossEntry = await addEntry(cross.userId, cross.dayId, cross.sectionIds[0]!, 1, "planned", 510);
+    const crossStart = await startEntry(env.APP_DB, cross.userId, {
+      operation_id: uuidv7(), entry_id: crossEntry, execution_id: uuidv7(), expected_placement_revision: 0,
+    }, "2026-08-28T10:00:00.000Z");
+    expect(crossStart).toMatchObject({ section_id: cross.sectionIds[1], placement_revision: 1, lifecycle_state: "running" });
+    expect(await env.APP_DB.prepare("SELECT section_id, planned_start_minute, position FROM entries WHERE id = ?")
+      .bind(crossEntry).first()).toMatchObject({ section_id: cross.sectionIds[1], planned_start_minute: 510 });
+
+    const same = await seedTimedDay();
+    const sameEntry = await addEntry(same.userId, same.dayId, same.sectionIds[1]!, 7, "planned", 600);
+    const sameStart = await startEntry(env.APP_DB, same.userId, {
+      operation_id: uuidv7(), entry_id: sameEntry, execution_id: uuidv7(), expected_placement_revision: 0,
+    }, "2026-08-28T12:00:00.000Z");
+    expect(sameStart).toMatchObject({ section_id: same.sectionIds[1], placement_revision: null, lifecycle_state: "running" });
+    expect(await revision(same.dayId)).toBe(0);
+    expect(await env.APP_DB.prepare("SELECT section_id, planned_start_minute, position FROM entries WHERE id = ?")
+      .bind(sameEntry).first()).toEqual({ section_id: same.sectionIds[1], planned_start_minute: 600, position: 7 });
+
+    const sectionless = await seedTimedDay();
+    const sectionlessEntry = await addEntry(sectionless.userId, sectionless.dayId, null, 1);
+    const sectionlessStart = await startEntry(env.APP_DB, sectionless.userId, {
+      operation_id: uuidv7(), entry_id: sectionlessEntry, execution_id: uuidv7(), expected_placement_revision: 0,
+    }, "2026-08-28T12:00:00.000Z");
+    expect(sectionlessStart).toMatchObject({ section_id: sectionless.sectionIds[1], placement_revision: 1, lifecycle_state: "running" });
+    expect(await env.APP_DB.prepare("SELECT section_id, planned_start_minute FROM entries WHERE id = ?")
+      .bind(sectionlessEntry).first()).toEqual({ section_id: sectionless.sectionIds[1], planned_start_minute: null });
+  });
+
+  it("D-081 projects execution-first order and reuses only planned cohort position slots", async () => {
+    const fixture = await seedTimedDay();
+    const ids = [
+      await addEntry(fixture.userId, fixture.dayId, fixture.sectionIds[0]!, 10, "planned", 480),
+      await addEntry(fixture.userId, fixture.dayId, fixture.sectionIds[0]!, 20, "completed"),
+      await addEntry(fixture.userId, fixture.dayId, fixture.sectionIds[0]!, 30, "planned", 480),
+      await addEntry(fixture.userId, fixture.dayId, fixture.sectionIds[0]!, 40, "running"),
+      await addEntry(fixture.userId, fixture.dayId, fixture.sectionIds[0]!, 50, "planned", 480),
+    ];
+    await env.APP_DB.batch([
+      env.APP_DB.prepare(`INSERT INTO executions (id, app_user_id, entry_id, started_at, ended_at, created_at)
+        VALUES (?, ?, ?, '2026-08-28T06:00:00.000Z', '2026-08-28T06:10:00.000Z', ?)`)
+        .bind(uuidv7(), fixture.userId, ids[1], createdAt),
+      env.APP_DB.prepare(`INSERT INTO executions (id, app_user_id, entry_id, started_at, ended_at, created_at)
+        VALUES (?, ?, ?, '2026-08-28T08:00:00.000Z', NULL, ?)`)
+        .bind(uuidv7(), fixture.userId, ids[3], createdAt),
+    ]);
+    const before = await loadCurrentTaskChuteDay(env.APP_DB, fixture.userId, "2026-08-28T12:00:00.000Z");
+    expect(before.sections[0]?.entries.map((entry) => entry.id)).toEqual([ids[1], ids[3], ids[0], ids[2], ids[4]]);
+    const requested = [ids[1]!, ids[3]!, ids[4]!, ids[2]!, ids[0]!];
+    await expect(reorderEntries(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), taskchute_day_id: fixture.dayId, section_id: fixture.sectionIds[0]!,
+      entry_ids: requested, expected_placement_revision: 0,
+    })).resolves.toMatchObject({ placement_revision: 1 });
+    expect((await env.APP_DB.prepare("SELECT id, position FROM entries WHERE id IN (?, ?, ?, ?, ?) ORDER BY position")
+      .bind(...ids).all()).results).toEqual([
+      { id: ids[4], position: 10 }, { id: ids[1], position: 20 }, { id: ids[2], position: 30 },
+      { id: ids[3], position: 40 }, { id: ids[0], position: 50 },
+    ]);
+    const after = await loadCurrentTaskChuteDay(env.APP_DB, fixture.userId, "2026-08-28T12:00:00.000Z");
+    expect(after.sections[0]?.entries.map((entry) => entry.id)).toEqual(requested);
+  });
+
   it("uses extended wall-clock boundaries, derives Section placement, clears, and replays exactly once", async () => {
     const { userId, dayId, sectionIds } = await seedTimedDay();
     const entryId = await addEntry(userId, dayId, null, 1);
@@ -153,9 +216,9 @@ describe.sequential("Dogfood Day B2 planned start", () => {
     ];
     const projection = await loadCurrentTaskChuteDay(env.APP_DB, userId, "2026-08-28T12:00:00.000Z");
     expect(projection.sections[0]?.entries.map((entry) => entry.id)).toEqual([
-      ids[1], ids[0], ids[2], ids[4], ids[3], ids[5],
+      ids[2], ids[1], ids[4], ids[3], ids[5], ids[0],
     ]);
-    expect(projection.sections[0]?.entries.map((entry) => entry.planned_start_minute)).toEqual([null, 480, null, null, 450, 450]);
+    expect(projection.sections[0]?.entries.map((entry) => entry.planned_start_minute)).toEqual([null, null, null, 450, 450, 480]);
     expect(projection.next_entry?.id).toBe(ids[1]);
   });
 
@@ -169,7 +232,7 @@ describe.sequential("Dogfood Day B2 planned start", () => {
     const initial = (await loadCurrentTaskChuteDay(env.APP_DB, userId, "2026-08-28T12:00:00.000Z"))
       .sections[0]!.entries.map((entry) => entry.id);
     const nullSwap = [...initial];
-    [nullSwap[0], nullSwap[1]] = [nullSwap[1]!, nullSwap[0]!];
+    [nullSwap[1], nullSwap[2]] = [nullSwap[2]!, nullSwap[1]!];
     expect((await reorderEntries(env.APP_DB, userId, { operation_id: uuidv7(), taskchute_day_id: dayId,
       section_id: sectionIds[0]!, entry_ids: nullSwap, expected_placement_revision: 0 })).placement_revision).toBe(1);
     const sameSwap = [...nullSwap];
@@ -181,7 +244,7 @@ describe.sequential("Dogfood Day B2 planned start", () => {
     const before = await env.APP_DB.prepare("SELECT id, position FROM entries WHERE taskchute_day_id = ? ORDER BY position")
       .bind(dayId).all();
     const badCohort = [...sameSwap];
-    [badCohort[1], badCohort[3]] = [badCohort[3]!, badCohort[1]!];
+    [badCohort[2], badCohort[3]] = [badCohort[3]!, badCohort[2]!];
     const badHistory = [...sameSwap];
     [badHistory[2], badHistory[3]] = [badHistory[3]!, badHistory[2]!];
     for (const [ids, rev] of [[badCohort, 2], [badHistory, 2], [sameSwap, 1]] as const) {
@@ -207,9 +270,10 @@ describe.sequential("Dogfood Day B2 planned start", () => {
       expected_placement_revision: 0 })).rejects.toMatchObject({ code: "revision_conflict" });
 
     const earlyEntry = await addEntry(userId, dayId, sectionIds[2]!, 1, "planned", 1620);
-    const result = await startEntry(env.APP_DB, userId, { operation_id: uuidv7(), entry_id: earlyEntry, execution_id: uuidv7() });
+    const result = await startEntry(env.APP_DB, userId, { operation_id: uuidv7(), entry_id: earlyEntry, execution_id: uuidv7(),
+      expected_placement_revision: 1 }, "2026-08-28T12:00:00.000Z");
     expect(result).toMatchObject({ lifecycle_state: "running" });
-    expect(await revision(dayId)).toBe(1);
+    expect(await revision(dayId)).toBe(2);
 
     const sectionlessFixture = await seedTimedDay();
     const sectionless = await addEntry(sectionlessFixture.userId, sectionlessFixture.dayId, null, 1);

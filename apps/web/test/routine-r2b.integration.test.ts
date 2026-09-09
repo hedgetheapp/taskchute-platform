@@ -212,7 +212,7 @@ describe.sequential("Routine R2B Board", () => {
     if (!entry) throw new Error("missing materialized Routine entry");
     const started = await startEntry(env.APP_DB, fixture.userId, {
       operation_id: uuidv7(), entry_id: entry.id, execution_id: uuidv7(),
-    });
+    }, now);
     await completeEntry(env.APP_DB, fixture.userId, {
       operation_id: uuidv7(), entry_id: entry.id, execution_id: started.execution.id,
     });

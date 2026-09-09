@@ -9,8 +9,10 @@ const userId = uuidv7();
 const otherUserId = uuidv7();
 const dayId = uuidv7();
 const sectionId = uuidv7();
+const configurationVersionId = uuidv7();
 const entryIds = [uuidv7(), uuidv7(), uuidv7(), uuidv7(), uuidv7(), uuidv7()];
 const taskIds = entryIds.map(() => uuidv7());
+const startInstant = "2026-08-22T12:00:00.000Z";
 
 async function revision(): Promise<number> {
   const value = await env.APP_DB.prepare("SELECT placement_revision FROM taskchute_days WHERE id = ?").bind(dayId).first<number>("placement_revision");
@@ -40,14 +42,23 @@ beforeAll(async () => {
     env.APP_DB.prepare("INSERT INTO app_users (id, created_at) VALUES (?, ?)").bind(otherUserId, now),
     env.APP_DB.prepare("INSERT INTO user_settings (app_user_id, timezone, day_boundary_minutes, updated_at) VALUES (?, 'UTC', 0, ?)").bind(userId, now),
     env.APP_DB.prepare("INSERT INTO sections (id, app_user_id, title, sort_order, created_at) VALUES (?, ?, 'Lifecycle', 0, ?)").bind(sectionId, userId, now),
+    env.APP_DB.prepare("INSERT INTO section_configuration_versions (id, app_user_id, day_boundary_minutes, created_at) VALUES (?, ?, 0, ?)")
+      .bind(configurationVersionId, userId, now),
+    env.APP_DB.prepare(`INSERT INTO section_configuration_items
+      (app_user_id, configuration_version_id, section_id, title, logical_start_minute, logical_end_minute, configuration_order)
+      VALUES (?, ?, ?, 'Lifecycle', 0, 1440, 0)`)
+      .bind(userId, configurationVersionId, sectionId),
+    env.APP_DB.prepare("INSERT INTO section_configuration_heads (app_user_id, configuration_version_id) VALUES (?, ?)")
+      .bind(userId, configurationVersionId),
     env.APP_DB.prepare(`INSERT INTO taskchute_days
       (id, app_user_id, logical_date, start_instant, end_instant, establishment_timezone, establishment_boundary_minutes,
        establishment_disambiguation, placement_revision, created_at)
       VALUES (?, ?, '2026-08-22', '2026-08-22T00:00:00.000Z', '2026-08-23T00:00:00.000Z', 'UTC', 0, 'compatible', 0, ?)`)
       .bind(dayId, userId, now),
     env.APP_DB.prepare(`INSERT INTO taskchute_day_section_contexts
-      (app_user_id, taskchute_day_id, section_id, title, context_order) VALUES (?, ?, ?, 'Lifecycle', 0)`)
-      .bind(userId, dayId, sectionId),
+      (app_user_id, taskchute_day_id, section_id, configuration_version_id, title, logical_start_minute, logical_end_minute,
+       actual_start_instant, actual_end_instant, context_order) VALUES (?, ?, ?, ?, 'Lifecycle', 0, 1440, ?, ?, 0)`)
+      .bind(userId, dayId, sectionId, configurationVersionId, "2026-08-22T00:00:00.000Z", "2026-08-23T00:00:00.000Z"),
     ...taskIds.map((taskId, index) => env.APP_DB.prepare("INSERT INTO tasks (id, app_user_id, title, created_at) VALUES (?, ?, ?, ?)")
       .bind(taskId, userId, `Lifecycle task ${index + 1}`, now)),
     ...entryIds.map((entryId, index) => env.APP_DB.prepare(`INSERT INTO entries
@@ -122,21 +133,35 @@ describe.sequential("ordering and lifecycle increment", () => {
 
   it("reorders 64 Entries with a constant eight-statement mutation batch", async () => {
     const largeSectionId = uuidv7();
+    const largeDayId = uuidv7();
+    const largeConfigurationVersionId = uuidv7();
     const now = "2026-08-22T01:00:00.000Z";
     const largeEntries = Array.from({ length: 64 }, () => ({ taskId: uuidv7(), entryId: uuidv7() }));
     await env.APP_DB.batch([
       env.APP_DB.prepare("INSERT INTO sections (id, app_user_id, title, sort_order, created_at) VALUES (?, ?, 'Large', 1, ?)")
         .bind(largeSectionId, userId, now),
+      env.APP_DB.prepare("INSERT INTO section_configuration_versions (id, app_user_id, day_boundary_minutes, created_at) VALUES (?, ?, 0, ?)")
+        .bind(largeConfigurationVersionId, userId, now),
+      env.APP_DB.prepare(`INSERT INTO section_configuration_items
+        (app_user_id, configuration_version_id, section_id, title, logical_start_minute, logical_end_minute, configuration_order)
+        VALUES (?, ?, ?, 'Large', 0, 1440, 1)`)
+        .bind(userId, largeConfigurationVersionId, largeSectionId),
+      env.APP_DB.prepare(`INSERT INTO taskchute_days
+        (id, app_user_id, logical_date, start_instant, end_instant, establishment_timezone,
+         establishment_boundary_minutes, establishment_disambiguation, placement_revision, created_at)
+        VALUES (?, ?, '2026-08-24', '2026-08-24T00:00:00.000Z', '2026-08-25T00:00:00.000Z', 'UTC', 0, 'compatible', 0, ?)`)
+        .bind(largeDayId, userId, now),
       env.APP_DB.prepare(`INSERT INTO taskchute_day_section_contexts
-        (app_user_id, taskchute_day_id, section_id, title, context_order) VALUES (?, ?, ?, 'Large', 1)`)
-        .bind(userId, dayId, largeSectionId),
+        (app_user_id, taskchute_day_id, section_id, configuration_version_id, title, logical_start_minute, logical_end_minute,
+         actual_start_instant, actual_end_instant, context_order) VALUES (?, ?, ?, ?, 'Large', 0, 1440, ?, ?, 1)`)
+        .bind(userId, largeDayId, largeSectionId, largeConfigurationVersionId, "2026-08-24T00:00:00.000Z", "2026-08-25T00:00:00.000Z"),
       ...largeEntries.flatMap(({ taskId, entryId }, index) => [
         env.APP_DB.prepare("INSERT INTO tasks (id, app_user_id, title, created_at) VALUES (?, ?, ?, ?)")
           .bind(taskId, userId, `Large task ${index + 1}`, now),
         env.APP_DB.prepare(`INSERT INTO entries
           (id, app_user_id, task_id, taskchute_day_id, section_id, position, lifecycle_state, created_at)
           VALUES (?, ?, ?, ?, ?, ?, 'planned', ?)`)
-          .bind(entryId, userId, taskId, dayId, largeSectionId, index + 1, now),
+          .bind(entryId, userId, taskId, largeDayId, largeSectionId, index + 1, now),
       ]),
     ]);
     const requested = largeEntries.map((item) => item.entryId).reverse();
@@ -153,13 +178,15 @@ describe.sequential("ordering and lifecycle increment", () => {
         return typeof value === "function" ? value.bind(target) : value;
       },
     });
-    const expectedRevision = await revision();
-    const result = await reorderEntries(countingDb, userId, { operation_id: uuidv7(), taskchute_day_id: dayId,
+    const expectedRevision = await env.APP_DB.prepare("SELECT placement_revision FROM taskchute_days WHERE id = ?")
+      .bind(largeDayId).first<number>("placement_revision");
+    if (expectedRevision === null) throw new Error("missing large fixture day");
+    const result = await reorderEntries(countingDb, userId, { operation_id: uuidv7(), taskchute_day_id: largeDayId,
       section_id: largeSectionId, entry_ids: requested, expected_placement_revision: expectedRevision });
     expect(mutationStatementCount).toBe(8);
     expect(result.placement_revision).toBe(expectedRevision + 1);
     expect((await env.APP_DB.prepare("SELECT id FROM entries WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id = ? ORDER BY position")
-      .bind(userId, dayId, largeSectionId).all<{ id: string }>()).results.map((row) => row.id)).toEqual(requested);
+      .bind(userId, largeDayId, largeSectionId).all<{ id: string }>()).results.map((row) => row.id)).toEqual(requested);
     expect(new Set(requested)).toEqual(new Set(largeEntries.map((item) => item.entryId)));
   });
 
@@ -168,9 +195,9 @@ describe.sequential("ordering and lifecycle increment", () => {
     const next = (await loadCurrentTaskChuteDay(env.APP_DB, userId, "2026-08-22T12:00:00.000Z")).next_entry?.id;
     const entryId = entryIds.find((id) => id !== next)!;
     const request = { operation_id: uuidv7(), entry_id: entryId, execution_id: uuidv7() };
-    const result = await startEntry(env.APP_DB, userId, request);
-    expect(await startEntry(env.APP_DB, userId, request)).toEqual(result);
-    await expect(startEntry(env.APP_DB, userId, { ...request, entry_id: entryIds.find((id) => id !== entryId)! }))
+    const result = await startEntry(env.APP_DB, userId, request, startInstant);
+    expect(await startEntry(env.APP_DB, userId, request, startInstant)).toEqual(result);
+    await expect(startEntry(env.APP_DB, userId, { ...request, entry_id: entryIds.find((id) => id !== entryId)! }, startInstant))
       .rejects.toMatchObject({ code: "operation_id_misuse" });
     expect(result.execution.entry_id).toBe(entryId);
     expect(await revision()).toBe(before);
@@ -180,7 +207,7 @@ describe.sequential("ordering and lifecycle increment", () => {
   });
 
   it("enforces one active Execution in both command behavior and the database", async () => {
-    await expect(startEntry(env.APP_DB, userId, { operation_id: uuidv7(), entry_id: entryIds[0], execution_id: uuidv7() }))
+    await expect(startEntry(env.APP_DB, userId, { operation_id: uuidv7(), entry_id: entryIds[0], execution_id: uuidv7() }, startInstant))
       .rejects.toMatchObject({ status: 409, code: "resource_conflict" });
     await expect(env.APP_DB.prepare(`INSERT INTO executions (id, app_user_id, entry_id, started_at, created_at)
       VALUES (?, ?, ?, ?, ?)` ).bind(uuidv7(), userId, entryIds[0], new Date().toISOString(), new Date().toISOString()).run()).rejects.toBeTruthy();
@@ -204,30 +231,30 @@ describe.sequential("ordering and lifecycle increment", () => {
     expect((await loadCurrentTaskChuteDay(env.APP_DB, userId, "2026-08-22T12:00:00.000Z")).active_execution).toBeNull();
     await expect(completeEntry(env.APP_DB, userId, { ...request, operation_id: uuidv7() }))
       .rejects.toMatchObject({ status: 409, code: "resource_conflict" });
-    await expect(startEntry(env.APP_DB, userId, { operation_id: uuidv7(), entry_id: request.entry_id, execution_id: uuidv7() }))
+    await expect(startEntry(env.APP_DB, userId, { operation_id: uuidv7(), entry_id: request.entry_id, execution_id: uuidv7() }, startInstant))
       .rejects.toMatchObject({ status: 409, code: "resource_conflict" });
   });
 
   it("converges synchronized same-operation Starts to one Execution and exact replay", async () => {
-    const plannedEntry = await env.APP_DB.prepare("SELECT id FROM entries WHERE app_user_id = ? AND lifecycle_state = 'planned' ORDER BY position LIMIT 1")
-      .bind(userId).first<string>("id");
+    const plannedEntry = await env.APP_DB.prepare("SELECT id FROM entries WHERE app_user_id = ? AND taskchute_day_id = ? AND lifecycle_state = 'planned' ORDER BY position LIMIT 1")
+      .bind(userId, dayId).first<string>("id");
     if (!plannedEntry) throw new Error("missing planned fixture");
     const request = { operation_id: uuidv7(), entry_id: plannedEntry, execution_id: uuidv7() };
-    const [left, right] = await Promise.all([startEntry(env.APP_DB, userId, request), startEntry(env.APP_DB, userId, request)]);
+    const [left, right] = await Promise.all([startEntry(env.APP_DB, userId, request, startInstant), startEntry(env.APP_DB, userId, request, startInstant)]);
     expect(left).toEqual(right);
     expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM executions WHERE id = ?").bind(request.execution_id).first<number>("count")).toBe(1);
     await completeEntry(env.APP_DB, userId, { operation_id: uuidv7(), entry_id: request.entry_id, execution_id: request.execution_id });
   });
 
   it("keeps injected Start and Complete failures ambiguous and atomic", async () => {
-    const plannedEntry = await env.APP_DB.prepare("SELECT id FROM entries WHERE app_user_id = ? AND lifecycle_state = 'planned' ORDER BY id LIMIT 1")
-      .bind(userId).first<string>("id");
+    const plannedEntry = await env.APP_DB.prepare("SELECT id FROM entries WHERE app_user_id = ? AND taskchute_day_id = ? AND lifecycle_state = 'planned' ORDER BY id LIMIT 1")
+      .bind(userId, dayId).first<string>("id");
     if (!plannedEntry) throw new Error("missing planned fixture");
     const startRequest = { operation_id: uuidv7(), entry_id: plannedEntry, execution_id: uuidv7() };
-    await expect(startEntry(failingMutationBatch(env.APP_DB), userId, startRequest)).rejects.toMatchObject({ code: "infrastructure_ambiguous" });
+    await expect(startEntry(failingMutationBatch(env.APP_DB), userId, startRequest, startInstant)).rejects.toMatchObject({ code: "infrastructure_ambiguous" });
     expect(await env.APP_DB.prepare("SELECT lifecycle_state FROM entries WHERE id = ?").bind(startRequest.entry_id).first<string>("lifecycle_state")).toBe("planned");
     expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM executions WHERE id = ?").bind(startRequest.execution_id).first<number>("count")).toBe(0);
-    await startEntry(env.APP_DB, userId, startRequest);
+    await startEntry(env.APP_DB, userId, startRequest, startInstant);
     const completeRequest = { operation_id: uuidv7(), entry_id: startRequest.entry_id, execution_id: startRequest.execution_id };
     await expect(completeEntry(failingMutationBatch(env.APP_DB), userId, completeRequest)).rejects.toMatchObject({ code: "infrastructure_ambiguous" });
     expect(await env.APP_DB.prepare("SELECT ended_at FROM executions WHERE id = ?").bind(startRequest.execution_id).first<string | null>("ended_at")).toBeNull();
@@ -235,11 +262,11 @@ describe.sequential("ordering and lifecycle increment", () => {
   });
 
   it("allows exactly one synchronized competing Start and converges same-operation Complete", async () => {
-    const planned = (await env.APP_DB.prepare("SELECT id FROM entries WHERE app_user_id = ? AND lifecycle_state = 'planned' ORDER BY position LIMIT 2")
-      .bind(userId).all<{ id: string }>()).results;
+    const planned = (await env.APP_DB.prepare("SELECT id FROM entries WHERE app_user_id = ? AND taskchute_day_id = ? AND lifecycle_state = 'planned' ORDER BY position LIMIT 2")
+      .bind(userId, dayId).all<{ id: string }>()).results;
     expect(planned).toHaveLength(2);
     const starts = planned.map((row) => ({ operation_id: uuidv7(), entry_id: row.id, execution_id: uuidv7() }));
-    const settled = await Promise.allSettled(starts.map((request) => startEntry(env.APP_DB, userId, request)));
+    const settled = await Promise.allSettled(starts.map((request) => startEntry(env.APP_DB, userId, request, startInstant)));
     expect(settled.filter((item) => item.status === "fulfilled")).toHaveLength(1);
     expect(settled.filter((item) => item.status === "rejected")).toHaveLength(1);
     const winner = settled.find((item): item is PromiseFulfilledResult<Awaited<ReturnType<typeof startEntry>>> => item.status === "fulfilled")!.value;
@@ -257,7 +284,7 @@ describe.sequential("ordering and lifecycle increment", () => {
     expect(planned.length).toBeGreaterThanOrEqual(2);
     expect(before.next_entry?.id).toBe(planned[0].id);
     const executionId = uuidv7();
-    await startEntry(env.APP_DB, userId, { operation_id: uuidv7(), entry_id: planned[0].id, execution_id: executionId });
+    await startEntry(env.APP_DB, userId, { operation_id: uuidv7(), entry_id: planned[0].id, execution_id: executionId }, startInstant);
     const running = await loadCurrentTaskChuteDay(env.APP_DB, userId, "2026-08-22T12:00:00.000Z");
     expect(running.next_entry?.id).toBe(planned[1].id);
     await completeEntry(env.APP_DB, userId, { operation_id: uuidv7(), entry_id: planned[0].id, execution_id: executionId });
@@ -270,7 +297,7 @@ describe.sequential("ordering and lifecycle increment", () => {
       .bind(userId, dayId).first<string>("id");
     if (!priorDayEntry) throw new Error("missing prior-day planned Entry");
     const executionId = uuidv7();
-    const started = await startEntry(env.APP_DB, userId, { operation_id: uuidv7(), entry_id: priorDayEntry, execution_id: executionId });
+    const started = await startEntry(env.APP_DB, userId, { operation_id: uuidv7(), entry_id: priorDayEntry, execution_id: executionId }, startInstant);
     const nextDayInitial = await loadCurrentTaskChuteDay(env.APP_DB, userId, "2026-08-23T12:00:00.000Z");
     expect(nextDayInitial.taskchute_day.id).not.toBe(dayId);
     const nextTaskId = uuidv7();

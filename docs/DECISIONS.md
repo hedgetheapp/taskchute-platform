@@ -1686,3 +1686,17 @@ D-080は、D-074のcurrent-Day ordinary Task `I` insertion semanticsを、commit
 - 親Addのsuccessはexact rootだけをclearし、newer draftを消さない。deterministic failure / revision conflictは親に依存するchildとanchored draftをcancelしてcanonicalへ戻し、ambiguous outcomeは親のexact retry identityとdescendant subtreeを保持してdispatchを停止する。pending Section Moveなどanchorを不安定化するbarrier中は`I`を受理しない。
 - provisional rowでは`I`、safeなProject / Section / estimate編集、focus移動だけを許可し、`S`やlifecycle、reorder、move、delete、duplicate、Routine、bulk、actual-time操作は開始しない。parent failure / discard後にghost operation、ghost focus、ghost pending rowを残さない。
 - 既存`AddTaskToDay` placement contract、D-066 global serial dispatcher、exact operation / revision / retry / ambiguity boundaryを再利用する。Worker/API/domain command、API schema、APP / AUTH schema、migration、dependency、security postureの変更はない。D-076 established future-Day semanticsは不変である。
+
+## D-081 — Actual-Section Start + Execution-first Day Table
+
+Status: **Approved**
+
+D-081は、planned stateのD-043 Section / planned-start synchronizationを維持したまま、D-081導入後のStart / Interruptで確定する実行後SectionとDay Table表示順を定義する。planned Entryは従来どおりplanned Sectionとplanned startを保持する。Start時はWorkerがfrozen Day Section contextの`[actual_start_instant, actual_end_instant)`からactual Start instantのSectionを解決し、running / completed Entryの`section_id`をそのactual Sectionへ変更する。`planned_start_minute`は元の値（Sectionなしなら`NULL`）を保持し、client時刻や表示中Sectionをauthorityにしない。actual Sectionを一意に解決できない場合はSectionを推測せず、partial writeなしでfail safelyする。
+
+- 同一SectionのStartはphysical placementとplacement revisionを不要に変更せず、cross-Section / SectionなしStartはEntry移動、lifecycle、Execution、snapshots、position、placement revisionを既存のStart operation内でatomicに確定する。physical moveが必要な場合だけplacement revisionを要求・検証し、optionalな`expected_placement_revision` request shape、operation identity、exact payload、retry、ambiguity、replay境界を維持する。新command、schema、migration、dependency、security postureは追加しない。
+- Section orderを最優先し、各Sectionを1 Tableとして表示する。Section内はrunning / completedをExecution summaryの`first_started_at`昇順（同値・欠損はstable physical position / Entry identity）で先頭にまとめ、plannedをD-043どおり`planned_start_minute`昇順、同一planned startではmanual `position`順で後段に置く。Next / Start Forecastはplanned-onlyの既存semanticsを維持する。
+- Reorderはrunning / completedを対象外とし、historical physical positionを変更せず、planned Entryだけを同一planned-start cohort内で並び替える。display indexをphysical positionとみなさず、planned cohortの既存physical position slotsだけをsafeに再利用する。D-078 / D-079のqueue、barrier、revision/CAS、dependency、exact retry境界と整合させ、unexpected external orderをrevision番号だけでsilent rebaseしない。
+- Interruptのtarget Bにも同じactual Section解決を適用し、targetのplanned startを保持する。continuationはinterrupt actual logical minuteの通常planned Entryとしてsame-minute cohortのtailへ置き、D-073のB-direct-after special placementは廃止する。source interruption、estimate、chain、retry、atomicity、placement revision exactly-onceは維持する。Routine-derived normal Startもactual Sectionへ移すが、Routine Definition / occurrenceのplanned defaultsは変更しない。
+- D-043はplanned stateの同期規則として維持し、running / completedのSection = actual Start Section・planned start = original planned valueを追加で許可する。D-073のtarget Bをplanned Sectionのままrunningにする部分とB-direct-after placementだけを狭くsupersedeする。D-060のSetExecutionTimes actual correction semantics、既存historical rows、retroactive backfillは変更しない。
+
+実装、automated regression、real-local / persistent nonprod evidenceはcanonical docsへ記録する。production / restore / destructive cleanup / releaseは対象外で、Releasedは`NO`のままとする。

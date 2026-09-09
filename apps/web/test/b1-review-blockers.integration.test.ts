@@ -28,7 +28,7 @@ async function seedUser(sectionCount = 2) {
   return { userId, sectionIds, now };
 }
 
-async function seedLegacyDay(userId: string, sectionIds: string[], now: string, revision = 0) {
+async function seedLegacyDay(userId: string, sectionIds: string[], now: string, revision = 0, timed = false) {
   const dayId = uuidv7();
   await env.APP_DB.batch([
     env.APP_DB.prepare(`INSERT INTO taskchute_days
@@ -36,9 +36,14 @@ async function seedLegacyDay(userId: string, sectionIds: string[], now: string, 
        establishment_boundary_minutes, establishment_disambiguation, placement_revision, created_at)
       VALUES (?, ?, '2026-08-28', '2026-08-28T00:00:00.000Z', '2026-08-29T00:00:00.000Z',
         'UTC', 0, 'compatible', ?, ?)`).bind(dayId, userId, revision, now),
-    ...sectionIds.map((sectionId, index) => env.APP_DB.prepare(`INSERT INTO taskchute_day_section_contexts
-      (app_user_id, taskchute_day_id, section_id, title, context_order) VALUES (?, ?, ?, ?, ?)`)
-      .bind(userId, dayId, sectionId, `Section ${index + 1}`, index)),
+    ...sectionIds.map((sectionId, index) => timed
+      ? env.APP_DB.prepare(`INSERT INTO taskchute_day_section_contexts
+          (app_user_id, taskchute_day_id, section_id, title, logical_start_minute, logical_end_minute,
+           actual_start_instant, actual_end_instant, context_order) VALUES (?, ?, ?, ?, 0, 1440, ?, ?, ?)`)
+        .bind(userId, dayId, sectionId, `Section ${index + 1}`, "2026-08-28T00:00:00.000Z", "2026-08-29T00:00:00.000Z", index)
+      : env.APP_DB.prepare(`INSERT INTO taskchute_day_section_contexts
+          (app_user_id, taskchute_day_id, section_id, title, context_order) VALUES (?, ?, ?, ?, ?)`)
+        .bind(userId, dayId, sectionId, `Section ${index + 1}`, index)),
   ]);
   return dayId;
 }
@@ -71,21 +76,21 @@ describe.sequential("Dogfood Day B1 source-review blockers", () => {
     const real = await seedEntries(userId, dayId, sectionIds[0]!, ["planned", "planned", "completed", "planned", "planned"]);
     const none = await seedEntries(userId, dayId, null, ["planned", "planned", "running", "planned", "planned"]);
 
-    const realSwap = [real[1]!.id, real[0]!.id, real[2]!.id, real[3]!.id, real[4]!.id];
+    const realSwap = [real[2]!.id, real[1]!.id, real[0]!.id, real[3]!.id, real[4]!.id];
     expect((await reorderEntries(env.APP_DB, userId, { operation_id: uuidv7(), taskchute_day_id: dayId,
       section_id: sectionIds[0]!, entry_ids: realSwap, expected_placement_revision: 0 })).placement_revision).toBe(1);
-    const crossing = [real[1]!.id, real[3]!.id, real[2]!.id, real[0]!.id, real[4]!.id];
+    const crossing = [real[1]!.id, real[0]!.id, real[2]!.id, real[3]!.id, real[4]!.id];
     await expect(reorderEntries(env.APP_DB, userId, { operation_id: uuidv7(), taskchute_day_id: dayId,
       section_id: sectionIds[0]!, entry_ids: crossing, expected_placement_revision: 1 }))
       .rejects.toMatchObject({ code: "resource_conflict" });
 
-    const nullSwap = [none[0]!.id, none[1]!.id, none[2]!.id, none[4]!.id, none[3]!.id];
+    const nullSwap = [none[2]!.id, none[0]!.id, none[1]!.id, none[4]!.id, none[3]!.id];
     expect((await reorderEntries(env.APP_DB, userId, { operation_id: uuidv7(), taskchute_day_id: dayId,
       section_id: null, entry_ids: nullSwap, expected_placement_revision: 1 })).placement_revision).toBe(2);
     const before = (await env.APP_DB.prepare(`SELECT id, position FROM entries WHERE app_user_id = ? AND taskchute_day_id = ?
       AND section_id IS NULL ORDER BY position, id`).bind(userId, dayId).all()).results;
     await expect(reorderEntries(env.APP_DB, userId, { operation_id: uuidv7(), taskchute_day_id: dayId,
-      section_id: null, entry_ids: [none[0]!.id, none[3]!.id, none[2]!.id, none[1]!.id, none[4]!.id],
+      section_id: null, entry_ids: [none[0]!.id, none[1]!.id, none[2]!.id, none[3]!.id, none[4]!.id],
       expected_placement_revision: 2 })).rejects.toMatchObject({ code: "resource_conflict" });
     await expect(reorderEntries(env.APP_DB, userId, { operation_id: uuidv7(), taskchute_day_id: dayId,
       section_id: null, entry_ids: nullSwap, expected_placement_revision: 1 }))
@@ -103,7 +108,7 @@ describe.sequential("Dogfood Day B1 source-review blockers", () => {
     await setPositions(unsectioned, [10, 20, 30, 50, 70]);
 
     const sectionRequest = { operation_id: uuidv7(), taskchute_day_id: dayId, section_id: sectionIds[0]!,
-      entry_ids: [sectioned[1]!.id, sectioned[0]!.id, sectioned[2]!.id, sectioned[4]!.id, sectioned[3]!.id],
+      entry_ids: [sectioned[2]!.id, sectioned[1]!.id, sectioned[0]!.id, sectioned[4]!.id, sectioned[3]!.id],
       expected_placement_revision: 0 };
     const sectionResult = await reorderEntries(env.APP_DB, userId, sectionRequest);
     expect(await reorderEntries(env.APP_DB, userId, sectionRequest)).toEqual(sectionResult);
@@ -115,7 +120,7 @@ describe.sequential("Dogfood Day B1 source-review blockers", () => {
     ]);
 
     const nullRequest = { operation_id: uuidv7(), taskchute_day_id: dayId, section_id: null,
-      entry_ids: [unsectioned[1]!.id, unsectioned[0]!.id, unsectioned[2]!.id, unsectioned[4]!.id, unsectioned[3]!.id],
+      entry_ids: [unsectioned[2]!.id, unsectioned[1]!.id, unsectioned[0]!.id, unsectioned[4]!.id, unsectioned[3]!.id],
       expected_placement_revision: 1 };
     expect((await reorderEntries(env.APP_DB, userId, nullRequest)).placement_revision).toBe(2);
     const after = (await env.APP_DB.prepare(`SELECT id, position FROM entries WHERE app_user_id = ? AND taskchute_day_id = ?
@@ -133,7 +138,7 @@ describe.sequential("Dogfood Day B1 source-review blockers", () => {
 
   it("rejects mutation-time lifecycle races without position, revision, or successful operation writes", async () => {
     const sectioned = await seedUser(1);
-    const sectionedDay = await seedLegacyDay(sectioned.userId, sectioned.sectionIds, sectioned.now);
+    const sectionedDay = await seedLegacyDay(sectioned.userId, sectioned.sectionIds, sectioned.now, 0, true);
     const sectionedRows = await seedEntries(sectioned.userId, sectionedDay, sectioned.sectionIds[0]!, ["planned", "planned"]);
     await setPositions(sectionedRows, [10, 20]);
     const sectionOperation = uuidv7();
@@ -144,7 +149,7 @@ describe.sequential("Dogfood Day B1 source-review blockers", () => {
           sectionBatches += 1;
           if (sectionBatches === 2) await startEntry(target, sectioned.userId, {
             operation_id: uuidv7(), entry_id: sectionedRows[1]!.id, execution_id: uuidv7(),
-          });
+          }, sectioned.now);
           return target.batch(statements);
         };
         const value = Reflect.get(target, property, target) as unknown;
@@ -455,7 +460,7 @@ describe.sequential("Dogfood Day B1 source-review blockers", () => {
     await expect(loadCurrentTaskChuteDay(env.APP_DB, userId, now)).rejects.toThrow();
   });
 
-  it("makes unsectioned Start placement-atomic while sectioned Start remains lifecycle-only", async () => {
+  it("keeps unsectioned Start placement-atomic while accepting sectioned revision metadata", async () => {
     const unsectioned = await seedUser(1);
     const dayId = await seedLegacyDay(unsectioned.userId, unsectioned.sectionIds, unsectioned.now);
     await env.APP_DB.prepare(`UPDATE taskchute_day_section_contexts SET logical_start_minute = 0, logical_end_minute = 1440,
@@ -491,17 +496,14 @@ describe.sequential("Dogfood Day B1 source-review blockers", () => {
     expect(await startEntry(env.APP_DB, unsectioned.userId, fresh, unsectioned.now)).toEqual(started);
 
     const sectioned = await seedUser(1);
-    const sectionedDay = await seedLegacyDay(sectioned.userId, sectioned.sectionIds, sectioned.now, 7);
+    const sectionedDay = await seedLegacyDay(sectioned.userId, sectioned.sectionIds, sectioned.now, 7, true);
     const [sectionedEntry] = await seedEntries(sectioned.userId, sectionedDay, sectioned.sectionIds[0]!, ["planned"]);
     const nonCanonicalOperation = uuidv7();
-    await expect(startEntry(env.APP_DB, sectioned.userId, { operation_id: nonCanonicalOperation,
-      entry_id: sectionedEntry!.id, execution_id: uuidv7(), expected_placement_revision: 7 }, sectioned.now))
-      .rejects.toMatchObject({ status: 400, code: "malformed_request" });
+    const sectionedStart = await startEntry(env.APP_DB, sectioned.userId, { operation_id: nonCanonicalOperation,
+      entry_id: sectionedEntry!.id, execution_id: uuidv7(), expected_placement_revision: 7 }, sectioned.now);
+    expect(sectionedStart.placement_revision).toBeNull();
     expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM operations WHERE app_user_id = ? AND operation_id = ?")
-      .bind(sectioned.userId, nonCanonicalOperation).first<number>("count")).toBe(0);
-    const lifecycleOnly = await startEntry(env.APP_DB, sectioned.userId, { operation_id: uuidv7(),
-      entry_id: sectionedEntry!.id, execution_id: uuidv7() }, sectioned.now);
-    expect(lifecycleOnly.placement_revision).toBeNull();
+      .bind(sectioned.userId, nonCanonicalOperation).first<number>("count")).toBe(1);
     expect(await env.APP_DB.prepare("SELECT placement_revision FROM taskchute_days WHERE id = ?")
       .bind(sectionedDay).first<number>("placement_revision")).toBe(7);
   });

@@ -376,19 +376,16 @@ function isValidManualReorderOrder(entries: EntryProjection[], desiredIds: strin
   const canonicalIds = entries.map((entry) => entry.id);
   if (desiredIds.length !== canonicalIds.length || new Set(desiredIds).size !== canonicalIds.length
     || desiredIds.some((entryId) => !canonicalIds.includes(entryId))) return false;
-  let segment = 0;
-  const segmentById = new Map<string, number>();
-  for (const entry of entries) {
-    segmentById.set(entry.id, segment);
-    if (entry.lifecycle_state !== "planned") segment += 1;
-  }
+  const historical = entries.filter((entry) => entry.lifecycle_state !== "planned");
+  if (desiredIds.slice(0, historical.length).some((entryId, index) => entryId !== historical[index]?.id)) return false;
   const entriesById = new Map(entries.map((entry) => [entry.id, entry]));
   return desiredIds.every((entryId, index) => {
     const requested = entriesById.get(entryId);
     const slot = entries[index];
     if (!requested || !slot) return false;
-    if (slot.lifecycle_state !== "planned") return requested.id === slot.id;
-    return segmentById.get(requested.id) === segmentById.get(slot.id)
+    if (index < historical.length) return requested.id === slot.id;
+    return requested.lifecycle_state === "planned"
+      && slot.lifecycle_state === "planned"
       && isSamePlannedStartCohort(requested, slot);
   });
 }
@@ -3154,7 +3151,7 @@ export function App() {
     if (hasActiveMutationScope(["execution-lane"]) || pendingComplete) {
       if (pendingComplete && completeOperation && !hasQueuedDependentStart(completeOperation.operation_id)) {
         const operation: StartEntryRequest = { operation_id: uuidv7(), entry_id: entryId, execution_id: uuidv7(),
-          ...(entry.section_id === null ? { expected_placement_revision: day.placement_revision } : {}) };
+          expected_placement_revision: day.placement_revision };
         setStartOperation(operation);
         const dispatch = async () => {
           const projection = await reconcile();
@@ -3164,9 +3161,7 @@ export function App() {
             setError("完了後に開始するTaskの前提条件が変わったため、対象Taskを確認して再度開始してください。");
             return;
           }
-          const rebased: StartEntryRequest = latestEntry.section_id === null
-            ? { ...operation, expected_placement_revision: projection.placement_revision }
-            : operation;
+          const rebased: StartEntryRequest = { ...operation, expected_placement_revision: projection.placement_revision };
           setStartOperation(rebased);
           await executeStart(rebased);
         };
@@ -3179,12 +3174,11 @@ export function App() {
     }
     if (hasRetainedMutationScope(["execution-lane"]) || hasQueuedExecutionMutation(entryId)) return;
     const operation: StartEntryRequest = { operation_id: uuidv7(), entry_id: entryId, execution_id: uuidv7(),
-      ...(entry.section_id === null ? { expected_placement_revision: day.placement_revision } : {}) };
+      expected_placement_revision: day.placement_revision };
     setStartOperation(operation);
     const dispatch = async () => {
       const latest = dayRef.current;
-      const latestEntry = entryForId(latest, operation.entry_id);
-      const rebased: StartEntryRequest = latest && latestEntry && latestEntry.section_id === null
+      const rebased: StartEntryRequest = latest
         ? { ...operation, expected_placement_revision: latest.placement_revision }
         : operation;
       setStartOperation(rebased);

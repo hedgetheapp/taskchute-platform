@@ -191,18 +191,14 @@ export async function interruptEntry(
     WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id = ? ORDER BY position, id`)
     .bind(appUserId, day.id, context.section_id).all<SectionEntryRow>();
   const currentSection = currentSectionEntries.results;
-  const sameMinuteTarget = target.section_id === context.section_id && target.planned_start_minute === interruptionLogicalMinute;
   const sameMinutePositions = currentSection.filter((entry) => entry.planned_start_minute === interruptionLogicalMinute).map((entry) => entry.position);
   const maxPosition = Math.max(0, ...currentSection.map((entry) => entry.position));
   const maxSameMinutePosition = Math.max(0, ...sameMinutePositions);
-  const continuationPosition = sameMinuteTarget
-    ? target.position + 1
-    : (maxSameMinutePosition > 0 ? maxSameMinutePosition + 1
-      : maxPosition + 1 + (target.section_id === null ? 1 : 0));
-  const targetPosition = target.section_id === null ? maxPosition + 1
-    : target.position + (target.section_id === context.section_id && !sameMinuteTarget && target.position >= continuationPosition ? 1 : 0);
-  const shiftFrom = continuationPosition;
-  const shiftOffset = Math.max(maxPosition, targetPosition, continuationPosition) + currentSection.length + 100;
+  const targetMovesSection = target.section_id !== context.section_id;
+  const targetPosition = targetMovesSection ? maxPosition + 1 : target.position;
+  const continuationPosition = targetMovesSection
+    ? maxPosition + 2
+    : Math.max(maxSameMinutePosition + 1, maxPosition + 1);
 
   const chainId = source.continuation_chain_id || source.entry_id;
   const chainEstimate = await db.prepare(`SELECT
@@ -219,7 +215,7 @@ export async function interruptEntry(
     ? null
     : chainEstimate.baseline_estimate_seconds - Math.max(0, Math.floor(chainEstimate.cumulative_actual_seconds));
   const continuationEstimate = remainingEstimate !== null && remainingEstimate > 0 ? remainingEstimate : null;
-  const targetSectionId = target.section_id ?? context.section_id;
+  const targetSectionId = context.section_id;
   const result: InterruptEntryResult = {
     taskchute_day_id: day.id,
     source_entry_id: source.entry_id,
@@ -254,18 +250,10 @@ export async function interruptEntry(
         .bind(appUserId, request.operation_id, request.target_execution_id, request.continuation_entry_id,
           request.expected_placement_revision, request.source_entry_id, request.active_execution_id, request.target_entry_id,
           appUserId, day.id, request.expected_placement_revision, request.target_execution_id, request.continuation_entry_id),
-      db.prepare(`UPDATE entries SET position = position + ?
-        WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id = ? AND position >= ?
-          AND EXISTS (SELECT 1 FROM interrupt_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
-        .bind(shiftOffset, appUserId, day.id, context.section_id, shiftFrom, appUserId, request.operation_id),
-      db.prepare(`UPDATE entries SET position = position - ? + 1
-        WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id = ? AND position >= ?
-          AND EXISTS (SELECT 1 FROM interrupt_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
-        .bind(shiftOffset, appUserId, day.id, context.section_id, shiftFrom + shiftOffset, appUserId, request.operation_id),
       db.prepare(`UPDATE entries SET section_id = ?, position = ?
-        WHERE app_user_id = ? AND id = ? AND section_id IS NULL AND planned_start_minute IS NULL
+        WHERE app_user_id = ? AND id = ? AND lifecycle_state = 'planned' AND section_id IS ?
           AND EXISTS (SELECT 1 FROM interrupt_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
-        .bind(targetSectionId, targetPosition, appUserId, target.entry_id, appUserId, request.operation_id),
+        .bind(targetSectionId, targetPosition, appUserId, target.entry_id, target.section_id, appUserId, request.operation_id),
       db.prepare(`UPDATE taskchute_days SET placement_revision = placement_revision + 1
         WHERE app_user_id = ? AND id = ? AND placement_revision = ?
           AND EXISTS (SELECT 1 FROM interrupt_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
@@ -319,10 +307,6 @@ export async function interruptEntry(
            AND NOT EXISTS (SELECT 1 FROM entry_mode_snapshots s WHERE s.app_user_id = e.app_user_id AND s.entry_id = e.id)
            AND EXISTS (SELECT 1 FROM interrupt_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
         .bind(nowInstant, appUserId, target.entry_id, appUserId, request.operation_id),
-      db.prepare(`UPDATE entries SET section_id = ?, position = ?
-        WHERE app_user_id = ? AND id = ? AND lifecycle_state = 'planned'
-          AND EXISTS (SELECT 1 FROM interrupt_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
-        .bind(targetSectionId, targetPosition, appUserId, target.entry_id, appUserId, request.operation_id),
       db.prepare(`UPDATE entries SET lifecycle_state = 'running'
         WHERE app_user_id = ? AND id = ? AND lifecycle_state = 'planned'
           AND EXISTS (SELECT 1 FROM interrupt_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
@@ -332,7 +316,8 @@ export async function interruptEntry(
           EXISTS (SELECT 1 FROM taskchute_days WHERE app_user_id = ? AND id = ? AND placement_revision = ?)
           AND EXISTS (SELECT 1 FROM entries WHERE app_user_id = ? AND id = ? AND lifecycle_state = 'completed')
           AND EXISTS (SELECT 1 FROM executions WHERE app_user_id = ? AND id = ? AND entry_id = ? AND ended_at = ? AND terminal_outcome = 'interrupted')
-          AND EXISTS (SELECT 1 FROM entries WHERE app_user_id = ? AND id = ? AND lifecycle_state = 'running' AND section_id = ?)
+          AND EXISTS (SELECT 1 FROM entries WHERE app_user_id = ? AND id = ? AND lifecycle_state = 'running' AND section_id = ?
+            AND planned_start_minute IS ?)
           AND EXISTS (SELECT 1 FROM executions WHERE app_user_id = ? AND id = ? AND entry_id = ? AND ended_at IS NULL)
           AND EXISTS (SELECT 1 FROM entries WHERE app_user_id = ? AND id = ? AND task_id = ? AND section_id = ?
             AND planned_start_minute = ? AND lifecycle_state = 'planned' AND estimate_seconds IS ?)
@@ -341,7 +326,8 @@ export async function interruptEntry(
         WHERE EXISTS (SELECT 1 FROM interrupt_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
         .bind(appUserId, assertionId, appUserId, day.id, result.placement_revision,
           appUserId, source.entry_id, appUserId, request.active_execution_id, source.entry_id, nowInstant,
-          appUserId, target.entry_id, targetSectionId, appUserId, request.target_execution_id, target.entry_id,
+          appUserId, target.entry_id, targetSectionId, target.planned_start_minute,
+          appUserId, request.target_execution_id, target.entry_id,
           appUserId, request.continuation_entry_id, source.task_id, context.section_id, interruptionLogicalMinute, continuationEstimate,
           appUserId, appUserId, request.operation_id),
       db.prepare(`INSERT INTO operations

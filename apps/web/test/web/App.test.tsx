@@ -1016,7 +1016,7 @@ describe("Dogfood Day shell", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Canonical taskを開始" }));
     await waitFor(() => expect(mocks.startEntry).toHaveBeenCalledTimes(1));
     expect(mocks.startEntry.mock.calls[0][0].entry_id).toBe(firstEntry.id);
-    expect(mocks.startEntry.mock.calls[0][0]).not.toHaveProperty("expected_placement_revision");
+    expect(mocks.startEntry.mock.calls[0][0].expected_placement_revision).toBe(1);
     expect(await screen.findByRole("button", { name: "Canonical taskを完了" })).toBeTruthy();
   });
 

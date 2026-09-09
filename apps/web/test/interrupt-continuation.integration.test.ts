@@ -6,7 +6,7 @@ import { uuidv7 } from "../src/shared/uuidv7";
 
 const now = "2026-08-22T10:15:30.000Z";
 
-async function fixture(targetMinute: number, targetSection: "morning" | "evening") {
+async function fixture(targetMinute: number, targetSection: "morning" | "evening" | "none") {
   const userId = uuidv7();
   const dayId = uuidv7();
   const morningId = uuidv7();
@@ -52,7 +52,9 @@ async function fixture(targetMinute: number, targetSection: "morning" | "evening
     env.APP_DB.prepare(`INSERT INTO entries
       (id, app_user_id, task_id, taskchute_day_id, section_id, position, lifecycle_state, planned_start_minute, created_at)
       VALUES (?, ?, ?, ?, ?, 2, 'planned', ?, ?)`)
-      .bind(targetEntryId, userId, targetTaskId, dayId, targetSection === "morning" ? morningId : eveningId, targetMinute, now),
+      .bind(targetEntryId, userId, targetTaskId, dayId,
+        targetSection === "morning" ? morningId : targetSection === "evening" ? eveningId : null,
+        targetSection === "none" ? null : targetMinute, now),
     env.APP_DB.prepare(`INSERT INTO entries
       (id, app_user_id, task_id, taskchute_day_id, section_id, position, lifecycle_state, planned_start_minute, created_at)
       VALUES (?, ?, ?, ?, ?, ?, 'planned', 615, ?)`)
@@ -93,13 +95,13 @@ function failingMutationBatch(db: D1Database): D1Database {
   });
 }
 
-describe.sequential("D-073 InterruptEntry / Continuation v0.1", () => {
-  it("atomically interrupts A, starts B, and places a same-minute continuation directly after B", async () => {
+describe.sequential("D-081 InterruptEntry / Continuation compatibility", () => {
+  it("atomically interrupts A, starts B, and appends a normal same-minute continuation", async () => {
     const fixture = await fixtureForTest(615, "morning");
     const request = interruptRequest(fixture);
     const result = await interruptEntry(env.APP_DB, fixture.userId, request, now);
     expect(result.continuation.planned_start_minute).toBe(615);
-    expect(result.continuation.position).toBe(3);
+    expect(result.continuation.position).toBe(4);
     expect(result.continuation.estimate_seconds).toBe(2670);
     expect(await interruptEntry(env.APP_DB, fixture.userId, request, now)).toEqual(result);
     await expect(interruptEntry(env.APP_DB, fixture.userId, { ...request, target_execution_id: uuidv7() }, now))
@@ -113,26 +115,36 @@ describe.sequential("D-073 InterruptEntry / Continuation v0.1", () => {
     expect(await env.APP_DB.prepare("SELECT task_title FROM entry_task_snapshots WHERE app_user_id = ? AND entry_id = ?").bind(fixture.userId, fixture.targetEntryId).first<string>("task_title")).toBe("Target title");
     const rows = await env.APP_DB.prepare("SELECT id, position, planned_start_minute, lifecycle_state FROM entries WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id = ? ORDER BY position")
       .bind(fixture.userId, fixture.dayId, fixture.morningId).all<{ id: string; position: number; planned_start_minute: number | null; lifecycle_state: string }>();
-    expect(rows.results.map((row) => row.id)).toEqual([fixture.sourceEntryId, fixture.targetEntryId, result.continuation_entry_id, fixture.neighborEntryId]);
+    expect(rows.results.map((row) => row.id)).toEqual([fixture.sourceEntryId, fixture.targetEntryId, fixture.neighborEntryId, result.continuation_entry_id]);
     const projection = await loadCurrentTaskChuteDay(env.APP_DB, fixture.userId, now);
     const source = projection.sections.flatMap((section) => section.entries).find((entry) => entry.id === fixture.sourceEntryId);
     expect(source?.execution_summary?.last_outcome).toBe("interrupted");
     expect(projection.active_execution?.entry_id).toBe(fixture.targetEntryId);
   });
 
-  it("keeps a different-minute B in place and appends continuation to its interruption cohort", async () => {
+  it("moves a different-Section B to the actual Section and appends continuation", async () => {
     const fixture = await fixtureForTest(900, "evening");
     const request = interruptRequest(fixture);
     const result = await interruptEntry(env.APP_DB, fixture.userId, request, now);
-    expect(result.continuation.position).toBe(3);
+    expect(result.continuation.position).toBe(4);
     expect(await env.APP_DB.prepare("SELECT position, planned_start_minute, section_id FROM entries WHERE id = ?").bind(fixture.targetEntryId)
-      .first<{ position: number; planned_start_minute: number; section_id: string }>()).toMatchObject({ position: 2, planned_start_minute: 900, section_id: fixture.eveningId });
+      .first<{ position: number; planned_start_minute: number; section_id: string }>()).toMatchObject({ position: 3, planned_start_minute: 900, section_id: fixture.morningId });
     const morning = await env.APP_DB.prepare("SELECT id, position FROM entries WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id = ? ORDER BY position")
       .bind(fixture.userId, fixture.dayId, fixture.morningId).all<{ id: string; position: number }>();
-    expect(morning.results.map((row) => row.id)).toEqual([fixture.sourceEntryId, fixture.neighborEntryId, result.continuation_entry_id]);
+    expect(morning.results.map((row) => row.id)).toEqual([fixture.sourceEntryId, fixture.neighborEntryId, fixture.targetEntryId, result.continuation_entry_id]);
   });
 
-  it("shifts a later-minute B in the same Section after the new interruption cohort", async () => {
+  it("moves a Section-less B to the actual Section while preserving its planned start", async () => {
+    const fixture = await fixtureForTest(900, "none");
+    const result = await interruptEntry(env.APP_DB, fixture.userId, interruptRequest(fixture), now);
+    expect(result.continuation.position).toBe(4);
+    expect(await env.APP_DB.prepare("SELECT position, planned_start_minute, section_id, lifecycle_state FROM entries WHERE id = ?")
+      .bind(fixture.targetEntryId).first()).toEqual({
+        position: 3, planned_start_minute: null, section_id: fixture.morningId, lifecycle_state: "running",
+      });
+  });
+
+  it("keeps later-minute B physical position while appending the new cohort", async () => {
     const fixture = await fixtureForTest(900, "morning");
     await env.APP_DB.batch([
       env.APP_DB.prepare("UPDATE entries SET position = position + 100 WHERE app_user_id = ? AND taskchute_day_id = ? AND id IN (?, ?)")
@@ -144,16 +156,16 @@ describe.sequential("D-073 InterruptEntry / Continuation v0.1", () => {
     ]);
     const request = interruptRequest(fixture);
     const result = await interruptEntry(env.APP_DB, fixture.userId, request, now);
-    expect(result.continuation.position).toBe(3);
+    expect(result.continuation.position).toBe(4);
     expect(await env.APP_DB.prepare("SELECT position, planned_start_minute, section_id FROM entries WHERE id = ?").bind(fixture.targetEntryId)
       .first<{ position: number; planned_start_minute: number; section_id: string }>()).toMatchObject({
-        position: 4,
+        position: 3,
         planned_start_minute: 900,
         section_id: fixture.morningId,
       });
     const rows = await env.APP_DB.prepare("SELECT id, position, planned_start_minute FROM entries WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id = ? ORDER BY position")
       .bind(fixture.userId, fixture.dayId, fixture.morningId).all<{ id: string; position: number; planned_start_minute: number | null }>();
-    expect(rows.results.map((row) => row.id)).toEqual([fixture.sourceEntryId, fixture.neighborEntryId, result.continuation_entry_id, fixture.targetEntryId]);
+    expect(rows.results.map((row) => row.id)).toEqual([fixture.sourceEntryId, fixture.neighborEntryId, fixture.targetEntryId, result.continuation_entry_id]);
     expect(new Set(rows.results.map((row) => row.position)).size).toBe(rows.results.length);
     expect(await interruptEntry(env.APP_DB, fixture.userId, request, now)).toEqual(result);
     expect(await env.APP_DB.prepare("SELECT placement_revision FROM taskchute_days WHERE id = ?").bind(fixture.dayId).first<number>("placement_revision")).toBe(1);
@@ -209,6 +221,6 @@ describe.sequential("D-073 InterruptEntry / Continuation v0.1", () => {
   });
 });
 
-async function fixtureForTest(targetMinute: number, targetSection: "morning" | "evening") {
+async function fixtureForTest(targetMinute: number, targetSection: "morning" | "evening" | "none") {
   return fixture(targetMinute, targetSection);
 }

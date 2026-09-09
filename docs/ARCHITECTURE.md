@@ -467,3 +467,11 @@ D-079はgeneric `enqueueDayMutation()`のwhole-item coalesceをMoveへ盲目的�
 effective Day projectionはcanonical full Section membershipへpending Moveを順に適用してからD-078 Reorder overlayを適用する。source groupから除去し、target groupへ既存MoveEntryのappend / historical-boundary semanticsに沿って追加し、real Sectionのfrozen startまたは`Sectionなし`のNULL startを設定する。Section summary、estimate、Next / forecast、focus、drag stateはこのprojectionから導出し、collapsed targetを自動expandしない。Move unresolved中はsame-Section Reorderとplanned-start direct editをbarrierとして保持する。
 
 Section selectorとcross-Section D&Dは同じcoordinatorを使い、safe metadata editingは阻害しない。canceled Moveはoperation / retained state / unload-navigation barrierを確実に解放する。この設計はWeb-onlyで、MoveEntry Worker/API contract、schema、migration、dependency、security postureを変更しない。
+
+## D-081 Start placement and execution-first projection
+
+D-081のStartは既存StartEntry commandのatomic boundary内で、frozen established-Day Section contextをServer actual instantへ照合する。same-Section transitionではlifecycle / Execution / snapshotだけを確定し、placement revisionは増分しない。cross-SectionまたはSectionなしではexpected placement revisionを検証してから、Entryのactual Sectionとunique physical positionを変更し、lifecycle / Execution / snapshots / operation resultとともに一つのD1 outcomeへ確定する。context未解決、stale revision、active Execution違反は全てeffectなしでrejectまたはconflictとする。Start requestのoptional revision shape、exact operation replay、ambiguous retryは後方互換で維持する。
+
+Projection layerはSectionの保存順を先に適用し、Section内でExecution summaryの`first_started_at`をcanonical keyとするhistorical groupをplanned groupより前に構成する。planned groupはD-043のplanned startとmanual `position` tie-breakを使う。ReorderEntriesはこの表示順をphysical positionへ直接保存せず、historical positionsを不変にしたまま、同一planned-start cohortの既存physical slotsへdesired planned IDsを割り当てる。これによりD-078のeffective-order queueとD-079のplacement barrierは維持され、hidden historical rowsやcohort境界を越えない。
+
+InterruptEntryはtarget Bのactual Section解決・planned start保持をStartと共有し、continuationをinterrupt logical minute cohortの通常tailへ配置する。B-direct-after専用のshiftは使わず、source interruption、target move、continuation、revision exactly-once、replay / ambiguityを一つのlogical atomic outcomeとして扱う。D-081は既存schema / migration / API command familyを拡張しない。

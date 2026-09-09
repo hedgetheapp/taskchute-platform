@@ -57,49 +57,44 @@ export async function startEntry(
     return reject(db, appUserId, request, "StartEntry", requestFingerprint, "resource_conflict",
       "Section-less Entry cannot have a planned start");
   }
-  if (entry.section_id !== null && request.expected_placement_revision !== undefined) {
-    throw new HttpError(400, "malformed_request",
-      "A sectioned Start request must omit expected_placement_revision");
-  }
   if (collisionResult.results.length > 0) return reject(db, appUserId, request, "StartEntry", requestFingerprint, "resource_conflict", "execution_id is already in use");
   if (entry.lifecycle_state !== "planned") {
     return reject(db, appUserId, request, "StartEntry", requestFingerprint, "resource_conflict", "Only a planned Entry can start");
   }
   if (activeResult.results.length > 0) return reject(db, appUserId, request, "StartEntry", requestFingerprint, "resource_conflict", "Another Execution is already active");
-  const movesFromUnsectioned = entry.section_id === null;
-  if (movesFromUnsectioned && request.expected_placement_revision === undefined) {
+  const context = await db.prepare(`SELECT section_id FROM taskchute_day_section_contexts
+    WHERE app_user_id = ? AND taskchute_day_id = ?
+      AND julianday(actual_start_instant) <= julianday(?) AND julianday(?) < julianday(actual_end_instant)
+    ORDER BY context_order LIMIT 2`).bind(appUserId, entry.taskchute_day_id, now, now).all<{ section_id: string }>();
+  if (context.results.length !== 1) {
     return reject(db, appUserId, request, "StartEntry", requestFingerprint, "resource_conflict",
-      "Starting an unsectioned Entry requires its placement revision");
+      "A timed Section context is required to start this Entry");
   }
-  if (movesFromUnsectioned && entry.placement_revision !== request.expected_placement_revision) {
+  const targetSectionId = context.results[0]?.section_id ?? null;
+  if (!targetSectionId) throw new Error("Start Section resolution did not converge");
+  const movesSection = entry.section_id !== targetSectionId;
+  if (movesSection && request.expected_placement_revision === undefined) {
+    return reject(db, appUserId, request, "StartEntry", requestFingerprint, "resource_conflict",
+      "A Section-changing Start requires its placement revision");
+  }
+  if (movesSection && entry.placement_revision !== request.expected_placement_revision) {
     return persistRejection(db, { appUserId, operationId: request.operation_id, commandType: "StartEntry", requestFingerprint,
       outcomeKind: "revision_conflict", result: { code: "revision_conflict", message: "The placement revision is stale" } });
   }
-  let targetSectionId = entry.section_id;
   let targetPosition: number | null = null;
-  if (targetSectionId === null) {
-    const context = await db.prepare(`SELECT section_id FROM taskchute_day_section_contexts
-      WHERE app_user_id = ? AND taskchute_day_id = ?
-        AND unixepoch(actual_start_instant) <= unixepoch(?) AND unixepoch(?) < unixepoch(actual_end_instant)
-      ORDER BY context_order LIMIT 2`).bind(appUserId, entry.taskchute_day_id, now, now).all<{ section_id: string }>();
-    if (context.results.length !== 1) {
-      return reject(db, appUserId, request, "StartEntry", requestFingerprint, "resource_conflict",
-        "A timed Section context is required to start an unsectioned Entry");
-    }
-    targetSectionId = context.results[0]?.section_id ?? null;
+  if (movesSection) {
     const positionRow = await db.prepare(`SELECT COALESCE(MAX(position), 0) + 1 AS position FROM entries
       WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id = ?`)
       .bind(appUserId, entry.taskchute_day_id, targetSectionId).first<{ position: number }>();
     targetPosition = positionRow?.position ?? null;
   }
-  if (!targetSectionId) throw new Error("Start Section resolution did not converge");
   const result: StartEntryResult = { entry_id: request.entry_id, lifecycle_state: "running",
     execution: { id: request.execution_id, entry_id: request.entry_id, started_at: now, ended_at: null },
-    section_id: targetSectionId, placement_revision: movesFromUnsectioned ? request.expected_placement_revision! + 1 : null };
+    section_id: targetSectionId, placement_revision: movesSection ? request.expected_placement_revision! + 1 : null };
   const assertionId = `start:${request.operation_id}`;
   try {
     const [placementGuard, lifecycleGuard] = await db.batch([
-      movesFromUnsectioned
+      movesSection
         ? db.prepare(`INSERT INTO placement_command_guards (operation_id, app_user_id, taskchute_day_id, expected_revision)
             SELECT ?, app_user_id, id, ? FROM taskchute_days
             WHERE app_user_id = ? AND id = ? AND placement_revision = ?`)
@@ -111,18 +106,17 @@ export async function startEntry(
         AND NOT EXISTS (SELECT 1 FROM executions WHERE app_user_id = ? AND ended_at IS NULL)
         AND (? = 0 OR EXISTS (SELECT 1 FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?))`)
         .bind(appUserId, request.operation_id, request.execution_id, appUserId, request.entry_id, appUserId,
-          movesFromUnsectioned ? 1 : 0, appUserId, request.operation_id),
-      db.prepare(`UPDATE entries SET section_id = ?, position = ? WHERE app_user_id = ? AND id = ? AND section_id IS NULL
-        AND planned_start_minute IS NULL
+          movesSection ? 1 : 0, appUserId, request.operation_id),
+      db.prepare(`UPDATE entries SET section_id = ?, position = ? WHERE app_user_id = ? AND id = ? AND section_id IS ?
         AND ? = 1 AND EXISTS (SELECT 1 FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?)
         AND EXISTS (SELECT 1 FROM lifecycle_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
-        .bind(targetSectionId, targetPosition, appUserId, request.entry_id, movesFromUnsectioned ? 1 : 0,
+        .bind(targetSectionId, targetPosition, appUserId, request.entry_id, entry.section_id, movesSection ? 1 : 0,
           appUserId, request.operation_id, appUserId, request.operation_id),
       db.prepare(`UPDATE taskchute_days SET placement_revision = placement_revision + 1 WHERE app_user_id = ? AND id = ?
         AND ? = 1 AND placement_revision = ?
         AND EXISTS (SELECT 1 FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?)
         AND EXISTS (SELECT 1 FROM lifecycle_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
-        .bind(appUserId, entry.taskchute_day_id, movesFromUnsectioned ? 1 : 0, request.expected_placement_revision ?? null,
+        .bind(appUserId, entry.taskchute_day_id, movesSection ? 1 : 0, request.expected_placement_revision ?? null,
           appUserId, request.operation_id, appUserId, request.operation_id),
       db.prepare(`INSERT INTO executions (id, app_user_id, entry_id, started_at, ended_at, created_at, terminal_outcome)
         SELECT ?, ?, ?, ?, NULL, ?, NULL WHERE EXISTS (SELECT 1 FROM lifecycle_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
@@ -162,7 +156,7 @@ export async function startEntry(
         EXISTS (SELECT 1 FROM entries WHERE app_user_id = ? AND id = ? AND lifecycle_state = 'running')
         AND EXISTS (SELECT 1 FROM executions WHERE app_user_id = ? AND id = ? AND entry_id = ? AND ended_at IS NULL)
         AND EXISTS (SELECT 1 FROM entries WHERE app_user_id = ? AND id = ? AND section_id = ?
-          AND (? = 0 OR planned_start_minute IS NULL))
+          AND planned_start_minute IS ?)
         AND ((? IS NULL AND NOT EXISTS (SELECT 1 FROM entry_mode_snapshots WHERE app_user_id = ? AND entry_id = ?))
           OR (? IS NOT NULL AND EXISTS (SELECT 1 FROM entry_mode_snapshots WHERE app_user_id = ? AND entry_id = ?
             AND mode_id = ? AND mode_title = ?)))
@@ -171,10 +165,10 @@ export async function startEntry(
         AND (? = 0 OR EXISTS (SELECT 1 FROM taskchute_days WHERE app_user_id = ? AND id = ? AND placement_revision = ?))
         THEN 1 ELSE 0 END WHERE EXISTS (SELECT 1 FROM lifecycle_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
         .bind(appUserId, assertionId, appUserId, request.entry_id, appUserId, request.execution_id, request.entry_id,
-          appUserId, request.entry_id, targetSectionId, movesFromUnsectioned ? 1 : 0,
+          appUserId, request.entry_id, targetSectionId, entry.planned_start_minute,
           entry.mode_id, appUserId, request.entry_id, entry.mode_id, appUserId, request.entry_id, entry.mode_id, entry.mode_title,
           appUserId, request.entry_id, appUserId, request.entry_id,
-          movesFromUnsectioned ? 1 : 0, appUserId,
+          movesSection ? 1 : 0, appUserId,
           entry.taskchute_day_id, result.placement_revision, appUserId, request.operation_id),
       db.prepare(`INSERT INTO operations (app_user_id, operation_id, command_type, request_fingerprint_version, request_fingerprint, outcome_kind, result_json, created_at)
         SELECT ?, ?, 'StartEntry', ?, ?, 'success', ?, ? WHERE EXISTS (SELECT 1 FROM lifecycle_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
@@ -183,7 +177,7 @@ export async function startEntry(
       db.prepare("DELETE FROM lifecycle_command_guards WHERE app_user_id = ? AND operation_id = ?").bind(appUserId, request.operation_id),
       db.prepare("DELETE FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?").bind(appUserId, request.operation_id),
     ]);
-    if (movesFromUnsectioned && placementGuard.meta.changes === 0) {
+    if (movesSection && placementGuard.meta.changes === 0) {
       const committed = await readOperation(db, appUserId, request.operation_id);
       if (committed) return replayOperation(committed, "StartEntry", requestFingerprint);
       return persistRejection(db, { appUserId, operationId: request.operation_id, commandType: "StartEntry", requestFingerprint,

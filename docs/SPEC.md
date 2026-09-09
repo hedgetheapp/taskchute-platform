@@ -482,3 +482,13 @@ sent / retained parent requestのoperation identity、payload、placement intent
 provisional rowには`aria-busy`とstable Entry identityを持つpending表示を出すが、`S`/lifecycle、reorder、move、delete、duplicate、Routine、bulk、actual-time操作はno-writeである。pending Section Moveなどplacement anchorを不安定化するbarrier中の`I`は受理しない。EscapeはAddを送信せずsource focusをrestoreする。既存のcurrent-Day D-074、future established-Day D-076、past / preview read-only境界は変更しない。Worker/API、schema、migration、dependency、security postureの変更はない。
 
 有効なcurrent established-Day Add draftのEnter commitでは、clientは親AddのServer responseを待たず、同じrender-safe focus handoffで確定したprovisional Entryをkeyboard focus targetにする。従って`保存中…`中でもそのrowへの`I`はchild draftを開ける。これはfocus timingの補正であり、Add placement、parent dependency、exact operation identity、retry / ambiguity、failure/conflict、future/past eligibilityの意味は変更しない。
+
+## D-081 Actual-Section Start + execution-first Day Table
+
+D-081ではplanned stateのD-043同期を維持し、Start / Interruptの実際の開始時点で確定するSectionをrunning / completed Entryへ保存する。Workerはestablished Dayのfrozen Section contextから`[actual_start_instant, actual_end_instant)`でactual Sectionを一意に解決し、client時刻や表示中Sectionをauthorityにしない。解決不能時は推測・partial writeをせずfail safelyする。actual Sectionがplanned Sectionと同じならplanned startとphysical placement、placement revisionを維持し、異なる場合またはSectionなしの場合だけEntry移動とplacement revision `+1`をStartのatomic outcomeへ含める。
+
+running / completed Entryは元の`planned_start_minute`（Sectionなしは`NULL`）を保持する。Day TableはSection順を最優先し、各Section内でrunning / completedを`execution_summary.first_started_at`昇順、同値・欠損時はstable physical position / Entry identityで先頭に表示し、planned EntryをD-043のplanned-start昇順、同一minuteの`position`順で後段に表示する。Next / Start Forecastはplanned-onlyの既存semanticsを維持する。
+
+Reorderはrunning / completedを対象外とし、historical physical positionを変更しない。planned Entryだけを同一planned-start cohort内で並べ替え、display indexをphysical positionへ直接変換せず、各cohortの既存physical position slotsをtie-break再割当へ再利用する。D-078 / D-079のbarrier、revision/CAS、exact retry、external order protectionを維持する。
+
+Interrupt targetにもactual Section解決とplanned start保持を適用する。continuationはinterrupt actual logical minuteの通常planned Entryとしてcohort tailへ置き、D-073のB-direct-after special placementを廃止する。D-060のSetExecutionTimes、既存historical rows、retroactive backfillは変更しない。Routine-derived normal Startにもactual Section ruleを適用するが、Routine Definition / occurrenceのplanned defaultsは変更しない。新command、API schema、schema / migration、dependency、security postureは追加しない。

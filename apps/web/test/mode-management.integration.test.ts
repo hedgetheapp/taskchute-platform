@@ -10,17 +10,28 @@ const now = "2026-09-05T12:00:00.000Z";
 
 async function seed() {
   const userId = uuidv7(); const sectionId = uuidv7(); const dayId = uuidv7(); const taskId = uuidv7(); const entryId = uuidv7();
+  const configurationVersionId = uuidv7();
   await env.APP_DB.batch([
     env.APP_DB.prepare("INSERT INTO app_users (id, created_at) VALUES (?, ?)").bind(userId, now),
     env.APP_DB.prepare("INSERT INTO user_settings (app_user_id, timezone, day_boundary_minutes, updated_at) VALUES (?, 'UTC', 0, ?)").bind(userId, now),
     env.APP_DB.prepare("INSERT INTO sections (id, app_user_id, title, sort_order, created_at) VALUES (?, ?, 'Focus', 0, ?)").bind(sectionId, userId, now),
+    env.APP_DB.prepare("INSERT INTO section_configuration_versions (id, app_user_id, day_boundary_minutes, created_at) VALUES (?, ?, 0, ?)")
+      .bind(configurationVersionId, userId, now),
+    env.APP_DB.prepare(`INSERT INTO section_configuration_items
+      (app_user_id, configuration_version_id, section_id, title, logical_start_minute, logical_end_minute, configuration_order)
+      VALUES (?, ?, ?, 'Focus', 0, 1440, 0)`).bind(userId, configurationVersionId, sectionId),
+    env.APP_DB.prepare("INSERT INTO section_configuration_heads (app_user_id, configuration_version_id) VALUES (?, ?)")
+      .bind(userId, configurationVersionId),
     env.APP_DB.prepare(`INSERT INTO taskchute_days
       (id, app_user_id, logical_date, start_instant, end_instant, establishment_timezone, establishment_boundary_minutes,
        establishment_disambiguation, placement_revision, created_at)
       VALUES (?, ?, '2026-09-05', '2026-09-05T00:00:00Z', '2026-09-06T00:00:00Z', 'UTC', 0, 'compatible', 0, ?)`)
       .bind(dayId, userId, now),
-    env.APP_DB.prepare("INSERT INTO taskchute_day_section_contexts (app_user_id, taskchute_day_id, section_id, title, context_order) VALUES (?, ?, ?, 'Focus', 0)")
-      .bind(userId, dayId, sectionId),
+    env.APP_DB.prepare(`INSERT INTO taskchute_day_section_contexts
+      (app_user_id, taskchute_day_id, section_id, configuration_version_id, title, logical_start_minute, logical_end_minute,
+       actual_start_instant, actual_end_instant, context_order)
+      VALUES (?, ?, ?, ?, 'Focus', 0, 1440, '2026-09-05T00:00:00Z', '2026-09-06T00:00:00Z', 0)`)
+      .bind(userId, dayId, sectionId, configurationVersionId),
     env.APP_DB.prepare("INSERT INTO tasks (id, app_user_id, title, created_at) VALUES (?, ?, 'Mode task', ?)").bind(taskId, userId, now),
     env.APP_DB.prepare(`INSERT INTO entries (id, app_user_id, task_id, taskchute_day_id, section_id, position, lifecycle_state, created_at)
       VALUES (?, ?, ?, ?, ?, 1, 'planned', ?)`)

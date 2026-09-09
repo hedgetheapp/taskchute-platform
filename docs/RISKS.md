@@ -426,3 +426,13 @@ Corrective commit `98c9c39ac4f1ca7303b1c71c7c3d6f37f05f34f8` schedules the exact
 Persistent nonprod observed the focused `保存中…` row immediately before each A/B/C `I`; natural latency was too fast to keep the parent pending in the post-action snapshot, so browser prolonged race timing remains `NOT_OBSERVED` and deferred tests are authoritative. Same-tab/fresh-tab persistence and console `0 / 0` passed. APP/AUTH quick checks and FK checks passed, migrations were pending `0 / 0`, and every successful audit query reported `rows_written=0`. The corrective migration helper was safely interrupted on Windows and is `NOT_RUN`; D-080 remains `MIGRATION_NOT_REQUIRED`.
 
 No API, Worker, Domain, schema, migration, dependency, binding, security, production, credential, bootstrap, restore, or destructive action was introduced or performed. Numeric browser viewport/zoom was not exposed by the connector and remains `NOT_AVAILABLE` for this evidence.
+
+## R-028 — D-081 actual-Section and execution-first ordering boundary
+
+D-081 introduces a compatibility boundary between stored physical `position` and displayed execution-first order. The residual risk is a future path that treats display index as physical position, loses planned start when Start moves an Entry, or reclassifies an Entry without a unique frozen Section context.
+
+Mitigation / evidence:
+
+- StartEntry resolves actual Section server-side from frozen Day intervals, preserves original planned start, and performs cross-Section Entry move, lifecycle, Execution, snapshots, position, and placement revision atomically. Same-Section Start does not increment placement revision. No historical backfill and no SetExecutionTimes semantic change are performed.
+- Projection sorts historical rows by existing `first_started_at` facts and planned rows by D-043 planned start / physical tie-break. Reorder validates the historical prefix, preserves historical positions, and reuses only the existing planned cohort slots. D-078 / D-079 regression coverage remains green.
+- Focused D-081 Worker `4 files / 44 tests` and full Worker `24 files / 210 tests` pass; Web typecheck passes. Nonprod browser / DB evidence remains pending and must be classified separately from automated evidence. Migration is `NOT_REQUIRED`; production, restore, destructive cleanup, credentials, and bootstrap remain out of scope.
