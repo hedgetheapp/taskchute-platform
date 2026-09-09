@@ -2190,7 +2190,7 @@ The original D-080 rows remain historical evidence for the A/B/C/D chain, but th
 | ID | Scope | Evidence | Result |
 |---|---|---|---|
 | D082-WORKER-01 | Setting / checkpoint / auto-carry | setting owner scope、default OFF、CAS、exact replay / misuse、current Section interval、ordinary + Routine candidate、relative order、target cohort後置、Routine override、revision exactly once、reload projection | PASS; focused Worker `2 / 2` |
-| D082-REG-01 | Existing regressions | full Worker `25 files / 212 tests`; full Web `4 files / 256 tests`; typecheck / normal build / exact nonprod build / Wrangler nonprod dry-run / diff-check | PASS |
+| D082-REG-01 | Existing regressions | focused Web `1 / 1`; full Worker `25 files / 212 tests`; full Web `4 files / 257 tests`; typecheck / normal build / exact nonprod build / Wrangler nonprod dry-run / diff-check | PASS |
 | D082-MIG-01 | APP migration 0024 | remote APP apply succeeded; APP/AUTH migration lists report no pending migrations; local migration helperはWindows/Wranglerの無出力・log filesystem EPERM状態を安全に中断 | PASS remote apply / pending `0 / 0`; local helper NOT_RUN |
 | D082-ENV-01 | Persistent nonprod browser / Worker | authenticated Settings toggle、Morning fixtureのEvening carry、reload / fresh authenticated tab、server setting persistence | PASS; Worker `e9f79149-78c5-4a61-9cc6-bc5fe5aa30ea`; exact console counts NOT_VERIFIED |
 | D082-DB-01 | Persistent nonprod read-only integrity | APP/AUTH quick check、FK、pending migrations、fixture Entry / planned start / placement revision / checkpoint、active execution、position uniqueness、`rows_written=0` | PASS; APP revision `66`, setting ON, guards/assertions `0`, active execution `0` |
