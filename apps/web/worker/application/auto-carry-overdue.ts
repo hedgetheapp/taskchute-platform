@@ -174,6 +174,10 @@ async function carryOnce(
   const candidates = candidatesResult.results.filter((entry) => {
     const source = contextById.get(entry.section_id);
     return source !== undefined && source.context_order < current.context_order
+      // An occurrence moved from another Day is not an eligible D-082 carry
+      // candidate.  Exclude it from the candidate set so it cannot block
+      // ordinary or same-origin Routine entries in the same load.
+      && !(entry.routine_occurrence_id !== null && entry.origin_taskchute_day_id !== day.id)
       && source.actual_end_instant !== null;
   }).sort((left, right) => {
     const leftContext = contextById.get(left.section_id)!.context_order;
@@ -181,10 +185,42 @@ async function carryOnce(
     return leftContext - rightContext || left.planned_start_minute - right.planned_start_minute
       || left.position - right.position || left.entry_id.localeCompare(right.entry_id);
   });
-  if (candidates.some((entry) => entry.routine_occurrence_id !== null && entry.origin_taskchute_day_id !== day.id)) {
-    throw new HttpError(409, "resource_conflict", "Routine occurrence origin Day is not the current TaskChuteDay");
+  if (candidates.length === 0) {
+    const result: CarryResult = {
+      taskchute_day_id: day.id,
+      current_section_id: current.section_id,
+      carried_entry_ids: [],
+      placement_revision: day.placement_revision,
+    };
+    // A zero-candidate event is still a successful boundary checkpoint, but
+    // only when the placement revision read with the candidates is unchanged.
+    // This prevents a stale empty read from suppressing a concurrent newly
+    // eligible candidate; autoCarryCurrentDay will re-read and retry.
+    try {
+      const [guard, operation] = await db.batch([
+        db.prepare(`INSERT INTO placement_command_guards (operation_id, app_user_id, taskchute_day_id, expected_revision)
+          SELECT ?, ?, id, placement_revision FROM taskchute_days
+          WHERE app_user_id = ? AND id = ? AND placement_revision = ?`)
+          .bind(operationId, appUserId, appUserId, day.id, day.placement_revision),
+        db.prepare(`INSERT INTO operations
+          (app_user_id, operation_id, command_type, request_fingerprint_version, request_fingerprint,
+           outcome_kind, result_json, created_at)
+          SELECT ?, ?, 'AutoCarryOverduePlanned', ?, ?, 'success', ?, ?
+          WHERE EXISTS (SELECT 1 FROM placement_command_guards
+            WHERE app_user_id = ? AND operation_id = ?)`)
+          .bind(appUserId, operationId, REQUEST_FINGERPRINT_VERSION, requestFingerprint,
+            JSON.stringify(result), nowInstant, appUserId, operationId),
+        db.prepare("DELETE FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?")
+          .bind(appUserId, operationId),
+      ]);
+      if (guard?.meta.changes === 0 || operation?.meta.changes === 0) return null;
+      return result;
+    } catch {
+      const committed = await readOperation(db, appUserId, operationId);
+      if (committed) return replayOperation<CarryResult>(committed, "AutoCarryOverduePlanned", requestFingerprint);
+      return null;
+    }
   }
-  if (candidates.length === 0) return null;
   const targetResult = await db.prepare(`SELECT id AS entry_id, position, planned_start_minute
     FROM entries WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id = ? AND lifecycle_state = 'planned'
     ORDER BY planned_start_minute IS NULL, planned_start_minute, position, id`)
