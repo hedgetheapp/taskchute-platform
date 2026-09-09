@@ -2174,6 +2174,7 @@ The original D-080 rows remain historical evidence for the A/B/C/D chain, but th
 | D081-INTERRUPT-01 | D-073 compatibility | target actual Section / planned start保持、continuation ordinary cohort tail、no B-direct-after special、atomic revision / replay | PASS; focused Worker coverage |
 | D081-REG-01 | Existing regressions | full Worker `24 files / 210 tests`; full Web `4 files / 256 tests`; typecheck / normal build / exact nonprod build / Wrangler dry-run / diff-check | PASS（migration helperのみNOT_RUN） |
 | D081-ENV-01 | Persistent nonprod | Worker `8ff2080f-afe6-48b9-a5ac-fdfba05d6a45`; current / cross / Sectionなし Start, execution-first order, Interrupt, reload / fresh tab, console | PASS |
+| D081-BROWSER-01 | Real-browser reorder regression | pointer D&D / `Shift + ArrowUp / ArrowDown` with current fixture and usable drag surface | NOT_RUN / NOT_VERIFIED（connector viewport `332 × 910`でdrag surfaceが狭く、synthetic DOM eventは使用していない。automated coverageはPASS） |
 | D081-DB-01 | Read-only integrity | APP/AUTH quick check, FK, pending migrations `0 / 0`, affected rows / operations, active execution, position uniqueness, `rows_written=0` | PASS |
 | D081-BOUNDARY-01 | Safety | no production, credentials, bootstrap, restore, destructive cleanup, branch / PR / merge / tag / Release | PASS（NOT_RUN / NOT_REQUIRED） |
 
