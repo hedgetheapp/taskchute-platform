@@ -2218,6 +2218,6 @@ The original D-080 rows remain historical evidence for the A/B/C/D chain, but th
 | D083-PERSIST-01 | Reload persistence | same-tab reload and fresh authenticated tab restore final fixture Section / planned-start / order / lifecycle | PASS |
 | D083-CONSOLE-01 | Browser console | persistent authenticated verification surface | PASS; `0 errors / 0 warnings` |
 | D083-DB-01 | APP/AUTH read-only integrity | quick check, FK, pending migrations `0 / 0`, fixture order / positions / placement revision, operation coherence, active execution, `rows_written=0` | PASS |
-| D083-MIG-01 | Migration / dependency boundary | no D-083 schema or migration; no dependency change; remote migration lists empty | PASS `MIGRATION_NOT_REQUIRED`; local migration helper `NOT_RUN` |
+| D083-MIG-01 | Migration / dependency boundary | no D-083 schema or migration; no dependency change; existing migration regression `4 scenarios`; remote migration lists empty | PASS `MIGRATION_NOT_REQUIRED` |
 | D083-BROWSER-BOUNDARY-01 | Narrow connector tab | initial `332 × 910` clipped in-app tab was not used to claim pointer reachability | NOT_VERIFIED; wide reachable browser surface supplies the PASS evidence |
 | D083-SAFETY-01 | Scope boundary | no production, credentials, bootstrap, restore, destructive cleanup, branch / PR / merge / tag / Release | PASS（未実施 / NOT_RUN） |
