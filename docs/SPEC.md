@@ -532,3 +532,11 @@ Current established Dayのplanned Routine-derived Entryも、D-083と同じrow-l
 first-timeのSection / planned-start変更で`section_plan_override_present = false`の場合、UIはcandidateをmemory-onlyで保持し、`今回だけ`または`ルーティンに反映`を明示選択するまでwriteしない。Escape / Cancel / dismissはno-writeで元Entryへfocusを戻す。overrideがtrueの場合はchooserなしのOccurrence-only direct pathとする。Definition pathはcurrent selected placementを尊重し、Definition default / defaults revision / existing eligible materialized propagationを更新し、selected occurrence overrideをclearするが、relative before / afterをrecurring Definitionへ保存しない。
 
 SetRoutineSectionPlanの旧request形状・exact operation / replay / retryを維持し、placement / defaults revision CAS、Routine scope / placement / propagation / resultを一つのatomic outcomeとして扱う。D-078 / D-079 placement barrier、D-081 historical display / physical-position boundary、D-082 auto-carry override、future / past no-write、D-083 drag preview / vertical auto-scrollを変更しない。新command、schema、migration、dependency、future materialization、historical backfillは追加しない。
+
+## D-085 Routine Mode default / occurrence override
+
+Routine Definitionにはowner-scopedな任意のdefault Modeを持たせ、default rowがない状態をModeなしとする。Routine Occurrenceにはoverride rowのpresenceを保持し、rowが存在して mode_id がNULLならそのOccurrenceだけの明示的なModeなしとする。planned Routine-derived Entryのeffective live Modeは、override、default、Entryへの既存Modeの順で解決し、実行後のsnapshot / historyは変更しない。
+
+current established Dayのplanned Routine-derived Entryでoverrideが未設定の場合、Mode変更はmemory-only candidateから 今回だけ または ルーティンに反映 を明示選択するまでwriteしない。今回だけはOccurrence override、ルーティンに反映はRoutine default更新とeligible planned no-override occurrenceへのpropagationを既存CAS / atomic operationで確定する。overrideが存在する場合はOccurrence-only direct pathとし、ModeなしもNULL overrideとして保持する。
+
+Routine BoardはProjectの隣にMode列を表示し、default Modeを編集する。Routine化はordinary Entryの現在Modeをdefaultとして継承し、Mode削除はRoutine defaultとOccurrence overrideを安全にclearしてlive Entry ModeをNULLにするが、snapshots / historyを変更しない。APP migration 0025_routine_mode.sqlで関係とoperations CHECKを追加するが、AUTH migration、既存API semanticsを越える新command、dependency、security posture、future materializationの拡張、historical rewriteは行わない。D-068のRoutine Mode out-of-scopeはこの狭いdefault / occurrence override機能に限りsupersedeする。

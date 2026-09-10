@@ -574,3 +574,9 @@ Day Tableのplanned Routine-derived rowは、current established Dayに限りord
 Sectionまたはplanned startを変えるdropでは、既存Routine設定のscope chooserをcandidate placementへ再利用する。overrideなしのfirst-time candidateは`今回だけ` / `ルーティンに反映`の未選択modalを表示し、cancel / Escape / outside dismissは候補とdrag indicatorを破棄してsource focusへ戻す。overrideありはOccurrence-only direct pathとする。Definition actionは選択されたcurrent placementを使うが、relative positionをDefinition defaultへ保存しない。
 
 Routine placement requestは既存`SetRoutineSectionPlan` commandのoptional relative anchorを使い、global serial Day dispatcher、placement / defaults revision CAS、atomic scope propagation、exact retry / ambiguityを維持する。sent requestはimmutableで、non-commutative lifecycle / Add / Move / planned-start / Routine reset / retained-ambiguity barrierを跨がない。drag previewはD-083のfixed X/width、vertical-only auto-scroll、cleanupを共有する。
+
+## D-085 Routine Mode interaction
+
+Routine BoardはProject列の隣にMode列を置き、default Modeを通常のBoard編集として表示する。default未設定はModeなしであり、Day側でdefaultから解決されたModeと視覚的に区別しない。Dayのplanned Routine-derived rowでoverride未設定のModeを変更すると、選択値を事前選択しない小さなscope chooserを開き、今回だけ、ルーティンに反映、キャンセルを表示する。cancel / Escapeはno-writeで候補を破棄する。
+
+Occurrence overrideが既に存在するRoutine rowは直接更新し、Modeなしを明示的NULL overrideとして表示・保持する。Routine default更新は既存のtransient/status languageとoperation retry surfaceを再利用し、Dayのtable geometry、focus、既存のMode selector、非Routine EntryのMode semanticsを変更しない。

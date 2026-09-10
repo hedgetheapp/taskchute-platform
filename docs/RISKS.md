@@ -486,3 +486,15 @@ The original D-084 Web convergence check could clear an ambiguous placement-bear
 Corrective commit `e67297009d4f2c92d4e3b8d607716b861cf477b5` now retains every placement-bearing ambiguous operation with its immutable exact request and retry action. The non-placement pair heuristic remains unchanged. Focused Web `3 / 3`, full Web `263 / 263`, Routine Worker `6 / 6`, full Worker/D1 `220 / 220`, typecheck/build/nonprod dry-run, nonprod deployment, APP/AUTH quick/FK/migration integrity, and `rows_written=0` evidence pass. No Worker/API/schema/migration/dependency/security change was introduced.
 
 The code correctness gap is resolved. Persistent authenticated Routine browser D&D / Shift / chooser / Definition / retry evidence and exact console counts remain `NOT_VERIFIED` because the available CUA state had no tab; no credential or login action was attempted. This is the remaining D-084 evidence boundary described in R-032, not a browser PASS claim.
+
+## R-034 — D-085 Routine Mode migration-helper and console evidence boundary
+
+D-085 separates Routine Definition default Mode from per-Occurrence override presence while retaining Entry live Mode as the effective materialized value. The implementation and persistent nonprod browser semantics are verified, but two evidence limitations remain: the Windows migration helper hung before completion, and the CUA connector does not expose exact browser console logs.
+
+Mitigation / evidence:
+
+- APP migration 0025_routine_mode.sql applied remotely with 21 commands; APP/AUTH pending migrations are 0 / 0, both quick checks are ok, FK checks are empty, active executions are 0, duplicate positions are empty, routine guards / transaction assertions are 0, and successful audit queries report rows_written=0.
+- Full Web 4 files / 264 tests, full Worker/D1 26 files / 222 tests, focused Routine Board 13 / 13, focused Routine Worker 3 files / 19 tests, integration 2 / 2, typecheck/build/exact nonprod build/dry-run/diff-check pass. Existing authenticated persistent browser confirmed Routine default D068 Deep verification, occurrence one-time override, Cancel no-write, explicit occurrence Modeなし, same-tab reload, and fresh authenticated tab persistence. Worker version 4e4ae507-c366-42fc-8e17-3a1f6bbaacf8 ran with RUNTIME_ENV=nonprod and BOOTSTRAP_ENABLED=false.
+- npm run test:migrations is NOT_RUN because it produced no output and hung on Windows; this does not change the remote migration result or the D-085 MIGRATION_NOT_REQUIRED classification. Browser console exact count is NOT_VERIFIED; no console PASS is claimed.
+
+No production, credential, bootstrap, restore, destructive cleanup, or release action was performed. No new dependency or AUTH migration was introduced.

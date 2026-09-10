@@ -2263,3 +2263,19 @@ D-084 browser fixture creation was not completed: the unauthenticated/new in-app
 | D084-CORR-DB-01 | APP/AUTH read-only integrity | quick check, FK, migrations `0 / 0`, active execution, duplicate positions, Routine guards, transaction assertions, operation/audit coherence | PASS; quick `ok`, FK empty, rows_written `0` |
 | D084-CORR-BROWSER-01 | Authenticated Routine browser regression | persistent CUA state had no tab; no credential/login/reset or session creation | `NOT_VERIFIED` / `NOT_RUN` |
 | D084-CORR-SAFETY-01 | Scope boundary | no Worker/API/schema/migration/dependency/security/production/restore/destructive/branch/PR/merge/tag/Release action | PASS（未実施 / NOT_RUN） |
+
+## D-085 Routine Mode default / occurrence override
+
+| ID | Scope | Evidence | Result |
+|---|---|---|---|
+| D085-DOC-01 | Canonical semantics | D-085 decision pointer plus SPEC / DESIGN / FEATURES / CURRENT evidence | PASS |
+| D085-MIG-01 | APP migration | 0025_routine_mode.sql creates default / override relations, pre-D-085 planned Routine live Mode backfill, and operations CHECK update; AUTH unchanged | PASS; remote applied 21 commands; pending 0 / 0 |
+| D085-WORKER-01 | Routine Mode domain | default / occurrence override, explicit NULL Modeなし, propagation, conversion inheritance, delete clear, replay / misuse / revision / ambiguity boundaries | PASS; focused Worker 3 files / 19 tests; integration 2 / 2 |
+| D085-WEB-01 | Day and Routine Board UI | Routine Board Mode column/default editor, Day chooser/direct override/cancel, effective projection, retry surface | PASS; focused Web 13 / 13 |
+| D085-REG-01 | Existing regressions | full Web 4 files / 264 tests; full Worker/D1 26 files / 222 tests; typecheck / normal build / exact nonprod build / Wrangler dry-run / diff-check | PASS |
+| D085-ENV-01 | Exact persistent nonprod | Worker 4e4ae507-c366-42fc-8e17-3a1f6bbaacf8; RUNTIME_ENV=nonprod; BOOTSTRAP_ENABLED=false; existing authenticated session reused | PASS |
+| D085-BROWSER-01 | Default / occurrence browser behavior | default D068 Deep verification; occurrence one-time D068 Light verification; Cancel no-write; explicit occurrence —; same-tab reload / fresh authenticated tab | PASS |
+| D085-CONSOLE-01 | Browser console | exact console warning/error count | NOT_VERIFIED; connector does not expose console log API |
+| D085-DB-01 | APP/AUTH read-only integrity | quick check, FK, migration counts, target Entry/default/override/live Mode, operation coherence, placement revision, active execution, guards/assertions, duplicate positions, audit writes | PASS; quick ok, FK empty, pending 0 / 0, active 0, guards/assertions 0, duplicates empty, rows_written=0 |
+| D085-LOCAL-MIG-01 | Windows migration helper | npm run test:migrations | NOT_RUN; produced no output and was interrupted after hang; not claimed PASS |
+| D085-SAFETY-01 | Scope boundary | no production, credential retrieval/reset, bootstrap change, restore, destructive cleanup, branch / PR / merge / tag / Release | PASS（未実施 / NOT_RUN） |

@@ -1739,6 +1739,14 @@ D-083は、current established Dayのordinary planned Entryに限り、既存`Mo
 
 実装、Worker / Web regression、real-local / persistent nonprod browser、read-only DB evidenceはcanonical evidence docsへ記録する。production、restore、destructive cleanup、branch / PR / merge / tag / releaseは対象外で、Releasedは`NO`とする。
 
+## D-085 — Routine Mode default / occurrence override
+
+Status: **Approved**
+
+D-085のcanonical decision本文は docs/decisions/D-085_ROUTINE_MODE.md に置く。Routine Definitionのdefault Mode（未設定をModeなしとして表現）と、Occurrenceごとのoverride presence（mode_id = NULL を明示的なModeなしとして表現）を分離し、current established Dayのplanned Routine-derived Entryでは、override未設定時だけ 今回だけ / ルーティンに反映 を選択する。既存overrideはOccurrence-onlyで直接更新する。
+
+Routine Boardのdefault Mode編集、planned materialized occurrenceへの安全なpropagation、Mode削除時のclear、ordinary EntryからRoutine化する際のMode継承を、既存のoperation identity / replay / CAS / ambiguity / revision境界の中で実装する。APP migration 0025_routine_mode.sql は必要な関係とoperations CHECKだけを追加し、AUTH migration、APIの既存境界を越える新command、dependency、security posture、historical rewrite、production operationは追加しない。D-068のRoutine Mode out-of-scopeはこのdefault / occurrence override semanticsに限ってsupersedeし、他のRoutine境界は変更しない。
+
 ## D-084 — Routine-derived planned placement D&D / Shift
 
 Status: **Approved**
