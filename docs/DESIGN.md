@@ -566,3 +566,11 @@ Server carryはpast timed Sectionのplanned Entryをsource context / planned sta
 Current established Dayではordinary planned Task rowだけをdrag sourceとし、row anchorへのbefore / after、Section areaのplanned tail、`Sectionなし`のNULL-start tailを同じMoveEntry placement modelで表示する。Routine planned rowはanchorとしてのみ利用可能で、source rowのplanned / Routine semanticsは変更しない。D-078 same-cohort reorderとD-079 Section moveのeffective overlayから、Section、planned start、order、Section summary、Next / forecastを一貫して導出する。
 
 Drag previewはsource rowのleft / widthを固定し、縦方向だけpointerへ追従する。`.day-surface`を唯一のscroll ownerとして、edge付近だけvertical auto-scrollを行う。horizontal scroll、column resize、interactive descendant drag、collapsed Section auto-expandは行わない。drop / cancel / auth / navigation / unmount時はpreview、indicator、auto-scroll loopを破棄する。
+
+## D-084 Routine-derived planned placement interaction
+
+Day Tableのplanned Routine-derived rowは、current established Dayに限りordinary planned rowと同じD&D surface / `Shift + ArrowUp / ArrowDown` interactionへ参加する。same Section・same planned-start cohortはposition-onlyのeffective reorderであり、Routine badge / Section selector / planned-start表示、Occurrence override、Definition defaultを変更しない。
+
+Sectionまたはplanned startを変えるdropでは、既存Routine設定のscope chooserをcandidate placementへ再利用する。overrideなしのfirst-time candidateは`今回だけ` / `ルーティンに反映`の未選択modalを表示し、cancel / Escape / outside dismissは候補とdrag indicatorを破棄してsource focusへ戻す。overrideありはOccurrence-only direct pathとする。Definition actionは選択されたcurrent placementを使うが、relative positionをDefinition defaultへ保存しない。
+
+Routine placement requestは既存`SetRoutineSectionPlan` commandのoptional relative anchorを使い、global serial Day dispatcher、placement / defaults revision CAS、atomic scope propagation、exact retry / ambiguityを維持する。sent requestはimmutableで、non-commutative lifecycle / Add / Move / planned-start / Routine reset / retained-ambiguity barrierを跨がない。drag previewはD-083のfixed X/width、vertical-only auto-scroll、cleanupを共有する。

@@ -711,8 +711,8 @@ export interface SetRoutineEstimateResult {
 }
 
 export type SetRoutineSectionPlanRequest = RoutineEntryMutationBase & { expected_placement_revision: number } & (
-  | { action: "occurrence"; section_id: string | null; planned_start_minute: number | null }
-  | { action: "definition"; section_id: string | null; planned_start_minute: number | null; expected_defaults_revision: number }
+  | { action: "occurrence"; section_id: string | null; planned_start_minute: number | null; placement?: MoveEntryPlacementIntent }
+  | { action: "definition"; section_id: string | null; planned_start_minute: number | null; expected_defaults_revision: number; placement?: MoveEntryPlacementIntent }
   | { action: "reset" }
 );
 

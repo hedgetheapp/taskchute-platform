@@ -208,6 +208,78 @@ describe.sequential("Routine R2A current-Day overrides", () => {
       .bind(futureDay).first<number>("placement_revision")).toBe(1);
   });
 
+  it("applies Routine relative placement atomically without changing the recurring position", async () => {
+    const fixture = await seedRoutine();
+    const anchorTaskId = uuidv7();
+    const anchorEntryId = uuidv7();
+    await env.APP_DB.batch([
+      env.APP_DB.prepare("INSERT INTO tasks (id, app_user_id, title, created_at) VALUES (?, ?, 'Routine anchor', ?)")
+        .bind(anchorTaskId, fixture.userId, now),
+      env.APP_DB.prepare(`INSERT INTO entries
+        (id, app_user_id, task_id, taskchute_day_id, section_id, position, lifecycle_state,
+         estimate_seconds, planned_start_minute, created_at)
+        VALUES (?, ?, ?, ?, ?, 1, 'planned', 600, 600, ?)`)
+        .bind(anchorEntryId, fixture.userId, anchorTaskId, fixture.dayId, fixture.sections[1], now),
+    ]);
+    const operation = {
+      operation_id: uuidv7(), entry_id: fixture.entryId, taskchute_day_id: fixture.dayId,
+      action: "occurrence" as const, section_id: fixture.sections[1]!, planned_start_minute: 600,
+      expected_placement_revision: 0,
+      placement: { kind: "relative_to_entry" as const, anchor_entry_id: anchorEntryId, edge: "before" as const },
+    };
+    expect(await setRoutineSectionPlan(env.APP_DB, fixture.userId, operation, now)).toMatchObject({
+      section_id: fixture.sections[1], planned_start_minute: 600, position: 1,
+      section_plan_override_present: true, placement_revision: 1,
+    });
+    expect(await env.APP_DB.prepare(`SELECT e.section_id, e.position, e.planned_start_minute,
+        ro.section_plan_override_present, ro.section_override_id, ro.planned_start_override_minute
+      FROM entries e JOIN routine_occurrences ro ON ro.id = e.routine_occurrence_id WHERE e.id = ?`)
+      .bind(fixture.entryId).first()).toEqual({
+      section_id: fixture.sections[1], position: 1, planned_start_minute: 600,
+      section_plan_override_present: 1, section_override_id: fixture.sections[1], planned_start_override_minute: 600,
+    });
+    expect(await env.APP_DB.prepare("SELECT section_id, position FROM entries WHERE id = ?")
+      .bind(anchorEntryId).first()).toEqual({ section_id: fixture.sections[1], position: 2 });
+    expect(await env.APP_DB.prepare("SELECT default_section_id, default_planned_start_minute, defaults_revision FROM routine_definitions WHERE id = ?")
+      .bind(fixture.definitionId).first()).toEqual({ default_section_id: fixture.sections[0], default_planned_start_minute: 300, defaults_revision: 0 });
+    await expect(setRoutineSectionPlan(env.APP_DB, fixture.userId,
+      { ...operation, operation_id: operation.operation_id, section_id: null, planned_start_minute: null }, now))
+      .rejects.toMatchObject({ code: "operation_id_misuse" });
+  });
+
+  it("keeps a first-time same-cohort Routine reorder position-only without creating an override", async () => {
+    const fixture = await seedRoutine();
+    const anchorTaskId = uuidv7();
+    const anchorEntryId = uuidv7();
+    await env.APP_DB.batch([
+      env.APP_DB.prepare("INSERT INTO tasks (id, app_user_id, title, created_at) VALUES (?, ?, 'Same cohort anchor', ?)")
+        .bind(anchorTaskId, fixture.userId, now),
+      env.APP_DB.prepare(`INSERT INTO entries
+        (id, app_user_id, task_id, taskchute_day_id, section_id, position, lifecycle_state,
+         estimate_seconds, planned_start_minute, created_at)
+        VALUES (?, ?, ?, ?, ?, 2, 'planned', 600, 300, ?)`)
+        .bind(anchorEntryId, fixture.userId, anchorTaskId, fixture.dayId, fixture.sections[0], now),
+    ]);
+    const operation = {
+      operation_id: uuidv7(), entry_id: fixture.entryId, taskchute_day_id: fixture.dayId,
+      action: "occurrence" as const, section_id: fixture.sections[0]!, planned_start_minute: 300,
+      expected_placement_revision: 0,
+      placement: { kind: "relative_to_entry" as const, anchor_entry_id: anchorEntryId, edge: "after" as const },
+    };
+    expect(await setRoutineSectionPlan(env.APP_DB, fixture.userId, operation, now)).toMatchObject({
+      section_id: fixture.sections[0], planned_start_minute: 300, position: 2,
+      section_plan_override_present: false, placement_revision: 1,
+    });
+    expect(await env.APP_DB.prepare(`SELECT e.position, ro.section_plan_override_present,
+        ro.section_override_id, ro.planned_start_override_minute
+      FROM entries e JOIN routine_occurrences ro ON ro.id = e.routine_occurrence_id WHERE e.id = ?`)
+      .bind(fixture.entryId).first()).toEqual({
+      position: 2, section_plan_override_present: 0, section_override_id: null, planned_start_override_minute: null,
+    });
+    expect(await env.APP_DB.prepare("SELECT position FROM entries WHERE id = ?").bind(anchorEntryId).first())
+      .toEqual({ position: 1 });
+  });
+
   it("rolls back a definition update on injected propagation failure and retries the exact operation", async () => {
     const fixture = await seedRoutine();
     const request = { operation_id: uuidv7(), entry_id: fixture.entryId, taskchute_day_id: fixture.dayId,

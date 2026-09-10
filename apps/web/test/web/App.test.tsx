@@ -1794,7 +1794,7 @@ describe("Dogfood Day shell", () => {
     expect(mocks.reorderEntries).not.toHaveBeenCalled();
   });
 
-  it("shows no valid target or write for same-Section and Routine cross-Section drops", async () => {
+  it("opens the Routine scope chooser for a cross-Section drop without writing first", async () => {
     const routineEntry: EntryProjection = { ...firstEntry, routine: {
       routine_definition_id: "019c0000-0000-7000-8000-000000000040",
       routine_occurrence_id: "019c0000-0000-7000-8000-000000000041",
@@ -1806,17 +1806,21 @@ describe("Dogfood Day shell", () => {
     mocks.loadDay.mockResolvedValue(routineDay);
     render(<App />);
     const source = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
-    const sourceSummary = sectionSummary("Morning");
     const targetSummary = sectionSummary("Evening");
     const dataTransfer = dragDataTransfer();
     fireEvent.dragStart(dragSurface(source), { dataTransfer });
-    fireEvent.dragOver(sourceSummary, { dataTransfer });
-    expect(sourceSummary.dataset.dropTarget).toBeUndefined();
-    fireEvent.drop(sourceSummary, { dataTransfer });
     fireEvent.dragOver(targetSummary, { dataTransfer });
-    expect(targetSummary.dataset.dropTarget).toBeUndefined();
+    expect(targetSummary.dataset.dropTarget).toBe("valid");
     fireEvent.drop(targetSummary, { dataTransfer });
     fireEvent.dragEnd(dragSurface(source), { dataTransfer });
+    const choice = await screen.findByRole("group", { name: "Canonical taskのSection・開始予定反映先" });
+    expect(mocks.setRoutineSectionPlan).not.toHaveBeenCalled();
+    fireEvent.click(within(choice).getByRole("button", { name: "今回だけ" }));
+    await waitFor(() => expect(mocks.setRoutineSectionPlan).toHaveBeenCalledTimes(1));
+    expect(mocks.setRoutineSectionPlan.mock.calls[0][0]).toMatchObject({
+      action: "occurrence", section_id: eveningId, planned_start_minute: 720,
+      expected_placement_revision: routineDay.placement_revision,
+    });
     expect(mocks.moveEntry).not.toHaveBeenCalled();
   });
 
@@ -3588,6 +3592,31 @@ describe("Dogfood Day shell", () => {
     expect(screen.getByRole("status").textContent).toBe("Routine設定を保存・照合中…");
     request.resolve({});
     await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+  });
+
+  it("reorders a Routine Entry inside the same cohort without opening a scope chooser", async () => {
+    const routineEntry: EntryProjection = { ...firstEntry, routine: {
+      routine_definition_id: "019c0000-0000-7000-8000-00000000004c",
+      routine_occurrence_id: "019c0000-0000-7000-8000-00000000004d",
+      end_logical_date: null, can_end: true, default_section_id: morningId,
+      default_planned_start_minute: null, section_plan_override_present: false,
+      default_estimate_seconds: null, estimate_override_present: false, defaults_revision: 0,
+    } };
+    const routineDay = { ...twoPlannedDay,
+      sections: [{ ...twoPlannedDay.sections[0], entries: [routineEntry, secondEntry] }, twoPlannedDay.sections[1]],
+      next_entry: routineEntry };
+    mocks.loadDay.mockResolvedValue(routineDay);
+    render(<App />);
+    const source = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
+    const target = screen.getByText("Second task").closest<HTMLElement>("[data-entry-id]")!;
+    dragEntry(dragSurface(source), target, 90);
+    await waitFor(() => expect(mocks.setRoutineSectionPlan).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("group", { name: "Canonical taskのSection・開始予定反映先" })).toBeNull();
+    expect(mocks.setRoutineSectionPlan.mock.calls[0][0]).toMatchObject({
+      action: "occurrence", section_id: morningId, planned_start_minute: null,
+      expected_placement_revision: routineDay.placement_revision,
+      placement: { kind: "relative_to_entry", anchor_entry_id: secondEntry.id, edge: "after" },
+    });
   });
 
   it("shows estimate reset only in the overridden unit editor and retains the exact ambiguous operation for retry", async () => {

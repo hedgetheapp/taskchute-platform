@@ -1738,3 +1738,17 @@ D-083は、current established Dayのordinary planned Entryに限り、既存`Mo
 - D-066 / D-077 serial dispatcher、D-078 reorder、D-079 move、D-082 no-bounce、exact retry / ambiguity / barrier semanticsを維持する。source / anchor / edge / destination / expected revisionはsent後immutableで、非commutative barrierを跨ぐcoalesceやsilent rebaseを行わない。
 
 実装、Worker / Web regression、real-local / persistent nonprod browser、read-only DB evidenceはcanonical evidence docsへ記録する。production、restore、destructive cleanup、branch / PR / merge / tag / releaseは対象外で、Releasedは`NO`とする。
+
+## D-084 — Routine-derived planned placement D&D / Shift
+
+Status: **Approved**
+
+D-084は、D-083のcurrent established Day向けplanned placement interactionを、planned Routine-derived Entryにも狭く拡張する。対象はcurrent established Dayのplanned Routine occurrenceだけで、running / completed / interrupted history、future / past / preview / unestablished、provisional Add、suppressed / unavailable occurrence、mutation-locked状態は対象外とする。
+
+- 同一Section・同一planned-start cohortのD&D / `Shift + ArrowUp / ArrowDown`はposition-onlyの`ReorderEntries`相当として扱い、scope chooserを表示せず、Occurrence override、Routine Definition、planned Section / startを変更しない。
+- Sectionまたはplanned startが変わるgestureは既存`SetRoutineSectionPlan`の後方互換なrelative placement intentを再利用する。anchorは同一Dayのplanned ordinary / Routine Entryに限り、historical Entryをanchorにしない。ServerがSection / planned start / positionを解決し、scope未選択のfirst-time changeではmemory-only candidateを表示して`今回だけ` / `ルーティンに反映`を選ぶまでwriteしない。
+- `section_plan_override_present`が既にtrue（D-082 auto-carryを含む）ならchooserを省略し、Occurrence-onlyで直接確定する。Definition actionは選択されたcurrent placementを適用し、Definition default、defaults revision、既存のeligible materialized propagationを既存atomic semanticsで更新し、explicit overrideを保持する。before / after positionはDefinition defaultへ保存しない。
+- sent payload / operation identity、placement revision、defaults revision、global serial dispatcher、exact replay / retry / ambiguity、非可換barrier、D-078 / D-079 / D-081 / D-082 / D-083 safety boundaryを維持する。scope candidateはoperationではなく、cancel / Escape / dismissはno-writeでsource Entry focusへ戻す。
+- API / Domain commandは既存`SetRoutineSectionPlan`を拡張するだけで、新migration、schema、dependency、Routine Definitionのrecurring position persistence、future materialization、retroactive historical rewriteは追加しない。
+
+実装、Worker / Web regression、real-local / persistent nonprod browser、read-only DB evidenceはcanonical evidence docsへ記録する。production、restore、destructive cleanup、branch / PR / merge / tag / releaseは対象外で、Releasedは`NO`とする。

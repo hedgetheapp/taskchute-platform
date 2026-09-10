@@ -522,3 +522,13 @@ Move validationはowner、same Day、ordinary planned source、planned anchor、
 Focused sourceの`Shift + ArrowUp / ArrowDown`はplanned area内でcohortおよびSection境界を越えて移動できる。Sectionなしは存在する場合のみtraversalに含める。successful moveはsame Entry identityへのfocusをrestoreし、failureはcanonical reconcileしてghost indicatorを残さない。D&D previewはsource rowのleft / widthを固定してpointer Yだけ追従し、vertical auto-scrollは`.day-surface` edgeのみ、`scrollLeft`は不変とする。
 
 Sent MoveEntryのoperation identity、destination、anchor、edge、expected revisionはimmutable。unsent same-Entry intentのcoalesceはorder-preserving segment内だけに限定し、Start / Complete / Interrupt、Add、planned-start edit、delete、Duplicate、bulk、Routine placement、D-082 reconcile、retained ambiguityを跨がない。D-078 / D-079 queue、retry、ambiguity、future/past no-write境界は変更しない。新command、schema、migration、dependencyは追加しない。
+
+## D-084 Routine-derived planned placement D&D / Shift
+
+Current established Dayのplanned Routine-derived Entryも、D-083と同じrow-level pointer D&Dおよび`Shift + ArrowUp / ArrowDown`のsourceになれる。対象外はrunning / completed / interrupted history、future / past / preview / unestablished、provisional、suppressed / unavailable occurrence、mutation-locked stateである。
+
+同一Section・同一planned-start cohortではposition-only reorderを行う。scope chooserは表示せず、Routine OccurrenceのSection plan override、Routine Definition、planned Section / startを変更しない。cross-cohort / cross-Section / Section-area placementでは既存`SetRoutineSectionPlan`へoptional relative placement（anchor Entry ID + before / after）を渡し、anchorのplanned Section / startをServer authorityとして利用する。historical anchor、cross-Day anchor、Sectionless invalid pairはrejectする。
+
+first-timeのSection / planned-start変更で`section_plan_override_present = false`の場合、UIはcandidateをmemory-onlyで保持し、`今回だけ`または`ルーティンに反映`を明示選択するまでwriteしない。Escape / Cancel / dismissはno-writeで元Entryへfocusを戻す。overrideがtrueの場合はchooserなしのOccurrence-only direct pathとする。Definition pathはcurrent selected placementを尊重し、Definition default / defaults revision / existing eligible materialized propagationを更新し、selected occurrence overrideをclearするが、relative before / afterをrecurring Definitionへ保存しない。
+
+SetRoutineSectionPlanの旧request形状・exact operation / replay / retryを維持し、placement / defaults revision CAS、Routine scope / placement / propagation / resultを一つのatomic outcomeとして扱う。D-078 / D-079 placement barrier、D-081 historical display / physical-position boundary、D-082 auto-carry override、future / past no-write、D-083 drag preview / vertical auto-scrollを変更しない。新command、schema、migration、dependency、future materialization、historical backfillは追加しない。

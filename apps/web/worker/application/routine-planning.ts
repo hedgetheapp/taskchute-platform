@@ -1,6 +1,7 @@
 import type {
   SetRoutineEstimateRequest,
   SetRoutineEstimateResult,
+  MoveEntryPlacementIntent,
   SetRoutineSectionPlanRequest,
   SetRoutineSectionPlanResult,
 } from "../../src/shared/contracts";
@@ -55,6 +56,15 @@ interface SectionPlanMutationPlan extends SectionPlanTargetRow {
   placement_changed: boolean;
 }
 
+interface PlacementEntryRow {
+  entry_id: string;
+  section_id: string | null;
+  position: number;
+  lifecycle_state: string;
+  planned_start_minute: number | null;
+  section_plan_override_present: number;
+}
+
 function isAction(value: unknown): value is RoutineAction {
   return value === "occurrence" || value === "definition" || value === "reset";
 }
@@ -86,7 +96,16 @@ export function isSetRoutineSectionPlanRequest(value: unknown): value is SetRout
     || !Number.isSafeInteger(body.expected_placement_revision)
     || Number(body.expected_placement_revision) < 0) return false;
   if (body.action === "reset") {
-    return !("section_id" in body) && !("planned_start_minute" in body) && !("expected_defaults_revision" in body);
+    return !("section_id" in body) && !("planned_start_minute" in body)
+      && !("expected_defaults_revision" in body) && !("placement" in body);
+  }
+  if ("placement" in body && body.placement !== undefined) {
+    const placement = body.placement;
+    if (!placement || typeof placement !== "object") return false;
+    const candidate = placement as Record<string, unknown>;
+    if (candidate.kind !== "relative_to_entry"
+      || typeof candidate.anchor_entry_id !== "string" || !isUuidV7(candidate.anchor_entry_id)
+      || (candidate.edge !== "before" && candidate.edge !== "after")) return false;
   }
   const validPair = (body.section_id === null && body.planned_start_minute === null)
     || (typeof body.section_id === "string" && isUuidV7(body.section_id)
@@ -305,7 +324,21 @@ async function buildSectionPlans(
   action: RoutineAction,
   sectionId: string | null,
   plannedStart: number | null,
+  placement?: MoveEntryPlacementIntent,
 ): Promise<SectionPlanMutationPlan[] | null> {
+  let targetSection = sectionId;
+  let targetPlannedStart = plannedStart;
+  if (placement) {
+    const anchor = await db.prepare(`SELECT id AS entry_id, section_id, planned_start_minute
+      FROM entries WHERE app_user_id = ? AND taskchute_day_id = ? AND id = ? AND lifecycle_state = 'planned'`)
+      .bind(appUserId, row.taskchute_day_id, placement.anchor_entry_id).first<{
+        entry_id: string; section_id: string | null; planned_start_minute: number | null;
+      }>();
+    if (!anchor || anchor.entry_id === row.entry_id
+      || anchor.section_id !== sectionId || anchor.planned_start_minute !== plannedStart) return null;
+    targetSection = anchor.section_id;
+    targetPlannedStart = anchor.planned_start_minute;
+  }
   const targets = action === "definition"
     ? await db.prepare(`SELECT e.id AS entry_id, e.taskchute_day_id, d.logical_date, d.placement_revision,
         e.section_id, e.position, e.planned_start_minute, ro.section_plan_override_present
@@ -321,23 +354,64 @@ async function buildSectionPlans(
         section_id: row.section_id, position: row.position, planned_start_minute: row.planned_start_minute,
         section_plan_override_present: row.section_plan_override_present }] };
   for (const target of targets.results) {
-    if (!await validateSectionPair(db, appUserId, target.taskchute_day_id, sectionId, plannedStart)) return null;
+    if (!await validateSectionPair(db, appUserId, target.taskchute_day_id, targetSection, targetPlannedStart)) return null;
   }
   const allEntries = await db.prepare(`SELECT taskchute_day_id, section_id, MAX(position) AS max_position
     FROM entries WHERE app_user_id = ? GROUP BY taskchute_day_id, section_id`).bind(appUserId)
     .all<{ taskchute_day_id: string; section_id: string | null; max_position: number }>();
   const next = new Map(allEntries.results.map((item) => [`${item.taskchute_day_id}:${item.section_id ?? ""}`, item.max_position + 1]));
-  return targets.results.map((target) => {
-    const placementChanged = target.section_id !== sectionId || target.planned_start_minute !== plannedStart;
+  const plans = targets.results.map((target) => {
+    const placementChanged = target.section_id !== targetSection || target.planned_start_minute !== targetPlannedStart;
     let position = target.position;
-    if (target.section_id !== sectionId) {
-      const key = `${target.taskchute_day_id}:${sectionId ?? ""}`;
+    if (target.section_id !== targetSection) {
+      const key = `${target.taskchute_day_id}:${targetSection ?? ""}`;
       position = next.get(key) ?? 1;
       next.set(key, position + 1);
     }
-    return { ...target, target_section_id: sectionId, target_planned_start_minute: plannedStart,
+    return { ...target, target_section_id: targetSection, target_planned_start_minute: targetPlannedStart,
       target_position: position, placement_changed: placementChanged };
   });
+  if (!placement) return plans;
+
+  const sectionIds = [...new Set([row.section_id, targetSection])];
+  const placementRows = (await Promise.all(sectionIds.map((sourceSectionId) => db.prepare(`SELECT e.id AS entry_id,
+      e.section_id, e.position, e.lifecycle_state, e.planned_start_minute,
+      COALESCE(ro.section_plan_override_present, 0) AS section_plan_override_present
+    FROM entries e LEFT JOIN routine_occurrences ro ON ro.app_user_id = e.app_user_id AND ro.id = e.routine_occurrence_id
+    WHERE e.app_user_id = ? AND e.taskchute_day_id = ? AND e.section_id IS ?
+    ORDER BY e.position, e.id`).bind(appUserId, row.taskchute_day_id, sourceSectionId).all<PlacementEntryRow>())))
+    .flatMap((result) => result.results);
+  const targetRows = placementRows.filter((candidate) => candidate.lifecycle_state === "planned"
+    && candidate.section_id === targetSection && candidate.planned_start_minute === targetPlannedStart)
+    .sort((left, right) => left.position - right.position || left.entry_id.localeCompare(right.entry_id));
+  const source = placementRows.find((candidate) => candidate.entry_id === row.entry_id);
+  const anchor = targetRows.find((candidate) => candidate.entry_id === placement.anchor_entry_id);
+  if (!source || source.lifecycle_state !== "planned" || !anchor) return null;
+  const targetIds = targetRows.map((candidate) => candidate.entry_id).filter((entryId) => entryId !== source.entry_id);
+  const anchorIndex = targetIds.indexOf(anchor.entry_id);
+  if (anchorIndex < 0) return null;
+  targetIds.splice(anchorIndex + (placement.edge === "after" ? 1 : 0), 0, source.entry_id);
+  const targetSlots = targetRows.map((candidate) => candidate.position);
+  if (!targetRows.some((candidate) => candidate.entry_id === source.entry_id)) {
+    const maximum = Math.max(...placementRows.map((candidate) => candidate.position), 0);
+    targetSlots.push(maximum + 1);
+  }
+  targetSlots.sort((left, right) => left - right);
+  const placementById = new Map(plans.map((plan) => [plan.entry_id, plan]));
+  const rowById = new Map(placementRows.map((candidate) => [candidate.entry_id, candidate]));
+  targetIds.forEach((entryId, index) => {
+    const candidate = rowById.get(entryId);
+    if (!candidate) return;
+    placementById.set(entryId, {
+      entry_id: entryId, taskchute_day_id: row.taskchute_day_id, logical_date: row.logical_date,
+      placement_revision: row.placement_revision, section_id: candidate.section_id, position: candidate.position,
+      planned_start_minute: candidate.planned_start_minute, section_plan_override_present: candidate.section_plan_override_present,
+      target_section_id: targetSection, target_planned_start_minute: targetPlannedStart,
+      target_position: targetSlots[index]!, placement_changed: candidate.section_id !== targetSection
+        || candidate.planned_start_minute !== targetPlannedStart || candidate.position !== targetSlots[index],
+    });
+  });
+  return [...placementById.values()];
 }
 
 export async function setRoutineSectionPlan(
@@ -369,7 +443,7 @@ export async function setRoutineSectionPlan(
   const targetSection = request.action === "reset" ? row.default_section_id : request.section_id;
   const targetPlannedStart = request.action === "reset" ? row.default_planned_start_minute : request.planned_start_minute;
   const plans = await buildSectionPlans(db, appUserId, row, activeDay.logical_date, request.action,
-    targetSection, targetPlannedStart);
+    targetSection, targetPlannedStart, request.action === "reset" ? undefined : request.placement);
   if (!plans) {
     return reject(db, appUserId, request.operation_id, "SetRoutineSectionPlan", requestFingerprint,
       "The Section plan is unavailable in an affected established TaskChuteDay context");
@@ -379,7 +453,10 @@ export async function setRoutineSectionPlan(
     .map((plan) => [plan.taskchute_day_id, plan])).values()];
   const planJson = JSON.stringify(plans);
   const changedDaysJson = JSON.stringify(changedDays);
-  const targetOverridePresent = request.action === "occurrence";
+  const positionOnlyReorder = request.action === "occurrence" && request.placement !== undefined
+    && currentPlan.section_id === targetSection && currentPlan.planned_start_minute === targetPlannedStart
+    && row.section_plan_override_present === 0;
+  const targetOverridePresent = request.action === "occurrence" ? !positionOnlyReorder : false;
   const result: SetRoutineSectionPlanResult = {
     entry_id: row.entry_id,
     section_id: targetSection,
@@ -435,7 +512,7 @@ export async function setRoutineSectionPlan(
             SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
           .bind(appUserId, row.routine_occurrence_id, appUserId, request.operation_id),
       );
-    } else if (request.action === "occurrence") {
+    } else if (request.action === "occurrence" && !positionOnlyReorder) {
       statements.push(db.prepare(`UPDATE routine_occurrences SET section_plan_override_present = 1,
         section_override_id = ?, planned_start_override_minute = ? WHERE app_user_id = ? AND id = ?
         AND EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
@@ -448,6 +525,11 @@ export async function setRoutineSectionPlan(
         .bind(appUserId, row.routine_occurrence_id, appUserId, request.operation_id));
     }
     statements.push(
+      db.prepare(`UPDATE entries SET position = position + ?
+        WHERE app_user_id = ? AND id IN (SELECT json_extract(value, '$.entry_id') FROM json_each(?))
+          AND EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(Math.max(...plans.map((plan) => plan.position), 0) + plans.length + 1,
+          appUserId, planJson, appUserId, request.operation_id),
       db.prepare(`UPDATE entries SET
         section_id = (SELECT json_extract(j.value, '$.target_section_id') FROM json_each(?) j
           WHERE json_extract(j.value, '$.entry_id') = entries.id),

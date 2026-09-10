@@ -141,7 +141,8 @@ type PendingSectionMoveIntent = {
 type PendingReorderOverlay = { operation: ReorderEntriesRequest; baseEntryIds: string[] };
 type RoutineCandidate =
   | { entryId: string; unit: "estimate"; estimateSeconds: number | null }
-  | { entryId: string; unit: "section-plan"; sectionId: string | null; plannedStartMinute: number | null };
+  | { entryId: string; unit: "section-plan"; sectionId: string | null; plannedStartMinute: number | null;
+      placement?: MoveEntryPlacementIntent; restoreFocus?: FocusTarget };
 type BulkRoutineScopeChoice = "occurrence" | "definition";
 type BulkRoutineScopeDraft = {
   entryId: string;
@@ -371,6 +372,15 @@ function groupKey(sectionId: string | null): string { return sectionId ?? "unsec
 
 function sameEntryIdOrder(left: string[], right: string[]): boolean {
   return left.length === right.length && left.every((entryId, index) => entryId === right[index]);
+}
+
+function isRoutinePlacementEligible(
+  projection: CurrentTaskChuteDayProjection | null,
+  entry: EntryProjection | undefined,
+): boolean {
+  return Boolean(projection?.is_current && projection.establishment_state === "established"
+    && projection.taskchute_day.id && projection.planning_enabled && entry?.routine
+    && entry.lifecycle_state === "planned");
 }
 
 function sectionEntriesForProjection(projection: CurrentTaskChuteDayProjection, sectionId: string | null): EntryProjection[] {
@@ -1036,6 +1046,7 @@ export function App() {
     setPlannedStartOperation((current) => isCanceled(current?.request.operation_id) ? null : current);
     setPendingSectionOverlays((current) => Object.fromEntries(Object.entries(current).filter(([, overlay]) => !isCanceled(overlay.operation.operation_id))));
     updatePendingSectionMoveIntents((current) => current.filter((intent) => !isCanceled(intent.operation.operation_id)));
+    setRoutineSectionPlanOperation((current) => isCanceled(current?.operation_id) ? null : current);
     updatePendingReorderOverlays((current) => Object.fromEntries(Object.entries(current).filter(([, overlay]) => !isCanceled(overlay.operation.operation_id))));
     setPendingAddTasks((current) => current.filter((item) => !isCanceled(item.operation.operation_id)));
     setPendingTaskMetadataOverlays((current) => Object.fromEntries(Object.entries(current).filter(([, operation]) => !isCanceled(operation.operation_id))));
@@ -2990,8 +3001,10 @@ export function App() {
     if (hasCrossSectionMoveBarrier(projection.taskchute_day.id)) return null;
     const source = draggedEntry(entryDrag);
     const target = effectiveSectionEntries(sectionId, projection).find((entry) => entry.id === targetEntryId);
-    if (!source || !target || source.id === target.id || source.lifecycle_state !== "planned" || source.routine !== null
+    if (!source || !target || source.id === target.id || source.lifecycle_state !== "planned"
+      || !isRoutinePlacementEligible(projection, source) && source.routine !== null
       || target.lifecycle_state !== "planned" || target.section_id !== sectionId) return null;
+    if (source.routine === null && source.section_id !== entryDrag.sectionId) return null;
     return { kind: "relative_to_entry", anchor_entry_id: target.id, edge: "before" };
   }
 
@@ -3007,7 +3020,7 @@ export function App() {
     const projection = dayRef.current ?? day;
     const targetStart = sectionId === null ? null : projection?.sections.find((section) => section.id === sectionId)?.logical_start_minute ?? null;
     if (!drag || !entry || !projection?.taskchute_day.id || !projection.planning_enabled || mutationLocked
-      || entry.lifecycle_state !== "planned" || entry.routine !== null
+      || entry.lifecycle_state !== "planned" || (entry.routine !== null && !isRoutinePlacementEligible(projection, entry))
       || (entry.section_id === sectionId && entry.planned_start_minute === targetStart)) return false;
     const placementBlocked = projection.is_current
       ? hasCrossSectionMoveBarrier(projection.taskchute_day.id)
@@ -3041,7 +3054,8 @@ export function App() {
     const crossSectionMoveAvailable = projection?.is_current === true && projection.taskchute_day.id !== null
       && !hasCrossSectionMoveBarrier(projection.taskchute_day.id);
     if (event.button !== 0 || isInteractiveDragTarget(event.target) || !projection?.taskchute_day.id || !projection.planning_enabled
-      || mutationLocked || (!crossSectionMoveAvailable && reorderBlocked) || entry.lifecycle_state !== "planned" || entry.routine !== null) return;
+      || mutationLocked || (!crossSectionMoveAvailable && reorderBlocked) || entry.lifecycle_state !== "planned"
+      || (entry.routine !== null && !isRoutinePlacementEligible(projection, entry))) return;
     mouseDragRef.current = { entryId: entry.id, sectionId, startX: event.clientX, startY: event.clientY, active: false };
   }
 
@@ -3085,7 +3099,11 @@ export function App() {
     const placement = order ? null : dragPlacement(sectionId, targetEntryId);
     mouseDragRef.current = null;
     setEntryDrag(null);
-    if (order) void reorderSectionEntries(drag.sectionId, order, drag.entryId);
+    const dragged = draggedEntry(drag);
+    if (dragged?.routine) void moveRoutineEntryToPlacement(dragged, sectionId, placement ? { ...placement, edge } : {
+      kind: "relative_to_entry", anchor_entry_id: targetEntryId, edge,
+    }, { kind: "entry", id: dragged.id });
+    else if (order) void reorderSectionEntries(drag.sectionId, order, drag.entryId);
     else if (placement) void moveEntryToSection(drag.entryId, sectionId, { ...placement, edge });
   }
 
@@ -3095,7 +3113,8 @@ export function App() {
     const crossSectionMoveAvailable = projection?.is_current === true && projection.taskchute_day.id !== null
       && !hasCrossSectionMoveBarrier(projection.taskchute_day.id);
     if (isInteractiveDragTarget(event.target) || !projection?.taskchute_day.id || !projection.planning_enabled || mutationLocked
-      || (!crossSectionMoveAvailable && reorderBlocked) || entry.lifecycle_state !== "planned" || entry.routine !== null) {
+      || (!crossSectionMoveAvailable && reorderBlocked) || entry.lifecycle_state !== "planned"
+      || (entry.routine !== null && !isRoutinePlacementEligible(projection, entry))) {
       event.preventDefault();
       return;
     }
@@ -3132,7 +3151,11 @@ export function App() {
     setEntryDrag(null);
     if ((!ids && !placement) || !draggedEntryId) return;
     event.preventDefault();
-    if (ids) void reorderSectionEntries(sectionId, ids, draggedEntryId);
+    const dragged = draggedEntry({ entryId: draggedEntryId, sectionId: entryDrag?.sectionId ?? sectionId });
+    if (dragged?.routine) void moveRoutineEntryToPlacement(dragged, sectionId, placement ? { ...placement!, edge } : {
+      kind: "relative_to_entry", anchor_entry_id: targetEntryId, edge,
+    }, { kind: "entry", id: dragged.id });
+    else if (ids) void reorderSectionEntries(sectionId, ids, draggedEntryId);
     else void moveEntryToSection(draggedEntryId, sectionId, { ...placement!, edge });
   }
 
@@ -3159,7 +3182,9 @@ export function App() {
     const valid = canDropOnSection(sectionId, drag);
     mouseDragRef.current = null;
     setEntryDrag(null);
-    if (valid) void moveEntryToSection(drag.entryId, sectionId);
+    const dragged = draggedEntry(drag);
+    if (valid && dragged?.routine) void moveRoutineEntryToPlacement(dragged, sectionId, undefined, { kind: "entry", id: dragged.id });
+    else if (valid) void moveEntryToSection(drag.entryId, sectionId);
   }
 
   function updateSectionDropTarget(event: ReactDragEvent<HTMLElement>, sectionId: string | null) {
@@ -3183,7 +3208,9 @@ export function App() {
     const draggedEntryId = entryDrag?.entryId;
     mouseDragRef.current = null;
     setEntryDrag(null);
-    if (draggedEntryId) void moveEntryToSection(draggedEntryId, sectionId);
+    const dragged = draggedEntry({ entryId: draggedEntryId ?? "", sectionId: entryDrag?.sectionId ?? null });
+    if (draggedEntryId && dragged?.routine) void moveRoutineEntryToPlacement(dragged, sectionId, undefined, { kind: "entry", id: dragged.id });
+    else if (draggedEntryId) void moveEntryToSection(draggedEntryId, sectionId);
   }
 
   async function executeStart(operation: StartEntryRequest) {
@@ -4131,6 +4158,37 @@ export function App() {
     }
   }
 
+  function moveRoutineEntryToPlacement(
+    entry: EntryProjection,
+    sectionId: string | null,
+    placement?: MoveEntryPlacementIntent,
+    restoreFocus?: FocusTarget,
+  ): void {
+    const projection = dayRef.current ?? day;
+    if (!isRoutinePlacementEligible(projection, entry) || !projection?.taskchute_day.id || mutationLocked) return;
+    if (!entry.routine) return;
+    if (isMutationScopeBusy(routineMutationScope(entry.id, entry.routine?.routine_definition_id))) return;
+    const anchor = placement ? entryForId(projection, placement.anchor_entry_id) : null;
+    if (placement && (!anchor || anchor.id === entry.id || anchor.lifecycle_state !== "planned")) return;
+    const targetSection = placement ? anchor?.section_id ?? null : sectionId;
+    const targetPlannedStart = placement
+      ? anchor?.planned_start_minute ?? null
+      : sectionId === null ? null : projection.sections.find((section) => section.id === sectionId)?.logical_start_minute ?? null;
+    if (sectionId !== targetSection || (placement && anchor?.section_id !== sectionId)) return;
+    if (sectionId !== null && !projection.sections.some((section) => section.id === sectionId)) return;
+    if (!placement && entry.section_id === targetSection && entry.planned_start_minute === targetPlannedStart) return;
+    const samePlannedPair = entry.section_id === targetSection && entry.planned_start_minute === targetPlannedStart;
+    if (placement ? hasReorderPlacementBarrier(entry.section_id, projection.taskchute_day.id)
+      : hasCrossSectionMoveBarrier(projection.taskchute_day.id)) return;
+    const candidate: RoutineCandidate = { entryId: entry.id, unit: "section-plan", sectionId: targetSection,
+      plannedStartMinute: targetPlannedStart, ...(placement ? { placement } : {}), restoreFocus };
+    if (!entry.routine.section_plan_override_present && !samePlannedPair) {
+      setRoutineCandidate(candidate);
+      return;
+    }
+    startRoutineSectionPlan(entry, candidate, "occurrence");
+  }
+
   async function changeSection(entry: EntryProjection, sectionId: string | null) {
     await moveEntryToSection(entry.id, sectionId);
   }
@@ -4357,11 +4415,18 @@ export function App() {
     try {
       await api.setRoutineSectionPlan(operation);
       await reconcile();
-      setRoutineSectionPlanOperation(null); setRoutineCandidate(null); setEditingPlannedStart(null);
+      removePendingSectionMoveIntent(operation.operation_id);
+      setRoutineSectionPlanOperation((current) => current?.operation_id === operation.operation_id ? null : current);
+      setRoutineCandidate((current) => current?.entryId === operation.entry_id ? null : current);
+      setEditingPlannedStart((current) => current?.entryId === operation.entry_id ? null : current);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "RoutineのSection設定保存に失敗しました");
       const ambiguous = isAmbiguousOutcome(caught);
-      if (!ambiguous) { setRoutineSectionPlanOperation(null); setRoutineCandidate(null); }
+      if (!ambiguous) {
+        removePendingSectionMoveIntent(operation.operation_id);
+        setRoutineSectionPlanOperation((current) => current?.operation_id === operation.operation_id ? null : current);
+        setRoutineCandidate((current) => current?.entryId === operation.entry_id ? null : current);
+      }
       try {
         const projection = await reconcile();
         const canonical = [...(projection?.unsectioned_entries ?? []), ...(projection?.sections.flatMap((section) => section.entries) ?? [])]
@@ -4371,10 +4436,79 @@ export function App() {
         const override = operation.action === "occurrence";
         if (ambiguous && canonical?.section_id === expectedSection && canonical?.planned_start_minute === expectedStart
           && canonical?.routine?.section_plan_override_present === override) {
-          setRoutineSectionPlanOperation(null); setRoutineCandidate(null); setError(null);
+          removePendingSectionMoveIntent(operation.operation_id);
+          setRoutineSectionPlanOperation((current) => current?.operation_id === operation.operation_id ? null : current);
+          setRoutineCandidate((current) => current?.entryId === operation.entry_id ? null : current); setError(null);
         }
       } catch { /* Preserve exact retained operation. */ }
     } finally { endMutationScope(mutationToken); setPending(null); }
+  }
+
+  function cancelRoutineCandidate(): void {
+    const restoreFocus = routineCandidate?.unit === "section-plan" ? routineCandidate.restoreFocus : undefined;
+    setRoutineCandidate(null);
+    if (restoreFocus) setPendingFocusKey(focusKey(restoreFocus));
+  }
+
+  function startRoutineSectionPlan(
+    entry: EntryProjection,
+    candidate: Extract<RoutineCandidate, { unit: "section-plan" }>,
+    action: "occurrence" | "definition",
+  ): void {
+    if (!day?.taskchute_day.id || !entry.routine || mutationLocked) return;
+    const operation: SetRoutineSectionPlanRequest = action === "occurrence"
+      ? { operation_id: uuidv7(), entry_id: entry.id, taskchute_day_id: day.taskchute_day.id,
+          action, section_id: candidate.sectionId, planned_start_minute: candidate.plannedStartMinute,
+          expected_placement_revision: day.placement_revision, ...(candidate.placement ? { placement: candidate.placement } : {}) }
+      : { operation_id: uuidv7(), entry_id: entry.id, taskchute_day_id: day.taskchute_day.id,
+          action, section_id: candidate.sectionId, planned_start_minute: candidate.plannedStartMinute,
+          expected_placement_revision: day.placement_revision, expected_defaults_revision: entry.routine.defaults_revision,
+          ...(candidate.placement ? { placement: candidate.placement } : {}) };
+    if (candidate.restoreFocus) setPendingFocusKey(focusKey(candidate.restoreFocus));
+    setRoutineSectionPlanOperation(operation);
+    if (candidate.restoreFocus || candidate.placement) {
+      const overlayOperation: MoveEntryRequest = {
+        operation_id: operation.operation_id, entry_id: entry.id, taskchute_day_id: operation.taskchute_day_id,
+        section_id: candidate.sectionId, expected_placement_revision: operation.expected_placement_revision,
+        ...(candidate.placement ? { placement: candidate.placement } : {}),
+      };
+      updatePendingSectionMoveIntents((current) => [...current, {
+        operation: overlayOperation, sourceSectionId: entry.section_id, sourcePlannedStartMinute: entry.planned_start_minute,
+        ...(candidate.placement ? { placement: candidate.placement } : {}),
+      }]);
+      setPendingSectionOverlays((current) => ({ ...current, [entry.id]: {
+        operation: overlayOperation, plannedStartMinute: candidate.plannedStartMinute,
+      } }));
+    }
+    const dispatch = async () => {
+      const latest = dayRef.current;
+      const latestEntry = latest ? entryForId(latest, operation.entry_id) : null;
+      const latestAnchor = operation.placement && latest ? entryForId(latest, operation.placement.anchor_entry_id) : null;
+      if (!latest || latest.taskchute_day.id !== operation.taskchute_day_id || !latestEntry?.routine
+        || latestEntry.lifecycle_state !== "planned"
+        || (operation.placement && (!latestAnchor || latestAnchor.lifecycle_state !== "planned"
+          || latestAnchor.section_id !== operation.section_id
+          || latestAnchor.planned_start_minute !== operation.planned_start_minute))) {
+        setRoutineSectionPlanOperation((current) => current?.operation_id === operation.operation_id ? null : current);
+        setRoutineCandidate((current) => current?.entryId === operation.entry_id ? null : current);
+        setError("Routine配置の前提が変わったため、保存を取り消しました。もう一度お試しください");
+        return;
+      }
+      const rebased: SetRoutineSectionPlanRequest = operation.action === "definition"
+        ? { ...operation, expected_placement_revision: latest.placement_revision,
+            expected_defaults_revision: latestEntry.routine.defaults_revision }
+        : { ...operation, expected_placement_revision: latest.placement_revision };
+      setRoutineSectionPlanOperation(rebased);
+      await executeRoutineSectionPlan(rebased);
+    };
+    if (candidate.placement && day.is_current) {
+      enqueueDayMutation({
+        scope: [...placementMutationScope(operation.taskchute_day_id), ...routineMutationScope(operation.entry_id, entry.routine.routine_definition_id)],
+        label: "Routine配置", operationId: operation.operation_id, dispatch,
+      });
+    } else {
+      void dispatch();
+    }
   }
 
   async function commitRoutineCandidate(entry: EntryProjection, action: "occurrence" | "definition") {
@@ -4391,16 +4525,7 @@ export function App() {
       await executeRoutineEstimate(operation);
       return;
     }
-    const operation: SetRoutineSectionPlanRequest = action === "occurrence"
-      ? { operation_id: uuidv7(), entry_id: entry.id, taskchute_day_id: day.taskchute_day.id,
-          action, section_id: routineCandidate.sectionId, planned_start_minute: routineCandidate.plannedStartMinute,
-          expected_placement_revision: day.placement_revision }
-      : { operation_id: uuidv7(), entry_id: entry.id, taskchute_day_id: day.taskchute_day.id,
-          action, section_id: routineCandidate.sectionId, planned_start_minute: routineCandidate.plannedStartMinute,
-          expected_placement_revision: day.placement_revision,
-          expected_defaults_revision: entry.routine.defaults_revision };
-    setRoutineSectionPlanOperation(operation);
-    await executeRoutineSectionPlan(operation);
+    startRoutineSectionPlan(entry, routineCandidate, action);
   }
 
   async function resetRoutineUnit(entry: EntryProjection, unit: "estimate" | "section-plan") {
@@ -4847,7 +4972,8 @@ export function App() {
       const entryId = activeElement?.dataset.entryId;
       if (!entryId) return;
       const source = allEntries.find((entry) => entry.id === entryId);
-      if (!source || source.lifecycle_state !== "planned" || source.routine !== null || !currentDay.is_current) return;
+      if (!source || source.lifecycle_state !== "planned" || !currentDay.is_current
+        || (source.routine !== null && !isRoutinePlacementEligible(currentDay, source))) return;
       const movementGroups = groups.filter((group) => group.entries.some((entry) => entry.id === entryId)
         || group.entries.some((entry) => entry.lifecycle_state === "planned"));
       const sourceGroupIndex = movementGroups.findIndex((group) => group.entries.some((entry) => entry.id === entryId));
@@ -4858,15 +4984,22 @@ export function App() {
       const delta = event.key === "ArrowUp" ? -1 : 1;
       if (canMoveEntry(entries, entryId, delta)) {
         event.preventDefault();
-        void moveEntry(sourceSectionId, entryId, delta);
+        if (source.routine) {
+          const neighbor = entries[entries.findIndex((entry) => entry.id === entryId) + delta];
+          if (neighbor) void moveRoutineEntryToPlacement(source, sourceSectionId,
+            { kind: "relative_to_entry", anchor_entry_id: neighbor.id, edge: delta > 0 ? "after" : "before" },
+            { kind: "entry", id: source.id });
+        } else void moveEntry(sourceSectionId, entryId, delta);
         return;
       }
       const adjacent = entries[entries.findIndex((entry) => entry.id === entryId) + delta];
       if (adjacent?.lifecycle_state === "planned") {
         event.preventDefault();
-        void moveEntryToSection(source.id, sourceSectionId, {
+        const placement = {
           kind: "relative_to_entry", anchor_entry_id: adjacent.id, edge: delta > 0 ? "after" : "before",
-        });
+        } as MoveEntryPlacementIntent;
+        if (source.routine) void moveRoutineEntryToPlacement(source, sourceSectionId, placement, { kind: "entry", id: source.id });
+        else void moveEntryToSection(source.id, sourceSectionId, placement);
         return;
       }
       const targetGroup = movementGroups[sourceGroupIndex + delta];
@@ -4875,9 +5008,13 @@ export function App() {
       const target = delta > 0 ? targetEntries[0] : targetEntries.at(-1);
       event.preventDefault();
       if (target) {
-        void moveEntryToSection(source.id, target.section_id, {
+        const placement = {
           kind: "relative_to_entry", anchor_entry_id: target.id, edge: delta > 0 ? "before" : "after",
-        });
+        } as MoveEntryPlacementIntent;
+        if (source.routine) void moveRoutineEntryToPlacement(source, target.section_id, placement, { kind: "entry", id: source.id });
+        else void moveEntryToSection(source.id, target.section_id, placement);
+      } else if (source.routine) {
+        void moveRoutineEntryToPlacement(source, targetGroup.id, undefined, { kind: "entry", id: source.id });
       } else {
         void moveEntryToSection(source.id, targetGroup.id);
       }
@@ -5574,13 +5711,13 @@ export function App() {
             : `${currentDay.sections.find((section) => section.id === routineCandidate.sectionId)?.title ?? "Section"} / ${formatLogicalMinute(routineCandidate.plannedStartMinute)}`;
         return (
           <Modal title="Routine設定の反映先" titleId="routine-scope-choice-title" className="routine-scope-choice"
-            onClose={() => setRoutineCandidate(null)}>
+            onClose={cancelRoutineCandidate}>
             <p>{entry.task.title} · {value}</p>
             <div role="group" aria-label={`${entry.task.title}の${routineCandidate.unit === "estimate" ? "見積" : "Section・開始予定"}反映先`} className="bulk-confirmation-actions">
               <span>{value}</span>
               <button type="button" disabled={mutationLocked || isMutationScopeBusy(routineMutationScope(entry.id, entry.routine?.routine_definition_id))} onClick={() => void commitRoutineCandidate(entry, "occurrence")}>今回だけ</button>
               <button type="button" disabled={mutationLocked || isMutationScopeBusy(routineMutationScope(entry.id, entry.routine?.routine_definition_id))} onClick={() => void commitRoutineCandidate(entry, "definition")}>ルーティンに反映</button>
-              <button type="button" className="secondary" onClick={() => setRoutineCandidate(null)}>キャンセル</button>
+               <button type="button" className="secondary" onClick={cancelRoutineCandidate}>キャンセル</button>
             </div>
           </Modal>
         );
@@ -6087,7 +6224,8 @@ export function App() {
                 const crossSectionMoveAvailable = day.is_current && Boolean(day.taskchute_day.id)
                   && !hasCrossSectionMoveBarrier(day.taskchute_day.id ?? "selected-day");
                 const canDrag = day.planning_enabled && Boolean(day.taskchute_day.id) && entry.lifecycle_state === "planned"
-                  && entry.routine === null && (!reorderBlocked || crossSectionMoveAvailable);
+                  && (entry.routine === null || isRoutinePlacementEligible(day, entry))
+                  && (!reorderBlocked || crossSectionMoveAvailable);
                 const canMoveDate = isBulkSelectableProjectionEntry(currentDay, entry);
                 const canEditPlanning = day.planning_enabled && entry.lifecycle_state === "planned";
                 const canDuplicate = day.is_current && Boolean(day.taskchute_day.id) && entry.lifecycle_state === "completed";
