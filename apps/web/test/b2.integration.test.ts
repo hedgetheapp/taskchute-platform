@@ -177,6 +177,79 @@ describe.sequential("Dogfood Day B2 planned start", () => {
       .toEqual([historical, sectionAnchor, first]);
   });
 
+  it("guards D-083 relative and legacy MoveEntry no-ops with exact replay", async () => {
+    const fixture = await seedTimedDay();
+    const relativeSource = await addEntry(fixture.userId, fixture.dayId, fixture.sectionIds[0]!, 10, "planned", 480);
+    const relativeAnchor = await addEntry(fixture.userId, fixture.dayId, fixture.sectionIds[0]!, 20, "planned", 480);
+    const relativeRequest = {
+      operation_id: uuidv7(), entry_id: relativeSource, taskchute_day_id: fixture.dayId,
+      section_id: fixture.sectionIds[0]!, expected_placement_revision: 0,
+      placement: { kind: "relative_to_entry" as const, anchor_entry_id: relativeAnchor, edge: "before" as const },
+    };
+    const relative = await moveEntry(env.APP_DB, fixture.userId, relativeRequest);
+    expect(relative).toMatchObject({ entry_id: relativeSource, section_id: fixture.sectionIds[0], position: 10, placement_revision: 0 });
+    expect(await revision(fixture.dayId)).toBe(0);
+    expect(await moveEntry(env.APP_DB, fixture.userId, relativeRequest)).toEqual(relative);
+
+    const legacyFixture = await seedTimedDay();
+    await addEntry(legacyFixture.userId, legacyFixture.dayId, legacyFixture.sectionIds[0]!, 10, "planned", 300);
+    const legacySource = await addEntry(legacyFixture.userId, legacyFixture.dayId, legacyFixture.sectionIds[0]!, 20, "planned", 300);
+    const legacyRequest = {
+      operation_id: uuidv7(), entry_id: legacySource, taskchute_day_id: legacyFixture.dayId,
+      section_id: legacyFixture.sectionIds[0]!, expected_placement_revision: 0,
+    };
+    const legacy = await moveEntry(env.APP_DB, legacyFixture.userId, legacyRequest);
+    expect(legacy).toMatchObject({ entry_id: legacySource, section_id: legacyFixture.sectionIds[0], position: 20, placement_revision: 0 });
+    expect(await revision(legacyFixture.dayId)).toBe(0);
+    expect(await moveEntry(env.APP_DB, legacyFixture.userId, legacyRequest)).toEqual(legacy);
+    await expect(moveEntry(env.APP_DB, legacyFixture.userId, { ...legacyRequest, section_id: legacyFixture.sectionIds[1]! }))
+      .rejects.toMatchObject({ code: "operation_id_misuse" });
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM operations WHERE app_user_id = ? AND command_type = 'MoveEntry' AND outcome_kind = 'success' AND operation_id = ?")
+      .bind(fixture.userId, relativeRequest.operation_id).first<number>("count")).toBe(1);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM operations WHERE app_user_id = ? AND command_type = 'MoveEntry' AND outcome_kind = 'success' AND operation_id = ?")
+      .bind(legacyFixture.userId, legacyRequest.operation_id).first<number>("count")).toBe(1);
+  });
+
+  it("rejects a stale D-083 no-op when a Reorder advances the placement revision before commit", async () => {
+    const fixture = await seedTimedDay();
+    const source = await addEntry(fixture.userId, fixture.dayId, fixture.sectionIds[0]!, 10, "planned", 480);
+    const anchor = await addEntry(fixture.userId, fixture.dayId, fixture.sectionIds[0]!, 20, "planned", 480);
+    const request = {
+      operation_id: uuidv7(), entry_id: source, taskchute_day_id: fixture.dayId,
+      section_id: fixture.sectionIds[0]!, expected_placement_revision: 0,
+      placement: { kind: "relative_to_entry" as const, anchor_entry_id: anchor, edge: "before" as const },
+    };
+    let batchCalls = 0;
+    const racedDb = new Proxy(env.APP_DB, {
+      get(target, property) {
+        if (property === "batch") {
+          return async (statements: D1PreparedStatement[]) => {
+            batchCalls += 1;
+            if (batchCalls === 2) {
+              await reorderEntries(env.APP_DB, fixture.userId, {
+                operation_id: uuidv7(), taskchute_day_id: fixture.dayId, section_id: fixture.sectionIds[0]!,
+                entry_ids: [anchor, source], expected_placement_revision: 0,
+              });
+            }
+            return target.batch(statements);
+          };
+        }
+        const value = Reflect.get(target, property, target) as unknown;
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+
+    await expect(moveEntry(racedDb, fixture.userId, request)).rejects.toMatchObject({ code: "revision_conflict" });
+    expect(batchCalls).toBe(2);
+    expect(await revision(fixture.dayId)).toBe(1);
+    expect(await env.APP_DB.prepare("SELECT id, position FROM entries WHERE id IN (?, ?) ORDER BY position")
+      .bind(source, anchor).all()).toMatchObject({ results: [{ id: anchor, position: 10 }, { id: source, position: 20 }] });
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM operations WHERE app_user_id = ? AND operation_id = ? AND outcome_kind = 'success'")
+      .bind(fixture.userId, request.operation_id).first<number>("count")).toBe(0);
+    expect(await env.APP_DB.prepare("SELECT outcome_kind FROM operations WHERE app_user_id = ? AND operation_id = ?")
+      .bind(fixture.userId, request.operation_id).first()).toEqual({ outcome_kind: "revision_conflict" });
+  });
+
   it("uses extended wall-clock boundaries, derives Section placement, clears, and replays exactly once", async () => {
     const { userId, dayId, sectionIds } = await seedTimedDay();
     const entryId = await addEntry(userId, dayId, null, 1);

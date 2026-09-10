@@ -142,14 +142,45 @@ export async function moveEntry(db: D1Database, appUserId: string, request: Move
   const canonicalTargetIds = targetCanonical.map((candidate) => candidate.id);
   const isNoOp = oldSection === request.section_id && source.planned_start_minute === targetPlannedStart
     && desiredIds.every((id, index) => id === canonicalTargetIds[index]) && desiredIds.length === canonicalTargetIds.length;
+  const allSnapshotRows = [...new Map([...sourceRows, ...targetRows].map((row) => [row.id, row])).values()];
+  const snapshotJson = JSON.stringify(allSnapshotRows);
   const now = new Date().toISOString();
   if (isNoOp) {
     const result: MoveEntryResult = { entry_id: source.id, section_id: source.section_id, position: source.position,
       placement_revision: day.placement_revision };
     try {
-      await db.prepare(`INSERT INTO operations (app_user_id, operation_id, command_type, request_fingerprint_version,
-        request_fingerprint, outcome_kind, result_json, created_at) VALUES (?, ?, 'MoveEntry', ?, ?, 'success', ?, ?)`)
-        .bind(appUserId, request.operation_id, REQUEST_FINGERPRINT_VERSION, requestFingerprint, JSON.stringify(result), now).run();
+      const [guard, operationPersist] = await db.batch([
+        db.prepare(`INSERT INTO placement_command_guards (operation_id, app_user_id, taskchute_day_id, expected_revision)
+          SELECT ?, app_user_id, id, ? FROM taskchute_days WHERE app_user_id = ? AND id = ? AND placement_revision = ?
+          AND (SELECT COUNT(*) FROM entries WHERE app_user_id = ? AND taskchute_day_id = ?
+            AND id IN (SELECT json_extract(value, '$.id') FROM json_each(?))) = json_array_length(?)
+          AND NOT EXISTS (
+            SELECT 1 FROM json_each(?) snapshot
+            LEFT JOIN entries e ON e.app_user_id = ? AND e.taskchute_day_id = ? AND e.id = json_extract(snapshot.value, '$.id')
+            WHERE e.id IS NULL OR e.section_id IS NOT json_extract(snapshot.value, '$.section_id')
+              OR e.position != CAST(json_extract(snapshot.value, '$.position') AS INTEGER)
+              OR e.lifecycle_state != json_extract(snapshot.value, '$.lifecycle_state')
+              OR e.planned_start_minute IS NOT json_extract(snapshot.value, '$.planned_start_minute')
+          )`)
+          .bind(request.operation_id, request.expected_placement_revision, appUserId, request.taskchute_day_id,
+            request.expected_placement_revision, appUserId, request.taskchute_day_id, snapshotJson, snapshotJson,
+            snapshotJson, appUserId, request.taskchute_day_id),
+        db.prepare(`INSERT INTO operations (app_user_id, operation_id, command_type, request_fingerprint_version,
+          request_fingerprint, outcome_kind, result_json, created_at)
+          SELECT ?, ?, 'MoveEntry', ?, ?, 'success', ?, ? WHERE EXISTS
+          (SELECT 1 FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+          .bind(appUserId, request.operation_id, REQUEST_FINGERPRINT_VERSION, requestFingerprint, JSON.stringify(result), now,
+            appUserId, request.operation_id),
+        db.prepare("DELETE FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?")
+          .bind(appUserId, request.operation_id),
+      ]);
+      if (guard.meta.changes === 0) {
+        const latest = await db.prepare("SELECT placement_revision FROM taskchute_days WHERE app_user_id = ? AND id = ?")
+          .bind(appUserId, request.taskchute_day_id).first<{ placement_revision: number }>();
+        if (latest?.placement_revision !== request.expected_placement_revision) return reject("The placement revision is stale", true);
+        return reject("Entry order or placement changed before MoveEntry could commit");
+      }
+      if (operationPersist.meta.changes === 0) return reject("MoveEntry could not be committed atomically");
       return result;
     } catch {
       const committed = await readOperation(db, appUserId, request.operation_id);
@@ -176,9 +207,7 @@ export async function moveEntry(db: D1Database, appUserId: string, request: Move
   const result: MoveEntryResult = { entry_id: source.id, section_id: request.section_id,
     position: assignmentsById.get(source.id)?.target_position ?? source.position,
     placement_revision: request.expected_placement_revision + 1 };
-  const allSnapshotRows = [...new Map([...sourceRows, ...targetRows].map((row) => [row.id, row])).values()];
   const historicalSnapshot = allSnapshotRows.filter((candidate) => candidate.lifecycle_state !== "planned");
-  const snapshotJson = JSON.stringify(allSnapshotRows);
   const historicalJson = JSON.stringify(historicalSnapshot);
   const assignmentsJson = JSON.stringify(assignments);
   const affectedIdsJson = JSON.stringify(assignments.map((assignment) => assignment.entry_id));
