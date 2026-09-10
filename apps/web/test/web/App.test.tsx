@@ -3619,6 +3619,129 @@ describe("Dogfood Day shell", () => {
     });
   });
 
+  it("retains and exactly retries an ambiguous same-cohort Routine placement with no Section override", async () => {
+    const routineEntry: EntryProjection = { ...firstEntry, routine: {
+      routine_definition_id: "019c0000-0000-7000-8000-00000000004e",
+      routine_occurrence_id: "019c0000-0000-7000-8000-00000000004f",
+      end_logical_date: null, can_end: true, default_section_id: morningId,
+      default_planned_start_minute: null, section_plan_override_present: false,
+      default_estimate_seconds: null, estimate_override_present: false, defaults_revision: 0,
+    } };
+    const routineDay = { ...twoPlannedDay,
+      placement_revision: 7,
+      sections: [{ ...twoPlannedDay.sections[0], entries: [routineEntry, secondEntry] }, twoPlannedDay.sections[1]],
+      next_entry: routineEntry };
+    mocks.loadDay.mockResolvedValue(routineDay);
+    mocks.setRoutineSectionPlan
+      .mockRejectedValueOnce(new ApiClientError("response lost", 503, true, "infrastructure_ambiguous"))
+      .mockResolvedValueOnce({});
+    render(<App />);
+    const source = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
+    const target = screen.getByText("Second task").closest<HTMLElement>("[data-entry-id]")!;
+    dragEntry(dragSurface(source), target, 90);
+
+    const retry = await screen.findByRole("button", { name: "保留中のRoutine配置を再試行" });
+    const original = mocks.setRoutineSectionPlan.mock.calls[0][0];
+    expect(original).toMatchObject({
+      action: "occurrence", section_id: morningId, planned_start_minute: null,
+      expected_placement_revision: routineDay.placement_revision,
+      placement: { kind: "relative_to_entry", anchor_entry_id: secondEntry.id, edge: "after" },
+    });
+    fireEvent.click(retry);
+    await waitFor(() => expect(mocks.setRoutineSectionPlan).toHaveBeenCalledTimes(2));
+    expect(mocks.setRoutineSectionPlan.mock.calls[1][0]).toEqual(original);
+    await waitFor(() => expect(screen.queryByRole("button", { name: "保留中のRoutine配置を再試行" })).toBeNull());
+  });
+
+  it("does not infer success for an ambiguous cross-Section Routine placement from the Section/start pair alone", async () => {
+    const routineEntry: EntryProjection = { ...firstEntry, routine: {
+      routine_definition_id: "019c0000-0000-7000-8000-000000000050",
+      routine_occurrence_id: "019c0000-0000-7000-8000-000000000051",
+      end_logical_date: null, can_end: true, default_section_id: morningId,
+      default_planned_start_minute: null, section_plan_override_present: false,
+      default_estimate_seconds: null, estimate_override_present: false, defaults_revision: 0,
+    } };
+    const initialDay = { ...twoPlannedDay,
+      placement_revision: 8,
+      sections: [{ ...twoPlannedDay.sections[0], entries: [routineEntry] },
+        { ...emptyDay.sections[1], entries: [{ ...secondEntry, section_id: eveningId, planned_start_minute: 720 }] }],
+      next_entry: routineEntry };
+    const canonicalWithWrongEdge = { ...initialDay, placement_revision: 9,
+      sections: [emptyDay.sections[0], { ...emptyDay.sections[1], entries: [
+        { ...routineEntry, section_id: eveningId, planned_start_minute: 720, position: 1,
+          routine: { ...routineEntry.routine!, section_plan_override_present: true } },
+        { ...secondEntry, section_id: eveningId, planned_start_minute: 720, position: 2 },
+      ] }],
+      next_entry: routineEntry };
+    mocks.loadDay.mockResolvedValueOnce(initialDay).mockResolvedValue(canonicalWithWrongEdge);
+    mocks.setRoutineSectionPlan
+      .mockRejectedValueOnce(new ApiClientError("response lost", 503, true, "infrastructure_ambiguous"))
+      .mockResolvedValueOnce({});
+    render(<App />);
+    const source = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
+    const target = screen.getByText("Second task").closest<HTMLElement>("[data-entry-id]")!;
+    dragEntry(dragSurface(source), target, 90);
+    const choice = await screen.findByRole("group", { name: "Canonical taskのSection・開始予定反映先" });
+    fireEvent.click(within(choice).getByRole("button", { name: "今回だけ" }));
+    await waitFor(() => expect(mocks.setRoutineSectionPlan).toHaveBeenCalledTimes(1));
+
+    const retry = await screen.findByRole("button", { name: "保留中のRoutine配置を再試行" });
+    const original = mocks.setRoutineSectionPlan.mock.calls[0][0];
+    expect(original).toMatchObject({
+      action: "occurrence", section_id: eveningId, planned_start_minute: 720,
+      expected_placement_revision: initialDay.placement_revision,
+      placement: { kind: "relative_to_entry", anchor_entry_id: secondEntry.id, edge: "after" },
+    });
+    fireEvent.click(retry);
+    await waitFor(() => expect(mocks.setRoutineSectionPlan).toHaveBeenCalledTimes(2));
+    expect(mocks.setRoutineSectionPlan.mock.calls[1][0]).toEqual(original);
+  });
+
+  it("retains an ambiguous Definition placement even when canonical defaults match the requested pair", async () => {
+    const routineEntry: EntryProjection = { ...firstEntry, routine: {
+      routine_definition_id: "019c0000-0000-7000-8000-000000000052",
+      routine_occurrence_id: "019c0000-0000-7000-8000-000000000053",
+      end_logical_date: null, can_end: true, default_section_id: morningId,
+      default_planned_start_minute: null, section_plan_override_present: false,
+      default_estimate_seconds: null, estimate_override_present: false, defaults_revision: 4,
+    } };
+    const initialDay = { ...twoPlannedDay,
+      placement_revision: 10,
+      sections: [{ ...twoPlannedDay.sections[0], entries: [routineEntry] },
+        { ...emptyDay.sections[1], entries: [{ ...secondEntry, section_id: eveningId, planned_start_minute: 720 }] }],
+      next_entry: routineEntry };
+    const canonicalWithWrongEdge = { ...initialDay, placement_revision: 11,
+      sections: [emptyDay.sections[0], { ...emptyDay.sections[1], entries: [
+        { ...routineEntry, section_id: eveningId, planned_start_minute: 720, position: 1,
+          routine: { ...routineEntry.routine!, default_section_id: eveningId,
+            default_planned_start_minute: 720, section_plan_override_present: false, defaults_revision: 5 } },
+        { ...secondEntry, section_id: eveningId, planned_start_minute: 720, position: 2 },
+      ] }],
+      next_entry: routineEntry };
+    mocks.loadDay.mockResolvedValueOnce(initialDay).mockResolvedValue(canonicalWithWrongEdge);
+    mocks.setRoutineSectionPlan
+      .mockRejectedValueOnce(new ApiClientError("response lost", 503, true, "infrastructure_ambiguous"))
+      .mockResolvedValueOnce({});
+    render(<App />);
+    const source = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
+    const target = screen.getByText("Second task").closest<HTMLElement>("[data-entry-id]")!;
+    dragEntry(dragSurface(source), target, 90);
+    const choice = await screen.findByRole("group", { name: "Canonical taskのSection・開始予定反映先" });
+    fireEvent.click(within(choice).getByRole("button", { name: "ルーティンに反映" }));
+    await waitFor(() => expect(mocks.setRoutineSectionPlan).toHaveBeenCalledTimes(1));
+
+    const retry = await screen.findByRole("button", { name: "保留中のRoutine配置を再試行" });
+    const original = mocks.setRoutineSectionPlan.mock.calls[0][0];
+    expect(original).toMatchObject({
+      action: "definition", section_id: eveningId, planned_start_minute: 720,
+      expected_placement_revision: initialDay.placement_revision, expected_defaults_revision: 4,
+      placement: { kind: "relative_to_entry", anchor_entry_id: secondEntry.id, edge: "after" },
+    });
+    fireEvent.click(retry);
+    await waitFor(() => expect(mocks.setRoutineSectionPlan).toHaveBeenCalledTimes(2));
+    expect(mocks.setRoutineSectionPlan.mock.calls[1][0]).toEqual(original);
+  });
+
   it("shows estimate reset only in the overridden unit editor and retains the exact ambiguous operation for retry", async () => {
     const routineEntry: EntryProjection = { ...firstEntry, estimate_seconds: null, planned_start_minute: 300, routine: {
       routine_definition_id: "019c0000-0000-7000-8000-000000000044",

@@ -4434,7 +4434,12 @@ export function App() {
         const expectedSection = operation.action === "reset" ? canonical?.routine?.default_section_id : operation.section_id;
         const expectedStart = operation.action === "reset" ? canonical?.routine?.default_planned_start_minute : operation.planned_start_minute;
         const override = operation.action === "occurrence";
-        if (ambiguous && canonical?.section_id === expectedSection && canonical?.planned_start_minute === expectedStart
+        // A placement-bearing request cannot be proven from the pair/override
+        // projection alone: the committed result also includes the anchor edge
+        // and the authoritative physical position. Retain the exact sent
+        // operation so retry can replay or complete the same semantic command.
+        const placement = "placement" in operation ? operation.placement : undefined;
+        if (!placement && ambiguous && canonical?.section_id === expectedSection && canonical?.planned_start_minute === expectedStart
           && canonical?.routine?.section_plan_override_present === override) {
           removePendingSectionMoveIntent(operation.operation_id);
           setRoutineSectionPlanOperation((current) => current?.operation_id === operation.operation_id ? null : current);
