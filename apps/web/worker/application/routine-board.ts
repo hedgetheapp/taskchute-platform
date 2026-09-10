@@ -833,7 +833,9 @@ export async function updateRoutine(db: D1Database, appUserId: string, request: 
             WHERE e.lifecycle_state = 'planned' AND d.logical_date >= ?
               AND o.routine_definition_id = ?
               AND NOT EXISTS (SELECT 1 FROM routine_occurrence_mode_overrides x
-                WHERE x.app_user_id = o.app_user_id AND x.routine_occurrence_id = o.id))
+                WHERE x.app_user_id = o.app_user_id AND x.routine_occurrence_id = o.id)
+              AND NOT EXISTS (SELECT 1 FROM routine_occurrence_suppressions s
+                WHERE s.app_user_id = o.app_user_id AND s.routine_occurrence_id = o.id))
           AND EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
           .bind(appUserId, context.logicalDate, request.routine_definition_id, appUserId, request.operation_id),
         db.prepare(`INSERT INTO entry_modes (app_user_id, entry_id, mode_id)
@@ -844,6 +846,8 @@ export async function updateRoutine(db: D1Database, appUserId: string, request: 
             AND o.routine_definition_id = ?
             AND NOT EXISTS (SELECT 1 FROM routine_occurrence_mode_overrides x
               WHERE x.app_user_id = o.app_user_id AND x.routine_occurrence_id = o.id)
+            AND NOT EXISTS (SELECT 1 FROM routine_occurrence_suppressions s
+              WHERE s.app_user_id = o.app_user_id AND s.routine_occurrence_id = o.id)
             AND EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
           .bind(request.default_mode_id, request.default_mode_id, context.logicalDate,
             request.routine_definition_id, appUserId, request.operation_id),

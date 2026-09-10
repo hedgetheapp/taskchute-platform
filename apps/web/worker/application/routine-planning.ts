@@ -229,7 +229,12 @@ export async function setRoutineMode(
       "The Routine defaults revision is stale", true);
   }
 
-  const targetOverridePresent = request.action === "occurrence";
+  const sameEffectiveMode = row.entry_mode_id === request.mode_id;
+  const occurrenceNoOp = request.action === "occurrence"
+    && row.mode_override_present === 0 && sameEffectiveMode;
+  const targetOverridePresent = request.action === "occurrence"
+    ? row.mode_override_present === 1 || !sameEffectiveMode
+    : false;
   const result: SetRoutineModeResult = {
     entry_id: row.entry_id,
     mode_id: request.mode_id,
@@ -249,26 +254,38 @@ export async function setRoutineMode(
           AND e.lifecycle_state = 'planned' AND ro.id = ? AND rd.id = ?
           AND rd.defaults_revision = ?
           AND NOT EXISTS (SELECT 1 FROM routine_occurrence_suppressions x
-            WHERE x.app_user_id = ro.app_user_id AND x.routine_occurrence_id = ro.id))`)
+            WHERE x.app_user_id = ro.app_user_id AND x.routine_occurrence_id = ro.id)
+          AND (SELECT COUNT(*) FROM routine_occurrence_mode_overrides
+            WHERE app_user_id = ro.app_user_id AND routine_occurrence_id = ro.id) = ?
+          AND (SELECT mode_id FROM routine_occurrence_mode_overrides
+            WHERE app_user_id = ro.app_user_id AND routine_occurrence_id = ro.id) IS ?
+          AND (SELECT mode_id FROM entry_modes
+            WHERE app_user_id = e.app_user_id AND entry_id = e.id) IS ?)`)
       .bind(appUserId, request.operation_id, appUserId, row.entry_id, activeDay.id,
         row.routine_occurrence_id, row.routine_definition_id,
-        request.action === "definition" ? request.expected_defaults_revision : row.defaults_revision);
+        request.action === "definition" ? request.expected_defaults_revision : row.defaults_revision,
+        row.mode_override_present, row.mode_override_present === 1 ? row.entry_mode_id : null,
+        row.entry_mode_id);
     const statements: D1PreparedStatement[] = [guard];
     if (request.action === "occurrence") {
-      statements.push(
-        db.prepare(`INSERT INTO routine_occurrence_mode_overrides (app_user_id, routine_occurrence_id, mode_id)
-          SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)
-          ON CONFLICT (app_user_id, routine_occurrence_id) DO UPDATE SET mode_id = excluded.mode_id`)
-          .bind(appUserId, row.routine_occurrence_id, request.mode_id, appUserId, request.operation_id),
-        db.prepare(`DELETE FROM entry_modes WHERE app_user_id = ? AND entry_id = ?
-          AND EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
-          .bind(appUserId, row.entry_id, appUserId, request.operation_id),
-        request.mode_id === null
-          ? db.prepare("SELECT 1 AS noop")
-          : db.prepare(`INSERT INTO entry_modes (app_user_id, entry_id, mode_id)
-              SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
-            .bind(appUserId, row.entry_id, request.mode_id, appUserId, request.operation_id),
-      );
+      if (occurrenceNoOp) {
+        statements.push(db.prepare("SELECT 1 AS noop"));
+      } else {
+        statements.push(
+          db.prepare(`INSERT INTO routine_occurrence_mode_overrides (app_user_id, routine_occurrence_id, mode_id)
+            SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)
+            ON CONFLICT (app_user_id, routine_occurrence_id) DO UPDATE SET mode_id = excluded.mode_id`)
+            .bind(appUserId, row.routine_occurrence_id, request.mode_id, appUserId, request.operation_id),
+          db.prepare(`DELETE FROM entry_modes WHERE app_user_id = ? AND entry_id = ?
+            AND EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+            .bind(appUserId, row.entry_id, appUserId, request.operation_id),
+          request.mode_id === null
+            ? db.prepare("SELECT 1 AS noop")
+            : db.prepare(`INSERT INTO entry_modes (app_user_id, entry_id, mode_id)
+                SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+              .bind(appUserId, row.entry_id, request.mode_id, appUserId, request.operation_id),
+        );
+      }
     } else {
       statements.push(
         request.mode_id === null

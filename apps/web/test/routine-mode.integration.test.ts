@@ -60,6 +60,107 @@ async function establishRoutine(fixture: Awaited<ReturnType<typeof seed>>) {
 }
 
 describe.sequential("D-085 Routine Mode", () => {
+  it("persists same-value occurrence no-op without creating an override", async () => {
+    const fixture = await establishRoutine(await seed());
+    const day = await loadCurrentTaskChuteDay(env.APP_DB, fixture.userId, now);
+    const request = {
+      operation_id: uuidv7(), entry_id: fixture.entry.id, taskchute_day_id: day.taskchute_day.id!,
+      action: "occurrence" as const, mode_id: fixture.modeA,
+    };
+    const before = await env.APP_DB.prepare(`SELECT
+        (SELECT mode_id FROM routine_definition_modes WHERE app_user_id = ? AND routine_definition_id = ?) AS default_mode_id,
+        (SELECT defaults_revision FROM routine_definitions WHERE app_user_id = ? AND id = ?) AS defaults_revision`)
+      .bind(fixture.userId, fixture.routineDefinitionId, fixture.userId, fixture.routineDefinitionId).first();
+
+    const first = await setRoutineMode(env.APP_DB, fixture.userId, request, now);
+    expect(first).toMatchObject({ entry_id: fixture.entry.id, mode_id: fixture.modeA, mode_override_present: false });
+    expect(await env.APP_DB.prepare(`SELECT COUNT(*) AS count FROM routine_occurrence_mode_overrides
+      WHERE app_user_id = ? AND routine_occurrence_id = ?`).bind(fixture.userId, fixture.entry.routine!.routine_occurrence_id).first())
+      .toEqual({ count: 0 });
+    expect(await env.APP_DB.prepare(`SELECT mode_id FROM entry_modes
+      WHERE app_user_id = ? AND entry_id = ?`).bind(fixture.userId, fixture.entry.id).first())
+      .toEqual({ mode_id: fixture.modeA });
+    expect(await env.APP_DB.prepare(`SELECT
+        (SELECT mode_id FROM routine_definition_modes WHERE app_user_id = ? AND routine_definition_id = ?) AS default_mode_id,
+        (SELECT defaults_revision FROM routine_definitions WHERE app_user_id = ? AND id = ?) AS defaults_revision`)
+      .bind(fixture.userId, fixture.routineDefinitionId, fixture.userId, fixture.routineDefinitionId).first()).toEqual(before);
+    expect(await setRoutineMode(env.APP_DB, fixture.userId, request, now)).toEqual(first);
+  });
+
+  it("preserves existing override and explicit Modeなし on same-value requests", async () => {
+    const fixture = await establishRoutine(await seed());
+    const dayId = (await loadCurrentTaskChuteDay(env.APP_DB, fixture.userId, now)).taskchute_day.id!;
+    const setOverride = (modeId: string | null) => ({
+      operation_id: uuidv7(), entry_id: fixture.entry.id, taskchute_day_id: dayId,
+      action: "occurrence" as const, mode_id: modeId,
+    });
+    const first = await setRoutineMode(env.APP_DB, fixture.userId, setOverride(fixture.modeB), now);
+    expect(first.mode_override_present).toBe(true);
+    const sameOverride = setOverride(fixture.modeB);
+    expect(await setRoutineMode(env.APP_DB, fixture.userId, sameOverride, now))
+      .toMatchObject({ mode_id: fixture.modeB, mode_override_present: true });
+    expect(await env.APP_DB.prepare(`SELECT mode_id FROM routine_occurrence_mode_overrides
+      WHERE app_user_id = ? AND routine_occurrence_id = ?`).bind(fixture.userId, fixture.entry.routine!.routine_occurrence_id).first())
+      .toEqual({ mode_id: fixture.modeB });
+
+    const definition = {
+      operation_id: uuidv7(), entry_id: fixture.entry.id, taskchute_day_id: dayId,
+      action: "definition" as const, mode_id: null as string | null,
+      expected_defaults_revision: fixture.entry.routine!.defaults_revision,
+    };
+    const definitionResult = await setRoutineMode(env.APP_DB, fixture.userId, definition, now);
+    expect(definitionResult.mode_override_present).toBe(false);
+    const noOverrideNull = setOverride(null);
+    expect(await setRoutineMode(env.APP_DB, fixture.userId, noOverrideNull, now))
+      .toMatchObject({ mode_id: null, mode_override_present: false });
+    expect(await env.APP_DB.prepare(`SELECT COUNT(*) AS count FROM routine_occurrence_mode_overrides
+      WHERE app_user_id = ? AND routine_occurrence_id = ?`).bind(fixture.userId, fixture.entry.routine!.routine_occurrence_id).first())
+      .toEqual({ count: 0 });
+
+    await setRoutineMode(env.APP_DB, fixture.userId, setOverride(fixture.modeC), now);
+    await setRoutineMode(env.APP_DB, fixture.userId, setOverride(null), now);
+    expect(await setRoutineMode(env.APP_DB, fixture.userId, setOverride(null), now))
+      .toMatchObject({ mode_id: null, mode_override_present: true });
+    expect(await env.APP_DB.prepare(`SELECT mode_id FROM routine_occurrence_mode_overrides
+      WHERE app_user_id = ? AND routine_occurrence_id = ?`).bind(fixture.userId, fixture.entry.routine!.routine_occurrence_id).first())
+      .toEqual({ mode_id: null });
+  });
+
+  it("does not propagate a Routine default Mode into a suppressed occurrence", async () => {
+    const fixture = await establishRoutine(await seed());
+    const futureDay = await loadCurrentTaskChuteDay(env.APP_DB, fixture.userId, "2026-09-02T12:00:00.000Z");
+    const suppressedEntry = futureDay.sections.flatMap((section) => section.entries)
+      .find((entry) => entry.routine?.routine_definition_id === fixture.routineDefinitionId);
+    if (!suppressedEntry?.routine) throw new Error("Future Routine entry was not materialized");
+    await env.APP_DB.prepare(`INSERT INTO routine_occurrence_suppressions
+      (app_user_id, routine_occurrence_id, suppressed_at, reason) VALUES (?, ?, ?, 'schedule')`)
+      .bind(fixture.userId, suppressedEntry.routine.routine_occurrence_id, now).run();
+    const board = await loadRoutineBoard(env.APP_DB, fixture.userId, now);
+    const routine = board.routines.find((item) => item.routine_definition_id === fixture.routineDefinitionId);
+    if (!routine) throw new Error("Routine Board item was not loaded");
+
+    await updateRoutine(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), routine_definition_id: fixture.routineDefinitionId,
+      expected_settings_revision: routine.settings_revision, title: "Routine Mode fixture", project_id: null,
+      schedule: { kind: "daily" }, default_section_id: fixture.sectionId,
+      default_planned_start_minute: 600, default_estimate_seconds: 600,
+      default_mode_id: fixture.modeB, start_logical_date: "2026-09-01", end_logical_date: "2026-09-01",
+    }, now);
+
+    expect(await env.APP_DB.prepare(`SELECT em.mode_id FROM entries e
+      LEFT JOIN entry_modes em ON em.app_user_id = e.app_user_id AND em.entry_id = e.id
+      WHERE e.app_user_id = ? AND e.id = ?`).bind(fixture.userId, suppressedEntry.id).first())
+      .toEqual({ mode_id: fixture.modeA });
+    expect(await env.APP_DB.prepare(`SELECT em.mode_id FROM entries e
+      LEFT JOIN entry_modes em ON em.app_user_id = e.app_user_id AND em.entry_id = e.id
+      WHERE e.app_user_id = ? AND e.id = ?`).bind(fixture.userId, fixture.entry.id).first())
+      .toEqual({ mode_id: fixture.modeB });
+    expect(await env.APP_DB.prepare(`SELECT rdm.mode_id AS default_mode_id
+      FROM routine_definition_modes rdm WHERE rdm.app_user_id = ? AND rdm.routine_definition_id = ?`)
+      .bind(fixture.userId, fixture.routineDefinitionId).first())
+      .toEqual({ default_mode_id: fixture.modeB });
+  });
+
   it("persists a Routine default, occurrence override, and definition propagation", async () => {
     const fixture = await establishRoutine(await seed());
     expect((await loadRoutineBoard(env.APP_DB, fixture.userId, now)).routines[0]).toMatchObject({
