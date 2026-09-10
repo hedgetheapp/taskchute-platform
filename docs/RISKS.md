@@ -523,3 +523,13 @@ Mitigation / evidence:
 - Focused Web Escape coverage passes for recurrence controls with focus inside the popover. Full Worker `27 files / 237 tests`, full Web `4 files / 266 tests`, typecheck, builds, nonprod dry-run, deployment, browser same/fresh-tab persistence, console logs, and APP/AUTH read-only integrity pass. Worker `33b3f81d-cca9-4662-9f99-15ef8b2ef055` is nonprod-only; APP 0026 remains applied and no corrective migration was added or applied.
 
 Residual tooling boundary: the normal Windows `npm run test:migrations` helper remains `NOT_RUN` after its prior bounded no-output hang; the existing bounded 0026 validation and persistent migration evidence remain valid. No production, credentials/reset, bootstrap mutation, restore/recovery execution, destructive cleanup, or Release action was performed.
+
+## R-037 — D-087 N-week calendar-week compatibility
+
+D-087 narrows the D-086 compatibility boundary for `every_n_weeks`: the week containing `start_logical_date` is now Monday-start phase 0, while dates before the start date remain ineligible. This is an approved evaluator-only semantic correction; simple `weekly`, all other recurrence families, typed persistence, materialization identity, suppression / restore, race/CAS, and historical facts remain unchanged.
+
+Mitigation / evidence:
+
+- The only recurrence algorithm remains `apps/web/src/shared/routine-recurrence.ts`; no SQL, Web, or Board duplicate was introduced. Table-driven tests cover the exact 2026-10-01 required example, Monday through Sunday starts, lower/inclusive bounds, 2/3-week sequences, month/year boundaries, and unaffected recurrence regressions.
+- Persistent nonprod read-only compatibility inventory before implementation found `every_n_weeks` schedule count `0` and affected old-semantics current/future planned materialized occurrence count `0`. No data rewrite or migration was needed. APP 0026 remains `PERSISTENT_NONPROD_MIGRATED`, and D-087 exact nonprod deployment/browser persistence/DB integrity passed.
+- Residual evidence boundary: calendar-phase exhaustiveness is automated-test authority rather than browser date simulation. The normal Windows `npm run test:migrations` helper remains `NOT_RUN` after its existing bounded no-output hang; no migration was changed or applied by D-087.

@@ -1749,6 +1749,14 @@ APP migration `0026_routine_recurrence_expansion.sql`は`routine_schedules`をty
 
 実装とlocal automated evidenceはCURRENT / TEST_MATRIX / FEATURESへ記録する。persistent nonprod migrationはfresh pre-migration APP/AUTH backupとisolated readability / integrity gate後に限り実施し、production、restore、destructive cleanup、branch / PR / merge / tag / releaseは対象外で、Releasedは`NO`とする。
 
+## D-087 — Calendar-week anchored N-week Routine recurrence
+
+Status: **Approved / implemented**
+
+D-087のcanonical decision本文は `docs/decisions/D-087_ROUTINE_N_WEEK_CALENDAR_WEEK_ANCHOR.md` に置く。D-086の`every_n_weeks`についてのみ、`start_logical_date`を含む月曜日〜日曜日のcalendar weekをphase 0とする定義へ変更する。開始日より前は常にeligibleではなく、active week内の選択曜日だけを発生対象とする。simple `weekly`と他の9 recurrence family、Sunday=0のweekday mask、inclusive period、shared evaluator、materialization / suppression / retry / CAS、historyとidentityは変更しない。
+
+D-087はD-086のN-week anchorだけを狭くsupersedeする。persisted `every_n_weeks` shape、API command、APP / AUTH schema、migration、dependency、historical rewriteは変更しない。実装前のpersistent nonprod compatibility gateでは既存`every_n_weeks` Routine 0件、旧意味で影響を受けるcurrent / future planned materialized occurrence 0件をread-onlyで確認し、one-off data mutationなしで実装した。実装、evaluator / integration regression、persistent nonprod browser persistence、DB integrity evidenceはCURRENT / TEST_MATRIX / FEATURESへ記録する。production、restore、destructive cleanup、branch / PR / merge / tag / releaseは対象外で、Releasedは`NO`とする。
+
 ## D-085 — Routine Mode default / occurrence override
 
 Status: **Approved**

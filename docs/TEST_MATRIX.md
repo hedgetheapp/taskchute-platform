@@ -2315,3 +2315,18 @@ D-084 browser fixture creation was not completed: the unauthenticated/new in-app
 | D086-CORR-02 | full corrective regression / nonprod deploy | full Worker/Web, typecheck, normal/exact nonprod build, Wrangler dry-run, deploy, browser, read-only APP/AUTH evidence | PASS; Worker `27 files / 237 tests`, Web `4 files / 266 tests`, Worker `33b3f81d-cca9-4662-9f99-15ef8b2ef055` |
 | D086-CORR-03 | migration boundary | no migration changed or applied; APP 0026 remains applied; pending migrations | PASS; APP/AUTH `0 / 0`, new migration `NOT_REQUIRED`, Windows helper `NOT_RUN` |
 | D086-CORR-SAFETY-01 | corrective safety boundary | production, credentials/reset, bootstrap mutation, restore/recovery, destructive cleanup, branch/PR/merge/tag/Release | PASS（未実施 / NOT_RUN） |
+
+## D-087 Calendar-week anchored N-week recurrence
+
+| ID | Scope | Evidence | Result |
+|---|---|---|---|
+| D087-DOMAIN-01 | Monday-start calendar-week evaluator | Start Monday through Sunday, lower bound, selected weekday, 2/3-week phase, month/year boundaries, inclusive end | PASS; recurrence evaluator `9 / 9` |
+| D087-DOMAIN-02 | Required calendar example | `2026-10-01` Thu, interval 2, 月・水・金: 09-28/09-30/10-01 false, 10-02 true, 10-05/10-07/10-09 false, 10-12/10-14/10-16 true | PASS; exact table-driven test |
+| D087-REG-01 | Unaffected recurrence and D-086 reliability | daily / N-day / weekly / monthly / N-month regression plus D-086 Race 1 / Race 2 / CAS | PASS; full Worker/R2B `27 files / 240 tests` |
+| D087-WORKER-01 | Materialization / UpdateRoutine integration | shared evaluator path, exactly-once R2B, suppression / restore, overrides and history boundaries | PASS; focused R2B `14 / 14` |
+| D087-WEB-01 | Routine Board regression | N-week + weekdays save/reload, independently editable start date, Escape no-write, invalid weekday draft | PASS; Routine Board `15 / 15` |
+| D087-COMPAT-01 | Persistent nonprod compatibility gate | existing `every_n_weeks` schedules and affected old-semantics materialized planned occurrences | PASS; `0 / 0`, no data rewrite required |
+| D087-LOCAL-01 | Local static gates | full Web/Worker, typecheck, normal/exact nonprod build, Wrangler dry-run, diff-check | PASS; Web `4 files / 266 tests`, Worker `27 files / 240 tests` |
+| D087-NONPROD-01 | Persistent nonprod browser / DB | representative `2週間ごと 月・水・金`, start `2026-10-01`, same/fresh-tab persistence, Escape, console, APP/AUTH read-only integrity | PASS; Worker `06867a89-c073-491b-b16c-788e2abfb6fd`, console empty, quick/FK/migrations/duplicates/active/guards clean |
+| D087-MIG-01 | Migration boundary | no migration modified/applied; APP 0026 remains applied | PASS; new migration `NOT_REQUIRED`, pending `0 / 0`, Windows helper `NOT_RUN` |
+| D087-SAFETY-01 | Scope boundary | production, credentials/reset, bootstrap, restore/recovery, destructive cleanup, branch/PR/merge/tag/Release | PASS（未実施 / NOT_RUN） |

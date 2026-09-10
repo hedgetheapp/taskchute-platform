@@ -215,11 +215,17 @@ Status: Approved (D-047, D-048). Runtime / APP migration: IMPLEMENTED candidate 
 
 ### D-086 Routine recurrence expansion
 
-Routine schedule authorityはtyped `routine_schedules`とし、`daily` / `every_n_days` / `weekly`の意味を変更しない。D-086では`every_n_weeks`（start logical date anchor）、monthly day / last day / nth weekday / last weekday、every-N-months day / last dayを追加する。periodはinclusiveで、Gregorian logical civil dateを評価し、存在しない月日や第5曜日はskipする。
+Routine schedule authorityはtyped `routine_schedules`とし、`daily` / `every_n_days` / `weekly`の意味を変更しない。D-086では`every_n_weeks`、monthly day / last day / nth weekday / last weekday、every-N-months day / last dayを追加した。`every_n_weeks`のanchorだけはD-087でcalendar-week semanticsへ狭くsupersedeされ、他のfamilyは変更しない。periodはinclusiveで、Gregorian logical civil dateを評価し、存在しない月日や第5曜日はskipする。
 
 recurrence eligibilityはshared pure evaluatorを唯一のcalendar authorityとする。current-Day lazy materialization、missing candidate count、Routine Board schedule updateによるplanned occurrence suppression / restoreは同じevaluatorを使用し、DB transaction guardはschedule / period snapshot、pause / archive、occurrence identity、placement revisionをCASで再確認する。旧SQL predicateを別のrecurrence algorithmとして維持しない。
 
 APP migration `0026_routine_recurrence_expansion.sql`は既存`routine_schedules` rowとhistoryを保持し、typed CHECKでinvalid field combinationを拒否する。Routine Boardのrecurrence editorは全patternを日本語表示し、incomplete draftを送信せず、Cancel / Escapeはno-writeとする。unestablished future Dayのmaterialization、legacy recurrence marker書換え、AUTH migration、historical rewriteは行わない。
+
+### D-087 Calendar-week anchored N-week recurrence
+
+`every_n_weeks`は、開始日を含む月曜日〜日曜日のcalendar weekをphase 0とする。`startWeekMonday`と`candidateWeekMonday`のcivil day差を7で割った`weekIndex`について、`weekIndex >= 0 && weekIndex % interval_weeks === 0`のweekだけをactiveとし、candidateの既存Sunday=0〜Saturday=6 weekday maskが選択されている場合にeligibleとする。`candidate < start_logical_date`はperiod lower boundで必ず除外する。locale、device、browser timezone、Temporalの外部weekday numberingはauthorityにしない。
+
+D-087はD-086のN-week phase anchorだけを変更し、simple `weekly`、他のrecurrence family、typed schedule shape、shared evaluator、materialization / suppression / CAS / race semantics、historyを変更しない。schema migration、API command、dependency、historical rewriteは不要である。
 
 ## Historical facts and projections
 
