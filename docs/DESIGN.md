@@ -244,6 +244,8 @@ Sidebarの`ルーティン`はRoutine管理のprimary destinationである。D-0
 
 `＋ ルーティンを追加`はlocal blank OFF rowを作り、空名の間はno-write、名前commit後にpersistする。recurrence / period popoverはexplicit Save / Cancel、inline defaultsはserver-canonical reconciliationを使う。詳細implementation evidenceはCURRENT / FEATURES / TEST_MATRIXをownerとする。
 
+D-086のrecurrence popoverは既存UIを拡張し、毎日 / N日 / 曜日、N週間＋曜日、毎月日 / 月末 / 第N曜日 / 最終曜日、Nか月日 / 月末をprogressive controlで編集する。表示は日本語のcompact labelとし、曜日未選択・interval / day / ordinal範囲外のdraftは保存ボタンを無効化する。recurrence判定自体はUIではなくshared pure logical-date evaluatorがauthorityである。
+
 D-064のRoutine deleteはrow末尾の`…`メニューから明示確認を経由して実行する。DeleteRoutineはowner・Routine・Board revision・settings revision・operation fingerprintを検証し、同一transactionでarchive tombstoneを作成してBoard itemを除去し、残りのBoard orderをreconcileする。RoutineDefinition、Task、RoutineOccurrence、Entry、Execution、operation history、snapshot、moved occurrenceはhard deleteしない。archive済みRoutineはBoard projectionとfuture recurrence eligibilityから除外し、すでにmaterializedされたcurrent / past historyは保持する。restore / undo UIは提供しない。
 
 Board headerは9列をdrag reorderし、各列のright edgeをresizeできる。order / widthはServerへ送らず、browser-local key `taskchute.web.routine-columns.v1`へversionedに保存する。欠損・未知・重複・壊れたpreferenceはdefault order / widthへ安全にfallbackする。J / ↓は次、K / ↑は前へ移動し、未focus時は最初 / 最後をfocusする。`?`はcentered help、Escはmenu / modal / editorを閉じる。input / select / textarea / contenteditable / IME中はglobal shortcutを抑制し、Routine BoardにはX selection shortcutを持たせない。

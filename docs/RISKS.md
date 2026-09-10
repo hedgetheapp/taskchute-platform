@@ -499,3 +499,15 @@ Mitigation / evidence:
 - `npm run test:migrations` remains NOT_RUN because it produced no output and hung on Windows. This does not change the remote migration result. No new migration was added; AUTH migration remains not required.
 
 No production, credential, bootstrap, restore, destructive cleanup, or release action was performed. No new dependency or AUTH migration was introduced. The previously recorded migration-helper and console evidence gaps are respectively `MIGRATION_HELPER_NOT_RUN` and now closed by empty browser console-log reads.
+
+## R-035 — D-086 recurrence migration and persistent evidence boundary
+
+D-086 replaces duplicated recurrence predicates with a shared pure logical-date evaluator and adds APP migration `0026` for typed week/month schedule fields. The approved recurrence and persistent nonprod evidence gaps are closed: fresh APP/AUTH exports were isolated-readability validated, APP 0026 was applied, and authenticated browser / DB evidence passed. The existing Windows migration helper repeatedly produced no output and was safely interrupted, while bounded `node:sqlite` validation passed; the helper remains a local tooling gap rather than an unvalidated remote migration.
+
+Mitigation / evidence:
+
+- Legacy daily / N-day / weekly compatibility, all approved new calendar families, exact period bounds, invalid dates, and materialization idempotency are covered by shared evaluator and Worker/Web tests. Full Worker/D1 `27 files / 233 tests`, full Web `4 files / 265 tests`, typecheck, and diff-check pass.
+- Bounded upgrade validation preserved representative legacy N-day / weekly rows, rejected an invalid N-week combination, reported `quick_check=ok`, empty FK check, and no temporary migration table. Fresh-chain migration application is exercised by the Worker test harness; the comprehensive Windows helper remains `NOT_RUN`.
+- Persistent nonprod evidence: APP/AUTH migration pending `0 / 0`, quick_check `ok`, FK empty, typed schedule integrity and duplicate checks empty/zero, active executions `0`, audit queries `rows_written=0`; authenticated browser editing for all ten families, Escape no-write, same-tab / fresh-tab persistence, and empty console logs passed. The disposable `D086 Browser Recurrence` fixture remains in nonprod.
+- A pre-existing CreateRoutine collision was reproduced against an isolated APP export when a detached routine occupied a materialization order not represented in Board items. Corrective `f944031` now allocates Board position and materialization order independently; regression and nonprod redeploy passed. This does not change recurrence semantics or schema.
+- Remaining evidence gap: the normal Windows `npm run test:migrations` helper is `NOT_RUN` after a bounded no-output hang, and browser does not exhaustively simulate every calendar date; authoritative date coverage remains in the pure evaluator / Worker suites. No production, credentials, bootstrap, restore, destructive cleanup, or release action was performed.

@@ -2285,3 +2285,20 @@ D-084 browser fixture creation was not completed: the unauthenticated/new in-app
 | D085-CORR-DB-01 | Corrective nonprod DB integrity | APP/AUTH quick/FK/migration/active-execution/duplicate-position/guard/assertion/operation read-only checks | PASS; quick ok, FK empty, pending 0 / 0, active 0, duplicates/guards/assertions 0, rows_written 0 |
 | D085-CORR-BROWSER-01 | Corrective browser impact boundary | default update and explicit occurrence Modeなし persistence across reload/fresh authenticated tab | PASS; existing authenticated session reused |
 | D085-SAFETY-01 | Scope boundary | no production, credential retrieval/reset, bootstrap change, restore, destructive cleanup, branch / PR / merge / tag / Release | PASS（未実施 / NOT_RUN） |
+
+## D-086 Routine recurrence expansion
+
+| ID | Scope | Evidence | Result |
+|---|---|---|---|
+| D086-DOMAIN-01 | Legacy compatibility oracle | Shared evaluator compared with frozen legacy daily / N-day / weekly implementation over 2023–2025 including leap-year dates | PASS; `6 / 6` |
+| D086-DOMAIN-02 | New calendar matrix | N-week anchor, monthly day / last day / nth weekday / last weekday, N-month day / last day, leap/year boundary, inclusive period, invalid date | PASS; `6 / 6` |
+| D086-WORKER-01 | Materialization / reconciliation | All new family representatives materialize exactly once; existing R2B / pause / suppression / restore / override regressions | PASS; focused Routine/R2B `15 / 15` |
+| D086-WEB-01 | Routine Board editor | All ten options, progressive controls, human-readable display, empty-weekday invalid draft, cancel / Escape no-write | PASS; `14 / 14` |
+| D086-MIG-01 | APP migration 0026 | Legacy row preservation, new typed CHECK rejection, quick_check, FK check, temporary-table cleanup; bounded `node:sqlite` upgrade validation | PASS; bounded upgrade and persistent nonprod APP 0026 apply. Normal Windows helper `npm run test:migrations` is `NOT_RUN` after no-output hang |
+| D086-REG-01 | Existing suites | Full Worker/D1 and full Web | PASS; `27 files / 233 tests`, `4 files / 265 tests` |
+| D086-LOCAL-01 | Local gates | typecheck, `git diff --check` | PASS |
+| D086-NONPROD-01 | Pre-0026 remote migration gate | Fresh APP/AUTH export, SHA-256, isolated readability / quick_check / FK, pending migrations, remote APP 0026 apply | PASS; APP/AUTH exports and hashes recorded in CURRENT, isolated gate PASS, APP 0026 applied, post-apply pending `0 / 0` |
+| D086-BROWSER-01 | Persistent authenticated Routine editor | Existing session recurrence edits for all ten families, same/fresh-tab persistence, Escape no-write, console | PASS; original tab 332x910 and fresh authenticated tab 1280x720 at zoom 1; console logs empty |
+| D086-DB-01 | Persistent APP/AUTH evidence | quick_check, FK, pending `0 / 0`, typed schedule rows, duplicate occurrence/placement, active execution, audit writes | PASS; quick_check ok, FK empty, invalid typed rows 0, duplicate keys/positions 0, active executions 0, audit rows_written 0 |
+| D086-CORR-01 | CreateRoutine ordering safety | Detached board item does not collide with materialization order; new routine remains creatable | PASS; corrective `f944031`, regression `10 / 10`, exact nonprod redeploy |
+| D086-SAFETY-01 | Scope boundary | no production, credentials, bootstrap, restore, destructive cleanup, branch / PR / merge / tag / Release | PASS（未実施 / NOT_RUN） |

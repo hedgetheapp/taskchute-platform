@@ -213,6 +213,14 @@ Status: Approved (D-047, D-048). Runtime / APP migration: IMPLEMENTED candidate 
 - Section / planned start / estimate propagationはD-043 / D-044 override boundaryを維持し、default editだけでfuture Dayをmaterializeしない。
 - Day Table上のmanual Routine終了UIは表示しない。legacy operation endpointはcompatibilityのため維持する。
 
+### D-086 Routine recurrence expansion
+
+Routine schedule authorityはtyped `routine_schedules`とし、`daily` / `every_n_days` / `weekly`の意味を変更しない。D-086では`every_n_weeks`（start logical date anchor）、monthly day / last day / nth weekday / last weekday、every-N-months day / last dayを追加する。periodはinclusiveで、Gregorian logical civil dateを評価し、存在しない月日や第5曜日はskipする。
+
+recurrence eligibilityはshared pure evaluatorを唯一のcalendar authorityとする。current-Day lazy materialization、missing candidate count、Routine Board schedule updateによるplanned occurrence suppression / restoreは同じevaluatorを使用し、DB transaction guardはschedule / period snapshot、pause / archive、occurrence identity、placement revisionをCASで再確認する。旧SQL predicateを別のrecurrence algorithmとして維持しない。
+
+APP migration `0026_routine_recurrence_expansion.sql`は既存`routine_schedules` rowとhistoryを保持し、typed CHECKでinvalid field combinationを拒否する。Routine Boardのrecurrence editorは全patternを日本語表示し、incomplete draftを送信せず、Cancel / Escapeはno-writeとする。unestablished future Dayのmaterialization、legacy recurrence marker書換え、AUTH migration、historical rewriteは行わない。
+
 ## Historical facts and projections
 
 DayBoard、Calendar、Timeline、Review、Mapはcanonical task stateを別系統で保持するauthorityではなく、Domain / historical factsから構築するprojectionとする。

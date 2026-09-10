@@ -45,7 +45,7 @@ Current First vertical slice implementation / nonprod verification fact:
 
 以下はOpen:
 
-- R2Bで未実装の営業日 / 休日 / 祝日、N-week、monthly recurrenceとcalendar authority
+- R2Bで未実装の営業日 / 休日 / 祝日とbroader calendar authority。N-week / monthly recurrenceとそのlogical-date semanticsはD-086で解決済み
 - Routine archive/deleteのexact lifecycle、復元、retention（R2B pause/resumeとinclusive periodはD-047で解決済み）
 - occurrence-level Task title / Project override UX（R2Bはcurrent Task authority + historical snapshotのみ）
 
@@ -270,7 +270,7 @@ RoutineDefinition -> RoutineOccurrence -> Entryとorigin TaskChuteDay preservati
 
 D-034でProjected / Materialized Occurrence、field-level day override、Routine default反映scope、Skip、明示日付移動、stop / resume / deleteの主要semanticsがApproved済み。
 
-D-035 / D-036でeffective営業日 / 休日判定とinitial recurrence pattern setがApproved済み。
+D-035 / D-036でeffective営業日 / 休日判定とinitial recurrence pattern setがApproved済み。D-086ではN-week / monthly recurrenceのtyped schedule semantics、shared evaluator、current-Day materialization / reconciliationまでApproved・実装済みであり、holiday/business-day calendarは引き続きOpenである。
 
 D-040でdaily-only R1について、existing Entry conversion、minimal RoutineDefinition / RoutineOccurrence / Entry relation、current-Day lazy materialization、placement revision、defaults、inclusive end / Routine終了、minimal Web UXをApprovedした。D-043はRoutine-derived EntryにもSection / planned-start full synchronizationを適用し、D-044はcurrent-Day planned Routine EntryのSection-plan / estimate override、explicit scope choice、reset、default propagationをApprovedした。D-045はlegacy real Section + NULLのnormalization resultとauthority / fail-safe boundaryをApprovedし、D-046はtyped occurrence override columns、explicit presence、owner-scoped Section reference、Routine default revisionというfirst-slice physical persistence directionをApprovedした。first-slice runtime / migrationはcommit `7d3c0cb0881dfc11725af6ff45eabad69f86a22a`で実装・Integrated / real-local verifiedであり、以下はbroader scopeまたは将来のscale / compatibility条件としてOpenのまま維持する。
 

@@ -1739,6 +1739,16 @@ D-083は、current established Dayのordinary planned Entryに限り、既存`Mo
 
 実装、Worker / Web regression、real-local / persistent nonprod browser、read-only DB evidenceはcanonical evidence docsへ記録する。production、restore、destructive cleanup、branch / PR / merge / tag / releaseは対象外で、Releasedは`NO`とする。
 
+## D-086 — Routine recurrence expansion
+
+Status: **Approved**
+
+D-086のcanonical decision本文は `docs/decisions/D-086_ROUTINE_RECURRENCE_EXPANSION.md` に置く。既存の`daily` / `every_n_days` / `weekly` typed schedule semanticsを維持し、`every_n_weeks`、monthly day / last day / nth weekday / last weekday、every-N-months day / last dayを追加する。logical `YYYY-MM-DD`をpure shared evaluatorで評価し、Routine Board、current-Day lazy materialization、missing candidate count、schedule / period suppression reconciliationが同じrecurrence authorityを使う。
+
+APP migration `0026_routine_recurrence_expansion.sql`は`routine_schedules`をtyped CHECK付きで拡張し、既存schedule row、Routine / Occurrence / Entry / Execution / suppression / operation identity、legacy `routine_definitions.recurrence_type`を変更しない。AUTH migration、API command、new dependency、future preview、historical rewrite、production operationは追加しない。D-041 future non-materialization、D-043 planned Section/start synchronization、D-060 correction、D-078 / D-079 placement safety、既存pause / archive / override境界を維持する。
+
+実装とlocal automated evidenceはCURRENT / TEST_MATRIX / FEATURESへ記録する。persistent nonprod migrationはfresh pre-migration APP/AUTH backupとisolated readability / integrity gate後に限り実施し、production、restore、destructive cleanup、branch / PR / merge / tag / releaseは対象外で、Releasedは`NO`とする。
+
 ## D-085 — Routine Mode default / occurrence override
 
 Status: **Approved**
