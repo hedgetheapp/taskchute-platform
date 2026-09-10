@@ -2252,3 +2252,14 @@ The original D-080 rows remain historical evidence for the A/B/C/D chain, but th
 | D084-SAFETY-01 | Operation boundary | no production, bootstrap mutation, restore, destructive cleanup, credential operation, branch / PR / merge / tag / Release | PASS（未実施 / NOT_RUN） |
 
 D-084 browser fixture creation was not completed: the unauthenticated/new in-app tab returned the existing app error `The Routine creation outcome is unknown; reload and retry`; a retry was intentionally not sent to avoid duplicate creation. Read-only APP operations showed no new `CreateRoutine` or `SetRoutineSectionPlan` operation. Automated Worker/Web evidence remains authoritative for the implementation; persistent browser Routine evidence must not be relabeled PASS without a genuinely authenticated fixture.
+
+## D-084 corrective — ambiguous placement reconciliation
+
+| ID | Scope | Evidence | Result |
+|---|---|---|---|
+| D084-CORR-WEB-01 | Placement-bearing ambiguous Routine Section-plan reconciliation | same-cohort position-only `override=false`, cross-Section occurrence wrong edge, cross-Section Definition wrong edge; retained retry and exact ID/payload replay | PASS; focused Web `3 / 3` |
+| D084-CORR-REG-01 | Existing regressions | existing Routine placement Worker `6 / 6`; full Web `4 files / 263 tests`; full Worker/D1 `25 files / 220 tests`; typecheck / normal build / exact nonprod build / Wrangler dry-run / diff-check | PASS |
+| D084-CORR-ENV-01 | Persistent nonprod deploy / safety | Worker `2db86d41-2ef9-431f-ae9e-fa5485cca8e9`; `RUNTIME_ENV=nonprod`; `BOOTSTRAP_ENABLED=false`; root `200`; protected API `401` | PASS; bootstrap POST `NOT_RUN` |
+| D084-CORR-DB-01 | APP/AUTH read-only integrity | quick check, FK, migrations `0 / 0`, active execution, duplicate positions, Routine guards, transaction assertions, operation/audit coherence | PASS; quick `ok`, FK empty, rows_written `0` |
+| D084-CORR-BROWSER-01 | Authenticated Routine browser regression | persistent CUA state had no tab; no credential/login/reset or session creation | `NOT_VERIFIED` / `NOT_RUN` |
+| D084-CORR-SAFETY-01 | Scope boundary | no Worker/API/schema/migration/dependency/security/production/restore/destructive/branch/PR/merge/tag/Release action | PASS（未実施 / NOT_RUN） |

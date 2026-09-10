@@ -478,3 +478,11 @@ Mitigation / evidence:
 - APP/AUTH quick check is `ok`, FK violations are empty, active executions and duplicate positions are `0`, transient assertions/guards are `0`, remote migrations are pending `0 / 0`, and successful audit queries report `rows_written=0`. Browser console counts, Routine browser interactions, persistence, and natural race timing remain `NOT_VERIFIED` / `NOT_RUN`; no browser PASS is claimed.
 
 Until an existing authenticated persistent tab with a disposable current-Day Routine fixture is available, D-084 remains `IMPLEMENTED / INTEGRATED / TESTED / NONPROD_DEPLOYED / DB_INTEGRITY_VERIFIED / BROWSER_NOT_VERIFIED`, not fully persistent-browser verified. No production, credential, bootstrap, restore, destructive cleanup, or release action was performed.
+
+## R-033 — D-084 placement ambiguity reconciliation corrective
+
+The original D-084 Web convergence check could clear an ambiguous placement-bearing `SetRoutineSectionPlan` operation when only Section, planned start, and the Routine override bit matched. That projection did not prove the relative anchor edge or authoritative physical position, and the same-cohort position-only path legitimately keeps `section_plan_override_present=false`.
+
+Corrective commit `e67297009d4f2c92d4e3b8d607716b861cf477b5` now retains every placement-bearing ambiguous operation with its immutable exact request and retry action. The non-placement pair heuristic remains unchanged. Focused Web `3 / 3`, full Web `263 / 263`, Routine Worker `6 / 6`, full Worker/D1 `220 / 220`, typecheck/build/nonprod dry-run, nonprod deployment, APP/AUTH quick/FK/migration integrity, and `rows_written=0` evidence pass. No Worker/API/schema/migration/dependency/security change was introduced.
+
+The code correctness gap is resolved. Persistent authenticated Routine browser D&D / Shift / chooser / Definition / retry evidence and exact console counts remain `NOT_VERIFIED` because the available CUA state had no tab; no credential or login action was attempted. This is the remaining D-084 evidence boundary described in R-032, not a browser PASS claim.
