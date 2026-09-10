@@ -2204,3 +2204,20 @@ The original D-080 rows remain historical evidence for the A/B/C/D chain, but th
 | D082-CORR-DB-01 | Corrective APP/AUTH read-only integrity | quick check / FK / pending migrations / active execution / guard cleanup / duplicate positions / operation coherence / rows_written | PASS; quick `ok`, FK empty, pending `0 / 0`, active `0`, guards/assertions `0 / 0`, rows_written `0` |
 | D082-CORR-SAFETY-01 | Corrective nonprod safety | root `200`, protected API `401`, unauthenticated bootstrap POST `404`, bootstrap disabled | PASS |
 | D082-CORR-MIG-01 | Corrective migration / dependency boundary | no new migration or dependency; existing `0024` remains applied | NOT_REQUIRED; local migration helper `NOT_RUN` |
+
+## D-083 Free planned placement with D&D + Shift cross-Section movement
+
+| ID | Scope | Evidence | Result |
+|---|---|---|---|
+| D083-WORKER-01 | MoveEntry optional relative placement | same-cohort / cross-cohort / cross-Section validation、server anchor authority、planned cohort slot reuse、historical physical position preservation、atomic revision / no-op / replay | PASS; covered by full Worker/D1 `25 files / 216 tests` |
+| D083-WEB-01 | Effective pending placement | repeated same-Section cross-cohort placement uses effective overlay; second intent dispatches after the first and sent payload remains immutable | PASS; targeted Web `2 passed` |
+| D083-KEYBOARD-01 | Shift cross-cohort movement | focused planned Entry crosses planned-start cohort with `Shift + ArrowUp / ArrowDown`, immediate DOM order and deferred drain | PASS |
+| D083-REG-01 | Existing regressions | full Web `4 files / 259 tests`; full Worker/D1 `25 files / 216 tests`; typecheck / normal build / exact nonprod build / Wrangler dry-run / diff-check | PASS |
+| D083-ENV-01 | Real pointer D&D | authenticated persistent nonprod, `1280 × 720`, DPR 1, Sidebar closed; same-cohort reorder, second drag, cross-Section drag, immediate order and persistence | PASS; genuine browser pointer gestures; prolonged browser race timing `NOT_OBSERVED` |
+| D083-ENV-02 | Floating Runner overlay | same-viewport OFF→ON geometry, fixed overlay, trailing escape, valid planned reorder, running-boundary rejection, focus | PASS; chrome geometry unchanged, last row cleared overlay |
+| D083-PERSIST-01 | Reload persistence | same-tab reload and fresh authenticated tab restore final fixture Section / planned-start / order / lifecycle | PASS |
+| D083-CONSOLE-01 | Browser console | persistent authenticated verification surface | PASS; `0 errors / 0 warnings` |
+| D083-DB-01 | APP/AUTH read-only integrity | quick check, FK, pending migrations `0 / 0`, fixture order / positions / placement revision, operation coherence, active execution, `rows_written=0` | PASS |
+| D083-MIG-01 | Migration / dependency boundary | no D-083 schema or migration; no dependency change; remote migration lists empty | PASS `MIGRATION_NOT_REQUIRED`; local migration helper `NOT_RUN` |
+| D083-BROWSER-BOUNDARY-01 | Narrow connector tab | initial `332 × 910` clipped in-app tab was not used to claim pointer reachability | NOT_VERIFIED; wide reachable browser surface supplies the PASS evidence |
+| D083-SAFETY-01 | Scope boundary | no production, credentials, bootstrap, restore, destructive cleanup, branch / PR / merge / tag / Release | PASS（未実施 / NOT_RUN） |
