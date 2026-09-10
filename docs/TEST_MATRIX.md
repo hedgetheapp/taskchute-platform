@@ -2302,3 +2302,16 @@ D-084 browser fixture creation was not completed: the unauthenticated/new in-app
 | D086-DB-01 | Persistent APP/AUTH evidence | quick_check, FK, pending `0 / 0`, typed schedule rows, duplicate occurrence/placement, active execution, audit writes | PASS; quick_check ok, FK empty, invalid typed rows 0, duplicate keys/positions 0, active executions 0, audit rows_written 0 |
 | D086-CORR-01 | CreateRoutine ordering safety | Detached board item does not collide with materialization order; new routine remains creatable | PASS; corrective `f944031`, regression `10 / 10`, exact nonprod redeploy |
 | D086-SAFETY-01 | Scope boundary | no production, credentials, bootstrap, restore, destructive cleanup, branch / PR / merge / tag / Release | PASS（未実施 / NOT_RUN） |
+
+### D-086 corrective — reverse-race and editor hardening
+
+| ID | Scope | Evidence | Result |
+|---|---|---|---|
+| D086-RACE-01 | ensure old plan vs schedule update | deterministic hook lets UpdateRoutine commit first; old ensure snapshot guard rejects obsolete materialization | PASS; `1 / 1` |
+| D086-RACE-02 | UpdateRoutine snapshot vs ensure first | deterministic hook materializes after UpdateRoutine read; completeness guard rejects stale batch; exact retry preserves occurrence identity and suppresses under ineligible new schedule | PASS; `1 / 1` |
+| D086-CAS-01 | captured occurrence state completeness | identity, Day/origin, planned lifecycle, placement revision, placement, overrides, suppression, and absent-new-row checks | PASS; `1 / 1` |
+| D086-WEB-ESC-01 | focused recurrence-control Escape | focused recurrence select and numeric control close the draft with no UpdateRoutine request | PASS; `1 / 1` |
+| D086-DTO-01 | exact typed schedule DTO | approved ten shapes accepted; irrelevant cross-kind fields and duplicate weekdays rejected | PASS; included in corrective Worker `14 / 14` |
+| D086-CORR-02 | full corrective regression / nonprod deploy | full Worker/Web, typecheck, normal/exact nonprod build, Wrangler dry-run, deploy, browser, read-only APP/AUTH evidence | PASS; Worker `27 files / 237 tests`, Web `4 files / 266 tests`, Worker `33b3f81d-cca9-4662-9f99-15ef8b2ef055` |
+| D086-CORR-03 | migration boundary | no migration changed or applied; APP 0026 remains applied; pending migrations | PASS; APP/AUTH `0 / 0`, new migration `NOT_REQUIRED`, Windows helper `NOT_RUN` |
+| D086-CORR-SAFETY-01 | corrective safety boundary | production, credentials/reset, bootstrap mutation, restore/recovery, destructive cleanup, branch/PR/merge/tag/Release | PASS（未実施 / NOT_RUN） |
