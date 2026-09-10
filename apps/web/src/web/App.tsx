@@ -4861,6 +4861,14 @@ export function App() {
         void moveEntry(sourceSectionId, entryId, delta);
         return;
       }
+      const adjacent = entries[entries.findIndex((entry) => entry.id === entryId) + delta];
+      if (adjacent?.lifecycle_state === "planned") {
+        event.preventDefault();
+        void moveEntryToSection(source.id, sourceSectionId, {
+          kind: "relative_to_entry", anchor_entry_id: adjacent.id, edge: delta > 0 ? "after" : "before",
+        });
+        return;
+      }
       const targetGroup = movementGroups[sourceGroupIndex + delta];
       if (!targetGroup || sourceGroupIndex < 0) return;
       const targetEntries = targetGroup.entries.filter((entry) => entry.lifecycle_state === "planned");

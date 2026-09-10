@@ -2214,6 +2214,36 @@ describe("Dogfood Day shell", () => {
     expect(mocks.reorderEntries.mock.calls[1][0].entry_ids).toEqual([secondEntry.id, thirdEntry.id, firstEntry.id]);
   });
 
+  it("moves a focused Entry across planned-start cohorts with Shift+Arrow", async () => {
+    const request = deferred<unknown>();
+    const source = { ...firstEntry, planned_start_minute: 240 };
+    const neighbor = { ...secondEntry, planned_start_minute: 480 };
+    const target = { ...thirdEntry, planned_start_minute: 720 };
+    const sourceDay = { ...threePlannedDay,
+      sections: [{ ...threePlannedDay.sections[0], entries: [source, neighbor, target] }, emptyDay.sections[1]], next_entry: source };
+    const movedDay = { ...sourceDay, placement_revision: sourceDay.placement_revision + 1,
+      sections: [{ ...sourceDay.sections[0], entries: [neighbor, { ...source, planned_start_minute: 480 }, target] }, emptyDay.sections[1]],
+      next_entry: neighbor };
+    mocks.loadDay.mockResolvedValueOnce(sourceDay).mockResolvedValueOnce(movedDay);
+    mocks.moveEntry.mockReturnValue(request.promise);
+    render(<App />);
+
+    const row = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
+    row.focus();
+    fireEvent.keyDown(row, { key: "ArrowDown", shiftKey: true });
+    await waitFor(() => expect(mocks.moveEntry).toHaveBeenCalledTimes(1));
+    expect(mocks.moveEntry.mock.calls[0]?.[0]).toMatchObject({
+      entry_id: source.id,
+      section_id: morningId,
+      placement: { kind: "relative_to_entry", anchor_entry_id: neighbor.id, edge: "after" },
+    });
+    expect(Array.from(document.querySelectorAll(".task-row[data-entry-id]"), (item) => item.getAttribute("data-entry-id")))
+      .toEqual([neighbor.id, source.id, target.id]);
+
+    request.resolve({});
+    await waitFor(() => expect(screen.queryByText("Section移動・照合中…")).toBeNull());
+  });
+
   it("cancels an unsent reorder when the user returns to the canonical order", async () => {
     const metadataRequest = deferred<unknown>();
     mocks.loadDay.mockResolvedValue(twoPlannedDay);
