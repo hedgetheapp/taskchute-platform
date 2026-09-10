@@ -142,6 +142,14 @@ Preferred implementation is additive typed relations rather than rebuilding exis
 
 Equivalent schema is permitted only if it preserves the exact Product semantics above, owner isolation, compatibility, atomicity, and Mode-delete behavior. No AUTH DB migration is approved.
 
+### Upgrade compatibility for pre-D-085 Routine live Mode values
+
+D-085 must not infer a new recurring default from data that existed before recurring Mode semantics were available.
+
+If upgrade-time data contains a **planned Routine-derived Entry** that already has a live `entry_modes` value, migration must preserve the visible Mode as an explicit Mode override for that existing Routine Occurrence. The corresponding Routine Definition default remains `Modeなし` unless it is set after D-085 or created by a post-D-085 conversion.
+
+This backfill preserves existing visible per-Entry state without retroactively claiming that the user intended the Mode to recur. Running/completed/historical Mode snapshots must not be converted into new recurring defaults or occurrence overrides. If upgrade data cannot be mapped to an owned Routine Occurrence / Mode without ambiguity, migration must fail safely rather than infer intent.
+
 A dedicated Routine Mode command may be introduced for the current-Day scoped mutation if that is the clearest way to preserve operation replay / CAS / ambiguity semantics. Ordinary `SetEntryMode` behavior must not be weakened or silently broadened.
 
 All sent logical mutations must preserve existing operation-id replay, revision conflict, deterministic rejection, ambiguous-outcome reconciliation, and D-066 global serial Web mutation ordering semantics where applicable.
@@ -154,6 +162,7 @@ D-085 does not:
 - give Mode a fixed semantic category such as context/location/energy;
 - add a Routine-mode reset/inherit UI action;
 - rewrite past Execution or Mode snapshot facts;
+- infer a recurring default from pre-D-085 per-Entry Mode data;
 - change Mode title identity semantics;
 - change Routine recurrence semantics;
 - add Android/Wear/iOS-specific Mode behavior;
@@ -168,6 +177,7 @@ Implementation is not `Verified` merely because code, migration, unit tests, com
 At minimum, D-085 verification must cover:
 
 - migration from current schema with existing Routine/Mode/Entry/history data preserved;
+- upgrade backfill of a pre-D-085 planned Routine-derived live Mode to an occurrence override without creating a recurring default;
 - new schema integrity / foreign keys / ownership isolation;
 - Routine conversion inheriting Mode and `Modeなし`;
 - current-Day chooser behavior, cancel/no-write, `今回だけ`, sticky override behavior, and `ルーティンに反映`;
