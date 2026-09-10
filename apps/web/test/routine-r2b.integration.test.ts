@@ -3,10 +3,11 @@ import { describe, expect, it } from "vitest";
 import { uuidv7 } from "../src/shared/uuidv7";
 import { loadCurrentTaskChuteDay, loadTaskChuteDayByLogicalDate } from "../worker/application/load-current-day";
 import { completeEntry, startEntry } from "../worker/application/entry-lifecycle";
-import { convertEntryToRoutine } from "../worker/application/routine";
+import { convertEntryToRoutine, ensureCurrentDayRoutineEntries } from "../worker/application/routine";
 import {
   createRoutine,
   deleteRoutine,
+  isUpdateRoutineRequest,
   loadRoutineBoard,
   reorderRoutines,
   setRoutineEnabled,
@@ -86,6 +87,144 @@ describe.sequential("Routine R2B Board", () => {
     }, now);
     expect(await env.APP_DB.prepare("SELECT materialization_order FROM routine_definitions WHERE id = ?")
       .bind(created.routine_definition_id).first<number>("materialization_order")).toBe(3);
+  });
+
+  it("does not materialize an old eligible plan after UpdateRoutine wins the race", async () => {
+    const fixture = await seedUser();
+    const created = await createOff(fixture.userId, "Race one");
+    await env.APP_DB.prepare(`UPDATE routine_pause_intervals SET resumed_logical_date = ?
+      WHERE app_user_id = ? AND routine_definition_id = ? AND resumed_logical_date IS NULL`)
+      .bind("2026-09-01", fixture.userId, created.result.routine_definition_id).run();
+    const request = {
+      operation_id: uuidv7(), routine_definition_id: created.result.routine_definition_id,
+      expected_settings_revision: 0, title: "Race one updated", project_id: null,
+      schedule: { kind: "monthly_day" as const, day_of_month: 31 },
+      default_section_id: null, default_planned_start_minute: null, default_estimate_seconds: null,
+      start_logical_date: "2026-09-01", end_logical_date: null,
+    };
+    let updateResult: Awaited<ReturnType<typeof updateRoutine>> | undefined;
+    await ensureCurrentDayRoutineEntries(env.APP_DB, fixture.userId, {
+      id: fixture.day.taskchute_day.id, logical_date: fixture.day.taskchute_day.logical_date,
+      establishment_boundary_minutes: fixture.day.taskchute_day.establishment_boundary_minutes,
+      placement_revision: 0,
+    }, now, true, {
+      beforeMutation: async () => {
+        updateResult = await updateRoutine(env.APP_DB, fixture.userId, request, now);
+      },
+    });
+    expect(updateResult).toEqual({ routine_definition_id: created.result.routine_definition_id, settings_revision: 1 });
+    expect(await env.APP_DB.prepare(`SELECT schedule_kind FROM routine_schedules
+      WHERE app_user_id = ? AND routine_definition_id = ?`).bind(fixture.userId, created.result.routine_definition_id)
+      .first<string>("schedule_kind")).toBe("monthly_day");
+    expect(await env.APP_DB.prepare(`SELECT COUNT(*) AS count FROM routine_occurrences
+      WHERE app_user_id = ? AND routine_definition_id = ?`).bind(fixture.userId, created.result.routine_definition_id)
+      .first<number>("count")).toBe(0);
+  });
+
+  it("rejects an incomplete UpdateRoutine occurrence snapshot and converges on exact retry", async () => {
+    const fixture = await seedUser();
+    const created = await createOff(fixture.userId, "Race two");
+    await env.APP_DB.prepare(`UPDATE routine_pause_intervals SET resumed_logical_date = ?
+      WHERE app_user_id = ? AND routine_definition_id = ? AND resumed_logical_date IS NULL`)
+      .bind("2026-09-01", fixture.userId, created.result.routine_definition_id).run();
+    const request = {
+      operation_id: uuidv7(), routine_definition_id: created.result.routine_definition_id,
+      expected_settings_revision: 0, title: "Race two updated", project_id: null,
+      schedule: { kind: "monthly_day" as const, day_of_month: 31 },
+      default_section_id: null, default_planned_start_minute: null, default_estimate_seconds: null,
+      start_logical_date: "2026-09-01", end_logical_date: null,
+    };
+    let materializedOccurrenceId: string | null | undefined;
+    await expect(updateRoutine(env.APP_DB, fixture.userId, request, now, {
+      beforeMutation: async () => {
+        await ensureCurrentDayRoutineEntries(env.APP_DB, fixture.userId, {
+          id: fixture.day.taskchute_day.id, logical_date: fixture.day.taskchute_day.logical_date,
+          establishment_boundary_minutes: fixture.day.taskchute_day.establishment_boundary_minutes,
+          placement_revision: 0,
+        }, now);
+        materializedOccurrenceId = await env.APP_DB.prepare(`SELECT id FROM routine_occurrences
+          WHERE app_user_id = ? AND routine_definition_id = ? AND origin_taskchute_day_id = ?`)
+          .bind(fixture.userId, created.result.routine_definition_id, fixture.day.taskchute_day.id)
+          .first<string>("id");
+      },
+    })).rejects.toMatchObject({ code: "infrastructure_ambiguous" });
+    expect(materializedOccurrenceId).toEqual(expect.any(String));
+    expect(await env.APP_DB.prepare(`SELECT COUNT(*) AS count FROM operations
+      WHERE app_user_id = ? AND operation_id = ? AND command_type = 'UpdateRoutine'`)
+      .bind(fixture.userId, request.operation_id).first<number>("count")).toBe(0);
+    expect(await env.APP_DB.prepare(`SELECT schedule_kind FROM routine_schedules
+      WHERE app_user_id = ? AND routine_definition_id = ?`).bind(fixture.userId, created.result.routine_definition_id)
+      .first<string>("schedule_kind")).toBe("daily");
+
+    await expect(updateRoutine(env.APP_DB, fixture.userId, request, now)).resolves.toEqual({
+      routine_definition_id: created.result.routine_definition_id, settings_revision: 1,
+    });
+    expect(await env.APP_DB.prepare(`SELECT schedule_kind FROM routine_schedules
+      WHERE app_user_id = ? AND routine_definition_id = ?`).bind(fixture.userId, created.result.routine_definition_id)
+      .first<string>("schedule_kind")).toBe("monthly_day");
+    expect(await env.APP_DB.prepare(`SELECT id FROM routine_occurrences
+      WHERE app_user_id = ? AND routine_definition_id = ? AND origin_taskchute_day_id = ?`)
+      .bind(fixture.userId, created.result.routine_definition_id, fixture.day.taskchute_day.id)
+      .first<string>("id")).toBe(materializedOccurrenceId);
+    expect(await env.APP_DB.prepare(`SELECT reason FROM routine_occurrence_suppressions
+      WHERE app_user_id = ? AND routine_occurrence_id = ?`).bind(fixture.userId, materializedOccurrenceId)
+      .first<string>("reason")).toBe("schedule");
+    expect(await env.APP_DB.prepare(`SELECT COUNT(*) AS count FROM routine_occurrences
+      WHERE app_user_id = ? AND routine_definition_id = ? AND origin_taskchute_day_id = ?`)
+      .bind(fixture.userId, created.result.routine_definition_id, fixture.day.taskchute_day.id)
+      .first<number>("count")).toBe(1);
+  });
+
+  it("accepts only exact approved UpdateRoutine schedule shapes", () => {
+    const base = {
+      operation_id: uuidv7(), routine_definition_id: uuidv7(), expected_settings_revision: 0,
+      title: "Exact shape", project_id: null, schedule: { kind: "daily" as const },
+      default_section_id: null, default_planned_start_minute: null, default_estimate_seconds: null,
+      start_logical_date: "2026-09-01", end_logical_date: null,
+    };
+    expect(isUpdateRoutineRequest(base)).toBe(true);
+    expect(isUpdateRoutineRequest({ ...base, schedule: { kind: "monthly_day", day_of_month: 31 } })).toBe(true);
+    for (const schedule of [
+      { kind: "monthly_day", day_of_month: 31, interval_months: 2 },
+      { kind: "monthly_last_day", interval_months: 2 },
+      { kind: "weekly", weekdays: [1], interval_weeks: 2 },
+      { kind: "daily", weekdays: [1] },
+      { kind: "every_n_months_last_day", interval_months: 2, day_of_month: 1 },
+      { kind: "weekly", weekdays: [1, 1] },
+    ]) {
+      expect(isUpdateRoutineRequest({ ...base, schedule })).toBe(false);
+    }
+  });
+
+  it("rejects a captured planned occurrence when its placement drifts", async () => {
+    const fixture = await seedUser();
+    const created = await createOff(fixture.userId, "Placement drift");
+    await setRoutineEnabled(env.APP_DB, fixture.userId, { operation_id: uuidv7(),
+      routine_definition_id: created.result.routine_definition_id, enabled: true,
+      expected_settings_revision: 0 }, now);
+    const entryId = await env.APP_DB.prepare(`SELECT e.id FROM entries e JOIN routine_occurrences o
+      ON o.app_user_id = e.app_user_id AND o.id = e.routine_occurrence_id
+      WHERE e.app_user_id = ? AND o.routine_definition_id = ?`)
+      .bind(fixture.userId, created.result.routine_definition_id).first<string>("id");
+    const request = {
+      operation_id: uuidv7(), routine_definition_id: created.result.routine_definition_id,
+      expected_settings_revision: 1, title: "Should not commit", project_id: null,
+      schedule: { kind: "daily" as const },
+      default_section_id: null, default_planned_start_minute: null, default_estimate_seconds: null,
+      start_logical_date: "2026-09-01", end_logical_date: null,
+    };
+    await expect(updateRoutine(env.APP_DB, fixture.userId, request, now, {
+      beforeMutation: async () => {
+        await env.APP_DB.prepare("UPDATE entries SET position = position + 1 WHERE app_user_id = ? AND id = ?")
+          .bind(fixture.userId, entryId).run();
+      },
+    })).rejects.toMatchObject({ code: "infrastructure_ambiguous" });
+    expect(await env.APP_DB.prepare(`SELECT title FROM tasks WHERE app_user_id = ? AND id = (
+      SELECT task_id FROM entries WHERE app_user_id = ? AND id = ?)`)
+      .bind(fixture.userId, fixture.userId, entryId).first<string>("title")).toBe("Placement drift");
+    expect(await env.APP_DB.prepare(`SELECT settings_revision FROM routine_board_items
+      WHERE app_user_id = ? AND routine_definition_id = ?`)
+      .bind(fixture.userId, created.result.routine_definition_id).first<number>("settings_revision")).toBe(1);
   });
 
   it("keeps Task -> Routine at 0..1 and owner-scopes Board reads and writes", async () => {

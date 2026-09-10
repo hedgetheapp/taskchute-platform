@@ -55,6 +55,11 @@ interface RoutineRow {
 
 const weekdayValues = new Set([0, 1, 2, 3, 4, 5, 6]);
 
+function hasExactKeys(row: Record<string, unknown>, keys: readonly string[]): boolean {
+  const actual = Object.keys(row).sort();
+  return actual.length === keys.length && actual.every((key, index) => key === [...keys].sort()[index]);
+}
+
 function isLogicalDate(value: unknown): value is string {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const parsed = new Date(`${value}T00:00:00.000Z`);
@@ -72,43 +77,49 @@ function isUuid(value: unknown): value is string {
 function isSchedule(value: unknown): value is RoutineScheduleInput {
   if (!value || typeof value !== "object") return false;
   const row = value as Record<string, unknown>;
-  if (row.kind === "daily") return Object.keys(row).length === 1;
+  if (row.kind === "daily") return hasExactKeys(row, ["kind"]);
   if (row.kind === "every_n_days") {
-    return Object.keys(row).every((key) => key === "kind" || key === "interval_days")
+    return hasExactKeys(row, ["kind", "interval_days"])
       && Number.isSafeInteger(row.interval_days) && Number(row.interval_days) >= 2 && Number(row.interval_days) <= 365;
   }
   if (row.kind === "weekly") {
-    return Object.keys(row).every((key) => key === "kind" || key === "weekdays")
+    return hasExactKeys(row, ["kind", "weekdays"])
       && Array.isArray(row.weekdays) && row.weekdays.length >= 1
       && new Set(row.weekdays).size === row.weekdays.length
       && row.weekdays.every((day) => Number.isInteger(day) && weekdayValues.has(day));
   }
   if (row.kind === "every_n_weeks") {
-    return Object.keys(row).every((key) => key === "kind" || key === "interval_weeks" || key === "weekdays")
+    return hasExactKeys(row, ["kind", "interval_weeks", "weekdays"])
       && Number.isSafeInteger(row.interval_weeks) && Number(row.interval_weeks) >= 2
       && Array.isArray(row.weekdays) && row.weekdays.length >= 1
       && new Set(row.weekdays).size === row.weekdays.length
       && row.weekdays.every((day) => Number.isInteger(day) && weekdayValues.has(day));
   }
-  if (row.kind === "monthly_day" || row.kind === "every_n_months_day") {
-    const intervalValid = row.kind === "monthly_day"
-      || (Number.isSafeInteger(row.interval_months) && Number(row.interval_months) >= 2);
-    return Object.keys(row).every((key) => key === "kind" || key === "day_of_month" || key === "interval_months")
-      && intervalValid && Number.isSafeInteger(row.day_of_month)
+  if (row.kind === "monthly_day") {
+    return hasExactKeys(row, ["kind", "day_of_month"])
+      && Number.isSafeInteger(row.day_of_month)
       && Number(row.day_of_month) >= 1 && Number(row.day_of_month) <= 31;
   }
-  if (row.kind === "monthly_last_day" || row.kind === "every_n_months_last_day") {
-    return Object.keys(row).every((key) => key === "kind" || key === "interval_months")
-      && (row.kind === "monthly_last_day"
-        || (Number.isSafeInteger(row.interval_months) && Number(row.interval_months) >= 2));
+  if (row.kind === "every_n_months_day") {
+    return hasExactKeys(row, ["kind", "interval_months", "day_of_month"])
+      && Number.isSafeInteger(row.interval_months) && Number(row.interval_months) >= 2
+      && Number.isSafeInteger(row.day_of_month)
+      && Number(row.day_of_month) >= 1 && Number(row.day_of_month) <= 31;
+  }
+  if (row.kind === "monthly_last_day") {
+    return hasExactKeys(row, ["kind"]);
+  }
+  if (row.kind === "every_n_months_last_day") {
+    return hasExactKeys(row, ["kind", "interval_months"])
+      && Number.isSafeInteger(row.interval_months) && Number(row.interval_months) >= 2;
   }
   if (row.kind === "monthly_nth_weekday") {
-    return Object.keys(row).every((key) => key === "kind" || key === "ordinal" || key === "weekday")
+    return hasExactKeys(row, ["kind", "ordinal", "weekday"])
       && Number.isSafeInteger(row.ordinal) && Number(row.ordinal) >= 1 && Number(row.ordinal) <= 5
       && Number.isInteger(row.weekday) && weekdayValues.has(Number(row.weekday));
   }
   if (row.kind === "monthly_last_weekday") {
-    return Object.keys(row).every((key) => key === "kind" || key === "weekday")
+    return hasExactKeys(row, ["kind", "weekday"])
       && Number.isInteger(row.weekday) && weekdayValues.has(Number(row.weekday));
   }
   return false;
@@ -594,6 +605,10 @@ interface PlannedOccurrenceRow {
   origin_taskchute_day_id: string;
 }
 
+export interface RoutineBoardMutationHooks {
+  beforeMutation?: () => Promise<void>;
+}
+
 async function pausedOn(db: D1Database, appUserId: string, routineId: string, date: string): Promise<boolean> {
   const row = await db.prepare(`SELECT 1 AS paused FROM routine_pause_intervals WHERE app_user_id = ?
     AND routine_definition_id = ? AND paused_logical_date <= ?
@@ -688,7 +703,7 @@ async function newCurrentPlanForUpdate(db: D1Database, appUserId: string, taskId
 }
 
 export async function updateRoutine(db: D1Database, appUserId: string, request: UpdateRoutineRequest,
-  nowInstant = new Date().toISOString()): Promise<UpdateRoutineResult> {
+  nowInstant = new Date().toISOString(), hooks: RoutineBoardMutationHooks = {}): Promise<UpdateRoutineResult> {
   const requestFingerprint = await fingerprint(request);
   const prior = await readOperation(db, appUserId, request.operation_id);
   if (prior) return replayOperation(prior, "UpdateRoutine", requestFingerprint);
@@ -758,6 +773,7 @@ export async function updateRoutine(db: D1Database, appUserId: string, request: 
   const changedDaysJson = JSON.stringify(changedDayRows);
   const result: UpdateRoutineResult = { routine_definition_id: request.routine_definition_id,
     settings_revision: item.settings_revision + 1 };
+  await hooks.beforeMutation?.();
   try {
     const results = await db.batch([
       db.prepare(`INSERT INTO routine_command_guards (app_user_id, operation_id, command_type)
@@ -768,16 +784,37 @@ export async function updateRoutine(db: D1Database, appUserId: string, request: 
             AND o.id = json_extract(j.value, '$.occurrence_id')
           LEFT JOIN entries e ON e.app_user_id = o.app_user_id AND e.routine_occurrence_id = o.id
           LEFT JOIN taskchute_days d ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
-          WHERE o.id IS NULL OR e.id IS NULL OR d.id IS NULL OR e.lifecycle_state <> 'planned'
+          WHERE o.id IS NULL OR e.id IS NULL OR d.id IS NULL
+            OR o.routine_definition_id <> ?
+            OR e.id IS NOT json_extract(j.value, '$.entry_id')
+            OR e.routine_occurrence_id IS NOT json_extract(j.value, '$.occurrence_id')
+            OR e.taskchute_day_id IS NOT json_extract(j.value, '$.taskchute_day_id')
+            OR d.logical_date IS NOT json_extract(j.value, '$.logical_date')
+            OR o.origin_taskchute_day_id IS NOT json_extract(j.value, '$.origin_taskchute_day_id')
+            OR e.lifecycle_state <> 'planned'
             OR d.placement_revision <> CAST(json_extract(j.value, '$.placement_revision') AS INTEGER)
+            OR e.section_id IS NOT json_extract(j.value, '$.section_id')
+            OR e.planned_start_minute IS NOT json_extract(j.value, '$.planned_start_minute')
+            OR e.position <> CAST(json_extract(j.value, '$.position') AS INTEGER)
             OR o.section_plan_override_present <>
               CAST(json_extract(j.value, '$.section_plan_override_present') AS INTEGER)
             OR o.estimate_override_present <> CAST(json_extract(j.value, '$.estimate_override_present') AS INTEGER)
             OR (EXISTS (SELECT 1 FROM routine_occurrence_suppressions x
               WHERE x.app_user_id = o.app_user_id AND x.routine_occurrence_id = o.id)) <>
-              CAST(json_extract(j.value, '$.suppressed') AS INTEGER))`)
+              CAST(json_extract(j.value, '$.suppressed') AS INTEGER)
+            OR (SELECT x.reason FROM routine_occurrence_suppressions x
+              WHERE x.app_user_id = o.app_user_id AND x.routine_occurrence_id = o.id) IS NOT
+              json_extract(j.value, '$.suppression_reason'))
+        AND NOT EXISTS (SELECT 1 FROM routine_occurrences o
+          JOIN entries e ON e.app_user_id = o.app_user_id AND e.routine_occurrence_id = o.id
+          JOIN taskchute_days d ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
+          WHERE o.app_user_id = ? AND o.routine_definition_id = ? AND e.lifecycle_state = 'planned'
+            AND d.logical_date >= ? AND NOT EXISTS (SELECT 1 FROM json_each(?) j2
+              WHERE json_extract(j2.value, '$.occurrence_id') = o.id
+                AND json_extract(j2.value, '$.entry_id') = e.id))`)
         .bind(appUserId, request.operation_id, appUserId, request.routine_definition_id,
-          request.expected_settings_revision, occurrencesJson, appUserId),
+          request.expected_settings_revision, occurrencesJson, appUserId, request.routine_definition_id,
+          appUserId, request.routine_definition_id, context.logicalDate, occurrencesJson),
       db.prepare(`UPDATE tasks SET title = ?, project_id = ? WHERE app_user_id = ? AND id = ?
         AND EXISTS (SELECT 1 FROM routine_board_items WHERE app_user_id = ? AND routine_definition_id = ?
           AND settings_revision = ?) AND EXISTS (

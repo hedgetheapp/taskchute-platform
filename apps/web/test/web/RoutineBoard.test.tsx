@@ -170,6 +170,29 @@ describe("Routine Board", () => {
     expect(mocks.updateRoutine).not.toHaveBeenCalled();
   });
 
+  it("closes recurrence drafts from focused form controls without writing", async () => {
+    render(<RoutineBoard onUnauthorized={vi.fn()} />);
+    await screen.findByDisplayValue("Active Routine");
+    fireEvent.click(screen.getByRole("button", { name: "毎日" }));
+    const first = screen.getByRole("dialog", { name: "Active Routineの繰り返し" });
+    const kind = within(first).getByLabelText("繰り返し");
+    fireEvent.change(kind, { target: { value: "every_n_days" } });
+    const interval = within(first).getByLabelText("日数");
+    interval.focus();
+    fireEvent.keyDown(interval, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Active Routineの繰り返し" })).toBeNull();
+    expect(mocks.updateRoutine).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "毎日" }));
+    const second = screen.getByRole("dialog", { name: "Active Routineの繰り返し" });
+    fireEvent.change(within(second).getByLabelText("繰り返し"), { target: { value: "weekly" } });
+    const weekday = within(second).getByLabelText("水");
+    weekday.focus();
+    fireEvent.keyDown(weekday, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Active Routineの繰り返し" })).toBeNull();
+    expect(mocks.updateRoutine).not.toHaveBeenCalled();
+  });
+
   it("toggles and reorders from task/non-task row surfaces without keyboard reorder", async () => {
     board.routines[1]!.end_logical_date = null;
     render(<RoutineBoard onUnauthorized={vi.fn()} />);

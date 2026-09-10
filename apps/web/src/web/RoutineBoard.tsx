@@ -201,8 +201,15 @@ export function RoutineBoard({ onUnauthorized }: RoutineBoardProps) {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.isComposing || isFormElement(document.activeElement)) return;
       if (helpOpen || deleteTarget !== null) return;
+      const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      if (event.key === "Escape" && active?.closest(".routine-popover")
+        && Object.keys(scheduleDrafts).length > 0) {
+        event.preventDefault();
+        setScheduleDrafts({});
+        return;
+      }
+      if (event.isComposing || isFormElement(document.activeElement)) return;
       if (event.key === "Escape") {
         if (Object.keys(scheduleDrafts).length > 0) { event.preventDefault(); setScheduleDrafts({}); }
         else if (newDraft) { event.preventDefault(); setNewDraft(false); }
