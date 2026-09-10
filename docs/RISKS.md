@@ -454,3 +454,15 @@ Mitigation / evidence:
 - Runner-visible verification on the same viewport confirmed identical Day header/toolbar/surface/sticky-header geometry, fixed overlay behavior, conditional trailing escape, valid planned reorder, focus preservation, and running-boundary rejection. The initial `332 × 910` clipped tab remains `NOT_VERIFIED` for pointer reachability and is not used as PASS evidence.
 
 D-083 remains current established-Day scope only. Future/past/preview, Routine source movement, cross-Section generic nonblocking semantics beyond the approved placement command, true offline persistence, multi-tab coordination, production, credentials, bootstrap, restore, and destructive cleanup remain outside scope and `NOT_RUN`. Migration is `MIGRATION_NOT_REQUIRED`; dependency change is `NONE`.
+
+## R-031 — D-083 no-op placement CAS corrective
+
+The D-083 true no-op path previously saved a success operation directly after an initial placement-revision read. A concurrent placement mutation could therefore make a stale no-op appear successful even though no Entry data changed. The corrective closes this gap without changing D-083 product semantics.
+
+Mitigation / evidence:
+
+- No-op success now acquires the existing `placement_command_guards` row with the expected Day revision and unchanged snapshot, inserts the success operation only while that guard exists, and cleans the guard in the same batch. A stale guard produces the existing `revision_conflict`; an already committed operation remains exact-replayable; the placement revision is not incremented for a true no-op.
+- Focused deterministic coverage is `13 / 13 PASS`, including relative and legacy no-op replay, operation-id misuse, and a concurrent Reorder advancing the revision between read and commit. Full Worker `25 files / 218 tests`, full Web `4 files / 259 tests`, typecheck/build/nonprod dry-run/diff-check, nonprod deploy, APP/AUTH quick/FK/migration integrity, and `rows_written=0` evidence pass.
+- The persistent authenticated browser check is `NOT_VERIFIED` because no existing authenticated CUA tab was available and credential/login operations were prohibited. The no-op race is therefore classified by deterministic Worker evidence; no browser race claim is made. The bootstrap POST safety probe is also `NOT_RUN` because the execution policy blocked a state-changing POST; no bootstrap mutation occurred.
+
+Migration is `MIGRATION_NOT_REQUIRED`; no dependency, security, production, restore, or destructive action was introduced. Browser evidence should be revisited only when the user provides an existing authenticated persistent tab.

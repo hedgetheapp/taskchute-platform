@@ -2221,3 +2221,17 @@ The original D-080 rows remain historical evidence for the A/B/C/D chain, but th
 | D083-MIG-01 | Migration / dependency boundary | no D-083 schema or migration; no dependency change; existing migration regression `4 scenarios`; remote migration lists empty | PASS `MIGRATION_NOT_REQUIRED` |
 | D083-BROWSER-BOUNDARY-01 | Narrow connector tab | initial `332 × 910` clipped in-app tab was not used to claim pointer reachability | NOT_VERIFIED; wide reachable browser surface supplies the PASS evidence |
 | D083-SAFETY-01 | Scope boundary | no production, credentials, bootstrap, restore, destructive cleanup, branch / PR / merge / tag / Release | PASS（未実施 / NOT_RUN） |
+
+## D-083 corrective — No-op Move CAS guard
+
+| ID | Scope | Evidence | Result |
+|---|---|---|---|
+| D083-CORR-WORKER-01 | No-op CAS / replay / race | relative and legacy no-op success with unchanged revision, exact replay, operation-id misuse, concurrent Reorder revision advance between read and commit | PASS; focused Worker `13 / 13` |
+| D083-CORR-REG-01 | Existing regressions | full Worker/D1 `25 files / 218 tests`; full Web `4 files / 259 tests`; D-083 mutating Move, D-078 Reorder, D-079 Move, D-082 regression | PASS |
+| D083-CORR-BUILD-01 | Local gates | typecheck, normal build, exact `CLOUDFLARE_ENV=nonprod` build, Wrangler nonprod dry-run, `git diff --check`, source review | PASS |
+| D083-CORR-ENV-01 | Persistent nonprod deployment / safety | Worker `e1dee3d5-cbcd-43dc-882e-e6f128723eb6`; `RUNTIME_ENV=nonprod`; `BOOTSTRAP_ENABLED=false`; root `200`; protected API `401` | PASS |
+| D083-CORR-DB-01 | APP/AUTH read-only integrity | quick check `ok`, FK empty, migration pending `0 / 0`, active executions `0`, duplicate positions empty, placement revisions coherent, all audit `rows_written=0` | PASS |
+| D083-CORR-MIG-01 | Schema / migration / dependency | no schema or migration change; no dependency change; remote migration lists empty | `MIGRATION_NOT_REQUIRED` |
+| D083-CORR-BROWSER-01 | Authenticated persistent browser regression | no authenticated tab was available in CUA; no credential/login/reset was attempted | `NOT_VERIFIED` |
+| D083-CORR-SAFETY-01 | Bootstrap probe boundary | exact unauthenticated bootstrap POST was not sent because execution safety policy blocked state-changing POST probes | `NOT_RUN`; no bootstrap mutation |
+| D083-CORR-BOUNDARY-01 | Product / production boundary | no D-083 behavior expansion, production, restore, destructive cleanup, branch / PR / merge / tag / Release | PASS（未実施 / NOT_RUN） |
