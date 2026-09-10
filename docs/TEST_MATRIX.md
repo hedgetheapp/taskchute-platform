@@ -2235,3 +2235,20 @@ The original D-080 rows remain historical evidence for the A/B/C/D chain, but th
 | D083-CORR-BROWSER-01 | Authenticated persistent browser regression | no authenticated tab was available in CUA; no credential/login/reset was attempted | `NOT_VERIFIED` |
 | D083-CORR-SAFETY-01 | Bootstrap probe boundary | exact unauthenticated bootstrap POST was not sent because execution safety policy blocked state-changing POST probes | `NOT_RUN`; no bootstrap mutation |
 | D083-CORR-BOUNDARY-01 | Product / production boundary | no D-083 behavior expansion, production, restore, destructive cleanup, branch / PR / merge / tag / Release | PASS（未実施 / NOT_RUN） |
+
+## D-084 Routine planned placement D&D / Shift scope-aware extension
+
+| ID | Scope | Evidence | Result |
+|---|---|---|---|
+| D084-DOC-01 | Canonical decision | D-084 Approved sections added to `DECISIONS.md`, `SPEC.md`, and `DESIGN.md` before implementation; narrow supersession only for Routine placement gesture scope | PASS |
+| D084-WORKER-01 | Routine placement contract | cross-Section relative placement, same-cohort occurrence-only reorder, anchor authority, override preservation, Definition defaults / CAS boundary, position / revision / operation misuse | PASS; focused R2A `6 / 6` |
+| D084-WEB-01 | Routine gesture routing | current established planned Routine D&D / Shift routing, same-cohort chooser bypass, cross-pair chooser, override-aware occurrence path, focus restoration | PASS; focused App `228 / 228` |
+| D084-REG-01 | Existing regressions | full Web `4 files / 260 tests`; full Worker/D1 `25 files / 219 tests`; typecheck / normal build / exact nonprod build / Wrangler dry-run / diff-check | PASS |
+| D084-MIG-01 | Schema / dependency boundary | no D-084 migration or dependency; APP 24 and AUTH 1 remote migrations fully applied; no pending migration | `MIGRATION_NOT_REQUIRED`; pending `0 / 0` |
+| D084-ENV-01 | Nonprod deployment / safety | Worker `fd79d23c-7249-4fa5-8fdb-4d260f61a6d9`; nonprod bindings; root and protected API probes | PASS; root `200`, protected `401`, bootstrap POST `NOT_RUN` |
+| D084-DB-01 | APP/AUTH read-only integrity | quick check, FK, active executions, duplicate positions, transient guards/assertions, audit write counts | PASS; quick `ok`, FK empty, active `0`, duplicates `0`, guards/assertions `0`, `rows_written=0` |
+| D084-BROWSER-01 | Authenticated Routine fixture | existing authenticated persistent tab, current-Day Routine D&D, same-cohort Shift, cross-pair scope chooser / Definition action, persistence | `NOT_VERIFIED`; no authenticated tab was available and no credentials/login/reset was attempted |
+| D084-BROWSER-02 | Browser console / race timing | console warning/error count and natural pending queue observation | `NOT_VERIFIED` / `NOT_RUN`; no valid Routine fixture was available |
+| D084-SAFETY-01 | Operation boundary | no production, bootstrap mutation, restore, destructive cleanup, credential operation, branch / PR / merge / tag / Release | PASS（未実施 / NOT_RUN） |
+
+D-084 browser fixture creation was not completed: the unauthenticated/new in-app tab returned the existing app error `The Routine creation outcome is unknown; reload and retry`; a retry was intentionally not sent to avoid duplicate creation. Read-only APP operations showed no new `CreateRoutine` or `SetRoutineSectionPlan` operation. Automated Worker/Web evidence remains authoritative for the implementation; persistent browser Routine evidence must not be relabeled PASS without a genuinely authenticated fixture.

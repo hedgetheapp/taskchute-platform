@@ -466,3 +466,15 @@ Mitigation / evidence:
 - The persistent authenticated browser check is `NOT_VERIFIED` because no existing authenticated CUA tab was available and credential/login operations were prohibited. The no-op race is therefore classified by deterministic Worker evidence; no browser race claim is made. The bootstrap POST safety probe is also `NOT_RUN` because the execution policy blocked a state-changing POST; no bootstrap mutation occurred.
 
 Migration is `MIGRATION_NOT_REQUIRED`; no dependency, security, production, restore, or destructive action was introduced. Browser evidence should be revisited only when the user provides an existing authenticated persistent tab.
+
+## R-032 — D-084 Routine placement browser evidence boundary
+
+D-084 extends current established-Day planned Routine-derived Entry placement gestures while preserving the existing scope chooser, occurrence override, Definition CAS, D-078/D-079/D-083 placement barriers, and atomic `SetRoutineSectionPlan` operation boundary. The remaining risk is evidence-only: the available CUA state had no authenticated persistent tab and no current-Day Routine fixture, so persistent browser D&D / Shift / chooser / Definition propagation / reload evidence was not collected.
+
+Mitigation / evidence:
+
+- Focused Worker `6 / 6`, focused Web `228 / 228`, full Worker/D1 `25 files / 219 tests`, full Web `4 files / 260 tests`, typecheck/build/exact nonprod build/dry-run/diff-check pass. Existing Routine contract, override, position-only reorder, anchor validation, revision CAS, operation replay/misuse, and no-migration boundary are covered by automated evidence.
+- Exact nonprod deployment `fd79d23c-7249-4fa5-8fdb-4d260f61a6d9` uses the existing APP/AUTH bindings with `RUNTIME_ENV=nonprod` and `BOOTSTRAP_ENABLED=false`. Root `GET /` returned `200`; credential-free protected `GET /api/v1/routines` returned `401`; bootstrap POST was not sent. A UI attempt to create a disposable Routine returned an ambiguous outcome message, so no retry or credential operation was attempted. Read-only APP evidence found no new CreateRoutine or D-084 SetRoutineSectionPlan operation.
+- APP/AUTH quick check is `ok`, FK violations are empty, active executions and duplicate positions are `0`, transient assertions/guards are `0`, remote migrations are pending `0 / 0`, and successful audit queries report `rows_written=0`. Browser console counts, Routine browser interactions, persistence, and natural race timing remain `NOT_VERIFIED` / `NOT_RUN`; no browser PASS is claimed.
+
+Until an existing authenticated persistent tab with a disposable current-Day Routine fixture is available, D-084 remains `IMPLEMENTED / INTEGRATED / TESTED / NONPROD_DEPLOYED / DB_INTEGRITY_VERIFIED / BROWSER_NOT_VERIFIED`, not fully persistent-browser verified. No production, credential, bootstrap, restore, destructive cleanup, or release action was performed.
