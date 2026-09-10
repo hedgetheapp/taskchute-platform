@@ -37,6 +37,9 @@ interface RoutineRow {
   default_section_id: string | null;
   default_planned_start_minute: number | null;
   default_estimate_seconds: number | null;
+  default_mode_id: string | null;
+  default_mode_title: string | null;
+  default_mode_archived: number;
   start_logical_date: string;
   end_logical_date: string | null;
   board_position: number;
@@ -105,6 +108,7 @@ export function isUpdateRoutineRequest(value: unknown): value is UpdateRoutineRe
     && ((body.default_section_id === null) === (body.default_planned_start_minute === null))
     && (body.default_estimate_seconds === null || (Number.isSafeInteger(body.default_estimate_seconds)
       && Number(body.default_estimate_seconds) > 0))
+    && (body.default_mode_id === undefined || body.default_mode_id === null || isUuid(body.default_mode_id))
     && isLogicalDate(body.start_logical_date) && (body.end_logical_date === null || isLogicalDate(body.end_logical_date))
     && (body.end_logical_date === null || body.start_logical_date <= body.end_logical_date);
 }
@@ -164,6 +168,8 @@ export async function loadRoutineBoard(
     db.prepare(`SELECT r.id AS routine_definition_id, r.task_id, t.title, p.id AS project_id,
         p.title AS project_title, s.schedule_kind, s.interval_days, s.weekdays_mask,
         r.default_section_id, r.default_planned_start_minute, r.default_estimate_seconds,
+        rdm.mode_id AS default_mode_id, md.title AS default_mode_title,
+        CASE WHEN ma.mode_id IS NULL THEN 0 ELSE 1 END AS default_mode_archived,
         r.start_logical_date, r.end_logical_date, b.board_position, b.settings_revision,
         CASE WHEN EXISTS (SELECT 1 FROM routine_pause_intervals pi WHERE pi.app_user_id = r.app_user_id
           AND pi.routine_definition_id = r.id AND pi.paused_logical_date <= ?
@@ -173,6 +179,10 @@ export async function loadRoutineBoard(
       JOIN routine_schedules s ON s.app_user_id = r.app_user_id AND s.routine_definition_id = r.id
       JOIN routine_board_items b ON b.app_user_id = r.app_user_id AND b.routine_definition_id = r.id
       LEFT JOIN projects p ON p.app_user_id = t.app_user_id AND p.id = t.project_id
+      LEFT JOIN routine_definition_modes rdm
+        ON rdm.app_user_id = r.app_user_id AND rdm.routine_definition_id = r.id
+      LEFT JOIN mode_definitions md ON md.app_user_id = rdm.app_user_id AND md.id = rdm.mode_id
+      LEFT JOIN mode_archives ma ON ma.app_user_id = rdm.app_user_id AND ma.mode_id = rdm.mode_id
       WHERE r.app_user_id = ? AND NOT EXISTS (SELECT 1 FROM routine_definition_archives a
         WHERE a.app_user_id = r.app_user_id AND a.routine_definition_id = r.id)
       ORDER BY b.board_position, r.id`)
@@ -192,7 +202,12 @@ export async function loadRoutineBoard(
       project: row.project_id && row.project_title ? { id: row.project_id, title: row.project_title } : null,
       enabled: row.paused === 0, schedule: scheduleProjection(row), default_section_id: row.default_section_id,
       default_planned_start_minute: row.default_planned_start_minute,
-      default_estimate_seconds: row.default_estimate_seconds, start_logical_date: row.start_logical_date,
+      default_estimate_seconds: row.default_estimate_seconds,
+      default_mode_id: row.default_mode_id,
+      default_mode: row.default_mode_id && row.default_mode_title ? {
+        id: row.default_mode_id, title: row.default_mode_title, archived: row.default_mode_archived === 1,
+      } : null,
+      start_logical_date: row.start_logical_date,
       end_logical_date: row.end_logical_date, board_position: row.board_position,
       settings_revision: row.settings_revision,
     })),
@@ -316,7 +331,7 @@ function eligibleExpression(alias: string): string {
 async function currentMaterializationPlan(db: D1Database, appUserId: string, routineId: string,
   context: CurrentContext, resuming = false): Promise<{ occurrenceId: string; entryId: string; taskId: string; title: string;
     projectId: string | null; projectTitle: string | null; sectionId: string | null;
-    plannedStart: number | null; estimate: number | null; position: number } | null> {
+    plannedStart: number | null; estimate: number | null; position: number; modeId: string | null } | null> {
   if (!context.dayId || context.placementRevision === null) return null;
   const eligibility = resuming
     ? `r.start_logical_date <= ? AND (r.end_logical_date IS NULL OR r.end_logical_date >= ?)
@@ -329,10 +344,13 @@ async function currentMaterializationPlan(db: D1Database, appUserId: string, rou
     : [appUserId, routineId, context.logicalDate, context.logicalDate, context.logicalDate,
         context.logicalDate, context.logicalDate, context.logicalDate, context.dayId];
   const definition = await db.prepare(`SELECT r.task_id, t.title, p.id AS project_id, p.title AS project_title,
-      r.default_section_id, r.default_planned_start_minute, r.default_estimate_seconds
+      r.default_section_id, r.default_planned_start_minute, r.default_estimate_seconds,
+      rdm.mode_id AS default_mode_id
     FROM routine_definitions r JOIN routine_schedules s ON s.app_user_id = r.app_user_id AND s.routine_definition_id = r.id
     JOIN tasks t ON t.app_user_id = r.app_user_id AND t.id = r.task_id
     LEFT JOIN projects p ON p.app_user_id = t.app_user_id AND p.id = t.project_id
+    LEFT JOIN routine_definition_modes rdm
+      ON rdm.app_user_id = r.app_user_id AND rdm.routine_definition_id = r.id
     WHERE r.app_user_id = ? AND r.id = ? AND ${eligibility}
       AND NOT EXISTS (SELECT 1 FROM routine_definition_archives a
         WHERE a.app_user_id = r.app_user_id AND a.routine_definition_id = r.id)
@@ -341,7 +359,7 @@ async function currentMaterializationPlan(db: D1Database, appUserId: string, rou
     .bind(...bindings)
     .first<{ task_id: string; title: string; project_id: string | null; project_title: string | null;
       default_section_id: string | null; default_planned_start_minute: number | null;
-      default_estimate_seconds: number | null }>();
+      default_estimate_seconds: number | null; default_mode_id: string | null }>();
   if (!definition) return null;
   if (definition.default_section_id !== null) {
     const valid = await db.prepare(`SELECT COUNT(*) AS count FROM taskchute_day_section_contexts
@@ -358,7 +376,7 @@ async function currentMaterializationPlan(db: D1Database, appUserId: string, rou
   return { occurrenceId: uuidv7(), entryId: uuidv7(), taskId: definition.task_id, title: definition.title,
     projectId: definition.project_id, projectTitle: definition.project_title,
     sectionId: definition.default_section_id, plannedStart: definition.default_planned_start_minute,
-    estimate: definition.default_estimate_seconds, position: pos?.value ?? 1 };
+    estimate: definition.default_estimate_seconds, position: pos?.value ?? 1, modeId: definition.default_mode_id };
 }
 
 export async function setRoutineEnabled(db: D1Database, appUserId: string, request: SetRoutineEnabledRequest,
@@ -432,6 +450,10 @@ export async function setRoutineEnabled(db: D1Database, appUserId: string, reque
             SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
           .bind(plan.entryId, appUserId, plan.taskId, context.dayId, plan.sectionId, plan.position,
             plan.estimate, nowInstant, plan.plannedStart, plan.occurrenceId, appUserId, request.operation_id),
+        db.prepare(`INSERT INTO entry_modes (app_user_id, entry_id, mode_id)
+          SELECT ?, ?, ? WHERE ? IS NOT NULL AND EXISTS (
+            SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+          .bind(appUserId, plan.entryId, plan.modeId, plan.modeId, appUserId, request.operation_id),
         db.prepare(`UPDATE taskchute_days SET placement_revision = placement_revision + 1
           WHERE app_user_id = ? AND id = ? AND placement_revision = ? AND EXISTS (
             SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
@@ -578,7 +600,8 @@ async function sectionPlansForUpdate(db: D1Database, appUserId: string, rows: Pl
 }
 
 async function newCurrentPlanForUpdate(db: D1Database, appUserId: string, taskId: string,
-  request: UpdateRoutineRequest, context: CurrentContext, occurrences: PlannedOccurrenceRow[]) {
+  request: UpdateRoutineRequest, defaultModeId: string | null, context: CurrentContext,
+  occurrences: PlannedOccurrenceRow[]) {
   if (!context.dayId || context.placementRevision === null
     || occurrences.some((row) => row.taskchute_day_id === context.dayId)
     || !scheduleEligible(request.schedule, request.start_logical_date, request.end_logical_date, context.logicalDate)
@@ -603,7 +626,7 @@ async function newCurrentPlanForUpdate(db: D1Database, appUserId: string, taskId
   return { occurrenceId: uuidv7(), entryId: uuidv7(), taskId, title: request.title.trim(),
     projectId: request.project_id, projectTitle: request.project_id === null ? null : task.project_title,
     sectionId: request.default_section_id, plannedStart: request.default_planned_start_minute,
-    estimate: request.default_estimate_seconds, position: position ?? 1 };
+    estimate: request.default_estimate_seconds, position: position ?? 1, modeId: defaultModeId };
 }
 
 export async function updateRoutine(db: D1Database, appUserId: string, request: UpdateRoutineRequest,
@@ -612,14 +635,31 @@ export async function updateRoutine(db: D1Database, appUserId: string, request: 
   const prior = await readOperation(db, appUserId, request.operation_id);
   if (prior) return replayOperation(prior, "UpdateRoutine", requestFingerprint);
   const context = await currentContext(db, appUserId, nowInstant);
-  const item = await db.prepare(`SELECT r.task_id, t.project_id, b.settings_revision FROM routine_definitions r
+  const item = await db.prepare(`SELECT r.task_id, t.project_id, b.settings_revision, rdm.mode_id AS default_mode_id
+    FROM routine_definitions r
     JOIN tasks t ON t.app_user_id = r.app_user_id AND t.id = r.task_id
     JOIN routine_board_items b ON b.app_user_id = r.app_user_id AND b.routine_definition_id = r.id
+    LEFT JOIN routine_definition_modes rdm
+      ON rdm.app_user_id = r.app_user_id AND rdm.routine_definition_id = r.id
     WHERE r.app_user_id = ? AND r.id = ?`).bind(appUserId, request.routine_definition_id)
-    .first<{ task_id: string; project_id: string | null; settings_revision: number }>();
+    .first<{ task_id: string; project_id: string | null; settings_revision: number; default_mode_id: string | null }>();
   if (!item) return reject(db, appUserId, request.operation_id, "UpdateRoutine", requestFingerprint, "Routine is unavailable");
   if (item.settings_revision !== request.expected_settings_revision) return reject(db, appUserId,
     request.operation_id, "UpdateRoutine", requestFingerprint, "The Routine settings revision is stale", true);
+  const defaultModeId = request.default_mode_id === undefined ? item.default_mode_id : request.default_mode_id;
+  if (defaultModeId !== null) {
+    const mode = await db.prepare(`SELECT m.id, CASE WHEN a.mode_id IS NULL THEN 0 ELSE 1 END AS archived
+      FROM mode_definitions m LEFT JOIN mode_archives a
+        ON a.app_user_id = m.app_user_id AND a.mode_id = m.id
+      WHERE m.app_user_id = ? AND m.id = ?`).bind(appUserId, defaultModeId)
+      .first<{ id: string; archived: number }>();
+    if (!mode) return reject(db, appUserId, request.operation_id, "UpdateRoutine", requestFingerprint,
+      "Mode is unavailable");
+    if (mode.archived === 1 && defaultModeId !== item.default_mode_id) {
+      return reject(db, appUserId, request.operation_id, "UpdateRoutine", requestFingerprint,
+        "An archived Mode cannot be newly assigned");
+    }
+  }
   if (!await validateBoardDefaults(db, appUserId, request, item.project_id)) return reject(db, appUserId,
     request.operation_id, "UpdateRoutine", requestFingerprint, "Project or Section settings are unavailable");
 
@@ -639,7 +679,8 @@ export async function updateRoutine(db: D1Database, appUserId: string, request: 
     .map((row) => ({ occurrence_id: row.occurrence_id }));
   const unsuppress = occurrences.filter((row) => desired.get(row.occurrence_id) && row.suppressed === 1)
     .map((row) => row.occurrence_id);
-  const currentPlan = await newCurrentPlanForUpdate(db, appUserId, item.task_id, request, context, occurrences);
+  const currentPlan = await newCurrentPlanForUpdate(db, appUserId, item.task_id, request, defaultModeId,
+    context, occurrences);
   const changedDayRows = [...new Map([
     ...occurrences.filter((row) => (desired.get(row.occurrence_id) ? 0 : 1) !== row.suppressed),
     ...sectionPlans.filter((row) => row.section_id !== row.target_section_id
@@ -770,6 +811,42 @@ export async function updateRoutine(db: D1Database, appUserId: string, request: 
           .bind(currentPlan.entryId, appUserId, currentPlan.taskId, context.dayId,
             currentPlan.sectionId, currentPlan.position, currentPlan.estimate, nowInstant,
             currentPlan.plannedStart, currentPlan.occurrenceId, appUserId, request.operation_id),
+        db.prepare(`INSERT INTO entry_modes (app_user_id, entry_id, mode_id)
+          SELECT ?, ?, ? WHERE ? IS NOT NULL AND EXISTS (
+            SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+          .bind(appUserId, currentPlan.entryId, currentPlan.modeId, currentPlan.modeId,
+            appUserId, request.operation_id),
+      ] : []),
+      ...(request.default_mode_id !== undefined ? [
+        request.default_mode_id === null
+          ? db.prepare(`DELETE FROM routine_definition_modes WHERE app_user_id = ? AND routine_definition_id = ?
+              AND EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+            .bind(appUserId, request.routine_definition_id, appUserId, request.operation_id)
+          : db.prepare(`INSERT INTO routine_definition_modes (app_user_id, routine_definition_id, mode_id)
+              SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)
+              ON CONFLICT (app_user_id, routine_definition_id) DO UPDATE SET mode_id = excluded.mode_id`)
+            .bind(appUserId, request.routine_definition_id, request.default_mode_id, appUserId, request.operation_id),
+        db.prepare(`DELETE FROM entry_modes WHERE app_user_id = ? AND entry_id IN (
+            SELECT e.id FROM entries e JOIN routine_occurrences o
+              ON o.app_user_id = e.app_user_id AND o.id = e.routine_occurrence_id
+            JOIN taskchute_days d ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
+            WHERE e.lifecycle_state = 'planned' AND d.logical_date >= ?
+              AND o.routine_definition_id = ?
+              AND NOT EXISTS (SELECT 1 FROM routine_occurrence_mode_overrides x
+                WHERE x.app_user_id = o.app_user_id AND x.routine_occurrence_id = o.id))
+          AND EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+          .bind(appUserId, context.logicalDate, request.routine_definition_id, appUserId, request.operation_id),
+        db.prepare(`INSERT INTO entry_modes (app_user_id, entry_id, mode_id)
+          SELECT e.app_user_id, e.id, ? FROM entries e JOIN routine_occurrences o
+            ON o.app_user_id = e.app_user_id AND o.id = e.routine_occurrence_id
+          JOIN taskchute_days d ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
+          WHERE ? IS NOT NULL AND e.lifecycle_state = 'planned' AND d.logical_date >= ?
+            AND o.routine_definition_id = ?
+            AND NOT EXISTS (SELECT 1 FROM routine_occurrence_mode_overrides x
+              WHERE x.app_user_id = o.app_user_id AND x.routine_occurrence_id = o.id)
+            AND EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+          .bind(request.default_mode_id, request.default_mode_id, context.logicalDate,
+            request.routine_definition_id, appUserId, request.operation_id),
       ] : []),
       db.prepare(`INSERT INTO transaction_assertions (app_user_id, id, ok)
         VALUES (?, ?, CASE WHEN EXISTS (SELECT 1 FROM routine_board_items

@@ -38,8 +38,10 @@ import { isReorderEntriesRequest, reorderEntries } from "./application/reorder-e
 import { isSetEntryPlannedStartRequest, setEntryPlannedStart } from "./application/planned-start";
 import { convertEntryToRoutine, endRoutine, isConvertEntryToRoutineRequest, isEndRoutineRequest } from "./application/routine";
 import {
+  isSetRoutineModeRequest,
   isSetRoutineEstimateRequest,
   isSetRoutineSectionPlanRequest,
+  setRoutineMode,
   setRoutineEstimate,
   setRoutineSectionPlan,
 } from "./application/routine-planning";
@@ -376,6 +378,15 @@ async function route(request: Request, env: Env): Promise<Response> {
       throw new HttpError(400, "malformed_request", "Invalid SetRoutineEstimate request");
     }
     return Response.json(await setRoutineEstimate(env.APP_DB, principal.appUserId, body));
+  }
+  const routineModeMatch = url.pathname.match(/^\/api\/v1\/entries\/([^/]+)\/routine-mode$/);
+  if (request.method === "POST" && routineModeMatch) {
+    const body = await readBoundedJson(request);
+    if (routineModeMatch[1] !== (body as { entry_id?: unknown })?.entry_id
+      || !isSetRoutineModeRequest(body)) {
+      throw new HttpError(400, "malformed_request", "Invalid SetRoutineMode request");
+    }
+    return Response.json(await setRoutineMode(env.APP_DB, principal.appUserId, body));
   }
   const routineSectionPlanMatch = url.pathname.match(/^\/api\/v1\/entries\/([^/]+)\/routine-section-plan$/);
   if (request.method === "POST" && routineSectionPlanMatch) {

@@ -47,6 +47,7 @@ import type {
   EndRoutineRequest,
   SetRoutineEstimateRequest,
   SetRoutineSectionPlanRequest,
+  SetRoutineModeRequest,
   AutoCarryOverduePlannedSettingProjection,
   SetAutoCarryOverduePlannedRequest,
   MoveEntryPlacementIntent,
@@ -139,8 +140,10 @@ type PendingSectionMoveIntent = {
   placement?: MoveEntryPlacementIntent;
 };
 type PendingReorderOverlay = { operation: ReorderEntriesRequest; baseEntryIds: string[] };
+type PendingRoutineModeOverlay = { operation: SetRoutineModeRequest; modeId: string | null; modeTitle: string | null };
 type RoutineCandidate =
   | { entryId: string; unit: "estimate"; estimateSeconds: number | null }
+  | { entryId: string; unit: "mode"; modeId: string | null; restoreFocus?: FocusTarget }
   | { entryId: string; unit: "section-plan"; sectionId: string | null; plannedStartMinute: number | null;
       placement?: MoveEntryPlacementIntent; restoreFocus?: FocusTarget };
 type BulkRoutineScopeChoice = "occurrence" | "definition";
@@ -808,12 +811,15 @@ export function App() {
   const [routineEndOperation, setRoutineEndOperation] = useState<EndRoutineRequest | null>(null);
   const [routineEstimateOperation, setRoutineEstimateOperation] = useState<SetRoutineEstimateRequest | null>(null);
   const [retainedRoutineEstimateOperations, setRetainedRoutineEstimateOperations] = useState<SetRoutineEstimateRequest[]>([]);
+  const [routineModeOperation, setRoutineModeOperation] = useState<SetRoutineModeRequest | null>(null);
+  const [retainedRoutineModeOperations, setRetainedRoutineModeOperations] = useState<SetRoutineModeRequest[]>([]);
   const [routineSectionPlanOperation, setRoutineSectionPlanOperation] = useState<SetRoutineSectionPlanRequest | null>(null);
   const [pendingTaskMetadataOverlays, setPendingTaskMetadataOverlays] = useState<Record<string, UpdateTaskMetadataRequest>>({});
   const [pendingEstimateOverlays, setPendingEstimateOverlays] = useState<Record<string, SetEntryEstimateRequest>>({});
   const [pendingPlannedStartOverlays, setPendingPlannedStartOverlays] = useState<Record<string, PlannedStartOperation>>({});
   const [pendingSectionOverlays, setPendingSectionOverlays] = useState<Record<string, PendingSectionOverlay>>({});
   const [pendingReorderOverlays, setPendingReorderOverlays] = useState<Record<string, PendingReorderOverlay>>({});
+  const [pendingRoutineModeOverlays, setPendingRoutineModeOverlays] = useState<Record<string, PendingRoutineModeOverlay>>({});
   const [pendingAddTasks, setPendingAddTasks] = useState<PendingAddTask[]>([]);
   const [pendingExecutionTimesOverlays, setPendingExecutionTimesOverlays] = useState<Record<string, SetExecutionTimesRequest>>({});
   const [overflowEntryId, setOverflowEntryId] = useState<string | null>(null);
@@ -930,12 +936,14 @@ export function App() {
   const nonD066RetainedOperation = projectOperation ?? duplicateOperation ?? bulkDeleteOperation ?? deleteCompletedOperation ?? bulkDateMoveOperation ?? bulkSectionOperation
     ?? bulkSectionOccurrenceOperation ?? bulkSectionScopedOperation ?? bulkEstimateOperation ?? executionTimesOperation
     ?? configurationOperation ?? sectionSettingsOperation ?? routineConversionOperation ?? routineEndOperation ?? routineEstimateOperation
-    ?? retainedRoutineEstimateOperations[0] ?? routineSectionPlanOperation ?? autoCarrySettingOperation;
+    ?? retainedRoutineEstimateOperations[0] ?? routineModeOperation ?? retainedRoutineModeOperations[0]
+    ?? routineSectionPlanOperation ?? autoCarrySettingOperation;
   const retryablePanelOperation = nonD066RetainedOperation ?? retryableDayOperation ?? retryableModeOperation;
   const retainedOperation = projectOperation ?? taskOperation ?? duplicateOperation ?? bulkDeleteOperation ?? deleteCompletedOperation ?? bulkDateMoveOperation ?? bulkSectionOperation ?? bulkSectionOccurrenceOperation ?? bulkSectionScopedOperation ?? bulkEstimateOperation ?? reorderOperation ?? startOperation ?? interruptOperation ?? completeOperation ?? executionTimesOperation ?? taskMetadataOperation ?? retainedTaskMetadataOperations[0] ?? retainedEstimateOperations[0]
     ?? configurationOperation ?? sectionSettingsOperation ?? sectionMoveOperation ?? estimateOperation ?? plannedStartOperation
     ?? routineConversionOperation ?? routineEndOperation ?? routineEstimateOperation ?? retainedRoutineEstimateOperations[0] ?? routineSectionPlanOperation
-    ?? autoCarrySettingOperation ?? modeOperation ?? retainedModeOperations[0] ?? null;
+    ?? routineModeOperation ?? retainedRoutineModeOperations[0] ?? autoCarrySettingOperation ?? modeOperation
+    ?? retainedModeOperations[0] ?? null;
   const globalPending = pending === "login" || pending === "project" || pending === "project-settings"
     || pending === "day-navigation" || pending === "configuration" || pending === "section-settings"
     || pending === "auto-carry-setting" || pending === "logout";
@@ -1011,6 +1019,8 @@ export function App() {
     if (routineEndOperation) add([`routine:${routineEndOperation.routine_definition_id}`], routineEndOperation.operation_id);
     if (routineEstimateOperation) add(routineEstimateMutationScope(routineEstimateOperation), routineEstimateOperation.operation_id);
     retainedRoutineEstimateOperations.forEach((operation) => add(routineEstimateMutationScope(operation), operation.operation_id));
+    if (routineModeOperation) add(routineMutationScope(routineModeOperation.entry_id, entryForId(day, routineModeOperation.entry_id)?.routine?.routine_definition_id), routineModeOperation.operation_id);
+    retainedRoutineModeOperations.forEach((operation) => add(routineMutationScope(operation.entry_id, entryForId(day, operation.entry_id)?.routine?.routine_definition_id), operation.operation_id));
     if (routineSectionPlanOperation) add([...placementMutationScope(routineSectionPlanOperation.taskchute_day_id), `entry:${routineSectionPlanOperation.entry_id}`], routineSectionPlanOperation.operation_id);
     return scopes;
   }
@@ -1042,6 +1052,8 @@ export function App() {
     setTaskMetadataOperation((current) => isCanceled(current?.operation_id) ? null : current);
     setModeOperation((current) => isCanceled(current?.operation_id) ? null : current);
     setRetainedModeOperations((current) => current.filter((operation) => !isCanceled(operation.operation_id)));
+    setRoutineModeOperation((current) => isCanceled(current?.operation_id) ? null : current);
+    setRetainedRoutineModeOperations((current) => current.filter((operation) => !isCanceled(operation.operation_id)));
     setEstimateOperation((current) => isCanceled(current?.operation_id) ? null : current);
     setPlannedStartOperation((current) => isCanceled(current?.request.operation_id) ? null : current);
     setPendingSectionOverlays((current) => Object.fromEntries(Object.entries(current).filter(([, overlay]) => !isCanceled(overlay.operation.operation_id))));
@@ -1052,6 +1064,8 @@ export function App() {
     setPendingTaskMetadataOverlays((current) => Object.fromEntries(Object.entries(current).filter(([, operation]) => !isCanceled(operation.operation_id))));
     setPendingEstimateOverlays((current) => Object.fromEntries(Object.entries(current).filter(([, operation]) => !isCanceled(operation.operation_id))));
     setPendingPlannedStartOverlays((current) => Object.fromEntries(Object.entries(current).filter(([, operation]) => !isCanceled(operation.request.operation_id))));
+    setPendingRoutineModeOverlays((current) => Object.fromEntries(Object.entries(current)
+      .filter(([, overlay]) => !isCanceled(overlay.operation.operation_id))));
   }
 
   function cancelDraftAnchoredToPendingAdds(operationIds: Set<string>): void {
@@ -1351,6 +1365,17 @@ export function App() {
     setRoutineEstimateOperation((current) => current?.operation_id === operationId ? null : current);
   }
 
+  function retainRoutineModeOperation(operation: SetRoutineModeRequest): void {
+    setRoutineModeOperation(operation);
+    setRetainedRoutineModeOperations((current) => current.some((item) => item.operation_id === operation.operation_id)
+      ? current : [...current, operation]);
+  }
+
+  function releaseRoutineModeOperation(operationId: string): void {
+    setRoutineModeOperation((current) => current?.operation_id === operationId ? null : current);
+    setRetainedRoutineModeOperations((current) => current.filter((operation) => operation.operation_id !== operationId));
+  }
+
   function hasDayMutationBarrier(): boolean {
     return dayMutationInFlightRef.current
       || dayMutationQueueRef.current.length > 0
@@ -1368,7 +1393,9 @@ export function App() {
       || retainedTaskMetadataOperations.length > 0
       || retainedEstimateOperations.length > 0
       || modeOperation !== null
-      || retainedModeOperations.length > 0;
+      || retainedModeOperations.length > 0
+      || routineModeOperation !== null
+      || retainedRoutineModeOperations.length > 0;
   }
 
   function deferGlobalTransition(transition: { kind: "logout" } | { kind: "settings"; destination: SettingsDestination }): void {
@@ -1508,6 +1535,8 @@ export function App() {
     setRoutineEndOperation(null);
     setRoutineEstimateOperation(null);
     setRetainedRoutineEstimateOperations([]);
+    setRoutineModeOperation(null);
+    setRetainedRoutineModeOperations([]);
     setRoutineSectionPlanOperation(null);
     setRoutineDraft(null);
     setRoutineCandidate(null);
@@ -1526,6 +1555,7 @@ export function App() {
     updatePendingReorderOverlays(() => ({}));
     setPendingTaskMetadataOverlays({});
     setPendingModeOverlays({});
+    setPendingRoutineModeOverlays({});
     setPendingEstimateOverlays({});
     setPendingPlannedStartOverlays({});
     setPendingExecutionTimesOverlays({});
@@ -3436,6 +3466,11 @@ export function App() {
       && day.planning_enabled && entry.lifecycle_state === "planned" && entry.routine === null);
   }
 
+  function canEditRoutineMode(entry: EntryProjection): boolean {
+    return Boolean(day?.is_current && day.taskchute_day.id && day.establishment_state === "established"
+      && day.planning_enabled && entry.lifecycle_state === "planned" && entry.routine !== null);
+  }
+
   function openTaskMetadataEditor(entry: EntryProjection) {
     if (!canEditTaskTitleMetadata(entry) || mutationLocked || hasRetainedMutationScope(entryMutationScope(entry.id, entry.task.id))) return;
     beginInlineEditor(`task-metadata:${entry.id}`);
@@ -3705,6 +3740,66 @@ export function App() {
     } else {
       void dispatch();
     }
+  }
+
+  async function executeRoutineMode(operation: SetRoutineModeRequest) {
+    const entry = entryForId(day, operation.entry_id);
+    const mutationToken = beginMutationScope(routineMutationScope(operation.entry_id, entry?.routine?.routine_definition_id), "Routine Mode保存");
+    if (!mutationToken) return;
+    setPending("routine-edit"); setError(null);
+    try {
+      await api.setRoutineMode(operation);
+      await reconcile();
+      releaseRoutineModeOperation(operation.operation_id);
+      setPendingRoutineModeOverlays((current) => current[operation.entry_id]?.operation.operation_id === operation.operation_id
+        ? Object.fromEntries(Object.entries(current).filter(([entryId]) => entryId !== operation.entry_id)) : current);
+      setRoutineCandidate((current) => current?.entryId === operation.entry_id ? null : current);
+    } catch (caught) {
+      const ambiguous = isAmbiguousOutcome(caught);
+      setError(caught instanceof Error ? caught.message : "Routine Modeの保存に失敗しました");
+      if (ambiguous) retainRoutineModeOperation(operation);
+      else releaseRoutineModeOperation(operation.operation_id);
+      if (!ambiguous) {
+        setPendingRoutineModeOverlays((current) => current[operation.entry_id]?.operation.operation_id === operation.operation_id
+          ? Object.fromEntries(Object.entries(current).filter(([entryId]) => entryId !== operation.entry_id)) : current);
+        setRoutineCandidate((current) => current?.entryId === operation.entry_id ? null : current);
+      }
+      try {
+        const projection = await reconcile();
+        const canonical = entryForId(projection, operation.entry_id);
+        const converged = operation.action === "occurrence"
+          ? canonical?.mode?.id === operation.mode_id && canonical.routine?.mode_override_present === true
+          : canonical?.mode?.id === operation.mode_id && canonical.routine?.mode_override_present === false
+            && canonical.routine.default_mode_id === operation.mode_id;
+        if (ambiguous && converged) {
+          releaseRoutineModeOperation(operation.operation_id);
+          setPendingRoutineModeOverlays((current) => Object.fromEntries(Object.entries(current)
+            .filter(([entryId]) => entryId !== operation.entry_id)));
+          setRoutineCandidate((current) => current?.entryId === operation.entry_id ? null : current);
+          setError(null);
+        }
+      } catch { /* Preserve exact retained operation. */ }
+    } finally { endMutationScope(mutationToken); setPending(null); }
+  }
+
+  function changeRoutineMode(entry: EntryProjection, modeId: string | null): void {
+    if (!day || !entry.routine || !canEditRoutineMode(entry)
+      || isMutationScopeBusy(routineMutationScope(entry.id, entry.routine.routine_definition_id))) return;
+    if ((entry.mode?.id ?? null) === modeId) return;
+    if (!entry.routine.mode_override_present) {
+      setRoutineCandidate({ entryId: entry.id, unit: "mode", modeId });
+      return;
+    }
+    const operation: SetRoutineModeRequest = { operation_id: uuidv7(), entry_id: entry.id,
+      taskchute_day_id: day.taskchute_day.id!, action: "occurrence", mode_id: modeId };
+    const modeTitle = modeId === null ? null : modeBoard?.modes.find((mode) => mode.id === modeId)?.title ?? null;
+    setPendingRoutineModeOverlays((current) => ({ ...current, [entry.id]: { operation, modeId, modeTitle } }));
+    setRoutineModeOperation(operation);
+    void executeRoutineMode(operation);
+  }
+
+  function retryRoutineMode(operation: SetRoutineModeRequest): void {
+    void executeRoutineMode(operation);
   }
 
   async function executeExecutionTimes(operation: SetExecutionTimesRequest) {
@@ -4450,7 +4545,7 @@ export function App() {
   }
 
   function cancelRoutineCandidate(): void {
-    const restoreFocus = routineCandidate?.unit === "section-plan" ? routineCandidate.restoreFocus : undefined;
+    const restoreFocus = routineCandidate && "restoreFocus" in routineCandidate ? routineCandidate.restoreFocus : undefined;
     setRoutineCandidate(null);
     if (restoreFocus) setPendingFocusKey(focusKey(restoreFocus));
   }
@@ -4519,6 +4614,19 @@ export function App() {
   async function commitRoutineCandidate(entry: EntryProjection, action: "occurrence" | "definition") {
     if (!day?.taskchute_day.id || !entry.routine || routineCandidate?.entryId !== entry.id || mutationLocked
       || isMutationScopeBusy(routineMutationScope(entry.id, entry.routine.routine_definition_id))) return;
+    if (routineCandidate.unit === "mode") {
+      const operation: SetRoutineModeRequest = action === "occurrence"
+        ? { operation_id: uuidv7(), entry_id: entry.id, taskchute_day_id: day.taskchute_day.id!, action, mode_id: routineCandidate.modeId }
+        : { operation_id: uuidv7(), entry_id: entry.id, taskchute_day_id: day.taskchute_day.id!, action,
+            mode_id: routineCandidate.modeId, expected_defaults_revision: entry.routine.defaults_revision };
+      const modeTitle = routineCandidate.modeId === null ? null
+        : modeBoard?.modes.find((mode) => mode.id === routineCandidate.modeId)?.title ?? null;
+      setPendingRoutineModeOverlays((current) => ({ ...current, [entry.id]: { operation,
+        modeId: routineCandidate.modeId, modeTitle } }));
+      setRoutineModeOperation(operation);
+      await executeRoutineMode(operation);
+      return;
+    }
     if (routineCandidate.unit === "estimate") {
       const operation: SetRoutineEstimateRequest = action === "occurrence"
         ? { operation_id: uuidv7(), entry_id: entry.id, taskchute_day_id: day.taskchute_day.id,
@@ -5300,19 +5408,24 @@ export function App() {
       }
       case "mode": {
         const overlay = pendingModeOverlays[entry.id];
-        const modeId = overlay ? overlay.mode_id : entry.mode?.id ?? null;
+        const routineOverlay = pendingRoutineModeOverlays[entry.id];
+        const modeId = routineOverlay ? routineOverlay.modeId : overlay ? overlay.mode_id : entry.mode?.id ?? null;
         const modeTitle = modeId === null ? null
-          : !overlay && entry.mode?.source === "snapshot"
+          : routineOverlay?.modeTitle ?? (!overlay && entry.mode?.source === "snapshot"
             ? entry.mode.title
-            : modeBoard?.modes.find((mode) => mode.id === modeId)?.title ?? entry.mode?.title ?? null;
-        const editable = canEditModeMetadata(entry);
-        const modeMutationBusy = currentDay.is_current
-          ? hasRetainedMutationScope(entryMutationScope(entry.id))
-          : isMutationScopeBusy(entryMutationScope(entry.id));
+            : modeBoard?.modes.find((mode) => mode.id === modeId)?.title ?? entry.mode?.title ?? null);
+        const editable = canEditModeMetadata(entry) || canEditRoutineMode(entry);
+        const modeMutationBusy = entry.routine
+          ? isMutationScopeBusy(routineMutationScope(entry.id, entry.routine.routine_definition_id))
+          : currentDay.is_current
+            ? hasRetainedMutationScope(entryMutationScope(entry.id))
+            : isMutationScopeBusy(entryMutationScope(entry.id));
         return <span className="mode-cell" data-day-column-cell={key} onClick={(event) => event.stopPropagation()}>
            {editable ? <select className="mode-selector" aria-label={`${entry.task.title}のMode`} value={modeId ?? ""}
             disabled={modeMutationBusy}
-            onChange={(event) => commitEntryMode(entry, event.target.value || null)}>
+            onChange={(event) => entry.routine
+              ? changeRoutineMode(entry, event.target.value || null)
+              : commitEntryMode(entry, event.target.value || null)}>
             <option value="">—</option>
             {(modeBoard?.modes ?? []).map((mode) => <option value={mode.id} key={mode.id}
               disabled={mode.archived && mode.id !== modeId}>{mode.title}{mode.archived ? "（アーカイブ）" : ""}</option>)}
@@ -5712,13 +5825,18 @@ export function App() {
         if (!entry) return null;
         const value = routineCandidate.unit === "estimate"
           ? formatEstimate(routineCandidate.estimateSeconds)
-          : routineCandidate.sectionId === null ? "Sectionなし / —"
-            : `${currentDay.sections.find((section) => section.id === routineCandidate.sectionId)?.title ?? "Section"} / ${formatLogicalMinute(routineCandidate.plannedStartMinute)}`;
+          : routineCandidate.unit === "mode"
+            ? routineCandidate.modeId === null ? "Modeなし"
+              : modeBoard?.modes.find((mode) => mode.id === routineCandidate.modeId)?.title ?? "Mode"
+            : routineCandidate.sectionId === null ? "Sectionなし / —"
+              : `${currentDay.sections.find((section) => section.id === routineCandidate.sectionId)?.title ?? "Section"} / ${formatLogicalMinute(routineCandidate.plannedStartMinute)}`;
+        const candidateLabel = routineCandidate.unit === "estimate" ? "見積"
+          : routineCandidate.unit === "mode" ? "Mode" : "Section・開始予定";
         return (
           <Modal title="Routine設定の反映先" titleId="routine-scope-choice-title" className="routine-scope-choice"
             onClose={cancelRoutineCandidate}>
             <p>{entry.task.title} · {value}</p>
-            <div role="group" aria-label={`${entry.task.title}の${routineCandidate.unit === "estimate" ? "見積" : "Section・開始予定"}反映先`} className="bulk-confirmation-actions">
+            <div role="group" aria-label={`${entry.task.title}の${candidateLabel}反映先`} className="bulk-confirmation-actions">
               <span>{value}</span>
               <button type="button" disabled={mutationLocked || isMutationScopeBusy(routineMutationScope(entry.id, entry.routine?.routine_definition_id))} onClick={() => void commitRoutineCandidate(entry, "occurrence")}>今回だけ</button>
               <button type="button" disabled={mutationLocked || isMutationScopeBusy(routineMutationScope(entry.id, entry.routine?.routine_definition_id))} onClick={() => void commitRoutineCandidate(entry, "definition")}>ルーティンに反映</button>
@@ -6433,14 +6551,18 @@ export function App() {
           {retainedRoutineEstimateOperations.filter((operation) => operation.operation_id !== routineEstimateOperation?.operation_id).map((operation) => (
             <button type="button" key={operation.operation_id} onClick={() => void executeRoutineEstimate(operation)}>保留中のRoutine見積を再試行</button>
           ))}
+          {routineModeOperation && <button type="button" onClick={() => retryRoutineMode(routineModeOperation)}>保留中のRoutine Modeを再試行</button>}
+          {retainedRoutineModeOperations.filter((operation) => operation.operation_id !== routineModeOperation?.operation_id).map((operation) => (
+            <button type="button" key={operation.operation_id} onClick={() => retryRoutineMode(operation)}>保留中のRoutine Modeを再試行</button>
+          ))}
           {routineSectionPlanOperation && <button type="button" onClick={() => void executeRoutineSectionPlan(routineSectionPlanOperation)}>保留中のRoutine配置を再試行</button>}
           <button type="button" className="secondary" onClick={() => {
              setProjectOperation(null); setTaskOperation(null); setDuplicateOperation(null); setBulkDeleteOperation(null); setDeleteCompletedOperation(null); setQueuedDeleteCompletedOperation(null); setCompletedDeleteConfirmation(null); setBulkDateMoveOperation(null); setBulkSectionOperation(null); setBulkSectionOccurrenceOperation(null); setBulkSectionScopedOperation(null); setBulkEstimateOperation(null); setBulkSectionPickerOpen(false); setBulkConfirmation(null); setBulkSectionConfirmation(null); setBulkEstimateConfirmation(null); setBulkDateMoveConfirmation(null); setSelectedEntryIds([]); setReorderOperation(null); setStartOperation(null); setInterruptOperation(null); setCompleteOperation(null); setExecutionTimesOperation(null); setTaskMetadataOperation(null);
             dayMutationQueueRef.current = []; dayMutationPausedRef.current = false; updateDayMutationQueueCount();
             setRetainedTaskMetadataOperations([]); setPendingTaskMetadataOverlays({}); setPendingEstimateOverlays({}); setPendingPlannedStartOverlays({}); setPendingSectionOverlays({}); updatePendingReorderOverlays(() => ({})); setPendingAddTasks([]); setPendingExecutionTimesOverlays({}); setRetainedEstimateOperations([]); setRetainedRoutineEstimateOperations([]);
             setConfigurationOperation(null); setSectionSettingsOperation(null); setSectionMoveOperation(null); setEstimateOperation(null); setPlannedStartOperation(null);
-            setRoutineConversionOperation(null); setRoutineEndOperation(null); setRoutineEstimateOperation(null);
-             setRoutineSectionPlanOperation(null); setModeOperation(null); setRetainedModeOperations([]); setPendingModeOverlays({}); setRoutineCandidate(null); setError(null);
+            setRoutineConversionOperation(null); setRoutineEndOperation(null); setRoutineEstimateOperation(null); setRoutineModeOperation(null);
+             setRoutineSectionPlanOperation(null); setRetainedRoutineModeOperations([]); setPendingRoutineModeOverlays({}); setModeOperation(null); setRetainedModeOperations([]); setPendingModeOverlays({}); setRoutineCandidate(null); setError(null);
           }}>保留中のclient操作を破棄</button>
         </section>
       )}

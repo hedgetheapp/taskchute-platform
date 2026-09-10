@@ -220,6 +220,10 @@ export interface RoutineEntryProjection {
   section_plan_override_present: boolean;
   default_estimate_seconds: number | null;
   estimate_override_present: boolean;
+  /** D-085: absent default relation is Modeなし; override presence is separate from value. */
+  default_mode_id?: string | null;
+  default_mode_title?: string | null;
+  mode_override_present?: boolean;
   defaults_revision: number;
 }
 
@@ -697,6 +701,19 @@ interface RoutineEntryMutationBase {
   taskchute_day_id: string;
 }
 
+export type SetRoutineModeRequest = RoutineEntryMutationBase & (
+  | { action: "occurrence"; mode_id: string | null }
+  | { action: "definition"; mode_id: string | null; expected_defaults_revision: number }
+);
+
+export interface SetRoutineModeResult {
+  entry_id: string;
+  mode_id: string | null;
+  mode_title: string | null;
+  mode_override_present: boolean;
+  defaults_revision: number;
+}
+
 export type SetRoutineEstimateRequest = RoutineEntryMutationBase & (
   | { action: "occurrence"; estimate_seconds: number | null }
   | { action: "definition"; estimate_seconds: number | null; expected_defaults_revision: number }
@@ -770,6 +787,8 @@ export interface RoutineBoardItemProjection {
   default_section_id: string | null;
   default_planned_start_minute: number | null;
   default_estimate_seconds: number | null;
+  default_mode_id?: string | null;
+  default_mode?: { id: string; title: string; archived: boolean } | null;
   start_logical_date: string;
   end_logical_date: string | null;
   board_position: number;
@@ -822,6 +841,7 @@ export interface UpdateRoutineRequest {
   default_section_id: string | null;
   default_planned_start_minute: number | null;
   default_estimate_seconds: number | null;
+  default_mode_id?: string | null;
   start_logical_date: string;
   end_logical_date: string | null;
 }

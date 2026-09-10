@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { RoutineBoardProjection } from "../../src/shared/contracts";
 
 const mocks = vi.hoisted(() => ({
-  loadRoutines: vi.fn(), loadProjects: vi.fn(), createRoutine: vi.fn(), setRoutineEnabled: vi.fn(),
+  loadRoutines: vi.fn(), loadProjects: vi.fn(), loadModeBoard: vi.fn(), createRoutine: vi.fn(), setRoutineEnabled: vi.fn(),
   updateRoutine: vi.fn(), reorderRoutines: vi.fn(), deleteRoutine: vi.fn(),
 }));
 
@@ -51,6 +51,7 @@ beforeEach(() => {
   };
   mocks.loadRoutines.mockImplementation(async () => structuredClone(board));
   mocks.loadProjects.mockResolvedValue({ projects: [{ id: projectId, title: "Work" }] });
+  mocks.loadModeBoard.mockResolvedValue({ board_revision: 1, modes: [] });
   mocks.createRoutine.mockResolvedValue({});
   mocks.setRoutineEnabled.mockResolvedValue({});
   mocks.updateRoutine.mockResolvedValue({});
@@ -62,7 +63,7 @@ describe("Routine Board", () => {
   it("renders the canonical columns, active/ended tabs, and title/project search", async () => {
     render(<RoutineBoard onUnauthorized={vi.fn()} />);
     const table = await screen.findByRole("table", { name: "Routine Board" });
-    for (const heading of ["有効", "タスク名", "繰り返し", "開始予定", "見積", "プロジェクト", "セクション", "開始日", "終了日"]) {
+    for (const heading of ["有効", "タスク名", "繰り返し", "開始予定", "見積", "プロジェクト", "Mode", "セクション", "開始日", "終了日"]) {
       expect(within(table).getByRole("columnheader", { name: new RegExp(`^${heading}`) })).toBeTruthy();
     }
     expect(within(table).queryByText("移動")).toBeNull();
@@ -112,6 +113,20 @@ describe("Routine Board", () => {
     await waitFor(() => expect(mocks.updateRoutine).toHaveBeenCalledWith(expect.objectContaining({
       default_estimate_seconds: 1500,
     })));
+  });
+
+  it("renders the Routine default Mode and sends an explicit Modeなし update", async () => {
+    board.routines[0]!.default_mode_id = "019d0000-0000-7000-8000-000000000005";
+    board.routines[0]!.default_mode = { id: board.routines[0]!.default_mode_id, title: "Focus", archived: false };
+    mocks.loadModeBoard.mockResolvedValue({ board_revision: 1, modes: [
+      { id: board.routines[0]!.default_mode_id, title: "Focus", archived: false, board_position: 1, settings_revision: 0 },
+      { id: "019d0000-0000-7000-8000-000000000006", title: "Deep", archived: false, board_position: 2, settings_revision: 0 },
+    ] });
+    render(<RoutineBoard onUnauthorized={vi.fn()} />);
+    const selector = await screen.findByLabelText("Active RoutineのMode");
+    expect((selector as unknown as HTMLSelectElement).value).toBe(board.routines[0]!.default_mode_id);
+    fireEvent.change(selector, { target: { value: "" } });
+    await waitFor(() => expect(mocks.updateRoutine).toHaveBeenCalledWith(expect.objectContaining({ default_mode_id: null })));
   });
 
   it("requires explicit save/cancel for recurrence and edits the inclusive period in separate cells", async () => {
@@ -185,10 +200,10 @@ describe("Routine Board", () => {
       expect(mocks.reorderRoutines).not.toHaveBeenCalled();
     }
 
-    for (const heading of ["有効", "タスク名", "繰り返し", "開始予定", "見積", "プロジェクト", "セクション", "開始日", "終了日"]) {
+    for (const heading of ["有効", "タスク名", "繰り返し", "開始予定", "見積", "プロジェクト", "Mode", "セクション", "開始日", "終了日"]) {
       expect(within(table).getByRole("columnheader", { name: new RegExp(`^${heading}`) })).toBeTruthy();
     }
-    expect(within(table).getAllByRole("columnheader")).toHaveLength(9);
+    expect(within(table).getAllByRole("columnheader")).toHaveLength(10);
     const resize = within(table).getByRole("button", { name: "タスク名の幅を変更" });
     fireEvent.dragStart(resize, { dataTransfer: dragData() });
     fireEvent.drop(target, { dataTransfer: dragData() });

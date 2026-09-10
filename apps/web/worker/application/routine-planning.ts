@@ -1,4 +1,6 @@
 import type {
+  SetRoutineModeRequest,
+  SetRoutineModeResult,
   SetRoutineEstimateRequest,
   SetRoutineEstimateResult,
   MoveEntryPlacementIntent,
@@ -32,6 +34,10 @@ interface RoutineEditRow {
   routine_definition_id: string;
   section_plan_override_present: number;
   estimate_override_present: number;
+  mode_override_present: number;
+  entry_mode_id: string | null;
+  default_mode_id: string | null;
+  default_mode_title: string | null;
   default_section_id: string | null;
   default_planned_start_minute: number | null;
   default_estimate_seconds: number | null;
@@ -89,6 +95,16 @@ export function isSetRoutineEstimateRequest(value: unknown): value is SetRoutine
     : Number.isSafeInteger(body.expected_defaults_revision) && Number(body.expected_defaults_revision) >= 0;
 }
 
+export function isSetRoutineModeRequest(value: unknown): value is SetRoutineModeRequest {
+  if (!value || typeof value !== "object") return false;
+  const body = value as Record<string, unknown>;
+  if (!hasValidBase(body) || (body.action !== "occurrence" && body.action !== "definition")) return false;
+  if (!(body.mode_id === null || (typeof body.mode_id === "string" && isUuidV7(body.mode_id)))) return false;
+  return body.action === "occurrence"
+    ? !(("expected_defaults_revision") in body)
+    : Number.isSafeInteger(body.expected_defaults_revision) && Number(body.expected_defaults_revision) >= 0;
+}
+
 export function isSetRoutineSectionPlanRequest(value: unknown): value is SetRoutineSectionPlanRequest {
   if (!value || typeof value !== "object") return false;
   const body = value as Record<string, unknown>;
@@ -130,11 +146,19 @@ async function readRoutineEditRow(db: D1Database, appUserId: string, entryId: st
       e.section_id, e.position, e.lifecycle_state, e.estimate_seconds, e.planned_start_minute,
       ro.id AS routine_occurrence_id, ro.routine_definition_id,
       ro.section_plan_override_present, ro.estimate_override_present,
+      CASE WHEN rmo.routine_occurrence_id IS NULL THEN 0 ELSE 1 END AS mode_override_present,
+      em.mode_id AS entry_mode_id, rdm.mode_id AS default_mode_id, md.title AS default_mode_title,
       rd.default_section_id, rd.default_planned_start_minute, rd.default_estimate_seconds, rd.defaults_revision
     FROM entries e
     JOIN taskchute_days d ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
     JOIN routine_occurrences ro ON ro.app_user_id = e.app_user_id AND ro.id = e.routine_occurrence_id
     JOIN routine_definitions rd ON rd.app_user_id = ro.app_user_id AND rd.id = ro.routine_definition_id
+    LEFT JOIN routine_occurrence_mode_overrides rmo
+      ON rmo.app_user_id = ro.app_user_id AND rmo.routine_occurrence_id = ro.id
+    LEFT JOIN entry_modes em ON em.app_user_id = e.app_user_id AND em.entry_id = e.id
+    LEFT JOIN routine_definition_modes rdm
+      ON rdm.app_user_id = rd.app_user_id AND rdm.routine_definition_id = rd.id
+    LEFT JOIN mode_definitions md ON md.app_user_id = rdm.app_user_id AND md.id = rdm.mode_id
     WHERE e.app_user_id = ? AND e.id = ?`).bind(appUserId, entryId).first<RoutineEditRow>();
 }
 
@@ -142,7 +166,7 @@ async function reject<T>(
   db: D1Database,
   appUserId: string,
   operationId: string,
-  commandType: "SetRoutineEstimate" | "SetRoutineSectionPlan",
+  commandType: "SetRoutineEstimate" | "SetRoutineSectionPlan" | "SetRoutineMode",
   requestFingerprint: string,
   message: string,
   revision = false,
@@ -160,6 +184,191 @@ async function reject<T>(
 function isEditableCurrentRoutine(row: RoutineEditRow | null, currentDay: CurrentDayRow | null, requestedDayId: string): row is RoutineEditRow {
   return row !== null && currentDay !== null && row.taskchute_day_id === requestedDayId
     && row.taskchute_day_id === currentDay.id && row.lifecycle_state === "planned";
+}
+
+/**
+ * D-085 Routine Mode command.  The live Entry relation remains the effective
+ * projection; the typed Routine relations only record recurring default and
+ * explicit occurrence override intent.
+ */
+export async function setRoutineMode(
+  db: D1Database,
+  appUserId: string,
+  request: SetRoutineModeRequest,
+  nowInstant = new Date().toISOString(),
+): Promise<SetRoutineModeResult> {
+  const requestFingerprint = await fingerprint(request);
+  const prior = await readOperation(db, appUserId, request.operation_id);
+  if (prior) return replayOperation(prior, "SetRoutineMode", requestFingerprint);
+  const [currentDay, row] = await Promise.all([
+    readCurrentDay(db, appUserId, nowInstant),
+    readRoutineEditRow(db, appUserId, request.entry_id),
+  ]);
+  if (!isEditableCurrentRoutine(row, currentDay, request.taskchute_day_id)) {
+    return reject(db, appUserId, request.operation_id, "SetRoutineMode", requestFingerprint,
+      "Only a current-Day planned Routine Entry Mode can be edited");
+  }
+  const activeDay = currentDay!;
+  const targetMode = request.mode_id === null ? null : await db.prepare(`SELECT m.id, m.title,
+      CASE WHEN a.mode_id IS NULL THEN 0 ELSE 1 END AS archived
+    FROM mode_definitions m LEFT JOIN mode_archives a
+      ON a.app_user_id = m.app_user_id AND a.mode_id = m.id
+    WHERE m.app_user_id = ? AND m.id = ?`).bind(appUserId, request.mode_id)
+    .first<{ id: string; title: string; archived: number }>();
+  if (request.mode_id !== null && !targetMode) {
+    return reject(db, appUserId, request.operation_id, "SetRoutineMode", requestFingerprint,
+      "Mode is unavailable");
+  }
+  const assignmentBase = request.action === "definition" ? row.default_mode_id : row.entry_mode_id;
+  if (targetMode?.archived === 1 && targetMode.id !== assignmentBase) {
+    return reject(db, appUserId, request.operation_id, "SetRoutineMode", requestFingerprint,
+      "An archived Mode cannot be newly assigned");
+  }
+  if (request.action === "definition" && row.defaults_revision !== request.expected_defaults_revision) {
+    return reject(db, appUserId, request.operation_id, "SetRoutineMode", requestFingerprint,
+      "The Routine defaults revision is stale", true);
+  }
+
+  const targetOverridePresent = request.action === "occurrence";
+  const result: SetRoutineModeResult = {
+    entry_id: row.entry_id,
+    mode_id: request.mode_id,
+    mode_title: targetMode?.title ?? null,
+    mode_override_present: targetOverridePresent,
+    defaults_revision: row.defaults_revision + (request.action === "definition" ? 1 : 0),
+  };
+  const assertionId = `routine-mode:${request.operation_id}`;
+  const now = new Date().toISOString();
+  try {
+    const guard = db.prepare(`INSERT INTO routine_command_guards (app_user_id, operation_id, command_type)
+      SELECT ?, ?, 'SetRoutineMode' WHERE EXISTS (
+        SELECT 1 FROM entries e
+        JOIN routine_occurrences ro ON ro.app_user_id = e.app_user_id AND ro.id = e.routine_occurrence_id
+        JOIN routine_definitions rd ON rd.app_user_id = ro.app_user_id AND rd.id = ro.routine_definition_id
+        WHERE e.app_user_id = ? AND e.id = ? AND e.taskchute_day_id = ?
+          AND e.lifecycle_state = 'planned' AND ro.id = ? AND rd.id = ?
+          AND rd.defaults_revision = ?
+          AND NOT EXISTS (SELECT 1 FROM routine_occurrence_suppressions x
+            WHERE x.app_user_id = ro.app_user_id AND x.routine_occurrence_id = ro.id))`)
+      .bind(appUserId, request.operation_id, appUserId, row.entry_id, activeDay.id,
+        row.routine_occurrence_id, row.routine_definition_id,
+        request.action === "definition" ? request.expected_defaults_revision : row.defaults_revision);
+    const statements: D1PreparedStatement[] = [guard];
+    if (request.action === "occurrence") {
+      statements.push(
+        db.prepare(`INSERT INTO routine_occurrence_mode_overrides (app_user_id, routine_occurrence_id, mode_id)
+          SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)
+          ON CONFLICT (app_user_id, routine_occurrence_id) DO UPDATE SET mode_id = excluded.mode_id`)
+          .bind(appUserId, row.routine_occurrence_id, request.mode_id, appUserId, request.operation_id),
+        db.prepare(`DELETE FROM entry_modes WHERE app_user_id = ? AND entry_id = ?
+          AND EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+          .bind(appUserId, row.entry_id, appUserId, request.operation_id),
+        request.mode_id === null
+          ? db.prepare("SELECT 1 AS noop")
+          : db.prepare(`INSERT INTO entry_modes (app_user_id, entry_id, mode_id)
+              SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+            .bind(appUserId, row.entry_id, request.mode_id, appUserId, request.operation_id),
+      );
+    } else {
+      statements.push(
+        request.mode_id === null
+          ? db.prepare(`DELETE FROM routine_definition_modes WHERE app_user_id = ? AND routine_definition_id = ?
+              AND EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+            .bind(appUserId, row.routine_definition_id, appUserId, request.operation_id)
+          : db.prepare(`INSERT INTO routine_definition_modes (app_user_id, routine_definition_id, mode_id)
+              SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)
+              ON CONFLICT (app_user_id, routine_definition_id) DO UPDATE SET mode_id = excluded.mode_id`)
+            .bind(appUserId, row.routine_definition_id, request.mode_id, appUserId, request.operation_id),
+        db.prepare(`DELETE FROM routine_occurrence_mode_overrides WHERE app_user_id = ? AND routine_occurrence_id = ?
+          AND EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+          .bind(appUserId, row.routine_occurrence_id, appUserId, request.operation_id),
+        db.prepare(`DELETE FROM entry_modes WHERE app_user_id = ? AND entry_id IN (
+            SELECT e.id FROM entries e JOIN routine_occurrences ro
+              ON ro.app_user_id = e.app_user_id AND ro.id = e.routine_occurrence_id
+            LEFT JOIN routine_occurrence_mode_overrides rmo
+              ON rmo.app_user_id = ro.app_user_id AND rmo.routine_occurrence_id = ro.id
+            WHERE e.app_user_id = ? AND ro.routine_definition_id = ? AND e.lifecycle_state = 'planned'
+              AND rmo.routine_occurrence_id IS NULL
+              AND NOT EXISTS (SELECT 1 FROM routine_occurrence_suppressions x
+                WHERE x.app_user_id = ro.app_user_id AND x.routine_occurrence_id = ro.id))
+          AND EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+          .bind(appUserId, appUserId, row.routine_definition_id, appUserId, request.operation_id),
+        request.mode_id === null
+          ? db.prepare("SELECT 1 AS noop")
+          : db.prepare(`INSERT INTO entry_modes (app_user_id, entry_id, mode_id)
+              SELECT e.app_user_id, e.id, ? FROM entries e JOIN routine_occurrences ro
+                ON ro.app_user_id = e.app_user_id AND ro.id = e.routine_occurrence_id
+              LEFT JOIN routine_occurrence_mode_overrides rmo
+                ON rmo.app_user_id = ro.app_user_id AND rmo.routine_occurrence_id = ro.id
+              WHERE e.app_user_id = ? AND ro.routine_definition_id = ? AND e.lifecycle_state = 'planned'
+                AND rmo.routine_occurrence_id IS NULL
+                AND NOT EXISTS (SELECT 1 FROM routine_occurrence_suppressions x
+                  WHERE x.app_user_id = ro.app_user_id AND x.routine_occurrence_id = ro.id)
+                AND EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+            .bind(request.mode_id, appUserId, row.routine_definition_id, appUserId, request.operation_id),
+        db.prepare(`UPDATE routine_definitions SET defaults_revision = defaults_revision + 1
+          WHERE app_user_id = ? AND id = ? AND defaults_revision = ?
+            AND EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+          .bind(appUserId, row.routine_definition_id, request.expected_defaults_revision, appUserId, request.operation_id),
+        db.prepare(`UPDATE routine_board_items SET settings_revision = settings_revision + 1
+          WHERE app_user_id = ? AND routine_definition_id = ?
+            AND EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+          .bind(appUserId, row.routine_definition_id, appUserId, request.operation_id),
+      );
+    }
+    statements.push(
+      db.prepare(`INSERT INTO transaction_assertions (app_user_id, id, ok)
+        SELECT ?, ?, CASE WHEN
+          EXISTS (SELECT 1 FROM entries e
+            WHERE e.app_user_id = ? AND e.id = ? AND e.lifecycle_state = 'planned'
+              AND (SELECT mode_id FROM entry_modes WHERE app_user_id = ? AND entry_id = e.id) IS ?)
+          AND (SELECT COUNT(*) FROM routine_occurrence_mode_overrides
+            WHERE app_user_id = ? AND routine_occurrence_id = ?) = ?
+          AND (SELECT defaults_revision FROM routine_definitions
+            WHERE app_user_id = ? AND id = ?) = ?
+          AND (? = 0 OR NOT EXISTS (
+            SELECT 1 FROM entries e JOIN routine_occurrences ro
+              ON ro.app_user_id = e.app_user_id AND ro.id = e.routine_occurrence_id
+            LEFT JOIN routine_occurrence_mode_overrides rmo
+              ON rmo.app_user_id = ro.app_user_id AND rmo.routine_occurrence_id = ro.id
+            WHERE e.app_user_id = ? AND ro.routine_definition_id = ? AND e.lifecycle_state = 'planned'
+              AND rmo.routine_occurrence_id IS NULL
+              AND (SELECT mode_id FROM entry_modes WHERE app_user_id = ? AND entry_id = e.id) IS NOT ?))
+          THEN 1 ELSE 0 END WHERE EXISTS (
+            SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(appUserId, assertionId, appUserId, row.entry_id, appUserId, request.mode_id,
+          appUserId, row.routine_occurrence_id, targetOverridePresent ? 1 : 0,
+          appUserId, row.routine_definition_id, result.defaults_revision,
+          request.action === "definition" ? 1 : 0, appUserId, row.routine_definition_id,
+          appUserId, request.mode_id, appUserId, request.operation_id),
+      db.prepare(`INSERT INTO operations
+        (app_user_id, operation_id, command_type, request_fingerprint_version,
+         request_fingerprint, outcome_kind, result_json, created_at)
+        SELECT ?, ?, 'SetRoutineMode', ?, ?, 'success', ?, ? WHERE EXISTS (
+          SELECT 1 FROM transaction_assertions WHERE app_user_id = ? AND id = ? AND ok = 1)`)
+        .bind(appUserId, request.operation_id, REQUEST_FINGERPRINT_VERSION, requestFingerprint,
+          JSON.stringify(result), now, appUserId, assertionId),
+      db.prepare("DELETE FROM transaction_assertions WHERE app_user_id = ? AND id = ?").bind(appUserId, assertionId),
+      db.prepare("DELETE FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?")
+        .bind(appUserId, request.operation_id),
+    );
+    const results = await db.batch(statements);
+    const committed = await readOperation(db, appUserId, request.operation_id);
+    if (committed) return replayOperation(committed, "SetRoutineMode", requestFingerprint);
+    if (results[0]?.meta.changes === 0) {
+      const latest = await readRoutineEditRow(db, appUserId, row.entry_id);
+      if (request.action === "definition" && latest?.defaults_revision !== request.expected_defaults_revision) {
+        return reject(db, appUserId, request.operation_id, "SetRoutineMode", requestFingerprint,
+          "The Routine defaults revision is stale", true);
+      }
+    }
+    return reject(db, appUserId, request.operation_id, "SetRoutineMode", requestFingerprint,
+      "Routine Mode state changed before commit");
+  } catch {
+    const committed = await readOperation(db, appUserId, request.operation_id);
+    if (committed) return replayOperation(committed, "SetRoutineMode", requestFingerprint);
+    throw new HttpError(503, "infrastructure_ambiguous", "The Routine Mode outcome is unknown; reload and retry", true);
+  }
 }
 
 export async function setRoutineEstimate(

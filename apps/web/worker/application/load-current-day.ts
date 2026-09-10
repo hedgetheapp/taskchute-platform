@@ -75,6 +75,9 @@ interface EntryRow {
   section_plan_override_present: number | null;
   default_estimate_seconds: number | null;
   estimate_override_present: number | null;
+  default_mode_id: string | null;
+  default_mode_title: string | null;
+  mode_override_present: number | null;
   defaults_revision: number | null;
   execution_first_started_at: string | null;
   execution_last_ended_at: string | null;
@@ -154,6 +157,9 @@ function toEntryRow(value: unknown): EntryRow {
     section_plan_override_present: row.section_plan_override_present === null ? null : requiredNumber(row, "section_plan_override_present"),
     default_estimate_seconds: row.default_estimate_seconds === null ? null : requiredNumber(row, "default_estimate_seconds"),
     estimate_override_present: row.estimate_override_present === null ? null : requiredNumber(row, "estimate_override_present"),
+    default_mode_id: row.default_mode_id === null ? null : requiredString(row, "default_mode_id"),
+    default_mode_title: row.default_mode_title === null ? null : requiredString(row, "default_mode_title"),
+    mode_override_present: row.mode_override_present === null ? null : requiredNumber(row, "mode_override_present"),
     defaults_revision: row.defaults_revision === null ? null : requiredNumber(row, "defaults_revision"),
     execution_first_started_at: row.execution_first_started_at === null ? null : requiredString(row, "execution_first_started_at"),
     execution_last_ended_at: row.execution_last_ended_at === null ? null : requiredString(row, "execution_last_ended_at"),
@@ -366,6 +372,8 @@ async function loadEstablishedProjection(
                 rd.end_logical_date AS routine_end_logical_date,
                 rd.default_section_id, rd.default_planned_start_minute, rd.default_estimate_seconds,
                 rd.defaults_revision, ro.section_plan_override_present, ro.estimate_override_present,
+                rdm.mode_id AS default_mode_id, default_mode.title AS default_mode_title,
+                CASE WHEN rmo.routine_occurrence_id IS NULL THEN 0 ELSE 1 END AS mode_override_present,
                 execution_summary.first_started_at AS execution_first_started_at,
                 execution_summary.last_ended_at AS execution_last_ended_at,
                 COALESCE(execution_summary.completed_duration_seconds, 0) AS execution_completed_duration_seconds,
@@ -386,6 +394,12 @@ async function loadEstablishedProjection(
            JOIN tasks t ON t.app_user_id = e.app_user_id AND t.id = e.task_id
            LEFT JOIN routine_occurrences ro ON ro.app_user_id = e.app_user_id AND ro.id = e.routine_occurrence_id
            LEFT JOIN routine_definitions rd ON rd.app_user_id = ro.app_user_id AND rd.id = ro.routine_definition_id
+           LEFT JOIN routine_definition_modes rdm
+             ON rdm.app_user_id = rd.app_user_id AND rdm.routine_definition_id = rd.id
+           LEFT JOIN mode_definitions default_mode
+             ON default_mode.app_user_id = rdm.app_user_id AND default_mode.id = rdm.mode_id
+           LEFT JOIN routine_occurrence_mode_overrides rmo
+             ON rmo.app_user_id = ro.app_user_id AND rmo.routine_occurrence_id = ro.id
            LEFT JOIN projects p ON p.app_user_id = t.app_user_id AND p.id = t.project_id
            LEFT JOIN routine_occurrence_task_snapshots rs
              ON rs.app_user_id = e.app_user_id AND rs.routine_occurrence_id = e.routine_occurrence_id
@@ -479,6 +493,9 @@ async function loadEstablishedProjection(
         section_plan_override_present: row.section_plan_override_present === 1,
         default_estimate_seconds: row.default_estimate_seconds,
         estimate_override_present: row.estimate_override_present === 1,
+        default_mode_id: row.default_mode_id,
+        default_mode_title: row.default_mode_title,
+        mode_override_present: row.mode_override_present === 1,
         defaults_revision: row.defaults_revision!,
       } : null,
       task: {

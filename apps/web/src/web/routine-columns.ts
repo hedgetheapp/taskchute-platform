@@ -10,6 +10,7 @@ export type RoutineColumnKey =
   | "plannedStart"
   | "estimate"
   | "project"
+  | "mode"
   | "section"
   | "startDate"
   | "endDate";
@@ -29,6 +30,7 @@ export const ROUTINE_COLUMN_DEFINITIONS: readonly RoutineColumnDefinition[] = [
   { key: "plannedStart", label: "開始予定", defaultWidth: 120, minWidth: 96, maxWidth: 220 },
   { key: "estimate", label: "見積", defaultWidth: 96, minWidth: 80, maxWidth: 180 },
   { key: "project", label: "プロジェクト", defaultWidth: 180, minWidth: 130, maxWidth: 340 },
+  { key: "mode", label: "Mode", defaultWidth: 160, minWidth: 120, maxWidth: 320 },
   { key: "section", label: "セクション", defaultWidth: 160, minWidth: 130, maxWidth: 320 },
   { key: "startDate", label: "開始日", defaultWidth: 150, minWidth: 132, maxWidth: 220 },
   { key: "endDate", label: "終了日", defaultWidth: 150, minWidth: 132, maxWidth: 220 },
@@ -74,7 +76,14 @@ export function normalizeRoutineColumnPreference(value: unknown): RoutineColumnP
       }
     }
   }
-  for (const key of DEFAULT_ROUTINE_COLUMN_ORDER) if (!order.includes(key)) order.push(key);
+  for (const key of DEFAULT_ROUTINE_COLUMN_ORDER) {
+    if (order.includes(key)) continue;
+    if (key === "mode") {
+      const projectIndex = order.indexOf("project");
+      if (projectIndex >= 0) { order.splice(projectIndex + 1, 0, key); continue; }
+    }
+    order.push(key);
+  }
   const widths = { ...fallback.widths };
   if (isRecord(value.widths)) {
     for (const key of DEFAULT_ROUTINE_COLUMN_ORDER) {

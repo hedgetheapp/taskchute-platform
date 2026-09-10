@@ -12,7 +12,7 @@ export type CommandType = "CreateProject" | "AddTaskToDay" | "ReorderEntries" | 
   | "BulkSetEntriesEstimateScoped"
   | "EstablishInitialSectionConfiguration" | "MoveEntry" | "SetEntryEstimate" | "SetEntryPlannedStart"
   | "UpdateSectionConfiguration" | "ConvertEntryToRoutine" | "EndRoutine"
-  | "SetRoutineEstimate" | "SetRoutineSectionPlan"
+  | "SetRoutineEstimate" | "SetRoutineSectionPlan" | "SetRoutineMode"
   | "CreateRoutine" | "SetRoutineEnabled" | "UpdateRoutine" | "ReorderRoutines" | "DeleteRoutine"
   | "SetExecutionTimes" | "UpdateTaskMetadata"
   | "UpdateProject" | "SetProjectArchived" | "ReorderProjects" | "DeleteProject"

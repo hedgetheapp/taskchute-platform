@@ -311,7 +311,8 @@ export async function deleteMode(db: D1Database, appUserId: string, request: Del
   const result: DeleteModeResult = { mode_id: request.mode_id, board_revision: request.expected_board_revision + 1,
     cleared_entry_count: count };
   try {
-    const [guard, shift, clear, archive, item, definition, compact, bump, operation, cleanup] = await db.batch([
+    const [guard, shift, clear, clearRoutineOverrides, bumpRoutineDefaults, bumpRoutineItems,
+      clearRoutineDefaults, archive, item, definition, compact, bump, operation, cleanup] = await db.batch([
       db.prepare(`INSERT INTO mode_command_guards (app_user_id, operation_id, mode_id, command_type)
         SELECT ?, ?, ?, 'DeleteMode' FROM mode_board_items i JOIN mode_board_heads h
           ON h.app_user_id = i.app_user_id
@@ -322,6 +323,25 @@ export async function deleteMode(db: D1Database, appUserId: string, request: Del
         WHERE app_user_id = ? AND EXISTS (SELECT 1 FROM mode_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
         .bind(appUserId, appUserId, request.operation_id),
       db.prepare(`DELETE FROM entry_modes WHERE app_user_id = ? AND mode_id = ?
+        AND EXISTS (SELECT 1 FROM mode_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(appUserId, request.mode_id, appUserId, request.operation_id),
+      db.prepare(`UPDATE routine_occurrence_mode_overrides SET mode_id = NULL
+        WHERE app_user_id = ? AND mode_id = ?
+          AND EXISTS (SELECT 1 FROM mode_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(appUserId, request.mode_id, appUserId, request.operation_id),
+      db.prepare(`UPDATE routine_definitions SET defaults_revision = defaults_revision + 1
+        WHERE app_user_id = ? AND EXISTS (SELECT 1 FROM routine_definition_modes rdm
+          WHERE rdm.app_user_id = routine_definitions.app_user_id
+            AND rdm.routine_definition_id = routine_definitions.id AND rdm.mode_id = ?)
+          AND EXISTS (SELECT 1 FROM mode_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(appUserId, request.mode_id, appUserId, request.operation_id),
+      db.prepare(`UPDATE routine_board_items SET settings_revision = settings_revision + 1
+        WHERE app_user_id = ? AND routine_definition_id IN (
+          SELECT routine_definition_id FROM routine_definition_modes
+          WHERE app_user_id = ? AND mode_id = ?)
+          AND EXISTS (SELECT 1 FROM mode_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(appUserId, appUserId, request.mode_id, appUserId, request.operation_id),
+      db.prepare(`DELETE FROM routine_definition_modes WHERE app_user_id = ? AND mode_id = ?
         AND EXISTS (SELECT 1 FROM mode_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
         .bind(appUserId, request.mode_id, appUserId, request.operation_id),
       db.prepare(`DELETE FROM mode_archives WHERE app_user_id = ? AND mode_id = ?
@@ -357,7 +377,8 @@ export async function deleteMode(db: D1Database, appUserId: string, request: Del
       if (committed) return replayOperation<DeleteModeResult>(committed, "DeleteMode", requestFingerprint);
       return revisionReject(db, appUserId, request, "DeleteMode", requestFingerprint, "The Mode changed before deletion");
     }
-    void shift; void clear; void archive; void item; void compact; void cleanup;
+    void shift; void clear; void clearRoutineOverrides; void bumpRoutineDefaults; void clearRoutineDefaults;
+    void bumpRoutineItems; void archive; void item; void compact; void cleanup;
     return result;
   } catch {
     const committed = await readOperation(db, appUserId, request.operation_id);

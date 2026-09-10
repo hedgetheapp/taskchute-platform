@@ -60,6 +60,8 @@ import type {
   EndRoutineResult,
   SetRoutineEstimateRequest,
   SetRoutineEstimateResult,
+  SetRoutineModeRequest,
+  SetRoutineModeResult,
   SetRoutineSectionPlanRequest,
   SetRoutineSectionPlanResult,
   RoutineBoardProjection,
@@ -257,6 +259,9 @@ export const api = {
   },
   setRoutineEstimate(body: SetRoutineEstimateRequest): Promise<SetRoutineEstimateResult> {
     return requestJson(`/api/v1/entries/${body.entry_id}/routine-estimate`, jsonPost("", body));
+  },
+  setRoutineMode(body: SetRoutineModeRequest): Promise<SetRoutineModeResult> {
+    return requestJson(`/api/v1/entries/${body.entry_id}/routine-mode`, jsonPost("", body));
   },
   setRoutineSectionPlan(body: SetRoutineSectionPlanRequest): Promise<SetRoutineSectionPlanResult> {
     return requestJson(`/api/v1/entries/${body.entry_id}/routine-section-plan`, jsonPost("", body));

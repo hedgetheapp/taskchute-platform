@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import type {
   DeleteRoutineRequest,
+  ModeBoardProjection,
   ProjectSummary,
   RoutineBoardItemProjection,
   RoutineBoardProjection,
@@ -62,6 +63,7 @@ function connectedElement(element: HTMLElement | null): HTMLElement | null {
 
 export function RoutineBoard({ onUnauthorized }: RoutineBoardProps) {
   const [board, setBoard] = useState<RoutineBoardProjection | null>(null);
+  const [modeBoard, setModeBoard] = useState<ModeBoardProjection | null>(null);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [pending, setPending] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -96,9 +98,10 @@ export function RoutineBoard({ onUnauthorized }: RoutineBoardProps) {
 
   const reload = useCallback(async () => {
     try {
-      const [nextBoard, nextProjects] = await Promise.all([api.loadRoutines(), api.loadProjects()]);
+      const [nextBoard, nextProjects, nextModes] = await Promise.all([api.loadRoutines(), api.loadProjects(), api.loadModeBoard()]);
       setBoard(nextBoard);
       setProjects(nextProjects.projects);
+      setModeBoard(nextModes);
       setCanonicalEpoch((value) => value + 1);
       setFocusedRoutineId((current) => current && nextBoard.routines.some((routine) => routine.routine_definition_id === current) ? current : null);
     } catch (caught) {
@@ -233,7 +236,7 @@ export function RoutineBoard({ onUnauthorized }: RoutineBoardProps) {
       expected_settings_revision: routine.settings_revision, title: routine.title, project_id: routine.project?.id ?? null,
       schedule: routine.schedule, default_section_id: routine.default_section_id, default_planned_start_minute: routine.default_planned_start_minute,
       default_estimate_seconds: routine.default_estimate_seconds, start_logical_date: routine.start_logical_date,
-      end_logical_date: routine.end_logical_date, ...patch };
+      end_logical_date: routine.end_logical_date, default_mode_id: routine.default_mode_id ?? null, ...patch };
   }
 
   async function save(routine: RoutineBoardItemProjection, patch: Partial<UpdateRoutineRequest>, message = "Routineを更新しました") {
@@ -375,6 +378,18 @@ export function RoutineBoard({ onUnauthorized }: RoutineBoardProps) {
         return <div role="cell" className="routine-cell"><select aria-label={`${routine.title}のProject`} value={routine.project?.id ?? ""} disabled={pending}
           onChange={(event) => void save(routine, { project_id: event.target.value || null })}><option value="">Projectなし</option>
           {projectOptions.map((project) => <option key={project.id} value={project.id} disabled={routine.project?.id === project.id && !projects.some((candidate) => candidate.id === project.id)}>{project.title}{routine.project?.id === project.id && !projects.some((candidate) => candidate.id === project.id) ? "（アーカイブ）" : ""}</option>)}</select></div>;
+      }
+      case "mode": {
+        const modeOptions = [...(modeBoard?.modes ?? [])];
+        if (routine.default_mode && !modeOptions.some((mode) => mode.id === routine.default_mode?.id)) {
+          modeOptions.unshift({ ...routine.default_mode, board_position: -1, settings_revision: routine.settings_revision });
+        }
+        return <div role="cell" className="routine-cell"><select aria-label={`${routine.title}のMode`} value={routine.default_mode_id ?? ""} disabled={pending}
+          onChange={(event) => void save(routine, { default_mode_id: event.target.value || null })}>
+          <option value="">Modeなし</option>
+          {modeOptions.map((mode) => <option key={mode.id} value={mode.id} disabled={mode.archived && mode.id !== routine.default_mode_id}>
+            {mode.title}{mode.archived ? "（アーカイブ）" : ""}</option>)}
+        </select></div>;
       }
       case "section": return <div role="cell" className="routine-cell"><select aria-label={`${routine.title}のSection`} value={routine.default_section_id ?? ""} disabled={pending}
         onChange={(event) => void saveSection(routine, event.target.value || null)}><option value="">Sectionなし</option>

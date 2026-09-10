@@ -18,6 +18,7 @@ interface RoutineEntryRow {
   planned_start_minute: number | null;
   lifecycle_state: string;
   routine_occurrence_id: string | null;
+  mode_id: string | null;
 }
 
 interface RoutineDefinitionRow {
@@ -26,6 +27,7 @@ interface RoutineDefinitionRow {
   default_section_id: string | null;
   default_estimate_seconds: number | null;
   default_planned_start_minute: number | null;
+  default_mode_id: string | null;
   materialization_order: number;
   task_title: string;
   project_id: string | null;
@@ -44,6 +46,7 @@ interface RoutineMaterializationPlan {
   task_title: string;
   project_id: string | null;
   project_title: string | null;
+  mode_id: string | null;
 }
 
 interface CurrentRoutineDayRow {
@@ -132,7 +135,9 @@ export async function convertEntryToRoutine(
   }
   const [entry, definitionCollision, occurrenceCollision, orderRow, boardHead, boardOrder] = await Promise.all([
     db.prepare(`SELECT e.task_id, e.taskchute_day_id, e.section_id, e.estimate_seconds, e.planned_start_minute,
-      e.lifecycle_state, e.routine_occurrence_id FROM entries e WHERE e.app_user_id = ? AND e.id = ?`)
+      e.lifecycle_state, e.routine_occurrence_id, em.mode_id
+      FROM entries e LEFT JOIN entry_modes em ON em.app_user_id = e.app_user_id AND em.entry_id = e.id
+      WHERE e.app_user_id = ? AND e.id = ?`)
       .bind(appUserId, request.entry_id).first<RoutineEntryRow>(),
     db.prepare("SELECT id FROM routine_definitions WHERE id = ?").bind(request.routine_definition_id).first(),
     db.prepare("SELECT id FROM routine_occurrences WHERE id = ?").bind(request.routine_occurrence_id).first(),
@@ -217,6 +222,11 @@ export async function convertEntryToRoutine(
             SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
         .bind(request.routine_occurrence_id, appUserId, request.entry_id, currentDay.id,
           appUserId, request.operation_id),
+      db.prepare(`INSERT INTO routine_definition_modes (app_user_id, routine_definition_id, mode_id)
+        SELECT ?, ?, mode_id FROM entry_modes WHERE app_user_id = ? AND entry_id = ?
+          AND EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(appUserId, request.routine_definition_id, appUserId, request.entry_id,
+          appUserId, request.operation_id),
       db.prepare(`INSERT INTO transaction_assertions (app_user_id, id, ok)
         SELECT ?, ?, CASE WHEN
           EXISTS (SELECT 1 FROM routine_definitions r JOIN entries e
@@ -236,6 +246,9 @@ export async function convertEntryToRoutine(
           AND EXISTS (SELECT 1 FROM routine_board_heads WHERE app_user_id = ? AND board_revision = ?)
           AND EXISTS (SELECT 1 FROM routine_occurrence_task_snapshots WHERE app_user_id = ?
             AND routine_occurrence_id = ?)
+          AND ((SELECT mode_id FROM routine_definition_modes WHERE app_user_id = ?
+            AND routine_definition_id = ?) IS (SELECT mode_id FROM entry_modes
+              WHERE app_user_id = ? AND entry_id = ?))
           THEN 1 ELSE 0 END WHERE EXISTS (
             SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
         .bind(appUserId, assertionId, request.entry_id, appUserId, request.routine_definition_id,
@@ -243,6 +256,7 @@ export async function convertEntryToRoutine(
           appUserId, request.entry_id, request.routine_occurrence_id, entry.task_id, currentDay.id,
           appUserId, request.routine_definition_id, appUserId, request.routine_definition_id, boardOrder.value,
           appUserId, boardHead.board_revision + 1, appUserId, request.routine_occurrence_id,
+          appUserId, request.routine_definition_id, appUserId, request.entry_id,
           appUserId, request.operation_id),
       db.prepare(`INSERT INTO operations
         (app_user_id, operation_id, command_type, request_fingerprint_version, request_fingerprint,
@@ -260,8 +274,8 @@ export async function convertEntryToRoutine(
         .bind(appUserId, request.operation_id),
     ]);
     const guard = results[0];
-    const assertion = results[8];
-    const operation = results[9];
+    const assertion = results[9];
+    const operation = results[10];
     if (guard?.meta.changes === 0 || assertion?.meta.changes === 0 || operation?.meta.changes === 0) {
       const committed = await readOperation(db, appUserId, request.operation_id);
       if (committed) return replayOperation(committed, "ConvertEntryToRoutine", requestFingerprint);
@@ -403,11 +417,14 @@ export async function ensureCurrentDayRoutineEntries(
 ): Promise<void> {
   const definitions = await db.prepare(`SELECT r.id, r.task_id, r.default_section_id,
       r.default_estimate_seconds, r.default_planned_start_minute, r.materialization_order,
+      rdm.mode_id AS default_mode_id,
       t.title AS task_title, p.id AS project_id, p.title AS project_title
     FROM routine_definitions r
     JOIN routine_schedules s ON s.app_user_id = r.app_user_id AND s.routine_definition_id = r.id
     JOIN tasks t ON t.app_user_id = r.app_user_id AND t.id = r.task_id
     LEFT JOIN projects p ON p.app_user_id = t.app_user_id AND p.id = t.project_id
+    LEFT JOIN routine_definition_modes rdm
+      ON rdm.app_user_id = r.app_user_id AND rdm.routine_definition_id = r.id
     WHERE r.app_user_id = ?
       AND r.start_logical_date <= ? AND (r.end_logical_date IS NULL OR r.end_logical_date >= ?)
       AND (s.schedule_kind = 'daily'
@@ -473,6 +490,7 @@ export async function ensureCurrentDayRoutineEntries(
       task_title: definition.task_title,
       project_id: definition.project_id,
       project_title: definition.project_title,
+      mode_id: definition.default_mode_id,
     };
   });
   const plansJson = JSON.stringify(plans);
@@ -480,7 +498,7 @@ export async function ensureCurrentDayRoutineEntries(
   const assertionId = `routine-materialize:${guardId}`;
   await hooks.beforeMutation?.();
   try {
-    const [guard, , , , revision, assertion] = await db.batch([
+    const [guard, , , , , revision, assertion] = await db.batch([
       db.prepare(`INSERT INTO routine_materialization_guards
         (app_user_id, taskchute_day_id, guard_id, expected_revision)
         SELECT ?, id, ?, ? FROM taskchute_days WHERE app_user_id = ? AND id = ? AND placement_revision = ?
@@ -528,6 +546,12 @@ export async function ensureCurrentDayRoutineEntries(
         WHERE EXISTS (SELECT 1 FROM routine_materialization_guards
           WHERE app_user_id = ? AND taskchute_day_id = ? AND guard_id = ?)`)
         .bind(appUserId, day.id, nowInstant, plansJson, appUserId, day.id, guardId),
+      db.prepare(`INSERT INTO entry_modes (app_user_id, entry_id, mode_id)
+        SELECT ?, json_extract(value, '$.entry_id'), json_extract(value, '$.mode_id') FROM json_each(?)
+        WHERE json_extract(value, '$.mode_id') IS NOT NULL
+          AND EXISTS (SELECT 1 FROM routine_materialization_guards
+            WHERE app_user_id = ? AND taskchute_day_id = ? AND guard_id = ?)`)
+        .bind(appUserId, plansJson, appUserId, day.id, guardId),
       db.prepare(`UPDATE taskchute_days SET placement_revision = placement_revision + 1
         WHERE app_user_id = ? AND id = ? AND placement_revision = ? AND EXISTS (
           SELECT 1 FROM routine_materialization_guards WHERE app_user_id = ? AND taskchute_day_id = ? AND guard_id = ?)`)

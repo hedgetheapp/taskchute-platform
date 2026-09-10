@@ -636,6 +636,19 @@ try {
   const autoCarryOperationTable = query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'operations'")[0]?.sql ?? "";
   assert(autoCarryOperationTable.includes("SetAutoCarryOverduePlanned"), "0024 must add the setting command to the operation CHECK");
   assert(autoCarryOperationTable.includes("AutoCarryOverduePlanned"), "0024 must add the checkpoint command to the operation CHECK");
+  const preRoutineModeOperations = query("SELECT * FROM operations ORDER BY operation_id");
+  applyFile("migrations/app/0025_routine_mode.sql");
+  assert.deepEqual(query("SELECT * FROM operations ORDER BY operation_id"), preRoutineModeOperations,
+    "0025 must preserve every operation row");
+  assert.deepEqual(query("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('routine_definition_modes', 'routine_occurrence_mode_overrides') ORDER BY name"), [
+    { name: "routine_definition_modes" }, { name: "routine_occurrence_mode_overrides" },
+  ]);
+  assert(query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'operations'")[0]?.sql?.includes("SetRoutineMode"),
+    "0025 must add SetRoutineMode to the operation CHECK");
+  assert(query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'routine_command_guards'")[0]?.sql?.includes("SetRoutineMode"),
+    "0025 must add SetRoutineMode to the Routine guard CHECK");
+  assert.deepEqual(query("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'd085_%'"), [],
+    "0025 migration assertions must not remain after a successful migration");
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
   assert.deepEqual(query("PRAGMA foreign_key_check"), []);
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
@@ -855,7 +868,7 @@ try {
   assert.notEqual(duplicateActive.status, 0, "the active Execution unique index must reject a second active row");
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
   assert.deepEqual(query("PRAGMA foreign_key_check"), []);
-  console.log("migration regression: 4 scenarios passed (R2A normalization, R2B preservation/constraints, duplicate-Task fail-safe, Bulk Selection 0010/0011/0012/0013/0014/0015/0016/0017/0018/0019 preservation/constraints, Mode 0021/0022 preservation/constraints, Interrupt/Continuation 0023 preservation/constraints, Auto Carry 0024 preservation/constraints; fresh 0001 -> 0024 chain)");
+  console.log("migration regression: 4 scenarios passed (R2A normalization, R2B preservation/constraints, duplicate-Task fail-safe, Bulk Selection 0010/0011/0012/0013/0014/0015/0016/0017/0018/0019 preservation/constraints, Mode 0021/0022 preservation/constraints, Interrupt/Continuation 0023 preservation/constraints, Auto Carry 0024 preservation/constraints, Routine Mode 0025 preservation/constraints; fresh 0001 -> 0025 chain)");
 } finally {
   await rm(persistencePath, { recursive: true, force: true });
   await rm(failurePersistencePath, { recursive: true, force: true });
