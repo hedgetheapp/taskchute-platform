@@ -73,8 +73,10 @@ export function isRoutineScheduleEligible(input: {
     case "every_n_weeks": {
       if (!Number.isSafeInteger(schedule.interval_weeks) || schedule.interval_weeks < 2
         || !validWeekdays(schedule.weekdays)) return false;
-      const daysSinceStart = candidate.since(start, { largestUnit: "day" }).days;
-      return Math.floor(daysSinceStart / 7) % schedule.interval_weeks === 0
+      const startWeekMonday = start.subtract({ days: start.dayOfWeek - 1 });
+      const candidateWeekMonday = candidate.subtract({ days: candidate.dayOfWeek - 1 });
+      const weekIndex = candidateWeekMonday.since(startWeekMonday, { largestUnit: "day" }).days / 7;
+      return weekIndex >= 0 && weekIndex % schedule.interval_weeks === 0
         && selectedWeekday(schedule, candidate);
     }
     case "monthly_day":

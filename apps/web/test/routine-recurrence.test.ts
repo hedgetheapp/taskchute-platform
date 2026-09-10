@@ -43,12 +43,57 @@ describe("D-086 routine recurrence evaluator", () => {
     }
   });
 
-  it("uses the start date as the anchor for N-week schedules", () => {
-    const schedule = { kind: "every_n_weeks" as const, interval_weeks: 2, weekdays: [1, 3] };
-    expect(eligible(schedule, "2024-01-03", "2024-01-03")).toBe(true);
-    expect(eligible(schedule, "2024-01-15", "2024-01-03")).toBe(false);
-    expect(eligible(schedule, "2024-01-17", "2024-01-03")).toBe(true);
-    expect(eligible(schedule, "2024-01-31", "2024-01-03")).toBe(true);
+  it("anchors N-week schedules to the Monday-start calendar week", () => {
+    const schedule = { kind: "every_n_weeks" as const, interval_weeks: 2, weekdays: [1, 3, 5] };
+    const start = "2026-10-01";
+    const expected: Array<[string, boolean]> = [
+      ["2026-09-28", false], ["2026-09-30", false], ["2026-10-01", false],
+      ["2026-10-02", true], ["2026-10-05", false], ["2026-10-07", false],
+      ["2026-10-09", false], ["2026-10-12", true], ["2026-10-14", true],
+      ["2026-10-16", true],
+    ];
+    for (const [date, result] of expected) expect(eligible(schedule, date, start)).toBe(result);
+  });
+
+  it("honors the start-day lower bound for every start weekday", () => {
+    const cases: Array<[string, string, string, boolean]> = [
+      ["2026-09-28", "2026-09-28", "2026-09-28", true],
+      ["2026-09-29", "2026-09-28", "2026-09-30", true],
+      ["2026-09-30", "2026-09-28", "2026-10-02", true],
+      ["2026-10-01", "2026-09-28", "2026-10-02", true],
+      ["2026-10-02", "2026-09-28", "2026-10-04", true],
+      ["2026-10-03", "2026-09-28", "2026-10-04", true],
+      ["2026-10-04", "2026-09-28", "2026-10-04", true],
+    ];
+    for (const [start, , candidate, result] of cases) {
+      const weekday = Temporal.PlainDate.from(candidate).dayOfWeek % 7;
+      expect(eligible({ kind: "every_n_weeks", interval_weeks: 2, weekdays: [weekday] }, candidate, start)).toBe(result);
+    }
+    expect(eligible({ kind: "every_n_weeks", interval_weeks: 2, weekdays: [1] }, "2026-09-28", "2026-09-29")).toBe(false);
+  });
+
+  it("repeats active N-week phases across month and year boundaries", () => {
+    const twoWeeks = { kind: "every_n_weeks" as const, interval_weeks: 2, weekdays: [1] };
+    expect(eligible(twoWeeks, "2026-01-05", "2026-01-07")).toBe(false);
+    expect(eligible(twoWeeks, "2026-01-12", "2026-01-07")).toBe(false);
+    expect(eligible(twoWeeks, "2026-01-19", "2026-01-07")).toBe(true);
+
+    const threeWeeks = { kind: "every_n_weeks" as const, interval_weeks: 3, weekdays: [3] };
+    expect(eligible(threeWeeks, "2026-01-07", "2026-01-07")).toBe(true);
+    expect(eligible(threeWeeks, "2026-01-28", "2026-01-07")).toBe(true);
+    expect(eligible(threeWeeks, "2026-02-18", "2026-01-07")).toBe(true);
+    expect(eligible(threeWeeks, "2026-02-11", "2026-01-07")).toBe(false);
+
+    const yearBoundary = { kind: "every_n_weeks" as const, interval_weeks: 2, weekdays: [5] };
+    expect(eligible(yearBoundary, "2027-01-01", "2026-12-31", null)).toBe(true);
+    expect(eligible(yearBoundary, "2027-01-09", "2026-12-31", null)).toBe(false);
+    expect(eligible(yearBoundary, "2027-01-15", "2026-12-31", null)).toBe(true);
+  });
+
+  it("keeps N-week end dates inclusive", () => {
+    const schedule = { kind: "every_n_weeks" as const, interval_weeks: 2, weekdays: [5] };
+    expect(eligible(schedule, "2026-10-02", "2026-10-01", "2026-10-02")).toBe(true);
+    expect(eligible(schedule, "2026-10-16", "2026-10-01", "2026-10-15")).toBe(false);
   });
 
   it("supports exact monthly day and month-end rules without clamping", () => {
