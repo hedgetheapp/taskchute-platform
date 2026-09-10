@@ -65,6 +65,29 @@ describe.sequential("Routine R2B Board", () => {
       schedule: { kind: "daily" }, project: null })]);
   });
 
+  it("keeps materialization order independent from board slots", async () => {
+    const fixture = await seedUser();
+    const first = await createOff(fixture.userId, "Board Routine");
+    const detachedTaskId = uuidv7();
+    const detachedRoutineId = uuidv7();
+    await env.APP_DB.batch([
+      env.APP_DB.prepare("INSERT INTO tasks (id, app_user_id, project_id, title, created_at) VALUES (?, ?, NULL, ?, ?)")
+        .bind(detachedTaskId, fixture.userId, "Detached routine", now),
+      env.APP_DB.prepare(`INSERT INTO routine_definitions
+        (id, app_user_id, task_id, recurrence_type, start_logical_date, end_logical_date,
+         default_section_id, default_estimate_seconds, default_planned_start_minute,
+         materialization_order, defaults_revision, created_at)
+        VALUES (?, ?, ?, 'daily', '2026-09-01', NULL, NULL, NULL, NULL, 2, 0, ?)`)
+        .bind(detachedRoutineId, fixture.userId, detachedTaskId, now),
+    ]);
+    const created = await createRoutine(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), task_id: uuidv7(), routine_definition_id: uuidv7(),
+      title: "After detached routine", expected_board_revision: first.result.board_revision,
+    }, now);
+    expect(await env.APP_DB.prepare("SELECT materialization_order FROM routine_definitions WHERE id = ?")
+      .bind(created.routine_definition_id).first<number>("materialization_order")).toBe(3);
+  });
+
   it("keeps Task -> Routine at 0..1 and owner-scopes Board reads and writes", async () => {
     const first = await seedUser();
     const second = await seedUser();

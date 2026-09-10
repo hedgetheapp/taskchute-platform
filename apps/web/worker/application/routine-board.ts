@@ -321,11 +321,13 @@ export async function createRoutine(db: D1Database, appUserId: string, request: 
   const prior = await readOperation(db, appUserId, request.operation_id);
   if (prior) return replayOperation(prior, "CreateRoutine", requestFingerprint);
   const context = await currentContext(db, appUserId, nowInstant);
-  const [head, count, collisions] = await Promise.all([
+  const [head, boardCount, materializationCount, collisions] = await Promise.all([
     db.prepare("SELECT board_revision FROM routine_board_heads WHERE app_user_id = ?").bind(appUserId)
       .first<{ board_revision: number }>(),
     db.prepare("SELECT COUNT(*) AS value FROM routine_board_items WHERE app_user_id = ?").bind(appUserId)
       .first<{ value: number }>(),
+    db.prepare("SELECT COALESCE(MAX(materialization_order), 0) AS value FROM routine_definitions WHERE app_user_id = ?")
+      .bind(appUserId).first<{ value: number }>(),
     db.prepare(`SELECT 1 AS found FROM tasks WHERE id IN (?, ?) UNION ALL
       SELECT 1 FROM routine_definitions WHERE id = ?`).bind(request.task_id, request.routine_definition_id,
       request.routine_definition_id).all(),
@@ -338,9 +340,10 @@ export async function createRoutine(db: D1Database, appUserId: string, request: 
     return reject(db, appUserId, request.operation_id, "CreateRoutine", requestFingerprint,
       "Routine identity or board state is unavailable");
   }
-  const position = (count?.value ?? 0) + 1;
+  const boardPosition = (boardCount?.value ?? 0) + 1;
+  const materializationOrder = (materializationCount?.value ?? 0) + 1;
   const result: CreateRoutineResult = { routine_definition_id: request.routine_definition_id,
-    task_id: request.task_id, board_position: position, board_revision: request.expected_board_revision + 1,
+    task_id: request.task_id, board_position: boardPosition, board_revision: request.expected_board_revision + 1,
     settings_revision: 0 };
   const pauseId = uuidv7();
   try {
@@ -354,7 +357,7 @@ export async function createRoutine(db: D1Database, appUserId: string, request: 
         default_planned_start_minute, materialization_order, defaults_revision, created_at)
         SELECT ?, ?, ?, 'daily', ?, NULL, NULL, NULL, NULL, ?, 0, ? WHERE EXISTS (
           SELECT 1 FROM tasks WHERE app_user_id = ? AND id = ?)`)
-        .bind(request.routine_definition_id, appUserId, request.task_id, context.logicalDate, position,
+        .bind(request.routine_definition_id, appUserId, request.task_id, context.logicalDate, materializationOrder,
           nowInstant, appUserId, request.task_id),
       db.prepare(`INSERT INTO routine_schedules
         (app_user_id, routine_definition_id, schedule_kind, interval_days, interval_weeks,
@@ -362,7 +365,7 @@ export async function createRoutine(db: D1Database, appUserId: string, request: 
         VALUES (?, ?, 'daily', NULL, NULL, NULL, NULL, NULL, NULL, NULL)`)
         .bind(appUserId, request.routine_definition_id),
       db.prepare(`INSERT INTO routine_board_items VALUES (?, ?, ?, 0)`)
-        .bind(appUserId, request.routine_definition_id, position),
+        .bind(appUserId, request.routine_definition_id, boardPosition),
       db.prepare(`INSERT INTO routine_pause_intervals
         (id, app_user_id, routine_definition_id, paused_logical_date, resumed_logical_date, created_at)
         VALUES (?, ?, ?, ?, NULL, ?)`)
