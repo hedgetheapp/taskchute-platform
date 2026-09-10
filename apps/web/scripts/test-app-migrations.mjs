@@ -649,6 +649,38 @@ try {
     "0025 must add SetRoutineMode to the Routine guard CHECK");
   assert.deepEqual(query("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'd085_%'"), [],
     "0025 migration assertions must not remain after a successful migration");
+  execute(["--command", `
+    INSERT INTO tasks (id, app_user_id, title, created_at) VALUES
+      ('task-d086-days', 'user-v01a', 'D086 every days', '2026-08-28T00:00:00.000Z'),
+      ('task-d086-weekly', 'user-v01a', 'D086 weekly', '2026-08-28T00:00:00.000Z');
+    INSERT INTO routine_definitions
+      (id, app_user_id, task_id, recurrence_type, start_logical_date, end_logical_date,
+       default_section_id, default_estimate_seconds, default_planned_start_minute,
+       materialization_order, defaults_revision, created_at) VALUES
+      ('routine-d086-days', 'user-v01a', 'task-d086-days', 'daily', '2026-08-28', NULL,
+       NULL, NULL, NULL, 100, 0, '2026-08-28T00:00:00.000Z'),
+      ('routine-d086-weekly', 'user-v01a', 'task-d086-weekly', 'daily', '2026-08-28', NULL,
+       NULL, NULL, NULL, 101, 0, '2026-08-28T00:00:00.000Z');
+    INSERT INTO routine_schedules
+      (app_user_id, routine_definition_id, schedule_kind, interval_days, weekdays_mask)
+      VALUES ('user-v01a', 'routine-d086-days', 'every_n_days', 3, NULL),
+             ('user-v01a', 'routine-d086-weekly', 'weekly', NULL, 42);
+  `]);
+  const preD086Schedules = query(`SELECT routine_definition_id, schedule_kind, interval_days, weekdays_mask
+    FROM routine_schedules ORDER BY routine_definition_id`);
+  applyFile("migrations/app/0026_routine_recurrence_expansion.sql");
+  assert.deepEqual(query(`SELECT routine_definition_id, schedule_kind, interval_days, weekdays_mask,
+      interval_weeks, interval_months, month_day, month_ordinal, month_weekday
+    FROM routine_schedules ORDER BY routine_definition_id`), preD086Schedules.map((row) => ({ ...row,
+      interval_weeks: null, interval_months: null, month_day: null, month_ordinal: null, month_weekday: null })));
+  const invalidD086Schedule = execute(["--command", `UPDATE routine_schedules
+    SET schedule_kind = 'every_n_weeks', interval_weeks = 1, weekdays_mask = 2
+    WHERE app_user_id = 'user-v01a' AND routine_definition_id = 'routine-d086-days'`], false);
+  assert.notEqual(invalidD086Schedule.status, 0, "0026 must reject invalid interval/weekday combinations");
+  assert.deepEqual(query("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%d086%'"), [],
+    "0026 temporary tables must not remain after migration");
+  assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
+  assert.deepEqual(query("PRAGMA foreign_key_check"), []);
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
   assert.deepEqual(query("PRAGMA foreign_key_check"), []);
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
@@ -868,7 +900,7 @@ try {
   assert.notEqual(duplicateActive.status, 0, "the active Execution unique index must reject a second active row");
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
   assert.deepEqual(query("PRAGMA foreign_key_check"), []);
-  console.log("migration regression: 4 scenarios passed (R2A normalization, R2B preservation/constraints, duplicate-Task fail-safe, Bulk Selection 0010/0011/0012/0013/0014/0015/0016/0017/0018/0019 preservation/constraints, Mode 0021/0022 preservation/constraints, Interrupt/Continuation 0023 preservation/constraints, Auto Carry 0024 preservation/constraints, Routine Mode 0025 preservation/constraints; fresh 0001 -> 0025 chain)");
+  console.log("migration regression: 4 scenarios passed (R2A normalization, R2B preservation/constraints, duplicate-Task fail-safe, Bulk Selection 0010/0011/0012/0013/0014/0015/0016/0017/0018/0019 preservation/constraints, Mode 0021/0022 preservation/constraints, Interrupt/Continuation 0023 preservation/constraints, Auto Carry 0024 preservation/constraints, Routine Mode 0025 preservation/constraints, Routine Recurrence 0026 preservation/constraints; fresh 0001 -> 0026 chain)");
 } finally {
   await rm(persistencePath, { recursive: true, force: true });
   await rm(failurePersistencePath, { recursive: true, force: true });

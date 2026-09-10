@@ -40,10 +40,35 @@ function parseMinute(value: string): number | null | undefined {
 }
 
 function scheduleText(schedule: RoutineScheduleInput): string {
+  const labels = ["日", "月", "火", "水", "木", "金", "土"];
   if (schedule.kind === "daily") return "毎日";
   if (schedule.kind === "every_n_days") return `${schedule.interval_days}日ごと`;
-  const labels = ["日", "月", "火", "水", "木", "金", "土"];
-  return schedule.weekdays.map((day) => labels[day]).join("・");
+  if (schedule.kind === "weekly") return schedule.weekdays.map((day) => labels[day]).join("・");
+  if (schedule.kind === "every_n_weeks") return `${schedule.interval_weeks}週間ごと ${schedule.weekdays.map((day) => labels[day]).join("・")}`;
+  if (schedule.kind === "monthly_day") return `毎月${schedule.day_of_month}日`;
+  if (schedule.kind === "monthly_last_day") return "毎月末日";
+  if (schedule.kind === "monthly_nth_weekday") return `毎月 第${schedule.ordinal}${labels[schedule.weekday]}曜日`;
+  if (schedule.kind === "monthly_last_weekday") return `毎月 最終${labels[schedule.weekday]}曜日`;
+  if (schedule.kind === "every_n_months_day") return `${schedule.interval_months}か月ごと ${schedule.day_of_month}日`;
+  return `${schedule.interval_months}か月ごと 月末`;
+}
+
+function isValidSchedule(schedule: RoutineScheduleInput): boolean {
+  const weekdaysValid = (weekdays: number[]) => weekdays.length > 0
+    && new Set(weekdays).size === weekdays.length && weekdays.every((day) => day >= 0 && day <= 6);
+  switch (schedule.kind) {
+    case "daily": return true;
+    case "every_n_days": return Number.isSafeInteger(schedule.interval_days) && schedule.interval_days >= 2 && schedule.interval_days <= 365;
+    case "weekly": return weekdaysValid(schedule.weekdays);
+    case "every_n_weeks": return Number.isSafeInteger(schedule.interval_weeks) && schedule.interval_weeks >= 2 && weekdaysValid(schedule.weekdays);
+    case "monthly_day": return Number.isSafeInteger(schedule.day_of_month) && schedule.day_of_month >= 1 && schedule.day_of_month <= 31;
+    case "monthly_last_day": return true;
+    case "monthly_nth_weekday": return Number.isSafeInteger(schedule.ordinal) && schedule.ordinal >= 1 && schedule.ordinal <= 5 && schedule.weekday >= 0 && schedule.weekday <= 6;
+    case "monthly_last_weekday": return schedule.weekday >= 0 && schedule.weekday <= 6;
+    case "every_n_months_day": return Number.isSafeInteger(schedule.interval_months) && schedule.interval_months >= 2
+      && Number.isSafeInteger(schedule.day_of_month) && schedule.day_of_month >= 1 && schedule.day_of_month <= 31;
+    case "every_n_months_last_day": return Number.isSafeInteger(schedule.interval_months) && schedule.interval_months >= 2;
+  }
 }
 
 function isFormElement(element: Element | null): boolean {
@@ -341,29 +366,59 @@ export function RoutineBoard({ onUnauthorized }: RoutineBoardProps) {
             event.currentTarget.value = routine.title; event.currentTarget.blur();
           } }} onBlur={(event) => { const value = event.target.value.trim(); if (value && value !== routine.title) void save(routine, { title: value }); }} />
       </div>;
-      case "schedule": return <div role="cell" className="routine-cell routine-schedule-cell"><button type="button" className="secondary"
-        onClick={() => openSchedule(routine)} disabled={pending}>{scheduleText(routine.schedule)}</button>
-        {scheduleDraft && <div className="routine-popover" role="dialog" aria-label={`${routine.title}の繰り返し`}>
-          <label>繰り返し<select value={scheduleDraft.schedule.kind} onChange={(event) => {
-            const kind = event.target.value; const schedule: RoutineScheduleInput = kind === "daily" ? { kind: "daily" }
-              : kind === "every_n_days" ? { kind: "every_n_days", interval_days: 2 } : { kind: "weekly", weekdays: [1] };
-            setScheduleDrafts((current) => ({ ...current, [routine.routine_definition_id]: { schedule } }));
-          }}><option value="daily">毎日</option><option value="every_n_days">N日ごと</option><option value="weekly">曜日指定</option></select></label>
-          {scheduleDraft.schedule.kind === "every_n_days" && <label>日数<input type="number" min={2} max={365}
-            value={scheduleDraft.schedule.interval_days} onChange={(event) => setScheduleDrafts((current) => ({
-              ...current, [routine.routine_definition_id]: { schedule: { kind: "every_n_days", interval_days: Number(event.target.value) } },
-            }))} /></label>}
-          {scheduleDraft.schedule.kind === "weekly" && <fieldset><legend>曜日</legend>{["日", "月", "火", "水", "木", "金", "土"].map((label, day) =>
-            <label key={label}><input type="checkbox" checked={scheduleDraft.schedule.kind === "weekly"
-              && scheduleDraft.schedule.weekdays.includes(day)} onChange={(event) => {
-                const schedule = scheduleDraft.schedule; if (schedule.kind !== "weekly") return;
-                const days = event.target.checked ? [...schedule.weekdays, day].sort() : schedule.weekdays.filter((item) => item !== day);
-                if (days.length) setScheduleDrafts((current) => ({ ...current, [routine.routine_definition_id]: { schedule: { kind: "weekly", weekdays: days } } }));
+      case "schedule": {
+        const draftSchedule = scheduleDraft?.schedule;
+        const setDraftSchedule = (schedule: RoutineScheduleInput) => setScheduleDrafts((current) => ({
+          ...current, [routine.routine_definition_id]: { schedule },
+        }));
+        const weekdayLabels = ["日", "月", "火", "水", "木", "金", "土"];
+        const weekdaySchedule = draftSchedule?.kind === "weekly" || draftSchedule?.kind === "every_n_weeks" ? draftSchedule : null;
+        return <div role="cell" className="routine-cell routine-schedule-cell"><button type="button" className="secondary"
+          onClick={() => openSchedule(routine)} disabled={pending}>{scheduleText(routine.schedule)}</button>
+          {draftSchedule && <div className="routine-popover" role="dialog" aria-label={`${routine.title}の繰り返し`}>
+            <label>繰り返し<select value={draftSchedule.kind} onChange={(event) => {
+              const kind = event.target.value;
+              const schedule: RoutineScheduleInput = kind === "daily" ? { kind: "daily" }
+                : kind === "every_n_days" ? { kind: "every_n_days", interval_days: 2 }
+                : kind === "weekly" ? { kind: "weekly", weekdays: [1] }
+                : kind === "every_n_weeks" ? { kind: "every_n_weeks", interval_weeks: 2, weekdays: [1] }
+                : kind === "monthly_day" ? { kind: "monthly_day", day_of_month: 1 }
+                : kind === "monthly_last_day" ? { kind: "monthly_last_day" }
+                : kind === "monthly_nth_weekday" ? { kind: "monthly_nth_weekday", ordinal: 1, weekday: 1 }
+                : kind === "monthly_last_weekday" ? { kind: "monthly_last_weekday", weekday: 5 }
+                : kind === "every_n_months_day" ? { kind: "every_n_months_day", interval_months: 2, day_of_month: 1 }
+                : { kind: "every_n_months_last_day", interval_months: 2 };
+              setDraftSchedule(schedule);
+            }}>
+              <option value="daily">毎日</option><option value="every_n_days">N日ごと</option>
+              <option value="weekly">曜日指定</option><option value="every_n_weeks">N週間ごと＋曜日</option>
+              <option value="monthly_day">毎月○日</option><option value="monthly_last_day">毎月末日</option>
+              <option value="monthly_nth_weekday">毎月 第N曜日</option><option value="monthly_last_weekday">毎月 最終曜日</option>
+              <option value="every_n_months_day">Nか月ごと○日</option><option value="every_n_months_last_day">Nか月ごと月末</option>
+            </select></label>
+            {draftSchedule.kind === "every_n_days" && <label>日数<input type="number" min={2} max={365}
+              value={draftSchedule.interval_days} onChange={(event) => setDraftSchedule({ kind: "every_n_days", interval_days: Number(event.target.value) })} /></label>}
+            {draftSchedule.kind === "every_n_weeks" && <label>週数<input type="number" min={2}
+              value={draftSchedule.interval_weeks} onChange={(event) => setDraftSchedule({ ...draftSchedule, interval_weeks: Number(event.target.value) })} /></label>}
+            {(draftSchedule.kind === "every_n_months_day" || draftSchedule.kind === "every_n_months_last_day") && <label>月数<input type="number" min={2}
+              value={draftSchedule.interval_months} onChange={(event) => setDraftSchedule({ ...draftSchedule, interval_months: Number(event.target.value) })} /></label>}
+            {(draftSchedule.kind === "monthly_day" || draftSchedule.kind === "every_n_months_day") && <label>日<input type="number" min={1} max={31}
+              value={draftSchedule.day_of_month} onChange={(event) => setDraftSchedule({ ...draftSchedule, day_of_month: Number(event.target.value) })} /></label>}
+            {draftSchedule.kind === "monthly_nth_weekday" && <><label>第<select aria-label="第何週" value={draftSchedule.ordinal}
+              onChange={(event) => setDraftSchedule({ ...draftSchedule, ordinal: Number(event.target.value) })}>{[1, 2, 3, 4, 5].map((ordinal) => <option key={ordinal} value={ordinal}>{ordinal}</option>)}</select>曜日</label>
+              <label>曜日<select aria-label="月内曜日" value={draftSchedule.weekday} onChange={(event) => setDraftSchedule({ ...draftSchedule, weekday: Number(event.target.value) })}>{weekdayLabels.map((label, day) => <option key={label} value={day}>{label}</option>)}</select></label></>}
+            {(draftSchedule.kind === "monthly_last_weekday") && <label>曜日<select value={draftSchedule.weekday}
+              onChange={(event) => setDraftSchedule({ ...draftSchedule, weekday: Number(event.target.value) })}>{weekdayLabels.map((label, day) => <option key={label} value={day}>{label}</option>)}</select></label>}
+            {weekdaySchedule && <fieldset><legend>曜日</legend>{weekdayLabels.map((label, day) =>
+              <label key={label}><input type="checkbox" checked={weekdaySchedule.weekdays.includes(day)} onChange={(event) => {
+                const days = event.target.checked ? [...weekdaySchedule.weekdays, day].sort() : weekdaySchedule.weekdays.filter((item) => item !== day);
+                setDraftSchedule({ ...weekdaySchedule, weekdays: days });
               }} />{label}</label>)} </fieldset>}
-          <div><button type="button" disabled={pending} onClick={() => void saveSchedule(routine)}>保存</button>
-            <button type="button" className="secondary" onClick={() => setScheduleDrafts((current) => { const next = { ...current }; delete next[routine.routine_definition_id]; return next; })}>キャンセル</button></div>
-        </div>}
-      </div>;
+            <div><button type="button" disabled={pending || !isValidSchedule(draftSchedule)} onClick={() => void saveSchedule(routine)}>保存</button>
+              <button type="button" className="secondary" onClick={() => setScheduleDrafts((current) => { const next = { ...current }; delete next[routine.routine_definition_id]; return next; })}>キャンセル</button></div>
+          </div>}
+        </div>;
+      }
       case "plannedStart": return <div role="cell" className="routine-cell"><input aria-label={`${routine.title}の開始予定`} key={`${canonicalEpoch}-${routine.routine_definition_id}-start`}
         defaultValue={minuteText(routine.default_planned_start_minute)} disabled={pending} placeholder="—"
         onBlur={(event) => { if (event.target.value !== minuteText(routine.default_planned_start_minute)) void saveStart(routine, event.target.value); }} /></div>;

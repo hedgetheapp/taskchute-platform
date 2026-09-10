@@ -775,7 +775,14 @@ export interface EndRoutineResult {
 export type RoutineScheduleInput =
   | { kind: "daily" }
   | { kind: "every_n_days"; interval_days: number }
-  | { kind: "weekly"; weekdays: number[] };
+  | { kind: "weekly"; weekdays: number[] }
+  | { kind: "every_n_weeks"; interval_weeks: number; weekdays: number[] }
+  | { kind: "monthly_day"; day_of_month: number }
+  | { kind: "monthly_last_day" }
+  | { kind: "monthly_nth_weekday"; ordinal: number; weekday: number }
+  | { kind: "monthly_last_weekday"; weekday: number }
+  | { kind: "every_n_months_day"; interval_months: number; day_of_month: number }
+  | { kind: "every_n_months_last_day"; interval_months: number };
 
 export interface RoutineBoardItemProjection {
   routine_definition_id: string;

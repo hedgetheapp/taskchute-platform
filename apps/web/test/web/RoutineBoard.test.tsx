@@ -152,6 +152,24 @@ describe("Routine Board", () => {
     await waitFor(() => expect(mocks.updateRoutine).toHaveBeenCalledWith(expect.objectContaining({ end_logical_date: "2026-09-30" })));
   });
 
+  it("exposes every D-086 recurrence family and blocks an empty weekday draft", async () => {
+    render(<RoutineBoard onUnauthorized={vi.fn()} />);
+    await screen.findByDisplayValue("Active Routine");
+    fireEvent.click(screen.getByRole("button", { name: "毎日" }));
+    const dialog = screen.getByRole("dialog", { name: "Active Routineの繰り返し" });
+    for (const label of ["毎日", "N日ごと", "曜日指定", "N週間ごと＋曜日", "毎月○日", "毎月末日",
+      "毎月 第N曜日", "毎月 最終曜日", "Nか月ごと○日", "Nか月ごと月末"]) {
+      expect(within(dialog).getByRole("option", { name: label })).toBeTruthy();
+    }
+    fireEvent.change(within(dialog).getByLabelText("繰り返し"), { target: { value: "monthly_nth_weekday" } });
+    expect(within(dialog).getByLabelText("第何週")).toBeTruthy();
+    expect(within(dialog).getByLabelText("月内曜日")).toBeTruthy();
+    fireEvent.change(within(dialog).getByLabelText("繰り返し"), { target: { value: "weekly" } });
+    fireEvent.click(within(dialog).getByLabelText("月"));
+    expect((within(dialog).getByRole("button", { name: "保存" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(mocks.updateRoutine).not.toHaveBeenCalled();
+  });
+
   it("toggles and reorders from task/non-task row surfaces without keyboard reorder", async () => {
     board.routines[1]!.end_logical_date = null;
     render(<RoutineBoard onUnauthorized={vi.fn()} />);

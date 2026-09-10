@@ -12,6 +12,7 @@ import type {
   UpdateRoutineRequest,
   UpdateRoutineResult,
 } from "../../src/shared/contracts";
+import { isRoutineScheduleEligible, routineScheduleFromSnapshot, type RoutineScheduleSnapshot } from "../../src/shared/routine-recurrence";
 import { resolveTaskChuteDay } from "../domain/taskchute-day";
 import { isUuidV7, uuidv7 } from "../domain/uuidv7";
 import { persistRejection, readOperation, replayOperation, type CommandType } from "../persistence/operations";
@@ -31,9 +32,14 @@ interface RoutineRow {
   title: string;
   project_id: string | null;
   project_title: string | null;
-  schedule_kind: "daily" | "every_n_days" | "weekly";
+  schedule_kind: RoutineScheduleInput["kind"];
   interval_days: number | null;
+  interval_weeks: number | null;
+  interval_months: number | null;
   weekdays_mask: number | null;
+  month_day: number | null;
+  month_ordinal: number | null;
+  month_weekday: number | null;
   default_section_id: string | null;
   default_planned_start_minute: number | null;
   default_estimate_seconds: number | null;
@@ -76,6 +82,34 @@ function isSchedule(value: unknown): value is RoutineScheduleInput {
       && Array.isArray(row.weekdays) && row.weekdays.length >= 1
       && new Set(row.weekdays).size === row.weekdays.length
       && row.weekdays.every((day) => Number.isInteger(day) && weekdayValues.has(day));
+  }
+  if (row.kind === "every_n_weeks") {
+    return Object.keys(row).every((key) => key === "kind" || key === "interval_weeks" || key === "weekdays")
+      && Number.isSafeInteger(row.interval_weeks) && Number(row.interval_weeks) >= 2
+      && Array.isArray(row.weekdays) && row.weekdays.length >= 1
+      && new Set(row.weekdays).size === row.weekdays.length
+      && row.weekdays.every((day) => Number.isInteger(day) && weekdayValues.has(day));
+  }
+  if (row.kind === "monthly_day" || row.kind === "every_n_months_day") {
+    const intervalValid = row.kind === "monthly_day"
+      || (Number.isSafeInteger(row.interval_months) && Number(row.interval_months) >= 2);
+    return Object.keys(row).every((key) => key === "kind" || key === "day_of_month" || key === "interval_months")
+      && intervalValid && Number.isSafeInteger(row.day_of_month)
+      && Number(row.day_of_month) >= 1 && Number(row.day_of_month) <= 31;
+  }
+  if (row.kind === "monthly_last_day" || row.kind === "every_n_months_last_day") {
+    return Object.keys(row).every((key) => key === "kind" || key === "interval_months")
+      && (row.kind === "monthly_last_day"
+        || (Number.isSafeInteger(row.interval_months) && Number(row.interval_months) >= 2));
+  }
+  if (row.kind === "monthly_nth_weekday") {
+    return Object.keys(row).every((key) => key === "kind" || key === "ordinal" || key === "weekday")
+      && Number.isSafeInteger(row.ordinal) && Number(row.ordinal) >= 1 && Number(row.ordinal) <= 5
+      && Number.isInteger(row.weekday) && weekdayValues.has(Number(row.weekday));
+  }
+  if (row.kind === "monthly_last_weekday") {
+    return Object.keys(row).every((key) => key === "kind" || key === "weekday")
+      && Number.isInteger(row.weekday) && weekdayValues.has(Number(row.weekday));
   }
   return false;
 }
@@ -131,17 +165,48 @@ export function isDeleteRoutineRequest(value: unknown): value is DeleteRoutineRe
     && Number.isSafeInteger(body.expected_board_revision) && Number(body.expected_board_revision) >= 0;
 }
 
-function scheduleColumns(schedule: RoutineScheduleInput): { kind: string; interval: number | null; mask: number | null } {
-  if (schedule.kind === "daily") return { kind: "daily", interval: null, mask: null };
-  if (schedule.kind === "every_n_days") return { kind: schedule.kind, interval: schedule.interval_days, mask: null };
-  return { kind: schedule.kind, interval: null,
-    mask: schedule.weekdays.reduce((mask, day) => mask | (1 << day), 0) };
+interface ScheduleColumns {
+  kind: RoutineScheduleInput["kind"];
+  interval_days: number | null;
+  interval_weeks: number | null;
+  interval_months: number | null;
+  weekdays_mask: number | null;
+  month_day: number | null;
+  month_ordinal: number | null;
+  month_weekday: number | null;
+}
+
+function scheduleColumns(schedule: RoutineScheduleInput): ScheduleColumns {
+  const base: ScheduleColumns = { kind: schedule.kind, interval_days: null, interval_weeks: null,
+    interval_months: null, weekdays_mask: null, month_day: null, month_ordinal: null, month_weekday: null };
+  if (schedule.kind === "every_n_days") base.interval_days = schedule.interval_days;
+  if (schedule.kind === "every_n_weeks") {
+    base.interval_weeks = schedule.interval_weeks;
+    base.weekdays_mask = schedule.weekdays.reduce((mask, day) => mask | (1 << day), 0);
+  }
+  if (schedule.kind === "weekly") base.weekdays_mask = schedule.weekdays.reduce((mask, day) => mask | (1 << day), 0);
+  if (schedule.kind === "monthly_day") base.month_day = schedule.day_of_month;
+  if (schedule.kind === "monthly_last_day") return base;
+  if (schedule.kind === "monthly_nth_weekday") { base.month_ordinal = schedule.ordinal; base.month_weekday = schedule.weekday; }
+  if (schedule.kind === "monthly_last_weekday") base.month_weekday = schedule.weekday;
+  if (schedule.kind === "every_n_months_day") { base.interval_months = schedule.interval_months; base.month_day = schedule.day_of_month; }
+  if (schedule.kind === "every_n_months_last_day") base.interval_months = schedule.interval_months;
+  return base;
 }
 
 function scheduleProjection(row: RoutineRow): RoutineScheduleInput {
-  if (row.schedule_kind === "daily") return { kind: "daily" };
-  if (row.schedule_kind === "every_n_days") return { kind: "every_n_days", interval_days: row.interval_days! };
-  return { kind: "weekly", weekdays: [0, 1, 2, 3, 4, 5, 6].filter((day) => ((row.weekdays_mask! >> day) & 1) === 1) };
+  return routineScheduleFromSnapshot({ schedule_kind: row.schedule_kind,
+    interval_days: row.interval_days, interval_weeks: row.interval_weeks,
+    interval_months: row.interval_months, weekdays_mask: row.weekdays_mask,
+    month_day: row.month_day, month_ordinal: row.month_ordinal, month_weekday: row.month_weekday });
+}
+
+function scheduleFromRow(row: {
+  schedule_kind: RoutineScheduleInput["kind"]; interval_days: number | null; interval_weeks: number | null;
+  interval_months: number | null; weekdays_mask: number | null; month_day: number | null;
+  month_ordinal: number | null; month_weekday: number | null;
+}): RoutineScheduleInput {
+  return routineScheduleFromSnapshot(row as RoutineScheduleSnapshot);
 }
 
 async function currentContext(db: D1Database, appUserId: string, nowInstant: string): Promise<CurrentContext> {
@@ -166,7 +231,8 @@ export async function loadRoutineBoard(
   const [head, routines, sections] = await db.batch([
     db.prepare("SELECT board_revision FROM routine_board_heads WHERE app_user_id = ?").bind(appUserId),
     db.prepare(`SELECT r.id AS routine_definition_id, r.task_id, t.title, p.id AS project_id,
-        p.title AS project_title, s.schedule_kind, s.interval_days, s.weekdays_mask,
+        p.title AS project_title, s.schedule_kind, s.interval_days, s.interval_weeks, s.interval_months,
+        s.weekdays_mask, s.month_day, s.month_ordinal, s.month_weekday,
         r.default_section_id, r.default_planned_start_minute, r.default_estimate_seconds,
         rdm.mode_id AS default_mode_id, md.title AS default_mode_title,
         CASE WHEN ma.mode_id IS NULL THEN 0 ELSE 1 END AS default_mode_archived,
@@ -290,7 +356,10 @@ export async function createRoutine(db: D1Database, appUserId: string, request: 
           SELECT 1 FROM tasks WHERE app_user_id = ? AND id = ?)`)
         .bind(request.routine_definition_id, appUserId, request.task_id, context.logicalDate, position,
           nowInstant, appUserId, request.task_id),
-      db.prepare(`INSERT INTO routine_schedules VALUES (?, ?, 'daily', NULL, NULL)`)
+      db.prepare(`INSERT INTO routine_schedules
+        (app_user_id, routine_definition_id, schedule_kind, interval_days, interval_weeks,
+         interval_months, weekdays_mask, month_day, month_ordinal, month_weekday)
+        VALUES (?, ?, 'daily', NULL, NULL, NULL, NULL, NULL, NULL, NULL)`)
         .bind(appUserId, request.routine_definition_id),
       db.prepare(`INSERT INTO routine_board_items VALUES (?, ?, ?, 0)`)
         .bind(appUserId, request.routine_definition_id, position),
@@ -316,51 +385,44 @@ export async function createRoutine(db: D1Database, appUserId: string, request: 
   }
 }
 
-function eligibleExpression(alias: string): string {
-  return `${alias}.start_logical_date <= ? AND (${alias}.end_logical_date IS NULL OR ${alias}.end_logical_date >= ?)
-    AND (s.schedule_kind = 'daily'
-      OR (s.schedule_kind = 'every_n_days' AND CAST(julianday(?) - julianday(${alias}.start_logical_date) AS INTEGER) % s.interval_days = 0)
-      OR (s.schedule_kind = 'weekly' AND (s.weekdays_mask & (1 << CAST(strftime('%w', ?) AS INTEGER))) <> 0))
-    AND NOT EXISTS (SELECT 1 FROM routine_pause_intervals pi WHERE pi.app_user_id = ${alias}.app_user_id
-      AND pi.routine_definition_id = ${alias}.id AND pi.paused_logical_date <= ?
-      AND (pi.resumed_logical_date IS NULL OR ? < pi.resumed_logical_date))
-    AND NOT EXISTS (SELECT 1 FROM routine_definition_archives a
-      WHERE a.app_user_id = ${alias}.app_user_id AND a.routine_definition_id = ${alias}.id)`;
-}
-
 async function currentMaterializationPlan(db: D1Database, appUserId: string, routineId: string,
   context: CurrentContext, resuming = false): Promise<{ occurrenceId: string; entryId: string; taskId: string; title: string;
     projectId: string | null; projectTitle: string | null; sectionId: string | null;
     plannedStart: number | null; estimate: number | null; position: number; modeId: string | null } | null> {
   if (!context.dayId || context.placementRevision === null) return null;
-  const eligibility = resuming
-    ? `r.start_logical_date <= ? AND (r.end_logical_date IS NULL OR r.end_logical_date >= ?)
-      AND (s.schedule_kind = 'daily'
-        OR (s.schedule_kind = 'every_n_days' AND CAST(julianday(?) - julianday(r.start_logical_date) AS INTEGER) % s.interval_days = 0)
-        OR (s.schedule_kind = 'weekly' AND (s.weekdays_mask & (1 << CAST(strftime('%w', ?) AS INTEGER))) <> 0))`
-    : eligibleExpression("r");
-  const bindings = resuming
-    ? [appUserId, routineId, context.logicalDate, context.logicalDate, context.logicalDate, context.logicalDate, context.dayId]
-    : [appUserId, routineId, context.logicalDate, context.logicalDate, context.logicalDate,
-        context.logicalDate, context.logicalDate, context.logicalDate, context.dayId];
   const definition = await db.prepare(`SELECT r.task_id, t.title, p.id AS project_id, p.title AS project_title,
       r.default_section_id, r.default_planned_start_minute, r.default_estimate_seconds,
-      rdm.mode_id AS default_mode_id
+      rdm.mode_id AS default_mode_id, r.start_logical_date, r.end_logical_date,
+      s.schedule_kind, s.interval_days, s.interval_weeks, s.interval_months, s.weekdays_mask,
+      s.month_day, s.month_ordinal, s.month_weekday
     FROM routine_definitions r JOIN routine_schedules s ON s.app_user_id = r.app_user_id AND s.routine_definition_id = r.id
     JOIN tasks t ON t.app_user_id = r.app_user_id AND t.id = r.task_id
     LEFT JOIN projects p ON p.app_user_id = t.app_user_id AND p.id = t.project_id
     LEFT JOIN routine_definition_modes rdm
       ON rdm.app_user_id = r.app_user_id AND rdm.routine_definition_id = r.id
-    WHERE r.app_user_id = ? AND r.id = ? AND ${eligibility}
+    WHERE r.app_user_id = ? AND r.id = ?
+      AND r.start_logical_date <= ? AND (r.end_logical_date IS NULL OR r.end_logical_date >= ?)
       AND NOT EXISTS (SELECT 1 FROM routine_definition_archives a
         WHERE a.app_user_id = r.app_user_id AND a.routine_definition_id = r.id)
+      ${resuming ? "" : `AND NOT EXISTS (SELECT 1 FROM routine_pause_intervals pi WHERE pi.app_user_id = r.app_user_id
+        AND pi.routine_definition_id = r.id AND pi.paused_logical_date <= ?
+        AND (pi.resumed_logical_date IS NULL OR ? < pi.resumed_logical_date))`}
       AND NOT EXISTS (SELECT 1 FROM routine_occurrences o WHERE o.app_user_id = r.app_user_id
         AND o.routine_definition_id = r.id AND o.origin_taskchute_day_id = ?)`)
-    .bind(...bindings)
+    .bind(...(resuming
+      ? [appUserId, routineId, context.logicalDate, context.logicalDate, context.dayId]
+      : [appUserId, routineId, context.logicalDate, context.logicalDate, context.logicalDate, context.logicalDate, context.dayId]))
     .first<{ task_id: string; title: string; project_id: string | null; project_title: string | null;
       default_section_id: string | null; default_planned_start_minute: number | null;
-      default_estimate_seconds: number | null; default_mode_id: string | null }>();
+      default_estimate_seconds: number | null; default_mode_id: string | null; start_logical_date: string;
+      end_logical_date: string | null; schedule_kind: RoutineScheduleInput["kind"];
+      interval_days: number | null; interval_weeks: number | null; interval_months: number | null;
+      weekdays_mask: number | null; month_day: number | null; month_ordinal: number | null;
+      month_weekday: number | null }>();
   if (!definition) return null;
+  const schedule = scheduleFromRow(definition);
+  if (!isRoutineScheduleEligible({ schedule, startLogicalDate: definition.start_logical_date,
+    endLogicalDate: definition.end_logical_date, candidateLogicalDate: context.logicalDate })) return null;
   if (definition.default_section_id !== null) {
     const valid = await db.prepare(`SELECT COUNT(*) AS count FROM taskchute_day_section_contexts
       WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id = ? AND logical_start_minute <= ?
@@ -525,17 +587,8 @@ interface PlannedOccurrenceRow {
   section_plan_override_present: number;
   estimate_override_present: number;
   suppressed: number;
+  suppression_reason: "schedule" | "period" | "paused" | null;
   origin_taskchute_day_id: string;
-}
-
-function scheduleEligible(schedule: RoutineScheduleInput, start: string, end: string | null, date: string): boolean {
-  if (date < start || (end !== null && date > end)) return false;
-  const startDay = Math.floor(Date.parse(`${start}T00:00:00Z`) / 86_400_000);
-  const target = new Date(`${date}T00:00:00Z`);
-  const targetDay = Math.floor(target.valueOf() / 86_400_000);
-  if (schedule.kind === "daily") return true;
-  if (schedule.kind === "every_n_days") return (targetDay - startDay) % schedule.interval_days === 0;
-  return schedule.weekdays.includes(target.getUTCDay());
 }
 
 async function pausedOn(db: D1Database, appUserId: string, routineId: string, date: string): Promise<boolean> {
@@ -552,7 +605,8 @@ async function readPlannedOccurrences(db: D1Database, appUserId: string, routine
       o.origin_taskchute_day_id,
       d.logical_date, d.placement_revision, e.section_id, e.planned_start_minute, e.position,
       o.section_plan_override_present, o.estimate_override_present,
-      CASE WHEN x.routine_occurrence_id IS NULL THEN 0 ELSE 1 END AS suppressed
+      CASE WHEN x.routine_occurrence_id IS NULL THEN 0 ELSE 1 END AS suppressed,
+      x.reason AS suppression_reason
     FROM routine_occurrences o JOIN entries e
       ON e.app_user_id = o.app_user_id AND e.routine_occurrence_id = o.id
     JOIN taskchute_days d ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
@@ -604,7 +658,8 @@ async function newCurrentPlanForUpdate(db: D1Database, appUserId: string, taskId
   occurrences: PlannedOccurrenceRow[]) {
   if (!context.dayId || context.placementRevision === null
     || occurrences.some((row) => row.taskchute_day_id === context.dayId)
-    || !scheduleEligible(request.schedule, request.start_logical_date, request.end_logical_date, context.logicalDate)
+    || !isRoutineScheduleEligible({ schedule: request.schedule, startLogicalDate: request.start_logical_date,
+      endLogicalDate: request.end_logical_date, candidateLogicalDate: context.logicalDate })
     || await pausedOn(db, appUserId, request.routine_definition_id, context.logicalDate)) return null;
   if (request.default_section_id !== null) {
     const valid = await db.prepare(`SELECT COUNT(*) AS count FROM taskchute_day_section_contexts
@@ -668,8 +723,9 @@ export async function updateRoutine(db: D1Database, appUserId: string, request: 
   const desired = new Map<string, boolean>();
   for (const row of occurrences) {
     const moved = row.taskchute_day_id !== row.origin_taskchute_day_id;
-    desired.set(row.occurrence_id, moved || scheduleEligible(request.schedule, request.start_logical_date,
-      request.end_logical_date, row.logical_date));
+    desired.set(row.occurrence_id, moved || isRoutineScheduleEligible({ schedule: request.schedule,
+      startLogicalDate: request.start_logical_date, endLogicalDate: request.end_logical_date,
+      candidateLogicalDate: row.logical_date }));
   }
   const eligibleRows = occurrences.filter((row) => desired.get(row.occurrence_id));
   const sectionPlans = await sectionPlansForUpdate(db, appUserId, eligibleRows, request);
@@ -677,7 +733,8 @@ export async function updateRoutine(db: D1Database, appUserId: string, request: 
     "Routine placement is unavailable in an affected TaskChuteDay context");
   const suppress = occurrences.filter((row) => !desired.get(row.occurrence_id) && row.suppressed === 0)
     .map((row) => ({ occurrence_id: row.occurrence_id }));
-  const unsuppress = occurrences.filter((row) => desired.get(row.occurrence_id) && row.suppressed === 1)
+  const unsuppress = occurrences.filter((row) => desired.get(row.occurrence_id) && row.suppressed === 1
+    && (row.suppression_reason === "schedule" || row.suppression_reason === "period"))
     .map((row) => row.occurrence_id);
   const currentPlan = await newCurrentPlanForUpdate(db, appUserId, item.task_id, request, defaultModeId,
     context, occurrences);
@@ -731,11 +788,13 @@ export async function updateRoutine(db: D1Database, appUserId: string, request: 
         .bind(request.start_logical_date, request.end_logical_date, request.default_section_id,
           request.default_planned_start_minute, request.default_estimate_seconds, appUserId,
           request.routine_definition_id, appUserId, request.operation_id),
-      db.prepare(`UPDATE routine_schedules SET schedule_kind = ?, interval_days = ?, weekdays_mask = ?
+      db.prepare(`UPDATE routine_schedules SET schedule_kind = ?, interval_days = ?, interval_weeks = ?,
+        interval_months = ?, weekdays_mask = ?, month_day = ?, month_ordinal = ?, month_weekday = ?
         WHERE app_user_id = ? AND routine_definition_id = ? AND EXISTS (
           SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
-        .bind(schedule.kind, schedule.interval, schedule.mask, appUserId, request.routine_definition_id,
-          appUserId, request.operation_id),
+        .bind(schedule.kind, schedule.interval_days, schedule.interval_weeks, schedule.interval_months,
+          schedule.weekdays_mask, schedule.month_day, schedule.month_ordinal, schedule.month_weekday,
+          appUserId, request.routine_definition_id, appUserId, request.operation_id),
       db.prepare(`UPDATE routine_board_items SET settings_revision = settings_revision + 1
         WHERE app_user_id = ? AND routine_definition_id = ? AND settings_revision = ? AND EXISTS (
           SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)

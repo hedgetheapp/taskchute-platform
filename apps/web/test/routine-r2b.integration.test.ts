@@ -290,4 +290,42 @@ describe.sequential("Routine R2B Board", () => {
     expect(await env.APP_DB.prepare("SELECT routine_occurrence_id FROM routine_occurrence_task_snapshots WHERE app_user_id = ?")
       .bind(fixture.userId).first<string>("routine_occurrence_id")).toBe(occurrenceId);
   });
+
+  it("materializes every D-086 recurrence family through the shared evaluator", async () => {
+    const fixture = await seedUser();
+    const schedules = [
+      { kind: "every_n_weeks" as const, interval_weeks: 2, weekdays: [3] },
+      { kind: "monthly_day" as const, day_of_month: 30 },
+      { kind: "monthly_last_day" as const },
+      { kind: "monthly_nth_weekday" as const, ordinal: 5, weekday: 3 },
+      { kind: "monthly_last_weekday" as const, weekday: 3 },
+      { kind: "every_n_months_day" as const, interval_months: 2, day_of_month: 30 },
+      { kind: "every_n_months_last_day" as const, interval_months: 2 },
+    ];
+    let boardRevision = 0;
+    for (const schedule of schedules) {
+      const created = await createRoutine(env.APP_DB, fixture.userId, {
+        operation_id: uuidv7(), task_id: uuidv7(), routine_definition_id: uuidv7(),
+        title: `D086 ${schedule.kind}`, expected_board_revision: boardRevision,
+      }, now);
+      boardRevision += 1;
+      await updateRoutine(env.APP_DB, fixture.userId, {
+        operation_id: uuidv7(), routine_definition_id: created.routine_definition_id,
+        expected_settings_revision: 0, title: `D086 ${schedule.kind}`, project_id: null, schedule,
+        default_section_id: null, default_planned_start_minute: null, default_estimate_seconds: null,
+        start_logical_date: "2026-09-30", end_logical_date: null,
+      }, now);
+      await setRoutineEnabled(env.APP_DB, fixture.userId, {
+        operation_id: uuidv7(), routine_definition_id: created.routine_definition_id,
+        enabled: true, expected_settings_revision: 1,
+      }, now);
+    }
+    const later = "2026-09-30T12:00:00.000Z";
+    await loadCurrentTaskChuteDay(env.APP_DB, fixture.userId, later);
+    expect(await env.APP_DB.prepare(`SELECT COUNT(*) AS count FROM routine_occurrences WHERE app_user_id = ?`)
+      .bind(fixture.userId).first<number>("count")).toBe(schedules.length);
+    await loadCurrentTaskChuteDay(env.APP_DB, fixture.userId, later);
+    expect(await env.APP_DB.prepare(`SELECT COUNT(*) AS count FROM routine_occurrences WHERE app_user_id = ?`)
+      .bind(fixture.userId).first<number>("count")).toBe(schedules.length);
+  });
 });

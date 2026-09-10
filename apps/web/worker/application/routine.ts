@@ -4,6 +4,7 @@ import type {
   EndRoutineRequest,
   EndRoutineResult,
 } from "../../src/shared/contracts";
+import { isRoutineScheduleEligible, routineScheduleFromSnapshot, type RoutineScheduleSnapshot } from "../../src/shared/routine-recurrence";
 import { isUuidV7, uuidv7 } from "../domain/uuidv7";
 import { resolveTaskChuteDay } from "../domain/taskchute-day";
 import { persistRejection, readOperation, replayOperation } from "../persistence/operations";
@@ -32,6 +33,16 @@ interface RoutineDefinitionRow {
   task_title: string;
   project_id: string | null;
   project_title: string | null;
+  start_logical_date: string;
+  end_logical_date: string | null;
+  schedule_kind: RoutineScheduleSnapshot["schedule_kind"];
+  interval_days: number | null;
+  interval_weeks: number | null;
+  interval_months: number | null;
+  weekdays_mask: number | null;
+  month_day: number | null;
+  month_ordinal: number | null;
+  month_weekday: number | null;
 }
 
 interface RoutineMaterializationPlan {
@@ -47,11 +58,22 @@ interface RoutineMaterializationPlan {
   project_id: string | null;
   project_title: string | null;
   mode_id: string | null;
+  start_logical_date: string;
+  end_logical_date: string | null;
+  schedule: RoutineScheduleSnapshot;
 }
 
 interface CurrentRoutineDayRow {
   id: string;
   logical_date: string;
+}
+
+function scheduleSnapshot(row: Pick<RoutineDefinitionRow, "schedule_kind" | "interval_days" | "interval_weeks"
+  | "interval_months" | "weekdays_mask" | "month_day" | "month_ordinal" | "month_weekday">): RoutineScheduleSnapshot {
+  return { schedule_kind: row.schedule_kind, interval_days: row.interval_days,
+    interval_weeks: row.interval_weeks, interval_months: row.interval_months,
+    weekdays_mask: row.weekdays_mask, month_day: row.month_day,
+    month_ordinal: row.month_ordinal, month_weekday: row.month_weekday };
 }
 
 export interface RoutineMutationHooks {
@@ -188,8 +210,9 @@ export async function convertEntryToRoutine(
           request.end_logical_date, orderRow.value, nowInstant, appUserId, request.entry_id,
           currentDay.id, appUserId, request.operation_id),
       db.prepare(`INSERT INTO routine_schedules
-        (app_user_id, routine_definition_id, schedule_kind, interval_days, weekdays_mask)
-        SELECT ?, ?, 'daily', NULL, NULL WHERE EXISTS (
+        (app_user_id, routine_definition_id, schedule_kind, interval_days, interval_weeks,
+         interval_months, weekdays_mask, month_day, month_ordinal, month_weekday)
+        SELECT ?, ?, 'daily', NULL, NULL, NULL, NULL, NULL, NULL, NULL WHERE EXISTS (
           SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
         .bind(appUserId, request.routine_definition_id, appUserId, request.operation_id),
       db.prepare(`INSERT INTO routine_board_items
@@ -386,15 +409,13 @@ export async function endRoutine(
 }
 
 async function missingRoutineCount(db: D1Database, appUserId: string, dayId: string, logicalDate: string): Promise<number> {
-  const row = await db.prepare(`SELECT COUNT(*) AS count FROM routine_definitions r
+  const rows = await db.prepare(`SELECT r.start_logical_date, r.end_logical_date,
+      s.schedule_kind, s.interval_days, s.interval_weeks, s.interval_months, s.weekdays_mask,
+      s.month_day, s.month_ordinal, s.month_weekday
+    FROM routine_definitions r
     JOIN routine_schedules s ON s.app_user_id = r.app_user_id AND s.routine_definition_id = r.id
     WHERE r.app_user_id = ? AND r.start_logical_date <= ?
       AND (r.end_logical_date IS NULL OR r.end_logical_date >= ?)
-      AND (s.schedule_kind = 'daily'
-        OR (s.schedule_kind = 'every_n_days'
-          AND CAST(julianday(?) - julianday(r.start_logical_date) AS INTEGER) % s.interval_days = 0)
-        OR (s.schedule_kind = 'weekly'
-          AND (s.weekdays_mask & (1 << CAST(strftime('%w', ?) AS INTEGER))) <> 0))
       AND NOT EXISTS (SELECT 1 FROM routine_pause_intervals p WHERE p.app_user_id = r.app_user_id
         AND p.routine_definition_id = r.id AND p.paused_logical_date <= ?
         AND (p.resumed_logical_date IS NULL OR ? < p.resumed_logical_date))
@@ -402,9 +423,17 @@ async function missingRoutineCount(db: D1Database, appUserId: string, dayId: str
         WHERE a.app_user_id = r.app_user_id AND a.routine_definition_id = r.id)
       AND NOT EXISTS (SELECT 1 FROM routine_occurrences o WHERE o.app_user_id = r.app_user_id
         AND o.routine_definition_id = r.id AND o.origin_taskchute_day_id = ?)`)
-    .bind(appUserId, logicalDate, logicalDate, logicalDate, logicalDate, logicalDate, logicalDate, dayId)
-    .first<{ count: number }>();
-  return row?.count ?? 0;
+    .bind(appUserId, logicalDate, logicalDate, logicalDate, logicalDate, dayId)
+    .all<{
+      start_logical_date: string; end_logical_date: string | null;
+      schedule_kind: RoutineScheduleSnapshot["schedule_kind"]; interval_days: number | null;
+      interval_weeks: number | null; interval_months: number | null; weekdays_mask: number | null;
+      month_day: number | null; month_ordinal: number | null; month_weekday: number | null;
+    }>();
+  return rows.results.filter((row) => isRoutineScheduleEligible({
+    schedule: routineScheduleFromSnapshot(row), startLogicalDate: row.start_logical_date,
+    endLogicalDate: row.end_logical_date, candidateLogicalDate: logicalDate,
+  })).length;
 }
 
 export async function ensureCurrentDayRoutineEntries(
@@ -418,7 +447,10 @@ export async function ensureCurrentDayRoutineEntries(
   const definitions = await db.prepare(`SELECT r.id, r.task_id, r.default_section_id,
       r.default_estimate_seconds, r.default_planned_start_minute, r.materialization_order,
       rdm.mode_id AS default_mode_id,
-      t.title AS task_title, p.id AS project_id, p.title AS project_title
+      t.title AS task_title, p.id AS project_id, p.title AS project_title,
+      r.start_logical_date, r.end_logical_date,
+      s.schedule_kind, s.interval_days, s.interval_weeks, s.interval_months, s.weekdays_mask,
+      s.month_day, s.month_ordinal, s.month_weekday
     FROM routine_definitions r
     JOIN routine_schedules s ON s.app_user_id = r.app_user_id AND s.routine_definition_id = r.id
     JOIN tasks t ON t.app_user_id = r.app_user_id AND t.id = r.task_id
@@ -427,11 +459,6 @@ export async function ensureCurrentDayRoutineEntries(
       ON rdm.app_user_id = r.app_user_id AND rdm.routine_definition_id = r.id
     WHERE r.app_user_id = ?
       AND r.start_logical_date <= ? AND (r.end_logical_date IS NULL OR r.end_logical_date >= ?)
-      AND (s.schedule_kind = 'daily'
-        OR (s.schedule_kind = 'every_n_days'
-          AND CAST(julianday(?) - julianday(r.start_logical_date) AS INTEGER) % s.interval_days = 0)
-        OR (s.schedule_kind = 'weekly'
-          AND (s.weekdays_mask & (1 << CAST(strftime('%w', ?) AS INTEGER))) <> 0))
       AND NOT EXISTS (SELECT 1 FROM routine_pause_intervals pi WHERE pi.app_user_id = r.app_user_id
         AND pi.routine_definition_id = r.id AND pi.paused_logical_date <= ?
         AND (pi.resumed_logical_date IS NULL OR ? < pi.resumed_logical_date))
@@ -440,10 +467,13 @@ export async function ensureCurrentDayRoutineEntries(
       AND NOT EXISTS (SELECT 1 FROM routine_occurrences o WHERE o.app_user_id = r.app_user_id
         AND o.routine_definition_id = r.id AND o.origin_taskchute_day_id = ?)
     ORDER BY r.materialization_order, r.id`)
-    .bind(appUserId, day.logical_date, day.logical_date, day.logical_date, day.logical_date,
-      day.logical_date, day.logical_date, day.id)
+    .bind(appUserId, day.logical_date, day.logical_date, day.logical_date, day.logical_date, day.id)
     .all<RoutineDefinitionRow>();
-  if (definitions.results.length === 0) return;
+  const eligibleDefinitions = definitions.results.filter((definition) => isRoutineScheduleEligible({
+    schedule: routineScheduleFromSnapshot(definition), startLogicalDate: definition.start_logical_date,
+    endLogicalDate: definition.end_logical_date, candidateLogicalDate: day.logical_date,
+  }));
+  if (eligibleDefinitions.length === 0) return;
 
   const [contexts, positions] = await db.batch([
     db.prepare(`SELECT section_id, logical_start_minute, logical_end_minute FROM taskchute_day_section_contexts
@@ -456,7 +486,7 @@ export async function ensureCurrentDayRoutineEntries(
   for (const row of positions.results as Array<{ section_id: string | null; max_position: number }>) {
     nextPosition.set(row.section_id ?? "", row.max_position + 1);
   }
-  const plans: RoutineMaterializationPlan[] = definitions.results.map((definition) => {
+  const plans: RoutineMaterializationPlan[] = eligibleDefinitions.map((definition) => {
     let sectionId: string | null = null;
     if (definition.default_planned_start_minute !== null) {
       const boundary = day.establishment_boundary_minutes;
@@ -491,6 +521,9 @@ export async function ensureCurrentDayRoutineEntries(
       project_id: definition.project_id,
       project_title: definition.project_title,
       mode_id: definition.default_mode_id,
+      start_logical_date: definition.start_logical_date,
+      end_logical_date: definition.end_logical_date,
+      schedule: scheduleSnapshot(definition),
     };
   });
   const plansJson = JSON.stringify(plans);
@@ -507,22 +540,26 @@ export async function ensureCurrentDayRoutineEntries(
             LEFT JOIN routine_definitions r ON r.app_user_id = ?
               AND r.id = json_extract(j.value, '$.routine_definition_id')
             LEFT JOIN routine_schedules s ON s.app_user_id = r.app_user_id AND s.routine_definition_id = r.id
-            WHERE r.id IS NULL OR r.start_logical_date > ?
-              OR (r.end_logical_date IS NOT NULL AND r.end_logical_date < ?)
+            WHERE r.id IS NULL
+              OR r.start_logical_date IS NOT json_extract(j.value, '$.start_logical_date')
+              OR r.end_logical_date IS NOT json_extract(j.value, '$.end_logical_date')
+              OR s.schedule_kind IS NOT json_extract(j.value, '$.schedule.schedule_kind')
+              OR s.interval_days IS NOT json_extract(j.value, '$.schedule.interval_days')
+              OR s.interval_weeks IS NOT json_extract(j.value, '$.schedule.interval_weeks')
+              OR s.interval_months IS NOT json_extract(j.value, '$.schedule.interval_months')
+              OR s.weekdays_mask IS NOT json_extract(j.value, '$.schedule.weekdays_mask')
+              OR s.month_day IS NOT json_extract(j.value, '$.schedule.month_day')
+              OR s.month_ordinal IS NOT json_extract(j.value, '$.schedule.month_ordinal')
+              OR s.month_weekday IS NOT json_extract(j.value, '$.schedule.month_weekday')
               OR EXISTS (SELECT 1 FROM routine_definition_archives a
                 WHERE a.app_user_id = r.app_user_id AND a.routine_definition_id = r.id)
-              OR (s.schedule_kind = 'every_n_days'
-                AND CAST(julianday(?) - julianday(r.start_logical_date) AS INTEGER) % s.interval_days <> 0)
-              OR (s.schedule_kind = 'weekly'
-                AND (s.weekdays_mask & (1 << CAST(strftime('%w', ?) AS INTEGER))) = 0)
               OR EXISTS (SELECT 1 FROM routine_pause_intervals pi WHERE pi.app_user_id = r.app_user_id
                 AND pi.routine_definition_id = r.id AND pi.paused_logical_date <= ?
                 AND (pi.resumed_logical_date IS NULL OR ? < pi.resumed_logical_date))
               OR EXISTS (SELECT 1 FROM routine_occurrences o WHERE o.app_user_id = r.app_user_id
                 AND o.routine_definition_id = r.id AND o.origin_taskchute_day_id = ?))`)
         .bind(appUserId, guardId, day.placement_revision, appUserId, day.id, day.placement_revision,
-          plansJson, plansJson, appUserId, day.logical_date, day.logical_date, day.logical_date,
-          day.logical_date, day.logical_date, day.logical_date, day.id),
+          plansJson, plansJson, appUserId, day.logical_date, day.logical_date, day.id),
       db.prepare(`INSERT INTO routine_occurrences
         (id, app_user_id, routine_definition_id, origin_taskchute_day_id, created_at)
         SELECT json_extract(value, '$.routine_occurrence_id'), ?, json_extract(value, '$.routine_definition_id'), ?, ?
