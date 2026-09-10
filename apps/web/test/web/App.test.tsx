@@ -1644,7 +1644,7 @@ describe("Dogfood Day shell", () => {
     expect(mocks.reorderEntries).not.toHaveBeenCalled();
   });
 
-  it("rejects cross-Section and no-op drops", async () => {
+  it("accepts cross-Section row placement and keeps same-row drops as no-op", async () => {
     const eveningEntry = { ...secondEntry, section_id: eveningId };
     const day = { ...twoPlannedDay,
       sections: [{ ...twoPlannedDay.sections[0], entries: [firstEntry] }, { ...emptyDay.sections[1], entries: [eveningEntry] }],
@@ -1655,8 +1655,15 @@ describe("Dogfood Day shell", () => {
     const sourceRow = screen.getByText("Canonical task").closest<HTMLElement>("[data-entry-id]")!;
     const crossSectionRow = screen.getByText("Second task").closest<HTMLElement>("[data-entry-id]")!;
     dragEntry(handles[0]!, crossSectionRow, 75);
+    await waitFor(() => expect(mocks.moveEntry).toHaveBeenCalledTimes(1));
+    expect(mocks.moveEntry.mock.calls[0]?.[0]).toMatchObject({
+      entry_id: firstEntry.id,
+      section_id: eveningId,
+      placement: { kind: "relative_to_entry", anchor_entry_id: secondEntry.id, edge: "after" },
+    });
     dragEntry(handles[0]!, sourceRow, 25);
     expect(mocks.reorderEntries).not.toHaveBeenCalled();
+    expect(mocks.moveEntry).toHaveBeenCalledTimes(1);
   });
 
   it("does not cross an intervening canonical cohort even when source and target match", async () => {
@@ -1768,7 +1775,7 @@ describe("Dogfood Day shell", () => {
     expect(screen.getByText("Canonical task").closest("[data-section-id]")?.getAttribute("data-section-id")).toBe("");
   });
 
-  it("treats dropping on the source Section summary as a no-op", async () => {
+  it("moves a same-Section Entry to the Section-area target start", async () => {
     mocks.loadDay.mockResolvedValue(populatedDay);
     render(<App />);
     const source = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
@@ -1776,10 +1783,14 @@ describe("Dogfood Day shell", () => {
     const dataTransfer = dragDataTransfer();
     fireEvent.dragStart(dragSurface(source), { dataTransfer });
     fireEvent.dragOver(sourceSummary, { dataTransfer });
-    expect(sourceSummary.dataset.dropTarget).toBeUndefined();
+    expect(sourceSummary.dataset.dropTarget).toBe("valid");
     fireEvent.drop(sourceSummary, { dataTransfer });
     fireEvent.dragEnd(dragSurface(source), { dataTransfer });
-    expect(mocks.moveEntry).not.toHaveBeenCalled();
+    await waitFor(() => expect(mocks.moveEntry).toHaveBeenCalledTimes(1));
+    expect(mocks.moveEntry.mock.calls[0]?.[0]).toMatchObject({
+      entry_id: firstEntry.id,
+      section_id: morningId,
+    });
     expect(mocks.reorderEntries).not.toHaveBeenCalled();
   });
 
@@ -1952,6 +1963,52 @@ describe("Dogfood Day shell", () => {
     firstRequest.resolve({});
     await waitFor(() => expect(mocks.moveEntry).toHaveBeenCalledTimes(2));
     expect(mocks.moveEntry.mock.calls[1]?.[0]).toMatchObject({ entry_id: secondEntry.id, section_id: eveningId });
+    secondRequest.resolve({});
+    await waitFor(() => expect(screen.queryByText("Section移動・照合中…")).toBeNull());
+  });
+
+  it("accepts repeated same-Section cross-cohort placement from the effective overlay", async () => {
+    const firstRequest = deferred<unknown>();
+    const secondRequest = deferred<unknown>();
+    const source = { ...firstEntry, planned_start_minute: 240 };
+    const middle = { ...secondEntry, planned_start_minute: 480 };
+    const target = { ...thirdEntry, planned_start_minute: 720 };
+    const sourceAtMiddle = { ...source, planned_start_minute: 480 };
+    const sourceAtTarget = { ...source, planned_start_minute: 720 };
+    const sourceDay = { ...twoPlannedDay, placement_revision: 1,
+      sections: [{ ...twoPlannedDay.sections[0], entries: [source, middle, target] }, emptyDay.sections[1]], next_entry: source };
+    const firstMovedDay = { ...sourceDay, placement_revision: 2,
+      sections: [{ ...sourceDay.sections[0], entries: [middle, sourceAtMiddle, target] }, emptyDay.sections[1]], next_entry: middle };
+    const secondMovedDay = { ...sourceDay, placement_revision: 3,
+      sections: [{ ...sourceDay.sections[0], entries: [middle, sourceAtTarget, target] }, emptyDay.sections[1]], next_entry: middle };
+    mocks.loadDay.mockResolvedValueOnce(sourceDay).mockResolvedValueOnce(firstMovedDay).mockResolvedValueOnce(secondMovedDay);
+    mocks.moveEntry.mockReturnValueOnce(firstRequest.promise).mockReturnValueOnce(secondRequest.promise);
+    render(<App />);
+
+    const sourceRow = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
+    const middleRow = screen.getByText("Second task").closest<HTMLElement>("[data-entry-id]")!;
+    dragEntry(dragSurface(sourceRow), middleRow, 75);
+    await waitFor(() => expect(mocks.moveEntry).toHaveBeenCalledTimes(1));
+    expect(mocks.moveEntry.mock.calls[0]?.[0]).toMatchObject({
+      entry_id: source.id,
+      section_id: morningId,
+      placement: { kind: "relative_to_entry", anchor_entry_id: middle.id, edge: "after" },
+    });
+
+    const effectiveSource = screen.getByText("Canonical task").closest<HTMLElement>("[data-entry-id]")!;
+    const targetRow = screen.getByText("Third task").closest<HTMLElement>("[data-entry-id]")!;
+    dragEntry(dragSurface(effectiveSource), targetRow, 25);
+    expect(mocks.moveEntry).toHaveBeenCalledTimes(1);
+    expect(Array.from(document.querySelectorAll(".task-row[data-entry-id]"), (row) => row.getAttribute("data-entry-id")))
+      .toEqual([middle.id, source.id, target.id]);
+
+    firstRequest.resolve({});
+    await waitFor(() => expect(mocks.moveEntry).toHaveBeenCalledTimes(2));
+    expect(mocks.moveEntry.mock.calls[1]?.[0]).toMatchObject({
+      entry_id: source.id,
+      section_id: morningId,
+      placement: { kind: "relative_to_entry", anchor_entry_id: target.id, edge: "before" },
+    });
     secondRequest.resolve({});
     await waitFor(() => expect(screen.queryByText("Section移動・照合中…")).toBeNull());
   });

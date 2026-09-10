@@ -560,3 +560,9 @@ Settings > SectionにはSection configuration editorと独立した「未実行T
 current Dayのprojection clockは既存`projection_generated_at`とmonotonic clockを利用し、frozen Section intervalからclient-sideの観測Section keyを導出する。前回keyから変化したときに一回だけserver reconcileを要求し、15秒tickやvisibility resumeで同じkeyのrequest stormを作らない。Entryをclient-sideで直接移動せず、server loadのmaterialize → Routine ensure → auto-carry → projectionをauthorityとする。active draft、focus、provisional Add、pending overlay、retained retryはreconcileで消去しない。
 
 Server carryはpast timed Sectionのplanned Entryをsource context / planned start / physical position orderで収集し、target current Sectionのhistorical rowsを固定したままplanned position slotsを再構成する。carried cohortはtarget existing same-time planned cohortの前へ置き、later cohortのrelative orderを保持する。Routine rowは当日のtyped occurrence overrideも同じbatchで更新し、Definition defaultsは不変とする。setting enable、boundary checkpoint、placement mutationはoperation identityを分離して保存し、placement revisionはvisible carry outcomeにつき一度だけ進める。
+
+## D-083 free planned placement interaction
+
+Current established Dayではordinary planned Task rowだけをdrag sourceとし、row anchorへのbefore / after、Section areaのplanned tail、`Sectionなし`のNULL-start tailを同じMoveEntry placement modelで表示する。Routine planned rowはanchorとしてのみ利用可能で、source rowのplanned / Routine semanticsは変更しない。D-078 same-cohort reorderとD-079 Section moveのeffective overlayから、Section、planned start、order、Section summary、Next / forecastを一貫して導出する。
+
+Drag previewはsource rowのleft / widthを固定し、縦方向だけpointerへ追従する。`.day-surface`を唯一のscroll ownerとして、edge付近だけvertical auto-scrollを行う。horizontal scroll、column resize、interactive descendant drag、collapsed Section auto-expandは行わない。drop / cancel / auth / navigation / unmount時はpreview、indicator、auto-scroll loopを破棄する。

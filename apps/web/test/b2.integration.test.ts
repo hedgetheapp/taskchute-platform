@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { startEntry } from "../worker/application/entry-lifecycle";
-import { moveEntry } from "../worker/application/entry-planning";
+import { isMoveEntryRequest, moveEntry } from "../worker/application/entry-planning";
 import { loadCurrentTaskChuteDay } from "../worker/application/load-current-day";
 import { setEntryPlannedStart } from "../worker/application/planned-start";
 import { reorderEntries } from "../worker/application/reorder-entries";
@@ -137,6 +137,44 @@ describe.sequential("Dogfood Day B2 planned start", () => {
     ]);
     const after = await loadCurrentTaskChuteDay(env.APP_DB, fixture.userId, "2026-08-28T12:00:00.000Z");
     expect(after.sections[0]?.entries.map((entry) => entry.id)).toEqual(requested);
+  });
+
+  it("D-083 moves an ordinary planned Entry relative to a planned anchor across cohorts and Sections", async () => {
+    expect(isMoveEntryRequest({ operation_id: uuidv7(), entry_id: uuidv7(), taskchute_day_id: uuidv7(),
+      section_id: uuidv7(), expected_placement_revision: 0,
+      placement: { kind: "relative_to_entry", anchor_entry_id: uuidv7(), edge: "before" } })).toBe(true);
+    expect(isMoveEntryRequest({ operation_id: uuidv7(), entry_id: uuidv7(), taskchute_day_id: uuidv7(),
+      section_id: uuidv7(), expected_placement_revision: 0,
+      placement: { kind: "relative_to_entry", anchor_entry_id: uuidv7(), edge: "sideways" } })).toBe(false);
+
+    const fixture = await seedTimedDay();
+    const first = await addEntry(fixture.userId, fixture.dayId, fixture.sectionIds[0]!, 10, "planned", 480);
+    const cohortAnchor = await addEntry(fixture.userId, fixture.dayId, fixture.sectionIds[0]!, 20, "planned", 600);
+    const historical = await addEntry(fixture.userId, fixture.dayId, fixture.sectionIds[1]!, 30, "completed");
+    const sectionAnchor = await addEntry(fixture.userId, fixture.dayId, fixture.sectionIds[1]!, 40, "planned", 600);
+    const firstMove = await moveEntry(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), entry_id: first, taskchute_day_id: fixture.dayId, section_id: fixture.sectionIds[0]!,
+      expected_placement_revision: 0,
+      placement: { kind: "relative_to_entry", anchor_entry_id: cohortAnchor, edge: "before" },
+    });
+    expect(firstMove).toMatchObject({ entry_id: first, section_id: fixture.sectionIds[0], position: 10, placement_revision: 1 });
+    expect(await env.APP_DB.prepare("SELECT section_id, planned_start_minute, position FROM entries WHERE id = ?")
+      .bind(first).first()).toEqual({ section_id: fixture.sectionIds[0], planned_start_minute: 600, position: 10 });
+    expect((await env.APP_DB.prepare("SELECT id, position FROM entries WHERE id IN (?, ?) ORDER BY position")
+      .bind(first, cohortAnchor).all()).results).toEqual([{ id: first, position: 10 }, { id: cohortAnchor, position: 20 }]);
+
+    const second = await moveEntry(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), entry_id: first, taskchute_day_id: fixture.dayId, section_id: fixture.sectionIds[1]!,
+      expected_placement_revision: 1,
+      placement: { kind: "relative_to_entry", anchor_entry_id: sectionAnchor, edge: "after" },
+    });
+    expect(second).toMatchObject({ entry_id: first, section_id: fixture.sectionIds[1], position: 41, placement_revision: 2 });
+    expect(await env.APP_DB.prepare("SELECT section_id, planned_start_minute, position FROM entries WHERE id = ?")
+      .bind(first).first()).toEqual({ section_id: fixture.sectionIds[1], planned_start_minute: 600, position: 41 });
+    expect(await env.APP_DB.prepare("SELECT position FROM entries WHERE id = ?").bind(historical).first<number>("position")).toBe(30);
+    expect((await loadCurrentTaskChuteDay(env.APP_DB, fixture.userId, "2026-08-28T12:00:00.000Z"))
+      .sections.find((section) => section.id === fixture.sectionIds[1])?.entries.map((entry) => entry.id))
+      .toEqual([historical, sectionAnchor, first]);
   });
 
   it("uses extended wall-clock boundaries, derives Section placement, clears, and replays exactly once", async () => {

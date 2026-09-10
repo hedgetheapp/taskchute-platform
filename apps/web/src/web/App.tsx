@@ -49,6 +49,7 @@ import type {
   SetRoutineSectionPlanRequest,
   AutoCarryOverduePlannedSettingProjection,
   SetAutoCarryOverduePlannedRequest,
+  MoveEntryPlacementIntent,
 } from "../shared/contracts";
 import { isSamePlannedStartCohort } from "../shared/planned-entry-order";
 import { advanceProjectionClock, calculateStartForecast, formatStartForecast } from "../shared/start-forecast";
@@ -95,6 +96,9 @@ type EntryDragState = {
   targetEntryId: string | null;
   edge: DragEdge | null;
   targetSectionKey: string | null;
+  previewLeft?: number;
+  previewWidth?: number;
+  previewTop?: number;
 };
 type MouseDragState = { entryId: string; sectionId: string | null; startX: number; startY: number; active: boolean };
 type ColumnDragState = { sourceKey: DayColumnKey; targetKey: DayColumnKey | null; edge: DragEdge | null };
@@ -132,6 +136,7 @@ type PendingSectionMoveIntent = {
   operation: MoveEntryRequest;
   sourceSectionId: string | null;
   sourcePlannedStartMinute: number | null;
+  placement?: MoveEntryPlacementIntent;
 };
 type PendingReorderOverlay = { operation: ReorderEntriesRequest; baseEntryIds: string[] };
 type RoutineCandidate =
@@ -425,16 +430,32 @@ function applyPendingSectionMoveOverlays(
     if (!sourceGroup) continue;
     const entry = sourceGroup[1].find((candidate) => candidate.id === operation.entry_id);
     if (!entry) continue;
+    const placement = operation.placement;
     const targetKey = groupKey(operation.section_id);
     const targetEntries = groups.get(targetKey);
     if (!targetEntries) continue;
-    const targetPlannedStartMinute = operation.section_id === null
-      ? null
-      : projection.sections.find((section) => section.id === operation.section_id)?.logical_start_minute ?? null;
-    if (entry.section_id === operation.section_id && entry.planned_start_minute === targetPlannedStartMinute) continue;
+    const placementAnchor = placement
+      ? targetEntries.find((candidate) => candidate.id === placement.anchor_entry_id)
+      : undefined;
+    if (placement && !placementAnchor) continue;
     sourceGroup[1].splice(sourceGroup[1].indexOf(entry), 1);
-    const nextPosition = targetEntries.reduce((maximum, candidate) => Math.max(maximum, candidate.position), 0) + 1;
-    targetEntries.push({ ...entry, section_id: operation.section_id, planned_start_minute: targetPlannedStartMinute, position: nextPosition });
+    const targetPlannedStartMinute = placement
+      ? placementAnchor?.planned_start_minute ?? null
+      : operation.section_id === null
+        ? null
+        : projection.sections.find((section) => section.id === operation.section_id)?.logical_start_minute ?? null;
+    const moved = { ...entry, section_id: operation.section_id, planned_start_minute: targetPlannedStartMinute,
+      position: targetEntries.reduce((maximum, candidate) => Math.max(maximum, candidate.position), 0) + 1 };
+    let insertIndex = targetEntries.length;
+    if (placement) {
+      const anchorIndex = targetEntries.findIndex((candidate) => candidate.id === placement.anchor_entry_id);
+      insertIndex = anchorIndex + (placement.edge === "after" ? 1 : 0);
+    } else {
+      const cohortIndexes = targetEntries.map((candidate, index) => candidate.lifecycle_state === "planned"
+        && candidate.planned_start_minute === targetPlannedStartMinute ? index : -1).filter((index) => index >= 0);
+      if (cohortIndexes.length > 0) insertIndex = cohortIndexes[cohortIndexes.length - 1]! + 1;
+    }
+    targetEntries.splice(insertIndex, 0, moved);
   }
 
   const nextSections = projection.sections.map((section) => {
@@ -825,6 +846,8 @@ export function App() {
   const addFocusGenerationRef = useRef(new Map<string, number>());
   const selectedLogicalDateRef = useRef<string | null>(null);
   const mouseDragRef = useRef<MouseDragState | null>(null);
+  const dragAutoScrollFrameRef = useRef<number | null>(null);
+  const dragPointerYRef = useRef<number | null>(null);
   const calendarTriggerRef = useRef<HTMLButtonElement | null>(null);
   const calendarGridRef = useRef<HTMLDivElement | null>(null);
   const calendarPopoverRef = useRef<HTMLDivElement | null>(null);
@@ -1556,6 +1579,9 @@ export function App() {
     setOverflowEntryId(null);
     setPending("day-navigation");
     setError(null);
+    mouseDragRef.current = null;
+    dragPointerYRef.current = null;
+    setEntryDrag(null);
     draftTaskRef.current = null;
     focusIntentGenerationRef.current += 1;
     setDraftTask(null);
@@ -1811,6 +1837,48 @@ export function App() {
     window.addEventListener("mouseup", clearMouseDrag);
     return () => window.removeEventListener("mouseup", clearMouseDrag);
   }, []);
+
+  useEffect(() => {
+    if (!entryDrag) return;
+    let pointerY: number | null = null;
+    let frame: number | null = null;
+    const onPointerMove = (event: MouseEvent | globalThis.DragEvent) => {
+      if (!Number.isFinite(event.clientY)) return;
+      pointerY = event.clientY;
+      dragPointerYRef.current = event.clientY;
+      document.querySelector<HTMLElement>(".entry-drag-preview")?.style.setProperty("top", `${event.clientY - 22}px`);
+    };
+    const autoScroll = () => {
+      frame = null;
+      const surface = document.querySelector<HTMLElement>("[data-day-scroll-owner=\"true\"]");
+      if (!surface || pointerY === null) return;
+      const bounds = surface.getBoundingClientRect();
+      const edge = 52;
+      const distance = pointerY < bounds.top + edge
+        ? pointerY - (bounds.top + edge)
+        : pointerY > bounds.bottom - edge
+          ? pointerY - (bounds.bottom - edge)
+          : 0;
+      if (distance !== 0) {
+        const delta = Math.max(-28, Math.min(28, distance * 0.45));
+        surface.scrollTop += delta;
+      }
+      frame = requestAnimationFrame(autoScroll);
+      dragAutoScrollFrameRef.current = frame;
+    };
+    window.addEventListener("mousemove", onPointerMove);
+    window.addEventListener("dragover", onPointerMove);
+    frame = requestAnimationFrame(autoScroll);
+    dragAutoScrollFrameRef.current = frame;
+    return () => {
+      window.removeEventListener("mousemove", onPointerMove);
+      window.removeEventListener("dragover", onPointerMove);
+      if (frame !== null) cancelAnimationFrame(frame);
+      if (dragAutoScrollFrameRef.current !== null) cancelAnimationFrame(dragAutoScrollFrameRef.current);
+      dragAutoScrollFrameRef.current = null;
+      dragPointerYRef.current = null;
+    };
+  }, [entryDrag]);
 
   useEffect(() => {
     if (!calendarOpen || !calendarFocusedDate) return;
@@ -2916,6 +2984,17 @@ export function App() {
     return entries ? buildDraggedEntryOrder(entries, sectionId, entryDrag.entryId, targetEntryId, edge) : null;
   }
 
+  function dragPlacement(sectionId: string | null, targetEntryId: string): MoveEntryPlacementIntent | null {
+    const projection = dayRef.current ?? day;
+    if (!entryDrag || !projection?.taskchute_day.id || !projection.planning_enabled || !projection.is_current || mutationLocked) return null;
+    if (hasCrossSectionMoveBarrier(projection.taskchute_day.id)) return null;
+    const source = draggedEntry(entryDrag);
+    const target = effectiveSectionEntries(sectionId, projection).find((entry) => entry.id === targetEntryId);
+    if (!source || !target || source.id === target.id || source.lifecycle_state !== "planned" || source.routine !== null
+      || target.lifecycle_state !== "planned" || target.section_id !== sectionId) return null;
+    return { kind: "relative_to_entry", anchor_entry_id: target.id, edge: "before" };
+  }
+
   function draggedEntry(drag: Pick<EntryDragState, "entryId" | "sectionId"> | null = entryDrag): EntryProjection | undefined {
     const projection = dayRef.current ?? day;
     if (!drag || !projection) return undefined;
@@ -2926,8 +3005,10 @@ export function App() {
   function canDropOnSection(sectionId: string | null, drag: Pick<EntryDragState, "entryId" | "sectionId"> | null = entryDrag): boolean {
     const entry = draggedEntry(drag);
     const projection = dayRef.current ?? day;
+    const targetStart = sectionId === null ? null : projection?.sections.find((section) => section.id === sectionId)?.logical_start_minute ?? null;
     if (!drag || !entry || !projection?.taskchute_day.id || !projection.planning_enabled || mutationLocked
-      || entry.lifecycle_state !== "planned" || entry.routine !== null || entry.section_id === sectionId) return false;
+      || entry.lifecycle_state !== "planned" || entry.routine !== null
+      || (entry.section_id === sectionId && entry.planned_start_minute === targetStart)) return false;
     const placementBlocked = projection.is_current
       ? hasCrossSectionMoveBarrier(projection.taskchute_day.id)
       : hasRetainedMutationScope(placementMutationScope(projection.taskchute_day.id)) || hasQueuedMutationScope(placementMutationScope(projection.taskchute_day.id));
@@ -2943,7 +3024,13 @@ export function App() {
       if (moved < 4) return null;
       current.active = true;
       mouseDragRef.current = current;
-      setEntryDrag({ entryId: current.entryId, sectionId: current.sectionId, targetEntryId: null, edge: null, targetSectionKey: null });
+      dragPointerYRef.current = event.clientY;
+      const sourceElement = Array.from(document.querySelectorAll<HTMLElement>("[data-entry-id]"))
+        .find((element) => element.dataset.entryId === current.entryId);
+      const sourceBounds = sourceElement?.getBoundingClientRect();
+      setEntryDrag({ entryId: current.entryId, sectionId: current.sectionId, targetEntryId: null, edge: null, targetSectionKey: null,
+        previewLeft: sourceBounds?.left, previewWidth: sourceBounds?.width,
+        previewTop: Number.isFinite(event.clientY) ? event.clientY - 22 : sourceBounds?.top ?? 0 });
     }
     return current;
   }
@@ -2969,8 +3056,10 @@ export function App() {
     const order = drag.sectionId === sectionId && entries
       ? buildDraggedEntryOrder(entries, drag.sectionId, drag.entryId, targetEntryId, edge)
       : null;
-    setEntryDrag({ entryId: drag.entryId, sectionId: drag.sectionId, targetEntryId: order ? targetEntryId : null,
-      edge: order ? edge : null, targetSectionKey: null });
+    const placement = order ? null : dragPlacement(sectionId, targetEntryId);
+    setEntryDrag((current) => current ? { ...current, targetEntryId: order || placement ? targetEntryId : null,
+      edge: order || placement ? edge : null, targetSectionKey: null,
+      previewTop: Number.isFinite(event.clientY) ? event.clientY - 22 : current.previewTop ?? 0 } : null);
   }
 
   function finishEntryMouseDrag(event: ReactMouseEvent<HTMLElement>, sectionId: string | null, targetEntryId: string) {
@@ -2993,9 +3082,11 @@ export function App() {
       && !placementBlocked
       ? buildDraggedEntryOrder(entries, drag.sectionId, drag.entryId, targetEntryId, edge)
       : null;
+    const placement = order ? null : dragPlacement(sectionId, targetEntryId);
     mouseDragRef.current = null;
     setEntryDrag(null);
     if (order) void reorderSectionEntries(drag.sectionId, order, drag.entryId);
+    else if (placement) void moveEntryToSection(drag.entryId, sectionId, { ...placement, edge });
   }
 
   function startEntryDrag(event: ReactDragEvent<HTMLElement>, sectionId: string | null, entry: EntryProjection) {
@@ -3009,14 +3100,20 @@ export function App() {
       return;
     }
     mouseDragRef.current = null;
+    dragPointerYRef.current = event.clientY;
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData("text/plain", entry.id);
-    setEntryDrag({ entryId: entry.id, sectionId, targetEntryId: null, edge: null, targetSectionKey: null });
+    const sourceBounds = event.currentTarget.getBoundingClientRect();
+    setEntryDrag({ entryId: entry.id, sectionId, targetEntryId: null, edge: null, targetSectionKey: null,
+      previewLeft: sourceBounds.left, previewWidth: sourceBounds.width,
+      previewTop: Number.isFinite(event.clientY) ? event.clientY - 22 : sourceBounds.top });
   }
 
   function updateEntryDropTarget(event: ReactDragEvent<HTMLElement>, sectionId: string | null, targetEntryId: string) {
     const edge = dragEdge(event);
-    if (!dragOrder(sectionId, targetEntryId, edge)) {
+    const order = dragOrder(sectionId, targetEntryId, edge);
+    const placement = order ? null : dragPlacement(sectionId, targetEntryId);
+    if (!order && !placement) {
       if (entryDrag?.targetEntryId !== null || entryDrag?.targetSectionKey !== null) {
         setEntryDrag((current) => current ? { ...current, targetEntryId: null, edge: null, targetSectionKey: null } : null);
       }
@@ -3030,11 +3127,13 @@ export function App() {
   function dropEntry(event: ReactDragEvent<HTMLElement>, sectionId: string | null, targetEntryId: string) {
     const edge = dragEdge(event);
     const ids = dragOrder(sectionId, targetEntryId, edge);
+    const placement = ids ? null : dragPlacement(sectionId, targetEntryId);
     const draggedEntryId = entryDrag?.entryId;
     setEntryDrag(null);
-    if (!ids || !draggedEntryId) return;
+    if ((!ids && !placement) || !draggedEntryId) return;
     event.preventDefault();
-    void reorderSectionEntries(sectionId, ids, draggedEntryId);
+    if (ids) void reorderSectionEntries(sectionId, ids, draggedEntryId);
+    else void moveEntryToSection(draggedEntryId, sectionId, { ...placement!, edge });
   }
 
   function updateSectionMouseTarget(event: ReactMouseEvent<HTMLElement>, sectionId: string | null) {
@@ -3047,7 +3146,8 @@ export function App() {
       setEntryDrag((current) => current ? { ...current, targetEntryId: null, edge: null, targetSectionKey: null } : null);
       return;
     }
-    setEntryDrag({ entryId: drag.entryId, sectionId: drag.sectionId, targetEntryId: null, edge: null, targetSectionKey: groupKey(sectionId) });
+    setEntryDrag((current) => current ? { ...current, targetEntryId: null, edge: null, targetSectionKey: groupKey(sectionId),
+      previewTop: Number.isFinite(event.clientY) ? event.clientY - 22 : current.previewTop ?? 0 } : null);
   }
 
   function finishSectionMouseDrag(event: ReactMouseEvent<HTMLElement>, sectionId: string | null) {
@@ -3943,14 +4043,24 @@ export function App() {
     }
   }
 
-  async function moveEntryToSection(entryId: string, sectionId: string | null) {
+  async function moveEntryToSection(entryId: string, sectionId: string | null, placement?: MoveEntryPlacementIntent) {
     const baseProjection = dayRef.current ?? day;
     const projection = baseProjection ? applyPendingSectionMoveOverlays(baseProjection, pendingSectionMoveIntentsRef.current) : null;
     const entry = projection ? entryForId(projection, entryId) : null;
     if (!entry || !projection?.taskchute_day.id || !projection.planning_enabled || mutationLocked
-      || entry.lifecycle_state !== "planned" || entry.routine !== null || entry.section_id === sectionId) return;
+      || entry.lifecycle_state !== "planned" || entry.routine !== null || (placement && !projection.is_current)) return;
     const targetSection = sectionId === null ? null : projection.sections.find((section) => section.id === sectionId);
     if (sectionId !== null && !targetSection) return;
+    const targetPlannedStart = placement
+      ? entryForId(projection, placement.anchor_entry_id)?.planned_start_minute ?? null
+      : sectionId === null ? null : targetSection?.logical_start_minute ?? null;
+    if (!placement && entry.section_id === sectionId && entry.planned_start_minute === targetPlannedStart) return;
+    if (placement) {
+      const anchor = entryForId(projection, placement.anchor_entry_id);
+      // The Server remains authoritative for the target planned start; this local
+      // check only prevents an obviously invalid drag from producing an overlay.
+      if (!anchor || anchor.id === entry.id || anchor.lifecycle_state !== "planned" || anchor.section_id !== sectionId) return;
+    }
     if (projection.is_current
       ? hasCrossSectionMoveBarrier(projection.taskchute_day.id)
       : hasRetainedMutationScope(placementMutationScope(projection.taskchute_day.id)) || hasQueuedMutationScope(placementMutationScope(projection.taskchute_day.id))) return;
@@ -3958,7 +4068,9 @@ export function App() {
     const latestIntent = pendingSectionMoveIntentsRef.current.filter((intent) => intent.operation.entry_id === entry.id).at(-1);
     const latestQueued = latestIntent && isQueuedDayMutationOperation(latestIntent.operation.operation_id);
     const lastQueued = dayMutationQueueRef.current.at(-1);
-    if (latestIntent && latestQueued && latestIntent.sourceSectionId === sectionId
+    if (latestIntent && latestQueued && !placement
+      && latestIntent.operation.section_id !== latestIntent.sourceSectionId
+      && latestIntent.sourceSectionId === sectionId
       && lastQueued?.kind === "move" && lastQueued.entryId === entry.id
       && lastQueued.operationId === latestIntent.operation.operation_id) {
       dayMutationQueueRef.current = dayMutationQueueRef.current.filter((item) => item.operationId !== latestIntent.operation.operation_id);
@@ -3970,14 +4082,16 @@ export function App() {
 
     setEditingPlannedStart((editing) => editing?.entryId === entry.id ? null : editing);
     const operation: MoveEntryRequest = { operation_id: uuidv7(), entry_id: entry.id,
-      taskchute_day_id: projection.taskchute_day.id, section_id: sectionId, expected_placement_revision: projection.placement_revision };
+      taskchute_day_id: projection.taskchute_day.id, section_id: sectionId, expected_placement_revision: projection.placement_revision,
+      ...(placement ? { placement } : {}) };
     const intent: PendingSectionMoveIntent = {
       operation,
       sourceSectionId: entry.section_id,
       sourcePlannedStartMinute: entry.planned_start_minute,
+      ...(placement ? { placement } : {}),
     };
     setPendingSectionOverlays((current) => ({ ...current, [operation.entry_id]: {
-      operation, plannedStartMinute: sectionId === null ? null : targetSection?.logical_start_minute ?? null,
+      operation, plannedStartMinute: targetPlannedStart,
     } }));
     const inFlight = sectionMoveInFlightRef.current;
     const dependsOnOperationId = inFlight?.entry_id === operation.entry_id ? inFlight.operation_id : undefined;
@@ -3985,8 +4099,13 @@ export function App() {
       const latest = dayRef.current;
       const currentIntent = pendingSectionMoveIntentsRef.current.find((candidate) => candidate.operation.operation_id === operation.operation_id) ?? intent;
       const latestEntry = latest ? entryForId(latest, operation.entry_id) : null;
-      const targetStart = operation.section_id === null ? null
-        : latest?.sections.find((section) => section.id === operation.section_id)?.logical_start_minute ?? null;
+      const placementAnchor = operation.placement && latest
+        ? entryForId(latest, operation.placement.anchor_entry_id) : null;
+      const targetStart = operation.placement
+        ? placementAnchor?.planned_start_minute ?? null
+        : operation.section_id === null
+          ? null
+          : latest?.sections.find((section) => section.id === operation.section_id)?.logical_start_minute ?? null;
       if (!latest || latest.taskchute_day.id !== operation.taskchute_day_id || !latestEntry
         || latestEntry.lifecycle_state !== "planned" || latestEntry.routine !== null
         || latestEntry.section_id !== currentIntent.sourceSectionId
@@ -3996,7 +4115,7 @@ export function App() {
         cancelQueuedDayMutationDependents(operation.operation_id);
         return;
       }
-      if (latestEntry.section_id === operation.section_id && latestEntry.planned_start_minute === targetStart) {
+      if (!operation.placement && latestEntry.section_id === operation.section_id && latestEntry.planned_start_minute === targetStart) {
         removePendingSectionMoveIntent(operation.operation_id);
         return;
       }
@@ -4628,6 +4747,13 @@ export function App() {
   function handleDayKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
     if (event.defaultPrevented || event.nativeEvent.isComposing || isTextEditingTarget(event.target)) return;
     if (decisionModalOpen) return;
+    if (event.key === "Escape" && (entryDrag || mouseDragRef.current)) {
+      event.preventDefault();
+      mouseDragRef.current = null;
+      dragPointerYRef.current = null;
+      setEntryDrag(null);
+      return;
+    }
     if (shortcutHelpOpen) {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -4720,13 +4846,33 @@ export function App() {
     if (event.shiftKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
       const entryId = activeElement?.dataset.entryId;
       if (!entryId) return;
-      const section = currentDay.sections.find((candidate) => candidate.entries.some((entry) => entry.id === entryId));
-      const sectionId = section?.id ?? (currentDay.unsectioned_entries.some((entry) => entry.id === entryId) ? null : undefined);
-      const entries = sectionId === undefined ? [] : effectiveSectionEntries(sectionId, currentDay);
+      const source = allEntries.find((entry) => entry.id === entryId);
+      if (!source || source.lifecycle_state !== "planned" || source.routine !== null || !currentDay.is_current) return;
+      const movementGroups = groups.filter((group) => group.entries.some((entry) => entry.id === entryId)
+        || group.entries.some((entry) => entry.lifecycle_state === "planned"));
+      const sourceGroupIndex = movementGroups.findIndex((group) => group.entries.some((entry) => entry.id === entryId));
+      const sourceSectionId = source.section_id;
+      const entries = sourceSectionId === null
+        ? effectiveSectionEntries(null, currentDay)
+        : effectiveSectionEntries(sourceSectionId, currentDay);
       const delta = event.key === "ArrowUp" ? -1 : 1;
-      if (sectionId === undefined || !canMoveEntry(entries, entryId, delta)) return;
+      if (canMoveEntry(entries, entryId, delta)) {
+        event.preventDefault();
+        void moveEntry(sourceSectionId, entryId, delta);
+        return;
+      }
+      const targetGroup = movementGroups[sourceGroupIndex + delta];
+      if (!targetGroup || sourceGroupIndex < 0) return;
+      const targetEntries = targetGroup.entries.filter((entry) => entry.lifecycle_state === "planned");
+      const target = delta > 0 ? targetEntries[0] : targetEntries.at(-1);
       event.preventDefault();
-      void moveEntry(sectionId, entryId, delta);
+      if (target) {
+        void moveEntryToSection(source.id, target.section_id, {
+          kind: "relative_to_entry", anchor_entry_id: target.id, edge: delta > 0 ? "before" : "after",
+        });
+      } else {
+        void moveEntryToSection(source.id, targetGroup.id);
+      }
       return;
     }
 
@@ -5734,6 +5880,11 @@ export function App() {
       )}
 
       <section className={`day-surface${day.active_execution ? " has-floating-runner" : ""}`} aria-label="DayBoard" data-day-scroll-owner="true" style={dayTableStyle(dayColumnPreference, dayTableResizeLayout ?? undefined)}>
+        {entryDrag && draggedEntry(entryDrag) && entryDrag.previewLeft !== undefined && entryDrag.previewWidth !== undefined && (
+          <div className="entry-drag-preview" aria-hidden="true" style={{ left: entryDrag.previewLeft, top: entryDrag.previewTop ?? 0, width: entryDrag.previewWidth }}>
+            {draggedEntry(entryDrag)?.task.title}
+          </div>
+        )}
         <div className="table-heading" data-day-scroll-header="true">
           <span className="bulk-slot">
             {eligibleBulkEntries.length > 0 ? (

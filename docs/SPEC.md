@@ -510,3 +510,15 @@ Settings APIはauthenticated owner scopeのread / updateを提供し、updateは
 ### D-082 corrective boundary
 
 candidate setから除外したcross-Day moved Routineが存在してもcurrent-Day loadは成功する。candidateが0件のboundaryでは、candidate-read placement revisionをCAS preconditionとして既存operationsへ空結果のsuccess checkpointを保存し、競合時はbounded re-read/retryする。exact replayは同じ空結果を返し、placement revisionを増分しない。carry対象はtarget same-time planned cohortより前へ配置する。
+
+## D-083 Free planned placement with D&D + Shift cross-Section movement
+
+Current established Dayのordinary planned EntryだけがD-083のdrag / keyboard sourceとなる。Routine-derived、running、completed、historical、provisional Add、future / past / previewはsourceとして移動しない。planned Routine rowはordinary sourceのanchorとして利用できるが、Routine Definition、Occurrence override、Routine planned semanticsは変更しない。
+
+Task rowへのdropはanchorのplanned Section / planned startをServer authorityとして使い、`placement: { kind: "relative_to_entry", anchor_entry_id, edge }`でbefore / afterを表す。same Section・same cohortはD-078 Reorder、same Section・different cohortとcross-Sectionは既存MoveEntryのatomic extensionとして処理し、clientからplanned startやraw positionをauthorityとして送らない。Section areaはtarget Section logical startのplanned tail、SectionなしはNULL-start cohortのtailとする。existing Section-only MoveEntry requestは後方互換で維持する。
+
+Move validationはowner、same Day、ordinary planned source、planned anchor、target Section一致、anchor availability、placement revisionをServer側でguardする。historical physical positionは変更せず、planned cohort slotsだけをsafeに再割当し、cross-Sectionではsafe unique positionを使う。position uniqueness、D-081 historical boundary、D-043 planned synchronization、placement revision exactly once、true no-op no revisionを維持する。guard失敗はpartial effectなしでreject / conflictする。
+
+Focused sourceの`Shift + ArrowUp / ArrowDown`はplanned area内でcohortおよびSection境界を越えて移動できる。Sectionなしは存在する場合のみtraversalに含める。successful moveはsame Entry identityへのfocusをrestoreし、failureはcanonical reconcileしてghost indicatorを残さない。D&D previewはsource rowのleft / widthを固定してpointer Yだけ追従し、vertical auto-scrollは`.day-surface` edgeのみ、`scrollLeft`は不変とする。
+
+Sent MoveEntryのoperation identity、destination、anchor、edge、expected revisionはimmutable。unsent same-Entry intentのcoalesceはorder-preserving segment内だけに限定し、Start / Complete / Interrupt、Add、planned-start edit、delete、Duplicate、bulk、Routine placement、D-082 reconcile、retained ambiguityを跨がない。D-078 / D-079 queue、retry、ambiguity、future/past no-write境界は変更しない。新command、schema、migration、dependencyは追加しない。

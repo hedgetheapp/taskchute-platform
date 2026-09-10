@@ -494,3 +494,11 @@ target planned orderはsource context order、planned start、physical position�
 - candidate-zero success is an operations checkpoint with `carried_entry_ids=[]` and unchanged placement revision;
 - stale zero-candidate reads are rejected by the placement CAS guard and retried from a fresh canonical read;
 - moved Routine Entry / Occurrence / Definition remain untouched.
+
+## D-083 placement extension
+
+MoveEntryは既存command familyのまま、optionalな`relative_to_entry` placement intent（anchor Entry ID、before / after）を受け取る。Workerはanchorのcurrent Sectionとplanned startを読み、source ordinary plannedとのsame-Day / same-Section整合を確認してからatomicにtarget orderを構成する。Section areaとSectionなしはSection logical start / NULL-startのtail intentとして同じcommandへ収束させる。
+
+WorkerはD-081のhistorical groupをcanonical display prefixとして扱うが、historical physical positionsを更新しない。sourceをplanned cohortから外し、target cohortのexisting planned slots（same Sectionならsource old slotを含む）だけをdesired orderへ再割当し、cross-Sectionではsafe unique positionを追加する。target Routine anchorのRoutine Definition / Occurrenceはread-onlyで、position uniqueness、revision CAS、transaction assertion、operation replayを既存MoveEntry boundaryで保証する。
+
+Webはsemantic destination / anchor / edgeをpending overlayへ保持し、effective Section membershipとplanned start/orderをrenderする。sent requestのidentity / payload / expected revisionは凍結し、same-Entry unsent tailのcoalesceはbarrier-awareに限定する。D-078 reorder、D-079 move、D-082 reconcile、lifecycle、Add、planned-start editのnon-commutative boundaryを跨がない。D&D previewのpointer-Y追従と`.day-surface` vertical auto-scrollはpresentation-onlyで、`scrollLeft`は変更しない。

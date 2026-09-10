@@ -284,6 +284,7 @@ input:focus-visible, select:focus-visible { border-color: #2383e2; outline: 2px 
 .task-row[draggable="true"] select,
 .task-row[draggable="true"] textarea { cursor: default; }
 .task-row.is-dragging { position: relative; z-index: 6; transform: translateY(-2px) scale(1.005); box-shadow: 0 8px 20px rgb(15 15 15 / 18%); opacity: .9; }
+.entry-drag-preview { position: fixed; z-index: 20; pointer-events: none; min-height: 44px; box-sizing: border-box; display: flex; align-items: center; padding: 0 14px; border: 1px solid #8bbbe8; border-radius: 6px; background: rgb(255 255 255 / 94%); box-shadow: 0 8px 20px rgb(15 15 15 / 18%); color: #373735; font-size: 13px; opacity: .96; }
 .bulk-slot,
 .execution-heading,
 .task-heading,

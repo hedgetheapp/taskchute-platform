@@ -642,12 +642,19 @@ export interface SetAutoCarryOverduePlannedRequest {
 
 export interface SetAutoCarryOverduePlannedResult extends AutoCarryOverduePlannedSettingProjection {}
 
+export type MoveEntryPlacementIntent = {
+  kind: "relative_to_entry";
+  anchor_entry_id: string;
+  edge: "before" | "after";
+};
+
 export interface MoveEntryRequest {
   operation_id: string;
   entry_id: string;
   taskchute_day_id: string;
   section_id: string | null;
   expected_placement_revision: number;
+  placement?: MoveEntryPlacementIntent;
 }
 
 export interface MoveEntryResult {

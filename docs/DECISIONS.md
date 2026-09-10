@@ -1723,3 +1723,18 @@ D-082のcorrectiveでは、current Dayの同一Day-origin Routine、normal plann
 candidateが0件でも、current Day・current Section・setting versionに対する成功checkpointを既存`operations`へ保存する。結果は`carried_entry_ids=[]`、placement revisionは不変、同一eventの再実行はexact replayとなる。candidate-read時のplacement revisionをCAS guardに使い、競合時はbounded re-read/retryしてstale zero checkpointを防ぐ。checkpoint後のmanual Moveも同一setting versionで再carryされない。
 
 carryされたEntryはtarget Sectionの同一planned-start cohortより前へ置く。このtarget ordering表現をD-082のcanonical wordingとし、D-081 / D-078 / D-079のplacement safetyは変更しない。新command、API / schema、migration、dependency、security postureは追加しない。
+
+## D-083 — Free planned placement with D&D + Shift cross-Section movement
+
+Status: **Approved**
+
+D-083は、current established Dayのordinary planned Entryに限り、既存`MoveEntry` commandを後方互換に拡張して、planned Task rowへのbefore / after placement、planned-start cohort変更、cross-Section移動、Section area末尾移動をpointer D&Dで受理する。Routine-derived、running / completed、provisional Add、future / past / preview Dayはsource対象外とし、Routine rowはplanned anchorとしてのみ利用できる。
+
+- 同一Section・同一planned-start cohortはD-078 `ReorderEntries` semanticsを維持する。異なるcohortまたはcross-SectionではanchorのSection / planned startをServer authorityとして解決し、clientはplanned startを送信しない。Section areaはtarget Section logical startのplanned tail、Sectionなしは`NULL` planned startのtailへ置く。
+- `MoveEntryRequest.placement`には`relative_to_entry`（anchor Entry ID + `before` / `after`）を追加する。既存のSection-only requestは従来どおり有効とし、新logical command / migration / dependencyは追加しない。source ordinary planned、anchor planned、same Day、target Section一致、placement revision、owner scopeをServerでguardし、atomicに更新する。
+- D-081のhistorical physical positions、running / completed row、Routine semanticsを変更しない。planned cohortの既存physical position slotsだけを再利用し、cross-Sectionの新sourceにはsafe unique positionを割り当て、position uniquenessとplacement revision exactly onceを維持する。true no-opはrevisionを進めない。
+- Shift + ArrowUp / ArrowDownは同じplanned areaの前後cohortおよびSection境界を巡回する。Sectionなしgroupは存在時だけ含め、空groupを生成しない。成功後はsource Entry identityへfocusを戻す。
+- D&D previewはsource rowの横位置を固定し、pointer Yだけ追従する。vertical auto-scrollは`.day-surface`のtop / bottom edgeだけで行い、horizontal scrollは変更しない。drop / cancel / navigation / auth / unmountでloopを停止する。
+- D-066 / D-077 serial dispatcher、D-078 reorder、D-079 move、D-082 no-bounce、exact retry / ambiguity / barrier semanticsを維持する。source / anchor / edge / destination / expected revisionはsent後immutableで、非commutative barrierを跨ぐcoalesceやsilent rebaseを行わない。
+
+実装、Worker / Web regression、real-local / persistent nonprod browser、read-only DB evidenceはcanonical evidence docsへ記録する。production、restore、destructive cleanup、branch / PR / merge / tag / releaseは対象外で、Releasedは`NO`とする。
