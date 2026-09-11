@@ -301,6 +301,25 @@ describe("Dogfood Day shell", () => {
     expect(mocks.createStandaloneDocument).not.toHaveBeenCalled();
   });
 
+  it("does not navigate or logout while an ambiguous Note save is unresolved", async () => {
+    mocks.loadDay.mockResolvedValue(emptyDay);
+    mocks.createStandaloneDocument.mockRejectedValue(new ApiClientError("ambiguous", 503, true, "infrastructure_ambiguous"));
+    mocks.loadDocument.mockRejectedValue(new ApiClientError("missing", 404, true, "resource_not_found"));
+    render(<App />);
+    await screen.findByRole("region", { name: "DayBoard" });
+    fireEvent.click(screen.getByRole("button", { name: "ノート" }));
+    fireEvent.click(await screen.findByRole("button", { name: "＋ 新規ノート" }));
+    fireEvent.change(screen.getByLabelText("ノートタイトル"), { target: { value: "Unresolved" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await screen.findByRole("button", { name: "同じ内容で再試行" });
+    await waitFor(() => expect((screen.getByLabelText("ノートタイトル") as HTMLInputElement).disabled).toBe(true));
+    fireEvent.click(screen.getByRole("button", { name: "設定" }));
+    expect(screen.getByRole("heading", { name: "ノート" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "ログアウト" }));
+    expect(screen.getByRole("heading", { name: "ノート" })).toBeTruthy();
+    expect(mocks.logout).not.toHaveBeenCalled();
+  });
+
   it("shows a concise accessible status while loading the canonical Day", () => {
     const request = deferred<CurrentTaskChuteDayProjection>();
     mocks.loadDay.mockReturnValue(request.promise);

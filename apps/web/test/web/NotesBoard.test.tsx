@@ -28,6 +28,10 @@ function note(id: string, title: string, body: string, revision = 0): Standalone
   };
 }
 
+function ambiguousError(): Error {
+  return new mocks.ApiClientError("ambiguous", 503, true, "infrastructure_ambiguous");
+}
+
 describe("NotesBoard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -98,6 +102,132 @@ describe("NotesBoard", () => {
     await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("他の変更"));
     expect(screen.getByDisplayValue("Local")).toBeTruthy();
     expect(screen.getByText("最新のServer内容を確認")).toBeTruthy();
+  });
+
+  it("reconciles an ambiguous Create by fetching the exact document identity", async () => {
+    mocks.createStandaloneDocument.mockRejectedValue(ambiguousError());
+    mocks.loadDocument.mockImplementation(async (documentId: string) => note(documentId, "Committed", "# committed"));
+    render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} />);
+    fireEvent.click(await screen.findByRole("button", { name: "＋ 新規ノート" }));
+    fireEvent.change(screen.getByLabelText("ノートタイトル"), { target: { value: "Committed" } });
+    fireEvent.change(screen.getByLabelText("Markdown本文"), { target: { value: "# committed" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(screen.getByDisplayValue("Committed")).toBeTruthy());
+    expect(mocks.createStandaloneDocument).toHaveBeenCalledTimes(1);
+    const request = mocks.createStandaloneDocument.mock.calls[0]![0];
+    expect(mocks.loadDocument).toHaveBeenCalledWith(request.document_id);
+    expect(screen.queryByRole("button", { name: "同じ内容で再試行" })).toBeNull();
+    expect(screen.getByLabelText("ノートタイトル")).not.toHaveProperty("disabled", true);
+  });
+
+  it("retains an ambiguous Create request when the exact document is not found and retries exactly", async () => {
+    mocks.createStandaloneDocument.mockRejectedValue(ambiguousError());
+    mocks.loadDocument.mockRejectedValue(new mocks.ApiClientError("missing", 404, true, "resource_not_found"));
+    render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} />);
+    fireEvent.click(await screen.findByRole("button", { name: "＋ 新規ノート" }));
+    fireEvent.change(screen.getByLabelText("ノートタイトル"), { target: { value: "Retry Create" } });
+    fireEvent.change(screen.getByLabelText("Markdown本文"), { target: { value: "body" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "同じ内容で再試行" })).toBeTruthy());
+    const firstRequest = { ...mocks.createStandaloneDocument.mock.calls[0]![0] };
+    fireEvent.click(screen.getByRole("button", { name: "同じ内容で再試行" }));
+    await waitFor(() => expect(mocks.createStandaloneDocument).toHaveBeenCalledTimes(2));
+    expect(mocks.createStandaloneDocument.mock.calls[1]![0]).toEqual(firstRequest);
+  });
+
+  it("blocks edits after an ambiguous Create without clearing the exact retry", async () => {
+    mocks.createStandaloneDocument.mockRejectedValue(ambiguousError());
+    mocks.loadDocument.mockRejectedValue(new mocks.ApiClientError("missing", 404, true, "resource_not_found"));
+    const onUnresolvedChange = vi.fn();
+    render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} onUnresolvedChange={onUnresolvedChange} />);
+    fireEvent.click(await screen.findByRole("button", { name: "＋ 新規ノート" }));
+    fireEvent.change(screen.getByLabelText("ノートタイトル"), { target: { value: "Frozen" } });
+    fireEvent.change(screen.getByLabelText("Markdown本文"), { target: { value: "original" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "同じ内容で再試行" })).toBeTruthy());
+    await waitFor(() => expect(onUnresolvedChange).toHaveBeenLastCalledWith(true));
+    const firstRequest = { ...mocks.createStandaloneDocument.mock.calls[0]![0] };
+    fireEvent.change(screen.getByLabelText("ノートタイトル"), { target: { value: "Changed" } });
+    fireEvent.change(screen.getByLabelText("Markdown本文"), { target: { value: "changed" } });
+    expect(screen.getByDisplayValue("Frozen")).toBeTruthy();
+    expect(screen.getByDisplayValue("original")).toBeTruthy();
+    expect(mocks.createStandaloneDocument).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "＋ 新規ノート" }));
+    expect(screen.getByDisplayValue("Frozen")).toBeTruthy();
+    expect(mocks.createStandaloneDocument.mock.calls[0]![0]).toEqual(firstRequest);
+  });
+
+  it("reconciles an ambiguous Update when the exact revision and payload are canonical", async () => {
+    const current = note("0199d090-0000-7000-8000-000000000006", "Before", "before", 0);
+    const saved = note(current.document_id, "After", "after", 1);
+    mocks.loadDocuments.mockResolvedValue({ documents: [current] });
+    mocks.loadDocument.mockResolvedValueOnce(current).mockResolvedValueOnce(saved);
+    mocks.updateDocument.mockRejectedValue(ambiguousError());
+    render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Before")).toBeTruthy());
+    fireEvent.change(screen.getByLabelText("ノートタイトル"), { target: { value: "After" } });
+    fireEvent.change(screen.getByLabelText("Markdown本文"), { target: { value: "after" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(screen.getByDisplayValue("After")).toBeTruthy());
+    expect(mocks.updateDocument).toHaveBeenCalledTimes(1);
+    expect(mocks.loadDocument).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole("button", { name: "同じ内容で再試行" })).toBeNull();
+    expect(screen.getByLabelText("ノートタイトル")).not.toHaveProperty("disabled", true);
+  });
+
+  it("retains an ambiguous Update and reuses its exact operation after unresolved reconciliation", async () => {
+    const current = note("0199d090-0000-7000-8000-000000000007", "Before", "before", 2);
+    mocks.loadDocuments.mockResolvedValue({ documents: [current] });
+    mocks.loadDocument.mockResolvedValueOnce(current).mockRejectedValue(new mocks.ApiClientError("missing", 404, true, "resource_not_found"));
+    mocks.updateDocument.mockRejectedValue(ambiguousError());
+    render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Before")).toBeTruthy());
+    fireEvent.change(screen.getByLabelText("ノートタイトル"), { target: { value: "After" } });
+    fireEvent.change(screen.getByLabelText("Markdown本文"), { target: { value: "after" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "同じ内容で再試行" })).toBeTruthy());
+    expect(screen.getByLabelText("ノートタイトル")).toHaveProperty("disabled", true);
+    const firstRequest = { ...mocks.updateDocument.mock.calls[0]![0] };
+    fireEvent.change(screen.getByLabelText("ノートタイトル"), { target: { value: "Wrong" } });
+    expect(screen.getByDisplayValue("After")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "同じ内容で再試行" }));
+    await waitFor(() => expect(mocks.updateDocument).toHaveBeenCalledTimes(2));
+    expect(mocks.updateDocument.mock.calls[1]![0]).toEqual(firstRequest);
+  });
+
+  it("keeps navigation and beforeunload protection active while an ambiguous save is unresolved", async () => {
+    mocks.createStandaloneDocument.mockRejectedValue(ambiguousError());
+    mocks.loadDocument.mockRejectedValue(new mocks.ApiClientError("missing", 404, true, "resource_not_found"));
+    const onUnresolvedChange = vi.fn();
+    render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} onUnresolvedChange={onUnresolvedChange} />);
+    fireEvent.click(await screen.findByRole("button", { name: "＋ 新規ノート" }));
+    fireEvent.change(screen.getByLabelText("ノートタイトル"), { target: { value: "Protected" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "同じ内容で再試行" })).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "＋ 新規ノート" }));
+    expect(screen.getByDisplayValue("Protected")).toBeTruthy();
+    expect(onUnresolvedChange).toHaveBeenLastCalledWith(true);
+    const event = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it("restores normal editing after an ambiguous save is resolved", async () => {
+    mocks.createStandaloneDocument.mockRejectedValueOnce(ambiguousError());
+    mocks.loadDocument.mockImplementation(async (documentId: string) => note(documentId, "Resolved", "body", 0));
+    const resolved = note("0199d090-0000-7000-8000-000000000008", "Resolved", "body", 0);
+    mocks.updateDocument.mockResolvedValue({ document: { ...resolved, title: "Edited", revision: 1 } });
+    render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} />);
+    fireEvent.click(await screen.findByRole("button", { name: "＋ 新規ノート" }));
+    fireEvent.change(screen.getByLabelText("ノートタイトル"), { target: { value: "Resolved" } });
+    fireEvent.change(screen.getByLabelText("Markdown本文"), { target: { value: "body" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(screen.getByDisplayValue("Resolved")).toBeTruthy());
+    expect(screen.getByLabelText("ノートタイトル")).not.toHaveProperty("disabled", true);
+    fireEvent.change(screen.getByLabelText("ノートタイトル"), { target: { value: "Edited" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(mocks.updateDocument).toHaveBeenCalledTimes(1));
+    expect(mocks.updateDocument.mock.calls[0]![0]).toMatchObject({ title: "Edited", expected_revision: 0 });
   });
 
   it("registers beforeunload only as a dirty-draft guard", async () => {

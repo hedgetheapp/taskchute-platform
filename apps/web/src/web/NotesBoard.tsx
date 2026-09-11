@@ -13,6 +13,7 @@ type DocumentRequest = CreateStandaloneDocumentRequest | UpdateDocumentRequest;
 export interface NotesBoardProps {
   onUnauthorized: () => void;
   onDirtyChange: (dirty: boolean) => void;
+  onUnresolvedChange?: (unresolved: boolean) => void;
 }
 
 function isUpdateRequest(request: DocumentRequest): request is UpdateDocumentRequest {
@@ -23,7 +24,15 @@ function documentSummaryTitle(document: StandaloneDocumentSummary): string {
   return document.title || "（無題）";
 }
 
-export function NotesBoard({ onUnauthorized, onDirtyChange }: NotesBoardProps) {
+function isAmbiguousResolution(request: DocumentRequest, canonical: StandaloneDocument): boolean {
+  if (canonical.document_id !== request.document_id || canonical.kind !== "standalone") return false;
+  if (canonical.title !== request.title || canonical.markdown_body !== request.markdown_body) return false;
+  return isUpdateRequest(request)
+    ? canonical.revision === request.expected_revision + 1
+    : canonical.revision === 0;
+}
+
+export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange }: NotesBoardProps) {
   const [documents, setDocuments] = useState<StandaloneDocumentSummary[]>([]);
   const [document, setDocument] = useState<StandaloneDocument | null>(null);
   const [mode, setMode] = useState<"empty" | "new" | "existing">("empty");
@@ -38,12 +47,18 @@ export function NotesBoard({ onUnauthorized, onDirtyChange }: NotesBoardProps) {
   const [notice, setNotice] = useState<string | null>(null);
   const [latestCanonical, setLatestCanonical] = useState<StandaloneDocument | null>(null);
   const [retryRequest, setRetryRequest] = useState<DocumentRequest | null>(null);
+  const [ambiguousRequest, setAmbiguousRequest] = useState<DocumentRequest | null>(null);
 
   const dirty = draftTitle !== baselineTitle || draftBody !== baselineBody;
+  const unresolved = ambiguousRequest !== null;
 
   useEffect(() => {
     onDirtyChange(dirty);
   }, [dirty, onDirtyChange]);
+
+  useEffect(() => {
+    onUnresolvedChange?.(unresolved);
+  }, [onUnresolvedChange, unresolved]);
 
   useEffect(() => {
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -86,6 +101,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange }: NotesBoardProps) {
       setBaselineTitle(loaded.title);
       setBaselineBody(loaded.markdown_body);
       setRetryRequest(null);
+      setAmbiguousRequest(null);
     } catch (caught) {
       if (caught instanceof ApiClientError && caught.status === 401) handleUnauthorized();
       else setError(caught instanceof Error ? caught.message : "ノートの読み込みに失敗しました");
@@ -110,6 +126,10 @@ export function NotesBoard({ onUnauthorized, onDirtyChange }: NotesBoardProps) {
   }, [openCanonicalDocument, refreshList]);
 
   function confirmDiscardIfDirty(): boolean {
+    if (unresolved) {
+      setError("保存結果が未確定のため、元の操作を解決するまで移動できません。");
+      return false;
+    }
     return !dirty || window.confirm("未保存の変更があります。破棄して移動しますか？");
   }
 
@@ -126,6 +146,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange }: NotesBoardProps) {
     setNotice(null);
     setLatestCanonical(null);
     setRetryRequest(null);
+    setAmbiguousRequest(null);
   }
 
   function selectDocument(documentId: string): void {
@@ -169,6 +190,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange }: NotesBoardProps) {
       setBaselineTitle(saved.title);
       setBaselineBody(saved.markdown_body);
       setRetryRequest(null);
+      setAmbiguousRequest(null);
       setLatestCanonical(null);
       setNotice("保存しました。");
       await refreshList();
@@ -177,6 +199,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange }: NotesBoardProps) {
         handleUnauthorized();
       } else if (caught instanceof ApiClientError && caught.code === "revision_conflict") {
         setRetryRequest(null);
+        setAmbiguousRequest(null);
         setError("他の変更があるため保存できませんでした。ローカルの未保存内容は保持しています。");
         if (request && isUpdateRequest(request)) {
           try {
@@ -186,7 +209,30 @@ export function NotesBoard({ onUnauthorized, onDirtyChange }: NotesBoardProps) {
           }
         }
       } else if (caught instanceof ApiClientError && caught.code === "infrastructure_ambiguous") {
-        setError("保存結果を確認できません。元の操作をそのまま再試行できます。");
+        setAmbiguousRequest(request);
+        setError("保存結果が未確定です。元の操作をそのまま再試行してください。");
+        try {
+          const canonical = await api.loadDocument(request.document_id);
+          if (isAmbiguousResolution(request, canonical)) {
+            setDocument(canonical);
+            setMode("existing");
+            setSelectedId(canonical.document_id);
+            setDraftTitle(canonical.title);
+            setDraftBody(canonical.markdown_body);
+            setBaselineTitle(canonical.title);
+            setBaselineBody(canonical.markdown_body);
+            setRetryRequest(null);
+            setAmbiguousRequest(null);
+            setLatestCanonical(null);
+            setError(null);
+            setNotice("保存結果を確認しました。");
+            await refreshList();
+          } else {
+            setLatestCanonical(canonical);
+          }
+        } catch (reconcileError) {
+          if (reconcileError instanceof ApiClientError && reconcileError.status === 401) handleUnauthorized();
+        }
       } else {
         setRetryRequest(null);
         setError(caught instanceof Error ? caught.message : "ノートの保存に失敗しました");
@@ -197,12 +243,14 @@ export function NotesBoard({ onUnauthorized, onDirtyChange }: NotesBoardProps) {
   }, [document, draftBody, draftTitle, handleUnauthorized, mode, refreshList, retryRequest, saving, selectedId]);
 
   function updateDraftTitle(value: string): void {
+    if (unresolved) return;
     setDraftTitle(value);
     setRetryRequest(null);
     setNotice(null);
   }
 
   function updateDraftBody(value: string): void {
+    if (unresolved) return;
     setDraftBody(value);
     setRetryRequest(null);
     setNotice(null);
@@ -250,14 +298,16 @@ export function NotesBoard({ onUnauthorized, onDirtyChange }: NotesBoardProps) {
                   <p className="eyebrow">Markdown source</p>
                   <h2>{mode === "new" ? "新規ノート" : "ノートを編集"}</h2>
                 </div>
-                <button type="submit" disabled={saving}>{saving ? "保存中…" : "保存"}</button>
+                <button type="submit" disabled={saving || unresolved}>{saving ? "保存中…" : "保存"}</button>
               </div>
               <label className="notes-title-field">タイトル
                 <input aria-label="ノートタイトル" value={draftTitle} maxLength={200}
+                  disabled={unresolved}
                   onChange={(event) => updateDraftTitle(event.target.value)} onKeyDown={handleEditorKeyDown} />
               </label>
               <label className="notes-body-field">Markdown本文
-                <textarea aria-label="Markdown本文" value={draftBody} onChange={(event) => updateDraftBody(event.target.value)}
+                <textarea aria-label="Markdown本文" value={draftBody} disabled={unresolved}
+                  onChange={(event) => updateDraftBody(event.target.value)}
                   onKeyDown={handleEditorKeyDown} rows={18} />
               </label>
               {notice && <p className="success" role="status">{notice}</p>}

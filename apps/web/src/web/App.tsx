@@ -757,6 +757,7 @@ export function App() {
   const [authState, setAuthState] = useState<AuthState>("loading");
   const [view, setView] = useState<AppView>("today");
   const [notesDirty, setNotesDirty] = useState(false);
+  const [notesUnresolved, setNotesUnresolved] = useState(false);
   const [settingsDestination, setSettingsDestination] = useState<SettingsDestination>("section");
   const [day, setDay] = useState<CurrentTaskChuteDayProjection | null>(null);
   const [project, setProject] = useState<ProjectSummary | null>(null);
@@ -2009,7 +2010,9 @@ export function App() {
   }
 
   function canLeaveNotes(): boolean {
-    return view !== "notes" || !notesDirty || window.confirm("未保存のノートがあります。変更を破棄して移動しますか？");
+    if (view !== "notes" || !notesDirty) return true;
+    if (notesUnresolved) return false;
+    return window.confirm("未保存のノートがあります。変更を破棄して移動しますか？");
   }
 
   async function openRoutinesView(): Promise<void> {
@@ -5662,7 +5665,8 @@ export function App() {
         {!sidebarOpen && <button type="button" className="sidebar-reopen" aria-label="サイドバーを開く" title="サイドバーを開く"
           onClick={() => setSidebarOpen(true)}>›</button>}
         {view === "routines" ? <RoutineBoard onUnauthorized={transitionToSignedOut} /> : view === "notes" ? (
-          <NotesBoard onUnauthorized={transitionToSignedOut} onDirtyChange={setNotesDirty} />
+          <NotesBoard onUnauthorized={transitionToSignedOut} onDirtyChange={setNotesDirty}
+            onUnresolvedChange={setNotesUnresolved} />
         ) : view === "settings" ? (
           <main className="shell settings-shell">
           <header className="settings-header">
