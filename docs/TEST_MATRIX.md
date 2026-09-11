@@ -2330,3 +2330,19 @@ D-084 browser fixture creation was not completed: the unauthenticated/new in-app
 | D087-NONPROD-01 | Persistent nonprod browser / DB | representative `2週間ごと 月・水・金`, start `2026-10-01`, same/fresh-tab persistence, Escape, console, APP/AUTH read-only integrity | PASS; Worker `06867a89-c073-491b-b16c-788e2abfb6fd`, console empty, quick/FK/migrations/duplicates/active/guards clean |
 | D087-MIG-01 | Migration boundary | no migration modified/applied; APP 0026 remains applied | PASS; new migration `NOT_REQUIRED`, pending `0 / 0`, Windows helper `NOT_RUN` |
 | D087-SAFETY-01 | Scope boundary | production, credentials/reset, bootstrap, restore/recovery, destructive cleanup, branch/PR/merge/tag/Release | PASS（未実施 / NOT_RUN） |
+
+## D-088 Effective workday / holiday calendar foundation
+
+| ID | Scope | Evidence | Result |
+|---|---|---|---|
+| D088-SNAPSHOT-01 | Official snapshot | 1067 normalized entries, strict dates, unique deterministic order, provenance, coverage, representative official/`休日` rows | PASS; coverage `1955-01-01..2027-12-31`, source SHA-256 recorded in CURRENT |
+| D088-CLASSIFIER-01 | Shared classifier | covered weekday, weekend, official holiday, known/unknown coverage, workday/holiday override precedence and official-fact preservation | PASS; `2 files / 7 tests` |
+| D088-PERSIST-01 | APP override commands | owner isolation, create/update/delete, reason normalization, stale revision, exact replay, operation misuse, typed validation | PASS; focused Worker `1 file / 4 tests` |
+| D088-MIG-01 | APP 0027 migration | fresh `0001 -> 0027`, upgrade `0026 -> 0027`, legacy operations/schedules preserved, constraints, quick/FK, no temp residue | PASS; bounded Node/sqlite; remote APP 0027 applied, AUTH unchanged |
+| D088-WEB-01 | Settings UI | date selection, official label, ordinary workday, unknown, holiday/workday override, reason, edit, reset, reload | PASS; focused Web `App.test.tsx 234 / 234`, persistent authenticated same-tab representative flow |
+| D088-REG-01 | Existing behavior | D-086/D-087 Routine, Project/Mode/Section Settings, full Worker/D1 and Web | PASS; focused Worker `5 files / 35 tests`, full Worker `29 files / 247 tests`, full Web `4 files / 269 tests` |
+| D088-LOCAL-01 | Static gates | typecheck, normal/exact nonprod build, Wrangler dry-run, diff check, runtime source review | PASS; no runtime/build holiday fetch and no dependency change |
+| D088-NONPROD-01 | Migration/deploy gate | APP/AUTH backup export, hashes, isolated quick/FK, APP 0027 apply, pending `0 / 0`, canonical bindings/vars | PASS; APP 564644 bytes / SHA recorded, AUTH 5136 bytes / SHA recorded, Worker `6aa11926-d034-4a5a-a13a-716a7a3e5939` |
+| D088-BROWSER-01 | Persistent authenticated browser | official, ordinary, unknown, override CRUD/reset, same-tab reload, console | PASS for existing authenticated tab; console `[]`; fresh authenticated tab `NOT_VERIFIED` because CUA returned `ERR_BLOCKED_BY_CLIENT` |
+| D088-DB-01 | Read-only APP/AUTH integrity | quick/FK, valid kinds, unique owner/date, orphan/revision/duplicate anomalies, active executions, rows_written | PASS; all anomalies `0`, active executions `0`, final override rows `0`, successful probes `rows_written=0` |
+| D088-SAFETY-01 | Scope boundary | production, credentials/reset, bootstrap mutation, restore/recovery, destructive cleanup, branch/PR/merge/tag/Release | PASS（未実施 / NOT_RUN） |

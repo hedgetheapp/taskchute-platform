@@ -533,3 +533,15 @@ Mitigation / evidence:
 - The only recurrence algorithm remains `apps/web/src/shared/routine-recurrence.ts`; no SQL, Web, or Board duplicate was introduced. Table-driven tests cover the exact 2026-10-01 required example, Monday through Sunday starts, lower/inclusive bounds, 2/3-week sequences, month/year boundaries, and unaffected recurrence regressions.
 - Persistent nonprod read-only compatibility inventory before implementation found `every_n_weeks` schedule count `0` and affected old-semantics current/future planned materialized occurrence count `0`. No data rewrite or migration was needed. APP 0026 remains `PERSISTENT_NONPROD_MIGRATED`, and D-087 exact nonprod deployment/browser persistence/DB integrity passed.
 - Residual evidence boundary: calendar-phase exhaustiveness is automated-test authority rather than browser date simulation. The normal Windows `npm run test:migrations` helper remains `NOT_RUN` after its existing bounded no-output hang; no migration was changed or applied by D-087.
+
+## R-038 — D-088 official holiday snapshot and effective-day coverage
+
+D-088 introduces a tracked Cabinet Office holiday snapshot and owner-scoped effective-day overrides. The shared classifier explicitly distinguishes `workday`, `holiday`, and `unknown`; it must not silently treat weekdays outside snapshot coverage as workdays, and official facts must remain visible when a user override changes the effective result.
+
+Mitigation / evidence:
+
+- Snapshot updater `npm run update:jp-holidays` is explicit, strict, deterministic, provenance-preserving, and fails on invalid/duplicate/empty/regressed source data. Runtime and ordinary build do not fetch upstream. Current snapshot has 1067 entries through 2027-12-31, including official `休日` rows, with source URLs and hash recorded in CURRENT.
+- APP 0027 owner/date primary key, kind CHECK, reason normalization, revision CAS, operation fingerprint/replay, owner isolation, and atomic mutation are covered by focused Worker tests and bounded fresh/upgrade migration validation. Persistent nonprod APP 0027 apply passed only after APP/AUTH export and isolated quick/FK gate; post-apply pending is `0 / 0`, AUTH was unchanged, and read-only probes report rows_written 0.
+- Authenticated same-tab Settings verification confirmed official, ordinary, unknown, holiday/workday override, official-fact preservation, reset, reload persistence, and empty console logs. Fresh authenticated tab evidence remains `NOT_VERIFIED` because CUA blocked opening/navigating a new tab; no credentials or login operation was attempted.
+
+Residual open items remain intentionally narrow: future source coverage updates require reviewable snapshot diffs; other countries/locales and Routine business-day/holiday recurrence membership remain open and are not implemented by D-088. No historical TaskChute state is rewritten by snapshot updates.

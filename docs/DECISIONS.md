@@ -1739,6 +1739,19 @@ D-083は、current established Dayのordinary planned Entryに限り、既存`Mo
 
 実装、Worker / Web regression、real-local / persistent nonprod browser、read-only DB evidenceはcanonical evidence docsへ記録する。production、restore、destructive cleanup、branch / PR / merge / tag / releaseは対象外で、Releasedは`NO`とする。
 
+## D-088 — Effective workday / holiday calendar foundation
+
+Status: **Approved / implemented / nonprod migrated**
+
+D-088はD-035のeffective workday / holiday foundationを、日本のCabinet Office公式holiday CSVのtracked normalized snapshot、共有pure classifier、owner-scoped user override persistence、Settings UIとして実装した。Runtimeと通常buildは外部holiday providerへnetwork fetchせず、更新は明示的なdeveloper-only `npm run update:jp-holidays`で行う。snapshotはCabinet Officeの公式ページ（https://www8.cao.go.jp/chosei/shukujitsu/gaiyou.html）とCSV（https://www8.cao.go.jp/chosei/shukujitsu/syukujitsu.csv）を出典として保持し、1955-01-01〜2027-12-31をカバーする。
+
+- shared classifierはcoveredな平日を`workday`、土日または公式CSV entryを`holiday`、snapshot範囲外の平日を`unknown`とし、user `workday` / `holiday` overrideを最後に適用する。override後もofficial factとsource labelは保持する。
+- APP migration `0027_workday_holiday_calendar.sql`の`effective_day_overrides`はowner、logical date、typed kind、optional reason、non-negative revision、unique user/dateを持つ。`UpsertEffectiveDayOverride` / `DeleteEffectiveDayOverride`は既存operationsのowner scope、fingerprint、exact replay、stale revision、atomicity、ambiguity境界を再利用する。AUTH migration、Routine recurrence変更、履歴rewrite、new dependencyは行わない。
+- Settings > 営業日 / 休日はdate classification、公式label、指定休日、営業日扱い、reason、edit、delete/resetを提供する。未カバー平日の`unknown`はエラーではなく知識範囲として表示する。未認証endpointやraw CSVは公開しない。
+- D-035のsemanticsをruntime authorityとして維持し、holiday/business-day recurrenceのRoutine integration、他国locale、provider versioningの拡張はこのDecisionの対象外とする。
+
+実装、APP 0027 migration、persistent nonprod backup gate / deploy、authenticated browser representative verification、read-only APP/AUTH evidenceはCURRENT / TEST_MATRIX / RISKSへ記録する。production、restore、destructive cleanup、branch / PR / merge / tag / releaseは対象外で、Releasedは`NO`とする。
+
 ## D-086 — Routine recurrence expansion
 
 Status: **Approved**

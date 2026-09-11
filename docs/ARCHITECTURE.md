@@ -502,3 +502,9 @@ MoveEntryは既存command familyのまま、optionalな`relative_to_entry` place
 WorkerはD-081のhistorical groupをcanonical display prefixとして扱うが、historical physical positionsを更新しない。sourceをplanned cohortから外し、target cohortのexisting planned slots（same Sectionならsource old slotを含む）だけをdesired orderへ再割当し、cross-Sectionではsafe unique positionを追加する。target Routine anchorのRoutine Definition / Occurrenceはread-onlyで、position uniqueness、revision CAS、transaction assertion、operation replayを既存MoveEntry boundaryで保証する。
 
 Webはsemantic destination / anchor / edgeをpending overlayへ保持し、effective Section membershipとplanned start/orderをrenderする。sent requestのidentity / payload / expected revisionは凍結し、same-Entry unsent tailのcoalesceはbarrier-awareに限定する。D-078 reorder、D-079 move、D-082 reconcile、lifecycle、Add、planned-start editのnon-commutative boundaryを跨がない。D&D previewのpointer-Y追従と`.day-surface` vertical auto-scrollはpresentation-onlyで、`scrollLeft`は変更しない。
+
+## D-088 calendar authority boundary
+
+日本holidayは`apps/web/src/shared/japanese-holidays.ts`のgenerated snapshotをruntime authorityとし、Cabinet Office公式page / CSVのprovenance、coverage、source hashを同じsnapshotに保持する。外部provider fetchはupdater scriptに限定し、Worker・Web classifier・通常buildはtracked dataだけを参照する。
+
+`apps/web/src/shared/effective-day-calendar.ts`のpure classifierが唯一のbase/effective classification authorityである。WorkerのSettings query / mutationはこのclassifierを再利用し、APP `effective_day_overrides`をowner/date/revisionでCAS管理する。Routine materialization、Routine recurrence SQL、TaskChute Day/Entry/Execution historyはこのfoundationから変更しない。

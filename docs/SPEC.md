@@ -554,3 +554,11 @@ Routine Definitionにはowner-scopedな任意のdefault Modeを持たせ、defau
 current established Dayのplanned Routine-derived Entryでoverrideが未設定の場合、Mode変更はmemory-only candidateから 今回だけ または ルーティンに反映 を明示選択するまでwriteしない。今回だけはOccurrence override、ルーティンに反映はRoutine default更新とeligible planned no-override occurrenceへのpropagationを既存CAS / atomic operationで確定する。overrideが存在する場合はOccurrence-only direct pathとし、ModeなしもNULL overrideとして保持する。
 
 Routine BoardはProjectの隣にMode列を表示し、default Modeを編集する。Routine化はordinary Entryの現在Modeをdefaultとして継承し、Mode削除はRoutine defaultとOccurrence overrideを安全にclearしてlive Entry ModeをNULLにするが、snapshots / historyを変更しない。APP migration 0025_routine_mode.sqlで関係とoperations CHECKを追加するが、AUTH migration、既存API semanticsを越える新command、dependency、security posture、future materializationの拡張、historical rewriteは行わない。D-068のRoutine Mode out-of-scopeはこの狭いdefault / occurrence override機能に限りsupersedeする。
+
+## D-088 effective workday / holiday calendar foundation
+
+Runtime holiday authorityはCabinet Office公式CSVのtracked normalized snapshotとし、runtime / ordinary buildからupstream networkへ接続しない。snapshotはsource page、CSV URL、coverage start/end、source SHA-256、logical date、source labelを保持し、明示的な`npm run update:jp-holidays`だけが取得・strict decode・date validation・duplicate検査・deterministic generationを行う。CSVの`休日`を含む全entryをofficial holiday factとして扱い、未発表日やequinoxを推測しない。
+
+`classifyEffectiveDay`がlogical `YYYY-MM-DD`をauthorityとする共有pure classifierであり、coveredな月〜金は`workday`、土日は`holiday`、公式entryは曜日にかかわらず`holiday`、coverage外の月〜金は`unknown`とする。user overrideは`workday`または`holiday`をbaseへ適用するが、official entryは保持する。browser timezone / locale parsing / Date rolloverは使わない。
+
+APP `0027_workday_holiday_calendar.sql`はowner-scoped `effective_day_overrides`（user/date primary key、kind CHECK、optional reason、non-negative revision、timestamps）と既存operations command CHECKの互換拡張を追加する。Settings APIはauthenticated ownerのcoverage、date classification、override list、upsert、delete/resetだけを公開し、raw CSVやunauthenticated calendar endpointを公開しない。D-088はRoutine materialization eligibilityを変更せず、営業日・休日recurrenceへの統合は後続Decisionとする。

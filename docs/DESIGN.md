@@ -582,3 +582,9 @@ Routine placement requestは既存`SetRoutineSectionPlan` commandのoptional rel
 Routine BoardはProject列の隣にMode列を置き、default Modeを通常のBoard編集として表示する。default未設定はModeなしであり、Day側でdefaultから解決されたModeと視覚的に区別しない。Dayのplanned Routine-derived rowでoverride未設定のModeを変更すると、選択値を事前選択しない小さなscope chooserを開き、今回だけ、ルーティンに反映、キャンセルを表示する。cancel / Escapeはno-writeで候補を破棄する。
 
 Occurrence overrideが既に存在するRoutine rowは直接更新し、Modeなしを明示的NULL overrideとして表示・保持する。Routine default更新は既存のtransient/status languageとoperation retry surfaceを再利用し、Dayのtable geometry、focus、既存のMode selector、非Routine EntryのMode semanticsを変更しない。
+
+## D-088 営業日 / 休日 Settings
+
+Settingsに小さな「営業日 / 休日カレンダー」画面を追加し、日付ごとの基本判定・有効判定・公式label・現在の指定一覧を表示する。指定は`指定なし（基本判定）`、`指定休日`、`営業日扱い`から選び、reasonは任意で入力する。保存、編集、delete/reset、reloadを既存のauthenticated Settings/API patternで行い、`unknown`は公式snapshot coverage外の平日として「不明」と表示する。
+
+公式holiday dataはCabinet Office page（https://www8.cao.go.jp/chosei/shukujitsu/gaiyou.html）とCSV（https://www8.cao.go.jp/chosei/shukujitsu/syukujitsu.csv）に帰属させる。raw CSVやlogoはUIへ出さず、full calendar、country selector、Routine recurrence設定はこのsliceに含めない。
