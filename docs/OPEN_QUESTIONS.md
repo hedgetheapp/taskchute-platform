@@ -45,7 +45,7 @@ Current First vertical slice implementation / nonprod verification fact:
 
 以下はOpen:
 
-- Routine等へ利用する営業日 / 休日 / 祝日判定のfoundationはD-088で実装済み（Cabinet Office tracked snapshot、shared classifier、owner override）。N-week / monthly recurrenceとそのlogical-date semanticsはD-086/D-087で解決済み。broader recurrence membershipは引き続きOpen
+- Routine等へ利用する営業日 / 休日 / 祝日判定のfoundationはD-088、D-089の4 family接続まで実装済み（Cabinet Office tracked snapshot、shared classifier、owner override）。N-week / monthly recurrenceとそのlogical-date semanticsもD-086/D-087で解決済み。残るOpenは他国calendar / locale拡張と、D-089の4 family以外の将来membershipである
 - Routine archive/deleteのexact lifecycle、復元、retention（R2B pause/resumeとinclusive periodはD-047で解決済み）
 - occurrence-level Task title / Project override UX（R2Bはcurrent Task authority + historical snapshotのみ）
 
@@ -270,7 +270,7 @@ RoutineDefinition -> RoutineOccurrence -> Entryとorigin TaskChuteDay preservati
 
 D-034でProjected / Materialized Occurrence、field-level day override、Routine default反映scope、Skip、明示日付移動、stop / resume / deleteの主要semanticsがApproved済み。
 
-D-035 / D-036でeffective営業日 / 休日判定とinitial recurrence pattern setがApproved済み。D-086/D-087ではN-week / monthly recurrenceのtyped schedule semantics、shared evaluator、current-Day materialization / reconciliationまでApproved・実装済みであり、D-088でJapan holiday snapshot、unknown coverage、user override foundationも実装済みである。Routine business-day / holiday recurrenceへの接続は引き続きOpenである。
+D-035 / D-036でeffective営業日 / 休日判定とinitial recurrence pattern setがApproved済み。D-086/D-087ではN-week / monthly recurrenceのtyped schedule semantics、shared evaluator、current-Day materialization / reconciliationまでApproved・実装済みであり、D-088でJapan holiday snapshot、unknown coverage、user override foundation、D-089で`営業日` / `休日` / `祝日` / `月末営業日` Routine接続も実装済みである。未解決なのは他国calendar、locale拡張、D-089の後続以外のbusiness-day recurrence semanticsであり、D-089自体の4 family接続はOpenではない。
 
 D-040でdaily-only R1について、existing Entry conversion、minimal RoutineDefinition / RoutineOccurrence / Entry relation、current-Day lazy materialization、placement revision、defaults、inclusive end / Routine終了、minimal Web UXをApprovedした。D-043はRoutine-derived EntryにもSection / planned-start full synchronizationを適用し、D-044はcurrent-Day planned Routine EntryのSection-plan / estimate override、explicit scope choice、reset、default propagationをApprovedした。D-045はlegacy real Section + NULLのnormalization resultとauthority / fail-safe boundaryをApprovedし、D-046はtyped occurrence override columns、explicit presence、owner-scoped Section reference、Routine default revisionというfirst-slice physical persistence directionをApprovedした。first-slice runtime / migrationはcommit `7d3c0cb0881dfc11725af6ff45eabad69f86a22a`で実装・Integrated / real-local verifiedであり、以下はbroader scopeまたは将来のscale / compatibility条件としてOpenのまま維持する。
 

@@ -2347,6 +2347,26 @@ D-084 browser fixture creation was not completed: the unauthenticated/new in-app
 | D088-DB-01 | Read-only APP/AUTH integrity | quick/FK, valid kinds, unique owner/date, orphan/revision/duplicate anomalies, active executions, rows_written | PASS; all anomalies `0`, active executions `0`, final override rows `0`, successful probes `rows_written=0` |
 | D088-SAFETY-01 | Scope boundary | production, credentials/reset, bootstrap mutation, restore/recovery, destructive cleanup, branch/PR/merge/tag/Release | PASS（未実施 / NOT_RUN） |
 
+## D-089 Routine workday / holiday recurrence
+
+| ID | Scope | Evidence | Result |
+|---|---|---|---|
+| D089-DOMAIN-01 | Calendar-aware eligibility | workday / holiday / official_holiday / monthly_last_workday, unknown, official fact under override, leap/month-end matrix | PASS; shared adapter and recurrence tests |
+| D089-RECON-01 | Override + Routine reconciliation | bulk owner override snapshot, suppression / restore, current-Day exactly-once materialization, protected state | PASS; focused D-089 integration `5 / 5` |
+| D089-C1 | Override vs ensure materialization | old ensure plan is rejected when override wins first | PASS; deterministic integration evidence |
+| D089-C2 | Override vs UpdateRoutine | stale calendar snapshot cannot commit schedule/reconciliation | PASS; deterministic integration evidence |
+| D089-C3 | Month-end override vs moved occurrence | moved planned occurrence remains protected and retains placement/suppression | PASS; deterministic integration evidence |
+| D089-C4 | Two same-month override edits | stale month-set plan rejects after another override wins; no split-brain snapshot | PASS; deterministic integration evidence |
+| D089-C5 | Equal-final override race | D-088 equal-final CAS regression remains PASS | PASS; D088-CAS-01 |
+| D089-MIG-01 | APP 0028 migration | fresh `0001 -> 0028`, upgrade `0027 -> 0028`, 10-kind preservation, four new kinds, invalid typed fields, quick/FK, no temp residue | PASS; bounded Node/sqlite; remote APP 0028 applied, AUTH unchanged |
+| D089-REG-01 | D-086 / D-087 / D-088 regression | recurrence, R2B, D-086 race/CAS, D-087 evaluator, D-088 override integration | PASS; full Worker/D1 `30 files / 259 tests` |
+| D089-WEB-01 | Routine Board | four new labels/shapes, exact payload, existing editor regression | PASS; full Web `4 files / 270 tests`, focused Routine Board `16 / 16` |
+| D089-LOCAL-01 | Static gates | typecheck, normal/exact nonprod build, Wrangler dry-run, diff-check, source review | PASS; no dependency/API redesign |
+| D089-NONPROD-01 | Migration/deploy | backup HARD GATE, isolated recovery readability, APP 0028, pending `0 / 0`, canonical bindings/vars, Worker version | PASS; APP/AUTH exports and hashes recorded in CURRENT; Worker `fe49f26a-4c31-474f-af43-b96272751cf8` |
+| D089-BROWSER-01 | Authenticated persistent browser | four family save/reload, override interaction, same/fresh-tab persistence, console | `NOT_VERIFIED`; existing tab was logged out during AX navigation, no credential/re-login attempted |
+| D089-DB-01 | Read-only APP/AUTH integrity | quick/FK, allowed kinds, invalid typed fields, duplicate occurrence/day, section-position uniqueness, orphan, active execution, rows_written | PASS; anomalies `0`, active `0`, probes `rows_written=0` |
+| D089-SAFETY-01 | Scope boundary | production, restore, destructive cleanup, credential/bootstrap changes, branch/PR/merge/tag/Release | PASS（未実施 / NOT_RUN） |
+
 ### D-088 corrective — Effective Day Override CAS / reverse race
 
 | ID | Scope | Evidence | Result |

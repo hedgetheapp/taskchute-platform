@@ -556,3 +556,15 @@ Mitigation / evidence:
 - Deterministic tests cover same-result update, different-result update, concurrent delete, and no-op drift. They pass together with sequential replay/stale/owner regression and the full Worker/Web suites. The selected-date calendar read is independent of the removed list cap, so a valid override cannot be silently omitted from classification because of list ordering.
 
 Residual evidence boundary: same-tab Settings verification and console reads passed, but fresh authenticated Settings persistence and final reset of one disposable override remain `NOT_VERIFIED` after the browser session was logged out without re-login. No credential retrieval or direct cleanup was performed. D-088 APP 0027 remains applied; no new migration, schema, API, dependency, or Product semantic change was introduced.
+
+## R-040 — D-089 calendar-aware Routine reconciliation boundary
+
+D-089 connects four Routine families to D-088 effective-day classification. The main risk is a split-brain result when an override edit, current-Day materialization, or UpdateRoutine reconciliation observes different override / planned-occurrence snapshots, especially when `monthly_last_workday` moves within a civil month.
+
+Mitigation / evidence:
+
+- One shared calendar-aware adapter consumes a bulk owner-scoped override snapshot; existing ten recurrence families remain on the pure civil-date evaluator. Unknown is never treated as workday, official snapshot facts survive effective overrides, and no SQL or UI duplicate calendar algorithm was added.
+- APP 0028 adds only the four typed schedule kinds and forces irrelevant typed fields NULL. D-089 C1/C2/C3/C4 deterministic integration tests pass; D-088 C5 equal-final CAS plus D-086 complete-set race and D-087 recurrence regressions remain PASS. Moved, skip, paused, Section / Estimate / Mode override, and historical state are protected.
+- Override mutation, affected planned Routine reconciliation, materialization, and operation success use calendar snapshot / completeness / protected-state assertions in one D1 batch. APP 0028 was applied to persistent nonprod only after isolated APP/AUTH backup validation; post-apply integrity and pending `0 / 0` are clean.
+
+Remaining evidence gap: authenticated persistent browser verification of all four D-089 editors, save/reload, same/fresh-tab persistence, and console was not completed after the existing tab entered logged-out state during AX navigation. Credentials and re-login were intentionally not used. Browser status is `NOT_VERIFIED`; local automated and DB evidence remain the authority for implementation and migration correctness.

@@ -588,3 +588,7 @@ Occurrence overrideが既に存在するRoutine rowは直接更新し、Modeな�
 Settingsに小さな「営業日 / 休日カレンダー」画面を追加し、日付ごとの基本判定・有効判定・公式label・現在の指定一覧を表示する。指定は`指定なし（基本判定）`、`指定休日`、`営業日扱い`から選び、reasonは任意で入力する。保存、編集、delete/reset、reloadを既存のauthenticated Settings/API patternで行い、`unknown`は公式snapshot coverage外の平日として「不明」と表示する。
 
 公式holiday dataはCabinet Office page（https://www8.cao.go.jp/chosei/shukujitsu/gaiyou.html）とCSV（https://www8.cao.go.jp/chosei/shukujitsu/syukujitsu.csv）に帰属させる。raw CSVやlogoはUIへ出さず、full calendar、country selector、Routine recurrence設定はこのsliceに含めない。
+
+## D-089 Routine recurrence UI
+
+Routine Boardの既存recurrence popoverに、追加のinterval / weekday / month-day入力を持たない4つの選択肢 `営業日`、`休日`、`祝日`、`月末営業日`を追加した。保存時は既存のUpdateRoutine commandへexact typed kindだけを送り、Cancel / Escape / invalid draftはno-writeとする。実際のeffective classification、official label、unknown coverageはD-088 shared authorityが決定し、UIでcalendar判定を再実装しない。

@@ -507,4 +507,10 @@ Webはsemantic destination / anchor / edgeをpending overlayへ保持し、effec
 
 日本holidayは`apps/web/src/shared/japanese-holidays.ts`のgenerated snapshotをruntime authorityとし、Cabinet Office公式page / CSVのprovenance、coverage、source hashを同じsnapshotに保持する。外部provider fetchはupdater scriptに限定し、Worker・Web classifier・通常buildはtracked dataだけを参照する。
 
+## D-089 calendar-aware Routine composition
+
+D-089は既存のpure recurrence evaluatorをDB-awareにせず、`routine-recurrence.ts`のcalendar-aware adapterへD-088 `classifyEffectiveDay`とowner-scoped override snapshotを渡す。reconciliationはoverride一覧を一括取得し、候補Occurrenceを一括取得してmemory上の同一snapshotで評価するため、dateごとのN+1 calendar readやSQL内の第二recurrence algorithmを持たない。
+
+APP 0028は`routine_schedules`のtyped CHECKだけを拡張し、`workday` / `holiday` / `official_holiday` / `monthly_last_workday`の追加列を全てNULLに固定する。D-088 override commandはcalendar snapshot guard、planned occurrence completeness、protected-state guard、transaction assertionを一つのD1 batchで使い、overrideとRoutine reconciliationのsplit-brainを許さない。`monthly_last_workday`は編集日だけでなく同一civil monthのplanned setを評価する。
+
 `apps/web/src/shared/effective-day-calendar.ts`のpure classifierが唯一のbase/effective classification authorityである。WorkerのSettings query / mutationはこのclassifierを再利用し、APP `effective_day_overrides`をowner/date/revisionでCAS管理する。Routine materialization、Routine recurrence SQL、TaskChute Day/Entry/Execution historyはこのfoundationから変更しない。

@@ -562,3 +562,9 @@ Runtime holiday authorityはCabinet Office公式CSVのtracked normalized snapsho
 `classifyEffectiveDay`がlogical `YYYY-MM-DD`をauthorityとする共有pure classifierであり、coveredな月〜金は`workday`、土日は`holiday`、公式entryは曜日にかかわらず`holiday`、coverage外の月〜金は`unknown`とする。user overrideは`workday`または`holiday`をbaseへ適用するが、official entryは保持する。browser timezone / locale parsing / Date rolloverは使わない。
 
 APP `0027_workday_holiday_calendar.sql`はowner-scoped `effective_day_overrides`（user/date primary key、kind CHECK、optional reason、non-negative revision、timestamps）と既存operations command CHECKの互換拡張を追加する。Settings APIはauthenticated ownerのcoverage、date classification、override list、upsert、delete/resetだけを公開し、raw CSVやunauthenticated calendar endpointを公開しない。D-088はRoutine materialization eligibilityを変更せず、営業日・休日recurrenceへの統合は後続Decisionとする。
+
+## D-089 Routine workday / holiday recurrence
+
+D-089でD-088のcalendar authorityをRoutineへ接続した。typed scheduleは`workday`（effective workday）、`holiday`（effective holiday）、`official_holiday`（official snapshot entry）、`monthly_last_workday`（同一月内で最後のeffective workday）で、coverage外weekdayのunknownはeligibleではない。`monthly_last_workday`は月末までの全日を同じbulk calendar snapshotで評価し、later unknownをブロックする。
+
+既存10 recurrence kindは`isRoutineScheduleEligible()`のpure civil-date evaluatorを継続利用し、D-089 kindだけを`isRoutineScheduleEligibleWithCalendar()`のshared adapterで評価する。Routine Board、current-Day materialization、UpdateRoutine suppression / restore、D-088 override reconciliationは同じadapterとowner-scoped bulk override contextを使う。override mutationとplanned D-089 reconciliationはAPP 0028後の同一D1 batch / assertion boundaryでcommitし、moved / skipped / paused / overridden / historical stateを変更しない。

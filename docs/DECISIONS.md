@@ -1739,6 +1739,17 @@ D-083は、current established Dayのordinary planned Entryに限り、既存`Mo
 
 実装、Worker / Web regression、real-local / persistent nonprod browser、read-only DB evidenceはcanonical evidence docsへ記録する。production、restore、destructive cleanup、branch / PR / merge / tag / releaseは対象外で、Releasedは`NO`とする。
 
+## D-089 — Routine workday / holiday recurrence
+
+Status: **Approved / implemented**
+
+D-089はD-088のeffective workday / holiday calendar authorityをRoutine recurrenceへ接続し、`営業日`、`休日`、`祝日`、`月末営業日`の4 typed schedule kindを追加する。既存D-086/D-087の10 family、D-088 official snapshot / override semantics、pause / archive / moved / skip / history protection、exactly-once materializationは維持する。
+
+- D-089専用のcalendar-aware adapterはD-088 classifierとowner-scoped override snapshotを一括で受け取り、unknownを推測せず、official factをeffective overrideから独立して判定する。既存pure recurrence evaluatorへDB依存や重複calendar algorithmは追加しない。
+- `月末営業日`は同一civil month全体を評価し、後続のunknown / workdayが残る場合は候補にしない。override mutation、planned calendar Routine reconciliation、operation successは同一D1 atomic/CAS boundaryで扱う。moved、explicit skip、paused、Section / Estimate / Mode override、historyは保護する。
+- APP `0028_routine_workday_holiday_recurrence.sql`は既存10 kindのtyped row / identity / operation / D-088 overrideを保持したまま4 kindを追加する。AUTH migration、API command redesign、dependency、historical rewrite、future bulk materializationは行わない。
+- 詳細なProduct semanticsは`docs/decisions/D-089_ROUTINE_WORKDAY_HOLIDAY_RECURRENCE.md`、migration approvalは`docs/decisions/D-089_APP_0028_MIGRATION_APPROVAL.md`に保持する。実装・テスト・persistent nonprod evidenceはCURRENT / TEST_MATRIX / RISKSに記録し、production / restore / destructive cleanup / Releaseは対象外、Releasedは`NO`とする。
+
 ## D-088 — Effective workday / holiday calendar foundation
 
 Status: **Approved / implemented / nonprod migrated**
