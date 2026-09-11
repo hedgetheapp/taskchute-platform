@@ -2442,3 +2442,18 @@ D-084 browser fixture creation was not completed: the unauthenticated/new in-app
 | D090-CORR-BROWSER | Authenticated Notes browser | existing persistent tab is logged out; authenticated CRUD/reload/fresh-tab/console were not attempted with credential retrieval or re-login | `AUTHENTICATED_BROWSER_NOT_VERIFIED` |
 | D090-CORR-MIG | Migration boundary | no migration/schema change or apply; APP 0029 remains applied | `MIGRATION_NOT_REQUIRED` |
 | D090-CORR-SAFETY | Scope boundary | no Worker/API semantic change, production, restore, destructive cleanup, credential/re-login, branch/PR/merge/tag/Release | PASS（未実施 / NOT_RUN） |
+
+### D-090 Corrective 2 — unresolved clean-draft barrier
+
+| ID | Scope | Evidence | Result |
+|---|---|---|---|
+| D090-CORR2-B1 | Existing Note saved without edits, ambiguous Update leaves `dirty=false`/`unresolved=true`; Settings/Today/Routines/Notes cannot leave | deterministic App test | PASS |
+| D090-CORR2-B2 | Clean unresolved Note blocks logout; logout API is not dispatched | deterministic App test | PASS |
+| D090-CORR2-B3 | Clean unresolved Note prevents `beforeunload` despite `dirty=false` | deterministic NotesBoard test | PASS |
+| D090-CORR2-B4 | Exact Retry reuses the retained Update request and restores normal editing/navigation state | deterministic NotesBoard test | PASS |
+| D090-CORR2-B5 | Exact-ID canonical reconciliation clears unresolved barrier without retry or second logical operation | deterministic NotesBoard test | PASS |
+| D090-CORR2-REG | Existing D-090 A1–A8, Notes/App, and Documents Worker regressions | focused NotesBoard `16/16`, App `237/237`, Documents Worker `7/7`; full Web `5 files/289`, full Worker/D1 `32 files/276` | PASS |
+| D090-CORR2-NONPROD | Exact main push/deploy, canonical Worker/env/bindings, root/API safety, APP/AUTH pending and read-only integrity | Worker `b9fab5e4-ff4d-4a6a-a990-3c9f280d1aa7`, pending `0/0`, quick/FK clean, rows_written `0` | PASS |
+| D090-CORR2-BROWSER | Authenticated Notes browser verification | existing persistent tab is logged out; no credential retrieval/re-login | NOT_VERIFIED |
+| D090-CORR2-MIG | New migration required by corrective | APP 0029 remains applied; no AUTH migration | NOT_REQUIRED |
+| D090-CORR2-SAFETY | Production, restore/recovery, destructive cleanup, bootstrap mutation, Release | not performed | NOT_RUN / NO |
