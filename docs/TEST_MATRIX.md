@@ -2367,6 +2367,25 @@ D-084 browser fixture creation was not completed: the unauthenticated/new in-app
 | D089-DB-01 | Read-only APP/AUTH integrity | quick/FK, allowed kinds, invalid typed fields, duplicate occurrence/day, section-position uniqueness, orphan, active execution, rows_written | PASS; anomalies `0`, active `0`, probes `rows_written=0` |
 | D089-SAFETY-01 | Scope boundary | production, restore, destructive cleanup, credential/bootstrap changes, branch/PR/merge/tag/Release | PASS（未実施 / NOT_RUN） |
 
+### D-089 corrective — Calendar reconciliation completeness
+
+| ID | Scope | Evidence | Result |
+|---|---|---|---|
+| D089-CORR-A1 | Default Mode protection | effective `entry_modes.mode_id` without explicit occurrence override is suppressible/restorable; Mode row survives | PASS; deterministic integration |
+| D089-CORR-A2 | Explicit Mode protection | `routine_occurrence_mode_overrides` presence protects the planned occurrence | PASS; deterministic integration |
+| D089-CORR-A3 | Mode persistence | suppression/restore does not duplicate or remove default Mode state | PASS; deterministic integration |
+| D089-CORR-B1 | Future established Day | eligible existing future Day materializes exactly once | PASS; deterministic integration |
+| D089-CORR-B2 | Unestablished future Day | reconciliation does not create a Day or occurrence | PASS; deterministic integration |
+| D089-CORR-B3 | Monthly last workday | affected established Days reconcile and move materialization once | PASS; deterministic integration |
+| D089-CORR-B4 | Official holiday | effective override alone does not churn official-holiday candidates | PASS; deterministic integration |
+| D089-CORR-B5 | Current Day regression | current-Day suppression/materialization behavior remains PASS | PASS; focused/full regression |
+| D089-CORR-C6 | UpdateRoutine drift | no-occurrence candidate rejects stale override plan when schedule changes first | PASS; deterministic integration |
+| D089-CORR-C7 | Pause/archive drift | stale candidate plan rejects pause/archive drift before batch | PASS; deterministic integration |
+| D089-CORR-C8 | Default drift | stale candidate plan rejects default revision drift before batch | PASS; deterministic integration |
+| D089-CORR-C9 | Same origin Day race | concurrent paths converge to one RoutineOccurrence/origin Day | PASS; deterministic integration |
+| D089-CORR-REG | Local corrective gates | focused `14 / 14`, full Worker/D1 `30 files / 268`, full Web `4 files / 270`, typecheck/build/exact nonprod build/dry-run/diff-check | PASS |
+| D089-CORR-NONPROD | Corrective deploy / integrity | canonical Worker `ac58fb1b-4b8c-45b9-9594-b1ed36921a71`, APP 0028 still applied, APP/AUTH pending `0 / 0`, quick/FK and aggregate anomaly probes clean | PASS; authenticated browser remains `NOT_VERIFIED` |
+
 ### D-088 corrective — Effective Day Override CAS / reverse race
 
 | ID | Scope | Evidence | Result |

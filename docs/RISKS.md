@@ -568,3 +568,9 @@ Mitigation / evidence:
 - Override mutation, affected planned Routine reconciliation, materialization, and operation success use calendar snapshot / completeness / protected-state assertions in one D1 batch. APP 0028 was applied to persistent nonprod only after isolated APP/AUTH backup validation; post-apply integrity and pending `0 / 0` are clean.
 
 Remaining evidence gap: authenticated persistent browser verification of all four D-089 editors, save/reload, same/fresh-tab persistence, and console was not completed after the existing tab entered logged-out state during AX navigation. Credentials and re-login were intentionally not used. Browser status is `NOT_VERIFIED`; local automated and DB evidence remain the authority for implementation and migration correctness.
+
+### D-089 corrective closure
+
+Independent review reopened R-040 for three completeness gaps. The corrective at `478c1445d03cc73e6b3539ed66e13a0a0e1b32df` now distinguishes default Mode materialization from explicit `routine_occurrence_mode_overrides`, expands reconciliation to already-established current/future target Days in the edited date or affected month without creating Days, and captures/guards every newly-materialized candidate's Routine/task/schedule/period/archive/pause/default/Day/placement/Section/occurrence-absence source state in the existing atomic D1 boundary. A1–A3, B1–B5, C6–C9 and the D-086/D-087/D-088/D-089 regression gates pass.
+
+The independent Sol Medium review route was unavailable in this environment; targeted self-review explicitly checked default-vs-explicit Mode protection, month target completeness, pause/archive/default drift, exact origin-Day uniqueness, suppression protection, replay, revision conflict, and infrastructure ambiguity. APP 0028 remains applied, no migration was added, and persistent authenticated browser evidence remains `NOT_VERIFIED` because the existing session is logged out and credentials/re-login are prohibited.
