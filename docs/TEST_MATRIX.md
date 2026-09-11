@@ -2424,3 +2424,21 @@ D-084 browser fixture creation was not completed: the unauthenticated/new in-app
 | D088-CORR-DB-01 | APP/AUTH integrity | quick/FK, pending, valid kinds, unique owner/date, orphan/revision/duplicate anomalies, active execution, assertion cleanup, operation/read-only writes | PASS; all anomalies `0`, active `0`, `rows_written=0` |
 | D088-CORR-MIG-01 | Migration boundary | no schema/migration change or apply; APP 0027 remains applied; Windows helper status | `MIGRATION_NOT_REQUIRED`; helper `NOT_RUN` |
 | D088-CORR-SAFETY-01 | Scope boundary | no production, credentials/re-login, bootstrap mutation, restore, destructive cleanup, branch/PR/merge/tag/Release | PASS（未実施 / NOT_RUN） |
+
+### D-090 corrective — Ambiguous Save Resolution Barrier
+
+| ID | Scope | Evidence | Result |
+|---|---|---|---|
+| D090-CORR-A1 | Ambiguous Create committed | exact document fetch matches original standalone Create payload and revision `0`; UI converges without a second Create | PASS; deterministic Web test |
+| D090-CORR-A2 | Ambiguous Create unresolved | exact original `document_id` / `operation_id` / title / body remains available for Retry when fetch is not found | PASS; deterministic Web test |
+| D090-CORR-A3 | Ambiguous Create edit barrier | title/body edits and new-note navigation cannot clear or replace the retained Create request | PASS; deterministic Web test |
+| D090-CORR-A4 | Ambiguous Update committed | exact document fetch matches payload at `expected_revision + 1`; UI converges without a second revision increment | PASS; deterministic Web test |
+| D090-CORR-A5 | Ambiguous Update unresolved | exact Update request remains frozen and Retry reuses the original payload | PASS; deterministic Web test |
+| D090-CORR-A6 | Revision conflict separation | existing revision-conflict path preserves local draft and canonical details; it is not treated as ambiguous success | PASS; existing Web regression |
+| D090-CORR-A7 | Navigation/unload barrier | unresolved Save blocks in-app navigation/logout and keeps dirty `beforeunload` protection | PASS; App + Notes deterministic tests |
+| D090-CORR-A8 | Resolution recovery | canonical reconciliation clears the barrier and restores normal editing / Update flow | PASS; deterministic Web test |
+| D090-CORR-REG | Local regression gates | focused Notes `12 / 12`, App `236 / 236`, Documents Worker `7 / 7`, full Web `5 files / 284`, full Worker/D1 `32 files / 276`, typecheck/build/nonprod build/guard/dry-run/diff-check | PASS |
+| D090-CORR-NONPROD | Corrective deploy / integrity | Worker `ea1b73e5-ed5f-4b86-be3c-ccf7f800318e`, canonical bindings/vars, root `200`, protected API `401`, APP/AUTH pending `0 / 0`, quick/FK clean, read-only probes `rows_written=0` | PASS |
+| D090-CORR-BROWSER | Authenticated Notes browser | existing persistent tab is logged out; authenticated CRUD/reload/fresh-tab/console were not attempted with credential retrieval or re-login | `AUTHENTICATED_BROWSER_NOT_VERIFIED` |
+| D090-CORR-MIG | Migration boundary | no migration/schema change or apply; APP 0029 remains applied | `MIGRATION_NOT_REQUIRED` |
+| D090-CORR-SAFETY | Scope boundary | no Worker/API semantic change, production, restore, destructive cleanup, credential/re-login, branch/PR/merge/tag/Release | PASS（未実施 / NOT_RUN） |
