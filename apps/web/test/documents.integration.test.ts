@@ -85,6 +85,24 @@ describe("D-090 standalone Markdown Documents", () => {
       .bind(userId, first.operation_id).first<string>("outcome_kind")).toBe("revision_conflict");
   });
 
+  it("rolls back the document when its atomic assertion cannot be recorded", async () => {
+    const created = await createStandaloneDocument(env.APP_DB, userId, createRequest());
+    const request = updateRequest(created.document.document_id, 0, { title: "Should roll back", markdown_body: "rollback" });
+    const assertionId = `document-update:${request.operation_id}`;
+    await expect(updateDocument(env.APP_DB, userId, request, undefined, {
+      beforeMutation: async () => {
+        await env.APP_DB.prepare("INSERT INTO transaction_assertions (app_user_id, id, ok) VALUES (?, ?, 1)")
+          .bind(userId, assertionId).run();
+      },
+    })).rejects.toMatchObject({ code: "infrastructure_ambiguous" });
+    expect(await env.APP_DB.prepare("SELECT title, markdown_body, revision FROM documents WHERE document_id = ?")
+      .bind(created.document.document_id).first()).toEqual({ title: "First note", markdown_body: "# Hello", revision: 0 });
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM operations WHERE app_user_id = ? AND operation_id = ?")
+      .bind(userId, request.operation_id).first<{ count: number }>()).toEqual({ count: 0 });
+    await env.APP_DB.prepare("DELETE FROM transaction_assertions WHERE app_user_id = ? AND id = ?")
+      .bind(userId, assertionId).run();
+  });
+
   it("preserves a concurrent different winner and isolates owners", async () => {
     const created = await createStandaloneDocument(env.APP_DB, userId, createRequest());
     const first = updateRequest(created.document.document_id, 0, { title: "A", markdown_body: "A" });
