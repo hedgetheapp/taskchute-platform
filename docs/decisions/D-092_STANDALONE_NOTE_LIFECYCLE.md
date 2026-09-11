@@ -46,6 +46,29 @@ Exact visual treatment of the archive control, archived-view heading, back/navig
 - `アーカイブ` is a secondary destination/action from Notes;
 - archived Notes are not mixed into the ordinary list.
 
+### Approved UI/UX direction
+
+The Product Owner approved the hand-drawn Notes concept based on the current two-pane Notes screen.
+
+The implementation target is:
+
+- keep the existing top-level `ノート` destination and two-pane structure: left Note list, right Markdown editor;
+- ordinary Notes view shows only non-archived Notes;
+- place a compact `アーカイブ` button/control near the Notes list/header area instead of an always-visible `使用中` tab;
+- `アーカイブ` opens a dedicated archived Notes list/view with a clear `通常のノートに戻る` equivalent control;
+- keep `＋ 新規ノート` readily accessible in the ordinary Notes view;
+- each Note exposes a compact row/menu affordance such as `…` for lifecycle actions;
+- ordinary Note actions include `アーカイブ` and `削除`; rename may remain available either via the title editor or menu according to existing editor conventions;
+- archived Note actions include `復元` and `削除`;
+- archive/restore should use a concise confirmation dialog if needed for clarity, with cancel and explicit action buttons;
+- hard delete always uses a destructive confirmation dialog that clearly states the action cannot be undone;
+- after archive/delete of the selected Note, selection/focus moves to a valid remaining visible Note or the empty state;
+- autosave status remains understandable in the editor and lifecycle controls must not bypass pending/unresolved save safety.
+
+The approved information architecture intentionally avoids an equal-weight `使用中` tab. The normal Notes list is the default state; archive is a secondary view opened only when needed.
+
+Exact spacing, iconography, button placement, typography, and menu visual styling remain reversible UI implementation details and should follow the existing TaskChute shell / Project / Mode interaction conventions.
+
 ### Title uniqueness across lifecycle states
 
 The D-091 no-duplicate-title rule applies across all standalone Notes owned by the user, regardless of archive state.
