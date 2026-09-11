@@ -74,6 +74,13 @@ import {
   loadModeBoard, reorderModes, setEntryMode, updateMode, isSetModeArchivedRequest, setModeArchived,
   isDeleteModeRequest, deleteMode,
 } from "./application/mode-management";
+import {
+  deleteEffectiveDayOverride,
+  isDeleteEffectiveDayOverrideRequest,
+  isUpsertEffectiveDayOverrideRequest,
+  loadEffectiveDayCalendar,
+  upsertEffectiveDayOverride,
+} from "./application/effective-day-calendar";
 
 const SECURITY_HEADERS: Record<string, string> = {
   "cache-control": "no-store",
@@ -113,6 +120,27 @@ async function route(request: Request, env: Env): Promise<Response> {
       throw new HttpError(400, "malformed_request", "Invalid SetAutoCarryOverduePlanned request");
     }
     return Response.json(await setAutoCarryOverduePlanned(env.APP_DB, principal.appUserId, body));
+  }
+  if (request.method === "GET" && url.pathname === "/api/v1/settings/effective-day-calendar") {
+    const logicalDate = url.searchParams.get("logical_date");
+    if (!logicalDate || !isLogicalDate(logicalDate)) throw new HttpError(400, "malformed_request", "Invalid logical date");
+    return Response.json(await loadEffectiveDayCalendar(env.APP_DB, principal.appUserId, logicalDate));
+  }
+  if (request.method === "POST" && url.pathname === "/api/v1/settings/effective-day-overrides") {
+    const body = await readBoundedJson(request);
+    if (!isUpsertEffectiveDayOverrideRequest(body)) {
+      throw new HttpError(400, "malformed_request", "Invalid UpsertEffectiveDayOverride request");
+    }
+    return Response.json(await upsertEffectiveDayOverride(env.APP_DB, principal.appUserId, body));
+  }
+  const effectiveDayDeleteMatch = url.pathname.match(/^\/api\/v1\/settings\/effective-day-overrides\/([^/]+)\/delete$/);
+  if (request.method === "POST" && effectiveDayDeleteMatch) {
+    const body = await readBoundedJson(request);
+    if (effectiveDayDeleteMatch[1] !== (body as { logical_date?: unknown })?.logical_date
+      || !isDeleteEffectiveDayOverrideRequest(body)) {
+      throw new HttpError(400, "malformed_request", "Invalid DeleteEffectiveDayOverride request");
+    }
+    return Response.json(await deleteEffectiveDayOverride(env.APP_DB, principal.appUserId, body));
   }
   if (request.method === "GET" && url.pathname === "/api/v1/taskchute-days/by-logical-date") {
     const logicalDate = url.searchParams.get("logical_date");

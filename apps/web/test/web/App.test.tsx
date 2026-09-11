@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   loadRoutines: vi.fn(), createRoutine: vi.fn(), setRoutineEnabled: vi.fn(), updateRoutine: vi.fn(), reorderRoutines: vi.fn(),
   loadSectionConfiguration: vi.fn(), updateSectionConfiguration: vi.fn(), loadModeBoard: vi.fn(),
   loadAutoCarryOverduePlannedSetting: vi.fn(), setAutoCarryOverduePlanned: vi.fn(),
+  loadEffectiveDayCalendar: vi.fn(), upsertEffectiveDayOverride: vi.fn(), deleteEffectiveDayOverride: vi.fn(),
 }));
 
 vi.mock("../../src/web/api", async () => {
@@ -260,6 +261,11 @@ beforeEach(() => {
   mocks.loadModeBoard.mockResolvedValue({ board_revision: 0, modes: [] });
   mocks.loadAutoCarryOverduePlannedSetting.mockResolvedValue({ auto_carry_overdue_planned: false, updated_at: "2026-08-22T12:00:00.000Z" });
   mocks.setAutoCarryOverduePlanned.mockResolvedValue({ auto_carry_overdue_planned: true, updated_at: "2026-08-22T12:00:01.000Z" });
+  mocks.loadEffectiveDayCalendar.mockResolvedValue({ coverage: { start: "1955-01-01", end: "2027-12-31" },
+    classification: { logical_date: "2026-08-22", base: "workday", effective: "workday", official_entry: null, override: null }, overrides: [] });
+  mocks.upsertEffectiveDayOverride.mockResolvedValue({ classification: { logical_date: "2026-08-22", base: "workday", effective: "holiday",
+    official_entry: null, override: { logical_date: "2026-08-22", override_kind: "holiday", reason: null, revision: 0, updated_at: "now" } } });
+  mocks.deleteEffectiveDayOverride.mockResolvedValue({ classification: { logical_date: "2026-08-22", base: "workday", effective: "workday", official_entry: null, override: null } });
 });
 
 async function openSectionSettings() {
@@ -272,6 +278,13 @@ async function openProjectSettings() {
   await screen.findByRole("region", { name: "Section設定" });
   fireEvent.click(screen.getByRole("button", { name: "Project" }));
   return screen.findByRole("region", { name: "Project設定" });
+}
+
+async function openEffectiveDayCalendarSettings() {
+  fireEvent.click(await screen.findByRole("button", { name: "設定" }));
+  await screen.findByRole("region", { name: "Section設定" });
+  fireEvent.click(screen.getByRole("button", { name: "営業日 / 休日" }));
+  return screen.findByRole("region", { name: "営業日・休日カレンダー設定" });
 }
 
 describe("Dogfood Day shell", () => {
@@ -2695,6 +2708,50 @@ describe("Dogfood Day shell", () => {
     expect(screen.queryByText("Canonical task")).toBeNull();
     expect(screen.getAllByText("Morning")[0]).toBeTruthy();
     expect(screen.getByText(/1\/1 実行済み/)).toBeTruthy();
+  });
+
+  it("loads the effective day calendar and creates an explicit holiday override", async () => {
+    mocks.loadDay.mockResolvedValue(emptyDay);
+    render(<App />);
+    expect(await screen.findByRole("button", { name: "設定" })).toBeTruthy();
+    const settings = await openEffectiveDayCalendarSettings();
+    expect(settings.textContent).toContain("基本判定");
+    expect(settings.textContent).toContain("営業日");
+    fireEvent.change(screen.getByRole("combobox", { name: "カレンダー指定" }), { target: { value: "holiday" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "指定理由" }), { target: { value: "会社休日" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(mocks.upsertEffectiveDayOverride).toHaveBeenCalledTimes(1));
+    expect(mocks.upsertEffectiveDayOverride.mock.calls[0][0]).toMatchObject({ logical_date: "2026-08-22", override_kind: "holiday", reason: "会社休日", expected_revision: null });
+  });
+
+  it("shows official labels and uncovered weekdays as knowledge states, with reset using delete", async () => {
+    mocks.loadDay.mockResolvedValue(emptyDay);
+    mocks.loadEffectiveDayCalendar
+      .mockResolvedValueOnce({ coverage: { start: "1955-01-01", end: "2027-12-31" }, classification: { logical_date: "2026-05-06", base: "holiday", effective: "holiday", official_entry: { logical_date: "2026-05-06", label: "休日" }, override: { logical_date: "2026-05-06", override_kind: "holiday", reason: "x", revision: 3, updated_at: "now" } }, overrides: [{ logical_date: "2026-05-06", override_kind: "holiday", reason: "x", revision: 3, updated_at: "now" }] })
+      .mockResolvedValueOnce({ coverage: { start: "1955-01-01", end: "2027-12-31" }, classification: { logical_date: "2026-05-06", base: "holiday", effective: "holiday", official_entry: { logical_date: "2026-05-06", label: "休日" }, override: { logical_date: "2026-05-06", override_kind: "holiday", reason: "x", revision: 3, updated_at: "now" } }, overrides: [{ logical_date: "2026-05-06", override_kind: "holiday", reason: "x", revision: 3, updated_at: "now" }] })
+      .mockResolvedValue({ coverage: { start: "1955-01-01", end: "2027-12-31" }, classification: { logical_date: "2028-01-03", base: "unknown", effective: "unknown", official_entry: null, override: null }, overrides: [] });
+    render(<App />);
+    await screen.findByRole("button", { name: "設定" });
+    const settings = await openEffectiveDayCalendarSettings();
+    expect((await within(settings).findAllByText("休日")).length).toBeGreaterThan(0);
+    fireEvent.change(screen.getByLabelText("カレンダー日付"), { target: { value: "2026-05-06" } });
+    await waitFor(() => expect(mocks.loadEffectiveDayCalendar).toHaveBeenCalledTimes(2));
+    fireEvent.change(screen.getByRole("combobox", { name: "カレンダー指定" }), { target: { value: "none" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(mocks.deleteEffectiveDayOverride).toHaveBeenCalledTimes(1));
+    expect(mocks.deleteEffectiveDayOverride.mock.calls[0][0]).toMatchObject({ logical_date: "2026-05-06", expected_revision: 3 });
+    fireEvent.change(screen.getByLabelText("カレンダー日付"), { target: { value: "2028-01-03" } });
+    expect((await screen.findAllByText("不明")).length).toBeGreaterThan(0);
+  });
+
+  it("dismisses the effective-day settings by navigation without writing", async () => {
+    mocks.loadDay.mockResolvedValue(emptyDay);
+    render(<App />);
+    await screen.findByRole("button", { name: "設定" });
+    await openEffectiveDayCalendarSettings();
+    fireEvent.click(screen.getByRole("button", { name: "営業日 / 休日" }));
+    expect(mocks.upsertEffectiveDayOverride).not.toHaveBeenCalled();
+    expect(mocks.deleteEffectiveDayOverride).not.toHaveBeenCalled();
   });
 
   it("lists and creates Projects in the D-065 Project board while keeping DayBoard controls focused", async () => {

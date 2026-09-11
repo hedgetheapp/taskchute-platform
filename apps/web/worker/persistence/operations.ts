@@ -17,7 +17,8 @@ export type CommandType = "CreateProject" | "AddTaskToDay" | "ReorderEntries" | 
   | "SetExecutionTimes" | "UpdateTaskMetadata"
   | "UpdateProject" | "SetProjectArchived" | "ReorderProjects" | "DeleteProject"
   | "CreateMode" | "UpdateMode" | "ReorderModes" | "SetModeArchived" | "DeleteMode" | "SetEntryMode"
-  | "SetAutoCarryOverduePlanned" | "AutoCarryOverduePlanned";
+  | "SetAutoCarryOverduePlanned" | "AutoCarryOverduePlanned"
+  | "UpsertEffectiveDayOverride" | "DeleteEffectiveDayOverride";
 export type OutcomeKind = "success" | "domain_rejection" | "revision_conflict";
 
 interface OperationRow {

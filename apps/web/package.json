@@ -11,7 +11,9 @@
     "test": "vitest run --config vitest.config.ts",
     "test:web": "vitest run --config vitest.web.config.ts",
     "test:migrations": "node ./scripts/test-app-migrations.mjs",
+    "test:migrations:d088": "node ./scripts/test-d088-migration-bounded.mjs",
     "test:all": "npm run test && npm run test:web",
+    "update:jp-holidays": "node ./scripts/update-jp-holidays.mjs",
     "migrate:app:local": "wrangler d1 migrations apply taskchute-app-local --local --persist-to .wrangler/state",
     "migrate:auth:local": "wrangler d1 migrations apply taskchute-auth-local --local --persist-to .wrangler/state",
     "bootstrap:local": "node ./scripts/bootstrap-local.mjs"

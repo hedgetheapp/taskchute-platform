@@ -91,6 +91,11 @@ import type {
   AutoCarryOverduePlannedSettingProjection,
   SetAutoCarryOverduePlannedRequest,
   SetAutoCarryOverduePlannedResult,
+  EffectiveDayCalendarProjection,
+  UpsertEffectiveDayOverrideRequest,
+  UpsertEffectiveDayOverrideResult,
+  DeleteEffectiveDayOverrideRequest,
+  DeleteEffectiveDayOverrideResult,
 } from "../shared/contracts";
 
 export class ApiClientError extends Error {
@@ -241,6 +246,15 @@ export const api = {
   },
   setAutoCarryOverduePlanned(body: SetAutoCarryOverduePlannedRequest): Promise<SetAutoCarryOverduePlannedResult> {
     return requestJson("/api/v1/settings/auto-carry-overdue-planned", jsonPost("", body));
+  },
+  loadEffectiveDayCalendar(logicalDate: string): Promise<EffectiveDayCalendarProjection> {
+    return requestJson(`/api/v1/settings/effective-day-calendar?logical_date=${encodeURIComponent(logicalDate)}`);
+  },
+  upsertEffectiveDayOverride(body: UpsertEffectiveDayOverrideRequest): Promise<UpsertEffectiveDayOverrideResult> {
+    return requestJson("/api/v1/settings/effective-day-overrides", jsonPost("", body));
+  },
+  deleteEffectiveDayOverride(body: DeleteEffectiveDayOverrideRequest): Promise<DeleteEffectiveDayOverrideResult> {
+    return requestJson(`/api/v1/settings/effective-day-overrides/${encodeURIComponent(body.logical_date)}/delete`, jsonPost("", body));
   },
   moveEntry(body: MoveEntryRequest): Promise<MoveEntryResult> {
     return requestJson("/api/v1/taskchute-days/current/entries/move", jsonPost("", body));

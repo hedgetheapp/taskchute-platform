@@ -679,6 +679,29 @@ try {
   assert.notEqual(invalidD086Schedule.status, 0, "0026 must reject invalid interval/weekday combinations");
   assert.deepEqual(query("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%d086%'"), [],
     "0026 temporary tables must not remain after migration");
+  const preD088Operations = query("SELECT * FROM operations ORDER BY operation_id");
+  applyFile("migrations/app/0027_workday_holiday_calendar.sql");
+  assert.deepEqual(query("SELECT * FROM operations ORDER BY operation_id"), preD088Operations,
+    "0027 must preserve every existing operation row");
+  assert.deepEqual(query("SELECT COUNT(*) AS count FROM effective_day_overrides"), [{ count: 0 }],
+    "0027 override table must start empty");
+  const d088OperationTable = query("SELECT sql FROM sqlite_master WHERE type='table' AND name='operations'")[0]?.sql ?? "";
+  assert(d088OperationTable.includes("UpsertEffectiveDayOverride"), "0027 must add the upsert command to the operation CHECK");
+  assert(d088OperationTable.includes("DeleteEffectiveDayOverride"), "0027 must add the delete command to the operation CHECK");
+  execute(["--command", `
+    INSERT INTO effective_day_overrides
+      (app_user_id, logical_date, override_kind, reason, revision, created_at, updated_at)
+      VALUES ('user-v01a', '2026-09-14', 'holiday', NULL, 0, '2026-09-11T00:00:00Z', '2026-09-11T00:00:00Z');
+  `]);
+  const invalidOverrideKind = execute(["--command", `UPDATE effective_day_overrides SET override_kind = 'unknown'
+    WHERE app_user_id = 'user-v01a' AND logical_date = '2026-09-14'`], false);
+  assert.notEqual(invalidOverrideKind.status, 0, "0027 must reject invalid override kinds");
+  const duplicateOverride = execute(["--command", `INSERT INTO effective_day_overrides
+    (app_user_id, logical_date, override_kind, revision, created_at, updated_at)
+    VALUES ('user-v01a', '2026-09-14', 'workday', 0, '2026-09-11T00:00:00Z', '2026-09-11T00:00:00Z')`], false);
+  assert.notEqual(duplicateOverride.status, 0, "0027 must reject duplicate owner/date overrides");
+  assert.deepEqual(query("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%d088%'"), [],
+    "0027 temporary tables must not remain after migration");
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
   assert.deepEqual(query("PRAGMA foreign_key_check"), []);
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
@@ -900,7 +923,7 @@ try {
   assert.notEqual(duplicateActive.status, 0, "the active Execution unique index must reject a second active row");
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
   assert.deepEqual(query("PRAGMA foreign_key_check"), []);
-  console.log("migration regression: 4 scenarios passed (R2A normalization, R2B preservation/constraints, duplicate-Task fail-safe, Bulk Selection 0010/0011/0012/0013/0014/0015/0016/0017/0018/0019 preservation/constraints, Mode 0021/0022 preservation/constraints, Interrupt/Continuation 0023 preservation/constraints, Auto Carry 0024 preservation/constraints, Routine Mode 0025 preservation/constraints, Routine Recurrence 0026 preservation/constraints; fresh 0001 -> 0026 chain)");
+  console.log("migration regression: 4 scenarios passed (R2A normalization, R2B preservation/constraints, duplicate-Task fail-safe, Bulk Selection 0010/0011/0012/0013/0014/0015/0016/0017/0018/0019 preservation/constraints, Mode 0021/0022 preservation/constraints, Interrupt/Continuation 0023 preservation/constraints, Auto Carry 0024 preservation/constraints, Routine Mode 0025 preservation/constraints, Routine Recurrence 0026 preservation/constraints, Effective Day Calendar 0027 preservation/constraints; fresh 0001 -> 0027 chain)");
 } finally {
   await rm(persistencePath, { recursive: true, force: true });
   await rm(failurePersistencePath, { recursive: true, force: true });

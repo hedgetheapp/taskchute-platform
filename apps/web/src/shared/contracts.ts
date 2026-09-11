@@ -646,6 +646,53 @@ export interface SetAutoCarryOverduePlannedRequest {
 
 export interface SetAutoCarryOverduePlannedResult extends AutoCarryOverduePlannedSettingProjection {}
 
+export type EffectiveDayKind = "workday" | "holiday" | "unknown";
+export type EffectiveDayOverrideKind = "workday" | "holiday";
+
+export interface EffectiveDayOverrideProjection {
+  logical_date: string;
+  override_kind: EffectiveDayOverrideKind;
+  reason: string | null;
+  revision: number;
+  updated_at: string;
+}
+
+export interface EffectiveDayClassificationProjection {
+  logical_date: string;
+  base: EffectiveDayKind;
+  effective: EffectiveDayKind;
+  official_entry: { logical_date: string; label: string } | null;
+  override: EffectiveDayOverrideProjection | null;
+}
+
+export interface EffectiveDayCalendarProjection {
+  coverage: { start: string; end: string };
+  classification: EffectiveDayClassificationProjection;
+  overrides: EffectiveDayOverrideProjection[];
+}
+
+export interface UpsertEffectiveDayOverrideRequest {
+  operation_id: string;
+  logical_date: string;
+  override_kind: EffectiveDayOverrideKind;
+  reason?: string | null;
+  expected_revision: number | null;
+}
+
+export interface UpsertEffectiveDayOverrideResult {
+  classification: EffectiveDayClassificationProjection;
+}
+
+export interface DeleteEffectiveDayOverrideRequest {
+  operation_id: string;
+  logical_date: string;
+  expected_revision: number | null;
+}
+
+export interface DeleteEffectiveDayOverrideResult {
+  classification: EffectiveDayClassificationProjection;
+}
+
 export type MoveEntryPlacementIntent = {
   kind: "relative_to_entry";
   anchor_entry_id: string;

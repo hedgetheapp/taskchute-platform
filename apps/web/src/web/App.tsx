@@ -77,12 +77,13 @@ import {
 import { RoutineBoard } from "./RoutineBoard";
 import { ProjectBoard } from "./ProjectBoard";
 import { ModeBoard } from "./ModeBoard";
+import { EffectiveDayCalendarSettings } from "./EffectiveDayCalendarSettings";
 
 export { DAY_COLUMNS_STORAGE_KEY } from "./day-columns";
 
 type AuthState = "loading" | "signed-out" | "signed-in";
 type AppView = "today" | "routines" | "settings";
-type SettingsDestination = "section" | "project" | "mode";
+type SettingsDestination = "section" | "project" | "mode" | "calendar";
 type FocusTarget = { kind: "section" | "entry"; id: string };
 type DraftPlacement =
   | { kind: "section-end"; restoreFocus: FocusTarget }
@@ -3983,7 +3984,7 @@ export function App() {
     if (destination === "section") {
       if (sectionSettingsDraft === null) await openSectionSettings();
     } else if (destination === "project") await openProjectSettings();
-    else await openModeSettings();
+    else if (destination === "mode") await openModeSettings();
   }
 
   function updateSectionBoundary(index: number, edge: "start" | "end", value: string) {
@@ -5629,6 +5630,9 @@ export function App() {
               <button type="button" className={settingsDestination === "mode" ? "active" : ""}
                 aria-current={settingsDestination === "mode" ? "page" : undefined} disabled={mutationLocked}
                 onClick={() => void openSettings("mode")}>Mode</button>
+              <button type="button" className={settingsDestination === "calendar" ? "active" : ""}
+                aria-current={settingsDestination === "calendar" ? "page" : undefined} disabled={mutationLocked}
+                onClick={() => void openSettings("calendar")}>営業日 / 休日</button>
             </nav>
 
             <section className="settings-content" aria-label="設定内容">
@@ -5646,6 +5650,10 @@ export function App() {
                   if (typeof api.loadModeBoard !== "function") return null;
                   return api.loadModeBoard();
                 }} onBoardChange={setModeBoard} onUnauthorized={transitionToSignedOut} />
+              )}
+
+              {settingsDestination === "calendar" && (
+                <EffectiveDayCalendarSettings initialLogicalDate={day?.taskchute_day.logical_date ?? currentLogicalDate} disabled={mutationLocked} />
               )}
 
               {settingsDestination === "section" && !sectionSettingsDraft && pending !== "section-settings" && (
