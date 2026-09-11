@@ -81,6 +81,14 @@ import {
   loadEffectiveDayCalendar,
   upsertEffectiveDayOverride,
 } from "./application/effective-day-calendar";
+import {
+  createStandaloneDocument,
+  isCreateStandaloneDocumentRequest,
+  isUpdateDocumentRequest,
+  loadStandaloneDocument,
+  loadStandaloneDocuments,
+  updateDocument,
+} from "./application/documents";
 
 const SECURITY_HEADERS: Record<string, string> = {
   "cache-control": "no-store",
@@ -125,6 +133,28 @@ async function route(request: Request, env: Env): Promise<Response> {
     const logicalDate = url.searchParams.get("logical_date");
     if (!logicalDate || !isLogicalDate(logicalDate)) throw new HttpError(400, "malformed_request", "Invalid logical date");
     return Response.json(await loadEffectiveDayCalendar(env.APP_DB, principal.appUserId, logicalDate));
+  }
+  if (request.method === "GET" && url.pathname === "/api/v1/documents") {
+    return Response.json(await loadStandaloneDocuments(env.APP_DB, principal.appUserId));
+  }
+  const documentMatch = url.pathname.match(/^\/api\/v1\/documents\/([^/]+)$/);
+  if (request.method === "GET" && documentMatch) {
+    return Response.json(await loadStandaloneDocument(env.APP_DB, principal.appUserId, decodeURIComponent(documentMatch[1])));
+  }
+  if (request.method === "POST" && url.pathname === "/api/v1/documents") {
+    const body = await readBoundedJson(request);
+    if (!isCreateStandaloneDocumentRequest(body)) {
+      throw new HttpError(400, "malformed_request", "Invalid CreateStandaloneDocument request");
+    }
+    return Response.json(await createStandaloneDocument(env.APP_DB, principal.appUserId, body));
+  }
+  if (request.method === "POST" && documentMatch) {
+    const body = await readBoundedJson(request);
+    if (documentMatch[1] !== encodeURIComponent(String((body as { document_id?: unknown })?.document_id ?? ""))
+      || !isUpdateDocumentRequest(body)) {
+      throw new HttpError(400, "malformed_request", "Invalid UpdateDocument request");
+    }
+    return Response.json(await updateDocument(env.APP_DB, principal.appUserId, body));
   }
   if (request.method === "POST" && url.pathname === "/api/v1/settings/effective-day-overrides") {
     const body = await readBoundedJson(request);

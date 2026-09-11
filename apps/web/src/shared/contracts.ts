@@ -17,6 +17,52 @@ export interface ApiErrorBody {
   };
 }
 
+export interface StandaloneDocument {
+  document_id: string;
+  kind: "standalone";
+  title: string;
+  markdown_body: string;
+  revision: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StandaloneDocumentSummary {
+  document_id: string;
+  kind: "standalone";
+  title: string;
+  revision: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StandaloneDocumentListProjection {
+  documents: StandaloneDocumentSummary[];
+}
+
+export interface CreateStandaloneDocumentRequest {
+  operation_id: string;
+  document_id: string;
+  title: string;
+  markdown_body: string;
+}
+
+export interface CreateStandaloneDocumentResult {
+  document: StandaloneDocument;
+}
+
+export interface UpdateDocumentRequest {
+  operation_id: string;
+  document_id: string;
+  expected_revision: number;
+  title: string;
+  markdown_body: string;
+}
+
+export interface UpdateDocumentResult {
+  document: StandaloneDocument;
+}
+
 export interface ProjectSummary {
   id: string;
   title: string;

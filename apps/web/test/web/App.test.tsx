@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   loadSectionConfiguration: vi.fn(), updateSectionConfiguration: vi.fn(), loadModeBoard: vi.fn(),
   loadAutoCarryOverduePlannedSetting: vi.fn(), setAutoCarryOverduePlanned: vi.fn(),
   loadEffectiveDayCalendar: vi.fn(), upsertEffectiveDayOverride: vi.fn(), deleteEffectiveDayOverride: vi.fn(),
+  loadDocuments: vi.fn(), loadDocument: vi.fn(), createStandaloneDocument: vi.fn(), updateDocument: vi.fn(),
 }));
 
 vi.mock("../../src/web/api", async () => {
@@ -266,6 +267,7 @@ beforeEach(() => {
   mocks.upsertEffectiveDayOverride.mockResolvedValue({ classification: { logical_date: "2026-08-22", base: "workday", effective: "holiday",
     official_entry: null, override: { logical_date: "2026-08-22", override_kind: "holiday", reason: null, revision: 0, updated_at: "now" } } });
   mocks.deleteEffectiveDayOverride.mockResolvedValue({ classification: { logical_date: "2026-08-22", base: "workday", effective: "workday", official_entry: null, override: null } });
+  mocks.loadDocuments.mockResolvedValue({ documents: [] });
 });
 
 async function openSectionSettings() {
@@ -288,6 +290,17 @@ async function openEffectiveDayCalendarSettings() {
 }
 
 describe("Dogfood Day shell", () => {
+  it("exposes the authenticated Notes destination and an empty canonical list", async () => {
+    mocks.loadDay.mockResolvedValue(emptyDay);
+    render(<App />);
+    await screen.findByRole("region", { name: "DayBoard" });
+    fireEvent.click(screen.getByRole("button", { name: "ノート" }));
+    await screen.findByRole("heading", { name: "ノート" });
+    expect(screen.getByText("ノートはまだありません。")).toBeTruthy();
+    expect(mocks.loadDocuments).toHaveBeenCalledTimes(1);
+    expect(mocks.createStandaloneDocument).not.toHaveBeenCalled();
+  });
+
   it("shows a concise accessible status while loading the canonical Day", () => {
     const request = deferred<CurrentTaskChuteDayProjection>();
     mocks.loadDay.mockReturnValue(request.promise);

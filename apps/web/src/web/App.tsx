@@ -78,11 +78,12 @@ import { RoutineBoard } from "./RoutineBoard";
 import { ProjectBoard } from "./ProjectBoard";
 import { ModeBoard } from "./ModeBoard";
 import { EffectiveDayCalendarSettings } from "./EffectiveDayCalendarSettings";
+import { NotesBoard } from "./NotesBoard";
 
 export { DAY_COLUMNS_STORAGE_KEY } from "./day-columns";
 
 type AuthState = "loading" | "signed-out" | "signed-in";
-type AppView = "today" | "routines" | "settings";
+type AppView = "today" | "routines" | "settings" | "notes";
 type SettingsDestination = "section" | "project" | "mode" | "calendar";
 type FocusTarget = { kind: "section" | "entry"; id: string };
 type DraftPlacement =
@@ -755,6 +756,7 @@ function parseSectionSettingsDraft(draft: SectionSettingsDraft | null): SectionC
 export function App() {
   const [authState, setAuthState] = useState<AuthState>("loading");
   const [view, setView] = useState<AppView>("today");
+  const [notesDirty, setNotesDirty] = useState(false);
   const [settingsDestination, setSettingsDestination] = useState<SettingsDestination>("section");
   const [day, setDay] = useState<CurrentTaskChuteDayProjection | null>(null);
   const [project, setProject] = useState<ProjectSummary | null>(null);
@@ -893,7 +895,12 @@ export function App() {
   const dayMutationInFlightRef = useRef(false);
   const dayMutationPausedRef = useRef(false);
   const deferredNavigationRef = useRef<{ logicalDate?: string } | null>(null);
-  const deferredTransitionRef = useRef<{ kind: "logout" } | { kind: "settings"; destination: SettingsDestination } | null>(null);
+  const deferredTransitionRef = useRef<
+    { kind: "logout" }
+    | { kind: "settings"; destination: SettingsDestination }
+    | { kind: "view"; view: "routines" | "notes" }
+    | null
+  >(null);
   const observedAutoCarrySectionRef = useRef<string | null>(null);
   const deferredAutoCarryBoundaryRef = useRef(false);
 
@@ -1160,7 +1167,11 @@ export function App() {
         deferredTransitionRef.current = null;
         void Promise.resolve().then(() => deferredTransition.kind === "logout"
           ? logout()
-          : openSettings(deferredTransition.destination));
+          : deferredTransition.kind === "settings"
+            ? openSettings(deferredTransition.destination)
+            : deferredTransition.view === "routines"
+              ? openRoutinesView()
+              : openNotesView());
       }
     }
   }
@@ -1399,11 +1410,16 @@ export function App() {
       || retainedRoutineModeOperations.length > 0;
   }
 
-  function deferGlobalTransition(transition: { kind: "logout" } | { kind: "settings"; destination: SettingsDestination }): void {
+  function deferGlobalTransition(transition:
+    { kind: "logout" }
+    | { kind: "settings"; destination: SettingsDestination }
+    | { kind: "view"; view: "routines" | "notes" }): void {
     deferredTransitionRef.current = transition;
     setError(transition.kind === "logout"
       ? "保存中のDay操作が完了してからログアウトします。"
-      : "保存中のDay操作が完了してから設定を開きます。");
+      : transition.kind === "settings"
+        ? "保存中のDay操作が完了してから設定を開きます。"
+        : "保存中のDay操作が完了してから画面を切り替えます。");
   }
 
   function hasQueuedExecutionMutation(entryId: string): boolean {
@@ -1489,6 +1505,7 @@ export function App() {
     forecastClockRef.current = null;
     setForecastNowInstant(null);
     setView("today");
+    setNotesDirty(false);
     setProject(null);
     setProjects([]);
     setModeBoard(null);
@@ -1985,9 +2002,36 @@ export function App() {
   }
 
   async function openTodayView() {
+    if (!canLeaveNotes()) return;
     if (mutationLocked) return;
     setView("today");
     await navigateToDay();
+  }
+
+  function canLeaveNotes(): boolean {
+    return view !== "notes" || !notesDirty || window.confirm("未保存のノートがあります。変更を破棄して移動しますか？");
+  }
+
+  async function openRoutinesView(): Promise<void> {
+    if (!canLeaveNotes()) return;
+    if (hasDayMutationBarrier()) {
+      deferGlobalTransition({ kind: "view", view: "routines" });
+      return;
+    }
+    if (mutationLocked) return;
+    setCalendarOpen(false);
+    setView("routines");
+  }
+
+  async function openNotesView(): Promise<void> {
+    if (!canLeaveNotes()) return;
+    if (hasDayMutationBarrier()) {
+      deferGlobalTransition({ kind: "view", view: "notes" });
+      return;
+    }
+    if (mutationLocked) return;
+    setCalendarOpen(false);
+    setView("notes");
   }
 
   async function login(event: FormEvent<HTMLFormElement>) {
@@ -2866,6 +2910,7 @@ export function App() {
   }
 
   async function logout() {
+    if (!canLeaveNotes()) return;
     if (hasDayMutationBarrier()) {
       deferGlobalTransition({ kind: "logout" });
       return;
@@ -3971,6 +4016,7 @@ export function App() {
   }
 
   async function openSettings(destination: SettingsDestination) {
+    if (!canLeaveNotes()) return;
     if (hasDayMutationBarrier()) {
       deferGlobalTransition({ kind: "settings", destination });
       return;
@@ -5600,7 +5646,9 @@ export function App() {
           <button type="button" className={view === "today" ? "active" : ""} aria-current={view === "today" ? "page" : undefined}
             disabled={mutationLocked} onClick={() => void openTodayView()}>今日</button>
           <button type="button" className={view === "routines" ? "active" : ""} aria-current={view === "routines" ? "page" : undefined}
-            disabled={mutationLocked} onClick={() => { setCalendarOpen(false); setView("routines"); }}>ルーティン</button>
+            disabled={mutationLocked} onClick={() => void openRoutinesView()}>ルーティン</button>
+          <button type="button" className={view === "notes" ? "active" : ""} aria-current={view === "notes" ? "page" : undefined}
+            disabled={mutationLocked} onClick={() => void openNotesView()}>ノート</button>
           <button type="button" className={view === "settings" ? "active" : ""} aria-current={view === "settings" ? "page" : undefined}
             disabled={mutationLocked || day.section_configuration_required} onClick={() => void openSettings("section")}>設定</button>
         </nav>
@@ -5613,7 +5661,9 @@ export function App() {
       <div className="authenticated-content">
         {!sidebarOpen && <button type="button" className="sidebar-reopen" aria-label="サイドバーを開く" title="サイドバーを開く"
           onClick={() => setSidebarOpen(true)}>›</button>}
-        {view === "routines" ? <RoutineBoard onUnauthorized={transitionToSignedOut} /> : view === "settings" ? (
+        {view === "routines" ? <RoutineBoard onUnauthorized={transitionToSignedOut} /> : view === "notes" ? (
+          <NotesBoard onUnauthorized={transitionToSignedOut} onDirtyChange={setNotesDirty} />
+        ) : view === "settings" ? (
           <main className="shell settings-shell">
           <header className="settings-header">
             <p className="eyebrow">Settings</p>

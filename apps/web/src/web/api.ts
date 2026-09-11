@@ -96,6 +96,12 @@ import type {
   UpsertEffectiveDayOverrideResult,
   DeleteEffectiveDayOverrideRequest,
   DeleteEffectiveDayOverrideResult,
+  StandaloneDocument,
+  StandaloneDocumentListProjection,
+  CreateStandaloneDocumentRequest,
+  CreateStandaloneDocumentResult,
+  UpdateDocumentRequest,
+  UpdateDocumentResult,
 } from "../shared/contracts";
 
 export class ApiClientError extends Error {
@@ -255,6 +261,18 @@ export const api = {
   },
   deleteEffectiveDayOverride(body: DeleteEffectiveDayOverrideRequest): Promise<DeleteEffectiveDayOverrideResult> {
     return requestJson(`/api/v1/settings/effective-day-overrides/${encodeURIComponent(body.logical_date)}/delete`, jsonPost("", body));
+  },
+  loadDocuments(): Promise<StandaloneDocumentListProjection> {
+    return requestJson("/api/v1/documents");
+  },
+  loadDocument(documentId: string): Promise<StandaloneDocument> {
+    return requestJson(`/api/v1/documents/${encodeURIComponent(documentId)}`);
+  },
+  createStandaloneDocument(body: CreateStandaloneDocumentRequest): Promise<CreateStandaloneDocumentResult> {
+    return requestJson("/api/v1/documents", jsonPost("", body));
+  },
+  updateDocument(body: UpdateDocumentRequest): Promise<UpdateDocumentResult> {
+    return requestJson(`/api/v1/documents/${encodeURIComponent(body.document_id)}`, jsonPost("", body));
   },
   moveEntry(body: MoveEntryRequest): Promise<MoveEntryResult> {
     return requestJson("/api/v1/taskchute-days/current/entries/move", jsonPost("", body));
