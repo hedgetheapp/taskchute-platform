@@ -125,7 +125,7 @@ function revisionRejection<T>(
 
 async function readDocument(db: D1Database, appUserId: string, documentId: string): Promise<DocumentRow | null> {
   return db.prepare(`SELECT document_id, app_user_id, kind, title, markdown_body, revision, created_at, updated_at
-    FROM documents WHERE app_user_id = ? AND document_id = ?`).bind(appUserId, documentId).first<DocumentRow>();
+    FROM documents WHERE app_user_id = ? AND document_id = ? AND kind = 'standalone'`).bind(appUserId, documentId).first<DocumentRow>();
 }
 
 export async function loadStandaloneDocuments(
