@@ -26,34 +26,34 @@ It does not define lifecycle behavior for:
 - Review Document
 - future attachment/file entities
 
-### Active / archived lifecycle
+### Default Notes list and archive view
 
-A standalone Note is either:
+A standalone Note is either non-archived or archived. Archive is reversible.
 
-- active
-- archived
+The ordinary Notes surface shows non-archived standalone Notes by default. The UI does not expose an equal-weight `使用中` tab merely to represent the normal state.
 
-Archive is reversible.
+The ordinary Notes surface provides a separate `アーカイブ` control/button. Activating it opens or switches to the archived Note list/view. The archived view provides a clear way to return to the ordinary Notes list.
 
-The Notes UI exposes at least two views/tabs equivalent to:
+New standalone Notes are non-archived by default.
 
-- `使用中`
-- `アーカイブ`
-
-New standalone Notes are active by default.
-
-Archiving a Note removes it from the active list and places it in the archived list. Restoring reverses that transition.
+Archiving a Note removes it from the ordinary Notes list and makes it appear in the archived list. Restoring reverses that transition.
 
 Archive/restore is a Server-authoritative persisted state change. It must use the existing operation identity / revision CAS safety model rather than a browser-only presentation flag.
 
+Exact visual treatment of the archive control, archived-view heading, back/navigation affordance, and row action placement is reversible UI detail, provided the information architecture remains:
+
+- ordinary Notes view = non-archived Notes only;
+- `アーカイブ` is a secondary destination/action from Notes;
+- archived Notes are not mixed into the ordinary list.
+
 ### Title uniqueness across lifecycle states
 
-The D-091 no-duplicate-title rule applies across all standalone Notes owned by the user, regardless of active/archive state.
+The D-091 no-duplicate-title rule applies across all standalone Notes owned by the user, regardless of archive state.
 
 Therefore:
 
 - an archived Note still reserves its title;
-- creating or renaming an active Note may not reuse the exact trimmed title of an archived Note;
+- creating or renaming a non-archived Note may not reuse the exact trimmed title of an archived Note;
 - restoring an archived Note does not require a rename merely because of lifecycle state;
 - after a Note is hard-deleted, its former title becomes available for reuse.
 
@@ -65,7 +65,7 @@ Standalone Notes support irreversible hard delete.
 
 Hard delete requirements:
 
-- available for both active and archived standalone Notes;
+- available for both non-archived and archived standalone Notes;
 - always requires an explicit confirmation dialog before the delete command is issued;
 - confirmation must clearly state that deletion cannot be undone;
 - cancel leaves Server state unchanged;
@@ -98,7 +98,7 @@ After archiving/deleting the currently open Note, the UI should select a sensibl
 
 Exact previous/next preference is reversible UI detail, but focus must not land on a removed/hidden Document.
 
-Restoring from archive may keep the user in the archive view or move focus according to consistent existing board conventions; exact focus placement is delegated so long as the restored Note appears in the active list on subsequent query/reload.
+Restoring from archive may keep the user in the archive view or move focus according to consistent existing board conventions; exact focus placement is delegated so long as the restored Note appears in the ordinary Notes list on subsequent query/reload.
 
 ## Persistence implications
 
@@ -108,8 +108,8 @@ D-091 title uniqueness also requires a Server/DB authority strong enough to prev
 
 The expected implementation direction is a new APP migration after 0029 that can provide:
 
-- persisted active/archive state (for example `archived_at` or equivalent);
-- database-enforced uniqueness for standalone titles within one owner across active and archived rows;
+- persisted archive state (for example `archived_at` or equivalent);
+- database-enforced uniqueness for standalone titles within one owner across non-archived and archived rows;
 - operation command allow-list support for archive/restore/delete if required by the physical schema.
 
 No AUTH migration is expected.
@@ -137,6 +137,7 @@ All mutations remain owner-scoped and retry-safe under D-020 conventions.
 
 D-092 does not add:
 
+- `使用中` tab for the ordinary Notes list
 - trash/recycle bin
 - delayed purge
 - retention window
@@ -151,14 +152,16 @@ D-092 does not add:
 
 Evidence should include:
 
-- active/archive query separation
+- ordinary list contains non-archived Notes only
+- `アーカイブ` control opens archived Notes list/view
+- archived Notes do not appear in ordinary list
 - archive exact replay
 - restore exact replay
 - stale archive/restore rejection
 - hard-delete confirmation UI
 - hard-delete exact replay
 - stale delete rejection
-- active and archived title uniqueness
+- non-archived and archived title uniqueness
 - released title reuse after delete
 - `notitle`, `notitle1`, `notitle2` allocation considering archived Notes
 - concurrent title-allocation race protection
@@ -175,5 +178,5 @@ Authenticated browser evidence may remain NOT_VERIFIED if no valid authenticated
 
 - D-090 shared Document identity/Markdown/revision/operation semantics remain unchanged except lifecycle scope is expanded for standalone Notes.
 - D-091 autosave and standalone-title uniqueness semantics remain authoritative.
-- D-092 adds active/archive lifecycle and confirmation-gated irreversible hard delete for standalone Notes only.
+- D-092 adds reversible archive/restore and confirmation-gated irreversible hard delete for standalone Notes only.
 - Task/Project/RoutineOccurrence Document lifecycle remains undecided and separate.
