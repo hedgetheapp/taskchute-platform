@@ -2346,3 +2346,20 @@ D-084 browser fixture creation was not completed: the unauthenticated/new in-app
 | D088-BROWSER-01 | Persistent authenticated browser | official, ordinary, unknown, override CRUD/reset, same-tab reload, console | PASS for existing authenticated tab; console `[]`; fresh authenticated tab `NOT_VERIFIED` because CUA returned `ERR_BLOCKED_BY_CLIENT` |
 | D088-DB-01 | Read-only APP/AUTH integrity | quick/FK, valid kinds, unique owner/date, orphan/revision/duplicate anomalies, active executions, rows_written | PASS; all anomalies `0`, active executions `0`, final override rows `0`, successful probes `rows_written=0` |
 | D088-SAFETY-01 | Scope boundary | production, credentials/reset, bootstrap mutation, restore/recovery, destructive cleanup, branch/PR/merge/tag/Release | PASS（未実施 / NOT_RUN） |
+
+### D-088 corrective — Effective Day Override CAS / reverse race
+
+| ID | Scope | Evidence | Result |
+|---|---|---|---|
+| D088-CAS-01 | Same-result concurrent update | A reads revision 0, B commits the same final kind/reason first, A batch assertion rolls back and records revision conflict; one state mutation | PASS; deterministic gate test |
+| D088-CAS-02 | Different concurrent update | A stale update cannot overwrite or borrow B's different final state | PASS; deterministic gate test |
+| D088-CAS-03 | Concurrent delete | stale A delete after B delete does not record success from row absence | PASS; deterministic gate test |
+| D088-CAS-04 | No-op drift | no-op A is guarded by exact revision/kind/reason before operation success; B drift is preserved | PASS; deterministic gate test |
+| D088-CAS-05 | Sequential/replay boundary | create/update/delete, stale revision, exact replay, operation-id misuse, owner isolation, reason normalization | PASS; existing integration regression |
+| D088-READ-01 | Selected-date read path | selected override is queried directly; visible override list has no arbitrary `LIMIT 5000` truncation | PASS; source review and full Worker suite |
+| D088-CORR-LOCAL-01 | Corrective local gates | focused `1 file / 7 tests`, full Worker/D1 `29 files / 251 tests`, full Web `4 files / 269 tests`, typecheck, builds, dry-run, diff-check | PASS |
+| D088-CORR-ENV-01 | Corrective nonprod deploy | exact pushed build, Worker `e33f38be-0045-4d14-86d0-b4b21084d946`, canonical bindings, nonprod vars, pending `0 / 0` | PASS |
+| D088-CORR-BROWSER-01 | Authenticated Settings corrective | create/update/official-fact-preservation/reset and same-tab reload persistence; console | PASS for observed existing-tab flow; fresh authenticated Settings persistence `NOT_VERIFIED` after session logout mis-click; console `[]` |
+| D088-CORR-DB-01 | APP/AUTH integrity | quick/FK, pending, valid kinds, unique owner/date, orphan/revision/duplicate anomalies, active execution, assertion cleanup, operation/read-only writes | PASS; all anomalies `0`, active `0`, `rows_written=0` |
+| D088-CORR-MIG-01 | Migration boundary | no schema/migration change or apply; APP 0027 remains applied; Windows helper status | `MIGRATION_NOT_REQUIRED`; helper `NOT_RUN` |
+| D088-CORR-SAFETY-01 | Scope boundary | no production, credentials/re-login, bootstrap mutation, restore, destructive cleanup, branch/PR/merge/tag/Release | PASS（未実施 / NOT_RUN） |

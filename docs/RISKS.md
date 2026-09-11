@@ -545,3 +545,14 @@ Mitigation / evidence:
 - Authenticated same-tab Settings verification confirmed official, ordinary, unknown, holiday/workday override, official-fact preservation, reset, reload persistence, and empty console logs. Fresh authenticated tab evidence remains `NOT_VERIFIED` because CUA blocked opening/navigating a new tab; no credentials or login operation was attempted.
 
 Residual open items remain intentionally narrow: future source coverage updates require reviewable snapshot diffs; other countries/locales and Routine business-day/holiday recurrence membership remain open and are not implemented by D-088. No historical TaskChute state is rewritten by snapshot updates.
+
+## R-039 — D-088 override reverse-race false-success boundary
+
+The original D-088 override implementation could record a stale update/delete/no-op as success after a concurrent command had already changed the row, because operation persistence was based on final-state equivalence or absence rather than proof that this command's expected precondition mutated atomically.
+
+Mitigation / evidence:
+
+- Corrective commit `ecb5b1ea118018891d1c6816d0cc5244a8fb1ba4` uses the existing D1 `transaction_assertions` convention in the same batch. Mutation changes exactly one row, operation insertion changes exactly one row, and failed assertions roll the complete batch back. The catch path distinguishes observed state drift (`revision_conflict`) from an unchanged state whose outcome remains ambiguous (`infrastructure_ambiguous`), preserving exact replay and ambiguity semantics.
+- Deterministic tests cover same-result update, different-result update, concurrent delete, and no-op drift. They pass together with sequential replay/stale/owner regression and the full Worker/Web suites. The selected-date calendar read is independent of the removed list cap, so a valid override cannot be silently omitted from classification because of list ordering.
+
+Residual evidence boundary: same-tab Settings verification and console reads passed, but fresh authenticated Settings persistence and final reset of one disposable override remain `NOT_VERIFIED` after the browser session was logged out without re-login. No credential retrieval or direct cleanup was performed. D-088 APP 0027 remains applied; no new migration, schema, API, dependency, or Product semantic change was introduced.
