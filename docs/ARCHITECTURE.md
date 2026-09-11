@@ -514,3 +514,11 @@ D-089は既存のpure recurrence evaluatorをDB-awareにせず、`routine-recurr
 APP 0028は`routine_schedules`のtyped CHECKだけを拡張し、`workday` / `holiday` / `official_holiday` / `monthly_last_workday`の追加列を全てNULLに固定する。D-088 override commandはcalendar snapshot guard、planned occurrence completeness、protected-state guard、transaction assertionを一つのD1 batchで使い、overrideとRoutine reconciliationのsplit-brainを許さない。`monthly_last_workday`は編集日だけでなく同一civil monthのplanned setを評価する。
 
 `apps/web/src/shared/effective-day-calendar.ts`のpure classifierが唯一のbase/effective classification authorityである。WorkerのSettings query / mutationはこのclassifierを再利用し、APP `effective_day_overrides`をowner/date/revisionでCAS管理する。Routine materialization、Routine recurrence SQL、TaskChute Day/Entry/Execution historyはこのfoundationから変更しない。
+
+## D-090 shared Document / Notes boundary
+
+D-090は`documents`をAPPのowner-scoped shared foundationとして追加し、`kind` allow-listは初期値`standalone`に限定する。Document coreはTask / Project / Routine FKを持たず、将来のrelation tableを後から追加できる。APP `0029_documents_v01.sql`は既存operationsをfield-for-fieldで保持し、Document command typeだけを既存operation CHECKへ追加する。AUTH、Task/Entry/Execution/Routine/calendar dataは変更しない。
+
+Create / Updateは既存のoperation fingerprint / replay / transaction assertion conventionを使い、Createのstable UUIDv7 identityとUpdateのowner + document + expected revision CASを同一D1 atomic boundaryで確定する。反映済みsuccessをfinal-state equivalenceから借用せず、mutationのexact row countとoperation resultのexact insertionをガードする。APIはauthentication後のowner-scoped list/fetch/create/updateだけを公開し、raw Markdown contentを一覧へ再実装せず、public shareも持たない。
+
+`NotesBoard`はcanonical baselineとmemory-only draftを分離し、explicit Saveだけをmutation入口とする。Create中のrepeat Saveは一つのlogical requestへまとめ、ambiguous outcomeはexact operation identityを保持する。dirty stateは既存navigation/logout/barrierとbeforeunloadへ接続し、localStorage/IndexedDBやbackground syncを追加しない。

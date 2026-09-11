@@ -2347,6 +2347,23 @@ D-084 browser fixture creation was not completed: the unauthenticated/new in-app
 | D088-DB-01 | Read-only APP/AUTH integrity | quick/FK, valid kinds, unique owner/date, orphan/revision/duplicate anomalies, active executions, rows_written | PASS; all anomalies `0`, active executions `0`, final override rows `0`, successful probes `rows_written=0` |
 | D088-SAFETY-01 | Scope boundary | production, credentials/reset, bootstrap mutation, restore/recovery, destructive cleanup, branch/PR/merge/tag/Release | PASS（未実施 / NOT_RUN） |
 
+### D-090 — Standalone Markdown Notes v0.1
+
+| ID | Scope | Evidence | Result |
+|---|---|---|---|
+| D090-D1 | Create / replay / misuse | one standalone Document, exact replay returns the same outcome, changed payload under same operation ID rejects, no duplicate row | PASS; focused Worker/D1 `6 / 6` |
+| D090-D2 | Update CAS / reverse race | correct revision increments once, exact replay does not increment, stale and same-result reverse-race commands cannot borrow concurrent success | PASS; focused Worker/D1 `6 / 6` |
+| D090-D3 | Owner / list boundary | owner-scoped list/fetch/update and updated-descending deterministic list order | PASS; focused Worker/D1 |
+| D090-D4 | Request safety / atomicity | strict DTO, bounded JSON path, atomic mutation + operation result, no partial mutation on assertion failure | PASS; focused Worker/D1 and source review |
+| D090-W1 | Notes UI | new draft is zero-write before Save, Create then Update, Save button and Ctrl/Cmd+S share one path, dirty guard, conflict draft retention, beforeunload | PASS; Notes Web `5 / 5` |
+| D090-W2 | Authenticated shell | top-level `ノート` destination and existing navigation regression | PASS; App + Notes focused `240` tests |
+| D090-MIG-01 | APP migration | bounded fresh `0001 -> 0029` and upgrade `0028 -> 0029`; preservation, constraints, quick/FK, no temp residue | PASS; dedicated D090 harness |
+| D090-LOCAL-01 | Static/full local gates | full Worker/D1 `31 files / 274 tests`, full Web `5 files / 276 tests`, typecheck, normal build, exact nonprod build, diff-check | PASS |
+| D090-NONPROD-01 | Migration/deploy/safety | APP 0029 applied once; APP/AUTH pending `0 / 0`, quick/FK clean; Worker `53c91b2d-1179-4330-8884-174b42b09955`; root `200`; unauthenticated Documents API `401`; read-only probes `rows_written=0` | PASS |
+| D090-BROWSER-01 | Authenticated Notes browser | create/edit/save/reload/Ctrl+S/fresh tab/console | `NOT_VERIFIED`; existing tab was logged out and no credential/re-login was used |
+| D090-MIG-02 | Existing Windows migration helper | `npm run test:migrations` completion evidence | `NOT_RUN`; bounded D090 fresh/upgrade harness is the migration evidence |
+| D090-SAFETY-01 | Operation boundary | no production, restore, destructive cleanup, credential retrieval/re-login, bootstrap change, branch/PR/merge/tag/Release | PASS; not performed |
+
 ## D-089 Routine workday / holiday recurrence
 
 | ID | Scope | Evidence | Result |

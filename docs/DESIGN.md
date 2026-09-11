@@ -592,3 +592,9 @@ Settingsに小さな「営業日 / 休日カレンダー」画面を追加し、
 ## D-089 Routine recurrence UI
 
 Routine Boardの既存recurrence popoverに、追加のinterval / weekday / month-day入力を持たない4つの選択肢 `営業日`、`休日`、`祝日`、`月末営業日`を追加した。保存時は既存のUpdateRoutine commandへexact typed kindだけを送り、Cancel / Escape / invalid draftはno-writeとする。実際のeffective classification、official label、unknown coverageはD-088 shared authorityが決定し、UIでcalendar判定を再実装しない。
+
+## D-090 Notes UI
+
+Authenticated shellのtop-level destination `ノート`は、既存sidebar/navigation conventionに沿ったcompactな2-pane surfaceとする。左側に`＋ 新規ノート`とstandalone Note list、右側にtitle input・Markdown source textarea・明示`保存`を置く。preview、rich-text editor、attachment、delete/archive、searchは追加しない。
+
+新規Noteボタンはmemory-only draftを開くだけで、空のDocument rowを作らない。Save成功後にcanonical Document / revisionへbaselineを置き換え、既存Noteのdirty編集はexpected revisionで更新する。revision conflictではlocal title/bodyを保持し、最新canonical stateを確認できるが自動overwriteしない。dirtyなNoteからの切替・Notes離脱・logout・reload/closeは既存の確認およびbeforeunload boundaryを使い、キャンセル時は編集中のdraftを保つ。

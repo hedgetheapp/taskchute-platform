@@ -1739,6 +1739,14 @@ D-083は、current established Dayのordinary planned Entryに限り、既存`Mo
 
 実装、Worker / Web regression、real-local / persistent nonprod browser、read-only DB evidenceはcanonical evidence docsへ記録する。production、restore、destructive cleanup、branch / PR / merge / tag / releaseは対象外で、Releasedは`NO`とする。
 
+## D-090 — Standalone Markdown Notes v0.1
+
+Status: **Approved / Implemented**
+
+D-090のcanonical scopeに従い、Task / Project / Routine等へ従属しないstandalone Markdown Noteをtop-level `ノート` destinationから作成・一覧・編集・明示保存できる最初のshared Document foundationを実装した。Documentはowner-scoped stable identity、`kind = standalone`、title、Markdown source body、revision、server timestampsを持ち、Create / Updateは既存のoperation identity、exact replay、owner isolation、revision CASを利用する。APP `0029_documents_v01.sql`を追加し、既存APP data / operationsを保持したままpersistent nonprodへ適用した。
+
+v0.1は新規draftを保存せずに開き、SaveまたはCtrl/Cmd+SでCreateし、既存Documentはexpected revision付きUpdateを行う。競合時はlocal draftを保持し、autosave、delete/archive、preview、attachments、search/backlinks、Task/Project/Routine relation、offline persistenceは含めない。browser authenticated evidenceが得られない場合は自動的にVerifiedへ昇格させず、canonical evidence docsに`AUTHENTICATED_BROWSER_NOT_VERIFIED`を記録する。
+
 ## D-089 — Routine workday / holiday recurrence
 
 Status: **Approved / implemented**

@@ -568,3 +568,11 @@ APP `0027_workday_holiday_calendar.sql`はowner-scoped `effective_day_overrides`
 D-089でD-088のcalendar authorityをRoutineへ接続した。typed scheduleは`workday`（effective workday）、`holiday`（effective holiday）、`official_holiday`（official snapshot entry）、`monthly_last_workday`（同一月内で最後のeffective workday）で、coverage外weekdayのunknownはeligibleではない。`monthly_last_workday`は月末までの全日を同じbulk calendar snapshotで評価し、later unknownをブロックする。
 
 既存10 recurrence kindは`isRoutineScheduleEligible()`のpure civil-date evaluatorを継続利用し、D-089 kindだけを`isRoutineScheduleEligibleWithCalendar()`のshared adapterで評価する。Routine Board、current-Day materialization、UpdateRoutine suppression / restore、D-088 override reconciliationは同じadapterとowner-scoped bulk override contextを使う。override mutationとplanned D-089 reconciliationはAPP 0028後の同一D1 batch / assertion boundaryでcommitし、moved / skipped / paused / overridden / historical stateを変更しない。
+
+## D-090 Standalone Markdown Notes v0.1
+
+`Document`はTask / Project / Routineへ従属しないowner-scoped shared entityであり、v0.1では`kind = standalone`だけを許可する。必須のcanonical fieldsはstable `document_id`、owner、title、Markdown source body、non-negative `revision`、`created_at`、`updated_at`である。Markdown sourceが正本であり、rich-text-only representation、attachment、binary、Task-specific storageは作らない。
+
+Authenticated Webのtop-level `ノート`はstandalone Documentの一覧・取得・新規draft・明示Save・既存編集を提供する。Createは一つのoperation identityでexact replayし、Updateはowner-scoped `expected_revision` CASでrevisionを一度だけ進める。同一operation IDのpayload変更、stale revision、owner外アクセスは拒否する。Ctrl+S / Cmd+SはSaveと同じ経路を使い、dirty draftはin-memoryに保持され、競合・navigation・logoutで黙って破棄しない。Notesは既存のbounded JSON request-size protectionを維持する。
+
+`documents` queryはstandaloneだけを`updated_at DESC`とstable tie-breakで返し、arbitrary hidden capを設けない。D-090はdelete/archive、autosave、preview、search/backlinks、Task/Project/Routine relation、localStorage/IndexedDB、offline queue、public shareを定義しない。
