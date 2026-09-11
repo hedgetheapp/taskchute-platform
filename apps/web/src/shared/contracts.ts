@@ -829,7 +829,11 @@ export type RoutineScheduleInput =
   | { kind: "monthly_nth_weekday"; ordinal: number; weekday: number }
   | { kind: "monthly_last_weekday"; weekday: number }
   | { kind: "every_n_months_day"; interval_months: number; day_of_month: number }
-  | { kind: "every_n_months_last_day"; interval_months: number };
+  | { kind: "every_n_months_last_day"; interval_months: number }
+  | { kind: "workday" }
+  | { kind: "holiday" }
+  | { kind: "official_holiday" }
+  | { kind: "monthly_last_workday" };
 
 export interface RoutineBoardItemProjection {
   routine_definition_id: string;

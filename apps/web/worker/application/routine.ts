@@ -4,12 +4,13 @@ import type {
   EndRoutineRequest,
   EndRoutineResult,
 } from "../../src/shared/contracts";
-import { isRoutineScheduleEligible, routineScheduleFromSnapshot, type RoutineScheduleSnapshot } from "../../src/shared/routine-recurrence";
+import { createRoutineCalendarContext, isRoutineScheduleEligibleWithCalendar, routineScheduleFromSnapshot, type RoutineCalendarContext, type RoutineScheduleSnapshot } from "../../src/shared/routine-recurrence";
 import { isUuidV7, uuidv7 } from "../domain/uuidv7";
 import { resolveTaskChuteDay } from "../domain/taskchute-day";
 import { persistRejection, readOperation, replayOperation } from "../persistence/operations";
 import { HttpError } from "./errors";
 import { fingerprint, REQUEST_FINGERPRINT_VERSION } from "./fingerprint";
+import { loadRoutineCalendarSnapshot } from "./effective-day-calendar";
 
 interface RoutineEntryRow {
   task_id: string;
@@ -408,7 +409,8 @@ export async function endRoutine(
   }
 }
 
-async function missingRoutineCount(db: D1Database, appUserId: string, dayId: string, logicalDate: string): Promise<number> {
+async function missingRoutineCount(db: D1Database, appUserId: string, dayId: string, logicalDate: string,
+  calendar: RoutineCalendarContext): Promise<number> {
   const rows = await db.prepare(`SELECT r.start_logical_date, r.end_logical_date,
       s.schedule_kind, s.interval_days, s.interval_weeks, s.interval_months, s.weekdays_mask,
       s.month_day, s.month_ordinal, s.month_weekday
@@ -430,9 +432,10 @@ async function missingRoutineCount(db: D1Database, appUserId: string, dayId: str
       interval_weeks: number | null; interval_months: number | null; weekdays_mask: number | null;
       month_day: number | null; month_ordinal: number | null; month_weekday: number | null;
     }>();
-  return rows.results.filter((row) => isRoutineScheduleEligible({
+  return rows.results.filter((row) => isRoutineScheduleEligibleWithCalendar({
     schedule: routineScheduleFromSnapshot(row), startLogicalDate: row.start_logical_date,
     endLogicalDate: row.end_logical_date, candidateLogicalDate: logicalDate,
+    calendar,
   })).length;
 }
 
@@ -444,6 +447,8 @@ export async function ensureCurrentDayRoutineEntries(
   retry = true,
   hooks: RoutineMutationHooks = {},
 ): Promise<void> {
+  const calendarSnapshot = await loadRoutineCalendarSnapshot(db, appUserId);
+  const calendar = createRoutineCalendarContext(calendarSnapshot);
   const definitions = await db.prepare(`SELECT r.id, r.task_id, r.default_section_id,
       r.default_estimate_seconds, r.default_planned_start_minute, r.materialization_order,
       rdm.mode_id AS default_mode_id,
@@ -469,9 +474,10 @@ export async function ensureCurrentDayRoutineEntries(
     ORDER BY r.materialization_order, r.id`)
     .bind(appUserId, day.logical_date, day.logical_date, day.logical_date, day.logical_date, day.id)
     .all<RoutineDefinitionRow>();
-  const eligibleDefinitions = definitions.results.filter((definition) => isRoutineScheduleEligible({
+  const eligibleDefinitions = definitions.results.filter((definition) => isRoutineScheduleEligibleWithCalendar({
     schedule: routineScheduleFromSnapshot(definition), startLogicalDate: definition.start_logical_date,
     endLogicalDate: definition.end_logical_date, candidateLogicalDate: day.logical_date,
+    calendar,
   }));
   if (eligibleDefinitions.length === 0) return;
 
@@ -527,6 +533,7 @@ export async function ensureCurrentDayRoutineEntries(
     };
   });
   const plansJson = JSON.stringify(plans);
+  const calendarJson = JSON.stringify(calendarSnapshot);
   const guardId = uuidv7();
   const assertionId = `routine-materialize:${guardId}`;
   await hooks.beforeMutation?.();
@@ -557,9 +564,23 @@ export async function ensureCurrentDayRoutineEntries(
                 AND pi.routine_definition_id = r.id AND pi.paused_logical_date <= ?
                 AND (pi.resumed_logical_date IS NULL OR ? < pi.resumed_logical_date))
               OR EXISTS (SELECT 1 FROM routine_occurrences o WHERE o.app_user_id = r.app_user_id
-                AND o.routine_definition_id = r.id AND o.origin_taskchute_day_id = ?))`)
+                AND o.routine_definition_id = r.id AND o.origin_taskchute_day_id = ?))
+            AND NOT EXISTS (SELECT 1 FROM effective_day_overrides current_override
+              WHERE current_override.app_user_id = ? AND NOT EXISTS (SELECT 1 FROM json_each(?) j
+                WHERE json_extract(j.value, '$.logical_date') = current_override.logical_date
+                  AND json_extract(j.value, '$.override_kind') = current_override.override_kind
+                  AND json_extract(j.value, '$.reason') IS current_override.reason
+                  AND CAST(json_extract(j.value, '$.revision') AS INTEGER) = current_override.revision))
+            AND NOT EXISTS (SELECT 1 FROM json_each(?) j
+              WHERE NOT EXISTS (SELECT 1 FROM effective_day_overrides current_override
+                WHERE current_override.app_user_id = ?
+                  AND current_override.logical_date = json_extract(j.value, '$.logical_date')
+                  AND current_override.override_kind = json_extract(j.value, '$.override_kind')
+                  AND current_override.reason IS json_extract(j.value, '$.reason')
+                  AND current_override.revision = CAST(json_extract(j.value, '$.revision') AS INTEGER)))`)
         .bind(appUserId, guardId, day.placement_revision, appUserId, day.id, day.placement_revision,
-          plansJson, plansJson, appUserId, day.logical_date, day.logical_date, day.id),
+          plansJson, plansJson, appUserId, day.logical_date, day.logical_date, day.id,
+          appUserId, calendarJson, calendarJson, appUserId),
       db.prepare(`INSERT INTO routine_occurrences
         (id, app_user_id, routine_definition_id, origin_taskchute_day_id, created_at)
         SELECT json_extract(value, '$.routine_occurrence_id'), ?, json_extract(value, '$.routine_definition_id'), ?, ?
@@ -614,7 +635,8 @@ export async function ensureCurrentDayRoutineEntries(
   } catch {
     // A concurrent load or placement mutation may have won. Re-read before deciding whether retry is needed.
   }
-  const missing = await missingRoutineCount(db, appUserId, day.id, day.logical_date);
+  const latestCalendar = createRoutineCalendarContext(await loadRoutineCalendarSnapshot(db, appUserId));
+  const missing = await missingRoutineCount(db, appUserId, day.id, day.logical_date, latestCalendar);
   if (missing === 0) return;
   if (retry) {
     const latest = await db.prepare(`SELECT id, logical_date, establishment_boundary_minutes, placement_revision

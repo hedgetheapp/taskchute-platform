@@ -1,5 +1,6 @@
 import { Temporal } from "@js-temporal/polyfill";
 import type { RoutineScheduleInput } from "./contracts";
+import { classifyEffectiveDay, type EffectiveDayClassification, type EffectiveDayOverrideValue } from "./effective-day-calendar";
 
 /**
  * The persisted weekday numbering is deliberately Sunday=0..Saturday=6,
@@ -15,6 +16,10 @@ export interface RoutineScheduleSnapshot {
   month_day: number | null;
   month_ordinal: number | null;
   month_weekday: number | null;
+}
+
+export interface RoutineCalendarContext {
+  classify(logicalDate: string): EffectiveDayClassification;
 }
 
 const WEEKDAY_VALUES = new Set([0, 1, 2, 3, 4, 5, 6]);
@@ -47,6 +52,20 @@ function activeMonth(start: Temporal.PlainDate, candidate: Temporal.PlainDate, i
   return monthIndex >= 0 && monthIndex % interval === 0;
 }
 
+export function routineDateWithinPeriod(input: {
+  startLogicalDate: string;
+  endLogicalDate: string | null;
+  candidateLogicalDate: string;
+}): { start: Temporal.PlainDate; candidate: Temporal.PlainDate; end: Temporal.PlainDate | null } | null {
+  const start = parseDate(input.startLogicalDate);
+  const candidate = parseDate(input.candidateLogicalDate);
+  const end = input.endLogicalDate === null ? null : parseDate(input.endLogicalDate);
+  if (!start || !candidate || (input.endLogicalDate !== null && !end)
+    || Temporal.PlainDate.compare(candidate, start) < 0
+    || (end !== null && Temporal.PlainDate.compare(candidate, end) > 0)) return null;
+  return { start, candidate, end };
+}
+
 /** Pure, deterministic eligibility over canonical YYYY-MM-DD civil dates. */
 export function isRoutineScheduleEligible(input: {
   schedule: RoutineScheduleInput;
@@ -54,12 +73,9 @@ export function isRoutineScheduleEligible(input: {
   endLogicalDate: string | null;
   candidateLogicalDate: string;
 }): boolean {
-  const start = parseDate(input.startLogicalDate);
-  const candidate = parseDate(input.candidateLogicalDate);
-  const end = input.endLogicalDate === null ? null : parseDate(input.endLogicalDate);
-  if (!start || !candidate || (input.endLogicalDate !== null && !end)
-    || Temporal.PlainDate.compare(candidate, start) < 0
-    || (end !== null && Temporal.PlainDate.compare(candidate, end) > 0)) return false;
+  const period = routineDateWithinPeriod(input);
+  if (!period) return false;
+  const { start, candidate } = period;
 
   const schedule = input.schedule;
   switch (schedule.kind) {
@@ -103,7 +119,47 @@ export function isRoutineScheduleEligible(input: {
       return Number.isSafeInteger(schedule.interval_months) && schedule.interval_months >= 2
         && activeMonth(start, candidate, schedule.interval_months)
         && candidate.day === candidate.daysInMonth;
+    case "workday":
+    case "holiday":
+    case "official_holiday":
+    case "monthly_last_workday":
+      return false;
   }
+}
+
+export function createRoutineCalendarContext(
+  overrides: readonly EffectiveDayOverrideValue[] = [],
+): RoutineCalendarContext {
+  const byDate = new Map(overrides.map((override) => [override.logical_date, override]));
+  return { classify: (logicalDate) => classifyEffectiveDay({ logicalDate, override: byDate.get(logicalDate) ?? null }) };
+}
+
+export function isRoutineScheduleEligibleWithCalendar(input: {
+  schedule: RoutineScheduleInput;
+  startLogicalDate: string;
+  endLogicalDate: string | null;
+  candidateLogicalDate: string;
+  calendar: RoutineCalendarContext;
+}): boolean {
+  if (input.schedule.kind !== "workday" && input.schedule.kind !== "holiday"
+    && input.schedule.kind !== "official_holiday" && input.schedule.kind !== "monthly_last_workday") {
+    return isRoutineScheduleEligible(input);
+  }
+  const period = routineDateWithinPeriod(input);
+  if (!period) return false;
+  const classification = input.calendar.classify(input.candidateLogicalDate);
+  if (input.schedule.kind === "workday") return classification.effective === "workday";
+  if (input.schedule.kind === "holiday") return classification.effective === "holiday";
+  if (input.schedule.kind === "official_holiday") return classification.official_entry !== null;
+  if (classification.effective !== "workday") return false;
+  let date = period.candidate.add({ days: 1 });
+  const monthEnd = period.candidate.with({ day: period.candidate.daysInMonth });
+  while (Temporal.PlainDate.compare(date, monthEnd) <= 0) {
+    const later = input.calendar.classify(date.toString()).effective;
+    if (later === "unknown" || later === "workday") return false;
+    date = date.add({ days: 1 });
+  }
+  return true;
 }
 
 export function routineScheduleFromSnapshot(snapshot: RoutineScheduleSnapshot): RoutineScheduleInput {
@@ -118,6 +174,10 @@ export function routineScheduleFromSnapshot(snapshot: RoutineScheduleSnapshot): 
     case "monthly_last_weekday": return { kind: "monthly_last_weekday", weekday: snapshot.month_weekday! };
     case "every_n_months_day": return { kind: "every_n_months_day", interval_months: snapshot.interval_months!, day_of_month: snapshot.month_day! };
     case "every_n_months_last_day": return { kind: "every_n_months_last_day", interval_months: snapshot.interval_months! };
+    case "workday": return { kind: "workday" };
+    case "holiday": return { kind: "holiday" };
+    case "official_holiday": return { kind: "official_holiday" };
+    case "monthly_last_workday": return { kind: "monthly_last_workday" };
   }
 }
 

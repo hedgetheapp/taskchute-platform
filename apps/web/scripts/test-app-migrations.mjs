@@ -225,7 +225,6 @@ try {
   assert.notEqual(invalidDefaultsRevision.status, 0, "Routine defaults revision must be non-negative");
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
   assert.deepEqual(query("PRAGMA foreign_key_check"), []);
-
   const preR2BTasks = query("SELECT * FROM tasks ORDER BY id");
   const preR2BDefinitions = query("SELECT * FROM routine_definitions ORDER BY id");
   const preR2BOccurrences = query("SELECT * FROM routine_occurrences ORDER BY id");
@@ -702,6 +701,27 @@ try {
   assert.notEqual(duplicateOverride.status, 0, "0027 must reject duplicate owner/date overrides");
   assert.deepEqual(query("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%d088%'"), [],
     "0027 temporary tables must not remain after migration");
+  const preD089Schedules = query(`SELECT routine_definition_id, schedule_kind, interval_days, interval_weeks,
+      interval_months, weekdays_mask, month_day, month_ordinal, month_weekday
+    FROM routine_schedules ORDER BY routine_definition_id`);
+  const preD089Operations = query("SELECT * FROM operations ORDER BY operation_id");
+  const preD089Overrides = query("SELECT * FROM effective_day_overrides ORDER BY app_user_id, logical_date");
+  applyFile("migrations/app/0028_routine_workday_holiday_recurrence.sql");
+  assert.deepEqual(query(`SELECT routine_definition_id, schedule_kind, interval_days, interval_weeks,
+      interval_months, weekdays_mask, month_day, month_ordinal, month_weekday
+    FROM routine_schedules ORDER BY routine_definition_id`), preD089Schedules,
+    "0028 must preserve every existing typed schedule row");
+  assert.deepEqual(query("SELECT * FROM operations ORDER BY operation_id"), preD089Operations,
+    "0028 must preserve every operation row");
+  assert.deepEqual(query("SELECT * FROM effective_day_overrides ORDER BY app_user_id, logical_date"), preD089Overrides,
+    "0028 must preserve D-088 overrides");
+  const d089OperationTable = query("SELECT sql FROM sqlite_master WHERE type='table' AND name='operations'")[0]?.sql ?? "";
+  assert(d089OperationTable.includes("UpsertEffectiveDayOverride"), "0028 must preserve the D-088 operation CHECK");
+  const invalidD089TypedField = execute(["--command", `UPDATE routine_schedules SET month_day = 1
+    WHERE app_user_id = 'user-v01a' AND routine_definition_id = 'routine-d086-days'`], false);
+  assert.notEqual(invalidD089TypedField.status, 0, "0028 must reject irrelevant typed fields for existing kinds");
+  assert.deepEqual(query("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%d089%'"), [],
+    "0028 temporary tables must not remain after migration");
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);
   assert.deepEqual(query("PRAGMA foreign_key_check"), []);
   assert.deepEqual(query("PRAGMA quick_check"), [{ quick_check: "ok" }]);

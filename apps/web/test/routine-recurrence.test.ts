@@ -1,10 +1,25 @@
 import { Temporal } from "@js-temporal/polyfill";
 import { describe, expect, it } from "vitest";
 import type { RoutineScheduleInput } from "../src/shared/contracts";
-import { isRoutineScheduleEligible } from "../src/shared/routine-recurrence";
+import {
+  createRoutineCalendarContext,
+  isRoutineScheduleEligible,
+  isRoutineScheduleEligibleWithCalendar,
+} from "../src/shared/routine-recurrence";
 
 function eligible(schedule: RoutineScheduleInput, date: string, start = "2024-01-01", end: string | null = "2026-12-31") {
   return isRoutineScheduleEligible({ schedule, startLogicalDate: start, endLogicalDate: end, candidateLogicalDate: date });
+}
+
+function calendarEligible(schedule: Extract<RoutineScheduleInput, {
+  kind: "workday" | "holiday" | "official_holiday" | "monthly_last_workday"
+}>, date: string, overrides: Array<{
+  logical_date: string; override_kind: "workday" | "holiday"; reason: string | null; revision: number; updated_at: string;
+}> = [], start = "2026-01-01", end: string | null = "2027-12-31") {
+  return isRoutineScheduleEligibleWithCalendar({
+    schedule, startLogicalDate: start, endLogicalDate: end, candidateLogicalDate: date,
+    calendar: createRoutineCalendarContext(overrides),
+  });
 }
 
 function legacyEligible(schedule: Extract<RoutineScheduleInput, { kind: "daily" | "every_n_days" | "weekly" }>, date: string,
@@ -130,5 +145,56 @@ describe("D-086 routine recurrence evaluator", () => {
     expect(eligible({ kind: "daily" }, "2024-01-01", "2024-01-01", "2024-01-01")).toBe(true);
     expect(eligible({ kind: "daily" }, "2024-01-02", "2024-01-01", "2024-01-01")).toBe(false);
     expect(eligible({ kind: "monthly_day", day_of_month: 1 }, "2024-02-30")).toBe(false);
+  });
+
+  it("uses the shared effective-day calendar for workday and holiday recurrence", () => {
+    expect(calendarEligible({ kind: "workday" }, "2026-09-11")).toBe(true);
+    expect(calendarEligible({ kind: "workday" }, "2026-09-12")).toBe(false);
+    expect(calendarEligible({ kind: "workday" }, "2026-05-06")).toBe(false);
+    expect(calendarEligible({ kind: "workday" }, "2026-05-06", [{
+      logical_date: "2026-05-06", override_kind: "workday", reason: null, revision: 0, updated_at: "2026-01-01T00:00:00.000Z",
+    }])).toBe(true);
+    expect(calendarEligible({ kind: "holiday" }, "2026-09-12")).toBe(true);
+    expect(calendarEligible({ kind: "holiday" }, "2026-05-06")).toBe(true);
+    expect(calendarEligible({ kind: "holiday" }, "2026-09-11")).toBe(false);
+    expect(calendarEligible({ kind: "holiday" }, "2026-09-11", [{
+      logical_date: "2026-09-11", override_kind: "holiday", reason: "company", revision: 0, updated_at: "2026-01-01T00:00:00.000Z",
+    }])).toBe(true);
+    expect(calendarEligible({ kind: "workday" }, "2028-01-03", [], "2026-01-01", null)).toBe(false);
+    expect(calendarEligible({ kind: "workday" }, "2028-01-03", [{
+      logical_date: "2028-01-03", override_kind: "workday", reason: null, revision: 0, updated_at: "2026-01-01T00:00:00.000Z",
+    }], "2026-01-01", null)).toBe(true);
+    expect(calendarEligible({ kind: "holiday" }, "2028-01-03", [{
+      logical_date: "2028-01-03", override_kind: "holiday", reason: null, revision: 0, updated_at: "2026-01-01T00:00:00.000Z",
+    }], "2026-01-01", null)).toBe(true);
+  });
+
+  it("keeps official-holiday recurrence independent from effective overrides", () => {
+    expect(calendarEligible({ kind: "official_holiday" }, "2026-01-01")).toBe(true);
+    expect(calendarEligible({ kind: "official_holiday" }, "2026-05-06")).toBe(true);
+    expect(calendarEligible({ kind: "official_holiday" }, "2026-05-06", [{
+      logical_date: "2026-05-06", override_kind: "workday", reason: null, revision: 0, updated_at: "2026-01-01T00:00:00.000Z",
+    }])).toBe(true);
+    expect(calendarEligible({ kind: "official_holiday" }, "2026-09-11", [{
+      logical_date: "2026-09-11", override_kind: "holiday", reason: null, revision: 0, updated_at: "2026-01-01T00:00:00.000Z",
+    }])).toBe(false);
+    expect(calendarEligible({ kind: "official_holiday" }, "2028-01-03", [{
+      logical_date: "2028-01-03", override_kind: "holiday", reason: null, revision: 0, updated_at: "2026-01-01T00:00:00.000Z",
+    }])).toBe(false);
+  });
+
+  it("resolves monthly last workday over the complete civil month", () => {
+    expect(calendarEligible({ kind: "monthly_last_workday" }, "2026-09-30")).toBe(true);
+    expect(calendarEligible({ kind: "monthly_last_workday" }, "2026-09-29")).toBe(false);
+    expect(calendarEligible({ kind: "monthly_last_workday" }, "2026-10-30")).toBe(true);
+    expect(calendarEligible({ kind: "monthly_last_workday" }, "2026-02-27", [], "2026-02-01")).toBe(true);
+    expect(calendarEligible({ kind: "monthly_last_workday" }, "2024-02-29", [], "2024-02-01")).toBe(true);
+    expect(calendarEligible({ kind: "monthly_last_workday" }, "2026-09-29", [{
+      logical_date: "2026-09-30", override_kind: "holiday", reason: "shutdown", revision: 0, updated_at: "2026-01-01T00:00:00.000Z",
+    }])).toBe(true);
+    expect(calendarEligible({ kind: "monthly_last_workday" }, "2026-09-30", [{
+      logical_date: "2026-09-30", override_kind: "workday", reason: "open", revision: 0, updated_at: "2026-01-01T00:00:00.000Z",
+    }])).toBe(true);
+    expect(calendarEligible({ kind: "monthly_last_workday" }, "2026-09-30", [], "2026-10-01", "2026-09-30")).toBe(false);
   });
 });

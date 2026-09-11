@@ -50,7 +50,11 @@ function scheduleText(schedule: RoutineScheduleInput): string {
   if (schedule.kind === "monthly_nth_weekday") return `毎月 第${schedule.ordinal}${labels[schedule.weekday]}曜日`;
   if (schedule.kind === "monthly_last_weekday") return `毎月 最終${labels[schedule.weekday]}曜日`;
   if (schedule.kind === "every_n_months_day") return `${schedule.interval_months}か月ごと ${schedule.day_of_month}日`;
-  return `${schedule.interval_months}か月ごと 月末`;
+  if (schedule.kind === "every_n_months_last_day") return `${schedule.interval_months}か月ごと 月末`;
+  if (schedule.kind === "workday") return "営業日";
+  if (schedule.kind === "holiday") return "休日";
+  if (schedule.kind === "official_holiday") return "祝日";
+  return "月末営業日";
 }
 
 function isValidSchedule(schedule: RoutineScheduleInput): boolean {
@@ -68,6 +72,10 @@ function isValidSchedule(schedule: RoutineScheduleInput): boolean {
     case "every_n_months_day": return Number.isSafeInteger(schedule.interval_months) && schedule.interval_months >= 2
       && Number.isSafeInteger(schedule.day_of_month) && schedule.day_of_month >= 1 && schedule.day_of_month <= 31;
     case "every_n_months_last_day": return Number.isSafeInteger(schedule.interval_months) && schedule.interval_months >= 2;
+    case "workday":
+    case "holiday":
+    case "official_holiday":
+    case "monthly_last_workday": return true;
   }
 }
 
@@ -394,7 +402,11 @@ export function RoutineBoard({ onUnauthorized }: RoutineBoardProps) {
                 : kind === "monthly_nth_weekday" ? { kind: "monthly_nth_weekday", ordinal: 1, weekday: 1 }
                 : kind === "monthly_last_weekday" ? { kind: "monthly_last_weekday", weekday: 5 }
                 : kind === "every_n_months_day" ? { kind: "every_n_months_day", interval_months: 2, day_of_month: 1 }
-                : { kind: "every_n_months_last_day", interval_months: 2 };
+                : kind === "every_n_months_last_day" ? { kind: "every_n_months_last_day", interval_months: 2 }
+                : kind === "workday" ? { kind: "workday" }
+                : kind === "holiday" ? { kind: "holiday" }
+                : kind === "official_holiday" ? { kind: "official_holiday" }
+                : { kind: "monthly_last_workday" };
               setDraftSchedule(schedule);
             }}>
               <option value="daily">毎日</option><option value="every_n_days">N日ごと</option>
@@ -402,6 +414,8 @@ export function RoutineBoard({ onUnauthorized }: RoutineBoardProps) {
               <option value="monthly_day">毎月○日</option><option value="monthly_last_day">毎月末日</option>
               <option value="monthly_nth_weekday">毎月 第N曜日</option><option value="monthly_last_weekday">毎月 最終曜日</option>
               <option value="every_n_months_day">Nか月ごと○日</option><option value="every_n_months_last_day">Nか月ごと月末</option>
+              <option value="workday">営業日</option><option value="holiday">休日</option>
+              <option value="official_holiday">祝日</option><option value="monthly_last_workday">月末営業日</option>
             </select></label>
             {draftSchedule.kind === "every_n_days" && <label>日数<input type="number" min={2} max={365}
               value={draftSchedule.interval_days} onChange={(event) => setDraftSchedule({ kind: "every_n_days", interval_days: Number(event.target.value) })} /></label>}

@@ -184,6 +184,9 @@ describe.sequential("Routine R2B Board", () => {
     };
     expect(isUpdateRoutineRequest(base)).toBe(true);
     expect(isUpdateRoutineRequest({ ...base, schedule: { kind: "monthly_day", day_of_month: 31 } })).toBe(true);
+    for (const kind of ["workday", "holiday", "official_holiday", "monthly_last_workday"] as const) {
+      expect(isUpdateRoutineRequest({ ...base, schedule: { kind } })).toBe(true);
+    }
     for (const schedule of [
       { kind: "monthly_day", day_of_month: 31, interval_months: 2 },
       { kind: "monthly_last_day", interval_months: 2 },

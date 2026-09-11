@@ -12,12 +12,13 @@ import type {
   UpdateRoutineRequest,
   UpdateRoutineResult,
 } from "../../src/shared/contracts";
-import { isRoutineScheduleEligible, routineScheduleFromSnapshot, type RoutineScheduleSnapshot } from "../../src/shared/routine-recurrence";
+import { createRoutineCalendarContext, isRoutineScheduleEligibleWithCalendar, routineScheduleFromSnapshot, type RoutineCalendarContext, type RoutineScheduleSnapshot } from "../../src/shared/routine-recurrence";
 import { resolveTaskChuteDay } from "../domain/taskchute-day";
 import { isUuidV7, uuidv7 } from "../domain/uuidv7";
 import { persistRejection, readOperation, replayOperation, type CommandType } from "../persistence/operations";
 import { fingerprint, REQUEST_FINGERPRINT_VERSION } from "./fingerprint";
 import { HttpError } from "./errors";
+import { loadRoutineCalendarContext, loadRoutineCalendarSnapshot } from "./effective-day-calendar";
 
 interface CurrentContext {
   logicalDate: string;
@@ -54,6 +55,9 @@ interface RoutineRow {
 }
 
 const weekdayValues = new Set([0, 1, 2, 3, 4, 5, 6]);
+const calendarScheduleKinds = new Set<RoutineScheduleInput["kind"]>([
+  "workday", "holiday", "official_holiday", "monthly_last_workday",
+]);
 
 function hasExactKeys(row: Record<string, unknown>, keys: readonly string[]): boolean {
   const actual = Object.keys(row).sort();
@@ -112,6 +116,10 @@ function isSchedule(value: unknown): value is RoutineScheduleInput {
   if (row.kind === "every_n_months_last_day") {
     return hasExactKeys(row, ["kind", "interval_months"])
       && Number.isSafeInteger(row.interval_months) && Number(row.interval_months) >= 2;
+  }
+  if (row.kind === "workday" || row.kind === "holiday"
+    || row.kind === "official_holiday" || row.kind === "monthly_last_workday") {
+    return hasExactKeys(row, ["kind"]);
   }
   if (row.kind === "monthly_nth_weekday") {
     return hasExactKeys(row, ["kind", "ordinal", "weekday"])
@@ -400,7 +408,7 @@ export async function createRoutine(db: D1Database, appUserId: string, request: 
 }
 
 async function currentMaterializationPlan(db: D1Database, appUserId: string, routineId: string,
-  context: CurrentContext, resuming = false): Promise<{ occurrenceId: string; entryId: string; taskId: string; title: string;
+  context: CurrentContext, resuming = false, calendar?: RoutineCalendarContext): Promise<{ occurrenceId: string; entryId: string; taskId: string; title: string;
     projectId: string | null; projectTitle: string | null; sectionId: string | null;
     plannedStart: number | null; estimate: number | null; position: number; modeId: string | null } | null> {
   if (!context.dayId || context.placementRevision === null) return null;
@@ -435,8 +443,10 @@ async function currentMaterializationPlan(db: D1Database, appUserId: string, rou
       month_weekday: number | null }>();
   if (!definition) return null;
   const schedule = scheduleFromRow(definition);
-  if (!isRoutineScheduleEligible({ schedule, startLogicalDate: definition.start_logical_date,
-    endLogicalDate: definition.end_logical_date, candidateLogicalDate: context.logicalDate })) return null;
+  const effectiveCalendar = calendar ?? await loadRoutineCalendarContext(db, appUserId);
+  if (!isRoutineScheduleEligibleWithCalendar({ schedule, startLogicalDate: definition.start_logical_date,
+    endLogicalDate: definition.end_logical_date, candidateLogicalDate: context.logicalDate,
+    calendar: effectiveCalendar })) return null;
   if (definition.default_section_id !== null) {
     const valid = await db.prepare(`SELECT COUNT(*) AS count FROM taskchute_day_section_contexts
       WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id = ? AND logical_start_minute <= ?
@@ -461,6 +471,7 @@ export async function setRoutineEnabled(db: D1Database, appUserId: string, reque
   const prior = await readOperation(db, appUserId, request.operation_id);
   if (prior) return replayOperation(prior, "SetRoutineEnabled", requestFingerprint);
   const context = await currentContext(db, appUserId, nowInstant);
+  const calendar = await loadRoutineCalendarContext(db, appUserId);
   const row = await db.prepare(`SELECT b.settings_revision,
     EXISTS (SELECT 1 FROM routine_pause_intervals p WHERE p.app_user_id = b.app_user_id
       AND p.routine_definition_id = b.routine_definition_id AND p.paused_logical_date <= ?
@@ -475,7 +486,7 @@ export async function setRoutineEnabled(db: D1Database, appUserId: string, reque
   if ((row.paused === 0) === request.enabled) return reject(db, appUserId, request.operation_id,
     "SetRoutineEnabled", requestFingerprint, "Routine already has the requested state");
   const plan = request.enabled
-    ? await currentMaterializationPlan(db, appUserId, request.routine_definition_id, context, true)
+    ? await currentMaterializationPlan(db, appUserId, request.routine_definition_id, context, true, calendar)
     : null;
   const result: SetRoutineEnabledResult = { routine_definition_id: request.routine_definition_id,
     enabled: request.enabled, settings_revision: row.settings_revision + 1 };
@@ -603,6 +614,7 @@ interface PlannedOccurrenceRow {
   suppressed: number;
   suppression_reason: "schedule" | "period" | "paused" | null;
   origin_taskchute_day_id: string;
+  schedule_kind: RoutineScheduleInput["kind"];
 }
 
 export interface RoutineBoardMutationHooks {
@@ -624,10 +636,11 @@ async function readPlannedOccurrences(db: D1Database, appUserId: string, routine
       d.logical_date, d.placement_revision, e.section_id, e.planned_start_minute, e.position,
       o.section_plan_override_present, o.estimate_override_present,
       CASE WHEN x.routine_occurrence_id IS NULL THEN 0 ELSE 1 END AS suppressed,
-      x.reason AS suppression_reason
+      x.reason AS suppression_reason, s.schedule_kind
     FROM routine_occurrences o JOIN entries e
       ON e.app_user_id = o.app_user_id AND e.routine_occurrence_id = o.id
     JOIN taskchute_days d ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
+    JOIN routine_schedules s ON s.app_user_id = o.app_user_id AND s.routine_definition_id = o.routine_definition_id
     LEFT JOIN routine_occurrence_suppressions x
       ON x.app_user_id = o.app_user_id AND x.routine_occurrence_id = o.id
     WHERE o.app_user_id = ? AND o.routine_definition_id = ? AND e.lifecycle_state = 'planned'
@@ -673,11 +686,11 @@ async function sectionPlansForUpdate(db: D1Database, appUserId: string, rows: Pl
 
 async function newCurrentPlanForUpdate(db: D1Database, appUserId: string, taskId: string,
   request: UpdateRoutineRequest, defaultModeId: string | null, context: CurrentContext,
-  occurrences: PlannedOccurrenceRow[]) {
+  occurrences: PlannedOccurrenceRow[], calendar: RoutineCalendarContext) {
   if (!context.dayId || context.placementRevision === null
     || occurrences.some((row) => row.taskchute_day_id === context.dayId)
-    || !isRoutineScheduleEligible({ schedule: request.schedule, startLogicalDate: request.start_logical_date,
-      endLogicalDate: request.end_logical_date, candidateLogicalDate: context.logicalDate })
+    || !isRoutineScheduleEligibleWithCalendar({ schedule: request.schedule, startLogicalDate: request.start_logical_date,
+      endLogicalDate: request.end_logical_date, candidateLogicalDate: context.logicalDate, calendar })
     || await pausedOn(db, appUserId, request.routine_definition_id, context.logicalDate)) return null;
   if (request.default_section_id !== null) {
     const valid = await db.prepare(`SELECT COUNT(*) AS count FROM taskchute_day_section_contexts
@@ -737,13 +750,17 @@ export async function updateRoutine(db: D1Database, appUserId: string, request: 
     request.operation_id, "UpdateRoutine", requestFingerprint, "Project or Section settings are unavailable");
 
   const schedule = scheduleColumns(request.schedule);
+  const calendarSnapshot = await loadRoutineCalendarSnapshot(db, appUserId);
+  const calendar = createRoutineCalendarContext(calendarSnapshot);
   const occurrences = await readPlannedOccurrences(db, appUserId, request.routine_definition_id, context.logicalDate);
+  const calendarRelevant = calendarScheduleKinds.has(request.schedule.kind)
+    || occurrences.some((row) => calendarScheduleKinds.has(row.schedule_kind));
   const desired = new Map<string, boolean>();
   for (const row of occurrences) {
     const moved = row.taskchute_day_id !== row.origin_taskchute_day_id;
-    desired.set(row.occurrence_id, moved || isRoutineScheduleEligible({ schedule: request.schedule,
+    desired.set(row.occurrence_id, moved || isRoutineScheduleEligibleWithCalendar({ schedule: request.schedule,
       startLogicalDate: request.start_logical_date, endLogicalDate: request.end_logical_date,
-      candidateLogicalDate: row.logical_date }));
+      candidateLogicalDate: row.logical_date, calendar }));
   }
   const eligibleRows = occurrences.filter((row) => desired.get(row.occurrence_id));
   const sectionPlans = await sectionPlansForUpdate(db, appUserId, eligibleRows, request);
@@ -755,7 +772,7 @@ export async function updateRoutine(db: D1Database, appUserId: string, request: 
     && (row.suppression_reason === "schedule" || row.suppression_reason === "period"))
     .map((row) => row.occurrence_id);
   const currentPlan = await newCurrentPlanForUpdate(db, appUserId, item.task_id, request, defaultModeId,
-    context, occurrences);
+    context, occurrences, calendar);
   const changedDayRows = [...new Map([
     ...occurrences.filter((row) => (desired.get(row.occurrence_id) ? 0 : 1) !== row.suppressed),
     ...sectionPlans.filter((row) => row.section_id !== row.target_section_id
@@ -771,6 +788,21 @@ export async function updateRoutine(db: D1Database, appUserId: string, request: 
   const suppressJson = JSON.stringify(suppress);
   const unsuppressJson = JSON.stringify(unsuppress);
   const changedDaysJson = JSON.stringify(changedDayRows);
+  const calendarJson = JSON.stringify(calendarSnapshot);
+  const calendarSnapshotGuard = calendarRelevant ? `
+        AND NOT EXISTS (SELECT 1 FROM effective_day_overrides current_override
+          WHERE current_override.app_user_id = ? AND NOT EXISTS (SELECT 1 FROM json_each(?) j
+            WHERE json_extract(j.value, '$.logical_date') = current_override.logical_date
+              AND json_extract(j.value, '$.override_kind') = current_override.override_kind
+              AND json_extract(j.value, '$.reason') IS current_override.reason
+              AND CAST(json_extract(j.value, '$.revision') AS INTEGER) = current_override.revision))
+        AND NOT EXISTS (SELECT 1 FROM json_each(?) j
+          WHERE NOT EXISTS (SELECT 1 FROM effective_day_overrides current_override
+            WHERE current_override.app_user_id = ?
+              AND current_override.logical_date = json_extract(j.value, '$.logical_date')
+              AND current_override.override_kind = json_extract(j.value, '$.override_kind')
+              AND current_override.reason IS json_extract(j.value, '$.reason')
+              AND current_override.revision = CAST(json_extract(j.value, '$.revision') AS INTEGER)))` : "";
   const result: UpdateRoutineResult = { routine_definition_id: request.routine_definition_id,
     settings_revision: item.settings_revision + 1 };
   await hooks.beforeMutation?.();
@@ -811,10 +843,12 @@ export async function updateRoutine(db: D1Database, appUserId: string, request: 
           WHERE o.app_user_id = ? AND o.routine_definition_id = ? AND e.lifecycle_state = 'planned'
             AND d.logical_date >= ? AND NOT EXISTS (SELECT 1 FROM json_each(?) j2
               WHERE json_extract(j2.value, '$.occurrence_id') = o.id
-                AND json_extract(j2.value, '$.entry_id') = e.id))`)
+                AND json_extract(j2.value, '$.entry_id') = e.id))`
+          + calendarSnapshotGuard)
         .bind(appUserId, request.operation_id, appUserId, request.routine_definition_id,
           request.expected_settings_revision, occurrencesJson, appUserId, request.routine_definition_id,
-          appUserId, request.routine_definition_id, context.logicalDate, occurrencesJson),
+          appUserId, request.routine_definition_id, context.logicalDate, occurrencesJson,
+          ...(calendarRelevant ? [appUserId, calendarJson, calendarJson, appUserId] : [])),
       db.prepare(`UPDATE tasks SET title = ?, project_id = ? WHERE app_user_id = ? AND id = ?
         AND EXISTS (SELECT 1 FROM routine_board_items WHERE app_user_id = ? AND routine_definition_id = ?
           AND settings_revision = ?) AND EXISTS (
