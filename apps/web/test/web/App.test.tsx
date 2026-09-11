@@ -313,8 +313,35 @@ describe("Dogfood Day shell", () => {
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
     await screen.findByRole("button", { name: "同じ内容で再試行" });
     await waitFor(() => expect((screen.getByLabelText("ノートタイトル") as HTMLInputElement).disabled).toBe(true));
+    await screen.findByText("保存結果が未確定です。元の操作をそのまま再試行してください。");
     fireEvent.click(screen.getByRole("button", { name: "設定" }));
     expect(screen.getByRole("heading", { name: "ノート" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "ログアウト" }));
+    expect(screen.getByRole("heading", { name: "ノート" })).toBeTruthy();
+    expect(mocks.logout).not.toHaveBeenCalled();
+  });
+
+  it("blocks every App transition and logout after a clean Note Update is ambiguous", async () => {
+    const current = {
+      document_id: "0199d090-0000-7000-8000-00000000000d", kind: "standalone" as const,
+      title: "Clean unresolved", markdown_body: "body", revision: 2,
+      created_at: "2026-09-11T00:00:00.000Z", updated_at: "2026-09-11T00:00:00.000Z",
+    };
+    mocks.loadDay.mockResolvedValue(emptyDay);
+    mocks.loadDocuments.mockResolvedValue({ documents: [current] });
+    mocks.loadDocument.mockResolvedValueOnce(current).mockRejectedValueOnce(new ApiClientError("missing", 404, true, "resource_not_found"));
+    mocks.updateDocument.mockRejectedValue(new ApiClientError("ambiguous", 503, true, "infrastructure_ambiguous"));
+    render(<App />);
+    await screen.findByRole("region", { name: "DayBoard" });
+    fireEvent.click(screen.getByRole("button", { name: "ノート" }));
+    await waitFor(() => expect(screen.getByDisplayValue("Clean unresolved")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await screen.findByRole("button", { name: "同じ内容で再試行" });
+    await waitFor(() => expect((screen.getByLabelText("ノートタイトル") as HTMLInputElement).disabled).toBe(true));
+    fireEvent.click(screen.getByRole("button", { name: "設定" }));
+    fireEvent.click(screen.getByRole("button", { name: "今日" }));
+    fireEvent.click(screen.getByRole("button", { name: "ルーティン" }));
+    fireEvent.click(screen.getByRole("button", { name: "ノート" }));
     fireEvent.click(screen.getByRole("button", { name: "ログアウト" }));
     expect(screen.getByRole("heading", { name: "ノート" })).toBeTruthy();
     expect(mocks.logout).not.toHaveBeenCalled();

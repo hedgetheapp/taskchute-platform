@@ -62,13 +62,13 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange }
 
   useEffect(() => {
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
-      if (!dirty) return;
+      if (!dirty && !unresolved) return;
       event.preventDefault();
       event.returnValue = "";
     };
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
-  }, [dirty]);
+  }, [dirty, unresolved]);
 
   const handleUnauthorized = useCallback(() => {
     onUnauthorized();

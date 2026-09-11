@@ -2010,8 +2010,9 @@ export function App() {
   }
 
   function canLeaveNotes(): boolean {
-    if (view !== "notes" || !notesDirty) return true;
+    if (view !== "notes") return true;
     if (notesUnresolved) return false;
+    if (!notesDirty) return true;
     return window.confirm("未保存のノートがあります。変更を破棄して移動しますか？");
   }
 
