@@ -2360,9 +2360,11 @@ D-084 browser fixture creation was not completed: the unauthenticated/new in-app
 | D090-MIG-01 | APP migration | bounded fresh `0001 -> 0029` and upgrade `0028 -> 0029`; preservation, constraints, quick/FK, no temp residue | PASS; dedicated D090 harness |
 | D090-LOCAL-01 | Static/full local gates | full Worker/D1 `31 files / 274 tests`, full Web `5 files / 276 tests`, typecheck, normal build, exact nonprod build, diff-check | PASS |
 | D090-LOCAL-02 | Request-size corrective regression | bounded `readBoundedJson` rejects an oversized Markdown JSON body before command mutation | PASS; focused `1 / 1`, full Worker/D1 `32 files / 275 tests` |
+| D090-LOCAL-03 | Atomic assertion rollback regression | deterministic transaction-assertion collision rolls back the Document mutation and records no false operation success | PASS; focused Documents `7 / 7`, full Worker/D1 `32 files / 276 tests` |
 | D090-NONPROD-01 | Migration/deploy/safety | APP 0029 applied once; APP/AUTH pending `0 / 0`, quick/FK clean; Worker `53c91b2d-1179-4330-8884-174b42b09955`; root `200`; unauthenticated Documents API `401`; read-only probes `rows_written=0` | PASS |
 | D090-NONPROD-02 | Fetch-scope corrective redeploy | source-review commit `5385ef5` restricts fetch to standalone kind; focused Worker `6 / 6`; exact main redeployed as Worker `75f9a028-cd72-46bb-b7d1-8502327a2af3`; no migration re-applied | PASS |
 | D090-NONPROD-03 | Final exact-main redeploy | test commit `24a3144`; guard/dry-run and exact nonprod build PASS; final Worker `754b1d11-5517-4c03-ab69-7aa89c13b8af`; no migration re-applied | PASS |
+| D090-NONPROD-04 | Final exact-main redeploy | atomic rollback test commit `443ddc9`; guard/dry-run and exact nonprod build PASS; final Worker `74643336-6a7c-4bf2-8bad-9e08ce3adad4`; no migration re-applied | PASS |
 | D090-BROWSER-01 | Authenticated Notes browser | create/edit/save/reload/Ctrl+S/fresh tab/console | `NOT_VERIFIED`; existing tab was logged out and no credential/re-login was used |
 | D090-MIG-02 | Existing Windows migration helper | `npm run test:migrations` completion evidence | `NOT_RUN`; bounded D090 fresh/upgrade harness is the migration evidence |
 | D090-SAFETY-01 | Operation boundary | no production, restore, destructive cleanup, credential retrieval/re-login, bootstrap change, branch/PR/merge/tag/Release | PASS; not performed |
