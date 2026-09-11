@@ -200,6 +200,8 @@ Git / nonprod操作はProject Instructionsの承認境界に従う。
 
 write前には必ずbranch / HEAD / remote / relevant filesを再確認し、non-fast-forwardやunexpected remote changeを黙って上書きしない。無関係な変更を同じcommitへ混ぜない。
 
+Persistent nonprod deployは、`CLOUDFLARE_ENV=nonprod`で生成した`dist/taskchute_web/wrangler.json`を入力とし、deploy前に環境変数をunsetして`npm run verify:nonprod-deploy`を実行する。guardはWorker名が`taskchute-web-nonprod`、`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、canonical APP/AUTH bindingであることを確認し、それ以外のtargetを拒否する。既に環境選択済みのgenerated configへ`CLOUDFLARE_ENV=nonprod`を残したままWranglerを実行するとWorker名にsuffixが二重適用され得るため、`npm run deploy:nonprod`を標準手順とする。
+
 以下は通常開発の継続承認外であり、必要になった時点でSTOPする。
 
 - 新規Material Decision / Approved Decision変更

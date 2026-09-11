@@ -15,6 +15,8 @@
     "test:migrations:d089": "node ./scripts/test-d089-migration-bounded.mjs",
     "test:all": "npm run test && npm run test:web",
     "update:jp-holidays": "node ./scripts/update-jp-holidays.mjs",
+    "verify:nonprod-deploy": "node ./scripts/verify-nonprod-deploy.mjs",
+    "deploy:nonprod": "npm run verify:nonprod-deploy && npx wrangler deploy --config dist/taskchute_web/wrangler.json --name taskchute-web-nonprod",
     "migrate:app:local": "wrangler d1 migrations apply taskchute-app-local --local --persist-to .wrangler/state",
     "migrate:auth:local": "wrangler d1 migrations apply taskchute-auth-local --local --persist-to .wrangler/state",
     "bootstrap:local": "node ./scripts/bootstrap-local.mjs"

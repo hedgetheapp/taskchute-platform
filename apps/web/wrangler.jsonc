@@ -23,6 +23,7 @@
   ],
   "env": {
     "nonprod": {
+      "name": "taskchute-web-nonprod",
       "vars": {
         "RUNTIME_ENV": "nonprod",
         "BOOTSTRAP_ENABLED": "false"

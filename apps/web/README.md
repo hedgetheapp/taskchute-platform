@@ -48,7 +48,7 @@ Initial bootstrap, migration, deploy, backup, or recovery remains an explicitly 
 
 ## Persistent non-production configuration
 
-`wrangler.jsonc` contains a named `nonprod` environment. Selecting it produces the Worker name `taskchute-web-nonprod`, binds `AUTH_DB` and `APP_DB` to the non-production logical names, sets `RUNTIME_ENV=nonprod`, and keeps `BOOTSTRAP_ENABLED=false`.
+`wrangler.jsonc` contains a named `nonprod` environment with an explicit Worker name `taskchute-web-nonprod`. Selecting it binds `AUTH_DB` and `APP_DB` to the non-production logical names, sets `RUNTIME_ENV=nonprod`, and keeps `BOOTSTRAP_ENABLED=false`.
 
 The tracked `env.nonprod` bindings are the current persistent non-production D1 resources established under D-024:
 
@@ -71,6 +71,8 @@ The generated `dist/taskchute_web/wrangler.json` is the deployment input. Do not
 ```text
 npx wrangler deploy --config dist/taskchute_web/wrangler.json --dry-run --outdir .wrangler/nonprod-dry-run
 ```
+
+Before any non-production deploy, unset `CLOUDFLARE_ENV` and run `npm run verify:nonprod-deploy`. The guard refuses any generated target other than `taskchute-web-nonprod`, requires `RUNTIME_ENV=nonprod`, `BOOTSTRAP_ENABLED=false`, and the canonical non-production APP/AUTH bindings. The recommended deploy command is `npm run deploy:nonprod`; it passes the Worker name explicitly. Keeping `CLOUDFLARE_ENV=nonprod` set while deploying an already selected generated config can cause Wrangler to apply the suffix twice, which previously published the auxiliary `taskchute-web-nonprod-nonprod` Worker.
 
 Environment-specific binding types can be checked without replacing the tracked local types:
 
