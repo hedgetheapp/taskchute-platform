@@ -15,6 +15,7 @@ import { HttpError } from "./errors";
 import { fingerprint, REQUEST_FINGERPRINT_VERSION } from "./fingerprint";
 import {
   buildCalendarReconciliationPlan,
+  calendarPlanSourcesMatchCurrent,
   readRoutineCalendarOverrides,
   type CalendarReconciliationPlan,
 } from "./routine-calendar-reconciliation";
@@ -109,6 +110,8 @@ function calendarSnapshotGuard(
     LEFT JOIN routine_definitions r ON r.app_user_id = o.app_user_id AND r.id = o.routine_definition_id
     LEFT JOIN routine_schedules s ON s.app_user_id = r.app_user_id AND s.routine_definition_id = r.id
     LEFT JOIN entry_modes em ON em.app_user_id = e.app_user_id AND em.entry_id = e.id
+    LEFT JOIN routine_occurrence_mode_overrides om
+      ON om.app_user_id = o.app_user_id AND om.routine_occurrence_id = o.id
     LEFT JOIN routine_occurrence_suppressions x ON x.app_user_id = o.app_user_id AND x.routine_occurrence_id = o.id
     WHERE o.id IS NULL OR e.id IS NULL OR d.id IS NULL OR r.id IS NULL OR s.schedule_kind IS NULL
       OR o.routine_definition_id IS NOT json_extract(j.value, '$.routine_definition_id')
@@ -124,11 +127,87 @@ function calendarSnapshotGuard(
       OR o.section_plan_override_present IS NOT CAST(json_extract(j.value, '$.section_plan_override_present') AS INTEGER)
       OR o.estimate_override_present IS NOT CAST(json_extract(j.value, '$.estimate_override_present') AS INTEGER)
       OR em.mode_id IS NOT json_extract(j.value, '$.mode_id')
+      OR (om.routine_occurrence_id IS NOT NULL) IS (CAST(json_extract(j.value, '$.mode_override_present') AS INTEGER) = 0)
       OR (x.routine_occurrence_id IS NOT NULL) IS NOT (CAST(json_extract(j.value, '$.suppressed') AS INTEGER) = 1)
       OR x.reason IS NOT json_extract(j.value, '$.suppression_reason')
       OR s.schedule_kind IS NOT json_extract(j.value, '$.schedule_kind')
       OR r.start_logical_date IS NOT json_extract(j.value, '$.start_logical_date')
       OR r.end_logical_date IS NOT json_extract(j.value, '$.end_logical_date'))`;
+  const candidatesJson = plan.candidates.length > 0 ? JSON.stringify(plan.candidates) : "[]";
+  const targetDaysJson = plan.targetDays.length > 0 ? JSON.stringify(plan.targetDays) : "[]";
+  const candidateMismatch = `NOT EXISTS (SELECT 1 FROM json_each(?) j
+    LEFT JOIN routine_definitions r ON r.app_user_id = ? AND r.id = json_extract(j.value, '$.routine_definition_id')
+    LEFT JOIN tasks t ON t.app_user_id = r.app_user_id AND t.id = r.task_id
+    LEFT JOIN projects p ON p.app_user_id = t.app_user_id AND p.id = t.project_id
+    LEFT JOIN routine_schedules s ON s.app_user_id = r.app_user_id AND s.routine_definition_id = r.id
+    LEFT JOIN routine_board_items b ON b.app_user_id = r.app_user_id AND b.routine_definition_id = r.id
+    LEFT JOIN routine_definition_modes rdm
+      ON rdm.app_user_id = r.app_user_id AND rdm.routine_definition_id = r.id
+    LEFT JOIN taskchute_days d ON d.app_user_id = r.app_user_id
+      AND d.id = json_extract(j.value, '$.taskchute_day_id')
+    WHERE r.id IS NULL OR t.id IS NULL OR s.schedule_kind IS NULL OR b.routine_definition_id IS NULL
+      OR d.id IS NULL
+      OR r.task_id IS NOT json_extract(j.value, '$.task_id')
+      OR t.title IS NOT json_extract(j.value, '$.title')
+      OR p.id IS NOT json_extract(j.value, '$.project_id')
+      OR p.title IS NOT json_extract(j.value, '$.project_title')
+      OR r.default_section_id IS NOT json_extract(j.value, '$.default_section_id')
+      OR r.default_planned_start_minute IS NOT json_extract(j.value, '$.default_planned_start_minute')
+      OR r.default_estimate_seconds IS NOT json_extract(j.value, '$.default_estimate_seconds')
+      OR rdm.mode_id IS NOT json_extract(j.value, '$.default_mode_id')
+      OR r.materialization_order IS NOT CAST(json_extract(j.value, '$.materialization_order') AS INTEGER)
+      OR b.settings_revision IS NOT CAST(json_extract(j.value, '$.settings_revision') AS INTEGER)
+      OR r.defaults_revision IS NOT CAST(json_extract(j.value, '$.defaults_revision') AS INTEGER)
+      OR r.start_logical_date IS NOT json_extract(j.value, '$.start_logical_date')
+      OR r.end_logical_date IS NOT json_extract(j.value, '$.end_logical_date')
+      OR s.schedule_kind IS NOT json_extract(j.value, '$.schedule_kind')
+      OR s.interval_days IS NOT json_extract(j.value, '$.interval_days')
+      OR s.interval_weeks IS NOT json_extract(j.value, '$.interval_weeks')
+      OR s.interval_months IS NOT json_extract(j.value, '$.interval_months')
+      OR s.weekdays_mask IS NOT json_extract(j.value, '$.weekdays_mask')
+      OR s.month_day IS NOT json_extract(j.value, '$.month_day')
+      OR s.month_ordinal IS NOT json_extract(j.value, '$.month_ordinal')
+      OR s.month_weekday IS NOT json_extract(j.value, '$.month_weekday')
+      OR d.logical_date IS NOT json_extract(j.value, '$.logical_date')
+      OR d.placement_revision IS NOT CAST(json_extract(j.value, '$.placement_revision') AS INTEGER)
+      OR d.establishment_boundary_minutes IS NOT CAST(json_extract(j.value, '$.establishment_boundary_minutes') AS INTEGER)
+      OR COALESCE((SELECT json_group_array(json_object('section_id', q.section_id,
+          'logical_start_minute', q.logical_start_minute, 'logical_end_minute', q.logical_end_minute))
+        FROM (SELECT section_id, logical_start_minute, logical_end_minute
+          FROM taskchute_day_section_contexts
+          WHERE app_user_id = d.app_user_id AND taskchute_day_id = d.id ORDER BY context_order) q), '[]')
+        IS NOT json_extract(j.value, '$.section_context_json')
+      OR EXISTS (SELECT 1 FROM routine_definition_archives a
+        WHERE a.app_user_id = r.app_user_id AND a.routine_definition_id = r.id)
+      OR EXISTS (SELECT 1 FROM routine_pause_intervals pi WHERE pi.app_user_id = r.app_user_id
+        AND pi.routine_definition_id = r.id AND pi.paused_logical_date <= d.logical_date
+        AND (pi.resumed_logical_date IS NULL OR d.logical_date < pi.resumed_logical_date))
+      OR EXISTS (SELECT 1 FROM routine_occurrences o WHERE o.app_user_id = r.app_user_id
+        AND o.routine_definition_id = r.id AND o.origin_taskchute_day_id = d.id))`;
+  const targetDayMismatch = `NOT EXISTS (SELECT 1 FROM taskchute_days d
+    WHERE d.app_user_id = ? AND d.logical_date >= ?
+      AND (d.logical_date = ? OR substr(d.logical_date, 1, 7) = substr(?, 1, 7))
+      AND NOT EXISTS (SELECT 1 FROM json_each(?) j
+        WHERE json_extract(j.value, '$.taskchute_day_id') = d.id
+          AND json_extract(j.value, '$.logical_date') = d.logical_date))`;
+  const extraCandidate = `NOT EXISTS (SELECT 1 FROM taskchute_days d
+    JOIN routine_definitions r ON r.app_user_id = d.app_user_id
+    JOIN routine_schedules s ON s.app_user_id = r.app_user_id AND s.routine_definition_id = r.id
+    JOIN routine_board_items b ON b.app_user_id = r.app_user_id AND b.routine_definition_id = r.id
+    WHERE d.app_user_id = ? AND d.logical_date >= ?
+      AND (d.logical_date = ? OR substr(d.logical_date, 1, 7) = substr(?, 1, 7))
+      AND s.schedule_kind IN ('workday', 'holiday', 'official_holiday', 'monthly_last_workday')
+      AND r.start_logical_date <= d.logical_date AND (r.end_logical_date IS NULL OR r.end_logical_date >= d.logical_date)
+      AND NOT EXISTS (SELECT 1 FROM routine_definition_archives a
+        WHERE a.app_user_id = r.app_user_id AND a.routine_definition_id = r.id)
+      AND NOT EXISTS (SELECT 1 FROM routine_pause_intervals pi WHERE pi.app_user_id = r.app_user_id
+        AND pi.routine_definition_id = r.id AND pi.paused_logical_date <= d.logical_date
+        AND (pi.resumed_logical_date IS NULL OR d.logical_date < pi.resumed_logical_date))
+      AND NOT EXISTS (SELECT 1 FROM routine_occurrences o WHERE o.app_user_id = r.app_user_id
+        AND o.routine_definition_id = r.id AND o.origin_taskchute_day_id = d.id)
+      AND NOT EXISTS (SELECT 1 FROM json_each(?) j
+        WHERE json_extract(j.value, '$.routine_definition_id') = r.id
+          AND json_extract(j.value, '$.taskchute_day_id') = d.id))`;
   const extraRow = `NOT EXISTS (SELECT 1
     FROM routine_occurrences o
     JOIN routine_definitions r ON r.app_user_id = o.app_user_id AND r.id = o.routine_definition_id
@@ -146,6 +225,9 @@ function calendarSnapshotGuard(
   binds.push(
     appUserId, overridesJson, overridesJson, appUserId,
     plan.rows.length > 0 ? JSON.stringify(plan.rows) : "[]", appUserId,
+    candidatesJson, appUserId,
+    appUserId, fromDate, logicalDate, logicalDate, targetDaysJson,
+    appUserId, fromDate, logicalDate, logicalDate, candidatesJson,
     appUserId, fromDate, plan.rows.length > 0 ? JSON.stringify(plan.rows) : "[]",
   );
   return db.prepare(`INSERT INTO transaction_assertions (app_user_id, id, ok)
@@ -163,6 +245,9 @@ function calendarSnapshotGuard(
             AND existing.reason IS json_extract(j.value, '$.reason')
             AND existing.revision = CAST(json_extract(j.value, '$.revision') AS INTEGER)))
       AND ${capturedRowMismatch}
+      AND ${candidateMismatch}
+      AND ${targetDayMismatch}
+      AND ${extraCandidate}
       AND ${extraRow}
       THEN 1 ELSE 0 END`).bind(...binds);
 }
@@ -257,7 +342,8 @@ function sameOverrideRow(left: OverrideRow | null, right: OverrideRow | null): b
 async function resolveCasFailure<T>(db: D1Database, appUserId: string, operationId: string,
   commandType: "UpsertEffectiveDayOverride" | "DeleteEffectiveDayOverride", requestFingerprint: string,
   logicalDate: string, expectedCurrent: OverrideRow | null, conflictResult: object,
-  expectedOverrides: readonly EffectiveDayOverrideValue[] = []): Promise<T> {
+  expectedOverrides: readonly EffectiveDayOverrideValue[] = [],
+  plan: CalendarReconciliationPlan | null = null): Promise<T> {
   const committed = await readOperation(db, appUserId, operationId);
   if (committed) return replayOperation<T>(committed, commandType, requestFingerprint);
   const latest = await readOverride(db, appUserId, logicalDate);
@@ -271,7 +357,8 @@ async function resolveCasFailure<T>(db: D1Database, appUserId: string, operation
         && actual.revision === expected.revision
         && actual.updated_at === expected.updated_at;
     });
-  if (!sameOverrideRow(latest, expectedCurrent) || !sameCalendarSnapshot) {
+  const sourceStillMatches = plan ? await calendarPlanSourcesMatchCurrent(db, appUserId, plan) : true;
+  if (!sameOverrideRow(latest, expectedCurrent) || !sameCalendarSnapshot || !sourceStillMatches) {
     return persistRejection<T>(db, { appUserId, operationId, commandType, requestFingerprint,
       outcomeKind: "revision_conflict", result: conflictResult });
   }
@@ -339,7 +426,7 @@ export async function upsertEffectiveDayOverride(
     ? beforeOverrides
     : [...beforeOverrides.filter((row) => row.logical_date !== request.logical_date), nextOverride]
       .sort((left, right) => left.logical_date.localeCompare(right.logical_date));
-  const plan = await buildCalendarReconciliationPlan(db, appUserId, request.logical_date, nowInstant, afterOverrides);
+  const plan = await buildCalendarReconciliationPlan(db, appUserId, request.logical_date, nowInstant, afterOverrides, beforeOverrides);
   const overridesJson = JSON.stringify(beforeOverrides);
   const mutationAssertionId = `effective-day-override-mutation:${request.operation_id}`;
   const operationAssertionId = `effective-day-override-operation:${request.operation_id}`;
@@ -394,7 +481,7 @@ export async function upsertEffectiveDayOverride(
   } catch {
     return resolveCasFailure(db, appUserId, request.operation_id, "UpsertEffectiveDayOverride",
       requestFingerprint, request.logical_date, current,
-      { code: "revision_conflict", message: "The day override changed before it could be saved" }, beforeOverrides);
+      { code: "revision_conflict", message: "The day override or planned Routine state changed before it could be saved" }, beforeOverrides, plan);
   }
 }
 
@@ -459,7 +546,7 @@ export async function deleteEffectiveDayOverride(
   const result: DeleteEffectiveDayOverrideResult = { classification: classify(request.logical_date, null) };
   const beforeOverrides = await readRoutineCalendarOverrides(db, appUserId);
   const afterOverrides = beforeOverrides.filter((row) => row.logical_date !== request.logical_date);
-  const plan = await buildCalendarReconciliationPlan(db, appUserId, request.logical_date, nowInstant, afterOverrides);
+  const plan = await buildCalendarReconciliationPlan(db, appUserId, request.logical_date, nowInstant, afterOverrides, beforeOverrides);
   const overridesJson = JSON.stringify(beforeOverrides);
   const mutationAssertionId = `effective-day-override-mutation:${request.operation_id}`;
   const operationAssertionId = `effective-day-override-operation:${request.operation_id}`;
@@ -499,6 +586,6 @@ export async function deleteEffectiveDayOverride(
   } catch {
     return resolveCasFailure(db, appUserId, request.operation_id, "DeleteEffectiveDayOverride",
       requestFingerprint, request.logical_date, current,
-      { code: "revision_conflict", message: "The day override changed before it could be deleted" }, beforeOverrides);
+      { code: "revision_conflict", message: "The day override or planned Routine state changed before it could be deleted" }, beforeOverrides, plan);
   }
 }
