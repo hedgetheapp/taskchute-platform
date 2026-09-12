@@ -2648,9 +2648,9 @@ D-084 browser fixture creation was not completed: the unauthenticated/new in-app
 | D100-TOOL-04 | Tooling | HEAVY remaining-evidence message and conservative evidence defaults | PASS — deterministic Node test |
 | D100-TOOL-05 | Tooling | Invalid explicit evidence state rejected | PASS — deterministic Node test |
 | D100-TOOL-06 | Tooling | Failed child step stops execution and writes FAIL timing artifact | PASS — deterministic Node test |
-| D100-PREFLIGHT | Git / remote | Authoritative fetch + direct GitHub main check, branch / HEAD / upstream / ahead-behind / dirty paths / risk signals | PASS — `5e78dbb5117ba6ccd174b0d45498d03a290cfd1c`, origin/direct GitHub main equal, ahead/behind `0 / 0` |
-| D100-VERIFY | Automated core | STANDARD / cross orchestrator: full Web + Worker/D1, typecheck, normal build, exact nonprod build, guard, Wrangler dry-run, diff-check with per-step timing | PASS — latest ignored timing artifact; see CURRENT |
-| D100-EVIDENCE | Evidence | `evidence:summary` combines timing and current Git state; missing manual/runtime categories remain `NOT_RUN` | PASS |
+| D100-PREFLIGHT | Git / remote | Authoritative fetch + direct GitHub main check, branch / HEAD / upstream / ahead-behind / dirty paths / risk signals | PASS — implementation前 `5e78dbb5117ba6ccd174b0d45498d03a290cfd1c` and post-push `5748ba980c1eb5199f3f760e616b42a6de1d7e94`; origin/direct GitHub main equal, ahead/behind `0 / 0` |
+| D100-VERIFY | Automated core | STANDARD / cross orchestrator: full Web + Worker/D1, typecheck, normal build, exact nonprod build, guard, Wrangler dry-run, diff-check with per-step timing | PASS — final ignored timing artifact used source HEAD `5e78dbb5117ba6ccd174b0d45498d03a290cfd1c`; implementation commit is helper/docs-only and did not change runtime test surface |
+| D100-EVIDENCE | Evidence | `evidence:summary` combines timing and current Git state; missing manual/runtime categories remain `NOT_RUN`; explicit state flags validate and map correctly | PASS |
 | D100-SAFETY | Scope | No runtime/API/schema/migration/dependency/auth/production change; no real deploy or DB write in helper | PASS — source review |
 
 D-100 profile: `STANDARD (tooling/governance override)`. Persistent nonprod deployment, authenticated browser, API probes, and DB probes are `NOT_REQUIRED` after source review confirmed helper-only changes with no runtime boundary change; exact nonprod static gates are part of D100-VERIFY. Timing baseline is retained in the ignored artifact and summarized in CURRENT. Production `NOT_RUN`, Released `NO`.
