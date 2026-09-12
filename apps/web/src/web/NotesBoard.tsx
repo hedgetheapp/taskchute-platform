@@ -12,6 +12,8 @@ import { api, ApiClientError } from "./api";
 
 export const NOTE_AUTOSAVE_DEBOUNCE_MS = 1000;
 type DocumentRequest = CreateStandaloneDocumentRequest | UpdateDocumentRequest;
+type LifecycleRequest = SetStandaloneDocumentArchivedRequest | DeleteStandaloneDocumentRequest;
+type MutationRequest = DocumentRequest | LifecycleRequest;
 
 export interface NotesBoardProps {
   onUnauthorized: () => void;
@@ -25,6 +27,18 @@ function isUpdateRequest(request: DocumentRequest): request is UpdateDocumentReq
   return "expected_revision" in request;
 }
 
+function isDocumentRequest(request: MutationRequest): request is DocumentRequest {
+  return "markdown_body" in request;
+}
+
+function isLifecycleRequest(request: MutationRequest): request is LifecycleRequest {
+  return !isDocumentRequest(request);
+}
+
+function isArchiveRequest(request: LifecycleRequest): request is SetStandaloneDocumentArchivedRequest {
+  return "archived" in request;
+}
+
 function documentSummaryTitle(document: StandaloneDocumentSummary): string {
   return document.title || "（無題）";
 }
@@ -33,6 +47,13 @@ function isAmbiguousResolution(request: DocumentRequest, canonical: StandaloneDo
   if (canonical.document_id !== request.document_id || canonical.kind !== "standalone") return false;
   if (canonical.title !== request.title || canonical.markdown_body !== request.markdown_body) return false;
   return isUpdateRequest(request) ? canonical.revision === request.expected_revision + 1 : canonical.revision === 0;
+}
+
+function isLifecycleAmbiguousResolution(request: SetStandaloneDocumentArchivedRequest, canonical: StandaloneDocument): boolean {
+  return canonical.document_id === request.document_id
+    && canonical.kind === "standalone"
+    && canonical.revision === request.expected_revision + 1
+    && (canonical.archived_at !== null) === request.archived;
 }
 
 export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, onSavingChange, onRegisterFlush }: NotesBoardProps) {
@@ -46,22 +67,22 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
   const [baselineBody, setBaselineBody] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [inFlightRequest, setInFlightRequest] = useState<DocumentRequest | null>(null);
+  const [inFlightRequest, setInFlightRequest] = useState<MutationRequest | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [actionId, setActionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [latestCanonical, setLatestCanonical] = useState<StandaloneDocument | null>(null);
-  const [retryRequest, setRetryRequest] = useState<DocumentRequest | null>(null);
-  const [ambiguousRequest, setAmbiguousRequest] = useState<DocumentRequest | null>(null);
+  const [retryRequest, setRetryRequest] = useState<MutationRequest | null>(null);
+  const [ambiguousRequest, setAmbiguousRequest] = useState<MutationRequest | null>(null);
 
   const documentRef = useRef(document);
   const modeRef = useRef(mode);
   const selectedIdRef = useRef(selectedId);
   const draftRef = useRef({ title: draftTitle, body: draftBody });
   const baselineRef = useRef({ title: baselineTitle, body: baselineBody });
-  const retryRequestRef = useRef<DocumentRequest | null>(retryRequest);
-  const ambiguousRequestRef = useRef<DocumentRequest | null>(ambiguousRequest);
+  const retryRequestRef = useRef<MutationRequest | null>(retryRequest);
+  const ambiguousRequestRef = useRef<MutationRequest | null>(ambiguousRequest);
   const savingRef = useRef(saving);
   const showArchivedRef = useRef(showArchived);
   const inFlightRef = useRef<Promise<boolean> | null>(null);
@@ -81,7 +102,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
 
   const dirty = draftTitle !== baselineTitle || draftBody !== baselineBody;
   const unresolved = ambiguousRequest !== null;
-  const followUpPending = inFlightRequest !== null
+  const followUpPending = inFlightRequest !== null && isDocumentRequest(inFlightRequest)
     && (draftTitle.trim() !== inFlightRequest.title || draftBody !== inFlightRequest.markdown_body);
   const pendingSaveCount = unresolved ? 0 : inFlightRequest ? 1 + (followUpPending ? 1 : 0) : dirty ? 1 : 0;
 
@@ -181,6 +202,20 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
     setDraftTitle(nextDraft.title); setDraftBody(nextDraft.body);
   }, []);
 
+  const reconcileLifecycleProjection = useCallback(async (request: LifecycleRequest, canonical?: StandaloneDocument): Promise<void> => {
+    const list = await refreshList(showArchivedRef.current);
+    if (!list?.some((item) => item.document_id === request.document_id)) {
+      const next = list?.[0];
+      if (next) await openCanonicalDocument(next.document_id);
+      else {
+        documentRef.current = null; modeRef.current = "empty"; selectedIdRef.current = null;
+        setDocument(null); setMode("empty"); setSelectedId(null);
+      }
+    } else if (selectedIdRef.current === request.document_id && canonical) {
+      setEditorFromCanonical(canonical);
+    }
+  }, [openCanonicalDocument, refreshList, setEditorFromCanonical]);
+
   const sendRequest = useCallback(async (request: DocumentRequest): Promise<boolean> => {
     if (inFlightRef.current) return inFlightRef.current;
     const promise = (async () => {
@@ -232,10 +267,72 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
     return promise;
   }, [applySavedDocument, handleUnauthorized, refreshList, scheduleAutosave]);
 
+  const sendLifecycleRequest = useCallback(async (request: LifecycleRequest): Promise<boolean> => {
+    if (inFlightRef.current) return inFlightRef.current;
+    const promise = (async () => {
+      setSaving(true); savingRef.current = true; setError(null); setNotice(null);
+      setInFlightRequest(request);
+      try {
+        let canonical: StandaloneDocument | undefined;
+        if (isArchiveRequest(request)) {
+          canonical = (await api.setStandaloneDocumentArchived(request)).document;
+        } else {
+          await api.deleteStandaloneDocument(request);
+        }
+        await reconcileLifecycleProjection(request, canonical);
+        retryRequestRef.current = null; ambiguousRequestRef.current = null;
+        setRetryRequest(null); setAmbiguousRequest(null); setLatestCanonical(null);
+        setNotice(isArchiveRequest(request) ? (request.archived ? "アーカイブしました。" : "通常のノートに戻しました。") : "削除しました。");
+        return true;
+      } catch (caught) {
+        if (caught instanceof ApiClientError && caught.status === 401) {
+          handleUnauthorized();
+        } else if (caught instanceof ApiClientError && caught.code === "revision_conflict") {
+          retryRequestRef.current = null; ambiguousRequestRef.current = null;
+          setRetryRequest(null); setAmbiguousRequest(null);
+          setError("他の変更があるため操作できませんでした。最新のノート状態を確認してください。");
+          try { setLatestCanonical(await api.loadDocument(request.document_id)); }
+          catch (reloadError) { if (reloadError instanceof ApiClientError && reloadError.status === 401) handleUnauthorized(); }
+        } else if (caught instanceof ApiClientError && caught.code === "infrastructure_ambiguous") {
+          ambiguousRequestRef.current = request; retryRequestRef.current = request;
+          setAmbiguousRequest(request); setRetryRequest(request);
+          setError("保存結果が未確定です。元の操作をそのまま再試行してください。");
+          if (isArchiveRequest(request)) {
+            try {
+              const canonical = await api.loadDocument(request.document_id);
+              if (isLifecycleAmbiguousResolution(request, canonical)) {
+                await reconcileLifecycleProjection(request, canonical);
+                ambiguousRequestRef.current = null; retryRequestRef.current = null;
+                setAmbiguousRequest(null); setRetryRequest(null); setLatestCanonical(null);
+                setError(null); setNotice("保存結果を確認しました。");
+              } else setLatestCanonical(canonical);
+            } catch (reconcileError) {
+              if (reconcileError instanceof ApiClientError && reconcileError.status === 401) handleUnauthorized();
+            }
+          } else {
+            try { await api.loadDocument(request.document_id); }
+            catch (reconcileError) { if (reconcileError instanceof ApiClientError && reconcileError.status === 401) handleUnauthorized(); }
+          }
+        } else {
+          retryRequestRef.current = null; ambiguousRequestRef.current = null;
+          setRetryRequest(null); setAmbiguousRequest(null);
+          setError(caught instanceof Error ? caught.message : "ノートのライフサイクル操作に失敗しました");
+        }
+        return false;
+      } finally {
+        setSaving(false); savingRef.current = false; inFlightRef.current = null; setInFlightRequest(null);
+        if (currentDirty() && !ambiguousRequestRef.current) scheduleAutosave();
+      }
+    })();
+    inFlightRef.current = promise;
+    return promise;
+  }, [handleUnauthorized, reconcileLifecycleProjection, scheduleAutosave]);
+
   const save = useCallback(async (): Promise<boolean> => {
     if (inFlightRef.current) return inFlightRef.current;
     const retry = retryRequestRef.current;
     if (ambiguousRequestRef.current && !retry) return false;
+    if (retry && isLifecycleRequest(retry)) return sendLifecycleRequest(retry);
     if (modeRef.current === "empty" || showArchivedRef.current) return false;
     if (!retry && !currentDirty()) return true;
     const request = retry ?? (modeRef.current === "new"
@@ -245,7 +342,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
     if (!request.title) { setError("タイトルを入力してください"); return false; }
     retryRequestRef.current = request; setRetryRequest(request);
     return sendRequest(request);
-  }, [sendRequest]);
+  }, [sendLifecycleRequest, sendRequest]);
 
   saveActionRef.current = save;
 
@@ -304,6 +401,10 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
 
   async function lifecycleDocument(candidate: StandaloneDocumentSummary, archived: boolean): Promise<void> {
     setActionId(null);
+    if (ambiguousRequestRef.current) {
+      setError("保存結果が未確定のため、元の操作を解決するまで別の操作はできません。");
+      return;
+    }
     if (candidate.document_id === selectedIdRef.current && !(await prepareLocalTransition())) return;
     if (candidate.document_id !== selectedIdRef.current && !(await prepareLocalTransition())) return;
     let current: StandaloneDocument;
@@ -312,42 +413,24 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
     const request: SetStandaloneDocumentArchivedRequest = {
       operation_id: uuidv7(), document_id: current.document_id, expected_revision: current.revision, archived,
     };
-    try {
-      const result = await api.setStandaloneDocumentArchived(request);
-      const list = await refreshList(showArchivedRef.current);
-      setNotice(archived ? "アーカイブしました。" : "通常のノートに戻しました。");
-      if (!list?.some((item) => item.document_id === current.document_id)) {
-        const next = list?.[0];
-        if (next) await openCanonicalDocument(next.document_id);
-        else { documentRef.current = null; modeRef.current = "empty"; selectedIdRef.current = null; setDocument(null); setMode("empty"); setSelectedId(null); }
-      } else if (selectedIdRef.current === current.document_id) setEditorFromCanonical(result.document);
-    } catch (caught) {
-      if (caught instanceof ApiClientError && caught.status === 401) handleUnauthorized();
-      else setError(caught instanceof Error ? caught.message : "アーカイブ状態の保存に失敗しました");
-    }
+    retryRequestRef.current = request; setRetryRequest(request);
+    await sendLifecycleRequest(request);
   }
 
   async function deleteDocument(candidate: StandaloneDocumentSummary): Promise<void> {
     setActionId(null);
+    if (ambiguousRequestRef.current) {
+      setError("保存結果が未確定のため、元の操作を解決するまで別の操作はできません。");
+      return;
+    }
     if (!window.confirm("このノートを完全に削除しますか？この操作は元に戻せません。")) return;
     if (!(await prepareLocalTransition())) return;
     let current: StandaloneDocument;
     try { current = candidate.document_id === documentRef.current?.document_id && documentRef.current ? documentRef.current : await api.loadDocument(candidate.document_id); }
     catch (caught) { setError(caught instanceof Error ? caught.message : "ノートの読み込みに失敗しました"); return; }
     const request: DeleteStandaloneDocumentRequest = { operation_id: uuidv7(), document_id: current.document_id, expected_revision: current.revision };
-    try {
-      await api.deleteStandaloneDocument(request);
-      const list = await refreshList(showArchivedRef.current);
-      setNotice("削除しました。");
-      if (selectedIdRef.current === current.document_id) {
-        const next = list?.[0];
-        if (next) await openCanonicalDocument(next.document_id);
-        else { documentRef.current = null; modeRef.current = "empty"; selectedIdRef.current = null; setDocument(null); setMode("empty"); setSelectedId(null); }
-      }
-    } catch (caught) {
-      if (caught instanceof ApiClientError && caught.status === 401) handleUnauthorized();
-      else setError(caught instanceof Error ? caught.message : "ノートの削除に失敗しました");
-    }
+    retryRequestRef.current = request; setRetryRequest(request);
+    await sendLifecycleRequest(request);
   }
 
   function updateDraftTitle(value: string): void {

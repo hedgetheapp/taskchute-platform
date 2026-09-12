@@ -173,6 +173,8 @@ describe("D-090 standalone Markdown Documents", () => {
     const archived = await setStandaloneDocumentArchived(env.APP_DB, userId, archiveRequest, "2026-09-11T04:00:00.000Z");
     expect(archived.document).toMatchObject({ archived_at: "2026-09-11T04:00:00.000Z", revision: 1 });
     expect(await setStandaloneDocumentArchived(env.APP_DB, userId, archiveRequest)).toEqual(archived);
+    await expect(setStandaloneDocumentArchived(env.APP_DB, userId, { ...archiveRequest, archived: false }))
+      .rejects.toMatchObject({ code: "operation_id_misuse" });
     await expect(setStandaloneDocumentArchived(env.APP_DB, userId, { ...archiveRequest, operation_id: uuidv7() }))
       .rejects.toMatchObject({ code: "revision_conflict" });
 
@@ -184,6 +186,8 @@ describe("D-090 standalone Markdown Documents", () => {
     const deleted = await deleteStandaloneDocument(env.APP_DB, userId, deleteRequest);
     expect(deleted).toEqual({ document_id: created.document.document_id, deleted: true });
     expect(await deleteStandaloneDocument(env.APP_DB, userId, deleteRequest)).toEqual(deleted);
+    await expect(deleteStandaloneDocument(env.APP_DB, userId, { ...deleteRequest, document_id: uuidv7() }))
+      .rejects.toMatchObject({ code: "operation_id_misuse" });
     await expect(loadStandaloneDocument(env.APP_DB, userId, created.document.document_id))
       .rejects.toMatchObject({ code: "resource_not_found" });
   });
@@ -232,5 +236,87 @@ describe("D-090 exact Document request shapes", () => {
     expect(isSetStandaloneDocumentArchivedRequest({ operation_id: uuidv7(), document_id: create.document_id, expected_revision: 0, archived: true, reason: "no" })).toBe(false);
     expect(isDeleteStandaloneDocumentRequest({ operation_id: uuidv7(), document_id: create.document_id, expected_revision: 0 })).toBe(true);
     expect(isDeleteStandaloneDocumentRequest({ operation_id: uuidv7(), document_id: create.document_id, expected_revision: 0, archived: false })).toBe(false);
+  });
+});
+
+describe("D091 standalone title allocation races", () => {
+  it("RACE-1 allocates base and smallest suffix across concurrent Creates", async () => {
+    const first = createRequest({ title: "Race create" });
+    const held = gate();
+    const firstPromise = createStandaloneDocument(env.APP_DB, userId, first, "2026-09-11T06:00:00.000Z", held.hooks);
+    await held.entered;
+    const second = createRequest({ title: "Race create" });
+    const secondResult = await createStandaloneDocument(env.APP_DB, userId, second, "2026-09-11T06:00:01.000Z");
+    held.release();
+    const firstResult = await firstPromise;
+
+    expect([firstResult.document.title, secondResult.document.title].sort()).toEqual(["Race create", "Race create1"]);
+    expect(await createStandaloneDocument(env.APP_DB, userId, first)).toEqual(firstResult);
+    expect(await createStandaloneDocument(env.APP_DB, userId, second)).toEqual(secondResult);
+    expect((await env.APP_DB.prepare(`SELECT COUNT(*) AS count FROM documents WHERE app_user_id = ? AND title LIKE 'Race create%'`)
+      .bind(userId).first<{ count: number }>())?.count).toBe(2);
+  });
+
+  it("RACE-2 allocates the smallest suffix across concurrent Create and rename", async () => {
+    const existing = await createStandaloneDocument(env.APP_DB, userId, createRequest({ title: "Rename source" }));
+    const create = createRequest({ title: "Create rename race" });
+    const held = gate();
+    const createPromise = createStandaloneDocument(env.APP_DB, userId, create, "2026-09-11T06:01:00.000Z", held.hooks);
+    await held.entered;
+    const rename = updateRequest(existing.document.document_id, 0, { title: "Create rename race", markdown_body: "renamed" });
+    const renameResult = await updateDocument(env.APP_DB, userId, rename, "2026-09-11T06:01:01.000Z");
+    held.release();
+    const createResult = await createPromise;
+
+    expect(renameResult.document.title).toBe("Create rename race");
+    expect(createResult.document.title).toBe("Create rename race1");
+    expect(await createStandaloneDocument(env.APP_DB, userId, create)).toEqual(createResult);
+    expect(await updateDocument(env.APP_DB, userId, rename)).toEqual(renameResult);
+  });
+
+  it("RACE-3 allocates unique titles across concurrent renames", async () => {
+    const first = await createStandaloneDocument(env.APP_DB, userId, createRequest({ title: "First rename source" }));
+    const second = await createStandaloneDocument(env.APP_DB, userId, createRequest({ title: "Second rename source" }));
+    const firstRename = updateRequest(first.document.document_id, 0, { title: "Rename rename race", markdown_body: "first" });
+    const held = gate();
+    const firstPromise = updateDocument(env.APP_DB, userId, firstRename, "2026-09-11T06:02:00.000Z", held.hooks);
+    await held.entered;
+    const secondRename = updateRequest(second.document.document_id, 0, { title: "Rename rename race", markdown_body: "second" });
+    const secondResult = await updateDocument(env.APP_DB, userId, secondRename, "2026-09-11T06:02:01.000Z");
+    held.release();
+    const firstResult = await firstPromise;
+
+    expect([firstResult.document.title, secondResult.document.title].sort()).toEqual(["Rename rename race", "Rename rename race1"]);
+    expect(await updateDocument(env.APP_DB, userId, firstRename)).toEqual(firstResult);
+    expect(await updateDocument(env.APP_DB, userId, secondRename)).toEqual(secondResult);
+  });
+
+  it("RACE-4 includes archived titles in concurrent allocation", async () => {
+    const reserved = await createStandaloneDocument(env.APP_DB, userId, createRequest({ title: "Archived race" }));
+    await setStandaloneDocumentArchived(env.APP_DB, userId, {
+      operation_id: uuidv7(), document_id: reserved.document.document_id, expected_revision: 0, archived: true,
+    });
+    const first = createRequest({ title: "Archived race" });
+    const held = gate();
+    const firstPromise = createStandaloneDocument(env.APP_DB, userId, first, "2026-09-11T06:03:00.000Z", held.hooks);
+    await held.entered;
+    const second = createRequest({ title: "Archived race" });
+    const secondResult = await createStandaloneDocument(env.APP_DB, userId, second, "2026-09-11T06:03:01.000Z");
+    held.release();
+    const firstResult = await firstPromise;
+
+    expect([firstResult.document.title, secondResult.document.title].sort()).toEqual(["Archived race1", "Archived race2"]);
+    expect(await createStandaloneDocument(env.APP_DB, userId, first)).toEqual(firstResult);
+    expect(await createStandaloneDocument(env.APP_DB, userId, second)).toEqual(secondResult);
+  });
+
+  it("RACE-5 permits the same title for different owners", async () => {
+    const otherUser = uuidv7();
+    await env.APP_DB.prepare("INSERT INTO app_users (id, created_at) VALUES (?, ?)")
+      .bind(otherUser, "2026-09-11T00:00:00.000Z").run();
+    const first = await createStandaloneDocument(env.APP_DB, userId, createRequest({ title: "Owner-isolated race" }));
+    const second = await createStandaloneDocument(env.APP_DB, otherUser, createRequest({ title: "Owner-isolated race" }));
+    expect(first.document.title).toBe("Owner-isolated race");
+    expect(second.document.title).toBe("Owner-isolated race");
   });
 });

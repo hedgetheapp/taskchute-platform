@@ -236,6 +236,88 @@ describe("NotesBoard", () => {
     expect(event.defaultPrevented).toBe(true);
   });
 
+  it("retains an ambiguous archive request and retries the exact operation", async () => {
+    const active = note("0199d090-0000-7000-8000-00000000000c", "Archive me", "body", 2);
+    const archived = note(active.document_id, active.title, active.markdown_body, 3, "2026-09-12T01:00:00.000Z");
+    mocks.loadDocuments.mockImplementation(async ({ archived: showArchived = false } = {}) => ({
+      documents: showArchived ? [summary(archived)] : (mocks.setStandaloneDocumentArchived.mock.calls.length >= 2 ? [] : [summary(active)]),
+    }));
+    mocks.loadDocument.mockResolvedValueOnce(active).mockRejectedValueOnce(missingError());
+    mocks.setStandaloneDocumentArchived.mockRejectedValueOnce(ambiguousError()).mockResolvedValueOnce({ document: archived });
+    render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Archive me")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Archive meの操作" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "アーカイブ" }));
+    await screen.findByRole("button", { name: "同じ内容で再試行" });
+    const firstRequest = { ...mocks.setStandaloneDocumentArchived.mock.calls[0]![0] };
+    fireEvent.click(screen.getByRole("button", { name: "同じ内容で再試行" }));
+    await waitFor(() => expect(mocks.setStandaloneDocumentArchived).toHaveBeenCalledTimes(2));
+    expect(mocks.setStandaloneDocumentArchived.mock.calls[1]![0]).toEqual(firstRequest);
+    await waitFor(() => expect(screen.getByText("ノートを選択")).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "同じ内容で再試行" })).toBeNull();
+  });
+
+  it("retains an ambiguous restore request and retries the exact operation", async () => {
+    const active = note("0199d090-0000-7000-8000-00000000000d", "Active note", "body", 0);
+    const archived = note("0199d090-0000-7000-8000-00000000000e", "Restore me", "body", 2, "2026-09-12T01:00:00.000Z");
+    mocks.loadDocuments.mockImplementation(async ({ archived: showArchived = false } = {}) => ({
+      documents: showArchived ? (mocks.setStandaloneDocumentArchived.mock.calls.length >= 2 ? [] : [summary(archived)]) : [summary(active)],
+    }));
+    mocks.loadDocument.mockImplementation(async (id: string) => id === archived.document_id ? archived : active);
+    mocks.setStandaloneDocumentArchived.mockRejectedValueOnce(ambiguousError()).mockResolvedValueOnce({ document: note(archived.document_id, archived.title, archived.markdown_body, 3, null) });
+    render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Active note")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "アーカイブ" }));
+    await waitFor(() => expect(screen.getByDisplayValue("Restore me")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Restore meの操作" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "復元" }));
+    await screen.findByRole("button", { name: "同じ内容で再試行" });
+    const firstRequest = { ...mocks.setStandaloneDocumentArchived.mock.calls[0]![0] };
+    fireEvent.click(screen.getByRole("button", { name: "同じ内容で再試行" }));
+    await waitFor(() => expect(mocks.setStandaloneDocumentArchived).toHaveBeenCalledTimes(2));
+    expect(mocks.setStandaloneDocumentArchived.mock.calls[1]![0]).toEqual(firstRequest);
+    await waitFor(() => expect(screen.getByText("アーカイブを選択")).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "同じ内容で再試行" })).toBeNull();
+  });
+
+  it("retains an ambiguous delete request when the exact Document is gone and retries it", async () => {
+    const active = note("0199d090-0000-7000-8000-00000000000f", "Delete me", "body", 1);
+    mocks.loadDocuments.mockImplementation(async () => ({
+      documents: mocks.deleteStandaloneDocument.mock.calls.length >= 2 ? [] : [summary(active)],
+    }));
+    mocks.loadDocument.mockResolvedValueOnce(active).mockRejectedValueOnce(missingError());
+    mocks.deleteStandaloneDocument.mockRejectedValueOnce(ambiguousError()).mockResolvedValueOnce({ document_id: active.document_id, deleted: true });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Delete me")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Delete meの操作" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "削除" }));
+    await screen.findByRole("button", { name: "同じ内容で再試行" });
+    const firstRequest = { ...mocks.deleteStandaloneDocument.mock.calls[0]![0] };
+    fireEvent.click(screen.getByRole("button", { name: "同じ内容で再試行" }));
+    await waitFor(() => expect(mocks.deleteStandaloneDocument).toHaveBeenCalledTimes(2));
+    expect(mocks.deleteStandaloneDocument.mock.calls[1]![0]).toEqual(firstRequest);
+    await waitFor(() => expect(screen.getByText("ノートを選択")).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "同じ内容で再試行" })).toBeNull();
+    vi.restoreAllMocks();
+  });
+
+  it("blocks a replacement lifecycle operation while an ambiguous request is unresolved", async () => {
+    const active = note("0199d090-0000-7000-8000-000000000010", "Blocked lifecycle", "body", 0);
+    mocks.loadDocuments.mockResolvedValue({ documents: [summary(active)] });
+    mocks.loadDocument.mockResolvedValueOnce(active).mockRejectedValueOnce(missingError());
+    mocks.setStandaloneDocumentArchived.mockRejectedValue(ambiguousError());
+    render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Blocked lifecycle")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Blocked lifecycleの操作" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "アーカイブ" }));
+    await screen.findByRole("button", { name: "同じ内容で再試行" });
+    fireEvent.click(screen.getByRole("button", { name: "Blocked lifecycleの操作" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "アーカイブ" }));
+    expect(mocks.setStandaloneDocumentArchived).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("alert").textContent).toContain("未確定");
+  });
+
   it("supports archive view, archive/restore, and explicit irreversible delete", async () => {
     const active = note("0199d090-0000-7000-8000-000000000009", "Active", "body", 0);
     const archived = note("0199d090-0000-7000-8000-00000000000a", "Archived", "body", 2, "2026-09-11T00:00:00.000Z");
