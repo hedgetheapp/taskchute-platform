@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### D-100 Executable Development Workflow
+
+- `apps/web`へauthoritative `preflight`、明示surface必須の`verify:fast` / `verify:standard` / `verify:heavy`、per-step timing artifact、保守的な`evidence:summary`を追加。既存profile policy、persistent/manual evidence分離、production禁止は変更しない。
+
 ### D-072 Mode Settings management
 
 - Mode Settingsへcurrent-tab title search、`使用中` / `アーカイブ` tab、archive / restore、確認付きhard deleteを追加。

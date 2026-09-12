@@ -62,6 +62,20 @@ Governance / Policyを意味ある形で変更する場合はユーザー承認�
 9. `TEST_MATRIX` / Risk / Open Question / CURRENT等をcurrent evidenceへ整合する。
 10. 次work itemを整理する。
 
+### Executable workflow helpers
+
+D-100のhelperはpolicyやprofileのauthorityではなく、共通automated coreを再現可能に実行する補助である。標準的な短縮flowは次のとおり。
+
+1. `npm run preflight`でauthoritativeなGit / remote stateを確認する。
+2. impact analysisとTask Contractでprofile / affected surfaceを選ぶ。surfaceは必ず明示する。
+3. implementationとfocused testを実施する。
+4. `npm run verify:standard -- --surface cross`など、選択した`verify:*`を1回実行する。
+5. 必要なpersistent / manual evidenceを別途実施する。
+6. `npm run evidence:summary`でautomated resultと未実施evidenceを整理する。
+7. independent reviewとcanonical closeoutを行う。
+
+`verify:*`のPASSはcommon automated coreのPASSであり、persistent nonprod、browser、API、DBを自動的にPASSへしない。`--nonprod-static`を付けてもexact build、既存guard、Wrangler dry-runだけで、実deployやDB writeは行わない。profile選択・escalationと`NOT_REQUIRED`判定は、従来どおりimpact analysisとsource reviewに従う。
+
 実装がSPECと異なるという理由だけで、SPECを自動的に実装へ合わせない。
 
 Product / Domainを起点とするが、platform constraints、Security、performance、Cost、external service / API constraints、implementation feasibilityは早期に確認し、必要に応じて設計へfeedbackする。

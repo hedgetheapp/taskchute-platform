@@ -2,6 +2,14 @@
 
 Statuses: Approved / Proposed / Superseded
 
+## D-100 — Executable Development Workflow / Codex Cycle Acceleration
+
+Status: **Approved**
+
+Canonical Decision: `docs/decisions/D-100_EXECUTABLE_DEVELOPMENT_WORKFLOW.md`。
+
+既存のFAST / STANDARD / HEAVY profile、impact analysis、affected-package full-suite rule、persistent evidenceの分離を変更せず、`npm run preflight`、明示surface必須の`verify:fast` / `verify:standard` / `verify:heavy`、計時artifact、保守的な`evidence:summary`をexecution helperとして追加する。helperは未実施のbrowser / persistent nonprod / API / DB evidenceをPASSへ昇格せず、実deploy、DB mutation、credential変更、restore、production operationを行わない。最初の最適化targetは30–60分から20–40分、3–5 work item後の実測を次の判断に使い、15–25分は後続targetとする。
+
 ## D-099 — Hit-a-Hint v0.1
 
 Status: **Approved**

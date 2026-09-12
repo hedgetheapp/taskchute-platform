@@ -8,6 +8,17 @@ TaskChute Platformのverification品質を維持したまま、変更と無関�
 
 Verification Profileは**最低検証ライン**であり、test省略の権利ではない。impact analysis、実装中のfinding、failure、不確実性により必要なら必ず上位profileまたは追加verificationへ昇格する。
 
+## Executable helpers (D-100)
+
+以下の`apps/web` commandは、既存profileを自動決定するauthorityではなく、選択済みprofileのcommon automated coreを実行するhelperである。
+
+- `npm run preflight`はGitHub `origin/main`をfetchと直接参照で更新確認し、branch / HEAD / upstream / ahead-behind / dirty paths / optional base comparison / risk signalsを表示する。remote refreshが成立しない場合は失敗する。`--offline`は非authoritative inspectionとして明示される。
+- `npm run verify:fast|standard|heavy -- --surface web|worker|cross|migrations|docs`はaffected surfaceを必須にし、surfaceに応じたfull Web / Worker-D1 suite、typecheck、build、diff checkを実行する。migrationsはmigration verificationも含む。HEAVY固有のmigration / recovery、persistent nonprod、API、browser、DBは別途残る。
+- `--nonprod-static`はexact nonprod build、既存`verify:nonprod-deploy` guard、Wrangler dry-runだけを追加し、実deployは行わない。
+- `npm run evidence:summary`は最新のignored timing artifactと現在Git stateをMarkdown-styleで表示する。manual / persistent evidenceの既定値は`NOT_RUN`であり、explicit stateも許可値だけを受け付ける。canonical docsは自動編集しない。
+
+helperのPASSはautomated coreのPASSに限る。未実施のbrowser / persistent nonprod / API / DBをPASS扱いしない。`NOT_REQUIRED`はsource reviewでruntime / boundary非影響を確認した場合だけ付与する。profile policy、impact analysis、evidence reuse、escalationのauthorityは本書と`DEVELOPMENT_WORKFLOW.md`に残る。
+
 ## Quality invariants
 
 Profileに関係なく以下を維持する。

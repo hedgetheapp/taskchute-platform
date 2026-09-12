@@ -2634,5 +2634,23 @@ D-084 browser fixture creation was not completed: the unauthenticated/new in-app
 | D099-WORKER | Standard Worker/D1 regression | No Worker changes; standard suite remains green | full Worker/D1 `32 files / 287 tests` | PASS (LOCAL) |
 | D099-STATIC | Static gates | typecheck, normal build, exact nonprod build, deploy guard, Wrangler dry-run, diff-check | all commands exit `0`; known Wrangler log EPERM/client chunk warning nonfatal | PASS (LOCAL) |
 | D099-REMOTE | Main sync / deploy / browser / DB | GitHub main recheck, docs/agent-only upstream delta, FF push, exact deploy, persistent browser and DB evidence | GitHub / origin / final main `061c25b5cc998bd9293dad38f806c7e320f43b46`; upstream delta was only `AGENTS.md` + `docs/VERIFICATION_PROFILES.md`; Worker `94c944e2-d6cd-4110-96e4-e5c3939de7ef`; root `200`; unauth Documents API `401`; APP/AUTH pending `0 / 0` | PASS |
+
 | D099-BROWSER | Authenticated persistent interaction | Real `F` opens badges, safe label activation, Hint keyboard exclusivity, Escape, same-tab reload, fresh authenticated tab | Existing tab `1569 × 912`, DPR 1, Sidebar open: Today `124` badges; label `AF` opened Notes; Notes `17` badges; `?` did not open shortcut help; same-tab reload `124`; fresh authenticated tab `66`; Escape closed each; no app data mutation; CUA logs `[]` in both tabs | PASS |
 | D099-DB | APP/AUTH read-only integrity | quick/FK, Document constraints, duplicate identity/title, assertion residue, no-write probes | APP quick `ok`, FK empty, documents `3`, invalid kind `0`, negative revision `0`, duplicate document identity `0`, duplicate active owner/title `0`, transaction assertions `0`; AUTH quick `ok`, FK empty; all probes `rows_written=0` | PASS |
+
+## D-100 — Executable Development Workflow / Codex Cycle Acceleration
+
+| ID | Surface | Requirement / evidence | Result |
+|---|---|---|---|
+| D100-TOOL-01 | Tooling | Required explicit affected surface; invalid/missing surface rejected | PASS — deterministic Node test |
+| D100-TOOL-02 | Tooling | Ahead/behind parsing and review/escalation risk-signal classification | PASS — deterministic Node test |
+| D100-TOOL-03 | Tooling | web / worker / cross / migrations / docs plan generation; no real deploy command in any plan | PASS — deterministic Node test |
+| D100-TOOL-04 | Tooling | HEAVY remaining-evidence message and conservative evidence defaults | PASS — deterministic Node test |
+| D100-TOOL-05 | Tooling | Invalid explicit evidence state rejected | PASS — deterministic Node test |
+| D100-TOOL-06 | Tooling | Failed child step stops execution and writes FAIL timing artifact | PASS — deterministic Node test |
+| D100-PREFLIGHT | Git / remote | Authoritative fetch + direct GitHub main check, branch / HEAD / upstream / ahead-behind / dirty paths / risk signals | PASS — `5e78dbb5117ba6ccd174b0d45498d03a290cfd1c`, origin/direct GitHub main equal, ahead/behind `0 / 0` |
+| D100-VERIFY | Automated core | STANDARD / cross orchestrator: full Web + Worker/D1, typecheck, normal build, exact nonprod build, guard, Wrangler dry-run, diff-check with per-step timing | PASS — latest ignored timing artifact; see CURRENT |
+| D100-EVIDENCE | Evidence | `evidence:summary` combines timing and current Git state; missing manual/runtime categories remain `NOT_RUN` | PASS |
+| D100-SAFETY | Scope | No runtime/API/schema/migration/dependency/auth/production change; no real deploy or DB write in helper | PASS — source review |
+
+D-100 profile: `STANDARD (tooling/governance override)`. Persistent nonprod deployment, authenticated browser, API probes, and DB probes are `NOT_REQUIRED` after source review confirmed helper-only changes with no runtime boundary change; exact nonprod static gates are part of D100-VERIFY. Timing baseline is retained in the ignored artifact and summarized in CURRENT. Production `NOT_RUN`, Released `NO`.
