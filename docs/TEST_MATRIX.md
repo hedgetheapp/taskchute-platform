@@ -2492,3 +2492,18 @@ D-084 browser fixture creation was not completed: the unauthenticated/new in-app
 | D093-CORR-DB | Read-only APP/AUTH integrity | quick_check `ok`; FK empty; duplicate/invalid/operation/guard/assertion probes `0`; all successful probes `rows_written=0` | PASS |
 | D093-CORR-BROWSER | Ambiguity fault injection through ordinary authenticated browser | not deterministic through normal UI; existing D-091–D-093 ordinary browser evidence remains PASS | NOT_RUN / NOT_REQUIRED |
 | D093-CORR-MIG | New migration for corrective | no migration; APP 0030 remains applied; AUTH unchanged | NOT_REQUIRED |
+
+### D-092 corrective — no-borrow lifecycle state
+
+| ID | Scope | Evidence | Result |
+|---|---|---|---|
+| D092-NB-1 | Ambiguous archive with equivalent archived state produced by another operation | deterministic NotesBoard test; GET state remains informational and Retry remains visible | PASS |
+| D092-NB-2 | Ambiguous restore with equivalent restored state produced by another operation | deterministic NotesBoard test; GET state remains informational and Retry remains visible | PASS |
+| D092-NB-3 | Exact replay after archive/restore ambiguity | retained request replayed with unchanged operation identity/payload; list/editor/selection converges | PASS |
+| D092-NB-4 | Exact replay revision conflict | deterministic NotesBoard test; no lifecycle success notice and retry barrier resolves to conflict/error | PASS |
+| D092-NB-5 | Hard-delete missing/404 behavior | deterministic NotesBoard regression; 404 is not inferred as exact delete success | PASS |
+| D092-NB-REG | Corrective regression gates | NotesBoard `19/19`; Documents Worker `16/16`; full Web `5 files/292`; full Worker/D1 `32 files/285`; typecheck/build/exact nonprod build/deploy guard/Wrangler dry-run/diff-check | PASS |
+| D092-NB-NONPROD | Exact corrective deploy and unauthenticated safety | Worker `8a8506ff-cb7d-4571-981a-1516f955afb3`; root `200`; Documents API `401`; APP/AUTH pending `0/0` | PASS |
+| D092-NB-DB | Read-only APP/AUTH integrity | quick_check `ok`; FK empty; duplicate titles `0`; assertion/guard residue `0`; successful probes `rows_written=0` | PASS |
+| D092-NB-BROWSER | Fault-injection ambiguity through ordinary authenticated browser | ordinary browser cannot deterministically create the race; prior D-091–D-093 browser evidence remains PASS | NOT_RUN / NOT_REQUIRED |
+| D092-NB-MIG | New migration for corrective | none; APP 0030 remains applied; AUTH unchanged | NOT_REQUIRED |
