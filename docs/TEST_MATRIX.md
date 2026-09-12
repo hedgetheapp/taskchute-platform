@@ -2590,3 +2590,16 @@ D-084 browser fixture creation was not completed: the unauthenticated/new in-app
 | D097-BROWSER | real neutral ArrowDown/ArrowUp input and same/fresh authenticated tab use | persistent authenticated tabs `9`/`10`; viewport `1280×720`, Sidebar open; both directions focused first visible canonical Task; no synthetic DOM events | PASS (representative; running focus and console not verified) |
 | D097-DB | APP/AUTH read-only integrity | migration pending `0 / 0`; quick_check `ok`; FK empty; active executions `0`; duplicate positions/origin-Day `0`; orphan Entries `0`; transient guards `0`; read-only `rows_written=0` | PASS |
 | D097-SAFETY | Worker/API/schema/migration/dependency and prohibited operations | Web-only; migration `NOT_REQUIRED`; no production/restore/credential/bootstrap/destructive/Release action | NOT_REQUIRED / NOT_RUN |
+
+### D-097 corrective — Focus frame above sticky Day cells — 2026-09-12
+
+| ID | Scope | Evidence | Result |
+|---|---|---|---|
+| D097-CORR-CSS | Row-local focus indicator above sticky descendants; no layout shift | focused CSS/DOM source regression; `::after` overlay z-index 7, inset 0, pointer-events none | PASS |
+| D097-CORR-STATE | Lifecycle backgrounds and selected/completed presentation remain independent from focus | source regression and full Web suite | PASS |
+| D097-CORR-DND | Existing drop-before/drop-after and drag feedback remain present | source regression and full Web suite | PASS |
+| D097-CORR-BROWSER | Planned and completed rows show a continuous frame across sticky/nonsticky cells; horizontal scroll preserves it | authenticated persistent tab 1, approximately `1569 × 914`, Sidebar open; real keyboard focus and horizontal scroll after reload | PASS; running focus and console remain `NOT_VERIFIED` |
+| D097-CORR-REGRESSION | Full suites and static gates | Web `5 files / 310 tests`; Worker/D1 `32 files / 287 tests`; typecheck; normal/exact nonprod build; deploy guard; Wrangler dry-run; diff-check | PASS |
+| D097-CORR-NONPROD | Exact corrective deploy and unauthenticated safety | Worker `10624c3e-7534-49f1-ba82-d5813f299176`; root `200`; protected Projects API `401`; canonical nonprod config/bindings | PASS |
+| D097-CORR-DB | APP/AUTH read-only integrity | pending `0 / 0`; quick_check `ok`; FK empty; active executions `0`; duplicate positions/origin-Day `0`; orphan/guard residue `0`; `rows_written=0` | PASS |
+| D097-CORR-SAFETY | Migration/API/schema/dependency and prohibited operations | Web-only corrective; migration `NOT_REQUIRED`; no production, restore, credentials, bootstrap, destructive cleanup, branch/PR/merge/tag/Release | NOT_REQUIRED / NOT_RUN |
