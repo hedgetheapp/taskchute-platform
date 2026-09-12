@@ -16,6 +16,7 @@ Approved scope:
 - Settings > 営業日 / 休日の日付入力も同じshared calendar UIへ統一
 - 日付text field自体のclick / focusからcalendarを開けるようにする
 - 同じtext fieldで`YYYYMMDD`の8桁直接入力を許可し、既存`YYYY-MM-DD`も受理する
+- 日付text field横の独立したcalendar trigger button/iconは表示しない。text field自体をcalendar triggerとする
 - Notes行番号ON/OFFでeditor geometryを変化させない
 - Notes行番号railの背景差による見た目のズレをなくす
 - 行番号OFFでもtextareaの幅・高さ・scroll / resize behaviorを正常に保つ
@@ -75,8 +76,9 @@ Behavior:
 - moving from text field into its own calendar must not trigger an unwanted invalid/partial commit
 - outside click closes without unintended mutation
 - Escape closes calendar and leaves the current text draft according to existing cancel/edit convention
+- text field itself carries the calendar affordance / expanded state needed for accessibility (`aria-haspopup="dialog"`, `aria-expanded`, or equivalent)
 
-A separate small calendar icon/button is not required. If retained as a secondary affordance, clicking the text field itself must still be a first-class way to open the calendar and the overall appearance must match Today rather than the browser-native date picker.
+**日付text field横の独立したcalendar icon / buttonは表示しない。** calendarを開くためだけの別buttonは冗長であり、text field click / focusを唯一の通常triggerとする。
 
 ---
 
@@ -122,6 +124,8 @@ D-095 does not supersede D-094; it refines D-094 after browser feedback.
 - Routine start-date field click opens Today-style calendar
 - Routine end-date field click opens Today-style calendar
 - Effective Day date field click opens Today-style calendar
+- date text fields do not render a separate calendar trigger button/icon
+- date text field exposes the calendar popup/expanded state accessibly
 - calendar has month/year navigation and Monday-first grid consistent with Today
 - selected date / today / adjacent-month state render consistently
 - `YYYYMMDD` direct input works
