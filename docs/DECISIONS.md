@@ -1739,6 +1739,22 @@ D-083は、current established Dayのordinary planned Entryに限り、既存`Mo
 
 実装、Worker / Web regression、real-local / persistent nonprod browser、read-only DB evidenceはcanonical evidence docsへ記録する。production、restore、destructive cleanup、branch / PR / merge / tag / releaseは対象外で、Releasedは`NO`とする。
 
+## D-096 — Continuous Shift placement input across Section boundaries
+
+Status: **Approved / implemented**
+
+Canonical decision:
+`docs/decisions/D-096_CONTINUOUS_SHIFT_PLACEMENT_INPUT.md`
+
+current established Dayのordinary planned Entryでは、
+Shift + ArrowUp / ArrowDownをSection境界でも連続受理する。
+Move / Reorderはeffective pending placementを基準にしつつ、
+Server writeは既存placement queueでserial dispatchする。
+Routine scope chooser等のnon-commutative barrierは維持する。
+
+Implementation / verification evidenceは
+`docs/CURRENT.md` / `docs/TEST_MATRIX.md`を正本とする。
+
 ## D-094 — Web UI consistency polish
 
 Status: **Approved / implemented**
