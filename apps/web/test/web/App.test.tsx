@@ -847,6 +847,79 @@ describe("Dogfood Day shell", () => {
     expect((document.activeElement as HTMLElement).dataset.entryId).toBe(firstEntry.id);
   });
 
+  it("bootstraps both plain arrows from the neutral Today surface to the first visible Task", async () => {
+    mocks.loadDay.mockResolvedValue(twoPlannedDay);
+    render(<App />);
+    await screen.findByRole("region", { name: "DayBoard" });
+
+    fireEvent.keyDown(document.body, { key: "ArrowDown" });
+    expect(document.activeElement?.getAttribute("data-entry-id")).toBe(firstEntry.id);
+
+    (document.activeElement as HTMLElement).blur();
+    fireEvent.keyDown(document.body, { key: "ArrowUp" });
+    expect(document.activeElement?.getAttribute("data-entry-id")).toBe(firstEntry.id);
+  });
+
+  it("bootstraps to the first visible canonical Task after a collapsed Section", async () => {
+    const eveningEntry = { ...secondEntry, section_id: eveningId };
+    mocks.loadDay.mockResolvedValue({
+      ...twoPlannedDay,
+      sections: [{ ...twoPlannedDay.sections[0], entries: [firstEntry] }, { ...emptyDay.sections[1], entries: [eveningEntry] }],
+    });
+    render(<App />);
+    await screen.findByRole("region", { name: "DayBoard" });
+    fireEvent.click(await screen.findByRole("button", { name: "Morningを折りたたむ" }));
+    (document.activeElement as HTMLElement).blur();
+
+    fireEvent.keyDown(document.body, { key: "ArrowDown" });
+    expect(document.activeElement?.getAttribute("data-entry-id")).toBe(eveningEntry.id);
+  });
+
+  it.each([
+    ["running", runningDay, firstEntry.id],
+    ["completed", completedDay, firstEntry.id],
+  ] as const)("bootstraps to a first visible %s canonical Task", async (_state, dayProjection, entryId) => {
+    mocks.loadDay.mockResolvedValue(dayProjection);
+    render(<App />);
+    await screen.findByRole("region", { name: "DayBoard" });
+
+    fireEvent.keyDown(document.body, { key: "ArrowDown" });
+    const row = document.activeElement as HTMLElement;
+    expect(row.dataset.entryId).toBe(entryId);
+    expect(row.classList.contains(`state-${_state}`)).toBe(true);
+  });
+
+  it("does not bootstrap from editing controls, dialogs, or modified arrows", async () => {
+    mocks.loadDay.mockResolvedValue(twoPlannedDay);
+    render(<App />);
+    await screen.findByRole("region", { name: "DayBoard" });
+
+    const firstRow = screen.getByText("Canonical task").closest<HTMLElement>("[data-entry-id]")!;
+    const projectSelect = firstRow.querySelector("select.project-selector") as unknown as HTMLSelectElement;
+    projectSelect.focus();
+    fireEvent.keyDown(projectSelect, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(projectSelect);
+
+    firstRow.focus();
+    fireEvent.keyDown(firstRow, { key: "d" });
+    const dialog = screen.getByRole("dialog", { name: "選択したTaskを削除" });
+    fireEvent.keyDown(dialog, { key: "ArrowDown" });
+    expect(dialog.contains(document.activeElement)).toBe(true);
+
+    fireEvent.keyDown(document.body, { key: "ArrowDown", shiftKey: true });
+    expect(mocks.moveEntry).not.toHaveBeenCalled();
+    expect(mocks.reorderEntries).not.toHaveBeenCalled();
+  });
+
+  it("keeps a neutral arrow a no-op when Today has no canonical Task", async () => {
+    mocks.loadDay.mockResolvedValue(emptyDay);
+    render(<App />);
+    await screen.findByRole("region", { name: "DayBoard" });
+
+    fireEvent.keyDown(document.body, { key: "ArrowUp" });
+    expect(document.querySelector("[data-day-focus-target][data-entry-id]")).toBeNull();
+  });
+
   it("collapses and expands one Section by pointer without changing other Sections or canonical order", async () => {
     mocks.loadDay.mockResolvedValue(twoPlannedDay);
     render(<App />);
@@ -1047,9 +1120,10 @@ describe("Dogfood Day shell", () => {
 
     main.focus();
     fireEvent.keyDown(main, { key: "ArrowUp" });
-    expect(document.activeElement?.getAttribute("data-entry-id")).toBe(secondEntry.id);
-    fireEvent.keyDown(document.activeElement!, { key: "k" });
     expect(document.activeElement?.getAttribute("data-entry-id")).toBe(firstEntry.id);
+    const focusedFirstRow = document.activeElement as HTMLElement;
+    expect(focusedFirstRow.getAttribute("data-entry-id")).toBe(firstEntry.id);
+    focusedFirstRow.focus();
 
     fireEvent.keyDown(document.activeElement!, { key: "n" });
     expect(screen.getByRole("textbox", { name: "MorningのTask名" })).toBeTruthy();

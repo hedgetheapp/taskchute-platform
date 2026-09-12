@@ -316,6 +316,14 @@ function isTextEditingTarget(target: EventTarget | null): boolean {
   return target.isContentEditable || target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
 }
 
+function isTodayArrowBootstrapExcludedTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false;
+  if (isTextEditingTarget(target)) return true;
+  return Boolean(target.closest(
+    "button, a, [role='button'], [role='dialog'], [role='menu'], [role='listbox'], [role='grid'], [role='gridcell'], [role='option'], [tabindex]:not([tabindex='-1'])",
+  ));
+}
+
 function projectionEntries(projection: CurrentTaskChuteDayProjection): EntryProjection[] {
   return [...projection.unsectioned_entries, ...projection.sections.flatMap((section) => section.entries)];
 }
@@ -951,6 +959,27 @@ export function App() {
   useEffect(() => {
     dayRef.current = day;
   }, [day]);
+
+  useEffect(() => {
+    if (view !== "today") return;
+    const handleTodayArrowBootstrap = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented || event.isComposing || decisionModalOpen
+        || (event.key !== "ArrowUp" && event.key !== "ArrowDown")
+        || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) return;
+      const activeElement = document.activeElement;
+      if (activeElement?.closest("[data-day-focus-target]")) return;
+      if (isTodayArrowBootstrapExcludedTarget(event.target)
+        || isTodayArrowBootstrapExcludedTarget(activeElement)) return;
+      const firstVisibleEntry = document.querySelector<HTMLElement>(
+        ".day-surface .task-row[data-entry-id]:not(.task-row-pending):not(.draft-row)",
+      );
+      if (!firstVisibleEntry) return;
+      event.preventDefault();
+      firstVisibleEntry.focus();
+    };
+    document.addEventListener("keydown", handleTodayArrowBootstrap, true);
+    return () => document.removeEventListener("keydown", handleTodayArrowBootstrap, true);
+  }, [decisionModalOpen, view]);
 
   useEffect(() => {
     const guardBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -5189,7 +5218,7 @@ export function App() {
       const delta = key === "j" || event.key === "ArrowDown" ? 1 : -1;
       const navigationIndex = activeElement ? activeIndex : -1;
       const nextIndex = navigationIndex < 0
-        ? (delta > 0 ? 0 : navigationTargets.length - 1)
+        ? ((event.key === "ArrowUp" || event.key === "ArrowDown") ? 0 : (delta > 0 ? 0 : navigationTargets.length - 1))
         : Math.max(0, Math.min(navigationTargets.length - 1, navigationIndex + delta));
       navigationTargets[nextIndex]?.focus();
     }

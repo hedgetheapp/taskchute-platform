@@ -269,7 +269,7 @@ input:focus-visible, select:focus-visible { border-color: #2383e2; outline: 2px 
 .task-row:last-child { border-bottom: 0; }
 .task-row > * { min-width: 0; padding: 0 10px; }
 .task-row:hover { --day-row-background: #fbfbfa; }
-.task-row:focus { --day-row-background: #f5f9fd; box-shadow: inset 3px 0 #2383e2; }
+.task-row:focus-visible { outline: 2px solid #2383e2; outline-offset: -2px; }
 .task-row.state-running { --day-row-background: #f3f8fd; }
 .task-row.state-running:hover { --day-row-background: #edf5fc; }
 .task-row.state-running .task-main strong { font-weight: 700; }
