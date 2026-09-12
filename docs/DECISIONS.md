@@ -1739,6 +1739,14 @@ D-083は、current established Dayのordinary planned Entryに限り、既存`Mo
 
 実装、Worker / Web regression、real-local / persistent nonprod browser、read-only DB evidenceはcanonical evidence docsへ記録する。production、restore、destructive cleanup、branch / PR / merge / tag / releaseは対象外で、Releasedは`NO`とする。
 
+## D-094 — Web UI consistency polish
+
+Status: **Approved / implemented**
+
+D-094のcanonical decision本文は `docs/decisions/D-094_WEB_UI_CONSISTENCY_POLISH_V01.md` に置く。Notes、Routine、Effective Day、Mode、Projectの一時UIと破壊的操作表現を既存の共有Webパターンへ揃え、Notesの行番号設定・固定保存状態、Routine / 日付入力、Effective Dayのtable-first表示を追加した。変更はWeb-onlyで、API、Domain semantics、schema、migration、dependency、binding、security postureは変更しない。
+
+実装・local regression・persistent nonprod deploy・authenticated existing/fresh-tab UI evidenceはCURRENT / TEST_MATRIXへ記録する。Browser consoleの正確なログ件数はCUA surfaceから取得できない場合`NOT_VERIFIED`とし、production、restore、destructive cleanup、branch / PR / merge / tag / releaseは対象外で、Releasedは`NO`とする。
+
 ## D-090 — Standalone Markdown Notes v0.1
 
 Status: **Approved / Implemented**

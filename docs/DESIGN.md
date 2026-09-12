@@ -600,3 +600,9 @@ Authenticated shellのtop-level destination `ノート`は、既存sidebar/navig
 新規Noteボタンはmemory-only draftを開くだけで、空のDocument rowを作らない。Save成功後にcanonical Document / revisionへbaselineを置き換え、既存Noteのdirty編集はexpected revisionで更新する。revision conflictではlocal title/bodyを保持し、最新canonical stateを確認できるが自動overwriteしない。dirtyなNoteからの切替・Notes離脱・logout・reload/closeは既存の確認およびbeforeunload boundaryを使い、キャンセル時は編集中のdraftを保つ。
 
 D-091では新規Noteを開いた直後にServer Createを行い、画面には`notitle`またはServerが割り当てた連番titleを表示する。保存中は小さなstatusだけを表示し、layoutや編集操作をブロックしない。D-092のarchived Noteは編集controlをread-onlyとし、archive / restoreは通常のrow actionから、hard deleteは対象を説明する明示確認から開始する。ambiguous save中はtitle/bodyを編集不可にし、exact Retryまたはexact-ID reconciliationまでNotes離脱とbeforeunloadを保護する。
+
+## D-094 Web UI consistency polish
+
+D-094ではNotes、Routine、Effective Day、Mode、Projectの一時surfaceに共通のoutside-click / Escape cleanup境界を適用し、既存のfocus・no-write・confirmation semanticsを保つ。再利用可能な`LogicalDateInput`はstrictな`YYYY-MM-DD` / `YYYYMMDD`入力、native calendar、outside/Escape close、重複commit防止を一つのWeb helperとして提供する。NotesはMarkdown source textareaを明るい配色と任意のversioned localStorage行番号gutterで表示し、固定の`保存済み` / `未保存` / `保存結果未確定` statusへ統一する。通常の文書保存だけを`保存中 n件`として数え、archive / restore / delete lifecycle通信は文書保存件数へ混ぜない。
+
+Routine Boardはboard自体をviewport内のscroll ownerとし、recurrence / overflow / date surfacesのtemporary stateをunmount・outside・Escapeで破棄する。Effective Dayはoverride一覧を日付・指定・理由・操作のtableとして表示し、unknown guidanceを文脈付きで示す。破壊的操作は既存の`destructive-action` visual contractを共有する。D-094はAPI、Worker、Domain、schema、migration、dependencyを変更せず、日付・再発・Notesのcanonical保存意味も変更しない。

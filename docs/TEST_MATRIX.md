@@ -2507,3 +2507,18 @@ D-084 browser fixture creation was not completed: the unauthenticated/new in-app
 | D092-NB-DB | Read-only APP/AUTH integrity | quick_check `ok`; FK empty; duplicate titles `0`; assertion/guard residue `0`; successful probes `rows_written=0` | PASS |
 | D092-NB-BROWSER | Fault-injection ambiguity through ordinary authenticated browser | ordinary browser cannot deterministically create the race; prior D-091–D-093 browser evidence remains PASS | NOT_RUN / NOT_REQUIRED |
 | D092-NB-MIG | New migration for corrective | none; APP 0030 remains applied; AUTH unchanged | NOT_REQUIRED |
+
+### D-094 — Web UI consistency polish
+
+| ID | Scope | Evidence | Result |
+|---|---|---|---|
+| D094-WEB-NOTES | Notes fixed loading/status, line-number gutter preference, light Markdown source editor, menu outside/Escape | focused NotesBoard `20 / 20`; authenticated existing tab and same-session fresh tab | PASS |
+| D094-WEB-ROUTINE | Recurrence/overflow outside/Escape, viewport scroll owner, strict date/time input, fixed success status | focused RoutineBoard `17 / 17`; recurrence and date calendar Escape checks | PASS |
+| D094-WEB-EFFECTIVE-DAY | Table-first override columns, strict date input/calendar, contextual unknown guidance, explicit destructive reset | App/Web regression and authenticated Settings surface; calendar Escape | PASS |
+| D094-WEB-MODE-PROJECT | Mode/Project menu outside/Escape and shared destructive action styling | Mode and Project focused suites plus authenticated menu checks | PASS |
+| D094-LOCAL-GATES | Full Web/static gates | full Web `5 files / 294`; typecheck; normal/exact nonprod build; deploy guard; Wrangler dry-run; `git diff --check` | PASS |
+| D094-NONPROD | Exact pushed Web-only deploy and safety | Worker `d5e61181-5414-4e4b-9453-4af452032739`; root `200`; Documents API `401`; APP/AUTH pending `0 / 0`; quick/FK clean; `rows_written=0` | PASS |
+| D094-BROWSER | Existing authenticated tab and same-session fresh tab interaction/persistence | Notes saved fixture visible after reload/fresh tab; Routine/Effective Day/Mode/Project temporary surfaces close on Escape; viewport approx. `592 × 884`, sidebar open | PASS (console count NOT_VERIFIED) |
+| D094-DB | APP/AUTH read-only integrity | APP 3 Documents, invalid kind/revision/duplicate identity/title/operation `0`, transient guards `0`; AUTH users/accounts/sessions/verification `1 / 1 / 7 / 0`; all successful probes `rows_written=0` | PASS |
+| D094-WORKER-MIGRATION | Worker/API and migration suites | Web-only change; no Worker/API/schema/migration change | NOT_REQUIRED |
+| D094-SAFETY | Production, restore, credential reset, bootstrap mutation, unrelated destructive cleanup, Release | not performed | NOT_RUN / NO |

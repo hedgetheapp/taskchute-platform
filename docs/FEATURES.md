@@ -126,3 +126,5 @@ Status values: Planned / In design / Implemented / Verified / Withdrawn (histori
 | D-093 APP 0030 standalone lifecycle migration | Implemented / Persistent nonprod migrated | `documents.archived_at`、standalone owner/title unique index、archive/restore/delete operation allow-listを追加。fresh/upgrade migration、既存Document/operation preservation、constraint、quick_check/FKをPASS。APP 0030 applied once to `taskchute-app-nonprod`; AUTH migrationなし、pending `0/0`、new dependencyなし。 |
 
 上記D-091–D-093はD-090初期記述の「autosave / archive / delete未実装」部分だけをstandalone Note scopeでsupersedeする。Task / Project / RoutineOccurrence Documents、preview、attachment、search/backlinks、offline persistenceは未実装である。
+
+| D-094 Web UI consistency polish | Implemented / Verified | Notes、Routine、Effective Day、Mode、Projectの一時UIをoutside-click / Escape cleanup、destructive-action、strict compact/dashed date inputへ統一。Notesの行番号gutter・固定保存status、Routineのviewport scroll、Effective Dayのtable-first override表示を追加。Web-onlyでAPI / Worker / schema / migration / dependencyは不変。Implementation `41caea5408b2a76c7f395237a8dedefb7ed74917`、interaction corrective `e0dbce389c9629ee4feabcafdd6fc009db1873e2`。 |
