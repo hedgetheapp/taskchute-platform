@@ -10,6 +10,7 @@ import type {
 } from "../shared/contracts";
 import { uuidv7 } from "../shared/uuidv7";
 import { api, ApiClientError } from "./api";
+import { LogicalDateInput, useOutsideClick } from "./ui-helpers";
 import {
   clampRoutineColumnWidth,
   readPersistedRoutineColumnPreference,
@@ -32,7 +33,14 @@ function minuteText(value: number | null): string {
 
 function parseMinute(value: string): number | null | undefined {
   if (value.trim() === "") return null;
-  const match = /^(\d{1,2}):(\d{2})$/.exec(value.trim());
+  const raw = value.trim();
+  const compact = /^(\d{4})$/.exec(raw);
+  if (compact) {
+    const hour = Number(compact[1].slice(0, 2));
+    const minute = Number(compact[1].slice(2));
+    return hour <= 47 && minute <= 59 ? hour * 60 + minute : undefined;
+  }
+  const match = /^(\d{1,2}):(\d{2})$/.exec(raw);
   if (!match) return undefined;
   const hour = Number(match[1]);
   const minute = Number(match[2]);
@@ -124,6 +132,22 @@ export function RoutineBoard({ onUnauthorized }: RoutineBoardProps) {
   const helpOriginRef = useRef<HTMLElement | null>(null);
   const deleteOriginRef = useRef<HTMLElement | null>(null);
   const deleteCloseFallbackRef = useRef<HTMLElement | null>(null);
+  const noticeTimerRef = useRef<number | null>(null);
+
+  const showNotice = useCallback((message: string) => {
+    if (noticeTimerRef.current !== null) window.clearTimeout(noticeTimerRef.current);
+    setNotice(message);
+    noticeTimerRef.current = window.setTimeout(() => { noticeTimerRef.current = null; setNotice(null); }, 3000);
+  }, []);
+
+  useOutsideClick(openMenuId !== null, (target) => target instanceof Element
+    && Boolean(target.closest(".routine-overflow-menu, .routine-overflow")), () => setOpenMenuId(null));
+  useOutsideClick(Object.keys(scheduleDrafts).length > 0, (target) => target instanceof Element
+    && Boolean(target.closest(".routine-popover, .routine-schedule-cell > button")), () => setScheduleDrafts({}));
+
+  useEffect(() => () => {
+    if (noticeTimerRef.current !== null) window.clearTimeout(noticeTimerRef.current);
+  }, []);
 
   useEffect(() => {
     try { window.localStorage.setItem("taskchute.web.routine-columns.v1", JSON.stringify(preference)); } catch { /* memory state remains usable */ }
@@ -247,7 +271,7 @@ export function RoutineBoard({ onUnauthorized }: RoutineBoardProps) {
 
   async function mutate(action: () => Promise<unknown>, success: string) {
     setPending(true); setError(null); setNotice(null);
-    try { await action(); await reload(); setNotice(success); }
+    try { await action(); await reload(); showNotice(success); }
     catch (caught) {
       if (caught instanceof ApiClientError && caught.status === 401) onUnauthorized();
       else { setError(caught instanceof Error ? caught.message : "Routineの保存に失敗しました"); await reload(); }
@@ -290,14 +314,14 @@ export function RoutineBoard({ onUnauthorized }: RoutineBoardProps) {
 
   async function saveStart(routine: RoutineBoardItemProjection, raw: string) {
     const value = parseMinute(raw);
-    if (value === undefined) { setError("開始予定はHH:mm形式で入力してください"); return; }
+    if (value === undefined) { setError("開始予定はHHMMまたはHH:mm形式で入力してください"); return; }
     if (value === null) { await save(routine, { default_section_id: null, default_planned_start_minute: null }); return; }
     const section = board?.sections.find((item) => item.logical_start_minute <= value && value < item.logical_end_minute);
     if (!section) { setError("開始予定に対応するSectionがありません"); return; }
     await save(routine, { default_section_id: section.id, default_planned_start_minute: value });
   }
 
-  async function saveDate(routine: RoutineBoardItemProjection, key: "start_logical_date" | "end_logical_date", value: string) {
+  async function saveDate(routine: RoutineBoardItemProjection, key: "start_logical_date" | "end_logical_date", value: string | null) {
     const start = key === "start_logical_date" ? value : routine.start_logical_date;
     const end = key === "end_logical_date" ? (value || null) : routine.end_logical_date;
     if (!start || (end !== null && end < start)) { setError("開始日と終了日の順序が正しくありません"); return; }
@@ -316,7 +340,8 @@ export function RoutineBoard({ onUnauthorized }: RoutineBoardProps) {
   }
 
   function openSchedule(routine: RoutineBoardItemProjection) {
-    setScheduleDrafts((current) => ({ ...current, [routine.routine_definition_id]: { schedule: routine.schedule } }));
+    setOpenMenuId(null);
+    setScheduleDrafts({ [routine.routine_definition_id]: { schedule: routine.schedule } });
   }
 
   async function saveSchedule(routine: RoutineBoardItemProjection) {
@@ -335,7 +360,7 @@ export function RoutineBoard({ onUnauthorized }: RoutineBoardProps) {
     try {
       await api.deleteRoutine(request);
       await reload();
-      setPending(false); setDeleteOperation(null); setDeleteTarget(null); setNotice("Routineを削除しました");
+      setPending(false); setDeleteOperation(null); setDeleteTarget(null); showNotice("Routineを削除しました");
     } catch (caught) {
       if (caught instanceof ApiClientError && caught.status === 401) onUnauthorized();
       else {
@@ -389,7 +414,7 @@ export function RoutineBoard({ onUnauthorized }: RoutineBoardProps) {
         const weekdayLabels = ["日", "月", "火", "水", "木", "金", "土"];
         const weekdaySchedule = draftSchedule?.kind === "weekly" || draftSchedule?.kind === "every_n_weeks" ? draftSchedule : null;
         return <div role="cell" className="routine-cell routine-schedule-cell"><button type="button" className="secondary"
-          onClick={() => openSchedule(routine)} disabled={pending}>{scheduleText(routine.schedule)}</button>
+          aria-haspopup="dialog" aria-expanded={draftSchedule !== undefined} onClick={() => draftSchedule ? setScheduleDrafts({}) : openSchedule(routine)} disabled={pending}>{scheduleText(routine.schedule)}</button>
           {draftSchedule && <div className="routine-popover" role="dialog" aria-label={`${routine.title}の繰り返し`}>
             <label>繰り返し<select value={draftSchedule.kind} onChange={(event) => {
               const kind = event.target.value;
@@ -470,10 +495,12 @@ export function RoutineBoard({ onUnauthorized }: RoutineBoardProps) {
       case "section": return <div role="cell" className="routine-cell"><select aria-label={`${routine.title}のSection`} value={routine.default_section_id ?? ""} disabled={pending}
         onChange={(event) => void saveSection(routine, event.target.value || null)}><option value="">Sectionなし</option>
         {board?.sections.map((section) => <option key={section.id} value={section.id}>{section.title}</option>)}</select></div>;
-      case "startDate": return <div role="cell" className="routine-cell"><input aria-label={`${routine.title}の開始日`} type="date" key={`${canonicalEpoch}-${routine.routine_definition_id}-start-date`}
-        defaultValue={routine.start_logical_date} disabled={pending} onBlur={(event) => void saveDate(routine, "start_logical_date", event.target.value)} /></div>;
-      case "endDate": return <div role="cell" className="routine-cell"><input aria-label={`${routine.title}の終了日`} type="date" key={`${canonicalEpoch}-${routine.routine_definition_id}-end-date`}
-        defaultValue={routine.end_logical_date ?? ""} disabled={pending} placeholder="終了なし" onBlur={(event) => void saveDate(routine, "end_logical_date", event.target.value)} /></div>;
+      case "startDate": return <div role="cell" className="routine-cell"><LogicalDateInput label={`${routine.title}の開始日`} value={routine.start_logical_date}
+        disabled={pending} onInvalid={() => setError("開始日はYYYYMMDDまたはYYYY-MM-DD形式で入力してください")}
+        onCommit={(value) => { if (value !== routine.start_logical_date) void saveDate(routine, "start_logical_date", value); }} /></div>;
+      case "endDate": return <div role="cell" className="routine-cell"><LogicalDateInput label={`${routine.title}の終了日`} value={routine.end_logical_date}
+        allowBlank disabled={pending} onInvalid={() => setError("終了日はYYYYMMDDまたはYYYY-MM-DD形式で入力してください")}
+        onCommit={(value) => { if (value !== routine.end_logical_date) void saveDate(routine, "end_logical_date", value); }} /></div>;
     }
   }
 
@@ -527,7 +554,7 @@ export function RoutineBoard({ onUnauthorized }: RoutineBoardProps) {
             <button ref={(element) => { rowActionRefs.current[routine.routine_definition_id] = element; }} type="button" className="routine-overflow" aria-label={`${routine.title}のメニュー`} aria-expanded={openMenuId === routine.routine_definition_id} disabled={pending}
               onClick={(event) => { deleteOriginRef.current = event.currentTarget; setOpenMenuId((current) => current === routine.routine_definition_id ? null : routine.routine_definition_id); }}>…</button>
             {openMenuId === routine.routine_definition_id && <div className="routine-overflow-menu" role="menu" aria-label={`${routine.title}の操作`}>
-              <button type="button" role="menuitem" onClick={() => openDeleteTarget(routine)}>削除</button>
+              <button type="button" role="menuitem" className="destructive-action" onClick={() => openDeleteTarget(routine)}>削除</button>
             </div>}
           </div>
         </div>)}
@@ -543,7 +570,7 @@ export function RoutineBoard({ onUnauthorized }: RoutineBoardProps) {
     {deleteTarget && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setDeleteTarget(null); }}>
       <div ref={modalRef} className="modal-dialog" role="dialog" aria-modal="true" aria-label="Routine削除確認" tabIndex={-1}>
         <h2>ルーティンを削除しますか？</h2><p>今後の自動生成を停止します。すでに作成されたTaskと過去の実行履歴は削除されません。</p>
-        <div className="modal-actions"><button type="button" className="secondary" onClick={() => setDeleteTarget(null)}>キャンセル</button><button type="button" className="destructive" onClick={confirmDelete}>削除</button></div>
+        <div className="modal-actions"><button type="button" className="secondary" onClick={() => setDeleteTarget(null)}>キャンセル</button><button type="button" className="destructive destructive-action" onClick={confirmDelete}>削除</button></div>
       </div>
     </div>}
   </main>;

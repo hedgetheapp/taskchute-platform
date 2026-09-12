@@ -7,6 +7,7 @@ import type {
 } from "../shared/contracts";
 import { uuidv7 } from "../shared/uuidv7";
 import { api, ApiClientError } from "./api";
+import { LogicalDateInput } from "./ui-helpers";
 
 type OverrideChoice = EffectiveDayOverrideKind | "none";
 
@@ -92,12 +93,11 @@ export function EffectiveDayCalendarSettings(props: { initialLogicalDate: string
           <p>公式の祝日情報と、あなたの指定休日・営業日扱いを確認・設定します。</p>
         </div>
       </div>
-      {calendar && <p className="settings-capability-note">公式スナップショット対象: {calendar.coverage.start}〜{calendar.coverage.end}</p>}
       <div className="effective-day-calendar-form">
-        <label>
-          日付
-          <input aria-label="カレンダー日付" type="date" value={selectedDate} disabled={props.disabled || loading}
-            onChange={(event) => { setSelectedDate(event.target.value); void load(event.target.value); }} />
+        <label>日付
+          <LogicalDateInput label="カレンダー日付" value={selectedDate} commitOnValidChange disabled={props.disabled || loading}
+            onInvalid={() => setError("日付はYYYYMMDDまたはYYYY-MM-DD形式で入力してください")}
+            onCommit={(value) => { if (!value) return; setSelectedDate(value); void load(value); }} />
         </label>
         {calendar && (
           <div className="effective-day-calendar-facts" aria-live="polite">
@@ -106,6 +106,7 @@ export function EffectiveDayCalendarSettings(props: { initialLogicalDate: string
             {calendar.classification.official_entry && <div><span>公式</span><strong>{calendar.classification.official_entry.label}</strong></div>}
           </div>
         )}
+        {calendar?.classification.base === "unknown" && <p className="effective-day-calendar-guidance">この日付は公式祝日データの対象外です。営業日／休日を指定できます。</p>}
         <label>
           指定
           <select aria-label="カレンダー指定" value={choice} disabled={props.disabled || loading || !calendar}
@@ -127,22 +128,26 @@ export function EffectiveDayCalendarSettings(props: { initialLogicalDate: string
         </div>
       </div>
       {loading && !calendar && <p role="status">営業日カレンダーを読み込み中…</p>}
-      {notice && <p role="status" className="success">{notice}</p>}
+      {notice && <div role="status" className="transient-status effective-day-calendar-notice">{notice}</div>}
       {error && <p role="alert" className="error">{error}</p>}
       {calendar && (
         <div className="effective-day-calendar-overrides" aria-label="現在の指定一覧">
           <h3>現在の指定</h3>
           {calendar.overrides.length === 0 ? <p className="muted">指定はありません。</p> : (
-            <ul>
+            <table>
+              <thead><tr><th scope="col">日付</th><th scope="col">指定</th><th scope="col">理由</th><th scope="col">操作</th></tr></thead>
+              <tbody>
               {calendar.overrides.map((override) => (
-                <li key={override.logical_date}>
-                  <button type="button" className="secondary" disabled={props.disabled || loading}
-                    onClick={() => { setSelectedDate(override.logical_date); void load(override.logical_date); }}>
-                    {override.logical_date} · {kindLabel(override.override_kind)}
-                  </button>
-                </li>
+                <tr key={override.logical_date}>
+                  <td><button type="button" className="link-button" disabled={props.disabled || loading}
+                    onClick={() => { setSelectedDate(override.logical_date); void load(override.logical_date); }}>{override.logical_date}</button></td>
+                  <td>{kindLabel(override.override_kind)}</td><td>{override.reason ?? "—"}</td>
+                  <td><button type="button" className="secondary destructive-action" disabled={props.disabled || loading}
+                    onClick={() => { setSelectedDate(override.logical_date); void execute({ operation_id: uuidv7(), logical_date: override.logical_date, expected_revision: override.revision }); }}>削除</button></td>
+                </tr>
               ))}
-            </ul>
+              </tbody>
+            </table>
           )}
         </div>
       )}

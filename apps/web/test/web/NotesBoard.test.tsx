@@ -403,4 +403,25 @@ describe("NotesBoard", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "削除" }));
     await waitFor(() => expect(mocks.deleteStandaloneDocument).toHaveBeenCalledWith(expect.objectContaining({ document_id: archived.document_id })));
   });
+
+  it("renders logical line numbers, persists the preference, and closes row menus outside", async () => {
+    const current = note("0199d090-0000-7000-8000-000000000015", "Lines", "one\n\nthree", 0);
+    mocks.loadDocuments.mockResolvedValue({ documents: [summary(current)] });
+    mocks.loadDocument.mockResolvedValue(current);
+    localStorage.removeItem("taskchute.notes.line-numbering.v1");
+    render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Lines")).toBeTruthy());
+    expect(document.querySelector(".notes-line-numbers")?.textContent).toBe("123");
+    const body = screen.getByLabelText("Markdown本文");
+    fireEvent.change(body, { target: { value: "one\ntwo" } });
+    expect(document.querySelector(".notes-line-numbers")?.textContent).toBe("12");
+    fireEvent.click(screen.getByRole("checkbox", { name: "行番号を表示" }));
+    expect(document.querySelector(".notes-line-numbers")).toBeNull();
+    expect(JSON.parse(localStorage.getItem("taskchute.notes.line-numbering.v1")!)).toEqual({ version: 1, enabled: false });
+    fireEvent.click(screen.getByRole("button", { name: "Linesの操作" }));
+    expect(screen.getByRole("menu", { name: "Linesの操作" })).toBeTruthy();
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByRole("menu", { name: "Linesの操作" })).toBeNull();
+    localStorage.removeItem("taskchute.notes.line-numbering.v1");
+  });
 });

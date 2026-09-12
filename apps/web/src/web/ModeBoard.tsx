@@ -5,6 +5,7 @@ import type {
 } from "../shared/contracts";
 import { uuidv7 } from "../shared/uuidv7";
 import { api, ApiClientError } from "./api";
+import { useOutsideClick } from "./ui-helpers";
 
 interface ModeBoardProps {
   board: ModeBoardProjection | null;
@@ -68,6 +69,9 @@ export function ModeBoard({ board, onReload, onBoardChange, onUnauthorized }: Mo
   const renameCanceledRef = useRef(false);
   const deleteOriginRef = useRef<HTMLElement | null>(null);
   const deleteFallbackRef = useRef<HTMLElement | null>(null);
+
+  useOutsideClick(openMenuId !== null, (target) => target instanceof Element
+    && Boolean(target.closest(".project-overflow-menu, .project-overflow")), () => setOpenMenuId(null));
 
   const visible = useMemo(() => {
     if (!board) return [];
@@ -314,6 +318,6 @@ export function ModeBoard({ board, onReload, onBoardChange, onUnauthorized }: Mo
       {visible.length === 0 && !draft && <p className="muted project-empty">該当するModeはありません。</p>}
     </div>
     {helpOpen && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setHelpOpen(false); }}><div ref={modalRef} className="modal-dialog project-help-modal" role="dialog" aria-modal="true" aria-label="Mode設定ショートカット" tabIndex={-1}><h2>Mode設定ショートカット</h2><ul><li><kbd>J</kbd> / <kbd>↓</kbd> 次のMode</li><li><kbd>K</kbd> / <kbd>↑</kbd> 前のMode</li><li><kbd>?</kbd> ヘルプ</li><li><kbd>Esc</kbd> 閉じる・キャンセル</li></ul><button type="button" onClick={() => setHelpOpen(false)}>閉じる</button></div></div>}
-    {deleteTarget && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setDeleteTarget(null); }}><div ref={modalRef} className="modal-dialog" role="dialog" aria-modal="true" aria-label="Mode削除確認" tabIndex={-1}><h2>Modeを削除しますか？</h2><p>このModeは完全に削除され、元に戻せません。現在このModeが設定されているEntryは「Modeなし」になります。過去の実行履歴に保存されたMode情報は残ります。</p><div className="modal-actions"><button type="button" className="secondary" onClick={() => setDeleteTarget(null)}>キャンセル</button><button type="button" className="destructive" disabled={pending} onClick={() => void executeDelete({ operation_id: uuidv7(), mode_id: deleteTarget.id, expected_settings_revision: deleteTarget.settings_revision, expected_board_revision: board.board_revision })}>削除</button></div></div></div>}
+    {deleteTarget && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setDeleteTarget(null); }}><div ref={modalRef} className="modal-dialog" role="dialog" aria-modal="true" aria-label="Mode削除確認" tabIndex={-1}><h2>Modeを削除しますか？</h2><p>このModeは完全に削除され、元に戻せません。現在このModeが設定されているEntryは「Modeなし」になります。過去の実行履歴に保存されたMode情報は残ります。</p><div className="modal-actions"><button type="button" className="secondary" onClick={() => setDeleteTarget(null)}>キャンセル</button><button type="button" className="destructive destructive-action" disabled={pending} onClick={() => void executeDelete({ operation_id: uuidv7(), mode_id: deleteTarget.id, expected_settings_revision: deleteTarget.settings_revision, expected_board_revision: board.board_revision })}>削除</button></div></div></div>}
   </section>;
 }

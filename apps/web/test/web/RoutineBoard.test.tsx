@@ -393,4 +393,32 @@ describe("Routine Board", () => {
     fireEvent.keyDown(window, { key: "x" });
     expect(mocks.deleteRoutine).not.toHaveBeenCalled();
   });
+
+  it("closes recurrence and overflow surfaces outside and accepts compact time/date input", async () => {
+    render(<RoutineBoard onUnauthorized={vi.fn()} />);
+    await screen.findByDisplayValue("Active Routine");
+    const recurrence = screen.getByRole("button", { name: "毎日" });
+    fireEvent.click(recurrence);
+    expect(screen.getByRole("dialog", { name: "Active Routineの繰り返し" })).toBeTruthy();
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByRole("dialog", { name: "Active Routineの繰り返し" })).toBeNull();
+    fireEvent.click(recurrence);
+    fireEvent.click(recurrence);
+    expect(screen.queryByRole("dialog", { name: "Active Routineの繰り返し" })).toBeNull();
+
+    const start = screen.getByLabelText("Active Routineの開始予定");
+    fireEvent.change(start, { target: { value: "0900" } });
+    fireEvent.blur(start);
+    await waitFor(() => expect(mocks.updateRoutine).toHaveBeenCalledWith(expect.objectContaining({ default_planned_start_minute: 540 })));
+    const startDate = screen.getByLabelText("Active Routineの開始日");
+    fireEvent.change(startDate, { target: { value: "20260912" } });
+    fireEvent.blur(startDate);
+    await waitFor(() => expect(mocks.updateRoutine).toHaveBeenCalledWith(expect.objectContaining({ start_logical_date: "2026-09-12" })));
+
+    const menuTrigger = screen.getByRole("button", { name: "Active Routineのメニュー" });
+    fireEvent.click(menuTrigger);
+    expect(screen.getByRole("menu", { name: "Active Routineの操作" })).toBeTruthy();
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByRole("menu", { name: "Active Routineの操作" })).toBeNull();
+  });
 });

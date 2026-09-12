@@ -9,8 +9,11 @@ import type {
 } from "../shared/contracts";
 import { uuidv7 } from "../shared/uuidv7";
 import { api, ApiClientError } from "./api";
+import { useOutsideClick } from "./ui-helpers";
 
 export const NOTE_AUTOSAVE_DEBOUNCE_MS = 1000;
+const NOTE_LINE_NUMBERING_STORAGE_KEY = "taskchute.notes.line-numbering.v1";
+const NOTE_LINE_NUMBERING_ENVELOPE_VERSION = 1;
 type DocumentRequest = CreateStandaloneDocumentRequest | UpdateDocumentRequest;
 type LifecycleRequest = SetStandaloneDocumentArchivedRequest | DeleteStandaloneDocumentRequest;
 type MutationRequest = DocumentRequest | LifecycleRequest;
@@ -68,6 +71,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
   const [latestCanonical, setLatestCanonical] = useState<StandaloneDocument | null>(null);
   const [retryRequest, setRetryRequest] = useState<MutationRequest | null>(null);
   const [ambiguousRequest, setAmbiguousRequest] = useState<MutationRequest | null>(null);
+  const [lineNumbersEnabled, setLineNumbersEnabled] = useState(true);
 
   const documentRef = useRef(document);
   const modeRef = useRef(mode);
@@ -98,6 +102,8 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
   const followUpPending = inFlightRequest !== null && isDocumentRequest(inFlightRequest)
     && (draftTitle.trim() !== inFlightRequest.title || draftBody !== inFlightRequest.markdown_body);
   const pendingSaveCount = unresolved ? 0 : inFlightRequest ? 1 + (followUpPending ? 1 : 0) : dirty ? 1 : 0;
+  const lineCount = Math.max(1, draftBody.split("\n").length);
+  const saveStatus = unresolved ? "保存結果未確定" : dirty ? "未保存" : "保存済み";
 
   function currentDirty(): boolean {
     return draftRef.current.title !== baselineRef.current.title || draftRef.current.body !== baselineRef.current.body;
@@ -106,6 +112,35 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
   useEffect(() => { onDirtyChange(dirty); }, [dirty, onDirtyChange]);
   useEffect(() => { onUnresolvedChange?.(unresolved); }, [onUnresolvedChange, unresolved]);
   useEffect(() => { onSavingChange?.(saving); }, [onSavingChange, saving]);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(NOTE_LINE_NUMBERING_STORAGE_KEY);
+      if (raw === null) return;
+      const parsed: unknown = JSON.parse(raw);
+      if (typeof parsed !== "object" || parsed === null) return;
+      const envelope = parsed as { version?: unknown; enabled?: unknown };
+      if (envelope.version !== NOTE_LINE_NUMBERING_ENVELOPE_VERSION || typeof envelope.enabled !== "boolean") return;
+      setLineNumbersEnabled(envelope.enabled);
+    } catch {
+      // Browser storage is an optional preference; malformed/unavailable storage falls back to ON.
+    }
+  }, []);
+
+  const persistLineNumbers = useCallback((enabled: boolean) => {
+    setLineNumbersEnabled(enabled);
+    try {
+      window.localStorage.setItem(NOTE_LINE_NUMBERING_STORAGE_KEY, JSON.stringify({
+        version: NOTE_LINE_NUMBERING_ENVELOPE_VERSION,
+        enabled,
+      }));
+    } catch {
+      // Keep the in-memory preference even when browser storage is unavailable.
+    }
+  }, []);
+
+  useOutsideClick(actionId !== null, (target) => target instanceof Element
+    && Boolean(target.closest(".notes-row-menu, .notes-row-actions")), () => setActionId(null));
 
   useEffect(() => {
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -218,7 +253,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
         const result = isUpdateRequest(request) ? await api.updateDocument(request) : await api.createStandaloneDocument(request);
         applySavedDocument(result.document, request);
         retryRequestRef.current = null; ambiguousRequestRef.current = null;
-        setRetryRequest(null); setAmbiguousRequest(null); setLatestCanonical(null); setNotice("保存しました。");
+        setRetryRequest(null); setAmbiguousRequest(null); setLatestCanonical(null);
         await refreshList(showArchivedRef.current);
         return true;
       } catch (caught) {
@@ -431,6 +466,8 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
   const archivedReadOnly = document?.archived_at != null;
   return (
     <main className="shell notes-shell">
+      {loading && <div className="transient-status notes-loading-status" role="status" aria-live="polite">ノートを読み込み中…</div>}
+      {notice && <div className="transient-status notes-action-status" role="status">{notice}</div>}
       <header className="notes-header">
         <div><p className="eyebrow">Notes</p><h1>{showArchived ? "アーカイブ" : "ノート"}</h1></div>
         {!showArchived && <button type="button" onClick={() => void startNewDocument()}>＋ 新規ノート</button>}
@@ -442,7 +479,6 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
               {showArchived ? "通常のノートに戻る" : "アーカイブ"}
             </button>
           </div>
-          {loading && <p className="muted">読み込み中…</p>}
           {!loading && documents.length === 0 && <p className="muted">{showArchived ? "アーカイブはありません。" : "ノートはまだありません。"}</p>}
           <div className="notes-list-items">
             {documents.map((candidate) => (
@@ -453,7 +489,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
                   onClick={() => setActionId(actionId === candidate.document_id ? null : candidate.document_id)}>…</button>
                 {actionId === candidate.document_id && <div className="notes-row-menu" role="menu" aria-label={`${documentSummaryTitle(candidate)}の操作`}>
                   <button type="button" role="menuitem" onClick={() => void lifecycleDocument(candidate, !showArchived)}>{showArchived ? "復元" : "アーカイブ"}</button>
-                  <button type="button" role="menuitem" onClick={() => void deleteDocument(candidate)}>削除</button>
+                  <button type="button" role="menuitem" className="destructive-action" onClick={() => void deleteDocument(candidate)}>削除</button>
                 </div>}
               </div>
             ))}
@@ -466,11 +502,22 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
               <button type="submit" disabled={saving || unresolved || archivedReadOnly}>{saving ? "保存中…" : "保存"}</button></div>
             <label className="notes-title-field">タイトル<input aria-label="ノートタイトル" value={draftTitle} maxLength={200}
               disabled={unresolved || archivedReadOnly} onChange={(event) => updateDraftTitle(event.target.value)} onKeyDown={handleEditorKeyDown} /></label>
-            <label className="notes-body-field">Markdown本文<textarea aria-label="Markdown本文" value={draftBody}
-              disabled={unresolved || archivedReadOnly} onChange={(event) => updateDraftBody(event.target.value)} onKeyDown={handleEditorKeyDown} rows={18} /></label>
-            {dirty && !unresolved && <p className="muted" role="status">未保存</p>}
-            {pendingSaveCount > 0 && <p className="muted" role="status">保存中 {pendingSaveCount}件</p>}
-            {notice && <p className="success" role="status">{notice}</p>}
+            <div className="notes-body-field">
+              <span className="sr-only">Markdown本文</span>
+              <div className="notes-body-editor">
+                {lineNumbersEnabled && <div className="notes-line-numbers" aria-hidden="true">{Array.from({ length: lineCount }, (_, index) => <span key={index}>{index + 1}</span>)}</div>}
+                <textarea aria-label="Markdown本文" value={draftBody}
+                  disabled={unresolved || archivedReadOnly} onChange={(event) => updateDraftBody(event.target.value)} onKeyDown={handleEditorKeyDown} rows={18}
+                  onScroll={(event) => {
+                    const gutter = event.currentTarget.previousElementSibling;
+                    if (gutter instanceof HTMLElement) gutter.scrollTop = event.currentTarget.scrollTop;
+                  }} />
+              </div>
+              <label className="notes-line-number-toggle"><input type="checkbox" checked={lineNumbersEnabled} onChange={(event) => persistLineNumbers(event.target.checked)} />行番号を表示</label>
+            </div>
+            <p className="notes-save-status" role="status" aria-live="polite">
+              <span>{saveStatus}</span>{pendingSaveCount > 0 && <span>（<span>保存中 {pendingSaveCount}件</span>）</span>}
+            </p>
             {error && <p className="error" role="alert">{error}</p>}
             {retryRequest && <button type="button" className="secondary" disabled={saving} onClick={() => void saveActionRef.current()}>同じ内容で再試行</button>}
             {latestCanonical && <details className="notes-conflict" open><summary>最新のServer内容を確認</summary><p>タイトル: {latestCanonical.title}</p><pre>{latestCanonical.markdown_body}</pre></details>}

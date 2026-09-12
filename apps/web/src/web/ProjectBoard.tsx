@@ -10,6 +10,7 @@ import type {
 } from "../shared/contracts";
 import { uuidv7 } from "../shared/uuidv7";
 import { api, ApiClientError } from "./api";
+import { useOutsideClick } from "./ui-helpers";
 
 interface ProjectBoardProps {
   onUnauthorized: () => void;
@@ -64,6 +65,9 @@ export function ProjectBoard({ onUnauthorized, onProjectsChanged }: ProjectBoard
   const deleteOriginRef = useRef<HTMLElement | null>(null);
   const deleteFallbackRef = useRef<HTMLElement | null>(null);
   const noticeTimerRef = useRef<number | null>(null);
+
+  useOutsideClick(openMenuId !== null, (target) => target instanceof Element
+    && Boolean(target.closest(".project-overflow-menu, .project-overflow")), () => setOpenMenuId(null));
 
   function showNotice(message: string) {
     if (noticeTimerRef.current !== null) window.clearTimeout(noticeTimerRef.current);
@@ -341,6 +345,6 @@ export function ProjectBoard({ onUnauthorized, onProjectsChanged }: ProjectBoard
       {visible.length === 0 && !draft && <p className="muted project-empty">該当するProjectはありません。</p>}
     </div>
     {helpOpen && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setHelpOpen(false); }}><div ref={modalRef} className="modal-dialog project-help-modal" role="dialog" aria-modal="true" aria-label="Project設定ショートカット" tabIndex={-1}><h2>Project設定ショートカット</h2><ul><li><kbd>J</kbd> / <kbd>↓</kbd> 次のProject</li><li><kbd>K</kbd> / <kbd>↑</kbd> 前のProject</li><li><kbd>?</kbd> ヘルプ</li><li><kbd>Esc</kbd> 閉じる・キャンセル</li></ul><button type="button" onClick={() => setHelpOpen(false)}>閉じる</button></div></div>}
-    {deleteTarget && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) { event.preventDefault(); setDeleteTarget(null); } }}><div ref={modalRef} className="modal-dialog" role="dialog" aria-modal="true" aria-label="Project削除確認" tabIndex={-1}><h2>プロジェクトを削除しますか？</h2><p>このプロジェクトは完全に削除され、元に戻せません。このプロジェクトが設定されているTaskは「Projectなし」になります。過去の実行履歴に保存されたProject情報は残ります。</p><div className="modal-actions"><button type="button" className="secondary" onClick={() => setDeleteTarget(null)}>キャンセル</button><button type="button" className="destructive" disabled={pending} onClick={() => void executeDelete({ operation_id: uuidv7(), project_id: deleteTarget.id, expected_settings_revision: deleteTarget.settings_revision, expected_board_revision: board.board_revision })}>削除</button></div></div></div>}
+    {deleteTarget && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) { event.preventDefault(); setDeleteTarget(null); } }}><div ref={modalRef} className="modal-dialog" role="dialog" aria-modal="true" aria-label="Project削除確認" tabIndex={-1}><h2>プロジェクトを削除しますか？</h2><p>このプロジェクトは完全に削除され、元に戻せません。このプロジェクトが設定されているTaskは「Projectなし」になります。過去の実行履歴に保存されたProject情報は残ります。</p><div className="modal-actions"><button type="button" className="secondary" onClick={() => setDeleteTarget(null)}>キャンセル</button><button type="button" className="destructive destructive-action" disabled={pending} onClick={() => void executeDelete({ operation_id: uuidv7(), project_id: deleteTarget.id, expected_settings_revision: deleteTarget.settings_revision, expected_board_revision: board.board_revision })}>削除</button></div></div></div>}
   </section>;
 }
