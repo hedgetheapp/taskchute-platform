@@ -2522,3 +2522,18 @@ D-084 browser fixture creation was not completed: the unauthenticated/new in-app
 | D094-DB | APP/AUTH read-only integrity | APP 3 Documents, invalid kind/revision/duplicate identity/title/operation `0`, transient guards `0`; AUTH users/accounts/sessions/verification `1 / 1 / 7 / 0`; all successful probes `rows_written=0` | PASS |
 | D094-WORKER-MIGRATION | Worker/API and migration suites | Web-only change; no Worker/API/schema/migration change | NOT_REQUIRED |
 | D094-SAFETY | Production, restore, credential reset, bootstrap mutation, unrelated destructive cleanup, Release | not performed | NOT_RUN / NO |
+
+### D-095 — Shared date picker and Notes gutter refinement
+
+| ID | Scope | Evidence | Result |
+|---|---|---|---|
+| D095-DATE-SHARED | Today-style calendar shared by Routine start/end and Effective Day; text field click/focus; month/year navigation; Monday-first grid; selected/outside-month state; outside/Escape close | focused App/Routine tests; authenticated existing tab and fresh tab AX/screenshot | PASS |
+| D095-DATE-INPUT | strict `YYYYMMDD` and `YYYY-MM-DD`, invalid/partial no-write, blank end-date compatibility | Routine/App focused tests and source review | PASS |
+| D095-ROUTINE | fixed top-center success notice and select-like recurrence trigger; open/close no-write | focused RoutineBoard `17 / 17`; authenticated Routine trigger/notice structure | PASS |
+| D095-NOTES-GUTTER | ON/OFF stable rail, white background, same textarea geometry, glyph-only hide, preference/reload | focused NotesBoard `20 / 20`; browser measurement ON/OFF/reload | PASS |
+| D095-LOCAL-GATES | full regression/static gates | full Worker/D1 `32 files / 285 tests`; full Web `5 files / 294 tests`; typecheck; normal/exact nonprod build; deploy guard; Wrangler dry-run; diff-check | PASS |
+| D095-NONPROD | exact pushed Web-only deploy and safety | Worker `f4a5d095-909a-46f5-848d-61ecceb19eb7`; root `200`; Documents API `401`; APP/AUTH pending `0 / 0`; quick/FK clean; read-only `rows_written=0` | PASS |
+| D095-BROWSER | existing authenticated tab and same-session fresh tab | existing viewport approx. `592 × 884` with sidebar open and sidebar-closed calendar; fresh tab approx. `1234 × 711`; Notes ON/OFF geometry unchanged; console `[]` | PASS |
+| D095-DB | APP/AUTH read-only integrity | APP Documents `3`; invalid/duplicate Document checks `0`; both quick_check `ok`; FK empty; successful probes `rows_written=0` | PASS |
+| D095-WORKER-MIGRATION | Worker/API/schema/migration impact | Web-only implementation; APP 0030 and AUTH unchanged | NOT_REQUIRED |
+| D095-SAFETY | Production, restore, credential reset, bootstrap mutation, unrelated destructive cleanup, Release | not performed | NOT_RUN / NO |

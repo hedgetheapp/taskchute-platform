@@ -1747,6 +1747,14 @@ D-094のcanonical decision本文は `docs/decisions/D-094_WEB_UI_CONSISTENCY_POL
 
 実装・local regression・persistent nonprod deploy・authenticated existing/fresh-tab UI evidenceはCURRENT / TEST_MATRIXへ記録する。Browser consoleの正確なログ件数はCUA surfaceから取得できない場合`NOT_VERIFIED`とし、production、restore、destructive cleanup、branch / PR / merge / tag / releaseは対象外で、Releasedは`NO`とする。
 
+## D-095 — Shared date picker and Notes gutter refinement
+
+Status: **Approved / implemented**
+
+D-095のcanonical decision本文は `docs/decisions/D-095_SHARED_DATE_PICKER_AND_NOTES_GUTTER_REFINEMENT.md` に置く。D-094のbrowser feedbackを受け、Todayと同じcalendar componentをRoutine開始日・終了日およびEffective Dayの日付入力へ共有し、text fieldのclick / focus起点、strictな8桁・dashed logical-date入力、outside/Escape closeを揃えた。Notesのline-number railはON/OFFで固定幅・同一背景のままglyphだけを切り替える。D-094のRoutine floating notice / recurrence dropdown correctiveも同一Web-only closeoutで確認した。
+
+API、Worker、Domain semantics、schema、migration、dependency、binding、security postureは変更していない。Implementation commit、persistent nonprod deploy、authenticated existing/fresh-tab UI evidence、DB/API safetyはCURRENT / TEST_MATRIXへ記録する。production、restore、destructive cleanup、branch / PR / merge / tag / releaseは対象外で、Releasedは`NO`とする。
+
 ## D-090 — Standalone Markdown Notes v0.1
 
 Status: **Approved / Implemented**

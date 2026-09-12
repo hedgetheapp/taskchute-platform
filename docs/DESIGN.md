@@ -603,6 +603,8 @@ D-091では新規Noteを開いた直後にServer Createを行い、画面には`
 
 ## D-094 Web UI consistency polish
 
-D-094ではNotes、Routine、Effective Day、Mode、Projectの一時surfaceに共通のoutside-click / Escape cleanup境界を適用し、既存のfocus・no-write・confirmation semanticsを保つ。再利用可能な`LogicalDateInput`はstrictな`YYYY-MM-DD` / `YYYYMMDD`入力、native calendar、outside/Escape close、重複commit防止を一つのWeb helperとして提供する。NotesはMarkdown source textareaを明るい配色と任意のversioned localStorage行番号gutterで表示し、固定の`保存済み` / `未保存` / `保存結果未確定` statusへ統一する。通常の文書保存だけを`保存中 n件`として数え、archive / restore / delete lifecycle通信は文書保存件数へ混ぜない。
+D-094ではNotes、Routine、Effective Day、Mode、Projectの一時surfaceに共通のoutside-click / Escape cleanup境界を適用し、既存のfocus・no-write・confirmation semanticsを保つ。再利用可能な`LogicalDateInput`はstrictな`YYYY-MM-DD` / `YYYYMMDD`入力、Todayと共有するcalendar、outside/Escape close、重複commit防止を一つのWeb helperとして提供する。NotesはMarkdown source textareaを明るい配色と任意のversioned localStorage行番号gutterで表示し、固定の`保存済み` / `未保存` / `保存結果未確定` statusへ統一する。通常の文書保存だけを`保存中 n件`として数え、archive / restore / delete lifecycle通信は文書保存件数へ混ぜない。
 
 Routine Boardはboard自体をviewport内のscroll ownerとし、recurrence / overflow / date surfacesのtemporary stateをunmount・outside・Escapeで破棄する。Effective Dayはoverride一覧を日付・指定・理由・操作のtableとして表示し、unknown guidanceを文脈付きで示す。破壊的操作は既存の`destructive-action` visual contractを共有する。D-094はAPI、Worker、Domain、schema、migration、dependencyを変更せず、日付・再発・Notesのcanonical保存意味も変更しない。
+
+D-095ではTodayの月表示・月曜始まりweekday header・月間grid・selected/today/adjacent-month state・month/year navigationを`CalendarPopover`として共有し、RoutineとEffective Dayの日付text field自体をclick / focus起点にした。field draftはcalendar selectionと同じlogical-date valueを使い、8桁・dashed形式をstrictに正規化する。Notes editorは固定幅railと`minmax(0, 1fr)` content columnを常設し、OFF時は番号glyphだけを隠すためtextarea位置・サイズ・背景は変わらない。D-095はD-094のrefinementであり、日付・再発・Notesのcanonical保存意味を変更しない。
