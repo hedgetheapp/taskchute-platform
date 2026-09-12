@@ -986,6 +986,17 @@ export function App() {
   }, [decisionModalOpen, view]);
 
   useEffect(() => {
+    const handleUserPointerDown = (event: globalThis.PointerEvent) => {
+      if (!(event.target instanceof Element)) return;
+      if (event.target.closest("button, a, input, select, textarea, [contenteditable], [tabindex]:not([tabindex='-1'])")) {
+        markUserFocusIntent();
+      }
+    };
+    document.addEventListener("pointerdown", handleUserPointerDown, true);
+    return () => document.removeEventListener("pointerdown", handleUserPointerDown, true);
+  }, []);
+
+  useEffect(() => {
     const guardBeforeUnload = (event: BeforeUnloadEvent) => {
       const hasUnsavedMutation = activeMutationsRef.current.length > 0
         || dayMutationInFlightRef.current
