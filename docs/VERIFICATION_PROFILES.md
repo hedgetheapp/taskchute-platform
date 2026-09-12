@@ -129,7 +129,7 @@ HEAVYは時間短縮を理由にFAST / STANDARDへ降格しない。
 以下を発見した場合は少なくともSTANDARDへ昇格する。
 
 - global keyboard / focus / pointer capture
--複数surfaceのfocus ownership
+- 複数surfaceのfocus ownership
 - async canonical reconcileとUI intentの競合
 - app navigation / routingを跨ぐinteraction
 - impact範囲が開始時調査より広い
