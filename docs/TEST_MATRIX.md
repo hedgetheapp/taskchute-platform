@@ -2561,3 +2561,19 @@ D-084 browser fixture creation was not completed: the unauthenticated/new in-app
 | D083-EMPTY-NONPROD | Exact deploy and credential-free HTTP safety | Worker `4a4df4fa-21fd-42f5-9b43-ec5872d7a236`; root `200`; protected Projects API `401`; canonical APP/AUTH bindings and nonprod vars | PASS |
 | D083-EMPTY-DB | APP/AUTH read-only integrity | quick_check `ok`; FK empty; pending `0 / 0`; active executions `0`; transient guards/assertions `0`; duplicate positions `0`; fixture order/revision coherent; successful probes `rows_written=0` | PASS |
 | D083-EMPTY-BOUNDARY | Worker/API/schema/migration/dependency and prohibited operations | Web-only corrective; migration `NOT_REQUIRED`; no production, restore, credential/reset, bootstrap, destructive cleanup, branch/PR/merge/tag/Release | NOT_REQUIRED / NOT_RUN |
+
+### D-096 — Continuous Shift placement input + suppression parity
+
+| ID | Scope | Evidence | Result |
+|---|---|---|---|
+| D096-SUPPRESSION | Reorder uses the suppression-visible Section universe in membership, validation, CAS, mutation, assertion, and reread; hidden physical slot preserved | focused Worker suppression-visible tests, including Move → Reorder target Section fixture | PASS |
+| D096-MOVE-MOVE | Repeated `Shift + ArrowDown` across an empty configured real Section is accepted from effective pending placement and remains serial | focused App deferred-response test; D083 empty-Section regression | PASS |
+| D096-REORDER-MOVE | Reorder followed immediately by cross-Section Move preserves logical queue order and waits on the Reorder prerequisite | focused App deferred-response test | PASS |
+| D096-MOVE-REORDER | Move followed immediately by Reorder uses effective moved Section order and dispatches Reorder only after Move convergence | focused App deferred-response test | PASS |
+| D096-BARRIER | Lifecycle / retained ambiguity / Routine and other non-commutative placement barriers remain blocking | existing D-078/D-079/D-083/D-084 regressions and source review | PASS |
+| D096-LOCAL | Full Worker/Web and static gates | Worker `32 files / 287 tests`; Web `5 files / 303 tests`; typecheck; normal/exact nonprod build; deploy guard; Wrangler dry-run; diff-check | PASS |
+| D096-NONPROD | Exact main push and canonical persistent nonprod deploy | Worker `3b36f2db-14ad-4f49-83ab-df6ba78095cd`; root `200`; protected Documents API `401`; exact nonprod config/bindings | PASS |
+| D096-BROWSER | Real keyboard input, non-blocking save status, same-tab reload and fresh authenticated tab persistence | existing authenticated in-app browser; approx. `332 × 914`, Sidebar open; two real Shift gestures; `保存中 1件`; same/fresh tab canonical projection | PASS (representative; exact deferred race timing and console remain `NOT_VERIFIED`) |
+| D096-DB | APP read-only Day placement/suppression and integrity evidence; AUTH integrity | APP/AUTH quick_check `ok`; FK empty; pending `0 / 0`; active executions `0`; duplicate positions/origin-Day `0`; transient guards/assertions `0`; successful probes `rows_written=0` | PASS |
+| D096-MIG | Schema/API/dependency impact | no migration, API contract, dependency, or Worker semantic expansion | NOT_REQUIRED |
+| D096-SAFETY | Production, restore/recovery, credentials, bootstrap mutation, destructive cleanup, branch/PR/merge/tag/Release | not performed | NOT_RUN / NO |
