@@ -2537,3 +2537,15 @@ D-084 browser fixture creation was not completed: the unauthenticated/new in-app
 | D095-DB | APP/AUTH read-only integrity | APP Documents `3`; invalid/duplicate Document checks `0`; both quick_check `ok`; FK empty; successful probes `rows_written=0` | PASS |
 | D095-WORKER-MIGRATION | Worker/API/schema/migration impact | Web-only implementation; APP 0030 and AUTH unchanged | NOT_REQUIRED |
 | D095-SAFETY | Production, restore, credential reset, bootstrap mutation, unrelated destructive cleanup, Release | not performed | NOT_RUN / NO |
+
+### D-095 corrective — Today-state parity and text-field-only calendar trigger
+
+| ID | Scope | Evidence | Result |
+|---|---|---|---|
+| D095-CORR-TODAY | Today / Routine / Effective Day selected-vs-canonical-today state | App/Routine focused tests; Today `2026-09-12` marker; Routine selected `2026-09-10` + today `2026-09-12`; Effective Day same separation | PASS |
+| D095-CORR-TRIGGER | no independent date trigger; text field click/focus and ARIA popup state | App/Routine tests; existing and fresh authenticated tabs reported independent trigger count `0`, input `aria-haspopup=dialog`, click/focus `aria-expanded=true` | PASS |
+| D095-CORR-INPUT | 8-digit input, calendar selection, Escape/outside close, month/year navigation | focused App/Routine tests; nonprod Effective Day `20260910` normalized to `2026-09-10` without override write | PASS |
+| D095-CORR-REGRESSION | Notes rail, Routine notice/dropdown, D-091/D-092 regressions | focused `276 / 276`; full Web `5 files / 296`; full Worker/D1 `32 files / 285`; typecheck/build/static gates | PASS |
+| D095-CORR-NONPROD | exact pushed corrective deploy and HTTP safety | Worker `a62d2f99-bec2-463c-b352-3d91d8594482`; root `200`; Documents API `401`; guard config canonical | PASS |
+| D095-CORR-DB | APP/AUTH read-only integrity | pending `0 / 0`; quick_check `ok`; FK empty; APP Documents `3`, invalid `0`; probes `rows_written=0` | PASS |
+| D095-CORR-SAFETY | Worker/API/schema/migration/dependency and prohibited operations | Web-only; no migration; no production/restore/credential/bootstrap/destructive/Release | NOT_REQUIRED / NO |
