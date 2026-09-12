@@ -2312,6 +2312,137 @@ describe("Dogfood Day shell", () => {
     await waitFor(() => expect(screen.queryByText("Section移動・照合中…")).toBeNull());
   });
 
+  it("moves into the immediately adjacent empty real Section without synthesizing Sectionなし", async () => {
+    const daySectionId = "019c0000-0000-7000-8000-000000000011";
+    const lateSectionId = "019c0000-0000-7000-8000-000000000012";
+    const source = { ...firstEntry, planned_start_minute: 300 };
+    const lateEntry = { ...secondEntry, section_id: lateSectionId, planned_start_minute: 960 };
+    const sourceDay = {
+      ...emptyDay,
+      placement_revision: 5,
+      sections: [
+        { ...emptyDay.sections[0], entries: [source] },
+        { ...emptyDay.sections[1], id: daySectionId, title: "Day", logical_start_minute: 720,
+          logical_end_minute: 960, entries: [] },
+        { ...emptyDay.sections[1], id: lateSectionId, title: "Evening", logical_start_minute: 960,
+          entries: [lateEntry] },
+      ],
+      next_entry: source,
+    };
+    mocks.loadDay.mockResolvedValue(sourceDay);
+    render(<App />);
+
+    const row = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
+    row.focus();
+    expect(screen.queryAllByText("Sectionなし").filter((element) => element.closest(".section-summary"))).toHaveLength(0);
+    fireEvent.keyDown(row, { key: "ArrowDown", shiftKey: true });
+
+    await waitFor(() => expect(mocks.moveEntry).toHaveBeenCalledTimes(1));
+    expect(mocks.moveEntry.mock.calls[0]?.[0]).toMatchObject({
+      entry_id: source.id,
+      taskchute_day_id: sourceDay.taskchute_day.id,
+      section_id: daySectionId,
+      expected_placement_revision: sourceDay.placement_revision,
+    });
+    expect(mocks.moveEntry.mock.calls[0]?.[0].placement).toBeUndefined();
+    expect(mocks.reorderEntries).not.toHaveBeenCalled();
+  });
+
+  it("traverses one empty real Section at a time after each canonical convergence", async () => {
+    const daySectionId = "019c0000-0000-7000-8000-000000000013";
+    const source = { ...firstEntry, planned_start_minute: 300 };
+    const middle = { ...emptyDay.sections[1], id: daySectionId, title: "Day", logical_start_minute: 720,
+      logical_end_minute: 960, entries: [] };
+    const evening = { ...emptyDay.sections[1], title: "Evening", logical_start_minute: 960, logical_end_minute: 1680,
+      entries: [] };
+    const sourceDay = { ...emptyDay, placement_revision: 6,
+      sections: [{ ...emptyDay.sections[0], entries: [source] }, middle, evening], next_entry: source };
+    const middleDay = { ...sourceDay, placement_revision: 7,
+      sections: [{ ...sourceDay.sections[0], entries: [] }, { ...middle, entries: [{ ...source, section_id: daySectionId, planned_start_minute: 720 }] }, evening] };
+    const eveningDay = { ...middleDay, placement_revision: 8,
+      sections: [{ ...middleDay.sections[0], entries: [] }, { ...middle, entries: [] },
+        { ...evening, entries: [{ ...source, section_id: evening.id, planned_start_minute: 960 }] }] };
+    mocks.loadDay.mockResolvedValueOnce(sourceDay).mockResolvedValueOnce(middleDay).mockResolvedValueOnce(eveningDay);
+    render(<App />);
+
+    const firstRow = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
+    firstRow.focus();
+    fireEvent.keyDown(firstRow, { key: "ArrowDown", shiftKey: true });
+    await waitFor(() => expect(mocks.moveEntry).toHaveBeenCalledTimes(1));
+    expect(mocks.moveEntry.mock.calls[0]?.[0].section_id).toBe(daySectionId);
+    const middleRow = await waitFor(() => {
+      const candidate = screen.getByText("Canonical task").closest<HTMLElement>("[data-entry-id]");
+      if (!candidate) throw new Error("Canonical task row not found after first move");
+      return candidate;
+    });
+    middleRow.focus();
+    fireEvent.keyDown(middleRow, { key: "ArrowDown", shiftKey: true });
+    await waitFor(() => expect(mocks.moveEntry).toHaveBeenCalledTimes(2));
+    expect(mocks.moveEntry.mock.calls[1]?.[0].section_id).toBe(evening.id);
+  });
+
+  it("moves upward into the immediately previous empty real Section", async () => {
+    const daySectionId = "019c0000-0000-7000-8000-000000000014";
+    const source = { ...secondEntry, section_id: eveningId, planned_start_minute: 960 };
+    const day = {
+      ...emptyDay,
+      placement_revision: 9,
+      sections: [
+        { ...emptyDay.sections[0], entries: [firstEntry] },
+        { ...emptyDay.sections[1], id: daySectionId, title: "Day", logical_start_minute: 720,
+          logical_end_minute: 960, entries: [] },
+        { ...emptyDay.sections[1], entries: [source] },
+      ],
+    };
+    mocks.loadDay.mockResolvedValue(day);
+    render(<App />);
+
+    const row = (await screen.findByText("Second task")).closest<HTMLElement>("[data-entry-id]")!;
+    row.focus();
+    fireEvent.keyDown(row, { key: "ArrowUp", shiftKey: true });
+    await waitFor(() => expect(mocks.moveEntry).toHaveBeenCalledTimes(1));
+    expect(mocks.moveEntry.mock.calls[0]?.[0]).toMatchObject({ entry_id: source.id, section_id: daySectionId });
+    expect(mocks.moveEntry.mock.calls[0]?.[0].placement).toBeUndefined();
+    expect(mocks.reorderEntries).not.toHaveBeenCalled();
+  });
+
+  it("opens the existing Routine scope chooser for an adjacent empty Section", async () => {
+    const daySectionId = "019c0000-0000-7000-8000-000000000015";
+    const routineEntry: EntryProjection = { ...firstEntry, planned_start_minute: 300, routine: {
+      routine_definition_id: "019c0000-0000-7000-8000-000000000016",
+      routine_occurrence_id: "019c0000-0000-7000-8000-000000000017",
+      end_logical_date: null, can_end: true, default_section_id: morningId,
+      default_planned_start_minute: 300, section_plan_override_present: false,
+      default_estimate_seconds: null, estimate_override_present: false, defaults_revision: 0,
+    } };
+    const routineDay = {
+      ...emptyDay,
+      placement_revision: 10,
+      sections: [
+        { ...emptyDay.sections[0], entries: [routineEntry] },
+        { ...emptyDay.sections[1], id: daySectionId, title: "Day", logical_start_minute: 720,
+          logical_end_minute: 960, entries: [] },
+        { ...emptyDay.sections[1], entries: [] },
+      ],
+      next_entry: routineEntry,
+    };
+    mocks.loadDay.mockResolvedValue(routineDay);
+    render(<App />);
+
+    const row = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
+    row.focus();
+    fireEvent.keyDown(row, { key: "ArrowDown", shiftKey: true });
+    const choice = await screen.findByRole("group", { name: "Canonical taskのSection・開始予定反映先" });
+    expect(choice.textContent).toContain("Day / 12:00");
+    expect(mocks.setRoutineSectionPlan).not.toHaveBeenCalled();
+    fireEvent.click(within(choice).getByRole("button", { name: "今回だけ" }));
+    await waitFor(() => expect(mocks.setRoutineSectionPlan).toHaveBeenCalledTimes(1));
+    expect(mocks.setRoutineSectionPlan.mock.calls[0]?.[0]).toMatchObject({
+      action: "occurrence", section_id: daySectionId, planned_start_minute: 720,
+      expected_placement_revision: routineDay.placement_revision,
+    });
+  });
+
   it("cancels an unsent reorder when the user returns to the canonical order", async () => {
     const metadataRequest = deferred<unknown>();
     mocks.loadDay.mockResolvedValue(twoPlannedDay);

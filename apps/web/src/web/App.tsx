@@ -5082,8 +5082,11 @@ export function App() {
       const source = allEntries.find((entry) => entry.id === entryId);
       if (!source || source.lifecycle_state !== "planned" || !currentDay.is_current
         || (source.routine !== null && !isRoutinePlacementEligible(currentDay, source))) return;
-      const movementGroups = groups.filter((group) => group.entries.some((entry) => entry.id === entryId)
-        || group.entries.some((entry) => entry.lifecycle_state === "planned"));
+      // Every configured real Section is a keyboard destination, even when it
+      // currently has no planned Entry. Sectionなし remains conditional on an
+      // actual effective entry so a draft-only group is never synthesized as a
+      // traversal stop.
+      const movementGroups = groups.filter((group) => group.id !== null || effectiveDay.unsectioned_entries.length > 0);
       const sourceGroupIndex = movementGroups.findIndex((group) => group.entries.some((entry) => entry.id === entryId));
       const sourceSectionId = source.section_id;
       const entries = sourceSectionId === null
