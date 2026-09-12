@@ -1739,6 +1739,14 @@ D-083は、current established Dayのordinary planned Entryに限り、既存`Mo
 
 実装、Worker / Web regression、real-local / persistent nonprod browser、read-only DB evidenceはcanonical evidence docsへ記録する。production、restore、destructive cleanup、branch / PR / merge / tag / releaseは対象外で、Releasedは`NO`とする。
 
+## D-098 — Today Add focus continuity and hierarchical Escape
+
+Status: **Approved**
+
+D-098のcanonical decision本文は `docs/decisions/D-098_TODAY_ADD_FOCUS_CONTINUITY_AND_HIERARCHICAL_ESCAPE.md` に置く。Todayのcurrent established DayでTask追加後にcanonical reconcileがユーザーのfocus intentを奪わないよう、Tab / Shift+Tab、Arrow / J / K、pointer、Escape、inline editor移動を共有のuser-focus authorityで扱い、pending Add row内のfocusはrow / cell / controlの意味的locatorでcanonical rowへ復元する。row外へ移動したfocusはcreated rowへ戻さず、移動がない場合だけ既存のdefault row focusを許可する。ambiguous-success reconciliationにも適用する。
+
+Task row内のEscapeは、inline editor / inputから通常cell surfaceへ、通常cell / controlからowning Task rowへ一段ずつ移動する。同一Escapeイベントの二段跳びを防ぎ、menu / popover / dialog / native control / IMEの既存keyboard ownerとfocus restoreを優先する。D-074 / D-097のkeyboard、focus frame、Add persistence、placement、Worker / API、schema / migration、dependency、lifecycle semanticsは変更しない。実装とevidenceはCURRENT / TEST_MATRIX / RISKSへ記録し、production、restore、destructive cleanup、branch / PR / merge / tag / releaseは対象外で、Releasedは`NO`とする。
+
 ## D-097 — Today initial Arrow focus and distinct Task focus indicator
 
 Status: **Approved**

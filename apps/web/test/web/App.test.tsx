@@ -5479,6 +5479,169 @@ describe("Dogfood Day shell", () => {
     expect((document.activeElement as HTMLElement).closest(".bulk-slot, .execution-cell")).toBeNull();
   });
 
+  it("keeps the pending Add cell focus when the canonical row replaces it", async () => {
+    const addRequest = deferred<unknown>();
+    let addOperation: any = null;
+    let added = false;
+    mocks.loadDay.mockImplementation(async () => added && addOperation ? {
+      ...emptyDay,
+      sections: [{ ...emptyDay.sections[0], entries: [{ ...firstEntry, id: addOperation.entry_id,
+        task: { ...firstEntry.task, id: addOperation.task_id, title: addOperation.title } }] }, emptyDay.sections[1]],
+      next_entry: { ...firstEntry, id: addOperation.entry_id, task: { ...firstEntry.task, id: addOperation.task_id, title: addOperation.title } },
+    } : emptyDay);
+    mocks.addTask.mockImplementation((operation: unknown) => {
+      addOperation = operation;
+      added = true;
+      return addRequest.promise;
+    });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "MorningにTaskを追加" }));
+    const draft = screen.getByRole("textbox", { name: "MorningのTask名" });
+    fireEvent.change(draft, { target: { value: "Focus continuity" } });
+    fireEvent.keyDown(draft, { key: "Enter", code: "Enter" });
+    await waitFor(() => expect(mocks.addTask).toHaveBeenCalledTimes(1));
+
+    const pendingRow = document.querySelector<HTMLElement>(`[data-entry-id="${addOperation.entry_id}"]`)!;
+    pendingRow.focus();
+    fireEvent.keyDown(pendingRow, { key: "Tab" });
+    const pendingProject = screen.getByRole("combobox", { name: "Focus continuityのProject" });
+    expect(document.activeElement).toBe(pendingProject);
+
+    addRequest.resolve({});
+    await waitFor(() => expect(document.querySelector<HTMLElement>(`[data-entry-id="${addOperation.entry_id}"].task-row-pending`)).toBeNull());
+    expect(document.activeElement).toBe(screen.getByRole("combobox", { name: "Focus continuityのProject" }));
+    expect(document.activeElement).not.toBe(document.querySelector<HTMLElement>(`[data-entry-id="${addOperation.entry_id}"]`));
+  });
+
+  it("does not steal outside-row focus when Add reconciles", async () => {
+    const addRequest = deferred<unknown>();
+    let addOperation: any = null;
+    let added = false;
+    mocks.loadDay.mockImplementation(async () => added && addOperation ? {
+      ...twoPlannedDay,
+      sections: [{ ...twoPlannedDay.sections[0], entries: [...twoPlannedDay.sections[0].entries, { ...thirdEntry,
+        id: addOperation.entry_id, task: { ...thirdEntry.task, id: addOperation.task_id, title: addOperation.title } }] }, emptyDay.sections[1]],
+    } : twoPlannedDay);
+    mocks.addTask.mockImplementation((operation: unknown) => {
+      addOperation = operation;
+      added = true;
+      return addRequest.promise;
+    });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "MorningにTaskを追加" }));
+    const draft = screen.getByRole("textbox", { name: "MorningのTask名" });
+    fireEvent.change(draft, { target: { value: "Outside focus" } });
+    fireEvent.keyDown(draft, { key: "Enter", code: "Enter" });
+    await waitFor(() => expect(mocks.addTask).toHaveBeenCalledTimes(1));
+    const secondRow = screen.getByText("Second task").closest<HTMLElement>("[data-entry-id]")!;
+    secondRow.focus();
+    addRequest.resolve({});
+    await waitFor(() => expect(document.querySelector<HTMLElement>(`[data-entry-id="${addOperation.entry_id}"].task-row-pending`)).toBeNull());
+    expect(document.activeElement).toBe(secondRow);
+  });
+
+  it("restores the default Add row focus when the user did not move focus", async () => {
+    const addRequest = deferred<unknown>();
+    let addOperation: any = null;
+    let added = false;
+    mocks.loadDay.mockImplementation(async () => added && addOperation ? {
+      ...emptyDay,
+      sections: [{ ...emptyDay.sections[0], entries: [{ ...firstEntry, id: addOperation.entry_id,
+        task: { ...firstEntry.task, id: addOperation.task_id, title: addOperation.title } }] }, emptyDay.sections[1]],
+    } : emptyDay);
+    mocks.addTask.mockImplementation((operation: unknown) => {
+      addOperation = operation;
+      added = true;
+      return addRequest.promise;
+    });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "MorningにTaskを追加" }));
+    const draft = screen.getByRole("textbox", { name: "MorningのTask名" });
+    fireEvent.change(draft, { target: { value: "Default focus" } });
+    fireEvent.keyDown(draft, { key: "Enter", code: "Enter" });
+    await waitFor(() => expect(mocks.addTask).toHaveBeenCalledTimes(1));
+    addRequest.resolve({});
+    await waitFor(() => expect(document.activeElement?.getAttribute("data-entry-id")).toBe(addOperation.entry_id));
+  });
+
+  it("preserves pending-cell focus during ambiguous Add reconciliation", async () => {
+    const addRequest = deferred<unknown>();
+    let addOperation: any = null;
+    let added = false;
+    mocks.loadDay.mockImplementation(async () => added && addOperation ? {
+      ...emptyDay,
+      sections: [{ ...emptyDay.sections[0], entries: [{ ...firstEntry, id: addOperation.entry_id,
+        task: { ...firstEntry.task, id: addOperation.task_id, title: addOperation.title } }] }, emptyDay.sections[1]],
+    } : emptyDay);
+    mocks.addTask.mockImplementation((operation: unknown) => {
+      addOperation = operation;
+      return addRequest.promise;
+    });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "MorningにTaskを追加" }));
+    const draft = screen.getByRole("textbox", { name: "MorningのTask名" });
+    fireEvent.change(draft, { target: { value: "Ambiguous focus" } });
+    fireEvent.keyDown(draft, { key: "Enter", code: "Enter" });
+    await waitFor(() => expect(mocks.addTask).toHaveBeenCalledTimes(1));
+    const pendingRow = document.querySelector<HTMLElement>(`[data-entry-id="${addOperation.entry_id}"]`)!;
+    pendingRow.focus();
+    fireEvent.keyDown(pendingRow, { key: "Tab" });
+    const pendingProject = screen.getByRole("combobox", { name: "Ambiguous focusのProject" });
+    expect(document.activeElement).toBe(pendingProject);
+    added = true;
+    addRequest.reject(new ApiClientError("response lost", 503, true, "infrastructure_ambiguous"));
+    await waitFor(() => expect(document.querySelector<HTMLElement>(`[data-entry-id="${addOperation.entry_id}"].task-row-pending`)).toBeNull());
+    expect(document.activeElement).toBe(screen.getByRole("combobox", { name: "Ambiguous focusのProject" }));
+  });
+
+  it("moves Task title Escape from editor to cell, then from cell to row", async () => {
+    mocks.loadDay.mockResolvedValue(populatedDay);
+    render(<App />);
+    const row = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
+    fireEvent.click(screen.getByRole("button", { name: "Canonical taskを編集" }));
+    const title = screen.getByRole("textbox", { name: "Canonical taskのTask名" });
+    fireEvent.change(title, { target: { value: "Canceled title" } });
+    fireEvent.keyDown(title, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("textbox", { name: "Canonical taskのTask名" })).toBeNull());
+    const titleCell = screen.getByRole("button", { name: "Canonical taskを編集" });
+    await waitFor(() => expect(document.activeElement).toBe(titleCell));
+    expect(document.activeElement).not.toBe(row);
+    expect(mocks.updateTaskMetadata).not.toHaveBeenCalled();
+    fireEvent.keyDown(titleCell, { key: "Escape" });
+    expect(document.activeElement).toBe(row);
+  });
+
+  it("moves estimate and planned-start Escape back to their cell triggers before the row", async () => {
+    mocks.loadDay.mockResolvedValue(populatedDay);
+    render(<App />);
+    const row = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
+    fireEvent.click(screen.getByRole("button", { name: "Canonical taskの見積" }));
+    const estimate = screen.getByRole("textbox", { name: "Canonical taskの見積（分）" });
+    fireEvent.keyDown(estimate, { key: "Escape" });
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Canonical taskの見積" })));
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    expect(document.activeElement).toBe(row);
+
+    fireEvent.click(screen.getByRole("button", { name: "Canonical taskの開始予定" }));
+    const planned = screen.getByRole("textbox", { name: "Canonical taskの開始予定" });
+    fireEvent.keyDown(planned, { key: "Escape" });
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Canonical taskの開始予定" })));
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    expect(document.activeElement).toBe(row);
+  });
+
+  it("moves a normal cell Escape to its Task row and keeps row Escape a no-op", async () => {
+    mocks.loadDay.mockResolvedValue(populatedDay);
+    render(<App />);
+    const row = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
+    const project = screen.getByRole("combobox", { name: "Canonical taskのProject" });
+    project.focus();
+    fireEvent.keyDown(project, { key: "Escape" });
+    expect(document.activeElement).toBe(row);
+    fireEvent.keyDown(row, { key: "Escape" });
+    expect(document.activeElement).toBe(row);
+  });
+
   it("keeps a completed Entry's Mode snapshot title after the live Mode is renamed", async () => {
     const modeId = "019c0000-0000-7000-8000-000000000011";
     const completedWithSnapshot: CurrentTaskChuteDayProjection = {

@@ -384,6 +384,8 @@ Search / Filterはvisible row projectionを変更できるが、canonical Sectio
 - `Shift+↑/↓`: valid cohort内のmanual Task reorder
 - `S`: focused TaskのStart / Complete
 - `Tab / Shift+Tab`: visual column orderに沿うedit traversal
+- TodayのAdd reconcileは、ユーザーのfocus intentを既定row focusより優先し、pending row内のfocusをcell / controlの意味的locatorでcanonical rowへ復元する。row外へ移動したfocusは奪わない。
+- row内のEscapeはinline editorから同じcellの通常surfaceへ、通常cell / controlからowning rowへ一段ずつ移動し、より具体的なmenu / popover / dialog / IMEのkeyboard ownerを優先する。
 - text editing / IME composition中はglobal shortcutを発火しない
 - Section summaryをfocus / collapseできるtargetとする
 

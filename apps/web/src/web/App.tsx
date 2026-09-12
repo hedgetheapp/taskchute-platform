@@ -2,6 +2,7 @@ import {
   DragEvent as ReactDragEvent,
   Fragment,
   FormEvent,
+  FocusEvent as ReactFocusEvent,
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
   type ReactNode,
@@ -87,6 +88,7 @@ type AuthState = "loading" | "signed-out" | "signed-in";
 type AppView = "today" | "routines" | "settings" | "notes";
 type SettingsDestination = "section" | "project" | "mode" | "calendar";
 type FocusTarget = { kind: "section" | "entry"; id: string };
+type DayRowFocusLocator = { kind: "row" } | { kind: "cell"; cellKey: string; controlIndex?: number };
 type DraftPlacement =
   | { kind: "section-end"; restoreFocus: FocusTarget }
   | { kind: "after-entry"; anchorEntryId: string; restoreFocus: FocusTarget }
@@ -858,6 +860,8 @@ export function App() {
   const draftTaskRef = useRef<DraftTask | null>(null);
   const focusIntentGenerationRef = useRef(0);
   const addFocusGenerationRef = useRef(new Map<string, number>());
+  const pendingAddFocusLocatorRef = useRef(new Map<string, DayRowFocusLocator>());
+  const suppressFocusIntentRef = useRef(false);
   const selectedLogicalDateRef = useRef<string | null>(null);
   const mouseDragRef = useRef<MouseDragState | null>(null);
   const dragAutoScrollFrameRef = useRef<number | null>(null);
@@ -975,7 +979,7 @@ export function App() {
       );
       if (!firstVisibleEntry) return;
       event.preventDefault();
-      firstVisibleEntry.focus();
+      focusFromUserIntent(firstVisibleEntry);
     };
     document.addEventListener("keydown", handleTodayArrowBootstrap, true);
     return () => document.removeEventListener("keydown", handleTodayArrowBootstrap, true);
@@ -1537,8 +1541,19 @@ export function App() {
   }
 
   function handleInlineEditorEscape(key: string, close: () => void) {
+    const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const rowId = active?.closest<HTMLElement>("[data-entry-id]")?.dataset.entryId ?? null;
+    const cell = active?.closest<HTMLElement>("[data-day-column-cell], .task-main");
+    const cellKey = cell?.dataset.dayColumnCell ?? (cell?.classList.contains("task-main") ? "task" : null);
     markInlineEditorAction(key, "cancel");
     close();
+    if (!rowId || !cellKey) return;
+    requestAnimationFrame(() => {
+      const row = Array.from(document.querySelectorAll<HTMLElement>("[data-entry-id]"))
+        .find((candidate) => candidate.dataset.entryId === rowId);
+      if (!row) return;
+      focusFromUserIntent(focusTargetFromLocator(row, { kind: "cell", cellKey }));
+    });
   }
 
   const transitionToSignedOut = useCallback(() => {
@@ -1918,7 +1933,12 @@ export function App() {
     if (!pendingFocusKey || !day) return;
     const target = document.querySelector<HTMLElement>(`[data-focus-key="${pendingFocusKey}"]`);
     if (target) {
-      target.focus();
+      const locator = target.dataset.entryId ? pendingAddFocusLocatorRef.current.get(target.dataset.entryId) : undefined;
+      const focusTarget = locator ? focusTargetFromLocator(target, locator) : target;
+      suppressFocusIntentRef.current = true;
+      focusTarget.focus();
+      suppressFocusIntentRef.current = false;
+      if (target.dataset.entryId) pendingAddFocusLocatorRef.current.delete(target.dataset.entryId);
       setPendingFocusKey(null);
     }
   }, [day, pendingFocusKey, showCompleted]);
@@ -2103,14 +2123,11 @@ export function App() {
     setError(null);
     try {
       await api.addTask(operation);
+      const focusLocator = capturePendingAddFocusLocator(operation.entry_id);
       await reconcile();
       setTaskOperation((current) => current?.operation_id === operation.operation_id ? null : current);
       setPendingAddTasks((current) => current.filter((item) => item.operation.operation_id !== operation.operation_id));
-      const committedGeneration = addFocusGenerationRef.current.get(operation.operation_id);
-      if (draftTaskRef.current === null && committedGeneration !== undefined
-        && focusIntentGenerationRef.current === committedGeneration) {
-        setPendingFocusKey(focusKey({ kind: "entry", id: operation.entry_id }));
-      }
+      restoreAddFocusAfterReconcile(operation, focusLocator);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Task追加に失敗しました");
       const ambiguous = isAmbiguousOutcome(caught);
@@ -2131,16 +2148,13 @@ export function App() {
       if (!ambiguous) setTaskOperation((current) => current?.operation_id === operation.operation_id ? null : current);
       if (!ambiguous) setPendingAddTasks((current) => current.filter((item) => item.operation.operation_id !== operation.operation_id));
       try {
+        const focusLocator = ambiguous ? capturePendingAddFocusLocator(operation.entry_id) : null;
         const projection = await reconcile();
         if (ambiguous && projection && projectionContainsOperation(projection, operation)) {
           setTaskOperation((current) => current?.operation_id === operation.operation_id ? null : current);
           setPendingAddTasks((current) => current.filter((item) => item.operation.operation_id !== operation.operation_id));
           setError(null);
-          const committedGeneration = addFocusGenerationRef.current.get(operation.operation_id);
-          if (draftTaskRef.current === null && committedGeneration !== undefined
-            && focusIntentGenerationRef.current === committedGeneration) {
-            setPendingFocusKey(focusKey({ kind: "entry", id: operation.entry_id }));
-          }
+          restoreAddFocusAfterReconcile(operation, focusLocator);
           resumeDayMutationQueue();
         }
       } catch {
@@ -4856,9 +4870,60 @@ export function App() {
     ...effectiveDay.sections,
   ];
 
-  function focusSurface(element: HTMLElement) {
+  function markUserFocusIntent() {
     focusIntentGenerationRef.current += 1;
+    setPendingFocusKey(null);
+    pendingAddFocusLocatorRef.current.clear();
+  }
+
+  function focusFromUserIntent(element: HTMLElement | null) {
+    if (!element) return;
+    markUserFocusIntent();
     element.focus();
+  }
+
+  function handleDayFocusCapture(event: ReactFocusEvent<HTMLElement>) {
+    if (!suppressFocusIntentRef.current && event.target instanceof HTMLElement) markUserFocusIntent();
+  }
+
+  function focusTargetFromLocator(row: HTMLElement, locator: DayRowFocusLocator): HTMLElement {
+    if (locator.kind === "row") return row;
+    const cell = locator.cellKey === "task"
+      ? row.querySelector<HTMLElement>(".task-main")
+      : row.querySelector<HTMLElement>(`[data-day-column-cell="${locator.cellKey}"]`);
+    if (!cell) return row;
+    const cellStops = rowTabStops(row).filter((stop) => stop.closest<HTMLElement>("[data-day-column-cell], .task-main") === cell);
+    return cellStops[locator.controlIndex ?? 0] ?? cellStops[0] ?? row;
+  }
+
+  function capturePendingAddFocusLocator(entryId: string): DayRowFocusLocator | null {
+    const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (!active) return null;
+    const row = Array.from(document.querySelectorAll<HTMLElement>("[data-entry-id]"))
+      .find((candidate) => candidate.dataset.entryId === entryId);
+    if (!row || !row.contains(active)) return null;
+    if (active === row) return { kind: "row" };
+    const cell = active.closest<HTMLElement>("[data-day-column-cell], .task-main");
+    if (!cell || !row.contains(cell)) return null;
+    const cellKey = cell.dataset.dayColumnCell ?? "task";
+    const cellStops = rowTabStops(row).filter((stop) => stop.closest<HTMLElement>("[data-day-column-cell], .task-main") === cell);
+    const controlIndex = cellStops.findIndex((stop) => stop === active || stop.contains(active));
+    return { kind: "cell", cellKey, ...(controlIndex >= 0 ? { controlIndex } : {}) };
+  }
+
+  function restoreAddFocusAfterReconcile(operation: AddTaskToDayRequest, locator: DayRowFocusLocator | null) {
+    const committedGeneration = addFocusGenerationRef.current.get(operation.operation_id);
+    if (draftTaskRef.current !== null || committedGeneration === undefined) return;
+    if (focusIntentGenerationRef.current === committedGeneration) {
+      setPendingFocusKey(focusKey({ kind: "entry", id: operation.entry_id }));
+    } else if (locator) {
+      pendingAddFocusLocatorRef.current.set(operation.entry_id, locator);
+      setPendingFocusKey(focusKey({ kind: "entry", id: operation.entry_id }));
+    }
+  }
+
+  function focusSurface(element: HTMLElement) {
+    focusFromUserIntent(element);
   }
 
   function getOverflowMenuPosition(trigger: HTMLElement, menu: HTMLElement | null = null): OverflowMenuPosition {
@@ -5010,7 +5075,7 @@ export function App() {
       });
       const destination = backwards ? candidates.at(-1) : candidates[0];
       if (destination) {
-        destination.focus();
+        focusFromUserIntent(destination);
         return;
       }
       const rows = Array.from(currentRow.closest<HTMLElement>(".day-surface")?.querySelectorAll<HTMLElement>("[data-entry-id]") ?? []);
@@ -5018,13 +5083,21 @@ export function App() {
       const adjacentRow = rows[rowIndex + (backwards ? -1 : 1)];
       if (!adjacentRow) return;
       const adjacentStops = rowTabStops(adjacentRow);
-      (backwards ? adjacentStops.at(-1) : adjacentStops[0])?.focus();
+      focusFromUserIntent(backwards ? adjacentStops.at(-1) ?? null : adjacentStops[0] ?? null);
     });
   }
 
   function handleTaskRowKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
-    if (event.key !== "Tab" || event.nativeEvent.isComposing || decisionModalOpen) return;
+    if (event.defaultPrevented || event.nativeEvent.isComposing || decisionModalOpen) return;
     const row = event.currentTarget;
+    if (event.key === "Escape") {
+      if (event.target !== row) {
+        event.preventDefault();
+        focusFromUserIntent(row);
+      }
+      return;
+    }
+    if (event.key !== "Tab") return;
     const stops = rowTabStops(row);
     const target = event.target instanceof HTMLElement ? event.target : document.activeElement;
     const currentIndex = stops.findIndex((stop) => stop === target || stop.contains(target));
@@ -5032,14 +5105,14 @@ export function App() {
       const firstOrLast = event.shiftKey ? stops.at(-1) : stops[0];
       if (firstOrLast) {
         event.preventDefault();
-        firstOrLast.focus();
+        focusFromUserIntent(firstOrLast);
       }
       return;
     }
     const nextIndex = event.shiftKey ? currentIndex - 1 : currentIndex + 1;
     if (currentIndex >= 0 && nextIndex >= 0 && nextIndex < stops.length) {
       event.preventDefault();
-      stops[nextIndex]?.focus();
+      focusFromUserIntent(stops[nextIndex] ?? null);
       return;
     }
     const rows = Array.from(row.closest<HTMLElement>(".day-surface")?.querySelectorAll<HTMLElement>("[data-entry-id]") ?? []);
@@ -5050,7 +5123,7 @@ export function App() {
       const next = event.shiftKey ? adjacentStops.at(-1) : adjacentStops[0];
       if (next) {
         event.preventDefault();
-        next.focus();
+        focusFromUserIntent(next);
       }
       return;
     }
@@ -5220,7 +5293,7 @@ export function App() {
       const nextIndex = navigationIndex < 0
         ? ((event.key === "ArrowUp" || event.key === "ArrowDown") ? 0 : (delta > 0 ? 0 : navigationTargets.length - 1))
         : Math.max(0, Math.min(navigationTargets.length - 1, navigationIndex + delta));
-      navigationTargets[nextIndex]?.focus();
+      focusFromUserIntent(navigationTargets[nextIndex] ?? null);
     }
   }
 
@@ -5438,6 +5511,7 @@ export function App() {
               commitExecutionTimes(entry);
             } else if (event.key === "Escape") {
               event.preventDefault();
+              event.stopPropagation();
               handleInlineEditorEscape(inlineKey, () => { setExecutionTimesDraft(null); setExecutionEditorError(null); });
             }
           }} />
@@ -5552,6 +5626,7 @@ export function App() {
                 void commitEstimate(entry.id);
               } else if (event.key === "Escape") {
                 event.preventDefault();
+                event.stopPropagation();
                 handleInlineEditorEscape(`estimate:${entry.id}`, () => { setEditingEstimate(null); setError(null); });
               } }} />
             {entry.routine?.estimate_override_present && (
@@ -5592,6 +5667,7 @@ export function App() {
                 void commitPlannedStart(entry);
               } else if (event.key === "Escape") {
                 event.preventDefault();
+                event.stopPropagation();
                 handleInlineEditorEscape(`planned-start:${entry.id}`, () => { setEditingPlannedStart(null); setError(null); });
               } }} />
             {entry.routine?.section_plan_override_present && (
@@ -6200,7 +6276,7 @@ export function App() {
         </section>
       )}
 
-      <section className={`day-surface${day.active_execution ? " has-floating-runner" : ""}`} aria-label="DayBoard" data-day-scroll-owner="true" style={dayTableStyle(dayColumnPreference, dayTableResizeLayout ?? undefined)}>
+      <section className={`day-surface${day.active_execution ? " has-floating-runner" : ""}`} aria-label="DayBoard" data-day-scroll-owner="true" onFocusCapture={handleDayFocusCapture} style={dayTableStyle(dayColumnPreference, dayTableResizeLayout ?? undefined)}>
         {entryDrag && draggedEntry(entryDrag) && entryDrag.previewLeft !== undefined && entryDrag.previewWidth !== undefined && (
           <div className="entry-drag-preview" aria-hidden="true" style={{ left: entryDrag.previewLeft, top: entryDrag.previewTop ?? 0, width: entryDrag.previewWidth }}>
             {draggedEntry(entryDrag)?.task.title}
@@ -6491,6 +6567,7 @@ export function App() {
                                     commitTaskMetadata(entry);
                                   } else if (event.key === "Escape") {
                                     event.preventDefault();
+                                    event.stopPropagation();
                                     handleInlineEditorEscape(`task-metadata:${entry.id}`, () => { setTaskMetadataDraft(null); setError(null); });
                                   }
                                 }} />
