@@ -2473,3 +2473,22 @@ D-084 browser fixture creation was not completed: the unauthenticated/new in-app
 | D093-DB | APP/AUTH quick_check, FK, duplicate/invalid/guard checks and read-only probes | final APP/AUTH remote probes; `rows_written=0` | PASS |
 | D093-MIG-HELPER | Normal Windows `npm run test:migrations` helper | exceeded 90 seconds and was safely interrupted | NOT_RUN |
 | D093-SAFETY | Production, restore/recovery, credential/re-login, bootstrap mutation, Release | not performed | NOT_RUN / NO |
+
+### D-091–D-093 corrective — lifecycle exact retry and title race evidence
+
+| ID | Scope | Evidence | Result |
+|---|---|---|---|
+| D091-RACE-1 | Same-owner concurrent Create/Create title allocation | deterministic gate-based Documents integration test; base + smallest suffix; exact replay | PASS |
+| D091-RACE-2 | Concurrent Create/Rename title allocation | deterministic gate-based Documents integration test; unique final titles; exact replay | PASS |
+| D091-RACE-3 | Concurrent Rename/Rename title allocation | deterministic gate-based Documents integration test; unique final titles; exact replay | PASS |
+| D091-RACE-4 | Archived title participates in allocation reservation | deterministic gate-based Documents integration test; smallest valid suffixes; exact replay | PASS |
+| D091-RACE-5 | Same title across different owners | Documents integration owner-isolation test | PASS |
+| D092-LIFE-AMB-1 | Ambiguous archive retains exact request and exact retry converges list/editor | NotesBoard deterministic test | PASS |
+| D092-LIFE-AMB-2 | Ambiguous restore retains exact request and exact retry converges archive list | NotesBoard deterministic test | PASS |
+| D092-LIFE-AMB-3 | Ambiguous hard delete does not infer 404 success; exact retry removes stale selection | NotesBoard deterministic test | PASS |
+| D092-LIFE-AMB-4 | Unresolved lifecycle mutation blocks replacement lifecycle dispatch | NotesBoard deterministic test | PASS |
+| D093-CORR-LOCAL | Corrective regression gates | NotesBoard `16/16`; Documents integration `16/16`; App `237/237`; full Web `5 files/289`; full Worker/D1 `32 files/285`; typecheck/build/exact nonprod build/deploy guard/Wrangler dry-run/diff-check | PASS |
+| D093-CORR-NONPROD | Exact pushed corrective deploy and unauthenticated safety | Worker `50adf62e-1a57-479f-97a2-9020c6ffd494`; root `200`; Documents API `401`; APP/AUTH pending `0/0` | PASS |
+| D093-CORR-DB | Read-only APP/AUTH integrity | quick_check `ok`; FK empty; duplicate/invalid/operation/guard/assertion probes `0`; all successful probes `rows_written=0` | PASS |
+| D093-CORR-BROWSER | Ambiguity fault injection through ordinary authenticated browser | not deterministic through normal UI; existing D-091–D-093 ordinary browser evidence remains PASS | NOT_RUN / NOT_REQUIRED |
+| D093-CORR-MIG | New migration for corrective | no migration; APP 0030 remains applied; AUTH unchanged | NOT_REQUIRED |
