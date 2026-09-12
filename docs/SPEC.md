@@ -575,4 +575,10 @@ D-089でD-088のcalendar authorityをRoutineへ接続した。typed scheduleは`
 
 Authenticated Webのtop-level `ノート`はstandalone Documentの一覧・取得・新規draft・明示Save・既存編集を提供する。Createは一つのoperation identityでexact replayし、Updateはowner-scoped `expected_revision` CASでrevisionを一度だけ進める。同一operation IDのpayload変更、stale revision、owner外アクセスは拒否する。Ctrl+S / Cmd+SはSaveと同じ経路を使い、dirty draftはin-memoryに保持され、競合・navigation・logoutで黙って破棄しない。Notesは既存のbounded JSON request-size protectionを維持する。
 
-`documents` queryはstandaloneだけを`updated_at DESC`とstable tie-breakで返し、arbitrary hidden capを設けない。D-090はdelete/archive、autosave、preview、search/backlinks、Task/Project/Routine relation、localStorage/IndexedDB、offline queue、public shareを定義しない。
+`documents` queryはstandaloneだけを`updated_at DESC`とstable tie-breakで返し、arbitrary hidden capを設けない。D-090の初期sliceではdelete/archiveとautosaveを定義しなかったが、これらのstandalone Note semanticsはD-091 / D-092で狭くsupersedeされる。preview、search/backlinks、Task/Project/Routine relation、localStorage/IndexedDB、offline queue、public shareは引き続きscope外である。
+
+## D-091–D-093 Standalone Note implementation boundary
+
+D-091により、`＋ 新規ノート`はServerへ初期Createを送り、要求title `notitle`をowner内でtrimmed exact comparisonし、必要なら連番suffixを付けて一意化する。既存Noteのtitle / Markdown bodyはmemory draftをcanonical baselineと比較し、約1秒のautosaveまたは明示SaveでUpdateする。Updateは`expected_revision` CAS、exact operation replay、same-operation misuse rejectionを使い、in-flight requestを変更しない。ambiguous outcomeはexact operationを保持し、exact-ID reconciliationまたはRetryでのみ解消する。
+
+D-092により、通常一覧と分離した`アーカイブ`一覧、archive / restore、明示確認付きhard deleteをstandalone Noteへ追加する。archived_atが設定されたNoteは通常一覧から除外されるがtitleを予約し、deleteでDocument rowが消えた後だけ再利用可能になる。APP `0030_standalone_note_lifecycle.sql`はこの状態とoperation allow-listを永続化する。D-093は既存data / operation historyをrewriteせず、AUTH migrationを追加しない。

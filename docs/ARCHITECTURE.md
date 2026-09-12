@@ -522,3 +522,11 @@ D-090は`documents`をAPPのowner-scoped shared foundationとして追加し、`
 Create / Updateは既存のoperation fingerprint / replay / transaction assertion conventionを使い、Createのstable UUIDv7 identityとUpdateのowner + document + expected revision CASを同一D1 atomic boundaryで確定する。反映済みsuccessをfinal-state equivalenceから借用せず、mutationのexact row countとoperation resultのexact insertionをガードする。APIはauthentication後のowner-scoped list/fetch/create/updateだけを公開し、raw Markdown contentを一覧へ再実装せず、public shareも持たない。
 
 `NotesBoard`はcanonical baselineとmemory-only draftを分離し、explicit Saveだけをmutation入口とする。Create中のrepeat Saveは一つのlogical requestへまとめ、ambiguous outcomeはexact operation identityを保持する。dirty stateは既存navigation/logout/barrierとbeforeunloadへ接続し、localStorage/IndexedDBやbackground syncを追加しない。
+
+## D-091–D-093 Notes lifecycle boundary
+
+`NotesBoard`は新規Note操作時に`notitle`を含む一つのCreate requestを発行し、title allocationはWorker / D1 unique indexをauthorityとする。既存Noteはcanonical baselineとmemory-only draftを比較して約1秒のautosave Updateを発行し、one-in-flight、sent payload immutable、follow-up revision CASを維持する。explicit SaveとCtrl/Cmd+Sは同じflush経路を使う。
+
+APP `0030_standalone_note_lifecycle.sql`は`documents.archived_at`とstandalone owner/title unique indexを追加し、operations allow-listをarchive / restore / hard deleteへ拡張する。archive済みDocumentもunique titleへ含めるため、restoreや新規Createが同じtrimmed titleを取得するraceをD1が拒否する。archive / restore / deleteはDocument row・revision・ownerをCASで確認し、既存のoperation fingerprint / exact replay / transaction assertion境界を再利用する。
+
+通常のDocuments queryはnon-archived、`archived=true` queryはarchivedだけをowner-scopeで返す。D-091–D-093は既存Document coreをTask / Project / Routine FKで拡張せず、preview、attachment、offline queue、AUTH schema、runtime external serviceを追加しない。

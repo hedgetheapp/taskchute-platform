@@ -595,6 +595,8 @@ Routine Boardの既存recurrence popoverに、追加のinterval / weekday / mont
 
 ## D-090 Notes UI
 
-Authenticated shellのtop-level destination `ノート`は、既存sidebar/navigation conventionに沿ったcompactな2-pane surfaceとする。左側に`＋ 新規ノート`とstandalone Note list、右側にtitle input・Markdown source textarea・明示`保存`を置く。preview、rich-text editor、attachment、delete/archive、searchは追加しない。
+Authenticated shellのtop-level destination `ノート`は、既存sidebar/navigation conventionに沿ったcompactな2-pane surfaceとする。左側に`＋ 新規ノート`とstandalone Note list、右側にtitle input・Markdown source textarea・明示`保存`を置く。D-091–D-093により、約1秒のautosave、`アーカイブ`の分離一覧、row action menuのarchive / restore / hard deleteを追加する。preview、rich-text editor、attachment、searchは追加しない。
 
 新規Noteボタンはmemory-only draftを開くだけで、空のDocument rowを作らない。Save成功後にcanonical Document / revisionへbaselineを置き換え、既存Noteのdirty編集はexpected revisionで更新する。revision conflictではlocal title/bodyを保持し、最新canonical stateを確認できるが自動overwriteしない。dirtyなNoteからの切替・Notes離脱・logout・reload/closeは既存の確認およびbeforeunload boundaryを使い、キャンセル時は編集中のdraftを保つ。
+
+D-091では新規Noteを開いた直後にServer Createを行い、画面には`notitle`またはServerが割り当てた連番titleを表示する。保存中は小さなstatusだけを表示し、layoutや編集操作をブロックしない。D-092のarchived Noteは編集controlをread-onlyとし、archive / restoreは通常のrow actionから、hard deleteは対象を説明する明示確認から開始する。ambiguous save中はtitle/bodyを編集不可にし、exact Retryまたはexact-ID reconciliationまでNotes離脱とbeforeunloadを保護する。

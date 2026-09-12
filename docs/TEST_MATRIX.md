@@ -2457,3 +2457,19 @@ D-084 browser fixture creation was not completed: the unauthenticated/new in-app
 | D090-CORR2-BROWSER | Authenticated Notes browser verification | existing persistent tab is logged out; no credential retrieval/re-login | NOT_VERIFIED |
 | D090-CORR2-MIG | New migration required by corrective | APP 0029 remains applied; no AUTH migration | NOT_REQUIRED |
 | D090-CORR2-SAFETY | Production, restore/recovery, destructive cleanup, bootstrap mutation, Release | not performed | NOT_RUN / NO |
+
+### D-091 / D-092 / D-093 — Standalone Notes
+
+| ID | Scope | Evidence | Result |
+|---|---|---|---|
+| D091-AUTOSAVE | Immediate new Note Create, `notitle` allocation, autosave debounce, explicit Save/Ctrl+S/Cmd+S, in-flight immutability and follow-up Update | NotesBoard focused `12/12`; full Web `5 files/285`; Documents Worker `11/11` | PASS |
+| D091-TITLE-RACE | Owner-scoped trimmed title allocation across active/archived rows and exact Create replay/misuse | Documents integration and D093 migration constraints | PASS |
+| D091-BARRIER | Ambiguous exact-ID reconciliation, unresolved-save edit/navigation/beforeunload barrier, revision conflict draft retention | Existing D-090 A1–A8/B1–B5 plus Notes/App regressions | PASS |
+| D092-LIFECYCLE | Archive/restore separated list, read-only archived editor, explicit hard-delete confirmation, title reservation/reuse | Documents Worker focused `11/11`; persistent nonprod UI fixture flow | PASS |
+| D093-MIG-FRESH | Fresh APP chain `0001 -> 0030`, constraints and no temporary residue | bounded `test:migrations:d093` | PASS |
+| D093-MIG-UPGRADE | Upgrade `0029 -> 0030`, existing Document/operation preservation and lifecycle schema | bounded `test:migrations:d093` | PASS |
+| D093-NONPROD | APP 0030 apply once, AUTH unchanged, pending `0/0`, exact Worker deploy and bindings | Worker `82f43cf5-d968-449c-9903-b2e57d751a08`, guard/dry-run/root/API401 | PASS |
+| D093-BROWSER | Immediate Create, autosave, same-tab reload, fresh authenticated tab, archive/restore/delete, console | persistent authenticated session; disposable fixture only; console `0/0` | PASS |
+| D093-DB | APP/AUTH quick_check, FK, duplicate/invalid/guard checks and read-only probes | final APP/AUTH remote probes; `rows_written=0` | PASS |
+| D093-MIG-HELPER | Normal Windows `npm run test:migrations` helper | exceeded 90 seconds and was safely interrupted | NOT_RUN |
+| D093-SAFETY | Production, restore/recovery, credential/re-login, bootstrap mutation, Release | not performed | NOT_RUN / NO |

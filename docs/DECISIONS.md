@@ -1747,6 +1747,26 @@ D-090のcanonical scopeに従い、Task / Project / Routine等へ従属しない
 
 v0.1は新規draftを保存せずに開き、SaveまたはCtrl/Cmd+SでCreateし、既存Documentはexpected revision付きUpdateを行う。競合時はlocal draftを保持し、autosave、delete/archive、preview、attachments、search/backlinks、Task/Project/Routine relation、offline persistenceは含めない。browser authenticated evidenceが得られない場合は自動的にVerifiedへ昇格させず、canonical evidence docsに`AUTHENTICATED_BROWSER_NOT_VERIFIED`を記録する。
 
+## D-091 — Standalone Note autosave / title allocation
+
+Status: **Approved / Implemented / Verified**
+
+D-091はD-090のstandalone Noteだけを対象に、`＋ 新規ノート`時点でServerが一意なDocument identityとtitleを確定する挙動へ拡張した。初期titleは`notitle`を要求し、owner内の既存standalone title（archivedを含む）とtrimmed exact equalityで衝突する場合は`notitle1`、`notitle2`…をServerが割り当てる。CreateはUUIDv7のDocument / operation identityでexact replayし、既存Noteのtitle/bodyは約1秒のautosave Updateへ送る。in-flight payloadはimmutableで、後続編集はcanonical revision後のfollow-upとなる。
+
+D-090のowner isolation、revision CAS、exact replay / misuse、ambiguous exact-ID reconciliation、unresolved-save barrier、dirty navigation / logout / beforeunload protectionは維持する。D-091の実装は`57811bffeaa9c025d9c6cb6d8880d2ad6f143289`に記録し、Task / Project / Routine Document semantics、preview、attachments、search/backlinks、offline persistenceは追加しない。
+
+## D-092 — Standalone Note lifecycle
+
+Status: **Approved / Implemented / Verified**
+
+D-092は`kind = standalone`のNoteに限り、reversibleなarchive / restoreと、明示確認付きのirreversible hard deleteを追加する。通常の`ノート`一覧はnon-archivedだけを表示し、`アーカイブ`一覧はarchivedだけを表示する。archived Noteはtitleを予約し続け、hard delete成功後だけtitleを再利用できる。archive / restore / deleteはowner-scoped expected revision、operation identity、exact replay、既存のautosave / ambiguity barrierに従い、Task / Project / RoutineOccurrence Document lifecycleへ拡張しない。
+
+## D-093 — APP 0030 standalone Note lifecycle migration
+
+Status: **Approved / Implemented / Persistent nonprod applied**
+
+D-093のAPP `0030_standalone_note_lifecycle.sql`は`documents.archived_at`、standalone owner/titleのactive・archived横断unique index、archive / restore / hard delete operation allow-listを追加した。既存Document、TaskChute domain data、operation historyは保持し、AUTH migrationは行わない。APP 0030はpersistent nonprodへ一度だけ適用済みで、APP/AUTH pendingは`0 / 0`である。
+
 ## D-089 — Routine workday / holiday recurrence
 
 Status: **Approved / implemented**

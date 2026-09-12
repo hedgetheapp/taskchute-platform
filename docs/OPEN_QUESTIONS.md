@@ -334,10 +334,10 @@ D-034によりRoutineDefinitionがday-specific Task Noteのtemplate/defaultを�
 
 以下はOpen:
 
-- Document identity exact format
+- Document identity exact format（standalone v0.1はD-090/D-091のUUIDv7 `document_id`で解決済み。Task / Project / RoutineOccurrence Documentは未決）
 - physical persistence schema
 - lazy creationのexact lifecycle
-- Document deletion / restore semantics
+- Document deletion / restore semantics（standalone NoteはD-092でarchive / restore / confirmation-gated hard deleteを解決済み。Task / Project / RoutineOccurrence Documentは未決）
 - Markdown editor library
 - wiki-link compatibility scope
 - backlink / link-index model
@@ -345,7 +345,7 @@ D-034によりRoutineDefinitionがday-specific Task Noteのtemplate/defaultを�
 - additional document types
 - revision / version model
 - revision-history UX
-- autosave / conflict semantics
+- autosave / conflict semantics（standalone NoteはD-091とD-090 correctiveでautosave、revision conflict、ambiguous barrierを解決済み。その他Document kindは未決）
 - Routine day-specific Note templateのcopy / reference / override semanticsのphysical implementation
 - Entry / Execution単位の専用Documentを将来持つか
 
