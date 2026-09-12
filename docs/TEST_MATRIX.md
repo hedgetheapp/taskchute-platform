@@ -2549,3 +2549,15 @@ D-084 browser fixture creation was not completed: the unauthenticated/new in-app
 | D095-CORR-NONPROD | exact pushed corrective deploy and HTTP safety | Worker `a62d2f99-bec2-463c-b352-3d91d8594482`; root `200`; Documents API `401`; guard config canonical | PASS |
 | D095-CORR-DB | APP/AUTH read-only integrity | pending `0 / 0`; quick_check `ok`; FK empty; APP Documents `3`, invalid `0`; probes `rows_written=0` | PASS |
 | D095-CORR-SAFETY | Worker/API/schema/migration/dependency and prohibited operations | Web-only; no migration; no production/restore/credential/bootstrap/destructive/Release | NOT_REQUIRED / NO |
+
+### D-083 corrective — Empty real-Section Shift traversal — 2026-09-12
+
+| ID | Verification target | Evidence | Result |
+|---|---|---|---|
+| D083-EMPTY-LOCAL | Adjacent empty real Section, one-step convergence, upward traversal, and Routine chooser | focused Web `4 / 4` | PASS |
+| D083-EMPTY-SECTIONLESS | Real Sections always remain traversal destinations; `Sectionなし` only when an effective unsectioned Entry exists | focused App assertions and source review | PASS |
+| D083-EMPTY-REGRESSION | Full Web / Worker plus static gates | full Web `5 files / 300 tests`; full Worker/D1 `32 files / 285 tests`; typecheck; normal/exact nonprod build; deploy guard; Wrangler dry-run; diff-check | PASS |
+| D083-EMPTY-BROWSER | Persistent authenticated real keyboard gesture and persistence | A moved Morning → adjacent configured Day by real `Shift + ArrowDown`; same-tab reload and fresh authenticated tab restored Day; no synthetic DOM events | PASS (representative; adjacent Day had existing rows, so exact empty-target browser subcase remains `NOT_VERIFIED`) |
+| D083-EMPTY-NONPROD | Exact deploy and credential-free HTTP safety | Worker `4a4df4fa-21fd-42f5-9b43-ec5872d7a236`; root `200`; protected Projects API `401`; canonical APP/AUTH bindings and nonprod vars | PASS |
+| D083-EMPTY-DB | APP/AUTH read-only integrity | quick_check `ok`; FK empty; pending `0 / 0`; active executions `0`; transient guards/assertions `0`; duplicate positions `0`; fixture order/revision coherent; successful probes `rows_written=0` | PASS |
+| D083-EMPTY-BOUNDARY | Worker/API/schema/migration/dependency and prohibited operations | Web-only corrective; migration `NOT_REQUIRED`; no production, restore, credential/reset, bootstrap, destructive cleanup, branch/PR/merge/tag/Release | NOT_REQUIRED / NOT_RUN |
