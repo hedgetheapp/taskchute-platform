@@ -571,6 +571,7 @@ describe("Dogfood Day shell", () => {
     let trigger = await screen.findByRole("button", { name: "2026年8月22日（土）、日付を選択" });
     fireEvent.click(trigger);
     expect(screen.getByRole("dialog", { name: "2026年8月のカレンダー" })).toBeTruthy();
+    expect(screen.getByRole("gridcell", { name: /2026年8月22日/ }).getAttribute("aria-current")).toBe("date");
     expect(document.activeElement?.getAttribute("aria-label")).toContain("2026年8月22日（土）");
 
     fireEvent.keyDown(document.activeElement!, { key: "ArrowLeft" });
@@ -2778,6 +2779,24 @@ describe("Dogfood Day shell", () => {
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => expect(mocks.upsertEffectiveDayOverride).toHaveBeenCalledTimes(1));
     expect(mocks.upsertEffectiveDayOverride.mock.calls[0][0]).toMatchObject({ logical_date: "2026-08-22", override_kind: "holiday", reason: "会社休日", expected_revision: null });
+  });
+
+  it("marks the canonical current logical date in Effective Day while the selected date differs", async () => {
+    mocks.loadDay.mockResolvedValue(emptyDay);
+    render(<App />);
+    const settings = await openEffectiveDayCalendarSettings();
+    const dateInput = within(settings).getByLabelText("カレンダー日付");
+    expect(dateInput.getAttribute("aria-haspopup")).toBe("dialog");
+    expect(screen.queryByRole("button", { name: "カレンダー日付をカレンダーで選択" })).toBeNull();
+    fireEvent.change(dateInput, { target: { value: "20260823" } });
+    await waitFor(() => expect(mocks.loadEffectiveDayCalendar).toHaveBeenCalledTimes(2));
+    fireEvent.focus(dateInput);
+    const calendar = screen.getByRole("dialog", { name: /カレンダー日付/ });
+    expect(within(calendar).getByRole("gridcell", { name: /2026年8月22日/ }).getAttribute("aria-current")).toBe("date");
+    expect(within(calendar).getByRole("gridcell", { name: /2026年8月22日/ }).getAttribute("aria-selected")).toBe("false");
+    expect(within(calendar).getByRole("gridcell", { name: /2026年8月23日/ }).getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(calendar, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: /カレンダー日付/ })).toBeNull();
   });
 
   it("shows official labels and uncovered weekdays as knowledge states, with reset using delete", async () => {

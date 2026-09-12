@@ -5653,7 +5653,8 @@ export function App() {
               )}
 
               {settingsDestination === "calendar" && (
-                <EffectiveDayCalendarSettings initialLogicalDate={day?.taskchute_day.logical_date ?? currentLogicalDate} disabled={mutationLocked} />
+                <EffectiveDayCalendarSettings initialLogicalDate={day?.taskchute_day.logical_date ?? currentLogicalDate}
+                  todayLogicalDate={currentLogicalDate} disabled={mutationLocked} />
               )}
 
               {settingsDestination === "section" && !sectionSettingsDraft && pending !== "section-settings" && (

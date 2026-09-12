@@ -172,9 +172,8 @@ input:focus-visible, select:focus-visible { border-color: #2383e2; outline: 2px 
 .routine-delete-retry { display: flex; align-items: center; gap: 8px; }
 .routine-delete-retry button { padding: 5px 8px; }
 .routine-empty { padding: 24px; text-align: center; }
-.logical-date-input { position: relative; display: flex; align-items: center; gap: 4px; min-width: 0; }
+.logical-date-input { position: relative; display: flex; align-items: center; min-width: 0; }
 .logical-date-input > input { min-width: 0; }
-.logical-date-calendar-trigger { flex: 0 0 auto; width: 34px; padding: 7px 4px; }
 .logical-date-calendar { top: calc(100% + 5px); left: 0; right: auto; width: 304px; max-width: calc(100vw - 24px); transform: none; }
 .modal-dialog { width: min(520px, calc(100vw - 32px)); display: grid; gap: 12px; margin: 0; padding: 20px; border: 1px solid #e1e1df; border-radius: 8px; background: #fff; box-shadow: 0 12px 34px rgb(15 15 15 / 18%); }
 .modal-dialog h2 { margin: 0; font-size: 17px; }

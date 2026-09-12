@@ -157,6 +157,7 @@ export function normalizeLogicalDateInput(value: string, allowBlank = false): Lo
 interface LogicalDateInputProps {
   label: string;
   value: string | null;
+  todayDate?: string | null;
   allowBlank?: boolean;
   disabled?: boolean;
   commitOnValidChange?: boolean;
@@ -165,7 +166,7 @@ interface LogicalDateInputProps {
 }
 
 /** Text + Today-style calendar input sharing one strict logical-date draft. */
-export function LogicalDateInput({ label, value, allowBlank = false, disabled = false, commitOnValidChange = false, onCommit, onInvalid }: LogicalDateInputProps) {
+export function LogicalDateInput({ label, value, todayDate = null, allowBlank = false, disabled = false, commitOnValidChange = false, onCommit, onInvalid }: LogicalDateInputProps) {
   const [draft, setDraft] = useState(value ?? "");
   const [calendarOpen, setCalendarOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -204,7 +205,7 @@ export function LogicalDateInput({ label, value, allowBlank = false, disabled = 
     event.preventDefault();
     setCalendarOpen(false);
   }}>
-    <input type="text" inputMode="numeric" aria-label={label} value={draft} disabled={disabled}
+    <input type="text" inputMode="numeric" aria-label={label} aria-haspopup="dialog" aria-expanded={calendarOpen} value={draft} disabled={disabled}
       placeholder={allowBlank ? "終了なし" : "YYYYMMDD"}
       onFocus={openCalendar} onClick={openCalendar}
       onChange={(event) => {
@@ -215,10 +216,8 @@ export function LogicalDateInput({ label, value, allowBlank = false, disabled = 
         if (event.relatedTarget instanceof Node && rootRef.current?.contains(event.relatedTarget)) return;
         commit(event.currentTarget.value);
       }} />
-    <button type="button" className="secondary logical-date-calendar-trigger" aria-label={`${label}をカレンダーで選択`}
-      aria-haspopup="dialog" aria-expanded={calendarOpen} disabled={disabled} onClick={() => setCalendarOpen((open) => !open)}>▣</button>
     {calendarOpen && <CalendarPopover value={calendarDate} selectedDate={normalizeLogicalDateInput(draft, true)}
-      className="logical-date-calendar" ariaLabel={label} insideRef={rootRef} autoFocusDate={false}
+      todayDate={todayDate} className="logical-date-calendar" ariaLabel={label} insideRef={rootRef} autoFocusDate={false}
       onSelect={(logicalDate) => commit(logicalDate)} onClose={() => setCalendarOpen(false)} />}
   </div>;
 }

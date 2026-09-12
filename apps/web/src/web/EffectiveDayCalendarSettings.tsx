@@ -21,7 +21,7 @@ function operationError(error: unknown): string {
   return error instanceof Error ? error.message : "営業日カレンダーを保存できませんでした";
 }
 
-export function EffectiveDayCalendarSettings(props: { initialLogicalDate: string | null; disabled: boolean }) {
+export function EffectiveDayCalendarSettings(props: { initialLogicalDate: string | null; todayLogicalDate: string | null; disabled: boolean }) {
   const [calendar, setCalendar] = useState<EffectiveDayCalendarProjection | null>(null);
   const [selectedDate, setSelectedDate] = useState(props.initialLogicalDate ?? "");
   const [choice, setChoice] = useState<OverrideChoice>("none");
@@ -95,7 +95,7 @@ export function EffectiveDayCalendarSettings(props: { initialLogicalDate: string
       </div>
       <div className="effective-day-calendar-form">
         <label>日付
-          <LogicalDateInput label="カレンダー日付" value={selectedDate} commitOnValidChange disabled={props.disabled || loading}
+          <LogicalDateInput label="カレンダー日付" value={selectedDate} todayDate={props.todayLogicalDate} commitOnValidChange disabled={props.disabled || loading}
             onInvalid={() => setError("日付はYYYYMMDDまたはYYYY-MM-DD形式で入力してください")}
             onCommit={(value) => { if (!value) return; setSelectedDate(value); void load(value); }} />
         </label>

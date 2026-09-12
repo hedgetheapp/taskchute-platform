@@ -193,6 +193,31 @@ describe("Routine Board", () => {
     expect(mocks.updateRoutine).not.toHaveBeenCalled();
   });
 
+  it("uses the canonical current date as today and makes the date field the only calendar trigger", async () => {
+    board.routines[0]!.start_logical_date = "2026-09-05";
+    render(<RoutineBoard onUnauthorized={vi.fn()} />);
+    const startDate = await screen.findByLabelText("Active Routineの開始日");
+    expect(startDate.getAttribute("aria-haspopup")).toBe("dialog");
+    expect(startDate.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("button", { name: "Active Routineの開始日をカレンダーで選択" })).toBeNull();
+
+    fireEvent.focus(startDate);
+    const startCalendar = screen.getByRole("dialog", { name: /Active Routineの開始日/ });
+    const today = within(startCalendar).getByRole("gridcell", { name: /2026年9月1日/ });
+    expect(today.getAttribute("aria-current")).toBe("date");
+    expect(today.getAttribute("aria-selected")).toBe("false");
+    expect(within(startCalendar).getByRole("gridcell", { name: /2026年9月5日/ }).getAttribute("aria-selected")).toBe("true");
+    expect(startDate.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.keyDown(startCalendar, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: /Active Routineの開始日/ })).toBeNull();
+
+    const endDate = screen.getByLabelText("Active Routineの終了日");
+    expect(screen.queryByRole("button", { name: "Active Routineの終了日をカレンダーで選択" })).toBeNull();
+    fireEvent.click(endDate);
+    const endCalendar = screen.getByRole("dialog", { name: /Active Routineの終了日/ });
+    expect(within(endCalendar).getByRole("gridcell", { name: /2026年9月1日/ }).getAttribute("aria-current")).toBe("date");
+  });
+
   it("saves each D-089 calendar recurrence kind with its exact shape", async () => {
     render(<RoutineBoard onUnauthorized={vi.fn()} />);
     await screen.findByDisplayValue("Active Routine");

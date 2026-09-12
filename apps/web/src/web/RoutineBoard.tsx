@@ -497,9 +497,11 @@ export function RoutineBoard({ onUnauthorized }: RoutineBoardProps) {
         onChange={(event) => void saveSection(routine, event.target.value || null)}><option value="">Sectionなし</option>
         {board?.sections.map((section) => <option key={section.id} value={section.id}>{section.title}</option>)}</select></div>;
       case "startDate": return <div role="cell" className="routine-cell"><LogicalDateInput label={`${routine.title}の開始日`} value={routine.start_logical_date}
+        todayDate={board?.current_logical_date ?? null}
         disabled={pending} onInvalid={() => setError("開始日はYYYYMMDDまたはYYYY-MM-DD形式で入力してください")}
         onCommit={(value) => { if (value !== routine.start_logical_date) void saveDate(routine, "start_logical_date", value); }} /></div>;
       case "endDate": return <div role="cell" className="routine-cell"><LogicalDateInput label={`${routine.title}の終了日`} value={routine.end_logical_date}
+        todayDate={board?.current_logical_date ?? null}
         allowBlank disabled={pending} onInvalid={() => setError("終了日はYYYYMMDDまたはYYYY-MM-DD形式で入力してください")}
         onCommit={(value) => { if (value !== routine.end_logical_date) void saveDate(routine, "end_logical_date", value); }} /></div>;
     }
