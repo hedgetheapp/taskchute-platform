@@ -87,4 +87,24 @@ describe("D-075 Day fixed header / task-list scroll CSS", () => {
     expect(styles).toContain('.task-row[draggable="true"] input');
     expect(styles).toContain('.task-row[draggable="true"] select');
   });
+
+  it("paints the focused Task frame above sticky cells without changing state or D&D cues", () => {
+    const row = rule(".task-row");
+    const focus = rule(".task-row:focus-visible");
+    const overlay = rule(".task-row:focus-visible::after");
+    expect(row).toContain("position: relative");
+    expect(focus).toContain("outline: none");
+    expect(overlay).toContain("z-index: 7");
+    expect(overlay).toContain("inset: 0");
+    expect(overlay).toContain("border: 2px solid #2383e2");
+    expect(overlay).toContain("pointer-events: none");
+    expect(overlay).toContain('content: ""');
+    expect(styles).toContain("z-index: 2; background: var(--day-row-background)");
+    expect(styles).toContain(".task-row.state-running { --day-row-background: #f3f8fd; }");
+    expect(styles).toContain(".task-row.is-selected { --day-row-background: #edf5fc; }");
+    expect(styles).toContain(".task-row.state-completed { color: #8b8b87; }");
+    expect(styles).toContain(".task-row.drop-before { box-shadow: inset 0 2px #2383e2; }");
+    expect(styles).toContain(".task-row.drop-after { box-shadow: inset 0 -2px #2383e2; }");
+    expect(styles).not.toContain(".task-row:focus {");
+  });
 });
