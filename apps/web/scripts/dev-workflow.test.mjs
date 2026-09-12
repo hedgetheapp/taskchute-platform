@@ -82,6 +82,16 @@ test("evidence summary defaults manual categories to NOT_RUN", () => {
   assert.match(summary, /API: NOT_RUN/);
   assert.match(summary, /DB: NOT_RUN/);
   assert.doesNotMatch(summary, /Persistent nonprod deployment: PASS/);
+  const explicit = formatEvidenceSummary({
+    profile: "standard",
+    surface: "docs",
+    result: "PASS",
+    total_duration_ms: 1,
+    git_head: "abc",
+    steps: [],
+    manual_evidence: {},
+  }, { head: "abc", dirty_paths: [] }, { persistent_nonprod: "NOT_REQUIRED" });
+  assert.match(explicit, /Persistent nonprod deployment: NOT_REQUIRED/);
 });
 
 test("invalid evidence state is rejected", () => {

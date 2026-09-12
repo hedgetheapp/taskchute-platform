@@ -49,7 +49,7 @@ export function parseArgs(argv, { requireSurface = false } = {}) {
       if (["nonprod", "browser", "api", "db"].includes(key)) {
         const normalized = value.toUpperCase();
         if (!evidenceStates.has(normalized)) throw new Error(`Invalid ${key} evidence state: ${value}`);
-        options.evidence[key] = normalized;
+        options.evidence[key === "nonprod" ? "persistent_nonprod" : key] = normalized;
       } else {
         options[key] = key === "base" ? value : value.toLowerCase();
       }
