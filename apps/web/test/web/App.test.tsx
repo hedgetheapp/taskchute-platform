@@ -2767,6 +2767,12 @@ describe("Dogfood Day shell", () => {
     const settings = await openEffectiveDayCalendarSettings();
     expect(settings.textContent).toContain("基本判定");
     expect(settings.textContent).toContain("営業日");
+    const dateInput = screen.getByLabelText("カレンダー日付");
+    fireEvent.focus(dateInput);
+    const dateCalendar = screen.getByRole("dialog", { name: /カレンダー日付/ });
+    expect(within(dateCalendar).getAllByRole("columnheader").map((header) => header.textContent)).toEqual(["月", "火", "水", "木", "金", "土", "日"]);
+    fireEvent.keyDown(dateCalendar, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: /カレンダー日付/ })).toBeNull();
     fireEvent.change(screen.getByRole("combobox", { name: "カレンダー指定" }), { target: { value: "holiday" } });
     fireEvent.change(screen.getByRole("textbox", { name: "指定理由" }), { target: { value: "会社休日" } });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));

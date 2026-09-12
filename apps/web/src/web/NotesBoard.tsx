@@ -517,7 +517,9 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
             <div className="notes-body-field">
               <span className="sr-only">Markdown本文</span>
               <div className="notes-body-editor">
-                {lineNumbersEnabled && <div className="notes-line-numbers" aria-hidden="true">{Array.from({ length: lineCount }, (_, index) => <span key={index}>{index + 1}</span>)}</div>}
+                <div className={`notes-line-numbers${lineNumbersEnabled ? " is-visible" : " is-hidden"}`} aria-hidden="true">
+                  {Array.from({ length: lineCount }, (_, index) => <span key={index}>{index + 1}</span>)}
+                </div>
                 <textarea aria-label="Markdown本文" value={draftBody}
                   disabled={unresolved || archivedReadOnly} onChange={(event) => updateDraftBody(event.target.value)} onKeyDown={handleEditorKeyDown} rows={18}
                   onScroll={(event) => {

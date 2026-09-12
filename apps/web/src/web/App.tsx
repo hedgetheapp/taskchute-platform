@@ -79,6 +79,7 @@ import { ProjectBoard } from "./ProjectBoard";
 import { ModeBoard } from "./ModeBoard";
 import { EffectiveDayCalendarSettings } from "./EffectiveDayCalendarSettings";
 import { NotesBoard } from "./NotesBoard";
+import { CalendarPopover, formatLogicalDateLabel } from "./ui-helpers";
 
 export { DAY_COLUMNS_STORAGE_KEY } from "./day-columns";
 
@@ -487,22 +488,6 @@ function shiftLogicalDate(logicalDate: string, days: number): string {
   return Temporal.PlainDate.from(logicalDate).add({ days }).toString();
 }
 
-function formatLogicalDateLabel(logicalDate: string): string {
-  const date = Temporal.PlainDate.from(logicalDate);
-  return `${date.year}年${date.month}月${date.day}日（${["月", "火", "水", "木", "金", "土", "日"][date.dayOfWeek - 1]}）`;
-}
-
-function calendarMonthDates(logicalDate: string): string[] {
-  const monthStart = Temporal.PlainDate.from(logicalDate).with({ day: 1 });
-  const gridStart = monthStart.subtract({ days: monthStart.dayOfWeek - 1 });
-  return Array.from({ length: 42 }, (_, index) => gridStart.add({ days: index }).toString());
-}
-
-function formatCalendarMonth(logicalDate: string): string {
-  const date = Temporal.PlainDate.from(logicalDate);
-  return `${date.year}年${date.month}月`;
-}
-
 function formatLogicalMinute(value: number | null): string {
   if (value === null) return "時刻未設定";
   return `${String(Math.floor(value / 60)).padStart(2, "0")}:${String(value % 60).padStart(2, "0")}`;
@@ -870,8 +855,7 @@ export function App() {
   const dragAutoScrollFrameRef = useRef<number | null>(null);
   const dragPointerYRef = useRef<number | null>(null);
   const calendarTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const calendarGridRef = useRef<HTMLDivElement | null>(null);
-  const calendarPopoverRef = useRef<HTMLDivElement | null>(null);
+  const calendarRootRef = useRef<HTMLDivElement | null>(null);
   const columnsMenuRef = useRef<HTMLDivElement | null>(null);
   const columnsTriggerRef = useRef<HTMLButtonElement | null>(null);
   const columnSubmenuTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -1941,22 +1925,6 @@ export function App() {
     };
   }, [entryDrag]);
 
-  useEffect(() => {
-    if (!calendarOpen || !calendarFocusedDate) return;
-    calendarGridRef.current?.querySelector<HTMLButtonElement>(`[data-calendar-date="${calendarFocusedDate}"]`)?.focus();
-  }, [calendarOpen, calendarFocusedDate]);
-
-  useEffect(() => {
-    if (!calendarOpen) return;
-    const dismissOnOutsideMouseDown = (event: globalThis.MouseEvent) => {
-      const target = event.target as Node;
-      if (calendarPopoverRef.current?.contains(target) || calendarTriggerRef.current?.contains(target)) return;
-      closeCalendar();
-    };
-    document.addEventListener("mousedown", dismissOnOutsideMouseDown);
-    return () => document.removeEventListener("mousedown", dismissOnOutsideMouseDown);
-  }, [calendarOpen]);
-
   function openCalendar() {
     if (!day || mutationLocked) return;
     setCalendarFocusedDate(day.taskchute_day.logical_date);
@@ -1972,35 +1940,6 @@ export function App() {
     setCalendarOpen(false);
     await navigateToDay(logicalDate);
     requestAnimationFrame(() => calendarTriggerRef.current?.focus());
-  }
-
-  function handleCalendarKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
-    if (!calendarFocusedDate) return;
-    let nextDate: string | null = null;
-    switch (event.key) {
-      case "ArrowLeft": nextDate = shiftLogicalDate(calendarFocusedDate, -1); break;
-      case "ArrowRight": nextDate = shiftLogicalDate(calendarFocusedDate, 1); break;
-      case "ArrowUp": nextDate = shiftLogicalDate(calendarFocusedDate, -7); break;
-      case "ArrowDown": nextDate = shiftLogicalDate(calendarFocusedDate, 7); break;
-      case "PageUp": nextDate = Temporal.PlainDate.from(calendarFocusedDate).subtract(event.shiftKey ? { years: 1 } : { months: 1 }).toString(); break;
-      case "PageDown": nextDate = Temporal.PlainDate.from(calendarFocusedDate).add(event.shiftKey ? { years: 1 } : { months: 1 }).toString(); break;
-      case "Enter":
-        event.preventDefault(); event.stopPropagation();
-        void selectCalendarDate(calendarFocusedDate);
-        return;
-      case "Escape":
-        event.preventDefault(); event.stopPropagation(); closeCalendar();
-        return;
-      default: return;
-    }
-    event.preventDefault();
-    event.stopPropagation();
-    setCalendarFocusedDate(nextDate);
-  }
-
-  function shiftCalendarViewport(unit: "month" | "year", amount: number) {
-    if (!calendarFocusedDate) return;
-    setCalendarFocusedDate(Temporal.PlainDate.from(calendarFocusedDate).add(unit === "month" ? { months: amount } : { years: amount }).toString());
   }
 
   async function openTodayView() {
@@ -5791,54 +5730,16 @@ export function App() {
           <div className="day-navigation" aria-label="日付ナビゲーション">
             <button type="button" className="secondary" aria-label="前の日" disabled={mutationLocked}
               onClick={() => void navigateToDay(shiftLogicalDate(day.taskchute_day.logical_date, -1))}>‹</button>
-            <div className="day-date-picker">
+            <div className="day-date-picker" ref={calendarRootRef}>
               <button type="button" className="day-date-trigger" ref={calendarTriggerRef}
                 aria-label={`${formatLogicalDateLabel(day.taskchute_day.logical_date)}、日付を選択`}
                 aria-haspopup="dialog" aria-expanded={calendarOpen} disabled={mutationLocked}
                 onClick={() => calendarOpen ? closeCalendar() : openCalendar()}>
                 {formatLogicalDateLabel(day.taskchute_day.logical_date)}
               </button>
-              {calendarOpen && calendarFocusedDate && (() => {
-                const focusedMonth = Temporal.PlainDate.from(calendarFocusedDate);
-                return (
-                  <div className="calendar-popover" ref={calendarPopoverRef} role="dialog" aria-modal="false"
-                    aria-label={`${formatCalendarMonth(calendarFocusedDate)}のカレンダー`}
-                    onKeyDown={handleCalendarKeyDown}>
-                    <div className="calendar-month-toolbar">
-                      <button type="button" className="secondary calendar-nav-button" aria-label="前年"
-                        onClick={() => shiftCalendarViewport("year", -1)}>«</button>
-                      <button type="button" className="secondary calendar-nav-button" aria-label="前の月"
-                        onClick={() => shiftCalendarViewport("month", -1)}>‹</button>
-                      <div className="calendar-month-heading" aria-live="polite">{formatCalendarMonth(calendarFocusedDate)}</div>
-                      <button type="button" className="secondary calendar-nav-button" aria-label="次の月"
-                        onClick={() => shiftCalendarViewport("month", 1)}>›</button>
-                      <button type="button" className="secondary calendar-nav-button" aria-label="翌年"
-                        onClick={() => shiftCalendarViewport("year", 1)}>»</button>
-                    </div>
-                    <div className="calendar-grid" role="grid" aria-label="日付" ref={calendarGridRef}>
-                      {["月", "火", "水", "木", "金", "土", "日"].map((weekday) => (
-                        <span className="calendar-weekday" role="columnheader" key={weekday}>{weekday}</span>
-                      ))}
-                      {calendarMonthDates(calendarFocusedDate).map((logicalDate) => {
-                        const candidate = Temporal.PlainDate.from(logicalDate);
-                        const selected = logicalDate === day.taskchute_day.logical_date;
-                        const today = logicalDate === currentLogicalDate;
-                        const outsideMonth = candidate.month !== focusedMonth.month || candidate.year !== focusedMonth.year;
-                        const suffix = [selected ? "選択中" : "", today ? "今日" : "", outsideMonth ? "表示月外" : ""]
-                          .filter(Boolean).join("、");
-                        return (
-                          <button type="button" role="gridcell" className={`calendar-day${outsideMonth ? " outside-month" : ""}`}
-                            key={logicalDate} data-calendar-date={logicalDate} tabIndex={logicalDate === calendarFocusedDate ? 0 : -1}
-                            aria-selected={selected} aria-current={today ? "date" : undefined}
-                            aria-label={`${formatLogicalDateLabel(logicalDate)}${suffix ? `、${suffix}` : ""}`}
-                            onClick={() => void selectCalendarDate(logicalDate)}>{candidate.day}</button>
-                        );
-                      })}
-                    </div>
-                    <p className="sr-only">矢印キーで日付、PageUpとPageDownで月、Shiftを併用すると年を移動し、Enterで選択、Escapeで閉じます。</p>
-                  </div>
-                );
-              })()}
+              {calendarOpen && <CalendarPopover value={calendarFocusedDate ?? day.taskchute_day.logical_date}
+                selectedDate={day.taskchute_day.logical_date} todayDate={currentLogicalDate}
+                insideRef={calendarRootRef} onSelect={selectCalendarDate} onClose={closeCalendar} />}
             </div>
             <button type="button" className="secondary" aria-label="次の日" disabled={mutationLocked}
               onClick={() => void navigateToDay(shiftLogicalDate(day.taskchute_day.logical_date, 1))}>›</button>

@@ -416,7 +416,10 @@ describe("NotesBoard", () => {
     fireEvent.change(body, { target: { value: "one\ntwo" } });
     expect(document.querySelector(".notes-line-numbers")?.textContent).toBe("12");
     fireEvent.click(screen.getByRole("checkbox", { name: "行番号を表示" }));
-    expect(document.querySelector(".notes-line-numbers")).toBeNull();
+    const hiddenGutter = document.querySelector(".notes-line-numbers") as HTMLElement;
+    expect(hiddenGutter).toBeTruthy();
+    expect(hiddenGutter.className).toContain("is-hidden");
+    expect(hiddenGutter.nextElementSibling).toBe(body);
     expect(JSON.parse(localStorage.getItem("taskchute.notes.line-numbering.v1")!)).toEqual({ version: 1, enabled: false });
     fireEvent.click(screen.getByRole("button", { name: "Linesの操作" }));
     expect(screen.getByRole("menu", { name: "Linesの操作" })).toBeTruthy();

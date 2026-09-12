@@ -413,8 +413,9 @@ export function RoutineBoard({ onUnauthorized }: RoutineBoardProps) {
         }));
         const weekdayLabels = ["日", "月", "火", "水", "木", "金", "土"];
         const weekdaySchedule = draftSchedule?.kind === "weekly" || draftSchedule?.kind === "every_n_weeks" ? draftSchedule : null;
-        return <div role="cell" className="routine-cell routine-schedule-cell"><button type="button" className="secondary"
-          aria-haspopup="dialog" aria-expanded={draftSchedule !== undefined} onClick={() => draftSchedule ? setScheduleDrafts({}) : openSchedule(routine)} disabled={pending}>{scheduleText(routine.schedule)}</button>
+        return <div role="cell" className="routine-cell routine-schedule-cell"><button type="button" className="routine-schedule-trigger"
+          aria-haspopup="dialog" aria-expanded={draftSchedule !== undefined}
+          onClick={() => draftSchedule ? setScheduleDrafts({}) : openSchedule(routine)} disabled={pending}>{scheduleText(routine.schedule)}<span aria-hidden="true" className="routine-schedule-chevron">⌄</span></button>
           {draftSchedule && <div className="routine-popover" role="dialog" aria-label={`${routine.title}の繰り返し`}>
             <label>繰り返し<select value={draftSchedule.kind} onChange={(event) => {
               const kind = event.target.value;
@@ -517,7 +518,7 @@ export function RoutineBoard({ onUnauthorized }: RoutineBoardProps) {
         <button ref={helpButtonRef} type="button" className="secondary" onClick={(event) => { helpOriginRef.current = event.currentTarget; setHelpOpen(true); }}>?</button></div>
     </div>
     {pending && <div className="transient-status" role="status">保存・照合中…</div>}
-    {notice && <p className="success" role="status">{notice}</p>}
+    {notice && <div className="transient-status routine-success-status" role="status" aria-live="polite">{notice}</div>}
     {error && <p className="error" role="alert">{error}</p>}
     {deleteOperation && <div className="transient-status routine-delete-retry" role="status">削除結果を照合できませんでした。<button type="button" onClick={() => void executeDelete(deleteOperation)}>削除を再試行</button></div>}
     <div className="routine-board" role="table" aria-label="Routine Board" style={routineTableStyle(preference)}>
