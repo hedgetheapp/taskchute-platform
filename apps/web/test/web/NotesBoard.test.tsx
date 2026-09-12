@@ -45,6 +45,10 @@ function missingError(): Error {
   return new mocks.ApiClientError("missing", 404, true, "resource_not_found");
 }
 
+function revisionConflictError(): Error {
+  return new mocks.ApiClientError("stale", 409, true, "revision_conflict");
+}
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (reason?: unknown) => void;
@@ -257,6 +261,27 @@ describe("NotesBoard", () => {
     expect(screen.queryByRole("button", { name: "同じ内容で再試行" })).toBeNull();
   });
 
+  it("does not borrow an equivalent archived state from another operation", async () => {
+    const active = note("0199d090-0000-7000-8000-000000000011", "Borrow archive", "body", 2);
+    const archived = note(active.document_id, active.title, active.markdown_body, 3, "2026-09-12T02:00:00.000Z");
+    mocks.loadDocuments.mockImplementation(async ({ archived: showArchived = false } = {}) => ({
+      documents: showArchived ? [summary(archived)] : (mocks.setStandaloneDocumentArchived.mock.calls.length >= 2 ? [] : [summary(active)]),
+    }));
+    mocks.loadDocument.mockResolvedValueOnce(active).mockResolvedValueOnce(archived);
+    mocks.setStandaloneDocumentArchived.mockRejectedValueOnce(ambiguousError()).mockResolvedValueOnce({ document: archived });
+    render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Borrow archive")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Borrow archiveの操作" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "アーカイブ" }));
+    await screen.findByRole("button", { name: "同じ内容で再試行" });
+    expect(screen.getByText("最新のServer内容を確認")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "同じ内容で再試行" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "同じ内容で再試行" }));
+    await waitFor(() => expect(mocks.setStandaloneDocumentArchived).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByText("ノートを選択")).toBeTruthy());
+    expect(screen.queryByText("保存結果を確認しました。")).toBeNull();
+  });
+
   it("retains an ambiguous restore request and retries the exact operation", async () => {
     const active = note("0199d090-0000-7000-8000-00000000000d", "Active note", "body", 0);
     const archived = note("0199d090-0000-7000-8000-00000000000e", "Restore me", "body", 2, "2026-09-12T01:00:00.000Z");
@@ -278,6 +303,47 @@ describe("NotesBoard", () => {
     expect(mocks.setStandaloneDocumentArchived.mock.calls[1]![0]).toEqual(firstRequest);
     await waitFor(() => expect(screen.getByText("アーカイブを選択")).toBeTruthy());
     expect(screen.queryByRole("button", { name: "同じ内容で再試行" })).toBeNull();
+  });
+
+  it("does not borrow an equivalent restored state from another operation", async () => {
+    const active = note("0199d090-0000-7000-8000-000000000012", "Active for restore", "body", 0);
+    const archived = note("0199d090-0000-7000-8000-000000000013", "Borrow restore", "body", 2, "2026-09-12T02:00:00.000Z");
+    const restored = note(archived.document_id, archived.title, archived.markdown_body, 3, null);
+    mocks.loadDocuments.mockImplementation(async ({ archived: showArchived = false } = {}) => ({
+      documents: showArchived ? (mocks.setStandaloneDocumentArchived.mock.calls.length >= 2 ? [] : [summary(archived)]) : [summary(active)],
+    }));
+    mocks.loadDocument.mockResolvedValueOnce(active).mockResolvedValueOnce(archived).mockResolvedValueOnce(restored);
+    mocks.setStandaloneDocumentArchived.mockRejectedValueOnce(ambiguousError()).mockResolvedValueOnce({ document: restored });
+    render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Active for restore")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "アーカイブ" }));
+    await waitFor(() => expect(screen.getByDisplayValue("Borrow restore")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Borrow restoreの操作" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "復元" }));
+    await screen.findByRole("button", { name: "同じ内容で再試行" });
+    expect(screen.getByText("最新のServer内容を確認")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "同じ内容で再試行" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "同じ内容で再試行" }));
+    await waitFor(() => expect(mocks.setStandaloneDocumentArchived).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByText("アーカイブを選択")).toBeTruthy());
+    expect(screen.queryByText("保存結果を確認しました。")).toBeNull();
+  });
+
+  it("turns an ambiguous archive into a conflict only after exact retry", async () => {
+    const active = note("0199d090-0000-7000-8000-000000000014", "Conflict archive", "body", 1);
+    const canonical = note(active.document_id, active.title, active.markdown_body, 2, "2026-09-12T02:00:00.000Z");
+    mocks.loadDocuments.mockResolvedValue({ documents: [summary(active)] });
+    mocks.loadDocument.mockResolvedValueOnce(active).mockResolvedValueOnce(canonical).mockResolvedValueOnce(canonical);
+    mocks.setStandaloneDocumentArchived.mockRejectedValueOnce(ambiguousError()).mockRejectedValueOnce(revisionConflictError());
+    render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Conflict archive")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Conflict archiveの操作" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "アーカイブ" }));
+    await screen.findByRole("button", { name: "同じ内容で再試行" });
+    fireEvent.click(screen.getByRole("button", { name: "同じ内容で再試行" }));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("他の変更"));
+    expect(screen.queryByRole("button", { name: "同じ内容で再試行" })).toBeNull();
+    expect(screen.queryByText("アーカイブしました。")).toBeNull();
   });
 
   it("retains an ambiguous delete request when the exact Document is gone and retries it", async () => {

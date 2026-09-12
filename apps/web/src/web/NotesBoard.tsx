@@ -49,13 +49,6 @@ function isAmbiguousResolution(request: DocumentRequest, canonical: StandaloneDo
   return isUpdateRequest(request) ? canonical.revision === request.expected_revision + 1 : canonical.revision === 0;
 }
 
-function isLifecycleAmbiguousResolution(request: SetStandaloneDocumentArchivedRequest, canonical: StandaloneDocument): boolean {
-  return canonical.document_id === request.document_id
-    && canonical.kind === "standalone"
-    && canonical.revision === request.expected_revision + 1
-    && (canonical.archived_at !== null) === request.archived;
-}
-
 export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, onSavingChange, onRegisterFlush }: NotesBoardProps) {
   const [documents, setDocuments] = useState<StandaloneDocumentSummary[]>([]);
   const [document, setDocument] = useState<StandaloneDocument | null>(null);
@@ -297,22 +290,8 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
           ambiguousRequestRef.current = request; retryRequestRef.current = request;
           setAmbiguousRequest(request); setRetryRequest(request);
           setError("保存結果が未確定です。元の操作をそのまま再試行してください。");
-          if (isArchiveRequest(request)) {
-            try {
-              const canonical = await api.loadDocument(request.document_id);
-              if (isLifecycleAmbiguousResolution(request, canonical)) {
-                await reconcileLifecycleProjection(request, canonical);
-                ambiguousRequestRef.current = null; retryRequestRef.current = null;
-                setAmbiguousRequest(null); setRetryRequest(null); setLatestCanonical(null);
-                setError(null); setNotice("保存結果を確認しました。");
-              } else setLatestCanonical(canonical);
-            } catch (reconcileError) {
-              if (reconcileError instanceof ApiClientError && reconcileError.status === 401) handleUnauthorized();
-            }
-          } else {
-            try { await api.loadDocument(request.document_id); }
-            catch (reconcileError) { if (reconcileError instanceof ApiClientError && reconcileError.status === 401) handleUnauthorized(); }
-          }
+          try { setLatestCanonical(await api.loadDocument(request.document_id)); }
+          catch (reconcileError) { if (reconcileError instanceof ApiClientError && reconcileError.status === 401) handleUnauthorized(); }
         } else {
           retryRequestRef.current = null; ambiguousRequestRef.current = null;
           setRetryRequest(null); setAmbiguousRequest(null);
