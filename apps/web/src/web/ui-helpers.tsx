@@ -74,7 +74,11 @@ export function LogicalDateInput({ label, value, allowBlank = false, disabled = 
     onCommit(normalized);
   }
 
-  return <div className="logical-date-input" ref={rootRef}>
+  return <div className="logical-date-input" ref={rootRef} onKeyDown={(event) => {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    setCalendarOpen(false);
+  }}>
     <input type="text" inputMode="numeric" aria-label={label} value={draft} disabled={disabled}
       placeholder={allowBlank ? "終了なし" : "YYYYMMDD"}
       onChange={(event) => {

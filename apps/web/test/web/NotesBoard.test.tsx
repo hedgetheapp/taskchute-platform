@@ -420,6 +420,9 @@ describe("NotesBoard", () => {
     expect(JSON.parse(localStorage.getItem("taskchute.notes.line-numbering.v1")!)).toEqual({ version: 1, enabled: false });
     fireEvent.click(screen.getByRole("button", { name: "Linesの操作" }));
     expect(screen.getByRole("menu", { name: "Linesの操作" })).toBeTruthy();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("menu", { name: "Linesの操作" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Linesの操作" }));
     fireEvent.mouseDown(document.body);
     expect(screen.queryByRole("menu", { name: "Linesの操作" })).toBeNull();
     localStorage.removeItem("taskchute.notes.line-numbering.v1");

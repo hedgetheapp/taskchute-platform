@@ -99,9 +99,10 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
 
   const dirty = draftTitle !== baselineTitle || draftBody !== baselineBody;
   const unresolved = ambiguousRequest !== null;
-  const followUpPending = inFlightRequest !== null && isDocumentRequest(inFlightRequest)
-    && (draftTitle.trim() !== inFlightRequest.title || draftBody !== inFlightRequest.markdown_body);
-  const pendingSaveCount = unresolved ? 0 : inFlightRequest ? 1 + (followUpPending ? 1 : 0) : dirty ? 1 : 0;
+  const inFlightDocumentRequest = inFlightRequest !== null && isDocumentRequest(inFlightRequest) ? inFlightRequest : null;
+  const followUpPending = inFlightDocumentRequest !== null
+    && (draftTitle.trim() !== inFlightDocumentRequest.title || draftBody !== inFlightDocumentRequest.markdown_body);
+  const pendingSaveCount = unresolved ? 0 : inFlightDocumentRequest ? 1 + (followUpPending ? 1 : 0) : dirty ? 1 : 0;
   const lineCount = Math.max(1, draftBody.split("\n").length);
   const saveStatus = unresolved ? "保存結果未確定" : dirty ? "未保存" : "保存済み";
 
@@ -141,6 +142,17 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
 
   useOutsideClick(actionId !== null, (target) => target instanceof Element
     && Boolean(target.closest(".notes-row-menu, .notes-row-actions")), () => setActionId(null));
+
+  useEffect(() => {
+    if (actionId === null) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setActionId(null);
+    };
+    window.document.addEventListener("keydown", onKeyDown);
+    return () => window.document.removeEventListener("keydown", onKeyDown);
+  }, [actionId]);
 
   useEffect(() => {
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
