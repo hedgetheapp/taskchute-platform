@@ -2603,3 +2603,20 @@ D-084 browser fixture creation was not completed: the unauthenticated/new in-app
 | D097-CORR-NONPROD | Exact corrective deploy and unauthenticated safety | Worker `10624c3e-7534-49f1-ba82-d5813f299176`; root `200`; protected Projects API `401`; canonical nonprod config/bindings | PASS |
 | D097-CORR-DB | APP/AUTH read-only integrity | pending `0 / 0`; quick_check `ok`; FK empty; active executions `0`; duplicate positions/origin-Day `0`; orphan/guard residue `0`; `rows_written=0` | PASS |
 | D097-CORR-SAFETY | Migration/API/schema/dependency and prohibited operations | Web-only corrective; migration `NOT_REQUIRED`; no production, restore, credentials, bootstrap, destructive cleanup, branch/PR/merge/tag/Release | NOT_REQUIRED / NOT_RUN |
+
+### D-098 — Today Add focus continuity and hierarchical Escape — 2026-09-12
+
+| ID | Verification target | Evidence | Result |
+|---|---|---|---|
+| D098-ADD-CELL | Pending Add Task row replacement restores the user's same cell/control focus after canonical reconcile | focused deferred-promise App test; semantic row/cell/control locator | PASS |
+| D098-ADD-OUTSIDE | Add reconcile does not steal focus after the user moves to another row or outside the Day surface | focused App test | PASS |
+| D098-ADD-DEFAULT | Add with no intervening user focus change keeps the existing default row focus | focused App test | PASS |
+| D098-ADD-AMBIGUOUS | Ambiguous Add reconcile preserves the pending cell focus intent and exact existing Add boundary | focused deferred-promise App test | PASS |
+| D098-ESC-HIERARCHY | Title/editor Escape closes one level to cell, second Escape closes cell to row; row Escape is a no-op | focused App tests; editor event propagation guarded against row handler | PASS |
+| D098-ESC-CELLS | Estimate/planned-start and ordinary cell Escape return to same cell before row; unrelated editor cancel remains unchanged | focused App tests | PASS |
+| D098-POINTER-AUTHORITY | Pointer intent generation prevents reconcile from restoring stale focus after toolbar/row-outside pointer interaction | focused App test and source review | PASS |
+| D098-LOCAL | Focused/full suites and static gates | focused `7 / 7`; Web `5 files / 317`; Worker/D1 `32 files / 287`; typecheck; normal/exact nonprod build; deploy guard; Wrangler dry-run; diff-check | PASS |
+| D098-NONPROD | Exact main deploy and unauthenticated safety | Worker `1eae8a40-5bf7-4e45-8cb7-3262b61d6d93`; root `200`; Documents API `401`; APP/AUTH pending `0 / 0`; canonical bindings/vars | PASS |
+| D098-BROWSER | Existing authenticated tab, real title editor Escape, Add focus continuity, hierarchical second Escape | real CUA editor open + first Escape observed; Add disposable fixture and second Escape not safely observable due connector AX/input instability; no synthetic DOM events | PARTIAL / NOT_VERIFIED for Add and second Escape |
+| D098-DB | APP/AUTH read-only integrity and no write probes | APP/AUTH quick_check `ok`; FK empty; all successful probes `rows_written=0`; APP active Execution `1` retained untouched | PASS (active execution retained) |
+| D098-SAFETY | API/Worker/schema/migration/dependency and prohibited operations | Web-only; migration `NOT_REQUIRED`; no production, restore, credential/bootstrap, cleanup, branch/PR/merge/tag/Release | NOT_REQUIRED / NOT_RUN |
