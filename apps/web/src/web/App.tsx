@@ -1184,6 +1184,19 @@ export function App() {
     return item.kind === "reorder" && item.scope.includes(`placement:${taskchuteDayId}`) && item.sectionId === sectionId;
   }
 
+  function isContinuousPlacementItem(item: { kind?: "move" | "reorder"; scope: MutationScope }, taskchuteDayId: string): boolean {
+    return (item.kind === "move" || item.kind === "reorder") && item.scope.includes(`placement:${taskchuteDayId}`);
+  }
+
+  function latestPlacementOperationId(taskchuteDayId: string): string | undefined {
+    const queued = [...dayMutationQueueRef.current].reverse()
+      .find((item) => item.scope.includes(`placement:${taskchuteDayId}`) && item.operationId)?.operationId;
+    if (queued) return queued;
+    if (sectionMoveInFlightRef.current?.taskchute_day_id === taskchuteDayId) return sectionMoveInFlightRef.current.operation_id;
+    if (reorderInFlightRef.current?.taskchute_day_id === taskchuteDayId) return reorderInFlightRef.current.operation_id;
+    return undefined;
+  }
+
   function isReorderBarrierQueueItem(item: QueuedDayMutation, taskchuteDayId: string, sectionId: string | null): boolean {
     if (item.kind === "reorder") return item.scope.includes(`placement:${taskchuteDayId}`) && item.sectionId !== sectionId;
     return item.scope.includes(`placement:${taskchuteDayId}`)
@@ -1219,11 +1232,15 @@ export function App() {
     void drainDayMutationQueue();
   }
 
-  function enqueueSectionMoveMutation(mutation: QueuedDayMutation, intent: PendingSectionMoveIntent): void {
+  function enqueueSectionMoveMutation(
+    mutation: QueuedDayMutation,
+    intent: PendingSectionMoveIntent,
+    options?: { preserveSteps?: boolean },
+  ): void {
     if (dayMutationPausedRef.current && retainedOperation === null) dayMutationPausedRef.current = false;
     const lastIndex = dayMutationQueueRef.current.length - 1;
     const last = lastIndex >= 0 ? dayMutationQueueRef.current[lastIndex] : undefined;
-    if (last?.kind === "move" && last.entryId === intent.operation.entry_id) {
+    if (!options?.preserveSteps && last?.kind === "move" && last.entryId === intent.operation.entry_id) {
       const previousOperationId = last.operationId;
       dayMutationQueueRef.current[lastIndex] = mutation;
       updatePendingSectionMoveIntents((current) => current.map((candidate) => candidate.operation.operation_id === previousOperationId
@@ -1237,27 +1254,41 @@ export function App() {
     void drainDayMutationQueue();
   }
 
-  function hasReorderPlacementBarrier(sectionId: string | null, taskchuteDayId: string): boolean {
+  function hasReorderPlacementBarrier(
+    sectionId: string | null,
+    taskchuteDayId: string,
+    options?: { allowContinuousPlacement?: boolean },
+  ): boolean {
+    const allowContinuousPlacement = options?.allowContinuousPlacement === true;
     const placementScope = `placement:${taskchuteDayId}`;
     if (hasRetainedMutationScope([placementScope])) return true;
     if (activeMutationsRef.current.some((mutation) => {
+      if (allowContinuousPlacement && isContinuousPlacementItem(mutation, taskchuteDayId)) return false;
       if (mutation.kind === "reorder") return mutation.scope.includes(placementScope) && mutation.sectionId !== sectionId;
       return mutation.scope.includes(placementScope)
         || mutation.label === "Start" || mutation.label === "Complete" || mutation.label === "Interrupt";
     })) return true;
-    if (dayMutationQueueRef.current.some((mutation) => isReorderBarrierQueueItem(mutation, taskchuteDayId, sectionId))) return true;
+    if (dayMutationQueueRef.current.some((mutation) => allowContinuousPlacement
+      ? (!isContinuousPlacementItem(mutation, taskchuteDayId) && isReorderBarrierQueueItem(mutation, taskchuteDayId, sectionId))
+      : isReorderBarrierQueueItem(mutation, taskchuteDayId, sectionId))) return true;
     return (startOperation !== null && !isQueuedDayMutationOperation(startOperation.operation_id))
       || (interruptOperation !== null && !isQueuedDayMutationOperation(interruptOperation.operation_id))
       || (completeOperation !== null && !isQueuedDayMutationOperation(completeOperation.operation_id));
   }
 
-  function hasCrossSectionMoveBarrier(taskchuteDayId: string): boolean {
+  function hasCrossSectionMoveBarrier(taskchuteDayId: string, options?: { allowContinuousPlacement?: boolean }): boolean {
+    const allowContinuousPlacement = options?.allowContinuousPlacement === true;
     const placementScope = `placement:${taskchuteDayId}`;
     const ordinaryMoveInFlight = sectionMoveInFlightRef.current?.taskchute_day_id === taskchuteDayId
       && activeMutationsRef.current.some((mutation) => mutation.kind === "move" && mutation.scope.includes(placementScope));
     if (hasRetainedMutationScope([placementScope]) && !ordinaryMoveInFlight) return true;
-    if (activeMutationsRef.current.some((mutation) => mutation.scope.includes(placementScope) && mutation.kind !== "move")) return true;
+    if (activeMutationsRef.current.some((mutation) => {
+      if (mutation.kind === "move" && mutation.scope.includes(placementScope)) return false;
+      if (allowContinuousPlacement && isContinuousPlacementItem(mutation, taskchuteDayId)) return false;
+      return mutation.scope.includes(placementScope);
+    })) return true;
     if (dayMutationQueueRef.current.some((mutation) => {
+      if (allowContinuousPlacement && isContinuousPlacementItem(mutation, taskchuteDayId)) return false;
       if (mutation.kind === "move" && mutation.scope.includes(placementScope)) return false;
       return mutation.scope.includes(placementScope)
         || mutation.label === "Start" || mutation.label === "Complete" || mutation.label === "Interrupt";
@@ -2922,16 +2953,19 @@ export function App() {
     }
   }
 
-  async function reorderSectionEntries(sectionId: string | null, entryIds: string[], focusEntryId: string) {
+  async function reorderSectionEntries(
+    sectionId: string | null,
+    entryIds: string[],
+    focusEntryId: string,
+    options?: { allowContinuousPlacement?: boolean },
+  ) {
     const projection = dayRef.current ?? day;
     if (!projection?.taskchute_day.id || !projection.planning_enabled || mutationLocked) return;
     if (projection.is_current) {
-      if (hasReorderPlacementBarrier(sectionId, projection.taskchute_day.id)) return;
+      if (hasReorderPlacementBarrier(sectionId, projection.taskchute_day.id, options)) return;
     } else if (hasRetainedMutationScope(placementMutationScope(projection.taskchute_day.id))
       || hasQueuedMutationScope(placementMutationScope(projection.taskchute_day.id))) return;
     const entries = effectiveSectionEntries(sectionId, projection);
-    const canonicalEntries = sectionEntriesForProjection(projection, sectionId);
-    const canonicalIds = canonicalEntries.map((entry) => entry.id);
     if (!entries.length || !isValidManualReorderOrder(entries, entryIds) || sameEntryIdOrder(entryIds, entries.map((entry) => entry.id))) return;
     const currentOverlay = pendingReorderOverlaysRef.current[groupKey(sectionId)];
     const currentOperationIsUnsent = currentOverlay
@@ -2944,7 +2978,7 @@ export function App() {
     }
     const baseEntryIds = currentOverlay && !currentOperationIsUnsent
       ? entries.map((entry) => entry.id)
-      : currentOverlay?.baseEntryIds ?? canonicalIds;
+      : currentOverlay?.baseEntryIds ?? entries.map((entry) => entry.id);
     const operation: ReorderEntriesRequest = {
       operation_id: uuidv7(),
       taskchute_day_id: projection.taskchute_day.id,
@@ -2955,8 +2989,10 @@ export function App() {
     setPendingFocusKey(focusKey({ kind: "entry", id: focusEntryId }));
     updatePendingReorderOverlays((current) => ({ ...current, [groupKey(sectionId)]: { operation, baseEntryIds } }));
     const inFlight = reorderInFlightRef.current;
-    const dependsOnOperationId = inFlight?.taskchute_day_id === operation.taskchute_day_id && inFlight.section_id === sectionId
-      ? inFlight.operation_id : undefined;
+    const dependsOnOperationId = options?.allowContinuousPlacement
+      ? latestPlacementOperationId(operation.taskchute_day_id)
+      : inFlight?.taskchute_day_id === operation.taskchute_day_id && inFlight.section_id === sectionId
+        ? inFlight.operation_id : undefined;
     const dispatch = async () => {
       const latest = dayRef.current;
       if (!latest || latest.taskchute_day.id !== operation.taskchute_day_id) {
@@ -2989,10 +3025,15 @@ export function App() {
     else await dispatch();
   }
 
-  async function moveEntry(sectionId: string | null, entryId: string, delta: -1 | 1) {
+  async function moveEntry(
+    sectionId: string | null,
+    entryId: string,
+    delta: -1 | 1,
+    options?: { allowContinuousPlacement?: boolean },
+  ) {
     const projection = dayRef.current ?? day;
     if (!projection?.taskchute_day.id || !projection.planning_enabled || mutationLocked) return;
-    if (projection.is_current && hasReorderPlacementBarrier(sectionId, projection.taskchute_day.id)) return;
+    if (projection.is_current && hasReorderPlacementBarrier(sectionId, projection.taskchute_day.id, options)) return;
     const entries = effectiveSectionEntries(sectionId, projection);
     if (!entries || !canMoveEntry(entries, entryId, delta)) return;
     const ids = entries.map((candidate) => candidate.id);
@@ -3000,7 +3041,7 @@ export function App() {
     const to = from + delta;
     if (from < 0 || to < 0 || to >= ids.length) return;
     [ids[from], ids[to]] = [ids[to]!, ids[from]!];
-    await reorderSectionEntries(sectionId, ids, entryId);
+    await reorderSectionEntries(sectionId, ids, entryId, options);
   }
 
   function dragEdge(event: ReactDragEvent<HTMLElement>): DragEdge {
@@ -4160,9 +4201,15 @@ export function App() {
     }
   }
 
-  async function moveEntryToSection(entryId: string, sectionId: string | null, placement?: MoveEntryPlacementIntent) {
+  async function moveEntryToSection(
+    entryId: string,
+    sectionId: string | null,
+    placement?: MoveEntryPlacementIntent,
+    options?: { allowContinuousPlacement?: boolean },
+  ) {
     const baseProjection = dayRef.current ?? day;
-    const projection = baseProjection ? applyPendingSectionMoveOverlays(baseProjection, pendingSectionMoveIntentsRef.current) : null;
+    const movedProjection = baseProjection ? applyPendingSectionMoveOverlays(baseProjection, pendingSectionMoveIntentsRef.current) : null;
+    const projection = movedProjection ? applyPendingReorderOverlays(movedProjection, pendingReorderOverlaysRef.current) : null;
     const entry = projection ? entryForId(projection, entryId) : null;
     if (!entry || !projection?.taskchute_day.id || !projection.planning_enabled || mutationLocked
       || entry.lifecycle_state !== "planned" || entry.routine !== null || (placement && !projection.is_current)) return;
@@ -4179,7 +4226,7 @@ export function App() {
       if (!anchor || anchor.id === entry.id || anchor.lifecycle_state !== "planned" || anchor.section_id !== sectionId) return;
     }
     if (projection.is_current
-      ? hasCrossSectionMoveBarrier(projection.taskchute_day.id)
+      ? hasCrossSectionMoveBarrier(projection.taskchute_day.id, options)
       : hasRetainedMutationScope(placementMutationScope(projection.taskchute_day.id)) || hasQueuedMutationScope(placementMutationScope(projection.taskchute_day.id))) return;
 
     const latestIntent = pendingSectionMoveIntentsRef.current.filter((intent) => intent.operation.entry_id === entry.id).at(-1);
@@ -4207,11 +4254,14 @@ export function App() {
       sourcePlannedStartMinute: entry.planned_start_minute,
       ...(placement ? { placement } : {}),
     };
+    if (options?.allowContinuousPlacement) setPendingFocusKey(focusKey({ kind: "entry", id: entry.id }));
     setPendingSectionOverlays((current) => ({ ...current, [operation.entry_id]: {
       operation, plannedStartMinute: targetPlannedStart,
     } }));
     const inFlight = sectionMoveInFlightRef.current;
-    const dependsOnOperationId = inFlight?.entry_id === operation.entry_id ? inFlight.operation_id : undefined;
+    const dependsOnOperationId = options?.allowContinuousPlacement
+      ? latestPlacementOperationId(operation.taskchute_day_id)
+      : inFlight?.entry_id === operation.entry_id ? inFlight.operation_id : undefined;
     const dispatch = async () => {
       const latest = dayRef.current;
       const currentIntent = pendingSectionMoveIntentsRef.current.find((candidate) => candidate.operation.operation_id === operation.operation_id) ?? intent;
@@ -4241,7 +4291,7 @@ export function App() {
     if (projection.is_current) enqueueSectionMoveMutation({
       scope: placementMutationScope(operation.taskchute_day_id), label: "Section移動", operationId: operation.operation_id,
       kind: "move", entryId: operation.entry_id, dependsOnOperationId, dispatch,
-    }, intent);
+    }, intent, { preserveSteps: options?.allowContinuousPlacement });
     else {
       updatePendingSectionMoveIntents((current) => [...current, intent]);
       await dispatch();
@@ -5100,7 +5150,7 @@ export function App() {
           if (neighbor) void moveRoutineEntryToPlacement(source, sourceSectionId,
             { kind: "relative_to_entry", anchor_entry_id: neighbor.id, edge: delta > 0 ? "after" : "before" },
             { kind: "entry", id: source.id });
-        } else void moveEntry(sourceSectionId, entryId, delta);
+        } else void moveEntry(sourceSectionId, entryId, delta, { allowContinuousPlacement: true });
         return;
       }
       const adjacent = entries[entries.findIndex((entry) => entry.id === entryId) + delta];
@@ -5110,7 +5160,7 @@ export function App() {
           kind: "relative_to_entry", anchor_entry_id: adjacent.id, edge: delta > 0 ? "after" : "before",
         } as MoveEntryPlacementIntent;
         if (source.routine) void moveRoutineEntryToPlacement(source, sourceSectionId, placement, { kind: "entry", id: source.id });
-        else void moveEntryToSection(source.id, sourceSectionId, placement);
+        else void moveEntryToSection(source.id, sourceSectionId, placement, { allowContinuousPlacement: true });
         return;
       }
       const targetGroup = movementGroups[sourceGroupIndex + delta];
@@ -5123,11 +5173,11 @@ export function App() {
           kind: "relative_to_entry", anchor_entry_id: target.id, edge: delta > 0 ? "before" : "after",
         } as MoveEntryPlacementIntent;
         if (source.routine) void moveRoutineEntryToPlacement(source, target.section_id, placement, { kind: "entry", id: source.id });
-        else void moveEntryToSection(source.id, target.section_id, placement);
+        else void moveEntryToSection(source.id, target.section_id, placement, { allowContinuousPlacement: true });
       } else if (source.routine) {
         void moveRoutineEntryToPlacement(source, targetGroup.id, undefined, { kind: "entry", id: source.id });
       } else {
-        void moveEntryToSection(source.id, targetGroup.id);
+        void moveEntryToSection(source.id, targetGroup.id, undefined, { allowContinuousPlacement: true });
       }
       return;
     }

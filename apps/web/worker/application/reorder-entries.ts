@@ -5,6 +5,11 @@ import { persistRejection, readOperation, replayOperation } from "../persistence
 import { HttpError } from "./errors";
 import { fingerprint, REQUEST_FINGERPRINT_VERSION } from "./fingerprint";
 
+function visibleEntryPredicate(alias: string): string {
+  return `NOT EXISTS (SELECT 1 FROM routine_occurrence_suppressions x
+    WHERE x.app_user_id = ${alias}.app_user_id AND x.routine_occurrence_id = ${alias}.routine_occurrence_id)`;
+}
+
 export function isReorderEntriesRequest(value: unknown): value is ReorderEntriesRequest {
   if (!value || typeof value !== "object") return false;
   const body = value as Record<string, unknown>;
@@ -26,7 +31,7 @@ export async function reorderEntries(db: D1Database, appUserId: string, request:
     appUserId, operationId: request.operation_id, commandType: "ReorderEntries", requestFingerprint,
     outcomeKind: "domain_rejection", result: { code, message },
   });
-  const [dayResult, sectionResult, entriesResult] = await db.batch([
+  const [dayResult, sectionResult, entriesResult, maxPositionResult] = await db.batch([
     db.prepare("SELECT placement_revision FROM taskchute_days WHERE app_user_id = ? AND id = ?").bind(appUserId, request.taskchute_day_id),
     request.section_id ? db.prepare(`SELECT section_id AS id FROM taskchute_day_section_contexts
       WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id = ?`)
@@ -34,7 +39,11 @@ export async function reorderEntries(db: D1Database, appUserId: string, request:
     db.prepare(`SELECT e.id, e.position, e.lifecycle_state, e.planned_start_minute,
         (SELECT MIN(x.started_at) FROM executions x WHERE x.app_user_id = e.app_user_id AND x.entry_id = e.id) AS first_started_at
       FROM entries e
-      WHERE e.app_user_id = ? AND e.taskchute_day_id = ? AND e.section_id IS ? ORDER BY e.position, e.id`)
+      WHERE e.app_user_id = ? AND e.taskchute_day_id = ? AND e.section_id IS ?
+        AND ${visibleEntryPredicate("e")} ORDER BY e.position, e.id`)
+      .bind(appUserId, request.taskchute_day_id, request.section_id),
+    db.prepare(`SELECT MAX(position) AS max_position FROM entries
+      WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id IS ?`)
       .bind(appUserId, request.taskchute_day_id, request.section_id),
   ]);
   const convergedBeforeMutation = await readOperation(db, appUserId, request.operation_id);
@@ -93,16 +102,19 @@ export async function reorderEntries(db: D1Database, appUserId: string, request:
   const now = new Date().toISOString();
   const cohortJson = JSON.stringify(currentEntries);
   const plannedTargetsJson = JSON.stringify(plannedTargets);
-  const shiftOffset = Math.max(...currentEntries.map((entry) => entry.position), 0) + currentEntries.length + 1;
+  const maxPosition = Number((maxPositionResult.results[0] as { max_position?: unknown } | undefined)?.max_position ?? 0);
+  const shiftOffset = Math.max(maxPosition, ...currentEntries.map((entry) => entry.position), 0) + currentEntries.length + 1;
   try {
     const statements: D1PreparedStatement[] = [
       db.prepare(`INSERT INTO placement_command_guards (operation_id, app_user_id, taskchute_day_id, expected_revision)
         SELECT ?, app_user_id, id, ? FROM taskchute_days WHERE app_user_id = ? AND id = ? AND placement_revision = ?
-        AND (SELECT COUNT(*) FROM entries WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id IS ?) = json_array_length(?)
+        AND (SELECT COUNT(*) FROM entries e WHERE e.app_user_id = ? AND e.taskchute_day_id = ? AND e.section_id IS ?
+          AND ${visibleEntryPredicate("e")}) = json_array_length(?)
         AND NOT EXISTS (
           SELECT 1 FROM json_each(?) snapshot
           LEFT JOIN entries e ON e.app_user_id = ? AND e.taskchute_day_id = ? AND e.section_id IS ?
             AND e.id = json_extract(snapshot.value, '$.id')
+            AND ${visibleEntryPredicate("e")}
           WHERE e.id IS NULL
             OR e.position != CAST(json_extract(snapshot.value, '$.position') AS INTEGER)
             OR e.lifecycle_state != json_extract(snapshot.value, '$.lifecycle_state')
@@ -114,6 +126,7 @@ export async function reorderEntries(db: D1Database, appUserId: string, request:
       db.prepare(`UPDATE entries SET position = position + ?
         WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id IS ? AND lifecycle_state = 'planned'
           AND id IN (SELECT json_extract(value, '$.entry_id') FROM json_each(?))
+          AND ${visibleEntryPredicate("entries")}
           AND EXISTS (SELECT 1 FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
         .bind(shiftOffset, appUserId, request.taskchute_day_id, request.section_id, plannedTargetsJson,
           appUserId, request.operation_id),
@@ -126,6 +139,7 @@ export async function reorderEntries(db: D1Database, appUserId: string, request:
         )
         WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id IS ?
           AND lifecycle_state = 'planned' AND id IN (SELECT entry_id FROM requested)
+          AND ${visibleEntryPredicate("entries")}
           AND EXISTS (SELECT 1 FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
         .bind(plannedTargetsJson, appUserId, request.taskchute_day_id, request.section_id, appUserId, request.operation_id),
       db.prepare(`UPDATE taskchute_days SET placement_revision = placement_revision + 1 WHERE app_user_id = ? AND id = ?
@@ -133,11 +147,13 @@ export async function reorderEntries(db: D1Database, appUserId: string, request:
         .bind(appUserId, request.taskchute_day_id, appUserId, request.operation_id),
       db.prepare(`INSERT INTO transaction_assertions (app_user_id, id, ok) SELECT ?, ?, CASE WHEN
         EXISTS (SELECT 1 FROM taskchute_days WHERE app_user_id = ? AND id = ? AND placement_revision = ?)
-        AND (SELECT COUNT(*) FROM entries WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id IS ?) = json_array_length(?)
+        AND (SELECT COUNT(*) FROM entries e WHERE e.app_user_id = ? AND e.taskchute_day_id = ? AND e.section_id IS ?
+          AND ${visibleEntryPredicate("e")}) = json_array_length(?)
         AND NOT EXISTS (
           SELECT 1 FROM json_each(?) requested
           LEFT JOIN entries e ON e.app_user_id = ? AND e.taskchute_day_id = ? AND e.section_id IS ?
             AND e.id = json_extract(requested.value, '$.entry_id')
+            AND ${visibleEntryPredicate("e")}
             AND e.position = CAST(json_extract(requested.value, '$.target_position') AS INTEGER)
             AND e.lifecycle_state = 'planned'
           WHERE e.id IS NULL
@@ -146,6 +162,7 @@ export async function reorderEntries(db: D1Database, appUserId: string, request:
           SELECT 1 FROM json_each(?) snapshot
           LEFT JOIN entries e ON e.app_user_id = ? AND e.taskchute_day_id = ? AND e.section_id IS ?
             AND e.id = json_extract(snapshot.value, '$.id')
+            AND ${visibleEntryPredicate("e")}
             AND e.position = CAST(json_extract(snapshot.value, '$.position') AS INTEGER)
             AND e.lifecycle_state = json_extract(snapshot.value, '$.lifecycle_state')
           WHERE json_extract(snapshot.value, '$.lifecycle_state') != 'planned' AND e.id IS NULL
@@ -174,7 +191,8 @@ export async function reorderEntries(db: D1Database, appUserId: string, request:
         db.prepare(`SELECT e.id, e.position, e.lifecycle_state, e.planned_start_minute,
             (SELECT MIN(x.started_at) FROM executions x WHERE x.app_user_id = e.app_user_id AND x.entry_id = e.id) AS first_started_at
           FROM entries e
-          WHERE e.app_user_id = ? AND e.taskchute_day_id = ? AND e.section_id IS ? ORDER BY e.position, e.id`)
+          WHERE e.app_user_id = ? AND e.taskchute_day_id = ? AND e.section_id IS ?
+            AND ${visibleEntryPredicate("e")} ORDER BY e.position, e.id`)
           .bind(appUserId, request.taskchute_day_id, request.section_id),
       ]);
       if ((latestDay.results[0] as { placement_revision?: unknown } | undefined)?.placement_revision

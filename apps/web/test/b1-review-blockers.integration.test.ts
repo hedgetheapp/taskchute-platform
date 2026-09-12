@@ -136,6 +136,114 @@ describe.sequential("Dogfood Day B1 source-review blockers", () => {
       AND section_id IS NULL ORDER BY position`).bind(userId, dayId).all()).results).toEqual(after);
   });
 
+  it("reorders only suppression-visible Entries and preserves a suppressed physical slot", async () => {
+    const { userId, sectionIds, now } = await seedUser(1);
+    const dayId = await seedLegacyDay(userId, sectionIds, now);
+    const rows = await seedEntries(userId, dayId, sectionIds[0]!, ["planned", "planned", "planned"]);
+    await setPositions(rows, [10, 20, 30]);
+    const routineDefinitionId = uuidv7();
+    const occurrenceId = uuidv7();
+    await env.APP_DB.batch([
+      env.APP_DB.prepare(`INSERT INTO routine_definitions
+        (id, app_user_id, task_id, recurrence_type, start_logical_date, default_section_id,
+         default_planned_start_minute, materialization_order, created_at)
+        VALUES (?, ?, ?, 'daily', '2026-08-28', ?, 120, 1, ?)`)
+        .bind(routineDefinitionId, userId, rows[1]!.taskId, sectionIds[0], now),
+      env.APP_DB.prepare(`INSERT INTO routine_occurrences
+        (id, app_user_id, routine_definition_id, origin_taskchute_day_id, created_at)
+        VALUES (?, ?, ?, ?, ?)`)
+        .bind(occurrenceId, userId, routineDefinitionId, dayId, now),
+      env.APP_DB.prepare("UPDATE entries SET routine_occurrence_id = ? WHERE app_user_id = ? AND id = ?")
+        .bind(occurrenceId, userId, rows[1]!.id),
+      env.APP_DB.prepare(`INSERT INTO routine_occurrence_suppressions
+        (app_user_id, routine_occurrence_id, suppressed_at, reason) VALUES (?, ?, ?, 'schedule')`)
+        .bind(userId, occurrenceId, now),
+    ]);
+
+    const request = { operation_id: uuidv7(), taskchute_day_id: dayId, section_id: sectionIds[0]!,
+      entry_ids: [rows[2]!.id, rows[0]!.id], expected_placement_revision: 0 };
+    expect(await reorderEntries(env.APP_DB, userId, request)).toMatchObject({ placement_revision: 1,
+      entry_ids: request.entry_ids });
+    expect((await env.APP_DB.prepare(`SELECT id, position FROM entries
+      WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id = ? ORDER BY position`)
+      .bind(userId, dayId, sectionIds[0]).all()).results).toEqual([
+      { id: rows[2]!.id, position: 10 }, { id: rows[1]!.id, position: 20 }, { id: rows[0]!.id, position: 30 },
+    ]);
+    expect((await env.APP_DB.prepare(`SELECT e.id FROM entries e
+      WHERE e.app_user_id = ? AND e.taskchute_day_id = ? AND e.section_id = ?
+        AND NOT EXISTS (SELECT 1 FROM routine_occurrence_suppressions x
+          WHERE x.app_user_id = e.app_user_id AND x.routine_occurrence_id = e.routine_occurrence_id)
+      ORDER BY e.position`).bind(userId, dayId, sectionIds[0]).all()).results)
+      .toEqual([{ id: rows[2]!.id }, { id: rows[0]!.id }]);
+  });
+
+  it("preserves a suppressed Entry while moving into and reordering its Section", async () => {
+    const { userId, sectionIds, now } = await seedUser(2);
+    const dayId = await seedLegacyDay(userId, sectionIds, now, 0, true);
+    const [source] = await seedEntries(userId, dayId, sectionIds[0]!, ["planned"], 10);
+    const targetRows = await seedEntries(userId, dayId, sectionIds[1]!, ["planned", "planned"], 10);
+    await setPositions(targetRows, [10, 20]);
+
+    const routineDefinitionId = uuidv7();
+    const occurrenceId = uuidv7();
+    await env.APP_DB.batch([
+      env.APP_DB.prepare(`INSERT INTO routine_definitions
+        (id, app_user_id, task_id, recurrence_type, start_logical_date, default_section_id,
+         default_planned_start_minute, materialization_order, created_at)
+        VALUES (?, ?, ?, 'daily', '2026-08-28', ?, 120, 1, ?)`)
+        .bind(routineDefinitionId, userId, targetRows[0]!.taskId, sectionIds[1], now),
+      env.APP_DB.prepare(`INSERT INTO routine_occurrences
+        (id, app_user_id, routine_definition_id, origin_taskchute_day_id, created_at)
+        VALUES (?, ?, ?, ?, ?)`)
+        .bind(occurrenceId, userId, routineDefinitionId, dayId, now),
+      env.APP_DB.prepare("UPDATE entries SET routine_occurrence_id = ? WHERE app_user_id = ? AND id = ?")
+        .bind(occurrenceId, userId, targetRows[0]!.id),
+      env.APP_DB.prepare(`INSERT INTO routine_occurrence_suppressions
+        (app_user_id, routine_occurrence_id, suppressed_at, reason) VALUES (?, ?, ?, 'schedule')`)
+        .bind(userId, occurrenceId, now),
+    ]);
+
+    const moved = await moveEntry(env.APP_DB, userId, {
+      operation_id: uuidv7(), entry_id: source!.id, taskchute_day_id: dayId,
+      section_id: sectionIds[1]!, expected_placement_revision: 0,
+      placement: { kind: "relative_to_entry", anchor_entry_id: targetRows[1]!.id, edge: "before" },
+    });
+    expect(moved.placement_revision).toBe(1);
+
+    const suppressedBefore = await env.APP_DB.prepare(`SELECT id, position FROM entries
+      WHERE app_user_id = ? AND id = ?`).bind(userId, targetRows[0]!.id).first<{ id: string; position: number }>();
+    expect(suppressedBefore).toEqual({ id: targetRows[0]!.id, position: 10 });
+    const visibleAfterMove = await env.APP_DB.prepare(`SELECT e.id FROM entries e
+      WHERE e.app_user_id = ? AND e.taskchute_day_id = ? AND e.section_id = ?
+        AND NOT EXISTS (SELECT 1 FROM routine_occurrence_suppressions x
+          WHERE x.app_user_id = e.app_user_id AND x.routine_occurrence_id = e.routine_occurrence_id)
+      ORDER BY e.position, e.id`).bind(userId, dayId, sectionIds[1]).all<{ id: string }>();
+    expect(visibleAfterMove.results.map((row) => row.id)).toEqual([source!.id, targetRows[1]!.id]);
+
+    const reordered = await reorderEntries(env.APP_DB, userId, {
+      operation_id: uuidv7(), taskchute_day_id: dayId, section_id: sectionIds[1]!,
+      entry_ids: [targetRows[1]!.id, source!.id], expected_placement_revision: 1,
+    });
+    expect(reordered.placement_revision).toBe(2);
+    const physical = await env.APP_DB.prepare(`SELECT id, position FROM entries
+      WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id = ? ORDER BY position, id`)
+      .bind(userId, dayId, sectionIds[1]).all<{ id: string; position: number }>();
+    expect(physical.results).toEqual([
+      { id: targetRows[0]!.id, position: 10 },
+      { id: targetRows[1]!.id, position: 20 },
+      { id: source!.id, position: 21 },
+    ]);
+    expect(new Set(physical.results.map((row) => row.position)).size).toBe(physical.results.length);
+    const visibleAfterReorder = await env.APP_DB.prepare(`SELECT e.id FROM entries e
+      WHERE e.app_user_id = ? AND e.taskchute_day_id = ? AND e.section_id = ?
+        AND NOT EXISTS (SELECT 1 FROM routine_occurrence_suppressions x
+          WHERE x.app_user_id = e.app_user_id AND x.routine_occurrence_id = e.routine_occurrence_id)
+      ORDER BY e.position, e.id`).bind(userId, dayId, sectionIds[1]).all<{ id: string }>();
+    expect(visibleAfterReorder.results.map((row) => row.id)).toEqual([targetRows[1]!.id, source!.id]);
+    expect(await env.APP_DB.prepare("SELECT id, position FROM entries WHERE app_user_id = ? AND id = ?")
+      .bind(userId, targetRows[0]!.id).first<{ id: string; position: number }>()).toEqual(suppressedBefore);
+  });
+
   it("rejects mutation-time lifecycle races without position, revision, or successful operation writes", async () => {
     const sectioned = await seedUser(1);
     const sectionedDay = await seedLegacyDay(sectioned.userId, sectioned.sectionIds, sectioned.now, 0, true);

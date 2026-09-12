@@ -2282,6 +2282,114 @@ describe("Dogfood Day shell", () => {
     expect(mocks.reorderEntries.mock.calls[1][0].entry_ids).toEqual([secondEntry.id, thirdEntry.id, firstEntry.id]);
   });
 
+  it("accepts continuous Move to Move traversal across empty real Sections", async () => {
+    const firstRequest = deferred<unknown>();
+    const secondRequest = deferred<unknown>();
+    const middleId = "019c0000-0000-7000-8000-000000000021";
+    const source = { ...firstEntry, planned_start_minute: 300 };
+    const middle = { ...emptyDay.sections[1], id: middleId, title: "Day", logical_start_minute: 720,
+      logical_end_minute: 960, entries: [] };
+    const evening = { ...emptyDay.sections[1], title: "Evening", logical_start_minute: 960, logical_end_minute: 1680,
+      entries: [] };
+    const sourceDay = { ...emptyDay, placement_revision: 20,
+      sections: [{ ...emptyDay.sections[0], entries: [source] }, middle, evening], next_entry: source };
+    const middleDay = { ...sourceDay, placement_revision: 21,
+      sections: [{ ...sourceDay.sections[0], entries: [] }, { ...middle, entries: [{ ...source, section_id: middleId,
+        planned_start_minute: middle.logical_start_minute }] }, evening], next_entry: null };
+    const eveningDay = { ...middleDay, placement_revision: 22,
+      sections: [{ ...sourceDay.sections[0], entries: [] }, { ...middle, entries: [] }, { ...evening,
+        entries: [{ ...source, section_id: evening.id, planned_start_minute: evening.logical_start_minute }] }] };
+    mocks.loadDay.mockResolvedValueOnce(sourceDay).mockResolvedValueOnce(middleDay).mockResolvedValueOnce(eveningDay);
+    mocks.moveEntry.mockReturnValueOnce(firstRequest.promise).mockReturnValueOnce(secondRequest.promise);
+    render(<App />);
+
+    const row = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
+    row.focus();
+    fireEvent.keyDown(row, { key: "ArrowDown", shiftKey: true });
+    await waitFor(() => expect(mocks.moveEntry).toHaveBeenCalledTimes(1));
+    fireEvent.keyDown(screen.getByText("Canonical task").closest<HTMLElement>("[data-entry-id]")!, { key: "ArrowDown", shiftKey: true });
+
+    expect(mocks.moveEntry).toHaveBeenCalledTimes(1);
+    expect(document.querySelector(`[data-entry-id="${source.id}"]`)?.getAttribute("data-section-id")).toBe(evening.id);
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe("保存中 2件"));
+
+    firstRequest.resolve({});
+    await waitFor(() => expect(mocks.moveEntry).toHaveBeenCalledTimes(2));
+    expect(mocks.moveEntry.mock.calls[1]?.[0]).toMatchObject({ entry_id: source.id, section_id: evening.id });
+    secondRequest.resolve({});
+    await waitFor(() => expect(screen.queryByText("Section移動・照合中…")).toBeNull());
+    expect(document.querySelector(`[data-entry-id="${source.id}"]`)?.getAttribute("data-section-id")).toBe(evening.id);
+  });
+
+  it("accepts Reorder to Move continuously without dispatching Move across the Reorder barrier", async () => {
+    const reorderRequest = deferred<unknown>();
+    const moveRequest = deferred<unknown>();
+    const source = { ...firstEntry, planned_start_minute: 300 };
+    const neighbor = { ...secondEntry, planned_start_minute: 300 };
+    const sourceDay = { ...emptyDay, placement_revision: 23,
+      sections: [{ ...emptyDay.sections[0], entries: [source, neighbor] }, emptyDay.sections[1]], next_entry: source };
+    const reorderedDay = { ...sourceDay, placement_revision: 24,
+      sections: [{ ...sourceDay.sections[0], entries: [neighbor, source] }, emptyDay.sections[1]], next_entry: neighbor };
+    const movedDay = { ...reorderedDay, placement_revision: 25,
+      sections: [{ ...reorderedDay.sections[0], entries: [neighbor] }, { ...emptyDay.sections[1], entries: [{ ...source,
+        section_id: eveningId, planned_start_minute: 300 }] }], next_entry: neighbor };
+    mocks.loadDay.mockResolvedValueOnce(sourceDay).mockResolvedValueOnce(reorderedDay).mockResolvedValueOnce(movedDay);
+    mocks.reorderEntries.mockReturnValue(reorderRequest.promise);
+    mocks.moveEntry.mockReturnValue(moveRequest.promise);
+    render(<App />);
+
+    const row = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
+    row.focus();
+    fireEvent.keyDown(row, { key: "ArrowDown", shiftKey: true });
+    await waitFor(() => expect(mocks.reorderEntries).toHaveBeenCalledTimes(1));
+    fireEvent.keyDown(screen.getByText("Canonical task").closest<HTMLElement>("[data-entry-id]")!, { key: "ArrowDown", shiftKey: true });
+
+    expect(mocks.moveEntry).not.toHaveBeenCalled();
+    expect(Array.from(document.querySelectorAll(".task-row[data-entry-id]"), (item) => item.getAttribute("data-entry-id")))
+      .toEqual([neighbor.id, source.id]);
+
+    reorderRequest.resolve({});
+    await waitFor(() => expect(mocks.moveEntry).toHaveBeenCalledTimes(1));
+    expect(mocks.moveEntry.mock.calls[0]?.[0]).toMatchObject({ entry_id: source.id, section_id: eveningId });
+    moveRequest.resolve({});
+    await waitFor(() => expect(screen.queryByText("Section移動・照合中…")).toBeNull());
+  });
+
+  it("accepts Move to Reorder continuously from the effective moved Section order", async () => {
+    const moveRequest = deferred<unknown>();
+    const reorderRequest = deferred<unknown>();
+    const source = { ...firstEntry, planned_start_minute: 300 };
+    const target = { ...secondEntry, section_id: eveningId, planned_start_minute: 300 };
+    const sourceDay = { ...emptyDay, placement_revision: 26,
+      sections: [{ ...emptyDay.sections[0], entries: [source] }, { ...emptyDay.sections[1], entries: [target] }], next_entry: source };
+    const movedDay = { ...sourceDay, placement_revision: 27,
+      sections: [{ ...emptyDay.sections[0], entries: [] }, { ...emptyDay.sections[1], entries: [{ ...source,
+        section_id: eveningId, planned_start_minute: 300 }, target] }], next_entry: source };
+    const reorderedDay = { ...movedDay, placement_revision: 28,
+      sections: [{ ...emptyDay.sections[0], entries: [] }, { ...emptyDay.sections[1], entries: [target, { ...source,
+        section_id: eveningId, planned_start_minute: 300 }] }], next_entry: target };
+    mocks.loadDay.mockResolvedValueOnce(sourceDay).mockResolvedValueOnce(movedDay).mockResolvedValueOnce(reorderedDay);
+    mocks.moveEntry.mockReturnValue(moveRequest.promise);
+    mocks.reorderEntries.mockReturnValue(reorderRequest.promise);
+    render(<App />);
+
+    const row = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
+    row.focus();
+    fireEvent.keyDown(row, { key: "ArrowDown", shiftKey: true });
+    await waitFor(() => expect(mocks.moveEntry).toHaveBeenCalledTimes(1));
+    fireEvent.keyDown(screen.getByText("Canonical task").closest<HTMLElement>("[data-entry-id]")!, { key: "ArrowDown", shiftKey: true });
+
+    expect(mocks.reorderEntries).not.toHaveBeenCalled();
+    expect(Array.from(document.querySelectorAll(`.task-row[data-section-id="${eveningId}"]`), (item) => item.getAttribute("data-entry-id")))
+      .toEqual([target.id, source.id]);
+
+    moveRequest.resolve({});
+    await waitFor(() => expect(mocks.reorderEntries).toHaveBeenCalledTimes(1));
+    expect(mocks.reorderEntries.mock.calls[0]?.[0].entry_ids).toEqual([target.id, source.id]);
+    reorderRequest.resolve({});
+    await waitFor(() => expect(screen.queryByText("並び替え・照合中…")).toBeNull());
+  });
+
   it("moves a focused Entry across planned-start cohorts with Shift+Arrow", async () => {
     const request = deferred<unknown>();
     const source = { ...firstEntry, planned_start_minute: 240 };
