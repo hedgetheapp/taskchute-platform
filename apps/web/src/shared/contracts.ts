@@ -23,6 +23,7 @@ export interface StandaloneDocument {
   title: string;
   markdown_body: string;
   revision: number;
+  archived_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -32,6 +33,7 @@ export interface StandaloneDocumentSummary {
   kind: "standalone";
   title: string;
   revision: number;
+  archived_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -61,6 +63,28 @@ export interface UpdateDocumentRequest {
 
 export interface UpdateDocumentResult {
   document: StandaloneDocument;
+}
+
+export interface SetStandaloneDocumentArchivedRequest {
+  operation_id: string;
+  document_id: string;
+  expected_revision: number;
+  archived: boolean;
+}
+
+export interface SetStandaloneDocumentArchivedResult {
+  document: StandaloneDocument;
+}
+
+export interface DeleteStandaloneDocumentRequest {
+  operation_id: string;
+  document_id: string;
+  expected_revision: number;
+}
+
+export interface DeleteStandaloneDocumentResult {
+  document_id: string;
+  deleted: true;
 }
 
 export interface ProjectSummary {

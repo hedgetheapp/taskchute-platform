@@ -1,13 +1,17 @@
 import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
-import type { CreateStandaloneDocumentRequest, UpdateDocumentRequest } from "../src/shared/contracts";
+import type { CreateStandaloneDocumentRequest, SetStandaloneDocumentArchivedRequest, UpdateDocumentRequest } from "../src/shared/contracts";
 import { uuidv7 } from "../src/shared/uuidv7";
 import {
   createStandaloneDocument,
+  deleteStandaloneDocument,
   isCreateStandaloneDocumentRequest,
+  isDeleteStandaloneDocumentRequest,
+  isSetStandaloneDocumentArchivedRequest,
   isUpdateDocumentRequest,
   loadStandaloneDocument,
   loadStandaloneDocuments,
+  setStandaloneDocumentArchived,
   updateDocument,
 } from "../worker/application/documents";
 
@@ -131,6 +135,86 @@ describe("D-090 standalone Markdown Documents", () => {
     expect((await loadStandaloneDocuments(env.APP_DB, userId)).documents.map((item) => item.title))
       .toEqual(["Newer", "Older"]);
   });
+
+  it("allocates exact trimmed titles across active and archived Notes, then reuses deleted titles", async () => {
+    const first = await createStandaloneDocument(env.APP_DB, userId, createRequest({ title: "  notitle  " }));
+    const second = await createStandaloneDocument(env.APP_DB, userId, createRequest({ title: "notitle" }));
+    const third = await createStandaloneDocument(env.APP_DB, userId, createRequest({ title: "notitle" }));
+    expect([first.document.title, second.document.title, third.document.title]).toEqual(["notitle", "notitle1", "notitle2"]);
+
+    const archiveRequest: SetStandaloneDocumentArchivedRequest = {
+      operation_id: uuidv7(), document_id: first.document.document_id, expected_revision: 0, archived: true,
+    };
+    await setStandaloneDocumentArchived(env.APP_DB, userId, archiveRequest);
+    const activeTitles = (await loadStandaloneDocuments(env.APP_DB, userId)).documents.map((item) => item.title);
+    const archivedTitles = (await loadStandaloneDocuments(env.APP_DB, userId, true)).documents.map((item) => item.title);
+    expect(activeTitles).toEqual(["notitle2", "notitle1"]);
+    expect(archivedTitles).toEqual(["notitle"]);
+    await deleteStandaloneDocument(env.APP_DB, userId, {
+      operation_id: uuidv7(), document_id: first.document.document_id, expected_revision: 1,
+    });
+    const reusable = await createStandaloneDocument(env.APP_DB, userId, createRequest({ title: "notitle" }));
+    expect(reusable.document.title).toBe("notitle");
+  });
+
+  it("allocates a duplicate requested title for Update without changing the canonical identity", async () => {
+    const first = await createStandaloneDocument(env.APP_DB, userId, createRequest({ title: "Same" }));
+    const second = await createStandaloneDocument(env.APP_DB, userId, createRequest({ title: "Other" }));
+    const updated = await updateDocument(env.APP_DB, userId, updateRequest(second.document.document_id, 0, { title: "Same", markdown_body: "changed" }));
+    expect(updated.document).toMatchObject({ document_id: second.document.document_id, title: "Same1", markdown_body: "changed", revision: 1 });
+    expect((await loadStandaloneDocument(env.APP_DB, userId, first.document.document_id)).title).toBe("Same");
+  });
+
+  it("archives, restores, and deletes with revision CAS and exact replay", async () => {
+    const created = await createStandaloneDocument(env.APP_DB, userId, createRequest({ title: "Lifecycle" }));
+    const archiveRequest: SetStandaloneDocumentArchivedRequest = {
+      operation_id: uuidv7(), document_id: created.document.document_id, expected_revision: 0, archived: true,
+    };
+    const archived = await setStandaloneDocumentArchived(env.APP_DB, userId, archiveRequest, "2026-09-11T04:00:00.000Z");
+    expect(archived.document).toMatchObject({ archived_at: "2026-09-11T04:00:00.000Z", revision: 1 });
+    expect(await setStandaloneDocumentArchived(env.APP_DB, userId, archiveRequest)).toEqual(archived);
+    await expect(setStandaloneDocumentArchived(env.APP_DB, userId, { ...archiveRequest, operation_id: uuidv7() }))
+      .rejects.toMatchObject({ code: "revision_conflict" });
+
+    const restore = await setStandaloneDocumentArchived(env.APP_DB, userId, {
+      operation_id: uuidv7(), document_id: created.document.document_id, expected_revision: 1, archived: false,
+    });
+    expect(restore.document).toMatchObject({ archived_at: null, revision: 2 });
+    const deleteRequest = { operation_id: uuidv7(), document_id: created.document.document_id, expected_revision: 2 };
+    const deleted = await deleteStandaloneDocument(env.APP_DB, userId, deleteRequest);
+    expect(deleted).toEqual({ document_id: created.document.document_id, deleted: true });
+    expect(await deleteStandaloneDocument(env.APP_DB, userId, deleteRequest)).toEqual(deleted);
+    await expect(loadStandaloneDocument(env.APP_DB, userId, created.document.document_id))
+      .rejects.toMatchObject({ code: "resource_not_found" });
+  });
+
+  it("retains archive/delete infrastructure ambiguity instead of misreporting a CAS result", async () => {
+    const archivedTarget = await createStandaloneDocument(env.APP_DB, userId, createRequest({ title: "Archive ambiguity" }));
+    const archiveRequest: SetStandaloneDocumentArchivedRequest = {
+      operation_id: uuidv7(), document_id: archivedTarget.document.document_id, expected_revision: 0, archived: true,
+    };
+    const archiveAssertion = `document-archive:${archiveRequest.operation_id}`;
+    await expect(setStandaloneDocumentArchived(env.APP_DB, userId, archiveRequest, "2026-09-11T05:00:00.000Z", {
+      beforeMutation: async () => {
+        await env.APP_DB.prepare("INSERT INTO transaction_assertions (app_user_id, id, ok) VALUES (?, ?, 1)")
+          .bind(userId, archiveAssertion).run();
+      },
+    })).rejects.toMatchObject({ code: "infrastructure_ambiguous" });
+    expect(await loadStandaloneDocument(env.APP_DB, userId, archivedTarget.document.document_id)).toMatchObject({ revision: 0, archived_at: null });
+    await env.APP_DB.prepare("DELETE FROM transaction_assertions WHERE app_user_id = ? AND id = ?").bind(userId, archiveAssertion).run();
+
+    const deletedTarget = await createStandaloneDocument(env.APP_DB, userId, createRequest({ title: "Delete ambiguity" }));
+    const deleteRequest = { operation_id: uuidv7(), document_id: deletedTarget.document.document_id, expected_revision: 0 };
+    const deleteAssertion = `document-delete:${deleteRequest.operation_id}`;
+    await expect(deleteStandaloneDocument(env.APP_DB, userId, deleteRequest, "2026-09-11T05:01:00.000Z", {
+      beforeMutation: async () => {
+        await env.APP_DB.prepare("INSERT INTO transaction_assertions (app_user_id, id, ok) VALUES (?, ?, 1)")
+          .bind(userId, deleteAssertion).run();
+      },
+    })).rejects.toMatchObject({ code: "infrastructure_ambiguous" });
+    expect(await loadStandaloneDocument(env.APP_DB, userId, deletedTarget.document.document_id)).toMatchObject({ revision: 0 });
+    await env.APP_DB.prepare("DELETE FROM transaction_assertions WHERE app_user_id = ? AND id = ?").bind(userId, deleteAssertion).run();
+  });
 });
 
 describe("D-090 exact Document request shapes", () => {
@@ -144,5 +228,9 @@ describe("D-090 exact Document request shapes", () => {
     expect(isUpdateDocumentRequest({ ...update, user_id: userId })).toBe(false);
     expect(isUpdateDocumentRequest({ ...update, expected_revision: -1 })).toBe(false);
     expect(isUpdateDocumentRequest({ ...update, body: "wrong-field" })).toBe(false);
+    expect(isSetStandaloneDocumentArchivedRequest({ operation_id: uuidv7(), document_id: create.document_id, expected_revision: 0, archived: true })).toBe(true);
+    expect(isSetStandaloneDocumentArchivedRequest({ operation_id: uuidv7(), document_id: create.document_id, expected_revision: 0, archived: true, reason: "no" })).toBe(false);
+    expect(isDeleteStandaloneDocumentRequest({ operation_id: uuidv7(), document_id: create.document_id, expected_revision: 0 })).toBe(true);
+    expect(isDeleteStandaloneDocumentRequest({ operation_id: uuidv7(), document_id: create.document_id, expected_revision: 0, archived: false })).toBe(false);
   });
 });

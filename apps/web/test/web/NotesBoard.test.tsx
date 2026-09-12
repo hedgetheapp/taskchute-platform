@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { StandaloneDocument } from "../../src/shared/contracts";
+import type { StandaloneDocument, StandaloneDocumentSummary } from "../../src/shared/contracts";
 
 const mocks = vi.hoisted(() => {
   class MockApiClientError extends Error {
@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => {
     loadDocument: vi.fn(),
     createStandaloneDocument: vi.fn(),
     updateDocument: vi.fn(),
+    setStandaloneDocumentArchived: vi.fn(),
+    deleteStandaloneDocument: vi.fn(),
     ApiClientError: MockApiClientError,
   };
 });
@@ -21,10 +23,17 @@ vi.mock("../../src/web/api", () => ({ api: mocks, ApiClientError: mocks.ApiClien
 
 import { NotesBoard } from "../../src/web/NotesBoard";
 
-function note(id: string, title: string, body: string, revision = 0): StandaloneDocument {
+function note(id: string, title: string, body: string, revision = 0, archived_at: string | null = null): StandaloneDocument {
   return {
-    document_id: id, kind: "standalone", title, markdown_body: body, revision,
+    document_id: id, kind: "standalone", title, markdown_body: body, revision, archived_at,
     created_at: "2026-09-11T00:00:00.000Z", updated_at: "2026-09-11T00:00:00.000Z",
+  };
+}
+
+function summary(document: StandaloneDocument): StandaloneDocumentSummary {
+  return {
+    document_id: document.document_id, kind: "standalone", title: document.title, revision: document.revision,
+    archived_at: document.archived_at, created_at: document.created_at, updated_at: document.updated_at,
   };
 }
 
@@ -32,67 +41,110 @@ function ambiguousError(): Error {
   return new mocks.ApiClientError("ambiguous", 503, true, "infrastructure_ambiguous");
 }
 
+function missingError(): Error {
+  return new mocks.ApiClientError("missing", 404, true, "resource_not_found");
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => { resolve = resolvePromise; reject = rejectPromise; });
+  return { promise, resolve, reject };
+}
+
 describe("NotesBoard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.loadDocuments.mockResolvedValue({ documents: [] });
+    mocks.createStandaloneDocument.mockResolvedValue({ document: note("0199d090-0000-7000-8000-000000000001", "notitle", "") });
+    mocks.updateDocument.mockResolvedValue({ document: note("0199d090-0000-7000-8000-000000000001", "notitle", "", 1) });
+    mocks.setStandaloneDocumentArchived.mockResolvedValue({ document: note("0199d090-0000-7000-8000-000000000001", "notitle", "", 1, "2026-09-12T00:00:00.000Z") });
+    mocks.deleteStandaloneDocument.mockResolvedValue({ document_id: "0199d090-0000-7000-8000-000000000001", deleted: true });
   });
 
-  it("opens a memory-only draft, creates on explicit Save, then updates", async () => {
-    const created = note("0199d090-0000-7000-8000-000000000001", "Created", "# body", 0);
+  it("creates immediately with the reserved notitle request, then explicit Save updates", async () => {
+    const created = note("0199d090-0000-7000-8000-000000000001", "notitle", "", 0);
     mocks.createStandaloneDocument.mockResolvedValue({ document: created });
-    mocks.updateDocument.mockResolvedValue({ document: { ...created, title: "Updated", revision: 1 } });
+    mocks.updateDocument.mockResolvedValue({ document: note(created.document_id, "Created", "# body", 1) });
     render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} />);
-    await waitFor(() => expect(screen.getByRole("button", { name: "＋ 新規ノート" })).toBeTruthy());
-    fireEvent.click(screen.getByRole("button", { name: "＋ 新規ノート" }));
-    expect(mocks.createStandaloneDocument).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole("button", { name: "＋ 新規ノート" }));
+    await waitFor(() => expect(mocks.createStandaloneDocument).toHaveBeenCalledTimes(1));
+    expect(mocks.createStandaloneDocument.mock.calls[0]![0]).toMatchObject({ title: "notitle", markdown_body: "" });
     fireEvent.change(screen.getByLabelText("ノートタイトル"), { target: { value: "Created" } });
     fireEvent.change(screen.getByLabelText("Markdown本文"), { target: { value: "# body" } });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
-    await waitFor(() => expect(mocks.createStandaloneDocument).toHaveBeenCalledTimes(1));
-    expect(mocks.updateDocument).not.toHaveBeenCalled();
-    fireEvent.change(screen.getByLabelText("ノートタイトル"), { target: { value: "Updated" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => expect(mocks.updateDocument).toHaveBeenCalledTimes(1));
-    expect(mocks.updateDocument.mock.calls[0]![0]).toMatchObject({ document_id: created.document_id, expected_revision: 0, title: "Updated" });
+    expect(mocks.updateDocument.mock.calls[0]![0]).toMatchObject({
+      document_id: created.document_id, expected_revision: 0, title: "Created", markdown_body: "# body",
+    });
   });
 
-  it("uses the same save path for Ctrl+S and prevents duplicate key-repeat dispatch", async () => {
-    const created = note("0199d090-0000-7000-8000-000000000002", "Keyboard", "body");
-    mocks.createStandaloneDocument.mockResolvedValue({ document: created });
+  it("autosaves an existing Note after the debounce without blocking editing", async () => {
+    const current = note("0199d090-0000-7000-8000-000000000002", "Before", "body", 3);
+    mocks.loadDocuments.mockResolvedValue({ documents: [summary(current)] });
+    mocks.loadDocument.mockResolvedValue(current);
+    const saved = note(current.document_id, "After", "body", 4);
+    mocks.updateDocument.mockResolvedValue({ document: saved });
+    render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} onSavingChange={vi.fn()} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Before")).toBeTruthy());
+    fireEvent.change(screen.getByLabelText("ノートタイトル"), { target: { value: "After" } });
+    expect(screen.getByDisplayValue("After")).toBeTruthy();
+    await waitFor(() => expect(mocks.updateDocument).toHaveBeenCalledTimes(1), { timeout: 2500 });
+    expect(mocks.updateDocument.mock.calls[0]![0]).toMatchObject({ expected_revision: 3, title: "After" });
+  });
+
+  it("reports logical saves once and bounds a sent request plus one follow-up intent", async () => {
+    const current = note("0199d090-0000-7000-8000-00000000000b", "Before", "body", 0);
+    const response = deferred<{ document: StandaloneDocument }>();
+    mocks.loadDocuments.mockResolvedValue({ documents: [summary(current)] });
+    mocks.loadDocument.mockResolvedValue(current);
+    mocks.updateDocument.mockReturnValueOnce(response.promise).mockResolvedValue({ document: note(current.document_id, "Title", "new body", 1) });
     render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} />);
-    fireEvent.click(await screen.findByRole("button", { name: "＋ 新規ノート" }));
-    fireEvent.change(screen.getByLabelText("ノートタイトル"), { target: { value: "Keyboard" } });
-    fireEvent.change(screen.getByLabelText("Markdown本文"), { target: { value: "body" } });
-    const body = screen.getByLabelText("Markdown本文");
-    fireEvent.keyDown(body, { key: "s", ctrlKey: true });
-    fireEvent.keyDown(body, { key: "s", ctrlKey: true, repeat: true });
-    await waitFor(() => expect(mocks.createStandaloneDocument).toHaveBeenCalledTimes(1));
-    mocks.updateDocument.mockResolvedValue({ document: { ...created, title: "Keyboard updated", revision: 1 } });
-    fireEvent.change(screen.getByLabelText("ノートタイトル"), { target: { value: "Keyboard updated" } });
-    fireEvent.keyDown(screen.getByLabelText("ノートタイトル"), { key: "s", metaKey: true });
-    await waitFor(() => expect(mocks.updateDocument).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByDisplayValue("Before")).toBeTruthy());
+    fireEvent.change(screen.getByLabelText("ノートタイトル"), { target: { value: "Title" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await screen.findByText("保存中 1件");
+    fireEvent.change(screen.getByLabelText("Markdown本文"), { target: { value: "new body" } });
+    await screen.findByText("保存中 2件");
+    response.resolve({ document: note(current.document_id, "Title", "body", 1) });
+    await waitFor(() => expect(mocks.updateDocument).toHaveBeenCalledTimes(2), { timeout: 2500 });
   });
 
-  it("does not discard a dirty draft when switching notes is canceled", async () => {
-    const first = note("0199d090-0000-7000-8000-000000000003", "First", "one");
-    const second = note("0199d090-0000-7000-8000-000000000004", "Second", "two");
-    mocks.loadDocuments.mockResolvedValue({ documents: [first, second] });
-    mocks.loadDocument.mockResolvedValue(first);
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+  it("uses the same save path for Ctrl+S/Cmd+S and ignores key repeat", async () => {
+    const current = note("0199d090-0000-7000-8000-000000000003", "Before", "body", 0);
+    mocks.loadDocuments.mockResolvedValue({ documents: [summary(current)] });
+    mocks.loadDocument.mockResolvedValue(current);
+    mocks.updateDocument.mockResolvedValue({ document: note(current.document_id, "Keyboard", "body", 1) });
+    render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Before")).toBeTruthy());
+    const title = screen.getByLabelText("ノートタイトル");
+    fireEvent.change(title, { target: { value: "Keyboard" } });
+    fireEvent.keyDown(title, { key: "s", ctrlKey: true });
+    fireEvent.keyDown(title, { key: "s", ctrlKey: true, repeat: true });
+    await waitFor(() => expect(mocks.updateDocument).toHaveBeenCalledTimes(1));
+    expect(mocks.updateDocument.mock.calls[0]![0]).toMatchObject({ title: "Keyboard", expected_revision: 0 });
+  });
+
+  it("flushes a dirty draft before switching Notes", async () => {
+    const first = note("0199d090-0000-7000-8000-000000000004", "First", "one");
+    const second = note("0199d090-0000-7000-8000-000000000005", "Second", "two");
+    mocks.loadDocuments.mockResolvedValue({ documents: [summary(first), summary(second)] });
+    mocks.loadDocument.mockResolvedValueOnce(first).mockResolvedValueOnce(second);
+    mocks.updateDocument.mockResolvedValue({ document: note(first.document_id, "Local draft", "one", 1) });
+    const confirm = vi.spyOn(window, "confirm");
     render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} />);
     await waitFor(() => expect(screen.getByDisplayValue("First")).toBeTruthy());
     fireEvent.change(screen.getByLabelText("ノートタイトル"), { target: { value: "Local draft" } });
     fireEvent.click(screen.getByRole("button", { name: "Second" }));
-    expect(confirm).toHaveBeenCalled();
-    expect(mocks.loadDocument).toHaveBeenCalledTimes(1);
-    expect(screen.getByDisplayValue("Local draft")).toBeTruthy();
+    await waitFor(() => expect(screen.getByDisplayValue("Second")).toBeTruthy());
+    expect(mocks.updateDocument).toHaveBeenCalledTimes(1);
+    expect(confirm).not.toHaveBeenCalled();
     confirm.mockRestore();
   });
 
   it("preserves the local draft after a revision conflict and exposes canonical state", async () => {
-    const current = note("0199d090-0000-7000-8000-000000000005", "Server", "server", 2);
-    mocks.loadDocuments.mockResolvedValue({ documents: [current] });
+    const current = note("0199d090-0000-7000-8000-000000000006", "Server", "server", 2);
+    mocks.loadDocuments.mockResolvedValue({ documents: [summary(current)] });
     mocks.loadDocument.mockResolvedValue(current);
     mocks.updateDocument.mockRejectedValue(new mocks.ApiClientError("stale", 409, true, "revision_conflict"));
     render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} />);
@@ -106,209 +158,101 @@ describe("NotesBoard", () => {
 
   it("reconciles an ambiguous Create by fetching the exact document identity", async () => {
     mocks.createStandaloneDocument.mockRejectedValue(ambiguousError());
-    mocks.loadDocument.mockImplementation(async (documentId: string) => note(documentId, "Committed", "# committed"));
+    mocks.loadDocument.mockImplementation(async (documentId: string) => note(documentId, "notitle", "", 0));
     render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} />);
     fireEvent.click(await screen.findByRole("button", { name: "＋ 新規ノート" }));
-    fireEvent.change(screen.getByLabelText("ノートタイトル"), { target: { value: "Committed" } });
-    fireEvent.change(screen.getByLabelText("Markdown本文"), { target: { value: "# committed" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
-    await waitFor(() => expect(screen.getByDisplayValue("Committed")).toBeTruthy());
-    expect(mocks.createStandaloneDocument).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(screen.getByText("保存結果を確認しました。")).toBeTruthy());
     const request = mocks.createStandaloneDocument.mock.calls[0]![0];
     expect(mocks.loadDocument).toHaveBeenCalledWith(request.document_id);
     expect(screen.queryByRole("button", { name: "同じ内容で再試行" })).toBeNull();
     expect(screen.getByLabelText("ノートタイトル")).not.toHaveProperty("disabled", true);
   });
 
-  it("retains an ambiguous Create request when the exact document is not found and retries exactly", async () => {
+  it("retains an ambiguous Create and retries the exact request when identity is absent", async () => {
     mocks.createStandaloneDocument.mockRejectedValue(ambiguousError());
-    mocks.loadDocument.mockRejectedValue(new mocks.ApiClientError("missing", 404, true, "resource_not_found"));
+    mocks.loadDocument.mockRejectedValue(missingError());
     render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} />);
     fireEvent.click(await screen.findByRole("button", { name: "＋ 新規ノート" }));
-    fireEvent.change(screen.getByLabelText("ノートタイトル"), { target: { value: "Retry Create" } });
-    fireEvent.change(screen.getByLabelText("Markdown本文"), { target: { value: "body" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "同じ内容で再試行" })).toBeTruthy());
+    await screen.findByRole("button", { name: "同じ内容で再試行" });
     const firstRequest = { ...mocks.createStandaloneDocument.mock.calls[0]![0] };
     fireEvent.click(screen.getByRole("button", { name: "同じ内容で再試行" }));
     await waitFor(() => expect(mocks.createStandaloneDocument).toHaveBeenCalledTimes(2));
     expect(mocks.createStandaloneDocument.mock.calls[1]![0]).toEqual(firstRequest);
   });
 
-  it("blocks edits after an ambiguous Create without clearing the exact retry", async () => {
+  it("blocks edits and navigation after an ambiguous Create without clearing the exact retry", async () => {
     mocks.createStandaloneDocument.mockRejectedValue(ambiguousError());
-    mocks.loadDocument.mockRejectedValue(new mocks.ApiClientError("missing", 404, true, "resource_not_found"));
+    mocks.loadDocument.mockRejectedValue(missingError());
     const onUnresolvedChange = vi.fn();
-    render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} onUnresolvedChange={onUnresolvedChange} />);
+    const onRegisterFlush = vi.fn();
+    render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} onUnresolvedChange={onUnresolvedChange} onRegisterFlush={onRegisterFlush} />);
     fireEvent.click(await screen.findByRole("button", { name: "＋ 新規ノート" }));
-    fireEvent.change(screen.getByLabelText("ノートタイトル"), { target: { value: "Frozen" } });
-    fireEvent.change(screen.getByLabelText("Markdown本文"), { target: { value: "original" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "同じ内容で再試行" })).toBeTruthy());
-    await waitFor(() => expect(onUnresolvedChange).toHaveBeenLastCalledWith(true));
+    await screen.findByRole("button", { name: "同じ内容で再試行" });
     const firstRequest = { ...mocks.createStandaloneDocument.mock.calls[0]![0] };
     fireEvent.change(screen.getByLabelText("ノートタイトル"), { target: { value: "Changed" } });
-    fireEvent.change(screen.getByLabelText("Markdown本文"), { target: { value: "changed" } });
-    expect(screen.getByDisplayValue("Frozen")).toBeTruthy();
-    expect(screen.getByDisplayValue("original")).toBeTruthy();
-    expect(mocks.createStandaloneDocument).toHaveBeenCalledTimes(1);
-    fireEvent.click(screen.getByRole("button", { name: "＋ 新規ノート" }));
-    expect(screen.getByDisplayValue("Frozen")).toBeTruthy();
-    expect(mocks.createStandaloneDocument.mock.calls[0]![0]).toEqual(firstRequest);
-  });
-
-  it("reconciles an ambiguous Update when the exact revision and payload are canonical", async () => {
-    const current = note("0199d090-0000-7000-8000-000000000006", "Before", "before", 0);
-    const saved = note(current.document_id, "After", "after", 1);
-    mocks.loadDocuments.mockResolvedValue({ documents: [current] });
-    mocks.loadDocument.mockResolvedValueOnce(current).mockResolvedValueOnce(saved);
-    mocks.updateDocument.mockRejectedValue(ambiguousError());
-    render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} />);
-    await waitFor(() => expect(screen.getByDisplayValue("Before")).toBeTruthy());
-    fireEvent.change(screen.getByLabelText("ノートタイトル"), { target: { value: "After" } });
-    fireEvent.change(screen.getByLabelText("Markdown本文"), { target: { value: "after" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
-    await waitFor(() => expect(screen.getByDisplayValue("After")).toBeTruthy());
-    expect(mocks.updateDocument).toHaveBeenCalledTimes(1);
-    expect(mocks.loadDocument).toHaveBeenCalledTimes(2);
-    expect(screen.queryByRole("button", { name: "同じ内容で再試行" })).toBeNull();
-    expect(screen.getByLabelText("ノートタイトル")).not.toHaveProperty("disabled", true);
-  });
-
-  it("retains an ambiguous Update and reuses its exact operation after unresolved reconciliation", async () => {
-    const current = note("0199d090-0000-7000-8000-000000000007", "Before", "before", 2);
-    mocks.loadDocuments.mockResolvedValue({ documents: [current] });
-    mocks.loadDocument.mockResolvedValueOnce(current).mockRejectedValue(new mocks.ApiClientError("missing", 404, true, "resource_not_found"));
-    mocks.updateDocument.mockRejectedValue(ambiguousError());
-    render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} />);
-    await waitFor(() => expect(screen.getByDisplayValue("Before")).toBeTruthy());
-    fireEvent.change(screen.getByLabelText("ノートタイトル"), { target: { value: "After" } });
-    fireEvent.change(screen.getByLabelText("Markdown本文"), { target: { value: "after" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "同じ内容で再試行" })).toBeTruthy());
+    expect(screen.getByDisplayValue("notitle")).toBeTruthy();
     expect(screen.getByLabelText("ノートタイトル")).toHaveProperty("disabled", true);
-    const firstRequest = { ...mocks.updateDocument.mock.calls[0]![0] };
-    fireEvent.change(screen.getByLabelText("ノートタイトル"), { target: { value: "Wrong" } });
-    expect(screen.getByDisplayValue("After")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "同じ内容で再試行" }));
-    await waitFor(() => expect(mocks.updateDocument).toHaveBeenCalledTimes(2));
-    expect(mocks.updateDocument.mock.calls[1]![0]).toEqual(firstRequest);
-  });
-
-  it("keeps navigation and beforeunload protection active while an ambiguous save is unresolved", async () => {
-    mocks.createStandaloneDocument.mockRejectedValue(ambiguousError());
-    mocks.loadDocument.mockRejectedValue(new mocks.ApiClientError("missing", 404, true, "resource_not_found"));
-    const onUnresolvedChange = vi.fn();
-    render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} onUnresolvedChange={onUnresolvedChange} />);
-    fireEvent.click(await screen.findByRole("button", { name: "＋ 新規ノート" }));
-    fireEvent.change(screen.getByLabelText("ノートタイトル"), { target: { value: "Protected" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "同じ内容で再試行" })).toBeTruthy());
-    fireEvent.click(screen.getByRole("button", { name: "＋ 新規ノート" }));
-    expect(screen.getByDisplayValue("Protected")).toBeTruthy();
     expect(onUnresolvedChange).toHaveBeenLastCalledWith(true);
     const event = new Event("beforeunload", { cancelable: true });
     window.dispatchEvent(event);
     expect(event.defaultPrevented).toBe(true);
+    const flush = onRegisterFlush.mock.calls.at(-1)?.[0] as (() => Promise<boolean>) | undefined;
+    expect(await flush?.()).toBe(false);
+    expect(mocks.createStandaloneDocument.mock.calls[0]![0]).toEqual(firstRequest);
   });
 
-  it("restores normal editing after an ambiguous save is resolved", async () => {
-    mocks.createStandaloneDocument.mockRejectedValueOnce(ambiguousError());
-    mocks.loadDocument.mockImplementation(async (documentId: string) => note(documentId, "Resolved", "body", 0));
-    const resolved = note("0199d090-0000-7000-8000-000000000008", "Resolved", "body", 0);
-    mocks.updateDocument.mockResolvedValue({ document: { ...resolved, title: "Edited", revision: 1 } });
+  it("reuses the exact ambiguous Update operation and restores editing after retry", async () => {
+    const current = note("0199d090-0000-7000-8000-000000000007", "Before", "before", 2);
+    const saved = note(current.document_id, "After", "after", 3);
+    mocks.loadDocuments.mockResolvedValue({ documents: [summary(current)] });
+    mocks.loadDocument.mockResolvedValueOnce(current).mockRejectedValueOnce(missingError());
+    mocks.updateDocument.mockRejectedValueOnce(ambiguousError()).mockResolvedValueOnce({ document: saved });
     render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} />);
-    fireEvent.click(await screen.findByRole("button", { name: "＋ 新規ノート" }));
-    fireEvent.change(screen.getByLabelText("ノートタイトル"), { target: { value: "Resolved" } });
-    fireEvent.change(screen.getByLabelText("Markdown本文"), { target: { value: "body" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
-    await waitFor(() => expect(screen.getByDisplayValue("Resolved")).toBeTruthy());
-    expect(screen.getByLabelText("ノートタイトル")).not.toHaveProperty("disabled", true);
-    fireEvent.change(screen.getByLabelText("ノートタイトル"), { target: { value: "Edited" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
-    await waitFor(() => expect(mocks.updateDocument).toHaveBeenCalledTimes(1));
-    expect(mocks.updateDocument.mock.calls[0]![0]).toMatchObject({ title: "Edited", expected_revision: 0 });
-  });
-
-  it("protects a clean existing Note after an ambiguous Update", async () => {
-    const current = note("0199d090-0000-7000-8000-000000000009", "Clean", "body", 4);
-    mocks.loadDocuments.mockResolvedValue({ documents: [current] });
-    mocks.loadDocument.mockResolvedValueOnce(current).mockRejectedValueOnce(new mocks.ApiClientError("missing", 404, true, "resource_not_found"));
-    mocks.updateDocument.mockRejectedValue(ambiguousError());
-    const onDirtyChange = vi.fn();
-    const onUnresolvedChange = vi.fn();
-    render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={onDirtyChange} onUnresolvedChange={onUnresolvedChange} />);
-    await waitFor(() => expect(screen.getByDisplayValue("Clean")).toBeTruthy());
-    expect(onDirtyChange).toHaveBeenLastCalledWith(false);
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "同じ内容で再試行" })).toBeTruthy());
-    await waitFor(() => expect(onUnresolvedChange).toHaveBeenLastCalledWith(true));
-    expect(onDirtyChange).toHaveBeenLastCalledWith(false);
-    expect(screen.getByLabelText("ノートタイトル")).toHaveProperty("disabled", true);
-  });
-
-  it("keeps the beforeunload guard active for a clean unresolved Update", async () => {
-    const current = note("0199d090-0000-7000-8000-00000000000a", "Clean unload", "body", 1);
-    mocks.loadDocuments.mockResolvedValue({ documents: [current] });
-    mocks.loadDocument.mockResolvedValueOnce(current).mockRejectedValueOnce(new mocks.ApiClientError("missing", 404, true, "resource_not_found"));
-    mocks.updateDocument.mockRejectedValue(ambiguousError());
-    const onDirtyChange = vi.fn();
-    const onUnresolvedChange = vi.fn();
-    render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={onDirtyChange} onUnresolvedChange={onUnresolvedChange} />);
-    await waitFor(() => expect(screen.getByDisplayValue("Clean unload")).toBeTruthy());
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "同じ内容で再試行" })).toBeTruthy());
-    await waitFor(() => expect(onUnresolvedChange).toHaveBeenLastCalledWith(true));
-    expect(onDirtyChange).toHaveBeenLastCalledWith(false);
-    const event = new Event("beforeunload", { cancelable: true });
-    window.dispatchEvent(event);
-    expect(event.defaultPrevented).toBe(true);
-  });
-
-  it("restores normal editing after exact retry resolves a clean ambiguous Update", async () => {
-    const current = note("0199d090-0000-7000-8000-00000000000b", "Retry clean", "body", 2);
-    const resolved = note(current.document_id, current.title, current.markdown_body, 3);
-    mocks.loadDocuments.mockResolvedValue({ documents: [current] });
-    mocks.loadDocument.mockResolvedValueOnce(current).mockRejectedValueOnce(new mocks.ApiClientError("missing", 404, true, "resource_not_found"));
-    mocks.updateDocument.mockRejectedValueOnce(ambiguousError()).mockResolvedValueOnce({ document: resolved });
-    const onUnresolvedChange = vi.fn();
-    render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} onUnresolvedChange={onUnresolvedChange} />);
-    await waitFor(() => expect(screen.getByDisplayValue("Retry clean")).toBeTruthy());
+    await waitFor(() => expect(screen.getByDisplayValue("Before")).toBeTruthy());
+    fireEvent.change(screen.getByLabelText("ノートタイトル"), { target: { value: "After" } });
+    fireEvent.change(screen.getByLabelText("Markdown本文"), { target: { value: "after" } });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
     await screen.findByRole("button", { name: "同じ内容で再試行" });
     const firstRequest = { ...mocks.updateDocument.mock.calls[0]![0] };
+    expect(screen.getByLabelText("ノートタイトル")).toHaveProperty("disabled", true);
     fireEvent.click(screen.getByRole("button", { name: "同じ内容で再試行" }));
     await waitFor(() => expect(mocks.updateDocument).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect(onUnresolvedChange).toHaveBeenLastCalledWith(false));
     expect(mocks.updateDocument.mock.calls[1]![0]).toEqual(firstRequest);
-    expect(screen.getByLabelText("ノートタイトル")).not.toHaveProperty("disabled", true);
+    await waitFor(() => expect(screen.getByLabelText("ノートタイトル")).not.toHaveProperty("disabled", true));
   });
 
-  it("clears the clean-draft barrier when exact canonical reconciliation proves the Update", async () => {
-    const current = note("0199d090-0000-7000-8000-00000000000c", "Canonical clean", "body", 6);
-    const resolved = note(current.document_id, current.title, current.markdown_body, 7);
-    mocks.loadDocuments.mockResolvedValue({ documents: [current] });
-    mocks.loadDocument.mockResolvedValueOnce(current).mockResolvedValueOnce(resolved);
+  it("keeps beforeunload protection active for an unresolved save", async () => {
+    const current = note("0199d090-0000-7000-8000-000000000008", "Clean", "body", 1);
+    mocks.loadDocuments.mockResolvedValue({ documents: [summary(current)] });
+    mocks.loadDocument.mockResolvedValueOnce(current).mockRejectedValueOnce(missingError());
     mocks.updateDocument.mockRejectedValue(ambiguousError());
-    const onUnresolvedChange = vi.fn();
-    render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} onUnresolvedChange={onUnresolvedChange} />);
-    await waitFor(() => expect(screen.getByDisplayValue("Canonical clean")).toBeTruthy());
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
-    await waitFor(() => expect(mocks.loadDocument).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect(onUnresolvedChange).toHaveBeenLastCalledWith(false));
-    expect(screen.queryByRole("button", { name: "同じ内容で再試行" })).toBeNull();
-    expect(screen.getByLabelText("ノートタイトル")).not.toHaveProperty("disabled", true);
-  });
-
-  it("registers beforeunload only as a dirty-draft guard", async () => {
-    const unload = vi.fn();
-    window.addEventListener("beforeunload", unload);
     render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} />);
-    fireEvent.click(await screen.findByRole("button", { name: "＋ 新規ノート" }));
-    fireEvent.change(screen.getByLabelText("ノートタイトル"), { target: { value: "Dirty" } });
+    await waitFor(() => expect(screen.getByDisplayValue("Clean")).toBeTruthy());
+    fireEvent.change(screen.getByLabelText("ノートタイトル"), { target: { value: "Changed" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await screen.findByRole("button", { name: "同じ内容で再試行" });
     const event = new Event("beforeunload", { cancelable: true });
     window.dispatchEvent(event);
     expect(event.defaultPrevented).toBe(true);
-    window.removeEventListener("beforeunload", unload);
+  });
+
+  it("supports archive view, archive/restore, and explicit irreversible delete", async () => {
+    const active = note("0199d090-0000-7000-8000-000000000009", "Active", "body", 0);
+    const archived = note("0199d090-0000-7000-8000-00000000000a", "Archived", "body", 2, "2026-09-11T00:00:00.000Z");
+    mocks.loadDocuments.mockImplementation(({ archived: showArchived = false } = {}) => ({ documents: showArchived ? [summary(archived)] : [summary(active)] }));
+    mocks.loadDocument.mockImplementation(async (id: string) => id === archived.document_id ? archived : active);
+    mocks.setStandaloneDocumentArchived.mockResolvedValue({ document: note(active.document_id, "Active", "body", 1, "2026-09-12T00:00:00.000Z") });
+    mocks.deleteStandaloneDocument.mockResolvedValue({ document_id: archived.document_id, deleted: true });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Active")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Activeの操作" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "アーカイブ" }));
+    await waitFor(() => expect(mocks.setStandaloneDocumentArchived).toHaveBeenCalledWith(expect.objectContaining({ document_id: active.document_id, archived: true })));
+    fireEvent.click(screen.getByRole("button", { name: "アーカイブ" }));
+    await waitFor(() => expect(screen.getByDisplayValue("Archived")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Archivedの操作" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "削除" }));
+    await waitFor(() => expect(mocks.deleteStandaloneDocument).toHaveBeenCalledWith(expect.objectContaining({ document_id: archived.document_id })));
   });
 });

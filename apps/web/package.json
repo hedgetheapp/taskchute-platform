@@ -14,6 +14,7 @@
     "test:migrations:d088": "node ./scripts/test-d088-migration-bounded.mjs",
     "test:migrations:d089": "node ./scripts/test-d089-migration-bounded.mjs",
     "test:migrations:d090": "node ./scripts/test-d090-migration-bounded.mjs",
+    "test:migrations:d093": "node ./scripts/test-d093-migration-bounded.mjs",
     "test:all": "npm run test && npm run test:web",
     "update:jp-holidays": "node ./scripts/update-jp-holidays.mjs",
     "verify:nonprod-deploy": "node ./scripts/verify-nonprod-deploy.mjs",

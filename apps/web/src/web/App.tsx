@@ -758,6 +758,7 @@ export function App() {
   const [view, setView] = useState<AppView>("today");
   const [notesDirty, setNotesDirty] = useState(false);
   const [notesUnresolved, setNotesUnresolved] = useState(false);
+  const notesFlushRef = useRef<(() => Promise<boolean>) | null>(null);
   const [settingsDestination, setSettingsDestination] = useState<SettingsDestination>("section");
   const [day, setDay] = useState<CurrentTaskChuteDayProjection | null>(null);
   const [project, setProject] = useState<ProjectSummary | null>(null);
@@ -2003,21 +2004,25 @@ export function App() {
   }
 
   async function openTodayView() {
-    if (!canLeaveNotes()) return;
+    if (!(await canLeaveNotes())) return;
     if (mutationLocked) return;
     setView("today");
     await navigateToDay();
   }
 
-  function canLeaveNotes(): boolean {
+  async function canLeaveNotes(): Promise<boolean> {
     if (view !== "notes") return true;
     if (notesUnresolved) return false;
-    if (!notesDirty) return true;
-    return window.confirm("未保存のノートがあります。変更を破棄して移動しますか？");
+    if (notesFlushRef.current) {
+      const flushed = await notesFlushRef.current();
+      if (!flushed) return false;
+      return true;
+    }
+    return !notesDirty && !notesUnresolved;
   }
 
   async function openRoutinesView(): Promise<void> {
-    if (!canLeaveNotes()) return;
+    if (!(await canLeaveNotes())) return;
     if (hasDayMutationBarrier()) {
       deferGlobalTransition({ kind: "view", view: "routines" });
       return;
@@ -2028,7 +2033,7 @@ export function App() {
   }
 
   async function openNotesView(): Promise<void> {
-    if (!canLeaveNotes()) return;
+    if (!(await canLeaveNotes())) return;
     if (hasDayMutationBarrier()) {
       deferGlobalTransition({ kind: "view", view: "notes" });
       return;
@@ -2914,7 +2919,7 @@ export function App() {
   }
 
   async function logout() {
-    if (!canLeaveNotes()) return;
+    if (!(await canLeaveNotes())) return;
     if (hasDayMutationBarrier()) {
       deferGlobalTransition({ kind: "logout" });
       return;
@@ -4020,7 +4025,7 @@ export function App() {
   }
 
   async function openSettings(destination: SettingsDestination) {
-    if (!canLeaveNotes()) return;
+    if (!(await canLeaveNotes())) return;
     if (hasDayMutationBarrier()) {
       deferGlobalTransition({ kind: "settings", destination });
       return;
@@ -5667,7 +5672,8 @@ export function App() {
           onClick={() => setSidebarOpen(true)}>›</button>}
         {view === "routines" ? <RoutineBoard onUnauthorized={transitionToSignedOut} /> : view === "notes" ? (
           <NotesBoard onUnauthorized={transitionToSignedOut} onDirtyChange={setNotesDirty}
-            onUnresolvedChange={setNotesUnresolved} />
+            onUnresolvedChange={setNotesUnresolved}
+            onRegisterFlush={(flush) => { notesFlushRef.current = flush; }} />
         ) : view === "settings" ? (
           <main className="shell settings-shell">
           <header className="settings-header">

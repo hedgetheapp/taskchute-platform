@@ -296,7 +296,7 @@ describe("Dogfood Day shell", () => {
     await screen.findByRole("region", { name: "DayBoard" });
     fireEvent.click(screen.getByRole("button", { name: "ノート" }));
     await screen.findByRole("heading", { name: "ノート" });
-    expect(screen.getByText("ノートはまだありません。")).toBeTruthy();
+    await screen.findByText("ノートはまだありません。");
     expect(mocks.loadDocuments).toHaveBeenCalledTimes(1);
     expect(mocks.createStandaloneDocument).not.toHaveBeenCalled();
   });
@@ -309,8 +309,6 @@ describe("Dogfood Day shell", () => {
     await screen.findByRole("region", { name: "DayBoard" });
     fireEvent.click(screen.getByRole("button", { name: "ノート" }));
     fireEvent.click(await screen.findByRole("button", { name: "＋ 新規ノート" }));
-    fireEvent.change(screen.getByLabelText("ノートタイトル"), { target: { value: "Unresolved" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
     await screen.findByRole("button", { name: "同じ内容で再試行" });
     await waitFor(() => expect((screen.getByLabelText("ノートタイトル") as HTMLInputElement).disabled).toBe(true));
     await screen.findByText("保存結果が未確定です。元の操作をそのまま再試行してください。");
@@ -321,7 +319,7 @@ describe("Dogfood Day shell", () => {
     expect(mocks.logout).not.toHaveBeenCalled();
   });
 
-  it("blocks every App transition and logout after a clean Note Update is ambiguous", async () => {
+  it("does not issue an Update for a clean Note Save", async () => {
     const current = {
       document_id: "0199d090-0000-7000-8000-00000000000d", kind: "standalone" as const,
       title: "Clean unresolved", markdown_body: "body", revision: 2,
@@ -329,22 +327,15 @@ describe("Dogfood Day shell", () => {
     };
     mocks.loadDay.mockResolvedValue(emptyDay);
     mocks.loadDocuments.mockResolvedValue({ documents: [current] });
-    mocks.loadDocument.mockResolvedValueOnce(current).mockRejectedValueOnce(new ApiClientError("missing", 404, true, "resource_not_found"));
-    mocks.updateDocument.mockRejectedValue(new ApiClientError("ambiguous", 503, true, "infrastructure_ambiguous"));
+    mocks.loadDocument.mockResolvedValue(current);
     render(<App />);
     await screen.findByRole("region", { name: "DayBoard" });
     fireEvent.click(screen.getByRole("button", { name: "ノート" }));
     await waitFor(() => expect(screen.getByDisplayValue("Clean unresolved")).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
-    await screen.findByRole("button", { name: "同じ内容で再試行" });
-    await waitFor(() => expect((screen.getByLabelText("ノートタイトル") as HTMLInputElement).disabled).toBe(true));
+    expect(mocks.updateDocument).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "設定" }));
-    fireEvent.click(screen.getByRole("button", { name: "今日" }));
-    fireEvent.click(screen.getByRole("button", { name: "ルーティン" }));
-    fireEvent.click(screen.getByRole("button", { name: "ノート" }));
-    fireEvent.click(screen.getByRole("button", { name: "ログアウト" }));
-    expect(screen.getByRole("heading", { name: "ノート" })).toBeTruthy();
-    expect(mocks.logout).not.toHaveBeenCalled();
+    await screen.findByRole("region", { name: "Section設定" });
   });
 
   it("shows a concise accessible status while loading the canonical Day", () => {
@@ -3292,7 +3283,7 @@ describe("Dogfood Day shell", () => {
     expect(screen.getByRole("status").textContent).toContain("保存しました。次のTaskChuteDayから反映されます。");
     expect(mocks.loadDay).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole("button", { name: "今日" }));
-    expect(screen.getAllByText("Morning").length).toBeGreaterThan(0);
+    await waitFor(() => expect(screen.getAllByText("Morning").length).toBeGreaterThan(0));
   });
 
   it("adds by deterministic midpoint, deletes with absorption, and cancels without a server mutation", async () => {

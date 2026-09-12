@@ -96,6 +96,10 @@ import type {
   UpsertEffectiveDayOverrideResult,
   DeleteEffectiveDayOverrideRequest,
   DeleteEffectiveDayOverrideResult,
+  DeleteStandaloneDocumentRequest,
+  DeleteStandaloneDocumentResult,
+  SetStandaloneDocumentArchivedRequest,
+  SetStandaloneDocumentArchivedResult,
   StandaloneDocument,
   StandaloneDocumentListProjection,
   CreateStandaloneDocumentRequest,
@@ -262,8 +266,9 @@ export const api = {
   deleteEffectiveDayOverride(body: DeleteEffectiveDayOverrideRequest): Promise<DeleteEffectiveDayOverrideResult> {
     return requestJson(`/api/v1/settings/effective-day-overrides/${encodeURIComponent(body.logical_date)}/delete`, jsonPost("", body));
   },
-  loadDocuments(): Promise<StandaloneDocumentListProjection> {
-    return requestJson("/api/v1/documents");
+  loadDocuments(options: { archived?: boolean } = {}): Promise<StandaloneDocumentListProjection> {
+    const suffix = options.archived === undefined ? "" : `?archived=${options.archived ? "true" : "false"}`;
+    return requestJson(`/api/v1/documents${suffix}`);
   },
   loadDocument(documentId: string): Promise<StandaloneDocument> {
     return requestJson(`/api/v1/documents/${encodeURIComponent(documentId)}`);
@@ -273,6 +278,12 @@ export const api = {
   },
   updateDocument(body: UpdateDocumentRequest): Promise<UpdateDocumentResult> {
     return requestJson(`/api/v1/documents/${encodeURIComponent(body.document_id)}`, jsonPost("", body));
+  },
+  setStandaloneDocumentArchived(body: SetStandaloneDocumentArchivedRequest): Promise<SetStandaloneDocumentArchivedResult> {
+    return requestJson(`/api/v1/documents/${encodeURIComponent(body.document_id)}/archive`, jsonPost("", body));
+  },
+  deleteStandaloneDocument(body: DeleteStandaloneDocumentRequest): Promise<DeleteStandaloneDocumentResult> {
+    return requestJson(`/api/v1/documents/${encodeURIComponent(body.document_id)}/delete`, jsonPost("", body));
   },
   moveEntry(body: MoveEntryRequest): Promise<MoveEntryResult> {
     return requestJson("/api/v1/taskchute-days/current/entries/move", jsonPost("", body));

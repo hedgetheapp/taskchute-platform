@@ -83,10 +83,14 @@ import {
 } from "./application/effective-day-calendar";
 import {
   createStandaloneDocument,
+  deleteStandaloneDocument,
+  isDeleteStandaloneDocumentRequest,
   isCreateStandaloneDocumentRequest,
+  isSetStandaloneDocumentArchivedRequest,
   isUpdateDocumentRequest,
   loadStandaloneDocument,
   loadStandaloneDocuments,
+  setStandaloneDocumentArchived,
   updateDocument,
 } from "./application/documents";
 
@@ -135,7 +139,11 @@ async function route(request: Request, env: Env): Promise<Response> {
     return Response.json(await loadEffectiveDayCalendar(env.APP_DB, principal.appUserId, logicalDate));
   }
   if (request.method === "GET" && url.pathname === "/api/v1/documents") {
-    return Response.json(await loadStandaloneDocuments(env.APP_DB, principal.appUserId));
+    const archived = url.searchParams.get("archived");
+    if (archived !== null && archived !== "true" && archived !== "false") {
+      throw new HttpError(400, "malformed_request", "Invalid archived filter");
+    }
+    return Response.json(await loadStandaloneDocuments(env.APP_DB, principal.appUserId, archived === "true"));
   }
   const documentMatch = url.pathname.match(/^\/api\/v1\/documents\/([^/]+)$/);
   if (request.method === "GET" && documentMatch) {
@@ -155,6 +163,24 @@ async function route(request: Request, env: Env): Promise<Response> {
       throw new HttpError(400, "malformed_request", "Invalid UpdateDocument request");
     }
     return Response.json(await updateDocument(env.APP_DB, principal.appUserId, body));
+  }
+  const documentArchiveMatch = url.pathname.match(/^\/api\/v1\/documents\/([^/]+)\/archive$/);
+  if (request.method === "POST" && documentArchiveMatch) {
+    const body = await readBoundedJson(request);
+    if (documentArchiveMatch[1] !== encodeURIComponent(String((body as { document_id?: unknown })?.document_id ?? ""))
+      || !isSetStandaloneDocumentArchivedRequest(body)) {
+      throw new HttpError(400, "malformed_request", "Invalid SetStandaloneDocumentArchived request");
+    }
+    return Response.json(await setStandaloneDocumentArchived(env.APP_DB, principal.appUserId, body));
+  }
+  const documentDeleteMatch = url.pathname.match(/^\/api\/v1\/documents\/([^/]+)\/delete$/);
+  if (request.method === "POST" && documentDeleteMatch) {
+    const body = await readBoundedJson(request);
+    if (documentDeleteMatch[1] !== encodeURIComponent(String((body as { document_id?: unknown })?.document_id ?? ""))
+      || !isDeleteStandaloneDocumentRequest(body)) {
+      throw new HttpError(400, "malformed_request", "Invalid DeleteStandaloneDocument request");
+    }
+    return Response.json(await deleteStandaloneDocument(env.APP_DB, principal.appUserId, body));
   }
   if (request.method === "POST" && url.pathname === "/api/v1/settings/effective-day-overrides") {
     const body = await readBoundedJson(request);
