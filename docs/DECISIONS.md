@@ -1739,6 +1739,16 @@ D-083は、current established Dayのordinary planned Entryに限り、既存`Mo
 
 実装、Worker / Web regression、real-local / persistent nonprod browser、read-only DB evidenceはcanonical evidence docsへ記録する。production、restore、destructive cleanup、branch / PR / merge / tag / releaseは対象外で、Releasedは`NO`とする。
 
+## D-097 — Today initial Arrow focus and distinct Task focus indicator
+
+Status: **Approved**
+
+Canonical decision: `docs/decisions/D-097_TODAY_INITIAL_ARROW_FOCUS_AND_FOCUS_INDICATOR.md`。
+
+TodayでTask rowがfocusを持たない状態からplain `ArrowUp` / `ArrowDown`を押した場合は、どちらもSection順・execution-first / planned順で最初に表示されるcanonical Taskへfocusを移す。collapsed Section、draft / provisional Add、Section summaryはbootstrap対象外で、表示Taskがなければno-opとする。input、select、textarea、contenteditable、IME、modal、menu、popover、calendar、その他のinteractive controlでは既存のkeyboard ownerを尊重して矢印を奪わない。
+
+Taskのlifecycle stateは既存のbackgroundで示し、keyboard focusはaccent blueの2px outlineで独立して示す。running + focusedでもrunning backgroundとoutlineを同時に表示する。J/K、D-083 / D-096のShift placement、Worker/API/schema/migration/dependency semanticsは変更しない。
+
 ## D-096 — Continuous Shift placement input across Section boundaries
 
 Status: **Approved / implemented**

@@ -2577,3 +2577,16 @@ D-084 browser fixture creation was not completed: the unauthenticated/new in-app
 | D096-DB | APP read-only Day placement/suppression and integrity evidence; AUTH integrity | APP/AUTH quick_check `ok`; FK empty; pending `0 / 0`; active executions `0`; duplicate positions/origin-Day `0`; transient guards/assertions `0`; successful probes `rows_written=0` | PASS |
 | D096-MIG | Schema/API/dependency impact | no migration, API contract, dependency, or Worker semantic expansion | NOT_REQUIRED |
 | D096-SAFETY | Production, restore/recovery, credentials, bootstrap mutation, destructive cleanup, branch/PR/merge/tag/Release | not performed | NOT_RUN / NO |
+
+### D-097 — Today initial Arrow focus and distinct Task focus indicator — 2026-09-12
+
+| ID | Verification target | Evidence | Result |
+|---|---|---|---|
+| D097-ARROW-BOOTSTRAP | Today neutral plain ArrowUp/ArrowDown both focus first visible canonical Task; collapsed/draft exclusion; empty no-op | focused App coverage; App `251` tests PASS | PASS |
+| D097-INTERACTIVE-GUARD | input/select/dialog/menu/popover/calendar/IME/modifier/Shift placement owners are not stolen | focused App guard tests and source review | PASS |
+| D097-FOCUS-STATE | lifecycle background remains separate from keyboard focus; completed/running state class survives with accent outline | focused DOM/CSS tests; completed row observed with blue outline in fresh authenticated tab | PASS (running visual browser subcase remains NOT_VERIFIED) |
+| D097-REGRESSION | full Web / Worker plus static gates | Web `5 files / 309 tests`; Worker/D1 `32 files / 287 tests`; typecheck; normal/exact nonprod build; deploy guard; Wrangler dry-run; diff-check | PASS |
+| D097-NONPROD | exact pushed main and HTTP safety | Worker `73097671-06de-4f7c-9a2c-5c0889f49d80`; root `200`; unauthenticated Documents API `401`; canonical nonprod config/bindings | PASS |
+| D097-BROWSER | real neutral ArrowDown/ArrowUp input and same/fresh authenticated tab use | persistent authenticated tabs `9`/`10`; viewport `1280×720`, Sidebar open; both directions focused first visible canonical Task; no synthetic DOM events | PASS (representative; running focus and console not verified) |
+| D097-DB | APP/AUTH read-only integrity | migration pending `0 / 0`; quick_check `ok`; FK empty; active executions `0`; duplicate positions/origin-Day `0`; orphan Entries `0`; transient guards `0`; read-only `rows_written=0` | PASS |
+| D097-SAFETY | Worker/API/schema/migration/dependency and prohibited operations | Web-only; migration `NOT_REQUIRED`; no production/restore/credential/bootstrap/destructive/Release action | NOT_REQUIRED / NOT_RUN |

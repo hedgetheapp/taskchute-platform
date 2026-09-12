@@ -28,6 +28,8 @@ D-063はWeb-onlyであり、server / migration / schema変更、API contract変�
 
 Day TableのneutralなDay surfaceはkeyboard focusの入口とし、Task未フォーカス状態では`↓ / J`が最初のvisible Task、`↑ / K`が最後のvisible Taskへ移動する。focused Taskでは`S`をStart / Complete、`N`をcurrent SectionへのTask追加、`E`をordinary planned Task metadata editor、`D`を既存single planned delete confirmationへ割り当てる。`?`はshortcut help、`Esc`はeditor / menu / calendar closeとする。input / select / textarea / contenteditableまたはIME composition中はこのglobal workflowを抑制し、calendar内のkeyboard操作と混線させない。
 
+D-097はTodayに限り、Task未フォーカス状態のplain `ArrowUp`も`ArrowDown`と同じ最初のvisible canonical Taskへbootstrapする狭い例外を追加する。J/Kの既存方向性、collapsed内容・draft/provisional row・Section summaryの除外、interactive control / modal / menu / popover / calendar / IMEのkeyboard owner保護は維持する。Task state backgroundとkeyboard focusの2px accent-blue outlineも分離し、running + focusedでは両方を表示する。
+
 actual Start / Endは同時に複数fieldを開かず、選択したcellだけを4桁`HHMM`のnumeric text inputへ切り替える。Startを編集してもEndはread-only projection buttonのままとし、End cellの選択で初めてEnd inputを開く。表示される値と入力値は`0900`のようにcolonなしとし、unset valueはtime `--:--`、estimate / actual duration `--分`とする。既存D-057 / D-060のactual validation、overlap、lifecycle、retry、forecast semanticsを変更しない。
 
 Task headingには独立したright-edge resize handleを置き、Task columnのwidthを280〜640pxでbrowser-localに保持する。storageは既存`taskchute.web.day-columns.v2`へoptional `taskWidth`を加える後方互換のpreference拡張であり、server / D1同期、schema / API / Domain変更ではない。calendarはmonth gridとmonth / year navigation（`前年 / 前の月 / 次の月 / 翌年`）を同時に表示し、popover外クリックとEscapeで閉じる。
