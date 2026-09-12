@@ -32,6 +32,7 @@
 - `docs/TEST_MATRIX.md`
 - `docs/MIGRATION_FROM_OBSIDIAN.md`
 - `docs/DEVELOPMENT_WORKFLOW.md`
+- `docs/VERIFICATION_PROFILES.md`
 
 canonical docs構成が変更された場合は、repository上の最新構成を優先すること。
 
