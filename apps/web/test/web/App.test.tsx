@@ -1151,6 +1151,28 @@ describe("Dogfood Day shell", () => {
     expect(screen.queryByRole("dialog", { name: "キーボードショートカット" })).toBeNull();
   });
 
+  it("opens Hit-a-Hint on a signed-in neutral Today surface without invoking an existing shortcut", async () => {
+    const bounds = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+      top: 20, left: 20, width: 120, height: 28, right: 140, bottom: 48, x: 20, y: 20,
+      toJSON: () => ({}),
+    } as DOMRect);
+    try {
+      mocks.loadDay.mockResolvedValue(twoPlannedDay);
+      render(<App />);
+      const dayBoard = await screen.findByRole("region", { name: "DayBoard" });
+      const main = dayBoard.closest<HTMLElement>("main")!;
+      main.tabIndex = -1;
+      main.focus();
+      fireEvent.keyDown(main, { key: "f" });
+      expect(document.querySelector("[data-hit-a-hint-active='true']")).toBeTruthy();
+      expect(screen.queryByRole("dialog", { name: "キーボードショートカット" })).toBeNull();
+      fireEvent.keyDown(window, { key: "Escape" });
+      expect(document.querySelector("[data-hit-a-hint-active='true']")).toBeNull();
+    } finally {
+      bounds.mockRestore();
+    }
+  });
+
   it("starts through the existing operation path and reconciles running state", async () => {
     mocks.loadDay.mockResolvedValueOnce(populatedDay).mockResolvedValueOnce(runningDay);
     render(<App />);

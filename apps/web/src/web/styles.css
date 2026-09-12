@@ -437,6 +437,8 @@ button.execution-control:hover { border-color: #2383e2; color: #2383e2; }
 .project-notification-stack .project-notification { margin: 0; }
 [role="status"] { margin: 8px 0; color: #575754; font-size: 12px; }
 .transient-status { position: fixed; z-index: 20; top: max(12px, env(safe-area-inset-top)); left: 50%; max-width: calc(100% - 32px); margin: 0; overflow: hidden; transform: translateX(-50%); border: 1px solid #d8d8d5; border-radius: 999px; background: rgb(255 255 255 / 96%); box-shadow: 0 6px 20px rgb(15 15 15 / 12%); padding: 7px 11px; pointer-events: none; text-overflow: ellipsis; white-space: nowrap; }
+.hit-a-hint-overlay { position: fixed; z-index: 200; inset: 0; pointer-events: none; }
+.hit-a-hint-badge { position: fixed; display: inline-block; min-width: 18px; box-sizing: border-box; border: 1px solid #5a4318; border-radius: 4px; background: #ffd54f; box-shadow: 0 2px 6px rgb(24 24 22 / 24%); padding: 2px 4px; color: #19130a; font: 700 12px/1.1 ui-monospace, SFMono-Regular, Consolas, monospace; text-align: center; }
 .pending-intent { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
 .pending-intent p { flex-basis: 100%; margin: 0; font-size: 13px; }
 .floating-runner { position: fixed; z-index: 10; left: 50%; bottom: var(--floating-runner-offset); display: flex; width: min(480px, calc(100% - 32px)); min-height: var(--floating-runner-height); align-items: center; justify-content: space-between; gap: 18px; transform: translateX(-50%); padding: 12px 14px 12px 18px; border: 1px solid #d8d8d5; border-radius: 10px; background: rgb(255 255 255 / 96%); box-shadow: 0 10px 30px rgb(15 15 15 / 16%); backdrop-filter: blur(10px); }

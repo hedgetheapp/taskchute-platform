@@ -2,6 +2,16 @@
 
 Statuses: Approved / Proposed / Superseded
 
+## D-099 — Hit-a-Hint v0.1
+
+Status: **Approved**
+
+Canonical Decision: `docs/decisions/D-099_HIT_A_HINT_V01.md`。
+
+Signed-in neutral application surfacesでplain `F / f`を押すと、現在viewportに見えているenabled actionable targetへdeterministicなHit-a-Hint labelを表示する。`ASDFGHJKLQWERTYUIOPZXCVBNM`を使い、26件までは1文字、超過時は全件2文字としてprefix-freeを保つ。button / link等は既存click、Task row / input / select / textarea / contenteditable / generic focus surfaceはfocus-onlyで、Logout、hidden / disabled / inert / collapsed / offviewport、modal / menu / popover / calendar / editor / IMEのlocal ownerは対象外とする。
+
+Hint mode中はcapture-phaseの単一keyboard ownerが通常のunmodified shortcutを停止し、label入力・Backspace・Escapeを処理する。modifier chordはcancelしてbrowser/systemへ返し、pointer / scroll / resize / view changeはsnapshotをcancelする。portal overlayはlayoutへ参加せず、D-098の既存user-focus authorityへ接続する。Worker / API / schema / migration / dependency / lifecycle / placement semanticsは変更しない。
+
 ## D-072 — Mode search / archive / restore / delete parity
 Status: Approved
 

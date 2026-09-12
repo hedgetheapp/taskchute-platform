@@ -80,6 +80,7 @@ import { ProjectBoard } from "./ProjectBoard";
 import { ModeBoard } from "./ModeBoard";
 import { EffectiveDayCalendarSettings } from "./EffectiveDayCalendarSettings";
 import { NotesBoard } from "./NotesBoard";
+import { HitAHint } from "./HitAHint";
 import { CalendarPopover, formatLogicalDateLabel } from "./ui-helpers";
 
 export { DAY_COLUMNS_STORAGE_KEY } from "./day-columns";
@@ -959,6 +960,10 @@ export function App() {
     || bulkSectionConfirmation !== null || bulkEstimateConfirmation !== null || bulkDateMoveConfirmation !== null
     || routineDraft !== null || routineCandidate !== null;
   const mutationLocked = globalPending || globalRetainedOperation;
+  const hitAHintBlocked = decisionModalOpen || calendarOpen || columnsMenuOpen || columnSubmenuOpen
+    || overflowEntryId !== null || entryDrag !== null || columnDrag !== null || columnResize !== null
+    || draftTask !== null || taskMetadataDraft !== null || editingEstimate !== null
+    || editingPlannedStart !== null || executionTimesDraft !== null;
 
   useEffect(() => {
     dayRef.current = day;
@@ -968,6 +973,7 @@ export function App() {
     if (view !== "today") return;
     const handleTodayArrowBootstrap = (event: globalThis.KeyboardEvent) => {
       if (event.defaultPrevented || event.isComposing || decisionModalOpen
+        || document.querySelector("[data-hit-a-hint-active='true']")
         || (event.key !== "ArrowUp" && event.key !== "ArrowDown")
         || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) return;
       const activeElement = document.activeElement;
@@ -5753,6 +5759,9 @@ export function App() {
 
   return (
     <div className={`app-layout${sidebarOpen ? "" : " sidebar-closed"}`} data-sidebar-state={sidebarOpen ? "open" : "closed"}>
+      <HitAHint enabled={authState === "signed-in"} blocked={hitAHintBlocked}
+        viewKey={`${view}:${settingsDestination}:${day?.taskchute_day.id ?? "preview"}:${day?.taskchute_day.logical_date ?? ""}`}
+        onFocusIntent={focusFromUserIntent} onActivateIntent={markUserFocusIntent} />
       {sidebarOpen && <aside className="primary-sidebar">
         <div className="sidebar-header">
           <div className="product-mark">TaskChute</div>
@@ -5923,6 +5932,8 @@ export function App() {
         <Modal title="キーボードショートカット" titleId="shortcut-help-title" className="shortcut-help"
           onClose={() => setShortcutHelpOpen(false)}>
           <dl className="shortcut-help-list">
+            <div><dt>F</dt><dd>Hit-a-Hint</dd></div>
+            <div><dt>Hint mode</dt><dd>labelで選択 / Backspaceで一文字戻る / Escでキャンセル</dd></div>
             <div><dt>↓ / J</dt><dd>次のvisible Taskへ移動</dd></div>
             <div><dt>↑ / K</dt><dd>前のvisible Taskへ移動</dd></div>
             <div><dt>S</dt><dd>Taskを開始 / 実行中Taskを完了（別Task実行中は中断・継続）</dd></div>

@@ -2620,3 +2620,17 @@ D-084 browser fixture creation was not completed: the unauthenticated/new in-app
 | D098-BROWSER | Existing authenticated tab, real title editor Escape, Add focus continuity, hierarchical second Escape | real CUA editor open + first Escape observed; Add disposable fixture and second Escape not safely observable due connector AX/input instability; no synthetic DOM events | PARTIAL / NOT_VERIFIED for Add and second Escape |
 | D098-DB | APP/AUTH read-only integrity and no write probes | APP/AUTH quick_check `ok`; FK empty; all successful probes `rows_written=0`; APP active Execution `1` retained untouched | PASS (active execution retained) |
 | D098-SAFETY | API/Worker/schema/migration/dependency and prohibited operations | Web-only; migration `NOT_REQUIRED`; no production, restore, credential/bootstrap, cleanup, branch/PR/merge/tag/Release | NOT_REQUIRED / NOT_RUN |
+
+## D-099 — Hit-a-Hint v0.1 local evidence
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D099-ACTIVATION | Activation guards | Plain F opens only on neutral signed-in surface; modifier/repeat/IME/editor/modal/menu/popover/calendar guards hold | `HitAHint.test.tsx` activation matrix plus signed-in App integration test | PASS (LOCAL) |
+| D099-LABEL | Label generation / target filter | Deterministic alphabet, one/two fixed-length prefix-free labels, visible target filtering, disabled/hidden/collapsed/offviewport/inert/overlay/Logout exclusion | `HitAHint.test.tsx`; 32 focused tests | PASS (LOCAL) |
+| D099-COLLISION | Keyboard exclusivity | Hint mode owns shortcut letters, arrows, Shift+Arrow, `?`; modifier chord cancels without browser shortcut suppression | real capture-phase keyboard events in focused component tests | PASS (LOCAL) |
+| D099-TARGET | Action / focus semantics | button/link/action roles activate once; input/select/Task row focus only; stale target rejected; Escape/Backspace/invalid/pointer/scroll/resize behavior | focused selection and cancellation tests | PASS (LOCAL) |
+| D099-D098 | Focus authority | Hint focus/action routes through existing D-098 user-focus authority and does not introduce a second generation system | App integration plus callback path test | PASS (LOCAL) |
+| D099-REG | Existing shortcut regression | Existing App keyboard behavior and shortcut help remain intact | App `259 / 259` within combined `291 / 291`; full Web `6 files / 350 tests` | PASS (LOCAL) |
+| D099-WORKER | Standard Worker/D1 regression | No Worker changes; standard suite remains green | full Worker/D1 `32 files / 287 tests` | PASS (LOCAL) |
+| D099-STATIC | Static gates | typecheck, normal build, exact nonprod build, deploy guard, Wrangler dry-run, diff-check | all commands exit `0`; known Wrangler log EPERM/client chunk warning nonfatal | PASS (LOCAL) |
+| D099-REMOTE | Main sync / deploy / browser / DB | Recheck user-confirmed remote main, FF push, exact deploy, persistent browser and DB evidence | GitHub port 443 unavailable for `ls-remote` / fetch; no Git state or remote write performed | PENDING_NETWORK |

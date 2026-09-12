@@ -452,7 +452,7 @@ Current Dayのordinary mutationは、操作を受理した直後に対象rowのo
 
 ## Unreconciled historical scope
 
-historical design branchにあるFloating Runner、context menu、Hit-a-Hint、Bulk actions、responsive / mobile等は、この文書へまだcanonicalizeしていない。必要なscopeごとにcurrent Product / Domain Decisionと再照合してから追加する。
+historical design branchにあるFloating Runner、context menu、Bulk actions、responsive / mobile等は、この文書へまだcanonicalizeしていない。Hit-a-HintはD-099でcanonicalizeされ、signed-in neutral surfaceのtransient portal overlay、capture-phase keyboard ownership、deterministic prefix-free labels、D-098 focus authorityとの連携を持つ。その他のhistorical scopeは必要なscopeごとにcurrent Product / Domain Decisionと再照合してから追加する。
 
 ## D-077 Instant Day interaction
 
