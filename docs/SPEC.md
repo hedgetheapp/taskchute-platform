@@ -587,3 +587,9 @@ D-092により、通常一覧と分離した`アーカイブ`一覧、archive / 
 Taskはowner-scoped shared `Document`を0または1つの`task_primary` relationとして持てる。Documentのstable `document_id`はTask identityと別で、Markdown source body、non-negative revision、server timestampsを保持する。Task titleはTask rowのauthorityであり、Task Primary Documentは第二のtitle、archive/delete lifecycle、attachment、preview、search/backlinkを持たない。Routine共通の長期noteも同じTask Primary Documentを参照できるが、RoutineOccurrence Documentをこのsliceで追加しない。
 
 Todayの`ノート`列からの初回Ensureは明示クリック時にだけ行われ、成功したTask/Document pairはsharedな`/?view=note&document=<document-id>`で再訪できる。認証済みowner-scoped resolverがDocument kindを識別し、standalone / `task_primary`をexact identityで開く。missing / cross-owner IDは明示的に利用不可とし、別の表示中Noteへfallbackしない。side-peek / new-tabは同じcanonical identityを使い、Day projectionにはbodyを含めない。Task Noteのbody編集はmemory-only draftから既存operation/CAS boundaryへ送信し、ambiguous/conflictではexact request、revision、navigation barrierを保つ。APP 0031は既存standalone Documents、Task/Entry/Execution/Routine/calendar data、operations identityをrewriteせず、AUTH migrationを追加しない。
+
+## D-102 Multi-Task Note Windows v0.1
+
+Task Primary Noteのdesktop side-peekはTask stable identityごとに複数instanceを許可し、同一Taskの再表示は同一windowを再利用する。各instanceは独立したDocument title/body draft、save/unresolved barrier、geometry、minimized state、focusを持つ。App shellはz-order、active route、outside-click、navigation/logout barrierをwindow単位で調整し、window外クリックはfrontmost expanded windowだけを最小化する。別windowのクリックはそのwindowだけを前面化し、他windowを閉じたり最小化したりしない。
+
+window identity、stack order、minimized/maximized stateはserver/localStorageへ保存しない。canonical URLはactive windowのDocumentだけを指し、reload/fresh tabはrouteから最大1つを復元する。preferred geometryを基準に24px cascadeし、mobileではsingle full-sheet、Hit-a-Hintではsingle active/local keyboard ownerを維持する。D-102は既存Document/API/Worker/schema/migration、Task Note Ensure、save/autosave/CAS/ambiguity semanticsを変更せず、Preview、offline/multi-tab state、Task/Project/Routine relation拡張も含めない。

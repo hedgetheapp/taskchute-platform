@@ -2761,3 +2761,18 @@ D-100 profile: `STANDARD (tooling/governance override)`. Persistent nonprod depl
 | D101-UI2V2-CORR-NONPROD | Exact deployment | pushed corrective is deployed to canonical nonprod with existing posture/bindings | Worker `66d2bdf1-38a3-4214-b85c-79c6a217b68d`; target/config guard verified | PASS |
 | D101-UI2V2-CORR-CONSOLE | Browser console | no warning/error during corrective verification | authenticated current-asset tab `dev.logs({levels:[error,warn]})` => `[]` | PASS |
 | D101-UI2V2-CORR-SCOPE | Scope | Web-only; no API/Worker/schema/migration/dependency/Preview change; no production/restore/destructive cleanup/Release | source review and operation record | NOT_REQUIRED / NOT_RUN |
+
+### D-102 Multi-Task Note Windows v0.1
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D102-IDENTITY | Window identity | one floating Note window per Task stable identity; reopening the same Task reuses it without duplication | focused App test; authenticated browser showed two distinct Task/Document roots and reopen count `2` | PASS |
+| D102-CASCADE | Geometry | new windows use deterministic 24px cascade from the existing geometry seed; each window keeps independent geometry state | focused geometry test; browser geometry `507,16,577,668` and `483,40,577,668` before exposure drag | PASS |
+| D102-STACK | Focus/stacking | activation raises only the selected sibling; expanded siblings remain expanded and z-order is independent | real browser pointer selection of exposed sibling; z-index changed `20/21` while both remained expanded | PASS |
+| D102-OUTSIDE | Outside ownership | desktop outside click minimizes only the frontmost expanded Note and does not steal the underlying action | real browser outside click minimized `test` only; `てst` remained expanded | PASS |
+| D102-ROUTE | Route/reload | canonical route identifies active window; reload restores at most one routed Note | browser URL `?view=note&document=01a0999d-af26-72f9-87c0-25c3da50e55c`; same-tab reload restored one window | PASS |
+| D102-FRESH | Fresh authenticated tab | existing authenticated session restores canonical routed Note without opening multiple windows | fresh tab `13`, authenticated shell, one `test` Note window | PASS |
+| D102-REG | Web regression/static | focused multi-window/geometry tests, full Web, typecheck, build, exact nonprod build, deploy guard, dry-run, diff-check | focused `3 files / 301 tests`; full `11 files / 416 tests`; all static gates PASS | PASS |
+| D102-NONPROD | Deployment | exact pushed main deployed to canonical nonprod with protected runtime/bindings | Worker `5463d621-57c8-4a41-b3a2-ab23d0d6fdec`; `taskchute-web-nonprod`; APP/AUTH bindings and posture verified | PASS |
+| D102-CONSOLE | Browser console | no warning/error during existing/fresh authenticated verification | both tab `dev.logs({levels:[warn,error]})` => `[]` | PASS |
+| D102-SCOPE | Scope | Web-only; no Worker/API/schema/migration/dependency/production change | source review and operation record | NOT_REQUIRED / NOT_RUN |
