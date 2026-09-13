@@ -28,6 +28,8 @@ describe("task note window geometry", () => {
     localStorage.setItem(TASK_NOTE_PEEK_WIDTH_STORAGE_KEY, JSON.stringify({ version: 1, width: 560 }));
     expect(readTaskNoteWindowGeometry(viewport.width, viewport.height)).toEqual({ x: 624, y: 16, width: 560, height: 868 });
 
+    localStorage.setItem(TASK_NOTE_WINDOW_GEOMETRY_STORAGE_KEY, JSON.stringify({ version: 1, ...base }));
+    expect(readTaskNoteWindowGeometry(viewport.width, viewport.height)).toEqual(base);
     localStorage.setItem(TASK_NOTE_WINDOW_GEOMETRY_STORAGE_KEY, JSON.stringify({ version: 1, geometry: base }));
     expect(readTaskNoteWindowGeometry(viewport.width, viewport.height)).toEqual(base);
     expect(isTaskNoteWindowGeometry(base)).toBe(true);

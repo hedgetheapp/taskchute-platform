@@ -102,7 +102,7 @@ describe("TaskNoteEditor", () => {
     expect(peek?.dataset.taskNotePeekWidth).toBe("520");
     dispatchPointer(handle, "pointerup", { clientX: 700 });
     expect(JSON.parse(localStorage.getItem(TASK_NOTE_WINDOW_GEOMETRY_STORAGE_KEY)!)).toMatchObject({
-      version: 1, geometry: { width: 520, x: 488, y: 16, height: 736 },
+      version: 1, width: 520, x: 488, y: 16, height: 736,
     });
     expect(mocks.updateTaskPrimaryDocument).not.toHaveBeenCalled();
 
@@ -146,7 +146,7 @@ describe("TaskNoteEditor", () => {
     expect(peek.style.top).toBe("120px");
     dispatchPointer(header, "pointerup", { clientX: 600, clientY: 180 });
     expect(JSON.parse(localStorage.getItem(TASK_NOTE_WINDOW_GEOMETRY_STORAGE_KEY)!)).toMatchObject({
-      geometry: { x: 300, y: 120, width: 420, height: 500 },
+      x: 300, y: 120, width: 420, height: 500,
     });
 
     const copy = screen.getByRole("button", { name: "リンクをコピー" });
@@ -167,7 +167,7 @@ describe("TaskNoteEditor", () => {
     dispatchPointer(east, "pointermove", { clientX: 520, clientY: 400 });
     expect(peek.style.width).toBe("500px");
     dispatchPointer(east, "pointercancel", { clientX: 520, clientY: 400 });
-    expect(JSON.parse(localStorage.getItem(TASK_NOTE_WINDOW_GEOMETRY_STORAGE_KEY)!)).toMatchObject({ geometry: { width: 500 } });
+    expect(JSON.parse(localStorage.getItem(TASK_NOTE_WINDOW_GEOMETRY_STORAGE_KEY)!)).toMatchObject({ width: 500 });
     expect(mocks.updateTaskPrimaryDocument).not.toHaveBeenCalled();
   });
 
@@ -188,7 +188,7 @@ describe("TaskNoteEditor", () => {
     dispatchPointer(bar, "pointermove", { clientX: 680, clientY: 160 });
     dispatchPointer(bar, "pointerup", { clientX: 680, clientY: 160 });
     expect(peek.style.width).toBe("320px");
-    expect(JSON.parse(localStorage.getItem(TASK_NOTE_WINDOW_GEOMETRY_STORAGE_KEY)!)).toMatchObject({ geometry: { width: 420, height: 736 } });
+    expect(JSON.parse(localStorage.getItem(TASK_NOTE_WINDOW_GEOMETRY_STORAGE_KEY)!)).toMatchObject({ width: 420, height: 736 });
 
     fireEvent.click(screen.getByRole("button", { name: "ノートを元のサイズに戻す" }));
     await waitFor(() => expect(peek.dataset.taskNoteMinimized).toBeUndefined());

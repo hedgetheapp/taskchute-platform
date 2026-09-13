@@ -23,6 +23,10 @@ export type TaskNoteWindowGeometry = {
   height: number;
 };
 
+type TaskNoteWindowGeometryPreference = TaskNoteWindowGeometry & {
+  version: typeof TASK_NOTE_WINDOW_GEOMETRY_VERSION;
+};
+
 export type TaskNoteWindowResizeDirection = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
 
 function finiteDimension(value: number, fallback: number): number {
@@ -83,9 +87,21 @@ export function readTaskNoteWindowGeometry(viewportWidth: number, viewportHeight
     if (raw === null) return fallback();
     const parsed: unknown = JSON.parse(raw);
     if (typeof parsed !== "object" || parsed === null) return fallback();
-    const envelope = parsed as { version?: unknown; geometry?: unknown };
-    if (envelope.version !== TASK_NOTE_WINDOW_GEOMETRY_VERSION || !isTaskNoteWindowGeometry(envelope.geometry)) return fallback();
-    return envelope.geometry;
+    const envelope = parsed as { version?: unknown; geometry?: unknown } & Partial<TaskNoteWindowGeometry>;
+    if (envelope.version !== TASK_NOTE_WINDOW_GEOMETRY_VERSION) return fallback();
+    if (isTaskNoteWindowGeometry(envelope)) {
+      return {
+        x: envelope.x,
+        y: envelope.y,
+        width: envelope.width,
+        height: envelope.height,
+      };
+    }
+    // Accept the first implementation's nested envelope for a non-breaking
+    // browser-local preference migration, while all new writes use the
+    // canonical flat shape above.
+    if (isTaskNoteWindowGeometry(envelope.geometry)) return envelope.geometry;
+    return fallback();
   } catch {
     return fallback();
   }
@@ -95,8 +111,8 @@ export function persistTaskNoteWindowGeometry(geometry: TaskNoteWindowGeometry):
   try {
     window.localStorage.setItem(TASK_NOTE_WINDOW_GEOMETRY_STORAGE_KEY, JSON.stringify({
       version: TASK_NOTE_WINDOW_GEOMETRY_VERSION,
-      geometry,
-    }));
+      ...geometry,
+    } satisfies TaskNoteWindowGeometryPreference));
   } catch {
     // Browser storage is optional; the current component remains usable in memory.
   }
