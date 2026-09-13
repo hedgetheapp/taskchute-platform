@@ -40,6 +40,15 @@ export interface TaskPrimaryDocument {
 
 export type Document = StandaloneDocument | TaskPrimaryDocument;
 
+/**
+ * Read-only projection used by the generic document permalink resolver.
+ * Task Primary titles are resolved from the current Task authority rather
+ * than being persisted on the Document row.
+ */
+export type ResolvedDocumentPermalink =
+  | StandaloneDocument
+  | (TaskPrimaryDocument & { task_title: string });
+
 export interface EnsureTaskPrimaryDocumentRequest {
   operation_id: string;
   task_id: string;

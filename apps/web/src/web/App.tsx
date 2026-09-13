@@ -1820,8 +1820,7 @@ export function App() {
           setView("notes");
           return;
         }
-        const entry = day ? projectionEntries(day).find((candidate) => candidate.task.id === resolved.task_id) : null;
-        setTaskNoteTarget({ taskId: resolved.task_id, documentId: resolved.document_id, taskTitle: entry?.task.title ?? "Task Note" });
+        setTaskNoteTarget({ taskId: resolved.task_id, documentId: resolved.document_id, taskTitle: resolved.task_title });
       }).catch((caught) => {
         if (caught instanceof ApiClientError && caught.status === 401) transitionToSignedOut();
         else {
@@ -1834,10 +1833,22 @@ export function App() {
     const taskId = params.get("task");
     const documentId = params.get("document");
     if (routeView === "task-note" && taskId && documentId) {
-      const entry = day ? projectionEntries(day).find((candidate) => candidate.task.id === taskId) : null;
-      window.history.replaceState(null, "", documentPermalink(documentId));
-      setTaskNoteTarget({ taskId, documentId, taskTitle: entry?.task.title ?? "Task Note" });
       taskNoteRouteHandledRef.current = true;
+      void api.resolveDocument(documentId).then((resolved) => {
+        if (resolved.kind !== "task_primary" || resolved.task_id !== taskId) {
+          setNotesInitialDocumentId(documentId);
+          setView("notes");
+          return;
+        }
+        window.history.replaceState(null, "", documentPermalink(documentId));
+        setTaskNoteTarget({ taskId: resolved.task_id, documentId: resolved.document_id, taskTitle: resolved.task_title });
+      }).catch((caught) => {
+        if (caught instanceof ApiClientError && caught.status === 401) transitionToSignedOut();
+        else {
+          setNotesInitialDocumentId(documentId);
+          setView("notes");
+        }
+      });
       return;
     }
     if (routeView === "task-note-bootstrap" && taskId) {

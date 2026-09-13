@@ -338,13 +338,16 @@ describe("Dogfood Day shell", () => {
   it("resolves a Task Primary generic permalink and keeps the shared canonical URL", async () => {
     const documentId = "0199d101-0000-7000-8000-000000000013";
     window.history.replaceState(null, "", `/?view=note&document=${documentId}`);
-    mocks.loadDay.mockResolvedValue(populatedDay);
+    // The resolver must provide the authoritative Task title even when the
+    // Task is not present in the currently loaded Day projection.
+    mocks.loadDay.mockResolvedValue(emptyDay);
     mocks.resolveDocument.mockResolvedValue({
       document_id: documentId, kind: "task_primary", task_id: firstEntry.task.id, markdown_body: "body", revision: 0,
-      created_at: "2026-09-13T00:00:00.000Z", updated_at: "2026-09-13T00:00:00.000Z",
+      task_title: "Resolved task title", created_at: "2026-09-13T00:00:00.000Z", updated_at: "2026-09-13T00:00:00.000Z",
     });
     render(<App />);
-    await screen.findByRole("complementary", { name: "Canonical taskのノート" });
+    await screen.findByRole("complementary", { name: "Resolved task titleのノート" });
+    expect(screen.getByRole("heading", { name: "Resolved task title" })).toBeTruthy();
     expect(window.location.search).toBe(`?view=note&document=${documentId}`);
     expect(window.location.search).not.toContain("task=");
   });

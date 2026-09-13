@@ -3,7 +3,7 @@ import type {
   CreateStandaloneDocumentResult,
   DeleteStandaloneDocumentRequest,
   DeleteStandaloneDocumentResult,
-  Document as DocumentProjection,
+  ResolvedDocumentPermalink,
   SetStandaloneDocumentArchivedRequest,
   SetStandaloneDocumentArchivedResult,
   StandaloneDocument,
@@ -35,6 +35,7 @@ interface DocumentPermalinkRow extends Omit<DocumentRow, "kind" | "title"> {
   kind: "standalone" | "task_primary";
   task_id: string | null;
   title: string | null;
+  task_title: string | null;
 }
 
 export interface DocumentMutationHooks {
@@ -139,15 +140,17 @@ export async function loadStandaloneDocument(db: D1Database, appUserId: string, 
  * remain kind-specific; this read only exists so a generic URL can open the
  * exact standalone or Task Primary document without falling back to a list.
  */
-export async function loadDocumentByPermalink(db: D1Database, appUserId: string, documentId: string): Promise<DocumentProjection> {
+export async function loadDocumentByPermalink(db: D1Database, appUserId: string, documentId: string): Promise<ResolvedDocumentPermalink> {
   const row = await db.prepare(`SELECT d.document_id, d.app_user_id, d.kind, d.title, d.markdown_body,
-      d.revision, d.archived_at, d.created_at, d.updated_at, tpd.task_id
+      d.revision, d.archived_at, d.created_at, d.updated_at, tpd.task_id, t.title AS task_title
     FROM documents d
     LEFT JOIN task_primary_documents tpd
       ON tpd.app_user_id = d.app_user_id AND tpd.document_id = d.document_id
+    LEFT JOIN tasks t
+      ON t.app_user_id = tpd.app_user_id AND t.id = tpd.task_id
     WHERE d.app_user_id = ? AND d.document_id = ?`)
     .bind(appUserId, documentId).first<DocumentPermalinkRow>();
-  if (!row || (row.kind === "task_primary" && row.task_id === null)) {
+  if (!row || (row.kind === "task_primary" && (row.task_id === null || row.task_title === null))) {
     throw new HttpError(404, "resource_not_found", "Document is unavailable");
   }
   if (row.kind === "standalone") return documentProjection({ ...row, kind: "standalone", title: row.title as string });
@@ -155,6 +158,7 @@ export async function loadDocumentByPermalink(db: D1Database, appUserId: string,
     document_id: row.document_id,
     kind: "task_primary",
     task_id: row.task_id!,
+    task_title: row.task_title!,
     markdown_body: row.markdown_body,
     revision: row.revision,
     created_at: row.created_at,

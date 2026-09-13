@@ -97,6 +97,30 @@ describe("D-101 Task Primary Documents", () => {
 
   it("resolves a Task Primary permalink through the shared Document read", async () => {
     const created = await ensureTaskPrimaryDocument(env.APP_DB, userId, ensureRequest());
-    expect(await loadDocumentByPermalink(env.APP_DB, userId, created.document.document_id)).toEqual(created.document);
+    expect(await loadDocumentByPermalink(env.APP_DB, userId, created.document.document_id)).toEqual({
+      ...created.document,
+      task_title: "Primary task",
+    });
+  });
+
+  it("resolves the renamed Task title without changing the Document identity", async () => {
+    const created = await ensureTaskPrimaryDocument(env.APP_DB, userId, ensureRequest());
+    await env.APP_DB.prepare("UPDATE tasks SET title = ? WHERE app_user_id = ? AND id = ?")
+      .bind("Renamed task", userId, taskId).run();
+    expect(await loadDocumentByPermalink(env.APP_DB, userId, created.document.document_id)).toMatchObject({
+      document_id: created.document.document_id,
+      task_id: taskId,
+      task_title: "Renamed task",
+    });
+  });
+
+  it("does not resolve a Task Primary document without its relation", async () => {
+    const documentId = uuidv7();
+    await env.APP_DB.prepare(`INSERT INTO documents
+      (document_id, app_user_id, kind, title, markdown_body, revision, created_at, updated_at)
+      VALUES (?, ?, 'task_primary', NULL, ?, 0, ?, ?)`)
+      .bind(documentId, userId, "# orphan", "2026-09-13T00:00:00Z", "2026-09-13T00:00:00Z").run();
+    await expect(loadDocumentByPermalink(env.APP_DB, userId, documentId))
+      .rejects.toMatchObject({ code: "resource_not_found" });
   });
 });
