@@ -2720,3 +2720,16 @@ D-100 profile: `STANDARD (tooling/governance override)`. Persistent nonprod depl
 | D101-UI2-CONSOLE | Browser console | no warning/error during UI verification | authenticated fresh tab `dev.logs()` => `[]` | PASS |
 | D101-UI2-WORKER | Server scope | no Worker/API/schema/migration/dependency change | source-scope review | NOT_REQUIRED |
 | D101-UI2-SAFETY | Safety boundary | no production, credentials, bootstrap, restore, destructive cleanup, branch/PR/merge/tag/Release | operation record | NOT_RUN |
+
+### D-101 UI refinement 2 corrective — floating Note chrome
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D101-UI2-CORR-CHROME | Expanded chrome | ordinary Save/status UI is absent; one header close remains; footer close is absent | TaskNoteEditor focused assertions; authenticated nonprod DOM metrics: Save `0`, header close `1`, footer close `0` | PASS |
+| D101-UI2-CORR-MIN | Minimized bar | compact bar exposes only accessible Note icon and close `×`; expanded subtree is not visible/focusable/pointer-active | focused tests; real pointer drag remained minimized; computed `hidden=true`, `display:none`, `pointer-events:none` | PASS |
+| D101-UI2-CORR-OUTSIDE | Desktop outside pointerdown | expanded outside click minimizes without save/flush/focus steal and underlying click proceeds; mobile boundary unchanged | real authenticated Today click minimized Note and continued Day navigation; focused Web tests/source review | PASS |
+| D101-UI2-CORR-HINT | Hit-a-Hint continuity | after outside-click minimize, background `F` remains usable | real authenticated tab showed Hit-a-Hint badges after uppercase `F`; Escape cleared them | PASS |
+| D101-UI2-CORR-REG | Regression/static | focused corrective, full Web, typecheck, builds, guard, dry-run, diff-check | focused `52 / 52`; full Web `11 files / 407 tests`; required static gates | PASS |
+| D101-UI2-CORR-NONPROD | Exact deployment | corrected exact main deployed to canonical nonprod with existing bindings/posture | Worker `9b4fc2f2-8d40-48eb-9cfa-a4aa3bb150a1`; target/config guard verified | PASS |
+| D101-UI2-CORR-CONSOLE | Browser console | no warning/error during corrective verification | existing and fresh authenticated tabs `dev.logs()` => `[]` | PASS |
+| D101-UI2-CORR-SCOPE | Scope | Web-only; no Worker/D1, migration, API, dependency, production, or destructive operation | source review and operation record | NOT_REQUIRED / NOT_RUN |
