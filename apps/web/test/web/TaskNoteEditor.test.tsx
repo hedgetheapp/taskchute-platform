@@ -66,7 +66,7 @@ describe("TaskNoteEditor", () => {
     />);
   }
 
-  it("saves body through the same explicit, Ctrl+S, and Cmd+S path", async () => {
+  it("saves body through the Ctrl+S and Cmd+S path", async () => {
     renderEditor();
     const body = await screen.findByRole("textbox", { name: "Markdown本文" });
     fireEvent.change(body, { target: { value: "after" } });
@@ -87,6 +87,17 @@ describe("TaskNoteEditor", () => {
     fireEvent.click(screen.getByRole("button", { name: "リンクをコピー" }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(expect.stringContaining("/?view=note&document=")));
     expect(writeText.mock.calls[0]![0]).not.toContain("task=");
+  });
+
+  it("keeps normal save controls and status out of the expanded chrome", async () => {
+    renderEditor();
+    await screen.findByRole("textbox", { name: "Markdown本文" });
+    expect(screen.queryByRole("button", { name: "保存" })).toBeNull();
+    expect(screen.queryByText("保存済み")).toBeNull();
+    expect(screen.queryByText("未保存")).toBeNull();
+    expect(screen.queryByText("保存中…")).toBeNull();
+    expect(screen.getAllByRole("button", { name: "Task Noteを閉じる" })).toHaveLength(1);
+    expect(document.querySelectorAll(".task-note-peek-footer")).toHaveLength(0);
   });
 
   it("renders the shared Markdown source editor and resizes the peek without saving", async () => {
@@ -180,17 +191,25 @@ describe("TaskNoteEditor", () => {
     fireEvent.click(screen.getByRole("button", { name: "ノートを最小化" }));
     expect(peek.dataset.taskNoteMinimized).toBe("true");
     expect(peek.querySelector(".task-note-peek-expanded")?.hasAttribute("hidden")).toBe(true);
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "ノートを元のサイズに戻す" })));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "ノートを開く" })));
     expect(mocks.updateTaskPrimaryDocument).not.toHaveBeenCalled();
 
     const bar = document.querySelector<HTMLElement>(".task-note-peek-minimized-bar")!;
+    expect(bar.getAttribute("aria-label")).toBe("ノートを開く");
+    expect(screen.queryByRole("button", { name: "リンクをコピー" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "新しいタブ" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "保存" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "ノートを元のサイズに戻す" })).toBeNull();
+    expect(screen.getByRole("button", { name: "ノートを開く" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "ノートを閉じる" }).textContent).toBe("×");
+    expect(document.querySelector(".task-note-peek-expanded")?.hasAttribute("hidden")).toBe(true);
     dispatchPointer(bar, "pointerdown", { clientX: 600, clientY: 100 });
     dispatchPointer(bar, "pointermove", { clientX: 680, clientY: 160 });
     dispatchPointer(bar, "pointerup", { clientX: 680, clientY: 160 });
     expect(peek.style.width).toBe("320px");
     expect(JSON.parse(localStorage.getItem(TASK_NOTE_WINDOW_GEOMETRY_STORAGE_KEY)!)).toMatchObject({ width: 420, height: 736 });
 
-    fireEvent.click(screen.getByRole("button", { name: "ノートを元のサイズに戻す" }));
+    fireEvent.click(screen.getByRole("button", { name: "ノートを開く" }));
     await waitFor(() => expect(peek.dataset.taskNoteMinimized).toBeUndefined());
     expect(peek.style.width).toBe(expanded.width);
     expect(peek.style.height).toBe(expanded.height);
@@ -207,6 +226,37 @@ describe("TaskNoteEditor", () => {
     await screen.findByRole("textbox", { name: "Markdown本文" });
     expect(document.querySelector("[data-task-note-minimized='true']")).toBeNull();
     expect((screen.getByRole("textbox", { name: "Markdown本文" }) as HTMLTextAreaElement).disabled).toBe(false);
+  });
+
+  it("minimizes on an outside desktop pointerdown without stealing the underlying click", async () => {
+    renderEditor();
+    const body = await screen.findByRole("textbox", { name: "Markdown本文" });
+    const outside = document.createElement("button");
+    outside.type = "button";
+    outside.textContent = "Today";
+    const outsideClick = vi.fn();
+    outside.addEventListener("click", outsideClick);
+    document.body.appendChild(outside);
+    body.focus();
+
+    fireEvent.pointerDown(outside);
+    fireEvent.click(outside);
+
+    expect(outsideClick).toHaveBeenCalledTimes(1);
+    expect(document.querySelector("[data-task-note-minimized='true']")).not.toBeNull();
+    expect(document.activeElement).not.toBe(body);
+    expect(mocks.updateTaskPrimaryDocument).not.toHaveBeenCalled();
+    outside.remove();
+  });
+
+  it("restores from a compact-surface click while keeping close separate", async () => {
+    renderEditor();
+    await screen.findByRole("textbox", { name: "Markdown本文" });
+    fireEvent.click(screen.getByRole("button", { name: "ノートを最小化" }));
+    const bar = document.querySelector<HTMLElement>(".task-note-peek-minimized-bar")!;
+    fireEvent.click(bar);
+    await waitFor(() => expect(document.querySelector("[data-task-note-minimized='true']")).toBeNull());
+    expect(screen.getByRole("button", { name: "ノートを最小化" })).toBeTruthy();
   });
 
   it("keeps the Task Note Markdown-only without a preview surface", async () => {
@@ -228,7 +278,7 @@ describe("TaskNoteEditor", () => {
     />);
     const body = await screen.findByRole("textbox", { name: "Markdown本文" });
     fireEvent.change(body, { target: { value: "after" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    fireEvent.keyDown(body, { key: "s", ctrlKey: true });
     await screen.findByText("保存結果を確認しました。");
     expect(mocks.loadTaskPrimaryDocumentById).toHaveBeenLastCalledWith(documentId);
     expect(screen.queryByRole("button", { name: "同じ内容で再試行" })).toBeNull();
@@ -241,7 +291,7 @@ describe("TaskNoteEditor", () => {
     renderEditor();
     const body = await screen.findByRole("textbox", { name: "Markdown本文" });
     fireEvent.change(body, { target: { value: "after" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    fireEvent.keyDown(body, { key: "s", ctrlKey: true });
     await screen.findByRole("button", { name: "同じ内容で再試行" });
     const firstRequest = { ...mocks.updateTaskPrimaryDocument.mock.calls[0]![0] };
     expect(body).toHaveProperty("disabled", true);

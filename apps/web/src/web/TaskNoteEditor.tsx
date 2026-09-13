@@ -73,7 +73,8 @@ export function TaskNoteEditor({
   const windowRef = useRef<HTMLElement | null>(null);
   const titleBarRef = useRef<HTMLElement | null>(null);
   const minimizedRestoreRef = useRef<HTMLButtonElement | null>(null);
-  const dragGestureRef = useRef<{ pointerId: number; startX: number; startY: number; startGeometry: TaskNoteWindowGeometry; minimized: boolean } | null>(null);
+  const dragGestureRef = useRef<{ pointerId: number; startX: number; startY: number; startGeometry: TaskNoteWindowGeometry; minimized: boolean; moved: boolean } | null>(null);
+  const suppressMinimizedClickRef = useRef(false);
   const resizeGestureRef = useRef<{ pointerId: number; startX: number; startY: number; startGeometry: TaskNoteWindowGeometry; direction: TaskNoteWindowResizeDirection } | null>(null);
 
   const dirty = draftBody !== baselineBody;
@@ -112,10 +113,11 @@ export function TaskNoteEditor({
   function handleDragPointerDown(event: React.PointerEvent<HTMLElement>): void {
     if (mobilePeek || event.button !== 0 || isDragExcludedTarget(event.target)) return;
     event.preventDefault();
+    suppressMinimizedClickRef.current = false;
     dragGestureRef.current = {
       pointerId: event.pointerId, startX: event.clientX, startY: event.clientY,
       startGeometry: isMinimized ? { ...preferredGeometry } : renderedGeometry,
-      minimized: isMinimized,
+      minimized: isMinimized, moved: false,
     };
     setIsMoving(true);
     event.currentTarget.setPointerCapture?.(event.pointerId);
@@ -127,6 +129,8 @@ export function TaskNoteEditor({
     event.preventDefault();
     const deltaX = event.clientX - gesture.startX;
     const deltaY = event.clientY - gesture.startY;
+    if (!gesture.moved && Math.hypot(deltaX, deltaY) < 4) return;
+    gesture.moved = true;
     if (gesture.minimized) {
       const position = moveTaskNoteMinimizedPosition(gesture.startGeometry, viewportWidth, viewportHeight, deltaX, deltaY, compactWidth, TASK_NOTE_WINDOW_COMPACT_HEIGHT);
       applyGeometry({ ...preferredGeometryRef.current, ...position });
@@ -142,6 +146,19 @@ export function TaskNoteEditor({
     dragGestureRef.current = null;
     setIsMoving(false);
     persistTaskNoteWindowGeometry(preferredGeometryRef.current);
+    suppressMinimizedClickRef.current = gesture.minimized && gesture.moved;
+  }
+
+  function handleMinimizedBarClick(event: React.MouseEvent<HTMLElement>): void {
+    if (isDragExcludedTarget(event.target)) {
+      suppressMinimizedClickRef.current = false;
+      return;
+    }
+    if (suppressMinimizedClickRef.current) {
+      suppressMinimizedClickRef.current = false;
+      return;
+    }
+    restore();
   }
 
   function handleWindowKeyDown(event: React.KeyboardEvent<HTMLElement>): void {
@@ -190,11 +207,12 @@ export function TaskNoteEditor({
     applyGeometry(next, true);
   }
 
-  function minimize(): void {
+  function minimize(options: { focusCompactControl?: boolean } = {}): void {
     const active = globalThis.document.activeElement;
     const focusInside = Boolean(windowRef.current?.contains(active));
     setIsMinimized(true);
-    if (focusInside) window.requestAnimationFrame(() => minimizedRestoreRef.current?.focus());
+    if (focusInside && options.focusCompactControl !== false) window.requestAnimationFrame(() => minimizedRestoreRef.current?.focus());
+    if (focusInside && options.focusCompactControl === false && active instanceof HTMLElement) active.blur();
   }
 
   function restore(): void {
@@ -235,7 +253,7 @@ export function TaskNoteEditor({
       try {
         const result = await api.updateTaskPrimaryDocument(request);
         applySaved(result.document, request);
-        setUnresolvedRequest(null); unresolvedRef.current = null; setNotice("保存しました。");
+        setUnresolvedRequest(null); unresolvedRef.current = null; setNotice(null);
         return true;
       } catch (caught) {
         if (caught instanceof ApiClientError && caught.status === 401) { onUnauthorized(); return false; }
@@ -308,13 +326,22 @@ export function TaskNoteEditor({
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, [dirty, saving, unresolved]);
 
+  useEffect(() => {
+    if (mobilePeek || isMinimized) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (windowRef.current?.contains(event.target as Node | null)) return;
+      minimize({ focusCompactControl: false });
+    };
+    globalThis.document.addEventListener("pointerdown", onPointerDown, true);
+    return () => globalThis.document.removeEventListener("pointerdown", onPointerDown, true);
+  }, [isMinimized, mobilePeek]);
+
   function handleKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key.toLowerCase() === "s" && (event.ctrlKey || event.metaKey) && !event.repeat) {
       event.preventDefault(); void saveRef.current();
     }
   }
 
-  const saveStatus = unresolved ? "保存結果未確定" : saving ? "保存中…" : dirty ? "未保存" : "保存済み";
   const resizeDirections: TaskNoteWindowResizeDirection[] = ["n", "s", "e", "w", "ne", "nw", "se", "sw"];
   const resizeLabels: Record<TaskNoteWindowResizeDirection, string> = {
     n: "上端でノートウィンドウの高さを変更", s: "下端でノートウィンドウの高さを変更",
@@ -355,7 +382,7 @@ export function TaskNoteEditor({
       <header ref={titleBarRef} className="task-note-peek-header" tabIndex={0} aria-label="ノートウィンドウを移動"
         onKeyDown={handleWindowKeyDown} onPointerDown={handleDragPointerDown} onPointerMove={handleDragPointerMove}
         onPointerUp={handleDragPointerEnd} onPointerCancel={handleDragPointerEnd}>
-        <div><p className="eyebrow">Task Note</p><h2>{taskTitle}</h2><span className="task-note-window-status">{saveStatus}</span></div>
+        <div><p className="eyebrow">Task Note</p><h2>{taskTitle}</h2></div>
         <div className="task-note-peek-actions">
           <button type="button" className="secondary" onClick={() => {
           const write = navigator.clipboard?.writeText(`${window.location.origin}${documentPermalink(documentId)}`);
@@ -367,7 +394,7 @@ export function TaskNoteEditor({
             .catch(() => setNotice("リンクのコピーに失敗しました。"));
           }}>リンクをコピー</button>
           <button type="button" className="secondary" onClick={onOpenNewTab}>新しいタブ</button>
-          <button type="button" className="secondary" aria-label="ノートを最小化" onClick={minimize}>—</button>
+          <button type="button" className="secondary" aria-label="ノートを最小化" onClick={() => minimize()}>—</button>
           <button type="button" className="secondary" aria-label="Task Noteを閉じる" onClick={onClose}>閉じる</button>
         </div>
       </header>
@@ -380,19 +407,17 @@ export function TaskNoteEditor({
           onKeyDown={handleKeyDown}
           className="task-note-markdown-field"
         />
-        <div className="task-note-peek-footer"><span className="notes-save-status" role="status">{saveStatus}</span><button type="button" disabled={saving || unresolved || !dirty} onClick={() => void saveRef.current()}>保存</button></div>
         {unresolved && <button type="button" className="secondary" disabled={saving} onClick={() => void saveRef.current()}>同じ内容で再試行</button>}
         {notice && <p className="success" role="status">{notice}</p>}
         {error && <p className="error" role="alert">{error}</p>}
       </div>}
     </div>
-    <div className="task-note-peek-minimized-bar" hidden={!isMinimized} tabIndex={0} aria-label="最小化したノートを移動"
+    <div className="task-note-peek-minimized-bar" hidden={!isMinimized} tabIndex={0} aria-label="ノートを開く"
       onKeyDown={handleWindowKeyDown} onPointerDown={handleDragPointerDown} onPointerMove={handleDragPointerMove}
-      onPointerUp={handleDragPointerEnd} onPointerCancel={handleDragPointerEnd}>
-      <NoteIcon /><strong>{taskTitle}</strong><span className="task-note-window-status">{saveStatus}</span>
+      onPointerUp={handleDragPointerEnd} onPointerCancel={handleDragPointerEnd} onClick={handleMinimizedBarClick}>
       <div className="task-note-peek-actions">
-        <button ref={minimizedRestoreRef} type="button" className="secondary" aria-label="ノートを元のサイズに戻す" onClick={restore}>元に戻す</button>
-        <button type="button" className="secondary" aria-label="Task Noteを閉じる" onClick={onClose}>閉じる</button>
+        <button ref={minimizedRestoreRef} type="button" className="secondary" aria-label="ノートを開く" title="ノートを開く" onClick={restore}><NoteIcon /></button>
+        <button type="button" className="secondary" aria-label="ノートを閉じる" title="ノートを閉じる" onClick={onClose}>×</button>
       </div>
     </div>
   </aside>;

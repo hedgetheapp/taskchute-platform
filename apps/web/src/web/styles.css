@@ -490,19 +490,17 @@ button.execution-control:hover { border-color: #2383e2; color: #2383e2; }
 .task-note-peek.is-moving { cursor: move; }
 .task-note-peek.is-resizing { cursor: grabbing; }
 .task-note-peek-expanded { display: flex; min-height: 0; flex: 1; flex-direction: column; gap: 14px; }
+.task-note-peek-expanded[hidden], .task-note-peek-minimized-bar[hidden] { display: none; pointer-events: none; }
 .task-note-peek-header { display: flex; align-items: start; justify-content: space-between; gap: 12px; cursor: move; touch-action: none; user-select: none; }
 .task-note-peek-header:focus-visible, .task-note-peek-minimized-bar:focus-visible { outline: 2px solid rgb(35 131 226 / 45%); outline-offset: -2px; }
 .task-note-peek-header h2 { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 17px; }
 .task-note-peek-actions { display: flex; flex-wrap: wrap; justify-content: end; gap: 5px; }
 .task-note-peek-actions button { padding: 5px 7px; font-size: 11px; }
-.task-note-window-status { display: block; margin-top: 3px; color: #787774; font-size: 11px; font-weight: 400; }
 .task-note-authority { margin: 0; color: #787774; font-size: 11px; }
 .task-note-peek-content { display: flex; min-height: 0; flex: 1; flex-direction: column; gap: 12px; overflow: hidden; }
 .task-note-markdown-field { display: flex; min-height: 0; flex: 1; flex-direction: column; }
 .task-note-markdown-field .note-markdown-editor { min-height: 0; flex: 1; }
 .task-note-markdown-field .note-markdown-editor textarea { min-height: 0; height: 100%; resize: none; }
-.task-note-peek-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.task-note-peek-footer button { padding: 6px 12px; }
 .task-note-window-resize-handle { position: absolute; z-index: 3; display: block; box-sizing: border-box; margin: 0; padding: 0; border: 0; background: transparent; touch-action: none; }
 .task-note-window-resize-handle:hover, .task-note-window-resize-handle:focus-visible, .task-note-peek.is-resizing .task-note-window-resize-handle { background: rgb(35 131 226 / 12%); }
 .task-note-window-resize-handle:focus-visible { outline: 2px solid rgb(35 131 226 / 45%); outline-offset: -1px; }
@@ -517,10 +515,9 @@ button.execution-control:hover { border-color: #2383e2; color: #2383e2; }
 .task-note-window-resize-handle.is-nw { top: 0; left: 0; cursor: nwse-resize; }
 .task-note-window-resize-handle.is-se { right: 0; bottom: 0; cursor: nwse-resize; }
 .task-note-window-resize-handle.is-sw { bottom: 0; left: 0; cursor: nesw-resize; }
-.task-note-peek-minimized-bar { display: flex; min-width: 0; align-items: center; gap: 8px; min-height: 44px; cursor: move; touch-action: none; user-select: none; }
-.task-note-peek-minimized-bar > strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
-.task-note-peek-minimized-bar > .task-note-window-status { flex: 0 0 auto; margin: 0; }
+.task-note-peek-minimized-bar { display: flex; min-width: 0; align-items: center; min-height: 44px; cursor: move; touch-action: none; user-select: none; }
 .task-note-peek-minimized-bar .task-note-peek-actions { margin-left: auto; flex-wrap: nowrap; }
+.task-note-peek-minimized-bar .task-note-peek-actions button { display: inline-grid; min-width: 28px; min-height: 28px; place-items: center; padding: 5px; }
 .task-note-peek-minimized-bar .task-note-icon { flex: 0 0 auto; }
 .task-note-peek.is-minimized { min-height: 0; padding: 0 10px; }
 .notes-line-numbers.is-hidden { color: transparent; }
