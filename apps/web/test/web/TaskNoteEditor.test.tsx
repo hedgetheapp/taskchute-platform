@@ -257,17 +257,18 @@ describe("TaskNoteEditor", () => {
     fireEvent.click(screen.getByRole("button", { name: "ノートを最小化" }));
     expect(peek.dataset.taskNoteMinimized).toBe("true");
     expect(peek.querySelector(".task-note-peek-expanded")?.hasAttribute("hidden")).toBe(true);
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "ノートを開く" })));
+    const bar = document.querySelector<HTMLElement>(".task-note-peek-minimized-bar")!;
+    await waitFor(() => expect(document.activeElement).toBe(bar));
     expect(mocks.updateTaskPrimaryDocument).not.toHaveBeenCalled();
 
-    const bar = document.querySelector<HTMLElement>(".task-note-peek-minimized-bar")!;
     expect(bar.getAttribute("aria-label")).toBe("Task Aのノートを開く");
     expect(bar.querySelector(".task-note-peek-minimized-title")?.textContent).toBe("Task A");
+    expect(bar.querySelectorAll("svg.task-note-icon")).toHaveLength(1);
     expect(screen.queryByRole("button", { name: "リンクをコピー" })).toBeNull();
     expect(screen.queryByRole("button", { name: "新しいタブ" })).toBeNull();
     expect(screen.queryByRole("button", { name: "保存" })).toBeNull();
     expect(screen.queryByRole("button", { name: "ノートを元のサイズに戻す" })).toBeNull();
-    expect(screen.getByRole("button", { name: "ノートを開く" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "ノートを開く" })).toBeNull();
     expect(screen.getByRole("button", { name: "ノートを閉じる" }).textContent).toBe("×");
     expect(document.querySelector(".task-note-peek-expanded")?.hasAttribute("hidden")).toBe(true);
     dispatchPointer(bar, "pointerdown", { clientX: 600, clientY: 100 });
@@ -276,7 +277,9 @@ describe("TaskNoteEditor", () => {
     expect(peek.style.width).toBe("320px");
     expect(JSON.parse(localStorage.getItem(TASK_NOTE_WINDOW_GEOMETRY_STORAGE_KEY)!)).toMatchObject({ width: 420, height: 736 });
 
-    fireEvent.click(screen.getByRole("button", { name: "ノートを開く" }));
+    fireEvent.click(bar);
+    expect(peek.dataset.taskNoteMinimized).toBe("true");
+    fireEvent.keyDown(bar, { key: "Enter" });
     await waitFor(() => expect(peek.dataset.taskNoteMinimized).toBeUndefined());
     expect(peek.style.width).toBe(expanded.width);
     expect(peek.style.height).toBe(expanded.height);
@@ -324,6 +327,46 @@ describe("TaskNoteEditor", () => {
     fireEvent.click(bar);
     await waitFor(() => expect(document.querySelector("[data-task-note-minimized='true']")).toBeNull());
     expect(screen.getByRole("button", { name: "ノートを最小化" })).toBeTruthy();
+  });
+
+  it("restores from the minimized title area with Enter and Space", async () => {
+    renderEditor();
+    const body = await screen.findByRole("textbox", { name: "Markdown本文" });
+    body.focus();
+    fireEvent.click(screen.getByRole("button", { name: "ノートを最小化" }));
+    const bar = document.querySelector<HTMLElement>(".task-note-peek-minimized-bar")!;
+    const title = document.querySelector<HTMLElement>(".task-note-peek-minimized-title")!;
+    await waitFor(() => expect(document.activeElement).toBe(bar));
+
+    fireEvent.keyDown(bar, { key: "Enter" });
+    await waitFor(() => expect(document.querySelector("[data-task-note-minimized='true']")).toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: "ノートを最小化" }));
+    const minimizedAgain = document.querySelector<HTMLElement>(".task-note-peek-minimized-bar")!;
+    fireEvent.click(title);
+    await waitFor(() => expect(document.querySelector("[data-task-note-minimized='true']")).toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: "ノートを最小化" }));
+    const minimizedForSpace = document.querySelector<HTMLElement>(".task-note-peek-minimized-bar")!;
+    expect(minimizedAgain).toBe(minimizedForSpace);
+    fireEvent.keyDown(minimizedForSpace, { key: " " });
+    await waitFor(() => expect(document.querySelector("[data-task-note-minimized='true']")).toBeNull());
+  });
+
+  it("closes from the minimized close control without restoring", async () => {
+    const onClose = vi.fn();
+    render(<TaskNoteEditor
+      taskId={taskId} documentId={documentId} taskTitle="Task A"
+      onClose={onClose} onUnauthorized={vi.fn()} onDirtyChange={vi.fn()}
+      onUnresolvedChange={vi.fn()} onRegisterFlush={vi.fn()} onOpenNewTab={vi.fn()}
+    />);
+    await screen.findByRole("textbox", { name: "Markdown本文" });
+    fireEvent.click(screen.getByRole("button", { name: "ノートを最小化" }));
+    const close = screen.getByRole("button", { name: "ノートを閉じる" });
+    fireEvent.keyDown(close, { key: "Enter" });
+    fireEvent.keyDown(close, { key: " " });
+    expect(document.querySelector("[data-task-note-minimized='true']")).not.toBeNull();
+    fireEvent.click(close);
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(document.querySelector("[data-task-note-minimized='true']")).not.toBeNull();
   });
 
   it("keeps a long task title in a flexible minimized title element", async () => {
