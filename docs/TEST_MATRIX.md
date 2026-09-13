@@ -2776,3 +2776,17 @@ D-100 profile: `STANDARD (tooling/governance override)`. Persistent nonprod depl
 | D102-NONPROD | Deployment | exact pushed main deployed to canonical nonprod with protected runtime/bindings | Worker `5463d621-57c8-4a41-b3a2-ab23d0d6fdec`; `taskchute-web-nonprod`; APP/AUTH bindings and posture verified | PASS |
 | D102-CONSOLE | Browser console | no warning/error during existing/fresh authenticated verification | both tab `dev.logs({levels:[warn,error]})` => `[]` | PASS |
 | D102-SCOPE | Scope | Web-only; no Worker/API/schema/migration/dependency/production change | source review and operation record | NOT_REQUIRED / NOT_RUN |
+
+### D-102 cascade / inactive-control corrective
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D102-CORR-CASCADE | Geometry | default cascade offset is 48px; clamp collision uses deterministic occupied-geometry fallback | focused geometry tests; seed `700,100,420,500` index 2 => `604,196`, occupied index 1 => `652,52` | PASS |
+| D102-CORR-DOM | Interaction structure | activation changes z-index only; mounted window DOM order and identity remain stable | focused App test; registry order unchanged after pointerdown, same root identity retained | PASS |
+| D102-CORR-CONTROLS | First-click controls | inactive close/minimize/maximize/restore, link copy, and minimized-bar close are actionable on the first pointer click | focused App control test; each action observed once with sibling preserved where applicable | PASS |
+| D102-CORR-BROWSER | Persistent browser | actual existing authenticated tab exposes 48px cascade and accepts inactive controls without a second click | viewport `1379 × 912`, Sidebar open; real pointer drag/click; geometry `483,40` and `435,88`, console `[]` | PASS |
+| D102-CORR-RELOAD | Persistence | same-tab reload and fresh authenticated tab restore the canonical routed Note | existing tab reload and fresh tab `14`, authenticated shell, one canonical routed window | PASS |
+| D102-CORR-STATIC | Static/regression | focused `2 files / 283 tests`, full Web `11 files / 418 tests`, typecheck/build/exact nonprod build/guard/dry-run/diff-check | local commands and exact pushed Worker deployment | PASS |
+| D102-CORR-SCOPE | Scope | no Worker/API/schema/migration/dependency change; no production/restore/destructive cleanup/Release | source review and operation record | NOT_REQUIRED / NOT_RUN |
+
+Implementation commit `5deba847305bea4cb06645be0017b33bb6fec471`をmainへfast-forward pushし、canonical nonprod Worker `b74edecb-54df-4c5a-a436-a944807d16d4`へdeployした。Task Note content/titleは編集していない。自然なsave race timing、mobile/別zoom/device permutationsはbrowser PASSを主張せず、既存automated evidenceをauthorityとする。
