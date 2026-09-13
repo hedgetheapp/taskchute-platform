@@ -1902,7 +1902,12 @@ D-101 — Task Primary Note and Document Permalinks
 
 Approved. A Task has at most one owner-scoped `task_primary` Markdown Document,
 shared by all of its Entries. Today exposes a Note affordance that ensures the
-Document on explicit click when absent and opens the stable Task Note permalink.
+Document on explicit click when absent and opens the shared
+`/?view=note&document=<document-id>` permalink. The authenticated resolver
+distinguishes the Document kind by exact owner-scoped identity; missing or
+cross-owner IDs never fall back to another visible Note. A temporary
+`task-note-bootstrap` URL is used only to ensure a missing Task relation before
+replacing the location with the shared canonical URL.
 The Task title remains authoritative. Task Primary Notes use memory-only
 Markdown drafts, safe autosave/CAS/retry behavior, and side-peek or selected
 new-tab presentation. No Task/Project/RoutineOccurrence note relations,
