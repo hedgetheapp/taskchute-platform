@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   loadAutoCarryOverduePlannedSetting: vi.fn(), setAutoCarryOverduePlanned: vi.fn(),
   loadEffectiveDayCalendar: vi.fn(), upsertEffectiveDayOverride: vi.fn(), deleteEffectiveDayOverride: vi.fn(),
   loadDocuments: vi.fn(), loadDocument: vi.fn(), createStandaloneDocument: vi.fn(), updateDocument: vi.fn(),
+  ensureTaskPrimaryDocument: vi.fn(), loadTaskPrimaryDocumentById: vi.fn(), updateTaskPrimaryDocument: vi.fn(),
 }));
 
 vi.mock("../../src/web/api", async () => {
@@ -237,6 +238,21 @@ beforeEach(() => {
   mocks.setExecutionTimes.mockResolvedValue({});
   mocks.updateTaskMetadata.mockResolvedValue({});
   mocks.setEntryMode.mockResolvedValue({});
+  mocks.ensureTaskPrimaryDocument.mockResolvedValue({ document: {
+    document_id: "0199d101-0000-7000-8000-000000000011", kind: "task_primary",
+    task_id: firstEntry.task.id, markdown_body: "", revision: 0,
+    created_at: "2026-09-13T00:00:00.000Z", updated_at: "2026-09-13T00:00:00.000Z",
+  } });
+  mocks.loadTaskPrimaryDocumentById.mockResolvedValue({
+    document_id: "0199d101-0000-7000-8000-000000000011", kind: "task_primary",
+    task_id: firstEntry.task.id, markdown_body: "", revision: 0,
+    created_at: "2026-09-13T00:00:00.000Z", updated_at: "2026-09-13T00:00:00.000Z",
+  });
+  mocks.updateTaskPrimaryDocument.mockResolvedValue({ document: {
+    document_id: "0199d101-0000-7000-8000-000000000011", kind: "task_primary",
+    task_id: firstEntry.task.id, markdown_body: "saved", revision: 1,
+    created_at: "2026-09-13T00:00:00.000Z", updated_at: "2026-09-13T00:00:00.000Z",
+  } });
   mocks.establishInitialSectionConfiguration.mockResolvedValue({});
   mocks.moveEntry.mockResolvedValue({});
   mocks.setEntryEstimate.mockResolvedValue({});
@@ -433,7 +449,7 @@ describe("Dogfood Day shell", () => {
     const heading = dayBoard.querySelector<HTMLElement>(".table-heading")!;
     const headingCells = Array.from(heading.children) as HTMLElement[];
     expect(headingCells.filter((cell) => !cell.classList.contains("bulk-slot") && !cell.classList.contains("row-actions-heading")).map((cell) => cell.textContent)).toEqual([
-      "実行", "Task", "Project", "Mode", "Section", "Routine", "見積", "開始予定", "開始見込", "開始", "終了", "実績",
+      "実行", "Task", "Project", "Mode", "Section", "ノート", "Routine", "見積", "開始予定", "開始見込", "開始", "終了", "実績",
     ]);
     expect(headingCells[0]?.classList.contains("bulk-slot")).toBe(true);
     expect(heading.querySelectorAll(":scope > .bulk-slot")).toHaveLength(1);
@@ -459,6 +475,20 @@ describe("Dogfood Day shell", () => {
     const displayMenu = await openDisplayMenu();
     expect(within(displayMenu).getByRole("checkbox", { name: "実行済みを表示" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "列" })).toBeNull();
+  });
+
+  it("opens the Task Primary Note from its Day column without exposing the body in the projection", async () => {
+    mocks.loadDay.mockResolvedValue(populatedDay);
+    render(<App />);
+    const dayBoard = await screen.findByRole("region", { name: "DayBoard" });
+    const noteButton = within(dayBoard).getByRole("button", { name: "Canonical taskのノートを作成して開く" });
+    expect(noteButton.closest('[data-day-column-cell="note"]')).toBeTruthy();
+    expect(dayBoard.textContent).not.toContain("markdown_body");
+    fireEvent.click(noteButton);
+    await waitFor(() => expect(mocks.ensureTaskPrimaryDocument).toHaveBeenCalledTimes(1));
+    expect(mocks.ensureTaskPrimaryDocument.mock.calls[0]![0]).toMatchObject({ task_id: firstEntry.task.id });
+    expect(await screen.findByRole("complementary", { name: "Canonical taskのノート" })).toBeTruthy();
+    window.history.replaceState(null, "", "/");
   });
 
   it("fills the available Day viewport without increasing Task row density", async () => {
@@ -752,7 +782,7 @@ describe("Dogfood Day shell", () => {
     const input = screen.getByRole("textbox", { name: "EveningのTask名" });
     expect(document.activeElement).toBe(input);
     const draftRow = input.closest(".draft-row")!;
-    expect(draftRow.children).toHaveLength(14);
+    expect(draftRow.children).toHaveLength(15);
     expect(draftRow.firstElementChild?.classList.contains("bulk-slot")).toBe(true);
     expect(draftRow.querySelectorAll(":scope > .bulk-slot")).toHaveLength(1);
     expect(screen.queryByRole("textbox", { name: "MorningのTask名" })).toBeNull();
@@ -4476,17 +4506,17 @@ describe("Dogfood Day shell", () => {
 
     const headingKeys = () => Array.from(dayBoard.querySelectorAll<HTMLElement>("[data-day-column-header]"))
       .map((header) => header.dataset.dayColumnHeader);
-    await waitFor(() => expect(headingKeys().slice(0, 3)).toEqual(["mode", "section", "project"]));
+    await waitFor(() => expect(headingKeys().slice(0, 4)).toEqual(["mode", "section", "note", "project"]));
     expect(mocks.reorderEntries).not.toHaveBeenCalled();
     expect(mocks.setEntryEstimate).not.toHaveBeenCalled();
-    expect(JSON.parse(window.localStorage.getItem(DAY_COLUMNS_STORAGE_KEY)!).order.slice(0, 3))
-      .toEqual(["mode", "section", "project"]);
+    expect(JSON.parse(window.localStorage.getItem(DAY_COLUMNS_STORAGE_KEY)!).order.slice(0, 4))
+      .toEqual(["mode", "section", "note", "project"]);
 
     rendered.unmount();
     render(<App />);
     const reloadedBoard = await screen.findByRole("region", { name: "DayBoard" });
     expect(Array.from(reloadedBoard.querySelectorAll<HTMLElement>("[data-day-column-header]"))
-      .map((header) => header.dataset.dayColumnHeader).slice(0, 3)).toEqual(["mode", "section", "project"]);
+      .map((header) => header.dataset.dayColumnHeader).slice(0, 4)).toEqual(["mode", "section", "note", "project"]);
   });
 
   it("resizes and auto-fits a data column through the shared table track and local preference", async () => {
@@ -4505,7 +4535,7 @@ describe("Dogfood Day shell", () => {
     fireEvent.mouseMove(window, { clientX: 210 });
     fireEvent.mouseUp(window);
     await waitFor(() => expect(dayBoard.style.getPropertyValue("--day-table-grid-template-columns")).toContain("32px 52px 420px 260px"));
-    expect(dayBoard.style.getPropertyValue("--day-table-min-width")).toBe("1690px");
+    expect(dayBoard.style.getPropertyValue("--day-table-min-width")).toBe("1750px");
     expect(JSON.parse(window.localStorage.getItem(DAY_COLUMNS_STORAGE_KEY)!).widths.project).toBe(260);
 
     const projectCell = dayBoard.querySelector<HTMLElement>('[data-day-column-cell="project"]')!;
@@ -4568,7 +4598,7 @@ describe("Dogfood Day shell", () => {
     const displayMenu = screen.getByRole("menu", { name: "表示" });
     expect(within(displayMenu).getByRole("checkbox", { name: "実行済みを表示" })).toBeTruthy();
     const menu = openColumnSubmenu(displayMenu);
-    expect(menu.querySelectorAll('input[type="checkbox"]')).toHaveLength(10);
+    expect(menu.querySelectorAll('input[type="checkbox"]')).toHaveLength(11);
     expect(within(menu).getByText("表示する列")).toBeTruthy();
     expect(within(menu).getByRole("checkbox", { name: "Project" })).toBeTruthy();
     expect(within(menu).getByRole("checkbox", { name: "Mode" })).toBeTruthy();
@@ -4636,7 +4666,7 @@ describe("Dogfood Day shell", () => {
     fireEvent(routineHeader, drop);
     fireEvent.dragEnd(projectHeader, { dataTransfer });
     await waitFor(() => expect(Array.from(dayBoard.querySelectorAll<HTMLElement>("[data-day-column-header]"))
-      .map((header) => header.dataset.dayColumnHeader).slice(0, 3)).toEqual(["mode", "section", "project"]));
+      .map((header) => header.dataset.dayColumnHeader).slice(0, 4)).toEqual(["mode", "section", "note", "project"]));
 
     const displayMenu = await openDisplayMenu();
     const menu = openColumnSubmenu(displayMenu);
@@ -4647,7 +4677,7 @@ describe("Dogfood Day shell", () => {
     fireEvent.click(projectCheckbox);
     await waitFor(() => expect(dayBoard.style.getPropertyValue("--day-table-grid-template-columns")).toContain("220px"));
     expect(Array.from(dayBoard.querySelectorAll<HTMLElement>("[data-day-column-header]"))
-      .map((header) => header.dataset.dayColumnHeader).slice(0, 3)).toEqual(["mode", "section", "project"]);
+      .map((header) => header.dataset.dayColumnHeader).slice(0, 4)).toEqual(["mode", "section", "note", "project"]);
 
     fireEvent.click(within(menu).getByRole("checkbox", { name: "Routine" }));
     fireEvent.click(within(menu).getByRole("checkbox", { name: "Routine" }));
@@ -4658,7 +4688,7 @@ describe("Dogfood Day shell", () => {
     render(<App />);
     const reloadedBoard = await screen.findByRole("region", { name: "DayBoard" });
     expect(Array.from(reloadedBoard.querySelectorAll<HTMLElement>("[data-day-column-header]"))
-      .map((header) => header.dataset.dayColumnHeader).slice(0, 3)).toEqual(["mode", "section", "project"]);
+      .map((header) => header.dataset.dayColumnHeader).slice(0, 4)).toEqual(["mode", "section", "note", "project"]);
     expect(reloadedBoard.style.getPropertyValue("--day-table-grid-template-columns")).toContain("220px");
   });
 
@@ -4678,7 +4708,7 @@ describe("Dogfood Day shell", () => {
     expect(dayBoard.style.getPropertyValue("--day-table-grid-template-columns")).toContain("150px");
     expect(dayBoard.style.getPropertyValue("--day-table-grid-template-columns")).not.toContain("220px");
 
-    for (const label of ["Project", "Mode", "Section", "Routine", "見積", "開始予定", "開始見込", "開始", "終了", "実績"]) {
+    for (const label of ["Project", "Mode", "Section", "ノート", "Routine", "見積", "開始予定", "開始見込", "開始", "終了", "実績"]) {
       const checkbox = within(menu).getByRole("checkbox", { name: label }) as HTMLInputElement;
       if (checkbox.checked) fireEvent.click(checkbox);
     }
@@ -5445,7 +5475,7 @@ describe("Dogfood Day shell", () => {
     expect(formatEstimate(90 * 60)).toBe("90分");
     const customStyle = dayTableStyle(defaultDayColumnPreference(), { taskWidth: 420, tableWidth: 1610 }) as Record<string, string>;
     expect(customStyle["--day-table-grid-template-columns"]).toContain("32px 52px 420px");
-    expect(customStyle["--day-table-min-width"]).toBe("1610px");
+    expect(customStyle["--day-table-min-width"]).toBe("1640px");
   });
 
   it("uses the common centered help modal with focus restore, trap, backdrop close, and X ownership", async () => {

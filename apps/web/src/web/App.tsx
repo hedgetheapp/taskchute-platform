@@ -80,6 +80,8 @@ import { ProjectBoard } from "./ProjectBoard";
 import { ModeBoard } from "./ModeBoard";
 import { EffectiveDayCalendarSettings } from "./EffectiveDayCalendarSettings";
 import { NotesBoard } from "./NotesBoard";
+import { TaskNoteEditor } from "./TaskNoteEditor";
+import { persistTaskNoteOpenMode, readTaskNoteOpenMode, taskNotePermalink, type TaskNoteOpenMode } from "./task-note-open-mode";
 import { HitAHint } from "./HitAHint";
 import { CalendarPopover, formatLogicalDateLabel } from "./ui-helpers";
 
@@ -88,6 +90,7 @@ export { DAY_COLUMNS_STORAGE_KEY } from "./day-columns";
 type AuthState = "loading" | "signed-out" | "signed-in";
 type AppView = "today" | "routines" | "settings" | "notes";
 type SettingsDestination = "section" | "project" | "mode" | "calendar";
+type TaskNoteTarget = { taskId: string; documentId: string; taskTitle: string };
 type FocusTarget = { kind: "section" | "entry"; id: string };
 type DayRowFocusLocator = { kind: "row" } | { kind: "cell"; cellKey: string; controlIndex?: number };
 type DraftPlacement =
@@ -755,6 +758,13 @@ export function App() {
   const [notesDirty, setNotesDirty] = useState(false);
   const [notesUnresolved, setNotesUnresolved] = useState(false);
   const notesFlushRef = useRef<(() => Promise<boolean>) | null>(null);
+  const [taskNoteTarget, setTaskNoteTarget] = useState<TaskNoteTarget | null>(null);
+  const [taskNoteDirty, setTaskNoteDirty] = useState(false);
+  const [taskNoteUnresolved, setTaskNoteUnresolved] = useState(false);
+  const [taskNoteOpenMode, setTaskNoteOpenMode] = useState<TaskNoteOpenMode>(readTaskNoteOpenMode);
+  const [notesInitialDocumentId, setNotesInitialDocumentId] = useState<string | null>(null);
+  const taskNoteFlushRef = useRef<(() => Promise<boolean>) | null>(null);
+  const taskNoteRouteHandledRef = useRef(false);
   const [settingsDestination, setSettingsDestination] = useState<SettingsDestination>("section");
   const [day, setDay] = useState<CurrentTaskChuteDayProjection | null>(null);
   const [project, setProject] = useState<ProjectSummary | null>(null);
@@ -835,7 +845,7 @@ export function App() {
   const [executionEditorError, setExecutionEditorError] = useState<string | null>(null);
   const [routineDraft, setRoutineDraft] = useState<{ entryId: string; endDate: string } | null>(null);
   const [routineCandidate, setRoutineCandidate] = useState<RoutineCandidate | null>(null);
-  const [pending, setPending] = useState<"login" | "project" | "project-settings" | "day-navigation" | "task" | "duplicate" | "bulk-delete" | "delete-completed" | "bulk-date-move" | "bulk-section" | "bulk-section-occurrence" | "bulk-section-scoped" | "bulk-estimate" | "reorder" | "start" | "interrupt" | "complete" | "execution-times" | "task-metadata" | "mode" | "configuration" | "section-settings" | "auto-carry-setting" | "move" | "estimate" | "planned-start" | "routine-convert" | "routine-end" | "routine-edit" | "logout" | null>(null);
+  const [pending, setPending] = useState<"login" | "project" | "project-settings" | "day-navigation" | "task" | "task-note" | "duplicate" | "bulk-delete" | "delete-completed" | "bulk-date-move" | "bulk-section" | "bulk-section-occurrence" | "bulk-section-scoped" | "bulk-estimate" | "reorder" | "start" | "interrupt" | "complete" | "execution-times" | "task-metadata" | "mode" | "configuration" | "section-settings" | "auto-carry-setting" | "move" | "estimate" | "planned-start" | "routine-convert" | "routine-end" | "routine-edit" | "logout" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draftTask, setDraftTask] = useState<DraftTask | null>(null);
   const [pendingFocusKey, setPendingFocusKey] = useState<string | null>(null);
@@ -1584,6 +1594,10 @@ export function App() {
     setForecastNowInstant(null);
     setView("today");
     setNotesDirty(false);
+    setTaskNoteTarget(null);
+    setTaskNoteDirty(false);
+    setTaskNoteUnresolved(false);
+    taskNoteFlushRef.current = null;
     setProject(null);
     setProjects([]);
     setModeBoard(null);
@@ -1706,6 +1720,7 @@ export function App() {
   }, [transitionToSignedOut]);
 
   async function navigateToDay(logicalDate?: string) {
+    if (!(await canLeaveNotes())) return;
     if (dayMutationInFlightRef.current || dayMutationQueueRef.current.length > 0) {
       deferredNavigationRef.current = { logicalDate };
       return;
@@ -1790,6 +1805,41 @@ export function App() {
   useEffect(() => {
     persistDayColumnPreference(dayColumnPreference);
   }, [dayColumnPreference]);
+
+  useEffect(() => {
+    if (authState !== "signed-in" || taskNoteRouteHandledRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const routeView = params.get("view");
+    if (routeView === "note") {
+      const documentId = params.get("document");
+      if (documentId) { setNotesInitialDocumentId(documentId); setView("notes"); }
+      taskNoteRouteHandledRef.current = true;
+      return;
+    }
+    const taskId = params.get("task");
+    const documentId = params.get("document");
+    if (routeView === "task-note" && taskId && documentId) {
+      const entry = day ? projectionEntries(day).find((candidate) => candidate.task.id === taskId) : null;
+      setTaskNoteTarget({ taskId, documentId, taskTitle: entry?.task.title ?? "Task Note" });
+      taskNoteRouteHandledRef.current = true;
+      return;
+    }
+    if (routeView === "task-note-bootstrap" && taskId) {
+      const candidate = params.get("candidate");
+      if (!candidate) { taskNoteRouteHandledRef.current = true; return; }
+      taskNoteRouteHandledRef.current = true;
+      void api.ensureTaskPrimaryDocument({ operation_id: uuidv7(), task_id: taskId, document_id: candidate }).then((result) => {
+        const entry = day ? projectionEntries(day).find((current) => current.task.id === taskId) : null;
+        window.history.replaceState(null, "", taskNotePermalink(taskId, result.document.document_id));
+        setTaskNoteTarget({ taskId, documentId: result.document.document_id, taskTitle: entry?.task.title ?? "Task Note" });
+      }).catch((caught) => {
+        if (caught instanceof ApiClientError && caught.status === 401) transitionToSignedOut();
+        else setError(caught instanceof Error ? caught.message : "Task Noteを開けませんでした");
+      });
+      return;
+    }
+    taskNoteRouteHandledRef.current = true;
+  }, [authState, day, transitionToSignedOut]);
 
   useEffect(() => {
     if (!columnsMenuOpen) return;
@@ -2047,6 +2097,10 @@ export function App() {
   }
 
   async function canLeaveNotes(): Promise<boolean> {
+    if (taskNoteTarget && taskNoteFlushRef.current) {
+      const flushedTaskNote = await taskNoteFlushRef.current();
+      if (!flushedTaskNote) return false;
+    }
     if (view !== "notes") return true;
     if (notesUnresolved) return false;
     if (notesFlushRef.current) {
@@ -2077,6 +2131,66 @@ export function App() {
     if (mutationLocked) return;
     setCalendarOpen(false);
     setView("notes");
+  }
+
+  function updateTaskPrimaryRelation(taskId: string, documentId: string): void {
+    setDay((current) => {
+      if (!current) return current;
+      const updateEntry = (entry: EntryProjection): EntryProjection => entry.task.id === taskId
+        ? { ...entry, task: { ...entry.task, primary_document_id: documentId } } : entry;
+      return {
+        ...current,
+        unsectioned_entries: current.unsectioned_entries.map(updateEntry),
+        sections: current.sections.map((section) => ({ ...section, entries: section.entries.map(updateEntry) })),
+      };
+    });
+    dayRef.current = dayRef.current ? {
+      ...dayRef.current,
+      unsectioned_entries: dayRef.current.unsectioned_entries.map((entry) => entry.task.id === taskId
+        ? { ...entry, task: { ...entry.task, primary_document_id: documentId } } : entry),
+      sections: dayRef.current.sections.map((section) => ({ ...section, entries: section.entries.map((entry) => entry.task.id === taskId
+        ? { ...entry, task: { ...entry.task, primary_document_id: documentId } } : entry) })),
+    } : dayRef.current;
+  }
+
+  function clearTaskNoteRoute(): void {
+    window.history.replaceState(null, "", `${window.location.pathname}${window.location.hash}`);
+  }
+
+  async function openTaskNote(entry: EntryProjection): Promise<void> {
+    const taskId = entry.task.id;
+    const candidateDocumentId = entry.task.primary_document_id ?? null;
+    if (taskNoteOpenMode === "new-tab") {
+      const candidate = candidateDocumentId ?? uuidv7();
+      const url = candidateDocumentId
+        ? taskNotePermalink(taskId, candidate)
+        : `/?view=task-note-bootstrap&task=${encodeURIComponent(taskId)}&candidate=${encodeURIComponent(candidate)}`;
+      const tab = window.open(url, "_blank", "noopener,noreferrer");
+      if (!tab) setError("新しいタブを開けませんでした。ブラウザのポップアップ設定を確認してください。");
+      return;
+    }
+    let documentId = candidateDocumentId;
+    if (!documentId) {
+      setPending("task-note"); setError(null);
+      try {
+        const ensured = await api.ensureTaskPrimaryDocument({ operation_id: uuidv7(), task_id: taskId, document_id: uuidv7() });
+        documentId = ensured.document.document_id;
+        updateTaskPrimaryRelation(taskId, documentId);
+      } catch (caught) {
+        if (caught instanceof ApiClientError && caught.status === 401) transitionToSignedOut();
+        else setError(caught instanceof Error ? caught.message : "Task Noteを開けませんでした");
+        return;
+      } finally { setPending(null); }
+    }
+    window.history.replaceState(null, "", taskNotePermalink(taskId, documentId));
+    setTaskNoteTarget({ taskId, documentId, taskTitle: entry.task.title });
+  }
+
+  async function closeTaskNote(): Promise<void> {
+    if (taskNoteFlushRef.current && !(await taskNoteFlushRef.current())) return;
+    const target = taskNoteTarget;
+    setTaskNoteTarget(null); setTaskNoteDirty(false); setTaskNoteUnresolved(false); clearTaskNoteRoute();
+    if (target) requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-day-column-cell="note"] button[data-task-id="${target.taskId}"]`)?.focus());
   }
 
   async function login(event: FormEvent<HTMLFormElement>) {
@@ -5545,6 +5659,17 @@ export function App() {
   function renderEntryColumn(entry: EntryProjection, key: DayColumnKey) {
     const summary = actualSummaryFor(entry);
     switch (key) {
+      case "note": {
+        const hasDocument = entry.task.primary_document_id != null;
+        return <span className="task-note-cell" data-day-column-cell={key}>
+          <button type="button" className={`task-note-trigger${hasDocument ? " has-document" : ""}`} data-task-id={entry.task.id}
+            aria-label={hasDocument ? `${entry.task.title}のノートを開く` : `${entry.task.title}のノートを作成して開く`}
+            title={hasDocument ? "ノートを開く" : "ノートを作成して開く"}
+            disabled={pending === "task-note"} onClick={(event) => { event.stopPropagation(); void openTaskNote(entry); }}>
+            <span aria-hidden="true">▱</span>
+          </button>
+        </span>;
+      }
       case "project": {
         const metadataEditing = taskMetadataDraft?.entryId === entry.id;
         const metadataOverlay = pendingTaskMetadataOverlays[entry.id];
@@ -5724,6 +5849,7 @@ export function App() {
   }
 
   function renderDraftColumn(section: { title: string }, key: DayColumnKey) {
+    if (key === "note") return <span className="task-note-cell muted" data-day-column-cell={key}><EmptyValue /></span>;
     if (key === "section") return <span className="section-cell" data-day-column-cell={key}>{section.title}</span>;
     if (key === "mode") return <span className="mode-cell" data-day-column-cell={key} onClick={(event) => event.stopPropagation()}>
       <select className="mode-selector" aria-label="新しいTaskのMode" value={draftTask?.modeId ?? ""}
@@ -5790,6 +5916,7 @@ export function App() {
         {view === "routines" ? <RoutineBoard onUnauthorized={transitionToSignedOut} /> : view === "notes" ? (
           <NotesBoard onUnauthorized={transitionToSignedOut} onDirtyChange={setNotesDirty}
             onUnresolvedChange={setNotesUnresolved}
+            initialDocumentId={notesInitialDocumentId}
             onRegisterFlush={(flush) => { notesFlushRef.current = flush; }} />
         ) : view === "settings" ? (
           <main className="shell settings-shell">
@@ -5818,6 +5945,14 @@ export function App() {
               {sectionSettingsNotice && <p role="status" className="success">{sectionSettingsNotice}</p>}
               {autoCarrySettingNotice && <p role="status" className="success">{autoCarrySettingNotice}</p>}
               {error && <p role="alert" className="error">{error}</p>}
+
+              <section className="task-note-settings" aria-label="Task Note設定">
+                <div><h2>Task Note</h2><p>Task行のノートを開く方法を選択します。</p></div>
+                <label>開き方<select aria-label="Task Noteの開き方" value={taskNoteOpenMode} onChange={(event) => {
+                  const mode = event.target.value === "new-tab" ? "new-tab" : "side-peek";
+                  setTaskNoteOpenMode(mode); persistTaskNoteOpenMode(mode);
+                }}><option value="side-peek">右側のpeek</option><option value="new-tab">新しいタブ</option></select></label>
+              </section>
 
               {settingsDestination === "project" && (
                 <ProjectBoard onUnauthorized={transitionToSignedOut} onProjectsChanged={setProjects} />
@@ -6388,6 +6523,7 @@ export function App() {
                     {currentDay.sections.map((candidate) => <option value={candidate.id} key={candidate.id}>{candidate.title}</option>)}
                   </select>
                 </span>;
+                if (definition.key === "note") return <span className="task-note-cell pending-cell" data-day-column-cell={definition.key} key={definition.key}><EmptyValue /></span>;
                 if (definition.key === "mode") return <span className="mode-cell pending-cell" data-day-column-cell={definition.key} key={definition.key}>
                   {item.modeId ? modeBoard?.modes.find((mode) => mode.id === item.modeId)?.title ?? "Mode" : <EmptyValue label="Mode未設定" />}
                 </span>;
@@ -6727,6 +6863,14 @@ export function App() {
       )}
           </main>
         )}
+        {taskNoteTarget && <TaskNoteEditor taskId={taskNoteTarget.taskId} documentId={taskNoteTarget.documentId}
+          taskTitle={taskNoteTarget.taskTitle} onClose={() => void closeTaskNote()} onUnauthorized={transitionToSignedOut}
+          onDirtyChange={setTaskNoteDirty} onUnresolvedChange={setTaskNoteUnresolved}
+          onRegisterFlush={(flush) => { taskNoteFlushRef.current = flush; }}
+          onOpenNewTab={() => {
+            const tab = window.open(taskNotePermalink(taskNoteTarget.taskId, taskNoteTarget.documentId), "_blank", "noopener,noreferrer");
+            if (!tab) setError("新しいタブを開けませんでした。ブラウザのポップアップ設定を確認してください。");
+          }} />}
       </div>
     </div>
   );

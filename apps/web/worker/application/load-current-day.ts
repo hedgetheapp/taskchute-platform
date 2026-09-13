@@ -59,6 +59,7 @@ interface EntryRow {
   lifecycle_state: "planned" | "running" | "completed";
   task_id: string;
   task_title: string;
+  primary_document_id: string | null;
   project_id: string | null;
   project_title: string | null;
   estimate_seconds: number | null;
@@ -141,6 +142,7 @@ function toEntryRow(value: unknown): EntryRow {
     lifecycle_state: lifecycle,
     task_id: requiredString(row, "task_id"),
     task_title: requiredString(row, "task_title"),
+    primary_document_id: row.primary_document_id === null ? null : requiredString(row, "primary_document_id"),
     project_id: projectId,
     project_title: projectTitle,
     estimate_seconds: row.estimate_seconds === null ? null : requiredNumber(row, "estimate_seconds"),
@@ -388,10 +390,13 @@ async function loadEstablishedProjection(
                      WHEN eps.entry_id IS NOT NULL THEN eps.project_id ELSE p.id END AS project_id,
                 CASE WHEN rs.routine_occurrence_id IS NOT NULL THEN rs.project_title
                      WHEN eps.entry_id IS NOT NULL THEN eps.project_title ELSE p.title END AS project_title
+                ,tpd.document_id AS primary_document_id
                 ,em.mode_id AS live_mode_id, md.title AS live_mode_title
                 ,ems.mode_id AS snapshot_mode_id, ems.mode_title AS snapshot_mode_title
            FROM entries e
            JOIN tasks t ON t.app_user_id = e.app_user_id AND t.id = e.task_id
+           LEFT JOIN task_primary_documents tpd
+             ON tpd.app_user_id = t.app_user_id AND tpd.task_id = t.id
            LEFT JOIN routine_occurrences ro ON ro.app_user_id = e.app_user_id AND ro.id = e.routine_occurrence_id
            LEFT JOIN routine_definitions rd ON rd.app_user_id = ro.app_user_id AND rd.id = ro.routine_definition_id
            LEFT JOIN routine_definition_modes rdm
@@ -501,6 +506,7 @@ async function loadEstablishedProjection(
       task: {
         id: row.task_id,
         title: row.task_title,
+        primary_document_id: row.primary_document_id,
         project:
           row.project_id && row.project_title ? { id: row.project_id, title: row.project_title } : null,
       },

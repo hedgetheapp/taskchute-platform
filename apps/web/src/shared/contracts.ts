@@ -28,6 +28,40 @@ export interface StandaloneDocument {
   updated_at: string;
 }
 
+export interface TaskPrimaryDocument {
+  document_id: string;
+  kind: "task_primary";
+  task_id: string;
+  markdown_body: string;
+  revision: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export type Document = StandaloneDocument | TaskPrimaryDocument;
+
+export interface EnsureTaskPrimaryDocumentRequest {
+  operation_id: string;
+  task_id: string;
+  document_id: string;
+}
+
+export interface EnsureTaskPrimaryDocumentResult {
+  document: TaskPrimaryDocument;
+}
+
+export interface UpdateTaskPrimaryDocumentRequest {
+  operation_id: string;
+  task_id: string;
+  document_id: string;
+  expected_revision: number;
+  markdown_body: string;
+}
+
+export interface UpdateTaskPrimaryDocumentResult {
+  document: TaskPrimaryDocument;
+}
+
 export interface StandaloneDocumentSummary {
   document_id: string;
   kind: "standalone";
@@ -248,6 +282,8 @@ export interface TaskSummary {
   id: string;
   title: string;
   project: ProjectSummary | null;
+  /** D-101 Task Primary Note relation; body is never part of a Day projection. */
+  primary_document_id?: string | null;
 }
 
 export interface ExecutionSummaryProjection {

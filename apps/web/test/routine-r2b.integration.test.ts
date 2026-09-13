@@ -432,7 +432,7 @@ describe.sequential("Routine R2B Board", () => {
     const historical = await loadTaskChuteDayByLogicalDate(env.APP_DB, fixture.userId, "2026-08-31", now);
     const entry = historical.sections.flatMap((section) => section.entries)
       .concat(historical.unsectioned_entries)[0]!;
-    expect(entry.task).toEqual({ id: created.request.task_id, title: "Historical title", project: null });
+    expect(entry.task).toEqual({ id: created.request.task_id, title: "Historical title", project: null, primary_document_id: null });
   });
 
   it("registers legacy Day conversion on the Board and preserves its occurrence identity", async () => {

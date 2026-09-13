@@ -24,6 +24,7 @@ export interface NotesBoardProps {
   onUnresolvedChange?: (unresolved: boolean) => void;
   onSavingChange?: (saving: boolean) => void;
   onRegisterFlush?: (flush: (() => Promise<boolean>) | null) => void;
+  initialDocumentId?: string | null;
 }
 
 function isUpdateRequest(request: DocumentRequest): request is UpdateDocumentRequest {
@@ -52,7 +53,7 @@ function isAmbiguousResolution(request: DocumentRequest, canonical: StandaloneDo
   return isUpdateRequest(request) ? canonical.revision === request.expected_revision + 1 : canonical.revision === 0;
 }
 
-export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, onSavingChange, onRegisterFlush }: NotesBoardProps) {
+export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, onSavingChange, onRegisterFlush, initialDocumentId }: NotesBoardProps) {
   const [documents, setDocuments] = useState<StandaloneDocumentSummary[]>([]);
   const [document, setDocument] = useState<StandaloneDocument | null>(null);
   const [mode, setMode] = useState<"empty" | "new" | "existing">("empty");
@@ -210,7 +211,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
       setLoading(true);
       const list = await refreshList(showArchived);
       if (cancelled) return;
-      const first = list?.[0];
+      const first = list?.find((item) => item.document_id === initialDocumentId) ?? list?.[0];
       if (first) await openCanonicalDocument(first.document_id);
       else {
         documentRef.current = null; selectedIdRef.current = null; modeRef.current = "empty";
@@ -218,7 +219,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
       }
     })();
     return () => { cancelled = true; };
-  }, [openCanonicalDocument, refreshList, showArchived]);
+  }, [initialDocumentId, openCanonicalDocument, refreshList, showArchived]);
 
   const scheduleAutosave = useCallback(() => {
     if (debounceRef.current !== null) window.clearTimeout(debounceRef.current);

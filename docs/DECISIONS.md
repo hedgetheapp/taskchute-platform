@@ -1898,3 +1898,14 @@ D-084は、D-083のcurrent established Day向けplanned placement interactionを
 - API / Domain commandは既存`SetRoutineSectionPlan`を拡張するだけで、新migration、schema、dependency、Routine Definitionのrecurring position persistence、future materialization、retroactive historical rewriteは追加しない。
 
 実装、Worker / Web regression、real-local / persistent nonprod browser、read-only DB evidenceはcanonical evidence docsへ記録する。production、restore、destructive cleanup、branch / PR / merge / tag / releaseは対象外で、Releasedは`NO`とする。
+D-101 — Task Primary Note and Document Permalinks
+
+Approved. A Task has at most one owner-scoped `task_primary` Markdown Document,
+shared by all of its Entries. Today exposes a Note affordance that ensures the
+Document on explicit click when absent and opens the stable Task Note permalink.
+The Task title remains authoritative. Task Primary Notes use memory-only
+Markdown drafts, safe autosave/CAS/retry behavior, and side-peek or selected
+new-tab presentation. No Task/Project/RoutineOccurrence note relations,
+backlinks, preview, attachments, or Task Note lifecycle are included.
+
+Canonical: `docs/decisions/D-101_TASK_PRIMARY_NOTE_AND_DOCUMENT_PERMALINKS.md`

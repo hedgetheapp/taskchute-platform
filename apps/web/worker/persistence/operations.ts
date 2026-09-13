@@ -19,7 +19,8 @@ export type CommandType = "CreateProject" | "AddTaskToDay" | "ReorderEntries" | 
   | "CreateMode" | "UpdateMode" | "ReorderModes" | "SetModeArchived" | "DeleteMode" | "SetEntryMode"
   | "SetAutoCarryOverduePlanned" | "AutoCarryOverduePlanned"
   | "UpsertEffectiveDayOverride" | "DeleteEffectiveDayOverride"
-  | "CreateStandaloneDocument" | "UpdateDocument" | "SetStandaloneDocumentArchived" | "DeleteStandaloneDocument";
+  | "CreateStandaloneDocument" | "UpdateDocument" | "SetStandaloneDocumentArchived" | "DeleteStandaloneDocument"
+  | "EnsureTaskPrimaryDocument" | "UpdateTaskPrimaryDocument";
 export type OutcomeKind = "success" | "domain_rejection" | "revision_conflict";
 
 interface OperationRow {

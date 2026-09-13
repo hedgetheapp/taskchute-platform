@@ -27,7 +27,7 @@ describe("Day Table column preference", () => {
       order: ["section", "project"],
       widths: { project: 220 },
     });
-    expect(preference.version).toBe(3);
+    expect(preference.version).toBe(4);
     expect(preference.hidden).toEqual([]);
     expect(preference.order.slice(0, 3)).toEqual(["section", "project", "mode"]);
     expect(preference.widths.project).toBe(220);

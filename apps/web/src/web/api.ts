@@ -106,6 +106,11 @@ import type {
   CreateStandaloneDocumentResult,
   UpdateDocumentRequest,
   UpdateDocumentResult,
+  TaskPrimaryDocument,
+  EnsureTaskPrimaryDocumentRequest,
+  EnsureTaskPrimaryDocumentResult,
+  UpdateTaskPrimaryDocumentRequest,
+  UpdateTaskPrimaryDocumentResult,
 } from "../shared/contracts";
 
 export class ApiClientError extends Error {
@@ -272,6 +277,18 @@ export const api = {
   },
   loadDocument(documentId: string): Promise<StandaloneDocument> {
     return requestJson(`/api/v1/documents/${encodeURIComponent(documentId)}`);
+  },
+  loadTaskPrimaryDocument(taskId: string): Promise<TaskPrimaryDocument> {
+    return requestJson(`/api/v1/tasks/${encodeURIComponent(taskId)}/primary-document`);
+  },
+  loadTaskPrimaryDocumentById(documentId: string): Promise<TaskPrimaryDocument> {
+    return requestJson(`/api/v1/task-primary-documents/${encodeURIComponent(documentId)}`);
+  },
+  ensureTaskPrimaryDocument(body: EnsureTaskPrimaryDocumentRequest): Promise<EnsureTaskPrimaryDocumentResult> {
+    return requestJson(`/api/v1/tasks/${encodeURIComponent(body.task_id)}/primary-document`, jsonPost("", body));
+  },
+  updateTaskPrimaryDocument(body: UpdateTaskPrimaryDocumentRequest): Promise<UpdateTaskPrimaryDocumentResult> {
+    return requestJson(`/api/v1/task-primary-documents/${encodeURIComponent(body.document_id)}`, jsonPost("", body));
   },
   createStandaloneDocument(body: CreateStandaloneDocumentRequest): Promise<CreateStandaloneDocumentResult> {
     return requestJson("/api/v1/documents", jsonPost("", body));

@@ -15,6 +15,7 @@
     "test:migrations:d089": "node ./scripts/test-d089-migration-bounded.mjs",
     "test:migrations:d090": "node ./scripts/test-d090-migration-bounded.mjs",
     "test:migrations:d093": "node ./scripts/test-d093-migration-bounded.mjs",
+    "test:migrations:d101": "node ./scripts/test-d101-migration-bounded.mjs",
     "test:all": "npm run test && npm run test:web",
     "test:dev-workflow": "node ./scripts/dev-workflow.test.mjs",
     "preflight": "node ./scripts/dev-workflow.mjs preflight",
