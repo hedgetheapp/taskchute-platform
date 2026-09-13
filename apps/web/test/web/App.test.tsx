@@ -215,6 +215,7 @@ const unsectionedDay: CurrentTaskChuteDayProjection = {
 beforeEach(() => {
   vi.clearAllMocks();
   window.localStorage.clear();
+  window.history.replaceState(null, "", "/");
   mocks.logout.mockResolvedValue({});
   mocks.loadProjects.mockResolvedValue({ projects: [{ id: "existing-project", title: "Existing Project" }] });
   mocks.loadProjectBoard.mockResolvedValue({ board_revision: 0, projects: [{ id: "existing-project", title: "Existing Project", archived: false, board_position: 1, settings_revision: 0 }] });
