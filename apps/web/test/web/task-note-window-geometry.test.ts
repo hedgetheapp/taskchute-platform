@@ -49,9 +49,18 @@ describe("task note window geometry", () => {
   it("creates a deterministic visible cascade from the shared preference seed", () => {
     expect(cascadeTaskNoteWindowGeometry(base, viewport.width, viewport.height, 0)).toEqual(base);
     expect(cascadeTaskNoteWindowGeometry(base, viewport.width, viewport.height, 2)).toEqual({
-      x: 652, y: 148, width: 420, height: 500,
+      x: 604, y: 196, width: 420, height: 500,
     });
     expect(cascadeTaskNoteWindowGeometry(base, viewport.width, viewport.height, 99)).toMatchObject({ x: 16, y: 384 });
+  });
+
+  it("chooses a deterministic unclamped alternative when the cascade collides", () => {
+    const occupied = cascadeTaskNoteWindowGeometry(base, viewport.width, viewport.height, 1);
+    const candidate = cascadeTaskNoteWindowGeometry(base, viewport.width, viewport.height, 1, undefined, [occupied]);
+
+    expect(candidate).toEqual({ x: 652, y: 52, width: 420, height: 500 });
+    expect(candidate).not.toEqual(occupied);
+    expect(cascadeTaskNoteWindowGeometry(base, viewport.width, viewport.height, 1, undefined, [occupied])).toEqual(candidate);
   });
 
   it("uses the current safe viewport bounds for transient maximized presentation", () => {

@@ -13,6 +13,7 @@ export const TASK_NOTE_WINDOW_MIN_HEIGHT = 320;
 export const TASK_NOTE_WINDOW_SAFE_GUTTER = 16;
 export const TASK_NOTE_WINDOW_COMPACT_WIDTH = 320;
 export const TASK_NOTE_WINDOW_COMPACT_HEIGHT = 46;
+export const TASK_NOTE_WINDOW_CASCADE_OFFSET = 48;
 export const TASK_NOTE_WINDOW_KEYBOARD_STEP = 24;
 export const TASK_NOTE_WINDOW_KEYBOARD_LARGE_STEP = 80;
 
@@ -163,15 +164,39 @@ export function cascadeTaskNoteWindowGeometry(
   viewportWidth: number,
   viewportHeight: number,
   cascadeIndex: number,
-  offset = 24,
+  offset = TASK_NOTE_WINDOW_CASCADE_OFFSET,
+  occupiedGeometries: readonly TaskNoteWindowGeometry[] = [],
 ): TaskNoteWindowGeometry {
   const index = Number.isFinite(cascadeIndex) ? Math.max(0, Math.floor(cascadeIndex)) : 0;
-  const step = Number.isFinite(offset) ? offset : 24;
+  const step = Number.isFinite(offset) ? offset : TASK_NOTE_WINDOW_CASCADE_OFFSET;
+  const occupied = new Set(occupiedGeometries.map((geometry) => geometryKey(clampTaskNoteWindowGeometry(geometry, viewportWidth, viewportHeight))));
+  const directions = [
+    [-1, 1], [-1, -1], [1, 1], [1, -1],
+    [0, 1], [0, -1], [-1, 0], [1, 0],
+  ] as const;
+  const distances = [index, ...Array.from({ length: Math.max(index + occupied.size + 8, 8) }, (_, value) => value + 1)
+    .filter((distance) => distance !== index)];
+
+  for (const distance of distances) {
+    for (const [xDirection, yDirection] of directions) {
+      const candidate = clampTaskNoteWindowGeometry({
+        ...seed,
+        x: seed.x + step * distance * xDirection,
+        y: seed.y + step * distance * yDirection,
+      }, viewportWidth, viewportHeight);
+      if (!occupied.has(geometryKey(candidate))) return candidate;
+    }
+  }
+
   return clampTaskNoteWindowGeometry({
     ...seed,
     x: seed.x - step * index,
     y: seed.y + step * index,
   }, viewportWidth, viewportHeight);
+}
+
+function geometryKey(geometry: TaskNoteWindowGeometry): string {
+  return `${geometry.x},${geometry.y},${geometry.width},${geometry.height}`;
 }
 
 export function moveTaskNoteWindowGeometry(

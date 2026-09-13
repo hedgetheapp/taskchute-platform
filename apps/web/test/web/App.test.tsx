@@ -583,6 +583,82 @@ describe("Dogfood Day shell", () => {
     expect(document.querySelectorAll(".task-note-peek")).toHaveLength(2);
   });
 
+  it("keeps inactive Task Note controls actionable on their first click", async () => {
+    const firstDocumentId = "0199d102-0000-7000-8000-000000000021";
+    const secondDocumentId = "0199d102-0000-7000-8000-000000000022";
+    const multiWindowDay: CurrentTaskChuteDayProjection = {
+      ...twoPlannedDay,
+      sections: [{ ...twoPlannedDay.sections[0]!, entries: [
+        { ...firstEntry, task: { ...firstEntry.task, primary_document_id: firstDocumentId } },
+        { ...secondEntry, task: { ...secondEntry.task, primary_document_id: secondDocumentId } },
+      ] }, twoPlannedDay.sections[1]!],
+    };
+    mocks.loadDay.mockResolvedValue(multiWindowDay);
+    mocks.loadTaskPrimaryDocumentById.mockImplementation(async (requestedDocumentId: string) => ({
+      document_id: requestedDocumentId, kind: "task_primary" as const,
+      task_id: requestedDocumentId === firstDocumentId ? firstEntry.task.id : secondEntry.task.id,
+      markdown_body: "", revision: 0,
+      created_at: "2026-09-13T00:00:00.000Z", updated_at: "2026-09-13T00:00:00.000Z",
+    }));
+    const clipboardWrite = vi.fn().mockResolvedValue(undefined);
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: clipboardWrite } });
+
+    try {
+      render(<App />);
+      const dayBoard = await screen.findByRole("region", { name: "DayBoard" });
+      fireEvent.click(within(dayBoard).getByRole("button", { name: "Canonical taskのノートを開く" }));
+      await waitFor(() => expect(document.querySelectorAll(".task-note-peek")).toHaveLength(1));
+      fireEvent.click(within(dayBoard).getByRole("button", { name: "Second taskのノートを開く" }));
+      await waitFor(() => expect(document.querySelectorAll(".task-note-peek")).toHaveLength(2));
+
+      const firstWindow = document.querySelector<HTMLElement>(`[data-task-note-document-id="${firstDocumentId}"]`)!;
+      const secondWindow = document.querySelector<HTMLElement>(`[data-task-note-document-id="${secondDocumentId}"]`)!;
+      const initialDomOrder = Array.from(document.querySelectorAll(".task-note-peek"));
+
+      // Pointer down activates the background window before the subsequent
+      // click. Its mounted DOM node and sibling order must remain stable.
+      const copyButton = firstWindow.querySelector<HTMLButtonElement>("button");
+      expect(copyButton?.textContent).toBe("リンクをコピー");
+      fireEvent.pointerDown(copyButton!);
+      await waitFor(() => expect(Array.from(document.querySelectorAll(".task-note-peek"))).toEqual(initialDomOrder));
+      fireEvent.click(copyButton!);
+      expect(clipboardWrite).toHaveBeenCalledTimes(1);
+      expect(document.querySelector(`[data-task-note-document-id="${firstDocumentId}"]`)).toBe(firstWindow);
+
+      const minimizeButton = firstWindow.querySelector<HTMLButtonElement>("button[aria-label=\"ノートを最小化\"]")!;
+      fireEvent.pointerDown(minimizeButton);
+      fireEvent.click(minimizeButton);
+      await waitFor(() => expect(firstWindow.querySelector(".task-note-peek-expanded")?.hasAttribute("hidden")).toBe(true));
+      expect(secondWindow.querySelector(".task-note-peek-expanded")?.hasAttribute("hidden")).toBe(false);
+
+      const minimizedBar = firstWindow.querySelector<HTMLElement>(".task-note-peek-minimized-bar")!;
+      fireEvent.pointerDown(minimizedBar);
+      fireEvent.click(minimizedBar);
+      await waitFor(() => expect(firstWindow.querySelector(".task-note-peek-expanded")?.hasAttribute("hidden")).toBe(false));
+
+      const maximizeButton = firstWindow.querySelector<HTMLButtonElement>("button[aria-label=\"ノートを最大化\"]")!;
+      fireEvent.pointerDown(maximizeButton);
+      fireEvent.click(maximizeButton);
+      await waitFor(() => expect(firstWindow.dataset.taskNoteWindowState).toBe("maximized"));
+      const restoreButton = firstWindow.querySelector<HTMLButtonElement>("button[aria-label=\"ノートを元のサイズに戻す\"]")!;
+      fireEvent.pointerDown(restoreButton);
+      fireEvent.click(restoreButton);
+      await waitFor(() => expect(firstWindow.dataset.taskNoteWindowState).toBe("windowed"));
+
+      // A background close is also a single click; the sibling remains mounted.
+      fireEvent.pointerDown(secondWindow);
+      const closeButton = firstWindow.querySelector<HTMLButtonElement>(".task-note-window-controls button[aria-label=\"ノートを閉じる\"]")!;
+      fireEvent.pointerDown(closeButton);
+      fireEvent.click(closeButton);
+      await waitFor(() => expect(document.querySelectorAll(".task-note-peek")).toHaveLength(1));
+      expect(document.querySelector(`[data-task-note-document-id="${secondDocumentId}"]`)).toBe(secondWindow);
+    } finally {
+      if (originalClipboard) Object.defineProperty(navigator, "clipboard", originalClipboard);
+      else Reflect.deleteProperty(navigator, "clipboard");
+    }
+  });
+
   it("marks the Task Note icon present without changing its SVG geometry", async () => {
     const presentDay: CurrentTaskChuteDayProjection = {
       ...populatedDay,

@@ -2240,6 +2240,16 @@ export function App() {
     return taskNoteStackOrderRef.current;
   }
 
+  function readTaskNoteRenderedGeometries(): TaskNoteWindowGeometry[] {
+    return Array.from(document.querySelectorAll<HTMLElement>(".task-note-peek"))
+      .map((windowElement) => {
+        const values = (windowElement.dataset.taskNoteWindowGeometry ?? "").split(",").map(Number);
+        if (values.length !== 4 || values.some((value) => !Number.isFinite(value))) return null;
+        return { x: values[0]!, y: values[1]!, width: values[2]!, height: values[3]! };
+      })
+      .filter((geometry): geometry is TaskNoteWindowGeometry => geometry !== null);
+  }
+
   function activateTaskNoteWindow(documentId: string, options: { restore?: boolean; focus?: boolean } = {}): void {
     const current = taskNoteWindowsRef.current;
     const target = current.find((windowState) => windowState.documentId === documentId);
@@ -2272,7 +2282,7 @@ export function App() {
     const request = nextTaskNoteRequest();
     updateTaskNoteWindows((windows) => [...windows, {
       ...target,
-      initialGeometry: cascadeTaskNoteWindowGeometry(seed, viewportWidth, viewportHeight, windows.length),
+      initialGeometry: cascadeTaskNoteWindowGeometry(seed, viewportWidth, viewportHeight, windows.length, undefined, readTaskNoteRenderedGeometries()),
       stackOrder: nextTaskNoteStackOrder(windows),
       focusRequest: request,
       restoreRequest: request,
@@ -6056,6 +6066,12 @@ export function App() {
     );
   }
 
+  const taskNoteWindowZIndexes = new Map(
+    [...taskNoteWindows]
+      .sort((left, right) => left.stackOrder - right.stackOrder)
+      .map((windowState, index) => [windowState.documentId, 20 + index] as const),
+  );
+
   return (
     <div className={`app-layout${sidebarOpen ? "" : " sidebar-closed"}`} data-sidebar-state={sidebarOpen ? "open" : "closed"}>
       <HitAHint enabled={authState === "signed-in"} blocked={hitAHintBlocked}
@@ -7036,9 +7052,9 @@ export function App() {
       )}
           </main>
         )}
-        {[...taskNoteWindows].sort((left, right) => left.stackOrder - right.stackOrder).map((windowState, index) => <TaskNoteEditor
+        {taskNoteWindows.map((windowState) => <TaskNoteEditor
           key={windowState.documentId} taskId={windowState.taskId} documentId={windowState.documentId}
-          taskTitle={windowState.taskTitle} initialGeometry={windowState.initialGeometry} zIndex={20 + index}
+          taskTitle={windowState.taskTitle} initialGeometry={windowState.initialGeometry} zIndex={taskNoteWindowZIndexes.get(windowState.documentId) ?? 20}
           focusRequest={windowState.focusRequest} restoreRequest={windowState.restoreRequest}
           outsideClickRequest={windowState.outsideClickRequest}
           onActivate={() => activateTaskNoteWindow(windowState.documentId)}
