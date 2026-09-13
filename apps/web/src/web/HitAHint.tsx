@@ -14,7 +14,7 @@ export type HitAHintTarget = {
 };
 
 const EDITING_SELECTOR = "input, select, textarea, [contenteditable='true']";
-const LOCAL_KEYBOARD_OWNER_SELECTOR = [
+const LOCAL_KEYBOARD_OWNER_WHEN_PRESENT_SELECTOR = [
   "[role='dialog']",
   "[role='menu']",
   "[role='listbox']",
@@ -28,8 +28,8 @@ const LOCAL_KEYBOARD_OWNER_SELECTOR = [
   ".bulk-section-picker",
   ".routine-popover",
   ".shortcut-help",
-  "[data-task-note-editor='true']",
 ].join(", ");
+const LOCAL_KEYBOARD_OWNER_WHEN_FOCUSED_SELECTOR = "[data-task-note-minimized='true']";
 
 const HINTABLE_SELECTOR = [
   "button:not(:disabled)",
@@ -119,8 +119,9 @@ export function createHitAHintSnapshot(root: ParentNode = document): HitAHintTar
 
 function hasLocalKeyboardOwner(): boolean {
   const active = document.activeElement;
-  if (active instanceof Element && (isTextEditingElement(active) || active.closest(LOCAL_KEYBOARD_OWNER_SELECTOR))) return true;
-  return Boolean(document.querySelector(LOCAL_KEYBOARD_OWNER_SELECTOR));
+  if (active instanceof Element && (isTextEditingElement(active)
+    || active.closest(`${LOCAL_KEYBOARD_OWNER_WHEN_PRESENT_SELECTOR}, ${LOCAL_KEYBOARD_OWNER_WHEN_FOCUSED_SELECTOR}`))) return true;
+  return Boolean(document.querySelector(`${LOCAL_KEYBOARD_OWNER_WHEN_PRESENT_SELECTOR}, [data-task-note-editor='true']`));
 }
 
 function clearNeutralFocusAfterEscape(): void {
@@ -129,7 +130,7 @@ function clearNeutralFocusAfterEscape(): void {
   if (active === document.body || active === document.documentElement) return;
   if (isTextEditingElement(active)
     || active.matches("button, a[href], [role='button'], [role='menuitem'], [tabindex='0']")
-    || active.closest(LOCAL_KEYBOARD_OWNER_SELECTOR)) return;
+    || active.closest(`${LOCAL_KEYBOARD_OWNER_WHEN_PRESENT_SELECTOR}, ${LOCAL_KEYBOARD_OWNER_WHEN_FOCUSED_SELECTOR}, [data-task-note-editor='true']`)) return;
 
   const tabIndex = active.getAttribute("tabindex");
   if (tabIndex === null || Number(tabIndex) >= 0) return;

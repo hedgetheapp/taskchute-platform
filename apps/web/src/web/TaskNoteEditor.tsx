@@ -3,15 +3,25 @@ import type { TaskPrimaryDocument, UpdateTaskPrimaryDocumentRequest } from "../s
 import { uuidv7 } from "../shared/uuidv7";
 import { api, ApiClientError } from "./api";
 import { NoteMarkdownEditor } from "./NoteMarkdownEditor";
+import { NoteIcon } from "./NoteIcon";
 import { documentPermalink } from "./task-note-open-mode";
 import {
-  clampTaskNotePeekWidth,
-  isTaskNotePeekMobile,
-  maxTaskNotePeekWidth,
-  persistTaskNotePeekWidth,
-  readTaskNotePeekWidth,
-  resizeTaskNotePeekWidth,
-} from "./task-note-peek-width";
+  TASK_NOTE_WINDOW_COMPACT_HEIGHT,
+  TASK_NOTE_WINDOW_COMPACT_WIDTH,
+  TASK_NOTE_WINDOW_MIN_HEIGHT,
+  TASK_NOTE_WINDOW_MIN_WIDTH,
+  clampTaskNoteMinimizedPosition,
+  clampTaskNoteWindowGeometry,
+  isTaskNoteWindowMobile,
+  moveTaskNoteMinimizedPosition,
+  moveTaskNoteWindowGeometry,
+  persistTaskNoteWindowGeometry,
+  readTaskNoteWindowGeometry,
+  resizeTaskNoteWindowByKey,
+  resizeTaskNoteWindowGeometry,
+  type TaskNoteWindowGeometry,
+  type TaskNoteWindowResizeDirection,
+} from "./task-note-window-geometry";
 
 const TASK_NOTE_AUTOSAVE_MS = 1000;
 
@@ -45,9 +55,12 @@ export function TaskNoteEditor({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [unresolvedRequest, setUnresolvedRequest] = useState<UpdateTaskPrimaryDocumentRequest | null>(null);
-  const [preferredPeekWidth, setPreferredPeekWidth] = useState(() => readTaskNotePeekWidth());
+  const [preferredGeometry, setPreferredGeometry] = useState<TaskNoteWindowGeometry>(() => readTaskNoteWindowGeometry(window.innerWidth, window.innerHeight));
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
+  const [viewportHeight, setViewportHeight] = useState(() => window.innerHeight);
+  const [isMoving, setIsMoving] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(false);
   const documentRef = useRef<TaskPrimaryDocument | null>(null);
   const draftRef = useRef("");
   const baselineRef = useRef("");
@@ -56,8 +69,12 @@ export function TaskNoteEditor({
   const inFlightRef = useRef<Promise<boolean> | null>(null);
   const saveRef = useRef<() => Promise<boolean>>(async () => false);
   const flushRef = useRef<() => Promise<boolean>>(async () => false);
-  const preferredPeekWidthRef = useRef(preferredPeekWidth);
-  const resizeGestureRef = useRef<{ pointerId: number; startX: number; startWidth: number } | null>(null);
+  const preferredGeometryRef = useRef(preferredGeometry);
+  const windowRef = useRef<HTMLElement | null>(null);
+  const titleBarRef = useRef<HTMLElement | null>(null);
+  const minimizedRestoreRef = useRef<HTMLButtonElement | null>(null);
+  const dragGestureRef = useRef<{ pointerId: number; startX: number; startY: number; startGeometry: TaskNoteWindowGeometry; minimized: boolean } | null>(null);
+  const resizeGestureRef = useRef<{ pointerId: number; startX: number; startY: number; startGeometry: TaskNoteWindowGeometry; direction: TaskNoteWindowResizeDirection } | null>(null);
 
   const dirty = draftBody !== baselineBody;
   const unresolved = unresolvedRequest !== null;
@@ -66,27 +83,84 @@ export function TaskNoteEditor({
   baselineRef.current = baselineBody;
   unresolvedRef.current = unresolvedRequest;
   savingRef.current = saving;
-  preferredPeekWidthRef.current = preferredPeekWidth;
+  preferredGeometryRef.current = preferredGeometry;
 
-  const mobilePeek = isTaskNotePeekMobile(viewportWidth);
-  const renderedPeekWidth = clampTaskNotePeekWidth(preferredPeekWidth, viewportWidth);
+  const mobilePeek = isTaskNoteWindowMobile(viewportWidth);
+  const renderedGeometry = clampTaskNoteWindowGeometry(preferredGeometry, viewportWidth, viewportHeight);
+  const minimizedPosition = clampTaskNoteMinimizedPosition(preferredGeometry, viewportWidth, viewportHeight);
+  const compactWidth = Math.min(TASK_NOTE_WINDOW_COMPACT_WIDTH, Math.max(1, viewportWidth - 32));
 
   useEffect(() => {
-    const onResize = () => setViewportWidth(window.innerWidth);
+    const onResize = () => {
+      setViewportWidth(window.innerWidth);
+      setViewportHeight(window.innerHeight);
+    };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  const applyPeekWidth = useCallback((width: number, persist = false) => {
-    preferredPeekWidthRef.current = width;
-    setPreferredPeekWidth(width);
-    if (persist) persistTaskNotePeekWidth(width);
+  const applyGeometry = useCallback((geometry: TaskNoteWindowGeometry, persist = false) => {
+    preferredGeometryRef.current = geometry;
+    setPreferredGeometry(geometry);
+    if (persist) persistTaskNoteWindowGeometry(geometry);
   }, []);
 
-  function handleResizePointerDown(event: React.PointerEvent<HTMLDivElement>): void {
+  function isDragExcludedTarget(target: EventTarget | null): boolean {
+    return target instanceof Element && Boolean(target.closest("button, a, input, select, textarea, [role='button'], [data-task-note-no-drag]"));
+  }
+
+  function handleDragPointerDown(event: React.PointerEvent<HTMLElement>): void {
+    if (mobilePeek || event.button !== 0 || isDragExcludedTarget(event.target)) return;
+    event.preventDefault();
+    dragGestureRef.current = {
+      pointerId: event.pointerId, startX: event.clientX, startY: event.clientY,
+      startGeometry: isMinimized ? { ...preferredGeometry } : renderedGeometry,
+      minimized: isMinimized,
+    };
+    setIsMoving(true);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  }
+
+  function handleDragPointerMove(event: React.PointerEvent<HTMLElement>): void {
+    const gesture = dragGestureRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    const deltaX = event.clientX - gesture.startX;
+    const deltaY = event.clientY - gesture.startY;
+    if (gesture.minimized) {
+      const position = moveTaskNoteMinimizedPosition(gesture.startGeometry, viewportWidth, viewportHeight, deltaX, deltaY, compactWidth, TASK_NOTE_WINDOW_COMPACT_HEIGHT);
+      applyGeometry({ ...preferredGeometryRef.current, ...position });
+    } else {
+      applyGeometry(moveTaskNoteWindowGeometry(gesture.startGeometry, viewportWidth, viewportHeight, deltaX, deltaY));
+    }
+  }
+
+  function handleDragPointerEnd(event: React.PointerEvent<HTMLElement>): void {
+    const gesture = dragGestureRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture?.(event.pointerId);
+    dragGestureRef.current = null;
+    setIsMoving(false);
+    persistTaskNoteWindowGeometry(preferredGeometryRef.current);
+  }
+
+  function handleWindowKeyDown(event: React.KeyboardEvent<HTMLElement>): void {
+    if (mobilePeek || !event.altKey || event.ctrlKey || event.metaKey) return;
+    if (!(event.key === "ArrowLeft" || event.key === "ArrowRight" || event.key === "ArrowUp" || event.key === "ArrowDown")) return;
+    event.preventDefault();
+    const step = event.shiftKey ? 80 : 24;
+    const deltaX = event.key === "ArrowLeft" ? -step : event.key === "ArrowRight" ? step : 0;
+    const deltaY = event.key === "ArrowUp" ? -step : event.key === "ArrowDown" ? step : 0;
+    applyGeometry(moveTaskNoteWindowGeometry(preferredGeometryRef.current, viewportWidth, viewportHeight, deltaX, deltaY), true);
+  }
+
+  function handleResizePointerDown(direction: TaskNoteWindowResizeDirection, event: React.PointerEvent<HTMLDivElement>): void {
     if (mobilePeek || event.button !== 0) return;
     event.preventDefault();
-    resizeGestureRef.current = { pointerId: event.pointerId, startX: event.clientX, startWidth: renderedPeekWidth };
+    resizeGestureRef.current = {
+      pointerId: event.pointerId, startX: event.clientX, startY: event.clientY,
+      startGeometry: renderedGeometry, direction,
+    };
     setIsResizing(true);
     event.currentTarget.setPointerCapture?.(event.pointerId);
   }
@@ -95,7 +169,8 @@ export function TaskNoteEditor({
     const gesture = resizeGestureRef.current;
     if (!gesture || gesture.pointerId !== event.pointerId) return;
     event.preventDefault();
-    applyPeekWidth(clampTaskNotePeekWidth(gesture.startWidth + gesture.startX - event.clientX, viewportWidth));
+    applyGeometry(resizeTaskNoteWindowGeometry(gesture.startGeometry, viewportWidth, viewportHeight, gesture.direction,
+      event.clientX - gesture.startX, event.clientY - gesture.startY));
   }
 
   function handleResizePointerEnd(event: React.PointerEvent<HTMLDivElement>): void {
@@ -104,14 +179,27 @@ export function TaskNoteEditor({
     if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture?.(event.pointerId);
     resizeGestureRef.current = null;
     setIsResizing(false);
-    persistTaskNotePeekWidth(preferredPeekWidthRef.current);
+    persistTaskNoteWindowGeometry(preferredGeometryRef.current);
   }
 
-  function handleResizeKeyDown(event: React.KeyboardEvent<HTMLDivElement>): void {
-    const next = resizeTaskNotePeekWidth(renderedPeekWidth, viewportWidth, event.key, event.shiftKey);
-    if (next === null || mobilePeek) return;
+  function handleResizeKeyDown(direction: TaskNoteWindowResizeDirection, event: React.KeyboardEvent<HTMLDivElement>): void {
+    if (mobilePeek) return;
+    const next = resizeTaskNoteWindowByKey(preferredGeometryRef.current, viewportWidth, viewportHeight, direction, event.key, event.shiftKey);
+    if (!next) return;
     event.preventDefault();
-    applyPeekWidth(next, true);
+    applyGeometry(next, true);
+  }
+
+  function minimize(): void {
+    const active = globalThis.document.activeElement;
+    const focusInside = Boolean(windowRef.current?.contains(active));
+    setIsMinimized(true);
+    if (focusInside) window.requestAnimationFrame(() => minimizedRestoreRef.current?.focus());
+  }
+
+  function restore(): void {
+    setIsMinimized(false);
+    window.requestAnimationFrame(() => titleBarRef.current?.focus());
   }
 
   useEffect(() => { onDirtyChange(dirty); }, [dirty, onDirtyChange]);
@@ -200,6 +288,11 @@ export function TaskNoteEditor({
     return () => onRegisterFlush(null);
   }, [onRegisterFlush]);
 
+  useEffect(() => () => {
+    dragGestureRef.current = null;
+    resizeGestureRef.current = null;
+  }, []);
+
   useEffect(() => {
     if (!dirty || loading || unresolved || saving || !document) return;
     const timer = window.setTimeout(() => { void saveRef.current(); }, TASK_NOTE_AUTOSAVE_MS);
@@ -221,32 +314,50 @@ export function TaskNoteEditor({
     }
   }
 
-  return <aside
-    className={`task-note-peek${isResizing ? " is-resizing" : ""}`}
-    aria-label={`${taskTitle}のノート`}
-    data-task-note-editor="true"
-    data-task-note-peek-width={mobilePeek ? "full" : renderedPeekWidth}
-    style={mobilePeek ? undefined : { width: `${renderedPeekWidth}px` }}
-  >
-    {!mobilePeek && <div
-      className="task-note-peek-resize-handle"
-      role="separator"
-      aria-orientation="vertical"
-      aria-label="ノートパネルの幅を変更"
-      aria-valuemin={360}
-      aria-valuemax={maxTaskNotePeekWidth(viewportWidth)}
-      aria-valuenow={renderedPeekWidth}
-      tabIndex={0}
-      onKeyDown={handleResizeKeyDown}
-      onPointerDown={handleResizePointerDown}
+  const saveStatus = unresolved ? "保存結果未確定" : saving ? "保存中…" : dirty ? "未保存" : "保存済み";
+  const resizeDirections: TaskNoteWindowResizeDirection[] = ["n", "s", "e", "w", "ne", "nw", "se", "sw"];
+  const resizeLabels: Record<TaskNoteWindowResizeDirection, string> = {
+    n: "上端でノートウィンドウの高さを変更", s: "下端でノートウィンドウの高さを変更",
+    e: "右端でノートウィンドウの幅を変更", w: "左端でノートウィンドウの幅を変更",
+    ne: "右上隅でノートウィンドウのサイズを変更", nw: "左上隅でノートウィンドウのサイズを変更",
+    se: "右下隅でノートウィンドウのサイズを変更", sw: "左下隅でノートウィンドウのサイズを変更",
+  };
+  const renderResizeHandle = (direction: TaskNoteWindowResizeDirection) => {
+    const edge = direction.length === 1;
+    return <div key={direction} className={`task-note-window-resize-handle is-${direction}`} role={edge ? "separator" : undefined}
+      aria-hidden={edge ? undefined : true} aria-orientation={edge ? (direction === "n" || direction === "s" ? "horizontal" : "vertical") : undefined}
+      aria-label={edge ? resizeLabels[direction] : undefined}
+      aria-valuemin={edge ? (direction === "n" || direction === "s" ? TASK_NOTE_WINDOW_MIN_HEIGHT : TASK_NOTE_WINDOW_MIN_WIDTH) : undefined}
+      aria-valuemax={edge ? (direction === "n" || direction === "s" ? Math.max(TASK_NOTE_WINDOW_MIN_HEIGHT, viewportHeight - 32) : Math.max(TASK_NOTE_WINDOW_MIN_WIDTH, viewportWidth - 32)) : undefined}
+      aria-valuenow={edge ? (direction === "n" || direction === "s" ? renderedGeometry.height : renderedGeometry.width) : undefined}
+      tabIndex={edge ? 0 : undefined}
+      onKeyDown={edge ? (event) => handleResizeKeyDown(direction, event) : undefined}
+      onPointerDown={(event) => handleResizePointerDown(direction, event)}
       onPointerMove={handleResizePointerMove}
       onPointerUp={handleResizePointerEnd}
-      onPointerCancel={handleResizePointerEnd}
-    />}
-    <header className="task-note-peek-header">
-      <div><p className="eyebrow">Task Note</p><h2>{taskTitle}</h2></div>
-      <div className="task-note-peek-actions">
-        <button type="button" className="secondary" onClick={() => {
+      onPointerCancel={handleResizePointerEnd} />;
+  };
+
+  return <aside
+    ref={windowRef}
+    className={`task-note-peek${isMoving ? " is-moving" : ""}${isResizing ? " is-resizing" : ""}${isMinimized ? " is-minimized" : ""}`}
+    aria-label={`${taskTitle}のノート`}
+    data-task-note-editor={isMinimized ? undefined : "true"}
+    data-task-note-minimized={isMinimized ? "true" : undefined}
+    data-task-note-peek-width={mobilePeek ? "full" : renderedGeometry.width}
+    data-task-note-window-geometry={mobilePeek ? "mobile" : `${renderedGeometry.x},${renderedGeometry.y},${renderedGeometry.width},${renderedGeometry.height}`}
+    style={mobilePeek ? undefined : isMinimized
+      ? { left: `${minimizedPosition.x}px`, top: `${minimizedPosition.y}px`, width: `${compactWidth}px`, height: `${TASK_NOTE_WINDOW_COMPACT_HEIGHT}px` }
+      : { left: `${renderedGeometry.x}px`, top: `${renderedGeometry.y}px`, width: `${renderedGeometry.width}px`, height: `${renderedGeometry.height}px` }}
+  >
+    <div className="task-note-peek-expanded" hidden={isMinimized}>
+      {!mobilePeek && resizeDirections.map(renderResizeHandle)}
+      <header ref={titleBarRef} className="task-note-peek-header" tabIndex={0} aria-label="ノートウィンドウを移動"
+        onKeyDown={handleWindowKeyDown} onPointerDown={handleDragPointerDown} onPointerMove={handleDragPointerMove}
+        onPointerUp={handleDragPointerEnd} onPointerCancel={handleDragPointerEnd}>
+        <div><p className="eyebrow">Task Note</p><h2>{taskTitle}</h2><span className="task-note-window-status">{saveStatus}</span></div>
+        <div className="task-note-peek-actions">
+          <button type="button" className="secondary" onClick={() => {
           const write = navigator.clipboard?.writeText(`${window.location.origin}${documentPermalink(documentId)}`);
           if (!write) {
             setNotice("リンクのコピーに失敗しました。");
@@ -254,24 +365,35 @@ export function TaskNoteEditor({
           }
           void write.then(() => setNotice("リンクをコピーしました。"))
             .catch(() => setNotice("リンクのコピーに失敗しました。"));
-        }}>リンクをコピー</button>
-        <button type="button" className="secondary" onClick={onOpenNewTab}>新しいタブ</button>
+          }}>リンクをコピー</button>
+          <button type="button" className="secondary" onClick={onOpenNewTab}>新しいタブ</button>
+          <button type="button" className="secondary" aria-label="ノートを最小化" onClick={minimize}>—</button>
+          <button type="button" className="secondary" aria-label="Task Noteを閉じる" onClick={onClose}>閉じる</button>
+        </div>
+      </header>
+      {loading ? <p className="muted">読み込み中…</p> : <div className="task-note-peek-content">
+        <p className="task-note-authority">現在のTaskタイトルを表示しています。</p>
+        <NoteMarkdownEditor
+          value={draftBody}
+          disabled={unresolved}
+          onChange={(value) => { setDraftBody(value); draftRef.current = value; setNotice(null); }}
+          onKeyDown={handleKeyDown}
+          className="task-note-markdown-field"
+        />
+        <div className="task-note-peek-footer"><span className="notes-save-status" role="status">{saveStatus}</span><button type="button" disabled={saving || unresolved || !dirty} onClick={() => void saveRef.current()}>保存</button></div>
+        {unresolved && <button type="button" className="secondary" disabled={saving} onClick={() => void saveRef.current()}>同じ内容で再試行</button>}
+        {notice && <p className="success" role="status">{notice}</p>}
+        {error && <p className="error" role="alert">{error}</p>}
+      </div>}
+    </div>
+    <div className="task-note-peek-minimized-bar" hidden={!isMinimized} tabIndex={0} aria-label="最小化したノートを移動"
+      onKeyDown={handleWindowKeyDown} onPointerDown={handleDragPointerDown} onPointerMove={handleDragPointerMove}
+      onPointerUp={handleDragPointerEnd} onPointerCancel={handleDragPointerEnd}>
+      <NoteIcon /><strong>{taskTitle}</strong><span className="task-note-window-status">{saveStatus}</span>
+      <div className="task-note-peek-actions">
+        <button ref={minimizedRestoreRef} type="button" className="secondary" aria-label="ノートを元のサイズに戻す" onClick={restore}>元に戻す</button>
         <button type="button" className="secondary" aria-label="Task Noteを閉じる" onClick={onClose}>閉じる</button>
       </div>
-    </header>
-    {loading ? <p className="muted">読み込み中…</p> : <div className="task-note-peek-content">
-      <p className="task-note-authority">TaskタイトルはDayのTask情報を表示しています。</p>
-      <NoteMarkdownEditor
-        value={draftBody}
-        disabled={unresolved}
-        onChange={(value) => { setDraftBody(value); draftRef.current = value; setNotice(null); }}
-        onKeyDown={handleKeyDown}
-        className="task-note-markdown-field"
-      />
-      <div className="task-note-peek-footer"><span className="notes-save-status" role="status">{unresolved ? "保存結果未確定" : saving ? "保存中…" : dirty ? "未保存" : "保存済み"}</span><button type="button" disabled={saving || unresolved || !dirty} onClick={() => void saveRef.current()}>保存</button></div>
-      {unresolved && <button type="button" className="secondary" disabled={saving} onClick={() => void saveRef.current()}>同じ内容で再試行</button>}
-      {notice && <p className="success" role="status">{notice}</p>}
-      {error && <p className="error" role="alert">{error}</p>}
-    </div>}
+    </div>
   </aside>;
 }

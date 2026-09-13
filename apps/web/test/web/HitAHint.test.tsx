@@ -186,6 +186,18 @@ describe("Hit-a-Hint activation guards", () => {
     expect(document.querySelector("[data-hit-a-hint-active='true']")).toBeNull();
   });
 
+  it("allows Today Hit-a-Hint with a minimized Note when focus is outside it", () => {
+    renderWithHint(<aside data-task-note-minimized="true"><button>minimized restore</button></aside>);
+    expect(openHint()).not.toBeNull();
+  });
+
+  it("keeps minimized Note keystrokes local only while its bar is focused", () => {
+    renderWithHint(<aside data-task-note-minimized="true"><div tabIndex={0} aria-label="minimized bar">Task A</div><button>safe action</button></aside>);
+    screen.getByLabelText("minimized bar").focus();
+    fireEvent.keyDown(window, { key: "f" });
+    expect(document.querySelector("[data-hit-a-hint-active='true']")).toBeNull();
+  });
+
   it("does not re-enter or duplicate an active session on repeated F", () => {
     renderWithHint(<button>safe action</button>);
     const first = openHint();

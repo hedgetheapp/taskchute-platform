@@ -19,7 +19,7 @@ vi.mock("../../src/web/api", () => ({ api: mocks, ApiClientError: mocks.ApiClien
 
 import { ApiClientError } from "../../src/web/api";
 import { TaskNoteEditor } from "../../src/web/TaskNoteEditor";
-import { TASK_NOTE_PEEK_WIDTH_STORAGE_KEY } from "../../src/web/task-note-peek-width";
+import { TASK_NOTE_WINDOW_GEOMETRY_STORAGE_KEY } from "../../src/web/task-note-window-geometry";
 
 const documentId = "0199d101-0000-7000-8000-000000000001";
 const taskId = "0199d101-0000-7000-8000-000000000002";
@@ -39,10 +39,11 @@ function missingError(): Error {
   return new ApiClientError("missing", 404, true, "resource_not_found");
 }
 
-function dispatchPointer(element: HTMLElement, type: string, values: { clientX: number; pointerId?: number; button?: number }): void {
+function dispatchPointer(element: HTMLElement, type: string, values: { clientX?: number; clientY?: number; pointerId?: number; button?: number }): void {
   const event = new Event(type, { bubbles: true, cancelable: true });
   Object.defineProperties(event, {
-    clientX: { value: values.clientX },
+    clientX: { value: values.clientX ?? 0 },
+    clientY: { value: values.clientY ?? 0 },
     pointerId: { value: values.pointerId ?? 1 },
     button: { value: values.button ?? 0 },
   });
@@ -93,14 +94,16 @@ describe("TaskNoteEditor", () => {
     await screen.findByRole("textbox", { name: "Markdown本文" });
     expect(document.querySelector("[data-note-markdown-editor='true']")).toBeTruthy();
     const peek = document.querySelector<HTMLElement>(".task-note-peek");
-    const handle = screen.getByRole("separator", { name: "ノートパネルの幅を変更" });
+    const handle = screen.getByRole("separator", { name: "左端でノートウィンドウの幅を変更" });
     expect(peek?.dataset.taskNotePeekWidth).toBe("420");
 
     dispatchPointer(handle, "pointerdown", { button: 0, clientX: 800 });
     dispatchPointer(handle, "pointermove", { clientX: 700 });
     expect(peek?.dataset.taskNotePeekWidth).toBe("520");
     dispatchPointer(handle, "pointerup", { clientX: 700 });
-    expect(JSON.parse(localStorage.getItem(TASK_NOTE_PEEK_WIDTH_STORAGE_KEY)!)).toEqual({ version: 1, width: 520 });
+    expect(JSON.parse(localStorage.getItem(TASK_NOTE_WINDOW_GEOMETRY_STORAGE_KEY)!)).toMatchObject({
+      version: 1, geometry: { width: 520, x: 488, y: 16, height: 736 },
+    });
     expect(mocks.updateTaskPrimaryDocument).not.toHaveBeenCalled();
 
     const { unmount } = renderEditor();
@@ -113,7 +116,7 @@ describe("TaskNoteEditor", () => {
     renderEditor();
     await screen.findByRole("textbox", { name: "Markdown本文" });
     const peek = document.querySelector<HTMLElement>(".task-note-peek");
-    const handle = screen.getByRole("separator", { name: "ノートパネルの幅を変更" });
+    const handle = screen.getByRole("separator", { name: "左端でノートウィンドウの幅を変更" });
     handle.focus();
     fireEvent.keyDown(handle, { key: "ArrowLeft" });
     expect(peek?.dataset.taskNotePeekWidth).toBe("444");
@@ -127,6 +130,90 @@ describe("TaskNoteEditor", () => {
     fireEvent.click(lineNumberToggle);
     expect(lineNumberToggle).toHaveProperty("checked", false);
     expect(mocks.updateTaskPrimaryDocument).not.toHaveBeenCalled();
+  });
+
+  it("moves from a blank title bar, persists the rect, and ignores action buttons", async () => {
+    localStorage.setItem(TASK_NOTE_WINDOW_GEOMETRY_STORAGE_KEY, JSON.stringify({
+      version: 1, geometry: { x: 400, y: 40, width: 420, height: 500 },
+    }));
+    renderEditor();
+    await screen.findByRole("textbox", { name: "Markdown本文" });
+    const peek = document.querySelector<HTMLElement>(".task-note-peek")!;
+    const header = screen.getByRole("banner", { name: "ノートウィンドウを移動" });
+    dispatchPointer(header, "pointerdown", { clientX: 700, clientY: 100 });
+    dispatchPointer(header, "pointermove", { clientX: 600, clientY: 180 });
+    expect(peek.style.left).toBe("300px");
+    expect(peek.style.top).toBe("120px");
+    dispatchPointer(header, "pointerup", { clientX: 600, clientY: 180 });
+    expect(JSON.parse(localStorage.getItem(TASK_NOTE_WINDOW_GEOMETRY_STORAGE_KEY)!)).toMatchObject({
+      geometry: { x: 300, y: 120, width: 420, height: 500 },
+    });
+
+    const copy = screen.getByRole("button", { name: "リンクをコピー" });
+    dispatchPointer(copy, "pointerdown", { clientX: 800, clientY: 180 });
+    dispatchPointer(header, "pointermove", { clientX: 900, clientY: 280 });
+    expect(peek.style.left).toBe("300px");
+    expect(peek.style.top).toBe("120px");
+    expect(mocks.updateTaskPrimaryDocument).not.toHaveBeenCalled();
+  });
+
+  it("exposes all eight resize directions and cancels a pointer resize safely", async () => {
+    renderEditor();
+    await screen.findByRole("textbox", { name: "Markdown本文" });
+    expect(document.querySelectorAll(".task-note-window-resize-handle")).toHaveLength(8);
+    const east = document.querySelector<HTMLElement>(".task-note-window-resize-handle.is-w")!;
+    const peek = document.querySelector<HTMLElement>(".task-note-peek")!;
+    dispatchPointer(east, "pointerdown", { clientX: 600, clientY: 400 });
+    dispatchPointer(east, "pointermove", { clientX: 520, clientY: 400 });
+    expect(peek.style.width).toBe("500px");
+    dispatchPointer(east, "pointercancel", { clientX: 520, clientY: 400 });
+    expect(JSON.parse(localStorage.getItem(TASK_NOTE_WINDOW_GEOMETRY_STORAGE_KEY)!)).toMatchObject({ geometry: { width: 500 } });
+    expect(mocks.updateTaskPrimaryDocument).not.toHaveBeenCalled();
+  });
+
+  it("minimizes without saving, moves the compact bar, and restores the expanded rect", async () => {
+    const { unmount } = renderEditor();
+    const body = await screen.findByRole("textbox", { name: "Markdown本文" });
+    const peek = document.querySelector<HTMLElement>(".task-note-peek")!;
+    body.focus();
+    const expanded = { left: peek.style.left, top: peek.style.top, width: peek.style.width, height: peek.style.height };
+    fireEvent.click(screen.getByRole("button", { name: "ノートを最小化" }));
+    expect(peek.dataset.taskNoteMinimized).toBe("true");
+    expect(peek.querySelector(".task-note-peek-expanded")?.hasAttribute("hidden")).toBe(true);
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "ノートを元のサイズに戻す" })));
+    expect(mocks.updateTaskPrimaryDocument).not.toHaveBeenCalled();
+
+    const bar = document.querySelector<HTMLElement>(".task-note-peek-minimized-bar")!;
+    dispatchPointer(bar, "pointerdown", { clientX: 600, clientY: 100 });
+    dispatchPointer(bar, "pointermove", { clientX: 680, clientY: 160 });
+    dispatchPointer(bar, "pointerup", { clientX: 680, clientY: 160 });
+    expect(peek.style.width).toBe("320px");
+    expect(JSON.parse(localStorage.getItem(TASK_NOTE_WINDOW_GEOMETRY_STORAGE_KEY)!)).toMatchObject({ geometry: { width: 420, height: 736 } });
+
+    fireEvent.click(screen.getByRole("button", { name: "ノートを元のサイズに戻す" }));
+    await waitFor(() => expect(peek.dataset.taskNoteMinimized).toBeUndefined());
+    expect(peek.style.width).toBe(expanded.width);
+    expect(peek.style.height).toBe(expanded.height);
+    unmount();
+  });
+
+  it("opens expanded again on a new mount instead of persisting minimized state", async () => {
+    const first = renderEditor();
+    await screen.findByRole("textbox", { name: "Markdown本文" });
+    fireEvent.click(screen.getByRole("button", { name: "ノートを最小化" }));
+    expect(document.querySelector("[data-task-note-minimized='true']")).not.toBeNull();
+    first.unmount();
+    renderEditor();
+    await screen.findByRole("textbox", { name: "Markdown本文" });
+    expect(document.querySelector("[data-task-note-minimized='true']")).toBeNull();
+    expect((screen.getByRole("textbox", { name: "Markdown本文" }) as HTMLTextAreaElement).disabled).toBe(false);
+  });
+
+  it("keeps the Task Note Markdown-only without a preview surface", async () => {
+    renderEditor();
+    await screen.findByRole("textbox", { name: "Markdown本文" });
+    expect(screen.queryByText("プレビュー")).toBeNull();
+    expect(document.querySelector("[data-note-preview], .note-preview")).toBeNull();
   });
 
   it("reconciles an ambiguous update by exact document identity", async () => {
