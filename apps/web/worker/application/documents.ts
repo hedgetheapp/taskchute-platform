@@ -3,6 +3,7 @@ import type {
   CreateStandaloneDocumentResult,
   DeleteStandaloneDocumentRequest,
   DeleteStandaloneDocumentResult,
+  Document as DocumentProjection,
   SetStandaloneDocumentArchivedRequest,
   SetStandaloneDocumentArchivedResult,
   StandaloneDocument,
@@ -28,6 +29,12 @@ interface DocumentRow {
   archived_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+interface DocumentPermalinkRow extends Omit<DocumentRow, "kind" | "title"> {
+  kind: "standalone" | "task_primary";
+  task_id: string | null;
+  title: string | null;
 }
 
 export interface DocumentMutationHooks {
@@ -125,6 +132,34 @@ export async function loadStandaloneDocument(db: D1Database, appUserId: string, 
   const row = await readDocument(db, appUserId, documentId);
   if (!row) throw new HttpError(404, "resource_not_found", "Document is unavailable");
   return documentProjection(row);
+}
+
+/**
+ * Resolve the narrow, owner-scoped document permalink projection. Mutations
+ * remain kind-specific; this read only exists so a generic URL can open the
+ * exact standalone or Task Primary document without falling back to a list.
+ */
+export async function loadDocumentByPermalink(db: D1Database, appUserId: string, documentId: string): Promise<DocumentProjection> {
+  const row = await db.prepare(`SELECT d.document_id, d.app_user_id, d.kind, d.title, d.markdown_body,
+      d.revision, d.archived_at, d.created_at, d.updated_at, tpd.task_id
+    FROM documents d
+    LEFT JOIN task_primary_documents tpd
+      ON tpd.app_user_id = d.app_user_id AND tpd.document_id = d.document_id
+    WHERE d.app_user_id = ? AND d.document_id = ?`)
+    .bind(appUserId, documentId).first<DocumentPermalinkRow>();
+  if (!row || (row.kind === "task_primary" && row.task_id === null)) {
+    throw new HttpError(404, "resource_not_found", "Document is unavailable");
+  }
+  if (row.kind === "standalone") return documentProjection({ ...row, kind: "standalone", title: row.title as string });
+  return {
+    document_id: row.document_id,
+    kind: "task_primary",
+    task_id: row.task_id!,
+    markdown_body: row.markdown_body,
+    revision: row.revision,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
 }
 
 function allocatedTitle(base: string, suffix: number): string | null {

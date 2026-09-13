@@ -81,7 +81,7 @@ import { ModeBoard } from "./ModeBoard";
 import { EffectiveDayCalendarSettings } from "./EffectiveDayCalendarSettings";
 import { NotesBoard } from "./NotesBoard";
 import { TaskNoteEditor } from "./TaskNoteEditor";
-import { persistTaskNoteOpenMode, readTaskNoteOpenMode, taskNotePermalink, type TaskNoteOpenMode } from "./task-note-open-mode";
+import { documentPermalink, persistTaskNoteOpenMode, readTaskNoteOpenMode, type TaskNoteOpenMode } from "./task-note-open-mode";
 import { HitAHint } from "./HitAHint";
 import { CalendarPopover, formatLogicalDateLabel } from "./ui-helpers";
 
@@ -1812,14 +1812,30 @@ export function App() {
     const routeView = params.get("view");
     if (routeView === "note") {
       const documentId = params.get("document");
-      if (documentId) { setNotesInitialDocumentId(documentId); setView("notes"); }
       taskNoteRouteHandledRef.current = true;
+      if (!documentId) return;
+      void api.resolveDocument(documentId).then((resolved) => {
+        if (resolved.kind === "standalone") {
+          setNotesInitialDocumentId(resolved.document_id);
+          setView("notes");
+          return;
+        }
+        const entry = day ? projectionEntries(day).find((candidate) => candidate.task.id === resolved.task_id) : null;
+        setTaskNoteTarget({ taskId: resolved.task_id, documentId: resolved.document_id, taskTitle: entry?.task.title ?? "Task Note" });
+      }).catch((caught) => {
+        if (caught instanceof ApiClientError && caught.status === 401) transitionToSignedOut();
+        else {
+          setNotesInitialDocumentId(documentId);
+          setView("notes");
+        }
+      });
       return;
     }
     const taskId = params.get("task");
     const documentId = params.get("document");
     if (routeView === "task-note" && taskId && documentId) {
       const entry = day ? projectionEntries(day).find((candidate) => candidate.task.id === taskId) : null;
+      window.history.replaceState(null, "", documentPermalink(documentId));
       setTaskNoteTarget({ taskId, documentId, taskTitle: entry?.task.title ?? "Task Note" });
       taskNoteRouteHandledRef.current = true;
       return;
@@ -1830,7 +1846,7 @@ export function App() {
       taskNoteRouteHandledRef.current = true;
       void api.ensureTaskPrimaryDocument({ operation_id: uuidv7(), task_id: taskId, document_id: candidate }).then((result) => {
         const entry = day ? projectionEntries(day).find((current) => current.task.id === taskId) : null;
-        window.history.replaceState(null, "", taskNotePermalink(taskId, result.document.document_id));
+        window.history.replaceState(null, "", documentPermalink(result.document.document_id));
         setTaskNoteTarget({ taskId, documentId: result.document.document_id, taskTitle: entry?.task.title ?? "Task Note" });
       }).catch((caught) => {
         if (caught instanceof ApiClientError && caught.status === 401) transitionToSignedOut();
@@ -2163,7 +2179,7 @@ export function App() {
     if (taskNoteOpenMode === "new-tab") {
       const candidate = candidateDocumentId ?? uuidv7();
       const url = candidateDocumentId
-        ? taskNotePermalink(taskId, candidate)
+        ? documentPermalink(candidate)
         : `/?view=task-note-bootstrap&task=${encodeURIComponent(taskId)}&candidate=${encodeURIComponent(candidate)}`;
       const tab = window.open(url, "_blank", "noopener,noreferrer");
       if (!tab) setError("新しいタブを開けませんでした。ブラウザのポップアップ設定を確認してください。");
@@ -2182,7 +2198,7 @@ export function App() {
         return;
       } finally { setPending(null); }
     }
-    window.history.replaceState(null, "", taskNotePermalink(taskId, documentId));
+    window.history.replaceState(null, "", documentPermalink(documentId));
     setTaskNoteTarget({ taskId, documentId, taskTitle: entry.task.title });
   }
 
@@ -6868,7 +6884,7 @@ export function App() {
           onDirtyChange={setTaskNoteDirty} onUnresolvedChange={setTaskNoteUnresolved}
           onRegisterFlush={(flush) => { taskNoteFlushRef.current = flush; }}
           onOpenNewTab={() => {
-            const tab = window.open(taskNotePermalink(taskNoteTarget.taskId, taskNoteTarget.documentId), "_blank", "noopener,noreferrer");
+            const tab = window.open(documentPermalink(taskNoteTarget.documentId), "_blank", "noopener,noreferrer");
             if (!tab) setError("新しいタブを開けませんでした。ブラウザのポップアップ設定を確認してください。");
           }} />}
       </div>

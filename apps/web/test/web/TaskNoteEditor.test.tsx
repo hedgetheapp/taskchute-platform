@@ -66,6 +66,16 @@ describe("TaskNoteEditor", () => {
     expect(mocks.updateTaskPrimaryDocument.mock.calls[0]![0].operation_id).toMatch(/^[0-9a-f-]{36}$/);
   });
 
+  it("copies the shared Document permalink", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    renderEditor();
+    await screen.findByRole("textbox", { name: "Markdown本文" });
+    fireEvent.click(screen.getByRole("button", { name: "リンクをコピー" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(expect.stringContaining("/?view=note&document=")));
+    expect(writeText.mock.calls[0]![0]).not.toContain("task=");
+  });
+
   it("reconciles an ambiguous update by exact document identity", async () => {
     mocks.updateTaskPrimaryDocument.mockRejectedValueOnce(ambiguousError());
     mocks.loadTaskPrimaryDocumentById.mockResolvedValueOnce(primary("before"))

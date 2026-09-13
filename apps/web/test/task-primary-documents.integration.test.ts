@@ -10,6 +10,7 @@ import {
   loadTaskPrimaryDocumentById,
   updateTaskPrimaryDocument,
 } from "../worker/application/task-primary-documents";
+import { loadDocumentByPermalink } from "../worker/application/documents";
 
 let userId = "";
 let taskId = "";
@@ -92,5 +93,10 @@ describe("D-101 Task Primary Documents", () => {
     expect(isEnsureTaskPrimaryDocumentRequest({ ...request, title: "unexpected" })).toBe(false);
     expect(isUpdateTaskPrimaryDocumentRequest(updateRequest(created.document.document_id, 0))).toBe(true);
     expect(isUpdateTaskPrimaryDocumentRequest({ ...updateRequest(created.document.document_id, 0), title: "unexpected" })).toBe(false);
+  });
+
+  it("resolves a Task Primary permalink through the shared Document read", async () => {
+    const created = await ensureTaskPrimaryDocument(env.APP_DB, userId, ensureRequest());
+    expect(await loadDocumentByPermalink(env.APP_DB, userId, created.document.document_id)).toEqual(created.document);
   });
 });

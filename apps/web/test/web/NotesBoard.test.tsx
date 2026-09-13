@@ -160,6 +160,44 @@ describe("NotesBoard", () => {
     expect(screen.getByText("最新のServer内容を確認")).toBeTruthy();
   });
 
+  it("opens the exact initial Document and never falls back when it is unavailable", async () => {
+    const visibleOther = note("0199d090-0000-7000-8000-000000000016", "Other note", "body");
+    mocks.loadDocuments.mockResolvedValue({ documents: [summary(visibleOther)] });
+    mocks.loadDocument.mockRejectedValue(missingError());
+    render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} initialDocumentId="0199d090-0000-7000-8000-000000000017" />);
+    await screen.findByText("指定されたノートは利用できません。");
+    expect(screen.queryByLabelText("ノートタイトル")).toBeNull();
+    expect(screen.getByRole("button", { name: "Other note" })).toBeTruthy();
+  });
+
+  it("opens an exact archived initial Document and preserves its read-only state", async () => {
+    const active = note("0199d090-0000-7000-8000-000000000018", "Active note", "active");
+    const archived = note("0199d090-0000-7000-8000-000000000019", "Archived exact", "archived", 2, "2026-09-12T00:00:00.000Z");
+    mocks.loadDocuments.mockImplementation(async ({ archived: showArchived = false } = {}) => ({ documents: [summary(showArchived ? archived : active)] }));
+    mocks.loadDocument.mockResolvedValue(archived);
+    render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} initialDocumentId={archived.document_id} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Archived exact")).toBeTruthy());
+    expect(screen.getByLabelText("ノートタイトル")).toHaveProperty("disabled", true);
+    expect(mocks.loadDocuments).toHaveBeenCalledWith({ archived: true });
+  });
+
+  it("copies the standalone Document permalink and reports clipboard failure", async () => {
+    const current = note("0199d090-0000-7000-8000-00000000001a", "Copy me", "body");
+    mocks.loadDocuments.mockResolvedValue({ documents: [summary(current)] });
+    mocks.loadDocument.mockResolvedValue(current);
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} />);
+    await screen.findByDisplayValue("Copy me");
+    fireEvent.click(screen.getByRole("button", { name: "リンクをコピー" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(expect.stringContaining("/?view=note&document=")));
+    expect(writeText.mock.calls[0]![0]).not.toContain("task=");
+
+    writeText.mockRejectedValueOnce(new Error("clipboard unavailable"));
+    fireEvent.click(screen.getByRole("button", { name: "リンクをコピー" }));
+    await screen.findByText("リンクのコピーに失敗しました。");
+  });
+
   it("reconciles an ambiguous Create by fetching the exact document identity", async () => {
     mocks.createStandaloneDocument.mockRejectedValue(ambiguousError());
     mocks.loadDocument.mockImplementation(async (documentId: string) => note(documentId, "notitle", "", 0));

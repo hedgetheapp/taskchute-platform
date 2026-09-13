@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { TaskPrimaryDocument, UpdateTaskPrimaryDocumentRequest } from "../shared/contracts";
 import { uuidv7 } from "../shared/uuidv7";
 import { api, ApiClientError } from "./api";
-import { taskNotePermalink } from "./task-note-open-mode";
+import { documentPermalink } from "./task-note-open-mode";
 
 const TASK_NOTE_AUTOSAVE_MS = 1000;
 
@@ -164,7 +164,15 @@ export function TaskNoteEditor({
     <header className="task-note-peek-header">
       <div><p className="eyebrow">Task Note</p><h2>{taskTitle}</h2></div>
       <div className="task-note-peek-actions">
-        <button type="button" className="secondary" onClick={() => { void navigator.clipboard?.writeText(`${window.location.origin}${taskNotePermalink(taskId, documentId)}`); setNotice("リンクをコピーしました。"); }}>リンクをコピー</button>
+        <button type="button" className="secondary" onClick={() => {
+          const write = navigator.clipboard?.writeText(`${window.location.origin}${documentPermalink(documentId)}`);
+          if (!write) {
+            setNotice("リンクのコピーに失敗しました。");
+            return;
+          }
+          void write.then(() => setNotice("リンクをコピーしました。"))
+            .catch(() => setNotice("リンクのコピーに失敗しました。"));
+        }}>リンクをコピー</button>
         <button type="button" className="secondary" onClick={onOpenNewTab}>新しいタブ</button>
         <button type="button" className="secondary" aria-label="Task Noteを閉じる" onClick={onClose}>閉じる</button>
       </div>

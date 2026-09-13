@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
   loadSectionConfiguration: vi.fn(), updateSectionConfiguration: vi.fn(), loadModeBoard: vi.fn(),
   loadAutoCarryOverduePlannedSetting: vi.fn(), setAutoCarryOverduePlanned: vi.fn(),
   loadEffectiveDayCalendar: vi.fn(), upsertEffectiveDayOverride: vi.fn(), deleteEffectiveDayOverride: vi.fn(),
-  loadDocuments: vi.fn(), loadDocument: vi.fn(), createStandaloneDocument: vi.fn(), updateDocument: vi.fn(),
+  loadDocuments: vi.fn(), loadDocument: vi.fn(), resolveDocument: vi.fn(), createStandaloneDocument: vi.fn(), updateDocument: vi.fn(),
   ensureTaskPrimaryDocument: vi.fn(), loadTaskPrimaryDocumentById: vi.fn(), updateTaskPrimaryDocument: vi.fn(),
 }));
 
@@ -318,6 +318,37 @@ describe("Dogfood Day shell", () => {
     expect(mocks.createStandaloneDocument).not.toHaveBeenCalled();
   });
 
+  it("resolves a standalone generic Document permalink without changing its canonical URL", async () => {
+    const requested = {
+      document_id: "0199d101-0000-7000-8000-000000000012", kind: "standalone" as const,
+      title: "Permalink note", markdown_body: "body", revision: 0, archived_at: null,
+      created_at: "2026-09-13T00:00:00.000Z", updated_at: "2026-09-13T00:00:00.000Z",
+    };
+    window.history.replaceState(null, "", `/?view=note&document=${requested.document_id}`);
+    mocks.loadDay.mockResolvedValue(emptyDay);
+    mocks.resolveDocument.mockResolvedValue(requested);
+    mocks.loadDocuments.mockResolvedValue({ documents: [requested] });
+    mocks.loadDocument.mockResolvedValue(requested);
+    render(<App />);
+    await waitFor(() => expect(screen.getByDisplayValue("Permalink note")).toBeTruthy());
+    expect(mocks.resolveDocument).toHaveBeenCalledWith(requested.document_id);
+    expect(window.location.search).toBe(`?view=note&document=${requested.document_id}`);
+  });
+
+  it("resolves a Task Primary generic permalink and keeps the shared canonical URL", async () => {
+    const documentId = "0199d101-0000-7000-8000-000000000013";
+    window.history.replaceState(null, "", `/?view=note&document=${documentId}`);
+    mocks.loadDay.mockResolvedValue(populatedDay);
+    mocks.resolveDocument.mockResolvedValue({
+      document_id: documentId, kind: "task_primary", task_id: firstEntry.task.id, markdown_body: "body", revision: 0,
+      created_at: "2026-09-13T00:00:00.000Z", updated_at: "2026-09-13T00:00:00.000Z",
+    });
+    render(<App />);
+    await screen.findByRole("complementary", { name: "Canonical taskのノート" });
+    expect(window.location.search).toBe(`?view=note&document=${documentId}`);
+    expect(window.location.search).not.toContain("task=");
+  });
+
   it("does not navigate or logout while an ambiguous Note save is unresolved", async () => {
     mocks.loadDay.mockResolvedValue(emptyDay);
     mocks.createStandaloneDocument.mockRejectedValue(new ApiClientError("ambiguous", 503, true, "infrastructure_ambiguous"));
@@ -489,6 +520,8 @@ describe("Dogfood Day shell", () => {
     await waitFor(() => expect(mocks.ensureTaskPrimaryDocument).toHaveBeenCalledTimes(1));
     expect(mocks.ensureTaskPrimaryDocument.mock.calls[0]![0]).toMatchObject({ task_id: firstEntry.task.id });
     expect(await screen.findByRole("complementary", { name: "Canonical taskのノート" })).toBeTruthy();
+    expect(window.location.search).toBe("?view=note&document=0199d101-0000-7000-8000-000000000011");
+    expect(window.location.search).not.toContain("task=");
     window.history.replaceState(null, "", "/");
   });
 

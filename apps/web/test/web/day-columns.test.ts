@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DAY_COLUMNS_V1_STORAGE_KEY,
+  DAY_COLUMNS_V3_STORAGE_KEY,
   DAY_COLUMNS_STORAGE_KEY,
   DAY_COLUMNS_STORAGE_VERSION,
   DEFAULT_DAY_COLUMN_ORDER,
@@ -53,7 +54,7 @@ describe("Day Table column preference", () => {
     window.localStorage.setItem(DAY_COLUMNS_V1_STORAGE_KEY, JSON.stringify({
       version: 1, order: ["routine", "project"], widths: { project: 220 },
     }));
-    expect(readPersistedDayColumnPreference()).toMatchObject({ version: 3, hidden: [], widths: { project: 220 } });
+    expect(readPersistedDayColumnPreference()).toMatchObject({ version: DAY_COLUMNS_STORAGE_VERSION, hidden: [], widths: { project: 220 } });
     expect(readPersistedDayColumnPreference().order.slice(0, 3)).toEqual(["routine", "project", "mode"]);
 
     window.localStorage.setItem(DAY_COLUMNS_STORAGE_KEY, JSON.stringify({
@@ -62,15 +63,36 @@ describe("Day Table column preference", () => {
     expect(readPersistedDayColumnPreference()).toMatchObject({ hidden: ["project"], widths: { actualDuration: 140 } });
   });
 
+  it("discovers v3 preferences and inserts the D-101 Note column after Section", () => {
+    window.localStorage.removeItem(DAY_COLUMNS_STORAGE_KEY);
+    window.localStorage.removeItem(DAY_COLUMNS_V1_STORAGE_KEY);
+    window.localStorage.removeItem("taskchute.web.day-columns.v2");
+    window.localStorage.setItem(DAY_COLUMNS_V3_STORAGE_KEY, JSON.stringify({
+      version: 3,
+      order: ["section", "project", "mode", "routine", "estimate"],
+      widths: { project: 230, section: 145 },
+      hidden: ["routine"],
+      taskWidth: 410,
+    }));
+    const preference = readPersistedDayColumnPreference();
+    expect(preference.version).toBe(DAY_COLUMNS_STORAGE_VERSION);
+    expect(preference.order.slice(0, 5)).toEqual(["section", "note", "project", "mode", "routine"]);
+    expect(preference.widths.project).toBe(230);
+    expect(preference.widths.section).toBe(145);
+    expect(preference.hidden).toEqual(["routine"]);
+    expect(preference.taskWidth).toBe(410);
+    expect(preference.order.filter((key) => key === "mode")).toHaveLength(1);
+  });
+
   it("keeps full order and widths while resolving visible tracks", () => {
     const preference = setDayColumnVisibility(defaultDayColumnPreference(), "project", false);
     const resized = { ...preference, widths: { ...preference.widths, project: 220 } };
-    expect(resized.order.slice(0, 2)).toEqual(["project", "section"]);
+    expect(resized.order.slice(0, 2)).toEqual(["project", "mode"]);
     expect(visibleDayColumnOrder(resized).slice(0, 2)).toEqual(["mode", "section"]);
     expect(buildDayTableGridTemplate(resized)).not.toContain("220px");
     expect(calculateDayTableMinWidth(resized)).toBe(calculateDayTableMinWidth(defaultDayColumnPreference()) - 150);
     const shown = setDayColumnVisibility(resized, "project", true);
-    expect(visibleDayColumnOrder(shown).slice(0, 2)).toEqual(["project", "section"]);
+    expect(visibleDayColumnOrder(shown).slice(0, 2)).toEqual(["project", "mode"]);
     expect(buildDayTableGridTemplate(shown)).toContain("220px");
   });
 
@@ -81,7 +103,7 @@ describe("Day Table column preference", () => {
       widths: { ...defaultDayColumnPreference().widths, project: 220 },
     }, "project", false);
     const shown = showAllDayColumns(customized);
-    expect(shown.order.slice(0, 4)).toEqual(["mode", "section", "project", "routine"]);
+    expect(shown.order.slice(0, 4)).toEqual(["mode", "section", "note", "project"]);
     expect(shown.widths.project).toBe(220);
     expect(shown.hidden).toEqual([]);
     expect(resetDayColumnPreference()).toEqual(defaultDayColumnPreference());
@@ -90,11 +112,11 @@ describe("Day Table column preference", () => {
   it("reorders only the customizable region and clamps width/grid tracks", () => {
     const preference = defaultDayColumnPreference();
     const order = reorderDayColumns(preference.order, "project", "routine", "before");
-    expect(order.slice(0, 4)).toEqual(["mode", "section", "project", "routine"]);
+    expect(order.slice(0, 4)).toEqual(["mode", "section", "note", "project"]);
     expect(clampDayColumnWidth("project", 1)).toBe(100);
     expect(clampDayColumnWidth("project", 9999)).toBe(340);
     const resized = { ...preference, order, widths: { ...preference.widths, project: 200 } };
-    expect(buildDayTableGridTemplate(resized)).toContain("minmax(280px, 1fr) 130px 200px 82px");
+    expect(buildDayTableGridTemplate(resized)).toContain("minmax(280px, 1fr) 112px 130px 60px 200px 82px");
     expect(calculateDayTableMinWidth(resized)).toBeGreaterThan(1200);
   });
 });

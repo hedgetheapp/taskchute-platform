@@ -88,6 +88,7 @@ import {
   isCreateStandaloneDocumentRequest,
   isSetStandaloneDocumentArchivedRequest,
   isUpdateDocumentRequest,
+  loadDocumentByPermalink,
   loadStandaloneDocument,
   loadStandaloneDocuments,
   setStandaloneDocumentArchived,
@@ -176,6 +177,10 @@ async function route(request: Request, env: Env): Promise<Response> {
       throw new HttpError(400, "malformed_request", "Invalid UpdateTaskPrimaryDocument request");
     }
     return Response.json(await updateTaskPrimaryDocument(env.APP_DB, principal.appUserId, body));
+  }
+  const documentPermalinkMatch = url.pathname.match(/^\/api\/v1\/documents\/([^/]+)\/resolve$/);
+  if (request.method === "GET" && documentPermalinkMatch) {
+    return Response.json(await loadDocumentByPermalink(env.APP_DB, principal.appUserId, decodeURIComponent(documentPermalinkMatch[1])));
   }
   const documentMatch = url.pathname.match(/^\/api\/v1\/documents\/([^/]+)$/);
   if (request.method === "GET" && documentMatch) {

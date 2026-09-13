@@ -9,6 +9,7 @@ import type {
 } from "../shared/contracts";
 import { uuidv7 } from "../shared/uuidv7";
 import { api, ApiClientError } from "./api";
+import { documentPermalink } from "./task-note-open-mode";
 import { useOutsideClick } from "./ui-helpers";
 
 export const NOTE_AUTOSAVE_DEBOUNCE_MS = 1000;
@@ -190,18 +191,18 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
     setBaselineTitle(loaded.title); setBaselineBody(loaded.markdown_body);
   }, []);
 
-  const openCanonicalDocument = useCallback(async (documentId: string): Promise<boolean> => {
+  const openCanonicalDocument = useCallback(async (documentId: string): Promise<StandaloneDocument | null> => {
     setLoading(true); setError(null); setNotice(null); setLatestCanonical(null);
     try {
       const loaded = await api.loadDocument(documentId);
       setEditorFromCanonical(loaded);
       retryRequestRef.current = null; ambiguousRequestRef.current = null;
       setRetryRequest(null); setAmbiguousRequest(null);
-      return true;
+      return loaded;
     } catch (caught) {
       if (caught instanceof ApiClientError && caught.status === 401) handleUnauthorized();
       else setError(caught instanceof Error ? caught.message : "ノートの読み込みに失敗しました");
-      return false;
+      return null;
     } finally { setLoading(false); }
   }, [handleUnauthorized, setEditorFromCanonical]);
 
@@ -211,7 +212,12 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
       setLoading(true);
       const list = await refreshList(showArchived);
       if (cancelled) return;
-      const first = list?.find((item) => item.document_id === initialDocumentId) ?? list?.[0];
+      if (initialDocumentId) {
+        const loaded = await openCanonicalDocument(initialDocumentId);
+        if (loaded?.archived_at && !showArchived) setShowArchived(true);
+        if (loaded) return;
+      }
+      const first = initialDocumentId ? null : list?.[0];
       if (first) await openCanonicalDocument(first.document_id);
       else {
         documentRef.current = null; selectedIdRef.current = null; modeRef.current = "empty";
@@ -475,6 +481,20 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
     event.preventDefault(); void saveActionRef.current();
   }
 
+  async function copyDocumentLink(documentId: string): Promise<void> {
+    const write = navigator.clipboard?.writeText(`${window.location.origin}${documentPermalink(documentId)}`);
+    if (!write) {
+      setNotice("リンクのコピーに失敗しました。");
+      return;
+    }
+    try {
+      await write;
+      setNotice("リンクをコピーしました。");
+    } catch {
+      setNotice("リンクのコピーに失敗しました。");
+    }
+  }
+
   const editorAvailable = mode !== "empty";
   const archivedReadOnly = document?.archived_at != null;
   return (
@@ -509,9 +529,10 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
           </div>
         </aside>
         <section className="notes-editor" aria-label="ノートエディタ">
-          {!editorAvailable && !loading && <div className="notes-empty"><h2>{showArchived ? "アーカイブを選択" : "ノートを選択"}</h2><p>既存のノートを開くか、新規ノートを作成してください。</p></div>}
+          {!editorAvailable && !loading && <div className="notes-empty"><h2>{initialDocumentId && error ? "ノートを開けません" : showArchived ? "アーカイブを選択" : "ノートを選択"}</h2><p>{initialDocumentId && error ? "指定されたノートは利用できません。" : "既存のノートを開くか、新規ノートを作成してください。"}</p>{error && <p className="error" role="alert">{error}</p>}</div>}
           {editorAvailable && <form onSubmit={(event) => { event.preventDefault(); void saveActionRef.current(); }}>
             <div className="notes-editor-heading"><div><p className="eyebrow">Markdown source</p><h2>{mode === "new" ? "新規ノート" : "ノートを編集"}</h2></div>
+              {document && mode === "existing" && <button type="button" className="secondary" onClick={() => void copyDocumentLink(document.document_id)}>リンクをコピー</button>}
               <button type="submit" disabled={saving || unresolved || archivedReadOnly}>{saving ? "保存中…" : "保存"}</button></div>
             <label className="notes-title-field">タイトル<input aria-label="ノートタイトル" value={draftTitle} maxLength={200}
               disabled={unresolved || archivedReadOnly} onChange={(event) => updateDraftTitle(event.target.value)} onKeyDown={handleEditorKeyDown} /></label>

@@ -24,6 +24,6 @@ export function persistTaskNoteOpenMode(mode: TaskNoteOpenMode): void {
   }
 }
 
-export function taskNotePermalink(taskId: string, documentId: string): string {
-  return `/?view=task-note&task=${encodeURIComponent(taskId)}&document=${encodeURIComponent(documentId)}`;
+export function documentPermalink(documentId: string): string {
+  return `/?view=note&document=${encodeURIComponent(documentId)}`;
 }

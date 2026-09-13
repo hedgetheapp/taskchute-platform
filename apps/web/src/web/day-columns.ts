@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import type { ExecutionSummaryProjection } from "../shared/contracts";
 
 export const DAY_COLUMNS_STORAGE_KEY = "taskchute.web.day-columns.v4";
+export const DAY_COLUMNS_V3_STORAGE_KEY = "taskchute.web.day-columns.v3";
 export const DAY_COLUMNS_V2_STORAGE_KEY = "taskchute.web.day-columns.v2";
 export const DAY_COLUMNS_V1_STORAGE_KEY = "taskchute.web.day-columns.v1";
 export const DAY_COLUMNS_STORAGE_VERSION = 4 as const;
@@ -105,6 +106,12 @@ export function normalizeDayColumnPreference(value: unknown): DayColumnPreferenc
     withoutMode.splice(projectIndex >= 0 ? projectIndex + 1 : 0, 0, "mode");
     order.splice(0, order.length, ...withoutMode);
   }
+  if (value.version === 3) {
+    const withoutNote: DayColumnKey[] = order.filter((key) => key !== "note");
+    const sectionIndex = withoutNote.indexOf("section");
+    withoutNote.splice(sectionIndex >= 0 ? sectionIndex + 1 : 0, 0, "note");
+    order.splice(0, order.length, ...withoutNote);
+  }
 
   const widths = { ...fallback.widths };
   if (isRecord(value.widths)) {
@@ -137,7 +144,8 @@ export function readPersistedDayColumnPreference(): DayColumnPreference {
         return defaultDayColumnPreference();
       }
     }
-    const legacyRaw = window.localStorage.getItem(DAY_COLUMNS_V2_STORAGE_KEY)
+    const legacyRaw = window.localStorage.getItem(DAY_COLUMNS_V3_STORAGE_KEY)
+      ?? window.localStorage.getItem(DAY_COLUMNS_V2_STORAGE_KEY)
       ?? window.localStorage.getItem(DAY_COLUMNS_V1_STORAGE_KEY);
     if (legacyRaw === null) return defaultDayColumnPreference();
     try {

@@ -9,6 +9,7 @@ import {
   isDeleteStandaloneDocumentRequest,
   isSetStandaloneDocumentArchivedRequest,
   isUpdateDocumentRequest,
+  loadDocumentByPermalink,
   loadStandaloneDocument,
   loadStandaloneDocuments,
   setStandaloneDocumentArchived,
@@ -134,6 +135,16 @@ describe("D-090 standalone Markdown Documents", () => {
     await createStandaloneDocument(env.APP_DB, userId, newer, "2026-09-11T02:00:00.000Z");
     expect((await loadStandaloneDocuments(env.APP_DB, userId)).documents.map((item) => item.title))
       .toEqual(["Newer", "Older"]);
+  });
+
+  it("resolves an exact standalone permalink without falling back to another document", async () => {
+    const requested = await createStandaloneDocument(env.APP_DB, userId, createRequest({ title: "Requested" }));
+    await createStandaloneDocument(env.APP_DB, userId, createRequest({ title: "Other" }));
+    expect(await loadDocumentByPermalink(env.APP_DB, userId, requested.document.document_id)).toEqual(requested.document);
+    await expect(loadDocumentByPermalink(env.APP_DB, uuidv7(), requested.document.document_id))
+      .rejects.toMatchObject({ code: "resource_not_found" });
+    await expect(loadDocumentByPermalink(env.APP_DB, userId, uuidv7()))
+      .rejects.toMatchObject({ code: "resource_not_found" });
   });
 
   it("allocates exact trimmed titles across active and archived Notes, then reuses deleted titles", async () => {

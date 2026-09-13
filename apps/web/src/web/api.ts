@@ -98,6 +98,7 @@ import type {
   DeleteEffectiveDayOverrideResult,
   DeleteStandaloneDocumentRequest,
   DeleteStandaloneDocumentResult,
+  Document,
   SetStandaloneDocumentArchivedRequest,
   SetStandaloneDocumentArchivedResult,
   StandaloneDocument,
@@ -277,6 +278,9 @@ export const api = {
   },
   loadDocument(documentId: string): Promise<StandaloneDocument> {
     return requestJson(`/api/v1/documents/${encodeURIComponent(documentId)}`);
+  },
+  resolveDocument(documentId: string): Promise<Document> {
+    return requestJson(`/api/v1/documents/${encodeURIComponent(documentId)}/resolve`);
   },
   loadTaskPrimaryDocument(taskId: string): Promise<TaskPrimaryDocument> {
     return requestJson(`/api/v1/tasks/${encodeURIComponent(taskId)}/primary-document`);
