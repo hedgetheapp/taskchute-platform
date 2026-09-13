@@ -9,12 +9,11 @@ import type {
 } from "../shared/contracts";
 import { uuidv7 } from "../shared/uuidv7";
 import { api, ApiClientError } from "./api";
+import { NoteMarkdownEditor } from "./NoteMarkdownEditor";
 import { documentPermalink } from "./task-note-open-mode";
 import { useOutsideClick } from "./ui-helpers";
 
 export const NOTE_AUTOSAVE_DEBOUNCE_MS = 1000;
-const NOTE_LINE_NUMBERING_STORAGE_KEY = "taskchute.notes.line-numbering.v1";
-const NOTE_LINE_NUMBERING_ENVELOPE_VERSION = 1;
 type DocumentRequest = CreateStandaloneDocumentRequest | UpdateDocumentRequest;
 type LifecycleRequest = SetStandaloneDocumentArchivedRequest | DeleteStandaloneDocumentRequest;
 type MutationRequest = DocumentRequest | LifecycleRequest;
@@ -73,7 +72,6 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
   const [latestCanonical, setLatestCanonical] = useState<StandaloneDocument | null>(null);
   const [retryRequest, setRetryRequest] = useState<MutationRequest | null>(null);
   const [ambiguousRequest, setAmbiguousRequest] = useState<MutationRequest | null>(null);
-  const [lineNumbersEnabled, setLineNumbersEnabled] = useState(true);
 
   const documentRef = useRef(document);
   const modeRef = useRef(mode);
@@ -105,7 +103,6 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
   const followUpPending = inFlightDocumentRequest !== null
     && (draftTitle.trim() !== inFlightDocumentRequest.title || draftBody !== inFlightDocumentRequest.markdown_body);
   const pendingSaveCount = unresolved ? 0 : inFlightDocumentRequest ? 1 + (followUpPending ? 1 : 0) : dirty ? 1 : 0;
-  const lineCount = Math.max(1, draftBody.split("\n").length);
   const saveStatus = unresolved ? "保存結果未確定" : dirty ? "未保存" : "保存済み";
 
   function currentDirty(): boolean {
@@ -115,32 +112,6 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
   useEffect(() => { onDirtyChange(dirty); }, [dirty, onDirtyChange]);
   useEffect(() => { onUnresolvedChange?.(unresolved); }, [onUnresolvedChange, unresolved]);
   useEffect(() => { onSavingChange?.(saving); }, [onSavingChange, saving]);
-
-  useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(NOTE_LINE_NUMBERING_STORAGE_KEY);
-      if (raw === null) return;
-      const parsed: unknown = JSON.parse(raw);
-      if (typeof parsed !== "object" || parsed === null) return;
-      const envelope = parsed as { version?: unknown; enabled?: unknown };
-      if (envelope.version !== NOTE_LINE_NUMBERING_ENVELOPE_VERSION || typeof envelope.enabled !== "boolean") return;
-      setLineNumbersEnabled(envelope.enabled);
-    } catch {
-      // Browser storage is an optional preference; malformed/unavailable storage falls back to ON.
-    }
-  }, []);
-
-  const persistLineNumbers = useCallback((enabled: boolean) => {
-    setLineNumbersEnabled(enabled);
-    try {
-      window.localStorage.setItem(NOTE_LINE_NUMBERING_STORAGE_KEY, JSON.stringify({
-        version: NOTE_LINE_NUMBERING_ENVELOPE_VERSION,
-        enabled,
-      }));
-    } catch {
-      // Keep the in-memory preference even when browser storage is unavailable.
-    }
-  }, []);
 
   useOutsideClick(actionId !== null, (target) => target instanceof Element
     && Boolean(target.closest(".notes-row-menu, .notes-row-actions")), () => setActionId(null));
@@ -536,21 +507,12 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
               <button type="submit" disabled={saving || unresolved || archivedReadOnly}>{saving ? "保存中…" : "保存"}</button></div>
             <label className="notes-title-field">タイトル<input aria-label="ノートタイトル" value={draftTitle} maxLength={200}
               disabled={unresolved || archivedReadOnly} onChange={(event) => updateDraftTitle(event.target.value)} onKeyDown={handleEditorKeyDown} /></label>
-            <div className="notes-body-field">
-              <span className="sr-only">Markdown本文</span>
-              <div className="notes-body-editor">
-                <div className={`notes-line-numbers${lineNumbersEnabled ? " is-visible" : " is-hidden"}`} aria-hidden="true">
-                  {Array.from({ length: lineCount }, (_, index) => <span key={index}>{index + 1}</span>)}
-                </div>
-                <textarea aria-label="Markdown本文" value={draftBody}
-                  disabled={unresolved || archivedReadOnly} onChange={(event) => updateDraftBody(event.target.value)} onKeyDown={handleEditorKeyDown} rows={18}
-                  onScroll={(event) => {
-                    const gutter = event.currentTarget.previousElementSibling;
-                    if (gutter instanceof HTMLElement) gutter.scrollTop = event.currentTarget.scrollTop;
-                  }} />
-              </div>
-              <label className="notes-line-number-toggle"><input type="checkbox" checked={lineNumbersEnabled} onChange={(event) => persistLineNumbers(event.target.checked)} />行番号を表示</label>
-            </div>
+            <NoteMarkdownEditor
+              value={draftBody}
+              disabled={unresolved || archivedReadOnly}
+              onChange={updateDraftBody}
+              onKeyDown={handleEditorKeyDown}
+            />
             <p className="notes-save-status" role="status" aria-live="polite">
               <span>{saveStatus}</span>{pendingSaveCount > 0 && <span>（<span>保存中 {pendingSaveCount}件</span>）</span>}
             </p>

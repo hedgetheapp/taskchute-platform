@@ -28,6 +28,7 @@ const LOCAL_KEYBOARD_OWNER_SELECTOR = [
   ".bulk-section-picker",
   ".routine-popover",
   ".shortcut-help",
+  "[data-task-note-editor='true']",
 ].join(", ");
 
 const HINTABLE_SELECTOR = [

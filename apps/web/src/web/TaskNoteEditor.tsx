@@ -2,7 +2,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { TaskPrimaryDocument, UpdateTaskPrimaryDocumentRequest } from "../shared/contracts";
 import { uuidv7 } from "../shared/uuidv7";
 import { api, ApiClientError } from "./api";
+import { NoteMarkdownEditor } from "./NoteMarkdownEditor";
 import { documentPermalink } from "./task-note-open-mode";
+import {
+  clampTaskNotePeekWidth,
+  isTaskNotePeekMobile,
+  maxTaskNotePeekWidth,
+  persistTaskNotePeekWidth,
+  readTaskNotePeekWidth,
+  resizeTaskNotePeekWidth,
+} from "./task-note-peek-width";
 
 const TASK_NOTE_AUTOSAVE_MS = 1000;
 
@@ -36,6 +45,9 @@ export function TaskNoteEditor({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [unresolvedRequest, setUnresolvedRequest] = useState<UpdateTaskPrimaryDocumentRequest | null>(null);
+  const [preferredPeekWidth, setPreferredPeekWidth] = useState(() => readTaskNotePeekWidth());
+  const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
+  const [isResizing, setIsResizing] = useState(false);
   const documentRef = useRef<TaskPrimaryDocument | null>(null);
   const draftRef = useRef("");
   const baselineRef = useRef("");
@@ -44,6 +56,8 @@ export function TaskNoteEditor({
   const inFlightRef = useRef<Promise<boolean> | null>(null);
   const saveRef = useRef<() => Promise<boolean>>(async () => false);
   const flushRef = useRef<() => Promise<boolean>>(async () => false);
+  const preferredPeekWidthRef = useRef(preferredPeekWidth);
+  const resizeGestureRef = useRef<{ pointerId: number; startX: number; startWidth: number } | null>(null);
 
   const dirty = draftBody !== baselineBody;
   const unresolved = unresolvedRequest !== null;
@@ -52,6 +66,53 @@ export function TaskNoteEditor({
   baselineRef.current = baselineBody;
   unresolvedRef.current = unresolvedRequest;
   savingRef.current = saving;
+  preferredPeekWidthRef.current = preferredPeekWidth;
+
+  const mobilePeek = isTaskNotePeekMobile(viewportWidth);
+  const renderedPeekWidth = clampTaskNotePeekWidth(preferredPeekWidth, viewportWidth);
+
+  useEffect(() => {
+    const onResize = () => setViewportWidth(window.innerWidth);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  const applyPeekWidth = useCallback((width: number, persist = false) => {
+    preferredPeekWidthRef.current = width;
+    setPreferredPeekWidth(width);
+    if (persist) persistTaskNotePeekWidth(width);
+  }, []);
+
+  function handleResizePointerDown(event: React.PointerEvent<HTMLDivElement>): void {
+    if (mobilePeek || event.button !== 0) return;
+    event.preventDefault();
+    resizeGestureRef.current = { pointerId: event.pointerId, startX: event.clientX, startWidth: renderedPeekWidth };
+    setIsResizing(true);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  }
+
+  function handleResizePointerMove(event: React.PointerEvent<HTMLDivElement>): void {
+    const gesture = resizeGestureRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    applyPeekWidth(clampTaskNotePeekWidth(gesture.startWidth + gesture.startX - event.clientX, viewportWidth));
+  }
+
+  function handleResizePointerEnd(event: React.PointerEvent<HTMLDivElement>): void {
+    const gesture = resizeGestureRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture?.(event.pointerId);
+    resizeGestureRef.current = null;
+    setIsResizing(false);
+    persistTaskNotePeekWidth(preferredPeekWidthRef.current);
+  }
+
+  function handleResizeKeyDown(event: React.KeyboardEvent<HTMLDivElement>): void {
+    const next = resizeTaskNotePeekWidth(renderedPeekWidth, viewportWidth, event.key, event.shiftKey);
+    if (next === null || mobilePeek) return;
+    event.preventDefault();
+    applyPeekWidth(next, true);
+  }
 
   useEffect(() => { onDirtyChange(dirty); }, [dirty, onDirtyChange]);
   useEffect(() => { onUnresolvedChange(unresolved); }, [onUnresolvedChange, unresolved]);
@@ -160,7 +221,28 @@ export function TaskNoteEditor({
     }
   }
 
-  return <aside className="task-note-peek" aria-label={`${taskTitle}のノート`} data-task-note-editor="true">
+  return <aside
+    className={`task-note-peek${isResizing ? " is-resizing" : ""}`}
+    aria-label={`${taskTitle}のノート`}
+    data-task-note-editor="true"
+    data-task-note-peek-width={mobilePeek ? "full" : renderedPeekWidth}
+    style={mobilePeek ? undefined : { width: `${renderedPeekWidth}px` }}
+  >
+    {!mobilePeek && <div
+      className="task-note-peek-resize-handle"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="ノートパネルの幅を変更"
+      aria-valuemin={360}
+      aria-valuemax={maxTaskNotePeekWidth(viewportWidth)}
+      aria-valuenow={renderedPeekWidth}
+      tabIndex={0}
+      onKeyDown={handleResizeKeyDown}
+      onPointerDown={handleResizePointerDown}
+      onPointerMove={handleResizePointerMove}
+      onPointerUp={handleResizePointerEnd}
+      onPointerCancel={handleResizePointerEnd}
+    />}
     <header className="task-note-peek-header">
       <div><p className="eyebrow">Task Note</p><h2>{taskTitle}</h2></div>
       <div className="task-note-peek-actions">
@@ -177,13 +259,19 @@ export function TaskNoteEditor({
         <button type="button" className="secondary" aria-label="Task Noteを閉じる" onClick={onClose}>閉じる</button>
       </div>
     </header>
-    {loading ? <p className="muted">読み込み中…</p> : <>
+    {loading ? <p className="muted">読み込み中…</p> : <div className="task-note-peek-content">
       <p className="task-note-authority">TaskタイトルはDayのTask情報を表示しています。</p>
-      <label className="task-note-body-field"><span>Markdown本文</span><textarea value={draftBody} disabled={unresolved} onChange={(event) => { setDraftBody(event.target.value); draftRef.current = event.target.value; setNotice(null); }} onKeyDown={handleKeyDown} rows={18} /></label>
+      <NoteMarkdownEditor
+        value={draftBody}
+        disabled={unresolved}
+        onChange={(value) => { setDraftBody(value); draftRef.current = value; setNotice(null); }}
+        onKeyDown={handleKeyDown}
+        className="task-note-markdown-field"
+      />
       <div className="task-note-peek-footer"><span className="notes-save-status" role="status">{unresolved ? "保存結果未確定" : saving ? "保存中…" : dirty ? "未保存" : "保存済み"}</span><button type="button" disabled={saving || unresolved || !dirty} onClick={() => void saveRef.current()}>保存</button></div>
       {unresolved && <button type="button" className="secondary" disabled={saving} onClick={() => void saveRef.current()}>同じ内容で再試行</button>}
       {notice && <p className="success" role="status">{notice}</p>}
       {error && <p className="error" role="alert">{error}</p>}
-    </>}
+    </div>}
   </aside>;
 }

@@ -19,6 +19,7 @@ vi.mock("../../src/web/api", () => ({ api: mocks, ApiClientError: mocks.ApiClien
 
 import { ApiClientError } from "../../src/web/api";
 import { TaskNoteEditor } from "../../src/web/TaskNoteEditor";
+import { TASK_NOTE_PEEK_WIDTH_STORAGE_KEY } from "../../src/web/task-note-peek-width";
 
 const documentId = "0199d101-0000-7000-8000-000000000001";
 const taskId = "0199d101-0000-7000-8000-000000000002";
@@ -38,9 +39,20 @@ function missingError(): Error {
   return new ApiClientError("missing", 404, true, "resource_not_found");
 }
 
+function dispatchPointer(element: HTMLElement, type: string, values: { clientX: number; pointerId?: number; button?: number }): void {
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  Object.defineProperties(event, {
+    clientX: { value: values.clientX },
+    pointerId: { value: values.pointerId ?? 1 },
+    button: { value: values.button ?? 0 },
+  });
+  fireEvent(element, event);
+}
+
 describe("TaskNoteEditor", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
     mocks.loadTaskPrimaryDocumentById.mockResolvedValue(primary("before"));
     mocks.updateTaskPrimaryDocument.mockResolvedValue({ document: primary("after", 1) });
   });
@@ -74,6 +86,47 @@ describe("TaskNoteEditor", () => {
     fireEvent.click(screen.getByRole("button", { name: "リンクをコピー" }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(expect.stringContaining("/?view=note&document=")));
     expect(writeText.mock.calls[0]![0]).not.toContain("task=");
+  });
+
+  it("renders the shared Markdown source editor and resizes the peek without saving", async () => {
+    renderEditor();
+    await screen.findByRole("textbox", { name: "Markdown本文" });
+    expect(document.querySelector("[data-note-markdown-editor='true']")).toBeTruthy();
+    const peek = document.querySelector<HTMLElement>(".task-note-peek");
+    const handle = screen.getByRole("separator", { name: "ノートパネルの幅を変更" });
+    expect(peek?.dataset.taskNotePeekWidth).toBe("420");
+
+    dispatchPointer(handle, "pointerdown", { button: 0, clientX: 800 });
+    dispatchPointer(handle, "pointermove", { clientX: 700 });
+    expect(peek?.dataset.taskNotePeekWidth).toBe("520");
+    dispatchPointer(handle, "pointerup", { clientX: 700 });
+    expect(JSON.parse(localStorage.getItem(TASK_NOTE_PEEK_WIDTH_STORAGE_KEY)!)).toEqual({ version: 1, width: 520 });
+    expect(mocks.updateTaskPrimaryDocument).not.toHaveBeenCalled();
+
+    const { unmount } = renderEditor();
+    await screen.findAllByRole("textbox", { name: "Markdown本文" });
+    expect(document.querySelector<HTMLElement>(".task-note-peek")?.dataset.taskNotePeekWidth).toBe("520");
+    unmount();
+  });
+
+  it("supports keyboard resize steps and keeps line-number preference shared", async () => {
+    renderEditor();
+    await screen.findByRole("textbox", { name: "Markdown本文" });
+    const peek = document.querySelector<HTMLElement>(".task-note-peek");
+    const handle = screen.getByRole("separator", { name: "ノートパネルの幅を変更" });
+    handle.focus();
+    fireEvent.keyDown(handle, { key: "ArrowLeft" });
+    expect(peek?.dataset.taskNotePeekWidth).toBe("444");
+    fireEvent.keyDown(handle, { key: "ArrowRight", shiftKey: true });
+    expect(peek?.dataset.taskNotePeekWidth).toBe("364");
+    fireEvent.keyDown(handle, { key: "Home" });
+    expect(peek?.dataset.taskNotePeekWidth).toBe("360");
+    fireEvent.keyDown(handle, { key: "End" });
+    expect(peek?.dataset.taskNotePeekWidth).toBe("992");
+    const lineNumberToggle = screen.getByRole("checkbox", { name: "行番号を表示" });
+    fireEvent.click(lineNumberToggle);
+    expect(lineNumberToggle).toHaveProperty("checked", false);
+    expect(mocks.updateTaskPrimaryDocument).not.toHaveBeenCalled();
   });
 
   it("reconciles an ambiguous update by exact document identity", async () => {

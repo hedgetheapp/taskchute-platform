@@ -518,6 +518,8 @@ describe("Dogfood Day shell", () => {
     const dayBoard = await screen.findByRole("region", { name: "DayBoard" });
     const noteButton = within(dayBoard).getByRole("button", { name: "Canonical taskのノートを作成して開く" });
     expect(noteButton.closest('[data-day-column-cell="note"]')).toBeTruthy();
+    expect(noteButton.dataset.noteState).toBe("absent");
+    expect(noteButton.querySelector("svg.task-note-icon")).toBeTruthy();
     expect(dayBoard.textContent).not.toContain("markdown_body");
     fireEvent.click(noteButton);
     await waitFor(() => expect(mocks.ensureTaskPrimaryDocument).toHaveBeenCalledTimes(1));
@@ -526,6 +528,20 @@ describe("Dogfood Day shell", () => {
     expect(window.location.search).toBe("?view=note&document=0199d101-0000-7000-8000-000000000011");
     expect(window.location.search).not.toContain("task=");
     window.history.replaceState(null, "", "/");
+  });
+
+  it("marks the Task Note icon present without changing its SVG geometry", async () => {
+    const presentDay: CurrentTaskChuteDayProjection = {
+      ...populatedDay,
+      sections: [{ ...populatedDay.sections[0]!, entries: [{ ...firstEntry, task: { ...firstEntry.task, primary_document_id: "0199d101-0000-7000-8000-000000000011" } }] }, populatedDay.sections[1]!],
+    };
+    mocks.loadDay.mockResolvedValue(presentDay);
+    render(<App />);
+    const dayBoard = await screen.findByRole("region", { name: "DayBoard" });
+    const noteButton = within(dayBoard).getByRole("button", { name: "Canonical taskのノートを開く" });
+    expect(noteButton.dataset.noteState).toBe("present");
+    expect(noteButton.querySelector("svg.task-note-icon")?.getAttribute("viewBox")).toBe("0 0 20 20");
+    expect(noteButton.querySelector("svg.task-note-icon")?.getAttribute("aria-hidden")).toBe("true");
   });
 
   it("fills the available Day viewport without increasing Task row density", async () => {

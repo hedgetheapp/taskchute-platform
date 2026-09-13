@@ -172,6 +172,20 @@ describe("Hit-a-Hint activation guards", () => {
     },
   );
 
+  it("does not activate while the Task Note peek owns the keyboard", () => {
+    renderWithHint(<aside data-task-note-editor="true"><button>local note action</button></aside>);
+    fireEvent.keyDown(window, { key: "f" });
+    expect(document.querySelector("[data-hit-a-hint-active='true']")).toBeNull();
+  });
+
+  it("does not activate while the Task Note resize handle owns the keyboard", () => {
+    renderWithHint(<aside data-task-note-editor="true"><div role="separator" tabIndex={0}>resize</div><button>local note action</button></aside>);
+    const handle = screen.getByRole("separator");
+    handle.focus();
+    fireEvent.keyDown(handle, { key: "f" });
+    expect(document.querySelector("[data-hit-a-hint-active='true']")).toBeNull();
+  });
+
   it("does not re-enter or duplicate an active session on repeated F", () => {
     renderWithHint(<button>safe action</button>);
     const first = openHint();

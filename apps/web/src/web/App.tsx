@@ -80,6 +80,7 @@ import { ProjectBoard } from "./ProjectBoard";
 import { ModeBoard } from "./ModeBoard";
 import { EffectiveDayCalendarSettings } from "./EffectiveDayCalendarSettings";
 import { NotesBoard } from "./NotesBoard";
+import { NoteIcon } from "./NoteIcon";
 import { TaskNoteEditor } from "./TaskNoteEditor";
 import { documentPermalink, persistTaskNoteOpenMode, readTaskNoteOpenMode, type TaskNoteOpenMode } from "./task-note-open-mode";
 import { HitAHint } from "./HitAHint";
@@ -5689,11 +5690,11 @@ export function App() {
       case "note": {
         const hasDocument = entry.task.primary_document_id != null;
         return <span className="task-note-cell" data-day-column-cell={key}>
-          <button type="button" className={`task-note-trigger${hasDocument ? " has-document" : ""}`} data-task-id={entry.task.id}
+          <button type="button" className={`task-note-trigger${hasDocument ? " has-document" : ""}`} data-note-state={hasDocument ? "present" : "absent"} data-task-id={entry.task.id}
             aria-label={hasDocument ? `${entry.task.title}のノートを開く` : `${entry.task.title}のノートを作成して開く`}
             title={hasDocument ? "ノートを開く" : "ノートを作成して開く"}
             disabled={pending === "task-note"} onClick={(event) => { event.stopPropagation(); void openTaskNote(entry); }}>
-            <span aria-hidden="true">▱</span>
+            <NoteIcon />
           </button>
         </span>;
       }
