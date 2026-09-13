@@ -153,6 +153,27 @@ export function clampTaskNoteWindowGeometry(
   };
 }
 
+/**
+ * Seed each in-tab Task Note window from the shared browser preference while
+ * keeping neighboring windows discoverable. The returned geometry is only an
+ * in-memory initial value; normal drag/resize persistence remains shared.
+ */
+export function cascadeTaskNoteWindowGeometry(
+  seed: TaskNoteWindowGeometry,
+  viewportWidth: number,
+  viewportHeight: number,
+  cascadeIndex: number,
+  offset = 24,
+): TaskNoteWindowGeometry {
+  const index = Number.isFinite(cascadeIndex) ? Math.max(0, Math.floor(cascadeIndex)) : 0;
+  const step = Number.isFinite(offset) ? offset : 24;
+  return clampTaskNoteWindowGeometry({
+    ...seed,
+    x: seed.x - step * index,
+    y: seed.y + step * index,
+  }, viewportWidth, viewportHeight);
+}
+
 export function moveTaskNoteWindowGeometry(
   preferred: TaskNoteWindowGeometry,
   viewportWidth: number,

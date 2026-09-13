@@ -2,6 +2,16 @@
 
 Statuses: Approved / Proposed / Superseded
 
+## D-102 — Multi-Task Note Windows v0.1
+
+Status: **Approved**
+
+Canonical Decision: `docs/decisions/D-102_MULTI_TASK_NOTE_WINDOWS_V01.md`。
+
+同じauthenticated browser tabのTodayでは、stable Task Primary Documentごとに複数のfloating Task Note windowを開ける。同じTaskを再度開いた場合は既存windowをactivate / restoreし、Documentやeditorを重複作成しない。desktopでは既存のbrowser-local geometry preferenceをseedに決定的なcascadeを適用し、z-order、minimize/maximize、dirty / unresolved、flush barrierをwindow単位でmemory管理する。window内のpointerはsiblingをoutside扱いせず、group外pointerはfrontmost expanded windowだけをminimizeする。
+
+既存の`/?view=note&document=<document-id>` canonical routeはactive windowを指し、reloadはroute対象を最大1つ復元する。new-tab mode、mobileのsingle full-sheet、Hit-a-Hintのsingle overlay、既存Save / autosave / CAS / ambiguity / navigation / logout / unload barrierは維持する。Document/API/Worker/schema/migration/dependency/offline/multi-tab semanticsは追加しない。
+
 ## D-100 — Executable Development Workflow / Codex Cycle Acceleration
 
 Status: **Approved**

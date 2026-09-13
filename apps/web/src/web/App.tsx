@@ -83,6 +83,7 @@ import { NotesBoard } from "./NotesBoard";
 import { NoteIcon } from "./NoteIcon";
 import { TaskNoteEditor } from "./TaskNoteEditor";
 import { documentPermalink, persistTaskNoteOpenMode, readTaskNoteOpenMode, type TaskNoteOpenMode } from "./task-note-open-mode";
+import { cascadeTaskNoteWindowGeometry, isTaskNoteWindowMobile, readTaskNoteWindowGeometry, type TaskNoteWindowGeometry } from "./task-note-window-geometry";
 import { HitAHint } from "./HitAHint";
 import { CalendarPopover, formatLogicalDateLabel } from "./ui-helpers";
 
@@ -92,6 +93,16 @@ type AuthState = "loading" | "signed-out" | "signed-in";
 type AppView = "today" | "routines" | "settings" | "notes";
 type SettingsDestination = "section" | "project" | "mode" | "calendar";
 type TaskNoteTarget = { taskId: string; documentId: string; taskTitle: string };
+type TaskNoteWindowState = TaskNoteTarget & {
+  initialGeometry: TaskNoteWindowGeometry;
+  stackOrder: number;
+  focusRequest: number;
+  restoreRequest: number;
+  outsideClickRequest: number;
+  dirty: boolean;
+  unresolved: boolean;
+  flush: (() => Promise<boolean>) | null;
+};
 type FocusTarget = { kind: "section" | "entry"; id: string };
 type DayRowFocusLocator = { kind: "row" } | { kind: "cell"; cellKey: string; controlIndex?: number };
 type DraftPlacement =
@@ -759,13 +770,24 @@ export function App() {
   const [notesDirty, setNotesDirty] = useState(false);
   const [notesUnresolved, setNotesUnresolved] = useState(false);
   const notesFlushRef = useRef<(() => Promise<boolean>) | null>(null);
-  const [taskNoteTarget, setTaskNoteTarget] = useState<TaskNoteTarget | null>(null);
-  const [taskNoteDirty, setTaskNoteDirty] = useState(false);
-  const [taskNoteUnresolved, setTaskNoteUnresolved] = useState(false);
+  const [taskNoteWindows, setTaskNoteWindows] = useState<TaskNoteWindowState[]>([]);
+  const taskNoteWindowsRef = useRef<TaskNoteWindowState[]>([]);
+  const taskNoteOpeningPromisesRef = useRef(new Map<string, Promise<void>>());
+  const [taskNoteOpeningIds, setTaskNoteOpeningIds] = useState<Record<string, boolean>>({});
+  const taskNoteStackOrderRef = useRef(0);
+  const taskNoteRequestRef = useRef(0);
   const [taskNoteOpenMode, setTaskNoteOpenMode] = useState<TaskNoteOpenMode>(readTaskNoteOpenMode);
   const [notesInitialDocumentId, setNotesInitialDocumentId] = useState<string | null>(null);
-  const taskNoteFlushRef = useRef<(() => Promise<boolean>) | null>(null);
   const taskNoteRouteHandledRef = useRef(false);
+  const updateTaskNoteWindows = useCallback((updater: (current: TaskNoteWindowState[]) => TaskNoteWindowState[]) => {
+    const next = updater(taskNoteWindowsRef.current);
+    taskNoteWindowsRef.current = next;
+    setTaskNoteWindows(next);
+  }, []);
+  const patchTaskNoteWindow = useCallback((documentId: string, patch: Partial<TaskNoteWindowState>) => {
+    updateTaskNoteWindows((current) => current.map((windowState) => windowState.documentId === documentId
+      ? { ...windowState, ...patch } : windowState));
+  }, [updateTaskNoteWindows]);
   const [settingsDestination, setSettingsDestination] = useState<SettingsDestination>("section");
   const [day, setDay] = useState<CurrentTaskChuteDayProjection | null>(null);
   const [project, setProject] = useState<ProjectSummary | null>(null);
@@ -1595,10 +1617,10 @@ export function App() {
     setForecastNowInstant(null);
     setView("today");
     setNotesDirty(false);
-    setTaskNoteTarget(null);
-    setTaskNoteDirty(false);
-    setTaskNoteUnresolved(false);
-    taskNoteFlushRef.current = null;
+    taskNoteWindowsRef.current = [];
+    setTaskNoteWindows([]);
+    taskNoteOpeningPromisesRef.current.clear();
+    setTaskNoteOpeningIds({});
     setProject(null);
     setProjects([]);
     setModeBoard(null);
@@ -1821,7 +1843,7 @@ export function App() {
           setView("notes");
           return;
         }
-        setTaskNoteTarget({ taskId: resolved.task_id, documentId: resolved.document_id, taskTitle: resolved.task_title });
+        showTaskNoteWindow({ taskId: resolved.task_id, documentId: resolved.document_id, taskTitle: resolved.task_title });
       }).catch((caught) => {
         if (caught instanceof ApiClientError && caught.status === 401) transitionToSignedOut();
         else {
@@ -1842,7 +1864,7 @@ export function App() {
           return;
         }
         window.history.replaceState(null, "", documentPermalink(documentId));
-        setTaskNoteTarget({ taskId: resolved.task_id, documentId: resolved.document_id, taskTitle: resolved.task_title });
+        showTaskNoteWindow({ taskId: resolved.task_id, documentId: resolved.document_id, taskTitle: resolved.task_title });
       }).catch((caught) => {
         if (caught instanceof ApiClientError && caught.status === 401) transitionToSignedOut();
         else {
@@ -1859,7 +1881,7 @@ export function App() {
       void api.ensureTaskPrimaryDocument({ operation_id: uuidv7(), task_id: taskId, document_id: candidate }).then((result) => {
         const entry = day ? projectionEntries(day).find((current) => current.task.id === taskId) : null;
         window.history.replaceState(null, "", documentPermalink(result.document.document_id));
-        setTaskNoteTarget({ taskId, documentId: result.document.document_id, taskTitle: entry?.task.title ?? "Task Note" });
+        showTaskNoteWindow({ taskId, documentId: result.document.document_id, taskTitle: entry?.task.title ?? "Task Note" });
       }).catch((caught) => {
         if (caught instanceof ApiClientError && caught.status === 401) transitionToSignedOut();
         else setError(caught instanceof Error ? caught.message : "Task Noteを開けませんでした");
@@ -1868,6 +1890,25 @@ export function App() {
     }
     taskNoteRouteHandledRef.current = true;
   }, [authState, day, transitionToSignedOut]);
+
+  useEffect(() => {
+    const onPointerDown = (event: PointerEvent) => {
+      if (isTaskNoteWindowMobile(window.innerWidth)) return;
+      const target = event.target;
+      if (target instanceof Element && target.closest(".task-note-peek")) return;
+      const expandedWindows = Array.from(document.querySelectorAll<HTMLElement>(".task-note-peek"))
+        .filter((windowElement) => windowElement.querySelector<HTMLElement>(".task-note-peek-expanded:not([hidden])"))
+        .sort((left, right) => Number(right.style.zIndex || 0) - Number(left.style.zIndex || 0));
+      const frontmostExpanded = expandedWindows[0];
+      const documentId = frontmostExpanded?.dataset.taskNoteDocumentId;
+      if (!documentId) return;
+      updateTaskNoteWindows((windows) => windows.map((windowState) => windowState.documentId === documentId
+        ? { ...windowState, outsideClickRequest: windowState.outsideClickRequest + 1 }
+        : windowState));
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () => document.removeEventListener("pointerdown", onPointerDown, true);
+  }, [updateTaskNoteWindows]);
 
   useEffect(() => {
     if (!columnsMenuOpen) return;
@@ -2125,9 +2166,12 @@ export function App() {
   }
 
   async function canLeaveNotes(): Promise<boolean> {
-    if (taskNoteTarget && taskNoteFlushRef.current) {
-      const flushedTaskNote = await taskNoteFlushRef.current();
+    const taskNoteSnapshot = [...taskNoteWindowsRef.current].sort((a, b) => a.stackOrder - b.stackOrder);
+    for (const windowState of taskNoteSnapshot) {
+      if (windowState.unresolved) return false;
+      const flushedTaskNote = windowState.flush ? await windowState.flush() : true;
       if (!flushedTaskNote) return false;
+      if (taskNoteWindowsRef.current.find((candidate) => candidate.documentId === windowState.documentId)?.unresolved) return false;
     }
     if (view !== "notes") return true;
     if (notesUnresolved) return false;
@@ -2185,6 +2229,61 @@ export function App() {
     window.history.replaceState(null, "", `${window.location.pathname}${window.location.hash}`);
   }
 
+  function nextTaskNoteRequest(): number {
+    taskNoteRequestRef.current += 1;
+    return taskNoteRequestRef.current;
+  }
+
+  function nextTaskNoteStackOrder(current: TaskNoteWindowState[]): number {
+    const currentMaximum = current.reduce((maximum, windowState) => Math.max(maximum, windowState.stackOrder), 0);
+    taskNoteStackOrderRef.current = Math.max(taskNoteStackOrderRef.current, currentMaximum) + 1;
+    return taskNoteStackOrderRef.current;
+  }
+
+  function activateTaskNoteWindow(documentId: string, options: { restore?: boolean; focus?: boolean } = {}): void {
+    const current = taskNoteWindowsRef.current;
+    const target = current.find((windowState) => windowState.documentId === documentId);
+    if (!target) return;
+    const front = current.reduce<TaskNoteWindowState | null>((candidate, windowState) => !candidate || windowState.stackOrder > candidate.stackOrder ? windowState : candidate, null);
+    const shouldRaise = front?.documentId !== documentId;
+    const request = options.restore || options.focus ? nextTaskNoteRequest() : target.focusRequest;
+    if (!shouldRaise && !options.restore && !options.focus) return;
+    updateTaskNoteWindows((windows) => windows.map((windowState) => windowState.documentId === documentId
+      ? {
+        ...windowState,
+        stackOrder: shouldRaise ? nextTaskNoteStackOrder(windows) : windowState.stackOrder,
+        focusRequest: options.focus || options.restore ? request : windowState.focusRequest,
+        restoreRequest: options.restore ? request : windowState.restoreRequest,
+      }
+      : windowState));
+  }
+
+  function showTaskNoteWindow(target: TaskNoteTarget): void {
+    const existing = taskNoteWindowsRef.current.find((windowState) => windowState.documentId === target.documentId || windowState.taskId === target.taskId);
+    if (existing) {
+      activateTaskNoteWindow(existing.documentId, { restore: true, focus: true });
+      window.history.replaceState(null, "", documentPermalink(existing.documentId));
+      return;
+    }
+    const current = taskNoteWindowsRef.current;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const seed = readTaskNoteWindowGeometry(viewportWidth, viewportHeight);
+    const request = nextTaskNoteRequest();
+    updateTaskNoteWindows((windows) => [...windows, {
+      ...target,
+      initialGeometry: cascadeTaskNoteWindowGeometry(seed, viewportWidth, viewportHeight, windows.length),
+      stackOrder: nextTaskNoteStackOrder(windows),
+      focusRequest: request,
+      restoreRequest: request,
+      outsideClickRequest: 0,
+      dirty: false,
+      unresolved: false,
+      flush: null,
+    }]);
+    window.history.replaceState(null, "", documentPermalink(target.documentId));
+  }
+
   async function openTaskNote(entry: EntryProjection): Promise<void> {
     const taskId = entry.task.id;
     const candidateDocumentId = entry.task.primary_document_id ?? null;
@@ -2197,28 +2296,74 @@ export function App() {
       if (!tab) setError("新しいタブを開けませんでした。ブラウザのポップアップ設定を確認してください。");
       return;
     }
-    let documentId = candidateDocumentId;
-    if (!documentId) {
-      setPending("task-note"); setError(null);
-      try {
-        const ensured = await api.ensureTaskPrimaryDocument({ operation_id: uuidv7(), task_id: taskId, document_id: uuidv7() });
-        documentId = ensured.document.document_id;
-        updateTaskPrimaryRelation(taskId, documentId);
-      } catch (caught) {
-        if (caught instanceof ApiClientError && caught.status === 401) transitionToSignedOut();
-        else setError(caught instanceof Error ? caught.message : "Task Noteを開けませんでした");
-        return;
-      } finally { setPending(null); }
+    const existing = taskNoteWindowsRef.current.find((windowState) => windowState.taskId === taskId);
+    if (existing) {
+      activateTaskNoteWindow(existing.documentId, { restore: true, focus: true });
+      window.history.replaceState(null, "", documentPermalink(existing.documentId));
+      return;
     }
-    window.history.replaceState(null, "", documentPermalink(documentId));
-    setTaskNoteTarget({ taskId, documentId, taskTitle: entry.task.title });
+    if (isTaskNoteWindowMobile(window.innerWidth) && taskNoteWindowsRef.current.length > 0) {
+      if (!(await canLeaveNotes())) return;
+      taskNoteWindowsRef.current = [];
+      setTaskNoteWindows([]);
+      clearTaskNoteRoute();
+    }
+    const existingOpen = taskNoteOpeningPromisesRef.current.get(taskId);
+    if (existingOpen) {
+      await existingOpen;
+      return;
+    }
+    setTaskNoteOpeningIds((current) => ({ ...current, [taskId]: true }));
+    const opening = (async () => {
+      let documentId = candidateDocumentId;
+      if (!documentId) {
+        setError(null);
+        try {
+          const ensured = await api.ensureTaskPrimaryDocument({ operation_id: uuidv7(), task_id: taskId, document_id: uuidv7() });
+          documentId = ensured.document.document_id;
+          updateTaskPrimaryRelation(taskId, documentId);
+        } catch (caught) {
+          if (caught instanceof ApiClientError && caught.status === 401) transitionToSignedOut();
+          else setError(caught instanceof Error ? caught.message : "Task Noteを開けませんでした");
+          return;
+        }
+      }
+      showTaskNoteWindow({ taskId, documentId, taskTitle: entry.task.title });
+    })();
+    taskNoteOpeningPromisesRef.current.set(taskId, opening);
+    try {
+      await opening;
+    } finally {
+      if (taskNoteOpeningPromisesRef.current.get(taskId) === opening) taskNoteOpeningPromisesRef.current.delete(taskId);
+      setTaskNoteOpeningIds((current) => {
+        const next = { ...current };
+        delete next[taskId];
+        return next;
+      });
+    }
   }
 
-  async function closeTaskNote(): Promise<void> {
-    if (taskNoteFlushRef.current && !(await taskNoteFlushRef.current())) return;
-    const target = taskNoteTarget;
-    setTaskNoteTarget(null); setTaskNoteDirty(false); setTaskNoteUnresolved(false); clearTaskNoteRoute();
-    if (target) requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-day-column-cell="note"] button[data-task-id="${target.taskId}"]`)?.focus());
+  async function closeTaskNote(documentId: string): Promise<void> {
+    const current = taskNoteWindowsRef.current;
+    const target = current.find((windowState) => windowState.documentId === documentId);
+    if (!target) return;
+    if (target.flush && !(await target.flush())) return;
+    const remaining = current.filter((windowState) => windowState.documentId !== documentId);
+    const front = current.reduce<TaskNoteWindowState | null>((candidate, windowState) => !candidate || windowState.stackOrder > candidate.stackOrder ? windowState : candidate, null);
+    const closedFront = front?.documentId === documentId;
+    let next = remaining;
+    if (closedFront && remaining.length > 0) {
+      const nextFront = remaining.reduce((candidate, windowState) => !candidate || windowState.stackOrder > candidate.stackOrder ? windowState : candidate);
+      const request = nextTaskNoteRequest();
+      next = remaining.map((windowState) => windowState.documentId === nextFront.documentId
+        ? { ...windowState, stackOrder: nextTaskNoteStackOrder(remaining), focusRequest: request, restoreRequest: request }
+        : windowState);
+      window.history.replaceState(null, "", documentPermalink(nextFront.documentId));
+    } else if (closedFront) {
+      clearTaskNoteRoute();
+    }
+    updateTaskNoteWindows(() => next);
+    if (closedFront && remaining.length === 0) requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-day-column-cell="note"] button[data-task-id="${target.taskId}"]`)?.focus());
   }
 
   async function login(event: FormEvent<HTMLFormElement>) {
@@ -5693,7 +5838,7 @@ export function App() {
           <button type="button" className={`task-note-trigger${hasDocument ? " has-document" : ""}`} data-note-state={hasDocument ? "present" : "absent"} data-task-id={entry.task.id}
             aria-label={hasDocument ? `${entry.task.title}のノートを開く` : `${entry.task.title}のノートを作成して開く`}
             title={hasDocument ? "ノートを開く" : "ノートを作成して開く"}
-            disabled={pending === "task-note"} onClick={(event) => { event.stopPropagation(); void openTaskNote(entry); }}>
+            disabled={taskNoteOpeningIds[entry.task.id] === true} onClick={(event) => { event.stopPropagation(); void openTaskNote(entry); }}>
             <NoteIcon />
           </button>
         </span>;
@@ -6891,14 +7036,20 @@ export function App() {
       )}
           </main>
         )}
-        {taskNoteTarget && <TaskNoteEditor taskId={taskNoteTarget.taskId} documentId={taskNoteTarget.documentId}
-          taskTitle={taskNoteTarget.taskTitle} onClose={() => void closeTaskNote()} onUnauthorized={transitionToSignedOut}
-          onDirtyChange={setTaskNoteDirty} onUnresolvedChange={setTaskNoteUnresolved}
-          onRegisterFlush={(flush) => { taskNoteFlushRef.current = flush; }}
+        {[...taskNoteWindows].sort((left, right) => left.stackOrder - right.stackOrder).map((windowState, index) => <TaskNoteEditor
+          key={windowState.documentId} taskId={windowState.taskId} documentId={windowState.documentId}
+          taskTitle={windowState.taskTitle} initialGeometry={windowState.initialGeometry} zIndex={20 + index}
+          focusRequest={windowState.focusRequest} restoreRequest={windowState.restoreRequest}
+          outsideClickRequest={windowState.outsideClickRequest}
+          onActivate={() => activateTaskNoteWindow(windowState.documentId)}
+          onClose={() => void closeTaskNote(windowState.documentId)} onUnauthorized={transitionToSignedOut}
+          onDirtyChange={(dirty) => patchTaskNoteWindow(windowState.documentId, { dirty })}
+          onUnresolvedChange={(unresolved) => patchTaskNoteWindow(windowState.documentId, { unresolved })}
+          onRegisterFlush={(flush) => patchTaskNoteWindow(windowState.documentId, { flush })}
           onOpenNewTab={() => {
-            const tab = window.open(documentPermalink(taskNoteTarget.documentId), "_blank", "noopener,noreferrer");
+            const tab = window.open(documentPermalink(windowState.documentId), "_blank", "noopener,noreferrer");
             if (!tab) setError("新しいタブを開けませんでした。ブラウザのポップアップ設定を確認してください。");
-          }} />}
+          }} />)}
       </div>
     </div>
   );

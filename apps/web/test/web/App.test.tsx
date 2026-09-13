@@ -530,6 +530,59 @@ describe("Dogfood Day shell", () => {
     window.history.replaceState(null, "", "/");
   });
 
+  it("keeps one floating Task Note window per Task with independent stacking and outside ownership", async () => {
+    const firstDocumentId = "0199d102-0000-7000-8000-000000000011";
+    const secondDocumentId = "0199d102-0000-7000-8000-000000000012";
+    const multiWindowDay: CurrentTaskChuteDayProjection = {
+      ...twoPlannedDay,
+      sections: [{ ...twoPlannedDay.sections[0]!, entries: [
+        { ...firstEntry, task: { ...firstEntry.task, primary_document_id: firstDocumentId } },
+        { ...secondEntry, task: { ...secondEntry.task, primary_document_id: secondDocumentId } },
+      ] }, twoPlannedDay.sections[1]!],
+    };
+    mocks.loadDay.mockResolvedValue(multiWindowDay);
+    localStorage.setItem("taskchute.web.task-note-window-geometry.v1", JSON.stringify({
+      version: 1, x: 400, y: 40, width: 420, height: 500,
+    }));
+    mocks.loadTaskPrimaryDocumentById.mockImplementation(async (requestedDocumentId: string) => ({
+      document_id: requestedDocumentId, kind: "task_primary" as const,
+      task_id: requestedDocumentId === firstDocumentId ? firstEntry.task.id : secondEntry.task.id,
+      markdown_body: "", revision: 0,
+      created_at: "2026-09-13T00:00:00.000Z", updated_at: "2026-09-13T00:00:00.000Z",
+    }));
+    render(<App />);
+    const dayBoard = await screen.findByRole("region", { name: "DayBoard" });
+    fireEvent.click(within(dayBoard).getByRole("button", { name: "Canonical taskのノートを開く" }));
+    await waitFor(() => expect(document.querySelectorAll(".task-note-peek")).toHaveLength(1));
+    fireEvent.click(within(dayBoard).getByRole("button", { name: "Second taskのノートを開く" }));
+    await waitFor(() => expect(document.querySelectorAll(".task-note-peek")).toHaveLength(2));
+
+    const firstWindow = document.querySelector<HTMLElement>(`[data-task-note-document-id="${firstDocumentId}"]`)!;
+    const secondWindow = document.querySelector<HTMLElement>(`[data-task-note-document-id="${secondDocumentId}"]`)!;
+    expect(firstWindow.style.zIndex).not.toBe(secondWindow.style.zIndex);
+    expect(firstWindow.style.left).not.toBe(secondWindow.style.left);
+    expect(firstWindow.style.top).not.toBe(secondWindow.style.top);
+
+    // A sibling click is inside the Note window group and must not minimize it.
+    fireEvent.pointerDown(firstWindow);
+    expect(firstWindow.querySelector(".task-note-peek-expanded")?.hasAttribute("hidden")).toBe(false);
+    expect(secondWindow.querySelector(".task-note-peek-expanded")?.hasAttribute("hidden")).toBe(false);
+
+    const outside = document.createElement("button");
+    outside.type = "button";
+    document.body.appendChild(outside);
+    fireEvent.pointerDown(outside);
+    await waitFor(() => expect(firstWindow.querySelector(".task-note-peek-expanded")?.hasAttribute("hidden")).toBe(true));
+    expect(secondWindow.querySelector(".task-note-peek-expanded")?.hasAttribute("hidden")).toBe(false);
+    outside.remove();
+
+    // Re-opening the same Task restores its existing minimized window rather
+    // than allocating a duplicate document/window.
+    fireEvent.click(within(dayBoard).getByRole("button", { name: "Canonical taskのノートを開く" }));
+    await waitFor(() => expect(firstWindow.querySelector(".task-note-peek-expanded")?.hasAttribute("hidden")).toBe(false));
+    expect(document.querySelectorAll(".task-note-peek")).toHaveLength(2);
+  });
+
   it("marks the Task Note icon present without changing its SVG geometry", async () => {
     const presentDay: CurrentTaskChuteDayProjection = {
       ...populatedDay,

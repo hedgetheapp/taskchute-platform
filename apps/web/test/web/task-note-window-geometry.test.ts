@@ -3,6 +3,7 @@ import {
   TASK_NOTE_WINDOW_GEOMETRY_STORAGE_KEY,
   TASK_NOTE_WINDOW_MIN_HEIGHT,
   TASK_NOTE_WINDOW_MIN_WIDTH,
+  cascadeTaskNoteWindowGeometry,
   clampTaskNoteMinimizedPosition,
   clampTaskNoteWindowGeometry,
   defaultTaskNoteWindowGeometry,
@@ -43,6 +44,14 @@ describe("task note window geometry", () => {
     const preferred = { x: 1100, y: 850, width: 700, height: 700 };
     expect(clampTaskNoteWindowGeometry(preferred, 800, 500)).toEqual({ x: 84, y: 16, width: 700, height: 468 });
     expect(preferred).toEqual({ x: 1100, y: 850, width: 700, height: 700 });
+  });
+
+  it("creates a deterministic visible cascade from the shared preference seed", () => {
+    expect(cascadeTaskNoteWindowGeometry(base, viewport.width, viewport.height, 0)).toEqual(base);
+    expect(cascadeTaskNoteWindowGeometry(base, viewport.width, viewport.height, 2)).toEqual({
+      x: 652, y: 148, width: 420, height: 500,
+    });
+    expect(cascadeTaskNoteWindowGeometry(base, viewport.width, viewport.height, 99)).toMatchObject({ x: 16, y: 384 });
   });
 
   it("uses the current safe viewport bounds for transient maximized presentation", () => {

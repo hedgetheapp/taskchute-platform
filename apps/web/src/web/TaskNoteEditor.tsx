@@ -30,6 +30,12 @@ export interface TaskNoteEditorProps {
   taskId: string;
   documentId: string;
   taskTitle: string;
+  initialGeometry?: TaskNoteWindowGeometry;
+  zIndex?: number;
+  focusRequest?: number;
+  restoreRequest?: number;
+  outsideClickRequest?: number;
+  onActivate?: () => void;
   onClose: () => void;
   onUnauthorized: () => void;
   onDirtyChange: (dirty: boolean) => void;
@@ -46,7 +52,8 @@ function isResolvedUpdate(request: UpdateTaskPrimaryDocumentRequest, document: T
 }
 
 export function TaskNoteEditor({
-  taskId, documentId, taskTitle, onClose, onUnauthorized, onDirtyChange, onUnresolvedChange, onRegisterFlush, onOpenNewTab,
+  taskId, documentId, taskTitle, initialGeometry, zIndex = 12, focusRequest = 0, restoreRequest = 0,
+  outsideClickRequest = 0, onActivate, onClose, onUnauthorized, onDirtyChange, onUnresolvedChange, onRegisterFlush, onOpenNewTab,
 }: TaskNoteEditorProps) {
   const [document, setDocument] = useState<TaskPrimaryDocument | null>(null);
   const [draftBody, setDraftBody] = useState("");
@@ -56,7 +63,8 @@ export function TaskNoteEditor({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [unresolvedRequest, setUnresolvedRequest] = useState<UpdateTaskPrimaryDocumentRequest | null>(null);
-  const [preferredGeometry, setPreferredGeometry] = useState<TaskNoteWindowGeometry>(() => readTaskNoteWindowGeometry(window.innerWidth, window.innerHeight));
+  const [preferredGeometry, setPreferredGeometry] = useState<TaskNoteWindowGeometry>(() => initialGeometry
+    ?? readTaskNoteWindowGeometry(window.innerWidth, window.innerHeight));
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
   const [viewportHeight, setViewportHeight] = useState(() => window.innerHeight);
   const [isMoving, setIsMoving] = useState(false);
@@ -78,6 +86,10 @@ export function TaskNoteEditor({
   const dragGestureRef = useRef<{ pointerId: number; startX: number; startY: number; startGeometry: TaskNoteWindowGeometry; minimized: boolean; moved: boolean } | null>(null);
   const suppressMinimizedClickRef = useRef(false);
   const resizeGestureRef = useRef<{ pointerId: number; startX: number; startY: number; startGeometry: TaskNoteWindowGeometry; direction: TaskNoteWindowResizeDirection } | null>(null);
+  const onDirtyChangeRef = useRef(onDirtyChange);
+  const onUnresolvedChangeRef = useRef(onUnresolvedChange);
+  const onRegisterFlushRef = useRef(onRegisterFlush);
+  const handledOutsideClickRequestRef = useRef(0);
 
   const dirty = draftBody !== baselineBody;
   const unresolved = unresolvedRequest !== null;
@@ -87,6 +99,9 @@ export function TaskNoteEditor({
   unresolvedRef.current = unresolvedRequest;
   savingRef.current = saving;
   preferredGeometryRef.current = preferredGeometry;
+  onDirtyChangeRef.current = onDirtyChange;
+  onUnresolvedChangeRef.current = onUnresolvedChange;
+  onRegisterFlushRef.current = onRegisterFlush;
 
   const mobilePeek = isTaskNoteWindowMobile(viewportWidth);
   const renderedGeometry = !mobilePeek && isMaximized
@@ -232,6 +247,24 @@ export function TaskNoteEditor({
     window.requestAnimationFrame(() => titleBarRef.current?.focus());
   }
 
+  useEffect(() => {
+    if (restoreRequest === 0) return;
+    setIsMinimized(false);
+    window.requestAnimationFrame(() => titleBarRef.current?.focus());
+  }, [restoreRequest]);
+
+  useEffect(() => {
+    if (focusRequest === 0) return;
+    window.requestAnimationFrame(() => (isMinimized ? minimizedBarRef.current : titleBarRef.current)?.focus());
+  }, [focusRequest, isMinimized]);
+
+  useEffect(() => {
+    if (outsideClickRequest === 0 || handledOutsideClickRequestRef.current === outsideClickRequest || mobilePeek) return;
+    handledOutsideClickRequestRef.current = outsideClickRequest;
+    if (isMinimized) return;
+    minimize({ focusCompactControl: false });
+  }, [outsideClickRequest, mobilePeek]);
+
   function toggleMaximized(): void {
     if (mobilePeek) return;
     setIsMaximized((current) => !current);
@@ -251,8 +284,8 @@ export function TaskNoteEditor({
     </svg>;
   }
 
-  useEffect(() => { onDirtyChange(dirty); }, [dirty, onDirtyChange]);
-  useEffect(() => { onUnresolvedChange(unresolved); }, [onUnresolvedChange, unresolved]);
+  useEffect(() => { onDirtyChangeRef.current(dirty); }, [dirty]);
+  useEffect(() => { onUnresolvedChangeRef.current(unresolved); }, [unresolved]);
 
   const loadCanonical = useCallback(async () => {
     setLoading(true);
@@ -333,9 +366,9 @@ export function TaskNoteEditor({
   flushRef.current = flush;
 
   useEffect(() => {
-    onRegisterFlush(() => flushRef.current());
-    return () => onRegisterFlush(null);
-  }, [onRegisterFlush]);
+    onRegisterFlushRef.current(() => flushRef.current());
+    return () => onRegisterFlushRef.current(null);
+  }, []);
 
   useEffect(() => () => {
     dragGestureRef.current = null;
@@ -355,17 +388,19 @@ export function TaskNoteEditor({
     };
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
-  }, [dirty, saving, unresolved]);
+  }, [dirty, saving, unresolved, onActivate]);
 
   useEffect(() => {
-    if (mobilePeek || isMinimized) return;
+    // App owns outside-click behavior when multiple Task Note windows are
+    // mounted. Keep the single-editor fallback for direct consumers/tests.
+    if (onActivate || mobilePeek || isMinimized) return;
     const onPointerDown = (event: PointerEvent) => {
       if (windowRef.current?.contains(event.target as Node | null)) return;
       minimize({ focusCompactControl: false });
     };
     globalThis.document.addEventListener("pointerdown", onPointerDown, true);
     return () => globalThis.document.removeEventListener("pointerdown", onPointerDown, true);
-  }, [isMinimized, mobilePeek]);
+  }, [isMinimized, mobilePeek, onActivate]);
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key.toLowerCase() === "s" && (event.ctrlKey || event.metaKey) && !event.repeat) {
@@ -400,14 +435,18 @@ export function TaskNoteEditor({
     ref={windowRef}
     className={`task-note-peek${isMoving ? " is-moving" : ""}${isResizing ? " is-resizing" : ""}${isMinimized ? " is-minimized" : ""}`}
     aria-label={`${taskTitle}のノート`}
+    data-task-note-task-id={taskId}
+    data-task-note-document-id={documentId}
     data-task-note-editor={isMinimized ? undefined : "true"}
     data-task-note-minimized={isMinimized ? "true" : undefined}
     data-task-note-peek-width={mobilePeek ? "full" : renderedGeometry.width}
     data-task-note-window-state={isMaximized && !mobilePeek ? "maximized" : "windowed"}
     data-task-note-window-geometry={mobilePeek ? "mobile" : `${renderedGeometry.x},${renderedGeometry.y},${renderedGeometry.width},${renderedGeometry.height}`}
-    style={mobilePeek ? undefined : isMinimized
-      ? { left: `${minimizedPosition.x}px`, top: `${minimizedPosition.y}px`, width: `${compactWidth}px`, height: `${TASK_NOTE_WINDOW_COMPACT_HEIGHT}px` }
-      : { left: `${renderedGeometry.x}px`, top: `${renderedGeometry.y}px`, width: `${renderedGeometry.width}px`, height: `${renderedGeometry.height}px` }}
+    onPointerDownCapture={onActivate}
+    onFocusCapture={onActivate}
+    style={mobilePeek ? { zIndex } : isMinimized
+      ? { zIndex, left: `${minimizedPosition.x}px`, top: `${minimizedPosition.y}px`, width: `${compactWidth}px`, height: `${TASK_NOTE_WINDOW_COMPACT_HEIGHT}px` }
+      : { zIndex, left: `${renderedGeometry.x}px`, top: `${renderedGeometry.y}px`, width: `${renderedGeometry.width}px`, height: `${renderedGeometry.height}px` }}
   >
     <div className="task-note-peek-expanded" hidden={isMinimized}>
       {!mobilePeek && !isMaximized && resizeDirections.map(renderResizeHandle)}
