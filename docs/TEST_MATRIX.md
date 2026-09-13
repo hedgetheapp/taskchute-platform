@@ -2685,3 +2685,19 @@ D-100 profile: `STANDARD (tooling/governance override)`. Persistent nonprod depl
 | D101-BROWSER-V3 | Persistent v3 localStorage fixture | v3 fixture read through actual deployed browser and normalized to v4 | Connector page evaluation is read-only; automated `day-columns` v3→v4 test `8 / 8` is PASS, direct persistent fixture injection not performed | NOT_VERIFIED |
 | D101-DB | APP/AUTH read-only integrity | quick/FK, Document and relation constraints, duplicate/orphan checks, active execution, transient guard residue, no-write probes | APP/AUTH remote D1 probes; quick `ok`, FK empty, all successful probes `rows_written=0`, invalid/duplicate/orphan/guard counts `0` | PASS |
 | D101-SAFETY | Scope boundary | no AUTH migration, dependency, production, credentials, bootstrap, restore, unrelated destructive cleanup, branch/PR/merge/tag/Release | source review and operation log | NOT_RUN / NOT_REQUIRED |
+
+### D-101 UI refinement — unified Markdown editor and resizable Task Note peek
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D101-UI-ICON | Today Note glyph | Absent/present Task Note states use the same reusable inline SVG geometry, currentColor stroke, aria-hidden semantics, and explicit state attribute | App focused test plus authenticated Today Note column visual inspection | PASS |
+| D101-UI-EDITOR | Shared editor | standalone Notes and Task Note use the same Markdown source editor, line-number rail, scroll-sync, and versioned line-number preference | shared-editor focused test `4 / 4`; authenticated Notes/Task Note screens | PASS |
+| D101-UI-RESIZE | Peek resize | left-edge pointer drag and separator keyboard controls resize the right-side peek without changing save state or Day layout | TaskNoteEditor focused tests; real pointer drag `524px → 654px`; Arrow/Shift/Home/End coverage | PASS |
+| D101-UI-PERSIST | Width preference | valid width envelope persists across same-tab reload and fresh authenticated tab; malformed/viewport-clamped values use safe defaults | width helper tests plus same-session browser reload/fresh-tab observation at approximately `1380 × 910` | PASS |
+| D101-UI-MOBILE | Responsive boundary | mobile peek is full-width and does not render the resize handle | width helper/CSS contract tests and source review | PASS |
+| D101-UI-HINT | Keyboard ownership | plain Hint `F` and local resize keys remain inside the Task Note editor owner | `HitAHint.test.tsx` local-owner focused tests; real focused peek check | PASS |
+| D101-UI-NOSAVE | Mutation boundary | resizing and line-number preference changes do not issue Task Note Update or alter body/title/revision | TaskNoteEditor focused assertions; browser save state remained `保存済み` | PASS |
+| D101-UI-REG | Full Web/static regression | existing D-101 and affected Web behavior remains green | focused impacted Web `333 / 333`; full Web `10 files / 382`; typecheck/build/exact nonprod build/guard/dry-run/diff-check | PASS |
+| D101-UI-NONPROD | Persistent nonprod | exact pushed main deploys to canonical nonprod Worker with protected API boundary | Worker `cc826428-6e8c-4bae-b723-bcf65ee36ed0`; root `200`; Documents API `401`; generated vars/bindings verified | PASS |
+| D101-UI-CONSOLE | Browser console | no warning/error emitted during refinement verification | existing authenticated tab `dev.logs()` => `[]` | PASS |
+| D101-UI-SAFETY | Scope | no Worker/API/schema/migration/dependency change; no production, restore, credential, bootstrap, destructive cleanup, or Release | source review and operation record | NOT_REQUIRED / NOT_RUN |
