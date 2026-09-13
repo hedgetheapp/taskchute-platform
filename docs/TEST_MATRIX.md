@@ -2701,3 +2701,22 @@ D-100 profile: `STANDARD (tooling/governance override)`. Persistent nonprod depl
 | D101-UI-NONPROD | Persistent nonprod | exact pushed main deploys to canonical nonprod Worker with protected API boundary | Worker `cc826428-6e8c-4bae-b723-bcf65ee36ed0`; root `200`; Documents API `401`; generated vars/bindings verified | PASS |
 | D101-UI-CONSOLE | Browser console | no warning/error emitted during refinement verification | existing authenticated tab `dev.logs()` => `[]` | PASS |
 | D101-UI-SAFETY | Scope | no Worker/API/schema/migration/dependency change; no production, restore, credential, bootstrap, destructive cleanup, or Release | source review and operation record | NOT_REQUIRED / NOT_RUN |
+
+### D-101 UI refinement 2 — floating Task Note window
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D101-UI2-GEOMETRY | Geometry authority | flat versioned `x/y/width/height` preference, legacy width fallback, preferred/rendered separation, viewport clamp, no Note identity/body/save-state persistence | `task-note-window-geometry.test.ts` plus source review | PASS |
+| D101-UI2-DRAG | Pointer move | blank title/status bar uses real pointer drag, controls remain actions, geometry stays reachable | TaskNoteEditor tests; real CUA pointer drag in authenticated nonprod tab | PASS |
+| D101-UI2-RESIZE | Eight-way resize | n/s/e/w and four corners, minimum `360 × 320`, pointer cancel, keyboard Arrow/Shift/Home/End | geometry tests `15`; TaskNoteEditor focused coverage; browser real right/top edge resize; 8 handles observed | PASS |
+| D101-UI2-MIN | Minimize/restore | compact bar preserves expanded size and does not save minimized state; no Note write | TaskNoteEditor focused coverage; real nonprod minimize → restore and `保存済み` state | PASS |
+| D101-UI2-HINT | Keyboard ownership | expanded Note blocks global Hint; minimized Note blocks only while minimized bar owns focus | Hit-a-Hint focused coverage; real minimized outside-focus `F` activation and bar-focus suppression | PASS |
+| D101-UI2-PERSIST | Browser-local persistence | same-tab reload and fresh authenticated tab restore saved geometry, with smaller viewport clamp | real existing/fresh authenticated tabs; fresh rendered `576,16,577,688` after reload | PASS |
+| D101-UI2-RESPONSIVE | Mobile boundary | existing mobile full-sheet behavior remains; desktop preference is not overwritten by responsive clamp | geometry tests and CSS/source review | PASS |
+| D101-UI2-NOPREVIEW | Explicit non-goal | no Preview/プレビュー control, state, or dependency | deployed browser text query returned `0 / 0`; source review | PASS |
+| D101-UI2-NOSAVE | Mutation boundary | drag, resize, minimize, restore, line-number preference do not update Document | focused assertions; browser Note remained `保存済み` and body was not edited | PASS |
+| D101-UI2-REG | Web regression/static | geometry/TaskNoteEditor/Hit-a-Hint, full Web, typecheck, builds, guard, dry-run, diff-check | focused `64 / 64`; full Web `11 files / 404`; required static gates | PASS |
+| D101-UI2-NONPROD | Exact deployment | canonical nonprod Worker and vars/bindings after flat-envelope corrective | Worker `29836067-0b54-49fb-b0e2-bb7297a1a901`; generated config/guard | PASS |
+| D101-UI2-CONSOLE | Browser console | no warning/error during UI verification | authenticated fresh tab `dev.logs()` => `[]` | PASS |
+| D101-UI2-WORKER | Server scope | no Worker/API/schema/migration/dependency change | source-scope review | NOT_REQUIRED |
+| D101-UI2-SAFETY | Safety boundary | no production, credentials, bootstrap, restore, destructive cleanup, branch/PR/merge/tag/Release | operation record | NOT_RUN |
