@@ -55,6 +55,20 @@ export function isTaskNoteWindowMobile(viewportWidth: number): boolean {
   return width <= TASK_NOTE_PEEK_MOBILE_BREAKPOINT;
 }
 
+export function maximizedTaskNoteWindowGeometry(
+  viewportWidth: number,
+  viewportHeight: number,
+): TaskNoteWindowGeometry {
+  const width = finiteDimension(viewportWidth, 1024);
+  const height = finiteDimension(viewportHeight, 768);
+  return {
+    x: TASK_NOTE_WINDOW_SAFE_GUTTER,
+    y: TASK_NOTE_WINDOW_SAFE_GUTTER,
+    width: Math.max(1, width - TASK_NOTE_WINDOW_SAFE_GUTTER * 2),
+    height: Math.max(1, height - TASK_NOTE_WINDOW_SAFE_GUTTER * 2),
+  };
+}
+
 export function defaultTaskNoteWindowGeometry(
   viewportWidth: number,
   viewportHeight: number,

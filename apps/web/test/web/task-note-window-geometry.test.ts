@@ -8,6 +8,7 @@ import {
   defaultTaskNoteWindowGeometry,
   isTaskNoteWindowGeometry,
   isTaskNoteWindowMobile,
+  maximizedTaskNoteWindowGeometry,
   moveTaskNoteMinimizedPosition,
   moveTaskNoteWindowGeometry,
   readTaskNoteWindowGeometry,
@@ -42,6 +43,11 @@ describe("task note window geometry", () => {
     const preferred = { x: 1100, y: 850, width: 700, height: 700 };
     expect(clampTaskNoteWindowGeometry(preferred, 800, 500)).toEqual({ x: 84, y: 16, width: 700, height: 468 });
     expect(preferred).toEqual({ x: 1100, y: 850, width: 700, height: 700 });
+  });
+
+  it("uses the current safe viewport bounds for transient maximized presentation", () => {
+    expect(maximizedTaskNoteWindowGeometry(1400, 900)).toEqual({ x: 16, y: 16, width: 1368, height: 868 });
+    expect(maximizedTaskNoteWindowGeometry(720, 400)).toEqual({ x: 16, y: 16, width: 688, height: 368 });
   });
 
   it("moves in all directions and keeps the window reachable", () => {

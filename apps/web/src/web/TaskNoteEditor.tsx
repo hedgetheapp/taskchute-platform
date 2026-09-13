@@ -13,6 +13,7 @@ import {
   clampTaskNoteMinimizedPosition,
   clampTaskNoteWindowGeometry,
   isTaskNoteWindowMobile,
+  maximizedTaskNoteWindowGeometry,
   moveTaskNoteMinimizedPosition,
   moveTaskNoteWindowGeometry,
   persistTaskNoteWindowGeometry,
@@ -61,6 +62,7 @@ export function TaskNoteEditor({
   const [isMoving, setIsMoving] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
+  const [isMaximized, setIsMaximized] = useState(false);
   const documentRef = useRef<TaskPrimaryDocument | null>(null);
   const draftRef = useRef("");
   const baselineRef = useRef("");
@@ -87,7 +89,9 @@ export function TaskNoteEditor({
   preferredGeometryRef.current = preferredGeometry;
 
   const mobilePeek = isTaskNoteWindowMobile(viewportWidth);
-  const renderedGeometry = clampTaskNoteWindowGeometry(preferredGeometry, viewportWidth, viewportHeight);
+  const renderedGeometry = !mobilePeek && isMaximized
+    ? maximizedTaskNoteWindowGeometry(viewportWidth, viewportHeight)
+    : clampTaskNoteWindowGeometry(preferredGeometry, viewportWidth, viewportHeight);
   const minimizedPosition = clampTaskNoteMinimizedPosition(preferredGeometry, viewportWidth, viewportHeight);
   const compactWidth = Math.min(TASK_NOTE_WINDOW_COMPACT_WIDTH, Math.max(1, viewportWidth - 32));
 
@@ -111,7 +115,7 @@ export function TaskNoteEditor({
   }
 
   function handleDragPointerDown(event: React.PointerEvent<HTMLElement>): void {
-    if (mobilePeek || event.button !== 0 || isDragExcludedTarget(event.target)) return;
+    if (mobilePeek || isMaximized || event.button !== 0 || isDragExcludedTarget(event.target)) return;
     event.preventDefault();
     suppressMinimizedClickRef.current = false;
     dragGestureRef.current = {
@@ -125,7 +129,7 @@ export function TaskNoteEditor({
 
   function handleDragPointerMove(event: React.PointerEvent<HTMLElement>): void {
     const gesture = dragGestureRef.current;
-    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    if (!gesture || gesture.pointerId !== event.pointerId || isMaximized) return;
     event.preventDefault();
     const deltaX = event.clientX - gesture.startX;
     const deltaY = event.clientY - gesture.startY;
@@ -162,7 +166,7 @@ export function TaskNoteEditor({
   }
 
   function handleWindowKeyDown(event: React.KeyboardEvent<HTMLElement>): void {
-    if (mobilePeek || !event.altKey || event.ctrlKey || event.metaKey) return;
+    if (mobilePeek || isMaximized || !event.altKey || event.ctrlKey || event.metaKey) return;
     if (!(event.key === "ArrowLeft" || event.key === "ArrowRight" || event.key === "ArrowUp" || event.key === "ArrowDown")) return;
     event.preventDefault();
     const step = event.shiftKey ? 80 : 24;
@@ -172,7 +176,7 @@ export function TaskNoteEditor({
   }
 
   function handleResizePointerDown(direction: TaskNoteWindowResizeDirection, event: React.PointerEvent<HTMLDivElement>): void {
-    if (mobilePeek || event.button !== 0) return;
+    if (mobilePeek || isMaximized || event.button !== 0) return;
     event.preventDefault();
     resizeGestureRef.current = {
       pointerId: event.pointerId, startX: event.clientX, startY: event.clientY,
@@ -184,7 +188,7 @@ export function TaskNoteEditor({
 
   function handleResizePointerMove(event: React.PointerEvent<HTMLDivElement>): void {
     const gesture = resizeGestureRef.current;
-    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    if (!gesture || gesture.pointerId !== event.pointerId || isMaximized) return;
     event.preventDefault();
     applyGeometry(resizeTaskNoteWindowGeometry(gesture.startGeometry, viewportWidth, viewportHeight, gesture.direction,
       event.clientX - gesture.startX, event.clientY - gesture.startY));
@@ -200,7 +204,7 @@ export function TaskNoteEditor({
   }
 
   function handleResizeKeyDown(direction: TaskNoteWindowResizeDirection, event: React.KeyboardEvent<HTMLDivElement>): void {
-    if (mobilePeek) return;
+    if (mobilePeek || isMaximized) return;
     const next = resizeTaskNoteWindowByKey(preferredGeometryRef.current, viewportWidth, viewportHeight, direction, event.key, event.shiftKey);
     if (!next) return;
     event.preventDefault();
@@ -218,6 +222,25 @@ export function TaskNoteEditor({
   function restore(): void {
     setIsMinimized(false);
     window.requestAnimationFrame(() => titleBarRef.current?.focus());
+  }
+
+  function toggleMaximized(): void {
+    if (mobilePeek) return;
+    setIsMaximized((current) => !current);
+  }
+
+  function renderWindowControlIcon(kind: "minimize" | "maximize" | "restore" | "close") {
+    if (kind === "minimize") return <span aria-hidden="true" className="task-note-window-control-glyph">-</span>;
+    if (kind === "close") return <span aria-hidden="true" className="task-note-window-control-glyph">×</span>;
+    if (kind === "maximize") {
+      return <svg aria-hidden="true" className="task-note-window-control-icon" viewBox="0 0 16 16">
+        <rect x="3.5" y="3.5" width="9" height="9" fill="none" stroke="currentColor" strokeWidth="1.4" />
+      </svg>;
+    }
+    return <svg aria-hidden="true" className="task-note-window-control-icon" viewBox="0 0 16 16">
+      <rect x="5.5" y="2.5" width="7.5" height="7.5" fill="none" stroke="currentColor" strokeWidth="1.2" />
+      <rect x="2.5" y="5.5" width="7.5" height="7.5" fill="none" stroke="currentColor" strokeWidth="1.2" />
+    </svg>;
   }
 
   useEffect(() => { onDirtyChange(dirty); }, [dirty, onDirtyChange]);
@@ -372,13 +395,14 @@ export function TaskNoteEditor({
     data-task-note-editor={isMinimized ? undefined : "true"}
     data-task-note-minimized={isMinimized ? "true" : undefined}
     data-task-note-peek-width={mobilePeek ? "full" : renderedGeometry.width}
+    data-task-note-window-state={isMaximized && !mobilePeek ? "maximized" : "windowed"}
     data-task-note-window-geometry={mobilePeek ? "mobile" : `${renderedGeometry.x},${renderedGeometry.y},${renderedGeometry.width},${renderedGeometry.height}`}
     style={mobilePeek ? undefined : isMinimized
       ? { left: `${minimizedPosition.x}px`, top: `${minimizedPosition.y}px`, width: `${compactWidth}px`, height: `${TASK_NOTE_WINDOW_COMPACT_HEIGHT}px` }
       : { left: `${renderedGeometry.x}px`, top: `${renderedGeometry.y}px`, width: `${renderedGeometry.width}px`, height: `${renderedGeometry.height}px` }}
   >
     <div className="task-note-peek-expanded" hidden={isMinimized}>
-      {!mobilePeek && resizeDirections.map(renderResizeHandle)}
+      {!mobilePeek && !isMaximized && resizeDirections.map(renderResizeHandle)}
       <header ref={titleBarRef} className="task-note-peek-header" tabIndex={0} aria-label="ノートウィンドウを移動"
         onKeyDown={handleWindowKeyDown} onPointerDown={handleDragPointerDown} onPointerMove={handleDragPointerMove}
         onPointerUp={handleDragPointerEnd} onPointerCancel={handleDragPointerEnd}>
@@ -394,8 +418,17 @@ export function TaskNoteEditor({
             .catch(() => setNotice("リンクのコピーに失敗しました。"));
           }}>リンクをコピー</button>
           <button type="button" className="secondary" onClick={onOpenNewTab}>新しいタブ</button>
-          <button type="button" className="secondary" aria-label="ノートを最小化" onClick={() => minimize()}>—</button>
-          <button type="button" className="secondary" aria-label="Task Noteを閉じる" onClick={onClose}>閉じる</button>
+          <div className="task-note-window-controls" aria-label="ノートウィンドウ操作">
+            <button type="button" className="task-note-window-control" aria-label="ノートを最小化" title="ノートを最小化" onClick={() => minimize()}>
+              {renderWindowControlIcon("minimize")}
+            </button>
+            {!mobilePeek && <button type="button" className="task-note-window-control" aria-label={isMaximized ? "ノートを元のサイズに戻す" : "ノートを最大化"} title={isMaximized ? "ノートを元のサイズに戻す" : "ノートを最大化"} onClick={toggleMaximized}>
+              {renderWindowControlIcon(isMaximized ? "restore" : "maximize")}
+            </button>}
+            <button type="button" className="task-note-window-control is-close" aria-label="ノートを閉じる" title="ノートを閉じる" onClick={onClose}>
+              {renderWindowControlIcon("close")}
+            </button>
+          </div>
         </div>
       </header>
       {loading ? <p className="muted">読み込み中…</p> : <div className="task-note-peek-content">
@@ -412,9 +445,13 @@ export function TaskNoteEditor({
         {error && <p className="error" role="alert">{error}</p>}
       </div>}
     </div>
-    <div className="task-note-peek-minimized-bar" hidden={!isMinimized} tabIndex={0} aria-label="ノートを開く"
+    <div className="task-note-peek-minimized-bar" hidden={!isMinimized} tabIndex={0} aria-label={`${taskTitle}のノートを開く`}
       onKeyDown={handleWindowKeyDown} onPointerDown={handleDragPointerDown} onPointerMove={handleDragPointerMove}
       onPointerUp={handleDragPointerEnd} onPointerCancel={handleDragPointerEnd} onClick={handleMinimizedBarClick}>
+      <div className="task-note-peek-minimized-main">
+        <NoteIcon />
+        <span className="task-note-peek-minimized-title" title={taskTitle}>{taskTitle}</span>
+      </div>
       <div className="task-note-peek-actions">
         <button ref={minimizedRestoreRef} type="button" className="secondary" aria-label="ノートを開く" title="ノートを開く" onClick={restore}><NoteIcon /></button>
         <button type="button" className="secondary" aria-label="ノートを閉じる" title="ノートを閉じる" onClick={onClose}>×</button>

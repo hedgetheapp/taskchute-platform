@@ -96,8 +96,74 @@ describe("TaskNoteEditor", () => {
     expect(screen.queryByText("保存済み")).toBeNull();
     expect(screen.queryByText("未保存")).toBeNull();
     expect(screen.queryByText("保存中…")).toBeNull();
-    expect(screen.getAllByRole("button", { name: "Task Noteを閉じる" })).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "ノートを閉じる" })).toBeTruthy();
     expect(document.querySelectorAll(".task-note-peek-footer")).toHaveLength(0);
+  });
+
+  it("renders compact desktop window controls in the approved order", async () => {
+    renderEditor();
+    await screen.findByRole("textbox", { name: "Markdown本文" });
+    const controls = Array.from(document.querySelectorAll<HTMLButtonElement>(".task-note-window-controls button"));
+    expect(controls.map((control) => control.getAttribute("aria-label"))).toEqual([
+      "ノートを最小化", "ノートを最大化", "ノートを閉じる",
+    ]);
+    expect(controls.map((control) => control.textContent)).toEqual(["-", "", "×"]);
+    expect(screen.queryByText("閉じる")).toBeNull();
+    expect(screen.getByRole("button", { name: "リンクをコピー" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "新しいタブ" })).toBeTruthy();
+  });
+
+  it("maximizes transiently without changing preferred geometry and restores it", async () => {
+    localStorage.setItem(TASK_NOTE_WINDOW_GEOMETRY_STORAGE_KEY, JSON.stringify({
+      version: 1, x: 400, y: 40, width: 420, height: 500,
+    }));
+    renderEditor();
+    await screen.findByRole("textbox", { name: "Markdown本文" });
+    const peek = document.querySelector<HTMLElement>(".task-note-peek")!;
+    const stored = localStorage.getItem(TASK_NOTE_WINDOW_GEOMETRY_STORAGE_KEY);
+
+    fireEvent.click(screen.getByRole("button", { name: "ノートを最大化" }));
+    expect(peek.dataset.taskNoteWindowState).toBe("maximized");
+    expect(peek.dataset.taskNoteWindowGeometry).toBe(`16,16,${window.innerWidth - 32},${window.innerHeight - 32}`);
+    expect(document.querySelectorAll(".task-note-window-resize-handle")).toHaveLength(0);
+    expect(localStorage.getItem(TASK_NOTE_WINDOW_GEOMETRY_STORAGE_KEY)).toBe(stored);
+    expect(screen.getByRole("button", { name: "ノートを元のサイズに戻す" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "ノートを元のサイズに戻す" }));
+    expect(peek.dataset.taskNoteWindowState).toBe("windowed");
+    expect(peek.dataset.taskNoteWindowGeometry).toBe("400,40,420,500");
+    expect(localStorage.getItem(TASK_NOTE_WINDOW_GEOMETRY_STORAGE_KEY)).toBe(stored);
+    expect(document.querySelectorAll(".task-note-window-resize-handle")).toHaveLength(8);
+  });
+
+  it("tracks viewport-safe bounds while maximized and ignores geometry input", async () => {
+    const originalWidth = window.innerWidth;
+    const originalHeight = window.innerHeight;
+    localStorage.setItem(TASK_NOTE_WINDOW_GEOMETRY_STORAGE_KEY, JSON.stringify({
+      version: 1, x: 400, y: 40, width: 420, height: 500,
+    }));
+    renderEditor();
+    await screen.findByRole("textbox", { name: "Markdown本文" });
+    const peek = document.querySelector<HTMLElement>(".task-note-peek")!;
+    const header = screen.getByRole("banner", { name: "ノートウィンドウを移動" });
+    const stored = localStorage.getItem(TASK_NOTE_WINDOW_GEOMETRY_STORAGE_KEY);
+    fireEvent.click(screen.getByRole("button", { name: "ノートを最大化" }));
+
+    dispatchPointer(header, "pointerdown", { clientX: 700, clientY: 100 });
+    dispatchPointer(header, "pointermove", { clientX: 900, clientY: 300 });
+    dispatchPointer(header, "pointerup", { clientX: 900, clientY: 300 });
+    fireEvent.keyDown(header, { key: "ArrowRight", altKey: true });
+    expect(peek.dataset.taskNoteWindowGeometry).toBe(`16,16,${window.innerWidth - 32},${window.innerHeight - 32}`);
+    expect(localStorage.getItem(TASK_NOTE_WINDOW_GEOMETRY_STORAGE_KEY)).toBe(stored);
+
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 1200 });
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 900 });
+    fireEvent(window, new Event("resize"));
+    await waitFor(() => expect(peek.dataset.taskNoteWindowGeometry).toBe("16,16,1168,868"));
+    expect(localStorage.getItem(TASK_NOTE_WINDOW_GEOMETRY_STORAGE_KEY)).toBe(stored);
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: originalWidth });
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: originalHeight });
+    fireEvent(window, new Event("resize"));
   });
 
   it("renders the shared Markdown source editor and resizes the peek without saving", async () => {
@@ -195,7 +261,8 @@ describe("TaskNoteEditor", () => {
     expect(mocks.updateTaskPrimaryDocument).not.toHaveBeenCalled();
 
     const bar = document.querySelector<HTMLElement>(".task-note-peek-minimized-bar")!;
-    expect(bar.getAttribute("aria-label")).toBe("ノートを開く");
+    expect(bar.getAttribute("aria-label")).toBe("Task Aのノートを開く");
+    expect(bar.querySelector(".task-note-peek-minimized-title")?.textContent).toBe("Task A");
     expect(screen.queryByRole("button", { name: "リンクをコピー" })).toBeNull();
     expect(screen.queryByRole("button", { name: "新しいタブ" })).toBeNull();
     expect(screen.queryByRole("button", { name: "保存" })).toBeNull();
@@ -257,6 +324,20 @@ describe("TaskNoteEditor", () => {
     fireEvent.click(bar);
     await waitFor(() => expect(document.querySelector("[data-task-note-minimized='true']")).toBeNull());
     expect(screen.getByRole("button", { name: "ノートを最小化" })).toBeTruthy();
+  });
+
+  it("keeps a long task title in a flexible minimized title element", async () => {
+    render(<TaskNoteEditor
+      taskId={taskId} documentId={documentId} taskTitle="A very long Task Note title that should truncate safely"
+      onClose={vi.fn()} onUnauthorized={vi.fn()} onDirtyChange={vi.fn()}
+      onUnresolvedChange={vi.fn()} onRegisterFlush={vi.fn()} onOpenNewTab={vi.fn()}
+    />);
+    await screen.findByRole("textbox", { name: "Markdown本文" });
+    fireEvent.click(screen.getByRole("button", { name: "ノートを最小化" }));
+    const title = document.querySelector<HTMLElement>(".task-note-peek-minimized-title")!;
+    expect(title.textContent).toBe("A very long Task Note title that should truncate safely");
+    expect(title.title).toBe(title.textContent);
+    expect(screen.getByRole("button", { name: "ノートを閉じる" }).textContent).toBe("×");
   });
 
   it("keeps the Task Note Markdown-only without a preview surface", async () => {
