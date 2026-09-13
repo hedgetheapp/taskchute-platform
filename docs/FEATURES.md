@@ -65,7 +65,7 @@ Status values: Planned / In design / Implemented / Verified / Withdrawn (histori
 | Notes/Documents | In design | Markdown-native + shared Document foundation。standalone Document / general noteをfirst-class capabilityとして扱い、Task / Project等のDocumentと共通foundationを利用 |
 | Standalone Document / general note | In design | Task / Project等に従属しない独立Noteを作成可能とするApproved direction。exact lifecycle / organization / search UXは未決 |
 | Document links / backlinks | In design | Document同士をlinkし、backlinkから逆方向に辿れるcapability。exact syntax / rename semantics / indexing / Graph Viewは未決 |
-| Project Primary Document | In design | logical 1 Primary Document。physical lazy creation可 |
+| Project Primary Document | Implemented / Verified | D-103 Approved。owner-scoped `project_primary` relation、Project title authority（Document title NULL）、lazy Ensure、Markdown body Update/CAS/exact replay、Project Board/Notes/Today affordance、generic permalink resolver、archive retention、Project hard deleteのatomic relation/document cleanupを実装。APP `0032_project_primary_documents.sql` applied to persistent nonprod、Worker `153e10dc-585a-427b-94e3-191325d29caa`、focused `8 / 8`、full Worker/D1 `34 files / 301 tests`、full Web `11 files / 418 tests`、authenticated existing/fresh-tab browser and console `[]` PASS。Task/Entry/Execution/history、AUTH、production、restore、Released NO。 |
 | Task Primary Document | In design | logical 1 Primary Document。Routine共通の長期noteにも利用 |
 | RoutineOccurrence Document | In design | optional日別Document。interrupt continuationで複数Entryになっても同じOccurrence文脈を共有可能 |
 | Day-specific task context | In design | D-027 / D-034 Approved。Routine occurrenceではTask名 / Project / Mode / Section / 見積 / 開始予定 / day-specific Note等を項目単位override可能。past contextはretroactiveに変更しない |

@@ -2790,3 +2790,19 @@ D-100 profile: `STANDARD (tooling/governance override)`. Persistent nonprod depl
 | D102-CORR-SCOPE | Scope | no Worker/API/schema/migration/dependency change; no production/restore/destructive cleanup/Release | source review and operation record | NOT_REQUIRED / NOT_RUN |
 
 Implementation commit `5deba847305bea4cb06645be0017b33bb6fec471`をmainへfast-forward pushし、canonical nonprod Worker `b74edecb-54df-4c5a-a436-a944807d16d4`へdeployした。Task Note content/titleは編集していない。自然なsave race timing、mobile/別zoom/device permutationsはbrowser PASSを主張せず、既存automated evidenceをauthorityとする。
+### D-103 Project Primary Document v0.1
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D103-MIGRATION | APP migration | fresh `0001 -> 0032` and upgrade `0031 -> 0032` preserve existing rows/relations/operations and add Project Primary constraints | bounded migration helper PASS; isolated fresh APP backup `quick_check=ok`, FK 0 | PASS |
+| D103-ENSURE | Project Primary | lazy owner-scoped Ensure creates one `project_primary` Document/relation and exact replay/concurrent convergence does not duplicate | focused Project Primary integration and Worker route tests; remote relation/document counts coherent | PASS |
+| D103-UPDATE | Project Primary body | Update uses expected revision CAS, exact replay, operation misuse rejection, and does not change Project title authority | focused Project Primary integration tests; browser title authority/body persistence | PASS |
+| D103-ROUTES | API/resolver | project primary fetch/ensure/update and generic document resolver are authenticated, owner-scoped, and exact-ID based | focused Worker/API tests; unauthenticated Documents/Projects API `401` | PASS |
+| D103-PROJECT-BOARD | Project Board | Project Note affordance opens the shared Project Primary editor; delete barrier/relation cleanup remains atomic | focused Project management tests; authenticated browser Project Board affordance | PASS |
+| D103-NOTES | Notes | Notes list supports Project Note filtering without exposing Markdown body in list projections | authenticated browser `プロジェクトノート` filter showed disposable fixture | PASS |
+| D103-PERSISTENCE | Browser persistence | body survives same-tab reload and fresh authenticated tab; Project title is current Project authority | existing authenticated tab and fresh tab `15`, nonprod deployed asset | PASS |
+| D103-REG | Regression/static | focused Project Primary/Project management `8 / 8`; full Worker/D1 `34 files / 301 tests`; full Web `11 files / 418 tests`; typecheck/build/nonprod build/guard/dry-run/diff-check | local commands | PASS |
+| D103-NONPROD | Persistent nonprod | exact pushed main deployed to canonical Worker with protected env/bindings and APP/AUTH pending `0 / 0` | Worker `153e10dc-585a-427b-94e3-191325d29caa`; root `200`; guard/config evidence | PASS |
+| D103-DB | Read-only integrity | quick/FK, kind/revision, owner/FK/unique relations, duplicate positions, assertion/guard residue, active executions | APP/AUTH remote probes; all writes `0`, all listed anomaly counts `0` | PASS |
+| D103-CONSOLE | Browser console | no warning/error during existing/fresh authenticated verification | both `dev.logs({levels:[error,warn]})` => `[]` | PASS |
+| D103-SCOPE | Scope | APP 0032 only; no AUTH migration, dependency, production, restore, unrelated destructive cleanup, branch/PR/merge/tag/Release | source review and operation record | NOT_REQUIRED / NOT_RUN |
