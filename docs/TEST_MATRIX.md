@@ -2748,3 +2748,16 @@ D-100 profile: `STANDARD (tooling/governance override)`. Persistent nonprod depl
 | D101-UI2V2-NONPROD | Exact deployment | exact pushed main is deployed to canonical nonprod with protected runtime/bindings | Worker `4c519d01-f100-4931-a292-bdfcab9ede3e`; target `taskchute-web-nonprod`; guard/config | PASS |
 | D101-UI2V2-CONSOLE | Browser console | no warning/error during v2 verification | authenticated tab `dev.logs({levels:[error,warn]})` => `[]` | PASS |
 | D101-UI2V2-SCOPE | Scope | Web-only; no API/Worker/schema/migration/dependency/multi-window/Preview change | source review and operation record | NOT_REQUIRED / NOT_RUN |
+
+### D-101 UI refinement 2 v2 corrective — single minimized-bar restore affordance
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D101-UI2V2-CORR-SINGLE | Minimized-bar structure | exactly one Note icon, current Task title, and `×`; no duplicate `ノートを開く` button; expanded subtree hidden | focused structural test; deployed current-asset DOM: direct icon `1`, restore button `0`, close button `1`, expanded content hidden | PASS |
+| D101-UI2V2-CORR-POINTER | Pointer restore | bar body and title restore the editor; drag remains a move gesture and does not restore accidentally | real authenticated browser clicks; existing drag-threshold focused coverage | PASS |
+| D101-UI2V2-CORR-KEYBOARD | Focus/keyboard restore | explicit minimize focuses the bar; Enter and Space restore | focused `TaskNoteEditor` tests `20 / 20`; real browser Enter/Space | PASS |
+| D101-UI2V2-CORR-CLOSE | Close separation | `×` closes without restoring first | focused close-key guard test; real browser minimized close click | PASS |
+| D101-UI2V2-CORR-REG | Regression/static | Web corrective and existing D-101 behavior remain green | focused `20 / 20`; full Web `11 files / 414 tests`; typecheck/build/exact nonprod build/guard/dry-run/diff-check | PASS |
+| D101-UI2V2-CORR-NONPROD | Exact deployment | pushed corrective is deployed to canonical nonprod with existing posture/bindings | Worker `66d2bdf1-38a3-4214-b85c-79c6a217b68d`; target/config guard verified | PASS |
+| D101-UI2V2-CORR-CONSOLE | Browser console | no warning/error during corrective verification | authenticated current-asset tab `dev.logs({levels:[error,warn]})` => `[]` | PASS |
+| D101-UI2V2-CORR-SCOPE | Scope | Web-only; no API/Worker/schema/migration/dependency/Preview change; no production/restore/destructive cleanup/Release | source review and operation record | NOT_REQUIRED / NOT_RUN |

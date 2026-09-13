@@ -631,3 +631,5 @@ D-101のUI refinementでは、standalone NotesとTask Note peekが共通の`Note
 ### D-101 UI refinement 2 v2 — window chrome
 
 floating Task Noteのheaderは既存utility actionsの右側に、`-`、desktop maximize/restore icon、`×`のcompact control groupを持つ。Closeはicon-onlyで、minimized barはNote icon・current Task title・close iconをflex配置し、長いtitleはellipsisで切り詰める。Maximizeはeditor component内のtransient stateであり、viewport safe insetから表示geometryを算出する。preferred normal geometryのbrowser-local persistenceは変更せず、最大化中のdrag・resize・keyboard move/resizeとresize handlesは無効になる。これにより、window controlsは既存のDocument/save/ambiguity semanticsから独立し、multi-window/global singletonやPreviewを導入しない。
+
+v2 correctiveでは、minimized barを唯一のrestore affordanceとして確定した。barはNote icon・current Task title・`×`だけを持ち、重複した`ノートを開く` icon buttonは置かない。明示的なminimize後はbarへfocusを移し、Enter/Spaceまたはbarのbody/titleクリックでrestoreする。close targetはrestore handlerから除外し、既存のdrag threshold、outside-clickの背面操作継続、Hit-a-Hintのlocal ownerを維持する。
