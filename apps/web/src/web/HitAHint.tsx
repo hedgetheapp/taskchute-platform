@@ -133,6 +133,9 @@ function clearNeutralFocusAfterEscape(): void {
   const tabIndex = active.getAttribute("tabindex");
   if (tabIndex === null || Number(tabIndex) >= 0) return;
   active.blur();
+  window.requestAnimationFrame(() => {
+    if (document.activeElement === active) active.blur();
+  });
 }
 
 function isPlainActivation(event: KeyboardEvent): boolean {
