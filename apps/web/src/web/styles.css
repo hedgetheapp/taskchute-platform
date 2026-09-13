@@ -92,7 +92,7 @@ input:focus-visible, select:focus-visible { border-color: #2383e2; outline: 2px 
 .project-board-toolbar [role="tab"] { background: #ececea; color: #575754; }
 .project-board-toolbar [role="tab"][aria-selected="true"] { background: #2383e2; color: #fff; }
 .project-board-table { flex: 1 0 auto; min-height: 260px; overflow: visible; border: 1px solid #e1e1df; border-radius: 8px; background: #fff; }
-.project-board-row { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 52px; min-height: 48px; align-items: center; border-bottom: 1px solid #efefed; cursor: grab; }
+.project-board-row { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 88px; min-height: 48px; align-items: center; border-bottom: 1px solid #efefed; cursor: grab; }
 .project-board-row:last-child { border-bottom: 0; }
 .project-board-row > span:first-child { min-width: 0; padding: 0 14px; }
 .project-board-heading { min-height: 36px; background: #f7f7f5; color: #787774; font-size: 11px; font-weight: 650; cursor: default; }
@@ -101,6 +101,9 @@ input:focus-visible, select:focus-visible { border-color: #2383e2; outline: 2px 
 .project-board-row.is-dragging { opacity: .72; cursor: grabbing; }
 .project-board-row.is-drop-target { background: #f1f7fd; box-shadow: inset 0 -2px #2383e2; }
 .project-board-row input { min-width: 0; width: 100%; padding: 7px 8px; }
+.project-board-actions { display: inline-flex; align-items: center; justify-content: end; gap: 2px; min-width: 0; padding-right: 8px; }
+.project-note-trigger { display: inline-grid; width: 30px; height: 30px; place-items: center; padding: 0; border: 0; border-radius: 5px; background: transparent; color: #a4a4a0; }
+.project-note-trigger:hover, .project-note-trigger:focus-visible { background: #eef6ff; color: #2383e2; }
 .project-board-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .project-name-button { max-width: 100%; overflow: hidden; border: 0; background: transparent; color: inherit; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
 .project-name-button:hover { color: #2383e2; }
@@ -462,6 +465,11 @@ button.execution-control:hover { border-color: #2383e2; color: #2383e2; }
 .notes-row-actions:hover { background: #f0f0ee; }
 .notes-list-items button:hover { background: #f0f0ee; color: #191918; }
 .notes-list-items button.active { background: #e9f3ff; color: #1768a9; font-weight: 600; }
+.notes-kind-filter { display: grid; gap: 4px; margin: 0 8px 10px; color: #575754; font-size: 11px; font-weight: 600; }
+.notes-kind-filter select { min-width: 140px; }
+.project-note-list-item { grid-template-columns: minmax(0, 1fr); }
+.project-note-list-button { display: grid; gap: 2px; padding: 8px; }
+.notes-kind-badge { color: #787774; font-size: 9px; letter-spacing: .08em; }
 .notes-row-menu { position: absolute; z-index: 2; top: calc(100% - 2px); right: 0; display: grid; min-width: 120px; padding: 4px; border: 1px solid #d9d9d5; border-radius: 7px; background: #fff; box-shadow: 0 8px 22px #00000018; }
 .notes-row-menu button { padding: 7px 9px; }
 .notes-editor { min-width: 0; padding: 24px 28px; }

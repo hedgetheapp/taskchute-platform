@@ -5,6 +5,7 @@ import type {
   SetStandaloneDocumentArchivedRequest,
   StandaloneDocument,
   StandaloneDocumentSummary,
+  ProjectPrimaryDocumentSummary,
   UpdateDocumentRequest,
 } from "../shared/contracts";
 import { uuidv7 } from "../shared/uuidv7";
@@ -25,6 +26,7 @@ export interface NotesBoardProps {
   onSavingChange?: (saving: boolean) => void;
   onRegisterFlush?: (flush: (() => Promise<boolean>) | null) => void;
   initialDocumentId?: string | null;
+  onOpenProjectNote?: (projectId: string, projectTitle: string) => void;
 }
 
 function isUpdateRequest(request: DocumentRequest): request is UpdateDocumentRequest {
@@ -53,8 +55,9 @@ function isAmbiguousResolution(request: DocumentRequest, canonical: StandaloneDo
   return isUpdateRequest(request) ? canonical.revision === request.expected_revision + 1 : canonical.revision === 0;
 }
 
-export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, onSavingChange, onRegisterFlush, initialDocumentId }: NotesBoardProps) {
+export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, onSavingChange, onRegisterFlush, initialDocumentId, onOpenProjectNote }: NotesBoardProps) {
   const [documents, setDocuments] = useState<StandaloneDocumentSummary[]>([]);
+  const [projectDocuments, setProjectDocuments] = useState<ProjectPrimaryDocumentSummary[]>([]);
   const [document, setDocument] = useState<StandaloneDocument | null>(null);
   const [mode, setMode] = useState<"empty" | "new" | "existing">("empty");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -66,6 +69,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
   const [saving, setSaving] = useState(false);
   const [inFlightRequest, setInFlightRequest] = useState<MutationRequest | null>(null);
   const [showArchived, setShowArchived] = useState(false);
+  const [noteKind, setNoteKind] = useState<"all" | "standalone" | "project">("all");
   const [actionId, setActionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -143,6 +147,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
     try {
       const projection = await api.loadDocuments({ archived });
       setDocuments(projection.documents);
+      setProjectDocuments(projection.project_documents ?? []);
       return projection.documents;
     } catch (caught) {
       if (caught instanceof ApiClientError && caught.status === 401) handleUnauthorized();
@@ -468,6 +473,13 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
 
   const editorAvailable = mode !== "empty";
   const archivedReadOnly = document?.archived_at != null;
+  const visibleStandaloneDocuments = noteKind === "project" ? [] : documents;
+  const visibleProjectDocuments = showArchived || noteKind === "standalone" ? [] : projectDocuments;
+  const mergedDocuments = [
+    ...visibleStandaloneDocuments.map((candidate) => ({ kind: "standalone" as const, candidate })),
+    ...visibleProjectDocuments.map((candidate) => ({ kind: "project" as const, candidate })),
+  ].sort((left, right) => right.candidate.updated_at.localeCompare(left.candidate.updated_at)
+    || right.candidate.document_id.localeCompare(left.candidate.document_id));
   return (
     <main className="shell notes-shell">
       {loading && <div className="transient-status notes-loading-status" role="status" aria-live="polite">ノートを読み込み中…</div>}
@@ -483,9 +495,18 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
               {showArchived ? "通常のノートに戻る" : "アーカイブ"}
             </button>
           </div>
-          {!loading && documents.length === 0 && <p className="muted">{showArchived ? "アーカイブはありません。" : "ノートはまだありません。"}</p>}
+          {!showArchived && <label className="notes-kind-filter">ノート種別<select aria-label="ノート種別" value={noteKind} onChange={(event) => setNoteKind(event.target.value as "all" | "standalone" | "project")}>
+            <option value="all">すべて</option><option value="standalone">通常ノート</option><option value="project">プロジェクトノート</option>
+          </select></label>}
+          {!loading && mergedDocuments.length === 0 && <p className="muted">{showArchived ? "アーカイブはありません。" : "ノートはまだありません。"}</p>}
           <div className="notes-list-items">
-            {documents.map((candidate) => (
+            {mergedDocuments.map(({ kind, candidate }) => kind === "project" ? (
+              <div className="notes-list-item project-note-list-item" key={candidate.document_id}>
+                <button type="button" className="project-note-list-button" onClick={() => onOpenProjectNote?.(candidate.project_id, candidate.project_title)}>
+                  <span className="notes-kind-badge">PROJECT NOTE</span>{candidate.project_title}{candidate.project_archived ? "（アーカイブ）" : ""}
+                </button>
+              </div>
+            ) : (
               <div className="notes-list-item" key={candidate.document_id}>
                 <button type="button" className={candidate.document_id === selectedId ? "active" : ""}
                   onClick={() => void selectDocument(candidate.document_id)}>{documentSummaryTitle(candidate)}</button>

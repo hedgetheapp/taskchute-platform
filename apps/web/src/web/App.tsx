@@ -92,7 +92,13 @@ export { DAY_COLUMNS_STORAGE_KEY } from "./day-columns";
 type AuthState = "loading" | "signed-out" | "signed-in";
 type AppView = "today" | "routines" | "settings" | "notes";
 type SettingsDestination = "section" | "project" | "mode" | "calendar";
-type TaskNoteTarget = { taskId: string; documentId: string; taskTitle: string };
+type TaskNoteTarget = {
+  taskId: string;
+  documentId: string;
+  taskTitle: string;
+  documentKind?: "task_primary" | "project_primary";
+  projectId?: string;
+};
 type TaskNoteWindowState = TaskNoteTarget & {
   initialGeometry: TaskNoteWindowGeometry;
   stackOrder: number;
@@ -784,6 +790,14 @@ export function App() {
     taskNoteWindowsRef.current = next;
     setTaskNoteWindows(next);
   }, []);
+  const handleProjectsChanged = useCallback((nextProjects: Array<{ id: string; title: string }>) => {
+    setProjects(nextProjects);
+    updateTaskNoteWindows((windows) => windows.map((windowState) => {
+      if (windowState.projectId === undefined) return windowState;
+      const project = nextProjects.find((candidate) => candidate.id === windowState.projectId);
+      return project ? { ...windowState, taskTitle: project.title } : windowState;
+    }));
+  }, [updateTaskNoteWindows]);
   const patchTaskNoteWindow = useCallback((documentId: string, patch: Partial<TaskNoteWindowState>) => {
     updateTaskNoteWindows((current) => current.map((windowState) => windowState.documentId === documentId
       ? { ...windowState, ...patch } : windowState));
@@ -1843,7 +1857,11 @@ export function App() {
           setView("notes");
           return;
         }
-        showTaskNoteWindow({ taskId: resolved.task_id, documentId: resolved.document_id, taskTitle: resolved.task_title });
+        if (resolved.kind === "project_primary") {
+          showTaskNoteWindow({ taskId: "", projectId: resolved.project_id, documentKind: "project_primary", documentId: resolved.document_id, taskTitle: resolved.project_title });
+        } else {
+          showTaskNoteWindow({ taskId: resolved.task_id, documentId: resolved.document_id, taskTitle: resolved.task_title });
+        }
       }).catch((caught) => {
         if (caught instanceof ApiClientError && caught.status === 401) transitionToSignedOut();
         else {
@@ -2229,6 +2247,30 @@ export function App() {
     window.history.replaceState(null, "", `${window.location.pathname}${window.location.hash}`);
   }
 
+  async function canDeleteProject(projectId: string): Promise<boolean> {
+    const target = taskNoteWindowsRef.current.find((windowState) => windowState.projectId === projectId);
+    if (!target) return true;
+    if (target.unresolved) {
+      setError("Project Noteの未解決の保存結果を解決してからProjectを削除してください。");
+      return false;
+    }
+    if (target.flush && !(await target.flush())) return false;
+    const current = taskNoteWindowsRef.current.find((windowState) => windowState.documentId === target.documentId);
+    if (current?.unresolved) {
+      setError("Project Noteの保存結果を確認できないため、Projectを削除できません。");
+      return false;
+    }
+    return true;
+  }
+
+  function closeProjectPrimaryWindow(projectId: string): void {
+    const target = taskNoteWindowsRef.current.find((windowState) => windowState.projectId === projectId);
+    if (!target) return;
+    const remaining = taskNoteWindowsRef.current.filter((windowState) => windowState.documentId !== target.documentId);
+    updateTaskNoteWindows(() => remaining);
+    if (window.location.search.includes(`document=${encodeURIComponent(target.documentId)}`)) clearTaskNoteRoute();
+  }
+
   function nextTaskNoteRequest(): number {
     taskNoteRequestRef.current += 1;
     return taskNoteRequestRef.current;
@@ -2269,7 +2311,8 @@ export function App() {
   }
 
   function showTaskNoteWindow(target: TaskNoteTarget): void {
-    const existing = taskNoteWindowsRef.current.find((windowState) => windowState.documentId === target.documentId || windowState.taskId === target.taskId);
+    const existing = taskNoteWindowsRef.current.find((windowState) => windowState.documentId === target.documentId
+      || (target.documentKind === "project_primary" ? windowState.projectId === target.projectId : windowState.taskId === target.taskId));
     if (existing) {
       activateTaskNoteWindow(existing.documentId, { restore: true, focus: true });
       window.history.replaceState(null, "", documentPermalink(existing.documentId));
@@ -2292,6 +2335,60 @@ export function App() {
       flush: null,
     }]);
     window.history.replaceState(null, "", documentPermalink(target.documentId));
+  }
+
+  async function openProjectNote(projectId: string, projectTitle: string): Promise<void> {
+    const existing = taskNoteWindowsRef.current.find((windowState) => windowState.projectId === projectId);
+    if (existing) {
+      activateTaskNoteWindow(existing.documentId, { restore: true, focus: true });
+      window.history.replaceState(null, "", documentPermalink(existing.documentId));
+      return;
+    }
+    if (taskNoteOpenMode === "new-tab") {
+      try {
+        const existingDocument = await api.loadProjectPrimaryDocument(projectId);
+        const tab = window.open(documentPermalink(existingDocument.document_id), "_blank", "noopener,noreferrer");
+        if (!tab) setError("新しいタブを開けませんでした。ブラウザのポップアップ設定を確認してください。");
+        return;
+      } catch (caught) {
+        if (!(caught instanceof ApiClientError) || caught.status !== 404) {
+          if (caught instanceof ApiClientError && caught.status === 401) transitionToSignedOut();
+          else setError(caught instanceof Error ? caught.message : "Project Noteを開けませんでした");
+          return;
+        }
+      }
+    }
+    const key = `project:${projectId}`;
+    const existingOpen = taskNoteOpeningPromisesRef.current.get(key);
+    if (existingOpen) { await existingOpen; return; }
+    setTaskNoteOpeningIds((current) => ({ ...current, [key]: true }));
+    const opening = (async () => {
+      let documentId: string;
+      try {
+        const existingDocument = await api.loadProjectPrimaryDocument(projectId);
+        documentId = existingDocument.document_id;
+      } catch (caught) {
+        if (!(caught instanceof ApiClientError) || caught.status !== 404) {
+          if (caught instanceof ApiClientError && caught.status === 401) transitionToSignedOut();
+          else setError(caught instanceof Error ? caught.message : "Project Noteを開けませんでした");
+          return;
+        }
+        try {
+          const ensured = await api.ensureProjectPrimaryDocument({ operation_id: uuidv7(), project_id: projectId, document_id: uuidv7() });
+          documentId = ensured.document.document_id;
+        } catch (ensureError) {
+          if (ensureError instanceof ApiClientError && ensureError.status === 401) transitionToSignedOut();
+          else setError(ensureError instanceof Error ? ensureError.message : "Project Noteを開けませんでした");
+          return;
+        }
+      }
+      showTaskNoteWindow({ taskId: "", projectId, documentKind: "project_primary", documentId, taskTitle: projectTitle });
+    })();
+    taskNoteOpeningPromisesRef.current.set(key, opening);
+    try { await opening; } finally {
+      if (taskNoteOpeningPromisesRef.current.get(key) === opening) taskNoteOpeningPromisesRef.current.delete(key);
+      setTaskNoteOpeningIds((current) => { const next = { ...current }; delete next[key]; return next; });
+    }
   }
 
   async function openTaskNote(entry: EntryProjection): Promise<void> {
@@ -5880,6 +5977,9 @@ export function App() {
             <option value="">Projectなし</option>
             {projectOptions.map((candidate) => <option value={candidate.id} key={candidate.id} disabled={candidate.archived === true}>{candidate.title}{candidate.archived ? "（アーカイブ）" : ""}</option>)}
           </select> : projectTitle ?? <EmptyValue label="Project未設定" />}
+          {projectId !== null && projectTitle && <button type="button" className="project-note-trigger" aria-label={`${projectTitle}のプロジェクトノートを開く`} title="プロジェクトノートを開く"
+            disabled={taskNoteOpeningIds[`project:${projectId}`] === true}
+            onClick={(event) => { event.stopPropagation(); void openProjectNote(projectId, projectTitle); }}><NoteIcon /></button>}
         </span>;
       }
       case "mode": {
@@ -6106,6 +6206,7 @@ export function App() {
           <NotesBoard onUnauthorized={transitionToSignedOut} onDirtyChange={setNotesDirty}
             onUnresolvedChange={setNotesUnresolved}
             initialDocumentId={notesInitialDocumentId}
+            onOpenProjectNote={(projectId, title) => { void openProjectNote(projectId, title); }}
             onRegisterFlush={(flush) => { notesFlushRef.current = flush; }} />
         ) : view === "settings" ? (
           <main className="shell settings-shell">
@@ -6144,7 +6245,11 @@ export function App() {
               </section>
 
               {settingsDestination === "project" && (
-                <ProjectBoard onUnauthorized={transitionToSignedOut} onProjectsChanged={setProjects} />
+                <ProjectBoard onUnauthorized={transitionToSignedOut}
+                  onProjectsChanged={handleProjectsChanged}
+                  onOpenProjectNote={(projectId, title) => { void openProjectNote(projectId, title); }}
+                  onBeforeProjectDelete={canDeleteProject}
+                  onProjectDeleted={closeProjectPrimaryWindow} />
               )}
 
               {settingsDestination === "mode" && (
@@ -7054,7 +7159,9 @@ export function App() {
         )}
         {taskNoteWindows.map((windowState) => <TaskNoteEditor
           key={windowState.documentId} taskId={windowState.taskId} documentId={windowState.documentId}
-          taskTitle={windowState.taskTitle} initialGeometry={windowState.initialGeometry} zIndex={taskNoteWindowZIndexes.get(windowState.documentId) ?? 20}
+          taskTitle={windowState.taskTitle} documentKind={windowState.documentKind} projectId={windowState.projectId}
+          projectTitle={windowState.documentKind === "project_primary" ? windowState.taskTitle : undefined}
+          initialGeometry={windowState.initialGeometry} zIndex={taskNoteWindowZIndexes.get(windowState.documentId) ?? 20}
           focusRequest={windowState.focusRequest} restoreRequest={windowState.restoreRequest}
           outsideClickRequest={windowState.outsideClickRequest}
           onActivate={() => activateTaskNoteWindow(windowState.documentId)}

@@ -102,6 +102,14 @@ import {
   loadTaskPrimaryDocumentById,
   updateTaskPrimaryDocument,
 } from "./application/task-primary-documents";
+import {
+  ensureProjectPrimaryDocument,
+  isEnsureProjectPrimaryDocumentRequest,
+  isUpdateProjectPrimaryDocumentRequest,
+  loadProjectPrimaryDocument,
+  loadProjectPrimaryDocumentById,
+  updateProjectPrimaryDocument,
+} from "./application/project-primary-documents";
 
 const SECURITY_HEADERS: Record<string, string> = {
   "cache-control": "no-store",
@@ -153,6 +161,30 @@ async function route(request: Request, env: Env): Promise<Response> {
       throw new HttpError(400, "malformed_request", "Invalid archived filter");
     }
     return Response.json(await loadStandaloneDocuments(env.APP_DB, principal.appUserId, archived === "true"));
+  }
+  const projectPrimaryByProjectMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/primary-document$/);
+  if (request.method === "GET" && projectPrimaryByProjectMatch) {
+    return Response.json(await loadProjectPrimaryDocument(env.APP_DB, principal.appUserId, decodeURIComponent(projectPrimaryByProjectMatch[1])));
+  }
+  if (request.method === "POST" && projectPrimaryByProjectMatch) {
+    const body = await readBoundedJson(request);
+    if (projectPrimaryByProjectMatch[1] !== encodeURIComponent(String((body as { project_id?: unknown })?.project_id ?? ""))
+      || !isEnsureProjectPrimaryDocumentRequest(body)) {
+      throw new HttpError(400, "malformed_request", "Invalid EnsureProjectPrimaryDocument request");
+    }
+    return Response.json(await ensureProjectPrimaryDocument(env.APP_DB, principal.appUserId, body));
+  }
+  const projectPrimaryDocumentMatch = url.pathname.match(/^\/api\/v1\/project-primary-documents\/([^/]+)$/);
+  if (request.method === "GET" && projectPrimaryDocumentMatch) {
+    return Response.json(await loadProjectPrimaryDocumentById(env.APP_DB, principal.appUserId, decodeURIComponent(projectPrimaryDocumentMatch[1])));
+  }
+  if (request.method === "POST" && projectPrimaryDocumentMatch) {
+    const body = await readBoundedJson(request);
+    if (projectPrimaryDocumentMatch[1] !== encodeURIComponent(String((body as { document_id?: unknown })?.document_id ?? ""))
+      || !isUpdateProjectPrimaryDocumentRequest(body)) {
+      throw new HttpError(400, "malformed_request", "Invalid UpdateProjectPrimaryDocument request");
+    }
+    return Response.json(await updateProjectPrimaryDocument(env.APP_DB, principal.appUserId, body));
   }
   const taskPrimaryByTaskMatch = url.pathname.match(/^\/api\/v1\/tasks\/([^/]+)\/primary-document$/);
   if (request.method === "GET" && taskPrimaryByTaskMatch) {

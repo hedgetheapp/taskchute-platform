@@ -10,11 +10,15 @@ import type {
 } from "../shared/contracts";
 import { uuidv7 } from "../shared/uuidv7";
 import { api, ApiClientError } from "./api";
+import { NoteIcon } from "./NoteIcon";
 import { useOutsideClick } from "./ui-helpers";
 
 interface ProjectBoardProps {
   onUnauthorized: () => void;
   onProjectsChanged: (projects: Array<{ id: string; title: string }>) => void;
+  onOpenProjectNote?: (projectId: string, projectTitle: string) => void;
+  onBeforeProjectDelete?: (projectId: string) => Promise<boolean>;
+  onProjectDeleted?: (projectId: string) => void;
 }
 
 function isFormElement(element: Element | null): boolean {
@@ -39,7 +43,7 @@ type RetryOperation =
   | { kind: "reorder"; request: ReorderProjectsRequest }
   | { kind: "delete"; request: DeleteProjectRequest };
 
-export function ProjectBoard({ onUnauthorized, onProjectsChanged }: ProjectBoardProps) {
+export function ProjectBoard({ onUnauthorized, onProjectsChanged, onOpenProjectNote, onBeforeProjectDelete, onProjectDeleted }: ProjectBoardProps) {
   const [board, setBoard] = useState<ProjectBoardProjection | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -236,20 +240,21 @@ export function ProjectBoard({ onUnauthorized, onProjectsChanged }: ProjectBoard
 
   async function executeDelete(request: DeleteProjectRequest) {
     if (!board || pending) return;
+    if (onBeforeProjectDelete && !(await onBeforeProjectDelete(request.project_id))) return;
     setPending(true); setError(null); setNotice(null);
     const index = visible.findIndex((project) => project.id === request.project_id);
     const fallback = visible[index + 1] ?? visible[index - 1];
     deleteFallbackRef.current = connected(fallback ? actionRefs.current[fallback.id] : null) ?? connected(addRef.current);
     try {
       await api.deleteProject(request);
-      setRetryOperation(null); await reload(); setDeleteTarget(null); showNotice("Projectを削除しました");
+      setRetryOperation(null); await reload(); onProjectDeleted?.(request.project_id); setDeleteTarget(null); showNotice("Projectを削除しました");
     } catch (caught) {
       if (caught instanceof ApiClientError && caught.status === 401) onUnauthorized();
       else {
         const nextBoard = await reload();
         const converged = nextBoard !== null && !nextBoard.projects.some((item) => item.id === request.project_id);
         setRetryOperation(!converged && caught instanceof ApiClientError && caught.code === "infrastructure_ambiguous" ? { kind: "delete", request } : null);
-        if (converged) { setError(null); showNotice("Projectを削除しました"); }
+        if (converged) { setError(null); onProjectDeleted?.(request.project_id); showNotice("Projectを削除しました"); }
         else setError(caught instanceof Error ? caught.message : "Projectの削除に失敗しました");
         setDeleteTarget(null);
       }
@@ -339,12 +344,15 @@ export function ProjectBoard({ onUnauthorized, onProjectsChanged }: ProjectBoard
         onDragEnd={() => { setDraggingId(null); setDragOverId(null); }} onDragOver={(event) => { if (!draggingId || draggingId === project.id) return; event.preventDefault(); event.dataTransfer.dropEffect = "move"; setDragOverId(project.id); }}
         onDrop={(event) => { event.preventDefault(); const source = draggingId ?? event.dataTransfer.getData("text/plain"); const rect = event.currentTarget.getBoundingClientRect(); reorder(source, project.id, event.clientY > rect.top + rect.height / 2); }}>
         <span className="project-board-name">{editingId === project.id ? <input autoFocus aria-label={`${project.title}の名前`} value={editingTitle} maxLength={200} onChange={(event) => setEditingTitle(event.target.value)} onBlur={() => void renameProject(project)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void renameProject(project); } else if (event.key === "Escape") { event.preventDefault(); setEditingId(null); } }} /> : <button type="button" className="project-name-button" onClick={() => { setEditingId(project.id); setEditingTitle(project.title); }}>{project.title}</button>}</span>
-        <span className="project-board-actions"><button ref={(element) => { actionRefs.current[project.id] = element; }} type="button" className="project-overflow" aria-label={`${project.title}のメニュー`} aria-expanded={openMenuId === project.id} disabled={pending} onClick={() => setOpenMenuId((current) => current === project.id ? null : project.id)}>…</button>
+        <span className="project-board-actions">
+          <button type="button" className="project-note-trigger" aria-label={`${project.title}のプロジェクトノートを開く`} title="プロジェクトノートを開く" disabled={pending}
+            onClick={(event) => { event.stopPropagation(); onOpenProjectNote?.(project.id, project.title); }}><NoteIcon /></button>
+          <button ref={(element) => { actionRefs.current[project.id] = element; }} type="button" className="project-overflow" aria-label={`${project.title}のメニュー`} aria-expanded={openMenuId === project.id} disabled={pending} onClick={() => setOpenMenuId((current) => current === project.id ? null : project.id)}>…</button>
           {openMenuId === project.id && <span className="project-overflow-menu" role="menu"><button type="button" role="menuitem" onClick={() => void toggleArchive(project)}>{project.archived ? "復元" : "アーカイブ"}</button><button type="button" role="menuitem" className="destructive-action" onClick={() => { deleteOriginRef.current = connected(actionRefs.current[project.id]); deleteFallbackRef.current = null; setOpenMenuId(null); setDeleteTarget(project); }}>削除</button></span>}</span>
       </div>)}
       {visible.length === 0 && !draft && <p className="muted project-empty">該当するProjectはありません。</p>}
     </div>
     {helpOpen && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setHelpOpen(false); }}><div ref={modalRef} className="modal-dialog project-help-modal" role="dialog" aria-modal="true" aria-label="Project設定ショートカット" tabIndex={-1}><h2>Project設定ショートカット</h2><ul><li><kbd>J</kbd> / <kbd>↓</kbd> 次のProject</li><li><kbd>K</kbd> / <kbd>↑</kbd> 前のProject</li><li><kbd>?</kbd> ヘルプ</li><li><kbd>Esc</kbd> 閉じる・キャンセル</li></ul><button type="button" onClick={() => setHelpOpen(false)}>閉じる</button></div></div>}
-    {deleteTarget && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) { event.preventDefault(); setDeleteTarget(null); } }}><div ref={modalRef} className="modal-dialog" role="dialog" aria-modal="true" aria-label="Project削除確認" tabIndex={-1}><h2>プロジェクトを削除しますか？</h2><p>このプロジェクトは完全に削除され、元に戻せません。このプロジェクトが設定されているTaskは「Projectなし」になります。過去の実行履歴に保存されたProject情報は残ります。</p><div className="modal-actions"><button type="button" className="secondary" onClick={() => setDeleteTarget(null)}>キャンセル</button><button type="button" className="destructive destructive-action" disabled={pending} onClick={() => void executeDelete({ operation_id: uuidv7(), project_id: deleteTarget.id, expected_settings_revision: deleteTarget.settings_revision, expected_board_revision: board.board_revision })}>削除</button></div></div></div>}
+    {deleteTarget && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) { event.preventDefault(); setDeleteTarget(null); } }}><div ref={modalRef} className="modal-dialog" role="dialog" aria-modal="true" aria-label="Project削除確認" tabIndex={-1}><h2>プロジェクトを削除しますか？</h2><p>このプロジェクトは完全に削除され、元に戻せません。このプロジェクトが設定されているTaskは「Projectなし」になります。過去の実行履歴に保存されたProject情報は残ります。このProjectのプロジェクトノートも完全に削除され、復元できません。</p><div className="modal-actions"><button type="button" className="secondary" onClick={() => setDeleteTarget(null)}>キャンセル</button><button type="button" className="destructive destructive-action" disabled={pending} onClick={() => void executeDelete({ operation_id: uuidv7(), project_id: deleteTarget.id, expected_settings_revision: deleteTarget.settings_revision, expected_board_revision: board.board_revision })}>削除</button></div></div></div>}
   </section>;
 }

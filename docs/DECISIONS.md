@@ -12,6 +12,16 @@ Canonical Decision: `docs/decisions/D-102_MULTI_TASK_NOTE_WINDOWS_V01.md`。
 
 既存の`/?view=note&document=<document-id>` canonical routeはactive windowを指し、reloadはroute対象を最大1つ復元する。new-tab mode、mobileのsingle full-sheet、Hit-a-Hintのsingle overlay、既存Save / autosave / CAS / ambiguity / navigation / logout / unload barrierは維持する。Document/API/Worker/schema/migration/dependency/offline/multi-tab semanticsは追加しない。
 
+## D-103 — Project Primary Document v0.1
+
+Status: **Approved**
+
+Canonical Decision: `docs/decisions/D-103_PROJECT_PRIMARY_DOCUMENT_V01.md`。
+
+Projectごとに論理的に1つの`project_primary` Markdown Documentを、最初の明示的open時にlazy materializeする。Project titleはDocument titleではなくcurrent Project authorityから表示し、Project archiveはrelation / Documentを保持する。Project hard deleteは既存のProject / Task / history semanticsを維持しつつ、guarded atomicな`DeleteProject`内でProject Primary relationとDocumentを永久削除する。Ensure / Update、owner-scoped resolver、exact replay / CAS / ambiguityは既存Document / Task Primary conventionsを共有する。
+
+DayのProject cell、Project Board、Notes pageからopenでき、Notes pageは`すべて` / `通常ノート` / `プロジェクトノート` dropdownで物理materialized Documentだけを表示する。Task / Project Primary NoteはD-102のshared floating-window registryで同一Documentをdedupeし、dirty / unresolved / flush / unload barrierをwindow単位で維持する。RoutineOccurrence Document、attachments、backlinks、search、preview、独立title / archive / delete、AUTH migration、dependency、productionは対象外とする。
+
 ## D-100 — Executable Development Workflow / Codex Cycle Acceleration
 
 Status: **Approved**

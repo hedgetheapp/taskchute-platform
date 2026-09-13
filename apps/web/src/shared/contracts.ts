@@ -38,7 +38,18 @@ export interface TaskPrimaryDocument {
   updated_at: string;
 }
 
-export type Document = StandaloneDocument | TaskPrimaryDocument;
+export interface ProjectPrimaryDocument {
+  document_id: string;
+  kind: "project_primary";
+  project_id: string;
+  project_title: string;
+  markdown_body: string;
+  revision: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export type Document = StandaloneDocument | TaskPrimaryDocument | ProjectPrimaryDocument;
 
 /**
  * Read-only projection used by the generic document permalink resolver.
@@ -47,7 +58,8 @@ export type Document = StandaloneDocument | TaskPrimaryDocument;
  */
 export type ResolvedDocumentPermalink =
   | StandaloneDocument
-  | (TaskPrimaryDocument & { task_title: string });
+  | (TaskPrimaryDocument & { task_title: string })
+  | ProjectPrimaryDocument;
 
 export interface EnsureTaskPrimaryDocumentRequest {
   operation_id: string;
@@ -71,6 +83,28 @@ export interface UpdateTaskPrimaryDocumentResult {
   document: TaskPrimaryDocument;
 }
 
+export interface EnsureProjectPrimaryDocumentRequest {
+  operation_id: string;
+  project_id: string;
+  document_id: string;
+}
+
+export interface EnsureProjectPrimaryDocumentResult {
+  document: ProjectPrimaryDocument;
+}
+
+export interface UpdateProjectPrimaryDocumentRequest {
+  operation_id: string;
+  project_id: string;
+  document_id: string;
+  expected_revision: number;
+  markdown_body: string;
+}
+
+export interface UpdateProjectPrimaryDocumentResult {
+  document: ProjectPrimaryDocument;
+}
+
 export interface StandaloneDocumentSummary {
   document_id: string;
   kind: "standalone";
@@ -83,6 +117,19 @@ export interface StandaloneDocumentSummary {
 
 export interface StandaloneDocumentListProjection {
   documents: StandaloneDocumentSummary[];
+  /** Materialized Project Primary Documents only; omitted by older clients. */
+  project_documents?: ProjectPrimaryDocumentSummary[];
+}
+
+export interface ProjectPrimaryDocumentSummary {
+  document_id: string;
+  kind: "project_primary";
+  project_id: string;
+  project_title: string;
+  project_archived: boolean;
+  revision: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface CreateStandaloneDocumentRequest {

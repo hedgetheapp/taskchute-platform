@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { TaskPrimaryDocument, UpdateTaskPrimaryDocumentRequest } from "../shared/contracts";
+import type {
+  ProjectPrimaryDocument,
+  TaskPrimaryDocument,
+  UpdateProjectPrimaryDocumentRequest,
+  UpdateTaskPrimaryDocumentRequest,
+} from "../shared/contracts";
 import { uuidv7 } from "../shared/uuidv7";
 import { api, ApiClientError } from "./api";
 import { NoteMarkdownEditor } from "./NoteMarkdownEditor";
@@ -27,9 +32,12 @@ import {
 const TASK_NOTE_AUTOSAVE_MS = 1000;
 
 export interface TaskNoteEditorProps {
-  taskId: string;
+  taskId?: string;
   documentId: string;
-  taskTitle: string;
+  taskTitle?: string;
+  documentKind?: "task_primary" | "project_primary";
+  projectId?: string;
+  projectTitle?: string;
   initialGeometry?: TaskNoteWindowGeometry;
   zIndex?: number;
   focusRequest?: number;
@@ -44,25 +52,32 @@ export interface TaskNoteEditorProps {
   onOpenNewTab: () => void;
 }
 
-function isResolvedUpdate(request: UpdateTaskPrimaryDocumentRequest, document: TaskPrimaryDocument): boolean {
+type PrimaryDocument = TaskPrimaryDocument | ProjectPrimaryDocument;
+type PrimaryUpdateRequest = UpdateTaskPrimaryDocumentRequest | UpdateProjectPrimaryDocumentRequest;
+
+function isResolvedUpdate(request: PrimaryUpdateRequest, document: PrimaryDocument, kind: "task_primary" | "project_primary"): boolean {
   return document.document_id === request.document_id
-    && document.kind === "task_primary"
+    && document.kind === kind
     && document.revision === request.expected_revision + 1
     && document.markdown_body === request.markdown_body;
 }
 
 export function TaskNoteEditor({
-  taskId, documentId, taskTitle, initialGeometry, zIndex = 12, focusRequest = 0, restoreRequest = 0,
+  taskId = "", documentId, taskTitle = "Task Note", documentKind = "task_primary", projectId, projectTitle, initialGeometry, zIndex = 12, focusRequest = 0, restoreRequest = 0,
   outsideClickRequest = 0, onActivate, onClose, onUnauthorized, onDirtyChange, onUnresolvedChange, onRegisterFlush, onOpenNewTab,
 }: TaskNoteEditorProps) {
-  const [document, setDocument] = useState<TaskPrimaryDocument | null>(null);
+  const isProjectPrimary = documentKind === "project_primary";
+  const primaryId = isProjectPrimary ? projectId ?? taskId : taskId;
+  const primaryTitle = isProjectPrimary ? projectTitle ?? "Project Note" : taskTitle;
+  const primaryLabel = isProjectPrimary ? "Project Note" : "Task Note";
+  const [document, setDocument] = useState<PrimaryDocument | null>(null);
   const [draftBody, setDraftBody] = useState("");
   const [baselineBody, setBaselineBody] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [unresolvedRequest, setUnresolvedRequest] = useState<UpdateTaskPrimaryDocumentRequest | null>(null);
+  const [unresolvedRequest, setUnresolvedRequest] = useState<PrimaryUpdateRequest | null>(null);
   const [preferredGeometry, setPreferredGeometry] = useState<TaskNoteWindowGeometry>(() => initialGeometry
     ?? readTaskNoteWindowGeometry(window.innerWidth, window.innerHeight));
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
@@ -71,10 +86,10 @@ export function TaskNoteEditor({
   const [isResizing, setIsResizing] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);
-  const documentRef = useRef<TaskPrimaryDocument | null>(null);
+  const documentRef = useRef<PrimaryDocument | null>(null);
   const draftRef = useRef("");
   const baselineRef = useRef("");
-  const unresolvedRef = useRef<UpdateTaskPrimaryDocumentRequest | null>(null);
+  const unresolvedRef = useRef<PrimaryUpdateRequest | null>(null);
   const savingRef = useRef(false);
   const inFlightRef = useRef<Promise<boolean> | null>(null);
   const saveRef = useRef<() => Promise<boolean>>(async () => false);
@@ -290,32 +305,36 @@ export function TaskNoteEditor({
   const loadCanonical = useCallback(async () => {
     setLoading(true);
     try {
-      const canonical = await api.loadTaskPrimaryDocumentById(documentId);
+      const canonical = isProjectPrimary
+        ? await api.loadProjectPrimaryDocumentById(documentId)
+        : await api.loadTaskPrimaryDocumentById(documentId);
       setDocument(canonical); documentRef.current = canonical;
       setDraftBody(canonical.markdown_body); draftRef.current = canonical.markdown_body;
       setBaselineBody(canonical.markdown_body); baselineRef.current = canonical.markdown_body;
       setError(null);
     } catch (caught) {
       if (caught instanceof ApiClientError && caught.status === 401) onUnauthorized();
-      else setError(caught instanceof Error ? caught.message : "Task Noteの読み込みに失敗しました");
+      else setError(caught instanceof Error ? caught.message : `${primaryLabel}の読み込みに失敗しました`);
     } finally { setLoading(false); }
-  }, [documentId, onUnauthorized]);
+  }, [documentId, isProjectPrimary, onUnauthorized, primaryLabel]);
 
   useEffect(() => { void loadCanonical(); }, [loadCanonical]);
 
-  const applySaved = useCallback((saved: TaskPrimaryDocument, request: UpdateTaskPrimaryDocumentRequest) => {
+  const applySaved = useCallback((saved: PrimaryDocument, request: PrimaryUpdateRequest) => {
     const bodyStillSent = draftRef.current === request.markdown_body;
     setDocument(saved); documentRef.current = saved;
     setBaselineBody(saved.markdown_body); baselineRef.current = saved.markdown_body;
     if (bodyStillSent) { setDraftBody(saved.markdown_body); draftRef.current = saved.markdown_body; }
   }, []);
 
-  const send = useCallback(async (request: UpdateTaskPrimaryDocumentRequest): Promise<boolean> => {
+  const send = useCallback(async (request: PrimaryUpdateRequest): Promise<boolean> => {
     if (inFlightRef.current) return inFlightRef.current;
     const promise = (async () => {
       setSaving(true); savingRef.current = true; setError(null); setNotice(null);
       try {
-        const result = await api.updateTaskPrimaryDocument(request);
+        const result = isProjectPrimary
+          ? await api.updateProjectPrimaryDocument(request as UpdateProjectPrimaryDocumentRequest)
+          : await api.updateTaskPrimaryDocument(request as UpdateTaskPrimaryDocumentRequest);
         applySaved(result.document, request);
         setUnresolvedRequest(null); unresolvedRef.current = null; setNotice(null);
         return true;
@@ -325,8 +344,10 @@ export function TaskNoteEditor({
           setUnresolvedRequest(request); unresolvedRef.current = request;
           setError("保存結果が未確定です。元の操作をそのまま再試行してください。");
           try {
-            const canonical = await api.loadTaskPrimaryDocumentById(request.document_id);
-            if (isResolvedUpdate(request, canonical)) {
+            const canonical = isProjectPrimary
+              ? await api.loadProjectPrimaryDocumentById(request.document_id)
+              : await api.loadTaskPrimaryDocumentById(request.document_id);
+            if (isResolvedUpdate(request, canonical, documentKind)) {
               applySaved(canonical, request); setUnresolvedRequest(null); unresolvedRef.current = null;
               setError(null); setNotice("保存結果を確認しました。"); return true;
             }
@@ -335,7 +356,7 @@ export function TaskNoteEditor({
           }
           return false;
         }
-        setError(caught instanceof Error ? caught.message : "Task Noteの保存に失敗しました");
+        setError(caught instanceof Error ? caught.message : `${primaryLabel}の保存に失敗しました`);
         return false;
       } finally {
         setSaving(false); savingRef.current = false; inFlightRef.current = null;
@@ -343,19 +364,20 @@ export function TaskNoteEditor({
     })();
     inFlightRef.current = promise;
     return promise;
-  }, [applySaved, onUnauthorized]);
+  }, [applySaved, documentKind, isProjectPrimary, onUnauthorized, primaryLabel]);
 
   const save = useCallback(async (): Promise<boolean> => {
     if (inFlightRef.current) return inFlightRef.current;
     if (unresolvedRef.current) return send(unresolvedRef.current);
     const current = documentRef.current;
     if (!current || draftRef.current === baselineRef.current) return true;
-    const request: UpdateTaskPrimaryDocumentRequest = {
-      operation_id: uuidv7(), task_id: taskId, document_id: documentId,
-      expected_revision: current.revision, markdown_body: draftRef.current,
-    };
+    const request: PrimaryUpdateRequest = isProjectPrimary
+      ? { operation_id: uuidv7(), project_id: primaryId, document_id: documentId,
+        expected_revision: current.revision, markdown_body: draftRef.current }
+      : { operation_id: uuidv7(), task_id: primaryId, document_id: documentId,
+        expected_revision: current.revision, markdown_body: draftRef.current };
     return send(request);
-  }, [documentId, send, taskId]);
+  }, [documentId, isProjectPrimary, primaryId, send]);
   saveRef.current = save;
 
   const flush = useCallback(async (): Promise<boolean> => {
@@ -434,7 +456,8 @@ export function TaskNoteEditor({
   return <aside
     ref={windowRef}
     className={`task-note-peek${isMoving ? " is-moving" : ""}${isResizing ? " is-resizing" : ""}${isMinimized ? " is-minimized" : ""}`}
-    aria-label={`${taskTitle}のノート`}
+    aria-label={`${primaryTitle}のノート`}
+    data-primary-document-kind={documentKind}
     data-task-note-task-id={taskId}
     data-task-note-document-id={documentId}
     data-task-note-editor={isMinimized ? undefined : "true"}
@@ -453,7 +476,7 @@ export function TaskNoteEditor({
       <header ref={titleBarRef} className="task-note-peek-header" tabIndex={0} aria-label="ノートウィンドウを移動"
         onKeyDown={handleWindowKeyDown} onPointerDown={handleDragPointerDown} onPointerMove={handleDragPointerMove}
         onPointerUp={handleDragPointerEnd} onPointerCancel={handleDragPointerEnd}>
-        <div><p className="eyebrow">Task Note</p><h2>{taskTitle}</h2></div>
+        <div><p className="eyebrow">{primaryLabel}</p><h2>{primaryTitle}</h2></div>
         <div className="task-note-peek-actions">
           <button type="button" className="secondary" onClick={() => {
           const write = navigator.clipboard?.writeText(`${window.location.origin}${documentPermalink(documentId)}`);
@@ -479,7 +502,7 @@ export function TaskNoteEditor({
         </div>
       </header>
       {loading ? <p className="muted">読み込み中…</p> : <div className="task-note-peek-content">
-        <p className="task-note-authority">現在のTaskタイトルを表示しています。</p>
+        <p className="task-note-authority">現在の{isProjectPrimary ? "Projectタイトル" : "Taskタイトル"}を表示しています。</p>
         <NoteMarkdownEditor
           value={draftBody}
           disabled={unresolved}
@@ -492,12 +515,12 @@ export function TaskNoteEditor({
         {error && <p className="error" role="alert">{error}</p>}
       </div>}
     </div>
-    <div ref={minimizedBarRef} className="task-note-peek-minimized-bar" hidden={!isMinimized} tabIndex={0} aria-label={`${taskTitle}のノートを開く`}
+    <div ref={minimizedBarRef} className="task-note-peek-minimized-bar" hidden={!isMinimized} tabIndex={0} aria-label={`${primaryTitle}のノートを開く`}
       onKeyDown={(event) => { handleMinimizedBarKeyDown(event); handleWindowKeyDown(event); }} onPointerDown={handleDragPointerDown} onPointerMove={handleDragPointerMove}
       onPointerUp={handleDragPointerEnd} onPointerCancel={handleDragPointerEnd} onClick={handleMinimizedBarClick}>
       <div className="task-note-peek-minimized-main">
         <NoteIcon />
-        <span className="task-note-peek-minimized-title" title={taskTitle}>{taskTitle}</span>
+        <span className="task-note-peek-minimized-title" title={primaryTitle}>{primaryTitle}</span>
       </div>
       <div className="task-note-peek-actions">
         <button type="button" className="secondary" aria-label="ノートを閉じる" title="ノートを閉じる" onClick={onClose}>×</button>

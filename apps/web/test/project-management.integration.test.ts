@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { uuidv7 } from "../src/shared/uuidv7";
 import { deleteProject, loadProjectBoard, reorderProjects, setProjectArchived, updateProject } from "../worker/application/project-management";
 import { loadProjects } from "../worker/application/load-projects";
+import { ensureProjectPrimaryDocument } from "../worker/application/project-primary-documents";
 
 const now = "2026-09-05T12:00:00.000Z";
 
@@ -92,6 +93,9 @@ describe.sequential("D-065 Project management", () => {
 
   it("hard-deletes only the Project, unassigns Tasks, preserves historical Routine and Execution facts, and replays", async () => {
     const fixture = await seed();
+    const primary = await ensureProjectPrimaryDocument(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), project_id: fixture.projectId, document_id: uuidv7(),
+    }, now);
     const request = { operation_id: uuidv7(), project_id: fixture.projectId,
       expected_settings_revision: 0, expected_board_revision: 0 };
     const result = await deleteProject(env.APP_DB, fixture.userId, request, now);
@@ -103,6 +107,10 @@ describe.sequential("D-065 Project management", () => {
     expect(await env.APP_DB.prepare("SELECT id FROM executions WHERE id = ?").bind(fixture.executionId).first()).toEqual({ id: fixture.executionId });
     expect(await env.APP_DB.prepare("SELECT project_id, project_title FROM routine_occurrence_task_snapshots WHERE routine_occurrence_id = ?")
       .bind(fixture.occurrenceId).first()).toEqual({ project_id: fixture.projectId, project_title: "Alpha" });
+    expect(await env.APP_DB.prepare("SELECT document_id FROM project_primary_documents WHERE document_id = ?")
+      .bind(primary.document.document_id).first()).toBeNull();
+    expect(await env.APP_DB.prepare("SELECT document_id FROM documents WHERE document_id = ?")
+      .bind(primary.document.document_id).first()).toBeNull();
     expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM operations WHERE operation_id = ?").bind(request.operation_id).first<number>("count")).toBe(1);
     expect(await env.APP_DB.prepare("PRAGMA quick_check").first()).toEqual({ quick_check: "ok" });
     expect((await env.APP_DB.prepare("PRAGMA foreign_key_check").all()).results).toEqual([]);

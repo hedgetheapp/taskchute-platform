@@ -9,6 +9,7 @@ import type {
   StandaloneDocument,
   StandaloneDocumentListProjection,
   StandaloneDocumentSummary,
+  ProjectPrimaryDocumentSummary,
   UpdateDocumentRequest,
   UpdateDocumentResult,
 } from "../../src/shared/contracts";
@@ -32,10 +33,12 @@ interface DocumentRow {
 }
 
 interface DocumentPermalinkRow extends Omit<DocumentRow, "kind" | "title"> {
-  kind: "standalone" | "task_primary";
+  kind: "standalone" | "task_primary" | "project_primary";
   task_id: string | null;
   title: string | null;
   task_title: string | null;
+  project_id: string | null;
+  project_title: string | null;
 }
 
 export interface DocumentMutationHooks {
@@ -126,7 +129,20 @@ export async function loadStandaloneDocuments(db: D1Database, appUserId: string,
   const rows = await db.prepare(`SELECT document_id, app_user_id, kind, title, markdown_body, revision, archived_at, created_at, updated_at
     FROM documents WHERE app_user_id = ? AND kind = 'standalone' AND archived_at ${archived ? "IS NOT NULL" : "IS NULL"}
     ORDER BY updated_at DESC, document_id DESC`).bind(appUserId).all<DocumentRow>();
-  return { documents: rows.results.map(documentSummary) };
+  const projectRows = await db.prepare(`SELECT d.document_id, d.revision, d.created_at, d.updated_at,
+      r.project_id, p.title AS project_title,
+      CASE WHEN pa.project_id IS NULL THEN 0 ELSE 1 END AS project_archived
+    FROM project_primary_documents r
+    JOIN documents d ON d.app_user_id = r.app_user_id AND d.document_id = r.document_id AND d.kind = 'project_primary'
+    JOIN projects p ON p.app_user_id = r.app_user_id AND p.id = r.project_id
+    LEFT JOIN project_archives pa ON pa.app_user_id = r.app_user_id AND pa.project_id = r.project_id
+    WHERE r.app_user_id = ?
+    ORDER BY d.updated_at DESC, d.document_id DESC`).bind(appUserId).all<ProjectPrimaryDocumentSummary>();
+  return { documents: rows.results.map(documentSummary), project_documents: projectRows.results.map((row) => ({
+    document_id: row.document_id, kind: "project_primary" as const, project_id: row.project_id,
+    project_title: row.project_title, project_archived: Boolean(row.project_archived), revision: row.revision,
+    created_at: row.created_at, updated_at: row.updated_at,
+  })) };
 }
 
 export async function loadStandaloneDocument(db: D1Database, appUserId: string, documentId: string): Promise<StandaloneDocument> {
@@ -142,27 +158,44 @@ export async function loadStandaloneDocument(db: D1Database, appUserId: string, 
  */
 export async function loadDocumentByPermalink(db: D1Database, appUserId: string, documentId: string): Promise<ResolvedDocumentPermalink> {
   const row = await db.prepare(`SELECT d.document_id, d.app_user_id, d.kind, d.title, d.markdown_body,
-      d.revision, d.archived_at, d.created_at, d.updated_at, tpd.task_id, t.title AS task_title
+      d.revision, d.archived_at, d.created_at, d.updated_at, tpd.task_id, t.title AS task_title,
+      ppd.project_id, p.title AS project_title
     FROM documents d
     LEFT JOIN task_primary_documents tpd
       ON tpd.app_user_id = d.app_user_id AND tpd.document_id = d.document_id
     LEFT JOIN tasks t
       ON t.app_user_id = tpd.app_user_id AND t.id = tpd.task_id
+    LEFT JOIN project_primary_documents ppd
+      ON ppd.app_user_id = d.app_user_id AND ppd.document_id = d.document_id
+    LEFT JOIN projects p
+      ON p.app_user_id = ppd.app_user_id AND p.id = ppd.project_id
     WHERE d.app_user_id = ? AND d.document_id = ?`)
     .bind(appUserId, documentId).first<DocumentPermalinkRow>();
-  if (!row || (row.kind === "task_primary" && (row.task_id === null || row.task_title === null))) {
+  if (!row || (row.kind === "task_primary" && (row.task_id === null || row.task_title === null))
+    || (row.kind === "project_primary" && (row.project_id === null || row.project_title === null))) {
     throw new HttpError(404, "resource_not_found", "Document is unavailable");
   }
   if (row.kind === "standalone") return documentProjection({ ...row, kind: "standalone", title: row.title as string });
   return {
-    document_id: row.document_id,
-    kind: "task_primary",
-    task_id: row.task_id!,
-    task_title: row.task_title!,
-    markdown_body: row.markdown_body,
-    revision: row.revision,
-    created_at: row.created_at,
-    updated_at: row.updated_at,
+    ...(row.kind === "task_primary" ? {
+      document_id: row.document_id,
+      kind: "task_primary" as const,
+      task_id: row.task_id!,
+      task_title: row.task_title!,
+      markdown_body: row.markdown_body,
+      revision: row.revision,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+    } : {
+      document_id: row.document_id,
+      kind: "project_primary" as const,
+      project_id: row.project_id!,
+      project_title: row.project_title!,
+      markdown_body: row.markdown_body,
+      revision: row.revision,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+    }),
   };
 }
 

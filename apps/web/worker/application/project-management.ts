@@ -308,10 +308,14 @@ export async function deleteProject(db: D1Database, appUserId: string, request: 
   const result: DeleteProjectResult = { project_id: request.project_id, board_revision: request.expected_board_revision + 1,
     unassigned_task_count: taskCount };
   try {
-    const [guard, shift, tasks, archive, item, project, compact, bump, operation] = await db.batch([
-      db.prepare(`INSERT INTO project_command_guards (app_user_id, operation_id, project_id, command_type)
-        SELECT ?, ?, ?, 'DeleteProject' FROM project_board_items i JOIN project_board_heads h
-          ON h.app_user_id = i.app_user_id
+    const [guard, shift, tasks, archive, projectDocumentRelation, projectDocument, item, project, compact, bump, operation] = await db.batch([
+      db.prepare(`INSERT INTO project_command_guards
+          (app_user_id, operation_id, project_id, command_type, project_primary_document_id)
+        SELECT ?, ?, ?, 'DeleteProject', ppd.document_id
+          FROM project_board_items i
+          JOIN project_board_heads h ON h.app_user_id = i.app_user_id
+          LEFT JOIN project_primary_documents ppd
+            ON ppd.app_user_id = i.app_user_id AND ppd.project_id = i.project_id
         WHERE i.app_user_id = ? AND i.project_id = ? AND i.settings_revision = ? AND h.board_revision = ?`)
         .bind(appUserId, request.operation_id, request.project_id, appUserId, request.project_id,
           request.expected_settings_revision, request.expected_board_revision),
@@ -324,6 +328,16 @@ export async function deleteProject(db: D1Database, appUserId: string, request: 
       db.prepare(`DELETE FROM project_archives WHERE app_user_id = ? AND project_id = ?
         AND EXISTS (SELECT 1 FROM project_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
         .bind(appUserId, request.project_id, appUserId, request.operation_id),
+      db.prepare(`DELETE FROM project_primary_documents
+        WHERE app_user_id = ? AND project_id = ?
+          AND EXISTS (SELECT 1 FROM project_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(appUserId, request.project_id, appUserId, request.operation_id),
+      db.prepare(`DELETE FROM documents
+        WHERE app_user_id = ? AND kind = 'project_primary'
+          AND document_id = (SELECT project_primary_document_id FROM project_command_guards
+            WHERE app_user_id = ? AND operation_id = ?)
+          AND EXISTS (SELECT 1 FROM project_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(appUserId, appUserId, request.operation_id, appUserId, request.operation_id),
       db.prepare(`DELETE FROM project_board_items WHERE app_user_id = ? AND project_id = ?
         AND EXISTS (SELECT 1 FROM project_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
         .bind(appUserId, request.project_id, appUserId, request.operation_id),
@@ -353,7 +367,7 @@ export async function deleteProject(db: D1Database, appUserId: string, request: 
       if (committed) return replayOperation<DeleteProjectResult>(committed, "DeleteProject", requestFingerprint);
       return revisionReject(db, appUserId, request, "DeleteProject", requestFingerprint, "The Project changed before deletion");
     }
-    void shift; void tasks; void archive; void item; void compact;
+    void shift; void tasks; void archive; void projectDocumentRelation; void projectDocument; void item; void compact;
     return result;
   } catch {
     const committed = await readOperation(db, appUserId, request.operation_id);
