@@ -2733,3 +2733,18 @@ D-100 profile: `STANDARD (tooling/governance override)`. Persistent nonprod depl
 | D101-UI2-CORR-NONPROD | Exact deployment | corrected exact main deployed to canonical nonprod with existing bindings/posture | Worker `9b4fc2f2-8d40-48eb-9cfa-a4aa3bb150a1`; target/config guard verified | PASS |
 | D101-UI2-CORR-CONSOLE | Browser console | no warning/error during corrective verification | existing and fresh authenticated tabs `dev.logs()` => `[]` | PASS |
 | D101-UI2-CORR-SCOPE | Scope | Web-only; no Worker/D1, migration, API, dependency, production, or destructive operation | source review and operation record | NOT_REQUIRED / NOT_RUN |
+
+### D-101 UI refinement 2 v2 — compact window controls and minimized title
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D101-UI2V2-CHROME | Window controls | header controls are ordered `-` / maximize-or-restore / `×`; close is icon-only with explicit accessible name | focused `TaskNoteEditor.test.tsx`; authenticated current-asset browser AX/DOM | PASS |
+| D101-UI2V2-MAX | Maximize/restore | component-local maximize uses safe viewport geometry and switches accessible max/restore icon without changing normal preference | geometry tests; browser `1100 × 700` max `16,16,1068,668`, restore `534,37,529,626` | PASS |
+| D101-UI2V2-PREF | Preferred geometry | maximize/restore does not overwrite preferred normal geometry or its localStorage envelope | focused localStorage/geometry tests; browser restore check | PASS |
+| D101-UI2V2-GUARD | Max interaction guard | drag, resize, keyboard move/resize are disabled and resize handles hidden while maximized | focused tests; browser handles `0` while max and `8` after restore | PASS |
+| D101-UI2V2-TITLE | Minimized title | minimized bar shows Note icon, current Task title, and icon-only close; long title uses non-blocking ellipsis layout | focused structural test; browser current Task title and close `×` | PASS |
+| D101-UI2V2-DRAG | Normal interaction | existing normal title-bar pointer drag and resize remain usable | real browser pointer title-bar drag; real right-handle resize `529`→`479`→`529` | PASS |
+| D101-UI2V2-REG | Web regression/static | focused v2, full Web, typecheck, builds, deploy guard, dry-run, and diff-check | focused `34 / 34`; full Web `11 files / 412 tests`; required static gates | PASS |
+| D101-UI2V2-NONPROD | Exact deployment | exact pushed main is deployed to canonical nonprod with protected runtime/bindings | Worker `4c519d01-f100-4931-a292-bdfcab9ede3e`; target `taskchute-web-nonprod`; guard/config | PASS |
+| D101-UI2V2-CONSOLE | Browser console | no warning/error during v2 verification | authenticated tab `dev.logs({levels:[error,warn]})` => `[]` | PASS |
+| D101-UI2V2-SCOPE | Scope | Web-only; no API/Worker/schema/migration/dependency/multi-window/Preview change | source review and operation record | NOT_REQUIRED / NOT_RUN |

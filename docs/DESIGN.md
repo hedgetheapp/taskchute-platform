@@ -627,3 +627,7 @@ TodayのTask rowには独立した`ノート`列を置き、クリックしたTa
 Task Primaryはstandalone Noteのarchive/delete lifecycleを共有せず、preview、attachment、search/backlink、Task titleの第二authority、localStorage/IndexedDB本文保存を追加しない。Document bodyはDay projectionへ含めず、owner-scoped APIから必要時だけ取得する。
 
 D-101のUI refinementでは、standalone NotesとTask Note peekが共通の`NoteMarkdownEditor`（Markdown source textarea、固定line-number rail、scroll synchronization、line-number toggle）を使う。Task Note peekはdesktopではfree-floating fixed windowで、top/status barのdrag、8方向resize、keyboard edge resizeによりpreferred `x / y / width / height`を変更する。geometryはversioned browser-local envelopeへ保存するが、Document mutation stateとは独立し、viewport clampは表示値だけに適用する。mobileではpeekをfull-widthとし、resize handleを表示しない。Today Note glyphはinline SVGで、存在状態を色と`data-note-state`だけで示し、Task title/Document authorityを変更しない。
+
+### D-101 UI refinement 2 v2 — window chrome
+
+floating Task Noteのheaderは既存utility actionsの右側に、`-`、desktop maximize/restore icon、`×`のcompact control groupを持つ。Closeはicon-onlyで、minimized barはNote icon・current Task title・close iconをflex配置し、長いtitleはellipsisで切り詰める。Maximizeはeditor component内のtransient stateであり、viewport safe insetから表示geometryを算出する。preferred normal geometryのbrowser-local persistenceは変更せず、最大化中のdrag・resize・keyboard move/resizeとresize handlesは無効になる。これにより、window controlsは既存のDocument/save/ambiguity semanticsから独立し、multi-window/global singletonやPreviewを導入しない。
