@@ -2666,3 +2666,17 @@ D-084 browser fixture creation was not completed: the unauthenticated/new in-app
 | D100-SAFETY | Scope | No runtime/API/schema/migration/dependency/auth/production change; no real deploy or DB write in helper | PASS — source review |
 
 D-100 profile: `STANDARD (tooling/governance override)`. Persistent nonprod deployment, authenticated browser, API probes, and DB probes are `NOT_REQUIRED` after source review confirmed helper-only changes with no runtime boundary change; exact nonprod static gates are part of D100-VERIFY. Timing baseline is retained in the ignored artifact and summarized in CURRENT. Production `NOT_RUN`, Released `NO`.
+
+## D-101 — Task Primary Note and Document Permalinks
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D101-MIGRATION | APP 0031 | Fresh `0001 -> 0031` and upgrade `0030 -> 0031`; standalone preservation, Task Primary relation, operation allow-list, constraints, quick/FK | `test:migrations:d101` bounded Node/sqlite validation | PASS |
+| D101-WORKER | Task Primary commands | owner-scoped Ensure/Update, exact replay/misuse, atomic relation+Document Create, revision CAS, concurrent Ensure convergence, same-result stale Update rejection | Task Primary integration `5 / 5`; Documents integration `16 / 16` | PASS |
+| D101-WEB | Task Note surface | Note column, side-peek editor, Markdown source, explicit/Ctrl/Cmd Save, open-mode persistence, focus/close, canonical task/document permalink, no body in Day projection | App + TaskNoteEditor focused `263 / 263`; full Web `7 files / 356 tests` | PASS |
+| D101-REG | Existing behavior | Day projection, migration consumer, Notes, Routine, Settings, operation and lifecycle regressions | full Worker/D1 `33 files / 292 tests`; full Web `7 files / 356 tests` | PASS |
+| D101-STATIC | Static gates | typecheck, normal build, exact nonprod build, deploy guard, Wrangler dry-run, diff-check | all required commands exited `0`; known log `EPERM`/chunk warnings non-fatal | PASS |
+| D101-NONPROD | Exact deployment and unauthenticated safety | canonical Worker/bindings/vars, root `200`, protected Documents API `401`, APP/AUTH pending `0 / 0` | Worker `0ea63a97-c0af-4d6f-be76-4265940e0f21`; generated config/guard; HTTP probes | PASS |
+| D101-BROWSER | Authenticated Task Note persistence | existing authenticated tab shows `ノート` column and side-peek; explicit Markdown save; same-tab reload; fresh authenticated tab | real CUA interaction; fresh tab in same session; both console warning/error logs `[]`; no synthetic DOM events | PASS |
+| D101-DB | APP/AUTH read-only integrity | quick/FK, Document and relation constraints, duplicate/orphan checks, active execution, transient guard residue, no-write probes | APP/AUTH remote D1 read-only probes; all successful probes `rows_written=0` | PASS |
+| D101-SAFETY | Scope boundary | no AUTH migration, dependency, production, credentials, bootstrap, restore, unrelated destructive cleanup, branch/PR/merge/tag/Release | source review and operation log | NOT_RUN / NOT_REQUIRED |

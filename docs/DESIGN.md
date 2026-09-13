@@ -612,3 +612,8 @@ D-094ではNotes、Routine、Effective Day、Mode、Projectの一時surfaceに�
 Routine Boardはboard自体をviewport内のscroll ownerとし、recurrence / overflow / date surfacesのtemporary stateをunmount・outside・Escapeで破棄する。Effective Dayはoverride一覧を日付・指定・理由・操作のtableとして表示し、unknown guidanceを文脈付きで示す。破壊的操作は既存の`destructive-action` visual contractを共有する。D-094はAPI、Worker、Domain、schema、migration、dependencyを変更せず、日付・再発・Notesのcanonical保存意味も変更しない。
 
 D-095ではTodayの月表示・月曜始まりweekday header・月間grid・selected/today/adjacent-month state・month/year navigationを`CalendarPopover`として共有し、RoutineとEffective Dayの日付text field自体をclick / focus起点にした。Routine/Effective Dayへはselected dateとは別にApp/Boardのcanonical current logical dateを`todayDate`として渡し、selected/todayが異なる場合も同じtoday markerを描画する。独立calendar trigger button/iconは置かず、text field自身に`aria-haspopup="dialog"` / `aria-expanded`を持たせる。field draftはcalendar selectionと同じlogical-date valueを使い、8桁・dashed形式をstrictに正規化する。Notes editorは固定幅railと`minmax(0, 1fr)` content columnを常設し、OFF時は番号glyphだけを隠すためtextarea位置・サイズ・背景は変わらない。D-095はD-094のrefinementであり、日付・再発・Notesのcanonical保存意味を変更しない。
+## D-101 Task Primary Note
+
+TodayのTask rowには独立した`ノート`列を置き、クリックしたTaskのTask Primary Documentをside-peekで開く。未作成の場合だけ既存のEnsure commandでlazy creationし、Task titleはDay projectionのauthorityをそのまま表示する。EditorはMarkdown source textareaと明示Saveを持ち、約1秒autosave、Ctrl/Cmd+S、close時のfocus復元を既存Notesのinteraction languageへ接続する。side-peekは`clamp(420px, 38vw, 680px)`の固定railでDay tableのlayoutを縮めず、new-tab modeも同じstable Task/Document permalinkへ遷移する。
+
+Task Primaryはstandalone Noteのarchive/delete lifecycleを共有せず、preview、attachment、search/backlink、Task titleの第二authority、localStorage/IndexedDB本文保存を追加しない。Document bodyはDay projectionへ含めず、owner-scoped APIから必要時だけ取得する。

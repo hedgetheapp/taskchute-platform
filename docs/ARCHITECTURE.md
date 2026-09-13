@@ -530,3 +530,8 @@ Create / Updateは既存のoperation fingerprint / replay / transaction assertio
 APP `0030_standalone_note_lifecycle.sql`は`documents.archived_at`とstandalone owner/title unique indexを追加し、operations allow-listをarchive / restore / hard deleteへ拡張する。archive済みDocumentもunique titleへ含めるため、restoreや新規Createが同じtrimmed titleを取得するraceをD1が拒否する。archive / restore / deleteはDocument row・revision・ownerをCASで確認し、既存のoperation fingerprint / exact replay / transaction assertion境界を再利用する。
 
 通常のDocuments queryはnon-archived、`archived=true` queryはarchivedだけをowner-scopeで返す。D-091–D-093は既存Document coreをTask / Project / Routine FKで拡張せず、preview、attachment、offline queue、AUTH schema、runtime external serviceを追加しない。
+## D-101 Task Primary relation and permalink boundary
+
+APP `0031_task_primary_documents.sql` keeps the shared `documents` row generic and adds an owner-scoped `task_primary_documents` relation keyed by `(app_user_id, task_id)`. The relation has a stable UUIDv7 Document identity, a database-enforced `task_primary` kind, and owner/task/document foreign keys. Each Task has at most one relation and each Task Primary Document belongs to one Task; the core Document row does not embed Task-specific fields.
+
+The Day projection left-joins only `primary_document_id`; Markdown body and Note editor state are not loaded into the Day table. Authenticated Ensure/Update routes reuse the existing operation fingerprint, assertion, replay, and revision-CAS conventions. A stable URL identifies the Task and Document, while a same-origin new-tab bootstrap may ensure a missing relation and then replace its location with the canonical GET permalink; ordinary GET remains non-mutating. No realtime coordination, attachment storage, or new runtime service is introduced.

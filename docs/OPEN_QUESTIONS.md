@@ -349,6 +349,8 @@ D-034によりRoutineDefinitionがday-specific Task Noteのtemplate/defaultを�
 - Routine day-specific Note templateのcopy / reference / override semanticsのphysical implementation
 - Entry / Execution単位の専用Documentを将来持つか
 
+D-101により、Task Primary Documentについてはstable UUIDv7 `document_id`、owner-scoped relation、lazy Ensure lifecycle、Markdown source、revision/CAS、Task title authority、Task permalinkが解決済みとなった。Project Primary、RoutineOccurrence Document、Task/Project deletion lifecycle、additional document types、preview/search/backlink/attachment semantics、revision-history UXは引き続き未決または別Decisionのscopeである。
+
 ## Place / Location / Map
 
 planned Placeとobserved LocationSnapshotの分離、optional best-effort Start / Complete capture、Map projectionはD-019でApproved済み。
