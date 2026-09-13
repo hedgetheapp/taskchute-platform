@@ -122,6 +122,19 @@ function hasLocalKeyboardOwner(): boolean {
   return Boolean(document.querySelector(LOCAL_KEYBOARD_OWNER_SELECTOR));
 }
 
+function clearNeutralFocusAfterEscape(): void {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement) || !active.isConnected) return;
+  if (active === document.body || active === document.documentElement) return;
+  if (isTextEditingElement(active)
+    || active.matches("button, a[href], [role='button'], [role='menuitem'], [tabindex='0']")
+    || active.closest(LOCAL_KEYBOARD_OWNER_SELECTOR)) return;
+
+  const tabIndex = active.getAttribute("tabindex");
+  if (tabIndex === null || Number(tabIndex) >= 0) return;
+  active.blur();
+}
+
 function isPlainActivation(event: KeyboardEvent): boolean {
   return !event.repeat && !event.isComposing && !event.ctrlKey && !event.metaKey && !event.altKey;
 }
@@ -201,6 +214,7 @@ export function HitAHint({ enabled, blocked = false, viewKey, onFocusIntent, onA
       event.stopImmediatePropagation();
       if (event.key === "Escape") {
         cancel();
+        clearNeutralFocusAfterEscape();
         return;
       }
       if (event.key === "Backspace") {

@@ -107,6 +107,35 @@ describe("Hit-a-Hint activation guards", () => {
     expect(openHint()).not.toBeNull();
   });
 
+  it("blurs a neutral negative-tabindex container on Escape cancellation", () => {
+    renderWithHint(<div className="day-shell" tabIndex={-1}>
+      <button>safe action</button>
+    </div>);
+    const neutral = document.querySelector<HTMLElement>(".day-shell");
+    expect(neutral).not.toBeNull();
+    neutral!.focus();
+    expect(document.activeElement).toBe(neutral);
+    expect(openHint()).not.toBeNull();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    expect(document.querySelector("[data-hit-a-hint-active='true']")).toBeNull();
+    expect(document.activeElement).not.toBe(neutral);
+  });
+
+  it("preserves meaningful Task row focus on Escape cancellation", () => {
+    renderWithHint(<div className="task-row" data-entry-id="entry-1" tabIndex={0}>task</div>);
+    const row = document.querySelector<HTMLElement>(".task-row");
+    expect(row).not.toBeNull();
+    row!.focus();
+    expect(openHint()).not.toBeNull();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    expect(document.querySelector("[data-hit-a-hint-active='true']")).toBeNull();
+    expect(document.activeElement).toBe(row);
+  });
+
   it.each([
     ["Control", { ctrlKey: true }],
     ["Meta", { metaKey: true }],
