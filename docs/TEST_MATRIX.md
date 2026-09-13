@@ -2638,6 +2638,18 @@ D-084 browser fixture creation was not completed: the unauthenticated/new in-app
 | D099-BROWSER | Authenticated persistent interaction | Real `F` opens badges, safe label activation, Hint keyboard exclusivity, Escape, same-tab reload, fresh authenticated tab | Existing tab `1569 × 912`, DPR 1, Sidebar open: Today `124` badges; label `AF` opened Notes; Notes `17` badges; `?` did not open shortcut help; same-tab reload `124`; fresh authenticated tab `66`; Escape closed each; no app data mutation; CUA logs `[]` in both tabs | PASS |
 | D099-DB | APP/AUTH read-only integrity | quick/FK, Document constraints, duplicate identity/title, assertion residue, no-write probes | APP quick `ok`, FK empty, documents `3`, invalid kind `0`, negative revision `0`, duplicate document identity `0`, duplicate active owner/title `0`, transaction assertions `0`; AUTH quick `ok`, FK empty; all probes `rows_written=0` | PASS |
 
+## D-099 corrective — Hit-a-Hint Escape neutral focus recovery
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D099-CORR-NEUTRAL | Escape cancellation | Neutral connected `.day-shell[tabindex="-1"]` is blurred only on Escape; Hint session closes and no full-container outline remains | focused `HitAHint.test.tsx` regression; real authenticated Today `F` → `Escape`; post-cancel active element `BODY` | PASS |
+| D099-CORR-MEANINGFUL | Focus preservation | Task row / meaningful `tabIndex=0` focus remains active through Hint Escape | focused regression and real completed Task row `F` → `Escape` | PASS |
+| D099-CORR-LOCAL | Web regression/static gates | Focused Hit-a-Hint, full Web, typecheck, normal/exact nonprod build, deploy guard, Wrangler dry-run, diff-check | focused `34 / 34`; full Web `6 files / 352 tests`; all static gates exit `0` | PASS |
+| D099-CORR-NONPROD | Persistent deploy and HTTP safety | Exact pushed main deploys to canonical Worker with nonprod vars/bindings; root/protected API safety | Worker `f4a1e106-5d43-4a0c-a3fc-2192ef543946`; root `200`; Documents/Projects `401`; APP/AUTH pending `0 / 0` | PASS |
+| D099-CORR-BROWSER | Authenticated browser focus behavior | Same viewport neutral focus cleanup, keyboard recovery, meaningful Task row preservation, console evidence | authenticated tab `1379 × 912`, DPR `1`, Sidebar open; `ArrowDown` recovery; CUA logs `[]` | PASS |
+| D099-CORR-DB | Read-only integrity | APP/AUTH quick/FK and no-write probes | both quick `ok`, FK empty, all successful probes `rows_written=0` | PASS |
+| D099-CORR-SAFETY | Boundary | Web-only; no Worker/API/schema/migration/dependency, production, restore, credential, bootstrap, destructive cleanup, or Release | source review and operation record | NOT_REQUIRED / NOT_RUN |
+
 ## D-100 — Executable Development Workflow / Codex Cycle Acceleration
 
 | ID | Surface | Requirement / evidence | Result |
