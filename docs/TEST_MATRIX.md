@@ -12,8 +12,10 @@
 | D105-LOCAL-02 | Client recovery | focused manager tests cover bounded reconnect and 401 distinction; App refresh hooks cover visibility/online and mounted-scope refresh with dirty/pending/unresolved deferral | PASS local/source |
 | D105-SOURCE-01 | Mutation scope and deploy guard correction | Project mutation mapping includes dependent Documents refresh; client coalesces same-microtask duplicate and wildcard Day scopes; nonprod guard requires exactly one `REALTIME_HUB` binding with class `RealtimeHub` and SQLite storage | PASS |
 | D105-NONPROD-01 | Persistent nonprod infrastructure | final exact main deploy Worker version `e21c68c9-6778-47a3-8e18-772c2425ecc6`; `REALTIME_HUB (RealtimeHub)` SQLite binding; root `200`; protected realtime/Documents API `401`; APP/AUTH pending `0 / 0`; quick/FK/anomaly/read-only probes clean | PASS |
-| D105-BROWSER-01 | Authenticated two-browser E2E | CUA inventory had no persistent authenticated tab; same-user Day / Project / Mode / Routine / clean+dirty Document / disconnected reconnect scenarios were not attempted; no credentials/re-login | NOT_RUN |
-| D105-CONSOLE-01 | Browser console evidence | no authenticated browser surface was available in CUA, therefore exact warning/error counts were not collected | NOT_RUN |
+| D105-BROWSER-01 | Authenticated two-browser E2E | Same existing authenticated browser sessionの独立A/B tabsで、Day Task rename、Project rename、Mode作成、Routine作成、clean Document updateが手動reloadなしに伝播。概ね1秒以内に可視化し、same-tab reload / fresh authenticated tab Cでcanonical Noteを確認。dirty draftはrealtimeで上書きされなかった | PASS (propagation/safety) |
+| D105-BROWSER-02 | Document dirty/reconciliation boundary | dirty draftは保持されたが、70,203 / 65,536 bytesの既存client hard-stopによりbrowser run内のCAS conflict save完了は未観測。automated/local dirty/CAS evidenceは従来どおり有効 | PARTIAL / CAS SAVE NOT_RUN |
+| D105-BROWSER-03 | Socket disconnect/reconnect convergence | CUAにはsocket単独切断・同一ページreconnect操作がなく、tab close/reopenやreloadをreconnect evidenceに代用していない | NOT_RUN |
+| D105-CONSOLE-01 | Browser console evidence | authenticated A/C tabsのCUA exposed warning/error logsは各`[]`、合計 warning `0` / error `0` | PASS |
 | D105-CI-01 | Exact pushed-SHA CI | final exact SHA `d013e98e9e7c3fe917a7fb83bbbb1f9e601e8eda`, GitHub Actions run `34808771287`: typecheck, Web `14 files / 442 tests`, Worker/D1 `36 files / 307 tests`, production build all PASS | PASS |
 | D105-SCOPE-01 | Boundary | no APP/AUTH migration, production, offline sync, realtime command, or domain state in DO storage | PASS source |
 
