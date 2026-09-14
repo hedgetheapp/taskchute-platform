@@ -18,7 +18,7 @@ Project archiveはrelationとDocumentを保持し、archived ProjectからもNot
 
 ## Web behavior
 
-Task rowのProject cell、Settings > Project Boardのactive / archived Project row、Notes pageからProject Noteをopenできる。Notes pageは`すべて` / `通常ノート` / `プロジェクトノート`のdropdownでfilterする。Task Primary Noteはこのlistへ追加しない。Task / Project Primary NoteはD-102のshared floating-window registry、one-document-per-tab dedupe、48px cascade、minimize/maximize、geometry、route、dirty / unresolved / flush / unload barrier、Markdown autosave/CASを共有する。同一Projectの複数openは1つのwindowをactivate / restoreする。
+Task rowのProject cell、Settings > Project Boardのactive / archived Project row、Notes pageからProject Noteをopenできる。Notes pageは`すべて` / `通常ノート` / `プロジェクトノート`のdropdownでfilterする。Task Primary Noteはこのlistへ追加しない。Task Primary NoteとToday / Project Board / direct routeから開くProject Primary NoteはD-102のshared floating-window registry、one-document-per-tab dedupe、48px cascade、minimize/maximize、geometry、route、dirty / unresolved / flush / unload barrier、Markdown autosave/CASを共有する。Notes pageでProject Noteを選択した場合は同じNotes editor内でbodyだけをinline編集し、同一Projectのfloating windowが既に存在する場合はそのwindowをactivate / restoreしてinline editorを二重にmountしない。Project Primaryはtabごとに最大1つのeditable writerを持つ。
 
 ## Persistence
 

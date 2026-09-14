@@ -20,7 +20,7 @@ Canonical Decision: `docs/decisions/D-103_PROJECT_PRIMARY_DOCUMENT_V01.md`。
 
 Projectごとに論理的に1つの`project_primary` Markdown Documentを、最初の明示的open時にlazy materializeする。Project titleはDocument titleではなくcurrent Project authorityから表示し、Project archiveはrelation / Documentを保持する。Project hard deleteは既存のProject / Task / history semanticsを維持しつつ、guarded atomicな`DeleteProject`内でProject Primary relationとDocumentを永久削除する。Ensure / Update、owner-scoped resolver、exact replay / CAS / ambiguityは既存Document / Task Primary conventionsを共有する。
 
-DayのProject cell、Project Board、Notes pageからopenでき、Notes pageは`すべて` / `通常ノート` / `プロジェクトノート` dropdownで物理materialized Documentだけを表示する。Task / Project Primary NoteはD-102のshared floating-window registryで同一Documentをdedupeし、dirty / unresolved / flush / unload barrierをwindow単位で維持する。RoutineOccurrence Document、attachments、backlinks、search、preview、独立title / archive / delete、AUTH migration、dependency、productionは対象外とする。
+DayのProject cell、Project Board、Notes pageからopenでき、Notes pageは`すべて` / `通常ノート` / `プロジェクトノート` dropdownで物理materialized Documentだけを表示する。Task Primary NoteとDay / Project Boardから開くProject Primary NoteはD-102のshared floating-window registryで同一Documentをdedupeし、Notes pageのProject Note選択はNotes editor内のbody-only inline editorで扱う。同一Projectのfloating windowが既にあれば既存windowをactivate / restoreし、inline editorを二重に作らない。dirty / unresolved / flush / unload barrierは既存Document境界で維持する。RoutineOccurrence Document、attachments、backlinks、search、preview、独立title / archive / delete、AUTH migration、dependency、productionは対象外とする。
 
 ## D-100 — Executable Development Workflow / Codex Cycle Acceleration
 

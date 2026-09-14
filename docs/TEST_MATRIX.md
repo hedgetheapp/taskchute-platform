@@ -2806,3 +2806,18 @@ Implementation commit `5deba847305bea4cb06645be0017b33bb6fec471`をmainへfast-f
 | D103-DB | Read-only integrity | quick/FK, kind/revision, owner/FK/unique relations, duplicate positions, assertion/guard residue, active executions | APP/AUTH remote probes; all writes `0`, all listed anomaly counts `0` | PASS |
 | D103-CONSOLE | Browser console | no warning/error during existing/fresh authenticated verification | both `dev.logs({levels:[error,warn]})` => `[]` | PASS |
 | D103-SCOPE | Scope | APP 0032 only; no AUTH migration, dependency, production, restore, unrelated destructive cleanup, branch/PR/merge/tag/Release | source review and operation record | NOT_REQUIRED / NOT_RUN |
+
+### D-103 corrective — Today Project loading / Note affordance / Notes inline editor — 2026-09-14
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D103-CORR-PROJECT-LOAD | Today Project loading | established current Dayのactive Project一覧を初回表示前にloadし、loaded成功時だけ不在assigned Projectをarchive表示する。loading/errorでは誤labelしない | focused App test: active option・Project Note affordance・Projectなし変更後の候補保持、load failure時のarchive誤表示なし | PASS |
+| D103-CORR-TODAY-NOTE | Today Project Note affordance | Project selectorとNote affordanceを同じcell内でactionableに保ち、selectorがNote buttonを押し潰さない | focused App test、Project selector flex / fixed trigger CSS source review | PASS |
+| D103-CORR-NOTES-INLINE | Notes Project Note editor | Notes pageのProject Note rowはinline body editorを開き、Project title authority・body-only autosave/CASを使う。既存floating Project windowはactivate / restoreして二重editorを作らない | focused NotesBoard tests: inline body autosave exact request、floating dedupe/activation | PASS |
+| D103-CORR-STATIC | Regression/static | focused App + Notes `2 files / 292 tests`; full Web `11 files / 422 tests`; typecheck/build/exact nonprod build/guard/dry-run/diff-check | local commands; Worker/API/migration unchanged | PASS |
+| D103-CORR-NONPROD | Persistent nonprod | exact pushed mainをcanonical Workerへguarded deployし、runtime/bindingsとHTTP safetyを維持する | Worker `412df8a0-ac18-414f-b290-9ca39da630b9`; root `200`; unauthenticated Documents/Projects API `401`; pending `0 / 0` | PASS |
+| D103-CORR-DB | Read-only integrity | APP/AUTH quick/FK、Project relation/document and Entry position uniqueness、active execution、assertion/guard residue、read-only writes | APP/AUTH quick `ok`; FK empty; duplicates/active/guards `0`; all successful probes `rows_written=0` | PASS |
+| D103-CORR-BROWSER | Corrective browser A/B/C | Today Project load/affordance、Notes inline Project editor、same-tab/fresh-tab and console evidence | CUA persistent browser tab list was empty; no authenticated tab was available, so these new corrective browser checks are not claimed | AUTHENTICATED_BROWSER_NOT_VERIFIED |
+| D103-CORR-SCOPE | Corrective boundary | no Worker/API/schema/migration/dependency change; no production/restore/credential/bootstrap/destructive cleanup/branch/PR/merge/tag/Release | source review and operation record | NOT_REQUIRED / NOT_RUN |
+
+D-103 corrective implementation commit `74155bee97a1b05eff05bcbfc07e311d0b68acb8` was pushed and deployed as Worker `412df8a0-ac18-414f-b290-9ca39da630b9`. Existing D-103 base browser evidence remains historical PASS; this matrix keeps the newly required corrective browser evidence separate and explicitly `AUTHENTICATED_BROWSER_NOT_VERIFIED`.
