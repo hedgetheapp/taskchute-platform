@@ -26,12 +26,13 @@ read-only probe `rows_written=0`を確認した。
 
 Exact-SHA GitHub Actions run `34854737305`はWeb/Worker、Android JVM/APK jobがsuccessし、
 artifact `taskchute-android-debug-22e4aaacda14409474ba5963cb62dd92ce6e1cdf`（ID
-`10351959051`、expires `2026-09-21T14:20:31Z`）を生成した。hosted emulator jobは
-local AVD evidenceとは別に記録し、最終結果をcloseoutで反映する。same-user Android/Web
-authenticated cross-client propagation、Android authenticated socket reconnect、実機での
-D-108挙動はcredentialを取得せず`NOT_RUN`とする。D-107 Galaxy S23 smokeのユーザー確認済み
-PASSは既存evidenceとして別記録する。Migration `NOT_REQUIRED`、production `NOT_RUN`、
-Release `NO`。
+`10351959051`、expires `2026-09-21T14:20:31Z`）を生成した。hosted emulator jobはKVM
+非対応hostで長時間timeoutするため、今回のcorrectiveで通常CIから削除する。Android
+runtimeの正式ゲートはWindows local AVD `TaskChute_API33` + `scripts/android-qa.ps1`で、
+既に全10件PASSしている。same-user Android/Web authenticated cross-client propagation、
+Android authenticated socket reconnect、実機でのD-108挙動はcredentialを取得せず`NOT_RUN`と
+する。D-107 Galaxy S23 smokeのユーザー確認済みPASSは既存evidenceとして別記録する。
+Migration `NOT_REQUIRED`、production `NOT_RUN`、Release `NO`。
 
 ### D-107 Android Today v0.1 — local implementation — 2026-09-14
 

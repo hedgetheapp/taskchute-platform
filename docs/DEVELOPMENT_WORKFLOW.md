@@ -320,12 +320,21 @@ persistent nonprod data mutation、production、credential取得を行わない�
 
 D-108ではD-105の既存RealtimeHubをAndroid foreground Todayへ拡張する。local gateは
 Android JVM、protocol / connection manager、Today pending/defer、Worker/Web realtime、
-canonical nonprod build、deploy guard、Wrangler dry-run、可能なlocal AVD runtimeを含む。
+canonical nonprod build、deploy guard、Wrangler dry-run、Windows local AVD runtimeを含む。
 AndroidのWebSocketはD-106 dynamic cookie sessionを使い、HTTP Queryをcanonical authority
 として扱う。same-user Android/Web propagationやauthenticated reconnectはcredentialを
 取得せず安全な二つのclient条件がある場合だけPASSとし、条件がなければ`NOT_RUN`と記録
 する。foreground-only、no polling / FCM / background socket、no migration / production
 boundaryを維持する。
+
+Android Emulator runtimeの正式な通常ゲートは、Codexから実行可能なWindows local AVD
+`TaskChute_API33`と`scripts/android-qa.ps1`である。これはSDK/adb/emulator解決、boot完了
+待機、APK install、`:app:connectedDebugAndroidTest`、screenshot/UI tree/crash確認、exit
+codeを一つの再現可能なゲートにまとめる。GitHub hosted runnerのEmulator jobはKVM非対応
+hostで長時間timeoutするため通常CIから削除し、Android runtime verificationの代替にしない。
+GitHub ActionsではWeb/Worker verification、Android JVM tests、Debug APK build、
+instrumentation APK compileを維持する。local AVDが利用できない環境ではruntimeをPASSと
+分類せず`NOT_RUN / EMULATOR_ENV_BLOCKED`と記録する。
 
 ## Handoff
 

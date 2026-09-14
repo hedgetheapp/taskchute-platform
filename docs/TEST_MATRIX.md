@@ -11,18 +11,19 @@
 | D108-ORIGIN | Worker native boundary | Same-origin browser, wrong Origin, unauthenticated native missing-Origin, authenticated native missing-Origin, ordinary HTTP and invalidate-only broadcast | focused `6 / 6`; full Worker/D1 `307 / 307` | PASS |
 | D108-ANDROID-JVM | Android regression | `:app:testDebugUnitTest` | `64 / 64` | PASS |
 | D108-ANDROID-EMULATOR | Local AVD runtime | `TaskChute_API33` / Pixel 7 / API 33 / Google APIs / x86_64; APK install; `connectedDebugAndroidTest`; screenshot/UI tree/crash buffer | `10 / 10`, failures/errors/skipped `0 / 0 / 0` | PASS |
+| D108-CI-EMULATOR | Hosted emulator policy | GitHub-hosted `android-emulator` jobはKVM非対応hostで長時間timeoutするため削除。Android runtimeの正式ゲートはWindows local `TaskChute_API33` + `scripts/android-qa.ps1` | workflow corrective | NOT_APPLICABLE / CORRECTED |
 | D108-WEB | Web regression | Focused realtime client tests; full Web suite | `4 / 4`; `442 / 442` | PASS |
 | D108-BUILD | Static/build gates | typecheck, normal build, exact `CLOUDFLARE_ENV=nonprod` build, deploy guard, Wrangler dry-run, `git diff --check` | all PASS | PASS |
 | D108-CROSS-CLIENT | Authenticated Android/Web propagation | Requires safe same-user authenticated Android and Web clients; no credentials retrieved or printed | not available in this run | NOT_RUN |
 | D108-MIGRATION | APP/AUTH schema | D-108 requires no migration and does not add a namespace | NOT_REQUIRED | PASS |
 
-D-108 local classification: implementation `22e4aaacda14409474ba5963cb62dd92ce6e1cdf` is
+D-108 classification: implementation `22e4aaacda14409474ba5963cb62dd92ce6e1cdf` is
 fast-forward pushed and exact main is deployed to persistent nonprod Worker
 `74579f87-51c4-423e-ac7d-742ac283ac09`. APP/AUTH pending is `0 / 0`, quick/FK and read-only
-rows-written checks are PASS. Exact-SHA CI run `34854737305` has Web/Worker and Android
-JVM/APK jobs PASS; hosted emulator status is recorded separately from the local AVD PASS.
-Authenticated cross-client propagation and Android authenticated reconnect remain `NOT_RUN`;
-production is `NOT_RUN`, Released `NO`.
+rows-written checks are PASS. The Windows local AVD is the official Android runtime gate;
+hosted emulator is no longer a standard CI gate. GitHub CI continues to cover Web/Worker,
+Android JVM/APK, and instrumentation APK compile. Authenticated cross-client propagation and
+Android authenticated reconnect remain `NOT_RUN`; production is `NOT_RUN`, Released `NO`.
 
 ## D-106 Android Native Auth Foundation v0.1 — local gate
 
