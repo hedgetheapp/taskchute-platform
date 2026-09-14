@@ -2,6 +2,21 @@
 
 Statuses: Approved / Proposed / Superseded
 
+## D-107 — Android Today v0.1
+
+Status: **Approved**
+
+Canonical Decision: `docs/decisions/D-107_ANDROID_TODAY_V01.md`。
+
+D-107は既存HTTP API / Worker projectionをcanonical authorityとして、Android native
+clientへMaterial 3のToday execution surfaceを追加する。current DayのSection別表示、
+前後日・今日・refresh、planned EntryのStart、running EntryのComplete、current Dayの
+running task floating panel、loading / empty / retry / auth-required / pending stateを
+対象とする。未establish DayのStart / Complete、Task/Section/Project/Mode/Routine編集、
+reorder、Notes、realtime、offline sync、widget、notification、schema / migration / API
+command / productionは対象外である。D-041/D-042、D-066、D-104、D-106の既存境界を
+維持する。
+
 ## D-106 — Android Native Auth Foundation v0.1
 
 Status: **Approved**

@@ -4,6 +4,21 @@
 
 exact DB schema、SQL、UI component library、Android local DB、offline conflict algorithm等は、別途DecisionされるまでOpenとする。
 
+## D-107 Android Today v0.1
+
+Android Todayは既存のauthenticated HTTP Query / lifecycle commandを利用するnative
+projectionであり、server canonical stateを保持・再実装しない。current DayはSection順に
+表示し、Entryはplanned / running / completed state、Task title、Project / Mode、estimate、
+planned startを表示する。planned EntryはStart、running EntryはCompleteを既存のEntry
+command contractで実行し、success後にDayを再取得する。active current-Day Executionが
+ある間はfloating running-task panelをbottom navigationの上に表示する。
+
+前日 / 翌日 / 今日 / refreshは既存のcurrent / by-logical-date read routeを利用する。
+future / pastのnon-current DayではD-041 / D-042に従ってexecution mutationを提供しない。
+loading、empty、retryable error、401 auth handoff、pending mutationは画面stateとして
+明示する。Android TodayはTask creation/editing、reorder、Notes、realtime、offline DB /
+queue、Project / Mode / Routine settings、widget、notificationを含まない。
+
 ## User model
 
 - 初期はone user

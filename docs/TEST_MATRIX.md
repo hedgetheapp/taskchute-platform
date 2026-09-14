@@ -2916,3 +2916,23 @@ Implementation commit `5deba847305bea4cb06645be0017b33bb6fec471`をmainへfast-f
 | D103-CORR-SCOPE | Corrective boundary | no Worker/API/schema/migration/dependency change; no production/restore/credential/bootstrap/destructive cleanup/branch/PR/merge/tag/Release | source review and operation record | NOT_REQUIRED / NOT_RUN |
 
 D-103 corrective implementation commit `74155bee97a1b05eff05bcbfc07e311d0b68acb8` was pushed and deployed as Worker `412df8a0-ac18-414f-b290-9ca39da630b9`. Existing D-103 base browser evidence remains historical PASS; this matrix keeps the newly required corrective browser evidence separate and explicitly `AUTHENTICATED_BROWSER_NOT_VERIFIED`.
+# D-107 Android Today v0.1 — local implementation
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D107-DECISION | Canonical scope | Approved D-107 Decisionを登録し、D-106 auth / existing HTTP API / D-041-D-042 day boundaryを維持 | decision/docs/source review | PASS |
+| D107-PARSE | Today projection | current DayのSection、Entry lifecycle、Project / Mode / estimate / planned start、active Executionをstrict parse | `TodayJsonParserTest` | PASS |
+| D107-LOAD | Load states | success、empty、network/application failure、401 auth handoffをToday stateとして区別 | `TodayControllerTest` | PASS |
+| D107-MUTATION | Execution flow | current Dayのplanned Start / running Complete、成功後canonical reload、pending中double-submit抑止 | `TodayControllerTest` / source review | PASS |
+| D107-RUNNING | Running panel | active current-Day Entryをbottom navigation上のfloating panelへ表示し、右側Completeを提供 | `TodayDay.runningTask` / Compose source review | PASS local |
+| D107-DATE | Date navigation | previous / next / 今日 / refreshをexisting by-logical-date APIへ接続し、non-current Dayのexecution actionを無効化 | controller tests / source review | PASS local |
+| D107-AUTH | D-106 regression | existing AuthController / get-session / cookie / stale credential semanticsを維持 | Android JVM suite | PASS |
+| D107-BUILD | Android build | `:app:testDebugUnitTest` `52 / 52`、canonical nonprod URL付き`:app:assembleDebug`、`:app:assembleDebugAndroidTest` | local Gradle run | PASS |
+| D107-REG | Repository gates | Web `442 / 442`、Worker/D1 `307 / 307`、typecheck、normal/exact nonprod build、deploy guard、Wrangler dry-run、diff-check | local commands | PASS |
+| D107-DEVICE | Galaxy S23 | sign-in、Today、Start、running panel、Complete、restart / usability | physical device availability required | NOT_RUN |
+| D107-SAFETY | Boundary | no migration, production, release, branch/PR/merge/tag, credential retrieval | operation record | NOT_RUN |
+
+## D-107 verification classification
+
+Local implementation gates are PASS. Exact pushed-SHA CI and Galaxy S23 device evidence remain
+separate from local PASS and are recorded only after they actually run.

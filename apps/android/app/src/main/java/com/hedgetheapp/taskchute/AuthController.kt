@@ -20,12 +20,30 @@ class AuthController internal constructor(
     private val coordinator: AuthSessionCoordinator?,
     private val scope: CoroutineScope,
     private val stateObserver: ((AuthUiState) -> Unit)?,
+    private val nativeClient: NativeAuthHttpClient?,
 ) {
-    constructor(context: Context, rawBaseUrl: String) : this(
-        coordinator = createCoordinator(context, rawBaseUrl),
-        scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
-        stateObserver = null,
+    private data class Runtime(
+        val coordinator: AuthSessionCoordinator?,
+        val client: NativeAuthHttpClient?,
     )
+
+    private constructor(runtime: Runtime, scope: CoroutineScope) : this(
+        coordinator = runtime.coordinator,
+        scope = scope,
+        stateObserver = null,
+        nativeClient = runtime.client,
+    )
+
+    constructor(context: Context, rawBaseUrl: String) : this(
+        runtime = createRuntime(context, rawBaseUrl),
+        scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
+    )
+
+    internal constructor(
+        coordinator: AuthSessionCoordinator?,
+        scope: CoroutineScope,
+        stateObserver: ((AuthUiState) -> Unit)?,
+    ) : this(coordinator, scope, stateObserver, null)
 
     var state by mutableStateOf<AuthUiState>(AuthUiState.Restoring)
         private set
@@ -39,6 +57,9 @@ class AuthController internal constructor(
     fun signIn(email: String, password: String) = launchIfAvailable { it.signIn(email.trim(), password) }
 
     fun signOut() = launchIfAvailable { it.signOut() }
+
+    internal fun authenticatedRequest(method: String, path: String, body: String? = null) =
+        nativeClient?.requestAuthenticated(method, path, body)
 
     fun close() {
         scope.coroutineContext.cancel()
@@ -66,10 +87,13 @@ class AuthController internal constructor(
     }
 
     private companion object {
-        fun createCoordinator(context: Context, rawBaseUrl: String): AuthSessionCoordinator? {
+        fun createRuntime(context: Context, rawBaseUrl: String): Runtime {
             val configError = runCatching { AppConfig.validateBaseUrl(rawBaseUrl) }.exceptionOrNull()
             val transport = configError?.let { null } ?: runCatching { NativeAuthHttpClient(rawBaseUrl) }.getOrNull()
-            return transport?.let { AuthSessionCoordinator(it, EncryptedSessionStore(context.applicationContext)) }
+            return Runtime(
+                coordinator = transport?.let { AuthSessionCoordinator(it, EncryptedSessionStore(context.applicationContext)) },
+                client = transport,
+            )
         }
     }
 }

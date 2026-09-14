@@ -344,6 +344,20 @@ D-106のsigned-in shellは、将来のToday / offline / realtime / Widget / nati
 integrationへ拡張できる境界だけを用意する。offline local DB、sync、conflict、
 background credential behaviorは未決であり、このfoundationで先取りしない。
 
+## D-107 Android Today boundary
+
+Android TodayはD-106のauthenticated cookie transportを共有し、既存の
+`/api/v1/taskchute-days/current`、`/api/v1/taskchute-days/by-logical-date`、Entry
+Start / Complete routeを呼ぶ。Today投影のJSON解析はAndroid client内のstrict mapperで
+行うが、logical Day、Section、Entry、Execution、placement revisionのauthorityはServer
+projectionのままとする。Start / Completeの成功後は再取得し、client側でdomain stateを
+推測しない。401はD-106 restore/auth pathへ、network failureはToday retry stateへ渡す。
+
+Material 3 Compose画面は軽量state holderとrepository boundaryだけを持ち、local DB、
+operation queue、offline sync、realtime connection、new API command、schema / migrationを
+追加しない。future / past non-current DayのviewはD-041 / D-042のread-only boundaryに
+従い、execution actionを無効化する。
+
 ## TaskChuteDay architecture
 
 TaskChuteDayはcanonical timezone + DayBoundaryPolicyから構成するcontinuous logical intervalである。

@@ -1,5 +1,24 @@
 # Current
 
+### D-107 Android Today v0.1 — local implementation — 2026-09-14
+
+D-107 canonical Decisionを`docs/decisions/D-107_ANDROID_TODAY_V01.md`として追加し、
+Androidのsigned-in shellから既存Today projectionを取得するMaterial 3 surfaceを実装中で
+ある。Section grouping、date navigation、refresh、planned EntryのStart、running Entry
+のComplete、current Dayのrunning task floating panel、loading / empty / retry /
+auth-required / pending stateを含む。Start / Complete成功後は同じlogical Dayを再取得し、
+既存Workerのcanonical stateへ収束する。未establish Dayのexecution actionは無効化し、
+Task creation/editing、reorder、Notes、realtime、offline、schema / migrationは変更して
+いない。
+
+Local Android JVM `52 / 52`、canonical nonprod URL付きDebug APK、instrumentation APK
+compile、Web `442 / 442`、Worker/D1 `307 / 307`、typecheck、normal build、exact
+nonprod build、nonprod deploy guard、Wrangler dry-run、`git diff --check`はPASSした。
+Android native TodayはWorker/API/schema/migrationを変更していない。`adb devices`は空で、
+Galaxy S23のsign-in、Today表示、Start、running panel、Complete、restart/usabilityは
+`NOT_RUN`である。GitHub Actions / APK artifactはpush後に実測値へ更新し、production / release
+は`NOT_RUN / NO`を維持する。
+
 ### D-106 Android Native Auth Foundation v0.1 — 2026-09-14
 
 D-106を`49b928651dfccaff11c9399be5abeb10eaecc160`で実装し、CI wrapperの

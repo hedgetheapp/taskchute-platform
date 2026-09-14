@@ -1,5 +1,15 @@
 # Risks
 
+## R-064 — D-107 Android Today uses canonical HTTP projection
+
+Android TodayはServerのDay projectionとStart / Complete commandを再利用するため、
+HTTP failure、401、projection schema drift、通信後のcanonical reloadが主なriskである。
+Mitigationとしてstrict JSON mapper、401のD-106 auth handoff、network/application errorの
+retry state、mutation成功後の同一logical Day reload、pending entry単位のdouble-submit
+抑止、non-current Dayのexecution action無効化を実装する。local DB、offline queue、
+realtime、Android-only domain authorityは追加しない。Galaxy S23実機の認証・操作結果は
+automated/local evidenceとは分離し、端末がない場合`NOT_RUN`とする。
+
 ## R-063 — D-106 native session and device-verification boundary
 
 D-106はAndroidが既存Better Authのcookie sessionをnative HTTPから利用するため、

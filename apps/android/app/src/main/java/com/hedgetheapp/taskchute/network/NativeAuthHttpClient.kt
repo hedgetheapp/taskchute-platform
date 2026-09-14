@@ -59,6 +59,11 @@ class NativeAuthHttpClient(rawBaseUrl: String) : AuthTransport {
 
     override fun clearSession() = cookies.clear()
 
+    internal fun requestAuthenticated(method: String, path: String, body: String? = null): AuthenticatedHttpResponse {
+        val result = request(method, path, body)
+        return AuthenticatedHttpResponse(result.status, result.body)
+    }
+
     private fun request(method: String, path: String, body: String?, clearCookieBeforeRequest: Boolean = false): HttpResult {
         if (clearCookieBeforeRequest) cookies.clear()
         val connection = (URL(baseUrl + path).openConnection() as HttpURLConnection).apply {
@@ -132,3 +137,8 @@ class NativeAuthHttpClient(rawBaseUrl: String) : AuthTransport {
         val deletedCookies: Set<String>,
     )
 }
+
+internal data class AuthenticatedHttpResponse(
+    val status: Int?,
+    val body: String?,
+)

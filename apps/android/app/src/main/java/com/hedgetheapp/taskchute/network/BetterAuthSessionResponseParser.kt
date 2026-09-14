@@ -27,7 +27,7 @@ internal object BetterAuthSessionResponseParser {
     }
 }
 
-private sealed interface JsonValue {
+internal sealed interface JsonValue {
     data object Null : JsonValue
     data class Object(val fields: Map<String, JsonValue>) : JsonValue
     data class Array(val values: List<JsonValue>) : JsonValue
@@ -36,7 +36,7 @@ private sealed interface JsonValue {
     data class BooleanValue(val value: Boolean) : JsonValue
 }
 
-private class JsonParser(private val input: String) {
+internal class JsonParser(private val input: String) {
     private var index = 0
 
     fun parse(): JsonValue {

@@ -24,24 +24,39 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.hedgetheapp.taskchute.auth.AuthUiState
+import com.hedgetheapp.taskchute.today.TodayController
+import com.hedgetheapp.taskchute.today.TodayHttpRepository
+import com.hedgetheapp.taskchute.today.TodayHttpResponse
+import com.hedgetheapp.taskchute.today.TodayScreen
 
 class MainActivity : ComponentActivity() {
     private lateinit var controller: AuthController
+    private lateinit var todayController: TodayController
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         controller = AuthController(this, BuildConfig.TASKCHUTE_BASE_URL)
-        setContent { TaskChuteApp(controller) }
+        todayController = TodayController(
+            repository = TodayHttpRepository(
+                request = { method, path, body ->
+                    controller.authenticatedRequest(method, path, body)?.let { TodayHttpResponse(it.status, it.body) }
+                },
+                onUnauthorized = {},
+            ),
+            onUnauthorized = controller::restore,
+        )
+        setContent { TaskChuteApp(controller, todayController) }
     }
 
     override fun onDestroy() {
         controller.close()
+        todayController.close()
         super.onDestroy()
     }
 }
 
 @Composable
-private fun TaskChuteApp(controller: AuthController) {
+private fun TaskChuteApp(controller: AuthController, todayController: TodayController) {
     val state = controller.state
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -67,7 +82,7 @@ private fun TaskChuteApp(controller: AuthController) {
                     controller.signIn(email, submitted)
                 }
                 is AuthUiState.NetworkError -> ErrorState(state.message, controller::retry)
-                is AuthUiState.SignedIn -> SignedInShell(state.message, controller::signOut)
+                is AuthUiState.SignedIn -> TodayScreen(todayController, controller::signOut)
             }
         }
     }
