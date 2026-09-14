@@ -2,9 +2,17 @@
 
 ### D-105 Realtime Invalidation v0.1 — 2026-09-14
 
-D-105は、D1 / 既存HTTP Queryをcanonical authorityとして、authenticated app userごとのSQLite-backed Hibernation `RealtimeHub`へversioned invalidate-only notificationを送る実装を追加した。対象はToday / selected Day、Project、Mode、Routine、Notes / Documentsで、成功したcanonical mutationのcommit後だけbest-effort publishする。Realtime notificationはfreshness acceleratorであり、canonical authorityではない。APP/AUTH migration、realtime command、polling、offline sync、production rolloutは変更しない。
+D-105 implementation commit `1bea758324d4aa6bb05ca1e22c3d91658c3b384e`をcanonical `main`へfast-forward pushし、CIの既存Notes ambiguity testの非決定的effect待機だけをtest-only commit `6c7e3a0bc64a93e730e367e4b6053f510df85440`で安定化した。exact SHA `6c7e3a0...`のGitHub Actions run `34806860451`はTypecheck、Web tests、Worker/D1 tests、Production buildすべてPASSした。
 
-Workerはsame-origin / authenticated WebSocket upgradeをserver-derived app userへroutingし、wrong-origin・unauthenticated・ordinary HTTPを拒否する。Web clientはsigned-in tabごとにbounded reconnectを行い、401だけD-104 reauth barrierへ接続する。dirty/pending/unresolved local state、D-066 retained operation、Document draftは通知で上書きしない。local focused realtime protocol / client / Durable Object integration evidenceはPASS、persistent nonprod deploy・two-browser authenticated propagation・final CI evidenceはcloseoutで記録する。
+D-105は、D1 / 既存HTTP Queryをcanonical authorityとして、authenticated app userごとのSQLite-backed Hibernation `RealtimeHub`へversioned invalidate-only notificationを送る。対象はToday / selected Day、Project、Mode、Routine、Notes / Documentsで、成功したcanonical mutationのcommit後だけbest-effort publishする。Realtime notificationはfreshness acceleratorであり、canonical authorityではない。APP/AUTH migration、realtime command、polling、offline sync、production rolloutは変更しない。
+
+Workerはsame-origin / authenticated WebSocket upgradeをserver-derived app userへroutingし、wrong-origin・unauthenticated・ordinary HTTPを拒否する。Web clientはsigned-in tabごとにbounded reconnectを行い、401だけD-104 reauth barrierへ接続する。dirty/pending/unresolved local state、D-066 retained operation、Document draftは通知で上書きしない。focused protocol/client/DO tests、full Web `14 files / 441 tests`、full Worker/D1 `36 files / 307 tests`、typecheck、normal/exact nonprod build、guard、Wrangler dry-run、diff checkはPASSした。
+
+exact pushed mainをcanonical persistent nonprod Worker `taskchute-web-nonprod`へdeployし、Worker version `9aa85c6c-1d1c-4b84-a5fe-bfdc905c6216`、`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、APP `taskchute-app-nonprod`、AUTH `taskchute-auth-nonprod`、`REALTIME_HUB (RealtimeHub)` SQLite bindingを確認した。rootは`200`、protected `/api/v1/documents`と`/api/v1/realtime`は未認証`401`。APP/AUTH pendingは`0 / 0`、quick checkは`ok`、FKはempty、read-only probesは`rows_written=0`、document/position/active-execution/guard anomalyは0だった。APP/AUTH schema migrationは追加・適用していない。
+
+CUA inventoryに認証済みpersistent browser tabが存在しなかったため、authenticated two-browser propagation、clean/dirty Document refresh、disconnect/reconnect browser E2E、browser console exact countは`NOT_RUN`。credentials取得、再login、production、restore/recovery、D1 mutation、destructive cleanupは行っていない。
+
+D-105 classification: `APPROVED / IMPLEMENTED / INTEGRATED / TESTED / MAIN_PUSHED / REALTIME_HUB_LOCAL_VERIFIED / REALTIME_INVALIDATION_PROTOCOL_VERIFIED / REALTIME_CLIENT_RECONNECT_VERIFIED_LOCAL / REALTIME_AUTH_ORIGIN_ISOLATION_VERIFIED / GITHUB_CI_VERIFIED / PERSISTENT_NONPROD_DEPLOYED / PERSISTENT_NONPROD_DB_VERIFIED / AUTHENTICATED_TWO_BROWSER_NOT_RUN / BROWSER_CONSOLE_NOT_RUN / APP_AUTH_MIGRATION_NOT_REQUIRED / PRODUCTION_NOT_RUN / RESTORE_NOT_RUN / RELEASED_NO`。
 
 ### D-103 / D-104 authenticated browser verification closeout — 2026-09-14
 

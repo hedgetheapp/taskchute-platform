@@ -8,9 +8,11 @@
 | D105-DO-02 | Versioned invalidation protocol | shared protocol parser/serializer bounds payload and rejects malformed/unknown versions; mutation-family scope mapping is centralized | PASS local |
 | D105-WEB-01 | Connection lifecycle | focused client tests cover authenticated probe/open, message validation, bounded reconnect, 401 auth callback, and stop cleanup | PASS local |
 | D105-WEB-02 | Mounted surface refresh safety | App / Notes / Project / Mode / Routine / Task Note integrations defer refresh while dirty, saving, pending, unresolved, or mutation-blocked | PASS source/focused |
-| D105-LOCAL-01 | Two-client local convergence | local Durable Object socket broadcast is invalidate-only; canonical HTTP remains the data path. Mutation-triggered publish and reconnect convergence are included in final local gate | PENDING final gate |
-| D105-NONPROD-01 | Persistent nonprod infrastructure | exact main deploy, DO binding/namespace, APP/AUTH pending/integrity, authenticated two-browser propagation | NOT_RUN |
-| D105-BROWSER-01 | Authenticated two-browser E2E | same-user Day / Project / Mode / Routine / clean+dirty Document / disconnected reconnect scenarios | NOT_RUN |
+| D105-LOCAL-01 | Two-client local convergence | local Workerd integration: two sockets on one authenticated Hub receive the same invalidate-only message; successful Project mutation publishes after canonical response and canonical HTTP remains the data path | PASS local |
+| D105-LOCAL-02 | Client recovery | focused manager tests cover bounded reconnect and 401 distinction; App refresh hooks cover visibility/online and mounted-scope refresh with dirty/pending/unresolved deferral | PASS local/source |
+| D105-NONPROD-01 | Persistent nonprod infrastructure | exact main deploy `9aa85c6c-1d1c-4b84-a5fe-bfdc905c6216`; `REALTIME_HUB (RealtimeHub)` SQLite binding; root `200`; protected realtime/Documents API `401`; APP/AUTH pending `0 / 0`; quick/FK/anomaly/read-only probes clean | PASS |
+| D105-BROWSER-01 | Authenticated two-browser E2E | CUA inventory had no persistent authenticated tab; same-user Day / Project / Mode / Routine / clean+dirty Document / disconnected reconnect scenarios were not attempted; no credentials/re-login | NOT_RUN |
+| D105-CONSOLE-01 | Browser console evidence | no authenticated browser surface was available in CUA, therefore exact warning/error counts were not collected | NOT_RUN |
 | D105-SCOPE-01 | Boundary | no APP/AUTH migration, production, offline sync, realtime command, or domain state in DO storage | PASS source |
 
 ## D-103 / D-104 authenticated browser verification closeout — 2026-09-14
