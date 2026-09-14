@@ -4,6 +4,22 @@
 
 exact DB schema、SQL、UI component library、Android local DB、offline conflict algorithm等は、別途DecisionされるまでOpenとする。
 
+## D-109 Android Today Planning v0.2
+
+Android Todayのcurrent established Dayでは、ordinary planned Taskに限り、Quick Addと
+同じbottom sheetからTask名、Project、Mode、Section、開始予定、見積を編集できる。Quick
+Addは`+`から開き、最初のSaveで既存の`AddTaskToDay`を呼ぶ。編集は既存の
+`UpdateTaskMetadata`、`SetEntryMode`、`SetEntryEstimate`、`SetEntryPlannedStart`を
+構成して利用する。各commandのpending / retry / error / operation / CAS semanticsは
+既存Server contractを維持し、成功後はcanonical Today projectionを再取得する。
+
+future / past Day、running / completed Entry、Routine-derived Entryはread-onlyとする。
+Section選択とplanned startは既存D-043 synchronizationへ合わせ、未establish Dayをこの
+操作だけで作成しない。Today shellはdate navigationを直接表示し、Project / Notesは
+disabled、Settingsは既存logoutへ接続する。D-106 auth、D-108 foreground realtimeの
+pending / refetch boundary、Start / Complete、migration / schema / API command boundaryは
+変更しない。Android planningのoffline、background、reorder、Routine編集は含まない。
+
 ## D-107 Android Today v0.1
 
 Android Todayは既存のauthenticated HTTP Query / lifecycle commandを利用するnative

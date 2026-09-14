@@ -1,12 +1,15 @@
 # TaskChute Android native auth foundation
 
 This module is the D-106 v0.1 native authentication foundation plus the D-107
-Today surface and D-108 foreground invalidate-only realtime. It uses the
+Today surface, D-108 foreground invalidate-only realtime, and D-109 current-Day
+planning form. It uses the
 existing TaskChute Server Better Auth email/password session endpoints, the
 canonical Today HTTP projection, and the existing D-105 RealtimeHub. Realtime
 only accelerates canonical HTTP refetch while the app is signed in and in the
 foreground. Offline sync, background sockets, FCM, widgets, and notifications
-are not included.
+are not included. Planning is limited to ordinary planned Tasks on the current
+established Day; future/past, running/completed, and Routine-derived entries
+remain read-only.
 
 ## Local build
 

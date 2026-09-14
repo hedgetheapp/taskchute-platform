@@ -1,5 +1,34 @@
 # Current
 
+### D-109 Android Today Planning v0.2 — local implementation — 2026-09-15
+
+D-109 Approved Decisionを追加し、Android Todayをcurrent established Dayのordinary planned
+Task向けplanning surfaceへ拡張した。Today headerはTaskChute / Todayの固定表示とmanual
+reloadを外してdate navigationを直接表示し、Material 3 NavigationBarのSettingsだけを
+既存logoutへ接続した。Project / Notesはdisabledのままfake navigationを行わない。
+
+current Dayの`＋` Quick Addとordinary planned row tapは共通bottom sheetを開き、Task名、
+Project、Mode、Section、開始予定、見積を編集する。既存のAddTaskToDay、UpdateTaskMetadata、
+SetEntryMode、SetEntryEstimate、SetEntryPlannedStartをserial compositionし、保存中の
+二重dispatchを抑止し、success後にcanonical Today projectionを再取得する。Task/Entry IDを
+分離してmetadata updateへ正しいTask IDを渡し、Section変更時はD-043 planned-start同期を
+維持する。future / past、running / completed、Routine-derivedはread-only。Worker/API、
+schema、migration、dependency、productionは変更していない。
+
+Local evidenceはAndroid JVM `70 / 70`、instrumentation APK compile、canonical nonprod URL
+付きDebug APK build、Windows AVD `TaskChute_API33`（Pixel 7 / Android 13 API 33 / Google
+APIs / x86_64 / `emulator-5554`）の`connectedDebugAndroidTest` `12 / 12` PASS。APK install、
+MainActivity起動、UI tree、crash buffer emptyも確認した。最初のAVD実行ではpresentation変更に
+伴う旧日付assertion、bottom sheetのoff-screen assertion、fixtureのDay ID不足がFAILしたが、
+レポートに基づきテスト/fixtureを修正し、後続実行で全件PASSした。D-107/D-108 Android既存
+execution/realtime state regressionも同じinstrumentationでPASS。Web/Worker fullはAndroid-only
+impact analysisでNOT_RUN、migration / persistent nonprod deployはNOT_REQUIRED / NOT_RUN。
+
+Implementation commit `6903a36092ee4f009ee88cf44d4dafa7aa979239`はmainへfast-forward push済み。
+GitHub Actions exact-SHA結果はrun確認待ち。D-109のGalaxy S23 planning smokeはこの作業では
+未実施で`NOT_RUN`（既存D-107 Galaxy S23 smoke PASSとは別証跡）、production `NOT_RUN`、
+Release `NO`。
+
 ### D-108 Android Realtime Invalidation v0.1 — local implementation — 2026-09-14
 
 D-108はD-105の既存invalidate-only `RealtimeHub`をforeground Android Todayへ拡張する。

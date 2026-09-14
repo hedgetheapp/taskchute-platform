@@ -1,5 +1,29 @@
 # Test Matrix
 
+## D-109 Android Today Planning v0.2 — local Android gate
+
+| ID | Verification target | Evidence | Status |
+|---|---|---|---|
+| D109-DECISION | Canonical scope | Approved `docs/decisions/D-109_ANDROID_TODAY_PLANNING_V02.md`; current-Day ordinary planned Task only; no Worker/API/schema/migration | PASS |
+| D109-PLANNING-JVM | Planning state / validation / command composition | `TaskPlanningControllerTest` 4 tests + `TaskPlanningHttpRepositoryTest` 2 tests; existing Android JVM regression included | PASS |
+| D109-ANDROID-JVM | Android JVM regression | `:app:testDebugUnitTest` | `70 / 70` | PASS |
+| D109-ANDROID-UI | Compose UI planning surface | Quick Add six fields, ordinary planned row edit, Settings navigation, existing Start/Complete pending guards | PASS local |
+| D109-ANDROID-EMULATOR | Local runtime | Windows AVD `TaskChute_API33` / Pixel 7 / Android 13 API 33 / Google APIs / x86_64 / `emulator-5554`; `scripts/android-qa.ps1`; install/activity/UI tree/crash buffer | `12 / 12`, failures/errors/skipped `0 / 0 / 0` | PASS |
+| D109-READONLY | Future/past/routine boundary | Controller rejects non-current, non-planning, running/completed, and routine-derived edit requests; no new Day establishment | PASS source/JVM |
+| D109-SERVER | Worker/API/schema | Existing AddTaskToDay, UpdateTaskMetadata, SetEntryMode, SetEntryEstimate, SetEntryPlannedStart composed; no server source or migration changed | NOT_REQUIRED |
+| D109-REGRESSION | Existing D-107/D-108 behavior | Start/Complete, loading/empty/retry/auth states, date navigation, disabled Project/Notes, Settings enabled | PASS emulator |
+| D109-BOUNDARY | Deployment/data boundary | No migration, Worker deploy, production, Release, credential, or persistent data mutation | PASS / NOT_REQUIRED |
+
+D-109 local classification: Android JVM `70 / 70` and final local AVD instrumentation
+`12 / 12` PASS. The first post-change AVD run exposed three test-side failures: one stale
+exact-date assertion after the approved date+weekday presentation change, one off-screen
+bottom-sheet assertion, and the edit/add fixture's missing established Day ID. Those failures
+were corrected in the tests/fixture based on report evidence; the next and final AVD run passed
+all 12 tests and found no application crash entries. `scripts/android-qa.ps1` remains the
+official Windows local runtime gate. Web/Worker tests are NOT_RUN by impact analysis because
+D-109 changed only Android and canonical docs; migration, persistent deploy, production, and
+Release are NOT_RUN / NO.
+
 ## D-108 Android Realtime Invalidation v0.1 — local implementation
 
 | ID | Verification target | Evidence | Status |

@@ -12,6 +12,20 @@
 - implementation / verification statusは`docs/FEATURES.md`、`docs/CURRENT.md`、`docs/TEST_MATRIX.md`を正本とする。
 - この文書は新しいDomain semanticsを作らず、上記canonical docsと矛盾する場合は上記を優先する。
 
+## D-109 Android Today planning surface
+
+TodayはTaskChute / Todayの大きな固定headerを置かず、`‹ 日付（曜日） › 今日`のdate
+navigationを上部に直接表示する。current Dayでは右側に`＋` Quick Addを置き、下部は
+Material 3 NavigationBarの`今日` / `プロジェクト` / `ノート` / `設定`とする。Project /
+Notesはdisabledでfake navigationを行わず、Settingsだけ既存logoutへ進める。
+
+Quick Addとordinary planned current-Day Taskの編集は同じcompact bottom sheetを使い、
+`Task名`、`Project`、`Mode`、`Section`、`開始予定`、`見積（分）`を表示する。未establish
+Day、future / past、running / completed、Routine-derived rowは編集入口を表示しない。
+保存は既存commandのserial compositionとcanonical refetchを使い、保存中はボタンを無効化
+して二重dispatchを防ぐ。task rowは従来の小さい左state indicatorと右側icon-only
+Start / Complete、running panelはbottom navigation直上の`完了` actionを維持する。
+
 ## D-063 Modal / row Tab / non-blocking mutation interaction
 
 D-063はDay Tableのpresentationとclient-side coordinationを対象とし、既存API・Domain・schema・migration・retry semanticsを変更しない。shortcut help、single / bulk confirmation、Routine conversion / scope choiceは共通centered Modal primitiveを使い、`role="dialog"`、`aria-modal="true"`、backdrop、initial focus、focus trap、Escape / backdrop / X close、trigger focus restoreを備える。Modal表示中は背景Day UIのshortcut・Tab・mutationを発火させない。

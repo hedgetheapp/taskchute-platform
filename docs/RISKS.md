@@ -1,5 +1,19 @@
 # Risks
 
+## R-066 — D-109 Android Today planning composition boundary
+
+D-109のAndroid planning formは、複数の既存HTTP commandを順にcomposeするため、途中の
+network failureやplacement revision conflict時に部分的なmetadata更新が先に成功する
+riskがある。既存Worker commandのoperation / CAS semanticsを変更せず、入力をcurrent
+established Dayのordinary planned Taskへ限定し、送信中の二重dispatchを抑止し、成功時は
+同一Dayのcanonical projectionを再取得する。future / past、running / completed、
+Routine-derivedはclientでも編集入口を抑制するが、Server authorityが最終防衛線である。
+
+また、Android Todayの上部date navigationと4 destination footerはD-107 visual directionを
+更新するが、Project / Notesをfake screenへ遷移させない。D-106 auth、D-108 realtimeの
+pending / deferred refresh、Start / Completeは既存テストで回帰確認する。D-109ではWorker、
+schema、migration、dependency、offline queue、productionを変更していない。
+
 ## R-064 — D-107 Android Today uses canonical HTTP projection
 
 Android TodayはServerのDay projectionとStart / Complete commandを再利用するため、
