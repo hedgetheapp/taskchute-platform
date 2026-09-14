@@ -244,7 +244,7 @@ describe("NotesBoard", () => {
     render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} initialDocumentId={archived.document_id} />);
     await waitFor(() => expect(screen.getByDisplayValue("Archived exact")).toBeTruthy());
     expect(screen.getByLabelText("ノートタイトル")).toHaveProperty("disabled", true);
-    expect(mocks.loadDocuments).toHaveBeenCalledWith({ archived: true });
+    await waitFor(() => expect(mocks.loadDocuments).toHaveBeenCalledWith({ archived: true }));
   });
 
   it("copies the standalone Document permalink and reports clipboard failure", async () => {
