@@ -20,6 +20,7 @@ class TodayController(
         private set
 
     private var loadInFlight = false
+    private var deferredRealtimeReload = false
     private val pendingEntryIds = mutableSetOf<String>()
 
     fun loadCurrent() = load(null)
@@ -31,6 +32,16 @@ class TodayController(
     fun nextDay() = moveDay(1)
 
     fun today() = load(null)
+
+    fun onRealtimeConnected() = requestRealtimeReload()
+
+    fun onRealtimeForeground() = requestRealtimeReload()
+
+    fun onRealtimeDayInvalidation(logicalDate: String?) {
+        val selectedDate = state.day?.logicalDate
+        if (logicalDate != null && selectedDate != null && logicalDate != selectedDate) return
+        requestRealtimeReload()
+    }
 
     fun start(task: TodayTask) {
         if (state.day?.isCurrent != true || task.lifecycleState != LifecycleState.PLANNED || !pendingEntryIds.add(task.id)) return
@@ -70,12 +81,19 @@ class TodayController(
             val result = withContext(Dispatchers.IO) { repository.loadDay(logicalDate) }
             loadInFlight = false
             when (result) {
-                is TodayResult.Success -> publishDay(result.day)
+                is TodayResult.Success -> {
+                    publishDay(result.day)
+                    flushDeferredRealtimeReload()
+                }
                 TodayResult.Unauthorized -> {
+                    deferredRealtimeReload = false
                     state = state.copy(status = TodayLoadStatus.AUTH_REQUIRED, errorMessage = "認証の有効期限を確認しています…")
                     onUnauthorized()
                 }
-                is TodayResult.Failure -> state = state.copy(status = TodayLoadStatus.ERROR, errorMessage = result.message)
+                is TodayResult.Failure -> {
+                    state = state.copy(status = TodayLoadStatus.ERROR, errorMessage = result.message)
+                    flushDeferredRealtimeReload()
+                }
             }
         }
     }
@@ -83,8 +101,12 @@ class TodayController(
     private fun finishMutation(entryId: String, result: TodayMutationResult) {
         pendingEntryIds.remove(entryId)
         when (result) {
-            TodayMutationResult.Success -> load(state.day?.logicalDate)
+            TodayMutationResult.Success -> {
+                deferredRealtimeReload = false
+                load(state.day?.logicalDate)
+            }
             TodayMutationResult.Unauthorized -> {
+                deferredRealtimeReload = false
                 state = state.copy(status = TodayLoadStatus.AUTH_REQUIRED, errorMessage = "認証の有効期限を確認しています…")
                 onUnauthorized()
             }
@@ -93,8 +115,23 @@ class TodayController(
                     status = if (state.day?.hasEntries == true) TodayLoadStatus.CONTENT else TodayLoadStatus.EMPTY,
                     errorMessage = result.message,
                 )
+                flushDeferredRealtimeReload()
             }
         }
+    }
+
+    private fun requestRealtimeReload() {
+        if (loadInFlight || pendingEntryIds.isNotEmpty()) {
+            deferredRealtimeReload = true
+            return
+        }
+        load(state.day?.logicalDate)
+    }
+
+    private fun flushDeferredRealtimeReload() {
+        if (!deferredRealtimeReload || loadInFlight || pendingEntryIds.isNotEmpty()) return
+        deferredRealtimeReload = false
+        load(state.day?.logicalDate)
     }
 
     private fun publishDay(day: TodayDay) {

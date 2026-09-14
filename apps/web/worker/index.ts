@@ -137,8 +137,9 @@ async function route(request: Request, env: Env): Promise<Response> {
   }
   if (url.pathname === "/api/v1/realtime") {
     const origin = request.headers.get("origin");
+    const nativeClient = request.headers.get("x-taskchute-realtime-client") === "android";
     const websocketUpgrade = request.method === "GET" && request.headers.get("upgrade")?.toLowerCase() === "websocket";
-    if (websocketUpgrade && (!origin || origin !== url.origin)) {
+    if (websocketUpgrade && ((!origin && !nativeClient) || (origin && origin !== url.origin))) {
       throw new HttpError(403, "forbidden", "Invalid realtime origin");
     }
     const principal = await resolvePrincipal(request, env);

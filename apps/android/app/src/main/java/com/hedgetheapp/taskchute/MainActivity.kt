@@ -3,6 +3,7 @@ package com.hedgetheapp.taskchute
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.lifecycle.lifecycleScope
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -24,6 +25,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.hedgetheapp.taskchute.auth.AuthUiState
+import com.hedgetheapp.taskchute.realtime.AndroidRealtimeScheduler
+import com.hedgetheapp.taskchute.realtime.OkHttpRealtimeSocketFactory
+import com.hedgetheapp.taskchute.realtime.RealtimeAuthProbe
+import com.hedgetheapp.taskchute.realtime.RealtimeConnectionCallbacks
+import com.hedgetheapp.taskchute.realtime.RealtimeConnectionManager
+import okhttp3.OkHttpClient
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import com.hedgetheapp.taskchute.today.TodayController
 import com.hedgetheapp.taskchute.today.TodayHttpRepository
 import com.hedgetheapp.taskchute.today.TodayHttpResponse
@@ -32,6 +41,8 @@ import com.hedgetheapp.taskchute.today.TodayScreen
 class MainActivity : ComponentActivity() {
     private lateinit var controller: AuthController
     private lateinit var todayController: TodayController
+    private lateinit var realtimeManager: RealtimeConnectionManager
+    private lateinit var realtimeHttpClient: OkHttpClient
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -45,23 +56,68 @@ class MainActivity : ComponentActivity() {
             ),
             onUnauthorized = controller::restore,
         )
-        setContent { TaskChuteApp(controller, todayController) }
+        realtimeHttpClient = OkHttpClient()
+        realtimeManager = RealtimeConnectionManager(
+            cookieProvider = controller::realtimeCookieHeader,
+            socketFactory = OkHttpRealtimeSocketFactory(BuildConfig.TASKCHUTE_BASE_URL, realtimeHttpClient),
+            scheduler = AndroidRealtimeScheduler(),
+            authProbe = RealtimeAuthProbe { callback ->
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val status = controller.probeRealtimeSession()
+                    runOnUiThread { callback(status) }
+                }
+            },
+            callbacks = RealtimeConnectionCallbacks(
+                onConnected = { runOnUiThread { todayController.onRealtimeConnected() } },
+                onDayInvalidation = { logicalDate -> runOnUiThread { todayController.onRealtimeDayInvalidation(logicalDate) } },
+                onAuthFailure = { runOnUiThread { controller.restore() } },
+            ),
+        )
+        setContent { TaskChuteApp(controller, todayController, realtimeManager) }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        if (::realtimeManager.isInitialized && controller.state is AuthUiState.SignedIn) {
+            realtimeManager.start()
+            todayController.onRealtimeForeground()
+        }
+    }
+
+    override fun onStop() {
+        if (::realtimeManager.isInitialized) realtimeManager.stop()
+        super.onStop()
     }
 
     override fun onDestroy() {
         controller.close()
         todayController.close()
+        realtimeManager.stop()
+        realtimeHttpClient.dispatcher.executorService.shutdown()
+        realtimeHttpClient.connectionPool.evictAll()
         super.onDestroy()
     }
 }
 
 @Composable
-private fun TaskChuteApp(controller: AuthController, todayController: TodayController) {
+private fun TaskChuteApp(
+    controller: AuthController,
+    todayController: TodayController,
+    realtimeManager: RealtimeConnectionManager,
+) {
     val state = controller.state
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
 
     LaunchedEffect(controller) { controller.restore() }
+    LaunchedEffect(state) {
+        if (state is AuthUiState.SignedIn) {
+            realtimeManager.start()
+            todayController.onRealtimeForeground()
+        } else {
+            realtimeManager.stop()
+        }
+    }
 
     MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
@@ -82,7 +138,10 @@ private fun TaskChuteApp(controller: AuthController, todayController: TodayContr
                     controller.signIn(email, submitted)
                 }
                 is AuthUiState.NetworkError -> ErrorState(state.message, controller::retry)
-                is AuthUiState.SignedIn -> TodayScreen(todayController, controller::signOut)
+                is AuthUiState.SignedIn -> TodayScreen(todayController) {
+                    realtimeManager.stop()
+                    controller.signOut()
+                }
             }
         }
     }

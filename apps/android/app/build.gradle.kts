@@ -37,6 +37,7 @@ android {
 dependencies {
     implementation("androidx.core:core-ktx:1.19.0")
     implementation("androidx.activity:activity-compose:1.12.1")
+    implementation("com.squareup.okhttp3:okhttp:5.3.0")
     implementation(platform("androidx.compose:compose-bom:2026.08.00"))
     debugImplementation(platform("androidx.compose:compose-bom:2026.08.00"))
     androidTestImplementation(platform("androidx.compose:compose-bom:2026.08.00"))

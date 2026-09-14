@@ -57,6 +57,8 @@ class NativeAuthHttpClient(rawBaseUrl: String) : AuthTransport {
 
     override fun currentSession(): SessionCredential? = cookies.snapshot()
 
+    internal fun realtimeCookieHeader(): String? = cookies.headerValue()
+
     override fun clearSession() = cookies.clear()
 
     internal fun requestAuthenticated(method: String, path: String, body: String? = null): AuthenticatedHttpResponse {

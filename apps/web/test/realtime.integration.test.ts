@@ -72,6 +72,10 @@ describe.sequential("RealtimeHub runtime boundary", () => {
       headers: { origin: "https://other.example", upgrade: "websocket" },
     }));
     expect(wrongOrigin.status).toBe(403);
+    const unauthenticatedNative = await exports.default.fetch(new Request(`${origin}/api/v1/realtime`, {
+      headers: { upgrade: "websocket", "x-taskchute-realtime-client": "android" },
+    }));
+    expect(unauthenticatedNative.status).toBe(401);
     const ordinary = await session.fetch("/api/v1/realtime");
     expect(ordinary.status).toBe(426);
   });
@@ -87,6 +91,12 @@ describe.sequential("RealtimeHub runtime boundary", () => {
     expect(socketB).toBeTruthy();
     acceptSocket(socketA!);
     acceptSocket(socketB!);
+    const nativeResponse = await session.fetch("/api/v1/realtime", {
+      headers: { upgrade: "websocket", "x-taskchute-realtime-client": "android" },
+    });
+    expect(nativeResponse.status).toBe(101);
+    const nativeSocket = nativeResponse.webSocket!;
+    acceptSocket(nativeSocket);
     const messageA = waitForMessage(socketA!);
     const messageB = waitForMessage(socketB!);
     const body = serializeRealtimeInvalidation([{ kind: "day", logical_date: "2026-09-14" }]);
@@ -106,7 +116,7 @@ describe.sequential("RealtimeHub runtime boundary", () => {
     const parsedMutation = JSON.parse(await mutationMessage) as { scopes: Array<{ kind: string }> };
     expect(parsedMutation.scopes.map((scope) => scope.kind)).toContain("projects");
     socketA!.send(JSON.stringify({ type: "delete-all" }));
-    socketA!.close(); socketB!.close();
+    socketA!.close(); socketB!.close(); nativeSocket.close();
   });
 
   it("does not expose domain commands or cross-user hub messages", async () => {

@@ -72,6 +72,7 @@ class TodayControllerTest {
         val task = task(LifecycleState.PLANNED)
         val repository = FakeRepository().apply {
             loadResult = TodayResult.Success(dayWith(LifecycleState.PLANNED))
+            loadResultAfterFirst = TodayResult.Success(dayWith(LifecycleState.RUNNING))
             holdStart = true
         }
         val controller = controller(repository)
@@ -130,6 +131,60 @@ class TodayControllerTest {
         controller.close()
     }
 
+    @Test
+    fun realtimeDayInvalidationReloadsSelectedDay() {
+        val repository = FakeRepository().apply { loadResult = TodayResult.Success(dayWith(LifecycleState.PLANNED)) }
+        val controller = controller(repository)
+        controller.loadCurrent()
+        assertTrue(repository.loadStarted.await(2, TimeUnit.SECONDS))
+        assertTrue(awaitState(controller) { it.day != null })
+
+        controller.onRealtimeDayInvalidation("2026-09-14")
+
+        assertTrue(repository.reloadStarted.await(2, TimeUnit.SECONDS))
+        assertEquals(2, repository.loadCallCount())
+        controller.close()
+    }
+
+    @Test
+    fun realtimeInvalidationDuringPendingMutationFlushesOneCanonicalReload() {
+        val task = task(LifecycleState.PLANNED)
+        val repository = FakeRepository().apply {
+            loadResult = TodayResult.Success(dayWith(LifecycleState.PLANNED))
+            loadResultAfterFirst = TodayResult.Success(dayWith(LifecycleState.RUNNING))
+            holdStart = true
+        }
+        val controller = controller(repository)
+        controller.loadCurrent()
+        assertTrue(repository.loadStarted.await(2, TimeUnit.SECONDS))
+        assertTrue(awaitState(controller) { it.day != null })
+
+        controller.start(task)
+        assertTrue(repository.startStarted.await(2, TimeUnit.SECONDS))
+        controller.onRealtimeDayInvalidation(null)
+        assertEquals(1, repository.loadCallCount())
+
+        repository.releaseStart.countDown()
+        assertTrue(repository.reloadStarted.await(2, TimeUnit.SECONDS))
+        assertTrue(awaitState(controller) { it.pendingEntryIds.isEmpty() && it.day?.runningTask != null })
+        assertEquals(2, repository.loadCallCount())
+        controller.close()
+    }
+
+    @Test
+    fun invalidationForAnotherDayDoesNotOverwriteSelectedDay() {
+        val repository = FakeRepository().apply { loadResult = TodayResult.Success(dayWith(LifecycleState.PLANNED)) }
+        val controller = controller(repository)
+        controller.loadCurrent()
+        assertTrue(repository.loadStarted.await(2, TimeUnit.SECONDS))
+        assertTrue(awaitState(controller) { it.day != null })
+
+        controller.onRealtimeDayInvalidation("2026-09-15")
+
+        assertEquals(1, repository.loadCallCount())
+        controller.close()
+    }
+
     private fun controller(repository: FakeRepository): TodayController = TodayController(
         repository = repository,
         onUnauthorized = {},
@@ -158,6 +213,8 @@ class TodayControllerTest {
         val startCalls = AtomicInteger()
         val requestedDates = mutableListOf<String?>()
         private val loadCalls = AtomicInteger()
+
+        fun loadCallCount(): Int = loadCalls.get()
 
         override fun loadDay(logicalDate: String?): TodayResult {
             synchronized(requestedDates) { requestedDates += logicalDate }

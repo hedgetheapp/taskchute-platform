@@ -50,28 +50,33 @@ class AuthController internal constructor(
 
     private var operationInFlight = false
 
-    fun restore() = launchIfAvailable { it.restore() }
+    fun restore() = launchIfAvailable(AuthUiState.Restoring) { it.restore() }
 
-    fun retry() = launchIfAvailable { it.restore() }
+    fun retry() = launchIfAvailable(AuthUiState.Restoring) { it.restore() }
 
-    fun signIn(email: String, password: String) = launchIfAvailable { it.signIn(email.trim(), password) }
+    fun signIn(email: String, password: String) = launchIfAvailable(AuthUiState.SigningIn) { it.signIn(email.trim(), password) }
 
-    fun signOut() = launchIfAvailable { it.signOut() }
+    fun signOut() = launchIfAvailable(AuthUiState.SigningOut) { it.signOut() }
 
     internal fun authenticatedRequest(method: String, path: String, body: String? = null) =
         nativeClient?.requestAuthenticated(method, path, body)
+
+    internal fun realtimeCookieHeader(): String? = nativeClient?.realtimeCookieHeader()
+
+    internal fun probeRealtimeSession(): Int? = nativeClient?.requestAuthenticated("GET", "/api/v1/realtime")?.status
 
     fun close() {
         scope.coroutineContext.cancel()
     }
 
-    private fun launchIfAvailable(action: (AuthSessionCoordinator) -> AuthUiState) {
+    private fun launchIfAvailable(startingState: AuthUiState, action: (AuthSessionCoordinator) -> AuthUiState) {
         if (coordinator == null) {
             publishState(AuthUiState.SignedOut("接続先が設定されていません。アプリ設定を確認してください。"))
             return
         }
         if (operationInFlight) return
         operationInFlight = true
+        publishState(startingState)
         scope.launch {
             try {
                 publishState(withContext(Dispatchers.IO) { action(coordinator) })
