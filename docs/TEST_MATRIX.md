@@ -6,13 +6,15 @@
 |---|---|---|---|
 | D105-DO-01 | Hibernation RealtimeHub boundary | local Workerd integration: authenticated same-user sockets share one Hub; different users are isolated; ordinary HTTP / wrong Origin / unauthenticated upgrade are rejected; browser messages are invalidate-only | PASS local |
 | D105-DO-02 | Versioned invalidation protocol | shared protocol parser/serializer bounds payload and rejects malformed/unknown versions; mutation-family scope mapping is centralized | PASS local |
-| D105-WEB-01 | Connection lifecycle | focused client tests cover authenticated probe/open, message validation, bounded reconnect, 401 auth callback, and stop cleanup | PASS local |
+| D105-WEB-01 | Connection lifecycle | focused client tests cover authenticated HTTP probe/open (including `wss`→`https` probe), message validation, bounded reconnect, 401 auth callback, and stop cleanup | PASS local |
 | D105-WEB-02 | Mounted surface refresh safety | App / Notes / Project / Mode / Routine / Task Note integrations defer refresh while dirty, saving, pending, unresolved, or mutation-blocked | PASS source/focused |
 | D105-LOCAL-01 | Two-client local convergence | local Workerd integration: two sockets on one authenticated Hub receive the same invalidate-only message; successful Project mutation publishes after canonical response and canonical HTTP remains the data path | PASS local |
 | D105-LOCAL-02 | Client recovery | focused manager tests cover bounded reconnect and 401 distinction; App refresh hooks cover visibility/online and mounted-scope refresh with dirty/pending/unresolved deferral | PASS local/source |
-| D105-NONPROD-01 | Persistent nonprod infrastructure | exact main deploy `9aa85c6c-1d1c-4b84-a5fe-bfdc905c6216`; `REALTIME_HUB (RealtimeHub)` SQLite binding; root `200`; protected realtime/Documents API `401`; APP/AUTH pending `0 / 0`; quick/FK/anomaly/read-only probes clean | PASS |
+| D105-SOURCE-01 | Mutation scope and deploy guard correction | Project mutation mapping includes dependent Documents refresh; client coalesces same-microtask duplicate and wildcard Day scopes; nonprod guard requires exactly one `REALTIME_HUB` binding with class `RealtimeHub` and SQLite storage | PASS |
+| D105-NONPROD-01 | Persistent nonprod infrastructure | final exact main deploy Worker version `e21c68c9-6778-47a3-8e18-772c2425ecc6`; `REALTIME_HUB (RealtimeHub)` SQLite binding; root `200`; protected realtime/Documents API `401`; APP/AUTH pending `0 / 0`; quick/FK/anomaly/read-only probes clean | PASS |
 | D105-BROWSER-01 | Authenticated two-browser E2E | CUA inventory had no persistent authenticated tab; same-user Day / Project / Mode / Routine / clean+dirty Document / disconnected reconnect scenarios were not attempted; no credentials/re-login | NOT_RUN |
 | D105-CONSOLE-01 | Browser console evidence | no authenticated browser surface was available in CUA, therefore exact warning/error counts were not collected | NOT_RUN |
+| D105-CI-01 | Exact pushed-SHA CI | final exact SHA `d013e98e9e7c3fe917a7fb83bbbb1f9e601e8eda`, GitHub Actions run `34808771287`: typecheck, Web `14 files / 442 tests`, Worker/D1 `36 files / 307 tests`, production build all PASS | PASS |
 | D105-SCOPE-01 | Boundary | no APP/AUTH migration, production, offline sync, realtime command, or domain state in DO storage | PASS source |
 
 ## D-103 / D-104 authenticated browser verification closeout — 2026-09-14
