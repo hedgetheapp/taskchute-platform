@@ -6,6 +6,7 @@ const expected = {
   bootstrap: "false",
   app: "taskchute-app-nonprod",
   auth: "taskchute-auth-nonprod",
+  realtimeBindingCount: 1,
   realtimeBinding: "REALTIME_HUB",
   realtimeClass: "RealtimeHub",
   realtimeStorage: "sqlite",
@@ -24,13 +25,15 @@ try {
 }
 
 const bindings = new Map((config.d1_databases ?? []).map((binding) => [binding.binding, binding.database_name]));
-const realtimeBinding = (config.durable_objects?.bindings ?? []).find((binding) => binding.name === "REALTIME_HUB");
+const realtimeBindings = config.durable_objects?.bindings ?? [];
+const realtimeBinding = realtimeBindings.find((binding) => binding.name === "REALTIME_HUB");
 const actual = {
   name: config.name,
   runtime: config.vars?.RUNTIME_ENV,
   bootstrap: config.vars?.BOOTSTRAP_ENABLED,
   app: bindings.get("APP_DB"),
   auth: bindings.get("AUTH_DB"),
+  realtimeBindingCount: realtimeBindings.length,
   realtimeBinding: realtimeBinding?.name,
   realtimeClass: realtimeBinding?.class_name,
   realtimeStorage: config.exports?.RealtimeHub?.storage,

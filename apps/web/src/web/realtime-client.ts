@@ -41,6 +41,8 @@ export class RealtimeConnectionManager {
   private readonly onStatus?: (status: RealtimeConnectionStatus) => void;
   private socket: WebSocket | null = null;
   private reconnectTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
+  private pendingScopes: RealtimeScope[] = [];
+  private messageFlushScheduled = false;
   private attempt = 0;
   private started = false;
   private connecting = false;
@@ -75,6 +77,8 @@ export class RealtimeConnectionManager {
       this.clearTimer(this.reconnectTimer);
       this.reconnectTimer = null;
     }
+    this.pendingScopes = [];
+    this.messageFlushScheduled = false;
     const socket = this.socket;
     this.socket = null;
     if (socket) {
@@ -100,7 +104,7 @@ export class RealtimeConnectionManager {
       // rejected probe lets D-104 distinguish an expired session from a
       // transient socket/network failure without making the WebSocket channel
       // a data transport.
-      const probe = await this.fetchImpl(this.endpoint, { credentials: "same-origin" });
+      const probe = await this.fetchImpl(this.httpProbeEndpoint(), { credentials: "same-origin" });
       if (!this.started) return;
       if (probe.status === 401) {
         this.connecting = false;
@@ -125,7 +129,7 @@ export class RealtimeConnectionManager {
       socket.onmessage = (event) => {
         if (typeof event.data !== "string") return;
         const message = parseRealtimeInvalidation(event.data);
-        if (message) this.onMessage(message);
+        if (message) this.enqueueMessage(message);
       };
       socket.onerror = () => { /* close schedules the bounded reconnect */ };
       socket.onclose = () => {
@@ -137,6 +141,24 @@ export class RealtimeConnectionManager {
       this.connecting = false;
       if (this.started) this.scheduleReconnect();
     }
+  }
+
+  private httpProbeEndpoint(): string {
+    return this.endpoint.replace(/^wss:/, "https:").replace(/^ws:/, "http:");
+  }
+
+  private enqueueMessage(message: RealtimeInvalidation): void {
+    this.pendingScopes = [...this.pendingScopes, ...message.scopes];
+    if (this.messageFlushScheduled) return;
+    this.messageFlushScheduled = true;
+    queueMicrotask(() => {
+      this.messageFlushScheduled = false;
+      const scopes = mergeRealtimeScopes(this.pendingScopes);
+      this.pendingScopes = [];
+      if (scopes.length > 0 && this.started) {
+        this.onMessage({ version: 1, type: "invalidate", scopes });
+      }
+    });
   }
 
   private scheduleReconnect(): void {

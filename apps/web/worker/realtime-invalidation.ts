@@ -22,7 +22,7 @@ export function realtimeScopesForMutation(request: Request): RealtimeScope[] {
     return [documentScope(match?.[1]), { kind: "day" }, { kind: "projects" }];
   }
 
-  if (path.startsWith("/api/v1/projects")) return [{ kind: "projects" }, { kind: "routines" }, { kind: "day" }];
+  if (path.startsWith("/api/v1/projects")) return [{ kind: "projects" }, { kind: "routines" }, { kind: "day" }, { kind: "documents" }];
   if (path.startsWith("/api/v1/modes") || path.endsWith("/mode") || path.endsWith("/routine-mode")) {
     return [{ kind: "modes" }, { kind: "routines" }, { kind: "day" }];
   }

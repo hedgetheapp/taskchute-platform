@@ -84,7 +84,13 @@ export function parseRealtimeInvalidation(serialized: string): RealtimeInvalidat
 export function mergeRealtimeScopes(scopes: RealtimeScope[]): RealtimeScope[] {
   const merged = new Map<string, RealtimeScope>();
   for (const scope of scopes) {
-    const key = scope.kind === "day" ? `day:${scope.logical_date ?? "*"}` : scope.kind;
+    if (scope.kind === "day" && scope.logical_date === undefined) {
+      for (const key of merged.keys()) if (key.startsWith("day:")) merged.delete(key);
+      merged.set("day:*", scope);
+      continue;
+    }
+    if (scope.kind === "day" && merged.has("day:*")) continue;
+    const key = scope.kind === "day" ? `day:${scope.logical_date}` : scope.kind;
     const previous = merged.get(key);
     if (!previous) {
       merged.set(key, scope);

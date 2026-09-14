@@ -1477,7 +1477,7 @@ describe("Dogfood Day shell", () => {
       main.tabIndex = -1;
       main.focus();
       fireEvent.keyDown(main, { key: "f" });
-      expect(document.querySelector("[data-hit-a-hint-active='true']")).toBeTruthy();
+      await waitFor(() => expect(document.querySelector("[data-hit-a-hint-active='true']")).toBeTruthy());
       expect(screen.queryByRole("dialog", { name: "キーボードショートカット" })).toBeNull();
       fireEvent.keyDown(window, { key: "Escape" });
       expect(document.querySelector("[data-hit-a-hint-active='true']")).toBeNull();

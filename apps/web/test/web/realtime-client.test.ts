@@ -48,14 +48,17 @@ function makeManager(options: Partial<ConstructorParameters<typeof RealtimeConne
 
 describe("RealtimeConnectionManager", () => {
   it("probes, opens one socket, validates messages, and reconnects with a bounded delay", async () => {
-    const { manager, statuses, messages, onConnected } = makeManager();
+    const fetch = vi.fn(async () => new Response(null, { status: 426 }));
+    const { manager, statuses, messages, onConnected } = makeManager({ fetch });
     manager.start();
     await vi.waitFor(() => expect(FakeSocket.instances).toHaveLength(1));
+    expect(fetch).toHaveBeenCalledWith("https://example.test/api/v1/realtime", { credentials: "same-origin" });
     const socket = FakeSocket.instances[0]!;
     socket.onopen?.();
     expect(onConnected).toHaveBeenCalledTimes(1);
     socket.onmessage?.({ data: JSON.stringify({ version: 1, type: "invalidate", scopes: [{ kind: "day" }] }) });
     socket.onmessage?.({ data: JSON.stringify({ version: 99, type: "invalidate", scopes: [{ kind: "day" }] }) });
+    await Promise.resolve();
     expect(messages).toHaveLength(1);
     socket.onclose?.();
     expect(statuses).toContain("reconnecting");
@@ -69,6 +72,20 @@ describe("RealtimeConnectionManager", () => {
     manager.start();
     await vi.waitFor(() => expect(onAuthFailure).toHaveBeenCalledTimes(1));
     expect(FakeSocket.instances).toHaveLength(0);
+    manager.stop();
+  });
+
+  it("coalesces same-turn invalidations and lets a wildcard Day cover specific Days", async () => {
+    const { manager, messages, onConnected } = makeManager();
+    manager.start();
+    await vi.waitFor(() => expect(FakeSocket.instances).toHaveLength(1));
+    const socket = FakeSocket.instances[0]!;
+    socket.onopen?.();
+    expect(onConnected).toHaveBeenCalledTimes(1);
+    socket.onmessage?.({ data: JSON.stringify({ version: 1, type: "invalidate", scopes: [{ kind: "day", logical_date: "2026-09-14" }] }) });
+    socket.onmessage?.({ data: JSON.stringify({ version: 1, type: "invalidate", scopes: [{ kind: "day" }, { kind: "projects" }] }) });
+    await Promise.resolve();
+    expect(messages).toEqual([{ version: 1, type: "invalidate", scopes: [{ kind: "day" }, { kind: "projects" }] }]);
     manager.stop();
   });
 
