@@ -32,7 +32,10 @@
 - `docs/TEST_MATRIX.md`
 - `docs/MIGRATION_FROM_OBSIDIAN.md`
 - `docs/DEVELOPMENT_WORKFLOW.md`
+- `docs/ANDROID_LARGE_BATCH_WORKFLOW.md`
 - `docs/VERIFICATION_PROFILES.md`
+
+Androidの複数機能をまとめて実装する場合は、`docs/ANDROID_LARGE_BATCH_WORKFLOW.md`を`docs/DEVELOPMENT_WORKFLOW.md`のAndroid向け補足operational workflowとして読むこと。Project Instructionsと`docs/DEVELOPMENT_WORKFLOW.md`の承認境界・STOP条件は引き続き優先する。
 
 canonical docs構成が変更された場合は、repository上の最新構成を優先すること。
 
