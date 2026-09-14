@@ -6,9 +6,9 @@
 |---|---|---|---|
 | D109-DECISION | Canonical scope | Approved `docs/decisions/D-109_ANDROID_TODAY_PLANNING_V02.md`; current-Day ordinary planned Task only; no Worker/API/schema/migration | PASS |
 | D109-PLANNING-JVM | Planning state / validation / command composition | `TaskPlanningControllerTest` 4 tests + `TaskPlanningHttpRepositoryTest` 2 tests; existing Android JVM regression included | PASS |
-| D109-ANDROID-JVM | Android JVM regression | `:app:testDebugUnitTest` | `70 / 70` | PASS |
+| D109-ANDROID-JVM | Android JVM regression | `:app:testDebugUnitTest` — `70 / 70` | PASS |
 | D109-ANDROID-UI | Compose UI planning surface | Quick Add six fields, ordinary planned row edit, Settings navigation, existing Start/Complete pending guards | PASS local |
-| D109-ANDROID-EMULATOR | Local runtime | Windows AVD `TaskChute_API33` / Pixel 7 / Android 13 API 33 / Google APIs / x86_64 / `emulator-5554`; `scripts/android-qa.ps1`; install/activity/UI tree/crash buffer | `12 / 12`, failures/errors/skipped `0 / 0 / 0` | PASS |
+| D109-ANDROID-EMULATOR | Local runtime | Windows AVD `TaskChute_API33` / Pixel 7 / Android 13 API 33 / Google APIs / x86_64 / `emulator-5554`; `scripts/android-qa.ps1`; install/activity/UI tree/crash buffer; `12 / 12`, failures/errors/skipped `0 / 0 / 0` | PASS |
 | D109-CI | Exact pushed SHA CI / APK artifact | GitHub Actions run `34907800194`, head `543efd8904eabfab63c4b38208adb841b1cc16f4`; Web/Worker and Android JVM/Debug APK/instrumentation compile jobs PASS; artifact `taskchute-android-debug-543efd8904eabfab63c4b38208adb841b1cc16f4` ID `10373476177` | PASS |
 | D109-READONLY | Future/past/routine boundary | Controller rejects non-current, non-planning, running/completed, and routine-derived edit requests; no new Day establishment | PASS source/JVM |
 | D109-SERVER | Worker/API/schema | Existing AddTaskToDay, UpdateTaskMetadata, SetEntryMode, SetEntryEstimate, SetEntryPlannedStart composed; no server source or migration changed | NOT_REQUIRED |
