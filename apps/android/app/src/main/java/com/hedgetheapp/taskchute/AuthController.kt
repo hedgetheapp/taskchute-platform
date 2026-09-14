@@ -78,11 +78,12 @@ class AuthController internal constructor(
         operationInFlight = true
         publishState(startingState)
         scope.launch {
-            try {
-                publishState(withContext(Dispatchers.IO) { action(coordinator) })
+            val result = try {
+                withContext(Dispatchers.IO) { action(coordinator) }
             } finally {
                 operationInFlight = false
             }
+            publishState(result)
         }
     }
 
