@@ -66,7 +66,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: JVM tests
-        run: ./gradlew --no-daemon :app:testDebugUnitTest
+        run: bash ./gradlew --no-daemon :app:testDebugUnitTest
 
       - name: Debug build
-        run: ./gradlew --no-daemon :app:assembleDebug
+        run: bash ./gradlew --no-daemon :app:assembleDebug
