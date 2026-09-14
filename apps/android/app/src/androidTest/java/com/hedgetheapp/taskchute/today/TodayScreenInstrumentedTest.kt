@@ -34,6 +34,8 @@ class TodayScreenInstrumentedTest {
     @After
     fun tearDown() {
         repository?.releaseLoad?.countDown()
+        repository?.releaseStart?.countDown()
+        repository?.releaseComplete?.countDown()
         controller?.close()
     }
 
@@ -51,29 +53,45 @@ class TodayScreenInstrumentedTest {
 
     @Test
     fun startDispatchesOnceAndReloadsRunningState() {
-        val repo = launchScreen()
+        val repo = launchScreen(FakeTodayRepository().apply { holdStart = true })
         waitForStatus(TodayLoadStatus.CONTENT)
 
         composeRule.onNodeWithContentDescription("タスクを開始").performClick()
+        composeRule.waitUntil(3_000) {
+            repo.startCalls.get() == 1 && controller?.state?.pendingEntryIds?.contains("entry-1") == true
+        }
         composeRule.onNodeWithContentDescription("タスクを開始").assertIsNotEnabled()
+        assertEquals(1, repo.startCalls.get())
 
+        repo.releaseStart.countDown()
         composeRule.waitUntil(3_000) {
             repo.startCalls.get() == 1 && controller?.state?.day?.runningTask != null
         }
         assertEquals(1, repo.startCalls.get())
         composeRule.onNodeWithText("実行中").assertIsDisplayed()
-        composeRule.onNodeWithText("Running panel task").assertIsDisplayed()
+        // The canonical running task is intentionally shown both in its row and
+        // in the floating panel, so assert the two surfaces rather than asking
+        // a single-node query to choose one.
+        assertEquals(
+            2,
+            composeRule.onAllNodesWithText("Running panel task").fetchSemanticsNodes().size,
+        )
         composeRule.onNodeWithText("完了").assertIsDisplayed()
     }
 
     @Test
     fun runningPanelCompleteDispatchesOnceAndCompletedTaskHasNoStart() {
-        val repo = launchScreen(FakeTodayRepository(initialDay = dayWith(LifecycleState.RUNNING)))
+        val repo = launchScreen(FakeTodayRepository(initialDay = dayWith(LifecycleState.RUNNING)).apply { holdComplete = true })
         waitForStatus(TodayLoadStatus.CONTENT)
 
         composeRule.onNodeWithText("完了").performClick()
+        composeRule.waitUntil(3_000) {
+            repo.completeCalls.get() == 1 && controller?.state?.pendingEntryIds?.contains("entry-1") == true
+        }
         composeRule.onNodeWithText("完了").assertIsNotEnabled()
+        assertEquals(1, repo.completeCalls.get())
 
+        repo.releaseComplete.countDown()
         composeRule.waitUntil(3_000) {
             repo.completeCalls.get() == 1 && controller?.state?.day?.allEntries?.singleOrNull()?.lifecycleState == LifecycleState.COMPLETED
         }
@@ -180,7 +198,13 @@ class TodayScreenInstrumentedTest {
         var mode = LoadMode.SUCCESS
         @Volatile
         var holdLoad = false
+        @Volatile
+        var holdStart = false
+        @Volatile
+        var holdComplete = false
         val releaseLoad = CountDownLatch(1)
+        val releaseStart = CountDownLatch(1)
+        val releaseComplete = CountDownLatch(1)
         val startCalls = AtomicInteger()
         val completeCalls = AtomicInteger()
         val requestedDates = mutableListOf<String?>()
@@ -202,12 +226,14 @@ class TodayScreenInstrumentedTest {
 
         override fun startTask(task: TodayTask, placementRevision: Int): TodayMutationResult {
             startCalls.incrementAndGet()
+            if (holdStart) releaseStart.await(10, TimeUnit.SECONDS)
             currentDay = dayWith(LifecycleState.RUNNING)
             return TodayMutationResult.Success
         }
 
         override fun completeTask(task: TodayTask): TodayMutationResult {
             completeCalls.incrementAndGet()
+            if (holdComplete) releaseComplete.await(10, TimeUnit.SECONDS)
             currentDay = dayWith(LifecycleState.COMPLETED)
             return TodayMutationResult.Success
         }
