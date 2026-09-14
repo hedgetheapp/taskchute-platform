@@ -1,0 +1,110 @@
+package com.hedgetheapp.taskchute.today
+
+enum class TaskEditorMode {
+    CREATE,
+    EDIT,
+}
+
+data class TaskEditorDraft(
+    val title: String = "",
+    val projectId: String? = null,
+    val modeId: String? = null,
+    val sectionId: String? = null,
+    val plannedStartText: String = "",
+    val estimateText: String = "",
+)
+
+data class TaskEditorState(
+    val mode: TaskEditorMode,
+    val day: TodayDay,
+    val originalTask: TodayTask?,
+    val draft: TaskEditorDraft,
+)
+
+data class PlanningReferences(
+    val projects: List<TodayProject>,
+    val modes: List<TodayMode>,
+)
+
+data class NormalizedTaskInput(
+    val title: String,
+    val projectId: String?,
+    val modeId: String?,
+    val sectionId: String?,
+    val plannedStartMinute: Int?,
+    val estimateSeconds: Int?,
+)
+
+data class TaskEditorValidation(
+    val input: NormalizedTaskInput?,
+    val errorMessage: String?,
+) {
+    companion object {
+        fun validate(draft: TaskEditorDraft): TaskEditorValidation {
+            val title = draft.title.trim()
+            if (title.isEmpty()) return invalid("タスク名を入力してください。")
+            if (title.length > 300) return invalid("タスク名は300文字以内で入力してください。")
+
+            val plannedStart = parseMinute(draft.plannedStartText)
+                ?: if (draft.plannedStartText.isBlank()) null else return invalid("開始予定は H:mm 形式で入力してください。")
+            val estimateMinutes = draft.estimateText.trim().toLongOrNull()
+            if (draft.estimateText.isNotBlank() && (estimateMinutes == null || estimateMinutes <= 0L || estimateMinutes > Int.MAX_VALUE / 60L)) {
+                return invalid("見積は1分以上の整数で入力してください。")
+            }
+            return TaskEditorValidation(
+                input = NormalizedTaskInput(
+                    title = title,
+                    projectId = draft.projectId,
+                    modeId = draft.modeId,
+                    sectionId = draft.sectionId,
+                    plannedStartMinute = plannedStart,
+                    estimateSeconds = estimateMinutes?.times(60L)?.toInt(),
+                ),
+                errorMessage = null,
+            )
+        }
+
+        private fun invalid(message: String) = TaskEditorValidation(null, message)
+
+        private fun parseMinute(value: String): Int? {
+            val trimmed = value.trim()
+            if (trimmed.isEmpty()) return null
+            val parts = trimmed.split(":")
+            if (parts.size != 2 || parts[0].length !in 1..2 || parts[1].length != 2) return null
+            val hours = parts[0].toIntOrNull() ?: return null
+            val minutes = parts[1].toIntOrNull() ?: return null
+            if (hours !in 0..47 || minutes !in 0..59) return null
+            return hours * 60 + minutes
+        }
+    }
+}
+
+sealed interface PlanningReferencesResult {
+    data class Success(val references: PlanningReferences) : PlanningReferencesResult
+    data object Unauthorized : PlanningReferencesResult
+    data class Failure(val message: String) : PlanningReferencesResult
+}
+
+sealed interface PlanningSaveResult {
+    data object Success : PlanningSaveResult
+    data object Unauthorized : PlanningSaveResult
+    data class Failure(val message: String) : PlanningSaveResult
+}
+
+interface TaskPlanningRepository {
+    fun loadReferences(): PlanningReferencesResult
+
+    fun save(editor: TaskEditorState, input: NormalizedTaskInput): PlanningSaveResult
+}
+
+data class TaskPlanningUiState(
+    val editor: TaskEditorState? = null,
+    val references: PlanningReferences? = null,
+    val loadingReferences: Boolean = false,
+    val saving: Boolean = false,
+    val errorMessage: String? = null,
+)
+
+internal fun formatEditorMinute(value: Int?): String = value?.let {
+    "${it / 60}:${(it % 60).toString().padStart(2, '0')}"
+} ?: ""

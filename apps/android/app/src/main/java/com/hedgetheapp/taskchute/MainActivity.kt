@@ -14,6 +14,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -37,12 +38,18 @@ import com.hedgetheapp.taskchute.today.TodayController
 import com.hedgetheapp.taskchute.today.TodayHttpRepository
 import com.hedgetheapp.taskchute.today.TodayHttpResponse
 import com.hedgetheapp.taskchute.today.TodayScreen
+import com.hedgetheapp.taskchute.today.TaskPlanningController
+import com.hedgetheapp.taskchute.today.TaskPlanningHttpRepository
+import com.hedgetheapp.taskchute.today.AndroidDestination
+import com.hedgetheapp.taskchute.today.AndroidNavigationBar
+import com.hedgetheapp.taskchute.today.TaskPlanningUiState
 
 class MainActivity : ComponentActivity() {
     private lateinit var controller: AuthController
     private lateinit var todayController: TodayController
     private lateinit var realtimeManager: RealtimeConnectionManager
     private lateinit var realtimeHttpClient: OkHttpClient
+    private lateinit var planningController: TaskPlanningController
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -55,6 +62,13 @@ class MainActivity : ComponentActivity() {
                 onUnauthorized = {},
             ),
             onUnauthorized = controller::restore,
+        )
+        planningController = TaskPlanningController(
+            repository = TaskPlanningHttpRepository { method, path, body ->
+                controller.authenticatedRequest(method, path, body)?.let { TodayHttpResponse(it.status, it.body) }
+            },
+            onUnauthorized = controller::restore,
+            onSaved = todayController::refresh,
         )
         realtimeHttpClient = OkHttpClient()
         realtimeManager = RealtimeConnectionManager(
@@ -73,7 +87,7 @@ class MainActivity : ComponentActivity() {
                 onAuthFailure = { runOnUiThread { controller.restore() } },
             ),
         )
-        setContent { TaskChuteApp(controller, todayController, realtimeManager) }
+        setContent { TaskChuteApp(controller, todayController, planningController, realtimeManager) }
     }
 
     override fun onStart() {
@@ -92,6 +106,7 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         controller.close()
         todayController.close()
+        planningController.close()
         realtimeManager.stop()
         realtimeHttpClient.dispatcher.executorService.shutdown()
         realtimeHttpClient.connectionPool.evictAll()
@@ -103,9 +118,11 @@ class MainActivity : ComponentActivity() {
 private fun TaskChuteApp(
     controller: AuthController,
     todayController: TodayController,
+    planningController: TaskPlanningController,
     realtimeManager: RealtimeConnectionManager,
 ) {
     val state = controller.state
+    var destination by remember { mutableStateOf(AndroidDestination.TODAY) }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
 
@@ -116,6 +133,8 @@ private fun TaskChuteApp(
             todayController.onRealtimeForeground()
         } else {
             realtimeManager.stop()
+            destination = AndroidDestination.TODAY
+            planningController.dismiss()
         }
     }
 
@@ -138,11 +157,56 @@ private fun TaskChuteApp(
                     controller.signIn(email, submitted)
                 }
                 is AuthUiState.NetworkError -> ErrorState(state.message, controller::retry)
-                is AuthUiState.SignedIn -> TodayScreen(todayController) {
-                    realtimeManager.stop()
-                    controller.signOut()
+                is AuthUiState.SignedIn -> {
+                    val signOut = {
+                        realtimeManager.stop()
+                        planningController.dismiss()
+                        controller.signOut()
+                    }
+                    when (destination) {
+                        AndroidDestination.TODAY -> TodayScreen(
+                            controller = todayController,
+                            planningController = planningController,
+                            onNavigateSettings = { destination = AndroidDestination.SETTINGS },
+                            onSignOut = signOut,
+                        )
+                        AndroidDestination.SETTINGS -> SettingsScreen(
+                            onNavigateToday = { destination = AndroidDestination.TODAY },
+                            onSignOut = signOut,
+                        )
+                        AndroidDestination.PROJECTS,
+                        AndroidDestination.NOTES,
+                        -> TodayScreen(
+                            controller = todayController,
+                            planningController = planningController,
+                            onNavigateSettings = { destination = AndroidDestination.SETTINGS },
+                            onSignOut = signOut,
+                        )
+                    }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun SettingsScreen(onNavigateToday: () -> Unit, onSignOut: () -> Unit) {
+    Scaffold(
+        bottomBar = {
+            AndroidNavigationBar(
+                selected = AndroidDestination.SETTINGS,
+                onToday = onNavigateToday,
+                onSettings = {},
+            )
+        },
+    ) { padding ->
+        Column(
+            modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text("設定", style = MaterialTheme.typography.headlineMedium)
+            Text("アカウントとアプリの設定")
+            Button(onClick = onSignOut) { Text("ログアウト") }
         }
     }
 }

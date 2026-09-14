@@ -12,14 +12,17 @@ class TodayJsonParserTest {
 
         assertEquals("2026-09-14", day.logicalDate)
         assertEquals(42, day.placementRevision)
+        assertEquals("day-1", day.taskChuteDayId)
         assertEquals(1, day.sections.size)
         assertEquals("Morning", day.sections.single().title)
         assertEquals("Write", day.sections.single().entries.single().title)
+        assertEquals("t1", day.sections.single().entries.single().taskId)
         assertEquals(LifecycleState.RUNNING, day.sections.single().entries.single().lifecycleState)
         assertEquals("p1", day.sections.single().entries.single().project?.id)
         assertEquals("m1", day.sections.single().entries.single().mode?.id)
         assertEquals("execution-1", day.activeExecution?.id)
         assertNotNull(day.runningTask)
+        assertEquals(false, day.sections.single().entries.single().routineDerived)
         assertNull(day.unsectionedEntries.single().project)
     }
 

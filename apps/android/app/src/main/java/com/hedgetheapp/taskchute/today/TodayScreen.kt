@@ -2,6 +2,7 @@ package com.hedgetheapp.taskchute.today
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,28 +12,38 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,57 +52,75 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import java.time.LocalDate
+
+enum class AndroidDestination {
+    TODAY,
+    PROJECTS,
+    NOTES,
+    SETTINGS,
+}
+
+@Composable
+fun AndroidNavigationBar(
+    selected: AndroidDestination,
+    onToday: () -> Unit,
+    onSettings: () -> Unit,
+) {
+    NavigationBar {
+        NavigationBarItem(
+            selected = selected == AndroidDestination.TODAY,
+            onClick = onToday,
+            icon = { Text("⌂") },
+            label = { Text("今日") },
+        )
+        NavigationBarItem(
+            selected = false,
+            onClick = {},
+            enabled = false,
+            icon = { Text("▦") },
+            label = { Text("プロジェクト") },
+        )
+        NavigationBarItem(
+            selected = false,
+            onClick = {},
+            enabled = false,
+            icon = { Text("▤") },
+            label = { Text("ノート") },
+        )
+        NavigationBarItem(
+            selected = selected == AndroidDestination.SETTINGS,
+            onClick = onSettings,
+            icon = { Text("⚙") },
+            label = { Text("設定") },
+        )
+    }
+}
+
+@Composable
+fun TodayScreen(controller: TodayController, onSignOut: () -> Unit) {
+    TodayScreen(controller, null, {}, onSignOut)
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TodayScreen(controller: TodayController, onSignOut: () -> Unit) {
+fun TodayScreen(
+    controller: TodayController,
+    planningController: TaskPlanningController?,
+    onNavigateSettings: () -> Unit,
+    onSignOut: () -> Unit = {},
+) {
     val state = controller.state
+    val planningState = planningController?.state ?: TaskPlanningUiState()
     LaunchedEffect(controller) { controller.loadCurrent() }
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text("TaskChute", style = MaterialTheme.typography.labelMedium)
-                        Text("Today", style = MaterialTheme.typography.titleLarge)
-                    }
-                },
-                actions = {
-                    TextButton(onClick = onSignOut) { Text("ログアウト") }
-                },
-            )
-        },
         bottomBar = {
-            NavigationBar {
-                NavigationBarItem(
-                    selected = true,
-                    onClick = { controller.today() },
-                    icon = { Text("⌂") },
-                    label = { Text("今日") },
-                )
-                NavigationBarItem(
-                    selected = false,
-                    onClick = {},
-                    enabled = false,
-                    icon = { Text("▦") },
-                    label = { Text("プロジェクト") },
-                )
-                NavigationBarItem(
-                    selected = false,
-                    onClick = {},
-                    enabled = false,
-                    icon = { Text("▤") },
-                    label = { Text("ノート") },
-                )
-                NavigationBarItem(
-                    selected = false,
-                    onClick = {},
-                    enabled = false,
-                    icon = { Text("⚙") },
-                    label = { Text("設定") },
-                )
-            }
+            AndroidNavigationBar(
+                selected = AndroidDestination.TODAY,
+                onToday = controller::today,
+                onSettings = onNavigateSettings,
+            )
         },
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
@@ -100,8 +129,13 @@ fun TodayScreen(controller: TodayController, onSignOut: () -> Unit) {
                 TodayLoadStatus.REFRESHING,
                 TodayLoadStatus.CONTENT,
                 TodayLoadStatus.EMPTY,
-                -> TodayContent(controller, state, Modifier.fillMaxSize())
-                TodayLoadStatus.ERROR -> TodayError(state.errorMessage ?: "Todayを読み込めませんでした。", controller::refresh)
+                -> TodayContent(
+                    controller = controller,
+                    state = state,
+                    planningController = planningController,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                TodayLoadStatus.ERROR -> TodayError(state.errorMessage ?: "予定を読み込めませんでした。", controller::refresh)
                 TodayLoadStatus.AUTH_REQUIRED -> TodayAuthRequired()
             }
             if (state.status == TodayLoadStatus.CONTENT || state.status == TodayLoadStatus.EMPTY || state.status == TodayLoadStatus.REFRESHING) {
@@ -118,13 +152,29 @@ fun TodayScreen(controller: TodayController, onSignOut: () -> Unit) {
             }
         }
     }
+
+    if (planningController != null && planningState.editor != null) {
+        ModalBottomSheet(onDismissRequest = planningController::dismiss) {
+            TaskEditorForm(planningController, planningState, Modifier.imePadding())
+        }
+    }
 }
 
 @Composable
-private fun TodayContent(controller: TodayController, state: TodayUiState, modifier: Modifier) {
+private fun TodayContent(
+    controller: TodayController,
+    state: TodayUiState,
+    planningController: TaskPlanningController?,
+    modifier: Modifier,
+) {
     val day = state.day ?: return LoadingToday()
     Column(modifier) {
-        DateNavigator(day, controller)
+        DateNavigator(
+            day = day,
+            controller = controller,
+            canAdd = day.isCurrent && day.planningEnabled && day.taskChuteDayId != null && planningController != null,
+            onAdd = { planningController?.openCreate(day) },
+        )
         state.errorMessage?.let {
             Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp))
         }
@@ -134,18 +184,30 @@ private fun TodayContent(controller: TodayController, state: TodayUiState, modif
         }
         LazyColumn(
             contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 110.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             day.sections.forEach { section ->
                 item(key = "section-${section.id}") { SectionHeader(section) }
                 items(section.entries, key = { it.id }) { task ->
-                    TodayTaskRow(task, day.isCurrent && !state.pendingEntryIds.contains(task.id), controller)
+                    TodayTaskRow(
+                        task = task,
+                        enabled = day.isCurrent && !state.pendingEntryIds.contains(task.id),
+                        controller = controller,
+                        canEdit = day.isCurrent && day.planningEnabled && !task.routineDerived && planningController != null,
+                        onEdit = { planningController?.openEdit(day, task) },
+                    )
                 }
             }
             if (day.unsectionedEntries.isNotEmpty()) {
                 item(key = "section-unsectioned") { SectionHeader(null) }
                 items(day.unsectionedEntries, key = { it.id }) { task ->
-                    TodayTaskRow(task, day.isCurrent && !state.pendingEntryIds.contains(task.id), controller)
+                    TodayTaskRow(
+                        task = task,
+                        enabled = day.isCurrent && !state.pendingEntryIds.contains(task.id),
+                        controller = controller,
+                        canEdit = day.isCurrent && day.planningEnabled && !task.routineDerived && planningController != null,
+                        onEdit = { planningController?.openEdit(day, task) },
+                    )
                 }
             }
         }
@@ -153,9 +215,9 @@ private fun TodayContent(controller: TodayController, state: TodayUiState, modif
 }
 
 @Composable
-private fun DateNavigator(day: TodayDay, controller: TodayController) {
+private fun DateNavigator(day: TodayDay, controller: TodayController, canAdd: Boolean, onAdd: () -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
@@ -164,8 +226,9 @@ private fun DateNavigator(day: TodayDay, controller: TodayController) {
             modifier = Modifier.semantics { contentDescription = "前の日" },
         ) { Text("‹", style = MaterialTheme.typography.headlineMedium) }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(if (day.isCurrent) "今日" else "予定日", style = MaterialTheme.typography.labelLarge)
             Text(day.logicalDate, style = MaterialTheme.typography.titleMedium)
+            Text("（${formatWeekday(day.logicalDate)}）", style = MaterialTheme.typography.labelMedium)
+            if (day.isCurrent) Text("今日", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(
@@ -173,10 +236,12 @@ private fun DateNavigator(day: TodayDay, controller: TodayController) {
                 modifier = Modifier.semantics { contentDescription = "次の日" },
             ) { Text("›", style = MaterialTheme.typography.headlineMedium) }
             TextButton(onClick = controller::today, enabled = !day.isCurrent) { Text("今日") }
-            IconButton(
-                onClick = controller::refresh,
-                modifier = Modifier.semantics { contentDescription = "Todayを更新" },
-            ) { Text("↻") }
+            if (canAdd) {
+                IconButton(
+                    onClick = onAdd,
+                    modifier = Modifier.semantics { contentDescription = "タスクを追加" },
+                ) { Text("＋") }
+            }
         }
     }
     HorizontalDivider()
@@ -197,8 +262,23 @@ private fun SectionHeader(section: TodaySection?) {
 }
 
 @Composable
-private fun TodayTaskRow(task: TodayTask, enabled: Boolean, controller: TodayController) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+private fun TodayTaskRow(
+    task: TodayTask,
+    enabled: Boolean,
+    controller: TodayController,
+    canEdit: Boolean,
+    onEdit: () -> Unit,
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (canEdit) Modifier
+                    .clickable(onClick = onEdit)
+                    .semantics { contentDescription = "タスクを編集" }
+                else Modifier,
+            ),
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(start = 12.dp, top = 10.dp, bottom = 10.dp, end = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -256,11 +336,137 @@ private fun RunningTaskPanel(task: TodayTask, controller: TodayController, enabl
 }
 
 @Composable
+private fun TaskEditorForm(controller: TaskPlanningController, state: TaskPlanningUiState, modifier: Modifier) {
+    val editor = state.editor ?: return
+    val references = state.references
+    val draft = editor.draft
+    var projectExpanded by remember(editor) { mutableStateOf(false) }
+    var modeExpanded by remember(editor) { mutableStateOf(false) }
+    var sectionExpanded by remember(editor) { mutableStateOf(false) }
+    val validation = TaskEditorValidation.validate(draft)
+    val selectedProject = references?.projects?.firstOrNull { it.id == draft.projectId }
+    val selectedMode = references?.modes?.firstOrNull { it.id == draft.modeId }
+    val selectedSection = editor.day.sections.firstOrNull { it.id == draft.sectionId }
+
+    Column(
+        modifier = modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(if (editor.mode == TaskEditorMode.CREATE) "タスクを追加" else "タスクを編集", style = MaterialTheme.typography.titleLarge)
+        OutlinedTextField(
+            value = draft.title,
+            onValueChange = { controller.updateDraft(draft.copy(title = it)) },
+            label = { Text("Task名") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !state.saving,
+        )
+        ReferencePicker(
+            label = "Project",
+            value = selectedProject?.title ?: "なし",
+            expanded = projectExpanded,
+            onExpandedChange = { projectExpanded = it },
+            options = listOf(null to "なし") + (references?.projects?.map { it.id to it.title } ?: emptyList()),
+            onSelected = { controller.updateDraft(draft.copy(projectId = it)); projectExpanded = false },
+            enabled = references != null && !state.saving,
+        )
+        ReferencePicker(
+            label = "Mode",
+            value = selectedMode?.title ?: "なし",
+            expanded = modeExpanded,
+            onExpandedChange = { modeExpanded = it },
+            options = listOf(null to "なし") + (references?.modes?.map { it.id to it.title } ?: emptyList()),
+            onSelected = { controller.updateDraft(draft.copy(modeId = it)); modeExpanded = false },
+            enabled = references != null && !state.saving,
+        )
+        ReferencePicker(
+            label = "Section",
+            value = selectedSection?.title ?: "なし",
+            expanded = sectionExpanded,
+            onExpandedChange = { sectionExpanded = it },
+            options = listOf(null to "なし") + editor.day.sections.map { it.id to it.title },
+            onSelected = {
+                controller.updateDraft(
+                    draft.copy(
+                        sectionId = it,
+                        plannedStartText = formatEditorMinute(editor.day.sections.firstOrNull { section -> section.id == it }?.startMinute),
+                    ),
+                )
+                sectionExpanded = false
+            },
+            enabled = !state.saving,
+        )
+        OutlinedTextField(
+            value = draft.plannedStartText,
+            onValueChange = { controller.updateDraft(draft.copy(plannedStartText = it)) },
+            label = { Text("開始予定") },
+            supportingText = { Text("H:mm（例 5:00）") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !state.saving,
+        )
+        OutlinedTextField(
+            value = draft.estimateText,
+            onValueChange = { controller.updateDraft(draft.copy(estimateText = it)) },
+            label = { Text("見積（分）") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !state.saving,
+        )
+        if (state.loadingReferences) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                CircularProgressIndicator(modifier = Modifier.size(18.dp))
+                Text("候補を読み込んでいます…")
+            }
+        }
+        state.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        if (references == null && !state.loadingReferences) {
+            TextButton(onClick = controller::retryReferences) { Text("候補を再試行") }
+        }
+        if (validation.errorMessage != null && state.errorMessage != null) {
+            Text(validation.errorMessage, color = MaterialTheme.colorScheme.error)
+        }
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = controller::dismiss, enabled = !state.saving) { Text("キャンセル") }
+            Button(onClick = controller::save, enabled = references != null && !state.saving) {
+                Text(if (editor.mode == TaskEditorMode.CREATE) "追加" else "保存")
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+    }
+}
+
+@Composable
+private fun ReferencePicker(
+    label: String,
+    value: String,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    options: List<Pair<String?, String>>,
+    onSelected: (String?) -> Unit,
+    enabled: Boolean,
+) {
+    Box {
+        OutlinedButton(onClick = { onExpandedChange(true) }, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(label)
+                Text(value, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { onExpandedChange(false) }) {
+            options.forEach { (id, title) ->
+                DropdownMenuItem(text = { Text(title) }, onClick = { onSelected(id) })
+            }
+        }
+    }
+}
+
+@Composable
 private fun LoadingToday() {
     Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         CircularProgressIndicator()
         Spacer(Modifier.height(12.dp))
-        Text("Todayを読み込んでいます…")
+        Text("予定を読み込んでいます…")
     }
 }
 
@@ -289,6 +495,12 @@ private fun TodayAuthRequired() {
         Text("認証状態を確認しています…")
     }
 }
+
+private fun formatWeekday(value: String): String = runCatching {
+    val date = LocalDate.parse(value)
+    val weekdays = listOf("月", "火", "水", "木", "金", "土", "日")
+    weekdays[date.dayOfWeek.value - 1]
+}.getOrDefault(value)
 
 private fun formatMinute(value: Int?): String = value?.let { "${it / 60}:${(it % 60).toString().padStart(2, '0')}" } ?: "--:--"
 

@@ -20,6 +20,8 @@ data class TodayTask(
     val plannedStartMinute: Int?,
     val executionId: String?,
     val activeStartedAt: String?,
+    val routineDerived: Boolean = false,
+    val taskId: String? = null,
 )
 
 enum class LifecycleState {
@@ -51,6 +53,7 @@ data class TodayDay(
     val sections: List<TodaySection>,
     val unsectionedEntries: List<TodayTask>,
     val activeExecution: TodayExecution?,
+    val taskChuteDayId: String? = null,
 ) {
     val allEntries: List<TodayTask> get() = sections.flatMap { it.entries } + unsectionedEntries
     val runningTask: TodayTask?

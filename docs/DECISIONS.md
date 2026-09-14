@@ -2,6 +2,23 @@
 
 Statuses: Approved / Proposed / Superseded
 
+## D-109 — Android Today Planning v0.2
+
+Status: **Approved**
+
+Canonical Decision: `docs/decisions/D-109_ANDROID_TODAY_PLANNING_V02.md`。
+
+D-109は既存Android Todayをcurrent established Dayのordinary planned Task向け計画面へ
+拡張する。date navigationを上部に直接表示し、TaskChute / Today header、manual reload、
+Today上のlogoutを置かない。`設定`を既存D-106 logoutへ接続し、Project / Notesはdisabledの
+ままfake navigationを行わない。current DayだけでQuick Addとplanned Task editのbottom sheet
+を提供し、Task名、Project、Mode、Section、開始予定、見積を扱う。
+
+Add/Editは既存のAddTaskToDay、UpdateTaskMetadata、SetEntryMode、SetEntryEstimate、
+SetEntryPlannedStartを、pending / retry / canonical reload付きで構成する。Worker/API、
+schema/migration、Routine semantics、future/past read-only、D-106 auth、D-108 realtime、
+offline/background architectureは変更しない。
+
 ## D-108 — Android Realtime Invalidation v0.1
 
 Status: **Approved**

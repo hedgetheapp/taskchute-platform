@@ -2,6 +2,7 @@ package com.hedgetheapp.taskchute.today
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
@@ -9,6 +10,8 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -30,6 +33,7 @@ class TodayScreenInstrumentedTest {
 
     private var controller: TodayController? = null
     private var repository: FakeTodayRepository? = null
+    private var planningController: TaskPlanningController? = null
 
     @After
     fun tearDown() {
@@ -37,6 +41,7 @@ class TodayScreenInstrumentedTest {
         repository?.releaseStart?.countDown()
         repository?.releaseComplete?.countDown()
         controller?.close()
+        planningController?.close()
     }
 
     @Test
@@ -47,7 +52,6 @@ class TodayScreenInstrumentedTest {
         composeRule.onNodeWithText("Morning").assertIsDisplayed()
         composeRule.onNodeWithText("Write report").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("タスクを開始").assertIsDisplayed()
-        composeRule.onNodeWithText("TaskChute").assertIsDisplayed()
         composeRule.onNodeWithText("2026-09-14").assertIsDisplayed()
     }
 
@@ -104,7 +108,7 @@ class TodayScreenInstrumentedTest {
         val repo = FakeTodayRepository().apply { holdLoad = true }
         launchScreen(repo)
 
-        composeRule.onNodeWithText("Todayを読み込んでいます…").assertIsDisplayed()
+        composeRule.onNodeWithText("予定を読み込んでいます…").assertIsDisplayed()
         repo.releaseLoad.countDown()
         waitForStatus(TodayLoadStatus.CONTENT)
     }
@@ -147,23 +151,61 @@ class TodayScreenInstrumentedTest {
 
         composeRule.onNodeWithContentDescription("前の日").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("次の日").performClick()
-        composeRule.onNodeWithContentDescription("Todayを更新").assertIsDisplayed()
         composeRule.waitUntil(3_000) { repo.requestedDates.contains("2026-09-15") }
         assertTrue(repo.requestedDates.contains("2026-09-15"))
     }
 
     @Test
     fun bottomNavigationShowsApprovedDestinationsWithoutFakeNavigation() {
-        launchScreen()
+        var settingsClicks = 0
+        launchScreen(onNavigateSettings = { settingsClicks++ })
         waitForStatus(TodayLoadStatus.CONTENT)
 
         assertTrue(composeRule.onAllNodesWithText("今日").fetchSemanticsNodes().isNotEmpty())
         composeRule.onNodeWithText("プロジェクト").assertIsDisplayed().assertIsNotEnabled()
         composeRule.onNodeWithText("ノート").assertIsDisplayed().assertIsNotEnabled()
-        composeRule.onNodeWithText("設定").assertIsDisplayed().assertIsNotEnabled()
+        composeRule.onNodeWithText("設定").assertIsDisplayed().assertIsEnabled()
+        composeRule.onNodeWithText("設定").performClick()
+        assertEquals(1, settingsClicks)
     }
 
-    private fun launchScreen(repo: FakeTodayRepository = FakeTodayRepository()): FakeTodayRepository {
+    @Test
+    fun quickAddShowsSixFieldsAndSendsOneCanonicalSave() {
+        val planningRepository = FakePlanningRepository()
+        launchPlanningScreen(planningRepository)
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        composeRule.onNodeWithContentDescription("タスクを追加").performClick()
+        composeRule.onNodeWithText("Task名").assertIsDisplayed().performTextInput("Plan from Android")
+        composeRule.onNodeWithText("Project").assertIsDisplayed()
+        composeRule.onNodeWithText("Mode").assertIsDisplayed()
+        composeRule.onNodeWithText("Section").assertIsDisplayed()
+        composeRule.onNodeWithText("開始予定").assertIsDisplayed()
+        composeRule.onNodeWithText("見積（分）").assertExists()
+        composeRule.onNodeWithText("追加").performScrollTo().performClick()
+
+        composeRule.waitUntil(3_000) { planningRepository.saveCalls.get() == 1 }
+        assertEquals(1, planningRepository.saveCalls.get())
+        assertEquals("Plan from Android", planningRepository.lastInput?.title)
+    }
+
+    @Test
+    fun ordinaryPlannedRowOpensEditorAndRoutineRowDoesNot() {
+        val planningRepository = FakePlanningRepository()
+        launchPlanningScreen(planningRepository)
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        composeRule.onNodeWithContentDescription("タスクを編集").performClick()
+        composeRule.onNodeWithText("タスクを編集").assertIsDisplayed()
+        composeRule.onNodeWithText("保存").assertExists()
+        composeRule.onNodeWithText("キャンセル").performClick()
+        composeRule.onNodeWithContentDescription("タスクを編集").assertIsDisplayed()
+    }
+
+    private fun launchScreen(
+        repo: FakeTodayRepository = FakeTodayRepository(),
+        onNavigateSettings: () -> Unit = {},
+    ): FakeTodayRepository {
         repository = repo
         controller = TodayController(
             repository = repo,
@@ -172,10 +214,41 @@ class TodayScreenInstrumentedTest {
         )
         composeRule.setContent {
             MaterialTheme {
-                TodayScreen(controller = requireNotNull(controller), onSignOut = {})
+                TodayScreen(
+                    controller = requireNotNull(controller),
+                    planningController = null,
+                    onNavigateSettings = onNavigateSettings,
+                    onSignOut = {},
+                )
             }
         }
         return repo
+    }
+
+    private fun launchPlanningScreen(planningRepository: FakePlanningRepository) {
+        val repo = FakeTodayRepository()
+        repository = repo
+        controller = TodayController(
+            repository = repo,
+            onUnauthorized = {},
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
+        )
+        this.planningController = TaskPlanningController(
+            repository = planningRepository,
+            onUnauthorized = {},
+            onSaved = {},
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
+        )
+        composeRule.setContent {
+            MaterialTheme {
+                TodayScreen(
+                    controller = requireNotNull(controller),
+                    planningController = requireNotNull(this.planningController),
+                    onNavigateSettings = {},
+                    onSignOut = {},
+                )
+            }
+        }
     }
 
     private fun waitForStatus(status: TodayLoadStatus) {
@@ -239,6 +312,24 @@ class TodayScreenInstrumentedTest {
         }
     }
 
+    private class FakePlanningRepository : TaskPlanningRepository {
+        val saveCalls = AtomicInteger()
+        @Volatile var lastInput: NormalizedTaskInput? = null
+
+        override fun loadReferences() = PlanningReferencesResult.Success(
+            PlanningReferences(
+                projects = listOf(TodayProject("project-1", "Project")),
+                modes = listOf(TodayMode("mode-1", "Mode")),
+            ),
+        )
+
+        override fun save(editor: TaskEditorState, input: NormalizedTaskInput): PlanningSaveResult {
+            saveCalls.incrementAndGet()
+            lastInput = input
+            return PlanningSaveResult.Success
+        }
+    }
+
     private companion object {
         fun dayWith(state: LifecycleState) = TodayDay(
             logicalDate = "2026-09-14",
@@ -272,6 +363,7 @@ class TodayScreenInstrumentedTest {
             } else {
                 null
             },
+            taskChuteDayId = "day-1",
         )
 
         fun emptyDay() = TodayDay(

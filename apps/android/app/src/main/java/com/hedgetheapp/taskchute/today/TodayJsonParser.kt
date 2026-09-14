@@ -20,6 +20,7 @@ internal object TodayJsonParser {
             sections = sections,
             unsectionedEntries = unsectioned,
             activeExecution = activeExecution,
+            taskChuteDayId = taskChuteDay.nullableStringField("id"),
         )
         require(activeExecution == null || day.allEntries.any { it.id == activeExecution.entryId }) {
             "active execution entry is missing from Today projection"
@@ -58,6 +59,8 @@ internal object TodayJsonParser {
             plannedStartMinute = value.nullableIntField("planned_start_minute"),
             executionId = executionSummary?.nullableStringField("active_execution_id"),
             activeStartedAt = executionSummary?.nullableStringField("active_started_at"),
+            routineDerived = value.nullableObjectField("routine") != null,
+            taskId = task.stringField("id"),
         )
     }
 
