@@ -1,5 +1,19 @@
 # Current
 
+### D-104 Web reliability and repository safety hardening v0.1 — 2026-09-14
+
+D-104 implementation commit `a07adb35b5e01ff84d51934ffe2d47e358935795`をcanonical `main`へfast-forward pushし、canonical persistent nonprod Worker `taskchute-web-nonprod`へdeployした。Worker versionは`e9b3fa42-38ec-44ac-9bd8-8f6a4d6daf59`、`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、APP `taskchute-app-nonprod`、AUTH `taskchute-auth-nonprod`を確認した。Web/auth UX・client validation・repository CI/rulesetのhardeningであり、API/Worker/schema/migration/dependencyは変更していない。migrationは`NOT_REQUIRED`、remote APP/AUTH pendingは`0 / 0`である。
+
+初期Day readの500/network/parse failureはsigned-outと分離したrecoverable `bootstrap-error`とretryになり、authenticated `401`はsame-principal確認付き`reauth-required` barrierへ分離される。reauth中はeditor/window treeとdirty Note draftをbrowser memoryで保持し、server mutation/navigationをfreezeする。Standalone inline、Project Primary inline、Task Primary floating、Project Primary floatingの既存editor経路にauth epoch再concileとmutation freezeを接続し、localStorage/IndexedDB/Cache/service worker等へのNote本文永続化は追加していない。既存の64 KiB Worker ceilingを維持し、実際の`JSON.stringify`結果のUTF-8 byte lengthでwarning / hard stopを適用した。
+
+Focused Webは`5 files / 327 tests PASS`、full Webは`13 files / 437 tests PASS`、full Worker/D1は`34 files / 301 tests PASS`、typecheck、normal build、exact nonprod build、deploy guard、Wrangler dry-run、`git diff --check`はPASSした。`npm run preflight`のworkflow helperだけはWindows `.git/FETCH_HEAD` permission errorで完走しなかったが、direct fetch、`git ls-remote`、branch/HEAD/origin一致を別途確認した。GitHub Actions run `34799409990`は同じ実装SHAに対してtypecheck、Web tests、Worker/D1 tests、production buildを含む全stepがsuccessである。
+
+GitHub ruleset `Protect main history` (id `23241921`)は`main`のdeletionとnon-fast-forwardを禁止し、PR requirementとrequired status checksは有効化していないためdirect normal FF pushを維持する。非本番HTTPはroot `200`、未認証Documents API `401`、APP/AUTH migration listはともに`No migrations to apply!`。APP/AUTH `quick_check`は`ok`、FKはempty、read-only probeは`rows_written=0`、invalid document kind/revision、orphan document/operation/relation、assertion/guard residue、active executionはすべて`0`だった。
+
+CUAのpersistent browser tab listは空でcredential取得・再loginは行っていないため、authenticated Notes CRUD、payload warning、session-expiry/re-authのbrowser evidenceは`AUTHENTICATED_BROWSER_NOT_VERIFIED`とする。既存D-091〜D-103 browser evidenceは再分類しない。production、restore/recovery、bootstrap mutation、destructive cleanup、branch / PR / merge / tag / Releaseは行っていない。
+
+D-104 classification: `APPROVED / IMPLEMENTED / INTEGRATED / TESTED / MAIN_PUSHED / WEB_BOOTSTRAP_ERROR_SEPARATION_VERIFIED / AUTHENTICATED_401_REAUTH_BARRIER_VERIFIED_LOCAL / NOTE_DRAFT_MEMORY_PRESERVATION_VERIFIED_LOCAL / NOTE_PAYLOAD_UTF8_GUARD_VERIFIED / GITHUB_CI_VERIFIED / MAIN_HISTORY_RULESET_VERIFIED / FULL_WEB_VERIFIED / FULL_WORKER_D1_VERIFIED / TYPECHECK_VERIFIED / BUILD_VERIFIED / NONPROD_BUILD_VERIFIED / DEPLOY_GUARD_VERIFIED / WRANGLER_DRY_RUN_VERIFIED / DIFF_CHECK_VERIFIED / PERSISTENT_NONPROD_DEPLOYED / DB_INTEGRITY_VERIFIED / AUTHENTICATED_BROWSER_NOT_VERIFIED / MIGRATION_NOT_REQUIRED / PRODUCTION_NOT_RUN / RESTORE_NOT_RUN / RELEASED_NO`。
+
 Date: 2026-09-06
 
 ## Status

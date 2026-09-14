@@ -1,5 +1,21 @@
 # Test Matrix
 
+## D-104 Web reliability and repository safety hardening v0.1
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D104-BOOTSTRAP | Bootstrap auth distinction | Initial non-auth 500/network failure remains recoverable and retryable, not signed-out; authoritative 401 follows the reauth path | App tests for Worker failure/network failure/retry and 401; explicit logout regression | PASS |
+| D104-REAUTH | Session expiry | Authenticated 401 preserves mounted editor/window state and dirty draft in memory, freezes mutation, requires reauth, and distinguishes canonical conflict | focused App/NotesBoard/TaskNoteEditor tests; standalone, Project inline, Task floating, Project floating auth paths | PASS local |
+| D104-REAUTH-SCOPE | Multi-window/editor scope | Independent Note identities/drafts remain separated; no localStorage/IndexedDB/cache draft persistence | existing D-102 window isolation plus D-104 editor tests/source review | PASS local |
+| D104-SIZE | Request-size safety | Actual serialized JSON UTF-8 bytes are measured; warning precedes 64 KiB hard stop; over-limit request is not sent | request-size/API tests with Japanese, emoji, escaping and editor paths; server ceiling unchanged | PASS |
+| D104-CI | Push-time CI | Read-only CI runs on main push/manual dispatch with pinned supported Node and no deploy/migration | `.github/workflows/ci.yml`; run `34799409990`, exact SHA `a07adb35b5e01ff84d51934ffe2d47e358935795`, all steps success | PASS |
+| D104-RULESET | Main history safety | Force-push/non-fast-forward and deletion prohibited while direct normal push and PR/status-check-off posture remain | ruleset `Protect main history` id `23241921` read-back; classic protection absent | PASS |
+| D104-LOCAL | Local gates | Focused and full tests, typecheck, builds, deploy guard, dry-run and diff check | focused Web `5 files / 327 tests`; full Web `13 files / 437`; full Worker/D1 `34 files / 301`; static gates PASS; preflight helper hit Windows FETCH_HEAD EPERM | PASS except helper environment error |
+| D104-NONPROD | Persistent nonprod | Exact main deployed with canonical Worker/config and unauthenticated safety | Worker `e9b3fa42-38ec-44ac-9bd8-8f6a4d6daf59`; root `200`; Documents API `401`; APP/AUTH pending `0 / 0` | PASS |
+| D104-DB | Read-only integrity | APP/AUTH quick/FK, pending, owner/orphan/duplicate/guard/active-execution probes and read-only write accounting | quick `ok`; FK empty; listed anomaly counts `0`; successful probes `rows_written=0` | PASS |
+| D104-BROWSER | Authenticated UX | Payload warning/hard stop, ordinary Notes save, session-expiry reauth and continuation | CUA browser inventory exposed no persistent tab; no credential retrieval/re-login; no authenticated browser claim | AUTHENTICATED_BROWSER_NOT_VERIFIED |
+| D104-SCOPE | Boundary | No schema/migration/dependency/offline persistence/production/restore/branch/PR/merge/tag/Release | source review, commit, deploy and ruleset read-back | PASS / NOT_REQUIRED |
+
 ## D-072 Mode search / archive / restore / delete — local gate
 
 Contract: Approved D-072。D-071のvisual / interaction parityを維持し、Mode Settingsのcurrent-tab search、active / archived tab、archive / restore、確認付きhard delete、active-only assignmentを追加する。D-071のout-of-scope記載はhistorical evidenceとして保持し、D-072がcurrent scopeをsupersedeする。

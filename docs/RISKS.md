@@ -1,5 +1,13 @@
 # Risks
 
+## R-061 — D-104 Web reliability and repository safety boundary
+
+D-104 separates initial non-auth bootstrap failures from signed-out state, and routes authenticated `401` into a same-principal reauthentication barrier. The main residual risk is that Note editor/window drafts are preserved only in browser memory: a full reload/close can still lose a draft, while dirty/unresolved beforeunload and in-app navigation protections remain required. A wrong reauthenticated principal is blocked from automatically resuming or sending the retained draft.
+
+Mitigation/evidence: focused Web `5 files / 327 tests`, full Web `13 files / 437 tests`, full Worker/D1 `34 files / 301 tests`, typecheck/build/exact nonprod build/deploy guard/Wrangler dry-run/diff-check pass; GitHub Actions run `34799409990` for implementation SHA `a07adb35b5e01ff84d51934ffe2d47e358935795` is success. The common client helper measures the exact serialized JSON UTF-8 body, warns near the existing 64 KiB Worker ceiling, and blocks over-limit sends without changing draft state. Authenticated browser verification is explicitly `AUTHENTICATED_BROWSER_NOT_VERIFIED` because no persistent browser tab was available and credentials/re-login were prohibited.
+
+The repository-safety boundary is intentionally narrow: ruleset `23241921` is active for `main` with deletion and non-fast-forward rules only. Direct normal fast-forward push remains allowed; PR requirement and required status checks remain off in v0.1. The CI workflow is informational/read-only and never deploys or mutates D1. Persistent nonprod Worker `e9b3fa42-38ec-44ac-9bd8-8f6a4d6daf59` returned root `200` and unauthenticated Documents API `401`; APP/AUTH pending is `0 / 0`, quick checks are `ok`, FK results empty, anomaly/guard probes `0`, and successful read-only probes report `rows_written=0`. Production and restore/recovery remain not run.
+
 ## R-001 — Server authority increases sync responsibility
 Related: D-002, D-011, D-012, D-020
 
