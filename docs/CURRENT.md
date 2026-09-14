@@ -16,8 +16,13 @@ compile、Web `442 / 442`、Worker/D1 `307 / 307`、typecheck、normal build、e
 nonprod build、nonprod deploy guard、Wrangler dry-run、`git diff --check`はPASSした。
 Android native TodayはWorker/API/schema/migrationを変更していない。`adb devices`は空で、
 Galaxy S23のsign-in、Today表示、Start、running panel、Complete、restart/usabilityは
-`NOT_RUN`である。GitHub Actions / APK artifactはpush後に実測値へ更新し、production / release
-は`NOT_RUN / NO`を維持する。
+`NOT_RUN`である。実装commit `c8b6c24ea88fd6950231768845dab72cb40b1c31`はmainへ
+fast-forward push済みで、exact-SHA GitHub Actions run `34831165821`のWeb/Workerと
+Android jobはsuccessした。APK artifactは
+`taskchute-android-debug-c8b6c24ea88fd6950231768845dab72cb40b1c31`、artifact ID
+`10342451880`、10,363,020 bytes、retention 7日、expires `2026-09-21T10:04:23Z`
+である。これはGalaxy S23へのinstall/実機操作を意味しない。production / releaseは
+`NOT_RUN / NO`を維持する。
 
 ### D-106 Android Native Auth Foundation v0.1 — 2026-09-14
 

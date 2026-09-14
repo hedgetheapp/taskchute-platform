@@ -2930,9 +2930,11 @@ D-103 corrective implementation commit `74155bee97a1b05eff05bcbfc07e311d0b68acb8
 | D107-BUILD | Android build | `:app:testDebugUnitTest` `52 / 52`、canonical nonprod URL付き`:app:assembleDebug`、`:app:assembleDebugAndroidTest` | local Gradle run | PASS |
 | D107-REG | Repository gates | Web `442 / 442`、Worker/D1 `307 / 307`、typecheck、normal/exact nonprod build、deploy guard、Wrangler dry-run、diff-check | local commands | PASS |
 | D107-DEVICE | Galaxy S23 | sign-in、Today、Start、running panel、Complete、restart / usability | physical device availability required | NOT_RUN |
+| D107-CI | Exact pushed-SHA CI / APK | run `34831165821`、SHA `c8b6c24ea88fd6950231768845dab72cb40b1c31`、Web/Worker + Android jobs success。Debug artifact `taskchute-android-debug-c8b6c24ea88fd6950231768845dab72cb40b1c31` / ID `10342451880` / 7-day retention | GitHub Actions read-back | PASS |
+| D107-NONPROD | Existing endpoint safety | Android endpointは既存canonical nonprodを利用。Worker/API/schema/migration/deployはD-107で変更なし | source/config review; existing nonprod evidence | NOT_REQUIRED |
 | D107-SAFETY | Boundary | no migration, production, release, branch/PR/merge/tag, credential retrieval | operation record | NOT_RUN |
 
 ## D-107 verification classification
 
-Local implementation gates are PASS. Exact pushed-SHA CI and Galaxy S23 device evidence remain
-separate from local PASS and are recorded only after they actually run.
+Local implementation gates and exact pushed-SHA CI are PASS. Galaxy S23 device evidence remains
+separate from local/CI PASS and is recorded only after the user-driven device run.
