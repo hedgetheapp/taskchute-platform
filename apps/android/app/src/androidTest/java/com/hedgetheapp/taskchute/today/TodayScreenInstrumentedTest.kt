@@ -1,0 +1,261 @@
+package com.hedgetheapp.taskchute.today
+
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+
+@RunWith(AndroidJUnit4::class)
+class TodayScreenInstrumentedTest {
+    @get:Rule
+    val composeRule = createComposeRule()
+
+    private var controller: TodayController? = null
+    private var repository: FakeTodayRepository? = null
+
+    @After
+    fun tearDown() {
+        repository?.releaseLoad?.countDown()
+        controller?.close()
+    }
+
+    @Test
+    fun rendersSectionsTasksAndPlannedStartAction() {
+        val repo = launchScreen()
+
+        waitForStatus(TodayLoadStatus.CONTENT)
+        composeRule.onNodeWithText("Morning").assertIsDisplayed()
+        composeRule.onNodeWithText("Write report").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("タスクを開始").assertIsDisplayed()
+        composeRule.onNodeWithText("TaskChute").assertIsDisplayed()
+        composeRule.onNodeWithText("2026-09-14").assertIsDisplayed()
+    }
+
+    @Test
+    fun startDispatchesOnceAndReloadsRunningState() {
+        val repo = launchScreen()
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        composeRule.onNodeWithContentDescription("タスクを開始").performClick()
+        composeRule.onNodeWithContentDescription("タスクを開始").assertIsNotEnabled()
+
+        composeRule.waitUntil(3_000) {
+            repo.startCalls.get() == 1 && controller?.state?.day?.runningTask != null
+        }
+        assertEquals(1, repo.startCalls.get())
+        composeRule.onNodeWithText("実行中").assertIsDisplayed()
+        composeRule.onNodeWithText("Running panel task").assertIsDisplayed()
+        composeRule.onNodeWithText("完了").assertIsDisplayed()
+    }
+
+    @Test
+    fun runningPanelCompleteDispatchesOnceAndCompletedTaskHasNoStart() {
+        val repo = launchScreen(FakeTodayRepository(initialDay = dayWith(LifecycleState.RUNNING)))
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        composeRule.onNodeWithText("完了").performClick()
+        composeRule.onNodeWithText("完了").assertIsNotEnabled()
+
+        composeRule.waitUntil(3_000) {
+            repo.completeCalls.get() == 1 && controller?.state?.day?.allEntries?.singleOrNull()?.lifecycleState == LifecycleState.COMPLETED
+        }
+        assertEquals(1, repo.completeCalls.get())
+        assertTrue(composeRule.onAllNodesWithContentDescription("タスクを開始").fetchSemanticsNodes().isEmpty())
+    }
+
+    @Test
+    fun loadingStateIsRenderedUntilRepositoryReturns() {
+        val repo = FakeTodayRepository().apply { holdLoad = true }
+        launchScreen(repo)
+
+        composeRule.onNodeWithText("Todayを読み込んでいます…").assertIsDisplayed()
+        repo.releaseLoad.countDown()
+        waitForStatus(TodayLoadStatus.CONTENT)
+    }
+
+    @Test
+    fun emptyStateIsRendered() {
+        val repo = FakeTodayRepository(initialDay = emptyDay())
+        launchScreen(repo)
+
+        waitForStatus(TodayLoadStatus.EMPTY)
+        composeRule.onNodeWithText("タスクはありません").assertIsDisplayed()
+    }
+
+    @Test
+    fun retryableErrorReturnsToToday() {
+        val repo = FakeTodayRepository().apply { mode = LoadMode.ERROR }
+        launchScreen(repo)
+
+        waitForStatus(TodayLoadStatus.ERROR)
+        composeRule.onNodeWithText("再試行").assertIsDisplayed()
+        repo.mode = LoadMode.SUCCESS
+        composeRule.onNodeWithText("再試行").performClick()
+        waitForStatus(TodayLoadStatus.CONTENT)
+        composeRule.onNodeWithText("Write report").assertIsDisplayed()
+    }
+
+    @Test
+    fun authRequiredStateIsRendered() {
+        val repo = FakeTodayRepository().apply { mode = LoadMode.UNAUTHORIZED }
+        launchScreen(repo)
+
+        waitForStatus(TodayLoadStatus.AUTH_REQUIRED)
+        composeRule.onNodeWithText("認証状態を確認しています…").assertIsDisplayed()
+    }
+
+    @Test
+    fun dateControlsRenderAndRequestAdjacentDay() {
+        val repo = launchScreen()
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        composeRule.onNodeWithContentDescription("前の日").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("次の日").performClick()
+        composeRule.onNodeWithContentDescription("Todayを更新").assertIsDisplayed()
+        composeRule.waitUntil(3_000) { repo.requestedDates.contains("2026-09-15") }
+        assertTrue(repo.requestedDates.contains("2026-09-15"))
+    }
+
+    @Test
+    fun bottomNavigationShowsApprovedDestinationsWithoutFakeNavigation() {
+        launchScreen()
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        assertTrue(composeRule.onAllNodesWithText("今日").fetchSemanticsNodes().isNotEmpty())
+        composeRule.onNodeWithText("プロジェクト").assertIsDisplayed().assertIsNotEnabled()
+        composeRule.onNodeWithText("ノート").assertIsDisplayed().assertIsNotEnabled()
+        composeRule.onNodeWithText("設定").assertIsDisplayed().assertIsNotEnabled()
+    }
+
+    private fun launchScreen(repo: FakeTodayRepository = FakeTodayRepository()): FakeTodayRepository {
+        repository = repo
+        controller = TodayController(
+            repository = repo,
+            onUnauthorized = {},
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
+        )
+        composeRule.setContent {
+            MaterialTheme {
+                TodayScreen(controller = requireNotNull(controller), onSignOut = {})
+            }
+        }
+        return repo
+    }
+
+    private fun waitForStatus(status: TodayLoadStatus) {
+        composeRule.waitUntil(3_000) { controller?.state?.status == status }
+        assertEquals(status, controller?.state?.status)
+    }
+
+    private enum class LoadMode {
+        SUCCESS,
+        ERROR,
+        UNAUTHORIZED,
+    }
+
+    private class FakeTodayRepository(
+        initialDay: TodayDay = dayWith(LifecycleState.PLANNED),
+    ) : TodayRepository {
+        @Volatile
+        var currentDay = initialDay
+        @Volatile
+        var mode = LoadMode.SUCCESS
+        @Volatile
+        var holdLoad = false
+        val releaseLoad = CountDownLatch(1)
+        val startCalls = AtomicInteger()
+        val completeCalls = AtomicInteger()
+        val requestedDates = mutableListOf<String?>()
+
+        override fun loadDay(logicalDate: String?): TodayResult {
+            synchronized(requestedDates) { requestedDates += logicalDate }
+            if (holdLoad) releaseLoad.await(3, TimeUnit.SECONDS)
+            return when (mode) {
+                LoadMode.SUCCESS -> TodayResult.Success(
+                    currentDay.copy(
+                        logicalDate = logicalDate ?: currentDay.logicalDate,
+                        isCurrent = logicalDate == null || logicalDate == "2026-09-14",
+                    ),
+                )
+                LoadMode.ERROR -> TodayResult.Failure("ネットワークエラー")
+                LoadMode.UNAUTHORIZED -> TodayResult.Unauthorized
+            }
+        }
+
+        override fun startTask(task: TodayTask, placementRevision: Int): TodayMutationResult {
+            startCalls.incrementAndGet()
+            currentDay = dayWith(LifecycleState.RUNNING)
+            return TodayMutationResult.Success
+        }
+
+        override fun completeTask(task: TodayTask): TodayMutationResult {
+            completeCalls.incrementAndGet()
+            currentDay = dayWith(LifecycleState.COMPLETED)
+            return TodayMutationResult.Success
+        }
+    }
+
+    private companion object {
+        fun dayWith(state: LifecycleState) = TodayDay(
+            logicalDate = "2026-09-14",
+            isCurrent = true,
+            planningEnabled = true,
+            placementRevision = 5,
+            sections = listOf(
+                TodaySection(
+                    id = "section-1",
+                    title = "Morning",
+                    startMinute = 480,
+                    endMinute = 720,
+                    entries = listOf(
+                        TodayTask(
+                            id = "entry-1",
+                            title = if (state == LifecycleState.RUNNING) "Running panel task" else "Write report",
+                            lifecycleState = state,
+                            project = null,
+                            mode = null,
+                            estimateSeconds = 600,
+                            plannedStartMinute = 540,
+                            executionId = if (state == LifecycleState.RUNNING) "execution-1" else null,
+                            activeStartedAt = if (state == LifecycleState.RUNNING) "2026-09-14T01:00:00Z" else null,
+                        ),
+                    ),
+                ),
+            ),
+            unsectionedEntries = emptyList(),
+            activeExecution = if (state == LifecycleState.RUNNING) {
+                TodayExecution("execution-1", "entry-1", "2026-09-14T01:00:00Z", 600)
+            } else {
+                null
+            },
+        )
+
+        fun emptyDay() = TodayDay(
+            logicalDate = "2026-09-14",
+            isCurrent = true,
+            planningEnabled = true,
+            placementRevision = 0,
+            sections = emptyList(),
+            unsectionedEntries = emptyList(),
+            activeExecution = null,
+        )
+    }
+}

@@ -37,6 +37,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
@@ -49,7 +51,12 @@ fun TodayScreen(controller: TodayController, onSignOut: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Today") },
+                title = {
+                    Column {
+                        Text("TaskChute", style = MaterialTheme.typography.labelMedium)
+                        Text("Today", style = MaterialTheme.typography.titleLarge)
+                    }
+                },
                 actions = {
                     TextButton(onClick = onSignOut) { Text("ログアウト") }
                 },
@@ -61,7 +68,28 @@ fun TodayScreen(controller: TodayController, onSignOut: () -> Unit) {
                     selected = true,
                     onClick = { controller.today() },
                     icon = { Text("⌂") },
-                    label = { Text("Today") },
+                    label = { Text("今日") },
+                )
+                NavigationBarItem(
+                    selected = false,
+                    onClick = {},
+                    enabled = false,
+                    icon = { Text("▦") },
+                    label = { Text("プロジェクト") },
+                )
+                NavigationBarItem(
+                    selected = false,
+                    onClick = {},
+                    enabled = false,
+                    icon = { Text("▤") },
+                    label = { Text("ノート") },
+                )
+                NavigationBarItem(
+                    selected = false,
+                    onClick = {},
+                    enabled = false,
+                    icon = { Text("⚙") },
+                    label = { Text("設定") },
                 )
             }
         },
@@ -78,7 +106,14 @@ fun TodayScreen(controller: TodayController, onSignOut: () -> Unit) {
             }
             if (state.status == TodayLoadStatus.CONTENT || state.status == TodayLoadStatus.EMPTY || state.status == TodayLoadStatus.REFRESHING) {
                 state.day?.runningTask?.let { task ->
-                    if (state.day.isCurrent) RunningTaskPanel(task, controller, Modifier.align(Alignment.BottomCenter))
+                    if (state.day.isCurrent) {
+                        RunningTaskPanel(
+                            task = task,
+                            controller = controller,
+                            enabled = !state.pendingEntryIds.contains(task.id),
+                            modifier = Modifier.align(Alignment.BottomCenter),
+                        )
+                    }
                 }
             }
         }
@@ -124,15 +159,24 @@ private fun DateNavigator(day: TodayDay, controller: TodayController) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        IconButton(onClick = controller::previousDay) { Text("‹", style = MaterialTheme.typography.headlineMedium) }
+        IconButton(
+            onClick = controller::previousDay,
+            modifier = Modifier.semantics { contentDescription = "前の日" },
+        ) { Text("‹", style = MaterialTheme.typography.headlineMedium) }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(if (day.isCurrent) "今日" else "予定日", style = MaterialTheme.typography.labelLarge)
             Text(day.logicalDate, style = MaterialTheme.typography.titleMedium)
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = controller::nextDay) { Text("›", style = MaterialTheme.typography.headlineMedium) }
+            IconButton(
+                onClick = controller::nextDay,
+                modifier = Modifier.semantics { contentDescription = "次の日" },
+            ) { Text("›", style = MaterialTheme.typography.headlineMedium) }
             TextButton(onClick = controller::today, enabled = !day.isCurrent) { Text("今日") }
-            IconButton(onClick = controller::refresh) { Text("↻") }
+            IconButton(
+                onClick = controller::refresh,
+                modifier = Modifier.semantics { contentDescription = "Todayを更新" },
+            ) { Text("↻") }
         }
     }
     HorizontalDivider()
@@ -177,8 +221,16 @@ private fun TodayTaskRow(task: TodayTask, enabled: Boolean, controller: TodayCon
                 if (metadata.isNotBlank()) Text(metadata, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             when (task.lifecycleState) {
-                LifecycleState.PLANNED -> IconButton(onClick = { controller.start(task) }, enabled = enabled) { Text("▶") }
-                LifecycleState.RUNNING -> IconButton(onClick = { controller.complete(task) }, enabled = enabled) { Text("✓") }
+                LifecycleState.PLANNED -> IconButton(
+                    onClick = { controller.start(task) },
+                    enabled = enabled,
+                    modifier = Modifier.semantics { contentDescription = "タスクを開始" },
+                ) { Text("▶") }
+                LifecycleState.RUNNING -> IconButton(
+                    onClick = { controller.complete(task) },
+                    enabled = enabled,
+                    modifier = Modifier.semantics { contentDescription = "タスクを完了" },
+                ) { Text("✓") }
                 LifecycleState.COMPLETED -> Spacer(Modifier.size(48.dp))
             }
         }
@@ -186,7 +238,7 @@ private fun TodayTaskRow(task: TodayTask, enabled: Boolean, controller: TodayCon
 }
 
 @Composable
-private fun RunningTaskPanel(task: TodayTask, controller: TodayController, modifier: Modifier) {
+private fun RunningTaskPanel(task: TodayTask, controller: TodayController, enabled: Boolean, modifier: Modifier) {
     Card(modifier = modifier.fillMaxWidth().padding(12.dp).navigationBarsPadding()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
@@ -198,7 +250,7 @@ private fun RunningTaskPanel(task: TodayTask, controller: TodayController, modif
                 task.activeStartedAt?.let { Text("開始 $it", style = MaterialTheme.typography.bodySmall) }
             }
             Spacer(Modifier.width(8.dp))
-            Button(onClick = { controller.complete(task) }) { Text("完了") }
+            Button(onClick = { controller.complete(task) }, enabled = enabled) { Text("完了") }
         }
     }
 }

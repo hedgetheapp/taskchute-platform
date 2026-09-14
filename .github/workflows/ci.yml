@@ -47,7 +47,7 @@ jobs:
         run: npm run build
 
   android:
-    name: Android auth foundation verification
+    name: Android JVM and APK verification
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -71,10 +71,69 @@ jobs:
       - name: Debug build
         run: bash ./gradlew --no-daemon :app:assembleDebug -Ptaskchute.baseUrl=https://taskchute-web-nonprod.taskfulness-sync.workers.dev
 
+      - name: Instrumentation APK compile
+        run: bash ./gradlew --no-daemon :app:assembleDebugAndroidTest
+
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
           name: taskchute-android-debug-${{ github.sha }}
           path: apps/android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+          retention-days: 7
+
+  android-emulator:
+    name: Android Today emulator UI verification
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/android
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install emulator packages
+        shell: bash
+        run: |
+          sdkmanager "platform-tools" "platforms;android-37" "emulator" "system-images;android-35;google_apis;x86_64"
+          yes | sdkmanager --licenses >/dev/null || true
+
+      - name: Create emulator
+        shell: bash
+        run: echo "no" | avdmanager create avd --force --name d107-api35 --package "system-images;android-35;google_apis;x86_64" --device "pixel_2"
+
+      - name: Boot emulator and run Compose UI tests
+        shell: bash
+        run: |
+          emulator -avd d107-api35 -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect > emulator.log 2>&1 &
+          adb wait-for-device
+          boot_completed=""
+          until [ "$boot_completed" = "1" ]; do
+            boot_completed=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+            sleep 2
+          done
+          adb shell settings put global window_animation_scale 0
+          adb shell settings put global transition_animation_scale 0
+          adb shell settings put global animator_duration_scale 0
+          bash ./gradlew --no-daemon :app:connectedDebugAndroidTest
+
+      - name: Upload emulator diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: taskchute-android-emulator-diagnostics-${{ github.sha }}
+          path: apps/android/emulator.log
+          if-no-files-found: ignore
           retention-days: 7
