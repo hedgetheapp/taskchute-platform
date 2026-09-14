@@ -23,10 +23,21 @@
 | D106-CORR-03 | Transient / authoritative invalid-session storage behavior | transient 500/network retains SessionStore; authoritative no-session / 401 clears SessionStore and in-memory CookieJar; no password/session values logged | PASS local/source |
 | D106-CORR-04 | Android corrective local gates | `:app:testDebugUnitTest` `31 / 31`; canonical nonprod URL Debug APK; `:app:assembleDebugAndroidTest`; existing Web `442 / 442`; Worker/D1 `307 / 307`; typecheck, normal/exact nonprod build, deploy guard, Wrangler dry-run, diff-check | PASS |
 | D106-CI-02 | Exact corrective SHA CI and APK artifact | GitHub Actions run `34819562847`, exact SHA `dbff28377c3791820f0489d6b068003f885d8097`; Web/Worker and Android jobs success; artifact `taskchute-android-debug-dbff28377c3791820f0489d6b068003f885d8097`, ID `10338065948`, 7-day retention | PASS |
-| D106-DEVICE-02 | Galaxy S23 corrective verification | `adb devices` empty; APK artifact existence is not device install/auth/Keystore evidence | NOT_RUN |
+| D106-DEVICE-02 | Galaxy S23 corrective verification (historical local gate) | At the local corrective gate `adb devices` was empty; superseded by later real-device evidence in D106-DEVICE-03 | HISTORICAL / SUPERSEDED |
 | D106-CORR-BOUNDARY | Corrective boundary | No Worker/API/schema/migration/dependency change, no nonprod deploy or data mutation, no credentials, production, restore, branch, PR, tag, Release | PASS / NOT_REQUIRED |
 
 D-106 corrective classification: `APPROVED / CORRECTED / IMPLEMENTED / INTEGRATED / TESTED / MAIN_PUSHED / ANDROID_SESSION_RESTORE_VALIDATION_VERIFIED_LOCAL / GITHUB_CI_VERIFIED / DEBUG_APK_ARTIFACT_GENERATED / GALAXY_S23_NOT_RUN / MIGRATION_NOT_REQUIRED / PRODUCTION_NOT_RUN / RESTORE_NOT_RUN / RELEASED_NO`。
+
+## D-106 Android Startup Restore Deadlock Corrective — real-device finding / pending retest
+
+| ID | Verification target | Evidence | Status |
+|---|---|---|---|
+| D106-DEVICE-03 | Galaxy S23 latest corrective APK install/startup | `taskchute-android-debug-ce5395d2ccf7dae65f6b54aace57c9855733f217` was installed successfully on Galaxy S23; startup UI displayed `認証状態を確認しています…` with progress indicator but never transitioned | FAIL real device |
+| D106-STARTUP-ROOT-CAUSE | Initial restore lifecycle | `AuthController` initialized visible state as `Restoring`, while `launchIfAvailable()` rejected every operation whose state was `Restoring`; the first `LaunchedEffect` restore therefore never invoked the coordinator | IDENTIFIED |
+| D106-STARTUP-FIX-LOCAL | Controller operation lifecycle corrective | Implementation `13c60a0`; separate in-flight guard permits the initial `Restoring` operation, suppresses concurrent restore/sign-in/sign-out, and retains `Dispatchers.IO` for blocking work. Controller regression suite 8 / 8 and Android JVM total 39 / 39 PASS | PASS local |
+| D106-STARTUP-RETEST | Corrective device retest boundary | Exact pushed SHA `13c60a036713f65efa7246fcef81cc2d3e6e05bb` Actions run `34823187063` passed; artifact `taskchute-android-debug-13c60a036713f65efa7246fcef81cc2d3e6e05bb`, ID `10338928460`, retention 7 days, expires `2026-09-21T08:33:10Z`; Galaxy S23 installation/startup/auth retest must be performed by the user/device and is not claimed here | PENDING RETEST |
+
+D-106 startup corrective classification: `APPROVED / CORRECTED / IMPLEMENTED / INTEGRATED / TESTED / MAIN_PUSHED / ANDROID_STARTUP_RESTORE_DEADLOCK_CORRECTED / GITHUB_CI_VERIFIED / DEBUG_APK_ARTIFACT_GENERATED / GALAXY_S23_INITIAL_STARTUP_FAIL / GALAXY_S23_PENDING_RETEST / MIGRATION_NOT_REQUIRED / PRODUCTION_NOT_RUN / RESTORE_NOT_RUN / RELEASED_NO`。
 
 ## D-105 Realtime Invalidation v0.1 — local implementation gate
 

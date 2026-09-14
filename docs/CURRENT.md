@@ -70,6 +70,40 @@ APP/AUTH migrationは変更していない。
 
 D-106 corrective classification: `APPROVED / CORRECTED / IMPLEMENTED / INTEGRATED / TESTED / MAIN_PUSHED / ANDROID_SESSION_RESTORE_VALIDATION_VERIFIED_LOCAL / GITHUB_CI_VERIFIED / DEBUG_APK_ARTIFACT_GENERATED / PERSISTENT_NONPROD_UNCHANGED / GALAXY_S23_NOT_RUN / MIGRATION_NOT_REQUIRED / PRODUCTION_NOT_RUN / RESTORE_NOT_RUN / RELEASED_NO`。
 
+### D-106 Android Startup Restore Deadlock Corrective — 2026-09-14
+
+実機evidenceにより、前回の`NOT_RUN`境界が更新された。latest corrective APK
+`taskchute-android-debug-ce5395d2ccf7dae65f6b54aace57c9855733f217`はGalaxy S23へ
+installでき、startup UIも表示されたが、`認証状態を確認しています…`とprogress
+indicatorのまま遷移しなかった。これはreal-device `FAIL`であり、`NOT_RUN`ではない。
+
+root causeは`AuthController`のvisible initial stateが`Restoring`である一方、
+`launchIfAvailable()`も`Restoring`をoperation拒否条件としていたため、
+`MainActivity`の最初の`LaunchedEffect(controller) { controller.restore() }`が
+coordinatorを一度も呼ばなかったことである。
+
+`13c60a0`で、UI表示用の`Restoring`とoperation実行中判定を分離し、明示的な
+`operationInFlight` guardを追加した。初回restoreは実行され、restore中の重複restore、
+sign-in、sign-outは抑止される。retryは`NetworkError`から再実行でき、blockingな
+coordinator/network/Keystore処理は従来どおり`Dispatchers.IO`で実行される。
+
+追加Controller regression 8件を含むAndroid JVM `39 / 39`、Web `442 / 442`、
+Worker/D1 `307 / 307`、typecheck、normal/exact nonprod build、deploy guard、
+Wrangler dry-run、`git diff --check`はPASSした。D-106前回のget-session body検証、
+cookie deletion、stale credential防止は変更なく継続している。Worker/API/schema/
+migration、D1、persistent nonprod、production、credentialsは変更していない。
+
+修正後のexact pushed SHA `13c60a036713f65efa7246fcef81cc2d3e6e05bb`のGitHub Actions
+run `34823187063`はWeb/Worker verificationとAndroid auth foundation verificationの
+全jobがPASSした。Debug APK artifactは
+`taskchute-android-debug-13c60a036713f65efa7246fcef81cc2d3e6e05bb`（artifact ID
+`10338928460`、約9.8 MiB、retention 7日、expires
+`2026-09-21T08:33:10Z`）である。Galaxy S23での起動・認証・Keystore retestは
+新artifactのユーザー端末確認待ちであり、現時点の分類は
+`GALAXY_S23_PENDING_RETEST`である。
+
+D-106 startup corrective classification: `APPROVED / CORRECTED / IMPLEMENTED / INTEGRATED / TESTED / MAIN_PUSHED / ANDROID_STARTUP_RESTORE_DEADLOCK_CORRECTED / GITHUB_CI_VERIFIED / DEBUG_APK_ARTIFACT_GENERATED / GALAXY_S23_INITIAL_STARTUP_FAIL / GALAXY_S23_PENDING_RETEST / MIGRATION_NOT_REQUIRED / PRODUCTION_NOT_RUN / RESTORE_NOT_RUN / RELEASED_NO`。
+
 ### D-105 Realtime Invalidation v0.1 — 2026-09-14
 
 D-105 implementation commit `1bea758324d4aa6bb05ca1e22c3d91658c3b384e`をcanonical `main`へfast-forward pushした。続くCI・source reviewで検出した既存テストのeffect待機を`6c7e3a0bc64a93e730e367e4b6053f510df85440`、`b2d47c53e0ab5d92f6a202541ab6e5b2bc0c109c`、`d013e98e9e7c3fe917a7fb83bbbb1f9e601e8eda`で安定化し、D-105の実装是正（HTTP probe URL、Project系Document scope、duplicate invalidation coalesce、DO binding数guard）を`1ae38b7ad221697704ab2df8ad6f4c819fedbae4`へ反映した。最終exact SHA `d013e98...`のGitHub Actions run `34808771287`はTypecheck、Web tests、Worker/D1 tests、Production buildすべてPASSした。
