@@ -36,6 +36,18 @@ class AuthSessionCoordinatorTest {
     }
 
     @Test
+    fun authenticatedResultWithoutValidatedSessionCannotReuseSavedCredential() {
+        val saved = SessionCredential(mapOf("opaque_cookie" to "one"))
+        val store = FakeStore(saved)
+        val transport = FakeTransport().apply { restoreResult = AuthTransportResult.Authenticated() }
+
+        val state = AuthSessionCoordinator(transport, store).restore()
+
+        assertEquals(AuthUiState.NetworkError("セッションを安全に保存できません。再試行してください。", true), state)
+        assertEquals(saved, store.session)
+    }
+
+    @Test
     fun transientRestoreRetainsSessionAndIsNotSignedOut() {
         val store = FakeStore(SessionCredential(mapOf("opaque_cookie" to "one")))
         val transport = FakeTransport().apply { restoreResult = AuthTransportResult.TransientFailure() }
@@ -79,7 +91,7 @@ class AuthSessionCoordinatorTest {
 
     private class FakeTransport : AuthTransport {
         var session: SessionCredential? = null
-        var restoreResult: AuthTransportResult = AuthTransportResult.Authenticated()
+        var restoreResult: AuthTransportResult = AuthTransportResult.Authenticated(SessionCredential(mapOf("session" to "value")))
         var signInResult: AuthTransportResult = AuthTransportResult.Authenticated(SessionCredential(mapOf("session" to "value")))
         var signOutResult: AuthTransportResult = AuthTransportResult.Unauthorized
         override fun signIn(email: String, password: String): AuthTransportResult { session = (signInResult as? AuthTransportResult.Authenticated)?.session; return signInResult }

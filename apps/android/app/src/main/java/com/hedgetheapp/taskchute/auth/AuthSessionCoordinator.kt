@@ -20,8 +20,8 @@ class AuthSessionCoordinator(
             AuthTransportResult.TransientFailure()
         }) {
             is AuthTransportResult.Authenticated -> {
-                val current = result.session ?: transport.currentSession() ?: saved
-                if (store.save(current.normalized())) {
+                val current = result.session
+                if (current != null && store.save(current.normalized())) {
                     setState(AuthUiState.SignedIn())
                 } else {
                     setState(AuthUiState.NetworkError("セッションを安全に保存できません。再試行してください。", true))

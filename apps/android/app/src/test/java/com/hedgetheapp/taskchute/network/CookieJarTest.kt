@@ -27,6 +27,14 @@ class CookieJarTest {
     }
 
     @Test
+    fun captureReportsDeletedCookieNames() {
+        val jar = CookieJar()
+        jar.replace(SessionCredential(mapOf("session" to "one")))
+
+        assertEquals(setOf("session"), jar.capture(listOf("session=; Max-Age=0")))
+    }
+
+    @Test
     fun replacementDoesNotDependOnAWellKnownBetterAuthName() {
         val jar = CookieJar()
         jar.replace(SessionCredential(mapOf("server-chosen-cookie" to "opaque")))

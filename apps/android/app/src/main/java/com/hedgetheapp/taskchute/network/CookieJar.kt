@@ -10,7 +10,8 @@ class CookieJar {
         if (session != null) cookies.putAll(session.cookies)
     }
 
-    fun capture(setCookieHeaders: Iterable<String>) {
+    fun capture(setCookieHeaders: Iterable<String>): Set<String> {
+        val deleted = linkedSetOf<String>()
         for (header in setCookieHeaders) {
             val firstPart = header.substringBefore(';')
             val separator = firstPart.indexOf('=')
@@ -18,8 +19,14 @@ class CookieJar {
             val name = firstPart.substring(0, separator).trim()
             val value = firstPart.substring(separator + 1).trim()
             if (!isCookieName(name) || value.any { it == '\r' || it == '\n' }) continue
-            if (value.isEmpty()) cookies.remove(name) else cookies[name] = value
+            if (value.isEmpty()) {
+                cookies.remove(name)
+                deleted += name
+            } else {
+                cookies[name] = value
+            }
         }
+        return deleted
     }
 
     fun snapshot(): SessionCredential? = cookies.takeIf { it.isNotEmpty() }?.let { SessionCredential(it.toSortedMap()) }
