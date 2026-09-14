@@ -1,5 +1,26 @@
 # Test Matrix
 
+## D-103 / D-104 authenticated browser verification closeout — 2026-09-14
+
+| ID | Verification target | Evidence | Status |
+|---|---|---|---|
+| D103-A | Today active Project reload / selector | 認証済みpersistent browser tabがCUA inventoryに存在せず、disposable Project fixtureを使うbrowser操作は未実施 | NOT_RUN |
+| D103-B | Today Project Note affordance / same-window reuse | 認証済みtab不在。既存base evidenceは保持し、今回のcorrective browser PASSへ流用していない | NOT_RUN |
+| D103-C | Notes Project inline editor | 認証済みtab不在。inline body save / reload browser操作は未実施 | NOT_RUN |
+| D103-D | inline/floating one-writer ownership | 認証済みtab不在。既存automated evidenceは保持 | NOT_RUN |
+| D103-E | Project archive retains Project Note | 認証済みtab不在。archive/restore browser操作は未実施 | NOT_RUN |
+| D103-F | disposable Project hard-delete browser/DB | 認証済みtab不在。既存Projectを削除せず、destructive fixtureも作成していない | NOT_RUN |
+| D104-A | Ordinary Note save paths | 認証済みtab不在。Standalone / Project inline / Task floating / Project floatingのbrowser CRUDは未実施 | NOT_RUN |
+| D104-B | Client payload warning below 64 KiB | 認証済みtab不在。browser warning表示は未実施。UTF-8 guard automated/local evidenceは保持 | NOT_RUN |
+| D104-C | Client payload hard stop | 認証済みtab不在。browser request-block確認は未実施。automated request-size evidenceは保持 | NOT_RUN |
+| D104-D | Bootstrap transient failure recovery | safe browser request interceptionを利用できず、非認証failureのbrowser誘発は未実施 | NOT_RUN |
+| D104-E | Authenticated 401 / reauth draft preservation | safe reversible 401誘発・既存認証済み再認証経路を利用できず、credentials / session invalidationは未実施 | NOT_RUN |
+| WRONG_PRINCIPAL_BROWSER | Wrong-principal resume safety | 第二の明示的許可principalがなく、アカウント作成・切替は未実施 | NOT_RUN |
+| D103-D104-CONSOLE | Browser console evidence | browser tab不在のためwarning/error exact countは取得していない | NOT_RUN |
+| D103-D104-READONLY | Nonprod/API/DB safety | Worker `8d413923-1f2f-444c-b760-b4b4a06ac134`、root `200`、protected Documents API `401`、APP/AUTH pending `0 / 0`、quick `ok`、FK empty、listed anomaly probes `0`、read-only `rows_written=0` | PASS |
+
+今回のbrowser closeoutは認証済みsession不在により`NOT_RUN`。既存D-103 base browser evidence、D-103 correctiveの未検証境界、D-104 local/CI/nonprod/DB evidenceは歴史的事実として保持し、browser PASSへ再分類しない。コード変更、migration、再deploy、credentials/auth設定変更は行っていない。production / restore / destructive cleanup / branch / PR / merge / tag / Releaseは`NOT_RUN`。
+
 ## D-104 Web reliability and repository safety hardening v0.1
 
 | ID | Area | Requirement | Evidence | Status |

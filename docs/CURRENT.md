@@ -1,5 +1,15 @@
 # Current
 
+### D-103 / D-104 authenticated browser verification closeout — 2026-09-14
+
+このcloseoutでは、CUAの既存Codex In-app Browserを確認したが、persistent tab一覧は空で、既存の認証済みbrowser sessionを利用できなかった。資格情報の取得、再login、auth設定変更、bootstrap変更は行っていない。したがって、D-103 correctiveのToday Project reload/select、Today Project Note affordance、Notes Project inline editor、inline/floating ownership、archive retention、disposable hard-delete browser/DB、およびD-104のordinary Note writes、payload warning、payload hard-stop、bootstrap transient failure、401/reauthを、このrunのauthenticated browser evidenceとしては`NOT_RUN`と記録する。既存D-103 base browser evidenceとD-104のlocal/CI/nonprod/DB evidenceは変更せず保持する。
+
+今回のread-only nonprod evidenceは、canonical Worker `taskchute-web-nonprod` version `8d413923-1f2f-444c-b760-b4b4a06ac134`、`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、APP `taskchute-app-nonprod`、AUTH `taskchute-auth-nonprod`、root `200`、protected Documents API `401`、APP/AUTH pending `0 / 0`、APP/AUTH `quick_check=ok`、FK empty、duplicate/orphan/guard/active-execution probes `0`、成功したread-only probeの`rows_written=0`を再利用した。browser console exact countはtab不在のため`NOT_RUN`であり、空集合とは主張しない。
+
+D-103 corrective browser cases: `D103-A`〜`D103-F = NOT_RUN`（認証済みtab不在）。D-104 browser cases: `D104-A`〜`D104-E = NOT_RUN`（認証済みtab不在。D104-Dのsafe request interception、D104-Eのsafe 401/re-auth経路も利用不可）。`WRONG_PRINCIPAL_BROWSER = NOT_RUN`（明示的に許可された第二principalなし）。既存のautomated/local evidenceおよび過去のauthenticated browser evidenceは再分類しない。コード変更・再deploy・migrationは行っていない。
+
+Classification: `VERIFICATION_ONLY / D103_AUTHENTICATED_BROWSER_NOT_RUN / D104_AUTHENTICATED_BROWSER_NOT_RUN / EXISTING_AUTOMATED_EVIDENCE_RETAINED / API_DB_READ_ONLY_VERIFIED / MIGRATION_NOT_REQUIRED / PRODUCTION_NOT_RUN / RESTORE_NOT_RUN / RELEASED_NO`。
+
 ### D-104 Web reliability and repository safety hardening v0.1 — 2026-09-14
 
 D-104 implementation commit `a07adb35b5e01ff84d51934ffe2d47e358935795`をcanonical `main`へfast-forward pushし、same-principal安全性回帰テストcommit `cd8a4882cf0534e278ee948ce57a98571de831c4`、最終evidence docs commit `42f16a74a163e9e682f1596d1d190c3b1fe454df`を追加でpushしたうえで、最終mainからcanonical persistent nonprod Worker `taskchute-web-nonprod`へdeployした。Worker versionは`8d413923-1f2f-444c-b760-b4b4a06ac134`、`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、APP `taskchute-app-nonprod`、AUTH `taskchute-auth-nonprod`を確認した。Web/auth UX・client validation・repository CI/rulesetのhardeningであり、API/Worker/schema/migration/dependencyは変更していない。migrationは`NOT_REQUIRED`、remote APP/AUTH pendingは`0 / 0`である。
