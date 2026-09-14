@@ -288,6 +288,14 @@ Feature / vertical sliceは実際に確認できたlevelまでを完了として
 
 destructive migrationやproduction data変更では、承認だけを安全対策の代わりにせず、backup / dry-run / validation / rollback or recovery plan / failure conditionを用意する。
 
+## D-104 push-time CI and main safety
+
+通常の変更では、localのimpact-appropriate verificationを完了してからcanonical `main`へfast-forward pushする。PRは必須ではなく、push後のGitHub Actions CIは独立したinformational safety/evidenceとして実行する。CIはtest/build/deployを行わず、persistent nonprod・production・D1を変更しない。D-104 v0.1ではrequired status checksをpush gateにしない。
+
+`main`ではdirect normal pushを維持し、force-pushとbranch deletionを禁止する。repository ruleset / branch protectionのread-backができない場合は、コード検証やpushを無断で省略せず、`MANUAL_ADMIN_ACTION_REQUIRED`として設定作業だけを明示する。CI PASSやnonprod PASSはpersistent browser Verified / production Releasedを意味しない。
+
+CIのNode runtimeは、package engineで指定がないため、現行の成功済み開発環境に合わせて`22.22.3`を明示的にpinする。依存追加は行わない。
+
 ## Handoff
 
 チャット移行や大きな作業区切りでは、会話履歴を読み直さなくても再開できる程度のpointer + deltaを残す。

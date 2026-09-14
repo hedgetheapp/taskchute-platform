@@ -543,6 +543,12 @@ D-102ではmulti-windowのpresentation coordinationを`App`のmemory-only `taskN
 Appのcapture-phase outside pointerdownはfrontmost expanded `.task-note-peek`だけへrequestを渡し、window内部の兄弟pointerdownは対象instanceをactivateする。new windowのgeometryは既存seedからpure cascade helperで計算し、z-order/minimized/maximized/reload復元はbrowser memory/presentation stateに限定する。reload/fresh tabはrouteから最大1つを復元し、mobileはsingle full-sheet、Hit-a-Hintは既存のsingle active/local ownerを維持する。これによりD-101のper-window editor/barrierを再利用しながら、D-102のstack/outside/navigation coordinationをWeb shell内に閉じ込める。
 
 D-102 correctiveでは、registryの配列順をmounted React childの順序として固定し、`stackOrder`はDocument ID単位のz-index mapへ分離した。したがってactivationはDOM identityや兄弟順を変えず、背面windowのcontrol clickを同一pointer gestureで受理できる。cascade helperは48pxを既定値とし、viewport clampが既存rendered geometryへ折り畳まれる場合だけ決定的な代替候補を試す。いずれもWeb presentation coordinationに閉じ、Document/API/Worker/schema/migration/dependencyの境界を変更しない。
+## D-104 bootstrap / session / request architecture
+
+App shellは初期read failureを`bootstrap-error`として保持し、認証失敗を意味するsigned-out画面へフォールバックしない。初期readのauthoritative `401`だけが通常のsession-expiry pathへ入り、認証済みの後続`401`はmounted editor/window treeを残す`reauth-required` barrierへ入る。barrier中はDay、Notes、Project、Mode、Routine、Document lifecycleをmutation-disabledにし、dirty/unresolved editorのnavigation/logout/beforeunload protectionを保つ。再認証時には既存principal identityをsessionから再確認し、別principalならdraftを送信せず保留する。
+
+Document request bodyはAPI clientの一箇所でJSON serializeし、UTF-8 byte limitを適用する。UI固有のeditorは同じserialized requestを事前検査するが、size thresholdやJSON semanticsを再実装しない。Note draftはReact/browser memoryに限定され、server canonical Documentとrevision CASをbaselineとして再開する。
+
 ## D-103 Project Primary Document boundary
 
 Project Primaryはshared `documents` rowとowner-scoped `project_primary_documents` relationの組み合わせで表現する。Project titleはProject query authorityからread projectionへ供給し、Document rowへ複製しない。EnsureはProject/Document/relation/operation identityを同一D1 atomic batchで確定し、既存relationがあればcanonical rowへ収束する。UpdateはDocument revision CASを使い、exact replay/misuseは既存operations persistenceを再利用する。

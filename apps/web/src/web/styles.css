@@ -547,11 +547,18 @@ button.execution-control:hover { border-color: #2383e2; color: #2383e2; }
 .notes-line-number-toggle { display: inline-flex; grid-auto-flow: column; align-items: center; gap: 6px; color: #787774; font-size: 11px; font-weight: 400; }
 .notes-line-number-toggle input { width: 14px; height: 14px; margin: 0; }
 .notes-save-status { display: flex; flex-wrap: wrap; gap: 4px; margin: 0; color: #575754; font-size: 12px; }
+.notes-payload-warning { margin: 0; color: #8a5a00; font-size: 12px; }
 .notes-loading-status, .notes-action-status { z-index: 80; }
 .notes-empty { display: grid; min-height: 420px; align-content: center; justify-items: center; gap: 8px; color: #787774; text-align: center; }
 .notes-empty p { margin: 0; }
 .notes-conflict { border: 1px solid #efcaca; border-radius: 7px; background: #fff8f7; padding: 10px 12px; color: #7e3030; }
 .notes-conflict pre { max-height: 180px; overflow: auto; white-space: pre-wrap; }
+.reauth-overlay { position: fixed; z-index: 300; inset: 0; display: grid; place-items: center; background: rgb(25 25 25 / 38%); padding: 24px; }
+.reauth-panel { width: min(440px, 100%); box-sizing: border-box; border: 1px solid #d8d8d5; border-radius: 10px; background: #fff; box-shadow: 0 18px 48px rgb(15 15 15 / 24%); padding: 24px; }
+.reauth-panel h1 { margin: 0 0 12px; font-size: 22px; }
+.reauth-panel p { margin: 8px 0; color: #575754; font-size: 13px; }
+.reauth-panel form { display: grid; gap: 12px; margin-top: 18px; }
+.reauth-panel form label { display: grid; gap: 5px; color: #575754; font-size: 12px; font-weight: 600; }
 
 @media (max-width: 720px) {
   .shell { width: min(100% - 16px, 1120px); padding-top: 16px; }

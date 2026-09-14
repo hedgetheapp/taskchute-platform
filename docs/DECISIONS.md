@@ -2,6 +2,25 @@
 
 Statuses: Approved / Proposed / Superseded
 
+## D-104 — Web Reliability and Repository Safety Hardening v0.1
+
+Status: **Approved**
+
+Canonical Decision: `docs/decisions/D-104_WEB_RELIABILITY_REPOSITORY_SAFETY_HARDENING_V01.md`。
+
+Transient/non-auth bootstrap failures remain recoverable errors rather than
+signed-out state. Unexpected authenticated `401` enters a same-principal
+reauthentication barrier that preserves dirty Note editors in browser memory,
+freezes mutation, and reconciles canonical state before resuming. The existing
+64 KiB server JSON limit remains; the Web measures exact serialized UTF-8 Note
+request bodies, warns before the limit, and blocks known-over-limit saves.
+
+Direct fast-forward push to `main` remains allowed and PRs are not required;
+force-push and deletion of `main` are prohibited. Push-time informational CI
+uses read-only repository permissions, and required status checks remain off in
+v0.1. No schema, migration, dependency, offline draft persistence, or
+production change is included.
+
 ## D-102 — Multi-Task Note Windows v0.1
 
 Status: **Approved**

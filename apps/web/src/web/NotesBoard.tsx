@@ -11,6 +11,7 @@ import type {
   UpdateDocumentRequest,
 } from "../shared/contracts";
 import { uuidv7 } from "../shared/uuidv7";
+import { formatJsonRequestSize, serializeJsonRequestBody } from "../shared/request-size";
 import { api, ApiClientError } from "./api";
 import { NoteMarkdownEditor } from "./NoteMarkdownEditor";
 import { documentPermalink } from "./task-note-open-mode";
@@ -30,6 +31,8 @@ export interface NotesBoardProps {
   initialDocumentId?: string | null;
   onOpenProjectNote?: (projectId: string, projectTitle: string) => void;
   floatingProjectIds?: string[];
+  authEpoch?: number;
+  mutationsBlocked?: boolean;
 }
 
 function isUpdateRequest(request: DocumentRequest): request is UpdateDocumentRequest {
@@ -65,6 +68,8 @@ interface ProjectPrimaryInlineEditorProps {
   onUnresolvedChange: (unresolved: boolean) => void;
   onSavingChange: (saving: boolean) => void;
   onRegisterFlush: (flush: (() => Promise<boolean>) | null) => void;
+  authEpoch?: number;
+  mutationsBlocked?: boolean;
 }
 
 function isProjectUpdateResolved(request: UpdateProjectPrimaryDocumentRequest, canonical: ProjectPrimaryDocument): boolean {
@@ -75,13 +80,14 @@ function isProjectUpdateResolved(request: UpdateProjectPrimaryDocumentRequest, c
     && canonical.markdown_body === request.markdown_body;
 }
 
-function ProjectPrimaryInlineEditor({ candidate, onUnauthorized, onDirtyChange, onUnresolvedChange, onSavingChange, onRegisterFlush }: ProjectPrimaryInlineEditorProps) {
+function ProjectPrimaryInlineEditor({ candidate, onUnauthorized, onDirtyChange, onUnresolvedChange, onSavingChange, onRegisterFlush, authEpoch = 0, mutationsBlocked = false }: ProjectPrimaryInlineEditorProps) {
   const [document, setDocument] = useState<ProjectPrimaryDocument | null>(null);
   const [draftBody, setDraftBody] = useState("");
   const [baselineBody, setBaselineBody] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [payloadWarning, setPayloadWarning] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [latestCanonical, setLatestCanonical] = useState<ProjectPrimaryDocument | null>(null);
   const [unresolvedRequest, setUnresolvedRequest] = useState<UpdateProjectPrimaryDocumentRequest | null>(null);
@@ -89,6 +95,7 @@ function ProjectPrimaryInlineEditor({ candidate, onUnauthorized, onDirtyChange, 
   const draftRef = useRef("");
   const baselineRef = useRef("");
   const unresolvedRef = useRef<UpdateProjectPrimaryDocumentRequest | null>(null);
+  const mutationsBlockedRef = useRef(false);
   const inFlightRef = useRef<Promise<boolean> | null>(null);
   const saveRef = useRef<() => Promise<boolean>>(async () => false);
   const flushRef = useRef<() => Promise<boolean>>(async () => false);
@@ -99,6 +106,7 @@ function ProjectPrimaryInlineEditor({ candidate, onUnauthorized, onDirtyChange, 
   draftRef.current = draftBody;
   baselineRef.current = baselineBody;
   unresolvedRef.current = unresolvedRequest;
+  mutationsBlockedRef.current = mutationsBlocked;
 
   useEffect(() => { onDirtyChange(dirty); }, [dirty, onDirtyChange]);
   useEffect(() => { onUnresolvedChange(unresolved); }, [onUnresolvedChange, unresolved]);
@@ -126,6 +134,30 @@ function ProjectPrimaryInlineEditor({ candidate, onUnauthorized, onDirtyChange, 
     void loadCanonical();
   }, [candidate.document_id, loadCanonical]);
 
+  useEffect(() => {
+    if (authEpoch === 0) return;
+    void (async () => {
+      try {
+        const canonical = await api.loadProjectPrimaryDocumentById(candidate.document_id);
+        const localDraft = draftRef.current;
+        const localDirty = localDraft !== baselineRef.current;
+        documentRef.current = canonical;
+        setDocument(canonical);
+        baselineRef.current = canonical.markdown_body;
+        setBaselineBody(canonical.markdown_body);
+        if (!localDirty) {
+          draftRef.current = canonical.markdown_body;
+          setDraftBody(canonical.markdown_body);
+        } else if (canonical.markdown_body !== localDraft) {
+          setLatestCanonical(canonical);
+          setError("再認証後にServer側の変更を確認しました。ローカルの未保存内容は保持しています。");
+        }
+      } catch (caught) {
+        if (caught instanceof ApiClientError && caught.status === 401) onUnauthorized();
+      }
+    })();
+  }, [authEpoch, candidate.document_id, onUnauthorized]);
+
   const applySaved = useCallback((saved: ProjectPrimaryDocument, request: UpdateProjectPrimaryDocumentRequest) => {
     const bodyStillSent = draftRef.current === request.markdown_body;
     documentRef.current = saved;
@@ -135,6 +167,7 @@ function ProjectPrimaryInlineEditor({ candidate, onUnauthorized, onDirtyChange, 
   }, []);
 
   const send = useCallback(async (request: UpdateProjectPrimaryDocumentRequest): Promise<boolean> => {
+    if (mutationsBlockedRef.current) return false;
     if (inFlightRef.current) return inFlightRef.current;
     const promise = (async () => {
       setSaving(true); setError(null); setNotice(null);
@@ -177,12 +210,21 @@ function ProjectPrimaryInlineEditor({ candidate, onUnauthorized, onDirtyChange, 
   }, [applySaved, onUnauthorized]);
 
   const save = useCallback(async (): Promise<boolean> => {
+    if (mutationsBlockedRef.current) return false;
     if (inFlightRef.current) return inFlightRef.current;
     if (unresolvedRef.current) return send(unresolvedRef.current);
     const current = documentRef.current;
     if (!current || draftRef.current === baselineRef.current) return true;
-    return send({ operation_id: uuidv7(), project_id: candidate.project_id, document_id: current.document_id,
-      expected_revision: current.revision, markdown_body: draftRef.current });
+    const request: UpdateProjectPrimaryDocumentRequest = { operation_id: uuidv7(), project_id: candidate.project_id, document_id: current.document_id,
+      expected_revision: current.revision, markdown_body: draftRef.current };
+    const serialized = serializeJsonRequestBody(request);
+    if (serialized.overLimit) {
+      setPayloadWarning(null);
+      setError(`ノートの保存データが大きすぎます（${formatJsonRequestSize(serialized.byteLength)}）。内容を短くしてください。`);
+      return false;
+    }
+    setPayloadWarning(serialized.warning ? `保存データが上限に近づいています（${formatJsonRequestSize(serialized.byteLength)}）。` : null);
+    return send(request);
   }, [candidate.project_id, send]);
   saveRef.current = save;
 
@@ -199,10 +241,10 @@ function ProjectPrimaryInlineEditor({ candidate, onUnauthorized, onDirtyChange, 
   }, [onRegisterFlush]);
 
   useEffect(() => {
-    if (!dirty || loading || unresolved || saving || !document) return;
+    if (!dirty || loading || unresolved || saving || mutationsBlocked || !document) return;
     const timer = window.setTimeout(() => { void saveRef.current(); }, NOTE_AUTOSAVE_DEBOUNCE_MS);
     return () => window.clearTimeout(timer);
-  }, [dirty, document, loading, saving, unresolved]);
+  }, [dirty, document, loading, mutationsBlocked, saving, unresolved]);
 
   function handleKeyDown(event: ReactKeyboardEvent<HTMLTextAreaElement>) {
     if (event.key.toLowerCase() !== "s" || (!event.ctrlKey && !event.metaKey) || event.repeat) return;
@@ -213,10 +255,11 @@ function ProjectPrimaryInlineEditor({ candidate, onUnauthorized, onDirtyChange, 
     {loading ? <p className="muted">読み込み中…</p> : <>
       <div className="notes-editor-heading"><div><p className="eyebrow">Project Note</p><h2>{candidate.project_title}</h2></div></div>
       <p className="notes-project-authority">現在のProjectタイトルを表示しています。タイトルはProject設定から変更できます。</p>
-      <NoteMarkdownEditor value={draftBody} disabled={unresolved}
-        onChange={(value) => { if (unresolved) return; setDraftBody(value); draftRef.current = value; setNotice(null); }}
+      <NoteMarkdownEditor value={draftBody} disabled={unresolved || mutationsBlocked}
+        onChange={(value) => { if (mutationsBlocked || unresolved) return; setDraftBody(value); draftRef.current = value; setNotice(null); }}
         onKeyDown={handleKeyDown} />
       <p className="notes-save-status" role="status" aria-live="polite"><span>{unresolved ? "保存結果未確定" : dirty || saving ? "未保存" : "保存済み"}</span>{saving && <span>（保存中）</span>}</p>
+      {payloadWarning && <p className="notes-payload-warning" role="status">{payloadWarning}</p>}
       {unresolved && <button type="button" className="secondary" disabled={saving} onClick={() => void saveRef.current()}>同じ内容で再試行</button>}
       {notice && <p className="success" role="status">{notice}</p>}
       {error && <p className="error" role="alert">{error}</p>}
@@ -225,7 +268,7 @@ function ProjectPrimaryInlineEditor({ candidate, onUnauthorized, onDirtyChange, 
   </form>;
 }
 
-export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, onSavingChange, onRegisterFlush, initialDocumentId, onOpenProjectNote, floatingProjectIds = [] }: NotesBoardProps) {
+export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, onSavingChange, onRegisterFlush, initialDocumentId, onOpenProjectNote, floatingProjectIds = [], authEpoch = 0, mutationsBlocked = false }: NotesBoardProps) {
   const [documents, setDocuments] = useState<StandaloneDocumentSummary[]>([]);
   const [projectDocuments, setProjectDocuments] = useState<ProjectPrimaryDocumentSummary[]>([]);
   const [document, setDocument] = useState<StandaloneDocument | null>(null);
@@ -242,6 +285,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
   const [noteKind, setNoteKind] = useState<"all" | "standalone" | "project">("all");
   const [actionId, setActionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [payloadWarning, setPayloadWarning] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [latestCanonical, setLatestCanonical] = useState<StandaloneDocument | null>(null);
   const [retryRequest, setRetryRequest] = useState<MutationRequest | null>(null);
@@ -268,6 +312,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
   const projectDirtyRef = useRef(false);
   const projectUnresolvedRef = useRef(false);
   const debounceRef = useRef<number | null>(null);
+  const mutationsBlockedRef = useRef(false);
 
   documentRef.current = document;
   modeRef.current = mode;
@@ -280,6 +325,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
   showArchivedRef.current = showArchived;
   projectDirtyRef.current = projectDirty;
   projectUnresolvedRef.current = projectUnresolved;
+  mutationsBlockedRef.current = mutationsBlocked;
 
   const standaloneDirty = draftTitle !== baselineTitle || draftBody !== baselineBody;
   const dirty = mode === "project" ? projectDirty : standaloneDirty;
@@ -407,6 +453,44 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
     setDraftTitle(nextDraft.title); setDraftBody(nextDraft.body);
   }, []);
 
+  useEffect(() => {
+    if (authEpoch === 0 || modeRef.current === "project") return;
+    const ambiguous = ambiguousRequestRef.current;
+    void (async () => {
+      try {
+        if (ambiguous && isDocumentRequest(ambiguous)) {
+          const canonical = await api.loadDocument(ambiguous.document_id);
+          if (isAmbiguousResolution(ambiguous, canonical)) {
+            applySavedDocument(canonical, ambiguous);
+            ambiguousRequestRef.current = null; retryRequestRef.current = null;
+            setAmbiguousRequest(null); setRetryRequest(null); setLatestCanonical(null); setError(null);
+            await refreshList(showArchivedRef.current);
+          } else setLatestCanonical(canonical);
+          return;
+        }
+        if (!selectedIdRef.current || modeRef.current !== "existing") return;
+        const canonical = await api.loadDocument(selectedIdRef.current);
+        const localDraft = draftRef.current;
+        const localDirty = currentDirty();
+        documentRef.current = canonical;
+        setDocument(canonical);
+        baselineRef.current = { title: canonical.title, body: canonical.markdown_body };
+        setBaselineTitle(canonical.title); setBaselineBody(canonical.markdown_body);
+        if (!localDirty) {
+          draftRef.current = { title: canonical.title, body: canonical.markdown_body };
+          setDraftTitle(canonical.title); setDraftBody(canonical.markdown_body);
+        } else if (localDraft.title !== canonical.title || localDraft.body !== canonical.markdown_body) {
+          setLatestCanonical(canonical);
+          setError("再認証後にServer側の変更を確認しました。ローカルの未保存内容は保持しています。");
+        }
+        await refreshList(showArchivedRef.current);
+      } catch (caught) {
+        if (caught instanceof ApiClientError && caught.status === 401) handleUnauthorized();
+        else setError(caught instanceof Error ? caught.message : "再認証後のNote確認に失敗しました");
+      }
+    })();
+  }, [applySavedDocument, authEpoch, handleUnauthorized, refreshList]);
+
   const reconcileLifecycleProjection = useCallback(async (request: LifecycleRequest, canonical?: StandaloneDocument): Promise<void> => {
     const list = await refreshList(showArchivedRef.current);
     if (!list?.some((item) => item.document_id === request.document_id)) {
@@ -422,6 +506,13 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
   }, [openCanonicalDocument, refreshList, setEditorFromCanonical]);
 
   const sendRequest = useCallback(async (request: DocumentRequest): Promise<boolean> => {
+    if (mutationsBlockedRef.current) return false;
+    const serialized = serializeJsonRequestBody(request);
+    if (serialized.overLimit) {
+      setError(`ノートの保存データが大きすぎます（${formatJsonRequestSize(serialized.byteLength)}）。内容を短くしてください。`);
+      return false;
+    }
+    setPayloadWarning(serialized.warning ? `保存データが上限に近づいています（${formatJsonRequestSize(serialized.byteLength)}）。` : null);
     if (inFlightRef.current) return inFlightRef.current;
     const promise = (async () => {
       setSaving(true); savingRef.current = true; setError(null); setNotice(null);
@@ -465,7 +556,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
         return false;
       } finally {
         setSaving(false); savingRef.current = false; inFlightRef.current = null; setInFlightRequest(null);
-        if (currentDirty() && !ambiguousRequestRef.current) scheduleAutosave();
+        if (currentDirty() && !ambiguousRequestRef.current && !mutationsBlockedRef.current) scheduleAutosave();
       }
     })();
     inFlightRef.current = promise;
@@ -473,6 +564,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
   }, [applySavedDocument, handleUnauthorized, refreshList, scheduleAutosave]);
 
   const sendLifecycleRequest = useCallback(async (request: LifecycleRequest): Promise<boolean> => {
+    if (mutationsBlockedRef.current) return false;
     if (inFlightRef.current) return inFlightRef.current;
     const promise = (async () => {
       setSaving(true); savingRef.current = true; setError(null); setNotice(null);
@@ -512,7 +604,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
         return false;
       } finally {
         setSaving(false); savingRef.current = false; inFlightRef.current = null; setInFlightRequest(null);
-        if (currentDirty() && !ambiguousRequestRef.current) scheduleAutosave();
+        if (currentDirty() && !ambiguousRequestRef.current && !mutationsBlockedRef.current) scheduleAutosave();
       }
     })();
     inFlightRef.current = promise;
@@ -520,6 +612,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
   }, [handleUnauthorized, reconcileLifecycleProjection, scheduleAutosave]);
 
   const save = useCallback(async (): Promise<boolean> => {
+    if (mutationsBlockedRef.current) return false;
     if (inFlightRef.current) return inFlightRef.current;
     const retry = retryRequestRef.current;
     if (ambiguousRequestRef.current && !retry) return false;
@@ -565,6 +658,10 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
   }, [mode, scheduleAutosave, showArchived, standaloneDirty, unresolved]);
 
   async function prepareLocalTransition(): Promise<boolean> {
+    if (mutationsBlockedRef.current) {
+      setError("再認証が必要なため、このNoteを離れられません。");
+      return false;
+    }
     if (unresolved || !(await flush())) {
       if (unresolved) setError("保存結果が未確定のため、元の操作を解決するまで移動できません。");
       return false;
@@ -573,6 +670,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
   }
 
   async function startNewDocument(): Promise<void> {
+    if (mutationsBlockedRef.current) return;
     if (showArchived || !(await prepareLocalTransition())) return;
     setProjectInlineCandidate(null); setFloatingProjectId(null); projectFlushRef.current = null;
     documentRef.current = null; modeRef.current = "new"; selectedIdRef.current = null;
@@ -585,12 +683,14 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
   }
 
   async function selectDocument(documentId: string): Promise<void> {
+    if (mutationsBlockedRef.current) return;
     if (documentId === selectedIdRef.current && modeRef.current === "existing") return;
     if (!(await prepareLocalTransition())) return;
     await openCanonicalDocument(documentId);
   }
 
   async function selectProjectDocument(candidate: ProjectPrimaryDocumentSummary): Promise<void> {
+    if (mutationsBlockedRef.current) return;
     if (!(await prepareLocalTransition())) return;
     setSelectedId(candidate.document_id);
     setError(null); setNotice(null); setLatestCanonical(null);
@@ -606,12 +706,14 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
   }
 
   async function changeArchiveView(archived: boolean): Promise<void> {
+    if (mutationsBlockedRef.current) return;
     if (archived === showArchived || !(await prepareLocalTransition())) return;
     setShowArchived(archived); setActionId(null); setError(null); setNotice(null);
   }
 
   async function lifecycleDocument(candidate: StandaloneDocumentSummary, archived: boolean): Promise<void> {
     setActionId(null);
+    if (mutationsBlockedRef.current) return;
     if (ambiguousRequestRef.current) {
       setError("保存結果が未確定のため、元の操作を解決するまで別の操作はできません。");
       return;
@@ -630,6 +732,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
 
   async function deleteDocument(candidate: StandaloneDocumentSummary): Promise<void> {
     setActionId(null);
+    if (mutationsBlockedRef.current) return;
     if (ambiguousRequestRef.current) {
       setError("保存結果が未確定のため、元の操作を解決するまで別の操作はできません。");
       return;
@@ -645,12 +748,12 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
   }
 
   function updateDraftTitle(value: string): void {
-    if (unresolved || showArchived || document?.archived_at) return;
+    if (mutationsBlockedRef.current || unresolved || showArchived || document?.archived_at) return;
     setDraftTitle(value); draftRef.current.title = value; setNotice(null);
   }
 
   function updateDraftBody(value: string): void {
-    if (unresolved || showArchived || document?.archived_at) return;
+    if (mutationsBlockedRef.current || unresolved || showArchived || document?.archived_at) return;
     setDraftBody(value); draftRef.current.body = value; setNotice(null);
   }
 
@@ -688,12 +791,12 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
       {notice && <div className="transient-status notes-action-status" role="status">{notice}</div>}
       <header className="notes-header">
         <div><p className="eyebrow">Notes</p><h1>{showArchived ? "アーカイブ" : "ノート"}</h1></div>
-        {!showArchived && <button type="button" onClick={() => void startNewDocument()}>＋ 新規ノート</button>}
+        {!showArchived && <button type="button" disabled={mutationsBlocked} onClick={() => void startNewDocument()}>＋ 新規ノート</button>}
       </header>
       <div className="notes-board">
         <aside className="notes-list" aria-label={showArchived ? "アーカイブ一覧" : "ノート一覧"}>
           <div className="notes-list-heading"><h2>{showArchived ? "アーカイブ" : "ノート一覧"}</h2>
-            <button type="button" className="secondary notes-archive-toggle" onClick={() => void changeArchiveView(!showArchived)}>
+            <button type="button" className="secondary notes-archive-toggle" disabled={mutationsBlocked} onClick={() => void changeArchiveView(!showArchived)}>
               {showArchived ? "通常のノートに戻る" : "アーカイブ"}
             </button>
           </div>
@@ -727,22 +830,24 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
           {floatingProjectId && mode === "empty" && <div className="notes-empty"><h2>Project Note</h2><p>このプロジェクトノートはフローティングウィンドウで開いています。</p></div>}
           {mode === "project" && projectInlineCandidate && <ProjectPrimaryInlineEditor candidate={projectInlineCandidate}
             onUnauthorized={onUnauthorized} onDirtyChange={setProjectDirty} onUnresolvedChange={setProjectUnresolved}
-            onSavingChange={setProjectSaving} onRegisterFlush={(flush) => { projectFlushRef.current = flush; }} />}
+            onSavingChange={setProjectSaving} onRegisterFlush={(flush) => { projectFlushRef.current = flush; }}
+            authEpoch={authEpoch} mutationsBlocked={mutationsBlocked} />}
           {editorAvailable && <form onSubmit={(event) => { event.preventDefault(); void saveActionRef.current(); }}>
             <div className="notes-editor-heading"><div><p className="eyebrow">Markdown source</p><h2>{mode === "new" ? "新規ノート" : "ノートを編集"}</h2></div>
               {document && mode === "existing" && <button type="button" className="secondary" onClick={() => void copyDocumentLink(document.document_id)}>リンクをコピー</button>}
-              <button type="submit" disabled={saving || unresolved || archivedReadOnly}>{saving ? "保存中…" : "保存"}</button></div>
+              <button type="submit" disabled={saving || unresolved || archivedReadOnly || mutationsBlocked}>{saving ? "保存中…" : "保存"}</button></div>
             <label className="notes-title-field">タイトル<input aria-label="ノートタイトル" value={draftTitle} maxLength={200}
-              disabled={unresolved || archivedReadOnly} onChange={(event) => updateDraftTitle(event.target.value)} onKeyDown={handleEditorKeyDown} /></label>
+              disabled={unresolved || archivedReadOnly || mutationsBlocked} onChange={(event) => updateDraftTitle(event.target.value)} onKeyDown={handleEditorKeyDown} /></label>
             <NoteMarkdownEditor
               value={draftBody}
-              disabled={unresolved || archivedReadOnly}
+              disabled={unresolved || archivedReadOnly || mutationsBlocked}
               onChange={updateDraftBody}
               onKeyDown={handleEditorKeyDown}
             />
             <p className="notes-save-status" role="status" aria-live="polite">
               <span>{saveStatus}</span>{pendingSaveCount > 0 && <span>（<span>保存中 {pendingSaveCount}件</span>）</span>}
             </p>
+            {payloadWarning && <p className="notes-payload-warning" role="status">{payloadWarning}</p>}
             {error && <p className="error" role="alert">{error}</p>}
             {retryRequest && <button type="button" className="secondary" disabled={saving} onClick={() => void saveActionRef.current()}>同じ内容で再試行</button>}
             {latestCanonical && <details className="notes-conflict" open><summary>最新のServer内容を確認</summary><p>タイトル: {latestCanonical.title}</p><pre>{latestCanonical.markdown_body}</pre></details>}

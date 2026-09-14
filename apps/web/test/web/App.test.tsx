@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CurrentTaskChuteDayProjection, EntryProjection } from "../../src/shared/contracts";
 
 const mocks = vi.hoisted(() => ({
-  login: vi.fn(), logout: vi.fn(), loadDay: vi.fn(), loadProjects: vi.fn(), loadProjectBoard: vi.fn(), createProject: vi.fn(), updateProject: vi.fn(), setProjectArchived: vi.fn(), reorderProjects: vi.fn(), deleteProject: vi.fn(), addTask: vi.fn(), duplicateEntry: vi.fn(), bulkDeleteEntries: vi.fn(), deleteCompletedEntry: vi.fn(), bulkMoveEntriesToDay: vi.fn(), bulkMoveEntriesToSection: vi.fn(), bulkMoveEntriesToSectionOccurrence: vi.fn(), bulkMoveEntriesToSectionScoped: vi.fn(), bulkSetEntriesEstimateScoped: vi.fn(),
+  login: vi.fn(), logout: vi.fn(), loadSession: vi.fn(), loadDay: vi.fn(), loadProjects: vi.fn(), loadProjectBoard: vi.fn(), createProject: vi.fn(), updateProject: vi.fn(), setProjectArchived: vi.fn(), reorderProjects: vi.fn(), deleteProject: vi.fn(), addTask: vi.fn(), duplicateEntry: vi.fn(), bulkDeleteEntries: vi.fn(), deleteCompletedEntry: vi.fn(), bulkMoveEntriesToDay: vi.fn(), bulkMoveEntriesToSection: vi.fn(), bulkMoveEntriesToSectionOccurrence: vi.fn(), bulkMoveEntriesToSectionScoped: vi.fn(), bulkSetEntriesEstimateScoped: vi.fn(),
   reorderEntries: vi.fn(), startEntry: vi.fn(), interruptEntry: vi.fn(), completeEntry: vi.fn(), setExecutionTimes: vi.fn(), updateTaskMetadata: vi.fn(), setEntryMode: vi.fn(),
   establishInitialSectionConfiguration: vi.fn(), moveEntry: vi.fn(), setEntryEstimate: vi.fn(),
   setEntryPlannedStart: vi.fn(),
@@ -226,6 +226,7 @@ beforeEach(() => {
   window.localStorage.clear();
   window.history.replaceState(null, "", "/");
   mocks.logout.mockResolvedValue({});
+  mocks.loadSession.mockResolvedValue({ user: { id: "test-user" } });
   mocks.loadProjects.mockResolvedValue({ projects: [{ id: "existing-project", title: "Existing Project" }] });
   mocks.loadProjectBoard.mockResolvedValue({ board_revision: 0, projects: [{ id: "existing-project", title: "Existing Project", archived: false, board_position: 1, settings_revision: 0 }] });
   mocks.createProject.mockResolvedValue({ project: { id: "project", title: "Project" } });
@@ -316,6 +317,41 @@ async function openEffectiveDayCalendarSettings() {
 }
 
 describe("Dogfood Day shell", () => {
+  it.each([
+    ["a Worker failure", new Error("Worker unavailable")],
+    ["a network failure", new TypeError("network unavailable")],
+  ])("keeps an authenticated bootstrap recoverable after %s", async (_label, failure) => {
+    mocks.loadDay.mockRejectedValueOnce(failure).mockResolvedValueOnce(emptyDay);
+    render(<App />);
+    await screen.findByRole("heading", { name: "読み込みに失敗しました" });
+    expect(screen.queryByRole("button", { name: "ログイン" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "再読み込み" }));
+    await screen.findByRole("region", { name: "DayBoard" });
+    expect(mocks.loadDay).toHaveBeenLastCalledWith(undefined);
+  });
+
+  it("keeps a dirty standalone Note mounted behind the reauthentication barrier after a 401", async () => {
+    const current = {
+      document_id: "0199d104-0000-0000-0000-000000000001", kind: "standalone" as const,
+      title: "Server", markdown_body: "body", revision: 2, archived_at: null,
+      created_at: "2026-09-13T00:00:00.000Z", updated_at: "2026-09-13T00:00:00.000Z",
+    };
+    mocks.loadDay.mockResolvedValue(emptyDay);
+    mocks.loadDocuments.mockResolvedValue({ documents: [current] });
+    mocks.loadDocument.mockResolvedValue(current);
+    mocks.updateDocument.mockRejectedValueOnce(new ApiClientError("expired", 401, false, "unauthenticated"));
+    render(<App />);
+    await screen.findByRole("region", { name: "DayBoard" });
+    fireEvent.click(screen.getByRole("button", { name: "ノート" }));
+    await waitFor(() => expect(screen.getByDisplayValue("Server")).toBeTruthy());
+    fireEvent.change(screen.getByLabelText("ノートタイトル"), { target: { value: "Local draft" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await screen.findByRole("dialog", { name: "再認証が必要です" });
+    expect(screen.getByDisplayValue("Local draft")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "ログイン" })).toBeNull();
+    expect(screen.getByRole("button", { name: "今日" })).toHaveProperty("disabled", true);
+  });
+
   it("exposes the authenticated Notes destination and an empty canonical list", async () => {
     mocks.loadDay.mockResolvedValue(emptyDay);
     render(<App />);
@@ -900,7 +936,7 @@ describe("Dogfood Day shell", () => {
     expect(current?.getAttribute("aria-selected")).toBe("true");
   });
 
-  it("drops a selected non-current Day when reconciliation gets 401 and reloads current after login", async () => {
+  it("preserves a selected non-current Day while reauthenticating after a 401", async () => {
     mocks.loadDay.mockImplementation(async (logicalDate?: string) => logicalDate ? {
       ...emptyDay,
       establishment_state: "future_preview" as const,
@@ -915,13 +951,13 @@ describe("Dogfood Day shell", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "MorningのTask名" }), { target: { value: "Expired session" } });
     fireEvent.submit(screen.getByRole("form", { name: "Morningの新規Task" }));
 
-    const login = await screen.findByRole("button", { name: "ログイン" });
+    const reauth = await screen.findByRole("button", { name: "再認証" });
     fireEvent.change(screen.getByRole("textbox", { name: "メール" }), { target: { value: "user@example.com" } });
     fireEvent.change(screen.getByLabelText("パスワード"), { target: { value: "password" } });
-    fireEvent.submit(login.closest("form")!);
+    fireEvent.submit(reauth.closest("form")!);
 
-    await waitFor(() => expect(mocks.loadDay).toHaveBeenLastCalledWith(undefined));
-    expect(await screen.findByRole("button", { name: "2026年8月22日（土）、日付を選択" })).toBeTruthy();
+    await waitFor(() => expect(mocks.loadDay).toHaveBeenLastCalledWith("2026-08-23"));
+    expect(await screen.findByRole("button", { name: "2026年8月23日（日）、日付を選択" })).toBeTruthy();
   });
 
   it("establishes a future preview only through its first successful Task addition", async () => {
@@ -4650,7 +4686,7 @@ describe("Dogfood Day shell", () => {
     expect(mocks.duplicateEntry.mock.calls[1][0]).toEqual(mocks.duplicateEntry.mock.calls[0][0]);
   });
 
-  it("drops an ambiguous Duplicate operation when reconciliation expires the session", async () => {
+  it("preserves an ambiguous Duplicate operation while reconciliation requires reauth", async () => {
     mocks.loadDay.mockResolvedValueOnce(populatedDay)
       .mockRejectedValueOnce(new ApiClientError("expired", 401, false, "unauthenticated"))
       .mockResolvedValueOnce(populatedDay);
@@ -4658,13 +4694,13 @@ describe("Dogfood Day shell", () => {
     render(<App />);
     fireEvent.click(within(await openOverflowMenu()).getByRole("menuitem", { name: "複製" }));
 
-    const login = await screen.findByRole("button", { name: "ログイン" });
+    const reauth = await screen.findByRole("button", { name: "再認証" });
     fireEvent.change(screen.getByRole("textbox", { name: "メール" }), { target: { value: "user@example.com" } });
     fireEvent.change(screen.getByLabelText("パスワード"), { target: { value: "password" } });
-    fireEvent.submit(login.closest("form")!);
+    fireEvent.submit(reauth.closest("form")!);
 
     await screen.findByRole("button", { name: "Canonical taskのその他の操作" });
-    expect(screen.queryByRole("button", { name: "保留中のTask複製を再試行" })).toBeNull();
+    expect(screen.getByRole("button", { name: "保留中のTask複製を再試行" })).toBeTruthy();
   });
 
   it("settles an ambiguous Duplicate from canonical state and focuses the new row", async () => {

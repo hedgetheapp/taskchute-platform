@@ -173,6 +173,59 @@ describe("NotesBoard", () => {
     expect(screen.getByText("最新のServer内容を確認")).toBeTruthy();
   });
 
+  it("preserves a standalone draft and reports an authenticated 401 to the App", async () => {
+    const current = note("0199d090-0000-0000-0000-000000000006", "Server", "body", 2);
+    const onUnauthorized = vi.fn();
+    mocks.loadDocuments.mockResolvedValue({ documents: [summary(current)] });
+    mocks.loadDocument.mockResolvedValue(current);
+    mocks.updateDocument.mockRejectedValueOnce(new mocks.ApiClientError("expired", 401, false, "unauthenticated"));
+    render(<NotesBoard onUnauthorized={onUnauthorized} onDirtyChange={vi.fn()} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Server")).toBeTruthy());
+    fireEvent.change(screen.getByLabelText("ノートタイトル"), { target: { value: "Local draft" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(onUnauthorized).toHaveBeenCalledTimes(1));
+    expect(screen.getByDisplayValue("Local draft")).toBeTruthy();
+    expect(mocks.updateDocument).toHaveBeenCalledTimes(1);
+  });
+
+  it("blocks a save while the App reauthentication barrier is active", async () => {
+    const current = note("0199d090-0000-0000-0000-000000000007", "Server", "body", 2);
+    mocks.loadDocuments.mockResolvedValue({ documents: [summary(current)] });
+    mocks.loadDocument.mockResolvedValue(current);
+    const { rerender } = render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} mutationsBlocked />);
+    await waitFor(() => expect(screen.getByDisplayValue("Server")).toBeTruthy());
+    fireEvent.change(screen.getByLabelText("ノートタイトル"), { target: { value: "Blocked" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    expect(mocks.updateDocument).not.toHaveBeenCalled();
+    rerender(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} mutationsBlocked={false} authEpoch={1} />);
+  });
+
+  it("rejects an over-limit standalone payload locally without sending it", async () => {
+    const current = note("0199d090-0000-0000-0000-000000000008", "Server", "body", 2);
+    mocks.loadDocuments.mockResolvedValue({ documents: [summary(current)] });
+    mocks.loadDocument.mockResolvedValue(current);
+    render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Server")).toBeTruthy());
+    fireEvent.change(screen.getByLabelText("Markdown本文"), { target: { value: "あ😀\\n".repeat(22000) } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await screen.findByRole("alert");
+    expect(screen.getByRole("alert").textContent).toContain("大きすぎます");
+    expect(mocks.updateDocument).not.toHaveBeenCalled();
+  });
+
+  it("shows a non-blocking warning from the serialized payload size", async () => {
+    const current = note("0199d090-0000-0000-0000-000000000009", "Server", "body", 2);
+    mocks.loadDocuments.mockResolvedValue({ documents: [summary(current)] });
+    mocks.loadDocument.mockResolvedValue(current);
+    mocks.updateDocument.mockResolvedValue({ document: note(current.document_id, "Server", "x".repeat(59000), 3) });
+    render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Server")).toBeTruthy());
+    fireEvent.change(screen.getByLabelText("Markdown本文"), { target: { value: "x".repeat(59000) } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await screen.findByText(/保存データが上限に近づいています/);
+    expect(mocks.updateDocument).toHaveBeenCalledTimes(1);
+  });
+
   it("opens the exact initial Document and never falls back when it is unavailable", async () => {
     const visibleOther = note("0199d090-0000-7000-8000-000000000016", "Other note", "body");
     mocks.loadDocuments.mockResolvedValue({ documents: [summary(visibleOther)] });
@@ -498,6 +551,22 @@ describe("NotesBoard", () => {
     await waitFor(() => expect(mocks.updateProjectPrimaryDocument).toHaveBeenCalledTimes(1), { timeout: 2500 });
     expect(mocks.updateProjectPrimaryDocument.mock.calls[0]![0]).toMatchObject({ project_id: "project-1", document_id: current.document_id,
       expected_revision: 0, markdown_body: "after" });
+  });
+
+  it("preserves a dirty Project Primary inline draft and reports an authenticated 401", async () => {
+    const current = projectDocument("0199d103-0000-0000-0000-000000000003", "project-3", "Project Three", "before");
+    const onUnauthorized = vi.fn();
+    mocks.loadDocuments.mockResolvedValue({ documents: [], project_documents: [projectSummary(current)] });
+    mocks.loadProjectPrimaryDocumentById.mockResolvedValue(current);
+    mocks.updateProjectPrimaryDocument.mockRejectedValueOnce(new mocks.ApiClientError("expired", 401, false, "unauthenticated"));
+    render(<NotesBoard onUnauthorized={onUnauthorized} onDirtyChange={vi.fn()} />);
+    fireEvent.click(await screen.findByRole("button", { name: /Project Three/ }));
+    const body = await screen.findByLabelText("Markdown本文");
+    fireEvent.change(body, { target: { value: "project draft" } });
+    fireEvent.keyDown(body, { key: "s", ctrlKey: true });
+    await waitFor(() => expect(onUnauthorized).toHaveBeenCalledTimes(1));
+    expect(screen.getByDisplayValue("project draft")).toBeTruthy();
+    expect(mocks.updateProjectPrimaryDocument).toHaveBeenCalledTimes(1);
   });
 
   it("activates an already floating Project Note without mounting a second inline editor", async () => {

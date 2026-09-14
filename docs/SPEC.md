@@ -593,6 +593,12 @@ Todayの`ノート`列からの初回Ensureは明示クリック時にだけ行�
 Task Primary Noteのdesktop side-peekはTask stable identityごとに複数instanceを許可し、同一Taskの再表示は同一windowを再利用する。各instanceは独立したDocument title/body draft、save/unresolved barrier、geometry、minimized state、focusを持つ。App shellはz-order、active route、outside-click、navigation/logout barrierをwindow単位で調整し、window外クリックはfrontmost expanded windowだけを最小化する。別windowのクリックはそのwindowだけを前面化し、他windowを閉じたり最小化したりしない。
 
 window identity、stack order、minimized/maximized stateはserver/localStorageへ保存しない。canonical URLはactive windowのDocumentだけを指し、reload/fresh tabはrouteから最大1つを復元する。preferred geometryを基準に24px cascadeし、mobileではsingle full-sheet、Hit-a-Hintではsingle active/local keyboard ownerを維持する。D-102は既存Document/API/Worker/schema/migration、Task Note Ensure、save/autosave/CAS/ambiguity semanticsを変更せず、Preview、offline/multi-tab state、Task/Project/Routine relation拡張も含めない。
+## D-104 Web reliability boundary
+
+初期Day/bootstrapの通信・Worker・D1・parse失敗はsigned-outとは別のrecoverable error stateとして扱い、明示的な再試行を提供する。認証済み状態でのauthoritative `401`はreauthentication-required barrierへ遷移し、Standalone / Project Primary inline / Task Primary floating / Project Primary floatingのdirty Note draftをこのtabのbrowser memoryだけに保持する。同一principalを確認できるまでserver mutationとeditorを凍結し、再認証後はcanonicalをreconcileして既存のCAS/conflict/ambiguity semanticsを再利用する。Note本文・titleはlocalStorage、IndexedDB、Cache API、service worker、URL/history、remote draftへ保存しない。
+
+WorkerのJSON request ceiling `64 * 1024` bytesは維持する。Note Create/Updateのclientは実際に送るserialized JSONのUTF-8 byte lengthを共通helperで測定し、warning thresholdとhard stopを同じsave経路へ適用する。hard stopではdraftを保持して送信しない。
+
 ## D-103 Project Primary Document v0.1
 
 Projectはowner-scoped shared `Document`を0または1つの`project_primary` relationとして持てる。relationとDocumentはProject Note affordanceまたはProject/Document routeからlazyにEnsureされ、Document coreはProject FKを直接持たず、relation tableでProject identityを表す。Project rowのtitleが唯一のtitle authorityであり、Project Primary Documentの`title`はNULL、Markdown source `body`だけを保存する。Documentはnon-negative revisionとserver timestampsを持ち、body Updateはowner-scoped expected-revision CAS、operation fingerprint/exact replay、operation-id misuse rejectionを使う。

@@ -6,6 +6,7 @@ import type {
   UpdateTaskPrimaryDocumentRequest,
 } from "../shared/contracts";
 import { uuidv7 } from "../shared/uuidv7";
+import { formatJsonRequestSize, serializeJsonRequestBody } from "../shared/request-size";
 import { api, ApiClientError } from "./api";
 import { NoteMarkdownEditor } from "./NoteMarkdownEditor";
 import { NoteIcon } from "./NoteIcon";
@@ -50,6 +51,8 @@ export interface TaskNoteEditorProps {
   onUnresolvedChange: (unresolved: boolean) => void;
   onRegisterFlush: (flush: (() => Promise<boolean>) | null) => void;
   onOpenNewTab: () => void;
+  authEpoch?: number;
+  mutationsBlocked?: boolean;
 }
 
 type PrimaryDocument = TaskPrimaryDocument | ProjectPrimaryDocument;
@@ -65,6 +68,7 @@ function isResolvedUpdate(request: PrimaryUpdateRequest, document: PrimaryDocume
 export function TaskNoteEditor({
   taskId = "", documentId, taskTitle = "Task Note", documentKind = "task_primary", projectId, projectTitle, initialGeometry, zIndex = 12, focusRequest = 0, restoreRequest = 0,
   outsideClickRequest = 0, onActivate, onClose, onUnauthorized, onDirtyChange, onUnresolvedChange, onRegisterFlush, onOpenNewTab,
+  authEpoch = 0, mutationsBlocked = false,
 }: TaskNoteEditorProps) {
   const isProjectPrimary = documentKind === "project_primary";
   const primaryId = isProjectPrimary ? projectId ?? taskId : taskId;
@@ -77,6 +81,7 @@ export function TaskNoteEditor({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [payloadWarning, setPayloadWarning] = useState<string | null>(null);
   const [unresolvedRequest, setUnresolvedRequest] = useState<PrimaryUpdateRequest | null>(null);
   const [preferredGeometry, setPreferredGeometry] = useState<TaskNoteWindowGeometry>(() => initialGeometry
     ?? readTaskNoteWindowGeometry(window.innerWidth, window.innerHeight));
@@ -105,6 +110,7 @@ export function TaskNoteEditor({
   const onUnresolvedChangeRef = useRef(onUnresolvedChange);
   const onRegisterFlushRef = useRef(onRegisterFlush);
   const handledOutsideClickRequestRef = useRef(0);
+  const mutationsBlockedRef = useRef(false);
 
   const dirty = draftBody !== baselineBody;
   const unresolved = unresolvedRequest !== null;
@@ -117,6 +123,7 @@ export function TaskNoteEditor({
   onDirtyChangeRef.current = onDirtyChange;
   onUnresolvedChangeRef.current = onUnresolvedChange;
   onRegisterFlushRef.current = onRegisterFlush;
+  mutationsBlockedRef.current = mutationsBlocked;
 
   const mobilePeek = isTaskNoteWindowMobile(viewportWidth);
   const renderedGeometry = !mobilePeek && isMaximized
@@ -320,6 +327,32 @@ export function TaskNoteEditor({
 
   useEffect(() => { void loadCanonical(); }, [loadCanonical]);
 
+  useEffect(() => {
+    if (authEpoch === 0) return;
+    void (async () => {
+      try {
+        const canonical = isProjectPrimary
+          ? await api.loadProjectPrimaryDocumentById(documentId)
+          : await api.loadTaskPrimaryDocumentById(documentId);
+        const localDraft = draftRef.current;
+        const localDirty = localDraft !== baselineRef.current;
+        documentRef.current = canonical;
+        setDocument(canonical);
+        baselineRef.current = canonical.markdown_body;
+        setBaselineBody(canonical.markdown_body);
+        if (!localDirty) {
+          draftRef.current = canonical.markdown_body;
+          setDraftBody(canonical.markdown_body);
+        } else if (canonical.markdown_body !== localDraft) {
+          setError("再認証後にServer側の変更を確認しました。ローカルの未保存内容は保持しています。");
+        }
+      } catch (caught) {
+        if (caught instanceof ApiClientError && caught.status === 401) onUnauthorized();
+        else setError(caught instanceof Error ? caught.message : `${primaryLabel}の再読み込みに失敗しました`);
+      }
+    })();
+  }, [authEpoch, documentId, isProjectPrimary, onUnauthorized, primaryLabel]);
+
   const applySaved = useCallback((saved: PrimaryDocument, request: PrimaryUpdateRequest) => {
     const bodyStillSent = draftRef.current === request.markdown_body;
     setDocument(saved); documentRef.current = saved;
@@ -328,6 +361,7 @@ export function TaskNoteEditor({
   }, []);
 
   const send = useCallback(async (request: PrimaryUpdateRequest): Promise<boolean> => {
+    if (mutationsBlockedRef.current) return false;
     if (inFlightRef.current) return inFlightRef.current;
     const promise = (async () => {
       setSaving(true); savingRef.current = true; setError(null); setNotice(null);
@@ -367,6 +401,7 @@ export function TaskNoteEditor({
   }, [applySaved, documentKind, isProjectPrimary, onUnauthorized, primaryLabel]);
 
   const save = useCallback(async (): Promise<boolean> => {
+    if (mutationsBlockedRef.current) return false;
     if (inFlightRef.current) return inFlightRef.current;
     if (unresolvedRef.current) return send(unresolvedRef.current);
     const current = documentRef.current;
@@ -376,6 +411,13 @@ export function TaskNoteEditor({
         expected_revision: current.revision, markdown_body: draftRef.current }
       : { operation_id: uuidv7(), task_id: primaryId, document_id: documentId,
         expected_revision: current.revision, markdown_body: draftRef.current };
+    const serialized = serializeJsonRequestBody(request);
+    if (serialized.overLimit) {
+      setPayloadWarning(null);
+      setError(`ノートの保存データが大きすぎます（${formatJsonRequestSize(serialized.byteLength)}）。内容を短くしてください。`);
+      return false;
+    }
+    setPayloadWarning(serialized.warning ? `保存データが上限に近づいています（${formatJsonRequestSize(serialized.byteLength)}）。` : null);
     return send(request);
   }, [documentId, isProjectPrimary, primaryId, send]);
   saveRef.current = save;
@@ -398,10 +440,10 @@ export function TaskNoteEditor({
   }, []);
 
   useEffect(() => {
-    if (!dirty || loading || unresolved || saving || !document) return;
+    if (!dirty || loading || unresolved || saving || mutationsBlocked || !document) return;
     const timer = window.setTimeout(() => { void saveRef.current(); }, TASK_NOTE_AUTOSAVE_MS);
     return () => window.clearTimeout(timer);
-  }, [dirty, document, loading, saving, unresolved]);
+  }, [dirty, document, loading, mutationsBlocked, saving, unresolved]);
 
   useEffect(() => {
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -505,11 +547,12 @@ export function TaskNoteEditor({
         <p className="task-note-authority">現在の{isProjectPrimary ? "Projectタイトル" : "Taskタイトル"}を表示しています。</p>
         <NoteMarkdownEditor
           value={draftBody}
-          disabled={unresolved}
-          onChange={(value) => { setDraftBody(value); draftRef.current = value; setNotice(null); }}
+          disabled={unresolved || mutationsBlocked}
+          onChange={(value) => { if (mutationsBlocked || unresolved) return; setDraftBody(value); draftRef.current = value; setNotice(null); }}
           onKeyDown={handleKeyDown}
           className="task-note-markdown-field"
         />
+        {payloadWarning && <p className="notes-payload-warning" role="status">{payloadWarning}</p>}
         {unresolved && <button type="button" className="secondary" disabled={saving} onClick={() => void saveRef.current()}>同じ内容で再試行</button>}
         {notice && <p className="success" role="status">{notice}</p>}
         {error && <p className="error" role="alert">{error}</p>}

@@ -118,6 +118,17 @@ import type {
   UpdateProjectPrimaryDocumentRequest,
   UpdateProjectPrimaryDocumentResult,
 } from "../shared/contracts";
+import { JSON_REQUEST_BODY_LIMIT_BYTES, serializeJsonRequestBody } from "../shared/request-size";
+
+export { JSON_REQUEST_BODY_LIMIT_BYTES } from "../shared/request-size";
+
+export function authSubjectIdFromSession(value: unknown): string | null {
+  if (typeof value !== "object" || value === null) return null;
+  const user = (value as { user?: unknown }).user;
+  if (typeof user !== "object" || user === null) return null;
+  const id = (user as { id?: unknown }).id;
+  return typeof id === "string" && id.length > 0 ? id : null;
+}
 
 export class ApiClientError extends Error {
   constructor(
@@ -127,6 +138,14 @@ export class ApiClientError extends Error {
     readonly code: ApiErrorCode,
   ) {
     super(message);
+  }
+}
+
+export class ClientRequestBodyTooLargeError extends Error {
+  readonly code = "client_request_too_large" as const;
+
+  constructor(readonly byteLength: number, readonly limit = JSON_REQUEST_BODY_LIMIT_BYTES) {
+    super("Request body is too large");
   }
 }
 
@@ -146,10 +165,15 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 function jsonPost(path: string, body: object): RequestInit {
-  return { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) };
+  const serialized = serializeJsonRequestBody(body);
+  if (serialized.overLimit) throw new ClientRequestBodyTooLargeError(serialized.byteLength);
+  return { method: "POST", headers: { "content-type": "application/json" }, body: serialized.body };
 }
 
 export const api = {
+  loadSession(): Promise<unknown> {
+    return requestJson("/api/auth/get-session");
+  },
   login(email: string, password: string): Promise<unknown> {
     return requestJson("/api/auth/sign-in/email", jsonPost("", { email, password }));
   },

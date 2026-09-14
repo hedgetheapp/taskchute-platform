@@ -641,6 +641,12 @@ desktopのTask NoteはTask stable identityごとに独立したfloating window�
 canonical URLはactive windowのDocument identityだけを`/?view=note&document=<document-id>`で表現する。reload/fresh tabはそのrouteのNoteを最大1つ復元し、同一tab内の全window状態やstack orderをserverへ保存しない。mobileでは従来のsingle full-sheet presentationを維持する。新規window追加は既存のTask Note Ensure / Document save / CAS / ambiguity / navigation barrier semanticsを再利用し、window coordinationのためにPreview、offline persistence、multi-tab sync、API/Worker/schema/migrationを追加しない。
 
 D-102 correctiveでは、既存の24px cascade detailを48pxへ更新した。追加windowはpreferred seedから48pxずつずらし、既存rendered geometryとclamp後に一致した場合は、方向・距離の固定順で衝突しない候補へ退避する。候補探索はpure in-memory helperであり、geometryをserverやlocalStorageへ追加保存しない。Appはwindow registryの配列順を固定したまま、stack orderだけをz-index mapへ反映するため、activation時にReact childを並べ替えず、背面windowのclose/minimize/maximize/restore/utility controlを初回pointer clickから受理できる。
+## D-104 reliability feedback
+
+bootstrapの一時障害は、認証状態を壊さず「読み込みに失敗しました」と再読み込み操作を表示する。認証済み`401`では固定の再認証overlayを表示し、現在のNote editor/windowをunmountせず、未保存内容をこのtabのmemoryに保持する。再認証が同一principalと確認できた後だけcanonical reconcileを行い、既存のdirty draft・conflict・exact retryを継続する。別principalの場合は安全メッセージを表示して送信を禁止する。
+
+Note保存のstatusとは別に、serialized JSON bodyのUTF-8 byte数が約90%に達したときnon-blocking warningを表示し、64 KiBを超える場合はlocal validationとして送信を止める。これはserver request ceilingを変更せず、editorの操作性・autosave・Ctrl/Cmd+Sで同一save guardを使う。
+
 ## D-103 Project Primary Note
 
 Project Boardの各Project rowには既存Project Board actionと同列の「プロジェクトノート」affordanceを置き、クリック時だけProject Primary relationをEnsureして共通floating Markdown source editorを開く。Notesは既存のNote listへProject Noteを統合し、`すべて / 通常ノート / プロジェクトノート` filterで切り替える。NotesでProject Note rowを選んだ場合はNotes editor内のbody-only inline Markdown editorを使い、Today / Project Board / direct routeはfloating editorを使う。同一Projectのfloating windowが存在する場合はNotesからそれをactivate / restoreし、inline editorを二重に作らない。Project Primary editorはProject titleをread-only authorityとして表示し、bodyのみを既存のDocument save/CAS/ambiguity/barrier経路で編集する。DayのProject cellからも同じwindow registry・canonical document routeを使う。

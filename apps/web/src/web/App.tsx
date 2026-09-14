@@ -56,7 +56,7 @@ import type {
 import { isSamePlannedStartCohort } from "../shared/planned-entry-order";
 import { advanceProjectionClock, calculateStartForecast, formatStartForecast } from "../shared/start-forecast";
 import { uuidv7 } from "../shared/uuidv7";
-import { api, ApiClientError } from "./api";
+import { api, ApiClientError, authSubjectIdFromSession } from "./api";
 import {
   DAY_COLUMN_DEFINITIONS,
   actualDurationSeconds,
@@ -89,7 +89,7 @@ import { CalendarPopover, formatLogicalDateLabel } from "./ui-helpers";
 
 export { DAY_COLUMNS_STORAGE_KEY } from "./day-columns";
 
-type AuthState = "loading" | "signed-out" | "signed-in";
+type AuthState = "loading" | "bootstrap-error" | "signed-out" | "signed-in";
 type AppView = "today" | "routines" | "settings" | "notes";
 type SettingsDestination = "section" | "project" | "mode" | "calendar";
 type TaskNoteTarget = {
@@ -772,6 +772,13 @@ function parseSectionSettingsDraft(draft: SectionSettingsDraft | null): SectionC
 
 export function App() {
   const [authState, setAuthState] = useState<AuthState>("loading");
+  const [sessionBarrier, setSessionBarrier] = useState<"reauth-required" | null>(null);
+  const [reauthError, setReauthError] = useState<string | null>(null);
+  const [authEpoch, setAuthEpoch] = useState(0);
+  const authenticatedRef = useRef(false);
+  const authSubjectIdRef = useRef<string | null>(null);
+  const sessionBarrierRef = useRef<"reauth-required" | null>(null);
+  const reauthInFlightRef = useRef(false);
   const [view, setView] = useState<AppView>("today");
   const [notesDirty, setNotesDirty] = useState(false);
   const [notesUnresolved, setNotesUnresolved] = useState(false);
@@ -1020,11 +1027,11 @@ export function App() {
   const decisionModalOpen = shortcutHelpOpen || bulkSectionPickerOpen || bulkConfirmation !== null || completedDeleteConfirmation !== null
     || bulkSectionConfirmation !== null || bulkEstimateConfirmation !== null || bulkDateMoveConfirmation !== null
     || routineDraft !== null || routineCandidate !== null;
-  const mutationLocked = globalPending || globalRetainedOperation;
+  const mutationLocked = globalPending || globalRetainedOperation || sessionBarrier !== null;
   const hitAHintBlocked = decisionModalOpen || calendarOpen || columnsMenuOpen || columnSubmenuOpen
     || overflowEntryId !== null || entryDrag !== null || columnDrag !== null || columnResize !== null
     || draftTask !== null || taskMetadataDraft !== null || editingEstimate !== null
-    || editingPlannedStart !== null || executionTimesDraft !== null;
+    || editingPlannedStart !== null || executionTimesDraft !== null || sessionBarrier !== null;
 
   useEffect(() => {
     dayRef.current = day;
@@ -1068,7 +1075,8 @@ export function App() {
       const hasUnsavedMutation = activeMutationsRef.current.length > 0
         || dayMutationInFlightRef.current
         || dayMutationQueueRef.current.length > 0
-        || retainedOperation !== null;
+        || retainedOperation !== null
+        || sessionBarrierRef.current !== null;
       if (!hasUnsavedMutation) return;
       event.preventDefault();
       event.returnValue = "";
@@ -1635,6 +1643,11 @@ export function App() {
   }
 
   const transitionToSignedOut = useCallback(() => {
+    authenticatedRef.current = false;
+    authSubjectIdRef.current = null;
+    sessionBarrierRef.current = null;
+    setSessionBarrier(null);
+    setReauthError(null);
     selectedLogicalDateRef.current = null;
     setCurrentLogicalDate(null);
     setCalendarOpen(false);
@@ -1742,6 +1755,31 @@ export function App() {
     setAuthState("signed-out");
   }, []);
 
+  const enterReauthRequired = useCallback(() => {
+    sessionBarrierRef.current = "reauth-required";
+    setSessionBarrier("reauth-required");
+    setReauthError(null);
+  }, []);
+
+  const handleUnauthorized = useCallback(() => {
+    if (authenticatedRef.current) {
+      enterReauthRequired();
+      return;
+    }
+    transitionToSignedOut();
+  }, [enterReauthRequired, transitionToSignedOut]);
+
+  const establishAuthSubject = useCallback(async (): Promise<void> => {
+    if (typeof api.loadSession !== "function") {
+      authenticatedRef.current = true;
+      return;
+    }
+    const session = await api.loadSession();
+    const subjectId = authSubjectIdFromSession(session);
+    if (subjectId) authSubjectIdRef.current = subjectId;
+    authenticatedRef.current = true;
+  }, []);
+
   const reconcile = useCallback(async (logicalDate = selectedLogicalDateRef.current) => {
     const requestSequence = ++reconcileSequenceRef.current;
     try {
@@ -1759,17 +1797,23 @@ export function App() {
         return entry ? isBulkSelectableProjectionEntry(projection, entry) : false;
       }));
       if (projection.is_current) setCurrentLogicalDate(projection.taskchute_day.logical_date);
+      if (!authenticatedRef.current) await establishAuthSubject();
       setAuthState("signed-in");
-      if (typeof api.loadModeBoard === "function") void api.loadModeBoard().then(setModeBoard).catch(() => { /* Mode selector remains read-only until settings reload. */ });
+      if (typeof api.loadModeBoard === "function") {
+        const modeBoardRequest = api.loadModeBoard();
+        if (modeBoardRequest && typeof modeBoardRequest.then === "function") {
+          void modeBoardRequest.then(setModeBoard).catch(() => { /* Mode selector remains read-only until settings reload. */ });
+        }
+      }
       return projection;
     } catch (caught) {
       if (caught instanceof ApiClientError && caught.status === 401) {
-        transitionToSignedOut();
+        handleUnauthorized();
         return null;
       }
       throw caught;
     }
-  }, [transitionToSignedOut]);
+  }, [establishAuthSubject, handleUnauthorized]);
 
   async function navigateToDay(logicalDate?: string) {
     if (!(await canLeaveNotes())) return;
@@ -1810,9 +1854,14 @@ export function App() {
       setDay(projection);
       selectedLogicalDateRef.current = projection.taskchute_day.logical_date;
       if (projection.is_current) setCurrentLogicalDate(projection.taskchute_day.logical_date);
-      if (typeof api.loadModeBoard === "function") void api.loadModeBoard().then(setModeBoard).catch(() => { /* Keep the Day projection usable. */ });
+      if (typeof api.loadModeBoard === "function") {
+        const modeBoardRequest = api.loadModeBoard();
+        if (modeBoardRequest && typeof modeBoardRequest.then === "function") {
+          void modeBoardRequest.then(setModeBoard).catch(() => { /* Keep the Day projection usable. */ });
+        }
+      }
     } catch (caught) {
-      if (caught instanceof ApiClientError && caught.status === 401) transitionToSignedOut();
+      if (caught instanceof ApiClientError && caught.status === 401) handleUnauthorized();
       else setError(caught instanceof Error ? caught.message : "日付の読み込みに失敗しました");
     } finally {
       setPending(null);
@@ -1822,9 +1871,20 @@ export function App() {
   useEffect(() => {
     void reconcile().catch((caught: unknown) => {
       setError(caught instanceof Error ? caught.message : "読み込みに失敗しました");
-      transitionToSignedOut();
+      setAuthState("bootstrap-error");
     });
-  }, [reconcile, transitionToSignedOut]);
+  }, [reconcile]);
+
+  const retryBootstrap = useCallback(async () => {
+    setAuthState("loading");
+    setError(null);
+    try {
+      await reconcile();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "読み込みに失敗しました");
+      setAuthState("bootstrap-error");
+    }
+  }, [reconcile]);
 
   useEffect(() => {
     if (authState !== "signed-in" || typeof api.loadAutoCarryOverduePlannedSetting !== "function") return;
@@ -1880,7 +1940,7 @@ export function App() {
           showTaskNoteWindow({ taskId: resolved.task_id, documentId: resolved.document_id, taskTitle: resolved.task_title });
         }
       }).catch((caught) => {
-        if (caught instanceof ApiClientError && caught.status === 401) transitionToSignedOut();
+        if (caught instanceof ApiClientError && caught.status === 401) handleUnauthorized();
         else {
           setNotesInitialDocumentId(documentId);
           setView("notes");
@@ -1901,7 +1961,7 @@ export function App() {
         window.history.replaceState(null, "", documentPermalink(documentId));
         showTaskNoteWindow({ taskId: resolved.task_id, documentId: resolved.document_id, taskTitle: resolved.task_title });
       }).catch((caught) => {
-        if (caught instanceof ApiClientError && caught.status === 401) transitionToSignedOut();
+        if (caught instanceof ApiClientError && caught.status === 401) handleUnauthorized();
         else {
           setNotesInitialDocumentId(documentId);
           setView("notes");
@@ -1918,13 +1978,13 @@ export function App() {
         window.history.replaceState(null, "", documentPermalink(result.document.document_id));
         showTaskNoteWindow({ taskId, documentId: result.document.document_id, taskTitle: entry?.task.title ?? "Task Note" });
       }).catch((caught) => {
-        if (caught instanceof ApiClientError && caught.status === 401) transitionToSignedOut();
+        if (caught instanceof ApiClientError && caught.status === 401) handleUnauthorized();
         else setError(caught instanceof Error ? caught.message : "Task Noteを開けませんでした");
       });
       return;
     }
     taskNoteRouteHandledRef.current = true;
-  }, [authState, day, transitionToSignedOut]);
+  }, [authState, day, handleUnauthorized]);
 
   useEffect(() => {
     const onPointerDown = (event: PointerEvent) => {
@@ -2201,6 +2261,10 @@ export function App() {
   }
 
   async function canLeaveNotes(): Promise<boolean> {
+    if (sessionBarrierRef.current !== null) {
+      setError("セッションの再認証が必要なため、このタブの内容を保持したまま再認証してください。");
+      return false;
+    }
     const taskNoteSnapshot = [...taskNoteWindowsRef.current].sort((a, b) => a.stackOrder - b.stackOrder);
     for (const windowState of taskNoteSnapshot) {
       if (windowState.unresolved) return false;
@@ -2369,7 +2433,7 @@ export function App() {
         return;
       } catch (caught) {
         if (!(caught instanceof ApiClientError) || caught.status !== 404) {
-          if (caught instanceof ApiClientError && caught.status === 401) transitionToSignedOut();
+          if (caught instanceof ApiClientError && caught.status === 401) handleUnauthorized();
           else setError(caught instanceof Error ? caught.message : "Project Noteを開けませんでした");
           return;
         }
@@ -2386,7 +2450,7 @@ export function App() {
         documentId = existingDocument.document_id;
       } catch (caught) {
         if (!(caught instanceof ApiClientError) || caught.status !== 404) {
-          if (caught instanceof ApiClientError && caught.status === 401) transitionToSignedOut();
+          if (caught instanceof ApiClientError && caught.status === 401) handleUnauthorized();
           else setError(caught instanceof Error ? caught.message : "Project Noteを開けませんでした");
           return;
         }
@@ -2394,7 +2458,7 @@ export function App() {
           const ensured = await api.ensureProjectPrimaryDocument({ operation_id: uuidv7(), project_id: projectId, document_id: uuidv7() });
           documentId = ensured.document.document_id;
         } catch (ensureError) {
-          if (ensureError instanceof ApiClientError && ensureError.status === 401) transitionToSignedOut();
+          if (ensureError instanceof ApiClientError && ensureError.status === 401) handleUnauthorized();
           else setError(ensureError instanceof Error ? ensureError.message : "Project Noteを開けませんでした");
           return;
         }
@@ -2447,7 +2511,7 @@ export function App() {
           documentId = ensured.document.document_id;
           updateTaskPrimaryRelation(taskId, documentId);
         } catch (caught) {
-          if (caught instanceof ApiClientError && caught.status === 401) transitionToSignedOut();
+          if (caught instanceof ApiClientError && caught.status === 401) handleUnauthorized();
           else setError(caught instanceof Error ? caught.message : "Task Noteを開けませんでした");
           return;
         }
@@ -2493,14 +2557,42 @@ export function App() {
   async function login(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
+    const reauth = sessionBarrierRef.current === "reauth-required";
+    if (reauth && reauthInFlightRef.current) return;
+    if (reauth) reauthInFlightRef.current = true;
     setPending("login");
-    setError(null);
+    if (reauth) setReauthError(null);
+    else setError(null);
     try {
       await api.login(String(form.get("email")), String(form.get("password")));
-      await reconcile(null);
+      if (reauth) {
+        const session = typeof api.loadSession === "function" ? await api.loadSession() : null;
+        const subjectId = authSubjectIdFromSession(session);
+        if (!subjectId || !authSubjectIdRef.current || subjectId !== authSubjectIdRef.current) {
+          setReauthError("元のアカウントを確認できないため、内容を安全のため保持しています。");
+          return;
+        }
+        authenticatedRef.current = true;
+        const projection = await reconcile(selectedLogicalDateRef.current);
+        if (!projection || sessionBarrierRef.current !== "reauth-required") return;
+        sessionBarrierRef.current = null;
+        setSessionBarrier(null);
+        setReauthError(null);
+        setAuthEpoch((current) => current + 1);
+      } else {
+        await reconcile(null);
+      }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "ログインに失敗しました");
+      if (caught instanceof ApiClientError && caught.status === 401 && reauth) {
+        enterReauthRequired();
+        setReauthError("再認証に失敗しました。入力内容を確認してください。");
+      } else if (reauth) {
+        setReauthError(caught instanceof Error ? caught.message : "再認証に失敗しました");
+      } else {
+        setError(caught instanceof Error ? caught.message : "ログインに失敗しました");
+      }
     } finally {
+      reauthInFlightRef.current = false;
       setPending(null);
     }
   }
@@ -4467,7 +4559,7 @@ export function App() {
       if (typeof api.loadModeBoard !== "function") return;
       setModeBoard(await api.loadModeBoard());
     } catch (caught) {
-      if (caught instanceof ApiClientError && caught.status === 401) transitionToSignedOut();
+      if (caught instanceof ApiClientError && caught.status === 401) handleUnauthorized();
       else setError(caught instanceof Error ? caught.message : "Mode設定の読み込みに失敗しました");
     } finally { setPending(null); }
   }
@@ -5234,6 +5326,14 @@ export function App() {
   }
 
   if (authState === "loading") return <main className="shell"><p role="status">読み込み中…</p></main>;
+  if (authState === "bootstrap-error") {
+    return <main className="shell auth-shell"><section className="panel" role="alert">
+      <p className="eyebrow">TaskChute Platform</p><h1>読み込みに失敗しました</h1>
+      <p>認証状態は保持されています。通信やServerの一時的な障害の可能性があります。</p>
+      {error && <p className="error">{error}</p>}
+      <button type="button" onClick={() => void retryBootstrap()}>再読み込み</button>
+    </section></main>;
+  }
   if (authState === "signed-out") {
     return (
       <main className="shell auth-shell">
@@ -6218,9 +6318,9 @@ export function App() {
       <div className="authenticated-content">
         {!sidebarOpen && <button type="button" className="sidebar-reopen" aria-label="サイドバーを開く" title="サイドバーを開く"
           onClick={() => setSidebarOpen(true)}>›</button>}
-        {view === "routines" ? <RoutineBoard onUnauthorized={transitionToSignedOut} /> : view === "notes" ? (
-          <NotesBoard onUnauthorized={transitionToSignedOut} onDirtyChange={setNotesDirty}
-            onUnresolvedChange={setNotesUnresolved}
+        {view === "routines" ? <RoutineBoard onUnauthorized={handleUnauthorized} /> : view === "notes" ? (
+          <NotesBoard onUnauthorized={handleUnauthorized} onDirtyChange={setNotesDirty}
+            onUnresolvedChange={setNotesUnresolved} authEpoch={authEpoch} mutationsBlocked={sessionBarrier !== null}
             initialDocumentId={notesInitialDocumentId}
             floatingProjectIds={taskNoteWindows.filter((windowState) => windowState.documentKind === "project_primary" && windowState.projectId).map((windowState) => windowState.projectId!) }
             onOpenProjectNote={(projectId, title) => { void openProjectNote(projectId, title); }}
@@ -6262,7 +6362,7 @@ export function App() {
               </section>
 
               {settingsDestination === "project" && (
-                <ProjectBoard onUnauthorized={transitionToSignedOut}
+                <ProjectBoard onUnauthorized={handleUnauthorized}
                   onProjectsChanged={handleProjectsChanged}
                   onOpenProjectNote={(projectId, title) => { void openProjectNote(projectId, title); }}
                   onBeforeProjectDelete={canDeleteProject}
@@ -6273,7 +6373,7 @@ export function App() {
                 <ModeBoard board={modeBoard} onReload={async () => {
                   if (typeof api.loadModeBoard !== "function") return null;
                   return api.loadModeBoard();
-                }} onBoardChange={setModeBoard} onUnauthorized={transitionToSignedOut} />
+                }} onBoardChange={setModeBoard} onUnauthorized={handleUnauthorized} />
               )}
 
               {settingsDestination === "calendar" && (
@@ -7182,7 +7282,8 @@ export function App() {
           focusRequest={windowState.focusRequest} restoreRequest={windowState.restoreRequest}
           outsideClickRequest={windowState.outsideClickRequest}
           onActivate={() => activateTaskNoteWindow(windowState.documentId)}
-          onClose={() => void closeTaskNote(windowState.documentId)} onUnauthorized={transitionToSignedOut}
+          onClose={() => void closeTaskNote(windowState.documentId)} onUnauthorized={handleUnauthorized}
+          authEpoch={authEpoch} mutationsBlocked={sessionBarrier !== null}
           onDirtyChange={(dirty) => patchTaskNoteWindow(windowState.documentId, { dirty })}
           onUnresolvedChange={(unresolved) => patchTaskNoteWindow(windowState.documentId, { unresolved })}
           onRegisterFlush={(flush) => patchTaskNoteWindow(windowState.documentId, { flush })}
@@ -7190,6 +7291,20 @@ export function App() {
             const tab = window.open(documentPermalink(windowState.documentId), "_blank", "noopener,noreferrer");
             if (!tab) setError("新しいタブを開けませんでした。ブラウザのポップアップ設定を確認してください。");
           }} />)}
+        {sessionBarrier === "reauth-required" && <div className="reauth-overlay" role="dialog" aria-modal="true" aria-labelledby="reauth-title">
+          <section className="reauth-panel">
+            <p className="eyebrow">Session</p>
+            <h1 id="reauth-title">再認証が必要です</h1>
+            <p>セッションの有効期限が切れました。未保存のNote内容はこのタブのメモリ内に保持しています。</p>
+            <p>同じアカウントで再認証すると、内容を確認してから保存を再開できます。</p>
+            <form onSubmit={login} aria-busy={pending === "login"}>
+              <label>メール<input name="email" type="email" autoComplete="username" required /></label>
+              <label>パスワード<input name="password" type="password" autoComplete="current-password" required /></label>
+              <button disabled={pending !== null}>{pending === "login" ? "再認証中…" : "再認証"}</button>
+            </form>
+            {reauthError && <p role="alert" className="error">{reauthError}</p>}
+          </section>
+        </div>}
       </div>
     </div>
   );

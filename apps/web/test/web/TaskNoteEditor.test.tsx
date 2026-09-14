@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { TaskPrimaryDocument } from "../../src/shared/contracts";
+import type { ProjectPrimaryDocument, TaskPrimaryDocument } from "../../src/shared/contracts";
 
 const mocks = vi.hoisted(() => {
   class MockApiClientError extends Error {
@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => {
   return {
     loadTaskPrimaryDocumentById: vi.fn(),
     updateTaskPrimaryDocument: vi.fn(),
+    loadProjectPrimaryDocumentById: vi.fn(),
+    updateProjectPrimaryDocument: vi.fn(),
     ApiClientError: MockApiClientError,
   };
 });
@@ -56,7 +58,16 @@ describe("TaskNoteEditor", () => {
     localStorage.clear();
     mocks.loadTaskPrimaryDocumentById.mockResolvedValue(primary("before"));
     mocks.updateTaskPrimaryDocument.mockResolvedValue({ document: primary("after", 1) });
+    mocks.loadProjectPrimaryDocumentById.mockResolvedValue(projectPrimary("before"));
+    mocks.updateProjectPrimaryDocument.mockResolvedValue({ document: projectPrimary("after", 1) });
   });
+
+  function projectPrimary(markdownBody: string, revision = 0): ProjectPrimaryDocument {
+    return {
+      document_id: documentId, kind: "project_primary", project_id: taskId, project_title: "Project A",
+      markdown_body: markdownBody, revision, created_at: "2026-09-13T00:00:00.000Z", updated_at: "2026-09-13T00:00:00.000Z",
+    };
+  }
 
   function renderEditor() {
     return render(<TaskNoteEditor
@@ -77,6 +88,47 @@ describe("TaskNoteEditor", () => {
       task_id: taskId, document_id: documentId, expected_revision: 0, markdown_body: "after",
     });
     expect(mocks.updateTaskPrimaryDocument.mock.calls[0]![0].operation_id).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it("preserves a dirty Task Primary draft and reports an authenticated 401", async () => {
+    const onUnauthorized = vi.fn();
+    mocks.updateTaskPrimaryDocument.mockRejectedValueOnce(new mocks.ApiClientError("expired", 401, false, "unauthenticated"));
+    render(<TaskNoteEditor
+      taskId={taskId} documentId={documentId} taskTitle="Task A"
+      onClose={vi.fn()} onUnauthorized={onUnauthorized} onDirtyChange={vi.fn()}
+      onUnresolvedChange={vi.fn()} onRegisterFlush={vi.fn()} onOpenNewTab={vi.fn()}
+    />);
+    const body = await screen.findByRole("textbox", { name: "Markdown本文" });
+    fireEvent.change(body, { target: { value: "local draft" } });
+    fireEvent.keyDown(body, { key: "s", ctrlKey: true });
+    await waitFor(() => expect(onUnauthorized).toHaveBeenCalledTimes(1));
+    expect(screen.getByDisplayValue("local draft")).toBeTruthy();
+    expect(mocks.updateTaskPrimaryDocument).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the same memory-preserving path for a Project Primary floating editor", async () => {
+    const onUnauthorized = vi.fn();
+    mocks.updateProjectPrimaryDocument.mockRejectedValueOnce(new mocks.ApiClientError("expired", 401, false, "unauthenticated"));
+    render(<TaskNoteEditor
+      documentKind="project_primary" projectId={taskId} projectTitle="Project A" taskId={taskId} documentId={documentId}
+      onClose={vi.fn()} onUnauthorized={onUnauthorized} onDirtyChange={vi.fn()}
+      onUnresolvedChange={vi.fn()} onRegisterFlush={vi.fn()} onOpenNewTab={vi.fn()}
+    />);
+    const body = await screen.findByRole("textbox", { name: "Markdown本文" });
+    fireEvent.change(body, { target: { value: "project draft" } });
+    fireEvent.keyDown(body, { key: "s", metaKey: true });
+    await waitFor(() => expect(onUnauthorized).toHaveBeenCalledTimes(1));
+    expect(screen.getByDisplayValue("project draft")).toBeTruthy();
+  });
+
+  it("blocks an over-limit Task Primary payload before calling the Worker", async () => {
+    renderEditor();
+    const body = await screen.findByRole("textbox", { name: "Markdown本文" });
+    fireEvent.change(body, { target: { value: "日😀\\n".repeat(22000) } });
+    fireEvent.keyDown(body, { key: "s", ctrlKey: true });
+    await screen.findByRole("alert");
+    expect(screen.getByRole("alert").textContent).toContain("大きすぎます");
+    expect(mocks.updateTaskPrimaryDocument).not.toHaveBeenCalled();
   });
 
   it("copies the shared Document permalink", async () => {
