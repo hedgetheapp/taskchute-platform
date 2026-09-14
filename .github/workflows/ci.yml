@@ -69,4 +69,12 @@ jobs:
         run: bash ./gradlew --no-daemon :app:testDebugUnitTest
 
       - name: Debug build
-        run: bash ./gradlew --no-daemon :app:assembleDebug
+        run: bash ./gradlew --no-daemon :app:assembleDebug -Ptaskchute.baseUrl=https://taskchute-web-nonprod.taskfulness-sync.workers.dev
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: taskchute-android-debug-${{ github.sha }}
+          path: apps/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
