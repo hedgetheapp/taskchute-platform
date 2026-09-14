@@ -17,13 +17,16 @@
 | D108-CROSS-CLIENT | Authenticated Android/Web propagation | Requires safe same-user authenticated Android and Web clients; no credentials retrieved or printed | not available in this run | NOT_RUN |
 | D108-MIGRATION | APP/AUTH schema | D-108 requires no migration and does not add a namespace | NOT_REQUIRED | PASS |
 
-D-108 classification: implementation `22e4aaacda14409474ba5963cb62dd92ce6e1cdf` is
-fast-forward pushed and exact main is deployed to persistent nonprod Worker
+D-108 classification: implementation `22e4aaacda14409474ba5963cb62dd92ce6e1cdf` and
+workflow corrective `146035b06a08a5649f98cf1864c2eebb1bb8d3f7` are fast-forward pushed; exact
+final main is deployed to persistent nonprod Worker
 `74579f87-51c4-423e-ac7d-742ac283ac09`. APP/AUTH pending is `0 / 0`, quick/FK and read-only
 rows-written checks are PASS. The Windows local AVD is the official Android runtime gate;
-hosted emulator is no longer a standard CI gate. GitHub CI continues to cover Web/Worker,
-Android JVM/APK, and instrumentation APK compile. Authenticated cross-client propagation and
-Android authenticated reconnect remain `NOT_RUN`; production is `NOT_RUN`, Released `NO`.
+hosted emulator is no longer a standard CI gate. Final exact-SHA CI run `34857328074` is
+success with Web/Worker and Android JVM/APK jobs; artifact
+`taskchute-android-debug-146035b06a08a5649f98cf1864c2eebb1bb8d3f7` / ID `10353363089` is
+present. Authenticated cross-client propagation and Android authenticated reconnect remain
+`NOT_RUN`; production is `NOT_RUN`, Released `NO`.
 
 ## D-106 Android Native Auth Foundation v0.1 — local gate
 

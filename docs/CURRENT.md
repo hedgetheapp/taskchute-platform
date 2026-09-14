@@ -16,7 +16,9 @@ typecheck、normal/exact nonprod build、deploy guard、Wrangler dry-run、diff-
 Local AVDはPixel 7 / Android 13 API 33 / Google APIs / x86_64 / `emulator-5554`で、APK
 install、MainActivity、screenshot / UI tree、crash buffer emptyを確認した。
 
-Implementation commit `22e4aaacda14409474ba5963cb62dd92ce6e1cdf`をmainへfast-forward pushし、
+Implementation commit `22e4aaacda14409474ba5963cb62dd92ce6e1cdf`と、hosted emulator jobを
+削除してWindows local AVDを正式ゲートにしたcorrective commit
+`146035b06a08a5649f98cf1864c2eebb1bb8d3f7`をmainへfast-forward pushし、
 canonical persistent nonprod Worker `taskchute-web-nonprod`へexact pushed sourceをdeployした。
 Worker versionは`74579f87-51c4-423e-ac7d-742ac283ac09`。generated configは
 `RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、canonical APP/AUTH D1、既存
@@ -24,10 +26,12 @@ Worker versionは`74579f87-51c4-423e-ac7d-742ac283ac09`。generated configは
 Documents API `401`、APP/AUTH migration pendingなし、APP/AUTH quick_check `ok`、FK empty、
 read-only probe `rows_written=0`を確認した。
 
-Exact-SHA GitHub Actions run `34854737305`はWeb/Worker、Android JVM/APK jobがsuccessし、
-artifact `taskchute-android-debug-22e4aaacda14409474ba5963cb62dd92ce6e1cdf`（ID
-`10351959051`、expires `2026-09-21T14:20:31Z`）を生成した。hosted emulator jobはKVM
-非対応hostで長時間timeoutするため、今回のcorrectiveで通常CIから削除する。Android
+Final exact-SHA GitHub Actions run `34857328074`（SHA
+`146035b06a08a5649f98cf1864c2eebb1bb8d3f7`）は、hosted emulator jobなしでWeb/Workerと
+Android JVM/APK jobがsuccessし、artifact
+`taskchute-android-debug-146035b06a08a5649f98cf1864c2eebb1bb8d3f7`（ID
+`10353363089`、expires `2026-09-21T14:44:08Z`）を生成した。hosted emulator jobはKVM
+非対応hostで長時間timeoutするため通常CIから削除した。Android
 runtimeの正式ゲートはWindows local AVD `TaskChute_API33` + `scripts/android-qa.ps1`で、
 既に全10件PASSしている。same-user Android/Web authenticated cross-client propagation、
 Android authenticated socket reconnect、実機でのD-108挙動はcredentialを取得せず`NOT_RUN`と
