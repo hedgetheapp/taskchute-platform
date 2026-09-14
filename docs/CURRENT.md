@@ -24,12 +24,16 @@ MainActivity起動、UI tree、crash buffer emptyも確認した。最初のAVD�
 execution/realtime state regressionも同じinstrumentationでPASS。Web/Worker fullはAndroid-only
 impact analysisでNOT_RUN、migration / persistent nonprod deployはNOT_REQUIRED / NOT_RUN。
 
-Implementation commit `6903a36092ee4f009ee88cf44d4dafa7aa979239`、evidence docs commit
-`543efd8904eabfab63c4b38208adb841b1cc16f4`をmainへfast-forward push済み。GitHub Actions
-exact-SHA run `34907800194`（head `543efd8904eabfab63c4b38208adb841b1cc16f4`）はWeb /
-WorkerとAndroid JVM / Debug APK / instrumentation APK compileの全job PASS。artifact
-`taskchute-android-debug-543efd8904eabfab63c4b38208adb841b1cc16f4`（ID `10373476177`、
-2026-09-21T23:14:50Z expiry）も生成された。D-109のGalaxy S23 planning smokeはこの作業では
+Implementation commit `6903a36092ee4f009ee88cf44d4dafa7aa979239`、Android auth operation
+completion-order corrective `bce016838d6697dbfff2ad8f13c75efdc9775aa1`、evidence docs commits
+`543efd8904eabfab63c4b38208adb841b1cc16f4` / `fbdbd1368a6b01831926a493a5912ae393bf7944` /
+`2f25285b93452d63c5e44ea9af04096a99cf2c53`をmainへfast-forward push済み。途中のdocs-only
+run `34908494057`で既存AuthController retry testの通知順序依存が1件FAILしたため、in-flight
+解放をterminal state公開前へ移すcorrectiveを追加した。最終exact-SHA run `34909083202`
+（head `bce016838d6697dbfff2ad8f13c75efdc9775aa1`）はWeb / WorkerとAndroid JVM / Debug
+APK / instrumentation APK compileの全job PASS。artifact
+`taskchute-android-debug-bce016838d6697dbfff2ad8f13c75efdc9775aa1`（ID `10374075900`、
+2026-09-21T23:30:48Z expiry）も生成された。D-109のGalaxy S23 planning smokeはこの作業では
 未実施で`NOT_RUN`（既存D-107 Galaxy S23 smoke PASSとは別証跡）、production `NOT_RUN`、
 Release `NO`。
 

@@ -6,10 +6,10 @@
 |---|---|---|---|
 | D109-DECISION | Canonical scope | Approved `docs/decisions/D-109_ANDROID_TODAY_PLANNING_V02.md`; current-Day ordinary planned Task only; no Worker/API/schema/migration | PASS |
 | D109-PLANNING-JVM | Planning state / validation / command composition | `TaskPlanningControllerTest` 4 tests + `TaskPlanningHttpRepositoryTest` 2 tests; existing Android JVM regression included | PASS |
-| D109-ANDROID-JVM | Android JVM regression | `:app:testDebugUnitTest` — `70 / 70` | PASS |
+| D109-ANDROID-JVM | Android JVM regression | `:app:testDebugUnitTest` — `70 / 70`（AuthController immediate retry ordering corrective included） | PASS |
 | D109-ANDROID-UI | Compose UI planning surface | Quick Add six fields, ordinary planned row edit, Settings navigation, existing Start/Complete pending guards | PASS local |
 | D109-ANDROID-EMULATOR | Local runtime | Windows AVD `TaskChute_API33` / Pixel 7 / Android 13 API 33 / Google APIs / x86_64 / `emulator-5554`; `scripts/android-qa.ps1`; install/activity/UI tree/crash buffer; `12 / 12`, failures/errors/skipped `0 / 0 / 0` | PASS |
-| D109-CI | Exact pushed SHA CI / APK artifact | GitHub Actions run `34907800194`, head `543efd8904eabfab63c4b38208adb841b1cc16f4`; Web/Worker and Android JVM/Debug APK/instrumentation compile jobs PASS; artifact `taskchute-android-debug-543efd8904eabfab63c4b38208adb841b1cc16f4` ID `10373476177` | PASS |
+| D109-CI | Exact pushed SHA CI / APK artifact | GitHub Actions run `34909083202`, head `bce016838d6697dbfff2ad8f13c75efdc9775aa1`; Web/Worker and Android JVM/Debug APK/instrumentation compile jobs PASS; artifact `taskchute-android-debug-bce016838d6697dbfff2ad8f13c75efdc9775aa1` ID `10374075900` | PASS |
 | D109-READONLY | Future/past/routine boundary | Controller rejects non-current, non-planning, running/completed, and routine-derived edit requests; no new Day establishment | PASS source/JVM |
 | D109-SERVER | Worker/API/schema | Existing AddTaskToDay, UpdateTaskMetadata, SetEntryMode, SetEntryEstimate, SetEntryPlannedStart composed; no server source or migration changed | NOT_REQUIRED |
 | D109-REGRESSION | Existing D-107/D-108 behavior | Start/Complete, loading/empty/retry/auth states, date navigation, disabled Project/Notes, Settings enabled | PASS emulator |
@@ -24,6 +24,10 @@ all 12 tests and found no application crash entries. `scripts/android-qa.ps1` re
 official Windows local runtime gate. Web/Worker tests are NOT_RUN by impact analysis because
 D-109 changed only Android and canonical docs; migration, persistent deploy, production, and
 Release are NOT_RUN / NO.
+
+最終AuthController corrective後のlocal JVM `70 / 70`、AVD `12 / 12`、exact-SHA CI
+`34909083202`はPASS。途中のdocs-only SHA `2f25285`では既存retry testの通知順序依存が
+一時的にFAILしたが、corrective `bce0168`で解消し、最終CIでは再発していない。
 
 ## D-108 Android Realtime Invalidation v0.1 — local implementation
 
