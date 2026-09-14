@@ -352,6 +352,34 @@ describe("Dogfood Day shell", () => {
     expect(screen.getByRole("button", { name: "今日" })).toHaveProperty("disabled", true);
   });
 
+  it("does not resume a retained Note draft into a different principal", async () => {
+    const current = {
+      document_id: "0199d104-0000-0000-0000-000000000002", kind: "standalone" as const,
+      title: "Server", markdown_body: "body", revision: 2, archived_at: null,
+      created_at: "2026-09-13T00:00:00.000Z", updated_at: "2026-09-13T00:00:00.000Z",
+    };
+    mocks.loadSession.mockResolvedValueOnce({ user: { id: "test-user" } }).mockResolvedValueOnce({ user: { id: "other-user" } });
+    mocks.loadDay.mockResolvedValue(emptyDay);
+    mocks.loadDocuments.mockResolvedValue({ documents: [current] });
+    mocks.loadDocument.mockResolvedValue(current);
+    mocks.updateDocument.mockRejectedValueOnce(new ApiClientError("expired", 401, false, "unauthenticated"));
+    render(<App />);
+    await screen.findByRole("region", { name: "DayBoard" });
+    fireEvent.click(screen.getByRole("button", { name: "ノート" }));
+    await waitFor(() => expect(screen.getByDisplayValue("Server")).toBeTruthy());
+    fireEvent.change(screen.getByLabelText("ノートタイトル"), { target: { value: "Local draft" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await screen.findByRole("dialog", { name: "再認証が必要です" });
+    fireEvent.change(screen.getByRole("textbox", { name: "メール" }), { target: { value: "other@example.com" } });
+    fireEvent.change(screen.getByLabelText("パスワード"), { target: { value: "password" } });
+    fireEvent.submit(screen.getByRole("button", { name: "再認証" }).closest("form")!);
+
+    await screen.findByText("元のアカウントを確認できないため、内容を安全のため保持しています。");
+    expect(screen.getByDisplayValue("Local draft")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "今日" })).toHaveProperty("disabled", true);
+    expect(mocks.updateDocument).toHaveBeenCalledTimes(1);
+  });
+
   it("exposes the authenticated Notes destination and an empty canonical list", async () => {
     mocks.loadDay.mockResolvedValue(emptyDay);
     render(<App />);
