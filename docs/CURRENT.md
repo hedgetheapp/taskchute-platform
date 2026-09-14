@@ -35,6 +35,41 @@ native authenticated sign-in、startup restore、401/network UXは`NOT_RUN`で�
 
 D-106 classification: `APPROVED / IMPLEMENTED / INTEGRATED / TESTED / MAIN_PUSHED / ANDROID_AUTH_FOUNDATION_VERIFIED_LOCAL / GITHUB_CI_VERIFIED / PERSISTENT_NONPROD_UNCHANGED / GALAXY_S23_NOT_RUN / MIGRATION_NOT_REQUIRED / PRODUCTION_NOT_RUN / RESTORE_NOT_RUN / RELEASED_NO`。
 
+### D-106 Android Session Restore Corrective — 2026-09-14
+
+独立reviewで確認されたstartup restoreのHTTP 200-only判定と、serverのno-session
+応答後に保存済みcookieを復活させるCoordinator fallbackを、Approved D-106内の
+reversible correctiveとして`dbff28377c3791820f0489d6b068003f885d8097`へ反映した。
+
+固定済みBetter Auth 1.7.1の`GET /get-session`契約は、未認証時のJSON `null`、
+有効時の`{ session: object, user: object }`である。Android transportはレスポンス本文を
+64 KiB以内で読み、純Kotlinのstrict parserでsession/user objectと識別子を検証する。
+JSON `null` / `{session:null,user:null}` / HTTP 401は`Unauthorized`、構造不正の2xxは
+`ProtocolFailure`、5xx / network failureは`TransientFailure`とし、valid bodyを確認した
+場合だけ既存cookie（rotationなし）またはSet-Cookie後のcookieを`Authenticated`として
+保存する。`Set-Cookie`による既存cookie削除はbodyがvalidに見える場合も優先し、
+Coordinatorは`result.session ?: currentSession() ?: saved`をrestore経路で使わない。
+これによりno-session後のstale credential resurrectionを防ぎ、transient failureでは
+encrypted storeを保持する。
+
+local evidenceはAndroid JVM `31 / 31`（実HTTP transportのvalid/null/empty/malformed/
+401/500/network、cookie deletion/rotation、Coordinator stale fallback防止を含む）、
+canonical nonprod URL付きDebug APK、instrumentation APK compile、既存Web `442 / 442`、
+Worker/D1 `307 / 307`、typecheck、normal/exact nonprod build、deploy guard、Wrangler
+dry-run、`git diff --check`がPASSした。未認証persistent nonprodの`GET /api/auth/get-session`
+はHTTP `200` / body `null`をread-only確認した。Worker/API/schema/migration、persistent
+nonprod data、production、credentialsは変更していない。
+
+exact pushed SHA `dbff28377c3791820f0489d6b068003f885d8097`のGitHub Actions run
+`34819562847`はWeb/Worker verificationとAndroid auth foundation verificationの全jobが
+success。Android artifactは`taskchute-android-debug-dbff28377c3791820f0489d6b068003f885d8097`
+（artifact ID `10338065948`、約9.8 MiB、retention 7日、expires `2026-09-21T07:49:40Z`）である。
+これはGalaxy S23でのinstall/auth/Keystore実行を意味しない。`adb devices`は空のため、
+Galaxy S23実機検証は引き続き`NOT_RUN`。D-106の既存Approved semantics、Web auth、
+APP/AUTH migrationは変更していない。
+
+D-106 corrective classification: `APPROVED / CORRECTED / IMPLEMENTED / INTEGRATED / TESTED / MAIN_PUSHED / ANDROID_SESSION_RESTORE_VALIDATION_VERIFIED_LOCAL / GITHUB_CI_VERIFIED / DEBUG_APK_ARTIFACT_GENERATED / PERSISTENT_NONPROD_UNCHANGED / GALAXY_S23_NOT_RUN / MIGRATION_NOT_REQUIRED / PRODUCTION_NOT_RUN / RESTORE_NOT_RUN / RELEASED_NO`。
+
 ### D-105 Realtime Invalidation v0.1 — 2026-09-14
 
 D-105 implementation commit `1bea758324d4aa6bb05ca1e22c3d91658c3b384e`をcanonical `main`へfast-forward pushした。続くCI・source reviewで検出した既存テストのeffect待機を`6c7e3a0bc64a93e730e367e4b6053f510df85440`、`b2d47c53e0ab5d92f6a202541ab6e5b2bc0c109c`、`d013e98e9e7c3fe917a7fb83bbbb1f9e601e8eda`で安定化し、D-105の実装是正（HTTP probe URL、Project系Document scope、duplicate invalidation coalesce、DO binding数guard）を`1ae38b7ad221697704ab2df8ad6f4c819fedbae4`へ反映した。最終exact SHA `d013e98...`のGitHub Actions run `34808771287`はTypecheck、Web tests、Worker/D1 tests、Production buildすべてPASSした。

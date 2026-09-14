@@ -14,6 +14,20 @@
 | D106-DEVICE-01 | Galaxy S23 | Physical device/emulator was not connected (`adb devices` empty); authenticated sign-in, restore, 401, network UX, and Keystore instrumentation execution | NOT_RUN |
 | D106-SCOPE-01 | Boundary | No Today, offline sync, realtime, Widget, notification, production, credential retrieval, or persistent nonprod mutation | PASS |
 
+## D-106 Android Session Restore Corrective — local / CI closeout
+
+| ID | Verification target | Evidence | Status |
+|---|---|---|---|
+| D106-CORR-01 | Better Auth get-session body authority | Better Auth 1.7.1 source and persistent nonprod read-only probe confirm HTTP 200 + JSON `null` for no session and `{session: object, user: object}` for a valid session; strict parser requires both objects and identifiers | PASS |
+| D106-CORR-02 | Fail-closed restore and stale credential prevention | Real local HTTP transport tests cover valid 2xx, JSON `null`, `{session:null,user:null}`, malformed 2xx, 401, 500, network failure, cookie deletion precedence, cookie rotation, and no-rotation reuse; Coordinator restore no longer falls back to saved/current cookie without validated result | PASS local |
+| D106-CORR-03 | Transient / authoritative invalid-session storage behavior | transient 500/network retains SessionStore; authoritative no-session / 401 clears SessionStore and in-memory CookieJar; no password/session values logged | PASS local/source |
+| D106-CORR-04 | Android corrective local gates | `:app:testDebugUnitTest` `31 / 31`; canonical nonprod URL Debug APK; `:app:assembleDebugAndroidTest`; existing Web `442 / 442`; Worker/D1 `307 / 307`; typecheck, normal/exact nonprod build, deploy guard, Wrangler dry-run, diff-check | PASS |
+| D106-CI-02 | Exact corrective SHA CI and APK artifact | GitHub Actions run `34819562847`, exact SHA `dbff28377c3791820f0489d6b068003f885d8097`; Web/Worker and Android jobs success; artifact `taskchute-android-debug-dbff28377c3791820f0489d6b068003f885d8097`, ID `10338065948`, 7-day retention | PASS |
+| D106-DEVICE-02 | Galaxy S23 corrective verification | `adb devices` empty; APK artifact existence is not device install/auth/Keystore evidence | NOT_RUN |
+| D106-CORR-BOUNDARY | Corrective boundary | No Worker/API/schema/migration/dependency change, no nonprod deploy or data mutation, no credentials, production, restore, branch, PR, tag, Release | PASS / NOT_REQUIRED |
+
+D-106 corrective classification: `APPROVED / CORRECTED / IMPLEMENTED / INTEGRATED / TESTED / MAIN_PUSHED / ANDROID_SESSION_RESTORE_VALIDATION_VERIFIED_LOCAL / GITHUB_CI_VERIFIED / DEBUG_APK_ARTIFACT_GENERATED / GALAXY_S23_NOT_RUN / MIGRATION_NOT_REQUIRED / PRODUCTION_NOT_RUN / RESTORE_NOT_RUN / RELEASED_NO`。
+
 ## D-105 Realtime Invalidation v0.1 — local implementation gate
 
 | ID | Verification target | Evidence | Status |
