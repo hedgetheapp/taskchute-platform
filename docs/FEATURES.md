@@ -57,7 +57,7 @@ Status values: Planned / In design / Implemented / Verified / Withdrawn (histori
 | Cloudflare D1 application persistence | Implemented | AUTH_DB / APP_DB migrations、owner-scoped persistence、operations、executions、active Execution constraintを実装 |
 | D1 concurrency / atomicity spike | Verified | D1-SPIKE-01〜08 current-harness local + temporary remote PASS |
 | Application authentication | Implemented | Better Auth 1.7.1、public signup disabled、operator bootstrap、rolling 7日session、separate AUTH_DB / APP_DBを実装 |
-| Android app | Implemented / Local verified | D-106 auth foundationに加え、D-107 Android Today v0.1のMaterial 3 current-Day projection、Section grouping、date navigation、Start / Complete、running-task floating panel、loading / empty / retry / auth-required stateを実装。D-107のlocal/CI closeoutとGalaxy S23実機結果は`docs/CURRENT.md` / `docs/TEST_MATRIX.md`を参照。offline / realtime / Widgetは未実施 |
+| Android app | Implemented / Local verified / Emulator pending | D-106 auth foundationに加え、D-107 Android Today v0.1のMaterial 3 current-Day projection、TaskChute/date header、4 destination NavigationBar（Today以外はdisabled）、Section grouping、date navigation、Start / Complete、running-task floating panel、loading / empty / retry / auth-required stateを実装。Compose instrumentationはcompile済みだが、host KVM不足でEmulator runtimeは未実行。D-107のlocal/CI closeoutとGalaxy S23実機結果は`docs/CURRENT.md` / `docs/TEST_MATRIX.md`を参照。offline / realtime / Widgetは未実施 |
 | Android offline capability | In design | capability自体はApproved。操作範囲 / sync方式は未決 |
 | Android Widget | Planned | Android architectureを再利用 |
 | Wear OS / Pixel Watch | Planned | companion target。Compose for Wear OS第一候補、exact scope未決 |

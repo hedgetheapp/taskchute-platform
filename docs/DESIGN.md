@@ -645,12 +645,18 @@ D-102 correctiveでは、既存の24px cascade detailを48pxへ更新した。�
 ## D-107 Android Today
 
 Android TodayはMaterial 3のTopAppBar、date navigation、Section header、compact Task
-card、bottom NavigationBarで構成する。Task rowは左に小さいstate indicator、中央にtitleと
-secondary metadata、右にplanned Startまたはrunning Completeのicon-only actionを置く。
-current Dayにrunning Entryがある場合だけ、bottom navigationへ重ならない位置にfloating
-Cardを置き、titleと右側のComplete buttonを表示する。未establish Dayのexecution actionは
-表示しない。Composeはsingle-screen sliceとして実装し、未実装surfaceへ誤って遷移できる
-navigation affordanceを増やさない。
+card、bottom NavigationBarで構成する。HeaderはTaskChute identityとcurrent logical dateを
+明示し、前の日 / 次の日 / 今日 / refreshをdiscoverableにする。Logoutは利用可能なまま、
+primary date controlsを圧迫しないsecondary actionとして扱う。
+
+FooterのNavigationBarには`今日` / `プロジェクト` / `ノート` / `設定`を表示する。D-107で
+実装するのはTodayだけであり、残りはdisabled/unavailable treatmentにしてfake screenへ
+遷移させない。Task rowは左に小さいstate indicator、中央にtitleとsecondary metadata、
+右にplanned Startまたはrunning Completeのicon-only actionを置き、pending中は重複dispatchを
+防ぐためactionをdisabled表示にする。current Dayにrunning Entryがある場合だけ、bottom
+navigationへ重ならない位置にfloating Cardを置き、titleと右側の`完了`を表示する。
+未establish Dayのexecution actionは表示しない。Composeはsingle-screen sliceとして実装し、
+未実装surfaceを実装済みと誤認させるnavigationは追加しない。
 ## D-104 reliability feedback
 
 bootstrapの一時障害は、認証状態を壊さず「読み込みに失敗しました」と再読み込み操作を表示する。認証済み`401`では固定の再認証overlayを表示し、現在のNote editor/windowをunmountせず、未保存内容をこのtabのmemoryに保持する。再認証が同一principalと確認できた後だけcanonical reconcileを行い、既存のdirty draft・conflict・exact retryを継続する。別principalの場合は安全メッセージを表示して送信を禁止する。

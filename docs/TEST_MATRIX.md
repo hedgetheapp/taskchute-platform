@@ -2938,3 +2938,19 @@ D-103 corrective implementation commit `74155bee97a1b05eff05bcbfc07e311d0b68acb8
 
 Local implementation gates and exact pushed-SHA CI are PASS. Galaxy S23 device evidence remains
 separate from local/CI PASS and is recorded only after the user-driven device run.
+
+## D-107 Android Today UI fidelity / Emulator corrective
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D107-UI-CORR | UI fidelity | TaskChute/date header、前後日・今日・refresh、4 destination NavigationBar、disabled未実装destination、small indicator/icon-only action、pending-aware running panel | `TodayScreen.kt` / `TodayScreenInstrumentedTest.kt` / local source review | PASS local |
+| D107-ANDROIDTEST | Compose instrumentation | Section/task、Start / Complete、running panel、loading / empty / retry / auth-required、date navigation、bottom navigationの13シナリオを9 testでカバー | `:app:assembleDebugAndroidTest` | PASS compile / runtime NOT_RUN |
+| D107-CI-ANDROID | Exact pushed-SHA CI / APK | SHA `7c3a626872658057c6fdcb3dbed558e0d97b2071`、run `34837908288`、Android JVM/APK job success、APK artifact生成 | GitHub Actions read-back | PARTIAL PASS |
+| D107-EMULATOR | Emulator runtime | API 33 `google_apis` / x86_64 / Nexus 5でinstrumentationを実行 | job `103955886357`はhost KVM不足で`sys.boot_completed`に到達せずcancelled | NOT_RUN / CI_HOST_BLOCKED |
+| D107-DEVICE-CORR | Galaxy S23 smoke | Today表示、Start、running panel、Complete、usability | Emulator runtime未実行のためdevice smoke未実施 | NOT_RUN |
+| D107-SCOPE-CORR | Corrective boundary | Worker/API/schema/migration/deployを変更しない。production/Release/branch/PR/merge/tagなし | source review / operation record | PASS / NOT_REQUIRED |
+
+D-107 correctiveのlocal gatesはPASS。instrumentation APKはcompile済みだが、Emulator runtimeと
+Galaxy S23 smokeは実行できていないため、既存のD107 implementation/CI evidenceとは分離して
+記録する。APK artifactは`taskchute-android-debug-7c3a626872658057c6fdcb3dbed558e0d97b2071`
+（ID `10344289985`、expires `2026-09-21T11:24:53Z`）。

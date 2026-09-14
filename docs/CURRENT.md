@@ -24,6 +24,28 @@ Android jobはsuccessした。APK artifactは
 である。これはGalaxy S23へのinstall/実機操作を意味しない。production / releaseは
 `NOT_RUN / NO`を維持する。
 
+### D-107 Android Today UI fidelity / Emulator corrective — 2026-09-14
+
+D-107 correctiveとして、Today headerをTaskChute identity・logical date・前後日・今日・
+refreshで構成し、footerをMaterial 3 NavigationBarの`今日` / `プロジェクト` / `ノート` /
+`設定`へ整えた。未実装の3 destinationはdisabled表示とし、fake navigationは行わない。
+Task rowの小さいstate indicator、右側icon-only Start / Complete、pending中のrunning
+panel Complete無効化も追加した。Compose instrumentation testは9件で、Section/task表示、
+Start / Complete、running panel、loading / empty / retry / auth-required、date navigation、
+bottom navigationの13シナリオをカバーする。
+
+Local Android JVM `52 / 52`、Debug APK、instrumentation APK compile、Web `442 / 442`、
+Worker/D1 `307 / 307`、typecheck、normal/exact nonprod build、deploy guard、Wrangler
+dry-run、`git diff --check`はPASSした。GitHub Actions exact SHA
+`7c3a626872658057c6fdcb3dbed558e0d97b2071`のWeb/WorkerおよびAndroid JVM/APK jobはsuccessし、
+APK artifact `taskchute-android-debug-7c3a626872658057c6fdcb3dbed558e0d97b2071`
+（ID `10344289985`、10,368,366 bytes、expires `2026-09-21T11:24:53Z`）を生成した。
+Emulator job `103955886357`はAPI 33 `google_apis` / x86_64 / Nexus 5を起動しようとしたが、
+hostにKVMがなく`sys.boot_completed`へ到達しなかったためcancelledであり、instrumentation
+runtimeは`NOT_RUN / CI_HOST_BLOCKED`である。Galaxy S23 smokeも`NOT_RUN`（Emulator/device
+retest待ち）。Android correctiveはWorker/API/schema/migrationを変更しておらず、migration /
+deployは`NOT_REQUIRED`、production `NOT_RUN`、Released `NO`を維持する。
+
 ### D-106 Android Native Auth Foundation v0.1 — 2026-09-14
 
 D-106を`49b928651dfccaff11c9399be5abeb10eaecc160`で実装し、CI wrapperの

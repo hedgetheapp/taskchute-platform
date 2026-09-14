@@ -8,7 +8,11 @@ Mitigationとしてstrict JSON mapper、401のD-106 auth handoff、network/appli
 retry state、mutation成功後の同一logical Day reload、pending entry単位のdouble-submit
 抑止、non-current Dayのexecution action無効化を実装する。local DB、offline queue、
 realtime、Android-only domain authorityは追加しない。Galaxy S23実機の認証・操作結果は
-automated/local evidenceとは分離し、端末がない場合`NOT_RUN`とする。
+automated/local evidenceとは分離し、端末がない場合`NOT_RUN`とする。D-107 correctiveの
+Compose instrumentationはAPK compileまでPASSしたが、GitHub-hosted Linux runnerではKVMが
+利用できず、API 33 AVDが`sys.boot_completed`へ到達しなかった。したがってEmulator runtime
+も`NOT_RUN / CI_HOST_BLOCKED`であり、Galaxy S23 smokeとは別の証拠として扱う。Emulatorまたは
+実機でのruntime evidenceが得られるまで、Android Todayの操作verified判定は保留する。
 
 ## R-063 — D-106 native session and device-verification boundary
 
