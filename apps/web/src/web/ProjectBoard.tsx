@@ -19,6 +19,7 @@ interface ProjectBoardProps {
   onOpenProjectNote?: (projectId: string, projectTitle: string) => void;
   onBeforeProjectDelete?: (projectId: string) => Promise<boolean>;
   onProjectDeleted?: (projectId: string) => void;
+  realtimeRefresh?: { token: number; scopes?: Array<{ kind: string }> };
 }
 
 function isFormElement(element: Element | null): boolean {
@@ -43,7 +44,7 @@ type RetryOperation =
   | { kind: "reorder"; request: ReorderProjectsRequest }
   | { kind: "delete"; request: DeleteProjectRequest };
 
-export function ProjectBoard({ onUnauthorized, onProjectsChanged, onOpenProjectNote, onBeforeProjectDelete, onProjectDeleted }: ProjectBoardProps) {
+export function ProjectBoard({ onUnauthorized, onProjectsChanged, onOpenProjectNote, onBeforeProjectDelete, onProjectDeleted, realtimeRefresh }: ProjectBoardProps) {
   const [board, setBoard] = useState<ProjectBoardProjection | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -69,6 +70,7 @@ export function ProjectBoard({ onUnauthorized, onProjectsChanged, onOpenProjectN
   const deleteOriginRef = useRef<HTMLElement | null>(null);
   const deleteFallbackRef = useRef<HTMLElement | null>(null);
   const noticeTimerRef = useRef<number | null>(null);
+  const deferredRealtimeRefreshRef = useRef(false);
 
   useOutsideClick(openMenuId !== null, (target) => target instanceof Element
     && Boolean(target.closest(".project-overflow-menu, .project-overflow")), () => setOpenMenuId(null));
@@ -101,6 +103,22 @@ export function ProjectBoard({ onUnauthorized, onProjectsChanged, onOpenProjectN
   }, [onProjectsChanged, onUnauthorized]);
 
   useEffect(() => { void reload(); }, [reload]);
+
+  useEffect(() => {
+    if (!realtimeRefresh?.token || (realtimeRefresh.scopes && !realtimeRefresh.scopes.some((scope) => scope.kind === "projects"))) return;
+    if (pending || draft || editingId !== null || deleteTarget !== null || retryOperation !== null) {
+      deferredRealtimeRefreshRef.current = true;
+      return;
+    }
+    deferredRealtimeRefreshRef.current = false;
+    void reload();
+  }, [deleteTarget, draft, editingId, pending, realtimeRefresh?.token, reload, retryOperation]);
+
+  useEffect(() => {
+    if (pending || !deferredRealtimeRefreshRef.current || draft || editingId !== null || deleteTarget !== null || retryOperation !== null) return;
+    deferredRealtimeRefreshRef.current = false;
+    void reload();
+  }, [deleteTarget, draft, editingId, pending, reload, retryOperation]);
 
   const visible = useMemo(() => {
     if (!board) return [];

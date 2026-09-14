@@ -1,5 +1,11 @@
 # Risks
 
+## R-062 — D-105 realtime notification is non-canonical
+
+D-105 adds a per-user Hibernation WebSocket `RealtimeHub` only as a freshness accelerator. The socket can disconnect, reconnect late, deliver a duplicate, or fail to publish after a successful D1 commit; none of these states may replace canonical HTTP Query, mutation replay, CAS, or D-066/D-104 local barriers. Cross-user routing, same-origin authentication, malformed input, reconnect storms, and dirty Document overwrite are the primary risks.
+
+Mitigation/evidence: Worker derives the Hub key from the authenticated app user, validates the WebSocket Origin and internal handoff, accepts no domain command over the socket, and publishes only after `response.ok` from a canonical mutation. The Web client validates a versioned bounded protocol, uses bounded exponential reconnect with jitter, coalesces scope refreshes, and defers refresh while local mutation/editor barriers exist. Local protocol/client/DO integration tests and source review are recorded in the D-105 matrix; persistent nonprod and two-browser evidence remain separate until completed. No DO domain state, APP/AUTH migration, polling, offline persistence, or production rollout is included.
+
 ## R-061 — D-104 Web reliability and repository safety boundary
 
 D-104 separates initial non-auth bootstrap failures from signed-out state, and routes authenticated `401` into a same-principal reauthentication barrier. The main residual risk is that Note editor/window drafts are preserved only in browser memory: a full reload/close can still lose a draft, while dirty/unresolved beforeunload and in-app navigation protections remain required. A wrong reauthenticated principal is blocked from automatically resuming or sending the retained draft.

@@ -38,18 +38,26 @@ D-049によりinitial productionもWorkers Freeから開始する。2026-09-01�
 
 Initial productionはWorker 1つとseparate AUTH / APP D1 2つを追加する。custom domain、Cloudflare Access、paid plan、external backup service、DR automationは今回のapproved cost scopeに含めない。
 
+## D-105 realtime invalidation v0.1
+
+D-105ではCloudflare Durable ObjectsのSQLite-backed namespaceとHibernation WebSocketを、Webのfreshness acceleratorとして導入する。RealtimeHubはdomain stateを保存せず、periodic pollingや常時起動timerも使わない。D1 / HTTP Queryがcanonical authorityであり、通知失敗はmutation successを変更しない。
+
+2026-09-14にCloudflare公式のHibernation WebSocket guidance、Durable Object SQLite namespace / migration configuration、Wrangler configuration、Durable Objects pricingを再確認した。pricing / quotaは変更され得るためProduct behaviorへhard-codeせず、namespace作成とproduction判断の前に再確認する。paid-plan upgradeは行わず、connected sockets、reconnect、publish failureを現行observabilityで追跡できる範囲に限定する。
+
+Official references: https://developers.cloudflare.com/durable-objects/best-practices/websockets/、https://developers.cloudflare.com/durable-objects/reference/durable-objects-migrations/、https://developers.cloudflare.com/workers/wrangler/configuration/、https://developers.cloudflare.com/durable-objects/platform/pricing/。
+
 ## Deferred / optional infrastructure
 
 以下はinitial implementationでは採用しない。
 
-- Durable Objects
+- Durable Objects（D-105のWeb realtime invalidation v0.1を除く）
 - external PostgreSQL / Hyperdrive
 - D1 read replication
-- realtime push infrastructure
+- realtime push infrastructure（D-105のWeb invalidate-only scopeを除く）
 
 将来requirementやD1 feasibility evidenceによって必要性が生じた場合に再評価する。
 
-特にD1 atomicity / concurrency spikeが成立しない場合は、Costだけを理由にD1へ固執せずDurable Objects等を含めて再評価する。
+特にD1 atomicity / concurrency spikeが成立しない場合は、Costだけを理由にD1へ固執せずDurable Objects等を含めて再評価する。D-105はこの一般的な将来評価を置き換えず、Webのfreshness notificationに限る。
 
 ## Binary storage
 

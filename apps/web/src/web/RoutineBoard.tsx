@@ -22,7 +22,7 @@ import {
   type RoutineColumnPreference,
 } from "./routine-columns";
 
-interface RoutineBoardProps { onUnauthorized: () => void; }
+interface RoutineBoardProps { onUnauthorized: () => void; realtimeRefresh?: { token: number; scopes?: Array<{ kind: string }> }; }
 interface ScheduleDraft { schedule: RoutineScheduleInput; }
 interface ResizeState { key: RoutineColumnKey; startX: number; startWidth: number; }
 
@@ -102,7 +102,7 @@ function connectedElement(element: HTMLElement | null): HTMLElement | null {
   return element?.isConnected ? element : null;
 }
 
-export function RoutineBoard({ onUnauthorized }: RoutineBoardProps) {
+export function RoutineBoard({ onUnauthorized, realtimeRefresh }: RoutineBoardProps) {
   const [board, setBoard] = useState<RoutineBoardProjection | null>(null);
   const [modeBoard, setModeBoard] = useState<ModeBoardProjection | null>(null);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
@@ -133,6 +133,7 @@ export function RoutineBoard({ onUnauthorized }: RoutineBoardProps) {
   const deleteOriginRef = useRef<HTMLElement | null>(null);
   const deleteCloseFallbackRef = useRef<HTMLElement | null>(null);
   const noticeTimerRef = useRef<number | null>(null);
+  const deferredRealtimeRefreshRef = useRef(false);
 
   const showNotice = useCallback((message: string) => {
     if (noticeTimerRef.current !== null) window.clearTimeout(noticeTimerRef.current);
@@ -168,6 +169,22 @@ export function RoutineBoard({ onUnauthorized }: RoutineBoardProps) {
   }, [onUnauthorized]);
 
   useEffect(() => { void reload(); }, [reload]);
+
+  useEffect(() => {
+    if (!realtimeRefresh?.token || (realtimeRefresh.scopes && !realtimeRefresh.scopes.some((scope) => scope.kind === "routines"))) return;
+    if (pending || newDraft || Object.keys(scheduleDrafts).length > 0 || deleteOperation !== null) {
+      deferredRealtimeRefreshRef.current = true;
+      return;
+    }
+    deferredRealtimeRefreshRef.current = false;
+    void reload();
+  }, [deleteOperation, newDraft, pending, realtimeRefresh?.token, reload, scheduleDrafts]);
+
+  useEffect(() => {
+    if (pending || !deferredRealtimeRefreshRef.current || newDraft || Object.keys(scheduleDrafts).length > 0 || deleteOperation !== null) return;
+    deferredRealtimeRefreshRef.current = false;
+    void reload();
+  }, [deleteOperation, newDraft, pending, reload, scheduleDrafts]);
 
   const visible = useMemo(() => {
     if (!board) return [];

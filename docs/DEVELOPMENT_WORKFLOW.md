@@ -296,6 +296,12 @@ destructive migrationやproduction data変更では、承認だけを安全対�
 
 CIのNode runtimeは、package engineで指定がないため、現行の成功済み開発環境に合わせて`22.22.3`を明示的にpinする。依存追加は行わない。
 
+## D-105 realtime verification boundary
+
+D-105では、local verification後にcanonical `main`へfast-forward pushし、push後のGitHub Actions CIを確認してから、canonical persistent nonprodへexact mainをdeployする。Wrangler generated configはWorker名、`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、APP/AUTH binding、`REALTIME_HUB` Durable Object binding/class/SQLite storageをguardで検証する。APP/AUTH migrationは追加・適用しない。
+
+Realtime notificationはfreshness acceleratorであり、canonical authorityではない。two-client local integration、Web reconnect、D-066 pending / D-104 reauth / dirty Document保護、mutation mapping、DB integrity、persistent nonprodのbinding evidenceを、通常HTTPのtest/build/deploy evidenceと分離して記録する。CI PASSやnonprod WebSocket接続はproduction Releasedを意味しない。
+
 ## Handoff
 
 チャット移行や大きな作業区切りでは、会話履歴を読み直さなくても再開できる程度のpointer + deltaを残す。

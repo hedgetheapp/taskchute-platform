@@ -53,6 +53,7 @@ export interface TaskNoteEditorProps {
   onOpenNewTab: () => void;
   authEpoch?: number;
   mutationsBlocked?: boolean;
+  realtimeRefresh?: { token: number; scopes?: Array<{ kind: string; document_ids?: string[] }> };
 }
 
 type PrimaryDocument = TaskPrimaryDocument | ProjectPrimaryDocument;
@@ -68,7 +69,7 @@ function isResolvedUpdate(request: PrimaryUpdateRequest, document: PrimaryDocume
 export function TaskNoteEditor({
   taskId = "", documentId, taskTitle = "Task Note", documentKind = "task_primary", projectId, projectTitle, initialGeometry, zIndex = 12, focusRequest = 0, restoreRequest = 0,
   outsideClickRequest = 0, onActivate, onClose, onUnauthorized, onDirtyChange, onUnresolvedChange, onRegisterFlush, onOpenNewTab,
-  authEpoch = 0, mutationsBlocked = false,
+  authEpoch = 0, mutationsBlocked = false, realtimeRefresh,
 }: TaskNoteEditorProps) {
   const isProjectPrimary = documentKind === "project_primary";
   const primaryId = isProjectPrimary ? projectId ?? taskId : taskId;
@@ -111,6 +112,7 @@ export function TaskNoteEditor({
   const onRegisterFlushRef = useRef(onRegisterFlush);
   const handledOutsideClickRequestRef = useRef(0);
   const mutationsBlockedRef = useRef(false);
+  const deferredRealtimeRefreshRef = useRef(false);
 
   const dirty = draftBody !== baselineBody;
   const unresolved = unresolvedRequest !== null;
@@ -352,6 +354,24 @@ export function TaskNoteEditor({
       }
     })();
   }, [authEpoch, documentId, isProjectPrimary, onUnauthorized, primaryLabel]);
+
+  useEffect(() => {
+    const documentScope = realtimeRefresh?.scopes?.find((scope) => scope.kind === "documents");
+    if (!realtimeRefresh?.token || !documentScope
+      || (documentScope.document_ids && !documentScope.document_ids.includes(documentId))) return;
+    if (dirty || unresolved || saving || mutationsBlocked) {
+      deferredRealtimeRefreshRef.current = true;
+      return;
+    }
+    deferredRealtimeRefreshRef.current = false;
+    void loadCanonical();
+  }, [dirty, loadCanonical, mutationsBlocked, realtimeRefresh?.token, saving, unresolved]);
+
+  useEffect(() => {
+    if (dirty || unresolved || saving || mutationsBlocked || !deferredRealtimeRefreshRef.current) return;
+    deferredRealtimeRefreshRef.current = false;
+    void loadCanonical();
+  }, [dirty, loadCanonical, mutationsBlocked, saving, unresolved]);
 
   const applySaved = useCallback((saved: PrimaryDocument, request: PrimaryUpdateRequest) => {
     const bodyStillSent = draftRef.current === request.markdown_body;

@@ -1,5 +1,18 @@
 # Test Matrix
 
+## D-105 Realtime Invalidation v0.1 — local implementation gate
+
+| ID | Verification target | Evidence | Status |
+|---|---|---|---|
+| D105-DO-01 | Hibernation RealtimeHub boundary | local Workerd integration: authenticated same-user sockets share one Hub; different users are isolated; ordinary HTTP / wrong Origin / unauthenticated upgrade are rejected; browser messages are invalidate-only | PASS local |
+| D105-DO-02 | Versioned invalidation protocol | shared protocol parser/serializer bounds payload and rejects malformed/unknown versions; mutation-family scope mapping is centralized | PASS local |
+| D105-WEB-01 | Connection lifecycle | focused client tests cover authenticated probe/open, message validation, bounded reconnect, 401 auth callback, and stop cleanup | PASS local |
+| D105-WEB-02 | Mounted surface refresh safety | App / Notes / Project / Mode / Routine / Task Note integrations defer refresh while dirty, saving, pending, unresolved, or mutation-blocked | PASS source/focused |
+| D105-LOCAL-01 | Two-client local convergence | local Durable Object socket broadcast is invalidate-only; canonical HTTP remains the data path. Mutation-triggered publish and reconnect convergence are included in final local gate | PENDING final gate |
+| D105-NONPROD-01 | Persistent nonprod infrastructure | exact main deploy, DO binding/namespace, APP/AUTH pending/integrity, authenticated two-browser propagation | NOT_RUN |
+| D105-BROWSER-01 | Authenticated two-browser E2E | same-user Day / Project / Mode / Routine / clean+dirty Document / disconnected reconnect scenarios | NOT_RUN |
+| D105-SCOPE-01 | Boundary | no APP/AUTH migration, production, offline sync, realtime command, or domain state in DO storage | PASS source |
+
 ## D-103 / D-104 authenticated browser verification closeout — 2026-09-14
 
 | ID | Verification target | Evidence | Status |

@@ -2,6 +2,16 @@
 
 Statuses: Approved / Proposed / Superseded
 
+## D-105 — Realtime Invalidation v0.1
+
+Status: **Approved**
+
+Canonical Decision: `docs/decisions/D-105_REALTIME_INVALIDATION_V01.md`。
+
+D-105は、D1 / 既存HTTP Queryをcanonical authorityとして維持したまま、Cloudflare Durable ObjectsのHibernation WebSocket APIでinvalidate-onlyのfreshness acceleratorを追加する。認証済みapp userごとに1つの`RealtimeHub`をserver-derived identityでroutingし、Today、Project、Mode、Routine、Notes / Documentsの受信clientはversioned scope通知後にcanonical Queryをrefetchする。Realtime notificationはfreshness acceleratorであり、canonical authorityではない。
+
+dirty / pending / unresolved local stateはnotificationで上書きせず、安全なqueue/reconcile境界までrefreshを延期する。Realtime failureはHTTP mutation/queryの結果を変更せず、WebSocket 401だけをD-104 reauth barrierへ接続する。APP/AUTH migration、realtime command、polling、offline sync、production rolloutは含めない。D-105により、Webに限って既存のpush vs poll vs realtime open questionを解決し、Android offline syncの問いは未解決のまま残す。
+
 ## D-104 — Web Reliability and Repository Safety Hardening v0.1
 
 Status: **Approved**

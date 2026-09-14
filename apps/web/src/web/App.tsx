@@ -53,6 +53,7 @@ import type {
   SetAutoCarryOverduePlannedRequest,
   MoveEntryPlacementIntent,
 } from "../shared/contracts";
+import { mergeRealtimeScopes, type RealtimeRefresh, type RealtimeScope } from "../shared/realtime";
 import { isSamePlannedStartCohort } from "../shared/planned-entry-order";
 import { advanceProjectionClock, calculateStartForecast, formatStartForecast } from "../shared/start-forecast";
 import { uuidv7 } from "../shared/uuidv7";
@@ -86,8 +87,13 @@ import { documentPermalink, persistTaskNoteOpenMode, readTaskNoteOpenMode, type 
 import { cascadeTaskNoteWindowGeometry, isTaskNoteWindowMobile, readTaskNoteWindowGeometry, type TaskNoteWindowGeometry } from "./task-note-window-geometry";
 import { HitAHint } from "./HitAHint";
 import { CalendarPopover, formatLogicalDateLabel } from "./ui-helpers";
+import { RealtimeConnectionManager, type RealtimeConnectionStatus } from "./realtime-client";
 
 export { DAY_COLUMNS_STORAGE_KEY } from "./day-columns";
+
+const ALL_REALTIME_SCOPES: RealtimeScope[] = [
+  { kind: "day" }, { kind: "projects" }, { kind: "modes" }, { kind: "routines" }, { kind: "documents" },
+];
 
 type AuthState = "loading" | "bootstrap-error" | "signed-out" | "signed-in";
 type AppView = "today" | "routines" | "settings" | "notes";
@@ -775,13 +781,22 @@ export function App() {
   const [sessionBarrier, setSessionBarrier] = useState<"reauth-required" | null>(null);
   const [reauthError, setReauthError] = useState<string | null>(null);
   const [authEpoch, setAuthEpoch] = useState(0);
+  const [realtimeRefresh, setRealtimeRefresh] = useState<RealtimeRefresh>({ token: 0, scopes: [] });
+  const [realtimeStatus, setRealtimeStatus] = useState<RealtimeConnectionStatus>("idle");
   const authenticatedRef = useRef(false);
   const authSubjectIdRef = useRef<string | null>(null);
   const sessionBarrierRef = useRef<"reauth-required" | null>(null);
   const reauthInFlightRef = useRef(false);
+  const realtimeManagerRef = useRef<RealtimeConnectionManager | null>(null);
+  const deferredRealtimeScopesRef = useRef<RealtimeScope[]>([]);
+  const notesDirtyRef = useRef(false);
+  const notesUnresolvedRef = useRef(false);
+  const realtimeMutationBarrierRef = useRef(false);
   const [view, setView] = useState<AppView>("today");
   const [notesDirty, setNotesDirty] = useState(false);
   const [notesUnresolved, setNotesUnresolved] = useState(false);
+  notesDirtyRef.current = notesDirty;
+  notesUnresolvedRef.current = notesUnresolved;
   const notesFlushRef = useRef<(() => Promise<boolean>) | null>(null);
   const [taskNoteWindows, setTaskNoteWindows] = useState<TaskNoteWindowState[]>([]);
   const taskNoteWindowsRef = useRef<TaskNoteWindowState[]>([]);
@@ -1019,6 +1034,7 @@ export function App() {
     ?? routineConversionOperation ?? routineEndOperation ?? routineEstimateOperation ?? retainedRoutineEstimateOperations[0] ?? routineSectionPlanOperation
     ?? routineModeOperation ?? retainedRoutineModeOperations[0] ?? autoCarrySettingOperation ?? modeOperation
     ?? retainedModeOperations[0] ?? null;
+  realtimeMutationBarrierRef.current = pendingMutationCount > 0 || retainedOperation !== null;
   const globalPending = pending === "login" || pending === "project" || pending === "project-settings"
     || pending === "day-navigation" || pending === "configuration" || pending === "section-settings"
     || pending === "auto-carry-setting" || pending === "logout";
@@ -1814,6 +1830,71 @@ export function App() {
       throw caught;
     }
   }, [establishAuthSubject, handleUnauthorized]);
+
+  const hasRealtimeLocalBarrier = useCallback((scopes: RealtimeScope[]): boolean => {
+    if (realtimeMutationBarrierRef.current) return true;
+    const hasDocumentScope = scopes.some((scope) => scope.kind === "documents");
+    if (!hasDocumentScope) return false;
+    return notesDirtyRef.current || notesUnresolvedRef.current
+      || taskNoteWindowsRef.current.some((windowState) => windowState.dirty || windowState.unresolved);
+  }, []);
+
+  const refreshRealtimeScopes = useCallback(async (scopes: RealtimeScope[]): Promise<void> => {
+    const merged = mergeRealtimeScopes(scopes);
+    if (merged.length === 0 || !authenticatedRef.current || sessionBarrierRef.current !== null) return;
+    if (hasRealtimeLocalBarrier(merged)) {
+      deferredRealtimeScopesRef.current = mergeRealtimeScopes([...deferredRealtimeScopesRef.current, ...merged]);
+      return;
+    }
+    const hasDay = merged.some((scope) => scope.kind === "day");
+    const hasProjects = merged.some((scope) => scope.kind === "projects");
+    const hasModes = merged.some((scope) => scope.kind === "modes");
+    if (hasDay) {
+      try { await reconcile(); } catch { /* HTTP remains usable; the socket will retry later. */ }
+    }
+    if (hasProjects) void loadProjectsList().catch(() => { /* The current projection remains usable. */ });
+    if (hasModes && typeof api.loadModeBoard === "function") {
+      void api.loadModeBoard().then(setModeBoard).catch(() => { /* Settings can retry on open. */ });
+    }
+    setRealtimeRefresh((current) => ({ token: current.token + 1, scopes: merged }));
+  }, [hasRealtimeLocalBarrier, loadProjectsList, reconcile]);
+
+  useEffect(() => {
+    if (authState !== "signed-in" || sessionBarrier !== null) {
+      realtimeManagerRef.current?.stop();
+      realtimeManagerRef.current = null;
+      setRealtimeStatus("idle");
+      return;
+    }
+    if (typeof window.WebSocket !== "function") return;
+    const manager = new RealtimeConnectionManager({
+      onMessage: (message) => { void refreshRealtimeScopes(message.scopes); },
+      onConnected: () => { void refreshRealtimeScopes(ALL_REALTIME_SCOPES); },
+      onAuthFailure: handleUnauthorized,
+      onStatus: setRealtimeStatus,
+    });
+    realtimeManagerRef.current = manager;
+    manager.start();
+    const refreshOnResume = () => {
+      if (document.visibilityState === "visible") void refreshRealtimeScopes(ALL_REALTIME_SCOPES);
+    };
+    document.addEventListener("visibilitychange", refreshOnResume);
+    window.addEventListener("online", refreshOnResume);
+    return () => {
+      document.removeEventListener("visibilitychange", refreshOnResume);
+      window.removeEventListener("online", refreshOnResume);
+      manager.stop();
+      if (realtimeManagerRef.current === manager) realtimeManagerRef.current = null;
+    };
+  }, [authState, handleUnauthorized, refreshRealtimeScopes, sessionBarrier]);
+
+  useEffect(() => {
+    if (deferredRealtimeScopesRef.current.length === 0 || authState !== "signed-in"
+      || sessionBarrier !== null || realtimeMutationBarrierRef.current) return;
+    const scopes = deferredRealtimeScopesRef.current;
+    deferredRealtimeScopesRef.current = [];
+    void refreshRealtimeScopes(scopes);
+  }, [authState, notesDirty, notesUnresolved, pendingMutationCount, refreshRealtimeScopes, sessionBarrier, taskNoteWindows]);
 
   async function navigateToDay(logicalDate?: string) {
     if (!(await canLeaveNotes())) return;
@@ -6289,7 +6370,7 @@ export function App() {
   );
 
   return (
-    <div className={`app-layout${sidebarOpen ? "" : " sidebar-closed"}`} data-sidebar-state={sidebarOpen ? "open" : "closed"}>
+    <div className={`app-layout${sidebarOpen ? "" : " sidebar-closed"}`} data-sidebar-state={sidebarOpen ? "open" : "closed"} data-realtime-status={realtimeStatus}>
       <HitAHint enabled={authState === "signed-in"} blocked={hitAHintBlocked}
         viewKey={`${view}:${settingsDestination}:${day?.taskchute_day.id ?? "preview"}:${day?.taskchute_day.logical_date ?? ""}`}
         onFocusIntent={focusFromUserIntent} onActivateIntent={markUserFocusIntent} />
@@ -6318,9 +6399,10 @@ export function App() {
       <div className="authenticated-content">
         {!sidebarOpen && <button type="button" className="sidebar-reopen" aria-label="サイドバーを開く" title="サイドバーを開く"
           onClick={() => setSidebarOpen(true)}>›</button>}
-        {view === "routines" ? <RoutineBoard onUnauthorized={handleUnauthorized} /> : view === "notes" ? (
+        {view === "routines" ? <RoutineBoard onUnauthorized={handleUnauthorized} realtimeRefresh={realtimeRefresh} /> : view === "notes" ? (
           <NotesBoard onUnauthorized={handleUnauthorized} onDirtyChange={setNotesDirty}
             onUnresolvedChange={setNotesUnresolved} authEpoch={authEpoch} mutationsBlocked={sessionBarrier !== null}
+            realtimeRefresh={realtimeRefresh}
             initialDocumentId={notesInitialDocumentId}
             floatingProjectIds={taskNoteWindows.filter((windowState) => windowState.documentKind === "project_primary" && windowState.projectId).map((windowState) => windowState.projectId!) }
             onOpenProjectNote={(projectId, title) => { void openProjectNote(projectId, title); }}
@@ -6362,7 +6444,7 @@ export function App() {
               </section>
 
               {settingsDestination === "project" && (
-                <ProjectBoard onUnauthorized={handleUnauthorized}
+                <ProjectBoard onUnauthorized={handleUnauthorized} realtimeRefresh={realtimeRefresh}
                   onProjectsChanged={handleProjectsChanged}
                   onOpenProjectNote={(projectId, title) => { void openProjectNote(projectId, title); }}
                   onBeforeProjectDelete={canDeleteProject}
@@ -6373,7 +6455,7 @@ export function App() {
                 <ModeBoard board={modeBoard} onReload={async () => {
                   if (typeof api.loadModeBoard !== "function") return null;
                   return api.loadModeBoard();
-                }} onBoardChange={setModeBoard} onUnauthorized={handleUnauthorized} />
+                }} onBoardChange={setModeBoard} onUnauthorized={handleUnauthorized} realtimeRefresh={realtimeRefresh} />
               )}
 
               {settingsDestination === "calendar" && (
@@ -7283,7 +7365,7 @@ export function App() {
           outsideClickRequest={windowState.outsideClickRequest}
           onActivate={() => activateTaskNoteWindow(windowState.documentId)}
           onClose={() => void closeTaskNote(windowState.documentId)} onUnauthorized={handleUnauthorized}
-          authEpoch={authEpoch} mutationsBlocked={sessionBarrier !== null}
+          authEpoch={authEpoch} mutationsBlocked={sessionBarrier !== null} realtimeRefresh={realtimeRefresh}
           onDirtyChange={(dirty) => patchTaskNoteWindow(windowState.documentId, { dirty })}
           onUnresolvedChange={(unresolved) => patchTaskNoteWindow(windowState.documentId, { unresolved })}
           onRegisterFlush={(flush) => patchTaskNoteWindow(windowState.documentId, { flush })}

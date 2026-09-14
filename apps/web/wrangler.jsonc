@@ -21,12 +21,34 @@
       "migrations_dir": "migrations/app"
     }
   ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "REALTIME_HUB",
+        "class_name": "RealtimeHub"
+      }
+    ]
+  },
+  "exports": {
+    "RealtimeHub": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    }
+  },
   "env": {
     "nonprod": {
       "name": "taskchute-web-nonprod",
       "vars": {
         "RUNTIME_ENV": "nonprod",
         "BOOTSTRAP_ENABLED": "false"
+      },
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "REALTIME_HUB",
+            "class_name": "RealtimeHub"
+          }
+        ]
       },
       "d1_databases": [
         {
@@ -50,6 +72,14 @@
       "vars": {
         "RUNTIME_ENV": "production",
         "BOOTSTRAP_ENABLED": "false"
+      },
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "REALTIME_HUB",
+            "class_name": "RealtimeHub"
+          }
+        ]
       },
       "d1_databases": [
         {

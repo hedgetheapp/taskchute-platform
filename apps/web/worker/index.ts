@@ -110,6 +110,7 @@ import {
   loadProjectPrimaryDocumentById,
   updateProjectPrimaryDocument,
 } from "./application/project-primary-documents";
+import { realtimeScopesForMutation, serializePublishRequest } from "./realtime-invalidation";
 
 const SECURITY_HEADERS: Record<string, string> = {
   "cache-control": "no-store",
@@ -133,6 +134,26 @@ async function route(request: Request, env: Env): Promise<Response> {
       throw new HttpError(404, "resource_not_found", "Not found");
     }
     return bootstrapInitialUser(request, env);
+  }
+  if (url.pathname === "/api/v1/realtime") {
+    const origin = request.headers.get("origin");
+    const websocketUpgrade = request.method === "GET" && request.headers.get("upgrade")?.toLowerCase() === "websocket";
+    if (websocketUpgrade && (!origin || origin !== url.origin)) {
+      throw new HttpError(403, "forbidden", "Invalid realtime origin");
+    }
+    const principal = await resolvePrincipal(request, env);
+    if (!env.REALTIME_HUB) {
+      throw new HttpError(503, "infrastructure_ambiguous", "Realtime service is unavailable", true);
+    }
+    if (!websocketUpgrade) {
+      throw new HttpError(426, "malformed_request", "WebSocket upgrade required");
+    }
+    const id = env.REALTIME_HUB.idFromName(principal.appUserId);
+    const stub = env.REALTIME_HUB.get(id);
+    return stub.fetch(new Request("https://realtime.internal/connect", {
+      method: "GET",
+      headers: { upgrade: "websocket", origin: url.origin, "x-taskchute-realtime-authorized": "1" },
+    }));
   }
   if (!url.pathname.startsWith("/api/")) return new Response("Not found", { status: 404 });
 
@@ -593,9 +614,32 @@ async function route(request: Request, env: Env): Promise<Response> {
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
     try {
-      return withSecurityHeaders(await route(request, env));
+      const response = await route(request, env);
+      const scopes = realtimeScopesForMutation(request);
+      if (response.ok && scopes.length > 0 && env.REALTIME_HUB) {
+        const publish = serializePublishRequest(scopes);
+        if (publish) {
+          try {
+            const principal = await resolvePrincipal(request, env);
+            const id = env.REALTIME_HUB.idFromName(principal.appUserId);
+            const publishRequest = new Request("https://realtime.internal/__taskchute_publish", {
+              method: "POST",
+              headers: { "content-type": "application/json", "x-taskchute-realtime-internal": "publish" },
+              body: publish,
+            });
+            const publishPromise = env.REALTIME_HUB.get(id).fetch(publishRequest).catch((error) => {
+              console.error(JSON.stringify({ message: "realtime invalidation publish failed", error: error instanceof Error ? error.message : "unknown" }));
+            });
+            if (ctx) ctx.waitUntil(publishPromise);
+            else void publishPromise;
+          } catch (error) {
+            console.error(JSON.stringify({ message: "realtime invalidation authorization failed", error: error instanceof Error ? error.message : "unknown" }));
+          }
+        }
+      }
+      return response.status === 101 ? response : withSecurityHeaders(response);
     } catch (error) {
       if (error instanceof HttpError) {
         const body: ApiErrorBody = {
@@ -622,3 +666,5 @@ export default {
     }
   },
 } satisfies ExportedHandler<Env>;
+
+export { RealtimeHub } from "./realtime-hub";

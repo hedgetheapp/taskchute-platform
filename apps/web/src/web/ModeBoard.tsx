@@ -12,6 +12,7 @@ interface ModeBoardProps {
   onReload: () => Promise<ModeBoardProjection | null>;
   onBoardChange: (board: ModeBoardProjection) => void;
   onUnauthorized: () => void;
+  realtimeRefresh?: { token: number; scopes?: Array<{ kind: string }> };
 }
 
 function isFormElement(element: Element | null): boolean {
@@ -41,7 +42,7 @@ type RetryOperation =
   | { kind: "archive"; request: SetModeArchivedRequest; success: string }
   | { kind: "delete"; request: DeleteModeRequest };
 
-export function ModeBoard({ board, onReload, onBoardChange, onUnauthorized }: ModeBoardProps) {
+export function ModeBoard({ board, onReload, onBoardChange, onUnauthorized, realtimeRefresh }: ModeBoardProps) {
   const [pending, setPending] = useState(false);
   const [draft, setDraft] = useState(false);
   const [draftTitle, setDraftTitle] = useState("");
@@ -69,6 +70,7 @@ export function ModeBoard({ board, onReload, onBoardChange, onUnauthorized }: Mo
   const renameCanceledRef = useRef(false);
   const deleteOriginRef = useRef<HTMLElement | null>(null);
   const deleteFallbackRef = useRef<HTMLElement | null>(null);
+  const deferredRealtimeRefreshRef = useRef(false);
 
   useOutsideClick(openMenuId !== null, (target) => target instanceof Element
     && Boolean(target.closest(".project-overflow-menu, .project-overflow")), () => setOpenMenuId(null));
@@ -97,6 +99,22 @@ export function ModeBoard({ board, onReload, onBoardChange, onUnauthorized }: Mo
     if (!board) return;
     setFocusedId((current) => current && board.modes.some((mode) => mode.id === current) ? current : null);
   }, [board]);
+
+  useEffect(() => {
+    if (!realtimeRefresh?.token || (realtimeRefresh.scopes && !realtimeRefresh.scopes.some((scope) => scope.kind === "modes"))) return;
+    if (pending || draft || editingId !== null || deleteTarget !== null || retryOperation !== null) {
+      deferredRealtimeRefreshRef.current = true;
+      return;
+    }
+    deferredRealtimeRefreshRef.current = false;
+    void onReload().then((next) => { if (next) onBoardChange(next); });
+  }, [deleteTarget, draft, editingId, onBoardChange, onReload, pending, realtimeRefresh?.token, retryOperation]);
+
+  useEffect(() => {
+    if (pending || !deferredRealtimeRefreshRef.current || draft || editingId !== null || deleteTarget !== null || retryOperation !== null) return;
+    deferredRealtimeRefreshRef.current = false;
+    void onReload().then((next) => { if (next) onBoardChange(next); });
+  }, [deleteTarget, draft, editingId, onBoardChange, onReload, pending, retryOperation]);
 
   useEffect(() => {
     if (!helpOpen && deleteTarget === null) return;

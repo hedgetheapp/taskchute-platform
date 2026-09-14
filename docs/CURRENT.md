@@ -1,5 +1,11 @@
 # Current
 
+### D-105 Realtime Invalidation v0.1 — 2026-09-14
+
+D-105は、D1 / 既存HTTP Queryをcanonical authorityとして、authenticated app userごとのSQLite-backed Hibernation `RealtimeHub`へversioned invalidate-only notificationを送る実装を追加した。対象はToday / selected Day、Project、Mode、Routine、Notes / Documentsで、成功したcanonical mutationのcommit後だけbest-effort publishする。Realtime notificationはfreshness acceleratorであり、canonical authorityではない。APP/AUTH migration、realtime command、polling、offline sync、production rolloutは変更しない。
+
+Workerはsame-origin / authenticated WebSocket upgradeをserver-derived app userへroutingし、wrong-origin・unauthenticated・ordinary HTTPを拒否する。Web clientはsigned-in tabごとにbounded reconnectを行い、401だけD-104 reauth barrierへ接続する。dirty/pending/unresolved local state、D-066 retained operation、Document draftは通知で上書きしない。local focused realtime protocol / client / Durable Object integration evidenceはPASS、persistent nonprod deploy・two-browser authenticated propagation・final CI evidenceはcloseoutで記録する。
+
 ### D-103 / D-104 authenticated browser verification closeout — 2026-09-14
 
 このcloseoutでは、CUAの既存Codex In-app Browserを確認したが、persistent tab一覧は空で、既存の認証済みbrowser sessionを利用できなかった。資格情報の取得、再login、auth設定変更、bootstrap変更は行っていない。したがって、D-103 correctiveのToday Project reload/select、Today Project Note affordance、Notes Project inline editor、inline/floating ownership、archive retention、disposable hard-delete browser/DB、およびD-104のordinary Note writes、payload warning、payload hard-stop、bootstrap transient failure、401/reauthを、このrunのauthenticated browser evidenceとしては`NOT_RUN`と記録する。既存D-103 base browser evidenceとD-104のlocal/CI/nonprod/DB evidenceは変更せず保持する。

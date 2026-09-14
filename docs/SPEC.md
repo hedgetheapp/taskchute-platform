@@ -599,6 +599,12 @@ window identity、stack order、minimized/maximized stateはserver/localStorage�
 
 WorkerのJSON request ceiling `64 * 1024` bytesは維持する。Note Create/Updateのclientは実際に送るserialized JSONのUTF-8 byte lengthを共通helperで測定し、warning thresholdとhard stopを同じsave経路へ適用する。hard stopではdraftを保持して送信しない。
 
+## D-105 Realtime invalidation boundary
+
+Realtime notificationはfreshness acceleratorであり、canonical authorityではない。authenticated same-origin `/api/v1/realtime` WebSocketはserver-derived app userの`RealtimeHub`へ接続し、versioned invalidate scopeだけを受信する。Task/Entry/Document body等のcanonical dataやdomain commandをWebSocketで送らず、clientは通知後に既存HTTP Queryをrefetchする。
+
+対象はToday / selected Day、Project、Mode、Routine、Notes / Documents。成功したcanonical mutationのcommit後にだけbest-effort publishし、publish failureはmutation resultへ影響させない。401 handshake/probeはD-104 `reauth-required`へ接続するが、socket/network failureはsigned-outやreauthとは扱わずbounded reconnectを行う。dirty/pending/unresolved editorやD-066 retained operationをnotificationで破棄せず、safe boundaryでreconcileする。APP/AUTH schema、polling、offline sync、production rolloutは追加しない。
+
 ## D-103 Project Primary Document v0.1
 
 Projectはowner-scoped shared `Document`を0または1つの`project_primary` relationとして持てる。relationとDocumentはProject Note affordanceまたはProject/Document routeからlazyにEnsureされ、Document coreはProject FKを直接持たず、relation tableでProject identityを表す。Project rowのtitleが唯一のtitle authorityであり、Project Primary Documentの`title`はNULL、Markdown source `body`だけを保存する。Documentはnon-negative revisionとserver timestampsを持ち、body Updateはowner-scoped expected-revision CAS、operation fingerprint/exact replay、operation-id misuse rejectionを使う。

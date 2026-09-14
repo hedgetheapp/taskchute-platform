@@ -6,6 +6,9 @@ const expected = {
   bootstrap: "false",
   app: "taskchute-app-nonprod",
   auth: "taskchute-auth-nonprod",
+  realtimeBinding: "REALTIME_HUB",
+  realtimeClass: "RealtimeHub",
+  realtimeStorage: "sqlite",
 };
 const configPath = process.argv[2] ?? "dist/taskchute_web/wrangler.json";
 
@@ -21,12 +24,16 @@ try {
 }
 
 const bindings = new Map((config.d1_databases ?? []).map((binding) => [binding.binding, binding.database_name]));
+const realtimeBinding = (config.durable_objects?.bindings ?? []).find((binding) => binding.name === "REALTIME_HUB");
 const actual = {
   name: config.name,
   runtime: config.vars?.RUNTIME_ENV,
   bootstrap: config.vars?.BOOTSTRAP_ENABLED,
   app: bindings.get("APP_DB"),
   auth: bindings.get("AUTH_DB"),
+  realtimeBinding: realtimeBinding?.name,
+  realtimeClass: realtimeBinding?.class_name,
+  realtimeStorage: config.exports?.RealtimeHub?.storage,
 };
 const mismatches = Object.entries(expected)
   .filter(([key, value]) => actual[key] !== value)
@@ -35,4 +42,4 @@ if (mismatches.length > 0) {
   throw new Error(`Refusing nonprod deploy: ${mismatches.join("; ")}`);
 }
 
-console.log(`Nonprod deploy target verified: ${actual.name}; APP=${actual.app}; AUTH=${actual.auth}; RUNTIME_ENV=${actual.runtime}; BOOTSTRAP_ENABLED=${actual.bootstrap}`);
+console.log(`Nonprod deploy target verified: ${actual.name}; APP=${actual.app}; AUTH=${actual.auth}; REALTIME=${actual.realtimeBinding}/${actual.realtimeClass}/${actual.realtimeStorage}; RUNTIME_ENV=${actual.runtime}; BOOTSTRAP_ENABLED=${actual.bootstrap}`);

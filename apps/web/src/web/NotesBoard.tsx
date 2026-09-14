@@ -10,6 +10,7 @@ import type {
   UpdateProjectPrimaryDocumentRequest,
   UpdateDocumentRequest,
 } from "../shared/contracts";
+import type { RealtimeRefresh } from "../shared/realtime";
 import { uuidv7 } from "../shared/uuidv7";
 import { formatJsonRequestSize, serializeJsonRequestBody } from "../shared/request-size";
 import { api, ApiClientError } from "./api";
@@ -33,6 +34,7 @@ export interface NotesBoardProps {
   floatingProjectIds?: string[];
   authEpoch?: number;
   mutationsBlocked?: boolean;
+  realtimeRefresh?: RealtimeRefresh;
 }
 
 function isUpdateRequest(request: DocumentRequest): request is UpdateDocumentRequest {
@@ -268,7 +270,7 @@ function ProjectPrimaryInlineEditor({ candidate, onUnauthorized, onDirtyChange, 
   </form>;
 }
 
-export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, onSavingChange, onRegisterFlush, initialDocumentId, onOpenProjectNote, floatingProjectIds = [], authEpoch = 0, mutationsBlocked = false }: NotesBoardProps) {
+export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, onSavingChange, onRegisterFlush, initialDocumentId, onOpenProjectNote, floatingProjectIds = [], authEpoch = 0, mutationsBlocked = false, realtimeRefresh }: NotesBoardProps) {
   const [documents, setDocuments] = useState<StandaloneDocumentSummary[]>([]);
   const [projectDocuments, setProjectDocuments] = useState<ProjectPrimaryDocumentSummary[]>([]);
   const [document, setDocument] = useState<StandaloneDocument | null>(null);
@@ -313,6 +315,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
   const projectUnresolvedRef = useRef(false);
   const debounceRef = useRef<number | null>(null);
   const mutationsBlockedRef = useRef(false);
+  const deferredRealtimeRefreshRef = useRef(false);
 
   documentRef.current = document;
   modeRef.current = mode;
@@ -490,6 +493,30 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
       }
     })();
   }, [applySavedDocument, authEpoch, handleUnauthorized, refreshList]);
+
+  useEffect(() => {
+    if (!realtimeRefresh?.token || (realtimeRefresh.scopes && !realtimeRefresh.scopes.some((scope) => scope.kind === "documents"))) return;
+    if (dirty || unresolved || saving || projectSaving || projectUnresolved || mutationsBlocked) {
+      deferredRealtimeRefreshRef.current = true;
+      return;
+    }
+    deferredRealtimeRefreshRef.current = false;
+    void refreshList(showArchivedRef.current).then(async (list) => {
+      if (modeRef.current === "existing" && selectedIdRef.current && list?.some((item) => item.document_id === selectedIdRef.current)) {
+        await openCanonicalDocument(selectedIdRef.current);
+      }
+    });
+  }, [dirty, mutationsBlocked, openCanonicalDocument, projectSaving, projectUnresolved, realtimeRefresh?.token, refreshList, saving, unresolved]);
+
+  useEffect(() => {
+    if (dirty || unresolved || saving || projectSaving || projectUnresolved || mutationsBlocked || !deferredRealtimeRefreshRef.current) return;
+    deferredRealtimeRefreshRef.current = false;
+    void refreshList(showArchivedRef.current).then(async (list) => {
+      if (modeRef.current === "existing" && selectedIdRef.current && list?.some((item) => item.document_id === selectedIdRef.current)) {
+        await openCanonicalDocument(selectedIdRef.current);
+      }
+    });
+  }, [dirty, mutationsBlocked, openCanonicalDocument, projectSaving, projectUnresolved, refreshList, saving, unresolved]);
 
   const reconcileLifecycleProjection = useCallback(async (request: LifecycleRequest, canonical?: StandaloneDocument): Promise<void> => {
     const list = await refreshList(showArchivedRef.current);

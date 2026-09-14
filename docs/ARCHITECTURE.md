@@ -549,6 +549,12 @@ App shellは初期read failureを`bootstrap-error`として保持し、認証失
 
 Document request bodyはAPI clientの一箇所でJSON serializeし、UTF-8 byte limitを適用する。UI固有のeditorは同じserialized requestを事前検査するが、size thresholdやJSON semanticsを再実装しない。Note draftはReact/browser memoryに限定され、server canonical Documentとrevision CASをbaselineとして再開する。
 
+## D-105 realtime invalidation architecture
+
+`RealtimeHub`はauthenticated TaskChute app userごとに1つのDurable Objectとしてserver-derived identityで取得する。Workerがsessionを認証してsame-origin / Originを検証した後、sanitized internal upgradeをHubへforwardする。HubはHibernation WebSocket APIで接続を保持し、TaskChute domain stateをDO storageへ保存せず、browser messageをmutation transportとして受け付けない。
+
+Realtime notificationはfreshness acceleratorであり、canonical authorityではない。成功したHTTP mutationのD1 commit後にWorkerの一つのmutation-family mappingからscopeを生成してbest-effort publishし、publish failureはcanonical mutationをrollbackしない。Web clientは受信scope、connection/reconnect、visibility、online recoveryを既存のHTTP loadersへ接続するが、dirty/pending/unresolved editor・D-066 retained operation・D-104 reauth stateを上書きしない。APP/AUTH D1 query/schemaは変更せず、RealtimeHub namespaceだけをWrangler configへ追加する。
+
 ## D-103 Project Primary Document boundary
 
 Project Primaryはshared `documents` rowとowner-scoped `project_primary_documents` relationの組み合わせで表現する。Project titleはProject query authorityからread projectionへ供給し、Document rowへ複製しない。EnsureはProject/Document/relation/operation identityを同一D1 atomic batchで確定し、既存relationがあればcanonical rowへ収束する。UpdateはDocument revision CASを使い、exact replay/misuseは既存operations persistenceを再利用する。
