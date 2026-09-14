@@ -10,6 +10,7 @@
 | D106-BUILD-02 | Instrumentation compile | `:app:assembleDebugAndroidTest` including Keystore/noBackupFilesDir test | PASS compile |
 | D106-SEC-01 | Session storage boundary | Dynamic cookie names; opaque envelope; AES-GCM Android Keystore; `Context.noBackupFilesDir`; clear corrupt/undecryptable file; no password/domain data persistence | PASS source/local |
 | D106-API-01 | Existing server contract | Existing `/api/auth/sign-in/email`, `/api/auth/get-session`, `/api/auth/sign-out`; no Worker/API/schema/migration change | PASS source |
+| D106-CI-01 | Exact pushed-SHA CI | GitHub Actions run `34815753998`, exact SHA `be142210c28c2ae3b1cef5a1e9e5530678bf6da3`; Web/Worker verification and Android auth foundation verification all PASS | PASS |
 | D106-DEVICE-01 | Galaxy S23 | Physical device/emulator was not connected (`adb devices` empty); authenticated sign-in, restore, 401, network UX, and Keystore instrumentation execution | NOT_RUN |
 | D106-SCOPE-01 | Boundary | No Today, offline sync, realtime, Widget, notification, production, credential retrieval, or persistent nonprod mutation | PASS |
 

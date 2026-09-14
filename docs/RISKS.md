@@ -11,7 +11,8 @@ client-provided app-user IDをauthorityにせず、既存Server principal mappin
 は保存しない。network/5xxはsessionを保持して明示的retryへ進み、401だけを
 signed-outへ収束させる。
 
-Local JVM `16 / 16`、Debug APK、instrumentation APK compileはPASS。Galaxy S23
+Local JVM `16 / 16`、Debug APK、instrumentation APK compile、GitHub Actions run
+`34815753998`（exact SHA `be142210c28c2ae3b1cef5a1e9e5530678bf6da3`）はPASS。Galaxy S23
 実機、authenticated native sign-in、Keystore round-trip、startup restore、
 401 / network UXはこの環境にdeviceがないため`NOT_RUN`であり、PASSへ昇格しない。
 新しいWorker route、schema / migration、dependency、Cloudflare resource、

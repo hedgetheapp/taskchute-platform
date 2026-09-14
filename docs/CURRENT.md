@@ -1,5 +1,40 @@
 # Current
 
+### D-106 Android Native Auth Foundation v0.1 — 2026-09-14
+
+D-106を`49b928651dfccaff11c9399be5abeb10eaecc160`で実装し、CI wrapperの
+Windows実行bit差異を`be142210c28c2ae3b1cef5a1e9e5530678bf6da3`で修正した。
+両commitはcanonical `main`へfast-forward push済みである。`apps/android`は
+Kotlin + Jetpack Compose、application id `com.hedgetheapp.taskchute`、minSdk
+28、existing Better Authのemail/password + cookie session endpointを利用する
+signed-in shellである。Today、offline sync、realtime、Widget、通知、Domain
+screen、JWT / OAuth / passkey / MFAは対象外で、Worker/API/schema/migrationも
+変更していない。
+
+Androidは`Set-Cookie`を動的に収集し、opaque cookie jarをmemoryで使う。at-rest
+ではnon-exportable Android Keystore AES-GCMと`Context.noBackupFilesDir`を使い、
+password、app-user ID、Markdown、Domain dataを保存しない。startup restoreでは
+valid session、authoritative `401`、network/5xxを区別し、network/5xxは明示的
+retryまでsessionを保持する。explicit logoutの不確実な通信結果ではlocal
+sessionを消去せず、server成功またはdeterministicなsession消失だけでclearする。
+
+Local evidenceはAndroid JVM `16 / 16`、Debug APK、instrumentation APK compile、
+Web typecheck、Web `442 / 442`、Worker/D1 `307 / 307`、normal/exact nonprod
+build、deploy guard、Wrangler dry-run、`git diff --check`がPASSした。GitHub
+Actions run `34815753998`はexact SHA
+`be142210c28c2ae3b1cef5a1e9e5530678bf6da3`でWeb/Worker verificationとAndroid
+auth foundation verificationの全jobがPASSした。初回runのAndroid `./gradlew`
+exit 126はWindows-generated wrapperの実行bitがcheckoutで失われたためで、
+`bash ./gradlew`へ修正後のrunを採用している。
+
+既存persistent nonprodは変更していない。read-only HTTPはroot `200`、protected
+Documents / Realtime API `401`、Better Auth `get-session`は未認証でも既存仕様の
+`200`（sessionなし）だった。APP/AUTH migration、deploy、DB mutation、credential
+取得は行っていない。`adb devices`は空で、Galaxy S23のKeystore round-trip、
+native authenticated sign-in、startup restore、401/network UXは`NOT_RUN`である。
+
+D-106 classification: `APPROVED / IMPLEMENTED / INTEGRATED / TESTED / MAIN_PUSHED / ANDROID_AUTH_FOUNDATION_VERIFIED_LOCAL / GITHUB_CI_VERIFIED / PERSISTENT_NONPROD_UNCHANGED / GALAXY_S23_NOT_RUN / MIGRATION_NOT_REQUIRED / PRODUCTION_NOT_RUN / RESTORE_NOT_RUN / RELEASED_NO`。
+
 ### D-105 Realtime Invalidation v0.1 — 2026-09-14
 
 D-105 implementation commit `1bea758324d4aa6bb05ca1e22c3d91658c3b384e`をcanonical `main`へfast-forward pushした。続くCI・source reviewで検出した既存テストのeffect待機を`6c7e3a0bc64a93e730e367e4b6053f510df85440`、`b2d47c53e0ab5d92f6a202541ab6e5b2bc0c109c`、`d013e98e9e7c3fe917a7fb83bbbb1f9e601e8eda`で安定化し、D-105の実装是正（HTTP probe URL、Project系Document scope、duplicate invalidation coalesce、DO binding数guard）を`1ae38b7ad221697704ab2df8ad6f4c819fedbae4`へ反映した。最終exact SHA `d013e98...`のGitHub Actions run `34808771287`はTypecheck、Web tests、Worker/D1 tests、Production buildすべてPASSした。
