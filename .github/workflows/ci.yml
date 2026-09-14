@@ -107,7 +107,7 @@ jobs:
       - name: Install emulator packages
         shell: bash
         run: |
-          sdkmanager "platform-tools" "platforms;android-37" "emulator" "system-images;android-35;google_apis;x86_64"
+          sdkmanager "platform-tools" "emulator" "system-images;android-35;google_apis;x86_64"
           yes | sdkmanager --licenses >/dev/null || true
 
       - name: Create emulator
