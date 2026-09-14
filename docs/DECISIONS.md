@@ -2,6 +2,26 @@
 
 Statuses: Approved / Proposed / Superseded
 
+## D-106 — Android Native Auth Foundation v0.1
+
+Status: **Approved**
+
+Canonical Decision: `docs/decisions/D-106_ANDROID_NATIVE_AUTH_FOUNDATION_V01.md`。
+
+D-106は既存TaskChute ServerのBetter Auth email/password + cookie sessionを
+native Android clientから利用する最小foundationをApprovedする。Kotlin +
+Jetpack Composeのsigned-in shell、dynamic `Set-Cookie` handling、Android
+Keystoreのnon-exportable AES-GCMと`noBackupFilesDir`によるopaque session
+cookie jarの保護、startup session restore、401とnetwork/5xxの区別、明示的
+logoutのretry-safe境界を対象とする。server-derived stable app user mapping、
+AUTH_DB / APP_DB、既存Web auth API / session semanticsは変更しない。
+
+Today、offline sync、realtime、Widget、通知、domain screen、JWT / OAuth /
+passkey / MFA、APP/AUTH schema、migration、productionは対象外である。
+
+詳細なsecurity / retry / device verification境界はcanonical Decision本文を
+参照する。
+
 ## D-105 — Realtime Invalidation v0.1
 
 Status: **Approved**

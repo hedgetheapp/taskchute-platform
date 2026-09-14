@@ -46,6 +46,14 @@ D-105ではCloudflare Durable ObjectsのSQLite-backed namespaceとHibernation We
 
 Official references: https://developers.cloudflare.com/durable-objects/best-practices/websockets/、https://developers.cloudflare.com/durable-objects/reference/durable-objects-migrations/、https://developers.cloudflare.com/workers/wrangler/configuration/、https://developers.cloudflare.com/durable-objects/platform/pricing/。
 
+## D-106 Android native auth foundation
+
+D-106は既存Workerの認証HTTP endpointをAndroidから利用するclient moduleだけを
+追加する。新しいCloudflare service、D1、AUTH_DB、外部auth provider、paid plan、
+background pollingは追加しないため、persistent runtime costの増加はこのwork
+itemでは発生しない。Android buildは既存のGradle/AndroidX toolchainを使い、
+domain/offline syncの長期cost判断は将来Decisionへ残す。
+
 ## Deferred / optional infrastructure
 
 以下はinitial implementationでは採用しない。

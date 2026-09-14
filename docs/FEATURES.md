@@ -57,7 +57,7 @@ Status values: Planned / In design / Implemented / Verified / Withdrawn (histori
 | Cloudflare D1 application persistence | Implemented | AUTH_DB / APP_DB migrations、owner-scoped persistence、operations、executions、active Execution constraintを実装 |
 | D1 concurrency / atomicity spike | Verified | D1-SPIKE-01〜08 current-harness local + temporary remote PASS |
 | Application authentication | Implemented | Better Auth 1.7.1、public signup disabled、operator bootstrap、rolling 7日session、separate AUTH_DB / APP_DBを実装 |
-| Android app | Planned | native first-class。Kotlin + Jetpack Compose第一候補 |
+| Android app | Implemented / Local verified | D-106 auth foundation。Kotlin + Jetpack Composeのsigned-in shell、既存Better Auth cookie session、Keystore + `noBackupFilesDir` opaque session保護、startup restore / 401 / network distinctionを実装。JVM `16 / 16`、Debug APK / instrumentation APK compile PASS。Galaxy S23実機、Today / offline / realtime / Widgetは未実施 |
 | Android offline capability | In design | capability自体はApproved。操作範囲 / sync方式は未決 |
 | Android Widget | Planned | Android architectureを再利用 |
 | Wear OS / Pixel Watch | Planned | companion target。Compose for Wear OS第一候補、exact scope未決 |

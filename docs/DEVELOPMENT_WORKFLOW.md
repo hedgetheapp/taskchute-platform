@@ -302,6 +302,20 @@ D-105では、local verification後にcanonical `main`へfast-forward pushし、
 
 Realtime notificationはfreshness acceleratorであり、canonical authorityではない。two-client local integration、Web reconnect、D-066 pending / D-104 reauth / dirty Document保護、mutation mapping、DB integrity、persistent nonprodのbinding evidenceを、通常HTTPのtest/build/deploy evidenceと分離して記録する。CI PASSやnonprod WebSocket接続はproduction Releasedを意味しない。
 
+## D-106 Android native auth verification boundary
+
+D-106では、Webの既存Better Auth API / session、AUTH_DB / APP_DB、stable
+app-user mappingを変更せず、`apps/android`のKotlin + Jetpack Compose auth
+foundationだけを検証する。local gateはJVM state/cookie/envelope tests、Debug
+APK build、instrumentation APK compileを含める。CIはJDK 17とtracked Gradle
+wrapperを使い、Android deviceがない環境でinstrumentationをPASSと分類しない。
+
+Android sessionはKeystore + `noBackupFilesDir`のopaque cookie jarだけを対象
+とし、password、Domain data、offline draftを保存しない。実機（Galaxy S23）で
+のKeystore round-trip、実認証、startup restore、401 / network UXはdeviceが
+利用可能になるまで`NOT_RUN`とする。D-106ではWorker deploy、APP/AUTH migration、
+persistent nonprod data mutation、production、credential取得を行わない。
+
 ## Handoff
 
 チャット移行や大きな作業区切りでは、会話履歴を読み直さなくても再開できる程度のpointer + deltaを残す。

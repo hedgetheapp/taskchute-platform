@@ -325,6 +325,25 @@ Better Authのexact package versionはimplementation時にlocal D1 integration�
 
 password、secret、session token等をtracked file、evidence、通常logへ残さない。
 
+## D-106 Android native auth boundary
+
+`apps/android`はWeb React treeを共有せず、Kotlin + Jetpack Composeで既存
+Better Auth HTTP sessionを利用するnative first-class clientの最小shellを
+提供する。認証endpointは既存Worker routeを再利用し、Androidはclient-provided
+app-user IDをauthorityにしない。Serverのsessionから既存principal mappingを
+経由してstable TaskChute app userを解決する。
+
+Android側のsession credentialは動的cookie jarとしてmemoryに保持し、at-rest
+ではAndroid Keystoreのnon-exportable AES-GCMと`noBackupFilesDir`で保護する。
+これはAUTH_DBのschemaやBetter Authのcookie policyを複製・変更するものでは
+なく、D-022のAUTH_DB / APP_DB境界とD-021のServer-owned authenticationを
+維持する。native clientはvalid / `401` / network failureを別stateとして
+扱い、domain stateをlocal persistenceへ保存しない。
+
+D-106のsigned-in shellは、将来のToday / offline / realtime / Widget / native
+integrationへ拡張できる境界だけを用意する。offline local DB、sync、conflict、
+background credential behaviorは未決であり、このfoundationで先取りしない。
+
 ## TaskChuteDay architecture
 
 TaskChuteDayはcanonical timezone + DayBoundaryPolicyから構成するcontinuous logical intervalである。

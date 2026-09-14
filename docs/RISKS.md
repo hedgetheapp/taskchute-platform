@@ -1,5 +1,22 @@
 # Risks
 
+## R-063 — D-106 native session and device-verification boundary
+
+D-106はAndroidが既存Better Authのcookie sessionをnative HTTPから利用するため、
+session cookieのat-rest保護、401とnetwork failureの誤分類、明示的logoutの
+ambiguous outcome、将来のmulti-device / offline拡張が主なriskになる。Androidは
+client-provided app-user IDをauthorityにせず、既存Server principal mappingを
+利用する。cookie名は固定せず、Keystoreのnon-exportable AES-GCMと
+`noBackupFilesDir`へopaque jarだけを保存し、password / Markdown / Domain data
+は保存しない。network/5xxはsessionを保持して明示的retryへ進み、401だけを
+signed-outへ収束させる。
+
+Local JVM `16 / 16`、Debug APK、instrumentation APK compileはPASS。Galaxy S23
+実機、authenticated native sign-in、Keystore round-trip、startup restore、
+401 / network UXはこの環境にdeviceがないため`NOT_RUN`であり、PASSへ昇格しない。
+新しいWorker route、schema / migration、dependency、Cloudflare resource、
+production、offline persistenceは変更しない。
+
 ## R-062 — D-105 realtime notification is non-canonical
 
 D-105 adds a per-user Hibernation WebSocket `RealtimeHub` only as a freshness accelerator. The socket can disconnect, reconnect late, deliver a duplicate, or fail to publish after a successful D1 commit; none of these states may replace canonical HTTP Query, mutation replay, CAS, or D-066/D-104 local barriers. Cross-user routing, same-origin authentication, malformed input, reconnect storms, and dirty Document overwrite are the primary risks.

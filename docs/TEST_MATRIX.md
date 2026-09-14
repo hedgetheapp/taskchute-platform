@@ -1,5 +1,18 @@
 # Test Matrix
 
+## D-106 Android Native Auth Foundation v0.1 — local gate
+
+| ID | Verification target | Evidence | Status |
+|---|---|---|---|
+| D106-DECISION | Canonical scope | Approved Decision `docs/decisions/D-106_ANDROID_NATIVE_AUTH_FOUNDATION_V01.md`; existing Better Auth / stable app-user mapping and no migration boundary retained | PASS |
+| D106-JVM-01 | Auth state model | `:app:testDebugUnitTest`, 16 tests: restore, valid/401/network distinction, invalid credentials, logout ambiguity, cookie handling, JSON escaping, URL validation, envelope validation | PASS local |
+| D106-BUILD-01 | Android build | Gradle 9.6.0 / AGP 9.4.0 / Kotlin 2.3.21; `:app:assembleDebug` | PASS local |
+| D106-BUILD-02 | Instrumentation compile | `:app:assembleDebugAndroidTest` including Keystore/noBackupFilesDir test | PASS compile |
+| D106-SEC-01 | Session storage boundary | Dynamic cookie names; opaque envelope; AES-GCM Android Keystore; `Context.noBackupFilesDir`; clear corrupt/undecryptable file; no password/domain data persistence | PASS source/local |
+| D106-API-01 | Existing server contract | Existing `/api/auth/sign-in/email`, `/api/auth/get-session`, `/api/auth/sign-out`; no Worker/API/schema/migration change | PASS source |
+| D106-DEVICE-01 | Galaxy S23 | Physical device/emulator was not connected (`adb devices` empty); authenticated sign-in, restore, 401, network UX, and Keystore instrumentation execution | NOT_RUN |
+| D106-SCOPE-01 | Boundary | No Today, offline sync, realtime, Widget, notification, production, credential retrieval, or persistent nonprod mutation | PASS |
+
 ## D-105 Realtime Invalidation v0.1 — local implementation gate
 
 | ID | Verification target | Evidence | Status |

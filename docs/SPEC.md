@@ -314,6 +314,25 @@ Initial runtimeでは同じWorkerがseparate `AUTH_DB` / `APP_DB` D1 bindingsを
 - initial bootstrapは片側だけ成功したpartial failureから安全に再実行できるidempotent / recoverable flowとする。
 - password、secret、session token等をtracked file、evidence、通常logへ保存しない。
 
+## D-106 Android native authentication foundation
+
+D-106は既存Better Authのemail/password + cookie sessionを利用するKotlin +
+Jetpack Composeのnative Android signed-in shellを追加する。既存の
+`/api/auth/sign-in/email`、`/api/auth/get-session`、`/api/auth/sign-out`を
+使用し、Serverのsession / stable app-user mappingをauthorityとする。
+
+Android clientは`Set-Cookie`の名前を固定せずopaque cookie jarとして扱う。
+保存時はAndroid Keystoreのnon-exportable AES-GCM keyと
+`Context.noBackupFilesDir`を使い、password、app-user ID、Markdown、Domain
+dataを保存しない。startup restoreではvalid session、authoritative `401`、
+network/5xxを区別し、network/5xxは明示的retryまでsigned-outへ落とさない。
+explicit logoutのnetwork ambiguityではlocal sessionを保持する。
+
+これはauth foundationだけを対象とし、Today、offline sync、realtime、Widget、
+通知、Domain screen、JWT / OAuth / passkey / MFA、API / schema / migrationは
+含まない。Android offlineのoperation範囲、local DB、sync、conflict、clockは
+D-011に従い未決のまま維持する。
+
 ## Android offline capability
 
 Android clientはtemporary network unavailabilityを考慮したoffline-capable designとする。

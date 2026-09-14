@@ -22,6 +22,12 @@ D-038 B3 Section settings lifecycleはcommit `2481c4916ca2f694f07d6808a4482bea28
 
 Current First vertical slice implementation / nonprod verification fact:
 
+D-106により、Android native first-class clientのauth foundation（既存Better
+Auth cookie sessionのstartup restore、401 / network distinction、Keystoreでの
+opaque session保護、signed-in shell）が解決された。Android Domain UI、offline
+local DB、sync / conflict、background execution、Widget、realtime、native
+credential handoffは引き続き未決であり、D-106はこれらを決定しない。
+
 - `AUTH_DB`にはBetter Auth 1.7.1 physical schemaをmigrationとして実装済み
 - `APP_DB`にはapp user / auth mapping / settings / projects / sections / taskchute_days / tasks / entries / operations / executions / temporary command guard・assertionを実装済み
 - `operations`は`(app_user_id, operation_id)` owner scopeとfingerprint versionを保持

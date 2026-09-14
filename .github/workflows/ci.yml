@@ -45,3 +45,28 @@ jobs:
 
       - name: Production build
         run: npm run build
+
+  android:
+    name: Android auth foundation verification
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/android
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: JVM tests
+        run: ./gradlew --no-daemon :app:testDebugUnitTest
+
+      - name: Debug build
+        run: ./gradlew --no-daemon :app:assembleDebug

@@ -1,0 +1,6 @@
+<resources>
+    <style name="Theme.TaskChute" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">#3859A6</item>
+    </style>
+</resources>
