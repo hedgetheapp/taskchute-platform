@@ -85,6 +85,7 @@ jobs:
   android-emulator:
     name: Android Today emulator UI verification
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -109,5 +110,7 @@ jobs:
           arch: x86_64
           profile: pixel_2
           force-avd-creation: true
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot
           disable-animations: true
+          disable-spellchecker: true
           script: cd apps/android && bash ./gradlew --no-daemon :app:connectedDebugAndroidTest
