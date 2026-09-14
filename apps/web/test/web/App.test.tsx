@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   loadEffectiveDayCalendar: vi.fn(), upsertEffectiveDayOverride: vi.fn(), deleteEffectiveDayOverride: vi.fn(),
   loadDocuments: vi.fn(), loadDocument: vi.fn(), resolveDocument: vi.fn(), createStandaloneDocument: vi.fn(), updateDocument: vi.fn(),
   ensureTaskPrimaryDocument: vi.fn(), loadTaskPrimaryDocumentById: vi.fn(), updateTaskPrimaryDocument: vi.fn(),
+  loadProjectPrimaryDocument: vi.fn(), loadProjectPrimaryDocumentById: vi.fn(), ensureProjectPrimaryDocument: vi.fn(), updateProjectPrimaryDocument: vi.fn(),
 }));
 
 vi.mock("../../src/web/api", async () => {
@@ -168,6 +169,14 @@ const populatedDay: CurrentTaskChuteDayProjection = {
     emptyDay.sections[1],
   ],
   next_entry: firstEntry,
+};
+
+const projectAssignedDay: CurrentTaskChuteDayProjection = {
+  ...populatedDay,
+  sections: [{ ...populatedDay.sections[0], entries: [{ ...firstEntry, task: {
+    ...firstEntry.task,
+    project: { id: "existing-project", title: "Existing Project" },
+  } }] }, populatedDay.sections[1]],
 };
 
 const twoPlannedDay: CurrentTaskChuteDayProjection = {
@@ -528,6 +537,34 @@ describe("Dogfood Day shell", () => {
     expect(window.location.search).toBe("?view=note&document=0199d101-0000-7000-8000-000000000011");
     expect(window.location.search).not.toContain("task=");
     window.history.replaceState(null, "", "/");
+  });
+
+  it("loads the active Project list on an established Today and keeps the assigned Project actionable", async () => {
+    mocks.loadDay.mockResolvedValue(projectAssignedDay);
+    render(<App />);
+    const dayBoard = await screen.findByRole("region", { name: "DayBoard" });
+    const projectSelector = within(dayBoard).getByRole("combobox", { name: "Canonical taskのProject" }) as unknown as HTMLSelectElement;
+
+    await waitFor(() => expect(mocks.loadProjects).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(projectSelector.querySelector('option[value="existing-project"]')?.textContent).toBe("Existing Project"));
+    expect(projectSelector.querySelector('option[value="existing-project"]')?.textContent).not.toContain("アーカイブ");
+    expect(within(dayBoard).getByRole("button", { name: "Existing Projectのプロジェクトノートを開く" })).toBeTruthy();
+
+    fireEvent.change(projectSelector, { target: { value: "" } });
+    expect(projectSelector.value).toBe("");
+    expect(projectSelector.querySelector('option[value="existing-project"]')?.textContent).toBe("Existing Project");
+  });
+
+  it("does not label the assigned Project archived when the active Project load fails", async () => {
+    mocks.loadDay.mockResolvedValue(projectAssignedDay);
+    mocks.loadProjects.mockRejectedValue(new Error("projects unavailable"));
+    render(<App />);
+    const dayBoard = await screen.findByRole("region", { name: "DayBoard" });
+    const projectSelector = within(dayBoard).getByRole("combobox", { name: "Canonical taskのProject" }) as unknown as HTMLSelectElement;
+
+    await waitFor(() => expect(mocks.loadProjects).toHaveBeenCalledTimes(1));
+    expect(projectSelector.querySelector('option[value="existing-project"]')?.textContent).toBe("Existing Project");
+    expect(projectSelector.querySelector('option[value="existing-project"]')?.textContent).not.toContain("アーカイブ");
   });
 
   it("keeps one floating Task Note window per Task with independent stacking and outside ownership", async () => {
@@ -5699,6 +5736,9 @@ describe("Dogfood Day shell", () => {
     fireEvent.change(firstProject, { target: { value: "existing-project" } });
     firstProject.focus();
     fireEvent.keyDown(firstProject, { key: "Tab" });
+    const firstProjectNote = within(firstRow).getByRole("button", { name: "Existing Projectのプロジェクトノートを開く" });
+    expect(document.activeElement).toBe(firstProjectNote);
+    fireEvent.keyDown(firstProjectNote, { key: "Tab" });
     expect(document.activeElement).toBe(firstMode);
     fireEvent.keyDown(firstMode, { key: "Tab" });
     expect(document.activeElement).toBe(firstSection);

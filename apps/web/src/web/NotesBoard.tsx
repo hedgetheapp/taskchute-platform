@@ -2,10 +2,12 @@ import { KeyboardEvent as ReactKeyboardEvent, useCallback, useEffect, useRef, us
 import type {
   CreateStandaloneDocumentRequest,
   DeleteStandaloneDocumentRequest,
+  ProjectPrimaryDocument,
+  ProjectPrimaryDocumentSummary,
   SetStandaloneDocumentArchivedRequest,
   StandaloneDocument,
   StandaloneDocumentSummary,
-  ProjectPrimaryDocumentSummary,
+  UpdateProjectPrimaryDocumentRequest,
   UpdateDocumentRequest,
 } from "../shared/contracts";
 import { uuidv7 } from "../shared/uuidv7";
@@ -27,6 +29,7 @@ export interface NotesBoardProps {
   onRegisterFlush?: (flush: (() => Promise<boolean>) | null) => void;
   initialDocumentId?: string | null;
   onOpenProjectNote?: (projectId: string, projectTitle: string) => void;
+  floatingProjectIds?: string[];
 }
 
 function isUpdateRequest(request: DocumentRequest): request is UpdateDocumentRequest {
@@ -55,11 +58,178 @@ function isAmbiguousResolution(request: DocumentRequest, canonical: StandaloneDo
   return isUpdateRequest(request) ? canonical.revision === request.expected_revision + 1 : canonical.revision === 0;
 }
 
-export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, onSavingChange, onRegisterFlush, initialDocumentId, onOpenProjectNote }: NotesBoardProps) {
+interface ProjectPrimaryInlineEditorProps {
+  candidate: ProjectPrimaryDocumentSummary;
+  onUnauthorized: () => void;
+  onDirtyChange: (dirty: boolean) => void;
+  onUnresolvedChange: (unresolved: boolean) => void;
+  onSavingChange: (saving: boolean) => void;
+  onRegisterFlush: (flush: (() => Promise<boolean>) | null) => void;
+}
+
+function isProjectUpdateResolved(request: UpdateProjectPrimaryDocumentRequest, canonical: ProjectPrimaryDocument): boolean {
+  return canonical.document_id === request.document_id
+    && canonical.kind === "project_primary"
+    && canonical.project_id === request.project_id
+    && canonical.revision === request.expected_revision + 1
+    && canonical.markdown_body === request.markdown_body;
+}
+
+function ProjectPrimaryInlineEditor({ candidate, onUnauthorized, onDirtyChange, onUnresolvedChange, onSavingChange, onRegisterFlush }: ProjectPrimaryInlineEditorProps) {
+  const [document, setDocument] = useState<ProjectPrimaryDocument | null>(null);
+  const [draftBody, setDraftBody] = useState("");
+  const [baselineBody, setBaselineBody] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [latestCanonical, setLatestCanonical] = useState<ProjectPrimaryDocument | null>(null);
+  const [unresolvedRequest, setUnresolvedRequest] = useState<UpdateProjectPrimaryDocumentRequest | null>(null);
+  const documentRef = useRef<ProjectPrimaryDocument | null>(null);
+  const draftRef = useRef("");
+  const baselineRef = useRef("");
+  const unresolvedRef = useRef<UpdateProjectPrimaryDocumentRequest | null>(null);
+  const inFlightRef = useRef<Promise<boolean> | null>(null);
+  const saveRef = useRef<() => Promise<boolean>>(async () => false);
+  const flushRef = useRef<() => Promise<boolean>>(async () => false);
+  const dirty = draftBody !== baselineBody;
+  const unresolved = unresolvedRequest !== null;
+
+  documentRef.current = document;
+  draftRef.current = draftBody;
+  baselineRef.current = baselineBody;
+  unresolvedRef.current = unresolvedRequest;
+
+  useEffect(() => { onDirtyChange(dirty); }, [dirty, onDirtyChange]);
+  useEffect(() => { onUnresolvedChange(unresolved); }, [onUnresolvedChange, unresolved]);
+  useEffect(() => { onSavingChange(saving); }, [onSavingChange, saving]);
+
+  const applyCanonical = useCallback((loaded: ProjectPrimaryDocument) => {
+    documentRef.current = loaded;
+    draftRef.current = loaded.markdown_body;
+    baselineRef.current = loaded.markdown_body;
+    setDocument(loaded); setDraftBody(loaded.markdown_body); setBaselineBody(loaded.markdown_body);
+  }, []);
+
+  const loadCanonical = useCallback(async () => {
+    setLoading(true); setError(null); setLatestCanonical(null);
+    try {
+      applyCanonical(await api.loadProjectPrimaryDocumentById(candidate.document_id));
+    } catch (caught) {
+      if (caught instanceof ApiClientError && caught.status === 401) onUnauthorized();
+      else setError(caught instanceof Error ? caught.message : "Project Noteの読み込みに失敗しました");
+    } finally { setLoading(false); }
+  }, [applyCanonical, candidate.document_id, onUnauthorized]);
+
+  useEffect(() => {
+    setUnresolvedRequest(null); unresolvedRef.current = null;
+    void loadCanonical();
+  }, [candidate.document_id, loadCanonical]);
+
+  const applySaved = useCallback((saved: ProjectPrimaryDocument, request: UpdateProjectPrimaryDocumentRequest) => {
+    const bodyStillSent = draftRef.current === request.markdown_body;
+    documentRef.current = saved;
+    baselineRef.current = saved.markdown_body;
+    setDocument(saved); setBaselineBody(saved.markdown_body);
+    if (bodyStillSent) { draftRef.current = saved.markdown_body; setDraftBody(saved.markdown_body); }
+  }, []);
+
+  const send = useCallback(async (request: UpdateProjectPrimaryDocumentRequest): Promise<boolean> => {
+    if (inFlightRef.current) return inFlightRef.current;
+    const promise = (async () => {
+      setSaving(true); setError(null); setNotice(null);
+      try {
+        const result = await api.updateProjectPrimaryDocument(request);
+        applySaved(result.document, request);
+        setUnresolvedRequest(null); unresolvedRef.current = null; setLatestCanonical(null);
+        return true;
+      } catch (caught) {
+        if (caught instanceof ApiClientError && caught.status === 401) { onUnauthorized(); return false; }
+        if (caught instanceof ApiClientError && caught.code === "revision_conflict") {
+          setError("他の変更があるため保存できませんでした。ローカルの未保存内容は保持しています。");
+          try { setLatestCanonical(await api.loadProjectPrimaryDocumentById(request.document_id)); } catch { /* Preserve the local draft. */ }
+          return false;
+        }
+        if (caught instanceof ApiClientError && caught.code === "infrastructure_ambiguous") {
+          setUnresolvedRequest(request); unresolvedRef.current = request;
+          setError("保存結果が未確定です。元の操作をそのまま再試行してください。");
+          try {
+            const canonical = await api.loadProjectPrimaryDocumentById(request.document_id);
+            if (isProjectUpdateResolved(request, canonical)) {
+              applySaved(canonical, request); setUnresolvedRequest(null); unresolvedRef.current = null;
+              setLatestCanonical(null); setError(null); setNotice("保存結果を確認しました。");
+              return true;
+            }
+            setLatestCanonical(canonical);
+          } catch (reconcileError) {
+            if (reconcileError instanceof ApiClientError && reconcileError.status === 401) onUnauthorized();
+          }
+          return false;
+        }
+        setError(caught instanceof Error ? caught.message : "Project Noteの保存に失敗しました");
+        return false;
+      } finally {
+        setSaving(false); inFlightRef.current = null;
+      }
+    })();
+    inFlightRef.current = promise;
+    return promise;
+  }, [applySaved, onUnauthorized]);
+
+  const save = useCallback(async (): Promise<boolean> => {
+    if (inFlightRef.current) return inFlightRef.current;
+    if (unresolvedRef.current) return send(unresolvedRef.current);
+    const current = documentRef.current;
+    if (!current || draftRef.current === baselineRef.current) return true;
+    return send({ operation_id: uuidv7(), project_id: candidate.project_id, document_id: current.document_id,
+      expected_revision: current.revision, markdown_body: draftRef.current });
+  }, [candidate.project_id, send]);
+  saveRef.current = save;
+
+  const flush = useCallback(async (): Promise<boolean> => {
+    if (unresolvedRef.current) return false;
+    if (inFlightRef.current) return inFlightRef.current;
+    return saveRef.current();
+  }, []);
+  flushRef.current = flush;
+
+  useEffect(() => {
+    onRegisterFlush(() => flushRef.current());
+    return () => onRegisterFlush(null);
+  }, [onRegisterFlush]);
+
+  useEffect(() => {
+    if (!dirty || loading || unresolved || saving || !document) return;
+    const timer = window.setTimeout(() => { void saveRef.current(); }, NOTE_AUTOSAVE_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [dirty, document, loading, saving, unresolved]);
+
+  function handleKeyDown(event: ReactKeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key.toLowerCase() !== "s" || (!event.ctrlKey && !event.metaKey) || event.repeat) return;
+    event.preventDefault(); void saveRef.current();
+  }
+
+  return <form className="notes-project-primary-editor" onSubmit={(event) => { event.preventDefault(); void saveRef.current(); }}>
+    {loading ? <p className="muted">読み込み中…</p> : <>
+      <div className="notes-editor-heading"><div><p className="eyebrow">Project Note</p><h2>{candidate.project_title}</h2></div></div>
+      <p className="notes-project-authority">現在のProjectタイトルを表示しています。タイトルはProject設定から変更できます。</p>
+      <NoteMarkdownEditor value={draftBody} disabled={unresolved}
+        onChange={(value) => { if (unresolved) return; setDraftBody(value); draftRef.current = value; setNotice(null); }}
+        onKeyDown={handleKeyDown} />
+      <p className="notes-save-status" role="status" aria-live="polite"><span>{unresolved ? "保存結果未確定" : dirty || saving ? "未保存" : "保存済み"}</span>{saving && <span>（保存中）</span>}</p>
+      {unresolved && <button type="button" className="secondary" disabled={saving} onClick={() => void saveRef.current()}>同じ内容で再試行</button>}
+      {notice && <p className="success" role="status">{notice}</p>}
+      {error && <p className="error" role="alert">{error}</p>}
+      {latestCanonical && <details className="notes-conflict" open><summary>最新のServer内容を確認</summary><pre>{latestCanonical.markdown_body}</pre></details>}
+    </>}
+  </form>;
+}
+
+export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, onSavingChange, onRegisterFlush, initialDocumentId, onOpenProjectNote, floatingProjectIds = [] }: NotesBoardProps) {
   const [documents, setDocuments] = useState<StandaloneDocumentSummary[]>([]);
   const [projectDocuments, setProjectDocuments] = useState<ProjectPrimaryDocumentSummary[]>([]);
   const [document, setDocument] = useState<StandaloneDocument | null>(null);
-  const [mode, setMode] = useState<"empty" | "new" | "existing">("empty");
+  const [mode, setMode] = useState<"empty" | "new" | "existing" | "project">("empty");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState("");
   const [draftBody, setDraftBody] = useState("");
@@ -76,6 +246,11 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
   const [latestCanonical, setLatestCanonical] = useState<StandaloneDocument | null>(null);
   const [retryRequest, setRetryRequest] = useState<MutationRequest | null>(null);
   const [ambiguousRequest, setAmbiguousRequest] = useState<MutationRequest | null>(null);
+  const [projectInlineCandidate, setProjectInlineCandidate] = useState<ProjectPrimaryDocumentSummary | null>(null);
+  const [projectDirty, setProjectDirty] = useState(false);
+  const [projectSaving, setProjectSaving] = useState(false);
+  const [projectUnresolved, setProjectUnresolved] = useState(false);
+  const [floatingProjectId, setFloatingProjectId] = useState<string | null>(null);
 
   const documentRef = useRef(document);
   const modeRef = useRef(mode);
@@ -89,6 +264,9 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
   const inFlightRef = useRef<Promise<boolean> | null>(null);
   const saveActionRef = useRef<() => Promise<boolean>>(async () => false);
   const flushRef = useRef<() => Promise<boolean>>(async () => false);
+  const projectFlushRef = useRef<(() => Promise<boolean>) | null>(null);
+  const projectDirtyRef = useRef(false);
+  const projectUnresolvedRef = useRef(false);
   const debounceRef = useRef<number | null>(null);
 
   documentRef.current = document;
@@ -100,9 +278,12 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
   ambiguousRequestRef.current = ambiguousRequest;
   savingRef.current = saving;
   showArchivedRef.current = showArchived;
+  projectDirtyRef.current = projectDirty;
+  projectUnresolvedRef.current = projectUnresolved;
 
-  const dirty = draftTitle !== baselineTitle || draftBody !== baselineBody;
-  const unresolved = ambiguousRequest !== null;
+  const standaloneDirty = draftTitle !== baselineTitle || draftBody !== baselineBody;
+  const dirty = mode === "project" ? projectDirty : standaloneDirty;
+  const unresolved = mode === "project" ? projectUnresolved : ambiguousRequest !== null;
   const inFlightDocumentRequest = inFlightRequest !== null && isDocumentRequest(inFlightRequest) ? inFlightRequest : null;
   const followUpPending = inFlightDocumentRequest !== null
     && (draftTitle.trim() !== inFlightDocumentRequest.title || draftBody !== inFlightDocumentRequest.markdown_body);
@@ -115,7 +296,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
 
   useEffect(() => { onDirtyChange(dirty); }, [dirty, onDirtyChange]);
   useEffect(() => { onUnresolvedChange?.(unresolved); }, [onUnresolvedChange, unresolved]);
-  useEffect(() => { onSavingChange?.(saving); }, [onSavingChange, saving]);
+  useEffect(() => { onSavingChange?.(mode === "project" ? projectSaving : saving); }, [mode, onSavingChange, projectSaving, saving]);
 
   useOutsideClick(actionId !== null, (target) => target instanceof Element
     && Boolean(target.closest(".notes-row-menu, .notes-row-actions")), () => setActionId(null));
@@ -133,13 +314,13 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
 
   useEffect(() => {
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
-      if (!dirty && !saving && !unresolved) return;
+      if (!dirty && !saving && !unresolved && !projectSaving && !projectUnresolved) return;
       event.preventDefault();
       event.returnValue = "";
     };
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
-  }, [dirty, saving, unresolved]);
+  }, [dirty, projectSaving, projectUnresolved, saving, unresolved]);
 
   const handleUnauthorized = useCallback(() => onUnauthorized(), [onUnauthorized]);
 
@@ -169,6 +350,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
 
   const openCanonicalDocument = useCallback(async (documentId: string): Promise<StandaloneDocument | null> => {
     setLoading(true); setError(null); setNotice(null); setLatestCanonical(null);
+    setProjectInlineCandidate(null); setFloatingProjectId(null); projectFlushRef.current = null;
     try {
       const loaded = await api.loadDocument(documentId);
       setEditorFromCanonical(loaded);
@@ -356,6 +538,10 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
   saveActionRef.current = save;
 
   const flush = useCallback(async (): Promise<boolean> => {
+    if (modeRef.current === "project") {
+      if (projectUnresolvedRef.current) return false;
+      return projectFlushRef.current ? projectFlushRef.current() : !projectDirtyRef.current;
+    }
     if (modeRef.current === "empty" || showArchivedRef.current) return true;
     if (ambiguousRequestRef.current) return false;
     if (debounceRef.current !== null) { window.clearTimeout(debounceRef.current); debounceRef.current = null; }
@@ -374,9 +560,9 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
   }, [onRegisterFlush]);
 
   useEffect(() => {
-    if (dirty && mode === "existing" && !unresolved && !showArchived) scheduleAutosave();
+    if (standaloneDirty && mode === "existing" && !unresolved && !showArchived) scheduleAutosave();
     return () => { if (debounceRef.current !== null) { window.clearTimeout(debounceRef.current); debounceRef.current = null; } };
-  }, [dirty, mode, scheduleAutosave, showArchived, unresolved]);
+  }, [mode, scheduleAutosave, showArchived, standaloneDirty, unresolved]);
 
   async function prepareLocalTransition(): Promise<boolean> {
     if (unresolved || !(await flush())) {
@@ -388,6 +574,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
 
   async function startNewDocument(): Promise<void> {
     if (showArchived || !(await prepareLocalTransition())) return;
+    setProjectInlineCandidate(null); setFloatingProjectId(null); projectFlushRef.current = null;
     documentRef.current = null; modeRef.current = "new"; selectedIdRef.current = null;
     draftRef.current = { title: "notitle", body: "" }; baselineRef.current = { title: "notitle", body: "" };
     setDocument(null); setMode("new"); setSelectedId(null); setDraftTitle("notitle"); setDraftBody("");
@@ -401,6 +588,21 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
     if (documentId === selectedIdRef.current && modeRef.current === "existing") return;
     if (!(await prepareLocalTransition())) return;
     await openCanonicalDocument(documentId);
+  }
+
+  async function selectProjectDocument(candidate: ProjectPrimaryDocumentSummary): Promise<void> {
+    if (!(await prepareLocalTransition())) return;
+    setSelectedId(candidate.document_id);
+    setError(null); setNotice(null); setLatestCanonical(null);
+    if (floatingProjectIds.includes(candidate.project_id) && onOpenProjectNote) {
+      setProjectInlineCandidate(null); setFloatingProjectId(candidate.project_id); setMode("empty"); modeRef.current = "empty";
+      projectFlushRef.current = null; setProjectDirty(false); setProjectUnresolved(false);
+      onOpenProjectNote(candidate.project_id, candidate.project_title);
+      return;
+    }
+    setFloatingProjectId(null); setProjectInlineCandidate(candidate); setMode("project"); modeRef.current = "project";
+    setDocument(null); setDraftTitle(""); setDraftBody(""); setBaselineTitle(""); setBaselineBody("");
+    setRetryRequest(null); setAmbiguousRequest(null); retryRequestRef.current = null; ambiguousRequestRef.current = null;
   }
 
   async function changeArchiveView(archived: boolean): Promise<void> {
@@ -471,7 +673,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
     }
   }
 
-  const editorAvailable = mode !== "empty";
+  const editorAvailable = mode !== "empty" && mode !== "project";
   const archivedReadOnly = document?.archived_at != null;
   const visibleStandaloneDocuments = noteKind === "project" ? [] : documents;
   const visibleProjectDocuments = showArchived || noteKind === "standalone" ? [] : projectDocuments;
@@ -502,7 +704,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
           <div className="notes-list-items">
             {mergedDocuments.map(({ kind, candidate }) => kind === "project" ? (
               <div className="notes-list-item project-note-list-item" key={candidate.document_id}>
-                <button type="button" className="project-note-list-button" onClick={() => onOpenProjectNote?.(candidate.project_id, candidate.project_title)}>
+                <button type="button" className={`project-note-list-button${candidate.document_id === selectedId ? " active" : ""}`} onClick={() => void selectProjectDocument(candidate)}>
                   <span className="notes-kind-badge">PROJECT NOTE</span>{candidate.project_title}{candidate.project_archived ? "（アーカイブ）" : ""}
                 </button>
               </div>
@@ -521,7 +723,11 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
           </div>
         </aside>
         <section className="notes-editor" aria-label="ノートエディタ">
-          {!editorAvailable && !loading && <div className="notes-empty"><h2>{initialDocumentId && error ? "ノートを開けません" : showArchived ? "アーカイブを選択" : "ノートを選択"}</h2><p>{initialDocumentId && error ? "指定されたノートは利用できません。" : "既存のノートを開くか、新規ノートを作成してください。"}</p>{error && <p className="error" role="alert">{error}</p>}</div>}
+          {!editorAvailable && mode !== "project" && !loading && <div className="notes-empty"><h2>{initialDocumentId && error ? "ノートを開けません" : showArchived ? "アーカイブを選択" : "ノートを選択"}</h2><p>{initialDocumentId && error ? "指定されたノートは利用できません。" : "既存のノートを開くか、新規ノートを作成してください。"}</p>{error && <p className="error" role="alert">{error}</p>}</div>}
+          {floatingProjectId && mode === "empty" && <div className="notes-empty"><h2>Project Note</h2><p>このプロジェクトノートはフローティングウィンドウで開いています。</p></div>}
+          {mode === "project" && projectInlineCandidate && <ProjectPrimaryInlineEditor candidate={projectInlineCandidate}
+            onUnauthorized={onUnauthorized} onDirtyChange={setProjectDirty} onUnresolvedChange={setProjectUnresolved}
+            onSavingChange={setProjectSaving} onRegisterFlush={(flush) => { projectFlushRef.current = flush; }} />}
           {editorAvailable && <form onSubmit={(event) => { event.preventDefault(); void saveActionRef.current(); }}>
             <div className="notes-editor-heading"><div><p className="eyebrow">Markdown source</p><h2>{mode === "new" ? "新規ノート" : "ノートを編集"}</h2></div>
               {document && mode === "existing" && <button type="button" className="secondary" onClick={() => void copyDocumentLink(document.document_id)}>リンクをコピー</button>}

@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { StandaloneDocument, StandaloneDocumentSummary } from "../../src/shared/contracts";
+import type { ProjectPrimaryDocument, ProjectPrimaryDocumentSummary, StandaloneDocument, StandaloneDocumentSummary } from "../../src/shared/contracts";
 
 const mocks = vi.hoisted(() => {
   class MockApiClientError extends Error {
@@ -15,6 +15,8 @@ const mocks = vi.hoisted(() => {
     updateDocument: vi.fn(),
     setStandaloneDocumentArchived: vi.fn(),
     deleteStandaloneDocument: vi.fn(),
+    loadProjectPrimaryDocumentById: vi.fn(),
+    updateProjectPrimaryDocument: vi.fn(),
     ApiClientError: MockApiClientError,
   };
 });
@@ -35,6 +37,17 @@ function summary(document: StandaloneDocument): StandaloneDocumentSummary {
     document_id: document.document_id, kind: "standalone", title: document.title, revision: document.revision,
     archived_at: document.archived_at, created_at: document.created_at, updated_at: document.updated_at,
   };
+}
+
+function projectDocument(id: string, projectId: string, title: string, body: string, revision = 0): ProjectPrimaryDocument {
+  return { document_id: id, kind: "project_primary", project_id: projectId, project_title: title, markdown_body: body,
+    revision, created_at: "2026-09-11T00:00:00.000Z", updated_at: "2026-09-11T00:00:00.000Z" };
+}
+
+function projectSummary(document: ProjectPrimaryDocument): ProjectPrimaryDocumentSummary {
+  return { document_id: document.document_id, kind: "project_primary", project_id: document.project_id,
+    project_title: document.project_title, project_archived: false, revision: document.revision,
+    created_at: document.created_at, updated_at: document.updated_at };
 }
 
 function ambiguousError(): Error {
@@ -467,5 +480,34 @@ describe("NotesBoard", () => {
     fireEvent.mouseDown(document.body);
     expect(screen.queryByRole("menu", { name: "Linesの操作" })).toBeNull();
     localStorage.removeItem("taskchute.notes.line-numbering.v1");
+  });
+
+  it("opens a Project Note inline and autosaves only its Markdown body", async () => {
+    const current = projectDocument("0199d103-0000-7000-8000-000000000001", "project-1", "Project One", "before");
+    mocks.loadDocuments.mockResolvedValue({ documents: [], project_documents: [projectSummary(current)] });
+    mocks.loadProjectPrimaryDocumentById.mockResolvedValue(current);
+    mocks.updateProjectPrimaryDocument.mockResolvedValue({ document: projectDocument(current.document_id, current.project_id, current.project_title, "after", 1) });
+    const openFloating = vi.fn();
+    render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} onOpenProjectNote={openFloating} />);
+    fireEvent.click(await screen.findByRole("button", { name: /Project One/ }));
+    await waitFor(() => expect(screen.getByText(/現在のProjectタイトルを表示しています。/)).toBeTruthy());
+    expect(openFloating).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText("ノートタイトル")).toBeNull();
+    const body = await screen.findByLabelText("Markdown本文");
+    fireEvent.change(body, { target: { value: "after" } });
+    await waitFor(() => expect(mocks.updateProjectPrimaryDocument).toHaveBeenCalledTimes(1), { timeout: 2500 });
+    expect(mocks.updateProjectPrimaryDocument.mock.calls[0]![0]).toMatchObject({ project_id: "project-1", document_id: current.document_id,
+      expected_revision: 0, markdown_body: "after" });
+  });
+
+  it("activates an already floating Project Note without mounting a second inline editor", async () => {
+    const current = projectDocument("0199d103-0000-7000-8000-000000000002", "project-2", "Project Two", "body");
+    mocks.loadDocuments.mockResolvedValue({ documents: [], project_documents: [projectSummary(current)] });
+    const openFloating = vi.fn();
+    render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} onOpenProjectNote={openFloating} floatingProjectIds={["project-2"]} />);
+    fireEvent.click(await screen.findByRole("button", { name: /Project Two/ }));
+    await waitFor(() => expect(openFloating).toHaveBeenCalledWith("project-2", "Project Two"));
+    expect(screen.queryByLabelText("Markdown本文")).toBeNull();
+    expect(screen.getByText("このプロジェクトノートはフローティングウィンドウで開いています。")).toBeTruthy();
   });
 });

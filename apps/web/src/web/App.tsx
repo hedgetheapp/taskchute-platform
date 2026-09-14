@@ -792,6 +792,7 @@ export function App() {
   }, []);
   const handleProjectsChanged = useCallback((nextProjects: Array<{ id: string; title: string }>) => {
     setProjects(nextProjects);
+    setProjectsLoadState("loaded");
     updateTaskNoteWindows((windows) => windows.map((windowState) => {
       if (windowState.projectId === undefined) return windowState;
       const project = nextProjects.find((candidate) => candidate.id === windowState.projectId);
@@ -806,6 +807,19 @@ export function App() {
   const [day, setDay] = useState<CurrentTaskChuteDayProjection | null>(null);
   const [project, setProject] = useState<ProjectSummary | null>(null);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [projectsLoadState, setProjectsLoadState] = useState<"idle" | "loading" | "loaded" | "error">("idle");
+  const loadProjectsList = useCallback(async (): Promise<ProjectSummary[]> => {
+    setProjectsLoadState("loading");
+    try {
+      const projection = await api.loadProjects();
+      setProjects(projection.projects);
+      setProjectsLoadState("loaded");
+      return projection.projects;
+    } catch (caught) {
+      setProjectsLoadState("error");
+      throw caught;
+    }
+  }, []);
   const [modeBoard, setModeBoard] = useState<ModeBoardProjection | null>(null);
   const [modeOperation, setModeOperation] = useState<SetEntryModeRequest | null>(null);
   const [retainedModeOperations, setRetainedModeOperations] = useState<SetEntryModeRequest[]>([]);
@@ -1637,6 +1651,7 @@ export function App() {
     setTaskNoteOpeningIds({});
     setProject(null);
     setProjects([]);
+    setProjectsLoadState("idle");
     setModeBoard(null);
     setProjectOperation(null);
     setTaskOperation(null);
@@ -1821,15 +1836,17 @@ export function App() {
   }, [authState]);
 
   useEffect(() => {
-    if (!day || day.is_current || projects.length > 0
-      || !day.taskchute_day.id || day.establishment_state !== "established" || !day.planning_enabled
-      || !projectionEntries(day).some((entry) => entry.lifecycle_state === "planned" && entry.routine === null)) return;
+    if (authState !== "signed-in" || !day?.taskchute_day.id
+      || day.establishment_state !== "established" || !day.planning_enabled
+      || projectsLoadState !== "idle") return;
     let active = true;
-    void Promise.resolve(api.loadProjects()).then((projection) => {
-      if (active) setProjects(projection.projects);
-    }).catch(() => { /* Keep Projectなし selectable; the server remains authoritative. */ });
+    void loadProjectsList().catch(() => {
+      if (!active) return;
+      // Keep the current assignment visible without claiming it is archived;
+      // a later editor/settings action may retry the authoritative list load.
+    });
     return () => { active = false; };
-  }, [day, projects.length]);
+  }, [authState, day?.establishment_state, day?.planning_enabled, day?.taskchute_day.id, loadProjectsList, projectsLoadState]);
 
   useEffect(() => {
     persistCollapsedSections(collapsedSectionsByDay);
@@ -2505,6 +2522,7 @@ export function App() {
       setProject(created.project);
       setProjects((current) => current.some((candidate) => candidate.id === created.project.id)
         ? current : [...current, created.project]);
+      setProjectsLoadState("loaded");
       setProjectOperation(null);
       document.querySelector<HTMLFormElement>(".settings-project-form")?.reset();
     } catch (caught) {
@@ -2512,11 +2530,10 @@ export function App() {
       if (!isAmbiguousOutcome(caught)) setProjectOperation(null);
       if (!(caught instanceof ApiClientError) || caught.reconcile) {
         try {
-          const projection = await api.loadProjects();
-          setProjects(projection.projects);
-          if (projection.projects.some((candidate) => candidate.id === operation.project_id)) {
+          const projects = await loadProjectsList();
+          if (projects.some((candidate) => candidate.id === operation.project_id)) {
             setProjectOperation(null);
-            setProject(projection.projects.find((candidate) => candidate.id === operation.project_id) ?? null);
+            setProject(projects.find((candidate) => candidate.id === operation.project_id) ?? null);
             setError(null);
           }
         } catch { /* Preserve the original mutation outcome. */ }
@@ -3258,8 +3275,8 @@ export function App() {
       setPendingFocusKey(focusKey({ kind: "entry", id: operation.entry_id }));
     }
     setPendingAddTasks((current) => [...current, { operation, title, projectId: operation.project_id, sectionId: operation.section_id, estimateSeconds: null, modeId: operation.mode_id ?? null }]);
-    if (projects.length === 0) {
-      void Promise.resolve(api.loadProjects()).then((projection) => setProjects(projection.projects)).catch(() => { /* Keep Projectなし selectable; server validates dependent edits. */ });
+    if (projectsLoadState !== "loaded" && projectsLoadState !== "loading") {
+      void loadProjectsList().catch(() => { /* Keep Projectなし selectable; server validates dependent edits. */ });
     }
     const dispatch = async () => {
       const latest = dayRef.current;
@@ -3969,10 +3986,8 @@ export function App() {
     const projectId = overlay?.project_id ?? entry.task.project?.id ?? null;
     setTaskMetadataDraft({ entryId: entry.id, taskId: entry.task.id, expectedTitle: title,
       expectedProjectId: projectId, title, projectId });
-    if (projects.length === 0) {
-      void Promise.resolve(api.loadProjects()).then((projection) => {
-        if (projection) setProjects(projection.projects);
-      }).catch(() => { /* The current Project remains selectable; save will validate server-side. */ });
+    if (projectsLoadState !== "loaded" && projectsLoadState !== "loading") {
+      void loadProjectsList().catch(() => { /* The current Project remains selectable; save will validate server-side. */ });
     }
   }
 
@@ -4439,8 +4454,7 @@ export function App() {
     if (mutationLocked) return;
     setPending("project-settings"); setError(null);
     try {
-      const projection = await api.loadProjects();
-      setProjects(projection.projects);
+      await loadProjectsList();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Project一覧の読み込みに失敗しました");
     } finally { setPending(null); }
@@ -5809,7 +5823,9 @@ export function App() {
       ...Array.from(document.querySelectorAll<HTMLElement>(`[data-day-column-header="${key}"], [data-day-column-cell="${key}"]`)),
     ];
     const measured = elements.reduce((maximum, element) => {
-      const textWidth = (element.textContent?.trim().length ?? 0) * 7.5;
+      const select = element.querySelector("select") as HTMLSelectElement | null;
+      const measuredText = select?.selectedOptions[0]?.textContent ?? element.textContent;
+      const textWidth = (measuredText?.trim().length ?? 0) * 7.5;
       const labelWidth = element.querySelector<HTMLElement>(".column-heading-label")?.scrollWidth ?? 0;
       const overflowingContentWidth = element.scrollWidth > currentWidth ? element.scrollWidth : 0;
       return Math.max(maximum, labelWidth + 20, overflowingContentWidth, textWidth + 20);
@@ -5955,11 +5971,11 @@ export function App() {
         const metadataOverlay = pendingTaskMetadataOverlays[entry.id];
         const projectOptions: Array<ProjectSummary & { archived?: boolean }> = [...projects];
         if (entry.task.project && !projectOptions.some((candidate) => candidate.id === entry.task.project?.id)) {
-          projectOptions.unshift({ ...entry.task.project, archived: true });
+          projectOptions.unshift({ ...entry.task.project, ...(projectsLoadState === "loaded" ? { archived: true } : {}) });
         }
         const projectId = metadataOverlay ? metadataOverlay.project_id : entry.task.project?.id ?? null;
         const projectTitle = projectId === null ? null : projectOptions.find((candidate) => candidate.id === projectId)?.title ?? entry.task.project?.title ?? null;
-        return <span className="project-name" data-day-column-cell={key}>
+        return <span className="project-name" data-day-column-cell={key} data-project-list-state={projectsLoadState}>
           {metadataEditing ? <select className="project-selector" aria-label={`${entry.task.title}のProject`} value={taskMetadataDraft.projectId ?? ""}
             disabled={hasRetainedMutationScope(entryMutationScope(entry.id, entry.task.id))}
             onClick={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()}
@@ -6206,6 +6222,7 @@ export function App() {
           <NotesBoard onUnauthorized={transitionToSignedOut} onDirtyChange={setNotesDirty}
             onUnresolvedChange={setNotesUnresolved}
             initialDocumentId={notesInitialDocumentId}
+            floatingProjectIds={taskNoteWindows.filter((windowState) => windowState.documentKind === "project_primary" && windowState.projectId).map((windowState) => windowState.projectId!) }
             onOpenProjectNote={(projectId, title) => { void openProjectNote(projectId, title); }}
             onRegisterFlush={(flush) => { notesFlushRef.current = flush; }} />
         ) : view === "settings" ? (
