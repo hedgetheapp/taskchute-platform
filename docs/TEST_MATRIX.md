@@ -2954,3 +2954,16 @@ D-107 correctiveのlocal gatesはPASS。instrumentation APKはcompile済みだ�
 Galaxy S23 smokeは実行できていないため、既存のD107 implementation/CI evidenceとは分離して
 記録する。APK artifactは`taskchute-android-debug-7c3a626872658057c6fdcb3dbed558e0d97b2071`
 （ID `10344289985`、expires `2026-09-21T11:24:53Z`）。
+
+## D-107 Android Emulator verification closeout
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D107-PLUGIN-ADB | Test Android Apps / ADB | installed `android-emulator-qa` workflowで接続端末と利用可能なAVDを確認 | `adb devices -l`: no devices; `emulator -list-avds`: no AVD; `emulator.exe`は存在、`sdkmanager` / `avdmanager`は未提供 | EMULATOR_ENV_BLOCKED |
+| D107-PLUGIN-RUNTIME | Today instrumentation runtime | current Debug APKをEmulatorへinstallし、`connectedDebugAndroidTest`の9 testsを実行 | boot対象のAVD/serialがないため、install・runtime・screenshot・UI tree・logcatは未実施 | NOT_RUN |
+| D107-PLUGIN-BLOCK | Failure boundary | Product codeを環境回避のため変更せず、未実行を正確に分類 | local ADB/SDK read-only inspection; existing CI KVM-block evidence | EMULATOR_ENV_BLOCKED |
+
+D-107 Emulator closeoutではinstrumentation APK compileまでのPASSと、Emulator runtime未実行を
+分離する。Test Android Apps手順を利用したが、ローカルにboot可能なAVD/接続serialがなく、
+Galaxy S23 smokeも`NOT_RUN`である。次のwork itemはAVDを利用できる環境での9/9 runtime実行と
+必要な画面証拠取得とする。

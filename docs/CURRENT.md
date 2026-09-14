@@ -46,6 +46,16 @@ runtimeは`NOT_RUN / CI_HOST_BLOCKED`である。Galaxy S23 smokeも`NOT_RUN`（
 retest待ち）。Android correctiveはWorker/API/schema/migrationを変更しておらず、migration /
 deployは`NOT_REQUIRED`、production `NOT_RUN`、Released `NO`を維持する。
 
+### D-107 Android Emulator verification closeout — 2026-09-14
+
+インストール済みTest Android Appsの`android-emulator-qa`手順で、ローカルADB接続と
+Emulator利用可能性を確認した。`adb devices -l`は接続端末なし、`emulator -list-avds`は
+AVDなし、SDKには`emulator.exe`のみが確認でき、`sdkmanager` / `avdmanager`は利用できな
+かった。このため現在の環境ではEmulatorのboot、APK install、`connectedDebugAndroidTest`、
+screenshot / UI tree / logcat取得を実行できず、D-107 Today instrumentation runtimeは
+`NOT_RUN / EMULATOR_ENV_BLOCKED`である。既存GitHub-hosted runnerのKVM不足による未実行記録
+とも整合する。Galaxy S23 smokeはEmulator runtime未実行のため`NOT_RUN`を維持する。
+
 ### D-106 Android Native Auth Foundation v0.1 — 2026-09-14
 
 D-106を`49b928651dfccaff11c9399be5abeb10eaecc160`で実装し、CI wrapperの
