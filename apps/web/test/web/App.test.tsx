@@ -5929,7 +5929,7 @@ describe("Dogfood Day shell", () => {
     added = true;
     addRequest.reject(new ApiClientError("response lost", 503, true, "infrastructure_ambiguous"));
     await waitFor(() => expect(document.querySelector<HTMLElement>(`[data-entry-id="${addOperation.entry_id}"].task-row-pending`)).toBeNull());
-    expect(document.activeElement).toBe(screen.getByRole("combobox", { name: "Ambiguous focusのProject" }));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("combobox", { name: "Ambiguous focusのProject" })));
   });
 
   it("moves Task title Escape from editor to cell, then from cell to row", async () => {
