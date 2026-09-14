@@ -197,7 +197,7 @@ Web offlineはinitial First slice外。
 - conflict resolution UX
 - client clockをどこまで信用するか
 - actual occurred timeとServer recorded timeのexact semantics
-- push vs poll vs realtimeを導入する条件（Webのinvalidate-only freshness acceleratorはD-105でrealtimeを採用済み。Android offline synchronizationの方式・条件は未解決）
+- push vs poll vs realtimeを導入する条件（WebはD-105、foreground Android TodayはD-108でinvalidate-only freshness acceleratorを採用済み。Android offline synchronizationの方式・条件は未解決）
 
 ## Core Domain
 

@@ -1,5 +1,29 @@
 # Test Matrix
 
+## D-108 Android Realtime Invalidation v0.1 — local implementation
+
+| ID | Verification target | Evidence | Status |
+|---|---|---|---|
+| D108-DECISION | Canonical scope | Approved `docs/decisions/D-108_ANDROID_REALTIME_INVALIDATION_V01.md`; D-105/D-106/D-107 boundaries retained; no migration/new DO namespace | PASS source/docs |
+| D108-PROTOCOL | Android protocol | Strict v1 invalidate parser: version/type/scope allow-list, logical date, identifier/size limits, malformed input ignored | PASS JVM |
+| D108-MANAGER | Android connection | One active socket, dynamic cookie header, bounded jittered reconnect, auth probe distinction, logout stop, day invalidation coalescing | PASS JVM |
+| D108-TODAY | Today integration | Connected/foreground refetch, selected logical Day filtering, pending Start/Complete defer and one safe flush | PASS JVM |
+| D108-ORIGIN | Worker native boundary | Same-origin browser, wrong Origin, unauthenticated native missing-Origin, authenticated native missing-Origin, ordinary HTTP and invalidate-only broadcast | focused `6 / 6`; full Worker/D1 `307 / 307` | PASS |
+| D108-ANDROID-JVM | Android regression | `:app:testDebugUnitTest` | `64 / 64` | PASS |
+| D108-ANDROID-EMULATOR | Local AVD runtime | `TaskChute_API33` / Pixel 7 / API 33 / Google APIs / x86_64; APK install; `connectedDebugAndroidTest`; screenshot/UI tree/crash buffer | `10 / 10`, failures/errors/skipped `0 / 0 / 0` | PASS |
+| D108-WEB | Web regression | Focused realtime client tests; full Web suite | `4 / 4`; `442 / 442` | PASS |
+| D108-BUILD | Static/build gates | typecheck, normal build, exact `CLOUDFLARE_ENV=nonprod` build, deploy guard, Wrangler dry-run, `git diff --check` | all PASS | PASS |
+| D108-CROSS-CLIENT | Authenticated Android/Web propagation | Requires safe same-user authenticated Android and Web clients; no credentials retrieved or printed | not available in this run | NOT_RUN |
+| D108-MIGRATION | APP/AUTH schema | D-108 requires no migration and does not add a namespace | NOT_REQUIRED | PASS |
+
+D-108 local classification: implementation `22e4aaacda14409474ba5963cb62dd92ce6e1cdf` is
+fast-forward pushed and exact main is deployed to persistent nonprod Worker
+`74579f87-51c4-423e-ac7d-742ac283ac09`. APP/AUTH pending is `0 / 0`, quick/FK and read-only
+rows-written checks are PASS. Exact-SHA CI run `34854737305` has Web/Worker and Android
+JVM/APK jobs PASS; hosted emulator status is recorded separately from the local AVD PASS.
+Authenticated cross-client propagation and Android authenticated reconnect remain `NOT_RUN`;
+production is `NOT_RUN`, Released `NO`.
+
 ## D-106 Android Native Auth Foundation v0.1 — local gate
 
 | ID | Verification target | Evidence | Status |

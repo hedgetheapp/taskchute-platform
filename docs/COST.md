@@ -46,6 +46,18 @@ D-105ではCloudflare Durable ObjectsのSQLite-backed namespaceとHibernation We
 
 Official references: https://developers.cloudflare.com/durable-objects/best-practices/websockets/、https://developers.cloudflare.com/durable-objects/reference/durable-objects-migrations/、https://developers.cloudflare.com/workers/wrangler/configuration/、https://developers.cloudflare.com/durable-objects/platform/pricing/。
 
+## D-108 Android foreground realtime extension
+
+D-108はD-105の既存per-user SQLite-backed Durable Object namespaceをAndroid Todayから
+再利用し、新しいnamespace、APP/AUTH DB、migration、external service、paid-plan upgradeを
+追加しない。OkHttpはAndroidのWebSocket transportに必要な最小runtime dependencyとして
+追加する。Android socketはsigned-in foreground Todayだけで維持し、bounded reconnectと
+短いinvalidation coalesceを使う。background service、FCM、periodic polling、offline
+syncは追加しないため、それらの継続実行・配信コストはD-108のscope外である。
+
+Cloudflareのpricing / quota / platform restrictionは変わり得るため、D-105同様に
+production判断またはnamespace lifecycle変更前にcurrent official informationを再確認する。
+
 ## D-106 Android native auth foundation
 
 D-106は既存Workerの認証HTTP endpointをAndroidから利用するclient moduleだけを
@@ -58,10 +70,10 @@ domain/offline syncの長期cost判断は将来Decisionへ残す。
 
 以下はinitial implementationでは採用しない。
 
-- Durable Objects（D-105のWeb realtime invalidation v0.1を除く）
+- Durable Objects（D-105 Web + D-108 Androidの既存realtime invalidation scopeを除く）
 - external PostgreSQL / Hyperdrive
 - D1 read replication
-- realtime push infrastructure（D-105のWeb invalidate-only scopeを除く）
+- realtime push infrastructure（D-105 / D-108の既存invalidate-only scopeを除く）
 
 将来requirementやD1 feasibility evidenceによって必要性が生じた場合に再評価する。
 

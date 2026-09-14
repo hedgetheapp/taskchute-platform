@@ -316,6 +316,17 @@ Android sessionはKeystore + `noBackupFilesDir`のopaque cookie jarだけを対�
 利用可能になるまで`NOT_RUN`とする。D-106ではWorker deploy、APP/AUTH migration、
 persistent nonprod data mutation、production、credential取得を行わない。
 
+## D-108 Android realtime verification boundary
+
+D-108ではD-105の既存RealtimeHubをAndroid foreground Todayへ拡張する。local gateは
+Android JVM、protocol / connection manager、Today pending/defer、Worker/Web realtime、
+canonical nonprod build、deploy guard、Wrangler dry-run、可能なlocal AVD runtimeを含む。
+AndroidのWebSocketはD-106 dynamic cookie sessionを使い、HTTP Queryをcanonical authority
+として扱う。same-user Android/Web propagationやauthenticated reconnectはcredentialを
+取得せず安全な二つのclient条件がある場合だけPASSとし、条件がなければ`NOT_RUN`と記録
+する。foreground-only、no polling / FCM / background socket、no migration / production
+boundaryを維持する。
+
 ## Handoff
 
 チャット移行や大きな作業区切りでは、会話履歴を読み直さなくても再開できる程度のpointer + deltaを残す。

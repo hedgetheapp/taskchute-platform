@@ -358,6 +358,21 @@ operation queue、offline sync、realtime connection、new API command、schema 
 追加しない。future / past non-current DayのviewはD-041 / D-042のread-only boundaryに
 従い、execution actionを無効化する。
 
+## D-108 Android realtime invalidation architecture
+
+AndroidはD-105の既存`RealtimeHub`へ、D-106のdynamic cookie sessionを使って接続する。
+Workerは通常のsession authenticationとserver-derived app-user identityを先に解決し、
+そのidentityから既存のuser-scoped Durable Objectを取得する。Android requestでは
+Originが欠落し得るため、明示的なnative markerを補助的に検証するが、markerやclient
+入力をuser identity authorityにはしない。non-emptyなwrong Originはbrowserと同様に拒否する。
+
+Androidのforeground connection managerは一つのOkHttp WebSocketだけを持ち、Hibernation
+Hubからversioned invalidate scopeを受ける。socketはTaskChute stateやcommandを保持・
+実行せず、`day` scopeを既存Today HTTP repositoryのcanonical reloadへ変換する。
+bounded reconnect、app resume / connection success refetch、pending Start / Complete中の
+defer/coalesce、logout / lifecycle stopを行う。D1 / HTTP Queryが常にcanonical authority
+であり、offline DB、background service、FCM、polling、APP/AUTH migrationは追加しない。
+
 ## TaskChuteDay architecture
 
 TaskChuteDayはcanonical timezone + DayBoundaryPolicyから構成するcontinuous logical intervalである。

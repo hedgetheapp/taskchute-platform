@@ -2,6 +2,24 @@
 
 Statuses: Approved / Proposed / Superseded
 
+## D-108 — Android Realtime Invalidation v0.1
+
+Status: **Approved**
+
+Canonical Decision: `docs/decisions/D-108_ANDROID_REALTIME_INVALIDATION_V01.md`。
+
+D-108はD-105のinvalidate-only realtimeをforeground Android Todayへ拡張する。
+D1 / existing HTTP Queryをcanonical authorityとして維持し、AndroidはD-106の
+dynamic Better Auth cookie sessionとserver-derived app-user identityで既存の
+RealtimeHubへ接続する。Androidの`day`通知はselected logical DayのHTTP refetchを
+促すだけで、WebSocketはcanonical data transportやcommand transportにならない。
+
+browserのsame-origin / wrong-Origin protectionを維持し、native AndroidのOrigin欠落は
+明示marker + 通常のsession authenticationがある場合だけ許可する。foreground-only、
+bounded reconnect、pending Start / Complete中のdefer/coalesce、OkHttp WebSocket、
+D-106 auth handoffを対象とし、APP/AUTH migration、new DO namespace、offline sync、
+background socket、FCM、production rolloutは対象外である。
+
 ## D-107 — Android Today v0.1
 
 Status: **Approved**

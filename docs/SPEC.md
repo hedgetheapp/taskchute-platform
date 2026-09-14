@@ -19,6 +19,24 @@ loading、empty、retryable error、401 auth handoff、pending mutationは画面
 明示する。Android TodayはTask creation/editing、reorder、Notes、realtime、offline DB /
 queue、Project / Mode / Routine settings、widget、notificationを含まない。
 
+## D-108 Android realtime invalidation boundary
+
+D-108はD-105のinvalidate-only realtimeをforeground Android Todayへ拡張する。
+Realtime notificationはfreshness acceleratorであり、canonical authorityではない。
+AndroidはD-106のdynamic cookie sessionをWebSocket handshakeへ渡し、Workerが既存の
+sessionとserver-derived app-user identityを検証して同じapp userの`RealtimeHub`へ
+routingする。native Android markerはOrigin欠落を限定的に許可するためだけに使い、
+user identityやauthentication authorityにはしない。非emptyなwrong Origin、未認証、
+通常HTTP requestは引き続き拒否する。
+
+signed-in + foreground Todayではconnection managerが一つのsocketを維持し、bounded
+exponential reconnect / jitter、logout・lifecycle stop、resume / reconnect後の
+canonical HTTP refetchを行う。`day` scopeはmounted logical Dayをrefetchし、Start /
+Completeまたはreloadがpendingの間は既存のsafe boundaryまでcoalesce / deferする。
+protocolはversion/type/scopeをstrict parseし、WebSocketはinvalidate notificationだけを
+扱う。Androidのdomain state、command、body、offline queue、background socket、FCM、
+polling、APP/AUTH schema / migrationは追加しない。
+
 ## User model
 
 - 初期はone user

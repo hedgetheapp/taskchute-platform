@@ -1,5 +1,38 @@
 # Current
 
+### D-108 Android Realtime Invalidation v0.1 — local implementation — 2026-09-14
+
+D-108はD-105の既存invalidate-only `RealtimeHub`をforeground Android Todayへ拡張する。
+D1 / existing HTTP Queryをcanonical authorityとし、D-106 dynamic Better Auth cookie
+session、server-derived app-user routing、native missing-Origin markerの限定許可、OkHttp
+WebSocket、bounded reconnect、resume / reconnect refetch、pending Start / Completeの
+defer/coalesceを実装した。APP/AUTH schema、migration、new DO namespace、background
+socket、FCM、offline sync、productionは変更しない。
+
+Local evidenceはAndroid JVM `64 / 64`、canonical nonprod URL付きDebug APK /
+instrumentation APK compile、`TaskChute_API33` connected instrumentation `10 / 10`、
+Worker focused `6 / 6`・full `307 / 307`、Web focused `4 / 4`・full `442 / 442`、
+typecheck、normal/exact nonprod build、deploy guard、Wrangler dry-run、diff-checkがPASS。
+Local AVDはPixel 7 / Android 13 API 33 / Google APIs / x86_64 / `emulator-5554`で、APK
+install、MainActivity、screenshot / UI tree、crash buffer emptyを確認した。
+
+Implementation commit `22e4aaacda14409474ba5963cb62dd92ce6e1cdf`をmainへfast-forward pushし、
+canonical persistent nonprod Worker `taskchute-web-nonprod`へexact pushed sourceをdeployした。
+Worker versionは`74579f87-51c4-423e-ac7d-742ac283ac09`。generated configは
+`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、canonical APP/AUTH D1、既存
+`REALTIME_HUB/RealtimeHub/sqlite` bindingを検証済み。root `200`、protected realtime /
+Documents API `401`、APP/AUTH migration pendingなし、APP/AUTH quick_check `ok`、FK empty、
+read-only probe `rows_written=0`を確認した。
+
+Exact-SHA GitHub Actions run `34854737305`はWeb/Worker、Android JVM/APK jobがsuccessし、
+artifact `taskchute-android-debug-22e4aaacda14409474ba5963cb62dd92ce6e1cdf`（ID
+`10351959051`、expires `2026-09-21T14:20:31Z`）を生成した。hosted emulator jobは
+local AVD evidenceとは別に記録し、最終結果をcloseoutで反映する。same-user Android/Web
+authenticated cross-client propagation、Android authenticated socket reconnect、実機での
+D-108挙動はcredentialを取得せず`NOT_RUN`とする。D-107 Galaxy S23 smokeのユーザー確認済み
+PASSは既存evidenceとして別記録する。Migration `NOT_REQUIRED`、production `NOT_RUN`、
+Release `NO`。
+
 ### D-107 Android Today v0.1 — local implementation — 2026-09-14
 
 D-107 canonical Decisionを`docs/decisions/D-107_ANDROID_TODAY_V01.md`として追加し、

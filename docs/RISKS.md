@@ -33,6 +33,23 @@ Local JVM `16 / 16`、Debug APK、instrumentation APK compile、GitHub Actions r
 新しいWorker route、schema / migration、dependency、Cloudflare resource、
 production、offline persistenceは変更しない。
 
+## R-065 — D-108 Android foreground realtime boundary
+
+D-108のAndroid realtimeはD-105と同じくfreshness acceleratorであり、D1 / HTTP Queryが
+canonical authorityである。dynamic cookie session、server-derived app-user routing、
+native missing-Origin markerの限定許可、strict invalidate-only parser、bounded reconnect、
+pending Start / Complete中のdefer/coalesceで、cross-user接続、Origin bypass、malformed
+message、reconnect storm、local pending stateの上書きを抑止する。socket/network failureは
+HTTP Todayを停止せず、HTTP probeの401だけをD-106 auth pathへ渡す。
+
+Local Android JVM `64 / 64`、`TaskChute_API33` connected instrumentation `10 / 10`、
+Worker focused `6 / 6`・full `307 / 307`、Web focused `4 / 4`・full `442 / 442`、
+typecheck/build/exact nonprod build/deploy guard/Wrangler dry-run/diff-checkはPASSした。
+same-user Android/Web authenticated cross-client propagation、Android authenticated socket
+reconnect、実機でのD-108挙動はこの作業では`NOT_RUN`であり、credentialを取得・出力しない。
+APP/AUTH migration、new DO namespace、background service、FCM、offline sync、production
+rolloutは含めない。
+
 ## R-062 — D-105 realtime notification is non-canonical
 
 D-105 adds a per-user Hibernation WebSocket `RealtimeHub` only as a freshness accelerator. The socket can disconnect, reconnect late, deliver a duplicate, or fail to publish after a successful D1 commit; none of these states may replace canonical HTTP Query, mutation replay, CAS, or D-066/D-104 local barriers. Cross-user routing, same-origin authentication, malformed input, reconnect storms, and dirty Document overwrite are the primary risks.
