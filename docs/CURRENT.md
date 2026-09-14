@@ -24,8 +24,12 @@ MainActivity起動、UI tree、crash buffer emptyも確認した。最初のAVD�
 execution/realtime state regressionも同じinstrumentationでPASS。Web/Worker fullはAndroid-only
 impact analysisでNOT_RUN、migration / persistent nonprod deployはNOT_REQUIRED / NOT_RUN。
 
-Implementation commit `6903a36092ee4f009ee88cf44d4dafa7aa979239`はmainへfast-forward push済み。
-GitHub Actions exact-SHA結果はrun確認待ち。D-109のGalaxy S23 planning smokeはこの作業では
+Implementation commit `6903a36092ee4f009ee88cf44d4dafa7aa979239`、evidence docs commit
+`543efd8904eabfab63c4b38208adb841b1cc16f4`をmainへfast-forward push済み。GitHub Actions
+exact-SHA run `34907800194`（head `543efd8904eabfab63c4b38208adb841b1cc16f4`）はWeb /
+WorkerとAndroid JVM / Debug APK / instrumentation APK compileの全job PASS。artifact
+`taskchute-android-debug-543efd8904eabfab63c4b38208adb841b1cc16f4`（ID `10373476177`、
+2026-09-21T23:14:50Z expiry）も生成された。D-109のGalaxy S23 planning smokeはこの作業では
 未実施で`NOT_RUN`（既存D-107 Galaxy S23 smoke PASSとは別証跡）、production `NOT_RUN`、
 Release `NO`。
 
