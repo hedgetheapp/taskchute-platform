@@ -300,7 +300,7 @@ describe("NotesBoard", () => {
     fireEvent.change(screen.getByLabelText("ノートタイトル"), { target: { value: "Changed" } });
     expect(screen.getByDisplayValue("notitle")).toBeTruthy();
     expect(screen.getByLabelText("ノートタイトル")).toHaveProperty("disabled", true);
-    expect(onUnresolvedChange).toHaveBeenLastCalledWith(true);
+    await waitFor(() => expect(onUnresolvedChange).toHaveBeenLastCalledWith(true));
     const event = new Event("beforeunload", { cancelable: true });
     window.dispatchEvent(event);
     expect(event.defaultPrevented).toBe(true);
