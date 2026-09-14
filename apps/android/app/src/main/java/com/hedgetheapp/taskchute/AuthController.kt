@@ -16,14 +16,21 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-class AuthController(context: Context, rawBaseUrl: String) {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private val configError = runCatching { AppConfig.validateBaseUrl(rawBaseUrl) }.exceptionOrNull()
-    private val transport = configError?.let { null } ?: runCatching { NativeAuthHttpClient(rawBaseUrl) }.getOrNull()
-    private val coordinator = transport?.let { AuthSessionCoordinator(it, EncryptedSessionStore(context.applicationContext)) }
+class AuthController internal constructor(
+    private val coordinator: AuthSessionCoordinator?,
+    private val scope: CoroutineScope,
+    private val stateObserver: ((AuthUiState) -> Unit)?,
+) {
+    constructor(context: Context, rawBaseUrl: String) : this(
+        coordinator = createCoordinator(context, rawBaseUrl),
+        scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
+        stateObserver = null,
+    )
 
     var state by mutableStateOf<AuthUiState>(AuthUiState.Restoring)
         private set
+
+    private var operationInFlight = false
 
     fun restore() = launchIfAvailable { it.restore() }
 
@@ -39,12 +46,30 @@ class AuthController(context: Context, rawBaseUrl: String) {
 
     private fun launchIfAvailable(action: (AuthSessionCoordinator) -> AuthUiState) {
         if (coordinator == null) {
-            state = AuthUiState.SignedOut("接続先が設定されていません。アプリ設定を確認してください。")
+            publishState(AuthUiState.SignedOut("接続先が設定されていません。アプリ設定を確認してください。"))
             return
         }
-        if (state is AuthUiState.SigningIn || state is AuthUiState.SigningOut || state is AuthUiState.Restoring) return
+        if (operationInFlight) return
+        operationInFlight = true
         scope.launch {
-            state = withContext(Dispatchers.IO) { action(coordinator) }
+            try {
+                publishState(withContext(Dispatchers.IO) { action(coordinator) })
+            } finally {
+                operationInFlight = false
+            }
+        }
+    }
+
+    private fun publishState(next: AuthUiState) {
+        state = next
+        stateObserver?.invoke(next)
+    }
+
+    private companion object {
+        fun createCoordinator(context: Context, rawBaseUrl: String): AuthSessionCoordinator? {
+            val configError = runCatching { AppConfig.validateBaseUrl(rawBaseUrl) }.exceptionOrNull()
+            val transport = configError?.let { null } ?: runCatching { NativeAuthHttpClient(rawBaseUrl) }.getOrNull()
+            return transport?.let { AuthSessionCoordinator(it, EncryptedSessionStore(context.applicationContext)) }
         }
     }
 }
