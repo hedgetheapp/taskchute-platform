@@ -2929,7 +2929,7 @@ D-103 corrective implementation commit `74155bee97a1b05eff05bcbfc07e311d0b68acb8
 | D107-AUTH | D-106 regression | existing AuthController / get-session / cookie / stale credential semanticsを維持 | Android JVM suite | PASS |
 | D107-BUILD | Android build | `:app:testDebugUnitTest` `52 / 52`、canonical nonprod URL付き`:app:assembleDebug`、`:app:assembleDebugAndroidTest` | local Gradle run | PASS |
 | D107-REG | Repository gates | Web `442 / 442`、Worker/D1 `307 / 307`、typecheck、normal/exact nonprod build、deploy guard、Wrangler dry-run、diff-check | local commands | PASS |
-| D107-DEVICE | Galaxy S23 | sign-in、Today、Start、running panel、Complete、restart / usability | physical device availability required | NOT_RUN |
+| D107-DEVICE | Galaxy S23 | sign-in、Today、Start、running panel、Complete、restart / usability | user-confirmed D-107 Galaxy S23 smoke PASS（Emulator evidenceとは別記録） | PASS / USER_CONFIRMED |
 | D107-CI | Exact pushed-SHA CI / APK | run `34831165821`、SHA `c8b6c24ea88fd6950231768845dab72cb40b1c31`、Web/Worker + Android jobs success。Debug artifact `taskchute-android-debug-c8b6c24ea88fd6950231768845dab72cb40b1c31` / ID `10342451880` / 7-day retention | GitHub Actions read-back | PASS |
 | D107-NONPROD | Existing endpoint safety | Android endpointは既存canonical nonprodを利用。Worker/API/schema/migration/deployはD-107で変更なし | source/config review; existing nonprod evidence | NOT_REQUIRED |
 | D107-SAFETY | Boundary | no migration, production, release, branch/PR/merge/tag, credential retrieval | operation record | NOT_RUN |
@@ -2937,33 +2937,35 @@ D-103 corrective implementation commit `74155bee97a1b05eff05bcbfc07e311d0b68acb8
 ## D-107 verification classification
 
 Local implementation gates and exact pushed-SHA CI are PASS. Galaxy S23 device evidence remains
-separate from local/CI PASS and is recorded only after the user-driven device run.
+separate from local/CI PASS and is now recorded as user-confirmed smoke PASS.
 
 ## D-107 Android Today UI fidelity / Emulator corrective
 
 | ID | Area | Requirement | Evidence | Status |
 |---|---|---|---|---|
 | D107-UI-CORR | UI fidelity | TaskChute/date header、前後日・今日・refresh、4 destination NavigationBar、disabled未実装destination、small indicator/icon-only action、pending-aware running panel | `TodayScreen.kt` / `TodayScreenInstrumentedTest.kt` / local source review | PASS local |
-| D107-ANDROIDTEST | Compose instrumentation | Section/task、Start / Complete、running panel、loading / empty / retry / auth-required、date navigation、bottom navigationの13シナリオを9 testでカバー | `:app:assembleDebugAndroidTest` | PASS compile / runtime NOT_RUN |
+| D107-ANDROIDTEST | Compose instrumentation | Section/task、Start / Complete、running panel、loading / empty / retry / auth-required、date navigation、bottom navigationの13シナリオを9 testでカバー | `TaskChute_API33` connected report: Today `9 / 9 PASS` | PASS runtime |
 | D107-CI-ANDROID | Exact pushed-SHA CI / APK | SHA `7c3a626872658057c6fdcb3dbed558e0d97b2071`、run `34837908288`、Android JVM/APK job success、APK artifact生成 | GitHub Actions read-back | PARTIAL PASS |
-| D107-EMULATOR | Emulator runtime | API 33 `google_apis` / x86_64 / Nexus 5でinstrumentationを実行 | job `103955886357`はhost KVM不足で`sys.boot_completed`に到達せずcancelled | NOT_RUN / CI_HOST_BLOCKED |
-| D107-DEVICE-CORR | Galaxy S23 smoke | Today表示、Start、running panel、Complete、usability | Emulator runtime未実行のためdevice smoke未実施 | NOT_RUN |
+| D107-EMULATOR | Emulator runtime | API 33 `google_apis` / x86_64でinstrumentationを実行 | local `TaskChute_API33` / `emulator-5554`、Today `9 / 9 PASS`、full instrumentation `10 / 10 PASS`; GitHub KVM-blockはhistorical | PASS local / CI_HOST_BLOCKED historical |
+| D107-DEVICE-CORR | Galaxy S23 smoke | Today表示、Start、running panel、Complete、usability | ユーザー確認済みの最新APK実機smoke | PASS / USER_CONFIRMED |
 | D107-SCOPE-CORR | Corrective boundary | Worker/API/schema/migration/deployを変更しない。production/Release/branch/PR/merge/tagなし | source review / operation record | PASS / NOT_REQUIRED |
 
-D-107 correctiveのlocal gatesはPASS。instrumentation APKはcompile済みだが、Emulator runtimeと
-Galaxy S23 smokeは実行できていないため、既存のD107 implementation/CI evidenceとは分離して
-記録する。APK artifactは`taskchute-android-debug-7c3a626872658057c6fdcb3dbed558e0d97b2071`
-（ID `10344289985`、expires `2026-09-21T11:24:53Z`）。
+D-107 correctiveの旧CI blocked evidenceは履歴として保持する。local AVD runtimeで実行した
+instrumentationは全10件PASSし、Android JVM `52 / 52 PASS`、APK install、Activity解決、
+crash buffer empty、screenshot / UI tree / app logcat取得も確認した。Galaxy S23 smokeは
+ユーザー確認済みPASSであり、Emulator PASSとは別の実機evidenceである。
 
 ## D-107 Android Emulator verification closeout
 
 | ID | Area | Requirement | Evidence | Status |
 |---|---|---|---|---|
-| D107-PLUGIN-ADB | Test Android Apps / ADB | installed `android-emulator-qa` workflowで接続端末と利用可能なAVDを確認 | `adb devices -l`: no devices; `emulator -list-avds`: no AVD; `emulator.exe`は存在、`sdkmanager` / `avdmanager`は未提供 | EMULATOR_ENV_BLOCKED |
-| D107-PLUGIN-RUNTIME | Today instrumentation runtime | current Debug APKをEmulatorへinstallし、`connectedDebugAndroidTest`の9 testsを実行 | boot対象のAVD/serialがないため、install・runtime・screenshot・UI tree・logcatは未実施 | NOT_RUN |
-| D107-PLUGIN-BLOCK | Failure boundary | Product codeを環境回避のため変更せず、未実行を正確に分類 | local ADB/SDK read-only inspection; existing CI KVM-block evidence | EMULATOR_ENV_BLOCKED |
+| D107-PLUGIN-ADB | Test Android Apps / ADB | installed `android-emulator-qa` workflowで接続端末と利用可能なAVDを確認 | `TaskChute_API33` / Pixel 7 / API 33 / Google APIs / x86_64、`adb devices -l`=`emulator-5554 device` | PASS |
+| D107-PLUGIN-RUNTIME | Today instrumentation runtime | current Debug APKをEmulatorへinstallし、`connectedDebugAndroidTest`を実行 | report `tests=10 failures=0 errors=0 skipped=0`; Today `9 / 9`; EncryptedSessionStore `1 / 1` | PASS |
+| D107-PLUGIN-UI | Visual/runtime evidence | app launch、screenshot、UI tree、crash/app logcatを確認 | nonprod URL付きDebug APK install / MainActivity解決成功、login shell表示、crash buffer empty | PASS |
+| D107-PLUGIN-SCRIPT | Repeatable local QA | SDK/AVD auto-discovery、boot wait、test、APK再install、crash exit code | `scripts/android-qa.ps1`、default AVD `TaskChute_API33`、default nonprod URL | PASS |
+| D107-PLUGIN-FAILURE | Failure classification | 初回2 failureをProduct failureと誤分類せず、deterministic testへ修正 | immediate fake Successでpending node消失 + duplicate running title nodeの`TEST_CODE_FAIL`; app crashなし | CORRECTED / PASS |
 
-D-107 Emulator closeoutではinstrumentation APK compileまでのPASSと、Emulator runtime未実行を
-分離する。Test Android Apps手順を利用したが、ローカルにboot可能なAVD/接続serialがなく、
-Galaxy S23 smokeも`NOT_RUN`である。次のwork itemはAVDを利用できる環境での9/9 runtime実行と
-必要な画面証拠取得とする。
+D-107 Emulator closeoutでは、旧GitHub-hosted KVM不足の未実行記録と、今回のlocal AVD実行を
+分離する。`android-emulator-qa`手順で実際にboot / install / instrumentation / screenshot /
+UI tree / logcatを実施し、全10件PASSを確認した。Galaxy S23 smokeはユーザー確認済みPASS、
+production / migration / Releaseは`NOT_RUN / NO`である。

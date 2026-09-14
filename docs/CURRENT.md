@@ -56,6 +56,35 @@ screenshot / UI tree / logcat取得を実行できず、D-107 Today instrumentat
 `NOT_RUN / EMULATOR_ENV_BLOCKED`である。既存GitHub-hosted runnerのKVM不足による未実行記録
 とも整合する。Galaxy S23 smokeはEmulator runtime未実行のため`NOT_RUN`を維持する。
 
+### D-107 Android Emulator verification closeout — local AVD PASS — 2026-09-14
+
+上記の環境未実行記録は、GitHub-hosted runner / 旧local probeに対する履歴として保持する。
+その後、ユーザーが用意した`TaskChute_API33`（Pixel 7、Android 13 / API 33、Google APIs、
+x86_64）をローカルで起動し、`adb devices -l`の`emulator-5554 device`へ接続した。
+
+implementation/test commit `d3f9651d05f56d0a524f2c0b588a8e39c7335b77`を対象に、`scripts/android-qa.ps1`からcanonical
+nonprod URLをGradleへ渡して`:app:connectedDebugAndroidTest`を実行した。最終レポートは
+全10件`PASS`（Today instrumentation `9 / 9`、EncryptedSessionStore instrumentation
+`1 / 1`、failures / errors / skipped `0 / 0 / 0`）で、`BUILD SUCCESSFUL`だった。Android JVM
+も`:app:testDebugUnitTest` `52 / 52 PASS`。Start / Completeの先行2 failureは、Fake
+repositoryの即時Successでpending nodeが消えたこと、およびrunning taskがrowとfloating
+panelの2箇所に表示されるのに単一node assertionを行っていたことによる`TEST_CODE_FAIL`
+であり、`APP_RUNTIME_FAIL`やcrashではなかった。Latchでclick → pending/disabled確認 →
+release → canonical reloadを固定し、表示面は2 nodeとして検証するよう修正した。
+
+QA scriptはSDKを`ANDROID_SDK_ROOT` / `ANDROID_HOME` / `%LOCALAPPDATA%\Android\Sdk`から
+解決し、ユーザーAVD directoryを補完して`TaskChute_API33`を必要時だけ起動し、
+`sys.boot_completed=1`を待機する。テスト後はDebug APKを再installし、Activity解決とpackage
+crash bufferを確認してexit codeへ反映する。最終runではAPK install成功、
+`com.hedgetheapp.taskchute/.MainActivity`解決、crash buffer該当なしだった。認証情報を使わない
+手動smokeではnonprod URL付きAPKのlogin shellが起動し、FATAL / AndroidRuntime crashはなく、
+Today data操作はfake-repository instrumentationをauthorityとした。
+
+Galaxy S23のD-107 smokeは、ユーザーによる最新APKの実機確認済み`PASS`として、Emulator
+evidenceとは別に記録する。AndroidはEmulator runtime verified / Galaxy S23 smoke user-confirmed
+であり、Worker/API/schema/migration、persistent nonprod、production、migration、Releaseは
+変更していない。production`NOT_RUN`、Released`NO`を維持する。
+
 ### D-106 Android Native Auth Foundation v0.1 — 2026-09-14
 
 D-106を`49b928651dfccaff11c9399be5abeb10eaecc160`で実装し、CI wrapperの
