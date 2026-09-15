@@ -1,6 +1,7 @@
 package com.hedgetheapp.taskchute.document
 
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.CountDownLatch
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -103,11 +104,18 @@ class NotesControllerTest {
             ensureResult = DocumentResult.Ambiguous("unknown")
             taskFetchResult = DocumentResult.Missing
         }
+        val firstEnsureStarted = CountDownLatch(1)
+        val releaseFirstEnsure = CountDownLatch(1)
+        repository.firstEnsureStarted = firstEnsureStarted
+        repository.releaseFirstEnsure = releaseFirstEnsure
         val controller = controller(repository)
 
         controller.openTaskPrimary("task-1", "Task title", null)
-        assertTrue(await { controller.state.unresolvedTaskEnsure != null })
+        assertTrue(firstEnsureStarted.await(2, TimeUnit.SECONDS))
+        assertTrue(controller.state.unresolvedTaskEnsure != null)
         val original = controller.state.unresolvedTaskEnsure!!
+        releaseFirstEnsure.countDown()
+        assertTrue(await { controller.state.errorMessage == "unknown" && controller.state.taskEnsureSaving == false })
 
         repository.ensureResult = DocumentResult.Success(
             AndroidDocument("doc-1", DocumentKind.TASK_PRIMARY, "", "body", 0, taskId = "task-1"),
@@ -145,6 +153,8 @@ class NotesControllerTest {
         var fetchResult: DocumentResult? = null
         var ensureResult: DocumentResult? = null
         var taskFetchResult: DocumentResult? = null
+        var firstEnsureStarted: CountDownLatch? = null
+        var releaseFirstEnsure: CountDownLatch? = null
 
         override fun listStandalone() = DocumentListResult.Success(emptyList())
 
@@ -168,6 +178,10 @@ class NotesControllerTest {
 
         override fun ensureTaskPrimary(request: TaskPrimaryEnsureRequest): DocumentResult {
             ensureRequests += request
+            if (ensureRequests.size == 1) {
+                firstEnsureStarted?.countDown()
+                releaseFirstEnsure?.await(2, TimeUnit.SECONDS)
+            }
             return ensureResult ?: DocumentResult.Missing
         }
 

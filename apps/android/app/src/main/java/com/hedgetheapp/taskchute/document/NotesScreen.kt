@@ -105,7 +105,7 @@ fun NotesScreen(
         } else {
             NoteEditor(
                 controller,
-                state.editor!!,
+                state.editor,
                 Modifier.fillMaxSize().padding(padding).imePadding(),
                 onBack = {
                     attemptLeave {
@@ -127,7 +127,7 @@ private fun NotesList(controller: NotesController, state: NotesUiState, modifier
             Text(it, color = MaterialTheme.colorScheme.error)
             TextButton(onClick = controller::load) { Text("再試行") }
             if (state.unresolvedTaskEnsure != null) {
-                TextButton(onClick = controller::retryTaskPrimaryEnsure) { Text("元のノート作成を再試行") }
+                TextButton(onClick = controller::retryTaskPrimaryEnsure, enabled = !state.taskEnsureSaving) { Text("元のノート作成を再試行") }
             }
         }
         if (state.loadingList) {

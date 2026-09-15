@@ -42,6 +42,7 @@ data class NotesUiState(
     val errorMessage: String? = null,
     val unresolvedTaskEnsure: TaskPrimaryEnsureRequest? = null,
     val unresolvedTaskTitle: String? = null,
+    val taskEnsureSaving: Boolean = false,
 )
 
 class NotesController(
@@ -105,6 +106,7 @@ class NotesController(
             errorMessage = null,
             unresolvedTaskEnsure = ensureRequest,
             unresolvedTaskTitle = ensureRequest?.let { taskTitle },
+            taskEnsureSaving = ensureRequest != null,
         )
         scope.launch {
             val result = withContext(Dispatchers.IO) {
@@ -117,6 +119,8 @@ class NotesController(
 
     fun retryTaskPrimaryEnsure() {
         val request = state.unresolvedTaskEnsure ?: return
+        if (state.taskEnsureSaving) return
+        state = state.copy(taskEnsureSaving = true, errorMessage = null)
         scope.launch {
             val result = withContext(Dispatchers.IO) { repository.ensureTaskPrimary(request) }
             handleTaskPrimaryResult(result, request.taskId, state.unresolvedTaskTitle, request)
@@ -134,19 +138,21 @@ class NotesController(
                 editor = editorFor(result.document, taskTitle, taskId),
                 unresolvedTaskEnsure = null,
                 unresolvedTaskTitle = null,
+                taskEnsureSaving = false,
             )
-            DocumentResult.Missing -> state = state.copy(errorMessage = "タスクノートが見つかりません。", unresolvedTaskEnsure = null, unresolvedTaskTitle = null)
+            DocumentResult.Missing -> state = state.copy(errorMessage = "タスクノートが見つかりません。", unresolvedTaskEnsure = null, unresolvedTaskTitle = null, taskEnsureSaving = false)
             DocumentResult.Unauthorized -> {
-                state = state.copy(errorMessage = "認証が必要です。", unresolvedTaskEnsure = null, unresolvedTaskTitle = null)
+                state = state.copy(errorMessage = "認証が必要です。", unresolvedTaskEnsure = null, unresolvedTaskTitle = null, taskEnsureSaving = false)
                 onUnauthorized()
             }
-            is DocumentResult.Failure -> state = state.copy(errorMessage = result.message, unresolvedTaskEnsure = null, unresolvedTaskTitle = null)
-            is DocumentResult.Conflict -> state = state.copy(errorMessage = result.message, unresolvedTaskEnsure = null, unresolvedTaskTitle = null)
+            is DocumentResult.Failure -> state = state.copy(errorMessage = result.message, unresolvedTaskEnsure = null, unresolvedTaskTitle = null, taskEnsureSaving = false)
+            is DocumentResult.Conflict -> state = state.copy(errorMessage = result.message, unresolvedTaskEnsure = null, unresolvedTaskTitle = null, taskEnsureSaving = false)
             is DocumentResult.Ambiguous -> {
                 state = state.copy(
                     errorMessage = result.message,
                     unresolvedTaskEnsure = ensureRequest ?: state.unresolvedTaskEnsure,
                     unresolvedTaskTitle = taskTitle ?: state.unresolvedTaskTitle,
+                    taskEnsureSaving = false,
                 )
                 ensureRequest?.let { reconcileTaskPrimaryEnsure(it, taskTitle ?: state.unresolvedTaskTitle) }
             }
