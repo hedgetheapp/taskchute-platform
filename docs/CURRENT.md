@@ -1,5 +1,39 @@
 # Current
 
+### D-110 Android Today Direct Manipulation + Notes v0.3 — 2026-09-15
+
+D-110 Approved batchとして、Android Todayへordinary planned current-Day Taskのlong-press
+direct manipulationを追加した。同一Sectionの合法なplanned-start cohort内はcanonical
+`ReorderEntries`、Section跨ぎはcanonical `MoveEntry`、overflowの`複製`は`DuplicateEntry`
+を利用し、row body tapは引き続き編集を起動しない。pending中の二重dispatch、placement
+revision、ambiguous exact retryをcontrollerで保持し、interactive descendantsはdragを開始しない。
+future / past、running / completed、Routine-derivedはdirect manipulation対象外である。
+
+bottom navigationの`ノート`を有効化し、native single-pane Markdown source Notesを追加した。
+standalone Document list / create / updateは既存D-090 APIを使い、Task Primary NoteはD-101の
+Ensure / fetch / updateを使う。Task titleはTask側をauthorityとし、Note bodyだけを編集する。
+dirty Back / navigation barrier、memory-only draft、revision/CAS、ambiguous operationのexact
+request retention、in-flight Ensureの二重dispatch抑止を維持した。Worker/API、schema、migration、
+dependency、realtime protocol、productionは変更していない。
+
+Local evidenceはAndroid JVM `83 / 83`、Debug APK、instrumentation APK compile、Windows local
+AVD `TaskChute_API33`（Pixel 7 / Android 13 API 33 / Google APIs / x86_64 / `emulator-5554`）の
+`scripts/android-qa.ps1` `22 / 22` PASS。修正版のAVD runはAPK install、`MainActivity`解決、
+対象package crash buffer empty、login UI treeを確認した。impact regressionとしてfull Web
+`442 / 442`、Worker/D1 `307 / 307`、typecheck、normal build、exact nonprod build、deploy guard、
+Wrangler dry-run、`git diff --check`もPASSした。CI run `34931957689`（head
+`7589506c10bd5c6e205664d779608935b68fe0f4`）はWeb/WorkerおよびAndroid JVM / Debug APK /
+instrumentation APK compileの全job PASS。artifactは
+`taskchute-android-debug-7589506c10bd5c6e205664d779608935b68fe0f4`（ID `10381413837`、
+2026-09-22T05:16:50Z expiry）である。D-110のGalaxy S23 corrective smokeはこのfresh artifactを
+Product Ownerが確認するまで`PENDING_SMOKE`、persistent nonprod deploy / migrationは
+`NOT_REQUIRED` / `NOT_REQUIRED`、production / Releaseは`NOT_RUN` / `NO`とする。
+
+D-109 correctiveのうち、Product Ownerが確認済みのGalaxy S23 smoke（bottom-right Quick Add、
+running panelとの非重複、row body no-edit、`…`→`編集`、Start / overflow coexistence）は、従来の
+`NOT_RUN`記載をこの事実に基づき`PASS / USER_CONFIRMED`へ訂正した。D-109の他のhistorical evidence
+は変更していない。
+
 ### D-109 Android Today Planning v0.2 corrective UI refinement — 2026-09-15
 
 D-109の初期planning surfaceに対するApproved correctiveとして、date navigator内の旧Quick Addを
@@ -22,8 +56,10 @@ overflow edit、running / completed / Routine-derived no-edit、既存Start / Co
 GitHub Actions run `34920497594`（head `6a5ae3980713e5a3528b55387f276d9ecd38250b`）もWeb/Workerと
 Android JVM / Debug APK / instrumentation APK compileの全job PASS。fresh artifactは
 `taskchute-android-debug-6a5ae3980713e5a3528b55387f276d9ecd38250b`（ID `10378195562`、
-2026-09-22T02:17:54Z expiry）。補正対象のGalaxy S23 smokeはこのfresh APKのProduct Owner確認待ちで`NOT_RUN`、production /
-migration / deploy / Releaseは`NOT_RUN / NOT_REQUIRED / NOT_RUN / NO`を維持する。
+2026-09-22T02:17:54Z expiry）。補正対象のGalaxy S23 smokeはProduct Owner確認済みの
+`PASS / USER_CONFIRMED`（bottom-right Quick Add、running panel非重複、row body no-edit、`…`→`編集`、
+Start / overflow coexistence）であり、production / migration / deploy / Releaseは
+`NOT_RUN / NOT_REQUIRED / NOT_RUN / NO`を維持する。
 
 ### D-109 Android Today Planning v0.2 — local implementation — 2026-09-15
 

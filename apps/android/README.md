@@ -1,8 +1,8 @@
 # TaskChute Android native auth foundation
 
 This module is the D-106 v0.1 native authentication foundation plus the D-107
-Today surface, D-108 foreground invalidate-only realtime, and D-109 current-Day
-planning form. It uses the
+Today surface, D-108 foreground invalidate-only realtime, D-109 current-Day
+planning form, and D-110 direct manipulation / native Notes. It uses the
 existing TaskChute Server Better Auth email/password session endpoints, the
 canonical Today HTTP projection, and the existing D-105 RealtimeHub. Realtime
 only accelerates canonical HTTP refetch while the app is signed in and in the
@@ -16,6 +16,16 @@ the current planning-enabled Day. Planned ordinary current-Day rows expose an
 explicit `…` menu with `編集`; tapping the row body does not open the editor.
 The FAB and running-task panel share a bottom overlay relationship so the
 controls remain separated while a Task is running.
+
+D-110 enables the native Android `ノート` destination. Ordinary eligible current-Day
+planned rows support long-press drag for canonical same-cohort reorder or cross-Section
+move, and the overflow menu supports canonical `複製` and Task Primary `ノート`. The
+native Notes surface uses the existing owner-scoped Document APIs, explicit Markdown
+Save, revision/CAS, memory-only drafts, and explicit dirty Back confirmation. It does
+not add autosave, offline persistence, preview, attachments, or Project/Routine Note
+entry points. Runtime verification uses the Windows `TaskChute_API33` AVD through
+`scripts/android-qa.ps1`; the D-110 final Product Owner Galaxy S23 smoke remains
+`PENDING_SMOKE` until the fresh artifact is tested.
 
 ## Local build
 

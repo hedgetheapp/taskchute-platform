@@ -1,5 +1,28 @@
 # Test Matrix
 
+## D-110 Android Today Direct Manipulation + Notes v0.3 — final local/CI gate
+
+| ID | Verification target | Evidence | Status |
+|---|---|---|---|
+| D110-D109-EVIDENCE | D-109 corrective Galaxy S23 smoke | Product Owner confirmed bottom-right Quick Add、running panel non-overlap、row body no-edit、`…`→`編集`、Start / overflow coexistence; unrelated historical evidence preserved | PASS / USER_CONFIRMED |
+| D110-DIRECT | Today direct manipulation | Eligible ordinary planned current-Day long-press drag; canonical same-cohort `ReorderEntries`; cross-Section `MoveEntry`; no row-body edit; interactive descendants excluded | PASS local / emulator |
+| D110-DUPLICATE | Overflow duplicate | `…`→`複製` uses canonical `DuplicateEntry`, fresh identity, pending duplicate suppression, success refetch, exact retry boundary | PASS JVM / emulator |
+| D110-NOTES | Native Android Notes | Enabled `ノート` destination; standalone list/new/create/update; memory-only Markdown draft; dirty Back confirmation; CAS/ambiguity exact request retention | PASS JVM / emulator |
+| D110-TASK-NOTE | Task Primary Note | `…`→`ノート`; D-101 Ensure/fetch/update reuse; Task title read-only authority; no Today lifecycle/placement mutation | PASS JVM / emulator |
+| D110-ANDROID-JVM | Full Android JVM | `:app:testDebugUnitTest` — `83 / 83`, failures/errors/skipped `0 / 0 / 0` | PASS |
+| D110-ANDROID-EMULATOR | Windows runtime gate | `TaskChute_API33` / Pixel 7 / Android 13 API 33 / Google APIs / x86_64 / `emulator-5554`; `scripts/android-qa.ps1`; connected instrumentation `22 / 22`, `0 / 0 / 0`; APK install, MainActivity, crash buffer empty | PASS |
+| D110-REGRESSION | Existing app/server regression | Full Web `442 / 442`; Worker/D1 `307 / 307`; D-108/D-109 existing Android UI paths included in the AVD run | PASS |
+| D110-BUILD | Static/build gates | Debug APK, instrumentation APK compile, typecheck, normal build, exact `CLOUDFLARE_ENV=nonprod` build, deploy guard, Wrangler dry-run, `git diff --check` | PASS |
+| D110-CI | Exact pushed SHA / APK | GitHub Actions `34931957689`, head `7589506c10bd5c6e205664d779608935b68fe0f4`; all Web/Worker and Android JVM/APK jobs PASS; artifact `taskchute-android-debug-7589506c10bd5c6e205664d779608935b68fe0f4`, ID `10381413837`, expires `2026-09-22T05:16:50Z` | PASS |
+| D110-BOUNDARY | Server/data boundary | Android-only implementation; no Worker/API/schema/migration/dependency/realtime protocol change; no migration or persistent nonprod deploy required; production/Release untouched | PASS / NOT_REQUIRED |
+| D110-GALAXY | D-110 corrective smoke | Fresh final-main APK is available for Product Owner verification; this D-110 smoke is not claimed until user tests it | PENDING_SMOKE |
+
+D-110 implementation commits are `d86294a0e21bcb9ac8262bcd7d7847a021ac858e` and the CI-discovered
+test-stability correctives `8d6aa39ccb75ecb02afe519edb00b0d92253b6f6` / `7589506c10bd5c6e205664d779608935b68fe0f4`.
+The first two pushed CI runs exposed only non-deterministic test synchronization; the final exact-SHA
+run above passed. The Windows local AVD remains the formal Android runtime gate; no hosted emulator
+job is used. D-110 Galaxy S23 smoke remains `PENDING_SMOKE`.
+
 ## D-109 Android Today Planning v0.2 — local Android gate
 
 | ID | Verification target | Evidence | Status |
@@ -44,8 +67,9 @@ instrumentation bounds regression follow-up `2f643678ae6f50a482571e59e311d0776f7
 to `main`. Exact-SHA CI run `34920497594`（head `6a5ae3980713e5a3528b55387f276d9ecd38250b`）は
 Web/Worker、Android JVM、Debug APK、instrumentation APK compileの全job PASS。artifactは
 `taskchute-android-debug-6a5ae3980713e5a3528b55387f276d9ecd38250b`（ID `10378195562`、
-expires `2026-09-22T02:17:54Z`）。Corrective Galaxy S23 smoke is `NOT_RUN` until the Product
-Owner tests that fresh APK; the prior user-confirmed D-107 smoke remains separate evidence.
+expires `2026-09-22T02:17:54Z`）。Corrective Galaxy S23 smoke is `PASS / USER_CONFIRMED` for
+bottom-right Quick Add、running panel non-overlap、row body no-edit、`…`→`編集`、Start / overflow
+coexistence; the prior user-confirmed D-107 smoke remains separate evidence.
 
 ## D-108 Android Realtime Invalidation v0.1 — local implementation
 

@@ -12,6 +12,26 @@
 - implementation / verification statusは`docs/FEATURES.md`、`docs/CURRENT.md`、`docs/TEST_MATRIX.md`を正本とする。
 - この文書は新しいDomain semanticsを作らず、上記canonical docsと矛盾する場合は上記を優先する。
 
+## D-110 Android Today direct manipulation and native Notes
+
+D-110では、D-109のcompact Today surfaceを保ったまま、current established Dayのordinary
+planned Task bodyにlong-press drag surfaceを与える。通常tapは編集を起動せず、Startと`…`は
+drag対象外の明示的controlとして残す。同一Sectionの合法なcohort reorderはcanonical
+`ReorderEntries`、別Sectionへの移動はcanonical `MoveEntry`、複製は`DuplicateEntry`を利用し、
+Android独自のplacement / order authorityは持たない。running / completed / Routine-derived、
+future / past、pending rowはdrag対象外とする。
+
+bottom navigationの`ノート`はD-110で実装済みとして有効化する。native NotesはMaterial 3の
+single-pane list/editorで、Markdown sourceをcanonical bodyとして明示Saveする。新規Noteは
+first Saveまでmemory-only draft、既存Documentはrevision/CASで更新し、dirty Back / navigationは
+`変更を破棄しますか？`の確認を要求する。Task Primary NoteはTask titleを表示authorityとし、
+共有DocumentのMarkdown bodyだけを編集する。offline DB、autosave、preview、attachments、
+Project/Routine Note entry pointは追加しない。
+
+D-109の旧記録にあるNotes disabled境界はD-109時点のhistorical scopeであり、D-110がAndroid
+Notes destinationだけを有効化する。Server/API、schema、migration、dependency、realtime
+protocolは変更しない。
+
 ## D-109 Android Today planning surface
 
 TodayはTaskChute / Todayの大きな固定headerを置かず、`‹ 日付（曜日） › 今日`のdate

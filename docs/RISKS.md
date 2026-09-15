@@ -1,5 +1,21 @@
 # Risks
 
+## R-067 — D-110 Android direct manipulation and native Notes boundary
+
+D-110 reuses canonical `ReorderEntries` / `MoveEntry` / `DuplicateEntry` and D-090/D-101
+Document APIs from Android, so the main risks are gesture eligibility drift, placement-revision
+conflict, duplicate dispatch, and a dirty Note being discarded during mobile navigation. The
+controller limits drag to ordinary planned Tasks on the current established Day, excludes
+interactive descendants and pending rows, retains exact ambiguous requests, and refreshes the
+canonical Today projection after success. Native Notes keeps Markdown and drafts in memory only,
+uses revision/CAS for updates, and requires explicit dirty Back confirmation.
+
+Local JVM `83 / 83`, Windows `TaskChute_API33` instrumentation `22 / 22`, full Web `442 / 442`,
+Worker/D1 `307 / 307`, build/static gates, and exact-SHA CI `34931957689` passed. D-110 does not
+change Worker/API/schema/migration/dependency/realtime protocol and does not require a persistent
+nonprod deploy. The fresh D-110 APK is available, while Product Owner Galaxy S23 corrective smoke
+remains `PENDING_SMOKE`; production, Release, and offline persistence remain out of scope.
+
 ## R-066 — D-109 Android Today planning composition boundary
 
 D-109のAndroid planning formは、複数の既存HTTP commandを順にcomposeするため、途中の
