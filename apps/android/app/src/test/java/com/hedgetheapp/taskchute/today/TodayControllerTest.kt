@@ -218,8 +218,9 @@ class TodayControllerTest {
 
         override fun loadDay(logicalDate: String?): TodayResult {
             synchronized(requestedDates) { requestedDates += logicalDate }
-            if (loadStarted.count == 0L) reloadStarted.countDown() else loadStarted.countDown()
-            return if (loadCalls.incrementAndGet() == 1) loadResult else loadResultAfterFirst ?: loadResult
+            val call = loadCalls.incrementAndGet()
+            if (call == 1) loadStarted.countDown() else reloadStarted.countDown()
+            return if (call == 1) loadResult else loadResultAfterFirst ?: loadResult
         }
 
         override fun startTask(task: TodayTask, placementRevision: Int): TodayMutationResult {

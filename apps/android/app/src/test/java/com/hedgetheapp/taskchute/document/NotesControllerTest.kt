@@ -68,13 +68,19 @@ class NotesControllerTest {
             createResult = DocumentResult.Ambiguous("unknown")
             fetchResult = DocumentResult.Success(document("doc-1", "Committed", "body"))
         }
+        val createStarted = CountDownLatch(1)
+        val releaseCreate = CountDownLatch(1)
+        repository.createStarted = createStarted
+        repository.releaseCreate = releaseCreate
         val controller = controller(repository)
         controller.openNew()
         controller.updateTitle("Committed")
         controller.updateBody("body")
         controller.save()
 
-        assertTrue(await { controller.state.editor?.unresolvedRequest == null })
+        assertTrue(createStarted.await(2, TimeUnit.SECONDS))
+        releaseCreate.countDown()
+        assertTrue(await { controller.state.editor?.document?.documentId == "doc-1" })
         assertEquals(1, repository.createRequests.size)
         assertEquals("doc-1", controller.state.editor?.document?.documentId)
         controller.close()
@@ -155,6 +161,8 @@ class NotesControllerTest {
         var taskFetchResult: DocumentResult? = null
         var firstEnsureStarted: CountDownLatch? = null
         var releaseFirstEnsure: CountDownLatch? = null
+        var createStarted: CountDownLatch? = null
+        var releaseCreate: CountDownLatch? = null
 
         override fun listStandalone() = DocumentListResult.Success(emptyList())
 
@@ -166,6 +174,8 @@ class NotesControllerTest {
 
         override fun createStandalone(request: StandaloneCreateRequest): DocumentResult {
             createRequests += request
+            createStarted?.countDown()
+            releaseCreate?.await(2, TimeUnit.SECONDS)
             return createResult ?: DocumentResult.Success(document(request.documentId, request.title, request.markdownBody).copy(revision = 0))
         }
 
