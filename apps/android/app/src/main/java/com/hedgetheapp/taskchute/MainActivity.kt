@@ -61,13 +61,14 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         controller = AuthController(this, BuildConfig.TASKCHUTE_BASE_URL)
-        todayController = TodayController(
-            repository = TodayHttpRepository(
+        val todayRepository = TodayHttpRepository(
                 request = { method, path, body ->
                     controller.authenticatedRequest(method, path, body)?.let { TodayHttpResponse(it.status, it.body) }
                 },
                 onUnauthorized = {},
-            ),
+        )
+        todayController = TodayController(
+            repository = todayRepository,
             onUnauthorized = controller::restore,
         )
         planningController = TaskPlanningController(
@@ -86,6 +87,7 @@ class MainActivity : ComponentActivity() {
             ),
             onRefresh = todayController::refresh,
             onUnauthorized = controller::restore,
+            loadDay = todayRepository::loadDay,
         )
         notesController = NotesController(
             repository = DocumentHttpRepository(

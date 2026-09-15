@@ -2,6 +2,20 @@
 
 Statuses: Approved / Proposed / Superseded
 
+## D-112 — Android Today Bulk Selection + Day Operations v0.1
+
+Status: **Approved**
+
+Canonical Decision: `docs/decisions/D-112_ANDROID_TODAY_BULK_SELECTION_DAY_OPERATIONS_V01.md`。
+
+D-112はAndroid Todayのcurrent established Dayに、ordinary planned Entry向け常時選択、
+canonical bulk day move / delete、row-level previous / next / date move / delete、pull-to-refresh、
+短いlong-press D&D feedbackを追加する。既存の`BulkMoveEntriesToDay`、`BulkDeleteEntries`、
+`MoveEntry`、`ReorderEntries`、`DuplicateEntry`、D-101 Task Noteを再利用し、future / past、
+running / completed、Routine-derivedのmutation境界を維持する。複数選択relative placementを
+安全に表現する既存一括commandがないため、partial successを避けてgroup D&Dは有効化しない。
+Worker/API、schema/migration、dependency、realtime protocol、productionは変更しない。
+
 ## D-111 — Android Notes Autosave Parity v0.4
 
 Status: **Approved**

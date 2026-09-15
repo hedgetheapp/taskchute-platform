@@ -1,5 +1,28 @@
 # Current
 
+### D-112 Android Today Bulk Selection + Day Operations v0.1 — 2026-09-16
+
+D-112はAndroid Todayのcurrent established Dayに、ordinary planned Entryだけを対象とする常時
+selection checkboxとbottom bulk action barを追加した。`前日` / `翌日` / `日付`は既存canonical
+`BulkMoveEntriesToDay`へ、`削除`は既存`BulkDeleteEntries`へ、row overflowの前後日・日付・削除も
+同じoperation / placement revision boundaryへ接続した。過去日への移動は先にtarget Dayをreadし、
+未確立ならwriteせず、past Dayを作成しない。running / completed / Routine-derived / non-current
+rowにはselection / planning day operationを付けていない。
+
+既存単一Entry D&Dは約350msの短いhold、pointer-following translation、target highlightを使い、
+empty Section / `Sectionなし`の既存drop semanticsと互換にした。Today contentにはMaterial 3
+pull-to-refreshを追加した。既存APIに複数Entryの相対配置を一つのoperationで表すcommandがないため、
+複数選択のgroup D&Dはpartial successやAndroid独自placementを避けて有効化していない。このサブスコープ
+はD-112の既存API境界により未実装であり、単一Entry D&Dとselection bulk move/deleteは継続する。
+
+Local evidenceはAndroid JVM `97 / 97 PASS`、Windows local `TaskChute_API33`のToday
+instrumentation `24 / 24 PASS`、Debug APK install、MainActivity解決、TaskChute packageのcrash
+buffer empty。Today instrumentationは`1,121.54s`、post-test install/smoke `6.52s`、total
+`1,128.47s`で、UI tree / logcatではPixel Launcher/system ANRが別系統で観測されたが、TaskChute
+app crashはない。D-112のGalaxy S23 smokeはfresh final-main artifactをProduct Ownerが確認するまで
+`PENDING_SMOKE`、Worker/API、schema/migration、dependency、realtime protocol、persistent
+nonprod、production、Releaseは`NOT_REQUIRED / NOT_REQUIRED / NOT_REQUIRED / NOT_REQUIRED / NOT_RUN / NO`。
+
 ### D-111 Android Notes Autosave Parity v0.4 — 2026-09-15
 
 D-111は、既存のD-091 standalone Note autosaveとD-101 Task Primary NoteのDocument/CAS

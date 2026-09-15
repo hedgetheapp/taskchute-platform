@@ -122,6 +122,79 @@ class TodayDirectManipulationTest {
     }
 
     @Test
+    fun bulkDayOperationsUseCanonicalEndpointsAndPayloads() {
+        val requests = mutableListOf<Triple<String, String, String?>>()
+        val repository = TodayDirectManipulationHttpRepository(
+            request = { method, path, body ->
+                requests += Triple(method, path, body)
+                TodayHttpResponse(200, "{}")
+            },
+        )
+
+        assertEquals(
+            DirectManipulationResult.Success,
+            repository.execute(
+                DirectManipulationRequest.MoveToDay(
+                    operationId = "op-day",
+                    sourceTaskChuteDayId = "day-1",
+                    entryIds = listOf("entry-2", "entry-1"),
+                    targetLogicalDate = "2026-09-15",
+                    expectedSourcePlacementRevision = 7,
+                    allowSectionFallback = true,
+                ),
+            ),
+        )
+        assertEquals(
+            DirectManipulationResult.Success,
+            repository.execute(DirectManipulationRequest.Delete("op-delete", "day-1", listOf("entry-1"), 7)),
+        )
+
+        assertEquals("/api/v1/taskchute-days/entries/bulk-move-to-day", requests[0].second)
+        assertTrue(requests[0].third.orEmpty().contains("target_logical_date\":\"2026-09-15\""))
+        assertTrue(requests[0].third.orEmpty().contains("expected_source_placement_revision\":7"))
+        assertEquals("/api/v1/taskchute-days/current/entries/bulk-delete", requests[1].second)
+    }
+
+    @Test
+    fun unestablishedPastTargetIsRejectedBeforeMutation() {
+        val requests = mutableListOf<DirectManipulationRequest>()
+        val controller = TodayDirectManipulationController(
+            repository = object : TodayDirectManipulationRepository {
+                override fun execute(request: DirectManipulationRequest): DirectManipulationResult {
+                    requests += request
+                    return DirectManipulationResult.Success
+                }
+            },
+            onRefresh = {},
+            onUnauthorized = {},
+            loadDay = { TodayResult.Success(day().copy(logicalDate = "2026-09-13", taskChuteDayId = null)) },
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+        )
+
+        controller.moveToDay(day(), setOf("entry-1"), "2026-09-13")
+
+        assertTrue(await { controller.state.pendingEntryIds.isEmpty() && controller.state.errorMessage != null })
+        assertTrue(requests.isEmpty())
+        controller.close()
+    }
+
+    @Test
+    fun multiSelectionDisablesGroupDragButKeepsSelectionEligibility() {
+        val controller = TodayDirectManipulationController(
+            repository = FakeRepository(),
+            onRefresh = {},
+            onUnauthorized = {},
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+        )
+        val first = task(LifecycleState.PLANNED)
+        assertTrue(controller.canSelect(day(), first))
+        assertTrue(controller.canDrag(day(), first, setOf(first.id)))
+        assertFalse(controller.canDrag(day(), first, setOf("entry-1", "entry-2")))
+        assertFalse(controller.canSelect(day(), first.copy(lifecycleState = LifecycleState.RUNNING)))
+        controller.close()
+    }
+
+    @Test
     fun dropTargetResolverPrefersEmptySectionWhenNoEntryAnchorIsHit() {
         val target = resolveAndroidDropTarget(
             positionY = 300f,

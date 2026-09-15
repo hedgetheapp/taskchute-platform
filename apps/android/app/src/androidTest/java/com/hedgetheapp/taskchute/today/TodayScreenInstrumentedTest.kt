@@ -175,6 +175,34 @@ class TodayScreenInstrumentedTest {
     }
 
     @Test
+    fun eligibleRowsExposeSelectionAndBulkActionsWithoutDateRowAdd() {
+        val directRepository = FakeDirectManipulationRepository()
+        launchPlanningScreen(FakePlanningRepository(), directRepository = directRepository)
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        assertTrue(composeRule.onAllNodesWithContentDescription("タスクを追加").fetchSemanticsNodes().size == 1)
+        assertTrue(composeRule.onAllNodesWithText("前日").fetchSemanticsNodes().isEmpty())
+        composeRule.onNodeWithContentDescription("タスクを選択: Write report").performClick()
+        composeRule.onNodeWithText("1件選択").assertIsDisplayed()
+        composeRule.onNodeWithText("前日").assertIsDisplayed()
+        composeRule.onNodeWithText("翌日").assertIsDisplayed()
+        composeRule.onNodeWithText("日付").assertIsDisplayed()
+        composeRule.onNodeWithText("削除").assertIsDisplayed()
+    }
+
+    @Test
+    fun rowOverflowExposesCanonicalDayOperationsForPlannedCurrentEntry() {
+        launchPlanningScreen(FakePlanningRepository(), directRepository = FakeDirectManipulationRepository())
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        composeRule.onNodeWithContentDescription("タスクの編集メニュー").performClick()
+        composeRule.onNodeWithText("前の日へ移動").assertIsDisplayed()
+        composeRule.onNodeWithText("次の日へ移動").assertIsDisplayed()
+        composeRule.onNodeWithText("日付を選択").assertIsDisplayed()
+        composeRule.onNodeWithText("削除").assertIsDisplayed()
+    }
+
+    @Test
     fun longPressDragReordersEligibleRowsWithoutOpeningEdit() {
         val directRepository = FakeDirectManipulationRepository()
         val first = TodayTask(
@@ -542,6 +570,8 @@ class TodayScreenInstrumentedTest {
         val reorderCalls = AtomicInteger()
         val moveCalls = AtomicInteger()
         val duplicateCalls = AtomicInteger()
+        val bulkMoveCalls = AtomicInteger()
+        val deleteCalls = AtomicInteger()
         var lastReorderIds: List<String>? = null
         var lastMove: DirectManipulationRequest.Move? = null
 
@@ -556,6 +586,8 @@ class TodayScreenInstrumentedTest {
                     moveCalls.incrementAndGet()
                     lastMove = request
                 }
+                is DirectManipulationRequest.MoveToDay -> bulkMoveCalls.incrementAndGet()
+                is DirectManipulationRequest.Delete -> deleteCalls.incrementAndGet()
             }
             return DirectManipulationResult.Success
         }

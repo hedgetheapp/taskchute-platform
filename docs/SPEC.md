@@ -43,6 +43,22 @@ migration、dependency、realtime protocol、offline persistenceは変更しな�
 Android Notesに限るexplicit-only Save / memory-only new draft / 通常dirty discard confirmation
 の境界をsupersedeする。
 
+## D-112 Android Today bulk selection and day operations
+
+D-112では、current established Dayのordinary planned Entryに限り、常時表示のselection
+controlとbottom bulk action barを提供する。bulk day moveは既存の
+`BulkMoveEntriesToDay`、bulk deleteは既存の`BulkDeleteEntries`を利用し、row overflowの
+前日 / 翌日 / 日付選択 / 削除も同じcanonical commandとoperation / placement revision
+semanticsへ委譲する。過去日の移動先は既にestablishされたDayだけを許可し、未確立の過去Dayを
+移動操作だけで作成しない。削除は確認を要求する。
+
+TodayはPull-to-Refreshを利用でき、single-entry long-press dragは既存D-110のeligible
+boundaryとcanonical placement semanticsを維持する。multi-selectの選択自体は提供するが、
+既存APIに複数Entryを一つの相対placement operationとして安全に処理するcommandがないため、
+group D&DはこのDecisionでは有効化しない。Androidが複数のsingle-entry mutationを暗黙に
+送信して部分成功を作ることも禁止する。Worker/API、schema、migration、dependency、realtime
+protocol、production boundaryは変更しない。
+
 ## D-107 Android Today v0.1
 
 Android Todayは既存のauthenticated HTTP Query / lifecycle commandを利用するnative

@@ -1,5 +1,21 @@
 # Test Matrix
 
+## D-112 Android Today bulk selection and day operations — local closeout
+
+| ID | Verification target | Evidence | Status |
+|---|---|---|---|
+| D112-DECISION | Canonical scope | `docs/decisions/D-112_ANDROID_TODAY_BULK_SELECTION_DAY_OPERATIONS_V01.md`; selection, canonical bulk day move/delete, row day operations, Pull-to-Refresh, single-entry drag refinement | PASS |
+| D112-SELECTION | Eligible row selection / bulk bar | Current established ordinary planned rows expose selection; bulk bar actions are visible; selection clears on day/status change | PASS JVM / emulator |
+| D112-DAY-OPS | Row day operations | Previous/next/date/delete use existing canonical commands; unestablished past target is rejected before mutation; delete requires confirmation | PASS focused JVM / emulator |
+| D112-REFRESH | Pull-to-Refresh | Material3 refresh invokes the existing canonical Day reload without a new persistence path | PASS compile / emulator |
+| D112-DRAG | Single-entry drag regression | Existing D-110 single-entry eligibility and canonical placement behavior retained; long-press starts sooner and follows finger visually | PASS existing regression / emulator |
+| D112-GROUP-DRAG | Multi-entry relative D&D | Existing API lacks an atomic multi-entry relative-placement command; group D&D is intentionally not enabled rather than emulated with multiple writes | NOT_IMPLEMENTED / BOUNDED API GAP |
+| D112-ANDROID-JVM | Full Android JVM | Final `:app:testDebugUnitTest`: `97 / 97`, failures/errors/skipped `0 / 0 / 0` | PASS |
+| D112-ANDROID-AVD | Windows runtime gate | `TaskChute_API33` via `scripts/android-qa.ps1 -Surface Today`: `24 / 24`, failures/errors/skipped `0 / 0 / 0`; APK install, MainActivity resolution, and TaskChute crash-buffer check passed | PASS |
+| D112-AVD-TIMING | Runtime timing evidence | instrumentation `1,121.54s`; post-test install/smoke `6.52s`; total `1,128.47s`; system Pixel Launcher ANR observed separately under high emulator load, no TaskChute app crash | PASS WITH ENVIRONMENT NOTE |
+| D112-BOUNDARY | Server/data boundary | No Worker/API/schema/migration/dependency/realtime protocol/persistent nonprod/production change | PASS / NOT_REQUIRED |
+| D112-GALAXY | Device smoke | Fresh final-main APK to be tested by Product Owner | PENDING_SMOKE |
+
 ## D-111 Android Notes Autosave Parity v0.4 — closeout
 
 | ID | Verification target | Evidence | Status |

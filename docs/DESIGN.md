@@ -43,6 +43,21 @@ D-109の旧記録にあるNotes disabled境界はD-109時点のhistorical scope�
 Notes destinationだけを有効化する。Server/API、schema、migration、dependency、realtime
 protocolは変更しない。
 
+## D-112 Android Today bulk selection and day operations
+
+D-112では、current established Dayのordinary planned Entryに常時selection checkboxを表示し、
+複数選択時はNavigationBar上のaction barから`前日` / `翌日` / `日付` / `削除`を実行する。
+day moveは既存`BulkMoveEntriesToDay`、deleteは`BulkDeleteEntries`へ一つのoperationとして送り、
+row overflowの同等操作も同じcommand boundaryを使う。past targetはtarget Dayをreadしてestablished
+であることを確認し、未確立ならwriteしない。running / completed / Routine-derived / non-current
+はselectionとplanning day operationから除外する。
+
+Today contentはMaterial 3 pull-to-refreshをcanonical reloadへ接続し、既存single-Entry D&Dは短い
+holdとpointer-following / target previewを持つ。既存APIに複数Entryを相対anchorへ一回で配置する
+commandがないため、複数選択group D&Dはpartial successを避けて有効化せず、selection bulk
+move/deleteとsingle-Entry D&Dを分離する。Worker/API、schema、migration、dependency、realtime
+protocol、offline storage、production semanticsは変更しない。
+
 ## D-109 Android Today planning surface
 
 TodayはTaskChute / Todayの大きな固定headerを置かず、`‹ 日付（曜日） › 今日`のdate

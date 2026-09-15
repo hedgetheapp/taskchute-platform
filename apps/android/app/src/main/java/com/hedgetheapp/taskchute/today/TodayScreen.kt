@@ -2,7 +2,9 @@ package com.hedgetheapp.taskchute.today
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,6 +26,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -34,6 +37,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -48,17 +53,24 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerInputScope
+import androidx.compose.ui.input.pointer.PointerId
+import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import android.app.DatePickerDialog
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.time.LocalDate
 
 enum class AndroidDestination {
@@ -123,16 +135,68 @@ fun TodayScreen(
 ) {
     val state = controller.state
     val planningState = planningController?.state ?: TaskPlanningUiState()
+    var selectedEntryIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var datePickerEntryIds by remember { mutableStateOf<Set<String>?>(null) }
+    var deleteEntryIds by remember { mutableStateOf<Set<String>?>(null) }
+    val context = LocalContext.current
     LaunchedEffect(controller) { controller.loadCurrent() }
+    LaunchedEffect(state.day, state.status) { selectedEntryIds = emptySet() }
+    LaunchedEffect(datePickerEntryIds, state.day?.logicalDate) {
+        val entryIds = datePickerEntryIds ?: return@LaunchedEffect
+        val pickerDay = state.day ?: return@LaunchedEffect
+        val parsed = LocalDate.parse(pickerDay.logicalDate)
+        DatePickerDialog(
+            context,
+            { _, year, month, date ->
+                datePickerEntryIds = null
+                directManipulationController?.moveToDay(
+                    pickerDay,
+                    entryIds,
+                    LocalDate.of(year, month + 1, date).toString(),
+                    "指定した日に移動しました",
+                )
+            },
+            parsed.year,
+            parsed.monthValue - 1,
+            parsed.dayOfMonth,
+        ).also { dialog ->
+            dialog.setOnCancelListener { datePickerEntryIds = null }
+            dialog.show()
+        }
+    }
+
+    val day = state.day
+    val bulkSelected = day?.takeIf { it.isCurrent && it.planningEnabled }
+        ?.allEntries
+        ?.filter { it.id in selectedEntryIds && it.lifecycleState == LifecycleState.PLANNED && !it.routineDerived }
+        ?.map(TodayTask::id)
+        ?.toSet()
+        .orEmpty()
 
     Scaffold(
         bottomBar = {
-            AndroidNavigationBar(
-                selected = AndroidDestination.TODAY,
-                onToday = controller::today,
-                onSettings = onNavigateSettings,
-                onNotes = onNavigateNotes,
-            )
+            Column {
+                if (day != null && bulkSelected.isNotEmpty()) {
+                    BulkActionBar(
+                        count = bulkSelected.size,
+                        onPrevious = {
+                            directManipulationController?.moveToDay(day, bulkSelected, LocalDate.parse(day.logicalDate).minusDays(1).toString(), "前の日へ移動しました")
+                        },
+                        onNext = {
+                            directManipulationController?.moveToDay(day, bulkSelected, LocalDate.parse(day.logicalDate).plusDays(1).toString(), "次の日へ移動しました")
+                        },
+                        onChooseDate = { datePickerEntryIds = bulkSelected },
+                        onDelete = { deleteEntryIds = bulkSelected },
+                        onClear = { selectedEntryIds = emptySet() },
+                    )
+                }
+                AndroidNavigationBar(
+                    selected = AndroidDestination.TODAY,
+                    onToday = controller::today,
+                    onSettings = onNavigateSettings,
+                    onNotes = onNavigateNotes,
+                )
+            }
         },
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
@@ -147,6 +211,12 @@ fun TodayScreen(
                     planningController = planningController,
                     directManipulationController = directManipulationController,
                     onOpenTaskNote = onOpenTaskNote,
+                    selectedEntryIds = selectedEntryIds,
+                    onToggleSelection = { id ->
+                        selectedEntryIds = if (id in selectedEntryIds) selectedEntryIds - id else selectedEntryIds + id
+                    },
+                    onOpenDatePicker = { datePickerEntryIds = it },
+                    onRequestDelete = { deleteEntryIds = it },
                     modifier = Modifier.fillMaxSize(),
                 )
                 TodayLoadStatus.ERROR -> TodayError(state.errorMessage ?: "予定を読み込めませんでした。", controller::refresh)
@@ -166,7 +236,7 @@ fun TodayScreen(
                             horizontalAlignment = Alignment.End,
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
-                            if (canAdd) {
+                            if (canAdd && bulkSelected.isEmpty()) {
                                 FloatingActionButton(
                                     onClick = { planningController.openCreate(day) },
                                     modifier = Modifier.semantics { contentDescription = "タスクを追加" },
@@ -191,6 +261,44 @@ fun TodayScreen(
             TaskEditorForm(planningController, planningState, Modifier.imePadding())
         }
     }
+
+    deleteEntryIds?.let { entryIds ->
+        AlertDialog(
+            onDismissRequest = { deleteEntryIds = null },
+            title = { Text("タスクを削除") },
+            text = { Text("選択した${entryIds.size}件の予定を削除しますか？") },
+            confirmButton = {
+                TextButton(onClick = {
+                    deleteEntryIds = null
+                    day?.let { directManipulationController?.delete(it, entryIds, "削除しました") }
+                }) { Text("削除") }
+            },
+            dismissButton = { TextButton(onClick = { deleteEntryIds = null }) { Text("キャンセル") } },
+        )
+    }
+}
+
+@Composable
+private fun BulkActionBar(
+    count: Int,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+    onChooseDate: () -> Unit,
+    onDelete: () -> Unit,
+    onClear: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Text("${count}件選択", modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
+        TextButton(onClick = onPrevious) { Text("前日") }
+        TextButton(onClick = onNext) { Text("翌日") }
+        TextButton(onClick = onChooseDate) { Text("日付") }
+        TextButton(onClick = onDelete) { Text("削除") }
+        TextButton(onClick = onClear) { Text("解除") }
+    }
 }
 
 @Composable
@@ -200,6 +308,10 @@ private fun TodayContent(
     planningController: TaskPlanningController?,
     directManipulationController: TodayDirectManipulationController?,
     onOpenTaskNote: (TodayTask) -> Unit,
+    selectedEntryIds: Set<String>,
+    onToggleSelection: (String) -> Unit,
+    onOpenDatePicker: (Set<String>) -> Unit,
+    onRequestDelete: (Set<String>) -> Unit,
     modifier: Modifier,
 ) {
     val day = state.day ?: return LoadingToday()
@@ -231,6 +343,7 @@ private fun TodayContent(
         )
         dragState = current.copy(
             positionY = positionY,
+            deltaY = current.deltaY + deltaY,
             target = target,
         )
     }
@@ -269,7 +382,12 @@ private fun TodayContent(
             )
         }
     }
-    Column(modifier) {
+    PullToRefreshBox(
+        isRefreshing = state.status == TodayLoadStatus.REFRESHING,
+        onRefresh = controller::refresh,
+        modifier = modifier,
+    ) {
+        Column(Modifier.fillMaxSize()) {
         DateNavigator(
             day = day,
             controller = controller,
@@ -284,6 +402,9 @@ private fun TodayContent(
                     TextButton(onClick = directManipulationController::retryUnresolved) { Text("元の操作を再試行") }
                 }
             }
+        }
+        directManipulationController?.state?.feedbackMessage?.let {
+            Text(it, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 16.dp))
         }
         if (!day.hasEntries) {
             EmptyToday()
@@ -323,9 +444,18 @@ private fun TodayContent(
                         onDuplicate = { directManipulationController?.duplicate(day, task) },
                         canOpenNote = task.taskId != null,
                         onOpenNote = { onOpenTaskNote(task) },
-                        canDrag = directManipulationController?.canDrag(day, task) == true
+                        selected = task.id in selectedEntryIds,
+                        canSelect = directManipulationController?.canSelect(day, task) == true,
+                        onToggleSelection = { onToggleSelection(task.id) },
+                        canDayOperate = day.isCurrent && day.planningEnabled && task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived && directManipulationController != null,
+                        onMovePrevious = { directManipulationController?.moveToDay(day, setOf(task.id), LocalDate.parse(day.logicalDate).minusDays(1).toString(), "前の日へ移動しました") },
+                        onMoveNext = { directManipulationController?.moveToDay(day, setOf(task.id), LocalDate.parse(day.logicalDate).plusDays(1).toString(), "次の日へ移動しました") },
+                        onPickDate = { onOpenDatePicker(setOf(task.id)) },
+                        onDelete = { onRequestDelete(setOf(task.id)) },
+                        canDrag = directManipulationController?.canDrag(day, task, selectedEntryIds) == true
                             && !state.pendingEntryIds.contains(task.id),
                         dragging = dragState?.entryId == task.id,
+                        dragDeltaY = dragState?.takeIf { it.entryId == task.id }?.deltaY ?: 0f,
                         dropTarget = dragState?.target?.key == entryDropKey(task.id),
                         onDragStart = { pointerPosition ->
                             directManipulationController?.takeIf { it.canDrag(day, task) }?.let {
@@ -376,9 +506,18 @@ private fun TodayContent(
                         onDuplicate = { directManipulationController?.duplicate(day, task) },
                         canOpenNote = task.taskId != null,
                         onOpenNote = { onOpenTaskNote(task) },
-                        canDrag = directManipulationController?.canDrag(day, task) == true
+                        selected = task.id in selectedEntryIds,
+                        canSelect = directManipulationController?.canSelect(day, task) == true,
+                        onToggleSelection = { onToggleSelection(task.id) },
+                        canDayOperate = day.isCurrent && day.planningEnabled && task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived && directManipulationController != null,
+                        onMovePrevious = { directManipulationController?.moveToDay(day, setOf(task.id), LocalDate.parse(day.logicalDate).minusDays(1).toString(), "前の日へ移動しました") },
+                        onMoveNext = { directManipulationController?.moveToDay(day, setOf(task.id), LocalDate.parse(day.logicalDate).plusDays(1).toString(), "次の日へ移動しました") },
+                        onPickDate = { onOpenDatePicker(setOf(task.id)) },
+                        onDelete = { onRequestDelete(setOf(task.id)) },
+                        canDrag = directManipulationController?.canDrag(day, task, selectedEntryIds) == true
                             && !state.pendingEntryIds.contains(task.id),
                         dragging = dragState?.entryId == task.id,
+                        dragDeltaY = dragState?.takeIf { it.entryId == task.id }?.deltaY ?: 0f,
                         dropTarget = dragState?.target?.key == entryDropKey(task.id),
                         onDragStart = { pointerPosition ->
                             directManipulationController?.takeIf { it.canDrag(day, task) }?.let {
@@ -400,6 +539,7 @@ private fun TodayContent(
                 }
             }
         }
+        }
     }
 }
 
@@ -416,6 +556,7 @@ private data class AndroidDragState(
     val entryId: String,
     val sourceSectionId: String?,
     val positionY: Float,
+    val deltaY: Float = 0f,
     val target: AndroidDropTarget?,
 )
 
@@ -530,8 +671,17 @@ private fun TodayTaskRow(
     onDuplicate: () -> Unit,
     canOpenNote: Boolean,
     onOpenNote: () -> Unit,
+    selected: Boolean,
+    canSelect: Boolean,
+    onToggleSelection: () -> Unit,
+    canDayOperate: Boolean,
+    onMovePrevious: () -> Unit,
+    onMoveNext: () -> Unit,
+    onPickDate: () -> Unit,
+    onDelete: () -> Unit,
     canDrag: Boolean,
     dragging: Boolean,
+    dragDeltaY: Float,
     dropTarget: Boolean,
     onDragStart: (Offset) -> Unit,
     onDragMove: (Float) -> Unit,
@@ -543,6 +693,8 @@ private fun TodayTaskRow(
     var editMenuExpanded by remember(task.id) { mutableStateOf(false) }
     Card(
         modifier = Modifier.fillMaxWidth().then(
+            if (dragging) Modifier.graphicsLayer { translationY = dragDeltaY } else Modifier,
+        ).then(
             if (dragging) Modifier.border(BorderStroke(2.dp, MaterialTheme.colorScheme.primary), MaterialTheme.shapes.medium)
             else if (dropTarget) Modifier.border(BorderStroke(2.dp, MaterialTheme.colorScheme.secondary), MaterialTheme.shapes.medium)
             else Modifier,
@@ -554,12 +706,21 @@ private fun TodayTaskRow(
             modifier = Modifier.fillMaxWidth().padding(start = 12.dp, top = 10.dp, bottom = 10.dp, end = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(
-                modifier = Modifier.size(14.dp).clip(MaterialTheme.shapes.small).border(
-                    BorderStroke(1.dp, stateColor(task.lifecycleState)),
-                    MaterialTheme.shapes.small,
-                ),
-            )
+            if (canSelect) {
+                Checkbox(
+                    checked = selected,
+                    onCheckedChange = { onToggleSelection() },
+                    enabled = enabled,
+                    modifier = Modifier.semantics { contentDescription = "タスクを選択: ${task.title}" },
+                )
+            } else {
+                Box(
+                    modifier = Modifier.size(14.dp).clip(MaterialTheme.shapes.small).border(
+                        BorderStroke(1.dp, stateColor(task.lifecycleState)),
+                        MaterialTheme.shapes.small,
+                    ),
+                )
+            }
             Spacer(Modifier.width(10.dp))
             val dragModifier = if (canDrag) {
                 Modifier
@@ -568,11 +729,9 @@ private fun TodayTaskRow(
                         dropBoundsSectionId[task.id] = sectionId
                     }
                     .pointerInput(task.id) {
-                        detectDragGesturesAfterLongPress(
+                        detectShortLongPressDrag(
                             onDragStart = onDragStart,
-                            onDrag = { _, dragAmount ->
-                                onDragMove(dragAmount.y)
-                            },
+                            onDragMove = onDragMove,
                             onDragEnd = onDragEnd,
                             onDragCancel = onDragCancel,
                         )
@@ -601,7 +760,7 @@ private fun TodayTaskRow(
                 ) { Text("✓") }
                 LifecycleState.COMPLETED -> Spacer(Modifier.size(48.dp))
             }
-            if (canEdit || canDuplicate || canOpenNote) {
+            if (canEdit || canDuplicate || canOpenNote || canDayOperate) {
                 Box {
                     IconButton(
                         onClick = { editMenuExpanded = true },
@@ -635,6 +794,36 @@ private fun TodayTaskRow(
                                 onClick = {
                                     editMenuExpanded = false
                                     onOpenNote()
+                                },
+                            )
+                        }
+                        if (canDayOperate) {
+                            DropdownMenuItem(
+                                text = { Text("前の日へ移動") },
+                                onClick = {
+                                    editMenuExpanded = false
+                                    onMovePrevious()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("次の日へ移動") },
+                                onClick = {
+                                    editMenuExpanded = false
+                                    onMoveNext()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("日付を選択") },
+                                onClick = {
+                                    editMenuExpanded = false
+                                    onPickDate()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("削除") },
+                                onClick = {
+                                    editMenuExpanded = false
+                                    onDelete()
                                 },
                             )
                         }
@@ -821,6 +1010,35 @@ private fun TodayAuthRequired() {
         CircularProgressIndicator()
         Spacer(Modifier.height(12.dp))
         Text("認証状態を確認しています…")
+    }
+}
+
+private const val D112_DRAG_HOLD_MS = 350L
+
+private suspend fun PointerInputScope.detectShortLongPressDrag(
+    onDragStart: (Offset) -> Unit,
+    onDragMove: (Float) -> Unit,
+    onDragEnd: () -> Unit,
+    onDragCancel: () -> Unit,
+) {
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false)
+        val held = withTimeoutOrNull(D112_DRAG_HOLD_MS) {
+            while (true) {
+                val event = awaitPointerEvent()
+                val change = event.changes.firstOrNull { it.id == down.id }
+                    ?: return@withTimeoutOrNull false
+                if (change.changedToUpIgnoreConsumed()) return@withTimeoutOrNull false
+            }
+            false
+        } == null
+        if (!held) return@awaitEachGesture
+        onDragStart(down.position)
+        val completed = drag(down.id) { change ->
+            onDragMove((change.position - change.previousPosition).y)
+            change.consume()
+        }
+        if (completed) onDragEnd() else onDragCancel()
     }
 }
 

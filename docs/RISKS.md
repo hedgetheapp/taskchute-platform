@@ -1,5 +1,19 @@
 # Risks
 
+## R-069 — D-112 Android bulk selection and day-operation boundary
+
+D-112 adds always-visible selection for eligible ordinary planned current-Day rows, canonical
+bulk day move/delete, row-level previous/next/date/delete operations, Pull-to-Refresh, and a
+shorter single-entry long-press drag affordance. The controller keeps operation identity and
+placement revision per mutation, refuses unestablished past targets, preserves the existing
+D-110 eligibility boundary, and requires confirmation before delete. Multi-select is useful for
+bulk day operations, but group D&D is intentionally not enabled: the existing API has no single
+atomic multi-entry relative-placement command, and issuing multiple single-entry moves would risk
+partial success and ordering drift. This is a bounded API capability gap, not an Android-local
+placement rule. Android JVM `97 / 97` and local `TaskChute_API33` Today instrumentation `24 / 24`
+passed; persistent nonprod, production, schema, migration, dependency, and realtime protocol
+remain unchanged. Product Owner Galaxy S23 D-112 smoke remains `PENDING_SMOKE`.
+
 ## R-068 — D-111 Android Notes autosave boundary
 
 D-111 extends the already-approved D-091/D-101 Document/CAS behavior to native Android. The

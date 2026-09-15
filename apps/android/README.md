@@ -11,6 +11,14 @@ are not included. Planning is limited to ordinary planned Tasks on the current
 established Day; future/past, running/completed, and Routine-derived entries
 remain read-only.
 
+D-112 adds selection and day operations to Today. Eligible ordinary planned current-Day rows
+have selection controls and a bottom bulk action bar for canonical bulk day move/delete. Their
+overflow menu also exposes previous-day, next-day, date-picker, and confirmed delete operations;
+unestablished past Days are never created by these actions. Pull-to-Refresh and the existing
+single-entry long-press drag remain available. Group D&D is not enabled because the current
+canonical API has no atomic multi-entry relative-placement command, so Android does not emulate
+it with multiple mutations.
+
 The D-109 planning controls use a single bottom-right `＋` FAB for Quick Add on
 the current planning-enabled Day. Planned ordinary current-Day rows expose an
 explicit `…` menu with `編集`; tapping the row body does not open the editor.
@@ -35,6 +43,11 @@ to the Notes list and a Task Primary editor opened from Today returns to Today. 
 Android JVM `94 / 94` and Windows `TaskChute_API33` instrumentation `28 / 28` through
 `scripts/android-qa.ps1`, including APK install, activity readiness, and crash-buffer inspection. The D-111
 Galaxy S23 smoke remains `PENDING_SMOKE` until the fresh artifact is tested.
+
+D-112 local evidence is Android JVM `97 / 97` and `TaskChute_API33` Today instrumentation
+`24 / 24` through `scripts/android-qa.ps1`; the run also installed the debug APK, resolved
+MainActivity, and found no TaskChute package crash. Galaxy S23 D-112 smoke remains
+`PENDING_SMOKE` until the fresh artifact is tested.
 
 ## Local build
 
