@@ -10,7 +10,7 @@
 | D111-ANDROID-JVM | Full Android JVM | final `:app:testDebugUnitTest`: `94 / 94`, failures/errors/skipped `0 / 0 / 0` | PASS |
 | D111-ANDROID-AVD | Runtime gate | Windows `TaskChute_API33` through `scripts/android-qa.ps1`; Notes 5 + Keystore 1 + Today 22 = `28 / 28`, failures/errors/skipped `0 / 0 / 0`; APK install, MainActivity, crash buffer empty; no redundant separate assemble closeout | PASS |
 | D111-BOUNDARY | Server/data boundary | Worker/API/schema/migration/dependency/realtime protocol unchanged; no persistent nonprod deploy required | PASS / NOT_REQUIRED |
-| D111-CI | Impact-aware exact-SHA CI | Android+docs routes `run_android=true`, `run_web=false`; Android JVM/APK/instrumentation compile and exact artifact required; GitHub remains metadata authority and volatile run/artifact metadata is reported in handoff | PENDING_EXACT_SHA |
+| D111-CI | Impact-aware exact-SHA CI | Android+docs routes `run_android=true`, `run_web=false`; classifier PASS, Android JVM/APK/instrumentation compile PASS, Web/Worker job skipped; exact artifact available; GitHub remains metadata authority | PASS |
 | D111-GALAXY | Device smoke | Fresh exact-final-main APK for Product Owner; autosave/navigation smoke | PENDING_SMOKE |
 | D111-SAFETY | Production/release | no production, restore, branch/PR/merge/tag/Release | NOT_RUN / NO |
 
@@ -43,7 +43,7 @@ owned by GitHub and are not copied into a new docs-only commit.
 | D110-ANDROID-EMULATOR | Windows runtime gate | `TaskChute_API33` / Pixel 7 / Android 13 API 33 / Google APIs / x86_64 / `emulator-5554`; `scripts/android-qa.ps1`; connected instrumentation `27 / 27`, `0 / 0 / 0`; APK install, MainActivity, UI tree, crash buffer empty | PASS |
 | D110-REGRESSION | Existing app/server regression | Full Web `442 / 442`; Worker/D1 `307 / 307`; D-108/D-109 existing Android UI paths included in the AVD run | PASS |
 | D110-BUILD | Static/build gates | Debug APK, instrumentation APK compile, typecheck, normal build, exact `CLOUDFLARE_ENV=nonprod` build, deploy guard, Wrangler dry-run, `git diff --check` | PASS |
-| D110-CI | Exact pushed SHA / APK | Prior CI evidence remains `34931957689`; corrective implementation `f8225c520257a88e977686a22edc451c764b95d7` was pushed after local PASS. Corrective exact-SHA Actions read-back and fresh artifact are `PENDING_VERIFICATION` in this session; prior artifact is not reused as corrective evidence | PENDING |
+| D110-CI | Exact pushed SHA / APK | Corrective implementation `f8225c520257a88e977686a22edc451c764b95d7` exact-SHA Actions read-back PASS with Web/Worker and Android jobs PASS; fresh exact-SHA artifact available. GitHub owns volatile run/artifact metadata | PASS |
 | D110-BOUNDARY | Server/data boundary | Android-only implementation; no Worker/API/schema/migration/dependency/realtime protocol change; no migration or persistent nonprod deploy required; production/Release untouched | PASS / NOT_REQUIRED |
 | D110-GALAXY | D-110 corrective smoke | Fresh final-main APK is available for Product Owner verification; this D-110 smoke is not claimed until user tests it | PENDING_SMOKE |
 

@@ -24,11 +24,11 @@ install、`MainActivity`解決、対象package crash buffer emptyを確認した
 Notesの古いexplicit-Save前提と、既存Todayの短い待機時間によるTEST_CODE_FAILであり、実装runtime
 crashではなかった。テスト側を明示的なcontroller/latch同期へ修正し、最終runで全件PASSとした。
 
-最終push後のGitHub Actions exact-SHA、fresh APK artifact、Galaxy S23 D-111 smokeはそれぞれGitHub
-read-back / Product Owner device testで確定する。D-111のGalaxy S23 smokeは`PENDING_SMOKE`、persistent
-nonprod deploy / migrationは`NOT_REQUIRED`、production / restore / Releaseは`NOT_RUN` / `NOT_RUN` /
-`NO`である。GitHub Actionsのrun ID・artifact ID・expiryはvolatile metadataのためcanonical docsへ
-複製せず、GitHubを正本としてhandoffで報告する。
+GitHub Actions exact-SHAはPASS（classifier PASS、Android JVM/APK PASS、Web/Worker jobはskip）であり、
+fresh exact-SHA Debug APK artifactもGitHub上で利用可能である。run ID・artifact ID・expiryはvolatile
+metadataのためcanonical docsへ複製せず、GitHubを正本としてhandoffで報告する。D-111のGalaxy S23
+smokeは`PENDING_SMOKE`、persistent nonprod deploy / migrationは`NOT_REQUIRED`、production / restore /
+Releaseは`NOT_RUN` / `NOT_RUN` / `NO`である。
 
 ### D-110 Android Today Direct Manipulation + Notes v0.3 — 2026-09-15
 
@@ -55,8 +55,9 @@ pending状態をテスト用ラッチが自動解放していた2件のTEST_CODE
 empty Section / empty `Sectionなし`へのrelative placementなしMove、valid `taskId`を持つ全Today
 rowへのTask Note入口、standalone / Task Noteのorigin-aware Backである。Worker/API、schema、
 migration、dependency、realtime protocol、productionは変更していない。implementation commitは
-`f8225c520257a88e977686a22edc451c764b95d7`。GitHub Actions exact-SHA read-backとfresh artifactは
-このsessionの自動承認capacity制約により`PENDING_VERIFICATION`であり、既存CI evidenceとは区別する。
+`f8225c520257a88e977686a22edc451c764b95d7`。GitHub Actions exact-SHAとfresh artifactはPASSである。
+run/artifactのvolatile metadataはGitHubを正本とし、
+handoffで報告する。
 D-110のGalaxy S23 corrective smokeはfresh artifactをProduct Ownerが確認するまで`PENDING_SMOKE`、
 persistent nonprod deploy / migrationは`NOT_REQUIRED` / `NOT_REQUIRED`、production / Releaseは
 `NOT_RUN` / `NO`とする。
