@@ -76,6 +76,53 @@ D-100のhelperはpolicyやprofileのauthorityではなく、共通automated core
 
 `verify:*`のPASSはcommon automated coreのPASSであり、persistent nonprod、browser、API、DBを自動的にPASSへしない。`--nonprod-static`を付けてもexact build、既存guard、Wrangler dry-runだけで、実deployやDB writeは行わない。profile選択・escalationと`NOT_REQUIRED`判定は、従来どおりimpact analysisとsource reviewに従う。
 
+### Impact-aware GitHub Actions routing
+
+`.github/workflows/ci.yml`は、まず依存関係をインストールしないrepository-ownedの
+`scripts/ci-surface.mjs`で変更面を分類し、その結果で重いjobを実行する。判定の正本は
+このscriptとそのNode testであり、第三者のpath-filter Actionへ依存しない。
+
+- `apps/android/**`と`scripts/android-qa.ps1`だけの変更はAndroid JVM / APK jobだけを実行する。
+- `apps/web/**`のWeb-only変更と、現在Androidが消費しないことを確認できたWorker pathはWeb / Worker jobだけを実行する。
+- `apps/web/src/shared/**`、Androidが消費するWorker/API boundary、workflow、共通toolingは両jobを実行する。
+- `docs/**`およびMarkdown-only変更は軽量classifier testだけを実行し、両方の重いjobをskipする。
+- 未知の実行可能path、未分類のWorker path、CI設定自身の変更は安全側に倒して両jobを実行する。
+- `workflow_dispatch`はselectorを追加せず、常に両jobを実行する。
+
+この境界は、Androidが利用するHTTP / realtime / shared contractを誤ってAndroid-only扱い
+しないために保守的に定義する。新しいpathの分類に確信がない場合は、scriptへ明示的に
+追加するまで両jobを実行する。GitHub Actionsのjob skipは検証要件の削除ではなく、影響を
+受けていないsurfaceの重複実行を避けるためのroutingである。
+
+### Android local gate deduplication
+
+Android-onlyの通常Batch closeoutは、focused test、影響を受けるAndroid JVM suiteを
+Batch末尾で1回、`scripts/android-qa.ps1`を`TaskChute_API33`で1回、`git diff --check`
+および必要な個別evidenceという順序を基本とする。`android-qa.ps1`は
+`:app:connectedDebugAndroidTest`を実行し、その前提APKをbuildしたうえでinstall、launch、
+crash-bufferまで確認するため、通常のAndroid final gateでその前に
+`assembleDebug` / `assembleDebugAndroidTest`を重複実行しない。契約がcompile-only evidenceを
+明示する場合、または切り分け中のみ個別Gradle taskを追加してよい。GitHub Actionsの
+Android jobはAPK artifactのためDebug buildとinstrumentation compileを引き続き実行する。
+
+Android-onlyでWorker/API/shared contractの変更がない場合、full Web / Worker test、Web
+typecheck、Web buildはimpact analysis上`NOT_REQUIRED`とする。逆にWeb-onlyでAndroid/shared
+behaviorが影響を受けない場合、full Android JVM / APK buildは`NOT_REQUIRED`とする。契約や
+source reviewがcross-surfaceと判断した場合は従来どおり両側を検証する。
+
+### Batch push and volatile CI evidence
+
+同一Approved work item内でimplementation commitとfactual docs commitを分けてもよい。
+persistent nonprod / migration / API remote gateがcommit間に不要なら、remoteを直前にfetchし、
+fast-forward安全性を確認したうえでBatch closeout時に一度だけpushする。remote gateが必要な
+場合は従来のstaged pushを維持する。
+
+GitHub branch / workflow run / artifactはGitHubがvolatile metadataのSource of Truthである。
+canonical docsへrun ID、artifact ID、expiryを写すためだけのdocs-only follow-up commitは作らない。
+TEST_MATRIXはverification要件とevidence boundaryを記録し、具体的な最新run/artifactはfinal
+handoffで報告する。CI PASSはpersistent nonprod、browser/device Verified、production Released
+を意味しない。
+
 実装がSPECと異なるという理由だけで、SPECを自動的に実装へ合わせない。
 
 Product / Domainを起点とするが、platform constraints、Security、performance、Cost、external service / API constraints、implementation feasibilityは早期に確認し、必要に応じて設計へfeedbackする。

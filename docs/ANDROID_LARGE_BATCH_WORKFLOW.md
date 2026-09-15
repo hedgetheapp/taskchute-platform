@@ -39,11 +39,24 @@ Do not run the entire full suite, persistent nonprod verification, or Galaxy S23
 At Batch completion, run the impact-appropriate final gate:
 
 1. Focused JVM tests for affected logic / ViewModel / repository / state transitions.
-2. Android JVM affected/full coverage according to impact analysis.
-3. Windows local AVD `TaskChute_API33` through `scripts/android-qa.ps1` for instrumentation runtime, APK install/launch readiness, and crash check.
+2. Android JVM affected/full coverage according to impact analysis, once at Batch closeout.
+3. Windows local AVD `TaskChute_API33` through `scripts/android-qa.ps1` once for instrumentation runtime, APK install/launch readiness, and crash check.
 4. Web / Worker / integration verification only when contracts or server behavior are affected.
 5. Persistent nonprod verification only when the Batch changes behavior that requires remote evidence.
 6. Canonical docs and `TEST_MATRIX` updated to the evidence actually obtained.
+
+`scripts/android-qa.ps1` already runs `:app:connectedDebugAndroidTest`, which builds the
+required debug and instrumentation APK inputs, then installs the debug APK and checks the
+resolved activity and crash buffer. Therefore separate `assembleDebug` and
+`assembleDebugAndroidTest` are `NOT_REQUIRED` in the ordinary local Android gate when this
+script passes and final CI supplies the APK artifact. They remain allowed for troubleshooting
+or when a Task Contract explicitly requires compile-only evidence. GitHub Android CI continues
+to build and upload the debug APK and compile the instrumentation APK.
+
+For an Android-only Batch with no Worker/API/shared-contract impact, full Web / Worker tests,
+Web typecheck, and Web build are `NOT_REQUIRED by impact analysis`; the reverse applies to a
+Web-only Batch with no Android/shared impact. The CI workflow still runs every affected heavy
+job and routes unknown or cross-surface paths conservatively.
 
 GitHub Actions continues to provide Web/Worker verification, Android JVM, APK build, and instrumentation APK compile as independent evidence. It does not replace the Windows local AVD runtime gate.
 
@@ -61,7 +74,13 @@ For a product regression, fix the reproducing test first or add one, correct the
 
 ## Speed rules
 
-Avoid repeated investigation, repeated full-suite execution, and duplicate model review when they do not add evidence. Use focused verification during implementation and consolidate heavy verification at Batch closeout.
+Avoid repeated investigation, repeated full-suite execution, and duplicate model review when they do not add evidence. Use focused verification during implementation and consolidate heavy verification at Batch closeout. Do not rerun the full Android JVM suite, AVD, or Galaxy S23 smoke after every internal slice.
+
+When no persistent nonprod, migration, or other remote gate is needed between commits, an
+implementation commit and a factual docs commit may be pushed together in one final
+fast-forward push after an immediate remote recheck. Do not create a second docs-only commit
+solely to copy GitHub Actions run or artifact metadata; GitHub remains authoritative for those
+volatile values.
 
 Within approved scope and absent a STOP condition, Codex should continue through implementation, tests, local Android QA, implementation commit, fast-forward push to `main`, approved persistent nonprod verification, factual canonical docs maintenance, and docs push without returning for routine confirmation.
 

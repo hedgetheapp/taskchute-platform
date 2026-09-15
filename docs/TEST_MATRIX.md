@@ -1,5 +1,21 @@
 # Test Matrix
 
+## Development Velocity Corrective v1 — impact-aware verification boundary
+
+| ID | Verification target | Evidence / required behavior | Status |
+|---|---|---|---|
+| DEV-VELOCITY-CLASSIFIER | Repository-owned changed-path classifier | `scripts/ci-surface.mjs` + dependency-free Node tests cover Android-only, Web-only, Worker-only, Android-consumed/shared contract, docs-only, mixed surfaces, workflow/unknown paths, and manual dispatch | PASS local |
+| DEV-VELOCITY-CI-ROUTING | Heavy GitHub job routing | Android-only → Android job; Web/Worker-only → Web/Worker job; docs-only → neither heavy job; cross-surface/CI/unknown → both; manual dispatch → both | GitHub is current-SHA authority |
+| DEV-VELOCITY-ANDROID-GATE | Local Android deduplication | Normal closeout is focused tests + Android JVM once + `scripts/android-qa.ps1` once + diff check; separate assemble tasks are only troubleshooting/explicit compile-only evidence; CI APK artifact remains required | PASS policy |
+| DEV-VELOCITY-DOCS-METADATA | Volatile CI evidence boundary | `TEST_MATRIX` records requirements and evidence boundaries; current run/artifact IDs and expiry are reported from GitHub in handoff, without a docs-only metadata follow-up commit | PASS policy |
+| DEV-VELOCITY-PRODUCT-BOUNDARY | Product/runtime boundary | No Product, Android app, Web app, Worker Domain, API, migration, schema, dependency, persistent nonprod, or production change | PASS / NOT_REQUIRED |
+
+The classifier is intentionally conservative: an unknown executable/config/tooling path or
+unlisted Worker path routes both heavy jobs. `workflow_dispatch` runs both heavy jobs. The
+lightweight classifier test does not replace affected verification; it only prevents redundant
+verification of unaffected surfaces. Exact current-SHA Actions status and artifact metadata are
+owned by GitHub and are not copied into a new docs-only commit.
+
 ## D-110 Android Today Direct Manipulation + Notes v0.3 — final local/CI gate
 
 | ID | Verification target | Evidence | Status |

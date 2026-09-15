@@ -14,8 +14,40 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  scope:
+    name: Classify changed verification surface
+    runs-on: ubuntu-latest
+    outputs:
+      run_web: ${{ steps.classify.outputs.run_web }}
+      run_android: ${{ steps.classify.outputs.run_android }}
+      reason: ${{ steps.classify.outputs.reason }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate classifier
+        run: node --test scripts/ci-surface.test.mjs
+
+      - name: Classify changed paths
+        id: classify
+        env:
+          BASE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+        shell: bash
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            node scripts/ci-surface.mjs --all >> "$GITHUB_OUTPUT"
+          else
+            node scripts/ci-surface.mjs --base "$BASE_SHA" --head "$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          fi
+
   verify:
     name: Web and Worker verification
+    needs: scope
+    if: needs.scope.outputs.run_web == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -48,6 +80,8 @@ jobs:
 
   android:
     name: Android JVM and APK verification
+    needs: scope
+    if: needs.scope.outputs.run_android == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
