@@ -41,9 +41,11 @@ Release are NOT_RUN / NO.
 
 D-109 corrective implementation commit `f9a57e10be87e8646fdcdb0ccebd958aa65840e1` and the
 instrumentation bounds regression follow-up `2f643678ae6f50a482571e59e311d0776f762bcb` are pushed
-to `main`. A fresh final-main APK artifact and exact-SHA CI evidence remain pending until the push
-workflow completes. Corrective Galaxy S23 smoke is `NOT_RUN` until the Product Owner tests that
-fresh APK; the prior user-confirmed D-107 smoke remains separate evidence.
+to `main`. Exact-SHA CI run `34920497594`（head `6a5ae3980713e5a3528b55387f276d9ecd38250b`）は
+Web/Worker、Android JVM、Debug APK、instrumentation APK compileの全job PASS。artifactは
+`taskchute-android-debug-6a5ae3980713e5a3528b55387f276d9ecd38250b`（ID `10378195562`、
+expires `2026-09-22T02:17:54Z`）。Corrective Galaxy S23 smoke is `NOT_RUN` until the Product
+Owner tests that fresh APK; the prior user-confirmed D-107 smoke remains separate evidence.
 
 ## D-108 Android Realtime Invalidation v0.1 — local implementation
 

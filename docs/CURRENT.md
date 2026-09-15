@@ -19,7 +19,10 @@ Windows AVD `TaskChute_API33`（Pixel 7 / Android 13 API 33 / Google APIs / x86_
 exit `0`で完了し、APK install、MainActivity解決、対象packageのcrash buffer emptyを確認した。
 UI instrumentationにはcurrent / non-current Add境界、running panelとの同時表示、row body no-edit、
 overflow edit、running / completed / Routine-derived no-edit、既存Start / Complete / Add formを含む。
-補正対象のGalaxy S23 smokeは新しいfinal-main APKのProduct Owner確認待ちで`NOT_RUN`、production /
+GitHub Actions run `34920497594`（head `6a5ae3980713e5a3528b55387f276d9ecd38250b`）もWeb/Workerと
+Android JVM / Debug APK / instrumentation APK compileの全job PASS。fresh artifactは
+`taskchute-android-debug-6a5ae3980713e5a3528b55387f276d9ecd38250b`（ID `10378195562`、
+2026-09-22T02:17:54Z expiry）。補正対象のGalaxy S23 smokeはこのfresh APKのProduct Owner確認待ちで`NOT_RUN`、production /
 migration / deploy / Releaseは`NOT_RUN / NOT_REQUIRED / NOT_RUN / NO`を維持する。
 
 ### D-109 Android Today Planning v0.2 — local implementation — 2026-09-15
