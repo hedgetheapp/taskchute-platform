@@ -8,13 +8,19 @@ conflict, duplicate dispatch, and a dirty Note being discarded during mobile nav
 controller limits drag to ordinary planned Tasks on the current established Day, excludes
 interactive descendants and pending rows, retains exact ambiguous requests, and refreshes the
 canonical Today projection after success. Native Notes keeps Markdown and drafts in memory only,
-uses revision/CAS for updates, and requires explicit dirty Back confirmation.
+uses revision/CAS for updates, and requires explicit dirty Back confirmation. Empty Section and
+empty `Sectionなし` drops intentionally omit relative placement and rely on the existing canonical
+MoveEntry synchronization. Task Primary Note visibility is based on valid Task identity, separately
+from planning edit/drag eligibility; editor origin keeps standalone Back within Notes and Today Task
+Note Back within Today.
 
-Local JVM `83 / 83`, Windows `TaskChute_API33` instrumentation `22 / 22`, full Web `442 / 442`,
-Worker/D1 `307 / 307`, build/static gates, and exact-SHA CI `34931957689` passed. D-110 does not
-change Worker/API/schema/migration/dependency/realtime protocol and does not require a persistent
-nonprod deploy. The fresh D-110 APK is available, while Product Owner Galaxy S23 corrective smoke
-remains `PENDING_SMOKE`; production, Release, and offline persistence remain out of scope.
+Corrective local JVM `87 / 87`, Windows `TaskChute_API33` instrumentation `27 / 27`, full Web
+`442 / 442`, Worker/D1 `307 / 307`, and build/static gates passed. D-110 does not change
+Worker/API/schema/migration/dependency/realtime protocol and does not require a persistent nonprod
+deploy. Corrective implementation `f8225c520257a88e977686a22edc451c764b95d7` is pushed; exact-SHA
+Actions read-back and a fresh artifact remain `PENDING_VERIFICATION` in this session. Product Owner
+Galaxy S23 corrective smoke remains `PENDING_SMOKE`; production, Release, and offline persistence
+remain out of scope.
 
 ## R-066 — D-109 Android Today planning composition boundary
 

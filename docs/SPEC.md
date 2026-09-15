@@ -20,6 +20,22 @@ disabled、Settingsは既存logoutへ接続する。D-106 auth、D-108 foregroun
 pending / refetch boundary、Start / Complete、migration / schema / API command boundaryは
 変更しない。Android planningのoffline、background、reorder、Routine編集は含まない。
 
+## D-110 Android Today direct manipulation and native Notes
+
+D-110では、current established Dayのordinary planned Taskだけがlong-press dragの対象となる。
+同一Sectionの合法なplanned-start cohort内の並び替えは`ReorderEntries`、Section跨ぎは
+`MoveEntry`、複製は`DuplicateEntry`を利用する。空のnormal Sectionまたは空の`Sectionなし`へ
+dropする場合はrelative placementを送らず、既存commandのSection / planned-start同期へ委譲する。
+running / completed / Routine-derived / future / past / pending rowとinvalid dropはno-writeである。
+
+Androidの`ノート` destinationはD-090のstandalone Markdown Documentをnative list/editorで
+扱い、explicit Save、revision/CAS、memory-only draft、dirty navigation confirmationを維持する。
+Todayのvisible rowにvalidな`taskId`があれば、lifecycleやDayにかかわらずD-101 Task Primary
+Noteを開ける。この入口はEdit / Duplicate / Dragのeligibilityと独立し、Task titleはTask側の
+authorityであり、Note operationはEntry lifecycle / placement metadataを変更しない。standalone
+Note editorのBackはNotes listへ、Todayから開いたTask NoteのBackはTodayへ戻る。API、schema、
+migration、dependency、realtime protocol、offline persistenceは変更しない。
+
 ## D-107 Android Today v0.1
 
 Android Todayは既存のauthenticated HTTP Query / lifecycle commandを利用するnative

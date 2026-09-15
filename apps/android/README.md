@@ -19,11 +19,15 @@ controls remain separated while a Task is running.
 
 D-110 enables the native Android `ノート` destination. Ordinary eligible current-Day
 planned rows support long-press drag for canonical same-cohort reorder or cross-Section
-move, and the overflow menu supports canonical `複製` and Task Primary `ノート`. The
+move. An empty normal Section or empty `Sectionなし` is a Section-level drop target and
+uses canonical MoveEntry without relative placement. The overflow menu supports canonical
+`複製` and Task Primary `ノート` for every visible row with a valid Task identity, while
+planning edit/drag eligibility remains restricted. The
 native Notes surface uses the existing owner-scoped Document APIs, explicit Markdown
 Save, revision/CAS, memory-only drafts, and explicit dirty Back confirmation. It does
 not add autosave, offline persistence, preview, attachments, or Project/Routine Note
-entry points. Runtime verification uses the Windows `TaskChute_API33` AVD through
+entry points. Standalone editor Back returns to the Notes list and a Task Primary editor
+opened from Today returns to Today. Runtime verification uses the Windows `TaskChute_API33` AVD through
 `scripts/android-qa.ps1`; the D-110 final Product Owner Galaxy S23 smoke remains
 `PENDING_SMOKE` until the fresh artifact is tested.
 

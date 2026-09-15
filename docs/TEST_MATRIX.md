@@ -9,19 +9,22 @@
 | D110-DUPLICATE | Overflow duplicate | `…`→`複製` uses canonical `DuplicateEntry`, fresh identity, pending duplicate suppression, success refetch, exact retry boundary | PASS JVM / emulator |
 | D110-NOTES | Native Android Notes | Enabled `ノート` destination; standalone list/new/create/update; memory-only Markdown draft; dirty Back confirmation; CAS/ambiguity exact request retention | PASS JVM / emulator |
 | D110-TASK-NOTE | Task Primary Note | `…`→`ノート`; D-101 Ensure/fetch/update reuse; Task title read-only authority; no Today lifecycle/placement mutation | PASS JVM / emulator |
-| D110-ANDROID-JVM | Full Android JVM | `:app:testDebugUnitTest` — `83 / 83`, failures/errors/skipped `0 / 0 / 0` | PASS |
-| D110-ANDROID-EMULATOR | Windows runtime gate | `TaskChute_API33` / Pixel 7 / Android 13 API 33 / Google APIs / x86_64 / `emulator-5554`; `scripts/android-qa.ps1`; connected instrumentation `22 / 22`, `0 / 0 / 0`; APK install, MainActivity, crash buffer empty | PASS |
+| D110-ANDROID-JVM | Full Android JVM | `:app:testDebugUnitTest` — `87 / 87`, failures/errors/skipped `0 / 0 / 0` | PASS |
+| D110-ANDROID-EMULATOR | Windows runtime gate | `TaskChute_API33` / Pixel 7 / Android 13 API 33 / Google APIs / x86_64 / `emulator-5554`; `scripts/android-qa.ps1`; connected instrumentation `27 / 27`, `0 / 0 / 0`; APK install, MainActivity, UI tree, crash buffer empty | PASS |
 | D110-REGRESSION | Existing app/server regression | Full Web `442 / 442`; Worker/D1 `307 / 307`; D-108/D-109 existing Android UI paths included in the AVD run | PASS |
 | D110-BUILD | Static/build gates | Debug APK, instrumentation APK compile, typecheck, normal build, exact `CLOUDFLARE_ENV=nonprod` build, deploy guard, Wrangler dry-run, `git diff --check` | PASS |
-| D110-CI | Exact pushed SHA / APK | GitHub Actions `34931957689`, head `7589506c10bd5c6e205664d779608935b68fe0f4`; all Web/Worker and Android JVM/APK jobs PASS; artifact `taskchute-android-debug-7589506c10bd5c6e205664d779608935b68fe0f4`, ID `10381413837`, expires `2026-09-22T05:16:50Z` | PASS |
+| D110-CI | Exact pushed SHA / APK | Prior CI evidence remains `34931957689`; corrective implementation `f8225c520257a88e977686a22edc451c764b95d7` was pushed after local PASS. Corrective exact-SHA Actions read-back and fresh artifact are `PENDING_VERIFICATION` in this session; prior artifact is not reused as corrective evidence | PENDING |
 | D110-BOUNDARY | Server/data boundary | Android-only implementation; no Worker/API/schema/migration/dependency/realtime protocol change; no migration or persistent nonprod deploy required; production/Release untouched | PASS / NOT_REQUIRED |
 | D110-GALAXY | D-110 corrective smoke | Fresh final-main APK is available for Product Owner verification; this D-110 smoke is not claimed until user tests it | PENDING_SMOKE |
 
-D-110 implementation commits are `d86294a0e21bcb9ac8262bcd7d7847a021ac858e` and the CI-discovered
-test-stability correctives `8d6aa39ccb75ecb02afe519edb00b0d92253b6f6` / `7589506c10bd5c6e205664d779608935b68fe0f4`.
-The first two pushed CI runs exposed only non-deterministic test synchronization; the final exact-SHA
-run above passed. The Windows local AVD remains the formal Android runtime gate; no hosted emulator
-job is used. D-110 Galaxy S23 smoke remains `PENDING_SMOKE`.
+D-110 implementation commits are `d86294a0e21bcb9ac8262bcd7d7847a021ac858e`, the prior
+test-stability correctives `8d6aa39ccb75ecb02afe519edb00b0d92253b6f6` / `7589506c10bd5c6e205664d779608935b68fe0f4`,
+and this corrective `f8225c520257a88e977686a22edc451c764b95d7`. The local AVD rerun first reproduced
+two test-side timing failures: an AVD-slow full suite allowed a ten-second fake mutation latch to
+release, and a three-second pending wait was too short for the complete path. The final test seam uses
+explicit latch release and ten-second state waits; the final `27 / 27` run passed with no application
+crash. The Windows local AVD remains the formal Android runtime gate; no hosted emulator job is used.
+D-110 Galaxy S23 smoke remains `PENDING_SMOKE`.
 
 ## D-109 Android Today Planning v0.2 — local Android gate
 

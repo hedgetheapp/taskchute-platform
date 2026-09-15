@@ -16,18 +16,20 @@ dirty Back / navigation barrier、memory-only draft、revision/CAS、ambiguous o
 request retention、in-flight Ensureの二重dispatch抑止を維持した。Worker/API、schema、migration、
 dependency、realtime protocol、productionは変更していない。
 
-Local evidenceはAndroid JVM `83 / 83`、Debug APK、instrumentation APK compile、Windows local
-AVD `TaskChute_API33`（Pixel 7 / Android 13 API 33 / Google APIs / x86_64 / `emulator-5554`）の
-`scripts/android-qa.ps1` `22 / 22` PASS。修正版のAVD runはAPK install、`MainActivity`解決、
-対象package crash buffer empty、login UI treeを確認した。impact regressionとしてfull Web
-`442 / 442`、Worker/D1 `307 / 307`、typecheck、normal build、exact nonprod build、deploy guard、
-Wrangler dry-run、`git diff --check`もPASSした。CI run `34931957689`（head
-`7589506c10bd5c6e205664d779608935b68fe0f4`）はWeb/WorkerおよびAndroid JVM / Debug APK /
-instrumentation APK compileの全job PASS。artifactは
-`taskchute-android-debug-7589506c10bd5c6e205664d779608935b68fe0f4`（ID `10381413837`、
-2026-09-22T05:16:50Z expiry）である。D-110のGalaxy S23 corrective smokeはこのfresh artifactを
-Product Ownerが確認するまで`PENDING_SMOKE`、persistent nonprod deploy / migrationは
-`NOT_REQUIRED` / `NOT_REQUIRED`、production / Releaseは`NOT_RUN` / `NO`とする。
+Corrective後のlocal evidenceはAndroid JVM `87 / 87`、Debug APK、instrumentation APK compile、
+Windows local AVD `TaskChute_API33`（Pixel 7 / Android 13 API 33 / Google APIs / x86_64 /
+`emulator-5554`）の`scripts/android-qa.ps1` `27 / 27` PASS。AVD runはAPK install、
+`MainActivity`解決、UI tree取得、対象package crash buffer emptyを確認した。AVD負荷下で
+pending状態をテスト用ラッチが自動解放していた2件のTEST_CODE_FAILを、明示的ラッチ解放と
+十分な待機へ修正し、アプリruntime failではないことを確認した。Correctiveの主な実装は
+empty Section / empty `Sectionなし`へのrelative placementなしMove、valid `taskId`を持つ全Today
+rowへのTask Note入口、standalone / Task Noteのorigin-aware Backである。Worker/API、schema、
+migration、dependency、realtime protocol、productionは変更していない。implementation commitは
+`f8225c520257a88e977686a22edc451c764b95d7`。GitHub Actions exact-SHA read-backとfresh artifactは
+このsessionの自動承認capacity制約により`PENDING_VERIFICATION`であり、既存CI evidenceとは区別する。
+D-110のGalaxy S23 corrective smokeはfresh artifactをProduct Ownerが確認するまで`PENDING_SMOKE`、
+persistent nonprod deploy / migrationは`NOT_REQUIRED` / `NOT_REQUIRED`、production / Releaseは
+`NOT_RUN` / `NO`とする。
 
 D-109 correctiveのうち、Product Ownerが確認済みのGalaxy S23 smoke（bottom-right Quick Add、
 running panelとの非重複、row body no-edit、`…`→`編集`、Start / overflow coexistence）は、従来の

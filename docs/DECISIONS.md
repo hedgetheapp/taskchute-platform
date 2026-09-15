@@ -2,6 +2,22 @@
 
 Statuses: Approved / Proposed / Superseded
 
+## D-110 — Android Today Direct Manipulation + Notes v0.3
+
+Status: **Approved**
+
+Canonical Decision: `docs/decisions/D-110_ANDROID_TODAY_DIRECT_MANIPULATION_NOTES_V03.md`。
+
+D-110はAndroid Todayへ、current established Dayのordinary planned Task向けlong-press
+direct manipulation、canonical `ReorderEntries` / `MoveEntry`、`…`→`複製`、native
+standalone Markdown Notes、D-101 Task Primary Noteを追加する。empty Section / empty
+`Sectionなし`のmoveはrelative placementを送らず、既存canonical commandへ委譲する。
+有効な`taskId`を持つToday rowでは、planned / running / completed / Routine-derived、
+current / past / futureを問わず`ノート`を表示するが、planning編集・drag eligibilityとは独立する。
+standalone NoteのBackはNotes listへ、Todayから開いたTask NoteのBackはTodayへ戻り、dirty
+confirmationを維持する。D-090 / D-101のDocument semantics、D-020 / D-039 / D-043 / D-050の
+command semantics、D-104 auth、D-108 realtime、Worker/API、schema/migration、dependencyは不変である。
+
 ## D-109 — Android Today Planning v0.2
 
 Status: **Approved**

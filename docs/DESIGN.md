@@ -21,12 +21,21 @@ drag対象外の明示的controlとして残す。同一Sectionの合法なcohor
 Android独自のplacement / order authorityは持たない。running / completed / Routine-derived、
 future / past、pending rowはdrag対象外とする。
 
+target Sectionが空の場合はSection headerをdrop surfaceとして扱い、normal Sectionでは
+`section_id`だけ、空の`Sectionなし`では`section_id=null`だけをcanonical `MoveEntry`へ渡して
+relative placementを省略する。無効なdropはno-writeとし、既存のplacement revision / retry境界を
+維持する。
+
 bottom navigationの`ノート`はD-110で実装済みとして有効化する。native NotesはMaterial 3の
 single-pane list/editorで、Markdown sourceをcanonical bodyとして明示Saveする。新規Noteは
 first Saveまでmemory-only draft、既存Documentはrevision/CASで更新し、dirty Back / navigationは
 `変更を破棄しますか？`の確認を要求する。Task Primary NoteはTask titleを表示authorityとし、
 共有DocumentのMarkdown bodyだけを編集する。offline DB、autosave、preview、attachments、
 Project/Routine Note entry pointは追加しない。
+
+Todayのvisible rowはvalidなTask identityがあればlifecycleやlogical DayにかかわらずTask
+Primary Note入口を持つが、planning edit / drag / duplicateのeligibilityとは独立させる。Note
+editorはoriginを保持し、standaloneはNotes listへ、Todayから開いたTask NoteはTodayへ戻る。
 
 D-109の旧記録にあるNotes disabled境界はD-109時点のhistorical scopeであり、D-110がAndroid
 Notes destinationだけを有効化する。Server/API、schema、migration、dependency、realtime
