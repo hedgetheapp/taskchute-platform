@@ -220,6 +220,12 @@ class TodayScreenInstrumentedTest {
         composeRule.onNodeWithContentDescription("タスクを追加").assertIsDisplayed()
         composeRule.onNodeWithText("実行中").assertIsDisplayed()
         composeRule.onNodeWithText("完了").assertIsDisplayed()
+        val addBounds = composeRule.onNodeWithContentDescription("タスクを追加").fetchSemanticsNode().boundsInRoot
+        val panelBounds = composeRule.onNodeWithText("実行中").fetchSemanticsNode().boundsInRoot
+        assertTrue(
+            "Quick Add must not overlap the running panel",
+            addBounds.bottom <= panelBounds.top || addBounds.top >= panelBounds.bottom,
+        )
     }
 
     @Test
