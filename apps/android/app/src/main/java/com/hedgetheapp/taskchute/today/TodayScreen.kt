@@ -2,6 +2,7 @@ package com.hedgetheapp.taskchute.today
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -42,11 +43,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -66,6 +73,7 @@ fun AndroidNavigationBar(
     selected: AndroidDestination,
     onToday: () -> Unit,
     onSettings: () -> Unit,
+    onNotes: () -> Unit = {},
 ) {
     NavigationBar {
         NavigationBarItem(
@@ -83,8 +91,8 @@ fun AndroidNavigationBar(
         )
         NavigationBarItem(
             selected = false,
-            onClick = {},
-            enabled = false,
+            onClick = onNotes,
+            enabled = true,
             icon = { Text("▤") },
             label = { Text("ノート") },
         )
@@ -109,6 +117,9 @@ fun TodayScreen(
     planningController: TaskPlanningController?,
     onNavigateSettings: () -> Unit,
     onSignOut: () -> Unit = {},
+    onNavigateNotes: () -> Unit = {},
+    directManipulationController: TodayDirectManipulationController? = null,
+    onOpenTaskNote: (TodayTask) -> Unit = {},
 ) {
     val state = controller.state
     val planningState = planningController?.state ?: TaskPlanningUiState()
@@ -120,6 +131,7 @@ fun TodayScreen(
                 selected = AndroidDestination.TODAY,
                 onToday = controller::today,
                 onSettings = onNavigateSettings,
+                onNotes = onNavigateNotes,
             )
         },
     ) { padding ->
@@ -133,6 +145,8 @@ fun TodayScreen(
                     controller = controller,
                     state = state,
                     planningController = planningController,
+                    directManipulationController = directManipulationController,
+                    onOpenTaskNote = onOpenTaskNote,
                     modifier = Modifier.fillMaxSize(),
                 )
                 TodayLoadStatus.ERROR -> TodayError(state.errorMessage ?: "予定を読み込めませんでした。", controller::refresh)
@@ -184,9 +198,55 @@ private fun TodayContent(
     controller: TodayController,
     state: TodayUiState,
     planningController: TaskPlanningController?,
+    directManipulationController: TodayDirectManipulationController?,
+    onOpenTaskNote: (TodayTask) -> Unit,
     modifier: Modifier,
 ) {
     val day = state.day ?: return LoadingToday()
+    val dropBounds = remember { mutableStateMapOf<String, Rect>() }
+    val dropBoundsSectionId = remember { mutableStateMapOf<String, String?>() }
+    var dragState by remember { mutableStateOf<AndroidDragState?>(null) }
+    fun updateDragPosition(deltaY: Float) {
+        val current = dragState ?: return
+        val positionY = current.positionY + deltaY
+        val target = dropBounds.entries
+            .filter { it.key != current.entryId && positionY >= it.value.top && positionY <= it.value.bottom }
+            .minByOrNull { kotlin.math.abs(positionY - it.value.center.y) }
+        dragState = current.copy(
+            positionY = positionY,
+            targetEntryId = target?.key,
+            targetSectionId = target?.let { dropBoundsSectionId[it.key] },
+            targetEdge = target?.value?.let { if (positionY < it.center.y) PlacementEdge.BEFORE else PlacementEdge.AFTER },
+        )
+    }
+    fun finishDrag() {
+        val drag = dragState ?: return
+        dragState = null
+        val targetEntryId = drag.targetEntryId ?: return
+        val targetSectionId = drag.targetSectionId
+        val source = day.allEntries.firstOrNull { it.id == drag.entryId } ?: return
+        val edge = drag.targetEdge ?: return
+        if (drag.sourceSectionId == targetSectionId) {
+            val entries = sectionEntries(day, targetSectionId)
+            val currentIds = entries.map { it.id }
+            val sourceIndex = currentIds.indexOf(source.id)
+            val targetIndex = currentIds.indexOf(targetEntryId)
+            if (sourceIndex < 0 || targetIndex < 0 || sourceIndex == targetIndex) return
+            val remaining = currentIds.filterNot { it == source.id }.toMutableList()
+            var insertion = if (edge == PlacementEdge.BEFORE) targetIndex else targetIndex + 1
+            if (sourceIndex < insertion) insertion -= 1
+            remaining.add(insertion.coerceIn(0, remaining.size), source.id)
+            if (remaining != currentIds && isLegalManualReorder(entries, remaining)) {
+                directManipulationController?.reorder(day, targetSectionId, remaining, setOf(source.id))
+            }
+        } else {
+            directManipulationController?.move(
+                day,
+                source.id,
+                PlacementTarget(targetSectionId, targetEntryId, edge),
+            )
+        }
+    }
     Column(modifier) {
         DateNavigator(
             day = day,
@@ -194,6 +254,14 @@ private fun TodayContent(
         )
         state.errorMessage?.let {
             Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp))
+        }
+        directManipulationController?.state?.errorMessage?.let {
+            Column(Modifier.padding(horizontal = 16.dp)) {
+                Text(it, color = MaterialTheme.colorScheme.error)
+                if (directManipulationController.state.unresolvedRequest != null) {
+                    TextButton(onClick = directManipulationController::retryUnresolved) { Text("元の操作を再試行") }
+                }
+            }
         }
         if (!day.hasEntries) {
             EmptyToday()
@@ -208,10 +276,39 @@ private fun TodayContent(
                 items(section.entries, key = { it.id }) { task ->
                     TodayTaskRow(
                         task = task,
+                        sectionId = section.id,
                         enabled = day.isCurrent && !state.pendingEntryIds.contains(task.id),
                         controller = controller,
                         canEdit = day.isCurrent && day.planningEnabled && task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived && planningController != null,
                         onEdit = { planningController?.openEdit(day, task) },
+                        canDuplicate = day.isCurrent && day.planningEnabled && task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived
+                            && directManipulationController != null && directManipulationController.state.pendingEntryIds.isEmpty()
+                            && directManipulationController.state.unresolvedRequest == null,
+                        onDuplicate = { directManipulationController?.duplicate(day, task) },
+                        canOpenNote = day.isCurrent && task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived && task.taskId != null,
+                        onOpenNote = { onOpenTaskNote(task) },
+                        canDrag = directManipulationController?.canDrag(day, task) == true
+                            && !state.pendingEntryIds.contains(task.id),
+                        dragging = dragState?.entryId == task.id,
+                        dropTarget = dragState?.targetEntryId == task.id,
+                        onDragStart = { pointerPosition ->
+                            directManipulationController?.takeIf { it.canDrag(day, task) }?.let {
+                                val bounds = dropBounds[task.id]
+                                dragState = AndroidDragState(
+                                    entryId = task.id,
+                                    sourceSectionId = section.id,
+                                    positionY = bounds?.top?.plus(pointerPosition.y) ?: pointerPosition.y,
+                                    targetEntryId = null,
+                                    targetSectionId = null,
+                                    targetEdge = null,
+                                )
+                            }
+                        },
+                        onDragMove = ::updateDragPosition,
+                        onDragEnd = ::finishDrag,
+                        onDragCancel = { dragState = null },
+                        dropBounds = dropBounds,
+                        dropBoundsSectionId = dropBoundsSectionId,
                     )
                 }
             }
@@ -220,14 +317,72 @@ private fun TodayContent(
                 items(day.unsectionedEntries, key = { it.id }) { task ->
                     TodayTaskRow(
                         task = task,
+                        sectionId = null,
                         enabled = day.isCurrent && !state.pendingEntryIds.contains(task.id),
                         controller = controller,
                         canEdit = day.isCurrent && day.planningEnabled && task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived && planningController != null,
                         onEdit = { planningController?.openEdit(day, task) },
+                        canDuplicate = day.isCurrent && day.planningEnabled && task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived
+                            && directManipulationController != null && directManipulationController.state.pendingEntryIds.isEmpty()
+                            && directManipulationController.state.unresolvedRequest == null,
+                        onDuplicate = { directManipulationController?.duplicate(day, task) },
+                        canOpenNote = day.isCurrent && task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived && task.taskId != null,
+                        onOpenNote = { onOpenTaskNote(task) },
+                        canDrag = directManipulationController?.canDrag(day, task) == true
+                            && !state.pendingEntryIds.contains(task.id),
+                        dragging = dragState?.entryId == task.id,
+                        dropTarget = dragState?.targetEntryId == task.id,
+                        onDragStart = { pointerPosition ->
+                            directManipulationController?.takeIf { it.canDrag(day, task) }?.let {
+                                val bounds = dropBounds[task.id]
+                                dragState = AndroidDragState(
+                                    entryId = task.id,
+                                    sourceSectionId = null,
+                                    positionY = bounds?.top?.plus(pointerPosition.y) ?: pointerPosition.y,
+                                    targetEntryId = null,
+                                    targetSectionId = null,
+                                    targetEdge = null,
+                                )
+                            }
+                        },
+                        onDragMove = ::updateDragPosition,
+                        onDragEnd = ::finishDrag,
+                        onDragCancel = { dragState = null },
+                        dropBounds = dropBounds,
+                        dropBoundsSectionId = dropBoundsSectionId,
                     )
                 }
             }
         }
+    }
+}
+
+private data class AndroidDragState(
+    val entryId: String,
+    val sourceSectionId: String?,
+    val positionY: Float,
+    val targetEntryId: String?,
+    val targetSectionId: String?,
+    val targetEdge: PlacementEdge?,
+)
+
+private fun sectionEntries(day: TodayDay, sectionId: String?): List<TodayTask> =
+    if (sectionId == null) day.unsectionedEntries else day.sections.firstOrNull { it.id == sectionId }?.entries.orEmpty()
+
+private fun isLegalManualReorder(entries: List<TodayTask>, desiredIds: List<String>): Boolean {
+    if (desiredIds.size != entries.size || desiredIds.toSet().size != entries.size) return false
+    val byId = entries.associateBy(TodayTask::id)
+    if (desiredIds.any { it !in byId }) return false
+    val historicalCount = entries.count { it.lifecycleState != LifecycleState.PLANNED }
+    if (desiredIds.take(historicalCount) != entries.take(historicalCount).map(TodayTask::id)) return false
+    return desiredIds.withIndex().all { (index, id) ->
+        val requested = byId[id] ?: return@all false
+        val slot = entries[index]
+        index < historicalCount || (
+            requested.lifecycleState == LifecycleState.PLANNED
+                && slot.lifecycleState == LifecycleState.PLANNED
+                && requested.plannedStartMinute == slot.plannedStartMinute
+            )
     }
 }
 
@@ -275,14 +430,34 @@ private fun SectionHeader(section: TodaySection?) {
 @Composable
 private fun TodayTaskRow(
     task: TodayTask,
+    sectionId: String?,
     enabled: Boolean,
     controller: TodayController,
     canEdit: Boolean,
     onEdit: () -> Unit,
+    canDuplicate: Boolean,
+    onDuplicate: () -> Unit,
+    canOpenNote: Boolean,
+    onOpenNote: () -> Unit,
+    canDrag: Boolean,
+    dragging: Boolean,
+    dropTarget: Boolean,
+    onDragStart: (Offset) -> Unit,
+    onDragMove: (Float) -> Unit,
+    onDragEnd: () -> Unit,
+    onDragCancel: () -> Unit,
+    dropBounds: MutableMap<String, Rect>,
+    dropBoundsSectionId: MutableMap<String, String?>,
 ) {
     var editMenuExpanded by remember(task.id) { mutableStateOf(false) }
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().then(
+            if (dragging) Modifier.border(BorderStroke(2.dp, MaterialTheme.colorScheme.primary), MaterialTheme.shapes.medium)
+            else if (dropTarget) Modifier.border(BorderStroke(2.dp, MaterialTheme.colorScheme.secondary), MaterialTheme.shapes.medium)
+            else Modifier,
+        ).semantics {
+            contentDescription = if (dragging) "タスクを移動中: ${task.title}" else "タスクをドラッグ: ${task.title}"
+        },
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(start = 12.dp, top = 10.dp, bottom = 10.dp, end = 6.dp),
@@ -295,7 +470,24 @@ private fun TodayTaskRow(
                 ),
             )
             Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            val dragModifier = if (canDrag) {
+                Modifier
+                    .onGloballyPositioned {
+                        dropBounds[task.id] = it.boundsInRoot()
+                        dropBoundsSectionId[task.id] = sectionId
+                    }
+                    .pointerInput(task.id) {
+                        detectDragGesturesAfterLongPress(
+                            onDragStart = onDragStart,
+                            onDrag = { _, dragAmount ->
+                                onDragMove(dragAmount.y)
+                            },
+                            onDragEnd = onDragEnd,
+                            onDragCancel = onDragCancel,
+                        )
+                    }
+            } else Modifier
+            Column(Modifier.weight(1f).then(dragModifier), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(task.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 val metadata = listOfNotNull(
                     task.project?.title,
@@ -318,7 +510,7 @@ private fun TodayTaskRow(
                 ) { Text("✓") }
                 LifecycleState.COMPLETED -> Spacer(Modifier.size(48.dp))
             }
-            if (canEdit) {
+            if (canEdit || canDuplicate || canOpenNote) {
                 Box {
                     IconButton(
                         onClick = { editMenuExpanded = true },
@@ -328,13 +520,33 @@ private fun TodayTaskRow(
                         expanded = editMenuExpanded,
                         onDismissRequest = { editMenuExpanded = false },
                     ) {
-                        DropdownMenuItem(
-                            text = { Text("編集") },
-                            onClick = {
-                                editMenuExpanded = false
-                                onEdit()
-                            },
-                        )
+                        if (canEdit) {
+                            DropdownMenuItem(
+                                text = { Text("編集") },
+                                onClick = {
+                                    editMenuExpanded = false
+                                    onEdit()
+                                },
+                            )
+                        }
+                        if (canDuplicate) {
+                            DropdownMenuItem(
+                                text = { Text("複製") },
+                                onClick = {
+                                    editMenuExpanded = false
+                                    onDuplicate()
+                                },
+                            )
+                        }
+                        if (canOpenNote) {
+                            DropdownMenuItem(
+                                text = { Text("ノート") },
+                                onClick = {
+                                    editMenuExpanded = false
+                                    onOpenNote()
+                                },
+                            )
+                        }
                     }
                 }
             }

@@ -43,6 +43,11 @@ import com.hedgetheapp.taskchute.today.TaskPlanningHttpRepository
 import com.hedgetheapp.taskchute.today.AndroidDestination
 import com.hedgetheapp.taskchute.today.AndroidNavigationBar
 import com.hedgetheapp.taskchute.today.TaskPlanningUiState
+import com.hedgetheapp.taskchute.document.DocumentHttpRepository
+import com.hedgetheapp.taskchute.document.NotesController
+import com.hedgetheapp.taskchute.document.NotesScreen
+import com.hedgetheapp.taskchute.today.TodayDirectManipulationController
+import com.hedgetheapp.taskchute.today.TodayDirectManipulationHttpRepository
 
 class MainActivity : ComponentActivity() {
     private lateinit var controller: AuthController
@@ -50,6 +55,8 @@ class MainActivity : ComponentActivity() {
     private lateinit var realtimeManager: RealtimeConnectionManager
     private lateinit var realtimeHttpClient: OkHttpClient
     private lateinit var planningController: TaskPlanningController
+    private lateinit var directManipulationController: TodayDirectManipulationController
+    private lateinit var notesController: NotesController
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -70,6 +77,25 @@ class MainActivity : ComponentActivity() {
             onUnauthorized = controller::restore,
             onSaved = todayController::refresh,
         )
+        directManipulationController = TodayDirectManipulationController(
+            repository = TodayDirectManipulationHttpRepository(
+                request = { method, path, body ->
+                    controller.authenticatedRequest(method, path, body)?.let { TodayHttpResponse(it.status, it.body) }
+                },
+                onUnauthorized = controller::restore,
+            ),
+            onRefresh = todayController::refresh,
+            onUnauthorized = controller::restore,
+        )
+        notesController = NotesController(
+            repository = DocumentHttpRepository(
+                request = { method, path, body ->
+                    controller.authenticatedRequest(method, path, body)?.let { TodayHttpResponse(it.status, it.body) }
+                },
+                onUnauthorized = controller::restore,
+            ),
+            onUnauthorized = controller::restore,
+        )
         realtimeHttpClient = OkHttpClient()
         realtimeManager = RealtimeConnectionManager(
             cookieProvider = controller::realtimeCookieHeader,
@@ -87,7 +113,7 @@ class MainActivity : ComponentActivity() {
                 onAuthFailure = { runOnUiThread { controller.restore() } },
             ),
         )
-        setContent { TaskChuteApp(controller, todayController, planningController, realtimeManager) }
+        setContent { TaskChuteApp(controller, todayController, planningController, directManipulationController, notesController, realtimeManager) }
     }
 
     override fun onStart() {
@@ -107,6 +133,8 @@ class MainActivity : ComponentActivity() {
         controller.close()
         todayController.close()
         planningController.close()
+        directManipulationController.close()
+        notesController.close()
         realtimeManager.stop()
         realtimeHttpClient.dispatcher.executorService.shutdown()
         realtimeHttpClient.connectionPool.evictAll()
@@ -119,6 +147,8 @@ private fun TaskChuteApp(
     controller: AuthController,
     todayController: TodayController,
     planningController: TaskPlanningController,
+    directManipulationController: TodayDirectManipulationController,
+    notesController: NotesController,
     realtimeManager: RealtimeConnectionManager,
 ) {
     val state = controller.state
@@ -131,7 +161,7 @@ private fun TaskChuteApp(
         if (state is AuthUiState.SignedIn) {
             realtimeManager.start()
             todayController.onRealtimeForeground()
-        } else {
+        } else if (state is AuthUiState.SignedOut) {
             realtimeManager.stop()
             destination = AndroidDestination.TODAY
             planningController.dismiss()
@@ -168,18 +198,38 @@ private fun TaskChuteApp(
                             controller = todayController,
                             planningController = planningController,
                             onNavigateSettings = { destination = AndroidDestination.SETTINGS },
+                            onNavigateNotes = { destination = AndroidDestination.NOTES },
+                            directManipulationController = directManipulationController,
+                            onOpenTaskNote = { task ->
+                                task.taskId?.let { taskId ->
+                                    notesController.openTaskPrimary(taskId, task.title, task.primaryDocumentId)
+                                    destination = AndroidDestination.NOTES
+                                }
+                            },
                             onSignOut = signOut,
                         )
                         AndroidDestination.SETTINGS -> SettingsScreen(
                             onNavigateToday = { destination = AndroidDestination.TODAY },
+                            onNavigateNotes = { destination = AndroidDestination.NOTES },
                             onSignOut = signOut,
                         )
-                        AndroidDestination.PROJECTS,
-                        AndroidDestination.NOTES,
-                        -> TodayScreen(
+                        AndroidDestination.NOTES -> NotesScreen(
+                            controller = notesController,
+                            onNavigateToday = { destination = AndroidDestination.TODAY },
+                            onNavigateSettings = { destination = AndroidDestination.SETTINGS },
+                        )
+                        AndroidDestination.PROJECTS -> TodayScreen(
                             controller = todayController,
                             planningController = planningController,
                             onNavigateSettings = { destination = AndroidDestination.SETTINGS },
+                            onNavigateNotes = { destination = AndroidDestination.NOTES },
+                            directManipulationController = directManipulationController,
+                            onOpenTaskNote = { task ->
+                                task.taskId?.let { taskId ->
+                                    notesController.openTaskPrimary(taskId, task.title, task.primaryDocumentId)
+                                    destination = AndroidDestination.NOTES
+                                }
+                            },
                             onSignOut = signOut,
                         )
                     }
@@ -190,13 +240,14 @@ private fun TaskChuteApp(
 }
 
 @Composable
-private fun SettingsScreen(onNavigateToday: () -> Unit, onSignOut: () -> Unit) {
+private fun SettingsScreen(onNavigateToday: () -> Unit, onNavigateNotes: () -> Unit, onSignOut: () -> Unit) {
     Scaffold(
         bottomBar = {
             AndroidNavigationBar(
                 selected = AndroidDestination.SETTINGS,
                 onToday = onNavigateToday,
                 onSettings = {},
+                onNotes = onNavigateNotes,
             )
         },
     ) { padding ->

@@ -22,6 +22,7 @@ data class TodayTask(
     val activeStartedAt: String?,
     val routineDerived: Boolean = false,
     val taskId: String? = null,
+    val primaryDocumentId: String? = null,
 )
 
 enum class LifecycleState {

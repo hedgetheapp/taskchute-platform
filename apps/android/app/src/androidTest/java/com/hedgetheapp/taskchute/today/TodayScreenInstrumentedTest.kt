@@ -15,6 +15,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.compose.ui.geometry.Offset
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
@@ -36,6 +37,7 @@ class TodayScreenInstrumentedTest {
     private var controller: TodayController? = null
     private var repository: FakeTodayRepository? = null
     private var planningController: TaskPlanningController? = null
+    private var directManipulationController: TodayDirectManipulationController? = null
 
     @After
     fun tearDown() {
@@ -44,6 +46,7 @@ class TodayScreenInstrumentedTest {
         repository?.releaseComplete?.countDown()
         controller?.close()
         planningController?.close()
+        directManipulationController?.close()
     }
 
     @Test
@@ -165,10 +168,67 @@ class TodayScreenInstrumentedTest {
 
         assertTrue(composeRule.onAllNodesWithText("今日").fetchSemanticsNodes().isNotEmpty())
         composeRule.onNodeWithText("プロジェクト").assertIsDisplayed().assertIsNotEnabled()
-        composeRule.onNodeWithText("ノート").assertIsDisplayed().assertIsNotEnabled()
+        composeRule.onNodeWithText("ノート").assertIsDisplayed().assertIsEnabled()
         composeRule.onNodeWithText("設定").assertIsDisplayed().assertIsEnabled()
         composeRule.onNodeWithText("設定").performClick()
         assertEquals(1, settingsClicks)
+    }
+
+    @Test
+    fun longPressDragReordersEligibleRowsWithoutOpeningEdit() {
+        val directRepository = FakeDirectManipulationRepository()
+        val first = TodayTask(
+            id = "entry-1", title = "Write report", lifecycleState = LifecycleState.PLANNED,
+            project = null, mode = null, estimateSeconds = 600, plannedStartMinute = 540,
+            executionId = null, activeStartedAt = null, taskId = "task-1",
+        )
+        val second = first.copy(id = "entry-2", title = "Review report", taskId = "task-2")
+        val initialDay = dayWith().copy(sections = listOf(dayWith().sections.single().copy(entries = listOf(first, second))))
+        launchPlanningScreen(
+            FakePlanningRepository(),
+            initialDay,
+            directRepository,
+        )
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        val sourceDragNode = composeRule.onNodeWithContentDescription("タスクをドラッグ: Write report")
+        val sourceBounds = sourceDragNode.fetchSemanticsNode().boundsInRoot
+        val targetBounds = composeRule.onNodeWithContentDescription("タスクをドラッグ: Review report").fetchSemanticsNode().boundsInRoot
+        sourceDragNode.performTouchInput {
+            down(center)
+            advanceEventTime(600)
+            moveBy(Offset(0f, targetBounds.center.y + targetBounds.height * 0.25f - sourceBounds.center.y), delayMillis = 100)
+            up()
+        }
+
+        composeRule.waitUntil(3_000) { directRepository.reorderCalls.get() == 1 }
+        assertEquals(1, directRepository.reorderCalls.get())
+        assertTrue(directRepository.lastReorderIds?.containsAll(listOf("entry-1", "entry-2")) == true)
+        assertTrue(composeRule.onAllNodesWithText("タスクを編集").fetchSemanticsNodes().isEmpty())
+    }
+
+    @Test
+    fun eligibleOverflowOffersDuplicateAndTaskNote() {
+        val directRepository = FakeDirectManipulationRepository()
+        var openedTaskNote = 0
+        val task = dayWith().sections.single().entries.single().copy(taskId = "task-1")
+        val initialDay = dayWith().copy(sections = listOf(dayWith().sections.single().copy(entries = listOf(task))))
+        launchPlanningScreen(
+            FakePlanningRepository(),
+            initialDay,
+            directRepository,
+            onOpenTaskNote = { openedTaskNote++ },
+        )
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        composeRule.onNodeWithContentDescription("タスクの編集メニュー").performClick()
+        composeRule.onNodeWithText("複製").assertIsDisplayed().performClick()
+        composeRule.waitUntil(3_000) { directRepository.duplicateCalls.get() == 1 }
+        assertEquals(1, directRepository.duplicateCalls.get())
+
+        composeRule.onNodeWithContentDescription("タスクの編集メニュー").performClick()
+        composeRule.onAllNodesWithText("ノート").get(1).assertIsDisplayed().performClick()
+        assertEquals(1, openedTaskNote)
     }
 
     @Test
@@ -294,6 +354,8 @@ class TodayScreenInstrumentedTest {
     private fun launchPlanningScreen(
         planningRepository: FakePlanningRepository,
         initialDay: TodayDay = dayWith(),
+        directRepository: FakeDirectManipulationRepository? = null,
+        onOpenTaskNote: (TodayTask) -> Unit = {},
     ) {
         val repo = FakeTodayRepository(initialDay = initialDay)
         repository = repo
@@ -308,6 +370,14 @@ class TodayScreenInstrumentedTest {
             onSaved = {},
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
         )
+        this.directManipulationController = directRepository?.let {
+            TodayDirectManipulationController(
+                repository = it,
+                onRefresh = controller!!::refresh,
+                onUnauthorized = {},
+                scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
+            )
+        }
         composeRule.setContent {
             MaterialTheme {
                 TodayScreen(
@@ -315,6 +385,8 @@ class TodayScreenInstrumentedTest {
                     planningController = requireNotNull(this.planningController),
                     onNavigateSettings = {},
                     onSignOut = {},
+                    directManipulationController = this@TodayScreenInstrumentedTest.directManipulationController,
+                    onOpenTaskNote = onOpenTaskNote,
                 )
             }
         }
@@ -396,6 +468,24 @@ class TodayScreenInstrumentedTest {
             saveCalls.incrementAndGet()
             lastInput = input
             return PlanningSaveResult.Success
+        }
+    }
+
+    private class FakeDirectManipulationRepository : TodayDirectManipulationRepository {
+        val reorderCalls = AtomicInteger()
+        val duplicateCalls = AtomicInteger()
+        var lastReorderIds: List<String>? = null
+
+        override fun execute(request: DirectManipulationRequest): DirectManipulationResult {
+            when (request) {
+                is DirectManipulationRequest.Reorder -> {
+                    reorderCalls.incrementAndGet()
+                    lastReorderIds = request.entryIds
+                }
+                is DirectManipulationRequest.Duplicate -> duplicateCalls.incrementAndGet()
+                is DirectManipulationRequest.Move -> Unit
+            }
+            return DirectManipulationResult.Success
         }
     }
 
