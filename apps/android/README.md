@@ -23,13 +23,18 @@ move. An empty normal Section or empty `Sectionなし` is a Section-level drop t
 uses canonical MoveEntry without relative placement. The overflow menu supports canonical
 `複製` and Task Primary `ノート` for every visible row with a valid Task identity, while
 planning edit/drag eligibility remains restricted. The
-native Notes surface uses the existing owner-scoped Document APIs, explicit Markdown
-Save, revision/CAS, memory-only drafts, and explicit dirty Back confirmation. It does
-not add autosave, offline persistence, preview, attachments, or Project/Routine Note
-entry points. Standalone editor Back returns to the Notes list and a Task Primary editor
-opened from Today returns to Today. Runtime verification uses the Windows `TaskChute_API33` AVD through
-`scripts/android-qa.ps1`; the D-110 final Product Owner Galaxy S23 smoke remains
-`PENDING_SMOKE` until the fresh artifact is tested.
+native Notes surface uses the existing owner-scoped Document APIs, Markdown source,
+revision/CAS, and memory-only drafts. D-111 makes standalone `＋` perform canonical Create
+immediately and autosaves standalone title/body and Task Primary body after approximately
+one second of idle time. Input remains usable while a request is in flight; successful
+canonical convergence schedules one follow-up save when needed. Back, navigation, and
+logout flush safely before leaving, while an explicit discard only clears a safe local
+draft and never an in-flight or unresolved request. It does not add offline persistence,
+preview, attachments, or Project/Routine Note entry points. Standalone editor Back returns
+to the Notes list and a Task Primary editor opened from Today returns to Today. D-111 local final evidence is
+Android JVM `94 / 94` and Windows `TaskChute_API33` instrumentation `28 / 28` through
+`scripts/android-qa.ps1`, including APK install, activity readiness, and crash-buffer inspection. The D-111
+Galaxy S23 smoke remains `PENDING_SMOKE` until the fresh artifact is tested.
 
 ## Local build
 

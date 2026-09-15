@@ -27,11 +27,13 @@ relative placementを省略する。無効なdropはno-writeとし、既存のpl
 維持する。
 
 bottom navigationの`ノート`はD-110で実装済みとして有効化する。native NotesはMaterial 3の
-single-pane list/editorで、Markdown sourceをcanonical bodyとして明示Saveする。新規Noteは
-first Saveまでmemory-only draft、既存Documentはrevision/CASで更新し、dirty Back / navigationは
-`変更を破棄しますか？`の確認を要求する。Task Primary NoteはTask titleを表示authorityとし、
-共有DocumentのMarkdown bodyだけを編集する。offline DB、autosave、preview、attachments、
-Project/Routine Note entry pointは追加しない。
+single-pane list/editorで、Markdown sourceをcanonical bodyとする。D-111では新規Noteを`＋`
+押下時にcanonical Createし、既存DocumentとTask Primary bodyを約1秒のidle debounceでautosave
+する。送信中も入力を許し、immutable requestの成功後に残った差分を追従保存する。Task Primary
+NoteはTask titleを表示authorityとし、共有DocumentのMarkdown bodyだけを編集する。Back / navigation
+はsafe flushを待ち、failure / conflict / ambiguousではdraftを保持する。安全な状態の明示
+`破棄して移動`だけがlocal draftを破棄する。offline DB、preview、attachments、Project/Routine
+Note entry pointは追加しない。
 
 Todayのvisible rowはvalidなTask identityがあればlifecycleやlogical DayにかかわらずTask
 Primary Note入口を持つが、planning edit / drag / duplicateのeligibilityとは独立させる。Note

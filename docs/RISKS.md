@@ -1,5 +1,18 @@
 # Risks
 
+## R-068 — D-111 Android Notes autosave boundary
+
+D-111 extends the already-approved D-091/D-101 Document/CAS behavior to native Android. The
+main risks are an autosave request racing with continued typing, deferred navigation dropping
+local edits, and an explicit discard incorrectly erasing an in-flight or ambiguous operation.
+The controller keeps canonical baseline and local draft separate, treats each sent request as
+immutable, performs at most one mutation per editor at a time, schedules a follow-up when local
+input remains dirty, and blocks unsafe navigation/discard while saving or unresolved. Drafts are
+memory-only and no server, schema, migration, dependency, or realtime protocol change is made.
+Final Android JVM `94 / 94` and Windows `TaskChute_API33` instrumentation `28 / 28` are PASS; the
+exact final-push Actions run/artifact remains GitHub-owned volatile evidence, and Galaxy S23 D-111
+smoke remains `PENDING_SMOKE`.
+
 ## R-067 — D-110 Android direct manipulation and native Notes boundary
 
 D-110 reuses canonical `ReorderEntries` / `MoveEntry` / `DuplicateEntry` and D-090/D-101

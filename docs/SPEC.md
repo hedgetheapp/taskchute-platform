@@ -29,12 +29,19 @@ dropする場合はrelative placementを送らず、既存commandのSection / pl
 running / completed / Routine-derived / future / past / pending rowとinvalid dropはno-writeである。
 
 Androidの`ノート` destinationはD-090のstandalone Markdown Documentをnative list/editorで
-扱い、explicit Save、revision/CAS、memory-only draft、dirty navigation confirmationを維持する。
+扱う。D-111により、standaloneの`＋`はcanonical Document Createを即時実行し、既存standalone
+およびTask Primary bodyは約1秒のidle debounceでautosaveする。送信中も入力を継続でき、成功後に
+残ったlocal差分はfollow-up Updateでcanonical revisionへ収束させる。Back / navigation / logoutは
+safe flushとdeferred transitionを使い、failure / conflict / ambiguousではdraftを保持する。
+memory-only draft、revision/CAS、explicit Saveは維持し、安全な状態での明示discardだけがlocal
+draftを破棄してoriginへ戻れる。
 Todayのvisible rowにvalidな`taskId`があれば、lifecycleやDayにかかわらずD-101 Task Primary
 Noteを開ける。この入口はEdit / Duplicate / Dragのeligibilityと独立し、Task titleはTask側の
 authorityであり、Note operationはEntry lifecycle / placement metadataを変更しない。standalone
 Note editorのBackはNotes listへ、Todayから開いたTask NoteのBackはTodayへ戻る。API、schema、
-migration、dependency、realtime protocol、offline persistenceは変更しない。
+migration、dependency、realtime protocol、offline persistenceは変更しない。D-111はD-110の
+Android Notesに限るexplicit-only Save / memory-only new draft / 通常dirty discard confirmation
+の境界をsupersedeする。
 
 ## D-107 Android Today v0.1
 

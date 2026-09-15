@@ -49,18 +49,18 @@ fun NotesScreen(
     var leaveAction by remember { mutableStateOf<(() -> Unit)?>(null) }
 
     fun attemptLeave(action: () -> Unit) {
-        val editor = controller.state.editor
         when {
-            editor?.blocked == true || editor?.saving == true -> Unit
-            controller.hasUnsavedChanges -> leaveAction = action
-            else -> action()
+            controller.state.editor?.blocked == true -> Unit
+            controller.requiresDiscardConfirmation -> leaveAction = action
+            else -> controller.flushAndNavigate(action)
         }
     }
 
     fun leaveEditorToOrigin() {
         val origin = controller.state.editor?.origin
-        controller.dismissEditor()
-        if (origin == NoteEditorOrigin.TODAY_TASK) onNavigateToday()
+        attemptLeave {
+            if (origin == NoteEditorOrigin.TODAY_TASK) onNavigateToday()
+        }
     }
 
     BackHandler(enabled = state.editor != null) {
@@ -77,7 +77,7 @@ fun NotesScreen(
                 TextButton(onClick = {
                     val action = leaveAction
                     leaveAction = null
-                    action?.invoke()
+                    if (controller.discardEditor()) action?.invoke()
                 }) { Text("破棄して移動") }
             },
             dismissButton = { TextButton(onClick = { leaveAction = null }) { Text("キャンセル") } },
@@ -88,9 +88,9 @@ fun NotesScreen(
         bottomBar = {
             AndroidNavigationBar(
                 selected = AndroidDestination.NOTES,
-                onToday = { attemptLeave { controller.dismissEditor(); onNavigateToday() } },
+                onToday = { attemptLeave(onNavigateToday) },
                 onNotes = {},
-                onSettings = { attemptLeave { controller.dismissEditor(); onNavigateSettings() } },
+                onSettings = { attemptLeave(onNavigateSettings) },
             )
         },
         floatingActionButton = {
@@ -154,7 +154,7 @@ private fun NoteEditor(controller: NotesController, editor: NoteEditorState, mod
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onBack, enabled = !editor.blocked && !editor.saving) {
+            TextButton(onClick = onBack, enabled = !editor.blocked) {
                 Text(if (editor.origin == NoteEditorOrigin.TODAY_TASK) "‹ 今日" else "‹ ノート")
             }
             Spacer(Modifier.width(8.dp))
@@ -166,7 +166,7 @@ private fun NoteEditor(controller: NotesController, editor: NoteEditorState, mod
                 onValueChange = controller::updateTitle,
                 label = { Text("タイトル") },
                 singleLine = true,
-                enabled = !editor.blocked && !editor.saving,
+                enabled = !editor.blocked,
                 modifier = Modifier.fillMaxWidth(),
             )
         } else {
@@ -177,8 +177,20 @@ private fun NoteEditor(controller: NotesController, editor: NoteEditorState, mod
             value = editor.markdownBody,
             onValueChange = controller::updateBody,
             label = { Text("Markdown") },
-            enabled = !editor.blocked && !editor.saving,
+            enabled = !editor.blocked,
             modifier = Modifier.fillMaxWidth().weight(1f),
+        )
+        Text(
+            when (editor.saveStatus) {
+                NoteSaveStatus.SAVING -> "保存中…"
+                NoteSaveStatus.SAVED -> "保存済み"
+                NoteSaveStatus.UNSAVED -> "未保存"
+                NoteSaveStatus.CONFLICT -> "競合しています。内容を確認してください。"
+                NoteSaveStatus.AMBIGUOUS -> "保存結果が未確定です。"
+                NoteSaveStatus.ERROR -> "保存に失敗しました。"
+            },
+            color = if (editor.saveStatus == NoteSaveStatus.SAVED) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+            style = MaterialTheme.typography.bodySmall,
         )
         editor.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         if (editor.blocked) {
@@ -186,7 +198,7 @@ private fun NoteEditor(controller: NotesController, editor: NoteEditorState, mod
             Button(onClick = controller::retryUnresolved, enabled = !editor.saving) { Text("元の保存を再試行") }
         } else {
             Button(onClick = controller::save, enabled = !editor.saving, modifier = Modifier.fillMaxWidth()) {
-                Text(if (editor.saving) "保存中…" else "保存")
+                Text("保存")
             }
         }
     }

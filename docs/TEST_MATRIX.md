@@ -1,5 +1,19 @@
 # Test Matrix
 
+## D-111 Android Notes Autosave Parity v0.4 — closeout
+
+| ID | Verification target | Evidence | Status |
+|---|---|---|---|
+| D111-DECISION | Canonical scope | `docs/decisions/D-111_ANDROID_NOTES_AUTOSAVE_PARITY_V04.md`; D-110 explicit-only Android clauses superseded only for Notes autosave/Create/navigation/discard | PASS |
+| D111-CONTROLLER | Android Notes state machine | immediate `notitle` Create; ~1s debounce; immutable in-flight request; continued typing + follow-up; explicit Save flush; deferred Back/Today/Settings/logout; conflict/ambiguous retention; safe discard | `NotesControllerTest` focused PASS; full JVM includes `94 / 94` |
+| D111-TASK-NOTE | Task Primary Note | existing D-101 Task identity/revision/CAS, read-only Task title, body autosave, no Today placement/lifecycle mutation | PASS focused JVM + AVD |
+| D111-ANDROID-JVM | Full Android JVM | final `:app:testDebugUnitTest`: `94 / 94`, failures/errors/skipped `0 / 0 / 0` | PASS |
+| D111-ANDROID-AVD | Runtime gate | Windows `TaskChute_API33` through `scripts/android-qa.ps1`; Notes 5 + Keystore 1 + Today 22 = `28 / 28`, failures/errors/skipped `0 / 0 / 0`; APK install, MainActivity, crash buffer empty; no redundant separate assemble closeout | PASS |
+| D111-BOUNDARY | Server/data boundary | Worker/API/schema/migration/dependency/realtime protocol unchanged; no persistent nonprod deploy required | PASS / NOT_REQUIRED |
+| D111-CI | Impact-aware exact-SHA CI | Android+docs routes `run_android=true`, `run_web=false`; Android JVM/APK/instrumentation compile and exact artifact required; GitHub remains metadata authority and volatile run/artifact metadata is reported in handoff | PENDING_EXACT_SHA |
+| D111-GALAXY | Device smoke | Fresh exact-final-main APK for Product Owner; autosave/navigation smoke | PENDING_SMOKE |
+| D111-SAFETY | Production/release | no production, restore, branch/PR/merge/tag/Release | NOT_RUN / NO |
+
 ## Development Velocity Corrective v1 — impact-aware verification boundary
 
 | ID | Verification target | Evidence / required behavior | Status |

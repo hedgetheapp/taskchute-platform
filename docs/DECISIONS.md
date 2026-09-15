@@ -2,6 +2,21 @@
 
 Statuses: Approved / Proposed / Superseded
 
+## D-111 — Android Notes Autosave Parity v0.4
+
+Status: **Approved**
+
+Canonical Decision: `docs/decisions/D-111_ANDROID_NOTES_AUTOSAVE_PARITY_V04.md`。
+
+D-111はD-091 standalone autosaveとD-101 Task Primary NoteのDocument/CAS semanticsをnative
+Androidへ拡張する。standaloneの`＋`は既存canonical Createを即時実行し、既存standalone / Task
+Primary bodyは約1秒のidle debounceでautosaveする。保存中も入力を継続し、送信済みrequestを不変に
+保ち、成功後に残ったlocal差分は追従保存する。Back / Today / Settings / logoutは安全なflushと
+deferred transitionを使い、failure / conflict / ambiguousではdraftとexact operationを保持する。
+安全な状態での明示`破棄して移動`はlocal draftを実際に破棄してoriginへ遷移する。D-110のAndroid
+explicit-only Save / memory-only new draft / 通常dirty discard確認という範囲だけをsupersedeし、
+Worker/API、schema/migration、dependency、realtime protocol、productionは不変である。
+
 ## D-110 — Android Today Direct Manipulation + Notes v0.3
 
 Status: **Approved**

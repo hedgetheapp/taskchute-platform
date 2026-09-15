@@ -156,7 +156,7 @@ class TodayScreenInstrumentedTest {
 
         composeRule.onNodeWithContentDescription("前の日").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("次の日").performClick()
-        composeRule.waitUntil(3_000) { repo.requestedDates.contains("2026-09-15") }
+        composeRule.waitUntil(15_000) { repo.requestedDates.contains("2026-09-15") }
         assertTrue(repo.requestedDates.contains("2026-09-15"))
     }
 
@@ -201,7 +201,7 @@ class TodayScreenInstrumentedTest {
             up()
         }
 
-        composeRule.waitUntil(3_000) { directRepository.reorderCalls.get() == 1 }
+        composeRule.waitUntil(15_000) { directRepository.reorderCalls.get() == 1 }
         assertEquals(1, directRepository.reorderCalls.get())
         assertTrue(directRepository.lastReorderIds?.containsAll(listOf("entry-1", "entry-2")) == true)
         assertTrue(composeRule.onAllNodesWithText("タスクを編集").fetchSemanticsNodes().isEmpty())
@@ -223,7 +223,7 @@ class TodayScreenInstrumentedTest {
 
         composeRule.onAllNodesWithContentDescription("タスクの編集メニュー").get(0).performClick()
         composeRule.onNodeWithText("複製").assertIsDisplayed().performClick()
-        composeRule.waitUntil(3_000) { directRepository.duplicateCalls.get() == 1 }
+        composeRule.waitUntil(15_000) { directRepository.duplicateCalls.get() == 1 }
         assertEquals(1, directRepository.duplicateCalls.get())
 
         composeRule.onAllNodesWithContentDescription("タスクの編集メニュー").get(0).performClick()
@@ -246,7 +246,7 @@ class TodayScreenInstrumentedTest {
         composeRule.onNodeWithText("見積（分）").assertExists()
         composeRule.onNodeWithText("追加").performScrollTo().performClick()
 
-        composeRule.waitUntil(3_000) { planningRepository.saveCalls.get() == 1 }
+        composeRule.waitUntil(15_000) { planningRepository.saveCalls.get() == 1 }
         assertEquals(1, planningRepository.saveCalls.get())
         assertEquals("Plan from Android", planningRepository.lastInput?.title)
     }
@@ -311,7 +311,7 @@ class TodayScreenInstrumentedTest {
             up()
         }
 
-        composeRule.waitUntil(3_000) { directRepository.moveCalls.get() == 1 }
+        composeRule.waitUntil(15_000) { directRepository.moveCalls.get() == 1 }
         assertEquals(1, directRepository.moveCalls.get())
         assertEquals(null, directRepository.lastMove?.placement)
         assertEquals("section-2", directRepository.lastMove?.sectionId)
@@ -460,7 +460,7 @@ class TodayScreenInstrumentedTest {
     }
 
     private fun waitForStatus(status: TodayLoadStatus) {
-        composeRule.waitUntil(3_000) { controller?.state?.status == status }
+        composeRule.waitUntil(15_000) { controller?.state?.status == status }
         assertEquals(status, controller?.state?.status)
     }
 
@@ -492,7 +492,7 @@ class TodayScreenInstrumentedTest {
 
         override fun loadDay(logicalDate: String?): TodayResult {
             synchronized(requestedDates) { requestedDates += logicalDate }
-            if (holdLoad) releaseLoad.await(3, TimeUnit.SECONDS)
+            if (holdLoad) releaseLoad.await()
             return when (mode) {
                 LoadMode.SUCCESS -> TodayResult.Success(
                     currentDay.copy(

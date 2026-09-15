@@ -1,5 +1,35 @@
 # Current
 
+### D-111 Android Notes Autosave Parity v0.4 — 2026-09-15
+
+D-111は、既存のD-091 standalone Note autosaveとD-101 Task Primary NoteのDocument/CAS
+semanticsをnative Androidへ拡張した。standaloneの`＋`は`notitle`系canonical title allocationを
+使うCreateを即時一度だけ実行し、standalone title/bodyとTask Primary bodyは最新入力から約1秒の
+idle debounceでautosaveする。送信済みrequestはimmutableで、保存中も入力を継続でき、保存成功後に
+baselineとlocal draftが異なる場合は必要な追従Updateを一度ずつ行う。clean stateではgratuitous
+revisionを作らない。Worker/API、schema、migration、dependency、realtime protocol、productionは
+変更していない。
+
+従来の`破棄して移動`がdirty editor上で`dismissEditor()`のclean-only guardに阻まれていたため、
+safeなlocal draftだけを破棄してorigin-awareに移動する`discardEditor()`を追加した。Back / Today /
+Settings / logoutはdirtyまたは保存中ならflushをdeferし、successしてcanonical-cleanになった場合だけ
+遷移する。failure / conflict / infrastructure ambiguityではdraftとexact operationを保持し、in-flight
+またはunresolved requestをdiscardできない。draftはmemory-onlyであり、local DB / localStorage /
+offline queueは追加していない。
+
+最終local evidenceはAndroid JVM `94 / 94`（failures/errors/skipped `0 / 0 / 0`）、Windows local
+AVD `TaskChute_API33`（Pixel 7 / Android 13 API 33 / Google APIs / x86_64 / `emulator-5554`）の
+`scripts/android-qa.ps1` `28 / 28` PASS。AVDではNotes 5件、Keystore 1件、Today 22件を実行し、APK
+install、`MainActivity`解決、対象package crash buffer emptyを確認した。AVD負荷下で観測された失敗は
+Notesの古いexplicit-Save前提と、既存Todayの短い待機時間によるTEST_CODE_FAILであり、実装runtime
+crashではなかった。テスト側を明示的なcontroller/latch同期へ修正し、最終runで全件PASSとした。
+
+最終push後のGitHub Actions exact-SHA、fresh APK artifact、Galaxy S23 D-111 smokeはそれぞれGitHub
+read-back / Product Owner device testで確定する。D-111のGalaxy S23 smokeは`PENDING_SMOKE`、persistent
+nonprod deploy / migrationは`NOT_REQUIRED`、production / restore / Releaseは`NOT_RUN` / `NOT_RUN` /
+`NO`である。GitHub Actionsのrun ID・artifact ID・expiryはvolatile metadataのためcanonical docsへ
+複製せず、GitHubを正本としてhandoffで報告する。
+
 ### D-110 Android Today Direct Manipulation + Notes v0.3 — 2026-09-15
 
 D-110 Approved batchとして、Android Todayへordinary planned current-Day Taskのlong-press
