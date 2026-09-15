@@ -29,6 +29,21 @@ Release are NOT_RUN / NO.
 `34909083202`はPASS。途中のdocs-only SHA `2f25285`では既存retry testの通知順序依存が
 一時的にFAILしたが、corrective `bce0168`で解消し、最終CIでは再発していない。
 
+## D-109 corrective UI refinement — local Android gate
+
+| ID | Verification target | Evidence | Status |
+|---|---|---|---|
+| D109-CORR-UI | Quick Add placement / edit affordance | current Dayのみbottom-right FAB、date navigatorに旧`＋`なし、planned ordinary rowのbody tap no-edit、`…`→`編集`で既存sheet | PASS emulator |
+| D109-CORR-BOUNDARY | Read-only and running boundaries | non-current Day Add/overflowなし、running/completed/Routine-derived overflowなし、Startは独立 | PASS emulator |
+| D109-CORR-OVERLAY | Running panel coexistence | FABとrunning panelを同一bottom overlayの縦関係で表示し、両方の操作入口を検証 | PASS emulator |
+| D109-CORR-TESTS | Final local runtime | `:app:testDebugUnitTest` `70 / 70`; `scripts/android-qa.ps1` / `TaskChute_API33` `18 / 18`; failures/errors/skipped `0 / 0 / 0`; crash buffer対象packageなし | PASS |
+| D109-CORR-SCOPE | Change boundary | Android UI/tests/docs only; no Worker/API/schema/migration/dependency/production change | PASS / NOT_REQUIRED |
+
+D-109 corrective implementation commit `f9a57e10be87e8646fdcdb0ccebd958aa65840e1` is pushed to
+`main`. A fresh final-main APK artifact and exact-SHA CI evidence remain pending until the push
+workflow completes. Corrective Galaxy S23 smoke is `NOT_RUN` until the Product Owner tests that
+fresh APK; the prior user-confirmed D-107 smoke remains separate evidence.
+
 ## D-108 Android Realtime Invalidation v0.1 — local implementation
 
 | ID | Verification target | Evidence | Status |

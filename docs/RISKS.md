@@ -14,6 +14,10 @@ Routine-derivedはclientでも編集入口を抑制するが、Server authority�
 pending / deferred refresh、Start / Completeは既存テストで回帰確認する。D-109ではWorker、
 schema、migration、dependency、offline queue、productionを変更していない。
 
+D-109 correctiveでは、誤操作を避けるためrow body編集を廃止し、`…`→`編集`へ入口を限定した。
+Quick Addとrunning panelは同じbottom overlayの縦レイアウトで管理し、FABがpanelを覆わないことを
+Compose instrumentationで確認する。drag-and-drop / reorderは引き続き未実装である。
+
 ## R-064 — D-107 Android Today uses canonical HTTP projection
 
 Android TodayはServerのDay projectionとStart / Complete commandを再利用するため、

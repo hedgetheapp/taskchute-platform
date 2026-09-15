@@ -1,5 +1,25 @@
 # Current
 
+### D-109 Android Today Planning v0.2 corrective UI refinement — 2026-09-15
+
+D-109の初期planning surfaceに対するApproved correctiveとして、date navigator内の旧Quick Addを
+削除し、current established Dayのplanning-enabled状態でだけ、NavigationBarの上にbottom-right
+Material 3 `＋` FABを表示するようにした。running Taskがある場合は同じbottom overlayの縦関係で
+FABをrunning panelの上に配置し、両者の重なりを避ける。planned ordinary current-Day rowのbody
+tapによる編集を削除し、row末尾の`…`から`編集`を選ぶ既存bottom sheet導線へ限定した。running、
+completed、Routine-derived、future / past rowには編集overflowを表示しない。Start / Complete、
+既存の6項目planning form、D-108 realtime、auth、Worker/API/schema/migration/dependency semantics
+は変更していない。実装commitは`f9a57e10be87e8646fdcdb0ccebd958aa65840e1`。
+
+修正後のlocal evidenceは`:app:testDebugUnitTest` `70 / 70`、Debug APK、instrumentation APK compile、
+Windows AVD `TaskChute_API33`（Pixel 7 / Android 13 API 33 / Google APIs / x86_64 /
+`emulator-5554`）の`:app:connectedDebugAndroidTest` `18 / 18` PASS。`scripts/android-qa.ps1`も
+exit `0`で完了し、APK install、MainActivity解決、対象packageのcrash buffer emptyを確認した。
+UI instrumentationにはcurrent / non-current Add境界、running panelとの同時表示、row body no-edit、
+overflow edit、running / completed / Routine-derived no-edit、既存Start / Complete / Add formを含む。
+補正対象のGalaxy S23 smokeは新しいfinal-main APKのProduct Owner確認待ちで`NOT_RUN`、production /
+migration / deploy / Releaseは`NOT_RUN / NOT_REQUIRED / NOT_RUN / NO`を維持する。
+
 ### D-109 Android Today Planning v0.2 — local implementation — 2026-09-15
 
 D-109 Approved Decisionを追加し、Android Todayをcurrent established Dayのordinary planned
@@ -7,7 +27,7 @@ Task向けplanning surfaceへ拡張した。Today headerはTaskChute / Todayの�
 reloadを外してdate navigationを直接表示し、Material 3 NavigationBarのSettingsだけを
 既存logoutへ接続した。Project / Notesはdisabledのままfake navigationを行わない。
 
-current Dayの`＋` Quick Addとordinary planned row tapは共通bottom sheetを開き、Task名、
+初期実装ではcurrent Dayの`＋` Quick Addとordinary planned row tapが共通bottom sheetを開き、Task名、
 Project、Mode、Section、開始予定、見積を編集する。既存のAddTaskToDay、UpdateTaskMetadata、
 SetEntryMode、SetEntryEstimate、SetEntryPlannedStartをserial compositionし、保存中の
 二重dispatchを抑止し、success後にcanonical Today projectionを再取得する。Task/Entry IDを

@@ -15,13 +15,16 @@
 ## D-109 Android Today planning surface
 
 TodayはTaskChute / Todayの大きな固定headerを置かず、`‹ 日付（曜日） › 今日`のdate
-navigationを上部に直接表示する。current Dayでは右側に`＋` Quick Addを置き、下部は
+navigationを上部に直接表示する。Quick Addはdate navigationから分離し、current established Dayの
+planning-enabled状態でだけNavigationBarの上にbottom-rightの最小`＋` FABとして表示する。running
+Taskがある場合はFABをrunning panelの上に同じbottom overlayの縦関係で配置する。下部は
 Material 3 NavigationBarの`今日` / `プロジェクト` / `ノート` / `設定`とする。Project /
 Notesはdisabledでfake navigationを行わず、Settingsだけ既存logoutへ進める。
 
-Quick Addとordinary planned current-Day Taskの編集は同じcompact bottom sheetを使い、
-`Task名`、`Project`、`Mode`、`Section`、`開始予定`、`見積（分）`を表示する。未establish
-Day、future / past、running / completed、Routine-derived rowは編集入口を表示しない。
+Quick Addとordinary planned current-Day Taskの編集は同じcompact bottom sheetを使う。編集はrow body
+tapではなく、planned ordinary row末尾の`…`メニューから`編集`を選択して開始する。Task名、
+`Project`、`Mode`、`Section`、`開始予定`、`見積（分）`を表示する。未establish Day、future /
+past、running / completed、Routine-derived rowは追加・編集入口を表示しない。
 保存は既存commandのserial compositionとcanonical refetchを使い、保存中はボタンを無効化
 して二重dispatchを防ぐ。task rowは従来の小さい左state indicatorと右側icon-only
 Start / Complete、running panelはbottom navigation直上の`完了` actionを維持する。

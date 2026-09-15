@@ -11,6 +11,12 @@ are not included. Planning is limited to ordinary planned Tasks on the current
 established Day; future/past, running/completed, and Routine-derived entries
 remain read-only.
 
+The D-109 planning controls use a single bottom-right `＋` FAB for Quick Add on
+the current planning-enabled Day. Planned ordinary current-Day rows expose an
+explicit `…` menu with `編集`; tapping the row body does not open the editor.
+The FAB and running-task panel share a bottom overlay relationship so the
+controls remain separated while a Task is running.
+
 ## Local build
 
 Configure the non-production URL without committing it:
