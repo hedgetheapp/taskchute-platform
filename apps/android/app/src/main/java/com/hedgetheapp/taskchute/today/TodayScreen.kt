@@ -2,7 +2,6 @@ package com.hedgetheapp.taskchute.today
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,6 +26,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -139,14 +139,33 @@ fun TodayScreen(
                 TodayLoadStatus.AUTH_REQUIRED -> TodayAuthRequired()
             }
             if (state.status == TodayLoadStatus.CONTENT || state.status == TodayLoadStatus.EMPTY || state.status == TodayLoadStatus.REFRESHING) {
-                state.day?.runningTask?.let { task ->
-                    if (state.day.isCurrent) {
-                        RunningTaskPanel(
-                            task = task,
-                            controller = controller,
-                            enabled = !state.pendingEntryIds.contains(task.id),
-                            modifier = Modifier.align(Alignment.BottomCenter),
-                        )
+                state.day?.takeIf { it.isCurrent }?.let { day ->
+                    val runningTask = day.runningTask
+                    val canAdd = day.planningEnabled && day.taskChuteDayId != null && planningController != null
+                    if (runningTask != null || canAdd) {
+                        Column(
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .fillMaxWidth()
+                                .navigationBarsPadding()
+                                .padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
+                            horizontalAlignment = Alignment.End,
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            if (canAdd) {
+                                FloatingActionButton(
+                                    onClick = { planningController.openCreate(day) },
+                                    modifier = Modifier.semantics { contentDescription = "タスクを追加" },
+                                ) { Text("＋") }
+                            }
+                            runningTask?.let { task ->
+                                RunningTaskPanel(
+                                    task = task,
+                                    controller = controller,
+                                    enabled = !state.pendingEntryIds.contains(task.id),
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -172,8 +191,6 @@ private fun TodayContent(
         DateNavigator(
             day = day,
             controller = controller,
-            canAdd = day.isCurrent && day.planningEnabled && day.taskChuteDayId != null && planningController != null,
-            onAdd = { planningController?.openCreate(day) },
         )
         state.errorMessage?.let {
             Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp))
@@ -193,7 +210,7 @@ private fun TodayContent(
                         task = task,
                         enabled = day.isCurrent && !state.pendingEntryIds.contains(task.id),
                         controller = controller,
-                        canEdit = day.isCurrent && day.planningEnabled && !task.routineDerived && planningController != null,
+                        canEdit = day.isCurrent && day.planningEnabled && task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived && planningController != null,
                         onEdit = { planningController?.openEdit(day, task) },
                     )
                 }
@@ -205,7 +222,7 @@ private fun TodayContent(
                         task = task,
                         enabled = day.isCurrent && !state.pendingEntryIds.contains(task.id),
                         controller = controller,
-                        canEdit = day.isCurrent && day.planningEnabled && !task.routineDerived && planningController != null,
+                        canEdit = day.isCurrent && day.planningEnabled && task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived && planningController != null,
                         onEdit = { planningController?.openEdit(day, task) },
                     )
                 }
@@ -215,7 +232,7 @@ private fun TodayContent(
 }
 
 @Composable
-private fun DateNavigator(day: TodayDay, controller: TodayController, canAdd: Boolean, onAdd: () -> Unit) {
+private fun DateNavigator(day: TodayDay, controller: TodayController) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -236,12 +253,6 @@ private fun DateNavigator(day: TodayDay, controller: TodayController, canAdd: Bo
                 modifier = Modifier.semantics { contentDescription = "次の日" },
             ) { Text("›", style = MaterialTheme.typography.headlineMedium) }
             TextButton(onClick = controller::today, enabled = !day.isCurrent) { Text("今日") }
-            if (canAdd) {
-                IconButton(
-                    onClick = onAdd,
-                    modifier = Modifier.semantics { contentDescription = "タスクを追加" },
-                ) { Text("＋") }
-            }
         }
     }
     HorizontalDivider()
@@ -269,15 +280,9 @@ private fun TodayTaskRow(
     canEdit: Boolean,
     onEdit: () -> Unit,
 ) {
+    var editMenuExpanded by remember(task.id) { mutableStateOf(false) }
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .then(
-                if (canEdit) Modifier
-                    .clickable(onClick = onEdit)
-                    .semantics { contentDescription = "タスクを編集" }
-                else Modifier,
-            ),
+        modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(start = 12.dp, top = 10.dp, bottom = 10.dp, end = 6.dp),
@@ -313,13 +318,33 @@ private fun TodayTaskRow(
                 ) { Text("✓") }
                 LifecycleState.COMPLETED -> Spacer(Modifier.size(48.dp))
             }
+            if (canEdit) {
+                Box {
+                    IconButton(
+                        onClick = { editMenuExpanded = true },
+                        modifier = Modifier.semantics { contentDescription = "タスクの編集メニュー" },
+                    ) { Text("…") }
+                    DropdownMenu(
+                        expanded = editMenuExpanded,
+                        onDismissRequest = { editMenuExpanded = false },
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("編集") },
+                            onClick = {
+                                editMenuExpanded = false
+                                onEdit()
+                            },
+                        )
+                    }
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun RunningTaskPanel(task: TodayTask, controller: TodayController, enabled: Boolean, modifier: Modifier) {
-    Card(modifier = modifier.fillMaxWidth().padding(12.dp).navigationBarsPadding()) {
+private fun RunningTaskPanel(task: TodayTask, controller: TodayController, enabled: Boolean, modifier: Modifier = Modifier) {
+    Card(modifier = modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,

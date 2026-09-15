@@ -4,6 +4,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
@@ -12,6 +13,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -190,16 +192,74 @@ class TodayScreenInstrumentedTest {
     }
 
     @Test
-    fun ordinaryPlannedRowOpensEditorAndRoutineRowDoesNot() {
+    fun currentDayShowsOneBottomRightAddAffordance() {
         val planningRepository = FakePlanningRepository()
         launchPlanningScreen(planningRepository)
         waitForStatus(TodayLoadStatus.CONTENT)
 
-        composeRule.onNodeWithContentDescription("タスクを編集").performClick()
+        composeRule.onNodeWithContentDescription("タスクを追加").assertIsDisplayed()
+        assertEquals(1, composeRule.onAllNodesWithContentDescription("タスクを追加").fetchSemanticsNodes().size)
+    }
+
+    @Test
+    fun nonCurrentDayHasNoAddOrEditOverflow() {
+        val planningRepository = FakePlanningRepository()
+        launchPlanningScreen(planningRepository, initialDay = dayWith().copy(isCurrent = false))
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        assertTrue(composeRule.onAllNodesWithContentDescription("タスクを追加").fetchSemanticsNodes().isEmpty())
+        assertTrue(composeRule.onAllNodesWithContentDescription("タスクの編集メニュー").fetchSemanticsNodes().isEmpty())
+    }
+
+    @Test
+    fun bottomRightAddRemainsSeparateFromRunningPanel() {
+        val planningRepository = FakePlanningRepository()
+        launchPlanningScreen(planningRepository, initialDay = dayWith(LifecycleState.RUNNING))
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        composeRule.onNodeWithContentDescription("タスクを追加").assertIsDisplayed()
+        composeRule.onNodeWithText("実行中").assertIsDisplayed()
+        composeRule.onNodeWithText("完了").assertIsDisplayed()
+    }
+
+    @Test
+    fun ordinaryPlannedRowUsesOverflowMenuForEditingOnly() {
+        val planningRepository = FakePlanningRepository()
+        launchPlanningScreen(planningRepository)
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        composeRule.onNodeWithText("Write report").performTouchInput { click() }
+        assertTrue(composeRule.onAllNodesWithText("タスクを編集").fetchSemanticsNodes().isEmpty())
+        composeRule.onNodeWithContentDescription("タスクの編集メニュー").performClick()
+        composeRule.onNodeWithText("編集").performClick()
         composeRule.onNodeWithText("タスクを編集").assertIsDisplayed()
         composeRule.onNodeWithText("保存").assertExists()
         composeRule.onNodeWithText("キャンセル").performClick()
-        composeRule.onNodeWithContentDescription("タスクを編集").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("タスクの編集メニュー").assertIsDisplayed()
+    }
+
+    @Test
+    fun runningRowsHaveNoEditOverflow() {
+        val planningRepository = FakePlanningRepository()
+        launchPlanningScreen(planningRepository, initialDay = dayWith(LifecycleState.RUNNING))
+        waitForStatus(TodayLoadStatus.CONTENT)
+        assertTrue(composeRule.onAllNodesWithContentDescription("タスクの編集メニュー").fetchSemanticsNodes().isEmpty())
+    }
+
+    @Test
+    fun completedRowsHaveNoEditOverflow() {
+        val planningRepository = FakePlanningRepository()
+        launchPlanningScreen(planningRepository, initialDay = dayWith(LifecycleState.COMPLETED))
+        waitForStatus(TodayLoadStatus.CONTENT)
+        assertTrue(composeRule.onAllNodesWithContentDescription("タスクの編集メニュー").fetchSemanticsNodes().isEmpty())
+    }
+
+    @Test
+    fun routineRowsHaveNoEditOverflow() {
+        val planningRepository = FakePlanningRepository()
+        launchPlanningScreen(planningRepository, initialDay = dayWith(routineDerived = true))
+        waitForStatus(TodayLoadStatus.CONTENT)
+        assertTrue(composeRule.onAllNodesWithContentDescription("タスクの編集メニュー").fetchSemanticsNodes().isEmpty())
     }
 
     private fun launchScreen(
@@ -225,8 +285,11 @@ class TodayScreenInstrumentedTest {
         return repo
     }
 
-    private fun launchPlanningScreen(planningRepository: FakePlanningRepository) {
-        val repo = FakeTodayRepository()
+    private fun launchPlanningScreen(
+        planningRepository: FakePlanningRepository,
+        initialDay: TodayDay = dayWith(),
+    ) {
+        val repo = FakeTodayRepository(initialDay = initialDay)
         repository = repo
         controller = TodayController(
             repository = repo,
@@ -289,7 +352,7 @@ class TodayScreenInstrumentedTest {
                 LoadMode.SUCCESS -> TodayResult.Success(
                     currentDay.copy(
                         logicalDate = logicalDate ?: currentDay.logicalDate,
-                        isCurrent = logicalDate == null || logicalDate == "2026-09-14",
+                        isCurrent = currentDay.isCurrent && (logicalDate == null || logicalDate == "2026-09-14"),
                     ),
                 )
                 LoadMode.ERROR -> TodayResult.Failure("ネットワークエラー")
@@ -331,7 +394,7 @@ class TodayScreenInstrumentedTest {
     }
 
     private companion object {
-        fun dayWith(state: LifecycleState) = TodayDay(
+        fun dayWith(state: LifecycleState = LifecycleState.PLANNED, routineDerived: Boolean = false) = TodayDay(
             logicalDate = "2026-09-14",
             isCurrent = true,
             planningEnabled = true,
@@ -351,6 +414,7 @@ class TodayScreenInstrumentedTest {
                             mode = null,
                             estimateSeconds = 600,
                             plannedStartMinute = 540,
+                            routineDerived = routineDerived,
                             executionId = if (state == LifecycleState.RUNNING) "execution-1" else null,
                             activeStartedAt = if (state == LifecycleState.RUNNING) "2026-09-14T01:00:00Z" else null,
                         ),
