@@ -3101,3 +3101,22 @@ D-107 Emulator closeoutでは、旧GitHub-hosted KVM不足の未実行記録と�
 分離する。`android-emulator-qa`手順で実際にboot / install / instrumentation / screenshot /
 UI tree / logcatを実施し、全10件PASSを確認した。Galaxy S23 smokeはユーザー確認済みPASS、
 production / migration / Releaseは`NOT_RUN / NO`である。
+
+## Android Development Velocity Corrective v2 — surface-aware local QA
+
+| ID | Area | Requirement / evidence | Status |
+|---|---|---|---|
+| ANDROID-QA-BACKCOMPAT | Local QA | 引数なし `scripts/android-qa.ps1` は `All` として全 connected instrumentation を実行し、APK install / Activity / crash-buffer を維持。`TaskChute_API33` report: Notes `5 / 5`、Security `1 / 1`、Today `22 / 22`、合計 `28 / 28`、failures/errors/skipped `0 / 0 / 0`; total `1,172.17s` | PASS |
+| ANDROID-QA-NOTES | Surface selector | `-Surface Notes` → `NotesScreenInstrumentedTest`; `5 / 5 PASS`; instrumentation `283.59s`、post-test smoke `7.20s`、total `291.01s` | PASS |
+| ANDROID-QA-TODAY | Surface selector | `-Surface Today` → `TodayScreenInstrumentedTest`; `22 / 22 PASS`; instrumentation `911.13s`、post-test smoke `3.62s`、total `914.95s` | PASS |
+| ANDROID-QA-SECURITY | Surface selector | `-Surface Security` → `EncryptedSessionStoreInstrumentedTest`; `1 / 1 PASS`; instrumentation `23.71s`、post-test smoke `1.20s`、total `25.11s` | PASS |
+| ANDROID-QA-VALIDATION | Selector safety | invalid Surface is rejected with a clear error; multiple class selectors are rejected because the current Gradle runner safely accepts one class filter per run | PASS |
+| ANDROID-QA-SMOKE | Targeted runtime safety | Notes / Today / Security / All each retained debug APK install, resolved `com.hedgetheapp.taskchute/.MainActivity`, package crash-buffer empty, and exit-code enforcement | PASS |
+| ANDROID-QA-IMPACT | Workflow boundary | isolated single-surface Android work may use full affected JVM + matching targeted AVD; `All` remains for auth/Keystore, broad shell/realtime/shared/unknown impact, milestones, releases, or explicit contract | PASS |
+| ANDROID-QA-CLASSIFIER | CI routing | existing `scripts/ci-surface.mjs` continues to classify `scripts/android-qa.ps1` as Android; no classifier change required | PASS |
+| ANDROID-QA-SCOPE | Product boundary | no Product app code, API/Worker/domain behavior, migration/schema, dependency, production, or Galaxy S23 requirement changed | PASS / NOT_REQUIRED |
+
+Timing is local AVD evidence and environment-dependent. Against the same-run `All` total, the
+measured surface-only total estimate is approximately 75% less for Notes, 22% less for Today,
+and 98% less for Security. This is test-time evidence only and is not a claim of an overall
+development-speed multiplier.

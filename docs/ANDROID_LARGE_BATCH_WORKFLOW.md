@@ -40,7 +40,7 @@ At Batch completion, run the impact-appropriate final gate:
 
 1. Focused JVM tests for affected logic / ViewModel / repository / state transitions.
 2. Android JVM affected/full coverage according to impact analysis, once at Batch closeout.
-3. Windows local AVD `TaskChute_API33` through `scripts/android-qa.ps1` once for instrumentation runtime, APK install/launch readiness, and crash check.
+3. Windows local AVD `TaskChute_API33` through `scripts/android-qa.ps1` once for the affected instrumentation surface(s), APK install/launch readiness, and crash check.
 4. Web / Worker / integration verification only when contracts or server behavior are affected.
 5. Persistent nonprod verification only when the Batch changes behavior that requires remote evidence.
 6. Canonical docs and `TEST_MATRIX` updated to the evidence actually obtained.
@@ -52,6 +52,38 @@ resolved activity and crash buffer. Therefore separate `assembleDebug` and
 script passes and final CI supplies the APK artifact. They remain allowed for troubleshooting
 or when a Task Contract explicitly requires compile-only evidence. GitHub Android CI continues
 to build and upload the debug APK and compile the instrumentation APK.
+
+### Surface-aware local instrumentation
+
+The no-argument invocation keeps the historical full gate:
+
+```powershell
+./scripts/android-qa.ps1
+```
+
+It is equivalent to `-Surface All` and executes every connected instrumentation class. For an
+isolated ordinary UI change, select exactly the affected surface:
+
+| Surface | Instrumentation class |
+|---|---|
+| `Notes` | `com.hedgetheapp.taskchute.document.NotesScreenInstrumentedTest` |
+| `Today` | `com.hedgetheapp.taskchute.today.TodayScreenInstrumentedTest` |
+| `Security` | `com.hedgetheapp.taskchute.security.EncryptedSessionStoreInstrumentedTest` |
+
+The repository script currently accepts one of `All`, `Notes`, `Today`, or `Security` per run.
+The Gradle runner does not safely express multiple class filters through this command, so a
+multi-surface ordinary Batch runs one selected command per affected surface rather than
+silently running only the first class. Every selected run retains APK install, resolved
+MainActivity, and package crash-buffer checks and prints emulator, instrumentation, smoke, and
+total timings.
+
+For a single-surface ordinary change with no auth/security/cross-shell/realtime/shared-contract
+impact, the closeout is full affected Android JVM coverage once, the matching targeted Surface
+run once, and `git diff --check`. A multi-surface ordinary change selects each affected surface
+once; unrelated Security or other surfaces are not added merely for reassurance. `All` remains
+required for auth/session/Keystore, broad MainActivity/navigation-shell, realtime lifecycle,
+shared Android infrastructure, unknown/cross-surface impact, milestone/release work, an
+explicit contract requirement, or evidence that an isolated change affected another surface.
 
 For an Android-only Batch with no Worker/API/shared-contract impact, full Web / Worker tests,
 Web typecheck, and Web build are `NOT_REQUIRED by impact analysis`; the reverse applies to a
@@ -70,11 +102,22 @@ When device evidence is required but not run, record `NOT_RUN`; never promote Em
 
 Classify failures from evidence before changing code: for example `TEST_CODE_FAIL`, `APP_RUNTIME_FAIL`, or `ENV_BLOCKED`.
 
-For a product regression, fix the reproducing test first or add one, correct the implementation, rerun the affected slice, then rerun the Batch final gate. Do not classify an environment problem as a product regression, and do not hide a product regression as an environment issue.
+For `TEST_CODE_FAIL` (stale assertion, inadequate wait, fixture, or latch issue with no app
+runtime failure), correct the test and rerun the failing test/class or selected Surface first.
+Do not mechanically rerun unrelated instrumentation surfaces; the Batch closeout still runs
+the Surface(s) required by impact analysis.
+
+For `APP_RUNTIME_FAIL`, correct the application behavior, rerun the affected focused test and
+affected Surface gate, and expand to `All` only when the impact analysis requires it. For
+`ENV_BLOCKED`, address the emulator/SDK/environment cause before retrying; do not repeatedly
+restart a broad suite without new evidence.
+
+Do not classify an environment problem as a product regression, and do not hide a product
+regression as an environment issue.
 
 ## Speed rules
 
-Avoid repeated investigation, repeated full-suite execution, and duplicate model review when they do not add evidence. Use focused verification during implementation and consolidate heavy verification at Batch closeout. Do not rerun the full Android JVM suite, AVD, or Galaxy S23 smoke after every internal slice.
+Avoid repeated investigation, repeated full-suite execution, and duplicate model review when they do not add evidence. Use focused verification during implementation and consolidate heavy verification at Batch closeout. Do not rerun the full Android JVM suite, AVD, or Galaxy S23 smoke after every internal slice. Read the Primary touch set and referenced canonical sections first; expand repository-wide investigation only for a concrete dependency or ambiguity.
 
 When no persistent nonprod, migration, or other remote gate is needed between commits, an
 implementation commit and a factual docs commit may be pushed together in one final

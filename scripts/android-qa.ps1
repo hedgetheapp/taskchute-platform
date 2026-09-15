@@ -2,12 +2,34 @@
 param(
     [string]$AvdName = "TaskChute_API33",
     [int]$BootTimeoutSeconds = 180,
-    [string]$BaseUrl = "https://taskchute-web-nonprod.taskfulness-sync.workers.dev"
+    [string]$BaseUrl = "https://taskchute-web-nonprod.taskfulness-sync.workers.dev",
+    [string[]]$Surface = @("All")
 )
 
 $ErrorActionPreference = "Stop"
 $PackageName = "com.hedgetheapp.taskchute"
 $RepoRoot = Split-Path -Parent $PSScriptRoot
+$SurfaceClasses = [ordered]@{
+    Notes = "com.hedgetheapp.taskchute.document.NotesScreenInstrumentedTest"
+    Today = "com.hedgetheapp.taskchute.today.TodayScreenInstrumentedTest"
+    Security = "com.hedgetheapp.taskchute.security.EncryptedSessionStoreInstrumentedTest"
+}
+
+function Resolve-Surfaces([string[]]$Requested) {
+    $expanded = @($Requested | ForEach-Object { $_ -split "," } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    if ($expanded.Count -eq 0) {
+        throw "Surface must be one or more of All, Notes, Today, Security."
+    }
+
+    $invalid = @($expanded | Where-Object { $_ -notin @("All", "Notes", "Today", "Security") })
+    if ($invalid.Count -gt 0) {
+        throw "Invalid instrumentation surface '$($invalid -join ', ')'. Choose All, Notes, Today, or Security."
+    }
+    if ($expanded.Count -gt 1) {
+        throw "Multiple instrumentation surfaces are not supported by this Gradle runner. Run one of All, Notes, Today, or Security at a time."
+    }
+    return $expanded
+}
 
 function Resolve-SdkRoot {
     $localAppData = [Environment]::GetFolderPath("LocalApplicationData")
@@ -52,6 +74,10 @@ function Wait-ForEmulator([string]$AdbPath, [int]$TimeoutSeconds) {
     throw "Emulator '$AvdName' did not reach sys.boot_completed=1 within $TimeoutSeconds seconds."
 }
 
+$selectedSurfaces = @(Resolve-Surfaces $Surface)
+$surfaceLabel = $selectedSurfaces -join ","
+$totalTimer = [Diagnostics.Stopwatch]::StartNew()
+
 $sdkRoot = Resolve-SdkRoot
 $adb = Join-Path $sdkRoot "platform-tools\adb.exe"
 $emulator = Join-Path $sdkRoot "emulator\emulator.exe"
@@ -70,12 +96,14 @@ if (Test-Path -LiteralPath $androidAvdHome) {
 Write-Host "Android SDK: $sdkRoot"
 Write-Host "AVD: $AvdName"
 Write-Host "TaskChute base URL: $BaseUrl"
+Write-Host "Instrumentation surface(s): $surfaceLabel"
 
 $avds = @(& $emulator -list-avds)
 if ($avds -notcontains $AvdName) {
     throw "Required AVD '$AvdName' was not found. Available AVDs: $($avds -join ', ')"
 }
 
+$emulatorTimer = [Diagnostics.Stopwatch]::StartNew()
 $serial = Get-ConnectedEmulator $adb
 if (-not $serial) {
     Write-Host "No connected emulator found; starting '$AvdName'."
@@ -87,25 +115,47 @@ if (-not $serial) {
         $serial = Wait-ForEmulator $adb $BootTimeoutSeconds
     }
 }
+$emulatorTimer.Stop()
 
 Write-Host "ADB device: $serial"
 & $adb -s $serial logcat -c
 
 $testExitCode = 1
+$instrumentationTimer = [Diagnostics.Stopwatch]::StartNew()
 Push-Location (Join-Path $RepoRoot "apps\android")
 try {
-    & .\gradlew.bat --no-daemon :app:connectedDebugAndroidTest "-Ptaskchute.baseUrl=$BaseUrl"
+    $gradleArgs = @(
+        "--no-daemon",
+        ":app:connectedDebugAndroidTest",
+        "-Ptaskchute.baseUrl=$BaseUrl"
+    )
+    if ($selectedSurfaces -notcontains "All") {
+        $classFilter = ($selectedSurfaces | ForEach-Object { $SurfaceClasses[$_] }) -join ","
+        $gradleArgs += "-Pandroid.testInstrumentationRunnerArguments.class=$classFilter"
+    }
+    & .\gradlew.bat @gradleArgs
     $testExitCode = $LASTEXITCODE
 } finally {
     Pop-Location
 }
+$instrumentationTimer.Stop()
 
+$smokeTimer = [Diagnostics.Stopwatch]::StartNew()
+$smokeExitCode = 0
 $debugApk = Join-Path $RepoRoot "apps\android\app\build\outputs\apk\debug\app-debug.apk"
 if (Test-Path -LiteralPath $debugApk) {
     Write-Host "Installing debug APK for post-test smoke readiness: $debugApk"
     & $adb -s $serial install -r $debugApk
     Write-Host "Resolved activity after debug APK install:"
-    & $adb -s $serial shell cmd package resolve-activity --brief $PackageName
+    $activityOutput = @(& $adb -s $serial shell cmd package resolve-activity --brief $PackageName)
+    $activityOutput | Write-Output
+    if (-not $activityOutput -or ($activityOutput -match "No activity found")) {
+        Write-Error "No launchable activity resolved for $PackageName"
+        $smokeExitCode = 1
+    }
+} else {
+    Write-Error "Debug APK was not produced: $debugApk"
+    $smokeExitCode = 1
 }
 
 $crashLines = @(& $adb -s $serial logcat -b crash -d | Where-Object { $_ -match [regex]::Escape($PackageName) })
@@ -117,9 +167,12 @@ if ($crashLines.Count -gt 0) {
     Write-Host "Crash log: no entries for $PackageName"
     $crashExitCode = 0
 }
+$smokeTimer.Stop()
+$totalTimer.Stop()
 
 Write-Host "Instrumentation exit code: $testExitCode"
-if ($testExitCode -ne 0 -or $crashExitCode -ne 0) {
+Write-Host ("Timing: emulator ready/startup {0:N2}s; instrumentation {1:N2}s; post-test install/smoke {2:N2}s; total {3:N2}s; surface(s)={4}" -f $emulatorTimer.Elapsed.TotalSeconds, $instrumentationTimer.Elapsed.TotalSeconds, $smokeTimer.Elapsed.TotalSeconds, $totalTimer.Elapsed.TotalSeconds, $surfaceLabel)
+if ($testExitCode -ne 0 -or $crashExitCode -ne 0 -or $smokeExitCode -ne 0) {
     exit 1
 }
 

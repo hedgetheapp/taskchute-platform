@@ -110,6 +110,27 @@ typecheck、Web buildはimpact analysis上`NOT_REQUIRED`とする。逆にWeb-on
 behaviorが影響を受けない場合、full Android JVM / APK buildは`NOT_REQUIRED`とする。契約や
 source reviewがcross-surfaceと判断した場合は従来どおり両側を検証する。
 
+#### Surface-aware Android runtime gate
+
+`scripts/android-qa.ps1`の引数なし実行は後方互換の`All`であり、全instrumentationとAPK
+install、MainActivity解決、crash-buffer確認を行う。孤立した通常のAndroid UI変更では、
+影響Surfaceを明示して次のいずれかを1回実行する。
+
+- `-Surface Notes` → `NotesScreenInstrumentedTest`
+- `-Surface Today` → `TodayScreenInstrumentedTest`
+- `-Surface Security` → `EncryptedSessionStoreInstrumentedTest`
+
+現行Gradle runnerでは1回のコマンドに複数class filterを安全に渡せないため、複数Surface
+は各selectorを別々に実行する。targeted実行でもAPK install、activity、crash-buffer、timing
+のruntime evidenceは省略しない。Auth / Keystore、広いMainActivity/navigation shell、
+realtime、shared Android infrastructure、unknown/cross-surface、milestone/release、または
+Task Contract明示時は`All`を使う。
+
+Instrumentationの失敗は`TEST_CODE_FAIL`、`APP_RUNTIME_FAIL`、`ENV_BLOCKED`を証拠で分類
+する。TEST_CODE_FAILは修正後に失敗class/Surfaceを先に再実行し、無関係SurfaceのAll rerunを
+機械的に行わない。APP_RUNTIME_FAILは影響Surfaceを再実行し、Allはimpact analysisで必要な
+場合だけ拡張する。ENV_BLOCKEDは環境を直すまで広いsuiteを反復しない。
+
 ### Batch push and volatile CI evidence
 
 同一Approved work item内でimplementation commitとfactual docs commitを分けてもよい。
@@ -171,6 +192,13 @@ Product / Domainを起点とするが、platform constraints、Security、perfor
 Task Contractは仕様正本ではない。Codexは実行前にcurrent branch / HEAD / remote / canonical docsを確認し、矛盾時はcanonical docsを優先して報告する。
 
 Task ContractだけでMaterial Decisionを新規確定しない。
+
+通常のApproved Android workでは、Task Contractはcurrent main pointer、approved delta、
+canonical references、Primary touch set、affected test surface、acceptance criteria、
+focused tests、STOP conditions、Git boundary、required handoffを中心に短く記載する。
+既にcanonicalな意味はDecisionへのpointerを使い、同じ本文を再掲しない。CodexはPrimary
+touch setと明示されたcanonical sectionを先に読み、具体的な依存・矛盾・impactがある場合
+だけrepository-wide investigationへ広げる。複数モデルに同じsource reviewを繰り返させない。
 
 ## Codex Model Routing
 
