@@ -39,8 +39,9 @@ Release are NOT_RUN / NO.
 | D109-CORR-TESTS | Final local runtime | `:app:testDebugUnitTest` `70 / 70`; `scripts/android-qa.ps1` / `TaskChute_API33` `18 / 18`; failures/errors/skipped `0 / 0 / 0`; crash buffer対象packageなし | PASS |
 | D109-CORR-SCOPE | Change boundary | Android UI/tests/docs only; no Worker/API/schema/migration/dependency/production change | PASS / NOT_REQUIRED |
 
-D-109 corrective implementation commit `f9a57e10be87e8646fdcdb0ccebd958aa65840e1` is pushed to
-`main`. A fresh final-main APK artifact and exact-SHA CI evidence remain pending until the push
+D-109 corrective implementation commit `f9a57e10be87e8646fdcdb0ccebd958aa65840e1` and the
+instrumentation bounds regression follow-up `2f643678ae6f50a482571e59e311d0776f762bcb` are pushed
+to `main`. A fresh final-main APK artifact and exact-SHA CI evidence remain pending until the push
 workflow completes. Corrective Galaxy S23 smoke is `NOT_RUN` until the Product Owner tests that
 fresh APK; the prior user-confirmed D-107 smoke remains separate evidence.
 

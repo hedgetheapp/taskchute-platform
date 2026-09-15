@@ -10,6 +10,8 @@ tapによる編集を削除し、row末尾の`…`から`編集`を選ぶ既存b
 completed、Routine-derived、future / past rowには編集overflowを表示しない。Start / Complete、
 既存の6項目planning form、D-108 realtime、auth、Worker/API/schema/migration/dependency semantics
 は変更していない。実装commitは`f9a57e10be87e8646fdcdb0ccebd958aa65840e1`。
+FABとrunning panelのroot bounds非重複assertionを追加したinstrumentation test follow-upは
+`2f643678ae6f50a482571e59e311d0776f762bcb`。
 
 修正後のlocal evidenceは`:app:testDebugUnitTest` `70 / 70`、Debug APK、instrumentation APK compile、
 Windows AVD `TaskChute_API33`（Pixel 7 / Android 13 API 33 / Google APIs / x86_64 /
