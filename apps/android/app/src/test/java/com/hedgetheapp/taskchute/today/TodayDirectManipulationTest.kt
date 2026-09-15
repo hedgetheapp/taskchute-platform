@@ -6,6 +6,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import androidx.compose.ui.geometry.Rect
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -76,10 +77,91 @@ class TodayDirectManipulationTest {
             DirectManipulationResult.Success,
             repository.execute(DirectManipulationRequest.Duplicate("op-duplicate", "entry-1", "task-2", "entry-2", "day-1", 5)),
         )
+        assertEquals(
+            DirectManipulationResult.Success,
+            repository.execute(DirectManipulationRequest.Move(
+                operationId = "op-empty-section",
+                entryId = "entry-1",
+                taskChuteDayId = "day-1",
+                sectionId = "section-empty",
+                expectedPlacementRevision = 5,
+                placement = null,
+            )),
+        )
         assertEquals("/api/v1/taskchute-days/current/entries/move", requests[0].second)
         assertTrue(requests[0].third.orEmpty().contains("\"section_id\":\"section-2\""))
         assertTrue(requests[0].third.orEmpty().contains("\"edge\":\"after\""))
         assertTrue(requests[1].second.endsWith("/entries/entry-1/duplicate"))
+        assertTrue(requests[2].third.orEmpty().contains("\"section_id\":\"section-empty\""))
+        assertFalse(requests[2].third.orEmpty().contains("\"placement\""))
+    }
+
+    @Test
+    fun emptySectionMoveOmitsRelativePlacement() {
+        val requests = mutableListOf<DirectManipulationRequest>()
+        val repository = object : TodayDirectManipulationRepository {
+            override fun execute(request: DirectManipulationRequest): DirectManipulationResult {
+                requests += request
+                return DirectManipulationResult.Success
+            }
+        }
+        val controller = TodayDirectManipulationController(
+            repository = repository,
+            onRefresh = {},
+            onUnauthorized = {},
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+        )
+
+        controller.move(day(), "entry-1", "section-2", null)
+
+        assertTrue(await { requests.size == 1 })
+        assertEquals(1, requests.size)
+        assertTrue(requests.single() is DirectManipulationRequest.Move)
+        assertEquals(null, (requests.single() as DirectManipulationRequest.Move).placement)
+        controller.close()
+    }
+
+    @Test
+    fun dropTargetResolverPrefersEmptySectionWhenNoEntryAnchorIsHit() {
+        val target = resolveAndroidDropTarget(
+            positionY = 300f,
+            sourceEntryId = "entry-1",
+            entryBounds = mapOf("entry-2" to Rect(0f, 100f, 100f, 180f)),
+            entrySectionIds = mapOf("entry-2" to "section-1"),
+            emptySectionBounds = mapOf("section-2" to Rect(0f, 260f, 100f, 330f)),
+            emptySectionIds = mapOf("section-2" to "section-2"),
+        )
+
+        assertEquals(AndroidDropTarget("section:section-2", "section-2", null, null), target)
+    }
+
+    @Test
+    fun dropTargetResolverSupportsEmptyUnsectionedTarget() {
+        val target = resolveAndroidDropTarget(
+            positionY = 300f,
+            sourceEntryId = "entry-1",
+            entryBounds = emptyMap(),
+            entrySectionIds = emptyMap(),
+            emptySectionBounds = mapOf("__unsectioned__" to Rect(0f, 260f, 100f, 330f)),
+            emptySectionIds = mapOf("__unsectioned__" to null),
+        )
+
+        assertEquals(AndroidDropTarget("section:__unsectioned__", null, null, null), target)
+    }
+
+    @Test
+    fun dropTargetResolverReturnsNullOutsideEntriesAndEmptySections() {
+        assertEquals(
+            null,
+            resolveAndroidDropTarget(
+                positionY = 400f,
+                sourceEntryId = "entry-1",
+                entryBounds = mapOf("entry-2" to Rect(0f, 100f, 100f, 180f)),
+                entrySectionIds = mapOf("entry-2" to "section-1"),
+                emptySectionBounds = mapOf("section-2" to Rect(0f, 260f, 100f, 330f)),
+                emptySectionIds = mapOf("section-2" to "section-2"),
+            ),
+        )
     }
 
     @Test

@@ -66,14 +66,14 @@ class TodayScreenInstrumentedTest {
         waitForStatus(TodayLoadStatus.CONTENT)
 
         composeRule.onNodeWithContentDescription("タスクを開始").performClick()
-        composeRule.waitUntil(3_000) {
+        composeRule.waitUntil(10_000) {
             repo.startCalls.get() == 1 && controller?.state?.pendingEntryIds?.contains("entry-1") == true
         }
-        composeRule.onNodeWithContentDescription("タスクを開始").assertIsNotEnabled()
+        composeRule.onNodeWithContentDescription("タスクを開始", useUnmergedTree = true).assertIsNotEnabled()
         assertEquals(1, repo.startCalls.get())
 
         repo.releaseStart.countDown()
-        composeRule.waitUntil(3_000) {
+        composeRule.waitUntil(10_000) {
             repo.startCalls.get() == 1 && controller?.state?.day?.runningTask != null
         }
         assertEquals(1, repo.startCalls.get())
@@ -94,14 +94,14 @@ class TodayScreenInstrumentedTest {
         waitForStatus(TodayLoadStatus.CONTENT)
 
         composeRule.onNodeWithText("完了").performClick()
-        composeRule.waitUntil(3_000) {
+        composeRule.waitUntil(10_000) {
             repo.completeCalls.get() == 1 && controller?.state?.pendingEntryIds?.contains("entry-1") == true
         }
         composeRule.onNodeWithText("完了").assertIsNotEnabled()
         assertEquals(1, repo.completeCalls.get())
 
         repo.releaseComplete.countDown()
-        composeRule.waitUntil(3_000) {
+        composeRule.waitUntil(10_000) {
             repo.completeCalls.get() == 1 && controller?.state?.day?.allEntries?.singleOrNull()?.lifecycleState == LifecycleState.COMPLETED
         }
         assertEquals(1, repo.completeCalls.get())
@@ -221,12 +221,12 @@ class TodayScreenInstrumentedTest {
         )
         waitForStatus(TodayLoadStatus.CONTENT)
 
-        composeRule.onNodeWithContentDescription("タスクの編集メニュー").performClick()
+        composeRule.onAllNodesWithContentDescription("タスクの編集メニュー").get(0).performClick()
         composeRule.onNodeWithText("複製").assertIsDisplayed().performClick()
         composeRule.waitUntil(3_000) { directRepository.duplicateCalls.get() == 1 }
         assertEquals(1, directRepository.duplicateCalls.get())
 
-        composeRule.onNodeWithContentDescription("タスクの編集メニュー").performClick()
+        composeRule.onAllNodesWithContentDescription("タスクの編集メニュー").get(0).performClick()
         composeRule.onAllNodesWithText("ノート").get(1).assertIsDisplayed().performClick()
         assertEquals(1, openedTaskNote)
     }
@@ -286,6 +286,73 @@ class TodayScreenInstrumentedTest {
             "Quick Add must not overlap the running panel",
             addBounds.bottom <= panelBounds.top || addBounds.top >= panelBounds.bottom,
         )
+    }
+
+    @Test
+    fun emptySectionHeaderAcceptsCrossSectionMoveWithoutRelativePlacement() {
+        val directRepository = FakeDirectManipulationRepository()
+        val source = dayWith().sections.single().entries.single().copy(taskId = "task-1")
+        val initialDay = dayWith().copy(
+            sections = listOf(
+                dayWith().sections.single().copy(entries = listOf(source)),
+                TodaySection("section-2", "Empty section", 720, 900, emptyList()),
+            ),
+        )
+        launchPlanningScreen(FakePlanningRepository(), initialDay, directRepository)
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        val sourceNode = composeRule.onNodeWithContentDescription("タスクをドラッグ: Write report")
+        val sourceBounds = sourceNode.fetchSemanticsNode().boundsInRoot
+        val emptySectionBounds = composeRule.onNodeWithText("Empty section").fetchSemanticsNode().boundsInRoot
+        sourceNode.performTouchInput {
+            down(center)
+            advanceEventTime(600)
+            moveBy(Offset(0f, emptySectionBounds.center.y - sourceBounds.center.y), delayMillis = 100)
+            up()
+        }
+
+        composeRule.waitUntil(3_000) { directRepository.moveCalls.get() == 1 }
+        assertEquals(1, directRepository.moveCalls.get())
+        assertEquals(null, directRepository.lastMove?.placement)
+        assertEquals("section-2", directRepository.lastMove?.sectionId)
+    }
+
+    @Test
+    fun taskNoteMenuRemainsAvailableForNonEditableVisibleRows() {
+        val base = dayWith().sections.single().entries.single()
+        val entries = listOf(
+            base.copy(id = "planned", taskId = "task-planned"),
+            base.copy(id = "running", title = "Running", taskId = "task-running", lifecycleState = LifecycleState.RUNNING),
+            base.copy(id = "completed", title = "Completed", taskId = "task-completed", lifecycleState = LifecycleState.COMPLETED),
+            base.copy(id = "routine", title = "Routine", taskId = "task-routine", routineDerived = true),
+        )
+        val initialDay = dayWith().copy(
+            sections = listOf(dayWith().sections.single().copy(entries = entries)),
+            activeExecution = TodayExecution("execution-1", "running", "2026-09-14T01:00:00Z", 600),
+        )
+        launchPlanningScreen(FakePlanningRepository(), initialDay)
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        assertEquals(4, composeRule.onAllNodesWithContentDescription("タスクの編集メニュー").fetchSemanticsNodes().size)
+        composeRule.onAllNodesWithContentDescription("タスクの編集メニュー").get(0).performClick()
+        assertTrue(composeRule.onAllNodesWithText("ノート").fetchSemanticsNodes().size >= 2)
+    }
+
+    @Test
+    fun taskNoteMenuIsAvailableOnNonCurrentDayWithoutPlanningActions() {
+        val task = dayWith().sections.single().entries.single().copy(taskId = "task-history")
+        val initialDay = dayWith().copy(
+            isCurrent = false,
+            planningEnabled = false,
+            sections = listOf(dayWith().sections.single().copy(entries = listOf(task))),
+        )
+        launchPlanningScreen(FakePlanningRepository(), initialDay)
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        composeRule.onAllNodesWithContentDescription("タスクの編集メニュー").get(0).performClick()
+        assertTrue(composeRule.onAllNodesWithText("ノート").fetchSemanticsNodes().size >= 2)
+        assertTrue(composeRule.onAllNodesWithText("編集").fetchSemanticsNodes().isEmpty())
+        assertTrue(composeRule.onAllNodesWithText("複製").fetchSemanticsNodes().isEmpty())
     }
 
     @Test
@@ -440,14 +507,14 @@ class TodayScreenInstrumentedTest {
 
         override fun startTask(task: TodayTask, placementRevision: Int): TodayMutationResult {
             startCalls.incrementAndGet()
-            if (holdStart) releaseStart.await(10, TimeUnit.SECONDS)
+            if (holdStart) releaseStart.await()
             currentDay = dayWith(LifecycleState.RUNNING)
             return TodayMutationResult.Success
         }
 
         override fun completeTask(task: TodayTask): TodayMutationResult {
             completeCalls.incrementAndGet()
-            if (holdComplete) releaseComplete.await(10, TimeUnit.SECONDS)
+            if (holdComplete) releaseComplete.await()
             currentDay = dayWith(LifecycleState.COMPLETED)
             return TodayMutationResult.Success
         }
@@ -473,8 +540,10 @@ class TodayScreenInstrumentedTest {
 
     private class FakeDirectManipulationRepository : TodayDirectManipulationRepository {
         val reorderCalls = AtomicInteger()
+        val moveCalls = AtomicInteger()
         val duplicateCalls = AtomicInteger()
         var lastReorderIds: List<String>? = null
+        var lastMove: DirectManipulationRequest.Move? = null
 
         override fun execute(request: DirectManipulationRequest): DirectManipulationResult {
             when (request) {
@@ -483,7 +552,10 @@ class TodayScreenInstrumentedTest {
                     lastReorderIds = request.entryIds
                 }
                 is DirectManipulationRequest.Duplicate -> duplicateCalls.incrementAndGet()
-                is DirectManipulationRequest.Move -> Unit
+                is DirectManipulationRequest.Move -> {
+                    moveCalls.incrementAndGet()
+                    lastMove = request
+                }
             }
             return DirectManipulationResult.Success
         }

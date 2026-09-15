@@ -17,9 +17,15 @@ sealed interface NoteEditorRequest {
     data class TaskUpdate(val request: TaskPrimaryUpdateRequest) : NoteEditorRequest
 }
 
+enum class NoteEditorOrigin {
+    STANDALONE_LIST,
+    TODAY_TASK,
+}
+
 data class NoteEditorState(
     val kind: DocumentKind,
     val document: AndroidDocument?,
+    val origin: NoteEditorOrigin = NoteEditorOrigin.STANDALONE_LIST,
     val taskTitle: String? = null,
     val taskId: String? = null,
     val title: String = "",
@@ -73,7 +79,7 @@ class NotesController(
 
     fun openNew() {
         if (hasUnsavedChanges) return
-        state = state.copy(editor = NoteEditorState(DocumentKind.STANDALONE, null))
+        state = state.copy(editor = NoteEditorState(DocumentKind.STANDALONE, null, origin = NoteEditorOrigin.STANDALONE_LIST))
     }
 
     fun openStandalone(documentId: String) {
@@ -81,7 +87,7 @@ class NotesController(
         state = state.copy(editor = null, errorMessage = null, unresolvedTaskEnsure = null, unresolvedTaskTitle = null)
         scope.launch {
             when (val result = withContext(Dispatchers.IO) { repository.fetchStandalone(documentId) }) {
-                is DocumentResult.Success -> state = state.copy(editor = editorFor(result.document))
+                is DocumentResult.Success -> state = state.copy(editor = editorFor(result.document, origin = NoteEditorOrigin.STANDALONE_LIST))
                 DocumentResult.Missing -> state = state.copy(errorMessage = "ノートが見つかりません。")
                 DocumentResult.Unauthorized -> {
                     state = state.copy(errorMessage = "認証が必要です。")
@@ -135,7 +141,7 @@ class NotesController(
     ) {
         when (result) {
             is DocumentResult.Success -> state = state.copy(
-                editor = editorFor(result.document, taskTitle, taskId),
+                editor = editorFor(result.document, taskTitle, taskId, NoteEditorOrigin.TODAY_TASK),
                 unresolvedTaskEnsure = null,
                 unresolvedTaskTitle = null,
                 taskEnsureSaving = false,
@@ -263,7 +269,12 @@ class NotesController(
                 && (result.document.taskId == null || result.document.taskId == request.taskId)
             ) {
                 state = state.copy(
-                    editor = editorFor(result.document, taskTitle = taskTitle, taskId = request.taskId),
+                    editor = editorFor(
+                        result.document,
+                        taskTitle = taskTitle,
+                        taskId = request.taskId,
+                        origin = NoteEditorOrigin.TODAY_TASK,
+                    ),
                     unresolvedTaskEnsure = null,
                     unresolvedTaskTitle = null,
                     errorMessage = null,
@@ -300,9 +311,15 @@ class NotesController(
         )
     }
 
-    private fun editorFor(document: AndroidDocument, taskTitle: String? = null, taskId: String? = null) = NoteEditorState(
+    private fun editorFor(
+        document: AndroidDocument,
+        taskTitle: String? = null,
+        taskId: String? = null,
+        origin: NoteEditorOrigin = NoteEditorOrigin.STANDALONE_LIST,
+    ) = NoteEditorState(
         kind = document.kind,
         document = document,
+        origin = origin,
         taskTitle = taskTitle,
         taskId = taskId ?: document.taskId,
         title = document.title,

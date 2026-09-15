@@ -205,27 +205,48 @@ private fun TodayContent(
     val day = state.day ?: return LoadingToday()
     val dropBounds = remember { mutableStateMapOf<String, Rect>() }
     val dropBoundsSectionId = remember { mutableStateMapOf<String, String?>() }
+    val emptySectionDropBounds = remember { mutableStateMapOf<String, Rect>() }
+    val emptySectionDropIds = remember { mutableStateMapOf<String, String?>() }
     var dragState by remember { mutableStateOf<AndroidDragState?>(null) }
+    LaunchedEffect(day, dragState != null) {
+        day.sections.filterNot { it.entries.isEmpty() }.forEach {
+            emptySectionDropBounds.remove(it.id)
+            emptySectionDropIds.remove(it.id)
+        }
+        if (day.unsectionedEntries.isNotEmpty() || dragState == null) {
+            emptySectionDropBounds.remove(UNSECTIONED_DROP_KEY)
+            emptySectionDropIds.remove(UNSECTIONED_DROP_KEY)
+        }
+    }
     fun updateDragPosition(deltaY: Float) {
         val current = dragState ?: return
         val positionY = current.positionY + deltaY
-        val target = dropBounds.entries
-            .filter { it.key != current.entryId && positionY >= it.value.top && positionY <= it.value.bottom }
-            .minByOrNull { kotlin.math.abs(positionY - it.value.center.y) }
+        val target = resolveAndroidDropTarget(
+            positionY = positionY,
+            sourceEntryId = current.entryId,
+            entryBounds = dropBounds,
+            entrySectionIds = dropBoundsSectionId,
+            emptySectionBounds = emptySectionDropBounds,
+            emptySectionIds = emptySectionDropIds,
+        )
         dragState = current.copy(
             positionY = positionY,
-            targetEntryId = target?.key,
-            targetSectionId = target?.let { dropBoundsSectionId[it.key] },
-            targetEdge = target?.value?.let { if (positionY < it.center.y) PlacementEdge.BEFORE else PlacementEdge.AFTER },
+            target = target,
         )
     }
     fun finishDrag() {
         val drag = dragState ?: return
         dragState = null
-        val targetEntryId = drag.targetEntryId ?: return
-        val targetSectionId = drag.targetSectionId
+        val target = drag.target ?: return
         val source = day.allEntries.firstOrNull { it.id == drag.entryId } ?: return
-        val edge = drag.targetEdge ?: return
+        val targetSectionId = target.sectionId
+        val targetEntryId = target.anchorEntryId
+        if (targetEntryId == null) {
+            if (drag.sourceSectionId == targetSectionId) return
+            directManipulationController?.move(day, source.id, targetSectionId, null)
+            return
+        }
+        val edge = target.edge ?: return
         if (drag.sourceSectionId == targetSectionId) {
             val entries = sectionEntries(day, targetSectionId)
             val currentIds = entries.map { it.id }
@@ -243,6 +264,7 @@ private fun TodayContent(
             directManipulationController?.move(
                 day,
                 source.id,
+                targetSectionId,
                 PlacementTarget(targetSectionId, targetEntryId, edge),
             )
         }
@@ -272,7 +294,21 @@ private fun TodayContent(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             day.sections.forEach { section ->
-                item(key = "section-${section.id}") { SectionHeader(section) }
+                item(key = "section-${section.id}") {
+                    SectionHeader(
+                        section = section,
+                        dropTarget = dragState?.target?.key == sectionDropKey(section.id),
+                        modifier = Modifier.onGloballyPositioned {
+                            if (section.entries.isEmpty()) {
+                                emptySectionDropBounds[section.id] = it.boundsInRoot()
+                                emptySectionDropIds[section.id] = section.id
+                            } else {
+                                emptySectionDropBounds.remove(section.id)
+                                emptySectionDropIds.remove(section.id)
+                            }
+                        },
+                    )
+                }
                 items(section.entries, key = { it.id }) { task ->
                     TodayTaskRow(
                         task = task,
@@ -285,12 +321,12 @@ private fun TodayContent(
                             && directManipulationController != null && directManipulationController.state.pendingEntryIds.isEmpty()
                             && directManipulationController.state.unresolvedRequest == null,
                         onDuplicate = { directManipulationController?.duplicate(day, task) },
-                        canOpenNote = day.isCurrent && task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived && task.taskId != null,
+                        canOpenNote = task.taskId != null,
                         onOpenNote = { onOpenTaskNote(task) },
                         canDrag = directManipulationController?.canDrag(day, task) == true
                             && !state.pendingEntryIds.contains(task.id),
                         dragging = dragState?.entryId == task.id,
-                        dropTarget = dragState?.targetEntryId == task.id,
+                        dropTarget = dragState?.target?.key == entryDropKey(task.id),
                         onDragStart = { pointerPosition ->
                             directManipulationController?.takeIf { it.canDrag(day, task) }?.let {
                                 val bounds = dropBounds[task.id]
@@ -298,9 +334,7 @@ private fun TodayContent(
                                     entryId = task.id,
                                     sourceSectionId = section.id,
                                     positionY = bounds?.top?.plus(pointerPosition.y) ?: pointerPosition.y,
-                                    targetEntryId = null,
-                                    targetSectionId = null,
-                                    targetEdge = null,
+                                    target = null,
                                 )
                             }
                         },
@@ -312,8 +346,22 @@ private fun TodayContent(
                     )
                 }
             }
-            if (day.unsectionedEntries.isNotEmpty()) {
-                item(key = "section-unsectioned") { SectionHeader(null) }
+            if (day.unsectionedEntries.isNotEmpty() || dragState != null) {
+                item(key = "section-unsectioned") {
+                    SectionHeader(
+                        section = null,
+                        dropTarget = dragState?.target?.key == sectionDropKey(null),
+                        modifier = Modifier.onGloballyPositioned {
+                            if (day.unsectionedEntries.isEmpty() && dragState != null) {
+                                emptySectionDropBounds[UNSECTIONED_DROP_KEY] = it.boundsInRoot()
+                                emptySectionDropIds[UNSECTIONED_DROP_KEY] = null
+                            } else {
+                                emptySectionDropBounds.remove(UNSECTIONED_DROP_KEY)
+                                emptySectionDropIds.remove(UNSECTIONED_DROP_KEY)
+                            }
+                        },
+                    )
+                }
                 items(day.unsectionedEntries, key = { it.id }) { task ->
                     TodayTaskRow(
                         task = task,
@@ -326,12 +374,12 @@ private fun TodayContent(
                             && directManipulationController != null && directManipulationController.state.pendingEntryIds.isEmpty()
                             && directManipulationController.state.unresolvedRequest == null,
                         onDuplicate = { directManipulationController?.duplicate(day, task) },
-                        canOpenNote = day.isCurrent && task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived && task.taskId != null,
+                        canOpenNote = task.taskId != null,
                         onOpenNote = { onOpenTaskNote(task) },
                         canDrag = directManipulationController?.canDrag(day, task) == true
                             && !state.pendingEntryIds.contains(task.id),
                         dragging = dragState?.entryId == task.id,
-                        dropTarget = dragState?.targetEntryId == task.id,
+                        dropTarget = dragState?.target?.key == entryDropKey(task.id),
                         onDragStart = { pointerPosition ->
                             directManipulationController?.takeIf { it.canDrag(day, task) }?.let {
                                 val bounds = dropBounds[task.id]
@@ -339,9 +387,7 @@ private fun TodayContent(
                                     entryId = task.id,
                                     sourceSectionId = null,
                                     positionY = bounds?.top?.plus(pointerPosition.y) ?: pointerPosition.y,
-                                    targetEntryId = null,
-                                    targetSectionId = null,
-                                    targetEdge = null,
+                                    target = null,
                                 )
                             }
                         },
@@ -357,14 +403,57 @@ private fun TodayContent(
     }
 }
 
+private const val UNSECTIONED_DROP_KEY = "__unsectioned__"
+
+internal data class AndroidDropTarget(
+    val key: String,
+    val sectionId: String?,
+    val anchorEntryId: String?,
+    val edge: PlacementEdge?,
+)
+
 private data class AndroidDragState(
     val entryId: String,
     val sourceSectionId: String?,
     val positionY: Float,
-    val targetEntryId: String?,
-    val targetSectionId: String?,
-    val targetEdge: PlacementEdge?,
+    val target: AndroidDropTarget?,
 )
+
+internal fun entryDropKey(entryId: String): String = "entry:$entryId"
+
+internal fun sectionDropKey(sectionId: String?): String = "section:${sectionId ?: UNSECTIONED_DROP_KEY}"
+
+internal fun resolveAndroidDropTarget(
+    positionY: Float,
+    sourceEntryId: String,
+    entryBounds: Map<String, Rect>,
+    entrySectionIds: Map<String, String?>,
+    emptySectionBounds: Map<String, Rect>,
+    emptySectionIds: Map<String, String?>,
+): AndroidDropTarget? {
+    val entryTarget = entryBounds.entries
+        .filter { it.key != sourceEntryId && positionY >= it.value.top && positionY <= it.value.bottom }
+        .minWithOrNull(compareBy({ kotlin.math.abs(positionY - it.value.center.y) }, { it.key }))
+    if (entryTarget != null) {
+        return AndroidDropTarget(
+            key = entryDropKey(entryTarget.key),
+            sectionId = entrySectionIds[entryTarget.key],
+            anchorEntryId = entryTarget.key,
+            edge = if (positionY < entryTarget.value.center.y) PlacementEdge.BEFORE else PlacementEdge.AFTER,
+        )
+    }
+
+    val emptyTarget = emptySectionBounds.entries
+        .filter { positionY >= it.value.top && positionY <= it.value.bottom }
+        .minWithOrNull(compareBy({ kotlin.math.abs(positionY - it.value.center.y) }, { it.key }))
+        ?: return null
+    return AndroidDropTarget(
+        key = sectionDropKey(emptyTarget.key.takeUnless { it == UNSECTIONED_DROP_KEY }),
+        sectionId = emptySectionIds[emptyTarget.key],
+        anchorEntryId = null,
+        edge = null,
+    )
+}
 
 private fun sectionEntries(day: TodayDay, sectionId: String?): List<TodayTask> =
     if (sectionId == null) day.unsectionedEntries else day.sections.firstOrNull { it.id == sectionId }?.entries.orEmpty()
@@ -414,11 +503,13 @@ private fun DateNavigator(day: TodayDay, controller: TodayController) {
 }
 
 @Composable
-private fun SectionHeader(section: TodaySection?) {
+private fun SectionHeader(section: TodaySection?, modifier: Modifier = Modifier, dropTarget: Boolean = false) {
     val title = section?.title ?: "セクションなし"
     val range = section?.let { "${formatMinute(it.startMinute)}–${formatMinute(it.endMinute)}" }
     Row(
-        modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 2.dp),
+        modifier = modifier.fillMaxWidth()
+            .then(if (dropTarget) Modifier.border(BorderStroke(2.dp, MaterialTheme.colorScheme.secondary), MaterialTheme.shapes.medium) else Modifier)
+            .padding(top = 8.dp, bottom = 2.dp),
         verticalAlignment = Alignment.Bottom,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {

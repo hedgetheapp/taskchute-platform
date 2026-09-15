@@ -53,18 +53,18 @@ fun NotesScreen(
         when {
             editor?.blocked == true || editor?.saving == true -> Unit
             controller.hasUnsavedChanges -> leaveAction = action
-            else -> {
-                controller.dismissEditor()
-                action()
-            }
+            else -> action()
         }
     }
 
+    fun leaveEditorToOrigin() {
+        val origin = controller.state.editor?.origin
+        controller.dismissEditor()
+        if (origin == NoteEditorOrigin.TODAY_TASK) onNavigateToday()
+    }
+
     BackHandler(enabled = state.editor != null) {
-        attemptLeave {
-            controller.dismissEditor()
-            onNavigateToday()
-        }
+        attemptLeave(::leaveEditorToOrigin)
     }
     LaunchedEffect(controller) { controller.load() }
 
@@ -77,7 +77,6 @@ fun NotesScreen(
                 TextButton(onClick = {
                     val action = leaveAction
                     leaveAction = null
-                    controller.dismissEditor()
                     action?.invoke()
                 }) { Text("破棄して移動") }
             },
@@ -89,9 +88,9 @@ fun NotesScreen(
         bottomBar = {
             AndroidNavigationBar(
                 selected = AndroidDestination.NOTES,
-                onToday = { attemptLeave(onNavigateToday) },
+                onToday = { attemptLeave { controller.dismissEditor(); onNavigateToday() } },
                 onNotes = {},
-                onSettings = { attemptLeave(onNavigateSettings) },
+                onSettings = { attemptLeave { controller.dismissEditor(); onNavigateSettings() } },
             )
         },
         floatingActionButton = {
@@ -107,12 +106,7 @@ fun NotesScreen(
                 controller,
                 state.editor,
                 Modifier.fillMaxSize().padding(padding).imePadding(),
-                onBack = {
-                    attemptLeave {
-                        controller.dismissEditor()
-                        onNavigateToday()
-                    }
-                },
+                onBack = { attemptLeave(::leaveEditorToOrigin) },
             )
         }
     }
@@ -160,7 +154,9 @@ private fun NoteEditor(controller: NotesController, editor: NoteEditorState, mod
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onBack, enabled = !editor.blocked && !editor.saving) { Text("‹ ノート") }
+            TextButton(onClick = onBack, enabled = !editor.blocked && !editor.saving) {
+                Text(if (editor.origin == NoteEditorOrigin.TODAY_TASK) "‹ 今日" else "‹ ノート")
+            }
             Spacer(Modifier.width(8.dp))
             Text(if (editor.document == null) "新規ノート" else "ノート", style = MaterialTheme.typography.titleLarge)
         }

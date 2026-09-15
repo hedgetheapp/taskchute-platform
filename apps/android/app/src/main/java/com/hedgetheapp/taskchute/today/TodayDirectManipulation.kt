@@ -35,7 +35,7 @@ sealed interface DirectManipulationRequest {
         val taskChuteDayId: String,
         val sectionId: String?,
         val expectedPlacementRevision: Int,
-        val placement: PlacementTarget,
+        val placement: PlacementTarget?,
     ) : DirectManipulationRequest
 
     data class Duplicate(
@@ -73,7 +73,10 @@ class TodayDirectManipulationHttpRepository(
             }
             is DirectManipulationRequest.Move -> {
                 path = "/api/v1/taskchute-days/current/entries/move"
-                body = """{"operation_id":"${JsonEncoding.escape(request.operationId)}","entry_id":"${JsonEncoding.escape(request.entryId)}","taskchute_day_id":"${JsonEncoding.escape(request.taskChuteDayId)}","section_id":${nullableString(request.sectionId)},"expected_placement_revision":${request.expectedPlacementRevision},"placement":{"kind":"relative_to_entry","anchor_entry_id":"${JsonEncoding.escape(request.placement.anchorEntryId)}","edge":"${request.placement.edge.name.lowercase()}"}}"""
+                val placementJson = request.placement?.let {
+                    ",\"placement\":{\"kind\":\"relative_to_entry\",\"anchor_entry_id\":\"${JsonEncoding.escape(it.anchorEntryId)}\",\"edge\":\"${it.edge.name.lowercase()}\"}"
+                }.orEmpty()
+                body = """{"operation_id":"${JsonEncoding.escape(request.operationId)}","entry_id":"${JsonEncoding.escape(request.entryId)}","taskchute_day_id":"${JsonEncoding.escape(request.taskChuteDayId)}","section_id":${nullableString(request.sectionId)},"expected_placement_revision":${request.expectedPlacementRevision}$placementJson}"""
             }
             is DirectManipulationRequest.Duplicate -> {
                 path = "/api/v1/entries/${JsonEncoding.pathSegment(request.sourceEntryId)}/duplicate"
@@ -127,8 +130,12 @@ class TodayDirectManipulationController(
     }
 
     fun move(day: TodayDay, entryId: String, target: PlacementTarget) {
+        move(day, entryId, target.sectionId, target)
+    }
+
+    fun move(day: TodayDay, entryId: String, targetSectionId: String?, placement: PlacementTarget?) {
         if (state.pendingEntryIds.isNotEmpty() || state.unresolvedRequest != null || day.taskChuteDayId == null) return
-        dispatch(setOf(entryId), DirectManipulationRequest.Move(UUIDv7.next(), entryId, day.taskChuteDayId, target.sectionId, day.placementRevision, target))
+        dispatch(setOf(entryId), DirectManipulationRequest.Move(UUIDv7.next(), entryId, day.taskChuteDayId, targetSectionId, day.placementRevision, placement))
     }
 
     fun duplicate(day: TodayDay, source: TodayTask) {
