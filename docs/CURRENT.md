@@ -24,6 +24,22 @@ IME is `NOT_CAUSE_IN_CURRENT_EVIDENCE`. Authenticated browser timing evidence is
 `AUTHENTICATED_BROWSER_NOT_VERIFIED` because no valid authenticated session was available
 without credential retrieval or re-login. Production remains `NOT_RUN` and Released `NO`.
 
+Persistent nonprod deployment verification for this corrective was subsequently completed
+from exact `main@585c0f4ab15fa5512d3f2d4ac0a831faebd64386` using the guarded generated nonprod
+config. Canonical Worker `taskchute-web-nonprod` is version
+`27e661e9-cefe-46aa-8740-f7fef31d4a7b`, with `RUNTIME_ENV=nonprod`,
+`BOOTSTRAP_ENABLED=false`, APP `taskchute-app-nonprod`, AUTH `taskchute-auth-nonprod`, and
+the approved `REALTIME_HUB` binding. Root returned `200`; unauthenticated Documents and
+Realtime endpoints returned `401`. No migration, schema, dependency, or production operation
+was performed.
+
+Authenticated persistent-browser verification then passed on the existing authorized tab:
+the existing Note retained `テ` after typing `テスト` and deleting `スト`; additional typing
+and deletion during `保存中` did not roll back; a new Note retained title
+`web-notes-deploy-check` and multiline body after create/save; and reload followed by reopening
+Notes restored the same canonical title/body. Console warn/error collection was empty for the
+exercised tab. Production remains `NOT_RUN` and Released `NO`.
+
 ### D-112 Android Today Bulk Selection + Day Operations v0.1 — 2026-09-16
 
 D-112はAndroid Todayのcurrent established Dayに、ordinary planned Entryだけを対象とする常時

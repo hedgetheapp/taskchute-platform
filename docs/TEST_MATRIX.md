@@ -13,6 +13,16 @@
 | NOTES-ROLLBACK-BOUNDARY | Realtime/CAS and change boundary | Realtime remains enabled; no LWW, auto-merge, storage, API, Worker, schema, migration, or dependency change | PASS / NOT_REQUIRED |
 | NOTES-ROLLBACK-BROWSER | Timing-sensitive authenticated browser evidence | No valid authenticated session available without credential retrieval or re-login | AUTHENTICATED_BROWSER_NOT_VERIFIED |
 
+### Web Notes corrective — persistent nonprod deployment and browser verification
+
+| ID | Verification target | Evidence | Status |
+|---|---|---|---|
+| NOTES-ROLLBACK-NONPROD | Exact-main guarded persistent nonprod deploy | `main@585c0f4ab15fa5512d3f2d4ac0a831faebd64386` deployed to `taskchute-web-nonprod`, Worker version `27e661e9-cefe-46aa-8740-f7fef31d4a7b`; guard confirmed nonprod runtime, bootstrap disabled, canonical APP/AUTH, and `REALTIME_HUB`; root `200`; unauthenticated Documents/Realtime `401` | PASS |
+| NOTES-ROLLBACK-BROWSER-EXISTING | Existing Note input during canonical save | `テスト` then immediate `スト` deletion remained `テ`; follow-up input/delete during `保存中` remained stable and converged to `保存済み` | PASS |
+| NOTES-ROLLBACK-BROWSER-CREATE | New Note title/body race | Created `web-notes-deploy-check`, entered title and multiline body while create/save activity was active; canonical title/body remained intact | PASS |
+| NOTES-ROLLBACK-BROWSER-RELOAD | Reload/reopen canonical persistence | After clean save and page reload, reopening Notes restored the canonical new Note title and multiline body | PASS |
+| NOTES-ROLLBACK-BROWSER-CONSOLE | Exercised browser console | Existing authorized tab returned no warning/error entries from the exercised flow | PASS |
+
 The pre-fix RED is retained as evidence of the source-review finding. The fix guards
 canonical responses at apply time using editor generation and load identity tokens; it does
 not merely check `dirty` before starting a fetch and does not silently adopt a newer remote
