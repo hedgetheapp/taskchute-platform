@@ -1,0 +1,58 @@
+package com.hedgetheapp.taskchute.settings
+
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+
+@RunWith(AndroidJUnit4::class)
+class SettingsScreenInstrumentedTest {
+    @get:Rule val composeRule = createComposeRule()
+
+    @Test
+    fun settingsHomeShowsConceptCardsAndThreeTabNavigation() {
+        val controller = SettingsController(FakeSettingsRepository(), {}, kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Unconfined))
+        composeRule.setContent { SettingsScreen(controller, {}, {}, {}) }
+        composeRule.onNodeWithText("TaskChuteの時間と再利用設定を管理します。").assertIsDisplayed()
+        composeRule.onNodeWithText("セクション設定").assertIsDisplayed()
+        composeRule.onNodeWithText("プロジェクト設定").assertIsDisplayed()
+        composeRule.onNodeWithText("ルーティン設定").assertIsDisplayed()
+        composeRule.onNodeWithText("今日").assertIsDisplayed()
+        composeRule.onNodeWithText("ノート").assertIsDisplayed()
+        controller.close()
+    }
+
+    @Test
+    fun sectionCardOpensSectionListAndEditor() {
+        val controller = SettingsController(FakeSettingsRepository(), {}, kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Unconfined))
+        composeRule.setContent { SettingsScreen(controller, {}, {}, {}) }
+        composeRule.onNodeWithContentDescription("セクション設定").performClick()
+        composeRule.onNodeWithText("朝").assertIsDisplayed()
+        composeRule.onAllNodesWithText("編集")[0].performClick()
+        composeRule.onNodeWithText("セクション編集").assertIsDisplayed()
+        controller.close()
+    }
+}
+
+private class FakeSettingsRepository : AndroidSettingsRepository {
+    private val section = AndroidSectionConfiguration("v1", 0, listOf(AndroidSectionSetting("a", "朝", 0, 720), AndroidSectionSetting("b", "夜", 720, 1440)))
+    override fun loadSectionConfiguration() = SettingsResult.Success(section)
+    override fun updateSectionConfiguration(request: SectionConfigurationUpdateRequest) = SettingsResult.Success(Unit)
+    override fun loadProjectBoard() = SettingsResult.Success(AndroidProjectBoard(1, emptyList()))
+    override fun createProject(request: CreateProjectSettingsRequest) = SettingsResult.Success(Unit)
+    override fun updateProject(request: UpdateProjectSettingsRequest) = SettingsResult.Success(Unit)
+    override fun setProjectArchived(request: SetProjectArchivedSettingsRequest) = SettingsResult.Success(Unit)
+    override fun reorderProjects(request: ReorderProjectsSettingsRequest) = SettingsResult.Success(Unit)
+    override fun deleteProject(request: DeleteProjectSettingsRequest) = SettingsResult.Success(Unit)
+    override fun loadRoutineBoard() = SettingsResult.Success(AndroidRoutineBoard(1, "2026-09-16", emptyList(), emptyList()))
+    override fun createRoutine(request: CreateRoutineSettingsRequest) = SettingsResult.Success(Unit)
+    override fun updateRoutine(request: UpdateRoutineSettingsRequest) = SettingsResult.Success(Unit)
+    override fun setRoutineEnabled(request: SetRoutineEnabledSettingsRequest) = SettingsResult.Success(Unit)
+    override fun deleteRoutine(request: DeleteRoutineSettingsRequest) = SettingsResult.Success(Unit)
+}

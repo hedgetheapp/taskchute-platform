@@ -179,7 +179,7 @@ class TodayScreenInstrumentedTest {
         waitForStatus(TodayLoadStatus.CONTENT)
 
         assertTrue(composeRule.onAllNodesWithText("今日").fetchSemanticsNodes().isNotEmpty())
-        composeRule.onNodeWithText("プロジェクト").assertIsDisplayed().assertIsNotEnabled()
+        assertTrue(composeRule.onAllNodesWithText("プロジェクト").fetchSemanticsNodes().isEmpty())
         composeRule.onNodeWithText("ノート").assertIsDisplayed().assertIsEnabled()
         composeRule.onNodeWithText("設定").assertIsDisplayed().assertIsEnabled()
         composeRule.onNodeWithText("設定").performClick()

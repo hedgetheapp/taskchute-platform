@@ -82,7 +82,6 @@ import java.time.format.DateTimeFormatter
 
 enum class AndroidDestination {
     TODAY,
-    PROJECTS,
     NOTES,
     SETTINGS,
 }
@@ -100,13 +99,6 @@ fun AndroidNavigationBar(
             onClick = onToday,
             icon = { Text("⌂") },
             label = { Text("今日") },
-        )
-        NavigationBarItem(
-            selected = false,
-            onClick = {},
-            enabled = false,
-            icon = { Text("▦") },
-            label = { Text("プロジェクト") },
         )
         NavigationBarItem(
             selected = false,

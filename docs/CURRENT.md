@@ -1,5 +1,25 @@
 # Current
 
+### D-114 Android Settings Management v0.1 — 2026-09-16
+
+D-114は承認済みSettings concept boardの方向に合わせ、Android下部navigationを`今日` / `ノート` /
+`設定`へ整理し、Settings hubからSection、Project、Routineの管理画面を提供した。Sectionは既存の
+全体configuration updateを使い、削除時は隣接Sectionへ時間帯を吸収する。Projectはactive / archived、
+作成・編集・archive / restore・server-owned order・hard-delete確認、Routineは作成・編集・有効/停止・
+既存canonical soft-deleteを利用する。owner scope、operation / revision、認証、データauthorityは既存
+contractのままで、Worker/API、schema / migration、dependency、realtime protocol、offline、notification、
+productionは変更していない。
+
+Android JVMは`107 / 107 PASS`（failures/errors/skipped `0 / 0 / 0`）。Windows local AVD
+`TaskChute_API33`（Pixel 7 / Android 13 API 33 / Google APIs / x86_64 / `emulator-5554`）で
+`scripts/android-qa.ps1 -Surface All`を実行し、Notes `7`、Security `1`、Settings `2`、Today `25`の
+計`35 / 35 PASS`。APK install、`MainActivity`解決、TaskChute package crash buffer emptyも確認した。
+Timingはemulator ready `0.09s`、instrumentation `580.72s`、post-test install / smoke `2.22s`、total
+`583.20s`。旧D-109のProject disabled表示を期待していた既存Today testの初回失敗は`TEST_CODE_FAIL`
+（runtime crashなし）として修正後、All最終runで全件PASSとした。D-114 Galaxy S23 smokeはfresh final-main
+APKのProduct Owner確認待ちで`PENDING_SMOKE`。persistent nonprod、migration、production、Releaseは
+`NOT_REQUIRED / NOT_REQUIRED / NOT_RUN / NO`。
+
 ### D-113 Android Today / Notes UX Refinement v0.1 — 2026-09-16
 
 D-113は既存のAndroid Today / Notes semanticsを変えず、Todayのleading slotをplanned / running /

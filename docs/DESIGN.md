@@ -12,6 +12,18 @@
 - implementation / verification statusは`docs/FEATURES.md`、`docs/CURRENT.md`、`docs/TEST_MATRIX.md`を正本とする。
 - この文書は新しいDomain semanticsを作らず、上記canonical docsと矛盾する場合は上記を優先する。
 
+## D-114 Android Settings management
+
+Android Settings follows the approved concept-board direction: a quiet hub with
+cards for `セクション設定`, `プロジェクト設定`, and `ルーティン設定`, then
+focused list screens with a small add action and explicit edit/delete controls.
+The Android bottom navigation is `今日` / `ノート` / `設定`; Project is managed
+from Settings rather than represented as a fake destination. Section times are
+edited as a contiguous canonical configuration, Project active/archive views use
+server-owned order, and Routine rows expose enabled state plus the existing
+definition fields. Destructive actions use confirmation, and Android keeps the
+existing Material 3 dependency surface without a third-party icon library.
+
 ## D-113 Android Today / Notes UX refinement
 
 D-113はD-109〜D-112のcompact Today interactionを保ったまま、planned / running / completedの

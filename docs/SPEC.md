@@ -4,6 +4,15 @@
 
 exact DB schema、SQL、UI component library、Android local DB、offline conflict algorithm等は、別途DecisionされるまでOpenとする。
 
+## D-114 Android Settings Management v0.1
+
+Androidの`設定` destinationは、既存canonical APIを利用するSettings hubである。Sectionは全体
+configuration updateとD-038の時間境界・隣接吸収、ProjectはD-065のboard / archive / delete、Routineは
+D-064のdefinition / enabled / soft-delete semanticsへ委譲する。Androidは独自のDomain storageや
+ordering authorityを持たない。下部navigationは`今日` / `ノート` / `設定`で、Project管理はSettings内で
+提供し、Projectの独立bottom destinationやfake screenは追加しない。D-114はWorker/API、schema、migration、
+dependency、realtime protocol、offline、notification、production semanticsを変更しない。
+
 ## D-109 Android Today Planning v0.2
 
 Android Todayのcurrent established Dayでは、ordinary planned Taskに限り、Quick Addと

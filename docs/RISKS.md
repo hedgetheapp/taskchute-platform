@@ -1,5 +1,14 @@
 # Risks
 
+## R-071 — D-114 Android Settings management boundary
+
+D-114のAndroid SettingsはSection、Project、Routineの既存owner-scoped APIへ委譲し、Section全体
+configurationの隣接吸収、Project revision/order/archive/hard-delete確認、Routine soft-deleteを
+Android独自のDomainとして再実装しない。現状はAndroid JVM `107 / 107`、TaskChute_API33 All
+`35 / 35`、APK install、MainActivity、crash bufferがPASSで、Worker/API、schema、migration、dependency、
+realtime protocol、offline、notification、productionは不変。設定の実データ操作とGalaxy S23 smokeは
+fresh final-main APKのProduct Owner確認待ちで、D-114 device statusは`PENDING_SMOKE`。
+
 ## R-070 — Web Note canonical refresh versus local draft race
 
 An async realtime/reconnect/visibility canonical Document fetch can overlap with a new local

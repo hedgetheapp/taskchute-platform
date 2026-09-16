@@ -86,3 +86,14 @@ requires an available Android device or emulator and verifies the Today UI and
 Keystore / `noBackupFilesDir` round trip. `scripts/android-qa.ps1` runs the
 repeatable local AVD instrumentation path. No credentials are included in this
 repository.
+
+## D-114 Settings
+
+The native `設定` destination contains the Section, Project, and Routine
+management screens. They reuse the existing owner-scoped HTTP contracts and
+operation/revision boundaries: Section updates are full canonical configuration
+updates with adjacent absorption on delete, Project uses active/archive/order and
+hard-delete commands, and Routine delete remains canonical soft-delete. The
+bottom navigation is `今日` / `ノート` / `設定`; Project is not a separate fake
+destination. D-114 adds no Worker/API, migration, dependency, offline storage,
+notification, or production behavior.

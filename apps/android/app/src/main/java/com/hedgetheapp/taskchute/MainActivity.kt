@@ -14,7 +14,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -48,6 +47,9 @@ import com.hedgetheapp.taskchute.document.NotesController
 import com.hedgetheapp.taskchute.document.NotesScreen
 import com.hedgetheapp.taskchute.today.TodayDirectManipulationController
 import com.hedgetheapp.taskchute.today.TodayDirectManipulationHttpRepository
+import com.hedgetheapp.taskchute.settings.SettingsController
+import com.hedgetheapp.taskchute.settings.SettingsHttpRepository
+import com.hedgetheapp.taskchute.settings.SettingsScreen
 
 class MainActivity : ComponentActivity() {
     private lateinit var controller: AuthController
@@ -57,6 +59,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var planningController: TaskPlanningController
     private lateinit var directManipulationController: TodayDirectManipulationController
     private lateinit var notesController: NotesController
+    private lateinit var settingsController: SettingsController
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -98,6 +101,15 @@ class MainActivity : ComponentActivity() {
             ),
             onUnauthorized = controller::restore,
         )
+        settingsController = SettingsController(
+            repository = SettingsHttpRepository(
+                request = { method, path, body ->
+                    controller.authenticatedRequest(method, path, body)?.let { TodayHttpResponse(it.status, it.body) }
+                },
+                onUnauthorized = controller::restore,
+            ),
+            onUnauthorized = controller::restore,
+        )
         realtimeHttpClient = OkHttpClient()
         realtimeManager = RealtimeConnectionManager(
             cookieProvider = controller::realtimeCookieHeader,
@@ -115,7 +127,7 @@ class MainActivity : ComponentActivity() {
                 onAuthFailure = { runOnUiThread { controller.restore() } },
             ),
         )
-        setContent { TaskChuteApp(controller, todayController, planningController, directManipulationController, notesController, realtimeManager) }
+        setContent { TaskChuteApp(controller, todayController, planningController, directManipulationController, notesController, settingsController, realtimeManager) }
     }
 
     override fun onStart() {
@@ -137,6 +149,7 @@ class MainActivity : ComponentActivity() {
         planningController.close()
         directManipulationController.close()
         notesController.close()
+        settingsController.close()
         realtimeManager.stop()
         realtimeHttpClient.dispatcher.executorService.shutdown()
         realtimeHttpClient.connectionPool.evictAll()
@@ -151,6 +164,7 @@ private fun TaskChuteApp(
     planningController: TaskPlanningController,
     directManipulationController: TodayDirectManipulationController,
     notesController: NotesController,
+    settingsController: SettingsController,
     realtimeManager: RealtimeConnectionManager,
 ) {
     val state = controller.state
@@ -211,6 +225,7 @@ private fun TaskChuteApp(
                             onSignOut = signOut,
                         )
                         AndroidDestination.SETTINGS -> SettingsScreen(
+                            controller = settingsController,
                             onNavigateToday = { destination = AndroidDestination.TODAY },
                             onNavigateNotes = { destination = AndroidDestination.NOTES },
                             onSignOut = signOut,
@@ -220,46 +235,9 @@ private fun TaskChuteApp(
                             onNavigateToday = { destination = AndroidDestination.TODAY },
                             onNavigateSettings = { destination = AndroidDestination.SETTINGS },
                         )
-                        AndroidDestination.PROJECTS -> TodayScreen(
-                            controller = todayController,
-                            planningController = planningController,
-                            onNavigateSettings = { destination = AndroidDestination.SETTINGS },
-                            onNavigateNotes = { destination = AndroidDestination.NOTES },
-                            directManipulationController = directManipulationController,
-                            onOpenTaskNote = { task ->
-                                task.taskId?.let { taskId ->
-                                    notesController.openTaskPrimary(taskId, task.title, task.primaryDocumentId)
-                                    destination = AndroidDestination.NOTES
-                                }
-                            },
-                            onSignOut = signOut,
-                        )
                     }
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun SettingsScreen(onNavigateToday: () -> Unit, onNavigateNotes: () -> Unit, onSignOut: () -> Unit) {
-    Scaffold(
-        bottomBar = {
-            AndroidNavigationBar(
-                selected = AndroidDestination.SETTINGS,
-                onToday = onNavigateToday,
-                onSettings = {},
-                onNotes = onNavigateNotes,
-            )
-        },
-    ) { padding ->
-        Column(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            Text("設定", style = MaterialTheme.typography.headlineMedium)
-            Text("アカウントとアプリの設定")
-            Button(onClick = onSignOut) { Text("ログアウト") }
         }
     }
 }

@@ -2,6 +2,19 @@
 
 Statuses: Approved / Proposed / Superseded
 
+## D-114 — Android Settings Management v0.1
+
+Status: **Approved**
+
+Canonical Decision: `docs/decisions/D-114_ANDROID_SETTINGS_MANAGEMENT_V01.md`。
+
+D-114は既存canonical Section configuration、Project board、Routine commandをnative Androidの
+Settings hubへ接続する。下部navigationは`今日` / `ノート` / `設定`とし、SettingsからSectionの
+作成・編集・隣接吸収削除、Projectのactive / archived・作成・編集・archive / restore・並び順・
+hard-delete、Routineの作成・編集・有効/停止・soft-deleteを扱う。D-038 / D-064 / D-065の
+owner scope、operation / revision、canonical orderingと既存APIを再利用し、Worker/API、schema / migration、
+dependency、realtime protocol、offline、notification、productionは変更しない。
+
 ## D-113 — Android Today / Notes UX Refinement v0.1
 
 Status: **Approved**
