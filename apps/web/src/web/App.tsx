@@ -1978,7 +1978,8 @@ export function App() {
 
   useEffect(() => {
     if (authState !== "signed-in" || !day?.taskchute_day.id
-      || day.establishment_state !== "established" || !day.planning_enabled
+      || day.establishment_state !== "established"
+      || (!day.planning_enabled && !projectionEntries(day).some((entry) => canCorrectCompletedEntryMetadata(entry)))
       || projectsLoadState !== "idle") return;
     let active = true;
     void loadProjectsList().catch(() => {
@@ -1987,7 +1988,7 @@ export function App() {
       // a later editor/settings action may retry the authoritative list load.
     });
     return () => { active = false; };
-  }, [authState, day?.establishment_state, day?.planning_enabled, day?.taskchute_day.id, loadProjectsList, projectsLoadState]);
+  }, [authState, day, loadProjectsList, projectsLoadState]);
 
   useEffect(() => {
     persistCollapsedSections(collapsedSectionsByDay);
@@ -4125,14 +4126,27 @@ export function App() {
       && day.planning_enabled && entry.lifecycle_state === "planned" && entry.routine === null);
   }
 
+  function hasCompletedExecutionHistory(entry: EntryProjection): boolean {
+    return entry.execution_summary?.executions?.some((execution) =>
+      execution.ended_at !== null && execution.outcome === "completed")
+      ?? (entry.execution_summary?.last_outcome === "completed" && entry.execution_summary.last_ended_at !== null);
+  }
+
+  function canCorrectCompletedEntryMetadata(entry: EntryProjection): boolean {
+    return Boolean(day?.is_current && day.taskchute_day.id && day.establishment_state === "established"
+      && entry.lifecycle_state === "completed" && entry.routine === null && hasCompletedExecutionHistory(entry));
+  }
+
   function canEditProjectMetadata(entry: EntryProjection): boolean {
-    return Boolean(day?.taskchute_day.id && day.establishment_state === "established"
+    const planned = Boolean(day?.taskchute_day.id && day.establishment_state === "established"
       && day.planning_enabled && entry.lifecycle_state === "planned" && entry.routine === null);
+    return planned || canCorrectCompletedEntryMetadata(entry);
   }
 
   function canEditModeMetadata(entry: EntryProjection): boolean {
-    return Boolean(day?.taskchute_day.id && day.establishment_state === "established"
+    const planned = Boolean(day?.taskchute_day.id && day.establishment_state === "established"
       && day.planning_enabled && entry.lifecycle_state === "planned" && entry.routine === null);
+    return planned || canCorrectCompletedEntryMetadata(entry);
   }
 
   function canEditRoutineMode(entry: EntryProjection): boolean {
@@ -4241,7 +4255,10 @@ export function App() {
   }
 
   function commitProjectMetadata(entry: EntryProjection, nextProjectId: string | null) {
+    const completedCorrection = canCorrectCompletedEntryMetadata(entry);
+    const scope = entryMutationScope(entry.id, entry.task.id);
     if (!day || !canEditProjectMetadata(entry) || hasRetainedMutationScope(entryMutationScope(entry.id, entry.task.id))
+      || (completedCorrection && (pendingTaskMetadataOverlays[entry.id] !== undefined || isMutationScopeBusy(scope)))
       || (pendingTaskMetadataOverlays[entry.id]?.project_id ?? entry.task.project?.id ?? null) === nextProjectId) return;
     const effective = pendingTaskMetadataOverlays[entry.id];
     const operation: UpdateTaskMetadataRequest = {
@@ -4385,9 +4402,12 @@ export function App() {
   }
 
   function commitEntryMode(entry: EntryProjection, modeId: string | null) {
+    const completedCorrection = canCorrectCompletedEntryMetadata(entry);
+    const scope = entryMutationScope(entry.id);
     if (!day || !canEditModeMetadata(entry) || (day.is_current
       ? hasRetainedMutationScope(entryMutationScope(entry.id))
-      : isMutationScopeBusy(entryMutationScope(entry.id)))) return;
+      : isMutationScopeBusy(entryMutationScope(entry.id)))
+      || (completedCorrection && (pendingModeOverlays[entry.id] !== undefined || isMutationScopeBusy(scope)))) return;
     const currentModeId = entry.mode?.id ?? null;
     if (currentModeId === modeId) return;
     const operation: SetEntryModeRequest = { operation_id: uuidv7(), entry_id: entry.id,
@@ -6141,6 +6161,10 @@ export function App() {
       case "project": {
         const metadataEditing = taskMetadataDraft?.entryId === entry.id;
         const metadataOverlay = pendingTaskMetadataOverlays[entry.id];
+        const completedCorrection = canCorrectCompletedEntryMetadata(entry);
+        const projectMutationScope = entryMutationScope(entry.id, entry.task.id);
+        const projectMutationBusy = mutationLocked || hasRetainedMutationScope(projectMutationScope)
+          || (completedCorrection && (metadataOverlay !== undefined || isMutationScopeBusy(projectMutationScope)));
         const projectOptions: Array<ProjectSummary & { archived?: boolean }> = [...projects];
         if (entry.task.project && !projectOptions.some((candidate) => candidate.id === entry.task.project?.id)) {
           projectOptions.unshift({ ...entry.task.project, ...(projectsLoadState === "loaded" ? { archived: true } : {}) });
@@ -6149,7 +6173,7 @@ export function App() {
         const projectTitle = projectId === null ? null : projectOptions.find((candidate) => candidate.id === projectId)?.title ?? entry.task.project?.title ?? null;
         return <span className="project-name" data-day-column-cell={key} data-project-list-state={projectsLoadState}>
           {metadataEditing ? <select className="project-selector" aria-label={`${entry.task.title}のProject`} value={taskMetadataDraft.projectId ?? ""}
-            disabled={hasRetainedMutationScope(entryMutationScope(entry.id, entry.task.id))}
+            disabled={projectMutationBusy}
             onClick={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()}
             onChange={(event) => {
               const projectId = event.target.value || null;
@@ -6159,7 +6183,7 @@ export function App() {
             <option value=""></option>
             {projectOptions.map((candidate) => <option value={candidate.id} key={candidate.id} disabled={candidate.archived === true}>{candidate.title}{candidate.archived ? "（アーカイブ）" : ""}</option>)}
           </select> : canEditProjectMetadata(entry) ? <select className="project-selector" aria-label={`${entry.task.title}のProject`} value={projectId ?? ""}
-            disabled={hasRetainedMutationScope(entryMutationScope(entry.id, entry.task.id))}
+            disabled={projectMutationBusy}
             onClick={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()}
             onChange={(event) => commitProjectMetadata(entry, event.target.value || null)}>
             <option value=""></option>
@@ -6173,14 +6197,23 @@ export function App() {
       case "mode": {
         const overlay = pendingModeOverlays[entry.id];
         const routineOverlay = pendingRoutineModeOverlays[entry.id];
+        const completedCorrection = canCorrectCompletedEntryMetadata(entry);
         const modeId = routineOverlay ? routineOverlay.modeId : overlay ? overlay.mode_id : entry.mode?.id ?? null;
         const modeTitle = modeId === null ? null
           : routineOverlay?.modeTitle ?? (!overlay && entry.mode?.source === "snapshot"
             ? entry.mode.title
             : modeBoard?.modes.find((mode) => mode.id === modeId)?.title ?? entry.mode?.title ?? null);
         const editable = canEditModeMetadata(entry) || canEditRoutineMode(entry);
+        const modeOptions: Array<{ id: string; title: string; archived: boolean }> = (modeBoard?.modes ?? [])
+          .map((mode) => ({ id: mode.id, title: mode.title, archived: mode.archived }));
+        if (entry.mode && !modeOptions.some((mode) => mode.id === entry.mode?.id)) {
+          modeOptions.unshift({ id: entry.mode.id, title: entry.mode.title, archived: true });
+        }
         const modeMutationBusy = entry.routine
           ? isMutationScopeBusy(routineMutationScope(entry.id, entry.routine.routine_definition_id))
+          : completedCorrection
+            ? mutationLocked || overlay !== undefined || hasRetainedMutationScope(entryMutationScope(entry.id))
+              || isMutationScopeBusy(entryMutationScope(entry.id))
           : currentDay.is_current
             ? hasRetainedMutationScope(entryMutationScope(entry.id))
             : isMutationScopeBusy(entryMutationScope(entry.id));
@@ -6191,7 +6224,7 @@ export function App() {
               ? changeRoutineMode(entry, event.target.value || null)
               : commitEntryMode(entry, event.target.value || null)}>
             <option value=""></option>
-            {(modeBoard?.modes ?? []).map((mode) => <option value={mode.id} key={mode.id}
+            {modeOptions.map((mode) => <option value={mode.id} key={mode.id}
               disabled={mode.archived && mode.id !== modeId}>{mode.title}{mode.archived ? "（アーカイブ）" : ""}</option>)}
           </select> : modeTitle}
         </span>;

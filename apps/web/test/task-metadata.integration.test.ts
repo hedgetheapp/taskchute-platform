@@ -51,6 +51,34 @@ async function seedEstablishedFuture() {
   return { ...fixture, futureDayId, futureEntryId };
 }
 
+async function seedCompletedSharedEntries() {
+  const fixture = await seed();
+  const secondEntryId = uuidv7();
+  const executionId = uuidv7();
+  const capturedAt = "2026-09-05T08:00:00.000Z";
+  await env.APP_DB.batch([
+    env.APP_DB.prepare(`UPDATE entries SET lifecycle_state = 'completed' WHERE app_user_id = ? AND id = ?`)
+      .bind(fixture.userId, fixture.entryId),
+    env.APP_DB.prepare(`INSERT INTO entries
+      (id, app_user_id, task_id, taskchute_day_id, section_id, position, lifecycle_state, created_at)
+      VALUES (?, ?, ?, ?, ?, 2, 'planned', ?)`)
+      .bind(secondEntryId, fixture.userId, fixture.taskId, fixture.dayId,
+        (await env.APP_DB.prepare("SELECT id FROM sections WHERE app_user_id = ? ORDER BY sort_order LIMIT 1")
+          .bind(fixture.userId).first<{ id: string }>())!.id, createdAt),
+    env.APP_DB.prepare(`INSERT INTO executions
+      (id, app_user_id, entry_id, started_at, ended_at, created_at, terminal_outcome)
+      VALUES (?, ?, ?, ?, ?, ?, 'completed')`)
+      .bind(executionId, fixture.userId, fixture.entryId, capturedAt, "2026-09-05T08:20:00.000Z", capturedAt),
+    env.APP_DB.prepare(`INSERT INTO entry_task_snapshots (app_user_id, entry_id, task_id, task_title, captured_at)
+      VALUES (?, ?, ?, 'Before', ?)`)
+      .bind(fixture.userId, fixture.entryId, fixture.taskId, capturedAt),
+    env.APP_DB.prepare(`INSERT INTO entry_project_snapshots (app_user_id, entry_id, project_id, project_title, captured_at)
+      VALUES (?, ?, ?, 'Old project', ?)`)
+      .bind(fixture.userId, fixture.entryId, fixture.projectId, capturedAt),
+  ]);
+  return { ...fixture, secondEntryId, executionId, capturedAt };
+}
+
 describe.sequential("D-060 UpdateTaskMetadata", () => {
   it("updates title and Project by owner-scoped CAS, preserves placement, and replays once", async () => {
     const fixture = await seed();
@@ -200,5 +228,80 @@ describe.sequential("D-060 UpdateTaskMetadata", () => {
       .toEqual({ project_id: fixture.projectId });
     expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM operations WHERE app_user_id = ? AND operation_id = ?")
       .bind(fixture.userId, request.operation_id).first<number>("count")).toBe(1);
+  });
+
+  it("corrects only a completed Entry historical Project when its Task is shared", async () => {
+    const fixture = await seedCompletedSharedEntries();
+    const taskBefore = await env.APP_DB.prepare("SELECT id, title, project_id, created_at FROM tasks WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, fixture.taskId).first();
+    const entryBefore = await env.APP_DB.prepare(`SELECT e.id, e.task_id, e.taskchute_day_id, e.section_id, e.position,
+        e.lifecycle_state, e.estimate_seconds, e.planned_start_minute, d.placement_revision
+      FROM entries e JOIN taskchute_days d ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
+      WHERE e.app_user_id = ? AND e.id = ?`).bind(fixture.userId, fixture.entryId).first();
+    const request = { operation_id: uuidv7(), entry_id: fixture.entryId, task_id: fixture.taskId,
+      expected_title: "Before", title: "Before", expected_project_id: fixture.projectId, project_id: fixture.nextProjectId };
+
+    const changed = await updateTaskMetadata(env.APP_DB, fixture.userId, request, now);
+    expect(changed).toEqual({ entry_id: fixture.entryId, task_id: fixture.taskId, title: "Before",
+      project: { id: fixture.nextProjectId, title: "New project" } });
+    expect(await updateTaskMetadata(env.APP_DB, fixture.userId, request, now)).toEqual(changed);
+    await expect(updateTaskMetadata(env.APP_DB, fixture.userId, { ...request, project_id: null }, now))
+      .rejects.toMatchObject({ code: "operation_id_misuse" });
+    expect(await env.APP_DB.prepare(`SELECT project_id, project_title, captured_at FROM entry_project_snapshots
+      WHERE app_user_id = ? AND entry_id = ?`).bind(fixture.userId, fixture.entryId).first())
+      .toEqual({ project_id: fixture.nextProjectId, project_title: "New project", captured_at: fixture.capturedAt });
+    expect(await env.APP_DB.prepare("SELECT id, title, project_id, created_at FROM tasks WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, fixture.taskId).first()).toEqual(taskBefore);
+    expect(await env.APP_DB.prepare("SELECT entry_id FROM entry_project_snapshots WHERE app_user_id = ? AND entry_id = ?")
+      .bind(fixture.userId, fixture.secondEntryId).first()).toBeNull();
+    expect(await env.APP_DB.prepare(`SELECT e.id, e.task_id, e.taskchute_day_id, e.section_id, e.position,
+        e.lifecycle_state, e.estimate_seconds, e.planned_start_minute, d.placement_revision
+      FROM entries e JOIN taskchute_days d ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
+      WHERE e.app_user_id = ? AND e.id = ?`).bind(fixture.userId, fixture.entryId).first()).toEqual(entryBefore);
+    expect(await env.APP_DB.prepare(`SELECT eps.project_id, eps.project_title FROM entry_project_snapshots eps
+      WHERE eps.app_user_id = ? AND eps.entry_id = ?`).bind(fixture.userId, fixture.entryId).first())
+      .toEqual({ project_id: fixture.nextProjectId, project_title: "New project" });
+    expect(await env.APP_DB.prepare(`SELECT t.project_id, t.title FROM entries e JOIN tasks t
+      ON t.app_user_id = e.app_user_id AND t.id = e.task_id WHERE e.app_user_id = ? AND e.id = ?`)
+      .bind(fixture.userId, fixture.secondEntryId).first()).toEqual({ project_id: fixture.projectId, title: "Before" });
+
+    const clear = { ...request, operation_id: uuidv7(), expected_project_id: fixture.nextProjectId, project_id: null };
+    expect(await updateTaskMetadata(env.APP_DB, fixture.userId, clear, now)).toEqual({
+      entry_id: fixture.entryId, task_id: fixture.taskId, title: "Before", project: null,
+    });
+    expect(await env.APP_DB.prepare("SELECT project_id, project_title, captured_at FROM entry_project_snapshots WHERE app_user_id = ? AND entry_id = ?")
+      .bind(fixture.userId, fixture.entryId).first()).toEqual({ project_id: null, project_title: null, captured_at: fixture.capturedAt });
+    expect(await env.APP_DB.prepare("SELECT project_id FROM tasks WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, fixture.taskId).first()).toEqual({ project_id: fixture.projectId });
+
+    const assignFromNone = { ...clear, operation_id: uuidv7(), expected_project_id: null, project_id: fixture.nextProjectId };
+    await updateTaskMetadata(env.APP_DB, fixture.userId, assignFromNone, now);
+    expect(await env.APP_DB.prepare("SELECT project_id, project_title, captured_at FROM entry_project_snapshots WHERE app_user_id = ? AND entry_id = ?")
+      .bind(fixture.userId, fixture.entryId).first()).toEqual({ project_id: fixture.nextProjectId, project_title: "New project", captured_at: fixture.capturedAt });
+    expect(await env.APP_DB.prepare("SELECT project_id FROM tasks WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, fixture.taskId).first()).toEqual({ project_id: fixture.projectId });
+  });
+
+  it("fails closed for stale completed Project snapshot, title mutation, missing snapshot, and ineligible rows", async () => {
+    const fixture = await seedCompletedSharedEntries();
+    const base = { entry_id: fixture.entryId, task_id: fixture.taskId, expected_title: "Before", title: "Before",
+      expected_project_id: fixture.projectId, project_id: fixture.nextProjectId };
+    await expect(updateTaskMetadata(env.APP_DB, fixture.userId, { ...base, operation_id: uuidv7(), expected_project_id: null }, now))
+      .rejects.toMatchObject({ code: "resource_conflict" });
+    await expect(updateTaskMetadata(env.APP_DB, fixture.userId, { ...base, operation_id: uuidv7(), title: "Renamed" }, now))
+      .rejects.toMatchObject({ code: "resource_conflict" });
+    await env.APP_DB.prepare("DELETE FROM entry_project_snapshots WHERE app_user_id = ? AND entry_id = ?")
+      .bind(fixture.userId, fixture.entryId).run();
+    await expect(updateTaskMetadata(env.APP_DB, fixture.userId, { ...base, operation_id: uuidv7() }, now))
+      .rejects.toMatchObject({ code: "resource_conflict" });
+    await env.APP_DB.prepare(`INSERT INTO entry_project_snapshots
+      (app_user_id, entry_id, project_id, project_title, captured_at) VALUES (?, ?, ?, 'Old project', ?)`)
+      .bind(fixture.userId, fixture.entryId, fixture.projectId, fixture.capturedAt).run();
+    await env.APP_DB.prepare("UPDATE entries SET lifecycle_state = 'running' WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, fixture.entryId).run();
+    await expect(updateTaskMetadata(env.APP_DB, fixture.userId, { ...base, operation_id: uuidv7() }, now))
+      .rejects.toMatchObject({ code: "resource_conflict" });
+    expect(await env.APP_DB.prepare("SELECT project_id FROM tasks WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, fixture.taskId).first()).toEqual({ project_id: fixture.projectId });
   });
 });

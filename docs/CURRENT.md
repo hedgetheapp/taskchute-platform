@@ -1,5 +1,13 @@
 # Current
 
+### D-116A Completed Entry historical Project / Mode correction v0.1 — local closeout in progress
+
+D-116Aは、current established Dayのcompleted ordinary Entryにcompleted Execution historyがある場合だけ、Project / Modeのhistorical metadataを訂正する。D-010のshared Task identityを踏まえ、Project authorityは当該Entryの`entry_project_snapshots`であり、`tasks.project_id`は変更しない。Modeは当該Entryの`entry_modes`と`entry_mode_snapshots`を既存command内でatomicに整合させる。Task title、Entry / Execution identity、lifecycle、Section、estimate、planned start、placement、Day revisionは不変。新API / command type / schema / migration / dependencyは追加しない。
+
+Project履歴snapshotが欠ける異常ケースは、Taskの現在値から履歴を推測せずfail closedとする。D-116BはこのEntry-level corrected Project / Mode authorityをコピー元として使う。
+
+Local evidence: focused Web/App completed-metadata regressions `3 / 3`、focused Worker metadata `14 / 14`（追加no-op snapshot-title regression `7 / 7`）、full Web `14 files / 459 tests`、full Worker/D1 `36 files / 311 tests`、typecheck、normal build、exact nonprod build、deploy guard、Wrangler dry-run、`git diff --check`はPASS。永続nonprod deploy / authenticated browser・API・DB verificationは未完了であり、統合後に別途記録する。Productionは`NOT_RUN`、Releasedは`NO`。
+
 ### D-115 Web Today / Notes UI Refinement v0.1 — 2026-09-16
 
 D-115は承認済みのWeb UI refinementを実装した。Todayの遅延Shift+Arrow reorder後も新しいfocus intentを尊重し、Task列はmin 180px / default 280px / max 640pxに正規化する。Project / Modeのnullは空欄、値とselectorは一行ellipsisとし、running / Routine / completed forecastの表示を既存Domain projectionの範囲で調整した。Task Note操作は対象Taskのfloating Noteだけをsafe flush後に開閉する。Notes editorの手動Save表示を外しつつautosave・keyboard flush・ambiguous exact retryを維持し、新規Note focusはcanonical Create完了後かつfocus intentが変わっていない場合だけ行う。Project Primary Noteのinline / floating間移動は既存Documentに単一writerを保つ。
@@ -10,7 +18,9 @@ D-115は承認済みのWeb UI refinementを実装した。Todayの遅延Shift+Ar
 
 既存の認証済みbrowser tabで、Standalone Noteのcanonical Create後のtitle focus、autosave、reload後の再読込とMarkdown本文保持をsyntheticなfixtureで確認した。通常の可視Save actionはなく、状態表示は保存済みだった。fixtureはnonprodに残している。Task Note toggleおよびProject Note inline-to-floatingの追加browser操作とconsoleログ採取はこの確認では未実施／surface非対応のため、automated evidenceと区別する。Productionは`NOT_RUN`、Releasedは`NO`。
 
-### D-116 Routine creation composition — implementation STOP
+### D-116 original Routine creation composition — prior-contract STOP (historical)
+
+This STOP records the earlier composed-workflow contract only. The revised approved handoff splits D-116 into D-116A historical metadata correction and D-116B atomic future-Routine conversion; it does not describe D-116A's current implementation status.
 
 D-116のRoutine化は、既存APIでは`CreateRoutine`・`UpdateRoutine`・`SetRoutineEnabled`の複数operationに分かれる。最初のCreateはfresh Task identityとRoutine definitionを作るが、完了元Taskとのsource relationを保存せず、Browser APIにもoperation resultを後から照会するendpointがない。Createの応答が曖昧な後にreloadすると、exact operation identityを失ったclientがcommit有無を確定できず、新しいidentityでretryすればduplicate Routine/Taskを作り得る一方、未完了Routineのenableも安全に判断できない。したがって、contractの「再起動後も安全なresume」と「schema/API変更なし」を同時に満たす実装根拠がないため、コード変更前にSTOPした。安全な継続には、一つのatomic・idempotent server command、または承認されたsource correlationとoperation-status/read boundaryが必要となる。D-116 Decision・実装・verification PASSは主張しない。
 

@@ -20,12 +20,26 @@
 
 D-115 initial implementation `0cb556f170e9734afe3cf17ae5bc652708f4a7a3` had an exact-SHA CI test failure: a delayed initial Notes list load replaced the editor during ambiguous Create. Corrective `fccb26f5875309fd593fff2f0c2f09fe4253d83b` guards the editor generation/load token; the deterministic race regression and final full Web suite pass. The authenticated-browser fixture contains synthetic non-sensitive content and remains in persistent nonprod; its content is intentionally not copied here. GitHub remains the source of truth for volatile workflow metadata.
 
-## D-116 Routine creation composition — blocked before implementation
+## D-116A Completed Entry Project / Mode historical correction — local verification
 
 | ID | Verification target | Evidence | Status |
 |---|---|---|---|
-| D116-RETRY-BOUNDARY | Safe multi-step Create resume | Existing CreateRoutine creates a fresh Task/Routine but does not persist source Task correlation; no operation-result read endpoint exists. After ambiguous Create and reload, exact stage identity cannot be recovered safely | STOP / API or schema boundary needed |
-| D116-IMPLEMENTATION | Product behavior / code | No D-116 implementation, Decision, migration, or claim of PASS was made | NOT_STARTED |
+| D116A-DECISION | Canonical scope | Approved `docs/decisions/D-116A_COMPLETED_ENTRY_METADATA_CORRECTION_V01.md`; D-010 shared Task authority explicitly protected | PASS |
+| D116A-PROJECT | Completed Entry Project | A→B, A→none, none→B; historical snapshot CAS; shared `tasks.project_id` and other Entry unchanged; exact replay/misuse and ineligible-target coverage | PASS Worker/D1 |
+| D116A-MODE | Completed Entry Mode | relation/snapshot atomic convergence and clear; capture time preserved; same-ID no-op retains snapshot title; shared Task/other Entry unchanged; replay/misuse | PASS Worker/D1 |
+| D116A-WEB | Current-Day editor | Project/Mode correction UI, title read-only, planning-disabled established Day support, pending protection, ambiguous exact retry and canonical convergence | PASS focused + full Web |
+| D116A-REG | Regression | Full Web `14 files / 459 tests`; full Worker/D1 `36 files / 311 tests`; typecheck | PASS local |
+| D116A-BUILD | Static/deploy preparation | Normal build, exact nonprod build, canonical deploy guard, Wrangler nonprod dry-run | PASS local |
+| D116A-NONPROD | Persistent nonprod | Exact pushed implementation main deploy and APP/AUTH read-only integrity pending | PENDING |
+| D116A-BROWSER | Authenticated synthetic verification | Project snapshot-only correction / clear; Mode correction / clear; same-Task unrelated Entry and reload persistence | PENDING |
+| D116A-SCOPE | Boundary | No new API/command, schema/migration, dependency, realtime protocol, production, or Release change | PASS / NOT_REQUIRED / NOT_RUN / NO |
+
+## D-116 original Routine creation composition — prior contract stopped before implementation
+
+| ID | Verification target | Evidence | Status |
+|---|---|---|---|
+| D116-RETRY-BOUNDARY | Prior composed Create contract | Multi-command Routine creation could not satisfy reload-safe retry while also prohibiting schema/API support | STOP / superseded by approved split contract |
+| D116-IMPLEMENTATION | Historical state at prior STOP | No implementation was claimed under the prior composed contract; revised work is separately tracked by D116A and D116B | HISTORICAL |
 
 ## D-114 Android Settings Management v0.1 + main-thread read corrective — local closeout
 

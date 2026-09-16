@@ -478,6 +478,19 @@ The corrective Web path keeps completed-delete orchestration inside the same dis
 
 D-070 reuses the existing `SetEntryMode` command, Entry-scoped `entry_modes` relation, operation replay record, and D-066 current-Day scheduler. Current-Day Mode mutations remain inside the global serial dispatcher; established future-Day Mode mutations use the Web's existing direct scoped path and do not broaden the scheduler or add a persistent queue. The Worker binds the observed TaskChuteDay ID and exact logical date in every relation / operation guard so a concurrent Day move, lifecycle change, or live relation change cannot leave relation-only success. No table, migration, command, API schema, dependency, or binding is introduced.
 
+## D-116A completed Entry metadata correction
+
+Completed Project correction reuses `UpdateTaskMetadata` but branches its CAS and
+write target to the eligible Entry's existing `entry_project_snapshots` row;
+it never writes `tasks.project_id`. This is required because multiple Entries
+may share a Task. Completed Mode correction reuses `SetEntryMode` and guards the
+historical effective Mode, then atomically converges `entry_modes` with
+`entry_mode_snapshots`. Both paths guard current-Day ordinary completed
+eligibility and completed Execution history, retain operation replay identity,
+and leave placement / lifecycle / execution facts untouched. No schema change
+is introduced. D-116B must read source Project / Mode from this Entry-level
+historical authority.
+
 ## D-073 Interrupt / Continuation data and transaction boundary
 
 D-073 adds APP migration `0023_interrupt_continuation.sql`. `executions.terminal_outcome` records explicit `completed` or `interrupted` outcomes while pre-0023 rows remain NULL as legacy unknown. `entries.continuation_chain_id` and `continuation_parent_entry_id` provide stable chain identity; ordinary legacy entries receive singleton chains without fabricating historical continuation facts. `entry_task_snapshots` is written only for newly started executions, and historical projection prefers that snapshot only when present. `interrupt_command_guards` is a temporary idempotency / assertion guard and is cleaned after success.

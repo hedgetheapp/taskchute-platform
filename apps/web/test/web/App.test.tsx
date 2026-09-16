@@ -5164,8 +5164,8 @@ describe("Dogfood Day shell", () => {
     const row = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
     const project = row.querySelector<HTMLElement>('[data-day-column-cell="project"]')!;
     const mode = row.querySelector<HTMLElement>('[data-day-column-cell="mode"]')!;
-    expect(project.textContent?.trim()).toBe("");
-    expect(mode.textContent?.trim()).toBe("");
+    expect((within(project).getByRole("combobox", { name: "Canonical taskのProject" }) as unknown as HTMLSelectElement).value).toBe("");
+    expect((within(mode).getByRole("combobox", { name: "Canonical taskのMode" }) as unknown as HTMLSelectElement).value).toBe("");
     expect(project.classList.contains("project-name")).toBe(true);
     expect(mode.classList.contains("mode-cell")).toBe(true);
   });
@@ -6109,6 +6109,240 @@ describe("Dogfood Day shell", () => {
     render(<App />);
     expect(await screen.findByText("D068 Focus verification")).toBeTruthy();
     expect(screen.queryByText("D068 Deep verification")).toBeNull();
+  });
+
+  it("allows current completed ordinary Entry Project and Mode snapshot correction without title editing", async () => {
+    const oldProjectId = "completed-project-old";
+    const newProjectId = "completed-project-new";
+    const oldModeId = "completed-mode-old";
+    const newModeId = "completed-mode-new";
+    let projectId: string | null = oldProjectId;
+    let modeId: string | null = oldModeId;
+    const completedProjection = (): CurrentTaskChuteDayProjection => {
+      const entry: EntryProjection = {
+        ...firstEntry,
+        lifecycle_state: "completed",
+        task: { ...firstEntry.task, project: projectId ? {
+          id: projectId, title: projectId === oldProjectId ? "Historical Project" : "Corrected Project",
+        } : null },
+        mode: modeId ? { id: modeId, title: modeId === oldModeId ? "Historical Mode" : "Corrected Mode", source: "snapshot" } : null,
+        routine: null,
+        execution_summary: {
+          first_started_at: "2026-08-22T10:00:00.000Z",
+          last_ended_at: "2026-08-22T10:30:00.000Z",
+          completed_duration_seconds: 1800,
+          active_started_at: null,
+          single_execution_id: "completed-execution",
+          last_outcome: "completed",
+          executions: [{ id: "completed-execution", entry_id: firstEntry.id,
+            started_at: "2026-08-22T10:00:00.000Z", ended_at: "2026-08-22T10:30:00.000Z", outcome: "completed" }],
+        },
+      };
+      return { ...populatedDay, planning_enabled: false,
+        sections: [{ ...populatedDay.sections[0], entries: [entry] }, populatedDay.sections[1]], next_entry: null };
+    };
+    mocks.loadDay.mockImplementation(async () => completedProjection());
+    mocks.loadProjects.mockResolvedValue({ projects: [{ id: newProjectId, title: "Corrected Project" }] });
+    mocks.loadModeBoard.mockResolvedValue({ board_revision: 2, modes: [
+      { id: newModeId, title: "Corrected Mode", archived: false, board_position: 1, settings_revision: 0 },
+    ] });
+    mocks.updateTaskMetadata.mockImplementation(async (operation) => {
+      projectId = operation.project_id;
+      return {};
+    });
+    mocks.setEntryMode.mockImplementation(async (operation) => {
+      modeId = operation.mode_id;
+      return {};
+    });
+    render(<App />);
+
+    const project = await screen.findByRole("combobox", { name: "Canonical taskのProject" });
+    const mode = await screen.findByRole("combobox", { name: "Canonical taskのMode" });
+    await within(project).findByRole("option", { name: "Corrected Project" });
+    await within(mode).findByRole("option", { name: "Corrected Mode" });
+    expect((project as unknown as HTMLSelectElement).value).toBe(oldProjectId);
+    expect((mode as unknown as HTMLSelectElement).value).toBe(oldModeId);
+    expect(screen.queryByRole("button", { name: "Canonical taskを編集" })).toBeNull();
+
+    fireEvent.change(project, { target: { value: newProjectId } });
+    await waitFor(() => expect(mocks.updateTaskMetadata).toHaveBeenCalledTimes(1));
+    expect(mocks.updateTaskMetadata.mock.calls[0]?.[0]).toMatchObject({
+      entry_id: firstEntry.id, task_id: firstEntry.task.id,
+      expected_title: "Canonical task", title: "Canonical task",
+      expected_project_id: oldProjectId, project_id: newProjectId,
+    });
+    await waitFor(() => expect((screen.getByRole("combobox", { name: "Canonical taskのProject" }) as unknown as HTMLSelectElement).value).toBe(newProjectId));
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Canonical taskのMode" }), { target: { value: newModeId } });
+    await waitFor(() => expect(mocks.setEntryMode).toHaveBeenCalledTimes(1));
+    expect(mocks.setEntryMode.mock.calls[0]?.[0]).toMatchObject({
+      entry_id: firstEntry.id, expected_mode_id: oldModeId, mode_id: newModeId,
+    });
+    await waitFor(() => expect((screen.getByRole("combobox", { name: "Canonical taskのMode" }) as unknown as HTMLSelectElement).value).toBe(newModeId));
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Canonical taskのProject" }), { target: { value: "" } });
+    await waitFor(() => expect(mocks.updateTaskMetadata).toHaveBeenCalledTimes(2));
+    expect(mocks.updateTaskMetadata.mock.calls[1]?.[0]).toMatchObject({ expected_project_id: newProjectId, project_id: null });
+    await waitFor(() => expect((screen.getByRole("combobox", { name: "Canonical taskのProject" }) as unknown as HTMLSelectElement).value).toBe(""));
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Canonical taskのMode" }), { target: { value: "" } });
+    await waitFor(() => expect(mocks.setEntryMode).toHaveBeenCalledTimes(2));
+    expect(mocks.setEntryMode.mock.calls[1]?.[0]).toMatchObject({ expected_mode_id: newModeId, mode_id: null });
+    await waitFor(() => expect((screen.getByRole("combobox", { name: "Canonical taskのMode" }) as unknown as HTMLSelectElement).value).toBe(""));
+  });
+
+  it("disables completed metadata selectors while saving and excludes ineligible completed rows", async () => {
+    const request = deferred<unknown>();
+    const modeRequest = deferred<unknown>();
+    const newProjectId = "completed-project-new";
+    const oldModeId = "completed-mode-old";
+    const newModeId = "completed-mode-new";
+    let projectId: string | null = "completed-project-old";
+    let modeId: string | null = oldModeId;
+    const validCompleted = (): CurrentTaskChuteDayProjection => {
+      const entry: EntryProjection = {
+        ...firstEntry, lifecycle_state: "completed",
+        task: { ...firstEntry.task, project: projectId ? { id: projectId, title: "Historical Project" } : null },
+        mode: modeId ? { id: modeId, title: modeId === oldModeId ? "Historical Mode" : "Corrected Mode", source: "snapshot" } : null,
+        execution_summary: { first_started_at: "2026-08-22T10:00:00.000Z", last_ended_at: "2026-08-22T10:30:00.000Z",
+          completed_duration_seconds: 1800, active_started_at: null, last_outcome: "completed",
+          executions: [{ id: "completed-execution", entry_id: firstEntry.id,
+            started_at: "2026-08-22T10:00:00.000Z", ended_at: "2026-08-22T10:30:00.000Z", outcome: "completed" }] },
+      };
+      return { ...populatedDay, planning_enabled: false,
+        sections: [{ ...populatedDay.sections[0], entries: [entry] }, populatedDay.sections[1]], next_entry: null };
+    };
+    mocks.loadDay.mockImplementation(async () => validCompleted());
+    mocks.loadProjects.mockResolvedValue({ projects: [{ id: newProjectId, title: "Corrected Project" }] });
+    mocks.loadModeBoard.mockResolvedValue({ board_revision: 1, modes: [{ id: newModeId, title: "Corrected Mode", archived: false, board_position: 1, settings_revision: 0 }] });
+    mocks.updateTaskMetadata.mockReturnValue(request.promise);
+    mocks.setEntryMode.mockReturnValue(modeRequest.promise);
+    render(<App />);
+    const project = await screen.findByRole("combobox", { name: "Canonical taskのProject" });
+    await within(project).findByRole("option", { name: "Corrected Project" });
+    fireEvent.change(project, { target: { value: newProjectId } });
+    await waitFor(() => expect(mocks.updateTaskMetadata).toHaveBeenCalledTimes(1));
+    expect((screen.getByRole("combobox", { name: "Canonical taskのProject" }) as unknown as HTMLSelectElement).disabled).toBe(true);
+    fireEvent.change(screen.getByRole("combobox", { name: "Canonical taskのProject" }), { target: { value: "" } });
+    expect(mocks.updateTaskMetadata).toHaveBeenCalledTimes(1);
+    projectId = newProjectId;
+    await act(async () => { request.resolve({}); await request.promise; });
+    await waitFor(() => expect((screen.getByRole("combobox", { name: "Canonical taskのProject" }) as unknown as HTMLSelectElement).value).toBe(newProjectId));
+
+    const mode = screen.getByRole("combobox", { name: "Canonical taskのMode" });
+    await within(mode).findByRole("option", { name: "Corrected Mode" });
+    fireEvent.change(mode, { target: { value: newModeId } });
+    await waitFor(() => expect(mocks.setEntryMode).toHaveBeenCalledTimes(1));
+    expect((screen.getByRole("combobox", { name: "Canonical taskのMode" }) as unknown as HTMLSelectElement).disabled).toBe(true);
+    fireEvent.change(screen.getByRole("combobox", { name: "Canonical taskのMode" }), { target: { value: "" } });
+    expect(mocks.setEntryMode).toHaveBeenCalledTimes(1);
+    modeId = newModeId;
+    await act(async () => { modeRequest.resolve({}); await modeRequest.promise; });
+    await waitFor(() => expect((screen.getByRole("combobox", { name: "Canonical taskのMode" }) as unknown as HTMLSelectElement).value).toBe(newModeId));
+
+    cleanup();
+    const withoutHistory = { ...completedDay,
+      sections: [{ ...emptyDay.sections[0], entries: [{ ...firstEntry, lifecycle_state: "completed" as const }] }, emptyDay.sections[1]],
+    };
+    mocks.loadDay.mockResolvedValue(withoutHistory);
+    render(<App />);
+    await screen.findByText("Canonical task");
+    expect(screen.queryByRole("combobox", { name: "Canonical taskのProject" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Canonical taskのMode" })).toBeNull();
+
+    cleanup();
+    const completedWithHistory = validCompleted() as Extract<CurrentTaskChuteDayProjection, { establishment_state: "established" }>;
+    const routineEntry: EntryProjection = {
+      ...completedWithHistory.sections[0]!.entries[0]!,
+      routine: {
+        routine_definition_id: "019c0000-0000-7000-8000-000000000099",
+        routine_occurrence_id: "019c0000-0000-7000-8000-000000000098",
+        end_logical_date: null, can_end: false, default_section_id: morningId,
+        default_planned_start_minute: null, section_plan_override_present: false,
+        default_estimate_seconds: null, estimate_override_present: false,
+        defaults_revision: 0,
+      },
+    };
+    const ineligibleDays: CurrentTaskChuteDayProjection[] = [
+      { ...completedWithHistory, is_current: false,
+        taskchute_day: { ...completedWithHistory.taskchute_day, logical_date: "2026-08-21" } },
+      { ...completedWithHistory, sections: [{ ...emptyDay.sections[0], entries: [{ ...routineEntry }] }, emptyDay.sections[1]] },
+      { ...completedWithHistory, sections: [{ ...emptyDay.sections[0], entries: [{ ...routineEntry, routine: null, lifecycle_state: "running" }] }, emptyDay.sections[1]] },
+    ];
+    for (const ineligibleDay of ineligibleDays) {
+      mocks.loadDay.mockResolvedValue(ineligibleDay);
+      render(<App />);
+      await screen.findByText("Canonical task");
+      expect(screen.queryByRole("combobox", { name: "Canonical taskのProject" })).toBeNull();
+      expect(screen.queryByRole("combobox", { name: "Canonical taskのMode" })).toBeNull();
+      cleanup();
+    }
+  });
+
+  it("retains and retries the exact completed Project and Mode operations after ambiguous outcomes", async () => {
+    const oldProjectId = "completed-project-old";
+    const newProjectId = "completed-project-new";
+    const oldModeId = "completed-mode-old";
+    const newModeId = "completed-mode-new";
+    let projectId: string | null = oldProjectId;
+    let modeId: string | null = oldModeId;
+    let projectAttempts = 0;
+    let modeAttempts = 0;
+    const completedProjection = (): CurrentTaskChuteDayProjection => {
+      const entry: EntryProjection = {
+        ...firstEntry, lifecycle_state: "completed",
+        task: { ...firstEntry.task, project: projectId ? {
+          id: projectId, title: projectId === oldProjectId ? "Historical Project" : "Corrected Project",
+        } : null },
+        mode: modeId ? { id: modeId, title: modeId === oldModeId ? "Historical Mode" : "Corrected Mode", source: "snapshot" } : null,
+        execution_summary: { first_started_at: "2026-08-22T10:00:00.000Z", last_ended_at: "2026-08-22T10:30:00.000Z",
+          completed_duration_seconds: 1800, active_started_at: null, last_outcome: "completed",
+          executions: [{ id: "completed-execution", entry_id: firstEntry.id,
+            started_at: "2026-08-22T10:00:00.000Z", ended_at: "2026-08-22T10:30:00.000Z", outcome: "completed" }] },
+      };
+      return { ...populatedDay, planning_enabled: false,
+        sections: [{ ...populatedDay.sections[0], entries: [entry] }, populatedDay.sections[1]], next_entry: null };
+    };
+    mocks.loadDay.mockImplementation(async () => completedProjection());
+    mocks.loadProjects.mockResolvedValue({ projects: [{ id: newProjectId, title: "Corrected Project" }] });
+    mocks.loadModeBoard.mockResolvedValue({ board_revision: 1, modes: [
+      { id: newModeId, title: "Corrected Mode", archived: false, board_position: 1, settings_revision: 0 },
+    ] });
+    mocks.updateTaskMetadata.mockImplementation(async (operation) => {
+      projectAttempts += 1;
+      if (projectAttempts === 1) throw new ApiClientError("response lost", 503, true, "infrastructure_ambiguous");
+      projectId = operation.project_id;
+      return {};
+    });
+    mocks.setEntryMode.mockImplementation(async (operation) => {
+      modeAttempts += 1;
+      if (modeAttempts === 1) throw new ApiClientError("response lost", 503, true, "infrastructure_ambiguous");
+      modeId = operation.mode_id;
+      return {};
+    });
+    render(<App />);
+
+    const project = await screen.findByRole("combobox", { name: "Canonical taskのProject" });
+    await within(project).findByRole("option", { name: "Corrected Project" });
+    fireEvent.change(project, { target: { value: newProjectId } });
+    await waitFor(() => expect(mocks.updateTaskMetadata).toHaveBeenCalledTimes(1));
+    const projectRequest = mocks.updateTaskMetadata.mock.calls[0]![0];
+    const projectRetry = await screen.findByRole("button", { name: "保留中のTask情報保存を再試行" });
+    fireEvent.click(projectRetry);
+    await waitFor(() => expect(mocks.updateTaskMetadata).toHaveBeenCalledTimes(2));
+    expect(mocks.updateTaskMetadata.mock.calls[1]![0]).toEqual(projectRequest);
+    await waitFor(() => expect((screen.getByRole("combobox", { name: "Canonical taskのProject" }) as unknown as HTMLSelectElement).value).toBe(newProjectId));
+
+    const mode = screen.getByRole("combobox", { name: "Canonical taskのMode" });
+    await within(mode).findByRole("option", { name: "Corrected Mode" });
+    fireEvent.change(mode, { target: { value: newModeId } });
+    await waitFor(() => expect(mocks.setEntryMode).toHaveBeenCalledTimes(1));
+    const modeRequest = mocks.setEntryMode.mock.calls[0]![0];
+    const modeRetry = await screen.findByRole("button", { name: "保留中のMode保存を再試行" });
+    fireEvent.click(modeRetry);
+    await waitFor(() => expect(mocks.setEntryMode).toHaveBeenCalledTimes(2));
+    expect(mocks.setEntryMode.mock.calls[1]![0]).toEqual(modeRequest);
+    await waitFor(() => expect((screen.getByRole("combobox", { name: "Canonical taskのMode" }) as unknown as HTMLSelectElement).value).toBe(newModeId));
   });
 
   it("implements X selection semantics and suppresses it in inputs and modal ownership", async () => {

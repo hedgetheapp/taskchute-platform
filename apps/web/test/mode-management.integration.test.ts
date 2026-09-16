@@ -67,6 +67,24 @@ async function seedMode(userId: string, title: string): Promise<string> {
   return modeId;
 }
 
+async function addCompletedSharedEntry(fixture: Awaited<ReturnType<typeof seed>>) {
+  const secondEntryId = uuidv7();
+  const executionId = uuidv7();
+  const startedAt = "2026-09-05T08:00:00.000Z";
+  await env.APP_DB.batch([
+    env.APP_DB.prepare(`INSERT INTO entries (id, app_user_id, task_id, taskchute_day_id, section_id, position,
+        lifecycle_state, created_at) VALUES (?, ?, ?, ?, ?, 2, 'planned', ?)`)
+      .bind(secondEntryId, fixture.userId, fixture.taskId, fixture.dayId, fixture.sectionId, now),
+    env.APP_DB.prepare("UPDATE entries SET lifecycle_state = 'completed' WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, fixture.entryId),
+    env.APP_DB.prepare(`INSERT INTO executions
+      (id, app_user_id, entry_id, started_at, ended_at, created_at, terminal_outcome)
+      VALUES (?, ?, ?, ?, '2026-09-05T08:30:00.000Z', ?, 'completed')`)
+      .bind(executionId, fixture.userId, fixture.entryId, startedAt, startedAt),
+  ]);
+  return { ...fixture, secondEntryId, executionId, startedAt };
+}
+
 describe.sequential("D-068 Mode management", () => {
   it("creates, renames, reorders, assigns, and snapshots a Mode", async () => {
     const fixture = await seed();
@@ -218,6 +236,97 @@ describe.sequential("D-068 Mode management", () => {
     expect(await env.APP_DB.prepare("SELECT mode_id FROM entry_modes WHERE entry_id = ?").bind(fixture.futureEntryId).first()).toEqual({ mode_id: modeId });
     expect(await env.APP_DB.prepare("PRAGMA quick_check").first()).toEqual({ quick_check: "ok" });
     expect((await env.APP_DB.prepare("PRAGMA foreign_key_check").all()).results).toEqual([]);
+  });
+
+  it("corrects only a completed Entry Mode, converges live and historical state, and preserves capture time", async () => {
+    const fixture = await addCompletedSharedEntry(await seed());
+    const firstId = await seedMode(fixture.userId, "Renamed Live Focus");
+    const secondId = await seedMode(fixture.userId, "Current Focus");
+    const capturedAt = "2026-09-05T08:00:00.000Z";
+    await env.APP_DB.batch([
+      env.APP_DB.prepare("INSERT INTO entry_modes (app_user_id, entry_id, mode_id) VALUES (?, ?, ?)")
+        .bind(fixture.userId, fixture.entryId, firstId),
+      env.APP_DB.prepare(`INSERT INTO entry_mode_snapshots
+        (app_user_id, entry_id, mode_id, mode_title, captured_at) VALUES (?, ?, ?, 'Historical Focus', ?)`)
+        .bind(fixture.userId, fixture.entryId, firstId, capturedAt),
+      env.APP_DB.prepare("INSERT INTO entry_modes (app_user_id, entry_id, mode_id) VALUES (?, ?, ?)")
+        .bind(fixture.userId, fixture.secondEntryId, firstId),
+    ]);
+    const taskBefore = await env.APP_DB.prepare("SELECT id, title, project_id, created_at FROM tasks WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, fixture.taskId).first();
+    const entryBefore = await env.APP_DB.prepare(`SELECT e.id, e.task_id, e.taskchute_day_id, e.section_id, e.position,
+        e.lifecycle_state, e.estimate_seconds, e.planned_start_minute, d.placement_revision
+      FROM entries e JOIN taskchute_days d ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
+      WHERE e.app_user_id = ? AND e.id = ?`).bind(fixture.userId, fixture.entryId).first();
+
+    expect(await setEntryMode(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), entry_id: fixture.entryId, expected_mode_id: firstId, mode_id: firstId,
+    }, now)).toEqual({ entry_id: fixture.entryId, mode_id: firstId, mode_title: "Historical Focus" });
+
+    const request = { operation_id: uuidv7(), entry_id: fixture.entryId, expected_mode_id: firstId, mode_id: secondId };
+    const changed = await setEntryMode(env.APP_DB, fixture.userId, request, now);
+    expect(changed).toEqual({ entry_id: fixture.entryId, mode_id: secondId, mode_title: "Current Focus" });
+    expect(await setEntryMode(env.APP_DB, fixture.userId, request, now)).toEqual(changed);
+    await expect(setEntryMode(env.APP_DB, fixture.userId, { ...request, mode_id: null }, now))
+      .rejects.toMatchObject({ code: "operation_id_misuse" });
+    expect(await env.APP_DB.prepare("SELECT mode_id FROM entry_modes WHERE app_user_id = ? AND entry_id = ?")
+      .bind(fixture.userId, fixture.entryId).first()).toEqual({ mode_id: secondId });
+    expect(await env.APP_DB.prepare("SELECT mode_id, mode_title, captured_at FROM entry_mode_snapshots WHERE app_user_id = ? AND entry_id = ?")
+      .bind(fixture.userId, fixture.entryId).first()).toEqual({ mode_id: secondId, mode_title: "Current Focus", captured_at: capturedAt });
+    expect(await env.APP_DB.prepare("SELECT mode_id FROM entry_modes WHERE app_user_id = ? AND entry_id = ?")
+      .bind(fixture.userId, fixture.secondEntryId).first()).toEqual({ mode_id: firstId });
+    expect(await env.APP_DB.prepare("SELECT id, title, project_id, created_at FROM tasks WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, fixture.taskId).first()).toEqual(taskBefore);
+    expect(await env.APP_DB.prepare(`SELECT e.id, e.task_id, e.taskchute_day_id, e.section_id, e.position,
+        e.lifecycle_state, e.estimate_seconds, e.planned_start_minute, d.placement_revision
+      FROM entries e JOIN taskchute_days d ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
+      WHERE e.app_user_id = ? AND e.id = ?`).bind(fixture.userId, fixture.entryId).first()).toEqual(entryBefore);
+
+    const clear = { ...request, operation_id: uuidv7(), expected_mode_id: secondId, mode_id: null };
+    expect(await setEntryMode(env.APP_DB, fixture.userId, clear, now)).toEqual({ entry_id: fixture.entryId, mode_id: null, mode_title: null });
+    expect(await env.APP_DB.prepare("SELECT entry_id FROM entry_modes WHERE app_user_id = ? AND entry_id = ?")
+      .bind(fixture.userId, fixture.entryId).first()).toBeNull();
+    expect(await env.APP_DB.prepare("SELECT entry_id FROM entry_mode_snapshots WHERE app_user_id = ? AND entry_id = ?")
+      .bind(fixture.userId, fixture.entryId).first()).toBeNull();
+    expect(await env.APP_DB.prepare("SELECT mode_id FROM entry_modes WHERE app_user_id = ? AND entry_id = ?")
+      .bind(fixture.userId, fixture.secondEntryId).first()).toEqual({ mode_id: firstId });
+
+    const fromNone = { ...clear, operation_id: uuidv7(), expected_mode_id: null, mode_id: secondId };
+    await setEntryMode(env.APP_DB, fixture.userId, fromNone, now);
+    expect(await env.APP_DB.prepare("SELECT mode_id, mode_title, captured_at FROM entry_mode_snapshots WHERE app_user_id = ? AND entry_id = ?")
+      .bind(fixture.userId, fixture.entryId).first()).toEqual({ mode_id: secondId, mode_title: "Current Focus", captured_at: fixture.startedAt });
+  });
+
+  it("rejects stale and ineligible completed Mode corrections without partial writes", async () => {
+    const fixture = await addCompletedSharedEntry(await seed());
+    const firstId = await seedMode(fixture.userId, "Focus");
+    const secondId = await seedMode(fixture.userId, "Light");
+    await env.APP_DB.batch([
+      env.APP_DB.prepare("INSERT INTO entry_modes (app_user_id, entry_id, mode_id) VALUES (?, ?, ?)")
+        .bind(fixture.userId, fixture.entryId, firstId),
+      env.APP_DB.prepare(`INSERT INTO entry_mode_snapshots
+        (app_user_id, entry_id, mode_id, mode_title, captured_at) VALUES (?, ?, ?, 'Focus', ?)`)
+        .bind(fixture.userId, fixture.entryId, firstId, fixture.startedAt),
+    ]);
+    const base = { entry_id: fixture.entryId, expected_mode_id: firstId, mode_id: secondId };
+    await expect(setEntryMode(env.APP_DB, fixture.userId, { ...base, operation_id: uuidv7(), expected_mode_id: null }, now))
+      .rejects.toMatchObject({ code: "revision_conflict" });
+
+    const otherUserId = uuidv7();
+    await env.APP_DB.prepare("INSERT INTO app_users (id, created_at) VALUES (?, ?)").bind(otherUserId, now).run();
+    await expect(setEntryMode(env.APP_DB, otherUserId, { ...base, operation_id: uuidv7() }, now))
+      .rejects.toMatchObject({ code: "resource_not_found" });
+
+    await env.APP_DB.prepare("UPDATE entries SET lifecycle_state = 'running' WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, fixture.entryId).run();
+    await expect(setEntryMode(env.APP_DB, fixture.userId, { ...base, operation_id: uuidv7() }, now))
+      .rejects.toMatchObject({ code: "resource_conflict" });
+    expect(await env.APP_DB.prepare("SELECT mode_id FROM entry_modes WHERE app_user_id = ? AND entry_id = ?")
+      .bind(fixture.userId, fixture.entryId).first()).toEqual({ mode_id: firstId });
+    expect(await env.APP_DB.prepare("SELECT mode_id FROM entry_mode_snapshots WHERE app_user_id = ? AND entry_id = ?")
+      .bind(fixture.userId, fixture.entryId).first()).toEqual({ mode_id: firstId });
+    expect((await env.APP_DB.prepare("PRAGMA foreign_key_check").all()).results).toEqual([]);
+    expect(await env.APP_DB.prepare("PRAGMA quick_check").first()).toEqual({ quick_check: "ok" });
   });
 
   it("archives/restores and deletes live Mode state while retaining historical snapshot", async () => {

@@ -2,6 +2,19 @@
 
 Statuses: Approved / Proposed / Superseded
 
+## D-116A — Completed Entry Project / Mode Historical Correction v0.1
+
+Status: **Approved**
+
+Canonical Decision: `docs/decisions/D-116A_COMPLETED_ENTRY_METADATA_CORRECTION_V01.md`。
+
+D-116Aはcurrent established Day上のcompleted ordinary Entryについて、実行済み履歴の
+Project / Mode snapshotをowner-scoped・CAS付きで訂正する。D-010のshared Task identityに
+より、Project correctionは`entry_project_snapshots`だけを更新し、共有Taskの
+`tasks.project_id`は変更しない。Modeは既存のEntry relationとhistorical snapshotをatomicに
+整合させる。既存command・operation semanticsを再利用し、新API・schema・migration・dependency
+は追加しない。D-116Bは変換元Entryの訂正済みhistorical authorityを複製する。
+
 ## D-115 — Web Today / Notes UI Refinement v0.1
 
 Status: **Approved**

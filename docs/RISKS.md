@@ -1,5 +1,16 @@
 # Risks
 
+## R-072 — D-116A shared Task and missing historical Project snapshot
+
+Completed Project correction must remain Entry-historical because D-010 permits
+multiple Entries to share one Task. The Worker updates only
+`entry_project_snapshots`; it never uses or changes the shared Task's current
+Project as a substitute. An eligible completed Entry with a missing Project
+snapshot therefore fails closed and cannot be corrected through this path until
+the data-integrity anomaly is separately understood. Mode correction remains
+Entry-scoped and atomically updates the existing live relation and historical
+snapshot. D-116B must copy these corrected Entry-level historical values.
+
 ## R-071 — D-114 Android Settings management boundary
 
 D-114のAndroid SettingsはSection、Project、Routineの既存owner-scoped APIへ委譲し、Section全体

@@ -603,6 +603,21 @@ Mode selectorはProjectの後、Sectionの前に配置され、visual Tab order 
 
 set / replace / clearの各成功後はcanonical Dayへreconcileし、future rowはlive Mode titleを表示する。ModeDefinition rename後にfuture planned rowは新titleへ追随し、Startまではsnapshotを作らない。ambiguous outcomeではcanonical relationへ収束できる場合だけ保留を消し、未収束時は同じoperation identityのretry panelを表示する。navigation、Settings、logout、unload barrierは保留中のfuture Mode operationを破棄しない。
 
+## D-116A completed Entry metadata correction
+
+Completed ordinary rows on the current established Day retain read-only Task
+title and planning / placement controls, but their Project and Mode cells may
+correct historical metadata when completed Execution history exists. Project
+options come from the active owner-scoped Project list; a retained historical
+Project can still be shown when absent from that list. Project writes target
+only `entry_project_snapshots`, so another Entry sharing the Task does not
+change. Mode uses the existing Entry selector and updates the live Entry
+relation plus immutable-start snapshot as one canonical operation. Busy or
+retained operation scopes disable conflicting edits; success reconciles the
+Day projection, and ambiguity retains the original request for exact retry.
+Routine-derived, running, past/future, and completed rows without completed
+Execution history remain non-editable.
+
 ## D-074 Day keyboard S / I
 
 DayBoard keyboard handling resolves the focused Entry's effective lifecycle from canonical projection plus the memory-only pending normal Start overlay. `S` dispatches the existing Start / Complete / D-073 Interrupt command and does not create client timestamps or synthetic lifecycle facts. After Start, Complete, or Interrupt reconciliation, the focused Entry is restored through the existing `data-focus-key` mechanism. A pending Start followed by `S` queues Complete with `dependsOnOperationId` and the pending Start's `execution_id`.

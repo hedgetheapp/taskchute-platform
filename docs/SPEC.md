@@ -529,6 +529,24 @@ Status: Approved. Runtime / APP migration: IMPLEMENTED / INTEGRATED / NO MIGRATI
 
 - `mode_id = null`はrelation clear、owner-scoped existing ModeDefinitionはset / replaceである。Mode Boardのserver orderをoptionsへ使い、same-title Modeはstable IDで扱う。assignmentはEntry、Task、Day、Section、planned start、estimate、Project、`placement_revision`を変更せず、future assignment時にhistorical snapshotを作らない。
 
+## D-116A Completed Entry historical Project / Mode correction
+
+On the current established Day, an owner may correct Project and Mode for an
+ordinary completed Entry with completed Execution history. Routine-derived,
+running, past/future, and otherwise ineligible Entries remain read-only. Task
+title, lifecycle, Section, estimate, planned start, placement, and Day
+`placement_revision` do not change.
+
+Completed Project authority is the Entry's `entry_project_snapshots` row, not
+the shared Task's `tasks.project_id`. Set / replace / clear updates only that
+Entry's historical snapshot and preserves its capture time. A missing
+historical Project snapshot fails closed rather than being inferred from the
+Task. Completed Mode correction atomically converges the Entry's existing
+`entry_modes` relation and `entry_mode_snapshots`; clear removes both and a
+first snapshot uses the original Execution start time. Existing command
+operation identity, CAS, exact retry, and canonical reload semantics remain in
+force; no command, API route, or migration is added.
+
 ## D-072 Mode Settings search / archive / restore / delete
 
 D-072はMode Settingsのcurrent behaviorを次のように定義する。Searchは現在選択中のtabだけを対象にしたclient-side title filterで、case-insensitiveである。Search queryは永続化せず、server search endpointも追加しない。既定tabはactive `使用中`、archived tabは`アーカイブ`である。

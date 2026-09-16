@@ -394,11 +394,18 @@ export async function setEntryMode(db: D1Database, appUserId: string, input: Set
   if (prior) return replayOperation<SetEntryModeResult>(prior, "SetEntryMode", fp);
   const settings = await db.prepare("SELECT timezone, day_boundary_minutes FROM user_settings WHERE app_user_id = ?")
     .bind(appUserId).first<{ timezone: string; day_boundary_minutes: number }>();
-  const entry = await db.prepare(`SELECT e.lifecycle_state, e.routine_occurrence_id, em.mode_id, d.id AS taskchute_day_id, d.logical_date
+  const entry = await db.prepare(`SELECT e.lifecycle_state, e.routine_occurrence_id, em.mode_id,
+      ems.entry_id AS mode_snapshot_entry_id, ems.mode_id AS snapshot_mode_id, ems.mode_title AS snapshot_mode_title,
+      ems.captured_at AS snapshot_captured_at, d.id AS taskchute_day_id, d.logical_date,
+      EXISTS (SELECT 1 FROM executions x WHERE x.app_user_id = e.app_user_id AND x.entry_id = e.id
+        AND x.ended_at IS NOT NULL AND x.terminal_outcome = 'completed') AS has_completed_execution
     FROM entries e JOIN taskchute_days d ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
     LEFT JOIN entry_modes em ON em.app_user_id = e.app_user_id AND em.entry_id = e.id
+    LEFT JOIN entry_mode_snapshots ems ON ems.app_user_id = e.app_user_id AND ems.entry_id = e.id
     WHERE e.app_user_id = ? AND e.id = ?`).bind(appUserId, input.entry_id).first<{
-      lifecycle_state: string; routine_occurrence_id: string | null; mode_id: string | null; taskchute_day_id: string; logical_date: string;
+      lifecycle_state: string; routine_occurrence_id: string | null; mode_id: string | null;
+      mode_snapshot_entry_id: string | null; snapshot_mode_id: string | null; snapshot_mode_title: string | null;
+      snapshot_captured_at: string | null; taskchute_day_id: string; logical_date: string; has_completed_execution: number;
     }>();
   if (!settings || !entry) return reject(db, appUserId, input, "SetEntryMode", fp, "resource_not_found", "Entry is unavailable");
   const currentDate = resolveTaskChuteDay(nowInstant, {
@@ -407,22 +414,187 @@ export async function setEntryMode(db: D1Database, appUserId: string, input: Set
   }).logicalDate;
   const isCurrent = entry.logical_date === currentDate;
   const isFuture = entry.logical_date > currentDate;
-  if ((!isCurrent && !isFuture) || entry.lifecycle_state !== "planned" || entry.routine_occurrence_id !== null) {
+  const isPlannedMetadataUpdate = (isCurrent || isFuture)
+    && entry.lifecycle_state === "planned" && entry.routine_occurrence_id === null;
+  const isCompletedHistoricalCorrection = isCurrent && entry.lifecycle_state === "completed"
+    && entry.routine_occurrence_id === null && entry.has_completed_execution === 1;
+  if (!isPlannedMetadataUpdate && !isCompletedHistoricalCorrection) {
     return reject(db, appUserId, input, "SetEntryMode", fp, "resource_conflict", "Only an ordinary planned Entry on the current or an established future Day can change Mode");
   }
-  if (entry.mode_id !== input.expected_mode_id) return revisionReject(db, appUserId, input, "SetEntryMode", fp, "The Entry Mode changed before editing");
+  const effectiveModeId = isCompletedHistoricalCorrection && entry.mode_snapshot_entry_id !== null
+    ? entry.snapshot_mode_id : entry.mode_id;
+  if (effectiveModeId !== input.expected_mode_id) return revisionReject(db, appUserId, input, "SetEntryMode", fp, "The Entry Mode changed before editing");
   let title: string | null = null;
   if (input.mode_id !== null) {
     const mode = await db.prepare(`SELECT m.title, CASE WHEN a.mode_id IS NULL THEN 0 ELSE 1 END AS archived
       FROM mode_definitions m LEFT JOIN mode_archives a ON a.app_user_id = m.app_user_id AND a.mode_id = m.id
       WHERE m.app_user_id = ? AND m.id = ?`).bind(appUserId, input.mode_id).first<{ title: string; archived: number }>();
-    if (!mode) return reject(db, appUserId, input, "SetEntryMode", fp, "resource_not_found", "Mode is unavailable");
-    if (mode.archived === 1 && input.mode_id !== entry.mode_id) {
+    if (!mode && !(isCompletedHistoricalCorrection && input.mode_id === effectiveModeId && entry.mode_snapshot_entry_id !== null)) {
+      return reject(db, appUserId, input, "SetEntryMode", fp, "resource_not_found", "Mode is unavailable");
+    }
+    if (isCompletedHistoricalCorrection && input.mode_id !== effectiveModeId && mode?.archived === 1) {
       return reject(db, appUserId, input, "SetEntryMode", fp, "resource_conflict", "An archived Mode cannot be newly assigned");
     }
-    title = mode.title;
+    if (!isCompletedHistoricalCorrection && mode?.archived === 1 && input.mode_id !== entry.mode_id) {
+      return reject(db, appUserId, input, "SetEntryMode", fp, "resource_conflict", "An archived Mode cannot be newly assigned");
+    }
+    title = (isCompletedHistoricalCorrection && input.mode_id === effectiveModeId
+      && entry.mode_snapshot_entry_id !== null ? entry.snapshot_mode_title : mode?.title)
+      ?? (input.mode_id === effectiveModeId ? entry.snapshot_mode_title : null);
   }
   const result: SetEntryModeResult = { entry_id: input.entry_id, mode_id: input.mode_id, mode_title: title };
+  if (isCompletedHistoricalCorrection) {
+    const completeTargetGuard = `EXISTS (SELECT 1 FROM entries e JOIN taskchute_days d
+      ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
+      WHERE e.app_user_id = ? AND e.id = ? AND e.taskchute_day_id = ?
+        AND e.lifecycle_state = 'completed' AND e.routine_occurrence_id IS NULL AND d.logical_date = ?
+        AND EXISTS (SELECT 1 FROM executions x WHERE x.app_user_id = e.app_user_id AND x.entry_id = e.id
+          AND x.ended_at IS NOT NULL AND x.terminal_outcome = 'completed'))`;
+    const modeCas = `(CASE WHEN EXISTS (SELECT 1 FROM entry_mode_snapshots s WHERE s.app_user_id = ? AND s.entry_id = ?)
+      THEN (SELECT mode_id FROM entry_mode_snapshots WHERE app_user_id = ? AND entry_id = ?)
+      ELSE (SELECT mode_id FROM entry_modes WHERE app_user_id = ? AND entry_id = ?) END) IS ?`;
+    const activeModeTarget = input.mode_id === null ? "1 = 1" : `EXISTS (SELECT 1 FROM mode_definitions m
+      WHERE m.app_user_id = ? AND m.id = ? AND NOT EXISTS (SELECT 1 FROM mode_archives a
+        WHERE a.app_user_id = m.app_user_id AND a.mode_id = m.id))`;
+    const activeModeBindings = input.mode_id === null ? [] : [appUserId, input.mode_id];
+    const targetGuardBindings = [appUserId, input.entry_id, entry.taskchute_day_id, entry.logical_date] as const;
+    const casBindings = [appUserId, input.entry_id, appUserId, input.entry_id,
+      appUserId, input.entry_id, input.expected_mode_id] as const;
+
+    if (input.mode_id === effectiveModeId) {
+      try {
+        const operation = await db.prepare(`INSERT INTO operations
+            (app_user_id, operation_id, command_type, request_fingerprint_version, request_fingerprint,
+             outcome_kind, result_json, created_at)
+          SELECT ?, ?, 'SetEntryMode', ?, ?, 'success', ?, ?
+          WHERE ${completeTargetGuard} AND ${modeCas}`)
+          .bind(appUserId, input.operation_id, REQUEST_FINGERPRINT_VERSION, fp, JSON.stringify(result), nowInstant,
+            ...targetGuardBindings, ...casBindings).run();
+        if (operation.meta.changes > 0) return result;
+        const committed = await readOperation(db, appUserId, input.operation_id);
+        if (committed) return replayOperation<SetEntryModeResult>(committed, "SetEntryMode", fp);
+        return revisionReject(db, appUserId, input, "SetEntryMode", fp, "The completed Entry Mode changed before editing");
+      } catch {
+        const committed = await readOperation(db, appUserId, input.operation_id);
+        if (committed) return replayOperation<SetEntryModeResult>(committed, "SetEntryMode", fp);
+        throw new HttpError(503, "infrastructure_ambiguous", "The completed Entry Mode outcome is unknown; reload canonical state before retrying", true);
+      }
+    }
+
+    const firstAssertionId = `completed-mode-live:${input.operation_id}`;
+    const assertionId = `completed-mode:${input.operation_id}`;
+    try {
+      let results: D1Result[];
+      if (input.mode_id === null) {
+        results = await db.batch([
+          db.prepare(`DELETE FROM entry_modes WHERE app_user_id = ? AND entry_id = ?
+            AND ${completeTargetGuard} AND ${modeCas}`)
+            .bind(appUserId, input.entry_id, ...targetGuardBindings, ...casBindings),
+          db.prepare(`INSERT INTO transaction_assertions (app_user_id, id, ok)
+            SELECT ?, ?, CASE WHEN changes() = 1 OR EXISTS (SELECT 1 FROM entry_mode_snapshots
+              WHERE app_user_id = ? AND entry_id = ? AND mode_id IS ?) THEN 1 ELSE 0 END`)
+            .bind(appUserId, firstAssertionId, appUserId, input.entry_id, input.expected_mode_id),
+          db.prepare(`DELETE FROM entry_mode_snapshots WHERE app_user_id = ? AND entry_id = ?
+            AND EXISTS (SELECT 1 FROM transaction_assertions WHERE app_user_id = ? AND id = ? AND ok = 1)
+            AND ${completeTargetGuard}`)
+            .bind(appUserId, input.entry_id, appUserId, firstAssertionId, ...targetGuardBindings),
+          db.prepare(`INSERT INTO transaction_assertions (app_user_id, id, ok)
+            SELECT ?, ?, CASE WHEN NOT EXISTS (SELECT 1 FROM entry_modes WHERE app_user_id = ? AND entry_id = ?)
+              AND NOT EXISTS (SELECT 1 FROM entry_mode_snapshots WHERE app_user_id = ? AND entry_id = ?)
+              AND ${completeTargetGuard} THEN 1 ELSE 0 END`)
+            .bind(appUserId, assertionId, appUserId, input.entry_id, appUserId, input.entry_id, ...targetGuardBindings),
+          db.prepare(`INSERT INTO operations (app_user_id, operation_id, command_type, request_fingerprint_version,
+              request_fingerprint, outcome_kind, result_json, created_at)
+            SELECT ?, ?, 'SetEntryMode', ?, ?, 'success', ?, ? WHERE EXISTS
+              (SELECT 1 FROM transaction_assertions WHERE app_user_id = ? AND id = ? AND ok = 1)`)
+            .bind(appUserId, input.operation_id, REQUEST_FINGERPRINT_VERSION, fp, JSON.stringify(result), nowInstant,
+              appUserId, assertionId),
+          db.prepare("DELETE FROM transaction_assertions WHERE app_user_id = ? AND id IN (?, ?)")
+            .bind(appUserId, firstAssertionId, assertionId),
+        ]);
+      } else {
+        if (!title) return reject(db, appUserId, input, "SetEntryMode", fp, "resource_not_found", "Mode is unavailable");
+        results = await db.batch([
+          db.prepare(`INSERT INTO entry_modes (app_user_id, entry_id, mode_id)
+            SELECT ?, ?, ? WHERE ${completeTargetGuard} AND ${modeCas} AND ${activeModeTarget}
+            ON CONFLICT (app_user_id, entry_id) DO UPDATE SET mode_id = excluded.mode_id`)
+            .bind(appUserId, input.entry_id, input.mode_id, ...targetGuardBindings, ...casBindings, ...activeModeBindings),
+          db.prepare(`INSERT INTO transaction_assertions (app_user_id, id, ok)
+            SELECT ?, ?, CASE WHEN changes() = 1 AND EXISTS (SELECT 1 FROM entry_modes
+              WHERE app_user_id = ? AND entry_id = ? AND mode_id = ?)
+              AND ${completeTargetGuard} AND ${activeModeTarget} THEN 1 ELSE 0 END`)
+            .bind(appUserId, firstAssertionId, appUserId, input.entry_id, input.mode_id,
+              ...targetGuardBindings, ...activeModeBindings),
+          db.prepare(`INSERT INTO entry_mode_snapshots (app_user_id, entry_id, mode_id, mode_title, captured_at)
+            SELECT ?, ?, ?, ?, COALESCE((SELECT captured_at FROM entry_mode_snapshots
+              WHERE app_user_id = ? AND entry_id = ?),
+              (SELECT MIN(started_at) FROM executions WHERE app_user_id = ? AND entry_id = ?), ?)
+            WHERE EXISTS (SELECT 1 FROM transaction_assertions WHERE app_user_id = ? AND id = ? AND ok = 1)
+              AND ${completeTargetGuard} AND ${activeModeTarget}
+            ON CONFLICT (app_user_id, entry_id) DO UPDATE SET mode_id = excluded.mode_id, mode_title = excluded.mode_title`)
+            .bind(appUserId, input.entry_id, input.mode_id, title, appUserId, input.entry_id,
+              appUserId, input.entry_id, nowInstant, appUserId, firstAssertionId, ...targetGuardBindings, ...activeModeBindings),
+          db.prepare(`INSERT INTO transaction_assertions (app_user_id, id, ok)
+            SELECT ?, ?, CASE WHEN changes() = 1
+              AND EXISTS (SELECT 1 FROM entry_modes WHERE app_user_id = ? AND entry_id = ? AND mode_id = ?)
+              AND EXISTS (SELECT 1 FROM entry_mode_snapshots WHERE app_user_id = ? AND entry_id = ?
+                AND mode_id = ? AND mode_title = ?)
+              AND ${completeTargetGuard} AND ${activeModeTarget} THEN 1 ELSE 0 END`)
+            .bind(appUserId, assertionId, appUserId, input.entry_id, input.mode_id,
+              appUserId, input.entry_id, input.mode_id, title, ...targetGuardBindings, ...activeModeBindings),
+          db.prepare(`INSERT INTO operations (app_user_id, operation_id, command_type, request_fingerprint_version,
+              request_fingerprint, outcome_kind, result_json, created_at)
+            SELECT ?, ?, 'SetEntryMode', ?, ?, 'success', ?, ? WHERE EXISTS
+              (SELECT 1 FROM transaction_assertions WHERE app_user_id = ? AND id = ? AND ok = 1)`)
+            .bind(appUserId, input.operation_id, REQUEST_FINGERPRINT_VERSION, fp, JSON.stringify(result), nowInstant,
+              appUserId, assertionId),
+          db.prepare("DELETE FROM transaction_assertions WHERE app_user_id = ? AND id IN (?, ?)")
+            .bind(appUserId, firstAssertionId, assertionId),
+        ]);
+      }
+      const operationIndex = results.length - 2;
+      if (results[operationIndex]?.meta.changes !== 1) {
+        const committed = await readOperation(db, appUserId, input.operation_id);
+        if (committed) return replayOperation<SetEntryModeResult>(committed, "SetEntryMode", fp);
+        return revisionReject(db, appUserId, input, "SetEntryMode", fp, "The completed Entry Mode changed before editing");
+      }
+      return result;
+    } catch {
+      const committed = await readOperation(db, appUserId, input.operation_id);
+      if (committed) return replayOperation<SetEntryModeResult>(committed, "SetEntryMode", fp);
+      const latest = await db.prepare(`SELECT e.lifecycle_state, e.routine_occurrence_id, d.logical_date,
+          em.mode_id, ems.entry_id AS snapshot_entry_id, ems.mode_id AS snapshot_mode_id,
+          EXISTS (SELECT 1 FROM executions x WHERE x.app_user_id = e.app_user_id AND x.entry_id = e.id
+            AND x.ended_at IS NOT NULL AND x.terminal_outcome = 'completed') AS has_completed_execution
+        FROM entries e JOIN taskchute_days d ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
+        LEFT JOIN entry_modes em ON em.app_user_id = e.app_user_id AND em.entry_id = e.id
+        LEFT JOIN entry_mode_snapshots ems ON ems.app_user_id = e.app_user_id AND ems.entry_id = e.id
+        WHERE e.app_user_id = ? AND e.id = ?`).bind(appUserId, input.entry_id).first<{
+          lifecycle_state: string; routine_occurrence_id: string | null; logical_date: string;
+          mode_id: string | null; snapshot_entry_id: string | null; snapshot_mode_id: string | null;
+          has_completed_execution: number;
+        }>();
+      if (!latest) return reject(db, appUserId, input, "SetEntryMode", fp, "resource_not_found", "Entry is unavailable");
+      if (latest.lifecycle_state !== "completed" || latest.routine_occurrence_id !== null
+        || latest.logical_date !== currentDate || latest.has_completed_execution !== 1) {
+        return reject(db, appUserId, input, "SetEntryMode", fp, "resource_conflict", "The completed Entry is no longer eligible for Mode correction");
+      }
+      const latestEffectiveModeId = latest.snapshot_entry_id !== null ? latest.snapshot_mode_id : latest.mode_id;
+      if (latestEffectiveModeId !== input.expected_mode_id) {
+        return revisionReject(db, appUserId, input, "SetEntryMode", fp, "The completed Entry Mode changed before editing");
+      }
+      if (input.mode_id !== null) {
+        const latestMode = await db.prepare(`SELECT CASE WHEN a.mode_id IS NULL THEN 0 ELSE 1 END AS archived
+          FROM mode_definitions m LEFT JOIN mode_archives a ON a.app_user_id = m.app_user_id AND a.mode_id = m.id
+          WHERE m.app_user_id = ? AND m.id = ?`).bind(appUserId, input.mode_id).first<{ archived: number }>();
+        if (!latestMode) return reject(db, appUserId, input, "SetEntryMode", fp, "resource_not_found", "Mode is unavailable");
+        if (latestMode.archived === 1) {
+          return reject(db, appUserId, input, "SetEntryMode", fp, "resource_conflict", "An archived Mode cannot be newly assigned");
+        }
+      }
+      throw new HttpError(503, "infrastructure_ambiguous", "The completed Entry Mode outcome is unknown; reload canonical state and retry", true);
+    }
+  }
   const targetGuard = `EXISTS (SELECT 1 FROM entries e JOIN taskchute_days d
     ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
     WHERE e.app_user_id = ? AND e.id = ? AND e.taskchute_day_id = ?
