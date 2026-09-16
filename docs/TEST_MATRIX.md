@@ -20,7 +20,7 @@
 
 D-115 initial implementation `0cb556f170e9734afe3cf17ae5bc652708f4a7a3` had an exact-SHA CI test failure: a delayed initial Notes list load replaced the editor during ambiguous Create. Corrective `fccb26f5875309fd593fff2f0c2f09fe4253d83b` guards the editor generation/load token; the deterministic race regression and final full Web suite pass. The authenticated-browser fixture contains synthetic non-sensitive content and remains in persistent nonprod; its content is intentionally not copied here. GitHub remains the source of truth for volatile workflow metadata.
 
-## D-116A Completed Entry Project / Mode historical correction — local verification
+## D-116A Completed Entry Project / Mode historical correction — local + persistent nonprod closeout
 
 | ID | Verification target | Evidence | Status |
 |---|---|---|---|
@@ -30,8 +30,10 @@ D-115 initial implementation `0cb556f170e9734afe3cf17ae5bc652708f4a7a3` had an e
 | D116A-WEB | Current-Day editor | Project/Mode correction UI, title read-only, planning-disabled established Day support, pending protection, ambiguous exact retry and canonical convergence | PASS focused + full Web |
 | D116A-REG | Regression | Full Web `14 files / 459 tests`; full Worker/D1 `36 files / 311 tests`; typecheck | PASS local |
 | D116A-BUILD | Static/deploy preparation | Normal build, exact nonprod build, canonical deploy guard, Wrangler nonprod dry-run | PASS local |
-| D116A-NONPROD | Persistent nonprod | Exact pushed implementation main deploy and APP/AUTH read-only integrity pending | PENDING |
-| D116A-BROWSER | Authenticated synthetic verification | Project snapshot-only correction / clear; Mode correction / clear; same-Task unrelated Entry and reload persistence | PENDING |
+| D116A-CI | Exact implementation SHA | `70497589e80768b6e92c529d9dfde197db131cea`; classifier, Web/Worker, Android jobs PASS; debug APK artifact generated | PASS GitHub Actions |
+| D116A-NONPROD | Persistent nonprod | Worker `taskchute-web-nonprod`, version `bfb56178-2db5-4346-8ee6-63dc810ba385`; root `200`; unauthenticated current-Day API `401`; APP/AUTH pending `0 / 0` | PASS |
+| D116A-BROWSER | Authenticated synthetic verification | Project set/clear and Mode set/clear persisted after reload. A same-Task two-Entry fixture changed only one completed Entry; shared `tasks.project_id` and sibling Entry history remained unchanged. Fixture values restored and reloaded. Browser console/log unavailable on current surface | PASS behavior / console NOT_CAPTURED |
+| D116A-DB | Post-browser APP/AUTH integrity | APP/AUTH `quick_check=ok`; FK empty; all command guards/assertions, active executions, duplicate positions `0`; pending `0 / 0`; successful read-only probes `rows_written=0`. Synthetic fixtures remain; no destructive cleanup | PASS |
 | D116A-SCOPE | Boundary | No new API/command, schema/migration, dependency, realtime protocol, production, or Release change | PASS / NOT_REQUIRED / NOT_RUN / NO |
 
 ## D-116 original Routine creation composition — prior contract stopped before implementation

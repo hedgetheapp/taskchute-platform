@@ -1,12 +1,16 @@
 # Current
 
-### D-116A Completed Entry historical Project / Mode correction v0.1 — local closeout in progress
+### D-116A Completed Entry historical Project / Mode correction v0.1 — persistent nonprod verified
 
 D-116Aは、current established Dayのcompleted ordinary Entryにcompleted Execution historyがある場合だけ、Project / Modeのhistorical metadataを訂正する。D-010のshared Task identityを踏まえ、Project authorityは当該Entryの`entry_project_snapshots`であり、`tasks.project_id`は変更しない。Modeは当該Entryの`entry_modes`と`entry_mode_snapshots`を既存command内でatomicに整合させる。Task title、Entry / Execution identity、lifecycle、Section、estimate、planned start、placement、Day revisionは不変。新API / command type / schema / migration / dependencyは追加しない。
 
 Project履歴snapshotが欠ける異常ケースは、Taskの現在値から履歴を推測せずfail closedとする。D-116BはこのEntry-level corrected Project / Mode authorityをコピー元として使う。
 
-Local evidence: focused Web/App completed-metadata regressions `3 / 3`、focused Worker metadata `14 / 14`（追加no-op snapshot-title regression `7 / 7`）、full Web `14 files / 459 tests`、full Worker/D1 `36 files / 311 tests`、typecheck、normal build、exact nonprod build、deploy guard、Wrangler dry-run、`git diff --check`はPASS。永続nonprod deploy / authenticated browser・API・DB verificationは未完了であり、統合後に別途記録する。Productionは`NOT_RUN`、Releasedは`NO`。
+Local evidence: focused Web/App completed-metadata regressions `3 / 3`、focused Worker metadata `14 / 14`（追加no-op snapshot-title regression `7 / 7`）、full Web `14 files / 459 tests`、full Worker/D1 `36 files / 311 tests`、typecheck、normal build、exact nonprod build、deploy guard、Wrangler dry-run、`git diff --check`はPASS。Implementation `70497589e80768b6e92c529d9dfde197db131cea`はmainへfast-forward push済みで、exact-SHA GitHub Actionsのclassifier、Web/Worker、Android jobはすべてPASS（artifactも生成）。
+
+Exact pushed mainをcanonical nonprod Worker `taskchute-web-nonprod`へdeployし、Worker version `bfb56178-2db5-4346-8ee6-63dc810ba385`を確認した。root `200`、未認証current-Day API `401`、APP/AUTH pending migration `0 / 0`、両DB `quick_check=ok`、FK empty。APPのtransaction assertion、command guard、active Execution、duplicate placement anomalyはいずれも`0`。成功したread-only probesはすべて`rows_written=0`。
+
+既存の認証済みsessionを使った同一originの検証tabで、非機微なsynthetic fixtureのみを操作した。単独fixtureはProject/Modeの設定・解除・reloadを通じてcanonical表示を確認し、Task Projectと最終snapshotは当初どおりnullだった。別のsynthetic Taskではcanonical interruption continuationで同一Taskを参照する2 Entryを作成し、完了した一方のEntryだけProject/Modeを補正した。D1で`tasks.project_id`ともう一方のEntry snapshotが不変、対象Entryの`entry_modes` / historical snapshotが収束、両Entry/Executionのidentity・timestamps・lifecycleが不変であることを確認した。対象Entryを元のProject/Modeへ戻し、reload後も両Entryの元の値が維持された。fixtureはnonprodに残置し、既存データには触れず、削除操作は行っていない。Browser console/logは現在の操作surfaceから取得できないため`NOT_CAPTURED`（cleanとは主張しない）。D-116Aはpersistent nonprod verification完了。D-116Bへ進行可能。Productionは`NOT_RUN`、Releasedは`NO`。
 
 ### D-115 Web Today / Notes UI Refinement v0.1 — 2026-09-16
 
