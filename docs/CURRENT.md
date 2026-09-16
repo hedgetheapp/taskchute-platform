@@ -1,5 +1,19 @@
 # Current
 
+### D-115 Web Today / Notes UI Refinement v0.1 — 2026-09-16
+
+D-115は承認済みのWeb UI refinementを実装した。Todayの遅延Shift+Arrow reorder後も新しいfocus intentを尊重し、Task列はmin 180px / default 280px / max 640pxに正規化する。Project / Modeのnullは空欄、値とselectorは一行ellipsisとし、running / Routine / completed forecastの表示を既存Domain projectionの範囲で調整した。Task Note操作は対象Taskのfloating Noteだけをsafe flush後に開閉する。Notes editorの手動Save表示を外しつつautosave・keyboard flush・ambiguous exact retryを維持し、新規Note focusはcanonical Create完了後かつfocus intentが変わっていない場合だけ行う。Project Primary Noteのinline / floating間移動は既存Documentに単一writerを保つ。
+
+実装後のsource reviewで、初回Notes list readが遅い場合に、ambiguousな新規Create中のeditorを古い初期状態で置き換えるraceを検出した。editor generation / load tokenで古いresponseの適用を防ぐregression testと修正を追加した。最初の実装SHA `0cb556f170e9734afe3cf17ae5bc652708f4a7a3` のCIはこのregressionでFAILし、corrective `fccb26f5875309fd593fff2f0c2f09fe4253d83b` で解消した。最終SHAのlocal full Web suiteは`14 files / 456 tests PASS`、typecheck・通常build・exact nonprod build・deploy guard・Wrangler dry-run・`git diff --check`はPASS。Exact-SHA ActionsはWeb/Worker job PASS、Androidは影響外としてskip。Worker/API、schema/migration、dependency、realtime protocolの変更はない。
+
+最終コードSHA `fccb26f5875309fd593fff2f0c2f09fe4253d83b` をguarded canonical nonprod Worker `taskchute-web-nonprod`へdeployし、Worker version `bc891e77-6304-4c73-ae20-49ac375b9384`を確認した。rootは200、未認証Documents / Realtimeは401、APP/AUTH migrations pendingは`0 / 0`、両DB quick_checkはok、FK checkはempty、read-only probesは`rows_written=0`。
+
+既存の認証済みbrowser tabで、Standalone Noteのcanonical Create後のtitle focus、autosave、reload後の再読込とMarkdown本文保持をsyntheticなfixtureで確認した。通常の可視Save actionはなく、状態表示は保存済みだった。fixtureはnonprodに残している。Task Note toggleおよびProject Note inline-to-floatingの追加browser操作とconsoleログ採取はこの確認では未実施／surface非対応のため、automated evidenceと区別する。Productionは`NOT_RUN`、Releasedは`NO`。
+
+### D-116 Routine creation composition — implementation STOP
+
+D-116のRoutine化は、既存APIでは`CreateRoutine`・`UpdateRoutine`・`SetRoutineEnabled`の複数operationに分かれる。最初のCreateはfresh Task identityとRoutine definitionを作るが、完了元Taskとのsource relationを保存せず、Browser APIにもoperation resultを後から照会するendpointがない。Createの応答が曖昧な後にreloadすると、exact operation identityを失ったclientがcommit有無を確定できず、新しいidentityでretryすればduplicate Routine/Taskを作り得る一方、未完了Routineのenableも安全に判断できない。したがって、contractの「再起動後も安全なresume」と「schema/API変更なし」を同時に満たす実装根拠がないため、コード変更前にSTOPした。安全な継続には、一つのatomic・idempotent server command、または承認されたsource correlationとoperation-status/read boundaryが必要となる。D-116 Decision・実装・verification PASSは主張しない。
+
 ### D-114 Android Settings Management v0.1 + main-thread read corrective — 2026-09-16
 
 D-114は承認済みSettings concept boardの方向に合わせ、Android下部navigationを`今日` / `ノート` /

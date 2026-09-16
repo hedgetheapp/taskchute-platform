@@ -1,5 +1,32 @@
 # Test Matrix
 
+## D-115 Web Today / Notes UI Refinement v0.1 — local / CI / nonprod closeout
+
+| ID | Verification target | Evidence | Status |
+|---|---|---|---|
+| D115-FOCUS | Delayed reorder focus authority | Existing D-098 focus intent is preserved when delayed Shift+Arrow reorder completes | PASS Web tests |
+| D115-TODAY | Today presentation | Resizable Task column bounds/preference normalization; blank null Project/Mode; nowrap ellipsis; running/Routine/completed forecast treatments | PASS Web tests / CI |
+| D115-TASK-NOTE | Task Note toggle | Toggles only the corresponding Task floating Note; close uses safe flush and unresolved-operation barrier | PASS Web tests; authenticated browser NOT_RUN |
+| D115-PROJECT-NOTE | Project Note editor ownership | Safe flush/transfer from Notes inline to the existing floating editor; no competing writer and no standalone floating Document type | PASS Web tests; authenticated browser NOT_RUN |
+| D115-NOTES-EDITOR | Notes presentation and focus | Visible Save/body label removed without changing autosave/keyboard flush/exact retry; canonical Create focus waits for editor readiness and unchanged focus intent | PASS Web tests; authenticated browser partial |
+| D115-INITIAL-LOAD-RACE | Ambiguous Create vs initial list load | Slow initial list response cannot replace a newly-created editor or its exact unresolved request; deterministic regression added after first exact-SHA CI failure | PASS focused + full Web |
+| D115-WEB | Full Web regression | 14 files / 456 tests; typecheck | PASS local |
+| D115-CI | Exact implementation SHA | `fccb26f5875309fd593fff2f0c2f09fe4253d83b`; final Actions run `35076014572` PASS; Web/Worker job PASS, Android job skipped by impact classifier. Earlier implementation-SHA failure was corrected; historical attempt retained | PASS |
+| D115-BUILD | Build / static gates | Normal build, exact `CLOUDFLARE_ENV=nonprod` build, deploy guard, Wrangler nonprod dry-run, `git diff --check` | PASS |
+| D115-NONPROD | Persistent nonprod | Worker `taskchute-web-nonprod`, version `bc891e77-6304-4c73-ae20-49ac375b9384`; root 200; unauthenticated Documents and Realtime 401; APP/AUTH pending 0/0 | PASS |
+| D115-DB | APP/AUTH integrity | Both quick_check `ok`, FK checks empty, read-only probes `rows_written=0` | PASS |
+| D115-BROWSER | Authenticated Notes browser | Existing authorized tab: create/focus/autosave and reload/reopen restored canonical synthetic Note title/body; manual Save action absent; console capture unavailable. Other D-115 browser interactions not exercised | PARTIAL / NOT_VERIFIED |
+| D115-BOUNDARY | Scope / release | No Worker/API, schema/migration, dependency, realtime protocol, production, or Release change | PASS / NOT_REQUIRED / NOT_RUN / NO |
+
+D-115 initial implementation `0cb556f170e9734afe3cf17ae5bc652708f4a7a3` had an exact-SHA CI test failure: a delayed initial Notes list load replaced the editor during ambiguous Create. Corrective `fccb26f5875309fd593fff2f0c2f09fe4253d83b` guards the editor generation/load token; the deterministic race regression and final full Web suite pass. The authenticated-browser fixture contains synthetic non-sensitive content and remains in persistent nonprod; its content is intentionally not copied here. GitHub remains the source of truth for volatile workflow metadata.
+
+## D-116 Routine creation composition — blocked before implementation
+
+| ID | Verification target | Evidence | Status |
+|---|---|---|---|
+| D116-RETRY-BOUNDARY | Safe multi-step Create resume | Existing CreateRoutine creates a fresh Task/Routine but does not persist source Task correlation; no operation-result read endpoint exists. After ambiguous Create and reload, exact stage identity cannot be recovered safely | STOP / API or schema boundary needed |
+| D116-IMPLEMENTATION | Product behavior / code | No D-116 implementation, Decision, migration, or claim of PASS was made | NOT_STARTED |
+
 ## D-114 Android Settings Management v0.1 + main-thread read corrective — local closeout
 
 | ID | Verification target | Evidence | Status |
