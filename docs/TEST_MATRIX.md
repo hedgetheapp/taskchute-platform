@@ -1,5 +1,25 @@
 # Test Matrix
 
+## D-116B Completed Entry to future Routine v0.1 — local evidence / persistent nonprod pending
+
+| ID | Verification target | Evidence | Status |
+|---|---|---|---|
+| D116B-DECISION | Approved semantics | `docs/decisions/D-116B_COMPLETED_ENTRY_TO_FUTURE_ROUTINE_V01.md`; reuses D-116A Entry-historical authority, existing Routine/operation/realtime contracts | PASS / APPROVED |
+| D116B-WORKER | Atomic command | Owner/source eligibility, completed Execution, source historical metadata, current Section pair, exact replay/misuse, concurrency convergence, stale board revision, settings/source race guards, no occurrence creation | PASS focused Worker/D1 `18 / 18` |
+| D116B-DELETE | Correlated source retention | Linked completed Entry delete returns deterministic conflict; source/Execution/placement revision remain; UI hides that hard-delete action | PASS focused regression |
+| D116B-WEB | Today action and reconcile | Eligible completed current-Day source only; immutable ambiguity retry, source-correlation convergence, future Routine marker distinct from occurrence; existing realtime `routines` + `day` scopes | PASS focused App / Worker tests |
+| D116B-MIGRATION | APP 0033 bounded migration | Fresh `0001 → 0033` and upgrade `0032 → 0033`; prior operations/data preserved, FK/quick checks pass, no backfill/temp residue | PASS local bounded migration |
+| D116B-REG | Full regression | Worker/D1 `37 files / 330 tests`; Web `14 files / 462 tests`; typecheck | PASS local |
+| D116B-BUILD | Build/deploy preparation | Normal build, exact `CLOUDFLARE_ENV=nonprod` build, canonical deploy guard, Wrangler nonprod dry-run, `git diff --check` | PASS local |
+| D116B-CI | Exact pushed SHA | GitHub Actions for final implementation SHA | PENDING |
+| D116B-BACKUP | Persistent migration safety gate | Fresh APP/AUTH export and SHA-256, isolated readability/quick/FK/recovery validation without restore | PENDING |
+| D116B-NONPROD | Persistent nonprod migration/deploy | APP 0033 only, AUTH migration none, pending `0 / 0`, canonical guarded Worker deploy and root/auth checks | PENDING |
+| D116B-DB | Post-migration integrity | APP/AUTH quick_check, FK, duplicate/orphan/correlation/guard probes, read-only `rows_written=0` | PENDING |
+| D116B-BROWSER | Authenticated feature behavior | Existing authorized session only; no credential retrieval; feature verification not yet performed | NOT_RUN |
+| D116B-BOUNDARY | Scope | No AUTH migration, production, restore, dependency, or release operation | PASS / NOT_RUN / NO |
+
+Wrangler emitted a local log-directory `EPERM` diagnostic and the existing Vite chunk-size warning; successful commands exited `0`. GitHub Actions, remote migration/deploy, backup/recovery validation, and authenticated browser evidence remain pending and are not implied by local PASS.
+
 ## D-115 Web Today / Notes UI Refinement v0.1 — local / CI / nonprod closeout
 
 | ID | Verification target | Evidence | Status |

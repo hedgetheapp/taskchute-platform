@@ -2,6 +2,18 @@
 
 Statuses: Approved / Proposed / Superseded
 
+## D-116B — Completed Entry to Future Routine Atomic Conversion v0.1
+
+Status: **Approved**
+
+Canonical Decision: `docs/decisions/D-116B_COMPLETED_ENTRY_TO_FUTURE_ROUTINE_V01.md`。
+
+D-116Bはcurrent established Dayのcompleted ordinary Entryから、future-onlyの
+daily Routineを一度だけ作成するatomic commandと、Entry→RoutineDefinitionのowner-scoped
+correlationを定める。Source Project / ModeはD-116Aで訂正可能なEntry historical snapshotがauthorityで、
+shared Taskのlive Projectは使わない。Source Entry / Task / Execution historyは変更せず、
+correlationはRoutineOccurrence identityではない。承認migrationは相関tableと新operation allow-list値だけ。
+
 ## D-116A — Completed Entry Project / Mode Historical Correction v0.1
 
 Status: **Approved**

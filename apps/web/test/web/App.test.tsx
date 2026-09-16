@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   reorderEntries: vi.fn(), startEntry: vi.fn(), interruptEntry: vi.fn(), completeEntry: vi.fn(), setExecutionTimes: vi.fn(), updateTaskMetadata: vi.fn(), setEntryMode: vi.fn(),
   establishInitialSectionConfiguration: vi.fn(), moveEntry: vi.fn(), setEntryEstimate: vi.fn(),
   setEntryPlannedStart: vi.fn(),
-  convertEntryToRoutine: vi.fn(), endRoutine: vi.fn(), setRoutineEstimate: vi.fn(), setRoutineSectionPlan: vi.fn(),
+  convertEntryToRoutine: vi.fn(), createFutureRoutineFromCompletedEntry: vi.fn(), endRoutine: vi.fn(), setRoutineEstimate: vi.fn(), setRoutineSectionPlan: vi.fn(),
   loadRoutines: vi.fn(), createRoutine: vi.fn(), setRoutineEnabled: vi.fn(), updateRoutine: vi.fn(), reorderRoutines: vi.fn(),
   loadSectionConfiguration: vi.fn(), updateSectionConfiguration: vi.fn(), loadModeBoard: vi.fn(),
   loadAutoCarryOverduePlannedSetting: vi.fn(), setAutoCarryOverduePlanned: vi.fn(),
@@ -269,6 +269,7 @@ beforeEach(() => {
   mocks.setEntryEstimate.mockResolvedValue({});
   mocks.setEntryPlannedStart.mockResolvedValue({});
   mocks.convertEntryToRoutine.mockResolvedValue({});
+  mocks.createFutureRoutineFromCompletedEntry.mockResolvedValue({});
   mocks.endRoutine.mockResolvedValue({});
   mocks.setRoutineEstimate.mockResolvedValue({});
   mocks.setRoutineSectionPlan.mockResolvedValue({});
@@ -6343,6 +6344,109 @@ describe("Dogfood Day shell", () => {
     await waitFor(() => expect(mocks.setEntryMode).toHaveBeenCalledTimes(2));
     expect(mocks.setEntryMode.mock.calls[1]![0]).toEqual(modeRequest);
     await waitFor(() => expect((screen.getByRole("combobox", { name: "Canonical taskのMode" }) as unknown as HTMLSelectElement).value).toBe(newModeId));
+  });
+
+  it("creates one future Routine from an eligible completed Entry and converges without changing its lifecycle", async () => {
+    const source: EntryProjection = { ...firstEntry, lifecycle_state: "completed", execution_summary: {
+      first_started_at: "2026-08-22T10:00:00.000Z", last_ended_at: "2026-08-22T10:30:00.000Z",
+      completed_duration_seconds: 1800, active_started_at: null, last_outcome: "interrupted",
+      executions: [
+        { id: "019c0000-0000-7000-8000-000000000094", entry_id: firstEntry.id,
+          started_at: "2026-08-22T09:00:00.000Z", ended_at: "2026-08-22T09:10:00.000Z", outcome: "completed" },
+        { id: "019c0000-0000-7000-8000-000000000095", entry_id: firstEntry.id,
+          started_at: "2026-08-22T10:00:00.000Z", ended_at: "2026-08-22T10:30:00.000Z", outcome: "interrupted" },
+      ],
+    } };
+    const sourceDay: CurrentTaskChuteDayProjection = { ...populatedDay,
+      sections: [{ ...populatedDay.sections[0]!, entries: [source] }, populatedDay.sections[1]!], next_entry: null };
+    const linkedSource = { ...source, future_routine_definition_id: "019c0000-0000-7000-8000-000000000090" };
+    const linkedDay: CurrentTaskChuteDayProjection = { ...sourceDay,
+      sections: [{ ...sourceDay.sections[0]!, entries: [linkedSource] }, sourceDay.sections[1]!], next_entry: null };
+    let dayLoads = 0;
+    mocks.loadDay.mockImplementation(async () => dayLoads++ === 0 ? sourceDay : linkedDay);
+    mocks.loadRoutines.mockResolvedValue({ board_revision: 17, current_logical_date: "2026-08-22", sections: [], routines: [] });
+    render(<App />);
+
+    const action = await screen.findByRole("button", { name: "Canonical taskから将来のルーティンを作成" });
+    fireEvent.click(action);
+    fireEvent.click(action);
+    await waitFor(() => expect(mocks.createFutureRoutineFromCompletedEntry).toHaveBeenCalledTimes(1));
+    const request = mocks.createFutureRoutineFromCompletedEntry.mock.calls[0]![0];
+    expect(request).toMatchObject({ source_entry_id: source.id, expected_board_revision: 17 });
+    expect(request.task_id).not.toBe(source.task.id);
+    expect(request.routine_definition_id).not.toBe(source.id);
+    await waitFor(() => expect(screen.getByLabelText("Canonical taskから将来のルーティンを作成済み")).toBeTruthy());
+    expect(linkedSource.lifecycle_state).toBe("completed");
+    expect(linkedSource.routine).toBeNull();
+    expect(screen.queryByRole("button", { name: "Canonical taskから将来のルーティンを作成" })).toBeNull();
+    const linkedMenu = await openOverflowMenu();
+    expect(within(linkedMenu).queryByRole("menuitem", { name: "削除" })).toBeNull();
+  });
+
+  it("retains the exact future-Routine request after ambiguity, blocks navigation, and retries it unchanged", async () => {
+    const source: EntryProjection = { ...firstEntry, lifecycle_state: "completed", execution_summary: {
+      first_started_at: "2026-08-22T10:00:00.000Z", last_ended_at: "2026-08-22T10:30:00.000Z",
+      completed_duration_seconds: 1800, active_started_at: null, last_outcome: "completed",
+    } };
+    const sourceDay: CurrentTaskChuteDayProjection = { ...populatedDay,
+      sections: [{ ...populatedDay.sections[0]!, entries: [source] }, populatedDay.sections[1]!], next_entry: null };
+    const linkedDay: CurrentTaskChuteDayProjection = { ...sourceDay,
+      sections: [{ ...sourceDay.sections[0]!, entries: [{ ...source, future_routine_definition_id: "019c0000-0000-7000-8000-000000000091" }] }, sourceDay.sections[1]!], next_entry: null };
+    let dayLoads = 0;
+    mocks.loadDay.mockImplementation(async () => {
+      dayLoads += 1;
+      return dayLoads < 3 ? sourceDay : linkedDay;
+    });
+    mocks.createFutureRoutineFromCompletedEntry.mockRejectedValueOnce(new TypeError("response lost before outcome"))
+      .mockResolvedValueOnce({});
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskから将来のルーティンを作成" }));
+    const retry = await screen.findByRole("button", { name: "保留中の将来ルーティン作成を再試行" });
+    const exactRequest = mocks.createFutureRoutineFromCompletedEntry.mock.calls[0]![0];
+    fireEvent.click(screen.getByRole("button", { name: "設定" }));
+    expect(screen.getByRole("region", { name: "DayBoard" })).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Section設定" })).toBeNull();
+    expect(screen.getByText(/結果が未確定/)).toBeTruthy();
+
+    fireEvent.click(retry);
+    await waitFor(() => expect(mocks.createFutureRoutineFromCompletedEntry).toHaveBeenCalledTimes(2));
+    expect(mocks.createFutureRoutineFromCompletedEntry.mock.calls[1]![0]).toEqual(exactRequest);
+    await screen.findByLabelText("Canonical taskから将来のルーティンを作成済み");
+    expect(screen.queryByRole("button", { name: "保留中の将来ルーティン作成を再試行" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "設定" }));
+    await screen.findByRole("region", { name: "Section設定" });
+  });
+
+  it("does not offer completed-to-future-Routine creation without current-Day completed ordinary history", async () => {
+    const completed: EntryProjection = { ...firstEntry, lifecycle_state: "completed", execution_summary: {
+      first_started_at: "2026-08-22T10:00:00.000Z", last_ended_at: "2026-08-22T10:30:00.000Z",
+      completed_duration_seconds: 1800, active_started_at: null, last_outcome: "completed",
+    } };
+    const routine: EntryProjection = { ...completed, routine: {
+      routine_definition_id: "019c0000-0000-7000-8000-000000000092", routine_occurrence_id: "019c0000-0000-7000-8000-000000000093",
+      end_logical_date: null, can_end: false, default_section_id: null, default_planned_start_minute: null,
+      section_plan_override_present: false, default_estimate_seconds: null, estimate_override_present: false, defaults_revision: 0,
+    } };
+    const ineligible: CurrentTaskChuteDayProjection[] = [
+      { ...populatedDay, sections: [{ ...populatedDay.sections[0]!, entries: [{ ...completed, execution_summary: undefined }] }, populatedDay.sections[1]!] },
+      { ...populatedDay, sections: [{ ...populatedDay.sections[0]!, entries: [{ ...completed, execution_summary: {
+        ...completed.execution_summary!, last_outcome: "interrupted",
+        executions: [{ id: "019c0000-0000-7000-8000-000000000096", entry_id: completed.id,
+          started_at: "2026-08-22T10:00:00.000Z", ended_at: "2026-08-22T10:30:00.000Z", outcome: "interrupted" }],
+      } }] }, populatedDay.sections[1]!] },
+      { ...populatedDay, sections: [{ ...populatedDay.sections[0]!, entries: [{ ...completed, lifecycle_state: "running" }] }, populatedDay.sections[1]!] },
+      { ...populatedDay, sections: [{ ...populatedDay.sections[0]!, entries: [routine] }, populatedDay.sections[1]!] },
+      { ...populatedDay, is_current: false, sections: [{ ...populatedDay.sections[0]!, entries: [completed] }, populatedDay.sections[1]!] },
+    ];
+    for (const projection of ineligible) {
+      mocks.loadDay.mockResolvedValue(projection);
+      render(<App />);
+      await screen.findByText("Canonical task");
+      expect(screen.queryByRole("button", { name: "Canonical taskから将来のルーティンを作成" })).toBeNull();
+      expect(mocks.createFutureRoutineFromCompletedEntry).not.toHaveBeenCalled();
+      cleanup();
+    }
   });
 
   it("implements X selection semantics and suppresses it in inputs and modal ownership", async () => {

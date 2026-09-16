@@ -365,6 +365,8 @@ export interface EntryProjection {
   lifecycle_state: "planned" | "running" | "completed";
   estimate_seconds: number | null;
   planned_start_minute: number | null;
+  /** D-116B source correlation; this does not make the Entry a RoutineOccurrence. */
+  future_routine_definition_id?: string | null;
   /** D-068 Mode projection; optional for compatibility with older fixtures/clients. */
   mode?: { id: string; title: string; source: "live" | "snapshot" } | null;
   routine: RoutineEntryProjection | null;
@@ -1036,6 +1038,25 @@ export interface CreateRoutineResult {
   board_position: number;
   board_revision: number;
   settings_revision: number;
+}
+
+export interface CreateFutureRoutineFromCompletedEntryRequest {
+  operation_id: string;
+  source_entry_id: string;
+  task_id: string;
+  routine_definition_id: string;
+  expected_board_revision: number;
+}
+
+export interface CreateFutureRoutineFromCompletedEntryResult {
+  source_entry_id: string;
+  task_id: string;
+  routine_definition_id: string;
+  board_position: number | null;
+  board_revision: number;
+  settings_revision: number;
+  start_logical_date: string;
+  source_was_already_converted: boolean;
 }
 
 export interface SetRoutineEnabledRequest {

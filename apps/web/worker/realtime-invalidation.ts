@@ -27,7 +27,7 @@ export function realtimeScopesForMutation(request: Request): RealtimeScope[] {
     return [{ kind: "modes" }, { kind: "routines" }, { kind: "day" }];
   }
   if (path.startsWith("/api/v1/routines") || path.endsWith("/routine") || path.endsWith("/routine-estimate")
-    || path.endsWith("/routine-section-plan")) return [{ kind: "routines" }, { kind: "day" }];
+    || path.endsWith("/routine-section-plan") || path.endsWith("/future-routine")) return [{ kind: "routines" }, { kind: "day" }];
   if (path.startsWith("/api/v1/taskchute-days") || path.startsWith("/api/v1/entries/")) return [{ kind: "day" }];
   return [];
 }

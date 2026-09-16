@@ -163,6 +163,12 @@ actualの開始 / 終了は旧dialogではなく、row内のStart / End cellを�
 
 completed current-Day rowのfar-right overflowは`複製`だけを提供する。複製先は新しいordinary planned Task / Entryであり、actual fact・Routine relation・completed lifecycleをコピーしない。completed sourceのdelete / date moveや、invalid planning pairの自動normalizationはUIから提供しない。D-060のProject selector、actual editor、completed duplicateのvisual polishは既存Day Tableのcolumn order、surface fill、stable scrollbar gutter、checkbox geometry、full-row D&Dと共存させる。
 
+For D-116B, an eligible current-Day completed ordinary Entry shows `ルーティン化`
+in the existing Routine cell. After success, a linked future-Routine state is
+shown instead of another create action and is visibly/accessibly distinct from
+the badge for an actual Routine occurrence. The canonical Day refetch supplies
+the source correlation; pending state prevents a second dispatch.
+
 historical UI design referenceはbranch `docs/design-guidelines`、commit `e91bc916ccac5e9b95221602c4e4b2be90455ad6`に残る。ただし、その文書全体はDraft referenceであり、current canonical docsとのreconciliationを終えていないsectionを暗黙にApprovedへ昇格しない。
 
 ## Desktop Web navigation shell

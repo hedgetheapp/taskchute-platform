@@ -106,6 +106,12 @@ export async function deleteCompletedEntry(
   if (target.execution_count === 0) {
     return reject(db, appUserId, request, requestFingerprint, "resource_conflict", "A completed Entry must have Execution history");
   }
+  const futureRoutineLink = await db.prepare(`SELECT 1 AS linked FROM completed_entry_future_routines
+    WHERE app_user_id = ? AND source_entry_id = ?`).bind(appUserId, request.entry_id).first();
+  if (futureRoutineLink) {
+    return reject(db, appUserId, request, requestFingerprint, "resource_conflict",
+      "This completed Entry is linked to a future Routine and cannot be deleted");
+  }
 
   const executionRows = await db.prepare(`SELECT id FROM executions
     WHERE app_user_id = ? AND entry_id = ? ORDER BY id`).bind(appUserId, request.entry_id).all<{ id: string }>();
@@ -129,6 +135,8 @@ export async function deleteCompletedEntry(
               AND e.id = ? AND e.lifecycle_state = 'completed'
               AND EXISTS (SELECT 1 FROM executions x WHERE x.app_user_id = e.app_user_id AND x.entry_id = e.id)
               AND NOT EXISTS (SELECT 1 FROM executions x WHERE x.app_user_id = e.app_user_id AND x.entry_id = e.id AND x.ended_at IS NULL)
+              AND NOT EXISTS (SELECT 1 FROM completed_entry_future_routines c
+                WHERE c.app_user_id = e.app_user_id AND c.source_entry_id = e.id)
           )`)
         .bind(request.operation_id, request.expected_placement_revision, appUserId, request.taskchute_day_id,
           currentLogicalDate, request.expected_placement_revision, request.entry_id),
@@ -188,6 +196,12 @@ export async function deleteCompletedEntry(
     if (guard.meta.changes === 0) {
       const committed = await readOperation(db, appUserId, request.operation_id);
       if (committed) return replayOperation<DeleteCompletedEntryResult>(committed, "DeleteCompletedEntry", requestFingerprint);
+      const linked = await db.prepare(`SELECT 1 AS linked FROM completed_entry_future_routines
+        WHERE app_user_id = ? AND source_entry_id = ?`).bind(appUserId, request.entry_id).first();
+      if (linked) {
+        return reject(db, appUserId, request, requestFingerprint, "resource_conflict",
+          "This completed Entry is linked to a future Routine and cannot be deleted");
+      }
       const latest = await db.prepare("SELECT placement_revision FROM taskchute_days WHERE app_user_id = ? AND id = ?")
         .bind(appUserId, request.taskchute_day_id).first<{ placement_revision: number }>();
       if (latest?.placement_revision !== request.expected_placement_revision) {
@@ -209,6 +223,12 @@ export async function deleteCompletedEntry(
   } catch {
     const committed = await readOperation(db, appUserId, request.operation_id);
     if (committed) return replayOperation<DeleteCompletedEntryResult>(committed, "DeleteCompletedEntry", requestFingerprint);
+    const linked = await db.prepare(`SELECT 1 AS linked FROM completed_entry_future_routines
+      WHERE app_user_id = ? AND source_entry_id = ?`).bind(appUserId, request.entry_id).first();
+    if (linked) {
+      return reject(db, appUserId, request, requestFingerprint, "resource_conflict",
+        "This completed Entry is linked to a future Routine and cannot be deleted");
+    }
     throw new HttpError(503, "infrastructure_ambiguous", "The completed Entry deletion outcome is unknown; reload canonical state and retry", true);
   }
 }

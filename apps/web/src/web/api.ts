@@ -67,6 +67,8 @@ import type {
   RoutineBoardProjection,
   CreateRoutineRequest,
   CreateRoutineResult,
+  CreateFutureRoutineFromCompletedEntryRequest,
+  CreateFutureRoutineFromCompletedEntryResult,
   SetRoutineEnabledRequest,
   SetRoutineEnabledResult,
   UpdateRoutineRequest,
@@ -376,6 +378,9 @@ export const api = {
   },
   createRoutine(body: CreateRoutineRequest): Promise<CreateRoutineResult> {
     return requestJson("/api/v1/routines", jsonPost("", body));
+  },
+  createFutureRoutineFromCompletedEntry(body: CreateFutureRoutineFromCompletedEntryRequest): Promise<CreateFutureRoutineFromCompletedEntryResult> {
+    return requestJson(`/api/v1/entries/${body.source_entry_id}/future-routine`, jsonPost("", body));
   },
   setRoutineEnabled(body: SetRoutineEnabledRequest): Promise<SetRoutineEnabledResult> {
     return requestJson(`/api/v1/routines/${body.routine_definition_id}/enabled`, jsonPost("", body));

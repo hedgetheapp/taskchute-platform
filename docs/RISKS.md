@@ -9,7 +9,12 @@ Project as a substitute. An eligible completed Entry with a missing Project
 snapshot therefore fails closed and cannot be corrected through this path until
 the data-integrity anomaly is separately understood. Mode correction remains
 Entry-scoped and atomically updates the existing live relation and historical
-snapshot. D-116B must copy these corrected Entry-level historical values.
+snapshot. D-116B must copy these corrected Entry-level historical values. Once
+D-116B creates a source correlation, its RESTRICT relationship intentionally
+prevents hard deletion of that completed Entry, including after the linked Routine
+is archived or soft-deleted. The existing UI hides completed hard-delete for that
+source, and the Worker returns a deterministic conflict for direct/concurrent
+attempts instead of exposing a raw foreign-key failure.
 
 ## R-071 — D-114 Android Settings management boundary
 

@@ -45,6 +45,7 @@ import type {
   SectionConfigurationProjection,
   UpdateSectionConfigurationRequest,
   ConvertEntryToRoutineRequest,
+  CreateFutureRoutineFromCompletedEntryRequest,
   EndRoutineRequest,
   SetRoutineEstimateRequest,
   SetRoutineSectionPlanRequest,
@@ -625,6 +626,7 @@ function transientStatusText(pending: string | null): string | null {
     case "estimate": return "見積を保存・照合中…";
     case "planned-start": return "開始予定を保存・照合中…";
     case "routine-convert": return "Routine化・照合中…";
+    case "future-routine": return "将来のルーティンを作成・照合中…";
     case "routine-end": return "Routine終了・照合中…";
     case "routine-edit": return "Routine設定を保存・照合中…";
     case "day-navigation": return "日付を読み込み中…";
@@ -892,6 +894,7 @@ export function App() {
   const [autoCarrySettingOperation, setAutoCarrySettingOperation] = useState<SetAutoCarryOverduePlannedRequest | null>(null);
   const [autoCarrySettingNotice, setAutoCarrySettingNotice] = useState<string | null>(null);
   const [routineConversionOperation, setRoutineConversionOperation] = useState<ConvertEntryToRoutineRequest | null>(null);
+  const [futureRoutineOperation, setFutureRoutineOperation] = useState<CreateFutureRoutineFromCompletedEntryRequest | null>(null);
   const [routineEndOperation, setRoutineEndOperation] = useState<EndRoutineRequest | null>(null);
   const [routineEstimateOperation, setRoutineEstimateOperation] = useState<SetRoutineEstimateRequest | null>(null);
   const [retainedRoutineEstimateOperations, setRetainedRoutineEstimateOperations] = useState<SetRoutineEstimateRequest[]>([]);
@@ -918,7 +921,7 @@ export function App() {
   const [executionEditorError, setExecutionEditorError] = useState<string | null>(null);
   const [routineDraft, setRoutineDraft] = useState<{ entryId: string; endDate: string } | null>(null);
   const [routineCandidate, setRoutineCandidate] = useState<RoutineCandidate | null>(null);
-  const [pending, setPending] = useState<"login" | "project" | "project-settings" | "day-navigation" | "task" | "task-note" | "duplicate" | "bulk-delete" | "delete-completed" | "bulk-date-move" | "bulk-section" | "bulk-section-occurrence" | "bulk-section-scoped" | "bulk-estimate" | "reorder" | "start" | "interrupt" | "complete" | "execution-times" | "task-metadata" | "mode" | "configuration" | "section-settings" | "auto-carry-setting" | "move" | "estimate" | "planned-start" | "routine-convert" | "routine-end" | "routine-edit" | "logout" | null>(null);
+  const [pending, setPending] = useState<"login" | "project" | "project-settings" | "day-navigation" | "task" | "task-note" | "duplicate" | "bulk-delete" | "delete-completed" | "bulk-date-move" | "bulk-section" | "bulk-section-occurrence" | "bulk-section-scoped" | "bulk-estimate" | "reorder" | "start" | "interrupt" | "complete" | "execution-times" | "task-metadata" | "mode" | "configuration" | "section-settings" | "auto-carry-setting" | "move" | "estimate" | "planned-start" | "routine-convert" | "future-routine" | "routine-end" | "routine-edit" | "logout" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draftTask, setDraftTask] = useState<DraftTask | null>(null);
   const [pendingFocusKey, setPendingFocusKey] = useState<string | null>(null);
@@ -1025,13 +1028,13 @@ export function App() {
     ?? retryableEstimateOperation ?? retryableRetainedEstimateOperations[0] ?? retryablePlannedStartOperation;
   const nonD066RetainedOperation = projectOperation ?? duplicateOperation ?? bulkDeleteOperation ?? deleteCompletedOperation ?? bulkDateMoveOperation ?? bulkSectionOperation
     ?? bulkSectionOccurrenceOperation ?? bulkSectionScopedOperation ?? bulkEstimateOperation ?? executionTimesOperation
-    ?? configurationOperation ?? sectionSettingsOperation ?? routineConversionOperation ?? routineEndOperation ?? routineEstimateOperation
+    ?? configurationOperation ?? sectionSettingsOperation ?? routineConversionOperation ?? futureRoutineOperation ?? routineEndOperation ?? routineEstimateOperation
     ?? retainedRoutineEstimateOperations[0] ?? routineModeOperation ?? retainedRoutineModeOperations[0]
     ?? routineSectionPlanOperation ?? autoCarrySettingOperation;
   const retryablePanelOperation = nonD066RetainedOperation ?? retryableDayOperation ?? retryableModeOperation;
   const retainedOperation = projectOperation ?? taskOperation ?? duplicateOperation ?? bulkDeleteOperation ?? deleteCompletedOperation ?? bulkDateMoveOperation ?? bulkSectionOperation ?? bulkSectionOccurrenceOperation ?? bulkSectionScopedOperation ?? bulkEstimateOperation ?? reorderOperation ?? startOperation ?? interruptOperation ?? completeOperation ?? executionTimesOperation ?? taskMetadataOperation ?? retainedTaskMetadataOperations[0] ?? retainedEstimateOperations[0]
     ?? configurationOperation ?? sectionSettingsOperation ?? sectionMoveOperation ?? estimateOperation ?? plannedStartOperation
-    ?? routineConversionOperation ?? routineEndOperation ?? routineEstimateOperation ?? retainedRoutineEstimateOperations[0] ?? routineSectionPlanOperation
+    ?? routineConversionOperation ?? futureRoutineOperation ?? routineEndOperation ?? routineEstimateOperation ?? retainedRoutineEstimateOperations[0] ?? routineSectionPlanOperation
     ?? routineModeOperation ?? retainedRoutineModeOperations[0] ?? autoCarrySettingOperation ?? modeOperation
     ?? retainedModeOperations[0] ?? null;
   realtimeMutationBarrierRef.current = pendingMutationCount > 0 || retainedOperation !== null;
@@ -1145,6 +1148,7 @@ export function App() {
     retainedEstimateOperations.forEach((operation) => add(entryMutationScope(operation.entry_id), operation.operation_id));
     if (plannedStartOperation) add(placementMutationScope(plannedStartOperation.request.taskchute_day_id), plannedStartOperation.request.operation_id);
     if (routineConversionOperation) add(placementMutationScope(routineConversionOperation.taskchute_day_id), routineConversionOperation.operation_id);
+    if (futureRoutineOperation) add(routineMutationScope(futureRoutineOperation.source_entry_id), futureRoutineOperation.operation_id);
     if (routineEndOperation) add([`routine:${routineEndOperation.routine_definition_id}`], routineEndOperation.operation_id);
     if (routineEstimateOperation) add(routineEstimateMutationScope(routineEstimateOperation), routineEstimateOperation.operation_id);
     retainedRoutineEstimateOperations.forEach((operation) => add(routineEstimateMutationScope(operation), operation.operation_id));
@@ -1723,6 +1727,7 @@ export function App() {
     setSectionSettingsDraft(null);
     setSectionSettingsNotice(null);
     setRoutineConversionOperation(null);
+    setFutureRoutineOperation(null);
     setRoutineEndOperation(null);
     setRoutineEstimateOperation(null);
     setRetainedRoutineEstimateOperations([]);
@@ -2345,6 +2350,10 @@ export function App() {
   async function canLeaveNotes(): Promise<boolean> {
     if (sessionBarrierRef.current !== null) {
       setError("セッションの再認証が必要なため、このタブの内容を保持したまま再認証してください。");
+      return false;
+    }
+    if (futureRoutineOperation) {
+      setError("完了Taskから作成するルーティンの結果が未確定です。元の操作を再試行して結果を確認してください。");
       return false;
     }
     const taskNoteSnapshot = [...taskNoteWindowsRef.current].sort((a, b) => a.stackOrder - b.stackOrder);
@@ -5378,6 +5387,66 @@ export function App() {
     } finally { endMutationScope(mutationToken); setPending(null); }
   }
 
+  async function executeFutureRoutineCreation(operation: CreateFutureRoutineFromCompletedEntryRequest) {
+    const mutationToken = beginMutationScope(
+      [...routineMutationScope(operation.source_entry_id), "routine-board"],
+      "将来のルーティン作成",
+    );
+    if (!mutationToken) return;
+    setPending("future-routine"); setError(null);
+    try {
+      await api.createFutureRoutineFromCompletedEntry(operation);
+      setFutureRoutineOperation((current) => current?.operation_id === operation.operation_id ? null : current);
+      try {
+        await reconcile();
+      } catch (caught) {
+        setError(caught instanceof Error ? `ルーティンは作成されましたがTodayを再読み込みできませんでした: ${caught.message}`
+          : "ルーティンは作成されましたがTodayを再読み込みできませんでした");
+      }
+    } catch (caught) {
+      const ambiguous = isAmbiguousOutcome(caught);
+      if (caught instanceof ApiClientError && caught.status === 401) handleUnauthorized();
+      setError(caught instanceof Error ? caught.message : "完了Taskからのルーティン作成に失敗しました");
+      if (!ambiguous) {
+        setFutureRoutineOperation((current) => current?.operation_id === operation.operation_id ? null : current);
+      } else {
+        try {
+          const projection = await reconcile();
+          const canonical = projection ? projectionEntries(projection).find((entry) => entry.id === operation.source_entry_id) : null;
+          if (canonical?.future_routine_definition_id) {
+            setFutureRoutineOperation((current) => current?.operation_id === operation.operation_id ? null : current);
+            setError(null);
+          }
+        } catch { /* Retain the immutable request until exact replay or canonical correlation proves the outcome. */ }
+      }
+    } finally {
+      endMutationScope(mutationToken);
+      setPending(null);
+    }
+  }
+
+  async function createFutureRoutineFromEntry(entry: EntryProjection) {
+    if (!day?.taskchute_day.id || !day.is_current || !day.planning_enabled
+      || entry.lifecycle_state !== "completed" || entry.routine !== null
+      || entry.future_routine_definition_id || !hasCompletedExecutionHistory(entry)
+      || futureRoutineOperation || pending !== null || mutationLocked) return;
+    setPending("future-routine"); setError(null);
+    try {
+      const board = await api.loadRoutines();
+      const operation: CreateFutureRoutineFromCompletedEntryRequest = {
+        operation_id: uuidv7(), source_entry_id: entry.id, task_id: uuidv7(),
+        routine_definition_id: uuidv7(), expected_board_revision: board.board_revision,
+      };
+      setFutureRoutineOperation(operation);
+      await executeFutureRoutineCreation(operation);
+    } catch (caught) {
+      if (caught instanceof ApiClientError && caught.status === 401) handleUnauthorized();
+      setError(caught instanceof Error ? caught.message : "Routine Boardを読み込めませんでした");
+    } finally {
+      setPending((current) => current === "future-routine" ? null : current);
+    }
+  }
+
   async function commitRoutineConversion(entry: EntryProjection) {
     if (!day?.taskchute_day.id || !day.is_current || mutationLocked || routineDraft?.entryId !== entry.id || entry.routine !== null) return;
     const endLogicalDate = routineDraft.endDate.trim() || null;
@@ -6061,12 +6130,30 @@ export function App() {
       && entry.lifecycle_state === "planned"
       && entry.routine === null;
     const routineEditorOpen = routineDraft?.entryId === entry.id;
+    const futureRoutineEligible = currentDay.is_current && currentDay.taskchute_day.id !== null
+      && currentDay.planning_enabled && entry.lifecycle_state === "completed"
+      && entry.routine === null && hasCompletedExecutionHistory(entry);
+    const futureRoutinePending = futureRoutineOperation?.source_entry_id === entry.id;
     return (
       <div className="routine-cell" data-day-column-cell="routine" onClick={(event) => event.stopPropagation()}>
         {entry.routine ? (
           <span className="routine-badge routine-icon routine-active" aria-label={`${entry.task.title}はルーティン`} title="ルーティン">
             <RoutineIcon /><span className="sr-only">Routine</span>
           </span>
+        ) : entry.future_routine_definition_id ? (
+          <span className="routine-badge routine-icon routine-active" aria-label={`${entry.task.title}から将来のルーティンを作成済み`} title="将来のルーティン作成済み">
+            <RoutineIcon /><span className="sr-only">将来のルーティン作成済み</span>
+          </span>
+        ) : futureRoutinePending ? (
+          <span className="routine-editor-status" role="status">結果確認中…</span>
+        ) : futureRoutineEligible ? (
+          <button type="button" className="routine-action routine-icon routine-muted"
+            aria-label={`${entry.task.title}から将来のルーティンを作成`} title="将来のルーティンを作成"
+            disabled={pending !== null || mutationLocked || futureRoutineOperation !== null
+              || isMutationScopeBusy(routineMutationScope(entry.id))}
+            onClick={(event) => { event.stopPropagation(); void createFutureRoutineFromEntry(entry); }}>
+            <RoutineIcon />
+          </button>
         ) : routineEditorOpen ? (
           <span className="routine-editor-status" aria-live="polite">Routine設定中…</span>
         ) : routineActionAvailable ? (
@@ -7156,7 +7243,8 @@ export function App() {
                 const canMoveDate = isBulkSelectableProjectionEntry(currentDay, entry);
                 const canEditPlanning = day.planning_enabled && entry.lifecycle_state === "planned";
                 const canDuplicate = day.is_current && Boolean(day.taskchute_day.id) && entry.lifecycle_state === "completed";
-                const canDeleteCompleted = day.is_current && Boolean(day.taskchute_day.id) && entry.lifecycle_state === "completed";
+                const canDeleteCompleted = day.is_current && Boolean(day.taskchute_day.id)
+                  && entry.lifecycle_state === "completed" && !entry.future_routine_definition_id;
                 const hasOverflowActions = canMoveDate || canEditPlanning || canDuplicate || canDeleteCompleted;
                 const completeRetained = isRetainedComplete(completeOperation);
                 const draftPlacement = draftTask?.placement;
@@ -7351,6 +7439,7 @@ export function App() {
           ))}
           {retryablePlannedStartOperation && <button type="button" onClick={() => enqueueRetainedRetry("開始予定保存", placementMutationScope(retryablePlannedStartOperation.request.taskchute_day_id), () => executePlannedStart(retryablePlannedStartOperation))}>保留中の開始予定保存を再試行</button>}
           {routineConversionOperation && <button type="button" onClick={() => void executeRoutineConversion(routineConversionOperation)}>保留中のRoutine化を再試行</button>}
+          {futureRoutineOperation && <button type="button" onClick={() => void executeFutureRoutineCreation(futureRoutineOperation)}>保留中の将来ルーティン作成を再試行</button>}
           {routineEndOperation && <button type="button" onClick={() => void executeRoutineEnd(routineEndOperation)}>保留中のRoutine終了を再試行</button>}
           {routineEstimateOperation && <button type="button" onClick={() => void executeRoutineEstimate(routineEstimateOperation)}>保留中のRoutine見積を再試行</button>}
           {retainedRoutineEstimateOperations.filter((operation) => operation.operation_id !== routineEstimateOperation?.operation_id).map((operation) => (
@@ -7361,14 +7450,14 @@ export function App() {
             <button type="button" key={operation.operation_id} onClick={() => retryRoutineMode(operation)}>保留中のRoutine Modeを再試行</button>
           ))}
           {routineSectionPlanOperation && <button type="button" onClick={() => void executeRoutineSectionPlan(routineSectionPlanOperation)}>保留中のRoutine配置を再試行</button>}
-          <button type="button" className="secondary" onClick={() => {
+          {futureRoutineOperation === null && <button type="button" className="secondary" onClick={() => {
              setProjectOperation(null); setTaskOperation(null); setDuplicateOperation(null); setBulkDeleteOperation(null); setDeleteCompletedOperation(null); setQueuedDeleteCompletedOperation(null); setCompletedDeleteConfirmation(null); setBulkDateMoveOperation(null); setBulkSectionOperation(null); setBulkSectionOccurrenceOperation(null); setBulkSectionScopedOperation(null); setBulkEstimateOperation(null); setBulkSectionPickerOpen(false); setBulkConfirmation(null); setBulkSectionConfirmation(null); setBulkEstimateConfirmation(null); setBulkDateMoveConfirmation(null); setSelectedEntryIds([]); setReorderOperation(null); setStartOperation(null); setInterruptOperation(null); setCompleteOperation(null); setExecutionTimesOperation(null); setTaskMetadataOperation(null);
             dayMutationQueueRef.current = []; dayMutationPausedRef.current = false; updateDayMutationQueueCount();
             setRetainedTaskMetadataOperations([]); setPendingTaskMetadataOverlays({}); setPendingEstimateOverlays({}); setPendingPlannedStartOverlays({}); setPendingSectionOverlays({}); updatePendingReorderOverlays(() => ({})); setPendingAddTasks([]); setPendingExecutionTimesOverlays({}); setRetainedEstimateOperations([]); setRetainedRoutineEstimateOperations([]);
             setConfigurationOperation(null); setSectionSettingsOperation(null); setSectionMoveOperation(null); setEstimateOperation(null); setPlannedStartOperation(null);
             setRoutineConversionOperation(null); setRoutineEndOperation(null); setRoutineEstimateOperation(null); setRoutineModeOperation(null);
              setRoutineSectionPlanOperation(null); setRetainedRoutineModeOperations([]); setPendingRoutineModeOverlays({}); setModeOperation(null); setRetainedModeOperations([]); setPendingModeOverlays({}); setRoutineCandidate(null); setError(null);
-          }}>保留中のclient操作を破棄</button>
+          }}>保留中のclient操作を破棄</button>}
         </section>
       )}
 

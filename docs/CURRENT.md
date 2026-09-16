@@ -1,5 +1,15 @@
 # Current
 
+### D-116B Completed Entry to future Routine v0.1 — local verification complete; persistent nonprod pending
+
+D-116Bは、current established logical Day上のcompleted ordinary Entryから、completed Execution historyを根拠にfuture-only daily Routineを一度だけ作る。source Entry / Task / Execution / historical snapshotsは変更せず、`routine_occurrence_id`もNULLのまま保持する。Task titleとEntry-level Project / Mode snapshot、現在も有効なSection/planned-start pair、Entry estimateをserver-sideで検証してコピーする。APP 0033はowner-scoped source correlationとoperation command allow-listだけを追加し、既存行のbackfill・AUTH migrationは行わない。
+
+atomic `CreateFutureRoutineFromCompletedEntry` commandはexisting fingerprint / exact replayを使用し、same-sourceの異なるoperationや並行要求も一つのRoutineへ収束する。Routine Board revision・owner/source・source metadata・current logical Day settingsをmutation boundaryで再検証し、realtimeは既存`routines` / `day` scopesを再利用する。correlation付きsourceは後続Routineがarchive/soft-deleteされても再変換・hard-deleteされず、削除は明示的domain conflictになる。
+
+Local evidence: D116B focused Worker/D1 `18 / 18`、delete/runtime focused regressionsを含む`3 files / 60 tests`、focused App `1 passed`、bounded migration `0001 → 0033` fresh / `0032 → 0033` upgrade preservationはPASS。full Worker/D1 `37 files / 330 tests`、full Web `14 files / 462 tests`、typecheck、normal build、exact nonprod build、deploy guard、Wrangler nonprod dry-run、`git diff --check`はPASS。Wrangler log-directory `EPERM`と既存Vite chunk-size warningは出たが、該当build/test/dry-runはexit `0`。
+
+Implementation / docsはまだ未commit・未push。APP 0033 application、exact-main persistent nonprod deployment、remote APP/AUTH backup + isolated recovery evidence、post-migration DB/API verification、GitHub exact-SHA CI、authenticated browser behaviorは未実施。これらの状態をPASSとは主張しない。Production `NOT_RUN`、restore `NOT_RUN`、Released `NO`。
+
 ### D-116A Completed Entry historical Project / Mode correction v0.1 — persistent nonprod verified
 
 D-116Aは、current established Dayのcompleted ordinary Entryにcompleted Execution historyがある場合だけ、Project / Modeのhistorical metadataを訂正する。D-010のshared Task identityを踏まえ、Project authorityは当該Entryの`entry_project_snapshots`であり、`tasks.project_id`は変更しない。Modeは当該Entryの`entry_modes`と`entry_mode_snapshots`を既存command内でatomicに整合させる。Task title、Entry / Execution identity、lifecycle、Section、estimate、planned start、placement、Day revisionは不変。新API / command type / schema / migration / dependencyは追加しない。

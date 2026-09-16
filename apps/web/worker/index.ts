@@ -111,6 +111,10 @@ import {
   updateProjectPrimaryDocument,
 } from "./application/project-primary-documents";
 import { realtimeScopesForMutation, serializePublishRequest } from "./realtime-invalidation";
+import {
+  createFutureRoutineFromCompletedEntry,
+  isCreateFutureRoutineFromCompletedEntryRequest,
+} from "./application/completed-entry-future-routine";
 
 const SECURITY_HEADERS: Record<string, string> = {
   "cache-control": "no-store",
@@ -535,6 +539,15 @@ async function route(request: Request, env: Env): Promise<Response> {
       throw new HttpError(400, "malformed_request", "Invalid ConvertEntryToRoutine request");
     }
     return Response.json(await convertEntryToRoutine(env.APP_DB, principal.appUserId, body));
+  }
+  const futureRoutineMatch = url.pathname.match(/^\/api\/v1\/entries\/([^/]+)\/future-routine$/);
+  if (request.method === "POST" && futureRoutineMatch) {
+    const body = await readBoundedJson(request);
+    if (futureRoutineMatch[1] !== (body as { source_entry_id?: unknown })?.source_entry_id
+      || !isCreateFutureRoutineFromCompletedEntryRequest(body)) {
+      throw new HttpError(400, "malformed_request", "Invalid CreateFutureRoutineFromCompletedEntry request");
+    }
+    return Response.json(await createFutureRoutineFromCompletedEntry(env.APP_DB, principal.appUserId, body));
   }
   const routineEndMatch = url.pathname.match(/^\/api\/v1\/routines\/([^/]+)\/end$/);
   if (request.method === "POST" && routineEndMatch) {

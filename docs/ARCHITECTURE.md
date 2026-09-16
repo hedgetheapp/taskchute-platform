@@ -491,6 +491,33 @@ and leave placement / lifecycle / execution facts untouched. No schema change
 is introduced. D-116B must read source Project / Mode from this Entry-level
 historical authority.
 
+## D-116B atomic future Routine creation
+
+`CreateFutureRoutineFromCompletedEntry` is a Worker command scoped to the
+authenticated owner. It reads the current logical Day, completed ordinary
+Entry, source Task title, Entry Project/Mode snapshots, current Section
+configuration, and expected Routine Board revision. The command derives all
+copied metadata on the server and guards the observed source values and active
+Project/Mode status inside one D1 batch.
+
+The batch creates a fresh Task, next-logical-Day daily RoutineDefinition,
+schedule, optional Mode default, valid Section/start and estimate defaults,
+Board item, one Board revision increment, source correlation, and operation
+result. Transaction assertions make failed preconditions/postconditions roll
+back atomically. `completed_entry_future_routines` has owner/source primary
+identity, owner/Routine uniqueness, and owner-scoped RESTRICT references. Exact
+operation replay uses `operations`; a different operation for a correlated
+source returns the existing logical result before Board revision rejection.
+No current-Day occurrence is written, and lazy future materialization remains
+in `routine.ts`.
+
+Today projection joins the source correlation without populating the Entry's
+RoutineOccurrence projection. The existing Routine column distinguishes an
+actual occurrence from a linked future Routine and exposes the create action
+only for an eligible current-Day completed ordinary Entry. The new Worker route
+publishes the existing D-105 Routine/Day invalidation scopes; no protocol
+change is needed.
+
 ## D-073 Interrupt / Continuation data and transaction boundary
 
 D-073 adds APP migration `0023_interrupt_continuation.sql`. `executions.terminal_outcome` records explicit `completed` or `interrupted` outcomes while pre-0023 rows remain NULL as legacy unknown. `entries.continuation_chain_id` and `continuation_parent_entry_id` provide stable chain identity; ordinary legacy entries receive singleton chains without fabricating historical continuation facts. `entry_task_snapshots` is written only for newly started executions, and historical projection prefers that snapshot only when present. `interrupt_command_guards` is a temporary idempotency / assertion guard and is cleaned after success.

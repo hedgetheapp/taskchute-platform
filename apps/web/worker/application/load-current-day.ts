@@ -60,6 +60,7 @@ interface EntryRow {
   task_id: string;
   task_title: string;
   primary_document_id: string | null;
+  future_routine_definition_id: string | null;
   project_id: string | null;
   project_title: string | null;
   estimate_seconds: number | null;
@@ -143,6 +144,8 @@ function toEntryRow(value: unknown): EntryRow {
     task_id: requiredString(row, "task_id"),
     task_title: requiredString(row, "task_title"),
     primary_document_id: row.primary_document_id === null ? null : requiredString(row, "primary_document_id"),
+    future_routine_definition_id: row.future_routine_definition_id === null
+      ? null : requiredString(row, "future_routine_definition_id"),
     project_id: projectId,
     project_title: projectTitle,
     estimate_seconds: row.estimate_seconds === null ? null : requiredNumber(row, "estimate_seconds"),
@@ -371,6 +374,7 @@ async function loadEstablishedProjection(
       .prepare(
         `SELECT e.id AS entry_id, e.section_id, e.position, e.lifecycle_state, e.estimate_seconds, e.planned_start_minute,
                 e.routine_occurrence_id, ro.routine_definition_id,
+                c.routine_definition_id AS future_routine_definition_id,
                 rd.end_logical_date AS routine_end_logical_date,
                 rd.default_section_id, rd.default_planned_start_minute, rd.default_estimate_seconds,
                 rd.defaults_revision, ro.section_plan_override_present, ro.estimate_override_present,
@@ -398,6 +402,8 @@ async function loadEstablishedProjection(
            LEFT JOIN task_primary_documents tpd
              ON tpd.app_user_id = t.app_user_id AND tpd.task_id = t.id
            LEFT JOIN routine_occurrences ro ON ro.app_user_id = e.app_user_id AND ro.id = e.routine_occurrence_id
+           LEFT JOIN completed_entry_future_routines c
+             ON c.app_user_id = e.app_user_id AND c.source_entry_id = e.id
            LEFT JOIN routine_definitions rd ON rd.app_user_id = ro.app_user_id AND rd.id = ro.routine_definition_id
            LEFT JOIN routine_definition_modes rdm
              ON rdm.app_user_id = rd.app_user_id AND rdm.routine_definition_id = rd.id
@@ -471,6 +477,7 @@ async function loadEstablishedProjection(
       lifecycle_state: row.lifecycle_state,
       estimate_seconds: row.estimate_seconds,
       planned_start_minute: row.planned_start_minute,
+      ...(row.future_routine_definition_id === null ? {} : { future_routine_definition_id: row.future_routine_definition_id }),
       mode: (row.lifecycle_state === "planned"
         ? (row.live_mode_id && row.live_mode_title ? { id: row.live_mode_id, title: row.live_mode_title, source: "live" as const } : null)
         : (row.snapshot_mode_id && row.snapshot_mode_title

@@ -65,6 +65,12 @@ describe.sequential("production runtime bootstrap slice", () => {
     const response = await exports.default.fetch(`${origin}/api/v1/taskchute-days/current`);
     expect(response.status).toBe(401);
     expect((await exports.default.fetch(`${origin}/api/v1/projects`)).status).toBe(401);
+    const futureRoutine = await exports.default.fetch(new Request(`${origin}/api/v1/entries/${uuidv7()}/future-routine`, {
+      method: "POST", headers: { "content-type": "application/json", origin },
+      body: JSON.stringify({ operation_id: uuidv7(), source_entry_id: uuidv7(), task_id: uuidv7(),
+        routine_definition_id: uuidv7(), expected_board_revision: 0 }),
+    }));
+    expect(futureRoutine.status).toBe(401);
   });
 
   it.each([
@@ -947,6 +953,67 @@ describe.sequential("production runtime bootstrap slice", () => {
     expect(completed.status).toBe(200);
     expect(await json<object>(completed)).toMatchObject({ entry_id: entryId, lifecycle_state: "completed",
       execution: { id: executionId, entry_id: entryId } });
+  });
+
+  it("routes an authenticated completed Entry to one correlated future Routine", async () => {
+    const before = await json<{
+      placement_revision: number;
+      taskchute_day: { id: string; logical_date: string };
+    }>(await browser.fetch("/api/v1/taskchute-days/current"));
+    const taskId = uuidv7();
+    const entryId = uuidv7();
+    const added = await browser.post("/api/v1/taskchute-days/current/entries", {
+      operation_id: uuidv7(), task_id: taskId, entry_id: entryId, project_id: null,
+      title: "D116B HTTP fixture", taskchute_day_id: before.taskchute_day.id,
+      section_id: null, expected_placement_revision: before.placement_revision,
+    });
+    expect(added.status).toBe(200);
+    const placement = await json<{ placement_revision: number }>(added);
+
+    const executionId = uuidv7();
+    const started = await browser.post(`/api/v1/entries/${entryId}/start`, {
+      operation_id: uuidv7(), entry_id: entryId, execution_id: executionId,
+      expected_placement_revision: placement.placement_revision,
+    });
+    expect(started.status).toBe(200);
+    const completed = await browser.post(`/api/v1/entries/${entryId}/complete`, {
+      operation_id: uuidv7(), entry_id: entryId, execution_id: executionId,
+    });
+    expect(completed.status).toBe(200);
+
+    const board = await json<{ board_revision: number }>(await browser.fetch("/api/v1/routines"));
+    const request = { operation_id: uuidv7(), source_entry_id: entryId, task_id: uuidv7(),
+      routine_definition_id: uuidv7(), expected_board_revision: board.board_revision };
+    const created = await browser.post(`/api/v1/entries/${entryId}/future-routine`, request);
+    expect(created.status).toBe(200);
+    const result = await json<{ source_entry_id: string; task_id: string; routine_definition_id: string;
+      board_revision: number; start_logical_date: string; source_was_already_converted: boolean }>(created);
+    expect(result).toMatchObject({ source_entry_id: entryId, task_id: request.task_id,
+      routine_definition_id: request.routine_definition_id,
+      board_revision: board.board_revision + 1, source_was_already_converted: false });
+
+    const current = await json<{ sections: Array<{ entries: Array<{ id: string; lifecycle_state: string;
+      routine: unknown; future_routine_definition_id?: string }> }>; unsectioned_entries: Array<{
+        id: string; lifecycle_state: string; routine: unknown; future_routine_definition_id?: string }> }>(
+      await browser.fetch("/api/v1/taskchute-days/current"));
+    const source = [...current.sections.flatMap((section) => section.entries), ...current.unsectioned_entries]
+      .find((entry) => entry.id === entryId);
+    expect(source).toMatchObject({ id: entryId, lifecycle_state: "completed", routine: null,
+      future_routine_definition_id: request.routine_definition_id });
+
+    const correlatedReplay = await browser.post(`/api/v1/entries/${entryId}/future-routine`, {
+      ...request, operation_id: uuidv7(), expected_board_revision: board.board_revision,
+    });
+    expect(correlatedReplay.status).toBe(200);
+    expect(await json<object>(correlatedReplay)).toMatchObject({
+      task_id: request.task_id, routine_definition_id: request.routine_definition_id,
+      source_was_already_converted: true,
+    });
+    expect(await env.APP_DB.prepare(`SELECT COUNT(*) AS count FROM completed_entry_future_routines
+      WHERE app_user_id = ? AND source_entry_id = ?`).bind(appUserId, entryId).first<number>("count")).toBe(1);
+    expect(await env.APP_DB.prepare(`SELECT COUNT(*) AS count FROM routine_occurrences
+      WHERE app_user_id = ? AND routine_definition_id = ?`).bind(appUserId, request.routine_definition_id)
+      .first<number>("count")).toBe(0);
   });
 
   it("invalidates the browser session on logout", async () => {

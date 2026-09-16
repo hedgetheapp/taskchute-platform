@@ -547,6 +547,38 @@ first snapshot uses the original Execution start time. Existing command
 operation identity, CAS, exact retry, and canonical reload semantics remain in
 force; no command, API route, or migration is added.
 
+## D-116B Completed Entry to future Routine
+
+From the current established logical Day, an owner may create one new
+future-facing daily Routine from an ordinary completed Entry with completed
+Execution history. The source remains an ordinary completed Entry with its
+original Task and Execution history and `routine_occurrence_id = NULL`.
+
+The new Task title comes from the source Task. Project comes only from the
+source Entry's `entry_project_snapshots`, never from a shared Task's current
+`tasks.project_id`; a missing snapshot fails closed. A non-null historical
+Project or Mode must still be active and owner-scoped. Mode comes from the
+Entry's `entry_mode_snapshots`; absent history means no default. Archived or
+deleted references must be corrected or cleared with D-116A before conversion.
+Entry Section/planned-start are copied together only when valid in current
+Section configuration; otherwise both defaults are null. Entry estimate is
+copied.
+
+The Routine starts on the next logical TaskChuteDay, is daily, active, and has
+no end date. No current-Day RoutineOccurrence or Entry is created. One atomic
+`CreateFutureRoutineFromCompletedEntry` command creates the new Task,
+RoutineDefinition, defaults, Board item and revision, and owner-scoped
+`completed_entry_future_routines` correlation. Exact operation replay and
+source correlation prevent duplicate creation; the correlation is not a
+RoutineOccurrence identity. Source Task, Entry, Execution, and historical
+snapshots remain unchanged.
+
+The source correlation remains after the linked Routine is archived or soft-deleted,
+and prevents creating a replacement from the same Entry. A correlated completed
+Entry cannot be hard-deleted; the existing delete command reports a deterministic
+conflict so historical correlation is not lost or misreported as an ambiguous
+database failure.
+
 ## D-072 Mode Settings search / archive / restore / delete
 
 D-072はMode Settingsのcurrent behaviorを次のように定義する。Searchは現在選択中のtabだけを対象にしたclient-side title filterで、case-insensitiveである。Search queryは永続化せず、server search endpointも追加しない。既定tabはactive `使用中`、archived tabは`アーカイブ`である。
