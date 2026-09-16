@@ -9,8 +9,8 @@ class DocumentHttpRepository(
     private val request: (method: String, path: String, body: String?) -> TodayHttpResponse?,
     private val onUnauthorized: () -> Unit = {},
 ) : AndroidDocumentRepository {
-    override fun listStandalone(): DocumentListResult {
-        return when (val response = execute("GET", "/api/v1/documents?archived=false", null)) {
+    override fun listStandalone(archived: Boolean): DocumentListResult {
+        return when (val response = execute("GET", "/api/v1/documents?archived=$archived", null)) {
             is HttpResult.Success -> runCatching {
                 val root = response.body.objectValue()
                 val documents = root.arrayField("documents").map { value ->
@@ -41,6 +41,16 @@ class DocumentHttpRepository(
         "POST",
         "/api/v1/documents/${JsonEncoding.pathSegment(request.documentId)}",
         """{"operation_id":"${JsonEncoding.escape(request.operationId)}","document_id":"${JsonEncoding.escape(request.documentId)}","expected_revision":${request.expectedRevision},"title":"${JsonEncoding.escape(request.title.trim())}","markdown_body":"${JsonEncoding.escape(request.markdownBody)}"}""",
+    )
+
+    override fun setStandaloneArchived(request: SetStandaloneDocumentArchivedRequest): DocumentLifecycleResult = lifecycleMutation(
+        "/api/v1/documents/${JsonEncoding.pathSegment(request.documentId)}/archive",
+        """{"operation_id":"${JsonEncoding.escape(request.operationId)}","document_id":"${JsonEncoding.escape(request.documentId)}","expected_revision":${request.expectedRevision},"archived":${request.archived}}""",
+    )
+
+    override fun deleteStandalone(request: DeleteStandaloneDocumentRequest): DocumentLifecycleResult = lifecycleMutation(
+        "/api/v1/documents/${JsonEncoding.pathSegment(request.documentId)}/delete",
+        """{"operation_id":"${JsonEncoding.escape(request.operationId)}","document_id":"${JsonEncoding.escape(request.documentId)}","expected_revision":${request.expectedRevision}}""",
     )
 
     override fun fetchTaskPrimary(documentId: String): DocumentResult = fetch("/api/v1/task-primary-documents/${JsonEncoding.pathSegment(documentId)}", DocumentKind.TASK_PRIMARY)
@@ -75,6 +85,21 @@ class DocumentHttpRepository(
             response.conflict -> DocumentResult.Conflict(response.message)
             response.notFound -> DocumentResult.Missing
             else -> DocumentResult.Failure(response.message)
+        }
+    }
+
+    private fun lifecycleMutation(path: String, body: String): DocumentLifecycleResult = when (val response = execute("POST", path, body)) {
+        is HttpResult.Success -> runCatching {
+            val root = response.body.objectValue()
+            val document = root.fields["document"]?.let { parseDocument(it.objectValue(), DocumentKind.STANDALONE) }
+            DocumentLifecycleResult.Success(document)
+        }.getOrElse { DocumentLifecycleResult.Success() }
+        HttpResult.Unauthorized -> DocumentLifecycleResult.Unauthorized
+        is HttpResult.Failure -> when {
+            response.ambiguous -> DocumentLifecycleResult.Ambiguous(response.message)
+            response.conflict -> DocumentLifecycleResult.Conflict(response.message)
+            response.notFound -> DocumentLifecycleResult.Missing
+            else -> DocumentLifecycleResult.Failure(response.message)
         }
     }
 

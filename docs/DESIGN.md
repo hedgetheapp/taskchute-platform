@@ -12,6 +12,20 @@
 - implementation / verification statusは`docs/FEATURES.md`、`docs/CURRENT.md`、`docs/TEST_MATRIX.md`を正本とする。
 - この文書は新しいDomain semanticsを作らず、上記canonical docsと矛盾する場合は上記を優先する。
 
+## D-113 Android Today / Notes UX refinement
+
+D-113はD-109〜D-112のcompact Today interactionを保ったまま、planned / running / completedの
+leading slotを同じ幅に揃え、planned checkboxのvisualだけを小さくする。planned metadataは
+clock付き開始予定とhourglass付き見積を示し、running / completedのexecution projectionに開始・
+終了時刻がある場合だけ`HH:MM → HH:MM`を表示する。Add/Edit sheetは最初から高く開き、drag中は
+subtle liftとinsertion cueを使う。Section headerはlocal UI stateとして折りたため、defaultは展開
+状態とする。
+
+Android NotesはD-111のautosave / CAS / safe flushを維持し、手動Save buttonを表示しない。本文は
+borderless Markdown source editorとし、footer `ノート`はflush後にNotes listへ戻る。standalone listの
+archive / restore / hard-deleteはD-092の既存owner-scoped lifecycle commandへ接続し、Task Primary
+Noteのentry pointやDocument semanticsは変更しない。
+
 ## D-110 Android Today direct manipulation and native Notes
 
 D-110では、D-109のcompact Today surfaceを保ったまま、current established Dayのordinary

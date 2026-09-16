@@ -1,5 +1,26 @@
 # Current
 
+### D-113 Android Today / Notes UX Refinement v0.1 — 2026-09-16
+
+D-113は既存のAndroid Today / Notes semanticsを変えず、Todayのleading slotをplanned / running /
+completedで揃え、planned checkboxのvisualを小さくしつつ48dpの操作領域を維持した。planned rowは
+clock / hourglass付きで開始予定と見積を示し、running / completedはprojectionに存在する開始・終了
+時刻だけを`HH:MM → HH:MM`として表示し、欠落時刻を推測しない。Add/Edit bottom sheetはpartial
+状態を避けて高い位置から開き、drag中のlift / insertion feedbackと、default expandedのSection
+collapse / expandを追加した。
+
+Notesはvisibleな手動`保存`ボタンを外し、D-111 autosave / explicit controller flushは維持した。
+本文editorはoutlineを外し、editor中のfooter `ノート`は既存safe flush後にNotes listへ戻る。standalone
+Notes listにはD-092のowner-scoped archive / restore / hard-delete操作を追加し、expected revision /
+operation identity / ambiguous retryを保持する。Task Primary NoteとProject/Routine Note境界は不変。
+
+Local evidenceはAndroid JVM `101 / 101`、Windows `TaskChute_API33` targeted Notes `7 / 7`、Today
+`25 / 25`（各 failures/errors/skipped `0 / 0 / 0`）、APK install、MainActivity解決、TaskChute
+crash buffer emptyを確認した。D-113 Galaxy S23 smokeはfresh final-main APKのProduct Owner確認待ちで
+`PENDING_SMOKE`。Worker/API、schema/migration、dependency、realtime protocol、persistent nonprod、
+production、Releaseは`NOT_REQUIRED / NOT_REQUIRED / NOT_REQUIRED / NOT_REQUIRED / NOT_RUN / NO`。
+GitHub Actionsのexact-SHA run/artifact metadataはGitHubを正本としてhandoffで報告する。
+
 ### Web Notes draft rollback corrective — 2026-09-16
 
 Independent source review reproduced a D-091 / D-105 correctness gap: a standalone

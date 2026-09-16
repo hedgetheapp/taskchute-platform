@@ -1,5 +1,23 @@
 # Test Matrix
 
+## D-113 Android Today / Notes UX refinement — local closeout
+
+| ID | Verification target | Evidence | Status |
+|---|---|---|---|
+| D113-DECISION | Canonical scope | `docs/decisions/D-113_ANDROID_TODAY_NOTES_UX_REFINEMENT_V01.md`; Android UX only, existing Today/Document/D-092 semantics reused | PASS |
+| D113-TODAY | Today visual refinement | Leading slot alignment, smaller visual checkbox with 48dp hit area, icon-led planned metadata, supported execution time display, high Add/Edit sheet, lifted drag/insertion cue, default-expanded local Section collapse | PASS focused / emulator |
+| D113-NOTES | Notes visual/navigation refinement | Visible Save button removed while controller flush/autosave remains, borderless Markdown source editor, footer `ノート` safe return to list, standalone archive/restore/delete UI | PASS focused / emulator |
+| D113-LIFECYCLE | Standalone lifecycle safety | D-092 archive/delete request carries exact operation/document/revision; ambiguous lifecycle retry reuses the original request | PASS focused JVM / emulator |
+| D113-ANDROID-JVM | Full Android JVM | `:app:testDebugUnitTest`: `101 / 101`, failures/errors/skipped `0 / 0 / 0` | PASS |
+| D113-NOTES-AVD | Windows local runtime | `TaskChute_API33` Notes via `scripts/android-qa.ps1 -Surface Notes`: `7 / 7`, APK install, MainActivity resolution, TaskChute crash buffer empty; final timing: emulator `0.11s`, instrumentation `67.51s`, smoke `0.92s`, total `68.70s` | PASS |
+| D113-TODAY-AVD | Windows local runtime | `TaskChute_API33` Today via `scripts/android-qa.ps1 -Surface Today`: `25 / 25`, APK install, MainActivity resolution, TaskChute crash buffer empty; timing: emulator `0.11s`, instrumentation `139.49s`, smoke `0.84s`, total `140.58s` | PASS |
+| D113-BOUNDARY | Server/data boundary | No Worker/API semantic, schema/migration, dependency, realtime protocol, persistent nonprod, production, or Release change | PASS / NOT_REQUIRED |
+| D113-GALAXY | Device smoke | Fresh exact-final-main APK awaits Product Owner's D-113 Today/Notes smoke | PENDING_SMOKE |
+
+D-113 uses the existing Android-only impact boundary: local Web/Worker verification is
+`NOT_REQUIRED` because no shared contract or server source changed; exact current-SHA CI and
+artifact metadata remain GitHub-owned and are reported in handoff.
+
 ## Web Notes draft rollback corrective — async canonical apply guard
 
 | ID | Verification target | Evidence | Status |

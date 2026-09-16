@@ -60,6 +60,29 @@ class DocumentHttpRepositoryTest {
         assertTrue(serviceRepository.updateStandalone(StandaloneUpdateRequest("op-2", "doc-1", 0, "title", "body")) is DocumentResult.Ambiguous)
     }
 
+    @Test
+    fun standaloneLifecycleUsesCanonicalPathsAndRevisionPayloads() {
+        val requests = mutableListOf<Pair<String, String?>>()
+        val repository = DocumentHttpRepository(
+            request = { _, path, body ->
+                requests += path to body
+                if (path.endsWith("/archive")) {
+                    TodayHttpResponse(200, documentResponse("doc-1", "Note", "body", 3))
+                } else {
+                    TodayHttpResponse(200, """{"document_id":"doc-1","deleted":true}""")
+                }
+            },
+        )
+
+        assertTrue(repository.setStandaloneArchived(SetStandaloneDocumentArchivedRequest("op-a", "doc-1", 2, true)) is DocumentLifecycleResult.Success)
+        assertTrue(repository.deleteStandalone(DeleteStandaloneDocumentRequest("op-d", "doc-1", 3)) is DocumentLifecycleResult.Success)
+        assertEquals("/api/v1/documents/doc-1/archive", requests[0].first)
+        assertTrue(requests[0].second.orEmpty().contains("\"expected_revision\":2"))
+        assertTrue(requests[0].second.orEmpty().contains("\"archived\":true"))
+        assertEquals("/api/v1/documents/doc-1/delete", requests[1].first)
+        assertTrue(requests[1].second.orEmpty().contains("\"expected_revision\":3"))
+    }
+
     private fun repository(request: (String, String, String?) -> TodayHttpResponse?) = DocumentHttpRepository(request)
 
     private fun documentResponse(id: String, title: String, body: String, revision: Int): String =

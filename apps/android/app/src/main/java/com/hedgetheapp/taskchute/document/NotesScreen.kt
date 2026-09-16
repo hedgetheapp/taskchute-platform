@@ -3,6 +3,7 @@ package com.hedgetheapp.taskchute.document
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -17,12 +18,16 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -32,6 +37,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -47,10 +53,12 @@ fun NotesScreen(
 ) {
     val state = controller.state
     var leaveAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var deleteTarget by remember { mutableStateOf<AndroidDocumentSummary?>(null) }
 
     fun attemptLeave(action: () -> Unit) {
         when {
             controller.state.editor?.blocked == true -> Unit
+            controller.state.lifecycleSaving || controller.state.unresolvedLifecycleRequest != null -> Unit
             controller.requiresDiscardConfirmation -> leaveAction = action
             else -> controller.flushAndNavigate(action)
         }
@@ -66,7 +74,7 @@ fun NotesScreen(
     BackHandler(enabled = state.editor != null) {
         attemptLeave(::leaveEditorToOrigin)
     }
-    LaunchedEffect(controller) { controller.load() }
+    LaunchedEffect(controller, state.archivedView) { controller.load(state.archivedView) }
 
     if (leaveAction != null) {
         AlertDialog(
@@ -89,7 +97,7 @@ fun NotesScreen(
             AndroidNavigationBar(
                 selected = AndroidDestination.NOTES,
                 onToday = { attemptLeave(onNavigateToday) },
-                onNotes = {},
+                onNotes = { attemptLeave {} },
                 onSettings = { attemptLeave(onNavigateSettings) },
             )
         },
@@ -100,7 +108,12 @@ fun NotesScreen(
         },
     ) { padding ->
         if (state.editor == null) {
-            NotesList(controller, state, Modifier.fillMaxSize().padding(padding))
+            NotesList(
+                controller = controller,
+                state = state,
+                onRequestDelete = { deleteTarget = it },
+                modifier = Modifier.fillMaxSize().padding(padding),
+            )
         } else {
             NoteEditor(
                 controller,
@@ -110,18 +123,49 @@ fun NotesScreen(
             )
         }
     }
+
+    deleteTarget?.let { document ->
+        AlertDialog(
+            onDismissRequest = { deleteTarget = null },
+            title = { Text("ノートを削除") },
+            text = { Text("「${document.title}」を完全に削除しますか？この操作は元に戻せません。") },
+            confirmButton = {
+                TextButton(onClick = {
+                    deleteTarget = null
+                    controller.deleteStandalone(document)
+                }) { Text("削除") }
+            },
+            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("キャンセル") } },
+        )
+    }
 }
 
 @Composable
-private fun NotesList(controller: NotesController, state: NotesUiState, modifier: Modifier) {
+private fun NotesList(
+    controller: NotesController,
+    state: NotesUiState,
+    onRequestDelete: (AndroidDocumentSummary) -> Unit,
+    modifier: Modifier,
+) {
     Column(modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
-        Text("ノート", style = MaterialTheme.typography.headlineMedium)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+            Text(if (state.archivedView) "アーカイブ" else "ノート", style = MaterialTheme.typography.headlineMedium)
+            TextButton(
+                onClick = { controller.setArchivedView(!state.archivedView) },
+                enabled = !state.lifecycleSaving && state.unresolvedLifecycleRequest == null,
+            ) {
+                Text(if (state.archivedView) "通常のノート" else "アーカイブ")
+            }
+        }
         Spacer(Modifier.height(12.dp))
         state.errorMessage?.let {
             Text(it, color = MaterialTheme.colorScheme.error)
             TextButton(onClick = controller::load) { Text("再試行") }
             if (state.unresolvedTaskEnsure != null) {
                 TextButton(onClick = controller::retryTaskPrimaryEnsure, enabled = !state.taskEnsureSaving) { Text("元のノート作成を再試行") }
+            }
+            state.unresolvedLifecycleRequest?.let {
+                TextButton(onClick = controller::retryLifecycle, enabled = !state.lifecycleSaving) { Text("元の操作を再試行") }
             }
         }
         if (state.loadingList) {
@@ -134,11 +178,39 @@ private fun NotesList(controller: NotesController, state: NotesUiState, modifier
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 items(state.documents, key = { it.documentId }) { document ->
-                    Column(
-                        modifier = Modifier.fillMaxWidth().clickable { controller.openStandalone(document.documentId) }.padding(vertical = 14.dp),
+                    var menuExpanded by remember(document.documentId) { mutableStateOf(false) }
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(document.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text("更新 ${document.updatedAt}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Column(
+                            modifier = Modifier.weight(1f).clickable { controller.openStandalone(document.documentId) }.padding(vertical = 6.dp),
+                        ) {
+                            Text(document.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text("更新 ${document.updatedAt}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Box {
+                            TextButton(
+                                onClick = { menuExpanded = true },
+                                enabled = !state.lifecycleSaving && state.unresolvedLifecycleRequest == null,
+                            ) { Text("操作") }
+                            DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                                DropdownMenuItem(
+                                    text = { Text(if (state.archivedView) "復元" else "アーカイブ") },
+                                    onClick = {
+                                        menuExpanded = false
+                                        controller.archiveStandalone(document, !state.archivedView)
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("削除") },
+                                    onClick = {
+                                        menuExpanded = false
+                                        onRequestDelete(document)
+                                    },
+                                )
+                            }
+                        }
                     }
                     HorizontalDivider()
                 }
@@ -173,12 +245,20 @@ private fun NoteEditor(controller: NotesController, editor: NoteEditorState, mod
             Text(editor.taskTitle ?: "タスクノート", style = MaterialTheme.typography.titleMedium)
             Text("TaskタイトルはTask側が管理します。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        OutlinedTextField(
+        TextField(
             value = editor.markdownBody,
             onValueChange = controller::updateBody,
             label = { Text("Markdown") },
             enabled = !editor.blocked,
             modifier = Modifier.fillMaxWidth().weight(1f),
+            colors = TextFieldDefaults.colors(
+                focusedContainerColor = Color.Transparent,
+                unfocusedContainerColor = Color.Transparent,
+                disabledContainerColor = Color.Transparent,
+                focusedIndicatorColor = Color.Transparent,
+                unfocusedIndicatorColor = Color.Transparent,
+                disabledIndicatorColor = Color.Transparent,
+            ),
         )
         Text(
             when (editor.saveStatus) {
@@ -189,17 +269,17 @@ private fun NoteEditor(controller: NotesController, editor: NoteEditorState, mod
                 NoteSaveStatus.AMBIGUOUS -> "保存結果が未確定です。"
                 NoteSaveStatus.ERROR -> "保存に失敗しました。"
             },
-            color = if (editor.saveStatus == NoteSaveStatus.SAVED) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+            color = if (editor.saveStatus in setOf(NoteSaveStatus.SAVED, NoteSaveStatus.UNSAVED, NoteSaveStatus.SAVING)) {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            } else {
+                MaterialTheme.colorScheme.error
+            },
             style = MaterialTheme.typography.bodySmall,
         )
         editor.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         if (editor.blocked) {
             Text("保存結果が未確定です。元の操作を再試行してください。", color = MaterialTheme.colorScheme.error)
             Button(onClick = controller::retryUnresolved, enabled = !editor.saving) { Text("元の保存を再試行") }
-        } else {
-            Button(onClick = controller::save, enabled = !editor.saving, modifier = Modifier.fillMaxWidth()) {
-                Text("保存")
-            }
         }
     }
 }

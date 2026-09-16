@@ -2,6 +2,20 @@
 
 Statuses: Approved / Proposed / Superseded
 
+## D-113 — Android Today / Notes UX Refinement v0.1
+
+Status: **Approved**
+
+Canonical Decision: `docs/decisions/D-113_ANDROID_TODAY_NOTES_UX_REFINEMENT_V01.md`。
+
+D-113は既存のD-109〜D-112 Android TodayとD-110〜D-111 Notes surfaceのvisual / interaction
+refinementである。Todayのleading slot、planned start / estimate / available execution time表示、
+high-opening sheet、drag feedback、local Section collapseを整え、Notesのvisible Save buttonを
+除去してautosave semanticsを保ち、footer `ノート`のsafe flush returnとD-092 standalone archive /
+restore / hard-delete UIを追加する。既存Document/CAS、Task Primary Note、canonical command、
+Worker/API、schema/migration、dependency、realtime protocol、production boundaryは変更しない。
+
+
 ## D-112 — Android Today Bulk Selection + Day Operations v0.1
 
 Status: **Approved**

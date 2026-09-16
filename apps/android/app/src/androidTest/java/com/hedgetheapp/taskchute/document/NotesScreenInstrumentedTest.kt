@@ -59,8 +59,9 @@ class NotesScreenInstrumentedTest {
 
         composeRule.onNodeWithContentDescription("ノートを新規作成").performClick()
         composeRule.waitUntil(10_000) { controller?.state?.editor?.document != null }
+        assertTrue(composeRule.onAllNodesWithText("保存", substring = false).fetchSemanticsNodes().isEmpty())
         composeRule.onNodeWithText("Markdown").performTextInput("manual flush")
-        composeRule.onNodeWithText("保存").performClick()
+        composeRule.runOnIdle { controller!!.save() }
 
         composeRule.waitUntil(5_000) { repository.updateCalls.get() == 1 && controller?.state?.editor?.dirty == false }
         assertEquals("manual flush", repository.lastUpdate?.markdownBody)
@@ -126,6 +127,43 @@ class NotesScreenInstrumentedTest {
         assertEquals(1, todayNavigations.get())
     }
 
+    @Test
+    fun notesFooterReturnsFromEditorToTheNotesListAfterSafeFlush() {
+        val repository = FakeRepository()
+        controller = NotesController(repository, onUnauthorized = {})
+        composeRule.setContent { MaterialTheme { notesScreen() } }
+
+        composeRule.onNodeWithContentDescription("ノートを新規作成").performClick()
+        composeRule.waitUntil(10_000) { controller?.state?.editor?.document != null }
+        composeRule.runOnIdle { controller!!.updateBody("footer flush") }
+        composeRule.onNodeWithContentDescription("ノート一覧").performClick()
+
+        composeRule.waitUntil(10_000) { repository.updateCalls.get() == 1 && controller?.state?.editor == null }
+        assertEquals(1, repository.updateCalls.get())
+    }
+
+    @Test
+    fun standaloneArchiveAndDeleteUseTheVisibleListActions() {
+        val repository = FakeRepository().apply {
+            activeDocuments = listOf(AndroidDocumentSummary("doc-archive", "Archive me", 4, "now"))
+        }
+        controller = NotesController(repository, onUnauthorized = {})
+        composeRule.setContent { MaterialTheme { notesScreen() } }
+
+        composeRule.onNodeWithText("Archive me").assertIsDisplayed()
+        composeRule.onNodeWithText("操作").performClick()
+        composeRule.onAllNodesWithText("アーカイブ").get(1).performClick()
+        composeRule.waitUntil(10_000) { repository.archiveCalls.get() == 1 && controller?.state?.documents?.isEmpty() == true }
+
+        composeRule.onNodeWithText("アーカイブ").performClick()
+        composeRule.onNodeWithText("Archive me").assertIsDisplayed()
+        composeRule.onNodeWithText("操作").performClick()
+        composeRule.onNodeWithText("削除").performClick()
+        composeRule.onNodeWithText("ノートを削除").assertIsDisplayed()
+        composeRule.onNodeWithText("削除").performClick()
+        composeRule.waitUntil(10_000) { repository.deleteCalls.get() == 1 && controller?.state?.documents?.isEmpty() == true }
+    }
+
     @Composable
     private fun notesScreen() = NotesScreen(
         controller = requireNotNull(controller),
@@ -137,12 +175,38 @@ class NotesScreenInstrumentedTest {
         val createCalls = AtomicInteger()
         val updateCalls = AtomicInteger()
         val taskUpdateCalls = AtomicInteger()
+        val archiveCalls = AtomicInteger()
+        val deleteCalls = AtomicInteger()
         var lastCreate: StandaloneCreateRequest? = null
         var lastUpdate: StandaloneUpdateRequest? = null
         var taskDocument: AndroidDocument? = null
         var failUpdates = false
+        var activeDocuments: List<AndroidDocumentSummary> = emptyList()
+        var archivedDocuments: List<AndroidDocumentSummary> = emptyList()
 
-        override fun listStandalone() = DocumentListResult.Success(emptyList())
+        override fun listStandalone(archived: Boolean) = DocumentListResult.Success(if (archived) archivedDocuments else activeDocuments)
+
+        override fun setStandaloneArchived(request: SetStandaloneDocumentArchivedRequest): DocumentLifecycleResult {
+            archiveCalls.incrementAndGet()
+            val source = (activeDocuments + archivedDocuments).firstOrNull { it.documentId == request.documentId }
+                ?: return DocumentLifecycleResult.Missing
+            val updated = source.copy(revision = request.expectedRevision + 1)
+            if (request.archived) {
+                activeDocuments = activeDocuments.filterNot { it.documentId == request.documentId }
+                archivedDocuments = archivedDocuments.filterNot { it.documentId == request.documentId } + updated
+            } else {
+                archivedDocuments = archivedDocuments.filterNot { it.documentId == request.documentId }
+                activeDocuments = activeDocuments.filterNot { it.documentId == request.documentId } + updated
+            }
+            return DocumentLifecycleResult.Success()
+        }
+
+        override fun deleteStandalone(request: DeleteStandaloneDocumentRequest): DocumentLifecycleResult {
+            deleteCalls.incrementAndGet()
+            activeDocuments = activeDocuments.filterNot { it.documentId == request.documentId }
+            archivedDocuments = archivedDocuments.filterNot { it.documentId == request.documentId }
+            return DocumentLifecycleResult.Success()
+        }
 
         override fun fetchStandalone(documentId: String): DocumentResult = DocumentResult.Missing
 

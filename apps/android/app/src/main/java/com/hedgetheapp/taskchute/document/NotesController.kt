@@ -19,6 +19,11 @@ sealed interface NoteEditorRequest {
     data class TaskUpdate(val request: TaskPrimaryUpdateRequest) : NoteEditorRequest
 }
 
+sealed interface NoteLifecycleRequest {
+    data class Archive(val request: SetStandaloneDocumentArchivedRequest) : NoteLifecycleRequest
+    data class Delete(val request: DeleteStandaloneDocumentRequest) : NoteLifecycleRequest
+}
+
 enum class NoteEditorOrigin {
     STANDALONE_LIST,
     TODAY_TASK,
@@ -56,6 +61,9 @@ data class NoteEditorState(
 data class NotesUiState(
     val loadingList: Boolean = false,
     val documents: List<AndroidDocumentSummary> = emptyList(),
+    val archivedView: Boolean = false,
+    val lifecycleSaving: Boolean = false,
+    val unresolvedLifecycleRequest: NoteLifecycleRequest? = null,
     val editor: NoteEditorState? = null,
     val errorMessage: String? = null,
     val unresolvedTaskEnsure: TaskPrimaryEnsureRequest? = null,
@@ -76,16 +84,17 @@ class NotesController(
         private set
 
     val hasUnsavedChanges: Boolean
-        get() = state.editor?.dirty == true || state.editor?.blocked == true || state.editor?.saving == true || state.unresolvedTaskEnsure != null
+        get() = state.editor?.dirty == true || state.editor?.blocked == true || state.editor?.saving == true ||
+            state.unresolvedTaskEnsure != null || state.lifecycleSaving || state.unresolvedLifecycleRequest != null
 
     val requiresDiscardConfirmation: Boolean
         get() = state.editor?.let { it.dirty && !it.saving && !it.blocked && it.errorMessage != null } == true
 
-    fun load() {
+    fun load(archived: Boolean = state.archivedView) {
         if (state.loadingList) return
-        state = state.copy(loadingList = true, errorMessage = null)
+        state = state.copy(loadingList = true, archivedView = archived, errorMessage = null)
         scope.launch {
-            when (val result = withContext(Dispatchers.IO) { repository.listStandalone() }) {
+            when (val result = withContext(Dispatchers.IO) { repository.listStandalone(archived) }) {
                 is DocumentListResult.Success -> state = state.copy(loadingList = false, documents = result.documents)
                 DocumentListResult.Unauthorized -> {
                     state = state.copy(loadingList = false, errorMessage = "認証が必要です。")
@@ -94,6 +103,33 @@ class NotesController(
                 is DocumentListResult.Failure -> state = state.copy(loadingList = false, errorMessage = result.message)
             }
         }
+    }
+
+    fun setArchivedView(archived: Boolean) {
+        if (state.editor != null || state.lifecycleSaving || state.unresolvedLifecycleRequest != null) return
+        load(archived)
+    }
+
+    fun archiveStandalone(document: AndroidDocumentSummary, archived: Boolean) {
+        if (state.lifecycleSaving || state.unresolvedLifecycleRequest != null || state.editor != null) return
+        submitLifecycle(
+            NoteLifecycleRequest.Archive(
+                SetStandaloneDocumentArchivedRequest(UUIDv7.next(), document.documentId, document.revision, archived),
+            ),
+        )
+    }
+
+    fun deleteStandalone(document: AndroidDocumentSummary) {
+        if (state.lifecycleSaving || state.unresolvedLifecycleRequest != null || state.editor != null) return
+        submitLifecycle(
+            NoteLifecycleRequest.Delete(
+                DeleteStandaloneDocumentRequest(UUIDv7.next(), document.documentId, document.revision),
+            ),
+        )
+    }
+
+    fun retryLifecycle() {
+        state.unresolvedLifecycleRequest?.let(::submitLifecycle)
     }
 
     fun openNew() {
@@ -260,6 +296,7 @@ class NotesController(
     }
 
     fun flushAndNavigate(action: () -> Unit) {
+        if (state.lifecycleSaving || state.unresolvedLifecycleRequest != null) return
         val editor = state.editor
         if (editor == null) {
             action()
@@ -278,6 +315,37 @@ class NotesController(
     fun close() {
         debounceJob?.cancel()
         scope.cancel()
+    }
+
+    private fun submitLifecycle(request: NoteLifecycleRequest) {
+        if (state.lifecycleSaving) return
+        state = state.copy(lifecycleSaving = true, errorMessage = null, unresolvedLifecycleRequest = null)
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                when (request) {
+                    is NoteLifecycleRequest.Archive -> repository.setStandaloneArchived(request.request)
+                    is NoteLifecycleRequest.Delete -> repository.deleteStandalone(request.request)
+                }
+            }
+            when (result) {
+                is DocumentLifecycleResult.Success -> {
+                    state = state.copy(lifecycleSaving = false)
+                    load(state.archivedView)
+                }
+                DocumentLifecycleResult.Unauthorized -> {
+                    state = state.copy(lifecycleSaving = false, errorMessage = "認証が必要です。")
+                    onUnauthorized()
+                }
+                is DocumentLifecycleResult.Ambiguous -> state = state.copy(
+                    lifecycleSaving = false,
+                    unresolvedLifecycleRequest = request,
+                    errorMessage = result.message,
+                )
+                is DocumentLifecycleResult.Conflict -> state = state.copy(lifecycleSaving = false, errorMessage = result.message)
+                DocumentLifecycleResult.Missing -> state = state.copy(lifecycleSaving = false, errorMessage = "ノートが見つかりません。")
+                is DocumentLifecycleResult.Failure -> state = state.copy(lifecycleSaving = false, errorMessage = result.message)
+            }
+        }
     }
 
     private fun createRequest(editor: NoteEditorState): NoteEditorRequest? {

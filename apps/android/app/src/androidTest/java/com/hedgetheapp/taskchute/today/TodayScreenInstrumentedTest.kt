@@ -61,6 +61,18 @@ class TodayScreenInstrumentedTest {
     }
 
     @Test
+    fun sectionHeaderCollapsesAndExpandsItsLocalTaskList() {
+        launchScreen()
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        composeRule.onNodeWithContentDescription("Morningセクションを折りたたむ").performClick()
+        assertTrue(composeRule.onAllNodesWithText("Write report").fetchSemanticsNodes().isEmpty())
+
+        composeRule.onNodeWithContentDescription("Morningセクションを展開").performClick()
+        composeRule.onNodeWithText("Write report").assertIsDisplayed()
+    }
+
+    @Test
     fun startDispatchesOnceAndReloadsRunningState() {
         val repo = launchScreen(FakeTodayRepository().apply { holdStart = true })
         waitForStatus(TodayLoadStatus.CONTENT)
@@ -272,6 +284,12 @@ class TodayScreenInstrumentedTest {
         composeRule.onNodeWithText("Section").assertIsDisplayed()
         composeRule.onNodeWithText("開始予定").assertIsDisplayed()
         composeRule.onNodeWithText("見積（分）").assertExists()
+        composeRule.waitUntil(10_000) {
+            runCatching {
+                composeRule.onNodeWithText("追加", substring = false).assertIsEnabled()
+                true
+            }.getOrDefault(false)
+        }
         composeRule.onNodeWithText("追加").performScrollTo().performClick()
 
         composeRule.waitUntil(15_000) { planningRepository.saveCalls.get() == 1 }

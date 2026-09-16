@@ -257,6 +257,52 @@ class NotesControllerTest {
         assertEquals(0, repository.updateRequests.size)
     }
 
+    @Test
+    fun standaloneLifecycleUsesExpectedRevisionAndExactRetry() {
+        val repository = FakeRepository().apply { lifecycleResult = DocumentLifecycleResult.Ambiguous("unknown") }
+        val controller = controller(repository)
+        val summary = AndroidDocumentSummary("doc-1", "Note", 7, "2026-09-14T00:00:00Z")
+
+        controller.archiveStandalone(summary, archived = true)
+
+        assertTrue(await { controller.state.unresolvedLifecycleRequest != null })
+        val original = controller.state.unresolvedLifecycleRequest as NoteLifecycleRequest.Archive
+        assertEquals(7, original.request.expectedRevision)
+        assertFalse(controller.state.lifecycleSaving)
+
+        repository.lifecycleResult = DocumentLifecycleResult.Success()
+        controller.retryLifecycle()
+        assertTrue(await { controller.state.unresolvedLifecycleRequest == null && !controller.state.lifecycleSaving })
+        assertEquals(original.request, repository.archiveRequests[1])
+        controller.close()
+    }
+
+    @Test
+    fun standaloneDeleteUsesExactDocumentAndRevision() {
+        val repository = FakeRepository()
+        val controller = controller(repository)
+        controller.deleteStandalone(AndroidDocumentSummary("doc-2", "Delete me", 3, ""))
+
+        assertTrue(await { repository.deleteRequests.size == 1 })
+        assertEquals("doc-2", repository.deleteRequests.single().documentId)
+        assertEquals(3, repository.deleteRequests.single().expectedRevision)
+        controller.close()
+    }
+
+    @Test
+    fun unresolvedLifecycleBlocksNavigationUntilExactRetry() {
+        val repository = FakeRepository().apply { lifecycleResult = DocumentLifecycleResult.Ambiguous("unknown") }
+        val controller = controller(repository)
+        val navigated = AtomicBoolean(false)
+
+        controller.archiveStandalone(AndroidDocumentSummary("doc-1", "Note", 1, ""), archived = true)
+        assertTrue(await { controller.state.unresolvedLifecycleRequest != null })
+        controller.flushAndNavigate { navigated.set(true) }
+
+        assertFalse(navigated.get())
+        controller.close()
+    }
+
     private fun controller(repository: FakeRepository) = NotesController(
         repository = repository,
         onUnauthorized = {},
@@ -277,6 +323,8 @@ class NotesControllerTest {
         val updateRequests = mutableListOf<StandaloneUpdateRequest>()
         val ensureRequests = mutableListOf<TaskPrimaryEnsureRequest>()
         val taskUpdateRequests = mutableListOf<TaskPrimaryUpdateRequest>()
+        val archiveRequests = mutableListOf<SetStandaloneDocumentArchivedRequest>()
+        val deleteRequests = mutableListOf<DeleteStandaloneDocumentRequest>()
         var createResult: DocumentResult? = null
         var updateResult: DocumentResult? = null
         var updateResultProvider: ((StandaloneUpdateRequest) -> DocumentResult)? = null
@@ -287,8 +335,19 @@ class NotesControllerTest {
         var releaseCreate: CountDownLatch? = null
         var updateStarted: CountDownLatch? = null
         var releaseUpdate: CountDownLatch? = null
+        var lifecycleResult: DocumentLifecycleResult = DocumentLifecycleResult.Success()
 
-        override fun listStandalone() = DocumentListResult.Success(emptyList())
+        override fun listStandalone(archived: Boolean) = DocumentListResult.Success(emptyList())
+
+        override fun setStandaloneArchived(request: SetStandaloneDocumentArchivedRequest): DocumentLifecycleResult {
+            archiveRequests += request
+            return lifecycleResult
+        }
+
+        override fun deleteStandalone(request: DeleteStandaloneDocumentRequest): DocumentLifecycleResult {
+            deleteRequests += request
+            return lifecycleResult
+        }
 
         override fun fetchStandalone(documentId: String): DocumentResult = fetchResult
             ?: createRequests.lastOrNull()?.let { request ->

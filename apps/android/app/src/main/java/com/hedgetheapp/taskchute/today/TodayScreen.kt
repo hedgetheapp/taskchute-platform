@@ -1,6 +1,7 @@
 package com.hedgetheapp.taskchute.today
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -19,6 +20,8 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -51,6 +54,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.PointerInputScope
@@ -72,6 +76,9 @@ import android.app.DatePickerDialog
 import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.time.LocalDate
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 enum class AndroidDestination {
     TODAY,
@@ -105,6 +112,7 @@ fun AndroidNavigationBar(
             selected = false,
             onClick = onNotes,
             enabled = true,
+            modifier = Modifier.semantics { contentDescription = "ノート一覧" },
             icon = { Text("▤") },
             label = { Text("ノート") },
         )
@@ -257,7 +265,11 @@ fun TodayScreen(
     }
 
     if (planningController != null && planningState.editor != null) {
-        ModalBottomSheet(onDismissRequest = planningController::dismiss) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            onDismissRequest = planningController::dismiss,
+            sheetState = sheetState,
+        ) {
             TaskEditorForm(planningController, planningState, Modifier.imePadding())
         }
     }
@@ -319,6 +331,7 @@ private fun TodayContent(
     val dropBoundsSectionId = remember { mutableStateMapOf<String, String?>() }
     val emptySectionDropBounds = remember { mutableStateMapOf<String, Rect>() }
     val emptySectionDropIds = remember { mutableStateMapOf<String, String?>() }
+    var collapsedSectionIds by remember(day.logicalDate) { mutableStateOf<Set<String>>(emptySet()) }
     var dragState by remember { mutableStateOf<AndroidDragState?>(null) }
     LaunchedEffect(day, dragState != null) {
         day.sections.filterNot { it.entries.isEmpty() }.forEach {
@@ -406,7 +419,7 @@ private fun TodayContent(
         directManipulationController?.state?.feedbackMessage?.let {
             Text(it, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 16.dp))
         }
-        if (!day.hasEntries) {
+        if (!day.hasEntries && day.sections.isEmpty() && day.unsectionedEntries.isEmpty()) {
             EmptyToday()
             return@Column
         }
@@ -418,6 +431,14 @@ private fun TodayContent(
                 item(key = "section-${section.id}") {
                     SectionHeader(
                         section = section,
+                        collapsed = section.id in collapsedSectionIds,
+                        onToggleCollapsed = {
+                            collapsedSectionIds = if (section.id in collapsedSectionIds) {
+                                collapsedSectionIds - section.id
+                            } else {
+                                collapsedSectionIds + section.id
+                            }
+                        },
                         dropTarget = dragState?.target?.key == sectionDropKey(section.id),
                         modifier = Modifier.onGloballyPositioned {
                             if (section.entries.isEmpty()) {
@@ -430,7 +451,7 @@ private fun TodayContent(
                         },
                     )
                 }
-                items(section.entries, key = { it.id }) { task ->
+                if (section.id !in collapsedSectionIds) items(section.entries, key = { it.id }) { task ->
                     TodayTaskRow(
                         task = task,
                         sectionId = section.id,
@@ -480,6 +501,14 @@ private fun TodayContent(
                 item(key = "section-unsectioned") {
                     SectionHeader(
                         section = null,
+                        collapsed = UNSECTIONED_DROP_KEY in collapsedSectionIds,
+                        onToggleCollapsed = {
+                            collapsedSectionIds = if (UNSECTIONED_DROP_KEY in collapsedSectionIds) {
+                                collapsedSectionIds - UNSECTIONED_DROP_KEY
+                            } else {
+                                collapsedSectionIds + UNSECTIONED_DROP_KEY
+                            }
+                        },
                         dropTarget = dragState?.target?.key == sectionDropKey(null),
                         modifier = Modifier.onGloballyPositioned {
                             if (day.unsectionedEntries.isEmpty() && dragState != null) {
@@ -492,7 +521,7 @@ private fun TodayContent(
                         },
                     )
                 }
-                items(day.unsectionedEntries, key = { it.id }) { task ->
+                if (UNSECTIONED_DROP_KEY !in collapsedSectionIds) items(day.unsectionedEntries, key = { it.id }) { task ->
                     TodayTaskRow(
                         task = task,
                         sectionId = null,
@@ -644,18 +673,32 @@ private fun DateNavigator(day: TodayDay, controller: TodayController) {
 }
 
 @Composable
-private fun SectionHeader(section: TodaySection?, modifier: Modifier = Modifier, dropTarget: Boolean = false) {
+private fun SectionHeader(
+    section: TodaySection?,
+    collapsed: Boolean,
+    onToggleCollapsed: () -> Unit,
+    modifier: Modifier = Modifier,
+    dropTarget: Boolean = false,
+) {
     val title = section?.title ?: "セクションなし"
     val range = section?.let { "${formatMinute(it.startMinute)}–${formatMinute(it.endMinute)}" }
     Row(
         modifier = modifier.fillMaxWidth()
             .then(if (dropTarget) Modifier.border(BorderStroke(2.dp, MaterialTheme.colorScheme.secondary), MaterialTheme.shapes.medium) else Modifier)
+            .clickable(onClick = onToggleCollapsed)
+            .semantics { contentDescription = "${title}セクション${if (collapsed) "を展開" else "を折りたたむ"}" }
             .padding(top = 8.dp, bottom = 2.dp),
-        verticalAlignment = Alignment.Bottom,
+        verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Text(title, style = MaterialTheme.typography.titleMedium)
-        range?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(if (collapsed) "›" else "⌄", style = MaterialTheme.typography.titleMedium)
+            Text(title, style = MaterialTheme.typography.titleMedium)
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            range?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            if (collapsed) Text("折りたたみ", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 
@@ -691,14 +734,22 @@ private fun TodayTaskRow(
     dropBoundsSectionId: MutableMap<String, String?>,
 ) {
     var editMenuExpanded by remember(task.id) { mutableStateOf(false) }
+    val insertionPadding by animateDpAsState(if (dropTarget) 6.dp else 0.dp, label = "drop-target-padding")
     Card(
         modifier = Modifier.fillMaxWidth().then(
-            if (dragging) Modifier.graphicsLayer { translationY = dragDeltaY } else Modifier,
+            if (dragging) Modifier.graphicsLayer {
+                translationY = dragDeltaY
+                shadowElevation = 10.dp.toPx()
+                scaleX = 0.98f
+                scaleY = 0.98f
+            } else Modifier,
         ).then(
             if (dragging) Modifier.border(BorderStroke(2.dp, MaterialTheme.colorScheme.primary), MaterialTheme.shapes.medium)
             else if (dropTarget) Modifier.border(BorderStroke(2.dp, MaterialTheme.colorScheme.secondary), MaterialTheme.shapes.medium)
             else Modifier,
-        ).semantics {
+        ).padding(top = insertionPadding)
+            .animateContentSize()
+            .semantics {
             contentDescription = if (dragging) "タスクを移動中: ${task.title}" else "タスクをドラッグ: ${task.title}"
         },
     ) {
@@ -706,22 +757,27 @@ private fun TodayTaskRow(
             modifier = Modifier.fillMaxWidth().padding(start = 12.dp, top = 10.dp, bottom = 10.dp, end = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (canSelect) {
-                Checkbox(
-                    checked = selected,
-                    onCheckedChange = { onToggleSelection() },
-                    enabled = enabled,
-                    modifier = Modifier.semantics { contentDescription = "タスクを選択: ${task.title}" },
-                )
-            } else {
-                Box(
-                    modifier = Modifier.size(14.dp).clip(MaterialTheme.shapes.small).border(
-                        BorderStroke(1.dp, stateColor(task.lifecycleState)),
-                        MaterialTheme.shapes.small,
-                    ),
-                )
+            Box(
+                modifier = Modifier.size(48.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (canSelect) {
+                    Checkbox(
+                        checked = selected,
+                        onCheckedChange = { onToggleSelection() },
+                        enabled = enabled,
+                        modifier = Modifier.size(48.dp).padding(6.dp).semantics { contentDescription = "タスクを選択: ${task.title}" },
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier.size(14.dp).clip(MaterialTheme.shapes.small).border(
+                            BorderStroke(1.dp, stateColor(task.lifecycleState)),
+                            MaterialTheme.shapes.small,
+                        ),
+                    )
+                }
             }
-            Spacer(Modifier.width(10.dp))
+            Spacer(Modifier.width(4.dp))
             val dragModifier = if (canDrag) {
                 Modifier
                     .onGloballyPositioned {
@@ -742,8 +798,9 @@ private fun TodayTaskRow(
                 val metadata = listOfNotNull(
                     task.project?.title,
                     task.mode?.title,
-                    task.estimateSeconds?.let(::formatEstimate),
-                    task.plannedStartMinute?.let(::formatMinute),
+                    task.plannedStartMinute?.let { "◷ ${formatMinute(it)}" },
+                    task.estimateSeconds?.let { "⌛ ${formatEstimate(it)}" },
+                    timeRangeText(task),
                 ).joinToString(" · ")
                 if (metadata.isNotBlank()) Text(metadata, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -1051,6 +1108,24 @@ private fun formatWeekday(value: String): String = runCatching {
 private fun formatMinute(value: Int?): String = value?.let { "${it / 60}:${(it % 60).toString().padStart(2, '0')}" } ?: "--:--"
 
 private fun formatEstimate(seconds: Int): String = if (seconds < 3600) "${seconds / 60}分" else "${seconds / 3600}時間${(seconds % 3600) / 60}分"
+
+private fun timeRangeText(task: TodayTask): String? {
+    if (task.lifecycleState == LifecycleState.PLANNED) return null
+    val start = task.firstStartedAt ?: task.activeStartedAt
+    val end = task.lastEndedAt
+    return when {
+        start != null && end != null -> "${formatInstant(start)} → ${formatInstant(end)}"
+        start != null -> formatInstant(start)
+        end != null -> formatInstant(end)
+        else -> null
+    }
+}
+
+private fun formatInstant(value: String): String = runCatching {
+    Instant.parse(value).atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("HH:mm"))
+}.getOrElse {
+    value.substringAfter('T').take(5).ifBlank { "--:--" }
+}
 
 private fun stateColor(state: LifecycleState): Color = when (state) {
     LifecycleState.PLANNED -> Color.Gray

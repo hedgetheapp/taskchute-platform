@@ -49,6 +49,16 @@ D-112 local evidence is Android JVM `97 / 97` and `TaskChute_API33` Today instru
 MainActivity, and found no TaskChute package crash. Galaxy S23 D-112 smoke remains
 `PENDING_SMOKE` until the fresh artifact is tested.
 
+D-113 refines the Today visual surface without changing canonical commands: the leading slot is
+consistent across lifecycle states, planned start/estimate metadata is icon-led, available execution
+times are shown without fabrication, Add/Edit sheets open high, drag feedback is lifted, and Sections
+can be collapsed locally (default expanded). Native Notes keeps D-111 autosave and safe flush, removes
+the visible Save button, uses a borderless Markdown source editor, returns to the Notes list from the
+footer, and exposes D-092 standalone archive/restore/delete actions. The D-113 local gate is Android JVM
+`101 / 101` plus `scripts/android-qa.ps1 -Surface Notes` `7 / 7` and `-Surface Today` `25 / 25`; both
+include debug APK install, MainActivity resolution, and crash-buffer inspection. D-113 Galaxy S23 smoke
+is `PENDING_SMOKE` until the fresh final-main artifact is tested.
+
 ## Local build
 
 Configure the non-production URL without committing it:

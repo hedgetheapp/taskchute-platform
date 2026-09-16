@@ -20,6 +20,19 @@ data class AndroidDocumentSummary(
     val updatedAt: String,
 )
 
+data class SetStandaloneDocumentArchivedRequest(
+    val operationId: String,
+    val documentId: String,
+    val expectedRevision: Int,
+    val archived: Boolean,
+)
+
+data class DeleteStandaloneDocumentRequest(
+    val operationId: String,
+    val documentId: String,
+    val expectedRevision: Int,
+)
+
 sealed interface DocumentListResult {
     data class Success(val documents: List<AndroidDocumentSummary>) : DocumentListResult
     data object Unauthorized : DocumentListResult
@@ -33,6 +46,15 @@ sealed interface DocumentResult {
     data class Conflict(val message: String) : DocumentResult
     data class Ambiguous(val message: String) : DocumentResult
     data class Failure(val message: String) : DocumentResult
+}
+
+sealed interface DocumentLifecycleResult {
+    data class Success(val document: AndroidDocument? = null) : DocumentLifecycleResult
+    data object Missing : DocumentLifecycleResult
+    data object Unauthorized : DocumentLifecycleResult
+    data class Conflict(val message: String) : DocumentLifecycleResult
+    data class Ambiguous(val message: String) : DocumentLifecycleResult
+    data class Failure(val message: String) : DocumentLifecycleResult
 }
 
 data class StandaloneCreateRequest(
@@ -65,13 +87,17 @@ data class TaskPrimaryUpdateRequest(
 )
 
 interface AndroidDocumentRepository {
-    fun listStandalone(): DocumentListResult
+    fun listStandalone(archived: Boolean = false): DocumentListResult
 
     fun fetchStandalone(documentId: String): DocumentResult
 
     fun createStandalone(request: StandaloneCreateRequest): DocumentResult
 
     fun updateStandalone(request: StandaloneUpdateRequest): DocumentResult
+
+    fun setStandaloneArchived(request: SetStandaloneDocumentArchivedRequest): DocumentLifecycleResult
+
+    fun deleteStandalone(request: DeleteStandaloneDocumentRequest): DocumentLifecycleResult
 
     fun fetchTaskPrimary(documentId: String): DocumentResult
 
