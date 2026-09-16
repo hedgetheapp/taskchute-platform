@@ -50,7 +50,6 @@ export interface TaskNoteEditorProps {
   onDirtyChange: (dirty: boolean) => void;
   onUnresolvedChange: (unresolved: boolean) => void;
   onRegisterFlush: (flush: (() => Promise<boolean>) | null) => void;
-  onOpenNewTab: () => void;
   authEpoch?: number;
   mutationsBlocked?: boolean;
   realtimeRefresh?: { token: number; scopes?: Array<{ kind: string; document_ids?: string[] }> };
@@ -68,7 +67,7 @@ function isResolvedUpdate(request: PrimaryUpdateRequest, document: PrimaryDocume
 
 export function TaskNoteEditor({
   taskId = "", documentId, taskTitle = "Task Note", documentKind = "task_primary", projectId, projectTitle, initialGeometry, zIndex = 12, focusRequest = 0, restoreRequest = 0,
-  outsideClickRequest = 0, onActivate, onClose, onUnauthorized, onDirtyChange, onUnresolvedChange, onRegisterFlush, onOpenNewTab,
+  outsideClickRequest = 0, onActivate, onClose, onUnauthorized, onDirtyChange, onUnresolvedChange, onRegisterFlush,
   authEpoch = 0, mutationsBlocked = false, realtimeRefresh,
 }: TaskNoteEditorProps) {
   const isProjectPrimary = documentKind === "project_primary";
@@ -557,7 +556,7 @@ export function TaskNoteEditor({
         onPointerUp={handleDragPointerEnd} onPointerCancel={handleDragPointerEnd}>
         <div><p className="eyebrow">{primaryLabel}</p><h2>{primaryTitle}</h2></div>
         <div className="task-note-peek-actions">
-          <button type="button" className="secondary" onClick={() => {
+          <button type="button" className="task-note-copy-link" aria-label="ノートへのリンクをコピー" title="ノートへのリンクをコピー" onClick={() => {
           const write = navigator.clipboard?.writeText(`${window.location.origin}${documentPermalink(documentId)}`);
           if (!write) {
             setNotice("リンクのコピーに失敗しました。");
@@ -565,8 +564,9 @@ export function TaskNoteEditor({
           }
           void write.then(() => setNotice("リンクをコピーしました。"))
             .catch(() => setNotice("リンクのコピーに失敗しました。"));
-          }}>リンクをコピー</button>
-          <button type="button" className="secondary" onClick={onOpenNewTab}>新しいタブ</button>
+          }}>
+            <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M7.25 6.25V4.75A1.5 1.5 0 0 1 8.75 3.25h6.5a1.5 1.5 0 0 1 1.5 1.5v8.5a1.5 1.5 0 0 1-1.5 1.5h-1.5M11.25 6.75h-6.5a1.5 1.5 0 0 0-1.5 1.5v8.5a1.5 1.5 0 0 0 1.5 1.5h6.5a1.5 1.5 0 0 0 1.5-1.5v-8.5a1.5 1.5 0 0 0-1.5-1.5Z" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          </button>
           <div className="task-note-window-controls" aria-label="ノートウィンドウ操作">
             <button type="button" className="task-note-window-control" aria-label="ノートを最小化" title="ノートを最小化" onClick={() => minimize()}>
               {renderWindowControlIcon("minimize")}
@@ -581,7 +581,6 @@ export function TaskNoteEditor({
         </div>
       </header>
       {loading ? <p className="muted">読み込み中…</p> : <div className="task-note-peek-content">
-        <p className="task-note-authority">現在の{isProjectPrimary ? "Projectタイトル" : "Taskタイトル"}を表示しています。</p>
         <NoteMarkdownEditor
           value={draftBody}
           disabled={unresolved || mutationsBlocked}
@@ -590,7 +589,9 @@ export function TaskNoteEditor({
           className="task-note-markdown-field"
         />
         {payloadWarning && <p className="notes-payload-warning" role="status">{payloadWarning}</p>}
-        {unresolved && <button type="button" className="secondary" disabled={saving} onClick={() => void saveRef.current()}>同じ内容で再試行</button>}
+        {unresolved && <p className="notes-save-status" role="status" aria-live="polite"><span>保存結果未確定</span>
+          <button type="button" className="notes-inline-retry" aria-label="同じ内容で再試行" disabled={saving} onClick={() => void saveRef.current()}>再試行</button>
+        </p>}
         {notice && <p className="success" role="status">{notice}</p>}
         {error && <p className="error" role="alert">{error}</p>}
       </div>}

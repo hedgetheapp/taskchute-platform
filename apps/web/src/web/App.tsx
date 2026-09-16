@@ -2499,14 +2499,14 @@ export function App() {
     window.history.replaceState(null, "", documentPermalink(target.documentId));
   }
 
-  async function openProjectNote(projectId: string, projectTitle: string): Promise<void> {
+  async function openProjectNote(projectId: string, projectTitle: string, forceFloating = false): Promise<void> {
     const existing = taskNoteWindowsRef.current.find((windowState) => windowState.projectId === projectId);
     if (existing) {
       activateTaskNoteWindow(existing.documentId, { restore: true, focus: true });
       window.history.replaceState(null, "", documentPermalink(existing.documentId));
       return;
     }
-    if (taskNoteOpenMode === "new-tab") {
+    if (taskNoteOpenMode === "new-tab" && !forceFloating) {
       try {
         const existingDocument = await api.loadProjectPrimaryDocument(projectId);
         const tab = window.open(documentPermalink(existingDocument.document_id), "_blank", "noopener,noreferrer");
@@ -2556,19 +2556,9 @@ export function App() {
   async function openTaskNote(entry: EntryProjection): Promise<void> {
     const taskId = entry.task.id;
     const candidateDocumentId = entry.task.primary_document_id ?? null;
-    if (taskNoteOpenMode === "new-tab") {
-      const candidate = candidateDocumentId ?? uuidv7();
-      const url = candidateDocumentId
-        ? documentPermalink(candidate)
-        : `/?view=task-note-bootstrap&task=${encodeURIComponent(taskId)}&candidate=${encodeURIComponent(candidate)}`;
-      const tab = window.open(url, "_blank", "noopener,noreferrer");
-      if (!tab) setError("新しいタブを開けませんでした。ブラウザのポップアップ設定を確認してください。");
-      return;
-    }
     const existing = taskNoteWindowsRef.current.find((windowState) => windowState.taskId === taskId);
     if (existing) {
-      activateTaskNoteWindow(existing.documentId, { restore: true, focus: true });
-      window.history.replaceState(null, "", documentPermalink(existing.documentId));
+      await closeTaskNote(existing.documentId);
       return;
     }
     if (isTaskNoteWindowMobile(window.innerWidth) && taskNoteWindowsRef.current.length > 0) {
@@ -5976,7 +5966,7 @@ export function App() {
     event.stopPropagation();
     const heading = event.currentTarget.closest<HTMLElement>(".table-heading");
     const taskHeading = heading?.querySelector<HTMLElement>(".task-heading");
-    const startTaskWidth = Math.max(280, taskHeading?.getBoundingClientRect().width || dayColumnPreference.taskWidth);
+    const startTaskWidth = Math.max(180, taskHeading?.getBoundingClientRect().width || dayColumnPreference.taskWidth);
     const startTableWidth = Math.max(0, heading?.getBoundingClientRect().width ?? 0);
     setDayTableResizeLayout({ taskWidth: startTaskWidth, tableWidth: startTableWidth });
     setColumnResize({ key, startX: event.clientX, startWidth: dayColumnPreference.widths[key], startTaskWidth, startTableWidth });
@@ -5988,7 +5978,7 @@ export function App() {
     event.stopPropagation();
     const heading = event.currentTarget.closest<HTMLElement>(".table-heading");
     const taskHeading = event.currentTarget.closest<HTMLElement>(".task-heading");
-    const startTaskWidth = Math.max(280, taskHeading?.getBoundingClientRect().width || dayColumnPreference.taskWidth);
+    const startTaskWidth = Math.max(180, taskHeading?.getBoundingClientRect().width || dayColumnPreference.taskWidth);
     const startTableWidth = Math.max(0, heading?.getBoundingClientRect().width ?? 0);
     setDayTableResizeLayout({ taskWidth: startTaskWidth, tableWidth: startTableWidth });
     setColumnResize({ key: "task", startX: event.clientX, startWidth: startTaskWidth, startTaskWidth, startTableWidth });
@@ -6138,10 +6128,11 @@ export function App() {
     switch (key) {
       case "note": {
         const hasDocument = entry.task.primary_document_id != null;
+        const isOpen = taskNoteWindows.some((windowState) => windowState.taskId === entry.task.id);
         return <span className="task-note-cell" data-day-column-cell={key}>
           <button type="button" className={`task-note-trigger${hasDocument ? " has-document" : ""}`} data-note-state={hasDocument ? "present" : "absent"} data-task-id={entry.task.id}
-            aria-label={hasDocument ? `${entry.task.title}のノートを開く` : `${entry.task.title}のノートを作成して開く`}
-            title={hasDocument ? "ノートを開く" : "ノートを作成して開く"}
+            aria-label={isOpen ? `${entry.task.title}のノートを閉じる` : hasDocument ? `${entry.task.title}のノートを開く` : `${entry.task.title}のノートを作成して開く`}
+            title={isOpen ? "ノートを閉じる" : hasDocument ? "ノートを開く" : "ノートを作成して開く"}
             disabled={taskNoteOpeningIds[entry.task.id] === true} onClick={(event) => { event.stopPropagation(); void openTaskNote(entry); }}>
             <NoteIcon />
           </button>
@@ -6165,15 +6156,15 @@ export function App() {
               setTaskMetadataDraft((current) => current ? { ...current, projectId } : current);
               commitTaskMetadata(entry, projectId);
             }}>
-            <option value="">Projectなし</option>
+            <option value=""></option>
             {projectOptions.map((candidate) => <option value={candidate.id} key={candidate.id} disabled={candidate.archived === true}>{candidate.title}{candidate.archived ? "（アーカイブ）" : ""}</option>)}
           </select> : canEditProjectMetadata(entry) ? <select className="project-selector" aria-label={`${entry.task.title}のProject`} value={projectId ?? ""}
             disabled={hasRetainedMutationScope(entryMutationScope(entry.id, entry.task.id))}
             onClick={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()}
             onChange={(event) => commitProjectMetadata(entry, event.target.value || null)}>
-            <option value="">Projectなし</option>
+            <option value=""></option>
             {projectOptions.map((candidate) => <option value={candidate.id} key={candidate.id} disabled={candidate.archived === true}>{candidate.title}{candidate.archived ? "（アーカイブ）" : ""}</option>)}
-          </select> : projectTitle ?? <EmptyValue label="Project未設定" />}
+          </select> : projectTitle && <span className="project-title">{projectTitle}</span>}
           {projectId !== null && projectTitle && <button type="button" className="project-note-trigger" aria-label={`${projectTitle}のプロジェクトノートを開く`} title="プロジェクトノートを開く"
             disabled={taskNoteOpeningIds[`project:${projectId}`] === true}
             onClick={(event) => { event.stopPropagation(); void openProjectNote(projectId, projectTitle); }}><NoteIcon /></button>}
@@ -6199,10 +6190,10 @@ export function App() {
             onChange={(event) => entry.routine
               ? changeRoutineMode(entry, event.target.value || null)
               : commitEntryMode(entry, event.target.value || null)}>
-            <option value="">—</option>
+            <option value=""></option>
             {(modeBoard?.modes ?? []).map((mode) => <option value={mode.id} key={mode.id}
               disabled={mode.archived && mode.id !== modeId}>{mode.title}{mode.archived ? "（アーカイブ）" : ""}</option>)}
-          </select> : modeTitle ?? <EmptyValue label="Mode未設定" />}
+          </select> : modeTitle}
         </span>;
       }
       case "section":
@@ -6311,7 +6302,7 @@ export function App() {
       }
       case "forecast":
         return <span className="forecast-cell" data-day-column-cell={key} aria-label={`${entry.task.title}の開始見込`}>
-          {renderEmptyValue(formatStartForecast(forecastByEntryId[entry.id], currentDay.taskchute_day.logical_date, currentDay.taskchute_day.establishment_timezone), "開始見込なし")}
+          {entry.lifecycle_state === "completed" ? "--:--" : renderEmptyValue(formatStartForecast(forecastByEntryId[entry.id], currentDay.taskchute_day.logical_date, currentDay.taskchute_day.establishment_timezone), "開始見込なし")}
         </span>;
       case "actualStart":
         return <span className="actual-start-cell actual-time-cell" data-day-column-cell={key}>
@@ -6405,7 +6396,7 @@ export function App() {
             realtimeRefresh={realtimeRefresh}
             initialDocumentId={notesInitialDocumentId}
             floatingProjectIds={taskNoteWindows.filter((windowState) => windowState.documentKind === "project_primary" && windowState.projectId).map((windowState) => windowState.projectId!) }
-            onOpenProjectNote={(projectId, title) => { void openProjectNote(projectId, title); }}
+            onOpenProjectNote={(projectId, title) => { void openProjectNote(projectId, title, true); }}
             onRegisterFlush={(flush) => { notesFlushRef.current = flush; }} />
         ) : view === "settings" ? (
           <main className="shell settings-shell">
@@ -6435,9 +6426,9 @@ export function App() {
               {autoCarrySettingNotice && <p role="status" className="success">{autoCarrySettingNotice}</p>}
               {error && <p role="alert" className="error">{error}</p>}
 
-              <section className="task-note-settings" aria-label="Task Note設定">
-                <div><h2>Task Note</h2><p>Task行のノートを開く方法を選択します。</p></div>
-                <label>開き方<select aria-label="Task Noteの開き方" value={taskNoteOpenMode} onChange={(event) => {
+              <section className="task-note-settings" aria-label="Project Note設定">
+                <div><h2>Project Note</h2><p>Project Noteを開く方法を選択します。</p></div>
+                <label>開き方<select aria-label="Project Noteの開き方" value={taskNoteOpenMode} onChange={(event) => {
                   const mode = event.target.value === "new-tab" ? "new-tab" : "side-peek";
                   setTaskNoteOpenMode(mode); persistTaskNoteOpenMode(mode);
                 }}><option value="side-peek">右側のpeek</option><option value="new-tab">新しいタブ</option></select></label>
@@ -7369,10 +7360,7 @@ export function App() {
           onDirtyChange={(dirty) => patchTaskNoteWindow(windowState.documentId, { dirty })}
           onUnresolvedChange={(unresolved) => patchTaskNoteWindow(windowState.documentId, { unresolved })}
           onRegisterFlush={(flush) => patchTaskNoteWindow(windowState.documentId, { flush })}
-          onOpenNewTab={() => {
-            const tab = window.open(documentPermalink(windowState.documentId), "_blank", "noopener,noreferrer");
-            if (!tab) setError("新しいタブを開けませんでした。ブラウザのポップアップ設定を確認してください。");
-          }} />)}
+          />)}
         {sessionBarrier === "reauth-required" && <div className="reauth-overlay" role="dialog" aria-modal="true" aria-labelledby="reauth-title">
           <section className="reauth-panel">
             <p className="eyebrow">Session</p>

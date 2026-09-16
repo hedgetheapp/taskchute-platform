@@ -73,7 +73,6 @@ export function NoteMarkdownEditor({
 
   return (
     <div className={classes} data-note-markdown-editor="true">
-      <span className="note-markdown-label">Markdown本文</span>
       <div className="note-markdown-editor">
         <div className={`notes-line-numbers${lineNumbersEnabled ? " is-visible" : " is-hidden"}`} aria-hidden="true">
           {Array.from({ length: lineCount }, (_, index) => <span key={index}>{index + 1}</span>)}

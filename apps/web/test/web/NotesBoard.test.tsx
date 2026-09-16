@@ -85,15 +85,45 @@ describe("NotesBoard", () => {
     mocks.updateDocument.mockResolvedValue({ document: note(created.document_id, "Created", "# body", 1) });
     render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} />);
     fireEvent.click(await screen.findByRole("button", { name: "＋ 新規ノート" }));
+    expect(screen.queryByRole("button", { name: "保存" })).toBeNull();
+    expect(screen.queryByText("Markdown source")).toBeNull();
+    expect(screen.queryByText("Markdown本文")).toBeNull();
     await waitFor(() => expect(mocks.createStandaloneDocument).toHaveBeenCalledTimes(1));
     expect(mocks.createStandaloneDocument.mock.calls[0]![0]).toMatchObject({ title: "notitle", markdown_body: "" });
     fireEvent.change(screen.getByLabelText("ノートタイトル"), { target: { value: "Created" } });
     fireEvent.change(screen.getByLabelText("Markdown本文"), { target: { value: "# body" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    fireEvent.keyDown(screen.getByLabelText("ノートタイトル"), { key: "s", ctrlKey: true });
     await waitFor(() => expect(mocks.updateDocument).toHaveBeenCalledTimes(1));
     expect(mocks.updateDocument.mock.calls[0]![0]).toMatchObject({
       document_id: created.document_id, expected_revision: 0, title: "Created", markdown_body: "# body",
     });
+  });
+
+  it("focuses a new Note title only after its canonical Create resolves", async () => {
+    const create = deferred<{ document: StandaloneDocument }>();
+    mocks.createStandaloneDocument.mockImplementationOnce(() => create.promise);
+    render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} />);
+    fireEvent.click(await screen.findByRole("button", { name: "＋ 新規ノート" }));
+    const title = await screen.findByLabelText("ノートタイトル");
+    expect(document.activeElement).not.toBe(title);
+
+    const request = mocks.createStandaloneDocument.mock.calls[0]![0];
+    await act(async () => { create.resolve({ document: note(request.document_id, "notitle", "") }); await create.promise; });
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText("ノートタイトル")));
+  });
+
+  it("does not steal focus moved elsewhere while a new Note Create is pending", async () => {
+    const create = deferred<{ document: StandaloneDocument }>();
+    mocks.createStandaloneDocument.mockImplementationOnce(() => create.promise);
+    render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} />);
+    fireEvent.click(await screen.findByRole("button", { name: "＋ 新規ノート" }));
+    await waitFor(() => expect(mocks.createStandaloneDocument).toHaveBeenCalledTimes(1));
+    const filter = screen.getByLabelText("ノート種別");
+    filter.focus();
+    const request = mocks.createStandaloneDocument.mock.calls[0]![0];
+    await act(async () => { create.resolve({ document: note(request.document_id, "notitle", "") }); await create.promise; });
+    await waitFor(() => expect(screen.getByLabelText("ノートタイトル")).toBeTruthy());
+    expect(document.activeElement).toBe(filter);
   });
 
   it("autosaves an existing Note after the debounce without blocking editing", async () => {
@@ -159,7 +189,7 @@ describe("NotesBoard", () => {
     render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} />);
     await waitFor(() => expect(screen.getByDisplayValue("Before")).toBeTruthy());
     fireEvent.change(screen.getByLabelText("ノートタイトル"), { target: { value: "Title" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    fireEvent.keyDown(screen.getByLabelText("ノートタイトル"), { key: "s", ctrlKey: true });
     await screen.findByText("保存中 1件");
     fireEvent.change(screen.getByLabelText("Markdown本文"), { target: { value: "new body" } });
     await screen.findByText("保存中 2件");
@@ -207,7 +237,7 @@ describe("NotesBoard", () => {
     render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} />);
     await waitFor(() => expect(screen.getByDisplayValue("Server")).toBeTruthy());
     fireEvent.change(screen.getByLabelText("ノートタイトル"), { target: { value: "Local" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    fireEvent.keyDown(screen.getByLabelText("ノートタイトル"), { key: "s", ctrlKey: true });
     await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("他の変更"));
     expect(screen.getByDisplayValue("Local")).toBeTruthy();
     expect(screen.getByText("最新のServer内容を確認")).toBeTruthy();
@@ -222,7 +252,7 @@ describe("NotesBoard", () => {
     render(<NotesBoard onUnauthorized={onUnauthorized} onDirtyChange={vi.fn()} />);
     await waitFor(() => expect(screen.getByDisplayValue("Server")).toBeTruthy());
     fireEvent.change(screen.getByLabelText("ノートタイトル"), { target: { value: "Local draft" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    fireEvent.keyDown(screen.getByLabelText("ノートタイトル"), { key: "s", ctrlKey: true });
     await waitFor(() => expect(onUnauthorized).toHaveBeenCalledTimes(1));
     expect(screen.getByDisplayValue("Local draft")).toBeTruthy();
     expect(mocks.updateDocument).toHaveBeenCalledTimes(1);
@@ -235,7 +265,7 @@ describe("NotesBoard", () => {
     const { rerender } = render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} mutationsBlocked />);
     await waitFor(() => expect(screen.getByDisplayValue("Server")).toBeTruthy());
     fireEvent.change(screen.getByLabelText("ノートタイトル"), { target: { value: "Blocked" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    fireEvent.keyDown(screen.getByLabelText("ノートタイトル"), { key: "s", ctrlKey: true });
     expect(mocks.updateDocument).not.toHaveBeenCalled();
     rerender(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} mutationsBlocked={false} authEpoch={1} />);
   });
@@ -247,7 +277,7 @@ describe("NotesBoard", () => {
     render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} />);
     await waitFor(() => expect(screen.getByDisplayValue("Server")).toBeTruthy());
     fireEvent.change(screen.getByLabelText("Markdown本文"), { target: { value: "あ😀\\n".repeat(22000) } });
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    fireEvent.keyDown(screen.getByLabelText("ノートタイトル"), { key: "s", ctrlKey: true });
     await screen.findByRole("alert");
     expect(screen.getByRole("alert").textContent).toContain("大きすぎます");
     expect(mocks.updateDocument).not.toHaveBeenCalled();
@@ -261,7 +291,7 @@ describe("NotesBoard", () => {
     render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} />);
     await waitFor(() => expect(screen.getByDisplayValue("Server")).toBeTruthy());
     fireEvent.change(screen.getByLabelText("Markdown本文"), { target: { value: "x".repeat(59000) } });
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    fireEvent.keyDown(screen.getByLabelText("ノートタイトル"), { key: "s", ctrlKey: true });
     await screen.findByText(/保存データが上限に近づいています/);
     expect(mocks.updateDocument).toHaveBeenCalledTimes(1);
   });
@@ -359,7 +389,7 @@ describe("NotesBoard", () => {
     await waitFor(() => expect(screen.getByDisplayValue("Before")).toBeTruthy());
     fireEvent.change(screen.getByLabelText("ノートタイトル"), { target: { value: "After" } });
     fireEvent.change(screen.getByLabelText("Markdown本文"), { target: { value: "after" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    fireEvent.keyDown(screen.getByLabelText("ノートタイトル"), { key: "s", ctrlKey: true });
     await screen.findByRole("button", { name: "同じ内容で再試行" });
     const firstRequest = { ...mocks.updateDocument.mock.calls[0]![0] };
     expect(screen.getByLabelText("ノートタイトル")).toHaveProperty("disabled", true);
@@ -377,7 +407,7 @@ describe("NotesBoard", () => {
     render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} />);
     await waitFor(() => expect(screen.getByDisplayValue("Clean")).toBeTruthy());
     fireEvent.change(screen.getByLabelText("ノートタイトル"), { target: { value: "Changed" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    fireEvent.keyDown(screen.getByLabelText("ノートタイトル"), { key: "s", ctrlKey: true });
     await screen.findByRole("button", { name: "同じ内容で再試行" });
     const event = new Event("beforeunload", { cancelable: true });
     window.dispatchEvent(event);
@@ -583,12 +613,16 @@ describe("NotesBoard", () => {
     const openFloating = vi.fn();
     render(<NotesBoard onUnauthorized={vi.fn()} onDirtyChange={vi.fn()} onOpenProjectNote={openFloating} />);
     fireEvent.click(await screen.findByRole("button", { name: /Project One/ }));
-    await waitFor(() => expect(screen.getByText(/現在のProjectタイトルを表示しています。/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Project One" })).toBeTruthy());
+    expect(screen.queryByText(/現在のProjectタイトルを表示しています。/)).toBeNull();
     expect(openFloating).not.toHaveBeenCalled();
     expect(screen.queryByLabelText("ノートタイトル")).toBeNull();
     const body = await screen.findByLabelText("Markdown本文");
     fireEvent.change(body, { target: { value: "after" } });
+    fireEvent.click(screen.getByRole("button", { name: "フローティングウィンドウで開く" }));
     await waitFor(() => expect(mocks.updateProjectPrimaryDocument).toHaveBeenCalledTimes(1), { timeout: 2500 });
+    await waitFor(() => expect(openFloating).toHaveBeenCalledWith("project-1", "Project One"));
+    expect(screen.queryByLabelText("Markdown本文")).toBeNull();
     expect(mocks.updateProjectPrimaryDocument.mock.calls[0]![0]).toMatchObject({ project_id: "project-1", document_id: current.document_id,
       expected_revision: 0, markdown_body: "after" });
   });

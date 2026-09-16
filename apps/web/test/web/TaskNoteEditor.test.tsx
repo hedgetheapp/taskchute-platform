@@ -80,7 +80,7 @@ describe("TaskNoteEditor", () => {
     return render(<TaskNoteEditor
       taskId={taskId} documentId={documentId} taskTitle="Task A"
       onClose={vi.fn()} onUnauthorized={vi.fn()} onDirtyChange={vi.fn()}
-      onUnresolvedChange={vi.fn()} onRegisterFlush={vi.fn()} onOpenNewTab={vi.fn()}
+      onUnresolvedChange={vi.fn()} onRegisterFlush={vi.fn()}
     />);
   }
 
@@ -103,7 +103,7 @@ describe("TaskNoteEditor", () => {
     render(<TaskNoteEditor
       taskId={taskId} documentId={documentId} taskTitle="Task A"
       onClose={vi.fn()} onUnauthorized={onUnauthorized} onDirtyChange={vi.fn()}
-      onUnresolvedChange={vi.fn()} onRegisterFlush={vi.fn()} onOpenNewTab={vi.fn()}
+      onUnresolvedChange={vi.fn()} onRegisterFlush={vi.fn()}
     />);
     const body = await screen.findByRole("textbox", { name: "Markdown本文" });
     fireEvent.change(body, { target: { value: "local draft" } });
@@ -121,7 +121,7 @@ describe("TaskNoteEditor", () => {
     const view = render(<TaskNoteEditor
       taskId={taskId} documentId={documentId} taskTitle="Task A"
       onClose={vi.fn()} onUnauthorized={onUnauthorized} onDirtyChange={onDirtyChange}
-      onUnresolvedChange={vi.fn()} onRegisterFlush={vi.fn()} onOpenNewTab={vi.fn()}
+      onUnresolvedChange={vi.fn()} onRegisterFlush={vi.fn()}
     />);
     const body = await screen.findByRole("textbox", { name: "Markdown本文" });
     const initialLoads = mocks.loadTaskPrimaryDocumentById.mock.calls.length;
@@ -129,7 +129,7 @@ describe("TaskNoteEditor", () => {
     view.rerender(<TaskNoteEditor
       taskId={taskId} documentId={documentId} taskTitle="Task A"
       onClose={vi.fn()} onUnauthorized={onUnauthorized} onDirtyChange={onDirtyChange}
-      onUnresolvedChange={vi.fn()} onRegisterFlush={vi.fn()} onOpenNewTab={vi.fn()}
+      onUnresolvedChange={vi.fn()} onRegisterFlush={vi.fn()}
       realtimeRefresh={{ token: 1, scopes: [{ kind: "documents", document_ids: [documentId] }] }}
     />);
     await waitFor(() => expect(mocks.loadTaskPrimaryDocumentById.mock.calls.length).toBeGreaterThan(initialLoads));
@@ -146,7 +146,7 @@ describe("TaskNoteEditor", () => {
     const view = render(<TaskNoteEditor
       taskId={taskId} documentId={documentId} taskTitle="Task A"
       onClose={vi.fn()} onUnauthorized={onUnauthorized} onDirtyChange={onDirtyChange}
-      onUnresolvedChange={vi.fn()} onRegisterFlush={vi.fn()} onOpenNewTab={vi.fn()}
+      onUnresolvedChange={vi.fn()} onRegisterFlush={vi.fn()}
     />);
     const body = await screen.findByRole("textbox", { name: "Markdown本文" });
     const initialLoads = mocks.loadTaskPrimaryDocumentById.mock.calls.length;
@@ -154,7 +154,7 @@ describe("TaskNoteEditor", () => {
     view.rerender(<TaskNoteEditor
       taskId={taskId} documentId={documentId} taskTitle="Task A"
       onClose={vi.fn()} onUnauthorized={onUnauthorized} onDirtyChange={onDirtyChange}
-      onUnresolvedChange={vi.fn()} onRegisterFlush={vi.fn()} onOpenNewTab={vi.fn()}
+      onUnresolvedChange={vi.fn()} onRegisterFlush={vi.fn()}
       realtimeRefresh={{ token: 1, scopes: [{ kind: "documents", document_ids: [documentId] }] }}
     />);
     await waitFor(() => expect(mocks.loadTaskPrimaryDocumentById.mock.calls.length).toBeGreaterThan(initialLoads));
@@ -171,7 +171,7 @@ describe("TaskNoteEditor", () => {
     const view = render(<TaskNoteEditor
       documentKind="project_primary" projectId={taskId} projectTitle="Project A" taskId={taskId} documentId={documentId}
       onClose={vi.fn()} onUnauthorized={onUnauthorized} onDirtyChange={onDirtyChange}
-      onUnresolvedChange={vi.fn()} onRegisterFlush={vi.fn()} onOpenNewTab={vi.fn()}
+      onUnresolvedChange={vi.fn()} onRegisterFlush={vi.fn()}
     />);
     const body = await screen.findByRole("textbox", { name: "Markdown本文" });
     const initialLoads = mocks.loadProjectPrimaryDocumentById.mock.calls.length;
@@ -179,7 +179,7 @@ describe("TaskNoteEditor", () => {
     view.rerender(<TaskNoteEditor
       documentKind="project_primary" projectId={taskId} projectTitle="Project A" taskId={taskId} documentId={documentId}
       onClose={vi.fn()} onUnauthorized={onUnauthorized} onDirtyChange={onDirtyChange}
-      onUnresolvedChange={vi.fn()} onRegisterFlush={vi.fn()} onOpenNewTab={vi.fn()}
+      onUnresolvedChange={vi.fn()} onRegisterFlush={vi.fn()}
       realtimeRefresh={{ token: 1, scopes: [{ kind: "documents", document_ids: [documentId] }] }}
     />);
     await waitFor(() => expect(mocks.loadProjectPrimaryDocumentById.mock.calls.length).toBeGreaterThan(initialLoads));
@@ -194,7 +194,7 @@ describe("TaskNoteEditor", () => {
     render(<TaskNoteEditor
       documentKind="project_primary" projectId={taskId} projectTitle="Project A" taskId={taskId} documentId={documentId}
       onClose={vi.fn()} onUnauthorized={onUnauthorized} onDirtyChange={vi.fn()}
-      onUnresolvedChange={vi.fn()} onRegisterFlush={vi.fn()} onOpenNewTab={vi.fn()}
+      onUnresolvedChange={vi.fn()} onRegisterFlush={vi.fn()}
     />);
     const body = await screen.findByRole("textbox", { name: "Markdown本文" });
     fireEvent.change(body, { target: { value: "project draft" } });
@@ -218,7 +218,7 @@ describe("TaskNoteEditor", () => {
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
     renderEditor();
     await screen.findByRole("textbox", { name: "Markdown本文" });
-    fireEvent.click(screen.getByRole("button", { name: "リンクをコピー" }));
+    fireEvent.click(screen.getByRole("button", { name: "ノートへのリンクをコピー" }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(expect.stringContaining("/?view=note&document=")));
     expect(writeText.mock.calls[0]![0]).not.toContain("task=");
   });
@@ -243,8 +243,10 @@ describe("TaskNoteEditor", () => {
     ]);
     expect(controls.map((control) => control.textContent)).toEqual(["-", "", "×"]);
     expect(screen.queryByText("閉じる")).toBeNull();
-    expect(screen.getByRole("button", { name: "リンクをコピー" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "新しいタブ" })).toBeTruthy();
+    const copyLink = screen.getByRole("button", { name: "ノートへのリンクをコピー" });
+    expect(copyLink.textContent).toBe("");
+    expect(screen.queryByRole("button", { name: "新しいタブ" })).toBeNull();
+    expect(screen.queryByText("Markdown本文")).toBeNull();
   });
 
   it("maximizes transiently without changing preferred geometry and restores it", async () => {
@@ -360,7 +362,7 @@ describe("TaskNoteEditor", () => {
       x: 300, y: 120, width: 420, height: 500,
     });
 
-    const copy = screen.getByRole("button", { name: "リンクをコピー" });
+    const copy = screen.getByRole("button", { name: "ノートへのリンクをコピー" });
     dispatchPointer(copy, "pointerdown", { clientX: 800, clientY: 180 });
     dispatchPointer(header, "pointermove", { clientX: 900, clientY: 280 });
     expect(peek.style.left).toBe("300px");
@@ -398,7 +400,7 @@ describe("TaskNoteEditor", () => {
     expect(bar.getAttribute("aria-label")).toBe("Task Aのノートを開く");
     expect(bar.querySelector(".task-note-peek-minimized-title")?.textContent).toBe("Task A");
     expect(bar.querySelectorAll("svg.task-note-icon")).toHaveLength(1);
-    expect(screen.queryByRole("button", { name: "リンクをコピー" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "ノートへのリンクをコピー" })).toBeNull();
     expect(screen.queryByRole("button", { name: "新しいタブ" })).toBeNull();
     expect(screen.queryByRole("button", { name: "保存" })).toBeNull();
     expect(screen.queryByRole("button", { name: "ノートを元のサイズに戻す" })).toBeNull();
@@ -490,7 +492,7 @@ describe("TaskNoteEditor", () => {
     render(<TaskNoteEditor
       taskId={taskId} documentId={documentId} taskTitle="Task A"
       onClose={onClose} onUnauthorized={vi.fn()} onDirtyChange={vi.fn()}
-      onUnresolvedChange={vi.fn()} onRegisterFlush={vi.fn()} onOpenNewTab={vi.fn()}
+      onUnresolvedChange={vi.fn()} onRegisterFlush={vi.fn()}
     />);
     await screen.findByRole("textbox", { name: "Markdown本文" });
     fireEvent.click(screen.getByRole("button", { name: "ノートを最小化" }));
@@ -507,7 +509,7 @@ describe("TaskNoteEditor", () => {
     render(<TaskNoteEditor
       taskId={taskId} documentId={documentId} taskTitle="A very long Task Note title that should truncate safely"
       onClose={vi.fn()} onUnauthorized={vi.fn()} onDirtyChange={vi.fn()}
-      onUnresolvedChange={vi.fn()} onRegisterFlush={vi.fn()} onOpenNewTab={vi.fn()}
+      onUnresolvedChange={vi.fn()} onRegisterFlush={vi.fn()}
     />);
     await screen.findByRole("textbox", { name: "Markdown本文" });
     fireEvent.click(screen.getByRole("button", { name: "ノートを最小化" }));
@@ -532,7 +534,7 @@ describe("TaskNoteEditor", () => {
     render(<TaskNoteEditor
       taskId={taskId} documentId={documentId} taskTitle="Task A"
       onClose={vi.fn()} onUnauthorized={vi.fn()} onDirtyChange={vi.fn()}
-      onUnresolvedChange={unresolved} onRegisterFlush={vi.fn()} onOpenNewTab={vi.fn()}
+      onUnresolvedChange={unresolved} onRegisterFlush={vi.fn()}
     />);
     const body = await screen.findByRole("textbox", { name: "Markdown本文" });
     fireEvent.change(body, { target: { value: "after" } });

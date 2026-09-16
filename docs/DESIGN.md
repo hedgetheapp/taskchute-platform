@@ -24,6 +24,26 @@ server-owned order, and Routine rows expose enabled state plus the existing
 definition fields. Destructive actions use confirmation, and Android keeps the
 existing Material 3 dependency surface without a third-party icon library.
 
+## D-115 Web Today / Notes refinement
+
+Desktop Web Today keeps Project and Mode cells blank when unset and constrains
+their values and editable selectors to a single truncated line. The resizable
+Task column may narrow to 180px while preserving the established default and
+640px maximum. Running-row tint is subtle and independent of focus; Routine
+presence uses muted/accented icon states; completed Start Forecast is `--:--`.
+
+The Today Task Note control toggles only its own floating window and still uses
+the existing safe flush / ambiguous-save barrier before closing. Floating and
+Notes-page Markdown editors are borderless, omit visible `Markdown本文`, and
+retain accessible input names. Notes-page normal Save is not shown; existing
+autosave and exact retry remain, with a compact retry only for unresolved
+outcomes. A new standalone title receives focus after canonical Create only if
+the user has not changed focus. A supported Project Primary Note can transfer
+from its inline Notes editor to the existing floating editor after safe flush;
+no second editable draft authority or new floating Standalone Note type is
+introduced. D-098 focus, D-091 persistence/retry, and existing domain semantics
+remain authoritative.
+
 ## D-113 Android Today / Notes UX refinement
 
 D-113はD-109〜D-112のcompact Today interactionを保ったまま、planned / running / completedの

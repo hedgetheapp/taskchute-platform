@@ -65,6 +65,7 @@ function isAmbiguousResolution(request: DocumentRequest, canonical: StandaloneDo
 
 interface ProjectPrimaryInlineEditorProps {
   candidate: ProjectPrimaryDocumentSummary;
+  onOpenFloating: () => Promise<void>;
   onUnauthorized: () => void;
   onDirtyChange: (dirty: boolean) => void;
   onUnresolvedChange: (unresolved: boolean) => void;
@@ -82,7 +83,7 @@ function isProjectUpdateResolved(request: UpdateProjectPrimaryDocumentRequest, c
     && canonical.markdown_body === request.markdown_body;
 }
 
-function ProjectPrimaryInlineEditor({ candidate, onUnauthorized, onDirtyChange, onUnresolvedChange, onSavingChange, onRegisterFlush, authEpoch = 0, mutationsBlocked = false }: ProjectPrimaryInlineEditorProps) {
+function ProjectPrimaryInlineEditor({ candidate, onOpenFloating, onUnauthorized, onDirtyChange, onUnresolvedChange, onSavingChange, onRegisterFlush, authEpoch = 0, mutationsBlocked = false }: ProjectPrimaryInlineEditorProps) {
   const [document, setDocument] = useState<ProjectPrimaryDocument | null>(null);
   const [draftBody, setDraftBody] = useState("");
   const [baselineBody, setBaselineBody] = useState("");
@@ -255,14 +256,16 @@ function ProjectPrimaryInlineEditor({ candidate, onUnauthorized, onDirtyChange, 
 
   return <form className="notes-project-primary-editor" onSubmit={(event) => { event.preventDefault(); void saveRef.current(); }}>
     {loading ? <p className="muted">読み込み中…</p> : <>
-      <div className="notes-editor-heading"><div><p className="eyebrow">Project Note</p><h2>{candidate.project_title}</h2></div></div>
-      <p className="notes-project-authority">現在のProjectタイトルを表示しています。タイトルはProject設定から変更できます。</p>
+      <div className="notes-editor-heading"><div><p className="eyebrow">Project Note</p><h2>{candidate.project_title}</h2></div>
+        <button type="button" className="secondary" disabled={mutationsBlocked || unresolved} onClick={() => void onOpenFloating()}>フローティングウィンドウで開く</button>
+      </div>
       <NoteMarkdownEditor value={draftBody} disabled={unresolved || mutationsBlocked}
         onChange={(value) => { if (mutationsBlocked || unresolved) return; setDraftBody(value); draftRef.current = value; setNotice(null); }}
         onKeyDown={handleKeyDown} />
-      <p className="notes-save-status" role="status" aria-live="polite"><span>{unresolved ? "保存結果未確定" : dirty || saving ? "未保存" : "保存済み"}</span>{saving && <span>（保存中）</span>}</p>
+      <p className="notes-save-status" role="status" aria-live="polite"><span>{unresolved ? "保存結果未確定" : saving ? "保存中…" : dirty ? "未保存" : "保存済み"}</span>
+        {unresolved && <button type="button" className="notes-inline-retry" aria-label="同じ内容で再試行" disabled={saving} onClick={() => void saveRef.current()}>再試行</button>}
+      </p>
       {payloadWarning && <p className="notes-payload-warning" role="status">{payloadWarning}</p>}
-      {unresolved && <button type="button" className="secondary" disabled={saving} onClick={() => void saveRef.current()}>同じ内容で再試行</button>}
       {notice && <p className="success" role="status">{notice}</p>}
       {error && <p className="error" role="alert">{error}</p>}
       {latestCanonical && <details className="notes-conflict" open><summary>最新のServer内容を確認</summary><pre>{latestCanonical.markdown_body}</pre></details>}
@@ -298,6 +301,9 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
   const [projectUnresolved, setProjectUnresolved] = useState(false);
   const [floatingProjectId, setFloatingProjectId] = useState<string | null>(null);
 
+  const titleInputRef = useRef<HTMLInputElement | null>(null);
+  const focusIntentGenerationRef = useRef(0);
+  const pendingCreateFocusRef = useRef<{ documentId: string; focusGeneration: number } | null>(null);
   const documentRef = useRef(document);
   const modeRef = useRef(mode);
   const selectedIdRef = useRef(selectedId);
@@ -341,7 +347,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
   const followUpPending = inFlightDocumentRequest !== null
     && (draftTitle.trim() !== inFlightDocumentRequest.title || draftBody !== inFlightDocumentRequest.markdown_body);
   const pendingSaveCount = unresolved ? 0 : inFlightDocumentRequest ? 1 + (followUpPending ? 1 : 0) : dirty ? 1 : 0;
-  const saveStatus = unresolved ? "保存結果未確定" : dirty ? "未保存" : "保存済み";
+  const saveStatus = unresolved ? "保存結果未確定" : saving ? `保存中 ${pendingSaveCount}件` : dirty ? "未保存" : "保存済み";
 
   function currentDirty(): boolean {
     return draftRef.current.title !== baselineRef.current.title || draftRef.current.body !== baselineRef.current.body;
@@ -350,6 +356,21 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
   useEffect(() => { onDirtyChange(dirty); }, [dirty, onDirtyChange]);
   useEffect(() => { onUnresolvedChange?.(unresolved); }, [onUnresolvedChange, unresolved]);
   useEffect(() => { onSavingChange?.(mode === "project" ? projectSaving : saving); }, [mode, onSavingChange, projectSaving, saving]);
+
+  useEffect(() => {
+    const trackFocusIntent = () => { focusIntentGenerationRef.current += 1; };
+    window.document.addEventListener("focusin", trackFocusIntent, true);
+    return () => window.document.removeEventListener("focusin", trackFocusIntent, true);
+  }, []);
+
+  useEffect(() => {
+    const pending = pendingCreateFocusRef.current;
+    if (!pending || mode !== "existing" || document?.document_id !== pending.documentId) return;
+    if (pendingCreateFocusRef.current !== pending) return;
+    pendingCreateFocusRef.current = null;
+    if (focusIntentGenerationRef.current === pending.focusGeneration && titleInputRef.current
+      && !titleInputRef.current.disabled) titleInputRef.current.focus();
+  }, [document?.document_id, mode, mutationsBlocked]);
 
   useOutsideClick(actionId !== null, (target) => target instanceof Element
     && Boolean(target.closest(".notes-row-menu, .notes-row-actions")), () => setActionId(null));
@@ -573,6 +594,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
         return true;
       } catch (caught) {
         if (caught instanceof ApiClientError && caught.status === 401) {
+          if (!isUpdateRequest(request)) pendingCreateFocusRef.current = null;
           handleUnauthorized();
         } else if (caught instanceof ApiClientError && caught.code === "revision_conflict") {
           retryRequestRef.current = null; setRetryRequest(null);
@@ -597,6 +619,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
             if (reconcileError instanceof ApiClientError && reconcileError.status === 401) handleUnauthorized();
           }
         } else {
+          if (!isUpdateRequest(request)) pendingCreateFocusRef.current = null;
           retryRequestRef.current = null; setRetryRequest(null);
           setError(caught instanceof Error ? caught.message : "ノートの保存に失敗しました");
         }
@@ -725,6 +748,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
     setDocument(null); setMode("new"); setSelectedId(null); setDraftTitle("notitle"); setDraftBody("");
     setBaselineTitle("notitle"); setBaselineBody(""); setError(null); setNotice(null); setLatestCanonical(null);
     const request: CreateStandaloneDocumentRequest = { operation_id: uuidv7(), document_id: uuidv7(), title: "notitle", markdown_body: "" };
+    pendingCreateFocusRef.current = { documentId: request.document_id, focusGeneration: focusIntentGenerationRef.current };
     retryRequestRef.current = request; setRetryRequest(request);
     void sendRequest(request);
   }
@@ -878,14 +902,21 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
           {!editorAvailable && mode !== "project" && !loading && <div className="notes-empty"><h2>{initialDocumentId && error ? "ノートを開けません" : showArchived ? "アーカイブを選択" : "ノートを選択"}</h2><p>{initialDocumentId && error ? "指定されたノートは利用できません。" : "既存のノートを開くか、新規ノートを作成してください。"}</p>{error && <p className="error" role="alert">{error}</p>}</div>}
           {floatingProjectId && mode === "empty" && <div className="notes-empty"><h2>Project Note</h2><p>このプロジェクトノートはフローティングウィンドウで開いています。</p></div>}
           {mode === "project" && projectInlineCandidate && <ProjectPrimaryInlineEditor candidate={projectInlineCandidate}
+            onOpenFloating={async () => {
+              const candidate = projectInlineCandidate;
+              if (!candidate || !onOpenProjectNote || !(await prepareLocalTransition())) return;
+              setProjectInlineCandidate(null); setFloatingProjectId(candidate.project_id); setMode("empty"); modeRef.current = "empty";
+              projectFlushRef.current = null; setProjectDirty(false); setProjectUnresolved(false);
+              onOpenProjectNote(candidate.project_id, candidate.project_title);
+            }}
             onUnauthorized={onUnauthorized} onDirtyChange={setProjectDirty} onUnresolvedChange={setProjectUnresolved}
             onSavingChange={setProjectSaving} onRegisterFlush={(flush) => { projectFlushRef.current = flush; }}
             authEpoch={authEpoch} mutationsBlocked={mutationsBlocked} />}
           {editorAvailable && <form onSubmit={(event) => { event.preventDefault(); void saveActionRef.current(); }}>
-            <div className="notes-editor-heading"><div><p className="eyebrow">Markdown source</p><h2>{mode === "new" ? "新規ノート" : "ノートを編集"}</h2></div>
+            <div className="notes-editor-heading"><div><h2>{mode === "new" ? "新規ノート" : "ノートを編集"}</h2></div>
               {document && mode === "existing" && <button type="button" className="secondary" onClick={() => void copyDocumentLink(document.document_id)}>リンクをコピー</button>}
-              <button type="submit" disabled={saving || unresolved || archivedReadOnly || mutationsBlocked}>{saving ? "保存中…" : "保存"}</button></div>
-            <label className="notes-title-field">タイトル<input aria-label="ノートタイトル" value={draftTitle} maxLength={200}
+            </div>
+            <label className="notes-title-field">タイトル<input ref={titleInputRef} aria-label="ノートタイトル" value={draftTitle} maxLength={200}
               disabled={unresolved || archivedReadOnly || mutationsBlocked} onChange={(event) => updateDraftTitle(event.target.value)} onKeyDown={handleEditorKeyDown} /></label>
             <NoteMarkdownEditor
               value={draftBody}
@@ -894,11 +925,11 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
               onKeyDown={handleEditorKeyDown}
             />
             <p className="notes-save-status" role="status" aria-live="polite">
-              <span>{saveStatus}</span>{pendingSaveCount > 0 && <span>（<span>保存中 {pendingSaveCount}件</span>）</span>}
+              <span>{saveStatus}</span>
+              {ambiguousRequest && <button type="button" className="notes-inline-retry" aria-label="同じ内容で再試行" disabled={saving} onClick={() => void saveActionRef.current()}>再試行</button>}
             </p>
             {payloadWarning && <p className="notes-payload-warning" role="status">{payloadWarning}</p>}
             {error && <p className="error" role="alert">{error}</p>}
-            {retryRequest && <button type="button" className="secondary" disabled={saving} onClick={() => void saveActionRef.current()}>同じ内容で再試行</button>}
             {latestCanonical && <details className="notes-conflict" open><summary>最新のServer内容を確認</summary><p>タイトル: {latestCanonical.title}</p><pre>{latestCanonical.markdown_body}</pre></details>}
           </form>}
         </section>

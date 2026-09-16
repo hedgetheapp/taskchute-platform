@@ -345,7 +345,7 @@ describe("Dogfood Day shell", () => {
     fireEvent.click(screen.getByRole("button", { name: "ノート" }));
     await waitFor(() => expect(screen.getByDisplayValue("Server")).toBeTruthy());
     fireEvent.change(screen.getByLabelText("ノートタイトル"), { target: { value: "Local draft" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    fireEvent.keyDown(screen.getByLabelText("ノートタイトル"), { key: "s", ctrlKey: true });
     await screen.findByRole("dialog", { name: "再認証が必要です" });
     expect(screen.getByDisplayValue("Local draft")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "ログイン" })).toBeNull();
@@ -368,7 +368,7 @@ describe("Dogfood Day shell", () => {
     fireEvent.click(screen.getByRole("button", { name: "ノート" }));
     await waitFor(() => expect(screen.getByDisplayValue("Server")).toBeTruthy());
     fireEvent.change(screen.getByLabelText("ノートタイトル"), { target: { value: "Local draft" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    fireEvent.keyDown(screen.getByLabelText("ノートタイトル"), { key: "s", ctrlKey: true });
     await screen.findByRole("dialog", { name: "再認証が必要です" });
     fireEvent.change(screen.getByRole("textbox", { name: "メール" }), { target: { value: "other@example.com" } });
     fireEvent.change(screen.getByLabelText("パスワード"), { target: { value: "password" } });
@@ -443,7 +443,7 @@ describe("Dogfood Day shell", () => {
     expect(mocks.logout).not.toHaveBeenCalled();
   });
 
-  it("does not issue an Update for a clean Note Save", async () => {
+  it("does not issue an Update when leaving a clean Note", async () => {
     const current = {
       document_id: "0199d090-0000-7000-8000-00000000000d", kind: "standalone" as const,
       title: "Clean unresolved", markdown_body: "body", revision: 2,
@@ -456,10 +456,9 @@ describe("Dogfood Day shell", () => {
     await screen.findByRole("region", { name: "DayBoard" });
     fireEvent.click(screen.getByRole("button", { name: "ノート" }));
     await waitFor(() => expect(screen.getByDisplayValue("Clean unresolved")).toBeTruthy());
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
-    expect(mocks.updateDocument).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "設定" }));
     await screen.findByRole("region", { name: "Section設定" });
+    expect(mocks.updateDocument).not.toHaveBeenCalled();
   });
 
   it("shows a concise accessible status while loading the canonical Day", () => {
@@ -603,6 +602,64 @@ describe("Dogfood Day shell", () => {
     window.history.replaceState(null, "", "/");
   });
 
+  it("keeps a Task Note open when its toggle cannot safely close an unresolved save", async () => {
+    mocks.loadDay.mockResolvedValue(populatedDay);
+    mocks.updateTaskPrimaryDocument.mockRejectedValueOnce(new ApiClientError("response lost", 503, true, "infrastructure_ambiguous"));
+    render(<App />);
+    const dayBoard = await screen.findByRole("region", { name: "DayBoard" });
+    fireEvent.click(within(dayBoard).getByRole("button", { name: "Canonical taskのノートを作成して開く" }));
+    const editor = await screen.findByRole("complementary", { name: "Canonical taskのノート" });
+    const body = await within(editor).findByRole("textbox", { name: "Markdown本文" });
+    fireEvent.change(body, { target: { value: "retained ambiguous draft" } });
+    fireEvent.keyDown(body, { key: "s", ctrlKey: true });
+    const retry = await within(editor).findByRole("button", { name: "同じ内容で再試行" });
+    const originalRequest = { ...mocks.updateTaskPrimaryDocument.mock.calls[0]![0] };
+
+    fireEvent.click(within(dayBoard).getByRole("button", { name: "Canonical taskのノートを閉じる" }));
+
+    expect(document.querySelector(`[data-task-note-document-id="${originalRequest.document_id}"]`)).toBeTruthy();
+    expect((within(editor).getByRole("textbox", { name: "Markdown本文" }) as HTMLTextAreaElement).value).toBe("retained ambiguous draft");
+    expect(within(editor).getByRole("button", { name: "同じ内容で再試行" })).toBe(retry);
+    expect(mocks.updateTaskPrimaryDocument).toHaveBeenCalledTimes(1);
+  });
+
+  it("flushes a dirty Task Note before its Today toggle closes the floating window", async () => {
+    const save = deferred<{ document: {
+      document_id: string; kind: "task_primary"; task_id: string; markdown_body: string; revision: number;
+      created_at: string; updated_at: string;
+    } }>();
+    const documentId = "0199d101-0000-7000-8000-000000000011";
+    mocks.loadDay.mockResolvedValue(populatedDay);
+    mocks.loadTaskPrimaryDocumentById.mockResolvedValue({
+      document_id: documentId, kind: "task_primary", task_id: firstEntry.task.id, markdown_body: "",
+      revision: 0, created_at: "2026-09-13T00:00:00.000Z", updated_at: "2026-09-13T00:00:00.000Z",
+    });
+    mocks.updateTaskPrimaryDocument.mockReturnValueOnce(save.promise);
+    render(<App />);
+    const dayBoard = await screen.findByRole("region", { name: "DayBoard" });
+    fireEvent.click(within(dayBoard).getByRole("button", { name: "Canonical taskのノートを作成して開く" }));
+    const editor = await screen.findByRole("complementary", { name: "Canonical taskのノート" });
+    const body = await within(editor).findByRole("textbox", { name: "Markdown本文" });
+    fireEvent.change(body, { target: { value: "save before close" } });
+
+    fireEvent.click(within(dayBoard).getByRole("button", { name: "Canonical taskのノートを閉じる" }));
+    await waitFor(() => expect(mocks.updateTaskPrimaryDocument).toHaveBeenCalledTimes(1));
+    expect(document.querySelectorAll(".task-note-peek")).toHaveLength(1);
+    expect(mocks.updateTaskPrimaryDocument.mock.calls[0]![0]).toMatchObject({
+      document_id: documentId, expected_revision: 0, markdown_body: "save before close",
+    });
+
+    await act(async () => {
+      save.resolve({ document: {
+        document_id: documentId, kind: "task_primary", task_id: firstEntry.task.id,
+        markdown_body: "save before close", revision: 1,
+        created_at: "2026-09-13T00:00:00.000Z", updated_at: "2026-09-16T00:00:00.000Z",
+      } });
+      await save.promise;
+    });
+    await waitFor(() => expect(document.querySelectorAll(".task-note-peek")).toHaveLength(0));
+  });
+
   it("loads the active Project list on an established Today and keeps the assigned Project actionable", async () => {
     mocks.loadDay.mockResolvedValue(projectAssignedDay);
     render(<App />);
@@ -677,11 +734,15 @@ describe("Dogfood Day shell", () => {
     expect(secondWindow.querySelector(".task-note-peek-expanded")?.hasAttribute("hidden")).toBe(false);
     outside.remove();
 
-    // Re-opening the same Task restores its existing minimized window rather
-    // than allocating a duplicate document/window.
+    // The same Task control toggles only its own floating Note; its sibling remains.
+    fireEvent.click(within(dayBoard).getByRole("button", { name: "Canonical taskのノートを閉じる" }));
+    await waitFor(() => expect(document.querySelectorAll(".task-note-peek")).toHaveLength(1));
+    expect(document.querySelector(`[data-task-note-document-id="${secondDocumentId}"]`)).toBe(secondWindow);
+    expect(document.querySelector(`[data-task-note-document-id="${firstDocumentId}"]`)).toBeNull();
+
     fireEvent.click(within(dayBoard).getByRole("button", { name: "Canonical taskのノートを開く" }));
-    await waitFor(() => expect(firstWindow.querySelector(".task-note-peek-expanded")?.hasAttribute("hidden")).toBe(false));
-    expect(document.querySelectorAll(".task-note-peek")).toHaveLength(2);
+    await waitFor(() => expect(document.querySelectorAll(".task-note-peek")).toHaveLength(2));
+    expect(document.querySelector(`[data-task-note-document-id="${secondDocumentId}"]`)).toBe(secondWindow);
   });
 
   it("keeps inactive Task Note controls actionable on their first click", async () => {
@@ -720,7 +781,8 @@ describe("Dogfood Day shell", () => {
       // Pointer down activates the background window before the subsequent
       // click. Its mounted DOM node and sibling order must remain stable.
       const copyButton = firstWindow.querySelector<HTMLButtonElement>("button");
-      expect(copyButton?.textContent).toBe("リンクをコピー");
+      expect(copyButton?.getAttribute("aria-label")).toBe("ノートへのリンクをコピー");
+      expect(copyButton?.textContent).toBe("");
       fireEvent.pointerDown(copyButton!);
       await waitFor(() => expect(Array.from(document.querySelectorAll(".task-note-peek"))).toEqual(initialDomOrder));
       fireEvent.click(copyButton!);
@@ -2383,7 +2445,9 @@ describe("Dogfood Day shell", () => {
       expect(row.classList.contains("is-dragging")).toBe(false);
       fireEvent.dragEnd(source, { dataTransfer: dragDataTransfer() });
     }
-    const routineIcon = screen.getByRole("button", { name: "Routine化" }).querySelector("svg")!;
+    const routineAction = screen.getByRole("button", { name: "Routine化" });
+    expect(routineAction.classList.contains("routine-muted")).toBe(true);
+    const routineIcon = routineAction.querySelector("svg")!;
     fireEvent.dragStart(routineIcon, { dataTransfer: dragDataTransfer() });
     expect(row.classList.contains("is-dragging")).toBe(false);
     expect(mocks.reorderEntries).not.toHaveBeenCalled();
@@ -2958,6 +3022,31 @@ describe("Dogfood Day shell", () => {
       action: "occurrence", section_id: daySectionId, planned_start_minute: 720,
       expected_placement_revision: routineDay.placement_revision,
     });
+  });
+
+  it("does not reclaim focus when a delayed Shift+Arrow reorder completes after focus moved", async () => {
+    const request = deferred<unknown>();
+    const reordered = {
+      ...twoPlannedDay,
+      placement_revision: 2,
+      sections: [{ ...twoPlannedDay.sections[0], entries: [{ ...secondEntry, position: 1 }, { ...firstEntry, position: 2 }] }, emptyDay.sections[1]],
+    };
+    mocks.loadDay.mockResolvedValueOnce(twoPlannedDay).mockResolvedValueOnce(reordered);
+    mocks.reorderEntries.mockReturnValueOnce(request.promise);
+    render(<App />);
+    await screen.findByRole("region", { name: "DayBoard" });
+    const loadsBeforeReorder = mocks.loadDay.mock.calls.length;
+    const firstRow = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
+    const secondRow = screen.getByText("Second task").closest<HTMLElement>("[data-entry-id]")!;
+    firstRow.focus();
+    fireEvent.keyDown(firstRow, { key: "ArrowDown", shiftKey: true });
+    await waitFor(() => expect(mocks.reorderEntries).toHaveBeenCalledTimes(1));
+
+    secondRow.focus();
+    expect(document.activeElement).toBe(secondRow);
+    await act(async () => { request.resolve({}); await request.promise; });
+    await waitFor(() => expect(mocks.loadDay.mock.calls.length).toBeGreaterThan(loadsBeforeReorder));
+    expect(document.activeElement).toBe(secondRow);
   });
 
   it("cancels an unsent reorder when the user returns to the canonical order", async () => {
@@ -5048,6 +5137,7 @@ describe("Dogfood Day shell", () => {
     mocks.loadDay.mockResolvedValueOnce(actualDay);
     const actualRendered = render(<App />);
     expect((await screen.findByLabelText("Canonical taskの開始")).textContent).toBe("23:40");
+    expect(screen.getByLabelText("Canonical taskの開始見込").textContent).toBe("--:--");
     expect(screen.getByLabelText("Canonical taskの終了").textContent).toBe("25:10");
     expect(screen.getByLabelText("Canonical taskの実績").textContent).toBe("1時間30分");
     expect(screen.getByLabelText("Second taskの開始").textContent).toBe("--:--");
@@ -5059,9 +5149,32 @@ describe("Dogfood Day shell", () => {
     mocks.loadDay.mockReset();
     mocks.loadDay.mockResolvedValue(activeRoutineDay);
     const rerendered = render(<App />);
-    expect(await screen.findByLabelText("Canonical taskはルーティン")).toBeTruthy();
+    const routineBadge = await screen.findByLabelText("Canonical taskはルーティン");
+    expect(routineBadge.classList.contains("routine-active")).toBe(true);
     expect(screen.queryByRole("button", { name: "Routine化" })).toBeNull();
     rerendered.unmount();
+  });
+
+  it("renders null Project and Mode as empty single-line cells", async () => {
+    mocks.loadDay.mockResolvedValue(populatedDay);
+    render(<App />);
+    const row = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
+    const project = row.querySelector<HTMLElement>('[data-day-column-cell="project"]')!;
+    const mode = row.querySelector<HTMLElement>('[data-day-column-cell="mode"]')!;
+    expect(project.textContent?.trim()).toBe("");
+    expect(mode.textContent?.trim()).toBe("");
+    expect(project.classList.contains("project-name")).toBe(true);
+    expect(mode.classList.contains("mode-cell")).toBe(true);
+  });
+
+  it("keeps the running row visual state when that row has keyboard focus", async () => {
+    mocks.loadDay.mockResolvedValue(runningDay);
+    render(<App />);
+    await screen.findByRole("button", { name: "Canonical taskを完了" });
+    const row = document.querySelector<HTMLElement>(`[data-entry-id="${firstEntry.id}"]`)!;
+    row.focus();
+    expect(row.classList.contains("state-running")).toBe(true);
+    expect(document.activeElement).toBe(row);
   });
 
   it("selects eligible Entry IDs without starting, editing, or dragging the row", async () => {
@@ -5513,7 +5626,7 @@ describe("Dogfood Day shell", () => {
 
     const project = await screen.findByRole("combobox", { name: "Canonical taskのProject" });
     expect((project as unknown as HTMLSelectElement).value).toBe("");
-    expect(within(project).getByRole("option", { name: "Projectなし" })).toBeTruthy();
+    expect(project.querySelector('option[value=""]')?.textContent).toBe("");
     await within(project).findByRole("option", { name: "Existing Project" });
     expect(screen.queryByRole("button", { name: "Canonical taskを編集" })).toBeNull();
     const row = screen.getByText("Canonical task").closest<HTMLElement>("[data-entry-id]")!;
@@ -5586,7 +5699,7 @@ describe("Dogfood Day shell", () => {
     const modeSelect = mode as unknown as HTMLSelectElement;
     await within(mode).findByRole("option", { name: "Focus" });
     expect(modeSelect.value).toBe("");
-    expect(within(mode).getByRole("option", { name: "—" })).toBeTruthy();
+    expect(mode.querySelector('option[value=""]')?.textContent).toBe("");
     fireEvent.change(mode, { target: { value: firstModeId } });
     await waitFor(() => expect(mocks.setEntryMode).toHaveBeenCalledTimes(1));
     expect(mocks.setEntryMode.mock.calls[0][0]).toMatchObject({ expected_mode_id: null, mode_id: firstModeId });
@@ -5601,7 +5714,7 @@ describe("Dogfood Day shell", () => {
     await waitFor(() => expect(mocks.setEntryMode).toHaveBeenCalledTimes(3));
     expect(mocks.setEntryMode.mock.calls[2][0]).toMatchObject({ expected_mode_id: secondModeId, mode_id: null });
     await waitFor(() => expect((screen.getByRole("combobox", { name: "Canonical taskのMode" }) as unknown as HTMLSelectElement).value).toBe(""));
-    expect(within(screen.getByRole("combobox", { name: "Canonical taskのMode" })).getByRole("option", { name: "—" })).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Canonical taskのMode" }).querySelector('option[value=""]')?.textContent).toBe("");
 
     modeId = firstModeId;
     modeTitle = "Deep Work";
@@ -5621,7 +5734,7 @@ describe("Dogfood Day shell", () => {
 
     const mode = await screen.findByRole("combobox", { name: "Canonical taskのMode" });
     expect((mode as unknown as HTMLSelectElement).value).toBe("");
-    expect(within(mode).getByRole("option", { name: "—" })).toBeTruthy();
+    expect(mode.querySelector('option[value=""]')?.textContent).toBe("");
   });
 
   it("retains one exact future Mode retry and blocks a second same-entry submit while unresolved", async () => {

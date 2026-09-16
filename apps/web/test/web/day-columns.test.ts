@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import {
   DAY_COLUMNS_V1_STORAGE_KEY,
   DAY_COLUMNS_V3_STORAGE_KEY,
@@ -9,6 +10,7 @@ import {
   buildDayTableGridTemplate,
   calculateDayTableMinWidth,
   clampDayColumnWidth,
+  clampTaskColumnWidth,
   defaultDayColumnPreference,
   formatActualDuration,
   formatActualTime,
@@ -20,6 +22,8 @@ import {
   showAllDayColumns,
   visibleDayColumnOrder,
 } from "../../src/web/day-columns";
+
+const webStyles = readFileSync("src/web/styles.css", "utf8");
 
 describe("Day Table column preference", () => {
   it("defaults every current column to visible and migrates the v1 envelope", () => {
@@ -116,8 +120,28 @@ describe("Day Table column preference", () => {
     expect(clampDayColumnWidth("project", 1)).toBe(100);
     expect(clampDayColumnWidth("project", 9999)).toBe(340);
     const resized = { ...preference, order, widths: { ...preference.widths, project: 200 } };
-    expect(buildDayTableGridTemplate(resized)).toContain("minmax(280px, 1fr) 112px 130px 60px 200px 82px");
+    expect(buildDayTableGridTemplate(resized)).toContain("minmax(180px, 1fr) 112px 130px 60px 200px 82px");
     expect(calculateDayTableMinWidth(resized)).toBeGreaterThan(1200);
+  });
+
+  it("normalizes legacy Task widths to the 180px minimum while preserving the default and maximum", () => {
+    expect(clampTaskColumnWidth(1)).toBe(180);
+    expect(clampTaskColumnWidth(640)).toBe(640);
+    expect(clampTaskColumnWidth(9999)).toBe(640);
+    expect(defaultDayColumnPreference().taskWidth).toBe(280);
+    expect(normalizeDayColumnPreference({ version: DAY_COLUMNS_STORAGE_VERSION, taskWidth: 120 }).taskWidth).toBe(180);
+    expect(calculateDayTableMinWidth(defaultDayColumnPreference(), 180))
+      .toBe(calculateDayTableMinWidth(defaultDayColumnPreference(), 280) - 100);
+  });
+});
+
+describe("Today metadata cell layout", () => {
+  it("keeps Project and Mode labels/selectors on one truncated line", () => {
+    expect(webStyles).toMatch(/\.task-main strong,\s*\.project-name\s*\{[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/s);
+    expect(webStyles).toMatch(/\.project-title\s*\{[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/s);
+    expect(webStyles).toMatch(/\.mode-cell\s*\{[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/s);
+    expect(webStyles).toMatch(/\.project-selector\s*\{[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/s);
+    expect(webStyles).toMatch(/\.mode-selector\s*\{[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/s);
   });
 });
 

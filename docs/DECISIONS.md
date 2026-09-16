@@ -2,6 +2,18 @@
 
 Statuses: Approved / Proposed / Superseded
 
+## D-115 — Web Today / Notes UI Refinement v0.1
+
+Status: **Approved**
+
+Canonical Decision: `docs/decisions/D-115_WEB_TODAY_NOTES_UI_REFINEMENT_V01.md`。
+
+D-115はDesktop Web Today / Notesのvisualとinteractionを整え、遅延reorder後のfocus authority、
+Task列幅、Project / Modeの空値・一行表示、running / Routine / completed表示、Task Noteの個別
+floating toggle、Notesのautosave / compact exact retry、canonical Create後の安全なtitle focus、
+Project Primary Noteのsafe flush後のfloating移行を定める。D-098 / D-091と既存Document semanticsを
+維持し、API / Worker、schema / migration、dependency、新Document typeは追加しない。
+
 ## D-114 — Android Settings Management v0.1
 
 Status: **Approved**
