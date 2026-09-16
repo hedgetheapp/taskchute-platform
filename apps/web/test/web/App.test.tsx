@@ -427,6 +427,8 @@ describe("Dogfood Day shell", () => {
 
   it("does not navigate or logout while an ambiguous Note save is unresolved", async () => {
     mocks.loadDay.mockResolvedValue(emptyDay);
+    const initialNotes = deferred<{ documents: [] }>();
+    mocks.loadDocuments.mockReturnValueOnce(initialNotes.promise);
     mocks.createStandaloneDocument.mockRejectedValue(new ApiClientError("ambiguous", 503, true, "infrastructure_ambiguous"));
     mocks.loadDocument.mockRejectedValue(new ApiClientError("missing", 404, true, "resource_not_found"));
     render(<App />);
@@ -434,6 +436,7 @@ describe("Dogfood Day shell", () => {
     fireEvent.click(screen.getByRole("button", { name: "ノート" }));
     fireEvent.click(await screen.findByRole("button", { name: "＋ 新規ノート" }));
     await screen.findByRole("button", { name: "同じ内容で再試行" });
+    await act(async () => { initialNotes.resolve({ documents: [] }); });
     await waitFor(() => expect((screen.getByLabelText("ノートタイトル") as HTMLInputElement).disabled).toBe(true));
     await screen.findByText("保存結果が未確定です。元の操作をそのまま再試行してください。");
     fireEvent.click(screen.getByRole("button", { name: "設定" }));

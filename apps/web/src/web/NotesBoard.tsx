@@ -451,14 +451,21 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
 
   useEffect(() => {
     let cancelled = false;
+    const initialMode = modeRef.current;
+    const initialSelectedId = selectedIdRef.current;
     (async () => {
       setLoading(true);
       const list = await refreshList(showArchived);
       if (cancelled) return;
+      // The initial list/permalink read is allowed to initialize the editor only
+      // while the user has not already opened or created a Note.
+      if (modeRef.current !== initialMode || selectedIdRef.current !== initialSelectedId) return;
       if (initialDocumentId) {
         const loaded = await openCanonicalDocument(initialDocumentId);
+        if (cancelled) return;
         if (loaded?.archived_at && !showArchived) setShowArchived(true);
         if (loaded) return;
+        if (modeRef.current !== initialMode || selectedIdRef.current !== initialSelectedId) return;
       }
       const first = initialDocumentId ? null : list?.[0];
       if (first) await openCanonicalDocument(first.document_id);
@@ -742,6 +749,9 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
   async function startNewDocument(): Promise<void> {
     if (mutationsBlockedRef.current) return;
     if (showArchived || !(await prepareLocalTransition())) return;
+    // Invalidate an initial permalink/list fetch that could otherwise replace
+    // this new editor after a slow response.
+    canonicalLoadTokenRef.current += 1;
     setProjectInlineCandidate(null); setFloatingProjectId(null); projectFlushRef.current = null;
     documentRef.current = null; modeRef.current = "new"; selectedIdRef.current = null;
     draftRef.current = { title: "notitle", body: "" }; baselineRef.current = { title: "notitle", body: "" };
