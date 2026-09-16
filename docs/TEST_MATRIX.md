@@ -1,6 +1,6 @@
 # Test Matrix
 
-## D-116B Completed Entry to future Routine v0.1 — local evidence / persistent nonprod pending
+## D-116B Completed Entry to future Routine v0.1 — local, CI, persistent nonprod evidence
 
 | ID | Verification target | Evidence | Status |
 |---|---|---|---|
@@ -11,14 +11,16 @@
 | D116B-MIGRATION | APP 0033 bounded migration | Fresh `0001 → 0033` and upgrade `0032 → 0033`; prior operations/data preserved, FK/quick checks pass, no backfill/temp residue | PASS local bounded migration |
 | D116B-REG | Full regression | Worker/D1 `37 files / 330 tests`; Web `14 files / 462 tests`; typecheck | PASS local |
 | D116B-BUILD | Build/deploy preparation | Normal build, exact `CLOUDFLARE_ENV=nonprod` build, canonical deploy guard, Wrangler nonprod dry-run, `git diff --check` | PASS local |
-| D116B-CI | Exact pushed SHA | GitHub Actions for final implementation SHA | PENDING |
-| D116B-BACKUP | Persistent migration safety gate | Fresh APP/AUTH export and SHA-256, isolated readability/quick/FK/recovery validation without restore | PENDING |
-| D116B-NONPROD | Persistent nonprod migration/deploy | APP 0033 only, AUTH migration none, pending `0 / 0`, canonical guarded Worker deploy and root/auth checks | PENDING |
-| D116B-DB | Post-migration integrity | APP/AUTH quick_check, FK, duplicate/orphan/correlation/guard probes, read-only `rows_written=0` | PENDING |
-| D116B-BROWSER | Authenticated feature behavior | Existing authorized session only; no credential retrieval; feature verification not yet performed | NOT_RUN |
+| D116B-CI | Exact pushed SHA | Implementation SHA `7e8fd058b5abee839ed5300a21fae2260d3e42ba`; classifier, Web/Worker, Android jobs | PASS |
+| D116B-BACKUP | Persistent migration safety gate | APP `1,079,292 bytes`, SHA-256 `610864C5A72A75A9AAA38EA3924A5379D1BF8568DD83C3DEFD04EAC3D1B80C5C`; AUTH `11,235 bytes`, SHA-256 `E04055DD05AB549E43EF4502F413DAE1DD400A24F0E4C7207DDDFA920F7875B8`; isolated import, quick/FK clean, recovery validated without restore | PASS |
+| D116B-NONPROD | Persistent nonprod migration/deploy | APP 0033 only; AUTH migration none; pending `0 / 0`; Worker `taskchute-web-nonprod`, version `fb2ddc25-2f0c-44da-bedc-27e5252f289b`; root `200`, unauthenticated future-routine API `401` | PASS |
+| D116B-PRESERVE | Existing APP data / operations | 13 existing table counts and all 43 `command_type` operation counts exactly match the isolated pre-migration export | PASS; read-only probes `rows_written=0` |
+| D116B-DB | Post-migration integrity | APP/AUTH `quick_check=ok`, FK empty, pending `0 / 0`; schema/FK/index and operation allow-list present; invalid kind/revision, duplicate/orphan correlation/document identity, invalid operation JSON, temp table and assertion/guard residue all `0` | PASS; read-only probes `rows_written=0` |
+| D116B-BROWSER | Authenticated conversion behavior | Existing same-user session; synthetic completed source, Task live Project `NULL` vs Entry Project snapshot, historical Mode copy, single create/correlation, source remains completed/ordinary, reload converges, console warnings/errors `0 / 0`; fixture retained | PASS for conversion/reload; next-day occurrence browser check `NOT_RUN` until `2026-09-17` is current logical day |
+| D116B-MATERIALIZE | Future Routine materialization | Current Day intentionally has no occurrence; Worker/D1 integration test verifies first future current-Day load creates one and repeat load remains one | PASS automated; persistent browser `NOT_RUN` before next logical day |
 | D116B-BOUNDARY | Scope | No AUTH migration, production, restore, dependency, or release operation | PASS / NOT_RUN / NO |
 
-Wrangler emitted a local log-directory `EPERM` diagnostic and the existing Vite chunk-size warning; successful commands exited `0`. GitHub Actions, remote migration/deploy, backup/recovery validation, and authenticated browser evidence remain pending and are not implied by local PASS.
+Wrangler emitted a local log-directory `EPERM` diagnostic and the existing Vite chunk-size warning; successful commands exited `0`. Exact-SHA CI, APP-only migration, isolated backup/recovery validation, canonical nonprod deploy, API safety, DB integrity, and authenticated conversion/reload browser checks passed. Persistent browser verification of the next-day Routine occurrence remains `NOT_RUN` until that logical day is current; automated exactly-once materialization passed. Production and restore remain `NOT_RUN`; Released remains `NO`.
 
 ## D-115 Web Today / Notes UI Refinement v0.1 — local / CI / nonprod closeout
 
