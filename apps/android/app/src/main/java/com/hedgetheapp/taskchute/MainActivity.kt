@@ -106,7 +106,6 @@ class MainActivity : ComponentActivity() {
                 request = { method, path, body ->
                     controller.authenticatedRequest(method, path, body)?.let { TodayHttpResponse(it.status, it.body) }
                 },
-                onUnauthorized = controller::restore,
             ),
             onUnauthorized = controller::restore,
         )

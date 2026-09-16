@@ -189,9 +189,9 @@ class SettingsController(
     fun close() { loadJob?.cancel(); scope.cancel() }
 
     private fun isBusy() = state.loading || state.pendingOperation != null || state.unresolvedOperation != null || state.deleteTarget != null
-    private fun loadSections() { loadJob?.cancel(); state = state.copy(loading = true, errorMessage = null); loadJob = scope.launch { finishLoad(repository.loadSectionConfiguration()) { value -> state = state.copy(sectionConfiguration = value) } } }
-    private fun loadProjects() { loadJob?.cancel(); state = state.copy(loading = true, errorMessage = null); loadJob = scope.launch { finishLoad(repository.loadProjectBoard()) { value -> state = state.copy(projectBoard = value) } } }
-    private fun loadRoutines() { loadJob?.cancel(); state = state.copy(loading = true, errorMessage = null); loadJob = scope.launch { finishLoad(repository.loadRoutineBoard()) { value -> state = state.copy(routineBoard = value) } } }
+    private fun loadSections() { loadJob?.cancel(); state = state.copy(loading = true, errorMessage = null); loadJob = scope.launch { finishLoad(withContext(Dispatchers.IO) { repository.loadSectionConfiguration() }) { value -> state = state.copy(sectionConfiguration = value) } } }
+    private fun loadProjects() { loadJob?.cancel(); state = state.copy(loading = true, errorMessage = null); loadJob = scope.launch { finishLoad(withContext(Dispatchers.IO) { repository.loadProjectBoard() }) { value -> state = state.copy(projectBoard = value) } } }
+    private fun loadRoutines() { loadJob?.cancel(); state = state.copy(loading = true, errorMessage = null); loadJob = scope.launch { finishLoad(withContext(Dispatchers.IO) { repository.loadRoutineBoard() }) { value -> state = state.copy(routineBoard = value) } } }
 
     private suspend fun <T> finishLoad(result: SettingsResult<T>, assign: (T) -> Unit) {
         when (result) {

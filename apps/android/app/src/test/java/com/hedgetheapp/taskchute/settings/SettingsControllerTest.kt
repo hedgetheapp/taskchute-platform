@@ -1,15 +1,99 @@
 package com.hedgetheapp.taskchute.settings
 
+import com.hedgetheapp.taskchute.today.TodayHttpResponse
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.asCoroutineDispatcher
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SettingsControllerTest {
+    @Test
+    fun settingsReadsRunSynchronousRequestOffMainDispatcher() {
+        val dispatcher = Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "settings-main") }.asCoroutineDispatcher()
+        try {
+            listOf("sections", "projects", "routines").forEach { kind ->
+                val requestThread = CountDownLatch(1)
+                val repository = ThreadRecordingSettingsRepository(requestThread)
+                val controller = SettingsController(
+                    repository,
+                    onUnauthorized = {},
+                    scope = CoroutineScope(SupervisorJob() + dispatcher),
+                )
+                when (kind) {
+                    "sections" -> controller.openSections()
+                    "projects" -> controller.openProjects()
+                    "routines" -> controller.openRoutines()
+                }
+
+                assertTrue("$kind read did not reach repository", requestThread.await(2, java.util.concurrent.TimeUnit.SECONDS))
+                assertTrue(
+                    "$kind read ran synchronously on the Main dispatcher: ${repository.threadName}",
+                    !repository.threadName.orEmpty().startsWith("settings-main"),
+                )
+                controller.close()
+            }
+        } finally {
+            dispatcher.close()
+        }
+    }
+
+    @Test
+    fun synchronousHttpRequestBoundaryAlsoRunsOffMainDispatcher() {
+        val dispatcher = Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "settings-main") }.asCoroutineDispatcher()
+        val requestThread = CountDownLatch(1)
+        var observedThread: String? = null
+        val repository = SettingsHttpRepository({ _, _, _ ->
+            observedThread = Thread.currentThread().name
+            requestThread.countDown()
+            TodayHttpResponse(200, """{"configuration_version_id":"cfg-1","day_boundary_minutes":0,"items":[]}""")
+        })
+        val controller = SettingsController(repository, {}, CoroutineScope(SupervisorJob() + dispatcher))
+        try {
+            controller.openSections()
+            assertTrue(requestThread.await(2, java.util.concurrent.TimeUnit.SECONDS))
+            assertTrue("synchronous HTTP request ran on Main: $observedThread", !observedThread.orEmpty().startsWith("settings-main"))
+        } finally {
+            controller.close()
+            dispatcher.close()
+        }
+    }
+
+    @Test
+    fun unauthorizedReadHandoffReturnsToControllerMainDispatcher() {
+        val dispatcher = Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "settings-main") }.asCoroutineDispatcher()
+        val requestThread = CountDownLatch(1)
+        val handoffThread = CountDownLatch(1)
+        var observedHandoffThread: String? = null
+        val repository = ThreadRecordingSettingsRepository(requestThread, unauthorizedFor = "sections")
+        val controller = SettingsController(
+            repository,
+            onUnauthorized = {
+                observedHandoffThread = Thread.currentThread().name
+                handoffThread.countDown()
+            },
+            scope = CoroutineScope(SupervisorJob() + dispatcher),
+        )
+        try {
+            controller.openSections()
+            assertTrue(requestThread.await(2, java.util.concurrent.TimeUnit.SECONDS))
+            assertTrue(handoffThread.await(2, java.util.concurrent.TimeUnit.SECONDS))
+            assertTrue(
+                "401 auth handoff ran outside controller Main dispatcher: $observedHandoffThread",
+                observedHandoffThread.orEmpty().startsWith("settings-main"),
+            )
+        } finally {
+            controller.close()
+            dispatcher.close()
+        }
+    }
+
     @Test
     fun sectionDeleteUsesCanonicalAdjacentAbsorption() {
         val repository = FakeSettingsRepository().apply {
@@ -105,6 +189,35 @@ class SettingsControllerTest {
         }
         return condition()
     }
+}
+
+private class ThreadRecordingSettingsRepository(
+    private val requestThread: CountDownLatch,
+    private val unauthorizedFor: String? = null,
+) : AndroidSettingsRepository {
+    var threadName: String? = null
+        private set
+
+    private fun <T> record(kind: String, result: SettingsResult<T>): SettingsResult<T> {
+        threadName = Thread.currentThread().name
+        requestThread.countDown()
+        if (kind == unauthorizedFor) return SettingsResult.Unauthorized
+        return result
+    }
+
+    override fun loadSectionConfiguration() = record("sections", SettingsResult.Success(AndroidSectionConfiguration("v1", 0, emptyList())))
+    override fun updateSectionConfiguration(request: SectionConfigurationUpdateRequest) = record("mutation", SettingsResult.Success(Unit))
+    override fun loadProjectBoard() = record("projects", SettingsResult.Success(AndroidProjectBoard(1, emptyList())))
+    override fun createProject(request: CreateProjectSettingsRequest) = record("mutation", SettingsResult.Success(Unit))
+    override fun updateProject(request: UpdateProjectSettingsRequest) = record("mutation", SettingsResult.Success(Unit))
+    override fun setProjectArchived(request: SetProjectArchivedSettingsRequest) = record("mutation", SettingsResult.Success(Unit))
+    override fun reorderProjects(request: ReorderProjectsSettingsRequest) = record("mutation", SettingsResult.Success(Unit))
+    override fun deleteProject(request: DeleteProjectSettingsRequest) = record("mutation", SettingsResult.Success(Unit))
+    override fun loadRoutineBoard() = record("routines", SettingsResult.Success(AndroidRoutineBoard(1, "2026-09-16", emptyList(), emptyList())))
+    override fun createRoutine(request: CreateRoutineSettingsRequest) = record("mutation", SettingsResult.Success(Unit))
+    override fun updateRoutine(request: UpdateRoutineSettingsRequest) = record("mutation", SettingsResult.Success(Unit))
+    override fun setRoutineEnabled(request: SetRoutineEnabledSettingsRequest) = record("mutation", SettingsResult.Success(Unit))
+    override fun deleteRoutine(request: DeleteRoutineSettingsRequest) = record("mutation", SettingsResult.Success(Unit))
 }
 
 private class FakeSettingsRepository : AndroidSettingsRepository {

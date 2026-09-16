@@ -69,8 +69,9 @@ isolated ordinary UI change, select exactly the affected surface:
 | `Notes` | `com.hedgetheapp.taskchute.document.NotesScreenInstrumentedTest` |
 | `Today` | `com.hedgetheapp.taskchute.today.TodayScreenInstrumentedTest` |
 | `Security` | `com.hedgetheapp.taskchute.security.EncryptedSessionStoreInstrumentedTest` |
+| `Settings` | `com.hedgetheapp.taskchute.settings.SettingsScreenInstrumentedTest` |
 
-The repository script currently accepts one of `All`, `Notes`, `Today`, or `Security` per run.
+The repository script currently accepts one of `All`, `Notes`, `Today`, `Security`, or `Settings` per run.
 The Gradle runner does not safely express multiple class filters through this command, so a
 multi-surface ordinary Batch runs one selected command per affected surface rather than
 silently running only the first class. Every selected run retains APK install, resolved

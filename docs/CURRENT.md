@@ -1,6 +1,6 @@
 # Current
 
-### D-114 Android Settings Management v0.1 — 2026-09-16
+### D-114 Android Settings Management v0.1 + main-thread read corrective — 2026-09-16
 
 D-114は承認済みSettings concept boardの方向に合わせ、Android下部navigationを`今日` / `ノート` /
 `設定`へ整理し、Settings hubからSection、Project、Routineの管理画面を提供した。Sectionは既存の
@@ -10,7 +10,30 @@ D-114は承認済みSettings concept boardの方向に合わせ、Android下部n
 contractのままで、Worker/API、schema / migration、dependency、realtime protocol、offline、notification、
 productionは変更していない。
 
-Android JVMは`108 / 108 PASS`（failures/errors/skipped `0 / 0 / 0`）。Windows local AVD
+実機runtimeの報告を受けて調査したところ、SettingsのSection / Project / Routine初回・retry readは
+Main-immediate controller scopeから同期repository requestを直接実行していた。`SettingsHttpRepository`
+は同期request例外を一般的なconnection failureへ畳み込むため、AndroidのMain-thread network拒否
+（例: `NetworkOnMainThreadException`）が`接続できませんでした。再試行してください。`として見える
+経路だった。RED testはMain上での呼出しを再現したが、認証済み端末上で例外そのものを採取したわけでは
+ない。Today readとSettings mutationは既に
+IOで動く一方、Settingsのreadだけdispatcher境界が欠けていた。3つのreadを`withContext(Dispatchers.IO)`
+で実行し、result適用とCompose state更新はscopeのMainへ戻す。Project mutation後のProject/Routine reloadは
+同じload helperを通る。repositoryのread / mutationを全件監査し、Settings mutationは従来どおりIO上で
+実行されることを確認した。API、Worker、CAS / retry semantics、schema、dependencyは変更していない。
+
+REDでは旧read経路を専用`settings-main` dispatcherで実行し、3つのreadと実`SettingsHttpRepository`
+request-boundary testの計2 testがFAILした。修正後はSettingsController `7 / 7`（401 handoffがMain
+scopeへ戻ることを含む）、SettingsHttpRepository `3 / 3`、全Android JVM `111 / 111` PASS。
+Windows `TaskChute_API33`の
+`scripts/android-qa.ps1 -Surface Settings`は`2 / 2` PASS、instrumentation `57.58s`、total
+`58.90s`。Debug APK install、`MainActivity`解決、TaskChute crash buffer emptyを確認した。
+emulator MainActivityの実起動はログイン画面を表示しcrashなしだったが、認証済みsessionはなかった。
+そのため Section / Project / Routine の実authenticated API readは
+`AUTHENTICATED_ANDROID_RUNTIME_NOT_VERIFIED`であり、このcorrectiveの実機server-path確認と
+Galaxy S23 smokeはpendingである。
+
+Initial D-114 v0.1（threading corrective前）のevidenceはAndroid JVM`108 / 108 PASS`
+（failures/errors/skipped `0 / 0 / 0`）。Windows local AVD
 `TaskChute_API33`（Pixel 7 / Android 13 API 33 / Google APIs / x86_64 / `emulator-5554`）で
 `scripts/android-qa.ps1 -Surface All`を実行し、Notes `7`、Security `1`、Settings `2`、Today `25`の
 計`35 / 35 PASS`。APK install、`MainActivity`解決、TaskChute package crash buffer emptyも確認した。

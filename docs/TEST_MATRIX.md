@@ -1,6 +1,6 @@
 # Test Matrix
 
-## D-114 Android Settings Management v0.1 — local closeout
+## D-114 Android Settings Management v0.1 + main-thread read corrective — local closeout
 
 | ID | Verification target | Evidence | Status |
 |---|---|---|---|
@@ -9,11 +9,24 @@
 | D114-SETTINGS-UI | Settings surfaces | Home cards, Section list/editor/delete confirmation, Project active/archive management, Routine list/editor/toggle/delete controls | PASS; focused instrumentation `2 / 2` |
 | D114-SETTINGS-HTTP | API boundary | Section full configuration update with adjacent absorption, Project revision/order/archive/delete, Routine create/update/enabled/soft-delete request parsing and paths | PASS; focused `SettingsHttpRepositoryTest` `3 / 3` |
 | D114-SETTINGS-CONTROLLER | Mutation safety | Owner-scoped repository/controller, canonical revision fields, exact ambiguous Project request retry, logical Section clock input, no parallel persistence model | PASS; focused `SettingsControllerTest` `4 / 4` |
-| D114-ANDROID-JVM | Full Android JVM | `:app:testDebugUnitTest`: `108 / 108`, failures/errors/skipped `0 / 0 / 0` | PASS |
+| D114-ANDROID-JVM | Initial D-114 v0.1 full Android JVM (pre-threading corrective) | `:app:testDebugUnitTest`: `108 / 108`, failures/errors/skipped `0 / 0 / 0` | PASS (historical baseline) |
 | D114-ANDROID-AVD | Windows local runtime | `TaskChute_API33` via `scripts/android-qa.ps1 -Surface All`: Notes `7` + Security `1` + Settings `2` + Today `25` = `35 / 35`, failures/errors/skipped `0 / 0 / 0`; APK install, MainActivity resolution, TaskChute crash buffer empty | PASS |
 | D114-AVD-TIMING | Runtime timing evidence | emulator ready `0.09s`; instrumentation `509.34s`; post-test install/smoke `1.11s`; total `510.72s` | PASS |
 | D114-BOUNDARY | Server/data boundary | No Worker/API semantic, schema/migration, dependency, realtime protocol, offline, notification, persistent nonprod, or production change | PASS / NOT_REQUIRED |
 | D114-GALAXY | Device smoke | Fresh final-main APK awaits Product Owner's D-114 Settings smoke | PENDING_SMOKE |
+
+### D-114 Settings read threading corrective
+
+| ID | Verification target | Evidence | Status |
+|---|---|---|---|
+| D114-READ-RED | Pre-fix dispatcher regression | Dedicated `settings-main` dispatcher: Section / Project / Routine reads and real `SettingsHttpRepository` synchronous request boundary failed the off-main assertion (`2` deterministic test failures) | RED reproduced |
+| D114-READ-GREEN | Settings read dispatcher | Three controller read paths use `withContext(Dispatchers.IO)`; state publication resumes on controller Main scope; Project/Routine post-mutation reload reuses these paths | PASS |
+| D114-READ-CONTROLLER | Focused controller | `SettingsControllerTest` `7 / 7`, including 401 handoff on controller Main scope; failures/errors/skipped `0 / 0 / 0` | PASS |
+| D114-READ-HTTP | Synchronous HTTP boundary | `SettingsHttpRepositoryTest` `3 / 3`; no internet access used | PASS |
+| D114-READ-JVM | Full Android JVM | `:app:testDebugUnitTest` `111 / 111`, failures/errors/skipped `0 / 0 / 0` | PASS |
+| D114-READ-AVD | Windows local Settings runtime surface | `TaskChute_API33`, `SettingsScreenInstrumentedTest` `2 / 2`; instrumentation `57.58s`, total `58.90s`; APK install, MainActivity resolution, package crash buffer empty | PASS (fake repository UI only) |
+| D114-READ-AUTH-RUNTIME | Real authenticated Settings API reads | Emulator MainActivity launched to login screen; no authenticated session available. No credentials retrieved or entered. Section / Project / Routine authenticated API success not established | AUTHENTICATED_ANDROID_RUNTIME_NOT_VERIFIED |
+| D114-READ-BOUNDARY | Server/data change | Worker/API semantics, migration/schema, dependency, production unchanged | NOT_REQUIRED / NOT_RUN |
 
 The first All run had one stale Today navigation assertion expecting the historical disabled
 `プロジェクト` item. XML/logcat showed `TEST_CODE_FAIL`, no TaskChute runtime crash; the expectation

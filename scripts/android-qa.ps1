@@ -13,20 +13,21 @@ $SurfaceClasses = [ordered]@{
     Notes = "com.hedgetheapp.taskchute.document.NotesScreenInstrumentedTest"
     Today = "com.hedgetheapp.taskchute.today.TodayScreenInstrumentedTest"
     Security = "com.hedgetheapp.taskchute.security.EncryptedSessionStoreInstrumentedTest"
+    Settings = "com.hedgetheapp.taskchute.settings.SettingsScreenInstrumentedTest"
 }
 
 function Resolve-Surfaces([string[]]$Requested) {
     $expanded = @($Requested | ForEach-Object { $_ -split "," } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
     if ($expanded.Count -eq 0) {
-        throw "Surface must be one or more of All, Notes, Today, Security."
+        throw "Surface must be one or more of All, Notes, Today, Security, Settings."
     }
 
-    $invalid = @($expanded | Where-Object { $_ -notin @("All", "Notes", "Today", "Security") })
+    $invalid = @($expanded | Where-Object { $_ -notin @("All", "Notes", "Today", "Security", "Settings") })
     if ($invalid.Count -gt 0) {
-        throw "Invalid instrumentation surface '$($invalid -join ', ')'. Choose All, Notes, Today, or Security."
+        throw "Invalid instrumentation surface '$($invalid -join ', ')'. Choose All, Notes, Today, Security, or Settings."
     }
     if ($expanded.Count -gt 1) {
-        throw "Multiple instrumentation surfaces are not supported by this Gradle runner. Run one of All, Notes, Today, or Security at a time."
+        throw "Multiple instrumentation surfaces are not supported by this Gradle runner. Run one of All, Notes, Today, Security, or Settings at a time."
     }
     return $expanded
 }
