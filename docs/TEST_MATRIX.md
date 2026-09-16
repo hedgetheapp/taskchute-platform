@@ -1,5 +1,23 @@
 # Test Matrix
 
+## Web Notes draft rollback corrective — async canonical apply guard
+
+| ID | Verification target | Evidence | Status |
+|---|---|---|---|
+| NOTES-ROLLBACK-RED | Reported typed-character loss and deleted-text reappearance | Pre-fix deterministic NotesBoard deferred-realtime tests: typed `before + local typing` reverted to `before`; `abcdef` deletion to `abc` reverted to `abcdef` | PASS / ROOT CAUSE REPRODUCED |
+| NOTES-ROLLBACK-STANDALONE | Standalone Note protected canonical refresh | Async apply guard preserves typed, deleted, replaced, and pasted local state; changed remote result remains canonical/conflict information and does not rebase the CAS base | PASS; NotesBoard `32 / 32` |
+| NOTES-ROLLBACK-PRIMARY | Task / Project Primary floating Note protected canonical refresh | Shared TaskNoteEditor guard preserves local body while Task or Project canonical fetch is pending; Task `26 / 26` | PASS |
+| NOTES-ROLLBACK-AUTOSAVE | Save-in-flight behavior | Existing immutable-request and follow-up-save regression remains in NotesBoard coverage; sent request is not mutated | PASS; existing Web regression |
+| NOTES-ROLLBACK-IME | Markdown editor composition path | `NoteMarkdownEditor` inspected; no independent IME loss reproduction or primitive change | NOT_CAUSE_IN_CURRENT_EVIDENCE |
+| NOTES-ROLLBACK-REGRESSION | Full Web/static impact gate | Full Web `14 files / 447 tests`; typecheck; production build; `git diff --check` | PASS |
+| NOTES-ROLLBACK-BOUNDARY | Realtime/CAS and change boundary | Realtime remains enabled; no LWW, auto-merge, storage, API, Worker, schema, migration, or dependency change | PASS / NOT_REQUIRED |
+| NOTES-ROLLBACK-BROWSER | Timing-sensitive authenticated browser evidence | No valid authenticated session available without credential retrieval or re-login | AUTHENTICATED_BROWSER_NOT_VERIFIED |
+
+The pre-fix RED is retained as evidence of the source-review finding. The fix guards
+canonical responses at apply time using editor generation and load identity tokens; it does
+not merely check `dirty` before starting a fetch and does not silently adopt a newer remote
+revision for a local draft.
+
 ## D-112 Android Today bulk selection and day operations — local closeout
 
 | ID | Verification target | Evidence | Status |

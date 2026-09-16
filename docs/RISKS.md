@@ -1,5 +1,19 @@
 # Risks
 
+## R-070 — Web Note canonical refresh versus local draft race
+
+An async realtime/reconnect/visibility canonical Document fetch can overlap with a new local
+Note edit. Before the corrective, its response could overwrite typed or deleted text and could
+silently move the local CAS base to a newer remote revision. The Web NotesBoard and shared
+TaskNoteEditor now capture editor generation and canonical-load identity and refuse to apply a
+protected response after local editing or a newer load; changed remote content remains visible
+through the existing conflict/canonical path. Autosave, immutable in-flight requests,
+revision/CAS, ambiguity, and realtime freshness behavior remain unchanged. Deterministic pre-fix
+RED and post-fix focused/full Web PASS evidence is recorded in `docs/TEST_MATRIX.md`. IME has
+no independent reproduction in the current editor primitive. Authenticated timing-sensitive
+browser evidence remains `AUTHENTICATED_BROWSER_NOT_VERIFIED`; no API, Worker, schema,
+migration, dependency, or persistent storage change was made.
+
 ## R-069 — D-112 Android bulk selection and day-operation boundary
 
 D-112 adds always-visible selection for eligible ordinary planned current-Day rows, canonical

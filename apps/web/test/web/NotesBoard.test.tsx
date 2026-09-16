@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProjectPrimaryDocument, ProjectPrimaryDocumentSummary, StandaloneDocument, StandaloneDocumentSummary } from "../../src/shared/contracts";
 
@@ -108,6 +108,46 @@ describe("NotesBoard", () => {
     expect(screen.getByDisplayValue("After")).toBeTruthy();
     await waitFor(() => expect(mocks.updateDocument).toHaveBeenCalledTimes(1), { timeout: 2500 });
     expect(mocks.updateDocument.mock.calls[0]![0]).toMatchObject({ expected_revision: 3, title: "After" });
+  });
+
+  it("keeps text typed while a realtime canonical refresh is still pending", async () => {
+    const current = note("0199d090-0000-7000-8000-00000000000a", "Note", "before", 2);
+    const refresh = deferred<StandaloneDocument>();
+    mocks.loadDocuments.mockResolvedValue({ documents: [summary(current)] });
+    mocks.loadDocument.mockResolvedValue(current);
+    const onUnauthorized = vi.fn();
+    const onDirtyChange = vi.fn();
+    const view = render(<NotesBoard onUnauthorized={onUnauthorized} onDirtyChange={onDirtyChange} />);
+    await screen.findByDisplayValue("before");
+    const body = screen.getByLabelText("Markdown本文");
+    const initialLoads = mocks.loadDocument.mock.calls.length;
+    mocks.loadDocument.mockReturnValueOnce(refresh.promise);
+    view.rerender(<NotesBoard onUnauthorized={onUnauthorized} onDirtyChange={onDirtyChange}
+      realtimeRefresh={{ token: 1, scopes: [{ kind: "documents", document_ids: [current.document_id] }] }} />);
+    await waitFor(() => expect(mocks.loadDocument.mock.calls.length).toBeGreaterThan(initialLoads));
+    fireEvent.change(body, { target: { value: "before + local typing" } });
+    await act(async () => { refresh.resolve(current); await refresh.promise; });
+    expect(body).toHaveProperty("value", "before + local typing");
+  });
+
+  it("keeps deletions made while a realtime canonical refresh is still pending", async () => {
+    const current = note("0199d090-0000-7000-8000-00000000000c", "Note", "abcdef", 2);
+    const refresh = deferred<StandaloneDocument>();
+    mocks.loadDocuments.mockResolvedValue({ documents: [summary(current)] });
+    mocks.loadDocument.mockResolvedValue(current);
+    const onUnauthorized = vi.fn();
+    const onDirtyChange = vi.fn();
+    const view = render(<NotesBoard onUnauthorized={onUnauthorized} onDirtyChange={onDirtyChange} />);
+    await screen.findByDisplayValue("abcdef");
+    const body = screen.getByLabelText("Markdown本文");
+    const initialLoads = mocks.loadDocument.mock.calls.length;
+    mocks.loadDocument.mockReturnValueOnce(refresh.promise);
+    view.rerender(<NotesBoard onUnauthorized={onUnauthorized} onDirtyChange={onDirtyChange}
+      realtimeRefresh={{ token: 1, scopes: [{ kind: "documents", document_ids: [current.document_id] }] }} />);
+    await waitFor(() => expect(mocks.loadDocument.mock.calls.length).toBeGreaterThan(initialLoads));
+    fireEvent.change(body, { target: { value: "abc" } });
+    await act(async () => { refresh.resolve(current); await refresh.promise; });
+    expect(body).toHaveProperty("value", "abc");
   });
 
   it("reports logical saves once and bounds a sent request plus one follow-up intent", async () => {

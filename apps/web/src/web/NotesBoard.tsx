@@ -316,6 +316,10 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
   const debounceRef = useRef<number | null>(null);
   const mutationsBlockedRef = useRef(false);
   const deferredRealtimeRefreshRef = useRef(false);
+  // A canonical refresh may be in flight while the user starts editing.  Keep
+  // that response from applying to the newer local editor generation.
+  const editorEditGenerationRef = useRef(0);
+  const canonicalLoadTokenRef = useRef(0);
 
   documentRef.current = document;
   modeRef.current = mode;
@@ -397,11 +401,22 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
     setBaselineTitle(loaded.title); setBaselineBody(loaded.markdown_body);
   }, []);
 
-  const openCanonicalDocument = useCallback(async (documentId: string): Promise<StandaloneDocument | null> => {
+  const openCanonicalDocument = useCallback(async (documentId: string, options: { protectLocalEdits?: boolean } = {}): Promise<StandaloneDocument | null> => {
+    const loadToken = ++canonicalLoadTokenRef.current;
+    const editGeneration = editorEditGenerationRef.current;
     setLoading(true); setError(null); setNotice(null); setLatestCanonical(null);
     setProjectInlineCandidate(null); setFloatingProjectId(null); projectFlushRef.current = null;
     try {
       const loaded = await api.loadDocument(documentId);
+      if (loadToken !== canonicalLoadTokenRef.current) return null;
+      if (options.protectLocalEdits && (editorEditGenerationRef.current !== editGeneration || currentDirty())) {
+        const baseline = baselineRef.current;
+        if (loaded.title !== baseline.title || loaded.markdown_body !== baseline.body) {
+          setLatestCanonical(loaded);
+          setError("Server側の変更を確認しました。ローカルの未保存内容は保持しています。");
+        }
+        return loaded;
+      }
       setEditorFromCanonical(loaded);
       retryRequestRef.current = null; ambiguousRequestRef.current = null;
       setRetryRequest(null); setAmbiguousRequest(null);
@@ -410,7 +425,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
       if (caught instanceof ApiClientError && caught.status === 401) handleUnauthorized();
       else setError(caught instanceof Error ? caught.message : "ノートの読み込みに失敗しました");
       return null;
-    } finally { setLoading(false); }
+    } finally { if (loadToken === canonicalLoadTokenRef.current) setLoading(false); }
   }, [handleUnauthorized, setEditorFromCanonical]);
 
   useEffect(() => {
@@ -472,19 +487,24 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
           return;
         }
         if (!selectedIdRef.current || modeRef.current !== "existing") return;
+        const loadToken = ++canonicalLoadTokenRef.current;
+        const editGeneration = editorEditGenerationRef.current;
         const canonical = await api.loadDocument(selectedIdRef.current);
+        if (loadToken !== canonicalLoadTokenRef.current) return;
         const localDraft = draftRef.current;
         const localDirty = currentDirty();
-        documentRef.current = canonical;
-        setDocument(canonical);
-        baselineRef.current = { title: canonical.title, body: canonical.markdown_body };
-        setBaselineTitle(canonical.title); setBaselineBody(canonical.markdown_body);
-        if (!localDirty) {
+        if (editorEditGenerationRef.current !== editGeneration || localDirty) {
+          if (localDraft.title !== canonical.title || localDraft.body !== canonical.markdown_body) {
+            setLatestCanonical(canonical);
+            setError("再認証後にServer側の変更を確認しました。ローカルの未保存内容は保持しています。");
+          }
+        } else {
+          documentRef.current = canonical;
+          setDocument(canonical);
+          baselineRef.current = { title: canonical.title, body: canonical.markdown_body };
+          setBaselineTitle(canonical.title); setBaselineBody(canonical.markdown_body);
           draftRef.current = { title: canonical.title, body: canonical.markdown_body };
           setDraftTitle(canonical.title); setDraftBody(canonical.markdown_body);
-        } else if (localDraft.title !== canonical.title || localDraft.body !== canonical.markdown_body) {
-          setLatestCanonical(canonical);
-          setError("再認証後にServer側の変更を確認しました。ローカルの未保存内容は保持しています。");
         }
         await refreshList(showArchivedRef.current);
       } catch (caught) {
@@ -503,7 +523,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
     deferredRealtimeRefreshRef.current = false;
     void refreshList(showArchivedRef.current).then(async (list) => {
       if (modeRef.current === "existing" && selectedIdRef.current && list?.some((item) => item.document_id === selectedIdRef.current)) {
-        await openCanonicalDocument(selectedIdRef.current);
+        await openCanonicalDocument(selectedIdRef.current, { protectLocalEdits: true });
       }
     });
   }, [dirty, mutationsBlocked, openCanonicalDocument, projectSaving, projectUnresolved, realtimeRefresh?.token, refreshList, saving, unresolved]);
@@ -513,7 +533,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
     deferredRealtimeRefreshRef.current = false;
     void refreshList(showArchivedRef.current).then(async (list) => {
       if (modeRef.current === "existing" && selectedIdRef.current && list?.some((item) => item.document_id === selectedIdRef.current)) {
-        await openCanonicalDocument(selectedIdRef.current);
+        await openCanonicalDocument(selectedIdRef.current, { protectLocalEdits: true });
       }
     });
   }, [dirty, mutationsBlocked, openCanonicalDocument, projectSaving, projectUnresolved, refreshList, saving, unresolved]);
@@ -776,11 +796,13 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
 
   function updateDraftTitle(value: string): void {
     if (mutationsBlockedRef.current || unresolved || showArchived || document?.archived_at) return;
+    editorEditGenerationRef.current += 1;
     setDraftTitle(value); draftRef.current.title = value; setNotice(null);
   }
 
   function updateDraftBody(value: string): void {
     if (mutationsBlockedRef.current || unresolved || showArchived || document?.archived_at) return;
+    editorEditGenerationRef.current += 1;
     setDraftBody(value); draftRef.current.body = value; setNotice(null);
   }
 

@@ -113,6 +113,9 @@ export function TaskNoteEditor({
   const handledOutsideClickRequestRef = useRef(0);
   const mutationsBlockedRef = useRef(false);
   const deferredRealtimeRefreshRef = useRef(false);
+  // Guard canonical refetches that started before a newer local edit.
+  const editGenerationRef = useRef(0);
+  const canonicalLoadTokenRef = useRef(0);
 
   const dirty = draftBody !== baselineBody;
   const unresolved = unresolvedRequest !== null;
@@ -311,12 +314,21 @@ export function TaskNoteEditor({
   useEffect(() => { onDirtyChangeRef.current(dirty); }, [dirty]);
   useEffect(() => { onUnresolvedChangeRef.current(unresolved); }, [unresolved]);
 
-  const loadCanonical = useCallback(async () => {
+  const loadCanonical = useCallback(async (options: { protectLocalEdits?: boolean } = {}) => {
+    const loadToken = ++canonicalLoadTokenRef.current;
+    const editGeneration = editGenerationRef.current;
     setLoading(true);
     try {
       const canonical = isProjectPrimary
         ? await api.loadProjectPrimaryDocumentById(documentId)
         : await api.loadTaskPrimaryDocumentById(documentId);
+      if (loadToken !== canonicalLoadTokenRef.current) return;
+      if (options.protectLocalEdits && (editGenerationRef.current !== editGeneration || draftRef.current !== baselineRef.current)) {
+        if (canonical.markdown_body !== baselineRef.current) {
+          setError("Server側の変更を確認しました。ローカルの未保存内容は保持しています。");
+        }
+        return;
+      }
       setDocument(canonical); documentRef.current = canonical;
       setDraftBody(canonical.markdown_body); draftRef.current = canonical.markdown_body;
       setBaselineBody(canonical.markdown_body); baselineRef.current = canonical.markdown_body;
@@ -324,7 +336,7 @@ export function TaskNoteEditor({
     } catch (caught) {
       if (caught instanceof ApiClientError && caught.status === 401) onUnauthorized();
       else setError(caught instanceof Error ? caught.message : `${primaryLabel}の読み込みに失敗しました`);
-    } finally { setLoading(false); }
+    } finally { if (loadToken === canonicalLoadTokenRef.current) setLoading(false); }
   }, [documentId, isProjectPrimary, onUnauthorized, primaryLabel]);
 
   useEffect(() => { void loadCanonical(); }, [loadCanonical]);
@@ -333,20 +345,25 @@ export function TaskNoteEditor({
     if (authEpoch === 0) return;
     void (async () => {
       try {
+        const loadToken = ++canonicalLoadTokenRef.current;
+        const editGeneration = editGenerationRef.current;
         const canonical = isProjectPrimary
           ? await api.loadProjectPrimaryDocumentById(documentId)
           : await api.loadTaskPrimaryDocumentById(documentId);
         const localDraft = draftRef.current;
         const localDirty = localDraft !== baselineRef.current;
-        documentRef.current = canonical;
-        setDocument(canonical);
-        baselineRef.current = canonical.markdown_body;
-        setBaselineBody(canonical.markdown_body);
-        if (!localDirty) {
+        if (loadToken !== canonicalLoadTokenRef.current) return;
+        if (editGenerationRef.current !== editGeneration || localDirty) {
+          if (canonical.markdown_body !== localDraft) {
+            setError("再認証後にServer側の変更を確認しました。ローカルの未保存内容は保持しています。");
+          }
+        } else {
+          documentRef.current = canonical;
+          setDocument(canonical);
+          baselineRef.current = canonical.markdown_body;
+          setBaselineBody(canonical.markdown_body);
           draftRef.current = canonical.markdown_body;
           setDraftBody(canonical.markdown_body);
-        } else if (canonical.markdown_body !== localDraft) {
-          setError("再認証後にServer側の変更を確認しました。ローカルの未保存内容は保持しています。");
         }
       } catch (caught) {
         if (caught instanceof ApiClientError && caught.status === 401) onUnauthorized();
@@ -364,13 +381,13 @@ export function TaskNoteEditor({
       return;
     }
     deferredRealtimeRefreshRef.current = false;
-    void loadCanonical();
+    void loadCanonical({ protectLocalEdits: true });
   }, [dirty, loadCanonical, mutationsBlocked, realtimeRefresh?.token, saving, unresolved]);
 
   useEffect(() => {
     if (dirty || unresolved || saving || mutationsBlocked || !deferredRealtimeRefreshRef.current) return;
     deferredRealtimeRefreshRef.current = false;
-    void loadCanonical();
+    void loadCanonical({ protectLocalEdits: true });
   }, [dirty, loadCanonical, mutationsBlocked, saving, unresolved]);
 
   const applySaved = useCallback((saved: PrimaryDocument, request: PrimaryUpdateRequest) => {
@@ -568,7 +585,7 @@ export function TaskNoteEditor({
         <NoteMarkdownEditor
           value={draftBody}
           disabled={unresolved || mutationsBlocked}
-          onChange={(value) => { if (mutationsBlocked || unresolved) return; setDraftBody(value); draftRef.current = value; setNotice(null); }}
+          onChange={(value) => { if (mutationsBlocked || unresolved) return; editGenerationRef.current += 1; setDraftBody(value); draftRef.current = value; setNotice(null); }}
           onKeyDown={handleKeyDown}
           className="task-note-markdown-field"
         />

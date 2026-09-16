@@ -1,5 +1,29 @@
 # Current
 
+### Web Notes draft rollback corrective — 2026-09-16
+
+Independent source review reproduced a D-091 / D-105 correctness gap: a standalone
+`documents` realtime refresh could begin while the editor was clean, then apply its old
+canonical response after the user had typed or deleted text. The response overwrote the
+controlled draft, while a newer server revision could also have been adopted as the CAS
+base if the apply path was not guarded.
+
+The corrective adds an editor-generation and canonical-load token guard at async apply time
+for standalone Notes and the shared Task Primary / Project Primary floating Note editor.
+When a local edit, dirty transition, or newer load occurs during a protected refresh, the
+canonical response is not applied to the draft or CAS document reference; a changed remote
+response is exposed as the existing canonical/conflict information instead. Realtime remains
+enabled, autosave/in-flight follow-up behavior is unchanged, and no API, Worker, schema,
+migration, dependency, or storage change was made.
+
+Deterministic pre-fix RED was observed in NotesBoard for both typed text and deletion
+(`before + local typing` reverted to `before`; `abc` reverted to `abcdef`). Post-fix focused
+NotesBoard `32 / 32` and TaskNoteEditor `26 / 26` pass; the full Web suite is `447 / 447`.
+`NoteMarkdownEditor` was inspected and has no independent composition-event reproduction;
+IME is `NOT_CAUSE_IN_CURRENT_EVIDENCE`. Authenticated browser timing evidence is
+`AUTHENTICATED_BROWSER_NOT_VERIFIED` because no valid authenticated session was available
+without credential retrieval or re-login. Production remains `NOT_RUN` and Released `NO`.
+
 ### D-112 Android Today Bulk Selection + Day Operations v0.1 — 2026-09-16
 
 D-112はAndroid Todayのcurrent established Dayに、ordinary planned Entryだけを対象とする常時

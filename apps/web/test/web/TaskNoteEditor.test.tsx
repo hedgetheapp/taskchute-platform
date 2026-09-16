@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProjectPrimaryDocument, TaskPrimaryDocument } from "../../src/shared/contracts";
 
@@ -39,6 +39,13 @@ function ambiguousError(): Error {
 
 function missingError(): Error {
   return new ApiClientError("missing", 404, true, "resource_not_found");
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => { resolve = resolvePromise; reject = rejectPromise; });
+  return { promise, resolve, reject };
 }
 
 function dispatchPointer(element: HTMLElement, type: string, values: { clientX?: number; clientY?: number; pointerId?: number; button?: number }): void {
@@ -104,6 +111,81 @@ describe("TaskNoteEditor", () => {
     await waitFor(() => expect(onUnauthorized).toHaveBeenCalledTimes(1));
     expect(screen.getByDisplayValue("local draft")).toBeTruthy();
     expect(mocks.updateTaskPrimaryDocument).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps Task Primary text typed while realtime canonical reload is pending", async () => {
+    const refresh = deferred<TaskPrimaryDocument>();
+    mocks.loadTaskPrimaryDocumentById.mockResolvedValue(primary("before"));
+    const onUnauthorized = vi.fn();
+    const onDirtyChange = vi.fn();
+    const view = render(<TaskNoteEditor
+      taskId={taskId} documentId={documentId} taskTitle="Task A"
+      onClose={vi.fn()} onUnauthorized={onUnauthorized} onDirtyChange={onDirtyChange}
+      onUnresolvedChange={vi.fn()} onRegisterFlush={vi.fn()} onOpenNewTab={vi.fn()}
+    />);
+    const body = await screen.findByRole("textbox", { name: "Markdown本文" });
+    const initialLoads = mocks.loadTaskPrimaryDocumentById.mock.calls.length;
+    mocks.loadTaskPrimaryDocumentById.mockReturnValueOnce(refresh.promise);
+    view.rerender(<TaskNoteEditor
+      taskId={taskId} documentId={documentId} taskTitle="Task A"
+      onClose={vi.fn()} onUnauthorized={onUnauthorized} onDirtyChange={onDirtyChange}
+      onUnresolvedChange={vi.fn()} onRegisterFlush={vi.fn()} onOpenNewTab={vi.fn()}
+      realtimeRefresh={{ token: 1, scopes: [{ kind: "documents", document_ids: [documentId] }] }}
+    />);
+    await waitFor(() => expect(mocks.loadTaskPrimaryDocumentById.mock.calls.length).toBeGreaterThan(initialLoads));
+    fireEvent.change(body, { target: { value: "before + local typing" } });
+    await act(async () => { refresh.resolve(primary("before")); await refresh.promise; });
+    expect(body).toHaveProperty("value", "before + local typing");
+  });
+
+  it("keeps Task Primary deletions while realtime canonical reload is pending", async () => {
+    const refresh = deferred<TaskPrimaryDocument>();
+    mocks.loadTaskPrimaryDocumentById.mockResolvedValue(primary("abcdef"));
+    const onUnauthorized = vi.fn();
+    const onDirtyChange = vi.fn();
+    const view = render(<TaskNoteEditor
+      taskId={taskId} documentId={documentId} taskTitle="Task A"
+      onClose={vi.fn()} onUnauthorized={onUnauthorized} onDirtyChange={onDirtyChange}
+      onUnresolvedChange={vi.fn()} onRegisterFlush={vi.fn()} onOpenNewTab={vi.fn()}
+    />);
+    const body = await screen.findByRole("textbox", { name: "Markdown本文" });
+    const initialLoads = mocks.loadTaskPrimaryDocumentById.mock.calls.length;
+    mocks.loadTaskPrimaryDocumentById.mockReturnValueOnce(refresh.promise);
+    view.rerender(<TaskNoteEditor
+      taskId={taskId} documentId={documentId} taskTitle="Task A"
+      onClose={vi.fn()} onUnauthorized={onUnauthorized} onDirtyChange={onDirtyChange}
+      onUnresolvedChange={vi.fn()} onRegisterFlush={vi.fn()} onOpenNewTab={vi.fn()}
+      realtimeRefresh={{ token: 1, scopes: [{ kind: "documents", document_ids: [documentId] }] }}
+    />);
+    await waitFor(() => expect(mocks.loadTaskPrimaryDocumentById.mock.calls.length).toBeGreaterThan(initialLoads));
+    fireEvent.change(body, { target: { value: "abc" } });
+    await act(async () => { refresh.resolve(primary("abcdef")); await refresh.promise; });
+    expect(body).toHaveProperty("value", "abc");
+  });
+
+  it("keeps Project Primary text typed while realtime canonical reload is pending", async () => {
+    const refresh = deferred<ProjectPrimaryDocument>();
+    mocks.loadProjectPrimaryDocumentById.mockResolvedValue(projectPrimary("before"));
+    const onUnauthorized = vi.fn();
+    const onDirtyChange = vi.fn();
+    const view = render(<TaskNoteEditor
+      documentKind="project_primary" projectId={taskId} projectTitle="Project A" taskId={taskId} documentId={documentId}
+      onClose={vi.fn()} onUnauthorized={onUnauthorized} onDirtyChange={onDirtyChange}
+      onUnresolvedChange={vi.fn()} onRegisterFlush={vi.fn()} onOpenNewTab={vi.fn()}
+    />);
+    const body = await screen.findByRole("textbox", { name: "Markdown本文" });
+    const initialLoads = mocks.loadProjectPrimaryDocumentById.mock.calls.length;
+    mocks.loadProjectPrimaryDocumentById.mockReturnValueOnce(refresh.promise);
+    view.rerender(<TaskNoteEditor
+      documentKind="project_primary" projectId={taskId} projectTitle="Project A" taskId={taskId} documentId={documentId}
+      onClose={vi.fn()} onUnauthorized={onUnauthorized} onDirtyChange={onDirtyChange}
+      onUnresolvedChange={vi.fn()} onRegisterFlush={vi.fn()} onOpenNewTab={vi.fn()}
+      realtimeRefresh={{ token: 1, scopes: [{ kind: "documents", document_ids: [documentId] }] }}
+    />);
+    await waitFor(() => expect(mocks.loadProjectPrimaryDocumentById.mock.calls.length).toBeGreaterThan(initialLoads));
+    fireEvent.change(body, { target: { value: "before + project local typing" } });
+    await act(async () => { refresh.resolve(projectPrimary("before")); await refresh.promise; });
+    expect(body).toHaveProperty("value", "before + project local typing");
   });
 
   it("uses the same memory-preserving path for a Project Primary floating editor", async () => {
