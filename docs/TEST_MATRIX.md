@@ -7,11 +7,11 @@
 | D114-DECISION | Canonical scope | `docs/decisions/D-114_ANDROID_SETTINGS_MANAGEMENT_V01.md`; native Settings hub for Section / Project / Routine using existing contracts | PASS |
 | D114-NAV | Android shell navigation | Bottom navigation is `今日` / `ノート` / `設定`; Project is managed inside Settings and no fake Project destination remains | PASS focused / emulator |
 | D114-SETTINGS-UI | Settings surfaces | Home cards, Section list/editor/delete confirmation, Project active/archive management, Routine list/editor/toggle/delete controls | PASS; focused instrumentation `2 / 2` |
-| D114-SETTINGS-HTTP | API boundary | Section full configuration update with adjacent absorption, Project revision/order/archive/delete, Routine create/update/enabled/soft-delete request parsing and paths | PASS; focused JVM `6 / 6` |
-| D114-SETTINGS-CONTROLLER | Mutation safety | Owner-scoped repository/controller, canonical revision fields, exact ambiguous Project request retry, no parallel persistence model | PASS; focused JVM |
-| D114-ANDROID-JVM | Full Android JVM | `:app:testDebugUnitTest`: `107 / 107`, failures/errors/skipped `0 / 0 / 0` | PASS |
+| D114-SETTINGS-HTTP | API boundary | Section full configuration update with adjacent absorption, Project revision/order/archive/delete, Routine create/update/enabled/soft-delete request parsing and paths | PASS; focused `SettingsHttpRepositoryTest` `3 / 3` |
+| D114-SETTINGS-CONTROLLER | Mutation safety | Owner-scoped repository/controller, canonical revision fields, exact ambiguous Project request retry, logical Section clock input, no parallel persistence model | PASS; focused `SettingsControllerTest` `4 / 4` |
+| D114-ANDROID-JVM | Full Android JVM | `:app:testDebugUnitTest`: `108 / 108`, failures/errors/skipped `0 / 0 / 0` | PASS |
 | D114-ANDROID-AVD | Windows local runtime | `TaskChute_API33` via `scripts/android-qa.ps1 -Surface All`: Notes `7` + Security `1` + Settings `2` + Today `25` = `35 / 35`, failures/errors/skipped `0 / 0 / 0`; APK install, MainActivity resolution, TaskChute crash buffer empty | PASS |
-| D114-AVD-TIMING | Runtime timing evidence | emulator ready `0.09s`; instrumentation `580.72s`; post-test install/smoke `2.22s`; total `583.20s` | PASS |
+| D114-AVD-TIMING | Runtime timing evidence | emulator ready `0.09s`; instrumentation `509.34s`; post-test install/smoke `1.11s`; total `510.72s` | PASS |
 | D114-BOUNDARY | Server/data boundary | No Worker/API semantic, schema/migration, dependency, realtime protocol, offline, notification, persistent nonprod, or production change | PASS / NOT_REQUIRED |
 | D114-GALAXY | Device smoke | Fresh final-main APK awaits Product Owner's D-114 Settings smoke | PENDING_SMOKE |
 
