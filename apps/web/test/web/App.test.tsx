@@ -2778,6 +2778,63 @@ describe("Dogfood Day shell", () => {
     expect(mocks.reorderEntries.mock.calls[1][0].entry_ids).toEqual([secondEntry.id, thirdEntry.id, firstEntry.id]);
   });
 
+  it("keeps a selected block focused and immediately visible across repeated Section moves", async () => {
+    const firstRequest = deferred<unknown>();
+    const secondRequest = deferred<unknown>();
+    const middayId = "019c0000-0000-7000-8000-000000000031";
+    const lateId = "019c0000-0000-7000-8000-000000000032";
+    const anchor = { ...thirdEntry, section_id: middayId, planned_start_minute: 720 };
+    const lateAnchor = { ...thirdEntry, id: "019c0000-0000-7000-8000-000000000033", section_id: lateId, planned_start_minute: 960,
+      task: { ...thirdEntry.task, id: "019c0000-0000-7000-8000-000000000034", title: "Late task" } };
+    const sourceDay = { ...threePlannedDay, sections: [
+      { ...threePlannedDay.sections[0], entries: [firstEntry, secondEntry] },
+      { ...emptyDay.sections[1], id: middayId, title: "Midday", logical_start_minute: 720, logical_end_minute: 960, entries: [anchor] },
+      { ...emptyDay.sections[1], id: lateId, title: "Late", logical_start_minute: 960, logical_end_minute: 1680, entries: [lateAnchor] },
+    ] };
+    const firstCanonical = { ...sourceDay, placement_revision: sourceDay.placement_revision + 1, sections: [
+      { ...sourceDay.sections[0], entries: [] },
+      { ...sourceDay.sections[1], entries: [{ ...firstEntry, section_id: middayId, planned_start_minute: 720 }, { ...secondEntry, section_id: middayId, planned_start_minute: 720 }, anchor] },
+      sourceDay.sections[2],
+    ] };
+    const secondCanonical = { ...firstCanonical, placement_revision: firstCanonical.placement_revision + 1, sections: [
+      firstCanonical.sections[0],
+      { ...firstCanonical.sections[1], entries: [anchor] },
+      { ...firstCanonical.sections[2], entries: [
+        { ...firstEntry, section_id: lateId, planned_start_minute: 960 },
+        { ...secondEntry, section_id: lateId, planned_start_minute: 960 },
+        lateAnchor,
+      ] },
+    ] };
+    mocks.loadDay.mockResolvedValueOnce(sourceDay).mockResolvedValueOnce(firstCanonical).mockResolvedValueOnce(secondCanonical);
+    mocks.bulkMoveEntriesToSectionOccurrence.mockReturnValueOnce(firstRequest.promise).mockReturnValueOnce(secondRequest.promise);
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("checkbox", { name: "「Canonical task」を選択" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "「Second task」を選択" }));
+    const source = screen.getByText("Canonical task").closest<HTMLElement>("[data-entry-id]")!;
+    source.focus();
+    fireEvent.keyDown(source, { key: "ArrowDown", shiftKey: true });
+
+    await waitFor(() => expect(mocks.bulkMoveEntriesToSectionOccurrence).toHaveBeenCalledTimes(1));
+    expect(Array.from(document.querySelectorAll(`.task-row[data-section-id="${middayId}"]`), (row) => row.getAttribute("data-entry-id")))
+      .toEqual([firstEntry.id, secondEntry.id, anchor.id]);
+    expect(document.activeElement?.getAttribute("data-entry-id")).toBe(firstEntry.id);
+    expect((screen.getByRole("checkbox", { name: "「Canonical task」を選択" }) as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByRole("checkbox", { name: "「Second task」を選択" }) as HTMLInputElement).checked).toBe(true);
+
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowDown", shiftKey: true });
+    await waitFor(() => expect(mocks.bulkMoveEntriesToSectionOccurrence).toHaveBeenCalledTimes(1));
+    expect(Array.from(document.querySelectorAll(`.task-row[data-section-id="${lateId}"]`), (row) => row.getAttribute("data-entry-id")))
+      .toEqual([firstEntry.id, secondEntry.id, lateAnchor.id]);
+    expect(document.activeElement?.getAttribute("data-entry-id")).toBe(firstEntry.id);
+
+    firstRequest.resolve({});
+    await waitFor(() => expect(mocks.bulkMoveEntriesToSectionOccurrence).toHaveBeenCalledTimes(2));
+    expect(mocks.bulkMoveEntriesToSectionOccurrence.mock.calls[1]?.[0].entry_ids).toEqual([firstEntry.id, secondEntry.id]);
+    secondRequest.resolve({});
+    await waitFor(() => expect(screen.queryByText("Bulk Routine Section変更・照合中…")).toBeNull());
+  });
+
   it("accepts continuous Move to Move traversal across empty real Sections", async () => {
     const firstRequest = deferred<unknown>();
     const secondRequest = deferred<unknown>();

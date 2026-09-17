@@ -150,14 +150,14 @@ type ColumnResizeState = {
 };
 type InlineEditorAction = { key: string; action: "none" | "commit" | "cancel" };
 type MutationScope = readonly string[];
-type ActiveMutation = { token: string; scope: MutationScope; label: string; kind?: "move" | "reorder"; sectionId?: string | null };
+type ActiveMutation = { token: string; scope: MutationScope; label: string; kind?: "move" | "reorder" | "bulk-move"; sectionId?: string | null };
 type QueuedDayMutation = {
   scope: MutationScope;
   label: string;
   coalesceKey?: string;
   operationId?: string;
   dependsOnOperationId?: string;
-  kind?: "move" | "reorder";
+  kind?: "move" | "reorder" | "bulk-move";
   entryId?: string;
   sectionId?: string | null;
   dispatch: () => Promise<void>;
@@ -178,6 +178,7 @@ type PendingSectionMoveIntent = {
   placement?: MoveEntryPlacementIntent;
 };
 type PendingReorderOverlay = { operation: ReorderEntriesRequest; baseEntryIds: string[] };
+type PendingBulkSectionMoveOverlay = { operation: BulkMoveEntriesToSectionOccurrenceRequest };
 type PendingRoutineModeOverlay = { operation: SetRoutineModeRequest; modeId: string | null; modeTitle: string | null };
 type RoutineCandidate =
   | { entryId: string; unit: "estimate"; estimateSeconds: number | null }
@@ -656,6 +657,60 @@ function applyPendingSectionMoveOverlays(
   return { ...projection, unsectioned_entries: unsectionedEntries, sections: nextSections, next_entry: nextEntry };
 }
 
+function applyPendingBulkSectionMoveOverlays(
+  projection: CurrentTaskChuteDayProjection,
+  overlays: PendingBulkSectionMoveOverlay[],
+): CurrentTaskChuteDayProjection {
+  if (overlays.length === 0) return projection;
+  let current = projection;
+  for (const { operation } of overlays) {
+    const groups = new Map<string, EntryProjection[]>();
+    groups.set(groupKey(null), [...current.unsectioned_entries]);
+    for (const section of current.sections) groups.set(groupKey(section.id), [...section.entries]);
+    const selectedIds = new Set(operation.entry_ids);
+    const selectedEntries = projectionEntries(current).filter((entry) => selectedIds.has(entry.id));
+    const targetEntries = groups.get(groupKey(operation.section_id));
+    if (!targetEntries || selectedEntries.length !== operation.entry_ids.length) continue;
+    for (const entries of groups.values()) {
+      for (let index = entries.length - 1; index >= 0; index -= 1) {
+        if (selectedIds.has(entries[index]!.id)) entries.splice(index, 1);
+      }
+    }
+    const anchor = operation.placement
+      ? targetEntries.find((entry) => entry.id === operation.placement?.anchor_entry_id)
+      : undefined;
+    if (operation.placement && !anchor) continue;
+    const targetPlannedStartMinute = operation.placement
+      ? anchor?.planned_start_minute ?? null
+      : operation.section_id === null
+        ? null
+        : current.sections.find((section) => section.id === operation.section_id)?.logical_start_minute ?? null;
+    const moved = selectedEntries.map((entry, index) => ({ ...entry,
+      section_id: operation.section_id,
+      planned_start_minute: targetPlannedStartMinute,
+      position: targetEntries.reduce((maximum, candidate) => Math.max(maximum, candidate.position), 0) + index + 1,
+    }));
+    let insertIndex = targetEntries.length;
+    if (anchor && operation.placement) {
+      insertIndex = targetEntries.findIndex((entry) => entry.id === anchor.id) + (operation.placement.edge === "after" ? 1 : 0);
+    } else {
+      const cohortIndexes = targetEntries.map((entry, index) => entry.lifecycle_state === "planned"
+        && entry.planned_start_minute === targetPlannedStartMinute ? index : -1).filter((index) => index >= 0);
+      if (cohortIndexes.length > 0) insertIndex = cohortIndexes[cohortIndexes.length - 1]! + 1;
+    }
+    targetEntries.splice(insertIndex, 0, ...moved);
+    const nextSections = current.sections.map((section) => {
+      const entries = groups.get(groupKey(section.id)) ?? [];
+      return { ...section, entries, estimate_total_seconds: entries.reduce((sum, entry) => sum + (entry.estimate_seconds ?? 0), 0) };
+    });
+    const unsectionedEntries = groups.get(groupKey(null)) ?? [];
+    const nextEntry = [...unsectionedEntries, ...nextSections.flatMap((section) => section.entries)]
+      .find((entry) => entry.lifecycle_state === "planned") ?? null;
+    current = { ...current, unsectioned_entries: unsectionedEntries, sections: nextSections, next_entry: nextEntry };
+  }
+  return current;
+}
+
 function shiftLogicalDate(logicalDate: string, days: number): string {
   return Temporal.PlainDate.from(logicalDate).add({ days }).toString();
 }
@@ -1019,6 +1074,7 @@ export function App() {
   const [configurationOperation, setConfigurationOperation] = useState<EstablishInitialSectionConfigurationRequest | null>(null);
   const [sectionMoveOperation, setSectionMoveOperation] = useState<MoveEntryRequest | null>(null);
   const [pendingSectionMoveIntents, setPendingSectionMoveIntents] = useState<PendingSectionMoveIntent[]>([]);
+  const [pendingBulkSectionMoveOverlays, setPendingBulkSectionMoveOverlays] = useState<PendingBulkSectionMoveOverlay[]>([]);
   const [estimateOperation, setEstimateOperation] = useState<SetEntryEstimateRequest | null>(null);
   const [retainedEstimateOperations, setRetainedEstimateOperations] = useState<SetEntryEstimateRequest[]>([]);
   const [plannedStartOperation, setPlannedStartOperation] = useState<PlannedStartOperation | null>(null);
@@ -1108,8 +1164,12 @@ export function App() {
   const dayMutationQueueRef = useRef<QueuedDayMutation[]>([]);
   const pendingReorderOverlaysRef = useRef<Record<string, PendingReorderOverlay>>({});
   const pendingSectionMoveIntentsRef = useRef<PendingSectionMoveIntent[]>([]);
+  const pendingBulkSectionMoveOverlaysRef = useRef<PendingBulkSectionMoveOverlay[]>([]);
   const sectionMoveInFlightRef = useRef<MoveEntryRequest | null>(null);
   const reorderInFlightRef = useRef<ReorderEntriesRequest | null>(null);
+  const bulkSectionMoveInFlightRef = useRef<BulkMoveEntriesToSectionOccurrenceRequest | null>(null);
+  const continuousBulkMoveOperationIdsRef = useRef(new Set<string>());
+  const [pendingFocusRestoreNonce, setPendingFocusRestoreNonce] = useState(0);
   const dayMutationInFlightRef = useRef(false);
   const dayMutationPausedRef = useRef(false);
   const deferredNavigationRef = useRef<{ logicalDate?: string } | null>(null);
@@ -1135,6 +1195,17 @@ export function App() {
     const next = updater(pendingSectionMoveIntentsRef.current);
     pendingSectionMoveIntentsRef.current = next;
     setPendingSectionMoveIntents(next);
+  }
+  function updatePendingBulkSectionMoveOverlays(
+    updater: (current: PendingBulkSectionMoveOverlay[]) => PendingBulkSectionMoveOverlay[],
+  ): void {
+    const next = updater(pendingBulkSectionMoveOverlaysRef.current);
+    pendingBulkSectionMoveOverlaysRef.current = next;
+    setPendingBulkSectionMoveOverlays(next);
+  }
+  function requestPendingFocus(target: FocusTarget): void {
+    setPendingFocusKey(focusKey(target));
+    setPendingFocusRestoreNonce((current) => current + 1);
   }
   function isQueuedDayMutationOperation(operationId: string | undefined): boolean {
     return operationId !== undefined && dayMutationQueueRef.current.some((item) => item.operationId === operationId);
@@ -1332,6 +1403,11 @@ export function App() {
     setPendingPlannedStartOverlays((current) => Object.fromEntries(Object.entries(current).filter(([, operation]) => !isCanceled(operation.request.operation_id))));
     setPendingRoutineModeOverlays((current) => Object.fromEntries(Object.entries(current)
       .filter(([, overlay]) => !isCanceled(overlay.operation.operation_id))));
+    updatePendingBulkSectionMoveOverlays((current) => current.filter((overlay) => {
+      const canceled = isCanceled(overlay.operation.operation_id);
+      if (canceled) continuousBulkMoveOperationIdsRef.current.delete(overlay.operation.operation_id);
+      return !canceled;
+    }));
   }
 
   function cancelDraftAnchoredToPendingAdds(operationIds: Set<string>): void {
@@ -1346,7 +1422,7 @@ export function App() {
     setDraftTask(null);
     const anchorSection = dayRef.current?.sections.find((section) => section.id === draft.sectionId);
     if (anchorSection || draft.sectionId === null) {
-      setPendingFocusKey(focusKey({ kind: "section", id: groupKey(draft.sectionId) }));
+      requestPendingFocus({ kind: "section", id: groupKey(draft.sectionId) });
     }
   }
 
@@ -1456,14 +1532,16 @@ export function App() {
     return item.kind === "reorder" && item.scope.includes(`placement:${taskchuteDayId}`) && item.sectionId === sectionId;
   }
 
-  function isContinuousPlacementItem(item: { kind?: "move" | "reorder"; scope: MutationScope }, taskchuteDayId: string): boolean {
-    return (item.kind === "move" || item.kind === "reorder") && item.scope.includes(`placement:${taskchuteDayId}`);
+  function isContinuousPlacementItem(item: { kind?: "move" | "reorder" | "bulk-move"; scope: MutationScope }, taskchuteDayId: string): boolean {
+    return (item.kind === "move" || item.kind === "reorder" || item.kind === "bulk-move")
+      && item.scope.includes(`placement:${taskchuteDayId}`);
   }
 
   function latestPlacementOperationId(taskchuteDayId: string): string | undefined {
     const queued = [...dayMutationQueueRef.current].reverse()
       .find((item) => item.scope.includes(`placement:${taskchuteDayId}`) && item.operationId)?.operationId;
     if (queued) return queued;
+    if (bulkSectionMoveInFlightRef.current?.taskchute_day_id === taskchuteDayId) return bulkSectionMoveInFlightRef.current.operation_id;
     if (sectionMoveInFlightRef.current?.taskchute_day_id === taskchuteDayId) return sectionMoveInFlightRef.current.operation_id;
     if (reorderInFlightRef.current?.taskchute_day_id === taskchuteDayId) return reorderInFlightRef.current.operation_id;
     return undefined;
@@ -1581,12 +1659,20 @@ export function App() {
 
   function effectiveSectionEntries(sectionId: string | null, projection: CurrentTaskChuteDayProjection | null = dayRef.current ?? day): EntryProjection[] {
     if (!projection) return [];
-    const movedProjection = applyPendingSectionMoveOverlays(projection, pendingSectionMoveIntentsRef.current);
+    const movedProjection = applyPendingBulkSectionMoveOverlays(
+      applyPendingSectionMoveOverlays(projection, pendingSectionMoveIntentsRef.current),
+      pendingBulkSectionMoveOverlaysRef.current,
+    );
     const entries = sectionEntriesForProjection(movedProjection, sectionId);
     const overlay = pendingReorderOverlaysRef.current[groupKey(sectionId)];
     if (!overlay || !isValidManualReorderOrder(entries, overlay.operation.entry_ids)) return entries;
     const byId = new Map(entries.map((entry) => [entry.id, entry]));
     return overlay.operation.entry_ids.map((entryId) => byId.get(entryId)!).filter(Boolean);
+  }
+
+  function removePendingBulkSectionMoveOverlay(operationId: string): void {
+    updatePendingBulkSectionMoveOverlays((current) => current.filter((overlay) => overlay.operation.operation_id !== operationId));
+    continuousBulkMoveOperationIdsRef.current.delete(operationId);
   }
 
   function cancelQueuedReorder(operation: ReorderEntriesRequest): void {
@@ -1888,6 +1974,9 @@ export function App() {
     setPendingEstimateOverlays({});
     setPendingPlannedStartOverlays({});
     setPendingExecutionTimesOverlays({});
+    pendingBulkSectionMoveOverlaysRef.current = [];
+    setPendingBulkSectionMoveOverlays([]);
+    continuousBulkMoveOperationIdsRef.current.clear();
     draftTaskRef.current = null;
     focusIntentGenerationRef.current += 1;
     setDraftTask(null);
@@ -2382,21 +2471,36 @@ export function App() {
 
   useEffect(() => {
     if (!pendingFocusKey || !day) return;
-    const target = document.querySelector<HTMLElement>(`[data-focus-key="${pendingFocusKey}"]`);
-    if (target) {
-      const locator = target.dataset.entryId ? pendingAddFocusLocatorRef.current.get(target.dataset.entryId) : undefined;
-      const focusTarget = locator ? focusTargetFromLocator(target, locator) : target;
-      suppressFocusIntentRef.current = true;
-      focusTarget.focus();
-      suppressFocusIntentRef.current = false;
-      if (target.dataset.entryId) pendingAddFocusLocatorRef.current.delete(target.dataset.entryId);
-      setPendingFocusKey(null);
-    }
-  }, [day, pendingFocusKey, showCompleted]);
+    let frame: number | null = null;
+    let attempts = 0;
+    const restore = () => {
+      if (!pendingFocusKey || !day) return;
+      const target = document.querySelector<HTMLElement>(`[data-focus-key="${pendingFocusKey}"]`);
+      if (target) {
+        const locator = target.dataset.entryId ? pendingAddFocusLocatorRef.current.get(target.dataset.entryId) : undefined;
+        const focusTarget = locator ? focusTargetFromLocator(target, locator) : target;
+        suppressFocusIntentRef.current = true;
+        focusTarget.focus();
+        suppressFocusIntentRef.current = false;
+        if (target.dataset.entryId) pendingAddFocusLocatorRef.current.delete(target.dataset.entryId);
+        setPendingFocusKey(null);
+        return;
+      }
+      if (attempts < 4) {
+        attempts += 1;
+        frame = window.requestAnimationFrame(restore);
+      }
+    };
+    restore();
+    return () => { if (frame !== null) window.cancelAnimationFrame(frame); };
+  }, [day, pendingFocusKey, pendingFocusRestoreNonce, showCompleted]);
 
   useEffect(() => {
     if (!entryDrag || !day) return;
-    const entries = projectionEntries(applyPendingSectionMoveOverlays(day, pendingSectionMoveIntentsRef.current));
+    const entries = projectionEntries(applyPendingBulkSectionMoveOverlays(
+      applyPendingSectionMoveOverlays(day, pendingSectionMoveIntentsRef.current),
+      pendingBulkSectionMoveOverlaysRef.current,
+    ));
     const draggedEntries = entryDrag.entryIds.map((id) => entries.find((entry) => entry.id === id));
     if (draggedEntries.some((entry) => !entry || entry.lifecycle_state !== "planned")
       || !canUseD120PlacementDayForProjection(day, currentLogicalDate)
@@ -2924,7 +3028,7 @@ export function App() {
       await api.duplicateEntry(operation);
       await reconcile();
       setDuplicateOperation(null);
-      setPendingFocusKey(focusKey({ kind: "entry", id: operation.new_entry_id }));
+      requestPendingFocus({ kind: "entry", id: operation.new_entry_id });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Task複製に失敗しました");
       const ambiguous = isAmbiguousOutcome(caught);
@@ -2935,7 +3039,7 @@ export function App() {
           .some((entry) => entry.id === operation.new_entry_id && entry.task.id === operation.new_task_id)) {
           setDuplicateOperation(null);
           setError(null);
-          setPendingFocusKey(focusKey({ kind: "entry", id: operation.new_entry_id }));
+          requestPendingFocus({ kind: "entry", id: operation.new_entry_id });
         }
       } catch { /* Keep the exact logical operation for retry. */ }
     } finally {
@@ -2958,7 +3062,7 @@ export function App() {
       const focusGroup = projection?.unsectioned_entries.length
         ? groupKey(null)
         : projection?.sections[0] ? groupKey(projection.sections[0].id) : null;
-      if (focusGroup) setPendingFocusKey(focusKey({ kind: "section", id: focusGroup }));
+      if (focusGroup) requestPendingFocus({ kind: "section", id: focusGroup });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "選択したTaskの削除に失敗しました");
       const ambiguous = isAmbiguousOutcome(caught);
@@ -3119,8 +3223,11 @@ export function App() {
   }
 
   async function executeBulkSectionOccurrenceChange(operation: BulkMoveEntriesToSectionOccurrenceRequest) {
-    const mutationToken = beginMutationScope(placementMutationScope(operation.taskchute_day_id), "Bulk Routine Section変更");
+    const continuous = continuousBulkMoveOperationIdsRef.current.has(operation.operation_id);
+    const mutationToken = beginMutationScope(placementMutationScope(operation.taskchute_day_id), "Bulk Routine Section変更",
+      continuous ? { kind: "bulk-move" } : undefined);
     if (!mutationToken) return;
+    bulkSectionMoveInFlightRef.current = operation;
     setPending("bulk-section-occurrence");
     setBulkSectionConfirmation(null);
     setBulkSectionPickerOpen(false);
@@ -3128,11 +3235,15 @@ export function App() {
     try {
       await api.bulkMoveEntriesToSectionOccurrence(operation);
       await reconcile();
-      setBulkSectionOccurrenceOperation(null);
+      removePendingBulkSectionMoveOverlay(operation.operation_id);
+      setBulkSectionOccurrenceOperation((current) => current?.operation_id === operation.operation_id ? null : current);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Routineを含む選択のSection変更に失敗しました");
       const ambiguous = isAmbiguousOutcome(caught);
-      if (!ambiguous) setBulkSectionOccurrenceOperation(null);
+      if (!ambiguous) {
+        removePendingBulkSectionMoveOverlay(operation.operation_id);
+        setBulkSectionOccurrenceOperation((current) => current?.operation_id === operation.operation_id ? null : current);
+      }
       try {
         const projection = await reconcile();
         const targetPlannedStart = operation.section_id === null
@@ -3145,7 +3256,8 @@ export function App() {
             && (entry.routine === null || entry.routine.section_plan_override_present);
         });
         if (ambiguous && converged) {
-          setBulkSectionOccurrenceOperation(null);
+          removePendingBulkSectionMoveOverlay(operation.operation_id);
+          setBulkSectionOccurrenceOperation((current) => current?.operation_id === operation.operation_id ? null : current);
           setError(null);
         } else if (caught instanceof ApiClientError && caught.code === "revision_conflict") {
           setBulkSectionOccurrenceOperation(null);
@@ -3155,6 +3267,7 @@ export function App() {
         // Preserve the exact logical operation for retry when reconciliation is unavailable.
       }
     } finally {
+      if (bulkSectionMoveInFlightRef.current?.operation_id === operation.operation_id) bulkSectionMoveInFlightRef.current = null;
       endMutationScope(mutationToken);
       setPending(null);
     }
@@ -3168,10 +3281,21 @@ export function App() {
     entryIds: string[],
     sectionId: string | null,
     placement?: MoveEntryPlacementIntent,
+    options?: { allowContinuousPlacement?: boolean; focusEntryId?: string },
   ): void {
-    const projection = dayRef.current ?? day;
+    const baseProjection = dayRef.current ?? day;
+    const projection = baseProjection ? applyPendingReorderOverlays(
+      applyPendingBulkSectionMoveOverlays(
+        applyPendingSectionMoveOverlays(baseProjection, pendingSectionMoveIntentsRef.current),
+        pendingBulkSectionMoveOverlaysRef.current,
+      ),
+      pendingReorderOverlaysRef.current,
+    ) : null;
+    const continuous = options?.allowContinuousPlacement === true;
     if (!canUseD120PlacementDay(projection) || !projection?.taskchute_day.id || mutationLocked
-      || isMutationScopeBusy(placementMutationScope(projection.taskchute_day.id)) || entryIds.length < 2) return;
+      || (!continuous && isMutationScopeBusy(placementMutationScope(projection.taskchute_day.id)))
+      || (continuous && hasCrossSectionMoveBarrier(projection.taskchute_day.id, { allowContinuousPlacement: true }))
+      || entryIds.length < 2) return;
     const entries = projectionEntries(projection);
     if (!entryIds.every((entryId) => {
       const entry = entries.find((candidate) => candidate.id === entryId);
@@ -3187,7 +3311,30 @@ export function App() {
       ...(placement ? { placement } : {}),
     };
     setBulkSectionOccurrenceOperation(operation);
-    void executeBulkSectionOccurrenceChange(operation);
+    updatePendingBulkSectionMoveOverlays((current) => [...current, { operation }]);
+    if (continuous) {
+      continuousBulkMoveOperationIdsRef.current.add(operation.operation_id);
+      requestPendingFocus({ kind: "entry", id: options?.focusEntryId ?? entryIds[0]! });
+      const dependsOnOperationId = latestPlacementOperationId(operation.taskchute_day_id);
+      enqueueDayMutation({
+        scope: placementMutationScope(operation.taskchute_day_id), label: "Bulk Routine Section変更", operationId: operation.operation_id,
+        kind: "bulk-move", entryId: options?.focusEntryId ?? entryIds[0], sectionId,
+        dependsOnOperationId,
+        dispatch: async () => {
+          const latest = dayRef.current;
+          if (!latest || latest.taskchute_day.id !== operation.taskchute_day_id) {
+            setError("Section移動の前提が変わったため、保存を取り消しました。もう一度お試しください");
+            removePendingBulkSectionMoveOverlay(operation.operation_id);
+            return;
+          }
+          const rebased = { ...operation, expected_placement_revision: latest.placement_revision };
+          setBulkSectionOccurrenceOperation((current) => current?.operation_id === operation.operation_id ? rebased : current);
+          await executeBulkSectionOccurrenceChange(rebased);
+        },
+      });
+    } else {
+      void executeBulkSectionOccurrenceChange(operation);
+    }
   }
 
   async function executeBulkSectionScopedChange(operation: BulkMoveEntriesToSectionScopedRequest) {
@@ -3616,7 +3763,7 @@ export function App() {
     draftTaskRef.current = null;
     setDraftTask(null);
     if (day.is_current && day.establishment_state === "established") {
-      setPendingFocusKey(focusKey({ kind: "entry", id: operation.entry_id }));
+      requestPendingFocus({ kind: "entry", id: operation.entry_id });
     }
     setPendingAddTasks((current) => [...current, { operation, title, projectId: operation.project_id, sectionId: operation.section_id, estimateSeconds: null, modeId: operation.mode_id ?? null }]);
     if (projectsLoadState !== "loaded" && projectsLoadState !== "loading") {
@@ -3788,7 +3935,7 @@ export function App() {
       : false;
     if (currentOverlay && currentOperationIsUnsent && sameEntryIdOrder(entryIds, currentOverlay.baseEntryIds)) {
       cancelQueuedReorder(currentOverlay.operation);
-      setPendingFocusKey(focusKey({ kind: "entry", id: focusEntryId }));
+      requestPendingFocus({ kind: "entry", id: focusEntryId });
       return;
     }
     const baseEntryIds = currentOverlay && !currentOperationIsUnsent
@@ -3801,7 +3948,7 @@ export function App() {
       entry_ids: entryIds,
       expected_placement_revision: projection.placement_revision,
     };
-    setPendingFocusKey(focusKey({ kind: "entry", id: focusEntryId }));
+    requestPendingFocus({ kind: "entry", id: focusEntryId });
     updatePendingReorderOverlays((current) => ({ ...current, [groupKey(sectionId)]: { operation, baseEntryIds } }));
     const inFlight = reorderInFlightRef.current;
     const dependsOnOperationId = options?.allowContinuousPlacement
@@ -3902,7 +4049,10 @@ export function App() {
     const projection = dayRef.current ?? day;
     if (!drag || !projection) return [];
     const ids = drag.entryIds.length > 0 ? drag.entryIds : [drag.entryId];
-    const entries = projectionEntries(applyPendingSectionMoveOverlays(projection, pendingSectionMoveIntentsRef.current));
+    const entries = projectionEntries(applyPendingBulkSectionMoveOverlays(
+      applyPendingSectionMoveOverlays(projection, pendingSectionMoveIntentsRef.current),
+      pendingBulkSectionMoveOverlaysRef.current,
+    ));
     return ids.map((id) => entries.find((entry) => entry.id === id)).filter((entry): entry is EntryProjection => entry !== undefined);
   }
 
@@ -4157,7 +4307,7 @@ export function App() {
       await api.startEntry(operation);
       await reconcile();
       setStartOperation((current) => current?.operation_id === operation.operation_id ? null : current);
-      setPendingFocusKey(focusKey({ kind: "entry", id: operation.entry_id }));
+      requestPendingFocus({ kind: "entry", id: operation.entry_id });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "開始に失敗しました");
       const ambiguous = isAmbiguousOutcome(caught);
@@ -4191,7 +4341,7 @@ export function App() {
       await api.interruptEntry(operation);
       await reconcile();
       setInterruptOperation((current) => current?.operation_id === operation.operation_id ? null : current);
-      setPendingFocusKey(focusKey({ kind: "entry", id: operation.target_entry_id }));
+      requestPendingFocus({ kind: "entry", id: operation.target_entry_id });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "中断・継続作成に失敗しました");
       const ambiguous = isAmbiguousOutcome(caught);
@@ -4218,7 +4368,10 @@ export function App() {
 
   async function start(entryId: string) {
     if (!day || !day.is_current || mutationLocked) return;
-    const effectiveProjection = applyPendingSectionMoveOverlays(day, pendingSectionMoveIntentsRef.current);
+    const effectiveProjection = applyPendingBulkSectionMoveOverlays(
+      applyPendingSectionMoveOverlays(day, pendingSectionMoveIntentsRef.current),
+      pendingBulkSectionMoveOverlaysRef.current,
+    );
     const entry = entryForId(effectiveProjection, entryId);
     if (!entry || entry.lifecycle_state !== "planned") return;
     const pendingMoveForEntry = pendingSectionMoveIntentsRef.current.filter((intent) => intent.operation.entry_id === entryId).at(-1);
@@ -4312,7 +4465,7 @@ export function App() {
       await api.completeEntry(operation);
       await reconcile();
       setCompleteOperation((current) => current?.operation_id === operation.operation_id ? null : current);
-      setPendingFocusKey(focusKey({ kind: "entry", id: operation.entry_id }));
+      requestPendingFocus({ kind: "entry", id: operation.entry_id });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "完了に失敗しました");
       const ambiguous = isAmbiguousOutcome(caught);
@@ -5053,7 +5206,7 @@ export function App() {
       const latestIntent = pendingSectionMoveIntentsRef.current.find((intent) => intent.operation.entry_id === operation.entry_id);
       const latestDestination = latestIntent?.operation.section_id ?? operation.section_id;
       const collapsed = collapsedSectionsByDay[projection?.taskchute_day.logical_date ?? day?.taskchute_day.logical_date ?? ""]?.[groupKey(latestDestination)] === true;
-      setPendingFocusKey(focusKey(collapsed ? { kind: "section", id: groupKey(latestDestination) } : { kind: "entry", id: operation.entry_id }));
+      requestPendingFocus(collapsed ? { kind: "section", id: groupKey(latestDestination) } : { kind: "entry", id: operation.entry_id });
     }
     catch (caught) {
       setError(caught instanceof Error ? caught.message : "Section移動に失敗しました");
@@ -5080,7 +5233,7 @@ export function App() {
           const latestIntent = pendingSectionMoveIntentsRef.current.find((intent) => intent.operation.entry_id === operation.entry_id);
           const latestDestination = latestIntent?.operation.section_id ?? operation.section_id;
           const collapsed = collapsedSectionsByDay[projection.taskchute_day.logical_date]?.[groupKey(latestDestination)] === true;
-          setPendingFocusKey(focusKey(collapsed ? { kind: "section", id: groupKey(latestDestination) } : { kind: "entry", id: operation.entry_id }));
+          requestPendingFocus(collapsed ? { kind: "section", id: groupKey(latestDestination) } : { kind: "entry", id: operation.entry_id });
         }
       } catch { /* Preserve retained operation. */ }
     } finally {
@@ -5096,7 +5249,10 @@ export function App() {
     options?: { allowContinuousPlacement?: boolean },
   ) {
     const baseProjection = dayRef.current ?? day;
-    const movedProjection = baseProjection ? applyPendingSectionMoveOverlays(baseProjection, pendingSectionMoveIntentsRef.current) : null;
+    const movedProjection = baseProjection ? applyPendingBulkSectionMoveOverlays(
+      applyPendingSectionMoveOverlays(baseProjection, pendingSectionMoveIntentsRef.current),
+      pendingBulkSectionMoveOverlaysRef.current,
+    ) : null;
     const projection = movedProjection ? applyPendingReorderOverlays(movedProjection, pendingReorderOverlaysRef.current) : null;
     const entry = projection ? entryForId(projection, entryId) : null;
     if (!entry || !projection?.taskchute_day.id || !projection.planning_enabled || mutationLocked
@@ -5128,7 +5284,7 @@ export function App() {
       dayMutationQueueRef.current = dayMutationQueueRef.current.filter((item) => item.operationId !== latestIntent.operation.operation_id);
       updateDayMutationQueueCount();
       removePendingSectionMoveIntent(latestIntent.operation.operation_id);
-      setPendingFocusKey(focusKey({ kind: "entry", id: entry.id }));
+      requestPendingFocus({ kind: "entry", id: entry.id });
       return;
     }
 
@@ -5142,7 +5298,7 @@ export function App() {
       sourcePlannedStartMinute: entry.planned_start_minute,
       ...(placement ? { placement } : {}),
     };
-    if (options?.allowContinuousPlacement) setPendingFocusKey(focusKey({ kind: "entry", id: entry.id }));
+    if (options?.allowContinuousPlacement) requestPendingFocus({ kind: "entry", id: entry.id });
     setPendingSectionOverlays((current) => ({ ...current, [operation.entry_id]: {
       operation, plannedStartMinute: targetPlannedStart,
     } }));
@@ -5480,7 +5636,7 @@ export function App() {
   function cancelRoutineCandidate(): void {
     const restoreFocus = routineCandidate && "restoreFocus" in routineCandidate ? routineCandidate.restoreFocus : undefined;
     setRoutineCandidate(null);
-    if (restoreFocus) setPendingFocusKey(focusKey(restoreFocus));
+    if (restoreFocus) requestPendingFocus(restoreFocus);
   }
 
   function startRoutineSectionPlan(
@@ -5497,7 +5653,7 @@ export function App() {
           action, section_id: candidate.sectionId, planned_start_minute: candidate.plannedStartMinute,
           expected_placement_revision: day.placement_revision, expected_defaults_revision: entry.routine.defaults_revision,
           ...(candidate.placement ? { placement: candidate.placement } : {}) };
-    if (candidate.restoreFocus) setPendingFocusKey(focusKey(candidate.restoreFocus));
+    if (candidate.restoreFocus) requestPendingFocus(candidate.restoreFocus);
     setRoutineSectionPlanOperation(operation);
     if (candidate.restoreFocus || candidate.placement) {
       const overlayOperation: MoveEntryRequest = {
@@ -5868,7 +6024,10 @@ export function App() {
 
   const currentDay = day;
   const effectiveDay = applyPendingReorderOverlays(
-    applyPendingSectionMoveOverlays(currentDay, pendingSectionMoveIntents),
+    applyPendingBulkSectionMoveOverlays(
+      applyPendingSectionMoveOverlays(currentDay, pendingSectionMoveIntents),
+      pendingBulkSectionMoveOverlays,
+    ),
     pendingReorderOverlays,
   );
   const allEntries = projectionEntries(effectiveDay);
@@ -5954,10 +6113,10 @@ export function App() {
     const committedGeneration = addFocusGenerationRef.current.get(operation.operation_id);
     if (draftTaskRef.current !== null || committedGeneration === undefined) return;
     if (focusIntentGenerationRef.current === committedGeneration) {
-      setPendingFocusKey(focusKey({ kind: "entry", id: operation.entry_id }));
+      requestPendingFocus({ kind: "entry", id: operation.entry_id });
     } else if (locator) {
       pendingAddFocusLocatorRef.current.set(operation.entry_id, locator);
-      setPendingFocusKey(focusKey({ kind: "entry", id: operation.entry_id }));
+      requestPendingFocus({ kind: "entry", id: operation.entry_id });
     }
   }
 
@@ -6087,7 +6246,7 @@ export function App() {
       draftTaskRef.current = null;
       focusIntentGenerationRef.current += 1;
       setDraftTask(null);
-      if (canceledDraft) setPendingFocusKey(focusKey(canceledDraft.placement.restoreFocus));
+      if (canceledDraft) requestPendingFocus(canceledDraft.placement.restoreFocus);
     }
   }
 
@@ -6303,7 +6462,8 @@ export function App() {
             const edge: DragEdge = delta > 0 ? "after" : "before";
             const placement: MoveEntryPlacementIntent = { kind: "relative_to_entry", anchor_entry_id: anchor.id, edge };
             const order = buildDraggedBlockOrder(entries, selected.map((entry) => entry.id), anchor.id, edge);
-            if (selected.some((entry) => entry.routine !== null)) void bulkMoveEntriesToSection(selected.map((entry) => entry.id), sourceSectionId, placement);
+            if (selected.some((entry) => entry.routine !== null)) void bulkMoveEntriesToSection(selected.map((entry) => entry.id), sourceSectionId, placement,
+              { allowContinuousPlacement: true, focusEntryId: source.id });
             else if (order) void reorderSectionEntries(sourceSectionId, order, source.id, { allowContinuousPlacement: true });
             return;
           }
@@ -6315,9 +6475,11 @@ export function App() {
         event.preventDefault();
         if (target) {
           void bulkMoveEntriesToSection(selected.map((entry) => entry.id), targetGroup.id,
-            { kind: "relative_to_entry", anchor_entry_id: target.id, edge: delta > 0 ? "before" : "after" });
+            { kind: "relative_to_entry", anchor_entry_id: target.id, edge: delta > 0 ? "before" : "after" },
+            { allowContinuousPlacement: true, focusEntryId: source.id });
         } else {
-          void bulkMoveEntriesToSection(selected.map((entry) => entry.id), targetGroup.id);
+          void bulkMoveEntriesToSection(selected.map((entry) => entry.id), targetGroup.id,
+            undefined, { allowContinuousPlacement: true, focusEntryId: source.id });
         }
         return;
       }
