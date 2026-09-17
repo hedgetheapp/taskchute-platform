@@ -1,5 +1,20 @@
 # Risks
 
+## R-075 — D-119 selected future Day materialization boundary
+
+D-119はfuture logical dateの明示的openを永続的establishmentとRoutine materializationのtriggerへ
+変更したため、単なるdate-picker表示や隣接日の先行materializationと混同しないこと、Section contextの
+freeze、Routine eligibility、再読込・並行loadのexactly-once収束が主なリスクである。誤ったdateへのwrite、
+duplicate Day/context/Occurrence/Entry、D-118 disable/delete後の再生成が起きるとhistorical authorityを
+壊す。
+
+Mitigation/evidence: 選択日だけをowner-scopedにestablishし、既存のconfiguration guard、frozen
+context、shared recurrence evaluator、Routine materializer、D1 uniqueness / assertion / placement
+revision boundaryを再利用した。local focused `17 / 17`、combined `34 / 34`、full Worker/D1
+`336 / 336`、exact-SHA CI、persistent nonprod `2026-09-18` browser occurrence/Entry `1` → reopen
+after reload `1`、D1 occurrence `1`、APP/AUTH quick/FK、read-only `rows_written=0`をPASSした。隣接日を
+自動materializeせず、future executionとproductionは引き続き`NOT_RUN`とする。
+
 ## R-074 — D-118 Routine lifecycle cleanup boundary
 
 D-118の無効化・削除はcurrent logical date以降のRoutine-derived childをplanned / running / completedを

@@ -2,6 +2,20 @@
 
 Statuses: Approved / Proposed / Superseded
 
+## D-119 — Future Day Routine Materialization v0.1
+
+Status: **Approved**
+
+Canonical Decision: `docs/decisions/D-119_FUTURE_DAY_ROUTINE_MATERIALIZATION_V01.md`。
+
+D-119は、認証済みownerがfuture logical dateを明示的に開いた場合に限り、そのDayを既存の
+establishment semanticsで永続化し、選択したDayだけへeligible Routine occurrence / Entryを
+existing materializerでexactly onceにmaterializeする。既存future Dayの後続loadも同じDayだけを
+reconcileし、隣接日や単なるdate-picker表示はmaterializeしない。current / past、future execution、
+D-118のdisable/delete cleanup、既存operation / revision / retry / historical authorityは維持し、
+schema / migration / dependency / production rolloutは追加しない。D-041のfuture preview境界は
+明示的に開いたfuture Dayについてのみsupersedeする。
+
 ## D-118 — Routine Enabled / Delete Lifecycle v0.1
 
 Status: **Approved**

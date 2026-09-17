@@ -1,5 +1,21 @@
 # Test Matrix
 
+## D-119 Future Day Routine materialization v0.1 — implementation and persistent nonprod evidence
+
+| ID | Verification target | Evidence | Status |
+|---|---|---|---|
+| D119-DECISION | Approved future-Day establishment boundary | `docs/decisions/D-119_FUTURE_DAY_ROUTINE_MATERIALIZATION_V01.md`; explicit opened future Day only, D-041 superseded only for this case | PASS / APPROVED |
+| D119-WORKER | Future Day establishment and eligible Routine materialization | `day-navigation.integration.test.ts` `17 / 17`; selected Day / frozen contexts / eligible Routine exactly-once behavior | PASS |
+| D119-RECONCILE | Established future Day later picks up missing eligible Routine | focused integration coverage; repeated load has no duplicate occurrence / Entry | PASS |
+| D119-CONCURRENCY | Concurrent same-Day open convergence | concurrent future loads converge to one Day, one context set, one occurrence, one placement effect | PASS |
+| D119-D118 | Lifecycle compatibility | existing D-118 disable/delete cleanup and no-backfill semantics remain covered by full Worker/D1 regression | PASS |
+| D119-REG | Worker/D1 regression | full Worker/D1 `37 files / 336 tests` | PASS |
+| D119-STATIC | Type/build/deploy guard | typecheck, normal build, exact nonprod build, deploy guard, `git diff --check` | PASS |
+| D119-CI | Exact implementation SHA | GitHub Actions run `35215235646`, attempt 2; Classifier, Web/Worker, Android JVM/APK all PASS | PASS |
+| D119-NONPROD | Persistent nonprod and authenticated browser | Worker `a3906547-57f6-43f4-aa16-9c469ccbea89`; root `200`; protected APIs `401`; `2026-09-18` selected future Day occurrence/Entry `1`, reopen after reload `1`; console `0 / 0` | PASS |
+| D119-DB | Persistent APP/AUTH integrity | APP/AUTH pending `0 / 0`; both `quick_check=ok`; FK empty; active Execution / routine guard / assertion `0 / 0 / 0`; read-only probes `rows_written=0`; source completed Entry unchanged | PASS |
+| D119-BOUNDARY | Scope | no schema/migration/dependency/API semantic change, Android Product change, production, restore, or Release | PASS / NOT_REQUIRED / NOT_RUN / NO |
+
 ## D-118 Routine enabled / delete lifecycle v0.1 — implementation and persistent nonprod evidence
 
 | ID | Verification target | Evidence | Status |

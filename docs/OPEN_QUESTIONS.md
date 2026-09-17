@@ -56,6 +56,11 @@ credential handoffは引き続き未決であり、D-107はこれらを決定し
 - Routineのgeneric retention / physical compaction policy（D-118で、無効化・削除のcurrent logical date以降cleanup、過去履歴保持、user-facing restoreなしのlifecycleは解決済み）
 - occurrence-level Task title / Project override UX（R2Bはcurrent Task authority + historical snapshotのみ）
 
+D-119により、future logical dateのうち認証済みownerが明示的に開いた選択日だけをestablishし、eligible
+Routineをexactly onceにmaterialize / 後続reconcileするboundaryは解決済み。D-041のfuture preview
+non-materializing clauseはこの明示的openに限りsupersedeされた。隣接日・unbounded future projection、
+future Dayのより広い編集・recovery semanticsはOpenのままである。
+
 - operation result retention / cleanup policy
 - B1統合後を含むfuture schema evolution / compatibility migration strategy
 - backup / export strategy
@@ -281,7 +286,7 @@ D-035 / D-036でeffective営業日 / 休日判定とinitial recurrence pattern s
 
 D-040でdaily-only R1について、existing Entry conversion、minimal RoutineDefinition / RoutineOccurrence / Entry relation、current-Day lazy materialization、placement revision、defaults、inclusive end / Routine終了、minimal Web UXをApprovedした。D-043はRoutine-derived EntryにもSection / planned-start full synchronizationを適用し、D-044はcurrent-Day planned Routine EntryのSection-plan / estimate override、explicit scope choice、reset、default propagationをApprovedした。D-045はlegacy real Section + NULLのnormalization resultとauthority / fail-safe boundaryをApprovedし、D-046はtyped occurrence override columns、explicit presence、owner-scoped Section reference、Routine default revisionというfirst-slice physical persistence directionをApprovedした。first-slice runtime / migrationはcommit `7d3c0cb0881dfc11725af6ff45eabad69f86a22a`で実装・Integrated / real-local verifiedであり、以下はbroader scopeまたは将来のscale / compatibility条件としてOpenのまま維持する。
 
-D-041は未来DayをviewするだけではRoutineOccurrence / Entryをmaterializeせず、Day Navigation v0.1にvirtual future Routine previewを含めない。D-040 current-Day lazy ensure以外のbroader future Routine projection / materializationは後続sliceのOpen scopeとして維持する。
+D-041は当時、未来DayをviewするだけではRoutineOccurrence / Entryをmaterializeしないpreview boundaryを定めた。現在はD-119により、認証済みownerが明示的に開いたfuture logical dateだけがestablishされ、eligible Routineがmaterializeされる。隣接日・unbounded future projection、future Dayのより広いprojection / editing / recovery semanticsはOpen scopeとして維持する。
 
 以下はOpen:
 
@@ -289,7 +294,7 @@ D-041は未来DayをviewするだけではRoutineOccurrence / Entryをmaterializ
 - R2Aを越えてoverride対象がmaterialに増えた場合のgeneric storage refactor / compatibility strategy
 - R1 minimal schemaを越えるschedule versionとbroader Routine persistence schema
 - Projected Occurrenceをquery時に算出するexact algorithm / caching / pagination
-- R1 current-Day lazy ensure以外でphysical RoutineOccurrenceをmaterializeするimplementation boundary（Product semanticsはD-034でApproved）
+- D-119の選択future Day establishment以外でphysical RoutineOccurrenceをmaterializeするimplementation boundary（隣接日・unbounded future projectionを含む）
 - Routine defaultからday-specific Task Note templateを適用するcopy / reference / revision strategy
 - Routine Taskのday-specific Task名 / Project overrideをEntry / Occurrence / dedicated contextのどこへ保持するか
 - schedule変更と既materialized Occurrenceをatomicにreconcileするcommand algorithm

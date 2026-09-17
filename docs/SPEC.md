@@ -4,6 +4,19 @@
 
 exact DB schema、SQL、UI component library、Android local DB、offline conflict algorithm等は、別途DecisionされるまでOpenとする。
 
+## D-119 Future Day Routine materialization v0.1
+
+認証済みownerがfuture logical dateを明示的にDay surfaceとして開いた場合、その選択日だけを
+既存のTaskChuteDay establishment semanticsでestablishし、frozen Section contextとeligible Routine
+occurrence / initial planned Entryを既存のrecurrence authorityでexactly onceにmaterializeする。既に
+establishされたfuture Dayの後続loadも同じ選択日だけをreconcileし、隣接日やdate-pickerの表示だけでは
+materializeしない。current-Day D-040、past unestablished Dayのrecord-none/read-only、future execution
+禁止、D-118 disable/delete cleanup、operation / revision / retry / historical authorityは維持する。
+
+D-119はD-041の「future Dayをviewしてもnon-materializing」という境界を、明示的に開いたfuture Dayに
+限ってsupersedeする。unbounded future pre-generation、new API / schema / migration / dependency、
+production rolloutは追加しない。
+
 ## D-117 Web Today / Sidebar / Routine UX Refinement v0.1
 
 D-117は既存canonical command / projectionを使うWeb presentation refinementである。TodayのProject列は
@@ -192,9 +205,12 @@ TaskChuteDayはcivil dateとは別のlogical activity dayとする。
 - materialized TaskChuteDayはactual `[start, end)` intervalと、そのintervalをestablishしたtimezone / boundary contextを保持する。
 - future Dayのread-vs-establishment timingはD-041に従う。travel時timezone UX、per-day override等はOpenとする。
 
-### Future Day navigation and establishment
+### Future Day navigation and establishment — historical D-041 baseline
 
-Status: Approved (D-041). Runtime: NOT_IMPLEMENTED.
+Status: Approved historical baseline (D-041); explicit future-Day open is superseded by D-119.
+
+以下の箇条書きはD-041当時のnon-materializing preview boundaryを記録するhistoryであり、D-119の
+明示的なfuture Day openには適用しない。
 
 - 未establishの未来logical dateへのview / repeated read / previous-next / calendar navigationはnon-materializingで、TaskChuteDay、timezone / boundary context、Section historical context、RoutineOccurrence、Routine-derived Entryを作成しない。
 - Day UIは、その時点でestablishした場合に適用されるinterval / Section configurationからnon-persistent planning previewをderiveしてよい。previewはhistorical authorityではなく、establishment前の設定変更を後のpreviewへ反映してよい。

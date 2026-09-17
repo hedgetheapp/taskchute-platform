@@ -1,5 +1,35 @@
 # Current
 
+### D-119 Future Day Routine materialization v0.1 — persistent nonprod verified
+
+D-119のApproved behaviorとして、認証済みownerが明示的に開いたfuture logical dateだけを既存の
+TaskChuteDay / Section contextとしてestablishし、そのDayのeligible Routineを既存のrecurrence
+authorityとmaterializerでexactly onceに反映する。既にestablishされたfuture Dayの後続loadも選択日
+だけをreconcileし、隣接日を事前生成しない。current / past Day、future execution、D-118の
+disable/delete cleanup、既存operation / revision / retry semanticsは維持する。D-041のfuture preview
+境界はこの明示的future Day openに限ってsupersedeされる。
+
+Implementation `main@013191e4d720df0a6bfa1a4794f4bd091a239f4f`で、future Day establishment、frozen
+Section context、Routine materialization / later reconciliation、concurrent convergenceを実装した。
+Focused `day-navigation.integration.test.ts` `17 / 17`、Routine combined focused `34 / 34`、full
+Worker/D1 `37 files / 336 tests`、typecheck、normal / exact nonprod build、deploy guard、
+`git diff --check`はPASS。Exact-SHA GitHub Actions run `35215235646` attempt 2はClassifier、
+Web/Worker、Android JVM/APKの全jobがPASSした（attempt 1の既存Android test flakeは同一SHAのfailed-job
+rerunで解消）。Android Product codeは変更していない。
+
+Exact mainをcanonical persistent nonprod Worker `taskchute-web-nonprod`へdeployし、Worker version
+`a3906547-57f6-43f4-aa16-9c469ccbea89`、`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、
+canonical APP/AUTH/RealtimeHub bindingを確認した。rootは`200`、未認証current-Day / realtime /
+Documents APIは`401`、migration pendingはAPP/AUTH `0 / 0`。
+
+既存認証済みbrowser sessionで、synthetic `D116B QA 20260916` Routineを対象に、future logical
+Day `2026-09-18`を明示的に開いた。対象Routine occurrence / Entryは初回表示`1`、reload後に同日を
+再度開いて`1`で、D1もoccurrence `1` / Entry `1`だった。source completed ordinary Entryは
+`completed`、`routine_occurrence_id=NULL`、Execution `1`のまま不変。APP/AUTH `quick_check=ok`、
+FK empty、active Execution / routine guard / transaction assertion `0 / 0 / 0`、read-only probeの
+`rows_written=0`、browser console warning/error `0 / 0`を確認した。productionは`NOT_RUN`、Releasedは
+`NO`とする。
+
 ### D-118 Routine enabled / delete lifecycle v0.1 — persistent nonprod verified
 
 D-118のApproved lifecycleを既存`SetRoutineEnabled` / `DeleteRoutine`へ実装した。serverがmutation時に
