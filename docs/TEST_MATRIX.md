@@ -1,16 +1,18 @@
 # Test Matrix
 
-## D-117 Web Today / Sidebar / Routine UX refinement v0.1 — local evidence
+## D-117 Web Today / Sidebar / Routine UX refinement v0.1 — corrective evidence
 
 | ID | Verification target | Evidence | Status |
 |---|---|---|---|
-| D117-DECISION | Approved Web UX refinement | `docs/decisions/D-117_WEB_TODAY_SIDEBAR_ROUTINE_UX_REFINEMENT_V01.md`; existing D-090/D-101/D-105/D-116B and mutation semantics remain authoritative | PASS / APPROVED |
-| D117-WEB-FOCUSED | Project Note slot, running metadata boundary, Routine icon/modal, D&D cue, TaskChuteDay removal, sidebar labels/icons/states | App focused `8 / 8` PASS; running Project/Mode selectors are intentionally absent after canonical Worker rejected the attempted mutation; remaining App tests skipped by focused pattern | PARTIAL / AC-2 BLOCKED |
+| D117-DECISION | Approved Web UX refinement and corrective | `docs/decisions/D-117_WEB_TODAY_SIDEBAR_ROUTINE_UX_REFINEMENT_V01.md`; existing D-090/D-101/D-105/D-116B command, CAS, retry, and projection semantics remain authoritative | PASS / APPROVED |
+| D117-WEB-FOCUSED | Project Note slot, running metadata boundary, Routine icon/modal, D&D cue, TaskChuteDay removal, sidebar labels/icons/states | App `288 / 288` PASS; running ordinary Project/Mode selectors are covered as enabled metadata-only controls | PASS |
+| D117-WORKER-FOCUSED | Current running ordinary Project/Mode metadata commands | `task-metadata.integration.test.ts` + `mode-management.integration.test.ts`: `16 / 16` PASS, including exact replay, title/placement/lifecycle/snapshot guards, live Mode projection, and ineligible-row rejection | PASS |
 | D117-WEB-REG | Existing App behavior after refinement | `apps/web/test/web/App.test.tsx` `288 / 288` | PASS |
-| D117-WEB-FULL | Web regression | `14 files / 468 tests` | PASS |
-| D117-STATIC | Type safety and production bundle | `npm run typecheck`; `npm run build`; existing Vite chunk-size warning and Wrangler log-directory `EPERM` diagnostic, exit `0` | PASS |
-| D117-BOUNDARY | Scope | Web presentation / interaction only; no Worker/API, schema/migration, dependency, Android, or production change | PASS / NOT_REQUIRED |
-| D117-NONPROD | Persistent nonprod / authenticated browser | Initial SHA `0f534de` deployed as Worker `d6ec94b3-8978-4447-ac42-261e5dfc6945`; root `200`, unauthenticated Documents / Realtime `401`, Sidebar/Project Note/Routine/TaskChuteDay checks observed. Running metadata attempt returned canonical `resource_conflict`; corrective `b1761d74bf2874eec768fe73a7a27f81c649d728` deployed as Worker `7b16022a-98de-4131-bc3a-aeefaf4712fa`; exact-SHA CI run `35169651950` attempt 2 PASS, Android skipped | PARTIAL / BLOCKED |
+| D117-WEB-FULL | Web regression | `14 files / 468 tests` PASS after one isolated pre-existing flaky unload case was rerun successfully | PASS |
+| D117-STATIC | Type safety and production bundle | `npm run typecheck`; `npm run build`; exact nonprod build; existing Vite chunk-size warning and Wrangler log-directory `EPERM` diagnostic, exit `0` | PASS |
+| D117-BOUNDARY | Scope | Web + existing Worker command/projection eligibility correction; no schema/migration, dependency, Android, realtime protocol, or production change | PASS / APPROVED CORRECTIVE |
+| D117-NONPROD | Persistent nonprod / authenticated browser | Historical initial/corrective deployments and resource-conflict evidence are retained. Final corrected deployment, canonical root/API safety, and authenticated metadata mutation evidence are recorded at closeout; browser evidence remains separate from automated PASS | PENDING CLOSEOUT |
+| D117-DB | Persistent DB integrity | No migration or data write in this corrective; APP/AUTH pending and read-only integrity evidence are unchanged from the prior canonical closeout | PASS / NOT_REQUIRED |
 | D117-DIFF | Patch hygiene | `git diff --check` | PASS |
 
 ## D-116B Completed Entry to future Routine v0.1 — local, CI, persistent nonprod evidence

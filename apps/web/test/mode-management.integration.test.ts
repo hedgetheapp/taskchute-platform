@@ -124,6 +124,32 @@ describe.sequential("D-068 Mode management", () => {
     expect((await env.APP_DB.prepare("PRAGMA foreign_key_check").all()).results).toEqual([]);
   });
 
+  it("updates live Mode for a current running ordinary Entry and replays without changing its snapshot", async () => {
+    const fixture = await seed();
+    const firstId = await seedMode(fixture.userId, "Focus");
+    const secondId = await seedMode(fixture.userId, "Light");
+    await setEntryMode(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), entry_id: fixture.entryId, expected_mode_id: null, mode_id: firstId,
+    }, now);
+    const started = await startEntry(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), entry_id: fixture.entryId, execution_id: uuidv7(),
+    }, now);
+    const request = { operation_id: uuidv7(), entry_id: fixture.entryId, expected_mode_id: firstId, mode_id: secondId };
+
+    const changed = await setEntryMode(env.APP_DB, fixture.userId, request, now);
+    expect(changed).toEqual({ entry_id: fixture.entryId, mode_id: secondId, mode_title: "Light" });
+    expect(await setEntryMode(env.APP_DB, fixture.userId, request, now)).toEqual(changed);
+    expect(await env.APP_DB.prepare("SELECT lifecycle_state FROM entries WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, fixture.entryId).first()).toEqual({ lifecycle_state: "running" });
+    expect(await env.APP_DB.prepare("SELECT mode_id FROM entry_modes WHERE app_user_id = ? AND entry_id = ?")
+      .bind(fixture.userId, fixture.entryId).first()).toEqual({ mode_id: secondId });
+    expect(await env.APP_DB.prepare("SELECT mode_id, mode_title FROM entry_mode_snapshots WHERE app_user_id = ? AND entry_id = ?")
+      .bind(fixture.userId, fixture.entryId).first()).toEqual({ mode_id: firstId, mode_title: "Focus" });
+    expect((await loadCurrentTaskChuteDay(env.APP_DB, fixture.userId, now)).sections[0]?.entries[0]?.mode)
+      .toEqual({ id: secondId, title: "Light", source: "live" });
+    void started;
+  });
+
   it("sets, replaces, clears, and replays Mode on an established future ordinary Entry without placement changes", async () => {
     const fixture = await seedEstablishedFuture();
     const firstId = await seedMode(fixture.userId, "Focus");
@@ -317,6 +343,8 @@ describe.sequential("D-068 Mode management", () => {
     await expect(setEntryMode(env.APP_DB, otherUserId, { ...base, operation_id: uuidv7() }, now))
       .rejects.toMatchObject({ code: "resource_not_found" });
 
+    await env.APP_DB.prepare("UPDATE taskchute_days SET logical_date = '2026-09-06' WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, fixture.dayId).run();
     await env.APP_DB.prepare("UPDATE entries SET lifecycle_state = 'running' WHERE app_user_id = ? AND id = ?")
       .bind(fixture.userId, fixture.entryId).run();
     await expect(setEntryMode(env.APP_DB, fixture.userId, { ...base, operation_id: uuidv7() }, now))

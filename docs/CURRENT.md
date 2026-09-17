@@ -1,35 +1,24 @@
 # Current
 
-### D-117 Web Today / Sidebar / Routine UX refinement v0.1 — partial; STOP at Worker eligibility boundary
+### D-117 Web Today / Sidebar / Routine UX refinement v0.1 — implemented; running metadata corrective integrated
 
-D-117のApproved Web-only refinementを実装した。TodayのProject Note slotはProject未設定でも
-disabledで常設した。running ordinary rowのProject / Mode編集は一度UIへ広げたが、persistent
-nonprod browser確認で既存Workerの`UpdateTaskMetadata` / `SetEntryMode`がplannedまたはcompleted
-historical correctionだけを許可し、running mutationを`resource_conflict`で拒否することを確認した。
-これはD117の「Worker/API変更なし」境界では解消できないため、誤誘導を残さないようUI eligibilityを
-既存のplanned / completed correctionへ戻した。D117 AC-2は未達であり、running metadata mutationの
-Server/API decisionなしに続行しない。
-Routine表示はicon-onlyでnon-Routineをmuted、Routineをaccentとし、D&Dのrow / Section drop cueを
-強調した。TodayからのRoutine create / future create / existing Routine editは、repeat、planned
-start、estimate、Project、Mode、Section、start/end dateを含む既存API再利用のmodalへ統一した。
-Todayのvisible `TaskChuteDay` headingは削除し、Sidebarは`Taskchute` / `Note` / `Rotuine` /
-`Setting`のicon付き表示とexpanded / compact / collapsedのbrowser-local presentationを備える。
-`+ Taskを追加`と`表示`の位置、既存のmutation / retry / D&D / auth boundaryは維持した。
+D-117のApproved Web refinementを実装し、Project Note slot、Routine icon-only state、Today Routine
+modal、D&D destination cue、visible `TaskChuteDay` heading除去、`Taskchute` / `Note` / `Rotuine` /
+`Setting`のicon付き3-state Sidebarを提供する。初回Web-only implementationではrunning ordinary rowの
+Project / Mode編集がWorkerのplanned / completed境界に阻まれたが、Product Owner承認のD117 correctiveで
+既存`UpdateTaskMetadata` / `SetEntryMode`のCAS eligibilityとcurrent projectionを整合させた。
 
-Local evidence: D-117 focused App regressions `8 / 8`（running metadataはcanonical Worker境界を
-確認するnegative regression）、App full file `288 / 288`、full Web `14 files / 468 tests`、
-typecheck、normal build、exact nonprod build、deploy guard、Wrangler dry-run、`git diff --check`はPASS。
-Buildでは既存のVite chunk-size warningとWrangler log directory `EPERM` diagnosticが出たがexit `0`。
-Persistent nonprodへ初回D117 SHA `0f534de`をdeploy済みで、Worker version
-`d6ec94b3-8978-4447-ac42-261e5dfc6945`、root `200`、未認証Documents / Realtime `401`を確認した。
-Sidebar labels/icons/3-state、Project Note disabled/active slot、`TaskChuteDay`除去、Routine iconと
-Today modalの表示はbrowserで確認した。running metadataのserver pathはresource conflictでFAILし、
-UIを安全なeligibilityへ戻すcorrective commit `b1761d74bf2874eec768fe73a7a27f81c649d728`を
-mainへpushし、Worker version `7b16022a-98de-4131-bc3a-aeefaf4712fa`として再deployした。補正後も
-root `200`、未認証Documents / Realtime `401`を確認し、exact-SHA CI run `35169651950` attempt 2
-（classifier / Web and Worker verification PASS、Android skipped）も確認した。D117全体は、
-running metadataのcanonical Worker/API境界によりcloseout未完了。Worker/API、
-schema/migration、dependency、Androidの変更はない。Productionは`NOT_RUN`、Releasedは`NO`。
+現在はcurrent established Dayのordinary running Entryに限り、ProjectをTask-level CASで、Modeをlive
+Entry relation CASで編集できる。Task title、lifecycle、Section、planned start、estimate、placement、
+Day `placement_revision`、Routine relation、開始時Mode snapshotは変更しない。running中に明示的なMode
+変更があった場合はcurrent projectionだけlive relationを表示し、completed historical snapshotは従来どおり
+保持する。operation fingerprint / exact replay、owner scope、auth、revision / ambiguity boundaryは既存
+commandを再利用する。Routine操作・D&D・Sidebar・Project Noteの既存挙動は維持した。
+
+Corrective local evidence: focused Worker `task-metadata.integration.test.ts` + `mode-management.integration.test.ts`
+`16 / 16`、App `288 / 288`。最終全体検証とpersistent nonprod corrective deployの結果はこのcloseout commit
+後に追記する。初回およびcorrective前のbrowser resource-conflict evidence、Worker version、CI attempt履歴は
+過去の検証記録として保持し、productionは`NOT_RUN`、Releasedは`NO`とする。
 
 ### D-116B Completed Entry to future Routine v0.1 — nonprod deployed; browser conversion verified
 

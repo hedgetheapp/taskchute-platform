@@ -2,15 +2,13 @@
 
 ## R-073 — D-117 Web UX reuse boundary
 
-D-117のToday Routine modalは既存Routine settings APIと現在のToday projectionを再利用し、
-Web-onlyのpresentation refinementに留めている。running rowのProject / Mode編集は既存の
-metadata mutation boundaryのみを広げ、planning、lifecycle、D&D placement semanticsは変更
-していない。Sidebar compact / collapsed preferenceはbrowser-local表示状態であり、server
-同期や新しいDomain preferenceではない。D&D cueは視認性のみを補強する。running ordinary rowの
-Project / Mode編集は、既存Workerの`UpdateTaskMetadata` / `SetEntryMode` eligibilityがplannedまたは
-completed historical correctionに限定されているため、Web-onlyのUI変更では成立しない。persistent
-nonprod browserでこの`resource_conflict`を確認し、誤誘導UIは既存eligibilityへ戻した。Server/API
-semanticsの追加承認が必要なため、この部分は未解決としてlocal automated evidenceと区別する。
+D-117のToday Routine modalは既存Routine settings APIと現在のToday projectionを再利用する。running rowの
+Project / Mode編集はcurrent established Dayのordinary running Entryだけに限定し、既存のCAS / operation /
+retry boundaryへ接続した。planning、lifecycle、D&D placement semantics、Routine relationは変更しない。
+ProjectはTask-level authority、Modeはlive Entry relationを更新するが、開始時Mode snapshotとcompleted historical
+projectionは保持する。初回Web-only実装でresource conflictとなった証拠は歴史的に保持し、承認済みcorrectiveで
+Worker eligibilityとWeb UIを整合させた。残るリスクは、running中のlive Mode変更後にcompletedへ遷移した場合も開始時
+snapshotを履歴authorityとする既存boundaryを、将来のProduct semantics拡張で再確認することである。
 
 ## R-072 — D-116A shared Task and missing historical Project snapshot
 

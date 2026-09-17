@@ -19,8 +19,14 @@ target feedbackを明確化し、empty Section / empty `Sectionなし`への移�
 semanticsを使う。Todayの`TaskChuteDay`見出しは表示しない。
 
 Sidebarはicon付きの`Taskchute` / `Note` / `Rotuine` / `Setting`表示と、expanded / compact / collapsedの
-3状態を持つ。`＋ Taskを追加`と`表示`の位置は維持する。D-117はWorker/API、schema/migration、dependency、
-Android、production、既存Domain semanticsを変更しない。
+3状態を持つ。`＋ Taskを追加`と`表示`の位置は維持する。D-117は新しいcommand、schema/migration、dependency、
+Android、production semanticsを追加しない。running metadata capabilityを成立させるため、後続correctiveで
+既存`UpdateTaskMetadata` / `SetEntryMode`のserver eligibilityとcurrent projectionを整合させる。
+current established Dayのordinary running EntryだけがProject / Modeを変更でき、Task title、lifecycle、Section、
+planned start、estimate、placement、Day `placement_revision`、Routine relation、開始時Mode snapshotは変更しない。
+
+D-117のrunning Mode projectionは、明示的なlive Mode変更がsnapshotのMode IDと異なる場合だけlive relationを表示する。
+Mode定義のrenameだけでは開始時snapshot表示を変えず、completed Entryのhistorical snapshot authorityも維持する。
 
 ## D-114 Android Settings Management v0.1
 
@@ -551,9 +557,12 @@ Status: Approved. Runtime / APP migration: IMPLEMENTED / INTEGRATED / NO MIGRATI
 
 On the current established Day, an owner may correct Project and Mode for an
 ordinary completed Entry with completed Execution history. Routine-derived,
-running, past/future, and otherwise ineligible Entries remain read-only. Task
-title, lifecycle, Section, estimate, planned start, placement, and Day
-`placement_revision` do not change.
+past/future, and otherwise ineligible Entries remain read-only. D-117 additionally
+allows Project / Mode metadata changes for an ordinary running Entry on the current
+established Day; this does not make its planning, lifecycle, or placement controls
+editable. Task title, lifecycle, Section, estimate, planned start, placement, and Day
+`placement_revision` do not change. A running Mode change updates the live Entry
+relation while the start-time historical snapshot remains authoritative after completion.
 
 Completed Project authority is the Entry's `entry_project_snapshots` row, not
 the shared Task's `tasks.project_id`. Set / replace / clear updates only that

@@ -480,6 +480,15 @@ async function loadEstablishedProjection(
       ...(row.future_routine_definition_id === null ? {} : { future_routine_definition_id: row.future_routine_definition_id }),
       mode: (row.lifecycle_state === "planned"
         ? (row.live_mode_id && row.live_mode_title ? { id: row.live_mode_id, title: row.live_mode_title, source: "live" as const } : null)
+        : row.lifecycle_state === "running"
+          ? (row.live_mode_id && row.live_mode_title
+            && row.snapshot_mode_id !== row.live_mode_id
+              ? { id: row.live_mode_id, title: row.live_mode_title, source: "live" as const }
+              : row.snapshot_mode_id && row.snapshot_mode_title
+                ? { id: row.snapshot_mode_id, title: row.snapshot_mode_title, source: "snapshot" as const }
+                : row.live_mode_id && row.live_mode_title
+                  ? { id: row.live_mode_id, title: row.live_mode_title, source: "live" as const }
+                  : null)
         : (row.snapshot_mode_id && row.snapshot_mode_title
           ? { id: row.snapshot_mode_id, title: row.snapshot_mode_title, source: "snapshot" as const }
           : row.live_mode_id && row.live_mode_title

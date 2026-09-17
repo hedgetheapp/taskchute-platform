@@ -104,6 +104,29 @@ describe.sequential("D-060 UpdateTaskMetadata", () => {
       .toEqual({ title: "After", project_id: fixture.nextProjectId });
   });
 
+  it("updates Project for a current running ordinary Entry without changing its Task title or placement", async () => {
+    const fixture = await seed();
+    await env.APP_DB.prepare("UPDATE entries SET lifecycle_state = 'running' WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, fixture.entryId).run();
+    const before = await env.APP_DB.prepare(`SELECT taskchute_day_id, section_id, position, lifecycle_state,
+        estimate_seconds, planned_start_minute FROM entries WHERE app_user_id = ? AND id = ?`)
+      .bind(fixture.userId, fixture.entryId).first();
+    const request = { operation_id: uuidv7(), entry_id: fixture.entryId, task_id: fixture.taskId,
+      expected_title: "Before", expected_project_id: fixture.projectId, title: "Before", project_id: fixture.nextProjectId };
+
+    const changed = await updateTaskMetadata(env.APP_DB, fixture.userId, request, now);
+    expect(changed).toEqual({ entry_id: fixture.entryId, task_id: fixture.taskId, title: "Before",
+      project: { id: fixture.nextProjectId, title: "New project" } });
+    expect(await updateTaskMetadata(env.APP_DB, fixture.userId, request, now)).toEqual(changed);
+    expect(await env.APP_DB.prepare("SELECT title, project_id FROM tasks WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, fixture.taskId).first()).toEqual({ title: "Before", project_id: fixture.nextProjectId });
+    expect(await env.APP_DB.prepare(`SELECT taskchute_day_id, section_id, position, lifecycle_state,
+        estimate_seconds, planned_start_minute FROM entries WHERE app_user_id = ? AND id = ?`)
+      .bind(fixture.userId, fixture.entryId).first()).toEqual(before);
+    await expect(updateTaskMetadata(env.APP_DB, fixture.userId, { ...request, operation_id: uuidv7(), title: "Renamed" }, now))
+      .rejects.toMatchObject({ code: "resource_conflict" });
+  });
+
   it("rejects a missing owner Project and non-eligible Routine/cross-owner access without changing Task data", async () => {
     const fixture = await seed();
     const missingProject = { operation_id: uuidv7(), entry_id: fixture.entryId, task_id: fixture.taskId,
@@ -297,6 +320,8 @@ describe.sequential("D-060 UpdateTaskMetadata", () => {
     await env.APP_DB.prepare(`INSERT INTO entry_project_snapshots
       (app_user_id, entry_id, project_id, project_title, captured_at) VALUES (?, ?, ?, 'Old project', ?)`)
       .bind(fixture.userId, fixture.entryId, fixture.projectId, fixture.capturedAt).run();
+    await env.APP_DB.prepare("UPDATE taskchute_days SET logical_date = '2026-09-06' WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, fixture.dayId).run();
     await env.APP_DB.prepare("UPDATE entries SET lifecycle_state = 'running' WHERE app_user_id = ? AND id = ?")
       .bind(fixture.userId, fixture.entryId).run();
     await expect(updateTaskMetadata(env.APP_DB, fixture.userId, { ...base, operation_id: uuidv7() }, now))

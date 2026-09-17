@@ -416,10 +416,12 @@ export async function setEntryMode(db: D1Database, appUserId: string, input: Set
   const isFuture = entry.logical_date > currentDate;
   const isPlannedMetadataUpdate = (isCurrent || isFuture)
     && entry.lifecycle_state === "planned" && entry.routine_occurrence_id === null;
+  const isRunningMetadataUpdate = isCurrent
+    && entry.lifecycle_state === "running" && entry.routine_occurrence_id === null;
   const isCompletedHistoricalCorrection = isCurrent && entry.lifecycle_state === "completed"
     && entry.routine_occurrence_id === null && entry.has_completed_execution === 1;
-  if (!isPlannedMetadataUpdate && !isCompletedHistoricalCorrection) {
-    return reject(db, appUserId, input, "SetEntryMode", fp, "resource_conflict", "Only an ordinary planned Entry on the current or an established future Day can change Mode");
+  if (!isPlannedMetadataUpdate && !isRunningMetadataUpdate && !isCompletedHistoricalCorrection) {
+    return reject(db, appUserId, input, "SetEntryMode", fp, "resource_conflict", "Only an ordinary planned Entry, an eligible current-Day running Entry, or an eligible completed current-Day Entry can change Mode");
   }
   const effectiveModeId = isCompletedHistoricalCorrection && entry.mode_snapshot_entry_id !== null
     ? entry.snapshot_mode_id : entry.mode_id;
@@ -595,10 +597,11 @@ export async function setEntryMode(db: D1Database, appUserId: string, input: Set
       throw new HttpError(503, "infrastructure_ambiguous", "The completed Entry Mode outcome is unknown; reload canonical state and retry", true);
     }
   }
+  const editableLifecycle = isRunningMetadataUpdate ? "running" : "planned";
   const targetGuard = `EXISTS (SELECT 1 FROM entries e JOIN taskchute_days d
     ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
     WHERE e.app_user_id = ? AND e.id = ? AND e.taskchute_day_id = ?
-      AND e.lifecycle_state = 'planned' AND e.routine_occurrence_id IS NULL
+      AND e.lifecycle_state = '${editableLifecycle}' AND e.routine_occurrence_id IS NULL
       AND d.id = ? AND d.logical_date = ?)`;
   if (input.mode_id === input.expected_mode_id) {
     try {

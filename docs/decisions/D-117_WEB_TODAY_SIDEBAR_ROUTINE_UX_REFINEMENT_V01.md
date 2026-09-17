@@ -27,9 +27,21 @@ semanticsを変更せずに整える。
 ## Boundaries
 
 D-117は既存のToday / D&D / Project Note / Routine commandのpresentation・entry-point refinementであり、
-新しいProduct semantics、Worker/API、schema / migration、dependency、Android、production、auto routineは
-追加しない。Routine設定保存・変換・future creationは既存のtyped command、operation、revision、retry、
-reconciliation boundaryへ委譲する。
+新しいcommand、schema / migration、dependency、Android、production、auto routineは追加しない。Routine
+設定保存・変換・future creationは既存のtyped command、operation、revision、retry、reconciliation
+boundaryへ委譲する。running ordinary TaskのProject / Mode editingは、D117で既に承認されたmetadata
+capabilityを成立させるため、既存`UpdateTaskMetadata` / `SetEntryMode`のserver eligibilityとcurrent
+projectionを後続correctiveで整合させる。このcorrectiveは新しいProduct semanticsではなく、承認済みの
+D117 capabilityを実行可能にするための既存command alignmentであり、Task title、lifecycle、placement、
+Day revision、Routine semantics、historical Mode snapshotは変更しない。
+
+## Corrective implementation note
+
+初回D117 implementationはWeb-onlyでrunning metadataをWorkerへ渡さずpartialになった。承認済みcorrectiveで、
+current established Dayのordinary running Entryに限ってProjectをTask CASで、Modeをlive Entry relation CASで
+更新可能とした。Modeの開始時snapshotは保持し、running projectionは明示的なlive Mode変更時だけlive relationを
+表示する。operation fingerprint / exact replay、owner scope、auth、revision / ambiguity boundaryは既存実装を
+再利用する。
 
 ## Canonical references
 

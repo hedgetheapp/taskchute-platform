@@ -4239,13 +4239,15 @@ export function App() {
 
   function canEditProjectMetadata(entry: EntryProjection): boolean {
     return Boolean(day?.taskchute_day.id && day.establishment_state === "established"
-      && day.planning_enabled && entry.lifecycle_state === "planned" && entry.routine === null)
+      && day.planning_enabled && entry.routine === null
+      && (entry.lifecycle_state === "planned" || (day.is_current && entry.lifecycle_state === "running")))
       || canCorrectCompletedEntryMetadata(entry);
   }
 
   function canEditModeMetadata(entry: EntryProjection): boolean {
     return Boolean(day?.taskchute_day.id && day.establishment_state === "established"
-      && day.planning_enabled && entry.lifecycle_state === "planned" && entry.routine === null)
+      && day.planning_enabled && entry.routine === null
+      && (entry.lifecycle_state === "planned" || (day.is_current && entry.lifecycle_state === "running")))
       || canCorrectCompletedEntryMetadata(entry);
   }
 

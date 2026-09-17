@@ -87,13 +87,18 @@ export async function updateTaskMetadata(
   const isFuture = settings !== null && currentLogicalDate !== null && row.logical_date > currentLogicalDate;
   const isPlannedMetadataUpdate = (isCurrent || isFuture)
     && row.lifecycle_state === "planned" && row.routine_occurrence_id === null;
+  const isRunningMetadataUpdate = isCurrent
+    && row.lifecycle_state === "running" && row.routine_occurrence_id === null;
   const isCompletedHistoricalCorrection = isCurrent && row.lifecycle_state === "completed"
     && row.routine_occurrence_id === null && row.has_completed_execution === 1;
-  if (!settings || (!isPlannedMetadataUpdate && !isCompletedHistoricalCorrection)) {
-    return reject(db, appUserId, request, requestFingerprint, "resource_conflict", "Only an ordinary planned Entry or an eligible completed current-Day Entry can correct Task metadata");
+  if (!settings || (!isPlannedMetadataUpdate && !isRunningMetadataUpdate && !isCompletedHistoricalCorrection)) {
+    return reject(db, appUserId, request, requestFingerprint, "resource_conflict", "Only an ordinary planned Entry, an eligible current-Day running Entry, or an eligible completed current-Day Entry can correct Task metadata");
   }
   if (isFuture && (request.title !== row.task_title || request.expected_title !== row.task_title)) {
     return reject(db, appUserId, request, requestFingerprint, "resource_conflict", "Future-Day Task title is read-only; only Project assignment can change");
+  }
+  if (isRunningMetadataUpdate && (request.title !== row.task_title || request.expected_title !== row.task_title)) {
+    return reject(db, appUserId, request, requestFingerprint, "resource_conflict", "Running Entry Task title is read-only; only Project assignment can change");
   }
   if (isCompletedHistoricalCorrection
     && (request.title !== row.entry_task_title || request.expected_title !== row.entry_task_title)) {
@@ -122,7 +127,7 @@ export async function updateTaskMetadata(
   const result: UpdateTaskMetadataResult = {
     entry_id: request.entry_id,
     task_id: request.task_id,
-    title: isCompletedHistoricalCorrection ? row.entry_task_title : request.title,
+    title: isCompletedHistoricalCorrection ? row.entry_task_title : isRunningMetadataUpdate ? row.task_title : request.title,
     project: project ? { id: project.id, title: project.title } : null,
   };
   if (isCompletedHistoricalCorrection) {
@@ -226,6 +231,7 @@ export async function updateTaskMetadata(
       throw new HttpError(503, "infrastructure_ambiguous", "The completed Entry Project outcome is unknown; reload canonical state and retry", true);
     }
   }
+  const editableLifecycle = isRunningMetadataUpdate ? "running" : "planned";
   const now = new Date().toISOString();
   const assertionId = `task-metadata:${request.operation_id}`;
   try {
@@ -235,7 +241,7 @@ export async function updateTaskMetadata(
           AND EXISTS (SELECT 1 FROM entries e JOIN taskchute_days d
             ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
             WHERE e.app_user_id = ? AND e.id = ? AND e.task_id = ? AND e.taskchute_day_id = ?
-              AND e.lifecycle_state = 'planned' AND e.routine_occurrence_id IS NULL
+              AND e.lifecycle_state = '${editableLifecycle}' AND e.routine_occurrence_id IS NULL
               AND d.id = ? AND d.logical_date = ?)`)
         .bind(request.title, request.project_id, appUserId, request.task_id, request.expected_title, request.expected_project_id,
           appUserId, request.entry_id, request.task_id, row.taskchute_day_id, row.taskchute_day_id, row.logical_date),
@@ -245,7 +251,7 @@ export async function updateTaskMetadata(
           AND EXISTS (SELECT 1 FROM entries e JOIN taskchute_days d
             ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
             WHERE e.app_user_id = ? AND e.id = ? AND e.task_id = ? AND e.taskchute_day_id = ?
-              AND e.lifecycle_state = 'planned' AND e.routine_occurrence_id IS NULL
+              AND e.lifecycle_state = '${editableLifecycle}' AND e.routine_occurrence_id IS NULL
               AND d.id = ? AND d.logical_date = ?)
           THEN 1 ELSE 0 END`)
         .bind(appUserId, assertionId, appUserId, request.task_id, request.title, request.project_id,
@@ -275,7 +281,7 @@ export async function updateTaskMetadata(
       .bind(appUserId, request.entry_id, request.task_id).first<MetadataRow>();
     if (!latest) return reject(db, appUserId, request, requestFingerprint, "resource_not_found", "Entry or Task is unavailable");
     if (latest.taskchute_day_id !== row.taskchute_day_id || latest.logical_date !== row.logical_date
-      || latest.lifecycle_state !== "planned" || latest.routine_occurrence_id !== null
+      || latest.lifecycle_state !== editableLifecycle || latest.routine_occurrence_id !== null
       || latest.task_title !== request.expected_title || latest.task_project_id !== request.expected_project_id) {
       return reject(db, appUserId, request, requestFingerprint, "resource_conflict", "Task metadata target changed before editing");
     }

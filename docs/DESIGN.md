@@ -16,7 +16,10 @@
 
 TodayのProject Note affordanceはProject列に常設の固定slotとして置き、Projectがない場合は
 disabled、ある場合だけ既存Project Primary Noteを開く。running ordinary rowでは既存の
-Project / Mode metadata editorを使えるが、Task planning自体の境界は広げない。Routineは
+Project / Mode metadata editorを使える。ProjectはTask-level CAS、Modeはlive Entry relation CASへ
+委譲し、開始時Mode snapshot、Task planning自体、lifecycle、placementの境界は広げない。running
+Modeを明示的に変更した場合だけcurrent projectionはlive relationを表示し、completedでは従来の
+snapshot表示へ戻る。Routineは
 背景色を変えず、iconのmuted / accentだけで状態を示す。Today起点のRoutine操作は既存の
 Routine設定APIへ渡すmodalで、repeat、planned start、estimate、Project、Mode、Section、
 start/end dateをまとめて扱う。
@@ -603,7 +606,7 @@ ModeはEntry-scoped planning metadataであり、ModeDefinitionのstable identit
 
 D-071ではSettings Mode Boardのshared UI capabilityをProject Board conventionへ揃える。header / add、48px row、name column、52px action column、title-click inline rename、whole-row D&Dとmidpoint before / after feedback、focused row、row-end `…`、notification stack、J/K/Arrow、`?` help、Escape / focus restorationを共通のvisual / interaction patternとして使う。`…` menuは既存の`名前変更`だけを表示し、visible `board_position`、`順序` heading、常設rename buttonは表示しない。search、archive / restore / delete、quick create等のProject-only capabilityはModeへ追加しない。
 
-Day Tableでは既存column preferenceへModeを追加し、default visible orderは`実行 | Task | Project | Mode | Section | Routine | 見積 | 開始予定 | 開始見込 | 開始 | 終了 | 実績`とする。browser preference schema v3は既存のrelative order / width / hidden stateを保持し、ModeはProjectの後ろへ追加する。Mode selectorはcurrent canonical Dayのordinary planned Entryだけに表示し、running / completed / Routine-derived / past / futureはread-only projectionとする。Mode changeはplacement revisionを変更しない。
+Day Tableでは既存column preferenceへModeを追加し、default visible orderは`実行 | Task | Project | Mode | Section | Routine | 見積 | 開始予定 | 開始見込 | 開始 | 終了 | 実績`とする。browser preference schema v3は既存のrelative order / width / hidden stateを保持し、ModeはProjectの後ろへ追加する。Mode selectorはcurrent canonical Dayのordinary planned Entryとordinary running Entryに表示し、completed / Routine-derived / past / futureはread-only projectionとする。running Mode changeはlive Entry relationだけを更新し、placement revisionと開始時snapshotを変更しない。Mode定義のrenameではrunning / completedの開始時snapshot表示を変えない。
 
 Startはその時点のMode titleを`entry_mode_snapshots`へimmutableに保存する。planned rowはcurrent live Mode title、running / completed rowはsnapshot titleを表示し、live Mode renameでhistorical titleを上書きしない。Duplicateはlive relationだけをcopyしてsnapshotを作らず、planned delete / bulk deleteはrelationを消し、completed hard deleteはModeDefinitionを保持したままEntry relation / snapshotを消す。既存D-066のserial dispatcher、operation identity、retry / revision / reconciliation semanticsを再利用する。
 
@@ -611,13 +614,13 @@ APP compatibility migration `0021_mode_management.sql`はModeDefinition、Mode B
 
 ## D-069 Future-Day Project assignment
 
-Established future Dayのordinary planned Entryでは、Task-level Projectだけを編集可能とする。Task名はfuture Dayでもread-onlyのcanonical titleを維持し、Section、planned start、estimate、Mode、Day、`placement_revision`は変更しない。未establish preview、record-none / past、running / completed、Routine-derived、owner外、archived Projectの新規選択は編集controlを提供せず、既存archived assignmentはread-onlyで表示する。
+Established future Dayのordinary planned Entryでは、Task-level Projectだけを編集可能とする。Task名はfuture Dayでもread-onlyのcanonical titleを維持し、Section、planned start、estimate、Mode、Day、`placement_revision`は変更しない。未establish preview、record-none / past、completed、Routine-derived、owner外、archived Projectの新規選択は編集controlを提供せず、既存archived assignmentはread-onlyで表示する。current established Dayのordinary running Entryについては、後続D-117 correctiveでProject metadata editorを許可する。
 
 Future-DayのProject mutationは既存`UpdateTaskMetadata`とTask.project_idを再利用し、TaskChuteDay ID、logical date、Entry、Task、planned lifecycle、ordinary relationを一つのCAS / atomic guardで検証する。成功してもEntry identity、placement、Day revisionは変えない。current DayはD-066のglobal serial dispatcherを継続利用し、future Dayは同じoperation identity / exact retry / canonical reconciliation boundaryを使うdirect scoped pathとする。新migration、new command、future queue、production changeは含めない。
 
 ## D-070 Future-Day Mode assignment
 
-Established future Dayのordinary planned Entryでは、Mode columnをread-only textではなくcompact native selectorとして表示する。未設定値は既存の`—` option、候補はMode Boardのserver-canonical order、same-title候補はstable IDで区別する。future previewにはfake Entry / selectorを描画せず、past、record-none、Routine-derived、running、completedは既存のcanonical display text / `—`を維持する。
+Established future Dayのordinary planned Entryでは、Mode columnをread-only textではなくcompact native selectorとして表示する。未設定値は既存の`—` option、候補はMode Boardのserver-canonical order、same-title候補はstable IDで区別する。future previewにはfake Entry / selectorを描画せず、past、record-none、Routine-derived、completedは既存のcanonical display text / `—`を維持する。current established Dayのordinary running Entryは、D-117 correctiveでMode metadata selectorを許可するが、planning controlや開始時snapshotは変更しない。
 
 Mode selectorはProjectの後、Sectionの前に配置され、visual Tab order `Project -> Mode -> Section`へ参加する。selector、option、その他のinteractive descendantからrow D&Dを開始せず、select focus中はJ/K/single-key shortcutを発火させない。current DayのMode mutationはD-066 dispatcherへ入り、future DayのMode mutationは同一Entry scopeのdirect scoped pathで一件ずつ実行する。
 
