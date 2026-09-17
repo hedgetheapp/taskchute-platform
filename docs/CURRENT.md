@@ -15,26 +15,25 @@ estimate、D&D、Shift placementを含めてoccurrence-onlyで扱い、`今回�
 scope chooserを表示しない。RoutineDefinition defaultはDay操作から変更しない。unselected rowから
 始めたdragはsingle-entry semanticsへ戻し、running / completed / historical / past Dayは対象外とする。
 
-Implementation source review、App `292 / 292`、D-120 focused Worker integration `11 / 11`、D-120
-focused App placement tests `2 / 2`はPASS。full Web `14 files / 473 tests`、full Worker/D1
+Implementation source review、App `293 / 293`、D-120 focused Worker integration `11 / 11`、D-120
+focused App placement tests `2 / 2`、corrective continuous-focus regression `1 / 1`はPASS。full Web `14 files / 474 tests`、full Worker/D1
 `37 files / 339 tests`、typecheck、normal / exact nonprod build、deploy guard、`git diff --check`
 もPASSした。実装`c746fafd015fccae196eb8843bb5efa85640fbb6`をcanonical persistent nonprodへdeployし、
-Worker version `f58bde13-5c83-471e-bc19-18e4793c82a4`、`RUNTIME_ENV=nonprod`、
+Worker version `df9a37c4-7928-47a3-9bb6-11fa940f4d2b`（corrective main `b601ac204d5079cccf6516fefe90f7a9aadb46c7`）、`RUNTIME_ENV=nonprod`、
 `BOOTSTRAP_ENABLED=false`、canonical APP/AUTH/RealtimeHub bindingを確認した。
 
-Authenticated browserでは、current Day `2026-09-17`のsame-Section keyboard block reorderと、空の
-Dayへのordinary planned Entryのcross-Section placementを実行し、reload後も収束した。明示的に開いた
-future Day `2026-09-18`でもselected block reorderがreload後に保持された。Day-side Routine Section
+Authenticated browserでは、current Day `2026-09-17`のordinary TaskをShift+ArrowDown 2回、Shift+ArrowUp 2回、
+mouseなしで連続実行し、各回の即時順序反映と対象row focus維持を確認した。複数選択blockでも同Section reorderと
+空のDayへのcross-Section placementを実行し、選択状態2件・先頭Task focus・即時表示を維持し、reload後も収束した。
+検証fixtureは元のSectionへ復元した。明示的に開いたfuture Day `2026-09-18`でもselected block reorderがreload後に保持された。Day-side Routine Section
 変更はscope chooserなしのoccurrence-onlyで処理され、合成fixtureは「ルーティンの設定に戻す」で
 canonical defaultへ復元した。browser console warning/errorは`0 / 0`。現在のCUAでは座標pointer dragの
 commit結果を取得できなかったため、pointer D&Dのbrowser evidenceは未取得とし、automated placement
 coverageとkeyboard direct-placement evidenceとは分けて扱う。
 
-Exact final main `e4182eb76298e712fe3db215cdac498081e06254` の GitHub Actions run `35230843496` は
-ClassifierとAndroid JVM/APKがPASS、Web/WorkerはclassifierによりSKIPPED。Android artifactは
-`taskchute-android-debug-e4182eb76298e712fe3db215cdac498081e06254`（ID `10501136425`、
-`2026-09-24T14:04:01Z` expiry）。このSHAにはD-120実装変更ではなく、非決定的なAndroid Notes controller
-testの待機条件を安定化するtest-only correctiveだけを含めた。APP `quick_check=ok`、FK empty、
+Exact final main `b601ac204d5079cccf6516fefe90f7a9aadb46c7` の GitHub Actions run `35237010582` は
+ClassifierとWeb/Worker verificationがPASS、Android JVM/APKはimpact classifierによりSKIPPED。D-120 Web runtime
+correctiveのためAndroid artifactは不要である。このSHAにはsingle/multi placement後のfocus再要求とその回帰testを含めた。APP `quick_check=ok`、FK empty、
 transaction assertion / placement guard / lifecycle guard / active executionは`0 / 0 / 0 / 0`、
 Routine fixtureのoverride解除を含むread-only probeはすべて`rows_written=0`だった。Android Product UI、
 schema / migration、dependency、realtime protocol、productionは変更しない。

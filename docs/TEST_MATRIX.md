@@ -5,18 +5,19 @@
 | ID | Verification target | Evidence | Status |
 |---|---|---|---|
 | D120-DECISION | Approved atomic block move / reorder and Day-side Routine occurrence-only scope | `docs/decisions/D-120_BULK_TASK_MOVE_REORDER_V01.md`; D-112 group-D&D limitation superseded only by this atomic capability | PASS / APPROVED |
-| D120-WEB-FOCUSED | Multi-select canonical block order, same-Section reorder, cross-Section exact placement, empty Section / `Sectionなし`, unselected drag behavior | `apps/web/test/web/App.test.tsx` D-120 focused cases; App file `292 / 292` PASS, including `2 / 2` targeted empty/cross-Section cases | PASS |
+| D120-WEB-FOCUSED | Multi-select canonical block order, same-Section reorder, cross-Section exact placement, empty Section / `Sectionなし`, unselected drag behavior | `apps/web/test/web/App.test.tsx` D-120 focused cases; App file `293 / 293` PASS, including the existing `2 / 2` targeted empty/cross-Section cases and corrective continuous-focus case `1 / 1` | PASS |
 | D120-WORKER-FOCUSED | Atomic bulk placement, before/after anchor, empty normal Section, empty `Sectionなし`, replay / invalid anchor | `bulk-move-entries-to-section.integration.test.ts` `11 / 11` PASS | PASS |
 | D120-ROUTINE | Day-side Routine edits do not open scope chooser or propagate Definition defaults | Updated App regression coverage for occurrence-only Section / estimate / Mode / placement paths | PASS |
 | D120-STATIC | Type safety / build / patch hygiene | typecheck, normal build, exact nonprod build, deploy guard, `git diff --check` PASS | PASS |
-| D120-REG | Full impacted Web / Worker regression | full Web `14 files / 473 tests`; full Worker/D1 `37 files / 339 tests` | PASS |
-| D120-NONPROD | Persistent authenticated browser / DB evidence | Worker `f58bde13-5c83-471e-bc19-18e4793c82a4`; current `2026-09-17` same-Section keyboard reorder and empty-Day placement persisted after reload; explicit future `2026-09-18` block reorder persisted after reopen; Routine Day edit was occurrence-only with no scope chooser; console `0 / 0`; APP quick/FK/guard/assertion/active-execution checks PASS, read-only probes `rows_written=0` | PASS with pointer-D&D browser replay NOT_CAPTURED |
-| D120-CI | Exact final main verification | `e4182eb76298e712fe3db215cdac498081e06254`; run `35230843496`; Classifier and Android JVM/APK PASS, Web/Worker SKIPPED by impact classifier; debug artifact ID `10501136425` | PASS |
+| D120-REG | Full impacted Web / Worker regression | full Web `14 files / 474 tests`; full Worker/D1 `37 files / 339 tests` | PASS |
+| D120-NONPROD | Persistent authenticated browser / DB evidence | Corrective Worker `df9a37c4-7928-47a3-9bb6-11fa940f4d2b` from exact main `b601ac204d5079cccf6516fefe90f7a9aadb46c7`; current `2026-09-17` ordinary TaskのShift下2回・上2回をmouseなしで実行し、各回で順序の即時反映と対象row focusを確認。複数選択blockでも同Section移動とSection境界移動を実行し、選択2件・先頭Task focus・即時Day移動を維持、reload後にcanonical配置へ収束。検証fixtureは元のSectionへ復元。console `0 / 0`; APP quick/FK/guard/assertion/active-execution checks PASS、read-only probes `rows_written=0` | PASS with pointer-D&D browser replay NOT_CAPTURED |
+| D120-CI | Exact final main verification | corrective exact SHA `b601ac204d5079cccf6516fefe90f7a9aadb46c7`; run `35237010582`; classifier and Web/Worker verification PASS、Android JVM/APK job SKIPPED by impact classifier | PASS |
 | D120-BOUNDARY | Scope | Web + existing Worker command extension; no Android Product UI, migration/schema, dependency, realtime protocol, offline, production, or Release change | PASS / NOT_REQUIRED / NOT_RUN / NO |
 
-D-120 browserではkeyboard direct-placement/reorderとRoutine occurrence-onlyのreload convergenceを確認し、
-座標pointer dragのcommit結果だけは現CUAで取得できなかった。automated pointer/empty-target coverageは
-PASSであり、両者を同一のbrowser evidenceとしては扱わない。
+D-120 browserではkeyboard direct-placement/reorderとRoutine occurrence-onlyのreload convergenceを確認した。
+correctiveでは、連続Shift入力後もsingle / multi-selectionの対象row focusと即時optimistic orderを維持し、
+Section境界をまたぐblock移動後も選択状態を保持することを確認した。座標pointer dragのcommit結果だけは
+現CUAで取得できなかったため、automated pointer/empty-target coverageとは同一のbrowser evidenceとして扱わない。
 
 ## D-119 Future Day Routine materialization v0.1 — implementation and persistent nonprod evidence
 

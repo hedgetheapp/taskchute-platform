@@ -10,9 +10,10 @@ Routine-derived rowではDay側scope chooserを廃止したため、誤ってRou
 
 Mitigation: Server-side canonical order / target planned-start導出、既存placement revision / operation
 replay / transaction assertion、selected blockのatomic batch、empty header drop surface、illegal cohort
-no-write、Routine occurrence-only mappingを再利用する。D-120 focused App `292 / 292`、Worker `11 / 11`、
-full Web `14 files / 473 tests`、Worker/D1 `37 files / 339 tests`、typecheck/build/guard/diff-check、
+no-write、Routine occurrence-only mappingを再利用する。D-120 focused App `293 / 293`、Worker `11 / 11`、
+full Web `14 files / 474 tests`、Worker/D1 `37 files / 339 tests`、typecheck/build/guard/diff-check、
 persistent nonprod/DB、exact final CIはPASSした。current/future browserではkeyboard placement/reorder、
+single / multi-selectionの即時order・対象focus保持、
 Routine occurrence-only、reload convergence、console `0 / 0`を確認した。座標pointer dragのcommit結果は
 現CUAで取得できず、automated pointer/empty-target coverageとは別の残存browser evidence riskとして扱う。
 Android Product UI、schema / migration / dependency / productionは変更しない。
