@@ -4,6 +4,27 @@
 
 exact DB schema、SQL、UI component library、Android local DB、offline conflict algorithm等は、別途DecisionされるまでOpenとする。
 
+## D-120 Bulk Task Move / Reorder v0.1
+
+D-120では、Day Tableで選択されたplanned Entryを、mutation前のcanonical Day display orderを
+内部順序とする一つのmove blockとして扱う。current established Dayと、D-119により明示的に開かれた
+established future Dayで利用できる。同一Sectionの合法なplanned-start cohort内は`ReorderEntries`へ、
+Sectionをまたぐrelative placementとempty Section / empty `Sectionなし`は既存owner-scoped bulk
+placement commandへatomicに委譲する。Serverがtarget Section、planned start、`Sectionなし`のNULL
+start、Routine occurrence relation、placement revisionを導出し、partial successを許可しない。
+
+`Shift + ↑ / ↓`とlong-press D&Dは同じblock semanticsを使い、no-opは不要なrevision / overrideを
+作らない。unselected rowのdragはsingle-entry semanticsへ切り替え、interactive descendant、
+running / completed / historical / past Dayはbulk placement対象外とする。
+
+Day画面のRoutine-derived Entryに対するSection / planned-start、estimate、Mode、bulk、D&D、Shiftの
+変更は常にoccurrence-onlyであり、scope chooserや`今回だけ / ルーティンに反映`を表示せず、
+RoutineDefinition defaultを変更しない。Routine defaultはRoutine画面のauthorityとする。
+
+このDecisionはD-112のgroup D&D未実装制約を、atomic bulk placementが提供する範囲だけsupersedeする。
+Android UI、past-Day mutation、schema / migration、dependency、realtime protocol、offline、
+production semanticsは変更しない。
+
 ## D-119 Future Day Routine materialization v0.1
 
 認証済みownerがfuture logical dateを明示的にDay surfaceとして開いた場合、その選択日だけを

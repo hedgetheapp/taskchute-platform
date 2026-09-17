@@ -1,5 +1,25 @@
 # Current
 
+### D-120 Bulk Task Move / Reorder v0.1 — implementation in verification
+
+D-120のApproved behaviorとして、Day Tableの複数選択planned Entryをmutation前のcanonical display
+orderで一つのmove blockとして扱う。current established DayとD-119により明示的に開かれたestablished
+future Dayで、同一Sectionの合法なplanned-start cohort reorderは既存`ReorderEntries`へ、Sectionを
+またぐrelative placement、empty Section、empty `Sectionなし`へのblock moveは既存bulk commandの
+atomic placementへ接続した。selected Entryのpartial single-entry writesは行わず、target Sectionの
+planned start、`Sectionなし`のNULL start、placement revision、operation replay / retryを既存Server
+authorityで確定する。
+
+Day画面のRoutine-derived planned Entryは、Section / planned start、estimate、Mode、bulk Section /
+estimate、D&D、Shift placementを含めてoccurrence-onlyで扱い、`今回だけ / ルーティンに反映`の
+scope chooserを表示しない。RoutineDefinition defaultはDay操作から変更しない。unselected rowから
+始めたdragはsingle-entry semanticsへ戻し、running / completed / historical / past Dayは対象外とする。
+
+Implementation source review、App `292 / 292`、D-120 focused Worker integration `11 / 11`、D-120
+focused App placement tests `2 / 2`はPASS。full Web / Worker、typecheck / build、persistent nonprod
+browser / DB、exact-SHA CIはこのBatchのcloseoutで記録する。Android Product UI、schema / migration、
+dependency、realtime protocol、productionは変更しない。
+
 ### D-119 Future Day Routine materialization v0.1 — persistent nonprod verified
 
 D-119のApproved behaviorとして、認証済みownerが明示的に開いたfuture logical dateだけを既存の

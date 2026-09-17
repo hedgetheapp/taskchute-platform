@@ -8,6 +8,7 @@ import {
   bulkMoveEntriesToSectionOccurrence,
   isBulkMoveEntriesToSectionOccurrenceRequest,
 } from "../worker/application/bulk-move-entries-to-section-occurrence";
+import type { MoveEntryPlacementIntent } from "../src/shared/contracts";
 import { loadTaskChuteDayByLogicalDate } from "../worker/application/load-current-day";
 import { uuidv7 } from "../src/shared/uuidv7";
 
@@ -94,10 +95,12 @@ async function seed() {
   return { userId, otherUserId, dayId, sectionA, sectionB, sectionC, ordinaryTaskIds, ordinaryEntryIds, routineDefinitionId, routineOccurrenceId, routineEntryId, runningEntryId, completedEntryId };
 }
 
-function requestFor(fixture: Awaited<ReturnType<typeof seed>>, entryIds: string[], sectionId: string | null, revision = 0) {
+function requestFor(fixture: Awaited<ReturnType<typeof seed>>, entryIds: string[], sectionId: string | null, revision = 0,
+  placement?: MoveEntryPlacementIntent) {
   return {
     operation_id: uuidv7(), taskchute_day_id: fixture.dayId, entry_ids: entryIds, section_id: sectionId,
     expected_placement_revision: revision,
+    ...(placement ? { placement } : {}),
   };
 }
 
@@ -296,5 +299,76 @@ describe.sequential("BulkMoveEntriesToSection", () => {
     const result = await bulkMoveEntriesToSectionOccurrence(env.APP_DB, fixture.userId, request, now);
     expect(result.placement_revision).toBe(1);
     expect(await bulkMoveEntriesToSectionOccurrence(env.APP_DB, fixture.userId, request, now)).toEqual(result);
+  });
+
+  it("moves a selected block before and after a non-empty target with one canonical placement operation", async () => {
+    const beforeFixture = await seed();
+    const beforeRequest = requestFor(beforeFixture,
+      [beforeFixture.ordinaryEntryIds[1]!, beforeFixture.ordinaryEntryIds[0]!], beforeFixture.sectionB, 0,
+      { kind: "relative_to_entry", anchor_entry_id: beforeFixture.ordinaryEntryIds[2]!, edge: "before" });
+    expect(isBulkMoveEntriesToSectionOccurrenceRequest({ ...beforeRequest, user_id: beforeFixture.userId })).toBe(false);
+    const beforeResult = await bulkMoveEntriesToSectionOccurrence(env.APP_DB, beforeFixture.userId, beforeRequest, now);
+    expect(beforeResult).toMatchObject({
+      entry_ids: beforeRequest.entry_ids,
+      changed_entry_ids: beforeRequest.entry_ids,
+      section_id: beforeFixture.sectionB,
+      planned_start_minute: 480,
+      placement_revision: 1,
+    });
+    expect(await env.APP_DB.prepare("SELECT id, position FROM entries WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id = ? ORDER BY position")
+      .bind(beforeFixture.userId, beforeFixture.dayId, beforeFixture.sectionB).all()).toMatchObject({ results: [
+        { id: beforeFixture.ordinaryEntryIds[0], position: 1 },
+        { id: beforeFixture.ordinaryEntryIds[1], position: 2 },
+        { id: beforeFixture.ordinaryEntryIds[2], position: 3 },
+        { id: beforeFixture.ordinaryEntryIds[3], position: 4 },
+      ] });
+    expect(await bulkMoveEntriesToSectionOccurrence(env.APP_DB, beforeFixture.userId, beforeRequest, now)).toEqual(beforeResult);
+
+    const afterFixture = await seed();
+    const afterRequest = requestFor(afterFixture,
+      [afterFixture.ordinaryEntryIds[0]!, afterFixture.ordinaryEntryIds[1]!], afterFixture.sectionB, 0,
+      { kind: "relative_to_entry", anchor_entry_id: afterFixture.ordinaryEntryIds[3]!, edge: "after" });
+    const afterResult = await bulkMoveEntriesToSectionOccurrence(env.APP_DB, afterFixture.userId, afterRequest, now);
+    expect(afterResult.placement_revision).toBe(1);
+    expect(await env.APP_DB.prepare("SELECT id, position FROM entries WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id = ? ORDER BY position")
+      .bind(afterFixture.userId, afterFixture.dayId, afterFixture.sectionB).all()).toMatchObject({ results: [
+        { id: afterFixture.ordinaryEntryIds[2], position: 1 },
+        { id: afterFixture.ordinaryEntryIds[3], position: 2 },
+        { id: afterFixture.ordinaryEntryIds[0], position: 3 },
+        { id: afterFixture.ordinaryEntryIds[1], position: 4 },
+      ] });
+  });
+
+  it("moves a selected block to an empty Section without a placement anchor", async () => {
+    const fixture = await seed();
+    await env.APP_DB.prepare("DELETE FROM entries WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id = ?")
+      .bind(fixture.userId, fixture.dayId, fixture.sectionC).run();
+    const request = requestFor(fixture, [fixture.ordinaryEntryIds[0]!, fixture.ordinaryEntryIds[1]!], fixture.sectionC);
+    const result = await bulkMoveEntriesToSectionOccurrence(env.APP_DB, fixture.userId, request, now);
+    expect(result).toMatchObject({ section_id: fixture.sectionC, planned_start_minute: 720, placement_revision: 1 });
+    expect(await env.APP_DB.prepare("SELECT id, section_id, position, planned_start_minute FROM entries WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id = ? ORDER BY position")
+      .bind(fixture.userId, fixture.dayId, fixture.sectionC).all()).toMatchObject({ results: [
+        { id: fixture.ordinaryEntryIds[0], section_id: fixture.sectionC, position: 1, planned_start_minute: 720 },
+        { id: fixture.ordinaryEntryIds[1], section_id: fixture.sectionC, position: 2, planned_start_minute: 720 },
+      ] });
+  });
+
+  it("moves a selected Entry to empty Sectionなし with null placement and rejects an invalid anchor", async () => {
+    const fixture = await seed();
+    await env.APP_DB.prepare("DELETE FROM entries WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id IS NULL")
+      .bind(fixture.userId, fixture.dayId).run();
+    const request = requestFor(fixture, [fixture.ordinaryEntryIds[0]!], null);
+    const result = await bulkMoveEntriesToSectionOccurrence(env.APP_DB, fixture.userId, request, now);
+    expect(result).toMatchObject({ section_id: null, planned_start_minute: null, placement_revision: 1 });
+    expect(await env.APP_DB.prepare("SELECT section_id, position, planned_start_minute FROM entries WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, fixture.ordinaryEntryIds[0]).first()).toEqual({ section_id: null, position: 1, planned_start_minute: null });
+
+    const invalidFixture = await seed();
+    const invalidRequest = requestFor(invalidFixture, [invalidFixture.ordinaryEntryIds[0]!], invalidFixture.sectionB, 0,
+      { kind: "relative_to_entry", anchor_entry_id: invalidFixture.ordinaryEntryIds[0]!, edge: "before" });
+    await expect(bulkMoveEntriesToSectionOccurrence(env.APP_DB, invalidFixture.userId, invalidRequest, now))
+      .rejects.toMatchObject({ code: "resource_conflict" });
+    expect(await env.APP_DB.prepare("SELECT placement_revision FROM taskchute_days WHERE app_user_id = ? AND id = ?")
+      .bind(invalidFixture.userId, invalidFixture.dayId).first<number>("placement_revision")).toBe(0);
   });
 });

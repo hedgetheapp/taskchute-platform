@@ -2,6 +2,24 @@
 
 Statuses: Approved / Proposed / Superseded
 
+## D-120 — Bulk Task Move / Reorder v0.1
+
+Status: **Approved**
+
+Canonical Decision: `docs/decisions/D-120_BULK_TASK_MOVE_REORDER_V01.md`。
+
+D-120は、Day Tableで複数選択したplanned Entryをmutation前のcanonical display orderを保つ
+一つのmove blockとして扱い、同一Sectionの合法なcohort reorderは`ReorderEntries`、Sectionを
+またぐrelative placementとempty Section / empty `Sectionなし`への移動は既存operation / placement
+revision boundaryを使うatomic bulk placementへ接続する。target Sectionのplanned startと
+Routine occurrence-only overrideはServerが導出し、partial successを作らない。current established
+DayとD-119の明示的に開かれたestablished future Dayを対象にする。
+
+Day画面のRoutine-derived Entry編集は常にoccurrence-onlyとし、`今回だけ / ルーティンに反映`の
+scope chooserを表示せず、RoutineDefinition defaultを変更しない。D-112のgroup D&D未実装制約は
+このatomic placement capabilityの範囲だけsupersedeされる。Android、past-Day mutation、schema /
+migration、dependency、realtime protocol、offline、production semanticsは変更しない。
+
 ## D-119 — Future Day Routine Materialization v0.1
 
 Status: **Approved**

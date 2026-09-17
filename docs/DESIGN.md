@@ -121,6 +121,24 @@ commandがないため、複数選択group D&Dはpartial successを避けて有�
 move/deleteとsingle-Entry D&Dを分離する。Worker/API、schema、migration、dependency、realtime
 protocol、offline storage、production semanticsは変更しない。
 
+## D-120 Web Today bulk Task move / reorder
+
+D-120のWeb Day Tableは複数選択したplanned rowを、選択時の順序ではなくcanonical display orderを
+保つ一つのblockとしてdrag / `Shift + ↑ / ↓`する。同一Sectionの合法なplanned-start cohortは
+既存`ReorderEntries`へ、Sectionをまたぐrelative placementは既存bulk occurrence commandへ一回で
+委譲する。selected rowをN個のsingle-entry writeへ分解せず、operation identity、placement revision、
+canonical reconcileを一つのatomic boundaryで扱う。
+
+Sectionにrowがない場合はheaderをdrop surfaceとし、normal SectionはSection identityだけ、空の
+`Sectionなし`は`section_id=null`だけを渡してServerのcanonical placement / D-043同期へ委譲する。
+drop target外、no-op、illegal cohortはwriteせず、drag中のunselected rowはsingle-entry dragへ切り替える。
+Start、overflow、menu、editor等のinteractive descendantはdrag surfaceではない。
+
+Routine-derived Day rowは同じplacement / edit UIを使うが、Day-sideの変更は常にoccurrence-onlyとする。
+`今回だけ / ルーティンに反映`のscope chooserは表示せず、RoutineDefinition defaultへ伝播しない。
+既存のRoutine screen authority、D-066 pending / ambiguity、D-119 future-Day boundary、D-112のselection
+and day-operation behaviorは維持する。
+
 ## D-109 Android Today planning surface
 
 TodayはTaskChute / Todayの大きな固定headerを置かず、`‹ 日付（曜日） › 今日`のdate

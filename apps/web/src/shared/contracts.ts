@@ -579,6 +579,8 @@ export interface BulkMoveEntriesToSectionOccurrenceRequest {
   entry_ids: string[];
   section_id: string | null;
   expected_placement_revision: number;
+  /** Optional exact insertion point for an atomic D-120 block move. */
+  placement?: MoveEntryPlacementIntent;
 }
 
 export interface BulkMoveEntriesToSectionOccurrenceResult {

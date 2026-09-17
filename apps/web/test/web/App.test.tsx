@@ -2355,7 +2355,7 @@ describe("Dogfood Day shell", () => {
     expect(mocks.reorderEntries).not.toHaveBeenCalled();
   });
 
-  it("opens the Routine scope chooser for a cross-Section drop without writing first", async () => {
+  it("moves a Routine across Sections as an occurrence-only change", async () => {
     const routineEntry: EntryProjection = { ...firstEntry, routine: {
       routine_definition_id: "019c0000-0000-7000-8000-000000000040",
       routine_occurrence_id: "019c0000-0000-7000-8000-000000000041",
@@ -2374,9 +2374,6 @@ describe("Dogfood Day shell", () => {
     expect(targetSummary.dataset.dropTarget).toBe("valid");
     fireEvent.drop(targetSummary, { dataTransfer });
     fireEvent.dragEnd(dragSurface(source), { dataTransfer });
-    const choice = await screen.findByRole("group", { name: "Canonical taskのSection・開始予定反映先" });
-    expect(mocks.setRoutineSectionPlan).not.toHaveBeenCalled();
-    fireEvent.click(within(choice).getByRole("button", { name: "今回だけ" }));
     await waitFor(() => expect(mocks.setRoutineSectionPlan).toHaveBeenCalledTimes(1));
     expect(mocks.setRoutineSectionPlan.mock.calls[0][0]).toMatchObject({
       action: "occurrence", section_id: eveningId, planned_start_minute: 720,
@@ -3013,7 +3010,7 @@ describe("Dogfood Day shell", () => {
     expect(mocks.reorderEntries).not.toHaveBeenCalled();
   });
 
-  it("opens the existing Routine scope chooser for an adjacent empty Section", async () => {
+  it("moves a Routine into an adjacent empty Section as an occurrence-only change", async () => {
     const daySectionId = "019c0000-0000-7000-8000-000000000015";
     const routineEntry: EntryProjection = { ...firstEntry, planned_start_minute: 300, routine: {
       routine_definition_id: "019c0000-0000-7000-8000-000000000016",
@@ -3039,10 +3036,6 @@ describe("Dogfood Day shell", () => {
     const row = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
     row.focus();
     fireEvent.keyDown(row, { key: "ArrowDown", shiftKey: true });
-    const choice = await screen.findByRole("group", { name: "Canonical taskのSection・開始予定反映先" });
-    expect(choice.textContent).toContain("Day / 12:00");
-    expect(mocks.setRoutineSectionPlan).not.toHaveBeenCalled();
-    fireEvent.click(within(choice).getByRole("button", { name: "今回だけ" }));
     await waitFor(() => expect(mocks.setRoutineSectionPlan).toHaveBeenCalledTimes(1));
     expect(mocks.setRoutineSectionPlan.mock.calls[0]?.[0]).toMatchObject({
       action: "occurrence", section_id: daySectionId, planned_start_minute: 720,
@@ -4400,7 +4393,7 @@ describe("Dogfood Day shell", () => {
     expect(mocks.setEntryPlannedStart).not.toHaveBeenCalled();
   });
 
-  it("focuses a local Routine estimate candidate and dismisses it with Escape, outside click, or Cancel", async () => {
+  it("saves a Routine estimate for the displayed occurrence without a scope chooser", async () => {
     const routineEntry: EntryProjection = { ...firstEntry, estimate_seconds: 900, planned_start_minute: 300, routine: {
       routine_definition_id: "019c0000-0000-7000-8000-000000000040",
       routine_occurrence_id: "019c0000-0000-7000-8000-000000000041",
@@ -4417,47 +4410,14 @@ describe("Dogfood Day shell", () => {
     const input = screen.getByRole("textbox", { name: "Canonical taskの見積（分）" });
     fireEvent.change(input, { target: { value: "25" } });
     fireEvent.keyDown(input, { key: "Enter" });
-    const choice = await screen.findByRole("group", { name: "Canonical taskの見積反映先" });
-    expect(choice.textContent).toContain("25分");
-    expect(mocks.setRoutineEstimate).not.toHaveBeenCalled();
-    const occurrenceChoice = within(choice).getByRole("button", { name: "今回だけ" });
-    await waitFor(() => expect(choice.closest('[role="dialog"]')).toContain(document.activeElement));
-    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
-    expect(screen.queryByRole("group", { name: "Canonical taskの見積反映先" })).toBeNull();
-    expect(mocks.setRoutineEstimate).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByRole("button", { name: "Canonical taskの見積" }));
-    const secondInput = screen.getByRole("textbox", { name: "Canonical taskの見積（分）" });
-    fireEvent.change(secondInput, { target: { value: "30" } });
-    fireEvent.keyDown(secondInput, { key: "Enter" });
-    const secondChoice = await screen.findByRole("group", { name: "Canonical taskの見積反映先" });
-    fireEvent.click(document.body);
-    expect(screen.queryByRole("group", { name: "Canonical taskの見積反映先" })).toBeNull();
-    expect(mocks.setRoutineEstimate).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByRole("button", { name: "Canonical taskの見積" }));
-    const thirdInput = screen.getByRole("textbox", { name: "Canonical taskの見積（分）" });
-    fireEvent.change(thirdInput, { target: { value: "35" } });
-    fireEvent.keyDown(thirdInput, { key: "Enter" });
-    const thirdChoice = await screen.findByRole("group", { name: "Canonical taskの見積反映先" });
-    fireEvent.click(within(thirdChoice).getByRole("button", { name: "キャンセル" }));
-    expect(screen.queryByRole("group", { name: "Canonical taskの見積反映先" })).toBeNull();
-    expect(mocks.setRoutineEstimate).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByRole("button", { name: "Canonical taskの見積" }));
-    const finalInput = screen.getByRole("textbox", { name: "Canonical taskの見積（分）" });
-    fireEvent.change(finalInput, { target: { value: "30" } });
-    fireEvent.keyDown(finalInput, { key: "Enter" });
-    const finalChoice = await screen.findByRole("group", { name: "Canonical taskの見積反映先" });
-    fireEvent.click(within(finalChoice).getByRole("button", { name: "ルーティンに反映" }));
     await waitFor(() => expect(mocks.setRoutineEstimate).toHaveBeenCalledTimes(1));
     expect(mocks.setRoutineEstimate.mock.calls[0][0]).toMatchObject({
       entry_id: routineEntry.id, taskchute_day_id: routineDay.taskchute_day.id,
-      action: "definition", estimate_seconds: 1800, expected_defaults_revision: 4,
+      action: "occurrence", estimate_seconds: 1500,
     });
   });
 
-  it("creates a synchronized Routine Section candidate without writing and sends the selected occurrence scope", async () => {
+  it("sends a synchronized Routine Section change as an occurrence-only operation", async () => {
     const routineEntry: EntryProjection = { ...firstEntry, estimate_seconds: 900, planned_start_minute: 300, routine: {
       routine_definition_id: "019c0000-0000-7000-8000-000000000042",
       routine_occurrence_id: "019c0000-0000-7000-8000-000000000043",
@@ -4469,23 +4429,14 @@ describe("Dogfood Day shell", () => {
       sections: [{ ...populatedDay.sections[0], entries: [routineEntry] }, populatedDay.sections[1]],
       next_entry: routineEntry };
     mocks.loadDay.mockResolvedValue(routineDay);
-    const request = deferred<unknown>();
-    mocks.setRoutineSectionPlan.mockReturnValue(request.promise);
     render(<App />);
     fireEvent.change(await screen.findByRole("combobox", { name: "Canonical taskのSection" }),
       { target: { value: eveningId } });
-    const choice = await screen.findByRole("group", { name: "Canonical taskのSection・開始予定反映先" });
-    expect(choice.textContent).toContain("Evening / 12:00");
-    expect(mocks.setRoutineSectionPlan).not.toHaveBeenCalled();
-    fireEvent.click(within(choice).getByRole("button", { name: "今回だけ" }));
     await waitFor(() => expect(mocks.setRoutineSectionPlan).toHaveBeenCalledTimes(1));
     expect(mocks.setRoutineSectionPlan.mock.calls[0][0]).toMatchObject({
       entry_id: routineEntry.id, action: "occurrence", section_id: eveningId,
       planned_start_minute: 720, expected_placement_revision: routineDay.placement_revision,
     });
-    expect((within(choice).getByRole("button", { name: "今回だけ" }) as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByRole("status").textContent).toBe("Routine設定を保存・照合中…");
-    request.resolve({});
     await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
   });
 
@@ -4576,8 +4527,6 @@ describe("Dogfood Day shell", () => {
     const source = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
     const target = screen.getByText("Second task").closest<HTMLElement>("[data-entry-id]")!;
     dragEntry(dragSurface(source), target, 90);
-    const choice = await screen.findByRole("group", { name: "Canonical taskのSection・開始予定反映先" });
-    fireEvent.click(within(choice).getByRole("button", { name: "今回だけ" }));
     await waitFor(() => expect(mocks.setRoutineSectionPlan).toHaveBeenCalledTimes(1));
 
     const retry = await screen.findByRole("button", { name: "保留中のRoutine配置を再試行" });
@@ -4592,7 +4541,7 @@ describe("Dogfood Day shell", () => {
     expect(mocks.setRoutineSectionPlan.mock.calls[1][0]).toEqual(original);
   });
 
-  it("retains an ambiguous Definition placement even when canonical defaults match the requested pair", async () => {
+  it("retains an ambiguous occurrence placement until the exact operation is retried", async () => {
     const routineEntry: EntryProjection = { ...firstEntry, routine: {
       routine_definition_id: "019c0000-0000-7000-8000-000000000052",
       routine_occurrence_id: "019c0000-0000-7000-8000-000000000053",
@@ -4621,15 +4570,13 @@ describe("Dogfood Day shell", () => {
     const source = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
     const target = screen.getByText("Second task").closest<HTMLElement>("[data-entry-id]")!;
     dragEntry(dragSurface(source), target, 90);
-    const choice = await screen.findByRole("group", { name: "Canonical taskのSection・開始予定反映先" });
-    fireEvent.click(within(choice).getByRole("button", { name: "ルーティンに反映" }));
     await waitFor(() => expect(mocks.setRoutineSectionPlan).toHaveBeenCalledTimes(1));
 
     const retry = await screen.findByRole("button", { name: "保留中のRoutine配置を再試行" });
     const original = mocks.setRoutineSectionPlan.mock.calls[0][0];
     expect(original).toMatchObject({
-      action: "definition", section_id: eveningId, planned_start_minute: 720,
-      expected_placement_revision: initialDay.placement_revision, expected_defaults_revision: 4,
+      action: "occurrence", section_id: eveningId, planned_start_minute: 720,
+      expected_placement_revision: initialDay.placement_revision,
       placement: { kind: "relative_to_entry", anchor_entry_id: secondEntry.id, edge: "after" },
     });
     fireEvent.click(retry);
@@ -5305,7 +5252,93 @@ describe("Dogfood Day shell", () => {
     expect(screen.queryByRole("dialog", { name: "変更先Section" })).toBeNull();
   });
 
-  it("requires per-Routine scope selection, supports fill-and-override, and sends one scoped command", async () => {
+  it("drags a selected same-Section block in canonical order with one ReorderEntries command", async () => {
+    mocks.loadDay.mockResolvedValue(threePlannedDay);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("checkbox", { name: "「Canonical task」を選択" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "「Second task」を選択" }));
+    const source = screen.getByText("Canonical task").closest<HTMLElement>("[data-entry-id]")!;
+    const target = screen.getByText("Third task").closest<HTMLElement>("[data-entry-id]")!;
+    dragEntry(dragSurface(source), target, 75);
+    await waitFor(() => expect(mocks.reorderEntries).toHaveBeenCalledTimes(1));
+    expect(mocks.reorderEntries.mock.calls[0][0]).toMatchObject({
+      entry_ids: [thirdEntry.id, firstEntry.id, secondEntry.id],
+      expected_placement_revision: threePlannedDay.placement_revision,
+    });
+    expect(mocks.bulkMoveEntriesToSectionOccurrence).not.toHaveBeenCalled();
+  });
+
+  it("uses one atomic occurrence Section command for a selected cross-Section block", async () => {
+    const eveningEntry = { ...thirdEntry, section_id: eveningId, planned_start_minute: 720 };
+    const crossSectionDay = { ...threePlannedDay, sections: [
+      { ...threePlannedDay.sections[0], entries: [firstEntry, secondEntry] },
+      { ...threePlannedDay.sections[1], entries: [eveningEntry] },
+    ] };
+    mocks.loadDay.mockResolvedValue(crossSectionDay);
+    mocks.bulkMoveEntriesToSectionOccurrence.mockResolvedValue({});
+    render(<App />);
+    fireEvent.click(await screen.findByRole("checkbox", { name: "「Canonical task」を選択" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "「Second task」を選択" }));
+    const source = screen.getByText("Canonical task").closest<HTMLElement>("[data-entry-id]")!;
+    const target = screen.getByText("Third task").closest<HTMLElement>("[data-entry-id]")!;
+    dragEntry(dragSurface(source), target, 25);
+    await waitFor(() => expect(mocks.bulkMoveEntriesToSectionOccurrence).toHaveBeenCalledTimes(1));
+    expect(mocks.bulkMoveEntriesToSectionOccurrence.mock.calls[0][0]).toMatchObject({
+      entry_ids: [firstEntry.id, secondEntry.id],
+      section_id: eveningId,
+      expected_placement_revision: crossSectionDay.placement_revision,
+      placement: { kind: "relative_to_entry", anchor_entry_id: thirdEntry.id, edge: "before" },
+    });
+    expect(mocks.reorderEntries).not.toHaveBeenCalled();
+  });
+
+  it("drops a selected block onto an empty Section and empty Sectionなし without an anchor", async () => {
+    const emptyTargetDay = { ...twoPlannedDay, sections: [
+      { ...twoPlannedDay.sections[0], entries: [firstEntry, secondEntry] },
+      emptyDay.sections[1],
+    ] };
+    mocks.loadDay.mockResolvedValue(emptyTargetDay);
+    mocks.bulkMoveEntriesToSectionOccurrence.mockResolvedValue({});
+    render(<App />);
+    fireEvent.click(await screen.findByRole("checkbox", { name: "「Canonical task」を選択" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "「Second task」を選択" }));
+    const source = screen.getByText("Canonical task").closest<HTMLElement>("[data-entry-id]")!;
+    const emptySection = sectionSummary("Evening");
+    const dataTransfer = dragDataTransfer();
+    fireEvent.dragStart(dragSurface(source), { dataTransfer });
+    fireEvent.dragOver(emptySection, { dataTransfer });
+    expect(emptySection.dataset.dropTarget).toBe("valid");
+    fireEvent.drop(emptySection, { dataTransfer });
+    fireEvent.dragEnd(dragSurface(source), { dataTransfer });
+    await waitFor(() => expect(mocks.bulkMoveEntriesToSectionOccurrence).toHaveBeenCalledTimes(1));
+    expect(mocks.bulkMoveEntriesToSectionOccurrence.mock.calls[0][0]).toMatchObject({
+      entry_ids: [firstEntry.id, secondEntry.id], section_id: eveningId,
+    });
+    expect(mocks.bulkMoveEntriesToSectionOccurrence.mock.calls[0][0].placement).toBeUndefined();
+
+    cleanup();
+    vi.clearAllMocks();
+    mocks.loadDay.mockResolvedValue(emptyTargetDay);
+    mocks.bulkMoveEntriesToSectionOccurrence.mockResolvedValue({});
+    render(<App />);
+    fireEvent.click(await screen.findByRole("checkbox", { name: "「Canonical task」を選択" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "「Second task」を選択" }));
+    const secondSource = screen.getByText("Canonical task").closest<HTMLElement>("[data-entry-id]")!;
+    const secondTransfer = dragDataTransfer();
+    fireEvent.dragStart(dragSurface(secondSource), { dataTransfer: secondTransfer });
+    const emptyUnsectioned = await waitFor(() => sectionSummary("Sectionなし"));
+    fireEvent.dragOver(emptyUnsectioned, { dataTransfer: secondTransfer });
+    expect(emptyUnsectioned.dataset.dropTarget).toBe("valid");
+    fireEvent.drop(emptyUnsectioned, { dataTransfer: secondTransfer });
+    fireEvent.dragEnd(dragSurface(secondSource), { dataTransfer: secondTransfer });
+    await waitFor(() => expect(mocks.bulkMoveEntriesToSectionOccurrence).toHaveBeenCalledTimes(1));
+    expect(mocks.bulkMoveEntriesToSectionOccurrence.mock.calls[0][0]).toMatchObject({
+      entry_ids: [firstEntry.id, secondEntry.id], section_id: null,
+    });
+    expect(mocks.bulkMoveEntriesToSectionOccurrence.mock.calls[0][0].placement).toBeUndefined();
+  });
+
+  it("changes mixed selected Entries through one occurrence-only Section command", async () => {
     const routineEntry: EntryProjection = { ...secondEntry, task: { ...secondEntry.task, title: "Routine task" }, routine: {
       routine_definition_id: "019c0000-0000-7000-0000-000000000050", routine_occurrence_id: "019c0000-0000-7000-0000-000000000051",
       end_logical_date: null, can_end: true, default_section_id: secondEntry.section_id,
@@ -5324,33 +5357,14 @@ describe("Dogfood Day shell", () => {
     fireEvent.click(sectionButton);
     const picker = await screen.findByRole("dialog", { name: "変更先Section" });
     fireEvent.click(within(picker).getByRole("button", { name: "Evening" }));
-    const confirmation = await screen.findByRole("dialog", { name: "RoutineごとのSection変更" });
-    expect(confirmation.textContent).toContain("Routine Taskごとにscopeを選択してください。未選択のまま確定することはできません。");
-    expect(confirmation.textContent).toContain("未選択");
-    expect((within(confirmation).getByRole("button", { name: "Section変更を確定" }) as HTMLButtonElement).disabled).toBe(true);
-    expect(mocks.bulkMoveEntriesToSectionScoped).not.toHaveBeenCalled();
-    expect(mocks.bulkMoveEntriesToSectionOccurrence).not.toHaveBeenCalled();
-    fireEvent.click(within(confirmation).getByRole("button", { name: "キャンセル" }));
-    expect(screen.queryByRole("dialog", { name: "RoutineごとのSection変更" })).toBeNull();
-    expect(screen.getByText("2件選択中")).toBeTruthy();
-    fireEvent.click(sectionButton);
-    fireEvent.click(within(await screen.findByRole("dialog", { name: "変更先Section" })).getByRole("button", { name: "Evening" }));
-    const scopedConfirmation = await screen.findByRole("dialog", { name: "RoutineごとのSection変更" });
-    fireEvent.click(within(scopedConfirmation).getByRole("button", { name: "すべてルーティンに反映" }));
-    const routineScopeGroup = within(scopedConfirmation).getByRole("group", { name: "Routine taskのscope" });
-    expect(within(routineScopeGroup).getByRole("button", { name: "ルーティンに反映" }).getAttribute("aria-pressed")).toBe("true");
-    fireEvent.click(within(routineScopeGroup).getByRole("button", { name: "今回だけ" }));
-    expect((within(scopedConfirmation).getByRole("button", { name: "Section変更を確定" }) as HTMLButtonElement).disabled).toBe(false);
-    fireEvent.click(within(scopedConfirmation).getByRole("button", { name: "Section変更を確定" }));
-    await waitFor(() => expect(mocks.bulkMoveEntriesToSectionScoped).toHaveBeenCalledTimes(1));
-    expect(mocks.bulkMoveEntriesToSectionScoped.mock.calls[0][0]).toMatchObject({
+    await waitFor(() => expect(mocks.bulkMoveEntriesToSectionOccurrence).toHaveBeenCalledTimes(1));
+    expect(mocks.bulkMoveEntriesToSectionOccurrence.mock.calls[0][0]).toMatchObject({
       taskchute_day_id: emptyDay.taskchute_day.id,
       entry_ids: [firstEntry.id, routineEntry.id],
       section_id: eveningId,
       expected_placement_revision: twoPlannedDay.placement_revision,
-      routine_scopes: [{ entry_id: routineEntry.id, scope: "occurrence" }],
     });
-    expect(mocks.bulkMoveEntriesToSectionOccurrence).not.toHaveBeenCalled();
+    expect(mocks.bulkMoveEntriesToSectionScoped).not.toHaveBeenCalled();
     expect(screen.getByText("2件選択中")).toBeTruthy();
   });
 
@@ -5405,7 +5419,7 @@ describe("Dogfood Day shell", () => {
     expect(screen.getByText("2件選択中")).toBeTruthy();
   });
 
-  it("requires per-Routine estimate scope selection and supports NULL plus fill-all", async () => {
+  it("changes Routine estimates for the displayed occurrence without a scope chooser", async () => {
     const routineEntry: EntryProjection = { ...secondEntry, task: { ...secondEntry.task, title: "Routine estimate task" }, routine: {
       routine_definition_id: "019c0000-0000-7000-8000-000000000050", routine_occurrence_id: "019c0000-0000-7000-8000-000000000051",
       end_logical_date: null, can_end: true, default_section_id: secondEntry.section_id,
@@ -5418,15 +5432,15 @@ describe("Dogfood Day shell", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: "「Routine estimate task」を選択" }));
     fireEvent.click(screen.getByRole("button", { name: "見積変更" }));
     const confirmation = await screen.findByRole("dialog", { name: "選択したTaskの見積変更" });
-    expect((within(confirmation).getByRole("button", { name: "見積変更を確定" }) as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(within(confirmation).getByRole("button", { name: "すべてルーティンに反映" }));
-    expect(within(within(confirmation).getByRole("group", { name: "Routine estimate taskの見積scope" }))
-      .getByRole("button", { name: "ルーティンに反映" }).getAttribute("aria-pressed")).toBe("true");
+    expect(confirmation.textContent).toContain("Routine Taskは表示中のOccurrenceだけ変更します。");
+    expect(within(confirmation).queryByRole("group", { name: "Routine estimate taskの見積scope" })).toBeNull();
+    const input = within(confirmation).getByRole("spinbutton", { name: "共通見積（分）" });
+    fireEvent.change(input, { target: { value: "30" } });
     fireEvent.click(within(confirmation).getByRole("button", { name: "見積変更を確定" }));
     await waitFor(() => expect(mocks.bulkSetEntriesEstimateScoped).toHaveBeenCalledTimes(1));
     expect(mocks.bulkSetEntriesEstimateScoped.mock.calls[0][0]).toMatchObject({
-      estimate_seconds: null,
-      routine_scopes: [{ entry_id: routineEntry.id, scope: "definition", expected_defaults_revision: 3 }],
+      estimate_seconds: 1800,
+      routine_scopes: [{ entry_id: routineEntry.id, scope: "occurrence" }],
     });
     expect(screen.getByText("2件選択中")).toBeTruthy();
   });

@@ -130,6 +130,7 @@ type OverflowMenuPosition = { left: number; top: number };
 type DragEdge = "before" | "after";
 type EntryDragState = {
   entryId: string;
+  entryIds: string[];
   sectionId: string | null;
   targetEntryId: string | null;
   edge: DragEdge | null;
@@ -138,7 +139,7 @@ type EntryDragState = {
   previewWidth?: number;
   previewTop?: number;
 };
-type MouseDragState = { entryId: string; sectionId: string | null; startX: number; startY: number; active: boolean };
+type MouseDragState = { entryId: string; entryIds: string[]; sectionId: string | null; startX: number; startY: number; active: boolean };
 type ColumnDragState = { sourceKey: DayColumnKey; targetKey: DayColumnKey | null; edge: DragEdge | null };
 type ColumnResizeState = {
   key: DayColumnKey | "task";
@@ -513,10 +514,51 @@ function sameEntryIdOrder(left: string[], right: string[]): boolean {
 function isRoutinePlacementEligible(
   projection: CurrentTaskChuteDayProjection | null,
   entry: EntryProjection | undefined,
+  currentDate?: string | null,
 ): boolean {
-  return Boolean(projection?.is_current && projection.establishment_state === "established"
+  const dayEligible = projection?.is_current
+    || Boolean(currentDate && projection?.taskchute_day.logical_date && projection.taskchute_day.logical_date > currentDate);
+  return Boolean(dayEligible && projection?.establishment_state === "established"
     && projection.taskchute_day.id && projection.planning_enabled && entry?.routine
     && entry.lifecycle_state === "planned");
+}
+
+function canUseD120PlacementDayForProjection(
+  projection: CurrentTaskChuteDayProjection | null,
+  currentDate?: string | null,
+): boolean {
+  if (!projection?.taskchute_day.id || !projection.planning_enabled || projection.establishment_state !== "established") return false;
+  return projection.is_current || Boolean(currentDate && projection.taskchute_day.logical_date > currentDate);
+}
+
+function buildDraggedBlockOrder(
+  entries: EntryProjection[],
+  selectedEntryIds: string[],
+  targetEntryId: string,
+  edge: DragEdge,
+): string[] | null {
+  const selected = entries.filter((entry) => selectedEntryIds.includes(entry.id));
+  const target = entries.find((entry) => entry.id === targetEntryId);
+  if (selected.length < 2 || !target || selected.some((entry) => entry.lifecycle_state !== "planned")
+    || selected.some((entry) => entry.id === target.id)) return null;
+  const cohort = selected[0];
+  if (!cohort || !selected.every((entry) => isSamePlannedStartCohort(entry, cohort))
+    || !isSamePlannedStartCohort(target, cohort)) return null;
+  const selectedSet = new Set(selected.map((entry) => entry.id));
+  const currentIds = entries.map((entry) => entry.id);
+  const remaining = currentIds.filter((entryId) => !selectedSet.has(entryId));
+  const targetIndex = remaining.indexOf(target.id);
+  if (targetIndex < 0) return null;
+  const selectedIndexes = selected.map((entry) => entries.indexOf(entry)).sort((left, right) => left - right);
+  const firstSelectedIndex = selectedIndexes[0];
+  const lastSelectedIndex = selectedIndexes.at(-1);
+  if (firstSelectedIndex === undefined || lastSelectedIndex === undefined) return null;
+  const targetIndexInCanonical = entries.indexOf(target);
+  const crossed = entries.slice(Math.min(targetIndexInCanonical, firstSelectedIndex),
+    Math.max(targetIndexInCanonical, lastSelectedIndex) + 1);
+  if (!crossed.every((entry) => isSamePlannedStartCohort(entry, cohort))) return null;
+  remaining.splice(targetIndex + (edge === "after" ? 1 : 0), 0, ...selected.map((entry) => entry.id));
+  return sameEntryIdOrder(remaining, currentIds) ? null : remaining;
 }
 
 function sectionEntriesForProjection(projection: CurrentTaskChuteDayProjection, sectionId: string | null): EntryProjection[] {
@@ -2354,13 +2396,16 @@ export function App() {
 
   useEffect(() => {
     if (!entryDrag || !day) return;
-    const draggedEntry = [...day.unsectioned_entries, ...day.sections.flatMap((section) => section.entries)]
-      .find((entry) => entry.id === entryDrag.entryId);
-    if (!draggedEntry || draggedEntry.lifecycle_state !== "planned" || draggedEntry.section_id !== entryDrag.sectionId) {
+    const entries = projectionEntries(applyPendingSectionMoveOverlays(day, pendingSectionMoveIntentsRef.current));
+    const draggedEntries = entryDrag.entryIds.map((id) => entries.find((entry) => entry.id === id));
+    if (draggedEntries.some((entry) => !entry || entry.lifecycle_state !== "planned")
+      || !canUseD120PlacementDayForProjection(day, currentLogicalDate)
+      || (draggedEntries.length > 0 && draggedEntries.some((entry) => entry?.routine !== null
+        && !isRoutinePlacementEligible(day, entry, currentLogicalDate)))) {
       mouseDragRef.current = null;
       setEntryDrag(null);
     }
-  }, [day, entryDrag?.entryId, entryDrag?.sectionId]);
+  }, [day, entryDrag?.entryId, entryDrag?.entryIds, entryDrag?.sectionId, currentLogicalDate]);
 
   useEffect(() => {
     const clearMouseDrag = () => {
@@ -3115,6 +3160,36 @@ export function App() {
     }
   }
 
+  function canUseD120PlacementDay(projection: CurrentTaskChuteDayProjection | null): boolean {
+    return canUseD120PlacementDayForProjection(projection, currentLogicalDate);
+  }
+
+  function bulkMoveEntriesToSection(
+    entryIds: string[],
+    sectionId: string | null,
+    placement?: MoveEntryPlacementIntent,
+  ): void {
+    const projection = dayRef.current ?? day;
+    if (!canUseD120PlacementDay(projection) || !projection?.taskchute_day.id || mutationLocked
+      || isMutationScopeBusy(placementMutationScope(projection.taskchute_day.id)) || entryIds.length < 2) return;
+    const entries = projectionEntries(projection);
+    if (!entryIds.every((entryId) => {
+      const entry = entries.find((candidate) => candidate.id === entryId);
+      return entry?.lifecycle_state === "planned"
+        && (entry.routine === null || isRoutinePlacementEligible(projection, entry, currentLogicalDate));
+    })) return;
+    const operation: BulkMoveEntriesToSectionOccurrenceRequest = {
+      operation_id: uuidv7(),
+      taskchute_day_id: projection.taskchute_day.id,
+      entry_ids: entryIds,
+      section_id: sectionId,
+      expected_placement_revision: projection.placement_revision,
+      ...(placement ? { placement } : {}),
+    };
+    setBulkSectionOccurrenceOperation(operation);
+    void executeBulkSectionOccurrenceChange(operation);
+  }
+
   async function executeBulkSectionScopedChange(operation: BulkMoveEntriesToSectionScopedRequest) {
     const mutationToken = beginMutationScope(placementMutationScope(operation.taskchute_day_id), "RoutineごとのBulk Section変更");
     if (!mutationToken) return;
@@ -3363,8 +3438,7 @@ export function App() {
 
   function openBulkSectionPicker() {
     if (!day || !day.planning_enabled || mutationLocked || isMutationScopeBusy(placementMutationScope()) || selectedBulkEntries.length === 0
-      || selectedBulkEntries.length !== selectedEntryIds.length
-      || (selectedBulkEntries.some((entry) => entry.routine !== null) && !day.is_current)) return;
+      || selectedBulkEntries.length !== selectedEntryIds.length) return;
     setError(null);
     setBulkSectionPickerOpen(true);
   }
@@ -3374,21 +3448,16 @@ export function App() {
       || selectedBulkEntries.length !== selectedEntryIds.length) return;
     const routineCount = selectedBulkEntries.filter((entry) => entry.routine !== null).length;
     if (routineCount > 0) {
-      if (!day.is_current) return;
       setBulkSectionPickerOpen(false);
-      setBulkSectionConfirmation({
-        entryIds: selectedBulkEntries.map((entry) => entry.id),
-        sectionId,
-        ordinaryCount: selectedBulkEntries.length - routineCount,
-        routineCount,
-        routineScopes: selectedBulkEntries.filter((entry) => entry.routine !== null).map((entry) => ({
-          entryId: entry.id,
-          title: entry.task.title,
-          routineDefinitionId: entry.routine!.routine_definition_id,
-          expectedDefaultsRevision: entry.routine!.defaults_revision,
-          scope: null,
-        })),
-      });
+      const operation: BulkMoveEntriesToSectionOccurrenceRequest = {
+        operation_id: uuidv7(),
+        taskchute_day_id: day.taskchute_day.id!,
+        entry_ids: selectedBulkEntries.map((entry) => entry.id),
+        section_id: sectionId,
+        expected_placement_revision: day.placement_revision,
+      };
+      setBulkSectionOccurrenceOperation(operation);
+      void executeBulkSectionOccurrenceChange(operation);
       return;
     }
     const operation: BulkMoveEntriesToSectionRequest = {
@@ -3446,8 +3515,7 @@ export function App() {
 
   function openBulkEstimateConfirmation() {
     if (!day || !day.planning_enabled || mutationLocked || isMutationScopeBusy(bulkEntryMutationScope(selectedBulkEntries.map((entry) => entry.id))) || selectedBulkEntries.length === 0
-      || selectedBulkEntries.length !== selectedEntryIds.length
-      || (selectedBulkEntries.some((entry) => entry.routine !== null) && !day.is_current)) return;
+      || selectedBulkEntries.length !== selectedEntryIds.length) return;
     setError(null);
     setBulkEstimateConfirmation({
       entryIds: selectedBulkEntries.map((entry) => entry.id),
@@ -3459,7 +3527,7 @@ export function App() {
         title: entry.task.title,
         routineDefinitionId: entry.routine!.routine_definition_id,
         expectedDefaultsRevision: entry.routine!.defaults_revision,
-        scope: null,
+        scope: "occurrence",
       })),
     });
   }
@@ -3798,42 +3866,58 @@ export function App() {
 
   function dragOrder(sectionId: string | null, targetEntryId: string, edge: DragEdge): string[] | null {
     const projection = dayRef.current ?? day;
-    if (!entryDrag || entryDrag.sectionId !== sectionId || !projection?.taskchute_day.id || !projection.planning_enabled || mutationLocked) return null;
+    if (!entryDrag || !projection?.taskchute_day.id || !projection.planning_enabled || mutationLocked) return null;
     if (projection.is_current
       ? hasReorderPlacementBarrier(sectionId, projection.taskchute_day.id)
       : hasRetainedMutationScope(placementMutationScope(projection.taskchute_day.id))
         || hasQueuedMutationScope(placementMutationScope(projection.taskchute_day.id))) return null;
     const entries = effectiveSectionEntries(sectionId, projection);
-    return entries ? buildDraggedEntryOrder(entries, sectionId, entryDrag.entryId, targetEntryId, edge) : null;
+    const sourceEntries = draggedEntries(entryDrag);
+    if (entryDrag.entryIds.length > 1) {
+      return sourceEntries.length === entryDrag.entryIds.length
+        && sourceEntries.every((entry) => entry.section_id === sectionId)
+        ? buildDraggedBlockOrder(entries, entryDrag.entryIds, targetEntryId, edge) : null;
+    }
+    return entryDrag.sectionId === sectionId && entries
+      ? buildDraggedEntryOrder(entries, sectionId, entryDrag.entryId, targetEntryId, edge) : null;
   }
 
   function dragPlacement(sectionId: string | null, targetEntryId: string): MoveEntryPlacementIntent | null {
     const projection = dayRef.current ?? day;
-    if (!entryDrag || !projection?.taskchute_day.id || !projection.planning_enabled || !projection.is_current || mutationLocked) return null;
+    if (!entryDrag || !projection || !canUseD120PlacementDay(projection) || projection.taskchute_day.id === null || mutationLocked) return null;
     if (hasCrossSectionMoveBarrier(projection.taskchute_day.id)) return null;
-    const source = draggedEntry(entryDrag);
     const target = effectiveSectionEntries(sectionId, projection).find((entry) => entry.id === targetEntryId);
-    if (!source || !target || source.id === target.id || source.lifecycle_state !== "planned"
-      || !isRoutinePlacementEligible(projection, source) && source.routine !== null
-      || target.lifecycle_state !== "planned" || target.section_id !== sectionId) return null;
-    if (source.routine === null && source.section_id !== entryDrag.sectionId) return null;
+    const sources = draggedEntries(entryDrag);
+    if (!target || target.lifecycle_state !== "planned" || target.section_id !== sectionId
+      || sources.length !== entryDrag.entryIds.length || sources.some((source) => source.lifecycle_state !== "planned"
+        || (source.routine !== null && !isRoutinePlacementEligible(projection, source, currentLogicalDate)))
+      || sources.some((source) => source.id === target.id)) return null;
+    if (entryDrag.entryIds.length === 1 && sources[0]?.routine === null && sources[0].section_id !== entryDrag.sectionId) return null;
     return { kind: "relative_to_entry", anchor_entry_id: target.id, edge: "before" };
   }
 
-  function draggedEntry(drag: Pick<EntryDragState, "entryId" | "sectionId"> | null = entryDrag): EntryProjection | undefined {
+  function draggedEntries(
+    drag: Pick<EntryDragState, "entryId" | "entryIds" | "sectionId"> | null = entryDrag,
+  ): EntryProjection[] {
     const projection = dayRef.current ?? day;
-    if (!drag || !projection) return undefined;
-    const entries = effectiveSectionEntries(drag.sectionId, projection);
-    return entries?.find((entry) => entry.id === drag.entryId);
+    if (!drag || !projection) return [];
+    const ids = drag.entryIds.length > 0 ? drag.entryIds : [drag.entryId];
+    const entries = projectionEntries(applyPendingSectionMoveOverlays(projection, pendingSectionMoveIntentsRef.current));
+    return ids.map((id) => entries.find((entry) => entry.id === id)).filter((entry): entry is EntryProjection => entry !== undefined);
   }
 
-  function canDropOnSection(sectionId: string | null, drag: Pick<EntryDragState, "entryId" | "sectionId"> | null = entryDrag): boolean {
-    const entry = draggedEntry(drag);
+  function draggedEntry(drag: Pick<EntryDragState, "entryId" | "entryIds" | "sectionId"> | null = entryDrag): EntryProjection | undefined {
+    return draggedEntries(drag)[0];
+  }
+
+  function canDropOnSection(sectionId: string | null, drag: Pick<EntryDragState, "entryId" | "entryIds" | "sectionId"> | null = entryDrag): boolean {
+    const entries = draggedEntries(drag);
     const projection = dayRef.current ?? day;
     const targetStart = sectionId === null ? null : projection?.sections.find((section) => section.id === sectionId)?.logical_start_minute ?? null;
-    if (!drag || !entry || !projection?.taskchute_day.id || !projection.planning_enabled || mutationLocked
-      || entry.lifecycle_state !== "planned" || (entry.routine !== null && !isRoutinePlacementEligible(projection, entry))
-      || (entry.section_id === sectionId && entry.planned_start_minute === targetStart)) return false;
+    if (!drag || !projection || entries.length !== drag.entryIds.length || !canUseD120PlacementDay(projection) || projection.taskchute_day.id === null || mutationLocked
+      || entries.some((entry) => entry.lifecycle_state !== "planned"
+        || (entry.routine !== null && !isRoutinePlacementEligible(projection, entry, currentLogicalDate)))
+      || entries.every((entry) => entry.section_id === sectionId && entry.planned_start_minute === targetStart)) return false;
     const placementBlocked = projection.is_current
       ? hasCrossSectionMoveBarrier(projection.taskchute_day.id)
       : hasRetainedMutationScope(placementMutationScope(projection.taskchute_day.id)) || hasQueuedMutationScope(placementMutationScope(projection.taskchute_day.id));
@@ -3853,7 +3937,7 @@ export function App() {
       const sourceElement = Array.from(document.querySelectorAll<HTMLElement>("[data-entry-id]"))
         .find((element) => element.dataset.entryId === current.entryId);
       const sourceBounds = sourceElement?.getBoundingClientRect();
-      setEntryDrag({ entryId: current.entryId, sectionId: current.sectionId, targetEntryId: null, edge: null, targetSectionKey: null,
+      setEntryDrag({ entryId: current.entryId, entryIds: current.entryIds, sectionId: current.sectionId, targetEntryId: null, edge: null, targetSectionKey: null,
         previewLeft: sourceBounds?.left, previewWidth: sourceBounds?.width,
         previewTop: Number.isFinite(event.clientY) ? event.clientY - 22 : sourceBounds?.top ?? 0 });
     }
@@ -3862,13 +3946,21 @@ export function App() {
 
   function startEntryMouseDrag(event: ReactMouseEvent<HTMLElement>, sectionId: string | null, entry: EntryProjection) {
     const projection = dayRef.current ?? day;
+    if (!projection) return;
     const reorderBlocked = isReorderBlockedForProjection(sectionId, projection);
-    const crossSectionMoveAvailable = projection?.is_current === true && projection.taskchute_day.id !== null
+    const crossSectionMoveAvailable = canUseD120PlacementDay(projection) && projection.taskchute_day.id !== null
       && !hasCrossSectionMoveBarrier(projection.taskchute_day.id);
-    if (event.button !== 0 || isInteractiveDragTarget(event.target) || !projection?.taskchute_day.id || !projection.planning_enabled
+    if (event.button !== 0 || !projection || isInteractiveDragTarget(event.target) || !canUseD120PlacementDay(projection)
       || mutationLocked || (!crossSectionMoveAvailable && reorderBlocked) || entry.lifecycle_state !== "planned"
-      || (entry.routine !== null && !isRoutinePlacementEligible(projection, entry))) return;
-    mouseDragRef.current = { entryId: entry.id, sectionId, startX: event.clientX, startY: event.clientY, active: false };
+      || (entry.routine !== null && !isRoutinePlacementEligible(projection, entry, currentLogicalDate))) return;
+    const selected = projectionEntries(projection).filter((candidate) => selectedEntryIds.includes(candidate.id));
+    const multiSelected = selectedEntryIds.includes(entry.id) && selected.length > 1
+      && selected.length === selectedEntryIds.length
+      && selected.every((candidate) => candidate.lifecycle_state === "planned"
+        && (candidate.routine === null || isRoutinePlacementEligible(projection, candidate, currentLogicalDate)));
+    if (!selectedEntryIds.includes(entry.id) && selectedEntryIds.length > 1) setSelectedEntryIds([]);
+    const entryIds = multiSelected ? selected.map((candidate) => candidate.id) : [entry.id];
+    mouseDragRef.current = { entryId: entry.id, entryIds, sectionId, startX: event.clientX, startY: event.clientY, active: false };
   }
 
   function updateEntryMouseTarget(event: ReactMouseEvent<HTMLElement>, sectionId: string | null, targetEntryId: string) {
@@ -3879,8 +3971,11 @@ export function App() {
     const edge: DragEdge = event.clientY < bounds.top + bounds.height / 2 ? "before" : "after";
     const projection = dayRef.current ?? day;
     const entries = projection ? effectiveSectionEntries(drag.sectionId, projection) : [];
-    const order = drag.sectionId === sectionId && entries
-      ? buildDraggedEntryOrder(entries, drag.sectionId, drag.entryId, targetEntryId, edge)
+    const multiRoutine = drag.entryIds.length > 1 && draggedEntries(drag).some((entry) => entry.routine !== null);
+    const order = !multiRoutine && drag.sectionId === sectionId && entries
+      ? drag.entryIds.length > 1
+        ? buildDraggedBlockOrder(entries, drag.entryIds, targetEntryId, edge)
+        : buildDraggedEntryOrder(entries, drag.sectionId, drag.entryId, targetEntryId, edge)
       : null;
     const placement = order ? null : dragPlacement(sectionId, targetEntryId);
     setEntryDrag((current) => current ? { ...current, targetEntryId: order || placement ? targetEntryId : null,
@@ -3904,15 +3999,21 @@ export function App() {
     const projection = dayRef.current ?? day;
     const entries = projection ? effectiveSectionEntries(drag.sectionId, projection) : [];
     const placementBlocked = isReorderBlockedForProjection(drag.sectionId, projection);
-    const order = drag.sectionId === sectionId && entries.length > 0 && projection?.taskchute_day.id && projection.planning_enabled && !mutationLocked
+    const multiRoutine = drag.entryIds.length > 1 && draggedEntries(drag).some((entry) => entry.routine !== null);
+    const order = !multiRoutine && drag.sectionId === sectionId && entries.length > 0 && canUseD120PlacementDay(projection) && !mutationLocked
       && !placementBlocked
-      ? buildDraggedEntryOrder(entries, drag.sectionId, drag.entryId, targetEntryId, edge)
+      ? drag.entryIds.length > 1
+        ? buildDraggedBlockOrder(entries, drag.entryIds, targetEntryId, edge)
+        : buildDraggedEntryOrder(entries, drag.sectionId, drag.entryId, targetEntryId, edge)
       : null;
     const placement = order ? null : dragPlacement(sectionId, targetEntryId);
     mouseDragRef.current = null;
     setEntryDrag(null);
     const dragged = draggedEntry(drag);
-    if (dragged?.routine) void moveRoutineEntryToPlacement(dragged, sectionId, placement ? { ...placement, edge } : {
+    if (drag.entryIds.length > 1) {
+      if (order && !multiRoutine) void reorderSectionEntries(drag.sectionId, order, drag.entryId);
+      else if (placement) bulkMoveEntriesToSection(drag.entryIds, sectionId, { ...placement, edge });
+    } else if (dragged?.routine) void moveRoutineEntryToPlacement(dragged, sectionId, placement ? { ...placement, edge } : {
       kind: "relative_to_entry", anchor_entry_id: targetEntryId, edge,
     }, { kind: "entry", id: dragged.id });
     else if (order) void reorderSectionEntries(drag.sectionId, order, drag.entryId);
@@ -3921,29 +4022,41 @@ export function App() {
 
   function startEntryDrag(event: ReactDragEvent<HTMLElement>, sectionId: string | null, entry: EntryProjection) {
     const projection = dayRef.current ?? day;
-    const reorderBlocked = isReorderBlockedForProjection(sectionId, projection);
-    const crossSectionMoveAvailable = projection?.is_current === true && projection.taskchute_day.id !== null
-      && !hasCrossSectionMoveBarrier(projection.taskchute_day.id);
-    if (isInteractiveDragTarget(event.target) || !projection?.taskchute_day.id || !projection.planning_enabled || mutationLocked
-      || (!crossSectionMoveAvailable && reorderBlocked) || entry.lifecycle_state !== "planned"
-      || (entry.routine !== null && !isRoutinePlacementEligible(projection, entry))) {
+    if (!projection) {
       event.preventDefault();
       return;
     }
+    const reorderBlocked = isReorderBlockedForProjection(sectionId, projection);
+    const crossSectionMoveAvailable = canUseD120PlacementDay(projection) && projection?.taskchute_day.id !== null
+      && !hasCrossSectionMoveBarrier(projection.taskchute_day.id);
+    if (isInteractiveDragTarget(event.target) || !projection || !canUseD120PlacementDay(projection) || mutationLocked
+      || (!crossSectionMoveAvailable && reorderBlocked) || entry.lifecycle_state !== "planned"
+      || (entry.routine !== null && !isRoutinePlacementEligible(projection, entry, currentLogicalDate))) {
+      event.preventDefault();
+      return;
+    }
+    const selected = projectionEntries(projection).filter((candidate) => selectedEntryIds.includes(candidate.id));
+    const multiSelected = selectedEntryIds.includes(entry.id) && selected.length > 1
+      && selected.length === selectedEntryIds.length
+      && selected.every((candidate) => candidate.lifecycle_state === "planned"
+        && (candidate.routine === null || isRoutinePlacementEligible(projection, candidate, currentLogicalDate)));
+    if (!selectedEntryIds.includes(entry.id) && selectedEntryIds.length > 1) setSelectedEntryIds([]);
+    const entryIds = multiSelected ? selected.map((candidate) => candidate.id) : [entry.id];
     mouseDragRef.current = null;
     dragPointerYRef.current = event.clientY;
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData("text/plain", entry.id);
     const sourceBounds = event.currentTarget.getBoundingClientRect();
-    setEntryDrag({ entryId: entry.id, sectionId, targetEntryId: null, edge: null, targetSectionKey: null,
+    setEntryDrag({ entryId: entry.id, entryIds, sectionId, targetEntryId: null, edge: null, targetSectionKey: null,
       previewLeft: sourceBounds.left, previewWidth: sourceBounds.width,
       previewTop: Number.isFinite(event.clientY) ? event.clientY - 22 : sourceBounds.top });
   }
 
   function updateEntryDropTarget(event: ReactDragEvent<HTMLElement>, sectionId: string | null, targetEntryId: string) {
     const edge = dragEdge(event);
-    const order = dragOrder(sectionId, targetEntryId, edge);
-    const placement = order ? null : dragPlacement(sectionId, targetEntryId);
+    const multiRoutine = (entryDrag?.entryIds.length ?? 0) > 1 && draggedEntries(entryDrag).some((entry) => entry.routine !== null);
+    const order = multiRoutine ? null : dragOrder(sectionId, targetEntryId, edge);
+    const placement = dragPlacement(sectionId, targetEntryId);
     if (!order && !placement) {
       if (entryDrag?.targetEntryId !== null || entryDrag?.targetSectionKey !== null) {
         setEntryDrag((current) => current ? { ...current, targetEntryId: null, edge: null, targetSectionKey: null } : null);
@@ -3957,13 +4070,20 @@ export function App() {
 
   function dropEntry(event: ReactDragEvent<HTMLElement>, sectionId: string | null, targetEntryId: string) {
     const edge = dragEdge(event);
-    const ids = dragOrder(sectionId, targetEntryId, edge);
-    const placement = ids ? null : dragPlacement(sectionId, targetEntryId);
-    const draggedEntryId = entryDrag?.entryId;
+    const drag = entryDrag;
+    const multiRoutine = (drag?.entryIds.length ?? 0) > 1 && draggedEntries(drag).some((entry) => entry.routine !== null);
+    const ids = multiRoutine ? null : dragOrder(sectionId, targetEntryId, edge);
+    const placement = dragPlacement(sectionId, targetEntryId);
+    const draggedEntryId = drag?.entryId;
     setEntryDrag(null);
     if ((!ids && !placement) || !draggedEntryId) return;
     event.preventDefault();
-    const dragged = draggedEntry({ entryId: draggedEntryId, sectionId: entryDrag?.sectionId ?? sectionId });
+    if (drag?.entryIds.length && drag.entryIds.length > 1) {
+      if (ids && !multiRoutine) void reorderSectionEntries(drag.sectionId, ids, draggedEntryId);
+      else if (placement) void bulkMoveEntriesToSection(drag.entryIds, sectionId, { ...placement, edge });
+      return;
+    }
+    const dragged = draggedEntry({ entryId: draggedEntryId, entryIds: [draggedEntryId], sectionId: drag?.sectionId ?? sectionId });
     if (dragged?.routine) void moveRoutineEntryToPlacement(dragged, sectionId, placement ? { ...placement!, edge } : {
       kind: "relative_to_entry", anchor_entry_id: targetEntryId, edge,
     }, { kind: "entry", id: dragged.id });
@@ -3994,8 +4114,9 @@ export function App() {
     const valid = canDropOnSection(sectionId, drag);
     mouseDragRef.current = null;
     setEntryDrag(null);
-    const dragged = draggedEntry(drag);
-    if (valid && dragged?.routine) void moveRoutineEntryToPlacement(dragged, sectionId, undefined, { kind: "entry", id: dragged.id });
+    const dragged = draggedEntries(drag);
+    if (valid && drag.entryIds.length > 1) void bulkMoveEntriesToSection(drag.entryIds, sectionId);
+    else if (valid && dragged[0]?.routine) void moveRoutineEntryToPlacement(dragged[0], sectionId, undefined, { kind: "entry", id: dragged[0].id });
     else if (valid) void moveEntryToSection(drag.entryId, sectionId);
   }
 
@@ -4017,11 +4138,13 @@ export function App() {
       return;
     }
     event.preventDefault();
-    const draggedEntryId = entryDrag?.entryId;
+    const drag = entryDrag;
+    const draggedEntryId = drag?.entryId;
     mouseDragRef.current = null;
     setEntryDrag(null);
-    const dragged = draggedEntry({ entryId: draggedEntryId ?? "", sectionId: entryDrag?.sectionId ?? null });
-    if (draggedEntryId && dragged?.routine) void moveRoutineEntryToPlacement(dragged, sectionId, undefined, { kind: "entry", id: dragged.id });
+    const dragged = drag ? draggedEntry(drag) : undefined;
+    if (draggedEntryId && drag?.entryIds.length && drag.entryIds.length > 1) void bulkMoveEntriesToSection(drag.entryIds, sectionId);
+    else if (draggedEntryId && dragged?.routine) void moveRoutineEntryToPlacement(dragged, sectionId, undefined, { kind: "entry", id: dragged.id });
     else if (draggedEntryId) void moveEntryToSection(draggedEntryId, sectionId);
   }
 
@@ -4977,7 +5100,7 @@ export function App() {
     const projection = movedProjection ? applyPendingReorderOverlays(movedProjection, pendingReorderOverlaysRef.current) : null;
     const entry = projection ? entryForId(projection, entryId) : null;
     if (!entry || !projection?.taskchute_day.id || !projection.planning_enabled || mutationLocked
-      || entry.lifecycle_state !== "planned" || entry.routine !== null || (placement && !projection.is_current)) return;
+      || entry.lifecycle_state !== "planned" || entry.routine !== null || (placement && !canUseD120PlacementDayForProjection(projection, currentLogicalDate))) return;
     const targetSection = sectionId === null ? null : projection.sections.find((section) => section.id === sectionId);
     if (sectionId !== null && !targetSection) return;
     const targetPlannedStart = placement
@@ -5070,7 +5193,7 @@ export function App() {
     restoreFocus?: FocusTarget,
   ): void {
     const projection = dayRef.current ?? day;
-    if (!isRoutinePlacementEligible(projection, entry) || !projection?.taskchute_day.id || mutationLocked) return;
+    if (!isRoutinePlacementEligible(projection, entry, currentLogicalDate) || !projection?.taskchute_day.id || mutationLocked) return;
     if (!entry.routine) return;
     if (isMutationScopeBusy(routineMutationScope(entry.id, entry.routine?.routine_definition_id))) return;
     const anchor = placement ? entryForId(projection, placement.anchor_entry_id) : null;
@@ -5451,6 +5574,20 @@ export function App() {
     startRoutineSectionPlan(entry, routineCandidate, action);
   }
 
+  useEffect(() => {
+    if (!routineCandidate || !day) return;
+    const entry = entryForId(day, routineCandidate.entryId);
+    if (!entry?.routine) {
+      setRoutineCandidate(null);
+      return;
+    }
+    // Day-side Routine edits are always occurrence-only. Definition-scoped edits remain
+    // available from the Routine surface, but the Day surface has no scope chooser.
+    void commitRoutineCandidate(entry, "occurrence");
+    // The mutation scope prevents a second dispatch while the first request is in flight.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routineCandidate, day]);
+
   async function resetRoutineUnit(entry: EntryProjection, unit: "estimate" | "section-plan") {
     if (!day?.taskchute_day.id || !entry.routine || mutationLocked
       || isMutationScopeBusy(routineMutationScope(entry.id, entry.routine.routine_definition_id))) return;
@@ -5736,9 +5873,8 @@ export function App() {
   );
   const allEntries = projectionEntries(effectiveDay);
   const eligibleBulkEntries = allEntries.filter((entry) => isBulkSelectableProjectionEntry(currentDay, entry));
-  const selectedBulkEntries = selectedEntryIds
-    .map((id) => allEntries.find((entry) => entry.id === id))
-    .filter((entry): entry is EntryProjection => entry !== undefined && isBulkSelectableProjectionEntry(currentDay, entry));
+  const selectedBulkEntries = allEntries
+    .filter((entry) => selectedEntryIds.includes(entry.id) && isBulkSelectableProjectionEntry(currentDay, entry));
   const allEligibleBulkSelected = eligibleBulkEntries.length > 0 && selectedBulkEntries.length === eligibleBulkEntries.length;
   const bulkSelectionIndeterminate = selectedBulkEntries.length > 0 && !allEligibleBulkSelected;
   const activeEntry = currentDay.active_execution ? allEntries.find((entry) => entry.id === currentDay.active_execution?.entry_id) : null;
@@ -6135,8 +6271,8 @@ export function App() {
       const entryId = activeElement?.dataset.entryId;
       if (!entryId) return;
       const source = allEntries.find((entry) => entry.id === entryId);
-      if (!source || source.lifecycle_state !== "planned" || !currentDay.is_current
-        || (source.routine !== null && !isRoutinePlacementEligible(currentDay, source))) return;
+      if (!source || source.lifecycle_state !== "planned" || !canUseD120PlacementDayForProjection(currentDay, currentLogicalDate)
+        || (source.routine !== null && !isRoutinePlacementEligible(currentDay, source, currentLogicalDate))) return;
       // Every configured real Section is a keyboard destination, even when it
       // currently has no planned Entry. Sectionなし remains conditional on an
       // actual effective entry so a draft-only group is never synthesized as a
@@ -6148,6 +6284,44 @@ export function App() {
         ? effectiveSectionEntries(null, currentDay)
         : effectiveSectionEntries(sourceSectionId, currentDay);
       const delta = event.key === "ArrowUp" ? -1 : 1;
+
+      const selected = projectionEntries(effectiveDay)
+        .filter((entry) => selectedEntryIds.includes(entry.id));
+      const movingBlock = selectedEntryIds.includes(entryId) && selected.length > 1
+        && selected.length === selectedEntryIds.length
+        && selected.every((entry) => entry.lifecycle_state === "planned"
+          && (entry.routine === null || isRoutinePlacementEligible(currentDay, entry, currentLogicalDate)));
+      if (movingBlock) {
+        const selectedIndexes = selected.map((entry) => entries.indexOf(entry)).filter((index) => index >= 0).sort((a, b) => a - b);
+        const sameSection = selectedIndexes.length === selected.length
+          && selected.every((entry) => entry.section_id === sourceSectionId);
+        if (sameSection) {
+          const anchorIndex = delta < 0 ? (selectedIndexes[0] ?? 0) - 1 : (selectedIndexes.at(-1) ?? -1) + 1;
+          const anchor = entries[anchorIndex];
+          if (anchor?.lifecycle_state === "planned") {
+            event.preventDefault();
+            const edge: DragEdge = delta > 0 ? "after" : "before";
+            const placement: MoveEntryPlacementIntent = { kind: "relative_to_entry", anchor_entry_id: anchor.id, edge };
+            const order = buildDraggedBlockOrder(entries, selected.map((entry) => entry.id), anchor.id, edge);
+            if (selected.some((entry) => entry.routine !== null)) void bulkMoveEntriesToSection(selected.map((entry) => entry.id), sourceSectionId, placement);
+            else if (order) void reorderSectionEntries(sourceSectionId, order, source.id, { allowContinuousPlacement: true });
+            return;
+          }
+        }
+        const targetGroup = movementGroups[sourceGroupIndex + delta];
+        if (!targetGroup || sourceGroupIndex < 0) return;
+        const targetEntries = targetGroup.entries.filter((entry) => entry.lifecycle_state === "planned");
+        const target = delta > 0 ? targetEntries[0] : targetEntries.at(-1);
+        event.preventDefault();
+        if (target) {
+          void bulkMoveEntriesToSection(selected.map((entry) => entry.id), targetGroup.id,
+            { kind: "relative_to_entry", anchor_entry_id: target.id, edge: delta > 0 ? "before" : "after" });
+        } else {
+          void bulkMoveEntriesToSection(selected.map((entry) => entry.id), targetGroup.id);
+        }
+        return;
+      }
+
       if (canMoveEntry(entries, entryId, delta)) {
         event.preventDefault();
         if (source.routine) {
@@ -6983,32 +7157,6 @@ export function App() {
         );
       })()}
 
-      {routineCandidate && (() => {
-        const entry = allEntries.find((candidate) => candidate.id === routineCandidate.entryId);
-        if (!entry) return null;
-        const value = routineCandidate.unit === "estimate"
-          ? formatEstimate(routineCandidate.estimateSeconds)
-          : routineCandidate.unit === "mode"
-            ? routineCandidate.modeId === null ? "Modeなし"
-              : modeBoard?.modes.find((mode) => mode.id === routineCandidate.modeId)?.title ?? "Mode"
-            : routineCandidate.sectionId === null ? "Sectionなし / —"
-              : `${currentDay.sections.find((section) => section.id === routineCandidate.sectionId)?.title ?? "Section"} / ${formatLogicalMinute(routineCandidate.plannedStartMinute)}`;
-        const candidateLabel = routineCandidate.unit === "estimate" ? "見積"
-          : routineCandidate.unit === "mode" ? "Mode" : "Section・開始予定";
-        return (
-          <Modal title="Routine設定の反映先" titleId="routine-scope-choice-title" className="routine-scope-choice"
-            onClose={cancelRoutineCandidate}>
-            <p>{entry.task.title} · {value}</p>
-            <div role="group" aria-label={`${entry.task.title}の${candidateLabel}反映先`} className="bulk-confirmation-actions">
-              <span>{value}</span>
-              <button type="button" disabled={mutationLocked || isMutationScopeBusy(routineMutationScope(entry.id, entry.routine?.routine_definition_id))} onClick={() => void commitRoutineCandidate(entry, "occurrence")}>今回だけ</button>
-              <button type="button" disabled={mutationLocked || isMutationScopeBusy(routineMutationScope(entry.id, entry.routine?.routine_definition_id))} onClick={() => void commitRoutineCandidate(entry, "definition")}>ルーティンに反映</button>
-               <button type="button" className="secondary" onClick={cancelRoutineCandidate}>キャンセル</button>
-            </div>
-          </Modal>
-        );
-      })()}
-
       <div className="day-toolbar" aria-label="Day controls" data-day-fixed-region="toolbar">
           <button type="button" className="secondary"
           disabled={mutationLocked || isMutationScopeBusy(placementMutationScope()) || !day.planning_enabled || day.section_configuration_required}
@@ -7020,12 +7168,12 @@ export function App() {
               title="選択したTaskの日付を変更" onClick={() => openBulkDateMove()}>日付変更</button>
             {day.planning_enabled && <button ref={bulkEstimateTriggerRef} type="button" className="secondary"
               disabled={mutationLocked || isMutationScopeBusy(bulkEntryMutationScope(selectedBulkEntries.map((entry) => entry.id))) || selectedBulkEntries.length !== selectedEntryIds.length
-                || (selectedBulkEntries.some((entry) => entry.routine !== null) && !day.is_current)}
-              title={selectedBulkEntries.some((entry) => entry.routine !== null) && !day.is_current
-                ? "Routine Taskを含む見積変更は今日だけ実行できます" : "選択したTaskの見積を変更"}
+                }
+              title={selectedBulkEntries.some((entry) => entry.routine !== null)
+                ? "Routine Taskは表示中のOccurrenceだけ変更します" : "選択したTaskの見積を変更"}
               onClick={openBulkEstimateConfirmation}>見積変更</button>}
             {day.planning_enabled && <div className="bulk-section-menu">
-              <button ref={bulkSectionTriggerRef} type="button" className="secondary" disabled={mutationLocked || isMutationScopeBusy(placementMutationScope()) || selectedBulkEntries.length !== selectedEntryIds.length || (selectedBulkEntries.some((entry) => entry.routine !== null) && !day.is_current)}
+              <button ref={bulkSectionTriggerRef} type="button" className="secondary" disabled={mutationLocked || isMutationScopeBusy(placementMutationScope()) || selectedBulkEntries.length !== selectedEntryIds.length}
                 aria-label="Section変更" aria-expanded={bulkSectionPickerOpen} aria-controls="bulk-section-picker"
                 aria-describedby={selectedBulkEntries.some((entry) => entry.routine !== null) ? "bulk-section-routine-hint" : undefined}
                 title={selectedBulkEntries.some((entry) => entry.routine !== null)
@@ -7038,7 +7186,7 @@ export function App() {
               {bulkSectionPickerOpen && (
                 <Modal id="bulk-section-picker" title="変更先Section"
                   titleId="bulk-section-picker-title" className="bulk-section-picker" onClose={() => closeBulkSectionPicker(true)}>
-                  <p className="bulk-section-picker-title">変更先Section{selectedBulkEntries.some((entry) => entry.routine !== null) ? "（Routineは今回だけ）" : ""}</p>
+                  <p className="bulk-section-picker-title">変更先Section{selectedBulkEntries.some((entry) => entry.routine !== null) ? "（Routineは表示中だけ）" : ""}</p>
                   <div className="bulk-section-options">
                     {currentDay.sections.map((section) => (
                       <button type="button" key={section.id} onClick={() => chooseBulkSection(section.id)}>{section.title}</button>
@@ -7208,35 +7356,14 @@ export function App() {
           </label>
           <p>正の整数を入力すると共通見積を設定します。空欄は明示的な「見積なし」です。</p>
           {bulkEstimateConfirmation.ordinaryCount > 0 && <p>通常Task {bulkEstimateConfirmation.ordinaryCount}件は表示中のDayだけ変更します。</p>}
-          {bulkEstimateConfirmation.routineCount > 0 && <>
-            <p id="bulk-estimate-scope-help">Routine Taskごとにscopeを選択してください。未選択のまま確定することはできません。</p>
-            <div className="bulk-scope-fill-actions" aria-label="Routine見積scope一括入力">
-              <button type="button" className="secondary" onClick={() => fillBulkEstimateScopes("occurrence")}>すべて今回だけ</button>
-              <button type="button" className="secondary" onClick={() => fillBulkEstimateScopes("definition")}>すべてルーティンに反映</button>
-            </div>
-            <ul className="bulk-routine-scope-list" aria-describedby="bulk-estimate-scope-help">
-              {bulkEstimateConfirmation.routineScopes.map((item) => (
-                <li key={item.entryId} className="bulk-routine-scope-row">
-                  <span className="bulk-routine-scope-identity"><strong>{item.title}</strong><small>Routine</small></span>
-                  <span role="group" aria-label={`${item.title}の見積scope`} className="bulk-routine-scope-controls">
-                    <button type="button" aria-pressed={item.scope === "occurrence"} onClick={() => setBulkEstimateScope(item.entryId, "occurrence")}>今回だけ</button>
-                    <button type="button" aria-pressed={item.scope === "definition"} onClick={() => setBulkEstimateScope(item.entryId, "definition")}>ルーティンに反映</button>
-                  </span>
-                  <span className={`bulk-routine-scope-value${item.scope === null ? " unselected" : ""}`}>
-                    {item.scope === null ? "未選択" : item.scope === "occurrence" ? "今回だけ" : "ルーティンに反映"}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </>}
+          {bulkEstimateConfirmation.routineCount > 0 && <p>Routine Taskは表示中のOccurrenceだけ変更します。</p>}
           <div className="bulk-confirmation-actions">
             <button type="button" className="secondary" onClick={() => {
               setBulkEstimateConfirmation(null);
               requestAnimationFrame(() => bulkEstimateTriggerRef.current?.focus());
             }}>キャンセル</button>
             <button type="button"
-              disabled={bulkEstimateConfirmation.routineScopes.some((item) => item.scope === null)
-                || (bulkEstimateConfirmation.estimateMinutes.trim() !== ""
+              disabled={(bulkEstimateConfirmation.estimateMinutes.trim() !== ""
                   && (!/^\d+$/.test(bulkEstimateConfirmation.estimateMinutes.trim())
                     || Number(bulkEstimateConfirmation.estimateMinutes) <= 0
                     || !Number.isSafeInteger(Number(bulkEstimateConfirmation.estimateMinutes))))}
@@ -7508,10 +7635,10 @@ export function App() {
                 const canInterrupt = entry.lifecycle_state === "planned" && day.active_execution !== null
                   && activeEntryForRow?.routine === null && entry.routine === null && entry.id !== day.active_execution.entry_id;
                 const reorderBlocked = isReorderBlockedForProjection(section.id, day);
-                const crossSectionMoveAvailable = day.is_current && Boolean(day.taskchute_day.id)
+                const crossSectionMoveAvailable = canUseD120PlacementDayForProjection(day, currentLogicalDate) && Boolean(day.taskchute_day.id)
                   && !hasCrossSectionMoveBarrier(day.taskchute_day.id ?? "selected-day");
-                const canDrag = day.planning_enabled && Boolean(day.taskchute_day.id) && entry.lifecycle_state === "planned"
-                  && (entry.routine === null || isRoutinePlacementEligible(day, entry))
+                const canDrag = canUseD120PlacementDayForProjection(day, currentLogicalDate) && entry.lifecycle_state === "planned"
+                  && (entry.routine === null || isRoutinePlacementEligible(day, entry, currentLogicalDate))
                   && (!reorderBlocked || crossSectionMoveAvailable);
                 const canMoveDate = isBulkSelectableProjectionEntry(currentDay, entry);
                 const canEditPlanning = day.planning_enabled && entry.lifecycle_state === "planned";
@@ -7532,7 +7659,7 @@ export function App() {
                 return (
                   <Fragment key={entry.id}>
                   {shouldRenderBefore && draftPlacement?.kind === "section-start" && renderDraftRow(section)}
-                  <div className={`task-row task-drag-surface state-${entry.lifecycle_state}${selectedEntryIds.includes(entry.id) ? " is-selected" : ""}${entryDrag?.entryId === entry.id ? " is-dragging" : ""}${entryDrag?.targetEntryId === entry.id && entryDrag.edge ? ` drop-${entryDrag.edge}` : ""}`} tabIndex={0} aria-selected={selectedEntryIds.includes(entry.id)}
+                  <div className={`task-row task-drag-surface state-${entry.lifecycle_state}${selectedEntryIds.includes(entry.id) ? " is-selected" : ""}${entryDrag?.entryIds.includes(entry.id) ? " is-dragging" : ""}${entryDrag?.targetEntryId === entry.id && entryDrag.edge ? ` drop-${entryDrag.edge}` : ""}`} tabIndex={0} aria-selected={selectedEntryIds.includes(entry.id)}
                     data-entry-id={entry.id} data-section-id={section.id ?? ""} data-day-focus-target data-focus-key={focusKey(entryTarget)}
                     draggable={canDrag && !mutationLocked}
                     data-drag-surface="row" title={canDrag ? "ドラッグして並び替え" : undefined}

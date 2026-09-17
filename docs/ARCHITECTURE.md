@@ -97,6 +97,20 @@ Infrastructure
 
 D1から将来別databaseへ移行する必要が生じても、TaskChute Domain semanticsまで書き換える必要がない境界を維持する。
 
+## D-120 atomic bulk placement boundary
+
+D-120の複数Entry block placementは、Webのselection / drag / keyboard interactionから既存の
+owner-scoped Worker application commandへ接続する。Clientはselected IDs、anchor、before/after等の
+intentだけを送り、Serverがcanonical Day display order、selected block order、target Section、
+planned-start、Routine occurrence-only override、placement revisionを検証・導出する。
+
+同一Sectionの合法なcohort reorderは`ReorderEntries`の既存set-based ordering authorityを使う。
+cross-Section、relative anchor、empty Section、empty `Sectionなし`は一つのD1 `batch()`で対象Entry、
+Section / planned-start同期、position、revision、operation resultを確定する。複数のsingle-entry
+mutationを連鎖させないため、partial successとordering driftを避けられる。既存operation fingerprint、
+exact replay、stale revision、transaction assertion、cleanup guardを再利用し、Realtime / Android
+Product UI / schema migrationはこのBatchでは拡張しない。
+
 ## Command / Query contract
 
 APIは概念上CommandとQueryを分離する。

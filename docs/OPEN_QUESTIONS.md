@@ -50,6 +50,13 @@ credential handoffは引き続き未決であり、D-107はこれらを決定し
 
 上記はcurrent implementation / verification factであり、将来永続化方式を固定する新しいApproved Decisionではない。
 
+D-120により、Day Tableの複数選択blockを一つのatomic bulk placementとして扱うAPI capability gapは、
+既存bulk commandのplacement intent拡張で解消した。Serverがcanonical block order、target Section、
+planned-start、Routine occurrence-only override、placement revisionを導出し、Webは同一Sectionの
+合法cohort reorderに`ReorderEntries`を再利用する。D-112のgroup D&D未実装項目はこの範囲だけ解決済みで、
+past-Day mutationやAndroid group D&Dを決定するものではない。これはD-120のcurrent implementation factであり、
+新しい将来のbulk command / cross-client policyを追加で確定するものではない。
+
 以下はOpen:
 
 - Routine等へ利用する営業日 / 休日 / 祝日判定のfoundationはD-088、D-089の4 family接続まで実装済み（Cabinet Office tracked snapshot、shared classifier、owner override）。N-week / monthly recurrenceとそのlogical-date semanticsもD-086/D-087で解決済み。残るOpenは他国calendar / locale拡張と、D-089の4 family以外の将来membershipである

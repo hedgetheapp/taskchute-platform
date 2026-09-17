@@ -1,5 +1,19 @@
 # Risks
 
+## R-076 — D-120 atomic bulk placement and Routine scope boundary
+
+D-120は、非連続選択をcanonical display orderのblockとして一回のoperationで移動するため、
+clientが選択順・表示対象だけをauthorityにしてしまうこと、relative anchorを誤って解決すること、
+empty Section / `Sectionなし`でplacementを誤ること、cohort境界を越えることが主なリスクである。
+Routine-derived rowではDay側scope chooserを廃止したため、誤ってRoutineDefinition defaultへ伝播させる
+ことも防ぐ必要がある。
+
+Mitigation: Server-side canonical order / target planned-start導出、既存placement revision / operation
+replay / transaction assertion、selected blockのatomic batch、empty header drop surface、illegal cohort
+no-write、Routine occurrence-only mappingを再利用する。D-120 focused App `292 / 292`、Worker `11 / 11`、
+typecheckはPASS。full regression、persistent nonprod/browser、exact-SHA CIはcloseoutで確認し、Android /
+schema / migration / dependency / productionは変更しない。
+
 ## R-075 — D-119 selected future Day materialization boundary
 
 D-119はfuture logical dateの明示的openを永続的establishmentとRoutine materializationのtriggerへ
