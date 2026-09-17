@@ -10,7 +10,7 @@
 | D117-WEB-FULL | Web regression | `14 files / 468 tests` | PASS |
 | D117-STATIC | Type safety and production bundle | `npm run typecheck`; `npm run build`; existing Vite chunk-size warning and Wrangler log-directory `EPERM` diagnostic, exit `0` | PASS |
 | D117-BOUNDARY | Scope | Web presentation / interaction only; no Worker/API, schema/migration, dependency, Android, or production change | PASS / NOT_REQUIRED |
-| D117-NONPROD | Persistent nonprod / authenticated browser | Initial SHA `0f534de` deployed as Worker `d6ec94b3-8978-4447-ac42-261e5dfc6945`; root `200`, unauthenticated Documents / Realtime `401`, Sidebar/Project Note/Routine/TaskChuteDay checks observed. Running metadata attempt returned canonical `resource_conflict`; corrective safe-eligibility patch is not yet deployed | PARTIAL / BLOCKED |
+| D117-NONPROD | Persistent nonprod / authenticated browser | Initial SHA `0f534de` deployed as Worker `d6ec94b3-8978-4447-ac42-261e5dfc6945`; root `200`, unauthenticated Documents / Realtime `401`, Sidebar/Project Note/Routine/TaskChuteDay checks observed. Running metadata attempt returned canonical `resource_conflict`; corrective `b1761d74bf2874eec768fe73a7a27f81c649d728` deployed as Worker `7b16022a-98de-4131-bc3a-aeefaf4712fa`; exact-SHA CI run `35169651950` attempt 2 PASS, Android skipped | PARTIAL / BLOCKED |
 | D117-DIFF | Patch hygiene | `git diff --check` | PASS |
 
 ## D-116B Completed Entry to future Routine v0.1 — local, CI, persistent nonprod evidence

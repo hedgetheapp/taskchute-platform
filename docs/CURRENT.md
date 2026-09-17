@@ -24,7 +24,11 @@ Persistent nonprodへ初回D117 SHA `0f534de`をdeploy済みで、Worker version
 `d6ec94b3-8978-4447-ac42-261e5dfc6945`、root `200`、未認証Documents / Realtime `401`を確認した。
 Sidebar labels/icons/3-state、Project Note disabled/active slot、`TaskChuteDay`除去、Routine iconと
 Today modalの表示はbrowserで確認した。running metadataのserver pathはresource conflictでFAILし、
-UIを安全なeligibilityへ戻すcorrectiveは未push・未deployのため、D117全体はcloseout未完了。Worker/API、
+UIを安全なeligibilityへ戻すcorrective commit `b1761d74bf2874eec768fe73a7a27f81c649d728`を
+mainへpushし、Worker version `7b16022a-98de-4131-bc3a-aeefaf4712fa`として再deployした。補正後も
+root `200`、未認証Documents / Realtime `401`を確認し、exact-SHA CI run `35169651950` attempt 2
+（classifier / Web and Worker verification PASS、Android skipped）も確認した。D117全体は、
+running metadataのcanonical Worker/API境界によりcloseout未完了。Worker/API、
 schema/migration、dependency、Androidの変更はない。Productionは`NOT_RUN`、Releasedは`NO`。
 
 ### D-116B Completed Entry to future Routine v0.1 — nonprod deployed; browser conversion verified
