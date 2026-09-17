@@ -6,6 +6,12 @@ Verificationの正本は`docs/TEST_MATRIX.md`であり、`Implemented`等のFeat
 
 Status values: Planned / In design / Implemented / Verified / Withdrawn (historical compatibility)
 
+D-120 corrective2 evidence: implementation `f387612adf99dfc467ffedf4350b39a7bd77e735` adds generation-aware
+focus restoration so later explicit focus navigation wins over delayed placement restore. Persistent nonprod
+browser verification accepted Shift+ArrowDown 6回・Shift+ArrowUp 6回 for a two-Task selection while writes were
+pending, preserved selection/focus, and converged after reload; Worker `c2f3a938-d7a7-4e3b-a40f-cfd4974b1d10`、
+console `0 / 0`、exact CI run `35285756109` were PASS. 任意のpending件数上限は設けていない。
+
 | Feature | Status | Notes |
 |---|---|---|
 | Bulk Task Move / Reorder v0.1 | Implemented; persistent nonprod verified | D-120 Approved。複数選択planned Entryをcanonical display orderの一つのblockとして扱い、同一Sectionの合法cohortは`ReorderEntries`、cross-Section / relative placement / empty Section / empty `Sectionなし`は既存bulk commandのatomic placementへ接続。current established Dayと明示的に開かれたestablished future Dayを対象とし、RoutineのDay-side変更はoccurrence-onlyでscope chooserを表示しない。App `293 / 293`、D-120 corrective focus regression `1 / 1`、focused Worker `11 / 11`、full Web `14 files / 474 tests`、full Worker/D1 `37 files / 339 tests`、typecheck/build/guard/diff-check、persistent nonprod/DB、exact final CIはPASS。browserではcurrent DayのShift上下連続入力、同Section reorder・Section境界の複数選択block移動を、即時表示・対象focus・選択維持・reload後canonical収束まで確認し、console `0 / 0`。座標pointer dragのcommit結果は現CUAで未取得のため、automated placement coverageと分離して記録する。implementation/corrective `9f6d0e6879e3925d86ff6b611964dbab4f62c8ca` / `b601ac204d5079cccf6516fefe90f7a9aadb46c7`、Worker `df9a37c4-7928-47a3-9bb6-11fa940f4d2b`。Android Product UI、schema/migration、dependency、productionは変更しない。 |

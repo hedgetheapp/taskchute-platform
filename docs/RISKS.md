@@ -18,6 +18,12 @@ Routine occurrence-only、reload convergence、console `0 / 0`を確認した。
 現CUAで取得できず、automated pointer/empty-target coverageとは別の残存browser evidence riskとして扱う。
 Android Product UI、schema / migration / dependency / productionは変更しない。
 
+Corrective2ではfocus restoreにoperation由来のgenerationを伝播し、後続の明示focus intentと一致しない遅延restoreを
+破棄する。2件の選択blockにShift上下を各6回連続入力し、保存中の複数pending状態でも任意の件数上限による入力停止がなく、
+選択・focus・配置がreload後に収束することを確認した。implementation `f387612adf99dfc467ffedf4350b39a7bd77e735`、
+persistent nonprod Worker `c2f3a938-d7a7-4e3b-a40f-cfd4974b1d10`、browser console `0 / 0`。旧focus restore競合と連続Shift
+queueの回帰は自動testおよびbrowser evidenceでPASSである。
+
 ## R-075 — D-119 selected future Day materialization boundary
 
 D-119はfuture logical dateの明示的openを永続的establishmentとRoutine materializationのtriggerへ

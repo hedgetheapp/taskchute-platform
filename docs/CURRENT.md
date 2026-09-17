@@ -38,6 +38,14 @@ transaction assertion / placement guard / lifecycle guard / active executionは`
 Routine fixtureのoverride解除を含むread-only probeはすべて`rows_written=0`だった。Android Product UI、
 schema / migration、dependency、realtime protocol、productionは変更しない。
 
+D-120 corrective2では、placement focus restoreに`key + focus generation`を付与し、明示的な後続focus
+navigationが古いMove / Reorderの遅延`requestAnimationFrame` restoreを無効化することを実装`f387612adf99dfc467ffedf4350b39a7bd77e735`
+で確認した。2件のordinary planned Taskを選択し、保存中バックログが残る状態でShift+ArrowDown 6回・Shift+ArrowUp 6回を
+連続入力しても、入力・選択・対象focusを維持し、同一Sectionへcanonical収束した。別Taskへ明示focusを移した後も旧Taskへ
+focusは戻らず、reload後のSection配置も維持された。exact-SHA GitHub Actions run `35285756109`はClassifier / Web/Worker
+PASS、AndroidはSKIPPED、persistent nonprod Worker versionは`c2f3a938-d7a7-4e3b-a40f-cfd4974b1d10`、browser consoleは`0 / 0`。
+queueに任意のpending件数上限は追加していない。Worker/API、schema / migration、dependency、Android Product UI、productionは変更しない。
+
 ### D-119 Future Day Routine materialization v0.1 — persistent nonprod verified
 
 D-119のApproved behaviorとして、認証済みownerが明示的に開いたfuture logical dateだけを既存の
