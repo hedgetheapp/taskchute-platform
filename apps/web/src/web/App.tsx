@@ -88,7 +88,7 @@ import { NotesBoard } from "./NotesBoard";
 import { NoteIcon } from "./NoteIcon";
 import { TaskNoteEditor } from "./TaskNoteEditor";
 import { documentPermalink, persistTaskNoteOpenMode, readTaskNoteOpenMode, type TaskNoteOpenMode } from "./task-note-open-mode";
-import { cascadeTaskNoteWindowGeometry, isTaskNoteWindowMobile, readTaskNoteWindowGeometry, type TaskNoteWindowGeometry } from "./task-note-window-geometry";
+import { avoidTaskNoteWindowRect, cascadeTaskNoteWindowGeometry, isTaskNoteWindowMobile, readTaskNoteWindowGeometry, type TaskNoteWindowGeometry } from "./task-note-window-geometry";
 import { HitAHint } from "./HitAHint";
 import { CalendarPopover, formatLogicalDateLabel } from "./ui-helpers";
 import { RealtimeConnectionManager, type RealtimeConnectionStatus } from "./realtime-client";
@@ -2555,6 +2555,14 @@ export function App() {
       .filter((geometry): geometry is TaskNoteWindowGeometry => geometry !== null);
   }
 
+  function readTaskNoteTriggerRect(taskId: string): { x: number; y: number; width: number; height: number } | null {
+    const trigger = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-day-column-cell="note"] button[data-task-id]'))
+      .find((candidate) => candidate.dataset.taskId === taskId);
+    if (!trigger) return null;
+    const rect = trigger.getBoundingClientRect();
+    return { x: rect.left, y: rect.top, width: rect.width, height: rect.height };
+  }
+
   function activateTaskNoteWindow(documentId: string, options: { restore?: boolean; focus?: boolean } = {}): void {
     const current = taskNoteWindowsRef.current;
     const target = current.find((windowState) => windowState.documentId === documentId);
@@ -2586,9 +2594,13 @@ export function App() {
     const viewportHeight = window.innerHeight;
     const seed = readTaskNoteWindowGeometry(viewportWidth, viewportHeight);
     const request = nextTaskNoteRequest();
+    const cascadedGeometry = cascadeTaskNoteWindowGeometry(seed, viewportWidth, viewportHeight, current.length, undefined, readTaskNoteRenderedGeometries());
+    const initialGeometry = target.documentKind === "project_primary" || !target.taskId
+      ? cascadedGeometry
+      : avoidTaskNoteWindowRect(cascadedGeometry, viewportWidth, viewportHeight, readTaskNoteTriggerRect(target.taskId) ?? { x: -1, y: -1, width: 0, height: 0 });
     updateTaskNoteWindows((windows) => [...windows, {
       ...target,
-      initialGeometry: cascadeTaskNoteWindowGeometry(seed, viewportWidth, viewportHeight, windows.length, undefined, readTaskNoteRenderedGeometries()),
+      initialGeometry,
       stackOrder: nextTaskNoteStackOrder(windows),
       focusRequest: request,
       restoreRequest: request,

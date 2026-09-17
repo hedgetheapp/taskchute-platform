@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  avoidTaskNoteWindowRect,
   TASK_NOTE_WINDOW_GEOMETRY_STORAGE_KEY,
   TASK_NOTE_WINDOW_MIN_HEIGHT,
   TASK_NOTE_WINDOW_MIN_WIDTH,
@@ -61,6 +62,14 @@ describe("task note window geometry", () => {
     expect(candidate).toEqual({ x: 652, y: 52, width: 420, height: 500 });
     expect(candidate).not.toEqual(occupied);
     expect(cascadeTaskNoteWindowGeometry(base, viewport.width, viewport.height, 1, undefined, [occupied])).toEqual(candidate);
+  });
+
+  it("moves an overlapping window away from its originating trigger", () => {
+    const preferred = { x: 764, y: 16, width: 420, height: 868 };
+    expect(avoidTaskNoteWindowRect(preferred, 1200, 900, { x: 1140, y: 120, width: 30, height: 30 })).toEqual({
+      x: 704, y: 16, width: 420, height: 868,
+    });
+    expect(avoidTaskNoteWindowRect(preferred, 1200, 900, { x: 16, y: 16, width: 30, height: 30 })).toEqual(preferred);
   });
 
   it("uses the current safe viewport bounds for transient maximized presentation", () => {

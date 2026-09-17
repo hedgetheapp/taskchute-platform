@@ -603,7 +603,29 @@ describe("Dogfood Day shell", () => {
     expect(await screen.findByRole("complementary", { name: "Canonical taskのノート" })).toBeTruthy();
     expect(window.location.search).toBe("?view=note&document=0199d101-0000-7000-8000-000000000011");
     expect(window.location.search).not.toContain("task=");
+    fireEvent.click(within(dayBoard).getByRole("button", { name: "Canonical taskのノートを閉じる" }));
+    await waitFor(() => expect(document.querySelectorAll(".task-note-peek")).toHaveLength(0));
+    expect(within(dayBoard).getByRole("button", { name: "Canonical taskのノートを開く" })).toBeTruthy();
     window.history.replaceState(null, "", "/");
+  });
+
+  it("opens an existing Task Note and closes it from the same Today row action", async () => {
+    const documentId = "0199d101-0000-7000-8000-000000000012";
+    mocks.loadDay.mockResolvedValue({
+      ...populatedDay,
+      sections: [{ ...populatedDay.sections[0]!, entries: [{ ...firstEntry, task: { ...firstEntry.task, primary_document_id: documentId } }] }, ...populatedDay.sections.slice(1)],
+    });
+    mocks.loadTaskPrimaryDocumentById.mockResolvedValue({
+      document_id: documentId, kind: "task_primary", task_id: firstEntry.task.id, markdown_body: "", revision: 0,
+      created_at: "2026-09-13T00:00:00.000Z", updated_at: "2026-09-13T00:00:00.000Z",
+    });
+    render(<App />);
+    const dayBoard = await screen.findByRole("region", { name: "DayBoard" });
+    fireEvent.click(within(dayBoard).getByRole("button", { name: "Canonical taskのノートを開く" }));
+    await screen.findByRole("complementary", { name: "Canonical taskのノート" });
+    fireEvent.click(within(dayBoard).getByRole("button", { name: "Canonical taskのノートを閉じる" }));
+    await waitFor(() => expect(document.querySelectorAll(".task-note-peek")).toHaveLength(0));
+    expect(within(dayBoard).getByRole("button", { name: "Canonical taskのノートを開く" })).toBeTruthy();
   });
 
   it("keeps a Task Note open when its toggle cannot safely close an unresolved save", async () => {

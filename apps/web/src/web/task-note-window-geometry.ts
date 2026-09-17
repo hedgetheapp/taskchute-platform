@@ -24,6 +24,13 @@ export type TaskNoteWindowGeometry = {
   height: number;
 };
 
+export type TaskNoteWindowAvoidRect = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
 type TaskNoteWindowGeometryPreference = TaskNoteWindowGeometry & {
   version: typeof TASK_NOTE_WINDOW_GEOMETRY_VERSION;
 };
@@ -193,6 +200,46 @@ export function cascadeTaskNoteWindowGeometry(
     x: seed.x - step * index,
     y: seed.y + step * index,
   }, viewportWidth, viewportHeight);
+}
+
+/**
+ * Keep the originating task-note trigger clickable after opening a floating
+ * window. The trigger can live in a horizontally-scrolled table column, so
+ * the window must avoid its viewport rect rather than assuming one side of
+ * the page is always safe.
+ */
+export function avoidTaskNoteWindowRect(
+  preferred: TaskNoteWindowGeometry,
+  viewportWidth: number,
+  viewportHeight: number,
+  avoidRect: TaskNoteWindowAvoidRect,
+  gap = TASK_NOTE_WINDOW_SAFE_GUTTER,
+): TaskNoteWindowGeometry {
+  const base = clampTaskNoteWindowGeometry(preferred, viewportWidth, viewportHeight);
+  if (!Number.isFinite(avoidRect.x) || !Number.isFinite(avoidRect.y)
+    || !Number.isFinite(avoidRect.width) || !Number.isFinite(avoidRect.height)
+    || avoidRect.width <= 0 || avoidRect.height <= 0
+    || avoidRect.x + avoidRect.width <= 0 || avoidRect.y + avoidRect.height <= 0
+    || avoidRect.x >= viewportWidth || avoidRect.y >= viewportHeight) return base;
+
+  const overlaps = (candidate: TaskNoteWindowGeometry): boolean => candidate.x < avoidRect.x + avoidRect.width
+    && candidate.x + candidate.width > avoidRect.x
+    && candidate.y < avoidRect.y + avoidRect.height
+    && candidate.y + candidate.height > avoidRect.y;
+  if (!overlaps(base)) return base;
+
+  const candidates = [
+    { ...base, x: avoidRect.x - base.width - gap },
+    { ...base, x: avoidRect.x + avoidRect.width + gap },
+    { ...base, y: avoidRect.y - base.height - gap },
+    { ...base, y: avoidRect.y + avoidRect.height + gap },
+    { ...base, x: TASK_NOTE_WINDOW_SAFE_GUTTER, y: TASK_NOTE_WINDOW_SAFE_GUTTER },
+  ];
+  for (const candidate of candidates) {
+    const clamped = clampTaskNoteWindowGeometry(candidate, viewportWidth, viewportHeight);
+    if (!overlaps(clamped)) return clamped;
+  }
+  return base;
 }
 
 function geometryKey(geometry: TaskNoteWindowGeometry): string {
