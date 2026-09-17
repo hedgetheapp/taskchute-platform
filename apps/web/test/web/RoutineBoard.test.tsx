@@ -240,7 +240,7 @@ describe("Routine Board", () => {
     board.routines[1]!.end_logical_date = null;
     render(<RoutineBoard onUnauthorized={vi.fn()} />);
     await screen.findByDisplayValue("Active Routine");
-    fireEvent.click(screen.getByRole("checkbox", { name: "Active Routineの有効" }));
+    fireEvent.click(screen.getByRole("switch", { name: "Active Routineの有効" }));
     await waitFor(() => expect(mocks.setRoutineEnabled).toHaveBeenCalledWith(expect.objectContaining({
       routine_definition_id: routineId, enabled: false, expected_settings_revision: 3,
     })));
@@ -270,7 +270,7 @@ describe("Routine Board", () => {
 
     const blockedTargets: HTMLElement[] = [
       within(taskCell).getByLabelText("Active RoutineのRoutine名"),
-      within(source).getByRole("checkbox", { name: "Active Routineの有効" }),
+      within(source).getByRole("switch", { name: "Active Routineの有効" }),
       within(source).getByRole("combobox", { name: "Active RoutineのProject" }),
       within(source).getByRole("combobox", { name: "Active RoutineのSection" }),
       within(source).getByRole("button", { name: "毎日" }),
@@ -313,7 +313,10 @@ describe("Routine Board", () => {
     expect(within(menu).getByRole("menuitem", { name: "削除" })).toBeTruthy();
     fireEvent.click(within(menu).getByRole("menuitem", { name: "削除" }));
     const dialog = screen.getByRole("dialog", { name: "Routine削除確認" });
-    expect(within(dialog).getByText("ルーティンを削除しますか？")).toBeTruthy();
+    expect(within(dialog).getByText("このRoutineを削除しますか？")).toBeTruthy();
+    expect(within(dialog).getByText("今日以降のこのRoutine由来Taskを削除し、今後は生成しません。")).toBeTruthy();
+    expect(within(dialog).getByText("過去の日付の履歴は残ります。")).toBeTruthy();
+    expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: "キャンセル" }));
     fireEvent.click(within(dialog).getByRole("button", { name: "キャンセル" }));
     expect(mocks.deleteRoutine).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Active Routineのメニュー" }));

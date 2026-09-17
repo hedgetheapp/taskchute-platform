@@ -43,9 +43,9 @@ async function seedUser() {
   return { userId, sectionId, projectId, day };
 }
 
-async function createOff(userId: string, title = "Board Routine") {
+async function createOff(userId: string, title = "Board Routine", expectedBoardRevision = 0) {
   const request = { operation_id: uuidv7(), task_id: uuidv7(), routine_definition_id: uuidv7(),
-    title, expected_board_revision: 0 };
+    title, expected_board_revision: expectedBoardRevision };
   const result = await createRoutine(env.APP_DB, userId, request, now);
   return { request, result };
 }
@@ -276,8 +276,13 @@ describe.sequential("Routine R2B Board", () => {
         { paused_logical_date: "2026-09-01", resumed_logical_date: "2026-09-01" },
         { paused_logical_date: "2026-09-01", resumed_logical_date: null },
       ]) });
-    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM entries WHERE app_user_id = ?")
-      .bind(fixture.userId).first<number>("count")).toBe(1);
+    expect(await env.APP_DB.prepare(`SELECT COUNT(*) AS count FROM entries e
+      JOIN routine_occurrences o ON o.app_user_id = e.app_user_id AND o.id = e.routine_occurrence_id
+      WHERE e.app_user_id = ? AND o.routine_definition_id = ?`)
+      .bind(fixture.userId, created.result.routine_definition_id).first<number>("count")).toBe(0);
+    expect(await env.APP_DB.prepare(`SELECT COUNT(*) AS count FROM routine_occurrences
+      WHERE app_user_id = ? AND routine_definition_id = ?`).bind(fixture.userId,
+      created.result.routine_definition_id).first<number>("count")).toBe(0);
     await expect(updateRoutine(env.APP_DB, fixture.userId, {
       operation_id: uuidv7(), routine_definition_id: created.result.routine_definition_id,
       expected_settings_revision: 2, title: "Paused Routine", project_id: null,
@@ -290,7 +295,69 @@ describe.sequential("Routine R2B Board", () => {
       .bind(fixture.userId, fixture.userId, created.result.routine_definition_id)
       .first<number>("count")).toBe(0);
     expect((await loadCurrentTaskChuteDay(env.APP_DB, fixture.userId, now)).unsectioned_entries)
+      .toHaveLength(0);
+    const resumed = await setRoutineEnabled(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), routine_definition_id: created.result.routine_definition_id,
+      enabled: true, expected_settings_revision: 3,
+    }, now);
+    expect(resumed).toMatchObject({ enabled: true, settings_revision: 4 });
+    expect((await loadCurrentTaskChuteDay(env.APP_DB, fixture.userId, now)).unsectioned_entries)
       .toHaveLength(1);
+    expect(await env.APP_DB.prepare(`SELECT COUNT(*) AS count FROM routine_occurrences
+      WHERE app_user_id = ? AND routine_definition_id = ?`).bind(fixture.userId,
+      created.result.routine_definition_id).first<number>("count")).toBe(1);
+  });
+
+  it("disables planned, running, and completed Routine children at the current-Day boundary", async () => {
+    const fixture = await seedUser();
+    const planned = await createOff(fixture.userId, "Planned child", 0);
+    const running = await createOff(fixture.userId, "Running child", 1);
+    const completed = await createOff(fixture.userId, "Completed child", 2);
+    for (const routine of [planned, running, completed]) {
+      await setRoutineEnabled(env.APP_DB, fixture.userId, {
+        operation_id: uuidv7(), routine_definition_id: routine.result.routine_definition_id,
+        enabled: true, expected_settings_revision: 0,
+      }, now);
+    }
+    const entryFor = async (routineDefinitionId: string) => env.APP_DB.prepare(`SELECT e.id
+      FROM entries e JOIN routine_occurrences o ON o.app_user_id = e.app_user_id
+        AND o.id = e.routine_occurrence_id
+      WHERE e.app_user_id = ? AND o.routine_definition_id = ?`).bind(fixture.userId, routineDefinitionId)
+      .first<string>("id");
+    const completedEntryId = await entryFor(completed.result.routine_definition_id);
+    if (!completedEntryId) throw new Error("missing completed Routine entry");
+    const currentPlacementRevision = async () => env.APP_DB.prepare(
+      "SELECT placement_revision FROM taskchute_days WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, fixture.day.taskchute_day.id).first<number>("placement_revision").then((row) => row ?? 0);
+    const completedExecution = await startEntry(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), entry_id: completedEntryId, execution_id: uuidv7(),
+      expected_placement_revision: await currentPlacementRevision(),
+    }, now);
+    await completeEntry(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), entry_id: completedEntryId, execution_id: completedExecution.execution.id,
+    });
+    const runningEntryId = await entryFor(running.result.routine_definition_id);
+    if (!runningEntryId) throw new Error("missing running Routine entry");
+    await startEntry(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), entry_id: runningEntryId, execution_id: uuidv7(),
+      expected_placement_revision: await currentPlacementRevision(),
+    }, now);
+
+    for (const routine of [planned, running, completed]) {
+      await expect(setRoutineEnabled(env.APP_DB, fixture.userId, {
+        operation_id: uuidv7(), routine_definition_id: routine.result.routine_definition_id,
+        enabled: false, expected_settings_revision: 1,
+      }, now)).resolves.toMatchObject({ enabled: false, settings_revision: 2 });
+      expect(await env.APP_DB.prepare(`SELECT COUNT(*) AS count FROM entries e
+        JOIN routine_occurrences o ON o.app_user_id = e.app_user_id AND o.id = e.routine_occurrence_id
+        WHERE e.app_user_id = ? AND o.routine_definition_id = ?`)
+        .bind(fixture.userId, routine.result.routine_definition_id).first<number>("count")).toBe(0);
+      expect(await env.APP_DB.prepare(`SELECT COUNT(*) AS count FROM routine_occurrences
+        WHERE app_user_id = ? AND routine_definition_id = ?`).bind(fixture.userId,
+        routine.result.routine_definition_id).first<number>("count")).toBe(0);
+    }
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM executions WHERE app_user_id = ?")
+      .bind(fixture.userId).first<number>("count")).toBe(0);
   });
 
   it("updates Task authority, recurrence/defaults, occurrence snapshot, and rejects stale revisions", async () => {
@@ -361,7 +428,7 @@ describe.sequential("Routine R2B Board", () => {
       .all<{ id: string; materialization_order: number }>()).results).toEqual(materializationBefore.results);
   });
 
-  it("archives a Routine without deleting materialized Task, Occurrence, Entry, or Execution history", async () => {
+  it("deletes current materialized Routine children, including completed executions", async () => {
     const fixture = await seedUser();
     const created = await createOff(fixture.userId, "Delete me");
     await updateRoutine(env.APP_DB, fixture.userId, {
@@ -390,25 +457,62 @@ describe.sequential("Routine R2B Board", () => {
       .rejects.toMatchObject({ code: "operation_id_misuse" });
     expect((await loadRoutineBoard(env.APP_DB, fixture.userId, now)).routines).toEqual([]);
     const after = await loadCurrentTaskChuteDay(env.APP_DB, fixture.userId, now);
-    const preserved = after.sections.flatMap((section) => section.entries).concat(after.unsectioned_entries)
-      .find((item) => item.id === entry.id);
-    expect(preserved).toMatchObject({ id: entry.id, lifecycle_state: "completed" });
-    expect(await env.APP_DB.prepare("SELECT routine_occurrence_id FROM entries WHERE app_user_id = ? AND id = ?")
-      .bind(fixture.userId, entry.id).first<string>("routine_occurrence_id")).toEqual(expect.any(String));
+    expect(after.sections.flatMap((section) => section.entries).concat(after.unsectioned_entries))
+      .toEqual([]);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM entries WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, entry.id).first<number>("count")).toBe(0);
     expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM routine_definitions WHERE app_user_id = ?")
       .bind(fixture.userId).first<number>("count")).toBe(1);
     expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM routine_occurrences WHERE app_user_id = ?")
-      .bind(fixture.userId).first<number>("count")).toBe(1);
+      .bind(fixture.userId).first<number>("count")).toBe(0);
     expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM entries WHERE app_user_id = ?")
-      .bind(fixture.userId).first<number>("count")).toBe(1);
+      .bind(fixture.userId).first<number>("count")).toBe(0);
     expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM executions WHERE app_user_id = ?")
-      .bind(fixture.userId).first<number>("count")).toBe(1);
+      .bind(fixture.userId).first<number>("count")).toBe(0);
     expect(await env.APP_DB.prepare(`SELECT command_type FROM operations
       WHERE app_user_id = ? AND operation_id = ?`).bind(fixture.userId, request.operation_id)
       .first<string>("command_type")).toBe("DeleteRoutine");
     await loadCurrentTaskChuteDay(env.APP_DB, fixture.userId, now);
     expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM routine_occurrences WHERE app_user_id = ?")
-      .bind(fixture.userId).first<number>("count")).toBe(1);
+      .bind(fixture.userId).first<number>("count")).toBe(0);
+  });
+
+  it("preserves Routine history before the server-resolved delete boundary", async () => {
+    const fixture = await seedUser();
+    const created = await createOff(fixture.userId, "Historical Routine");
+    await setRoutineEnabled(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), routine_definition_id: created.result.routine_definition_id,
+      enabled: true, expected_settings_revision: 0,
+    }, now);
+    const entry = await env.APP_DB.prepare(`SELECT e.id, e.routine_occurrence_id
+      FROM entries e JOIN routine_occurrences o ON o.app_user_id = e.app_user_id
+        AND o.id = e.routine_occurrence_id
+      WHERE e.app_user_id = ? AND o.routine_definition_id = ?`)
+      .bind(fixture.userId, created.result.routine_definition_id).first<{ id: string; routine_occurrence_id: string }>();
+    if (!entry) throw new Error("missing historical Routine entry");
+    await env.APP_DB.batch([
+      env.APP_DB.prepare(`UPDATE taskchute_days SET logical_date = '2026-08-31',
+        start_instant = '2026-08-31T00:00:00.000Z', end_instant = '2026-09-01T00:00:00.000Z'
+        WHERE app_user_id = ? AND id = ?`).bind(fixture.userId, fixture.day.taskchute_day.id),
+      env.APP_DB.prepare(`UPDATE taskchute_day_section_contexts
+        SET actual_start_instant = '2026-08-31T00:00:00.000Z',
+            actual_end_instant = '2026-09-01T00:00:00.000Z'
+        WHERE app_user_id = ? AND taskchute_day_id = ?`)
+        .bind(fixture.userId, fixture.day.taskchute_day.id),
+    ]);
+    const deleted = await deleteRoutine(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), routine_definition_id: created.result.routine_definition_id,
+      expected_settings_revision: 1, expected_board_revision: created.result.board_revision,
+    }, now);
+    expect(deleted.board_revision).toBe(created.result.board_revision + 1);
+    expect(await env.APP_DB.prepare("SELECT lifecycle_state FROM entries WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, entry.id).first<string>("lifecycle_state")).toBe("planned");
+    expect(await env.APP_DB.prepare("SELECT routine_occurrence_id FROM entries WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, entry.id).first<string>("routine_occurrence_id")).toBe(entry.routine_occurrence_id);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM routine_occurrences WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, entry.routine_occurrence_id).first<number>("count")).toBe(1);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM routine_definition_archives WHERE app_user_id = ? AND routine_definition_id = ?")
+      .bind(fixture.userId, created.result.routine_definition_id).first<number>("count")).toBe(1);
   });
 
   it("keeps an explicit historical no-Project snapshot when the current Task later gains a Project", async () => {

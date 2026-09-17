@@ -1,5 +1,18 @@
 # Test Matrix
 
+## D-118 Routine enabled / delete lifecycle v0.1 — local implementation evidence
+
+| ID | Verification target | Evidence | Status |
+|---|---|---|---|
+| D118-DECISION | Approved lifecycle boundary | `docs/decisions/D-118_ROUTINE_ENABLED_DELETE_LIFECYCLE_V01.md`; server-resolved current logical date, pre-boundary history preservation, no archive/restore UI | PASS / APPROVED |
+| D118-WORKER | Disable/delete atomic cleanup | planned / running / completed current-Day children, exact replay/conflict, no regeneration, pre-boundary history preservation | PASS focused Worker/D1 `16 / 16` |
+| D118-WEB | Enabled switch and delete confirmation | accessible switch state, pending control, exact confirmation copy, initial cancel focus, Escape/backdrop cancel | PASS focused Web `18 / 18` |
+| D118-REG | Routine regression | Routine-related Web tests `4 files / 47 tests` | PASS |
+| D118-STATIC | Type safety | `npm run typecheck` | PASS |
+| D118-NONPROD | Persistent nonprod/browser/DB | canonical Worker deploy, lifecycle UI/API, read-only integrity evidence | PENDING |
+| D118-CI | Exact implementation SHA | GitHub Actions result to be recorded from GitHub Source of Truth | PENDING |
+| D118-BOUNDARY | Scope | no schema/migration, dependency, Android, production, restore, or Release operation | PASS / NOT_REQUIRED / NOT_RUN / NO |
+
 ## D-117 Web Today / Sidebar / Routine UX refinement v0.1 — corrective evidence
 
 | ID | Verification target | Evidence | Status |

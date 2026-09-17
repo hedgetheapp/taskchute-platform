@@ -169,7 +169,12 @@ input:focus-visible, select:focus-visible { border-color: #2383e2; outline: 2px 
 .routine-cell { display: flex; min-width: 0; width: 100%; align-items: center; padding: 6px 8px; font-size: 12px; }
 .routine-cell > input, .routine-cell > select { min-width: 0; padding: 6px; font-size: 12px; }
 .routine-enabled-control { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
-.routine-enabled-control input { width: 16px; height: 16px; margin: 0; accent-color: #2383e2; }
+.routine-enabled-control input[role="switch"] { appearance: none; position: relative; width: 32px; height: 18px; margin: 0; border: 1px solid #b7b7b3; border-radius: 999px; background: #e5e5e2; cursor: pointer; }
+.routine-enabled-control input[role="switch"]::after { position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgb(15 15 15 / 20%); content: ""; transition: transform .12s ease; }
+.routine-enabled-control input[role="switch"]:checked { border-color: #2383e2; background: #2383e2; }
+.routine-enabled-control input[role="switch"]:checked::after { transform: translateX(14px); }
+.routine-enabled-control input[role="switch"]:focus-visible { outline: 2px solid #2383e2; outline-offset: 2px; }
+.routine-enabled-control input[role="switch"]:disabled { cursor: not-allowed; opacity: .55; }
 .routine-task-cell { gap: 4px; }
 .routine-task-cell input { flex: 1 1 auto; min-width: 0; padding: 6px; font-size: 12px; }
 .routine-row-actions { position: absolute; inset-inline-end: 4px; top: 0; bottom: 0; display: flex; align-items: center; }

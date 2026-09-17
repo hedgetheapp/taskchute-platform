@@ -53,7 +53,7 @@ credential handoffは引き続き未決であり、D-107はこれらを決定し
 以下はOpen:
 
 - Routine等へ利用する営業日 / 休日 / 祝日判定のfoundationはD-088、D-089の4 family接続まで実装済み（Cabinet Office tracked snapshot、shared classifier、owner override）。N-week / monthly recurrenceとそのlogical-date semanticsもD-086/D-087で解決済み。残るOpenは他国calendar / locale拡張と、D-089の4 family以外の将来membershipである
-- Routine archive/deleteのexact lifecycle、復元、retention（R2B pause/resumeとinclusive periodはD-047で解決済み）
+- Routineのgeneric retention / physical compaction policy（D-118で、無効化・削除のcurrent logical date以降cleanup、過去履歴保持、user-facing restoreなしのlifecycleは解決済み）
 - occurrence-level Task title / Project override UX（R2Bはcurrent Task authority + historical snapshotのみ）
 
 - operation result retention / cleanup policy
@@ -101,7 +101,7 @@ Current implementationでは以下を実装済み。
 - pagination / large payload policy
 - future command追加時のendpoint naming / compatibility rule
 - manual actual correction / historical overlap validation commandのexact API / retry contract
-- running delete / Routine Skip / Routine stop-resume-delete commandのexact atomicity / retry contract
+- Routine Skipと将来の別lifecycle commandのexact atomicity / retry contract（D-118でenabled/disabled/deleteのcurrent logical date以降cleanupと既存operation retry boundaryは解決済み）
 
 ## Authentication / authorization
 

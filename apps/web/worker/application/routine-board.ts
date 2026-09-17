@@ -547,15 +547,80 @@ export async function setRoutineEnabled(db: D1Database, appUserId: string, reque
           .bind(appUserId, context.dayId, context.placementRevision, appUserId, request.operation_id),
       );
     }
+    if (!request.enabled) {
+      // D-118: disabling a Routine is a lifecycle cleanup boundary.  The
+      // RoutineDefinition and pre-boundary history remain, while every
+      // materialized child on/after the server-resolved logical date is
+      // removed in this same D1 batch, regardless of Entry lifecycle.
+      const routineEntryIds = `SELECT e.id FROM entries e
+        JOIN routine_occurrences o ON o.app_user_id = e.app_user_id AND o.id = e.routine_occurrence_id
+        JOIN taskchute_days d ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
+        WHERE e.app_user_id = ? AND o.routine_definition_id = ? AND d.logical_date >= ?`;
+      const removableOccurrenceIds = `SELECT o.id FROM routine_occurrences o
+        JOIN taskchute_days origin_day ON origin_day.app_user_id = o.app_user_id
+          AND origin_day.id = o.origin_taskchute_day_id
+        WHERE o.app_user_id = ? AND o.routine_definition_id = ? AND origin_day.logical_date >= ?
+          AND NOT EXISTS (SELECT 1 FROM entries e WHERE e.app_user_id = o.app_user_id
+            AND e.routine_occurrence_id = o.id)`;
+      statements.push(
+        db.prepare(`UPDATE taskchute_days SET placement_revision = placement_revision + 1
+          WHERE app_user_id = ? AND logical_date >= ? AND EXISTS (
+            SELECT 1 FROM entries e JOIN routine_occurrences o
+              ON o.app_user_id = e.app_user_id AND o.id = e.routine_occurrence_id
+            WHERE e.app_user_id = taskchute_days.app_user_id AND e.taskchute_day_id = taskchute_days.id
+              AND o.routine_definition_id = ? AND EXISTS (
+                SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?))`)
+          .bind(appUserId, context.logicalDate, request.routine_definition_id, appUserId, request.operation_id),
+        db.prepare(`DELETE FROM executions WHERE app_user_id = ? AND entry_id IN (${routineEntryIds})
+          AND EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+          .bind(appUserId, appUserId, request.routine_definition_id, context.logicalDate, appUserId, request.operation_id),
+        db.prepare(`DELETE FROM entry_mode_snapshots WHERE app_user_id = ? AND entry_id IN (${routineEntryIds})
+          AND EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+          .bind(appUserId, appUserId, request.routine_definition_id, context.logicalDate, appUserId, request.operation_id),
+        db.prepare(`DELETE FROM entry_project_snapshots WHERE app_user_id = ? AND entry_id IN (${routineEntryIds})
+          AND EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+          .bind(appUserId, appUserId, request.routine_definition_id, context.logicalDate, appUserId, request.operation_id),
+        db.prepare(`DELETE FROM entry_task_snapshots WHERE app_user_id = ? AND entry_id IN (${routineEntryIds})
+          AND EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+          .bind(appUserId, appUserId, request.routine_definition_id, context.logicalDate, appUserId, request.operation_id),
+        db.prepare(`DELETE FROM entry_modes WHERE app_user_id = ? AND entry_id IN (${routineEntryIds})
+          AND EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+          .bind(appUserId, appUserId, request.routine_definition_id, context.logicalDate, appUserId, request.operation_id),
+        db.prepare(`DELETE FROM entries WHERE app_user_id = ? AND id IN (${routineEntryIds})
+          AND EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+          .bind(appUserId, appUserId, request.routine_definition_id, context.logicalDate, appUserId, request.operation_id),
+        db.prepare(`DELETE FROM routine_occurrence_mode_overrides WHERE app_user_id = ?
+          AND routine_occurrence_id IN (${removableOccurrenceIds})
+          AND EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+          .bind(appUserId, appUserId, request.routine_definition_id, context.logicalDate, appUserId, request.operation_id),
+        db.prepare(`DELETE FROM routine_occurrence_suppressions WHERE app_user_id = ?
+          AND routine_occurrence_id IN (${removableOccurrenceIds})
+          AND EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+          .bind(appUserId, appUserId, request.routine_definition_id, context.logicalDate, appUserId, request.operation_id),
+        db.prepare(`DELETE FROM routine_occurrence_task_snapshots WHERE app_user_id = ?
+          AND routine_occurrence_id IN (${removableOccurrenceIds})
+          AND EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+          .bind(appUserId, appUserId, request.routine_definition_id, context.logicalDate, appUserId, request.operation_id),
+        db.prepare(`DELETE FROM routine_occurrences WHERE app_user_id = ?
+          AND id IN (${removableOccurrenceIds})
+          AND EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+          .bind(appUserId, appUserId, request.routine_definition_id, context.logicalDate, appUserId, request.operation_id),
+      );
+    }
     statements.push(db.prepare(`INSERT INTO transaction_assertions (app_user_id, id, ok)
       VALUES (?, ?, CASE WHEN EXISTS (SELECT 1 FROM routine_board_items
         WHERE app_user_id = ? AND routine_definition_id = ? AND settings_revision = ?)
+        AND (? = 1 OR NOT EXISTS (SELECT 1 FROM entries e
+          JOIN routine_occurrences o ON o.app_user_id = e.app_user_id AND o.id = e.routine_occurrence_id
+          JOIN taskchute_days d ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
+          WHERE e.app_user_id = ? AND o.routine_definition_id = ? AND d.logical_date >= ?))
         AND (? = 0 OR (EXISTS (SELECT 1 FROM taskchute_days WHERE app_user_id = ? AND id = ?
           AND placement_revision = ?) AND EXISTS (SELECT 1 FROM routine_occurrences
           WHERE app_user_id = ? AND id = ? AND routine_definition_id = ?)
           AND EXISTS (SELECT 1 FROM entries WHERE app_user_id = ? AND id = ?
             AND routine_occurrence_id = ?))) THEN 1 ELSE 0 END)`)
       .bind(appUserId, assertionId, appUserId, request.routine_definition_id, result.settings_revision,
+        request.enabled ? 1 : 0, appUserId, request.routine_definition_id, context.logicalDate,
         plan ? 1 : 0, appUserId, context.dayId, (context.placementRevision ?? 0) + (plan ? 1 : 0),
         appUserId, plan?.occurrenceId ?? "", request.routine_definition_id,
         appUserId, plan?.entryId ?? "", plan?.occurrenceId ?? ""));
@@ -1117,6 +1182,20 @@ export async function deleteRoutine(db: D1Database, appUserId: string, request: 
   };
   const assertionId = `routine-delete:${request.operation_id}`;
   try {
+    // Resolve the cleanup boundary from the server-side user settings. The
+    // derived SQL shape keeps every cleanup statement in the same guarded D1
+    // batch as the tombstone and board revision update.
+    const currentLogicalDate = (await currentContext(db, appUserId, nowInstant)).logicalDate;
+    const boundRoutineEntryIds = `SELECT e.id FROM entries e
+      JOIN routine_occurrences o ON o.app_user_id = e.app_user_id AND o.id = e.routine_occurrence_id
+      JOIN taskchute_days d ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
+      WHERE e.app_user_id = ? AND o.routine_definition_id = ? AND d.logical_date >= ?`;
+    const removableOccurrenceIds = `SELECT o.id FROM routine_occurrences o
+      JOIN taskchute_days origin_day ON origin_day.app_user_id = o.app_user_id
+        AND origin_day.id = o.origin_taskchute_day_id
+      WHERE o.app_user_id = ? AND o.routine_definition_id = ? AND origin_day.logical_date >= ?
+        AND NOT EXISTS (SELECT 1 FROM entries e WHERE e.app_user_id = o.app_user_id
+          AND e.routine_occurrence_id = o.id)`;
     const results = await db.batch([
       db.prepare(`INSERT INTO routine_command_guards (app_user_id, operation_id, command_type)
         SELECT ?, ?, 'DeleteRoutine' WHERE EXISTS (SELECT 1 FROM routine_board_heads
@@ -1130,6 +1209,48 @@ export async function deleteRoutine(db: D1Database, appUserId: string, request: 
         .bind(appUserId, request.operation_id, appUserId, request.expected_board_revision,
           appUserId, request.routine_definition_id, request.expected_settings_revision,
           appUserId, request.routine_definition_id, appUserId, request.routine_definition_id),
+      db.prepare(`UPDATE taskchute_days SET placement_revision = placement_revision + 1
+        WHERE app_user_id = ? AND logical_date >= ? AND EXISTS (
+          SELECT 1 FROM entries e JOIN routine_occurrences o
+            ON o.app_user_id = e.app_user_id AND o.id = e.routine_occurrence_id
+          WHERE e.app_user_id = taskchute_days.app_user_id AND e.taskchute_day_id = taskchute_days.id
+            AND o.routine_definition_id = ? AND EXISTS (
+              SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?))`)
+        .bind(appUserId, currentLogicalDate, request.routine_definition_id, appUserId, request.operation_id),
+      db.prepare(`DELETE FROM executions WHERE app_user_id = ? AND entry_id IN (${boundRoutineEntryIds})
+        AND EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(appUserId, appUserId, request.routine_definition_id, currentLogicalDate, appUserId, request.operation_id),
+      db.prepare(`DELETE FROM entry_mode_snapshots WHERE app_user_id = ? AND entry_id IN (${boundRoutineEntryIds})
+        AND EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(appUserId, appUserId, request.routine_definition_id, currentLogicalDate, appUserId, request.operation_id),
+      db.prepare(`DELETE FROM entry_project_snapshots WHERE app_user_id = ? AND entry_id IN (${boundRoutineEntryIds})
+        AND EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(appUserId, appUserId, request.routine_definition_id, currentLogicalDate, appUserId, request.operation_id),
+      db.prepare(`DELETE FROM entry_task_snapshots WHERE app_user_id = ? AND entry_id IN (${boundRoutineEntryIds})
+        AND EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(appUserId, appUserId, request.routine_definition_id, currentLogicalDate, appUserId, request.operation_id),
+      db.prepare(`DELETE FROM entry_modes WHERE app_user_id = ? AND entry_id IN (${boundRoutineEntryIds})
+        AND EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(appUserId, appUserId, request.routine_definition_id, currentLogicalDate, appUserId, request.operation_id),
+      db.prepare(`DELETE FROM entries WHERE app_user_id = ? AND id IN (${boundRoutineEntryIds})
+        AND EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(appUserId, appUserId, request.routine_definition_id, currentLogicalDate, appUserId, request.operation_id),
+      db.prepare(`DELETE FROM routine_occurrence_mode_overrides WHERE app_user_id = ?
+        AND routine_occurrence_id IN (${removableOccurrenceIds})
+        AND EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(appUserId, appUserId, request.routine_definition_id, currentLogicalDate, appUserId, request.operation_id),
+      db.prepare(`DELETE FROM routine_occurrence_suppressions WHERE app_user_id = ?
+        AND routine_occurrence_id IN (${removableOccurrenceIds})
+        AND EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(appUserId, appUserId, request.routine_definition_id, currentLogicalDate, appUserId, request.operation_id),
+      db.prepare(`DELETE FROM routine_occurrence_task_snapshots WHERE app_user_id = ?
+        AND routine_occurrence_id IN (${removableOccurrenceIds})
+        AND EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(appUserId, appUserId, request.routine_definition_id, currentLogicalDate, appUserId, request.operation_id),
+      db.prepare(`DELETE FROM routine_occurrences WHERE app_user_id = ?
+        AND id IN (${removableOccurrenceIds})
+        AND EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(appUserId, appUserId, request.routine_definition_id, currentLogicalDate, appUserId, request.operation_id),
       db.prepare(`INSERT INTO routine_definition_archives (app_user_id, routine_definition_id, archived_at)
         SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM routine_command_guards
           WHERE app_user_id = ? AND operation_id = ?)`)
@@ -1180,9 +1301,12 @@ export async function deleteRoutine(db: D1Database, appUserId: string, request: 
       db.prepare("DELETE FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?")
         .bind(appUserId, request.operation_id),
     ]);
-    if (results[0]?.meta.changes === 0 || results[1]?.meta.changes === 0
-      || results[2]?.meta.changes === 0 || results[5]?.meta.changes === 0
-      || results[6]?.meta.changes === 0 || results[7]?.meta.changes === 0) {
+    // Cleanup statements legitimately affect zero rows when a Routine has no
+    // current/future materialization. Check only the mutation anchors whose
+    // changes prove that the guarded command actually committed.
+    if (results[0]?.meta.changes === 0 || results[12]?.meta.changes === 0
+      || results[13]?.meta.changes === 0 || results[16]?.meta.changes === 0
+      || results[17]?.meta.changes === 0 || results[18]?.meta.changes === 0) {
       const committed = await readOperation(db, appUserId, request.operation_id);
       if (committed) return replayOperation(committed, "DeleteRoutine", requestFingerprint);
       const latestHead = await db.prepare("SELECT board_revision FROM routine_board_heads WHERE app_user_id = ?")

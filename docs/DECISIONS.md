@@ -2,6 +2,20 @@
 
 Statuses: Approved / Proposed / Superseded
 
+## D-118 — Routine Enabled / Delete Lifecycle v0.1
+
+Status: **Approved**
+
+Canonical Decision: `docs/decisions/D-118_ROUTINE_ENABLED_DELETE_LIFECYCLE_V01.md`。
+
+D-118はRoutineの`有効 / 無効`と`削除`をserver-resolved current logical date境界で定義し、
+無効化・削除時に当日以降のmaterialized Routine-derived Task / Entry / Execution等を既存の
+`SetRoutineEnabled` / `DeleteRoutine` command内でatomicにcleanupする。過去日のhistory、Routine
+identity、既存operation / revision / retry / reconciliation semanticsは保持し、無効期間のbackfill、
+user-facing archive / restore、schema / migration / dependency、production operationは追加しない。
+Desktop Webは既存checkboxをaccessible switchへ整え、delete confirmationはD-118の明示文言・初期
+`キャンセル` focus・Escape / backdrop cancelを使用する。
+
 ## D-117 — Web Today / Sidebar / Routine UX Refinement v0.1
 
 Status: **Approved**

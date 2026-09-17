@@ -1,5 +1,18 @@
 # Risks
 
+## R-074 — D-118 Routine lifecycle cleanup boundary
+
+D-118の無効化・削除はcurrent logical date以降のRoutine-derived childをplanned / running / completedを
+問わず削除するため、通常のgeneration suppressionより破壊的な境界を持つ。過去日のEntry / Execution /
+actual / historical factを誤って削除すること、ExecutionやOccurrence childのFK順序を誤ること、削除後に
+materializerが再生成することが主なリスクである。
+
+Mitigation: server-resolved logical date、owner scope、既存operation / revision / exact replay、同一D1
+atomic batch、child-to-parentのcleanup ordering、post-mutation assertionを再利用する。RoutineDefinition
+identityは保持し、無効期間のbackfillとarchive / restore UIは追加しない。focused Worker/D1 `16 / 16`、
+Routine Web `4 files / 47 tests`、RoutineBoard `18 / 18`、typecheckはPASS。persistent nonprod/browser/CI
+evidenceは未実施で、productionは`NOT_RUN`とする。
+
 ## R-073 — D-117 Web UX reuse boundary
 
 D-117のToday Routine modalは既存Routine settings APIと現在のToday projectionを再利用する。running rowの

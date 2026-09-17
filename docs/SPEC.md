@@ -28,6 +28,19 @@ planned start、estimate、placement、Day `placement_revision`、Routine relati
 D-117のrunning Mode projectionは、明示的なlive Mode変更がsnapshotのMode IDと異なる場合だけlive relationを表示する。
 Mode定義のrenameだけでは開始時snapshot表示を変えず、completed Entryのhistorical snapshot authorityも維持する。
 
+## D-118 Routine enabled / delete lifecycle v0.1
+
+Routineの`有効 / 無効`と`削除`は、mutation時にserverが解決するcurrent logical dateを境界とする。無効化・
+削除では当日以降にmaterialize済みのRoutine-derived Entry / Execution / occurrence関連データを既存の
+atomic commandでcleanupし、planned / running / completedの区別で残存させない。境界より前のEntry、
+Execution、actual、historical factとRoutineDefinition identityは保持する。無効期間のbackfillはせず、
+再有効化後はそのlogical dateから既存のrecurrence eligibility / exactly-once materializationへ戻る。
+
+user-facing Routine lifecycleは`有効 / 無効`と`削除`で表し、削除後のarchive / restore surfaceは提供しない。
+既存のowner scope、operation identity、settings / board revision、CAS、exact replay、retry / reconcileを
+維持する。これは既存Routine commandとschemaの利用に限定したWeb UI / Worker実装であり、新API、schema /
+migration、dependency、Android semantics、production rolloutは追加しない。
+
 ## D-114 Android Settings Management v0.1
 
 Androidの`設定` destinationは、既存canonical APIを利用するSettings hubである。Sectionは全体

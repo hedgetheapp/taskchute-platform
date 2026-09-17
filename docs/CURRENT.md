@@ -1,5 +1,22 @@
 # Current
 
+### D-118 Routine enabled / delete lifecycle v0.1 — implementation complete; verification pending
+
+D-118のApproved lifecycleを既存`SetRoutineEnabled` / `DeleteRoutine`へ実装した。serverがmutation時に
+解決したcurrent logical dateを境界として、無効化または削除の当日以降にmaterialize済みのRoutine-derived
+Entry / Execution / related occurrence dataをplanned / running / completedを問わず同一atomic mutationで
+cleanupする。境界より前のRoutine historyとRoutineDefinition identityは保持し、無効期間のbackfill、
+archive / restore UI、schema / migration / dependencyは追加していない。再有効化はその時点から再開し、
+eligible current Dayだけを既存materializerでexactly onceに扱う。
+
+Desktop Routine Boardはenabled controlを`role="switch"`のON/OFF表示へ変更し、D-118の削除確認文言、
+destructive action、初期キャンセルfocus、Escape / backdrop cancelを適用した。Android Settingsの既存
+switchと既存API境界は変更していない。
+
+Local focused evidenceはRoutine Worker/D1 `16 / 16`、Routine-related Web `4 files / 47 tests`、
+RoutineBoard Web `18 / 18`、typecheck PASS。persistent nonprod、browser、full build、CI、DB integrityは
+この時点では未実施で、productionは`NOT_RUN`、Releasedは`NO`とする。
+
 ### D-117 Web Today / Sidebar / Routine UX refinement v0.1 — implemented; running metadata corrective integrated
 
 D-117のApproved Web refinementを実装し、Project Note slot、Routine icon-only state、Today Routine

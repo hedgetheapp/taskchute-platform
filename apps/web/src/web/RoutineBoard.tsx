@@ -129,6 +129,7 @@ export function RoutineBoard({ onUnauthorized, realtimeRefresh }: RoutineBoardPr
   const addRoutineRef = useRef<HTMLButtonElement | null>(null);
   const helpButtonRef = useRef<HTMLButtonElement | null>(null);
   const modalRef = useRef<HTMLDivElement | null>(null);
+  const deleteCancelRef = useRef<HTMLButtonElement | null>(null);
   const helpOriginRef = useRef<HTMLElement | null>(null);
   const deleteOriginRef = useRef<HTMLElement | null>(null);
   const deleteCloseFallbackRef = useRef<HTMLElement | null>(null);
@@ -213,7 +214,7 @@ export function RoutineBoard({ onUnauthorized, realtimeRefresh }: RoutineBoardPr
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     if (helpOpen && helpOriginRef.current === null) helpOriginRef.current = connectedElement(previous) ?? connectedElement(helpButtonRef.current);
     if (deleteTarget !== null && deleteOriginRef.current === null) deleteOriginRef.current = connectedElement(previous) ?? connectedElement(helpButtonRef.current);
-    const focusDialog = () => modalRef.current?.focus();
+    const focusDialog = () => deleteTarget !== null ? deleteCancelRef.current?.focus() : modalRef.current?.focus();
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -229,9 +230,8 @@ export function RoutineBoard({ onUnauthorized, realtimeRefresh }: RoutineBoardPr
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
     };
     document.addEventListener("keydown", onKeyDown);
-    const timer = window.setTimeout(focusDialog, 0);
+    focusDialog();
     return () => {
-      window.clearTimeout(timer);
       document.removeEventListener("keydown", onKeyDown);
       if (helpOpen || deleteTarget !== null) {
         const closingDelete = deleteTarget !== null;
@@ -309,7 +309,7 @@ export function RoutineBoard({ onUnauthorized, realtimeRefresh }: RoutineBoardPr
   async function toggle(routine: RoutineBoardItemProjection) {
     await mutate(() => api.setRoutineEnabled({ operation_id: uuidv7(), routine_definition_id: routine.routine_definition_id,
       enabled: !routine.enabled, expected_settings_revision: routine.settings_revision }),
-    routine.enabled ? "Routineを停止しました" : "Routineを再開しました");
+    routine.enabled ? "Routineを無効にしました" : "Routineを有効にしました");
   }
 
   function updateRequest(routine: RoutineBoardItemProjection, patch: Partial<UpdateRoutineRequest>): UpdateRoutineRequest {
@@ -415,8 +415,8 @@ export function RoutineBoard({ onUnauthorized, realtimeRefresh }: RoutineBoardPr
     const scheduleDraft = scheduleDrafts[routine.routine_definition_id];
     switch (key) {
       case "enabled": return <div role="cell" className="routine-cell routine-enabled-cell"><label className="routine-enabled-control">
-        <input type="checkbox" checked={routine.enabled} disabled={pending} aria-label={`${routine.title}の有効`} onChange={() => void toggle(routine)} />
-        <span>{routine.enabled ? "有効" : "停止"}</span></label></div>;
+        <input type="checkbox" role="switch" checked={routine.enabled} disabled={pending} aria-label={`${routine.title}の有効`} onChange={() => void toggle(routine)} />
+        <span>{routine.enabled ? "有効" : "無効"}</span></label></div>;
       case "task": return <div role="cell" className="routine-cell routine-task-cell">
         <input key={`${canonicalEpoch}-${routine.routine_definition_id}-title`} aria-label={`${routine.title}のRoutine名`} defaultValue={routine.title}
           maxLength={300} disabled={pending} onKeyDown={(event) => { if (event.key === "Escape") {
@@ -551,7 +551,7 @@ export function RoutineBoard({ onUnauthorized, realtimeRefresh }: RoutineBoardPr
             }} /></div>; })}
         </div>
         {newDraft && <form className="routine-board-row routine-new-row" onSubmit={create}>
-          {preference.order.map((key) => <div role="cell" key={key}>{key === "enabled" ? <span>停止</span> : key === "task" ? <>
+          {preference.order.map((key) => <div role="cell" key={key}>{key === "enabled" ? <span>無効</span> : key === "task" ? <>
             <input name="title" aria-label="新しいRoutine名" autoFocus maxLength={300} required onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); setNewDraft(false); } }} />
             <button type="submit">追加</button><button type="button" className="secondary" onClick={() => setNewDraft(false)}>キャンセル</button></>
             : key === "schedule" ? <span>毎日</span> : key === "endDate" ? <span>終了なし</span> : <span>—</span>}</div>)}
@@ -589,8 +589,8 @@ export function RoutineBoard({ onUnauthorized, realtimeRefresh }: RoutineBoardPr
     </div>}
     {deleteTarget && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setDeleteTarget(null); }}>
       <div ref={modalRef} className="modal-dialog" role="dialog" aria-modal="true" aria-label="Routine削除確認" tabIndex={-1}>
-        <h2>ルーティンを削除しますか？</h2><p>今後の自動生成を停止します。すでに作成されたTaskと過去の実行履歴は削除されません。</p>
-        <div className="modal-actions"><button type="button" className="secondary" onClick={() => setDeleteTarget(null)}>キャンセル</button><button type="button" className="destructive destructive-action" onClick={confirmDelete}>削除</button></div>
+        <h2>このRoutineを削除しますか？</h2><p>今日以降のこのRoutine由来Taskを削除し、今後は生成しません。</p><p>過去の日付の履歴は残ります。</p>
+        <div className="modal-actions"><button ref={deleteCancelRef} type="button" className="secondary" onClick={() => setDeleteTarget(null)}>キャンセル</button><button type="button" className="destructive destructive-action" onClick={confirmDelete}>削除</button></div>
       </div>
     </div>}
   </main>;
