@@ -46,6 +46,8 @@ import type {
   UpdateSectionConfigurationRequest,
   ConvertEntryToRoutineRequest,
   CreateFutureRoutineFromCompletedEntryRequest,
+  RoutineBoardItemProjection,
+  RoutineScheduleInput,
   EndRoutineRequest,
   SetRoutineEstimateRequest,
   SetRoutineSectionPlanRequest,
@@ -53,6 +55,7 @@ import type {
   AutoCarryOverduePlannedSettingProjection,
   SetAutoCarryOverduePlannedRequest,
   MoveEntryPlacementIntent,
+  UpdateRoutineRequest,
 } from "../shared/contracts";
 import { mergeRealtimeScopes, type RealtimeRefresh, type RealtimeScope } from "../shared/realtime";
 import { isSamePlannedStartCohort } from "../shared/planned-entry-order";
@@ -181,6 +184,22 @@ type RoutineCandidate =
   | { entryId: string; unit: "section-plan"; sectionId: string | null; plannedStartMinute: number | null;
       placement?: MoveEntryPlacementIntent; restoreFocus?: FocusTarget };
 type BulkRoutineScopeChoice = "occurrence" | "definition";
+type TodayRoutineDraft = {
+  entryId: string;
+  kind: "convert" | "future" | "edit";
+  routineDefinitionId: string | null;
+  settingsRevision: number | null;
+  loading: boolean;
+  settingsDirty: boolean;
+  schedule: RoutineScheduleInput;
+  plannedStart: string;
+  estimateMinutes: string;
+  projectId: string | null;
+  modeId: string | null;
+  sectionId: string | null;
+  startDate: string;
+  endDate: string;
+};
 type BulkRoutineScopeDraft = {
   entryId: string;
   title: string;
@@ -232,6 +251,7 @@ const DAY_SECTION_COLLAPSE_STORAGE_VERSION = 1;
 export const SIDEBAR_STORAGE_KEY = "taskchute.web.sidebar.v1";
 const SIDEBAR_STORAGE_VERSION = 1;
 const UNSECTIONED_SECTION_KEY = "unsectioned";
+type SidebarState = "expanded" | "compact" | "collapsed";
 type CollapsedSectionsByDay = Record<string, Record<string, true>>;
 type PersistedDaySectionCollapse = {
   version: 1;
@@ -240,10 +260,61 @@ type PersistedDaySectionCollapse = {
 type PersistedSidebarPreference = {
   version: 1;
   open: boolean;
+  mode?: "compact";
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function defaultRoutineSchedule(kind: string): RoutineScheduleInput {
+  switch (kind) {
+    case "every_n_days": return { kind: "every_n_days", interval_days: 2 };
+    case "weekly": return { kind: "weekly", weekdays: [1] };
+    case "every_n_weeks": return { kind: "every_n_weeks", interval_weeks: 2, weekdays: [1] };
+    case "monthly_day": return { kind: "monthly_day", day_of_month: 1 };
+    case "monthly_last_day": return { kind: "monthly_last_day" };
+    case "monthly_nth_weekday": return { kind: "monthly_nth_weekday", ordinal: 1, weekday: 1 };
+    case "monthly_last_weekday": return { kind: "monthly_last_weekday", weekday: 1 };
+    case "every_n_months_day": return { kind: "every_n_months_day", interval_months: 2, day_of_month: 1 };
+    case "every_n_months_last_day": return { kind: "every_n_months_last_day", interval_months: 2 };
+    case "workday": return { kind: "workday" };
+    case "holiday": return { kind: "holiday" };
+    case "official_holiday": return { kind: "official_holiday" };
+    case "monthly_last_workday": return { kind: "monthly_last_workday" };
+    default: return { kind: "daily" };
+  }
+}
+
+function isValidTodayRoutineSchedule(schedule: RoutineScheduleInput): boolean {
+  const weekdaysValid = (weekdays: number[]) => weekdays.length > 0
+    && new Set(weekdays).size === weekdays.length && weekdays.every((day) => day >= 0 && day <= 6);
+  switch (schedule.kind) {
+    case "daily":
+    case "monthly_last_day":
+    case "workday":
+    case "holiday":
+    case "official_holiday":
+    case "monthly_last_workday": return true;
+    case "every_n_days": return Number.isSafeInteger(schedule.interval_days) && schedule.interval_days >= 2 && schedule.interval_days <= 365;
+    case "weekly": return weekdaysValid(schedule.weekdays);
+    case "every_n_weeks": return Number.isSafeInteger(schedule.interval_weeks) && schedule.interval_weeks >= 2 && weekdaysValid(schedule.weekdays);
+    case "monthly_day": return Number.isSafeInteger(schedule.day_of_month) && schedule.day_of_month >= 1 && schedule.day_of_month <= 31;
+    case "monthly_nth_weekday": return Number.isSafeInteger(schedule.ordinal) && schedule.ordinal >= 1 && schedule.ordinal <= 5 && schedule.weekday >= 0 && schedule.weekday <= 6;
+    case "monthly_last_weekday": return schedule.weekday >= 0 && schedule.weekday <= 6;
+    case "every_n_months_day": return Number.isSafeInteger(schedule.interval_months) && schedule.interval_months >= 2
+      && Number.isSafeInteger(schedule.day_of_month) && schedule.day_of_month >= 1 && schedule.day_of_month <= 31;
+    case "every_n_months_last_day": return Number.isSafeInteger(schedule.interval_months) && schedule.interval_months >= 2;
+  }
+}
+
+function parseRoutinePlannedStart(value: string): number | null | undefined {
+  const trimmed = value.trim();
+  if (trimmed === "") return null;
+  const normalized = /^\d{4}$/.test(trimmed)
+    ? `${trimmed.slice(0, 2)}:${trimmed.slice(2)}`
+    : trimmed;
+  return parseLogicalTime(normalized);
 }
 
 function isCanonicalLogicalDate(value: string): boolean {
@@ -255,33 +326,53 @@ function isCanonicalLogicalDate(value: string): boolean {
   }
 }
 
-function readPersistedSidebarOpen(): boolean {
-  if (typeof window === "undefined") return true;
+function readPersistedSidebarState(): SidebarState {
+  if (typeof window === "undefined") return "expanded";
   let raw: string | null;
   try {
     raw = window.localStorage.getItem(SIDEBAR_STORAGE_KEY);
   } catch {
-    return true;
+    return "expanded";
   }
-  if (raw === null) return true;
+  if (raw === null) return "expanded";
 
   try {
     const parsed: unknown = JSON.parse(raw);
-    if (!isRecord(parsed) || parsed.version !== SIDEBAR_STORAGE_VERSION || typeof parsed.open !== "boolean") return true;
-    return parsed.open;
+    if (!isRecord(parsed) || parsed.version !== SIDEBAR_STORAGE_VERSION || typeof parsed.open !== "boolean") return "expanded";
+    if (!parsed.open) return "collapsed";
+    return parsed.mode === "compact" ? "compact" : "expanded";
   } catch {
-    return true;
+    return "expanded";
   }
 }
 
-function persistSidebarOpen(open: boolean): void {
+function persistSidebarState(state: SidebarState): void {
   if (typeof window === "undefined") return;
-  const value: PersistedSidebarPreference = { version: SIDEBAR_STORAGE_VERSION, open };
+  // Keep the v1 { open: false } envelope byte-for-byte compatible with the
+  // previous collapsed preference; compact is the additive presentation mode.
+  const value: PersistedSidebarPreference = state === "collapsed"
+    ? { version: SIDEBAR_STORAGE_VERSION, open: false }
+    : { version: SIDEBAR_STORAGE_VERSION, open: true, ...(state === "compact" ? { mode: "compact" as const } : {}) };
   try {
     window.localStorage.setItem(SIDEBAR_STORAGE_KEY, JSON.stringify(value));
   } catch {
     // localStorage may be unavailable or full; navigation remains usable in memory.
   }
+}
+
+type SidebarIconKind = "today" | "routine" | "note" | "settings";
+
+function SidebarIcon({ kind }: { kind: SidebarIconKind }) {
+  const path = kind === "today"
+    ? "M5 3.5h14v17H5z M8 1.5v4 M16 1.5v4 M5 8h14"
+    : kind === "routine"
+      ? "M12 4v4l3 2 M19.5 12a7.5 7.5 0 1 1-2.2-5.3 M19.5 4.5v4h-4"
+      : kind === "note"
+        ? "M5 3.5h14v17H5z M8 8h8 M8 12h8 M8 16h5"
+        : "M12 3.5l1.1 1.9 2.2.5.5 2.2 1.9 1.1-1.9 1.1-.5 2.2-2.2.5-1.1 1.9-1.1-1.9-2.2-.5-.5-2.2-1.9-1.1 1.9-1.1.5-2.2 2.2-.5z M12 9.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z";
+  return <svg className="sidebar-nav-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+    <path d={path} />
+  </svg>;
 }
 
 function readPersistedCollapsedSections(): CollapsedSectionsByDay {
@@ -919,7 +1010,7 @@ export function App() {
   const [executionTimesDraft, setExecutionTimesDraft] = useState<ExecutionTimesDraft | null>(null);
   const [taskMetadataDraft, setTaskMetadataDraft] = useState<TaskMetadataDraft | null>(null);
   const [executionEditorError, setExecutionEditorError] = useState<string | null>(null);
-  const [routineDraft, setRoutineDraft] = useState<{ entryId: string; endDate: string } | null>(null);
+  const [routineDraft, setRoutineDraft] = useState<TodayRoutineDraft | null>(null);
   const [routineCandidate, setRoutineCandidate] = useState<RoutineCandidate | null>(null);
   const [pending, setPending] = useState<"login" | "project" | "project-settings" | "day-navigation" | "task" | "task-note" | "duplicate" | "bulk-delete" | "delete-completed" | "bulk-date-move" | "bulk-section" | "bulk-section-occurrence" | "bulk-section-scoped" | "bulk-estimate" | "reorder" | "start" | "interrupt" | "complete" | "execution-times" | "task-metadata" | "mode" | "configuration" | "section-settings" | "auto-carry-setting" | "move" | "estimate" | "planned-start" | "routine-convert" | "future-routine" | "routine-end" | "routine-edit" | "logout" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -927,7 +1018,7 @@ export function App() {
   const [pendingFocusKey, setPendingFocusKey] = useState<string | null>(null);
   const [showCompleted, setShowCompleted] = useState(true);
   const [collapsedSectionsByDay, setCollapsedSectionsByDay] = useState<CollapsedSectionsByDay>(readPersistedCollapsedSections);
-  const [sidebarOpen, setSidebarOpen] = useState(readPersistedSidebarOpen);
+  const [sidebarState, setSidebarState] = useState<SidebarState>(readPersistedSidebarState);
   const [dayColumnPreference, setDayColumnPreference] = useState<DayColumnPreference>(readPersistedDayColumnPreference);
   const [columnsMenuOpen, setColumnsMenuOpen] = useState(false);
   const [columnSubmenuOpen, setColumnSubmenuOpen] = useState(false);
@@ -2000,8 +2091,8 @@ export function App() {
   }, [collapsedSectionsByDay]);
 
   useEffect(() => {
-    persistSidebarOpen(sidebarOpen);
-  }, [sidebarOpen]);
+    persistSidebarState(sidebarState);
+  }, [sidebarState]);
 
   useEffect(() => {
     persistDayColumnPreference(dayColumnPreference);
@@ -4149,13 +4240,17 @@ export function App() {
   function canEditProjectMetadata(entry: EntryProjection): boolean {
     const planned = Boolean(day?.taskchute_day.id && day.establishment_state === "established"
       && day.planning_enabled && entry.lifecycle_state === "planned" && entry.routine === null);
-    return planned || canCorrectCompletedEntryMetadata(entry);
+    const running = Boolean(day?.is_current && day.taskchute_day.id && day.establishment_state === "established"
+      && day.planning_enabled && entry.lifecycle_state === "running" && entry.routine === null);
+    return planned || running || canCorrectCompletedEntryMetadata(entry);
   }
 
   function canEditModeMetadata(entry: EntryProjection): boolean {
     const planned = Boolean(day?.taskchute_day.id && day.establishment_state === "established"
       && day.planning_enabled && entry.lifecycle_state === "planned" && entry.routine === null);
-    return planned || canCorrectCompletedEntryMetadata(entry);
+    const running = Boolean(day?.is_current && day.taskchute_day.id && day.establishment_state === "established"
+      && day.planning_enabled && entry.lifecycle_state === "running" && entry.routine === null);
+    return planned || running || canCorrectCompletedEntryMetadata(entry);
   }
 
   function canEditRoutineMode(entry: EntryProjection): boolean {
@@ -5360,13 +5455,139 @@ export function App() {
     setRoutineSectionPlanOperation(operation); await executeRoutineSectionPlan(operation);
   }
 
+  function routineDraftFromEntry(entry: EntryProjection, kind: TodayRoutineDraft["kind"], routine: RoutineBoardItemProjection | null = null): TodayRoutineDraft {
+    const logicalDate = day?.taskchute_day.logical_date ?? currentLogicalDate ?? "";
+    const sourceRoutine = routine;
+    return {
+      entryId: entry.id,
+      kind,
+      routineDefinitionId: sourceRoutine?.routine_definition_id ?? entry.routine?.routine_definition_id ?? null,
+      settingsRevision: sourceRoutine?.settings_revision ?? null,
+      loading: false,
+      settingsDirty: false,
+      schedule: sourceRoutine?.schedule ?? { kind: "daily" },
+      plannedStart: formatClockInputFromLogicalMinute(sourceRoutine ? sourceRoutine.default_planned_start_minute : entry.planned_start_minute),
+      estimateMinutes: sourceRoutine?.default_estimate_seconds === null || sourceRoutine?.default_estimate_seconds === undefined
+        ? entry.estimate_seconds === null ? "" : String(entry.estimate_seconds / 60)
+        : String(sourceRoutine.default_estimate_seconds / 60),
+      projectId: sourceRoutine ? sourceRoutine.project?.id ?? null : entry.task.project?.id ?? null,
+      modeId: sourceRoutine ? sourceRoutine.default_mode_id ?? null : entry.mode?.id ?? null,
+      sectionId: sourceRoutine ? sourceRoutine.default_section_id ?? null : entry.section_id ?? null,
+      startDate: sourceRoutine?.start_logical_date ?? (kind === "future" ? shiftLogicalDate(logicalDate, 1) : logicalDate),
+      endDate: sourceRoutine?.end_logical_date ?? "",
+    };
+  }
+
+  function updateRoutineDraft(patch: Partial<TodayRoutineDraft>, markSettingsDirty = true): void {
+    setRoutineDraft((current) => current ? { ...current, ...patch, ...(markSettingsDirty ? { settingsDirty: true } : {}) } : current);
+  }
+
+  async function openTodayRoutineEditor(entry: EntryProjection, kind: TodayRoutineDraft["kind"]): Promise<void> {
+    if (routineDraft || mutationLocked || pending !== null) return;
+    const draft = routineDraftFromEntry(entry, kind);
+    if (kind !== "edit" || !entry.routine) {
+      setRoutineDraft(draft);
+      return;
+    }
+    setRoutineDraft({ ...draft, loading: true });
+    try {
+      const board = await api.loadRoutines();
+      const routine = board.routines.find((candidate) => candidate.routine_definition_id === entry.routine?.routine_definition_id);
+      if (!routine) throw new Error("対象のRoutine設定を読み込めませんでした");
+      setRoutineDraft((current) => current?.entryId === entry.id ? { ...routineDraftFromEntry(entry, kind, routine), loading: false } : current);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Routine設定を読み込めませんでした");
+      setRoutineDraft((current) => current?.entryId === entry.id ? { ...current, loading: false } : current);
+    }
+  }
+
+  function routineUpdateRequest(entry: EntryProjection, draft: TodayRoutineDraft, routine: RoutineBoardItemProjection): UpdateRoutineRequest | null {
+    const plannedStart = parseRoutinePlannedStart(draft.plannedStart);
+    if (plannedStart === undefined) return null;
+    const estimateMinutes = draft.estimateMinutes.trim() === "" ? null : Number(draft.estimateMinutes);
+    if (estimateMinutes !== null && (!Number.isSafeInteger(estimateMinutes) || estimateMinutes <= 0)) return null;
+    return {
+      operation_id: uuidv7(), routine_definition_id: routine.routine_definition_id,
+      expected_settings_revision: routine.settings_revision, title: entry.task.title,
+      project_id: draft.projectId, schedule: draft.schedule, default_section_id: draft.sectionId,
+      default_planned_start_minute: plannedStart, default_estimate_seconds: estimateMinutes === null ? null : estimateMinutes * 60,
+      default_mode_id: draft.modeId, start_logical_date: draft.startDate, end_logical_date: draft.endDate.trim() || null,
+    };
+  }
+
+  async function applyTodayRoutineSettings(entry: EntryProjection, draft: TodayRoutineDraft, routineDefinitionId: string): Promise<void> {
+    if (!draft.settingsDirty) return;
+    const board = await api.loadRoutines();
+    const routine = board.routines.find((candidate) => candidate.routine_definition_id === routineDefinitionId);
+    if (!routine) throw new Error("作成したRoutine設定を確認できませんでした");
+    const request = routineUpdateRequest(entry, draft, routine);
+    if (!request) throw new Error("開始予定または見積の入力を確認してください");
+    await api.updateRoutine(request);
+  }
+
+  async function commitTodayRoutineEditor(entry: EntryProjection): Promise<void> {
+    const draft = routineDraft;
+    if (!draft || draft.entryId !== entry.id || draft.loading || mutationLocked) return;
+    if (!isValidTodayRoutineSchedule(draft.schedule)) { setError("繰り返し設定を確認してください"); return; }
+    if (!isCanonicalLogicalDate(draft.startDate) || (draft.endDate.trim() !== "" && !isCanonicalLogicalDate(draft.endDate))) {
+      setError("開始日・終了日はYYYY-MM-DD形式で入力してください"); return;
+    }
+    if (draft.endDate.trim() !== "" && draft.endDate < draft.startDate) { setError("終了日は開始日以降を指定してください"); return; }
+    const parsedStart = parseRoutinePlannedStart(draft.plannedStart);
+    if (parsedStart === undefined) { setError("開始予定はHHMMまたはHH:MM形式で入力してください"); return; }
+    const estimateMinutes = draft.estimateMinutes.trim() === "" ? null : Number(draft.estimateMinutes);
+    if (estimateMinutes !== null && (!Number.isSafeInteger(estimateMinutes) || estimateMinutes <= 0)) { setError("見積は1分以上の整数で入力してください"); return; }
+    if (draft.kind === "edit" && draft.routineDefinitionId && draft.settingsRevision !== null) {
+      const request: UpdateRoutineRequest = {
+        operation_id: uuidv7(), routine_definition_id: draft.routineDefinitionId,
+        expected_settings_revision: draft.settingsRevision, title: entry.task.title,
+        project_id: draft.projectId, schedule: draft.schedule, default_section_id: draft.sectionId,
+        default_planned_start_minute: parsedStart, default_estimate_seconds: estimateMinutes === null ? null : estimateMinutes * 60,
+        default_mode_id: draft.modeId, start_logical_date: draft.startDate, end_logical_date: draft.endDate.trim() || null,
+      };
+      setPending("routine-edit"); setError(null);
+      try { await api.updateRoutine(request); await reconcile(); setRoutineDraft(null); }
+      catch (caught) { setError(caught instanceof Error ? caught.message : "Routine設定の保存に失敗しました"); }
+      finally { setPending(null); }
+      return;
+    }
+    if (draft.kind === "future") {
+      if (!day?.taskchute_day.id || !day.is_current || entry.lifecycle_state !== "completed") return;
+      try {
+        setPending("future-routine"); setError(null);
+        const board = await api.loadRoutines();
+        const operation: CreateFutureRoutineFromCompletedEntryRequest = {
+          operation_id: uuidv7(), source_entry_id: entry.id, task_id: uuidv7(),
+          routine_definition_id: uuidv7(), expected_board_revision: board.board_revision,
+        };
+        setFutureRoutineOperation(operation);
+        await executeFutureRoutineCreation(operation);
+      } catch (caught) {
+        if (caught instanceof ApiClientError && caught.status === 401) handleUnauthorized();
+        setError(caught instanceof Error ? caught.message : "Routine Boardを読み込めませんでした");
+      } finally { setPending((current) => current === "future-routine" ? null : current); }
+      return;
+    }
+    if (!day?.taskchute_day.id || !day.is_current || entry.routine !== null) return;
+    const operation: ConvertEntryToRoutineRequest = {
+      operation_id: uuidv7(), routine_definition_id: uuidv7(), routine_occurrence_id: uuidv7(),
+      entry_id: entry.id, taskchute_day_id: day.taskchute_day.id, end_logical_date: draft.endDate.trim() || null,
+    };
+    setRoutineConversionOperation(operation);
+    await executeRoutineConversion(operation);
+  }
+
   async function executeRoutineConversion(operation: ConvertEntryToRoutineRequest) {
     const mutationToken = beginMutationScope([...placementMutationScope(operation.taskchute_day_id), `entry:${operation.entry_id}`, `routine:${operation.routine_definition_id}`], "Routine化");
     if (!mutationToken) return;
+    const draft = routineDraft?.entryId === operation.entry_id ? routineDraft : null;
+    const entry = entryForId(dayRef.current ?? day, operation.entry_id);
     setPending("routine-convert"); setError(null);
     try {
       await api.convertEntryToRoutine(operation);
       await reconcile();
+      if (draft && entry) await applyTodayRoutineSettings(entry, draft, operation.routine_definition_id);
+      if (draft?.settingsDirty) await reconcile();
       setRoutineConversionOperation(null); setRoutineDraft(null);
       setEditingEstimate((editing) => editing?.entryId === operation.entry_id ? null : editing);
       setEditingPlannedStart((editing) => editing?.entryId === operation.entry_id ? null : editing);
@@ -5379,6 +5600,9 @@ export function App() {
         const canonical = [...(projection?.unsectioned_entries ?? []), ...(projection?.sections.flatMap((section) => section.entries) ?? [])]
           .find((entry) => entry.id === operation.entry_id);
         if (ambiguous && canonical?.routine?.routine_definition_id === operation.routine_definition_id) {
+          if (draft && entry) {
+            try { await applyTodayRoutineSettings(entry, draft, operation.routine_definition_id); } catch { return; }
+          }
           setRoutineConversionOperation(null); setRoutineDraft(null); setError(null);
           setEditingEstimate((editing) => editing?.entryId === operation.entry_id ? null : editing);
           setEditingPlannedStart((editing) => editing?.entryId === operation.entry_id ? null : editing);
@@ -5396,7 +5620,11 @@ export function App() {
     setPending("future-routine"); setError(null);
     try {
       await api.createFutureRoutineFromCompletedEntry(operation);
+      const draft = routineDraft?.entryId === operation.source_entry_id ? routineDraft : null;
+      const entry = entryForId(dayRef.current ?? day, operation.source_entry_id);
+      if (draft && entry) await applyTodayRoutineSettings(entry, draft, operation.routine_definition_id);
       setFutureRoutineOperation((current) => current?.operation_id === operation.operation_id ? null : current);
+      setRoutineDraft((current) => current?.entryId === operation.source_entry_id ? null : current);
       try {
         await reconcile();
       } catch (caught) {
@@ -5414,6 +5642,10 @@ export function App() {
           const projection = await reconcile();
           const canonical = projection ? projectionEntries(projection).find((entry) => entry.id === operation.source_entry_id) : null;
           if (canonical?.future_routine_definition_id) {
+            const draft = routineDraft?.entryId === operation.source_entry_id ? routineDraft : null;
+            if (draft) {
+              try { await applyTodayRoutineSettings(canonical, draft, operation.routine_definition_id); } catch { return; }
+            }
             setFutureRoutineOperation((current) => current?.operation_id === operation.operation_id ? null : current);
             setError(null);
           }
@@ -5430,36 +5662,11 @@ export function App() {
       || entry.lifecycle_state !== "completed" || entry.routine !== null
       || entry.future_routine_definition_id || !hasCompletedExecutionHistory(entry)
       || futureRoutineOperation || pending !== null || mutationLocked) return;
-    setPending("future-routine"); setError(null);
-    try {
-      const board = await api.loadRoutines();
-      const operation: CreateFutureRoutineFromCompletedEntryRequest = {
-        operation_id: uuidv7(), source_entry_id: entry.id, task_id: uuidv7(),
-        routine_definition_id: uuidv7(), expected_board_revision: board.board_revision,
-      };
-      setFutureRoutineOperation(operation);
-      await executeFutureRoutineCreation(operation);
-    } catch (caught) {
-      if (caught instanceof ApiClientError && caught.status === 401) handleUnauthorized();
-      setError(caught instanceof Error ? caught.message : "Routine Boardを読み込めませんでした");
-    } finally {
-      setPending((current) => current === "future-routine" ? null : current);
-    }
+    await openTodayRoutineEditor(entry, "future");
   }
 
   async function commitRoutineConversion(entry: EntryProjection) {
-    if (!day?.taskchute_day.id || !day.is_current || mutationLocked || routineDraft?.entryId !== entry.id || entry.routine !== null) return;
-    const endLogicalDate = routineDraft.endDate.trim() || null;
-    if (endLogicalDate !== null && endLogicalDate < day.taskchute_day.logical_date) {
-      setError("Routine終了日は今日以降を指定してください");
-      return;
-    }
-    const operation: ConvertEntryToRoutineRequest = {
-      operation_id: uuidv7(), routine_definition_id: uuidv7(), routine_occurrence_id: uuidv7(),
-      entry_id: entry.id, taskchute_day_id: day.taskchute_day.id, end_logical_date: endLogicalDate,
-    };
-    setRoutineConversionOperation(operation);
-    await executeRoutineConversion(operation);
+    await commitTodayRoutineEditor(entry);
   }
 
   async function executeRoutineEnd(operation: EndRoutineRequest) {
@@ -5547,7 +5754,8 @@ export function App() {
           ? transientStatusText(pending) ?? "保存中…"
           : transientStatusText(pending);
   const groups = [
-    ...(effectiveDay.unsectioned_entries.length > 0 || draftTask?.sectionId === null || pendingAddTasks.some((item) => item.sectionId === null) ? [{
+    ...(effectiveDay.unsectioned_entries.length > 0 || draftTask?.sectionId === null || pendingAddTasks.some((item) => item.sectionId === null)
+      || (entryDrag !== null && canDropOnSection(null)) ? [{
       id: null, title: "Sectionなし", logical_start_minute: null, logical_end_minute: null,
       estimate_total_seconds: effectiveDay.unsectioned_entries.reduce((sum, entry) => sum + (entry.estimate_seconds ?? 0), 0),
       entries: effectiveDay.unsectioned_entries,
@@ -6137,9 +6345,11 @@ export function App() {
     return (
       <div className="routine-cell" data-day-column-cell="routine" onClick={(event) => event.stopPropagation()}>
         {entry.routine ? (
-          <span className="routine-badge routine-icon routine-active" aria-label={`${entry.task.title}はルーティン`} title="ルーティン">
+          <button type="button" className="routine-badge routine-icon routine-active" aria-label={`${entry.task.title}はルーティン`} title="Routine設定を編集"
+            disabled={mutationLocked || routineDraft !== null || pending !== null}
+            onClick={(event) => { event.stopPropagation(); void openTodayRoutineEditor(entry, "edit"); }}>
             <RoutineIcon /><span className="sr-only">Routine</span>
-          </span>
+          </button>
         ) : entry.future_routine_definition_id ? (
           <span className="routine-badge routine-icon routine-active" aria-label={`${entry.task.title}から将来のルーティンを作成済み`} title="将来のルーティン作成済み">
             <RoutineIcon /><span className="sr-only">将来のルーティン作成済み</span>
@@ -6158,7 +6368,7 @@ export function App() {
           <span className="routine-editor-status" aria-live="polite">Routine設定中…</span>
         ) : routineActionAvailable ? (
           <button type="button" className="routine-action routine-icon routine-muted" aria-label="Routine化" title={`${entry.task.title}をRoutine化`} disabled={mutationLocked || isMutationScopeBusy(placementMutationScope())}
-            onClick={(event) => { event.stopPropagation(); setRoutineDraft({ entryId: entry.id, endDate: "" }); }}>
+            onClick={(event) => { event.stopPropagation(); void openTodayRoutineEditor(entry, "convert"); }}>
             <RoutineIcon />
           </button>
         ) : (
@@ -6276,9 +6486,12 @@ export function App() {
             <option value=""></option>
             {projectOptions.map((candidate) => <option value={candidate.id} key={candidate.id} disabled={candidate.archived === true}>{candidate.title}{candidate.archived ? "（アーカイブ）" : ""}</option>)}
           </select> : projectTitle && <span className="project-title">{projectTitle}</span>}
-          {projectId !== null && projectTitle && <button type="button" className="project-note-trigger" aria-label={`${projectTitle}のプロジェクトノートを開く`} title="プロジェクトノートを開く"
-            disabled={taskNoteOpeningIds[`project:${projectId}`] === true}
-            onClick={(event) => { event.stopPropagation(); void openProjectNote(projectId, projectTitle); }}><NoteIcon /></button>}
+          <button type="button" className="project-note-trigger" aria-label={projectId !== null && projectTitle
+            ? `${projectTitle}のプロジェクトノートを開く`
+            : `${entry.task.title}のプロジェクトノート（Project未設定）`}
+            title={projectId !== null && projectTitle ? "プロジェクトノートを開く" : "Project未設定"}
+            disabled={projectId === null || !projectTitle || taskNoteOpeningIds[`project:${projectId}`] === true}
+            onClick={(event) => { event.stopPropagation(); if (projectId !== null && projectTitle) void openProjectNote(projectId, projectTitle); }}><NoteIcon /></button>
         </span>;
       }
       case "mode": {
@@ -6481,35 +6694,38 @@ export function App() {
   );
 
   return (
-    <div className={`app-layout${sidebarOpen ? "" : " sidebar-closed"}`} data-sidebar-state={sidebarOpen ? "open" : "closed"} data-realtime-status={realtimeStatus}>
+    <div className={`app-layout ${sidebarState === "collapsed" ? "sidebar-closed" : `sidebar-${sidebarState}`}`} data-sidebar-state={sidebarState === "collapsed" ? "closed" : sidebarState === "expanded" ? "open" : "compact"} data-realtime-status={realtimeStatus}>
       <HitAHint enabled={authState === "signed-in"} blocked={hitAHintBlocked}
         viewKey={`${view}:${settingsDestination}:${day?.taskchute_day.id ?? "preview"}:${day?.taskchute_day.logical_date ?? ""}`}
         onFocusIntent={focusFromUserIntent} onActivateIntent={markUserFocusIntent} />
-      {sidebarOpen && <aside className="primary-sidebar">
+      {sidebarState !== "collapsed" && <aside className="primary-sidebar">
         <div className="sidebar-header">
-          <div className="product-mark">TaskChute</div>
+          <div className="product-mark">Taskchute</div>
+          <button type="button" className="sidebar-compact-toggle" aria-label={sidebarState === "expanded" ? "サイドバーをコンパクトにする" : "サイドバーを広げる"}
+            title={sidebarState === "expanded" ? "サイドバーをコンパクトにする" : "サイドバーを広げる"}
+            disabled={mutationLocked} onClick={() => setSidebarState((current) => current === "expanded" ? "compact" : "expanded")}>{sidebarState === "expanded" ? "›" : "‹"}</button>
           <button type="button" className="sidebar-toggle" aria-label="サイドバーを閉じる" title="サイドバーを閉じる"
-            disabled={mutationLocked} onClick={() => setSidebarOpen(false)}>‹</button>
+            disabled={mutationLocked} onClick={() => setSidebarState("collapsed")}>‹</button>
         </div>
         <nav aria-label="メインナビゲーション">
           <button type="button" className={view === "today" ? "active" : ""} aria-current={view === "today" ? "page" : undefined}
-            disabled={mutationLocked} onClick={() => void openTodayView()}>今日</button>
+            aria-label="今日" title="Taskchute" disabled={mutationLocked} onClick={() => void openTodayView()}><SidebarIcon kind="today" /><span className="sidebar-nav-label">Taskchute</span></button>
           <button type="button" className={view === "routines" ? "active" : ""} aria-current={view === "routines" ? "page" : undefined}
-            disabled={mutationLocked} onClick={() => void openRoutinesView()}>ルーティン</button>
+            aria-label="ルーティン" title="Rotuine" disabled={mutationLocked} onClick={() => void openRoutinesView()}><SidebarIcon kind="routine" /><span className="sidebar-nav-label">Rotuine</span></button>
           <button type="button" className={view === "notes" ? "active" : ""} aria-current={view === "notes" ? "page" : undefined}
-            disabled={mutationLocked} onClick={() => void openNotesView()}>ノート</button>
+            aria-label="ノート" title="Note" disabled={mutationLocked} onClick={() => void openNotesView()}><SidebarIcon kind="note" /><span className="sidebar-nav-label">Note</span></button>
           <button type="button" className={view === "settings" ? "active" : ""} aria-current={view === "settings" ? "page" : undefined}
-            disabled={mutationLocked || day.section_configuration_required} onClick={() => void openSettings("section")}>設定</button>
+            aria-label="設定" title="Setting" disabled={mutationLocked || day.section_configuration_required} onClick={() => void openSettings("section")}><SidebarIcon kind="settings" /><span className="sidebar-nav-label">Setting</span></button>
         </nav>
         <button className="sidebar-logout" onClick={() => void logout()} disabled={mutationLocked}>
-          {pending === "logout" ? "ログアウト中…" : "ログアウト"}
+          <span className="sidebar-logout-icon" aria-hidden="true">↪</span><span className="sidebar-logout-label">{pending === "logout" ? "ログアウト中…" : "ログアウト"}</span>
         </button>
       </aside>
       }
 
       <div className="authenticated-content">
-        {!sidebarOpen && <button type="button" className="sidebar-reopen" aria-label="サイドバーを開く" title="サイドバーを開く"
-          onClick={() => setSidebarOpen(true)}>›</button>}
+        {sidebarState === "collapsed" && <button type="button" className="sidebar-reopen" aria-label="サイドバーを開く" title="サイドバーを開く"
+          onClick={() => setSidebarState("expanded")}>›</button>}
         {view === "routines" ? <RoutineBoard onUnauthorized={handleUnauthorized} realtimeRefresh={realtimeRefresh} /> : view === "notes" ? (
           <NotesBoard onUnauthorized={handleUnauthorized} onDirtyChange={setNotesDirty}
             onUnresolvedChange={setNotesUnresolved} authEpoch={authEpoch} mutationsBlocked={sessionBarrier !== null}
@@ -6644,7 +6860,6 @@ export function App() {
           <main className="shell day-shell" tabIndex={-1} onKeyDown={handleDayKeyDown}>
       <header className="day-header" data-day-fixed-region="header">
         <div>
-          <p className="eyebrow">TaskChuteDay</p>
           <div className="day-navigation" aria-label="日付ナビゲーション">
             <button type="button" className="secondary" aria-label="前の日" disabled={mutationLocked}
               onClick={() => void navigateToDay(shiftLogicalDate(day.taskchute_day.logical_date, -1))}>‹</button>
@@ -6692,19 +6907,67 @@ export function App() {
       {routineDraft && (() => {
         const entry = allEntries.find((candidate) => candidate.id === routineDraft.entryId);
         if (!entry) return null;
+        const draft = routineDraft;
+        const schedule = draft.schedule;
+        const weekdayLabels = ["日", "月", "火", "水", "木", "金", "土"];
+        const weekdaySchedule = schedule.kind === "weekly" || schedule.kind === "every_n_weeks" ? schedule : null;
+        const operationPending = routineConversionOperation?.entry_id === entry.id || futureRoutineOperation?.source_entry_id === entry.id;
+        const updateSchedule = (kind: string) => updateRoutineDraft({ schedule: defaultRoutineSchedule(kind) });
         return (
-          <Modal title="Routine化" titleId="routine-conversion-title" className="routine-editor"
-            onClose={() => setRoutineDraft(null)}>
-            <p>{entry.task.title}をRoutineに変換します。</p>
-            <label>終了日（空欄は終了なし）
-              <input type="date" min={currentDay.taskchute_day.logical_date}
-                value={routineDraft.endDate}
-                onChange={(event) => setRoutineDraft({ entryId: entry.id, endDate: event.target.value })} />
-            </label>
+          <Modal title={draft.kind === "edit" ? "Routine設定を編集" : draft.kind === "future" ? "将来のRoutineを作成" : "Routine化"}
+            titleId="routine-conversion-title" className="routine-editor" onClose={() => {
+              if (operationPending) setError("Routine操作の結果を確認するまで、この設定を閉じられません。");
+              else setRoutineDraft(null);
+            }}>
+            <p>{entry.task.title}の繰り返し設定です。</p>
+            {draft.loading ? <p role="status">Routine設定を読み込み中…</p> : <div className="today-routine-form">
+              <label>繰り返し<select aria-label="繰り返し" value={draft.schedule.kind} disabled={operationPending}
+                onChange={(event) => updateSchedule(event.target.value)}>
+                <option value="daily">毎日</option><option value="every_n_days">N日ごと</option><option value="weekly">曜日指定</option>
+                <option value="every_n_weeks">N週間ごと＋曜日</option><option value="monthly_day">毎月○日</option><option value="monthly_last_day">毎月末日</option>
+                <option value="monthly_nth_weekday">毎月 第N曜日</option><option value="monthly_last_weekday">毎月 最終曜日</option>
+                <option value="every_n_months_day">Nか月ごと○日</option><option value="every_n_months_last_day">Nか月ごと月末</option>
+                <option value="workday">営業日</option><option value="holiday">休日</option><option value="official_holiday">祝日</option><option value="monthly_last_workday">月末営業日</option>
+              </select></label>
+              {schedule.kind === "every_n_days" && <label>日数<input type="number" min={2} max={365} value={schedule.interval_days} disabled={operationPending}
+                onChange={(event) => updateRoutineDraft({ schedule: { kind: "every_n_days", interval_days: Number(event.target.value) } })} /></label>}
+              {schedule.kind === "every_n_weeks" && <label>週数<input type="number" min={2} value={schedule.interval_weeks} disabled={operationPending}
+                onChange={(event) => updateRoutineDraft({ schedule: { kind: "every_n_weeks", interval_weeks: Number(event.target.value), weekdays: schedule.weekdays } })} /></label>}
+              {(schedule.kind === "every_n_months_day" || schedule.kind === "every_n_months_last_day") && <label>月数<input type="number" min={2} value={schedule.interval_months} disabled={operationPending}
+                onChange={(event) => updateRoutineDraft({ schedule: schedule.kind === "every_n_months_day"
+                  ? { kind: "every_n_months_day", interval_months: Number(event.target.value), day_of_month: schedule.day_of_month }
+                  : { kind: "every_n_months_last_day", interval_months: Number(event.target.value) } })} /></label>}
+              {(schedule.kind === "monthly_day" || schedule.kind === "every_n_months_day") && <label>日<input type="number" min={1} max={31} value={schedule.day_of_month} disabled={operationPending}
+                onChange={(event) => updateRoutineDraft({ schedule: schedule.kind === "monthly_day"
+                  ? { kind: "monthly_day", day_of_month: Number(event.target.value) }
+                  : { kind: "every_n_months_day", interval_months: schedule.interval_months, day_of_month: Number(event.target.value) } })} /></label>}
+              {schedule.kind === "monthly_nth_weekday" && <><label>第<select aria-label="第何週" value={schedule.ordinal} disabled={operationPending}
+                onChange={(event) => updateRoutineDraft({ schedule: { kind: "monthly_nth_weekday", ordinal: Number(event.target.value), weekday: schedule.weekday } })}>{[1, 2, 3, 4, 5].map((ordinal) => <option key={ordinal} value={ordinal}>{ordinal}</option>)}</select></label>
+                <label>曜日<select aria-label="月内曜日" value={schedule.weekday} disabled={operationPending}
+                  onChange={(event) => updateRoutineDraft({ schedule: { kind: "monthly_nth_weekday", ordinal: schedule.ordinal, weekday: Number(event.target.value) } })}>{weekdayLabels.map((label, dayIndex) => <option key={label} value={dayIndex}>{label}</option>)}</select></label></>}
+              {(schedule.kind === "monthly_last_weekday") && <label>曜日<select value={schedule.weekday} disabled={operationPending}
+                onChange={(event) => updateRoutineDraft({ schedule: { kind: "monthly_last_weekday", weekday: Number(event.target.value) } })}>{weekdayLabels.map((label, dayIndex) => <option key={label} value={dayIndex}>{label}</option>)}</select></label>}
+              {weekdaySchedule && <fieldset><legend>曜日</legend>{weekdayLabels.map((label, dayIndex) => <label key={label}><input type="checkbox" checked={weekdaySchedule.weekdays.includes(dayIndex)} disabled={operationPending}
+                onChange={(event) => updateRoutineDraft({ schedule: { ...weekdaySchedule, weekdays: event.target.checked ? [...weekdaySchedule.weekdays, dayIndex].sort() : weekdaySchedule.weekdays.filter((item) => item !== dayIndex) } })} />{label}</label>)}</fieldset>}
+              <label>開始予定<input aria-label="Routineの開始予定" inputMode="numeric" placeholder="HHMM" value={draft.plannedStart} disabled={operationPending}
+                onChange={(event) => updateRoutineDraft({ plannedStart: event.target.value })} /></label>
+              <label>見積（分）<input aria-label="Routineの見積（分）" type="number" min={1} value={draft.estimateMinutes} disabled={operationPending}
+                onChange={(event) => updateRoutineDraft({ estimateMinutes: event.target.value })} /></label>
+              <label>Project<select aria-label="RoutineのProject" value={draft.projectId ?? ""} disabled={operationPending}
+                onChange={(event) => updateRoutineDraft({ projectId: event.target.value || null })}><option value="">Projectなし</option>{projects.map((candidate) => <option value={candidate.id} key={candidate.id}>{candidate.title}</option>)}</select></label>
+              <label>Mode<select aria-label="RoutineのMode" value={draft.modeId ?? ""} disabled={operationPending}
+                onChange={(event) => updateRoutineDraft({ modeId: event.target.value || null })}><option value="">Modeなし</option>{modeBoard?.modes.map((candidate) => <option value={candidate.id} key={candidate.id} disabled={candidate.archived}>{candidate.title}</option>)}</select></label>
+              <label>Section<select aria-label="RoutineのSection" value={draft.sectionId ?? ""} disabled={operationPending}
+                onChange={(event) => updateRoutineDraft({ sectionId: event.target.value || null })}><option value="">Sectionなし</option>{currentDay.sections.map((candidate) => <option value={candidate.id} key={candidate.id}>{candidate.title}</option>)}</select></label>
+              <label>開始日<input aria-label="Routineの開始日" type="date" value={draft.startDate} disabled={operationPending}
+                onChange={(event) => updateRoutineDraft({ startDate: event.target.value })} /></label>
+              <label>終了日（空欄は終了なし）<input aria-label="終了日（空欄は終了なし）" type="date" min={draft.startDate || currentDay.taskchute_day.logical_date} value={draft.endDate} disabled={operationPending}
+                onChange={(event) => updateRoutineDraft({ endDate: event.target.value }, draft.kind !== "convert")} /></label>
+            </div>}
             <div className="bulk-confirmation-actions">
-              <button type="button" className="secondary" onClick={() => setRoutineDraft(null)}>キャンセル</button>
-              <button type="button" disabled={mutationLocked || isMutationScopeBusy(placementMutationScope())}
-                onClick={() => void commitRoutineConversion(entry)}>Routine化</button>
+              <button type="button" className="secondary" disabled={operationPending} onClick={() => setRoutineDraft(null)}>キャンセル</button>
+              <button type="button" disabled={mutationLocked || draft.loading || operationPending || pending !== null || !isValidTodayRoutineSchedule(draft.schedule)}
+                onClick={() => void commitTodayRoutineEditor(entry)}>{draft.kind === "edit" ? "保存" : draft.kind === "future" ? "作成" : "Routine化"}</button>
             </div>
           </Modal>
         );

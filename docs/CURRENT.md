@@ -1,5 +1,23 @@
 # Current
 
+### D-117 Web Today / Sidebar / Routine UX refinement v0.1 — local implementation complete
+
+D-117のApproved Web-only refinementを実装した。TodayのProject Note slotはProject未設定でも
+disabledで常設し、running ordinary rowのProject / Mode編集を既存mutation pathへ許可した。
+Routine表示はicon-onlyでnon-Routineをmuted、Routineをaccentとし、D&Dのrow / Section drop cueを
+強調した。TodayからのRoutine create / future create / existing Routine editは、repeat、planned
+start、estimate、Project、Mode、Section、start/end dateを含む既存API再利用のmodalへ統一した。
+Todayのvisible `TaskChuteDay` headingは削除し、Sidebarは`Taskchute` / `Note` / `Rotuine` /
+`Setting`のicon付き表示とexpanded / compact / collapsedのbrowser-local presentationを備える。
+`+ Taskを追加`と`表示`の位置、既存のmutation / retry / D&D / auth boundaryは維持した。
+
+Local evidence: D-117 focused App regressions `8 / 8`、App full file `288 / 288`、full Web
+`14 files / 468 tests`、typecheck、normal build、`git diff --check`はPASS。Buildでは既存の
+Vite chunk-size warningとWrangler log directory `EPERM` diagnosticが出たがexit `0`。
+Worker/API、schema/migration、dependency、Android、productionの変更はない。Persistent nonprod
+deployとauthenticated browser verificationはcloseout gateとして残っている。Productionは
+`NOT_RUN`、Releasedは`NO`。
+
 ### D-116B Completed Entry to future Routine v0.1 — nonprod deployed; browser conversion verified
 
 D-116Bは、current established logical Day上のcompleted ordinary Entryから、completed Execution historyを根拠にfuture-only daily Routineを一度だけ作る。source Entry / Task / Execution / historical snapshotsは変更せず、`routine_occurrence_id`もNULLのまま保持する。Task titleとEntry-level Project / Mode snapshot、現在も有効なSection/planned-start pair、Entry estimateをserver-sideで検証してコピーする。APP 0033はowner-scoped source correlationとoperation command allow-listだけを追加し、既存行のbackfill・AUTH migrationは行わない。

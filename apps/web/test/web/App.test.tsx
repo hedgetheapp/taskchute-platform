@@ -4978,7 +4978,7 @@ describe("Dogfood Day shell", () => {
     expect(within(menu).getByText("表示する列")).toBeTruthy();
     expect(within(menu).getByRole("checkbox", { name: "Project" })).toBeTruthy();
     expect(within(menu).getByRole("checkbox", { name: "Mode" })).toBeTruthy();
-    expect(screen.queryByText("Note")).toBeNull();
+    expect(screen.getByText("Note")).toBeTruthy();
 
     const projectCheckbox = within(menu).getByRole("checkbox", { name: "Project" }) as HTMLInputElement;
     fireEvent.click(projectCheckbox);
@@ -6369,7 +6369,7 @@ describe("Dogfood Day shell", () => {
 
     const action = await screen.findByRole("button", { name: "Canonical taskから将来のルーティンを作成" });
     fireEvent.click(action);
-    fireEvent.click(action);
+    fireEvent.click(await screen.findByRole("button", { name: "作成" }));
     await waitFor(() => expect(mocks.createFutureRoutineFromCompletedEntry).toHaveBeenCalledTimes(1));
     const request = mocks.createFutureRoutineFromCompletedEntry.mock.calls[0]![0];
     expect(request).toMatchObject({ source_entry_id: source.id, expected_board_revision: 17 });
@@ -6402,12 +6402,13 @@ describe("Dogfood Day shell", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Canonical taskから将来のルーティンを作成" }));
+    fireEvent.click(await screen.findByRole("button", { name: "作成" }));
     const retry = await screen.findByRole("button", { name: "保留中の将来ルーティン作成を再試行" });
     const exactRequest = mocks.createFutureRoutineFromCompletedEntry.mock.calls[0]![0];
     fireEvent.click(screen.getByRole("button", { name: "設定" }));
     expect(screen.getByRole("region", { name: "DayBoard" })).toBeTruthy();
     expect(screen.queryByRole("region", { name: "Section設定" })).toBeNull();
-    expect(screen.getByText(/結果が未確定/)).toBeTruthy();
+    expect(screen.getByText(/結果未確定の操作があります/)).toBeTruthy();
 
     fireEvent.click(retry);
     await waitFor(() => expect(mocks.createFutureRoutineFromCompletedEntry).toHaveBeenCalledTimes(2));
@@ -7275,5 +7276,110 @@ describe("Dogfood Day shell", () => {
     modeResponse.resolve({});
     await waitFor(() => expect(mocks.startEntry).toHaveBeenCalledTimes(1));
     expect(dispatchOrder).toEqual(["mode", "start"]);
+  });
+
+  it("renders the D-117 sidebar labels, icons, and all three presentation states", async () => {
+    mocks.loadDay.mockResolvedValue(populatedDay);
+    render(<App />);
+
+    await screen.findByRole("region", { name: "DayBoard" });
+    expect(screen.getAllByText("Taskchute")).toHaveLength(2);
+    expect(screen.getByText("Note")).toBeTruthy();
+    expect(screen.getByText("Rotuine")).toBeTruthy();
+    expect(screen.getByText("Setting")).toBeTruthy();
+    expect(document.querySelectorAll(".sidebar-nav-icon")).toHaveLength(4);
+    const layout = document.querySelector<HTMLElement>(".app-layout")!;
+    expect(layout.dataset.sidebarState).toBe("open");
+
+    fireEvent.click(screen.getByRole("button", { name: "サイドバーをコンパクトにする" }));
+    expect(layout.dataset.sidebarState).toBe("compact");
+    fireEvent.click(screen.getByRole("button", { name: "サイドバーを閉じる" }));
+    expect(layout.dataset.sidebarState).toBe("closed");
+    fireEvent.click(screen.getByRole("button", { name: "サイドバーを開く" }));
+    expect(layout.dataset.sidebarState).toBe("open");
+  });
+
+  it("keeps a stable disabled Project Note slot when the row has no Project", async () => {
+    mocks.loadDay.mockResolvedValue(populatedDay);
+    render(<App />);
+    const trigger = await screen.findByRole("button", { name: "Canonical taskのプロジェクトノート（Project未設定）" });
+    expect((trigger as HTMLButtonElement).disabled).toBe(true);
+    expect(trigger.className).toContain("project-note-trigger");
+  });
+
+  it("keeps the Project Note slot enabled for an assigned Project", async () => {
+    mocks.loadDay.mockResolvedValue(projectAssignedDay);
+    render(<App />);
+    const trigger = await screen.findByRole("button", { name: "Existing Projectのプロジェクトノートを開く" });
+    expect((trigger as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("allows running ordinary rows to edit Project and Mode without changing lifecycle controls", async () => {
+    const mode = { id: "019c0000-0000-7000-8000-000000000098", title: "Focus", archived: false, board_position: 1, settings_revision: 0 };
+    mocks.loadDay.mockResolvedValue(runningDay);
+    mocks.loadModeBoard.mockResolvedValue({ board_revision: 1, modes: [mode] });
+    render(<App />);
+
+    const project = await screen.findByRole("combobox", { name: "Canonical taskのProject" });
+    await within(project).findByRole("option", { name: "Existing Project" });
+    fireEvent.change(project, { target: { value: "existing-project" } });
+    await waitFor(() => expect(mocks.updateTaskMetadata).toHaveBeenCalledTimes(1));
+
+    const modeSelect = await screen.findByRole("combobox", { name: "Canonical taskのMode" });
+    await within(modeSelect).findByRole("option", { name: "Focus" });
+    fireEvent.change(modeSelect, { target: { value: mode.id } });
+    await waitFor(() => expect(mocks.setEntryMode).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole("button", { name: "Canonical taskを完了" })).toBeTruthy();
+  });
+
+  it("uses color-only Routine states and exposes the Today routine form", async () => {
+    mocks.loadDay.mockResolvedValue(populatedDay);
+    render(<App />);
+    const plainRoutine = await screen.findByRole("button", { name: "Routine化" });
+    expect(plainRoutine.className).toContain("routine-muted");
+    fireEvent.click(plainRoutine);
+    expect(screen.getByLabelText("繰り返し")).toBeTruthy();
+    expect(screen.getByLabelText("Routineの開始予定")).toBeTruthy();
+    expect(screen.getByLabelText("Routineの見積（分）")).toBeTruthy();
+    expect(screen.getByLabelText("RoutineのProject")).toBeTruthy();
+    expect(screen.getByLabelText("RoutineのMode")).toBeTruthy();
+    expect(screen.getByLabelText("RoutineのSection")).toBeTruthy();
+    expect(screen.getByLabelText("Routineの開始日")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "キャンセル" }));
+
+    const routineEntry: EntryProjection = { ...firstEntry, routine: {
+      routine_definition_id: "019c0000-0000-7000-8000-000000000099",
+      routine_occurrence_id: "019c0000-0000-7000-8000-000000000100",
+      end_logical_date: null, can_end: true, default_section_id: firstEntry.section_id,
+      default_planned_start_minute: null, section_plan_override_present: false,
+      default_estimate_seconds: null, estimate_override_present: false, defaults_revision: 0,
+    } };
+    cleanup();
+    mocks.loadDay.mockResolvedValue({ ...populatedDay,
+      sections: [{ ...populatedDay.sections[0]!, entries: [routineEntry] }, populatedDay.sections[1]!], next_entry: routineEntry });
+    render(<App />);
+    const routineButton = await screen.findByRole("button", { name: "Canonical taskはルーティン" });
+    expect(routineButton.className).toContain("routine-active");
+    expect(routineButton.className).not.toContain("routine-muted");
+  });
+
+  it("reveals an empty Sectionなし drop target only during an eligible drag", async () => {
+    const sourceDay: CurrentTaskChuteDayProjection = { ...populatedDay,
+      sections: [{ ...emptyDay.sections[0]!, entries: [firstEntry] }, emptyDay.sections[1]!],
+      unsectioned_entries: [], next_entry: firstEntry };
+    mocks.loadDay.mockResolvedValue(sourceDay);
+    render(<App />);
+    const row = await screen.findByText("Canonical task").then((element) => element.closest<HTMLElement>("[data-entry-id]")!);
+    const dataTransfer = dragDataTransfer();
+    fireEvent.dragStart(dragSurface(row), { dataTransfer });
+    const emptyUnsectioned = await waitFor(() => sectionSummary("Sectionなし"));
+    const dragOver = createEvent.dragOver(emptyUnsectioned, { dataTransfer });
+    fireEvent(emptyUnsectioned, dragOver);
+    expect(emptyUnsectioned.dataset.dropTarget).toBe("valid");
+    const drop = createEvent.drop(emptyUnsectioned, { dataTransfer });
+    fireEvent(emptyUnsectioned, drop);
+    await waitFor(() => expect(mocks.moveEntry).toHaveBeenCalledTimes(1));
+    expect(mocks.moveEntry.mock.calls[0]![0]).toMatchObject({ entry_id: firstEntry.id, section_id: null });
+    expect(mocks.moveEntry.mock.calls[0]![0].placement).toBeUndefined();
   });
 });

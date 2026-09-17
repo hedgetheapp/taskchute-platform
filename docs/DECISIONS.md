@@ -2,6 +2,20 @@
 
 Statuses: Approved / Proposed / Superseded
 
+## D-117 — Web Today / Sidebar / Routine UX Refinement v0.1
+
+Status: **Approved**
+
+Canonical Decision: `docs/decisions/D-117_WEB_TODAY_SIDEBAR_ROUTINE_UX_REFINEMENT_V01.md`。
+
+D-117は既存のToday / D&D / Project Note / Routine semanticsを変えず、Project列の常設Note icon slot、
+current running ordinary TaskのProject / Mode編集、Routine iconのcolor-only表示、D&D insertion feedback、
+Today Routine列からの明示的なRoutine modal、`TaskChuteDay`見出し除去、icon付きSidebarと3表示状態を定める。
+empty Section / empty `Sectionなし`のdropは既存`MoveEntry`へplacementなしで委譲する。Sidebar可視ラベルは
+`Taskchute` / `Note` / `Rotuine` / `Setting`とし、`＋ Taskを追加` / `表示`の配置は維持する。既存の
+command / CAS / retry / reconciliation、D-101 / D-103 Note entry point、Worker/API、schema/migration、
+dependency、Android、production semanticsは変更しない。
+
 ## D-116B — Completed Entry to Future Routine Atomic Conversion v0.1
 
 Status: **Approved**

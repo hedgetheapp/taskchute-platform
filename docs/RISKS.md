@@ -1,5 +1,14 @@
 # Risks
 
+## R-073 — D-117 Web UX reuse boundary
+
+D-117のToday Routine modalは既存Routine settings APIと現在のToday projectionを再利用し、
+Web-onlyのpresentation refinementに留めている。running rowのProject / Mode編集は既存の
+metadata mutation boundaryのみを広げ、planning、lifecycle、D&D placement semanticsは変更
+していない。Sidebar compact / collapsed preferenceはbrowser-local表示状態であり、server
+同期や新しいDomain preferenceではない。D&D cueは視認性のみを補強する。persistent nonprod
+deploy後のauthenticated browser確認は未完了で、local automated evidenceと区別する。
+
 ## R-072 — D-116A shared Task and missing historical Project snapshot
 
 Completed Project correction must remain Entry-historical because D-010 permits

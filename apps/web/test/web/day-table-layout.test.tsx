@@ -103,8 +103,9 @@ describe("D-075 Day fixed header / task-list scroll CSS", () => {
     expect(styles).toContain(".task-row.state-running { --day-row-background: #f3f8fd; }");
     expect(styles).toContain(".task-row.is-selected { --day-row-background: #edf5fc; }");
     expect(styles).toContain(".task-row.state-completed { color: #8b8b87; }");
-    expect(styles).toContain(".task-row.drop-before { box-shadow: inset 0 2px #2383e2; }");
-    expect(styles).toContain(".task-row.drop-after { box-shadow: inset 0 -2px #2383e2; }");
+    expect(styles).toContain(".task-row.drop-before { box-shadow: inset 0 3px #2383e2");
+    expect(styles).toContain(".task-row.drop-after { box-shadow: inset 0 -3px #2383e2");
+    expect(styles).toContain("animation: d117-drop-target-pulse");
     expect(styles).not.toContain(".task-row:focus {");
   });
 });

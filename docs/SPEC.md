@@ -4,6 +4,24 @@
 
 exact DB schema、SQL、UI component library、Android local DB、offline conflict algorithm等は、別途DecisionされるまでOpenとする。
 
+## D-117 Web Today / Sidebar / Routine UX Refinement v0.1
+
+D-117は既存canonical command / projectionを使うWeb presentation refinementである。TodayのProject列は
+Projectの有無によらず一定幅のProject Note icon slotを持ち、未設定時はdisabled、設定時は既存Project
+Primary Noteを開く。current established Dayのordinary running TaskではProject / Modeだけを既存CAS付き
+metadata commandで編集できる。Routine列はnon-Routineをgray icon、Routineをaccent icon onlyで示し、
+背景色は状態表現に使わない。
+
+TodayのRoutine列から明示操作でRoutine化、completed Entryからfuture Routine作成、既存Routineの設定編集を
+開始できるmodalを提供する。recurrence、planned start、estimate、Project、Mode、Section、開始日などの
+入力は既存Routine command / revision / reconciliationへ委譲し、自動Routine化は行わない。TodayのD&D
+target feedbackを明確化し、empty Section / empty `Sectionなし`への移動は既存`MoveEntry`のplacementなし
+semanticsを使う。Todayの`TaskChuteDay`見出しは表示しない。
+
+Sidebarはicon付きの`Taskchute` / `Note` / `Rotuine` / `Setting`表示と、expanded / compact / collapsedの
+3状態を持つ。`＋ Taskを追加`と`表示`の位置は維持する。D-117はWorker/API、schema/migration、dependency、
+Android、production、既存Domain semanticsを変更しない。
+
 ## D-114 Android Settings Management v0.1
 
 Androidの`設定` destinationは、既存canonical APIを利用するSettings hubである。Sectionは全体

@@ -12,6 +12,20 @@
 - implementation / verification statusは`docs/FEATURES.md`、`docs/CURRENT.md`、`docs/TEST_MATRIX.md`を正本とする。
 - この文書は新しいDomain semanticsを作らず、上記canonical docsと矛盾する場合は上記を優先する。
 
+## D-117 Web Today / Sidebar / Routine refinement
+
+TodayのProject Note affordanceはProject列に常設の固定slotとして置き、Projectがない場合は
+disabled、ある場合だけ既存Project Primary Noteを開く。running ordinary rowでは既存の
+Project / Mode metadata editorを使えるが、Task planning自体の境界は広げない。Routineは
+背景色を変えず、iconのmuted / accentだけで状態を示す。Today起点のRoutine操作は既存の
+Routine設定APIへ渡すmodalで、repeat、planned start、estimate、Project、Mode、Section、
+start/end dateをまとめて扱う。
+
+Sidebarは`Taskchute`、`Note`、`Rotuine`、`Setting`をicon付きで表示し、expanded（icon + label）、
+compact（icon only）、collapsed（open/close control）の3状態をbrowser-localに保持する。
+Todayのvisible `TaskChuteDay` headingは表示しない。D&Dのdrop targetはSection header / rowの
+cueで視認性を上げるが、既存のcanonical Move / Reorder semanticsは変更しない。
+
 ## D-114 Android Settings management
 
 Android Settings follows the approved concept-board direction: a quiet hub with
