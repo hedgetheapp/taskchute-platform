@@ -63,9 +63,10 @@ function futureRequest(sectionId: string | null, logicalDate = "2026-08-31") {
 }
 
 describe.sequential("Day Navigation v0.1", () => {
-  it("reads future preview repeatedly without materializing Day, context, Routine, Task, or Entry", async () => {
+  it("establishes an explicitly opened future Day and materializes eligible Routine work exactly once", async () => {
     const fixture = await seedNavigationUser();
     const routineTaskId = uuidv7();
+    const routineDefinitionId = uuidv7();
     await env.APP_DB.batch([
       env.APP_DB.prepare("INSERT INTO tasks (id, app_user_id, title, created_at) VALUES (?, ?, 'Eligible daily Routine', ?)")
         .bind(routineTaskId, fixture.userId, now),
@@ -73,29 +74,36 @@ describe.sequential("Day Navigation v0.1", () => {
         (id, app_user_id, task_id, recurrence_type, start_logical_date, end_logical_date,
          default_section_id, default_estimate_seconds, default_planned_start_minute, materialization_order, created_at)
         VALUES (?, ?, ?, 'daily', '2026-08-29', NULL, ?, 900, 360, 1, ?)`)
-        .bind(uuidv7(), fixture.userId, routineTaskId, fixture.sections[0], now),
+        .bind(routineDefinitionId, fixture.userId, routineTaskId, fixture.sections[0], now),
+      env.APP_DB.prepare(`INSERT INTO routine_schedules
+        (app_user_id, routine_definition_id, schedule_kind)
+        VALUES (?, ?, 'daily')`).bind(fixture.userId, routineDefinitionId),
     ]);
     const before = await counts(fixture.userId);
     const first = await loadTaskChuteDayByLogicalDate(env.APP_DB, fixture.userId, "2026-08-31", now);
     const second = await loadTaskChuteDayByLogicalDate(env.APP_DB, fixture.userId, "2026-08-31", now);
-    expect(first).toMatchObject({ establishment_state: "future_preview", is_current: false,
+    expect(first).toMatchObject({ establishment_state: "established", is_current: false,
       projection_generated_at: now,
-      taskchute_day: { id: null, logical_date: "2026-08-31" }, placement_revision: 0 });
+      taskchute_day: { logical_date: "2026-08-31" }, placement_revision: 1 });
     expect(first.sections.map((section) => section.title)).toEqual(["Morning", "Evening"]);
+    expect(first.sections[0]?.entries).toHaveLength(1);
     expect(second).toEqual(first);
-    expect(await counts(fixture.userId)).toEqual(before);
+    expect(await counts(fixture.userId)).toEqual({ ...before,
+      taskchute_days: 1, taskchute_day_section_contexts: 2, entries: 1, routine_occurrences: 1 });
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM taskchute_days WHERE app_user_id = ? AND logical_date = ?")
+      .bind(fixture.userId, "2026-08-30").first<number>("count")).toBe(0);
   });
 
-  it("keeps an unestablished future preview fresh when the effective Section configuration changes", async () => {
+  it("freezes the effective Section configuration when a future Day is first opened", async () => {
     const fixture = await seedNavigationUser();
     const first = await loadTaskChuteDayByLogicalDate(env.APP_DB, fixture.userId, "2026-08-31", now);
-    expect(first.establishment_state).toBe("future_preview");
+    expect(first.establishment_state).toBe("established");
     expect(first.sections.map((section) => [section.title, section.logical_start_minute, section.logical_end_minute]))
       .toEqual([["Morning", 300, 720], ["Evening", 720, 1740]]);
     expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM taskchute_days WHERE app_user_id = ?")
-      .bind(fixture.userId).first<number>("count")).toBe(0);
+      .bind(fixture.userId).first<number>("count")).toBe(1);
     expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM taskchute_day_section_contexts WHERE app_user_id = ?")
-      .bind(fixture.userId).first<number>("count")).toBe(0);
+      .bind(fixture.userId).first<number>("count")).toBe(2);
 
     await updateSectionConfiguration(env.APP_DB, fixture.userId, {
       operation_id: uuidv7(), configuration_version_id: uuidv7(),
@@ -106,13 +114,72 @@ describe.sequential("Day Navigation v0.1", () => {
       ],
     });
     const second = await loadTaskChuteDayByLogicalDate(env.APP_DB, fixture.userId, "2026-08-31", now);
-    expect(second.establishment_state).toBe("future_preview");
+    expect(second.establishment_state).toBe("established");
     expect(second.sections.map((section) => [section.title, section.logical_start_minute, section.logical_end_minute]))
-      .toEqual([["Focus", 300, 900], ["Night", 900, 1740]]);
+      .toEqual([["Morning", 300, 720], ["Evening", 720, 1740]]);
     expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM taskchute_days WHERE app_user_id = ?")
-      .bind(fixture.userId).first<number>("count")).toBe(0);
+      .bind(fixture.userId).first<number>("count")).toBe(1);
     expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM taskchute_day_section_contexts WHERE app_user_id = ?")
-      .bind(fixture.userId).first<number>("count")).toBe(0);
+      .bind(fixture.userId).first<number>("count")).toBe(2);
+  });
+
+  it("reconciles a newly eligible Routine on an already established future Day exactly once", async () => {
+    const fixture = await seedNavigationUser();
+    const first = await loadTaskChuteDayByLogicalDate(env.APP_DB, fixture.userId, "2026-08-31", now);
+    expect(first).toMatchObject({ establishment_state: "established", placement_revision: 0 });
+    const taskId = uuidv7();
+    const routineDefinitionId = uuidv7();
+    await env.APP_DB.batch([
+      env.APP_DB.prepare("INSERT INTO tasks (id, app_user_id, title, created_at) VALUES (?, ?, 'Later eligible Routine', ?)")
+        .bind(taskId, fixture.userId, now),
+      env.APP_DB.prepare(`INSERT INTO routine_definitions
+        (id, app_user_id, task_id, recurrence_type, start_logical_date, end_logical_date,
+         default_section_id, default_estimate_seconds, default_planned_start_minute, materialization_order, created_at)
+        VALUES (?, ?, ?, 'daily', '2026-08-29', NULL, ?, 900, 360, 1, ?)`)
+        .bind(routineDefinitionId, fixture.userId, taskId, fixture.sections[0], now),
+      env.APP_DB.prepare(`INSERT INTO routine_schedules
+        (app_user_id, routine_definition_id, schedule_kind)
+        VALUES (?, ?, 'daily')`).bind(fixture.userId, routineDefinitionId),
+    ]);
+    const second = await loadTaskChuteDayByLogicalDate(env.APP_DB, fixture.userId, "2026-08-31", now);
+    const third = await loadTaskChuteDayByLogicalDate(env.APP_DB, fixture.userId, "2026-08-31", now);
+    expect(second).toMatchObject({ establishment_state: "established", placement_revision: 1 });
+    expect(second.sections[0]?.entries).toHaveLength(1);
+    expect(third).toEqual(second);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM routine_occurrences WHERE app_user_id = ? AND routine_definition_id = ?")
+      .bind(fixture.userId, routineDefinitionId).first<number>("count")).toBe(1);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM entries WHERE app_user_id = ? AND taskchute_day_id = ?")
+      .bind(fixture.userId, first.taskchute_day.id).first<number>("count")).toBe(1);
+  });
+
+  it("converges concurrent future-Day opens to one Day and one Routine occurrence", async () => {
+    const fixture = await seedNavigationUser();
+    const taskId = uuidv7();
+    const routineDefinitionId = uuidv7();
+    await env.APP_DB.batch([
+      env.APP_DB.prepare("INSERT INTO tasks (id, app_user_id, title, created_at) VALUES (?, ?, 'Concurrent future Routine', ?)")
+        .bind(taskId, fixture.userId, now),
+      env.APP_DB.prepare(`INSERT INTO routine_definitions
+        (id, app_user_id, task_id, recurrence_type, start_logical_date, end_logical_date,
+         default_section_id, default_estimate_seconds, default_planned_start_minute, materialization_order, created_at)
+        VALUES (?, ?, ?, 'daily', '2026-08-29', NULL, ?, 900, 360, 1, ?)`)
+        .bind(routineDefinitionId, fixture.userId, taskId, fixture.sections[0], now),
+      env.APP_DB.prepare(`INSERT INTO routine_schedules
+        (app_user_id, routine_definition_id, schedule_kind)
+        VALUES (?, ?, 'daily')`).bind(fixture.userId, routineDefinitionId),
+    ]);
+    const projections = await Promise.all([
+      loadTaskChuteDayByLogicalDate(env.APP_DB, fixture.userId, "2026-08-31", now),
+      loadTaskChuteDayByLogicalDate(env.APP_DB, fixture.userId, "2026-08-31", now),
+    ]);
+    expect(projections[0]).toEqual(projections[1]);
+    expect(projections[0]).toMatchObject({ establishment_state: "established", placement_revision: 1 });
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM taskchute_days WHERE app_user_id = ? AND logical_date = ?")
+      .bind(fixture.userId, "2026-08-31").first<number>("count")).toBe(1);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM routine_occurrences WHERE app_user_id = ? AND routine_definition_id = ?")
+      .bind(fixture.userId, routineDefinitionId).first<number>("count")).toBe(1);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM entries WHERE app_user_id = ? AND taskchute_day_id = ?")
+      .bind(fixture.userId, projections[0]!.taskchute_day.id).first<number>("count")).toBe(1);
   });
 
   it("shows an unestablished past date as an empty read-only historical gap without writes", async () => {
@@ -478,8 +545,8 @@ describe.sequential("Day Navigation v0.1", () => {
     const request = futureRequest(owner.sections[0]!);
     await addTaskToDay(env.APP_DB, owner.userId, request, now);
     const otherProjection = await loadTaskChuteDayByLogicalDate(env.APP_DB, other.userId, request.logical_date, now);
-    expect(otherProjection.establishment_state).toBe("future_preview");
-    expect(otherProjection.taskchute_day.id).toBeNull();
+    expect(otherProjection.establishment_state).toBe("established");
+    expect(otherProjection.taskchute_day.id).not.toBeNull();
     expect(otherProjection.sections.flatMap((section) => section.entries)).toEqual([]);
   });
 

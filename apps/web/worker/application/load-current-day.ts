@@ -621,6 +621,68 @@ export async function readFutureDayEstablishmentPlan(
   return { day, configuration_version_id: version?.id ?? null, contexts, settings };
 }
 
+async function establishFutureDay(
+  db: D1Database,
+  appUserId: string,
+  initialPlan: FutureDayEstablishmentPlan,
+  nowInstant: string,
+): Promise<DayRow> {
+  let plan = initialPlan;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const dayId = uuidv7();
+    const contextsJson = JSON.stringify(plan.contexts);
+    await db.batch([
+      db.prepare(`INSERT INTO taskchute_days
+        (id, app_user_id, logical_date, start_instant, end_instant, establishment_timezone,
+         establishment_boundary_minutes, establishment_disambiguation, placement_revision, created_at)
+        SELECT ?, ?, ?, ?, ?, ?, ?, 'compatible', 0, ?
+        WHERE EXISTS (SELECT 1 FROM user_settings WHERE app_user_id = ? AND timezone = ? AND day_boundary_minutes = ?)
+          AND (CASE WHEN ? IS NULL THEN NOT EXISTS (
+            SELECT 1 FROM section_configuration_heads h
+            JOIN section_configuration_versions v ON v.app_user_id = h.app_user_id AND v.id = h.configuration_version_id
+            WHERE h.app_user_id = ? AND v.day_boundary_minutes = ?
+          ) ELSE EXISTS (
+            SELECT 1 FROM section_configuration_heads h
+            JOIN section_configuration_versions v ON v.app_user_id = h.app_user_id AND v.id = h.configuration_version_id
+            WHERE h.app_user_id = ? AND h.configuration_version_id = ? AND v.day_boundary_minutes = ?
+          ) END)
+        ON CONFLICT (app_user_id, logical_date) DO NOTHING`).bind(
+        dayId, appUserId, plan.day.logical_date, plan.day.start_instant, plan.day.end_instant,
+        plan.day.establishment_timezone, plan.day.establishment_boundary_minutes, nowInstant,
+        appUserId, plan.settings.timezone, plan.settings.day_boundary_minutes,
+        plan.configuration_version_id, appUserId, plan.settings.day_boundary_minutes,
+        appUserId, plan.configuration_version_id, plan.settings.day_boundary_minutes,
+      ),
+      db.prepare(`INSERT INTO taskchute_day_section_contexts
+        (app_user_id, taskchute_day_id, section_id, configuration_version_id, title, logical_start_minute,
+         logical_end_minute, actual_start_instant, actual_end_instant, context_order)
+        SELECT ?, ?, json_extract(value, '$.section_id'), json_extract(value, '$.configuration_version_id'),
+          json_extract(value, '$.title'), json_extract(value, '$.logical_start_minute'),
+          json_extract(value, '$.logical_end_minute'), json_extract(value, '$.actual_start_instant'),
+          json_extract(value, '$.actual_end_instant'), CAST(json_extract(value, '$.context_order') AS INTEGER)
+        FROM json_each(?)
+        WHERE EXISTS (SELECT 1 FROM taskchute_days WHERE app_user_id = ? AND id = ? AND logical_date = ?)
+        ON CONFLICT (app_user_id, taskchute_day_id, section_id) DO NOTHING`).bind(
+        appUserId, dayId, contextsJson, appUserId, dayId, plan.day.logical_date,
+      ),
+    ]);
+
+    const established = await db.prepare(`SELECT id, logical_date, start_instant, end_instant, establishment_timezone,
+        establishment_boundary_minutes, placement_revision
+      FROM taskchute_days WHERE app_user_id = ? AND logical_date = ?`)
+      .bind(appUserId, plan.day.logical_date).first<DayRow>();
+    if (established) {
+      await ensureDaySectionContext(db, appUserId, established);
+      return established;
+    }
+
+    const refreshedPlan = await readFutureDayEstablishmentPlan(db, appUserId, plan.day.logical_date, nowInstant);
+    if (!refreshedPlan) throw new Error("Future TaskChuteDay establishment is no longer eligible");
+    plan = refreshedPlan;
+  }
+  throw new Error("Future TaskChuteDay establishment did not converge");
+}
+
 function emptyProjection(
   state: "future_preview" | "past_record_none",
   logicalDate: string,
@@ -676,11 +738,29 @@ export async function loadTaskChuteDayByLogicalDate(
   const existing = await db.prepare(`SELECT id, logical_date, start_instant, end_instant, establishment_timezone,
       establishment_boundary_minutes, placement_revision FROM taskchute_days WHERE app_user_id = ? AND logical_date = ?`)
     .bind(appUserId, logicalDate).first<DayRow>();
-  if (existing) return loadEstablishedProjection(db, appUserId, existing, false, logicalDate > current.logicalDate, nowInstant);
+  if (existing) {
+    const isFuture = logicalDate > current.logicalDate;
+    if (isFuture) {
+      await ensureDaySectionContext(db, appUserId, existing);
+      await ensureCurrentDayRoutineEntries(db, appUserId, existing, nowInstant);
+      const refreshed = await db.prepare(`SELECT id, logical_date, start_instant, end_instant, establishment_timezone,
+          establishment_boundary_minutes, placement_revision FROM taskchute_days WHERE app_user_id = ? AND id = ?`)
+        .bind(appUserId, existing.id).first<DayRow>();
+      if (!refreshed) throw new Error("Future TaskChuteDay disappeared after Routine materialization");
+      return loadEstablishedProjection(db, appUserId, refreshed, false, true, nowInstant);
+    }
+    return loadEstablishedProjection(db, appUserId, existing, false, false, nowInstant);
+  }
   if (logicalDate < current.logicalDate) return emptyProjection("past_record_none", logicalDate, null, [], nowInstant);
-  const preview = await readFutureDayEstablishmentPlan(db, appUserId, logicalDate, nowInstant);
-  if (!preview) throw new Error("Future TaskChuteDay preview could not be resolved");
-  return emptyProjection("future_preview", logicalDate, preview.day, preview.contexts, nowInstant);
+  const plan = await readFutureDayEstablishmentPlan(db, appUserId, logicalDate, nowInstant);
+  if (!plan) throw new Error("Future TaskChuteDay establishment plan could not be resolved");
+  const established = await establishFutureDay(db, appUserId, plan, nowInstant);
+  await ensureCurrentDayRoutineEntries(db, appUserId, established, nowInstant);
+  const refreshed = await db.prepare(`SELECT id, logical_date, start_instant, end_instant, establishment_timezone,
+      establishment_boundary_minutes, placement_revision FROM taskchute_days WHERE app_user_id = ? AND id = ?`)
+    .bind(appUserId, established.id).first<DayRow>();
+  if (!refreshed) throw new Error("Future TaskChuteDay disappeared after Routine materialization");
+  return loadEstablishedProjection(db, appUserId, refreshed, false, true, nowInstant);
 }
 
 export async function loadCurrentTaskChuteDay(
