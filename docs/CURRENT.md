@@ -1,6 +1,6 @@
 # Current
 
-### D-120 Bulk Task Move / Reorder v0.1 — implementation in verification
+### D-120 Bulk Task Move / Reorder v0.1 — implemented / persistent verification complete
 
 D-120のApproved behaviorとして、Day Tableの複数選択planned Entryをmutation前のcanonical display
 orderで一つのmove blockとして扱う。current established DayとD-119により明示的に開かれたestablished
@@ -16,9 +16,28 @@ scope chooserを表示しない。RoutineDefinition defaultはDay操作から変
 始めたdragはsingle-entry semanticsへ戻し、running / completed / historical / past Dayは対象外とする。
 
 Implementation source review、App `292 / 292`、D-120 focused Worker integration `11 / 11`、D-120
-focused App placement tests `2 / 2`はPASS。full Web / Worker、typecheck / build、persistent nonprod
-browser / DB、exact-SHA CIはこのBatchのcloseoutで記録する。Android Product UI、schema / migration、
-dependency、realtime protocol、productionは変更しない。
+focused App placement tests `2 / 2`はPASS。full Web `14 files / 473 tests`、full Worker/D1
+`37 files / 339 tests`、typecheck、normal / exact nonprod build、deploy guard、`git diff --check`
+もPASSした。実装`c746fafd015fccae196eb8843bb5efa85640fbb6`をcanonical persistent nonprodへdeployし、
+Worker version `f58bde13-5c83-471e-bc19-18e4793c82a4`、`RUNTIME_ENV=nonprod`、
+`BOOTSTRAP_ENABLED=false`、canonical APP/AUTH/RealtimeHub bindingを確認した。
+
+Authenticated browserでは、current Day `2026-09-17`のsame-Section keyboard block reorderと、空の
+Dayへのordinary planned Entryのcross-Section placementを実行し、reload後も収束した。明示的に開いた
+future Day `2026-09-18`でもselected block reorderがreload後に保持された。Day-side Routine Section
+変更はscope chooserなしのoccurrence-onlyで処理され、合成fixtureは「ルーティンの設定に戻す」で
+canonical defaultへ復元した。browser console warning/errorは`0 / 0`。現在のCUAでは座標pointer dragの
+commit結果を取得できなかったため、pointer D&Dのbrowser evidenceは未取得とし、automated placement
+coverageとkeyboard direct-placement evidenceとは分けて扱う。
+
+Exact final main `e4182eb76298e712fe3db215cdac498081e06254` の GitHub Actions run `35230843496` は
+ClassifierとAndroid JVM/APKがPASS、Web/WorkerはclassifierによりSKIPPED。Android artifactは
+`taskchute-android-debug-e4182eb76298e712fe3db215cdac498081e06254`（ID `10501136425`、
+`2026-09-24T14:04:01Z` expiry）。このSHAにはD-120実装変更ではなく、非決定的なAndroid Notes controller
+testの待機条件を安定化するtest-only correctiveだけを含めた。APP `quick_check=ok`、FK empty、
+transaction assertion / placement guard / lifecycle guard / active executionは`0 / 0 / 0 / 0`、
+Routine fixtureのoverride解除を含むread-only probeはすべて`rows_written=0`だった。Android Product UI、
+schema / migration、dependency、realtime protocol、productionは変更しない。
 
 ### D-119 Future Day Routine materialization v0.1 — persistent nonprod verified
 
