@@ -1,6 +1,6 @@
 # Test Matrix
 
-## D-118 Routine enabled / delete lifecycle v0.1 — local implementation evidence
+## D-118 Routine enabled / delete lifecycle v0.1 — implementation and persistent nonprod evidence
 
 | ID | Verification target | Evidence | Status |
 |---|---|---|---|
@@ -9,8 +9,9 @@
 | D118-WEB | Enabled switch and delete confirmation | accessible switch state, pending control, exact confirmation copy, initial cancel focus, Escape/backdrop cancel | PASS focused Web `18 / 18` |
 | D118-REG | Routine regression | Routine-related Web tests `4 files / 47 tests` | PASS |
 | D118-STATIC | Type safety | `npm run typecheck` | PASS |
-| D118-NONPROD | Persistent nonprod/browser/DB | canonical Worker deploy, lifecycle UI/API, read-only integrity evidence | PENDING |
-| D118-CI | Exact implementation SHA | GitHub Actions result to be recorded from GitHub Source of Truth | PENDING |
+| D118-NONPROD | Persistent nonprod/browser/DB | Worker `28ec3bde-8041-4b5e-bb2a-efc87f91657f`; root `200`; protected Routines/Documents/Realtime `401`; authenticated disposable `D118 Browser Lifecycle QA`: enable → Today occurrence `1`, reload `1`, disable → `0`, delete → Routine Board absent; delete dialog copy/focus/cancel verified; console `0 / 0`; APP/AUTH quick/FK and read-only probes PASS | PASS |
+| D118-DB | Post-lifecycle integrity | APP target RoutineDefinition archive `1`, board item/occurrence/Entry/Execution `0 / 0 / 0 / 0`; active Execution / command guard / transaction assertion `0 / 0 / 0`; APP/AUTH `quick_check=ok`, FK empty, successful probes `rows_written=0` | PASS |
+| D118-CI | Exact implementation SHA | GitHub Actions run `35206531205`, exact `8a1d2cc2bad082d66cd6039c49386ac0e2f08ca8`; Classifier and Web/Worker PASS, Android skipped by impact analysis | PASS |
 | D118-BOUNDARY | Scope | no schema/migration, dependency, Android, production, restore, or Release operation | PASS / NOT_REQUIRED / NOT_RUN / NO |
 
 ## D-117 Web Today / Sidebar / Routine UX refinement v0.1 — corrective evidence

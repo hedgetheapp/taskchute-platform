@@ -1,6 +1,6 @@
 # Current
 
-### D-118 Routine enabled / delete lifecycle v0.1 — implementation complete; verification pending
+### D-118 Routine enabled / delete lifecycle v0.1 — persistent nonprod verified
 
 D-118のApproved lifecycleを既存`SetRoutineEnabled` / `DeleteRoutine`へ実装した。serverがmutation時に
 解決したcurrent logical dateを境界として、無効化または削除の当日以降にmaterialize済みのRoutine-derived
@@ -14,8 +14,24 @@ destructive action、初期キャンセルfocus、Escape / backdrop cancelを適
 switchと既存API境界は変更していない。
 
 Local focused evidenceはRoutine Worker/D1 `16 / 16`、Routine-related Web `4 files / 47 tests`、
-RoutineBoard Web `18 / 18`、typecheck PASS。persistent nonprod、browser、full build、CI、DB integrityは
-この時点では未実施で、productionは`NOT_RUN`、Releasedは`NO`とする。
+RoutineBoard Web `18 / 18`、typecheck、normal / exact nonprod build、deploy guard、`git diff --check`
+PASS。Exact implementation `main@8a1d2cc2bad082d66cd6039c49386ac0e2f08ca8`をcanonical persistent
+nonprod Worker `taskchute-web-nonprod`へdeployし、Worker version
+`28ec3bde-8041-4b5e-bb2a-efc87f91657f`、`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、canonical
+APP/AUTH/RealtimeHub bindingsを確認した。rootは`200`、未認証`/api/v1/routines`・`/api/v1/documents`・
+`/api/v1/realtime`は`401`。GitHub Actions run `35206531205`（exact SHA）はClassifierとWeb/Workerが
+PASS、Androidは影響外としてskipした。
+
+既存の認証済みbrowser sessionで使い捨てRoutine `D118 Browser Lifecycle QA`を有効化し、current logical
+Day `2026-09-17`の生成Taskが`1`件になり、reload後も`1`件であることを確認した。Routineを無効化すると
+Todayの生成Taskは`1 → 0`となり、Routineは無効表示になった。その後Routineを削除し、Routine Boardから
+消失した。削除確認dialogはタイトル`このRoutineを削除しますか？`、指定本文、`キャンセル` / `削除`、
+初期focusを確認し、キャンセル動作も確認した。browser console warning/errorは`0 / 0`。
+
+削除後のread-only APP probeは対象Task titleに紐づくRoutineDefinitionをarchive `1`、board item /
+occurrence / Entry / Executionを`0 / 0 / 0 / 0`で確認し、APP `quick_check=ok`、FK empty、active
+Execution / routine command guard / transaction assertionは`0 / 0 / 0`、成功probeの`rows_written=0`。
+AUTHも`quick_check=ok`、FK empty、`rows_written=0`。productionは`NOT_RUN`、Releasedは`NO`とする。
 
 ### D-117 Web Today / Sidebar / Routine UX refinement v0.1 — implemented; running metadata corrective integrated
 

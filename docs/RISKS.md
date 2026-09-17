@@ -10,8 +10,9 @@ materializerが再生成することが主なリスクである。
 Mitigation: server-resolved logical date、owner scope、既存operation / revision / exact replay、同一D1
 atomic batch、child-to-parentのcleanup ordering、post-mutation assertionを再利用する。RoutineDefinition
 identityは保持し、無効期間のbackfillとarchive / restore UIは追加しない。focused Worker/D1 `16 / 16`、
-Routine Web `4 files / 47 tests`、RoutineBoard `18 / 18`、typecheckはPASS。persistent nonprod/browser/CI
-evidenceは未実施で、productionは`NOT_RUN`とする。
+Routine Web `4 files / 47 tests`、RoutineBoard `18 / 18`、typecheck、build、deploy guard、exact-SHA CIはPASS。
+Persistent nonprodではWorker `28ec3bde-8041-4b5e-bb2a-efc87f91657f`を確認し、使い捨てRoutineの有効化・
+reload・無効化・削除、APP/AUTH quick_check・FK・read-only probeをPASSした。productionは`NOT_RUN`とする。
 
 ## R-073 — D-117 Web UX reuse boundary
 
