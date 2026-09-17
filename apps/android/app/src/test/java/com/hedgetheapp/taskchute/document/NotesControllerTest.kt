@@ -20,7 +20,10 @@ class NotesControllerTest {
 
         controller.openNew()
 
-        assertTrue(await { repository.createRequests.size == 1 })
+        assertTrue(await {
+            repository.createRequests.size == 1 &&
+                controller.state.editor?.document?.documentId == repository.createRequests.singleOrNull()?.documentId
+        })
         assertEquals("notitle", repository.createRequests.single().title)
         assertEquals("notitle", controller.state.editor?.title)
         assertFalse(controller.state.editor?.dirty ?: true)
