@@ -7314,22 +7314,18 @@ describe("Dogfood Day shell", () => {
     expect((trigger as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it("allows running ordinary rows to edit Project and Mode without changing lifecycle controls", async () => {
+  it("keeps running ordinary rows read-only for metadata until the canonical Worker supports that mutation", async () => {
     const mode = { id: "019c0000-0000-7000-8000-000000000098", title: "Focus", archived: false, board_position: 1, settings_revision: 0 };
     mocks.loadDay.mockResolvedValue(runningDay);
     mocks.loadModeBoard.mockResolvedValue({ board_revision: 1, modes: [mode] });
     render(<App />);
 
-    const project = await screen.findByRole("combobox", { name: "Canonical taskのProject" });
-    await within(project).findByRole("option", { name: "Existing Project" });
-    fireEvent.change(project, { target: { value: "existing-project" } });
-    await waitFor(() => expect(mocks.updateTaskMetadata).toHaveBeenCalledTimes(1));
-
-    const modeSelect = await screen.findByRole("combobox", { name: "Canonical taskのMode" });
-    await within(modeSelect).findByRole("option", { name: "Focus" });
-    fireEvent.change(modeSelect, { target: { value: mode.id } });
-    await waitFor(() => expect(mocks.setEntryMode).toHaveBeenCalledTimes(1));
+    expect((await screen.findAllByText("Canonical task")).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("combobox", { name: "Canonical taskのProject" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Canonical taskのMode" })).toBeNull();
     expect(screen.getByRole("button", { name: "Canonical taskを完了" })).toBeTruthy();
+    expect(mocks.updateTaskMetadata).not.toHaveBeenCalled();
+    expect(mocks.setEntryMode).not.toHaveBeenCalled();
   });
 
   it("uses color-only Routine states and exposes the Today routine form", async () => {

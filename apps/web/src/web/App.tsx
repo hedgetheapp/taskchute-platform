@@ -4238,19 +4238,15 @@ export function App() {
   }
 
   function canEditProjectMetadata(entry: EntryProjection): boolean {
-    const planned = Boolean(day?.taskchute_day.id && day.establishment_state === "established"
-      && day.planning_enabled && entry.lifecycle_state === "planned" && entry.routine === null);
-    const running = Boolean(day?.is_current && day.taskchute_day.id && day.establishment_state === "established"
-      && day.planning_enabled && entry.lifecycle_state === "running" && entry.routine === null);
-    return planned || running || canCorrectCompletedEntryMetadata(entry);
+    return Boolean(day?.taskchute_day.id && day.establishment_state === "established"
+      && day.planning_enabled && entry.lifecycle_state === "planned" && entry.routine === null)
+      || canCorrectCompletedEntryMetadata(entry);
   }
 
   function canEditModeMetadata(entry: EntryProjection): boolean {
-    const planned = Boolean(day?.taskchute_day.id && day.establishment_state === "established"
-      && day.planning_enabled && entry.lifecycle_state === "planned" && entry.routine === null);
-    const running = Boolean(day?.is_current && day.taskchute_day.id && day.establishment_state === "established"
-      && day.planning_enabled && entry.lifecycle_state === "running" && entry.routine === null);
-    return planned || running || canCorrectCompletedEntryMetadata(entry);
+    return Boolean(day?.taskchute_day.id && day.establishment_state === "established"
+      && day.planning_enabled && entry.lifecycle_state === "planned" && entry.routine === null)
+      || canCorrectCompletedEntryMetadata(entry);
   }
 
   function canEditRoutineMode(entry: EntryProjection): boolean {

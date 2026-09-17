@@ -1,9 +1,14 @@
 # Current
 
-### D-117 Web Today / Sidebar / Routine UX refinement v0.1 — local implementation complete
+### D-117 Web Today / Sidebar / Routine UX refinement v0.1 — partial; STOP at Worker eligibility boundary
 
 D-117のApproved Web-only refinementを実装した。TodayのProject Note slotはProject未設定でも
-disabledで常設し、running ordinary rowのProject / Mode編集を既存mutation pathへ許可した。
+disabledで常設した。running ordinary rowのProject / Mode編集は一度UIへ広げたが、persistent
+nonprod browser確認で既存Workerの`UpdateTaskMetadata` / `SetEntryMode`がplannedまたはcompleted
+historical correctionだけを許可し、running mutationを`resource_conflict`で拒否することを確認した。
+これはD117の「Worker/API変更なし」境界では解消できないため、誤誘導を残さないようUI eligibilityを
+既存のplanned / completed correctionへ戻した。D117 AC-2は未達であり、running metadata mutationの
+Server/API decisionなしに続行しない。
 Routine表示はicon-onlyでnon-Routineをmuted、Routineをaccentとし、D&Dのrow / Section drop cueを
 強調した。TodayからのRoutine create / future create / existing Routine editは、repeat、planned
 start、estimate、Project、Mode、Section、start/end dateを含む既存API再利用のmodalへ統一した。
@@ -11,12 +16,16 @@ Todayのvisible `TaskChuteDay` headingは削除し、Sidebarは`Taskchute` / `No
 `Setting`のicon付き表示とexpanded / compact / collapsedのbrowser-local presentationを備える。
 `+ Taskを追加`と`表示`の位置、既存のmutation / retry / D&D / auth boundaryは維持した。
 
-Local evidence: D-117 focused App regressions `8 / 8`、App full file `288 / 288`、full Web
-`14 files / 468 tests`、typecheck、normal build、`git diff --check`はPASS。Buildでは既存の
-Vite chunk-size warningとWrangler log directory `EPERM` diagnosticが出たがexit `0`。
-Worker/API、schema/migration、dependency、Android、productionの変更はない。Persistent nonprod
-deployとauthenticated browser verificationはcloseout gateとして残っている。Productionは
-`NOT_RUN`、Releasedは`NO`。
+Local evidence: D-117 focused App regressions `8 / 8`（running metadataはcanonical Worker境界を
+確認するnegative regression）、App full file `288 / 288`、full Web `14 files / 468 tests`、
+typecheck、normal build、exact nonprod build、deploy guard、Wrangler dry-run、`git diff --check`はPASS。
+Buildでは既存のVite chunk-size warningとWrangler log directory `EPERM` diagnosticが出たがexit `0`。
+Persistent nonprodへ初回D117 SHA `0f534de`をdeploy済みで、Worker version
+`d6ec94b3-8978-4447-ac42-261e5dfc6945`、root `200`、未認証Documents / Realtime `401`を確認した。
+Sidebar labels/icons/3-state、Project Note disabled/active slot、`TaskChuteDay`除去、Routine iconと
+Today modalの表示はbrowserで確認した。running metadataのserver pathはresource conflictでFAILし、
+UIを安全なeligibilityへ戻すcorrectiveは未push・未deployのため、D117全体はcloseout未完了。Worker/API、
+schema/migration、dependency、Androidの変更はない。Productionは`NOT_RUN`、Releasedは`NO`。
 
 ### D-116B Completed Entry to future Routine v0.1 — nonprod deployed; browser conversion verified
 
