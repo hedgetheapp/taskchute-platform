@@ -3126,6 +3126,184 @@ describe("Dogfood Day shell", () => {
     expect(document.activeElement).toBe(secondRow);
   });
 
+  it("does not let a delayed Section Move focus restore override newer focus navigation", async () => {
+    const request = deferred<unknown>();
+    const sourceDay = {
+      ...twoPlannedDay,
+      sections: [
+        { ...twoPlannedDay.sections[0], entries: [firstEntry] },
+        { ...emptyDay.sections[1], entries: [{ ...secondEntry, section_id: eveningId, planned_start_minute: 720 }] },
+      ],
+      next_entry: firstEntry,
+    };
+    const movedDay = {
+      ...sourceDay,
+      placement_revision: sourceDay.placement_revision + 1,
+      sections: [
+        { ...sourceDay.sections[0], entries: [] },
+        { ...sourceDay.sections[1], entries: [{ ...firstEntry, section_id: eveningId, planned_start_minute: 720 }, sourceDay.sections[1]!.entries[0]!] },
+      ],
+      next_entry: firstEntry,
+    };
+    mocks.loadDay.mockResolvedValueOnce(sourceDay).mockResolvedValueOnce(movedDay);
+    mocks.moveEntry.mockReturnValueOnce(request.promise);
+    render(<App />);
+
+    const source = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
+    const newerTarget = screen.getByText("Second task").closest<HTMLElement>("[data-entry-id]")!;
+    source.focus();
+    fireEvent.keyDown(source, { key: "ArrowDown", shiftKey: true });
+    await waitFor(() => expect(mocks.moveEntry).toHaveBeenCalledTimes(1));
+
+    newerTarget.focus();
+    expect(document.activeElement).toBe(newerTarget);
+    await act(async () => {
+      request.resolve({});
+      await request.promise;
+    });
+    await waitFor(() => expect(mocks.loadDay).toHaveBeenCalledTimes(2));
+    expect(document.activeElement).toBe(newerTarget);
+  });
+
+  it("keeps newer focus authoritative across Move then Reorder", async () => {
+    const moveRequest = deferred<unknown>();
+    const reorderRequest = deferred<unknown>();
+    const source = { ...firstEntry, planned_start_minute: 300 };
+    const target = { ...secondEntry, section_id: eveningId, planned_start_minute: 720 };
+    const sourceDay = { ...emptyDay, placement_revision: 26,
+      sections: [{ ...emptyDay.sections[0], entries: [source] }, { ...emptyDay.sections[1], entries: [target] }], next_entry: source };
+    const movedDay = { ...sourceDay, placement_revision: 27,
+      sections: [{ ...emptyDay.sections[0], entries: [] }, { ...emptyDay.sections[1], entries: [{ ...source, section_id: eveningId, planned_start_minute: 720 }, target] }], next_entry: source };
+    mocks.loadDay.mockResolvedValueOnce(sourceDay).mockResolvedValueOnce(movedDay);
+    mocks.moveEntry.mockReturnValue(moveRequest.promise);
+    mocks.reorderEntries.mockReturnValue(reorderRequest.promise);
+    render(<App />);
+
+    const sourceRow = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
+    sourceRow.focus();
+    fireEvent.keyDown(sourceRow, { key: "ArrowDown", shiftKey: true });
+    await waitFor(() => expect(mocks.moveEntry).toHaveBeenCalledTimes(1));
+    fireEvent.keyDown(screen.getByText("Canonical task").closest<HTMLElement>("[data-entry-id]")!, { key: "ArrowDown", shiftKey: true });
+    const newerTarget = screen.getByText("Second task").closest<HTMLElement>("[data-entry-id]")!;
+    newerTarget.focus();
+    expect(document.activeElement).toBe(newerTarget);
+
+    moveRequest.resolve({});
+    await waitFor(() => expect(mocks.reorderEntries).toHaveBeenCalledTimes(1));
+    reorderRequest.resolve({});
+    await waitFor(() => expect(document.activeElement).toBe(newerTarget));
+  });
+
+  it("keeps newer focus authoritative across Reorder then Move", async () => {
+    const reorderRequest = deferred<unknown>();
+    const moveRequest = deferred<unknown>();
+    const sourceDay = {
+      ...emptyDay,
+      placement_revision: 27,
+      sections: [
+        { ...emptyDay.sections[0], entries: [firstEntry, secondEntry] },
+        { ...emptyDay.sections[1], entries: [{ ...thirdEntry, section_id: eveningId, planned_start_minute: 720 }] },
+      ],
+      next_entry: firstEntry,
+    };
+    const reorderedDay = {
+      ...sourceDay,
+      placement_revision: 28,
+      sections: [
+        { ...sourceDay.sections[0], entries: [secondEntry, firstEntry] },
+        sourceDay.sections[1]!,
+      ],
+      next_entry: firstEntry,
+    };
+    const movedDay = {
+      ...reorderedDay,
+      placement_revision: 29,
+      sections: [
+        { ...reorderedDay.sections[0]!, entries: [secondEntry] },
+        { ...reorderedDay.sections[1]!, entries: [{ ...firstEntry, section_id: eveningId, planned_start_minute: 720 }, reorderedDay.sections[1]!.entries[0]!] },
+      ],
+      next_entry: firstEntry,
+    };
+    mocks.loadDay.mockResolvedValueOnce(sourceDay).mockResolvedValueOnce(reorderedDay).mockResolvedValueOnce(movedDay);
+    mocks.reorderEntries.mockReturnValue(reorderRequest.promise);
+    mocks.moveEntry.mockReturnValue(moveRequest.promise);
+    render(<App />);
+
+    const sourceRow = (await screen.findByText("Canonical task")).closest<HTMLElement>("[data-entry-id]")!;
+    sourceRow.focus();
+    fireEvent.keyDown(sourceRow, { key: "ArrowDown", shiftKey: true });
+    await waitFor(() => expect(mocks.reorderEntries).toHaveBeenCalledTimes(1));
+    fireEvent.keyDown(screen.getByText("Canonical task").closest<HTMLElement>("[data-entry-id]")!, { key: "ArrowDown", shiftKey: true });
+    const newerTarget = screen.getByText("Second task").closest<HTMLElement>("[data-entry-id]")!;
+    newerTarget.focus();
+    expect(document.activeElement).toBe(newerTarget);
+
+    reorderRequest.resolve({});
+    await waitFor(() => expect(mocks.loadDay).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(mocks.moveEntry).toHaveBeenCalledTimes(1));
+    moveRequest.resolve({});
+    await waitFor(() => expect(document.activeElement).toBe(newerTarget));
+  });
+
+  it("keeps a two-Task block accepting sustained Shift placement while six steps settle", async () => {
+    const stepRequests = Array.from({ length: 12 }, () => deferred<unknown>());
+    const sections = Array.from({ length: 8 }, (_, index) => {
+      const id = index === 0 ? morningId : `019c0000-0000-7000-8000-0000000001${String(index).padStart(2, "0")}`;
+      const section = {
+        ...emptyDay.sections[0]!,
+        id,
+        title: `Section ${index + 1}`,
+        logical_start_minute: 240 + index * 180,
+        logical_end_minute: 420 + index * 180,
+        entries: index === 0 ? [{ ...firstEntry, section_id: morningId }, { ...secondEntry, section_id: morningId }] : [{
+          ...thirdEntry,
+          id: `019c0000-0000-7000-8000-0000000002${String(index).padStart(2, "0")}`,
+          position: 1,
+          section_id: id,
+          planned_start_minute: 240 + index * 180,
+          task: { ...thirdEntry.task, id: `019c0000-0000-7000-8000-0000000003${String(index).padStart(2, "0")}`, title: `Anchor ${index + 1}` },
+        }],
+      };
+      return section;
+    });
+    const stressDay = { ...emptyDay, placement_revision: 1, sections, next_entry: firstEntry };
+    mocks.loadDay.mockResolvedValue(stressDay);
+    let nextRequestIndex = 0;
+    mocks.bulkMoveEntriesToSectionOccurrence.mockImplementation(() => stepRequests[nextRequestIndex++]?.promise ?? Promise.resolve({}));
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("checkbox", { name: "「Canonical task」を選択" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "「Second task」を選択" }));
+    const source = screen.getByText("Canonical task").closest<HTMLElement>("[data-entry-id]")!;
+    source.focus();
+    for (let index = 0; index < 6; index += 1) {
+      fireEvent.keyDown(document.activeElement!, { key: "ArrowDown", shiftKey: true });
+    }
+    expect(mocks.bulkMoveEntriesToSectionOccurrence.mock.calls.length).toBe(1);
+    expect(document.activeElement?.getAttribute("data-entry-id")).toBe(firstEntry.id);
+    expect((screen.getByRole("checkbox", { name: "「Canonical task」を選択" }) as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByRole("checkbox", { name: "「Second task」を選択" }) as HTMLInputElement).checked).toBe(true);
+    expect(screen.getByText("Canonical task").closest<HTMLElement>("[data-entry-id]")?.dataset.sectionId).toBe(sections[6]!.id);
+
+    stepRequests[0]!.resolve({});
+    await waitFor(() => expect(mocks.bulkMoveEntriesToSectionOccurrence).toHaveBeenCalledTimes(2));
+    for (let index = 0; index < 6; index += 1) {
+      fireEvent.keyDown(document.activeElement!, { key: "ArrowUp", shiftKey: true });
+    }
+    expect(document.activeElement?.getAttribute("data-entry-id")).toBe(firstEntry.id);
+    expect((screen.getByRole("checkbox", { name: "「Canonical task」を選択" }) as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByRole("checkbox", { name: "「Second task」を選択" }) as HTMLInputElement).checked).toBe(true);
+    for (let index = 1; index < stepRequests.length; index += 1) {
+      stepRequests[index]!.resolve({});
+      if (index + 1 < stepRequests.length) {
+        await waitFor(() => expect(mocks.bulkMoveEntriesToSectionOccurrence).toHaveBeenCalledTimes(index + 2));
+      }
+    }
+    await waitFor(() => expect(mocks.bulkMoveEntriesToSectionOccurrence).toHaveBeenCalledTimes(stepRequests.length));
+    expect(screen.getByText("Canonical task").closest<HTMLElement>("[data-entry-id]")?.dataset.sectionId).toBe(sections[0]!.id);
+    expect(document.activeElement?.getAttribute("data-entry-id")).toBe(firstEntry.id);
+  });
+
   it("cancels an unsent reorder when the user returns to the canonical order", async () => {
     const metadataRequest = deferred<unknown>();
     mocks.loadDay.mockResolvedValue(twoPlannedDay);

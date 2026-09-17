@@ -1169,6 +1169,7 @@ export function App() {
   const reorderInFlightRef = useRef<ReorderEntriesRequest | null>(null);
   const bulkSectionMoveInFlightRef = useRef<BulkMoveEntriesToSectionOccurrenceRequest | null>(null);
   const continuousBulkMoveOperationIdsRef = useRef(new Set<string>());
+  const pendingFocusIntentRef = useRef<{ key: string; generation: number } | null>(null);
   const [pendingFocusRestoreNonce, setPendingFocusRestoreNonce] = useState(0);
   const dayMutationInFlightRef = useRef(false);
   const dayMutationPausedRef = useRef(false);
@@ -1203,8 +1204,11 @@ export function App() {
     pendingBulkSectionMoveOverlaysRef.current = next;
     setPendingBulkSectionMoveOverlays(next);
   }
-  function requestPendingFocus(target: FocusTarget): void {
-    setPendingFocusKey(focusKey(target));
+  function requestPendingFocus(target: FocusTarget, generation = focusIntentGenerationRef.current): void {
+    if (generation !== focusIntentGenerationRef.current) return;
+    const key = focusKey(target);
+    pendingFocusIntentRef.current = { key, generation };
+    setPendingFocusKey(key);
     setPendingFocusRestoreNonce((current) => current + 1);
   }
   function isQueuedDayMutationOperation(operationId: string | undefined): boolean {
@@ -1987,6 +1991,7 @@ export function App() {
     setExecutionEditorError(null);
     setOverflowEntryId(null);
     setPendingFocusKey(null);
+    pendingFocusIntentRef.current = null;
     // Keep browser-local presentation preferences across an auth transition;
     // the next authenticated Day projection prunes keys that are not valid
     // for that owner's stable Sections.
@@ -2471,11 +2476,15 @@ export function App() {
 
   useEffect(() => {
     if (!pendingFocusKey || !day) return;
+    const intent = pendingFocusIntentRef.current;
+    if (!intent || intent.key !== pendingFocusKey || intent.generation !== focusIntentGenerationRef.current) return;
     let frame: number | null = null;
     let attempts = 0;
     const restore = () => {
-      if (!pendingFocusKey || !day) return;
-      const target = document.querySelector<HTMLElement>(`[data-focus-key="${pendingFocusKey}"]`);
+      if (!day || pendingFocusIntentRef.current?.key !== intent.key
+        || pendingFocusIntentRef.current.generation !== intent.generation
+        || focusIntentGenerationRef.current !== intent.generation) return;
+      const target = document.querySelector<HTMLElement>(`[data-focus-key="${intent.key}"]`);
       if (target) {
         const locator = target.dataset.entryId ? pendingAddFocusLocatorRef.current.get(target.dataset.entryId) : undefined;
         const focusTarget = locator ? focusTargetFromLocator(target, locator) : target;
@@ -2483,7 +2492,11 @@ export function App() {
         focusTarget.focus();
         suppressFocusIntentRef.current = false;
         if (target.dataset.entryId) pendingAddFocusLocatorRef.current.delete(target.dataset.entryId);
-        setPendingFocusKey(null);
+        if (pendingFocusIntentRef.current?.key === intent.key
+          && pendingFocusIntentRef.current.generation === intent.generation) {
+          pendingFocusIntentRef.current = null;
+          setPendingFocusKey((current) => current === intent.key ? null : current);
+        }
         return;
       }
       if (attempts < 4) {
@@ -3222,7 +3235,10 @@ export function App() {
     }
   }
 
-  async function executeBulkSectionOccurrenceChange(operation: BulkMoveEntriesToSectionOccurrenceRequest) {
+  async function executeBulkSectionOccurrenceChange(
+    operation: BulkMoveEntriesToSectionOccurrenceRequest,
+    focusGeneration = focusIntentGenerationRef.current,
+  ) {
     const continuous = continuousBulkMoveOperationIdsRef.current.has(operation.operation_id);
     const mutationToken = beginMutationScope(placementMutationScope(operation.taskchute_day_id), "Bulk Routine Section変更",
       continuous ? { kind: "bulk-move" } : undefined);
@@ -3235,7 +3251,7 @@ export function App() {
     try {
       await api.bulkMoveEntriesToSectionOccurrence(operation);
       await reconcile();
-      if (continuous) requestPendingFocus({ kind: "entry", id: operation.entry_ids[0]! });
+      if (continuous) requestPendingFocus({ kind: "entry", id: operation.entry_ids[0]! }, focusGeneration);
       removePendingBulkSectionMoveOverlay(operation.operation_id);
       setBulkSectionOccurrenceOperation((current) => current?.operation_id === operation.operation_id ? null : current);
     } catch (caught) {
@@ -3311,11 +3327,12 @@ export function App() {
       expected_placement_revision: projection.placement_revision,
       ...(placement ? { placement } : {}),
     };
+    const focusGeneration = focusIntentGenerationRef.current;
     setBulkSectionOccurrenceOperation(operation);
     updatePendingBulkSectionMoveOverlays((current) => [...current, { operation }]);
     if (continuous) {
       continuousBulkMoveOperationIdsRef.current.add(operation.operation_id);
-      requestPendingFocus({ kind: "entry", id: options?.focusEntryId ?? entryIds[0]! });
+      requestPendingFocus({ kind: "entry", id: options?.focusEntryId ?? entryIds[0]! }, focusGeneration);
       const dependsOnOperationId = latestPlacementOperationId(operation.taskchute_day_id);
       enqueueDayMutation({
         scope: placementMutationScope(operation.taskchute_day_id), label: "Bulk Routine Section変更", operationId: operation.operation_id,
@@ -3330,7 +3347,7 @@ export function App() {
           }
           const rebased = { ...operation, expected_placement_revision: latest.placement_revision };
           setBulkSectionOccurrenceOperation((current) => current?.operation_id === operation.operation_id ? rebased : current);
-          await executeBulkSectionOccurrenceChange(rebased);
+          await executeBulkSectionOccurrenceChange(rebased, focusGeneration);
         },
       });
     } else {
@@ -3870,7 +3887,11 @@ export function App() {
     }
   }
 
-  async function executeReorder(operation: ReorderEntriesRequest) {
+  async function executeReorder(
+    operation: ReorderEntriesRequest,
+    focusEntryId = operation.entry_ids[0],
+    focusGeneration = focusIntentGenerationRef.current,
+  ) {
     const mutationToken = beginMutationScope(placementMutationScope(operation.taskchute_day_id), "並び替え", {
       kind: "reorder", sectionId: operation.section_id,
     });
@@ -3885,6 +3906,7 @@ export function App() {
       setReorderOperation((current) => current?.operation_id === operation.operation_id ? null : current);
       updatePendingReorderOverlays((current) => current[groupKey(operation.section_id)]?.operation.operation_id === operation.operation_id
         ? Object.fromEntries(Object.entries(current).filter(([key]) => key !== groupKey(operation.section_id))) : current);
+      if (focusEntryId) requestPendingFocus({ kind: "entry", id: focusEntryId }, focusGeneration);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "並び替えに失敗しました");
       const ambiguous = isAmbiguousOutcome(caught);
@@ -3949,7 +3971,8 @@ export function App() {
       entry_ids: entryIds,
       expected_placement_revision: projection.placement_revision,
     };
-    requestPendingFocus({ kind: "entry", id: focusEntryId });
+    const focusGeneration = focusIntentGenerationRef.current;
+    requestPendingFocus({ kind: "entry", id: focusEntryId }, focusGeneration);
     updatePendingReorderOverlays((current) => ({ ...current, [groupKey(sectionId)]: { operation, baseEntryIds } }));
     const inFlight = reorderInFlightRef.current;
     const dependsOnOperationId = options?.allowContinuousPlacement
@@ -3979,7 +4002,7 @@ export function App() {
           ? Object.fromEntries(Object.entries(current).filter(([key]) => key !== groupKey(operation.section_id))) : current);
         return;
       }
-      await executeReorder({ ...operation, expected_placement_revision: latest.placement_revision });
+      await executeReorder({ ...operation, expected_placement_revision: latest.placement_revision }, focusEntryId, focusGeneration);
     };
     if (projection.is_current) enqueueReorderMutation({
       scope: placementMutationScope(operation.taskchute_day_id), label: "並び替え", operationId: operation.operation_id,
@@ -5193,7 +5216,10 @@ export function App() {
     setPendingSectionOverlays((current) => Object.fromEntries(Object.entries(current).filter(([, overlay]) => overlay.operation.operation_id !== operationId)));
   }
 
-  async function executeSectionMove(operation: MoveEntryRequest) {
+  async function executeSectionMove(
+    operation: MoveEntryRequest,
+    focusGeneration = focusIntentGenerationRef.current,
+  ) {
     const mutationToken = beginMutationScope(placementMutationScope(operation.taskchute_day_id), "Section移動", { kind: "move" });
     if (!mutationToken) return;
     sectionMoveInFlightRef.current = operation;
@@ -5207,7 +5233,7 @@ export function App() {
       const latestIntent = pendingSectionMoveIntentsRef.current.find((intent) => intent.operation.entry_id === operation.entry_id);
       const latestDestination = latestIntent?.operation.section_id ?? operation.section_id;
       const collapsed = collapsedSectionsByDay[projection?.taskchute_day.logical_date ?? day?.taskchute_day.logical_date ?? ""]?.[groupKey(latestDestination)] === true;
-      requestPendingFocus(collapsed ? { kind: "section", id: groupKey(latestDestination) } : { kind: "entry", id: operation.entry_id });
+      requestPendingFocus(collapsed ? { kind: "section", id: groupKey(latestDestination) } : { kind: "entry", id: operation.entry_id }, focusGeneration);
     }
     catch (caught) {
       setError(caught instanceof Error ? caught.message : "Section移動に失敗しました");
@@ -5234,7 +5260,7 @@ export function App() {
           const latestIntent = pendingSectionMoveIntentsRef.current.find((intent) => intent.operation.entry_id === operation.entry_id);
           const latestDestination = latestIntent?.operation.section_id ?? operation.section_id;
           const collapsed = collapsedSectionsByDay[projection.taskchute_day.logical_date]?.[groupKey(latestDestination)] === true;
-          requestPendingFocus(collapsed ? { kind: "section", id: groupKey(latestDestination) } : { kind: "entry", id: operation.entry_id });
+          requestPendingFocus(collapsed ? { kind: "section", id: groupKey(latestDestination) } : { kind: "entry", id: operation.entry_id }, focusGeneration);
         }
       } catch { /* Preserve retained operation. */ }
     } finally {
@@ -5293,13 +5319,14 @@ export function App() {
     const operation: MoveEntryRequest = { operation_id: uuidv7(), entry_id: entry.id,
       taskchute_day_id: projection.taskchute_day.id, section_id: sectionId, expected_placement_revision: projection.placement_revision,
       ...(placement ? { placement } : {}) };
+    const focusGeneration = focusIntentGenerationRef.current;
     const intent: PendingSectionMoveIntent = {
       operation,
       sourceSectionId: entry.section_id,
       sourcePlannedStartMinute: entry.planned_start_minute,
       ...(placement ? { placement } : {}),
     };
-    if (options?.allowContinuousPlacement) requestPendingFocus({ kind: "entry", id: entry.id });
+    if (options?.allowContinuousPlacement) requestPendingFocus({ kind: "entry", id: entry.id }, focusGeneration);
     setPendingSectionOverlays((current) => ({ ...current, [operation.entry_id]: {
       operation, plannedStartMinute: targetPlannedStart,
     } }));
@@ -5331,7 +5358,7 @@ export function App() {
         removePendingSectionMoveIntent(operation.operation_id);
         return;
       }
-      await executeSectionMove({ ...operation, expected_placement_revision: latest.placement_revision });
+      await executeSectionMove({ ...operation, expected_placement_revision: latest.placement_revision }, focusGeneration);
     };
     if (projection.is_current) enqueueSectionMoveMutation({
       scope: placementMutationScope(operation.taskchute_day_id), label: "Section移動", operationId: operation.operation_id,
@@ -6071,6 +6098,7 @@ export function App() {
 
   function markUserFocusIntent() {
     focusIntentGenerationRef.current += 1;
+    pendingFocusIntentRef.current = null;
     setPendingFocusKey(null);
     pendingAddFocusLocatorRef.current.clear();
   }
