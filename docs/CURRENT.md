@@ -16,9 +16,24 @@ Day `placement_revision`、Routine relation、開始時Mode snapshotは変更し
 commandを再利用する。Routine操作・D&D・Sidebar・Project Noteの既存挙動は維持した。
 
 Corrective local evidence: focused Worker `task-metadata.integration.test.ts` + `mode-management.integration.test.ts`
-`16 / 16`、App `288 / 288`。最終全体検証とpersistent nonprod corrective deployの結果はこのcloseout commit
-後に追記する。初回およびcorrective前のbrowser resource-conflict evidence、Worker version、CI attempt履歴は
-過去の検証記録として保持し、productionは`NOT_RUN`、Releasedは`NO`とする。
+`16 / 16`、App `288 / 288`、full Worker/D1 `37 files / 332 tests`、full Web `14 files / 468 tests`。
+typecheck、normal build、exact nonprod build、dev-workflow helper `8 / 8`、deploy guard、Wrangler
+nonprod dry-run、`git diff --check`はPASS（既存Vite chunk-size warning / Wrangler log-directory `EPERM`は非致命）。
+Implementation `c0ba6066ebd00c45c6761d953daa8f1c37d93bdb`をcanonical `main`へfast-forward pushし、exact
+mainをcanonical persistent nonprod Worker `taskchute-web-nonprod`へdeployした。Worker versionは
+`93af048b-2e3b-4052-b319-f07c3611b280`、`RUNTIME_ENV=nonprod`、`BOOTSTRAP_ENABLED=false`、APP
+`taskchute-app-nonprod`、AUTH `taskchute-auth-nonprod`、RealtimeHub binding/classを確認した。rootは`200`、
+未認証Documents APIとRealtime endpointは`401`。APP/AUTH remote `quick_check=ok`、FK empty、migration
+pending `0 / 0`、read-only probe `rows_written=0`を確認した。
+
+Exact-SHA GitHub Actions run `35174027860`は初回 Web unload testの既知flaky 1件で失敗したが、同一SHAの
+failed-job rerun（attempt 2）で Classifier、Web/Worker、Android JVM/APK の全jobがPASSした。Android
+artifactは`taskchute-android-debug-c0ba6066ebd00c45c6761d953daa8f1c37d93bdb`（artifact ID
+`10478121485`、expiry `2026-09-24T02:22:56Z`）である。既存authenticated browser sessionの最終assetで
+disposable `D117 running metadata QA`を作成・開始し、running mutation settle後にProject/Mode controlsが
+有効化されること、既存 Project/Mode選択、Complete、reload後のLife / D105 Browser Mode（archived）表示を
+確認した。実行中・完了済みのlifecycle状態とmetadata操作は独立しており、console warning/errorは`0 / 0`。
+fixtureはnonprodに残置し、productionは`NOT_RUN`、Releasedは`NO`とする。
 
 ### D-116B Completed Entry to future Routine v0.1 — nonprod deployed; browser conversion verified
 
