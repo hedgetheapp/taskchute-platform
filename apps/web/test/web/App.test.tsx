@@ -2833,6 +2833,7 @@ describe("Dogfood Day shell", () => {
     expect(mocks.bulkMoveEntriesToSectionOccurrence.mock.calls[1]?.[0].entry_ids).toEqual([firstEntry.id, secondEntry.id]);
     secondRequest.resolve({});
     await waitFor(() => expect(screen.queryByText("Bulk Routine Section変更・照合中…")).toBeNull());
+    expect(document.activeElement?.getAttribute("data-entry-id")).toBe(firstEntry.id);
   });
 
   it("accepts continuous Move to Move traversal across empty real Sections", async () => {

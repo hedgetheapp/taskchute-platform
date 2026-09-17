@@ -3235,6 +3235,7 @@ export function App() {
     try {
       await api.bulkMoveEntriesToSectionOccurrence(operation);
       await reconcile();
+      if (continuous) requestPendingFocus({ kind: "entry", id: operation.entry_ids[0]! });
       removePendingBulkSectionMoveOverlay(operation.operation_id);
       setBulkSectionOccurrenceOperation((current) => current?.operation_id === operation.operation_id ? null : current);
     } catch (caught) {
