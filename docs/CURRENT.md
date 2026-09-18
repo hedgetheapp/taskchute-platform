@@ -23,6 +23,24 @@ volatile metadataはGitHubを正本とする。Worker/API、schema / migration�
 offline、persistent nonprod、productionは変更していない。Galaxy S23のfresh final-main smokeは
 Product Owner確認待ちで`PENDING_SMOKE`、productionは`NOT_RUN`、Releasedは`NO`とする。
 
+### D-121 visual parity corrective — 2026-09-18
+
+Figma file `UbTJH6ykYNBQJS4Wvwz9jb` のToday / Notes / Settings design contextを再確認し、
+共通dark token、selected navigation、Today compact row/section/date navigator、Notes list/editor、
+Settings compact cardsへCompose実装を是正した。legacy purple emphasis、glyph navigation、normal
+rowのoverflow-first表示を除去し、selection-only checkbox、planned play、running Complete、
+completed check、swipe編集、既存D&D、bulk、Notes autosave/CAS、Settings management semanticsは
+変更していない。Today（`69:257`〜`69:601`, `88:1058`〜`88:2026`）、Notes（`35:4`〜
+`35:235`）、Settings（`37:4`〜`37:524`）を参照した。
+
+Implementation corrective `596d28ef435bdcaecf7b8d7b4e11777148003f65`。Android JVM
+`111 / 111`、TaskChute_API33 targeted Today `25 / 25`、Notes `7 / 7`、Settings
+`2 / 2`、最終All `35 / 35`、Debug APK build/install、MainActivity、crash buffer、
+`git diff --check`はPASS。All instrumentation `176.67s`、total `177.79s`。
+途中のAVD system_server/package service障害は専用AVD初期化後に復旧し、最終ゲートでは再現していない。
+Today normal、Notes list/editor、Settings homeのfresh AVD screenshotsを取得した。Galaxy S23
+fresh final-main visual smokeは`PENDING_SMOKE`、productionは`NOT_RUN`、Releasedは`NO`。
+
 ### D-120 Bulk Task Move / Reorder v0.1 — implemented / persistent verification complete
 
 D-120のApproved behaviorとして、Day Tableの複数選択planned Entryをmutation前のcanonical display

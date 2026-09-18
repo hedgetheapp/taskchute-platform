@@ -17,6 +17,11 @@ All final AVD evidence is emulator evidence, not physical-device verification. A
 single Quick Add timeout under emulator load; the failed test passed in isolation and the final All rerun
 completed `35 / 35` with no application crash/ANR.
 
+
+| D121-CORRECTIVE | Figma-to-Compose visual parity corrective | Figma design contextを参照し、共通dark chrome、Today compact row/section/date navigator、Notes list/editor、Settings compact cardsを更新。fresh AVD screenshotsをToday normal、Notes list/editor、Settings homeで取得 | TESTED / PENDING_DEVICE |
+| D121-CORRECTIVE-AVD | Final Windows local runtime gate | `TaskChute_API33` All `35 / 35`（Today `25` + Notes `7` + Settings `2` + Security `1`）、APK install、MainActivity、crash buffer empty、instrumentation `176.67s` / total `177.79s` | PASS |
+| D121-CORRECTIVE-CI | Exact implementation SHA | `596d28ef435bdcaecf7b8d7b4e11777148003f65`; run `35345986325`; Classifier/Android PASS、Web/Worker SKIPPED; artifact ID `10547610551`, expiry `2026-09-25` | PASS |
+
 ## D-120 Bulk Task Move / Reorder v0.1 — implementation and verification evidence
 
 | ID | Verification target | Evidence | Status |

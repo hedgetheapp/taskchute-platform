@@ -16,6 +16,14 @@ Galaxy S23のfresh final-main smokeは`PENDING_SMOKE`であり、認証済み実
 証跡は未取得。Worker/API、schema / migration、dependency、realtime protocol、offline、productionは
 変更しない。
 
+## R-077 corrective evidence — D-121 visual parity
+
+Figma design contextを再確認し、shared dark chrome、Today row/section/date navigator、Notes
+list/editor、Settings compact cardsをComposeへ反映した。Android JVM `111 / 111`、TaskChute_API33
+All `35 / 35`、fresh AVD screenshots、exact-SHA Android CIはPASS。Galaxy S23のfresh final-main
+visual smokeと認証済み実機のdark UI / IME / system UI証跡は`PENDING_SMOKE`。Worker/API、
+schema / migration、dependency、realtime protocol、offline、productionは変更しない。
+
 ## R-076 — D-120 atomic bulk placement and Routine scope boundary
 
 D-120は、非連続選択をcanonical display orderのblockとして一回のoperationで移動するため、
