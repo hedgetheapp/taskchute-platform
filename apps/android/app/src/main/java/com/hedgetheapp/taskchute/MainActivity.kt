@@ -39,8 +39,8 @@ import com.hedgetheapp.taskchute.today.TodayHttpResponse
 import com.hedgetheapp.taskchute.today.TodayScreen
 import com.hedgetheapp.taskchute.today.TaskPlanningController
 import com.hedgetheapp.taskchute.today.TaskPlanningHttpRepository
-import com.hedgetheapp.taskchute.today.AndroidDestination
-import com.hedgetheapp.taskchute.today.AndroidNavigationBar
+import com.hedgetheapp.taskchute.ui.AndroidDestination
+import com.hedgetheapp.taskchute.ui.TaskChuteTheme
 import com.hedgetheapp.taskchute.today.TaskPlanningUiState
 import com.hedgetheapp.taskchute.document.DocumentHttpRepository
 import com.hedgetheapp.taskchute.document.NotesController
@@ -183,7 +183,7 @@ private fun TaskChuteApp(
         }
     }
 
-    MaterialTheme {
+    TaskChuteTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
             when (state) {
                 AuthUiState.Restoring -> Centered("認証状態を確認しています…", showProgress = true)

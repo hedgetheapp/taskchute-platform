@@ -42,8 +42,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.hedgetheapp.taskchute.today.AndroidDestination
-import com.hedgetheapp.taskchute.today.AndroidNavigationBar
+import com.hedgetheapp.taskchute.ui.AndroidDestination
+import com.hedgetheapp.taskchute.ui.AndroidNavigationBar
 
 @Composable
 fun NotesScreen(

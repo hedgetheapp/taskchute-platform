@@ -6,6 +6,9 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.drag
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -35,6 +39,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -65,9 +70,11 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -79,43 +86,11 @@ import java.time.LocalDate
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-
-enum class AndroidDestination {
-    TODAY,
-    NOTES,
-    SETTINGS,
-}
-
-@Composable
-fun AndroidNavigationBar(
-    selected: AndroidDestination,
-    onToday: () -> Unit,
-    onSettings: () -> Unit,
-    onNotes: () -> Unit = {},
-) {
-    NavigationBar {
-        NavigationBarItem(
-            selected = selected == AndroidDestination.TODAY,
-            onClick = onToday,
-            icon = { Text("⌂") },
-            label = { Text("今日") },
-        )
-        NavigationBarItem(
-            selected = false,
-            onClick = onNotes,
-            enabled = true,
-            modifier = Modifier.semantics { contentDescription = "ノート一覧" },
-            icon = { Text("▤") },
-            label = { Text("ノート") },
-        )
-        NavigationBarItem(
-            selected = selected == AndroidDestination.SETTINGS,
-            onClick = onSettings,
-            icon = { Text("⚙") },
-            label = { Text("設定") },
-        )
-    }
-}
+import kotlin.math.roundToInt
+import com.hedgetheapp.taskchute.ui.AndroidDestination
+import com.hedgetheapp.taskchute.ui.AndroidNavigationBar
+import com.hedgetheapp.taskchute.ui.ChromeIcon
+import com.hedgetheapp.taskchute.ui.TaskChuteIcons
 
 @Composable
 fun TodayScreen(controller: TodayController, onSignOut: () -> Unit) {
@@ -647,7 +622,7 @@ private fun DateNavigator(day: TodayDay, controller: TodayController) {
         IconButton(
             onClick = controller::previousDay,
             modifier = Modifier.semantics { contentDescription = "前の日" },
-        ) { Text("‹", style = MaterialTheme.typography.headlineMedium) }
+        ) { ChromeIcon(TaskChuteIcons.ChevronLeft, "前の日") }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(day.logicalDate, style = MaterialTheme.typography.titleMedium)
             Text("（${formatWeekday(day.logicalDate)}）", style = MaterialTheme.typography.labelMedium)
@@ -657,7 +632,7 @@ private fun DateNavigator(day: TodayDay, controller: TodayController) {
             IconButton(
                 onClick = controller::nextDay,
                 modifier = Modifier.semantics { contentDescription = "次の日" },
-            ) { Text("›", style = MaterialTheme.typography.headlineMedium) }
+            ) { ChromeIcon(TaskChuteIcons.ChevronRight, "次の日") }
             TextButton(onClick = controller::today, enabled = !day.isCurrent) { Text("今日") }
         }
     }
@@ -684,7 +659,7 @@ private fun SectionHeader(
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(if (collapsed) "›" else "⌄", style = MaterialTheme.typography.titleMedium)
+            ChromeIcon(if (collapsed) TaskChuteIcons.ChevronRight else TaskChuteIcons.ChevronDown, if (collapsed) "展開" else "折りたたみ", Modifier.size(22.dp))
             Text(title, style = MaterialTheme.typography.titleMedium)
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -726,9 +701,31 @@ private fun TodayTaskRow(
     dropBoundsSectionId: MutableMap<String, String?>,
 ) {
     var editMenuExpanded by remember(task.id) { mutableStateOf(false) }
+    var swipeOffset by remember(task.id) { mutableStateOf(0f) }
     val insertionPadding by animateDpAsState(if (dropTarget) 6.dp else 0.dp, label = "drop-target-padding")
-    Card(
-        modifier = Modifier.fillMaxWidth().then(
+    Box(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium)) {
+        if (canEdit && swipeOffset <= -48f) {
+            Row(
+                modifier = Modifier.align(Alignment.CenterEnd).zIndex(2f).padding(end = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(
+                    onClick = {
+                        swipeOffset = 0f
+                        onEdit()
+                    },
+                    modifier = Modifier.semantics { contentDescription = "タスクを編集" },
+                ) {
+                    ChromeIcon(TaskChuteIcons.Edit, "編集", Modifier.size(20.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("編集")
+                }
+            }
+        }
+        Card(
+        modifier = Modifier.fillMaxWidth()
+            .offset { IntOffset(swipeOffset.roundToInt(), 0) }
+            .then(
             if (dragging) Modifier.graphicsLayer {
                 translationY = dragDeltaY
                 shadowElevation = 10.dp.toPx()
@@ -753,21 +750,12 @@ private fun TodayTaskRow(
                 modifier = Modifier.size(48.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                if (canSelect) {
-                    Checkbox(
-                        checked = selected,
-                        onCheckedChange = { onToggleSelection() },
-                        enabled = enabled,
-                        modifier = Modifier.size(48.dp).padding(6.dp).semantics { contentDescription = "タスクを選択: ${task.title}" },
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier.size(14.dp).clip(MaterialTheme.shapes.small).border(
-                            BorderStroke(1.dp, stateColor(task.lifecycleState)),
-                            MaterialTheme.shapes.small,
-                        ),
-                    )
-                }
+                Checkbox(
+                    checked = selected,
+                    onCheckedChange = { if (canSelect) onToggleSelection() },
+                    enabled = enabled && canSelect,
+                    modifier = Modifier.size(48.dp).padding(6.dp).semantics { contentDescription = "タスクを選択: ${task.title}" },
+                )
             }
             Spacer(Modifier.width(4.dp))
             val dragModifier = if (canDrag) {
@@ -785,36 +773,46 @@ private fun TodayTaskRow(
                         )
                     }
             } else Modifier
-            Column(Modifier.weight(1f).then(dragModifier), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            val swipeModifier = Modifier.draggable(
+                state = rememberDraggableState { delta -> swipeOffset = (swipeOffset + delta).coerceIn(-104f, 0f) },
+                orientation = Orientation.Horizontal,
+                enabled = canEdit,
+                onDragStopped = { swipeOffset = if (swipeOffset <= -48f) -104f else 0f },
+            )
+            Column(Modifier.weight(1f).then(dragModifier).then(swipeModifier), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(task.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 val metadata = listOfNotNull(
                     task.project?.title,
                     task.mode?.title,
-                    task.plannedStartMinute?.let { "◷ ${formatMinute(it)}" },
-                    task.estimateSeconds?.let { "⌛ ${formatEstimate(it)}" },
+                    task.plannedStartMinute?.let { formatMinute(it) },
+                    task.estimateSeconds?.let { formatEstimate(it) },
                     timeRangeText(task),
                 ).joinToString(" · ")
                 if (metadata.isNotBlank()) Text(metadata, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             when (task.lifecycleState) {
-                LifecycleState.PLANNED -> IconButton(
-                    onClick = { controller.start(task) },
-                    enabled = enabled,
-                    modifier = Modifier.semantics { contentDescription = "タスクを開始" },
-                ) { Text("▶") }
-                LifecycleState.RUNNING -> IconButton(
-                    onClick = { controller.complete(task) },
-                    enabled = enabled,
-                    modifier = Modifier.semantics { contentDescription = "タスクを完了" },
-                ) { Text("✓") }
-                LifecycleState.COMPLETED -> Spacer(Modifier.size(48.dp))
+                LifecycleState.PLANNED -> if (swipeOffset > -48f) {
+                    IconButton(
+                        onClick = { controller.start(task) },
+                        enabled = enabled,
+                        modifier = Modifier.semantics { contentDescription = "タスクを開始" },
+                    ) { Icon(TaskChuteIcons.Play, contentDescription = null) }
+                } else Spacer(Modifier.size(48.dp))
+                LifecycleState.RUNNING -> if (swipeOffset > -48f) {
+                    IconButton(
+                        onClick = { controller.complete(task) },
+                        enabled = enabled,
+                        modifier = Modifier.semantics { contentDescription = "タスクを完了" },
+                    ) { Icon(TaskChuteIcons.Complete, contentDescription = null) }
+                } else Spacer(Modifier.size(48.dp))
+                LifecycleState.COMPLETED -> ChromeIcon(TaskChuteIcons.Check, "完了済み", Modifier.size(48.dp).padding(12.dp))
             }
             if (canEdit || canDuplicate || canOpenNote || canDayOperate) {
                 Box {
                     IconButton(
                         onClick = { editMenuExpanded = true },
                         modifier = Modifier.semantics { contentDescription = "タスクの編集メニュー" },
-                    ) { Text("…") }
+                    ) { ChromeIcon(TaskChuteIcons.More, "タスクの編集メニュー") }
                     DropdownMenu(
                         expanded = editMenuExpanded,
                         onDismissRequest = { editMenuExpanded = false },
@@ -881,6 +879,8 @@ private fun TodayTaskRow(
             }
         }
     }
+}
+
 }
 
 @Composable

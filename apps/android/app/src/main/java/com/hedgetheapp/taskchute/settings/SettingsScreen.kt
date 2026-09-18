@@ -38,8 +38,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import com.hedgetheapp.taskchute.today.AndroidDestination
-import com.hedgetheapp.taskchute.today.AndroidNavigationBar
+import com.hedgetheapp.taskchute.ui.AndroidDestination
+import com.hedgetheapp.taskchute.ui.AndroidNavigationBar
+import com.hedgetheapp.taskchute.ui.ChromeIcon
+import com.hedgetheapp.taskchute.ui.TaskChuteIcons
 
 @Composable
 fun SettingsScreen(
@@ -53,7 +55,12 @@ fun SettingsScreen(
     BackHandler(enabled = state.destination != SettingsDestination.HOME && state.sectionEditor == null && state.projectEditor == null && state.routineEditor == null) { controller.showHome() }
     Scaffold(
         bottomBar = {
-            AndroidNavigationBar(AndroidDestination.SETTINGS, onNavigateToday, {}, onNavigateNotes)
+            AndroidNavigationBar(
+                selected = AndroidDestination.SETTINGS,
+                onToday = onNavigateToday,
+                onNotes = onNavigateNotes,
+                onSettings = {},
+            )
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp)) {
@@ -90,21 +97,21 @@ private fun SettingsHome(controller: SettingsController, onSignOut: () -> Unit) 
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text("設定", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(top = 20.dp))
         Text("TaskChuteの時間と再利用設定を管理します。", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        SettingsCard("セクション設定", "1日の時間帯（Section）を管理", "◷") { controller.openSections() }
-        SettingsCard("プロジェクト設定", "Projectの作成・編集・管理", "□") { controller.openProjects() }
-        SettingsCard("ルーティン設定", "繰り返しTaskの作成・管理", "↻") { controller.openRoutines() }
+        SettingsCard("セクション設定", "1日の時間帯（Section）を管理", TaskChuteIcons.Notes) { controller.openSections() }
+        SettingsCard("プロジェクト設定", "Projectの作成・編集・管理", TaskChuteIcons.Today) { controller.openProjects() }
+        SettingsCard("ルーティン設定", "繰り返しTaskの作成・管理", TaskChuteIcons.Settings) { controller.openRoutines() }
         Spacer(Modifier.weight(1f))
         OutlinedButton(onClick = onSignOut, modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(bottom = 12.dp)) { Text("ログアウト") }
     }
 }
 
 @Composable
-private fun SettingsCard(title: String, subtitle: String, icon: String, onClick: () -> Unit) {
+private fun SettingsCard(title: String, subtitle: String, icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit) {
     Card(Modifier.fillMaxWidth().clickable(onClick = onClick).semantics { contentDescription = title }) {
         Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            Text(icon, style = MaterialTheme.typography.headlineSmall)
+            ChromeIcon(icon, title, Modifier.size(28.dp))
             Column(Modifier.weight(1f)) { Text(title, style = MaterialTheme.typography.titleMedium); Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            Text("›", style = MaterialTheme.typography.headlineSmall)
+            ChromeIcon(TaskChuteIcons.ChevronRight, "${title}を開く", Modifier.size(22.dp))
         }
     }
 }

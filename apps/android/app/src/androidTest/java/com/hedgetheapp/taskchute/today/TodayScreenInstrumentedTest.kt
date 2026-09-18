@@ -14,6 +14,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeLeft
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.compose.ui.geometry.Offset
 import java.util.concurrent.CountDownLatch
@@ -402,18 +403,25 @@ class TodayScreenInstrumentedTest {
     }
 
     @Test
-    fun ordinaryPlannedRowUsesOverflowMenuForEditingOnly() {
+    fun ordinaryPlannedRowUsesSwipeRevealForEditing() {
         val planningRepository = FakePlanningRepository()
         launchPlanningScreen(planningRepository)
         waitForStatus(TodayLoadStatus.CONTENT)
 
-        composeRule.onNodeWithText("Write report").performTouchInput { click() }
-        assertTrue(composeRule.onAllNodesWithText("タスクを編集").fetchSemanticsNodes().isEmpty())
-        composeRule.onNodeWithContentDescription("タスクの編集メニュー").performClick()
-        composeRule.onNodeWithText("編集").performClick()
+        composeRule.onNodeWithText("Write report").performTouchInput { swipeLeft() }
+        assertTrue(composeRule.onAllNodesWithContentDescription("タスクを開始").fetchSemanticsNodes().isEmpty())
+        composeRule.onNodeWithContentDescription("タスクを編集").assertIsDisplayed().performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("タスクを編集").fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.onNodeWithText("タスクを編集").assertIsDisplayed()
         composeRule.onNodeWithText("保存").assertExists()
         composeRule.onNodeWithText("キャンセル").performClick()
+        assertTrue(composeRule.onAllNodesWithText("タスクを編集").fetchSemanticsNodes().isEmpty())
+
+        // The legacy action menu remains available for the other canonical actions.
+        assertTrue(composeRule.onAllNodesWithText("タスクを編集").fetchSemanticsNodes().isEmpty())
+        composeRule.onNodeWithContentDescription("タスクの編集メニュー").performClick()
         composeRule.onNodeWithContentDescription("タスクの編集メニュー").assertIsDisplayed()
     }
 
