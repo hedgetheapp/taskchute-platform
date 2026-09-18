@@ -2,6 +2,27 @@
 
 Statuses: Approved / Proposed / Superseded
 
+## D-121 — Android Unified Dark UI and Task Interaction Refinement v0.1
+
+Status: **Approved**
+
+Canonical Decision: `docs/decisions/D-121_ANDROID_UNIFIED_DARK_UI_AND_TASK_INTERACTION_REFINEMENT_V01.md`。
+
+D-121はAndroid Today / Notes / Settingsを一つのdark visual systemへ統一し、bottom navigationを
+`今日` / `ノート` / `設定`のshared implementationとして扱う。Today rowのleading checkboxは
+lifecycleではなくselectionだけを表し、trailing側をplanned `▶` / running `■` / completed `✓`として
+selectionとexecution stateを分離する。runningの`■`は新しいStop domain stateではなく既存canonical
+Complete commandのvisual actionとする。eligible rowの旧overflow-first editは左swipeの`編集` revealへ
+置き換え、edit / duplicate / Task Note / move date / deleteを既存command eligibilityのままTask Actions
+surfaceへまとめる。D-112 bulk selection/day operations、D-113 execution metadata、Notes autosave/CAS/safe
+flush、D-114 Settings management、既存server authorityを維持する。
+
+Figma `UbTJH6ykYNBQJS4Wvwz9jb` / `UI States — Android v1`はvisual referenceでありcanonical specを
+supersedeしない。Worker/API、schema/migration、new persistence、realtime protocol、新lifecycle state、
+third-party dependency、productionは変更しない。Android Large BatchとしてJVM regression、fresh APK、
+Windows `TaskChute_API33`のToday / Notes / Settings CUAを行い、Galaxy S23はfresh final-main APKの
+Product Owner smokeまで`PENDING_SMOKE`とする。
+
 ## D-120 — Bulk Task Move / Reorder v0.1
 
 Status: **Approved**
