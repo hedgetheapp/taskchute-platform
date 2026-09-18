@@ -41,6 +41,30 @@ Implementation corrective `596d28ef435bdcaecf7b8d7b4e11777148003f65`。Android J
 Today normal、Notes list/editor、Settings homeのfresh AVD screenshotsを取得した。Galaxy S23
 fresh final-main visual smokeは`PENDING_SMOKE`、productionは`NOT_RUN`、Releasedは`NO`。
 
+### D-121 Figma visual parity final evidence — 2026-09-18
+
+最終実装SHA `9922f893dc5b62cb44c45444913f5ea6a138cc2f` で、Figmaの参照フレーム
+Today `69:257` / `69:342` / `69:512` / `69:601`、Notes `35:4` / `35:143`、Settings
+`37:4` / `37:32` と、同ページの関連stateを再比較した。共通Chromeはdark background、blue
+selected treatment、Material icon、compact spacingへ統一し、Todayはgrouped section/compact row、
+Notesはlist/editor density、Settingsはcompact management card hierarchyを反映した。
+
+最終 `TaskChute_API33` AllはToday `25` + Notes `7` + Settings `2` + Security `1` = `35 / 35`
+PASS。instrumentation `525.05s`、total `526.11s`、Debug APK install、MainActivity解決、crash
+buffer emptyもPASS。fresh emulator capturesは`.codex/d121-final-today-normal-rendered.png`、
+`d121-final-today-selected.png`、`d121-final-today-running.png`、`d121-final-today-swipe.png`、
+`d121-final-today-actions.png`、`d121-final-notes-list-rendered.png`、`d121-final-notes-editor.png`、
+`d121-final-settings-home-rendered.png`、`d121-final-settings-sections.png`として取得し、対応する
+Figma stateと目視比較した。許容範囲のAndroidフォント描画・system bar差を除き、旧purple-heavy
+navigation、oversized card/row、legacy glyph navigationの不一致を解消した。
+
+Exact SHA GitHub Actions run `35356241475`（run 108）はClassifier PASS、Android JVM and APK
+verification PASS、Web and Worker verification SKIPPED。artifactは
+`taskchute-android-debug-9922f893dc5b62cb44c45444913f5ea6a138cc2f`（ID `10551753719`、expiry
+`2026-09-25T14:28:39Z`）。Product/Domain/API、schema/migration、dependency、realtime protocol、
+persistent nonprod、productionは変更していない。Galaxy S23のfresh final-main smokeは
+`PENDING_SMOKE`、productionは`NOT_RUN`、Releasedは`NO`。
+
 ### D-120 Bulk Task Move / Reorder v0.1 — implemented / persistent verification complete
 
 D-120のApproved behaviorとして、Day Tableの複数選択planned Entryをmutation前のcanonical display
