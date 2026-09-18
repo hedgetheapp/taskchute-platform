@@ -1,5 +1,22 @@
 # Test Matrix
 
+## D-121 Android Unified Dark UI / Task Interaction Refinement v0.1
+
+| ID | Verification target | Evidence | Status |
+|---|---|---|---|
+| D121-DECISION | Approved Android dark system, shared navigation, selection/lifecycle separation, swipe edit boundary | `docs/decisions/D-121_ANDROID_UNIFIED_DARK_UI_AND_TASK_INTERACTION_REFINEMENT_V01.md`; Figma is visual reference only | PASS / APPROVED |
+| D121-TODAY | Today UI and interaction regression | Android JVM/UI coverage includes checkbox selection-only, planned/running/completed trailing actions, swipe→`編集`, D&D, bulk selection, Quick Add, section collapse, date/error/empty/read-only states; targeted Today `25 / 25` PASS | PASS |
+| D121-NOTES | Notes shared dark chrome/navigation and existing editor behavior | TaskChute_API33 Notes instrumentation `7 / 7` PASS; autosave, safe flush, editor navigation and discard coverage remain green | PASS |
+| D121-SETTINGS | Settings shared dark chrome/navigation and representative management shell | TaskChute_API33 Settings instrumentation `2 / 2` PASS | PASS |
+| D121-JVM | Full affected Android JVM regression | `111 / 111` PASS; failures/errors/skipped `0 / 0 / 0` | PASS |
+| D121-AVD | Windows local runtime gate | `scripts/android-qa.ps1` on `TaskChute_API33` All: Today `25` + Notes `7` + Settings `2` + Security `1` = `35 / 35`; Debug APK install, `MainActivity` resolution, crash buffer empty; final instrumentation `510.65s`, total `513.46s` | PASS |
+| D121-CI | Exact implementation SHA verification | `4486495d91891ff562f7b2ba1ad48bae1217dbde`; classifier PASS, Android JVM/APK PASS, Web/Worker SKIPPED by impact classifier; GitHub Actions remains volatile evidence authority | PASS |
+| D121-BOUNDARY | Product / persistence boundary | No Worker/API, schema/migration, dependency, realtime protocol, offline, persistent nonprod, production, Release, or Galaxy S23 operation; fresh Galaxy S23 smoke remains `PENDING_SMOKE` | PASS / NOT_REQUIRED / NOT_RUN / NO |
+
+All final AVD evidence is emulator evidence, not physical-device verification. An earlier All run had a
+single Quick Add timeout under emulator load; the failed test passed in isolation and the final All rerun
+completed `35 / 35` with no application crash/ANR.
+
 ## D-120 Bulk Task Move / Reorder v0.1 — implementation and verification evidence
 
 | ID | Verification target | Evidence | Status |

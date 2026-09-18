@@ -1,5 +1,21 @@
 # Risks
 
+## R-077 — D-121 Android unified dark UI and gesture arbitration
+
+D-121ではToday / Notes / Settingsの共通dark chromeに加え、Today rowのselection state、execution
+state、左swipe編集、既存long-press D&D / scroll / bulk selectionの相互作用を同じCompose surfaceに
+保持する必要がある。checkboxをcompletion表示として再利用したり、swipe-open中にStart / Completeを
+残したりすると、selectionとlifecycleの誤操作やジェスチャー競合につながる。
+
+Mitigationとしてshared navigation / icon / theme primitiveを一箇所へ集約し、eligible planned row
+だけをswipe編集対象とし、swipe-open中のexecution actionを隠し、既存canonical Start / Complete、
+D&D、bulk、Notes autosave/CAS、Settings API boundaryを変更していない。Android JVM `111 / 111`、
+TaskChute_API33 final All `35 / 35`、APK install、MainActivity、crash buffer、`git diff --check`はPASS。
+AVD高負荷によるQuick Addの一過性timeoutは単体再実行とAll再実行で解消し、app crash/ANRはない。
+Galaxy S23のfresh final-main smokeは`PENDING_SMOKE`であり、認証済み実機のdark UI / IME / system UI
+証跡は未取得。Worker/API、schema / migration、dependency、realtime protocol、offline、productionは
+変更しない。
+
 ## R-076 — D-120 atomic bulk placement and Routine scope boundary
 
 D-120は、非連続選択をcanonical display orderのblockとして一回のoperationで移動するため、

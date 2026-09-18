@@ -1,5 +1,28 @@
 # Current
 
+### D-121 Android Unified Dark UI / Task Interaction Refinement v0.1 — 2026-09-18
+
+D-121のApproved Android Large Batchとして、Today / Notes / Settingsを共通のdark visual systemと
+shared Material 3 bottom navigation（`今日` / `ノート` / `設定`）へ統合した。legacyの`⌂ / ▤ / ⚙`
+glyphは使用せず、既存のAndroid/Material icon capabilityを共通Chromeへ集約した。Todayではleading
+checkboxをselection-onlyへ分離し、plannedはplay、runningは既存Complete commandのsquare action、
+completedはcheck statusを表示する。eligible planned rowの編集は左swipe revealへ移し、swipe-open中は
+実行actionを同時表示しない。既存のlong-press D&D、bulk selection、Quick Add/Edit、Start / Complete、
+Notes autosave/CAS/safe-flush、Settings管理 semanticsは変更していない。
+
+Implementation `4486495d91891ff562f7b2ba1ad48bae1217dbde`。Android JVM `111 / 111`、Windows local
+`TaskChute_API33`（Pixel 7 / Android 13 API 33 / Google APIs / x86_64 / `emulator-5554`）の最終
+All instrumentation `35 / 35`（Today `25`、Notes `7`、Settings `2`、Security `1`）、Debug APK install、
+MainActivity解決、crash buffer empty、`git diff --check`はPASS。AVD最終Allはinstrumentation `510.65s`、
+total `513.46s`。途中のAVD高負荷によるQuick Add待機の一過性失敗は単体再実行PASS後、All再実行で解消し、
+アプリcrash/ANRは確認していない。
+
+Exact implementation SHAのGitHub ActionsはClassifier PASS、Android JVM/APK PASS、Web/Workerはimpact
+classifierによりSKIPPED。Debug APK artifactはGitHub Actionsの同SHA証跡として生成済みで、run/artifactの
+volatile metadataはGitHubを正本とする。Worker/API、schema / migration、dependency、realtime protocol、
+offline、persistent nonprod、productionは変更していない。Galaxy S23のfresh final-main smokeは
+Product Owner確認待ちで`PENDING_SMOKE`、productionは`NOT_RUN`、Releasedは`NO`とする。
+
 ### D-120 Bulk Task Move / Reorder v0.1 — implemented / persistent verification complete
 
 D-120のApproved behaviorとして、Day Tableの複数選択planned Entryをmutation前のcanonical display
