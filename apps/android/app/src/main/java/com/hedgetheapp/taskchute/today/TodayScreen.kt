@@ -403,7 +403,8 @@ private fun TodayContent(
         }
         LazyColumn(
             contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 110.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            // Keep section headers and task rows visually contiguous as one compact grouped surface.
+            verticalArrangement = Arrangement.spacedBy(0.dp),
         ) {
             day.sections.forEach { section ->
                 item(key = "section-${section.id}") {

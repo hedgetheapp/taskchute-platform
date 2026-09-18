@@ -1,19 +1,23 @@
 package com.hedgetheapp.taskchute.settings
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
@@ -99,14 +103,17 @@ fun SettingsScreen(
 
 @Composable
 private fun SettingsHome(controller: SettingsController, onSignOut: () -> Unit) {
-    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Text("設定", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(top = 20.dp))
-        Text("TaskChuteの時間と再利用設定を管理します。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Column(Modifier.fillMaxSize().padding(top = 20.dp)) {
+        Text("設定", style = MaterialTheme.typography.headlineMedium, color = TaskChuteColors.PrimaryText)
+        Text("TaskChuteの時間と再利用設定を管理します。", color = TaskChuteColors.SecondaryText, modifier = Modifier.padding(top = 4.dp))
+        Spacer(Modifier.height(26.dp))
         SettingsCard("セクション設定", "1日の時間帯（Section）を管理") { controller.openSections() }
+        Spacer(Modifier.height(12.dp))
         SettingsCard("プロジェクト設定", "Projectの作成・編集・管理") { controller.openProjects() }
+        Spacer(Modifier.height(12.dp))
         SettingsCard("ルーティン設定", "繰り返しTaskの作成・管理") { controller.openRoutines() }
         Spacer(Modifier.weight(1f))
-        OutlinedButton(onClick = onSignOut, modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(bottom = 12.dp)) { Text("ログアウト") }
+        OutlinedButton(onClick = onSignOut, modifier = Modifier.fillMaxWidth().height(50.dp).navigationBarsPadding().padding(bottom = 0.dp)) { Text("ログアウト") }
     }
 }
 
@@ -119,7 +126,7 @@ private fun SettingsCard(title: String, subtitle: String, onClick: () -> Unit) {
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Row(
-            Modifier.padding(horizontal = 16.dp, vertical = 12.dp).heightIn(min = 76.dp),
+            Modifier.fillMaxWidth().height(76.dp).padding(horizontal = 18.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
@@ -132,10 +139,18 @@ private fun SettingsCard(title: String, subtitle: String, onClick: () -> Unit) {
 }
 @Composable
 private fun SettingsHeader(title: String, onBack: () -> Unit, action: (() -> Unit)? = null, actionLabel: String? = null) {
-    Row(Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-        TextButton(onClick = onBack) { Text("‹ 戻る") }
-        Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-        if (action != null && actionLabel != null) TextButton(onClick = action) { Text(actionLabel) }
+    Row(Modifier.fillMaxWidth().height(58.dp).padding(horizontal = 0.dp), verticalAlignment = Alignment.CenterVertically) {
+        TextButton(onClick = onBack, modifier = Modifier.width(92.dp)) { Text("‹ 戻る", color = TaskChuteColors.PrimaryText) }
+        Text(title, style = MaterialTheme.typography.titleLarge, color = TaskChuteColors.PrimaryText, modifier = Modifier.weight(1f))
+        if (action != null && actionLabel != null) {
+            Box(
+                modifier = Modifier.size(42.dp).clip(RoundedCornerShape(21.dp)).background(TaskChuteColors.Control)
+                    .clickable(onClick = action).semantics { contentDescription = actionLabel },
+                contentAlignment = Alignment.Center,
+            ) { Text("＋", color = TaskChuteColors.PrimaryText, style = MaterialTheme.typography.titleLarge) }
+        } else {
+            Spacer(Modifier.size(42.dp))
+        }
     }
 }
 

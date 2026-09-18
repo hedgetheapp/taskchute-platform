@@ -1,24 +1,32 @@
 package com.hedgetheapp.taskchute.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-
+import androidx.compose.ui.unit.sp
 enum class AndroidDestination { TODAY, NOTES, SETTINGS }
 
 object TaskChuteColors {
@@ -66,44 +74,45 @@ fun AndroidNavigationBar(
     onNotes: () -> Unit,
     onSettings: () -> Unit,
 ) {
-    NavigationBar(
-        modifier = Modifier.height(76.dp),
-        containerColor = TaskChuteColors.Background,
-        tonalElevation = 0.dp,
+    Column(
+        modifier = Modifier.fillMaxWidth().height(76.dp).background(TaskChuteColors.Background),
     ) {
-        NavigationBarItem(
-            selected = selected == AndroidDestination.TODAY,
-            onClick = onToday,
-            icon = { Icon(TaskChuteIcons.Today, contentDescription = null) },
-            label = { androidx.compose.material3.Text("今日") },
-            colors = navigationItemColors(),
-        )
-        NavigationBarItem(
-            selected = selected == AndroidDestination.NOTES,
-            onClick = onNotes,
-            modifier = Modifier.semantics { contentDescription = "ノート一覧" },
-            icon = { Icon(TaskChuteIcons.Notes, contentDescription = null) },
-            label = { androidx.compose.material3.Text("ノート") },
-            colors = navigationItemColors(),
-        )
-        NavigationBarItem(
-            selected = selected == AndroidDestination.SETTINGS,
-            onClick = onSettings,
-            icon = { Icon(TaskChuteIcons.Settings, contentDescription = null) },
-            label = { androidx.compose.material3.Text("設定") },
-            colors = navigationItemColors(),
-        )
+        HorizontalDivider(thickness = 1.dp, color = Color(0xFF333333))
+        Row(modifier = Modifier.fillMaxWidth().weight(1f)) {
+            AndroidNavigationItem(selected == AndroidDestination.TODAY, "今日", TaskChuteIcons.Today, onToday, "今日", Modifier.weight(1f))
+            AndroidNavigationItem(selected == AndroidDestination.NOTES, "ノート", TaskChuteIcons.Notes, onNotes, "ノート一覧", Modifier.weight(1f))
+            AndroidNavigationItem(selected == AndroidDestination.SETTINGS, "設定", TaskChuteIcons.Settings, onSettings, "設定", Modifier.weight(1f))
+        }
     }
 }
 
 @Composable
-private fun navigationItemColors() = NavigationBarItemDefaults.colors(
-    selectedIconColor = TaskChuteColors.PrimaryText,
-    selectedTextColor = TaskChuteColors.PrimaryText,
-    indicatorColor = TaskChuteColors.AccentContainer,
-    unselectedIconColor = TaskChuteColors.SecondaryText,
-    unselectedTextColor = TaskChuteColors.SecondaryText,
-)
+private fun AndroidNavigationItem(
+    selected: Boolean,
+    label: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    description: String,
+    modifier: Modifier,
+) {
+    Column(
+        modifier = modifier.fillMaxWidth().height(75.dp).clickable(onClick = onClick)
+            .semantics { contentDescription = description },
+        horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        androidx.compose.foundation.layout.Box(
+            modifier = Modifier.width(82.dp).height(36.dp).clip(RoundedCornerShape(18.dp))
+                .background(if (selected) TaskChuteColors.AccentContainer else Color.Transparent),
+            contentAlignment = androidx.compose.ui.Alignment.Center,
+        ) {
+            Icon(icon, contentDescription = null, modifier = Modifier.size(26.dp),
+                tint = if (selected) TaskChuteColors.AccentBlue else TaskChuteColors.SecondaryText)
+        }
+        Text(label, color = if (selected) TaskChuteColors.AccentBlue else TaskChuteColors.SecondaryText,
+            fontSize = 12.sp, fontWeight = FontWeight.Medium, lineHeight = 20.sp)
+    }
+}
 
 @Composable
 fun ChromeIcon(icon: ImageVector, description: String, modifier: Modifier = Modifier) {

@@ -1,7 +1,9 @@
 package com.hedgetheapp.taskchute.document
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -161,11 +163,16 @@ private fun NotesList(
     Column(modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
             Text(if (state.archivedView) "アーカイブ" else "ノート", style = MaterialTheme.typography.headlineMedium, color = TaskChuteColors.PrimaryText)
-            TextButton(
-                onClick = { controller.setArchivedView(!state.archivedView) },
-                enabled = !state.lifecycleSaving && state.unresolvedLifecycleRequest == null,
+            Box(
+                modifier = Modifier.width(92.dp).height(36.dp).clip(RoundedCornerShape(18.dp))
+                    .background(TaskChuteColors.Control)
+                    .clickable(enabled = !state.lifecycleSaving && state.unresolvedLifecycleRequest == null) {
+                        controller.setArchivedView(!state.archivedView)
+                    }
+                    .semantics { contentDescription = if (state.archivedView) "通常のノート" else "アーカイブ" },
+                contentAlignment = Alignment.Center,
             ) {
-                Text(if (state.archivedView) "通常のノート" else "アーカイブ")
+                Text(if (state.archivedView) "通常のノート" else "アーカイブ", color = TaskChuteColors.PrimaryText, style = MaterialTheme.typography.labelMedium)
             }
         }
         Spacer(Modifier.height(12.dp))
@@ -185,26 +192,31 @@ private fun NotesList(
                 Text("ノートを読み込んでいます…")
             }
         } else if (state.documents.isEmpty() && state.errorMessage == null) {
-            Text("ノートはありません。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("ノートはありません。", color = TaskChuteColors.SecondaryText)
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 items(state.documents, key = { it.documentId }) { document ->
                     var menuExpanded by remember(document.documentId) { mutableStateOf(false) }
                     Row(
-                        modifier = Modifier.fillMaxWidth().height(54.dp).padding(vertical = 4.dp),
+                        modifier = Modifier.fillMaxWidth().height(78.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column(
-                            modifier = Modifier.weight(1f).clickable { controller.openStandalone(document.documentId) }.padding(vertical = 6.dp),
+                            modifier = Modifier.weight(1f).clickable { controller.openStandalone(document.documentId) }.padding(start = 2.dp, top = 10.dp, bottom = 10.dp),
                         ) {
                             Text(document.title, maxLines = 1, overflow = TextOverflow.Ellipsis, color = TaskChuteColors.PrimaryText, style = MaterialTheme.typography.titleMedium)
-                            Text("更新 ${document.updatedAt}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("更新 ${document.updatedAt}", style = MaterialTheme.typography.bodySmall, color = TaskChuteColors.SecondaryText)
                         }
                         Box {
-                            TextButton(
-                                onClick = { menuExpanded = true },
-                                enabled = !state.lifecycleSaving && state.unresolvedLifecycleRequest == null,
-                            ) { Text("操作") }
+                            Box(
+                                modifier = Modifier.width(80.dp).height(34.dp).clip(RoundedCornerShape(17.dp))
+                                    .background(TaskChuteColors.Control)
+                                    .clickable(enabled = !state.lifecycleSaving && state.unresolvedLifecycleRequest == null) { menuExpanded = true }
+                                    .semantics { contentDescription = "ノートの操作" },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text("操作", color = TaskChuteColors.PrimaryText, style = MaterialTheme.typography.labelMedium)
+                            }
                             DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
                                 DropdownMenuItem(
                                     text = { Text(if (state.archivedView) "復元" else "アーカイブ") },
@@ -254,7 +266,7 @@ private fun NoteEditor(controller: NotesController, editor: NoteEditorState, mod
             )
         } else {
             Text(editor.taskTitle ?: "タスクノート", style = MaterialTheme.typography.titleMedium, color = TaskChuteColors.PrimaryText)
-            Text("TaskタイトルはTask側が管理します。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("TaskタイトルはTask側が管理します。", style = MaterialTheme.typography.bodySmall, color = TaskChuteColors.SecondaryText)
         }
         TextField(
             value = editor.markdownBody,
