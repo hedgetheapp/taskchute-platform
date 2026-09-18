@@ -52,7 +52,7 @@ Notesはlist/editor density、Settingsはcompact management card hierarchyを反
 最終 `TaskChute_API33` AllはToday `25` + Notes `7` + Settings `2` + Security `1` = `35 / 35`
 PASS。instrumentation `525.05s`、total `526.11s`、Debug APK install、MainActivity解決、crash
 buffer emptyもPASS。fresh emulator capturesは`.codex/d121-final-today-normal-rendered.png`、
-`d121-final-today-selected.png`、`d121-final-today-running.png`、`d121-final-today-swipe.png`、
+`d121-final-today-selected.png`、`d121-final-today-running.png`、`d121-final-today-completed.png`、`d121-final-today-swipe.png`、
 `d121-final-today-actions.png`、`d121-final-notes-list-rendered.png`、`d121-final-notes-editor.png`、
 `d121-final-settings-home-rendered.png`、`d121-final-settings-sections.png`として取得し、対応する
 Figma stateと目視比較した。許容範囲のAndroidフォント描画・system bar差を除き、旧purple-heavy
