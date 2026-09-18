@@ -12,6 +12,28 @@
 - implementation / verification statusは`docs/FEATURES.md`、`docs/CURRENT.md`、`docs/TEST_MATRIX.md`を正本とする。
 - この文書は新しいDomain semanticsを作らず、上記canonical docsと矛盾する場合は上記を優先する。
 
+## D-121 Android unified dark UI / task interaction refinement
+
+AndroidのToday / Notes / Settingsは共通のdark visual systemを使い、bottom navigationは
+`今日` / `ノート` / `設定`を同一geometry・typography・Material icon treatmentで共有する。
+画面ごとにfooterを複製して独自調整しない。
+
+Today Task rowのleading slotは常にselection controlであり、lifecycle completionを表さない。
+unselectedではplanned / running / completedのいずれもempty checkboxとし、selectedのときだけcheckを
+表示する。trailing slotはplannedのStartをplay、runningの既存Complete actionをsquare stop-style icon、
+completedをcheck statusとして表示し、selection stateとexecution stateを視覚的に分離する。
+
+eligible Task rowは左swipeで`編集` actionをrevealし、swipe-open中は同じrowのexecution actionを同時に
+露出しない。`編集`からTask edit / auxiliary actions surfaceへ入り、編集、複製、Task Note、日付移動、
+削除を既存canonical command eligibilityに従って提示する。gesture threshold / animation等はreversibleな
+Compose implementation detailとし、Domain semanticsを作らない。
+
+TodayのNormal / selection / swipe / Task Actions、Start→Running、Complete→Completed、Section collapse、
+Quick Add、Task edit、move date、delete confirm、loading / refreshing / error / empty / future read-only等の
+visual referenceはFigma `UbTJH6ykYNBQJS4Wvwz9jb` の `UI States — Android v1` latest-design framesを使う。
+Notes / Settingsも同pageのreviewed dark statesをvisual referenceとする。Figmaはvisual referenceであり、
+Product / Domain behaviorの正本はSPEC / Decisionsである。
+
 ## D-117 Web Today / Sidebar / Routine refinement
 
 TodayのProject Note affordanceはProject列に常設の固定slotとして置き、Projectがない場合は
