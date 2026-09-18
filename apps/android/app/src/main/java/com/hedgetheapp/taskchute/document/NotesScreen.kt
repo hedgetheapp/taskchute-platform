@@ -2,6 +2,7 @@ package com.hedgetheapp.taskchute.document
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,6 +22,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -44,6 +46,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hedgetheapp.taskchute.ui.AndroidDestination
 import com.hedgetheapp.taskchute.ui.AndroidNavigationBar
+import com.hedgetheapp.taskchute.ui.TaskChuteColors
 
 @Composable
 fun NotesScreen(
@@ -93,6 +96,7 @@ fun NotesScreen(
     }
 
     Scaffold(
+        containerColor = TaskChuteColors.NotesBackground,
         bottomBar = {
             AndroidNavigationBar(
                 selected = AndroidDestination.NOTES,
@@ -103,7 +107,14 @@ fun NotesScreen(
         },
         floatingActionButton = {
             if (state.editor == null) {
-                FloatingActionButton(onClick = controller::openNew, modifier = Modifier.semantics { contentDescription = "ノートを新規作成" }) { Text("＋") }
+                FloatingActionButton(
+                    onClick = controller::openNew,
+                    shape = RoundedCornerShape(22.dp),
+                    containerColor = Color(0xFFECECEC),
+                    contentColor = TaskChuteColors.NotesBackground,
+                    elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 0.dp),
+                    modifier = Modifier.semantics { contentDescription = "ノートを新規作成" },
+                ) { Text("＋") }
             }
         },
     ) { padding ->
@@ -149,7 +160,7 @@ private fun NotesList(
 ) {
     Column(modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-            Text(if (state.archivedView) "アーカイブ" else "ノート", style = MaterialTheme.typography.headlineMedium)
+            Text(if (state.archivedView) "アーカイブ" else "ノート", style = MaterialTheme.typography.headlineMedium, color = TaskChuteColors.PrimaryText)
             TextButton(
                 onClick = { controller.setArchivedView(!state.archivedView) },
                 enabled = !state.lifecycleSaving && state.unresolvedLifecycleRequest == null,
@@ -180,13 +191,13 @@ private fun NotesList(
                 items(state.documents, key = { it.documentId }) { document ->
                     var menuExpanded by remember(document.documentId) { mutableStateOf(false) }
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        modifier = Modifier.fillMaxWidth().height(54.dp).padding(vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column(
                             modifier = Modifier.weight(1f).clickable { controller.openStandalone(document.documentId) }.padding(vertical = 6.dp),
                         ) {
-                            Text(document.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(document.title, maxLines = 1, overflow = TextOverflow.Ellipsis, color = TaskChuteColors.PrimaryText, style = MaterialTheme.typography.titleMedium)
                             Text("更新 ${document.updatedAt}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Box {
@@ -212,7 +223,7 @@ private fun NotesList(
                             }
                         }
                     }
-                    HorizontalDivider()
+                    HorizontalDivider(color = TaskChuteColors.Divider)
                 }
             }
         }
@@ -230,7 +241,7 @@ private fun NoteEditor(controller: NotesController, editor: NoteEditorState, mod
                 Text(if (editor.origin == NoteEditorOrigin.TODAY_TASK) "‹ 今日" else "‹ ノート")
             }
             Spacer(Modifier.width(8.dp))
-            Text(if (editor.document == null) "新規ノート" else "ノート", style = MaterialTheme.typography.titleLarge)
+            Text(if (editor.document == null) "新規ノート" else "ノート", style = MaterialTheme.typography.titleLarge, color = TaskChuteColors.PrimaryText)
         }
         if (editor.kind == DocumentKind.STANDALONE) {
             OutlinedTextField(
@@ -242,7 +253,7 @@ private fun NoteEditor(controller: NotesController, editor: NoteEditorState, mod
                 modifier = Modifier.fillMaxWidth(),
             )
         } else {
-            Text(editor.taskTitle ?: "タスクノート", style = MaterialTheme.typography.titleMedium)
+            Text(editor.taskTitle ?: "タスクノート", style = MaterialTheme.typography.titleMedium, color = TaskChuteColors.PrimaryText)
             Text("TaskタイトルはTask側が管理します。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         TextField(

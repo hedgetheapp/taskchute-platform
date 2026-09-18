@@ -58,7 +58,7 @@ class TodayScreenInstrumentedTest {
         composeRule.onNodeWithText("Morning").assertIsDisplayed()
         composeRule.onNodeWithText("Write report").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("タスクを開始").assertIsDisplayed()
-        composeRule.onNodeWithText("2026-09-14").assertIsDisplayed()
+        composeRule.onNodeWithText("2026-09-14", substring = true).assertIsDisplayed()
     }
 
     @Test
@@ -208,10 +208,11 @@ class TodayScreenInstrumentedTest {
         launchPlanningScreen(FakePlanningRepository(), directRepository = FakeDirectManipulationRepository())
         waitForStatus(TodayLoadStatus.CONTENT)
 
-        composeRule.onNodeWithContentDescription("タスクの編集メニュー").performClick()
+        composeRule.onNodeWithText("Write report").performTouchInput { swipeLeft() }
+        composeRule.onNodeWithContentDescription("タスクの操作").performClick()
         composeRule.onNodeWithText("前の日へ移動").assertIsDisplayed()
         composeRule.onNodeWithText("次の日へ移動").assertIsDisplayed()
-        composeRule.onNodeWithText("日付を選択").assertIsDisplayed()
+        composeRule.onNodeWithText("日付を移動").assertIsDisplayed()
         composeRule.onNodeWithText("削除").assertIsDisplayed()
     }
 
@@ -262,12 +263,14 @@ class TodayScreenInstrumentedTest {
         )
         waitForStatus(TodayLoadStatus.CONTENT)
 
-        composeRule.onAllNodesWithContentDescription("タスクの編集メニュー").get(0).performClick()
+        composeRule.onNodeWithText("Write report").performTouchInput { swipeLeft() }
+        composeRule.onNodeWithContentDescription("タスクの操作").performClick()
         composeRule.onNodeWithText("複製").assertIsDisplayed().performClick()
         composeRule.waitUntil(15_000) { directRepository.duplicateCalls.get() == 1 }
         assertEquals(1, directRepository.duplicateCalls.get())
 
-        composeRule.onAllNodesWithContentDescription("タスクの編集メニュー").get(0).performClick()
+        composeRule.onNodeWithText("Write report").performTouchInput { swipeLeft() }
+        composeRule.onNodeWithContentDescription("タスクの操作").performClick()
         composeRule.onAllNodesWithText("ノート").get(1).assertIsDisplayed().performClick()
         assertEquals(1, openedTaskNote)
     }
@@ -315,7 +318,7 @@ class TodayScreenInstrumentedTest {
         waitForStatus(TodayLoadStatus.CONTENT)
 
         assertTrue(composeRule.onAllNodesWithContentDescription("タスクを追加").fetchSemanticsNodes().isEmpty())
-        assertTrue(composeRule.onAllNodesWithContentDescription("タスクの編集メニュー").fetchSemanticsNodes().isEmpty())
+        assertTrue(composeRule.onAllNodesWithContentDescription("タスクを編集").fetchSemanticsNodes().isEmpty())
     }
 
     @Test
@@ -375,13 +378,20 @@ class TodayScreenInstrumentedTest {
         )
         val initialDay = dayWith().copy(
             sections = listOf(dayWith().sections.single().copy(entries = entries)),
-            activeExecution = TodayExecution("execution-1", "running", "2026-09-14T01:00:00Z", 600),
         )
         launchPlanningScreen(FakePlanningRepository(), initialDay)
         waitForStatus(TodayLoadStatus.CONTENT)
 
-        assertEquals(4, composeRule.onAllNodesWithContentDescription("タスクの編集メニュー").fetchSemanticsNodes().size)
-        composeRule.onAllNodesWithContentDescription("タスクの編集メニュー").get(0).performClick()
+        composeRule.onNodeWithText("Write report").performTouchInput { swipeLeft() }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Running").performScrollTo().performTouchInput { swipeLeft() }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Completed").performScrollTo().performTouchInput { swipeLeft() }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Routine").performScrollTo().performTouchInput { swipeLeft() }
+        composeRule.waitForIdle()
+        assertEquals(4, composeRule.onAllNodesWithContentDescription("タスクの操作").fetchSemanticsNodes().size)
+        composeRule.onAllNodesWithContentDescription("タスクの操作").get(0).performClick()
         assertTrue(composeRule.onAllNodesWithText("ノート").fetchSemanticsNodes().size >= 2)
     }
 
@@ -396,7 +406,8 @@ class TodayScreenInstrumentedTest {
         launchPlanningScreen(FakePlanningRepository(), initialDay)
         waitForStatus(TodayLoadStatus.CONTENT)
 
-        composeRule.onAllNodesWithContentDescription("タスクの編集メニュー").get(0).performClick()
+        composeRule.onNodeWithText("Write report").performTouchInput { swipeLeft() }
+        composeRule.onNodeWithContentDescription("タスクの操作").performClick()
         assertTrue(composeRule.onAllNodesWithText("ノート").fetchSemanticsNodes().size >= 2)
         assertTrue(composeRule.onAllNodesWithText("編集").fetchSemanticsNodes().isEmpty())
         assertTrue(composeRule.onAllNodesWithText("複製").fetchSemanticsNodes().isEmpty())
@@ -419,10 +430,11 @@ class TodayScreenInstrumentedTest {
         composeRule.onNodeWithText("キャンセル").performClick()
         assertTrue(composeRule.onAllNodesWithText("タスクを編集").fetchSemanticsNodes().isEmpty())
 
-        // The legacy action menu remains available for the other canonical actions.
+        // Auxiliary actions remain available from the swipe-revealed Task Actions entry.
         assertTrue(composeRule.onAllNodesWithText("タスクを編集").fetchSemanticsNodes().isEmpty())
-        composeRule.onNodeWithContentDescription("タスクの編集メニュー").performClick()
-        composeRule.onNodeWithContentDescription("タスクの編集メニュー").assertIsDisplayed()
+        composeRule.onNodeWithText("Write report").performTouchInput { swipeLeft() }
+        composeRule.onNodeWithContentDescription("タスクの操作").performClick()
+        composeRule.onNodeWithText("タスク操作").assertIsDisplayed()
     }
 
     @Test
@@ -430,7 +442,7 @@ class TodayScreenInstrumentedTest {
         val planningRepository = FakePlanningRepository()
         launchPlanningScreen(planningRepository, initialDay = dayWith(LifecycleState.RUNNING))
         waitForStatus(TodayLoadStatus.CONTENT)
-        assertTrue(composeRule.onAllNodesWithContentDescription("タスクの編集メニュー").fetchSemanticsNodes().isEmpty())
+        assertTrue(composeRule.onAllNodesWithContentDescription("タスクを編集").fetchSemanticsNodes().isEmpty())
     }
 
     @Test
@@ -438,7 +450,7 @@ class TodayScreenInstrumentedTest {
         val planningRepository = FakePlanningRepository()
         launchPlanningScreen(planningRepository, initialDay = dayWith(LifecycleState.COMPLETED))
         waitForStatus(TodayLoadStatus.CONTENT)
-        assertTrue(composeRule.onAllNodesWithContentDescription("タスクの編集メニュー").fetchSemanticsNodes().isEmpty())
+        assertTrue(composeRule.onAllNodesWithContentDescription("タスクを編集").fetchSemanticsNodes().isEmpty())
     }
 
     @Test
@@ -446,7 +458,7 @@ class TodayScreenInstrumentedTest {
         val planningRepository = FakePlanningRepository()
         launchPlanningScreen(planningRepository, initialDay = dayWith(routineDerived = true))
         waitForStatus(TodayLoadStatus.CONTENT)
-        assertTrue(composeRule.onAllNodesWithContentDescription("タスクの編集メニュー").fetchSemanticsNodes().isEmpty())
+        assertTrue(composeRule.onAllNodesWithContentDescription("タスクを編集").fetchSemanticsNodes().isEmpty())
     }
 
     private fun launchScreen(

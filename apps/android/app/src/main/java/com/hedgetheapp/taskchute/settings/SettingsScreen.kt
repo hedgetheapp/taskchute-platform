@@ -2,6 +2,7 @@ package com.hedgetheapp.taskchute.settings
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -9,12 +10,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -36,6 +39,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
+import com.hedgetheapp.taskchute.ui.TaskChuteColors
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.hedgetheapp.taskchute.ui.AndroidDestination
@@ -54,6 +58,7 @@ fun SettingsScreen(
     var leaveHome by remember { mutableStateOf(false) }
     BackHandler(enabled = state.destination != SettingsDestination.HOME && state.sectionEditor == null && state.projectEditor == null && state.routineEditor == null) { controller.showHome() }
     Scaffold(
+        containerColor = TaskChuteColors.NotesBackground,
         bottomBar = {
             AndroidNavigationBar(
                 selected = AndroidDestination.SETTINGS,
@@ -97,25 +102,34 @@ private fun SettingsHome(controller: SettingsController, onSignOut: () -> Unit) 
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text("設定", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(top = 20.dp))
         Text("TaskChuteの時間と再利用設定を管理します。", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        SettingsCard("セクション設定", "1日の時間帯（Section）を管理", TaskChuteIcons.Notes) { controller.openSections() }
-        SettingsCard("プロジェクト設定", "Projectの作成・編集・管理", TaskChuteIcons.Today) { controller.openProjects() }
-        SettingsCard("ルーティン設定", "繰り返しTaskの作成・管理", TaskChuteIcons.Settings) { controller.openRoutines() }
+        SettingsCard("セクション設定", "1日の時間帯（Section）を管理") { controller.openSections() }
+        SettingsCard("プロジェクト設定", "Projectの作成・編集・管理") { controller.openProjects() }
+        SettingsCard("ルーティン設定", "繰り返しTaskの作成・管理") { controller.openRoutines() }
         Spacer(Modifier.weight(1f))
         OutlinedButton(onClick = onSignOut, modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(bottom = 12.dp)) { Text("ログアウト") }
     }
 }
 
 @Composable
-private fun SettingsCard(title: String, subtitle: String, icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit) {
-    Card(Modifier.fillMaxWidth().clickable(onClick = onClick).semantics { contentDescription = title }) {
-        Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            ChromeIcon(icon, title, Modifier.size(28.dp))
-            Column(Modifier.weight(1f)) { Text(title, style = MaterialTheme.typography.titleMedium); Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+private fun SettingsCard(title: String, subtitle: String, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).semantics { contentDescription = title },
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = TaskChuteColors.Surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    ) {
+        Row(
+            Modifier.padding(horizontal = 16.dp, vertical = 12.dp).heightIn(min = 76.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(title, style = MaterialTheme.typography.titleMedium, color = TaskChuteColors.PrimaryText)
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = TaskChuteColors.SecondaryText)
+            }
             ChromeIcon(TaskChuteIcons.ChevronRight, "${title}を開く", Modifier.size(22.dp))
         }
     }
 }
-
 @Composable
 private fun SettingsHeader(title: String, onBack: () -> Unit, action: (() -> Unit)? = null, actionLabel: String? = null) {
     Row(Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -132,7 +146,12 @@ private fun ColumnScope.SectionSettings(controller: SettingsController) {
     val sections = state.sectionConfiguration?.sections.orEmpty()
     LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         items(sections, key = { it.id }) { section ->
-            Card(Modifier.fillMaxWidth()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = TaskChuteColors.Surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+            ) {
                 Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) { Text(section.title, style = MaterialTheme.typography.titleMedium); Text("${minuteText(section.startMinute)} - ${minuteText(section.endMinute)}") }
                     TextButton(onClick = { controller.openSection(section.id) }) { Text("編集") }

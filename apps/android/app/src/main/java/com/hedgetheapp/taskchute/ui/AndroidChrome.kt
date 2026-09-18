@@ -1,9 +1,11 @@
 package com.hedgetheapp.taskchute.ui
 
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.Surface
@@ -19,22 +21,37 @@ import androidx.compose.ui.unit.dp
 
 enum class AndroidDestination { TODAY, NOTES, SETTINGS }
 
+object TaskChuteColors {
+    val Background = Color(0xFF191919)
+    val NotesBackground = Color(0xFF171717)
+    val Surface = Color(0xFF202020)
+    val SurfaceElevated = Color(0xFF232323)
+    val Control = Color(0xFF252525)
+    val Divider = Color(0xFF343434)
+    val PrimaryText = Color(0xFFF1F1EF)
+    val SecondaryText = Color(0xFFA3A3A0)
+    val AccentBlue = Color(0xFF52A3FF)
+    val AccentContainer = Color(0xFF1F3B57)
+    val RunningSurface = Color(0xFF1E2A33)
+    val RunningControl = Color(0xFF25394A)
+}
+
 private val TaskChuteDarkColors = darkColorScheme(
-    primary = Color(0xFFD0BCFF),
-    onPrimary = Color(0xFF381E72),
-    primaryContainer = Color(0xFF4F378B),
-    onPrimaryContainer = Color(0xFFEADDFF),
-    secondary = Color(0xFFCCC2DC),
-    onSecondary = Color(0xFF332D41),
-    secondaryContainer = Color(0xFF4A4458),
-    onSecondaryContainer = Color(0xFFE8DEF8),
-    background = Color(0xFF111318),
-    onBackground = Color(0xFFE3E2E9),
-    surface = Color(0xFF111318),
-    onSurface = Color(0xFFE3E2E9),
-    surfaceVariant = Color(0xFF45464F),
-    onSurfaceVariant = Color(0xFFC7C5D0),
-    outline = Color(0xFF91909A),
+    primary = TaskChuteColors.AccentBlue,
+    onPrimary = TaskChuteColors.Background,
+    primaryContainer = TaskChuteColors.AccentContainer,
+    onPrimaryContainer = TaskChuteColors.PrimaryText,
+    secondary = TaskChuteColors.SecondaryText,
+    onSecondary = TaskChuteColors.Background,
+    secondaryContainer = TaskChuteColors.Control,
+    onSecondaryContainer = TaskChuteColors.PrimaryText,
+    background = TaskChuteColors.Background,
+    onBackground = TaskChuteColors.PrimaryText,
+    surface = TaskChuteColors.Surface,
+    onSurface = TaskChuteColors.PrimaryText,
+    surfaceVariant = TaskChuteColors.SurfaceElevated,
+    onSurfaceVariant = TaskChuteColors.SecondaryText,
+    outline = TaskChuteColors.Divider,
 )
 
 @Composable
@@ -49,12 +66,17 @@ fun AndroidNavigationBar(
     onNotes: () -> Unit,
     onSettings: () -> Unit,
 ) {
-    NavigationBar {
+    NavigationBar(
+        modifier = Modifier.height(76.dp),
+        containerColor = TaskChuteColors.Background,
+        tonalElevation = 0.dp,
+    ) {
         NavigationBarItem(
             selected = selected == AndroidDestination.TODAY,
             onClick = onToday,
             icon = { Icon(TaskChuteIcons.Today, contentDescription = null) },
             label = { androidx.compose.material3.Text("今日") },
+            colors = navigationItemColors(),
         )
         NavigationBarItem(
             selected = selected == AndroidDestination.NOTES,
@@ -62,15 +84,26 @@ fun AndroidNavigationBar(
             modifier = Modifier.semantics { contentDescription = "ノート一覧" },
             icon = { Icon(TaskChuteIcons.Notes, contentDescription = null) },
             label = { androidx.compose.material3.Text("ノート") },
+            colors = navigationItemColors(),
         )
         NavigationBarItem(
             selected = selected == AndroidDestination.SETTINGS,
             onClick = onSettings,
             icon = { Icon(TaskChuteIcons.Settings, contentDescription = null) },
             label = { androidx.compose.material3.Text("設定") },
+            colors = navigationItemColors(),
         )
     }
 }
+
+@Composable
+private fun navigationItemColors() = NavigationBarItemDefaults.colors(
+    selectedIconColor = TaskChuteColors.PrimaryText,
+    selectedTextColor = TaskChuteColors.PrimaryText,
+    indicatorColor = TaskChuteColors.AccentContainer,
+    unselectedIconColor = TaskChuteColors.SecondaryText,
+    unselectedTextColor = TaskChuteColors.SecondaryText,
+)
 
 @Composable
 fun ChromeIcon(icon: ImageVector, description: String, modifier: Modifier = Modifier) {
@@ -106,6 +139,18 @@ object TaskChuteIcons {
         .path(fill = SolidColor(Color.White)) { moveTo(9.5f, 17.5f); lineTo(4.5f, 12.5f); lineTo(6.5f, 10.5f); lineTo(9.5f, 13.5f); lineTo(17.5f, 5.5f); lineTo(19.5f, 7.5f); close() }.build()
     val More: ImageVector = ImageVector.Builder("More", 24.dp, 24.dp, 24f, 24f)
         .path(fill = SolidColor(Color.White)) { moveTo(5f, 10f); lineTo(7f, 10f); lineTo(7f, 14f); lineTo(5f, 14f); close(); moveTo(11f, 10f); lineTo(13f, 10f); lineTo(13f, 14f); lineTo(11f, 14f); close(); moveTo(17f, 10f); lineTo(19f, 10f); lineTo(19f, 14f); lineTo(17f, 14f); close() }.build()
+    val Add: ImageVector = ImageVector.Builder("Add", 24.dp, 24.dp, 24f, 24f)
+        .path(fill = SolidColor(Color.White)) {
+            moveTo(11f, 3f); lineTo(13f, 3f); lineTo(13f, 11f); lineTo(21f, 11f); lineTo(21f, 13f)
+            lineTo(13f, 13f); lineTo(13f, 21f); lineTo(11f, 21f); lineTo(11f, 13f); lineTo(3f, 13f); lineTo(3f, 11f); lineTo(11f, 11f); close()
+        }.build()
+    val Calendar: ImageVector = ImageVector.Builder("Calendar", 24.dp, 24.dp, 24f, 24f)
+        .path(fill = SolidColor(Color.White)) {
+            moveTo(5f, 4f); lineTo(7f, 4f); lineTo(7f, 2f); lineTo(9f, 2f); lineTo(9f, 4f)
+            lineTo(15f, 4f); lineTo(15f, 2f); lineTo(17f, 2f); lineTo(17f, 4f); lineTo(19f, 4f)
+            lineTo(19f, 20f); lineTo(5f, 20f); close()
+            moveTo(7f, 8f); lineTo(17f, 8f); lineTo(17f, 10f); lineTo(7f, 10f); close()
+        }.build()
     val ChevronLeft: ImageVector = ImageVector.Builder("ChevronLeft", 24.dp, 24.dp, 24f, 24f)
         .path(fill = SolidColor(Color.White)) { moveTo(15f, 5f); lineTo(8f, 12f); lineTo(15f, 19f); lineTo(17f, 17f); lineTo(12f, 12f); lineTo(17f, 7f); close() }.build()
     val ChevronRight: ImageVector = ImageVector.Builder("ChevronRight", 24.dp, 24.dp, 24f, 24f)
