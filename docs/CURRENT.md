@@ -19,7 +19,7 @@ expiry 2026-09-26T04:03:07Z）。
 
 Emulatorを起動して取得した画面は認証画面であり、認証情報は取得していないため、
 authenticated Today headerのfresh screenshot / visual CUA comparisonはNOT_RUN。Source-level
-official-symbol parityはTESTED、Galaxy S23 fresh final-main smokeはPENDING_SMOKE、
+official-symbol parityはTESTED。Product Ownerが最新debug APKをGalaxy S23で確認し、Today header correctiveについて「問題なし」と確認したため、Galaxy S23 fresh final-main header visual smokeはPASSとする。
 productionはNOT_RUN、ReleasedはNOとする。Worker/API、schema/migration、Gradle dependency、
 realtime、persistent nonprod、productionは変更していない。
 
