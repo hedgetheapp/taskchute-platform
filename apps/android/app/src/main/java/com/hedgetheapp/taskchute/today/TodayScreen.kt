@@ -56,6 +56,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -418,9 +420,39 @@ private fun TodayContent(
             )
         }
     }
+    val pullToRefreshState = rememberPullToRefreshState()
+    val isRefreshing = state.status == TodayLoadStatus.REFRESHING
     PullToRefreshBox(
-        isRefreshing = state.status == TodayLoadStatus.REFRESHING,
+        isRefreshing = isRefreshing,
         onRefresh = controller::refresh,
+        state = pullToRefreshState,
+        indicator = {
+            PullToRefreshDefaults.IndicatorBox(
+                state = pullToRefreshState,
+                isRefreshing = isRefreshing,
+                modifier = Modifier.align(Alignment.TopCenter).size(48.dp),
+                shape = CircleShape,
+                containerColor = Color(0xFF2D2D2D),
+                elevation = 0.dp,
+            ) {
+                if (isRefreshing) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(28.dp),
+                        color = Color.White,
+                        trackColor = Color.White.copy(alpha = 0.22f),
+                        strokeWidth = 2.dp,
+                    )
+                } else {
+                    CircularProgressIndicator(
+                        progress = { pullToRefreshState.distanceFraction.coerceIn(0f, 1f) },
+                        modifier = Modifier.size(28.dp),
+                        color = Color.White,
+                        trackColor = Color.White.copy(alpha = 0.22f),
+                        strokeWidth = 2.dp,
+                    )
+                }
+            }
+        },
         modifier = modifier,
     ) {
         Column(Modifier.fillMaxSize()) {

@@ -43,6 +43,7 @@ class TodayScreenInstrumentedTest {
     @After
     fun tearDown() {
         repository?.releaseLoad?.countDown()
+        repository?.releaseRefresh?.countDown()
         repository?.releaseStart?.countDown()
         repository?.releaseComplete?.countDown()
         controller?.close()
@@ -131,6 +132,21 @@ class TodayScreenInstrumentedTest {
         waitForStatus(TodayLoadStatus.CONTENT)
     }
 
+    @Test
+    fun pullToRefreshKeepsTodayContentWhileRefreshing() {
+        val repo = launchScreen()
+        waitForStatus(TodayLoadStatus.CONTENT)
+        repo.holdRefresh = true
+
+        controller?.refresh()
+        composeRule.waitUntil(15_000) {
+            repo.requestedDates.size >= 2 && controller?.state?.status == TodayLoadStatus.REFRESHING
+        }
+        composeRule.onNodeWithText("Write report").assertIsDisplayed()
+
+        repo.releaseRefresh.countDown()
+        waitForStatus(TodayLoadStatus.CONTENT)
+    }
     @Test
     fun emptyStateIsRenderedWithQuickAdd() {
         launchPlanningScreen(
@@ -663,11 +679,13 @@ class TodayScreenInstrumentedTest {
         var mode = LoadMode.SUCCESS
         @Volatile
         var holdLoad = false
+        var holdRefresh = false
         @Volatile
         var holdStart = false
         @Volatile
         var holdComplete = false
         val releaseLoad = CountDownLatch(1)
+        val releaseRefresh = CountDownLatch(1)
         val releaseStart = CountDownLatch(1)
         val releaseComplete = CountDownLatch(1)
         val startCalls = AtomicInteger()
@@ -677,6 +695,7 @@ class TodayScreenInstrumentedTest {
         override fun loadDay(logicalDate: String?): TodayResult {
             synchronized(requestedDates) { requestedDates += logicalDate }
             if (holdLoad) releaseLoad.await()
+            if (holdRefresh) releaseRefresh.await()
             return when (mode) {
                 LoadMode.SUCCESS -> TodayResult.Success(
                     currentDay.copy(
