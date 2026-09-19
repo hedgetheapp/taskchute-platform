@@ -7,7 +7,8 @@
 | D121-FOOTER-AVD | Shared footer runtime | TaskChute_API33 via scripts/android-qa.ps1 -Surface All: Today 27 + Notes 7 + Settings 2 + Security 1 + footer 1 = 38 / 38; Debug APK install, MainActivity resolution, crash buffer empty; instrumentation 201.93s, post-test smoke 0.90s, total 203.21s | PASS |
 | D121-FOOTER-SELECTED | Today / Notes / Settings selected states | AndroidNavigationBarInstrumentedTest: all three destinations expose the approved labels/content descriptions and selected state transitions without changing navigation callbacks | PASS |
 | D121-FOOTER-VISUAL | Authenticated screenshot comparison | Figma context/source geometry compared for the final footer delta; manual authenticated emulator screenshot was not run because launch had no authorized session and credentials were not retrieved | TESTED / SCREENSHOT_NOT_RUN |
-| D121-FOOTER-BOUNDARY | Scope | Android shared footer, official local resources, and focused instrumentation only; no Today/Notes/Settings content, Worker/API, schema/migration, dependency, realtime, production, or Release change; Galaxy S23 remains PENDING_SMOKE | PASS / NOT_REQUIRED / NOT_RUN / NO |
+| D121-FOOTER-DEVICE | Galaxy S23 footer visual smoke | Product Owner installed the D-122 stable-signed APK and confirmed Today / Notes / Settings shared footer, selected-state behavior, compact height/spacing, and adjacent header appearance as 「問題なし」 | PASS / USER_CONFIRMED |
+| D121-FOOTER-BOUNDARY | Scope | Android shared footer, official local resources, and focused instrumentation only; no Today/Notes/Settings content, Worker/API, schema/migration, dependency, realtime, production, or Release change; Galaxy S23 fresh footer smoke is PASS / USER_CONFIRMED | PASS / NOT_REQUIRED / NOT_RUN / NO |
 # Test Matrix
 
 ## D-122 Android Nonprod APK Stable Signing / Updateability v0.1
@@ -19,7 +20,7 @@
 | D122-LOCAL-SIGNED | Signing and certificate parity | Signed APK A/B plus instrumentation APK compile PASS; keystore and APK A/B SHA-256 `690C0BA4EC3C8C92C84883F54BA343FF37AC0B83CEDCAEB626777885E8B602B3` match; local versionCode `576 → 577` | PASS |
 | D122-AVD-UPDATE | `TaskChute_API33` updateability | Old package uninstalled once for signature transition; signed APK A installed, `run-as` marker written, signed APK B installed with `adb install -r`, package version `577`, marker preserved, MainActivity launched, crash buffer empty | PASS |
 | D122-CI | Exact current-main CI and artifact | Android job reconstructs the three GitHub Secrets under runner temp, passes history-derived versionCode, builds canonical nonprod signed debug/instrumentation APKs, verifies signer against keystore, uploads exact-SHA artifact, and always removes the temp keystore; GitHub Actions is volatile evidence authority | REQUIRED / GITHUB_AUTHORITY |
-| D122-DEVICE | Galaxy S23 updateability | First D-122-signed APK requires one-time uninstall/reinstall from legacy debug signer; subsequent same-key APK update remains to be confirmed by Product Owner | PENDING_DEVICE |
+| D122-DEVICE | Galaxy S23 signing transition / updateability | Product Owner uninstalled the legacy debug-signed APK once, installed the first D-122 stable-signed APK (versionCode 577), and confirmed signed-in runtime/footer smoke as 「問題なし」; subsequent same-key APK in-place update remains to be confirmed with the next Android APK | INITIAL_INSTALL_PASS / USER_CONFIRMED / UPDATE_PENDING |
 | D122-BOUNDARY | Product / persistence boundary | Android Gradle/CI/.gitignore/docs only; no Worker/API, APP/AUTH schema/migration, dependency, UI/domain, realtime, persistent nonprod, production, Release, or credential retrieval | PASS / NOT_REQUIRED / NOT_RUN / NO |
 
 ## D-121 Today header Material Symbols corrective — 2026-09-19
