@@ -51,7 +51,10 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -85,12 +88,14 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import android.app.DatePickerDialog
+import androidx.compose.ui.unit.sp
+import android.app.DatePickerDialog as AndroidDatePickerDialog
 import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.time.LocalDate
 import java.time.Instant
 import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
 import com.hedgetheapp.taskchute.ui.AndroidDestination
@@ -120,6 +125,7 @@ fun TodayScreen(
     var selectedEntryIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var datePickerEntryIds by remember { mutableStateOf<Set<String>?>(null) }
     var deleteEntryIds by remember { mutableStateOf<Set<String>?>(null) }
+    var headerDatePickerVisible by remember { mutableStateOf(false) }
     val context = LocalContext.current
     LaunchedEffect(controller) { controller.loadCurrent() }
     LaunchedEffect(state.day, state.status) { selectedEntryIds = emptySet() }
@@ -127,7 +133,7 @@ fun TodayScreen(
         val entryIds = datePickerEntryIds ?: return@LaunchedEffect
         val pickerDay = state.day ?: return@LaunchedEffect
         val parsed = LocalDate.parse(pickerDay.logicalDate)
-        DatePickerDialog(
+        AndroidDatePickerDialog(
             context,
             { _, year, month, date ->
                 datePickerEntryIds = null
@@ -148,6 +154,26 @@ fun TodayScreen(
     }
 
     val day = state.day
+    if (headerDatePickerVisible && day != null) {
+        val datePickerState = rememberDatePickerState(
+            initialSelectedDateMillis = logicalDateToPickerMillis(day.logicalDate),
+        )
+        DatePickerDialog(
+            onDismissRequest = { headerDatePickerVisible = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    val selectedDateMillis = datePickerState.selectedDateMillis
+                    headerDatePickerVisible = false
+                    selectedDateMillis?.let { controller.loadLogicalDate(pickerMillisToLogicalDate(it)) }
+                }) { Text("決定") }
+            },
+            dismissButton = {
+                TextButton(onClick = { headerDatePickerVisible = false }) { Text("キャンセル") }
+            },
+        ) {
+            DatePicker(state = datePickerState)
+        }
+    }
     val bulkSelected = day?.takeIf { it.isCurrent && it.planningEnabled }
         ?.allEntries
         ?.filter { it.id in selectedEntryIds && it.lifecycleState == LifecycleState.PLANNED && !it.routineDerived }
@@ -199,6 +225,7 @@ fun TodayScreen(
                         selectedEntryIds = if (id in selectedEntryIds) selectedEntryIds - id else selectedEntryIds + id
                     },
                     onOpenDatePicker = { datePickerEntryIds = it },
+                    onOpenHeaderDatePicker = { headerDatePickerVisible = true },
                     onRequestDelete = { deleteEntryIds = it },
                     modifier = Modifier.fillMaxSize(),
                 )
@@ -301,6 +328,7 @@ private fun TodayContent(
     selectedEntryIds: Set<String>,
     onToggleSelection: (String) -> Unit,
     onOpenDatePicker: (Set<String>) -> Unit,
+    onOpenHeaderDatePicker: () -> Unit,
     onRequestDelete: (Set<String>) -> Unit,
     modifier: Modifier,
 ) {
@@ -382,6 +410,7 @@ private fun TodayContent(
         DateNavigator(
             day = day,
             controller = controller,
+            onOpenDatePicker = onOpenHeaderDatePicker,
         )
         state.errorMessage?.let {
             Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp))
@@ -625,7 +654,11 @@ private fun isLegalManualReorder(entries: List<TodayTask>, desiredIds: List<Stri
 }
 
 @Composable
-private fun DateNavigator(day: TodayDay, controller: TodayController) {
+private fun DateNavigator(
+    day: TodayDay,
+    controller: TodayController,
+    onOpenDatePicker: () -> Unit,
+) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -635,32 +668,42 @@ private fun DateNavigator(day: TodayDay, controller: TodayController) {
             onClick = controller::previousDay,
             modifier = Modifier.size(44.dp).clip(CircleShape).background(TaskChuteColors.Control)
                 .semantics { contentDescription = "前の日" },
-        ) { ChromeIcon(TaskChuteIcons.ChevronLeft, "前の日", Modifier.size(24.dp)) }
+        ) { ChromeIcon(TaskChuteIcons.ChevronLeft, "前の日", Modifier.size(28.dp)) }
         Row(
             modifier = Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(22.dp))
-                .background(TaskChuteColors.SurfaceElevated).padding(horizontal = 14.dp),
+                .background(TaskChuteColors.SurfaceElevated)
+                .clickable(onClick = onOpenDatePicker)
+                .semantics { contentDescription = "表示日付を選択" }
+                .padding(horizontal = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
         ) {
-            ChromeIcon(TaskChuteIcons.Calendar, "日付", Modifier.size(22.dp))
+            ChromeIcon(TaskChuteIcons.Calendar, "日付", Modifier.size(28.dp))
             Spacer(Modifier.width(8.dp))
             Text(
-                "${day.logicalDate}（${formatWeekday(day.logicalDate)}）",
-                style = MaterialTheme.typography.titleMedium,
+                "${day.logicalDate} (${formatWeekday(day.logicalDate)})",
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                ),
                 color = TaskChuteColors.PrimaryText,
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
         IconButton(
             onClick = controller::nextDay,
             modifier = Modifier.size(44.dp).clip(CircleShape).background(TaskChuteColors.Control)
                 .semantics { contentDescription = "次の日" },
-        ) { ChromeIcon(TaskChuteIcons.ChevronRight, "次の日", Modifier.size(24.dp)) }
-        TextButton(onClick = controller::today, enabled = !day.isCurrent) {
-            Text("今日", color = if (day.isCurrent) TaskChuteColors.AccentBlue else TaskChuteColors.SecondaryText)
-        }
+        ) { ChromeIcon(TaskChuteIcons.ChevronRight, "次の日", Modifier.size(28.dp)) }
     }
 }
+
+private fun logicalDateToPickerMillis(logicalDate: String): Long =
+    LocalDate.parse(logicalDate).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+
+private fun pickerMillisToLogicalDate(millis: Long): String =
+    Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate().toString()
 
 @Composable
 private fun SectionHeader(

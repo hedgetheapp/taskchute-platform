@@ -174,6 +174,30 @@ class TodayScreenInstrumentedTest {
     }
 
     @Test
+    fun dateHeaderCancelLeavesSelectedDateUnchanged() {
+        val repo = launchScreen()
+        waitForStatus(TodayLoadStatus.CONTENT)
+        val requestsBeforePicker = repo.requestedDates.toList()
+
+        composeRule.onNodeWithContentDescription("表示日付を選択").performClick()
+        composeRule.onNodeWithText("キャンセル").performClick()
+
+        assertEquals(requestsBeforePicker, repo.requestedDates)
+        composeRule.onNodeWithText("2026-09-14", substring = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun dateHeaderConfirmLoadsSelectedLogicalDate() {
+        val repo = launchScreen()
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        composeRule.onNodeWithContentDescription("表示日付を選択").performClick()
+        composeRule.onNodeWithText("決定").performClick()
+
+        composeRule.waitUntil(15_000) { repo.requestedDates.contains("2026-09-14") }
+        assertTrue(repo.requestedDates.contains("2026-09-14"))
+    }
+    @Test
     fun bottomNavigationShowsApprovedDestinationsWithoutFakeNavigation() {
         var settingsClicks = 0
         launchScreen(onNavigateSettings = { settingsClicks++ })

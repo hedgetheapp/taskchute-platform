@@ -33,6 +33,8 @@ class TodayController(
 
     fun today() = load(null)
 
+    fun loadLogicalDate(logicalDate: String) = load(logicalDate)
+
     fun onRealtimeConnected() = requestRealtimeReload()
 
     fun onRealtimeForeground() = requestRealtimeReload()
