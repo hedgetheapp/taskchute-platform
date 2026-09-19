@@ -1,3 +1,13 @@
+## D-123 Android Today swipe / collapsed Section drop refinement — 2026-09-19
+
+| ID | Verification target | Evidence | Status |
+|---|---|---|---|
+| D123-DECISION | Product / interaction contract | Approved D-123: planned eligible swipe = edit / note / more; valid-taskId planning-ineligible row = Note-only; Task Actions excludes duplicate Note entry; non-empty collapsed Section drop = existing Section-tail MoveEntry semantics, no auto-expand | SPECIFIED |
+| D123-IMPLEMENTATION | Android implementation | No D-123 implementation commit exists at Decision-record time | NOT_RUN |
+| D123-AUTOMATED | JVM / build / AVD regression | Required after implementation under Android Large Batch workflow | NOT_RUN |
+| D123-DEVICE | Galaxy S23 final-main smoke | Required after implementation; do not inherit prior D-121 device evidence | NOT_RUN |
+| D123-BOUNDARY | Worker/API/schema/migration/dependency/production/Release | Decision adds no such change; production operation remains out of scope | NOT_REQUIRED / NOT_RUN / NO |
+
 ## D-121 shared Android bottom navigation footer — 2026-09-19
 
 | ID | Verification target | Evidence | Status |

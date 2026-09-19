@@ -4,6 +4,23 @@
 
 exact DB schema、SQL、UI component library、Android local DB、offline conflict algorithm等は、別途DecisionされるまでOpenとする。
 
+## D-123 Android Today swipe actions / collapsed Section drop refinement v0.1
+
+Android Todayのvisible Task rowは、interaction eligibilityとTask Note eligibilityを分離する。
+current established Dayのordinary plannedかつplanning-eligible rowでは、左swipeから
+`編集`、valid `taskId`がある場合の`ノート`、`その他`を提示する。`その他`のTask Actionsは
+`編集 / 複製 / 前の日へ移動 / 次の日へ移動 / 日付を移動 / 削除`とし、Task Noteは重複表示しない。
+swipe-open中は同じrowのtrailing execution actionを同時表示しない。
+
+valid `taskId`を持つvisible rowは、planning write eligibilityがなくてもD-110 Task Primary Noteを
+開ける。running / completed / Routine-derived / future / past等では、他のplanning actionを増やさず、
+左swipeでNote-only affordanceを提示できる。
+
+eligible current-Day ordinary planned Taskをcollapsed configured Section headerへdropした場合、
+target Sectionがnon-emptyでもauto-expandせず、既存Section-area / Section-only `MoveEntry` semanticsを
+使ってtarget Sectionのplanned tailへ配置する。成功後もそのlocal collapsed stateを維持する。
+invalid / no-op drop、owner / Day / lifecycle / placement revision / retry / ambiguity guardは既存仕様を維持する。
+
 ## D-120 Bulk Task Move / Reorder v0.1
 
 D-120では、Day Tableで選択されたplanned Entryを、mutation前のcanonical Day display orderを

@@ -12,6 +12,22 @@
 - implementation / verification statusは`docs/FEATURES.md`、`docs/CURRENT.md`、`docs/TEST_MATRIX.md`を正本とする。
 - この文書は新しいDomain semanticsを作らず、上記canonical docsと矛盾する場合は上記を優先する。
 
+## D-123 Android Today swipe actions / collapsed Section drop refinement
+
+planned current-Dayのeligible Task rowを左swipeした状態は、48dpの丸い直接actionを
+`編集 → ノート → その他`の順に右側へ並べ、row本体を左へ退避させる。swipe-open中はexecution controlを
+隠す。Noteはviolet系の既存Task Note shortcut、編集はamber、その他はneutral dark treatmentを使う。
+
+`その他`から開くTask Actions bottom sheetは、`編集 / 複製 / 前の日へ移動 / 次の日へ移動 /
+日付を移動 / 削除`を縦に並べる。Task NoteはSwipeの直接shortcutと重複させない。
+valid `taskId`を持つがplanning action不可のrunning / completed / Routine-derived / future / past rowは、
+左swipeでNoteだけをrevealするvisual stateを持つ。
+
+drag中にcollapsed configured Sectionへ重なった場合、Sectionは開かず、Header全体をdrop targetとして
+tealのoutline + subtle backgroundで強調する。source Section側はTaskが抜ける仮状態へreflowしてよい。
+Drop成功後はtarget Sectionのplanned tailへ追加されたcanonical stateへreconcileするが、target Sectionの
+local collapsed stateは維持する。Task / Section border geometryはD-121 correctiveの0dp cornerを維持する。
+
 ## D-121 Android unified dark UI / task interaction refinement
 
 AndroidのToday / Notes / Settingsは共通のdark visual systemを使い、bottom navigationは

@@ -1,5 +1,18 @@
 # Decisions
 
+## D-123 — Android Today Swipe Actions / Collapsed Section Drop Refinement v0.1
+
+Status: **Approved**
+
+Canonical Decision: `docs/decisions/D-123_ANDROID_TODAY_SWIPE_CLOSED_SECTION_DROP_REFINEMENT_V01.md`。
+
+D-123はAndroid Todayの左swipeを、planning-eligible rowでは`編集 / ノート / その他`、
+planning write不可でもvalid `taskId`を持つrowではNote-onlyとして整理する。`その他`のTask Actionsは
+`編集 / 複製 / 前の日へ移動 / 次の日へ移動 / 日付を移動 / 削除`とし、Task Noteは直接shortcutと
+重複させない。collapsedなconfigured Sectionはnon-emptyでもdrop targetとし、auto-expandせず、
+既存Section-area / Section-only `MoveEntry` semanticsでtarget Section planned tailへ置き、成功後も
+local collapsed stateを維持する。既存command eligibility / retry / revision / Server authorityを変更しない。
+
 ## D-122 — Android Nonprod APK Stable Signing / Updateability v0.1
 
 Status: **Approved**

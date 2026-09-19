@@ -1,3 +1,16 @@
+### D-123 Android Today swipe / collapsed Section drop refinement approved — 2026-09-19
+
+D-123をApprovedとした。planning-eligible current-Day ordinary rowは左swipeで
+`編集 / ノート / その他`、valid `taskId`を持つplanning-ineligible rowはNote-onlyを提示する。
+Task Actionsは`編集 / 複製 / 前の日へ移動 / 次の日へ移動 / 日付を移動 / 削除`とし、Task Noteを
+重複させない。collapsed configured Sectionはnon-emptyでもdrop targetとし、auto-expandせず既存
+Section-area / Section-only `MoveEntry` semanticsでplanned tailへ配置し、success後もlocal collapsed stateを
+維持する。
+
+Figma `UbTJH6ykYNBQJS4Wvwz9jb` のcurrent Today full-screen / Flow & Statesへvisual referenceを反映済み。
+**Implementation: NOT_STARTED / Tests: NOT_RUN / Galaxy S23: NOT_RUN / Production: NOT_RUN / Released: NO**。
+Worker/API、schema/migration、dependency、realtime protocolは変更しない。
+
 ### D-121 Today Section / Task Figma parity corrective — 2026-09-19
 
 D-121のApproved UI-only correctiveとして、Today Section headerを`開閉アイコン → HH:MM - HH:MM → セクション名`の左寄せclusterへ統一し、時間/名称を15sp Medium、公式Material Symbols Roundedの`expand_more` / `chevron_right`へ置換した。Section header、Task row外枠、drag/drop borderの角丸を0dpへ変更し、Section group間だけ12dpを追加した。Section/Task ordering、collapse、D&D、selection、lifecycle、API/Worker、schema/migration、dependencyは変更していない。
