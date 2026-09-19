@@ -1,3 +1,13 @@
+## D-124 Android Today Running swipe / Selection entry refinement — 2026-09-19
+
+| ID | Verification target | Evidence | Status |
+|---|---|---|---|
+| D124-DECISION | Product / interaction contract | Approved D-124: Running swipe = edit / note / more with Complete hidden and RunningSurface continuation; Selection Mode entry = selection-eligible right swipe with entry row selected; selectable row whole-body tap toggles selection | SPECIFIED |
+| D124-IMPLEMENTATION | Android implementation | No D-124 implementation commit exists at Decision-record time | NOT_RUN |
+| D124-AUTOMATED | JVM / build / AVD regression | Required with D-123 interaction implementation under Android Large Batch workflow | NOT_RUN |
+| D124-DEVICE | Galaxy S23 final-main smoke | Required after implementation; prior D-121 evidence is not inherited for these new gestures | NOT_RUN |
+| D124-BOUNDARY | Worker/API/schema/migration/dependency/production/Release | Decision adds no such change; production remains out of scope | NOT_REQUIRED / NOT_RUN / NO |
+
 ## D-123 Android Today swipe / collapsed Section drop refinement — 2026-09-19
 
 | ID | Verification target | Evidence | Status |
