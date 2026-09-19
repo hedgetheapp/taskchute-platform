@@ -16,10 +16,11 @@ is retained; no third-party UI/icon dependency is introduced.
 
 Today refines the approved D-109–D-113 surface as follows:
 
-- every visible Task row reserves the leading slot for **selection only**; the checkbox does not
-  represent lifecycle completion;
-- the leading checkbox remains visually empty when an unselected Task is planned, running, or
-  completed, and becomes checked only when that row is selected;
+- Task selection remains independent from lifecycle completion. In normal mode, Task rows do not
+  expose the leading selection checkbox;
+- once Today is in Selection Mode, eligible Task rows expose the leading checkbox. Unselected rows
+  show the empty checkbox and selected rows show the checked state. Selection visibility does not
+  change planned / running / completed lifecycle meaning;
 - lifecycle/action presentation is independent on the trailing side:
   - planned and start-eligible: play / Start;
   - running and completion-eligible: square stop-style action, invoking the existing canonical
