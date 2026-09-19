@@ -38,6 +38,14 @@ Today refines the approved D-109–D-113 surface as follows:
   that is not eligible for a bulk mutation does not by itself grant that mutation; disabled or
   unavailable actions must reflect canonical eligibility.
 
+The approved Today header date navigation is refined as follows:
+
+- remove the separate `今日` action from the header so the visible header geometry matches the approved Figma Today design;
+- the center date control is the sole direct date-picker affordance in the header. Tapping it opens the existing Jetpack Compose Material 3 date-picker UI and choosing a date navigates Today to that logical date;
+- the previous-day and next-day controls remain on the left and right of the center date control;
+- the center calendar icon, previous/next icons, date typography, control sizing, spacing, shape, and dark colors follow the approved Figma Today / Normal frame `69:257` as the visual authority, while Material 3 remains the Android implementation foundation;
+- this refinement changes only the Android Today header presentation/navigation affordance. It does not change Day/domain semantics, persistence, API/Worker behavior, or introduce a dependency.
+
 The approved Today state set also includes the existing date navigation, Section
 collapse/expand, Quick Add, high-opening Task editor, bulk selection/action bar, move-date picker,
 delete confirmation, pull-to-refresh/loading/refreshing/error/empty/future-read-only
