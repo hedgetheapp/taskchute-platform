@@ -336,6 +336,38 @@ class TodayScreenInstrumentedTest {
     }
 
     @Test
+    fun deterministicFailureUsesTwoLineFeedbackWithoutRetryAndKeepsToday() {
+        val directRepository = FakeDirectManipulationRepository().apply {
+            result = DirectManipulationResult.Failure("server detail")
+        }
+        launchPlanningScreen(FakePlanningRepository(), directRepository = directRepository)
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        directManipulationController?.reorder(
+            day = dayWith(),
+            sectionId = "section-1",
+            entryIds = listOf("entry-1"),
+            affectedEntryIds = setOf("entry-1"),
+        )
+        composeRule.waitUntil(15_000) {
+            directRepository.reorderCalls.get() == 1 &&
+                directManipulationController?.state?.errorMessage == DETERMINISTIC_FAILURE_MESSAGE &&
+                directManipulationController?.state?.unresolvedRequest == null
+        }
+
+        composeRule.onNodeWithText(DETERMINISTIC_FAILURE_MESSAGE, substring = false).assertIsDisplayed()
+        composeRule.onNodeWithText("Write report").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithText("元の操作を再試行").fetchSemanticsNodes().isEmpty())
+        assertTrue(composeRule.onAllNodesWithText("再試行").fetchSemanticsNodes().isEmpty())
+        val messageBounds = composeRule.onNodeWithText(DETERMINISTIC_FAILURE_MESSAGE, substring = false)
+            .fetchSemanticsNode()
+            .boundsInRoot
+        val fabBounds = composeRule.onNodeWithContentDescription("タスクを追加")
+            .fetchSemanticsNode()
+            .boundsInRoot
+        assertTrue("failure panel must remain above the Quick Add FAB", messageBounds.bottom < fabBounds.top)
+    }
+    @Test
     fun eligibleOverflowOffersDuplicateAndTaskNote() {
         val directRepository = FakeDirectManipulationRepository()
         var openedTaskNote = 0

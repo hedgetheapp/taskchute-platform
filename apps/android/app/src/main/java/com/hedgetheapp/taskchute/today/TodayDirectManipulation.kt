@@ -71,6 +71,8 @@ sealed interface DirectManipulationResult {
     data class Failure(val message: String) : DirectManipulationResult
 }
 
+internal const val DETERMINISTIC_FAILURE_MESSAGE = "操作を完了できませんでした。\nもう一度操作してください。"
+
 interface TodayDirectManipulationRepository {
     fun execute(request: DirectManipulationRequest): DirectManipulationResult
 }
@@ -120,7 +122,7 @@ class TodayDirectManipulationHttpRepository(
                 DirectManipulationResult.Unauthorized
             }
             response.status == 503 -> DirectManipulationResult.Ambiguous
-            response.status !in 200..299 -> DirectManipulationResult.Failure("Todayを更新できませんでした。再試行してください。")
+            response.status !in 200..299 -> DirectManipulationResult.Failure(DETERMINISTIC_FAILURE_MESSAGE)
             else -> DirectManipulationResult.Success
         }
     }
@@ -263,7 +265,7 @@ class TodayDirectManipulationController(
                     unresolvedRequest = request,
                     errorMessage = "操作結果を確認できませんでした。元の操作を再試行してください。",
                 )
-                is DirectManipulationResult.Failure -> state = state.copy(errorMessage = result.message)
+                is DirectManipulationResult.Failure -> state = state.copy(errorMessage = DETERMINISTIC_FAILURE_MESSAGE)
             }
         }
     }

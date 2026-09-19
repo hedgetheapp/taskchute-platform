@@ -242,7 +242,10 @@ fun TodayScreen(
                     val runningTask = day.runningTask
                     val canAdd = day.planningEnabled && day.taskChuteDayId != null && planningController != null
                     val unresolved = directManipulationController?.state?.unresolvedRequest != null
-                    if (runningTask != null || canAdd || unresolved) {
+                    val deterministicFailure =
+                        directManipulationController?.state?.unresolvedRequest == null &&
+                            directManipulationController?.state?.errorMessage != null
+                    if (runningTask != null || canAdd || unresolved || deterministicFailure) {
                         Column(
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
@@ -256,6 +259,9 @@ fun TodayScreen(
                                 OperationUnresolvedPanel(
                                     onRetry = directManipulationController::retryUnresolved,
                                 )
+                            }
+                            if (deterministicFailure) {
+                                OperationFailedPanel()
                             }
                             if (canAdd && bulkSelected.isEmpty()) {
                                 FloatingActionButton(
@@ -426,11 +432,7 @@ private fun TodayContent(
         state.errorMessage?.let {
             Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp))
         }
-        if (directManipulationController?.state?.unresolvedRequest == null) {
-            directManipulationController?.state?.errorMessage?.let {
-                Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp))
-            }
-        }
+
         directManipulationController?.state?.feedbackMessage?.let {
             Text(it, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 16.dp))
         }
@@ -975,6 +977,28 @@ private fun OperationUnresolvedPanel(onRetry: () -> Unit) {
         ) {
             Text("元の操作を再試行", fontSize = 14.sp, fontWeight = FontWeight.Bold)
         }
+    }
+}
+
+@Composable
+private fun OperationFailedPanel() {
+    val shape = RoundedCornerShape(18.dp)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(56.dp)
+            .clip(shape)
+            .background(Color(0xFF332021))
+            .border(1.dp, Color(0xFF7B3A3A), shape)
+            .padding(horizontal = 16.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = DETERMINISTIC_FAILURE_MESSAGE,
+            color = TaskChuteColors.PrimaryText,
+            fontSize = 13.sp,
+            textAlign = TextAlign.Center,
+        )
     }
 }
 

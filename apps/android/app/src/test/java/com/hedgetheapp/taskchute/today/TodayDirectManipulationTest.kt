@@ -259,6 +259,27 @@ class TodayDirectManipulationTest {
         controller.close()
     }
 
+    @Test
+    fun deterministicFailureUsesApprovedMessageWithoutUnresolvedRequest() {
+        val repository = FakeRepository().apply {
+            result = DirectManipulationResult.Failure("server detail")
+        }
+        val controller = TodayDirectManipulationController(
+            repository = repository,
+            onRefresh = {},
+            onUnauthorized = {},
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+        )
+
+        controller.reorder(day(), "section-1", listOf("entry-2", "entry-1"), setOf("entry-1"))
+
+        assertTrue(await {
+            controller.state.pendingEntryIds.isEmpty() &&
+                controller.state.errorMessage == DETERMINISTIC_FAILURE_MESSAGE
+        })
+        assertEquals(null, controller.state.unresolvedRequest)
+        controller.close()
+    }
     private fun await(predicate: () -> Boolean): Boolean {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2)
         while (System.nanoTime() < deadline) {
