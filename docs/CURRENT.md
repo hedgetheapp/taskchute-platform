@@ -17,8 +17,10 @@ smoke 0.90s、total 203.21s、Debug APK install、MainActivity解決、package c
 buffer emptyを確認した。Figma context/sourceのgeometry・色・icon/resource parityと、
 Today / Notes / Settings各selected stateのruntime semanticsは確認済み。authenticated
 画面のfresh screenshot比較は、エミュレータ起動がlogin shellで認証情報を扱わず停止したため
-NOT_RUNとし、physical-device verificationとは扱わない。Galaxy S23 fresh final-main
-footer smokeはPENDING_SMOKE、productionはNOT_RUN、ReleasedはNO。Worker/API、
+NOT_RUNとし、physical-device verificationとは扱わない。Product OwnerがD-122 stable-signed APKを
+Galaxy S23へインストールし、Today / Notes / Settingsの共有footer、selected state、compact height /
+spacing、隣接headerを含む実機smokeを「問題なし」と確認したため、Galaxy S23 fresh final-main
+footer smokeはPASS / USER_CONFIRMEDとする。productionはNOT_RUN、ReleasedはNO。Worker/API、
 schema/migration、dependency、realtime、persistent nonprodは変更していない。
 # Current
 
@@ -37,9 +39,13 @@ keystoreとAPK A/Bが一致した。`TaskChute_API33`で旧署名APKからの一
 `576 → 577`のA→B in-place update、`run-as` marker保持、MainActivity起動、package crash buffer emptyを
 確認した。旧署名からの初回更新にはuninstall/reinstallが必要で、D-122署名APK同士の後続更新が対象である。
 
-Exact-SHA GitHub Actions / artifact metadataはGitHubを正本とし、Galaxy S23 updateabilityはProduct Ownerの
-fresh D-122 APK確認まで`PENDING_DEVICE`、productionは`NOT_RUN`、Releasedは`NO`とする。Worker/API、
-APP/AUTH schema/migration、dependency、persistent nonprod、productionは変更していない。
+Exact-SHA GitHub Actions / artifact metadataはGitHubを正本とする。Product OwnerはGalaxy S23でlegacy
+debug signer版を一度アンインストールし、最初のD-122 stable-signed APK（versionCode 577）を新規
+インストールしてsigned-in runtime / footer smokeを「問題なし」と確認した。したがって署名transition後の
+initial device install/runtimeはPASS / USER_CONFIRMEDとする。同一D-122 signing identityを使う次APKの
+in-place updateはまだ実機未実施のためUPDATE_PENDINGのまま維持する。productionは`NOT_RUN`、
+Releasedは`NO`とする。Worker/API、APP/AUTH schema/migration、dependency、persistent nonprod、
+productionは変更していない。
 
 ### D-121 Today header Material Symbols corrective — 2026-09-19
 
