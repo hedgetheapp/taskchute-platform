@@ -91,6 +91,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.app.DatePickerDialog as AndroidDatePickerDialog
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import kotlinx.coroutines.withTimeoutOrNull
 import java.time.LocalDate
 import java.time.Instant
@@ -98,6 +99,7 @@ import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
+import com.hedgetheapp.taskchute.R
 import com.hedgetheapp.taskchute.ui.AndroidDestination
 import com.hedgetheapp.taskchute.ui.AndroidNavigationBar
 import com.hedgetheapp.taskchute.ui.ChromeIcon
@@ -668,7 +670,7 @@ private fun DateNavigator(
             onClick = controller::previousDay,
             modifier = Modifier.size(44.dp).clip(CircleShape).background(TaskChuteColors.Control)
                 .semantics { contentDescription = "前の日" },
-        ) { ChromeIcon(TaskChuteIcons.ChevronLeft, "前の日", Modifier.size(28.dp)) }
+        ) { Icon(painterResource(R.drawable.today_header_chevron_left), "前の日", Modifier.size(28.dp)) }
         Row(
             modifier = Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(22.dp))
                 .background(TaskChuteColors.SurfaceElevated)
@@ -678,7 +680,7 @@ private fun DateNavigator(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
         ) {
-            ChromeIcon(TaskChuteIcons.Calendar, "日付", Modifier.size(28.dp))
+            Icon(painterResource(R.drawable.today_header_calendar_month), "日付", Modifier.size(28.dp))
             Spacer(Modifier.width(8.dp))
             Text(
                 "${day.logicalDate} (${formatWeekday(day.logicalDate)})",
@@ -695,7 +697,7 @@ private fun DateNavigator(
             onClick = controller::nextDay,
             modifier = Modifier.size(44.dp).clip(CircleShape).background(TaskChuteColors.Control)
                 .semantics { contentDescription = "次の日" },
-        ) { ChromeIcon(TaskChuteIcons.ChevronRight, "次の日", Modifier.size(28.dp)) }
+        ) { Icon(painterResource(R.drawable.today_header_chevron_right), "次の日", Modifier.size(28.dp)) }
     }
 }
 
