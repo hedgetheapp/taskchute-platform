@@ -4,6 +4,21 @@
 
 exact DB schema、SQL、UI component library、Android local DB、offline conflict algorithm等は、別途DecisionされるまでOpenとする。
 
+## D-124 Android Today Running swipe / Selection entry refinement v0.1
+
+current established Dayのordinary Running rowは、左swipeから`編集 / ノート / その他`を提示できる。
+swipe-open中はCompleteを隠す。`編集`および`その他`を表示すること自体は、新しいRunning mutation
+eligibilityを与えない。編集fieldとTask Actionsは既存command eligibilityに従い、D-117のRunning
+Project / Mode以外のwriteや既存禁止operationを自動的に解禁しない。Running swipeのrevealed areaは
+Running rowと同じsurface treatmentを継続する。
+
+Selection Modeへのentryは、通常modeでselection-eligible Taskを右swipeする操作とする。entryに使った
+Taskは即時selectedとなり、Selection Mode開始時に全Task Rowへcheckboxを表示する。D-112上
+selection/bulk対象外のrowはdisabled/non-selectableのままで、checkbox表示だけではmutation eligibilityを
+得ない。Selection Mode中はselection-eligible Task Row全体をtap targetとし、row内のどこをtapしても
+selected / unselectedをtoggleする。既存bulk action、解除、lifecycle、left swipe、long-press D&Dの
+semanticsは維持する。
+
 ## D-123 Android Today swipe actions / collapsed Section drop refinement v0.1
 
 Android Todayのvisible Task rowは、interaction eligibilityとTask Note eligibilityを分離する。
