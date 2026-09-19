@@ -34,6 +34,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -86,6 +87,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -231,7 +233,7 @@ fun TodayScreen(
                     onRequestDelete = { deleteEntryIds = it },
                     modifier = Modifier.fillMaxSize(),
                 )
-                TodayLoadStatus.ERROR -> TodayError(state.errorMessage ?: "予定を読み込めませんでした。", controller::refresh)
+                TodayLoadStatus.ERROR -> TodayError(controller::refresh)
                 TodayLoadStatus.AUTH_REQUIRED -> TodayAuthRequired()
             }
             if (state.status == TodayLoadStatus.CONTENT || state.status == TodayLoadStatus.EMPTY || state.status == TodayLoadStatus.REFRESHING) {
@@ -1103,11 +1105,41 @@ private fun EmptyToday() {
 }
 
 @Composable
-private fun TodayError(message: String, retry: () -> Unit) {
-    Column(Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        Text(message, color = MaterialTheme.colorScheme.error)
-        Spacer(Modifier.height(12.dp))
-        Button(onClick = retry) { Text("再試行") }
+private fun TodayError(retry: () -> Unit) {
+    Column(
+        Modifier.fillMaxSize().padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text(
+            "予定を読み込めませんでした",
+            modifier = Modifier.fillMaxWidth(),
+            color = TaskChuteColors.PrimaryText,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "通信状態を確認して、再試行してください",
+            modifier = Modifier.fillMaxWidth(),
+            color = TaskChuteColors.SecondaryText,
+            fontSize = 13.sp,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(16.dp))
+        Button(
+            onClick = retry,
+            modifier = Modifier.width(180.dp).height(48.dp),
+            shape = RoundedCornerShape(24.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = TaskChuteColors.PrimaryText,
+                contentColor = TaskChuteColors.Background,
+            ),
+            contentPadding = PaddingValues(0.dp),
+        ) {
+            Text("再試行", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+        }
     }
 }
 

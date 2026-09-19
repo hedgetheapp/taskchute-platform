@@ -53,6 +53,34 @@ class TodayControllerTest {
     }
 
     @Test
+    fun refreshFailureRetriesTheSameLogicalDateThroughStandardLoading() {
+        val repository = FakeRepository().apply {
+            loadResult = TodayResult.Success(dayWith(LifecycleState.PLANNED))
+            loadResultAfterFirst = TodayResult.Failure("network")
+        }
+        val controller = controller(repository)
+
+        controller.loadLogicalDate("2026-09-16")
+        assertTrue(repository.loadStarted.await(2, TimeUnit.SECONDS))
+        assertTrue(awaitState(controller) { it.status == TodayLoadStatus.CONTENT })
+
+        controller.refresh()
+        assertTrue(repository.reloadStarted.await(2, TimeUnit.SECONDS))
+        assertTrue(awaitState(controller) { it.status == TodayLoadStatus.ERROR })
+        assertEquals(listOf("2026-09-16", "2026-09-16"), repository.requestedDates)
+
+        repository.loadResultAfterFirst = TodayResult.Success(dayWith(LifecycleState.PLANNED))
+        repository.holdLoad = true
+        controller.refresh()
+        assertTrue(awaitState(controller) { it.status == TodayLoadStatus.LOADING })
+        assertEquals("2026-09-16", repository.requestedDates.last())
+
+        repository.releaseLoad.countDown()
+        assertTrue(awaitState(controller) { it.status == TodayLoadStatus.CONTENT })
+        controller.close()
+    }
+
+    @Test
     fun unauthorizedHandsOffToAuth() {
         val repository = FakeRepository().apply { loadResult = TodayResult.Unauthorized }
         var unauthorized = 0
@@ -219,9 +247,11 @@ class TodayControllerTest {
         var startResult: TodayMutationResult = TodayMutationResult.Success
         var completeResult: TodayMutationResult = TodayMutationResult.Success
         var loadResultAfterFirst: TodayResult? = null
+        var holdLoad = false
         var holdStart = false
         val loadStarted = CountDownLatch(1)
         val reloadStarted = CountDownLatch(1)
+        val releaseLoad = CountDownLatch(1)
         val startStarted = CountDownLatch(1)
         val releaseStart = CountDownLatch(1)
         val startCalls = AtomicInteger()
@@ -234,6 +264,7 @@ class TodayControllerTest {
             synchronized(requestedDates) { requestedDates += logicalDate }
             val call = loadCalls.incrementAndGet()
             if (call == 1) loadStarted.countDown() else reloadStarted.countDown()
+            if (holdLoad) releaseLoad.await(2, TimeUnit.SECONDS)
             return if (call == 1) loadResult else loadResultAfterFirst ?: loadResult
         }
 

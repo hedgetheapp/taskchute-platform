@@ -141,16 +141,26 @@ class TodayScreenInstrumentedTest {
     }
 
     @Test
-    fun retryableErrorReturnsToToday() {
+    fun retryableErrorUsesFullScreenCopyAndReturnsThroughLoading() {
         val repo = FakeTodayRepository().apply { mode = LoadMode.ERROR }
         launchScreen(repo)
 
         waitForStatus(TodayLoadStatus.ERROR)
+        composeRule.onNodeWithText("予定を読み込めませんでした").assertIsDisplayed()
+        composeRule.onNodeWithText("通信状態を確認して、再試行してください").assertIsDisplayed()
         composeRule.onNodeWithText("再試行").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithText("Write report").fetchSemanticsNodes().isEmpty())
+
         repo.mode = LoadMode.SUCCESS
+        repo.holdLoad = true
         composeRule.onNodeWithText("再試行").performClick()
+        composeRule.onNodeWithText("読み込み中").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithText("Write report").fetchSemanticsNodes().isEmpty())
+
+        repo.releaseLoad.countDown()
         waitForStatus(TodayLoadStatus.CONTENT)
         composeRule.onNodeWithText("Write report").assertIsDisplayed()
+        assertEquals(listOf<String?>(null, null), repo.requestedDates)
     }
 
     @Test

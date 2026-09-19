@@ -19,13 +19,14 @@ class TodayController(
     var state by mutableStateOf(TodayUiState())
         private set
 
+    private var lastRequestedLogicalDate: String? = null
     private var loadInFlight = false
     private var deferredRealtimeReload = false
     private val pendingEntryIds = mutableSetOf<String>()
 
     fun loadCurrent() = load(null)
 
-    fun refresh() = load(state.day?.logicalDate)
+    fun refresh() = load(lastRequestedLogicalDate)
 
     fun previousDay() = moveDay(-1)
 
@@ -74,7 +75,8 @@ class TodayController(
     private fun load(logicalDate: String?) {
         if (loadInFlight) return
         loadInFlight = true
-        val hasExisting = state.day != null
+        lastRequestedLogicalDate = logicalDate
+        val hasExisting = state.day != null && state.status != TodayLoadStatus.ERROR
         state = state.copy(
             status = if (hasExisting) TodayLoadStatus.REFRESHING else TodayLoadStatus.LOADING,
             errorMessage = null,
