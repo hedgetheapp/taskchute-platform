@@ -418,6 +418,7 @@ First Server + Web vertical slice、D-038 B1 / B3、D-039 B2はImplemented / Int
 - B1/B2/B3の後にRoutine / Documents / Review / Android等のどれへ優先的に進むか
 - Android native implementationへ進むentry criteria
 - Androidのinitial Compose architecture詳細
+- D-121で通常modeのTask rowからselection checkboxを隠しSelection Modeだけで表示する方向はApproved済みだが、通常modeからSelection Modeへ入る具体的interaction（long-press、別control等）は未決
 - Android Widgetのinitial scope
 - Wear OS / Pixel Watchのinitial feature scope
 - Wear OS standalone / companion dependencyの境界
