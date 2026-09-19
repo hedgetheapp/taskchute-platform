@@ -1,3 +1,8 @@
+### D-121 Today Section / Task Figma parity corrective — 2026-09-19
+
+D-121のApproved UI-only correctiveとして、Today Section headerを`開閉アイコン → HH:MM - HH:MM → セクション名`の左寄せclusterへ統一し、時間/名称を15sp Medium、公式Material Symbols Roundedの`expand_more` / `chevron_right`へ置換した。Section header、Task row外枠、drag/drop borderの角丸を0dpへ変更し、Section group間だけ12dpを追加した。Section/Task ordering、collapse、D&D、selection、lifecycle、API/Worker、schema/migration、dependencyは変更していない。
+
+Implementation `9c0c0a3b29f3c03a13c97854d5f839b8bb879cc0`。Android JVM `:app:testDebugUnitTest` `112 / 112` PASS、Windows local `TaskChute_API33` の `scripts/android-qa.ps1 -Surface Today` は Today instrumentation `27 / 27` PASS、Debug APK install、MainActivity解決、crash buffer emptyを確認した。初回実行は既存AVDのversionCode 577に対するlocal debug APK versionCode 1のdowngrade拒否でテスト未実行だったため、対象アプリをlocal AVDから削除して再実行し、上記PASSを得た。GitHub Actions exact-SHA run `35429407470` はClassifier PASS、Android JVM/APK PASS、Web/Worker SKIPPED、artifact `taskchute-android-debug-9c0c0a3b29f3c03a13c97854d5f839b8bb879cc0`（ID `10580465538`、expiry `2026-09-26T07:30:44Z`）。physical-device visual smoke、Galaxy S23 same-key updateは未実施で、Galaxy S23は`PENDING_SMOKE`、productionは`NOT_RUN`、Releasedは`NO`とする。
 ### D-121 shared Android bottom navigation footer — 2026-09-19
 
 Final approved footer deltaとして、共有AndroidNavigationBarだけを是正した。Figma file

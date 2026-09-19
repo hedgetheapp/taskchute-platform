@@ -11,6 +11,15 @@
 | D121-FOOTER-BOUNDARY | Scope | Android shared footer, official local resources, and focused instrumentation only; no Today/Notes/Settings content, Worker/API, schema/migration, dependency, realtime, production, or Release change; Galaxy S23 fresh footer smoke is PASS / USER_CONFIRMED | PASS / NOT_REQUIRED / NOT_RUN / NO |
 # Test Matrix
 
+## D-121 Today Section / Task Figma parity corrective — 2026-09-19
+
+| ID | Verification target | Evidence | Status |
+|---|---|---|---|
+| D121-SECTION-SOURCE | Approved visual delta | Today Figma node `69:257` inspected; Section order is icon → time → title, time is existing `HH:MM - HH:MM`, typography is 15sp Medium, official local Material Symbols Rounded resources are used, all affected corners are 0dp, and only inter-group spacing is 12dp | TESTED |
+| D121-SECTION-JVM | Android JVM regression | `:app:testDebugUnitTest` `112 / 112`, failures/errors/skipped `0 / 0 / 0` | PASS |
+| D121-SECTION-AVD | Today runtime gate | Windows `TaskChute_API33` via `scripts/android-qa.ps1 -Surface Today`: `27 / 27` PASS; Debug APK install, MainActivity resolution, crash buffer empty; first downgrade-blocked attempt was discarded and not counted | PASS |
+| D121-SECTION-CI | Exact implementation SHA | `9c0c0a3b29f3c03a13c97854d5f839b8bb879cc0`; run `35429407470`; Classifier/Android JVM/APK PASS, Web/Worker SKIPPED; artifact `taskchute-android-debug-9c0c0a3b29f3c03a13c97854d5f839b8bb879cc0`, ID `10580465538`, expiry `2026-09-26T07:30:44Z` | PASS |
+| D121-SECTION-BOUNDARY | Product / persistence boundary | Today UI and official local vector resources only; no ordering, D&D, selection, lifecycle, API/Worker, schema/migration, dependency, realtime, persistent nonprod, production, or Release change; Galaxy S23 visual/update smoke remains `PENDING_SMOKE` | PASS / NOT_REQUIRED / NOT_RUN / NO |
 ## D-122 Android Nonprod APK Stable Signing / Updateability v0.1
 
 | ID | Verification target | Evidence | Status |
