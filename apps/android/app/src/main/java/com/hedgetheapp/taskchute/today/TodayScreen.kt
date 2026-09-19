@@ -437,7 +437,8 @@ private fun TodayContent(
             // Keep section headers and task rows visually contiguous as one compact grouped surface.
             verticalArrangement = Arrangement.spacedBy(0.dp),
         ) {
-            day.sections.forEach { section ->
+            day.sections.forEachIndexed { index, section ->
+                if (index > 0) item(key = "section-gap-${section.id}") { Spacer(Modifier.height(12.dp)) }
                 item(key = "section-${section.id}") {
                     SectionHeader(
                         section = section,
@@ -508,6 +509,7 @@ private fun TodayContent(
                 }
             }
             if (day.unsectionedEntries.isNotEmpty() || dragState != null) {
+                if (day.sections.isNotEmpty()) item(key = "section-gap-unsectioned") { Spacer(Modifier.height(12.dp)) }
                 item(key = "section-unsectioned") {
                     SectionHeader(
                         section = null,
@@ -716,25 +718,39 @@ private fun SectionHeader(
     dropTarget: Boolean = false,
 ) {
     val title = section?.title ?: "セクションなし"
-    val range = section?.let { "${formatMinute(it.startMinute)}–${formatMinute(it.endMinute)}" }
+    val range = section?.let { "${formatMinute(it.startMinute)} - ${formatMinute(it.endMinute)}" }
     Row(
         modifier = modifier.fillMaxWidth().height(38.dp)
-            .clip(RoundedCornerShape(24.dp))
             .background(TaskChuteColors.SurfaceElevated)
-            .then(if (dropTarget) Modifier.border(BorderStroke(2.dp, TaskChuteColors.AccentBlue), RoundedCornerShape(24.dp)) else Modifier)
+            .then(if (dropTarget) Modifier.border(BorderStroke(2.dp, TaskChuteColors.AccentBlue)) else Modifier)
             .clickable(onClick = onToggleCollapsed)
             .semantics { contentDescription = "${title}セクション${if (collapsed) "を展開" else "を折りたたむ"}" }
             .padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            ChromeIcon(if (collapsed) TaskChuteIcons.ChevronRight else TaskChuteIcons.ChevronDown, if (collapsed) "展開" else "折りたたみ", Modifier.size(20.dp))
-            Text(title, style = MaterialTheme.typography.titleMedium, color = TaskChuteColors.PrimaryText)
+        Icon(
+            painter = painterResource(if (collapsed) R.drawable.today_section_chevron_right else R.drawable.today_section_expand_more),
+            contentDescription = if (collapsed) "展開" else "折りたたみ",
+            modifier = Modifier.size(20.dp),
+            tint = TaskChuteColors.SecondaryText,
+        )
+        range?.let {
+            Text(
+                it,
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 15.sp, fontWeight = FontWeight.Medium),
+                color = TaskChuteColors.SecondaryText,
+                maxLines = 1,
+            )
         }
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            range?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = TaskChuteColors.SecondaryText) }
-        }
+        Text(
+            title,
+            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 15.sp, fontWeight = FontWeight.Medium),
+            color = TaskChuteColors.PrimaryText,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
     }
 }
 
@@ -774,7 +790,7 @@ private fun TodayTaskRow(
     var swipeOffset by remember(task.id) { mutableStateOf(0f) }
     val insertionPadding by animateDpAsState(if (dropTarget) 6.dp else 0.dp, label = "drop-target-padding")
     val hasActions = canEdit || canDuplicate || canOpenNote || canDayOperate
-    Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp))) {
+    Box(Modifier.fillMaxWidth()) {
         if (hasActions && swipeOffset <= -48f) {
             Row(
                 modifier = Modifier.align(Alignment.CenterEnd).zIndex(2f).padding(end = 4.dp),
@@ -810,8 +826,8 @@ private fun TodayTaskRow(
                         scaleY = 0.98f
                     } else Modifier,
                 ).then(
-                    if (dragging) Modifier.border(BorderStroke(2.dp, TaskChuteColors.AccentBlue), RoundedCornerShape(18.dp))
-                    else if (dropTarget) Modifier.border(BorderStroke(2.dp, TaskChuteColors.SecondaryText), RoundedCornerShape(18.dp))
+                    if (dragging) Modifier.border(BorderStroke(2.dp, TaskChuteColors.AccentBlue))
+                    else if (dropTarget) Modifier.border(BorderStroke(2.dp, TaskChuteColors.SecondaryText))
                     else Modifier,
                 ).padding(top = insertionPadding)
                     .animateContentSize()
