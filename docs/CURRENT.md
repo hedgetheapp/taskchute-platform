@@ -1,5 +1,30 @@
 # Current
 
+### D-121 Today header visual parity corrective — 2026-09-19
+
+D-121のApproved Figma visual parity correctiveとして、Figma file UbTJH6ykYNBQJS4Wvwz9jb の
+Today DESIGN node 69:257 を実寸確認し、Today headerだけを是正した。独立した「今日」 actionを
+削除し、前日/次日44dp controlの間に、日付・曜日・calendar iconを含む全体clickableなdate pillを
+配置した。center pillは既存Controllerのlogical-date loadへ接続し、Compose Material 3 DatePickerの
+「決定」で選択日を再読込、「キャンセル」/dismissはno-opとした。表示はFigmaに合わせてASCII括弧、
+18sp bold text、calendar/chevron 28dpとし、既存のTask/bulk移動用Android DatePicker経路は変更していない。
+
+Implementation e8ad4529b8a06892998988b54da3982a5e851391。TodayController JVM追加テストを含む
+Android JVM全体は112 / 112 PASS。Windows local TaskChute_API33 の
+scripts/android-qa.ps1 -Surface Today は27 / 27 PASS、Debug APK install、MainActivity解決、
+crash buffer emptyを確認した（emulator ready/startup 73.12s、instrumentation 109.69s、
+post-test install/smoke 1.21s、total 184.26s）。手動MainActivity起動は認証情報を扱わずログイン画面
+で停止したため、authenticated Todayの実画面screenshot / adb操作によるDatePicker journeyはNOT_RUN。
+source/Figma context確認とFake repository instrumentationは実施済みだが、これはphysical/device visual
+verificationを意味しない。
+
+Exact SHA GitHub Actions run 35418387997 はClassifier PASS、Android JVM/APK PASS、Web/Workerは
+impact classifierによりSKIPPED。Debug APK artifactは
+taskchute-android-debug-e8ad4529b8a06892998988b54da3982a5e851391
+（ID 10576730642、expiry 2026-09-26T03:25:23Z）。Worker/API、schema/migration、dependency、
+realtime protocol、persistent nonprod、productionは変更していない。Galaxy S23 fresh final-main
+smokeはPENDING_SMOKE、productionはNOT_RUN、ReleasedはNOとする。
+
 ### D-121 Android Unified Dark UI / Task Interaction Refinement v0.1 — 2026-09-18
 
 D-121のApproved Android Large Batchとして、Today / Notes / Settingsを共通のdark visual systemと

@@ -18,6 +18,17 @@ single Quick Add timeout under emulator load; the failed test passed in isolatio
 completed `35 / 35` with no application crash/ANR.
 
 
+## D-121 Today header visual parity corrective — 2026-09-19
+
+| ID | Verification target | Evidence | Status |
+|---|---|---|---|
+| D121-HEADER-SOURCE | Figma/source alignment | Figma file UbTJH6ykYNBQJS4Wvwz9jb Today node 69:257 inspected; separate 今日 header action removed, whole date pill opens Compose Material 3 DatePicker, previous/next controls retained | TESTED |
+| D121-HEADER-JVM | Android JVM regression | Full :app:testDebugUnitTest: 112 / 112, failures/errors/skipped 0 / 0 / 0; TodayController explicit logical-date load regression included | PASS |
+| D121-HEADER-AVD | Today instrumentation/runtime | TaskChute_API33 via scripts/android-qa.ps1 -Surface Today: 27 / 27; DatePicker cancel/confirm tests, APK install, MainActivity resolution, crash buffer empty; emulator 73.12s, instrumentation 109.69s, smoke 1.21s, total 184.26s | PASS |
+| D121-HEADER-CI | Exact implementation SHA | e8ad4529b8a06892998988b54da3982a5e851391; run 35418387997; Classifier and Android JVM/APK PASS, Web/Worker SKIPPED; artifact taskchute-android-debug-e8ad4529b8a06892998988b54da3982a5e851391, ID 10576730642, expiry 2026-09-26T03:25:23Z | PASS |
+| D121-HEADER-VISUAL | Authenticated Today visual CUA | Manual MainActivity launch had no authorized session and showed login; no credentials were retrieved; authenticated Today screenshot/adb DatePicker journey remains unexecuted | NOT_RUN |
+| D121-HEADER-BOUNDARY | Product/persistence boundary | Today Android UI/controller/tests only; no Worker/API, schema/migration, dependency, realtime, persistent nonprod, production, or Release change; Galaxy S23 remains PENDING_SMOKE | PASS / NOT_REQUIRED / NOT_RUN / NO |
+
 | D121-CORRECTIVE | Figma-to-Compose visual parity corrective | Figma design contextを参照し、共通dark chrome、Today compact row/section/date navigator、Notes list/editor、Settings compact cardsを更新。fresh AVD screenshotsをToday normal、Notes list/editor、Settings homeで取得 | TESTED / PENDING_DEVICE |
 | D121-CORRECTIVE-AVD | Final Windows local runtime gate | `TaskChute_API33` All `35 / 35`（Today `25` + Notes `7` + Settings `2` + Security `1`）、APK install、MainActivity、crash buffer empty、instrumentation `176.67s` / total `177.79s` | PASS |
 | D121-CORRECTIVE-CI | Exact implementation SHA | `596d28ef435bdcaecf7b8d7b4e11777148003f65`; run `35345986325`; Classifier/Android PASS、Web/Worker SKIPPED; artifact ID `10547610551`, expiry `2026-09-25` | PASS |
