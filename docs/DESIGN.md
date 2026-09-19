@@ -18,10 +18,11 @@ AndroidのToday / Notes / Settingsは共通のdark visual systemを使い、bott
 `今日` / `ノート` / `設定`を同一geometry・typography・Material icon treatmentで共有する。
 画面ごとにfooterを複製して独自調整しない。
 
-Today Task rowのleading slotは常にselection controlであり、lifecycle completionを表さない。
-unselectedではplanned / running / completedのいずれもempty checkboxとし、selectedのときだけcheckを
-表示する。trailing slotはplannedのStartをplay、runningの既存Complete actionをsquare stop-style icon、
-completedをcheck statusとして表示し、selection stateとexecution stateを視覚的に分離する。
+Today Task rowのselectionはlifecycle completionと独立して扱う。通常modeではleadingの
+selection checkboxを表示せず、Selection Modeへ入ったときだけeligible Task rowのleadingにcheckboxを
+表示する。Selection Mode内ではunselectedをempty、selectedをcheckで表す。trailing slotはplannedの
+Startをplay、runningの既存Complete actionをsquare stop-style icon、completedをcheck statusとして表示し、
+selection stateとexecution stateを視覚的に分離する。
 
 eligible Task rowは左swipeで`編集` actionをrevealし、swipe-open中は同じrowのexecution actionを同時に
 露出しない。`編集`からTask edit / auxiliary actions surfaceへ入り、編集、複製、Task Note、日付移動、
