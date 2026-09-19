@@ -1,5 +1,17 @@
 # Test Matrix
 
+## D-121 Today header Material Symbols corrective — 2026-09-19
+
+| ID | Verification target | Evidence | Status |
+|---|---|---|---|
+| D121-HEADER-GLYPH-SOURCE | Official Figma/source parity | Figma UbTJH6ykYNBQJS4Wvwz9jb node 69:257 inspected; Today-only resources use Google official Material Symbols Rounded calendar_month, chevron_left, chevron_right, Regular / FILL=0 / GRAD=0, with Apache-2.0 source comments | TESTED |
+| D121-HEADER-GLYPH-JVM | Android JVM regression | :app:testDebugUnitTest: 112 / 112, failures/errors/skipped 0 / 0 / 0 | PASS |
+| D121-HEADER-GLYPH-AVD | Today instrumentation/runtime | Windows TaskChute_API33 via scripts/android-qa.ps1 -Surface Today: 27 / 27; Debug APK install, MainActivity resolution, crash buffer empty; emulator ready 0.10s, instrumentation 106.77s, smoke 0.96s, total 108.04s | PASS |
+| D121-HEADER-GLYPH-BUILD | Debug APK / dependency boundary | :app:assembleDebug with canonical nonprod base URL PASS; no Gradle/dependency file changed | PASS / NOT_REQUIRED |
+| D121-HEADER-GLYPH-CI | Exact implementation SHA | 990a8ea9f7d72a4c056e565796bf39d789fcecd7; run 35420167455; Classifier and Android JVM/APK PASS, Web/Worker SKIPPED; artifact taskchute-android-debug-990a8ea9f7d72a4c056e565796bf39d789fcecd7, ID 10577546563, expiry 2026-09-26T04:03:07Z | PASS |
+| D121-HEADER-GLYPH-VISUAL | Authenticated Today screenshot comparison | Emulator launch/UI-tree/crash check reached login because no authorized session was available; credentials were not retrieved; authenticated Today screenshot/visual comparison remains NOT_RUN | NOT_RUN |
+| D121-HEADER-GLYPH-BOUNDARY | Product/persistence boundary | Only Today header glyph references and three local vector resources changed; no Worker/API, schema/migration, Gradle dependency, realtime, persistent nonprod, production, or Release change; Galaxy S23 remains PENDING_SMOKE | PASS / NOT_REQUIRED / NOT_RUN / NO |
+
 ## D-121 Android Unified Dark UI / Task Interaction Refinement v0.1
 
 | ID | Verification target | Evidence | Status |

@@ -1,5 +1,28 @@
 # Current
 
+### D-121 Today header Material Symbols corrective — 2026-09-19
+
+D-121のApproved Today header visual correctiveとして、Figma file UbTJH6ykYNBQJS4Wvwz9jb の
+Today / Normal node 69:257を再確認し、ヘッダーのcalendar / previous / next glyphだけを
+Google公式 Material Symbols Rounded のRegular / FILL=0 / GRAD=0 24px Android Vector
+Drawableへ置換した。公式assetのApache-2.0 provenance URLをresource commentに残し、既存の
+共有TaskChuteIcons（Section / Settings等で使用）は変更していない。DatePicker、header geometry、
+text、color、Section / Task rows、Notes、Settings、Domain/API semanticsは変更していない。
+
+Implementation commit 990a8ea9f7d72a4c056e565796bf39d789fcecd7。Android JVM 112 / 112、
+TaskChute_API33 Today instrumentation 27 / 27、Debug APK build、APK install、MainActivity解決、
+TaskChute crash buffer empty、git diff --checkはPASS。GitHub Actions exact-SHA run
+35420167455もClassifier / Android JVM and APK verificationがPASS、Web and Worker verificationは
+Android-only impactによりSKIPPED。artifactは
+taskchute-android-debug-990a8ea9f7d72a4c056e565796bf39d789fcecd7（ID 10577546563、
+expiry 2026-09-26T04:03:07Z）。
+
+Emulatorを起動して取得した画面は認証画面であり、認証情報は取得していないため、
+authenticated Today headerのfresh screenshot / visual CUA comparisonはNOT_RUN。Source-level
+official-symbol parityはTESTED、Galaxy S23 fresh final-main smokeはPENDING_SMOKE、
+productionはNOT_RUN、ReleasedはNOとする。Worker/API、schema/migration、Gradle dependency、
+realtime、persistent nonprod、productionは変更していない。
+
 ### D-121 Today header visual parity corrective — 2026-09-19
 
 D-121のApproved Figma visual parity correctiveとして、Figma file UbTJH6ykYNBQJS4Wvwz9jb の
