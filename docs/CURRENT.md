@@ -1,3 +1,17 @@
+### D-124 Android Today Running swipe / Selection entry refinement approved — 2026-09-19
+
+D-124をApprovedとした。current established Dayのordinary Running rowは左swipeで
+`編集 / ノート / その他`を表示し、Completeはswipe-open中に隠す。各mutationは既存eligibilityを
+広げず、Runningのrevealed backgroundはRunning surfaceを継続する。
+
+Selection Modeはselection-eligible Taskの右swipeで開始し、entry Taskを即時selectedとしたうえで
+全Task Rowにcheckboxを表示する。Selection Mode中はselection-eligible Task Row全体tapでtoggleする。
+Running / Completed等の既存non-selectable rowはdisabledのまま。Figma Flow & Statesへvisual referenceを
+反映済み。
+
+**Implementation: NOT_STARTED / Tests: NOT_RUN / Galaxy S23: NOT_RUN / Production: NOT_RUN / Released: NO**。
+Worker/API、schema/migration、dependency、realtime protocolは変更しない。
+
 ### D-123 Android Today swipe / collapsed Section drop refinement approved — 2026-09-19
 
 D-123をApprovedとした。planning-eligible current-Day ordinary rowは左swipeで
