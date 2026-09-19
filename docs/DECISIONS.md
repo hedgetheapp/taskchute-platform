@@ -21,9 +21,10 @@ Status: **Approved**
 Canonical Decision: `docs/decisions/D-121_ANDROID_UNIFIED_DARK_UI_AND_TASK_INTERACTION_REFINEMENT_V01.md`。
 
 D-121はAndroid Today / Notes / Settingsを一つのdark visual systemへ統一し、bottom navigationを
-`今日` / `ノート` / `設定`のshared implementationとして扱う。Today rowのleading checkboxは
-lifecycleではなくselectionだけを表し、trailing側をplanned `▶` / running `■` / completed `✓`として
-selectionとexecution stateを分離する。runningの`■`は新しいStop domain stateではなく既存canonical
+`今日` / `ノート` / `設定`のshared implementationとして扱う。Today rowのselection checkboxは
+通常modeでは非表示とし、Selection Modeでのみeligible rowのleadingへ表示する。checkboxはlifecycleではなく
+selectionだけを表し、trailing側をplanned `▶` / running `■` / completed `✓`としてselectionとexecution
+stateを分離する。runningの`■`は新しいStop domain stateではなく既存canonical
 Complete commandのvisual actionとする。eligible rowの旧overflow-first editは左swipeの`編集` revealへ
 置き換え、edit / duplicate / Task Note / move date / deleteを既存command eligibilityのままTask Actions
 surfaceへまとめる。D-112 bulk selection/day operations、D-113 execution metadata、Notes autosave/CAS/safe
