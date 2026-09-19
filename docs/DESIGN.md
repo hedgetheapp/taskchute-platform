@@ -12,6 +12,30 @@
 - implementation / verification statusは`docs/FEATURES.md`、`docs/CURRENT.md`、`docs/TEST_MATRIX.md`を正本とする。
 - この文書は新しいDomain semanticsを作らず、上記canonical docsと矛盾する場合は上記を優先する。
 
+## D-126 Android Future-Day Planning parity
+
+Future Dayはread-only専用画面にせず、Todayと同じplanning surfaceを使う。Quick Add、planning-eligible
+Taskの編集 / swipe actions、drag / reorder / placement、Selection Mode、approved day operationsは
+current-Day equivalentと同じvisual rhythmを使う。Execution controlはFutureでは表示せず、
+Start / Complete / Interrupt / RunningTaskPanelはcurrent Dayだけに表示する。
+
+Future Dayを明示的に開いた時点でD-119どおりDayがestablish / Routine reconcileされるため、
+`未来日は参照のみ` badgeは表示しない。Past Dayは`過去日は参照のみ`としてhistorical contentを
+表示し、planning / execution mutation surfaceを出さない。
+
+Figma current visual referenceは`Today — Flow & States` の
+`Future / Planning`、`Past / Read-only`、`Future Past / Behavior`。
+
+## D-125 Android Today Error / Retry states
+
+Today acquisition failureはfull-screen Error。中央に`予定を読み込めませんでした`、
+`通信状態を確認して、再試行してください`、centered retry buttonを置く。retry後は標準Loadingへ戻る。
+
+Operation UnresolvedはTodayを保持したまま、`操作結果を確認できませんでした`を中央揃えで表示し、
+`元の操作を再試行`をcentered fixed-width actionとして置く。Operation FailedはTodayを保持し、
+`操作を完了できませんでした。\nもう一度操作してください。`を中央揃えの2行feedbackとして表示する。
+
+
 ## D-124 Android Today Running swipe / Selection entry refinement
 
 Running rowのleft-swipeはplanned swipeと同じ3-action rhythmで`編集 → ノート → その他`を表示する。

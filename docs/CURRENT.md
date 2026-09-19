@@ -1,3 +1,27 @@
+### D-126 Android Future-Day Planning Parity approved — 2026-09-19
+
+D-126をApprovedとした。Android Future DayはD-119どおり明示open時点でestablish / eligible Routine
+reconcileし、そのestablished DayをTodayと同じplanning surfaceとして扱う。ordinary planned rowでは
+current-Day equivalentのQuick Add、編集、planning metadata、placement、複製、日付移動、削除、
+Selection Mode / bulk day-operation、Task Noteをfutureでも提供する。Executionはcurrent Dayだけとし、
+FutureではStart / Complete / Interrupt / RunningTaskPanelを出さない。Pastはread-onlyを維持する。
+
+Figma Today — Flow & StatesのFuture / Planning、Past / Read-only、Behaviorへvisual referenceを反映済み。
+**Implementation: NOT_STARTED / Tests: NOT_RUN / AVD: NOT_RUN / Galaxy S23: NOT_RUN / Production: NOT_RUN / Released: NO**。
+shared Worker/API eligibility変更が必要な場合は実装batchでimpact analysisし、新schema / migration /
+new command familyが必要ならSTOPする。
+
+### D-125 Android Today Error / Retry States Refinement approved — 2026-09-19
+
+D-125をApprovedとした。Initial Load / Refresh failureは古いTodayを残さないfull-screen Error、
+Ambiguous direct manipulationはToday保持 + exact same-operation retry、deterministic operation failureは
+Today保持 + lightweight feedback、401はauth handoffとする。Figma Today — Flow & Statesへ
+Load / Refresh Failed、Retry Loading、Operation Unresolved、Operation Failed、Behaviorを反映済み。
+
+**Implementation: NOT_STARTED / Tests: NOT_RUN / AVD: NOT_RUN / Galaxy S23: NOT_RUN / Production: NOT_RUN / Released: NO**。
+Worker/API、schema/migration、dependency、realtime protocolはDecision-record時点で変更していない。
+
+
 ### D-124 Android Today Running swipe / Selection entry refinement approved — 2026-09-19
 
 D-124をApprovedとした。current established Dayのordinary Running rowは左swipeで

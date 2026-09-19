@@ -1,5 +1,32 @@
 # Decisions
 
+## D-126 — Android Future-Day Planning Parity v0.1
+
+Status: **Approved**
+
+Canonical Decision: `docs/decisions/D-126_ANDROID_FUTURE_DAY_PLANNING_PARITY_V01.md`。
+
+D-126はAndroid Future DayをTodayと同じplanning surfaceとして扱う。D-119どおりfuture Dayは
+明示的に開いた時点でestablish / Routine reconcileし、ordinary planned rowではQuick Add、編集、
+placement、複製、日付移動、削除、selection / bulk operation等をcurrent-Day equivalentと同等に提供する。
+Executionはcurrent Dayだけに限定し、FutureではStart / Complete / Interrupt / RunningTaskPanelを出さない。
+PastはD-042どおりread-onlyを維持する。Android scopeのD-109 / D-110 / D-112 / D-121 /
+D-123 / D-124 future-read-only restrictionを必要な範囲でsupersedeする。新schema / migration /
+new command familyは承認せず、必要ならSTOPする。
+
+## D-125 — Android Today Error / Retry States Refinement v0.1
+
+Status: **Approved**
+
+Canonical Decision: `docs/decisions/D-125_ANDROID_TODAY_ERROR_RETRY_STATES_REFINEMENT_V01.md`。
+
+D-125はInitial Load / Refresh failureを全画面Errorへ統一し、古いToday本文を操作可能なsurfaceとして
+残さない。`再試行`は標準Loadingからcanonical reloadする。direct manipulationのAmbiguousだけは
+Todayを保持して`元の操作を再試行`で同一operation identityを再送し、deterministic failureは
+`操作を完了できませんでした。 / もう一度操作してください。`の軽いfeedbackのみとする。
+401は既存auth handoffを維持する。
+
+
 ## D-124 — Android Today Running Swipe / Selection Entry Refinement v0.1
 
 Status: **Approved**

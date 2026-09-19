@@ -4,6 +4,38 @@
 
 exact DB schema、SQL、UI component library、Android local DB、offline conflict algorithm等は、別途DecisionされるまでOpenとする。
 
+## D-126 Android Future-Day Planning Parity v0.1
+
+Android Todayで明示的に開いたfuture logical dateはD-119どおりDay surface open時点で
+establish / eligible Routine reconcileを行う。established future DayはTodayと同じplanning surfaceを使い、
+current Dayで同じrowがplanning-eligibleなら、Quick Add、Task edit、Project / Mode / Section /
+planned start / estimate、single-Entry placement、duplicate、day move、delete、Selection Mode、
+approved bulk day-operation、Task Noteをfutureでも提供する。
+
+`Todayと同じ`はcurrent-Day eligibilityとのparityであり、Routine-derived、running、completed、
+pending等のprotected rowへfutureだけ新しいmutationを付与しない。Future DayではStart / Complete /
+Interrupt / RunningTaskPanelを提供せずExecutionを生成しない。Past DayはD-042どおりread-onlyである。
+
+Android scopeではD-109 / D-110 / D-112 / D-121 / D-123 / D-124のfuture read-only / Note-only
+restrictionをこの範囲でsupersedeする。既存future-capable canonical commandを再利用し、必要なら
+current-only eligibility / routeをestablished future ordinary planned Dayへ広げるが、owner / Day identity /
+logical date / lifecycle / relation / placement revision / CAS / operation identity / retry / ambiguity /
+canonical reconciliation guardは維持する。新schema / migration / new command familyが必要ならSTOPする。
+
+## D-125 Android Today Error / Retry States Refinement v0.1
+
+Initial LoadまたはRefresh / canonical reloadが失敗した場合、Android Todayは既存Day本文を残さず
+全画面Errorへ遷移し、`予定を読み込めませんでした`、`通信状態を確認して、再試行してください`、
+`再試行`を表示する。`再試行`は標準Loading（白spinner + `読み込み中`）からcanonical reloadし、
+success時だけfresh Todayへ復帰する。
+
+Direct manipulationのAmbiguous outcomeは別系統とし、Todayを保持して
+`操作結果を確認できませんでした` + `元の操作を再試行`を表示し、保持した同一operation identityを
+再送する。deterministic failureはTodayを保持して
+`操作を完了できませんでした。\nもう一度操作してください。`を表示し、exact-operation retry buttonは
+出さない。401 / auth-requiredは既存auth handoffで扱う。
+
+
 ## D-124 Android Today Running swipe / Selection entry refinement v0.1
 
 current established Dayのordinary Running rowは、左swipeから`編集 / ノート / その他`を提示できる。

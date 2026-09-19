@@ -1,3 +1,30 @@
+## D-126 Android Future-Day Planning Parity — 2026-09-19
+
+| ID | Verification target | Evidence | Status |
+|---|---|---|---|
+| D126-DECISION | Product / interaction contract | Approved D-126: explicitly opened future Day follows D-119 establishment, then uses Today-equivalent planning surface; execution remains current-Day only; past remains read-only | SPECIFIED |
+| D126-IMPLEMENTATION | Android / shared command implementation | No D-126 implementation commit exists at Decision-record time | NOT_RUN |
+| D126-FUTURE-PLANNING | Quick Add / edit / placement / duplicate / move / delete / selection / bulk | Required after implementation on established future Day, with current-Day-equivalent row eligibility | NOT_RUN |
+| D126-EXECUTION-BOUNDARY | Start / Complete / Interrupt / RunningTaskPanel | Must remain unavailable on future Day | NOT_RUN |
+| D126-SHARED-REGRESSION | Worker/API + Web impact | Required if shared command eligibility / route is widened for future planning | NOT_RUN |
+| D126-DEVICE | AVD / Galaxy S23 final-main smoke | Required after implementation; prior D-121 evidence is not inherited | NOT_RUN |
+| D126-PERSISTENCE | schema / migration / new command family | Not approved by D-126; STOP if implementation requires one | NOT_REQUIRED |
+| D126-PRODUCTION | production / Release | Outside current implementation boundary | NOT_RUN / NO |
+
+## D-125 Android Today Error / Retry States Refinement — 2026-09-19
+
+| ID | Verification target | Evidence | Status |
+|---|---|---|---|
+| D125-DECISION | Product / interaction contract | Approved D-125: load/refresh failure = full-screen Error; Ambiguous operation = Today + exact same-operation retry; deterministic failure = Today + lightweight feedback; 401 stays auth handoff | SPECIFIED |
+| D125-IMPLEMENTATION | Android implementation | No D-125 implementation commit exists at Decision-record time | NOT_RUN |
+| D125-LOAD-ERROR | Initial / Refresh failure and retry Loading | Required after implementation | NOT_RUN |
+| D125-AMBIGUOUS | exact request identity retry | Required after implementation | NOT_RUN |
+| D125-DETERMINISTIC | lightweight operation failure feedback | Required after implementation | NOT_RUN |
+| D125-AUTH | 401 auth-required separation | Required regression after implementation | NOT_RUN |
+| D125-DEVICE | AVD / Galaxy S23 final-main smoke | Required after implementation | NOT_RUN |
+| D125-BOUNDARY | Worker/API/schema/migration/dependency/production/Release | Decision adds no persistence/API scope; production remains out of scope | NOT_REQUIRED / NOT_RUN / NO |
+
+
 ## D-124 Android Today Running swipe / Selection entry refinement — 2026-09-19
 
 | ID | Verification target | Evidence | Status |
