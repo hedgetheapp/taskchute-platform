@@ -13,6 +13,18 @@
 - この文書は新しいDomain semanticsを作らず、上記canonical docsと矛盾する場合は上記を優先する。
 
 ## D-123 Android Today swipe actions / collapsed Section drop refinement
+## D-124 Android Today Running swipe / Selection entry refinement
+
+Running rowのleft-swipeはplanned swipeと同じ3-action rhythmで`編集 → ノート → その他`を表示する。
+row本体はTask titleを読める範囲で左へ退避し、Complete controlは隠す。露出した右側のrow areaは
+Running surfaceの薄青を連続させ、その上へ3 actionを配置する。Completed等のNote-only visualは
+D-123を維持する。
+
+Selection Modeへの主要遷移は「選択可能Taskを右swipe → そのTaskがselected → 全row checkbox表示」と
+する。Selection Mode中はselection-eligible rowのcheckboxだけを小さいtap targetとして扱わず、
+Task Row全体をtapするとselected / unselectedがtoggleする。Running / Completed等の既存non-selectable
+rowはdisabled checkbox visualを維持する。
+
 
 planned current-Dayのeligible Task rowを左swipeした状態は、48dpの丸い直接actionを
 `編集 → ノート → その他`の順に右側へ並べ、row本体を左へ退避させる。swipe-open中はexecution controlを
