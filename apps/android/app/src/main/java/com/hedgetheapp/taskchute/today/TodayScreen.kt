@@ -241,7 +241,8 @@ fun TodayScreen(
                 state.day?.takeIf { it.isCurrent }?.let { day ->
                     val runningTask = day.runningTask
                     val canAdd = day.planningEnabled && day.taskChuteDayId != null && planningController != null
-                    if (runningTask != null || canAdd) {
+                    val unresolved = directManipulationController?.state?.unresolvedRequest != null
+                    if (runningTask != null || canAdd || unresolved) {
                         Column(
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
@@ -251,6 +252,11 @@ fun TodayScreen(
                             horizontalAlignment = Alignment.End,
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
+                            if (unresolved) {
+                                OperationUnresolvedPanel(
+                                    onRetry = directManipulationController::retryUnresolved,
+                                )
+                            }
                             if (canAdd && bulkSelected.isEmpty()) {
                                 FloatingActionButton(
                                     onClick = { planningController.openCreate(day) },
@@ -420,12 +426,9 @@ private fun TodayContent(
         state.errorMessage?.let {
             Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp))
         }
-        directManipulationController?.state?.errorMessage?.let {
-            Column(Modifier.padding(horizontal = 16.dp)) {
-                Text(it, color = MaterialTheme.colorScheme.error)
-                if (directManipulationController.state.unresolvedRequest != null) {
-                    TextButton(onClick = directManipulationController::retryUnresolved) { Text("元の操作を再試行") }
-                }
+        if (directManipulationController?.state?.unresolvedRequest == null) {
+            directManipulationController?.state?.errorMessage?.let {
+                Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp))
             }
         }
         directManipulationController?.state?.feedbackMessage?.let {
@@ -936,6 +939,41 @@ private fun TodayTaskRow(
                     TextButton(onClick = { actionsSheetOpen = false; onDelete() }, Modifier.fillMaxWidth()) { Text("削除", color = MaterialTheme.colorScheme.error) }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun OperationUnresolvedPanel(onRetry: () -> Unit) {
+    val shape = RoundedCornerShape(20.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(116.dp)
+            .clip(shape)
+            .background(Color(0xFF332021))
+            .border(1.dp, Color(0xFF7B3A3A), shape)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
+    ) {
+        Text(
+            text = "操作結果を確認できませんでした",
+            color = TaskChuteColors.PrimaryText,
+            fontSize = 13.sp,
+            textAlign = TextAlign.Center,
+        )
+        Button(
+            onClick = onRetry,
+            modifier = Modifier.width(220.dp).height(44.dp),
+            shape = RoundedCornerShape(22.dp),
+            contentPadding = PaddingValues(0.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = TaskChuteColors.PrimaryText,
+                contentColor = TaskChuteColors.Background,
+            ),
+        ) {
+            Text("元の操作を再試行", fontSize = 14.sp, fontWeight = FontWeight.Bold)
         }
     }
 }

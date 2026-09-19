@@ -289,6 +289,53 @@ class TodayScreenInstrumentedTest {
     }
 
     @Test
+    fun unresolvedOperationUsesBottomPanelAndPreservesTodayForExactRetry() {
+        val directRepository = FakeDirectManipulationRepository().apply {
+            result = DirectManipulationResult.Ambiguous
+        }
+        launchPlanningScreen(FakePlanningRepository(), directRepository = directRepository)
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        directManipulationController?.reorder(
+            day = dayWith(),
+            sectionId = "section-1",
+            entryIds = listOf("entry-1"),
+            affectedEntryIds = setOf("entry-1"),
+        )
+        composeRule.waitUntil(15_000) {
+            directRepository.reorderCalls.get() == 1 &&
+                directManipulationController?.state?.unresolvedRequest != null
+        }
+
+        composeRule.onNodeWithText("操作結果を確認できませんでした").assertIsDisplayed()
+        composeRule.onNodeWithText("元の操作を再試行").assertIsDisplayed()
+        assertTrue(
+            composeRule.onAllNodesWithText("操作結果を確認できませんでした。元の操作を再試行してください。")
+                .fetchSemanticsNodes()
+                .isEmpty(),
+        )
+        composeRule.onNodeWithText("Write report").assertIsDisplayed()
+        val panelMessageBounds = composeRule.onNodeWithText("操作結果を確認できませんでした")
+            .fetchSemanticsNode()
+            .boundsInRoot
+        val fabBounds = composeRule.onNodeWithContentDescription("タスクを追加")
+            .fetchSemanticsNode()
+            .boundsInRoot
+        assertTrue("unresolved panel must remain above the Quick Add FAB", panelMessageBounds.bottom < fabBounds.top)
+
+        val originalRequest = directRepository.firstRequest
+        directRepository.result = DirectManipulationResult.Success
+        composeRule.onNodeWithText("元の操作を再試行").performClick()
+        composeRule.waitUntil(15_000) {
+            directRepository.reorderCalls.get() == 2 &&
+                directManipulationController?.state?.unresolvedRequest == null
+        }
+
+        assertEquals(originalRequest, directRepository.lastRequest)
+        composeRule.onNodeWithText("Write report").assertIsDisplayed()
+    }
+
+    @Test
     fun eligibleOverflowOffersDuplicateAndTaskNote() {
         val directRepository = FakeDirectManipulationRepository()
         var openedTaskNote = 0
@@ -650,9 +697,14 @@ class TodayScreenInstrumentedTest {
         val bulkMoveCalls = AtomicInteger()
         val deleteCalls = AtomicInteger()
         var lastReorderIds: List<String>? = null
+        @Volatile var firstRequest: DirectManipulationRequest? = null
+        @Volatile var lastRequest: DirectManipulationRequest? = null
+        @Volatile var result: DirectManipulationResult = DirectManipulationResult.Success
         var lastMove: DirectManipulationRequest.Move? = null
 
         override fun execute(request: DirectManipulationRequest): DirectManipulationResult {
+            if (firstRequest == null) firstRequest = request
+            lastRequest = request
             when (request) {
                 is DirectManipulationRequest.Reorder -> {
                     reorderCalls.incrementAndGet()
@@ -666,7 +718,7 @@ class TodayScreenInstrumentedTest {
                 is DirectManipulationRequest.MoveToDay -> bulkMoveCalls.incrementAndGet()
                 is DirectManipulationRequest.Delete -> deleteCalls.incrementAndGet()
             }
-            return DirectManipulationResult.Success
+            return result
         }
     }
 
