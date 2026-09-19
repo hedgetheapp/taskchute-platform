@@ -132,12 +132,17 @@ class TodayScreenInstrumentedTest {
     }
 
     @Test
-    fun emptyStateIsRendered() {
-        val repo = FakeTodayRepository(initialDay = emptyDay())
-        launchScreen(repo)
+    fun emptyStateIsRenderedWithQuickAdd() {
+        launchPlanningScreen(
+            FakePlanningRepository(),
+            initialDay = emptyDay().copy(taskChuteDayId = "day-1"),
+        )
 
         waitForStatus(TodayLoadStatus.EMPTY)
         composeRule.onNodeWithText("タスクはありません").assertIsDisplayed()
+        composeRule.onNodeWithText("この日の予定は空です。").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("タスクを追加").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithText("実行中").fetchSemanticsNodes().isEmpty())
     }
 
     @Test

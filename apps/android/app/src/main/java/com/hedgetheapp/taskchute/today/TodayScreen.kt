@@ -11,6 +11,7 @@ import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -431,7 +432,7 @@ private fun TodayContent(
             Text(it, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 16.dp))
         }
         if (!day.hasEntries && day.sections.isEmpty() && day.unsectionedEntries.isEmpty()) {
-            EmptyToday()
+            EmptyToday(Modifier.fillMaxWidth().weight(1f))
             return@Column
         }
         LazyColumn(
@@ -1097,10 +1098,35 @@ private fun LoadingToday() {
 }
 
 @Composable
-private fun EmptyToday() {
-    Column(Modifier.fillMaxWidth().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("タスクはありません", style = MaterialTheme.typography.titleMedium)
-        Text("この日の予定は空です。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+private fun EmptyToday(modifier: Modifier = Modifier) {
+    BoxWithConstraints(
+        modifier = modifier.fillMaxWidth(),
+        contentAlignment = Alignment.TopCenter,
+    ) {
+        val topOffset = minOf(maxHeight * 0.40625f, (maxHeight - 58.dp).coerceAtLeast(0.dp))
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(top = topOffset),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                "タスクはありません",
+                modifier = Modifier.fillMaxWidth().height(28.dp),
+                color = TaskChuteColors.PrimaryText,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                lineHeight = 28.sp,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "この日の予定は空です。",
+                modifier = Modifier.fillMaxWidth().height(22.dp),
+                color = TaskChuteColors.SecondaryText,
+                fontSize = 14.sp,
+                lineHeight = 22.sp,
+                textAlign = TextAlign.Center,
+            )
+        }
     }
 }
 
