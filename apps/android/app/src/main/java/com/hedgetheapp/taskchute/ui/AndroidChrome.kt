@@ -1,32 +1,38 @@
 package com.hedgetheapp.taskchute.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.hedgetheapp.taskchute.R
+
 enum class AndroidDestination { TODAY, NOTES, SETTINGS }
 
 object TaskChuteColors {
@@ -75,13 +81,42 @@ fun AndroidNavigationBar(
     onSettings: () -> Unit,
 ) {
     Column(
-        modifier = Modifier.fillMaxWidth().height(76.dp).background(TaskChuteColors.Background),
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .background(TaskChuteColors.Background),
     ) {
-        HorizontalDivider(thickness = 1.dp, color = Color(0xFF333333))
-        Row(modifier = Modifier.fillMaxWidth().weight(1f)) {
-            AndroidNavigationItem(selected == AndroidDestination.TODAY, "今日", TaskChuteIcons.Today, onToday, "今日", Modifier.weight(1f))
-            AndroidNavigationItem(selected == AndroidDestination.NOTES, "ノート", TaskChuteIcons.Notes, onNotes, "ノート一覧", Modifier.weight(1f))
-            AndroidNavigationItem(selected == AndroidDestination.SETTINGS, "設定", TaskChuteIcons.Settings, onSettings, "設定", Modifier.weight(1f))
+        Row(modifier = Modifier.fillMaxWidth().height(56.dp)) {
+            AndroidNavigationItem(
+                selected = selected == AndroidDestination.TODAY,
+                label = "今日",
+                iconRes = R.drawable.android_footer_task_alt,
+                iconWidth = 20.dp,
+                iconHeight = 20.dp,
+                onClick = onToday,
+                description = "今日",
+                modifier = Modifier.weight(1f),
+            )
+            AndroidNavigationItem(
+                selected = selected == AndroidDestination.NOTES,
+                label = "ノート",
+                iconRes = R.drawable.android_footer_description,
+                iconWidth = 16.dp,
+                iconHeight = 20.dp,
+                onClick = onNotes,
+                description = "ノート一覧",
+                modifier = Modifier.weight(1f),
+            )
+            AndroidNavigationItem(
+                selected = selected == AndroidDestination.SETTINGS,
+                label = "設定",
+                iconRes = R.drawable.android_footer_settings,
+                iconWidth = 20.dp,
+                iconHeight = 20.dp,
+                onClick = onSettings,
+                description = "設定",
+                modifier = Modifier.weight(1f),
+            )
         }
     }
 }
@@ -90,27 +125,43 @@ fun AndroidNavigationBar(
 private fun AndroidNavigationItem(
     selected: Boolean,
     label: String,
-    icon: ImageVector,
+    iconRes: Int,
+    iconWidth: Dp,
+    iconHeight: Dp,
     onClick: () -> Unit,
     description: String,
     modifier: Modifier,
 ) {
-    Column(
-        modifier = modifier.fillMaxWidth().height(75.dp).clickable(onClick = onClick)
+    Box(
+        modifier = modifier
+            .fillMaxHeight()
+            .selectable(selected = selected, role = Role.Tab, onClick = onClick)
             .semantics { contentDescription = description },
-        horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
+        contentAlignment = Alignment.TopCenter,
     ) {
-        androidx.compose.foundation.layout.Box(
-            modifier = Modifier.width(82.dp).height(36.dp).clip(RoundedCornerShape(18.dp))
-                .background(if (selected) TaskChuteColors.AccentContainer else Color.Transparent),
-            contentAlignment = androidx.compose.ui.Alignment.Center,
+        Box(
+            modifier = Modifier
+                .width(82.dp)
+                .height(36.dp)
+                .clip(RoundedCornerShape(18.dp))
+                .background(if (selected) Color(0xFF2F2F2D) else Color.Transparent),
+            contentAlignment = Alignment.Center,
         ) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(26.dp),
-                tint = if (selected) TaskChuteColors.AccentBlue else TaskChuteColors.SecondaryText)
+            Icon(
+                painter = painterResource(iconRes),
+                contentDescription = null,
+                modifier = Modifier.height(iconHeight).width(iconWidth),
+                tint = if (selected) TaskChuteColors.PrimaryText else TaskChuteColors.SecondaryText,
+            )
         }
-        Text(label, color = if (selected) TaskChuteColors.AccentBlue else TaskChuteColors.SecondaryText,
-            fontSize = 12.sp, fontWeight = FontWeight.Medium, lineHeight = 20.sp)
+        Text(
+            label,
+            modifier = Modifier.align(Alignment.BottomCenter),
+            color = if (selected) TaskChuteColors.PrimaryText else TaskChuteColors.SecondaryText,
+            fontSize = 11.sp,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+            lineHeight = 17.sp,
+        )
     }
 }
 
