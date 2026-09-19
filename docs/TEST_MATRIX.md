@@ -1,3 +1,13 @@
+## D-121 shared Android bottom navigation footer — 2026-09-19
+
+| ID | Verification target | Evidence | Status |
+|---|---|---|---|
+| D121-FOOTER-SOURCE | Figma/source alignment | Figma UbTJH6ykYNBQJS4Wvwz9jb NavigationBar node 50:80 inspected; shared AndroidNavigationBar only; app bar 56dp, OS inset separate, no top divider/gesture handle; official task_alt / description / settings VectorDrawable resources; selected pill 82dp x 36dp / radius 18dp / #2F2F2D; icon/text colors and 11sp label treatment match approved footer delta | TESTED |
+| D121-FOOTER-JVM | Android JVM regression | :app:testDebugUnitTest 112 / 112, failures/errors/skipped 0 / 0 / 0 | PASS |
+| D121-FOOTER-AVD | Shared footer runtime | TaskChute_API33 via scripts/android-qa.ps1 -Surface All: Today 27 + Notes 7 + Settings 2 + Security 1 + footer 1 = 38 / 38; Debug APK install, MainActivity resolution, crash buffer empty; instrumentation 201.93s, post-test smoke 0.90s, total 203.21s | PASS |
+| D121-FOOTER-SELECTED | Today / Notes / Settings selected states | AndroidNavigationBarInstrumentedTest: all three destinations expose the approved labels/content descriptions and selected state transitions without changing navigation callbacks | PASS |
+| D121-FOOTER-VISUAL | Authenticated screenshot comparison | Figma context/source geometry compared for the final footer delta; manual authenticated emulator screenshot was not run because launch had no authorized session and credentials were not retrieved | TESTED / SCREENSHOT_NOT_RUN |
+| D121-FOOTER-BOUNDARY | Scope | Android shared footer, official local resources, and focused instrumentation only; no Today/Notes/Settings content, Worker/API, schema/migration, dependency, realtime, production, or Release change; Galaxy S23 remains PENDING_SMOKE | PASS / NOT_REQUIRED / NOT_RUN / NO |
 # Test Matrix
 
 ## D-121 Today header Material Symbols corrective — 2026-09-19

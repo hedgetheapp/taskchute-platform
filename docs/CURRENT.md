@@ -1,3 +1,25 @@
+### D-121 shared Android bottom navigation footer — 2026-09-19
+
+Final approved footer deltaとして、共有AndroidNavigationBarだけを是正した。Figma file
+UbTJH6ykYNBQJS4Wvwz9jb のNavigationBar node 50:80を取得して、アプリ所有barを56dp、
+OS gesture/navigation insetを別領域、top dividerとfake gesture handleなしとした。destinationは
+今日 / ノート / 設定のまま、Google公式 Material Symbols Rounded Regularの
+task_alt / description / settings VectorDrawableを使用し、selected pillは82dp x 36dp、
+radius 18dp、#2F2F2D、selected text/iconは#F1F1EF、unselectedは#A3A3A0、
+label 11sp、selected Bold / others Mediumへ統一した。既存のnavigation callbackと画面内容、
+Domain/API semanticsは変更していない。
+
+Implementation a9e526e8e6e9edf6e21daef2e46e5922aa6043f5。Android JVM
+:app:testDebugUnitTest 112 / 112 PASS。Windows local TaskChute_API33 の
+scripts/android-qa.ps1 -Surface AllはToday 27 + Notes 7 + Settings 2 +
+Security 1 + shared footer 1 = 38 / 38 PASS、instrumentation 201.93s、post-test
+smoke 0.90s、total 203.21s、Debug APK install、MainActivity解決、package crash
+buffer emptyを確認した。Figma context/sourceのgeometry・色・icon/resource parityと、
+Today / Notes / Settings各selected stateのruntime semanticsは確認済み。authenticated
+画面のfresh screenshot比較は、エミュレータ起動がlogin shellで認証情報を扱わず停止したため
+NOT_RUNとし、physical-device verificationとは扱わない。Galaxy S23 fresh final-main
+footer smokeはPENDING_SMOKE、productionはNOT_RUN、ReleasedはNO。Worker/API、
+schema/migration、dependency、realtime、persistent nonprodは変更していない。
 # Current
 
 ### D-121 Today header Material Symbols corrective — 2026-09-19
