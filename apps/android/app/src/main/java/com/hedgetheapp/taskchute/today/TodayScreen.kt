@@ -1084,9 +1084,13 @@ private fun ReferencePicker(
 @Composable
 private fun LoadingToday() {
     Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        CircularProgressIndicator()
+        CircularProgressIndicator(
+            modifier = Modifier.size(32.dp),
+            color = Color.White,
+            strokeWidth = 3.dp,
+        )
         Spacer(Modifier.height(12.dp))
-        Text("予定を読み込んでいます…")
+        Text("読み込み中", color = TaskChuteColors.SecondaryText)
     }
 }
 

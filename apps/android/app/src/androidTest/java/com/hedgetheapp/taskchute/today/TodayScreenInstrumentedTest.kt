@@ -126,7 +126,7 @@ class TodayScreenInstrumentedTest {
         val repo = FakeTodayRepository().apply { holdLoad = true }
         launchScreen(repo)
 
-        composeRule.onNodeWithText("予定を読み込んでいます…").assertIsDisplayed()
+        composeRule.onNodeWithText("読み込み中").assertIsDisplayed()
         repo.releaseLoad.countDown()
         waitForStatus(TodayLoadStatus.CONTENT)
     }
