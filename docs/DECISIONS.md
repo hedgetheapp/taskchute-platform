@@ -1,5 +1,18 @@
 # Decisions
 
+## D-124 — Android Today Running Swipe / Selection Entry Refinement v0.1
+
+Status: **Approved**
+
+Canonical Decision: `docs/decisions/D-124_ANDROID_TODAY_RUNNING_SWIPE_SELECTION_ENTRY_REFINEMENT_V01.md`。
+
+D-124はcurrent established Dayのordinary Running rowを左swipeした際に
+`編集 / ノート / その他`を提示し、swipe-open中はCompleteを隠す。編集およびTask Actionsのmutation
+eligibility自体は既存canonical commandを広げず、Runningのrevealed areaはRunning surfaceを継続する。
+Selection Modeは選択可能Taskの右swipeで開始し、そのTaskを即時selectedとしたうえで全rowへcheckboxを
+表示する。Selection Mode中は選択可能Task Row全体tapで選択/解除する。D-112 bulk eligibility、
+D-121 lifecycle/selection separation、D-123のその他scopeは指定箇所以外維持する。
+
 ## D-123 — Android Today Swipe Actions / Collapsed Section Drop Refinement v0.1
 
 Status: **Approved**
