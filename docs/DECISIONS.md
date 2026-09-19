@@ -1,5 +1,17 @@
 # Decisions
 
+## D-122 — Android Nonprod APK Stable Signing / Updateability v0.1
+
+Status: **Approved**
+
+Canonical Decision: `docs/decisions/D-122_ANDROID_NONPROD_APK_STABLE_SIGNING_UPDATEABILITY_V01.md`。
+
+D-122は、非本番Android debug APKを安定した専用keystore/alias `taskchute-nonprod`で署名し、
+GitHub Actions Secretから一時的に復元して証明書一致を検証し、repository history由来の単調な
+`versionCode`で更新可能性を保つ。旧debug署名からの一回限りのuninstall/reinstall後は、同一署名鍵と
+増加するversionCodeのAPKをGalaxy S23 / `TaskChute_API33`へin-place updateできる。Production signing、
+Worker/API、schema/migration、dependency、domain/UI semantics、production operation、Releaseは変更しない。
+
 Statuses: Approved / Proposed / Superseded
 
 ## D-121 — Android Unified Dark UI and Task Interaction Refinement v0.1

@@ -1,7 +1,30 @@
+import java.io.File
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
 }
+
+val signingStoreFile = System.getenv("TASKCHUTE_ANDROID_SIGNING_STORE_FILE")
+val signingStorePassword = System.getenv("TASKCHUTE_ANDROID_SIGNING_STORE_PASSWORD")
+val signingKeyPassword = System.getenv("TASKCHUTE_ANDROID_SIGNING_KEY_PASSWORD")
+val signingValues = listOf(signingStoreFile, signingStorePassword, signingKeyPassword)
+val signingValuesPresent = signingValues.count { !it.isNullOrBlank() }
+if (signingValuesPresent != 0 && signingValuesPresent != signingValues.size) {
+    throw GradleException(
+        "Android nonprod signing requires TASKCHUTE_ANDROID_SIGNING_STORE_FILE, " +
+            "TASKCHUTE_ANDROID_SIGNING_STORE_PASSWORD, and TASKCHUTE_ANDROID_SIGNING_KEY_PASSWORD together."
+    )
+}
+val nonprodSigningConfigured = signingValuesPresent == signingValues.size
+if (nonprodSigningConfigured && !File(requireNotNull(signingStoreFile)).isFile) {
+    throw GradleException("Configured Android nonprod signing keystore does not exist.")
+}
+
+val configuredVersionCode = providers.gradleProperty("taskchute.versionCode").orNull?.let { raw ->
+    raw.toIntOrNull()?.takeIf { it > 0 && it <= 2_100_000_000 }
+        ?: throw GradleException("taskchute.versionCode must be a positive Android versionCode.")
+} ?: 1
 
 android {
     namespace = "com.hedgetheapp.taskchute"
@@ -11,12 +34,32 @@ android {
         applicationId = "com.hedgetheapp.taskchute"
         minSdk = 28
         targetSdk = 37
-        versionCode = 1
+        versionCode = configuredVersionCode
         versionName = "0.1"
 
         val configuredBaseUrl = providers.gradleProperty("taskchute.baseUrl").orNull ?: ""
         buildConfigField("String", "TASKCHUTE_BASE_URL", "\"${configuredBaseUrl.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    if (nonprodSigningConfigured) {
+        signingConfigs {
+            create("nonprod") {
+                storeFile = file(requireNotNull(signingStoreFile))
+                storePassword = requireNotNull(signingStorePassword)
+                keyAlias = "taskchute-nonprod"
+                keyPassword = requireNotNull(signingKeyPassword)
+                storeType = "JKS"
+            }
+        }
+    }
+
+    buildTypes {
+        getByName("debug") {
+            if (nonprodSigningConfigured) {
+                signingConfig = signingConfigs.getByName("nonprod")
+            }
+        }
     }
 
     buildFeatures {

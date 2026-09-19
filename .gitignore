@@ -10,3 +10,6 @@ dist/
 !.env.example
 coverage/
 apps/web/test-results/
+*.jks
+*.keystore
+*.p12

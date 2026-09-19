@@ -10,6 +10,18 @@
 | D121-FOOTER-BOUNDARY | Scope | Android shared footer, official local resources, and focused instrumentation only; no Today/Notes/Settings content, Worker/API, schema/migration, dependency, realtime, production, or Release change; Galaxy S23 remains PENDING_SMOKE | PASS / NOT_REQUIRED / NOT_RUN / NO |
 # Test Matrix
 
+## D-122 Android Nonprod APK Stable Signing / Updateability v0.1
+
+| ID | Verification target | Evidence | Status |
+|---|---|---|---|
+| D122-DECISION | Approved stable nonprod identity and update boundary | `docs/decisions/D-122_ANDROID_NONPROD_APK_STABLE_SIGNING_UPDATEABILITY_V01.md`; alias `taskchute-nonprod`; old-signature first-install exception and later same-key in-place update boundary | PASS / APPROVED |
+| D122-LOCAL-DEFAULT | Existing local signing compatibility | `:app:testDebugUnitTest` PASS; `:app:assembleDebug -Ptaskchute.baseUrl=https://taskchute-web-nonprod.taskfulness-sync.workers.dev` PASS without signing environment; no dependency change | PASS |
+| D122-LOCAL-SIGNED | Signing and certificate parity | Signed APK A/B plus instrumentation APK compile PASS; keystore and APK A/B SHA-256 `690C0BA4EC3C8C92C84883F54BA343FF37AC0B83CEDCAEB626777885E8B602B3` match; local versionCode `576 → 577` | PASS |
+| D122-AVD-UPDATE | `TaskChute_API33` updateability | Old package uninstalled once for signature transition; signed APK A installed, `run-as` marker written, signed APK B installed with `adb install -r`, package version `577`, marker preserved, MainActivity launched, crash buffer empty | PASS |
+| D122-CI | Exact current-main CI and artifact | Android job reconstructs the three GitHub Secrets under runner temp, passes history-derived versionCode, builds canonical nonprod signed debug/instrumentation APKs, verifies signer against keystore, uploads exact-SHA artifact, and always removes the temp keystore; GitHub Actions is volatile evidence authority | REQUIRED / GITHUB_AUTHORITY |
+| D122-DEVICE | Galaxy S23 updateability | First D-122-signed APK requires one-time uninstall/reinstall from legacy debug signer; subsequent same-key APK update remains to be confirmed by Product Owner | PENDING_DEVICE |
+| D122-BOUNDARY | Product / persistence boundary | Android Gradle/CI/.gitignore/docs only; no Worker/API, APP/AUTH schema/migration, dependency, UI/domain, realtime, persistent nonprod, production, Release, or credential retrieval | PASS / NOT_REQUIRED / NOT_RUN / NO |
+
 ## D-121 Today header Material Symbols corrective — 2026-09-19
 
 | ID | Verification target | Evidence | Status |

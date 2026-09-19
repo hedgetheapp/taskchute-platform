@@ -22,6 +22,25 @@ footer smokeはPENDING_SMOKE、productionはNOT_RUN、ReleasedはNO。Worker/API
 schema/migration、dependency、realtime、persistent nonprodは変更していない。
 # Current
 
+### D-122 Android Nonprod APK Stable Signing / Updateability v0.1 — 2026-09-19
+
+D-122をcanonical Decisionとして追加し、非本番Android debug APKの安定署名と更新性を実装した。Gradleは
+`taskchute.versionCode`と、3つ揃った場合だけ有効になる非本番署名環境変数を受け付け、環境変数がない
+通常ローカルdebug buildは従来どおりdebug signingを使用する。GitHub Actionsはrepository history由来の
+単調なversionCode、canonical nonprod URL、runner一時keystore、APK証明書一致検証、cleanup、debug APK
+artifact uploadを行う。Secret名は`ANDROID_NONPROD_KEYSTORE_BASE64`、`ANDROID_NONPROD_STORE_PASSWORD`、
+`ANDROID_NONPROD_KEY_PASSWORD`であり、値はrepository / logs / docsへ出していない。
+
+ローカル検証では通常debug JVM `:app:testDebugUnitTest`とcanonical nonprod URL `assembleDebug`、署名付き
+APK A/B、instrumentation APK compileがPASSした。署名SHA-256は`690C0BA4EC3C8C92C84883F54BA343FF37AC0B83CEDCAEB626777885E8B602B3`で、
+keystoreとAPK A/Bが一致した。`TaskChute_API33`で旧署名APKからの一回限りの再インストール後、versionCode
+`576 → 577`のA→B in-place update、`run-as` marker保持、MainActivity起動、package crash buffer emptyを
+確認した。旧署名からの初回更新にはuninstall/reinstallが必要で、D-122署名APK同士の後続更新が対象である。
+
+Exact-SHA GitHub Actions / artifact metadataはGitHubを正本とし、Galaxy S23 updateabilityはProduct Ownerの
+fresh D-122 APK確認まで`PENDING_DEVICE`、productionは`NOT_RUN`、Releasedは`NO`とする。Worker/API、
+APP/AUTH schema/migration、dependency、persistent nonprod、productionは変更していない。
+
 ### D-121 Today header Material Symbols corrective — 2026-09-19
 
 D-121のApproved Today header visual correctiveとして、Figma file UbTJH6ykYNBQJS4Wvwz9jb の
