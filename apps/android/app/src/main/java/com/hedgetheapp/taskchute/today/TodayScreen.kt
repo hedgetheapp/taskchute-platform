@@ -96,6 +96,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.app.DatePickerDialog as AndroidDatePickerDialog
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import kotlinx.coroutines.withTimeoutOrNull
 import java.time.LocalDate
@@ -830,29 +831,55 @@ private fun TodayTaskRow(
     var swipeOffset by remember(task.id) { mutableStateOf(0f) }
     val insertionPadding by animateDpAsState(if (dropTarget) 6.dp else 0.dp, label = "drop-target-padding")
     val hasActions = canEdit || canDuplicate || canOpenNote || canDayOperate
+    val canSwipeNote = canEdit && canOpenNote
+    val swipeActionCount = (if (canEdit) 1 else 0) + (if (canSwipeNote) 1 else 0) + (if (hasActions) 1 else 0)
+    val swipeThreshold = with(LocalDensity.current) { 48.dp.toPx() }
+    val swipeRevealWidth = with(LocalDensity.current) {
+        (swipeActionCount * 64 + ((swipeActionCount - 1).coerceAtLeast(0) * 4) + 4).dp.toPx()
+    }
     Box(Modifier.fillMaxWidth()) {
-        if (hasActions && swipeOffset <= -48f) {
+        if (hasActions && swipeOffset <= -swipeThreshold) {
             Row(
                 modifier = Modifier.align(Alignment.CenterEnd).zIndex(2f).padding(end = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 if (canEdit) {
-                    TextButton(
+                    SwipeTaskAction(
+                        icon = TaskChuteIcons.Edit,
+                        label = "編集",
+                        description = "タスクを編集",
+                        containerColor = TaskChuteColors.SurfaceElevated,
                         onClick = {
                             swipeOffset = 0f
                             onEdit()
                         },
-                        modifier = Modifier.semantics { contentDescription = "タスクを編集" },
-                    ) {
-                        ChromeIcon(TaskChuteIcons.Edit, "編集", Modifier.size(20.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("編集")
-                    }
+                    )
                 }
-                IconButton(
-                    onClick = { actionsSheetOpen = true },
-                    modifier = Modifier.size(48.dp).semantics { contentDescription = "タスクの操作" },
-                ) { ChromeIcon(TaskChuteIcons.More, "タスクの操作") }
+                if (canSwipeNote) {
+                    SwipeTaskAction(
+                        icon = TaskChuteIcons.Notes,
+                        label = "ノート",
+                        description = "タスクのノート",
+                        containerColor = TaskChuteColors.RunningControl,
+                        onClick = {
+                            swipeOffset = 0f
+                            onOpenNote()
+                        },
+                    )
+                }
+                if (hasActions) {
+                    SwipeTaskAction(
+                        icon = TaskChuteIcons.More,
+                        label = "その他",
+                        description = "タスクの操作",
+                        containerColor = TaskChuteColors.Control,
+                        onClick = {
+                            swipeOffset = 0f
+                            actionsSheetOpen = true
+                        },
+                    )
+                }
             }
         }
         Card(
@@ -917,10 +944,10 @@ private fun TodayTaskRow(
                 } else Modifier
                 val swipeActions = hasActions
                 val swipeModifier = Modifier.draggable(
-                    state = rememberDraggableState { delta -> swipeOffset = (swipeOffset + delta).coerceIn(-152f, 0f) },
+                    state = rememberDraggableState { delta -> swipeOffset = (swipeOffset + delta).coerceIn(-swipeRevealWidth, 0f) },
                     orientation = Orientation.Horizontal,
                     enabled = swipeActions,
-                    onDragStopped = { swipeOffset = if (swipeOffset <= -48f) -152f else 0f },
+                    onDragStopped = { swipeOffset = if (swipeOffset <= -swipeThreshold) -swipeRevealWidth else 0f },
                 )
                 Column(Modifier.weight(1f).then(dragModifier).then(swipeModifier), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(task.title, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold), color = TaskChuteColors.PrimaryText, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -965,7 +992,6 @@ private fun TodayTaskRow(
                 Text(task.title, style = MaterialTheme.typography.bodyMedium, color = TaskChuteColors.SecondaryText)
                 if (canEdit) TextButton(onClick = { actionsSheetOpen = false; onEdit() }, Modifier.fillMaxWidth()) { Text("編集") }
                 if (canDuplicate) TextButton(onClick = { actionsSheetOpen = false; onDuplicate() }, Modifier.fillMaxWidth()) { Text("複製") }
-                if (canOpenNote) TextButton(onClick = { actionsSheetOpen = false; onOpenNote() }, Modifier.fillMaxWidth()) { Text("ノート") }
                 if (canDayOperate) {
                     TextButton(onClick = { actionsSheetOpen = false; onMovePrevious() }, Modifier.fillMaxWidth()) { Text("前の日へ移動") }
                     TextButton(onClick = { actionsSheetOpen = false; onMoveNext() }, Modifier.fillMaxWidth()) { Text("次の日へ移動") }
@@ -977,6 +1003,35 @@ private fun TodayTaskRow(
     }
 }
 
+@Composable
+private fun SwipeTaskAction(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    description: String,
+    containerColor: Color,
+    onClick: () -> Unit,
+) {
+    Column(
+        modifier = Modifier.width(64.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(0.dp),
+    ) {
+        IconButton(
+            onClick = onClick,
+            modifier = Modifier.size(48.dp).clip(CircleShape).background(containerColor)
+                .semantics { contentDescription = description },
+        ) {
+            Icon(icon, contentDescription = null, tint = TaskChuteColors.PrimaryText, modifier = Modifier.size(20.dp))
+        }
+        Text(
+            label,
+            color = TaskChuteColors.PrimaryText,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+        )
+    }
+}
 @Composable
 private fun OperationUnresolvedPanel(onRetry: () -> Unit) {
     val shape = RoundedCornerShape(20.dp)

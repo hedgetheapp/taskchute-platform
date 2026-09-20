@@ -384,7 +384,7 @@ class TodayScreenInstrumentedTest {
         assertTrue("failure panel must remain above the Quick Add FAB", messageBounds.bottom < fabBounds.top)
     }
     @Test
-    fun eligibleOverflowOffersDuplicateAndTaskNote() {
+    fun eligibleSwipeOffersDirectTaskNoteAndOtherSheet() {
         val directRepository = FakeDirectManipulationRepository()
         var openedTaskNote = 0
         val task = dayWith().sections.single().entries.single().copy(taskId = "task-1")
@@ -398,15 +398,19 @@ class TodayScreenInstrumentedTest {
         waitForStatus(TodayLoadStatus.CONTENT)
 
         composeRule.onNodeWithText("Write report").performTouchInput { swipeLeft() }
+        assertTrue(composeRule.onAllNodesWithContentDescription("タスクを開始").fetchSemanticsNodes().isEmpty())
+        composeRule.onNodeWithContentDescription("タスクを編集").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("タスクのノート").assertIsDisplayed()
+        composeRule.onNodeWithText("その他").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("タスクのノート").performClick()
+        assertEquals(1, openedTaskNote)
+
+        composeRule.onNodeWithText("Write report").performTouchInput { swipeLeft() }
         composeRule.onNodeWithContentDescription("タスクの操作").performClick()
         composeRule.onNodeWithText("複製").assertIsDisplayed().performClick()
         composeRule.waitUntil(15_000) { directRepository.duplicateCalls.get() == 1 }
         assertEquals(1, directRepository.duplicateCalls.get())
-
-        composeRule.onNodeWithText("Write report").performTouchInput { swipeLeft() }
-        composeRule.onNodeWithContentDescription("タスクの操作").performClick()
-        composeRule.onAllNodesWithText("ノート").get(1).assertIsDisplayed().performClick()
-        assertEquals(1, openedTaskNote)
+        assertEquals(1, composeRule.onAllNodesWithText("ノート").fetchSemanticsNodes().size)
     }
 
     @Test
@@ -502,7 +506,7 @@ class TodayScreenInstrumentedTest {
     }
 
     @Test
-    fun taskNoteMenuRemainsAvailableForNonEditableVisibleRows() {
+    fun taskActionsSheetOmitsDuplicateTaskNoteForNonEditableVisibleRows() {
         val base = dayWith().sections.single().entries.single()
         val entries = listOf(
             base.copy(id = "planned", taskId = "task-planned"),
@@ -526,11 +530,11 @@ class TodayScreenInstrumentedTest {
         composeRule.waitForIdle()
         assertEquals(4, composeRule.onAllNodesWithContentDescription("タスクの操作").fetchSemanticsNodes().size)
         composeRule.onAllNodesWithContentDescription("タスクの操作").get(0).performClick()
-        assertTrue(composeRule.onAllNodesWithText("ノート").fetchSemanticsNodes().size >= 2)
+        assertEquals(1, composeRule.onAllNodesWithText("ノート").fetchSemanticsNodes().size)
     }
 
     @Test
-    fun taskNoteMenuIsAvailableOnNonCurrentDayWithoutPlanningActions() {
+    fun taskActionsSheetOmitsTaskNoteOnNonCurrentDayWithoutPlanningActions() {
         val task = dayWith().sections.single().entries.single().copy(taskId = "task-history")
         val initialDay = dayWith().copy(
             isCurrent = false,
@@ -542,7 +546,7 @@ class TodayScreenInstrumentedTest {
 
         composeRule.onNodeWithText("Write report").performTouchInput { swipeLeft() }
         composeRule.onNodeWithContentDescription("タスクの操作").performClick()
-        assertTrue(composeRule.onAllNodesWithText("ノート").fetchSemanticsNodes().size >= 2)
+        assertEquals(1, composeRule.onAllNodesWithText("ノート").fetchSemanticsNodes().size)
         assertTrue(composeRule.onAllNodesWithText("編集").fetchSemanticsNodes().isEmpty())
         assertTrue(composeRule.onAllNodesWithText("複製").fetchSemanticsNodes().isEmpty())
     }
