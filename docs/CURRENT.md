@@ -7,7 +7,7 @@ Selection Mode / bulk day-operation、Task Noteをfutureでも提供する。Exe
 FutureではStart / Complete / Interrupt / RunningTaskPanelを出さない。Pastはread-onlyを維持する。
 
 Figma Today — Flow & StatesのFuture / Planning、Past / Read-only、Behaviorへvisual referenceを反映済み。
-**Implementation: IMPLEMENTED / Tests: Android JVM 122/122 PASS / AVD: TaskChute_API33 Today targeted PASS / Galaxy S23: NOT_RUN / Production: NOT_RUN / Released: NO**。Implementation commits: b535d56 / afba31b、test fixes 288176a / 91d1802。Future planning uses the established-Day predicate planningEnabled and taskChuteDayId; execution controls remain current-Day only。Worker/API、schema、migration、dependency、persistent nonprodは不変。
+**Implementation: IMPLEMENTED / Tests: Android JVM 122/122 PASS / AVD: TaskChute_API33 Today targeted PASS / Galaxy S23: PASS / USER_CONFIRMED / Production: NOT_RUN / Released: NO**。Implementation commits: b535d56 / afba31b、test fixes 288176a / 91d1802。Galaxy S23ではstable-signed APKをuninstallせず更新し、Future Dayのopen / Quick Add / edit / Right → Left actions / Left → Right Selection / future execution controls absent / current execution / past read-onlyを問題なしと確認した。Worker/API、schema、migration、dependency、persistent nonprodは不変。
 shared Worker/API eligibility変更が必要な場合は実装batchでimpact analysisし、新schema / migration /
 new command familyが必要ならSTOPする。
 
@@ -18,7 +18,7 @@ Ambiguous direct manipulationはToday保持 + exact same-operation retry、deter
 Today保持 + lightweight feedback、401はauth handoffとする。Figma Today — Flow & Statesへ
 Load / Refresh Failed、Retry Loading、Operation Unresolved、Operation Failed、Behaviorを反映済み。
 
-**Implementation: NOT_STARTED / Tests: NOT_RUN / AVD: NOT_RUN / Galaxy S23: NOT_RUN / Production: NOT_RUN / Released: NO**。
+**Implementation: IMPLEMENTED / Tests: focused Android JVM + AVD + CI PASS / Galaxy S23: NOT_RUN / Production: NOT_RUN / Released: NO**。Implementation 8239d8a / b790823 / d77f11cでload / refresh Error、retry Loading、ambiguous exact retry、deterministic failure feedback、auth separationを実装・確認済み。
 Worker/API、schema/migration、dependency、realtime protocolはDecision-record時点で変更していない。
 
 
@@ -33,7 +33,7 @@ Selection Modeはselection-eligible Taskの右swipeで開始し、entry Taskを�
 Running / Completed等の既存non-selectable rowはdisabledのまま。Figma Flow & Statesへvisual referenceを
 反映済み。
 
-**Implementation: NOT_STARTED / Tests: NOT_RUN / Galaxy S23: NOT_RUN / Production: NOT_RUN / Released: NO**。
+**Implementation: IMPLEMENTED / Tests: focused Android JVM + AVD + CI PASS / Galaxy S23: NOT_RUN / Production: NOT_RUN / Released: NO**。Implementation 83c0fff / 74d6af8 / 509ccbcでRight → Left actions、Left → Right Selection、initiating row selection、zero-selection auto-exit、neutral-first arbitrationを確認済み。
 Worker/API、schema/migration、dependency、realtime protocolは変更しない。
 
 ### D-123 Android Today swipe / collapsed Section drop refinement approved — 2026-09-19
@@ -46,7 +46,7 @@ Section-area / Section-only `MoveEntry` semanticsでplanned tailへ配置し、s
 維持する。
 
 Figma `UbTJH6ykYNBQJS4Wvwz9jb` のcurrent Today full-screen / Flow & Statesへvisual referenceを反映済み。
-**Implementation: NOT_STARTED / Tests: NOT_RUN / Galaxy S23: NOT_RUN / Production: NOT_RUN / Released: NO**。
+**Implementation: IMPLEMENTED / Tests: focused Android JVM + AVD + CI PASS / Galaxy S23: NOT_RUN / Production: NOT_RUN / Released: NO**。Implementation 7cbaee6 / 509ccbcでRight → Left action menu、icon-only right-side actions、outside dismiss、collapsed non-empty Section dropを確認済み。
 Worker/API、schema/migration、dependency、realtime protocolは変更しない。
 
 ### D-121 Today Section / Task Figma parity corrective — 2026-09-19
@@ -99,7 +99,7 @@ Exact-SHA GitHub Actions / artifact metadataはGitHubを正本とする。Produc
 debug signer版を一度アンインストールし、最初のD-122 stable-signed APK（versionCode 577）を新規
 インストールしてsigned-in runtime / footer smokeを「問題なし」と確認した。したがって署名transition後の
 initial device install/runtimeはPASS / USER_CONFIRMEDとする。同一D-122 signing identityを使う次APKの
-in-place updateはまだ実機未実施のためUPDATE_PENDINGのまま維持する。productionは`NOT_RUN`、
+in-place updateはGalaxy S23でアンインストールなしの上書き更新としてPASS / USER_CONFIRMED。ログイン状態と既存app stateを維持し、その後D-126 Future-Day runtime smokeも問題なしで完了した。productionは`NOT_RUN`、
 Releasedは`NO`とする。Worker/API、APP/AUTH schema/migration、dependency、persistent nonprod、
 productionは変更していない。
 
