@@ -56,6 +56,30 @@ class TodayDirectManipulationTest {
     }
 
     @Test
+    fun futurePlanningDispatchesDuplicateMoveAndDeleteCommands() {
+        val repository = FakeRepository()
+        val controller = TodayDirectManipulationController(
+            repository = repository,
+            onRefresh = {},
+            onUnauthorized = {},
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+        )
+        val future = futureDay()
+        val source = task(LifecycleState.PLANNED)
+
+        controller.duplicate(future, source)
+        assertTrue(await { repository.requests.size == 1 })
+        controller.moveToDay(future, setOf(source.id), "2026-09-16")
+        assertTrue(await { repository.requests.size == 2 })
+        controller.delete(future, setOf(source.id))
+
+        assertTrue(await { repository.requests.size == 3 })
+        assertTrue(repository.requests[0] is DirectManipulationRequest.Duplicate)
+        assertTrue(repository.requests[1] is DirectManipulationRequest.MoveToDay)
+        assertTrue(repository.requests[2] is DirectManipulationRequest.Delete)
+        controller.close()
+    }
+    @Test
     fun httpRepositoryUsesCanonicalMoveAndDuplicateEndpoints() {
         val requests = mutableListOf<Triple<String, String, String?>>()
         val repository = TodayDirectManipulationHttpRepository(

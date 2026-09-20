@@ -571,6 +571,55 @@ class TodayScreenInstrumentedTest {
     }
 
     @Test
+    fun futurePlannedRowExposesPlanningActionsWithoutExecution() {
+        val directRepository = FakeDirectManipulationRepository()
+        var openedTaskNote = 0
+        val task = dayWith().sections.single().entries.single().copy(taskId = "future-task-1")
+        val futureDay = dayWith().copy(
+            logicalDate = "2026-09-15",
+            isCurrent = false,
+            taskChuteDayId = "future-day-1",
+            sections = listOf(dayWith().sections.single().copy(entries = listOf(task))),
+        )
+        launchPlanningScreen(
+            FakePlanningRepository(),
+            initialDay = futureDay,
+            directRepository = directRepository,
+            onOpenTaskNote = { openedTaskNote++ },
+        )
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        assertTrue(composeRule.onAllNodesWithContentDescription("タスクを開始").fetchSemanticsNodes().isEmpty())
+        composeRule.onNodeWithContentDescription("タスクを追加").assertIsDisplayed()
+        composeRule.onNodeWithText("Write report").performTouchInput { swipeLeft() }
+        composeRule.onNodeWithContentDescription("タスクを編集").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("タスクのノート").performClick()
+        assertEquals(1, openedTaskNote)
+
+        composeRule.onNodeWithText("Write report").performTouchInput { swipeLeft() }
+        composeRule.onNodeWithContentDescription("タスクの操作").performClick()
+        composeRule.onNodeWithText("複製").assertIsDisplayed().performClick()
+        composeRule.waitUntil(10_000) { directRepository.duplicateCalls.get() == 1 }
+        assertEquals(1, directRepository.duplicateCalls.get())
+    }
+
+    @Test
+    fun futurePlannedRowEntersSelectionModeByLeftToRightSwipe() {
+        val directRepository = FakeDirectManipulationRepository()
+        val futureDay = dayWith().copy(
+            logicalDate = "2026-09-15",
+            isCurrent = false,
+            taskChuteDayId = "future-day-1",
+        )
+        launchPlanningScreen(FakePlanningRepository(), initialDay = futureDay, directRepository = directRepository)
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        composeRule.onNodeWithText("Write report").performTouchInput { swipeRight() }
+        composeRule.onNodeWithText("1件選択").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("タスクを選択: Write report").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithContentDescription("タスクを開始").fetchSemanticsNodes().isEmpty())
+    }
+    @Test
     fun bottomRightAddRemainsSeparateFromRunningPanel() {
         val planningRepository = FakePlanningRepository()
         launchPlanningScreen(planningRepository, initialDay = dayWith(LifecycleState.RUNNING))
