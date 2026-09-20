@@ -1,4 +1,4 @@
-### D-126 Android Future-Day Planning Parity approved — 2026-09-19
+### D-126 Android Future-Day Planning Parity implemented — 2026-09-20
 
 D-126をApprovedとした。Android Future DayはD-119どおり明示open時点でestablish / eligible Routine
 reconcileし、そのestablished DayをTodayと同じplanning surfaceとして扱う。ordinary planned rowでは
@@ -7,7 +7,7 @@ Selection Mode / bulk day-operation、Task Noteをfutureでも提供する。Exe
 FutureではStart / Complete / Interrupt / RunningTaskPanelを出さない。Pastはread-onlyを維持する。
 
 Figma Today — Flow & StatesのFuture / Planning、Past / Read-only、Behaviorへvisual referenceを反映済み。
-**Implementation: NOT_STARTED / Tests: NOT_RUN / AVD: NOT_RUN / Galaxy S23: NOT_RUN / Production: NOT_RUN / Released: NO**。
+**Implementation: IMPLEMENTED / Tests: Android JVM 122/122 PASS / AVD: TaskChute_API33 Today targeted PASS / Galaxy S23: NOT_RUN / Production: NOT_RUN / Released: NO**。Implementation commits: b535d56 / afba31b、test fixes 288176a / 91d1802。Future planning uses the established-Day predicate planningEnabled and taskChuteDayId; execution controls remain current-Day only。Worker/API、schema、migration、dependency、persistent nonprodは不変。
 shared Worker/API eligibility変更が必要な場合は実装batchでimpact analysisし、新schema / migration /
 new command familyが必要ならSTOPする。
 

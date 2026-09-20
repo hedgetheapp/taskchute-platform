@@ -1,13 +1,13 @@
-## D-126 Android Future-Day Planning Parity — 2026-09-19
+## D-126 Android Future-Day Planning Parity — 2026-09-20
 
 | ID | Verification target | Evidence | Status |
 |---|---|---|---|
 | D126-DECISION | Product / interaction contract | Approved D-126: explicitly opened future Day follows D-119 establishment, then uses Today-equivalent planning surface; execution remains current-Day only; past remains read-only | SPECIFIED |
-| D126-IMPLEMENTATION | Android / shared command implementation | No D-126 implementation commit exists at Decision-record time | NOT_RUN |
-| D126-FUTURE-PLANNING | Quick Add / edit / placement / duplicate / move / delete / selection / bulk | Required after implementation on established future Day, with current-Day-equivalent row eligibility | NOT_RUN |
-| D126-EXECUTION-BOUNDARY | Start / Complete / Interrupt / RunningTaskPanel | Must remain unavailable on future Day | NOT_RUN |
-| D126-SHARED-REGRESSION | Worker/API + Web impact | Required if shared command eligibility / route is widened for future planning | NOT_RUN |
-| D126-DEVICE | AVD / Galaxy S23 final-main smoke | Required after implementation; prior D-121 evidence is not inherited | NOT_RUN |
+| D126-IMPLEMENTATION | Android / shared command implementation | Implemented in b535d56, afba31b, 288176a, and 91d1802; Android-only with no Worker/API/schema/migration/dependency change. Exact CI run 35495346866 PASS; APK taskchute-android-debug-91d1802b5b1f76a000a44414c8b432b53973cbe1, artifact 10600423584, expires 2026-09-27. | PASS |
+| D126-FUTURE-PLANNING | Quick Add / edit / placement / duplicate / move / delete / selection / bulk | Future planning uses planningEnabled && taskChuteDayId != null; Android JVM 122/122 PASS and Today AVD 40/40 PASS cover future create/edit, future route/logical date, D&D, duplicate, move, delete, selection, and action access. | PASS |
+| D126-EXECUTION-BOUNDARY | Start / Complete / Interrupt / RunningTaskPanel | Future UI hides execution controls and RunningTaskPanel; current execution remains current-Day only. | PASS |
+| D126-SHARED-REGRESSION | Worker/API + Web impact | Current/past Android regression and D-123/D-124/D-125 Today coverage remain green; classifier run 35495346866 ran Android and skipped Web/Worker as expected. | PASS |
+| D126-DEVICE | AVD / Galaxy S23 final-main smoke | TaskChute_API33 Today 40/40 PASS; instrumentation 593.36s, post-test install/smoke 1.79s, total 595.39s; MainActivity resolved and crash buffer empty. Galaxy S23 remains NOT_RUN. | PASS / NOT_RUN |
 | D126-PERSISTENCE | schema / migration / new command family | Not approved by D-126; STOP if implementation requires one | NOT_REQUIRED |
 | D126-PRODUCTION | production / Release | Outside current implementation boundary | NOT_RUN / NO |
 
