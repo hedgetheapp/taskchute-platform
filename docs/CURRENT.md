@@ -1,3 +1,10 @@
+### D-121 Android Today Task Row Figma visual parity corrective — 2026-09-20
+
+D-121の既存visual directionに沿って、Today Task RowをFigmaのTask Row componentへ整合した。84dp row、48dpの開始見込み／終了見込み projection slot、Task title / estimate-status / Project・Mode context、lifecycle別のsurface・action/status、Selection Modeの18dp custom checkboxを実装した。planning / execution、swipe、selection、D&D、Future / Past boundaryは変更していない。
+
+左projection slotは全lifecycleで`plannedStartMinute`とestimateから算出し、actual execution timestampで上書きしない。Completed metadataの実績時間は既存projectionの`execution_summary.completed_duration_seconds`をAndroidへ伝搬して表示する。Figma component set `181:77`、representative nodes `228:469`（Planned）、`228:524`（Running）、`228:471`（Completed）を確認した。
+
+**Implementation: IMPLEMENTED / Tests: Android JVM 123/123 PASS / AVD: TaskChute_API33 Today 43/43 PASS / Galaxy S23: NOT_RUN / Production: NOT_RUN / Released: NO**。Implementation `b4f3925e020a1f358bc213f50d92910388201a52`。AVDは`instrumentation 630.67s`、post-test install/smoke `1.36s`、total `632.29s`、MainActivity解決、crash buffer empty。GitHub Actions exact-SHA run `35499625329`はClassifier PASS、Android JVM/APK PASS、Web/Worker SKIPPED、artifact `taskchute-android-debug-b4f3925e020a1f358bc213f50d92910388201a52`（ID `10601118951`、expiry `2026-09-27T08:30:30Z`）。認証済みemulator screenshotのFigma比較は`NOT_RUN`、source-level Figma parityはTESTED。Worker/API、schema、migration、dependency、realtime protocol、persistent nonprod、productionは不変。
 ### D-126 Android Future-Day Planning Parity implemented — 2026-09-20
 
 D-126をApprovedとした。Android Future DayはD-119どおり明示open時点でestablish / eligible Routine

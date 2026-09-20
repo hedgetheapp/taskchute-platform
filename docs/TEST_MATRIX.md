@@ -1,3 +1,14 @@
+## D-121 Android Today Task Row Figma visual parity corrective — 2026-09-20
+
+| ID | Verification target | Evidence | Status |
+|---|---|---|---|
+| D121-TASKROW-SOURCE | Figma/source alignment | Figma component set `181:77` and representative nodes `228:469` Planned, `228:524` Running, `228:471` Completed inspected; 84dp row, 48dp projection slot, lifecycle surfaces/actions, Project / Mode context, and 18dp selection checkbox mapped. | TESTED |
+| D121-TASKROW-PROJECTION | Projection / execution semantic separation | Android uses `plannedStartMinute + estimate` for the left projection slot for Planned / Running / Completed; actual execution timestamps remain metadata-only. `execution_summary.completed_duration_seconds` is parsed and used for completed duration display. | PASS |
+| D121-TASKROW-JVM | Android JVM regression | `:app:testDebugUnitTest` `123 / 123`, failures/errors/skipped `0 / 0 / 0`; parser coverage includes canonical completed duration and missing-field compatibility. | PASS |
+| D121-TASKROW-AVD | Today runtime gate | Windows `TaskChute_API33` via `scripts/android-qa.ps1 -Surface Today`: `43 / 43` PASS; instrumentation `630.67s`, post-test install/smoke `1.36s`, total `632.29s`; Debug APK install, MainActivity resolution, crash buffer empty. | PASS |
+| D121-TASKROW-CI | Exact implementation SHA | `b4f3925e020a1f358bc213f50d92910388201a52`; run `35499625329`; Classifier and Android JVM/APK PASS, Web/Worker SKIPPED; artifact `taskchute-android-debug-b4f3925e020a1f358bc213f50d92910388201a52`, ID `10601118951`, expiry `2026-09-27T08:30:30Z`. | PASS |
+| D121-TASKROW-VISUAL | Authenticated emulator screenshot comparison | Figma source context was inspected; authenticated final emulator screenshot capture/comparison was not run, so no visual screenshot PASS is claimed. | TESTED / SCREENSHOT_NOT_RUN |
+| D121-TASKROW-BOUNDARY | Product / persistence boundary | Today Android row/model/parser/resources/tests only; swipe, selection, D&D, Future/Past, planning/execution semantics preserved; no Worker/API, schema/migration, dependency, realtime, persistent nonprod, production, or Release change; Galaxy S23 remains `NOT_RUN`. | PASS / NOT_REQUIRED / NOT_RUN / NO |
 ## D-126 Android Future-Day Planning Parity — 2026-09-20
 
 | ID | Verification target | Evidence | Status |
