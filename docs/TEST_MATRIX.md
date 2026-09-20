@@ -16,11 +16,11 @@
 | ID | Verification target | Evidence | Status |
 |---|---|---|---|
 | D125-DECISION | Product / interaction contract | Approved D-125: load/refresh failure = full-screen Error; Ambiguous operation = Today + exact same-operation retry; deterministic failure = Today + lightweight feedback; 401 stays auth handoff | SPECIFIED |
-| D125-IMPLEMENTATION | Android implementation | No D-125 implementation commit exists at Decision-record time | NOT_RUN |
-| D125-LOAD-ERROR | Initial / Refresh failure and retry Loading | Required after implementation | NOT_RUN |
-| D125-AMBIGUOUS | exact request identity retry | Required after implementation | NOT_RUN |
-| D125-DETERMINISTIC | lightweight operation failure feedback | Required after implementation | NOT_RUN |
-| D125-AUTH | 401 auth-required separation | Required regression after implementation | NOT_RUN |
+| D125-IMPLEMENTATION | Android implementation | Implemented in Today error/retry surfaces and direct-manipulation recovery (`8239d8a`, `b790823`, `d77f11c`); current source/tests and exact-SHA Android CI run `35490463666` | PASS |
+| D125-LOAD-ERROR | Initial / Refresh failure and retry Loading | `TodayScreenInstrumentedTest.loadingStateIsRenderedUntilRepositoryReturns`, `retryableErrorUsesFullScreenCopyAndReturnsThroughLoading`; existing AVD evidence plus exact-SHA Android CI `35490463666` | PASS |
+| D125-AMBIGUOUS | exact request identity retry | `TodayScreenInstrumentedTest.unresolvedOperationUsesBottomPanelAndPreservesTodayForExactRetry` and `TodayDirectManipulationTest.ambiguousPlacementRetainsExactRequestForRetry`; exact request is retained for retry | PASS |
+| D125-DETERMINISTIC | lightweight operation failure feedback | `TodayScreenInstrumentedTest.deterministicFailureUsesTwoLineFeedbackWithoutRetryAndKeepsToday` and `TodayDirectManipulationTest.deterministicFailureUsesApprovedMessageWithoutUnresolvedRequest` | PASS |
+| D125-AUTH | 401 auth-required separation | `TodayScreenInstrumentedTest.authRequiredStateIsRendered`; auth-required remains separate from retryable load failure | PASS |
 | D125-DEVICE | AVD / Galaxy S23 final-main smoke | Required after implementation | NOT_RUN |
 | D125-BOUNDARY | Worker/API/schema/migration/dependency/production/Release | Decision adds no persistence/API scope; production remains out of scope | NOT_REQUIRED / NOT_RUN / NO |
 
@@ -29,9 +29,9 @@
 
 | ID | Verification target | Evidence | Status |
 |---|---|---|---|
-| D124-DECISION | Product / interaction contract | Approved D-124: Running swipe = edit / note / more with Complete hidden and RunningSurface continuation; Selection Mode entry = selection-eligible right swipe with entry row selected; selectable row whole-body tap toggles selection | SPECIFIED |
-| D124-IMPLEMENTATION | Android implementation | No D-124 implementation commit exists at Decision-record time | NOT_RUN |
-| D124-AUTOMATED | JVM / build / AVD regression | Required with D-123 interaction implementation under Android Large Batch workflow | NOT_RUN |
+| D124-DECISION | Product / interaction contract | Approved D-124: Right → Left (conventional left swipe) on Running = edit / note / more with Complete hidden; Left → Right (conventional right swipe) = Selection Mode with initiating row selected; whole-body toggle and zero-selection auto-exit remain canonical | SPECIFIED |
+| D124-IMPLEMENTATION | Android implementation | Implemented across `83c0fff`, `74d6af8`, and `509ccbc`; current Today source preserves physical direction, single-open menu, outside dismiss, neutral-first opposite swipe, and icon-only right-side actions | PASS |
+| D124-AUTOMATED | JVM / build / AVD regression | TaskChute_API33 focused PASS: `eligibleSwipeOffersDirectTaskNoteAndOtherSheet` 1/1, `rightToLeftOpensActionMenuAndSeparateLeftToRightEntersSelection` 1/1, `eligibleRowsEnterSelectionModeByLeftToRightSwipeAndAutoExitWhenLastSelectionCleared` 1/1; exact-SHA Android CI `35490463666` PASS | PASS |
 | D124-DEVICE | Galaxy S23 final-main smoke | Required after implementation; prior D-121 evidence is not inherited for these new gestures | NOT_RUN |
 | D124-BOUNDARY | Worker/API/schema/migration/dependency/production/Release | Decision adds no such change; production remains out of scope | NOT_REQUIRED / NOT_RUN / NO |
 
@@ -39,9 +39,9 @@
 
 | ID | Verification target | Evidence | Status |
 |---|---|---|---|
-| D123-DECISION | Product / interaction contract | Approved D-123: planned eligible swipe = edit / note / more; valid-taskId planning-ineligible row = Note-only; Task Actions excludes duplicate Note entry; non-empty collapsed Section drop = existing Section-tail MoveEntry semantics, no auto-expand | SPECIFIED |
-| D123-IMPLEMENTATION | Android implementation | No D-123 implementation commit exists at Decision-record time | NOT_RUN |
-| D123-AUTOMATED | JVM / build / AVD regression | Required after implementation under Android Large Batch workflow | NOT_RUN |
+| D123-DECISION | Product / interaction contract | Approved D-123: Right → Left (conventional left swipe) planned action menu = edit / note / more; valid-taskId planning-ineligible row = Note-only; non-empty collapsed configured Section header uses Section-only MoveEntry semantics without auto-expand | SPECIFIED |
+| D123-IMPLEMENTATION | Android implementation | `7cbaee6` registers non-empty collapsed configured Section headers as Section-only targets while retaining expanded row priority and no-placement MoveEntry; `509ccbc` records the right-side/icon-only action corrective | PASS |
+| D123-AUTOMATED | JVM / build / AVD regression | `TodayDirectManipulationTest` 14/14 PASS; TaskChute_API33 collapsed non-empty Section header test 1/1 PASS and direction regressions 3/3 PASS; `assembleDebug`, `compileDebugAndroidTestKotlin`, `git diff --check`, MainActivity smoke and crash buffer PASS; exact-SHA Android CI `35490463666` PASS | PASS |
 | D123-DEVICE | Galaxy S23 final-main smoke | Required after implementation; do not inherit prior D-121 device evidence | NOT_RUN |
 | D123-BOUNDARY | Worker/API/schema/migration/dependency/production/Release | Decision adds no such change; production operation remains out of scope | NOT_REQUIRED / NOT_RUN / NO |
 
