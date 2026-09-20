@@ -76,6 +76,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.PointerId
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -237,7 +238,9 @@ fun TodayScreen(
                     },
                     selectedEntryIds = selectedEntryIds,
                     onToggleSelection = { id ->
-                        selectedEntryIds = if (id in selectedEntryIds) selectedEntryIds - id else selectedEntryIds + id
+                        val next = if (id in selectedEntryIds) selectedEntryIds - id else selectedEntryIds + id
+                        selectedEntryIds = next
+                        selectionModeActive = next.isNotEmpty()
                     },
                     onOpenDatePicker = { datePickerEntryIds = it },
                     onOpenHeaderDatePicker = { headerDatePickerVisible = true },
@@ -365,6 +368,8 @@ private fun TodayContent(
     val emptySectionDropIds = remember { mutableStateMapOf<String, String?>() }
     var collapsedSectionIds by remember(day.logicalDate) { mutableStateOf<Set<String>>(emptySet()) }
     var dragState by remember { mutableStateOf<AndroidDragState?>(null) }
+    var openSwipeEntryId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(day.logicalDate, state.status) { openSwipeEntryId = null }
     LaunchedEffect(day, dragState != null) {
         day.sections.filterNot { it.entries.isEmpty() }.forEach {
             emptySectionDropBounds.remove(it.id)
@@ -460,7 +465,19 @@ private fun TodayContent(
                 }
             }
         },
-        modifier = modifier,
+        modifier = modifier.pointerInput(openSwipeEntryId) {
+            awaitEachGesture {
+                val down = awaitFirstDown(requireUnconsumed = false)
+                var moved = false
+                while (true) {
+                    val event = awaitPointerEvent(PointerEventPass.Final)
+                    val change = event.changes.firstOrNull { it.id == down.id } ?: continue
+                    if (kotlin.math.abs(change.position.x - down.position.x) > 4f || kotlin.math.abs(change.position.y - down.position.y) > 4f) moved = true
+                    if (change.changedToUpIgnoreConsumed() || !change.pressed) break
+                }
+                if (!moved && openSwipeEntryId != null) openSwipeEntryId = null
+            }
+        },
     ) {
         Column(Modifier.fillMaxSize()) {
         DateNavigator(
@@ -528,6 +545,9 @@ private fun TodayContent(
                         onOpenNote = { onOpenTaskNote(task) },
                         selectionModeActive = selectionModeActive,
                         onEnterSelection = { onEnterSelection(task.id) },
+                        swipeMenuOpen = openSwipeEntryId == task.id,
+                        onSwipeMenuOpened = { openSwipeEntryId = task.id },
+                        onSwipeMenuClosed = { if (openSwipeEntryId == task.id) openSwipeEntryId = null },
                         selected = task.id in selectedEntryIds,
                         canSelect = directManipulationController?.canSelect(day, task) == true,
                         onToggleSelection = { onToggleSelection(task.id) },
@@ -604,6 +624,9 @@ private fun TodayContent(
                         onOpenNote = { onOpenTaskNote(task) },
                         selectionModeActive = selectionModeActive,
                         onEnterSelection = { onEnterSelection(task.id) },
+                        swipeMenuOpen = openSwipeEntryId == task.id,
+                        onSwipeMenuOpened = { openSwipeEntryId = task.id },
+                        onSwipeMenuClosed = { if (openSwipeEntryId == task.id) openSwipeEntryId = null },
                         selected = task.id in selectedEntryIds,
                         canSelect = directManipulationController?.canSelect(day, task) == true,
                         onToggleSelection = { onToggleSelection(task.id) },
@@ -827,6 +850,9 @@ private fun TodayTaskRow(
     onOpenNote: () -> Unit,
     selectionModeActive: Boolean,
     onEnterSelection: () -> Unit,
+    swipeMenuOpen: Boolean,
+    onSwipeMenuOpened: () -> Unit,
+    onSwipeMenuClosed: () -> Unit,
     selected: Boolean,
     canSelect: Boolean,
     onToggleSelection: () -> Unit,
@@ -848,6 +874,11 @@ private fun TodayTaskRow(
 ) {
     var actionsSheetOpen by remember(task.id) { mutableStateOf(false) }
     var swipeOffset by remember(task.id) { mutableStateOf(0f) }
+    var swipeGestureStarted by remember(task.id) { mutableStateOf(false) }
+    var swipeGestureStartOffset by remember(task.id) { mutableStateOf(0f) }
+    LaunchedEffect(swipeMenuOpen, selectionModeActive) {
+        if (!swipeMenuOpen || selectionModeActive) swipeOffset = 0f
+    }
     val insertionPadding by animateDpAsState(if (dropTarget) 6.dp else 0.dp, label = "drop-target-padding")
     val hasActions = canEdit || canDuplicate || canOpenNote || canDayOperate
     val canSwipeNote = canOpenNote && (canEdit || canNoteOnly)
@@ -864,9 +895,9 @@ private fun TodayTaskRow(
         LifecycleState.PLANNED -> TaskChuteColors.Surface
     }
     Box(Modifier.fillMaxWidth().background(rowSurface)) {
-        if (!selectionModeActive && hasActions && swipeOffset <= -swipeThreshold) {
+        if (!selectionModeActive && hasActions && swipeOffset >= swipeThreshold) {
             Row(
-                modifier = Modifier.align(Alignment.CenterEnd).zIndex(2f).padding(end = 4.dp),
+                modifier = Modifier.align(Alignment.CenterStart).zIndex(2f).padding(start = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
@@ -878,6 +909,7 @@ private fun TodayTaskRow(
                         containerColor = TaskChuteColors.SurfaceElevated,
                         onClick = {
                             swipeOffset = 0f
+                            onSwipeMenuClosed()
                             onEdit()
                         },
                     )
@@ -890,6 +922,7 @@ private fun TodayTaskRow(
                         containerColor = TaskChuteColors.RunningControl,
                         onClick = {
                             swipeOffset = 0f
+                            onSwipeMenuClosed()
                             onOpenNote()
                         },
                     )
@@ -902,6 +935,7 @@ private fun TodayTaskRow(
                         containerColor = TaskChuteColors.Control,
                         onClick = {
                             swipeOffset = 0f
+                            onSwipeMenuClosed()
                             actionsSheetOpen = true
                         },
                     )
@@ -979,22 +1013,40 @@ private fun TodayTaskRow(
                 val swipeActions = !selectionModeActive && (hasActions || canEnterSelection)
                 val swipeModifier = Modifier.draggable(
                     state = rememberDraggableState { delta ->
+                        if (!swipeGestureStarted) {
+                            swipeGestureStarted = true
+                            swipeGestureStartOffset = swipeOffset
+                        }
                         swipeOffset = (swipeOffset + delta).coerceIn(
-                            -swipeRevealWidth,
-                            if (canEnterSelection) selectionSwipeWidth else 0f,
+                            if (canEnterSelection) -selectionSwipeWidth else 0f,
+                            swipeRevealWidth,
                         )
                     },
                     orientation = Orientation.Horizontal,
                     enabled = swipeActions,
                     onDragStopped = {
+                        val movedLeftFromOpen = swipeMenuOpen &&
+                            swipeOffset <= swipeGestureStartOffset - swipeThreshold
                         when {
-                            canEnterSelection && swipeOffset >= swipeThreshold -> {
+                            movedLeftFromOpen -> {
                                 swipeOffset = 0f
+                                onSwipeMenuClosed()
+                            }
+                            canEnterSelection && swipeOffset <= -swipeThreshold -> {
+                                swipeOffset = 0f
+                                onSwipeMenuClosed()
                                 onEnterSelection()
                             }
-                            swipeOffset <= -swipeThreshold -> swipeOffset = -swipeRevealWidth
-                            else -> swipeOffset = 0f
+                            swipeOffset >= swipeThreshold -> {
+                                swipeOffset = swipeRevealWidth
+                                onSwipeMenuOpened()
+                            }
+                            else -> {
+                                swipeOffset = 0f
+                                if (swipeMenuOpen) onSwipeMenuClosed()
+                            }
                         }
+                        swipeGestureStarted = false
                     },
                 )
                 Column(Modifier.weight(1f).then(dragModifier).then(swipeModifier), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -1009,7 +1061,7 @@ private fun TodayTaskRow(
                     if (metadata.isNotBlank()) Text(metadata, style = MaterialTheme.typography.bodySmall, color = TaskChuteColors.SecondaryText, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 when (task.lifecycleState) {
-                    LifecycleState.PLANNED -> if (swipeOffset > -48f) {
+                    LifecycleState.PLANNED -> if (swipeOffset < swipeThreshold) {
                         IconButton(
                             onClick = { controller.start(task) },
                             enabled = enabled,
@@ -1017,7 +1069,7 @@ private fun TodayTaskRow(
                                 .semantics { contentDescription = "タスクを開始" },
                         ) { Icon(TaskChuteIcons.Play, contentDescription = null, tint = TaskChuteColors.PrimaryText) }
                     } else Spacer(Modifier.size(48.dp))
-                    LifecycleState.RUNNING -> if (swipeOffset > -48f) {
+                    LifecycleState.RUNNING -> if (swipeOffset < swipeThreshold) {
                         IconButton(
                             onClick = { controller.complete(task) },
                             enabled = enabled,

@@ -11,7 +11,7 @@ Task / Entry / Execution persistence authority.
 
 For a current established Day ordinary Running row:
 
-- left swipe exposes direct `編集`, direct `ノート` when a valid `taskId` exists, and
+- right swipe exposes direct `編集`, direct `ノート` when a valid `taskId` exists, and
   `その他`;
 - the existing trailing Complete control is hidden while the swipe surface is open;
 - `編集` may open the existing edit surface, but field-level mutation remains limited by existing
@@ -32,7 +32,7 @@ another canonical eligibility rule explicitly permits more.
 
 Selection Mode no longer begins by tapping the leading/time area.
 
-- From normal Today mode, right-swiping a selection-eligible Task row enters Selection Mode.
+- From normal Today mode, left-swiping a selection-eligible Task row enters Selection Mode.
 - The row used to enter Selection Mode is selected immediately.
 - On entry, all Task rows expose their Selection Mode checkbox visual. Rows that are not eligible
   for D-112 bulk selection remain disabled/non-selectable; the checkbox visual does not grant a
@@ -40,11 +40,14 @@ Selection Mode no longer begins by tapping the leading/time area.
 - While Selection Mode is active, the entire selectable Task row is the selection toggle target.
   Tapping anywhere on that row, including the checkbox area, toggles selected/unselected state.
   Users are not required to hit the checkbox itself.
-- Existing Selection action bar commands, operation eligibility, lifecycle separation, and
-  `解除` behavior remain unchanged.
-- Right-swipe selection entry must coexist with left-swipe Task actions and long-press drag.
+- Existing Selection action bar commands, operation eligibility, and lifecycle separation remain
+  unchanged; explicit `解除` remains available, with zero selected rows now exiting Selection Mode.
+- Left-swipe selection entry must coexist with right-swipe Task actions and long-press drag.
   Threshold, velocity, gesture arbitration, and animation constants are reversible Android
   implementation details and must not change the canonical eligibility above.
+- When the last selected row is toggled off, Selection Mode exits immediately and the normal Today affordances return.
+- If the right-swipe action menu is open, a left swipe on its owner closes to neutral only; a later separate left swipe from neutral may enter Selection Mode.
+- Tapping another row, a Section header, or Today content outside the open action menu dismisses that menu without swallowing the target tap.
 
 ## Relationship to existing Decisions
 
@@ -75,13 +78,13 @@ Implementation is not part of this Decision-record update. When implemented, tre
 with the still-unimplemented D-123 interaction scope as an Android Large Batch. Required evidence
 must cover at least:
 
-- planned and Running left-swipe action composition and execution-action hiding;
+- planned and Running right-swipe action composition and execution-action hiding;
 - Running revealed-background continuity;
 - Completed Note-only regression;
-- right-swipe Selection Mode entry with the swiped row initially selected;
+- left-swipe Selection Mode entry with the swiped row initially selected;
 - all-row checkbox visibility with ineligible rows remaining disabled;
 - whole-row tap selection toggle in Selection Mode;
-- no regression to left swipe, long-press D&D, bulk action eligibility, lifecycle actions, or
+- no regression to right-swipe actions, left-swipe selection, long-press D&D, bulk action eligibility, lifecycle actions, or
   collapsed Section drop.
 
 Android automated tests, AVD/CUA, Galaxy S23, production, and Release remain `NOT_RUN` until the
