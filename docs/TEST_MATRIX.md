@@ -3525,3 +3525,20 @@ development-speed multiplier.
 | D121-SCOPE | Boundary | font/line-height intentionally unchanged; no Product semantics, Worker/API, schema, migration, dependency, production, tag, or Release change | PASS / NOT_REQUIRED |
 
 The earlier D-121 Galaxy S23 evidence for implementation `b4f3925...` remains historical and is not overwritten by this corrective. This corrective is integrated and CI-tested, but is not Verified until the new APK receives physical-device evidence. Production remains `NOT_RUN` and Released remains `NO`.
+
+## D-127 Android Today device-findings corrective — 2026-09-20
+
+| ID | Area | Requirement / evidence | Status |
+|---|---|---|---|
+| D127-DEVICE-FINDINGS | Galaxy S23 historical evidence | D-127 implementation artifact `taskchute-android-debug-2c6c272b5b0897a9d00ad6d8ff47d44b42d31098`で、Quick Add focus reclaim、optimistic edit/lifecycle flicker、drag provisional-order oscillation、Completed actual metadata opening parenthesis欠落の5件をProduct Ownerが報告 | FAIL / USER_REPORTED |
+| D127-CORR-FOCUS | Quick Add focus | CREATE open時だけTask名へfocusし、開始予定・見積のdraft更新ではfocusを奪わない | SOURCE / JVM / BUILD PASS; RUNTIME NOT_VERIFIED |
+| D127-CORR-OVERLAY | Optimistic edit/lifecycle | 成功後もoptimistic presentationを保持し、対応するsilent canonical reconcile結果でのみ置換。Realtime invalidationはactive generation中に表示へ割り込ませない | SOURCE / JVM / BUILD PASS; RUNTIME NOT_VERIFIED |
+| D127-CORR-DRAG | Drag provisional order | drag開始時geometry snapshotでhit-testを固定し、provisional animationとのfeedback loopを防止 | SOURCE / JVM / BUILD PASS; RUNTIME NOT_VERIFIED |
+| D127-CORR-METADATA | Completed actual metadata | actual rangeの末尾へ連結していた開き括弧を独立要素化し、timer前後3dpとduration suffixを維持 | SOURCE / BUILD PASS; RUNTIME NOT_VERIFIED |
+| D127-CORR-JVM | Local Android verification | `:app:testDebugUnitTest`（130 tests）、`:app:compileDebugAndroidTestKotlin`、`:app:assembleDebug` | PASS |
+| D127-CORR-AVD | Focused authenticated runtime | TaskChute_API33 `connectedDebugAndroidTest` started but produced no result; post-stop Activity resolved and crash buffer was empty | NOT_RUN / HUNG |
+| D127-CORR-DEVICE | Corrective APK physical device | Product Owner Galaxy S23 verification for the corrective artifact | NOT_RUN |
+| D127-CORR-SCREENSHOT | Authenticated screenshot comparison | no screenshot comparison performed for the corrective artifact | SCREENSHOT_NOT_RUN |
+| D127-CORR-SCOPE | Boundary | no Worker/API/schema/migration/dependency/production/tag/Release change; D-127 Server-authoritative and D-125 semantics retained | PASS / NOT_REQUIRED |
+
+The old artifact's `FAIL / USER_REPORTED` is historical evidence and is not overwritten by this corrective. The corrective remains Integrated/Tested locally but not Verified until the new artifact receives physical-device evidence. Production remains `NOT_RUN` and Released remains `NO`.

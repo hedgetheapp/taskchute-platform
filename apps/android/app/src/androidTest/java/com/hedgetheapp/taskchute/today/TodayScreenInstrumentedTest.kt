@@ -14,6 +14,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
@@ -308,6 +309,7 @@ class TodayScreenInstrumentedTest {
         composeRule.onNodeWithContentDescription("開始見込み時刻: 08:00、終了見込み時刻: 08:20").assertIsDisplayed()
         composeRule.onNodeWithText("20分 /").assertIsDisplayed()
         composeRule.onNodeWithText("20分)").assertIsDisplayed()
+        composeRule.onNodeWithText("(", substring = false).assertIsDisplayed()
         composeRule.onNodeWithContentDescription("完了済み").assertIsDisplayed()
     }
     @Test
@@ -590,6 +592,14 @@ class TodayScreenInstrumentedTest {
         composeRule.onNodeWithContentDescription("タスクを追加").performClick()
         val editableFields = composeRule.onAllNodes(hasSetTextAction())
         editableFields.get(0).assertIsFocused().performTextInput("Plan from Android")
+        val startField = editableFields.get(1)
+        startField.performTextClearance()
+        startField.performTextInput("900")
+        startField.assertIsFocused()
+        val estimateField = editableFields.get(2)
+        estimateField.performTextClearance()
+        estimateField.performTextInput("10")
+        estimateField.assertIsFocused()
         assertTrue(editableFields.fetchSemanticsNodes().size >= 3)
         composeRule.onNodeWithText("Task名").assertIsDisplayed()
         composeRule.onNodeWithText("Project").assertIsDisplayed()

@@ -22,6 +22,9 @@ class TodayController(
     private var lastRequestedLogicalDate: String? = null
     private var loadInFlight = false
     private var deferredRealtimeReload = false
+    private var optimisticGeneration = 0L
+    private var optimisticActive = false
+    private var optimisticReconcileGeneration: Long? = null
     private val pendingEntryIds = mutableSetOf<String>()
 
     fun loadCurrent() = load(null)
@@ -29,17 +32,28 @@ class TodayController(
     fun refresh() = load(lastRequestedLogicalDate)
 
     /** Reconcile server state without blanking Today or showing the pull-to-refresh state. */
-    fun reconcileSilently() = load(lastRequestedLogicalDate, visible = false)
+    fun reconcileSilently() {
+        if (optimisticActive) optimisticReconcileGeneration = optimisticGeneration
+        load(lastRequestedLogicalDate, visible = false)
+    }
 
     fun applyOptimisticPlanning(editor: TaskEditorState, input: NormalizedTaskInput) {
-        state.day?.let { applyOptimisticDay(applyOptimisticPlanning(it, editor, input)) }
+        state.day?.let {
+            beginOptimisticMutation()
+            applyOptimisticDay(applyOptimisticPlanning(it, editor, input))
+        }
     }
 
     fun applyOptimisticDirectManipulation(request: DirectManipulationRequest) {
-        state.day?.let { applyOptimisticDay(applyOptimisticDirectManipulation(it, request)) }
+        state.day?.let {
+            beginOptimisticMutation()
+            applyOptimisticDay(applyOptimisticDirectManipulation(it, request))
+        }
     }
 
     fun clearOptimisticPresentation() {
+        optimisticActive = false
+        optimisticReconcileGeneration = null
         if (state.optimisticDay != null) state = state.copy(optimisticDay = null)
     }
 
@@ -63,6 +77,7 @@ class TodayController(
 
     fun start(task: TodayTask) {
         if (state.day?.isCurrent != true || task.lifecycleState != LifecycleState.PLANNED || !pendingEntryIds.add(task.id)) return
+        beginOptimisticMutation()
         state.day?.let { applyOptimisticDay(applyOptimisticLifecycle(it, task.id, LifecycleState.RUNNING)) }
         publishPending()
         scope.launch {
@@ -74,6 +89,7 @@ class TodayController(
 
     fun complete(task: TodayTask) {
         if (state.day?.isCurrent != true || task.lifecycleState != LifecycleState.RUNNING || !pendingEntryIds.add(task.id)) return
+        beginOptimisticMutation()
         state.day?.let { applyOptimisticDay(applyOptimisticLifecycle(it, task.id, LifecycleState.COMPLETED)) }
         publishPending()
         scope.launch {
@@ -92,11 +108,17 @@ class TodayController(
     }
 
     private fun load(logicalDate: String?, visible: Boolean = true) {
-        if (loadInFlight) return
+        if (loadInFlight) {
+            if (!visible) deferredRealtimeReload = true
+            return
+        }
         loadInFlight = true
         lastRequestedLogicalDate = logicalDate
+        val startedOptimisticGeneration = optimisticGeneration
         if (visible) {
             val hasExisting = state.day != null && state.status != TodayLoadStatus.ERROR
+            optimisticActive = false
+            optimisticReconcileGeneration = null
             state = state.copy(
                 status = if (hasExisting) TodayLoadStatus.REFRESHING else TodayLoadStatus.LOADING,
                 errorMessage = null,
@@ -108,8 +130,8 @@ class TodayController(
             loadInFlight = false
             when (result) {
                 is TodayResult.Success -> {
-                    publishDay(result.day)
-                    flushDeferredRealtimeReload()
+                    publishDay(result.day, startedOptimisticGeneration)
+                    flushDeferredRealtimeReload(visible = false)
                 }
                 TodayResult.Unauthorized -> {
                     deferredRealtimeReload = false
@@ -131,7 +153,6 @@ class TodayController(
         when (result) {
             TodayMutationResult.Success -> {
                 deferredRealtimeReload = false
-                clearOptimisticPresentation()
                 reconcileSilently()
             }
             TodayMutationResult.Unauthorized -> {
@@ -151,26 +172,31 @@ class TodayController(
     }
 
     private fun requestRealtimeReload() {
-        if (loadInFlight || pendingEntryIds.isNotEmpty()) {
+        if (loadInFlight || pendingEntryIds.isNotEmpty() || optimisticActive) {
             deferredRealtimeReload = true
             return
         }
         load(state.day?.logicalDate)
     }
 
-    private fun flushDeferredRealtimeReload() {
+    private fun flushDeferredRealtimeReload(visible: Boolean = true) {
         if (!deferredRealtimeReload || loadInFlight || pendingEntryIds.isNotEmpty()) return
         deferredRealtimeReload = false
-        load(state.day?.logicalDate)
+        load(state.day?.logicalDate, visible = visible)
     }
 
-    private fun publishDay(day: TodayDay) {
+    private fun publishDay(day: TodayDay, startedOptimisticGeneration: Long) {
+        val replaceOptimistic = optimisticActive && optimisticReconcileGeneration == startedOptimisticGeneration
+        if (replaceOptimistic) {
+            optimisticActive = false
+            optimisticReconcileGeneration = null
+        }
         state = state.copy(
             status = if (day.hasEntries) TodayLoadStatus.CONTENT else TodayLoadStatus.EMPTY,
             day = day,
             errorMessage = null,
             pendingEntryIds = pendingEntryIds.toSet(),
-            optimisticDay = null,
+            optimisticDay = if (replaceOptimistic || !optimisticActive) null else state.optimisticDay,
         )
     }
 
@@ -185,5 +211,11 @@ class TodayController(
             status = if (day.hasEntries) TodayLoadStatus.CONTENT else TodayLoadStatus.EMPTY,
             errorMessage = null,
         )
+    }
+
+    private fun beginOptimisticMutation() {
+        optimisticGeneration += 1
+        optimisticActive = true
+        optimisticReconcileGeneration = null
     }
 }

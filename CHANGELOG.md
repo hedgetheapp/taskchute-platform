@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### D-127 Android Today device-findings corrective
+
+- Galaxy S23で報告されたD-127の5件（Quick Add focus reclaim、optimistic edit/lifecycle flicker、drag provisional-order oscillation、Completed actual metadataの開き括弧欠落）をsource-level correctiveとして修正。
+- CREATEの初期focusをopen session単位へ限定し、成功後のoptimistic overlayを対応するsilent canonical reconcileまで保持。Realtime invalidationはoptimistic mutation中に表示へ割り込ませない。
+- drag hit-testはdrag開始時のgeometry snapshotを使い、provisional animation自身がtarget判定を反転させない。Completed actual metadataは開き括弧を独立した非clip要素として表示。
+- 旧artifact `taskchute-android-debug-2c6c272b5b0897a9d00ad6d8ff47d44b42d31098` はGalaxy S23 `FAIL / USER_REPORTED`。今回のcorrective artifactは実機 `NOT_RUN`、screenshot comparison / production / Releaseは未実施。Worker/API、schema、migration、dependency、D-127 semanticsは変更なし。
+
 ### D-127 Android Today local-feel / motion corrective
 
 - Quick AddのTask名・開始予定・見積を48dp compact fieldへ整合し、CREATE時のTask名focusとCancelのsingle-line表示を追加。

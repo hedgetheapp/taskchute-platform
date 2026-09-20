@@ -1,5 +1,6 @@
 package com.hedgetheapp.taskchute.today
 
+import androidx.compose.ui.geometry.Rect
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -70,6 +71,34 @@ class TodayOptimisticTest {
         assertEquals(LifecycleState.COMPLETED, completed.allEntries.first { it.id == "entry-a" }.lifecycleState)
         assertNull(completed.runningTask)
         assertTrue(completed.allEntries.first { it.id == "entry-a" }.lastEndedAt != null)
+    }
+
+    @Test
+    fun dragTargetUsesStableSnapshotThresholdsDuringProvisionalAnimation() {
+        val bounds = mapOf(
+            "entry-a" to Rect(0f, 0f, 100f, 50f),
+            "entry-b" to Rect(0f, 50f, 100f, 100f),
+        )
+        val first = resolveAndroidDropTarget(
+            positionY = 90f,
+            sourceEntryId = "entry-a",
+            entryBounds = bounds,
+            entrySectionIds = mapOf("entry-a" to "morning", "entry-b" to "morning"),
+            emptySectionBounds = emptyMap(),
+            emptySectionIds = emptyMap(),
+        )
+        val afterAnimation = resolveAndroidDropTarget(
+            positionY = 90f,
+            sourceEntryId = "entry-a",
+            entryBounds = bounds,
+            entrySectionIds = mapOf("entry-a" to "morning", "entry-b" to "morning"),
+            emptySectionBounds = emptyMap(),
+            emptySectionIds = emptyMap(),
+        )
+
+        assertEquals(entryDropKey("entry-b"), first?.key)
+        assertEquals(PlacementEdge.AFTER, first?.edge)
+        assertEquals(first, afterAnimation)
     }
 
     private fun day() = TodayDay(

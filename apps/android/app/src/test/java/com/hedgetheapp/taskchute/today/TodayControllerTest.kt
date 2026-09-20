@@ -125,6 +125,30 @@ class TodayControllerTest {
     }
 
     @Test
+    fun successfulMutationKeepsOptimisticPresentationUntilSilentReconcile() {
+        val task = task(LifecycleState.PLANNED)
+        val repository = FakeRepository().apply {
+            loadResult = TodayResult.Success(dayWith(LifecycleState.PLANNED))
+            loadResultAfterFirst = TodayResult.Success(dayWith(LifecycleState.RUNNING))
+        }
+        val controller = controller(repository)
+        controller.loadCurrent()
+        assertTrue(repository.loadStarted.await(2, TimeUnit.SECONDS))
+        assertTrue(awaitState(controller) { it.day != null })
+
+        repository.holdLoad = true
+        controller.start(task)
+
+        assertTrue(repository.reloadStarted.await(2, TimeUnit.SECONDS))
+        assertEquals(null, controller.state.day?.runningTask)
+        assertEquals(task.id, controller.state.presentedDay?.runningTask?.id)
+
+        repository.releaseLoad.countDown()
+        assertTrue(awaitState(controller) { it.optimisticDay == null && it.day?.runningTask?.id == task.id })
+        controller.close()
+    }
+
+    @Test
     fun completeRefreshesDayAndRunningPanelSourceIsAvailable() {
         val running = task(LifecycleState.RUNNING)
         val repository = FakeRepository().apply {

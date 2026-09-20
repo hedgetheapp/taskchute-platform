@@ -1,10 +1,18 @@
-### D-127 Android Today local-feel / motion corrective — 2026-09-20
+### D-127 Android Today device-findings corrective — 2026-09-20
+
+The D-127 implementation artifact `2c6c272b5b0897a9d00ad6d8ff47d44b42d31098` received a Galaxy S23 `FAIL / USER_REPORTED` result for five device findings: Quick Add focus was reclaimed while typing Start/Estimate, successful optimistic edit and lifecycle mutations briefly exposed stale canonical rows, drag provisional order oscillated, and the Completed actual-time opening parenthesis was not visibly retained. This is corrective evidence for that artifact, not a new Product Decision and not a change to D-127's Server-authoritative semantics.
+
+The corrective keeps the optimistic presentation overlay memory-only. CREATE focus is keyed to the editor open session rather than the mutable draft; successful mutations retain the overlay until a matching silent canonical load publishes; realtime invalidation is deferred during an active optimistic generation; drag hit testing uses a drag-start geometry snapshot; and the Completed metadata suffix renders the opening parenthesis as its own non-clipped element. Worker/API, schema, migration, dependency, operation identity, CAS, retry, D-125 ambiguity, Past read-only, Future planning, and current-Day execution remain unchanged.
+
+**Implementation: IMPLEMENTED / Local: Android JVM PASS (130 tests), instrumentation compile PASS, debug assemble PASS / Focused authenticated runtime: NOT_RUN / HUNG (TaskChute_API33 `connectedDebugAndroidTest` started but produced no result; post-stop MainActivity resolved and crash buffer was empty) / Corrective Galaxy S23: NOT_RUN / Screenshot comparison: NOT_RUN / Production: NOT_RUN / Released: NO**。旧artifactのGalaxy S23 failureは履歴として保持し、今回のcorrective artifactが実機確認済みとは扱わない。
+
+### D-127 Android Today local-feel / motion implementation — 2026-09-20
 
 D-127を実装した。Quick AddのTask名・開始予定・見積はMaterialの最小高さに依存しない48dp compact fieldへ置き換え、CREATE時だけTask名へ初期focusする。Cancelは82x48dpのsingle-line表示を維持する。Task NoteはToday-backed Bottom SheetのMarkdownラベルを除去し、BasicTextFieldの本文領域へ整合した。
 
 Task add / edit / reorder / placement / start / completeはmemory-only `optimisticDay` / presented projectionで即時表示し、成功後はvisible `REFRESHING`を発生させないsilent canonical reconcileを行う。Task dragはEntryの安定keyとCompose item placement animationで仮順序を表示する。Server authority、operation identity、CAS、retry、D-125 ambiguity、Past read-only、Future planning、current-Day execution、Worker/API、schema、migration、dependencyは変更していない。Decision recordはD-127。
 
-**Implementation: IMPLEMENTED / Local: Android JVM PASS (128 tests), instrumentation compile PASS, debug assemble PASS / Authenticated runtime: NOT_RUN (AVD instrumentation hung before result; MainActivity resolved and crash buffer empty) / Galaxy S23: NOT_RUN / Screenshot comparison: NOT_RUN / Production: NOT_RUN / Released: NO**。このD-127の実機Verifiedは、前版D-121のGalaxy S23 evidenceを継承しない。
+**Implementation: IMPLEMENTED / Local: Android JVM PASS (128 tests), instrumentation compile PASS, debug assemble PASS / Authenticated runtime: NOT_RUN (AVD instrumentation hung before result; MainActivity resolved and crash buffer empty) / Galaxy S23: FAIL / USER_REPORTED / Screenshot comparison: NOT_RUN / Production: NOT_RUN / Released: NO**。この実機failureは、今回のcorrectiveで扱うdevice findingsの根拠であり、前版D-121のGalaxy S23 evidenceを継承しない。
 
 ### D-121 Android Today Figma parity bundle corrective — 2026-09-20
 

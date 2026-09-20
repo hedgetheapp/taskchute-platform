@@ -425,10 +425,10 @@ private fun TodayContent(
         val target = resolveAndroidDropTarget(
             positionY = positionY,
             sourceEntryId = current.entryId,
-            entryBounds = dropBounds,
-            entrySectionIds = dropBoundsSectionId,
-            emptySectionBounds = emptySectionDropBounds,
-            emptySectionIds = emptySectionDropIds,
+            entryBounds = current.entryBoundsSnapshot,
+            entrySectionIds = current.entrySectionIdsSnapshot,
+            emptySectionBounds = current.emptySectionBoundsSnapshot,
+            emptySectionIds = current.emptySectionIdsSnapshot,
         )
         dragState = current.copy(
             positionY = positionY,
@@ -612,6 +612,10 @@ private fun TodayContent(
                                     entryId = task.id,
                                     sourceSectionId = section.id,
                                     positionY = bounds?.top?.plus(pointerPosition.y) ?: pointerPosition.y,
+                                    entryBoundsSnapshot = dropBounds.toMap(),
+                                    entrySectionIdsSnapshot = dropBoundsSectionId.toMap(),
+                                    emptySectionBoundsSnapshot = emptySectionDropBounds.toMap(),
+                                    emptySectionIdsSnapshot = emptySectionDropIds.toMap(),
                                     target = null,
                                 )
                             }
@@ -694,6 +698,10 @@ private fun TodayContent(
                                     entryId = task.id,
                                     sourceSectionId = null,
                                     positionY = bounds?.top?.plus(pointerPosition.y) ?: pointerPosition.y,
+                                    entryBoundsSnapshot = dropBounds.toMap(),
+                                    entrySectionIdsSnapshot = dropBoundsSectionId.toMap(),
+                                    emptySectionBoundsSnapshot = emptySectionDropBounds.toMap(),
+                                    emptySectionIdsSnapshot = emptySectionDropIds.toMap(),
                                     target = null,
                                 )
                             }
@@ -724,6 +732,10 @@ private data class AndroidDragState(
     val entryId: String,
     val sourceSectionId: String?,
     val positionY: Float,
+    val entryBoundsSnapshot: Map<String, Rect> = emptyMap(),
+    val entrySectionIdsSnapshot: Map<String, String?> = emptyMap(),
+    val emptySectionBoundsSnapshot: Map<String, Rect> = emptyMap(),
+    val emptySectionIdsSnapshot: Map<String, String?> = emptyMap(),
     val deltaY: Float = 0f,
     val target: AndroidDropTarget?,
 )
@@ -1330,13 +1342,21 @@ private fun TaskMetadata(task: TodayTask, modifier: Modifier = Modifier) {
                 val start = task.firstStartedAt?.let(::formatInstant) ?: "--:--"
                 val end = task.lastEndedAt?.let(::formatInstant) ?: "--:--"
                 Text(
-                    start + " → " + end + " (",
-                    modifier = Modifier.widthIn(min = 85.dp).weight(1f, fill = false),
+                    start + " → " + end,
+                    modifier = Modifier.weight(1f),
                     color = TaskChuteColors.SecondaryText,
                     fontSize = 12.sp,
                     lineHeight = 14.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Clip,
+                )
+                Text(
+                    "(",
+                    modifier = Modifier.width(6.dp),
+                    color = TaskChuteColors.SecondaryText,
+                    fontSize = 12.sp,
+                    lineHeight = 14.sp,
+                    maxLines = 1,
                 )
                 Spacer(Modifier.width(3.dp))
                 TaskMetadataIcon(R.drawable.ic_material_timer_24)
@@ -1499,8 +1519,8 @@ private fun TaskEditorForm(controller: TaskPlanningController, state: TaskPlanni
     val selectedProject = references?.projects?.firstOrNull { it.id == draft.projectId }
     val selectedMode = references?.modes?.firstOrNull { it.id == draft.modeId }
     val selectedSection = editor.day.sections.firstOrNull { it.id == draft.sectionId }
-    val titleFocusRequester = remember(editor) { FocusRequester() }
-    LaunchedEffect(editor) {
+    val titleFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(editor.mode, editor.originalTask?.id, editor.day.logicalDate) {
         if (editor.mode == TaskEditorMode.CREATE) {
             withFrameNanos { }
             titleFocusRequester.requestFocus()
