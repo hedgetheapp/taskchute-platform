@@ -1,3 +1,11 @@
+### D-127 Android Today local-feel / motion corrective — 2026-09-20
+
+D-127を実装した。Quick AddのTask名・開始予定・見積はMaterialの最小高さに依存しない48dp compact fieldへ置き換え、CREATE時だけTask名へ初期focusする。Cancelは82x48dpのsingle-line表示を維持する。Task NoteはToday-backed Bottom SheetのMarkdownラベルを除去し、BasicTextFieldの本文領域へ整合した。
+
+Task add / edit / reorder / placement / start / completeはmemory-only `optimisticDay` / presented projectionで即時表示し、成功後はvisible `REFRESHING`を発生させないsilent canonical reconcileを行う。Task dragはEntryの安定keyとCompose item placement animationで仮順序を表示する。Server authority、operation identity、CAS、retry、D-125 ambiguity、Past read-only、Future planning、current-Day execution、Worker/API、schema、migration、dependencyは変更していない。Decision recordはD-127。
+
+**Implementation: IMPLEMENTED / Local: Android JVM PASS (128 tests), instrumentation compile PASS, debug assemble PASS / Authenticated runtime: NOT_RUN (AVD instrumentation hung before result; MainActivity resolved and crash buffer empty) / Galaxy S23: NOT_RUN / Screenshot comparison: NOT_RUN / Production: NOT_RUN / Released: NO**。このD-127の実機Verifiedは、前版D-121のGalaxy S23 evidenceを継承しない。
+
 ### D-121 Android Today Figma parity bundle corrective — 2026-09-20
 
 D-121の既存visual directionに沿って、Quick Add、Selection footer、Today Task Note、Swipe actions、Task Actions sheet、Running panel、Drag feedback、Task Row metadataをFigma referenceへ近づけるbundle correctiveを実装した。Quick Addはcurrent Dayとplanning-enabled future Dayだけに表示し、Pastはread-onlyのまま維持する。current Dayの初期Sectionは、Today projectionが返すcanonical `establishment_timezone` と `establishment_boundary_minutes` を使って現在時刻のlogical intervalから解決し、canonical timezoneがないprojectionでは端末timezoneを正本にせず安全に最初のSectionへfallbackする。Project / Modeは候補ロード中disabled、開始予定は`900` / `0900` / `9:00` / `09:00`を受け付けて`HH:mm`へ正規化する。

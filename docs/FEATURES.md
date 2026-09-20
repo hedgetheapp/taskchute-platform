@@ -6,6 +6,10 @@ Verificationの正本は`docs/TEST_MATRIX.md`であり、`Implemented`等のFeat
 
 Status values: Planned / In design / Implemented / Verified / Withdrawn (historical compatibility)
 
+| Feature | Status | Notes |
+|---|---|---|
+| D-127 Android Today optimistic local feel / motion | Implemented / NOT_VERIFIED | Quick Add compact 48dp fields and CREATE focus, single-line Cancel, clean Today Task Note editor, provisional drag order with stable Entry keys and placement animation, and memory-only optimistic add/edit/reorder/placement/start/complete presentation with silent canonical reconcile. Android JVM/source/build evidence is local only; authenticated runtime, Galaxy S23, screenshot comparison, production, and Release remain NOT_RUN/NO. No Worker/API, schema, migration, dependency, or persistent offline authority change. |
+
 D-120 corrective2 evidence: implementation `f387612adf99dfc467ffedf4350b39a7bd77e735` adds generation-aware
 focus restoration so later explicit focus navigation wins over delayed placement restore. Persistent nonprod
 browser verification accepted Shift+ArrowDown 6回・Shift+ArrowUp 6回 for a two-Task selection while writes were

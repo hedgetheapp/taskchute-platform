@@ -4,6 +4,18 @@
 
 exact DB schema、SQL、UI component library、Android local DB、offline conflict algorithm等は、別途DecisionされるまでOpenとする。
 
+## D-127 Android Today presentation behavior
+
+For accepted Task add, edit, reorder, placement, start, and complete intents, Android Today may render an immediate memory-only projection for the selected logical Day. This projection is not a new Domain or persistence authority. The existing server Command, operation identity, placement revision, CAS, and response remain canonical.
+
+On successful mutation, the projection remains visible while the client silently reloads the selected Day. Silent reload does not blank Today or set the visible `REFRESHING` state. On deterministic failure, authorization failure, conflict, or ambiguous direct manipulation, the projection is cleared or reconciled according to D-125; unresolved direct manipulation retains the existing exact-operation retry.
+
+During Task drag, the presentation may derive a provisional order from canonical Day, source Entry, and placement target. Stable Entry identities are used for row keys and placement animation. The provisional order is not sent or persisted until drop dispatches the existing command. No-op and invalid targets do not create a write.
+
+Quick Add uses 48dp compact fields for Task name, planned start, and estimate. CREATE opens with Task name focused; EDIT does not auto-focus by this decision. Today Task Note is a Bottom Sheet backed by the existing NotesController and Task Primary/CAS/autosave semantics; the body has no visible `Markdown` label.
+
+Runtime and physical-device verification for this corrective are recorded separately in `docs/TEST_MATRIX.md`; source implementation status must not be treated as Verified.
+
 ## D-121 Android Today Figma parity bundle corrective
 
 Figmaはvisual reference、Product / Domain behaviorは既存D-109〜D-126とServer projectionをauthorityとする。Quick Addはplanning可能なcurrent Dayとestablished future Dayで表示し、Past Dayでは表示しない。current Dayのcreate初期SectionはToday projectionの`establishment_timezone`と`establishment_boundary_minutes`を使い、現在時刻を含むlogical SectionとそのSection開始時刻を初期値とする。canonical timezoneを持たない古いprojectionでは端末timezoneを正本にせず、既存の安全なfirst-Section fallbackを使う。開始予定入力は`HH:mm`表示で、`900`、`0900`、`9:00`、`09:00`を同じminuteへ正規化し、既存のextended logical-hour範囲を維持する。

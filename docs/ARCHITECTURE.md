@@ -1,5 +1,25 @@
 # Architecture
 
+## D-127 Android Today presentation boundary
+
+`TodayController` keeps the canonical `TodayDay` separately from an ephemeral `optimisticDay`. `TodayUiState.presentedDay` selects the overlay when present, and the screen renders that projection without persisting it. Planning, direct-manipulation, and lifecycle controllers continue to dispatch the existing repositories and commands; they do not become Domain authorities.
+
+Mutation flow:
+
+```text
+user intent -> optimistic presentation overlay -> existing command
+             -> success -> silent canonical load -> publish TodayDay
+             -> failure/ambiguity -> clear or retain existing D-125 recovery state
+```
+
+The overlay is scoped by logical date and Entry identity. Publishing a canonical Day or changing the selected Day clears it. A silent reconcile keeps the current content and does not enter visible `REFRESHING`; explicit pull-to-refresh and existing error/loading behavior remain unchanged. Task drag derives provisional Entry order in the screen and uses stable LazyColumn keys plus item-placement animation; the existing placement command remains the only canonical write.
+
+Quick Add client-generated Task/Entry IDs are passed through the existing Android repository request object so the provisional row and the canonical request share identity. The server request schema is unchanged. Task Note presentation is refactored only at the Today Bottom Sheet boundary and continues to reuse `NotesController`.
+
+## Boundary and authority
+
+No persistent offline queue, local database, Worker/API change, schema, migration, new command, or third-party dependency is introduced. Server canonical Day, operation identity, placement revision, CAS, retry, and D-125 reconciliation remain authoritative.
+
 ## Target overview
 
 ```text

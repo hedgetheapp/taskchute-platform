@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### D-127 Android Today local-feel / motion corrective
+
+- Quick AddのTask名・開始予定・見積を48dp compact fieldへ整合し、CREATE時のTask名focusとCancelのsingle-line表示を追加。
+- Task drag中の仮Entry順序をstable keyとCompose item placement animationで表示し、canonical Dayはdropまで変更しない。
+- Task add / edit / reorder / placement / start / completeをmemory-only optimistic presentationで即時反映し、成功後はvisible `REFRESHING`なしのsilent canonical reconcileへ接続。
+- Today Task Noteの本文をBasicTextFieldへ置き換え、`Markdown`ラベルを除去。NotesControllerのautosave/CAS/conflict/ambiguous retry semanticsは維持。
+- D-127実機、Galaxy S23、authenticated screenshot、production、Releaseは未確認。Worker/API、schema、migration、dependencyは変更なし。
+
 ### D-121 Android Today Figma parity bundle corrective
 
 - Quick Addのcurrent/future visibility、canonical timezone由来の初期Section、候補ロード中disabled、`900` / `0900`を含む`HH:mm`正規化を整合。

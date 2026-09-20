@@ -122,4 +122,8 @@ data class TodayUiState(
     val day: TodayDay? = null,
     val errorMessage: String? = null,
     val pendingEntryIds: Set<String> = emptySet(),
+    val optimisticDay: TodayDay? = null,
 )
+
+val TodayUiState.presentedDay: TodayDay?
+    get() = optimisticDay ?: day

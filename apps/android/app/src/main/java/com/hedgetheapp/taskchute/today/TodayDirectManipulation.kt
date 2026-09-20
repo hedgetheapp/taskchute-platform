@@ -141,6 +141,8 @@ class TodayDirectManipulationController(
     private val repository: TodayDirectManipulationRepository,
     private val onRefresh: () -> Unit,
     private val onUnauthorized: () -> Unit,
+    private val onOptimisticIntent: (DirectManipulationRequest) -> Unit = {},
+    private val onOptimisticFailure: () -> Unit = {},
     private val loadDay: ((String) -> TodayResult)? = null,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
 ) {
@@ -253,6 +255,7 @@ class TodayDirectManipulationController(
     fun close() = scope.cancel()
 
     private fun dispatch(entryIds: Set<String>, request: DirectManipulationRequest, successMessage: String? = null) {
+        onOptimisticIntent(request)
         state = state.copy(pendingEntryIds = entryIds, errorMessage = null, feedbackMessage = null)
         scope.launch {
             val result = withContext(Dispatchers.IO) { repository.execute(request) }
@@ -262,12 +265,21 @@ class TodayDirectManipulationController(
                     state = state.copy(errorMessage = null, unresolvedRequest = null, feedbackMessage = successMessage)
                     onRefresh()
                 }
-                DirectManipulationResult.Unauthorized -> onUnauthorized()
-                DirectManipulationResult.Ambiguous -> state = state.copy(
-                    unresolvedRequest = request,
-                    errorMessage = "操作結果を確認できませんでした。元の操作を再試行してください。",
-                )
-                is DirectManipulationResult.Failure -> state = state.copy(errorMessage = DETERMINISTIC_FAILURE_MESSAGE)
+                DirectManipulationResult.Unauthorized -> {
+                    onOptimisticFailure()
+                    onUnauthorized()
+                }
+                DirectManipulationResult.Ambiguous -> {
+                    onOptimisticFailure()
+                    state = state.copy(
+                        unresolvedRequest = request,
+                        errorMessage = "操作結果を確認できませんでした。元の操作を再試行してください。",
+                    )
+                }
+                is DirectManipulationResult.Failure -> {
+                    onOptimisticFailure()
+                    state = state.copy(errorMessage = DETERMINISTIC_FAILURE_MESSAGE)
+                }
             }
         }
     }

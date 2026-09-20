@@ -113,6 +113,8 @@ class TodayControllerTest {
         assertTrue(repository.startStarted.await(2, TimeUnit.SECONDS))
         assertEquals(1, repository.startCalls.get())
         assertTrue(controller.state.pendingEntryIds.contains(task.id))
+        assertEquals(task.id, controller.state.presentedDay?.runningTask?.id)
+        assertEquals(TodayLoadStatus.CONTENT, controller.state.status)
 
         repository.releaseStart.countDown()
         assertTrue(repository.reloadStarted.await(2, TimeUnit.SECONDS))

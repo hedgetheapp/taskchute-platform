@@ -1,5 +1,13 @@
 # Decisions
 
+## D-127 — Android Today Optimistic Local Feel and Motion v0.1
+
+Status: **Approved**
+
+Canonical Decision: `docs/decisions/D-127_ANDROID_TODAY_OPTIMISTIC_LOCAL_FEEL_AND_MOTION_V01.md`。
+
+D-127はAndroid TodayのTask add / edit / reorder / placement / start / completeについて、選択中logical DayとEntry identityに限定したmemory-only presentation overlayを許可する。Serverと既存Commandのresponseをauthorityとし、成功時はvisible `REFRESHING`を起こさないsilent canonical reconcileを行う。deterministic failure / authorization failure / conflict / ambiguous direct manipulationはD-125どおりoverlayをclearまたはreconcileする。Task dragの仮順序はstable Entry keyとCompose item placement animationで表示するが、drop前にcanonical Dayを変更しない。offline queue、local DB authority、Worker/API command、schema、migration、dependencyは追加しない。
+
 ## D-126 — Android Future-Day Planning Parity v0.1
 
 Status: **Approved**

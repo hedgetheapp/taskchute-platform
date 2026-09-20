@@ -3,6 +3,7 @@ package com.hedgetheapp.taskchute.today
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -10,6 +11,7 @@ import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
@@ -586,7 +588,10 @@ class TodayScreenInstrumentedTest {
         waitForStatus(TodayLoadStatus.CONTENT)
 
         composeRule.onNodeWithContentDescription("タスクを追加").performClick()
-        composeRule.onNodeWithText("Task名").assertIsDisplayed().performTextInput("Plan from Android")
+        val editableFields = composeRule.onAllNodes(hasSetTextAction())
+        editableFields.get(0).assertIsFocused().performTextInput("Plan from Android")
+        assertTrue(editableFields.fetchSemanticsNodes().size >= 3)
+        composeRule.onNodeWithText("Task名").assertIsDisplayed()
         composeRule.onNodeWithText("Project").assertIsDisplayed()
         composeRule.onNodeWithText("Mode").assertIsDisplayed()
         composeRule.onNodeWithText("Section").assertIsDisplayed()

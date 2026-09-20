@@ -39,6 +39,10 @@ data class NormalizedTaskInput(
     val sectionId: String?,
     val plannedStartMinute: Int?,
     val estimateSeconds: Int?,
+    val clientTaskId: String? = null,
+    val clientEntryId: String? = null,
+    val projectTitle: String? = null,
+    val modeTitle: String? = null,
 )
 
 data class TaskEditorValidation(

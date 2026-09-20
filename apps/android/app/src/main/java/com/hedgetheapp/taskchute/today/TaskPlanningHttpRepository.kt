@@ -26,8 +26,8 @@ class TaskPlanningHttpRepository(
     }
 
     private fun create(input: NormalizedTaskInput, day: TodayDay): PlanningSaveResult {
-        val taskId = UUIDv7.next()
-        val entryId = UUIDv7.next()
+        val taskId = input.clientTaskId ?: UUIDv7.next()
+        val entryId = input.clientEntryId ?: UUIDv7.next()
         val operationId = UUIDv7.next()
         val logicalDateJson = if (day.isCurrent) "" else ",\"logical_date\":\"${JsonEncoding.escape(day.logicalDate)}\""
         val addBody = """

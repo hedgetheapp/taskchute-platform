@@ -28,6 +28,21 @@ class TodayController(
 
     fun refresh() = load(lastRequestedLogicalDate)
 
+    /** Reconcile server state without blanking Today or showing the pull-to-refresh state. */
+    fun reconcileSilently() = load(lastRequestedLogicalDate, visible = false)
+
+    fun applyOptimisticPlanning(editor: TaskEditorState, input: NormalizedTaskInput) {
+        state.day?.let { applyOptimisticDay(applyOptimisticPlanning(it, editor, input)) }
+    }
+
+    fun applyOptimisticDirectManipulation(request: DirectManipulationRequest) {
+        state.day?.let { applyOptimisticDay(applyOptimisticDirectManipulation(it, request)) }
+    }
+
+    fun clearOptimisticPresentation() {
+        if (state.optimisticDay != null) state = state.copy(optimisticDay = null)
+    }
+
     fun previousDay() = moveDay(-1)
 
     fun nextDay() = moveDay(1)
@@ -48,18 +63,22 @@ class TodayController(
 
     fun start(task: TodayTask) {
         if (state.day?.isCurrent != true || task.lifecycleState != LifecycleState.PLANNED || !pendingEntryIds.add(task.id)) return
+        state.day?.let { applyOptimisticDay(applyOptimisticLifecycle(it, task.id, LifecycleState.RUNNING)) }
         publishPending()
         scope.launch {
-            val result = withContext(Dispatchers.IO) { repository.startTask(task, state.day?.placementRevision ?: 0) }
+            val canonicalTask = state.day?.allEntries?.firstOrNull { it.id == task.id } ?: task
+            val result = withContext(Dispatchers.IO) { repository.startTask(canonicalTask, state.day?.placementRevision ?: 0) }
             finishMutation(task.id, result)
         }
     }
 
     fun complete(task: TodayTask) {
         if (state.day?.isCurrent != true || task.lifecycleState != LifecycleState.RUNNING || !pendingEntryIds.add(task.id)) return
+        state.day?.let { applyOptimisticDay(applyOptimisticLifecycle(it, task.id, LifecycleState.COMPLETED)) }
         publishPending()
         scope.launch {
-            val result = withContext(Dispatchers.IO) { repository.completeTask(task) }
+            val canonicalTask = state.day?.allEntries?.firstOrNull { it.id == task.id } ?: task
+            val result = withContext(Dispatchers.IO) { repository.completeTask(canonicalTask) }
             finishMutation(task.id, result)
         }
     }
@@ -72,15 +91,18 @@ class TodayController(
         load(next)
     }
 
-    private fun load(logicalDate: String?) {
+    private fun load(logicalDate: String?, visible: Boolean = true) {
         if (loadInFlight) return
         loadInFlight = true
         lastRequestedLogicalDate = logicalDate
-        val hasExisting = state.day != null && state.status != TodayLoadStatus.ERROR
-        state = state.copy(
-            status = if (hasExisting) TodayLoadStatus.REFRESHING else TodayLoadStatus.LOADING,
-            errorMessage = null,
-        )
+        if (visible) {
+            val hasExisting = state.day != null && state.status != TodayLoadStatus.ERROR
+            state = state.copy(
+                status = if (hasExisting) TodayLoadStatus.REFRESHING else TodayLoadStatus.LOADING,
+                errorMessage = null,
+                optimisticDay = null,
+            )
+        }
         scope.launch {
             val result = withContext(Dispatchers.IO) { repository.loadDay(logicalDate) }
             loadInFlight = false
@@ -95,8 +117,10 @@ class TodayController(
                     onUnauthorized()
                 }
                 is TodayResult.Failure -> {
-                    state = state.copy(status = TodayLoadStatus.ERROR, errorMessage = result.message)
-                    flushDeferredRealtimeReload()
+                    if (visible || state.day == null) {
+                        state = state.copy(status = TodayLoadStatus.ERROR, errorMessage = result.message)
+                    }
+                    if (visible) flushDeferredRealtimeReload()
                 }
             }
         }
@@ -107,7 +131,8 @@ class TodayController(
         when (result) {
             TodayMutationResult.Success -> {
                 deferredRealtimeReload = false
-                load(state.day?.logicalDate)
+                clearOptimisticPresentation()
+                reconcileSilently()
             }
             TodayMutationResult.Unauthorized -> {
                 deferredRealtimeReload = false
@@ -115,6 +140,7 @@ class TodayController(
                 onUnauthorized()
             }
             is TodayMutationResult.Failure -> {
+                clearOptimisticPresentation()
                 state = state.copy(
                     status = if (state.day?.hasEntries == true) TodayLoadStatus.CONTENT else TodayLoadStatus.EMPTY,
                     errorMessage = result.message,
@@ -144,10 +170,20 @@ class TodayController(
             day = day,
             errorMessage = null,
             pendingEntryIds = pendingEntryIds.toSet(),
+            optimisticDay = null,
         )
     }
 
     private fun publishPending() {
         state = state.copy(pendingEntryIds = pendingEntryIds.toSet(), errorMessage = null)
+    }
+
+    private fun applyOptimisticDay(day: TodayDay) {
+        if (state.day?.logicalDate != day.logicalDate) return
+        state = state.copy(
+            optimisticDay = day,
+            status = if (day.hasEntries) TodayLoadStatus.CONTENT else TodayLoadStatus.EMPTY,
+            errorMessage = null,
+        )
     }
 }

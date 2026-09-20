@@ -16,6 +16,8 @@ class TaskPlanningController(
     private val repository: TaskPlanningRepository,
     private val onUnauthorized: () -> Unit,
     private val onSaved: () -> Unit,
+    private val onOptimisticIntent: (TaskEditorState, NormalizedTaskInput) -> Unit = { _, _ -> },
+    private val onOptimisticFailure: (String) -> Unit = {},
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
 ) {
     var state by mutableStateOf(TaskPlanningUiState())
@@ -96,19 +98,32 @@ class TaskPlanningController(
             if (!state.loadingReferences) loadReferences()
             return
         }
-        state = state.copy(saving = true, errorMessage = null)
+        val requestInput = validation.input.copy(
+            clientTaskId = if (editor.mode == TaskEditorMode.CREATE) UUIDv7.next() else null,
+            clientEntryId = if (editor.mode == TaskEditorMode.CREATE) UUIDv7.next() else null,
+            projectTitle = state.references?.projects?.firstOrNull { it.id == validation.input.projectId }?.title,
+            modeTitle = state.references?.modes?.firstOrNull { it.id == validation.input.modeId }?.title,
+        )
+        val previousState = state
+        onOptimisticIntent(editor, requestInput)
+        // Keep the in-flight marker for controller callers while the editor sheet closes immediately.
+        state = TaskPlanningUiState(saving = true)
         scope.launch {
-            val result = withContext(Dispatchers.IO) { repository.save(editor, validation.input) }
+            val result = withContext(Dispatchers.IO) { repository.save(editor, requestInput) }
             when (result) {
                 PlanningSaveResult.Success -> {
                     state = TaskPlanningUiState()
                     onSaved()
                 }
                 PlanningSaveResult.Unauthorized -> {
-                    state = state.copy(saving = false, errorMessage = "認証が必要です。")
+                    onOptimisticFailure("認証が必要です。")
+                    state = previousState.copy(saving = false, errorMessage = "認証が必要です。")
                     onUnauthorized()
                 }
-                is PlanningSaveResult.Failure -> state = state.copy(saving = false, errorMessage = result.message)
+                is PlanningSaveResult.Failure -> {
+                    onOptimisticFailure(result.message)
+                    state = previousState.copy(saving = false, errorMessage = result.message)
+                }
             }
         }
     }

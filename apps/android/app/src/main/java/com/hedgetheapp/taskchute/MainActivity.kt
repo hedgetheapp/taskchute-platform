@@ -79,7 +79,12 @@ class MainActivity : ComponentActivity() {
                 controller.authenticatedRequest(method, path, body)?.let { TodayHttpResponse(it.status, it.body) }
             },
             onUnauthorized = controller::restore,
-            onSaved = todayController::refresh,
+            onSaved = todayController::reconcileSilently,
+            onOptimisticIntent = todayController::applyOptimisticPlanning,
+            onOptimisticFailure = {
+                todayController.clearOptimisticPresentation()
+                todayController.reconcileSilently()
+            },
         )
         directManipulationController = TodayDirectManipulationController(
             repository = TodayDirectManipulationHttpRepository(
@@ -88,8 +93,10 @@ class MainActivity : ComponentActivity() {
                 },
                 onUnauthorized = controller::restore,
             ),
-            onRefresh = todayController::refresh,
+            onRefresh = todayController::reconcileSilently,
             onUnauthorized = controller::restore,
+            onOptimisticIntent = todayController::applyOptimisticDirectManipulation,
+            onOptimisticFailure = todayController::clearOptimisticPresentation,
             loadDay = todayRepository::loadDay,
         )
         notesController = NotesController(

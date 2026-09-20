@@ -77,6 +77,19 @@
 | D121-FOOTER-BOUNDARY | Scope | Android shared footer, official local resources, and focused instrumentation only; no Today/Notes/Settings content, Worker/API, schema/migration, dependency, realtime, production, or Release change; Galaxy S23 fresh footer smoke is PASS / USER_CONFIRMED | PASS / NOT_REQUIRED / NOT_RUN / NO |
 # Test Matrix
 
+## D-127 Android Today local-feel / motion corrective — 2026-09-20
+
+| ID | Verification target | Evidence | Status |
+|---|---|---|---|
+| D127-SOURCE | Quick Add / Note / optimistic presentation source | 48dp compact fields, CREATE Task name focus, 82dp single-line Cancel, clean Today Note BasicTextField, `optimisticDay`, silent reconcile, stable-key `animateItem` | TESTED |
+| D127-JVM | Android unit tests | `:app:testDebugUnitTest`: 128 tests, failures/errors/skipped `0 / 0 / 0`, including optimistic projections and controller local-feel assertions | PASS |
+| D127-INSTRUMENT-COMPILE | Focused Today instrumentation source | `:app:compileDebugAndroidTestKotlin` PASS, including Quick Add Task name focus assertion | PASS |
+| D127-APK | Android debug build | `:app:assembleDebug` PASS; no dependency or server surface change | PASS |
+| D127-AVD | Authenticated Today runtime | `scripts/android-qa.ps1 -Surface Today` reached `connectedDebugAndroidTest` on TaskChute_API33 but produced no result for about three minutes and was stopped; MainActivity resolved and crash buffer was empty | NOT_RUN / HUNG |
+| D127-DEVICE | Galaxy S23 | New local-feel/motion corrective APK requires a fresh Product Owner check | NOT_RUN |
+| D127-SCREENSHOT | Authenticated Figma screenshot comparison | No screenshot comparison performed in this change | SCREENSHOT_NOT_RUN |
+| D127-BOUNDARY | Worker/API/schema/migration/dependency/production/Release | Android presentation/repository/docs only; no persistent offline authority; production and Release are out of scope | NOT_REQUIRED / NOT_RUN / NO |
+
 ## D-121 Today Section / Task Figma parity corrective — 2026-09-19
 
 | ID | Verification target | Evidence | Status |

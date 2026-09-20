@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -74,6 +75,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.pointer.pointerInput
@@ -102,6 +104,9 @@ import androidx.compose.ui.unit.sp
 import android.app.DatePickerDialog as AndroidDatePickerDialog
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.res.painterResource
 import kotlinx.coroutines.withTimeoutOrNull
 import java.time.LocalDate
@@ -174,7 +179,7 @@ fun TodayScreen(
         }
     }
 
-    val day = state.day
+    val day = state.presentedDay
     if (headerDatePickerVisible && day != null) {
         val datePickerState = rememberDatePickerState(
             initialSelectedDateMillis = logicalDateToPickerMillis(day.logicalDate),
@@ -262,7 +267,7 @@ fun TodayScreen(
                 TodayLoadStatus.AUTH_REQUIRED -> TodayAuthRequired()
             }
             if (state.status == TodayLoadStatus.CONTENT || state.status == TodayLoadStatus.EMPTY || state.status == TodayLoadStatus.REFRESHING) {
-                state.day?.takeIf { canPlanDay(it) || it.isCurrent }?.let { day ->
+                state.presentedDay?.takeIf { canPlanDay(it) || it.isCurrent }?.let { day ->
                     val runningTask = if (day.isCurrent) day.runningTask else null
                     val canAdd = canPlanDay(day) && planningController != null
                     val unresolved = directManipulationController?.state?.unresolvedRequest != null
@@ -393,14 +398,16 @@ private fun TodayContent(
     onRequestDelete: (Set<String>) -> Unit,
     modifier: Modifier,
 ) {
-    val day = state.day ?: return LoadingToday()
+    val day = state.presentedDay ?: return LoadingToday()
     val dropBounds = remember { mutableStateMapOf<String, Rect>() }
     val dropBoundsSectionId = remember { mutableStateMapOf<String, String?>() }
     val emptySectionDropBounds = remember { mutableStateMapOf<String, Rect>() }
     val emptySectionDropIds = remember { mutableStateMapOf<String, String?>() }
     var collapsedSectionIds by remember(day.logicalDate) { mutableStateOf<Set<String>>(emptySet()) }
     var dragState by remember { mutableStateOf<AndroidDragState?>(null) }
+    var provisionalDay by remember { mutableStateOf<TodayDay?>(null) }
     var openSwipeEntryId by remember { mutableStateOf<String?>(null) }
+    val renderDay = provisionalDay ?: day
     LaunchedEffect(day.logicalDate, state.status) { openSwipeEntryId = null }
     LaunchedEffect(day, dragState != null) {
         day.sections.filter { it.entries.isNotEmpty() && it.id !in collapsedSectionIds }.forEach {
@@ -428,10 +435,12 @@ private fun TodayContent(
             deltaY = current.deltaY + deltaY,
             target = target,
         )
+        provisionalDay = target?.let { previewDayForTarget(day, current.entryId, it) }
     }
     fun finishDrag() {
         val drag = dragState ?: return
         dragState = null
+        provisionalDay = null
         val target = drag.target ?: return
         val source = day.allEntries.firstOrNull { it.id == drag.entryId } ?: return
         val targetSectionId = target.sectionId
@@ -524,7 +533,7 @@ private fun TodayContent(
         directManipulationController?.state?.feedbackMessage?.let {
             Text(it, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 16.dp))
         }
-        if (!day.hasEntries && day.sections.isEmpty() && day.unsectionedEntries.isEmpty()) {
+        if (!renderDay.hasEntries && renderDay.sections.isEmpty() && renderDay.unsectionedEntries.isEmpty()) {
             EmptyToday(Modifier.fillMaxWidth().weight(1f))
             return@Column
         }
@@ -533,7 +542,7 @@ private fun TodayContent(
             // Keep section headers and task rows visually contiguous as one compact grouped surface.
             verticalArrangement = Arrangement.spacedBy(0.dp),
         ) {
-            day.sections.forEachIndexed { index, section ->
+            renderDay.sections.forEachIndexed { index, section ->
                 if (index > 0) item(key = "section-gap-${section.id}") { Spacer(Modifier.height(12.dp)) }
                 item(key = "section-${section.id}") {
                     SectionHeader(
@@ -560,6 +569,7 @@ private fun TodayContent(
                 }
                 if (section.id !in collapsedSectionIds) items(section.entries, key = { it.id }) { task ->
                     TodayTaskRow(
+                        modifier = Modifier.animateItem(),
                         task = task,
                         sectionId = section.id,
                         enabled = !state.pendingEntryIds.contains(task.id),
@@ -608,14 +618,14 @@ private fun TodayContent(
                         },
                         onDragMove = ::updateDragPosition,
                         onDragEnd = ::finishDrag,
-                        onDragCancel = { dragState = null },
+                        onDragCancel = { dragState = null; provisionalDay = null },
                         dropBounds = dropBounds,
                         dropBoundsSectionId = dropBoundsSectionId,
                     )
                 }
             }
-            if (day.unsectionedEntries.isNotEmpty() || dragState != null) {
-                if (day.sections.isNotEmpty()) item(key = "section-gap-unsectioned") { Spacer(Modifier.height(12.dp)) }
+            if (renderDay.unsectionedEntries.isNotEmpty() || dragState != null) {
+                if (renderDay.sections.isNotEmpty()) item(key = "section-gap-unsectioned") { Spacer(Modifier.height(12.dp)) }
                 item(key = "section-unsectioned") {
                     SectionHeader(
                         section = null,
@@ -629,7 +639,7 @@ private fun TodayContent(
                         },
                         dropTarget = dragState?.target?.key == sectionDropKey(null),
                         modifier = Modifier.onGloballyPositioned {
-                            if (day.unsectionedEntries.isEmpty() && dragState != null) {
+                            if (renderDay.unsectionedEntries.isEmpty() && dragState != null) {
                                 emptySectionDropBounds[UNSECTIONED_DROP_KEY] = it.boundsInRoot()
                                 emptySectionDropIds[UNSECTIONED_DROP_KEY] = null
                             } else {
@@ -639,8 +649,9 @@ private fun TodayContent(
                         },
                     )
                 }
-                if (UNSECTIONED_DROP_KEY !in collapsedSectionIds) items(day.unsectionedEntries, key = { it.id }) { task ->
+                if (UNSECTIONED_DROP_KEY !in collapsedSectionIds) items(renderDay.unsectionedEntries, key = { it.id }) { task ->
                     TodayTaskRow(
+                        modifier = Modifier.animateItem(),
                         task = task,
                         sectionId = null,
                         enabled = !state.pendingEntryIds.contains(task.id),
@@ -689,7 +700,7 @@ private fun TodayContent(
                         },
                         onDragMove = ::updateDragPosition,
                         onDragEnd = ::finishDrag,
-                        onDragCancel = { dragState = null },
+                        onDragCancel = { dragState = null; provisionalDay = null },
                         dropBounds = dropBounds,
                         dropBoundsSectionId = dropBoundsSectionId,
                     )
@@ -720,6 +731,14 @@ private data class AndroidDragState(
 internal fun entryDropKey(entryId: String): String = "entry:$entryId"
 
 internal fun sectionDropKey(sectionId: String?): String = "section:${sectionId ?: UNSECTIONED_DROP_KEY}"
+
+private fun previewDayForTarget(day: TodayDay, entryId: String, target: AndroidDropTarget): TodayDay =
+    previewOptimisticPlacement(
+        day,
+        entryId,
+        target.sectionId,
+        target.anchorEntryId?.let { PlacementTarget(target.sectionId, it, target.edge ?: PlacementEdge.AFTER) },
+    )
 
 internal fun resolveAndroidDropTarget(
     positionY: Float,
@@ -874,6 +893,7 @@ private fun SectionHeader(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun TodayTaskRow(
+    modifier: Modifier = Modifier,
     task: TodayTask,
     sectionId: String?,
     enabled: Boolean,
@@ -932,7 +952,7 @@ private fun TodayTaskRow(
         LifecycleState.COMPLETED -> TaskChuteColors.SurfaceElevated
         LifecycleState.PLANNED -> TaskChuteColors.Surface
     }
-    Box(Modifier.fillMaxWidth().background(rowSurface)) {
+    Box(modifier.fillMaxWidth().background(rowSurface)) {
         if (!selectionModeActive && hasActions && swipeOffset <= -swipeThreshold) {
             Row(
                 modifier = Modifier.align(Alignment.CenterEnd).zIndex(2f).padding(end = 4.dp),
@@ -1479,6 +1499,13 @@ private fun TaskEditorForm(controller: TaskPlanningController, state: TaskPlanni
     val selectedProject = references?.projects?.firstOrNull { it.id == draft.projectId }
     val selectedMode = references?.modes?.firstOrNull { it.id == draft.modeId }
     val selectedSection = editor.day.sections.firstOrNull { it.id == draft.sectionId }
+    val titleFocusRequester = remember(editor) { FocusRequester() }
+    LaunchedEffect(editor) {
+        if (editor.mode == TaskEditorMode.CREATE) {
+            withFrameNanos { }
+            titleFocusRequester.requestFocus()
+        }
+    }
 
     Column(
         modifier = modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp),
@@ -1493,15 +1520,12 @@ private fun TaskEditorForm(controller: TaskPlanningController, state: TaskPlanni
         if (runningMetadataOnly) {
             Text("Task名: ${draft.title}", color = TaskChuteColors.SecondaryText)
         } else {
-            OutlinedTextField(
+            CompactFigmaTextField(
                 value = draft.title,
                 onValueChange = { controller.updateDraft(draft.copy(title = it)) },
-                label = { Text("Task名") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth().height(48.dp),
+                label = "Task名",
+                modifier = Modifier.fillMaxWidth().focusRequester(titleFocusRequester),
                 enabled = titleEditable && !state.saving,
-                shape = RoundedCornerShape(16.dp),
-                colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Color(0xFF343434), focusedBorderColor = TaskChuteColors.AccentBlue),
             )
         }
         ReferencePicker(
@@ -1540,28 +1564,22 @@ private fun TaskEditorForm(controller: TaskPlanningController, state: TaskPlanni
             },
             enabled = !state.saving,
         )
-        OutlinedTextField(
+        CompactFigmaTextField(
             value = draft.plannedStartText,
             onValueChange = { controller.updateDraft(draft.copy(plannedStartText = it)) },
-                label = { Text("開始予定") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth().height(48.dp),
-                enabled = !state.saving,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                shape = RoundedCornerShape(16.dp),
-                colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Color(0xFF343434), focusedBorderColor = TaskChuteColors.AccentBlue),
-            )
-        OutlinedTextField(
+            label = "開始予定",
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !state.saving,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        )
+        CompactFigmaTextField(
             value = draft.estimateText,
             onValueChange = { controller.updateDraft(draft.copy(estimateText = it)) },
-                label = { Text("見積（分）") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth().height(48.dp),
-                enabled = !state.saving,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                shape = RoundedCornerShape(16.dp),
-                colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Color(0xFF343434), focusedBorderColor = TaskChuteColors.AccentBlue),
-            )
+            label = "見積（分）",
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !state.saving,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        )
         }
         state.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         if (references == null && !state.loadingReferences) {
@@ -1571,13 +1589,73 @@ private fun TaskEditorForm(controller: TaskPlanningController, state: TaskPlanni
             Text(validation.errorMessage, color = MaterialTheme.colorScheme.error)
         }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            TextButton(onClick = controller::dismiss, enabled = !state.saving, modifier = Modifier.width(82.dp).height(48.dp)) { Text("キャンセル") }
+            TextButton(
+                onClick = controller::dismiss,
+                enabled = !state.saving,
+                modifier = Modifier.width(82.dp).height(48.dp),
+                contentPadding = PaddingValues(0.dp),
+            ) { Text("キャンセル", maxLines = 1, softWrap = false) }
             Button(onClick = controller::save, enabled = references != null && !state.loadingReferences && !state.saving, modifier = Modifier.width(88.dp).height(48.dp), shape = RoundedCornerShape(24.dp), contentPadding = PaddingValues(0.dp)) {
                 Text(if (editor.mode == TaskEditorMode.CREATE) "追加" else "保存")
             }
         }
         Spacer(Modifier.height(12.dp))
     }
+}
+
+@Composable
+private fun CompactFigmaTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+) {
+    var focused by remember { mutableStateOf(false) }
+    val borderColor = if (focused) TaskChuteColors.AccentBlue else Color(0xFF343434)
+    BasicTextField(
+        value = value,
+        onValueChange = onValueChange,
+        enabled = enabled,
+        singleLine = true,
+        keyboardOptions = keyboardOptions,
+        textStyle = MaterialTheme.typography.bodyLarge.copy(
+            color = TaskChuteColors.PrimaryText,
+            fontSize = 15.sp,
+        ),
+        modifier = modifier
+            .height(48.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .border(1.dp, borderColor, RoundedCornerShape(16.dp))
+            .onFocusChanged { focused = it.isFocused }
+            .padding(horizontal = 16.dp),
+        decorationBox = { innerTextField ->
+            Box(Modifier.fillMaxSize()) {
+                if (value.isBlank()) {
+                    Text(
+                        label,
+                        color = Color(0xFFA3A3A0),
+                        fontSize = 16.sp,
+                        modifier = Modifier.align(Alignment.CenterStart),
+                        maxLines = 1,
+                    )
+                } else {
+                    Text(
+                        label,
+                        color = Color(0xFFA3A3A0),
+                        fontSize = 12.sp,
+                        modifier = Modifier.align(Alignment.TopStart).offset(y = (-1).dp),
+                        maxLines = 1,
+                    )
+                }
+                Box(
+                    modifier = Modifier.fillMaxWidth().align(if (value.isBlank()) Alignment.CenterStart else Alignment.BottomStart)
+                        .padding(bottom = if (value.isBlank()) 0.dp else 2.dp),
+                ) { innerTextField() }
+            }
+        },
+    )
 }
 
 @Composable

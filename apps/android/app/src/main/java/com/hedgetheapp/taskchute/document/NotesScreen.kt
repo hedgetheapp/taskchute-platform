@@ -13,10 +13,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
@@ -181,7 +183,7 @@ fun TaskNoteBottomSheet(
         },
     ) {
         Column(
-            Modifier.fillMaxWidth().height(655.dp).navigationBarsPadding().imePadding().padding(horizontal = 20.dp, vertical = 12.dp),
+            Modifier.fillMaxWidth().heightIn(min = 360.dp, max = 655.dp).navigationBarsPadding().imePadding().padding(horizontal = 20.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Text("ノート", color = TaskChuteColors.PrimaryText, fontSize = 20.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
@@ -190,20 +192,15 @@ fun TaskNoteBottomSheet(
                     val editor = state.editor!!
                     Text(editor.taskTitle ?: "タスクノート", color = TaskChuteColors.PrimaryText, fontSize = 17.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     HorizontalDivider(color = TaskChuteColors.Divider)
-                    TextField(
+                    BasicTextField(
                         value = editor.markdownBody,
                         onValueChange = controller::updateBody,
-                        label = { Text("Markdown") },
                         enabled = !editor.blocked,
-                        modifier = Modifier.fillMaxWidth().weight(1f),
-                        colors = TextFieldDefaults.colors(
-                            focusedContainerColor = Color.Transparent,
-                            unfocusedContainerColor = Color.Transparent,
-                            disabledContainerColor = Color.Transparent,
-                            focusedIndicatorColor = Color.Transparent,
-                            unfocusedIndicatorColor = Color.Transparent,
-                            disabledIndicatorColor = Color.Transparent,
+                        textStyle = MaterialTheme.typography.bodyLarge.copy(
+                            color = TaskChuteColors.PrimaryText,
+                            fontSize = 16.sp,
                         ),
+                        modifier = Modifier.fillMaxWidth().weight(1f).padding(top = 2.dp),
                     )
                     HorizontalDivider(color = TaskChuteColors.Divider)
                     Text(
