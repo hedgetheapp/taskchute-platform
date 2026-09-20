@@ -52,7 +52,7 @@ data class TaskEditorValidation(
             if (title.length > 300) return invalid("タスク名は300文字以内で入力してください。")
 
             val plannedStart = parseMinute(draft.plannedStartText)
-                ?: if (draft.plannedStartText.isBlank()) null else return invalid("開始予定は H:mm 形式で入力してください。")
+                ?: if (draft.plannedStartText.isBlank()) null else return invalid("開始予定は HH:mm（900 / 0900 も可）で入力してください。")
             val estimateMinutes = draft.estimateText.trim().toLongOrNull()
             if (draft.estimateText.isNotBlank() && (estimateMinutes == null || estimateMinutes <= 0L || estimateMinutes > Int.MAX_VALUE / 60L)) {
                 return invalid("見積は1分以上の整数で入力してください。")
@@ -72,9 +72,16 @@ data class TaskEditorValidation(
 
         private fun invalid(message: String) = TaskEditorValidation(null, message)
 
-        private fun parseMinute(value: String): Int? {
+        internal fun parseMinute(value: String): Int? {
             val trimmed = value.trim()
             if (trimmed.isEmpty()) return null
+            if (trimmed.all(Char::isDigit) && trimmed.length in 3..4) {
+                val padded = trimmed.padStart(4, '0')
+                val hours = padded.substring(0, 2).toIntOrNull() ?: return null
+                val minutes = padded.substring(2).toIntOrNull() ?: return null
+                if (hours !in 0..47 || minutes !in 0..59) return null
+                return hours * 60 + minutes
+            }
             val parts = trimmed.split(":")
             if (parts.size != 2 || parts[0].length !in 1..2 || parts[1].length != 2) return null
             val hours = parts[0].toIntOrNull() ?: return null
@@ -112,5 +119,5 @@ data class TaskPlanningUiState(
 )
 
 internal fun formatEditorMinute(value: Int?): String = value?.let {
-    "${it / 60}:${(it % 60).toString().padStart(2, '0')}"
+    "${(it / 60).toString().padStart(2, '0')}:${(it % 60).toString().padStart(2, '0')}"
 } ?: ""

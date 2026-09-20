@@ -1,3 +1,11 @@
+### D-121 Android Today Figma parity bundle corrective — 2026-09-20
+
+D-121の既存visual directionに沿って、Quick Add、Selection footer、Today Task Note、Swipe actions、Task Actions sheet、Running panel、Drag feedback、Task Row metadataをFigma referenceへ近づけるbundle correctiveを実装した。Quick Addはcurrent Dayとplanning-enabled future Dayだけに表示し、Pastはread-onlyのまま維持する。current Dayの初期Sectionは、Today projectionが返すcanonical `establishment_timezone` と `establishment_boundary_minutes` を使って現在時刻のlogical intervalから解決し、canonical timezoneがないprojectionでは端末timezoneを正本にせず安全に最初のSectionへfallbackする。Project / Modeは候補ロード中disabled、開始予定は`900` / `0900` / `9:00` / `09:00`を受け付けて`HH:mm`へ正規化する。
+
+Todayから開くTask NoteはNotesControllerのTask Primary ensure、autosave、CAS、conflict、ambiguous retry、safe flushを再利用するToday-backed Bottom Sheetへroutingし、standalone Notes destinationは変更していない。成功したTask deleteの`削除しました`表示は抑止し、既存のerror / ambiguous / retry semanticsは維持した。Worker/API、schema、migration、command family、dependency、persistent nonprod、productionは変更していない。
+
+**Implementation: IMPLEMENTED / Local: Android JVM PASS, instrumentation compile PASS, debug assemble PASS / Authenticated runtime: NOT_RUN / Galaxy S23: NOT_RUN / Screenshot comparison: NOT_RUN / Production: NOT_RUN / Released: NO**。既存D-121 micro-correctiveのGalaxy S23 evidenceは履歴として維持し、このbundleのphysical-device Verifiedへ流用しない。
+
 ### D-121 Android Today Task Row Figma visual parity corrective — 2026-09-20
 
 D-121の既存visual directionに沿って、Today Task RowをFigmaのTask Row componentへ整合した。84dp row、48dpの開始見込み／終了見込み projection slot、Task title / estimate-status / Project・Mode context、lifecycle別のsurface・action/status、Selection Modeの18dp custom checkboxを実装した。planning / execution、swipe、selection、D&D、Future / Past boundaryは変更していない。

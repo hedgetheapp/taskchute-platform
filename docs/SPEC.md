@@ -4,6 +4,14 @@
 
 exact DB schema、SQL、UI component library、Android local DB、offline conflict algorithm等は、別途DecisionされるまでOpenとする。
 
+## D-121 Android Today Figma parity bundle corrective
+
+Figmaはvisual reference、Product / Domain behaviorは既存D-109〜D-126とServer projectionをauthorityとする。Quick Addはplanning可能なcurrent Dayとestablished future Dayで表示し、Past Dayでは表示しない。current Dayのcreate初期SectionはToday projectionの`establishment_timezone`と`establishment_boundary_minutes`を使い、現在時刻を含むlogical SectionとそのSection開始時刻を初期値とする。canonical timezoneを持たない古いprojectionでは端末timezoneを正本にせず、既存の安全なfirst-Section fallbackを使う。開始予定入力は`HH:mm`表示で、`900`、`0900`、`9:00`、`09:00`を同じminuteへ正規化し、既存のextended logical-hour範囲を維持する。
+
+候補参照のロード中はProject / Mode selectorをdisabledとし、候補ロード専用の説明文は表示しない。参照取得失敗時のretryと、既存のTask planning save / eligibility / CAS semanticsは変えない。Selection footerは`日付 / 削除 / 解除`だけを提供し、selection-eligible判定、zero-selection exit、bulk commandは既存仕様を使う。成功したTask deleteはsuccess toast/copyを表示せず、error・ambiguous・retry状態は保持する。
+
+Today rowのTask NoteはToday-backed Bottom Sheetとして表示する。Task titleはread-only、Markdown bodyだけを編集可能とし、Task Primary document authority、NotesControllerのautosave、CAS、conflict、ambiguous retry、safe flushを再利用する。standalone Notesのlist/editor routingは別のまま維持する。Swipe action、Task Actions、Running panel、Drag feedbackの今回の変更はpresentation / interaction surfaceに限定し、D&D placement、lifecycle action eligibility、Future/Past boundary、Task / Entry / Execution semanticsを変更しない。
+
 ## D-126 Android Future-Day Planning Parity v0.1
 
 Android Todayで明示的に開いたfuture logical dateはD-119どおりDay surface open時点で

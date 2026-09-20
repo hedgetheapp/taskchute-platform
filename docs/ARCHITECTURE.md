@@ -29,6 +29,14 @@
 
 TaskChute Serverをstructured TaskChute stateのcanonical authorityとし、各Clientは同じDomain / API semanticsを共有する。
 
+## Android Today Figma parity bundle boundary
+
+Android Todayは`TodayController`がcanonical Today projectionを取得し、`TaskPlanningController`がQuick Add / editのplanning state、`TodayDirectManipulationController`がplacement・day move・deleteの既存commandを担当する。今回のUI correctiveはこれらのControllerとServer projectionを再利用し、Worker/API、schema、migration、dependencyを変更しない。
+
+Today projectionの`taskchute_day.establishment_timezone`と`establishment_boundary_minutes`はAndroid `TodayDay`へ保持され、current-time Section初期値のlogical interval解決に使われる。値がないprojectionを端末timezoneで補完せず、既存の安全なfallbackへ閉じる。
+
+TodayのTask Note入口は`MainActivity`から`NotesController.openTaskPrimary`へ接続し、`TaskNoteBottomSheet`はそのstateを表示するだけで、document ensure・autosave・CAS・ambiguous reconciliation・safe flushを複製しない。standalone `NotesScreen`は従来のdestinationとして残る。
+
 ## D-072 Mode Settings command flow
 
 Mode BoardのsearchはWeb clientの現在tab内filterであり、Worker queryを増やさない。Board queryはowner-scoped Mode definitionをarchive join付きで返し、各projectionは`archived` booleanを持つ。Webはvisible rowsから操作後のcanonical full `mode_ids` orderを再構成して既存のrevision/CAS reorder commandへ渡す。

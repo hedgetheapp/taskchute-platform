@@ -15,6 +15,8 @@ class TodayJsonParserTest {
         assertEquals("day-1", day.taskChuteDayId)
         assertEquals(1, day.sections.size)
         assertEquals("Morning", day.sections.single().title)
+        assertEquals("Asia/Tokyo", day.establishmentTimezone)
+        assertEquals(240, day.establishmentBoundaryMinutes)
         assertEquals("Write", day.sections.single().entries.single().title)
         assertEquals("t1", day.sections.single().entries.single().taskId)
         assertEquals(LifecycleState.RUNNING, day.sections.single().entries.single().lifecycleState)

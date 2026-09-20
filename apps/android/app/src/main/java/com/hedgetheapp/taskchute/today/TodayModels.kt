@@ -58,6 +58,8 @@ data class TodayDay(
     val unsectionedEntries: List<TodayTask>,
     val activeExecution: TodayExecution?,
     val taskChuteDayId: String? = null,
+    val establishmentTimezone: String? = null,
+    val establishmentBoundaryMinutes: Int = 0,
 ) {
     val allEntries: List<TodayTask> get() = sections.flatMap { it.entries } + unsectionedEntries
     val runningTask: TodayTask?
@@ -68,6 +70,18 @@ data class TodayDay(
 /** Planning is available for an established current or future Day, never for the past. */
 internal fun canPlanDay(day: TodayDay): Boolean =
     day.planningEnabled && day.taskChuteDayId != null
+
+/** Resolve the current logical Section without making the device timezone authoritative. */
+internal fun resolveInitialSection(day: TodayDay, now: java.time.ZonedDateTime): TodaySection? {
+    if (!day.isCurrent) return day.sections.firstOrNull()
+    val localMinute = now.hour * 60 + now.minute
+    val logicalMinute = if (localMinute < day.establishmentBoundaryMinutes) localMinute + 1440 else localMinute
+    return day.sections.firstOrNull { section ->
+        val start = section.startMinute ?: return@firstOrNull false
+        val end = section.endMinute ?: return@firstOrNull false
+        logicalMinute >= start && logicalMinute < end
+    } ?: day.sections.firstOrNull()
+}
 
 data class TodayHttpResponse(
     val status: Int?,

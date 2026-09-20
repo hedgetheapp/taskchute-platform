@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -26,7 +27,9 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -46,6 +49,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.hedgetheapp.taskchute.ui.AndroidDestination
 import com.hedgetheapp.taskchute.ui.AndroidNavigationBar
 import com.hedgetheapp.taskchute.ui.TaskChuteColors
@@ -150,6 +154,90 @@ fun NotesScreen(
             },
             dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("キャンセル") } },
         )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TaskNoteBottomSheet(
+    controller: NotesController,
+    onDismiss: () -> Unit,
+) {
+    val state = controller.state
+    fun attemptDismiss() {
+        if (state.editor != null) {
+            controller.flushAndNavigate(onDismiss)
+        } else if (state.unresolvedTaskEnsure == null) {
+            onDismiss()
+        }
+    }
+    ModalBottomSheet(
+        onDismissRequest = ::attemptDismiss,
+        containerColor = Color(0xFF232323),
+        scrimColor = Color.Black.copy(alpha = 0.46f),
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        dragHandle = {
+            Box(Modifier.width(40.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFFA3A3A0)))
+        },
+    ) {
+        Column(
+            Modifier.fillMaxWidth().height(655.dp).navigationBarsPadding().imePadding().padding(horizontal = 20.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text("ノート", color = TaskChuteColors.PrimaryText, fontSize = 20.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+            when {
+                state.editor?.origin == NoteEditorOrigin.TODAY_TASK -> {
+                    val editor = state.editor!!
+                    Text(editor.taskTitle ?: "タスクノート", color = TaskChuteColors.PrimaryText, fontSize = 17.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    HorizontalDivider(color = TaskChuteColors.Divider)
+                    TextField(
+                        value = editor.markdownBody,
+                        onValueChange = controller::updateBody,
+                        label = { Text("Markdown") },
+                        enabled = !editor.blocked,
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            disabledContainerColor = Color.Transparent,
+                            focusedIndicatorColor = Color.Transparent,
+                            unfocusedIndicatorColor = Color.Transparent,
+                            disabledIndicatorColor = Color.Transparent,
+                        ),
+                    )
+                    HorizontalDivider(color = TaskChuteColors.Divider)
+                    Text(
+                        when (editor.saveStatus) {
+                            NoteSaveStatus.SAVING -> "保存中…"
+                            NoteSaveStatus.SAVED -> "保存済み"
+                            NoteSaveStatus.UNSAVED -> "未保存"
+                            NoteSaveStatus.CONFLICT -> "競合しています。内容を確認してください。"
+                            NoteSaveStatus.AMBIGUOUS -> "保存結果が未確定です。"
+                            NoteSaveStatus.ERROR -> "保存に失敗しました。"
+                        },
+                        color = if (editor.saveStatus in setOf(NoteSaveStatus.SAVED, NoteSaveStatus.UNSAVED, NoteSaveStatus.SAVING)) TaskChuteColors.SecondaryText else MaterialTheme.colorScheme.error,
+                        fontSize = 13.sp,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
+                    )
+                    editor.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    if (editor.blocked) {
+                        Text("保存結果が未確定です。元の操作を再試行してください。", color = MaterialTheme.colorScheme.error)
+                        Button(onClick = controller::retryUnresolved, enabled = !editor.saving) { Text("元の保存を再試行") }
+                    }
+                }
+                state.unresolvedTaskEnsure != null -> {
+                    if (state.taskEnsureSaving) CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally))
+                    state.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    TextButton(onClick = controller::retryTaskPrimaryEnsure, enabled = !state.taskEnsureSaving) { Text("元のノート作成を再試行") }
+                }
+                else -> CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally))
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = ::attemptDismiss, enabled = state.editor?.saving != true, modifier = Modifier.width(88.dp).height(48.dp)) {
+                    Text("閉じる", color = Color(0xFFB794F4))
+                }
+            }
+        }
     }
 }
 

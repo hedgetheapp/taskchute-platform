@@ -9,6 +9,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.time.ZoneId
+import java.time.ZonedDateTime
 
 class TaskPlanningController(
     private val repository: TaskPlanningRepository,
@@ -21,7 +23,13 @@ class TaskPlanningController(
 
     fun openCreate(day: TodayDay) {
         if (!canEditDay(day) || state.saving) return
-        val section = day.sections.firstOrNull()
+        val zone = day.establishmentTimezone?.let { runCatching { ZoneId.of(it) }.getOrNull() }
+        val section = if (zone == null) {
+            // Older projections without canonical timezone cannot safely infer wall-clock Section.
+            day.sections.firstOrNull()
+        } else {
+            resolveInitialSection(day, ZonedDateTime.now(zone))
+        }
         state = TaskPlanningUiState(
             editor = TaskEditorState(
                 mode = TaskEditorMode.CREATE,

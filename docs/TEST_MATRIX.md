@@ -2,6 +2,13 @@
 
 | ID | Verification target | Evidence | Status |
 |---|---|---|---|
+| D121-BUNDLE-SOURCE | Figma/source alignment | Quick Add visibility/initial Section/parser/loading, Selection footer, Task Note Bottom Sheet routing, Swipe / Task Actions, Running panel, Drag feedback, and Task Row metadata mapped to the supplied Figma references. | TESTED / SOURCE |
+| D121-BUNDLE-JVM | Focused/full Android JVM | TaskPlanning parser accepts `900`, `0900`, `9:00`, `09:00`, extended hour and rejects invalid minutes; current-time Section resolver uses canonical timezone/boundary; existing `:app:testDebugUnitTest`. | PASS |
+| D121-BUNDLE-BUILD | Android build | `:app:compileDebugAndroidTestKotlin` and `:app:assembleDebug`. | PASS |
+| D121-BUNDLE-RUNTIME | Authenticated Today / Notes runtime | Focused Today / Task Note sheet behavior, MainActivity, crash buffer. | NOT_RUN |
+| D121-BUNDLE-DEVICE | Product Owner physical device | New bundle artifact physical-device verification. | NOT_RUN |
+| D121-BUNDLE-SCREENSHOT | Authenticated emulator Figma comparison | Pixel/screenshot comparison for this bundle. | NOT_RUN |
+| D121-BUNDLE-BOUNDARY | Product / persistence boundary | No Worker/API, schema, migration, dependency, persistent nonprod, production, tag, or Release change. | PASS / NOT_REQUIRED / NOT_RUN / NO |
 | D121-TASKROW-SOURCE | Figma/source alignment | Figma component set `181:77` and representative nodes `228:469` Planned, `228:524` Running, `228:471` Completed inspected; 84dp row, 48dp projection slot, lifecycle surfaces/actions, Project / Mode context, and 18dp selection checkbox mapped. | TESTED |
 | D121-TASKROW-PROJECTION | Projection / execution semantic separation | Android uses `plannedStartMinute + estimate` for the left projection slot for Planned / Running / Completed; actual execution timestamps remain metadata-only. `execution_summary.completed_duration_seconds` is parsed and used for completed duration display. | PASS |
 | D121-TASKROW-JVM | Android JVM regression | `:app:testDebugUnitTest` `123 / 123`, failures/errors/skipped `0 / 0 / 0`; parser coverage includes canonical completed duration and missing-field compatibility. | PASS |

@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### D-121 Android Today Figma parity bundle corrective
+
+- Quick Addのcurrent/future visibility、canonical timezone由来の初期Section、候補ロード中disabled、`900` / `0900`を含む`HH:mm`正規化を整合。
+- Selection footer、Task Note Today Bottom Sheet、Swipe / Task Actions、Running panel、Drag feedback、Task Row metadataのFigma差分を修正。
+- Task Primary NotesControllerのautosave/CAS/ambiguous retry/safe flush、Future/Past、D&D、lifecycle semanticsを維持。成功deleteの通知だけ抑止。
+- Android JVM、instrumentation compile、debug assembleはPASS。authenticated runtime、physical device、screenshot comparisonは未実施。
+
 ### D-100 Executable Development Workflow
 
 - `apps/web`へauthoritative `preflight`、明示surface必須の`verify:fast` / `verify:standard` / `verify:heavy`、per-step timing artifact、保守的な`evidence:summary`を追加。既存profile policy、persistent/manual evidence分離、production禁止は変更しない。

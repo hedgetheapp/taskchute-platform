@@ -215,10 +215,10 @@ private fun TaskChuteApp(
                             onNavigateSettings = { destination = AndroidDestination.SETTINGS },
                             onNavigateNotes = { destination = AndroidDestination.NOTES },
                             directManipulationController = directManipulationController,
+                            taskNoteController = notesController,
                             onOpenTaskNote = { task ->
                                 task.taskId?.let { taskId ->
                                     notesController.openTaskPrimary(taskId, task.title, task.primaryDocumentId)
-                                    destination = AndroidDestination.NOTES
                                 }
                             },
                             onSignOut = signOut,

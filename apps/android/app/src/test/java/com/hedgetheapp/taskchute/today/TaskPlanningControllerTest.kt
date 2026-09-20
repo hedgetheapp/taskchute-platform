@@ -3,6 +3,8 @@ package com.hedgetheapp.taskchute.today
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import java.time.ZoneId
+import java.time.ZonedDateTime
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -97,6 +99,31 @@ class TaskPlanningControllerTest {
         assertNotNull(TaskEditorValidation.validate(TaskEditorDraft(title = "A", estimateText = "999999999999")).errorMessage)
         assertEquals(1500, TaskEditorValidation.validate(TaskEditorDraft(title = "A", plannedStartText = "25:00")).input?.plannedStartMinute)
         assertFalse(TaskEditorValidation.validate(TaskEditorDraft(title = "日本語😀")).input == null)
+    }
+
+    @Test
+    fun plannedStartAcceptsCompactAndPaddedInputAndKeepsExtendedHours() {
+        assertEquals(540, TaskEditorValidation.validate(TaskEditorDraft(title = "A", plannedStartText = "900")).input?.plannedStartMinute)
+        assertEquals(540, TaskEditorValidation.validate(TaskEditorDraft(title = "A", plannedStartText = "0900")).input?.plannedStartMinute)
+        assertEquals(540, TaskEditorValidation.validate(TaskEditorDraft(title = "A", plannedStartText = "9:00")).input?.plannedStartMinute)
+        assertEquals(540, TaskEditorValidation.validate(TaskEditorDraft(title = "A", plannedStartText = "09:00")).input?.plannedStartMinute)
+        assertEquals(1500, TaskEditorValidation.validate(TaskEditorDraft(title = "A", plannedStartText = "2500")).input?.plannedStartMinute)
+        assertNotNull(TaskEditorValidation.validate(TaskEditorDraft(title = "A", plannedStartText = "0960")).errorMessage)
+        assertEquals("09:00", formatEditorMinute(540))
+    }
+
+    @Test
+    fun currentTimeSectionUsesCanonicalTimezoneAndLogicalBoundary() {
+        val day = currentDay().copy(
+            establishmentTimezone = "Asia/Tokyo",
+            establishmentBoundaryMinutes = 240,
+            sections = listOf(
+                TodaySection("early", "Early", 0, 240, emptyList()),
+                TodaySection("morning", "Morning", 240, 720, emptyList()),
+            ),
+        )
+        val section = resolveInitialSection(day, ZonedDateTime.of(2026, 9, 14, 9, 0, 0, 0, ZoneId.of("Asia/Tokyo")))
+        assertEquals("morning", section?.id)
     }
 
     private fun controller(repository: FakePlanningRepository, onSaved: () -> Unit = {}): TaskPlanningController =

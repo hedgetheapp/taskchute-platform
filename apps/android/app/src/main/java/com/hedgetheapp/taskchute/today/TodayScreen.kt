@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -62,6 +63,7 @@ import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -94,6 +96,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.app.DatePickerDialog as AndroidDatePickerDialog
@@ -108,6 +111,8 @@ import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
 import com.hedgetheapp.taskchute.R
+import com.hedgetheapp.taskchute.document.NotesController
+import com.hedgetheapp.taskchute.document.TaskNoteBottomSheet
 import com.hedgetheapp.taskchute.ui.AndroidDestination
 import com.hedgetheapp.taskchute.ui.AndroidNavigationBar
 import com.hedgetheapp.taskchute.ui.ChromeIcon
@@ -129,6 +134,7 @@ fun TodayScreen(
     onNavigateNotes: () -> Unit = {},
     directManipulationController: TodayDirectManipulationController? = null,
     onOpenTaskNote: (TodayTask) -> Unit = {},
+    taskNoteController: NotesController? = null,
 ) {
     val state = controller.state
     val planningState = planningController?.state ?: TaskPlanningUiState()
@@ -137,6 +143,7 @@ fun TodayScreen(
     var datePickerEntryIds by remember { mutableStateOf<Set<String>?>(null) }
     var deleteEntryIds by remember { mutableStateOf<Set<String>?>(null) }
     var headerDatePickerVisible by remember { mutableStateOf(false) }
+    var taskNoteSheetTask by remember { mutableStateOf<TodayTask?>(null) }
     val context = LocalContext.current
     LaunchedEffect(controller) { controller.loadCurrent() }
     LaunchedEffect(state.day, state.status) {
@@ -231,7 +238,10 @@ fun TodayScreen(
                     state = state,
                     planningController = planningController,
                     directManipulationController = directManipulationController,
-                    onOpenTaskNote = onOpenTaskNote,
+                    onOpenTaskNote = { task ->
+                        taskNoteSheetTask = task
+                        onOpenTaskNote(task)
+                    },
                     selectionModeActive = selectionModeActive,
                     onEnterSelection = { id ->
                         selectionModeActive = true
@@ -283,8 +293,8 @@ fun TodayScreen(
                                     shape = CircleShape,
                                     containerColor = Color(0xFFE8E8E5),
                                     contentColor = TaskChuteColors.Background,
-                                    modifier = Modifier.semantics { contentDescription = "タスクを追加" },
-                                ) { ChromeIcon(TaskChuteIcons.Add, "タスクを追加", Modifier.size(32.dp)) }
+                                    modifier = Modifier.size(64.dp).semantics { contentDescription = "タスクを追加" },
+                                ) { ChromeIcon(TaskChuteIcons.Add, "タスクを追加", Modifier.size(19.dp)) }
                             }
                             if (!selectionModeActive) runningTask?.let { task ->
                                 RunningTaskPanel(
@@ -305,9 +315,22 @@ fun TodayScreen(
         ModalBottomSheet(
             onDismissRequest = planningController::dismiss,
             sheetState = sheetState,
+            containerColor = Color(0xFF202020),
+            scrimColor = Color.Black.copy(alpha = 0.42f),
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+            dragHandle = {
+                Box(Modifier.width(40.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFFA3A3A0).copy(alpha = 0.55f)))
+            },
         ) {
             TaskEditorForm(planningController, planningState, Modifier.imePadding())
         }
+    }
+
+    if (taskNoteSheetTask != null && taskNoteController != null) {
+        TaskNoteBottomSheet(
+            controller = taskNoteController,
+            onDismiss = { taskNoteSheetTask = null },
+        )
     }
 
     deleteEntryIds?.let { entryIds ->
@@ -318,7 +341,7 @@ fun TodayScreen(
             confirmButton = {
                 TextButton(onClick = {
                     deleteEntryIds = null
-                    day?.let { directManipulationController?.delete(it, entryIds, "削除しました") }
+                    day?.let { directManipulationController?.delete(it, entryIds) }
                 }) { Text("削除") }
             },
             dismissButton = { TextButton(onClick = { deleteEntryIds = null }) { Text("キャンセル") } },
@@ -335,15 +358,23 @@ private fun BulkActionBar(
     onClear: () -> Unit,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+        modifier = Modifier.fillMaxWidth().height(72.dp).background(Color(0xFF222222)).padding(start = 14.dp, end = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        horizontalArrangement = Arrangement.spacedBy(0.dp),
     ) {
-        Text("${count}件選択", modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
-        TextButton(onClick = onChooseDate, enabled = hasSelection) { Text("日付") }
-        TextButton(onClick = onDelete, enabled = hasSelection) { Text("削除") }
-        TextButton(onClick = onClear) { Text("解除") }
+        Text("${count}件選択", modifier = Modifier.width(88.dp), color = TaskChuteColors.PrimaryText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+        BulkActionButton("日付", hasSelection, onChooseDate)
+        BulkActionButton("削除", hasSelection, onDelete, Color(0xFFFF6B6B))
+        BulkActionButton("解除", true, onClear)
     }
+}
+
+@Composable
+private fun BulkActionButton(label: String, enabled: Boolean, onClick: () -> Unit, color: Color = TaskChuteColors.PrimaryText) {
+    Box(
+        modifier = Modifier.width(54.dp).height(48.dp).clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { Text(label, color = if (enabled) color else color.copy(alpha = 0.38f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold) }
 }
 
 @Composable
@@ -807,7 +838,7 @@ private fun SectionHeader(
     Row(
         modifier = modifier.fillMaxWidth().height(38.dp)
             .background(TaskChuteColors.SurfaceElevated)
-            .then(if (dropTarget) Modifier.border(BorderStroke(2.dp, TaskChuteColors.AccentBlue)) else Modifier)
+            .then(if (dropTarget) Modifier.background(Color(0x8C18423C)).border(BorderStroke(2.dp, Color(0xFF58C8B2))) else Modifier)
             .clickable(onClick = onToggleCollapsed)
             .semantics { contentDescription = "${title}セクション${if (collapsed) "を展開" else "を折りたたむ"}" }
             .padding(horizontal = 14.dp),
@@ -893,7 +924,7 @@ private fun TodayTaskRow(
     val swipeActionCount = (if (canEdit) 1 else 0) + (if (canSwipeNote) 1 else 0) + (if (hasOtherActions) 1 else 0)
     val swipeThreshold = with(LocalDensity.current) { 48.dp.toPx() }
     val swipeRevealWidth = with(LocalDensity.current) {
-        (swipeActionCount * 64 + ((swipeActionCount - 1).coerceAtLeast(0) * 4) + 4).dp.toPx()
+        (swipeActionCount * 48 + ((swipeActionCount - 1).coerceAtLeast(0) * 8) + 4).dp.toPx()
     }
     val selectionSwipeWidth = with(LocalDensity.current) { 88.dp.toPx() }
     val rowSurface = when (task.lifecycleState) {
@@ -906,13 +937,15 @@ private fun TodayTaskRow(
             Row(
                 modifier = Modifier.align(Alignment.CenterEnd).zIndex(2f).padding(end = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 if (canEdit) {
                     SwipeTaskAction(
                         iconRes = R.drawable.ic_material_edit_24,
                         description = "タスクを編集",
-                        containerColor = TaskChuteColors.SurfaceElevated,
+                        containerColor = Color(0xFF52391A),
+                        borderColor = Color(0xFFFFB85C),
+                        iconSize = 24.dp,
                         onClick = {
                             swipeOffset = 0f
                             onSwipeMenuClosed()
@@ -924,7 +957,9 @@ private fun TodayTaskRow(
                     SwipeTaskAction(
                         iconRes = R.drawable.ic_material_sticky_note_2_24,
                         description = "タスクのノート",
-                        containerColor = TaskChuteColors.RunningControl,
+                        containerColor = Color(0xFF44325C),
+                        borderColor = Color(0xFFB794F4),
+                        iconSize = 20.dp,
                         onClick = {
                             swipeOffset = 0f
                             onSwipeMenuClosed()
@@ -936,7 +971,9 @@ private fun TodayTaskRow(
                     SwipeTaskAction(
                         iconRes = R.drawable.ic_material_more_horiz_24,
                         description = "タスクの操作",
-                        containerColor = TaskChuteColors.Control,
+                        containerColor = Color(0xFF3A3A3A),
+                        borderColor = Color(0xFF5F5F5F),
+                        iconSize = 24.dp,
                         onClick = {
                             swipeOffset = 0f
                             onSwipeMenuClosed()
@@ -957,13 +994,13 @@ private fun TodayTaskRow(
                 .then(
                     if (dragging) Modifier.graphicsLayer {
                         translationY = dragDeltaY
-                        shadowElevation = 10.dp.toPx()
-                        scaleX = 0.98f
-                        scaleY = 0.98f
+                        shadowElevation = 16.dp.toPx()
                     } else Modifier,
                 ).then(
-                    if (dragging) Modifier.border(BorderStroke(2.dp, TaskChuteColors.AccentBlue))
-                    else if (dropTarget) Modifier.border(BorderStroke(2.dp, TaskChuteColors.SecondaryText))
+                    if (dragging) Modifier
+                    else if (dropTarget) Modifier
+                        .background(Color(0x802C665D))
+                        .border(BorderStroke(2.dp, Color(0xFF58C8B2)))
                     else Modifier,
                 ).padding(top = insertionPadding)
                     .animateContentSize()
@@ -1121,20 +1158,28 @@ private fun TodayTaskRow(
         }
     }
     if (actionsSheetOpen) {
-        ModalBottomSheet(onDismissRequest = { actionsSheetOpen = false }) {
+        ModalBottomSheet(
+            onDismissRequest = { actionsSheetOpen = false },
+            containerColor = Color(0xFF232323),
+            scrimColor = Color.Black.copy(alpha = 0.46f),
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+            dragHandle = {
+                Box(Modifier.width(40.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFFA3A3A0).copy(alpha = 0.55f)))
+            },
+        ) {
             Column(
                 Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp).navigationBarsPadding(),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Text("タスク操作", style = MaterialTheme.typography.titleLarge, color = TaskChuteColors.PrimaryText)
-                Text(task.title, style = MaterialTheme.typography.bodyMedium, color = TaskChuteColors.SecondaryText)
-                if (canEdit) TextButton(onClick = { actionsSheetOpen = false; onEdit() }, Modifier.fillMaxWidth()) { Text("編集") }
-                if (canDuplicate) TextButton(onClick = { actionsSheetOpen = false; onDuplicate() }, Modifier.fillMaxWidth()) { Text("複製") }
+                Text(task.title, style = MaterialTheme.typography.bodyMedium, color = TaskChuteColors.SecondaryText, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (canEdit) TaskActionRow(R.drawable.ic_material_edit_24, "編集", onClick = { actionsSheetOpen = false; onEdit() })
+                if (canDuplicate) TaskActionRow(R.drawable.ic_material_repeat_24, "複製", onClick = { actionsSheetOpen = false; onDuplicate() })
                 if (canDayOperate) {
-                    TextButton(onClick = { actionsSheetOpen = false; onMovePrevious() }, Modifier.fillMaxWidth()) { Text("前の日へ移動") }
-                    TextButton(onClick = { actionsSheetOpen = false; onMoveNext() }, Modifier.fillMaxWidth()) { Text("次の日へ移動") }
-                    TextButton(onClick = { actionsSheetOpen = false; onPickDate() }, Modifier.fillMaxWidth()) { Text("日付を移動") }
-                    TextButton(onClick = { actionsSheetOpen = false; onDelete() }, Modifier.fillMaxWidth()) { Text("削除", color = MaterialTheme.colorScheme.error) }
+                    TaskActionRow(R.drawable.ic_material_chevron_left_24, "前の日へ移動", onClick = { actionsSheetOpen = false; onMovePrevious() })
+                    TaskActionRow(R.drawable.ic_material_chevron_right_24, "次の日へ移動", onClick = { actionsSheetOpen = false; onMoveNext() })
+                    TaskActionRow(R.drawable.ic_material_schedule_24, "日付を移動", onClick = { actionsSheetOpen = false; onPickDate() })
+                    TaskActionRow(R.drawable.ic_material_delete_24, "削除", destructive = true, onClick = { actionsSheetOpen = false; onDelete() })
                 }
             }
         }
@@ -1214,6 +1259,18 @@ private fun TaskSelectionSlot(
 }
 
 @Composable
+private fun TaskActionRow(iconRes: Int, label: String, destructive: Boolean = false, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().height(52.dp).clickable(onClick = onClick).padding(horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(painterResource(iconRes), contentDescription = null, tint = if (destructive) Color(0xFFFF6B6B) else TaskChuteColors.PrimaryText, modifier = Modifier.size(24.dp))
+        Spacer(Modifier.width(16.dp))
+        Text(label, color = if (destructive) Color(0xFFFF6B6B) else TaskChuteColors.PrimaryText, fontSize = 15.sp)
+    }
+}
+
+@Composable
 private fun TaskMetadata(task: TodayTask, modifier: Modifier = Modifier) {
     val estimate = task.estimateSeconds?.let { formatEstimate(it) + " /" } ?: "-- /"
     val status = when (task.lifecycleState) {
@@ -1230,7 +1287,7 @@ private fun TaskMetadata(task: TodayTask, modifier: Modifier = Modifier) {
             Spacer(Modifier.width(6.dp))
             Text(
                 estimate,
-                modifier = Modifier.width(33.dp),
+                modifier = Modifier.widthIn(min = 33.dp),
                 color = TaskChuteColors.SecondaryText,
                 fontSize = 12.sp,
                 lineHeight = 14.sp,
@@ -1254,7 +1311,7 @@ private fun TaskMetadata(task: TodayTask, modifier: Modifier = Modifier) {
                 val end = task.lastEndedAt?.let(::formatInstant) ?: "--:--"
                 Text(
                     start + " → " + end + " (",
-                    modifier = Modifier.width(85.dp),
+                    modifier = Modifier.widthIn(min = 85.dp).weight(1f, fill = false),
                     color = TaskChuteColors.SecondaryText,
                     fontSize = 12.sp,
                     lineHeight = 14.sp,
@@ -1309,19 +1366,21 @@ private fun SwipeTaskAction(
     iconRes: Int,
     description: String,
     containerColor: Color,
+    borderColor: Color,
+    iconSize: androidx.compose.ui.unit.Dp,
     onClick: () -> Unit,
 ) {
     Column(
-        modifier = Modifier.width(64.dp),
+        modifier = Modifier.width(48.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(0.dp),
     ) {
         IconButton(
             onClick = onClick,
-            modifier = Modifier.size(48.dp).clip(CircleShape).background(containerColor)
+            modifier = Modifier.size(48.dp).clip(CircleShape).background(containerColor).border(1.dp, borderColor, CircleShape)
                 .semantics { contentDescription = description },
         ) {
-            Icon(painterResource(iconRes), contentDescription = null, tint = TaskChuteColors.PrimaryText, modifier = Modifier.size(20.dp))
+            Icon(painterResource(iconRes), contentDescription = null, tint = TaskChuteColors.PrimaryText, modifier = Modifier.size(iconSize))
         }
     }
 }
@@ -1384,18 +1443,24 @@ private fun OperationFailedPanel() {
 
 @Composable
 private fun RunningTaskPanel(task: TodayTask, controller: TodayController, enabled: Boolean, modifier: Modifier = Modifier) {
-    Card(modifier = modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = TaskChuteColors.RunningSurface), shape = RoundedCornerShape(26.dp), elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)) {
+    Card(modifier = modifier.fillMaxWidth().height(72.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFF1E2A33)), shape = RoundedCornerShape(26.dp), elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
-                Text("実行中", style = MaterialTheme.typography.labelLarge, color = TaskChuteColors.AccentBlue)
-                Text(task.title, maxLines = 1, overflow = TextOverflow.Ellipsis, color = TaskChuteColors.PrimaryText)
-                task.activeStartedAt?.let { Text("開始 $it", style = MaterialTheme.typography.bodySmall) }
+                Text("実行中", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TaskChuteColors.AccentBlue)
+                Text(task.title, maxLines = 1, overflow = TextOverflow.Ellipsis, color = Color(0xFFF1F1EF), fontSize = 16.sp, fontWeight = FontWeight.Bold)
             }
             Spacer(Modifier.width(8.dp))
-            Button(onClick = { controller.complete(task) }, enabled = enabled) { Text("完了") }
+            Button(
+                onClick = { controller.complete(task) },
+                enabled = enabled,
+                modifier = Modifier.width(78.dp).height(40.dp),
+                shape = RoundedCornerShape(20.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE8E8E5), contentColor = Color(0xFF191919)),
+                contentPadding = PaddingValues(0.dp),
+            ) { Text("完了", fontSize = 14.sp, fontWeight = FontWeight.Bold) }
         }
     }
 }
@@ -1419,7 +1484,12 @@ private fun TaskEditorForm(controller: TaskPlanningController, state: TaskPlanni
         modifier = modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(if (runningMetadataOnly) "実行中タスクの編集" else if (editor.mode == TaskEditorMode.CREATE) "タスクを追加" else "タスクを編集", style = MaterialTheme.typography.titleLarge)
+        Text(
+            if (runningMetadataOnly) "実行中タスクの編集" else if (editor.mode == TaskEditorMode.CREATE) "タスクを追加" else "タスクを編集",
+            fontSize = 22.sp,
+            fontWeight = FontWeight.Bold,
+            color = TaskChuteColors.PrimaryText,
+        )
         if (runningMetadataOnly) {
             Text("Task名: ${draft.title}", color = TaskChuteColors.SecondaryText)
         } else {
@@ -1428,8 +1498,10 @@ private fun TaskEditorForm(controller: TaskPlanningController, state: TaskPlanni
                 onValueChange = { controller.updateDraft(draft.copy(title = it)) },
                 label = { Text("Task名") },
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().height(48.dp),
                 enabled = titleEditable && !state.saving,
+                shape = RoundedCornerShape(16.dp),
+                colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Color(0xFF343434), focusedBorderColor = TaskChuteColors.AccentBlue),
             )
         }
         ReferencePicker(
@@ -1439,7 +1511,7 @@ private fun TaskEditorForm(controller: TaskPlanningController, state: TaskPlanni
             onExpandedChange = { projectExpanded = it },
             options = listOf(null to "なし") + (references?.projects?.map { it.id to it.title } ?: emptyList()),
             onSelected = { controller.updateDraft(draft.copy(projectId = it)); projectExpanded = false },
-            enabled = references != null && !state.saving,
+            enabled = references != null && !state.loadingReferences && !state.saving,
         )
         ReferencePicker(
             label = "Mode",
@@ -1448,7 +1520,7 @@ private fun TaskEditorForm(controller: TaskPlanningController, state: TaskPlanni
             onExpandedChange = { modeExpanded = it },
             options = listOf(null to "なし") + (references?.modes?.map { it.id to it.title } ?: emptyList()),
             onSelected = { controller.updateDraft(draft.copy(modeId = it)); modeExpanded = false },
-            enabled = references != null && !state.saving,
+            enabled = references != null && !state.loadingReferences && !state.saving,
         )
         if (!runningMetadataOnly) {
         ReferencePicker(
@@ -1471,26 +1543,25 @@ private fun TaskEditorForm(controller: TaskPlanningController, state: TaskPlanni
         OutlinedTextField(
             value = draft.plannedStartText,
             onValueChange = { controller.updateDraft(draft.copy(plannedStartText = it)) },
-            label = { Text("開始予定") },
-            supportingText = { Text("H:mm（例 5:00）") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !state.saving,
-        )
+                label = { Text("開始予定") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                enabled = !state.saving,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                shape = RoundedCornerShape(16.dp),
+                colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Color(0xFF343434), focusedBorderColor = TaskChuteColors.AccentBlue),
+            )
         OutlinedTextField(
             value = draft.estimateText,
             onValueChange = { controller.updateDraft(draft.copy(estimateText = it)) },
-            label = { Text("見積（分）") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !state.saving,
-        )
-        }
-        if (state.loadingReferences) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                CircularProgressIndicator(modifier = Modifier.size(18.dp))
-                Text("候補を読み込んでいます…")
-            }
+                label = { Text("見積（分）") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                enabled = !state.saving,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                shape = RoundedCornerShape(16.dp),
+                colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Color(0xFF343434), focusedBorderColor = TaskChuteColors.AccentBlue),
+            )
         }
         state.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         if (references == null && !state.loadingReferences) {
@@ -1500,8 +1571,8 @@ private fun TaskEditorForm(controller: TaskPlanningController, state: TaskPlanni
             Text(validation.errorMessage, color = MaterialTheme.colorScheme.error)
         }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            TextButton(onClick = controller::dismiss, enabled = !state.saving) { Text("キャンセル") }
-            Button(onClick = controller::save, enabled = references != null && !state.saving) {
+            TextButton(onClick = controller::dismiss, enabled = !state.saving, modifier = Modifier.width(82.dp).height(48.dp)) { Text("キャンセル") }
+            Button(onClick = controller::save, enabled = references != null && !state.loadingReferences && !state.saving, modifier = Modifier.width(88.dp).height(48.dp), shape = RoundedCornerShape(24.dp), contentPadding = PaddingValues(0.dp)) {
                 Text(if (editor.mode == TaskEditorMode.CREATE) "追加" else "保存")
             }
         }
@@ -1520,7 +1591,7 @@ private fun ReferencePicker(
     enabled: Boolean,
 ) {
     Box {
-        OutlinedButton(onClick = { onExpandedChange(true) }, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
+        OutlinedButton(onClick = { onExpandedChange(true) }, enabled = enabled, modifier = Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, Color(0xFF343434))) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(label)
                 Text(value, maxLines = 1, overflow = TextOverflow.Ellipsis)
