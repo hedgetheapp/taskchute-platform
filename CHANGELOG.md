@@ -6,7 +6,7 @@
 
 - `TodayTaskRow`のvertical long-press drag ownerをouter stable Boxの`rowDragGestureModifier` 1個へ限定。inner Task content Columnに残っていた二重`pointerInput`を削除し、horizontal swipeは維持する。
 - placeholder切替時にinner visualがcompositionから外れても、outer gesture hostが同一pointer sequenceを保持し、long-press後のmove / dropをcancelしない構造へ修正。
-- Artifact `aaa372086dd5e533ca5d0e32664bfa0c254490ce`のGalaxy S23 immediate-cancelは`FAIL / USER_REPORTED`として記録。今回のcorrectiveの実機、production、Releaseは未確認。
+- Artifact `aaa372086dd5e533ca5d0e32664bfa0c254490ce`のGalaxy S23 immediate-cancelは`FAIL / USER_REPORTED`として履歴保持。新corrective artifact `b46d10ff5231a3d08157bea16ffb26b523420624`はProduct OwnerのGalaxy S23確認で`PASS / USER_REPORTED`。AVD runtimeは`NOT_RUN / HUNG`、productionは`NOT_RUN`、Releaseは`NO`のまま。
 
 ### D-127 Android Drag Reorder Regression Corrective
 

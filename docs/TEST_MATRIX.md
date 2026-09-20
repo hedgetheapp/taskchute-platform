@@ -14,7 +14,7 @@
 | D127-ANDROIDTEST-COMPILE | Android instrumentation compile | `:app:compileDebugAndroidTestKotlin` PASS。 | PASS |
 | D127-ANDROIDTEST | Android instrumentation runtime | `scripts/android-qa.ps1 -Surface Today`は`connectedDebugAndroidTest`まで到達したが結果を返さず停止。MainActivity resolved、crash buffer empty。 | NOT_RUN / HUNG |
 | D127-CI | Exact corrective SHA CI / APK | head `b46d10ff5231a3d08157bea16ffb26b523420624`; run `35540773296`; Android JVM/signed APK/instrumentation compile PASS、Web/Worker SKIPPED; artifact `taskchute-android-debug-b46d10ff5231a3d08157bea16ffb26b523420624`, ID `10614224508`, expiry `2026-09-27T22:12:55Z`. | PASS |
-| D127-DEVICE | Corrective APK Galaxy S23 | 新corrective artifactのProduct Owner verification。 | NOT_RUN |
+| D127-DEVICE | Corrective APK Galaxy S23 | Product Ownerが新corrective artifactをGalaxy S23で確認し、問題なしと報告。旧artifactのimmediate-cancel failureはhistorical evidenceとして保持する。 | PASS / USER_REPORTED |
 | D127-SCOPE | Boundary | Worker/API、schema、migration、dependency、server command semantics、production、tag、Releaseは変更しない。 | PASS / NOT_REQUIRED / NOT_RUN / NO |
 
 ## D-127 Android Drag Reorder Regression Corrective — 2026-09-21
