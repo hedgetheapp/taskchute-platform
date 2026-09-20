@@ -21,6 +21,7 @@ import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.swipeRight
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.semantics.SemanticsProperties
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
@@ -29,6 +30,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -550,6 +552,11 @@ class TodayScreenInstrumentedTest {
             .fetchSemanticsNode()
             .boundsInRoot
         assertTrue("failure panel must remain above the Quick Add FAB", messageBounds.bottom < fabBounds.top)
+        composeRule.waitUntil(10_000) {
+            composeRule.onAllNodesWithText(DETERMINISTIC_FAILURE_MESSAGE, substring = false)
+                .fetchSemanticsNodes()
+                .isEmpty()
+        }
     }
     @Test
     fun eligibleSwipeOffersDirectTaskNoteAndOtherSheet() {
@@ -592,6 +599,21 @@ class TodayScreenInstrumentedTest {
         composeRule.onNodeWithContentDescription("タスクを追加").performClick()
         val editableFields = composeRule.onAllNodes(hasSetTextAction())
         editableFields.get(0).assertIsFocused().performTextInput("Plan from Android")
+        composeRule.onAllNodesWithText("Project", substring = false).get(0).performClick()
+        val titleFocusedAfterProject = editableFields.get(0).fetchSemanticsNode().config.contains(SemanticsProperties.Focused) &&
+            editableFields.get(0).fetchSemanticsNode().config[SemanticsProperties.Focused]
+        assertFalse(titleFocusedAfterProject)
+        composeRule.onAllNodesWithText("Project", substring = false).get(1).performClick()
+        composeRule.onAllNodesWithText("Mode", substring = false).get(0).performClick()
+        val titleFocusedAfterMode = editableFields.get(0).fetchSemanticsNode().config.contains(SemanticsProperties.Focused) &&
+            editableFields.get(0).fetchSemanticsNode().config[SemanticsProperties.Focused]
+        assertFalse(titleFocusedAfterMode)
+        composeRule.onAllNodesWithText("Mode", substring = false).get(1).performClick()
+        composeRule.onAllNodesWithText("Section", substring = false).get(0).performClick()
+        val titleFocusedAfterSection = editableFields.get(0).fetchSemanticsNode().config.contains(SemanticsProperties.Focused) &&
+            editableFields.get(0).fetchSemanticsNode().config[SemanticsProperties.Focused]
+        assertFalse(titleFocusedAfterSection)
+        composeRule.onNodeWithText("Morning", substring = false).performClick()
         val startField = editableFields.get(1)
         startField.performTextClearance()
         startField.performTextInput("900")

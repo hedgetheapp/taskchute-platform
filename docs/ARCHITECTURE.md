@@ -12,7 +12,9 @@ user intent -> optimistic presentation overlay -> existing command
              -> failure/ambiguity -> clear or retain existing D-125 recovery state
 ```
 
-The overlay is scoped by logical date and Entry identity. Publishing a canonical Day or changing the selected Day clears it. A silent reconcile keeps the current content and does not enter visible `REFRESHING`; explicit pull-to-refresh and existing error/loading behavior remain unchanged. Task drag derives provisional Entry order in the screen and uses stable LazyColumn keys plus item-placement animation; the existing placement command remains the only canonical write.
+The overlay is scoped by logical date and Entry identity. Publishing a canonical Day or changing the selected Day clears it. A silent reconcile keeps the current content and does not enter visible `REFRESHING`; explicit pull-to-refresh and existing error/loading behavior remain unchanged. Task drag derives provisional Entry order in the screen and uses stable LazyColumn keys plus item-placement animation; the source row is replaced by a presentation-only placeholder while a separate lifted overlay follows the pointer, and the existing placement command remains the only canonical write. Completed / Routine-derived rows are not relative anchors; a Section with no eligible planned anchor uses the existing Section-only placement path.
+
+Quick Add picker controls own focus explicitly and hide the text IME when entered. Direct-manipulation deterministic failure feedback carries an in-memory generation token so accessibility-aware timeout dismissal cannot clear a newer failure; unresolved, auth, and load-error state remains outside that transient path.
 
 Quick Add client-generated Task/Entry IDs are passed through the existing Android repository request object so the provisional row and the canonical request share identity. The server request schema is unchanged. Task Note presentation is refactored only at the Today Bottom Sheet boundary and continues to reuse `NotesController`.
 

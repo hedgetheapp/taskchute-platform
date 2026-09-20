@@ -101,14 +101,18 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.content.Context
 import android.app.DatePickerDialog as AndroidDatePickerDialog
+import android.view.accessibility.AccessibilityManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.res.painterResource
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.delay
 import java.time.LocalDate
 import java.time.Instant
 import java.time.ZoneId
@@ -150,7 +154,20 @@ fun TodayScreen(
     var headerDatePickerVisible by remember { mutableStateOf(false) }
     var taskNoteSheetTask by remember { mutableStateOf<TodayTask?>(null) }
     val context = LocalContext.current
+    val deterministicFailureToken = directManipulationController?.state?.let { directState ->
+        if (directState.errorMessage == DETERMINISTIC_FAILURE_MESSAGE) directState.deterministicFailureToken else null
+    }
     LaunchedEffect(controller) { controller.loadCurrent() }
+    LaunchedEffect(deterministicFailureToken) {
+        val token = deterministicFailureToken ?: return@LaunchedEffect
+        val accessibilityManager = context.getSystemService(Context.ACCESSIBILITY_SERVICE) as? AccessibilityManager
+        val timeoutMillis = accessibilityManager
+            ?.getRecommendedTimeoutMillis(4_000, AccessibilityManager.FLAG_CONTENT_TEXT)
+            ?.toLong()
+            ?: 4_000L
+        delay(timeoutMillis)
+        directManipulationController?.clearDeterministicError(token)
+    }
     LaunchedEffect(state.day, state.status) {
         selectionModeActive = false
         selectedEntryIds = emptySet()
@@ -271,9 +288,8 @@ fun TodayScreen(
                     val runningTask = if (day.isCurrent) day.runningTask else null
                     val canAdd = canPlanDay(day) && planningController != null
                     val unresolved = directManipulationController?.state?.unresolvedRequest != null
-                    val deterministicFailure =
-                        directManipulationController?.state?.unresolvedRequest == null &&
-                            directManipulationController?.state?.errorMessage != null
+                    val deterministicFailure = deterministicFailureToken != null &&
+                        directManipulationController?.state?.unresolvedRequest == null
                     if (runningTask != null || canAdd || unresolved || deterministicFailure) {
                         Column(
                             modifier = Modifier
@@ -399,18 +415,23 @@ private fun TodayContent(
     modifier: Modifier,
 ) {
     val day = state.presentedDay ?: return LoadingToday()
+    val rowBounds = remember { mutableStateMapOf<String, Rect>() }
     val dropBounds = remember { mutableStateMapOf<String, Rect>() }
     val dropBoundsSectionId = remember { mutableStateMapOf<String, String?>() }
+    val dropBoundsEligible = remember { mutableStateMapOf<String, Boolean>() }
     val emptySectionDropBounds = remember { mutableStateMapOf<String, Rect>() }
     val emptySectionDropIds = remember { mutableStateMapOf<String, String?>() }
     var collapsedSectionIds by remember(day.logicalDate) { mutableStateOf<Set<String>>(emptySet()) }
     var dragState by remember { mutableStateOf<AndroidDragState?>(null) }
     var provisionalDay by remember { mutableStateOf<TodayDay?>(null) }
+    var dragContentRootTop by remember { mutableStateOf(0f) }
     var openSwipeEntryId by remember { mutableStateOf<String?>(null) }
     val renderDay = provisionalDay ?: day
     LaunchedEffect(day.logicalDate, state.status) { openSwipeEntryId = null }
     LaunchedEffect(day, dragState != null) {
-        day.sections.filter { it.entries.isNotEmpty() && it.id !in collapsedSectionIds }.forEach {
+        day.sections.filter { section ->
+            section.id !in collapsedSectionIds && section.entries.any(::isEligibleAndroidDropAnchor)
+        }.forEach {
             emptySectionDropBounds.remove(it.id)
             emptySectionDropIds.remove(it.id)
         }
@@ -427,6 +448,7 @@ private fun TodayContent(
             sourceEntryId = current.entryId,
             entryBounds = current.entryBoundsSnapshot,
             entrySectionIds = current.entrySectionIdsSnapshot,
+            entryAnchorEligible = current.entryAnchorEligibleSnapshot,
             emptySectionBounds = current.emptySectionBoundsSnapshot,
             emptySectionIds = current.emptySectionIdsSnapshot,
         )
@@ -537,11 +559,17 @@ private fun TodayContent(
             EmptyToday(Modifier.fillMaxWidth().weight(1f))
             return@Column
         }
-        LazyColumn(
-            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 110.dp),
-            // Keep section headers and task rows visually contiguous as one compact grouped surface.
-            verticalArrangement = Arrangement.spacedBy(0.dp),
+        Box(
+            modifier = Modifier.fillMaxWidth().weight(1f).onGloballyPositioned {
+                dragContentRootTop = it.boundsInRoot().top
+            },
         ) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 110.dp),
+                // Keep section headers and task rows visually contiguous as one compact grouped surface.
+                verticalArrangement = Arrangement.spacedBy(0.dp),
+            ) {
             renderDay.sections.forEachIndexed { index, section ->
                 if (index > 0) item(key = "section-gap-${section.id}") { Spacer(Modifier.height(12.dp)) }
                 item(key = "section-${section.id}") {
@@ -557,7 +585,9 @@ private fun TodayContent(
                         },
                         dropTarget = dragState?.target?.key == sectionDropKey(section.id),
                         modifier = Modifier.onGloballyPositioned {
-                            if (section.entries.isEmpty() || section.id in collapsedSectionIds) {
+                            val canonicalSection = day.sections.firstOrNull { it.id == section.id }
+                            val hasEligibleAnchor = canonicalSection?.entries?.any(::isEligibleAndroidDropAnchor) == true
+                            if (!hasEligibleAnchor || section.id in collapsedSectionIds) {
                                 emptySectionDropBounds[section.id] = it.boundsInRoot()
                                 emptySectionDropIds[section.id] = section.id
                             } else {
@@ -604,7 +634,7 @@ private fun TodayContent(
                             && !state.pendingEntryIds.contains(task.id),
                         dragging = dragState?.entryId == task.id,
                         dragDeltaY = dragState?.takeIf { it.entryId == task.id }?.deltaY ?: 0f,
-                        dropTarget = dragState?.target?.key == entryDropKey(task.id),
+                        dropTarget = false,
                         onDragStart = { pointerPosition ->
                             directManipulationController?.takeIf { it.canDrag(day, task) }?.let {
                                 val bounds = dropBounds[task.id]
@@ -612,8 +642,10 @@ private fun TodayContent(
                                     entryId = task.id,
                                     sourceSectionId = section.id,
                                     positionY = bounds?.top?.plus(pointerPosition.y) ?: pointerPosition.y,
+                                    rowBoundsSnapshot = rowBounds.toMap(),
                                     entryBoundsSnapshot = dropBounds.toMap(),
                                     entrySectionIdsSnapshot = dropBoundsSectionId.toMap(),
+                                    entryAnchorEligibleSnapshot = dropBoundsEligible.toMap(),
                                     emptySectionBoundsSnapshot = emptySectionDropBounds.toMap(),
                                     emptySectionIdsSnapshot = emptySectionDropIds.toMap(),
                                     target = null,
@@ -625,6 +657,8 @@ private fun TodayContent(
                         onDragCancel = { dragState = null; provisionalDay = null },
                         dropBounds = dropBounds,
                         dropBoundsSectionId = dropBoundsSectionId,
+                        dropBoundsEligible = dropBoundsEligible,
+                        rowBounds = rowBounds,
                     )
                 }
             }
@@ -643,7 +677,8 @@ private fun TodayContent(
                         },
                         dropTarget = dragState?.target?.key == sectionDropKey(null),
                         modifier = Modifier.onGloballyPositioned {
-                            if (renderDay.unsectionedEntries.isEmpty() && dragState != null) {
+                            val hasEligibleAnchor = day.unsectionedEntries.any(::isEligibleAndroidDropAnchor)
+                            if (!hasEligibleAnchor && dragState != null) {
                                 emptySectionDropBounds[UNSECTIONED_DROP_KEY] = it.boundsInRoot()
                                 emptySectionDropIds[UNSECTIONED_DROP_KEY] = null
                             } else {
@@ -690,7 +725,7 @@ private fun TodayContent(
                             && !state.pendingEntryIds.contains(task.id),
                         dragging = dragState?.entryId == task.id,
                         dragDeltaY = dragState?.takeIf { it.entryId == task.id }?.deltaY ?: 0f,
-                        dropTarget = dragState?.target?.key == entryDropKey(task.id),
+                        dropTarget = false,
                         onDragStart = { pointerPosition ->
                             directManipulationController?.takeIf { it.canDrag(day, task) }?.let {
                                 val bounds = dropBounds[task.id]
@@ -698,8 +733,10 @@ private fun TodayContent(
                                     entryId = task.id,
                                     sourceSectionId = null,
                                     positionY = bounds?.top?.plus(pointerPosition.y) ?: pointerPosition.y,
+                                    rowBoundsSnapshot = rowBounds.toMap(),
                                     entryBoundsSnapshot = dropBounds.toMap(),
                                     entrySectionIdsSnapshot = dropBoundsSectionId.toMap(),
+                                    entryAnchorEligibleSnapshot = dropBoundsEligible.toMap(),
                                     emptySectionBoundsSnapshot = emptySectionDropBounds.toMap(),
                                     emptySectionIdsSnapshot = emptySectionDropIds.toMap(),
                                     target = null,
@@ -711,6 +748,24 @@ private fun TodayContent(
                         onDragCancel = { dragState = null; provisionalDay = null },
                         dropBounds = dropBounds,
                         dropBoundsSectionId = dropBoundsSectionId,
+                        dropBoundsEligible = dropBoundsEligible,
+                        rowBounds = rowBounds,
+                    )
+                }
+            }
+            }
+            dragState?.let { drag ->
+                day.allEntries.firstOrNull { it.id == drag.entryId }?.let { draggedTask ->
+                    val sourceTop = drag.rowBoundsSnapshot[drag.entryId]?.top
+                        ?: drag.entryBoundsSnapshot[drag.entryId]?.top
+                        ?: dragContentRootTop
+                    DraggedTaskOverlay(
+                        task = draggedTask,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp)
+                            .offset { IntOffset(0, (sourceTop + drag.deltaY - dragContentRootTop).roundToInt()) }
+                            .zIndex(10f),
                     )
                 }
             }
@@ -720,6 +775,7 @@ private fun TodayContent(
 }
 
 private const val UNSECTIONED_DROP_KEY = "__unsectioned__"
+private const val ANDROID_DRAG_SLOT_PREFIX = "__android_drag_slot__"
 
 internal data class AndroidDropTarget(
     val key: String,
@@ -732,8 +788,10 @@ private data class AndroidDragState(
     val entryId: String,
     val sourceSectionId: String?,
     val positionY: Float,
+    val rowBoundsSnapshot: Map<String, Rect> = emptyMap(),
     val entryBoundsSnapshot: Map<String, Rect> = emptyMap(),
     val entrySectionIdsSnapshot: Map<String, String?> = emptyMap(),
+    val entryAnchorEligibleSnapshot: Map<String, Boolean> = emptyMap(),
     val emptySectionBoundsSnapshot: Map<String, Rect> = emptyMap(),
     val emptySectionIdsSnapshot: Map<String, String?> = emptyMap(),
     val deltaY: Float = 0f,
@@ -745,23 +803,84 @@ internal fun entryDropKey(entryId: String): String = "entry:$entryId"
 internal fun sectionDropKey(sectionId: String?): String = "section:${sectionId ?: UNSECTIONED_DROP_KEY}"
 
 private fun previewDayForTarget(day: TodayDay, entryId: String, target: AndroidDropTarget): TodayDay =
-    previewOptimisticPlacement(
-        day,
-        entryId,
-        target.sectionId,
-        target.anchorEntryId?.let { PlacementTarget(target.sectionId, it, target.edge ?: PlacementEdge.AFTER) },
+    insertAndroidDragSlot(
+        removeAndroidPreviewEntry(
+            previewOptimisticPlacement(
+                day,
+                entryId,
+                target.sectionId,
+                target.anchorEntryId?.let { PlacementTarget(target.sectionId, it, target.edge ?: PlacementEdge.AFTER) },
+            ),
+            entryId,
+        ),
+        target,
     )
+
+private fun removeAndroidPreviewEntry(day: TodayDay, entryId: String): TodayDay = day.copy(
+    sections = day.sections.map { section -> section.copy(entries = section.entries.filterNot { it.id == entryId }) },
+    unsectionedEntries = day.unsectionedEntries.filterNot { it.id == entryId },
+)
+
+private fun insertAndroidDragSlot(day: TodayDay, target: AndroidDropTarget): TodayDay {
+    val slot = TodayTask(
+        id = ANDROID_DRAG_SLOT_PREFIX + target.key,
+        title = "",
+        lifecycleState = LifecycleState.PLANNED,
+        project = null,
+        mode = null,
+        estimateSeconds = null,
+        plannedStartMinute = null,
+        executionId = null,
+        activeStartedAt = null,
+    )
+    fun insert(entries: List<TodayTask>): List<TodayTask> {
+        val index = target.anchorEntryId?.let { anchorId ->
+            entries.indexOfFirst { it.id == anchorId }.let { anchorIndex ->
+                if (anchorIndex < 0) entries.size
+                else if (target.edge == PlacementEdge.BEFORE) anchorIndex else anchorIndex + 1
+            }
+        } ?: entries.size
+        return entries.toMutableList().apply { add(index.coerceIn(0, size), slot) }
+    }
+    return if (target.sectionId == null) {
+        day.copy(unsectionedEntries = insert(day.unsectionedEntries))
+    } else {
+        day.copy(sections = day.sections.map { section ->
+            if (section.id == target.sectionId) section.copy(entries = insert(section.entries)) else section
+        })
+    }
+}
+
+private fun isAndroidDragSlot(task: TodayTask): Boolean = task.id.startsWith(ANDROID_DRAG_SLOT_PREFIX)
+
+internal fun previewDragPresentationIds(
+    entryIds: List<String>,
+    sourceEntryId: String,
+    targetIndex: Int,
+): List<String> {
+    val withoutSource = entryIds.filterNot { it == sourceEntryId }.toMutableList()
+    withoutSource.add(targetIndex.coerceIn(0, withoutSource.size), ANDROID_DRAG_SLOT_PREFIX + "test")
+    return withoutSource
+}
+
+internal fun isEligibleAndroidDropAnchor(task: TodayTask): Boolean =
+    task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived
 
 internal fun resolveAndroidDropTarget(
     positionY: Float,
     sourceEntryId: String,
     entryBounds: Map<String, Rect>,
     entrySectionIds: Map<String, String?>,
+    entryAnchorEligible: Map<String, Boolean> = emptyMap(),
     emptySectionBounds: Map<String, Rect>,
     emptySectionIds: Map<String, String?>,
 ): AndroidDropTarget? {
     val entryTarget = entryBounds.entries
-        .filter { it.key != sourceEntryId && positionY >= it.value.top && positionY <= it.value.bottom }
+        .filter {
+            it.key != sourceEntryId &&
+                entryAnchorEligible[it.key] != false &&
+                positionY >= it.value.top && positionY <= it.value.bottom
+        }
         .minWithOrNull(compareBy({ kotlin.math.abs(positionY - it.value.center.y) }, { it.key }))
     if (entryTarget != null) {
         return AndroidDropTarget(
@@ -782,6 +901,58 @@ internal fun resolveAndroidDropTarget(
         anchorEntryId = null,
         edge = null,
     )
+}
+
+@Composable
+private fun ProvisionalDropSlot(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(84.dp)
+            .padding(vertical = 4.dp)
+            .background(Color(0x802C665D), RoundedCornerShape(4.dp))
+            .border(BorderStroke(2.dp, Color(0xFF58C8B2)), RoundedCornerShape(4.dp))
+            .semantics { contentDescription = "仮のドロップ位置" },
+    )
+}
+
+@Composable
+private fun DraggedTaskOverlay(task: TodayTask, modifier: Modifier = Modifier) {
+    val rowSurface = when (task.lifecycleState) {
+        LifecycleState.RUNNING -> TaskChuteColors.RunningSurface
+        LifecycleState.COMPLETED -> TaskChuteColors.SurfaceElevated
+        LifecycleState.PLANNED -> TaskChuteColors.Surface
+    }
+    Card(
+        modifier = modifier.height(84.dp).graphicsLayer { shadowElevation = 16.dp.toPx() },
+        shape = RoundedCornerShape(0.dp),
+        colors = CardDefaults.cardColors(containerColor = rowSurface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().height(84.dp).padding(end = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TaskProjectionSlot(task)
+            Spacer(Modifier.width(4.dp))
+            Column(
+                Modifier.weight(1f).height(74.dp),
+                verticalArrangement = Arrangement.spacedBy(5.dp),
+            ) {
+                Text(
+                    task.title,
+                    modifier = Modifier.fillMaxWidth().height(25.dp),
+                    fontSize = 16.sp,
+                    lineHeight = 25.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TaskChuteColors.PrimaryText,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                TaskMetadata(task, Modifier.fillMaxWidth())
+            }
+        }
+    }
 }
 
 private fun sectionEntries(day: TodayDay, sectionId: String?): List<TodayTask> =
@@ -941,7 +1112,13 @@ private fun TodayTaskRow(
     onDragCancel: () -> Unit,
     dropBounds: MutableMap<String, Rect>,
     dropBoundsSectionId: MutableMap<String, String?>,
+    dropBoundsEligible: MutableMap<String, Boolean>,
+    rowBounds: MutableMap<String, Rect>,
 ) {
+    if (isAndroidDragSlot(task)) {
+        ProvisionalDropSlot(modifier)
+        return
+    }
     var actionsSheetOpen by remember(task.id) { mutableStateOf(false) }
     var swipeOffset by remember(task.id) { mutableStateOf(0f) }
     var swipeGestureStarted by remember(task.id) { mutableStateOf(false) }
@@ -964,7 +1141,11 @@ private fun TodayTaskRow(
         LifecycleState.COMPLETED -> TaskChuteColors.SurfaceElevated
         LifecycleState.PLANNED -> TaskChuteColors.Surface
     }
-    Box(modifier.fillMaxWidth().background(rowSurface)) {
+    Box(
+        modifier.fillMaxWidth().background(rowSurface).onGloballyPositioned {
+            rowBounds[task.id] = it.boundsInRoot()
+        },
+    ) {
         if (!selectionModeActive && hasActions && swipeOffset <= -swipeThreshold) {
             Row(
                 modifier = Modifier.align(Alignment.CenterEnd).zIndex(2f).padding(end = 4.dp),
@@ -1062,6 +1243,7 @@ private fun TodayTaskRow(
                     Modifier.onGloballyPositioned {
                         dropBounds[task.id] = it.boundsInRoot()
                         dropBoundsSectionId[task.id] = sectionId
+                        dropBoundsEligible[task.id] = isEligibleAndroidDropAnchor(task)
                     }.pointerInput(task.id) {
                         detectShortLongPressDrag(
                             onDragStart = onDragStart,
@@ -1688,8 +1870,20 @@ private fun ReferencePicker(
     onSelected: (String?) -> Unit,
     enabled: Boolean,
 ) {
+    val focusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
     Box {
-        OutlinedButton(onClick = { onExpandedChange(true) }, enabled = enabled, modifier = Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, Color(0xFF343434))) {
+        OutlinedButton(
+            onClick = {
+                keyboardController?.hide()
+                focusRequester.requestFocus()
+                onExpandedChange(true)
+            },
+            enabled = enabled,
+            modifier = Modifier.fillMaxWidth().height(48.dp).focusRequester(focusRequester),
+            shape = RoundedCornerShape(16.dp),
+            border = BorderStroke(1.dp, Color(0xFF343434)),
+        ) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(label)
                 Text(value, maxLines = 1, overflow = TextOverflow.Ellipsis)

@@ -12,6 +12,10 @@ On successful mutation, the projection remains visible while the client silently
 
 During Task drag, the presentation may derive a provisional order from canonical Day, source Entry, and placement target. Stable Entry identities are used for row keys and placement animation. The provisional order is not sent or persisted until drop dispatches the existing command. No-op and invalid targets do not create a write.
 
+The Android drag presentation keeps the lifted source Entry out of the provisional list layout and renders a separate placeholder at the resolved target; the lifted visual follows the pointer once. Only eligible planned ordinary rows are relative anchors. An empty or Completed-only Section resolves to the existing Section-only `MoveEntry` with omitted placement so canonical planned-tail semantics place the Entry without reordering historical rows. Visible empty Section bands are captured as stable drag targets; off-screen auto-scroll is not part of this corrective.
+
+Quick Add reference pickers have explicit focus ownership. Opening a picker clears the text-field IME and focus does not return to the Task field until a new CREATE session. Deterministic direct-manipulation failure feedback is transient and generation-scoped; the accessibility-recommended timeout may dismiss only the same failure instance. Ambiguous exact-retry, authorization, and full-screen load errors remain persistent under D-125.
+
 Quick Add uses 48dp compact fields for Task name, planned start, and estimate. CREATE opens with Task name focused; EDIT does not auto-focus by this decision. Today Task Note is a Bottom Sheet backed by the existing NotesController and Task Primary/CAS/autosave semantics; the body has no visible `Markdown` label.
 
 Runtime and physical-device verification for this corrective are recorded separately in `docs/TEST_MATRIX.md`; source implementation status must not be treated as Verified.

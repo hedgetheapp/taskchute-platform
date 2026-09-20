@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### D-127 Android Quick Add focus / drag targeting / transient feedback corrective
+
+- Quick AddのProject / Mode / Section pickerが明示的にfocus ownerとなり、Task名fieldのinitial focusを奪い返さないよう修正。picker操作時はtext IMEを閉じる。
+- drag中のprovisional presentationをsource rowのtarget移動から、source除去 + 独立placeholder + pointer-following lifted overlayへ変更。Completed / Routine-derived rowはanchorにせず、completed-only / empty Sectionは既存Section-only planned-tail semanticsへ委譲する。
+- deterministic operation failureだけをgeneration token付きのtransient feedbackとし、AccessibilityManagerの推奨timeout後に同一failureだけをdismiss。ambiguous / auth / full-screen load failureはD-125どおり維持。
+- `TodayDirectManipulationTest` / `TodayOptimisticTest` focused JVM 26 tests、Android-test compileはPASS。今回のcorrectiveのGalaxy S23、AVD runtime、screenshot comparison、production、Releaseは未実施。off-screen auto-scrollは追加していない。Worker/API、schema、migration、dependency、D-127 semanticsは変更なし。
+
 ### D-127 Android Today device-findings corrective
 
 - Galaxy S23で報告されたD-127の5件（Quick Add focus reclaim、optimistic edit/lifecycle flicker、drag provisional-order oscillation、Completed actual metadataの開き括弧欠落）をsource-level correctiveとして修正。

@@ -135,6 +135,7 @@ data class DirectManipulationUiState(
     val errorMessage: String? = null,
     val unresolvedRequest: DirectManipulationRequest? = null,
     val feedbackMessage: String? = null,
+    val deterministicFailureToken: Long? = null,
 )
 
 class TodayDirectManipulationController(
@@ -148,6 +149,8 @@ class TodayDirectManipulationController(
 ) {
     var state by mutableStateOf(DirectManipulationUiState())
         private set
+
+    private var nextDeterministicFailureToken = 0L
 
     fun canDrag(day: TodayDay, task: TodayTask): Boolean =
         canPlanDay(day)
@@ -245,7 +248,14 @@ class TodayDirectManipulationController(
     }
 
     fun clearError() {
-        state = state.copy(errorMessage = null, feedbackMessage = null)
+        state = state.copy(errorMessage = null, feedbackMessage = null, deterministicFailureToken = null)
+    }
+
+    /** Clears only the deterministic failure instance that scheduled this dismissal. */
+    fun clearDeterministicError(token: Long) {
+        if (state.deterministicFailureToken == token && state.errorMessage == DETERMINISTIC_FAILURE_MESSAGE) {
+            state = state.copy(errorMessage = null, deterministicFailureToken = null)
+        }
     }
 
     fun clearFeedback() {
@@ -256,7 +266,12 @@ class TodayDirectManipulationController(
 
     private fun dispatch(entryIds: Set<String>, request: DirectManipulationRequest, successMessage: String? = null) {
         onOptimisticIntent(request)
-        state = state.copy(pendingEntryIds = entryIds, errorMessage = null, feedbackMessage = null)
+        state = state.copy(
+            pendingEntryIds = entryIds,
+            errorMessage = null,
+            feedbackMessage = null,
+            deterministicFailureToken = null,
+        )
         scope.launch {
             val result = withContext(Dispatchers.IO) { repository.execute(request) }
             state = state.copy(pendingEntryIds = emptySet())
@@ -278,7 +293,11 @@ class TodayDirectManipulationController(
                 }
                 is DirectManipulationResult.Failure -> {
                     onOptimisticFailure()
-                    state = state.copy(errorMessage = DETERMINISTIC_FAILURE_MESSAGE)
+                    nextDeterministicFailureToken += 1
+                    state = state.copy(
+                        errorMessage = DETERMINISTIC_FAILURE_MESSAGE,
+                        deterministicFailureToken = nextDeterministicFailureToken,
+                    )
                 }
             }
         }

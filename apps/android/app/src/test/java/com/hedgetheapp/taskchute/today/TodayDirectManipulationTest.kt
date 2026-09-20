@@ -337,6 +337,36 @@ class TodayDirectManipulationTest {
         assertEquals(null, controller.state.unresolvedRequest)
         controller.close()
     }
+
+    @Test
+    fun deterministicFailureDismissalIsGenerationSafe() {
+        val repository = FakeRepository().apply {
+            result = DirectManipulationResult.Failure("server detail")
+        }
+        val controller = TodayDirectManipulationController(
+            repository = repository,
+            onRefresh = {},
+            onUnauthorized = {},
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+        )
+
+        controller.reorder(day(), "section-1", listOf("entry-2", "entry-1"), setOf("entry-1"))
+        assertTrue(await { controller.state.deterministicFailureToken != null })
+        val firstToken = controller.state.deterministicFailureToken ?: error("missing first token")
+
+        controller.reorder(day(), "section-1", listOf("entry-2", "entry-1"), setOf("entry-1"))
+        assertTrue(await { controller.state.deterministicFailureToken != firstToken })
+        val secondToken = controller.state.deterministicFailureToken ?: error("missing second token")
+
+        controller.clearDeterministicError(firstToken)
+        assertEquals(secondToken, controller.state.deterministicFailureToken)
+        assertEquals(DETERMINISTIC_FAILURE_MESSAGE, controller.state.errorMessage)
+
+        controller.clearDeterministicError(secondToken)
+        assertEquals(null, controller.state.deterministicFailureToken)
+        assertEquals(null, controller.state.errorMessage)
+        controller.close()
+    }
     private fun await(predicate: () -> Boolean): Boolean {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2)
         while (System.nanoTime() < deadline) {

@@ -101,6 +101,53 @@ class TodayOptimisticTest {
         assertEquals(first, afterAnimation)
     }
 
+    @Test
+    fun dragPresentationUsesOnePlaceholderInsteadOfRelocatingTheSourceRow() {
+        val ids = previewDragPresentationIds(
+            entryIds = listOf("entry-a", "entry-b"),
+            sourceEntryId = "entry-a",
+            targetIndex = 1,
+        )
+
+        assertEquals(listOf("entry-b", "__android_drag_slot__test"), ids)
+    }
+
+    @Test
+    fun completedRowsAreNotManualDropAnchors() {
+        val target = resolveAndroidDropTarget(
+            positionY = 120f,
+            sourceEntryId = "entry-source",
+            entryBounds = mapOf(
+                "entry-completed" to Rect(0f, 50f, 100f, 100f),
+            ),
+            entrySectionIds = mapOf("entry-completed" to "afternoon"),
+            entryAnchorEligible = mapOf("entry-completed" to false),
+            emptySectionBounds = mapOf("afternoon" to Rect(0f, 100f, 100f, 140f)),
+            emptySectionIds = mapOf("afternoon" to "afternoon"),
+        )
+
+        assertEquals(AndroidDropTarget("section:afternoon", "afternoon", null, null), target)
+    }
+
+    @Test
+    fun consecutiveEmptySectionsRemainIndividuallyTargetable() {
+        val target = resolveAndroidDropTarget(
+            positionY = 165f,
+            sourceEntryId = "entry-source",
+            entryBounds = emptyMap(),
+            entrySectionIds = emptyMap(),
+            emptySectionBounds = mapOf(
+                "morning" to Rect(0f, 100f, 100f, 140f),
+                "afternoon" to Rect(0f, 140f, 100f, 180f),
+            ),
+            emptySectionIds = mapOf("morning" to "morning", "afternoon" to "afternoon"),
+        )
+
+        assertEquals("section:afternoon", target?.key)
+        assertEquals("afternoon", target?.sectionId)
+        assertEquals(null, target?.anchorEntryId)
+    }
+
     private fun day() = TodayDay(
         logicalDate = "2026-09-20",
         isCurrent = true,

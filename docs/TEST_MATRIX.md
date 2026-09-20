@@ -1,5 +1,20 @@
 # Test Matrix
 
+## D-127 Android Quick Add focus / drag targeting / transient feedback corrective — 2026-09-21
+
+| ID | Verification target | Evidence | Status |
+|---|---|---|---|
+| D127-FOCUS-PICKER | Quick Add Project / Mode / Section focus ownership | `ReferencePicker` requests focus for its own button and hides the text IME; CREATE Task field remains initial-focus only. Focus regression is covered by `TodayScreenInstrumentedTest.quickAddShowsSixFieldsAndSendsOneCanonicalSave`. | SOURCE / COMPILE PASS; RUNTIME NOT_VERIFIED |
+| D127-DRAG-PLACEHOLDER | Lifted Task / provisional order | source Entry is removed from the provisional presentation, a separate teal placeholder is inserted, and a lifted overlay follows the drag delta once; `TodayOptimisticTest.dragPresentationUsesOnePlaceholderInsteadOfRelocatingTheSourceRow`. | SOURCE / JVM PASS; RUNTIME NOT_VERIFIED |
+| D127-DRAG-ANCHOR | Empty / completed-only Section target | Completed and Routine-derived rows are excluded as anchors; Section-only target remains available for completed-only and consecutive empty Sections. `TodayOptimisticTest.completedRowsAreNotManualDropAnchors` and `consecutiveEmptySectionsRemainIndividuallyTargetable`. | SOURCE / JVM PASS; RUNTIME NOT_VERIFIED |
+| D127-FEEDBACK | Deterministic failure feedback | Exact D-125 deterministic copy receives a generation token, auto-dismisses using the accessibility-recommended timeout, and an older timeout cannot clear a newer failure. `TodayDirectManipulationTest.deterministicFailureDismissalIsGenerationSafe`. | SOURCE / JVM PASS; RUNTIME NOT_VERIFIED |
+| D127-JVM | Focused Android JVM | `:app:testDebugUnitTest --tests TodayDirectManipulationTest --tests TodayOptimisticTest`: `26 / 26 PASS`. | PASS |
+| D127-ANDROIDTEST-COMPILE | Focused Android instrumentation compile | `:app:compileDebugAndroidTestKotlin` PASS after picker-focus regression update. | PASS |
+| D127-AVD | Focused authenticated Today runtime | Today surface run is required; no physical device evidence is inherited from artifact `0020144...`. | NOT_RUN |
+| D127-DEVICE | Corrective APK Galaxy S23 | Product Owner verification of this new corrective artifact. | NOT_RUN |
+| D127-SCREENSHOT | Authenticated emulator Figma comparison | No screenshot comparison in this corrective. | SCREENSHOT_NOT_RUN |
+| D127-SCOPE | Boundary | No Worker/API, schema, migration, dependency, persistent local authority, production, tag, or Release change; D-125 ambiguous/auth/full-screen error semantics retained. | PASS / NOT_REQUIRED / NOT_RUN / NO |
+
 ## D-121 Android Today Task Row Figma visual parity corrective — 2026-09-20
 
 | ID | Verification target | Evidence | Status |
