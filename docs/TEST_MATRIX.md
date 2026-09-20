@@ -12,6 +12,7 @@
 | D127-JVM | Android unit tests | `:app:testDebugUnitTest`: `135 / 135`、failures/errors/skipped `0 / 0 / 0`。stable-key previewと既存Today回帰を含む。 | PASS |
 | D127-ANDROIDTEST-COMPILE | Android instrumentation compile | `:app:compileDebugAndroidTestKotlin` PASS。 | PASS |
 | D127-ANDROIDTEST | Android instrumentation | `scripts/android-qa.ps1 -Surface Today`は`connectedDebugAndroidTest`まで到達したが結果を返さず停止。MainActivity resolved、crash buffer empty。 | NOT_RUN / HUNG |
+| D127-CI | Exact corrective SHA CI / APK | `aaa372086dd5e533ca5d0e32664bfa0c254490ce`; run `35539849451`; Android JVM/APK PASS, Web/Worker SKIPPED; artifact `taskchute-android-debug-aaa372086dd5e533ca5d0e32664bfa0c254490ce`, ID `10614048129`, expiry `2026-09-27T21:51:23Z`. | PASS |
 | D127-DEVICE | Corrective APK Galaxy S23 | 新corrective artifactのProduct Owner physical-device verification。 | NOT_RUN |
 | D127-SCOPE | Boundary | Worker/API、schema、migration、dependency、persistent local authority、production、tag、Releaseは変更しない。D-127 / D-110 / D-123のplacement semanticsを維持。 | PASS / NOT_REQUIRED / NOT_RUN / NO |
 
