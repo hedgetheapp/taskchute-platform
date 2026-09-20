@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### D-127 Android Drag Immediate-Cancel Corrective
+
+- `TodayTaskRow`のvertical long-press drag ownerをouter stable Boxの`rowDragGestureModifier` 1個へ限定。inner Task content Columnに残っていた二重`pointerInput`を削除し、horizontal swipeは維持する。
+- placeholder切替時にinner visualがcompositionから外れても、outer gesture hostが同一pointer sequenceを保持し、long-press後のmove / dropをcancelしない構造へ修正。
+- Artifact `aaa372086dd5e533ca5d0e32664bfa0c254490ce`のGalaxy S23 immediate-cancelは`FAIL / USER_REPORTED`として記録。今回のcorrectiveの実機、production、Releaseは未確認。
+
 ### D-127 Android Drag Reorder Regression Corrective
 
 - 前版でsource Entryをsynthetic placeholderへ置換した際にdrag gesture ownerがcompositionから消え、drop commandが送信されないregressionを修正。provisional previewは実source Entryを同じ`task.id` stable keyのままtarget位置へ移動し、そのrowだけをteal placeholder visualとして描画する。

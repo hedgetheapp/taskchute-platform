@@ -1,5 +1,21 @@
 # Test Matrix
 
+## D-127 Android Drag Immediate-Cancel Corrective — 2026-09-21
+
+| ID | Verification target | Evidence | Status |
+|---|---|---|---|
+| D127-IMMEDIATE-CANCEL-REGRESSION | Existing artifact drag runtime | Artifact `aaa372086dd5e533ca5d0e32664bfa0c254490ce`でGalaxy S23が「long-press後に一瞬掴めるがすぐ離れる」。outer / innerの二重pointer ownerとplaceholder化によるinner owner disposeが原因。 | FAIL / USER_REPORTED |
+| D127-SINGLE-DRAG-OWNER | Gesture ownership | `TodayTaskRow`の`rowDragGestureModifier`をouter stable Boxへ1回だけ適用。inner Task content Columnは既存horizontal `swipeModifier`だけを保持し、placeholder切替後もouter pointer hostを維持。 | SOURCE PASS |
+| D127-SAME-SECTION-CONTINUOUS | Same-section continuous gesture | 既存`TodayScreenInstrumentedTest.longPressDragKeepsOnePointerGestureAndReordersEligibleRows`は同一pointer sequenceでlong-press、複数move、up、Reorder 1回を検証。 | COMPILE PASS / RUNTIME NOT_RUN |
+| D127-CROSS-SECTION-CONTINUOUS | Cross-section continuous gesture | stable source keyとouter ownerを維持するcross-section preview / MoveEntry経路を確認。 | SOURCE / JVM PASS; RUNTIME NOT_VERIFIED |
+| D127-SWIPE-SELECTION | Horizontal swipe / selection arbitration | inner horizontal swipe、selection、single vertical drag ownerの分離を維持。既存Today regressionを再実行する。 | JVM PASS / RUNTIME NOT_VERIFIED |
+| D127-ANCHOR | Empty / Completed-only Section | Section-only target、consecutive empty Section、Completed / Routine-derived row exclusionを維持。 | JVM PASS / RUNTIME NOT_VERIFIED |
+| D127-JVM | Android unit tests | `:app:testDebugUnitTest`: `135 / 135`、failures/errors/skipped `0 / 0 / 0`。 | PASS |
+| D127-ANDROIDTEST-COMPILE | Android instrumentation compile | `:app:compileDebugAndroidTestKotlin` PASS。 | PASS |
+| D127-ANDROIDTEST | Android instrumentation runtime | `scripts/android-qa.ps1 -Surface Today`は`connectedDebugAndroidTest`まで到達したが結果を返さず停止。MainActivity resolved、crash buffer empty。 | NOT_RUN / HUNG |
+| D127-DEVICE | Corrective APK Galaxy S23 | 新corrective artifactのProduct Owner verification。 | NOT_RUN |
+| D127-SCOPE | Boundary | Worker/API、schema、migration、dependency、server command semantics、production、tag、Releaseは変更しない。 | PASS / NOT_REQUIRED / NOT_RUN / NO |
+
 ## D-127 Android Drag Reorder Regression Corrective — 2026-09-21
 
 | ID | Verification target | Evidence | Status |

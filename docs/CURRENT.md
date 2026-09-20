@@ -1,3 +1,11 @@
+### D-127 Android Drag Immediate-Cancel Corrective — 2026-09-21
+
+Artifact `aaa372086dd5e533ca5d0e32664bfa0c254490ce`では、Galaxy S23でlong-press後に一瞬だけ掴めたように見え、直後にdragがcancelされる不具合が報告された（`FAIL / USER_REPORTED`）。現行`TodayTaskRow`には同じvertical drag `pointerInput`をouter stable Boxとinner Task content Columnの両方へ適用しており、さらにplaceholder切替時にinner Columnがcompositionから外れるため、同一pointer sequenceに複数のcancellation sourceが存在していた。
+
+今回のcorrectiveでは、outer stable Boxだけを`rowDragGestureModifier`の唯一のgesture ownerとし、inner Columnは既存horizontal swipeだけを保持する。placeholder visualへの切替後もouter hostはcompositionに残るため、long-pressからmove、dropまで同じpointer sequenceを継続できる。stable source Entry、lifted overlay、provisional order、empty / Completed-only Section、selection / swipe semantics、server/API authorityは変更しない。
+
+**Implementation: IMPLEMENTED / Local: Android JVM 135/135 PASS, instrumentation compile PASS, debug assemble PASS / Authenticated runtime: NOT_RUN / HUNG (`scripts/android-qa.ps1 -Surface Today` reached `connectedDebugAndroidTest` without a result; MainActivity resolved and crash buffer was empty) / Exact-SHA CI: pending / Old artifact Galaxy S23: FAIL / USER_REPORTED — immediate drag cancel / New corrective Galaxy S23: NOT_RUN / Screenshot comparison: NOT_RUN / Production: NOT_RUN / Released: NO**。この段階では実機runtimeをVerifiedへ昇格させない。
+
 ### D-127 Android Drag Reorder Regression Corrective — 2026-09-21
 
 Artifact `3f4bb61fc37af76f2ff6699a456aceba75533fbb`では、drag中にsource Entryをrender projectionから除去してsynthetic placeholderへ置換したため、long-pressを所有する元rowのCompose itemがdisposeされ、指を離してもreorder commandへ到達しないregressionがGalaxy S23で報告された（`FAIL / USER_REPORTED`）。

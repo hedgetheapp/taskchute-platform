@@ -1086,7 +1086,8 @@ private fun TodayTaskRow(
         LifecycleState.COMPLETED -> TaskChuteColors.SurfaceElevated
         LifecycleState.PLANNED -> TaskChuteColors.Surface
     }
-    val dragModifier = if (canDrag) {
+    // Keep the sole vertical drag owner outside the visual branch so placeholder swaps do not cancel it.
+    val rowDragGestureModifier = if (canDrag) {
         Modifier.onGloballyPositioned {
             dropBounds[task.id] = it.boundsInRoot()
             dropBoundsSectionId[task.id] = sectionId
@@ -1101,7 +1102,7 @@ private fun TodayTaskRow(
         }
     } else Modifier
     Box(
-        modifier.fillMaxWidth().background(rowSurface).then(dragModifier).onGloballyPositioned {
+        modifier.fillMaxWidth().background(rowSurface).then(rowDragGestureModifier).onGloballyPositioned {
             rowBounds[task.id] = it.boundsInRoot()
         },
     ) {
@@ -1242,7 +1243,7 @@ private fun TodayTaskRow(
                     },
                 )
                 Column(
-                    Modifier.weight(1f).height(74.dp).then(dragModifier).then(swipeModifier),
+                    Modifier.weight(1f).height(74.dp).then(swipeModifier),
                     verticalArrangement = Arrangement.spacedBy(5.dp),
                 ) {
                     Text(
