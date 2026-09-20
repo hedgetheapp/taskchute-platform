@@ -131,12 +131,16 @@ fun TodayScreen(
     val state = controller.state
     val planningState = planningController?.state ?: TaskPlanningUiState()
     var selectedEntryIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var selectionModeActive by remember { mutableStateOf(false) }
     var datePickerEntryIds by remember { mutableStateOf<Set<String>?>(null) }
     var deleteEntryIds by remember { mutableStateOf<Set<String>?>(null) }
     var headerDatePickerVisible by remember { mutableStateOf(false) }
     val context = LocalContext.current
     LaunchedEffect(controller) { controller.loadCurrent() }
-    LaunchedEffect(state.day, state.status) { selectedEntryIds = emptySet() }
+    LaunchedEffect(state.day, state.status) {
+        selectionModeActive = false
+        selectedEntryIds = emptySet()
+    }
     LaunchedEffect(datePickerEntryIds, state.day?.logicalDate) {
         val entryIds = datePickerEntryIds ?: return@LaunchedEffect
         val pickerDay = state.day ?: return@LaunchedEffect
@@ -193,18 +197,16 @@ fun TodayScreen(
         containerColor = TaskChuteColors.Background,
         bottomBar = {
             Column {
-                if (day != null && bulkSelected.isNotEmpty()) {
+                if (selectionModeActive && day != null) {
                     BulkActionBar(
                         count = bulkSelected.size,
-                        onPrevious = {
-                            directManipulationController?.moveToDay(day, bulkSelected, LocalDate.parse(day.logicalDate).minusDays(1).toString(), "前の日へ移動しました")
-                        },
-                        onNext = {
-                            directManipulationController?.moveToDay(day, bulkSelected, LocalDate.parse(day.logicalDate).plusDays(1).toString(), "次の日へ移動しました")
-                        },
+                        hasSelection = bulkSelected.isNotEmpty(),
                         onChooseDate = { datePickerEntryIds = bulkSelected },
                         onDelete = { deleteEntryIds = bulkSelected },
-                        onClear = { selectedEntryIds = emptySet() },
+                        onClear = {
+                            selectionModeActive = false
+                            selectedEntryIds = emptySet()
+                        },
                     )
                 }
                 AndroidNavigationBar(
@@ -228,6 +230,11 @@ fun TodayScreen(
                     planningController = planningController,
                     directManipulationController = directManipulationController,
                     onOpenTaskNote = onOpenTaskNote,
+                    selectionModeActive = selectionModeActive,
+                    onEnterSelection = { id ->
+                        selectionModeActive = true
+                        selectedEntryIds = selectedEntryIds + id
+                    },
                     selectedEntryIds = selectedEntryIds,
                     onToggleSelection = { id ->
                         selectedEntryIds = if (id in selectedEntryIds) selectedEntryIds - id else selectedEntryIds + id
@@ -266,7 +273,7 @@ fun TodayScreen(
                             if (deterministicFailure) {
                                 OperationFailedPanel()
                             }
-                            if (canAdd && bulkSelected.isEmpty()) {
+                            if (canAdd && !selectionModeActive) {
                                 FloatingActionButton(
                                     onClick = { planningController.openCreate(day) },
                                     shape = CircleShape,
@@ -275,7 +282,7 @@ fun TodayScreen(
                                     modifier = Modifier.semantics { contentDescription = "タスクを追加" },
                                 ) { ChromeIcon(TaskChuteIcons.Add, "タスクを追加", Modifier.size(32.dp)) }
                             }
-                            runningTask?.let { task ->
+                            if (!selectionModeActive) runningTask?.let { task ->
                                 RunningTaskPanel(
                                     task = task,
                                     controller = controller,
@@ -318,8 +325,7 @@ fun TodayScreen(
 @Composable
 private fun BulkActionBar(
     count: Int,
-    onPrevious: () -> Unit,
-    onNext: () -> Unit,
+    hasSelection: Boolean,
     onChooseDate: () -> Unit,
     onDelete: () -> Unit,
     onClear: () -> Unit,
@@ -330,10 +336,8 @@ private fun BulkActionBar(
         horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         Text("${count}件選択", modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
-        TextButton(onClick = onPrevious) { Text("前日") }
-        TextButton(onClick = onNext) { Text("翌日") }
-        TextButton(onClick = onChooseDate) { Text("日付") }
-        TextButton(onClick = onDelete) { Text("削除") }
+        TextButton(onClick = onChooseDate, enabled = hasSelection) { Text("日付") }
+        TextButton(onClick = onDelete, enabled = hasSelection) { Text("削除") }
         TextButton(onClick = onClear) { Text("解除") }
     }
 }
@@ -345,6 +349,8 @@ private fun TodayContent(
     planningController: TaskPlanningController?,
     directManipulationController: TodayDirectManipulationController?,
     onOpenTaskNote: (TodayTask) -> Unit,
+    selectionModeActive: Boolean,
+    onEnterSelection: (String) -> Unit,
     selectedEntryIds: Set<String>,
     onToggleSelection: (String) -> Unit,
     onOpenDatePicker: (Set<String>) -> Unit,
@@ -520,6 +526,8 @@ private fun TodayContent(
                         canNoteOnly = task.taskId != null &&
                             (task.lifecycleState == LifecycleState.COMPLETED || task.routineDerived || !day.isCurrent),
                         onOpenNote = { onOpenTaskNote(task) },
+                        selectionModeActive = selectionModeActive,
+                        onEnterSelection = { onEnterSelection(task.id) },
                         selected = task.id in selectedEntryIds,
                         canSelect = directManipulationController?.canSelect(day, task) == true,
                         onToggleSelection = { onToggleSelection(task.id) },
@@ -594,6 +602,8 @@ private fun TodayContent(
                         canNoteOnly = task.taskId != null &&
                             (task.lifecycleState == LifecycleState.COMPLETED || task.routineDerived || !day.isCurrent),
                         onOpenNote = { onOpenTaskNote(task) },
+                        selectionModeActive = selectionModeActive,
+                        onEnterSelection = { onEnterSelection(task.id) },
                         selected = task.id in selectedEntryIds,
                         canSelect = directManipulationController?.canSelect(day, task) == true,
                         onToggleSelection = { onToggleSelection(task.id) },
@@ -815,6 +825,8 @@ private fun TodayTaskRow(
     canOpenNote: Boolean,
     canNoteOnly: Boolean,
     onOpenNote: () -> Unit,
+    selectionModeActive: Boolean,
+    onEnterSelection: () -> Unit,
     selected: Boolean,
     canSelect: Boolean,
     onToggleSelection: () -> Unit,
@@ -845,13 +857,14 @@ private fun TodayTaskRow(
     val swipeRevealWidth = with(LocalDensity.current) {
         (swipeActionCount * 64 + ((swipeActionCount - 1).coerceAtLeast(0) * 4) + 4).dp.toPx()
     }
+    val selectionSwipeWidth = with(LocalDensity.current) { 88.dp.toPx() }
     val rowSurface = when (task.lifecycleState) {
         LifecycleState.RUNNING -> TaskChuteColors.RunningSurface
         LifecycleState.COMPLETED -> TaskChuteColors.SurfaceElevated
         LifecycleState.PLANNED -> TaskChuteColors.Surface
     }
     Box(Modifier.fillMaxWidth().background(rowSurface)) {
-        if (hasActions && swipeOffset <= -swipeThreshold) {
+        if (!selectionModeActive && hasActions && swipeOffset <= -swipeThreshold) {
             Row(
                 modifier = Modifier.align(Alignment.CenterEnd).zIndex(2f).padding(end = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -897,6 +910,11 @@ private fun TodayTaskRow(
         }
         Card(
             modifier = Modifier.fillMaxWidth().height(64.dp)
+                .then(
+                    if (selectionModeActive && canSelect && enabled) {
+                        Modifier.clickable(onClick = onToggleSelection)
+                    } else Modifier
+                )
                 .offset { IntOffset(swipeOffset.roundToInt(), 0) }
                 .then(
                     if (dragging) Modifier.graphicsLayer {
@@ -928,7 +946,8 @@ private fun TodayTaskRow(
                 modifier = Modifier.fillMaxWidth().padding(start = 10.dp, top = 8.dp, bottom = 8.dp, end = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                if (selectionModeActive) {
+                    Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
                     Checkbox(
                         checked = selected,
                         onCheckedChange = { if (canSelect) onToggleSelection() },
@@ -941,7 +960,8 @@ private fun TodayTaskRow(
                         modifier = Modifier.size(48.dp).padding(6.dp).semantics { contentDescription = "タスクを選択: ${task.title}" },
                     )
                 }
-                Spacer(Modifier.width(8.dp))
+                    Spacer(Modifier.width(8.dp))
+                }
                 val dragModifier = if (canDrag) {
                     Modifier.onGloballyPositioned {
                         dropBounds[task.id] = it.boundsInRoot()
@@ -955,12 +975,27 @@ private fun TodayTaskRow(
                         )
                     }
                 } else Modifier
-                val swipeActions = hasActions
+                val canEnterSelection = !selectionModeActive && canSelect
+                val swipeActions = !selectionModeActive && (hasActions || canEnterSelection)
                 val swipeModifier = Modifier.draggable(
-                    state = rememberDraggableState { delta -> swipeOffset = (swipeOffset + delta).coerceIn(-swipeRevealWidth, 0f) },
+                    state = rememberDraggableState { delta ->
+                        swipeOffset = (swipeOffset + delta).coerceIn(
+                            -swipeRevealWidth,
+                            if (canEnterSelection) selectionSwipeWidth else 0f,
+                        )
+                    },
                     orientation = Orientation.Horizontal,
                     enabled = swipeActions,
-                    onDragStopped = { swipeOffset = if (swipeOffset <= -swipeThreshold) -swipeRevealWidth else 0f },
+                    onDragStopped = {
+                        when {
+                            canEnterSelection && swipeOffset >= swipeThreshold -> {
+                                swipeOffset = 0f
+                                onEnterSelection()
+                            }
+                            swipeOffset <= -swipeThreshold -> swipeOffset = -swipeRevealWidth
+                            else -> swipeOffset = 0f
+                        }
+                    },
                 )
                 Column(Modifier.weight(1f).then(dragModifier).then(swipeModifier), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(task.title, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold), color = TaskChuteColors.PrimaryText, maxLines = 1, overflow = TextOverflow.Ellipsis)

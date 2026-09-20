@@ -15,6 +15,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
+import androidx.compose.ui.test.swipeRight
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.compose.ui.geometry.Offset
 import java.util.concurrent.CountDownLatch
@@ -243,19 +244,77 @@ class TodayScreenInstrumentedTest {
     }
 
     @Test
-    fun eligibleRowsExposeSelectionAndBulkActionsWithoutDateRowAdd() {
+    fun eligibleRowsEnterSelectionModeByRightSwipeAndKeepZeroSelectionMode() {
         val directRepository = FakeDirectManipulationRepository()
         launchPlanningScreen(FakePlanningRepository(), directRepository = directRepository)
         waitForStatus(TodayLoadStatus.CONTENT)
 
         assertTrue(composeRule.onAllNodesWithContentDescription("タスクを追加").fetchSemanticsNodes().size == 1)
-        assertTrue(composeRule.onAllNodesWithText("前日").fetchSemanticsNodes().isEmpty())
-        composeRule.onNodeWithContentDescription("タスクを選択: Write report").performClick()
+        assertTrue(composeRule.onAllNodesWithContentDescription("タスクを選択: Write report").fetchSemanticsNodes().isEmpty())
+
+        composeRule.onNodeWithText("Write report").performTouchInput { swipeRight() }
         composeRule.onNodeWithText("1件選択").assertIsDisplayed()
-        composeRule.onNodeWithText("前日").assertIsDisplayed()
-        composeRule.onNodeWithText("翌日").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("タスクを選択: Write report").assertIsDisplayed()
         composeRule.onNodeWithText("日付").assertIsDisplayed()
         composeRule.onNodeWithText("削除").assertIsDisplayed()
+        composeRule.onNodeWithText("解除").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithText("前日").fetchSemanticsNodes().isEmpty())
+        assertTrue(composeRule.onAllNodesWithText("翌日").fetchSemanticsNodes().isEmpty())
+        assertTrue(composeRule.onAllNodesWithContentDescription("タスクを追加").fetchSemanticsNodes().isEmpty())
+
+        // The whole selectable row toggles once; the zero-selected mode remains active.
+        composeRule.onNodeWithContentDescription("タスクをドラッグ: Write report").performClick()
+        composeRule.onNodeWithText("0件選択").assertIsDisplayed()
+        composeRule.onNodeWithText("日付").assertIsNotEnabled()
+        composeRule.onNodeWithText("削除").assertIsNotEnabled()
+        composeRule.onNodeWithText("解除").assertIsEnabled()
+
+        // A checkbox tap is also one toggle, not a duplicate row + checkbox dispatch.
+        composeRule.onNodeWithContentDescription("タスクを選択: Write report").performTouchInput { click(center) }
+        composeRule.onNodeWithText("1件選択").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("タスクを選択: Write report").performTouchInput { click(center) }
+        composeRule.onNodeWithText("0件選択").assertIsDisplayed()
+
+        composeRule.onNodeWithText("解除").performClick()
+        assertTrue(composeRule.onAllNodesWithText("0件選択").fetchSemanticsNodes().isEmpty())
+        assertTrue(composeRule.onAllNodesWithContentDescription("タスクを選択: Write report").fetchSemanticsNodes().isEmpty())
+        assertTrue(composeRule.onAllNodesWithContentDescription("タスクを追加").fetchSemanticsNodes().size == 1)
+    }
+
+    @Test
+    fun selectionModeShowsAllRowsButOnlyEligibleRowsAreEnabledAndHidesRunningPanel() {
+        val base = dayWith().sections.single().entries.single()
+        val planned = base.copy(id = "planned-selection", title = "Planned selection")
+        val running = base.copy(
+            id = "running-selection",
+            title = "Running selection",
+            lifecycleState = LifecycleState.RUNNING,
+            taskId = "task-running-selection",
+            executionId = "execution-selection",
+            activeStartedAt = "2026-09-14T01:00:00Z",
+        )
+        val completed = base.copy(
+            id = "completed-selection",
+            title = "Completed selection",
+            lifecycleState = LifecycleState.COMPLETED,
+            taskId = "task-completed-selection",
+        )
+        val initialDay = dayWith().copy(
+            sections = listOf(dayWith().sections.single().copy(entries = listOf(planned, running, completed))),
+            activeExecution = TodayExecution("execution-selection", "running-selection", "2026-09-14T01:00:00Z", 600),
+        )
+        val directRepository = FakeDirectManipulationRepository()
+        launchPlanningScreen(FakePlanningRepository(), initialDay, directRepository)
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        composeRule.onNodeWithText("Planned selection").performTouchInput { swipeRight() }
+
+        composeRule.onNodeWithContentDescription("タスクを選択: Planned selection").assertIsEnabled()
+        composeRule.onNodeWithContentDescription("タスクを選択: Running selection").assertIsNotEnabled()
+        composeRule.onNodeWithContentDescription("タスクを選択: Completed selection").assertIsNotEnabled()
+        assertEquals(1, composeRule.onAllNodesWithText("Running selection").fetchSemanticsNodes().size)
+        composeRule.onNodeWithText("Completed selection").performClick()
+        composeRule.onNodeWithText("1件選択").assertIsDisplayed()
     }
 
     @Test
