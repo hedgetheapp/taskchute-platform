@@ -1,6 +1,7 @@
 package com.hedgetheapp.taskchute.today
 
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CoroutineScope
@@ -351,7 +352,7 @@ class TodayDirectManipulationTest {
         val release = CountDownLatch(1)
         var hold = false
         var result: DirectManipulationResult = DirectManipulationResult.Success
-        val requests = mutableListOf<DirectManipulationRequest>()
+        val requests = CopyOnWriteArrayList<DirectManipulationRequest>()
 
         override fun execute(request: DirectManipulationRequest): DirectManipulationResult {
             requests += request
