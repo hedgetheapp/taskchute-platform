@@ -26,6 +26,16 @@ class TodayJsonParserTest {
         assertNull(day.unsectionedEntries.single().project)
     }
 
+    @Test
+    fun parsesCompletedDurationSecondsAndAllowsMissingField() {
+        val completed = TodayJsonParser.parse(
+            SAMPLE.replace("\"completed_duration_seconds\":0", "\"completed_duration_seconds\":1200"),
+        )
+        assertEquals(1200, completed.sections.single().entries.single().completedDurationSeconds)
+
+        val legacy = TodayJsonParser.parse(SAMPLE.replace(",\"completed_duration_seconds\":0", ""))
+        assertNull(legacy.sections.single().entries.single().completedDurationSeconds)
+    }
     @Test(expected = IllegalStateException::class)
     fun rejectsUnknownLifecycleState() {
         TodayJsonParser.parse(SAMPLE.replace("running", "paused"))

@@ -61,6 +61,7 @@ internal object TodayJsonParser {
             activeStartedAt = executionSummary?.nullableStringField("active_started_at"),
             firstStartedAt = executionSummary?.nullableStringField("first_started_at"),
             lastEndedAt = executionSummary?.nullableStringField("last_ended_at"),
+            completedDurationSeconds = executionSummary?.nullableIntField("completed_duration_seconds"),
             routineDerived = value.nullableObjectField("routine") != null,
             taskId = task.stringField("id"),
             primaryDocumentId = task.nullableStringField("primary_document_id"),

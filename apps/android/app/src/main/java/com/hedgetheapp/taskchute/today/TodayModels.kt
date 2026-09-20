@@ -25,6 +25,7 @@ data class TodayTask(
     val primaryDocumentId: String? = null,
     val firstStartedAt: String? = null,
     val lastEndedAt: String? = null,
+    val completedDurationSeconds: Int? = null,
 )
 
 enum class LifecycleState {

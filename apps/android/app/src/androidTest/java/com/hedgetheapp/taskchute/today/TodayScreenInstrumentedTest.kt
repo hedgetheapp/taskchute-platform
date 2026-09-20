@@ -244,6 +244,71 @@ class TodayScreenInstrumentedTest {
     }
 
     @Test
+
+    fun plannedRowShowsProjectionEstimateStatusAndContext() {
+        val task = dayWith().sections.single().entries.single().copy(
+            project = TodayProject("project-work", "仕事"),
+            mode = TodayMode("mode-pc", "PC"),
+        )
+        val initialDay = dayWith().copy(
+            sections = listOf(dayWith().sections.single().copy(entries = listOf(task))),
+        )
+        launchPlanningScreen(FakePlanningRepository(), initialDay)
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        composeRule.onNodeWithContentDescription("開始見込み時刻: 09:00、終了見込み時刻: 09:10").assertIsDisplayed()
+        composeRule.onNodeWithText("10分 /").assertIsDisplayed()
+        composeRule.onNodeWithText("未開始").assertIsDisplayed()
+        composeRule.onNodeWithText("仕事 / PC").assertIsDisplayed()
+    }
+
+    @Test
+    fun runningRowKeepsPlannedProjectionSeparateFromActualMetadata() {
+        val task = dayWith(LifecycleState.RUNNING).sections.single().entries.single().copy(
+            plannedStartMinute = 600,
+            estimateSeconds = 1200,
+            project = TodayProject("project-work", "仕事"),
+            mode = TodayMode("mode-pc", "PC"),
+            activeStartedAt = "2026-09-14T01:42:00Z",
+            firstStartedAt = "2026-09-14T01:42:00Z",
+        )
+        val initialDay = dayWith(LifecycleState.RUNNING).copy(
+            sections = listOf(dayWith(LifecycleState.RUNNING).sections.single().copy(entries = listOf(task))),
+            activeExecution = TodayExecution("execution-1", task.id, "2026-09-14T01:42:00Z", 1200),
+        )
+        launchPlanningScreen(FakePlanningRepository(), initialDay)
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        composeRule.onNodeWithContentDescription("開始見込み時刻: 10:00、終了見込み時刻: 10:20").assertIsDisplayed()
+        composeRule.onNodeWithText("20分 /").assertIsDisplayed()
+        composeRule.onNodeWithText("仕事 / PC").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("タスクを完了").assertIsDisplayed()
+    }
+
+    @Test
+    fun completedRowUsesPlannedProjectionAndCanonicalDuration() {
+        val task = dayWith(LifecycleState.COMPLETED).sections.single().entries.single().copy(
+            plannedStartMinute = 480,
+            estimateSeconds = 1200,
+            project = TodayProject("project-work", "仕事"),
+            mode = TodayMode("mode-pc", "PC"),
+            firstStartedAt = "2026-09-14T00:15:00Z",
+            lastEndedAt = "2026-09-14T00:35:00Z",
+            completedDurationSeconds = 1200,
+        )
+        val initialDay = dayWith(LifecycleState.COMPLETED).copy(
+            sections = listOf(dayWith(LifecycleState.COMPLETED).sections.single().copy(entries = listOf(task))),
+            activeExecution = null,
+        )
+        launchPlanningScreen(FakePlanningRepository(), initialDay)
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        composeRule.onNodeWithContentDescription("開始見込み時刻: 08:00、終了見込み時刻: 08:20").assertIsDisplayed()
+        composeRule.onNodeWithText("20分 /").assertIsDisplayed()
+        composeRule.onNodeWithText("20分)").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("完了済み").assertIsDisplayed()
+    }
+    @Test
     fun eligibleRowsEnterSelectionModeByLeftToRightSwipeAndAutoExitWhenLastSelectionCleared() {
         val directRepository = FakeDirectManipulationRepository()
         launchPlanningScreen(FakePlanningRepository(), directRepository = directRepository)

@@ -48,6 +48,10 @@ object TaskChuteColors {
     val AccentContainer = Color(0xFF1F3B57)
     val RunningSurface = Color(0xFF1E2A33)
     val RunningControl = Color(0xFF25394A)
+    val TaskActionBorder = Color(0xFF4A4A45)
+    val SelectionBorder = Color(0xFF7F7F7A)
+    val CompletedControl = Color(0xFF1F2D26)
+    val CompletedIcon = Color(0xFF7BCF9B)
 }
 
 private val TaskChuteDarkColors = darkColorScheme(

@@ -838,6 +838,7 @@ private fun SectionHeader(
     }
 }
 
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun TodayTaskRow(
@@ -945,7 +946,7 @@ private fun TodayTaskRow(
             }
         }
         Card(
-            modifier = Modifier.fillMaxWidth().height(64.dp)
+            modifier = Modifier.fillMaxWidth().height(84.dp)
                 .then(
                     if (selectionModeActive && canSelect && enabled) {
                         Modifier.clickable(onClick = onToggleSelection)
@@ -966,38 +967,27 @@ private fun TodayTaskRow(
                 ).padding(top = insertionPadding)
                     .animateContentSize()
                     .semantics {
-                        contentDescription = if (dragging) "タスクを移動中: ${task.title}" else "タスクをドラッグ: ${task.title}"
+                        contentDescription = if (dragging) "タスクを移動中: " + task.title else "タスクをドラッグ: " + task.title
                     },
             shape = RoundedCornerShape(0.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = when (task.lifecycleState) {
-                    LifecycleState.RUNNING -> TaskChuteColors.RunningSurface
-                    LifecycleState.COMPLETED -> TaskChuteColors.SurfaceElevated
-                    LifecycleState.PLANNED -> TaskChuteColors.Surface
-                },
-            ),
+            colors = CardDefaults.cardColors(containerColor = rowSurface),
             elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(start = 10.dp, top = 8.dp, bottom = 8.dp, end = 4.dp),
+                modifier = Modifier.fillMaxWidth().height(84.dp).padding(end = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (selectionModeActive) {
-                    Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
-                    Checkbox(
-                        checked = selected,
-                        onCheckedChange = { if (canSelect) onToggleSelection() },
+                    TaskSelectionSlot(
+                        task = task,
+                        selected = selected,
                         enabled = enabled && canSelect,
-                        colors = CheckboxDefaults.colors(
-                            checkedColor = TaskChuteColors.AccentBlue,
-                            uncheckedColor = TaskChuteColors.SecondaryText,
-                            checkmarkColor = TaskChuteColors.Background,
-                        ),
-                        modifier = Modifier.size(48.dp).padding(6.dp).semantics { contentDescription = "タスクを選択: ${task.title}" },
+                        onToggleSelection = onToggleSelection,
                     )
+                } else {
+                    TaskProjectionSlot(task)
                 }
-                    Spacer(Modifier.width(8.dp))
-                }
+                Spacer(Modifier.width(4.dp))
                 val dragModifier = if (canDrag) {
                     Modifier.onGloballyPositioned {
                         dropBounds[task.id] = it.boundsInRoot()
@@ -1051,35 +1041,80 @@ private fun TodayTaskRow(
                         swipeGestureStarted = false
                     },
                 )
-                Column(Modifier.weight(1f).then(dragModifier).then(swipeModifier), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(task.title, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold), color = TaskChuteColors.PrimaryText, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    val metadata = listOfNotNull(
-                        task.project?.title,
-                        task.mode?.title,
-                        task.plannedStartMinute?.let { formatMinute(it) },
-                        task.estimateSeconds?.let { formatEstimate(it) },
-                        timeRangeText(task),
-                    ).joinToString(" · ")
-                    if (metadata.isNotBlank()) Text(metadata, style = MaterialTheme.typography.bodySmall, color = TaskChuteColors.SecondaryText, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Column(
+                    Modifier.weight(1f).height(74.dp).then(dragModifier).then(swipeModifier),
+                    verticalArrangement = Arrangement.spacedBy(5.dp),
+                ) {
+                    Text(
+                        task.title,
+                        modifier = Modifier.fillMaxWidth().height(25.dp),
+                        fontSize = 16.sp,
+                        lineHeight = 25.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TaskChuteColors.PrimaryText,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    TaskMetadata(task, Modifier.fillMaxWidth())
                 }
-                if (showExecutionAction) when (task.lifecycleState) {
-                    LifecycleState.PLANNED -> if (swipeOffset > -swipeThreshold) {
-                        IconButton(
-                            onClick = { controller.start(task) },
-                            enabled = enabled,
-                            modifier = Modifier.size(48.dp).clip(CircleShape).background(TaskChuteColors.Control)
-                                .semantics { contentDescription = "タスクを開始" },
-                        ) { Icon(TaskChuteIcons.Play, contentDescription = null, tint = TaskChuteColors.PrimaryText) }
-                    } else Spacer(Modifier.size(48.dp))
-                    LifecycleState.RUNNING -> if (swipeOffset > -swipeThreshold) {
-                        IconButton(
-                            onClick = { controller.complete(task) },
-                            enabled = enabled,
-                            modifier = Modifier.size(48.dp).clip(CircleShape).background(TaskChuteColors.RunningControl)
-                                .semantics { contentDescription = "タスクを完了" },
-                        ) { Icon(TaskChuteIcons.Complete, contentDescription = null, tint = TaskChuteColors.AccentBlue) }
-                    } else Spacer(Modifier.size(48.dp))
-                    LifecycleState.COMPLETED -> ChromeIcon(TaskChuteIcons.Check, "完了済み", Modifier.size(48.dp).padding(12.dp))
+                Spacer(Modifier.width(10.dp))
+                when {
+                    task.lifecycleState == LifecycleState.COMPLETED -> {
+                        Box(
+                            modifier = Modifier.size(48.dp)
+                                .clip(CircleShape)
+                                .background(TaskChuteColors.CompletedControl)
+                                .border(1.dp, TaskChuteColors.TaskActionBorder, CircleShape)
+                                .semantics { contentDescription = "完了済み" },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_material_check_24),
+                                contentDescription = null,
+                                tint = TaskChuteColors.CompletedIcon,
+                                modifier = Modifier.size(17.dp),
+                            )
+                        }
+                    }
+                    showExecutionAction && task.lifecycleState == LifecycleState.PLANNED -> {
+                        if (swipeOffset > -swipeThreshold) {
+                            IconButton(
+                                onClick = { controller.start(task) },
+                                enabled = enabled,
+                                modifier = Modifier.size(48.dp).clip(CircleShape)
+                                    .background(TaskChuteColors.Control)
+                                    .border(1.dp, TaskChuteColors.TaskActionBorder, CircleShape)
+                                    .semantics { contentDescription = "タスクを開始" },
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_material_play_arrow_24),
+                                    contentDescription = null,
+                                    tint = TaskChuteColors.PrimaryText,
+                                    modifier = Modifier.size(24.dp),
+                                )
+                            }
+                        } else Spacer(Modifier.size(48.dp))
+                    }
+                    showExecutionAction && task.lifecycleState == LifecycleState.RUNNING -> {
+                        if (swipeOffset > -swipeThreshold) {
+                            IconButton(
+                                onClick = { controller.complete(task) },
+                                enabled = enabled,
+                                modifier = Modifier.size(48.dp).clip(CircleShape)
+                                    .background(TaskChuteColors.RunningControl)
+                                    .border(1.dp, TaskChuteColors.TaskActionBorder, CircleShape)
+                                    .semantics { contentDescription = "タスクを完了" },
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_material_stop_24),
+                                    contentDescription = null,
+                                    tint = TaskChuteColors.AccentBlue,
+                                    modifier = Modifier.size(13.dp),
+                                )
+                            }
+                        } else Spacer(Modifier.size(48.dp))
+                    }
+                    else -> Spacer(Modifier.size(48.dp))
                 }
             }
         }
@@ -1103,6 +1138,164 @@ private fun TodayTaskRow(
             }
         }
     }
+}
+
+@Composable
+private fun TaskProjectionSlot(task: TodayTask) {
+    val projectionStart = formatMinute(task.plannedStartMinute)
+    val projectionEnd = task.plannedStartMinute
+        ?.let { start -> task.estimateSeconds?.let { start + it / 60 } }
+        .let(::formatMinute)
+    Box(
+        modifier = Modifier.size(width = 48.dp, height = 84.dp)
+            .semantics {
+                contentDescription = "開始見込み時刻: " + projectionStart + "、終了見込み時刻: " + projectionEnd
+            },
+    ) {
+        Text(
+            projectionStart,
+            modifier = Modifier.align(Alignment.TopCenter).offset(y = 5.dp).fillMaxWidth(),
+            color = TaskChuteColors.SecondaryText,
+            fontSize = 11.sp,
+            lineHeight = 21.sp,
+            textAlign = TextAlign.Center,
+        )
+        Box(
+            modifier = Modifier.align(Alignment.TopCenter).offset(y = 27.dp)
+                .width(0.5.dp).height(30.dp)
+                .background(TaskChuteColors.SecondaryText),
+        )
+        Text(
+            projectionEnd,
+            modifier = Modifier.align(Alignment.BottomCenter).offset(y = (-5).dp).fillMaxWidth(),
+            color = TaskChuteColors.SecondaryText,
+            fontSize = 11.sp,
+            lineHeight = 21.sp,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+@Composable
+private fun TaskSelectionSlot(
+    task: TodayTask,
+    selected: Boolean,
+    enabled: Boolean,
+    onToggleSelection: () -> Unit,
+) {
+    val borderColor = if (selected) TaskChuteColors.AccentBlue else TaskChuteColors.SelectionBorder
+    Box(
+        modifier = Modifier.size(48.dp)
+            .clickable(enabled = enabled, onClick = onToggleSelection)
+            .semantics { contentDescription = "タスクを選択: " + task.title },
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier = Modifier.size(18.dp)
+                .clip(RoundedCornerShape(5.dp))
+                .background(if (selected) TaskChuteColors.AccentBlue else Color.Transparent)
+                .border(1.dp, borderColor.copy(alpha = if (enabled) 1f else 0.45f), RoundedCornerShape(5.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (selected) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_material_check_24),
+                    contentDescription = null,
+                    tint = TaskChuteColors.Background,
+                    modifier = Modifier.size(12.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TaskMetadata(task: TodayTask, modifier: Modifier = Modifier) {
+    val estimate = task.estimateSeconds?.let { formatEstimate(it) + " /" } ?: "-- /"
+    val status = when (task.lifecycleState) {
+        LifecycleState.PLANNED -> "未開始"
+        LifecycleState.RUNNING -> (task.activeStartedAt ?: task.firstStartedAt)?.let(::formatInstant)?.plus(" →") ?: "--:-- →"
+        LifecycleState.COMPLETED -> null
+    }
+    Column(modifier.height(44.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        Row(
+            Modifier.fillMaxWidth().height(14.dp).padding(start = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TaskMetadataIcon(R.drawable.ic_material_hourglass_top_24)
+            Spacer(Modifier.width(6.dp))
+            Text(
+                estimate,
+                modifier = Modifier.width(33.dp),
+                color = TaskChuteColors.SecondaryText,
+                fontSize = 12.sp,
+                lineHeight = 14.sp,
+                maxLines = 1,
+            )
+            Spacer(Modifier.width(9.dp))
+            TaskMetadataIcon(R.drawable.ic_material_schedule_24)
+            Spacer(Modifier.width(5.dp))
+            if (status != null) {
+                Text(
+                    status,
+                    modifier = Modifier.weight(1f),
+                    color = TaskChuteColors.SecondaryText,
+                    fontSize = 12.sp,
+                    lineHeight = 14.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            } else {
+                val start = task.firstStartedAt?.let(::formatInstant) ?: "--:--"
+                val end = task.lastEndedAt?.let(::formatInstant) ?: "--:--"
+                Text(
+                    start + " → " + end + " (",
+                    modifier = Modifier.weight(1f),
+                    color = TaskChuteColors.SecondaryText,
+                    fontSize = 12.sp,
+                    lineHeight = 14.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Clip,
+                )
+                TaskMetadataIcon(R.drawable.ic_material_timer_24)
+                Spacer(Modifier.width(3.dp))
+                Text(
+                    formatDuration(task.completedDurationSeconds) + ")",
+                    color = TaskChuteColors.SecondaryText,
+                    fontSize = 12.sp,
+                    lineHeight = 14.sp,
+                    maxLines = 1,
+                )
+            }
+        }
+        Row(
+            Modifier.fillMaxWidth().height(17.dp).padding(start = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TaskMetadataIcon(R.drawable.ic_material_repeat_24)
+            Spacer(Modifier.width(6.dp))
+            val context = listOfNotNull(task.project?.title, task.mode?.title).joinToString(" / ")
+            Text(
+                context,
+                modifier = Modifier.weight(1f),
+                color = TaskChuteColors.SecondaryText,
+                fontSize = 13.sp,
+                lineHeight = 17.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun TaskMetadataIcon(iconRes: Int) {
+    Icon(
+        painter = painterResource(iconRes),
+        contentDescription = null,
+        tint = TaskChuteColors.SecondaryText,
+        modifier = Modifier.size(10.dp),
+    )
 }
 
 @Composable
@@ -1464,10 +1657,14 @@ private fun formatWeekday(value: String): String = runCatching {
     weekdays[date.dayOfWeek.value - 1]
 }.getOrDefault(value)
 
-private fun formatMinute(value: Int?): String = value?.let { "${it / 60}:${(it % 60).toString().padStart(2, '0')}" } ?: "--:--"
+private fun formatMinute(value: Int?): String = value?.let { (it / 60).toString().padStart(2, '0') + ":" + (it % 60).toString().padStart(2, '0') } ?: "--:--"
 
 private fun formatEstimate(seconds: Int): String = if (seconds < 3600) "${seconds / 60}分" else "${seconds / 3600}時間${(seconds % 3600) / 60}分"
 
+private fun formatDuration(seconds: Int?): String = seconds?.let {
+    if (it < 3600) (it / 60).toString() + "分" else
+        (it / 3600).toString() + "時間" + ((it % 3600) / 60).toString() + "分"
+} ?: "--"
 private fun timeRangeText(task: TodayTask): String? {
     if (task.lifecycleState == LifecycleState.PLANNED) return null
     val start = task.firstStartedAt ?: task.activeStartedAt
