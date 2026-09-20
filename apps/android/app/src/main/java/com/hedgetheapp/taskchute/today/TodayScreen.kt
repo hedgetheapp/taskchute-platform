@@ -897,14 +897,13 @@ private fun TodayTaskRow(
     Box(Modifier.fillMaxWidth().background(rowSurface)) {
         if (!selectionModeActive && hasActions && swipeOffset <= -swipeThreshold) {
             Row(
-                modifier = Modifier.align(Alignment.CenterStart).zIndex(2f).padding(start = 4.dp),
+                modifier = Modifier.align(Alignment.CenterEnd).zIndex(2f).padding(end = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 if (canEdit) {
                     SwipeTaskAction(
                         iconRes = R.drawable.ic_material_edit_24,
-                        label = "編集",
                         description = "タスクを編集",
                         containerColor = TaskChuteColors.SurfaceElevated,
                         onClick = {
@@ -917,7 +916,6 @@ private fun TodayTaskRow(
                 if (canSwipeNote) {
                     SwipeTaskAction(
                         iconRes = R.drawable.ic_material_sticky_note_2_24,
-                        label = "ノート",
                         description = "タスクのノート",
                         containerColor = TaskChuteColors.RunningControl,
                         onClick = {
@@ -930,7 +928,6 @@ private fun TodayTaskRow(
                 if (hasOtherActions) {
                     SwipeTaskAction(
                         iconRes = R.drawable.ic_material_more_horiz_24,
-                        label = "その他",
                         description = "タスクの操作",
                         containerColor = TaskChuteColors.Control,
                         onClick = {
@@ -1106,7 +1103,6 @@ private fun TodayTaskRow(
 @Composable
 private fun SwipeTaskAction(
     iconRes: Int,
-    label: String,
     description: String,
     containerColor: Color,
     onClick: () -> Unit,
@@ -1123,13 +1119,6 @@ private fun SwipeTaskAction(
         ) {
             Icon(painterResource(iconRes), contentDescription = null, tint = TaskChuteColors.PrimaryText, modifier = Modifier.size(20.dp))
         }
-        Text(
-            label,
-            color = TaskChuteColors.PrimaryText,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Medium,
-            maxLines = 1,
-        )
     }
 }
 @Composable

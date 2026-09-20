@@ -500,7 +500,9 @@ class TodayScreenInstrumentedTest {
         assertTrue(composeRule.onAllNodesWithContentDescription("タスクを開始").fetchSemanticsNodes().isEmpty())
         composeRule.onNodeWithContentDescription("タスクを編集").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("タスクのノート").assertIsDisplayed()
-        composeRule.onNodeWithText("その他").assertIsDisplayed()
+        assertActionIsOnRevealedRight("Write report", "タスクを編集")
+        assertSwipeActionLabelsHidden()
+        composeRule.onNodeWithContentDescription("タスクの操作").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("タスクのノート").performClick()
         assertEquals(1, openedTaskNote)
 
@@ -618,6 +620,8 @@ class TodayScreenInstrumentedTest {
         composeRule.onNodeWithContentDescription("タスクのノート").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("タスクの操作").assertIsDisplayed()
         assertTrue(composeRule.onAllNodesWithContentDescription("タスクを完了").fetchSemanticsNodes().isEmpty())
+        assertActionIsOnRevealedRight("Running panel task", "タスクを編集")
+        assertSwipeActionLabelsHidden()
 
         composeRule.onNodeWithContentDescription("タスクを編集").performClick()
         composeRule.waitUntil(5_000) {
@@ -704,7 +708,10 @@ class TodayScreenInstrumentedTest {
         waitForStatus(TodayLoadStatus.CONTENT)
 
         composeRule.onNodeWithText("Write report").performTouchInput { swipeLeft() }
-        composeRule.onNodeWithContentDescription("タスクのノート").assertIsDisplayed().performClick()
+        composeRule.onNodeWithContentDescription("タスクのノート").assertIsDisplayed()
+        assertActionIsOnRevealedRight("Write report", "タスクのノート")
+        assertSwipeActionLabelsHidden()
+        composeRule.onNodeWithContentDescription("タスクのノート").performClick()
         assertTrue(composeRule.onAllNodesWithContentDescription("タスクの操作").fetchSemanticsNodes().isEmpty())
         assertEquals(1, openedTaskNote)
     }
@@ -934,6 +941,21 @@ class TodayScreenInstrumentedTest {
         }
     }
 
+    private fun assertActionIsOnRevealedRight(rowTitle: String, actionDescription: String) {
+        val rowBounds = composeRule.onNodeWithContentDescription("タスクをドラッグ: $rowTitle")
+            .fetchSemanticsNode()
+            .boundsInRoot
+        val actionBounds = composeRule.onNodeWithContentDescription(actionDescription)
+            .fetchSemanticsNode()
+            .boundsInRoot
+        assertTrue("$actionDescription must be in the revealed right-side area", actionBounds.left > rowBounds.center.x)
+    }
+
+    private fun assertSwipeActionLabelsHidden() {
+        assertTrue(composeRule.onAllNodesWithText("編集", substring = false).fetchSemanticsNodes().isEmpty())
+        assertEquals(1, composeRule.onAllNodesWithText("ノート", substring = false).fetchSemanticsNodes().size)
+        assertTrue(composeRule.onAllNodesWithText("その他", substring = false).fetchSemanticsNodes().isEmpty())
+    }
     private companion object {
         fun dayWith(state: LifecycleState = LifecycleState.PLANNED, routineDerived: Boolean = false) = TodayDay(
             logicalDate = "2026-09-14",
