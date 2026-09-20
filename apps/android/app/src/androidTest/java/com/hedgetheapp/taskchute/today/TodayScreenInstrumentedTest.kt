@@ -442,7 +442,7 @@ class TodayScreenInstrumentedTest {
     }
 
     @Test
-    fun longPressDragReordersEligibleRowsWithoutOpeningEdit() {
+    fun longPressDragKeepsOnePointerGestureAndReordersEligibleRows() {
         val directRepository = FakeDirectManipulationRepository()
         val first = TodayTask(
             id = "entry-1", title = "Write report", lifecycleState = LifecycleState.PLANNED,
@@ -470,7 +470,7 @@ class TodayScreenInstrumentedTest {
 
         composeRule.waitUntil(15_000) { directRepository.reorderCalls.get() == 1 }
         assertEquals(1, directRepository.reorderCalls.get())
-        assertTrue(directRepository.lastReorderIds?.containsAll(listOf("entry-1", "entry-2")) == true)
+        assertEquals(listOf("entry-2", "entry-1"), directRepository.lastReorderIds)
         assertTrue(composeRule.onAllNodesWithText("タスクを編集").fetchSemanticsNodes().isEmpty())
     }
 

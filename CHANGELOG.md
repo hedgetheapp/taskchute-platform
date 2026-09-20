@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### D-127 Android Drag Reorder Regression Corrective
+
+- 前版でsource Entryをsynthetic placeholderへ置換した際にdrag gesture ownerがcompositionから消え、drop commandが送信されないregressionを修正。provisional previewは実source Entryを同じ`task.id` stable keyのままtarget位置へ移動し、そのrowだけをteal placeholder visualとして描画する。
+- gesture host / `pointerInput`をsource rowの外側で維持し、lifted overlayだけにpointer deltaを適用。same-section / cross-section / empty / Completed-only Section / cancelの既存placement semantics、既存command、server authorityは維持する。
+- Artifact `3f4bb61fc37af76f2ff6699a456aceba75533fbb`のGalaxy S23 drag failureは`FAIL / USER_REPORTED`として記録。今回のcorrectiveのGalaxy S23、AVD runtime、screenshot comparison、production、Releaseは未確認。
+
 ### D-127 Android Quick Add focus / drag targeting / transient feedback corrective
 
 - Quick AddのProject / Mode / Section pickerが明示的にfocus ownerとなり、Task名fieldのinitial focusを奪い返さないよう修正。picker操作時はtext IMEを閉じる。

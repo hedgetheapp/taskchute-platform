@@ -633,6 +633,7 @@ private fun TodayContent(
                         canDrag = directManipulationController?.canDrag(day, task, selectedEntryIds) == true
                             && !state.pendingEntryIds.contains(task.id),
                         dragging = dragState?.entryId == task.id,
+                        dragPlaceholder = dragState?.entryId == task.id,
                         dragDeltaY = dragState?.takeIf { it.entryId == task.id }?.deltaY ?: 0f,
                         dropTarget = false,
                         onDragStart = { pointerPosition ->
@@ -724,6 +725,7 @@ private fun TodayContent(
                         canDrag = directManipulationController?.canDrag(day, task, selectedEntryIds) == true
                             && !state.pendingEntryIds.contains(task.id),
                         dragging = dragState?.entryId == task.id,
+                        dragPlaceholder = dragState?.entryId == task.id,
                         dragDeltaY = dragState?.takeIf { it.entryId == task.id }?.deltaY ?: 0f,
                         dropTarget = false,
                         onDragStart = { pointerPosition ->
@@ -775,7 +777,6 @@ private fun TodayContent(
 }
 
 private const val UNSECTIONED_DROP_KEY = "__unsectioned__"
-private const val ANDROID_DRAG_SLOT_PREFIX = "__android_drag_slot__"
 
 internal data class AndroidDropTarget(
     val key: String,
@@ -802,66 +803,13 @@ internal fun entryDropKey(entryId: String): String = "entry:$entryId"
 
 internal fun sectionDropKey(sectionId: String?): String = "section:${sectionId ?: UNSECTIONED_DROP_KEY}"
 
-private fun previewDayForTarget(day: TodayDay, entryId: String, target: AndroidDropTarget): TodayDay =
-    insertAndroidDragSlot(
-        removeAndroidPreviewEntry(
-            previewOptimisticPlacement(
-                day,
-                entryId,
-                target.sectionId,
-                target.anchorEntryId?.let { PlacementTarget(target.sectionId, it, target.edge ?: PlacementEdge.AFTER) },
-            ),
-            entryId,
-        ),
-        target,
+internal fun previewDayForTarget(day: TodayDay, entryId: String, target: AndroidDropTarget): TodayDay =
+    previewOptimisticPlacement(
+        day,
+        entryId,
+        target.sectionId,
+        target.anchorEntryId?.let { PlacementTarget(target.sectionId, it, target.edge ?: PlacementEdge.AFTER) },
     )
-
-private fun removeAndroidPreviewEntry(day: TodayDay, entryId: String): TodayDay = day.copy(
-    sections = day.sections.map { section -> section.copy(entries = section.entries.filterNot { it.id == entryId }) },
-    unsectionedEntries = day.unsectionedEntries.filterNot { it.id == entryId },
-)
-
-private fun insertAndroidDragSlot(day: TodayDay, target: AndroidDropTarget): TodayDay {
-    val slot = TodayTask(
-        id = ANDROID_DRAG_SLOT_PREFIX + target.key,
-        title = "",
-        lifecycleState = LifecycleState.PLANNED,
-        project = null,
-        mode = null,
-        estimateSeconds = null,
-        plannedStartMinute = null,
-        executionId = null,
-        activeStartedAt = null,
-    )
-    fun insert(entries: List<TodayTask>): List<TodayTask> {
-        val index = target.anchorEntryId?.let { anchorId ->
-            entries.indexOfFirst { it.id == anchorId }.let { anchorIndex ->
-                if (anchorIndex < 0) entries.size
-                else if (target.edge == PlacementEdge.BEFORE) anchorIndex else anchorIndex + 1
-            }
-        } ?: entries.size
-        return entries.toMutableList().apply { add(index.coerceIn(0, size), slot) }
-    }
-    return if (target.sectionId == null) {
-        day.copy(unsectionedEntries = insert(day.unsectionedEntries))
-    } else {
-        day.copy(sections = day.sections.map { section ->
-            if (section.id == target.sectionId) section.copy(entries = insert(section.entries)) else section
-        })
-    }
-}
-
-private fun isAndroidDragSlot(task: TodayTask): Boolean = task.id.startsWith(ANDROID_DRAG_SLOT_PREFIX)
-
-internal fun previewDragPresentationIds(
-    entryIds: List<String>,
-    sourceEntryId: String,
-    targetIndex: Int,
-): List<String> {
-    val withoutSource = entryIds.filterNot { it == sourceEntryId }.toMutableList()
-    withoutSource.add(targetIndex.coerceIn(0, withoutSource.size), ANDROID_DRAG_SLOT_PREFIX + "test")
-    return withoutSource
-}
 
 internal fun isEligibleAndroidDropAnchor(task: TodayTask): Boolean =
     task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived
@@ -1104,6 +1052,7 @@ private fun TodayTaskRow(
     onDelete: () -> Unit,
     canDrag: Boolean,
     dragging: Boolean,
+    dragPlaceholder: Boolean,
     dragDeltaY: Float,
     dropTarget: Boolean,
     onDragStart: (Offset) -> Unit,
@@ -1115,10 +1064,6 @@ private fun TodayTaskRow(
     dropBoundsEligible: MutableMap<String, Boolean>,
     rowBounds: MutableMap<String, Rect>,
 ) {
-    if (isAndroidDragSlot(task)) {
-        ProvisionalDropSlot(modifier)
-        return
-    }
     var actionsSheetOpen by remember(task.id) { mutableStateOf(false) }
     var swipeOffset by remember(task.id) { mutableStateOf(0f) }
     var swipeGestureStarted by remember(task.id) { mutableStateOf(false) }
@@ -1141,11 +1086,28 @@ private fun TodayTaskRow(
         LifecycleState.COMPLETED -> TaskChuteColors.SurfaceElevated
         LifecycleState.PLANNED -> TaskChuteColors.Surface
     }
+    val dragModifier = if (canDrag) {
+        Modifier.onGloballyPositioned {
+            dropBounds[task.id] = it.boundsInRoot()
+            dropBoundsSectionId[task.id] = sectionId
+            dropBoundsEligible[task.id] = isEligibleAndroidDropAnchor(task)
+        }.pointerInput(task.id) {
+            detectShortLongPressDrag(
+                onDragStart = onDragStart,
+                onDragMove = onDragMove,
+                onDragEnd = onDragEnd,
+                onDragCancel = onDragCancel,
+            )
+        }
+    } else Modifier
     Box(
-        modifier.fillMaxWidth().background(rowSurface).onGloballyPositioned {
+        modifier.fillMaxWidth().background(rowSurface).then(dragModifier).onGloballyPositioned {
             rowBounds[task.id] = it.boundsInRoot()
         },
     ) {
+        if (dragPlaceholder) {
+            ProvisionalDropSlot()
+        } else {
         if (!selectionModeActive && hasActions && swipeOffset <= -swipeThreshold) {
             Row(
                 modifier = Modifier.align(Alignment.CenterEnd).zIndex(2f).padding(end = 4.dp),
@@ -1239,20 +1201,6 @@ private fun TodayTaskRow(
                     TaskProjectionSlot(task)
                 }
                 Spacer(Modifier.width(4.dp))
-                val dragModifier = if (canDrag) {
-                    Modifier.onGloballyPositioned {
-                        dropBounds[task.id] = it.boundsInRoot()
-                        dropBoundsSectionId[task.id] = sectionId
-                        dropBoundsEligible[task.id] = isEligibleAndroidDropAnchor(task)
-                    }.pointerInput(task.id) {
-                        detectShortLongPressDrag(
-                            onDragStart = onDragStart,
-                            onDragMove = onDragMove,
-                            onDragEnd = onDragEnd,
-                            onDragCancel = onDragCancel,
-                        )
-                    }
-                } else Modifier
                 val canEnterSelection = !selectionModeActive && canSelect
                 val swipeActions = !selectionModeActive && (hasActions || canEnterSelection)
                 val swipeModifier = Modifier.draggable(
@@ -1369,6 +1317,7 @@ private fun TodayTaskRow(
                     else -> Spacer(Modifier.size(48.dp))
                 }
             }
+        }
         }
     }
     if (actionsSheetOpen) {

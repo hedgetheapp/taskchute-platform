@@ -1,3 +1,11 @@
+### D-127 Android Drag Reorder Regression Corrective — 2026-09-21
+
+Artifact `3f4bb61fc37af76f2ff6699a456aceba75533fbb`では、drag中にsource Entryをrender projectionから除去してsynthetic placeholderへ置換したため、long-pressを所有する元rowのCompose itemがdisposeされ、指を離してもreorder commandへ到達しないregressionがGalaxy S23で報告された（`FAIL / USER_REPORTED`）。
+
+今回のcorrectiveでは、provisional previewを`previewOptimisticPlacement()`による実Entryの移動へ戻し、source `task.id`を同じLazyColumn stable keyで保持する。source rowはdrag中だけtealのplaceholder visualを描画するが、外側のgesture host / `pointerInput` / bounds observerは同じrowに残し、実Taskは別のlifted overlayだけでpointer deltaを受ける。synthetic Task identity、連続reorder送信、server/API変更は追加しない。same-section、cross-section、empty / Completed-only Section、cancelは既存placement semanticsを維持する。
+
+**Implementation: IMPLEMENTED / Local: Android JVM 135/135 PASS, instrumentation compile PASS, debug assemble PASS / Authenticated runtime: NOT_RUN / HUNG (`scripts/android-qa.ps1 -Surface Today` reached `connectedDebugAndroidTest` without a result; MainActivity resolved and crash buffer was empty) / Exact-SHA CI: pending / New corrective Galaxy S23: NOT_RUN / Screenshot comparison: NOT_RUN / Production: NOT_RUN / Released: NO**。旧artifactのfailure evidenceは履歴として保持し、新correctiveを実機Verifiedへ昇格させない。
+
 ### D-127 Android Quick Add focus / drag targeting / transient feedback corrective — 2026-09-21
 
 The next Galaxy S23 review of artifact `0020144c6531395a2f11ccd7dd9633e6128f06c5` found five additional runtime issues within the existing D-127/D-125 behavior: Project / Mode / Section picker taps did not take focus from the Task field; the lifted drag row could be displaced twice when provisional order moved it; consecutive empty Sections had only narrow header targeting; a Section containing only Completed rows had no planned-tail target; and deterministic operation-failure feedback did not expire. The old artifact remains `FAIL / USER_REPORTED` evidence; this corrective has not received physical-device evidence.

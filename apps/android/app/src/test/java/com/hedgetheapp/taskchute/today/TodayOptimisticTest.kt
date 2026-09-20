@@ -102,14 +102,46 @@ class TodayOptimisticTest {
     }
 
     @Test
-    fun dragPresentationUsesOnePlaceholderInsteadOfRelocatingTheSourceRow() {
-        val ids = previewDragPresentationIds(
-            entryIds = listOf("entry-a", "entry-b"),
-            sourceEntryId = "entry-a",
-            targetIndex = 1,
+    fun dragPresentationKeepsTheRealSourceEntryKeyInTheProvisionalOrder() {
+        val preview = previewDayForTarget(
+            day(),
+            entryId = "entry-a",
+            target = AndroidDropTarget(
+                key = entryDropKey("entry-b"),
+                sectionId = "morning",
+                anchorEntryId = "entry-b",
+                edge = PlacementEdge.AFTER,
+            ),
         )
 
-        assertEquals(listOf("entry-b", "__android_drag_slot__test"), ids)
+        assertEquals(
+            listOf("entry-b", "entry-a"),
+            preview.sections.first { it.id == "morning" }.entries.map(TodayTask::id),
+        )
+    }
+
+    @Test
+    fun crossSectionDragPreviewKeepsTheSourceEntryKeyExactlyOnce() {
+        val preview = previewDayForTarget(
+            day(),
+            entryId = "entry-a",
+            target = AndroidDropTarget(
+                key = entryDropKey("entry-c"),
+                sectionId = "afternoon",
+                anchorEntryId = "entry-c",
+                edge = PlacementEdge.BEFORE,
+            ),
+        )
+
+        assertEquals(
+            listOf("entry-b"),
+            preview.sections.first { it.id == "morning" }.entries.map(TodayTask::id),
+        )
+        assertEquals(
+            listOf("entry-a", "entry-c"),
+            preview.sections.first { it.id == "afternoon" }.entries.map(TodayTask::id),
+        )
+        assertEquals(1, preview.allEntries.count { it.id == "entry-a" })
     }
 
     @Test

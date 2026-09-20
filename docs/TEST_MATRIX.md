@@ -1,11 +1,26 @@
 # Test Matrix
 
+## D-127 Android Drag Reorder Regression Corrective — 2026-09-21
+
+| ID | Verification target | Evidence | Status |
+|---|---|---|---|
+| D127-DRAG-REGRESSION | Existing artifact drag reorder | `3f4bb61fc37af76f2ff6699a456aceba75533fbb`でsource rowがsynthetic placeholderへの置換時にcompositionから消え、同一pointer gestureのdrop commandが欠落した。 | FAIL / USER_REPORTED |
+| D127-DRAG-STABLE-KEY | Same-section preview | `previewOptimisticPlacement()`が実source Entryをtarget位置へ移動し、source `task.id`を1回だけ保持。rowは同じkeyのままplaceholder visualを描画し、lifted overlayだけがpointer deltaを受ける。`TodayOptimisticTest.dragPresentationKeepsTheRealSourceEntryKeyInTheProvisionalOrder`。 | SOURCE / JVM PASS |
+| D127-DRAG-CROSS-SECTION | Cross-section preview | source Entryをsource Sectionから除きtarget Sectionへ同じidentityで移し、`TodayOptimisticTest.crossSectionDragPreviewKeepsTheSourceEntryKeyExactlyOnce`でsource idの一意性を確認。 | SOURCE / JVM PASS |
+| D127-DRAG-CANCEL | Drag cancel | cancel callbackは既存どおり`dragState`とprovisional projectionを破棄し、canonical orderへ戻す。 | SOURCE / JVM PASS |
+| D127-DRAG-ANCHOR | Empty / Completed-only Section | eligible planned anchor除外、Section-only target、consecutive empty Sectionのresolver coverageを維持。 | JVM PASS / RUNTIME NOT_VERIFIED |
+| D127-JVM | Android unit tests | `:app:testDebugUnitTest`: `135 / 135`、failures/errors/skipped `0 / 0 / 0`。stable-key previewと既存Today回帰を含む。 | PASS |
+| D127-ANDROIDTEST-COMPILE | Android instrumentation compile | `:app:compileDebugAndroidTestKotlin` PASS。 | PASS |
+| D127-ANDROIDTEST | Android instrumentation | `scripts/android-qa.ps1 -Surface Today`は`connectedDebugAndroidTest`まで到達したが結果を返さず停止。MainActivity resolved、crash buffer empty。 | NOT_RUN / HUNG |
+| D127-DEVICE | Corrective APK Galaxy S23 | 新corrective artifactのProduct Owner physical-device verification。 | NOT_RUN |
+| D127-SCOPE | Boundary | Worker/API、schema、migration、dependency、persistent local authority、production、tag、Releaseは変更しない。D-127 / D-110 / D-123のplacement semanticsを維持。 | PASS / NOT_REQUIRED / NOT_RUN / NO |
+
 ## D-127 Android Quick Add focus / drag targeting / transient feedback corrective — 2026-09-21
 
 | ID | Verification target | Evidence | Status |
 |---|---|---|---|
 | D127-FOCUS-PICKER | Quick Add Project / Mode / Section focus ownership | `ReferencePicker` requests focus for its own button and hides the text IME; CREATE Task field remains initial-focus only. Focus regression is covered by `TodayScreenInstrumentedTest.quickAddShowsSixFieldsAndSendsOneCanonicalSave`. | SOURCE / COMPILE PASS; RUNTIME NOT_VERIFIED |
-| D127-DRAG-PLACEHOLDER | Lifted Task / provisional order | source Entry is removed from the provisional presentation, a separate teal placeholder is inserted, and a lifted overlay follows the drag delta once; `TodayOptimisticTest.dragPresentationUsesOnePlaceholderInsteadOfRelocatingTheSourceRow`. | SOURCE / JVM PASS; RUNTIME NOT_VERIFIED |
+| D127-DRAG-PLACEHOLDER | Lifted Task / provisional order | source Entryのstable keyを保持したまま同じrowをteal placeholder visualとして描画し、lifted overlayだけがdrag deltaを受ける。entry anchors exclude Completed and Routine-derived rows、empty / Completed-only SectionsはSection-only placement。今回のD-127 drag correctiveで更新。 | SOURCE / JVM PASS; RUNTIME NOT_VERIFIED |
 | D127-DRAG-ANCHOR | Empty / completed-only Section target | Completed and Routine-derived rows are excluded as anchors; Section-only target remains available for completed-only and consecutive empty Sections. `TodayOptimisticTest.completedRowsAreNotManualDropAnchors` and `consecutiveEmptySectionsRemainIndividuallyTargetable`. | SOURCE / JVM PASS; RUNTIME NOT_VERIFIED |
 | D127-FEEDBACK | Deterministic failure feedback | Exact D-125 deterministic copy receives a generation token, auto-dismisses using the accessibility-recommended timeout, and an older timeout cannot clear a newer failure. `TodayDirectManipulationTest.deterministicFailureDismissalIsGenerationSafe`. | SOURCE / JVM PASS; RUNTIME NOT_VERIFIED |
 | D127-JVM | Focused Android JVM | `:app:testDebugUnitTest --tests TodayDirectManipulationTest --tests TodayOptimisticTest`: `26 / 26 PASS`. | PASS |
