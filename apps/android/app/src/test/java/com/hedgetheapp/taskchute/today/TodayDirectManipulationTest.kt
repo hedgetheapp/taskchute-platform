@@ -122,6 +122,35 @@ class TodayDirectManipulationTest {
     }
 
     @Test
+    fun dropTargetResolverSupportsCollapsedNonEmptySectionAreaWithoutPlacement() {
+        val target = resolveAndroidDropTarget(
+            positionY = 300f,
+            sourceEntryId = "entry-1",
+            entryBounds = emptyMap(),
+            entrySectionIds = emptyMap(),
+            emptySectionBounds = mapOf("section-2" to Rect(0f, 260f, 100f, 340f)),
+            emptySectionIds = mapOf("section-2" to "section-2"),
+        )
+
+        assertEquals(AndroidDropTarget("section:section-2", "section-2", null, null), target)
+        assertEquals(null, target?.anchorEntryId)
+        assertEquals(null, target?.edge)
+    }
+
+    @Test
+    fun dropTargetResolverKeepsVisibleEntryAnchorHigherPriorityThanSectionArea() {
+        val target = resolveAndroidDropTarget(
+            positionY = 300f,
+            sourceEntryId = "entry-1",
+            entryBounds = mapOf("entry-2" to Rect(0f, 260f, 100f, 340f)),
+            entrySectionIds = mapOf("entry-2" to "section-2"),
+            emptySectionBounds = mapOf("section-2" to Rect(0f, 260f, 100f, 340f)),
+            emptySectionIds = mapOf("section-2" to "section-2"),
+        )
+
+        assertEquals(AndroidDropTarget("entry:entry-2", "section-2", "entry-2", PlacementEdge.AFTER), target)
+    }
+    @Test
     fun bulkDayOperationsUseCanonicalEndpointsAndPayloads() {
         val requests = mutableListOf<Triple<String, String, String?>>()
         val repository = TodayDirectManipulationHttpRepository(

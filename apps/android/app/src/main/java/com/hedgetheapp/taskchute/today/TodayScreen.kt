@@ -371,7 +371,7 @@ private fun TodayContent(
     var openSwipeEntryId by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(day.logicalDate, state.status) { openSwipeEntryId = null }
     LaunchedEffect(day, dragState != null) {
-        day.sections.filterNot { it.entries.isEmpty() }.forEach {
+        day.sections.filter { it.entries.isNotEmpty() && it.id !in collapsedSectionIds }.forEach {
             emptySectionDropBounds.remove(it.id)
             emptySectionDropIds.remove(it.id)
         }
@@ -516,7 +516,7 @@ private fun TodayContent(
                         },
                         dropTarget = dragState?.target?.key == sectionDropKey(section.id),
                         modifier = Modifier.onGloballyPositioned {
-                            if (section.entries.isEmpty()) {
+                            if (section.entries.isEmpty() || section.id in collapsedSectionIds) {
                                 emptySectionDropBounds[section.id] = it.boundsInRoot()
                                 emptySectionDropIds[section.id] = section.id
                             } else {

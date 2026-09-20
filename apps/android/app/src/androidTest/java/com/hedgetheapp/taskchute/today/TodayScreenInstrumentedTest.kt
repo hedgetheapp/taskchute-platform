@@ -607,6 +607,42 @@ class TodayScreenInstrumentedTest {
     }
 
     @Test
+    fun collapsedNonEmptyConfiguredSectionHeaderAcceptsSectionOnlyMove() {
+        val directRepository = FakeDirectManipulationRepository()
+        val base = dayWith().sections.single().entries.single()
+        val source = base.copy(id = "entry-source", title = "Move me", taskId = "task-source")
+        val existing = base.copy(id = "entry-target", title = "Existing target", taskId = "task-target")
+        val initialDay = dayWith().copy(
+            sections = listOf(
+                TodaySection("section-source", "Source", 480, 720, listOf(source)),
+                TodaySection("section-target", "Target", 720, 900, listOf(existing)),
+            ),
+        )
+        launchPlanningScreen(FakePlanningRepository(), initialDay, directRepository)
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        composeRule.onNodeWithContentDescription("Targetセクションを折りたたむ").performClick()
+        assertTrue(composeRule.onAllNodesWithText("Existing target").fetchSemanticsNodes().isEmpty())
+
+        val sourceNode = composeRule.onNodeWithContentDescription("タスクをドラッグ: Move me")
+        val sourceBounds = sourceNode.fetchSemanticsNode().boundsInRoot
+        val targetHeader = composeRule.onNodeWithContentDescription("Targetセクションを展開")
+        val targetBounds = targetHeader.fetchSemanticsNode().boundsInRoot
+        sourceNode.performTouchInput {
+            down(center)
+            advanceEventTime(600)
+            moveBy(Offset(0f, targetBounds.center.y - sourceBounds.center.y), delayMillis = 100)
+            up()
+        }
+
+        composeRule.waitUntil(15_000) { directRepository.moveCalls.get() == 1 }
+        assertEquals(1, directRepository.moveCalls.get())
+        assertEquals("section-target", directRepository.lastMove?.sectionId)
+        assertEquals(null, directRepository.lastMove?.placement)
+        composeRule.onNodeWithContentDescription("Targetセクションを展開").assertIsDisplayed()
+    }
+
+    @Test
     fun currentRunningRowExposesRichSwipeAndMetadataEditor() {
         val task = dayWith(LifecycleState.RUNNING).sections.single().entries.single().copy(taskId = "task-running")
         val initialDay = dayWith(LifecycleState.RUNNING).copy(
