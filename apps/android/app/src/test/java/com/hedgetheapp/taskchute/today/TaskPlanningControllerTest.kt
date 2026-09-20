@@ -54,10 +54,17 @@ class TaskPlanningControllerTest {
     }
 
     @Test
-    fun onlyCurrentDayOrdinaryPlannedTaskCanOpenEditor() {
+    fun futurePlanningDayAllowsOrdinaryPlannedEditorButPastDoesNot() {
         val repository = FakePlanningRepository()
         val controller = controller(repository)
-        controller.openEdit(currentDay(isCurrent = false), plannedTask())
+        controller.openEdit(futureDay(), plannedTask())
+        assertTrue(await { controller.state.editor != null })
+        assertEquals(TaskEditorCapability.FULL_PLANNING, controller.state.editor?.capability)
+        controller.dismiss()
+
+        controller.openEdit(pastDay(), plannedTask())
+        assertNull(controller.state.editor)
+        controller.openEdit(futureDay(), plannedTask(lifecycleState = LifecycleState.RUNNING))
         assertNull(controller.state.editor)
         controller.openEdit(currentDay(), plannedTask(routineDerived = true))
         assertNull(controller.state.editor)
@@ -68,6 +75,18 @@ class TaskPlanningControllerTest {
         controller.openEdit(currentDay(), plannedTask())
         assertTrue(await { controller.state.references != null })
         assertEquals(TaskEditorMode.EDIT, controller.state.editor?.mode)
+        controller.close()
+    }
+
+    @Test
+    fun futurePlanningDayAllowsCreate() {
+        val repository = FakePlanningRepository()
+        val controller = controller(repository)
+
+        controller.openCreate(futureDay())
+
+        assertTrue(await { controller.state.editor != null })
+        assertEquals(TaskEditorMode.CREATE, controller.state.editor?.mode)
         controller.close()
     }
 
@@ -121,15 +140,28 @@ class TaskPlanningControllerTest {
     }
 
     private companion object {
-        fun currentDay(isCurrent: Boolean = true) = TodayDay(
+        fun currentDay() = TodayDay(
             logicalDate = "2026-09-14",
-            isCurrent = isCurrent,
+            isCurrent = true,
             planningEnabled = true,
             placementRevision = 5,
             sections = listOf(TodaySection("section-1", "Morning", 480, 720, emptyList())),
             unsectionedEntries = emptyList(),
             activeExecution = null,
             taskChuteDayId = "day-1",
+        )
+
+        fun futureDay() = currentDay().copy(
+            logicalDate = "2026-09-15",
+            isCurrent = false,
+            taskChuteDayId = "future-day-1",
+        )
+
+        fun pastDay() = currentDay().copy(
+            logicalDate = "2026-09-13",
+            isCurrent = false,
+            planningEnabled = false,
+            taskChuteDayId = null,
         )
 
         fun plannedTask(

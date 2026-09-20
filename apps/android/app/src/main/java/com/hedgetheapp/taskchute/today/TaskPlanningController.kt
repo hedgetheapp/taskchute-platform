@@ -37,7 +37,7 @@ class TaskPlanningController(
     }
 
     fun openEdit(day: TodayDay, task: TodayTask) {
-        if (!canEditDay(day) || state.saving || task.routineDerived) return
+        if (!canEditDay(day) || state.saving || task.routineDerived || (!day.isCurrent && task.lifecycleState != LifecycleState.PLANNED)) return
         val capability = when (task.lifecycleState) {
             LifecycleState.PLANNED -> TaskEditorCapability.FULL_PLANNING
             LifecycleState.RUNNING -> TaskEditorCapability.RUNNING_METADATA
@@ -52,6 +52,7 @@ class TaskPlanningController(
                     title = task.title,
                     projectId = task.project?.id,
                     modeId = task.mode?.id,
+                    sectionId = day.sections.firstOrNull { section -> section.entries.any { it.id == task.id } }?.id,
                     plannedStartText = formatEditorMinute(task.plannedStartMinute),
                     estimateText = task.estimateSeconds?.let { (it / 60).toString() } ?: "",
                 ),
@@ -129,5 +130,5 @@ class TaskPlanningController(
         }
     }
 
-    private fun canEditDay(day: TodayDay): Boolean = day.isCurrent && day.planningEnabled && day.taskChuteDayId != null
+    private fun canEditDay(day: TodayDay): Boolean = canPlanDay(day)
 }

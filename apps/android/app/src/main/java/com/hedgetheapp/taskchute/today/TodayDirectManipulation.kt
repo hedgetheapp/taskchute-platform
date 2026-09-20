@@ -148,12 +148,12 @@ class TodayDirectManipulationController(
         private set
 
     fun canDrag(day: TodayDay, task: TodayTask): Boolean =
-        day.isCurrent && day.planningEnabled && day.taskChuteDayId != null
+        canPlanDay(day)
             && task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived
             && state.pendingEntryIds.isEmpty() && state.unresolvedRequest == null
 
     fun canSelect(day: TodayDay, task: TodayTask): Boolean =
-        day.isCurrent && day.planningEnabled && day.taskChuteDayId != null
+        canPlanDay(day)
             && task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived
             && state.pendingEntryIds.isEmpty() && state.unresolvedRequest == null
 
@@ -162,8 +162,9 @@ class TodayDirectManipulationController(
         canDrag(day, task) && !(selectedEntryIds.size > 1 && task.id in selectedEntryIds)
 
     fun reorder(day: TodayDay, sectionId: String?, entryIds: List<String>, affectedEntryIds: Set<String>) {
-        if (entryIds.isEmpty() || state.pendingEntryIds.isNotEmpty() || state.unresolvedRequest != null || day.taskChuteDayId == null) return
-        dispatch(affectedEntryIds, DirectManipulationRequest.Reorder(UUIDv7.next(), day.taskChuteDayId, sectionId, entryIds, day.placementRevision))
+        val dayId = day.taskChuteDayId ?: return
+        if (entryIds.isEmpty() || state.pendingEntryIds.isNotEmpty() || state.unresolvedRequest != null || !canPlanDay(day)) return
+        dispatch(affectedEntryIds, DirectManipulationRequest.Reorder(UUIDv7.next(), dayId, sectionId, entryIds, day.placementRevision))
     }
 
     fun move(day: TodayDay, entryId: String, target: PlacementTarget) {
@@ -171,13 +172,14 @@ class TodayDirectManipulationController(
     }
 
     fun move(day: TodayDay, entryId: String, targetSectionId: String?, placement: PlacementTarget?) {
-        if (state.pendingEntryIds.isNotEmpty() || state.unresolvedRequest != null || day.taskChuteDayId == null) return
-        dispatch(setOf(entryId), DirectManipulationRequest.Move(UUIDv7.next(), entryId, day.taskChuteDayId, targetSectionId, day.placementRevision, placement))
+        val dayId = day.taskChuteDayId ?: return
+        if (state.pendingEntryIds.isNotEmpty() || state.unresolvedRequest != null || !canPlanDay(day)) return
+        dispatch(setOf(entryId), DirectManipulationRequest.Move(UUIDv7.next(), entryId, dayId, targetSectionId, day.placementRevision, placement))
     }
 
     fun duplicate(day: TodayDay, source: TodayTask) {
         if (state.pendingEntryIds.isNotEmpty() || day.taskChuteDayId == null
-            || state.unresolvedRequest != null || !day.isCurrent || !day.planningEnabled || source.lifecycleState != LifecycleState.PLANNED) return
+            || state.unresolvedRequest != null || !canPlanDay(day) || source.lifecycleState != LifecycleState.PLANNED) return
         dispatch(
             setOf(source.id),
             DirectManipulationRequest.Duplicate(UUIDv7.next(), source.id, UUIDv7.next(), UUIDv7.next(), day.taskChuteDayId, day.placementRevision),
@@ -186,7 +188,7 @@ class TodayDirectManipulationController(
 
     fun moveToDay(day: TodayDay, entryIds: Set<String>, targetLogicalDate: String, successMessage: String? = null) {
         if (entryIds.isEmpty() || state.pendingEntryIds.isNotEmpty() || state.unresolvedRequest != null
-            || day.taskChuteDayId == null || !day.isCurrent || !day.planningEnabled
+            || day.taskChuteDayId == null || !canPlanDay(day)
         ) return
         val ids = entryIds.toList().sorted()
         state = state.copy(pendingEntryIds = ids.toSet(), errorMessage = null, feedbackMessage = null)
@@ -226,7 +228,7 @@ class TodayDirectManipulationController(
 
     fun delete(day: TodayDay, entryIds: Set<String>, successMessage: String? = null) {
         if (entryIds.isEmpty() || state.pendingEntryIds.isNotEmpty() || state.unresolvedRequest != null
-            || day.taskChuteDayId == null || !day.isCurrent || !day.planningEnabled
+            || day.taskChuteDayId == null || !canPlanDay(day)
         ) return
         dispatch(
             entryIds,

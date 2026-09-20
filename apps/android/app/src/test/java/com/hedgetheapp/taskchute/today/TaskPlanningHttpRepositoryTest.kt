@@ -32,6 +32,75 @@ class TaskPlanningHttpRepositoryTest {
         assertTrue(requests[2].third!!.contains("\"planned_start_minute\":600"))
     }
 
+    @Test
+    fun futureCreateUsesByLogicalDateRouteAndLogicalDate() {
+        val requests = mutableListOf<Triple<String, String, String?>>()
+        val repository = TaskPlanningHttpRepository { method, path, body ->
+            requests += Triple(method, path, body)
+            when (path) {
+                "/api/v1/taskchute-days/by-logical-date/entries" -> TodayHttpResponse(200, "{\"placement_revision\":6}")
+                else -> TodayHttpResponse(204, null)
+            }
+        }
+
+        val result = repository.save(
+            editor = TaskEditorState(TaskEditorMode.CREATE, futureDay(), null, TaskEditorDraft()),
+            input = NormalizedTaskInput("Future task", "project-1", "mode-1", "section-1", 600, null),
+        )
+
+        assertEquals(PlanningSaveResult.Success, result)
+        assertEquals("/api/v1/taskchute-days/by-logical-date/entries", requests.first().second)
+        assertTrue(requests.first().third.orEmpty().contains("\"logical_date\":\"2026-09-15\""))
+    }
+    @Test
+    fun sectionEditUsesCanonicalMoveAndUpdatedRevisionForPlannedStart() {
+        val requests = mutableListOf<Triple<String, String, String?>>()
+        val task = TodayTask(
+            id = "entry-1",
+            title = "Task",
+            lifecycleState = LifecycleState.PLANNED,
+            project = null,
+            mode = null,
+            estimateSeconds = 600,
+            plannedStartMinute = 540,
+            executionId = null,
+            activeStartedAt = null,
+            routineDerived = false,
+            taskId = "task-1",
+        )
+        val day = currentDay().copy(
+            sections = listOf(
+                TodaySection("section-1", "Morning", 480, 720, listOf(task)),
+                TodaySection("section-2", "Afternoon", 720, 1080, emptyList()),
+            ),
+        )
+        val repository = TaskPlanningHttpRepository { method, path, body ->
+            requests += Triple(method, path, body)
+            when {
+                path.endsWith("/entries/move") -> TodayHttpResponse(200, "{\"placement_revision\":6}")
+                path.endsWith("/planned-start") -> TodayHttpResponse(204, null)
+                else -> TodayHttpResponse(204, null)
+            }
+        }
+
+        val result = repository.save(
+            editor = TaskEditorState(
+                mode = TaskEditorMode.EDIT,
+                day = day,
+                originalTask = task,
+                draft = TaskEditorDraft(title = task.title, sectionId = "section-2", plannedStartText = "10:00", estimateText = "10"),
+            ),
+            input = NormalizedTaskInput(task.title, null, null, "section-2", 600, 600),
+        )
+
+        assertEquals(PlanningSaveResult.Success, result)
+        assertEquals(2, requests.size)
+        assertTrue(requests[0].second.endsWith("/entries/move"))
+        assertTrue(requests[0].third.orEmpty().contains("\"section_id\":\"section-2\""))
+        assertTrue(requests[0].third.orEmpty().contains("\"expected_placement_revision\":5"))
+        assertTrue(requests[1].second.endsWith("/planned-start"))
+        assertTrue(requests[1].third.orEmpty().contains("\"expected_placement_revision\":6"))
+    }
 @Test
     fun runningProjectSaveUsesOnlyTaskMetadataEndpoint() {
         val requests = mutableListOf<Triple<String, String, String?>>()
@@ -92,6 +161,11 @@ class TaskPlanningHttpRepositoryTest {
     private fun extractEntryId(body: String): String = Regex("\\\"entry_id\\\":\\\"([^\\\"]+)\\\"").find(body)!!.groupValues[1]
 
     private companion object {
+        fun futureDay() = currentDay().copy(
+            logicalDate = "2026-09-15",
+            isCurrent = false,
+            taskChuteDayId = "future-day-1",
+        )
         fun currentDay() = TodayDay(
             logicalDate = "2026-09-14",
             isCurrent = true,

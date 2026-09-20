@@ -29,10 +29,12 @@ class TaskPlanningHttpRepository(
         val taskId = UUIDv7.next()
         val entryId = UUIDv7.next()
         val operationId = UUIDv7.next()
+        val logicalDateJson = if (day.isCurrent) "" else ",\"logical_date\":\"${JsonEncoding.escape(day.logicalDate)}\""
         val addBody = """
-            {"operation_id":"${JsonEncoding.escape(operationId)}","task_id":"${JsonEncoding.escape(taskId)}","entry_id":"${JsonEncoding.escape(entryId)}","project_id":${nullableString(input.projectId)},"mode_id":${nullableString(input.modeId)},"title":"${JsonEncoding.escape(input.title)}","taskchute_day_id":"${JsonEncoding.escape(day.taskChuteDayId!!)}","section_id":${nullableString(input.sectionId)},"expected_placement_revision":${day.placementRevision}}
+            {"operation_id":"${JsonEncoding.escape(operationId)}","task_id":"${JsonEncoding.escape(taskId)}","entry_id":"${JsonEncoding.escape(entryId)}","project_id":${nullableString(input.projectId)},"mode_id":${nullableString(input.modeId)},"title":"${JsonEncoding.escape(input.title)}","taskchute_day_id":"${JsonEncoding.escape(day.taskChuteDayId!!)}","section_id":${nullableString(input.sectionId)},"expected_placement_revision":${day.placementRevision}$logicalDateJson}
         """.trimIndent()
-        val added = execute("POST", "/api/v1/taskchute-days/current/entries", addBody)
+        val addPath = if (day.isCurrent) "/api/v1/taskchute-days/current/entries" else "/api/v1/taskchute-days/by-logical-date/entries"
+        val added = execute("POST", addPath, addBody)
         val placementRevision = when (added) {
             PlanningHttpResult.Unauthorized -> return PlanningSaveResult.Unauthorized
             is PlanningHttpResult.Failure -> return PlanningSaveResult.Failure(added.message)
@@ -60,6 +62,7 @@ class TaskPlanningHttpRepository(
         val taskId = task.taskId ?: return PlanningSaveResult.Failure("編集対象のTask IDを取得できません。再読み込みしてください。")
         val currentProjectId = task.project?.id
         val currentModeId = task.mode?.id
+        val currentSectionId = editor.day.sections.firstOrNull { section -> section.entries.any { it.id == task.id } }?.id
         if (editor.capability == TaskEditorCapability.RUNNING_METADATA) {
             if (currentProjectId != input.projectId) {
                 when (val result = executeTaskMetadata(task, taskId, input.projectId)) {
@@ -91,6 +94,16 @@ class TaskPlanningHttpRepository(
                 is PlanningHttpResult.Success -> Unit
             }
         }
+        var placementRevision = editor.day.placementRevision
+        if (currentSectionId != input.sectionId) {
+            val sectionMove = executeSectionMove(task, editor.day.taskChuteDayId, input.sectionId, placementRevision)
+            when (sectionMove.first) {
+                PlanningSaveResult.Success -> placementRevision = sectionMove.second
+                    ?: return PlanningSaveResult.Failure("Section移動結果を読み取れませんでした。再試行してください。")
+                PlanningSaveResult.Unauthorized -> return PlanningSaveResult.Unauthorized
+                is PlanningSaveResult.Failure -> return sectionMove.first
+            }
+        }
         if (task.estimateSeconds != input.estimateSeconds) {
             when (val result = executeEstimate(task.id, task.estimateSeconds, input.estimateSeconds)) {
                 PlanningSaveResult.Success -> Unit
@@ -98,7 +111,7 @@ class TaskPlanningHttpRepository(
             }
         }
         if (task.plannedStartMinute != input.plannedStartMinute) {
-            when (val result = executePlannedStart(task.id, editor.day.taskChuteDayId, input.plannedStartMinute, editor.day.placementRevision)) {
+            when (val result = executePlannedStart(task.id, editor.day.taskChuteDayId, input.plannedStartMinute, placementRevision)) {
                 PlanningSaveResult.Success -> Unit
                 else -> return result
             }
@@ -106,6 +119,24 @@ class TaskPlanningHttpRepository(
         return PlanningSaveResult.Success
     }
 
+    private fun executeSectionMove(
+        task: TodayTask,
+        dayId: String?,
+        sectionId: String?,
+        expectedPlacementRevision: Int,
+    ): Pair<PlanningSaveResult, Int?> {
+        if (dayId == null) return PlanningSaveResult.Failure("編集対象の日を取得できません。") to null
+        val body = """
+            {"operation_id":"${JsonEncoding.escape(UUIDv7.next())}","entry_id":"${JsonEncoding.escape(task.id)}","taskchute_day_id":"${JsonEncoding.escape(dayId)}","section_id":${nullableString(sectionId)},"expected_placement_revision":$expectedPlacementRevision}
+        """.trimIndent()
+        return when (val result = execute("POST", "/api/v1/taskchute-days/current/entries/move", body)) {
+            PlanningHttpResult.Unauthorized -> PlanningSaveResult.Unauthorized to null
+            is PlanningHttpResult.Failure -> PlanningSaveResult.Failure(result.message) to null
+            is PlanningHttpResult.Success -> runCatching { TaskPlanningJsonParser.parsePlacementRevision(result.body) }
+                .map { PlanningSaveResult.Success to it }
+                .getOrElse { PlanningSaveResult.Failure("Section移動結果を読み取れませんでした。") to null }
+        }
+    }
     private fun executeTaskMetadata(task: TodayTask, taskId: String, projectId: String?, title: String = task.title): PlanningHttpResult {
         val body = """
             {"operation_id":"${JsonEncoding.escape(UUIDv7.next())}","entry_id":"${JsonEncoding.escape(task.id)}","task_id":"${JsonEncoding.escape(taskId)}","expected_title":"${JsonEncoding.escape(task.title)}","expected_project_id":${nullableString(task.project?.id)},"title":"${JsonEncoding.escape(title)}","project_id":${nullableString(projectId)}}

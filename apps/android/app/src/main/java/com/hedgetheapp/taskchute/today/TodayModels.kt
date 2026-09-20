@@ -64,6 +64,10 @@ data class TodayDay(
     val hasEntries: Boolean get() = allEntries.isNotEmpty()
 }
 
+/** Planning is available for an established current or future Day, never for the past. */
+internal fun canPlanDay(day: TodayDay): Boolean =
+    day.planningEnabled && day.taskChuteDayId != null
+
 data class TodayHttpResponse(
     val status: Int?,
     val body: String?,

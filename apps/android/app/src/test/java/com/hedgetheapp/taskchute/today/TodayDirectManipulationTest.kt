@@ -37,7 +37,7 @@ class TodayDirectManipulationTest {
     }
 
     @Test
-    fun dragEligibilityRejectsProtectedRowsAndNonCurrentDays() {
+    fun futurePlanningAllowsEligibleMutationButPastRemainsReadOnly() {
         val controller = TodayDirectManipulationController(
             repository = FakeRepository(),
             onRefresh = {},
@@ -48,7 +48,10 @@ class TodayDirectManipulationTest {
         assertFalse(controller.canDrag(day(), task(LifecycleState.RUNNING)))
         assertFalse(controller.canDrag(day(), task(LifecycleState.COMPLETED)))
         assertFalse(controller.canDrag(day(), task(LifecycleState.PLANNED, routineDerived = true)))
-        assertFalse(controller.canDrag(day().copy(isCurrent = false), task(LifecycleState.PLANNED)))
+        assertTrue(controller.canDrag(futureDay(), task(LifecycleState.PLANNED)))
+        assertTrue(controller.canSelect(futureDay(), task(LifecycleState.PLANNED)))
+        assertFalse(controller.canDrag(pastDay(), task(LifecycleState.PLANNED)))
+        assertFalse(controller.canSelect(pastDay(), task(LifecycleState.PLANNED)))
         controller.close()
     }
 
@@ -368,6 +371,19 @@ class TodayDirectManipulationTest {
             unsectionedEntries = emptyList(),
             activeExecution = null,
             taskChuteDayId = "day-1",
+        )
+
+        fun futureDay() = day().copy(
+            logicalDate = "2026-09-15",
+            isCurrent = false,
+            taskChuteDayId = "future-day-1",
+        )
+
+        fun pastDay() = day().copy(
+            logicalDate = "2026-09-13",
+            isCurrent = false,
+            planningEnabled = false,
+            taskChuteDayId = null,
         )
     }
 }

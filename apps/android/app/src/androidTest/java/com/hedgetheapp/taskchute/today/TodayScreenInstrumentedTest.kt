@@ -551,13 +551,23 @@ class TodayScreenInstrumentedTest {
     }
 
     @Test
-    fun nonCurrentDayHasNoAddOrEditOverflow() {
+    fun futureEstablishedDayAllowsPlanningButHidesExecution() {
         val planningRepository = FakePlanningRepository()
-        launchPlanningScreen(planningRepository, initialDay = dayWith().copy(isCurrent = false))
+        launchPlanningScreen(planningRepository)
         waitForStatus(TodayLoadStatus.CONTENT)
 
-        assertTrue(composeRule.onAllNodesWithContentDescription("タスクを追加").fetchSemanticsNodes().isEmpty())
-        assertTrue(composeRule.onAllNodesWithContentDescription("タスクを編集").fetchSemanticsNodes().isEmpty())
+        composeRule.onNodeWithContentDescription("次の日").performClick()
+        composeRule.waitUntil(15_000) {
+            composeRule.onAllNodesWithText("2026-09-15", substring = true).fetchSemanticsNodes().isNotEmpty()
+        }
+
+        composeRule.onNodeWithContentDescription("タスクを追加").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithContentDescription("タスクを開始").fetchSemanticsNodes().isEmpty())
+        assertTrue(composeRule.onAllNodesWithText("実行中").fetchSemanticsNodes().isEmpty())
+
+        composeRule.onNodeWithText("Write report").performTouchInput { swipeLeft() }
+        composeRule.onNodeWithContentDescription("タスクを編集").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithContentDescription("タスクを開始").fetchSemanticsNodes().isEmpty())
     }
 
     @Test
