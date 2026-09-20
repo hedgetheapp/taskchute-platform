@@ -5,6 +5,11 @@ enum class TaskEditorMode {
     EDIT,
 }
 
+enum class TaskEditorCapability {
+    FULL_PLANNING,
+    RUNNING_METADATA,
+}
+
 data class TaskEditorDraft(
     val title: String = "",
     val projectId: String? = null,
@@ -19,6 +24,7 @@ data class TaskEditorState(
     val day: TodayDay,
     val originalTask: TodayTask?,
     val draft: TaskEditorDraft,
+    val capability: TaskEditorCapability = TaskEditorCapability.FULL_PLANNING,
 )
 
 data class PlanningReferences(

@@ -509,15 +509,16 @@ private fun TodayContent(
                         sectionId = section.id,
                         enabled = day.isCurrent && !state.pendingEntryIds.contains(task.id),
                         controller = controller,
-                        canEdit = day.isCurrent && day.planningEnabled && task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived && planningController != null,
+                        canEdit = day.isCurrent && day.planningEnabled && day.taskChuteDayId != null &&
+                            task.lifecycleState != LifecycleState.COMPLETED && !task.routineDerived && planningController != null,
                         onEdit = { planningController?.openEdit(day, task) },
                         canDuplicate = day.isCurrent && day.planningEnabled && task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived
                             && directManipulationController != null && directManipulationController.state.pendingEntryIds.isEmpty()
                             && directManipulationController.state.unresolvedRequest == null,
                         onDuplicate = { directManipulationController?.duplicate(day, task) },
                         canOpenNote = task.taskId != null,
-                        canNoteOnly = task.taskId != null && task.lifecycleState != LifecycleState.RUNNING &&
-                            (task.lifecycleState == LifecycleState.COMPLETED || task.routineDerived || LocalDate.parse(day.logicalDate).isBefore(LocalDate.now())),
+                        canNoteOnly = task.taskId != null &&
+                            (task.lifecycleState == LifecycleState.COMPLETED || task.routineDerived || !day.isCurrent),
                         onOpenNote = { onOpenTaskNote(task) },
                         selected = task.id in selectedEntryIds,
                         canSelect = directManipulationController?.canSelect(day, task) == true,
@@ -582,15 +583,16 @@ private fun TodayContent(
                         sectionId = null,
                         enabled = day.isCurrent && !state.pendingEntryIds.contains(task.id),
                         controller = controller,
-                        canEdit = day.isCurrent && day.planningEnabled && task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived && planningController != null,
+                        canEdit = day.isCurrent && day.planningEnabled && day.taskChuteDayId != null &&
+                            task.lifecycleState != LifecycleState.COMPLETED && !task.routineDerived && planningController != null,
                         onEdit = { planningController?.openEdit(day, task) },
                         canDuplicate = day.isCurrent && day.planningEnabled && task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived
                             && directManipulationController != null && directManipulationController.state.pendingEntryIds.isEmpty()
                             && directManipulationController.state.unresolvedRequest == null,
                         onDuplicate = { directManipulationController?.duplicate(day, task) },
                         canOpenNote = task.taskId != null,
-                        canNoteOnly = task.taskId != null && task.lifecycleState != LifecycleState.RUNNING &&
-                            (task.lifecycleState == LifecycleState.COMPLETED || task.routineDerived || LocalDate.parse(day.logicalDate).isBefore(LocalDate.now())),
+                        canNoteOnly = task.taskId != null &&
+                            (task.lifecycleState == LifecycleState.COMPLETED || task.routineDerived || !day.isCurrent),
                         onOpenNote = { onOpenTaskNote(task) },
                         selected = task.id in selectedEntryIds,
                         canSelect = directManipulationController?.canSelect(day, task) == true,
@@ -843,7 +845,12 @@ private fun TodayTaskRow(
     val swipeRevealWidth = with(LocalDensity.current) {
         (swipeActionCount * 64 + ((swipeActionCount - 1).coerceAtLeast(0) * 4) + 4).dp.toPx()
     }
-    Box(Modifier.fillMaxWidth()) {
+    val rowSurface = when (task.lifecycleState) {
+        LifecycleState.RUNNING -> TaskChuteColors.RunningSurface
+        LifecycleState.COMPLETED -> TaskChuteColors.SurfaceElevated
+        LifecycleState.PLANNED -> TaskChuteColors.Surface
+    }
+    Box(Modifier.fillMaxWidth().background(rowSurface)) {
         if (hasActions && swipeOffset <= -swipeThreshold) {
             Row(
                 modifier = Modifier.align(Alignment.CenterEnd).zIndex(2f).padding(end = 4.dp),
@@ -852,7 +859,7 @@ private fun TodayTaskRow(
             ) {
                 if (canEdit) {
                     SwipeTaskAction(
-                        icon = TaskChuteIcons.Edit,
+                        iconRes = R.drawable.ic_material_edit_24,
                         label = "編集",
                         description = "タスクを編集",
                         containerColor = TaskChuteColors.SurfaceElevated,
@@ -864,7 +871,7 @@ private fun TodayTaskRow(
                 }
                 if (canSwipeNote) {
                     SwipeTaskAction(
-                        icon = TaskChuteIcons.Notes,
+                        iconRes = R.drawable.ic_material_sticky_note_2_24,
                         label = "ノート",
                         description = "タスクのノート",
                         containerColor = TaskChuteColors.RunningControl,
@@ -876,7 +883,7 @@ private fun TodayTaskRow(
                 }
                 if (hasOtherActions) {
                     SwipeTaskAction(
-                        icon = TaskChuteIcons.More,
+                        iconRes = R.drawable.ic_material_more_horiz_24,
                         label = "その他",
                         description = "タスクの操作",
                         containerColor = TaskChuteColors.Control,
@@ -1011,7 +1018,7 @@ private fun TodayTaskRow(
 
 @Composable
 private fun SwipeTaskAction(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    iconRes: Int,
     label: String,
     description: String,
     containerColor: Color,
@@ -1027,7 +1034,7 @@ private fun SwipeTaskAction(
             modifier = Modifier.size(48.dp).clip(CircleShape).background(containerColor)
                 .semantics { contentDescription = description },
         ) {
-            Icon(icon, contentDescription = null, tint = TaskChuteColors.PrimaryText, modifier = Modifier.size(20.dp))
+            Icon(painterResource(iconRes), contentDescription = null, tint = TaskChuteColors.PrimaryText, modifier = Modifier.size(20.dp))
         }
         Text(
             label,
@@ -1118,6 +1125,7 @@ private fun TaskEditorForm(controller: TaskPlanningController, state: TaskPlanni
     val editor = state.editor ?: return
     val references = state.references
     val draft = editor.draft
+    val runningMetadataOnly = editor.capability == TaskEditorCapability.RUNNING_METADATA
     var projectExpanded by remember(editor) { mutableStateOf(false) }
     var modeExpanded by remember(editor) { mutableStateOf(false) }
     var sectionExpanded by remember(editor) { mutableStateOf(false) }
@@ -1130,15 +1138,19 @@ private fun TaskEditorForm(controller: TaskPlanningController, state: TaskPlanni
         modifier = modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(if (editor.mode == TaskEditorMode.CREATE) "タスクを追加" else "タスクを編集", style = MaterialTheme.typography.titleLarge)
-        OutlinedTextField(
-            value = draft.title,
-            onValueChange = { controller.updateDraft(draft.copy(title = it)) },
-            label = { Text("Task名") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !state.saving,
-        )
+        Text(if (runningMetadataOnly) "実行中タスクの編集" else if (editor.mode == TaskEditorMode.CREATE) "タスクを追加" else "タスクを編集", style = MaterialTheme.typography.titleLarge)
+        if (runningMetadataOnly) {
+            Text("Task名: ${draft.title}", color = TaskChuteColors.SecondaryText)
+        } else {
+            OutlinedTextField(
+                value = draft.title,
+                onValueChange = { controller.updateDraft(draft.copy(title = it)) },
+                label = { Text("Task名") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !state.saving,
+            )
+        }
         ReferencePicker(
             label = "Project",
             value = selectedProject?.title ?: "なし",
@@ -1157,6 +1169,7 @@ private fun TaskEditorForm(controller: TaskPlanningController, state: TaskPlanni
             onSelected = { controller.updateDraft(draft.copy(modeId = it)); modeExpanded = false },
             enabled = references != null && !state.saving,
         )
+        if (!runningMetadataOnly) {
         ReferencePicker(
             label = "Section",
             value = selectedSection?.title ?: "なし",
@@ -1191,6 +1204,7 @@ private fun TaskEditorForm(controller: TaskPlanningController, state: TaskPlanni
             modifier = Modifier.fillMaxWidth(),
             enabled = !state.saving,
         )
+        }
         if (state.loadingReferences) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 CircularProgressIndicator(modifier = Modifier.size(18.dp))

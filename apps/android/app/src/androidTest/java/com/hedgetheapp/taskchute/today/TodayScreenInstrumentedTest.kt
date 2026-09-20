@@ -506,6 +506,61 @@ class TodayScreenInstrumentedTest {
     }
 
     @Test
+    fun currentRunningRowExposesRichSwipeAndMetadataEditor() {
+        val task = dayWith(LifecycleState.RUNNING).sections.single().entries.single().copy(taskId = "task-running")
+        val initialDay = dayWith(LifecycleState.RUNNING).copy(
+            sections = listOf(dayWith(LifecycleState.RUNNING).sections.single().copy(entries = listOf(task))),
+        )
+        launchPlanningScreen(FakePlanningRepository(), initialDay)
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        composeRule.onAllNodesWithText("Running panel task").get(0).performTouchInput { swipeLeft() }
+        composeRule.onNodeWithContentDescription("タスクを編集").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("タスクのノート").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("タスクの操作").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithContentDescription("タスクを完了").fetchSemanticsNodes().isEmpty())
+
+        composeRule.onNodeWithContentDescription("タスクを編集").performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("実行中タスクの編集").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("実行中タスクの編集").assertIsDisplayed()
+        composeRule.onNodeWithText("Project").assertIsDisplayed()
+        composeRule.onNodeWithText("Mode").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithText("Section", substring = false).fetchSemanticsNodes().isEmpty())
+        assertTrue(composeRule.onAllNodesWithText("開始予定", substring = false).fetchSemanticsNodes().isEmpty())
+        assertTrue(composeRule.onAllNodesWithText("見積（分）", substring = false).fetchSemanticsNodes().isEmpty())
+    }
+
+    @Test
+    fun runningRowWithoutTaskIdentityKeepsEditAndOtherButNoNote() {
+        launchPlanningScreen(FakePlanningRepository(), initialDay = dayWith(LifecycleState.RUNNING))
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        composeRule.onAllNodesWithText("Running panel task").get(0).performTouchInput { swipeLeft() }
+        composeRule.onNodeWithContentDescription("タスクを編集").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("タスクの操作").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithContentDescription("タスクのノート").fetchSemanticsNodes().isEmpty())
+    }
+
+    @Test
+    fun routineDerivedRunningRowRemainsNoteOnly() {
+        val task = dayWith(LifecycleState.RUNNING, routineDerived = true).sections.single().entries.single().copy(taskId = "task-routine-running")
+        val initialDay = dayWith(LifecycleState.RUNNING, routineDerived = true).copy(
+            sections = listOf(dayWith(LifecycleState.RUNNING, routineDerived = true).sections.single().copy(entries = listOf(task))),
+        )
+        var openedTaskNote = 0
+        launchPlanningScreen(FakePlanningRepository(), initialDay, onOpenTaskNote = { openedTaskNote++ })
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        composeRule.onAllNodesWithText("Running panel task").get(0).performTouchInput { swipeLeft() }
+        assertTrue(composeRule.onAllNodesWithContentDescription("タスクを完了").fetchSemanticsNodes().isEmpty())
+        composeRule.onNodeWithContentDescription("タスクのノート").assertIsDisplayed().performClick()
+        assertTrue(composeRule.onAllNodesWithContentDescription("タスクを編集").fetchSemanticsNodes().isEmpty())
+        assertTrue(composeRule.onAllNodesWithContentDescription("タスクの操作").fetchSemanticsNodes().isEmpty())
+        assertEquals(1, openedTaskNote)
+    }
+    @Test
     fun completedAndRoutineRowsExposeNoteOnlySwipe() {
         var openedTaskNotes = 0
         val base = dayWith().sections.single().entries.single()

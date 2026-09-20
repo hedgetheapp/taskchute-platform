@@ -37,7 +37,12 @@ class TaskPlanningController(
     }
 
     fun openEdit(day: TodayDay, task: TodayTask) {
-        if (!canEditDay(day) || state.saving || task.lifecycleState != LifecycleState.PLANNED || task.routineDerived) return
+        if (!canEditDay(day) || state.saving || task.routineDerived) return
+        val capability = when (task.lifecycleState) {
+            LifecycleState.PLANNED -> TaskEditorCapability.FULL_PLANNING
+            LifecycleState.RUNNING -> TaskEditorCapability.RUNNING_METADATA
+            LifecycleState.COMPLETED -> return
+        }
         state = TaskPlanningUiState(
             editor = TaskEditorState(
                 mode = TaskEditorMode.EDIT,
@@ -50,6 +55,7 @@ class TaskPlanningController(
                     plannedStartText = formatEditorMinute(task.plannedStartMinute),
                     estimateText = task.estimateSeconds?.let { (it / 60).toString() } ?: "",
                 ),
+                capability = capability,
             ),
         )
         loadReferences()

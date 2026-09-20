@@ -32,6 +32,50 @@ class TaskPlanningHttpRepositoryTest {
         assertTrue(requests[2].third!!.contains("\"planned_start_minute\":600"))
     }
 
+@Test
+    fun runningProjectSaveUsesOnlyTaskMetadataEndpoint() {
+        val requests = mutableListOf<Triple<String, String, String?>>()
+        val task = TodayTask("entry-1", "Running task", LifecycleState.RUNNING, TodayProject("project-old", "Old"), TodayMode("mode-old", "Old"), 600, 540, "execution-1", "2026-09-20T01:00:00Z", false, "task-1")
+        val editor = TaskEditorState(
+            TaskEditorMode.EDIT,
+            currentDay(),
+            task,
+            TaskEditorDraft(title = task.title, projectId = "project-new", modeId = "mode-old", plannedStartText = "9:00", estimateText = "30"),
+            TaskEditorCapability.RUNNING_METADATA,
+        )
+        val repository = TaskPlanningHttpRepository { method, path, body ->
+            requests += Triple(method, path, body)
+            TodayHttpResponse(204, null)
+        }
+
+        assertEquals(PlanningSaveResult.Success, repository.save(editor, editor.draft.let { NormalizedTaskInput(it.title, it.projectId, it.modeId, it.sectionId, 9 * 60, 30 * 60) }))
+        assertEquals(1, requests.size)
+        assertEquals("/api/v1/entries/entry-1/task-metadata", requests.single().second)
+        assertTrue(requests.single().third!!.contains("\"title\":\"Running task\""))
+        assertTrue(requests.single().third!!.contains("\"project_id\":\"project-new\""))
+    }
+
+    @Test
+    fun runningModeSaveUsesOnlyModeEndpoint() {
+        val requests = mutableListOf<Triple<String, String, String?>>()
+        val task = TodayTask("entry-1", "Running task", LifecycleState.RUNNING, TodayProject("project-old", "Old"), TodayMode("mode-old", "Old"), 600, 540, "execution-1", "2026-09-20T01:00:00Z", false, "task-1")
+        val editor = TaskEditorState(
+            TaskEditorMode.EDIT,
+            currentDay(),
+            task,
+            TaskEditorDraft(title = task.title, projectId = "project-old", modeId = "mode-new", plannedStartText = "9:00", estimateText = "30"),
+            TaskEditorCapability.RUNNING_METADATA,
+        )
+        val repository = TaskPlanningHttpRepository { method, path, body ->
+            requests += Triple(method, path, body)
+            TodayHttpResponse(204, null)
+        }
+
+        assertEquals(PlanningSaveResult.Success, repository.save(editor, NormalizedTaskInput(task.title, "project-old", "mode-new", null, 9 * 60, 30 * 60)))
+        assertEquals(1, requests.size)
+        assertEquals("/api/v1/entries/entry-1/mode", requests.single().second)
+        assertTrue(requests.single().third!!.contains("\"mode_id\":\"mode-new\""))
+    }
     @Test
     fun unauthorizedReferenceOrMutationDoesNotLookLikeSuccess() {
         val repository = TaskPlanningHttpRepository { _, _, _ -> TodayHttpResponse(401, null) }

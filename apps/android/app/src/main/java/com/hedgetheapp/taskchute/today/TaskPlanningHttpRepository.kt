@@ -60,21 +60,32 @@ class TaskPlanningHttpRepository(
         val taskId = task.taskId ?: return PlanningSaveResult.Failure("編集対象のTask IDを取得できません。再読み込みしてください。")
         val currentProjectId = task.project?.id
         val currentModeId = task.mode?.id
+        if (editor.capability == TaskEditorCapability.RUNNING_METADATA) {
+            if (currentProjectId != input.projectId) {
+                when (val result = executeTaskMetadata(task, taskId, input.projectId)) {
+                    PlanningHttpResult.Unauthorized -> return PlanningSaveResult.Unauthorized
+                    is PlanningHttpResult.Failure -> return PlanningSaveResult.Failure(result.message)
+                    is PlanningHttpResult.Success -> Unit
+                }
+            }
+            if (currentModeId != input.modeId) {
+                when (val result = executeMode(task, input.modeId)) {
+                    PlanningHttpResult.Unauthorized -> return PlanningSaveResult.Unauthorized
+                    is PlanningHttpResult.Failure -> return PlanningSaveResult.Failure(result.message)
+                    is PlanningHttpResult.Success -> Unit
+                }
+            }
+            return PlanningSaveResult.Success
+        }
         if (task.title != input.title || currentProjectId != input.projectId) {
-            val body = """
-                {"operation_id":"${JsonEncoding.escape(UUIDv7.next())}","entry_id":"${JsonEncoding.escape(task.id)}","task_id":"${JsonEncoding.escape(taskId)}","expected_title":"${JsonEncoding.escape(task.title)}","expected_project_id":${nullableString(currentProjectId)},"title":"${JsonEncoding.escape(input.title)}","project_id":${nullableString(input.projectId)}}
-            """.trimIndent()
-            when (val result = execute("POST", "/api/v1/entries/${JsonEncoding.pathSegment(task.id)}/task-metadata", body)) {
+            when (val result = executeTaskMetadata(task, taskId, input.projectId, input.title)) {
                 PlanningHttpResult.Unauthorized -> return PlanningSaveResult.Unauthorized
                 is PlanningHttpResult.Failure -> return PlanningSaveResult.Failure(result.message)
                 is PlanningHttpResult.Success -> Unit
             }
         }
         if (currentModeId != input.modeId) {
-            val body = """
-                {"operation_id":"${JsonEncoding.escape(UUIDv7.next())}","entry_id":"${JsonEncoding.escape(task.id)}","expected_mode_id":${nullableString(currentModeId)},"mode_id":${nullableString(input.modeId)}}
-            """.trimIndent()
-            when (val result = execute("POST", "/api/v1/entries/${JsonEncoding.pathSegment(task.id)}/mode", body)) {
+            when (val result = executeMode(task, input.modeId)) {
                 PlanningHttpResult.Unauthorized -> return PlanningSaveResult.Unauthorized
                 is PlanningHttpResult.Failure -> return PlanningSaveResult.Failure(result.message)
                 is PlanningHttpResult.Success -> Unit
@@ -93,6 +104,20 @@ class TaskPlanningHttpRepository(
             }
         }
         return PlanningSaveResult.Success
+    }
+
+    private fun executeTaskMetadata(task: TodayTask, taskId: String, projectId: String?, title: String = task.title): PlanningHttpResult {
+        val body = """
+            {"operation_id":"${JsonEncoding.escape(UUIDv7.next())}","entry_id":"${JsonEncoding.escape(task.id)}","task_id":"${JsonEncoding.escape(taskId)}","expected_title":"${JsonEncoding.escape(task.title)}","expected_project_id":${nullableString(task.project?.id)},"title":"${JsonEncoding.escape(title)}","project_id":${nullableString(projectId)}}
+        """.trimIndent()
+        return execute("POST", "/api/v1/entries/${JsonEncoding.pathSegment(task.id)}/task-metadata", body)
+    }
+
+    private fun executeMode(task: TodayTask, modeId: String?): PlanningHttpResult {
+        val body = """
+            {"operation_id":"${JsonEncoding.escape(UUIDv7.next())}","entry_id":"${JsonEncoding.escape(task.id)}","expected_mode_id":${nullableString(task.mode?.id)},"mode_id":${nullableString(modeId)}}
+        """.trimIndent()
+        return execute("POST", "/api/v1/entries/${JsonEncoding.pathSegment(task.id)}/mode", body)
     }
 
     private fun executeEstimate(entryId: String, expectedSeconds: Int?, seconds: Int?): PlanningSaveResult {
