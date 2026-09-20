@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.lazy.LazyColumn
@@ -1183,7 +1184,9 @@ private fun TaskSelectionSlot(
     enabled: Boolean,
     onToggleSelection: () -> Unit,
 ) {
-    val borderColor = if (selected) TaskChuteColors.AccentBlue else TaskChuteColors.SelectionBorder
+    val visualSelected = selected && enabled
+    val checkboxFill = if (visualSelected) TaskChuteColors.AccentBlue else TaskChuteColors.Surface
+    val checkboxBorder = if (visualSelected) TaskChuteColors.AccentBlue else TaskChuteColors.SelectionBorder
     Box(
         modifier = Modifier.size(48.dp)
             .clickable(enabled = enabled, onClick = onToggleSelection)
@@ -1193,11 +1196,12 @@ private fun TaskSelectionSlot(
         Box(
             modifier = Modifier.size(18.dp)
                 .clip(RoundedCornerShape(5.dp))
-                .background(if (selected) TaskChuteColors.AccentBlue else Color.Transparent)
-                .border(1.dp, borderColor.copy(alpha = if (enabled) 1f else 0.45f), RoundedCornerShape(5.dp)),
+                .background(checkboxFill)
+                .border(1.dp, checkboxBorder, RoundedCornerShape(5.dp))
+                .graphicsLayer { alpha = if (enabled) 1f else 0.38f },
             contentAlignment = Alignment.Center,
         ) {
-            if (selected) {
+            if (visualSelected) {
                 Icon(
                     painter = painterResource(R.drawable.ic_material_check_24),
                     contentDescription = null,
@@ -1250,17 +1254,19 @@ private fun TaskMetadata(task: TodayTask, modifier: Modifier = Modifier) {
                 val end = task.lastEndedAt?.let(::formatInstant) ?: "--:--"
                 Text(
                     start + " → " + end + " (",
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.width(85.dp),
                     color = TaskChuteColors.SecondaryText,
                     fontSize = 12.sp,
                     lineHeight = 14.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Clip,
                 )
+                Spacer(Modifier.width(3.dp))
                 TaskMetadataIcon(R.drawable.ic_material_timer_24)
                 Spacer(Modifier.width(3.dp))
                 Text(
                     formatDuration(task.completedDurationSeconds) + ")",
+                    modifier = Modifier.widthIn(min = 33.dp),
                     color = TaskChuteColors.SecondaryText,
                     fontSize = 12.sp,
                     lineHeight = 14.sp,
