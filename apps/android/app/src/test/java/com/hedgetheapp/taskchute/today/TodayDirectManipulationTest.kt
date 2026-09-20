@@ -69,9 +69,9 @@ class TodayDirectManipulationTest {
         val source = task(LifecycleState.PLANNED)
 
         controller.duplicate(future, source)
-        assertTrue(await { repository.requests.size == 1 })
+        assertTrue(await { repository.requests.size == 1 && controller.state.pendingEntryIds.isEmpty() })
         controller.moveToDay(future, setOf(source.id), "2026-09-16")
-        assertTrue(await { repository.requests.size == 2 })
+        assertTrue(await { repository.requests.size == 2 && controller.state.pendingEntryIds.isEmpty() })
         controller.delete(future, setOf(source.id))
 
         assertTrue(await { repository.requests.size == 3 })
