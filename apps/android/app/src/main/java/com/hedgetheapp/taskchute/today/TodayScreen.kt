@@ -516,6 +516,8 @@ private fun TodayContent(
                             && directManipulationController.state.unresolvedRequest == null,
                         onDuplicate = { directManipulationController?.duplicate(day, task) },
                         canOpenNote = task.taskId != null,
+                        canNoteOnly = task.taskId != null && task.lifecycleState != LifecycleState.RUNNING &&
+                            (task.lifecycleState == LifecycleState.COMPLETED || task.routineDerived || LocalDate.parse(day.logicalDate).isBefore(LocalDate.now())),
                         onOpenNote = { onOpenTaskNote(task) },
                         selected = task.id in selectedEntryIds,
                         canSelect = directManipulationController?.canSelect(day, task) == true,
@@ -587,6 +589,8 @@ private fun TodayContent(
                             && directManipulationController.state.unresolvedRequest == null,
                         onDuplicate = { directManipulationController?.duplicate(day, task) },
                         canOpenNote = task.taskId != null,
+                        canNoteOnly = task.taskId != null && task.lifecycleState != LifecycleState.RUNNING &&
+                            (task.lifecycleState == LifecycleState.COMPLETED || task.routineDerived || LocalDate.parse(day.logicalDate).isBefore(LocalDate.now())),
                         onOpenNote = { onOpenTaskNote(task) },
                         selected = task.id in selectedEntryIds,
                         canSelect = directManipulationController?.canSelect(day, task) == true,
@@ -807,6 +811,7 @@ private fun TodayTaskRow(
     canDuplicate: Boolean,
     onDuplicate: () -> Unit,
     canOpenNote: Boolean,
+    canNoteOnly: Boolean,
     onOpenNote: () -> Unit,
     selected: Boolean,
     canSelect: Boolean,
@@ -831,8 +836,9 @@ private fun TodayTaskRow(
     var swipeOffset by remember(task.id) { mutableStateOf(0f) }
     val insertionPadding by animateDpAsState(if (dropTarget) 6.dp else 0.dp, label = "drop-target-padding")
     val hasActions = canEdit || canDuplicate || canOpenNote || canDayOperate
-    val canSwipeNote = canEdit && canOpenNote
-    val swipeActionCount = (if (canEdit) 1 else 0) + (if (canSwipeNote) 1 else 0) + (if (hasActions) 1 else 0)
+    val canSwipeNote = canOpenNote && (canEdit || canNoteOnly)
+    val hasOtherActions = hasActions && !canNoteOnly
+    val swipeActionCount = (if (canEdit) 1 else 0) + (if (canSwipeNote) 1 else 0) + (if (hasOtherActions) 1 else 0)
     val swipeThreshold = with(LocalDensity.current) { 48.dp.toPx() }
     val swipeRevealWidth = with(LocalDensity.current) {
         (swipeActionCount * 64 + ((swipeActionCount - 1).coerceAtLeast(0) * 4) + 4).dp.toPx()
@@ -868,7 +874,7 @@ private fun TodayTaskRow(
                         },
                     )
                 }
-                if (hasActions) {
+                if (hasOtherActions) {
                     SwipeTaskAction(
                         icon = TaskChuteIcons.More,
                         label = "その他",

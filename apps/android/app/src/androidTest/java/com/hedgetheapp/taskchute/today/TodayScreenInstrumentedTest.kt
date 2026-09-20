@@ -388,7 +388,7 @@ class TodayScreenInstrumentedTest {
         val directRepository = FakeDirectManipulationRepository()
         var openedTaskNote = 0
         val task = dayWith().sections.single().entries.single().copy(taskId = "task-1")
-        val initialDay = dayWith().copy(sections = listOf(dayWith().sections.single().copy(entries = listOf(task))))
+        val initialDay = dayWith().copy(logicalDate = java.time.LocalDate.now().toString(), sections = listOf(dayWith().sections.single().copy(entries = listOf(task))))
         launchPlanningScreen(
             FakePlanningRepository(),
             initialDay,
@@ -506,51 +506,54 @@ class TodayScreenInstrumentedTest {
     }
 
     @Test
-    fun taskActionsSheetOmitsDuplicateTaskNoteForNonEditableVisibleRows() {
+    fun completedAndRoutineRowsExposeNoteOnlySwipe() {
+        var openedTaskNotes = 0
         val base = dayWith().sections.single().entries.single()
-        val entries = listOf(
-            base.copy(id = "planned", taskId = "task-planned"),
-            base.copy(id = "running", title = "Running", taskId = "task-running", lifecycleState = LifecycleState.RUNNING),
-            base.copy(id = "completed", title = "Completed", taskId = "task-completed", lifecycleState = LifecycleState.COMPLETED),
-            base.copy(id = "routine", title = "Routine", taskId = "task-routine", routineDerived = true),
-        )
+        val completed = base.copy(id = "completed", title = "Completed", taskId = "task-completed", lifecycleState = LifecycleState.COMPLETED)
+        val routine = base.copy(id = "routine", title = "Routine", taskId = "task-routine", routineDerived = true)
         val initialDay = dayWith().copy(
-            sections = listOf(dayWith().sections.single().copy(entries = entries)),
+            sections = listOf(dayWith().sections.single().copy(entries = listOf(completed, routine))),
         )
-        launchPlanningScreen(FakePlanningRepository(), initialDay)
+        launchPlanningScreen(FakePlanningRepository(), initialDay, onOpenTaskNote = { openedTaskNotes++ })
         waitForStatus(TodayLoadStatus.CONTENT)
 
-        composeRule.onNodeWithText("Write report").performTouchInput { swipeLeft() }
-        composeRule.waitForIdle()
-        composeRule.onNodeWithText("Running").performScrollTo().performTouchInput { swipeLeft() }
-        composeRule.waitForIdle()
-        composeRule.onNodeWithText("Completed").performScrollTo().performTouchInput { swipeLeft() }
-        composeRule.waitForIdle()
-        composeRule.onNodeWithText("Routine").performScrollTo().performTouchInput { swipeLeft() }
-        composeRule.waitForIdle()
-        assertEquals(4, composeRule.onAllNodesWithContentDescription("タスクの操作").fetchSemanticsNodes().size)
-        composeRule.onAllNodesWithContentDescription("タスクの操作").get(0).performClick()
-        assertEquals(1, composeRule.onAllNodesWithText("ノート").fetchSemanticsNodes().size)
+        composeRule.onNodeWithText("Completed").performTouchInput { swipeLeft() }
+        composeRule.onNodeWithContentDescription("タスクのノート").assertIsDisplayed().performClick()
+        assertTrue(composeRule.onAllNodesWithContentDescription("タスクの操作").fetchSemanticsNodes().isEmpty())
+
+        composeRule.onNodeWithText("Routine").performTouchInput { swipeLeft() }
+        composeRule.onNodeWithContentDescription("タスクのノート").assertIsDisplayed().performClick()
+        assertTrue(composeRule.onAllNodesWithContentDescription("タスクの操作").fetchSemanticsNodes().isEmpty())
+        assertEquals(2, openedTaskNotes)
     }
 
     @Test
-    fun taskActionsSheetOmitsTaskNoteOnNonCurrentDayWithoutPlanningActions() {
+    fun completedRowWithoutTaskIdentityHasNoNoteSwipe() {
+        launchPlanningScreen(FakePlanningRepository(), initialDay = dayWith(LifecycleState.COMPLETED))
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        assertTrue(composeRule.onAllNodesWithContentDescription("タスクのノート").fetchSemanticsNodes().isEmpty())
+        assertTrue(composeRule.onAllNodesWithContentDescription("タスクの操作").fetchSemanticsNodes().isEmpty())
+    }
+
+    @Test
+    fun pastTaskWithIdentityExposesNoteOnlySwipe() {
+        var openedTaskNote = 0
         val task = dayWith().sections.single().entries.single().copy(taskId = "task-history")
         val initialDay = dayWith().copy(
+            logicalDate = "2000-01-01",
             isCurrent = false,
             planningEnabled = false,
             sections = listOf(dayWith().sections.single().copy(entries = listOf(task))),
         )
-        launchPlanningScreen(FakePlanningRepository(), initialDay)
+        launchPlanningScreen(FakePlanningRepository(), initialDay, onOpenTaskNote = { openedTaskNote++ })
         waitForStatus(TodayLoadStatus.CONTENT)
 
         composeRule.onNodeWithText("Write report").performTouchInput { swipeLeft() }
-        composeRule.onNodeWithContentDescription("タスクの操作").performClick()
-        assertEquals(1, composeRule.onAllNodesWithText("ノート").fetchSemanticsNodes().size)
-        assertTrue(composeRule.onAllNodesWithText("編集").fetchSemanticsNodes().isEmpty())
-        assertTrue(composeRule.onAllNodesWithText("複製").fetchSemanticsNodes().isEmpty())
+        composeRule.onNodeWithContentDescription("タスクのノート").assertIsDisplayed().performClick()
+        assertTrue(composeRule.onAllNodesWithContentDescription("タスクの操作").fetchSemanticsNodes().isEmpty())
+        assertEquals(1, openedTaskNote)
     }
-
     @Test
     fun ordinaryPlannedRowUsesSwipeRevealForEditing() {
         val planningRepository = FakePlanningRepository()
