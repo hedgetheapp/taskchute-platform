@@ -244,7 +244,7 @@ class TodayScreenInstrumentedTest {
     }
 
     @Test
-    fun eligibleRowsEnterSelectionModeByLeftSwipeAndAutoExitWhenLastSelectionCleared() {
+    fun eligibleRowsEnterSelectionModeByLeftToRightSwipeAndAutoExitWhenLastSelectionCleared() {
         val directRepository = FakeDirectManipulationRepository()
         launchPlanningScreen(FakePlanningRepository(), directRepository = directRepository)
         waitForStatus(TodayLoadStatus.CONTENT)
@@ -252,7 +252,7 @@ class TodayScreenInstrumentedTest {
         assertEquals(1, composeRule.onAllNodesWithContentDescription("タスクを追加").fetchSemanticsNodes().size)
         assertTrue(composeRule.onAllNodesWithContentDescription("タスクを選択: Write report").fetchSemanticsNodes().isEmpty())
 
-        composeRule.onNodeWithText("Write report").performTouchInput { swipeLeft() }
+        composeRule.onNodeWithText("Write report").performTouchInput { swipeRight() }
         composeRule.onNodeWithText("1件選択").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("タスクを選択: Write report").assertIsDisplayed()
         composeRule.onNodeWithText("日付").assertIsDisplayed()
@@ -269,7 +269,7 @@ class TodayScreenInstrumentedTest {
         assertEquals(1, composeRule.onAllNodesWithContentDescription("タスクを追加").fetchSemanticsNodes().size)
 
         // A checkbox tap also clears the last selection without leaving a zero-selected mode.
-        composeRule.onNodeWithText("Write report").performTouchInput { swipeLeft() }
+        composeRule.onNodeWithText("Write report").performTouchInput { swipeRight() }
         composeRule.onNodeWithContentDescription("タスクを選択: Write report").performTouchInput { click(center) }
         assertTrue(composeRule.onAllNodesWithText("1件選択").fetchSemanticsNodes().isEmpty())
         assertTrue(composeRule.onAllNodesWithContentDescription("タスクを選択: Write report").fetchSemanticsNodes().isEmpty())
@@ -301,7 +301,7 @@ class TodayScreenInstrumentedTest {
         launchPlanningScreen(FakePlanningRepository(), initialDay, directRepository)
         waitForStatus(TodayLoadStatus.CONTENT)
 
-        composeRule.onNodeWithText("Planned selection").performTouchInput { swipeLeft() }
+        composeRule.onNodeWithText("Planned selection").performTouchInput { swipeRight() }
 
         composeRule.onNodeWithContentDescription("タスクを選択: Planned selection").assertIsEnabled()
         composeRule.onNodeWithContentDescription("タスクを選択: Running selection").assertIsNotEnabled()
@@ -312,7 +312,7 @@ class TodayScreenInstrumentedTest {
     }
 
     @Test
-    fun rightSwipeOpensActionMenuAndSecondLeftSwipeEntersSelection() {
+    fun rightToLeftOpensActionMenuAndSeparateLeftToRightEntersSelection() {
         val directRepository = FakeDirectManipulationRepository()
         val task = dayWith().sections.single().entries.single().copy(taskId = "task-1")
         val initialDay = dayWith().copy(
@@ -321,18 +321,18 @@ class TodayScreenInstrumentedTest {
         launchPlanningScreen(FakePlanningRepository(), initialDay, directRepository)
         waitForStatus(TodayLoadStatus.CONTENT)
 
-        composeRule.onNodeWithText("Write report").performTouchInput { swipeRight() }
+        composeRule.onNodeWithText("Write report").performTouchInput { swipeLeft() }
         composeRule.onNodeWithContentDescription("タスクを編集").assertIsDisplayed()
         assertTrue(composeRule.onAllNodesWithContentDescription("タスクを開始").fetchSemanticsNodes().isEmpty())
 
-        // The first left swipe only closes the open menu; it does not enter selection.
-        composeRule.onNodeWithText("Write report").performTouchInput { swipeLeft() }
+        // The first Left → Right gesture only closes the open menu; it does not enter selection.
+        composeRule.onNodeWithText("Write report").performTouchInput { swipeRight() }
         assertTrue(composeRule.onAllNodesWithContentDescription("タスクを編集").fetchSemanticsNodes().isEmpty())
         assertTrue(composeRule.onAllNodesWithText("1件選択").fetchSemanticsNodes().isEmpty())
         composeRule.onNodeWithContentDescription("タスクを開始").assertIsDisplayed()
 
-        // A separate left swipe from neutral enters selection mode.
-        composeRule.onNodeWithText("Write report").performTouchInput { swipeLeft() }
+        // A separate Left → Right gesture from neutral enters selection mode.
+        composeRule.onNodeWithText("Write report").performTouchInput { swipeRight() }
         composeRule.onNodeWithText("1件選択").assertIsDisplayed()
     }
 
@@ -347,12 +347,12 @@ class TodayScreenInstrumentedTest {
         launchPlanningScreen(FakePlanningRepository(), initialDay, FakeDirectManipulationRepository())
         waitForStatus(TodayLoadStatus.CONTENT)
 
-        composeRule.onNodeWithText("Write report").performTouchInput { swipeRight() }
+        composeRule.onNodeWithText("Write report").performTouchInput { swipeLeft() }
         composeRule.onNodeWithContentDescription("タスクを編集").assertIsDisplayed()
         composeRule.onNodeWithText("Review report").performTouchInput { click(center) }
         assertTrue(composeRule.onAllNodesWithContentDescription("タスクを編集").fetchSemanticsNodes().isEmpty())
 
-        composeRule.onNodeWithText("Write report").performTouchInput { swipeRight() }
+        composeRule.onNodeWithText("Write report").performTouchInput { swipeLeft() }
         composeRule.onNodeWithContentDescription("Morningセクションを折りたたむ").performClick()
         assertTrue(composeRule.onAllNodesWithContentDescription("タスクを編集").fetchSemanticsNodes().isEmpty())
         composeRule.onNodeWithContentDescription("Morningセクションを展開").assertIsDisplayed()
@@ -362,7 +362,7 @@ class TodayScreenInstrumentedTest {
         launchPlanningScreen(FakePlanningRepository(), directRepository = FakeDirectManipulationRepository())
         waitForStatus(TodayLoadStatus.CONTENT)
 
-        composeRule.onNodeWithText("Write report").performTouchInput { swipeRight() }
+        composeRule.onNodeWithText("Write report").performTouchInput { swipeLeft() }
         composeRule.onNodeWithContentDescription("タスクの操作").performClick()
         composeRule.onNodeWithText("前の日へ移動").assertIsDisplayed()
         composeRule.onNodeWithText("次の日へ移動").assertIsDisplayed()
@@ -496,7 +496,7 @@ class TodayScreenInstrumentedTest {
         )
         waitForStatus(TodayLoadStatus.CONTENT)
 
-        composeRule.onNodeWithText("Write report").performTouchInput { swipeRight() }
+        composeRule.onNodeWithText("Write report").performTouchInput { swipeLeft() }
         assertTrue(composeRule.onAllNodesWithContentDescription("タスクを開始").fetchSemanticsNodes().isEmpty())
         composeRule.onNodeWithContentDescription("タスクを編集").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("タスクのノート").assertIsDisplayed()
@@ -504,7 +504,7 @@ class TodayScreenInstrumentedTest {
         composeRule.onNodeWithContentDescription("タスクのノート").performClick()
         assertEquals(1, openedTaskNote)
 
-        composeRule.onNodeWithText("Write report").performTouchInput { swipeRight() }
+        composeRule.onNodeWithText("Write report").performTouchInput { swipeLeft() }
         composeRule.onNodeWithContentDescription("タスクの操作").performClick()
         composeRule.onNodeWithText("複製").assertIsDisplayed().performClick()
         composeRule.waitUntil(15_000) { directRepository.duplicateCalls.get() == 1 }
@@ -613,7 +613,7 @@ class TodayScreenInstrumentedTest {
         launchPlanningScreen(FakePlanningRepository(), initialDay)
         waitForStatus(TodayLoadStatus.CONTENT)
 
-        composeRule.onAllNodesWithText("Running panel task").get(0).performTouchInput { swipeRight() }
+        composeRule.onAllNodesWithText("Running panel task").get(0).performTouchInput { swipeLeft() }
         composeRule.onNodeWithContentDescription("タスクを編集").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("タスクのノート").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("タスクの操作").assertIsDisplayed()
@@ -636,7 +636,7 @@ class TodayScreenInstrumentedTest {
         launchPlanningScreen(FakePlanningRepository(), initialDay = dayWith(LifecycleState.RUNNING))
         waitForStatus(TodayLoadStatus.CONTENT)
 
-        composeRule.onAllNodesWithText("Running panel task").get(0).performTouchInput { swipeRight() }
+        composeRule.onAllNodesWithText("Running panel task").get(0).performTouchInput { swipeLeft() }
         composeRule.onNodeWithContentDescription("タスクを編集").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("タスクの操作").assertIsDisplayed()
         assertTrue(composeRule.onAllNodesWithContentDescription("タスクのノート").fetchSemanticsNodes().isEmpty())
@@ -652,7 +652,7 @@ class TodayScreenInstrumentedTest {
         launchPlanningScreen(FakePlanningRepository(), initialDay, onOpenTaskNote = { openedTaskNote++ })
         waitForStatus(TodayLoadStatus.CONTENT)
 
-        composeRule.onAllNodesWithText("Running panel task").get(0).performTouchInput { swipeRight() }
+        composeRule.onAllNodesWithText("Running panel task").get(0).performTouchInput { swipeLeft() }
         assertTrue(composeRule.onAllNodesWithContentDescription("タスクを完了").fetchSemanticsNodes().isEmpty())
         composeRule.onNodeWithContentDescription("タスクのノート").assertIsDisplayed().performClick()
         assertTrue(composeRule.onAllNodesWithContentDescription("タスクを編集").fetchSemanticsNodes().isEmpty())
@@ -671,11 +671,11 @@ class TodayScreenInstrumentedTest {
         launchPlanningScreen(FakePlanningRepository(), initialDay, onOpenTaskNote = { openedTaskNotes++ })
         waitForStatus(TodayLoadStatus.CONTENT)
 
-        composeRule.onNodeWithText("Completed").performTouchInput { swipeRight() }
+        composeRule.onNodeWithText("Completed").performTouchInput { swipeLeft() }
         composeRule.onNodeWithContentDescription("タスクのノート").assertIsDisplayed().performClick()
         assertTrue(composeRule.onAllNodesWithContentDescription("タスクの操作").fetchSemanticsNodes().isEmpty())
 
-        composeRule.onNodeWithText("Routine").performTouchInput { swipeRight() }
+        composeRule.onNodeWithText("Routine").performTouchInput { swipeLeft() }
         composeRule.onNodeWithContentDescription("タスクのノート").assertIsDisplayed().performClick()
         assertTrue(composeRule.onAllNodesWithContentDescription("タスクの操作").fetchSemanticsNodes().isEmpty())
         assertEquals(2, openedTaskNotes)
@@ -703,7 +703,7 @@ class TodayScreenInstrumentedTest {
         launchPlanningScreen(FakePlanningRepository(), initialDay, onOpenTaskNote = { openedTaskNote++ })
         waitForStatus(TodayLoadStatus.CONTENT)
 
-        composeRule.onNodeWithText("Write report").performTouchInput { swipeRight() }
+        composeRule.onNodeWithText("Write report").performTouchInput { swipeLeft() }
         composeRule.onNodeWithContentDescription("タスクのノート").assertIsDisplayed().performClick()
         assertTrue(composeRule.onAllNodesWithContentDescription("タスクの操作").fetchSemanticsNodes().isEmpty())
         assertEquals(1, openedTaskNote)
@@ -714,7 +714,7 @@ class TodayScreenInstrumentedTest {
         launchPlanningScreen(planningRepository)
         waitForStatus(TodayLoadStatus.CONTENT)
 
-        composeRule.onNodeWithText("Write report").performTouchInput { swipeRight() }
+        composeRule.onNodeWithText("Write report").performTouchInput { swipeLeft() }
         assertTrue(composeRule.onAllNodesWithContentDescription("タスクを開始").fetchSemanticsNodes().isEmpty())
         composeRule.onNodeWithContentDescription("タスクを編集").assertIsDisplayed().performClick()
         composeRule.waitUntil(5_000) {
@@ -727,7 +727,7 @@ class TodayScreenInstrumentedTest {
 
         // Auxiliary actions remain available from the swipe-revealed Task Actions entry.
         assertTrue(composeRule.onAllNodesWithText("タスクを編集").fetchSemanticsNodes().isEmpty())
-        composeRule.onNodeWithText("Write report").performTouchInput { swipeRight() }
+        composeRule.onNodeWithText("Write report").performTouchInput { swipeLeft() }
         composeRule.onNodeWithContentDescription("タスクの操作").performClick()
         composeRule.onNodeWithText("タスク操作").assertIsDisplayed()
     }

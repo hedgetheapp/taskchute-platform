@@ -895,7 +895,7 @@ private fun TodayTaskRow(
         LifecycleState.PLANNED -> TaskChuteColors.Surface
     }
     Box(Modifier.fillMaxWidth().background(rowSurface)) {
-        if (!selectionModeActive && hasActions && swipeOffset >= swipeThreshold) {
+        if (!selectionModeActive && hasActions && swipeOffset <= -swipeThreshold) {
             Row(
                 modifier = Modifier.align(Alignment.CenterStart).zIndex(2f).padding(start = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -1018,27 +1018,27 @@ private fun TodayTaskRow(
                             swipeGestureStartOffset = swipeOffset
                         }
                         swipeOffset = (swipeOffset + delta).coerceIn(
-                            if (canEnterSelection) -selectionSwipeWidth else 0f,
-                            swipeRevealWidth,
+                            -swipeRevealWidth,
+                            if (canEnterSelection) selectionSwipeWidth else 0f,
                         )
                     },
                     orientation = Orientation.Horizontal,
                     enabled = swipeActions,
                     onDragStopped = {
-                        val movedLeftFromOpen = swipeMenuOpen &&
-                            swipeOffset <= swipeGestureStartOffset - swipeThreshold
+                        val movedRightFromOpen = swipeMenuOpen &&
+                            swipeOffset >= swipeGestureStartOffset + swipeThreshold
                         when {
-                            movedLeftFromOpen -> {
+                            movedRightFromOpen -> {
                                 swipeOffset = 0f
                                 onSwipeMenuClosed()
                             }
-                            canEnterSelection && swipeOffset <= -swipeThreshold -> {
+                            canEnterSelection && swipeOffset >= swipeThreshold -> {
                                 swipeOffset = 0f
                                 onSwipeMenuClosed()
                                 onEnterSelection()
                             }
-                            swipeOffset >= swipeThreshold -> {
-                                swipeOffset = swipeRevealWidth
+                            swipeOffset <= -swipeThreshold -> {
+                                swipeOffset = -swipeRevealWidth
                                 onSwipeMenuOpened()
                             }
                             else -> {
@@ -1061,7 +1061,7 @@ private fun TodayTaskRow(
                     if (metadata.isNotBlank()) Text(metadata, style = MaterialTheme.typography.bodySmall, color = TaskChuteColors.SecondaryText, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 when (task.lifecycleState) {
-                    LifecycleState.PLANNED -> if (swipeOffset < swipeThreshold) {
+                    LifecycleState.PLANNED -> if (swipeOffset > -swipeThreshold) {
                         IconButton(
                             onClick = { controller.start(task) },
                             enabled = enabled,
@@ -1069,7 +1069,7 @@ private fun TodayTaskRow(
                                 .semantics { contentDescription = "タスクを開始" },
                         ) { Icon(TaskChuteIcons.Play, contentDescription = null, tint = TaskChuteColors.PrimaryText) }
                     } else Spacer(Modifier.size(48.dp))
-                    LifecycleState.RUNNING -> if (swipeOffset < swipeThreshold) {
+                    LifecycleState.RUNNING -> if (swipeOffset > -swipeThreshold) {
                         IconButton(
                             onClick = { controller.complete(task) },
                             enabled = enabled,

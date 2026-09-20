@@ -7,16 +7,16 @@ Status: **Approved**
 D-123 refines the Android Today interaction surface without changing canonical Task / Entry /
 Execution / Document authority.
 
-- For an eligible ordinary planned Task on the current established Day, right swipe reveals direct
+- For an eligible ordinary planned Task on the current established Day, **Right → Left** (conventional left swipe; the finger moves from the right side toward the left) reveals direct
   `編集`, direct `ノート` when the visible row has a valid `taskId`, and `その他`. While the
   swipe surface is open, that row's trailing execution action is not simultaneously exposed.
 - `その他` opens the Task Actions bottom sheet. The sheet contains the actions that are not already
   represented by the direct Note shortcut: `編集`, `複製`, `前の日へ移動`, `次の日へ移動`,
   `日付を移動`, and `削除`, subject to each existing command's eligibility and safety boundary.
   Task Note is not duplicated inside this sheet.
-- The right-swipe action menu is dismissed by tapping another row, a Section header, or other Today content outside the open menu. A left swipe on the open owner row first returns it to the neutral state; a later separate left swipe may enter Selection Mode under D-124.
+- The **Right → Left** action menu (conventional left swipe) is dismissed by tapping another row, a Section header, or other Today content outside the open menu. A **Left → Right** gesture (conventional right swipe) on the open owner row first returns it to the neutral state; a later separate Left → Right gesture may enter Selection Mode under D-124.
 - D-110 Task Primary Note eligibility is preserved independently from planning eligibility. A
-  visible row with a valid `taskId` may expose a Note-only right-swipe affordance even when planning
+  visible row with a valid `taskId` may expose a Note-only **Right → Left** (conventional left swipe) affordance even when planning
   edit / duplicate / day-operation actions are unavailable, including running, completed,
   Routine-derived, future, or past rows. This does not grant any new planning write eligibility.
 - During an eligible current-Day ordinary planned Task drag, a collapsed configured Section header
