@@ -1,3 +1,5 @@
+# Test Matrix
+
 ## D-121 Android Today Task Row Figma visual parity corrective — 2026-09-20
 
 | ID | Verification target | Evidence | Status |
@@ -75,8 +77,6 @@
 | D121-FOOTER-VISUAL | Authenticated screenshot comparison | Figma context/source geometry compared for the final footer delta; manual authenticated emulator screenshot was not run because launch had no authorized session and credentials were not retrieved | TESTED / SCREENSHOT_NOT_RUN |
 | D121-FOOTER-DEVICE | Galaxy S23 footer visual smoke | Product Owner installed the D-122 stable-signed APK and confirmed Today / Notes / Settings shared footer, selected-state behavior, compact height/spacing, and adjacent header appearance as 「問題なし」 | PASS / USER_CONFIRMED |
 | D121-FOOTER-BOUNDARY | Scope | Android shared footer, official local resources, and focused instrumentation only; no Today/Notes/Settings content, Worker/API, schema/migration, dependency, realtime, production, or Release change; Galaxy S23 fresh footer smoke is PASS / USER_CONFIRMED | PASS / NOT_REQUIRED / NOT_RUN / NO |
-# Test Matrix
-
 ## D-127 Android Today local-feel / motion corrective — 2026-09-20
 
 | ID | Verification target | Evidence | Status |
