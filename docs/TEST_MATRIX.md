@@ -3490,3 +3490,18 @@ Timing is local AVD evidence and environment-dependent. Against the same-run `Al
 measured surface-only total estimate is approximately 75% less for Notes, 22% less for Today,
 and 98% less for Security. This is test-time evidence only and is not a claim of an overall
 development-speed multiplier.
+
+## D-121 Android Today Task Row Figma micro-corrective 2 — 2026-09-20
+
+| ID | Area | Requirement / evidence | Status |
+|---|---|---|---|
+| D121-ROW-COMPLETED | Completed metadata geometry | actual range uses 85dp instead of flexible weight; timer remains 10dp; explicit 3dp gaps before and after timer; duration has 33dp minimum and can use natural width for longer localized text | SOURCE / BUILD PASS; RUNTIME NOT_VERIFIED |
+| D121-ROW-SELECTION | Disabled Selection visual | planned unselected is `#202020` + `#7F7F7A`; selected planned remains `#52A3FF` with 12dp check; Running / Completed disabled visual uses whole-visual alpha `0.38`; 48dp slot and non-selectable behavior unchanged | SOURCE / BUILD PASS; RUNTIME NOT_VERIFIED |
+| D121-LOCAL-BUILD | Local build gates | `:app:assembleDebug`, `:app:compileDebugAndroidTestKotlin`, and `git diff --check` | PASS |
+| D121-LOCAL-INSTRUMENTATION | Focused Android runtime | `TaskChute_API33` Today flow and focused Completed test were attempted; the emulator/app entered excessive-CPU test hang. The same hang reproduced with the pre-change baseline, so no product regression is claimed; post-test MainActivity/crash-buffer smoke was not reached | NOT_VERIFIED |
+| D121-CI | Exact pushed-SHA CI / APK | SHA `b8ec08774233eb9924595b382c97dc4121016784`; run `35502282135`; Android JVM, signed Debug build, AndroidTest APK compile, signing verification, and upload PASS; Web/Worker SKIP; artifact `taskchute-android-debug-b8ec08774233eb9924595b382c97dc4121016784`, ID `10602517506`, 11,388,350 bytes, expires 2026-09-27T09:28:25Z | PASS |
+| D121-DEVICE | Galaxy S23 corrective APK | Product Owner physical-device verification for this new corrective artifact | NOT_RUN |
+| D121-SCREENSHOT | Authenticated emulator screenshot comparison | no screenshot comparison performed for this corrective | SCREENSHOT_NOT_RUN |
+| D121-SCOPE | Boundary | font/line-height intentionally unchanged; no Product semantics, Worker/API, schema, migration, dependency, production, tag, or Release change | PASS / NOT_REQUIRED |
+
+The earlier D-121 Galaxy S23 evidence for implementation `b4f3925...` remains historical and is not overwritten by this corrective. This corrective is integrated and CI-tested, but is not Verified until the new APK receives physical-device evidence. Production remains `NOT_RUN` and Released remains `NO`.
