@@ -113,6 +113,43 @@ class TaskPlanningControllerTest {
     }
 
     @Test
+    fun actualTimesUseClockRangeAndLifecycleValidation() {
+        val completed = TaskEditorValidation.validate(
+            TaskEditorDraft(title = "A", actualStartText = "900", actualEndText = "1230"),
+            TaskEditorCapability.COMPLETED_METADATA,
+        )
+        assertEquals(540, completed.input?.actualStartMinute)
+        assertEquals(750, completed.input?.actualEndMinute)
+        assertEquals("09:00", formatActualClock("900"))
+        assertEquals("12:30", formatActualClock("1230"))
+
+        assertNotNull(
+            TaskEditorValidation.validate(
+                TaskEditorDraft(title = "A", actualEndText = "1230"),
+                TaskEditorCapability.FULL_PLANNING,
+            ).errorMessage,
+        )
+        assertNotNull(
+            TaskEditorValidation.validate(
+                TaskEditorDraft(title = "A", actualStartText = "2400", actualEndText = "2500"),
+                TaskEditorCapability.FULL_PLANNING,
+            ).errorMessage,
+        )
+        assertNotNull(
+            TaskEditorValidation.validate(
+                TaskEditorDraft(title = "A", actualStartText = "900"),
+                TaskEditorCapability.COMPLETED_METADATA,
+            ).errorMessage,
+        )
+        assertNotNull(
+            TaskEditorValidation.validate(
+                TaskEditorDraft(title = "A"),
+                TaskEditorCapability.RUNNING_METADATA,
+            ).errorMessage,
+        )
+    }
+
+    @Test
     fun currentTimeSectionUsesCanonicalTimezoneAndLogicalBoundary() {
         val day = currentDay().copy(
             establishmentTimezone = "Asia/Tokyo",

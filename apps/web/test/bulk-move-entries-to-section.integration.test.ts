@@ -12,7 +12,7 @@ import type { MoveEntryPlacementIntent } from "../src/shared/contracts";
 import { loadTaskChuteDayByLogicalDate } from "../worker/application/load-current-day";
 import { uuidv7 } from "../src/shared/uuidv7";
 
-const now = "2026-09-02T12:00:00.000Z";
+const now = "2026-09-02T11:00:00.000Z";
 
 function instantForMinute(minute: number): string {
   if (minute === 1440) return "2026-09-03T00:00:00.000Z";
@@ -159,6 +159,18 @@ describe.sequential("BulkMoveEntriesToSection", () => {
       .bind(fixture.dayId).first<number>("placement_revision")).toBe(2);
   });
 
+  it("rejects a current-Day destination Section at its frozen end boundary", async () => {
+    const fixture = await seed();
+    await expect(bulkMoveEntriesToSection(
+      env.APP_DB,
+      fixture.userId,
+      requestFor(fixture, [fixture.ordinaryEntryIds[0]!], fixture.sectionB),
+      "2026-09-02T12:00:00.000Z",
+    )).rejects.toMatchObject({ code: "resource_conflict" });
+    expect(await env.APP_DB.prepare("SELECT section_id FROM entries WHERE id = ?")
+      .bind(fixture.ordinaryEntryIds[0]).first()).toEqual({ section_id: fixture.sectionA });
+  });
+
   it("rejects Routine, running, completed, stale, cross-owner, and cross-Day targets without mutation", async () => {
     const fixture = await seed();
     for (const entryId of [fixture.routineEntryId, fixture.runningEntryId, fixture.completedEntryId]) {
@@ -242,9 +254,10 @@ describe.sequential("BulkMoveEntriesToSection", () => {
 
   it("supports Sectionなし, override-only changes, and rejects a suppressed or non-current Routine occurrence atomically", async () => {
     const fixture = await seed();
+    const earlyNow = "2026-09-02T07:00:00.000Z";
     await env.APP_DB.prepare("UPDATE entries SET planned_start_minute = 0 WHERE id = ?").bind(fixture.routineEntryId).run();
     const overrideOnly = requestFor(fixture, [fixture.routineEntryId], fixture.sectionA);
-    const overrideOnlyResult = await bulkMoveEntriesToSectionOccurrence(env.APP_DB, fixture.userId, overrideOnly, now);
+    const overrideOnlyResult = await bulkMoveEntriesToSectionOccurrence(env.APP_DB, fixture.userId, overrideOnly, earlyNow);
     expect(overrideOnlyResult).toMatchObject({ changed_entry_ids: [], routine_override_changed_entry_ids: [fixture.routineEntryId], placement_revision: 0 });
     expect(await env.APP_DB.prepare("SELECT section_id, planned_start_minute FROM entries WHERE id = ?").bind(fixture.routineEntryId).first())
       .toEqual({ section_id: fixture.sectionA, planned_start_minute: 0 });

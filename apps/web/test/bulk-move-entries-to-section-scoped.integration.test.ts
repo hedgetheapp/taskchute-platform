@@ -6,7 +6,7 @@ import {
 } from "../worker/application/bulk-move-entries-to-section-scoped";
 import { uuidv7 } from "../src/shared/uuidv7";
 
-const now = "2026-09-02T12:00:00.000Z";
+const now = "2026-09-02T11:00:00.000Z";
 
 async function seed() {
   const userId = uuidv7();

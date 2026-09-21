@@ -4,6 +4,7 @@ import { isUuidV7 } from "../domain/uuidv7";
 import { persistRejection, readOperation, replayOperation } from "../persistence/operations";
 import { HttpError } from "./errors";
 import { fingerprint, REQUEST_FINGERPRINT_VERSION } from "./fingerprint";
+import { resolveTaskChuteDay } from "../domain/taskchute-day";
 
 export function isMoveEntryRequest(value: unknown): value is MoveEntryRequest {
   if (!value || typeof value !== "object") return false;
@@ -72,13 +73,14 @@ export async function moveEntry(db: D1Database, appUserId: string, request: Move
   type MoveRow = { id: string; section_id: string | null; position: number;
     lifecycle_state: "planned" | "running" | "completed"; planned_start_minute: number | null;
     routine_occurrence_id: string | null; first_started_at: string | null };
-  const [dayResult, entryResult, sectionResult, sourceRowsResult, targetRowsResult] = await db.batch([
-    db.prepare("SELECT placement_revision FROM taskchute_days WHERE app_user_id = ? AND id = ?")
+  const [settingsResult, dayResult, entryResult, sectionResult, sourceRowsResult, targetRowsResult] = await db.batch([
+    db.prepare("SELECT timezone, day_boundary_minutes FROM user_settings WHERE app_user_id = ?").bind(appUserId),
+    db.prepare("SELECT logical_date, placement_revision FROM taskchute_days WHERE app_user_id = ? AND id = ?")
       .bind(appUserId, request.taskchute_day_id),
     db.prepare(`SELECT section_id, lifecycle_state, planned_start_minute, routine_occurrence_id FROM entries
       WHERE app_user_id = ? AND id = ? AND taskchute_day_id = ?`)
       .bind(appUserId, request.entry_id, request.taskchute_day_id),
-    request.section_id ? db.prepare(`SELECT section_id AS id, logical_start_minute FROM taskchute_day_section_contexts
+    request.section_id ? db.prepare(`SELECT section_id AS id, logical_start_minute, logical_end_minute FROM taskchute_day_section_contexts
       WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id = ?
         AND logical_start_minute IS NOT NULL AND logical_end_minute IS NOT NULL`)
       .bind(appUserId, request.taskchute_day_id, request.section_id) : db.prepare("SELECT 1 AS id, NULL AS logical_start_minute"),
@@ -93,7 +95,8 @@ export async function moveEntry(db: D1Database, appUserId: string, request: Move
       FROM entries e WHERE e.app_user_id = ? AND e.taskchute_day_id = ? AND e.section_id IS ? ORDER BY e.position, e.id`)
       .bind(appUserId, request.taskchute_day_id, request.section_id),
   ]);
-  const day = dayResult.results[0] as { placement_revision: number } | undefined;
+  const settings = settingsResult.results[0] as { timezone: string; day_boundary_minutes: number } | undefined;
+  const day = dayResult.results[0] as { logical_date: string; placement_revision: number } | undefined;
   const entry = entryResult.results[0] as { section_id: string | null; lifecycle_state: string;
     planned_start_minute: number | null; routine_occurrence_id: string | null } | undefined;
   const reject = (message: string, revision = false) => persistRejection<MoveEntryResult>(db, { appUserId,
@@ -104,6 +107,21 @@ export async function moveEntry(db: D1Database, appUserId: string, request: Move
   if (entry.lifecycle_state !== "planned") return reject("Only a planned Entry can move");
   if (entry.routine_occurrence_id !== null) return reject("Routine-derived Entry placement is read-only");
   if (day.placement_revision !== request.expected_placement_revision) return reject("The placement revision is stale", true);
+  if (request.section_id !== null && settings) {
+    const currentLogicalDate = resolveTaskChuteDay(new Date().toISOString(), {
+      timezone: settings.timezone,
+      boundaryMinutes: settings.day_boundary_minutes,
+    }).logicalDate;
+    const targetSection = sectionResult.results[0] as { logical_end_minute?: number };
+    if (day.logical_date === currentLogicalDate && targetSection.logical_end_minute !== undefined) {
+      const context = await db.prepare(`SELECT actual_end_instant FROM taskchute_day_section_contexts
+        WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id = ?`)
+        .bind(appUserId, request.taskchute_day_id, request.section_id).first<{ actual_end_instant: string | null }>();
+      if (context?.actual_end_instant && Date.parse(context.actual_end_instant) <= Date.now()) {
+        return reject("The destination Section has already ended for the current TaskChuteDay");
+      }
+    }
+  }
 
   // MoveEntry is also used by the legacy Section selector. The two queries above
   // intentionally keep that command backward compatible while the optional relative

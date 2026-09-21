@@ -62,6 +62,13 @@ sealed interface DirectManipulationRequest {
         val entryIds: List<String>,
         val expectedPlacementRevision: Int,
     ) : DirectManipulationRequest
+
+    data class HardDelete(
+        override val operationId: String,
+        val entryId: String,
+        val taskChuteDayId: String,
+        val expectedPlacementRevision: Int,
+    ) : DirectManipulationRequest
 }
 
 sealed interface DirectManipulationResult {
@@ -107,6 +114,10 @@ class TodayDirectManipulationHttpRepository(
             is DirectManipulationRequest.Delete -> {
                 path = "/api/v1/taskchute-days/current/entries/bulk-delete"
                 body = """{"operation_id":"${JsonEncoding.escape(request.operationId)}","taskchute_day_id":"${JsonEncoding.escape(request.taskChuteDayId)}","entry_ids":[${request.entryIds.joinToString(",") { "\"${JsonEncoding.escape(it)}\"" }}],"expected_placement_revision":${request.expectedPlacementRevision}}"""
+            }
+            is DirectManipulationRequest.HardDelete -> {
+                path = "/api/v1/entries/${JsonEncoding.pathSegment(request.entryId)}/delete-completed"
+                body = """{"operation_id":"${JsonEncoding.escape(request.operationId)}","taskchute_day_id":"${JsonEncoding.escape(request.taskChuteDayId)}","entry_id":"${JsonEncoding.escape(request.entryId)}","expected_placement_revision":${request.expectedPlacementRevision}}"""
             }
         }
         return execute("POST", path, body)
@@ -242,6 +253,16 @@ class TodayDirectManipulationController(
         )
     }
 
+    fun deleteLifecycle(day: TodayDay, task: TodayTask, successMessage: String? = null) {
+        if (!day.isCurrent || day.taskChuteDayId == null || task.lifecycleState == LifecycleState.PLANNED
+            || state.pendingEntryIds.isNotEmpty() || state.unresolvedRequest != null) return
+        dispatch(
+            setOf(task.id),
+            DirectManipulationRequest.HardDelete(UUIDv7.next(), task.id, day.taskChuteDayId, day.placementRevision),
+            successMessage,
+        )
+    }
+
     fun retryUnresolved() {
         val request = state.unresolvedRequest ?: return
         dispatch(state.pendingEntryIds.ifEmpty { affectedEntries(request) }, request)
@@ -309,5 +330,6 @@ class TodayDirectManipulationController(
         is DirectManipulationRequest.Duplicate -> setOf(request.sourceEntryId)
         is DirectManipulationRequest.MoveToDay -> request.entryIds.toSet()
         is DirectManipulationRequest.Delete -> request.entryIds.toSet()
+        is DirectManipulationRequest.HardDelete -> setOf(request.entryId)
     }
 }

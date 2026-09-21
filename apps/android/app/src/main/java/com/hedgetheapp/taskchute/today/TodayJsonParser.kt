@@ -21,6 +21,8 @@ internal object TodayJsonParser {
             unsectionedEntries = unsectioned,
             activeExecution = activeExecution,
             taskChuteDayId = taskChuteDay.nullableStringField("id"),
+            startInstant = taskChuteDay.nullableStringField("start_instant"),
+            endInstant = taskChuteDay.nullableStringField("end_instant"),
             establishmentTimezone = taskChuteDay.nullableStringField("establishment_timezone"),
             establishmentBoundaryMinutes = taskChuteDay.nullableIntField("establishment_boundary_minutes") ?: 0,
         )
@@ -36,6 +38,7 @@ internal object TodayJsonParser {
         startMinute = value.nullableIntField("logical_start_minute"),
         endMinute = value.nullableIntField("logical_end_minute"),
         entries = value.arrayField("entries").map { it.asObject() }.map(::parseTask),
+        actualEndInstant = value.nullableStringField("actual_end_instant"),
     )
 
     private fun parseTask(value: JsonValue.Object): TodayTask {
@@ -59,7 +62,8 @@ internal object TodayJsonParser {
             },
             estimateSeconds = value.nullableIntField("estimate_seconds"),
             plannedStartMinute = value.nullableIntField("planned_start_minute"),
-            executionId = executionSummary?.nullableStringField("active_execution_id"),
+            executionId = executionSummary?.nullableStringField("active_execution_id")
+                ?: executionSummary?.nullableStringField("single_execution_id"),
             activeStartedAt = executionSummary?.nullableStringField("active_started_at"),
             firstStartedAt = executionSummary?.nullableStringField("first_started_at"),
             lastEndedAt = executionSummary?.nullableStringField("last_ended_at"),

@@ -388,7 +388,7 @@ export async function bulkMoveEntriesToSectionOccurrence(
       WHERE app_user_id = ? AND id = ?`).bind(appUserId, request.taskchute_day_id),
     request.section_id === null
       ? db.prepare("SELECT NULL AS id, NULL AS logical_start_minute WHERE false")
-      : db.prepare(`SELECT section_id AS id, logical_start_minute, logical_end_minute
+      : db.prepare(`SELECT section_id AS id, logical_start_minute, logical_end_minute, actual_end_instant
           FROM taskchute_day_section_contexts
          WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id = ?
            AND logical_start_minute IS NOT NULL AND logical_end_minute IS NOT NULL`)
@@ -411,6 +411,12 @@ export async function bulkMoveEntriesToSectionOccurrence(
   if (day.logical_date < currentLogicalDate) return reject(
     db, appUserId, request, requestFingerprint, "resource_conflict",
     "Routine-inclusive Bulk Section change is available only for the current or a future TaskChuteDay",
+  );
+  const targetSection = sectionResult.results[0] as { actual_end_instant?: string | null } | undefined;
+  if (request.section_id !== null && day.logical_date === currentLogicalDate && targetSection?.actual_end_instant
+    && Date.parse(targetSection.actual_end_instant) <= Date.parse(now)) return reject(
+    db, appUserId, request, requestFingerprint, "resource_conflict",
+    "The destination Section has already ended for the current logical Day",
   );
   if (day.placement_revision !== request.expected_placement_revision) {
     return persistRejection<BulkMoveEntriesToSectionOccurrenceResult>(db, {

@@ -1,5 +1,15 @@
 # Architecture
 
+## Android lifecycle editor / placement / forecast boundary
+
+`TaskPlanningController`はDay projectionとEntry lifecycleからeditor capabilityを選び、`TaskPlanningHttpRepository`は既存のTask metadata、Mode、Section move、planned-start、estimate、`SetExecutionTimes` endpointをoperation単位で呼び出す。actual timeのinstant化にはDayのlogical date、canonical timezone、establishment boundaryを使う。Section moveを先に実行した場合は返却された最新 placement revisionを後続のexecution-times requestへ引き継ぐ。
+
+`TodayController`のmemory-only `optimisticDay`はlifecycle editor、direct manipulation、start / completeの表示を即時投影するが、server canonical Dayや永続authorityにはならない。成功後はvisible refreshを出さずsilent reconcileし、failure / authorization / ambiguityは既存D-125の復旧経路へ戻す。
+
+Running / Completed単体削除は`TodayDirectManipulationController`から既存`DeleteCompletedEntry` contractへ接続し、Worker `delete-completed-entry`がrunning / completedのExecution invariantとcurrent-Day owner / CASをtransaction内で検証する。Planned bulk delete、Routine definition / occurrence、Task / Project / Mode definitionsは別のauthorityとして保持する。
+
+D-129のended Section判定はAndroid parserが受け取るSection `actual_end_instant`を優先し、fallbackが必要な旧projectionでもcanonical logical boundaryから導出する。`resolveAndroidDropTarget`とWebのentry-planning / bulk-move handlersが同じdestination eligibilityを適用する。Forecastは`TodayForecast.kt`のpure projection helperで、WebのStart Forecast semanticsをAndroid表示へ移植し、actual execution metadataとは分離する。
+
 ## D-127 Android Today presentation boundary
 
 `TodayController` keeps the canonical `TodayDay` separately from an ephemeral `optimisticDay`. `TodayUiState.presentedDay` selects the overlay when present, and the screen renders that projection without persisting it. Planning, direct-manipulation, and lifecycle controllers continue to dispatch the existing repositories and commands; they do not become Domain authorities.

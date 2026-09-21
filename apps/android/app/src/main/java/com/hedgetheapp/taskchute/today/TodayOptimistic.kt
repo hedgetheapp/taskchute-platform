@@ -1,6 +1,10 @@
 package com.hedgetheapp.taskchute.today
 
 import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalTime
+import java.time.ZoneId
+import java.time.ZonedDateTime
 
 /**
  * Presentation-only projections. These helpers never change the canonical Day or server
@@ -30,17 +34,57 @@ internal fun applyOptimisticPlanning(
             taskId = taskId,
         )
     } else {
+        val actualStart = input.actualStartMinute?.let { logicalMinuteToInstant(day, it) }
+        val actualEnd = input.actualEndMinute?.let { logicalMinuteToInstant(day, it) }
+        val lifecycle = when {
+            actualEnd != null -> LifecycleState.COMPLETED
+            actualStart != null -> LifecycleState.RUNNING
+            else -> original.lifecycleState
+        }
+        val duration = if (actualStart != null && actualEnd != null) {
+            runCatching {
+                java.time.Duration.between(Instant.parse(actualStart), Instant.parse(actualEnd)).seconds
+                    .toInt()
+                    .coerceAtLeast(0)
+            }.getOrNull()
+        } else {
+            original.completedDurationSeconds
+        }
         original.copy(
             title = input.title,
             project = input.projectId?.let { TodayProject(it, input.projectTitle ?: it) },
             mode = input.modeId?.let { TodayMode(it, input.modeTitle ?: it) },
             estimateSeconds = input.estimateSeconds,
             plannedStartMinute = input.plannedStartMinute,
+            lifecycleState = lifecycle,
+            executionId = if (lifecycle == LifecycleState.RUNNING) original.executionId ?: "optimistic-$entryId" else original.executionId,
+            activeStartedAt = if (lifecycle == LifecycleState.RUNNING) actualStart ?: original.activeStartedAt else null,
+            firstStartedAt = actualStart ?: original.firstStartedAt,
+            lastEndedAt = actualEnd ?: if (lifecycle == LifecycleState.COMPLETED) original.lastEndedAt else null,
+            completedDurationSeconds = duration,
         )
     }
 
     val withoutOriginal = day.removeEntry(entryId)
-    return withoutOriginal.insertEntry(input.sectionId, optimistic)
+    val updatedDay = withoutOriginal.insertEntry(input.sectionId, optimistic)
+    return when (optimistic.lifecycleState) {
+        LifecycleState.RUNNING -> updatedDay.copy(
+            activeExecution = TodayExecution(
+                optimistic.executionId ?: "optimistic-$entryId",
+                entryId,
+                optimistic.activeStartedAt ?: Instant.now().toString(),
+                optimistic.estimateSeconds,
+            ),
+        )
+        LifecycleState.COMPLETED -> updatedDay.copy(activeExecution = null)
+        LifecycleState.PLANNED -> updatedDay
+    }
+}
+
+private fun logicalMinuteToInstant(day: TodayDay, minute: Int): String {
+    val zone = day.establishmentTimezone?.let { runCatching { ZoneId.of(it) }.getOrNull() } ?: ZoneId.of("UTC")
+    val date = LocalDate.parse(day.logicalDate).plusDays(if (minute < day.establishmentBoundaryMinutes) 1 else 0)
+    return ZonedDateTime.of(date, LocalTime.of(minute / 60, minute % 60), zone).toInstant().toString()
 }
 
 internal fun applyOptimisticLifecycle(
@@ -89,6 +133,7 @@ internal fun applyOptimisticDirectManipulation(
     }
     is DirectManipulationRequest.MoveToDay -> request.entryIds.fold(day) { current, id -> current.removeEntry(id) }
     is DirectManipulationRequest.Delete -> request.entryIds.fold(day) { current, id -> current.removeEntry(id) }
+    is DirectManipulationRequest.HardDelete -> day.removeEntry(request.entryId)
 }
 
 internal fun previewOptimisticPlacement(day: TodayDay, entryId: String, targetSectionId: String?, target: PlacementTarget?): TodayDay =

@@ -2852,3 +2852,12 @@ Local `:app:assembleDebug`, `:app:compileDebugAndroidTestKotlin`, and `git diff 
 Exact pushed-SHA GitHub Actions CI run `35502282135` for `b8ec08774233eb9924595b382c97dc4121016784` passed. Android JVM tests, signed Debug build, AndroidTest APK compile, signing verification, and APK upload passed; Web and Worker verification was skipped by the Android-only changed-surface classifier. Artifact: `taskchute-android-debug-b8ec08774233eb9924595b382c97dc4121016784`, ID `10602517506`, `11,388,350` bytes, expires `2026-09-27T09:28:25Z`.
 
 The earlier D-121 Product Owner Galaxy S23 evidence for implementation `b4f3925...` remains unchanged. The corrective APK itself is `Galaxy S23: NOT_RUN`; authenticated emulator screenshot comparison is `SCREENSHOT_NOT_RUN`; production is `NOT_RUN`; Released is `NO`. No tag, Release, Worker/API/schema/migration/dependency, or production operation was performed.
+### Android lifecycle editor / current-Day delete / placement guard / forecast parity — 2026-09-21
+
+D-060、D-067、D-116A、D-117、D-128、D-129に沿うAndroid Today実装を追加した。current logical Dayのordinary Planned Entryは既存のplanning fieldsに開始時間・終了時間を加え、開始のみでRunning、開始と終了の両方でCompletedへ遷移する。Running / CompletedはProject・Modeと実績開始・終了時間を編集でき、Completedのhistorical Project / Modeは既存のEntry relation / snapshot経路を使う。Future Plannedは従来のplanning capabilityを維持し、Past、Routine-derived Entry、bulkのRunning / Completed deleteは対象外とした。
+
+current DayのRunning / Completed単体削除は既存`DeleteCompletedEntry` route / DTO / operationを再利用し、server側でlifecycleとactive Execution invariantをatomicに検証する。Completed D-067、Running D-128のno-regeneration・identity保持を維持し、schema / migration / new commandは追加していない。D-129はcanonical `actual_end_instant`を使ってcurrent-Day ended SectionをAndroid preview・drop・editor / bulk server guardから除外する。
+
+Task Rowの開始・終了見込みはWeb Start Forecast相当のcurrent-time / running remaining estimate / display-order projectionへ寄せ、見積・実績durationは総分数表示へ統一した。Header DatePickerとTask Actionsの日付移動は同じCompose DatePicker implementationを共有し、RunningTaskPanelは72dp内で左右clusterとComplete buttonを上下中央揃えにした。
+
+**Implementation: IMPLEMENTED / Local: Android JVM 141/141 PASS, full Worker/Web 37 files・340 tests PASS, typecheck PASS, instrumentation compile PASS, debug assemble PASS / Authenticated Android runtime: NOT_RUN / Galaxy S23: NOT_RUN / Persistent nonprod destructive delete E2E: NOT_RUN / Production: NOT_RUN / Released: NO**。今回の実機Verified evidenceはまだない。既存D-128/D-129 semanticsとserver authorityを変更せず、Android / Web presentation、既存Worker guard、canonical docsの範囲で整合した。

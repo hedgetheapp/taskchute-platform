@@ -1133,6 +1133,7 @@ class TodayScreenInstrumentedTest {
                 }
                 is DirectManipulationRequest.MoveToDay -> bulkMoveCalls.incrementAndGet()
                 is DirectManipulationRequest.Delete -> deleteCalls.incrementAndGet()
+                is DirectManipulationRequest.HardDelete -> deleteCalls.incrementAndGet()
             }
             return result
         }

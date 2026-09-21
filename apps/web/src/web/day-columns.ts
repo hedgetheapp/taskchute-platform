@@ -236,9 +236,7 @@ export function formatActualTime(instant: string | null, logicalDate: string, ti
 export function formatActualDuration(seconds: number | null): string {
   if (seconds === null || !Number.isFinite(seconds) || seconds < 0) return "—";
   const minutes = Math.floor(seconds / 60);
-  return minutes >= 60
-    ? `${Math.floor(minutes / 60)}時間${minutes % 60 ? `${minutes % 60}分` : ""}`
-    : `${minutes}分`;
+  return `${minutes}分`;
 }
 
 export function actualDurationSeconds(summary: ExecutionSummaryProjection | undefined, displayInstant: string, includeActive = true): number | null {

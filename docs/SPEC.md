@@ -4,6 +4,18 @@
 
 exact DB schema、SQL、UI component library、Android local DB、offline conflict algorithm等は、別途DecisionされるまでOpenとする。
 
+## Android Today lifecycle editor / placement / forecast parity
+
+Current logical Dayのordinary Entryに対するAndroid editor capabilityは次のとおりとする。PlannedはTask名、Project、Mode、Section、planned start、estimate、actual start、actual endを編集できる。actual startだけならRunning、actual startとactual endの両方ならCompletedとして既存`SetExecutionTimes` semanticsへ接続する。RunningはProject / Modeとactual start / end、CompletedはProject / Modeとactual start / endを編集できる。CompletedのProject / Modeはshared Task definitionを変更せず、既存のhistorical Entry relation / snapshot semanticsを使う。Future Plannedはplanning capabilityのみ、Pastはread-only、Routine-derived Entryはこのordinary editor経路の対象外とする。
+
+Time inputは数字3〜4桁または`HH:mm`を受け、`900` / `0900` / `930` / `1230`を正規化する。hourは0..23、minuteは0..59。Plannedのend-only、Completedのstart/end不足は保存不可。logical Day、canonical timezone、establishment boundaryを使ってinstantへ変換し、端末の日付・timezoneをauthorityにしない。
+
+Current logical DayのRunning / Completed単体削除はD-067の既存`DeleteCompletedEntry` route / DTO / operationを再利用する。Runningはcanonical active Execution、Completedはterminal Execution、owner、current Day、placement revisionなどのserver guardを満たす場合だけ対象となり、EntryとEntry-bound Executions / guards / snapshotsをatomicに削除する。Task / Project / Mode definition、Routine definition / occurrence、unrelated recordsは保持し、fake Complete / Interrupt / continuation / synthetic endは生成しない。Planned delete、bulk Running / Completed delete、Past / Future deleteはこの経路へ変更しない。
+
+D-129により、current logical Dayでeffective current instant以前に終了したconfigured Sectionは新しいmanual placement destinationにできない。AndroidのD&D preview、drop、Section editorはそのSectionを候補・highlight・provisional slotから除外し、serverのentry planning / bulk move guardと一致させる。既存Entryの保持や同一Section reorderをこのguardだけで禁止しない。
+
+Android Task Rowの開始・終了見込みはWeb Start Forecastのderived projection（current cursor、active Runningのremaining estimate、display order、planned startをbarrierにしない）に合わせる。見積と実績durationはpresentation上は常に総分数で表示する。Header DatePickerとTask Actionsの日付移動は同一Compose DatePicker UI implementationを共有する。
+
 ## D-127 Android Today presentation behavior
 
 For accepted Task add, edit, reorder, placement, start, and complete intents, Android Today may render an immediate memory-only projection for the selected logical Day. This projection is not a new Domain or persistence authority. The existing server Command, operation identity, placement revision, CAS, and response remain canonical.

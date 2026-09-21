@@ -51,7 +51,7 @@ class TaskPlanningController(
         val capability = when (task.lifecycleState) {
             LifecycleState.PLANNED -> TaskEditorCapability.FULL_PLANNING
             LifecycleState.RUNNING -> TaskEditorCapability.RUNNING_METADATA
-            LifecycleState.COMPLETED -> return
+            LifecycleState.COMPLETED -> TaskEditorCapability.COMPLETED_METADATA
         }
         state = TaskPlanningUiState(
             editor = TaskEditorState(
@@ -65,6 +65,8 @@ class TaskPlanningController(
                     sectionId = day.sections.firstOrNull { section -> section.entries.any { it.id == task.id } }?.id,
                     plannedStartText = formatEditorMinute(task.plannedStartMinute),
                     estimateText = task.estimateSeconds?.let { (it / 60).toString() } ?: "",
+                    actualStartText = formatActualClock(task.activeStartedAt ?: task.firstStartedAt),
+                    actualEndText = formatActualClock(task.lastEndedAt),
                 ),
                 capability = capability,
             ),
@@ -88,7 +90,7 @@ class TaskPlanningController(
     fun save() {
         val editor = state.editor ?: return
         if (state.saving) return
-        val validation = TaskEditorValidation.validate(editor.draft)
+        val validation = TaskEditorValidation.validate(editor.draft, editor.capability)
         if (validation.input == null) {
             state = state.copy(errorMessage = validation.errorMessage)
             return

@@ -97,14 +97,14 @@ export async function deleteCompletedEntry(
     appUserId, request.taskchute_day_id, request.entry_id,
   ).first<TargetRow>();
   if (!target) return reject(db, appUserId, request, requestFingerprint, "resource_conflict", "The Entry does not belong to this TaskChuteDay");
-  if (target.lifecycle_state !== "completed") {
-    return reject(db, appUserId, request, requestFingerprint, "resource_conflict", "Only completed Entries can be hard deleted");
+  if (target.lifecycle_state !== "running" && target.lifecycle_state !== "completed") {
+    return reject(db, appUserId, request, requestFingerprint, "resource_conflict", "Only current Running or Completed Entries can be hard deleted");
   }
-  if (target.active_execution_count > 0) {
-    return reject(db, appUserId, request, requestFingerprint, "resource_conflict", "An active Execution cannot be hard deleted");
+  if (target.lifecycle_state === "running" && target.active_execution_count !== 1) {
+    return reject(db, appUserId, request, requestFingerprint, "resource_conflict", "A Running Entry must have exactly one active Execution");
   }
-  if (target.execution_count === 0) {
-    return reject(db, appUserId, request, requestFingerprint, "resource_conflict", "A completed Entry must have Execution history");
+  if (target.lifecycle_state === "completed" && (target.active_execution_count > 0 || target.execution_count === 0)) {
+    return reject(db, appUserId, request, requestFingerprint, "resource_conflict", "A Completed Entry must have terminal Execution history");
   }
   const futureRoutineLink = await db.prepare(`SELECT 1 AS linked FROM completed_entry_future_routines
     WHERE app_user_id = ? AND source_entry_id = ?`).bind(appUserId, request.entry_id).first();
@@ -132,9 +132,12 @@ export async function deleteCompletedEntry(
           AND EXISTS (
             SELECT 1 FROM entries e
             WHERE e.app_user_id = taskchute_days.app_user_id AND e.taskchute_day_id = taskchute_days.id
-              AND e.id = ? AND e.lifecycle_state = 'completed'
-              AND EXISTS (SELECT 1 FROM executions x WHERE x.app_user_id = e.app_user_id AND x.entry_id = e.id)
-              AND NOT EXISTS (SELECT 1 FROM executions x WHERE x.app_user_id = e.app_user_id AND x.entry_id = e.id AND x.ended_at IS NULL)
+              AND e.id = ?
+              AND ((e.lifecycle_state = 'completed'
+                AND EXISTS (SELECT 1 FROM executions x WHERE x.app_user_id = e.app_user_id AND x.entry_id = e.id)
+                AND NOT EXISTS (SELECT 1 FROM executions x WHERE x.app_user_id = e.app_user_id AND x.entry_id = e.id AND x.ended_at IS NULL))
+                OR (e.lifecycle_state = 'running'
+                AND (SELECT COUNT(*) FROM executions x WHERE x.app_user_id = e.app_user_id AND x.entry_id = e.id AND x.ended_at IS NULL) = 1))
               AND NOT EXISTS (SELECT 1 FROM completed_entry_future_routines c
                 WHERE c.app_user_id = e.app_user_id AND c.source_entry_id = e.id)
           )`)
@@ -165,7 +168,7 @@ export async function deleteCompletedEntry(
           AND EXISTS (SELECT 1 FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
         .bind(appUserId, request.entry_id, appUserId, request.operation_id),
       db.prepare(`DELETE FROM entries
-        WHERE app_user_id = ? AND taskchute_day_id = ? AND id = ? AND lifecycle_state = 'completed'
+        WHERE app_user_id = ? AND taskchute_day_id = ? AND id = ? AND lifecycle_state IN ('running', 'completed')
           AND NOT EXISTS (SELECT 1 FROM executions x WHERE x.app_user_id = entries.app_user_id AND x.entry_id = entries.id)
           AND EXISTS (SELECT 1 FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
         .bind(appUserId, request.taskchute_day_id, request.entry_id, appUserId, request.operation_id),

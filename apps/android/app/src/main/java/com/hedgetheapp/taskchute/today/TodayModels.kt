@@ -40,6 +40,7 @@ data class TodaySection(
     val startMinute: Int?,
     val endMinute: Int?,
     val entries: List<TodayTask>,
+    val actualEndInstant: String? = null,
 )
 
 data class TodayExecution(
@@ -58,6 +59,8 @@ data class TodayDay(
     val unsectionedEntries: List<TodayTask>,
     val activeExecution: TodayExecution?,
     val taskChuteDayId: String? = null,
+    val startInstant: String? = null,
+    val endInstant: String? = null,
     val establishmentTimezone: String? = null,
     val establishmentBoundaryMinutes: Int = 0,
 ) {

@@ -74,6 +74,32 @@ class TodayOptimisticTest {
     }
 
     @Test
+    fun lifecycleEditorProjectionAppliesActualTimesBeforeReconcile() {
+        val original = day().allEntries.first { it.id == "entry-a" }
+        val projected = applyOptimisticPlanning(
+            day(),
+            TaskEditorState(TaskEditorMode.EDIT, day(), original, TaskEditorDraft()),
+            NormalizedTaskInput(
+                title = original.title,
+                projectId = null,
+                modeId = null,
+                sectionId = "morning",
+                plannedStartMinute = original.plannedStartMinute,
+                estimateSeconds = original.estimateSeconds,
+                actualStartMinute = 9 * 60,
+                actualEndMinute = 10 * 60,
+            ),
+        )
+
+        val task = projected.allEntries.first { it.id == original.id }
+        assertEquals(LifecycleState.COMPLETED, task.lifecycleState)
+        assertTrue(task.firstStartedAt!!.contains("T09:00"))
+        assertTrue(task.lastEndedAt!!.contains("T10:00"))
+        assertEquals(60 * 60, task.completedDurationSeconds)
+        assertNull(projected.runningTask)
+    }
+
+    @Test
     fun dragTargetUsesStableSnapshotThresholdsDuringProvisionalAnimation() {
         val bounds = mapOf(
             "entry-a" to Rect(0f, 0f, 100f, 50f),

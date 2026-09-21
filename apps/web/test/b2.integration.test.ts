@@ -5,6 +5,7 @@ import { isMoveEntryRequest, moveEntry } from "../worker/application/entry-plann
 import { loadCurrentTaskChuteDay } from "../worker/application/load-current-day";
 import { setEntryPlannedStart } from "../worker/application/planned-start";
 import { reorderEntries } from "../worker/application/reorder-entries";
+import { resolveTaskChuteDay } from "../worker/domain/taskchute-day";
 import { uuidv7 } from "../src/shared/uuidv7";
 
 const createdAt = "2026-08-28T05:00:00.000Z";
@@ -394,6 +395,26 @@ describe.sequential("Dogfood Day B2 planned start", () => {
     expect(sectionlessStart).toMatchObject({ section_id: sectionlessFixture.sectionIds[0], placement_revision: 1 });
     expect(await env.APP_DB.prepare("SELECT planned_start_minute FROM entries WHERE id = ?")
       .bind(sectionless).first<number | null>("planned_start_minute")).toBeNull();
+  });
+
+  it("rejects a current-Day MoveEntry destination whose canonical Section has ended", async () => {
+    const fixture = await seedTimedDay();
+    const currentLogicalDate = resolveTaskChuteDay(new Date().toISOString(), {
+      timezone: "UTC",
+      boundaryMinutes: 300,
+    }).logicalDate;
+    await env.APP_DB.prepare("UPDATE taskchute_days SET logical_date = ? WHERE id = ?")
+      .bind(currentLogicalDate, fixture.dayId).run();
+    const source = await addEntry(fixture.userId, fixture.dayId, fixture.sectionIds[0]!, 1);
+
+    await expect(moveEntry(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(),
+      entry_id: source,
+      taskchute_day_id: fixture.dayId,
+      section_id: fixture.sectionIds[1]!,
+      expected_placement_revision: 0,
+    })).rejects.toMatchObject({ code: "resource_conflict" });
+    expect(await revision(fixture.dayId)).toBe(0);
   });
 
   it("converges concurrent losers and leaves an intentionally ambiguous failure safely retryable", async () => {

@@ -213,6 +213,25 @@ class TodayDirectManipulationTest {
     }
 
     @Test
+    fun lifecycleDeleteUsesExistingEntryDeleteCompletedEndpoint() {
+        val requests = mutableListOf<Triple<String, String, String?>>()
+        val repository = TodayDirectManipulationHttpRepository(
+            request = { method, path, body ->
+                requests += Triple(method, path, body)
+                TodayHttpResponse(200, "{}")
+            },
+        )
+
+        assertEquals(
+            DirectManipulationResult.Success,
+            repository.execute(DirectManipulationRequest.HardDelete("op-hard-delete", "entry-1", "day-1", 7)),
+        )
+        assertEquals("/api/v1/entries/entry-1/delete-completed", requests.single().second)
+        assertTrue(requests.single().third.orEmpty().contains("\"entry_id\":\"entry-1\""))
+        assertTrue(requests.single().third.orEmpty().contains("\"expected_placement_revision\":7"))
+    }
+
+    @Test
     fun unestablishedPastTargetIsRejectedBeforeMutation() {
         val requests = mutableListOf<DirectManipulationRequest>()
         val controller = TodayDirectManipulationController(

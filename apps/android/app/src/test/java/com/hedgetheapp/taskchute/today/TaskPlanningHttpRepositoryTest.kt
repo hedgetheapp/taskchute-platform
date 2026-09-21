@@ -145,6 +145,67 @@ class TaskPlanningHttpRepositoryTest {
         assertEquals("/api/v1/entries/entry-1/mode", requests.single().second)
         assertTrue(requests.single().third!!.contains("\"mode_id\":\"mode-new\""))
     }
+
+    @Test
+    fun completedEditorUsesExistingExecutionTimesCommand() {
+        val requests = mutableListOf<Triple<String, String, String?>>()
+        val task = TodayTask(
+            id = "entry-1",
+            title = "Completed task",
+            lifecycleState = LifecycleState.COMPLETED,
+            project = null,
+            mode = null,
+            estimateSeconds = 1_800,
+            plannedStartMinute = 540,
+            executionId = "execution-1",
+            activeStartedAt = null,
+            routineDerived = false,
+            taskId = "task-1",
+            firstStartedAt = "2026-09-14T09:00:00Z",
+            lastEndedAt = "2026-09-14T09:30:00Z",
+        )
+        val day = currentDay().copy(
+            establishmentTimezone = "UTC",
+            sections = listOf(TodaySection("section-1", "Morning", 480, 720, listOf(task))),
+        )
+        val repository = TaskPlanningHttpRepository { method, path, body ->
+            requests += Triple(method, path, body)
+            TodayHttpResponse(204, null)
+        }
+
+        val result = repository.save(
+            TaskEditorState(
+                mode = TaskEditorMode.EDIT,
+                day = day,
+                originalTask = task,
+                draft = TaskEditorDraft(
+                    title = task.title,
+                    actualStartText = "0900",
+                    actualEndText = "0930",
+                ),
+                capability = TaskEditorCapability.COMPLETED_METADATA,
+            ),
+            NormalizedTaskInput(
+                title = task.title,
+                projectId = null,
+                modeId = null,
+                sectionId = "section-1",
+                plannedStartMinute = 540,
+                estimateSeconds = 1_800,
+                actualStartMinute = 540,
+                actualEndMinute = 570,
+            ),
+        )
+
+        assertEquals(PlanningSaveResult.Success, result)
+        assertEquals(1, requests.size)
+        assertEquals("/api/v1/entries/entry-1/execution-times", requests.single().second)
+        assertTrue(requests.single().third!!.contains("\"expected_lifecycle_state\":\"completed\""))
+        assertTrue(requests.single().third!!.contains("\"execution_id\":\"execution-1\""))
+        assertTrue(requests.single().third!!.contains("\"started_at\":\"2026-09-14T09:00:00Z\""))
+        assertTrue(requests.single().third!!.contains("\"ended_at\":\"2026-09-14T09:30:00Z\""))
+    }
+
     @Test
     fun unauthorizedReferenceOrMutationDoesNotLookLikeSuccess() {
         val repository = TaskPlanningHttpRepository { _, _, _ -> TodayHttpResponse(401, null) }

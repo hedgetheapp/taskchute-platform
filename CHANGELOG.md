@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Android lifecycle editor / current-Day delete / placement guard / forecast parity
+
+- Current logical Dayのordinary Planned / Running / Completed editor capabilityを実装し、`SetExecutionTimes`、D-116A historical Project / Mode、compact actual-time parserを既存contractへ接続。
+- current-Day Running / Completed単体削除を既存`DeleteCompletedEntry` route / DTO / operationへ接続。D-067 Completed semantics、D-128 Running guard、Task / Project / Mode / Routine identity保持、atomic deleteを維持。
+- D-129のcanonical Section `actual_end_instant` guardをAndroid D&D preview / dropとWorkerのentry planning / bulk moveへ適用し、ended Sectionを新規manual placementから除外。
+- Androidの開始・終了見込みをWeb Start Forecast相当へ整合し、見積・実績durationを総分数表示へ統一。Header DatePickerとTask Actions DatePickerを共有化し、RunningTaskPanelを72dp内で上下中央揃え。
+- Android JVM `141 / 141`、full Worker/Web `37 files / 340 tests`、typecheck、instrumentation compile、debug assembleはPASS。authenticated runtime、Galaxy S23、persistent nonprod destructive delete E2E、production、Releaseは未確認。
+
 ### D-127 Android Drag Immediate-Cancel Corrective
 
 - `TodayTaskRow`のvertical long-press drag ownerをouter stable Boxの`rowDragGestureModifier` 1個へ限定。inner Task content Columnに残っていた二重`pointerInput`を削除し、horizontal swipeは維持する。

@@ -8,6 +8,7 @@ enum class TaskEditorMode {
 enum class TaskEditorCapability {
     FULL_PLANNING,
     RUNNING_METADATA,
+    COMPLETED_METADATA,
 }
 
 data class TaskEditorDraft(
@@ -17,6 +18,8 @@ data class TaskEditorDraft(
     val sectionId: String? = null,
     val plannedStartText: String = "",
     val estimateText: String = "",
+    val actualStartText: String = "",
+    val actualEndText: String = "",
 )
 
 data class TaskEditorState(
@@ -39,6 +42,8 @@ data class NormalizedTaskInput(
     val sectionId: String?,
     val plannedStartMinute: Int?,
     val estimateSeconds: Int?,
+    val actualStartMinute: Int? = null,
+    val actualEndMinute: Int? = null,
     val clientTaskId: String? = null,
     val clientEntryId: String? = null,
     val projectTitle: String? = null,
@@ -50,7 +55,7 @@ data class TaskEditorValidation(
     val errorMessage: String?,
 ) {
     companion object {
-        fun validate(draft: TaskEditorDraft): TaskEditorValidation {
+        fun validate(draft: TaskEditorDraft, capability: TaskEditorCapability = TaskEditorCapability.FULL_PLANNING): TaskEditorValidation {
             val title = draft.title.trim()
             if (title.isEmpty()) return invalid("タスク名を入力してください。")
             if (title.length > 300) return invalid("タスク名は300文字以内で入力してください。")
@@ -61,6 +66,17 @@ data class TaskEditorValidation(
             if (draft.estimateText.isNotBlank() && (estimateMinutes == null || estimateMinutes <= 0L || estimateMinutes > Int.MAX_VALUE / 60L)) {
                 return invalid("見積は1分以上の整数で入力してください。")
             }
+            val actualStart = if (draft.actualStartText.isBlank()) null else parseActualClock(draft.actualStartText)
+                ?: return invalid("開始時間は HH:mm（900 / 0900 も可）で入力してください。")
+            val actualEnd = if (draft.actualEndText.isBlank()) null else parseActualClock(draft.actualEndText)
+                ?: return invalid("終了時間は HH:mm（900 / 0900 も可）で入力してください。")
+            if (actualEnd != null && actualStart == null) return invalid("終了時間だけは設定できません。開始時間を入力してください。")
+            if (capability == TaskEditorCapability.RUNNING_METADATA && actualStart == null) {
+                return invalid("実行中タスクは開始時間を入力してください。")
+            }
+            if (capability == TaskEditorCapability.COMPLETED_METADATA && (actualStart == null || actualEnd == null)) {
+                return invalid("完了済みタスクは開始時間と終了時間を入力してください。")
+            }
             return TaskEditorValidation(
                 input = NormalizedTaskInput(
                     title = title,
@@ -69,6 +85,8 @@ data class TaskEditorValidation(
                     sectionId = draft.sectionId,
                     plannedStartMinute = plannedStart,
                     estimateSeconds = estimateMinutes?.times(60L)?.toInt(),
+                    actualStartMinute = actualStart,
+                    actualEndMinute = actualEnd,
                 ),
                 errorMessage = null,
             )
@@ -123,5 +141,22 @@ data class TaskPlanningUiState(
 )
 
 internal fun formatEditorMinute(value: Int?): String = value?.let {
+    "${(it / 60).toString().padStart(2, '0')}:${(it % 60).toString().padStart(2, '0')}"
+} ?: ""
+
+internal fun parseActualClock(value: String): Int? {
+    val trimmed = value.trim()
+    if (trimmed.isEmpty()) return null
+    val digits = when {
+        trimmed.all(Char::isDigit) && trimmed.length in 3..4 -> trimmed.padStart(4, '0')
+        trimmed.matches(Regex("\\d{1,2}:\\d{2}")) -> trimmed.replace(":", "").padStart(4, '0')
+        else -> return null
+    }
+    val hour = digits.substring(0, 2).toIntOrNull() ?: return null
+    val minute = digits.substring(2).toIntOrNull() ?: return null
+    return if (hour in 0..23 && minute in 0..59) hour * 60 + minute else null
+}
+
+internal fun formatActualClock(value: String?): String = parseActualClock(value ?: "")?.let {
     "${(it / 60).toString().padStart(2, '0')}:${(it % 60).toString().padStart(2, '0')}"
 } ?: ""

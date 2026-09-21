@@ -1,5 +1,20 @@
 # Test Matrix
 
+## Android lifecycle editor / current-Day delete / placement guard / forecast parity — 2026-09-21
+
+| ID | Verification target | Evidence | Status |
+|---|---|---|---|
+| ANDROID-LIFECYCLE-EDITOR | Planned / Running / Completed capability matrix and compact actual-time parser | `TaskPlanningControllerTest` covers actual-time validation and lifecycle capability; `TaskPlanningHttpRepositoryTest` covers existing execution-times contract and completed metadata path. | JVM PASS |
+| ANDROID-LIFECYCLE-DELETE | Current-Day Running / Completed single delete | `TodayDirectManipulationTest` covers existing delete endpoint / operation wiring. Worker focused delete integration covers Running atomic delete, replay, and Planned regression. | FOCUSED PASS |
+| D067-COMPLETED-REGRESSION | Completed hard delete authority | Full Worker/Web `37 files / 340 tests` includes the existing D-067 integration suite; current implementation keeps Completed active-execution guard and no-regeneration behavior. | PASS |
+| D129-ENDED-SECTION | Ended current-Day Section manual placement guard | Android target resolver excludes Section whose canonical `actual_end_instant` has passed; Worker entry-planning and bulk Section handlers reject ended destinations while preserving same-Section reorder. Full Worker/Web `37 files / 340 tests` PASS. | PASS |
+| ANDROID-FORECAST-PARITY | Start / end forecast and total-minute duration | New `TodayForecastTest` covers running remaining estimate and planned-start non-barrier; Web duration formatter test covers total minutes. | JVM / FOCUSED WEB PASS |
+| ANDROID-DATEPICKER-PARITY | Header and Task Actions date move UI | Both surfaces use the shared Compose `TaskChuteDatePickerDialog`; no new command or persistence contract. | SOURCE PASS; RUNTIME NOT_RUN |
+| ANDROID-BUILD | Android unit, instrumentation compile, debug APK | `:app:testDebugUnitTest` `141 / 141` PASS; `:app:compileDebugAndroidTestKotlin` PASS; `:app:assembleDebug` PASS. | PASS |
+| ANDROID-DEVICE | Authenticated Android runtime / physical device | No new authenticated runtime or Galaxy S23 evidence is claimed for this batch. | NOT_RUN |
+| NONPROD-DESTRUCTIVE-DELETE | Persistent nonprod Running / Completed hard-delete E2E | Explicit destructive E2E was not run. | NOT_RUN |
+| RELEASE-BOUNDARY | Production / tag / Release | Outside this task contract. | PRODUCTION NOT_RUN / RELEASE NO |
+
 ## D-127 Android Drag Immediate-Cancel Corrective — 2026-09-21
 
 | ID | Verification target | Evidence | Status |

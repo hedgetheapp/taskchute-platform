@@ -2,6 +2,10 @@ package com.hedgetheapp.taskchute.today
 
 import com.hedgetheapp.taskchute.network.JsonParser
 import com.hedgetheapp.taskchute.network.JsonValue
+import java.time.LocalDate
+import java.time.LocalTime
+import java.time.ZoneId
+import java.time.ZonedDateTime
 
 class TaskPlanningHttpRepository(
     private val request: (method: String, path: String, body: String?) -> TodayHttpResponse?,
@@ -63,7 +67,7 @@ class TaskPlanningHttpRepository(
         val currentProjectId = task.project?.id
         val currentModeId = task.mode?.id
         val currentSectionId = editor.day.sections.firstOrNull { section -> section.entries.any { it.id == task.id } }?.id
-        if (editor.capability == TaskEditorCapability.RUNNING_METADATA) {
+        if (editor.capability != TaskEditorCapability.FULL_PLANNING) {
             if (currentProjectId != input.projectId) {
                 when (val result = executeTaskMetadata(task, taskId, input.projectId)) {
                     PlanningHttpResult.Unauthorized -> return PlanningSaveResult.Unauthorized
@@ -78,7 +82,7 @@ class TaskPlanningHttpRepository(
                     is PlanningHttpResult.Success -> Unit
                 }
             }
-            return PlanningSaveResult.Success
+            return executeActualTimes(editor, input, currentSectionId, editor.day.placementRevision)
         }
         if (task.title != input.title || currentProjectId != input.projectId) {
             when (val result = executeTaskMetadata(task, taskId, input.projectId, input.title)) {
@@ -116,7 +120,38 @@ class TaskPlanningHttpRepository(
                 else -> return result
             }
         }
-        return PlanningSaveResult.Success
+        return executeActualTimes(editor, input, input.sectionId, placementRevision)
+    }
+
+    private fun executeActualTimes(
+        editor: TaskEditorState,
+        input: NormalizedTaskInput,
+        sectionIdForPlacement: String?,
+        placementRevision: Int,
+    ): PlanningSaveResult {
+        val task = editor.originalTask ?: return PlanningSaveResult.Success
+        if (input.actualStartMinute == null) return PlanningSaveResult.Success
+        val zone = editor.day.establishmentTimezone?.let { runCatching { ZoneId.of(it) }.getOrNull() }
+            ?: return PlanningSaveResult.Failure("実績時間のタイムゾーンを取得できません。再読み込みしてください。")
+        val startedAt = logicalMinuteToInstant(editor.day, input.actualStartMinute, zone)
+        val endedAt = input.actualEndMinute?.let { logicalMinuteToInstant(editor.day, it, zone) }
+        val expectedStartedAt = task.activeStartedAt ?: task.firstStartedAt
+        val expectedEndedAt = task.lastEndedAt
+        val executionId = task.executionId ?: UUIDv7.next()
+        val expectedPlacement = if (task.lifecycleState == LifecycleState.PLANNED && sectionIdForPlacement == null) {
+            ",\"expected_placement_revision\":$placementRevision"
+        } else {
+            ""
+        }
+        val body = """
+            {"operation_id":"${JsonEncoding.escape(UUIDv7.next())}","entry_id":"${JsonEncoding.escape(task.id)}","execution_id":"${JsonEncoding.escape(executionId)}","expected_lifecycle_state":"${editor.originalTask!!.lifecycleState.name.lowercase()}","started_at":"${JsonEncoding.escape(startedAt)}","ended_at":${endedAt?.let { "\"${JsonEncoding.escape(it)}\"" } ?: "null"},"expected_started_at":${expectedStartedAt?.let { "\"${JsonEncoding.escape(it)}\"" } ?: "null"},"expected_ended_at":${expectedEndedAt?.let { "\"${JsonEncoding.escape(it)}\"" } ?: "null"}$expectedPlacement}
+        """.trimIndent()
+        return execute("POST", "/api/v1/entries/${JsonEncoding.pathSegment(task.id)}/execution-times", body).toSaveResult()
+    }
+
+    private fun logicalMinuteToInstant(day: TodayDay, minute: Int, zone: ZoneId): String {
+        val date = LocalDate.parse(day.logicalDate).plusDays(if (minute < day.establishmentBoundaryMinutes) 1 else 0)
+        return ZonedDateTime.of(date, LocalTime.of(minute / 60, minute % 60), zone).toInstant().toString()
     }
 
     private fun executeSectionMove(

@@ -156,6 +156,6 @@ describe("Day Table actual presentation", () => {
       active_started_at: "2026-08-22T11:30:00.000Z",
     };
     expect(actualDurationSeconds(summary, "2026-08-22T12:00:00.000Z")).toBe(2400);
-    expect(formatActualDuration(5_400)).toBe("1時間30分");
+    expect(formatActualDuration(5_400)).toBe("90分");
   });
 });

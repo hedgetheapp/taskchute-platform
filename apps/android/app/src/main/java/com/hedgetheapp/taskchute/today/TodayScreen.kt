@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -102,7 +103,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.content.Context
-import android.app.DatePickerDialog as AndroidDatePickerDialog
 import android.view.accessibility.AccessibilityManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -117,6 +117,7 @@ import java.time.LocalDate
 import java.time.Instant
 import java.time.ZoneId
 import java.time.ZoneOffset
+import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
 import com.hedgetheapp.taskchute.R
@@ -172,50 +173,32 @@ fun TodayScreen(
         selectionModeActive = false
         selectedEntryIds = emptySet()
     }
-    LaunchedEffect(datePickerEntryIds, state.day?.logicalDate) {
-        val entryIds = datePickerEntryIds ?: return@LaunchedEffect
-        val pickerDay = state.day ?: return@LaunchedEffect
-        val parsed = LocalDate.parse(pickerDay.logicalDate)
-        AndroidDatePickerDialog(
-            context,
-            { _, year, month, date ->
+    val day = state.presentedDay
+    if (headerDatePickerVisible && day != null) {
+        TaskChuteDatePickerDialog(
+            initialLogicalDate = day.logicalDate,
+            onDismissRequest = { headerDatePickerVisible = false },
+            onConfirm = { logicalDate ->
+                headerDatePickerVisible = false
+                controller.loadLogicalDate(logicalDate)
+            },
+        )
+    }
+    if (datePickerEntryIds != null && day != null) {
+        TaskChuteDatePickerDialog(
+            initialLogicalDate = day.logicalDate,
+            onDismissRequest = { datePickerEntryIds = null },
+            onConfirm = { logicalDate ->
+                val entryIds = datePickerEntryIds ?: return@TaskChuteDatePickerDialog
                 datePickerEntryIds = null
                 directManipulationController?.moveToDay(
-                    pickerDay,
+                    day,
                     entryIds,
-                    LocalDate.of(year, month + 1, date).toString(),
+                    logicalDate,
                     "指定した日に移動しました",
                 )
             },
-            parsed.year,
-            parsed.monthValue - 1,
-            parsed.dayOfMonth,
-        ).also { dialog ->
-            dialog.setOnCancelListener { datePickerEntryIds = null }
-            dialog.show()
-        }
-    }
-
-    val day = state.presentedDay
-    if (headerDatePickerVisible && day != null) {
-        val datePickerState = rememberDatePickerState(
-            initialSelectedDateMillis = logicalDateToPickerMillis(day.logicalDate),
         )
-        DatePickerDialog(
-            onDismissRequest = { headerDatePickerVisible = false },
-            confirmButton = {
-                TextButton(onClick = {
-                    val selectedDateMillis = datePickerState.selectedDateMillis
-                    headerDatePickerVisible = false
-                    selectedDateMillis?.let { controller.loadLogicalDate(pickerMillisToLogicalDate(it)) }
-                }) { Text("決定") }
-            },
-            dismissButton = {
-                TextButton(onClick = { headerDatePickerVisible = false }) { Text("キャンセル") }
-            },
-        ) {
-            DatePicker(state = datePickerState)
-        }
     }
     val bulkSelected = day?.takeIf { canPlanDay(it) }
         ?.allEntries
@@ -362,7 +345,14 @@ fun TodayScreen(
             confirmButton = {
                 TextButton(onClick = {
                     deleteEntryIds = null
-                    day?.let { directManipulationController?.delete(it, entryIds) }
+                    day?.let { currentDay ->
+                        val task = currentDay.allEntries.singleOrNull { it.id in entryIds }
+                        if (task != null && task.lifecycleState != LifecycleState.PLANNED) {
+                            directManipulationController?.deleteLifecycle(currentDay, task)
+                        } else {
+                            directManipulationController?.delete(currentDay, entryIds)
+                        }
+                    }
                 }) { Text("削除") }
             },
             dismissButton = { TextButton(onClick = { deleteEntryIds = null }) { Text("キャンセル") } },
@@ -388,6 +378,27 @@ private fun BulkActionBar(
         BulkActionButton("削除", hasSelection, onDelete, Color(0xFFFF6B6B))
         BulkActionButton("解除", true, onClear)
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TaskChuteDatePickerDialog(
+    initialLogicalDate: String,
+    onDismissRequest: () -> Unit,
+    onConfirm: (String) -> Unit,
+) {
+    val datePickerState = rememberDatePickerState(
+        initialSelectedDateMillis = logicalDateToPickerMillis(initialLogicalDate),
+    )
+    DatePickerDialog(
+        onDismissRequest = onDismissRequest,
+        confirmButton = {
+            TextButton(onClick = {
+                datePickerState.selectedDateMillis?.let { onConfirm(pickerMillisToLogicalDate(it)) }
+            }) { Text("決定") }
+        },
+        dismissButton = { TextButton(onClick = onDismissRequest) { Text("キャンセル") } },
+    ) { DatePicker(state = datePickerState) }
 }
 
 @Composable
@@ -451,6 +462,7 @@ private fun TodayContent(
             entryAnchorEligible = current.entryAnchorEligibleSnapshot,
             emptySectionBounds = current.emptySectionBoundsSnapshot,
             emptySectionIds = current.emptySectionIdsSnapshot,
+            endedSectionIds = endedSectionIdsForAndroid(day),
         )
         dragState = current.copy(
             positionY = positionY,
@@ -600,22 +612,21 @@ private fun TodayContent(
                 if (section.id !in collapsedSectionIds) items(section.entries, key = { it.id }) { task ->
                     TodayTaskRow(
                         modifier = Modifier.animateItem(),
+                        day = day,
                         task = task,
                         sectionId = section.id,
                         enabled = !state.pendingEntryIds.contains(task.id),
                         controller = controller,
                         showExecutionAction = day.isCurrent,
-                        canEdit = canPlanDay(day) &&
-                            (day.isCurrent || task.lifecycleState == LifecycleState.PLANNED) &&
-                            task.lifecycleState != LifecycleState.COMPLETED && !task.routineDerived && planningController != null,
+                        canEdit = day.isCurrent && !task.routineDerived && planningController != null,
                         onEdit = { planningController?.openEdit(day, task) },
                         canDuplicate = canPlanDay(day) && task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived
                             && directManipulationController != null && directManipulationController.state.pendingEntryIds.isEmpty()
                             && directManipulationController.state.unresolvedRequest == null,
                         onDuplicate = { directManipulationController?.duplicate(day, task) },
                         canOpenNote = task.taskId != null,
-                        canNoteOnly = task.taskId != null &&
-                            (task.lifecycleState == LifecycleState.COMPLETED || task.routineDerived || !canPlanDay(day) || (!day.isCurrent && task.lifecycleState != LifecycleState.PLANNED)),
+                        canNoteOnly = task.taskId != null && !day.isCurrent &&
+                            (task.lifecycleState == LifecycleState.COMPLETED || task.routineDerived || !canPlanDay(day)),
                         onOpenNote = { onOpenTaskNote(task) },
                         selectionModeActive = selectionModeActive,
                         onEnterSelection = { onEnterSelection(task.id) },
@@ -626,6 +637,7 @@ private fun TodayContent(
                         canSelect = directManipulationController?.canSelect(day, task) == true,
                         onToggleSelection = { onToggleSelection(task.id) },
                         canDayOperate = canPlanDay(day) && task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived && directManipulationController != null,
+                        canLifecycleDelete = day.isCurrent && task.lifecycleState != LifecycleState.PLANNED && !task.routineDerived && directManipulationController != null,
                         onMovePrevious = { directManipulationController?.moveToDay(day, setOf(task.id), LocalDate.parse(day.logicalDate).minusDays(1).toString(), "前の日へ移動しました") },
                         onMoveNext = { directManipulationController?.moveToDay(day, setOf(task.id), LocalDate.parse(day.logicalDate).plusDays(1).toString(), "次の日へ移動しました") },
                         onPickDate = { onOpenDatePicker(setOf(task.id)) },
@@ -692,22 +704,21 @@ private fun TodayContent(
                 if (UNSECTIONED_DROP_KEY !in collapsedSectionIds) items(renderDay.unsectionedEntries, key = { it.id }) { task ->
                     TodayTaskRow(
                         modifier = Modifier.animateItem(),
+                        day = day,
                         task = task,
                         sectionId = null,
                         enabled = !state.pendingEntryIds.contains(task.id),
                         controller = controller,
                         showExecutionAction = day.isCurrent,
-                        canEdit = canPlanDay(day) &&
-                            (day.isCurrent || task.lifecycleState == LifecycleState.PLANNED) &&
-                            task.lifecycleState != LifecycleState.COMPLETED && !task.routineDerived && planningController != null,
+                        canEdit = day.isCurrent && !task.routineDerived && planningController != null,
                         onEdit = { planningController?.openEdit(day, task) },
                         canDuplicate = canPlanDay(day) && task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived
                             && directManipulationController != null && directManipulationController.state.pendingEntryIds.isEmpty()
                             && directManipulationController.state.unresolvedRequest == null,
                         onDuplicate = { directManipulationController?.duplicate(day, task) },
                         canOpenNote = task.taskId != null,
-                        canNoteOnly = task.taskId != null &&
-                            (task.lifecycleState == LifecycleState.COMPLETED || task.routineDerived || !canPlanDay(day) || (!day.isCurrent && task.lifecycleState != LifecycleState.PLANNED)),
+                        canNoteOnly = task.taskId != null && !day.isCurrent &&
+                            (task.lifecycleState == LifecycleState.COMPLETED || task.routineDerived || !canPlanDay(day)),
                         onOpenNote = { onOpenTaskNote(task) },
                         selectionModeActive = selectionModeActive,
                         onEnterSelection = { onEnterSelection(task.id) },
@@ -718,6 +729,7 @@ private fun TodayContent(
                         canSelect = directManipulationController?.canSelect(day, task) == true,
                         onToggleSelection = { onToggleSelection(task.id) },
                         canDayOperate = canPlanDay(day) && task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived && directManipulationController != null,
+                        canLifecycleDelete = day.isCurrent && task.lifecycleState != LifecycleState.PLANNED && !task.routineDerived && directManipulationController != null,
                         onMovePrevious = { directManipulationController?.moveToDay(day, setOf(task.id), LocalDate.parse(day.logicalDate).minusDays(1).toString(), "前の日へ移動しました") },
                         onMoveNext = { directManipulationController?.moveToDay(day, setOf(task.id), LocalDate.parse(day.logicalDate).plusDays(1).toString(), "次の日へ移動しました") },
                         onPickDate = { onOpenDatePicker(setOf(task.id)) },
@@ -822,11 +834,13 @@ internal fun resolveAndroidDropTarget(
     entryAnchorEligible: Map<String, Boolean> = emptyMap(),
     emptySectionBounds: Map<String, Rect>,
     emptySectionIds: Map<String, String?>,
+    endedSectionIds: Set<String> = emptySet(),
 ): AndroidDropTarget? {
     val entryTarget = entryBounds.entries
         .filter {
             it.key != sourceEntryId &&
                 entryAnchorEligible[it.key] != false &&
+                entrySectionIds[it.key] !in endedSectionIds &&
                 positionY >= it.value.top && positionY <= it.value.bottom
         }
         .minWithOrNull(compareBy({ kotlin.math.abs(positionY - it.value.center.y) }, { it.key }))
@@ -840,7 +854,7 @@ internal fun resolveAndroidDropTarget(
     }
 
     val emptyTarget = emptySectionBounds.entries
-        .filter { positionY >= it.value.top && positionY <= it.value.bottom }
+        .filter { emptySectionIds[it.key] !in endedSectionIds && positionY >= it.value.top && positionY <= it.value.bottom }
         .minWithOrNull(compareBy({ kotlin.math.abs(positionY - it.value.center.y) }, { it.key }))
         ?: return null
     return AndroidDropTarget(
@@ -849,6 +863,20 @@ internal fun resolveAndroidDropTarget(
         anchorEntryId = null,
         edge = null,
     )
+}
+
+private fun endedSectionIdsForAndroid(day: TodayDay): Set<String> {
+    if (!day.isCurrent) return emptySet()
+    val zone = day.establishmentTimezone?.let { runCatching { ZoneId.of(it) }.getOrNull() } ?: return emptySet()
+    val nowInstant = Instant.now()
+    val now = ZonedDateTime.now(zone)
+    val localMinute = now.hour * 60 + now.minute
+    val logicalMinute = if (localMinute < day.establishmentBoundaryMinutes) localMinute + 1440 else localMinute
+    return day.sections.filter { section ->
+        section.actualEndInstant?.let { end ->
+            runCatching { !nowInstant.isBefore(Instant.parse(end)) }.getOrNull()
+        } ?: (section.endMinute != null && section.endMinute <= logicalMinute)
+    }.mapTo(mutableSetOf()) { it.id }
 }
 
 @Composable
@@ -1025,6 +1053,7 @@ private fun SectionHeader(
 @Composable
 private fun TodayTaskRow(
     modifier: Modifier = Modifier,
+    day: TodayDay,
     task: TodayTask,
     sectionId: String?,
     enabled: Boolean,
@@ -1046,6 +1075,7 @@ private fun TodayTaskRow(
     canSelect: Boolean,
     onToggleSelection: () -> Unit,
     canDayOperate: Boolean,
+    canLifecycleDelete: Boolean,
     onMovePrevious: () -> Unit,
     onMoveNext: () -> Unit,
     onPickDate: () -> Unit,
@@ -1072,7 +1102,7 @@ private fun TodayTaskRow(
         if (!swipeMenuOpen || selectionModeActive) swipeOffset = 0f
     }
     val insertionPadding by animateDpAsState(if (dropTarget) 6.dp else 0.dp, label = "drop-target-padding")
-    val hasActions = canEdit || canDuplicate || canOpenNote || canDayOperate
+    val hasActions = canEdit || canDuplicate || canOpenNote || canDayOperate || canLifecycleDelete
     val canSwipeNote = canOpenNote && (canEdit || canNoteOnly)
     val hasOtherActions = hasActions && !canNoteOnly
     val swipeActionCount = (if (canEdit) 1 else 0) + (if (canSwipeNote) 1 else 0) + (if (hasOtherActions) 1 else 0)
@@ -1199,7 +1229,7 @@ private fun TodayTaskRow(
                         onToggleSelection = onToggleSelection,
                     )
                 } else {
-                    TaskProjectionSlot(task)
+                    TaskProjectionSlot(task, day)
                 }
                 Spacer(Modifier.width(4.dp))
                 val canEnterSelection = !selectionModeActive && canSelect
@@ -1344,6 +1374,8 @@ private fun TodayTaskRow(
                     TaskActionRow(R.drawable.ic_material_chevron_right_24, "次の日へ移動", onClick = { actionsSheetOpen = false; onMoveNext() })
                     TaskActionRow(R.drawable.ic_material_schedule_24, "日付を移動", onClick = { actionsSheetOpen = false; onPickDate() })
                     TaskActionRow(R.drawable.ic_material_delete_24, "削除", destructive = true, onClick = { actionsSheetOpen = false; onDelete() })
+                } else if (canLifecycleDelete) {
+                    TaskActionRow(R.drawable.ic_material_delete_24, "削除", destructive = true, onClick = { actionsSheetOpen = false; onDelete() })
                 }
             }
         }
@@ -1351,11 +1383,10 @@ private fun TodayTaskRow(
 }
 
 @Composable
-private fun TaskProjectionSlot(task: TodayTask) {
-    val projectionStart = formatMinute(task.plannedStartMinute)
-    val projectionEnd = task.plannedStartMinute
-        ?.let { start -> task.estimateSeconds?.let { start + it / 60 } }
-        .let(::formatMinute)
+private fun TaskProjectionSlot(task: TodayTask, day: TodayDay? = null) {
+    val forecast = day?.let { forecastForTask(it, task) }
+    val projectionStart = formatMinute(forecast?.first)
+    val projectionEnd = formatMinute(forecast?.second)
     Box(
         modifier = Modifier.size(width = 48.dp, height = 84.dp)
             .semantics {
@@ -1617,7 +1648,7 @@ private fun OperationFailedPanel() {
 private fun RunningTaskPanel(task: TodayTask, controller: TodayController, enabled: Boolean, modifier: Modifier = Modifier) {
     Card(modifier = modifier.fillMaxWidth().height(72.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFF1E2A33)), shape = RoundedCornerShape(26.dp), elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            modifier = Modifier.fillMaxWidth().fillMaxHeight().padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
@@ -1642,12 +1673,12 @@ private fun TaskEditorForm(controller: TaskPlanningController, state: TaskPlanni
     val editor = state.editor ?: return
     val references = state.references
     val draft = editor.draft
-    val runningMetadataOnly = editor.capability == TaskEditorCapability.RUNNING_METADATA
-    val titleEditable = editor.mode == TaskEditorMode.CREATE || editor.day.isCurrent
+    val lifecycleMetadataOnly = editor.capability != TaskEditorCapability.FULL_PLANNING
+    val titleEditable = editor.mode == TaskEditorMode.CREATE || editor.capability == TaskEditorCapability.FULL_PLANNING
     var projectExpanded by remember(editor) { mutableStateOf(false) }
     var modeExpanded by remember(editor) { mutableStateOf(false) }
     var sectionExpanded by remember(editor) { mutableStateOf(false) }
-    val validation = TaskEditorValidation.validate(draft)
+    val validation = TaskEditorValidation.validate(draft, editor.capability)
     val selectedProject = references?.projects?.firstOrNull { it.id == draft.projectId }
     val selectedMode = references?.modes?.firstOrNull { it.id == draft.modeId }
     val selectedSection = editor.day.sections.firstOrNull { it.id == draft.sectionId }
@@ -1664,12 +1695,12 @@ private fun TaskEditorForm(controller: TaskPlanningController, state: TaskPlanni
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(
-            if (runningMetadataOnly) "実行中タスクの編集" else if (editor.mode == TaskEditorMode.CREATE) "タスクを追加" else "タスクを編集",
+            if (lifecycleMetadataOnly) "実績タスクの編集" else if (editor.mode == TaskEditorMode.CREATE) "タスクを追加" else "タスクを編集",
             fontSize = 22.sp,
             fontWeight = FontWeight.Bold,
             color = TaskChuteColors.PrimaryText,
         )
-        if (runningMetadataOnly) {
+        if (lifecycleMetadataOnly) {
             Text("Task名: ${draft.title}", color = TaskChuteColors.SecondaryText)
         } else {
             CompactFigmaTextField(
@@ -1698,7 +1729,7 @@ private fun TaskEditorForm(controller: TaskPlanningController, state: TaskPlanni
             onSelected = { controller.updateDraft(draft.copy(modeId = it)); modeExpanded = false },
             enabled = references != null && !state.loadingReferences && !state.saving,
         )
-        if (!runningMetadataOnly) {
+        if (!lifecycleMetadataOnly) {
         ReferencePicker(
             label = "Section",
             value = selectedSection?.title ?: "なし",
@@ -1732,6 +1763,24 @@ private fun TaskEditorForm(controller: TaskPlanningController, state: TaskPlanni
             enabled = !state.saving,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         )
+        }
+        if (editor.day.isCurrent) {
+            CompactFigmaTextField(
+                value = draft.actualStartText,
+                onValueChange = { controller.updateDraft(draft.copy(actualStartText = it)) },
+                label = "開始時間",
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !state.saving,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            )
+            CompactFigmaTextField(
+                value = draft.actualEndText,
+                onValueChange = { controller.updateDraft(draft.copy(actualEndText = it)) },
+                label = "終了時間",
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !state.saving,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            )
         }
         state.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         if (references == null && !state.loadingReferences) {
@@ -1978,12 +2027,9 @@ private fun formatWeekday(value: String): String = runCatching {
 
 private fun formatMinute(value: Int?): String = value?.let { (it / 60).toString().padStart(2, '0') + ":" + (it % 60).toString().padStart(2, '0') } ?: "--:--"
 
-private fun formatEstimate(seconds: Int): String = if (seconds < 3600) "${seconds / 60}分" else "${seconds / 3600}時間${(seconds % 3600) / 60}分"
+private fun formatEstimate(seconds: Int): String = "${seconds / 60}分"
 
-private fun formatDuration(seconds: Int?): String = seconds?.let {
-    if (it < 3600) (it / 60).toString() + "分" else
-        (it / 3600).toString() + "時間" + ((it % 3600) / 60).toString() + "分"
-} ?: "--"
+private fun formatDuration(seconds: Int?): String = seconds?.let { "${it / 60}分" } ?: "--"
 private fun timeRangeText(task: TodayTask): String? {
     if (task.lifecycleState == LifecycleState.PLANNED) return null
     val start = task.firstStartedAt ?: task.activeStartedAt

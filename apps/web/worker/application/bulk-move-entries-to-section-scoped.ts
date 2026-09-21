@@ -216,12 +216,21 @@ export async function bulkMoveEntriesToSectionScoped(
 
   const currentSection = request.section_id === null
     ? null
-    : await db.prepare(`SELECT logical_start_minute, logical_end_minute FROM taskchute_day_section_contexts
+    : await db.prepare(`SELECT logical_start_minute, logical_end_minute, actual_end_instant FROM taskchute_day_section_contexts
       WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id = ?
         AND logical_start_minute IS NOT NULL AND logical_end_minute IS NOT NULL`)
-      .bind(appUserId, request.taskchute_day_id, request.section_id).first<{ logical_start_minute: number; logical_end_minute: number }>();
+      .bind(appUserId, request.taskchute_day_id, request.section_id).first<{
+        logical_start_minute: number;
+        logical_end_minute: number;
+        actual_end_instant: string | null;
+      }>();
   if (request.section_id !== null && !currentSection) return reject(
     db, appUserId, request, requestFingerprint, "resource_not_found", "Section is unavailable in this TaskChuteDay",
+  );
+  if (request.section_id !== null && currentSection?.actual_end_instant
+    && Date.parse(currentSection.actual_end_instant) <= Date.parse(now)) return reject(
+    db, appUserId, request, requestFingerprint, "resource_conflict",
+    "The destination Section has already ended for the current logical Day",
   );
   const targetPlannedStart = currentSection?.logical_start_minute ?? null;
   const idsJson = JSON.stringify(request.entry_ids);

@@ -81,7 +81,8 @@ async function seed(options: { dayDate?: string } = {}) {
     env.APP_DB.prepare("INSERT INTO lifecycle_command_guards (app_user_id, operation_id, entry_id, execution_id, command_type) VALUES (?, ?, ?, ?, 'CompleteEntry')").bind(userId, uuidv7(), ordinaryEntryId, ordinaryExecutionIds[1]),
   ]);
   return { userId, dayId, projectId, ordinaryTaskId, ordinaryEntryId, routineTaskId, routineDefinitionId, routineOccurrenceId,
-    routineEntryId, otherEntryId, plannedEntryId, runningEntryId, ordinaryExecutionIds, routineExecutionId, otherExecutionId };
+    routineEntryId, otherEntryId, plannedEntryId, runningEntryId, runningTaskId, runningExecutionId,
+    ordinaryExecutionIds, routineExecutionId, otherExecutionId };
 }
 
 function requestFor(fixture: Awaited<ReturnType<typeof seed>>, entryId: string, revision = 0) {
@@ -122,13 +123,28 @@ describe.sequential("DeleteCompletedEntry", () => {
     expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM entries WHERE routine_occurrence_id = ?").bind(fixture.routineOccurrenceId).first("count")).toBe(0);
   });
 
-  it.each(["planned", "running"] as const)("rejects %s and keeps all state", async (state) => {
+  it("rejects planned and keeps all state", async () => {
     const fixture = await seed();
-    const entryId = state === "planned" ? fixture.plannedEntryId : fixture.runningEntryId;
     const before = await env.APP_DB.prepare("SELECT placement_revision FROM taskchute_days WHERE id = ?").bind(fixture.dayId).first("placement_revision");
-    await expect(deleteCompletedEntry(env.APP_DB, fixture.userId, requestFor(fixture, entryId), now)).rejects.toMatchObject({ code: "resource_conflict" });
-    expect(await env.APP_DB.prepare("SELECT id FROM entries WHERE id = ?").bind(entryId).first()).toEqual({ id: entryId });
+    await expect(deleteCompletedEntry(env.APP_DB, fixture.userId, requestFor(fixture, fixture.plannedEntryId), now)).rejects.toMatchObject({ code: "resource_conflict" });
+    expect(await env.APP_DB.prepare("SELECT id FROM entries WHERE id = ?").bind(fixture.plannedEntryId).first()).toEqual({ id: fixture.plannedEntryId });
     expect(await env.APP_DB.prepare("SELECT placement_revision FROM taskchute_days WHERE id = ?").bind(fixture.dayId).first("placement_revision")).toEqual(before);
+  });
+
+  it("deletes a current-Day running Entry with its active Execution and replays", async () => {
+    const fixture = await seed();
+    const request = requestFor(fixture, fixture.runningEntryId);
+    const first = await deleteCompletedEntry(env.APP_DB, fixture.userId, request, now);
+    expect(first).toEqual({
+      entry_id: fixture.runningEntryId,
+      deleted_execution_ids: [fixture.runningExecutionId],
+      taskchute_day_id: fixture.dayId,
+      placement_revision: 1,
+    });
+    expect(await deleteCompletedEntry(env.APP_DB, fixture.userId, request, now)).toEqual(first);
+    expect(await env.APP_DB.prepare("SELECT id FROM entries WHERE id = ?").bind(fixture.runningEntryId).first()).toBeNull();
+    expect(await env.APP_DB.prepare("SELECT id FROM executions WHERE entry_id = ?").bind(fixture.runningEntryId).first()).toBeNull();
+    expect(await env.APP_DB.prepare("SELECT id FROM tasks WHERE id = ?").bind(fixture.runningTaskId).first()).toEqual({ id: fixture.runningTaskId });
   });
 
   it("rejects stale, past, future, owner mismatch, active anomaly and operation misuse", async () => {
@@ -141,7 +157,6 @@ describe.sequential("DeleteCompletedEntry", () => {
     const otherUser = uuidv7();
     await env.APP_DB.prepare("INSERT INTO app_users (id, created_at) VALUES (?, ?)").bind(otherUser, now).run();
     await expect(deleteCompletedEntry(env.APP_DB, otherUser, requestFor(fixture, fixture.ordinaryEntryId), now)).rejects.toMatchObject({ code: "resource_not_found" });
-    await expect(deleteCompletedEntry(env.APP_DB, fixture.userId, requestFor(fixture, fixture.runningEntryId), now)).rejects.toMatchObject({ code: "resource_conflict" });
     const active = await seed();
     await env.APP_DB.prepare("UPDATE entries SET lifecycle_state = 'completed' WHERE id = ?").bind(active.runningEntryId).run();
     await expect(deleteCompletedEntry(env.APP_DB, active.userId, requestFor(active, active.runningEntryId), now)).rejects.toMatchObject({ code: "resource_conflict" });
