@@ -668,6 +668,14 @@ D-066はcurrent Dayのordinary Task mutationに限るWeb UX contractである。
 - mutation scopeはtarget / dependent target単位で衝突判定し、ordinary Day全体を`mutationLocked`でfreezeしない。auth、Day navigation、initial Section、settings等のglobal barrierは維持する。
 - sent operationのrevision conflict / ambiguous outcomeではoverlayと未送信queueを止め、canonical reconcile後に成功を確定できなければexact operationを保持してretryする。navigation / reloadではpending stateを誤って破棄しない。
 
+## D-129 Current-Day ended Section manual placement guard
+
+For the server-authoritative current TaskChuteDay, a manual placement that changes an Entry's configured Section membership must not target a frozen Day Section whose end boundary is already at or before the effective current instant. The current Section, future Sections, and `Sectionなし` remain valid destinations.
+
+This is a destination guard, not an automatic overdue migration. Existing overdue Entries remain where they are unless another approved capability such as D-082 moves them. Same-Section reorder or other operations that do not change Section membership are not rejected by D-129 alone. Running / Completed execution-first authority remains unchanged.
+
+Pointer/touch D&D, Task Editor Section selection, Bulk Section change, and other explicit cross-Section manual placement surfaces must expose the same eligibility. Clients must not show an invalid drop slot / reflow preview for an ended Section, and server placement commands must enforce the guard using frozen Day Section context and the effective current instant. Existing owner scope, D-043 Section/planned-start synchronization, D-081 execution-first ordering, placement revision, CAS, exact replay, and ambiguity semantics remain authoritative. No schema or migration is required.
+
 ## D-128 Current-Day Running Entry hard delete extension
 
 D-128 extends the D-067 hard-delete boundary only for a single canonical `running` Entry on the server-authoritative current TaskChuteDay. Android may invoke the action only from the current Day's Task Actions `その他 → 削除` after explicit destructive confirmation. Past / future Running or Completed Entries and Running / Completed bulk delete remain unavailable.

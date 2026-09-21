@@ -1,5 +1,13 @@
 # Decisions
 
+## D-129 — Current-Day ended Section manual placement guard v0.1
+
+Status: **Approved**
+
+Canonical Decision: `docs/decisions/D-129_CURRENT_DAY_ENDED_SECTION_MANUAL_PLACEMENT_GUARD_V01.md`。
+
+current logical Dayでは、effective current instant時点ですでに終了したconfigured Sectionを、planned Entryの新しいmanual placement destinationとして選べない。current / future Sectionと`Sectionなし`はtarget可能。既存overdue Entryは自動移動せず、同一Section内reorder等のmembership不変操作はD-129だけでは禁止しない。D&D / Task Editor Section変更 / Bulk Section change等のUIとserver command guardを一致させ、invalid destinationではdrop previewも表示しない。D-043 / D-081 / placement revision / retry authorityは維持し、schema / migration / dependencyは追加しない。
+
 ## D-128 — Current-Day Running Entry hard delete v0.1
 
 Status: **Approved**

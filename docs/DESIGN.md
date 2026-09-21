@@ -66,6 +66,11 @@ tealのoutline + subtle backgroundで強調する。source Section側はTaskが�
 Drop成功後はtarget Sectionのplanned tailへ追加されたcanonical stateへreconcileするが、target Sectionの
 local collapsed stateは維持する。Task / Section border geometryはD-121 correctiveの0dp cornerを維持する。
 
+D-129によりcurrent Dayで終了済みのconfigured Sectionはmanual placement destinationにしない。
+D&Dではended Sectionをdrop targetとして強調せず、仮drop slot / reflow previewも表示しない。current Section、
+future Section、`Sectionなし`はtarget可能とし、既存overdue Entryは自動移動しない。同一SectionではD-081の
+Running / Completed execution-first groupより前へPlanned Taskを仮配置しない。
+
 ## D-121 Android unified dark UI / task interaction refinement
 
 AndroidのToday / Notes / Settingsは共通のdark visual systemを使い、bottom navigationは
@@ -690,6 +695,14 @@ Current-Day ordinary planned Taskのtitle、Project、Mode、Section、estimate�
 先行responseが返っても、effective projectionはcanonical projectionへ残存pending intentを重ねる。Task title / Project editorはpending overlayをdraft sourceとして使用し、同じ`UpdateTaskMetadata` command familyでもfield-level convergenceを保つ。D&D/reorderは既存placement busy境界を維持する。
 
 ## Android Today lifecycle-aware Task Editor / Task Actions parity
+
+### Android Task Row projection / duration / Running panel parity
+
+- Task Row左48dpは`開始見込み → 終了見込み`として扱う。Plannedの開始見込みはWeb Start Forecastと同じderived algorithmを使い、current Dayではeffective nowをanchorにactive Executionの残り見積を先に加算してから、timed Section内のPlanned Entryをdisplay orderで累積する。planned startはforecast barrierにしない。
+- Plannedの終了見込みは`開始見込み + Entry見積`。Webでforecast対象外となる状態（Sectionなし、past record-none等）では見込みを表示しない。
+- 左projectionへactual Execution timestampを混在させない。actual開始 / 終了はExecution fact / lifecycle-aware editor側の責務とする。
+- Task Rowの見積時間・実績時間は常に総分数で表示する。例: `30分`、`90分`、`120分`。`1時間30分`のようなhour + minute表示へ切り替えない。
+- RunningTaskPanelは72dp高のsurface内で、左の`実行中 + Task名`と右の40dp `完了`buttonをCard全体に対して上下中央揃えにする。
 
 current established Dayのordinary Entryはlifecycleごとに同じhigh-opening Task Editor shellを使い、編集可能fieldだけを切り替える。
 
