@@ -14,7 +14,7 @@ Current logical DayのRunning / Completed単体削除はD-067の既存`DeleteCom
 
 D-129により、current logical Dayでeffective current instant以前に終了したconfigured Sectionは新しいmanual placement destinationにできない。AndroidのD&D preview、drop、Section editorはそのSectionを候補・highlight・provisional slotから除外し、serverのentry planning / bulk move guardと一致させる。既存Entryの保持や同一Section reorderをこのguardだけで禁止しない。
 
-Android Task Rowの開始・終了見込みはWeb Start Forecastのderived projection（current cursor、active Runningのremaining estimate、display order、planned startをbarrierにしない）に合わせる。見積と実績durationはpresentation上は常に総分数で表示する。Header DatePickerとTask Actionsの日付移動は同一Compose DatePicker UI implementationを共有する。
+Android Task RowのPlanned開始・終了見込みはWeb Start Forecastのderived projection（current cursor、active Runningのremaining estimate、display order、planned startをbarrierにしない）に合わせる。D-130によりRunning rowは開始見込みへcanonical actual startを表示し、終了見込みを`actual start + Entry estimate`で表示する。estimateなしでは終了見込みだけ未表示とし、Running遷移後に`--:--`へ戻さない。見積と実績durationはpresentation上は常に総分数で表示する。Header DatePickerとTask Actionsの日付移動は同一Compose DatePicker UI implementationを共有する。
 
 ## D-127 Android Today presentation behavior
 

@@ -700,7 +700,8 @@ Current-Day ordinary planned Taskのtitle、Project、Mode、Section、estimate�
 
 - Task Row左48dpは`開始見込み → 終了見込み`として扱う。Plannedの開始見込みはWeb Start Forecastと同じderived algorithmを使い、current Dayではeffective nowをanchorにactive Executionの残り見積を先に加算してから、timed Section内のPlanned Entryをdisplay orderで累積する。planned startはforecast barrierにしない。
 - Plannedの終了見込みは`開始見込み + Entry見積`。Webでforecast対象外となる状態（Sectionなし、past record-none等）では見込みを表示しない。
-- 左projectionへactual Execution timestampを混在させない。actual開始 / 終了はExecution fact / lifecycle-aware editor側の責務とする。
+- D-130によりRunning rowは開始見込みへcanonical actual startを表示し、終了見込みを`actual start + Entry見積`で表示する。estimateなしでは終了見込みのみ未表示。Running遷移直後も`--:--`へ戻さない。
+- actual Execution timestampは通常のPlanned forecastへ混在させない。ただしRunning rowだけは開始見込みのauthorityとしてactual startを使う。actual start/end編集自体はExecution fact / lifecycle-aware editor側の責務とする。
 - Task Rowの見積時間・実績時間は常に総分数で表示する。例: `30分`、`90分`、`120分`。`1時間30分`のようなhour + minute表示へ切り替えない。
 - RunningTaskPanelは72dp高のsurface内で、左の`実行中 + Task名`と右の40dp `完了`buttonをCard全体に対して上下中央揃えにする。
 

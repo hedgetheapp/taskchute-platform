@@ -1,5 +1,13 @@
 # Decisions
 
+## D-130 — Android Running Row projection v0.1
+
+Status: **Approved**
+
+Canonical Decision: `docs/decisions/D-130_ANDROID_RUNNING_ROW_PROJECTION_V01.md`。
+
+Android TodayのRunning rowは左48dpの開始見込みにcanonical actual startを表示し、終了見込みを`actual start + Entry estimate`で表示する。estimateなしでは終了見込みだけ未表示。Running遷移後に両値を`--:--`へ戻さない。Plannedは既存Web Start Forecast parityを維持し、Completed behaviorは変更しない。presentation-onlyでありExecution / lifecycle / persistence / API contractは変更しない。
+
 ## D-129 — Current-Day ended Section manual placement guard v0.1
 
 Status: **Approved**
