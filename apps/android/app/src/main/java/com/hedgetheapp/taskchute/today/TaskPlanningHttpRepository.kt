@@ -58,6 +58,12 @@ class TaskPlanningHttpRepository(
                 else -> return result
             }
         }
+        if (input.actualStartMinute != null) {
+            when (val result = executeActualTimesForCreatedEntry(day, input, entryId, placementRevision)) {
+                PlanningSaveResult.Success -> Unit
+                else -> return result
+            }
+        }
         return PlanningSaveResult.Success
     }
 
@@ -147,6 +153,23 @@ class TaskPlanningHttpRepository(
             {"operation_id":"${JsonEncoding.escape(UUIDv7.next())}","entry_id":"${JsonEncoding.escape(task.id)}","execution_id":"${JsonEncoding.escape(executionId)}","expected_lifecycle_state":"${editor.originalTask!!.lifecycleState.name.lowercase()}","started_at":"${JsonEncoding.escape(startedAt)}","ended_at":${endedAt?.let { "\"${JsonEncoding.escape(it)}\"" } ?: "null"},"expected_started_at":${expectedStartedAt?.let { "\"${JsonEncoding.escape(it)}\"" } ?: "null"},"expected_ended_at":${expectedEndedAt?.let { "\"${JsonEncoding.escape(it)}\"" } ?: "null"}$expectedPlacement}
         """.trimIndent()
         return execute("POST", "/api/v1/entries/${JsonEncoding.pathSegment(task.id)}/execution-times", body).toSaveResult()
+    }
+
+    private fun executeActualTimesForCreatedEntry(
+        day: TodayDay,
+        input: NormalizedTaskInput,
+        entryId: String,
+        placementRevision: Int,
+    ): PlanningSaveResult {
+        val zone = day.establishmentTimezone?.let { runCatching { ZoneId.of(it) }.getOrNull() }
+            ?: return PlanningSaveResult.Failure("実績時間のタイムゾーンを取得できません。再読み込みしてください。")
+        val startedAt = logicalMinuteToInstant(day, input.actualStartMinute!!, zone)
+        val endedAt = input.actualEndMinute?.let { logicalMinuteToInstant(day, it, zone) }
+        val expectedPlacement = if (input.sectionId == null) ",\"expected_placement_revision\":$placementRevision" else ""
+        val body = """
+            {"operation_id":"${JsonEncoding.escape(UUIDv7.next())}","entry_id":"${JsonEncoding.escape(entryId)}","execution_id":"${JsonEncoding.escape(UUIDv7.next())}","expected_lifecycle_state":"planned","started_at":"${JsonEncoding.escape(startedAt)}","ended_at":${endedAt?.let { "\"${JsonEncoding.escape(it)}\"" } ?: "null"},"expected_started_at":null,"expected_ended_at":null$expectedPlacement}
+        """.trimIndent()
+        return execute("POST", "/api/v1/entries/${JsonEncoding.pathSegment(entryId)}/execution-times", body).toSaveResult()
     }
 
     private fun logicalMinuteToInstant(day: TodayDay, minute: Int, zone: ZoneId): String {
