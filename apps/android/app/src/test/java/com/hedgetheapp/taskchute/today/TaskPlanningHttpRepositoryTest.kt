@@ -20,7 +20,7 @@ class TaskPlanningHttpRepositoryTest {
             input = NormalizedTaskInput("日本語 \"Task\"", "project-1", "mode-1", "section-1", 600, 900),
         )
 
-        assertEquals(PlanningSaveResult.Success, result)
+        assertEquals(6, (result as PlanningSaveResult.SuccessWithRevision).placementRevision)
         assertEquals(3, requests.size)
         assertEquals("POST", requests[0].first)
         assertEquals("/api/v1/taskchute-days/current/entries", requests[0].second)
@@ -62,12 +62,42 @@ class TaskPlanningHttpRepositoryTest {
             ),
         )
 
-        assertEquals(PlanningSaveResult.Success, result)
+        assertEquals(6, (result as PlanningSaveResult.SuccessWithRevision).placementRevision)
         assertEquals(2, requests.size)
         assertEquals("/api/v1/entries/${extractEntryId(requests[0].third!!)}/execution-times", requests[1].second)
         assertTrue(requests[1].third!!.contains("\"expected_lifecycle_state\":\"planned\""))
         assertTrue(requests[1].third!!.contains("\"started_at\":\"2026-09-14T09:00:00Z\""))
         assertTrue(requests[1].third!!.contains("\"ended_at\":\"2026-09-14T09:30:00Z\""))
+    }
+
+    @Test
+    fun plannedStartOnlyCreateSendsNullEndAndUsesRunningTransitionContract() {
+        val requests = mutableListOf<Triple<String, String, String?>>()
+        val repository = TaskPlanningHttpRepository { method, path, body ->
+            requests += Triple(method, path, body)
+            when (path) {
+                "/api/v1/taskchute-days/current/entries" -> TodayHttpResponse(200, "{\"placement_revision\":6}")
+                else -> TodayHttpResponse(204, null)
+            }
+        }
+
+        val result = repository.save(
+            TaskEditorState(TaskEditorMode.CREATE, currentDay().copy(establishmentTimezone = "UTC"), null, TaskEditorDraft()),
+            NormalizedTaskInput(
+                title = "Started task",
+                projectId = null,
+                modeId = null,
+                sectionId = "section-1",
+                plannedStartMinute = 480,
+                estimateSeconds = null,
+                actualStartMinute = 540,
+                actualEndMinute = null,
+            ),
+        )
+
+        assertEquals(6, (result as PlanningSaveResult.SuccessWithRevision).placementRevision)
+        assertTrue(requests[1].third!!.contains("\"expected_lifecycle_state\":\"planned\""))
+        assertTrue(requests[1].third!!.contains("\"ended_at\":null"))
     }
 
     @Test
@@ -86,7 +116,7 @@ class TaskPlanningHttpRepositoryTest {
             input = NormalizedTaskInput("Future task", "project-1", "mode-1", "section-1", 600, null),
         )
 
-        assertEquals(PlanningSaveResult.Success, result)
+        assertEquals(6, (result as PlanningSaveResult.SuccessWithRevision).placementRevision)
         assertEquals("/api/v1/taskchute-days/by-logical-date/entries", requests.first().second)
         assertTrue(requests.first().third.orEmpty().contains("\"logical_date\":\"2026-09-15\""))
     }

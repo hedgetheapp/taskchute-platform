@@ -150,6 +150,72 @@ class TaskPlanningControllerTest {
     }
 
     @Test
+    fun editPrefillsCanonicalExecutionInstantsInTheDayTimezone() {
+        val task = plannedTask().copy(
+            activeStartedAt = "2026-09-21T00:04:00Z",
+            firstStartedAt = "2026-09-21T00:04:00Z",
+            lastEndedAt = "2026-09-21T00:35:00Z",
+        )
+        val controller = controller(FakePlanningRepository())
+
+        controller.openEdit(currentDay().copy(establishmentTimezone = "Asia/Tokyo"), task)
+
+        assertTrue(await { controller.state.editor != null })
+        assertEquals("09:04", controller.state.editor?.draft?.actualStartText)
+        assertEquals("09:35", controller.state.editor?.draft?.actualEndText)
+        controller.close()
+    }
+
+    @Test
+    fun consecutiveCreatesReuseSuccessfulPlacementRevisionBeforeCanonicalReconcile() {
+        val repository = FakePlanningRepository().apply {
+            saveResults.add(PlanningSaveResult.SuccessWithRevision(6))
+            saveResults.add(PlanningSaveResult.SuccessWithRevision(7))
+            saveResults.add(PlanningSaveResult.SuccessWithRevision(8))
+        }
+        val controller = controller(repository)
+
+        listOf("A", "B", "C").forEach { title ->
+            controller.openCreate(currentDay())
+            assertTrue(await { controller.state.references != null })
+            controller.updateDraft(controller.state.editor!!.draft.copy(title = title))
+            controller.save()
+            assertTrue(await { controller.state.editor == null && !controller.state.saving })
+        }
+
+        assertEquals(listOf(5, 6, 7), repository.savedEditors.map { it.day.placementRevision })
+        controller.close()
+    }
+
+    @Test
+    fun retryRebasesCreateAgainstLatestCanonicalRevision() {
+        var canonical = currentDay()
+        val repository = FakePlanningRepository().apply {
+            saveResults.add(PlanningSaveResult.Failure("stale"))
+            saveResults.add(PlanningSaveResult.SuccessWithRevision(10))
+        }
+        val controller = TaskPlanningController(
+            repository = repository,
+            onUnauthorized = {},
+            onSaved = {},
+            onOptimisticFailure = { canonical = canonical.copy(placementRevision = 9) },
+            latestDay = { canonical },
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+        )
+
+        controller.openCreate(currentDay())
+        assertTrue(await { controller.state.references != null })
+        controller.updateDraft(controller.state.editor!!.draft.copy(title = "Retry"))
+        controller.save()
+        assertTrue(await { controller.state.errorMessage == "stale" })
+        controller.save()
+        assertTrue(await { controller.state.editor == null && !controller.state.saving })
+
+        assertEquals(listOf(5, 9), repository.savedEditors.map { it.day.placementRevision })
+        controller.close()
+    }
+
+    @Test
     fun currentTimeSectionUsesCanonicalTimezoneAndLogicalBoundary() {
         val day = currentDay().copy(
             establishmentTimezone = "Asia/Tokyo",
@@ -186,6 +252,8 @@ class TaskPlanningControllerTest {
         val releaseSave = CountDownLatch(1)
         val saveCalls = AtomicInteger()
         var lastInput: NormalizedTaskInput? = null
+        val saveResults = mutableListOf<PlanningSaveResult>()
+        val savedEditors = mutableListOf<TaskEditorState>()
 
         override fun loadReferences() = PlanningReferencesResult.Success(
             PlanningReferences(
@@ -197,9 +265,10 @@ class TaskPlanningControllerTest {
         override fun save(editor: TaskEditorState, input: NormalizedTaskInput): PlanningSaveResult {
             saveCalls.incrementAndGet()
             lastInput = input
+            savedEditors += editor
             saveStarted.countDown()
             if (holdSave) releaseSave.await(2, TimeUnit.SECONDS)
-            return PlanningSaveResult.Success
+            return saveResults.firstOrNull()?.also { saveResults.removeAt(0) } ?: PlanningSaveResult.Success
         }
     }
 

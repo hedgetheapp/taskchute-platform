@@ -39,7 +39,7 @@ class TaskPlanningHttpRepository(
         """.trimIndent()
         val addPath = if (day.isCurrent) "/api/v1/taskchute-days/current/entries" else "/api/v1/taskchute-days/by-logical-date/entries"
         val added = execute("POST", addPath, addBody)
-        val placementRevision = when (added) {
+        var placementRevision = when (added) {
             PlanningHttpResult.Unauthorized -> return PlanningSaveResult.Unauthorized
             is PlanningHttpResult.Failure -> return PlanningSaveResult.Failure(added.message)
             is PlanningHttpResult.Success -> runCatching { TaskPlanningJsonParser.parsePlacementRevision(added.body) }
@@ -48,6 +48,7 @@ class TaskPlanningHttpRepository(
         if (input.estimateSeconds != null) {
             when (val result = executeEstimate(entryId, null, input.estimateSeconds)) {
                 PlanningSaveResult.Success -> Unit
+                is PlanningSaveResult.SuccessWithRevision -> placementRevision = result.placementRevision
                 else -> return result
             }
         }
@@ -55,16 +56,18 @@ class TaskPlanningHttpRepository(
         if (input.plannedStartMinute != defaultStart) {
             when (val result = executePlannedStart(entryId, day.taskChuteDayId, input.plannedStartMinute, placementRevision)) {
                 PlanningSaveResult.Success -> Unit
+                is PlanningSaveResult.SuccessWithRevision -> placementRevision = result.placementRevision
                 else -> return result
             }
         }
         if (input.actualStartMinute != null) {
             when (val result = executeActualTimesForCreatedEntry(day, input, entryId, placementRevision)) {
                 PlanningSaveResult.Success -> Unit
+                is PlanningSaveResult.SuccessWithRevision -> placementRevision = result.placementRevision
                 else -> return result
             }
         }
-        return PlanningSaveResult.Success
+        return PlanningSaveResult.SuccessWithRevision(placementRevision)
     }
 
     private fun update(editor: TaskEditorState, input: NormalizedTaskInput): PlanningSaveResult {
@@ -107,11 +110,12 @@ class TaskPlanningHttpRepository(
         var placementRevision = editor.day.placementRevision
         if (currentSectionId != input.sectionId) {
             val sectionMove = executeSectionMove(task, editor.day.taskChuteDayId, input.sectionId, placementRevision)
-            when (sectionMove.first) {
+            when (val sectionResult = sectionMove.first) {
                 PlanningSaveResult.Success -> placementRevision = sectionMove.second
                     ?: return PlanningSaveResult.Failure("Section移動結果を読み取れませんでした。再試行してください。")
                 PlanningSaveResult.Unauthorized -> return PlanningSaveResult.Unauthorized
-                is PlanningSaveResult.Failure -> return sectionMove.first
+                is PlanningSaveResult.Failure -> return sectionResult
+                is PlanningSaveResult.SuccessWithRevision -> placementRevision = sectionResult.placementRevision
             }
         }
         if (task.estimateSeconds != input.estimateSeconds) {
@@ -221,7 +225,14 @@ class TaskPlanningHttpRepository(
         val body = """
             {"operation_id":"${JsonEncoding.escape(UUIDv7.next())}","entry_id":"${JsonEncoding.escape(entryId)}","taskchute_day_id":"${JsonEncoding.escape(dayId)}","planned_start_minute":${minute ?: "null"},"expected_placement_revision":$placementRevision}
         """.trimIndent()
-        return execute("POST", "/api/v1/entries/${JsonEncoding.pathSegment(entryId)}/planned-start", body).toSaveResult()
+        return when (val result = execute("POST", "/api/v1/entries/${JsonEncoding.pathSegment(entryId)}/planned-start", body)) {
+            is PlanningHttpResult.Success -> result.body?.let {
+                runCatching { PlanningSaveResult.SuccessWithRevision(TaskPlanningJsonParser.parsePlacementRevision(it)) }
+                    .getOrDefault(PlanningSaveResult.Success)
+            } ?: PlanningSaveResult.Success
+            PlanningHttpResult.Unauthorized -> PlanningSaveResult.Unauthorized
+            is PlanningHttpResult.Failure -> PlanningSaveResult.Failure(result.message)
+        }
     }
 
     private fun execute(method: String, path: String, body: String?): PlanningHttpResult {

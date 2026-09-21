@@ -6,6 +6,26 @@ import org.junit.Test
 
 class TodayForecastTest {
     @Test
+    fun runningForecastUsesCanonicalActualStartAndFullEstimate() {
+        val running = task("running", LifecycleState.RUNNING, estimateSeconds = 1_800, plannedStartMinute = 540).copy(
+            activeStartedAt = "2026-09-14T19:05:00Z",
+            firstStartedAt = "2026-09-14T19:05:00Z",
+        )
+
+        assertEquals(1_145 to 1_175, forecastForTask(day(listOf(running)), running, Instant.parse("2026-09-14T20:00:00Z")))
+    }
+
+    @Test
+    fun runningForecastShowsStartWithoutEndWhenEstimateIsMissing() {
+        val running = task("running", LifecycleState.RUNNING, estimateSeconds = null, plannedStartMinute = 540).copy(
+            activeStartedAt = "2026-09-14T19:05:00Z",
+            firstStartedAt = "2026-09-14T19:05:00Z",
+        )
+
+        assertEquals(1_145 to null, forecastForTask(day(listOf(running)), running))
+    }
+
+    @Test
     fun currentRunningRemainingEstimateIsTheForecastCursor() {
         val running = task("running", LifecycleState.RUNNING, estimateSeconds = 1_800, plannedStartMinute = 540)
         val first = task("first", LifecycleState.PLANNED, estimateSeconds = 1_800, plannedStartMinute = 1_380)

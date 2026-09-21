@@ -100,6 +100,31 @@ class TodayOptimisticTest {
     }
 
     @Test
+    fun lifecycleEditorProjectionWithStartOnlyBecomesRunning() {
+        val original = day().allEntries.first { it.id == "entry-a" }
+        val projected = applyOptimisticPlanning(
+            day(),
+            TaskEditorState(TaskEditorMode.EDIT, day(), original, TaskEditorDraft()),
+            NormalizedTaskInput(
+                title = original.title,
+                projectId = null,
+                modeId = null,
+                sectionId = "morning",
+                plannedStartMinute = original.plannedStartMinute,
+                estimateSeconds = original.estimateSeconds,
+                actualStartMinute = 9 * 60,
+                actualEndMinute = null,
+            ),
+        )
+
+        val task = projected.allEntries.first { it.id == original.id }
+        assertEquals(LifecycleState.RUNNING, task.lifecycleState)
+        assertNotNull(task.activeStartedAt)
+        assertNull(task.lastEndedAt)
+        assertEquals(original.id, projected.runningTask?.id)
+    }
+
+    @Test
     fun dragTargetUsesStableSnapshotThresholdsDuringProvisionalAnimation() {
         val bounds = mapOf(
             "entry-a" to Rect(0f, 0f, 100f, 50f),

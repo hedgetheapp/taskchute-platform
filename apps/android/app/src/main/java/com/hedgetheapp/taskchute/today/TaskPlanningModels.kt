@@ -1,5 +1,9 @@
 package com.hedgetheapp.taskchute.today
 
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+
 enum class TaskEditorMode {
     CREATE,
     EDIT,
@@ -122,6 +126,7 @@ sealed interface PlanningReferencesResult {
 
 sealed interface PlanningSaveResult {
     data object Success : PlanningSaveResult
+    data class SuccessWithRevision(val placementRevision: Int) : PlanningSaveResult
     data object Unauthorized : PlanningSaveResult
     data class Failure(val message: String) : PlanningSaveResult
 }
@@ -160,3 +165,12 @@ internal fun parseActualClock(value: String): Int? {
 internal fun formatActualClock(value: String?): String = parseActualClock(value ?: "")?.let {
     "${(it / 60).toString().padStart(2, '0')}:${(it % 60).toString().padStart(2, '0')}"
 } ?: ""
+
+/** Formats a canonical Execution instant using the Day's establishment timezone. */
+internal fun formatExecutionClock(value: String?, timezoneId: String?): String {
+    if (value.isNullOrBlank() || timezoneId.isNullOrBlank()) return ""
+    val zone = runCatching { ZoneId.of(timezoneId) }.getOrNull() ?: return ""
+    return runCatching {
+        Instant.parse(value).atZone(zone).format(DateTimeFormatter.ofPattern("HH:mm"))
+    }.getOrDefault("")
+}

@@ -18,24 +18,27 @@ class TaskPlanningController(
     private val onSaved: () -> Unit,
     private val onOptimisticIntent: (TaskEditorState, NormalizedTaskInput) -> Unit = { _, _ -> },
     private val onOptimisticFailure: (String) -> Unit = {},
+    private val latestDay: () -> TodayDay? = { null },
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
 ) {
     var state by mutableStateOf(TaskPlanningUiState())
         private set
+    private val successfulPlacementRevisions = mutableMapOf<String, Int>()
 
     fun openCreate(day: TodayDay) {
-        if (!canEditDay(day) || state.saving) return
-        val zone = day.establishmentTimezone?.let { runCatching { ZoneId.of(it) }.getOrNull() }
+        val planningDay = freshPlanningDay(day)
+        if (!canEditDay(planningDay) || state.saving) return
+        val zone = planningDay.establishmentTimezone?.let { runCatching { ZoneId.of(it) }.getOrNull() }
         val section = if (zone == null) {
             // Older projections without canonical timezone cannot safely infer wall-clock Section.
-            day.sections.firstOrNull()
+            planningDay.sections.firstOrNull()
         } else {
-            resolveInitialSection(day, ZonedDateTime.now(zone))
+            resolveInitialSection(planningDay, ZonedDateTime.now(zone))
         }
         state = TaskPlanningUiState(
             editor = TaskEditorState(
                 mode = TaskEditorMode.CREATE,
-                day = day,
+                day = planningDay,
                 originalTask = null,
                 draft = TaskEditorDraft(
                     sectionId = section?.id,
@@ -65,8 +68,8 @@ class TaskPlanningController(
                     sectionId = day.sections.firstOrNull { section -> section.entries.any { it.id == task.id } }?.id,
                     plannedStartText = formatEditorMinute(task.plannedStartMinute),
                     estimateText = task.estimateSeconds?.let { (it / 60).toString() } ?: "",
-                    actualStartText = formatActualClock(task.activeStartedAt ?: task.firstStartedAt),
-                    actualEndText = formatActualClock(task.lastEndedAt),
+                    actualStartText = formatExecutionClock(task.activeStartedAt ?: task.firstStartedAt, day.establishmentTimezone),
+                    actualEndText = formatExecutionClock(task.lastEndedAt, day.establishmentTimezone),
                 ),
                 capability = capability,
             ),
@@ -88,8 +91,13 @@ class TaskPlanningController(
     }
 
     fun save() {
-        val editor = state.editor ?: return
+        val originalEditor = state.editor ?: return
         if (state.saving) return
+        val editor = if (originalEditor.mode == TaskEditorMode.CREATE) {
+            originalEditor.copy(day = freshPlanningDay(originalEditor.day))
+        } else {
+            originalEditor
+        }
         val validation = TaskEditorValidation.validate(editor.draft, editor.capability)
         if (validation.input == null) {
             state = state.copy(errorMessage = validation.errorMessage)
@@ -114,6 +122,11 @@ class TaskPlanningController(
             val result = withContext(Dispatchers.IO) { repository.save(editor, requestInput) }
             when (result) {
                 PlanningSaveResult.Success -> {
+                    state = TaskPlanningUiState()
+                    onSaved()
+                }
+                is PlanningSaveResult.SuccessWithRevision -> {
+                    rememberPlacementRevision(editor.day.logicalDate, result.placementRevision)
                     state = TaskPlanningUiState()
                     onSaved()
                 }
@@ -156,4 +169,17 @@ class TaskPlanningController(
     }
 
     private fun canEditDay(day: TodayDay): Boolean = canPlanDay(day)
+
+    private fun freshPlanningDay(day: TodayDay): TodayDay {
+        val canonicalRevision = latestDay()
+            ?.takeIf { it.logicalDate == day.logicalDate }
+            ?.placementRevision
+        val rememberedRevision = successfulPlacementRevisions[day.logicalDate]
+        val revision = maxOf(day.placementRevision, canonicalRevision ?: day.placementRevision, rememberedRevision ?: day.placementRevision)
+        return if (revision == day.placementRevision) day else day.copy(placementRevision = revision)
+    }
+
+    private fun rememberPlacementRevision(logicalDate: String, revision: Int) {
+        successfulPlacementRevisions[logicalDate] = maxOf(successfulPlacementRevisions[logicalDate] ?: 0, revision)
+    }
 }

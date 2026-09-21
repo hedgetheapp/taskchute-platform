@@ -81,6 +81,7 @@ class MainActivity : ComponentActivity() {
             onUnauthorized = controller::restore,
             onSaved = todayController::reconcileSilently,
             onOptimisticIntent = todayController::applyOptimisticPlanning,
+            latestDay = { todayController.state.day },
             onOptimisticFailure = {
                 todayController.clearOptimisticPresentation()
                 todayController.reconcileSilently()
