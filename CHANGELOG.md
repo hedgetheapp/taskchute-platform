@@ -2,13 +2,21 @@
 
 ## Unreleased
 
+### Android Today actual-time prefill / Running projection / consecutive Quick Add corrective
+
+- Running / Completed editorの実績時間prefillを、compact入力parserとは分離したISO Execution instant formatterへ修正。`editor.day.establishmentTimezone`で`HH:mm`へ変換し、端末timezoneをauthorityにしない。
+- Plannedの開始時間のみ保存は、既存`SetExecutionTimes` contractの`ended_at: null`でRunningへ遷移する経路をfocused regressionで固定。Running rowの開始・終了見込みはD-130どおりcanonical actual startとfull estimateから投影し、estimateなしでは開始だけを表示する。
+- consecutive Quick Addは、Add / planned-start成功応答の最新`placement_revision`をmemory-onlyで記憶し、次のCREATEとstale conflict後のRetryへ再適用。CASを弱めず、409を成功扱いしない。
+- 変更前artifact `a42862aa0b274f828d6426cbd16a7511d1ba5cc8`のGalaxy S23 evidenceは、actual-time prefill、Running projection `--:--`、consecutive Quick Addをそれぞれ`FAIL / USER_REPORTED`として記録。correctiveのGalaxy S23は`NOT_RUN`、Productionは`NOT_RUN`、Releasedは`NO`。
+- Implementation `94b3a57437ae6d908d2c038ebb8f4c6ca31ac566`、local Android JVM `149 / 149`、instrumentation compile、debug assemble、`git diff --check`、exact-SHA CI `35597482215`はPASS。Web / WorkerはAndroid-only classifierでSKIP。fresh APK artifactは`taskchute-android-debug-94b3a57437ae6d908d2c038ebb8f4c6ca31ac566`（ID `10637282407`、expiry `2026-09-28T12:07:39Z`）。
+
 ### Android lifecycle editor / current-Day delete / placement guard / forecast parity
 
 - Current logical Dayのordinary Planned / Running / Completed editor capabilityを実装し、`SetExecutionTimes`、D-116A historical Project / Mode、compact actual-time parserを既存contractへ接続。
 - current-Day Running / Completed単体削除を既存`DeleteCompletedEntry` route / DTO / operationへ接続。D-067 Completed semantics、D-128 Running guard、Task / Project / Mode / Routine identity保持、atomic deleteを維持。
 - D-129のcanonical Section `actual_end_instant` guardをAndroid D&D preview / dropとWorkerのentry planning / bulk moveへ適用し、ended Sectionを新規manual placementから除外。
 - Androidの開始・終了見込みをWeb Start Forecast相当へ整合し、見積・実績durationを総分数表示へ統一。Header DatePickerとTask Actions DatePickerを共有化し、RunningTaskPanelを72dp内で上下中央揃え。
-- Android JVM `142 / 142`、full Worker `37 files / 341 tests`、full Web `14 files / 478 tests`、typecheck、instrumentation compile、debug assembleはPASS。authenticated runtime、Galaxy S23、persistent nonprod destructive delete E2E、production、Releaseは未確認。
+- Android JVM `149 / 149`、full Worker `37 files / 341 tests`、full Web `14 files / 478 tests`、typecheck、instrumentation compile、debug assembleはPASS。authenticated runtime、Galaxy S23、persistent nonprod destructive delete E2E、production、Releaseは未確認。
 
 ### D-127 Android Drag Immediate-Cancel Corrective
 

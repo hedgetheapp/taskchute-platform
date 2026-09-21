@@ -1,5 +1,17 @@
 # Test Matrix
 
+## Android Today actual-time prefill / Running projection / consecutive Quick Add corrective — 2026-09-21
+
+| ID | Verification target | Evidence | Status |
+|---|---|---|---|
+| ANDROID-ACTUAL-PREFILL | Running / Completed editor actual-time prefill | `formatExecutionClock()`がcanonical ISO instantを`establishment_timezone`で`HH:mm`へ変換。focused `TaskPlanningControllerTest.editPrefillsCanonicalExecutionInstantsInTheDayTimezone` PASS。変更前artifact `a42862aa...`のGalaxy S23 evidenceは空欄表示。 | SOURCE / JVM PASS; OLD DEVICE FAIL / USER_REPORTED; CORRECTIVE DEVICE NOT_RUN |
+| ANDROID-START-ONLY | Planned start-only lifecycle | `TaskPlanningHttpRepositoryTest.plannedStartOnlyCreateSendsNullEndAndUsesRunningTransitionContract`で`expected_lifecycle_state=planned`、`ended_at=null`を確認。`TodayOptimisticTest.lifecycleEditorProjectionWithStartOnlyBecomesRunning` PASS。 | PASS |
+| ANDROID-RUNNING-PROJECTION | D-130 Running row projection | Runningはcanonical actual startを開始、full estimateを加算した時刻を終了として投影。estimateなしは開始のみ。`TodayForecastTest` focused coverage PASS。変更前Galaxy S23 `--:--`は`FAIL / USER_REPORTED`。 | JVM PASS; OLD DEVICE FAIL / USER_REPORTED; CORRECTIVE DEVICE NOT_RUN |
+| ANDROID-QUICK-ADD-REVISION | Consecutive A→B→C Quick Add and stale Retry | Add / planned-start success revisionをmemory-onlyでlogical Dayごとに保持し、次CREATEとstale failure後Retryへrebase。`TaskPlanningControllerTest` chain / retry tests PASS。CASを弱めず、409を成功扱いしない。 | JVM PASS; OLD DEVICE FAIL / USER_REPORTED; CORRECTIVE DEVICE NOT_RUN |
+| ANDROID-BUILD | Android unit, instrumentation compile, debug APK | Local `:app:testDebugUnitTest`: `149 / 149` PASS、`:app:compileDebugAndroidTestKotlin` PASS、`:app:assembleDebug` PASS、`git diff --check` PASS。Exact-SHA CI `35597482215` PASS、APK artifact `taskchute-android-debug-94b3a57437ae6d908d2c038ebb8f4c6ca31ac566`、ID `10637282407`、expiry `2026-09-28T12:07:39Z`。 | PASS |
+| ANDROID-DEVICE | Corrective Galaxy S23 verification | New corrective artifact has not been run on Galaxy S23. | NOT_RUN |
+| RELEASE-BOUNDARY | Production / Release | No tag, Release, or production operation in this corrective. | PRODUCTION NOT_RUN / RELEASE NO |
+
 ## Android lifecycle editor / current-Day delete / placement guard / forecast parity — 2026-09-21
 
 | ID | Verification target | Evidence | Status |
@@ -8,9 +20,9 @@
 | ANDROID-LIFECYCLE-DELETE | Current-Day Running / Completed single delete | `TodayDirectManipulationTest` covers existing delete endpoint / operation wiring. Worker focused delete integration covers Running atomic delete, replay, and Planned regression. | FOCUSED PASS |
 | D067-COMPLETED-REGRESSION | Completed hard delete authority | Full Worker `37 files / 341 tests` includes the existing D-067 integration suite; current implementation keeps Completed active-execution guard and no-regeneration behavior. | PASS |
 | D129-ENDED-SECTION | Ended current-Day Section manual placement guard | Android target resolver excludes Section whose canonical `actual_end_instant` has passed; Worker entry-planning and bulk Section handlers reject ended destinations while preserving same-Section reorder. Full Worker `37 files / 341 tests` PASS. | PASS |
-| ANDROID-FORECAST-PARITY | Start / end forecast and total-minute duration | New `TodayForecastTest` covers running remaining estimate and planned-start non-barrier; Web duration formatter test covers total minutes. | JVM / FOCUSED WEB PASS |
+| ANDROID-FORECAST-PARITY | Start / end forecast and total-minute duration | `TodayForecastTest` covers Running actual-start + full-estimate projection, running remaining-estimate cursor for planned tasks, and planned-start non-barrier; Web duration formatter test covers total minutes. | JVM / FOCUSED WEB PASS |
 | ANDROID-DATEPICKER-PARITY | Header and Task Actions date move UI | Both surfaces use the shared Compose `TaskChuteDatePickerDialog`; no new command or persistence contract. | SOURCE PASS; RUNTIME NOT_RUN |
-| ANDROID-BUILD | Android unit, instrumentation compile, debug APK | `:app:testDebugUnitTest` `142 / 142` PASS; `:app:compileDebugAndroidTestKotlin` PASS; `:app:assembleDebug` PASS. | PASS |
+| ANDROID-BUILD | Android unit, instrumentation compile, debug APK | `:app:testDebugUnitTest` `149 / 149` PASS; `:app:compileDebugAndroidTestKotlin` PASS; `:app:assembleDebug` PASS. | PASS |
 | WEB-BUILD-REGRESSION | Web duration and affected UI suite | `npm run test:web`: `14 files / 478 tests PASS`; `npm run typecheck`; `npm run build`. | PASS |
 | ANDROID-DEVICE | Authenticated Android runtime / physical device | No new authenticated runtime or Galaxy S23 evidence is claimed for this batch. | NOT_RUN |
 | NONPROD-DESTRUCTIVE-DELETE | Persistent nonprod Running / Completed hard-delete E2E | Explicit destructive E2E was not run. | NOT_RUN |

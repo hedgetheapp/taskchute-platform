@@ -1,3 +1,11 @@
+### Android Today actual-time prefill / Running projection / consecutive Quick Add corrective — 2026-09-21
+
+Galaxy S23で確認された3件を、Android-only correctiveとして修正した。実績時間prefillはcanonical Execution ISO instantをDayの`establishment_timezone`で`HH:mm`へ変換し、入力用compact parserとは責務を分離した。Running rowはD-130どおりactual startを開始見込み、actual start + full estimateを終了見込みとして投影する。Plannedの開始時間のみ保存は`ended_at: null`の既存`SetExecutionTimes` contractを使い、optimistic projectionでもRunningとなる。
+
+連続Quick Addでは、Add / planned-start成功応答の`placement_revision`をcontrollerがlogical Dayごとにmemory-onlyで保持し、次のCREATEを新しいrevisionへrebaseする。stale failure後のRetryも最新canonical Dayまたは成功revisionへrebaseして再送する。server CAS、409 conflict、optimistic/reconcile boundaryは変更していない。
+
+**Implementation: `94b3a57437ae6d908d2c038ebb8f4c6ca31ac566` / Local Android JVM `149 / 149 PASS` / instrumentation compile PASS / debug assemble PASS / `git diff --check` PASS / Exact-SHA CI `35597482215` PASS（Android JVM・signed APK・instrumentation compile・upload PASS、Web / Worker SKIPPED）/ APK `taskchute-android-debug-94b3a57437ae6d908d2c038ebb8f4c6ca31ac566`、ID `10637282407`、expiry `2026-09-28T12:07:39Z` / 変更前artifact `a42862aa0b274f828d6426cbd16a7511d1ba5cc8`のGalaxy S23: actual-time prefill FAIL、Running projection FAIL、consecutive Quick Add FAIL（いずれも`FAIL / USER_REPORTED`）/ corrective Galaxy S23: `NOT_RUN` / Production: `NOT_RUN` / Released: `NO`**。
+
 ### D-127 Android Drag Immediate-Cancel Corrective — 2026-09-21
 
 Artifact `aaa372086dd5e533ca5d0e32664bfa0c254490ce`では、Galaxy S23でlong-press後に一瞬だけ掴めたように見え、直後にdragがcancelされる不具合が報告された（`FAIL / USER_REPORTED`）。現行`TodayTaskRow`には同じvertical drag `pointerInput`をouter stable Boxとinner Task content Columnの両方へ適用しており、さらにplaceholder切替時にinner Columnがcompositionから外れるため、同一pointer sequenceに複数のcancellation sourceが存在していた。
