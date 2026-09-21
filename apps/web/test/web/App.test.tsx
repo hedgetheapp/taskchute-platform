@@ -5348,7 +5348,7 @@ describe("Dogfood Day shell", () => {
     expect((await screen.findByLabelText("Canonical taskの開始")).textContent).toBe("23:40");
     expect(screen.getByLabelText("Canonical taskの開始見込").textContent).toBe("--:--");
     expect(screen.getByLabelText("Canonical taskの終了").textContent).toBe("25:10");
-    expect(screen.getByLabelText("Canonical taskの実績").textContent).toBe("1時間30分");
+    expect(screen.getByLabelText("Canonical taskの実績").textContent).toBe("90分");
     expect(screen.getByLabelText("Second taskの開始").textContent).toBe("--:--");
     expect(screen.getByLabelText("Second taskの終了").textContent).toBe("--:--");
     expect(screen.getByLabelText("Second taskの実績").textContent).toBe("--分");
