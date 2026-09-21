@@ -668,9 +668,17 @@ D-066はcurrent Dayのordinary Task mutationに限るWeb UX contractである。
 - mutation scopeはtarget / dependent target単位で衝突判定し、ordinary Day全体を`mutationLocked`でfreezeしない。auth、Day navigation、initial Section、settings等のglobal barrierは維持する。
 - sent operationのrevision conflict / ambiguous outcomeではoverlayと未送信queueを止め、canonical reconcile後に成功を確定できなければexact operationを保持してretryする。navigation / reloadではpending stateを誤って破棄しない。
 
+## D-128 Current-Day Running Entry hard delete extension
+
+D-128 extends the D-067 hard-delete boundary only for a single canonical `running` Entry on the server-authoritative current TaskChuteDay. Android may invoke the action only from the current Day's Task Actions `その他 → 削除` after explicit destructive confirmation. Past / future Running or Completed Entries and Running / Completed bulk delete remain unavailable.
+
+The existing `DeleteCompletedEntry` request / result, route, operation `command_type`, owner scope, placement CAS, fingerprint / exact replay, and atomic mutation are retained for compatibility. The Worker accepts a target lifecycle of `running | completed`: completed keeps the D-067 no-active-Execution requirement; running must have its canonical active Execution relation. Running deletion removes the Entry and all of its Executions including the active row, plus the same Entry-bound guards / snapshots / relations removed by D-067. It does not synthesize Complete, Interrupt, continuation, or `ended_at` history. Task / Project / Mode definition identity, unrelated history, RoutineDefinition / RoutineOccurrence identity, and D-067 no-regeneration / reference-integrity protections remain intact.
+
+This compatibility extension requires no new schema, migration, command family, or API shape. It does not broaden any other Running / Completed planning mutation.
+
 ## D-067 Completed Entry hard delete contract
 
-`DeleteCompletedEntry` accepts `{ operation_id, taskchute_day_id, entry_id, expected_placement_revision }` and returns `{ entry_id, deleted_execution_ids, taskchute_day_id, placement_revision }`. The authenticated principal is derived server-side. The Worker accepts the command only for the server-authoritative current Day and an Entry owned by that principal whose lifecycle is exactly `completed`, whose Executions have no active row, and whose execution relation is canonical. Past/future Day, planned/running Entry, owner mismatch, stale revision, changed target, and active-execution anomalies reject.
+`DeleteCompletedEntry` accepts `{ operation_id, taskchute_day_id, entry_id, expected_placement_revision }` and returns `{ entry_id, deleted_execution_ids, taskchute_day_id, placement_revision }`. The authenticated principal is derived server-side. The Worker accepts the command only for the server-authoritative current Day and an Entry owned by that principal whose lifecycle is exactly `completed`, whose Executions have no active row, and whose execution relation is canonical. Past/future Day, planned Entry, owner mismatch, stale revision, changed target, and lifecycle/execution anomalies reject. D-128 is the only exception to the original running rejection and applies only to the server-authoritative current Day.
 
 The command is one atomic D1 mutation. It deletes all target Executions first, removes Entry-bound `lifecycle_command_guards` and `entry_project_snapshots` required by existing `ON DELETE RESTRICT` references, deletes the Entry, increments `placement_revision` exactly once, and stores the success operation. On any failure the transaction leaves the Entry, Executions, revision, and operation state converged; the operation is not inferred as successful from an absent Entry. Exact operation replay returns the original result, while operation-id misuse rejects.
 

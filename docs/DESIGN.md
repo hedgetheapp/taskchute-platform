@@ -40,8 +40,9 @@ Operation UnresolvedはTodayを保持したまま、`操作結果を確認でき
 
 Running rowのleft-swipeはplanned swipeと同じ3-action rhythmで`編集 → ノート → その他`を表示する。
 row本体はTask titleを読める範囲で左へ退避し、Complete controlは隠す。露出した右側のrow areaは
-Running surfaceの薄青を連続させ、その上へ3 actionを配置する。Completed等のNote-only visualは
-D-123を維持する。
+Running surfaceの薄青を連続させ、その上へ3 actionを配置する。current-Day Completedも
+lifecycle-aware editorとD-128の削除入口に合わせて`編集 / ノート / その他`を表示する。非current / historical等の
+planning-ineligible rowはD-123のNote-only境界を維持する。
 
 Selection Modeへの主要遷移は「選択可能Taskを右swipe → そのTaskがselected → 全row checkbox表示」と
 する。Selection Mode中はselection-eligible rowのcheckboxだけを小さいtap targetとして扱わず、
@@ -56,8 +57,9 @@ planned current-Dayのeligible Task rowを左swipeした状態は、48dpの丸�
 
 `その他`から開くTask Actions bottom sheetは、`編集 / 複製 / 前の日へ移動 / 次の日へ移動 /
 日付を移動 / 削除`を縦に並べる。Task NoteはSwipeの直接shortcutと重複させない。
-valid `taskId`を持つがplanning action不可のrunning / completed / Routine-derived / future / past rowは、
-左swipeでNoteだけをrevealするvisual stateを持つ。
+valid `taskId`を持つplanning-ineligible rowは原則として左swipeでNoteだけをrevealする。
+ただしcurrent-Day RunningはD-124、current-Day Completedはlifecycle-aware editor / D-128により
+`編集 / ノート / その他`を表示する。future / past等ではこの例外を適用しない。
 
 drag中にcollapsed configured Sectionへ重なった場合、Sectionは開かず、Header全体をdrop targetとして
 tealのoutline + subtle backgroundで強調する。source Section側はTaskが抜ける仮状態へreflowしてよい。
@@ -687,9 +689,24 @@ Current-Day ordinary planned Taskのtitle、Project、Mode、Section、estimate�
 
 先行responseが返っても、effective projectionはcanonical projectionへ残存pending intentを重ねる。Task title / Project editorはpending overlayをdraft sourceとして使用し、同じ`UpdateTaskMetadata` command familyでもfield-level convergenceを保つ。D&D/reorderは既存placement busy境界を維持する。
 
+## Android Today lifecycle-aware Task Editor / Task Actions parity
+
+current established Dayのordinary Entryはlifecycleごとに同じhigh-opening Task Editor shellを使い、編集可能fieldだけを切り替える。
+
+- Planned: Task名 / Project / Mode / Section / 開始予定 / 見積 / 開始時間 / 終了時間。
+- Running: Project / Mode / 開始時間 / 終了時間。開始時間はactual startを初期表示し、終了時間は空欄。
+- Completed: Project / Mode / 開始時間 / 終了時間。開始・終了ともactual値を初期表示し、終了時間を空にしてReopenしない。
+- Plannedの開始時間 / 終了時間は初期空欄。
+- time fieldの表示は`HH:mm`。入力時は数字のみIMEを使い、`0900` / `900`のようなcolonなし3〜4桁入力を受け付け、valid valueを`HH:mm`へ正規化する。
+- lifecycle transition / correction semanticsはD-060、Running Project / ModeはD-117、Completed historical Project / ModeはD-116Aをauthorityとする。
+
+current-Day Running / Completed rowはleft-swipeで`編集 / ノート / その他`を表示する。`その他`の`削除`はD-128 / D-067のcurrent-Day single-entry hard-delete eligibilityに従い、明示確認を必須とする。non-current Running / Completedでは削除を表示・実行しない。
+
+`その他 → 日付を移動`のcalendarはheaderの日付buttonと同じMaterial 3 DatePickerDialog implementation / visualを共有する。month navigation、year selection、selected-day / today表現、キャンセル / 決定のgeometryは共通とし、semantic actionだけを分離する。header pickerは表示Dayをnavigateし、Task Actions pickerはtarget Entryを選択Dayへmoveする。
+
 ## D-067 completed Entry deletion UI
 
-Only a completed row on the displayed canonical current Day exposes `… → 削除`. Planned rows continue using the existing planned-delete path; running, historical, future, read-only, and bulk-selected completed rows do not expose this action. The destructive confirmation is the common centered modal with title `完了したTaskを完全に削除しますか？`, body `このTaskの開始・終了記録と実績時間も削除されます。この操作は元に戻せません。`, and buttons `キャンセル` / `完全に削除`. Routine-derived rows additionally state that the Routine itself and other days are retained. Initial focus is non-destructive, Escape/backdrop cancel without an API call, and close restores the overflow trigger focus.
+On the displayed canonical current Day, Running and Completed rows expose `その他 → 削除`; Planned rows continue using the existing planned-delete path. Historical / future Running or Completed rows and bulk-selected Running / Completed rows do not expose this action. The destructive confirmation is the common centered modal with title `完了したTaskを完全に削除しますか？`, body `このTaskの開始・終了記録と実績時間も削除されます。この操作は元に戻せません。`, and buttons `キャンセル` / `完全に削除`. Routine-derived rows additionally state that the Routine itself and other days are retained. Initial focus is non-destructive, Escape/backdrop cancel without an API call, and close restores the overflow trigger focus.
 
 After confirmation the client enqueues an unsent intent through D-066's single serial dispatcher. Immediately before dispatch it reconciles the latest canonical current Day and rebases only `expected_placement_revision`; `operation_id`, Day ID, Entry ID, and semantic request fields then remain frozen. It does not claim success from an optimistic hide; canonical reconcile determines the final row state. Deterministic rejection restores the row and shows the error, while an ambiguous sent request pauses later queue work and retains only the exact retry identity. Retained retry is re-enqueued through the dispatcher at the front of the queue, never sent directly. Completed rows remain excluded from Bulk Selection.
 

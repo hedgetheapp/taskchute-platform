@@ -1,5 +1,13 @@
 # Decisions
 
+## D-128 — Current-Day Running Entry hard delete v0.1
+
+Status: **Approved**
+
+Canonical Decision: `docs/decisions/D-128_CURRENT_DAY_RUNNING_ENTRY_HARD_DELETE_V01.md`。
+
+D-128はserver-authoritative current DayのRunning Entry一件について、Android Todayの`その他 → 削除`から明示確認後にEntry + 全Execution（active Executionを含む）を不可逆に削除する狭いcorrection exceptionを承認する。CompletedはD-067を継承する。互換性のため既存`DeleteCompletedEntry` route / DTO / operation typeを再利用し、lifecycle guardだけをcurrent-Day `running | completed`へ拡張するため、新command family / schema / migrationは追加しない。past / future、bulk Running / Completed delete、undo / restore、他のRunning / Completed planning mutationは対象外。
+
 ## D-127 — Android Today Optimistic Local Feel and Motion v0.1
 
 Status: **Approved**
