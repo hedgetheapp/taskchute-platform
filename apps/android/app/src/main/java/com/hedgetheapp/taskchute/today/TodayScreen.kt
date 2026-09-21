@@ -618,7 +618,8 @@ private fun TodayContent(
                         enabled = !state.pendingEntryIds.contains(task.id),
                         controller = controller,
                         showExecutionAction = day.isCurrent,
-                        canEdit = day.isCurrent && !task.routineDerived && planningController != null,
+                        canEdit = canPlanDay(day) && (day.isCurrent || task.lifecycleState == LifecycleState.PLANNED)
+                            && !task.routineDerived && planningController != null,
                         onEdit = { planningController?.openEdit(day, task) },
                         canDuplicate = canPlanDay(day) && task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived
                             && directManipulationController != null && directManipulationController.state.pendingEntryIds.isEmpty()
@@ -710,7 +711,8 @@ private fun TodayContent(
                         enabled = !state.pendingEntryIds.contains(task.id),
                         controller = controller,
                         showExecutionAction = day.isCurrent,
-                        canEdit = day.isCurrent && !task.routineDerived && planningController != null,
+                        canEdit = canPlanDay(day) && (day.isCurrent || task.lifecycleState == LifecycleState.PLANNED)
+                            && !task.routineDerived && planningController != null,
                         onEdit = { planningController?.openEdit(day, task) },
                         canDuplicate = canPlanDay(day) && task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived
                             && directManipulationController != null && directManipulationController.state.pendingEntryIds.isEmpty()
