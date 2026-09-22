@@ -314,6 +314,27 @@ class TodayScreenInstrumentedTest {
         composeRule.onNodeWithText("(", substring = false).assertIsDisplayed()
         composeRule.onNodeWithContentDescription("完了済み").assertIsDisplayed()
     }
+
+    @Test
+    fun completedRowPrioritizesEndTimeWhenDurationReachesThreeDigits() {
+        val task = dayWith(LifecycleState.COMPLETED).sections.single().entries.single().copy(
+            plannedStartMinute = 540,
+            estimateSeconds = 1200,
+            firstStartedAt = "2026-09-14T09:12:00",
+            lastEndedAt = "2026-09-14T16:21:00",
+            completedDurationSeconds = 6_000,
+        )
+        val initialDay = dayWith(LifecycleState.COMPLETED).copy(
+            sections = listOf(dayWith(LifecycleState.COMPLETED).sections.single().copy(entries = listOf(task))),
+            activeExecution = null,
+        )
+        launchPlanningScreen(FakePlanningRepository(), initialDay)
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        composeRule.onNodeWithText("09:12 → 16:21", substring = false).assertIsDisplayed()
+        composeRule.onNodeWithText("100分)", substring = false).assertIsDisplayed()
+    }
+
     @Test
     fun eligibleRowsEnterSelectionModeByLeftToRightSwipeAndAutoExitWhenLastSelectionCleared() {
         val directRepository = FakeDirectManipulationRepository()

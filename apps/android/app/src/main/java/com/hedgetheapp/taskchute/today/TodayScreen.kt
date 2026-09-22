@@ -1508,7 +1508,7 @@ private fun TaskMetadata(task: TodayTask, modifier: Modifier = Modifier) {
                 val end = task.lastEndedAt?.let(::formatInstant) ?: "--:--"
                 Text(
                     start + " → " + end,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.width(85.dp),
                     color = TaskChuteColors.SecondaryText,
                     fontSize = 12.sp,
                     lineHeight = 14.sp,
@@ -1528,11 +1528,12 @@ private fun TaskMetadata(task: TodayTask, modifier: Modifier = Modifier) {
                 Spacer(Modifier.width(3.dp))
                 Text(
                     formatDuration(task.completedDurationSeconds) + ")",
-                    modifier = Modifier.widthIn(min = 33.dp),
+                    modifier = Modifier.weight(1f),
                     color = TaskChuteColors.SecondaryText,
                     fontSize = 12.sp,
                     lineHeight = 14.sp,
                     maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
