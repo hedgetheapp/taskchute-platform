@@ -112,11 +112,12 @@ describe.sequential("Day Navigation v0.1", () => {
         { section_id: fixture.sections[0]!, title: "Focus", logical_start_minute: 300, logical_end_minute: 900 },
         { section_id: fixture.sections[1]!, title: "Night", logical_start_minute: 900, logical_end_minute: 1740 },
       ],
-    });
+    }, now);
     const second = await loadTaskChuteDayByLogicalDate(env.APP_DB, fixture.userId, "2026-08-31", now);
     expect(second.establishment_state).toBe("established");
+    expect(second.placement_revision).toBe(1);
     expect(second.sections.map((section) => [section.title, section.logical_start_minute, section.logical_end_minute]))
-      .toEqual([["Morning", 300, 720], ["Evening", 720, 1740]]);
+      .toEqual([["Focus", 300, 900], ["Night", 900, 1740]]);
     expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM taskchute_days WHERE app_user_id = ?")
       .bind(fixture.userId).first<number>("count")).toBe(1);
     expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM taskchute_day_section_contexts WHERE app_user_id = ?")
@@ -446,7 +447,7 @@ describe.sequential("Day Navigation v0.1", () => {
       .bind(fixture.userId).first<number>("count")).toBe(0);
   });
 
-  it("keeps established future Section context frozen after a later configuration change", async () => {
+  it("reconciles established future Section context after a later configuration change", async () => {
     const fixture = await seedNavigationUser();
     const request = futureRequest(fixture.sections[0]!);
     await addTaskToDay(env.APP_DB, fixture.userId, request, now);
@@ -461,22 +462,22 @@ describe.sequential("Day Navigation v0.1", () => {
         { section_id: fixture.sections[0]!, title: "Focus", logical_start_minute: 300, logical_end_minute: 900 },
         { section_id: fixture.sections[1]!, title: "Night", logical_start_minute: 900, logical_end_minute: 1740 },
       ],
-    });
+    }, now);
     const after = await env.APP_DB.prepare(`SELECT title, logical_start_minute, logical_end_minute
       FROM taskchute_day_section_contexts WHERE app_user_id = ? AND taskchute_day_id = ? ORDER BY context_order`)
       .bind(fixture.userId, request.taskchute_day_id).all();
-    expect(after.results).toEqual(before.results);
+    expect(after.results).toEqual([{ title: "Focus", logical_start_minute: 300, logical_end_minute: 900 }, { title: "Night", logical_start_minute: 900, logical_end_minute: 1740 }]);
     const followUp = { ...futureRequest(fixture.sections[0]!, request.logical_date),
-      taskchute_day_id: request.taskchute_day_id, title: "Frozen-context follow-up", expected_placement_revision: 1 };
+      taskchute_day_id: request.taskchute_day_id, title: "Reconciled-context follow-up", expected_placement_revision: 2 };
     expect(await addTaskToDay(env.APP_DB, fixture.userId, followUp, now)).toMatchObject({
-      taskchute_day_id: request.taskchute_day_id, section_id: fixture.sections[0], placement_revision: 2,
+      taskchute_day_id: request.taskchute_day_id, section_id: fixture.sections[0], placement_revision: 3,
     });
     const projection = await loadTaskChuteDayByLogicalDate(env.APP_DB, fixture.userId, request.logical_date, now);
-    expect(projection.sections.map((section) => section.title)).toEqual(["Morning", "Evening"]);
+    expect(projection.sections.map((section) => section.title)).toEqual(["Focus", "Night"]);
     expect(projection.sections[0]?.entries.map((entry) => entry.id)).toEqual([request.entry_id, followUp.entry_id]);
     expect((await env.APP_DB.prepare(`SELECT title, logical_start_minute, logical_end_minute
       FROM taskchute_day_section_contexts WHERE app_user_id = ? AND taskchute_day_id = ? ORDER BY context_order`)
-      .bind(fixture.userId, request.taskchute_day_id).all()).results).toEqual(before.results);
+      .bind(fixture.userId, request.taskchute_day_id).all()).results).toEqual(after.results);
   });
 
   it("rejects a stale follow-up Add without partial state and replays a successful follow-up exactly", async () => {

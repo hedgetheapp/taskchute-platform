@@ -131,11 +131,13 @@ export function resolveSectionIntervals(
     if (temporal().Instant.compare(interval.actualStartInstant, interval.actualEndInstant) >= 0) {
       throw new Error("Section configuration resolves to a non-positive actual interval");
     }
-    if (index > 0 && intervals[index - 1]?.actualEndInstant !== interval.actualStartInstant) {
+    if (index > 0 && temporal().Instant.compare(intervals[index - 1]!.actualEndInstant, interval.actualStartInstant) !== 0) {
       throw new Error("Section actual intervals are not adjacent");
     }
   }
-  if (intervals[0]?.actualStartInstant !== day.startInstant || intervals.at(-1)?.actualEndInstant !== day.endInstant) {
+  if (intervals[0] === undefined || intervals.at(-1) === undefined
+    || temporal().Instant.compare(intervals[0].actualStartInstant, day.startInstant) !== 0
+    || temporal().Instant.compare(intervals.at(-1)!.actualEndInstant, day.endInstant) !== 0) {
     throw new Error("Section actual intervals do not match the TaskChuteDay interval");
   }
   return intervals;

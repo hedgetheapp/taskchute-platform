@@ -56,7 +56,7 @@ async function seedB3() {
 }
 
 describe.sequential("Dogfood Day B3 Section Settings Lifecycle", () => {
-  it("projects the head, appends a version, freezes the current Day, and applies the latest head to the next Day", async () => {
+  it("projects the head, appends a version, and reconciles current and future established Days", async () => {
     const fixture = await seedB3();
     expect(await loadSectionConfiguration(env.APP_DB, fixture.userId)).toMatchObject({
       configuration_version_id: fixture.versionId, day_boundary_minutes: 300,
@@ -73,9 +73,9 @@ describe.sequential("Dogfood Day B3 Section Settings Lifecycle", () => {
         { section_id: fixture.sections[2]!, title: "Evening", logical_start_minute: 780, logical_end_minute: 1740 },
       ],
     };
-    expect(await updateSectionConfiguration(env.APP_DB, fixture.userId, requestB))
+    expect(await updateSectionConfiguration(env.APP_DB, fixture.userId, requestB, now))
       .toEqual({ configuration_version_id: versionB });
-    expect(await updateSectionConfiguration(env.APP_DB, fixture.userId, requestB))
+    expect(await updateSectionConfiguration(env.APP_DB, fixture.userId, requestB, now))
       .toEqual({ configuration_version_id: versionB });
 
     const canonical = await loadSectionConfiguration(env.APP_DB, fixture.userId);
@@ -83,14 +83,14 @@ describe.sequential("Dogfood Day B3 Section Settings Lifecycle", () => {
     expect(await env.APP_DB.prepare(`SELECT title, logical_start_minute, logical_end_minute
       FROM taskchute_day_section_contexts WHERE taskchute_day_id = ? ORDER BY context_order`)
       .bind(fixture.dayId).all()).toMatchObject({ results: [
-        { title: "Morning", logical_start_minute: 300, logical_end_minute: 540 },
-        { title: "Day", logical_start_minute: 540, logical_end_minute: 1200 },
-        { title: "Night", logical_start_minute: 1200, logical_end_minute: 1740 },
+        { title: "Focus", logical_start_minute: 300, logical_end_minute: 600 },
+        { title: "Lunch", logical_start_minute: 600, logical_end_minute: 780 },
+        { title: "Evening", logical_start_minute: 780, logical_end_minute: 1740 },
       ] });
     expect(await env.APP_DB.prepare("SELECT section_id, planned_start_minute FROM entries WHERE id = ?")
-      .bind(fixture.entryId).first()).toEqual({ section_id: fixture.sections[1], planned_start_minute: 600 });
+      .bind(fixture.entryId).first()).toEqual({ section_id: addedId, planned_start_minute: 600 });
     expect(await env.APP_DB.prepare("SELECT placement_revision FROM taskchute_days WHERE id = ?")
-      .bind(fixture.dayId).first<number>("placement_revision")).toBe(9);
+      .bind(fixture.dayId).first<number>("placement_revision")).toBe(10);
     expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM sections WHERE app_user_id = ?")
       .bind(fixture.userId).first<number>("count")).toBe(4);
     expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM section_configuration_versions WHERE app_user_id = ?")
@@ -100,7 +100,7 @@ describe.sequential("Dogfood Day B3 Section Settings Lifecycle", () => {
     await updateSectionConfiguration(env.APP_DB, fixture.userId, {
       operation_id: uuidv7(), configuration_version_id: versionC, expected_configuration_version_id: versionB,
       items: requestB.items.map((item, index) => index === 0 ? { ...item, title: "Deep Focus" } : item),
-    });
+    }, now);
     const nextDayId = uuidv7();
     await env.APP_DB.prepare(`INSERT INTO taskchute_days
       (id, app_user_id, logical_date, start_instant, end_instant, establishment_timezone,
@@ -141,7 +141,7 @@ describe.sequential("Dogfood Day B3 Section Settings Lifecycle", () => {
     await updateSectionConfiguration(env.APP_DB, fixture.userId, {
       operation_id: uuidv7(), configuration_version_id: versionD, expected_configuration_version_id: versionC,
       items: [currentC.items[0]!, { ...currentC.items[1]!, logical_end_minute: 1740 }],
-    });
+    }, now);
     expect((await loadSectionConfiguration(env.APP_DB, fixture.userId)).items).toMatchObject([
       { title: "Deep Focus", logical_start_minute: 300, logical_end_minute: 600 },
       { title: "Lunch", logical_start_minute: 600, logical_end_minute: 1740 },
@@ -153,6 +153,56 @@ describe.sequential("Dogfood Day B3 Section Settings Lifecycle", () => {
       .bind(fixture.userId, versionC).first<number>("count")).toBe(3);
   });
 
+  it("reconciles planned and execution entries while preserving lifecycle facts and exact replay", async () => {
+    const fixture = await seedB3();
+    const runningTaskId = uuidv7();
+    const runningEntryId = uuidv7();
+    const completedTaskId = uuidv7();
+    const completedEntryId = uuidv7();
+    await env.APP_DB.batch([
+      env.APP_DB.prepare("INSERT INTO tasks (id, app_user_id, title, created_at) VALUES (?, ?, 'Running B3', ?)")
+        .bind(runningTaskId, fixture.userId, now),
+      env.APP_DB.prepare("INSERT INTO tasks (id, app_user_id, title, created_at) VALUES (?, ?, 'Completed B3', ?)")
+        .bind(completedTaskId, fixture.userId, now),
+      env.APP_DB.prepare(`INSERT INTO entries
+        (id, app_user_id, task_id, taskchute_day_id, section_id, position, lifecycle_state,
+         estimate_seconds, planned_start_minute, created_at) VALUES (?, ?, ?, ?, ?, 2, 'running', 600, 660, ?)`)
+        .bind(runningEntryId, fixture.userId, runningTaskId, fixture.dayId, fixture.sections[1], now),
+      env.APP_DB.prepare(`INSERT INTO entries
+        (id, app_user_id, task_id, taskchute_day_id, section_id, position, lifecycle_state,
+         estimate_seconds, planned_start_minute, created_at) VALUES (?, ?, ?, ?, ?, 3, 'completed', 1200, 720, ?)`)
+        .bind(completedEntryId, fixture.userId, completedTaskId, fixture.dayId, fixture.sections[1], now),
+    ]);
+    const request = {
+      operation_id: uuidv7(), configuration_version_id: uuidv7(),
+      expected_configuration_version_id: fixture.versionId,
+      items: [
+        { section_id: fixture.sections[0]!, title: "Focus", logical_start_minute: 300, logical_end_minute: 900 },
+        { section_id: fixture.sections[2]!, title: "Night", logical_start_minute: 900, logical_end_minute: 1740 },
+      ],
+    };
+    const result = await updateSectionConfiguration(env.APP_DB, fixture.userId, request, now);
+    expect(result).toEqual({ configuration_version_id: request.configuration_version_id });
+    expect(await env.APP_DB.prepare(`SELECT section_id, position, lifecycle_state, planned_start_minute
+      FROM entries WHERE id IN (?, ?, ?) ORDER BY id`).bind(fixture.entryId, runningEntryId, completedEntryId).all()).toMatchObject({
+      results: [
+        { section_id: fixture.sections[0], position: 1, lifecycle_state: "planned", planned_start_minute: 600 },
+        { section_id: fixture.sections[2], position: 1, lifecycle_state: "running", planned_start_minute: 660 },
+        { section_id: fixture.sections[2], position: 2, lifecycle_state: "completed", planned_start_minute: 720 },
+      ],
+    });
+    expect(await env.APP_DB.prepare(`SELECT title, logical_start_minute, logical_end_minute
+      FROM taskchute_day_section_contexts WHERE taskchute_day_id = ? ORDER BY context_order`)
+      .bind(fixture.dayId).all()).toMatchObject({ results: [
+        { title: "Focus", logical_start_minute: 300, logical_end_minute: 900 },
+        { title: "Night", logical_start_minute: 900, logical_end_minute: 1740 },
+      ] });
+    expect(await env.APP_DB.prepare("SELECT placement_revision FROM taskchute_days WHERE id = ?")
+      .bind(fixture.dayId).first<number>("placement_revision")).toBe(10);
+    expect(await updateSectionConfiguration(env.APP_DB, fixture.userId, request, now)).toEqual(result);
+    expect(await env.APP_DB.prepare("SELECT placement_revision FROM taskchute_days WHERE id = ?")
+      .bind(fixture.dayId).first<number>("placement_revision")).toBe(10);
+  });
   it("rejects gaps, empty titles, duplicate IDs, inactive restoration, stale heads, and operation misuse without partial writes", async () => {
     const fixture = await seedB3();
     const baseItems = (await loadSectionConfiguration(env.APP_DB, fixture.userId)).items;
