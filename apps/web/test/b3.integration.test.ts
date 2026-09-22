@@ -184,7 +184,7 @@ describe.sequential("Dogfood Day B3 Section Settings Lifecycle", () => {
     const result = await updateSectionConfiguration(env.APP_DB, fixture.userId, request, now);
     expect(result).toEqual({ configuration_version_id: request.configuration_version_id });
     expect(await env.APP_DB.prepare(`SELECT section_id, position, lifecycle_state, planned_start_minute
-      FROM entries WHERE id IN (?, ?, ?) ORDER BY id`).bind(fixture.entryId, runningEntryId, completedEntryId).all()).toMatchObject({
+      FROM entries WHERE id IN (?, ?, ?) ORDER BY position`).bind(fixture.entryId, runningEntryId, completedEntryId).all()).toMatchObject({
       results: [
         { section_id: fixture.sections[0], position: 1, lifecycle_state: "planned", planned_start_minute: 600 },
         { section_id: fixture.sections[2], position: 1, lifecycle_state: "running", planned_start_minute: 660 },
