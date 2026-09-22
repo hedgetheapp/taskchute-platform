@@ -1,5 +1,33 @@
 # Test Matrix
 
+## D-131 Section current/future reconciliation — 2026-09-22
+
+D-131 implementation commit `fb0d0542d4509912aaaa4e5e306ad65a395cc241`は、既存の`UpdateSectionConfiguration` route / DTO / operation / replay / assertion semanticsを再利用し、current Dayとestablished future Dayだけを最新Section configurationへreconcileする。established past Dayはfreezeし、unestablished future Dayはmaterializeしない。`taskchute_days` body、Section configuration version/head、Entry / Execution identityは保持する。
+
+Implementation evidence:
+
+- affected Dayはpersisted Day timezone / boundary / logical dateからintervalを再構築し、planned non-null startは`[start, end)`のcanonical Sectionへ再配置、planned nullは`Sectionなし`へ保持: `PASS`
+- Routine-derived EntryはD-043のSection + planned-start pairを維持し、running / completed Entryはlifecycle・execution facts・planned fieldsを保持。旧Sectionが消える場合だけ隣接するsurviving Sectionへrehome: `PASS`
+- stable manual tie-breakを含むcanonical order、各affected Dayの`placement_revision` exactly `+1`、rename / boundary-only update、atomic assertion、exact same-operation replay（再incrementなし）: `PASS`
+- API route / DTO / operation contract、schema、migration、dependency、future execution boundaryは変更なし: `PASS`
+
+Focused automated evidence:
+
+- `npm test -- b1-review-blockers.integration.test.ts b3.integration.test.ts day-navigation.integration.test.ts completed-entry-future-routine.integration.test.ts r1.integration.test.ts`: `5 files / 63 tests PASS`
+- `npm test -- domain.test.ts b3.integration.test.ts day-navigation.integration.test.ts`: `3 files / 38 tests PASS`
+- `npm run typecheck`: `PASS`
+- `git diff --check`: `PASS`
+
+| ID | Area | Requirement | Contract | Evidence |
+|---|---|---|---|---|
+| D131-IMPLEMENTATION | Worker / D1 | current + established future DayのSection context / Entry placementをlatest configurationへreconcileし、pastをfreezeする | Approved (D-131, D-038, D-043) | PASS (LOCAL_AUTOMATED) |
+| D131-PLANNED-ROUTINE | Planning | planned / Routine-derived EntryのSection + planned-start pairをcanonical intervalへ同期する | Approved (D-043, D-131) | PASS (LOCAL_AUTOMATED) |
+| D131-EXECUTION | Lifecycle | running / completedのexecution factsを保持し、removed Sectionだけをsurviving contextへrehomeする | Approved (D-131) | PASS (LOCAL_AUTOMATED) |
+| D131-REVISION-REPLAY | Atomicity / Retry | affected Dayごとにrevision exactly `+1`、exact replayは二重incrementせず、assertion failureはpartial writeを残さない | Approved (D-020, D-131) | PASS (LOCAL_AUTOMATED) |
+| D131-PAST | History | established past Dayを変更せず、unestablished future Dayをmaterializeしない | Approved (D-038, D-041, D-131) | PASS (LOCAL_AUTOMATED) |
+| D131-PERSISTENT | Persistent nonprod | canonical persistent nonprodでD-131 runtimeを検証する | D-131 | NOT_RUN |
+| D131-PRODUCTION | Production | production migration / runtime / smoke | D-131 | NOT_RUN / RELEASE NO |
+
 ## Android Today actual-time prefill / Running projection / consecutive Quick Add corrective — 2026-09-21
 
 | ID | Verification target | Evidence | Status |

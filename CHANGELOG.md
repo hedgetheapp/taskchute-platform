@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### D-131 Section current/future reconciliation — 2026-09-22
+
+- Section configuration update now reconciles current and already-established future Day contexts to the latest Section configuration while preserving established past Day history and avoiding materialization of unestablished future Days.
+- Planned starts are re-derived through the canonical `[start, end)` Section intervals; `Sectionなし` remains paired with a null planned start. Routine-derived entries retain the D-043 pair, and running/completed entries preserve lifecycle and execution facts while using a surviving adjacent Section when their prior Section is removed.
+- Each affected Day advances `placement_revision` exactly once per successful update, exact operation replay is idempotent, ordering uses the existing canonical tie-break, and the update remains atomic through existing assertion / operation semantics.
+- Implementation `fb0d0542d4509912aaaa4e5e306ad65a395cc241` is covered by focused Worker evidence (`63 / 63` PASS), additional Section interval / B3 / Day Navigation coverage (`38 / 38` PASS), typecheck, and `git diff --check`. No API route / DTO / operation contract, schema, migration, or dependency change; persistent nonprod and production verification are `NOT_RUN`, Released is `NO`.
+
 ### Android Today actual-time prefill / Running projection / consecutive Quick Add corrective
 
 - Running / Completed editorの実績時間prefillを、compact入力parserとは分離したISO Execution instant formatterへ修正。`editor.day.establishmentTimezone`で`HH:mm`へ変換し、端末timezoneをauthorityにしない。
