@@ -1,5 +1,14 @@
 # Decisions
 
+## D-133 — Android Routine full create / edit parity v0.1
+
+Status: **Approved**
+
+Canonical Decision: `docs/decisions/D-133_ANDROID_ROUTINE_FULL_CREATE_EDIT_PARITY_V01.md`。
+
+Android Settings > RoutineのCreate / Editを同じfull formへ揃え、Task名 / Project / Mode / Section / 開始予定 / 見積 / 繰り返し / 開始日 / 終了日を編集可能にする。新規作成は`CreateRoutine`の1 logical operationでatomicに全fieldを保存し、`Create -> Update`の2段階合成は行わない。既存title-only / optional-default Create payloadは後方互換を維持する。開始予定は少なくとも`900` / `0900` / `09:00`を受理し、canonical minute 540 / display `09:00`へ正規化する。Schedule Secondary Sheetは14 canonical recurrence familyをmemory draftとして編集し、server writeは親Sheetの`追加 / 保存`時だけ行う。schema / migrationは現時点で承認せず、必要と判明した場合はSTOPする。Production / Releaseは対象外。
+
+
 ## D-132 — SetExecutionTimes actual-Section parity v0.1
 
 Status: **Approved**
