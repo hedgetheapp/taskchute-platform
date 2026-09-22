@@ -6102,6 +6102,20 @@ describe("Dogfood Day shell", () => {
     expect(mocks.setEntryPlannedStart.mock.calls[0][0]).toMatchObject({ planned_start_minute: 570 });
   });
 
+  it("sends the current placement revision for a sectioned planned actual-time transition", async () => {
+    mocks.loadDay.mockResolvedValue(populatedDay);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Canonical taskの開始" }));
+    const start = screen.getByRole("textbox", { name: "Canonical taskの開始" });
+    fireEvent.change(start, { target: { value: "0615" } });
+    fireEvent.blur(start, { relatedTarget: document.body });
+    await waitFor(() => expect(mocks.setExecutionTimes).toHaveBeenCalledTimes(1));
+    expect(mocks.setExecutionTimes.mock.calls[0][0]).toMatchObject({
+      expected_lifecycle_state: "planned",
+      started_at: "2026-08-22T06:15:00.000Z",
+      expected_placement_revision: populatedDay.placement_revision,
+    });
+  });
   it("uses text HHMM controls for actual Start/End and commits one running execution from the cell", async () => {
     mocks.loadDay.mockResolvedValue(runningDay);
     render(<App />);

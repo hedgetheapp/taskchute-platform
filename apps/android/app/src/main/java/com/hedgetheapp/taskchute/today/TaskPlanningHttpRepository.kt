@@ -91,7 +91,7 @@ class TaskPlanningHttpRepository(
                     is PlanningHttpResult.Success -> Unit
                 }
             }
-            return executeActualTimes(editor, input, currentSectionId, editor.day.placementRevision)
+            return executeActualTimes(editor, input, editor.day.placementRevision)
         }
         if (task.title != input.title || currentProjectId != input.projectId) {
             when (val result = executeTaskMetadata(task, taskId, input.projectId, input.title)) {
@@ -130,13 +130,12 @@ class TaskPlanningHttpRepository(
                 else -> return result
             }
         }
-        return executeActualTimes(editor, input, input.sectionId, placementRevision)
+        return executeActualTimes(editor, input, placementRevision)
     }
 
     private fun executeActualTimes(
         editor: TaskEditorState,
         input: NormalizedTaskInput,
-        sectionIdForPlacement: String?,
         placementRevision: Int,
     ): PlanningSaveResult {
         val task = editor.originalTask ?: return PlanningSaveResult.Success
@@ -148,7 +147,7 @@ class TaskPlanningHttpRepository(
         val expectedStartedAt = task.activeStartedAt ?: task.firstStartedAt
         val expectedEndedAt = task.lastEndedAt
         val executionId = task.executionId ?: UUIDv7.next()
-        val expectedPlacement = if (task.lifecycleState == LifecycleState.PLANNED && sectionIdForPlacement == null) {
+        val expectedPlacement = if (task.lifecycleState == LifecycleState.PLANNED) {
             ",\"expected_placement_revision\":$placementRevision"
         } else {
             ""
@@ -169,7 +168,7 @@ class TaskPlanningHttpRepository(
             ?: return PlanningSaveResult.Failure("実績時間のタイムゾーンを取得できません。再読み込みしてください。")
         val startedAt = logicalMinuteToInstant(day, input.actualStartMinute!!, zone)
         val endedAt = input.actualEndMinute?.let { logicalMinuteToInstant(day, it, zone) }
-        val expectedPlacement = if (input.sectionId == null) ",\"expected_placement_revision\":$placementRevision" else ""
+        val expectedPlacement = ",\"expected_placement_revision\":$placementRevision"
         val body = """
             {"operation_id":"${JsonEncoding.escape(UUIDv7.next())}","entry_id":"${JsonEncoding.escape(entryId)}","execution_id":"${JsonEncoding.escape(UUIDv7.next())}","expected_lifecycle_state":"planned","started_at":"${JsonEncoding.escape(startedAt)}","ended_at":${endedAt?.let { "\"${JsonEncoding.escape(it)}\"" } ?: "null"},"expected_started_at":null,"expected_ended_at":null$expectedPlacement}
         """.trimIndent()

@@ -7,7 +7,7 @@ import { uuidv7 } from "../src/shared/uuidv7";
 const createdAt = "2026-08-28T05:00:00.000Z";
 const now = "2026-08-28T12:00:00.000Z";
 
-async function seedFixture(sectioned = true) {
+async function seedFixture(sectioned = true, plannedStartMinute: number | null = null) {
   const userId = uuidv7();
   const dayId = uuidv7();
   const configurationVersionId = uuidv7();
@@ -57,10 +57,10 @@ async function seedFixture(sectioned = true) {
     env.APP_DB.prepare(`INSERT INTO entries
       (id, app_user_id, task_id, taskchute_day_id, section_id, position, lifecycle_state,
        estimate_seconds, planned_start_minute, created_at)
-      VALUES (?, ?, ?, ?, ?, 1, 'planned', NULL, NULL, ?)`)
-      .bind(entryId, userId, taskId, dayId, sectioned ? sectionId : null, createdAt),
+      VALUES (?, ?, ?, ?, ?, 1, 'planned', NULL, ?, ?)`)
+      .bind(entryId, userId, taskId, dayId, sectioned ? sectionId : null, plannedStartMinute, createdAt),
   ]);
-  return { userId, dayId, sectionId, entryId };
+  return { userId, dayId, sectionId, daySectionId, entryId };
 }
 
 async function operationCount(userId: string, commandType = "SetExecutionTimes") {
@@ -76,7 +76,7 @@ describe.sequential("D-060 SetExecutionTimes", () => {
       operation_id: uuidv7(), entry_id: fixture.entryId, execution_id: executionId,
       expected_lifecycle_state: "planned" as const,
       started_at: "2026-08-28T06:00:00.312Z", ended_at: "2026-08-28T06:15:00.512Z",
-      expected_started_at: null, expected_ended_at: null,
+      expected_started_at: null, expected_ended_at: null, expected_placement_revision: 0,
     };
     const first = await setExecutionTimes(env.APP_DB, fixture.userId, request, now);
     expect(first).toMatchObject({ entry_id: fixture.entryId, lifecycle_state: "completed",
@@ -106,6 +106,96 @@ describe.sequential("D-060 SetExecutionTimes", () => {
     expect(await operationCount(fixture.userId)).toBe(3);
   });
 
+  it("moves a sectioned Planned Entry to the actual Running Section and preserves planned start", async () => {
+    const fixture = await seedFixture(true, 480);
+    const request = {
+      operation_id: uuidv7(), entry_id: fixture.entryId, execution_id: uuidv7(),
+      expected_lifecycle_state: "planned" as const,
+      started_at: "2026-08-28T10:30:00.000Z", ended_at: null,
+      expected_started_at: null, expected_ended_at: null, expected_placement_revision: 0,
+    };
+    const started = await setExecutionTimes(env.APP_DB, fixture.userId, request, now);
+    expect(started).toMatchObject({ lifecycle_state: "running", section_id: fixture.daySectionId,
+      planned_start_minute: 480, placement_revision: 1 });
+    expect(await setExecutionTimes(env.APP_DB, fixture.userId, request, now)).toEqual(started);
+    expect(await env.APP_DB.prepare("SELECT lifecycle_state, section_id, planned_start_minute FROM entries WHERE id = ?")
+      .bind(fixture.entryId).first()).toEqual({ lifecycle_state: "running", section_id: fixture.daySectionId, planned_start_minute: 480 });
+    expect(await env.APP_DB.prepare("SELECT placement_revision FROM taskchute_days WHERE id = ?")
+      .bind(fixture.dayId).first<number>("placement_revision")).toBe(1);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM executions WHERE app_user_id = ? AND entry_id = ?")
+      .bind(fixture.userId, fixture.entryId).first<number>("count")).toBe(1);
+  });
+
+  it("moves a sectioned Planned Entry to the actual Completed Section with canonical execution facts", async () => {
+    const fixture = await seedFixture(true, 480);
+    const request = {
+      operation_id: uuidv7(), entry_id: fixture.entryId, execution_id: uuidv7(),
+      expected_lifecycle_state: "planned" as const,
+      started_at: "2026-08-28T10:30:00.000Z", ended_at: "2026-08-28T10:45:00.000Z",
+      expected_started_at: null, expected_ended_at: null, expected_placement_revision: 0,
+    };
+    await expect(setExecutionTimes(env.APP_DB, fixture.userId, request, now)).resolves.toMatchObject({
+      lifecycle_state: "completed", section_id: fixture.daySectionId, planned_start_minute: 480, placement_revision: 1,
+      execution: { started_at: request.started_at, ended_at: request.ended_at },
+    });
+    expect(await env.APP_DB.prepare("SELECT lifecycle_state, section_id, planned_start_minute FROM entries WHERE id = ?")
+      .bind(fixture.entryId).first()).toEqual({ lifecycle_state: "completed", section_id: fixture.daySectionId, planned_start_minute: 480 });
+    expect(await env.APP_DB.prepare("SELECT started_at, ended_at FROM executions WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, request.execution_id).first()).toEqual({ started_at: request.started_at, ended_at: request.ended_at });
+    expect(await env.APP_DB.prepare("SELECT placement_revision FROM taskchute_days WHERE id = ?")
+      .bind(fixture.dayId).first<number>("placement_revision")).toBe(1);
+  });
+
+  it("keeps a same-Section Planned transition at the same placement revision", async () => {
+    const fixture = await seedFixture(true, 480);
+    const request = {
+      operation_id: uuidv7(), entry_id: fixture.entryId, execution_id: uuidv7(),
+      expected_lifecycle_state: "planned" as const,
+      started_at: "2026-08-28T06:30:00.000Z", ended_at: null,
+      expected_started_at: null, expected_ended_at: null, expected_placement_revision: 0,
+    };
+    await expect(setExecutionTimes(env.APP_DB, fixture.userId, request, now)).resolves.toMatchObject({
+      lifecycle_state: "running", section_id: fixture.sectionId, planned_start_minute: 480, placement_revision: 0,
+    });
+    expect(await env.APP_DB.prepare("SELECT placement_revision FROM taskchute_days WHERE id = ?")
+      .bind(fixture.dayId).first<number>("placement_revision")).toBe(0);
+  });
+
+  it("rejects a stale cross-Section placement revision without partial writes", async () => {
+    const fixture = await seedFixture(true, 480);
+    const request = {
+      operation_id: uuidv7(), entry_id: fixture.entryId, execution_id: uuidv7(),
+      expected_lifecycle_state: "planned" as const,
+      started_at: "2026-08-28T10:30:00.000Z", ended_at: null,
+      expected_started_at: null, expected_ended_at: null, expected_placement_revision: 1,
+    };
+    await expect(setExecutionTimes(env.APP_DB, fixture.userId, request, now)).rejects.toMatchObject({ code: "revision_conflict" });
+    expect(await env.APP_DB.prepare("SELECT lifecycle_state, section_id, planned_start_minute FROM entries WHERE id = ?")
+      .bind(fixture.entryId).first()).toEqual({ lifecycle_state: "planned", section_id: fixture.sectionId, planned_start_minute: 480 });
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM executions WHERE app_user_id = ? AND entry_id = ?")
+      .bind(fixture.userId, fixture.entryId).first<number>("count")).toBe(0);
+    expect(await env.APP_DB.prepare("SELECT placement_revision FROM taskchute_days WHERE id = ?")
+      .bind(fixture.dayId).first<number>("placement_revision")).toBe(0);
+  });
+
+  it("rejects an unresolved actual Section without partial writes", async () => {
+    const fixture = await seedFixture(true, 480);
+    await env.APP_DB.prepare("DELETE FROM taskchute_day_section_contexts WHERE app_user_id = ? AND taskchute_day_id = ?")
+      .bind(fixture.userId, fixture.dayId).run();
+    const request = {
+      operation_id: uuidv7(), entry_id: fixture.entryId, execution_id: uuidv7(),
+      expected_lifecycle_state: "planned" as const,
+      started_at: "2026-08-28T06:30:00.000Z", ended_at: null,
+      expected_started_at: null, expected_ended_at: null, expected_placement_revision: 0,
+    };
+    await expect(setExecutionTimes(env.APP_DB, fixture.userId, request, now)).rejects.toMatchObject({ code: "resource_conflict" });
+    expect(await env.APP_DB.prepare("SELECT lifecycle_state, section_id, planned_start_minute FROM entries WHERE id = ?")
+      .bind(fixture.entryId).first()).toEqual({ lifecycle_state: "planned", section_id: fixture.sectionId, planned_start_minute: 480 });
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM executions WHERE app_user_id = ? AND entry_id = ?")
+      .bind(fixture.userId, fixture.entryId).first<number>("count")).toBe(0);
+    expect(await env.APP_DB.prepare("SELECT placement_revision FROM taskchute_days WHERE id = ?")
+      .bind(fixture.dayId).first<number>("placement_revision")).toBe(0);
+  });
   it("resolves Sectionなし actual start with one placement revision and protects retry, overlap, future, and owner boundaries", async () => {
     const fixture = await seedFixture(false);
     const request = {

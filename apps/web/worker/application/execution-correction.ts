@@ -127,7 +127,7 @@ function overlapsSql(alias: string): string {
     )`;
 }
 
-async function findSectionlessTarget(
+async function findActualSectionTarget(
   db: D1Database,
   appUserId: string,
   dayId: string,
@@ -142,7 +142,7 @@ async function findSectionlessTarget(
   const position = await db.prepare(`SELECT COALESCE(MAX(position), 0) + 1 AS position
     FROM entries WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id = ?`)
     .bind(appUserId, dayId, matches[0].section_id).first<{ position: number }>();
-  if (!position) throw new Error("Sectionless target position did not converge");
+  if (!position) throw new Error("Actual Section target position did not converge");
   return { sectionId: matches[0].section_id, position: position.position };
 }
 
@@ -205,40 +205,42 @@ export async function setExecutionTimes(
   const windowError = validateActualWindow(request, entry, now);
   if (windowError) return reject(db, appUserId, request, requestFingerprint, "resource_conflict", windowError);
 
-  const movesFromUnsectioned = request.expected_lifecycle_state === "planned" && entry.section_id === null;
-  if (request.expected_lifecycle_state === "planned" && !movesFromUnsectioned && request.expected_placement_revision !== undefined) {
-    throw new HttpError(400, "malformed_request", "A sectioned planned correction must omit expected_placement_revision");
-  }
-  if (movesFromUnsectioned && request.expected_placement_revision === undefined) {
+  if (request.expected_lifecycle_state === "planned" && entry.section_id === null && entry.planned_start_minute !== null) {
     return reject(db, appUserId, request, requestFingerprint, "resource_conflict",
-      "Setting actual time for an unsectioned Entry requires its placement revision");
+      "Section-less Entry cannot have a planned start");
   }
-  if (request.expected_placement_revision !== undefined && entry.placement_revision !== request.expected_placement_revision) {
+  const plannedTransition = request.expected_lifecycle_state === "planned";
+  const target = plannedTransition ? await findActualSectionTarget(db, appUserId, entry.taskchute_day_id, request.started_at) : null;
+  if (plannedTransition && !target) {
+    return reject(db, appUserId, request, requestFingerprint, "resource_conflict",
+      "A timed Section context is required for an actual start");
+  }
+  const targetState = request.ended_at === null ? "running" : "completed";
+  const targetSectionId = target?.sectionId ?? entry.section_id;
+  const movesSection = plannedTransition && targetSectionId !== entry.section_id;
+  if (movesSection && request.expected_placement_revision === undefined) {
+    return reject(db, appUserId, request, requestFingerprint, "resource_conflict",
+      "A Section-changing actual-time correction requires its placement revision");
+  }
+  const guardedPlacementRevision = movesSection || !plannedTransition ? request.expected_placement_revision : undefined;
+  if (guardedPlacementRevision !== undefined && entry.placement_revision !== guardedPlacementRevision) {
     return persistRejection<SetExecutionTimesResult>(db, {
       appUserId, operationId: request.operation_id, commandType: "SetExecutionTimes", requestFingerprint,
       outcomeKind: "revision_conflict", result: { code: "revision_conflict", message: "The placement revision is stale" },
     });
   }
-  const target = movesFromUnsectioned ? await findSectionlessTarget(db, appUserId, entry.taskchute_day_id, request.started_at) : null;
-  if (movesFromUnsectioned && !target) {
-    return reject(db, appUserId, request, requestFingerprint, "resource_conflict",
-      "A timed Section context is required for an unsectioned actual start");
-  }
-  const targetState = request.ended_at === null ? "running" : "completed";
-  const targetSectionId = target?.sectionId ?? entry.section_id;
-  const targetPosition = target?.position ?? entry.position;
-  if (!targetSectionId && movesFromUnsectioned) throw new Error("Sectionless correction target did not converge");
+  const targetPosition = movesSection ? target?.position ?? entry.position : entry.position;
   const result: SetExecutionTimesResult = {
     entry_id: request.entry_id,
     lifecycle_state: targetState,
     execution: { id: request.execution_id, entry_id: request.entry_id, started_at: request.started_at, ended_at: request.ended_at },
     section_id: targetSectionId,
-    planned_start_minute: movesFromUnsectioned ? null : entry.planned_start_minute,
+    planned_start_minute: entry.planned_start_minute,
     position: targetPosition,
-    placement_revision: movesFromUnsectioned ? entry.placement_revision + 1 : entry.placement_revision,
+    placement_revision: movesSection ? entry.placement_revision + 1 : entry.placement_revision,
   };
   const assertionId = `execution-times:${request.operation_id}`;
-  const expectedRevision = request.expected_placement_revision ?? null;
+  const expectedRevision = guardedPlacementRevision ?? null;
   const lifecycleGuard = request.expected_lifecycle_state === "planned"
     ? db.prepare(`INSERT INTO lifecycle_command_guards (app_user_id, operation_id, entry_id, execution_id, command_type)
         SELECT ?, ?, e.id, ?, 'SetExecutionTimes'
@@ -250,7 +252,7 @@ export async function setExecutionTimes(
            AND (? = 0 OR EXISTS (SELECT 1 FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?))`)
       .bind(appUserId, request.operation_id, request.execution_id, appUserId, request.entry_id, appUserId, request.execution_id,
         expectedRevision, expectedRevision, request.execution_id, request.ended_at, request.ended_at, request.started_at,
-        movesFromUnsectioned ? 1 : 0, appUserId, request.operation_id)
+        movesSection ? 1 : 0, appUserId, request.operation_id)
     : db.prepare(`INSERT INTO lifecycle_command_guards (app_user_id, operation_id, entry_id, execution_id, command_type)
         SELECT ?, ?, e.id, x.id, 'SetExecutionTimes'
           FROM entries e JOIN executions x ON x.app_user_id = e.app_user_id AND x.entry_id = e.id
@@ -266,21 +268,21 @@ export async function setExecutionTimes(
   const dayId = entry.taskchute_day_id;
   try {
     const [placementGuard, guard] = await db.batch([
-      movesFromUnsectioned
+      movesSection
         ? db.prepare(`INSERT INTO placement_command_guards (operation_id, app_user_id, taskchute_day_id, expected_revision)
             SELECT ?, app_user_id, id, ? FROM taskchute_days
              WHERE app_user_id = ? AND id = ? AND placement_revision = ?`)
           .bind(request.operation_id, expectedRevision, appUserId, dayId, expectedRevision)
         : db.prepare("SELECT 1 AS no_placement_guard"),
       lifecycleGuard,
-      movesFromUnsectioned
+      movesSection
         ? db.prepare(`UPDATE entries SET section_id = ?, position = ? WHERE app_user_id = ? AND id = ?
-            AND section_id IS NULL AND planned_start_minute IS NULL
+            AND section_id IS ?
             AND EXISTS (SELECT 1 FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?)
             AND EXISTS (SELECT 1 FROM lifecycle_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
-          .bind(targetSectionId, targetPosition, appUserId, request.entry_id, appUserId, request.operation_id, appUserId, request.operation_id)
+          .bind(targetSectionId, targetPosition, appUserId, request.entry_id, entry.section_id, appUserId, request.operation_id, appUserId, request.operation_id)
         : db.prepare("SELECT 1 AS no_placement_update"),
-      movesFromUnsectioned
+      movesSection
         ? db.prepare(`UPDATE taskchute_days SET placement_revision = placement_revision + 1
             WHERE app_user_id = ? AND id = ? AND placement_revision = ?
               AND EXISTS (SELECT 1 FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?)
@@ -298,6 +300,40 @@ export async function setExecutionTimes(
             WHERE app_user_id = ? AND id = ? AND entry_id = ?
               AND EXISTS (SELECT 1 FROM lifecycle_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
           .bind(request.started_at, request.ended_at, request.ended_at, appUserId, request.execution_id, request.entry_id, appUserId, request.operation_id),
+      plannedTransition
+        ? db.prepare(`INSERT INTO entry_project_snapshots
+            (app_user_id, entry_id, project_id, project_title, captured_at)
+            SELECT e.app_user_id, e.id, t.project_id, p.title, ?
+              FROM entries e JOIN tasks t ON t.app_user_id = e.app_user_id AND t.id = e.task_id
+              LEFT JOIN projects p ON p.app_user_id = t.app_user_id AND p.id = t.project_id
+             WHERE e.app_user_id = ? AND e.id = ?
+               AND NOT EXISTS (SELECT 1 FROM entry_project_snapshots s
+                 WHERE s.app_user_id = e.app_user_id AND s.entry_id = e.id)
+               AND EXISTS (SELECT 1 FROM lifecycle_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+          .bind(now, appUserId, request.entry_id, appUserId, request.operation_id)
+        : db.prepare("SELECT 1 AS no_project_snapshot"),
+      plannedTransition
+        ? db.prepare(`INSERT INTO entry_task_snapshots
+            (app_user_id, entry_id, task_id, task_title, captured_at)
+            SELECT e.app_user_id, e.id, t.id, t.title, ?
+              FROM entries e JOIN tasks t ON t.app_user_id = e.app_user_id AND t.id = e.task_id
+             WHERE e.app_user_id = ? AND e.id = ?
+               AND NOT EXISTS (SELECT 1 FROM entry_task_snapshots s
+                 WHERE s.app_user_id = e.app_user_id AND s.entry_id = e.id)
+               AND EXISTS (SELECT 1 FROM lifecycle_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+          .bind(now, appUserId, request.entry_id, appUserId, request.operation_id)
+        : db.prepare("SELECT 1 AS no_task_snapshot"),
+      plannedTransition
+        ? db.prepare(`INSERT INTO entry_mode_snapshots
+            (app_user_id, entry_id, mode_id, mode_title, captured_at)
+            SELECT e.app_user_id, e.id, em.mode_id, md.title, ?
+              FROM entries e JOIN entry_modes em ON em.app_user_id = e.app_user_id AND em.entry_id = e.id
+              JOIN mode_definitions md ON md.app_user_id = em.app_user_id AND md.id = em.mode_id
+             WHERE e.app_user_id = ? AND e.id = ?
+               AND NOT EXISTS (SELECT 1 FROM entry_mode_snapshots s WHERE s.app_user_id = e.app_user_id AND s.entry_id = e.id)
+               AND EXISTS (SELECT 1 FROM lifecycle_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+          .bind(now, appUserId, request.entry_id, appUserId, request.operation_id)
+        : db.prepare("SELECT 1 AS no_mode_snapshot"),
       db.prepare(`UPDATE entries SET lifecycle_state = ? WHERE app_user_id = ? AND id = ?
         AND lifecycle_state = ? AND EXISTS (SELECT 1 FROM lifecycle_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
         .bind(targetState, appUserId, request.entry_id, request.expected_lifecycle_state, appUserId, request.operation_id),
@@ -309,8 +345,8 @@ export async function setExecutionTimes(
           AND (? = 0 OR EXISTS (SELECT 1 FROM taskchute_days WHERE app_user_id = ? AND id = ? AND placement_revision = ?))
         THEN 1 ELSE 0 END WHERE EXISTS (SELECT 1 FROM lifecycle_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
         .bind(appUserId, assertionId, appUserId, request.entry_id, targetState, appUserId, request.execution_id, request.entry_id,
-          request.started_at, request.ended_at, request.ended_at, movesFromUnsectioned ? 1 : 0, appUserId, request.entry_id,
-          targetSectionId, movesFromUnsectioned ? 1 : 0, appUserId, dayId, result.placement_revision, appUserId, request.operation_id),
+          request.started_at, request.ended_at, request.ended_at, movesSection ? 1 : 0, appUserId, request.entry_id,
+          targetSectionId, movesSection ? 1 : 0, appUserId, dayId, result.placement_revision, appUserId, request.operation_id),
       db.prepare(`INSERT INTO operations (app_user_id, operation_id, command_type, request_fingerprint_version,
           request_fingerprint, outcome_kind, result_json, created_at)
         SELECT ?, ?, 'SetExecutionTimes', ?, ?, 'success', ?, ?
@@ -320,7 +356,7 @@ export async function setExecutionTimes(
       db.prepare("DELETE FROM lifecycle_command_guards WHERE app_user_id = ? AND operation_id = ?").bind(appUserId, request.operation_id),
       db.prepare("DELETE FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?").bind(appUserId, request.operation_id),
     ]);
-    if (movesFromUnsectioned && placementGuard.meta.changes === 0) {
+    if (movesSection && placementGuard.meta.changes === 0) {
       const committed = await readOperation(db, appUserId, request.operation_id);
       if (committed) return replayOperation<SetExecutionTimesResult>(committed, "SetExecutionTimes", requestFingerprint);
       return persistRejection<SetExecutionTimesResult>(db, { appUserId, operationId: request.operation_id,

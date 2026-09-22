@@ -4988,7 +4988,7 @@ export function App() {
       operation_id: uuidv7(), entry_id: draft.entryId, execution_id: draft.executionId,
       expected_lifecycle_state: draft.expectedLifecycleState, started_at: startedAt, ended_at: endedAt,
       expected_started_at: draft.expectedStartedAt, expected_ended_at: draft.expectedEndedAt,
-      ...(draft.expectedLifecycleState === "planned" && entry.section_id === null
+      ...(draft.expectedLifecycleState === "planned"
         ? { expected_placement_revision: day.placement_revision } : {}),
     };
     setExecutionEditorError(null);

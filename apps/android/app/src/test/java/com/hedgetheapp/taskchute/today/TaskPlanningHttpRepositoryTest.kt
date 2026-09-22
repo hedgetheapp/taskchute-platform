@@ -68,8 +68,40 @@ class TaskPlanningHttpRepositoryTest {
         assertTrue(requests[1].third!!.contains("\"expected_lifecycle_state\":\"planned\""))
         assertTrue(requests[1].third!!.contains("\"started_at\":\"2026-09-14T09:00:00Z\""))
         assertTrue(requests[1].third!!.contains("\"ended_at\":\"2026-09-14T09:30:00Z\""))
+        assertTrue(requests[1].third!!.contains("\"expected_placement_revision\":6"))
     }
 
+    @Test
+    fun sectionedPlannedEditIncludesCurrentPlacementRevisionForActualTransition() {
+        val requests = mutableListOf<Triple<String, String, String?>>()
+        val task = TodayTask(
+            id = "entry-1", title = "Planned task", lifecycleState = LifecycleState.PLANNED,
+            project = null, mode = null, estimateSeconds = 600, plannedStartMinute = 480,
+            executionId = null, activeStartedAt = null, routineDerived = false, taskId = "task-1",
+        )
+        val day = currentDay().copy(
+            establishmentTimezone = "UTC",
+            sections = listOf(TodaySection("section-1", "Morning", 480, 720, listOf(task))),
+        )
+        val repository = TaskPlanningHttpRepository { method, path, body ->
+            requests += Triple(method, path, body)
+            TodayHttpResponse(204, null)
+        }
+
+        val result = repository.save(
+            TaskEditorState(
+                TaskEditorMode.EDIT, day, task,
+                TaskEditorDraft(title = task.title, sectionId = "section-1", plannedStartText = "0800", estimateText = "10"),
+            ),
+            NormalizedTaskInput(task.title, null, null, "section-1", 480, 600, actualStartMinute = 540),
+        )
+
+        assertEquals(PlanningSaveResult.Success, result)
+        assertEquals(1, requests.size)
+        assertTrue(requests.single().second.endsWith("/execution-times"))
+        assertTrue(requests.single().third!!.contains("\"expected_lifecycle_state\":\"planned\""))
+        assertTrue(requests.single().third!!.contains("\"expected_placement_revision\":5"))
+    }
     @Test
     fun plannedStartOnlyCreateSendsNullEndAndUsesRunningTransitionContract() {
         val requests = mutableListOf<Triple<String, String, String?>>()
