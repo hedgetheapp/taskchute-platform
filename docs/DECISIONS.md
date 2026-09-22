@@ -1,5 +1,13 @@
 # Decisions
 
+## D-131 — Current and future Section configuration reconciliation v0.1
+
+Status: **Approved**
+
+Canonical Decision: `docs/decisions/D-131_CURRENT_AND_FUTURE_SECTION_CONFIGURATION_RECONCILIATION_V01.md`。
+
+Section設定変更は、server-authoritative current logical Dayと、すでにestablish済みのfuture Dayへ同じsuccessful update内でreconcileする。past Dayはhistorical contextとしてfreezeしたまま変更しない。未establishのfuture Dayはsettings updateだけでは作らず、後にestablishされる際にlatest configurationを使う。affected DayのSection contextはlatest configurationへ更新し、planned EntryはD-043どおりplanned startを保持してSectionを再deriveする。current DayのRunning / Completedはexisting Section identityを可能な限り保持し、削除Sectionだけ既存の隣接吸収先へrehomeする。各affected Dayの`placement_revision`はconfiguration update barrierとしてexactly +1し、Execution facts / lifecycle / past historyは変更しない。D-038 / D-119のcurrent/future Day freezeとnext-Day-only effective timingだけをsupersedeする。
+
 ## D-130 — Android Running Row projection v0.1
 
 Status: **Approved**

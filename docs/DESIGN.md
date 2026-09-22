@@ -361,7 +361,7 @@ Icon  Section名       開始       終了       Accent
 - Day TableのSection selectorは既存Sectionを選択するinteractionへ専念させる。
 - Section selector内へSettingsへの導線を埋め込むことはinitial targetにしない。
 - Section orderはtime authorityに従い、Settingsでarbitrary D&D reorderする対象にはしない。
-- configurationのeffective timing、current-Day freeze、historical context等のsemanticsはD-038を正本とする。
+- configurationのeffective timingはD-131を正本とし、Section設定保存後はcurrent logical Dayとestablished future Dayをlatest configurationへreconcileする。past Day historical contextはfreezeし、未establish future Dayはsettings保存だけではmaterializeしない。
 
 ### Project settings target
 

@@ -362,6 +362,16 @@ EntryはTaskChuteDay / Section上のplacement / execution targetとする。
 - active Executionが存在しない限り、Next以外のplanned Entryも明示Startできる。
 - stale stateによるplacement overwriteが危険なmutationではrevision / preconditionを利用し、silent last-write-winsを行わない。
 
+### Section configuration effective timing and established-Day reconciliation
+
+Status: Approved (D-038, superseded in effective timing by D-131).
+
+A successful Section configuration update applies to the server-authoritative current logical Day and every already-established future TaskChuteDay. Past established Days preserve their existing historical Section context. An unestablished future logical date is not materialized by settings mutation and receives the latest configuration only when later established.
+
+For every affected established Day, the latest configuration version is resolved into that Day's persisted establishment timezone / boundary / logical date and replaces the mutable current/future Day Section context without changing the TaskChuteDay interval itself. Each affected Day increments `placement_revision` exactly once as a planning-context barrier.
+
+Planned Entries preserve `planned_start_minute`; non-null values re-derive their Section from the new ranges under D-043 and NULL remains `Sectionなし`. Running / Completed on the current Day retain their stable Section identity when it still exists; if a Section is deleted they are moved only to that deletion's adjacent absorption target while Execution facts and lifecycle remain unchanged. RoutineDefinition defaults / schedules are not implicitly rewritten.
+
 ### Planned start persistence, synchronization, and canonical order
 
 Status: Approved (D-031, D-039, D-043). D-039 runtime baseline and D-043 full synchronization: IMPLEMENTED / INTEGRATED.

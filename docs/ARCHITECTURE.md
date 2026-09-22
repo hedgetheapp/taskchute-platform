@@ -444,7 +444,7 @@ D-022によりinitial bootstrapではcanonical IANA timezone、TaskChuteDay boun
 
 ambiguous / nonexistent local timeのinitial disambiguationはTemporal-compatibleな`compatible` semanticsを利用する。day startとnext-day boundaryをそれぞれtimezone ruleでinstantへ解決し、`end = start + 24h`とは計算しない。
 
-current TaskChuteDayは必要時にServerがlazy materializeできる。materializeしたactual `[start, end)` intervalとestablishment contextを保存し、後のsetting変更でretroactiveに再分類しない。
+current TaskChuteDayは必要時にServerがlazy materializeできる。materializeしたactual `[start, end)` intervalとestablishment timezone / boundary contextは保存して後のsetting変更で書き換えない。D-131によりSection configurationだけはcurrent logical Dayとalready-established future Dayへreconcile可能とし、past DayのSection historical contextはretroactiveに再分類しない。
 
 未来dayを閲覧しただけでhistorically freezeするか等のfuture materialization policy、timezone / boundary変更UX、travel behaviorは未決。
 
