@@ -290,6 +290,7 @@ private fun ScheduleEditorSheet(initial: RoutineScheduleSpec, onDismiss: () -> U
     var ordinal by remember(initial) { mutableStateOf((initial.ordinal ?: "").toString()) }
     var weekday by remember(initial) { mutableStateOf((initial.weekday ?: "").toString()) }
     var weekdays by remember(initial) { mutableStateOf(initial.weekdays.joinToString(",")) }
+    val schedule = parseRoutineScheduleDraft(kind, interval, day, ordinal, weekday, weekdays)
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.padding(20.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("繰り返し設定", style = MaterialTheme.typography.titleLarge)
@@ -299,7 +300,11 @@ private fun ScheduleEditorSheet(initial: RoutineScheduleSpec, onDismiss: () -> U
             if (kind == "monthly_nth_weekday") OutlinedTextField(ordinal, { ordinal = it }, label = { Text("第何週") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             if (kind in listOf("weekly", "every_n_weeks")) OutlinedTextField(weekdays, { weekdays = it }, label = { Text("曜日（0=日, カンマ区切り）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             if (kind in listOf("monthly_nth_weekday", "monthly_last_weekday")) OutlinedTextField(weekday, { weekday = it }, label = { Text("曜日（0=日）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            Button(onClick = { scheduleFromEditor(kind, interval, day, ordinal, weekday, weekdays)?.let(onApply) }, modifier = Modifier.fillMaxWidth()) { Text("適用") }
+            Button(
+                onClick = { schedule?.let(onApply) },
+                enabled = schedule != null,
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("適用") }
             TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text("キャンセル") }
         }
     }
@@ -312,22 +317,6 @@ private fun scheduleKindOptions(): List<Pair<String, String>> = listOf(
     "workday" to "営業日", "holiday" to "休日", "official_holiday" to "祝日", "monthly_last_workday" to "月末営業日",
 )
 
-private fun scheduleFromEditor(kind: String, interval: String, day: String, ordinal: String, weekday: String, weekdays: String): RoutineScheduleSpec? {
-    val ints = weekdays.split(",").filter { it.isNotBlank() }.mapNotNull { it.trim().toIntOrNull() }
-    val one = { value: String -> value.trim().toIntOrNull() }
-    return when (kind) {
-        "daily", "monthly_last_day", "workday", "holiday", "official_holiday", "monthly_last_workday" -> RoutineScheduleSpec(kind)
-        "every_n_days" -> one(interval)?.let { RoutineScheduleSpec(kind, intervalDays = it) }
-        "weekly" -> if (ints.isNotEmpty()) RoutineScheduleSpec(kind, weekdays = ints) else null
-        "every_n_weeks" -> one(interval)?.let { n -> if (ints.isNotEmpty()) RoutineScheduleSpec(kind, intervalWeeks = n, weekdays = ints) else null }
-        "monthly_day" -> one(day)?.let { RoutineScheduleSpec(kind, dayOfMonth = it) }
-        "monthly_nth_weekday" -> { val o = one(ordinal); val w = one(weekday); if (o != null && w != null) RoutineScheduleSpec(kind, ordinal = o, weekday = w) else null }
-        "monthly_last_weekday" -> one(weekday)?.let { RoutineScheduleSpec(kind, weekday = it) }
-        "every_n_months_day" -> { val n = one(interval); val d = one(day); if (n != null && d != null) RoutineScheduleSpec(kind, intervalMonths = n, dayOfMonth = d) else null }
-        "every_n_months_last_day" -> one(interval)?.let { RoutineScheduleSpec(kind, intervalMonths = it) }
-        else -> null
-    }
-}
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable

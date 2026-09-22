@@ -190,7 +190,7 @@ class SettingsController(
             state = state.copy(errorMessage = "開始予定と見積を正しく入力してください。")
             return
         }
-        if (!validSchedule(draft.schedule)) {
+        if (!isValidRoutineSchedule(draft.schedule)) {
             state = state.copy(errorMessage = "繰り返し設定を正しく入力してください。")
             return
         }
@@ -318,18 +318,6 @@ class SettingsController(
 
     private fun validDate(value: String): Boolean = runCatching { LocalDate.parse(value).toString() == value }.getOrDefault(false)
 
-    private fun validSchedule(schedule: RoutineScheduleSpec): Boolean = when (schedule.kind) {
-        "daily", "monthly_last_day", "workday", "holiday", "official_holiday", "monthly_last_workday" -> true
-        "every_n_days" -> schedule.intervalDays in 2..365
-        "weekly" -> schedule.weekdays.isNotEmpty() && schedule.weekdays.distinct().size == schedule.weekdays.size && schedule.weekdays.all { it in 0..6 }
-        "every_n_weeks" -> schedule.intervalWeeks in 2..52 && schedule.weekdays.isNotEmpty() && schedule.weekdays.distinct().size == schedule.weekdays.size && schedule.weekdays.all { it in 0..6 }
-        "monthly_day" -> schedule.dayOfMonth in 1..31
-        "monthly_nth_weekday" -> schedule.ordinal in 1..5 && schedule.weekday in 0..6
-        "monthly_last_weekday" -> schedule.weekday in 0..6
-        "every_n_months_day" -> schedule.intervalMonths in 2..12 && schedule.dayOfMonth in 1..31
-        "every_n_months_last_day" -> schedule.intervalMonths in 2..12
-        else -> false
-    }
 
     private fun parseMinute(raw: String): Int? = raw.trim().let { value ->
         val parts = value.split(":")

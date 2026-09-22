@@ -1,11 +1,14 @@
 package com.hedgetheapp.taskchute.settings
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Rule
 import org.junit.Test
@@ -36,6 +39,25 @@ class SettingsScreenInstrumentedTest {
         composeRule.onNodeWithText("朝").assertIsDisplayed()
         composeRule.onAllNodesWithText("編集")[0].performClick()
         composeRule.onNodeWithText("セクション編集").assertIsDisplayed()
+        controller.close()
+    }
+
+    @Test
+    fun scheduleApplyIsDisabledForInvalidDraftAndEnabledForValidDraft() {
+        val controller = SettingsController(FakeSettingsRepository(), {}, kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Unconfined))
+        composeRule.setContent { SettingsScreen(controller, {}, {}, {}) }
+
+        composeRule.onNodeWithContentDescription("ルーティン設定").performClick()
+        composeRule.onNodeWithContentDescription("＋").performClick()
+        composeRule.onNodeWithText("繰り返し: 毎日").performClick()
+        composeRule.onNodeWithText("適用").assertIsEnabled()
+
+        composeRule.onNodeWithText("種類: 毎日").performClick()
+        composeRule.onNodeWithText("N日ごと").performClick()
+        composeRule.onNodeWithText("適用").assertIsNotEnabled()
+
+        composeRule.onNodeWithText("間隔").performTextInput("2")
+        composeRule.onNodeWithText("適用").assertIsEnabled()
         controller.close()
     }
 }
