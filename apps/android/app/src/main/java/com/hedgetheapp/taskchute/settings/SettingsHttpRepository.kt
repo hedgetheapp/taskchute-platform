@@ -50,18 +50,26 @@ class SettingsHttpRepository(
     override fun loadRoutineBoard(): SettingsResult<AndroidRoutineBoard> {
         return when (val routines = get("/api/v1/routines") { parseRoutineBoard(it) }) {
             is SettingsResult.Success -> when (val projects = loadProjectBoard()) {
-                is SettingsResult.Success -> SettingsResult.Success(routines.value.copy(projects = projects.value.projects))
+                is SettingsResult.Success -> when (val modes = loadModeBoard()) {
+                    is SettingsResult.Success -> SettingsResult.Success(routines.value.copy(projects = projects.value.projects, modes = modes.value))
+                    else -> SettingsResult.Success(routines.value.copy(projects = projects.value.projects))
+                }
                 else -> routines
             }
             else -> routines
         }
     }
 
-    override fun createRoutine(request: CreateRoutineSettingsRequest): SettingsResult<Unit> = mutation(
-        "/api/v1/routines",
-        """{"operation_id":"${esc(request.operationId)}","task_id":"${esc(request.taskId)}","routine_definition_id":"${esc(request.routineDefinitionId)}","title":"${esc(request.title.trim())}","expected_board_revision":${request.expectedBoardRevision},"default_section_id":${nullable(request.defaultSectionId)},"default_planned_start_minute":${request.defaultPlannedStartMinute ?: "null"},"default_estimate_seconds":${request.defaultEstimateSeconds ?: "null"}}""",
-    )
-
+    override fun createRoutine(request: CreateRoutineSettingsRequest): SettingsResult<Unit> {
+        val fullFields = request.startLogicalDate?.let { startDate ->
+            ",\"project_id\":${nullable(request.projectId)},\"default_mode_id\":${nullable(request.defaultModeId)}," +
+                "\"schedule\":${request.schedule.toJson()},\"start_logical_date\":\"${esc(startDate)}\",\"end_logical_date\":${nullable(request.endLogicalDate)}"
+        } ?: ""
+        return mutation(
+            "/api/v1/routines",
+            """{"operation_id":"${esc(request.operationId)}","task_id":"${esc(request.taskId)}","routine_definition_id":"${esc(request.routineDefinitionId)}","title":"${esc(request.title.trim())}","expected_board_revision":${request.expectedBoardRevision},"default_section_id":${nullable(request.defaultSectionId)},"default_planned_start_minute":${request.defaultPlannedStartMinute ?: "null"},"default_estimate_seconds":${request.defaultEstimateSeconds ?: "null"}$fullFields}""",
+        )
+    }
     override fun updateRoutine(request: UpdateRoutineSettingsRequest): SettingsResult<Unit> = mutation(
         "/api/v1/routines/${JsonEncoding.pathSegment(request.routineDefinitionId)}",
         """{"operation_id":"${esc(request.operationId)}","routine_definition_id":"${esc(request.routineDefinitionId)}","expected_settings_revision":${request.expectedSettingsRevision},"title":"${esc(request.title.trim())}","project_id":${nullable(request.projectId)},"schedule":${request.schedule.toJson()},"default_section_id":${nullable(request.defaultSectionId)},"default_planned_start_minute":${request.defaultPlannedStartMinute ?: "null"},"default_estimate_seconds":${request.defaultEstimateSeconds ?: "null"},"default_mode_id":${nullable(request.defaultModeId)},"start_logical_date":"${esc(request.startLogicalDate)}","end_logical_date":${nullable(request.endLogicalDate)}}""",
@@ -121,6 +129,11 @@ class SettingsHttpRepository(
         },
     )
 
+    private fun loadModeBoard(): SettingsResult<List<AndroidModeSetting>> =
+        get("/api/v1/mode-board") { root -> root.arrayField("modes").map { value ->
+            val item = value.objectValue()
+            AndroidModeSetting(item.stringField("id"), item.stringField("title"), item.booleanField("archived"), item.intField("board_position"), item.intField("settings_revision"))
+        } }
     private fun parseProjectBoard(root: JsonValue.Object): AndroidProjectBoard = AndroidProjectBoard(
         boardRevision = root.intField("board_revision"),
         projects = root.arrayField("projects").map { value ->

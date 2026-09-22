@@ -139,7 +139,12 @@ export function isCreateRoutineRequest(value: unknown): value is CreateRoutineRe
   const sectionId = body.default_section_id ?? null;
   const plannedStart = body.default_planned_start_minute ?? null;
   const estimate = body.default_estimate_seconds ?? null;
-  return !('user_id' in body) && isUuid(body.operation_id) && isUuid(body.task_id)
+  const projectId = body.project_id ?? null;
+  const modeId = body.default_mode_id ?? null;
+  const schedule = body.schedule ?? { kind: "daily" };
+  const startDate = body.start_logical_date ?? null;
+  const endDate = body.end_logical_date ?? null;
+  return !("user_id" in body) && isUuid(body.operation_id) && isUuid(body.task_id)
     && isUuid(body.routine_definition_id) && isTitle(body.title)
     && Number.isSafeInteger(body.expected_board_revision) && Number(body.expected_board_revision) >= 0
     && (body.default_section_id === undefined || sectionId === null || isUuid(sectionId))
@@ -147,9 +152,14 @@ export function isCreateRoutineRequest(value: unknown): value is CreateRoutineRe
       || Number.isSafeInteger(plannedStart) && Number(plannedStart) >= 0)
     && (body.default_estimate_seconds === undefined || estimate === null
       || Number.isSafeInteger(estimate) && Number(estimate) > 0)
-    && ((sectionId === null) === (plannedStart === null));
+    && ((sectionId === null) === (plannedStart === null))
+    && (body.project_id === undefined || projectId === null || isUuid(projectId))
+    && (body.default_mode_id === undefined || modeId === null || isUuid(modeId))
+    && (body.schedule === undefined || isSchedule(schedule))
+    && (body.start_logical_date === undefined || isLogicalDate(startDate))
+    && (body.end_logical_date === undefined || endDate === null || isLogicalDate(endDate))
+    && (startDate === null || endDate === null || startDate <= endDate);
 }
-
 export function isSetRoutineEnabledRequest(value: unknown): value is SetRoutineEnabledRequest {
   if (!value || typeof value !== "object") return false;
   const body = value as Record<string, unknown>;
@@ -343,13 +353,28 @@ async function rejectDelete(
     requestFingerprint, message, conflict);
 }
 
-async function validateCreateRoutineDefaults(db: D1Database, appUserId: string, request: CreateRoutineRequest): Promise<boolean> {
+async function validateCreateRoutineDefaults(db: D1Database, appUserId: string, request: CreateRoutineRequest, startLogicalDate: string, endLogicalDate: string | null): Promise<boolean> {
   const sectionId = request.default_section_id ?? null;
   const plannedStart = request.default_planned_start_minute ?? null;
   const estimate = request.default_estimate_seconds ?? null;
+  const projectId = request.project_id ?? null;
+  const modeId = request.default_mode_id ?? null;
   if ((sectionId === null) !== (plannedStart === null)) return false;
   if (plannedStart !== null && (!Number.isSafeInteger(plannedStart) || plannedStart < 0)) return false;
   if (estimate !== null && (!Number.isSafeInteger(estimate) || estimate <= 0)) return false;
+  if (!isLogicalDate(startLogicalDate) || (endLogicalDate !== null && (!isLogicalDate(endLogicalDate) || endLogicalDate < startLogicalDate))) return false;
+  if (projectId !== null) {
+    const project = await db.prepare(`SELECT p.id FROM projects p WHERE p.app_user_id = ? AND p.id = ?
+      AND NOT EXISTS (SELECT 1 FROM project_archives a WHERE a.app_user_id = p.app_user_id AND a.project_id = p.id)`)
+      .bind(appUserId, projectId).first();
+    if (!project) return false;
+  }
+  if (modeId !== null) {
+    const mode = await db.prepare(`SELECT m.id FROM mode_definitions m WHERE m.app_user_id = ? AND m.id = ?
+      AND NOT EXISTS (SELECT 1 FROM mode_archives a WHERE a.app_user_id = m.app_user_id AND a.mode_id = m.id)`)
+      .bind(appUserId, modeId).first();
+    if (!mode) return false;
+  }
   if (sectionId === null) return true;
   const section = await db.prepare(`SELECT COUNT(*) AS count FROM section_configuration_heads h
     JOIN section_configuration_items i ON i.app_user_id = h.app_user_id
@@ -365,7 +390,13 @@ export async function createRoutine(db: D1Database, appUserId: string, request: 
   const prior = await readOperation(db, appUserId, request.operation_id);
   if (prior) return replayOperation(prior, "CreateRoutine", requestFingerprint);
   const context = await currentContext(db, appUserId, nowInstant);
-  if (!await validateCreateRoutineDefaults(db, appUserId, request)) return reject(db, appUserId, request.operation_id, "CreateRoutine", requestFingerprint, "Routine defaults are unavailable");
+  const projectId = request.project_id ?? null;
+  const defaultModeId = request.default_mode_id ?? null;
+  const schedule = request.schedule ?? { kind: "daily" };
+  const startLogicalDate = request.start_logical_date ?? context.logicalDate;
+  const endLogicalDate = request.end_logical_date ?? null;
+  if (!await validateCreateRoutineDefaults(db, appUserId, request, startLogicalDate, endLogicalDate)) return reject(db, appUserId, request.operation_id, "CreateRoutine", requestFingerprint, "Routine defaults are unavailable");
+  const scheduleColumnsValue = scheduleColumns(schedule);
   const [head, boardCount, materializationCount, collisions] = await Promise.all([
     db.prepare("SELECT board_revision FROM routine_board_heads WHERE app_user_id = ?").bind(appUserId)
       .first<{ board_revision: number }>(),
@@ -394,21 +425,26 @@ export async function createRoutine(db: D1Database, appUserId: string, request: 
   try {
     const results = await db.batch([
       db.prepare(`INSERT INTO tasks (id, app_user_id, project_id, title, created_at)
-        SELECT ?, ?, NULL, ?, ? WHERE EXISTS (SELECT 1 FROM routine_board_heads
+        SELECT ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM routine_board_heads
           WHERE app_user_id = ? AND board_revision = ?)`)
-        .bind(request.task_id, appUserId, request.title.trim(), nowInstant, appUserId, request.expected_board_revision),
+        .bind(request.task_id, appUserId, projectId, request.title.trim(), nowInstant, appUserId, request.expected_board_revision),
       db.prepare(`INSERT INTO routine_definitions (id, app_user_id, task_id, recurrence_type,
         start_logical_date, end_logical_date, default_section_id, default_estimate_seconds,
         default_planned_start_minute, materialization_order, defaults_revision, created_at)
-        SELECT ?, ?, ?, 'daily', ?, NULL, ?, ?, ?, ?, 0, ? WHERE EXISTS (
+        SELECT ?, ?, ?, 'daily', ?, ?, ?, ?, ?, ?, 0, ? WHERE EXISTS (
           SELECT 1 FROM tasks WHERE app_user_id = ? AND id = ?)`)
-        .bind(request.routine_definition_id, appUserId, request.task_id, context.logicalDate, request.default_section_id ?? null, request.default_estimate_seconds ?? null, request.default_planned_start_minute ?? null, materializationOrder,
+        .bind(request.routine_definition_id, appUserId, request.task_id, startLogicalDate, endLogicalDate, request.default_section_id ?? null, request.default_estimate_seconds ?? null, request.default_planned_start_minute ?? null, materializationOrder,
           nowInstant, appUserId, request.task_id),
       db.prepare(`INSERT INTO routine_schedules
         (app_user_id, routine_definition_id, schedule_kind, interval_days, interval_weeks,
          interval_months, weekdays_mask, month_day, month_ordinal, month_weekday)
-        VALUES (?, ?, 'daily', NULL, NULL, NULL, NULL, NULL, NULL, NULL)`)
-        .bind(appUserId, request.routine_definition_id),
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .bind(appUserId, request.routine_definition_id, scheduleColumnsValue.kind, scheduleColumnsValue.interval_days,
+          scheduleColumnsValue.interval_weeks, scheduleColumnsValue.interval_months, scheduleColumnsValue.weekdays_mask,
+          scheduleColumnsValue.month_day, scheduleColumnsValue.month_ordinal, scheduleColumnsValue.month_weekday),
+      db.prepare(`INSERT INTO routine_definition_modes (app_user_id, routine_definition_id, mode_id)
+        SELECT ?, ?, ? WHERE ? IS NOT NULL`)
+        .bind(appUserId, request.routine_definition_id, defaultModeId, defaultModeId),
       db.prepare(`INSERT INTO routine_board_items VALUES (?, ?, ?, 0)`)
         .bind(appUserId, request.routine_definition_id, boardPosition),
       db.prepare(`INSERT INTO routine_pause_intervals
@@ -424,7 +460,7 @@ export async function createRoutine(db: D1Database, appUserId: string, request: 
         .bind(appUserId, request.operation_id, REQUEST_FINGERPRINT_VERSION, requestFingerprint,
           JSON.stringify(result), nowInstant, appUserId, result.board_revision),
     ]);
-    if (results[5]?.meta.changes === 0 || results[6]?.meta.changes === 0) throw new Error("concurrent board mutation");
+    if (results[6]?.meta.changes === 0 || results[7]?.meta.changes === 0) throw new Error("concurrent board mutation");
     return result;
   } catch {
     const committed = await readOperation(db, appUserId, request.operation_id);

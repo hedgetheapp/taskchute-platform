@@ -93,6 +93,43 @@ describe.sequential("Routine R2B Board", () => {
       .toEqual({ default_section_id: null, default_planned_start_minute: null, default_estimate_seconds: null });
   });
 
+  it("creates the full Android parity payload atomically and replays without duplication", async () => {
+    const fixture = await seedUser();
+    const modeId = uuidv7();
+    await env.APP_DB.batch([
+      env.APP_DB.prepare("INSERT INTO mode_definitions (id, app_user_id, title, created_at) VALUES (?, ?, 'Focus', ?)").bind(modeId, fixture.userId, now),
+      env.APP_DB.prepare("INSERT INTO mode_board_items (app_user_id, mode_id, board_position) VALUES (?, ?, 1)").bind(fixture.userId, modeId),
+    ]);
+    const request = {
+      operation_id: uuidv7(), task_id: uuidv7(), routine_definition_id: uuidv7(),
+      title: "Full parity routine", expected_board_revision: 0,
+      project_id: fixture.projectId, default_mode_id: modeId,
+      schedule: { kind: "weekly" as const, weekdays: [1, 3] },
+      start_logical_date: "2026-09-02", end_logical_date: "2026-09-30",
+      default_section_id: fixture.sectionId, default_planned_start_minute: 570,
+      default_estimate_seconds: 1500,
+    };
+    expect(isCreateRoutineRequest(request)).toBe(true);
+    const result = await createRoutine(env.APP_DB, fixture.userId, request, now);
+    expect(result.board_revision).toBe(1);
+    expect(await env.APP_DB.prepare("SELECT project_id FROM tasks WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, request.task_id).first<string>("project_id")).toBe(fixture.projectId);
+    expect(await env.APP_DB.prepare(`SELECT start_logical_date, end_logical_date, default_section_id,
+      default_planned_start_minute, default_estimate_seconds FROM routine_definitions WHERE app_user_id = ? AND id = ?`)
+      .bind(fixture.userId, request.routine_definition_id).first()).toEqual({
+        start_logical_date: "2026-09-02", end_logical_date: "2026-09-30", default_section_id: fixture.sectionId,
+        default_planned_start_minute: 570, default_estimate_seconds: 1500,
+      });
+    expect(await env.APP_DB.prepare(`SELECT schedule_kind, weekdays_mask FROM routine_schedules WHERE app_user_id = ? AND routine_definition_id = ?`)
+      .bind(fixture.userId, request.routine_definition_id).first()).toEqual({ schedule_kind: "weekly", weekdays_mask: 10 });
+    expect(await env.APP_DB.prepare("SELECT mode_id FROM routine_definition_modes WHERE app_user_id = ? AND routine_definition_id = ?")
+      .bind(fixture.userId, request.routine_definition_id).first<string>("mode_id")).toBe(modeId);
+    expect(await createRoutine(env.APP_DB, fixture.userId, request, now)).toEqual(result);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM routine_definitions WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, request.routine_definition_id).first<number>("count")).toBe(1);
+    expect(await env.APP_DB.prepare("SELECT board_revision FROM routine_board_heads WHERE app_user_id = ?")
+      .bind(fixture.userId).first<number>("board_revision")).toBe(1);
+  });
   it("rejects malformed or unavailable create defaults without partial writes", async () => {
     const fixture = await seedUser();
     const base = { operation_id: uuidv7(), task_id: uuidv7(), routine_definition_id: uuidv7(),

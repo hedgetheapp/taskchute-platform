@@ -1035,6 +1035,11 @@ export interface CreateRoutineRequest {
   default_section_id?: string | null;
   default_planned_start_minute?: number | null;
   default_estimate_seconds?: number | null;
+  project_id?: string | null;
+  default_mode_id?: string | null;
+  schedule?: RoutineScheduleInput;
+  start_logical_date?: string;
+  end_logical_date?: string | null;
 }
 
 export interface CreateRoutineResult {

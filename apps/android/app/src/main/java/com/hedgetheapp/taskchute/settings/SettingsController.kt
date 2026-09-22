@@ -10,6 +10,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.time.LocalDate
 
 class SettingsController(
     private val repository: AndroidSettingsRepository,
@@ -147,37 +148,83 @@ class SettingsController(
         if (!isBusy()) state = state.copy(routineEditor = RoutineEditorDraft(routine.id, routine.taskId, routine.title, routine.projectId, routine.schedule, routine.defaultSectionId, routine.defaultPlannedStartMinute?.let(::minuteText) ?: "", routine.defaultEstimateSeconds?.let { (it / 60).toString() } ?: "", routine.defaultModeId, routine.startLogicalDate, routine.endLogicalDate ?: "", routine.settingsRevision, false), errorMessage = null)
     }
     fun updateRoutineDraft(
-        title: String? = null, projectId: String? = null, scheduleKind: String? = null, sectionId: String? = null,
-        start: String? = null, estimate: String? = null, endDate: String? = null,
+        title: String? = null, projectId: String? = null, modeId: String? = null, scheduleKind: String? = null,
+        sectionId: String? = null, start: String? = null, estimate: String? = null,
+        startDate: String? = null, endDate: String? = null,
     ) {
         val draft = state.routineEditor ?: return
-        state = state.copy(routineEditor = draft.copy(title = title ?: draft.title, projectId = projectId ?: draft.projectId, schedule = scheduleKind?.let { draft.schedule.copy(kind = it) } ?: draft.schedule, defaultSectionId = sectionId ?: draft.defaultSectionId, defaultPlannedStartText = start ?: draft.defaultPlannedStartText, defaultEstimateText = estimate ?: draft.defaultEstimateText, endLogicalDate = endDate ?: draft.endLogicalDate))
+        state = state.copy(routineEditor = draft.copy(
+            title = title ?: draft.title,
+            projectId = projectId ?: draft.projectId,
+            defaultModeId = modeId ?: draft.defaultModeId,
+            schedule = scheduleKind?.let { draft.schedule.copy(kind = it) } ?: draft.schedule,
+            defaultSectionId = sectionId ?: draft.defaultSectionId,
+            defaultPlannedStartText = start ?: draft.defaultPlannedStartText,
+            defaultEstimateText = estimate ?: draft.defaultEstimateText,
+            startLogicalDate = startDate ?: draft.startLogicalDate,
+            endLogicalDate = endDate ?: draft.endLogicalDate,
+        ))
     }
+    fun setRoutineProject(id: String?) { state = state.copy(routineEditor = state.routineEditor?.copy(projectId = id)) }
+    fun setRoutineMode(id: String?) { state = state.copy(routineEditor = state.routineEditor?.copy(defaultModeId = id)) }
+    fun setRoutineSection(id: String?) { state = state.copy(routineEditor = state.routineEditor?.copy(defaultSectionId = id)) }
+    fun updateRoutineSchedule(schedule: RoutineScheduleSpec) { state = state.copy(routineEditor = state.routineEditor?.copy(schedule = schedule)) }
+    fun setRoutineStartDate(date: String) { state = state.copy(routineEditor = state.routineEditor?.copy(startLogicalDate = date)) }
+    fun setRoutineEndDate(date: String?) { state = state.copy(routineEditor = state.routineEditor?.copy(endLogicalDate = date.orEmpty())) }
     fun cancelRoutine() { state = state.copy(routineEditor = null, errorMessage = null) }
 
     fun saveRoutine() {
         val draft = state.routineEditor ?: return
         val board = state.routineBoard ?: return
-        if (draft.title.trim().isEmpty() || draft.startLogicalDate.isBlank()) { state = state.copy(errorMessage = "Routine名と開始日を入力してください。"); return }
-        val start = draft.defaultPlannedStartText.takeIf { it.isNotBlank() }?.let { parseMinute(it) }
+        val startDate = draft.startLogicalDate.trim()
+        val endDate = draft.endLogicalDate.trim().ifBlank { null }
+        if (draft.title.trim().isEmpty() || !validDate(startDate) || (endDate != null && (!validDate(endDate) || endDate < startDate))) {
+            state = state.copy(errorMessage = "Routine名と開始日・終了日を正しく入力してください。")
+            return
+        }
+        val start = draft.defaultPlannedStartText.takeIf { it.isNotBlank() }?.let(::parseRoutineMinute)
         val estimate = draft.defaultEstimateText.takeIf { it.isNotBlank() }?.let { raw ->
-            raw.toLongOrNull()?.takeIf { it in 1..(Int.MAX_VALUE / 60L) }?.times(60)?.toInt()
+            raw.trim().toLongOrNull()?.takeIf { it in 1..(Int.MAX_VALUE / 60L) }?.times(60)?.toInt()
         }
-        if ((draft.defaultPlannedStartText.isNotBlank() && start == null) || (draft.defaultEstimateText.isNotBlank() && estimate == null)) { state = state.copy(errorMessage = "開始予定と見積を正しく入力してください。"); return }
-        val createSectionId = start?.let { minute ->
-            board.sections.singleOrNull { section -> section.startMinute <= minute && minute < section.endMinute }?.id
+        if ((draft.defaultPlannedStartText.isNotBlank() && start == null) || (draft.defaultEstimateText.isNotBlank() && estimate == null)) {
+            state = state.copy(errorMessage = "開始予定と見積を正しく入力してください。")
+            return
         }
-        if (draft.isNew && start != null && createSectionId == null) {
-            state = state.copy(errorMessage = "開始予定が設定済みSectionの範囲外です。"); return
+        if (!validSchedule(draft.schedule)) {
+            state = state.copy(errorMessage = "繰り返し設定を正しく入力してください。")
+            return
+        }
+        val sectionId = start?.let { minute ->
+            val matches = board.sections.filter { section -> section.startMinute <= minute && minute < section.endMinute }
+            if (draft.defaultSectionId != null) {
+                matches.singleOrNull { it.id == draft.defaultSectionId }?.id
+            } else {
+                matches.singleOrNull()?.id
+            }
+        }
+        if (start != null && sectionId == null) {
+            state = state.copy(errorMessage = "開始予定が設定済みSectionの範囲外です。")
+            return
+        }
+        if (start == null && draft.defaultSectionId != null) {
+            state = state.copy(errorMessage = "開始予定とSectionの組み合わせを確認してください。")
+            return
         }
         val operation = if (draft.isNew) SettingsOperation.CreateRoutine(CreateRoutineSettingsRequest(
-            newOperationId(), newOperationId(), newOperationId(), draft.title.trim(), board.boardRevision,
-            createSectionId, start, estimate,
+            operationId = newOperationId(), taskId = newOperationId(), routineDefinitionId = newOperationId(),
+            title = draft.title.trim(), expectedBoardRevision = board.boardRevision,
+            defaultSectionId = sectionId, defaultPlannedStartMinute = start, defaultEstimateSeconds = estimate,
+            defaultModeId = draft.defaultModeId, projectId = draft.projectId, schedule = draft.schedule,
+            startLogicalDate = startDate, endLogicalDate = endDate,
+        )) else SettingsOperation.UpdateRoutine(UpdateRoutineSettingsRequest(
+            operationId = newOperationId(), routineDefinitionId = requireNotNull(draft.id),
+            expectedSettingsRevision = draft.settingsRevision, title = draft.title.trim(), projectId = draft.projectId,
+            schedule = draft.schedule, defaultSectionId = sectionId, defaultPlannedStartMinute = start,
+            defaultEstimateSeconds = estimate, defaultModeId = draft.defaultModeId,
+            startLogicalDate = startDate, endLogicalDate = endDate,
         ))
-        else SettingsOperation.UpdateRoutine(UpdateRoutineSettingsRequest(newOperationId(), requireNotNull(draft.id), draft.settingsRevision, draft.title.trim(), draft.projectId, draft.schedule, draft.defaultSectionId, start, estimate, draft.defaultModeId, draft.startLogicalDate, draft.endLogicalDate.ifBlank { null }))
         submit(operation)
     }
-
     fun toggleRoutine(id: String, enabled: Boolean) {
         val routine = state.routineBoard?.routines?.firstOrNull { it.id == id } ?: return
         submit(SettingsOperation.EnableRoutine(SetRoutineEnabledSettingsRequest(newOperationId(), id, enabled, routine.settingsRevision)))
@@ -258,6 +305,30 @@ class SettingsController(
     private fun validSections(items: List<AndroidSectionSetting>, boundaryMinutes: Int): Boolean {
         val sorted = items.sortedBy { it.startMinute }
         return sorted.firstOrNull()?.startMinute == boundaryMinutes && sorted.lastOrNull()?.endMinute == boundaryMinutes + 1440 && sorted.zipWithNext().all { it.first.endMinute == it.second.startMinute } && sorted.all { it.startMinute < it.endMinute }
+    }
+
+    private fun parseRoutineMinute(raw: String): Int? = raw.trim().let { value ->
+        val compact = value.replace(":", "").let { if (it.length < 4) it.padStart(4, '0') else it }
+        if (compact.length != 4 || compact.any { !it.isDigit() }) return null
+        val hours = compact.substring(0, 2).toIntOrNull() ?: return null
+        val minutes = compact.substring(2, 4).toIntOrNull() ?: return null
+        if (hours !in 0..47 || minutes !in 0..59) return null
+        hours * 60 + minutes
+    }
+
+    private fun validDate(value: String): Boolean = runCatching { LocalDate.parse(value).toString() == value }.getOrDefault(false)
+
+    private fun validSchedule(schedule: RoutineScheduleSpec): Boolean = when (schedule.kind) {
+        "daily", "monthly_last_day", "workday", "holiday", "official_holiday", "monthly_last_workday" -> true
+        "every_n_days" -> schedule.intervalDays in 2..365
+        "weekly" -> schedule.weekdays.isNotEmpty() && schedule.weekdays.distinct().size == schedule.weekdays.size && schedule.weekdays.all { it in 0..6 }
+        "every_n_weeks" -> schedule.intervalWeeks in 2..52 && schedule.weekdays.isNotEmpty() && schedule.weekdays.distinct().size == schedule.weekdays.size && schedule.weekdays.all { it in 0..6 }
+        "monthly_day" -> schedule.dayOfMonth in 1..31
+        "monthly_nth_weekday" -> schedule.ordinal in 1..5 && schedule.weekday in 0..6
+        "monthly_last_weekday" -> schedule.weekday in 0..6
+        "every_n_months_day" -> schedule.intervalMonths in 2..12 && schedule.dayOfMonth in 1..31
+        "every_n_months_last_day" -> schedule.intervalMonths in 2..12
+        else -> false
     }
 
     private fun parseMinute(raw: String): Int? = raw.trim().let { value ->

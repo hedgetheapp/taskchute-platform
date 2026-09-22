@@ -29,6 +29,14 @@ data class AndroidProjectBoard(
     val projects: List<AndroidProjectSetting>,
 )
 
+data class AndroidModeSetting(
+    val id: String,
+    val title: String,
+    val archived: Boolean,
+    val boardPosition: Int,
+    val settingsRevision: Int,
+)
+
 data class RoutineScheduleSpec(
     val kind: String = "daily",
     val intervalDays: Int? = null,
@@ -95,6 +103,7 @@ data class AndroidRoutineBoard(
     val sections: List<AndroidSectionSetting>,
     val routines: List<AndroidRoutineSetting>,
     val projects: List<AndroidProjectSetting> = emptyList(),
+    val modes: List<AndroidModeSetting> = emptyList(),
 )
 
 data class SectionConfigurationUpdateRequest(
@@ -143,6 +152,11 @@ data class CreateRoutineSettingsRequest(
     val defaultSectionId: String? = null,
     val defaultPlannedStartMinute: Int? = null,
     val defaultEstimateSeconds: Int? = null,
+    val defaultModeId: String? = null,
+    val projectId: String? = null,
+    val schedule: RoutineScheduleSpec = RoutineScheduleSpec(),
+    val startLogicalDate: String? = null,
+    val endLogicalDate: String? = null,
 )
 
 data class UpdateRoutineSettingsRequest(

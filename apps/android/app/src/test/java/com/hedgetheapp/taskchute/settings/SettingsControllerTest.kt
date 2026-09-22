@@ -165,6 +165,8 @@ class SettingsControllerTest {
         val repository = FakeSettingsRepository().apply {
             routineBoard = AndroidRoutineBoard(
                 7, "2026-09-16", listOf(AndroidSectionSetting("morning", "朝", 540, 720)), emptyList(),
+                listOf(AndroidProjectSetting("project-1", "Life", false, 1, 0)),
+                listOf(AndroidModeSetting("mode-1", "PC", false, 1, 0)),
             )
         }
         val controller = controller(repository)
@@ -182,11 +184,89 @@ class SettingsControllerTest {
         controller.close()
     }
 
+
+    @Test
+    fun routineStartAcceptsCompactAndColonFormsAsTheSameCanonicalMinute() {
+        listOf("900", "0900", "09:00").forEachIndexed { index, value ->
+            val repository = FakeSettingsRepository().apply {
+                routineBoard = AndroidRoutineBoard(
+                    7, "2026-09-16", listOf(AndroidSectionSetting("morning", "朝", 540, 720)), emptyList(),
+                )
+            }
+            val controller = controller(repository)
+            controller.openRoutines()
+            assertTrue(await { controller.state.routineBoard != null && !controller.state.loading })
+            controller.openNewRoutine()
+            controller.updateRoutineDraft(title = "朝$index", start = value, estimate = "25")
+            controller.saveRoutine()
+            assertTrue(await { repository.createdRoutines.size == 1 && controller.state.pendingOperation == null })
+            assertEquals(540, repository.createdRoutines.single().defaultPlannedStartMinute)
+            controller.close()
+        }
+    }
+    @Test
+    fun newRoutineCarriesFullProjectModeScheduleAndPeriodInOneRequest() {
+        val repository = FakeSettingsRepository().apply {
+            routineBoard = AndroidRoutineBoard(
+                7, "2026-09-16", listOf(AndroidSectionSetting("morning", "朝", 540, 720)), emptyList(),
+                listOf(AndroidProjectSetting("project-1", "Life", false, 1, 0)),
+                listOf(AndroidModeSetting("mode-1", "PC", false, 1, 0)),
+            )
+        }
+        val controller = controller(repository)
+        controller.openRoutines()
+        assertTrue(await { controller.state.routineBoard != null && !controller.state.loading })
+        controller.openNewRoutine()
+        controller.updateRoutineDraft(title = "朝のレビュー", projectId = "project-1", modeId = "mode-1", sectionId = "morning", start = "0900", estimate = "25", startDate = "2026-09-20", endDate = "2026-10-01")
+        controller.updateRoutineSchedule(RoutineScheduleSpec("weekly", weekdays = listOf(1, 3)))
+        controller.saveRoutine()
+        assertTrue(await { repository.createdRoutines.size == 1 })
+        val request = repository.createdRoutines.single()
+        assertEquals("project-1", request.projectId)
+        assertEquals("mode-1", request.defaultModeId)
+        assertEquals(RoutineScheduleSpec("weekly", weekdays = listOf(1, 3)), request.schedule)
+        assertEquals("2026-09-20", request.startLogicalDate)
+        assertEquals("2026-10-01", request.endLogicalDate)
+        assertEquals(540, request.defaultPlannedStartMinute)
+        controller.close()
+    }
+    @Test
+    fun existingRoutineEditCarriesFullUpdateRequest() {
+        val routine = AndroidRoutineSetting("routine-1", "task-1", "旧", "project-1", "Life", false, RoutineScheduleSpec(), "morning", 540, 900, "mode-1", "2026-09-16", null, 3)
+        val repository = FakeSettingsRepository().apply {
+            routineBoard = AndroidRoutineBoard(
+                7, "2026-09-16", listOf(AndroidSectionSetting("morning", "朝", 540, 720)), listOf(routine),
+                listOf(AndroidProjectSetting("project-1", "Life", false, 1, 0)),
+                listOf(AndroidModeSetting("mode-1", "PC", false, 1, 0)),
+            )
+        }
+        val controller = controller(repository)
+        controller.openRoutines()
+        assertTrue(await { controller.state.routineBoard != null && !controller.state.loading })
+        controller.openRoutine("routine-1")
+        controller.updateRoutineDraft(title = "新", projectId = "project-1", modeId = "mode-1", sectionId = "morning", start = "0900", estimate = "25", startDate = "2026-09-20", endDate = "2026-10-01")
+        controller.updateRoutineSchedule(RoutineScheduleSpec("monthly_day", dayOfMonth = 15))
+        controller.saveRoutine()
+        assertTrue(await { repository.updatedRoutines.size == 1 })
+        val request = repository.updatedRoutines.single()
+        assertEquals("新", request.title)
+        assertEquals("project-1", request.projectId)
+        assertEquals("mode-1", request.defaultModeId)
+        assertEquals(540, request.defaultPlannedStartMinute)
+        assertEquals(1500, request.defaultEstimateSeconds)
+        assertEquals(RoutineScheduleSpec("monthly_day", dayOfMonth = 15), request.schedule)
+        assertEquals("2026-09-20", request.startLogicalDate)
+        assertEquals("2026-10-01", request.endLogicalDate)
+        controller.close()
+    }
+
     @Test
     fun newRoutineRejectsOutOfRangeStartAndKeepsBlankDefaultsNull() {
         val repository = FakeSettingsRepository().apply {
             routineBoard = AndroidRoutineBoard(
                 7, "2026-09-16", listOf(AndroidSectionSetting("morning", "朝", 540, 720)), emptyList(),
+                listOf(AndroidProjectSetting("project-1", "Life", false, 1, 0)),
+                listOf(AndroidModeSetting("mode-1", "PC", false, 1, 0)),
             )
         }
         val controller = controller(repository)
@@ -219,6 +299,8 @@ class SettingsControllerTest {
         val repository = FakeSettingsRepository().apply {
             routineBoard = AndroidRoutineBoard(
                 7, "2026-09-16", listOf(AndroidSectionSetting("morning", "朝", 540, 720)), emptyList(),
+                listOf(AndroidProjectSetting("project-1", "Life", false, 1, 0)),
+                listOf(AndroidModeSetting("mode-1", "PC", false, 1, 0)),
             )
             createRoutineResults.add(SettingsResult.Failure("ambiguous", ambiguous = true))
             createRoutineResults.add(SettingsResult.Success(Unit))
@@ -227,7 +309,16 @@ class SettingsControllerTest {
         controller.openRoutines()
         assertTrue(await { controller.state.routineBoard != null && !controller.state.loading })
         controller.openNewRoutine()
-        controller.updateRoutineDraft(title = "再試行", start = "09:30", estimate = "25")
+        controller.updateRoutineDraft(
+            title = "再試行",
+            projectId = "project-1",
+            modeId = "mode-1",
+            sectionId = "morning",
+            start = "09:30",
+            estimate = "25",
+            startDate = "2026-09-18",
+            endDate = "2026-10-02",
+        )
         controller.saveRoutine()
         assertTrue(await { controller.state.unresolvedOperation != null })
         controller.retryUnresolved()
@@ -304,6 +395,7 @@ private class FakeSettingsRepository : AndroidSettingsRepository {
     val createProjectResults = ArrayDeque<SettingsResult<Unit>>()
     val enabledRequests = mutableListOf<SetRoutineEnabledSettingsRequest>()
     val createdRoutines = mutableListOf<CreateRoutineSettingsRequest>()
+    val updatedRoutines = mutableListOf<UpdateRoutineSettingsRequest>()
     val createRoutineResults = ArrayDeque<SettingsResult<Unit>>()
     private val loads = AtomicInteger(0)
 
@@ -317,7 +409,7 @@ private class FakeSettingsRepository : AndroidSettingsRepository {
     override fun deleteProject(request: DeleteProjectSettingsRequest) = SettingsResult.Success(Unit)
     override fun loadRoutineBoard() = SettingsResult.Success(routineBoard)
     override fun createRoutine(request: CreateRoutineSettingsRequest): SettingsResult<Unit> { createdRoutines += request; return createRoutineResults.removeFirstOrNull() ?: SettingsResult.Success(Unit) }
-    override fun updateRoutine(request: UpdateRoutineSettingsRequest) = SettingsResult.Success(Unit)
+    override fun updateRoutine(request: UpdateRoutineSettingsRequest): SettingsResult<Unit> { updatedRoutines += request; return SettingsResult.Success(Unit) }
     override fun setRoutineEnabled(request: SetRoutineEnabledSettingsRequest): SettingsResult<Unit> { enabledRequests += request; return SettingsResult.Success(Unit) }
     override fun deleteRoutine(request: DeleteRoutineSettingsRequest) = SettingsResult.Success(Unit)
 }

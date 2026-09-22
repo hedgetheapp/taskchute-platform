@@ -59,7 +59,7 @@ class SettingsHttpRepositoryTest {
         val repository = SettingsHttpRepository({ _, path, _ ->
             if (path == "/api/v1/routines") TodayHttpResponse(200, """
                 {"board_revision":2,"current_logical_date":"2026-09-16","sections":[],"routines":[{"routine_definition_id":"r1","task_id":"t1","title":"朝の準備","project":{"id":"p1","title":"Life"},"enabled":true,"schedule":{"kind":"weekly","weekdays":[1,3]},"default_section_id":null,"default_planned_start_minute":420,"default_estimate_seconds":1800,"default_mode_id":null,"start_logical_date":"2026-09-01","end_logical_date":null,"settings_revision":5}]}
-            """.trimIndent()) else TodayHttpResponse(200, "{\"board_revision\":1,\"projects\":[]}")
+            """.trimIndent()) else if (path == "/api/v1/project-board") TodayHttpResponse(200, "{\"board_revision\":1,\"projects\":[]}") else TodayHttpResponse(200, "{\"board_revision\":1,\"modes\":[]}")
         })
 
         val result = repository.loadRoutineBoard() as SettingsResult.Success
@@ -67,5 +67,25 @@ class SettingsHttpRepositoryTest {
         assertEquals("p1", routine.projectId)
         assertEquals(listOf(1, 3), routine.schedule.weekdays)
         assertEquals("毎週 月・水", routine.schedule.summary())
+    }
+
+    @Test
+    fun fullCreateCarriesProjectModeScheduleAndPeriodFields() {
+        var body = ""
+        val repository = SettingsHttpRepository({ _, _, requestedBody ->
+            body = requestedBody.orEmpty()
+            TodayHttpResponse(200, "{}")
+        })
+        repository.createRoutine(CreateRoutineSettingsRequest(
+            operationId = "op-full", taskId = "task-full", routineDefinitionId = "routine-full", title = "Full", expectedBoardRevision = 2,
+            defaultSectionId = "section-1", defaultPlannedStartMinute = 540, defaultEstimateSeconds = 1500,
+            defaultModeId = "mode-1", projectId = "project-1", schedule = RoutineScheduleSpec("weekly", weekdays = listOf(1, 3)),
+            startLogicalDate = "2026-09-22", endLogicalDate = "2026-10-01",
+        ))
+        assertTrue(body.contains("\"project_id\":\"project-1\""))
+        assertTrue(body.contains("\"default_mode_id\":\"mode-1\""))
+        assertTrue(body.contains("\"schedule\":{\"kind\":\"weekly\",\"weekdays\":[1,3]}"))
+        assertTrue(body.contains("\"start_logical_date\":\"2026-09-22\""))
+        assertTrue(body.contains("\"end_logical_date\":\"2026-10-01\""))
     }
 }
