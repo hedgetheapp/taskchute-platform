@@ -59,7 +59,7 @@ class SettingsHttpRepository(
 
     override fun createRoutine(request: CreateRoutineSettingsRequest): SettingsResult<Unit> = mutation(
         "/api/v1/routines",
-        """{"operation_id":"${esc(request.operationId)}","task_id":"${esc(request.taskId)}","routine_definition_id":"${esc(request.routineDefinitionId)}","title":"${esc(request.title.trim())}","expected_board_revision":${request.expectedBoardRevision}}""",
+        """{"operation_id":"${esc(request.operationId)}","task_id":"${esc(request.taskId)}","routine_definition_id":"${esc(request.routineDefinitionId)}","title":"${esc(request.title.trim())}","expected_board_revision":${request.expectedBoardRevision},"default_section_id":${nullable(request.defaultSectionId)},"default_planned_start_minute":${request.defaultPlannedStartMinute ?: "null"},"default_estimate_seconds":${request.defaultEstimateSeconds ?: "null"}}""",
     )
 
     override fun updateRoutine(request: UpdateRoutineSettingsRequest): SettingsResult<Unit> = mutation(

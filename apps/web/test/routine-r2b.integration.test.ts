@@ -7,6 +7,7 @@ import { convertEntryToRoutine, ensureCurrentDayRoutineEntries } from "../worker
 import {
   createRoutine,
   deleteRoutine,
+  isCreateRoutineRequest,
   isUpdateRoutineRequest,
   loadRoutineBoard,
   reorderRoutines,
@@ -66,6 +67,53 @@ describe.sequential("Routine R2B Board", () => {
       schedule: { kind: "daily" }, project: null })]);
   });
 
+  it("persists optional create defaults atomically and preserves legacy null defaults", async () => {
+    const fixture = await seedUser();
+    const request = {
+      operation_id: uuidv7(), task_id: uuidv7(), routine_definition_id: uuidv7(),
+      title: "Morning review", expected_board_revision: 0,
+      default_section_id: fixture.sectionId, default_planned_start_minute: 570,
+      default_estimate_seconds: 1500,
+    };
+    const result = await createRoutine(env.APP_DB, fixture.userId, request, now);
+    expect(result.board_revision).toBe(1);
+    expect(await env.APP_DB.prepare(`SELECT default_section_id, default_planned_start_minute,
+      default_estimate_seconds FROM routine_definitions WHERE app_user_id = ? AND id = ?`)
+      .bind(fixture.userId, request.routine_definition_id).first())
+      .toEqual({ default_section_id: fixture.sectionId, default_planned_start_minute: 570, default_estimate_seconds: 1500 });
+    expect(await env.APP_DB.prepare(`SELECT COUNT(*) AS count FROM routine_occurrences
+      WHERE app_user_id = ? AND routine_definition_id = ?`).bind(fixture.userId, request.routine_definition_id)
+      .first<number>("count")).toBe(0);
+    expect(await createRoutine(env.APP_DB, fixture.userId, request, now)).toEqual(result);
+
+    const legacy = await createOff(fixture.userId, "Legacy title", 1);
+    expect(await env.APP_DB.prepare(`SELECT default_section_id, default_planned_start_minute,
+      default_estimate_seconds FROM routine_definitions WHERE app_user_id = ? AND id = ?`)
+      .bind(fixture.userId, legacy.request.routine_definition_id).first())
+      .toEqual({ default_section_id: null, default_planned_start_minute: null, default_estimate_seconds: null });
+  });
+
+  it("rejects malformed or unavailable create defaults without partial writes", async () => {
+    const fixture = await seedUser();
+    const base = { operation_id: uuidv7(), task_id: uuidv7(), routine_definition_id: uuidv7(),
+      title: "Invalid defaults", expected_board_revision: 0 };
+    expect(isCreateRoutineRequest(base)).toBe(true);
+    expect(isCreateRoutineRequest({ ...base, default_section_id: fixture.sectionId })).toBe(false);
+    expect(isCreateRoutineRequest({ ...base, default_planned_start_minute: 570 })).toBe(false);
+    expect(isCreateRoutineRequest({ ...base, default_section_id: fixture.sectionId,
+      default_planned_start_minute: 570, default_estimate_seconds: 0 })).toBe(false);
+
+    const unavailable = { ...base, default_section_id: uuidv7(), default_planned_start_minute: 570,
+      default_estimate_seconds: 1500 };
+    await expect(createRoutine(env.APP_DB, fixture.userId, unavailable, now))
+      .rejects.toMatchObject({ code: "resource_conflict" });
+    expect(await env.APP_DB.prepare("SELECT board_revision FROM routine_board_heads WHERE app_user_id = ?")
+      .bind(fixture.userId).first<number>("board_revision")).toBe(0);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM tasks WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, unavailable.task_id).first<number>("count")).toBe(0);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM routine_definitions WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, unavailable.routine_definition_id).first<number>("count")).toBe(0);
+  });
   it("keeps materialization order independent from board slots", async () => {
     const fixture = await seedUser();
     const first = await createOff(fixture.userId, "Board Routine");

@@ -160,9 +160,20 @@ class SettingsController(
         val board = state.routineBoard ?: return
         if (draft.title.trim().isEmpty() || draft.startLogicalDate.isBlank()) { state = state.copy(errorMessage = "Routine名と開始日を入力してください。"); return }
         val start = draft.defaultPlannedStartText.takeIf { it.isNotBlank() }?.let { parseMinute(it) }
-        val estimate = draft.defaultEstimateText.takeIf { it.isNotBlank() }?.toIntOrNull()?.times(60)
-        if (draft.defaultPlannedStartText.isNotBlank() && start == null || draft.defaultEstimateText.isNotBlank() && estimate == null) { state = state.copy(errorMessage = "開始予定と見積を正しく入力してください。"); return }
-        val operation = if (draft.isNew) SettingsOperation.CreateRoutine(CreateRoutineSettingsRequest(newOperationId(), newOperationId(), newOperationId(), draft.title.trim(), board.boardRevision))
+        val estimate = draft.defaultEstimateText.takeIf { it.isNotBlank() }?.let { raw ->
+            raw.toLongOrNull()?.takeIf { it in 1..(Int.MAX_VALUE / 60L) }?.times(60)?.toInt()
+        }
+        if ((draft.defaultPlannedStartText.isNotBlank() && start == null) || (draft.defaultEstimateText.isNotBlank() && estimate == null)) { state = state.copy(errorMessage = "開始予定と見積を正しく入力してください。"); return }
+        val createSectionId = start?.let { minute ->
+            board.sections.singleOrNull { section -> section.startMinute <= minute && minute < section.endMinute }?.id
+        }
+        if (draft.isNew && start != null && createSectionId == null) {
+            state = state.copy(errorMessage = "開始予定が設定済みSectionの範囲外です。"); return
+        }
+        val operation = if (draft.isNew) SettingsOperation.CreateRoutine(CreateRoutineSettingsRequest(
+            newOperationId(), newOperationId(), newOperationId(), draft.title.trim(), board.boardRevision,
+            createSectionId, start, estimate,
+        ))
         else SettingsOperation.UpdateRoutine(UpdateRoutineSettingsRequest(newOperationId(), requireNotNull(draft.id), draft.settingsRevision, draft.title.trim(), draft.projectId, draft.schedule, draft.defaultSectionId, start, estimate, draft.defaultModeId, draft.startLogicalDate, draft.endLogicalDate.ifBlank { null }))
         submit(operation)
     }

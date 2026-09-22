@@ -136,9 +136,18 @@ function isSchedule(value: unknown): value is RoutineScheduleInput {
 export function isCreateRoutineRequest(value: unknown): value is CreateRoutineRequest {
   if (!value || typeof value !== "object") return false;
   const body = value as Record<string, unknown>;
+  const sectionId = body.default_section_id ?? null;
+  const plannedStart = body.default_planned_start_minute ?? null;
+  const estimate = body.default_estimate_seconds ?? null;
   return !('user_id' in body) && isUuid(body.operation_id) && isUuid(body.task_id)
     && isUuid(body.routine_definition_id) && isTitle(body.title)
-    && Number.isSafeInteger(body.expected_board_revision) && Number(body.expected_board_revision) >= 0;
+    && Number.isSafeInteger(body.expected_board_revision) && Number(body.expected_board_revision) >= 0
+    && (body.default_section_id === undefined || sectionId === null || isUuid(sectionId))
+    && (body.default_planned_start_minute === undefined || plannedStart === null
+      || Number.isSafeInteger(plannedStart) && Number(plannedStart) >= 0)
+    && (body.default_estimate_seconds === undefined || estimate === null
+      || Number.isSafeInteger(estimate) && Number(estimate) > 0)
+    && ((sectionId === null) === (plannedStart === null));
 }
 
 export function isSetRoutineEnabledRequest(value: unknown): value is SetRoutineEnabledRequest {
@@ -334,12 +343,29 @@ async function rejectDelete(
     requestFingerprint, message, conflict);
 }
 
+async function validateCreateRoutineDefaults(db: D1Database, appUserId: string, request: CreateRoutineRequest): Promise<boolean> {
+  const sectionId = request.default_section_id ?? null;
+  const plannedStart = request.default_planned_start_minute ?? null;
+  const estimate = request.default_estimate_seconds ?? null;
+  if ((sectionId === null) !== (plannedStart === null)) return false;
+  if (plannedStart !== null && (!Number.isSafeInteger(plannedStart) || plannedStart < 0)) return false;
+  if (estimate !== null && (!Number.isSafeInteger(estimate) || estimate <= 0)) return false;
+  if (sectionId === null) return true;
+  const section = await db.prepare(`SELECT COUNT(*) AS count FROM section_configuration_heads h
+    JOIN section_configuration_items i ON i.app_user_id = h.app_user_id
+      AND i.configuration_version_id = h.configuration_version_id
+    WHERE h.app_user_id = ? AND i.section_id = ? AND i.logical_start_minute <= ?
+      AND ? < i.logical_end_minute`).bind(appUserId, sectionId, plannedStart, plannedStart)
+    .first<{ count: number }>();
+  return section?.count === 1;
+}
 export async function createRoutine(db: D1Database, appUserId: string, request: CreateRoutineRequest,
   nowInstant = new Date().toISOString()): Promise<CreateRoutineResult> {
   const requestFingerprint = await fingerprint(request);
   const prior = await readOperation(db, appUserId, request.operation_id);
   if (prior) return replayOperation(prior, "CreateRoutine", requestFingerprint);
   const context = await currentContext(db, appUserId, nowInstant);
+  if (!await validateCreateRoutineDefaults(db, appUserId, request)) return reject(db, appUserId, request.operation_id, "CreateRoutine", requestFingerprint, "Routine defaults are unavailable");
   const [head, boardCount, materializationCount, collisions] = await Promise.all([
     db.prepare("SELECT board_revision FROM routine_board_heads WHERE app_user_id = ?").bind(appUserId)
       .first<{ board_revision: number }>(),
@@ -374,9 +400,9 @@ export async function createRoutine(db: D1Database, appUserId: string, request: 
       db.prepare(`INSERT INTO routine_definitions (id, app_user_id, task_id, recurrence_type,
         start_logical_date, end_logical_date, default_section_id, default_estimate_seconds,
         default_planned_start_minute, materialization_order, defaults_revision, created_at)
-        SELECT ?, ?, ?, 'daily', ?, NULL, NULL, NULL, NULL, ?, 0, ? WHERE EXISTS (
+        SELECT ?, ?, ?, 'daily', ?, NULL, ?, ?, ?, ?, 0, ? WHERE EXISTS (
           SELECT 1 FROM tasks WHERE app_user_id = ? AND id = ?)`)
-        .bind(request.routine_definition_id, appUserId, request.task_id, context.logicalDate, materializationOrder,
+        .bind(request.routine_definition_id, appUserId, request.task_id, context.logicalDate, request.default_section_id ?? null, request.default_estimate_seconds ?? null, request.default_planned_start_minute ?? null, materializationOrder,
           nowInstant, appUserId, request.task_id),
       db.prepare(`INSERT INTO routine_schedules
         (app_user_id, routine_definition_id, schedule_kind, interval_days, interval_weeks,

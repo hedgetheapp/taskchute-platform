@@ -140,6 +140,9 @@ data class CreateRoutineSettingsRequest(
     val routineDefinitionId: String,
     val title: String,
     val expectedBoardRevision: Int,
+    val defaultSectionId: String? = null,
+    val defaultPlannedStartMinute: Int? = null,
+    val defaultEstimateSeconds: Int? = null,
 )
 
 data class UpdateRoutineSettingsRequest(

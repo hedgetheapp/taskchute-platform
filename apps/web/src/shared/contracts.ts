@@ -1032,6 +1032,9 @@ export interface CreateRoutineRequest {
   routine_definition_id: string;
   title: string;
   expected_board_revision: number;
+  default_section_id?: string | null;
+  default_planned_start_minute?: number | null;
+  default_estimate_seconds?: number | null;
 }
 
 export interface CreateRoutineResult {

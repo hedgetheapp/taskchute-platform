@@ -34,6 +34,27 @@ class SettingsHttpRepositoryTest {
     }
 
     @Test
+    fun createRoutineCarriesOptionalDefaultsAndKeepsNullsRepresentable() {
+        var body = ""
+        val repository = SettingsHttpRepository({ _, _, requestedBody ->
+            body = requestedBody.orEmpty()
+            TodayHttpResponse(200, "{}")
+        })
+        val result = repository.createRoutine(
+            CreateRoutineSettingsRequest("op-1", "task-1", "routine-1", "朝", 4, "section-1", 570, 1500),
+        )
+
+        assertTrue(result is SettingsResult.Success)
+        assertTrue(body.contains("\"default_section_id\":\"section-1\""))
+        assertTrue(body.contains("\"default_planned_start_minute\":570"))
+        assertTrue(body.contains("\"default_estimate_seconds\":1500"))
+        body = ""
+        repository.createRoutine(CreateRoutineSettingsRequest("op-2", "task-2", "routine-2", "空", 5))
+        assertTrue(body.contains("\"default_section_id\":null"))
+        assertTrue(body.contains("\"default_planned_start_minute\":null"))
+        assertTrue(body.contains("\"default_estimate_seconds\":null"))
+    }
+    @Test
     fun routineBoardPreservesScheduleAndProjectMetadata() {
         val repository = SettingsHttpRepository({ _, path, _ ->
             if (path == "/api/v1/routines") TodayHttpResponse(200, """
