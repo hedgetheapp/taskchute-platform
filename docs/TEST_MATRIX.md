@@ -1,4 +1,16 @@
 # Test Matrix
+## Android Completed Task end-time clipping corrective — 2026-09-22
+
+Completed metadataのactual rangeがdurationのintrinsic widthに押されて終了時刻をclipするAndroid presentation bugを、range優先・duration残余幅の小修正で是正した。実績データ、execution semantics、Running / Planned layoutは変更していない。
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| ANDROID-COMPLETED-RANGE | Completed metadata priority | `開始 → 終了`を85dpで優先確保し、duration側を残余幅でellipsis可能にする | `TodayScreen.kt`のCompleted branchのみ変更。Task Row高さ、font/icon、Running / Planned branchは不変 | PASS |
+| ANDROID-COMPLETED-REGRESSION | Focused regression | `09:12 → 16:21`、duration `100分`で終了時刻が表示される | `completedRowPrioritizesEndTimeWhenDurationReachesThreeDigits`をinstrumentationへ追加 | SOURCE / COMPILE PASS; RUNTIME NOT_RUN |
+| ANDROID-COMPLETED-LOCAL | Local gates | focused source compile、Debug APK、差分検査 | `:app:compileDebugAndroidTestKotlin`、`:app:assembleDebug`、`git diff --check` PASS | PASS |
+| ANDROID-COMPLETED-CI | Exact implementation SHA | Android classifier、JVM / signed APK / AndroidTest APK compile / signing / artifact | SHA `59bd426d5363295fc55d13db0a0f53e920ba3702`; run `35731290718`; Web / Worker SKIP; artifact `taskchute-android-debug-59bd426d5363295fc55d13db0a0f53e920ba3702`, ID `10695960488`, expires `2026-09-29T13:08:34Z` | PASS |
+| ANDROID-COMPLETED-AVD | Focused runtime | `TaskChute_API33` instrumentation、MainActivity、crash buffer | `adb devices`に接続端末なし、`emulator`コマンド利用不可。QA dataは作成していない | NOT_RUN / ENVIRONMENT_UNAVAILABLE |
+| ANDROID-COMPLETED-BOUNDARY | Boundary | no Worker/API, schema/migration, dependency, existing-data mutation, production, Release | Android UI/test only。既存data mutationなし、Production `NOT_RUN`、Released `NO` | PASS / NOT_REQUIRED / NOT_RUN / NO |
 
 ## D-133 Android Routine full create / edit parity — 2026-09-22
 
