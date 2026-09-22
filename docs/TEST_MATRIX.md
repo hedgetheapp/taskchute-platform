@@ -1,5 +1,20 @@
 # Test Matrix
 
+## D-133 Android Routine full create / edit parity — 2026-09-22
+
+D-133はAndroid Routine Create / Editをfull formへ揃え、Createを既存operation identity / replay boundary内のatomicな1回の`CreateRoutine`へ拡張した。title-only Web payloadと既存optional defaultsは後方互換のまま。planned startは`900` / `0900` / `09:00`をcanonical minuteへ正規化し、Schedule Secondary Sheetは親Add / Saveまでlocal draftのみ。
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D133-WORKER | Worker / D1 | full-field CreateRoutineのvalidation、atomic task/routine/schedule/defaults persistence、invalid no-partial-write、exact replay | `routine-r2b.integration.test.ts`: `19 / 19` focused PASS。legacy title-only compatibility、full payload、atomicity、invalid input、replayを含む | PASS |
+| D133-ANDROID | Android Settings controller | `900` / `0900` / `09:00`、Project / Mode / Section、schedule、period、full Create / Edit request、ambiguous retry | `SettingsControllerTest 13 / 13 PASS` | PASS |
+| D133-HTTP | Android Settings HTTP | full Create payload、old title-only payload compatibility、Mode Board loading | `SettingsHttpRepositoryTest 5 / 5 PASS` | PASS |
+| D133-UI | Android Settings UI | Create / Edit共通full form、14 recurrence familyのlocal Schedule Sheet、DatePicker、Add / Saveのsingle write | `SettingsScreen.kt` source review、`:app:assembleDebug` / `:app:compileDebugAndroidTestKotlin` PASS。AVD instrumentationは端末/AVDなしでNOT_RUN | PASS / RUNTIME_NOT_RUN |
+| D133-CI | Exact implementation SHA | classifier、Android JVM / signed APK / instrumentation APK compile、Web / Worker / D1 / typecheck / build | run `35725615763`、classifier・Android・Web/Worker job PASS。APK `taskchute-android-debug-62d4d804db0683a6bc33cad0f4c4722212201fb0`、ID `10693353178`、expiry `2026-09-29T12:13:17Z` | PASS |
+| D133-NONPROD | Persistent nonprod runtime / DB | exact mainをcanonical nonprodへdeployし、runtime / bindings / DB safetyを確認 | Worker `taskchute-web-nonprod` version `90d25052-a1f8-45e3-9f9f-6d12601265c3`; root `200`; unauthenticated `/api/v1/routines` `401`; bootstrap guard `401`; APP/AUTH migration counts `33 / 1`（localと一致）; quick_check `ok`; FK empty; APP transaction_assertions `0`; active executions `0`; all probes `rows_written=0` | PASS |
+| D133-REMOTE-QA | Isolated nonprod QA | 新規D133 QA Routineのみでfull create/edit/reloadを確認し、safe exact cleanupする | CUA kernel resetでauthenticated Web session unavailable。QA object作成・cleanup・既存data mutationなし | NOT_RUN / SAFE_SKIP |
+| D133-DEVICE | Galaxy S23 | fresh signed APKでProduct Ownerがfull Routine formを確認 | Codex physical-device verification未実施 | NOT_RUN / PRODUCT_OWNER_MANUAL |
+| D133-BOUNDARY | Product / persistence / release | API route / command family、schema/migration、dependency、productionを変更しない | existing CreateRoutineをbackward-compatibleに拡張。schema / migration / dependencyなし、Production `NOT_RUN`、Released `NO` | PASS / NOT_REQUIRED / NOT_RUN / NO |
 ## D-132 SetExecutionTimes actual-Section parity corrective — 2026-09-22
 
 D-132は、Planned Entryの`SetExecutionTimes`によるRunning / Completed遷移でも、actual startが属するSectionをauthorityとして扱うcorrective。source Sectionが実Sectionでも`Sectionなし`でも、established Day Section contextを`[actual_start, actual_end)`で解決する。cross-Sectionでは既存placement CASとatomic move・lifecycle / Execution作成・revision `+1`を維持し、same-Sectionではrevisionを増やさない。`planned_start_minute`、operation replay / ambiguity、D-081 execution-first projectionは維持した。

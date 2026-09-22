@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### D-133 Android Routine full create / edit parity — 2026-09-22
+
+- Android Routine Create / EditをTask名、Project、Mode、Section、開始予定、見積、繰り返し、開始日、終了日のfull formへ統一。Createは既存`CreateRoutine`の1回のatomic write、Scheduleは親Add / Saveまでlocal draft、`900` / `0900` / `09:00`はcanonical minuteへ正規化。
+- Implementation `62d4d804db0683a6bc33cad0f4c4722212201fb0`、Worker focused `19 / 19`、Android Settings focused `18 / 18`、typecheck、debug assemble / instrumentation compile、exact-SHA CI `35725615763`、APK artifact `taskchute-android-debug-62d4d804db0683a6bc33cad0f4c4722212201fb0`（ID `10693353178`、expiry `2026-09-29T12:13:17Z`）はPASS。
+- Persistent nonprod `taskchute-web-nonprod` deploy / guard / runtime / read-only DB safety PASS。Worker version `90d25052-a1f8-45e3-9f9f-6d12601265c3`。CUA kernel resetのためauthenticated Web / isolated QAはNOT_RUN、QA作成・cleanup・既存data mutationなし。schema / migration / dependency / Production操作なし。Galaxy S23は`NOT_RUN / PRODUCT_OWNER_MANUAL`、Releasedは`NO`。
 ### D-114 Android Routine create defaults corrective — 2026-09-22
 
 - Android new Routine creation now carries the entered planned start and estimate through the existing atomic CreateRoutine request. The start minute resolves to exactly one current Routine Board Section; estimate minutes are stored as seconds. Title-only payloads remain backward compatible with null defaults.
