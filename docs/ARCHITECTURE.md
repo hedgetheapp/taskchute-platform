@@ -2,7 +2,7 @@
 
 ## Android lifecycle editor / placement / forecast boundary
 
-`TaskPlanningController`はDay projectionとEntry lifecycleからeditor capabilityを選び、`TaskPlanningHttpRepository`は既存のTask metadata、Mode、Section move、planned-start、estimate、`SetExecutionTimes` endpointをoperation単位で呼び出す。actual timeのinstant化にはDayのlogical date、canonical timezone、establishment boundaryを使う。Section moveを先に実行した場合は返却された最新 placement revisionを後続のexecution-times requestへ引き継ぐ。
+`TaskPlanningController`はDay projectionとEntry lifecycleからeditor capabilityを選び、`TaskPlanningHttpRepository`は既存のTask metadata、Mode、Section move、planned-start、estimate、`SetExecutionTimes` endpointをoperation単位で呼び出す。actual timeのinstant化にはDayのlogical date、canonical timezone、establishment boundaryを使う。Section moveを先に実行した場合は返却された最新 placement revisionを後続のexecution-times requestへ引き継ぐ。D-132ではPlannedの`SetExecutionTimes` requestもcurrent placement revisionを渡し、Workerがactual startからactual Sectionを解決して、必要なcross-Section placementとlifecycle / Execution作成を一つのatomic outcomeとして確定する。
 
 `TodayController`のmemory-only `optimisticDay`はlifecycle editor、direct manipulation、start / completeの表示を即時投影するが、server canonical Dayや永続authorityにはならない。成功後はvisible refreshを出さずsilent reconcileし、failure / authorization / ambiguityは既存D-125の復旧経路へ戻す。
 

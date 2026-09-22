@@ -10,6 +10,8 @@ Current logical Dayのordinary Entryに対するAndroid editor capabilityは次�
 
 Time inputは数字3〜4桁または`HH:mm`を受け、`900` / `0900` / `930` / `1230`を正規化する。hourは0..23、minuteは0..59。Plannedのend-only、Completedのstart/end不足は保存不可。logical Day、canonical timezone、establishment boundaryを使ってinstantへ変換し、端末の日付・timezoneをauthorityにしない。
 
+D-132により、current DayのPlanned Entryをactual time入力でRunning / Completedへ遷移させる場合、`SetExecutionTimes`はactual startが属するestablished Day Sectionをserverで解決し、元のplanned Section有無にかかわらずresult Sectionをactual Sectionへ合わせる。planned startは保持する。cross-Section時だけDay placement revisionをexactly +1し、同一Sectionなら不要なrevision増分を行わない。Section内表示順はD-081 execution-first projectionをそのまま使う。
+
 Current logical DayのRunning / Completed単体削除はD-067の既存`DeleteCompletedEntry` route / DTO / operationを再利用する。Runningはcanonical active Execution、Completedはterminal Execution、owner、current Day、placement revisionなどのserver guardを満たす場合だけ対象となり、EntryとEntry-bound Executions / guards / snapshotsをatomicに削除する。Task / Project / Mode definition、Routine definition / occurrence、unrelated recordsは保持し、fake Complete / Interrupt / continuation / synthetic endは生成しない。Planned delete、bulk Running / Completed delete、Past / Future deleteはこの経路へ変更しない。
 
 D-129により、current logical Dayでeffective current instant以前に終了したconfigured Sectionは新しいmanual placement destinationにできない。AndroidのD&D preview、drop、Section editorはそのSectionを候補・highlight・provisional slotから除外し、serverのentry planning / bulk move guardと一致させる。既存Entryの保持や同一Section reorderをこのguardだけで禁止しない。

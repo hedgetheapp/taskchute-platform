@@ -1,5 +1,13 @@
 # Decisions
 
+## D-132 — SetExecutionTimes actual-Section parity v0.1
+
+Status: **Approved**
+
+Canonical Decision: `docs/decisions/D-132_SET_EXECUTION_TIMES_ACTUAL_SECTION_PARITY_V01.md`。
+
+Planned Entryを`SetExecutionTimes`でRunning / Completedへ遷移させる場合もD-081 `StartEntry`と同じactual-Section authorityを使う。actual startが属するestablished Day Sectionをserverで解決し、source Section有無にかかわらずresult `section_id`をactual Sectionへ合わせる。cross-Section時だけplacement revisionをexactly +1し、planned startは保持する。Web / Androidはcurrent placement revisionをplanned transition requestへ渡し、既存endpoint / operation / replay semanticsを再利用する。schema / migration / dependencyは追加しない。
+
 ## D-131 — Current and future Section configuration reconciliation v0.1
 
 Status: **Approved**
