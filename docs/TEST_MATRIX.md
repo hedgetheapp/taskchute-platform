@@ -18,6 +18,14 @@ Focused automated evidence:
 - `npm run typecheck`: `PASS`
 - `git diff --check`: `PASS`
 
+Persistent nonprod evidence:
+
+- exact `main@63174582eb86f09d1c34cf1d83608fb552363cb2` was built with the canonical nonprod configuration, passed `verify:nonprod-deploy`, and was deployed to `taskchute-web-nonprod` as Worker version `cb6f27b7-d9b8-4a4b-a2fb-c18c782c9dcf` at `2026-09-22T02:45:18.647Z`
+- binding/runtime guard remained canonical: `RUNTIME_ENV=nonprod`, `BOOTSTRAP_ENABLED=false`, APP `taskchute-app-nonprod`, AUTH `taskchute-auth-nonprod`, and `REALTIME_HUB/RealtimeHub/sqlite`
+- root `200`; unauthenticated `/api/v1/taskchute-days/current` `401`; APP/AUTH migration pending `0 / 0`; APP/AUTH `quick_check=ok`; FK checks empty; read-only probes reported `rows_written=0`; active executions, transaction assertions, lifecycle guards, and placement guards were `0 / 0 / 0 / 0`
+- read-only APP inventory showed established Days through `2026-10-01`, including current `2026-09-22` and established future `2026-09-23`; no temporary Section configuration mutation was made because the authenticated browser surface was unavailable
+- authenticated Web D-131 A/B/C/D was `AUTHENTICATED_BROWSER_NOT_RUN`: existing CUA session access reset its kernel, so no credential retrieval/re-login or user-visible configuration mutation was attempted; browser console `NOT_CAPTURED`
+
 | ID | Area | Requirement | Contract | Evidence |
 |---|---|---|---|---|
 | D131-IMPLEMENTATION | Worker / D1 | current + established future DayのSection context / Entry placementをlatest configurationへreconcileし、pastをfreezeする | Approved (D-131, D-038, D-043) | PASS (LOCAL_AUTOMATED) |
@@ -25,7 +33,7 @@ Focused automated evidence:
 | D131-EXECUTION | Lifecycle | running / completedのexecution factsを保持し、removed Sectionだけをsurviving contextへrehomeする | Approved (D-131) | PASS (LOCAL_AUTOMATED) |
 | D131-REVISION-REPLAY | Atomicity / Retry | affected Dayごとにrevision exactly `+1`、exact replayは二重incrementせず、assertion failureはpartial writeを残さない | Approved (D-020, D-131) | PASS (LOCAL_AUTOMATED) |
 | D131-PAST | History | established past Dayを変更せず、unestablished future Dayをmaterializeしない | Approved (D-038, D-041, D-131) | PASS (LOCAL_AUTOMATED) |
-| D131-PERSISTENT | Persistent nonprod | canonical persistent nonprodでD-131 runtimeを検証する | D-131 | NOT_RUN |
+| D131-PERSISTENT | Persistent nonprod | canonical persistent nonprodでD-131 runtimeを検証する | D-131 | PASS (DEPLOY / RUNTIME / DB); AUTHENTICATED_BROWSER_NOT_RUN |
 | D131-PRODUCTION | Production | production migration / runtime / smoke | D-131 | NOT_RUN / RELEASE NO |
 
 ## Android Today actual-time prefill / Running projection / consecutive Quick Add corrective — 2026-09-21
