@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### D-114 Android Routine create defaults corrective — 2026-09-22
+
+- Android new Routine creation now carries the entered planned start and estimate through the existing atomic CreateRoutine request. The start minute resolves to exactly one current Routine Board Section; estimate minutes are stored as seconds. Title-only payloads remain backward compatible with null defaults.
+- Worker focused 18 / 18, Android Settings focused tests, Web typecheck, debug APK / instrumentation compile, and exact-SHA CI 35708401799 (Android + Web/Worker) passed. APK taskchute-android-debug-a741a9562b885e1276e8011cfab735d5f5b5a556, artifact 10685921671, expiry 2026-09-29T09:08:13Z.
+- Persistent nonprod taskchute-web-nonprod deploy / guard / runtime / read-only DB safety passed, Worker version 8de80f39-d1e3-47ef-810c-e5435b7cefa4. Authenticated Web and isolated QA were not run because the CUA helper was unavailable. No existing-data mutation, schema/migration/dependency change, or Production operation. Galaxy S23 is NOT_RUN / PRODUCT_OWNER_MANUAL; Released is NO.
+
 ### D-132 SetExecutionTimes actual-Section parity corrective — 2026-09-22
 
 - Planned→Running / Completedの`SetExecutionTimes`でもactual startのSectionをserver-authoritativeに解決し、sectioned sourceを元Sectionに残す不整合を修正。cross-Sectionは既存placement CAS、atomic move・lifecycle / Execution作成、revision `+1`、same-Sectionはrevision不変、planned start保持、D-081 execution-first projectionを維持。

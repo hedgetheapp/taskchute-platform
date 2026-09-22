@@ -423,6 +423,20 @@ D-115 initial implementation `0cb556f170e9734afe3cf17ae5bc652708f4a7a3` had an e
 | D116-RETRY-BOUNDARY | Prior composed Create contract | Multi-command Routine creation could not satisfy reload-safe retry while also prohibiting schema/API support | STOP / superseded by approved split contract |
 | D116-IMPLEMENTATION | Historical state at prior STOP | No implementation was claimed under the prior composed contract; revised work is separately tracked by D116A and D116B | HISTORICAL |
 
+## D-114 Android Routine create defaults corrective — 2026-09-22
+
+| ID | Verification target | Evidence | Status |
+|---|---|---|---|
+| D114-CREATE-CONTRACT | Backward-compatible CreateRoutine defaults | Optional default_section_id / default_planned_start_minute / default_estimate_seconds; pair invariant, Section interval, and positive estimate validation. Title-only payload remains valid and omitted defaults remain null. | PASS; Worker focused 18 / 18 |
+| D114-CREATE-ANDROID | Android start to Section / estimate | SettingsControllerTest and SettingsHttpRepositoryTest focused PASS. 09:30 resolves to minute 570 and the matching Section; 25 minutes becomes 1500 seconds; blank defaults are null; out-of-range or malformed input sends no create; ambiguous retry preserves the identical request. | PASS |
+| D114-CREATE-ATOMIC | Atomic persistence and replay | CreateRoutine inserts Task / Routine defaults in the existing atomic batch. Invalid pair or unavailable Section has no partial write; exact replay has no duplicate Routine, Task, occurrence, or board increment. | PASS; focused Worker 18 / 18 |
+| D114-CREATE-BUILD | Local focused build boundary | Web npm run typecheck PASS; Android debug APK and compileDebugAndroidTestKotlin PASS; no full unrelated suites rerun. | PASS |
+| D114-CREATE-CI | Exact implementation SHA CI | a741a9562b885e1276e8011cfab735d5f5b5a556; Actions run 35708401799; shared Worker/contract impact caused Android and Web/Worker jobs to run, both PASS. | PASS |
+| D114-CREATE-APK | Fresh APK artifact | taskchute-android-debug-a741a9562b885e1276e8011cfab735d5f5b5a556; artifact ID 10685921671; expiry 2026-09-29T09:08:13Z. | PASS |
+| D114-CREATE-NONPROD | Persistent nonprod deploy/runtime safety | taskchute-web-nonprod Worker version 8de80f39-d1e3-47ef-810c-e5435b7cefa4; deploy guard PASS; root 200; protected API 401; APP/AUTH migrations none; quick_check=ok; FK empty; transaction/routine guards 0; read-only probes rows_written=0. | PASS |
+| D114-CREATE-BROWSER | Authenticated Web / isolated QA | Authenticated Web NOT_RUN because the CUA helper/kernel was unavailable; no credentials/re-login; disposable QA Routine was not created, so cleanup is NOT_APPLICABLE. | NOT_RUN |
+| D114-CREATE-DEVICE | Galaxy S23 manual smoke | Fresh APK is available for Product Owner manual check; no Codex physical-device run. | NOT_RUN / PRODUCT_OWNER_MANUAL |
+| D114-CREATE-BOUNDARY | Product and data boundary | No existing non-QA Routine/Task/Entry/Execution mutation; no new route/command, schema/migration, dependency, or production operation; Released NO. | PASS / NOT_REQUIRED |
 ## D-114 Android Settings Management v0.1 + main-thread read corrective — local closeout
 
 | ID | Verification target | Evidence | Status |

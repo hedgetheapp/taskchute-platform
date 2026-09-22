@@ -150,6 +150,12 @@ footer smokeはPASS / USER_CONFIRMEDとする。productionはNOT_RUN、Released�
 schema/migration、dependency、realtime、persistent nonprodは変更していない。
 # Current
 
+### D-114 Android Routine create defaults corrective — 2026-09-22
+
+Android Routine creation previously parsed planned start and estimate in the Sheet but omitted them from the new CreateRoutine request, so the created Routine lost those defaults. The existing CreateRoutine contract now accepts optional defaults. Android resolves the entered start to exactly one current Routine Board Section and converts estimate minutes to seconds. Worker validation enforces the Section/start pair and positive estimate, then persists Task, Routine, and defaults in the existing atomic batch. Title-only Web payloads and OFF / daily / current logical date / replay semantics remain unchanged.
+
+Implementation: a741a9562b885e1276e8011cfab735d5f5b5a556; Worker focused 18 / 18 PASS; Android Settings focused PASS; Web typecheck PASS; debug APK and instrumentation compile PASS; git diff --check PASS; exact-SHA Actions 35708401799 PASS (Android + Web/Worker). APK taskchute-android-debug-a741a9562b885e1276e8011cfab735d5f5b5a556, artifact 10685921671, expiry 2026-09-29T09:08:13Z. Persistent nonprod taskchute-web-nonprod version 8de80f39-d1e3-47ef-810c-e5435b7cefa4 with deploy guard/runtime/read-only DB safety PASS. Authenticated Web NOT_RUN (CUA helper unavailable; no credentials/re-login); isolated QA NOT_RUN, no QA object, no existing-data mutation. Galaxy S23 NOT_RUN / PRODUCT_OWNER_MANUAL; Production NOT_RUN; Released NO.
+
 ### D-122 Android Nonprod APK Stable Signing / Updateability v0.1 — 2026-09-19
 
 D-122をcanonical Decisionとして追加し、非本番Android debug APKの安定署名と更新性を実装した。Gradleは
