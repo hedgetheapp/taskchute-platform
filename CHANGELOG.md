@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### D-132 SetExecutionTimes actual-Section parity corrective — 2026-09-22
+
+- Planned→Running / Completedの`SetExecutionTimes`でもactual startのSectionをserver-authoritativeに解決し、sectioned sourceを元Sectionに残す不整合を修正。cross-Sectionは既存placement CAS、atomic move・lifecycle / Execution作成、revision `+1`、same-Sectionはrevision不変、planned start保持、D-081 execution-first projectionを維持。
+- Webはplanned actual-time requestへcurrent placement revisionを追加し、AndroidはCREATE / EDIT chainでsectioned Plannedを含め最新revisionを送信。新API route / command / schema / migration / dependency / optimistic persistenceは追加していない。
+- Implementation `ea137da294dc7f7e239228dca49bacc2ff8150f8`、Worker focused `7 / 7`、Web App `298 / 298`、Android focused repository test、typecheck、exact-SHA CI `35683758984` rerun、persistent nonprod deploy/runtime/DB safetyはPASS。Worker version `73378404-e353-4aeb-b36d-3eafe7de3204`。Authenticated Web QAはCUA session unavailable、Galaxy S23 / Production / Releasedは`NOT_RUN / NOT_RUN / NO`。
+
 ### D-131 Section current/future reconciliation — 2026-09-22
 
 - Section configuration update now reconciles current and already-established future Day contexts to the latest Section configuration while preserving established past Day history and avoiding materialization of unestablished future Days.

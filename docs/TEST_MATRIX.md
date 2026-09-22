@@ -1,5 +1,21 @@
 # Test Matrix
 
+## D-132 SetExecutionTimes actual-Section parity corrective — 2026-09-22
+
+D-132は、Planned Entryの`SetExecutionTimes`によるRunning / Completed遷移でも、actual startが属するSectionをauthorityとして扱うcorrective。source Sectionが実Sectionでも`Sectionなし`でも、established Day Section contextを`[actual_start, actual_end)`で解決する。cross-Sectionでは既存placement CASとatomic move・lifecycle / Execution作成・revision `+1`を維持し、same-Sectionではrevisionを増やさない。`planned_start_minute`、operation replay / ambiguity、D-081 execution-first projectionは維持した。
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D132-WORKER | Worker / D1 | sectioned Planned→Running / Completedがactual Sectionへ移動し、same-Sectionはrevision不変、stale/unresolvedはpartial writeなし | `execution-correction.integration.test.ts`: `7 / 7` focused PASS。sectioned Running / Completed、same-Section、stale revision、unresolved Section、replayを含む | PASS |
+| D132-WEB | Web actual-time request | sectioned Plannedでもcurrent placement revisionを送信し、canonical reconcileへ収束 | `apps/web/test/web/App.test.tsx`: `298 / 298` PASS。`expected_placement_revision` request coverageを含む | PASS |
+| D132-ANDROID | Android actual-time request | CREATE / EDITのplanned transitionで最新 placement revisionを送信 | `TaskPlanningHttpRepositoryTest` focused PASS。sectioned Planned EDITとCREATE chainを確認 | PASS |
+| D132-STATIC | Type / build / patch hygiene | exact nonprod build、deploy guard、typecheck、diff check | `npm run typecheck`、exact `CLOUDFLARE_ENV=nonprod` build、`verify:nonprod-deploy`、`git diff --check` PASS | PASS |
+| D132-CI | Exact implementation SHA | classifier、Web/Worker、Android JVM / signed APK / instrumentation APK compile / signing verification | run `35683758984` rerun PASS。初回はD-132変更外の既存Android test 1件のみ失敗し、失敗job rerunでPASS。artifact `taskchute-android-debug-ea137da294dc7f7e239228dca49bacc2ff8150f8`、ID `10675468961`、expiry `2026-09-29T03:45:03Z` | PASS |
+| D132-NONPROD | Persistent nonprod runtime / DB | exact mainをcanonical nonprodへdeployし、runtime/API/DB safetyを確認 | Worker `taskchute-web-nonprod` version `73378404-e353-4aeb-b36d-3eafe7de3204`; root `200`; protected API `401`; bootstrap `404`; APP/AUTH migration pending `0 / 0`; quick_check `ok`; FK empty; active Execution `1`（既存のためQA RunningはSKIP）; lifecycle / placement guards・transaction assertions `0`; read-only probe `rows_written=0` | PASS / AUTHENTICATED_WEB_NOT_RUN |
+| D132-REMOTE-QA | Isolated remote actual-Section QA | 新規QA objectのみでRunning/Completed actual-Sectionを確認しexact ID cleanupする | CUA kernel resetでauthenticated session unavailable。QA prefix `D132-QA-20260922-C7F4`の既存Task/Entryはread-only count `0`; QA object作成・cleanup・既存data mutationなし | NOT_RUN / SAFE_SKIP |
+| D132-DEVICE | Android physical device | fresh artifactでProduct Ownerが確認 | CodexはGalaxy S23検証を実施しない | NOT_RUN / PRODUCT_OWNER_MANUAL |
+| D132-BOUNDARY | Product / persistence / release | API route / command family、schema/migration、dependency、productionを変更しない | Web / Android client + existing Worker command only。migration `NOT_REQUIRED`; Production `NOT_RUN`; Released `NO` | PASS / NOT_REQUIRED / NOT_RUN / NO |
+
 ## D-131 Section current/future reconciliation — 2026-09-22
 
 D-131 implementation commit `fb0d0542d4509912aaaa4e5e306ad65a395cc241`は、既存の`UpdateSectionConfiguration` route / DTO / operation / replay / assertion semanticsを再利用し、current Dayとestablished future Dayだけを最新Section configurationへreconcileする。established past Dayはfreezeし、unestablished future Dayはmaterializeしない。`taskchute_days` body、Section configuration version/head、Entry / Execution identityは保持する。
