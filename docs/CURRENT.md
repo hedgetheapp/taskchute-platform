@@ -1,3 +1,9 @@
+### D-133 Android Routine full create / edit parity — 2026-09-22
+
+Product Owner approved Android Routine Create / Edit parity. Both forms expose Task名 / Project / Mode / Section / 開始予定 / 見積 / 繰り返し / 開始日 / 終了日. Create must persist all selected fields in one atomic `CreateRoutine` operation; a composed `Create -> Update` flow is prohibited. Existing title-only / optional-default Create payloads remain backward compatible. Android planned-start accepts at least `900`, `0900`, and `09:00`, normalizing to canonical minute 540 and display `09:00`. Schedule editing uses a Secondary Sheet with the existing 14 canonical recurrence families and remains memory-only until the parent Add / Save action.
+
+**Decision: D-133 APPROVED / Implementation: NOT_STARTED / Tests: NOT_RUN / Galaxy S23: NOT_RUN / Production: NOT_RUN / Released: NO**。Figma `Flow & States — Android v1` contains the detailed Create / Edit / Schedule proposal as a visual continuation aid. No schema / migration is approved; implementation must STOP if current persistence cannot support the atomic expansion without one.
+
 ### D-132 SetExecutionTimes actual-Section parity corrective — 2026-09-22
 
 Planned Entryから`SetExecutionTimes`でRunning / Completedへ遷移する場合も、source Sectionの有無にかかわらず、actual startが属するestablished Day Sectionをserver authorityとして解決するよう修正した。cross-Sectionでは既存placement CAS、atomic Section move・lifecycle / Execution作成、`placement_revision +1`を一つのoutcomeにし、same-Sectionではrevisionを増やさない。`planned_start_minute`とD-081 execution-first projectionは保持する。Webはplanned actual-time requestへcurrent `placement_revision`を渡し、Androidもsectioned Plannedを含むCREATE/EDIT chainで最新revisionを送る。新route / command / schema / migration / dependency / optimistic authorityは追加していない。
