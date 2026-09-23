@@ -1,6 +1,12 @@
 # Changelog
 
 ## Unreleased
+### D-134 Android Running Progress Player — 2026-09-23
+
+- current DayのRunningTaskPanelを104dp progress playerへ置換。elapsed / remaining / progress / overrunはdisplay-onlyで、Completeは既存commandを再利用。Futureでは非表示、Pastはread-only。
+- Implementation `419eb5a0a766c7837838f49fe45f5f4a731010d4`、RunningProgress `8 / 8`、Android JVM `168 / 168`、exact-SHA CI `35817804199` Android JVM / signed APK PASS、Web/Worker SKIP。artifact `taskchute-android-debug-419eb5a0a766c7837838f49fe45f5f4a731010d4` / ID `10732232016`。
+- Today AVD全surfaceは`35 / 44`でpartial、Running panel focused / MainActivity / UI tree / crash bufferはPASS、final full Today rerunはNOT_VERIFIED。Galaxy S23は`NOT_RUN / PRODUCT_OWNER_MANUAL`、Productionは`NOT_RUN`、Releasedは`NO`。
+
 
 ### D-133 Android Routine full create / edit parity — 2026-09-22
 

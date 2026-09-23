@@ -12,6 +12,19 @@ Completed metadataのactual rangeがdurationのintrinsic widthに押されて終
 | ANDROID-COMPLETED-AVD | Focused runtime | `TaskChute_API33` instrumentation、MainActivity、crash buffer | `adb devices`に接続端末なし、`emulator`コマンド利用不可。QA dataは作成していない | NOT_RUN / ENVIRONMENT_UNAVAILABLE |
 | ANDROID-COMPLETED-BOUNDARY | Boundary | no Worker/API, schema/migration, dependency, existing-data mutation, production, Release | Android UI/test only。既存data mutationなし、Production `NOT_RUN`、Released `NO` | PASS / NOT_REQUIRED / NOT_RUN / NO |
 
+## D-134 Android Running Progress Player — 2026-09-23
+
+D-134はcurrent DayのRunningTaskPanelを104dp progress playerへ置換するpresentation-only decision。elapsed / remaining / progress / overrunはactive execution開始時刻を基準に表示し、Completeは既存commandを再利用する。Future / Past、Worker/API、schema、migration、dependencyは変更しない。
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D134-DECISION | Canonical decision | 104dp current-Day progress player、display-only ticker、既存Complete command | `docs/decisions/D-134_ANDROID_RUNNING_PROGRESS_PLAYER_V01.md`、Figma `481:2` / `485:2` / `502:17` | PASS / APPROVED |
+| D134-JVM | Running progress helper / Android JVM | 3m15/26m45、18m24/11m36、8秒残り、overrun、exact boundary、null/zero estimate、invalid start、25h/100h formatting | `RunningProgressTest` `8 / 8` PASS。最終 `:app:testDebugUnitTest` `168 / 168` PASS、failures/errors/skipped `0 / 0 / 0` | PASS |
+| D134-AVD-FOCUSED | Running panel runtime | current-Day Running panel Complete path and pending behavior | `TaskChute_API33` focused `runningPanelCompleteDispatchesOnceAndCompletedTaskHasNoStart` PASS after aligning the assertion with existing optimistic lifecycle projection; debug APK install / MainActivity launch / UI tree / target crash buffer empty | PASS |
+| D134-AVD | Today runtime gate | Today-only AVD surface and crash safety | `scripts/android-qa.ps1 -Surface Today` executed on `TaskChute_API33`; initial full surface `35 / 44` PASS with 9 failures, including the stale pending-panel assertion later corrected and existing projection/note/Quick Add fixture assertions. Final full Today rerun was not performed; therefore full-surface status remains `NOT_VERIFIED`. | PARTIAL / NOT_VERIFIED |
+| D134-CI | Exact implementation SHA / APK | Android impact-aware CI and signed APK | SHA `419eb5a0a766c7837838f49fe45f5f4a731010d4`; run `35817804199`; Classifier PASS, Android JVM and signed nonprod APK PASS, Web/Worker SKIPPED. Artifact `taskchute-android-debug-419eb5a0a766c7837838f49fe45f5f4a731010d4`, ID `10732232016`, expires `2026-09-30T04:21:05Z` | PASS |
+| D134-BOUNDARY | Product / persistence / release | presentation-only Android change | Worker/API/shared contract、domain、schema/migration、persistence authority、realtime、dependency、persistent nonprod、productionは変更なし。Galaxy S23 `NOT_RUN / PRODUCT_OWNER_MANUAL`、Production `NOT_RUN`、Released `NO` | PASS / NOT_REQUIRED / NOT_RUN / NO |
+
 ## D-133 Android Routine full create / edit parity — 2026-09-22
 
 D-133はAndroid Routine Create / Editをfull formへ揃え、Createを既存operation identity / replay boundary内のatomicな1回の`CreateRoutine`へ拡張した。title-only Web payloadと既存optional defaultsは後方互換のまま。planned startは`900` / `0900` / `09:00`をcanonical minuteへ正規化し、Schedule Secondary Sheetは親Add / Saveまでlocal draftのみ。
