@@ -94,4 +94,42 @@ class MarkdownLiveEditorTest {
 
         assertEquals(source, transformed.text.text)
     }
-}
+
+    @Test
+    fun renderedUncheckedTaskCheckboxTogglesToCheckedWithoutChangingSurroundingSource() {
+        val source = "before\n- [ ] task\r\nafter"
+        val result = requireNotNull(toggleTaskCheckbox(source, source.indexOf("- [ ] ")))
+
+        assertEquals("before\n- [x] task\r\nafter", result.text)
+    }
+
+    @Test
+    fun renderedCheckedTaskCheckboxTogglesLowercaseAndUppercaseToUnchecked() {
+        val lower = requireNotNull(toggleTaskCheckbox("- [x] done", 0))
+        val upper = requireNotNull(toggleTaskCheckbox("- [X] done", 0))
+
+        assertEquals("- [ ] done", lower.text)
+        assertEquals("- [ ] done", upper.text)
+    }
+
+    @Test
+    fun malformedTaskCheckboxDoesNotToggle() {
+        assertEquals(null, toggleTaskCheckbox("- [ ]missing-space", 0))
+        assertEquals(null, toggleTaskCheckbox("- [y] invalid", 0))
+        assertEquals(null, toggleTaskCheckbox("text", 2))
+    }
+
+    @Test
+    fun inactiveTaskCheckboxHitUsesMappedMarkerAndWhiteVisualStyle() {
+        val source = "- [ ] task\nactive"
+        val selection = MarkdownSelection(source.length, source.length)
+        val transformed = MarkdownPreviewTransformation(selection).filter(AnnotatedString(source))
+        val hits = renderedTaskCheckboxHits(source, selection, transformed.offsetMapping)
+
+        assertEquals(1, hits.size)
+        assertEquals(0, hits.single().sourceStart)
+        assertEquals(0, hits.single().transformedStart)
+        assertEquals(2, hits.single().transformedEndExclusive)
+        assertEquals("task", hits.single().label)
+        assertTrue(transformed.text.spanStyles.any { it.start == 0 && it.end == 2 && it.item.color == androidx.compose.ui.graphics.Color.White })
+    }}

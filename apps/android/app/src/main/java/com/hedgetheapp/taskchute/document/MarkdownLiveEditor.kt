@@ -14,6 +14,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -287,7 +295,7 @@ private fun appendRenderedLine(builder: PreviewBuilder, source: String, line: So
     if (task != null) {
         val prefixLength = 6
         val marker = if (task.groupValues[1].equals("x", ignoreCase = true)) "☑ " else "☐ "
-        builder.append(line.start, line.start + prefixLength, marker, SpanStyle(color = TaskChuteColors.AccentBlue))
+        builder.append(line.start, line.start + prefixLength, marker, SpanStyle(color = Color.White))
         appendInline(builder, source, line.start + prefixLength, line.end)
         return
     }
@@ -383,11 +391,65 @@ fun MarkdownLiveEditor(
 ) {
     var fieldValue by remember { mutableStateOf(TextFieldValue(value)) }
     var hasFocus by remember { mutableStateOf(false) }
+    var textLayoutResult by remember { mutableStateOf<androidx.compose.ui.text.TextLayoutResult?>(null) }
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
     val density = LocalDensity.current
     val imeVisible = WindowInsets.ime.getBottom(density) > 0
     val toolbarVisible = hasFocus && imeVisible && enabled
+    val previewTransformation = remember(fieldValue.text, fieldValue.selection.start, fieldValue.selection.end) {
+        MarkdownPreviewTransformation(
+            MarkdownSelection(fieldValue.selection.start, fieldValue.selection.end),
+        )
+    }
+    val transformedPreview = remember(fieldValue.text, fieldValue.selection.start, fieldValue.selection.end) {
+        previewTransformation.filter(AnnotatedString(fieldValue.text))
+    }
+    val checkboxHits = remember(fieldValue.text, fieldValue.selection.start, fieldValue.selection.end) {
+        renderedTaskCheckboxHits(
+            source = fieldValue.text,
+            selection = MarkdownSelection(fieldValue.selection.start, fieldValue.selection.end),
+            mapping = transformedPreview.offsetMapping,
+        )
+    }
+    val latestTextLayoutResult = rememberUpdatedState(textLayoutResult)
+    val latestCheckboxHits = rememberUpdatedState(checkboxHits)
+    val toggleCheckbox = rememberUpdatedState<(Int) -> Unit> { sourceStart ->
+        if (enabled) {
+            val result = toggleTaskCheckbox(fieldValue.text, sourceStart)
+            if (result != null) {
+                val selection = TextRange(
+                    result.mapOffset(fieldValue.selection.start),
+                    result.mapOffset(fieldValue.selection.end),
+                )
+                val composition = fieldValue.composition?.let {
+                    TextRange(result.mapOffset(it.start), result.mapOffset(it.end))
+                }
+                val next = fieldValue.copy(text = result.text, selection = selection, composition = composition)
+                fieldValue = next
+                onValueChange(next.text)
+                focusRequester.requestFocus()
+                keyboardController?.show()
+            }
+        }
+    }
+    val checkboxActions = if (enabled) {
+        checkboxHits.map { hit ->
+            CustomAccessibilityAction(
+                label = if (hit.checked) {
+                    "\u5b8c\u4e86\u6e08\u307f\u30bf\u30b9\u30af\u3092\u672a\u5b8c\u4e86\u306b\u623b\u3059: " + hit.label
+                } else {
+                    "\u672a\u5b8c\u4e86\u30bf\u30b9\u30af\u3092\u5b8c\u4e86\u306b\u3059: " + hit.label
+                },
+                action = {
+                    toggleCheckbox.value(hit.sourceStart)
+                    true
+                },
+            )
+        }
+    } else {
+        emptyList()
+    }
 
     LaunchedEffect(value) {
         if (fieldValue.text != value) {
@@ -412,12 +474,49 @@ fun MarkdownLiveEditor(
                 },
                 enabled = enabled,
                 textStyle = MaterialTheme.typography.bodyLarge.copy(color = TaskChuteColors.PrimaryText, fontSize = 16.sp),
-                visualTransformation = MarkdownPreviewTransformation(
-                    MarkdownSelection(fieldValue.selection.start, fieldValue.selection.end),
-                ),
-                modifier = Modifier.fillMaxWidth().weight(1f)
+                cursorBrush = SolidColor(TaskChuteColors.PrimaryText),
+                visualTransformation = previewTransformation,
+                onTextLayout = { textLayoutResult = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
                     .focusRequester(focusRequester)
-                    .semantics { contentDescription = "Markdown body" }
+                    .pointerInput(enabled, checkboxHits) {
+                        if (!enabled) return@pointerInput
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            val layout = latestTextLayoutResult.value
+                            val hits = latestCheckboxHits.value
+                            val downOffset = layout?.getOffsetForPosition(down.position)
+                            val hit = downOffset?.let { offset ->
+                                hits.firstOrNull { offset in it.transformedStart until it.transformedEndExclusive }
+                            }
+                            if (hit != null) down.consume()
+
+                            var released = false
+                            var upPosition = down.position
+                            while (!released) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: continue
+                                upPosition = change.position
+                                if (change.changedToUpIgnoreConsumed() || !change.pressed) {
+                                    if (hit != null) change.consume()
+                                    released = true
+                                }
+                            }
+
+                            if (hit != null) {
+                                val upOffset = layout?.getOffsetForPosition(upPosition)
+                                if (upOffset != null && upOffset in hit.transformedStart until hit.transformedEndExclusive) {
+                                    toggleCheckbox.value(hit.sourceStart)
+                                }
+                            }
+                        }
+                    }
+                    .semantics {
+                        contentDescription = "Markdown body"
+                        if (checkboxActions.isNotEmpty()) customActions = checkboxActions
+                    }
                     .onFocusChanged { hasFocus = it.isFocused },
                 decorationBox = { innerTextField ->
                     Box(Modifier.fillMaxSize().padding(top = 2.dp)) {
@@ -442,7 +541,6 @@ fun MarkdownLiveEditor(
         }
     }
 }
-
 @Composable
 internal fun MarkdownImeToolbar(
     modifier: Modifier,

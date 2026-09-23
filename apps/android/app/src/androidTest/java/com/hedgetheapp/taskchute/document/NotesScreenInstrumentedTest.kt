@@ -13,6 +13,8 @@ import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.click
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -225,6 +227,64 @@ class NotesScreenInstrumentedTest {
         composeRule.onAllNodes(hasSetTextAction(), useUnmergedTree = true).get(0).performTextInput(" - [ ] task")
         composeRule.waitForIdle()
         assertTrue(controller?.state?.editor?.markdownBody?.contains(" - [ ] task") == true)
+    }
+
+
+    @Test
+    fun renderedTaskCheckboxAccessibilityActionTogglesRawMarkdown() {
+        var latest = "active\n- [ ] task"
+        composeRule.setContent {
+            MarkdownLiveEditor(
+                value = latest,
+                onValueChange = { latest = it },
+                enabled = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+
+        val node = composeRule.onNodeWithContentDescription("Markdown body")
+        val action = node.fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsActions.CustomActions].single().action
+        var performed = false
+        composeRule.runOnIdle {
+            performed = action()
+        }
+        assertTrue(performed)
+        composeRule.waitForIdle()
+        assertEquals("active\n- [x] task", latest)
+    }
+
+    @Test
+    fun renderedTaskCheckboxMarkerTapTogglesOnlyTheRenderedLine() {
+        var latest = "active\n- [ ] task"
+        composeRule.setContent {
+            MarkdownLiveEditor(
+                value = latest,
+                onValueChange = { latest = it },
+                enabled = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+
+        composeRule.onNodeWithContentDescription("Markdown body").performTouchInput {
+            click(androidx.compose.ui.geometry.Offset(20f, 70f))
+        }
+        composeRule.waitForIdle()
+        assertEquals("active\n- [x] task", latest)
+    }
+
+    @Test
+    fun blockedMarkdownEditorDoesNotExposeCheckboxMutationAction() {
+        composeRule.setContent {
+            MarkdownLiveEditor(
+                value = "active\n- [ ] task",
+                onValueChange = {},
+                enabled = false,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+
+        val config = composeRule.onNodeWithContentDescription("Markdown body").fetchSemanticsNode().config
+        assertFalse(config.contains(androidx.compose.ui.semantics.SemanticsActions.CustomActions))
     }
 
     @Composable
