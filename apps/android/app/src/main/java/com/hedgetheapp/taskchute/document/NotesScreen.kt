@@ -61,6 +61,7 @@ fun NotesScreen(
     controller: NotesController,
     onNavigateToday: () -> Unit,
     onNavigateSettings: () -> Unit,
+    onNavigateDaily: () -> Unit = {},
 ) {
     val state = controller.state
     var leaveAction by remember { mutableStateOf<(() -> Unit)?>(null) }
@@ -110,6 +111,7 @@ fun NotesScreen(
                 selected = AndroidDestination.NOTES,
                 onToday = { attemptLeave(onNavigateToday) },
                 onNotes = { attemptLeave {} },
+                onDaily = { attemptLeave(onNavigateDaily) },
                 onSettings = { attemptLeave(onNavigateSettings) },
             )
         },

@@ -16,7 +16,7 @@ class AndroidNavigationBarInstrumentedTest {
     @get:Rule val composeRule = createComposeRule()
 
     @Test
-    fun footerExposesThreeDestinationsAndSelectedState() {
+    fun footerExposesFourEnglishDestinationsAndSelectedState() {
         val selected = mutableStateOf(AndroidDestination.TODAY)
         composeRule.setContent {
             TaskChuteTheme {
@@ -24,23 +24,27 @@ class AndroidNavigationBarInstrumentedTest {
                     selected = selected.value,
                     onToday = {},
                     onNotes = {},
+                    onDaily = {},
                     onSettings = {},
                 )
             }
         }
 
-        composeRule.onNodeWithContentDescription("今日").assertIsDisplayed().assertIsSelected()
-        composeRule.onNodeWithContentDescription("ノート一覧").assertIsDisplayed().assertIsNotSelected()
-        composeRule.onNodeWithContentDescription("設定").assertIsDisplayed().assertIsNotSelected()
+        composeRule.onNodeWithContentDescription("Task").assertIsDisplayed().assertIsSelected()
+        composeRule.onNodeWithContentDescription("Notes").assertIsDisplayed().assertIsNotSelected()
+        composeRule.onNodeWithContentDescription("Daily").assertIsDisplayed().assertIsNotSelected()
+        composeRule.onNodeWithContentDescription("Settings").assertIsDisplayed().assertIsNotSelected()
 
-        composeRule.runOnIdle { selected.value = AndroidDestination.NOTES }
-        composeRule.onNodeWithContentDescription("今日").assertIsNotSelected()
-        composeRule.onNodeWithContentDescription("ノート一覧").assertIsSelected()
-        composeRule.onNodeWithContentDescription("設定").assertIsNotSelected()
+        composeRule.runOnIdle { selected.value = AndroidDestination.DAILY }
+        composeRule.onNodeWithContentDescription("Task").assertIsNotSelected()
+        composeRule.onNodeWithContentDescription("Notes").assertIsNotSelected()
+        composeRule.onNodeWithContentDescription("Daily").assertIsSelected()
+        composeRule.onNodeWithContentDescription("Settings").assertIsNotSelected()
 
         composeRule.runOnIdle { selected.value = AndroidDestination.SETTINGS }
-        composeRule.onNodeWithContentDescription("今日").assertIsNotSelected()
-        composeRule.onNodeWithContentDescription("ノート一覧").assertIsNotSelected()
-        composeRule.onNodeWithContentDescription("設定").assertIsSelected()
+        composeRule.onNodeWithContentDescription("Task").assertIsNotSelected()
+        composeRule.onNodeWithContentDescription("Notes").assertIsNotSelected()
+        composeRule.onNodeWithContentDescription("Daily").assertIsNotSelected()
+        composeRule.onNodeWithContentDescription("Settings").assertIsSelected()
     }
 }

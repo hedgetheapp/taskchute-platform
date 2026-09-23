@@ -30,6 +30,12 @@ import type {
   ReorderProjectsResult,
   DeleteProjectRequest,
   DeleteProjectResult,
+  DailyPrimaryDocument,
+  DailyPrimaryDocumentListProjection,
+  EnsureDailyPrimaryDocumentRequest,
+  EnsureDailyPrimaryDocumentResult,
+  UpdateDailyPrimaryDocumentRequest,
+  UpdateDailyPrimaryDocumentResult,
   CurrentTaskChuteDayProjection,
   CompleteEntryRequest,
   CompleteEntryResult,
@@ -336,6 +342,18 @@ export const api = {
   },
   updateProjectPrimaryDocument(body: UpdateProjectPrimaryDocumentRequest): Promise<UpdateProjectPrimaryDocumentResult> {
     return requestJson(`/api/v1/project-primary-documents/${encodeURIComponent(body.document_id)}`, jsonPost("", body));
+  },
+  loadDailyPrimaryDocuments(): Promise<DailyPrimaryDocumentListProjection> {
+    return requestJson("/api/v1/daily-primary-documents");
+  },
+  loadDailyPrimaryDocument(documentId: string): Promise<DailyPrimaryDocument> {
+    return requestJson(`/api/v1/daily-primary-documents/${encodeURIComponent(documentId)}`);
+  },
+  ensureDailyPrimaryDocument(body: EnsureDailyPrimaryDocumentRequest): Promise<EnsureDailyPrimaryDocumentResult> {
+    return requestJson(`/api/v1/taskchute-days/${encodeURIComponent(body.taskchute_day_id)}/daily-primary-document`, jsonPost("", body));
+  },
+  updateDailyPrimaryDocument(body: UpdateDailyPrimaryDocumentRequest): Promise<UpdateDailyPrimaryDocumentResult> {
+    return requestJson(`/api/v1/daily-primary-documents/${encodeURIComponent(body.document_id)}`, jsonPost("", body));
   },
   createStandaloneDocument(body: CreateStandaloneDocumentRequest): Promise<CreateStandaloneDocumentResult> {
     return requestJson("/api/v1/documents", jsonPost("", body));

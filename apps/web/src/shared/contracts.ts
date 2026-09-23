@@ -49,7 +49,18 @@ export interface ProjectPrimaryDocument {
   updated_at: string;
 }
 
-export type Document = StandaloneDocument | TaskPrimaryDocument | ProjectPrimaryDocument;
+export interface DailyPrimaryDocument {
+  document_id: string;
+  kind: "daily_primary";
+  taskchute_day_id: string;
+  logical_date: string;
+  markdown_body: string;
+  revision: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export type Document = StandaloneDocument | TaskPrimaryDocument | ProjectPrimaryDocument | DailyPrimaryDocument;
 
 /**
  * Read-only projection used by the generic document permalink resolver.
@@ -103,6 +114,38 @@ export interface UpdateProjectPrimaryDocumentRequest {
 
 export interface UpdateProjectPrimaryDocumentResult {
   document: ProjectPrimaryDocument;
+}
+
+export interface DailyPrimaryDocumentSummary {
+  taskchute_day_id: string;
+  logical_date: string;
+  document_id: string | null;
+}
+
+export interface DailyPrimaryDocumentListProjection {
+  days: DailyPrimaryDocumentSummary[];
+}
+
+export interface EnsureDailyPrimaryDocumentRequest {
+  operation_id: string;
+  taskchute_day_id: string;
+  document_id: string;
+}
+
+export interface EnsureDailyPrimaryDocumentResult {
+  document: DailyPrimaryDocument;
+}
+
+export interface UpdateDailyPrimaryDocumentRequest {
+  operation_id: string;
+  taskchute_day_id: string;
+  document_id: string;
+  expected_revision: number;
+  markdown_body: string;
+}
+
+export interface UpdateDailyPrimaryDocumentResult {
+  document: DailyPrimaryDocument;
 }
 
 export interface StandaloneDocumentSummary {

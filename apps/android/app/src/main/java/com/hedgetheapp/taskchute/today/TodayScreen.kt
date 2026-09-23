@@ -144,6 +144,7 @@ fun TodayScreen(
     onNavigateSettings: () -> Unit,
     onSignOut: () -> Unit = {},
     onNavigateNotes: () -> Unit = {},
+    onNavigateDaily: () -> Unit = {},
     directManipulationController: TodayDirectManipulationController? = null,
     onOpenTaskNote: (TodayTask) -> Unit = {},
     taskNoteController: NotesController? = null,
@@ -229,6 +230,7 @@ fun TodayScreen(
                     onToday = controller::today,
                     onSettings = onNavigateSettings,
                     onNotes = onNavigateNotes,
+                    onDaily = onNavigateDaily,
                 )
             }
         },

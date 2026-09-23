@@ -41,7 +41,9 @@ import com.hedgetheapp.taskchute.today.TaskPlanningController
 import com.hedgetheapp.taskchute.today.TaskPlanningHttpRepository
 import com.hedgetheapp.taskchute.ui.AndroidDestination
 import com.hedgetheapp.taskchute.ui.TaskChuteTheme
-import com.hedgetheapp.taskchute.today.TaskPlanningUiState
+import com.hedgetheapp.taskchute.document.DailyController
+import com.hedgetheapp.taskchute.document.DailyDocumentHttpRepository
+import com.hedgetheapp.taskchute.document.DailyScreen
 import com.hedgetheapp.taskchute.document.DocumentHttpRepository
 import com.hedgetheapp.taskchute.document.NotesController
 import com.hedgetheapp.taskchute.document.NotesScreen
@@ -60,38 +62,27 @@ class MainActivity : ComponentActivity() {
     private lateinit var directManipulationController: TodayDirectManipulationController
     private lateinit var notesController: NotesController
     private lateinit var settingsController: SettingsController
+    private lateinit var dailyController: DailyController
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         controller = AuthController(this, BuildConfig.TASKCHUTE_BASE_URL)
         val todayRepository = TodayHttpRepository(
-                request = { method, path, body ->
-                    controller.authenticatedRequest(method, path, body)?.let { TodayHttpResponse(it.status, it.body) }
-                },
-                onUnauthorized = {},
+            request = { method, path, body -> controller.authenticatedRequest(method, path, body)?.let { TodayHttpResponse(it.status, it.body) } },
+            onUnauthorized = {},
         )
-        todayController = TodayController(
-            repository = todayRepository,
-            onUnauthorized = controller::restore,
-        )
+        todayController = TodayController(repository = todayRepository, onUnauthorized = controller::restore)
         planningController = TaskPlanningController(
-            repository = TaskPlanningHttpRepository { method, path, body ->
-                controller.authenticatedRequest(method, path, body)?.let { TodayHttpResponse(it.status, it.body) }
-            },
+            repository = TaskPlanningHttpRepository { method, path, body -> controller.authenticatedRequest(method, path, body)?.let { TodayHttpResponse(it.status, it.body) } },
             onUnauthorized = controller::restore,
             onSaved = todayController::reconcileSilently,
             onOptimisticIntent = todayController::applyOptimisticPlanning,
             latestDay = { todayController.state.day },
-            onOptimisticFailure = {
-                todayController.clearOptimisticPresentation()
-                todayController.reconcileSilently()
-            },
+            onOptimisticFailure = { todayController.clearOptimisticPresentation(); todayController.reconcileSilently() },
         )
         directManipulationController = TodayDirectManipulationController(
             repository = TodayDirectManipulationHttpRepository(
-                request = { method, path, body ->
-                    controller.authenticatedRequest(method, path, body)?.let { TodayHttpResponse(it.status, it.body) }
-                },
+                request = { method, path, body -> controller.authenticatedRequest(method, path, body)?.let { TodayHttpResponse(it.status, it.body) } },
                 onUnauthorized = controller::restore,
             ),
             onRefresh = todayController::reconcileSilently,
@@ -102,19 +93,23 @@ class MainActivity : ComponentActivity() {
         )
         notesController = NotesController(
             repository = DocumentHttpRepository(
-                request = { method, path, body ->
-                    controller.authenticatedRequest(method, path, body)?.let { TodayHttpResponse(it.status, it.body) }
-                },
+                request = { method, path, body -> controller.authenticatedRequest(method, path, body)?.let { TodayHttpResponse(it.status, it.body) } },
                 onUnauthorized = controller::restore,
             ),
             onUnauthorized = controller::restore,
         )
         settingsController = SettingsController(
             repository = SettingsHttpRepository(
-                request = { method, path, body ->
-                    controller.authenticatedRequest(method, path, body)?.let { TodayHttpResponse(it.status, it.body) }
-                },
+                request = { method, path, body -> controller.authenticatedRequest(method, path, body)?.let { TodayHttpResponse(it.status, it.body) } },
             ),
+            onUnauthorized = controller::restore,
+        )
+        dailyController = DailyController(
+            repository = DailyDocumentHttpRepository(
+                request = { method, path, body -> controller.authenticatedRequest(method, path, body)?.let { TodayHttpResponse(it.status, it.body) } },
+                onUnauthorized = controller::restore,
+            ),
+            loadDay = todayRepository::loadDay,
             onUnauthorized = controller::restore,
         )
         realtimeHttpClient = OkHttpClient()
@@ -134,7 +129,7 @@ class MainActivity : ComponentActivity() {
                 onAuthFailure = { runOnUiThread { controller.restore() } },
             ),
         )
-        setContent { TaskChuteApp(controller, todayController, planningController, directManipulationController, notesController, settingsController, realtimeManager) }
+        setContent { TaskChuteApp(controller, todayController, planningController, directManipulationController, notesController, settingsController, dailyController, realtimeManager) }
     }
 
     override fun onStart() {
@@ -157,6 +152,7 @@ class MainActivity : ComponentActivity() {
         directManipulationController.close()
         notesController.close()
         settingsController.close()
+        dailyController.close()
         realtimeManager.stop()
         realtimeHttpClient.dispatcher.executorService.shutdown()
         realtimeHttpClient.connectionPool.evictAll()
@@ -172,6 +168,7 @@ private fun TaskChuteApp(
     directManipulationController: TodayDirectManipulationController,
     notesController: NotesController,
     settingsController: SettingsController,
+    dailyController: DailyController,
     realtimeManager: RealtimeConnectionManager,
 ) {
     val state = controller.state
@@ -194,52 +191,46 @@ private fun TaskChuteApp(
     TaskChuteTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
             when (state) {
-                AuthUiState.Restoring -> Centered("認証状態を確認しています…", showProgress = true)
+                AuthUiState.Restoring -> Centered("認証状態を確認しています…", true)
                 AuthUiState.SigningIn -> LoginForm(email, password, { email = it }, { password = it }, true) { }
-                AuthUiState.SigningOut -> Centered("ログアウトしています…", showProgress = true)
-                is AuthUiState.SignedOut -> LoginForm(
-                    email = email,
-                    password = password,
-                    onEmailChange = { email = it },
-                    onPasswordChange = { password = it },
-                    disabled = false,
-                    message = state.message,
-                ) {
+                AuthUiState.SigningOut -> Centered("ログアウトしています…", true)
+                is AuthUiState.SignedOut -> LoginForm(email, password, { email = it }, { password = it }, false, state.message) {
                     val submitted = password
                     password = ""
                     controller.signIn(email, submitted)
                 }
                 is AuthUiState.NetworkError -> ErrorState(state.message, controller::retry)
                 is AuthUiState.SignedIn -> {
-                    val signOut = {
-                        realtimeManager.stop()
-                        planningController.dismiss()
-                        controller.signOut()
-                    }
+                    val signOut = { realtimeManager.stop(); planningController.dismiss(); controller.signOut() }
                     when (destination) {
                         AndroidDestination.TODAY -> TodayScreen(
                             controller = todayController,
                             planningController = planningController,
                             onNavigateSettings = { destination = AndroidDestination.SETTINGS },
                             onNavigateNotes = { destination = AndroidDestination.NOTES },
+                            onNavigateDaily = { destination = AndroidDestination.DAILY },
                             directManipulationController = directManipulationController,
                             taskNoteController = notesController,
-                            onOpenTaskNote = { task ->
-                                task.taskId?.let { taskId ->
-                                    notesController.openTaskPrimary(taskId, task.title, task.primaryDocumentId)
-                                }
-                            },
+                            onOpenTaskNote = { task -> task.taskId?.let { notesController.openTaskPrimary(it, task.title, task.primaryDocumentId) } },
                             onSignOut = signOut,
                         )
                         AndroidDestination.SETTINGS -> SettingsScreen(
                             controller = settingsController,
                             onNavigateToday = { destination = AndroidDestination.TODAY },
                             onNavigateNotes = { destination = AndroidDestination.NOTES },
+                            onNavigateDaily = { destination = AndroidDestination.DAILY },
                             onSignOut = signOut,
                         )
                         AndroidDestination.NOTES -> NotesScreen(
                             controller = notesController,
                             onNavigateToday = { destination = AndroidDestination.TODAY },
+                            onNavigateSettings = { destination = AndroidDestination.SETTINGS },
+                            onNavigateDaily = { destination = AndroidDestination.DAILY },
+                        )
+                        AndroidDestination.DAILY -> DailyScreen(
+                            controller = dailyController,
+                            onNavigateToday = { destination = AndroidDestination.TODAY },
+                            onNavigateNotes = { destination = AndroidDestination.NOTES },
                             onNavigateSettings = { destination = AndroidDestination.SETTINGS },
                         )
                     }
@@ -250,42 +241,14 @@ private fun TaskChuteApp(
 }
 
 @Composable
-private fun LoginForm(
-    email: String,
-    password: String,
-    onEmailChange: (String) -> Unit,
-    onPasswordChange: (String) -> Unit,
-    disabled: Boolean,
-    message: String? = null,
-    onSubmit: () -> Unit,
-) {
-    Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
+private fun LoginForm(email: String, password: String, onEmailChange: (String) -> Unit, onPasswordChange: (String) -> Unit, disabled: Boolean, message: String? = null, onSubmit: () -> Unit) {
+    Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("TaskChute", style = MaterialTheme.typography.headlineMedium)
         Text("Android ネイティブ認証", style = MaterialTheme.typography.titleMedium)
         message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         OutlinedTextField(email, onEmailChange, label = { Text("メールアドレス") }, enabled = !disabled, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(
-            password,
-            onPasswordChange,
-            label = { Text("パスワード") },
-            enabled = !disabled,
-            visualTransformation = PasswordVisualTransformation(),
-            modifier = Modifier.fillMaxWidth(),
-        )
+        OutlinedTextField(password, onPasswordChange, label = { Text("パスワード") }, enabled = !disabled, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
         Button(onClick = onSubmit, enabled = !disabled && email.isNotBlank() && password.isNotEmpty()) { Text("ログイン") }
-    }
-}
-
-@Composable
-private fun SignedInShell(message: String?, onSignOut: () -> Unit) {
-    Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("TaskChute", style = MaterialTheme.typography.headlineMedium)
-        Text("認証済みのネイティブシェル", style = MaterialTheme.typography.titleMedium)
-        message?.let { Text(it) }
-        Button(onClick = onSignOut) { Text("ログアウト") }
     }
 }
 

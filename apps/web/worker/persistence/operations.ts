@@ -22,6 +22,7 @@ export type CommandType = "CreateProject" | "AddTaskToDay" | "ReorderEntries" | 
   | "CreateStandaloneDocument" | "UpdateDocument" | "SetStandaloneDocumentArchived" | "DeleteStandaloneDocument"
   | "EnsureTaskPrimaryDocument" | "UpdateTaskPrimaryDocument"
   | "EnsureProjectPrimaryDocument" | "UpdateProjectPrimaryDocument"
+  | "EnsureDailyPrimaryDocument" | "UpdateDailyPrimaryDocument"
   | "CreateFutureRoutineFromCompletedEntry";
 export type OutcomeKind = "success" | "domain_rejection" | "revision_conflict";
 

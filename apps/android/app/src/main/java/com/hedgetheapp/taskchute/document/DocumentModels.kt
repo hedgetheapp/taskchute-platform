@@ -13,6 +13,22 @@ data class AndroidDocument(
 
 enum class DocumentKind { STANDALONE, TASK_PRIMARY }
 
+data class AndroidDailyDocumentSummary(
+    val taskchuteDayId: String,
+    val logicalDate: String,
+    val documentId: String?,
+)
+
+data class AndroidDailyDocument(
+    val documentId: String,
+    val taskchuteDayId: String,
+    val logicalDate: String,
+    val markdownBody: String,
+    val revision: Int,
+    val createdAt: String = "",
+    val updatedAt: String = "",
+)
+
 data class AndroidDocumentSummary(
     val documentId: String,
     val title: String,
@@ -86,6 +102,35 @@ data class TaskPrimaryUpdateRequest(
     val markdownBody: String,
 )
 
+data class DailyEnsureRequest(
+    val operationId: String,
+    val taskchuteDayId: String,
+    val documentId: String,
+)
+
+data class DailyUpdateRequest(
+    val operationId: String,
+    val taskchuteDayId: String,
+    val documentId: String,
+    val expectedRevision: Int,
+    val markdownBody: String,
+)
+
+sealed interface DailyListResult {
+    data class Success(val days: List<AndroidDailyDocumentSummary>) : DailyListResult
+    data object Unauthorized : DailyListResult
+    data class Failure(val message: String) : DailyListResult
+}
+
+sealed interface DailyResult {
+    data class Success(val document: AndroidDailyDocument) : DailyResult
+    data object Missing : DailyResult
+    data object Unauthorized : DailyResult
+    data class Conflict(val message: String) : DailyResult
+    data class Ambiguous(val message: String) : DailyResult
+    data class Failure(val message: String) : DailyResult
+}
+
 interface AndroidDocumentRepository {
     fun listStandalone(archived: Boolean = false): DocumentListResult
 
@@ -104,4 +149,5 @@ interface AndroidDocumentRepository {
     fun ensureTaskPrimary(request: TaskPrimaryEnsureRequest): DocumentResult
 
     fun updateTaskPrimary(request: TaskPrimaryUpdateRequest): DocumentResult
+
 }

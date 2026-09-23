@@ -14,6 +14,7 @@ import type { RealtimeRefresh } from "../shared/realtime";
 import { uuidv7 } from "../shared/uuidv7";
 import { formatJsonRequestSize, serializeJsonRequestBody } from "../shared/request-size";
 import { api, ApiClientError } from "./api";
+import { DailyNotesBoard } from "./DailyNotesBoard";
 import { NoteMarkdownEditor } from "./NoteMarkdownEditor";
 import { documentPermalink } from "./task-note-open-mode";
 import { useOutsideClick } from "./ui-helpers";
@@ -287,7 +288,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
   const [saving, setSaving] = useState(false);
   const [inFlightRequest, setInFlightRequest] = useState<MutationRequest | null>(null);
   const [showArchived, setShowArchived] = useState(false);
-  const [noteKind, setNoteKind] = useState<"all" | "standalone" | "project">("all");
+  const [noteKind, setNoteKind] = useState<"all" | "standalone" | "project" | "daily">("all");
   const [actionId, setActionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [payloadWarning, setPayloadWarning] = useState<string | null>(null);
@@ -449,6 +450,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
     } finally { if (loadToken === canonicalLoadTokenRef.current) setLoading(false); }
   }, [handleUnauthorized, setEditorFromCanonical]);
 
+    if ((noteKind as string) === "daily") return;
   useEffect(() => {
     let cancelled = false;
     const initialMode = modeRef.current;
@@ -475,7 +477,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
       }
     })();
     return () => { cancelled = true; };
-  }, [initialDocumentId, openCanonicalDocument, refreshList, showArchived]);
+  }, [initialDocumentId, noteKind, openCanonicalDocument, refreshList, showArchived]);
 
   const scheduleAutosave = useCallback(() => {
     if (debounceRef.current !== null) window.clearTimeout(debounceRef.current);
@@ -500,7 +502,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
   }, []);
 
   useEffect(() => {
-    if (authEpoch === 0 || modeRef.current === "project") return;
+    if (authEpoch === 0 || modeRef.current === "project" || (noteKind as string) === "daily") return;
     const ambiguous = ambiguousRequestRef.current;
     void (async () => {
       try {
@@ -540,7 +542,7 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
         else setError(caught instanceof Error ? caught.message : "再認証後のNote確認に失敗しました");
       }
     })();
-  }, [applySavedDocument, authEpoch, handleUnauthorized, refreshList]);
+  }, [applySavedDocument, authEpoch, handleUnauthorized, noteKind, refreshList]);
 
   useEffect(() => {
     if (!realtimeRefresh?.token || (realtimeRefresh.scopes && !realtimeRefresh.scopes.some((scope) => scope.kind === "documents"))) return;
@@ -725,9 +727,10 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
 
   flushRef.current = flush;
   useEffect(() => {
+    if ((noteKind as string) === "daily") return;
     onRegisterFlush?.(() => flushRef.current());
     return () => onRegisterFlush?.(null);
-  }, [onRegisterFlush]);
+  }, [noteKind, onRegisterFlush]);
 
   useEffect(() => {
     if (standaloneDirty && mode === "existing" && !unresolved && !showArchived) scheduleAutosave();
@@ -845,6 +848,17 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
     event.preventDefault(); void saveActionRef.current();
   }
 
+  if ((noteKind as string) === "daily") return <DailyNotesBoard
+    onUnauthorized={onUnauthorized}
+    onDirtyChange={onDirtyChange}
+    onUnresolvedChange={onUnresolvedChange}
+    onSavingChange={onSavingChange}
+    onRegisterFlush={onRegisterFlush}
+    onExit={(kind) => setNoteKind(kind)}
+    authEpoch={authEpoch}
+    mutationsBlocked={mutationsBlocked}
+  />;
+
   async function copyDocumentLink(documentId: string): Promise<void> {
     const write = navigator.clipboard?.writeText(`${window.location.origin}${documentPermalink(documentId)}`);
     if (!write) {
@@ -883,8 +897,8 @@ export function NotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedChange, 
               {showArchived ? "通常のノートに戻る" : "アーカイブ"}
             </button>
           </div>
-          {!showArchived && <label className="notes-kind-filter">ノート種別<select aria-label="ノート種別" value={noteKind} onChange={(event) => setNoteKind(event.target.value as "all" | "standalone" | "project")}>
-            <option value="all">すべて</option><option value="standalone">通常ノート</option><option value="project">プロジェクトノート</option>
+          {!showArchived && <label className="notes-kind-filter">ノート種別<select aria-label="ノート種別" value={noteKind} onChange={(event) => setNoteKind(event.target.value as "all" | "standalone" | "project" | "daily")}>
+            <option value="all">すべて</option><option value="standalone">通常ノート</option><option value="project">プロジェクトノート</option><option value="daily">デイリーノート</option>
           </select></label>}
           {!loading && mergedDocuments.length === 0 && <p className="muted">{showArchived ? "アーカイブはありません。" : "ノートはまだありません。"}</p>}
           <div className="notes-list-items">

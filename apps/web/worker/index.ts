@@ -110,6 +110,14 @@ import {
   loadProjectPrimaryDocumentById,
   updateProjectPrimaryDocument,
 } from "./application/project-primary-documents";
+import {
+  ensureDailyPrimaryDocument,
+  isEnsureDailyPrimaryDocumentRequest,
+  isUpdateDailyPrimaryDocumentRequest,
+  loadDailyPrimaryDocument,
+  loadDailyPrimaryDocuments,
+  updateDailyPrimaryDocument,
+} from "./application/daily-primary-documents";
 import { realtimeScopesForMutation, serializePublishRequest } from "./realtime-invalidation";
 import {
   createFutureRoutineFromCompletedEntry,
@@ -235,6 +243,30 @@ async function route(request: Request, env: Env): Promise<Response> {
       throw new HttpError(400, "malformed_request", "Invalid UpdateTaskPrimaryDocument request");
     }
     return Response.json(await updateTaskPrimaryDocument(env.APP_DB, principal.appUserId, body));
+  }
+  if (request.method === "GET" && url.pathname === "/api/v1/daily-primary-documents") {
+    return Response.json(await loadDailyPrimaryDocuments(env.APP_DB, principal.appUserId));
+  }
+  const dailyPrimaryByDayMatch = url.pathname.match(/^\/api\/v1\/taskchute-days\/([^/]+)\/daily-primary-document$/);
+  if (request.method === "POST" && dailyPrimaryByDayMatch) {
+    const body = await readBoundedJson(request);
+    if (dailyPrimaryByDayMatch[1] !== encodeURIComponent(String((body as { taskchute_day_id?: unknown })?.taskchute_day_id ?? ""))
+      || !isEnsureDailyPrimaryDocumentRequest(body)) {
+      throw new HttpError(400, "malformed_request", "Invalid EnsureDailyPrimaryDocument request");
+    }
+    return Response.json(await ensureDailyPrimaryDocument(env.APP_DB, principal.appUserId, body));
+  }
+  const dailyPrimaryDocumentMatch = url.pathname.match(/^\/api\/v1\/daily-primary-documents\/([^/]+)$/);
+  if (request.method === "GET" && dailyPrimaryDocumentMatch) {
+    return Response.json(await loadDailyPrimaryDocument(env.APP_DB, principal.appUserId, decodeURIComponent(dailyPrimaryDocumentMatch[1])));
+  }
+  if (request.method === "POST" && dailyPrimaryDocumentMatch) {
+    const body = await readBoundedJson(request);
+    if (dailyPrimaryDocumentMatch[1] !== encodeURIComponent(String((body as { document_id?: unknown })?.document_id ?? ""))
+      || !isUpdateDailyPrimaryDocumentRequest(body)) {
+      throw new HttpError(400, "malformed_request", "Invalid UpdateDailyPrimaryDocument request");
+    }
+    return Response.json(await updateDailyPrimaryDocument(env.APP_DB, principal.appUserId, body));
   }
   const documentPermalinkMatch = url.pathname.match(/^\/api\/v1\/documents\/([^/]+)\/resolve$/);
   if (request.method === "GET" && documentPermalinkMatch) {
