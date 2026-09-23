@@ -132,4 +132,50 @@ class MarkdownLiveEditorTest {
         assertEquals(2, hits.single().transformedEndExclusive)
         assertEquals("task", hits.single().label)
         assertTrue(transformed.text.spanStyles.any { it.start == 0 && it.end == 2 && it.item.color == androidx.compose.ui.graphics.Color.White })
-    }}
+    }
+
+    @Test
+    fun plainHttpUrlsAreDetectedWithoutRewritingSource() {
+        val source = "参考 https://example.com/path?q=1#section と http://example.org"
+        val links = markdownLinkSourceRanges(source)
+
+        assertEquals(2, links.size)
+        assertEquals("https://example.com/path?q=1#section", source.substring(links[0].sourceStart, links[0].sourceEndExclusive))
+        assertEquals("http://example.org", links[1].destination)
+    }
+
+    @Test
+    fun urlDetectionExcludesObviousTrailingPunctuationAndRejectsUnsupportedOrMalformedSchemes() {
+        val source = "https://example.com。 https://example.org/path), javascript://bad https://"
+        val links = markdownLinkSourceRanges(source)
+
+        assertEquals(2, links.size)
+        assertEquals("https://example.com", links[0].destination)
+        assertEquals("https://example.org/path", links[1].destination)
+    }
+
+    @Test
+    fun existingMarkdownLinkUsesRenderedLabelAsInteractiveRange() {
+        val source = "[Example](https://example.com)"
+        val links = markdownLinkSourceRanges(source)
+        val hits = renderedMarkdownLinkHits(source, object : androidx.compose.ui.text.input.OffsetMapping {
+            override fun originalToTransformed(offset: Int) = offset
+            override fun transformedToOriginal(offset: Int) = offset
+        })
+
+        assertEquals(1, links.size)
+        assertEquals("https://example.com", links.single().destination)
+        assertEquals(1, hits.size)
+        assertEquals("Example", source.substring(hits.single().sourceStart, hits.single().sourceEndExclusive))
+        assertEquals("https://example.com", hits.single().destination)
+    }
+
+    @Test
+    fun checkboxToggleKeepsPreexistingSelection() {
+        val source = "- [ ] task\nactive"
+        val before = MarkdownSelection(source.length, source.length)
+        val result = requireNotNull(toggleTaskCheckbox(source, 0))
+
+        assertEquals(before, preservedSelectionAfterCheckboxToggle(before, result))
+    }
+}

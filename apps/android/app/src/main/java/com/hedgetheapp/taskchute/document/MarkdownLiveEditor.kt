@@ -17,6 +17,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
@@ -40,6 +41,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
@@ -253,7 +255,7 @@ internal class MarkdownPreviewTransformation(private val activeSelection: Markdo
         val builder = PreviewBuilder(source)
         lines.forEachIndexed { index, line ->
             if (index in active) {
-                builder.append(line.start, line.end, line.text)
+                appendTextWithInteractiveLinks(builder, source, line.start, line.end)
             } else {
                 appendRenderedLine(builder, source, line)
             }
@@ -314,7 +316,7 @@ private fun appendInline(builder: PreviewBuilder, source: String, start: Int, en
     pattern.findAll(source.substring(start, end)).forEach { match ->
         val matchStart = start + match.range.first
         val matchEnd = start + match.range.last + 1
-        if (matchStart > cursor) builder.append(cursor, matchStart, source.substring(cursor, matchStart))
+        if (matchStart > cursor) appendTextWithInteractiveLinks(builder, source, cursor, matchStart)
         if (match.groupValues[1].isNotEmpty()) {
             builder.append(matchStart, matchStart + 2, "")
             val contentStart = matchStart + 2
@@ -330,6 +332,24 @@ private fun appendInline(builder: PreviewBuilder, source: String, start: Int, en
             builder.append(labelEnd, matchEnd, "")
         }
         cursor = matchEnd
+    }
+    if (cursor < end) appendTextWithInteractiveLinks(builder, source, cursor, end)
+}
+
+private fun appendTextWithInteractiveLinks(builder: PreviewBuilder, source: String, start: Int, end: Int) {
+    val links = markdownLinkSourceRanges(source).filter {
+        it.sourceStart >= start && it.sourceEndExclusive <= end
+    }
+    var cursor = start
+    links.forEach { link ->
+        if (link.sourceStart > cursor) builder.append(cursor, link.sourceStart, source.substring(cursor, link.sourceStart))
+        builder.append(
+            link.sourceStart,
+            link.sourceEndExclusive,
+            source.substring(link.sourceStart, link.sourceEndExclusive),
+            SpanStyle(color = TaskChuteColors.AccentBlue, textDecoration = TextDecoration.Underline),
+        )
+        cursor = link.sourceEndExclusive
     }
     if (cursor < end) builder.append(cursor, end, source.substring(cursor, end))
 }
@@ -388,12 +408,15 @@ fun MarkdownLiveEditor(
     enabled: Boolean,
     modifier: Modifier,
     footer: @Composable ColumnScope.() -> Unit = {},
+    onOpenUrl: ((String) -> Unit)? = null,
+    onTextFieldValueChange: ((TextFieldValue) -> Unit)? = null,
 ) {
     var fieldValue by remember { mutableStateOf(TextFieldValue(value)) }
     var hasFocus by remember { mutableStateOf(false) }
     var textLayoutResult by remember { mutableStateOf<androidx.compose.ui.text.TextLayoutResult?>(null) }
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
+    val uriHandler = LocalUriHandler.current
     val density = LocalDensity.current
     val imeVisible = WindowInsets.ime.getBottom(density) > 0
     val toolbarVisible = hasFocus && imeVisible && enabled
@@ -412,15 +435,35 @@ fun MarkdownLiveEditor(
             mapping = transformedPreview.offsetMapping,
         )
     }
+    val linkHits = remember(fieldValue.text, fieldValue.selection.start, fieldValue.selection.end) {
+        renderedMarkdownLinkHits(
+            source = fieldValue.text,
+            mapping = transformedPreview.offsetMapping,
+        )
+    }
     val latestTextLayoutResult = rememberUpdatedState(textLayoutResult)
     val latestCheckboxHits = rememberUpdatedState(checkboxHits)
+    val latestLinkHits = rememberUpdatedState(linkHits)
+    val latestOpenUrl = rememberUpdatedState(onOpenUrl)
+    val openUrl = rememberUpdatedState<(String) -> Unit> { destination ->
+        val customOpener = latestOpenUrl.value
+        if (customOpener != null) {
+            runCatching { customOpener(destination) }
+        } else {
+            runCatching { uriHandler.openUri(destination) }
+        }
+    }
     val toggleCheckbox = rememberUpdatedState<(Int) -> Unit> { sourceStart ->
         if (enabled) {
             val result = toggleTaskCheckbox(fieldValue.text, sourceStart)
             if (result != null) {
+                val preserved = preservedSelectionAfterCheckboxToggle(
+                    MarkdownSelection(fieldValue.selection.start, fieldValue.selection.end),
+                    result,
+                )
                 val selection = TextRange(
-                    result.mapOffset(fieldValue.selection.start),
-                    result.mapOffset(fieldValue.selection.end),
+                    preserved.start,
+                    preserved.end,
                 )
                 val composition = fieldValue.composition?.let {
                     TextRange(result.mapOffset(it.start), result.mapOffset(it.end))
@@ -428,6 +471,7 @@ fun MarkdownLiveEditor(
                 val next = fieldValue.copy(text = result.text, selection = selection, composition = composition)
                 fieldValue = next
                 onValueChange(next.text)
+                onTextFieldValueChange?.invoke(next)
                 focusRequester.requestFocus()
                 keyboardController?.show()
             }
@@ -450,6 +494,20 @@ fun MarkdownLiveEditor(
     } else {
         emptyList()
     }
+    val linkActions = if (enabled) {
+        linkHits.map { hit ->
+            CustomAccessibilityAction(
+                label = "リンクを開く: ${hit.destination}",
+                action = {
+                    openUrl.value(hit.destination)
+                    true
+                },
+            )
+        }
+    } else {
+        emptyList()
+    }
+    val interactiveActions = checkboxActions + linkActions
 
     LaunchedEffect(value) {
         if (fieldValue.text != value) {
@@ -466,65 +524,87 @@ fun MarkdownLiveEditor(
             modifier = Modifier.fillMaxSize().padding(bottom = if (toolbarVisible) 52.dp else 0.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            BasicTextField(
-                value = fieldValue,
-                onValueChange = {
-                    fieldValue = it
-                    onValueChange(it.text)
-                },
-                enabled = enabled,
-                textStyle = MaterialTheme.typography.bodyLarge.copy(color = TaskChuteColors.PrimaryText, fontSize = 16.sp),
-                cursorBrush = SolidColor(TaskChuteColors.PrimaryText),
-                visualTransformation = previewTransformation,
-                onTextLayout = { textLayoutResult = it },
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
-                    .focusRequester(focusRequester)
-                    .pointerInput(enabled, checkboxHits) {
+                    .pointerInput(enabled, checkboxHits, linkHits) {
                         if (!enabled) return@pointerInput
                         awaitEachGesture {
-                            val down = awaitFirstDown(requireUnconsumed = false)
+                            val down = awaitFirstDown(
+                                requireUnconsumed = false,
+                                pass = PointerEventPass.Initial,
+                            )
                             val layout = latestTextLayoutResult.value
-                            val hits = latestCheckboxHits.value
-                            val downOffset = layout?.getOffsetForPosition(down.position)
-                            val hit = downOffset?.let { offset ->
-                                hits.firstOrNull { offset in it.transformedStart until it.transformedEndExclusive }
-                            }
-                            if (hit != null) down.consume()
-
-                            var released = false
-                            var upPosition = down.position
-                            while (!released) {
-                                val event = awaitPointerEvent()
-                                val change = event.changes.firstOrNull { it.id == down.id } ?: continue
-                                upPosition = change.position
-                                if (change.changedToUpIgnoreConsumed() || !change.pressed) {
-                                    if (hit != null) change.consume()
-                                    released = true
+                            val checkbox = layout?.getOffsetForPosition(down.position)?.let { offset ->
+                                latestCheckboxHits.value.firstOrNull {
+                                    offset in it.transformedStart until it.transformedEndExclusive
                                 }
                             }
+                            val link = layout?.getOffsetForPosition(down.position)?.let { offset ->
+                                latestLinkHits.value.firstOrNull {
+                                    offset in it.transformedStart until it.transformedEndExclusive
+                                }
+                            }
+                            if (checkbox == null && link == null) return@awaitEachGesture
 
-                            if (hit != null) {
+                            down.consume()
+                            var canceled = false
+                            var upPosition = down.position
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Initial)
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: continue
+                                upPosition = change.position
+                                if (change.changedToUpIgnoreConsumed()) {
+                                    change.consume()
+                                    break
+                                }
+                                if (!change.pressed) {
+                                    canceled = true
+                                    break
+                                }
+                                change.consume()
+                            }
+
+                            if (!canceled) {
                                 val upOffset = layout?.getOffsetForPosition(upPosition)
-                                if (upOffset != null && upOffset in hit.transformedStart until hit.transformedEndExclusive) {
-                                    toggleCheckbox.value(hit.sourceStart)
+                                if (checkbox != null && upOffset != null && upOffset in checkbox.transformedStart until checkbox.transformedEndExclusive) {
+                                    toggleCheckbox.value(checkbox.sourceStart)
+                                } else if (link != null && upOffset != null && upOffset in link.transformedStart until link.transformedEndExclusive) {
+                                    openUrl.value(link.destination)
                                 }
                             }
                         }
-                    }
-                    .semantics {
-                        contentDescription = "Markdown body"
-                        if (checkboxActions.isNotEmpty()) customActions = checkboxActions
-                    }
-                    .onFocusChanged { hasFocus = it.isFocused },
-                decorationBox = { innerTextField ->
-                    Box(Modifier.fillMaxSize().padding(top = 2.dp)) {
-                        if (fieldValue.text.isEmpty()) Text("Markdown", color = TaskChuteColors.SecondaryText)
-                        innerTextField()
-                    }
-                },
-            )
+                    },
+            ) {
+                BasicTextField(
+                    value = fieldValue,
+                    onValueChange = {
+                        fieldValue = it
+                        onValueChange(it.text)
+                        onTextFieldValueChange?.invoke(it)
+                    },
+                    enabled = enabled,
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = TaskChuteColors.PrimaryText, fontSize = 16.sp),
+                    cursorBrush = SolidColor(TaskChuteColors.PrimaryText),
+                    visualTransformation = previewTransformation,
+                    onTextLayout = { textLayoutResult = it },
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .focusRequester(focusRequester)
+                        .semantics {
+                            contentDescription = "Markdown body"
+                            if (interactiveActions.isNotEmpty()) customActions = interactiveActions
+                        }
+                        .onFocusChanged { hasFocus = it.isFocused },
+                    decorationBox = { innerTextField ->
+                        Box(Modifier.fillMaxSize().padding(top = 2.dp)) {
+                            if (fieldValue.text.isEmpty()) Text("Markdown", color = TaskChuteColors.SecondaryText)
+                            innerTextField()
+                        }
+                    },
+                )
+            }
             footer()
         }
         if (toolbarVisible) {
@@ -534,6 +614,7 @@ fun MarkdownLiveEditor(
                 onValueChange = { next ->
                     fieldValue = next
                     onValueChange(next.text)
+                    onTextFieldValueChange?.invoke(next)
                     focusRequester.requestFocus()
                     keyboardController?.show()
                 },

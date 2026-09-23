@@ -273,6 +273,61 @@ class NotesScreenInstrumentedTest {
     }
 
     @Test
+    fun plainUrlTapOpensExactDestinationWithoutMovingSelectionOrChangingSource() {
+        val source = "active\nhttps://example.com/path?q=1#section"
+        var latest = TextFieldValue(source, selection = TextRange(0, 0))
+        var opened: String? = null
+        composeRule.setContent {
+            MarkdownLiveEditor(
+                value = source,
+                onValueChange = {},
+                enabled = true,
+                modifier = Modifier.fillMaxWidth(),
+                onOpenUrl = { opened = it },
+                onTextFieldValueChange = { latest = it },
+            )
+        }
+
+        composeRule.onNodeWithContentDescription("Markdown body").performTouchInput {
+            click(androidx.compose.ui.geometry.Offset(80f, 70f))
+        }
+        composeRule.waitForIdle()
+
+        assertEquals("https://example.com/path?q=1#section", opened)
+        assertEquals(source, latest.text)
+        assertEquals(TextRange(0, 0), latest.selection)
+    }
+
+    @Test
+    fun renderedMarkdownLinkAccessibilityActionOpensDestinationWithoutSourceMutation() {
+        val source = "active\n[Example](https://example.com)"
+        var latest = TextFieldValue(source, selection = TextRange(0, 0))
+        var opened: String? = null
+        composeRule.setContent {
+            MarkdownLiveEditor(
+                value = source,
+                onValueChange = {},
+                enabled = true,
+                modifier = Modifier.fillMaxWidth(),
+                onOpenUrl = { opened = it },
+                onTextFieldValueChange = { latest = it },
+            )
+        }
+
+        val action = composeRule.onNodeWithContentDescription("Markdown body")
+            .fetchSemanticsNode()
+            .config[androidx.compose.ui.semantics.SemanticsActions.CustomActions]
+            .first { it.label.startsWith("リンクを開く:") }
+            .action
+        composeRule.runOnIdle { assertTrue(action()) }
+        composeRule.waitForIdle()
+
+        assertEquals("https://example.com", opened)
+        assertEquals(source, latest.text)
+        assertEquals(TextRange(0, 0), latest.selection)
+    }
+
+    @Test
     fun blockedMarkdownEditorDoesNotExposeCheckboxMutationAction() {
         composeRule.setContent {
             MarkdownLiveEditor(
