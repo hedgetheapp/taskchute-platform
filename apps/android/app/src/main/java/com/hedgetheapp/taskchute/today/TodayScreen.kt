@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -508,6 +509,7 @@ private fun TodayContent(
         }
     }
     val pullToRefreshState = rememberPullToRefreshState()
+    val todayListState = rememberLazyListState()
     val isRefreshing = state.status == TodayLoadStatus.REFRESHING
     PullToRefreshBox(
         isRefreshing = isRefreshing,
@@ -577,6 +579,7 @@ private fun TodayContent(
             },
         ) {
             LazyColumn(
+                state = todayListState,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 110.dp),
                 // Keep section headers and task rows visually contiguous as one compact grouped surface.
@@ -644,13 +647,14 @@ private fun TodayContent(
                         onPickDate = { onOpenDatePicker(setOf(task.id)) },
                         onDelete = { onRequestDelete(setOf(task.id)) },
                         canDrag = directManipulationController?.canDrag(day, task, selectedEntryIds) == true
-                            && !state.pendingEntryIds.contains(task.id),
+                            && !state.pendingEntryIds.contains(task.id)
+                            && !todayListState.isScrollInProgress,
                         dragging = dragState?.entryId == task.id,
                         dragPlaceholder = dragState?.entryId == task.id,
                         dragDeltaY = dragState?.takeIf { it.entryId == task.id }?.deltaY ?: 0f,
                         dropTarget = false,
                         onDragStart = { pointerPosition ->
-                            directManipulationController?.takeIf { it.canDrag(day, task) }?.let {
+                            directManipulationController?.takeIf { !todayListState.isScrollInProgress && it.canDrag(day, task) }?.let {
                                 val bounds = dropBounds[task.id]
                                 dragState = AndroidDragState(
                                     entryId = task.id,
@@ -737,13 +741,14 @@ private fun TodayContent(
                         onPickDate = { onOpenDatePicker(setOf(task.id)) },
                         onDelete = { onRequestDelete(setOf(task.id)) },
                         canDrag = directManipulationController?.canDrag(day, task, selectedEntryIds) == true
-                            && !state.pendingEntryIds.contains(task.id),
+                            && !state.pendingEntryIds.contains(task.id)
+                            && !todayListState.isScrollInProgress,
                         dragging = dragState?.entryId == task.id,
                         dragPlaceholder = dragState?.entryId == task.id,
                         dragDeltaY = dragState?.takeIf { it.entryId == task.id }?.deltaY ?: 0f,
                         dropTarget = false,
                         onDragStart = { pointerPosition ->
-                            directManipulationController?.takeIf { it.canDrag(day, task) }?.let {
+                            directManipulationController?.takeIf { !todayListState.isScrollInProgress && it.canDrag(day, task) }?.let {
                                 val bounds = dropBounds[task.id]
                                 dragState = AndroidDragState(
                                     entryId = task.id,
@@ -2008,6 +2013,9 @@ private suspend fun PointerInputScope.detectShortLongPressDrag(
                 val event = awaitPointerEvent()
                 val change = event.changes.firstOrNull { it.id == down.id }
                     ?: return@withTimeoutOrNull false
+                if ((change.position - down.position).getDistance() > viewConfiguration.touchSlop) {
+                    return@withTimeoutOrNull false
+                }
                 if (change.changedToUpIgnoreConsumed()) return@withTimeoutOrNull false
             }
             false
