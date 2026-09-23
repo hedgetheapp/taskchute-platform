@@ -19,6 +19,12 @@
 # Changelog
 
 ## Unreleased
+### D-136 Android Markdown Interactive Links + Stable Tap Selection — 2026-09-23
+
+- 共通Android live-preview Markdown editorでinactive task checkboxとhttp(s) linkのtap / accessibility actionを埋め込み操作化し、`BasicTextField`のcaret / selectionを移動させないようInitial pointer passで処理する。
+- plain `http://` / `https://` URLはraw Markdownを変更せずlinkifyし、既存Markdown linkはrendered labelから安全なplatform URI openerで開く。末尾の明白な文章句読点、malformed URL、unsupported schemeはlink destinationにしない。
+- D-135のexact source persistence、IME / composition、autosave / CAS / conflict / ambiguous retry / safe flushを維持。Focused Markdown JVM `18 / 18`、Android JVM `186 / 186`、Notes AVD `15 / 15`、instrumentation compile、debug assemble、diff-check PASS。Galaxy S23 `NOT_RUN`、Production `NOT_RUN`、Released `NO`。
+
 ### D-134 Android Running Progress Player — 2026-09-23
 
 - current DayのRunningTaskPanelを104dp progress playerへ置換。elapsed / remaining / progress / overrunはdisplay-onlyで、Completeは既存commandを再利用。Futureでは非表示、Pastはread-only。

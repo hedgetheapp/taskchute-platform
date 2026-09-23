@@ -1,5 +1,13 @@
 # Decisions
 
+## D-136 — Android Markdown Interactive Links + Stable Tap Selection v0.1
+
+Status: **Approved / Implemented / Integrated**
+
+Canonical Decision: `docs/decisions/D-136_ANDROID_MARKDOWN_INTERACTIVE_LINKS_STABLE_TAP_SELECTION_V01.md`。
+
+共通Android Markdown editorのinactive checkboxとhttp(s) linkを埋め込み操作として扱い、tap / accessibility actionでcaret・selection・IMEを動かさない。plain `http://` / `https://` URLはraw sourceを変更せず表示上linkifyし、既存Markdown linkはrendered labelから安全なhttp(s) destinationを開く。D-135のsingle editor、exact source persistence、autosave / CAS / conflict / ambiguous retry / safe flushは維持し、Worker/API、Web、schema、migration、dependencyは変更しない。
+
 ## D-135 - Android Markdown Live Preview + IME Toolbar v0.1
 
 Status: Approved / Implemented

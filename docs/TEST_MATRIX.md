@@ -1,4 +1,16 @@
 # Test Matrix
+## D-136 Android Markdown Interactive Links + Stable Tap Selection - 2026-09-23
+
+D-136はD-135の共通live-preview editorへ、plain http(s) URLのpresentation-only linkify / activationと、checkbox・link interaction時のcaret / selection保持を追加する。D-135のraw Markdown authority、IME、autosave、CAS、conflict、ambiguous retry、safe flushは不変。D-135が歴史的に除外したlink navigationだけをこのfollow-up Decisionで明示的に追加する。
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D136-DECISION | Canonical behavior | Plain `http://` / `https://` detection, conservative punctuation trimming, Markdown link label activation, safe platform URI opening, checkbox/link tap selection preservation | `docs/decisions/D-136_ANDROID_MARKDOWN_INTERACTIVE_LINKS_STABLE_TAP_SELECTION_V01.md` | PASS / APPROVED |
+| D136-JVM | Pure parser / selection helpers | URL path/query/fragment, multiple URLs, trailing punctuation, malformed/unsupported scheme guard, Markdown label mapping, checkbox selection preservation | `MarkdownLiveEditorTest 18 / 18 PASS` | PASS |
+| D136-NOTES-AVD | Notes runtime | Checkbox marker tap, plain URL tap, Markdown link accessibility activation, raw source and selection preservation | `scripts/android-qa.ps1 -Surface Notes`: `15 / 15 PASS`; debug APK install, MainActivity resolution, crash buffer empty | PASS |
+| D136-BUILD | Android local gates | Instrumentation compile, debug assemble, diff check | `:app:compileDebugAndroidTestKotlin`, `:app:assembleDebug`, `git diff --check` PASS | PASS |
+| D136-BOUNDARY | Product / persistence / release | Existing Notes authority and platform boundaries unchanged | Worker/API, Web, schema, migration, offline persistence, dependency, Production unchanged / not run. Galaxy S23 `NOT_RUN / PRODUCT_OWNER_MANUAL`, Production `NOT_RUN`, Released `NO` | PASS / NOT_REQUIRED / NOT_RUN / NO |
+
 ## D-135 Android Markdown Live Preview + IME Toolbar - 2026-09-23
 
 D-135はAndroid Notesのstandalone editorとToday Task Primary Noteを共通live-preview Markdown editorへ統合する。canonical bodyはexact Markdown sourceのまま保持し、caret/selection行だけsource表示、非active行はv0.1対応構文をpresentation-onlyでrenderする。follow-up correctiveとしてcaretとtask-list markerを白色化し、inactive markerの実タップとaccessibility actionでchecked / uncheckedを通常のsource update pathへ接続する。body focusとIME表示時だけ、IME直上の6操作toolbarを表示する。

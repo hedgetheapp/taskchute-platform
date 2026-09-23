@@ -34,8 +34,9 @@ The shared editor renders the caret and inactive task-list markers with the ligh
 
 - No third-party Markdown/editor or icon dependency.
 - No Worker/API, schema, migration, offline persistence, or Web change.
-- No link navigation, metadata fetch, code blocks, tables, images, or other
-  unsupported Markdown feature is added.
+- D-136 is the narrow follow-up for safe http(s) link navigation and stable
+  checkbox/link tap selection. Metadata fetch, code blocks, tables, images, and
+  other unsupported Markdown features remain out of scope.
 - Galaxy S23 verification is separate from AVD verification and remains
   `NOT_RUN / PRODUCT_OWNER_MANUAL` until a physical-device smoke is performed.
 - Production remains `NOT_RUN`; Released remains `NO`.
