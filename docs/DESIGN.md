@@ -12,6 +12,10 @@
 - implementation / verification statusは`docs/FEATURES.md`、`docs/CURRENT.md`、`docs/TEST_MATRIX.md`を正本とする。
 - この文書は新しいDomain semanticsを作らず、上記canonical docsと矛盾する場合は上記を優先する。
 
+## TaskChute brand icon
+
+`assets/brand/taskchute-icon-master.png` は、提供されたTaskChuteのTF・チェックリスト・葉のアートワークを外周の余白だけ正規化した共通マスターである。Android launcher iconとWeb site/browser iconはこのマスターから生成し、製品名・アートワーク・画面UIの意味は変更しない。
+
 ## D-126 Android Future-Day Planning parity
 
 Future Dayはread-only専用画面にせず、Todayと同じplanning surfaceを使う。Quick Add、planning-eligible
