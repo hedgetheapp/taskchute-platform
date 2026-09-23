@@ -241,9 +241,17 @@ private fun ColumnScope.RoutineSettings(controller: SettingsController) {
                     Column(Modifier.weight(1f)) {
                         Text(routine.title, style = MaterialTheme.typography.titleMedium)
                         Text("${routine.schedule.summary()}・${routine.defaultPlannedStartMinute?.let(::minuteText) ?: "開始予定なし"}")
-                        Text(if (routine.enabled) "有効" else "停止")
                     }
-                    Switch(checked = routine.enabled, onCheckedChange = { controller.toggleRoutine(routine.id, it) })
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(if (routine.enabled) "有効" else "無効", style = MaterialTheme.typography.labelSmall)
+                        Switch(
+                            checked = routine.enabled,
+                            onCheckedChange = { controller.toggleRoutine(routine.id, it) },
+                            modifier = Modifier.semantics {
+                                contentDescription = "ルーティン: ${if (routine.enabled) "有効" else "無効"}。タップで切り替え"
+                            },
+                        )
+                    }
                     TextButton(onClick = { controller.openRoutine(routine.id) }) { Text("編集") }
                     TextButton(onClick = { controller.requestDeleteRoutine(routine.id) }) { Text("削除") }
                 }

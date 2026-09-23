@@ -60,6 +60,19 @@ class SettingsScreenInstrumentedTest {
         composeRule.onNodeWithText("適用").assertIsEnabled()
         controller.close()
     }
+    @Test
+    fun routineListShowsExplicitEnabledDisabledToggle() {
+        val controller = SettingsController(FakeSettingsRepository(), {}, kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Unconfined))
+        composeRule.setContent { SettingsScreen(controller, {}, {}, {}) }
+
+        composeRule.onNodeWithContentDescription("ルーティン設定").performClick()
+        composeRule.onNodeWithText("朝の準備").assertIsDisplayed()
+        composeRule.onNodeWithText("有効").assertIsDisplayed()
+        composeRule.onNodeWithText("無効").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("ルーティン: 有効。タップで切り替え").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("ルーティン: 無効。タップで切り替え").assertIsDisplayed()
+        controller.close()
+    }
 }
 
 private class FakeSettingsRepository : AndroidSettingsRepository {
@@ -72,7 +85,17 @@ private class FakeSettingsRepository : AndroidSettingsRepository {
     override fun setProjectArchived(request: SetProjectArchivedSettingsRequest) = SettingsResult.Success(Unit)
     override fun reorderProjects(request: ReorderProjectsSettingsRequest) = SettingsResult.Success(Unit)
     override fun deleteProject(request: DeleteProjectSettingsRequest) = SettingsResult.Success(Unit)
-    override fun loadRoutineBoard() = SettingsResult.Success(AndroidRoutineBoard(1, "2026-09-16", emptyList(), emptyList()))
+    override fun loadRoutineBoard() = SettingsResult.Success(
+        AndroidRoutineBoard(
+            1,
+            "2026-09-16",
+            emptyList(),
+            listOf(
+                AndroidRoutineSetting("routine-enabled", "task-enabled", "朝の準備", null, null, true, RoutineScheduleSpec(), null, null, null, null, "2026-09-16", null, 1),
+                AndroidRoutineSetting("routine-disabled", "task-disabled", "夜の振り返り", null, null, false, RoutineScheduleSpec(), null, null, null, null, "2026-09-16", null, 2),
+            ),
+        ),
+    )
     override fun createRoutine(request: CreateRoutineSettingsRequest) = SettingsResult.Success(Unit)
     override fun updateRoutine(request: UpdateRoutineSettingsRequest) = SettingsResult.Success(Unit)
     override fun setRoutineEnabled(request: SetRoutineEnabledSettingsRequest) = SettingsResult.Success(Unit)

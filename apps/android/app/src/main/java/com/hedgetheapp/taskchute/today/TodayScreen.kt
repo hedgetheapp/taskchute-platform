@@ -197,7 +197,6 @@ fun TodayScreen(
                     day,
                     entryIds,
                     logicalDate,
-                    "指定した日に移動しました",
                 )
             },
         )
@@ -643,8 +642,8 @@ private fun TodayContent(
                         onToggleSelection = { onToggleSelection(task.id) },
                         canDayOperate = canPlanDay(day) && task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived && directManipulationController != null,
                         canLifecycleDelete = day.isCurrent && task.lifecycleState != LifecycleState.PLANNED && !task.routineDerived && directManipulationController != null,
-                        onMovePrevious = { directManipulationController?.moveToDay(day, setOf(task.id), LocalDate.parse(day.logicalDate).minusDays(1).toString(), "前の日へ移動しました") },
-                        onMoveNext = { directManipulationController?.moveToDay(day, setOf(task.id), LocalDate.parse(day.logicalDate).plusDays(1).toString(), "次の日へ移動しました") },
+                        onMovePrevious = { directManipulationController?.moveToDay(day, setOf(task.id), LocalDate.parse(day.logicalDate).minusDays(1).toString()) },
+                        onMoveNext = { directManipulationController?.moveToDay(day, setOf(task.id), LocalDate.parse(day.logicalDate).plusDays(1).toString()) },
                         onPickDate = { onOpenDatePicker(setOf(task.id)) },
                         onDelete = { onRequestDelete(setOf(task.id)) },
                         canDrag = directManipulationController?.canDrag(day, task, selectedEntryIds) == true
@@ -737,8 +736,8 @@ private fun TodayContent(
                         onToggleSelection = { onToggleSelection(task.id) },
                         canDayOperate = canPlanDay(day) && task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived && directManipulationController != null,
                         canLifecycleDelete = day.isCurrent && task.lifecycleState != LifecycleState.PLANNED && !task.routineDerived && directManipulationController != null,
-                        onMovePrevious = { directManipulationController?.moveToDay(day, setOf(task.id), LocalDate.parse(day.logicalDate).minusDays(1).toString(), "前の日へ移動しました") },
-                        onMoveNext = { directManipulationController?.moveToDay(day, setOf(task.id), LocalDate.parse(day.logicalDate).plusDays(1).toString(), "次の日へ移動しました") },
+                        onMovePrevious = { directManipulationController?.moveToDay(day, setOf(task.id), LocalDate.parse(day.logicalDate).minusDays(1).toString()) },
+                        onMoveNext = { directManipulationController?.moveToDay(day, setOf(task.id), LocalDate.parse(day.logicalDate).plusDays(1).toString()) },
                         onPickDate = { onOpenDatePicker(setOf(task.id)) },
                         onDelete = { onRequestDelete(setOf(task.id)) },
                         canDrag = directManipulationController?.canDrag(day, task, selectedEntryIds) == true

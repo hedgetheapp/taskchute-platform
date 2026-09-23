@@ -451,7 +451,8 @@ class TodayScreenInstrumentedTest {
     }
     @Test
     fun rowOverflowExposesCanonicalDayOperationsForPlannedCurrentEntry() {
-        launchPlanningScreen(FakePlanningRepository(), directRepository = FakeDirectManipulationRepository())
+        val directRepository = FakeDirectManipulationRepository()
+        launchPlanningScreen(FakePlanningRepository(), directRepository = directRepository)
         waitForStatus(TodayLoadStatus.CONTENT)
 
         composeRule.onNodeWithText("Write report").performTouchInput { swipeLeft() }
@@ -460,6 +461,10 @@ class TodayScreenInstrumentedTest {
         composeRule.onNodeWithText("次の日へ移動").assertIsDisplayed()
         composeRule.onNodeWithText("日付を移動").assertIsDisplayed()
         composeRule.onNodeWithText("削除").assertIsDisplayed()
+
+        composeRule.onNodeWithText("次の日へ移動").performClick()
+        composeRule.waitUntil(5_000) { directRepository.bulkMoveCalls.get() == 1 }
+        assertTrue(composeRule.onAllNodesWithText("次の日へ移動しました", substring = false).fetchSemanticsNodes().isEmpty())
     }
 
     @Test
