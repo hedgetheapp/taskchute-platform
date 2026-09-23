@@ -96,6 +96,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -1654,27 +1655,171 @@ private fun OperationFailedPanel() {
 
 @Composable
 private fun RunningTaskPanel(task: TodayTask, controller: TodayController, enabled: Boolean, modifier: Modifier = Modifier) {
-    Card(modifier = modifier.fillMaxWidth().height(72.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFF1E2A33)), shape = RoundedCornerShape(26.dp), elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth().fillMaxHeight().padding(horizontal = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
+    var now by remember(task.id, task.activeStartedAt, task.firstStartedAt, task.estimateSeconds) {
+        mutableStateOf(Instant.now())
+    }
+    LaunchedEffect(task.id, task.activeStartedAt, task.firstStartedAt, task.estimateSeconds) {
+        while (true) {
+            now = Instant.now()
+            delay(1_000L)
+        }
+    }
+
+    val progress = calculateRunningProgress(
+        startInstant = task.activeStartedAt ?: task.firstStartedAt,
+        estimateSeconds = task.estimateSeconds,
+        now = now,
+    )
+    val progressColor = if ((progress.overrunSeconds ?: 0L) > 0L) RUNNING_OVERRUN_COLOR else TaskChuteColors.AccentBlue
+
+    Card(
+        modifier = modifier.fillMaxWidth().height(104.dp),
+        colors = CardDefaults.cardColors(containerColor = TaskChuteColors.RunningSurface),
+        shape = RoundedCornerShape(22.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.SpaceBetween,
         ) {
-            Column(Modifier.weight(1f)) {
-                Text("実行中", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TaskChuteColors.AccentBlue)
-                Text(task.title, maxLines = 1, overflow = TextOverflow.Ellipsis, color = Color(0xFFF1F1EF), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            Row(
+                modifier = Modifier.fillMaxWidth().height(40.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = task.title,
+                    modifier = Modifier.weight(1f).padding(end = 8.dp),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    color = TaskChuteColors.PrimaryText,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFFE8E8E5))
+                        .border(1.dp, TaskChuteColors.TaskActionBorder, CircleShape)
+                        .graphicsLayer { alpha = if (enabled) 1f else 0.5f }
+                        .clickable(enabled = enabled, onClick = { controller.complete(task) })
+                        .semantics {
+                            contentDescription = "実行中タスクを完了"
+                            if (!enabled) disabled()
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_material_stop_24),
+                        contentDescription = null,
+                        tint = TaskChuteColors.Background,
+                        modifier = Modifier.size(11.dp),
+                    )
+                }
             }
-            Spacer(Modifier.width(8.dp))
-            Button(
-                onClick = { controller.complete(task) },
-                enabled = enabled,
-                modifier = Modifier.width(78.dp).height(40.dp),
-                shape = RoundedCornerShape(20.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE8E8E5), contentColor = Color(0xFF191919)),
-                contentPadding = PaddingValues(0.dp),
-            ) { Text("完了", fontSize = 14.sp, fontWeight = FontWeight.Bold) }
+
+            RunningProgressBar(progress = progress.progress, color = progressColor)
+
+            Row(
+                modifier = Modifier.fillMaxWidth().height(20.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                RunningTimeValue(
+                    iconRes = R.drawable.ic_material_schedule_24,
+                    text = formatRunningDuration(progress.elapsedSeconds),
+                    color = TaskChuteColors.PrimaryText,
+                )
+                if ((progress.overrunSeconds ?: 0L) > 0L) {
+                    RunningOverrunValue(progress.overrunSeconds)
+                } else {
+                    RunningTimeValue(
+                        iconRes = R.drawable.ic_material_hourglass_top_24,
+                        text = formatRunningDuration(progress.remainingSeconds),
+                        color = TaskChuteColors.SecondaryText,
+                    )
+                }
+            }
         }
     }
 }
+
+@Composable
+private fun RunningProgressBar(progress: Float, color: Color) {
+    val fraction = progress.coerceIn(0f, 1f)
+    BoxWithConstraints(
+        modifier = Modifier.fillMaxWidth().height(10.dp),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(6.dp)
+                .clip(RoundedCornerShape(3.dp))
+                .background(RUNNING_PROGRESS_TRACK_COLOR),
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(fraction)
+                .height(6.dp)
+                .clip(RoundedCornerShape(3.dp))
+                .background(color),
+        )
+        Box(
+            modifier = Modifier
+                .offset(x = (maxWidth - 10.dp) * fraction)
+                .size(10.dp)
+                .background(color, CircleShape),
+        )
+    }
+}
+
+@Composable
+private fun RunningTimeValue(iconRes: Int, text: String, color: Color) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            painter = painterResource(iconRes),
+            contentDescription = null,
+            tint = color,
+            modifier = Modifier.size(10.dp),
+        )
+        Spacer(Modifier.width(5.dp))
+        Text(text, color = color, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+    }
+}
+
+@Composable
+private fun RunningOverrunValue(overrunSeconds: Long?) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            painter = painterResource(R.drawable.ic_material_hourglass_top_24),
+            contentDescription = null,
+            tint = TaskChuteColors.SecondaryText,
+            modifier = Modifier.size(10.dp),
+        )
+        Spacer(Modifier.width(5.dp))
+        Text("00:00:00", color = TaskChuteColors.SecondaryText, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+        Text("（", color = TaskChuteColors.SecondaryText, fontSize = 13.sp, maxLines = 1)
+        Icon(
+            painter = painterResource(R.drawable.ic_material_more_time_24),
+            contentDescription = null,
+            tint = RUNNING_OVERRUN_COLOR,
+            modifier = Modifier.size(10.dp),
+        )
+        Spacer(Modifier.width(2.dp))
+        Text(
+            "+${formatRunningDuration(overrunSeconds)}",
+            color = RUNNING_OVERRUN_COLOR,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+        )
+        Text("）", color = TaskChuteColors.SecondaryText, fontSize = 13.sp, maxLines = 1)
+    }
+}
+
+private val RUNNING_PROGRESS_TRACK_COLOR = Color(0xFF3C464E)
+private val RUNNING_OVERRUN_COLOR = Color(0xFFEBA44E)
 
 @Composable
 private fun TaskEditorForm(controller: TaskPlanningController, state: TaskPlanningUiState, modifier: Modifier) {

@@ -30,6 +30,12 @@ Future Dayを明示的に開いた時点でD-119どおりDayがestablish / Routi
 Figma current visual referenceは`Today — Flow & States` の
 `Future / Planning`、`Past / Read-only`、`Future Past / Behavior`。
 
+## D-134 Android Running Progress Player
+
+current DayのRunning panelはFigma `UbTJH6ykYNBQJS4Wvwz9jb` page `481:2` / section `485:2` / example `502:17`に合わせた104dp progress playerとする。active executionの`activeStartedAt`、なければ`firstStartedAt`を表示専用tickerの時刻基準にし、elapsed / remaining / progress / overrunを計算する。estimateが未設定または正でない場合はelapsedのみを表示し、remaining / progress / overrunは表示しない。24時間を超える経過時間もtotal時間として表示する。
+
+FutureではStart / Complete / Interrupt / RunningTaskPanelを表示せず、Pastはread-onlyのまま維持する。Execution / lifecycle / API / schema / migration / dependency semanticsは変更しない。
+
 ## D-125 Android Today Error / Retry states
 
 Today acquisition failureはfull-screen Error。中央に`予定を読み込めませんでした`、
@@ -707,7 +713,7 @@ Current-Day ordinary planned Taskのtitle、Project、Mode、Section、estimate�
 - D-130によりRunning rowは開始見込みへcanonical actual startを表示し、終了見込みを`actual start + Entry見積`で表示する。estimateなしでは終了見込みのみ未表示。Running遷移直後も`--:--`へ戻さない。
 - actual Execution timestampは通常のPlanned forecastへ混在させない。ただしRunning rowだけは開始見込みのauthorityとしてactual startを使う。actual start/end編集自体はExecution fact / lifecycle-aware editor側の責務とする。
 - Task Rowの見積時間・実績時間は常に総分数で表示する。例: `30分`、`90分`、`120分`。`1時間30分`のようなhour + minute表示へ切り替えない。
-- RunningTaskPanelは72dp高のsurface内で、左の`実行中 + Task名`と右の40dp `完了`buttonをCard全体に対して上下中央揃えにする。
+- D-134によりcurrent DayのRunningTaskPanelは、12dp左右margin内の104dp `RunningSurface` progress playerとする。22dp radius、見出しの`実行中`ラベルなし、16sp MediumのTask名、40dp light circular Complete action、6dp progress track、elapsed / remaining / overrunのtotal `HH:MM:SS`表示を使う。tickerはdisplay-onlyで、Completeは既存commandを呼ぶ。
 
 current established Dayのordinary Entryはlifecycleごとに同じhigh-opening Task Editor shellを使い、編集可能fieldだけを切り替える。
 

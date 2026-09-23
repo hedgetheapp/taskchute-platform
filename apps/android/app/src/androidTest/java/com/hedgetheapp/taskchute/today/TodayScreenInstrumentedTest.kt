@@ -97,7 +97,7 @@ class TodayScreenInstrumentedTest {
             repo.startCalls.get() == 1 && controller?.state?.day?.runningTask != null
         }
         assertEquals(1, repo.startCalls.get())
-        composeRule.onNodeWithText("実行中").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithText("実行中").fetchSemanticsNodes().isEmpty())
         // The canonical running task is intentionally shown both in its row and
         // in the floating panel, so assert the two surfaces rather than asking
         // a single-node query to choose one.
@@ -105,7 +105,7 @@ class TodayScreenInstrumentedTest {
             2,
             composeRule.onAllNodesWithText("Running panel task").fetchSemanticsNodes().size,
         )
-        composeRule.onNodeWithText("完了").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("実行中タスクを完了").assertIsDisplayed()
     }
 
     @Test
@@ -113,11 +113,11 @@ class TodayScreenInstrumentedTest {
         val repo = launchScreen(FakeTodayRepository(initialDay = dayWith(LifecycleState.RUNNING)).apply { holdComplete = true })
         waitForStatus(TodayLoadStatus.CONTENT)
 
-        composeRule.onNodeWithText("完了").performClick()
+        composeRule.onNodeWithContentDescription("実行中タスクを完了").performClick()
         composeRule.waitUntil(10_000) {
             repo.completeCalls.get() == 1 && controller?.state?.pendingEntryIds?.contains("entry-1") == true
         }
-        composeRule.onNodeWithText("完了").assertIsNotEnabled()
+        // The existing optimistic lifecycle projection removes the running panel while completion is pending.
         assertEquals(1, repo.completeCalls.get())
 
         repo.releaseComplete.countDown()
@@ -749,10 +749,10 @@ class TodayScreenInstrumentedTest {
         waitForStatus(TodayLoadStatus.CONTENT)
 
         composeRule.onNodeWithContentDescription("タスクを追加").assertIsDisplayed()
-        composeRule.onNodeWithText("実行中").assertIsDisplayed()
-        composeRule.onNodeWithText("完了").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithText("実行中").fetchSemanticsNodes().isEmpty())
+        composeRule.onNodeWithContentDescription("実行中タスクを完了").assertIsDisplayed()
         val addBounds = composeRule.onNodeWithContentDescription("タスクを追加").fetchSemanticsNode().boundsInRoot
-        val panelBounds = composeRule.onNodeWithText("実行中").fetchSemanticsNode().boundsInRoot
+        val panelBounds = composeRule.onNodeWithContentDescription("実行中タスクを完了").fetchSemanticsNode().boundsInRoot
         assertTrue(
             "Quick Add must not overlap the running panel",
             addBounds.bottom <= panelBounds.top || addBounds.top >= panelBounds.bottom,

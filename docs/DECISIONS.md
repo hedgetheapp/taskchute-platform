@@ -1,5 +1,13 @@
 # Decisions
 
+## D-134 — Android Running Progress Player v0.1
+
+Status: **Approved**
+
+Canonical Decision: `docs/decisions/D-134_ANDROID_RUNNING_PROGRESS_PLAYER_V01.md`。
+
+current DayのRunningTaskPanelを、active executionの開始時刻を基準にelapsed / remaining / estimate progress / overrunを表示する104dpのprogress playerへ置き換える。Completeは既存commandをそのまま使い、tickerはdisplay-onlyとする。FutureではRunningTaskPanelを表示せず、Pastのread-only境界、Execution / lifecycle / Worker/API / schema / migration / dependency semanticsは変更しない。
+
 ## D-133 — Android Routine full create / edit parity v0.1
 
 Status: **Approved**

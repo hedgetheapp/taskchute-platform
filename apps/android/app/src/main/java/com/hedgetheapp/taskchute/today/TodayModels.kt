@@ -1,5 +1,9 @@
 package com.hedgetheapp.taskchute.today
 
+import java.time.Duration
+import java.time.Instant
+import java.util.Locale
+
 data class TodayProject(
     val id: String,
     val title: String,
@@ -130,3 +134,36 @@ data class TodayUiState(
 
 val TodayUiState.presentedDay: TodayDay?
     get() = optimisticDay ?: day
+
+internal data class RunningProgressState(
+    val elapsedSeconds: Long?,
+    val remainingSeconds: Long?,
+    val overrunSeconds: Long?,
+    val progress: Float,
+)
+
+internal fun calculateRunningProgress(
+    startInstant: String?,
+    estimateSeconds: Int?,
+    now: Instant,
+): RunningProgressState {
+    val start = startInstant?.let { value -> runCatching { Instant.parse(value) }.getOrNull() }
+        ?: return RunningProgressState(null, null, null, 0f)
+    val elapsed = runCatching { Duration.between(start, now).seconds.coerceAtLeast(0L) }
+        .getOrElse { return RunningProgressState(null, null, null, 0f) }
+    val estimate = estimateSeconds?.toLong()?.takeIf { it > 0L }
+        ?: return RunningProgressState(elapsed, null, null, 0f)
+    val remaining = (estimate - elapsed).coerceAtLeast(0L)
+    val overrun = (elapsed - estimate).coerceAtLeast(0L)
+    val progress = (elapsed.toDouble() / estimate.toDouble()).coerceIn(0.0, 1.0).toFloat()
+    return RunningProgressState(elapsed, remaining, overrun, progress)
+}
+
+internal fun formatRunningDuration(seconds: Long?): String {
+    if (seconds == null) return "--:--:--"
+    val total = seconds.coerceAtLeast(0L)
+    val hours = total / 3_600L
+    val minutes = (total / 60L) % 60L
+    val remainder = total % 60L
+    return String.format(Locale.ROOT, "%02d:%02d:%02d", hours, minutes, remainder)
+}
