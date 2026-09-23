@@ -1,3 +1,8 @@
+### D-135 Markdown cursor / interactive task checkbox corrective - 2026-09-23
+
+- 共通Markdown editorのcaretをlight foregroundで明示し、inactive task-list markerを白色化。`- [ ]` / `- [x]` / `- [X]`は描画上のmarkerだけを安全なsource/display offset mappingとTextLayout hit testで切り替え、通常のbody update pathから既存autosaveへ接続。accessibility custom action、blocked state、active raw line、IME / selection / compositionは維持。
+- Implementation 3d9781bd175ea35b95438597e80294c9a8a69ed8、Markdown focused JVM 14 / 14、Android JVM 182 / 182、Notes AVD 13 / 13、marker実タップ、compile / assemble / diff-check PASS。Exact-SHA CI 35835388710 PASS、Web/Worker SKIP。artifact taskchute-android-debug-3d9781bd175ea35b95438597e80294c9a8a69ed8 / ID 10739460429 / expiry 2026-09-30T08:09:39Z。Galaxy S23はNOT_RUN、ProductionはNOT_RUN、ReleasedはNO。
+
 ### D-135 Android Markdown Live Preview + IME Toolbar - 2026-09-23
 
 - Standalone NotesとToday Task Primary Noteを共通のlive-preview Markdown editorへ統合。caret/selection行はraw source、非active行はbold・heading・bullet・task list・quote・linkを表示上renderし、body focus + IME表示時だけ6操作toolbarをIME直上へ表示。

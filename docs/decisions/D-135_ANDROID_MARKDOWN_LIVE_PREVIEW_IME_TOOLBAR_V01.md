@@ -26,6 +26,10 @@ and local to the visual transformation. NotesController autosave, CAS,
 conflict, ambiguous retry, safe flush, discard, archive, restore, and delete
 semantics remain authoritative and unchanged.
 
+## Follow-up corrective — task-list marker interaction
+
+The shared editor renders the caret and inactive task-list markers with the light foreground treatment required by the dark Notes surface. An inactive `- [ ]`, `- [x]`, or `- [X]` marker is a local interactive presentation control: a safe source/display offset mapping and text-layout hit test toggle only that exact marker through the existing body update path. Accessibility custom actions expose the current checked / unchecked state and the inverse action. Active source lines, malformed task-list syntax, blocked editor state, IME focus, selection/composition, autosave, CAS, retry, and persistence semantics remain unchanged.
+
 ## Boundaries
 
 - No third-party Markdown/editor or icon dependency.
