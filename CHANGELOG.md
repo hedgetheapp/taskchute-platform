@@ -1,3 +1,9 @@
+### D-135 Android Markdown Live Preview + IME Toolbar - 2026-09-23
+
+- Standalone NotesとToday Task Primary Noteを共通のlive-preview Markdown editorへ統合。caret/selection行はraw source、非active行はbold・heading・bullet・task list・quote・linkを表示上renderし、body focus + IME表示時だけ6操作toolbarをIME直上へ表示。
+- Markdown source persistenceとD-111 autosave / CAS / conflict / ambiguous retry / safe flushは維持。Implementation c8f3eb42133fb82ca541ead96a586a4a3d9db173、Markdown commands / offset mapping focused JVM 10 / 10、Android JVM 178 / 178、Notes AVD 10 / 10、instrumentation compile / debug assemble / diff-check PASS。exact-SHA CI 35828613692 PASS、Web/Worker SKIP、artifact taskchute-android-debug-c8f3eb42133fb82ca541ead96a586a4a3d9db173 / ID 10736027953。
+- Galaxy S23はNOT_RUN / PRODUCT_OWNER_MANUAL、Worker/API、Web、schema、migration、offline persistence、dependency、Productionは不変・未実施、ReleasedはNO。
+
 ### Android move-success feedback / Routine enabled toggle corrective — 2026-09-23
 
 - Todayの前日・次日・指定日MoveToDay成功時に永続成功文を表示しないようにし、既存のfailure / ambiguous / retryとMoveToDay semanticsを維持。

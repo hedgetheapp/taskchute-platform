@@ -225,6 +225,12 @@ migration、dependency、realtime protocol、offline persistenceは変更しな�
 Android Notesに限るexplicit-only Save / memory-only new draft / 通常dirty discard confirmation
 の境界をsupersedeする。
 
+## D-135 Android Markdown Live Preview + IME Toolbar v0.1
+
+Android Notesのstandalone editorとToday Task Primary Noteは同一のlive-preview Markdown editorを使い、Edit / Previewの切替モードは持たない。canonical bodyはexact Markdown source stringであり、caretまたはselectionが触れている行はraw source、非active行はbold・ATX heading・bullet・task list・quote・linkだけをpresentation-onlyでrenderする。malformed / unsupported Markdownは破棄せず編集可能なsourceとして保持する。
+
+bodyがfocusを持ちIMEが表示されている間だけ、IME直上にBold、Heading、Bulleted list、Checkbox、Quote、Linkの6操作toolbarを表示する。各commandはlocal sourceとselection/caretを更新するだけで、saveやDocument authorityを直接変更しない。TextFieldValueとsource/display offset mappingはUI presentationに限定し、D-111のautosave、CAS、conflict、ambiguous retry、safe flush、discard、archive、restore、hard-delete semanticsを維持する。第三者Markdown dependency、Worker/API、schema、migration、offline persistence、Web changeは追加しない。
+
 ## D-112 Android Today bulk selection and day operations
 
 D-112では、current established Dayのordinary planned Entryに限り、常時表示のselection

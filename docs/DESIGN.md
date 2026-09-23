@@ -30,6 +30,12 @@ Future Dayを明示的に開いた時点でD-119どおりDayがestablish / Routi
 Figma current visual referenceは`Today — Flow & States` の
 `Future / Planning`、`Past / Read-only`、`Future Past / Behavior`。
 
+## D-135 Android Markdown Live Preview + IME Toolbar
+
+Android Notesのstandalone editorとToday Task Primary Noteは同じborderless Compose editor surfaceを使う。Edit / Preview切替は置かず、caret行はraw Markdown source、非active行はbold・heading・bullet・task list・quote・linkを視覚的にrenderする。sourceはそのままcanonical bodyへ渡し、表示変換でMarkdownを正規化しない。
+
+body focus中にIMEが表示されている場合だけ、約48dpの横スクロール可能なtoolbarをIME直上に置く。順序はBold、Heading、Bulleted list、Checkbox、Quote、Linkとし、toolbar操作はbody focus・IME・selectionを維持する。D-111のstatus footer、autosave、safe flush、conflict / ambiguous barrier、Task title authorityを維持し、タイトルfocusではtoolbarを表示しない。未対応Markdownは通常のeditable sourceとして表示し、linkはv0.1でnavigationしない。
+
 ## D-134 Android Running Progress Player
 
 current DayのRunning panelはFigma `UbTJH6ykYNBQJS4Wvwz9jb` page `481:2` / section `485:2` / example `502:17`に合わせた104dp progress playerとする。active executionの`activeStartedAt`、なければ`firstStartedAt`を表示専用tickerの時刻基準にし、elapsed / remaining / progress / overrunを計算する。estimateが未設定または正でない場合はelapsedのみを表示し、remaining / progress / overrunは表示しない。24時間を超える経過時間もtotal時間として表示する。

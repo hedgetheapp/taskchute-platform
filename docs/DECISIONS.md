@@ -1,5 +1,15 @@
 # Decisions
 
+## D-135 - Android Markdown Live Preview + IME Toolbar v0.1
+
+Status: Approved / Implemented
+
+Canonical Decision: docs/decisions/D-135_ANDROID_MARKDOWN_LIVE_PREVIEW_IME_TOOLBAR_V01.md
+
+Androidのstandalone NotesとToday Task Primary Noteは、同じComposeベースのMarkdown live-preview editorを使う。caretまたはselectionが触れている行はraw Markdownを表示し、それ以外の対応構文（bold、ATX heading、bullet、task list、quote、link）は表示上だけrenderする。永続化されるbodyは従来どおりexact Markdown sourceで、D-111のautosave / CAS / conflict / ambiguous retry / safe flushを変更しない。body focus中にIMEが表示されている場合だけ、IME直上に6操作（Bold、Heading、Bulleted list、Checkbox、Quote、Link）のtoolbarを表示する。Worker/API、schema、migration、offline persistence、dependency、Web、Production semanticsは変更しない。
+
+
+
 ## D-134 — Android Running Progress Player v0.1
 
 Status: **Approved**

@@ -1,4 +1,17 @@
 # Test Matrix
+## D-135 Android Markdown Live Preview + IME Toolbar - 2026-09-23
+
+D-135はAndroid Notesのstandalone editorとToday Task Primary Noteを共通live-preview Markdown editorへ統合する。canonical bodyはexact Markdown sourceのまま保持し、caret/selection行だけsource表示、非active行はv0.1対応構文をpresentation-onlyでrenderする。body focusとIME表示時だけ、IME直上の6操作toolbarを表示する。
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D135-DECISION | Canonical behavior | Edit/Preview modeなし、source authority維持、6構文のlive preview、IME toolbar | docs/decisions/D-135_ANDROID_MARKDOWN_LIVE_PREVIEW_IME_TOOLBAR_V01.md | PASS / APPROVED |
+| D135-JVM | Pure Markdown commands / transformation | Bold、Heading、Bullet、Checkbox、Quote、Link、selection/caret、source/display offset mapping、malformed fallback | MarkdownLiveEditorTest 10 / 10 PASS。最終Android JVM 178 / 178 PASS | PASS |
+| D135-AVD | Notes runtime | Standalone body、共通toolbar、Task Primary editor、autosave surface | TaskChute_API33 Notes 10 / 10 PASS。最終debug APK install、MainActivity起動、UI tree、target crash buffer emptyもPASS。AVDは実IMEの日本語composition品質を保証しない | PASS / DEVICE-SPECIFIC IME CAVEAT |
+| D135-BUILD | Android local gates | affected compile/build/diff check | :app:compileDebugAndroidTestKotlin、:app:assembleDebug、git diff --check PASS | PASS |
+| D135-CI | Exact implementation SHA | classifier、Android JVM、signed nonprod APK、instrumentation APK compile / signing / upload | implementation SHA c8f3eb42133fb82ca541ead96a586a4a3d9db173、run 35828613692 PASS。Web / Worker SKIP。artifact taskchute-android-debug-c8f3eb42133fb82ca541ead96a586a4a3d9db173、ID 10736027953、expires 2026-09-30T06:53:07Z | PASS |
+| D135-BOUNDARY | Product / persistence / release | existing Notes semantics and platform boundaries unchanged | NotesController autosave/CAS/conflict/ambiguous retry/safe flushは未変更。Worker/API、Web、schema、migration、offline persistence、dependency、Productionは変更・実施なし。Galaxy S23 NOT_RUN / PRODUCT_OWNER_MANUAL、Production NOT_RUN、Released NO | PASS / NOT_REQUIRED / NOT_RUN / NO |
+
 ## Android Completed Task end-time clipping corrective — 2026-09-22
 
 Completed metadataのactual rangeがdurationのintrinsic widthに押されて終了時刻をclipするAndroid presentation bugを、range優先・duration残余幅の小修正で是正した。実績データ、execution semantics、Running / Planned layoutは変更していない。
