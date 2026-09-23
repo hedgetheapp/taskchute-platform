@@ -12,6 +12,19 @@ Completed metadataのactual rangeがdurationのintrinsic widthに押されて終
 | ANDROID-COMPLETED-AVD | Focused runtime | `TaskChute_API33` instrumentation、MainActivity、crash buffer | `adb devices`に接続端末なし、`emulator`コマンド利用不可。QA dataは作成していない | NOT_RUN / ENVIRONMENT_UNAVAILABLE |
 | ANDROID-COMPLETED-BOUNDARY | Boundary | no Worker/API, schema/migration, dependency, existing-data mutation, production, Release | Android UI/test only。既存data mutationなし、Production `NOT_RUN`、Released `NO` | PASS / NOT_REQUIRED / NOT_RUN / NO |
 
+## Android move-success feedback / Routine enabled toggle corrective — 2026-09-23
+
+D-112のToday day-operation semanticsとD-118のRoutine enabled lifecycleを変更しない、Android presentation / discoverability corrective。
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| ANDROID-MOVE-FEEDBACK | Today MoveToDay UI | 前日・次日・指定日への成功後に永続成功文を表示せず、失敗・ambiguous・retryは維持 | TodayScreen.ktの3 callerからsuccess messageだけを除去。MoveToDay payload / pending / failure / exact-operation semanticsは不変。次日移動のfocused instrumentationで成功後に「次の日へ移動しました」が存在しないことを確認 | PASS |
+| ANDROID-ROUTINE-TOGGLE | Settings Routine UI | Routineカードで有効/無効を明示し、既存toggle mutation・編集・削除を維持 | SettingsScreen.ktに状態ラベル付きSwitchと状態付きcontentDescriptionを追加。D-118 canonical terminologyの有効 / 無効を使用し、停止 / 再開は表示しない。focused instrumentation routineListShowsExplicitEnabledDisabledToggle 1 / 1 PASS | PASS |
+| ANDROID-FOCUSED-AVD | AVD focused runtime | Today move feedback、Settings Routine toggle | TaskChute_API33 focused instrumentation: Today 1 / 1 PASS、Settings 1 / 1 PASS。debug APK再install、MainActivity起動、UI tree、crash bufferもPASS。既存D-134 Today全体AVD 35 / 44 partial / final full rerun NOT_VERIFIEDは再評価していない | PASS / D134 PARTIAL UNCHANGED |
+| ANDROID-LOCAL | Local Android gates | affected JVM / instrumentation compile / debug APK / diff check | :app:testDebugUnitTest PASS、:app:compileDebugAndroidTestKotlin PASS、:app:assembleDebug PASS、git diff --check PASS | PASS |
+| ANDROID-CI | Exact implementation SHA / APK | impact-aware CI and signed APK | SHA 3327d056a11ce99bb3d9d252330fbb40fb93c7a3; run 35821183604; classifier / Android JVM / signed APK / instrumentation APK compile PASS、Web/Worker SKIP。Artifact taskchute-android-debug-3327d056a11ce99bb3d9d252330fbb40fb93c7a3, ID 10733521142, expires 2026-09-30T05:10:58Z | PASS |
+| ANDROID-BOUNDARY | Product / persistence / release | existing semantics and boundaries unchanged | Worker/API、Web、schema/migration、dependency、realtime、productionは変更なし。Galaxy S23 NOT_RUN / PRODUCT_OWNER_MANUAL、Production NOT_RUN、Released NO | PASS / NOT_REQUIRED / NOT_RUN / NO |
+
 ## D-134 Android Running Progress Player — 2026-09-23
 
 D-134はcurrent DayのRunningTaskPanelを104dp progress playerへ置換するpresentation-only decision。elapsed / remaining / progress / overrunはactive execution開始時刻を基準に表示し、Completeは既存commandを再利用する。Future / Past、Worker/API、schema、migration、dependencyは変更しない。

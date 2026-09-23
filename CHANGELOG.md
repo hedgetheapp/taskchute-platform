@@ -1,3 +1,10 @@
+### Android move-success feedback / Routine enabled toggle corrective — 2026-09-23
+
+- Todayの前日・次日・指定日MoveToDay成功時に永続成功文を表示しないようにし、既存のfailure / ambiguous / retryとMoveToDay semanticsを維持。
+- Routineカードのenabled Switchを状態ラベル・accessibility付きで明示し、D-118どおり有効 / 無効へ統一。既存SetRoutineEnabled経路、編集、削除は不変。
+- Implementation 3327d056a11ce99bb3d9d252330fbb40fb93c7a3、Today / Settings focused instrumentation各1 / 1 PASS、Android JVM / compile / assemble / diff-check PASS。
+- Exact-SHA CI 35821183604 PASS、Web/Worker SKIP。APK artifact ID 10733521142。Galaxy S23はNOT_RUN、ProductionはNOT_RUN、ReleasedはNO。
+
 # Changelog
 
 ## Unreleased
