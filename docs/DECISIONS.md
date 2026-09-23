@@ -1,3 +1,11 @@
+## D-137 — Daily Note v0.1
+
+Status: **Approved / Implemented / Integrated**
+
+Canonical Decision: `docs/decisions/D-137_DAILY_NOTE_V01.md`
+
+Daily Noteは確立済みTaskChuteDayごとの`daily_primary` Documentとし、GET/listでは自動作成しない。明示Ensureだけが作成mutationで、body updateは既存Markdown source、autosave、CAS、conflict、ambiguous retry、safe flush semanticsを再利用する。Web dropdownとAndroid shared footerのTask / Notes / Daily / Settingsを追加した。APP migration `0034`、Production、Release、Galaxy S23 physical verificationはそれぞれ承認範囲内の記録どおり扱う。
+
 # Decisions
 
 ## D-136 — Android Markdown Interactive Links + Stable Tap Selection v0.1

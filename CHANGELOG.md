@@ -1,3 +1,9 @@
+### D-137 Daily Note v0.1 — 2026-09-23
+
+- 確立済みDay単位の`daily_primary` Documentを追加し、GET/listでは自動作成せず明示Ensureだけで作成する。Web Notes dropdownとAndroid Task / Notes / Daily / Settings footer、Daily date navigation、body-only Markdown autosave/CAS/retryを実装。
+- Implementation `f3147e51c70ad06803cc963cea0267d7d0df0a97`、Web focused `3 / 3`、Android Daily repository `3 / 3`、Android JVM / compile / assemble / typecheck / diff-check PASS。APP `0034_daily_primary_documents.sql`をpersistent nonprodへ適用し、Worker version `d6493c1a-602a-461c-a3e5-6f390d4eb4ce`、root `200`、protected API `401`、DB safety PASS。
+- Notes AVDは`NOT_VERIFIED / HUNG`、CUA接続不能のためauthenticated Web / isolated QAは`NOT_RUN`、Galaxy S23は`NOT_RUN / PRODUCT_OWNER_MANUAL`、Productionは`NOT_RUN`、Releasedは`NO`。既存data mutationなし。
+
 ### D-135 Markdown cursor / interactive task checkbox corrective - 2026-09-23
 
 - 共通Markdown editorのcaretをlight foregroundで明示し、inactive task-list markerを白色化。`- [ ]` / `- [x]` / `- [X]`は描画上のmarkerだけを安全なsource/display offset mappingとTextLayout hit testで切り替え、通常のbody update pathから既存autosaveへ接続。accessibility custom action、blocked state、active raw line、IME / selection / compositionは維持。

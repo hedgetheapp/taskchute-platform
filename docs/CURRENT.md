@@ -1,3 +1,9 @@
+### D-137 Daily Note v0.1 — 2026-09-23
+
+**Decision: APPROVED / Implementation: f3147e51c70ad06803cc963cea0267d7d0df0a97 / Local: PASS / Persistent nonprod: PASS / Authenticated Web: NOT_RUN / Galaxy S23: NOT_RUN / Production: NOT_RUN / Released: NO**。確立済みTaskChuteDayごとの`daily_primary` Documentを追加し、GET/listでは自動作成せず、明示的なEnsureだけで作成する。Web Notes dropdownへDailyを追加し、AndroidはTask / Notes / Daily / Settingsの共有footerと日付移動付きDaily editorを追加した。
+
+APP migration `0034_daily_primary_documents.sql`をpersistent nonprodへ適用し、Worker `taskchute-web-nonprod` version `d6493c1a-602a-461c-a3e5-6f390d4eb4ce`をdeploy。root `200`、protected API `401`、migration pending `0`、APP `quick_check=ok`、FK empty、read-only probe `rows_written=0`を確認した。Web focused `3 / 3`、Android Daily repository focused `3 / 3`、Android JVM / compile / assemble / typecheck / diff-checkはPASS。Notes AVDは`NOT_VERIFIED / HUNG`、CUA接続不能のためauthenticated Web / isolated QAは`AUTHENTICATED_DAILY_NOT_RUN`、既存data mutationはなし。
+
 ### D-136 Android Markdown Interactive Links + Stable Tap Selection - 2026-09-23
 
 D-136はD-135の共通Android live-preview Markdown editorに対する後続correctiveで、inactive task checkboxとhttp(s) linkのinteractionを埋め込み操作として安定化した。親の一つのhit-test層がInitial pointer passでinteractive downを消費するため、`BasicTextField`がtap位置へcaret / selectionを移動しない。checkboxは既存のraw source update pathでmarkerだけを変更し、plain `http://` / `https://` URLはsourceを変更せずlinkify、既存Markdown linkはrendered labelから安全に開く。URIはplatform `LocalUriHandler`を使い、http(s)以外、malformed URL、明白な末尾文章句読点はdestinationにしない。accessibility custom actionも同じ openerを使う。
