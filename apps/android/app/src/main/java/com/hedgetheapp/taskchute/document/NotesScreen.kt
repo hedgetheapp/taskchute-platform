@@ -191,36 +191,38 @@ fun TaskNoteBottomSheet(
                 state.editor?.origin == NoteEditorOrigin.TODAY_TASK -> {
                     val editor = state.editor!!
                     Text(editor.taskTitle ?: "タスクノート", color = TaskChuteColors.PrimaryText, fontSize = 17.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    HorizontalDivider(color = TaskChuteColors.Divider)
-                    BasicTextField(
+                    MarkdownLiveEditor(
                         value = editor.markdownBody,
                         onValueChange = controller::updateBody,
                         enabled = !editor.blocked,
-                        textStyle = MaterialTheme.typography.bodyLarge.copy(
-                            color = TaskChuteColors.PrimaryText,
-                            fontSize = 16.sp,
-                        ),
                         modifier = Modifier.fillMaxWidth().weight(1f).padding(top = 2.dp),
-                    )
-                    HorizontalDivider(color = TaskChuteColors.Divider)
-                    Text(
-                        when (editor.saveStatus) {
-                            NoteSaveStatus.SAVING -> "保存中…"
-                            NoteSaveStatus.SAVED -> "保存済み"
-                            NoteSaveStatus.UNSAVED -> "未保存"
-                            NoteSaveStatus.CONFLICT -> "競合しています。内容を確認してください。"
-                            NoteSaveStatus.AMBIGUOUS -> "保存結果が未確定です。"
-                            NoteSaveStatus.ERROR -> "保存に失敗しました。"
+                        footer = {
+                            HorizontalDivider(color = TaskChuteColors.Divider)
+                            Text(
+                                when (editor.saveStatus) {
+                                    NoteSaveStatus.SAVING -> "保存中…"
+                                    NoteSaveStatus.SAVED -> "保存済み"
+                                    NoteSaveStatus.UNSAVED -> "未保存"
+                                    NoteSaveStatus.CONFLICT -> "競合しています。内容を確認してください。"
+                                    NoteSaveStatus.AMBIGUOUS -> "保存結果が未確定です。"
+                                    NoteSaveStatus.ERROR -> "保存に失敗しました。"
+                                },
+                                color = if (editor.saveStatus in setOf(NoteSaveStatus.SAVED, NoteSaveStatus.UNSAVED, NoteSaveStatus.SAVING)) TaskChuteColors.SecondaryText else MaterialTheme.colorScheme.error,
+                                fontSize = 13.sp,
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
+                            )
+                            editor.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                            if (editor.blocked) {
+                                Text("保存結果が未確定です。元の操作を再試行してください。", color = MaterialTheme.colorScheme.error)
+                                Button(onClick = controller::retryUnresolved, enabled = !editor.saving) { Text("元の保存を再試行") }
+                            }
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                                TextButton(onClick = ::attemptDismiss, enabled = !editor.saving, modifier = Modifier.width(88.dp).height(48.dp)) {
+                                    Text("閉じる", color = Color(0xFFB794F4))
+                                }
+                            }
                         },
-                        color = if (editor.saveStatus in setOf(NoteSaveStatus.SAVED, NoteSaveStatus.UNSAVED, NoteSaveStatus.SAVING)) TaskChuteColors.SecondaryText else MaterialTheme.colorScheme.error,
-                        fontSize = 13.sp,
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
                     )
-                    editor.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                    if (editor.blocked) {
-                        Text("保存結果が未確定です。元の操作を再試行してください。", color = MaterialTheme.colorScheme.error)
-                        Button(onClick = controller::retryUnresolved, enabled = !editor.saving) { Text("元の保存を再試行") }
-                    }
                 }
                 state.unresolvedTaskEnsure != null -> {
                     if (state.taskEnsureSaving) CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally))
@@ -228,11 +230,6 @@ fun TaskNoteBottomSheet(
                     TextButton(onClick = controller::retryTaskPrimaryEnsure, enabled = !state.taskEnsureSaving) { Text("元のノート作成を再試行") }
                 }
                 else -> CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally))
-            }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = ::attemptDismiss, enabled = state.editor?.saving != true, modifier = Modifier.width(88.dp).height(48.dp)) {
-                    Text("閉じる", color = Color(0xFFB794F4))
-                }
             }
         }
     }
@@ -353,41 +350,34 @@ private fun NoteEditor(controller: NotesController, editor: NoteEditorState, mod
             Text(editor.taskTitle ?: "タスクノート", style = MaterialTheme.typography.titleMedium, color = TaskChuteColors.PrimaryText)
             Text("TaskタイトルはTask側が管理します。", style = MaterialTheme.typography.bodySmall, color = TaskChuteColors.SecondaryText)
         }
-        TextField(
+        MarkdownLiveEditor(
             value = editor.markdownBody,
             onValueChange = controller::updateBody,
-            label = { Text("Markdown") },
             enabled = !editor.blocked,
             modifier = Modifier.fillMaxWidth().weight(1f),
-            colors = TextFieldDefaults.colors(
-                focusedContainerColor = Color.Transparent,
-                unfocusedContainerColor = Color.Transparent,
-                disabledContainerColor = Color.Transparent,
-                focusedIndicatorColor = Color.Transparent,
-                unfocusedIndicatorColor = Color.Transparent,
-                disabledIndicatorColor = Color.Transparent,
-            ),
-        )
-        Text(
-            when (editor.saveStatus) {
-                NoteSaveStatus.SAVING -> "保存中…"
-                NoteSaveStatus.SAVED -> "保存済み"
-                NoteSaveStatus.UNSAVED -> "未保存"
-                NoteSaveStatus.CONFLICT -> "競合しています。内容を確認してください。"
-                NoteSaveStatus.AMBIGUOUS -> "保存結果が未確定です。"
-                NoteSaveStatus.ERROR -> "保存に失敗しました。"
+            footer = {
+                Text(
+                    when (editor.saveStatus) {
+                        NoteSaveStatus.SAVING -> "保存中…"
+                        NoteSaveStatus.SAVED -> "保存済み"
+                        NoteSaveStatus.UNSAVED -> "未保存"
+                        NoteSaveStatus.CONFLICT -> "競合しています。内容を確認してください。"
+                        NoteSaveStatus.AMBIGUOUS -> "保存結果が未確定です。"
+                        NoteSaveStatus.ERROR -> "保存に失敗しました。"
+                    },
+                    color = if (editor.saveStatus in setOf(NoteSaveStatus.SAVED, NoteSaveStatus.UNSAVED, NoteSaveStatus.SAVING)) {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    } else {
+                        MaterialTheme.colorScheme.error
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                editor.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                if (editor.blocked) {
+                    Text("保存結果が未確定です。元の操作を再試行してください。", color = MaterialTheme.colorScheme.error)
+                    Button(onClick = controller::retryUnresolved, enabled = !editor.saving) { Text("元の保存を再試行") }
+                }
             },
-            color = if (editor.saveStatus in setOf(NoteSaveStatus.SAVED, NoteSaveStatus.UNSAVED, NoteSaveStatus.SAVING)) {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            } else {
-                MaterialTheme.colorScheme.error
-            },
-            style = MaterialTheme.typography.bodySmall,
         )
-        editor.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        if (editor.blocked) {
-            Text("保存結果が未確定です。元の操作を再試行してください。", color = MaterialTheme.colorScheme.error)
-            Button(onClick = controller::retryUnresolved, enabled = !editor.saving) { Text("元の保存を再試行") }
-        }
     }
 }

@@ -4,7 +4,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
@@ -162,6 +168,63 @@ class NotesScreenInstrumentedTest {
         composeRule.onNodeWithText("ノートを削除").assertIsDisplayed()
         composeRule.onNodeWithText("削除").performClick()
         composeRule.waitUntil(10_000) { repository.deleteCalls.get() == 1 && controller?.state?.documents?.isEmpty() == true }
+    }
+
+
+    @Test
+    fun focusedMarkdownBodyShowsSixImeToolbarActionsAndKeepsSourceInput() {
+        val repository = FakeRepository()
+        controller = NotesController(repository, onUnauthorized = {})
+        composeRule.setContent { MaterialTheme { notesScreen() } }
+
+        composeRule.onNodeWithContentDescription("\u30ce\u30fc\u30c8\u3092\u65b0\u898f\u4f5c\u6210").performClick()
+        composeRule.waitUntil(10_000) { controller?.state?.editor?.document != null }
+        composeRule.onAllNodes(hasSetTextAction(), useUnmergedTree = true).get(1).performClick()
+        composeRule.onAllNodes(hasSetTextAction(), useUnmergedTree = true).get(1).performTextInput("**live**")
+        composeRule.waitForIdle()
+        assertTrue(controller?.state?.editor?.markdownBody?.contains("**live**") == true)
+    }
+
+    @Test
+    fun markdownImeToolbarExposesSixActionsAndAppliesBoldToRawSource() {
+        var latest = TextFieldValue("live", selection = TextRange(0, 4))
+        composeRule.setContent {
+            MarkdownImeToolbar(
+                modifier = Modifier.fillMaxWidth(),
+                fieldValue = latest,
+                onValueChange = { latest = it },
+            )
+        }
+
+        composeRule.onNodeWithContentDescription("\u592a\u5b57").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("\u898b\u51fa\u3057").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("\u7b87\u6761\u66f8\u304d").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("\u30c1\u30a7\u30c3\u30af\u30ea\u30b9\u30c8").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("\u5f15\u7528").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("\u30ea\u30f3\u30af").assertIsDisplayed()
+
+        composeRule.onNodeWithContentDescription("\u592a\u5b57").performClick()
+        assertEquals("**live**", latest.text)
+        assertEquals(TextRange(2, 6), latest.selection)
+    }
+
+    @Test
+    fun taskPrimaryBottomSheetUsesTheSameMarkdownEditorSurface() {
+        val repository = FakeRepository().apply {
+            taskDocument = AndroidDocument("doc-task", DocumentKind.TASK_PRIMARY, "", "body", 0, taskId = "task-1")
+        }
+        controller = NotesController(repository, onUnauthorized = {})
+        composeRule.setContent {
+            MaterialTheme {
+                TaskNoteBottomSheet(controller = requireNotNull(controller), onDismiss = {})
+            }
+        }
+        controller!!.openTaskPrimary("task-1", "Task title", "doc-task")
+        composeRule.waitUntil(10_000) { controller?.state?.editor?.origin == NoteEditorOrigin.TODAY_TASK }
+        composeRule.onAllNodes(hasSetTextAction(), useUnmergedTree = true).get(0).performClick()
+        composeRule.onAllNodes(hasSetTextAction(), useUnmergedTree = true).get(0).performTextInput(" - [ ] task")
+        composeRule.waitForIdle()
+        assertTrue(controller?.state?.editor?.markdownBody?.contains(" - [ ] task") == true)
     }
 
     @Composable
