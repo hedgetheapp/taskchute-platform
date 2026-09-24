@@ -21,8 +21,8 @@ TaskChuteDayごとのDaily Noteを、既にestablishされたDayに対して提�
 
 ## Navigation and surfaces
 
-- Web Notesの種別dropdownにDaily Noteを追加する。Daily Note surfaceにはestablished Dayの日付一覧、前日・次日・日付選択、本文editorを表示する。
-- Androidのshared footerは`Task / Notes / Daily / Settings`の4 destinationとし、Dailyは選択したlogical dateの本文を編集する。date navigationは既存Today Day loaderを利用する。
+- Web Notesの種別dropdownにDaily Noteを追加する。Daily Note surfaceにはestablished Dayの`YYYY-MM-DD`日付一覧を左側に表示し、日付の選択・移動はこの一覧から行う。editor見出しには独立した前日・次日ボタンを表示しない。
+- Androidのshared footerは`Task / Notes / Daily / Settings`の4 destinationとし、Dailyは選択したlogical dateの本文を編集する。選択中の`YYYY-MM-DD`がDaily Note identityであり、独立した`デイリーノート`ページタイトルは表示しない。既存の前日・次日・calendar date navigationは維持し、calendarはToday headerと同じ共有Material 3 DatePickerDialogと公式Material Symbols Rounded assetsを利用する。
 - NotesからDailyへの遷移・離脱でも既存のsafe flush boundaryを守る。
 
 ## Boundaries

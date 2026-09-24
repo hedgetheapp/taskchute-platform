@@ -1,4 +1,4 @@
-## D-137 Daily Note v0.1 - 2026-09-23
+## D-137 Daily Note v0.1 - 2026-09-24
 
 確立済みDay単位のDaily Noteを、既存Document authorityとbody-only autosave/CASへ接続する。GET/listでは作成せず、明示EnsureだけがDocumentを作成する。WebとAndroidは同じMarkdown source semanticsを使う。
 
@@ -6,9 +6,9 @@
 |---|---|---|---|---|
 | D137-IMPLEMENTATION | Shared Daily Document | `daily_primary` relation、explicit Ensure、list/load/update、owner/day boundary、exact replay / CAS | implementation `f3147e51c70ad06803cc963cea0267d7d0df0a97`; Web focused `daily-primary-documents.integration.test.ts` `3 / 3` PASS; Android `DailyDocumentHttpRepositoryTest` `3 / 3` PASS | PASS |
 | D137-MIGRATION | APP persistence | existing document rowsを保持したAPP `0034` migration | local 34-migration chain apply、`PRAGMA quick_check=ok`、`foreign_key_check=[]`; persistent nonprod 0034 applied, pending `0` | PASS |
-| D137-ANDROID | Android Daily / shared footer | Task / Notes / Daily / Settings navigation、Daily date navigation、body editor | `:app:testDebugUnitTest` PASS、`:app:compileDebugKotlin` PASS、`:app:compileDebugAndroidTestKotlin` PASS、`:app:assembleDebug` PASS。Notes AVD reached `connectedDebugAndroidTest` but returned no result and was stopped: `NOT_VERIFIED / HUNG` | PASS / RUNTIME_NOT_VERIFIED |
+| D137-ANDROID | Android Daily / shared footer | Task / Notes / Daily / Settings navigation、Daily date navigation、独立タイトルなし、Today共有Material 3 DatePickerDialog、公式Material Symbols Rounded header icons、body editor | corrective `9250ce86bb5f53588522b59b1d6fbb1b230096a0`; Android JVM `189 / 189`、compile Kotlin / instrumentation、assemble、diff-check PASS; Today shared DatePicker cancel AVD `1 / 1` PASS; Notes AVD `14 / 15`（既存`ノート一覧`検出fixture 1 failure）、install/MainActivity/crash buffer PASS; Daily-specific runtime NOT_RUN | PASS / RUNTIME_PARTIAL |
 | D137-NONPROD | Persistent nonprod safety | exact main deploy、runtime and read-only DB safety | Worker version `d6493c1a-602a-461c-a3e5-6f390d4eb4ce`; root `200`; protected API `401`; APP/AUTH pending `0 / 0`; APP `quick_check=ok`; FK empty; read-only probes `rows_written=0` | PASS |
-| D137-WEB | Authenticated Web / isolated QA | Daily dropdown、explicit ensure、body autosave/reload、date navigation | CUA helper could not start due environment kernel error; authenticated Web / isolated QA `AUTHENTICATED_DAILY_NOT_RUN`; no QA object and no existing-data mutation | NOT_RUN / SAFE_SKIP |
+| D137-WEB | Daily UI / authenticated Web | Notes dropdownのDaily、established `YYYY-MM-DD`左リスト、左リストによる日付選択、headingの前日・次日ボタンなし | `DailyNotesBoard.test.tsx` `1 / 1` PASS、`daily-primary-documents.integration.test.ts` `3 / 3` PASS、Web typecheck PASS; authenticated WebはCUA helper環境エラーのためNOT_RUN、QA objectなし、既存data mutationなし | PASS / AUTHENTICATED_NOT_RUN |
 | D137-BOUNDARY | Product / release | shared Markdown source, no production/release | Worker/API contracts extended only for approved Daily Document routes; schema migration `0034` intentional; no dependency, production `NOT_RUN`, Released `NO`, Galaxy S23 `NOT_RUN / PRODUCT_OWNER_MANUAL` | PASS / NOT_REQUIRED / NOT_RUN / NO |
 
 # Test Matrix

@@ -1,8 +1,8 @@
-### D-137 Daily Note v0.1 — 2026-09-23
+### D-137 Daily Note v0.1 — 2026-09-24
 
-**Decision: APPROVED / Implementation: f3147e51c70ad06803cc963cea0267d7d0df0a97 / Local: PASS / Persistent nonprod: PASS / Authenticated Web: NOT_RUN / Galaxy S23: NOT_RUN / Production: NOT_RUN / Released: NO**。確立済みTaskChuteDayごとの`daily_primary` Documentを追加し、GET/listでは自動作成せず、明示的なEnsureだけで作成する。Web Notes dropdownへDailyを追加し、AndroidはTask / Notes / Daily / Settingsの共有footerと日付移動付きDaily editorを追加した。
+**Decision: APPROVED / Implementation: f3147e51c70ad06803cc963cea0267d7d0df0a97 + UI corrective: 9250ce86bb5f53588522b59b1d6fbb1b230096a0 / Local: PASS / Persistent nonprod: PASS / Authenticated Web: NOT_RUN / Galaxy S23: NOT_RUN / Production: NOT_RUN / Released: NO**。Daily Document authority、explicit Ensure、Markdown autosave/CAS/retry、Web Notes dropdown、Android共有footerと日付navigationは維持。今回のUI correctiveでWebは`YYYY-MM-DD`左リスト選択に統一しeditor headingの前日・次日ボタンを除去、Androidは独立した`デイリーノート`タイトルを除去し、Todayと共有するMaterial 3 DatePickerDialogと公式Material Symbols Rounded header iconsへ統一した。
 
-APP migration `0034_daily_primary_documents.sql`をpersistent nonprodへ適用し、Worker `taskchute-web-nonprod` version `d6493c1a-602a-461c-a3e5-6f390d4eb4ce`をdeploy。root `200`、protected API `401`、migration pending `0`、APP `quick_check=ok`、FK empty、read-only probe `rows_written=0`を確認した。Web focused `3 / 3`、Android Daily repository focused `3 / 3`、Android JVM / compile / assemble / typecheck / diff-checkはPASS。Notes AVDは`NOT_VERIFIED / HUNG`、CUA接続不能のためauthenticated Web / isolated QAは`AUTHENTICATED_DAILY_NOT_RUN`、既存data mutationはなし。
+APP migration `0034_daily_primary_documents.sql`とpersistent nonprod runtime/DB safety evidence（Worker version `d6493c1a-602a-461c-a3e5-6f390d4eb4ce`、root `200`、protected API `401`、pending `0`、quick_check `ok`、FK empty、read-only `rows_written=0`）は従来証拠を維持。今回の追加 evidence はWeb Daily UI focused `1 / 1`、既存Daily integration `3 / 3`、Web typecheck、Android JVM `189 / 189`、`:app:compileDebugKotlin` / `:app:compileDebugAndroidTestKotlin` / `:app:assembleDebug` / `git diff --check` PASS、Today shared DatePicker cancel AVD `1 / 1` PASS。Notes AVDは`14 / 15` PASSで、既存の`ノート一覧`検出fixture 1件が失敗したためD-137 Notes runtimeはpartial。Daily-specific authenticated Web/runtimeは`NOT_RUN`、MainActivity/crash bufferはPASS、既存data mutationはなし。
 
 ### D-136 Android Markdown Interactive Links + Stable Tap Selection - 2026-09-23
 
