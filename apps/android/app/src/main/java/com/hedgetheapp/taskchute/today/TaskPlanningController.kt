@@ -50,8 +50,15 @@ class TaskPlanningController(
     }
 
     fun openEdit(day: TodayDay, task: TodayTask) {
-        if (!canEditDay(day) || state.saving || task.routineDerived || (!day.isCurrent && task.lifecycleState != LifecycleState.PLANNED)) return
-        val capability = when (task.lifecycleState) {
+        if (!canEditDay(day) || state.saving) return
+        val routineCapability = when {
+            !task.routineDerived -> null
+            task.lifecycleState == LifecycleState.PLANNED -> TaskEditorCapability.ROUTINE_PLANNING
+            task.lifecycleState == LifecycleState.RUNNING && day.isCurrent -> TaskEditorCapability.RUNNING_METADATA
+            else -> return
+        }
+        if (!day.isCurrent && task.lifecycleState != LifecycleState.PLANNED) return
+        val capability = routineCapability ?: when (task.lifecycleState) {
             LifecycleState.PLANNED -> TaskEditorCapability.FULL_PLANNING
             LifecycleState.RUNNING -> TaskEditorCapability.RUNNING_METADATA
             LifecycleState.COMPLETED -> TaskEditorCapability.COMPLETED_METADATA

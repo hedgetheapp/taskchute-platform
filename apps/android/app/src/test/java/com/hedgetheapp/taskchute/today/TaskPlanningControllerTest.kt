@@ -69,7 +69,13 @@ class TaskPlanningControllerTest {
         controller.openEdit(futureDay(), plannedTask(lifecycleState = LifecycleState.RUNNING))
         assertNull(controller.state.editor)
         controller.openEdit(currentDay(), plannedTask(routineDerived = true))
-        assertNull(controller.state.editor)
+        assertTrue(await { controller.state.editor != null })
+        assertEquals(TaskEditorCapability.ROUTINE_PLANNING, controller.state.editor?.capability)
+        controller.dismiss()
+        controller.openEdit(futureDay(), plannedTask(routineDerived = true))
+        assertTrue(await { controller.state.editor != null })
+        assertEquals(TaskEditorCapability.ROUTINE_PLANNING, controller.state.editor?.capability)
+        controller.dismiss()
         controller.openEdit(currentDay(), plannedTask(lifecycleState = LifecycleState.RUNNING))
         assertTrue(await { controller.state.editor != null })
         assertEquals(TaskEditorCapability.RUNNING_METADATA, controller.state.editor?.capability)
@@ -149,6 +155,19 @@ class TaskPlanningControllerTest {
         )
     }
 
+    @Test
+    fun routinePlanningAllowsOccurrenceFieldsWithoutExecutionTimes() {
+        val validation = TaskEditorValidation.validate(
+            TaskEditorDraft(title = "Routine", plannedStartText = "1300", estimateText = "25"),
+            TaskEditorCapability.ROUTINE_PLANNING,
+        )
+
+        assertEquals(780, validation.input?.plannedStartMinute)
+        assertEquals(1_500, validation.input?.estimateSeconds)
+        assertEquals(null, validation.input?.actualStartMinute)
+        assertEquals(null, validation.input?.actualEndMinute)
+        assertEquals(null, validation.errorMessage)
+    }
     @Test
     fun editPrefillsCanonicalExecutionInstantsInTheDayTimezone() {
         val task = plannedTask().copy(

@@ -35,29 +35,45 @@ export async function setEntryEstimate(db: D1Database, appUserId: string, reques
   const requestFingerprint = await fingerprint(request);
   const prior = await readOperation(db, appUserId, request.operation_id);
   if (prior) return replayOperation(prior, "SetEntryEstimate", requestFingerprint);
-  const entry = await db.prepare("SELECT lifecycle_state, routine_occurrence_id FROM entries WHERE app_user_id = ? AND id = ?")
-    .bind(appUserId, request.entry_id).first<{ lifecycle_state: string; routine_occurrence_id: string | null }>();
-  if (!entry || entry.lifecycle_state !== "planned" || entry.routine_occurrence_id !== null) return persistRejection(db, { appUserId, operationId: request.operation_id,
+  const entry = await db.prepare(`SELECT e.lifecycle_state, e.routine_occurrence_id,
+      d.logical_date, s.timezone, s.day_boundary_minutes
+    FROM entries e
+    JOIN taskchute_days d ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
+    JOIN user_settings s ON s.app_user_id = e.app_user_id
+    WHERE e.app_user_id = ? AND e.id = ?`)
+    .bind(appUserId, request.entry_id).first<{
+      lifecycle_state: string; routine_occurrence_id: string | null;
+      logical_date: string; timezone: string; day_boundary_minutes: number;
+    }>();
+  const currentLogicalDate = entry
+    ? resolveTaskChuteDay(new Date().toISOString(), {
+      timezone: entry.timezone,
+      boundaryMinutes: entry.day_boundary_minutes,
+    }).logicalDate
+    : null;
+  const lifecycleAllowed = entry?.lifecycle_state === "planned"
+    || (entry?.lifecycle_state === "running" && entry.logical_date === currentLogicalDate);
+  if (!entry || !lifecycleAllowed || entry.routine_occurrence_id !== null) return persistRejection(db, { appUserId, operationId: request.operation_id,
     commandType: "SetEntryEstimate", requestFingerprint, outcomeKind: "domain_rejection",
-    result: { code: entry ? "resource_conflict" : "resource_not_found", message: "Only an available planned Entry estimate can be edited" } });
+    result: { code: entry ? "resource_conflict" : "resource_not_found", message: "Only a planned or current-Day running Entry estimate can be edited" } });
   const result = { entry_id: request.entry_id, estimate_seconds: request.estimate_seconds };
   const now = new Date().toISOString();
   try {
     const [update] = await db.batch([
       db.prepare(`UPDATE entries SET estimate_seconds = ? WHERE app_user_id = ? AND id = ?
-        AND lifecycle_state = 'planned' AND routine_occurrence_id IS NULL`)
+        AND lifecycle_state IN ('planned', 'running') AND routine_occurrence_id IS NULL`)
         .bind(request.estimate_seconds, appUserId, request.entry_id),
       db.prepare(`INSERT INTO operations (app_user_id, operation_id, command_type, request_fingerprint_version,
         request_fingerprint, outcome_kind, result_json, created_at)
         SELECT ?, ?, 'SetEntryEstimate', ?, ?, 'success', ?, ?
-        WHERE EXISTS (SELECT 1 FROM entries WHERE app_user_id = ? AND id = ? AND lifecycle_state = 'planned'
+        WHERE EXISTS (SELECT 1 FROM entries WHERE app_user_id = ? AND id = ? AND lifecycle_state IN ('planned', 'running')
           AND routine_occurrence_id IS NULL AND estimate_seconds IS ?)`)
         .bind(appUserId, request.operation_id, REQUEST_FINGERPRINT_VERSION, requestFingerprint, JSON.stringify(result), now,
           appUserId, request.entry_id, request.estimate_seconds),
     ]);
     if (update.meta.changes === 0) return persistRejection(db, { appUserId, operationId: request.operation_id,
       commandType: "SetEntryEstimate", requestFingerprint, outcomeKind: "domain_rejection",
-      result: { code: "resource_conflict", message: "Only a planned Entry estimate can be edited" } });
+      result: { code: "resource_conflict", message: "Only a planned or current-Day running Entry estimate can be edited" } });
     return result;
   } catch {
     const committed = await readOperation(db, appUserId, request.operation_id);

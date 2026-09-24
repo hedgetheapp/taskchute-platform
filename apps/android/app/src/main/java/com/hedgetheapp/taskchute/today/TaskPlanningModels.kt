@@ -11,6 +11,7 @@ enum class TaskEditorMode {
 
 enum class TaskEditorCapability {
     FULL_PLANNING,
+    ROUTINE_PLANNING,
     RUNNING_METADATA,
     COMPLETED_METADATA,
 }

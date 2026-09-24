@@ -105,6 +105,35 @@ describe.sequential("Dogfood Day B1", () => {
       section_id: null, expected_placement_revision: projection.placement_revision })).rejects.toMatchObject({ code: "resource_conflict" });
   });
 
+  it("allows estimate edits for a current-Day running ordinary Entry and rejects completed", async () => {
+    const runningTaskId = uuidv7();
+    const runningEntryId = uuidv7();
+    await env.APP_DB.batch([
+      env.APP_DB.prepare("INSERT INTO tasks (id, app_user_id, title, created_at) VALUES (?, ?, 'D138 running', ?)")
+        .bind(runningTaskId, userId, new Date().toISOString()),
+      env.APP_DB.prepare("INSERT INTO entries (id, app_user_id, task_id, taskchute_day_id, section_id, position, lifecycle_state, estimate_seconds, planned_start_minute, created_at) VALUES (?, ?, ?, ?, ?, 90, 'planned', 600, NULL, ?)")
+        .bind(runningEntryId, userId, runningTaskId, dayId, sectionId, new Date().toISOString()),
+    ]);
+    const before = (await loadCurrentTaskChuteDay(env.APP_DB, userId)).placement_revision;
+    await env.APP_DB.prepare("UPDATE entries SET lifecycle_state = 'running' WHERE id = ?").bind(runningEntryId).run();
+    expect(await setEntryEstimate(env.APP_DB, userId, {
+      operation_id: uuidv7(), entry_id: runningEntryId, estimate_seconds: 1800,
+    })).toEqual({ entry_id: runningEntryId, estimate_seconds: 1800 });
+    expect((await loadCurrentTaskChuteDay(env.APP_DB, userId)).placement_revision).toBe(before);
+
+    const completedTaskId = uuidv7();
+    const completedEntryId = uuidv7();
+    await env.APP_DB.batch([
+      env.APP_DB.prepare("INSERT INTO tasks (id, app_user_id, title, created_at) VALUES (?, ?, 'D138 completed', ?)")
+        .bind(completedTaskId, userId, new Date().toISOString()),
+      env.APP_DB.prepare("INSERT INTO entries (id, app_user_id, task_id, taskchute_day_id, section_id, position, lifecycle_state, estimate_seconds, planned_start_minute, created_at) VALUES (?, ?, ?, ?, ?, 91, 'completed', 600, NULL, ?)")
+        .bind(completedEntryId, userId, completedTaskId, dayId, sectionId, new Date().toISOString()),
+    ]);
+    await expect(setEntryEstimate(env.APP_DB, userId, {
+      operation_id: uuidv7(), entry_id: completedEntryId, estimate_seconds: 1200,
+    })).rejects.toMatchObject({ code: "resource_conflict" });
+  });
+
   it("keeps foreign keys valid and nullable Section FK authoritative", async () => {
     expect((await env.APP_DB.prepare("PRAGMA foreign_key_check").all()).results).toEqual([]);
     await expect(env.APP_DB.prepare("UPDATE entries SET section_id = ? WHERE id = ?").bind(uuidv7(), entryIds[1]).run()).rejects.toThrow();

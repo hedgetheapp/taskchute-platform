@@ -8,6 +8,11 @@ import java.time.ZonedDateTime
 /** Mirrors the Web Start Forecast cursor: planned starts are not barriers. */
 internal fun forecastForTask(day: TodayDay, task: TodayTask, now: Instant = Instant.now()): Pair<Int?, Int?> {
     val zone = day.establishmentTimezone?.let { runCatching { ZoneId.of(it) }.getOrNull() } ?: return null to null
+    if (task.lifecycleState == LifecycleState.COMPLETED) {
+        val actualStart = task.firstStartedAt?.let { runCatching { Instant.parse(it) }.getOrNull() }
+        val actualEnd = task.lastEndedAt?.let { runCatching { Instant.parse(it) }.getOrNull() }
+        return actualStart?.let { logicalMinute(it, day, zone) } to actualEnd?.let { logicalMinute(it, day, zone) }
+    }
     if (task.lifecycleState == LifecycleState.RUNNING) {
         val actualStart = task.activeStartedAt ?: task.firstStartedAt ?: return null to null
         val start = runCatching { Instant.parse(actualStart) }.getOrNull() ?: return null to null

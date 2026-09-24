@@ -201,6 +201,43 @@ class TaskPlanningHttpRepositoryTest {
         assertTrue(requests[1].second.endsWith("/planned-start"))
         assertTrue(requests[1].third.orEmpty().contains("\"expected_placement_revision\":6"))
     }
+    @Test
+    fun routinePlanningEditUsesOccurrenceSectionAndEstimateCommands() {
+        val requests = mutableListOf<Triple<String, String, String?>>()
+        val task = TodayTask(
+            id = "entry-1", title = "Routine task", lifecycleState = LifecycleState.PLANNED,
+            project = null, mode = null, estimateSeconds = 600, plannedStartMinute = 540,
+            executionId = null, activeStartedAt = null, routineDerived = true, taskId = "task-1",
+        )
+        val day = currentDay().copy(
+            sections = listOf(
+                TodaySection("section-1", "Morning", 480, 720, listOf(task)),
+                TodaySection("section-2", "Afternoon", 720, 1_080, emptyList()),
+            ),
+        )
+        val repository = TaskPlanningHttpRepository { method, path, body ->
+            requests += Triple(method, path, body)
+            if (path.endsWith("/routine-section-plan")) TodayHttpResponse(200, "{\"placement_revision\":6}")
+            else TodayHttpResponse(204, null)
+        }
+
+        val result = repository.save(
+            TaskEditorState(
+                TaskEditorMode.EDIT, day, task,
+                TaskEditorDraft(title = task.title, sectionId = "section-2", plannedStartText = "1300", estimateText = "25"),
+                TaskEditorCapability.ROUTINE_PLANNING,
+            ),
+            NormalizedTaskInput(task.title, null, null, "section-2", 780, 1_500),
+        )
+
+        assertEquals(PlanningSaveResult.SuccessWithRevision(6), result)
+        assertEquals(2, requests.size)
+        assertTrue(requests[0].second.endsWith("/routine-section-plan"))
+        assertTrue(requests[0].third.orEmpty().contains("\"action\":\"occurrence\""))
+        assertTrue(requests[0].third.orEmpty().contains("\"expected_placement_revision\":5"))
+        assertTrue(requests[1].second.endsWith("/routine-estimate"))
+        assertTrue(requests[1].third.orEmpty().contains("\"estimate_seconds\":1500"))
+    }
 @Test
     fun runningProjectSaveUsesOnlyTaskMetadataEndpoint() {
         val requests = mutableListOf<Triple<String, String, String?>>()
@@ -209,7 +246,7 @@ class TaskPlanningHttpRepositoryTest {
             TaskEditorMode.EDIT,
             currentDay(),
             task,
-            TaskEditorDraft(title = task.title, projectId = "project-new", modeId = "mode-old", plannedStartText = "9:00", estimateText = "30"),
+            TaskEditorDraft(title = task.title, projectId = "project-new", modeId = "mode-old", plannedStartText = "9:00", estimateText = "10"),
             TaskEditorCapability.RUNNING_METADATA,
         )
         val repository = TaskPlanningHttpRepository { method, path, body ->
@@ -217,7 +254,7 @@ class TaskPlanningHttpRepositoryTest {
             TodayHttpResponse(204, null)
         }
 
-        assertEquals(PlanningSaveResult.Success, repository.save(editor, editor.draft.let { NormalizedTaskInput(it.title, it.projectId, it.modeId, it.sectionId, 9 * 60, 30 * 60) }))
+        assertEquals(PlanningSaveResult.Success, repository.save(editor, editor.draft.let { NormalizedTaskInput(it.title, it.projectId, it.modeId, it.sectionId, 9 * 60, 10 * 60) }))
         assertEquals(1, requests.size)
         assertEquals("/api/v1/entries/entry-1/task-metadata", requests.single().second)
         assertTrue(requests.single().third!!.contains("\"title\":\"Running task\""))
@@ -232,7 +269,7 @@ class TaskPlanningHttpRepositoryTest {
             TaskEditorMode.EDIT,
             currentDay(),
             task,
-            TaskEditorDraft(title = task.title, projectId = "project-old", modeId = "mode-new", plannedStartText = "9:00", estimateText = "30"),
+            TaskEditorDraft(title = task.title, projectId = "project-old", modeId = "mode-new", plannedStartText = "9:00", estimateText = "10"),
             TaskEditorCapability.RUNNING_METADATA,
         )
         val repository = TaskPlanningHttpRepository { method, path, body ->
@@ -240,7 +277,7 @@ class TaskPlanningHttpRepositoryTest {
             TodayHttpResponse(204, null)
         }
 
-        assertEquals(PlanningSaveResult.Success, repository.save(editor, NormalizedTaskInput(task.title, "project-old", "mode-new", null, 9 * 60, 30 * 60)))
+        assertEquals(PlanningSaveResult.Success, repository.save(editor, NormalizedTaskInput(task.title, "project-old", "mode-new", null, 9 * 60, 10 * 60)))
         assertEquals(1, requests.size)
         assertEquals("/api/v1/entries/entry-1/mode", requests.single().second)
         assertTrue(requests.single().third!!.contains("\"mode_id\":\"mode-new\""))

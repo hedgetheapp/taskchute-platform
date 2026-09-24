@@ -1,7 +1,8 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { startEntry } from "../worker/application/entry-lifecycle";
-import { isMoveEntryRequest, moveEntry } from "../worker/application/entry-planning";
+import { addTaskToDay } from "../worker/application/add-task-to-day";
+import { isMoveEntryRequest, moveEntry, setEntryEstimate } from "../worker/application/entry-planning";
 import { loadCurrentTaskChuteDay } from "../worker/application/load-current-day";
 import { setEntryPlannedStart } from "../worker/application/planned-start";
 import { reorderEntries } from "../worker/application/reorder-entries";
@@ -249,6 +250,38 @@ describe.sequential("Dogfood Day B2 planned start", () => {
       .bind(fixture.userId, request.operation_id).first<number>("count")).toBe(0);
     expect(await env.APP_DB.prepare("SELECT outcome_kind FROM operations WHERE app_user_id = ? AND operation_id = ?")
       .bind(fixture.userId, request.operation_id).first()).toEqual({ outcome_kind: "revision_conflict" });
+  });
+
+  it("allows AddTaskToDay -> estimate -> planned-start exactly at a completed execution end minute", async () => {
+    const fixture = await seedTimedDay();
+    const completed = await addEntry(fixture.userId, fixture.dayId, fixture.sectionIds[1]!, 1, "completed", 840);
+    const executionId = uuidv7();
+    await env.APP_DB.prepare(`INSERT INTO executions (id, app_user_id, entry_id, started_at, ended_at, created_at)
+      VALUES (?, ?, ?, '2026-08-28T14:00:00.000Z', '2026-08-28T14:34:00.000Z', ?)`)
+      .bind(executionId, fixture.userId, completed, createdAt).run();
+
+    const taskId = uuidv7();
+    const planned = uuidv7();
+    const created = await addTaskToDay(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), task_id: taskId, entry_id: planned, project_id: null,
+      title: "B2 exact boundary", taskchute_day_id: fixture.dayId, section_id: fixture.sectionIds[1],
+      expected_placement_revision: 0,
+    }, createdAt);
+    expect(created).toMatchObject({ entry_id: planned, section_id: fixture.sectionIds[1], placement_revision: 1 });
+
+    expect(await setEntryEstimate(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), entry_id: planned, estimate_seconds: 1200,
+    })).toMatchObject({ entry_id: planned, estimate_seconds: 1200 });
+
+    const result = await setEntryPlannedStart(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), entry_id: planned, taskchute_day_id: fixture.dayId,
+      planned_start_minute: 14 * 60 + 34, expected_placement_revision: 1,
+    });
+    expect(result).toMatchObject({ entry_id: planned, section_id: fixture.sectionIds[1], planned_start_minute: 874, placement_revision: 2 });
+    expect(await env.APP_DB.prepare("SELECT lifecycle_state, planned_start_minute, section_id FROM entries WHERE id = ?")
+      .bind(completed).first()).toEqual({ lifecycle_state: "completed", planned_start_minute: 840, section_id: fixture.sectionIds[1] });
+    expect(await env.APP_DB.prepare("SELECT started_at, ended_at FROM executions WHERE id = ?")
+      .bind(executionId).first()).toEqual({ started_at: "2026-08-28T14:00:00.000Z", ended_at: "2026-08-28T14:34:00.000Z" });
   });
 
   it("uses extended wall-clock boundaries, derives Section placement, clears, and replays exactly once", async () => {

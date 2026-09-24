@@ -26,6 +26,15 @@ class TodayForecastTest {
     }
 
     @Test
+    fun completedProjectionUsesActualStartAndEndInEstablishmentTimezone() {
+        val completed = task("completed", LifecycleState.COMPLETED, estimateSeconds = 1_200, plannedStartMinute = 480).copy(
+            firstStartedAt = "2026-09-14T04:58:00Z",
+            lastEndedAt = "2026-09-14T05:34:00Z",
+        )
+
+        assertEquals(838 to 874, forecastForTask(day(listOf(completed)).copy(establishmentTimezone = "Asia/Tokyo"), completed, Instant.parse("2026-09-14T12:00:00Z")))
+    }
+    @Test
     fun currentRunningRemainingEstimateIsTheForecastCursor() {
         val running = task("running", LifecycleState.RUNNING, estimateSeconds = 1_800, plannedStartMinute = 540)
         val first = task("first", LifecycleState.PLANNED, estimateSeconds = 1_800, plannedStartMinute = 1_380)

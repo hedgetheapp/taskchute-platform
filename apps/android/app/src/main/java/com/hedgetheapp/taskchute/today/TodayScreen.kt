@@ -602,7 +602,9 @@ private fun TodayContent(
                         controller = controller,
                         showExecutionAction = day.isCurrent,
                         canEdit = canPlanDay(day) && (day.isCurrent || task.lifecycleState == LifecycleState.PLANNED)
-                            && !task.routineDerived && planningController != null,
+                            && (!task.routineDerived || task.lifecycleState == LifecycleState.PLANNED ||
+                                (task.lifecycleState == LifecycleState.RUNNING && day.isCurrent))
+                            && planningController != null,
                         onEdit = { planningController?.openEdit(day, task) },
                         canDuplicate = canPlanDay(day) && task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived
                             && directManipulationController != null && directManipulationController.state.pendingEntryIds.isEmpty()
@@ -696,7 +698,9 @@ private fun TodayContent(
                         controller = controller,
                         showExecutionAction = day.isCurrent,
                         canEdit = canPlanDay(day) && (day.isCurrent || task.lifecycleState == LifecycleState.PLANNED)
-                            && !task.routineDerived && planningController != null,
+                            && (!task.routineDerived || task.lifecycleState == LifecycleState.PLANNED ||
+                                (task.lifecycleState == LifecycleState.RUNNING && day.isCurrent))
+                            && planningController != null,
                         onEdit = { planningController?.openEdit(day, task) },
                         canDuplicate = canPlanDay(day) && task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived
                             && directManipulationController != null && directManipulationController.state.pendingEntryIds.isEmpty()
@@ -1325,7 +1329,11 @@ private fun TaskProjectionSlot(task: TodayTask, day: TodayDay? = null) {
     Box(
         modifier = Modifier.size(width = 48.dp, height = 84.dp)
             .semantics {
-                contentDescription = "開始見込み時刻: " + projectionStart + "、終了見込み時刻: " + projectionEnd
+                contentDescription = if (task.lifecycleState == LifecycleState.COMPLETED) {
+                    "実績開始時刻: " + projectionStart + "、実績終了時刻: " + projectionEnd
+                } else {
+                    "開始見込み時刻: " + projectionStart + "、終了見込み時刻: " + projectionEnd
+                }
             },
     ) {
         Text(
@@ -1753,7 +1761,11 @@ private fun TaskEditorForm(controller: TaskPlanningController, state: TaskPlanni
     val editor = state.editor ?: return
     val references = state.references
     val draft = editor.draft
-    val lifecycleMetadataOnly = editor.capability != TaskEditorCapability.FULL_PLANNING
+    val lifecycleMetadataOnly = editor.capability == TaskEditorCapability.RUNNING_METADATA ||
+        editor.capability == TaskEditorCapability.COMPLETED_METADATA
+    val planningFieldsEditable = editor.capability == TaskEditorCapability.FULL_PLANNING ||
+        editor.capability == TaskEditorCapability.ROUTINE_PLANNING
+    val routinePlanning = editor.capability == TaskEditorCapability.ROUTINE_PLANNING
     val titleEditable = editor.mode == TaskEditorMode.CREATE || editor.capability == TaskEditorCapability.FULL_PLANNING
     var projectExpanded by remember(editor) { mutableStateOf(false) }
     var modeExpanded by remember(editor) { mutableStateOf(false) }
@@ -1798,7 +1810,7 @@ private fun TaskEditorForm(controller: TaskPlanningController, state: TaskPlanni
             onExpandedChange = { projectExpanded = it },
             options = listOf(null to "なし") + (references?.projects?.map { it.id to it.title } ?: emptyList()),
             onSelected = { controller.updateDraft(draft.copy(projectId = it)); projectExpanded = false },
-            enabled = references != null && !state.loadingReferences && !state.saving,
+            enabled = references != null && !state.loadingReferences && !state.saving && !routinePlanning,
         )
         ReferencePicker(
             label = "Mode",
@@ -1807,9 +1819,9 @@ private fun TaskEditorForm(controller: TaskPlanningController, state: TaskPlanni
             onExpandedChange = { modeExpanded = it },
             options = listOf(null to "なし") + (references?.modes?.map { it.id to it.title } ?: emptyList()),
             onSelected = { controller.updateDraft(draft.copy(modeId = it)); modeExpanded = false },
-            enabled = references != null && !state.loadingReferences && !state.saving,
+            enabled = references != null && !state.loadingReferences && !state.saving && !routinePlanning,
         )
-        if (!lifecycleMetadataOnly) {
+        if (planningFieldsEditable) {
         ReferencePicker(
             label = "Section",
             value = selectedSection?.title ?: "なし",
@@ -1835,6 +1847,8 @@ private fun TaskEditorForm(controller: TaskPlanningController, state: TaskPlanni
             enabled = !state.saving,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         )
+        }
+        if (planningFieldsEditable || editor.capability == TaskEditorCapability.RUNNING_METADATA) {
         CompactFigmaTextField(
             value = draft.estimateText,
             onValueChange = { controller.updateDraft(draft.copy(estimateText = it)) },
@@ -1844,7 +1858,7 @@ private fun TaskEditorForm(controller: TaskPlanningController, state: TaskPlanni
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         )
         }
-        if (editor.day.isCurrent) {
+        if (editor.day.isCurrent && !routinePlanning) {
             CompactFigmaTextField(
                 value = draft.actualStartText,
                 onValueChange = { controller.updateDraft(draft.copy(actualStartText = it)) },

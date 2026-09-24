@@ -298,7 +298,19 @@ describe.sequential("Routine R2A current-Day overrides", () => {
     });
   });
 
-  it("rejects invalid cross-Day propagation and non-current or protected scopes without writes", async () => {
+  it("allows occurrence-only estimate edits for a current-Day running Routine Entry", async () => {
+    const fixture = await seedRoutine();
+    await env.APP_DB.prepare("UPDATE entries SET lifecycle_state = 'running' WHERE id = ?").bind(fixture.entryId).run();
+    expect(await setRoutineEstimate(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), entry_id: fixture.entryId, taskchute_day_id: fixture.dayId,
+      action: "occurrence", estimate_seconds: 1200,
+    }, now)).toMatchObject({ entry_id: fixture.entryId, estimate_seconds: 1200, estimate_override_present: true });
+    expect(await env.APP_DB.prepare("SELECT e.estimate_seconds, ro.estimate_override_seconds, rd.default_estimate_seconds FROM entries e JOIN routine_occurrences ro ON ro.id = e.routine_occurrence_id JOIN routine_definitions rd ON rd.id = ro.routine_definition_id WHERE e.id = ?").bind(fixture.entryId).first()).toEqual({
+      estimate_seconds: 1200, estimate_override_seconds: 1200, default_estimate_seconds: 900,
+    });
+  });
+
+  it("rejects invalid definition propagation while allowing established future occurrence estimate and protecting completed entries", async () => {
     const fixture = await seedRoutine();
     const futureDay = await insertDay(fixture.userId, fixture.versionId, fixture.sections, "2026-08-30");
     const future = await insertOccurrence({ userId: fixture.userId, definitionId: fixture.definitionId,
@@ -320,18 +332,20 @@ describe.sequential("Routine R2A current-Day overrides", () => {
     expect(await env.APP_DB.prepare("SELECT placement_revision FROM taskchute_days WHERE id IN (?, ?) ORDER BY id")
       .bind(fixture.dayId, futureDay).all()).toMatchObject({ results: [{ placement_revision: 0 }, { placement_revision: 0 }] });
 
-    await expect(setRoutineEstimate(env.APP_DB, fixture.userId, {
+    expect(await setRoutineEstimate(env.APP_DB, fixture.userId, {
       operation_id: uuidv7(), entry_id: future.entryId, taskchute_day_id: futureDay,
       action: "occurrence", estimate_seconds: 600,
-    }, now)).rejects.toMatchObject({ code: "resource_conflict" });
+    }, now)).toMatchObject({ entry_id: future.entryId, estimate_seconds: 600, estimate_override_present: true });
+    expect(await env.APP_DB.prepare("SELECT estimate_seconds FROM entries WHERE id = ?")
+      .bind(future.entryId).first()).toEqual({ estimate_seconds: 600 });
     await env.APP_DB.prepare("UPDATE entries SET lifecycle_state = 'completed' WHERE id = ?").bind(fixture.entryId).run();
     await expect(setRoutineEstimate(env.APP_DB, fixture.userId, {
       operation_id: uuidv7(), entry_id: fixture.entryId, taskchute_day_id: fixture.dayId,
       action: "occurrence", estimate_seconds: 600,
     }, now)).rejects.toMatchObject({ code: "resource_conflict" });
-    expect(await env.APP_DB.prepare("SELECT estimate_seconds FROM entries WHERE id IN (?, ?) ORDER BY id")
-      .bind(fixture.entryId, future.entryId).all()).toMatchObject({
-      results: [{ estimate_seconds: 900 }, { estimate_seconds: 900 }],
-    });
+    expect(await env.APP_DB.prepare("SELECT estimate_seconds FROM entries WHERE id = ?")
+      .bind(fixture.entryId).first()).toEqual({ estimate_seconds: 900 });
+    expect(await env.APP_DB.prepare("SELECT estimate_seconds FROM entries WHERE id = ?")
+      .bind(future.entryId).first()).toEqual({ estimate_seconds: 600 });
   });
 });

@@ -181,9 +181,21 @@ async function reject<T>(
   });
 }
 
-function isEditableCurrentRoutine(row: RoutineEditRow | null, currentDay: CurrentDayRow | null, requestedDayId: string): row is RoutineEditRow {
+function isCurrentPlannedRoutine(row: RoutineEditRow | null, currentDay: CurrentDayRow | null, requestedDayId: string): row is RoutineEditRow {
   return row !== null && currentDay !== null && row.taskchute_day_id === requestedDayId
     && row.taskchute_day_id === currentDay.id && row.lifecycle_state === "planned";
+}
+
+function isEditableRoutineOccurrence(
+  row: RoutineEditRow | null,
+  currentDay: CurrentDayRow | null,
+  requestedDayId: string,
+  kind: "section" | "estimate",
+): row is RoutineEditRow {
+  if (row === null || currentDay === null || row.taskchute_day_id !== requestedDayId) return false;
+  if (kind === "section") return row.lifecycle_state === "planned" && row.logical_date >= currentDay.logical_date;
+  return (row.lifecycle_state === "planned" && row.logical_date >= currentDay.logical_date)
+    || (row.lifecycle_state === "running" && row.logical_date === currentDay.logical_date);
 }
 
 /**
@@ -204,7 +216,7 @@ export async function setRoutineMode(
     readCurrentDay(db, appUserId, nowInstant),
     readRoutineEditRow(db, appUserId, request.entry_id),
   ]);
-  if (!isEditableCurrentRoutine(row, currentDay, request.taskchute_day_id)) {
+  if (!isCurrentPlannedRoutine(row, currentDay, request.taskchute_day_id)) {
     return reject(db, appUserId, request.operation_id, "SetRoutineMode", requestFingerprint,
       "Only a current-Day planned Routine Entry Mode can be edited");
   }
@@ -401,11 +413,14 @@ export async function setRoutineEstimate(
     readCurrentDay(db, appUserId, nowInstant),
     readRoutineEditRow(db, appUserId, request.entry_id),
   ]);
-  if (!isEditableCurrentRoutine(row, currentDay, request.taskchute_day_id)) {
+  const editableEstimate = request.action === "occurrence"
+    ? isEditableRoutineOccurrence(row, currentDay, request.taskchute_day_id, "estimate")
+    : isCurrentPlannedRoutine(row, currentDay, request.taskchute_day_id);
+  if (!row || !currentDay || !editableEstimate) {
     return reject(db, appUserId, request.operation_id, "SetRoutineEstimate", requestFingerprint,
-      "Only a current-Day planned Routine Entry estimate can be edited");
+      "Only an established current/future planned or current-Day running Routine Entry estimate can be edited");
   }
-  const activeDay = currentDay!;
+  const activeDay = currentDay;
   if (request.action === "definition" && row.defaults_revision !== request.expected_defaults_revision) {
     return reject(db, appUserId, request.operation_id, "SetRoutineEstimate", requestFingerprint,
       "The Routine defaults revision is stale", true);
@@ -422,13 +437,16 @@ export async function setRoutineEstimate(
   const assertionId = `routine-estimate:${request.operation_id}`;
   const now = new Date().toISOString();
   try {
+    const guardLifecycle = request.action === "occurrence"
+      ? "e.lifecycle_state IN ('planned', 'running')"
+      : "e.lifecycle_state = 'planned'";
     const statements: D1PreparedStatement[] = [
       db.prepare(`INSERT INTO routine_command_guards (app_user_id, operation_id, command_type)
         SELECT ?, ?, 'SetRoutineEstimate' WHERE EXISTS (
           SELECT 1 FROM entries e
           JOIN routine_occurrences ro ON ro.app_user_id = e.app_user_id AND ro.id = e.routine_occurrence_id
           JOIN routine_definitions rd ON rd.app_user_id = ro.app_user_id AND rd.id = ro.routine_definition_id
-          WHERE e.app_user_id = ? AND e.id = ? AND e.taskchute_day_id = ? AND e.lifecycle_state = 'planned'
+          WHERE e.app_user_id = ? AND e.id = ? AND e.taskchute_day_id = ? AND ${guardLifecycle}
             AND ro.id = ? AND rd.id = ? AND rd.defaults_revision = ?
         )`).bind(appUserId, request.operation_id, appUserId, row.entry_id, row.taskchute_day_id,
           row.routine_occurrence_id, row.routine_definition_id, row.defaults_revision),
@@ -461,7 +479,7 @@ export async function setRoutineEstimate(
           WHERE app_user_id = ? AND id = ? AND EXISTS (
             SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
           .bind(targetEstimate, appUserId, row.routine_occurrence_id, appUserId, request.operation_id),
-        db.prepare(`UPDATE entries SET estimate_seconds = ? WHERE app_user_id = ? AND id = ? AND lifecycle_state = 'planned'
+        db.prepare(`UPDATE entries SET estimate_seconds = ? WHERE app_user_id = ? AND id = ? AND lifecycle_state IN ('planned', 'running')
           AND EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
           .bind(targetEstimate, appUserId, row.entry_id, appUserId, request.operation_id),
       );
@@ -481,12 +499,15 @@ export async function setRoutineEstimate(
       );
     }
 
+    const assertionLifecycle = request.action === "occurrence"
+      ? "e.lifecycle_state IN ('planned', 'running')"
+      : "e.lifecycle_state = 'planned'";
     statements.push(
       db.prepare(`INSERT INTO transaction_assertions (app_user_id, id, ok) SELECT ?, ?, CASE WHEN
         EXISTS (SELECT 1 FROM entries e JOIN routine_occurrences ro
           ON ro.app_user_id = e.app_user_id AND ro.id = e.routine_occurrence_id
           JOIN routine_definitions rd ON rd.app_user_id = ro.app_user_id AND rd.id = ro.routine_definition_id
-          WHERE e.app_user_id = ? AND e.id = ? AND e.lifecycle_state = 'planned'
+          WHERE e.app_user_id = ? AND e.id = ? AND ${assertionLifecycle}
             AND e.estimate_seconds IS ? AND ro.estimate_override_present = ?
             AND ro.estimate_override_seconds IS ? AND rd.defaults_revision = ?)
         THEN 1 ELSE 0 END WHERE EXISTS (
@@ -653,11 +674,14 @@ export async function setRoutineSectionPlan(
     readCurrentDay(db, appUserId, nowInstant),
     readRoutineEditRow(db, appUserId, request.entry_id),
   ]);
-  if (!isEditableCurrentRoutine(row, currentDay, request.taskchute_day_id)) {
+  const editableSection = request.action === "occurrence"
+    ? isEditableRoutineOccurrence(row, currentDay, request.taskchute_day_id, "section")
+    : isCurrentPlannedRoutine(row, currentDay, request.taskchute_day_id);
+  if (!row || !currentDay || !editableSection) {
     return reject(db, appUserId, request.operation_id, "SetRoutineSectionPlan", requestFingerprint,
-      "Only a current-Day planned Routine Entry placement can be edited");
+      "Only an established current/future planned Routine Entry placement can be edited");
   }
-  const activeDay = currentDay!;
+  const activeDay = currentDay;
   if (row.placement_revision !== request.expected_placement_revision) {
     return reject(db, appUserId, request.operation_id, "SetRoutineSectionPlan", requestFingerprint,
       "The placement revision is stale", true);
@@ -668,6 +692,16 @@ export async function setRoutineSectionPlan(
   }
   const targetSection = request.action === "reset" ? row.default_section_id : request.section_id;
   const targetPlannedStart = request.action === "reset" ? row.default_planned_start_minute : request.planned_start_minute;
+  if (activeDay.id === row.taskchute_day_id && targetSection !== null && targetSection !== row.section_id) {
+    const targetContext = await db.prepare(`SELECT actual_end_instant FROM taskchute_day_section_contexts
+      WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id = ?`)
+      .bind(appUserId, row.taskchute_day_id, targetSection)
+      .first<{ actual_end_instant: string | null }>();
+    if (targetContext?.actual_end_instant && Date.parse(targetContext.actual_end_instant) <= Date.parse(nowInstant)) {
+      return reject(db, appUserId, request.operation_id, "SetRoutineSectionPlan", requestFingerprint,
+        "The destination Section has already ended for the current TaskChuteDay");
+    }
+  }
   const plans = await buildSectionPlans(db, appUserId, row, activeDay.logical_date, request.action,
     targetSection, targetPlannedStart, request.action === "reset" ? undefined : request.placement);
   if (!plans) {
