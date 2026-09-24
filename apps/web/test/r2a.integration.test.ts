@@ -5,7 +5,7 @@ import { loadCurrentTaskChuteDay } from "../worker/application/load-current-day"
 import { convertEntryToRoutine } from "../worker/application/routine";
 import { setRoutineEstimate, setRoutineSectionPlan } from "../worker/application/routine-planning";
 
-const now = "2026-08-29T12:00:00.000Z";
+const now = "2026-08-29T08:00:00.000Z";
 
 async function seedRoutine() {
   const userId = uuidv7();
