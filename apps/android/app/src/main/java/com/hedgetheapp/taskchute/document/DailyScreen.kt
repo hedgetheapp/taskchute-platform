@@ -1,6 +1,5 @@
 package com.hedgetheapp.taskchute.document
 
-import android.app.DatePickerDialog
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -16,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -28,7 +28,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -36,10 +36,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hedgetheapp.taskchute.ui.AndroidDestination
 import com.hedgetheapp.taskchute.ui.AndroidNavigationBar
-import com.hedgetheapp.taskchute.ui.ChromeIcon
+import com.hedgetheapp.taskchute.ui.TaskChuteDatePickerDialog
 import com.hedgetheapp.taskchute.ui.TaskChuteColors
-import com.hedgetheapp.taskchute.ui.TaskChuteIcons
-import java.time.LocalDate
+import com.hedgetheapp.taskchute.R
 
 @Composable
 fun DailyScreen(
@@ -49,7 +48,7 @@ fun DailyScreen(
     onNavigateSettings: () -> Unit,
 ) {
     val state = controller.state
-    val context = LocalContext.current
+    var datePickerVisible by remember { mutableStateOf(false) }
     var navigationRequested by remember { mutableStateOf<(() -> Unit)?>(null) }
 
     fun leave(action: () -> Unit) {
@@ -73,6 +72,16 @@ fun DailyScreen(
             dismissButton = { androidx.compose.material3.TextButton(onClick = { navigationRequested = null }) { Text("キャンセル") } },
         )
     }
+    if (datePickerVisible && state.selectedDate != null) {
+        TaskChuteDatePickerDialog(
+            initialLogicalDate = state.selectedDate,
+            onDismissRequest = { datePickerVisible = false },
+            onConfirm = {
+                datePickerVisible = false
+                controller.selectDate(it)
+            },
+        )
+    }
 
     Scaffold(
         containerColor = TaskChuteColors.NotesBackground,
@@ -90,10 +99,9 @@ fun DailyScreen(
             Modifier.fillMaxSize().padding(padding).imePadding().padding(horizontal = 20.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("デイリーノート", color = TaskChuteColors.PrimaryText, fontSize = 24.sp, fontWeight = FontWeight.Bold)
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
                 IconButton(onClick = controller::previousDate, enabled = state.selectedDate != null, modifier = Modifier.semantics { contentDescription = "前の日" }) {
-                    ChromeIcon(TaskChuteIcons.ChevronLeft, "前の日")
+                    Icon(painterResource(R.drawable.today_header_chevron_left), "前の日")
                 }
                 Spacer(Modifier.width(12.dp))
                 Text(
@@ -105,16 +113,15 @@ fun DailyScreen(
                 )
                 Spacer(Modifier.width(12.dp))
                 IconButton(onClick = controller::nextDate, enabled = state.selectedDate != null, modifier = Modifier.semantics { contentDescription = "次の日" }) {
-                    ChromeIcon(TaskChuteIcons.ChevronRight, "次の日")
+                    Icon(painterResource(R.drawable.today_header_chevron_right), "次の日")
                 }
                 IconButton(
                     onClick = {
-                        val date = state.selectedDate?.let { runCatching { LocalDate.parse(it) }.getOrNull() } ?: return@IconButton
-                        DatePickerDialog(context, { _, year, month, day -> controller.selectDate(LocalDate.of(year, month + 1, day).toString()) }, date.year, date.monthValue - 1, date.dayOfMonth).show()
+                        datePickerVisible = true
                     },
                     enabled = state.selectedDate != null,
                     modifier = Modifier.semantics { contentDescription = "日付を選択" },
-                ) { ChromeIcon(TaskChuteIcons.Calendar, "日付を選択") }
+                ) { Icon(painterResource(R.drawable.today_header_calendar_month), "日付を選択") }
             }
             when {
                 state.loading -> Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) { CircularProgressIndicator() }

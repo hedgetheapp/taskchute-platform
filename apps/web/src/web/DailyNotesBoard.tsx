@@ -153,8 +153,6 @@ export function DailyNotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedCha
     if (await flush()) onExit(kind);
   }
 
-  const selected = selectedDate ? new Date(`${selectedDate}T00:00:00`) : null;
-  const shift = (delta: number) => { if (!selected) return; const next = new Date(selected); next.setDate(next.getDate() + delta); void selectDate(next.toISOString().slice(0, 10)); };
 
   return <main className="shell notes-shell daily-notes-shell">
     {notice && <div className="transient-status notes-action-status" role="status">{notice}</div>}
@@ -169,7 +167,7 @@ export function DailyNotesBoard({ onUnauthorized, onDirtyChange, onUnresolvedCha
         <div className="notes-list-items">{days.map((day) => <div className="notes-list-item" key={day.taskchute_day_id}><button type="button" className={day.logical_date === selectedDate ? "active" : ""} onClick={() => void selectDate(day.logical_date)}>{day.logical_date}</button></div>)}</div>
       </aside>
       <section className="notes-editor" aria-label="デイリーノートエディタ">
-        <div className="notes-editor-heading"><div><p className="eyebrow">Daily Note</p><h2>{selectedDate ?? "デイリーノート"}</h2></div><div><button type="button" className="secondary" onClick={() => shift(-1)} disabled={!selectedDate}>前の日</button><button type="button" className="secondary" onClick={() => shift(1)} disabled={!selectedDate}>次の日</button></div></div>
+        <div className="notes-editor-heading"><div><p className="eyebrow">Daily Note</p><h2>{selectedDate ?? "デイリーノート"}</h2></div></div>
         {loading ? <p className="muted">読み込み中…</p> : document ? <>
           <NoteMarkdownEditor value={draftBody} disabled={unresolved || mutationsBlocked} onChange={(value) => { draftRef.current = value; setDraftBody(value); setNotice(null); }} />
           <p className="notes-save-status" role="status" aria-live="polite">{unresolved ? "保存結果未確定" : saving ? "保存中" : dirty ? "未保存" : "保存済み"}{unresolvedRequest && <button type="button" className="notes-inline-retry" onClick={() => void saveRef.current()} disabled={saving}>再試行</button>}</p>

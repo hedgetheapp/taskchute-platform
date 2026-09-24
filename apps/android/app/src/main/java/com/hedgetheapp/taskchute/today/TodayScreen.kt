@@ -58,12 +58,9 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.DatePicker
-import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
-import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -118,7 +115,6 @@ import kotlinx.coroutines.delay
 import java.time.LocalDate
 import java.time.Instant
 import java.time.ZoneId
-import java.time.ZoneOffset
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
@@ -130,6 +126,7 @@ import com.hedgetheapp.taskchute.ui.AndroidNavigationBar
 import com.hedgetheapp.taskchute.ui.ChromeIcon
 import com.hedgetheapp.taskchute.ui.TaskChuteIcons
 import com.hedgetheapp.taskchute.ui.TaskChuteColors
+import com.hedgetheapp.taskchute.ui.TaskChuteDatePickerDialog
 
 @Composable
 fun TodayScreen(controller: TodayController, onSignOut: () -> Unit) {
@@ -381,27 +378,6 @@ private fun BulkActionBar(
         BulkActionButton("削除", hasSelection, onDelete, Color(0xFFFF6B6B))
         BulkActionButton("解除", true, onClear)
     }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun TaskChuteDatePickerDialog(
-    initialLogicalDate: String,
-    onDismissRequest: () -> Unit,
-    onConfirm: (String) -> Unit,
-) {
-    val datePickerState = rememberDatePickerState(
-        initialSelectedDateMillis = logicalDateToPickerMillis(initialLogicalDate),
-    )
-    DatePickerDialog(
-        onDismissRequest = onDismissRequest,
-        confirmButton = {
-            TextButton(onClick = {
-                datePickerState.selectedDateMillis?.let { onConfirm(pickerMillisToLogicalDate(it)) }
-            }) { Text("決定") }
-        },
-        dismissButton = { TextButton(onClick = onDismissRequest) { Text("キャンセル") } },
-    ) { DatePicker(state = datePickerState) }
 }
 
 @Composable
@@ -1006,11 +982,6 @@ private fun DateNavigator(
     }
 }
 
-private fun logicalDateToPickerMillis(logicalDate: String): Long =
-    LocalDate.parse(logicalDate).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
-
-private fun pickerMillisToLogicalDate(millis: Long): String =
-    Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate().toString()
 
 @Composable
 private fun SectionHeader(
