@@ -1,6 +1,6 @@
 # D-138 — Android Today Planning / Lifecycle Refinements v0.1
 
-Status: **Approved / Implemented**
+Status: **Approved / Implemented / Integrated**
 
 ## Context
 
@@ -115,3 +115,7 @@ covers editor capability, occurrence command composition, actual-start-only
 validation, and Completed actual projection. Device and persistent nonprod
 evidence are recorded separately in `docs/TEST_MATRIX.md` and must not be
 claimed when not run.
+
+## Evidence
+
+Implementation commits: `83c910bd4419a11b02a755123e5bf37c2c2da94d` and focused fixture follow-up `ca4555252ffc69a97eb2ed9574ae7f43bd6daf84`. Local focused Worker verification passed (4 files / 38 tests), Android focused JVM passed (28 tests), Web typecheck and Android compile / instrumentation compile / assemble passed. Final exact-SHA CI `35968812861` passed classifier, Web / Worker tests, and production build; Android signed nonprod APK verification passed on the implementation SHA run `35967921517`. Persistent nonprod deploy passed at Worker version `f7b3d630-b42c-412d-ba66-56523ba65711`; root was `200`, protected API `401`, APP/AUTH migrations had no pending work, both quick checks were `ok`, both FK checks were empty, and remote probes reported zero writes. Focused AVD, authenticated Web / disposable QA, and Galaxy S23 remain `NOT_RUN`; Production is `NOT_RUN` and Released is `NO`.

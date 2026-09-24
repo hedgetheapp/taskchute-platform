@@ -18,7 +18,12 @@ D-129により、current logical Dayでeffective current instant以前に終了�
 
 Android Task RowのPlanned開始・終了見込みはWeb Start Forecastのderived projection（current cursor、active Runningのremaining estimate、display order、planned startをbarrierにしない）に合わせる。D-130によりRunning rowは開始見込みへcanonical actual startを表示し、終了見込みを`actual start + Entry estimate`で表示する。estimateなしでは終了見込みだけ未表示とし、Running遷移後に`--:--`へ戻さない。見積と実績durationはpresentation上は常に総分数で表示する。Header DatePickerとTask Actionsの日付移動は同一Compose DatePicker UI implementationを共有する。
 
-## D-127 Android Today presentation behavior
+
++## D-138 Android Today planning / lifecycle refinements
++
++D-138 narrowly supersedes the older Routine-derived ordinary-editor exclusion for occurrence-level Section / planned-start editing, the current-only Routine planning restriction, the Running estimate prohibition, and the unchanged Completed projection statement. Planned occurrence edits are occurrence-only on current and explicitly established future Days; Routine Definition, recurrence, past / unestablished future, and future execution boundaries remain unchanged. Ordinary current-Day Running and Routine-derived current-Day Running may change estimate without changing lifecycle, active Execution, or placement revision. A Completed row's left projection is canonical actual start / end in the establishment timezone, while Planned and Running retain their existing projections. A completed Execution ending at minute T does not reserve T + 1; planned start at T is legal.
++
++## D-127 Android Today presentation behavior
 
 For accepted Task add, edit, reorder, placement, start, and complete intents, Android Today may render an immediate memory-only projection for the selected logical Day. This projection is not a new Domain or persistence authority. The existing server Command, operation identity, placement revision, CAS, and response remain canonical.
 

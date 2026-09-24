@@ -16,7 +16,12 @@
 
 `assets/brand/taskchute-icon-master.png` は、提供されたTaskChuteのTF・チェックリスト・葉のアートワークを外周の余白だけ正規化した共通マスターである。Android launcher iconとWeb site/browser iconはこのマスターから生成し、製品名・アートワーク・画面UIの意味は変更しない。
 
-## D-126 Android Future-Day Planning parity
+
++## D-138 Android Today visual / interaction refinement
++
++Completed Task Rowの左48dp projection slotは、D-138ではplanned forecastではなくestablishment timezoneのcanonical actual start / endを表示する。Planned / Runningの既存visual semanticsは維持する。Routine occurrenceのplanned Section / start editとRunning estimate editは既存Today editorのfield capabilityとして表現し、Routine Definitionやrecurrenceの設定面をTodayへ持ち込まない。
++
++## D-126 Android Future-Day Planning parity
 
 Future Dayはread-only専用画面にせず、Todayと同じplanning surfaceを使う。Quick Add、planning-eligible
 Taskの編集 / swipe actions、drag / reorder / placement、Selection Mode、approved day operationsは

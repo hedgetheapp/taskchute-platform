@@ -1,3 +1,17 @@
+## D-138 Android Today Planning / Lifecycle Refinements — 2026-09-24
+
+D-138は、Android Todayのplanned boundary、Routine occurrence-only planning、Running estimate、Completed projection、actual-start-only transitionを既存のWorker authorityへ接続する狭いcorrective。D-129 ended Section guard、D-081 execution-first ordering、Routine Definition authority、past / unestablished future / future execution boundaryは維持する。
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D138-DECISION | Canonical behavior | exact completed-end planned-start、Routine current/future occurrence plan、Running estimate、Completed actual start/end、actual-start-only→Running | `docs/decisions/D-138_ANDROID_TODAY_PLANNING_LIFECYCLE_REFINEMENTS_V01.md` | PASS / APPROVED |
+| D138-WORKER | Worker commands | exact boundary chain、ordinary Running estimate、Routine current/future Section-plan、Routine Running estimate、Completed rejection、replay / stale / unresolved guards | focused `b1.integration.test.ts`, `r2a.integration.test.ts`, `b2.integration.test.ts`, `execution-correction.integration.test.ts`: 4 files / 38 tests PASS | PASS |
+| D138-ANDROID-JVM | Android Today | Routine capability, running estimate request path, actual-time validation, Completed actual projection and timezone | `TaskPlanningControllerTest`, `TaskPlanningHttpRepositoryTest`, `TodayForecastTest`: 28 tests PASS | PASS |
+| D138-BUILD | Local build / static | Android Kotlin, Android instrumentation compile, debug assemble, Web typecheck, diff check | `:app:compileDebugKotlin`, `:app:compileDebugAndroidTestKotlin`, `:app:assembleDebug`, Web typecheck, `git diff --check` PASS | PASS |
+| D138-CI | Exact SHA / artifact | classifier, Web / Worker, Android signed nonprod APK | final corrective SHA `ca4555252ffc69a97eb2ed9574ae7f43bd6daf84`; CI `35968812861` classifier / Web / Worker / production build PASS; Android signed APK job `107530673468` on `83c910bd4419a11b02a755123e5bf37c2c2da94d` PASS; artifact `taskchute-android-debug-83c910bd4419a11b02a755123e5bf37c2c2da94d`, ID `10795240684`, expires `2026-10-01T07:09:47Z` | PASS |
+| D138-RUNTIME | Runtime / device | focused AVD, authenticated Web, persistent nonprod targeted QA, Galaxy S23 | persistent nonprod deploy Worker `f7b3d630-b42c-412d-ba66-56523ba65711` PASS; root `200`; protected API `401`; APP/AUTH pending migrations `0 / 0`; APP/AUTH quick_check `ok`; APP/AUTH FK checks empty; read-only probes `rows_written=0`; authenticated Web / disposable QA, focused AVD, Galaxy S23 not run; no existing data mutation | PASS / NOT_RUN |
+| D138-BOUNDARY | Persistence / release | no schema / migration / dependency / new command family; past and future execution boundaries preserved | existing typed Routine commands and SetEntryEstimate / SetExecutionTimes paths reused; no migration/schema/dependency; Production `NOT_RUN`, Released `NO` | PASS / NOT_REQUIRED / NOT_RUN / NO |
+
 ## D-137 Daily Note v0.1 - 2026-09-24
 
 確立済みDay単位のDaily Noteを、既存Document authorityとbody-only autosave/CASへ接続する。GET/listでは作成せず、明示EnsureだけがDocumentを作成する。WebとAndroidは同じMarkdown source semanticsを使う。

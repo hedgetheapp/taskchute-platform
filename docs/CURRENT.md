@@ -1,3 +1,7 @@
+### D-138 Android Today Planning / Lifecycle Refinements v0.1 — 2026-09-24
+
+**Decision: APPROVED / implementation: 83c910bd + test corrective ca455525 / Integrated: YES / focused verification: PASS / persistent nonprod: PASS / Galaxy S23: NOT_RUN / Production: NOT_RUN / Released: NO**。completed-end minuteと同じplanned start、Routine occurrence-onlyのcurrent / established future Section-plan、ordinary / Routine Running estimate、Completed actual start/end projection、planned actual-start-only→RunningをD-138でcanonical化した。Workerの既存typed command / endpointとAndroidの既存editor authorityを拡張し、Routine Definition・recurrence・historical facts・placement revision semanticsは変更しない。local Worker 4 files / 38 tests、Android focused JVM 28 tests、Web typecheck、Android compile / instrumentation compile / assemble、exact-SHA CI、persistent nonprod safetyをPASSした。Focused AVD、authenticated Web / disposable QA、Galaxy S23はNOT_RUN。migration / schema / dependency / production operationはない。
+
 ### D-137 Daily Note v0.1 — 2026-09-24
 
 **Decision: APPROVED / Implementation: f3147e51c70ad06803cc963cea0267d7d0df0a97 + UI corrective: 9250ce86bb5f53588522b59b1d6fbb1b230096a0 + date-header corrective: 083b16454ae714e4ed96deb441e36c08ba34ab3c / Local: PASS / Persistent nonprod: PASS / Authenticated Web: NOT_RUN / Galaxy S23: NOT_RUN / Production: NOT_RUN / Released: NO**。Daily Document authority、explicit Ensure、Markdown autosave/CAS/retry、Web Notes dropdown、Android共有footerと日付navigationは維持。Webは`YYYY-MM-DD`左リスト選択でeditor headingの前日・次日ボタンなし、Androidは独立した`デイリーノート`タイトルなしでTodayと同じdate header visualへ統一した。

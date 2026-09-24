@@ -10,7 +10,12 @@ Running / Completed単体削除は`TodayDirectManipulationController`から既�
 
 D-129のended Section判定はAndroid parserが受け取るSection `actual_end_instant`を優先し、fallbackが必要な旧projectionでもcanonical logical boundaryから導出する。`resolveAndroidDropTarget`とWebのentry-planning / bulk-move handlersが同じdestination eligibilityを適用する。Forecastは`TodayForecast.kt`のpure projection helperで、WebのStart Forecast semanticsをAndroid表示へ移植し、actual execution metadataとは分離する。
 
-## D-127 Android Today presentation boundary
+
++## D-138 planning / lifecycle authority
++
++D-138 keeps server canonical authority in the existing AddTaskToDay / SetEntryPlannedStart, SetEntryEstimate, SetExecutionTimes, SetRoutineSectionPlan, and SetRoutineEstimate paths. Routine occurrence requests remain separate from Routine Definition updates. Android selects editor capability from Day planning authority, lifecycle, and Routine-derived status; Completed projection derives actual start / end only for display. Estimate edits do not change placement revision, and no new persistence authority, schema, migration, or command family is introduced.
++
++## D-127 Android Today presentation boundary
 
 `TodayController` keeps the canonical `TodayDay` separately from an ephemeral `optimisticDay`. `TodayUiState.presentedDay` selects the overlay when present, and the screen renders that projection without persisting it. Planning, direct-manipulation, and lifecycle controllers continue to dispatch the existing repositories and commands; they do not become Domain authorities.
 

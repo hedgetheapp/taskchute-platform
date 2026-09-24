@@ -1,3 +1,11 @@
+## D-138 — Android Today Planning / Lifecycle Refinements v0.1
+
+Status: **Approved / Implemented / Integrated**
+
+Canonical Decision: `docs/decisions/D-138_ANDROID_TODAY_PLANNING_LIFECYCLE_REFINEMENTS_V01.md`
+
+Android Todayの狭いplanning / lifecycle correctiveとして、completed Executionの実績終了minuteと同じplanned startを許可し、Routine-derived planned occurrenceのSection / planned-startをcurrent Dayとestablished future Dayでoccurrence-only編集可能にする。ordinary current-Day RunningとRoutine-derived Running occurrenceではestimateだけを既存command authorityで変更可能にし、placement revision・lifecycle・Executionを維持する。Completed row左projectionはDay timezoneのcanonical actual start / endを表示し、Planned / Runningの既存projectionを変更しない。Plannedのactual startだけはRunning、end-onlyは拒否、start + endはCompletedとする。D-129 ended Section guard、D-081 ordering、Routine Definition / schedule authority、past / unestablished future / future execution boundary、CAS / replay / ambiguityは維持する。schema、migration、new command family、dependency、Production、Releaseは追加しない。D-109 / D-120 / D-124 / D-130の変更部分だけを狭くsupersedeする。
+
 ## D-137 — Daily Note v0.1
 
 Status: **Approved / Implemented / Integrated**
