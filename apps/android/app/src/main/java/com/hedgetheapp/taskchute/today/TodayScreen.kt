@@ -127,6 +127,7 @@ import com.hedgetheapp.taskchute.ui.ChromeIcon
 import com.hedgetheapp.taskchute.ui.TaskChuteIcons
 import com.hedgetheapp.taskchute.ui.TaskChuteColors
 import com.hedgetheapp.taskchute.ui.TaskChuteDatePickerDialog
+import com.hedgetheapp.taskchute.ui.TaskChuteDateNavigator
 
 @Composable
 fun TodayScreen(controller: TodayController, onSignOut: () -> Unit) {
@@ -535,9 +536,10 @@ private fun TodayContent(
         },
     ) {
         Column(Modifier.fillMaxSize()) {
-        DateNavigator(
-            day = day,
-            controller = controller,
+        TaskChuteDateNavigator(
+            logicalDate = day.logicalDate,
+            onPrevious = controller::previousDay,
+            onNext = controller::nextDay,
             onOpenDatePicker = onOpenHeaderDatePicker,
         )
         state.errorMessage?.let {
@@ -935,53 +937,6 @@ private fun isLegalManualReorder(entries: List<TodayTask>, desiredIds: List<Stri
             )
     }
 }
-
-@Composable
-private fun DateNavigator(
-    day: TodayDay,
-    controller: TodayController,
-    onOpenDatePicker: () -> Unit,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        IconButton(
-            onClick = controller::previousDay,
-            modifier = Modifier.size(44.dp).clip(CircleShape).background(TaskChuteColors.Control)
-                .semantics { contentDescription = "前の日" },
-        ) { Icon(painterResource(R.drawable.today_header_chevron_left), "前の日", Modifier.size(28.dp)) }
-        Row(
-            modifier = Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(22.dp))
-                .background(TaskChuteColors.SurfaceElevated)
-                .clickable(onClick = onOpenDatePicker)
-                .semantics { contentDescription = "表示日付を選択" }
-                .padding(horizontal = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center,
-        ) {
-            Icon(painterResource(R.drawable.today_header_calendar_month), "日付", Modifier.size(28.dp))
-            Spacer(Modifier.width(8.dp))
-            Text(
-                "${day.logicalDate} (${formatWeekday(day.logicalDate)})",
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                ),
-                color = TaskChuteColors.PrimaryText,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        IconButton(
-            onClick = controller::nextDay,
-            modifier = Modifier.size(44.dp).clip(CircleShape).background(TaskChuteColors.Control)
-                .semantics { contentDescription = "次の日" },
-        ) { Icon(painterResource(R.drawable.today_header_chevron_right), "次の日", Modifier.size(28.dp)) }
-    }
-}
-
 
 @Composable
 private fun SectionHeader(
@@ -2146,12 +2101,6 @@ private suspend fun PointerInputScope.detectShortLongPressDrag(
         if (completed) onDragEnd() else onDragCancel()
     }
 }
-
-private fun formatWeekday(value: String): String = runCatching {
-    val date = LocalDate.parse(value)
-    val weekdays = listOf("月", "火", "水", "木", "金", "土", "日")
-    weekdays[date.dayOfWeek.value - 1]
-}.getOrDefault(value)
 
 private fun formatMinute(value: Int?): String = value?.let { (it / 60).toString().padStart(2, '0') + ":" + (it % 60).toString().padStart(2, '0') } ?: "--:--"
 
