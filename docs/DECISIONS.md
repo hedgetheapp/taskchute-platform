@@ -1,3 +1,19 @@
+## D-146 — Android Notes Interaction Refinements + Movable Add FAB v0.1
+
+Status: **Approved**
+
+Canonical Decision: `docs/decisions/D-146_ANDROID_NOTES_INTERACTION_REFINEMENTS_MOVABLE_ADD_FAB_V01.md`。
+
+Android Notesのstandalone list/editorと共通Markdown editorを、既存Document authorityを変えずにdogfood correctiveする。新規`notitle`のone-shot全選択focus、空titleのlocal validation/autosave復帰、作成/更新日時表示、`…` Bottom Sheetとrename、`本文を入力` placeholder、unfocused first-line preview、Today parity checkbox、link/checkbox上からのscroll、Notes Selection Modeを承認する。Today/NotesのAdd FABは共通visualへ揃え、memory-onlyの一時drag移動を許可する。bulk Document mutation、Project Note listing、Document realtime、schema/migration/new API/offline/productionは含めない。
+
+## D-145 — Fixed Start Anchor / Plan Conflict / Reminder v0.1
+
+Status: **Approved — Product semantics / Implementation not started**
+
+Canonical Decision: `docs/decisions/D-145_FIXED_START_ANCHOR_AND_REMINDER_V01.md`。
+
+fixed-startをordinary planned startとは別の明示概念とし、固定TaskのStart Forecastは前作業が押しても固定時刻自体を表示する。超過はTask/Sectionのplanning conflictとして可視化し、固定開始時刻を基準にper-Task reminderを扱う。exact persistence ownership、schema/migration、notification scheduling mechanism/permission/background architectureは未決で、必要なMaterial Decisionは実装前にProduct Ownerへ戻す。
+
 ## D-138 — Android Today Planning / Lifecycle Refinements v0.1
 
 Status: **Approved / Implemented / Integrated**
