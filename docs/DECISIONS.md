@@ -1,3 +1,11 @@
+## D-147 — Android Today Dogfood Correctives v0.1
+
+Status: **Approved**
+
+Canonical Decision: `docs/decisions/D-147_ANDROID_TODAY_DOGFOOD_CORRECTIVES_V01.md`。
+
+Galaxy S23 dogfoodで確認したAndroid Todayのcorrectiveを一つのLarge Batchとして承認する。Routine repeat icon accent、minute入力のmanual actual-start adjacency、planned Routine occurrenceの当日skip + actual-time parity、Routine occurrence D&D、Quick Add / Startの即時canonical-order optimistic presentation、Routine planned-startのSection同期、established Past ordinary Planned Taskのcurrent/future forward day move、Today Add FABのmemory-only drag移動を含む。Running/Completed Routine delete、past Routine carry-forward、schema/migration/offline/production、D-145、D-146 Notes実装は含めない。
+
 ## D-146 — Android Notes Interaction Refinements + Movable Add FAB v0.1
 
 Status: **Approved**
