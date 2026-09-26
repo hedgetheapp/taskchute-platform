@@ -1,3 +1,8 @@
+### D-147A Android Today dogfood correctives
+
+- Routine repeat icon accent、Routine occurrence-only delete / D&D、Quick Add / Startのoptimistic canonical ordering、Routine planned-start Section同期、established past planned ordinary Taskのforward move、Today Add FAB temporary dragを実装。
+- D-147(B) manual minute-granularity actual-start補正はProduct Owner承認により完全保留。input_precision、Worker/API、schema、migration、dependency、nonprod、production、Releaseは変更・実施なし。
+- Implementation b8a84a99a69a0a90f9791217abe1d5fbf145e260、focused JVM / Android compile / assemble / exact-SHA CI 36248977313、代表AVD 5 / 5 PASS。Today全体AVDは35 / 44 PARTIAL、Galaxy S23はNOT_RUN、ProductionはNOT_RUN、ReleasedはNO。
 ### D-137 Daily Note v0.1 — 2026-09-23
 
 - 確立済みDay単位の`daily_primary` Documentを追加し、GET/listでは自動作成せず明示Ensureだけで作成する。Web Notes dropdownとAndroid Task / Notes / Daily / Settings footer、Daily date navigation、body-only Markdown autosave/CAS/retryを実装。

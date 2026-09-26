@@ -1,5 +1,6 @@
 # Features
 
+| D-147A Android Today dogfood correctives | Implemented / Integrated / Focused tested / AVD partial | D-147AのA/C/D/E/F/G/H/Iを実装。Routine accent、occurrence delete / D&D、Quick Add / Start optimistic canonical ordering、Routine planned-start Section sync、past planned ordinary forward move、Today Add FAB temporary dragを既存authorityで接続。Implementation b8a84a99a69a0a90f9791217abe1d5fbf145e260、focused JVM / instrumentation compile / assemble / exact-SHA CI 36248977313 PASS、代表AVD 5 / 5 PASS、Today全体35 / 44 PARTIAL（既存fixture由来9件）。B manual minute actual-start補正は完全保留で、input_precision・Worker/API・schema・migration・dependencyは不変。APK artifact ID 10908412479。Galaxy S23 / nonprod / Production / ReleasedはNOT_RUN / NOT_RUN / NOT_RUN / NO。 |
 この文書のStatusはFeature development statusを示す。
 
 Verificationの正本は`docs/TEST_MATRIX.md`であり、`Implemented`等のFeature statusだけを理由に`Verified`と判断しない。

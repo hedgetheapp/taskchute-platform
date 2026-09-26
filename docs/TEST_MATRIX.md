@@ -1,3 +1,18 @@
+## D-147A Android Today dogfood correctives — 2026-09-26
+
+| ID | Area | Evidence | Status |
+|---|---|---|---|
+| D147A-IMPLEMENTATION | Independent correctives A/C/D/E/F/G/H/I | Android source review and implementation commit b8a84a99a69a0a90f9791217abe1d5fbf145e260 | PASS |
+| D147A-JVM | Focused Android JVM | TodayDirectManipulationTest, TodayOptimisticTest, TaskPlanningHttpRepositoryTest, TaskPlanningControllerTest | PASS |
+| D147A-BUILD | Android build gates | :app:compileDebugAndroidTestKotlin, :app:assembleDebug, git diff --check | PASS |
+| D147A-AVD-FOCUSED | Today representative runtime | TaskChute_API33: collapsed Section drop, swipe / Selection, long-press D&D, future planning, Quick Add FAB 5 / 5 PASS; APK install, MainActivity, crash buffer PASS | PASS |
+| D147A-AVD-FULL | Today full surface | scripts/android-qa.ps1 -Surface Today: 35 / 44 PASS; 9 existing fixture failures, no app crash | PARTIAL / NOT_VERIFIED |
+| D147A-CI | Exact pushed SHA | CI run 36248977313; classifier, Android JVM, signed APK, instrumentation compile, signing verification PASS; Web/Worker skipped | PASS |
+| D147A-APK | Fresh artifact | taskchute-android-debug-b8a84a99a69a0a90f9791217abe1d5fbf145e260, artifact ID 10908412479 | PASS |
+| D147A-B-DEFERRED | Manual minute-granularity actual-start correction | Product Owner explicitly deferred; no input_precision, Worker execution-correction, exact-instant semantics, or automatic Start change | DEFERRED / NOT_IMPLEMENTED |
+| D147A-BOUNDARY | Scope | No Worker/API/shared contract/schema/migration/dependency/nonprod/production/Release change; Galaxy S23 not run | PASS / NOT_RUN |
+
+D-147(B)は独立して完全保留。D-147Aの他の独立項目は実装・検証済みであり、Bの保留によって他項目の証拠を無効化しない。
 ## D-138 Android Today Planning / Lifecycle Refinements — 2026-09-24
 
 D-138は、Android Todayのplanned boundary、Routine occurrence-only planning、Running estimate、Completed projection、actual-start-only transitionを既存のWorker authorityへ接続する狭いcorrective。D-129 ended Section guard、D-081 execution-first ordering、Routine Definition authority、past / unestablished future / future execution boundaryは維持する。

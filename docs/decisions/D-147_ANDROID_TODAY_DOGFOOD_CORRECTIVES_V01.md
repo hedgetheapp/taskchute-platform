@@ -1,6 +1,6 @@
 # D-147 — Android Today Dogfood Correctives v0.1
 
-Status: **Approved — Implementation not started**
+Status: **Approved — A/C/D/E/F/G/H/I implemented; B deferred by Product Owner**
 
 Date: 2026-09-26
 
@@ -212,3 +212,16 @@ Implementation must include focused coverage for at least:
 Because section 2 may affect the shared Worker/API boundary, run focused Worker tests plus affected Android JVM tests and Android Today runtime verification. Use cross-surface verification if shared contracts/Worker behavior change. Persistent nonprod feature verification is required for any Worker/API behavior change within the approved scope. Galaxy S23 remains Product Owner manual evidence until performed.
 
 Production and Release remain NOT_RUN / NO.
+
+## D-147A implementation checkpoint — 2026-09-26
+
+D-147Aの独立項目A/C/D/E/F/G/H/Iを実装した。Routine repeat icon accent、Routine occurrence-only delete、既存occurrence endpointを使うplanned Routine D&D、Quick Addのcanonical ordering、Startのactual-Section / execution-first optimistic projection、Routine planned-start Section同期、established past planned ordinary Taskのcurrent/future forward move、Today Add FABのmemory-only temporary dragを対象とする。D-147(B)のmanual minute-granularity actual-start adjacency correctionはProduct Owner承認により完全保留であり、実装しない。
+
+Implementation commit: b8a84a99a69a0a90f9791217abe1d5fbf145e260
+Focused Android JVM: PASS
+:app:compileDebugAndroidTestKotlin: PASS
+:app:assembleDebug: PASS
+D-147A representative Today AVD cases: 5 / 5 PASS（collapsed Section drop、swipe / Selection、long-press D&D、future planning、Quick Add FAB）
+Today full surface: 35 / 44 PASS、既存fixture由来の9件を含むPARTIAL。MainActivity起動、APK install、crash bufferはPASS。
+Exact-SHA CI: run 36248977313 PASS。APK artifact taskchute-android-debug-b8a84a99a69a0a90f9791217abe1d5fbf145e260 / ID 10908412479。
+Worker/API/shared contract、input_precision、schema、migration、dependency、nonprod、production、Releaseは変更・実施していない。Galaxy S23はNOT_RUN / PRODUCT_OWNER_MANUAL。
