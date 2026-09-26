@@ -36,6 +36,7 @@ sealed interface DirectManipulationRequest {
         val sectionId: String?,
         val expectedPlacementRevision: Int,
         val placement: PlacementTarget?,
+        val routineScoped: Boolean = false,
     ) : DirectManipulationRequest
 
     data class Duplicate(
@@ -97,11 +98,19 @@ class TodayDirectManipulationHttpRepository(
                 body = """{"operation_id":"${JsonEncoding.escape(request.operationId)}","taskchute_day_id":"${JsonEncoding.escape(request.taskChuteDayId)}","section_id":${nullableString(request.sectionId)},"entry_ids":[${request.entryIds.joinToString(",") { "\"${JsonEncoding.escape(it)}\"" }}],"expected_placement_revision":${request.expectedPlacementRevision}}"""
             }
             is DirectManipulationRequest.Move -> {
-                path = "/api/v1/taskchute-days/current/entries/move"
+                path = if (request.routineScoped) {
+                    "/api/v1/taskchute-days/current/entries/bulk-section-occurrence"
+                } else {
+                    "/api/v1/taskchute-days/current/entries/move"
+                }
                 val placementJson = request.placement?.let {
                     ",\"placement\":{\"kind\":\"relative_to_entry\",\"anchor_entry_id\":\"${JsonEncoding.escape(it.anchorEntryId)}\",\"edge\":\"${it.edge.name.lowercase()}\"}"
                 }.orEmpty()
-                body = """{"operation_id":"${JsonEncoding.escape(request.operationId)}","entry_id":"${JsonEncoding.escape(request.entryId)}","taskchute_day_id":"${JsonEncoding.escape(request.taskChuteDayId)}","section_id":${nullableString(request.sectionId)},"expected_placement_revision":${request.expectedPlacementRevision}$placementJson}"""
+                body = if (request.routineScoped) {
+                    """{"operation_id":"${JsonEncoding.escape(request.operationId)}","taskchute_day_id":"${JsonEncoding.escape(request.taskChuteDayId)}","entry_ids":["${JsonEncoding.escape(request.entryId)}"],"section_id":${nullableString(request.sectionId)},"expected_placement_revision":${request.expectedPlacementRevision}$placementJson}"""
+                } else {
+                    """{"operation_id":"${JsonEncoding.escape(request.operationId)}","entry_id":"${JsonEncoding.escape(request.entryId)}","taskchute_day_id":"${JsonEncoding.escape(request.taskChuteDayId)}","section_id":${nullableString(request.sectionId)},"expected_placement_revision":${request.expectedPlacementRevision}$placementJson}"""
+                }
             }
             is DirectManipulationRequest.Duplicate -> {
                 path = "/api/v1/entries/${JsonEncoding.pathSegment(request.sourceEntryId)}/duplicate"
@@ -165,7 +174,7 @@ class TodayDirectManipulationController(
 
     fun canDrag(day: TodayDay, task: TodayTask): Boolean =
         canPlanDay(day)
-            && task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived
+            && task.lifecycleState == LifecycleState.PLANNED
             && state.pendingEntryIds.isEmpty() && state.unresolvedRequest == null
 
     fun canSelect(day: TodayDay, task: TodayTask): Boolean =
@@ -187,10 +196,10 @@ class TodayDirectManipulationController(
         move(day, entryId, target.sectionId, target)
     }
 
-    fun move(day: TodayDay, entryId: String, targetSectionId: String?, placement: PlacementTarget?) {
+    fun move(day: TodayDay, entryId: String, targetSectionId: String?, placement: PlacementTarget?, routineScoped: Boolean = false) {
         val dayId = day.taskChuteDayId ?: return
         if (state.pendingEntryIds.isNotEmpty() || state.unresolvedRequest != null || !canPlanDay(day)) return
-        dispatch(setOf(entryId), DirectManipulationRequest.Move(UUIDv7.next(), entryId, dayId, targetSectionId, day.placementRevision, placement))
+        dispatch(setOf(entryId), DirectManipulationRequest.Move(UUIDv7.next(), entryId, dayId, targetSectionId, day.placementRevision, placement, routineScoped))
     }
 
     fun duplicate(day: TodayDay, source: TodayTask) {
@@ -202,9 +211,9 @@ class TodayDirectManipulationController(
         )
     }
 
-    fun moveToDay(day: TodayDay, entryIds: Set<String>, targetLogicalDate: String, successMessage: String? = null) {
+    fun moveToDay(day: TodayDay, entryIds: Set<String>, targetLogicalDate: String, successMessage: String? = null, allowPastSource: Boolean = false) {
         if (entryIds.isEmpty() || state.pendingEntryIds.isNotEmpty() || state.unresolvedRequest != null
-            || day.taskChuteDayId == null || !canPlanDay(day)
+            || day.taskChuteDayId == null || (!canPlanDay(day) && !allowPastSource)
         ) return
         val ids = entryIds.toList().sorted()
         state = state.copy(pendingEntryIds = ids.toSet(), errorMessage = null, feedbackMessage = null)

@@ -55,6 +55,7 @@ class TaskPlanningController(
             !task.routineDerived -> null
             task.lifecycleState == LifecycleState.PLANNED -> TaskEditorCapability.ROUTINE_PLANNING
             task.lifecycleState == LifecycleState.RUNNING && day.isCurrent -> TaskEditorCapability.RUNNING_METADATA
+            task.lifecycleState == LifecycleState.COMPLETED && day.isCurrent -> TaskEditorCapability.COMPLETED_METADATA
             else -> return
         }
         if (!day.isCurrent && task.lifecycleState != LifecycleState.PLANNED) return
@@ -121,12 +122,17 @@ class TaskPlanningController(
             projectTitle = state.references?.projects?.firstOrNull { it.id == validation.input.projectId }?.title,
             modeTitle = state.references?.modes?.firstOrNull { it.id == validation.input.modeId }?.title,
         )
+        val normalizedRequestInput = if (editor.capability == TaskEditorCapability.ROUTINE_PLANNING) {
+            synchronizeRoutineSectionPlan(editor.day, requestInput)
+        } else {
+            requestInput
+        }
         val previousState = state
-        onOptimisticIntent(editor, requestInput)
+        onOptimisticIntent(editor, normalizedRequestInput)
         // Keep the in-flight marker for controller callers while the editor sheet closes immediately.
         state = TaskPlanningUiState(saving = true)
         scope.launch {
-            val result = withContext(Dispatchers.IO) { repository.save(editor, requestInput) }
+            val result = withContext(Dispatchers.IO) { repository.save(editor, normalizedRequestInput) }
             when (result) {
                 PlanningSaveResult.Success -> {
                     state = TaskPlanningUiState()

@@ -129,6 +129,13 @@ import com.hedgetheapp.taskchute.ui.TaskChuteColors
 import com.hedgetheapp.taskchute.ui.TaskChuteDatePickerDialog
 import com.hedgetheapp.taskchute.ui.TaskChuteDateNavigator
 
+private fun currentLogicalDate(day: TodayDay): String {
+    val zone = day.establishmentTimezone?.let { runCatching { ZoneId.of(it) }.getOrNull() } ?: ZoneId.systemDefault()
+    val local = ZonedDateTime.now(zone)
+    val logicalDate = if (local.hour * 60 + local.minute < day.establishmentBoundaryMinutes) local.toLocalDate().minusDays(1) else local.toLocalDate()
+    return logicalDate.toString()
+}
+
 @Composable
 fun TodayScreen(controller: TodayController, onSignOut: () -> Unit) {
     TodayScreen(controller, null, {}, onSignOut)
@@ -175,6 +182,7 @@ fun TodayScreen(
         selectedEntryIds = emptySet()
     }
     val day = state.presentedDay
+    var addFabOffset by remember(day?.logicalDate) { mutableStateOf(Offset.Zero) }
     if (headerDatePickerVisible && day != null) {
         TaskChuteDatePickerDialog(
             initialLogicalDate = day.logicalDate,
@@ -293,13 +301,34 @@ fun TodayScreen(
                                 OperationFailedPanel()
                             }
                             if (canAdd && !selectionModeActive) {
-                                FloatingActionButton(
-                                    onClick = { planningController.openCreate(day) },
-                                    shape = CircleShape,
-                                    containerColor = Color(0xFFE8E8E5),
-                                    contentColor = TaskChuteColors.Background,
-                                    modifier = Modifier.size(64.dp).semantics { contentDescription = "タスクを追加" },
-                                ) { ChromeIcon(TaskChuteIcons.Add, "タスクを追加", Modifier.size(19.dp)) }
+                                BoxWithConstraints(
+                                    modifier = Modifier.fillMaxWidth().height(96.dp),
+                                ) {
+                                    val density = LocalDensity.current
+                                    val maxX = with(density) { (maxWidth - 64.dp).toPx().coerceAtLeast(0f) }
+                                    val maxY = with(density) { (maxHeight - 64.dp).toPx().coerceAtLeast(0f) }
+                                    FloatingActionButton(
+                                        onClick = { planningController.openCreate(day) },
+                                        shape = CircleShape,
+                                        containerColor = Color(0xFFE8E8E5),
+                                        contentColor = TaskChuteColors.Background,
+                                        modifier = Modifier
+                                            .align(Alignment.BottomEnd)
+                                            .offset { IntOffset(addFabOffset.x.roundToInt(), addFabOffset.y.roundToInt()) }
+                                            .pointerInput(day.logicalDate) {
+                                                detectTodayFabTapDrag(
+                                                    onDrag = { delta ->
+                                                        addFabOffset = Offset(
+                                                            (addFabOffset.x + delta.x).coerceIn(-maxX, 0f),
+                                                            (addFabOffset.y + delta.y).coerceIn(-maxY, 0f),
+                                                        )
+                                                    },
+                                                )
+                                            }
+                                            .size(64.dp)
+                                            .semantics { contentDescription = "タスクを追加" },
+                                    ) { ChromeIcon(TaskChuteIcons.Add, "タスクを追加", Modifier.size(19.dp)) }
+                                }
                             }
                             if (!selectionModeActive) runningTask?.let { task ->
                                 RunningTaskPanel(
@@ -476,7 +505,11 @@ private fun TodayContent(
             if (sourceIndex < insertion) insertion -= 1
             remaining.add(insertion.coerceIn(0, remaining.size), source.id)
             if (remaining != currentIds && isLegalManualReorder(entries, remaining)) {
-                directManipulationController?.reorder(day, targetSectionId, remaining, setOf(source.id))
+                if (source.routineDerived) {
+                    directManipulationController?.move(day, source.id, targetSectionId, PlacementTarget(targetSectionId, targetEntryId, edge), routineScoped = true)
+                } else {
+                    directManipulationController?.reorder(day, targetSectionId, remaining, setOf(source.id))
+                }
             }
         } else {
             directManipulationController?.move(
@@ -484,6 +517,7 @@ private fun TodayContent(
                 source.id,
                 targetSectionId,
                 PlacementTarget(targetSectionId, targetEntryId, edge),
+                routineScoped = source.routineDerived,
             )
         }
     }
@@ -602,8 +636,7 @@ private fun TodayContent(
                         controller = controller,
                         showExecutionAction = day.isCurrent,
                         canEdit = canPlanDay(day) && (day.isCurrent || task.lifecycleState == LifecycleState.PLANNED)
-                            && (!task.routineDerived || task.lifecycleState == LifecycleState.PLANNED ||
-                                (task.lifecycleState == LifecycleState.RUNNING && day.isCurrent))
+                            && (!task.routineDerived || day.isCurrent)
                             && planningController != null,
                         onEdit = { planningController?.openEdit(day, task) },
                         canDuplicate = canPlanDay(day) && task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived
@@ -624,8 +657,11 @@ private fun TodayContent(
                         onToggleSelection = { onToggleSelection(task.id) },
                         canDayOperate = canPlanDay(day) && task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived && directManipulationController != null,
                         canLifecycleDelete = day.isCurrent && task.lifecycleState != LifecycleState.PLANNED && !task.routineDerived && directManipulationController != null,
+                        canPlannedDelete = canPlanDay(day) && task.lifecycleState == LifecycleState.PLANNED && task.routineDerived && directManipulationController != null,
+                        canPastForwardOperate = !day.planningEnabled && day.taskChuteDayId != null && task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived && task.firstStartedAt == null && task.lastEndedAt == null && task.executionId == null && directManipulationController != null,
                         onMovePrevious = { directManipulationController?.moveToDay(day, setOf(task.id), LocalDate.parse(day.logicalDate).minusDays(1).toString()) },
                         onMoveNext = { directManipulationController?.moveToDay(day, setOf(task.id), LocalDate.parse(day.logicalDate).plusDays(1).toString()) },
+                        onMoveToday = { directManipulationController?.moveToDay(day, setOf(task.id), currentLogicalDate(day), allowPastSource = true) },
                         onPickDate = { onOpenDatePicker(setOf(task.id)) },
                         onDelete = { onRequestDelete(setOf(task.id)) },
                         canDrag = directManipulationController?.canDrag(day, task, selectedEntryIds) == true
@@ -698,8 +734,7 @@ private fun TodayContent(
                         controller = controller,
                         showExecutionAction = day.isCurrent,
                         canEdit = canPlanDay(day) && (day.isCurrent || task.lifecycleState == LifecycleState.PLANNED)
-                            && (!task.routineDerived || task.lifecycleState == LifecycleState.PLANNED ||
-                                (task.lifecycleState == LifecycleState.RUNNING && day.isCurrent))
+                            && (!task.routineDerived || day.isCurrent)
                             && planningController != null,
                         onEdit = { planningController?.openEdit(day, task) },
                         canDuplicate = canPlanDay(day) && task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived
@@ -720,8 +755,11 @@ private fun TodayContent(
                         onToggleSelection = { onToggleSelection(task.id) },
                         canDayOperate = canPlanDay(day) && task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived && directManipulationController != null,
                         canLifecycleDelete = day.isCurrent && task.lifecycleState != LifecycleState.PLANNED && !task.routineDerived && directManipulationController != null,
+                        canPlannedDelete = canPlanDay(day) && task.lifecycleState == LifecycleState.PLANNED && task.routineDerived && directManipulationController != null,
+                        canPastForwardOperate = !day.planningEnabled && day.taskChuteDayId != null && task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived && task.firstStartedAt == null && task.lastEndedAt == null && task.executionId == null && directManipulationController != null,
                         onMovePrevious = { directManipulationController?.moveToDay(day, setOf(task.id), LocalDate.parse(day.logicalDate).minusDays(1).toString()) },
                         onMoveNext = { directManipulationController?.moveToDay(day, setOf(task.id), LocalDate.parse(day.logicalDate).plusDays(1).toString()) },
+                        onMoveToday = { directManipulationController?.moveToDay(day, setOf(task.id), currentLogicalDate(day), allowPastSource = true) },
                         onPickDate = { onOpenDatePicker(setOf(task.id)) },
                         onDelete = { onRequestDelete(setOf(task.id)) },
                         canDrag = directManipulationController?.canDrag(day, task, selectedEntryIds) == true
@@ -779,6 +817,23 @@ private fun TodayContent(
     }
 }
 
+private suspend fun PointerInputScope.detectTodayFabTapDrag(onDrag: (Offset) -> Unit) {
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false)
+        var moved = false
+        while (true) {
+            val event = awaitPointerEvent()
+            val change = event.changes.firstOrNull { it.id == down.id } ?: continue
+            val delta = change.position - change.previousPosition
+            if (!moved && (change.position - down.position).getDistance() > 8f) moved = true
+            if (moved) {
+                change.consume()
+                onDrag(delta)
+            }
+            if (change.changedToUpIgnoreConsumed() || !change.pressed) break
+        }
+    }
+}
 private const val UNSECTIONED_DROP_KEY = "__unsectioned__"
 
 internal data class AndroidDropTarget(
@@ -1015,8 +1070,11 @@ private fun TodayTaskRow(
     onToggleSelection: () -> Unit,
     canDayOperate: Boolean,
     canLifecycleDelete: Boolean,
+    canPlannedDelete: Boolean,
+    canPastForwardOperate: Boolean,
     onMovePrevious: () -> Unit,
     onMoveNext: () -> Unit,
+    onMoveToday: () -> Unit,
     onPickDate: () -> Unit,
     onDelete: () -> Unit,
     canDrag: Boolean,
@@ -1041,7 +1099,7 @@ private fun TodayTaskRow(
         if (!swipeMenuOpen || selectionModeActive) swipeOffset = 0f
     }
     val insertionPadding by animateDpAsState(if (dropTarget) 6.dp else 0.dp, label = "drop-target-padding")
-    val hasActions = canEdit || canDuplicate || canOpenNote || canDayOperate || canLifecycleDelete
+    val hasActions = canEdit || canDuplicate || canOpenNote || canDayOperate || canLifecycleDelete || canPlannedDelete || canPastForwardOperate
     val canSwipeNote = canOpenNote && (canEdit || canNoteOnly)
     val hasOtherActions = hasActions && !canNoteOnly
     val swipeActionCount = (if (canEdit) 1 else 0) + (if (canSwipeNote) 1 else 0) + (if (hasOtherActions) 1 else 0)
@@ -1308,12 +1366,15 @@ private fun TodayTaskRow(
                 Text(task.title, style = MaterialTheme.typography.bodyMedium, color = TaskChuteColors.SecondaryText, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (canEdit) TaskActionRow(R.drawable.ic_material_edit_24, "編集", onClick = { actionsSheetOpen = false; onEdit() })
                 if (canDuplicate) TaskActionRow(R.drawable.ic_material_repeat_24, "複製", onClick = { actionsSheetOpen = false; onDuplicate() })
-                if (canDayOperate) {
+                if (canPastForwardOperate) {
+                    TaskActionRow(R.drawable.ic_material_schedule_24, "今日へ移動", onClick = { actionsSheetOpen = false; onMoveToday() })
+                    TaskActionRow(R.drawable.ic_material_schedule_24, "日付を移動", onClick = { actionsSheetOpen = false; onPickDate() })
+                } else if (canDayOperate) {
                     TaskActionRow(R.drawable.ic_material_chevron_left_24, "前の日へ移動", onClick = { actionsSheetOpen = false; onMovePrevious() })
                     TaskActionRow(R.drawable.ic_material_chevron_right_24, "次の日へ移動", onClick = { actionsSheetOpen = false; onMoveNext() })
                     TaskActionRow(R.drawable.ic_material_schedule_24, "日付を移動", onClick = { actionsSheetOpen = false; onPickDate() })
                     TaskActionRow(R.drawable.ic_material_delete_24, "削除", destructive = true, onClick = { actionsSheetOpen = false; onDelete() })
-                } else if (canLifecycleDelete) {
+                } else if (canPlannedDelete || canLifecycleDelete) {
                     TaskActionRow(R.drawable.ic_material_delete_24, "削除", destructive = true, onClick = { actionsSheetOpen = false; onDelete() })
                 }
             }
@@ -1482,7 +1543,7 @@ private fun TaskMetadata(task: TodayTask, modifier: Modifier = Modifier) {
             Modifier.fillMaxWidth().height(17.dp).padding(start = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            TaskMetadataIcon(R.drawable.ic_material_repeat_24)
+            TaskMetadataIcon(R.drawable.ic_material_repeat_24, tint = if (task.routineDerived) TaskChuteColors.AccentBlue else TaskChuteColors.SecondaryText)
             Spacer(Modifier.width(6.dp))
             val context = listOfNotNull(task.project?.title, task.mode?.title).joinToString(" / ")
             Text(
@@ -1499,11 +1560,11 @@ private fun TaskMetadata(task: TodayTask, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun TaskMetadataIcon(iconRes: Int) {
+private fun TaskMetadataIcon(iconRes: Int, tint: Color = TaskChuteColors.SecondaryText) {
     Icon(
         painter = painterResource(iconRes),
         contentDescription = null,
-        tint = TaskChuteColors.SecondaryText,
+        tint = tint,
         modifier = Modifier.size(10.dp),
     )
 }
@@ -1858,7 +1919,7 @@ private fun TaskEditorForm(controller: TaskPlanningController, state: TaskPlanni
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         )
         }
-        if (editor.day.isCurrent && !routinePlanning) {
+        if (editor.day.isCurrent) {
             CompactFigmaTextField(
                 value = draft.actualStartText,
                 onValueChange = { controller.updateDraft(draft.copy(actualStartText = it)) },

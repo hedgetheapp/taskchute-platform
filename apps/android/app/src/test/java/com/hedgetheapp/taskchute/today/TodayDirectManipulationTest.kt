@@ -48,7 +48,7 @@ class TodayDirectManipulationTest {
         assertTrue(controller.canDrag(day(), task(LifecycleState.PLANNED)))
         assertFalse(controller.canDrag(day(), task(LifecycleState.RUNNING)))
         assertFalse(controller.canDrag(day(), task(LifecycleState.COMPLETED)))
-        assertFalse(controller.canDrag(day(), task(LifecycleState.PLANNED, routineDerived = true)))
+        assertTrue(controller.canDrag(day(), task(LifecycleState.PLANNED, routineDerived = true)))
         assertTrue(controller.canDrag(futureDay(), task(LifecycleState.PLANNED)))
         assertTrue(controller.canSelect(futureDay(), task(LifecycleState.PLANNED)))
         assertFalse(controller.canDrag(pastDay(), task(LifecycleState.PLANNED)))
@@ -124,6 +124,48 @@ class TodayDirectManipulationTest {
         assertFalse(requests[2].third.orEmpty().contains("\"placement\""))
     }
 
+    @Test
+    fun routineMoveUsesOccurrenceEndpointAndNoOrdinaryEntryPayload() {
+        val requests = mutableListOf<Triple<String, String, String?>>()
+        val repository = TodayDirectManipulationHttpRepository(request = { method, path, body ->
+            requests += Triple(method, path, body)
+            TodayHttpResponse(200, "{}")
+        })
+        assertEquals(
+            DirectManipulationResult.Success,
+            repository.execute(DirectManipulationRequest.Move(
+                operationId = "op-routine-move",
+                entryId = "entry-1",
+                taskChuteDayId = "day-1",
+                sectionId = "section-2",
+                expectedPlacementRevision = 5,
+                placement = PlacementTarget("section-2", "entry-2", PlacementEdge.BEFORE),
+                routineScoped = true,
+            )),
+        )
+        assertEquals("/api/v1/taskchute-days/current/entries/bulk-section-occurrence", requests.single().second)
+        assertTrue(requests.single().third.orEmpty().contains("\"entry_ids\":[\"entry-1\"]"))
+        assertTrue(requests.single().third.orEmpty().contains("\"placement\""))
+    }
+
+    @Test
+    fun establishedPastPlannedTaskCanDispatchForwardMoveWhenExplicitlyAllowed() {
+        val requests = mutableListOf<DirectManipulationRequest>()
+        val controller = TodayDirectManipulationController(
+            repository = object : TodayDirectManipulationRepository {
+                override fun execute(request: DirectManipulationRequest): DirectManipulationResult {
+                    requests += request
+                    return DirectManipulationResult.Success
+                }
+            },
+            onRefresh = {},
+            onUnauthorized = {},
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+        )
+        controller.moveToDay(pastDay().copy(taskChuteDayId = "past-day"), setOf("entry-1"), "2026-09-20", allowPastSource = true)
+        assertTrue(await { requests.singleOrNull() is DirectManipulationRequest.MoveToDay })
+        controller.close()
+    }
     @Test
     fun emptySectionMoveOmitsRelativePlacement() {
         val requests = mutableListOf<DirectManipulationRequest>()

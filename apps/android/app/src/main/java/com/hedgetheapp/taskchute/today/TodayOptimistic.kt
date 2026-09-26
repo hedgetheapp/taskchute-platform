@@ -1,5 +1,6 @@
 package com.hedgetheapp.taskchute.today
 
+import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
@@ -97,12 +98,13 @@ internal fun applyOptimisticLifecycle(
     val updated = when (nextState) {
         LifecycleState.RUNNING -> task.copy(
             lifecycleState = LifecycleState.RUNNING,
+            executionId = task.executionId ?: "optimistic-$entryId",
             activeStartedAt = task.activeStartedAt ?: now,
             firstStartedAt = task.firstStartedAt ?: now,
         )
         LifecycleState.COMPLETED -> {
             val start = task.firstStartedAt ?: task.activeStartedAt
-            val duration = start?.let { runCatching { (java.time.Duration.between(Instant.parse(it), Instant.parse(now)).seconds).toInt().coerceAtLeast(0) }.getOrNull() }
+            val duration = start?.let { runCatching { Duration.between(Instant.parse(it), Instant.parse(now)).seconds.toInt().coerceAtLeast(0) }.getOrNull() }
             task.copy(
                 lifecycleState = LifecycleState.COMPLETED,
                 lastEndedAt = now,
@@ -111,16 +113,35 @@ internal fun applyOptimisticLifecycle(
         }
         LifecycleState.PLANNED -> task.copy(lifecycleState = LifecycleState.PLANNED)
     }
-    val replaced = day.replaceEntry(updated)
+    val sourceSectionId = day.sectionIdOf(entryId)
+    val targetSectionId = if (nextState == LifecycleState.RUNNING) {
+        resolveOptimisticExecutionSection(day, Instant.parse(now)) ?: sourceSectionId
+    } else {
+        sourceSectionId
+    }
+    val replaced = day.removeEntry(entryId).insertEntry(targetSectionId, updated)
     return when (nextState) {
         LifecycleState.RUNNING -> replaced.copy(
-            activeExecution = TodayExecution("optimistic-$entryId", entryId, now, updated.estimateSeconds),
+            activeExecution = TodayExecution(updated.executionId ?: "optimistic-$entryId", entryId, now, updated.estimateSeconds),
         )
         LifecycleState.COMPLETED -> replaced.copy(activeExecution = null)
         LifecycleState.PLANNED -> replaced
     }
 }
 
+private fun resolveOptimisticExecutionSection(day: TodayDay, instant: Instant): String? {
+    if (!day.isCurrent) return null
+    val zone = day.establishmentTimezone?.let { runCatching { ZoneId.of(it) }.getOrNull() } ?: return null
+    val local = instant.atZone(zone)
+    val localMinute = local.hour * 60 + local.minute
+    val logicalMinute = if (localMinute < day.establishmentBoundaryMinutes) localMinute + 1440 else localMinute
+    return day.sections.firstOrNull { section ->
+        val start = section.startMinute ?: return@firstOrNull false
+        val end = section.endMinute ?: return@firstOrNull false
+        logicalMinute >= start && logicalMinute < end &&
+            (section.actualEndInstant == null || runCatching { instant.isBefore(Instant.parse(section.actualEndInstant)) }.getOrDefault(false))
+    }?.id
+}
 internal fun applyOptimisticDirectManipulation(
     day: TodayDay,
     request: DirectManipulationRequest,
@@ -163,10 +184,22 @@ private fun TodayDay.replaceEntry(task: TodayTask): TodayDay = copy(
 private fun TodayDay.sectionIdOf(entryId: String): String? = sections.firstOrNull { section -> section.entries.any { it.id == entryId } }?.id
 
 private fun TodayDay.insertEntry(sectionId: String?, task: TodayTask): TodayDay = if (sectionId == null) {
-    copy(unsectionedEntries = unsectionedEntries + task)
+    copy(unsectionedEntries = canonicalTaskOrder(unsectionedEntries + task))
 } else {
-    copy(sections = sections.map { section -> if (section.id == sectionId) section.copy(entries = section.entries + task) else section })
+    copy(sections = sections.map { section -> if (section.id == sectionId) section.copy(entries = canonicalTaskOrder(section.entries + task)) else section })
 }
+
+private fun canonicalTaskOrder(entries: List<TodayTask>): List<TodayTask> = entries.withIndex().sortedWith(
+    compareBy<IndexedValue<TodayTask>> { if (it.value.lifecycleState == LifecycleState.PLANNED) 1 else 0 }
+        .thenComparator { left, right ->
+            if (left.value.lifecycleState == LifecycleState.PLANNED && right.value.lifecycleState == LifecycleState.PLANNED) {
+                compareValues(left.value.plannedStartMinute, right.value.plannedStartMinute)
+            } else {
+                compareValues(left.value.firstStartedAt ?: left.value.activeStartedAt, right.value.firstStartedAt ?: right.value.activeStartedAt)
+            }
+        }
+        .thenBy { it.index },
+).map { it.value }
 
 private fun TodayDay.reorderSection(sectionId: String?, entryIds: List<String>): TodayDay = if (sectionId == null) {
     copy(unsectionedEntries = reorderEntries(unsectionedEntries, entryIds))
@@ -181,8 +214,9 @@ private fun TodayDay.moveEntry(entryId: String, targetSectionId: String?, placem
     else removed.sections.firstOrNull { it.id == targetSectionId }?.entries?.toMutableList() ?: mutableListOf()
     val index = placement?.let { target.indexOfFirst { entry -> entry.id == it.anchorEntryId }.let { anchor -> if (anchor < 0) target.size else if (it.edge == PlacementEdge.BEFORE) anchor else anchor + 1 } } ?: target.size
     target.add(index.coerceIn(0, target.size), task)
-    return if (targetSectionId == null) removed.copy(unsectionedEntries = target) else removed.copy(
-        sections = removed.sections.map { section -> if (section.id == targetSectionId) section.copy(entries = target) else section },
+    val ordered = if (placement == null) canonicalTaskOrder(target) else target
+    return if (targetSectionId == null) removed.copy(unsectionedEntries = ordered) else removed.copy(
+        sections = removed.sections.map { section -> if (section.id == targetSectionId) section.copy(entries = ordered) else section },
     )
 }
 

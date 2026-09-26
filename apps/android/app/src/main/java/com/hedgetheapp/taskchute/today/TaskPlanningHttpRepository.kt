@@ -77,18 +77,25 @@ class TaskPlanningHttpRepository(
         val currentModeId = task.mode?.id
         val currentSectionId = editor.day.sections.firstOrNull { section -> section.entries.any { it.id == task.id } }?.id
         if (editor.capability == TaskEditorCapability.ROUTINE_PLANNING) {
+            val routineInput = synchronizeRoutineSectionPlan(editor.day, input)
             var placementRevision = editor.day.placementRevision
-            if (currentSectionId != input.sectionId || task.plannedStartMinute != input.plannedStartMinute) {
-                when (val result = executeRoutineSectionPlan(task, editor.day, input.sectionId, input.plannedStartMinute, placementRevision)) {
+            if (currentSectionId != routineInput.sectionId || task.plannedStartMinute != routineInput.plannedStartMinute) {
+                when (val result = executeRoutineSectionPlan(task, editor.day, routineInput.sectionId, routineInput.plannedStartMinute, placementRevision)) {
                     is PlanningSaveResult.SuccessWithRevision -> placementRevision = result.placementRevision
                     PlanningSaveResult.Success -> Unit
                     else -> return result
                 }
             }
-            if (task.estimateSeconds != input.estimateSeconds) {
-                when (val result = executeRoutineEstimate(task, editor.day, input.estimateSeconds)) {
+            if (task.estimateSeconds != routineInput.estimateSeconds) {
+                when (val result = executeRoutineEstimate(task, editor.day, routineInput.estimateSeconds)) {
                     PlanningSaveResult.Success, is PlanningSaveResult.SuccessWithRevision -> Unit
                     else -> return result
+                }
+            }
+            if (editor.day.isCurrent && routineInput.actualStartMinute != null) {
+                return when (val actualResult = executeActualTimes(editor, routineInput, placementRevision)) {
+                    PlanningSaveResult.Success -> PlanningSaveResult.SuccessWithRevision(placementRevision)
+                    is PlanningSaveResult.SuccessWithRevision, PlanningSaveResult.Unauthorized, is PlanningSaveResult.Failure -> actualResult
                 }
             }
             return PlanningSaveResult.SuccessWithRevision(placementRevision)

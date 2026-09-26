@@ -35,6 +35,16 @@ data class TaskEditorState(
     val capability: TaskEditorCapability = TaskEditorCapability.FULL_PLANNING,
 )
 
+internal fun synchronizeRoutineSectionPlan(day: TodayDay, input: NormalizedTaskInput): NormalizedTaskInput {
+    val plannedStart = input.plannedStartMinute ?: return input.copy(sectionId = null)
+    val sectionId = day.sections.firstOrNull { section ->
+        val start = section.startMinute ?: return@firstOrNull false
+        val end = section.endMinute ?: return@firstOrNull false
+        plannedStart >= start && plannedStart < end
+    }?.id
+    return input.copy(sectionId = sectionId)
+}
+
 data class PlanningReferences(
     val projects: List<TodayProject>,
     val modes: List<TodayMode>,
