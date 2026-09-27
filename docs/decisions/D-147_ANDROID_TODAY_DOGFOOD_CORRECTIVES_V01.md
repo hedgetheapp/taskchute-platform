@@ -225,3 +225,11 @@ D-147A representative Today AVD cases: 5 / 5 PASS（collapsed Section drop、swi
 Today full surface: 35 / 44 PASS、既存fixture由来の9件を含むPARTIAL。MainActivity起動、APK install、crash bufferはPASS。
 Exact-SHA CI: run 36248977313 PASS。APK artifact taskchute-android-debug-b8a84a99a69a0a90f9791217abe1d5fbf145e260 / ID 10908412479。
 Worker/API/shared contract、input_precision、schema、migration、dependency、nonprod、production、Releaseは変更・実施していない。Galaxy S23はNOT_RUN / PRODUCT_OWNER_MANUAL。
+
+## D-147A corrective 1 checkpoint — 2026-09-27
+
+独立source reviewで確認された2件をcorrectした。過去Dayのeligible ordinary Planned rowからの「日付を移動」はDatePicker経路でも`allowPastSource`を保持してcurrent/future targetへdispatchし、sourceより前のpast targetはclient no-write guardで拒否する。Planned Routine-derived rowはrelative placementのdrop anchorとして解決でき、same-Section / cross-Sectionの既存occurrence-aware pathを維持する。Running / Completedは引き続きanchor不可。D-147(B)のmanual minute-granularity actual-start補正は完全保留で、今回も触れていない。
+
+Implementation commit: `602741f8dd1565a093c0d9a0be46cc8d0f8b05b4`
+Focused Android JVM、Android JVM suite、`:app:compileDebugKotlin`、`:app:compileDebugAndroidTestKotlin`、`:app:assembleDebug`、`git diff --check`: PASS。Today AVDは`44 tests / 35 PASS / 9 existing fixture failures`で、前回D-147Aと同じPARTIAL。MainActivity起動、APK install、crash bufferはPASS。
+Exact-SHA CI: run `36282360581` PASS。APK artifact `taskchute-android-debug-602741f8dd1565a093c0d9a0be46cc8d0f8b05b4` / ID `10919013636`。Worker/API/shared contract、`input_precision`、schema、migration、dependency、nonprod、production、Releaseは変更・実施していない。Galaxy S23はNOT_RUN / PRODUCT_OWNER_MANUAL。

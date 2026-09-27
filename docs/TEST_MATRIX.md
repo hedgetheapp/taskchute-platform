@@ -13,6 +13,20 @@
 | D147A-BOUNDARY | Scope | No Worker/API/shared contract/schema/migration/dependency/nonprod/production/Release change; Galaxy S23 not run | PASS / NOT_RUN |
 
 D-147(B)は独立して完全保留。D-147Aの他の独立項目は実装・検証済みであり、Bの保留によって他項目の証拠を無効化しない。
+
+### D-147A corrective 1 — 2026-09-27
+
+| ID | Area | Evidence | Status |
+|---|---|---|---|
+| D147A-CORRECTIVE-1 | Past DatePicker forward move | Established past ordinary Planned rowのDatePicker pathが`allowPastSource`を保持し、current/future targetへdispatch。sourceより前のpast targetはno-write guard | PASS |
+| D147A-CORRECTIVE-2 | Routine D&D anchor | Planned Routine-derived rowをrelative placement anchorとして解決。Running / Completedはanchor不可、既存occurrence-aware endpoint/requestを維持 | PASS |
+| D147A-CORRECTIVE-JVM | Android JVM | Focused `TodayDirectManipulationTest`、Android JVM suite | PASS |
+| D147A-CORRECTIVE-AVD | Today AVD | `TaskChute_API33`: 44 tests中35 PASS / 9 existing fixture failures。MainActivity、APK install、crash bufferはPASS。今回のcorrectiveに起因する新規失敗なし | PARTIAL / EXISTING FIXTURES |
+| D147A-CORRECTIVE-CI | Exact pushed SHA | `602741f8dd1565a093c0d9a0be46cc8d0f8b05b4`, CI run `36282360581`: classifier / Android JVM / signed APK / instrumentation compile / signing verification PASS、Web/Worker skipped | PASS |
+| D147A-CORRECTIVE-APK | Fresh artifact | `taskchute-android-debug-602741f8dd1565a093c0d9a0be46cc8d0f8b05b4`, artifact ID `10919013636` | PASS |
+| D147A-CORRECTIVE-BOUNDARY | B / scope | D-147(B)は完全保留。`input_precision`、Worker/API/shared contract、schema、migration、dependency、nonprod、production、Releaseは変更・実施していない。Galaxy S23は未実施 | DEFERRED / NOT_RUN |
+
+D-147全体はB deferredのためpartial statusを維持する。D-147A corrective 1は独立したA scopeの補正であり、既存Today full-surface 9件のfixture failureをPASSへ昇格させない。
 ## D-138 Android Today Planning / Lifecycle Refinements — 2026-09-24
 
 D-138は、Android Todayのplanned boundary、Routine occurrence-only planning、Running estimate、Completed projection、actual-start-only transitionを既存のWorker authorityへ接続する狭いcorrective。D-129 ended Section guard、D-081 execution-first ordering、Routine Definition authority、past / unestablished future / future execution boundaryは維持する。
