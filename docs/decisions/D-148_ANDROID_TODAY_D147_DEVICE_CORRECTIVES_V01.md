@@ -185,3 +185,24 @@ Corrective requirement:
 - D-127 drag snapshot stability, D-148 geometry rebase, parent pointer completion authority, D-129 guards, Routine placement semantics, and server authority remain unchanged.
 
 The current artifact therefore records Galaxy S23 auto-scroll/provisional-order interaction as `FAIL / USER_REPORTED` pending corrective verification.
+
+
+## Device corrective follow-up — Routine drop into empty Section
+
+Galaxy S23 manual verification of artifact `7180514d540273f237bd471724d4430e2daa9624` found that dragging a Planned Routine-derived occurrence into a target Section with no eligible anchor results in deterministic operation failure (`操作を完了できませんでした`).
+
+Source review confirmed the Android no-anchor branch calls the generic Move path without `routineScoped = source.routineDerived`. Anchor-based Routine D&D already uses the occurrence-aware endpoint.
+
+This is a D-148 implementation bug, not new Product semantics.
+
+Corrective requirement:
+
+- when `target.anchorEntryId == null` and the source is Routine-derived, Android must dispatch the existing occurrence-aware Section move path with `routineScoped = true`;
+- `relative_planned_start = "anchor"` must remain absent because there is no anchor;
+- the existing canonical no-anchor Section semantics remain authoritative: target Section canonical planned start is used, and the current occurrence-only override is persisted;
+- RoutineDefinition defaults, future occurrences, and other Days remain unchanged;
+- ordinary Task empty-Section move behavior remains unchanged;
+- same-Section no-anchor no-op behavior remains unchanged;
+- no new endpoint, schema, migration, or persistence authority is introduced.
+
+The current artifact records Routine-to-empty-Section D&D as `FAIL / USER_REPORTED` pending corrective verification.
