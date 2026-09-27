@@ -278,3 +278,29 @@ Corrective requirement:
 - existing auto-scroll snapshot/rebase, preview freeze, Routine empty-Section routing, D-129 guards, and physical-up single commit remain unchanged.
 
 This is an implementation corrective inside the already-approved D-148 interaction contract, not a new Product semantic.
+
+
+## Device corrective follow-up — parent capture after source-row disposal
+
+The same Galaxy S23 session additionally clarified the edge-auto-scroll failure mode: once auto-scroll moves the source row off-screen, the held gesture begins to feel like normal finger scrolling and the dragged Task can no longer be placed reliably.
+
+Source review confirms the remaining ownership gap:
+
+- the row-level drag detector consumes pointer movement with `change.consume()` while the source row remains composed;
+- the stable Today parent currently reads events at `PointerEventPass.Final`, updates drag state, but does not consume movement;
+- when LazyColumn auto-scroll disposes the source row, the row-level consumer disappears;
+- subsequent physical finger movement can therefore be processed by LazyColumn as ordinary user scroll before the parent observes the Final pass.
+
+Corrective requirement:
+
+- after long-press handoff, the stable Today parent must become both:
+  1. the sole drag pointer-position / target / completion authority, and
+  2. the stable gesture consumer that prevents LazyColumn/pull-to-refresh/swipe from reclaiming vertical movement while drag is active;
+- parent capture/consumption must occur early enough in the pointer pass pipeline to prevent normal list scrolling after handoff;
+- before long-press handoff, parent must not consume normal touch input, so ordinary scrolling/swipe/pull-to-refresh remain unchanged;
+- row detector should only establish the long-press handoff; after handoff it must not provide pointer coordinates or remain required for gesture consumption;
+- source-row disposal must not change pointer ownership;
+- physical pointer-up in the parent remains the only commit trigger and still dispatches at most once;
+- programmatic edge auto-scroll remains driven by the existing D-148 list-state loop; physical finger movement itself must not directly scroll the LazyColumn during an active drag.
+
+This remains an implementation corrective under D-148, not a new Product semantic.
