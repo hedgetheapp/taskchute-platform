@@ -42,6 +42,7 @@ class TodayHttpRepositoryTest {
         assertTrue(body.contains("\"expected_placement_revision\":7"))
         assertTrue(body.contains("\"operation_id\":\""))
         assertTrue(body.contains("\"execution_id\":\""))
+        assertTrue(!body.contains("input_precision"))
     }
 
     @Test

@@ -771,6 +771,7 @@ export interface SetExecutionTimesRequest {
   expected_started_at: string | null;
   expected_ended_at: string | null;
   expected_placement_revision?: number;
+  input_precision?: "minute";
 }
 
 export interface SetExecutionTimesResult {

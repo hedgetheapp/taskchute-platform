@@ -69,6 +69,7 @@ class TaskPlanningHttpRepositoryTest {
         assertTrue(requests[1].third!!.contains("\"started_at\":\"2026-09-14T09:00:00Z\""))
         assertTrue(requests[1].third!!.contains("\"ended_at\":\"2026-09-14T09:30:00Z\""))
         assertTrue(requests[1].third!!.contains("\"expected_placement_revision\":6"))
+        assertTrue(requests[1].third!!.contains("\"input_precision\":\"minute\""))
     }
 
     @Test
@@ -101,6 +102,7 @@ class TaskPlanningHttpRepositoryTest {
         assertTrue(requests.single().second.endsWith("/execution-times"))
         assertTrue(requests.single().third!!.contains("\"expected_lifecycle_state\":\"planned\""))
         assertTrue(requests.single().third!!.contains("\"expected_placement_revision\":5"))
+        assertTrue(requests.single().third!!.contains("\"input_precision\":\"minute\""))
     }
     @Test
     fun plannedStartOnlyCreateSendsNullEndAndUsesRunningTransitionContract() {
@@ -341,6 +343,7 @@ class TaskPlanningHttpRepositoryTest {
         assertTrue(requests.single().third!!.contains("\"execution_id\":\"execution-1\""))
         assertTrue(requests.single().third!!.contains("\"started_at\":\"2026-09-14T09:00:00Z\""))
         assertTrue(requests.single().third!!.contains("\"ended_at\":\"2026-09-14T09:30:00Z\""))
+        assertTrue(requests.single().third!!.contains("\"input_precision\":\"minute\""))
     }
 
     @Test

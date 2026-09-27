@@ -22,6 +22,7 @@ interface EntryRow {
   placement_revision: number;
   start_instant: string;
   end_instant: string;
+  establishment_timezone: string;
 }
 
 interface ExecutionRow {
@@ -29,6 +30,18 @@ interface ExecutionRow {
   entry_id: string;
   started_at: string;
   ended_at: string | null;
+}
+
+interface MinuteBlocker {
+  id: string;
+  entry_id: string;
+  started_at: string;
+  ended_at: string;
+}
+
+interface DisplayedMinuteWindow {
+  start: string;
+  end: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -54,7 +67,8 @@ export function isSetExecutionTimesRequest(value: unknown): value is SetExecutio
     && isOptionalInstant(value.expected_started_at)
     && isOptionalInstant(value.expected_ended_at)
     && (!("expected_placement_revision" in value)
-      || (Number.isInteger(value.expected_placement_revision) && Number(value.expected_placement_revision) >= 0));
+      || (Number.isInteger(value.expected_placement_revision) && Number(value.expected_placement_revision) >= 0))
+    && (!("input_precision" in value) || value.input_precision === "minute");
 }
 
 function canonicalInstant(value: string, field: InstantField): string {
@@ -107,9 +121,64 @@ async function reject<T>(
 
 async function readEntry(db: D1Database, appUserId: string, entryId: string): Promise<EntryRow | null> {
   return db.prepare(`SELECT e.id AS entry_id, e.taskchute_day_id, e.lifecycle_state, e.section_id,
-      e.planned_start_minute, e.position, d.placement_revision, d.start_instant, d.end_instant
+      e.planned_start_minute, e.position, d.placement_revision, d.start_instant, d.end_instant,
+      d.establishment_timezone
     FROM entries e JOIN taskchute_days d ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
     WHERE e.app_user_id = ? AND e.id = ?`).bind(appUserId, entryId).first<EntryRow>();
+}
+
+function displayedMinuteWindow(startedAt: string, timezone: string): DisplayedMinuteWindow | null {
+  try {
+    const local = Temporal.Instant.from(startedAt).toZonedDateTimeISO(timezone);
+    if (local.second !== 0 || local.millisecond !== 0 || local.microsecond !== 0 || local.nanosecond !== 0) return null;
+    const minuteStart = local.with({ second: 0, millisecond: 0, microsecond: 0, nanosecond: 0 });
+    return {
+      start: minuteStart.toInstant().toString({ smallestUnit: "millisecond" }),
+      end: minuteStart.add({ minutes: 1 }).toInstant().toString({ smallestUnit: "millisecond" }),
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function findMinuteBlocker(
+  db: D1Database,
+  appUserId: string,
+  entry: EntryRow,
+  request: SetExecutionTimesRequest,
+  window: DisplayedMinuteWindow,
+): Promise<MinuteBlocker | null> {
+  const rows = await db.prepare(`SELECT x.id, x.entry_id, x.started_at, x.ended_at
+      FROM executions x JOIN entries blocker_entry
+        ON blocker_entry.app_user_id = x.app_user_id AND blocker_entry.id = x.entry_id
+     WHERE x.app_user_id = ? AND blocker_entry.taskchute_day_id = ? AND x.id <> ? AND x.ended_at IS NOT NULL`)
+    .bind(appUserId, entry.taskchute_day_id, request.execution_id).all<MinuteBlocker>();
+  let selected: MinuteBlocker | null = null;
+  for (const row of rows.results) {
+    if (compareInstants(row.started_at, window.start) <= 0
+      && compareInstants(row.ended_at, window.start) > 0
+      && compareInstants(row.ended_at, window.end) < 0
+      && (!selected || compareInstants(row.ended_at, selected.ended_at) > 0)) {
+      selected = row;
+    }
+  }
+  return selected;
+}
+
+function blockerGuard(
+  blocker: MinuteBlocker | null,
+  appUserId: string,
+  dayId: string,
+): { sql: string; bindings: unknown[] } {
+  if (!blocker) return { sql: "", bindings: [] };
+  return {
+    sql: `AND EXISTS (SELECT 1 FROM executions blocker
+        JOIN entries blocker_entry ON blocker_entry.app_user_id = blocker.app_user_id AND blocker_entry.id = blocker.entry_id
+       WHERE blocker.app_user_id = ? AND blocker.id = ? AND blocker.entry_id = ?
+         AND blocker.started_at = ? AND blocker.ended_at = ?
+         AND blocker_entry.taskchute_day_id = ?)`,
+    bindings: [appUserId, blocker.id, blocker.entry_id, blocker.started_at, blocker.ended_at, dayId],
+  };
 }
 
 async function readExecution(db: D1Database, appUserId: string, executionId: string): Promise<ExecutionRow | null> {
@@ -202,7 +271,21 @@ export async function setExecutionTimes(
       return reject(db, appUserId, request, requestFingerprint, "resource_conflict", "Execution changed before correction");
     }
   }
-  const windowError = validateActualWindow(request, entry, now);
+  let minuteBlocker: MinuteBlocker | null = null;
+  let effectiveStartedAt = request.started_at;
+  if (request.input_precision === "minute") {
+    const minuteWindow = displayedMinuteWindow(request.started_at, entry.establishment_timezone);
+    if (!minuteWindow) {
+      return reject(db, appUserId, request, requestFingerprint, "resource_conflict",
+        "Minute precision requires a start at the beginning of the displayed minute");
+    }
+    minuteBlocker = await findMinuteBlocker(db, appUserId, entry, request, minuteWindow);
+    if (minuteBlocker) effectiveStartedAt = minuteBlocker.ended_at;
+  }
+  const effectiveRequest = effectiveStartedAt === request.started_at
+    ? request
+    : { ...request, started_at: effectiveStartedAt };
+  const windowError = validateActualWindow(effectiveRequest, entry, now);
   if (windowError) return reject(db, appUserId, request, requestFingerprint, "resource_conflict", windowError);
 
   if (request.expected_lifecycle_state === "planned" && entry.section_id === null && entry.planned_start_minute !== null) {
@@ -210,12 +293,12 @@ export async function setExecutionTimes(
       "Section-less Entry cannot have a planned start");
   }
   const plannedTransition = request.expected_lifecycle_state === "planned";
-  const target = plannedTransition ? await findActualSectionTarget(db, appUserId, entry.taskchute_day_id, request.started_at) : null;
+  const target = plannedTransition ? await findActualSectionTarget(db, appUserId, entry.taskchute_day_id, effectiveRequest.started_at) : null;
   if (plannedTransition && !target) {
     return reject(db, appUserId, request, requestFingerprint, "resource_conflict",
       "A timed Section context is required for an actual start");
   }
-  const targetState = request.ended_at === null ? "running" : "completed";
+  const targetState = effectiveRequest.ended_at === null ? "running" : "completed";
   const targetSectionId = target?.sectionId ?? entry.section_id;
   const movesSection = plannedTransition && targetSectionId !== entry.section_id;
   if (movesSection && request.expected_placement_revision === undefined) {
@@ -233,7 +316,7 @@ export async function setExecutionTimes(
   const result: SetExecutionTimesResult = {
     entry_id: request.entry_id,
     lifecycle_state: targetState,
-    execution: { id: request.execution_id, entry_id: request.entry_id, started_at: request.started_at, ended_at: request.ended_at },
+    execution: { id: request.execution_id, entry_id: request.entry_id, started_at: effectiveRequest.started_at, ended_at: effectiveRequest.ended_at },
     section_id: targetSectionId,
     planned_start_minute: entry.planned_start_minute,
     position: targetPosition,
@@ -241,6 +324,8 @@ export async function setExecutionTimes(
   };
   const assertionId = `execution-times:${request.operation_id}`;
   const expectedRevision = guardedPlacementRevision ?? null;
+  const dayId = entry.taskchute_day_id;
+  const blockerGuardSpec = blockerGuard(minuteBlocker, appUserId, dayId);
   const lifecycleGuard = request.expected_lifecycle_state === "planned"
     ? db.prepare(`INSERT INTO lifecycle_command_guards (app_user_id, operation_id, entry_id, execution_id, command_type)
         SELECT ?, ?, e.id, ?, 'SetExecutionTimes'
@@ -249,9 +334,11 @@ export async function setExecutionTimes(
            AND NOT EXISTS (SELECT 1 FROM executions x WHERE x.app_user_id = ? AND x.id = ?)
            AND (? IS NULL OR d.placement_revision = ?)
            AND ${overlapsSql("e")}
+           ${blockerGuardSpec.sql}
            AND (? = 0 OR EXISTS (SELECT 1 FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?))`)
       .bind(appUserId, request.operation_id, request.execution_id, appUserId, request.entry_id, appUserId, request.execution_id,
-        expectedRevision, expectedRevision, request.execution_id, request.ended_at, request.ended_at, request.started_at,
+        expectedRevision, expectedRevision, request.execution_id, effectiveRequest.ended_at, effectiveRequest.ended_at, effectiveRequest.started_at,
+        ...blockerGuardSpec.bindings,
         movesSection ? 1 : 0, appUserId, request.operation_id)
     : db.prepare(`INSERT INTO lifecycle_command_guards (app_user_id, operation_id, entry_id, execution_id, command_type)
         SELECT ?, ?, e.id, x.id, 'SetExecutionTimes'
@@ -261,11 +348,12 @@ export async function setExecutionTimes(
            AND x.started_at = ?
            AND ((? IS NULL AND x.ended_at IS NULL) OR (? IS NOT NULL AND x.ended_at = ?))
            AND (? IS NULL OR d.placement_revision = ?)
-           AND ${overlapsSql("e")}`)
+           AND ${overlapsSql("e")}
+            ${blockerGuardSpec.sql}`)
       .bind(appUserId, request.operation_id, appUserId, request.entry_id, request.expected_lifecycle_state, request.execution_id,
         request.expected_started_at, request.expected_ended_at, request.expected_ended_at, request.expected_ended_at,
-        expectedRevision, expectedRevision, request.execution_id, request.ended_at, request.ended_at, request.started_at);
-  const dayId = entry.taskchute_day_id;
+        expectedRevision, expectedRevision, request.execution_id, effectiveRequest.ended_at, effectiveRequest.ended_at, effectiveRequest.started_at,
+        ...blockerGuardSpec.bindings);
   try {
     const [placementGuard, guard] = await db.batch([
       movesSection
@@ -293,13 +381,13 @@ export async function setExecutionTimes(
         ? db.prepare(`INSERT INTO executions (id, app_user_id, entry_id, started_at, ended_at, created_at, terminal_outcome)
             SELECT ?, ?, ?, ?, ?, ?, CASE WHEN ? IS NULL THEN NULL ELSE 'completed' END
               WHERE EXISTS (SELECT 1 FROM lifecycle_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
-          .bind(request.execution_id, appUserId, request.entry_id, request.started_at, request.ended_at, now,
-            request.ended_at, appUserId, request.operation_id)
+          .bind(request.execution_id, appUserId, request.entry_id, effectiveRequest.started_at, effectiveRequest.ended_at, now,
+            effectiveRequest.ended_at, appUserId, request.operation_id)
         : db.prepare(`UPDATE executions SET started_at = ?, ended_at = ?,
             terminal_outcome = CASE WHEN ? IS NULL THEN NULL ELSE 'completed' END
             WHERE app_user_id = ? AND id = ? AND entry_id = ?
               AND EXISTS (SELECT 1 FROM lifecycle_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
-          .bind(request.started_at, request.ended_at, request.ended_at, appUserId, request.execution_id, request.entry_id, appUserId, request.operation_id),
+          .bind(effectiveRequest.started_at, effectiveRequest.ended_at, effectiveRequest.ended_at, appUserId, request.execution_id, request.entry_id, appUserId, request.operation_id),
       plannedTransition
         ? db.prepare(`INSERT INTO entry_project_snapshots
             (app_user_id, entry_id, project_id, project_title, captured_at)
@@ -345,7 +433,7 @@ export async function setExecutionTimes(
           AND (? = 0 OR EXISTS (SELECT 1 FROM taskchute_days WHERE app_user_id = ? AND id = ? AND placement_revision = ?))
         THEN 1 ELSE 0 END WHERE EXISTS (SELECT 1 FROM lifecycle_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
         .bind(appUserId, assertionId, appUserId, request.entry_id, targetState, appUserId, request.execution_id, request.entry_id,
-          request.started_at, request.ended_at, request.ended_at, movesSection ? 1 : 0, appUserId, request.entry_id,
+          effectiveRequest.started_at, effectiveRequest.ended_at, effectiveRequest.ended_at, movesSection ? 1 : 0, appUserId, request.entry_id,
           targetSectionId, movesSection ? 1 : 0, appUserId, dayId, result.placement_revision, appUserId, request.operation_id),
       db.prepare(`INSERT INTO operations (app_user_id, operation_id, command_type, request_fingerprint_version,
           request_fingerprint, outcome_kind, result_json, created_at)
