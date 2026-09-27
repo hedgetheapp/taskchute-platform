@@ -1,3 +1,15 @@
+## D-148 insertion boundary / bottom edge auto-scroll corrective — 2026-09-27
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D148-BOUNDARY-IMPLEMENTATION | Android Today D&D | Adjacent Task rows resolve to one legal boundary; destination row is not highlighted/layout-shifted; one insertion line follows the resolved boundary | Implementation `eb6546ed2d6ee9016d53bd44c846d4fc57c0d681`; `TodayDirectManipulationTest` covers shared adjacent boundary, source-after/source-before adjacent boundaries, and stable resolved Y | PASS |
+| D148-BOUNDARY-AUTOSCROLL | Android Today edge auto-scroll | Bottom edge uses measured list viewport/overlay geometry, preserves parent pointer/source continuity, rebases snapshot after consumed scroll, and reaches initially off-screen target | `TaskChute_API33` focused bottom-edge test PASS with one physical pointer session and one move dispatch; top/bottom speed, outside-zone, tiny viewport, list-boundary, and consumed-scroll rebase helpers PASS | PASS / FOCUSED |
+| D148-BOUNDARY-SECTION | Android Today Section D&D | Empty/collapsed Section-only behavior and expanded row-target priority remain unchanged | Focused collapsed non-empty configured Section instrumentation PASS; Routine empty-Section instrumentation PASS | PASS / FOCUSED |
+| D148-BOUNDARY-JVM | Android JVM / build | Focused and full Android unit tests plus required compile/build/static checks | Full `:app:testDebugUnitTest` `214 / 214 PASS`; `:app:compileDebugKotlin`, `:app:compileDebugAndroidTestKotlin`, `:app:assembleDebug`, `git diff --check` PASS | PASS |
+| D148-BOUNDARY-AVD-FULL | Today standard surface | Standard Today gate and crash safety | Not rerun for this focused corrective; prior standard runner remains `HARNESS_HUNG / PARTIAL / NOT_VERIFIED`; latest focused AVD crash buffer had no target-app FATAL/ANR marker | PARTIAL / NOT_VERIFIED |
+| D148-BOUNDARY-CI | Exact pushed SHA / APK | Android impact-aware CI and signed artifact | `main@eb6546ed2d6ee9016d53bd44c846d4fc57c0d681`, CI `36325621921`: classifier and Android JVM/signed build/instrumentation compile/signing/upload PASS; Web/Worker SKIP. Artifact `taskchute-android-debug-eb6546ed2d6ee9016d53bd44c846d4fc57c0d681`, ID `10934126205`, expires `2026-10-04T14:24:16Z` | PASS |
+| D148-BOUNDARY-SCOPE | Product / server / device | Preserve D-127/D-148, Routine, D-129, and boundaries | No Worker/API/shared contract, schema, migration, dependency, nonprod, D-145, Notes, Production, or Release change; Galaxy S23 remains `NOT_RUN / PRODUCT_OWNER_MANUAL` | PASS / NOT_REQUIRED / NOT_RUN / NO |
+
 ## D-148 device follow-up — future-Day cross-Section D&D
 
 | ID | Area | Requirement | Evidence | Status |

@@ -57,6 +57,12 @@
 # Changelog
 
 ## Unreleased
+### D-148 Android Today insertion boundary / bottom edge auto-scroll corrective — 2026-09-27
+
+- Android Today D&D now resolves adjacent row hits to one deterministic insertion boundary and renders one thin non-layout-shifting insertion line; destination rows no longer receive a duplicate full-row cue.
+- Bottom edge auto-scroll uses measured `LazyColumn` viewport and overlay geometry, preserving the existing parent pointer/session, snapshot rebase, Routine placement, and exact-once move semantics.
+- Implementation `eb6546ed2d6ee9016d53bd44c846d4fc57c0d681`; full Android JVM `214 / 214`, focused Today AVD, compile / instrumentation compile / assemble / diff-check PASS; CI `36325621921` PASS; APK artifact ID `10934126205`. Standard Today surface remains `HARNESS_HUNG / PARTIAL / NOT_VERIFIED`, Galaxy S23 `NOT_RUN`, Production `NOT_RUN`, Released `NO`.
+
 ### D-136 Android Markdown Interactive Links + Stable Tap Selection — 2026-09-23
 
 - 共通Android live-preview Markdown editorでinactive task checkboxとhttp(s) linkのtap / accessibility actionを埋め込み操作化し、`BasicTextField`のcaret / selectionを移動させないようInitial pointer passで処理する。
