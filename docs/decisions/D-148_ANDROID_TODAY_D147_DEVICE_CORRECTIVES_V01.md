@@ -1,6 +1,6 @@
 # D-148 — Android Today D-147 Device Correctives v0.1
 
-Status: **Approved — 5-item corrective plus drag-session, footer, preview-stability, and Routine empty-Section correctives implemented / integrated; focused PASS; Today surface remains partial / not verified**
+Status: **Approved — implementation integrated; latest Galaxy S23 D&D regression FAIL / USER_REPORTED; corrective pending; Today surface not verified**
 
 Date: 2026-09-27
 
@@ -216,3 +216,31 @@ Implementation `cc3a83ef3887c2fc06ec952ddb33b73c6bfa173c` addresses both follow-
 - A Routine-derived anchorless Section drop now uses the existing occurrence-aware endpoint with `routineScoped=true`, `placement=null`, and no `relative_planned_start` marker. Ordinary anchorless moves remain on the ordinary endpoint; same-Section anchorless drops remain no-op.
 
 Focused/full Android JVM, instrumentation compile, debug assemble, and `git diff --check` passed. Focused `TaskChute_API33` tests for the Routine empty-Section request and held edge auto-scroll/off-screen target both passed. The standard Today runner reached `connectedDebugAndroidTest` but did not return completion; the target-app crash buffer was empty, so the full Today surface remains `PARTIAL / NOT_VERIFIED`. Exact-SHA CI `36302559765` passed; APK artifact `taskchute-android-debug-cc3a83ef3887c2fc06ec952ddb33b73c6bfa173c`, ID `10925464530`, expires `2026-10-04T07:18:41Z`. Galaxy S23 remains `NOT_RUN / PRODUCT_OWNER_MANUAL`.
+
+
+## Device corrective follow-up — cc3 preview-state regression
+
+Galaxy S23 manual verification of implementation `cc3a83ef3887c2fc06ec952ddb33b73c6bfa173c` found a broader D&D regression:
+
+- edge auto-scroll no longer works in representative device use;
+- even without auto-scroll, provisional reorder presentation is unstable / incorrect;
+- the user can no longer reliably complete ordinary reorder.
+
+Source diff against the preceding drag implementation shows that `cc3a83e...` changed ordinary drag presentation in addition to the intended auto-scroll corrective:
+
+- ordinary rows changed from `dropTarget = false` to an active target marker with a 6dp layout-changing insertion padding while `provisionalDay` was already reordering the list;
+- auto-scroll entry clears `provisionalDay` back to canonical order, causing a second geometry jump exactly when programmatic scrolling starts;
+- the new `DRAG_STABLE / AUTO_SCROLLING / SETTLING` presentation phase therefore affects both ordinary drag geometry and auto-scroll geometry.
+
+This corrective must prioritize restoring the last known device behavior before `cc3a83e...`:
+
+- preserve the Routine empty-Section fix from `cc3a83e...`;
+- remove the preview-phase state-machine changes that altered ordinary D&D;
+- restore ordinary D-127/D-148 provisional reorder behavior from the preceding implementation;
+- do not clear `provisionalDay` when edge auto-scroll begins;
+- during active edge auto-scroll, freeze the already-rendered provisional layout in place while target geometry/rebase continues; do not replace it with canonical order;
+- do not add layout-changing target padding during ordinary drag;
+- use only non-layout-shifting cue presentation while edge auto-scroll is active;
+- pointer-up must still commit the latest resolved target exactly once.
+
+The `cc3a83e...` artifact is therefore `FAIL / USER_REPORTED` for ordinary D&D and edge auto-scroll. Focused AVD PASS does not supersede this physical-device evidence.
