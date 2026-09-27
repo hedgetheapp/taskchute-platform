@@ -1,6 +1,6 @@
 # D-148 — Android Today D-147 Device Correctives v0.1
 
-Status: **Approved — D&D parent pointer-capture corrective implemented / integrated; focused PASS; corrective Galaxy S23 NOT_RUN / PRODUCT_OWNER_MANUAL; Today surface partial / not verified**
+Status: **Approved — D&D future-Day/stable-source corrective implemented / integrated; focused PASS; persistent nonprod read-only PASS; Today surface partial / not verified; Galaxy S23 NOT_RUN / PRODUCT_OWNER_MANUAL**
 
 Date: 2026-09-27
 
@@ -361,3 +361,17 @@ Approved presentation behavior:
 - parent pointer ownership, edge auto-scroll, target rebase, Routine occurrence semantics, D-129 guards, and exact-once physical-up commit remain unchanged.
 
 This is an approved user-visible presentation change. It does not change persisted placement semantics, API contract, RoutineDefinition semantics, schema, migration, or production behavior.
+
+## Implementation evidence — Future-Day cross-Section and stable source preview
+
+Implementation `740e92b78972cdfdf8360cd37f95a54e9faf299d` closes the two current D-148 follow-ups.
+
+The Worker Section-occurrence guard now preserves the Routine relationship and occurrence override invariants without requiring `routine_occurrences.origin_taskchute_day_id` to equal the Entry's current destination Day. This keeps date-moved Routine origin identity unchanged while allowing ordinary, native Routine, and date-moved Routine Entries to use the existing future-Day cross-Section command. The focused regression reproduced the pre-fix `resource_conflict` failure for the date-moved case, then passed all 20 affected tests after the minimal guard correction; Web typecheck also passed. Adjacent scoped estimate/section guards were not broadened because they are not used by this Android D&D path.
+
+During Android drag, `renderDay` remains the canonical Day. The source row keeps its original 84dp layout slot and is only ghosted; `DraggedTaskOverlay` follows the physical pointer, while a non-layout-shifting `ProvisionalDropSlot` follows the refreshed destination cue. The stable Today parent remains the only physical pointer-up/finish authority, and consumed edge-scroll waits for two frames, refreshes the geometry snapshot, and re-resolves the current root pointer against the refreshed bounds.
+
+Focused/full Android JVM, compile Kotlin, instrumentation compile, debug assemble, and `git diff --check` passed. On `TaskChute_API33`, the stable-source same-Section, visible cross-Section, off-screen edge auto-scroll, and Routine empty-Section occurrence-aware no-anchor cases all passed. The standard `scripts/android-qa.ps1 -Surface Today` reached `connectedDebugAndroidTest` but returned no completion result after approximately two minutes and was stopped; the target-app crash buffer was empty, so the full Today surface remains `HARNESS_HUNG / PARTIAL / NOT_VERIFIED`.
+
+Exact-SHA CI `36320708350` passed, including Web/Worker verification and Android JVM/signed APK verification. Artifact `taskchute-android-debug-740e92b78972cdfdf8360cd37f95a54e9faf299d`, ID `10931897828`.
+
+The exact pushed Worker was deployed to persistent nonprod as `taskchute-web-nonprod`, version `5bcea8ef-52c5-4cf1-b0d0-ac2fe016d195`. Guarded bindings were APP `taskchute-app-nonprod`, AUTH `taskchute-auth-nonprod`, and `REALTIME_HUB/RealtimeHub/sqlite`, with `RUNTIME_ENV=nonprod` and `BOOTSTRAP_ENABLED=false`. Root returned `200`, the protected current-Day API returned `401`, APP/AUTH migrations reported no pending migrations, both `PRAGMA quick_check` results were `ok`, both foreign-key checks were empty, and placement/routine/lifecycle guard plus transaction assertion counts were `0`. One pre-existing active Execution was observed read-only and was not changed. Authenticated Web/remote disposable QA was `NOT_RUN` because the authorized CUA browser helper was unavailable; no existing or QA data was mutated. Galaxy S23 remains `NOT_RUN / PRODUCT_OWNER_MANUAL`; Production is `NOT_RUN`; Released is `NO`.
