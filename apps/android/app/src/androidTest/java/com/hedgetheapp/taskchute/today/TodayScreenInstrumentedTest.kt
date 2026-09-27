@@ -11,6 +11,7 @@ import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -929,13 +930,20 @@ class TodayScreenInstrumentedTest {
 
         val sourceNode = composeRule.onNodeWithContentDescription("タスクをドラッグ: Drag source")
         assertTrue(composeRule.onAllNodesWithText("Offscreen target", substring = false).fetchSemanticsNodes().isEmpty())
-        sourceNode.performTouchInput {
-            down(center)
+        val sourceBounds = sourceNode.fetchSemanticsNode().boundsInRoot
+        val rootBounds = composeRule.onRoot().fetchSemanticsNode().boundsInRoot
+        composeRule.onRoot().performTouchInput {
+            down(sourceBounds.center)
             advanceEventTime(600)
-            moveTo(Offset(center.x, 1_450f), delayMillis = 100)
+            // The API 33 fixture is 1080x2400; keep the pointer inside the measured
+            // LazyColumn viewport's bottom edge zone rather than relying on a device-
+            // specific absolute screen coordinate.
+            moveTo(Offset(sourceBounds.center.x, rootBounds.bottom - 180f), delayMillis = 100)
             advanceEventTime(1_000)
             assertEquals(0, directRepository.moveCalls.get())
-            moveBy(Offset(0f, -8f), delayMillis = 100)
+            // Once the list has advanced, move into the newly revealed destination row
+            // while keeping the same physical pointer session.
+            moveBy(Offset(0f, -400f), delayMillis = 100)
             up()
         }
 

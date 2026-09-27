@@ -193,6 +193,7 @@ fun TodayScreen(
     var addFabOffset by remember(day?.logicalDate) { mutableStateOf(Offset.Zero) }
     var todayHeaderBottomPx by remember(day?.logicalDate) { mutableStateOf(0f) }
     var bottomOverlayTopPx by remember(day?.logicalDate) { mutableStateOf(Float.POSITIVE_INFINITY) }
+    var bottomOverlayTopRootPx by remember(day?.logicalDate) { mutableStateOf(Float.POSITIVE_INFINITY) }
     if (headerDatePickerVisible && day != null) {
         TaskChuteDatePickerDialog(
             initialLogicalDate = day.logicalDate,
@@ -285,6 +286,7 @@ fun TodayScreen(
                     },
                     onOpenHeaderDatePicker = { headerDatePickerVisible = true },
                     onHeaderBoundsChanged = { todayHeaderBottomPx = it },
+                    bottomOverlayTopRootPx = bottomOverlayTopRootPx,
                     onRequestDelete = { deleteEntryIds = it },
                     modifier = Modifier.fillMaxSize(),
                 )
@@ -301,6 +303,7 @@ fun TodayScreen(
                     LaunchedEffect(day.logicalDate, runningTask?.id, unresolved, deterministicFailure, selectionModeActive) {
                         if (selectionModeActive || (runningTask == null && !unresolved && !deterministicFailure)) {
                             bottomOverlayTopPx = Float.POSITIVE_INFINITY
+                            bottomOverlayTopRootPx = Float.POSITIVE_INFINITY
                         }
                     }
                     if (canAdd || runningTask != null || unresolved || deterministicFailure) {
@@ -357,6 +360,7 @@ fun TodayScreen(
                                         .fillMaxWidth()
                                         .onGloballyPositioned {
                                             bottomOverlayTopPx = it.boundsInParent().top
+                                            bottomOverlayTopRootPx = it.boundsInRoot().top
                                         },
                                     horizontalAlignment = Alignment.End,
                                     verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -473,6 +477,7 @@ private fun TodayContent(
     onOpenDatePicker: (Set<String>, Boolean) -> Unit,
     onOpenHeaderDatePicker: () -> Unit,
     onHeaderBoundsChanged: (Float) -> Unit,
+    bottomOverlayTopRootPx: Float,
     onRequestDelete: (Set<String>) -> Unit,
     modifier: Modifier,
 ) {
@@ -595,7 +600,7 @@ private fun TodayContent(
     val todayListState = rememberLazyListState()
     val edgeZonePx = with(LocalDensity.current) { D148_DRAG_EDGE_ZONE.dp.toPx() }
     val maxAutoScrollDeltaPx = with(LocalDensity.current) { D148_DRAG_MAX_SCROLL_PER_FRAME.dp.toPx() }
-    val listBottomContentPaddingPx = with(LocalDensity.current) { 110.dp.toPx() }
+    val insertionLineHalfHeightPx = with(LocalDensity.current) { 1.5.dp.toPx() }
     LaunchedEffect(dragState != null, day.logicalDate) {
         while (dragState != null) {
             val pointerY = dragPointerRootY
@@ -798,13 +803,17 @@ private fun TodayContent(
                 state = todayListState,
                 modifier = Modifier.fillMaxSize().onGloballyPositioned {
                     val bounds = it.boundsInRoot()
-                    // The list keeps a bottom content inset for the FAB/navigation and
-                    // running-operation surfaces. The edge zone belongs above that inset.
+                    // This is the actual LazyColumn viewport. Content padding belongs to
+                    // the scrollable content, not to the viewport, so it must not be
+                    // subtracted again when deciding whether the pointer is at the edge.
                     dragViewportBounds = Rect(
                         left = bounds.left,
                         top = bounds.top,
                         right = bounds.right,
-                        bottom = (bounds.bottom - listBottomContentPaddingPx).coerceAtLeast(bounds.top),
+                        bottom = minOf(
+                            bounds.bottom,
+                            bottomOverlayTopRootPx.takeIf { it.isFinite() } ?: bounds.bottom,
+                        ),
                     )
                 },
                 contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 110.dp),
@@ -885,7 +894,9 @@ private fun TodayContent(
                             && (!todayListState.isScrollInProgress || dragState?.entryId == task.id),
                         dragging = dragState?.entryId == task.id,
                         dropTarget = false,
-                        dropTargetCue = dragState?.target?.key == entryDropKey(task.id),
+                        // A task target is represented by one insertion boundary line;
+                        // do not paint the whole destination row as a second target.
+                        dropTargetCue = false,
                         onDragStart = { pointerId, pointerPosition ->
                             directManipulationController?.takeIf { !todayListState.isScrollInProgress && it.canDrag(day, task) }?.let {
                                 val bounds = dropBounds[task.id]
@@ -992,7 +1003,9 @@ private fun TodayContent(
                             && (!todayListState.isScrollInProgress || dragState?.entryId == task.id),
                         dragging = dragState?.entryId == task.id,
                         dropTarget = false,
-                        dropTargetCue = dragState?.target?.key == entryDropKey(task.id),
+                        // A task target is represented by one insertion boundary line;
+                        // do not paint the whole destination row as a second target.
+                        dropTargetCue = false,
                         onDragStart = { pointerId, pointerPosition ->
                             directManipulationController?.takeIf { !todayListState.isScrollInProgress && it.canDrag(day, task) }?.let {
                                 val bounds = dropBounds[task.id]
@@ -1027,19 +1040,19 @@ private fun TodayContent(
                 }
             }
             }
-            dragState?.target?.anchorEntryId?.let { anchorEntryId ->
-                val anchorBounds = dropBounds[anchorEntryId]
-                val target = dragState?.target
-                if (anchorBounds != null && target != null) {
-                    val previewTop = if (target.edge == PlacementEdge.BEFORE) anchorBounds.top else anchorBounds.bottom
-                    ProvisionalDropSlot(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp)
-                            .offset { IntOffset(0, (previewTop - dragContentRootTop).roundToInt()) }
-                            .zIndex(5f),
-                    )
-                }
+            dragState?.target?.resolvedBoundaryY?.let { boundaryY ->
+                DragInsertionLine(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp)
+                        .offset {
+                            IntOffset(
+                                0,
+                                (boundaryY - dragContentRootTop - insertionLineHalfHeightPx).roundToInt(),
+                            )
+                        }
+                        .zIndex(5f),
+                )
             }
             dragState?.let { drag ->
                 day.allEntries.firstOrNull { it.id == drag.entryId }?.let { draggedTask ->
@@ -1115,6 +1128,7 @@ internal data class AndroidDropTarget(
     val sectionId: String?,
     val anchorEntryId: String?,
     val edge: PlacementEdge?,
+    val resolvedBoundaryY: Float? = null,
 )
 
 private data class AndroidDragState(
@@ -1157,20 +1171,59 @@ internal fun resolveAndroidDropTarget(
     emptySectionIds: Map<String, String?>,
     endedSectionIds: Set<String> = emptySet(),
 ): AndroidDropTarget? {
-    val entryTarget = entryBounds.entries
-        .filter {
-            it.key != sourceEntryId &&
-                entryAnchorEligible[it.key] != false &&
-                entrySectionIds[it.key] !in endedSectionIds &&
-                positionY >= it.value.top && positionY <= it.value.bottom
+    if (!positionY.isFinite()) return null
+
+    data class InsertionBoundary(
+        val entryId: String,
+        val sectionId: String?,
+        val edge: PlacementEdge,
+        val y: Float,
+    )
+
+    val eligibleEntries = entryBounds.entries.filter {
+        it.key != sourceEntryId &&
+            entryAnchorEligible[it.key] != false &&
+            entrySectionIds[it.key] !in endedSectionIds &&
+            it.value.top.isFinite() && it.value.bottom.isFinite() && it.value.bottom >= it.value.top
+    }
+    val sectionRanges = eligibleEntries.groupBy { entrySectionIds[it.key] }.mapValues { (_, entries) ->
+        entries.minOf { it.value.top }..entries.maxOf { it.value.bottom }
+    }
+    val boundaries = eligibleEntries
+        .flatMap { (entryId, bounds) ->
+            val sectionId = entrySectionIds[entryId]
+            listOf(
+                // Sorting AFTER before BEFORE at a shared Y gives adjacent rows one
+                // canonical boundary without changing the command semantics.
+                InsertionBoundary(entryId, sectionId, PlacementEdge.AFTER, bounds.bottom),
+                InsertionBoundary(entryId, sectionId, PlacementEdge.BEFORE, bounds.top),
+            )
         }
-        .minWithOrNull(compareBy({ kotlin.math.abs(positionY - it.value.center.y) }, { it.key }))
+        .sortedWith(compareBy<InsertionBoundary>({ it.y }, { if (it.edge == PlacementEdge.AFTER) 0 else 1 }, { it.entryId }))
+        .fold(mutableListOf<InsertionBoundary>()) { unique, candidate ->
+            val range = sectionRanges[candidate.sectionId]
+            if (range != null && positionY in range && unique.none {
+                    it.sectionId == candidate.sectionId && abs(it.y - candidate.y) <= 0.5f
+                }) {
+                unique += candidate
+            }
+            unique
+        }
+    val entryTarget = boundaries.minWithOrNull(
+        compareBy<InsertionBoundary>(
+            { abs(positionY - it.y) },
+            { if (it.edge == PlacementEdge.AFTER) 0 else 1 },
+            { it.y },
+            { it.entryId },
+        ),
+    )
     if (entryTarget != null) {
         return AndroidDropTarget(
-            key = entryDropKey(entryTarget.key),
-            sectionId = entrySectionIds[entryTarget.key],
-            anchorEntryId = entryTarget.key,
-            edge = if (positionY < entryTarget.value.center.y) PlacementEdge.BEFORE else PlacementEdge.AFTER,
+            key = entryDropKey(entryTarget.entryId),
+            sectionId = entryTarget.sectionId,
+            anchorEntryId = entryTarget.entryId,
+            edge = entryTarget.edge,
+            resolvedBoundaryY = entryTarget.y,
         )
     }
 
@@ -1201,15 +1254,14 @@ private fun endedSectionIdsForAndroid(day: TodayDay): Set<String> {
 }
 
 @Composable
-private fun ProvisionalDropSlot(modifier: Modifier = Modifier) {
+private fun DragInsertionLine(modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(84.dp)
-            .padding(vertical = 4.dp)
-            .background(Color(0x802C665D), RoundedCornerShape(4.dp))
-            .border(BorderStroke(2.dp, Color(0xFF58C8B2)), RoundedCornerShape(4.dp))
-            .semantics { contentDescription = "仮のドロップ位置" },
+            .height(3.dp)
+            .clip(RoundedCornerShape(2.dp))
+            .background(Color(0xFF58C8B2))
+            .semantics { contentDescription = "挿入位置" },
     )
 }
 

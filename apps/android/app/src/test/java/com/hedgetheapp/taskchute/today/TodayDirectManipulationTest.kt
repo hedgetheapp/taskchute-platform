@@ -166,9 +166,93 @@ class TodayDirectManipulationTest {
 
         assertEquals(null, beforeScroll)
         assertEquals(
-            AndroidDropTarget("entry:entry-offscreen-before", "section-2", "entry-offscreen-before", PlacementEdge.AFTER),
+            AndroidDropTarget("entry:entry-offscreen-before", "section-2", "entry-offscreen-before", PlacementEdge.AFTER, 660f),
             afterScroll,
         )
+    }
+
+    @Test
+    fun adjacentRowsResolveToOneCanonicalInsertionBoundary() {
+        val target = resolveAndroidDropTarget(
+            positionY = 100f,
+            sourceEntryId = "entry-source",
+            entryBounds = mapOf(
+                "entry-a" to Rect(0f, 20f, 100f, 100f),
+                "entry-b" to Rect(0f, 100f, 100f, 180f),
+            ),
+            entrySectionIds = mapOf("entry-a" to "section-1", "entry-b" to "section-1"),
+            entryAnchorEligible = mapOf("entry-a" to true, "entry-b" to true),
+            emptySectionBounds = emptyMap(),
+            emptySectionIds = emptyMap(),
+        )
+
+        assertEquals(entryDropKey("entry-a"), target?.key)
+        assertEquals(PlacementEdge.AFTER, target?.edge)
+        assertEquals(100f, target?.resolvedBoundaryY)
+    }
+
+    @Test
+    fun sourceAfterAdjacentRowsCanResolveTheUpperBoundaryWithoutSelfTarget() {
+        val target = resolveAndroidDropTarget(
+            positionY = 100f,
+            sourceEntryId = "entry-d",
+            entryBounds = mapOf(
+                "entry-a" to Rect(0f, 20f, 100f, 100f),
+                "entry-b" to Rect(0f, 100f, 100f, 180f),
+                "entry-c" to Rect(0f, 180f, 100f, 260f),
+                "entry-d" to Rect(0f, 260f, 100f, 340f),
+            ),
+            entrySectionIds = mapOf(
+                "entry-a" to "section-1",
+                "entry-b" to "section-1",
+                "entry-c" to "section-1",
+                "entry-d" to "section-1",
+            ),
+            entryAnchorEligible = mapOf(
+                "entry-a" to true,
+                "entry-b" to true,
+                "entry-c" to true,
+                "entry-d" to true,
+            ),
+            emptySectionBounds = emptyMap(),
+            emptySectionIds = emptyMap(),
+        )
+
+        assertEquals(entryDropKey("entry-a"), target?.key)
+        assertEquals(PlacementEdge.AFTER, target?.edge)
+        assertEquals(100f, target?.resolvedBoundaryY)
+    }
+
+    @Test
+    fun sourceBeforeTargetCanResolveTheLowerAdjacentBoundary() {
+        val target = resolveAndroidDropTarget(
+            positionY = 220f,
+            sourceEntryId = "entry-b",
+            entryBounds = mapOf(
+                "entry-a" to Rect(0f, 20f, 100f, 100f),
+                "entry-b" to Rect(0f, 100f, 100f, 180f),
+                "entry-c" to Rect(0f, 180f, 100f, 260f),
+                "entry-d" to Rect(0f, 260f, 100f, 340f),
+            ),
+            entrySectionIds = mapOf(
+                "entry-a" to "section-1",
+                "entry-b" to "section-1",
+                "entry-c" to "section-1",
+                "entry-d" to "section-1",
+            ),
+            entryAnchorEligible = mapOf(
+                "entry-a" to true,
+                "entry-b" to true,
+                "entry-c" to true,
+                "entry-d" to true,
+            ),
+            emptySectionBounds = emptyMap(),
+            emptySectionIds = emptyMap(),
+        )
+
+        assertEquals(entryDropKey("entry-c"), target?.key)
+        assertEquals(PlacementEdge.AFTER, target?.edge)
+        assertEquals(260f, target?.resolvedBoundaryY)
     }
 
     @Test
@@ -456,7 +540,7 @@ class TodayDirectManipulationTest {
         )
 
         assertEquals(
-            AndroidDropTarget("entry:routine-anchor", "section-1", "routine-anchor", PlacementEdge.AFTER),
+            AndroidDropTarget("entry:routine-anchor", "section-1", "routine-anchor", PlacementEdge.AFTER, 340f),
             target,
         )
     }
@@ -512,7 +596,7 @@ class TodayDirectManipulationTest {
             emptySectionIds = mapOf("section-2" to "section-2"),
         )
 
-        assertEquals(AndroidDropTarget("entry:entry-2", "section-2", "entry-2", PlacementEdge.AFTER), target)
+        assertEquals(AndroidDropTarget("entry:entry-2", "section-2", "entry-2", PlacementEdge.AFTER, 340f), target)
     }
     @Test
     fun bulkDayOperationsUseCanonicalEndpointsAndPayloads() {

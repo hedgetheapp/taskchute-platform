@@ -149,6 +149,7 @@ class TodayOptimisticTest {
 
         assertEquals(entryDropKey("entry-b"), first?.key)
         assertEquals(PlacementEdge.AFTER, first?.edge)
+        assertEquals(100f, first?.resolvedBoundaryY)
         assertEquals(first, afterAnimation)
     }
 
