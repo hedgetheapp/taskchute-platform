@@ -1,3 +1,9 @@
+## D-148 device follow-up — dual pointer-position authority
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D148-DEVICE-DUAL-POINTER-AUTHORITY | Galaxy S23 / Today D&D | After long-press handoff, one stable parent pointer session must be the sole source of drag pointer coordinates and final target; provisional row movement must not perturb physical pointer Y | Product Owner manual test of APK `30b9ffd5a572097bfc25a1cf4239d9bbe84c573b`: D&D remains incorrect. Source review shows both row-local `onDragMove` and parent root-pointer session write `updateDragPosition`; row path depends on moving `dropBounds[task.id]` | FAIL / USER_REPORTED |
+
 ## D-148 device follow-up — cc3 D&D regression
 
 | ID | Area | Requirement | Evidence | Status |
