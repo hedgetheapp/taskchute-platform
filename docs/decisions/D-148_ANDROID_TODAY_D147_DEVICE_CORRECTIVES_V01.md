@@ -314,3 +314,28 @@ Implementation `ce84f3f3e963ce3d3dda22485e0fe086ed09f5a6` completes the parent-c
 - Parent physical pointer-up remains the only completion authority, protected by `dragFinishIssued`; row disposal/cancellation cannot write or clear the active session. Existing D-148 edge auto-scroll, consumed-scroll preview freeze/rebase/settle, D-129 guards, and Routine empty-Section no-anchor semantics are unchanged.
 
 Focused/full Android JVM `211 / 211` passed. TaskChute_API33 focused same-Section, visible cross-Section, and source-row-offscreen edge auto-scroll tests passed three consecutive rounds; Routine empty-Section no-anchor passed. The standard `scripts/android-qa.ps1 -Surface Today` reached `connectedDebugAndroidTest` but returned no completion result and was stopped; target-app crash buffer was empty, so the full Today surface remains `HARNESS_HUNG / PARTIAL / NOT_VERIFIED`. Compile Kotlin, instrumentation compile, debug assemble, and `git diff --check` passed. Exact-SHA CI `36308834382` passed; signed APK artifact `taskchute-android-debug-ce84f3f3e963ce3d3dda22485e0fe086ed09f5a6`, ID `10928148531`, expires `2026-10-04T09:18:45Z`. Galaxy S23 remains `NOT_RUN / PRODUCT_OWNER_MANUAL`; Worker/API/shared contract, schema, migration, dependency, persistent nonprod, D-145, Notes, Production, and Release were not changed or run.
+
+
+## Device corrective follow-up — future-Day cross-Section deterministic failure
+
+Galaxy S23 manual verification of implementation `ce84f3f3e963ce3d3dda22485e0fe086ed09f5a6` reports a deterministic failure when attempting to move a Task to another Section on tomorrow's established Future Day (`操作を完了できませんでした`).
+
+Canonical semantics remain clear:
+
+- D-126 treats explicitly established Future Day as the Today-equivalent planning surface, including placement;
+- D-120 allows Section placement for current established Day and explicitly established future Day;
+- Routine-derived planned Entry Section changes are occurrence-only and must not mutate RoutineDefinition defaults;
+- date move preserves RoutineOccurrence identity and `origin_taskchute_day_id`.
+
+Source review shows a concrete incompatibility for date-moved Routine-derived Entries:
+
+- `BulkMoveEntriesToDay` intentionally preserves `routine_occurrences.origin_taskchute_day_id` when the Entry moves to another Day;
+- `BulkMoveEntriesToSectionOccurrence` currently rejects any selected Routine Entry whose `routine_origin_taskchute_day_id !== request.taskchute_day_id`;
+- therefore a valid Routine-derived Entry moved from another Day into an established future Day can be rejected by Section D&D with `resource_conflict`, even though D-120/D-126 allow planning placement on that future Day.
+
+Current Android focused AVD covers future planning actions and current-Day cross-Section D&D separately, but does not cover:
+- ordinary future-Day cross-Section D&D;
+- native future Routine occurrence cross-Section D&D;
+- date-moved Routine-derived Entry cross-Section D&D where origin Day differs from current Entry Day.
+
+Corrective must preserve D-112 date-move origin semantics and D-120/D-126 future placement semantics. Do not rewrite `origin_taskchute_day_id` to the destination Day merely to satisfy the Section-move guard.
