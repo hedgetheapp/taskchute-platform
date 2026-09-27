@@ -96,11 +96,12 @@ async function seed() {
 }
 
 function requestFor(fixture: Awaited<ReturnType<typeof seed>>, entryIds: string[], sectionId: string | null, revision = 0,
-  placement?: MoveEntryPlacementIntent) {
+  placement?: MoveEntryPlacementIntent, relativePlannedStart?: "anchor") {
   return {
     operation_id: uuidv7(), taskchute_day_id: fixture.dayId, entry_ids: entryIds, section_id: sectionId,
     expected_placement_revision: revision,
     ...(placement ? { placement } : {}),
+    ...(relativePlannedStart ? { relative_planned_start: relativePlannedStart } : {}),
   };
 }
 
@@ -222,6 +223,7 @@ describe.sequential("BulkMoveEntriesToSection", () => {
       operation_id: uuidv7() };
     expect(isBulkMoveEntriesToSectionOccurrenceRequest({ ...request, user_id: fixture.userId })).toBe(false);
     expect(isBulkMoveEntriesToSectionOccurrenceRequest({ ...request, entry_ids: [request.entry_ids[0], request.entry_ids[0]] })).toBe(false);
+    expect(isBulkMoveEntriesToSectionOccurrenceRequest({ ...request, relative_planned_start: "unexpected" })).toBe(false);
     const routineDefaultsBefore = await env.APP_DB.prepare(`SELECT default_section_id, default_planned_start_minute, defaults_revision
       FROM routine_definitions WHERE app_user_id = ? AND id = ?`).bind(fixture.userId, await env.APP_DB.prepare(
       "SELECT routine_definition_id FROM routine_occurrences WHERE id = ?").bind(fixture.routineOccurrenceId).first<string>("routine_definition_id")).first();
@@ -350,6 +352,70 @@ describe.sequential("BulkMoveEntriesToSection", () => {
         { id: afterFixture.ordinaryEntryIds[0], position: 3 },
         { id: afterFixture.ordinaryEntryIds[1], position: 4 },
       ] });
+  });
+
+  it("uses the optional Android Routine anchor intent for planned-start cohorts without changing D-120 defaults", async () => {
+    const crossFixture = await seed();
+    const crossRequest = requestFor(
+      crossFixture,
+      [crossFixture.routineEntryId],
+      crossFixture.sectionB,
+      0,
+      { kind: "relative_to_entry", anchor_entry_id: crossFixture.ordinaryEntryIds[2]!, edge: "after" },
+      "anchor",
+    );
+    const crossResult = await bulkMoveEntriesToSectionOccurrence(env.APP_DB, crossFixture.userId, crossRequest, now);
+    expect(crossResult).toMatchObject({ section_id: crossFixture.sectionB, planned_start_minute: 600, placement_revision: 1 });
+    expect(await bulkMoveEntriesToSectionOccurrence(env.APP_DB, crossFixture.userId, crossRequest, now))
+      .toEqual(crossResult);
+    expect(await env.APP_DB.prepare("SELECT section_id, planned_start_minute FROM entries WHERE id = ?")
+      .bind(crossFixture.routineEntryId).first()).toEqual({ section_id: crossFixture.sectionB, planned_start_minute: 600 });
+    expect(await env.APP_DB.prepare("SELECT section_override_id, planned_start_override_minute FROM routine_occurrences WHERE id = ?")
+      .bind(crossFixture.routineOccurrenceId).first()).toEqual({ section_override_id: crossFixture.sectionB, planned_start_override_minute: 600 });
+
+    const sameFixture = await seed();
+    await env.APP_DB.prepare("UPDATE entries SET planned_start_minute = 120 WHERE id = ?")
+      .bind(sameFixture.ordinaryEntryIds[1]).run();
+    const sameRequest = requestFor(
+      sameFixture,
+      [sameFixture.routineEntryId],
+      sameFixture.sectionA,
+      0,
+      { kind: "relative_to_entry", anchor_entry_id: sameFixture.ordinaryEntryIds[1]!, edge: "after" },
+      "anchor",
+    );
+    const sameResult = await bulkMoveEntriesToSectionOccurrence(
+      env.APP_DB,
+      sameFixture.userId,
+      sameRequest,
+      "2026-09-02T07:00:00.000Z",
+    );
+    expect(sameResult).toMatchObject({ section_id: sameFixture.sectionA, planned_start_minute: 120, placement_revision: 1 });
+    expect(await env.APP_DB.prepare("SELECT planned_start_minute FROM entries WHERE id = ?")
+      .bind(sameFixture.routineEntryId).first()).toEqual({ planned_start_minute: 120 });
+  });
+
+  it("rejects the relative Routine intent when its anchor shape is missing or mismatched", async () => {
+    const fixture = await seed();
+    const before = await env.APP_DB.prepare("SELECT section_id, planned_start_minute FROM entries WHERE id = ?")
+      .bind(fixture.routineEntryId).first();
+    const noPlacement = requestFor(fixture, [fixture.routineEntryId], fixture.sectionB, 0, undefined, "anchor");
+    await expect(bulkMoveEntriesToSectionOccurrence(env.APP_DB, fixture.userId, noPlacement, now))
+      .rejects.toMatchObject({ code: "resource_conflict" });
+    const ordinarySelected = requestFor(
+      fixture,
+      [fixture.ordinaryEntryIds[0]!],
+      fixture.sectionB,
+      0,
+      { kind: "relative_to_entry", anchor_entry_id: fixture.ordinaryEntryIds[2]!, edge: "after" },
+      "anchor",
+    );
+    await expect(bulkMoveEntriesToSectionOccurrence(env.APP_DB, fixture.userId, ordinarySelected, now))
+      .rejects.toMatchObject({ code: "resource_conflict" });
+    expect(await env.APP_DB.prepare("SELECT section_id, planned_start_minute FROM entries WHERE id = ?")
+      .bind(fixture.routineEntryId).first()).toEqual(before);
+    expect(await env.APP_DB.prepare("SELECT placement_revision FROM taskchute_days WHERE id = ?")
+      .bind(fixture.dayId).first<number>("placement_revision")).toBe(0);
   });
 
   it("moves a selected block to an empty Section without a placement anchor", async () => {

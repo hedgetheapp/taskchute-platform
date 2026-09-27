@@ -37,10 +37,11 @@ fun TaskChuteDateNavigator(
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onOpenDatePicker: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val enabled = logicalDate != null
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+        modifier = modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {

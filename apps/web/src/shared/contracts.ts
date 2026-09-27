@@ -624,6 +624,8 @@ export interface BulkMoveEntriesToSectionOccurrenceRequest {
   expected_placement_revision: number;
   /** Optional exact insertion point for an atomic D-120 block move. */
   placement?: MoveEntryPlacementIntent;
+  /** Android-only single Routine occurrence intent; omitted for D-120 bulk semantics. */
+  relative_planned_start?: "anchor";
 }
 
 export interface BulkMoveEntriesToSectionOccurrenceResult {

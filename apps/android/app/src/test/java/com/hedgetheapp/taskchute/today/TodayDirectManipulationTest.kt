@@ -119,6 +119,7 @@ class TodayDirectManipulationTest {
         assertEquals("/api/v1/taskchute-days/current/entries/move", requests[0].second)
         assertTrue(requests[0].third.orEmpty().contains("\"section_id\":\"section-2\""))
         assertTrue(requests[0].third.orEmpty().contains("\"edge\":\"after\""))
+        assertFalse(requests[0].third.orEmpty().contains("relative_planned_start"))
         assertTrue(requests[1].second.endsWith("/entries/entry-1/duplicate"))
         assertTrue(requests[2].third.orEmpty().contains("\"section_id\":\"section-empty\""))
         assertFalse(requests[2].third.orEmpty().contains("\"placement\""))
@@ -141,11 +142,13 @@ class TodayDirectManipulationTest {
                 expectedPlacementRevision = 5,
                 placement = PlacementTarget("section-2", "entry-2", PlacementEdge.BEFORE),
                 routineScoped = true,
+                relativePlannedStartAnchor = true,
             )),
         )
         assertEquals("/api/v1/taskchute-days/current/entries/bulk-section-occurrence", requests.single().second)
         assertTrue(requests.single().third.orEmpty().contains("\"entry_ids\":[\"entry-1\"]"))
         assertTrue(requests.single().third.orEmpty().contains("\"placement\""))
+        assertTrue(requests.single().third.orEmpty().contains("\"relative_planned_start\":\"anchor\""))
     }
 
     @Test

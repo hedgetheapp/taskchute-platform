@@ -83,6 +83,7 @@ import androidx.compose.ui.input.pointer.PointerId
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.boundsInParent
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -188,6 +189,8 @@ fun TodayScreen(
     }
     val day = state.presentedDay
     var addFabOffset by remember(day?.logicalDate) { mutableStateOf(Offset.Zero) }
+    var todayHeaderBottomPx by remember(day?.logicalDate) { mutableStateOf(0f) }
+    var bottomOverlayBottomPx by remember(day?.logicalDate) { mutableStateOf(Float.POSITIVE_INFINITY) }
     if (headerDatePickerVisible && day != null) {
         TaskChuteDatePickerDialog(
             initialLogicalDate = day.logicalDate,
@@ -279,6 +282,7 @@ fun TodayScreen(
                         datePickerMoveRequest = AndroidDateMoveRequest(entryIds, allowPastSource)
                     },
                     onOpenHeaderDatePicker = { headerDatePickerVisible = true },
+                    onHeaderBoundsChanged = { todayHeaderBottomPx = it },
                     onRequestDelete = { deleteEntryIds = it },
                     modifier = Modifier.fillMaxSize(),
                 )
@@ -292,7 +296,60 @@ fun TodayScreen(
                     val unresolved = directManipulationController?.state?.unresolvedRequest != null
                     val deterministicFailure = deterministicFailureToken != null &&
                         directManipulationController?.state?.unresolvedRequest == null
-                    if (runningTask != null || canAdd || unresolved || deterministicFailure) {
+                    LaunchedEffect(day.logicalDate, runningTask?.id, unresolved, deterministicFailure, selectionModeActive) {
+                        if (selectionModeActive || (runningTask == null && !unresolved && !deterministicFailure)) {
+                            bottomOverlayBottomPx = Float.POSITIVE_INFINITY
+                        }
+                    }
+                    if (canAdd && !selectionModeActive) {
+                        BoxWithConstraints(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .zIndex(2f)
+                                .navigationBarsPadding()
+                                .padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
+                        ) {
+                            val density = LocalDensity.current
+                            val maxX = with(density) { (maxWidth - 64.dp).toPx().coerceAtLeast(0f) }
+                            val safeTop = todayHeaderBottomPx + with(density) { 12.dp.toPx() }
+                            val fabPanelGap = with(density) { 12.dp.toPx() }
+                            val baselineFabTop = with(density) { maxHeight.toPx() - 64.dp.toPx() }
+                            val panelLimit = bottomOverlayBottomPx.takeIf { it.isFinite() }
+                                ?.let { baselineFabTop - it - fabPanelGap }
+                                ?: Float.POSITIVE_INFINITY
+                            val maxY = minOf(
+                                baselineFabTop - safeTop,
+                                panelLimit,
+                            ).coerceAtLeast(0f)
+                            FloatingActionButton(
+                                onClick = { planningController.openCreate(day) },
+                                shape = CircleShape,
+                                containerColor = Color(0xFFE8E8E5),
+                                contentColor = TaskChuteColors.Background,
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .offset {
+                                        IntOffset(
+                                            addFabOffset.x.roundToInt(),
+                                            addFabOffset.y.coerceIn(-maxY, 0f).roundToInt(),
+                                        )
+                                    }
+                                    .pointerInput(day.logicalDate) {
+                                        detectTodayFabTapDrag(
+                                            onDrag = { delta ->
+                                                addFabOffset = Offset(
+                                                    (addFabOffset.x + delta.x).coerceIn(-maxX, 0f),
+                                                    (addFabOffset.y + delta.y).coerceIn(-maxY, 0f),
+                                                )
+                                            },
+                                        )
+                                    }
+                                    .size(64.dp)
+                                    .semantics { contentDescription = "タスクを追加" },
+                            ) { ChromeIcon(TaskChuteIcons.Add, "タスクを追加", Modifier.size(19.dp)) }
+                        }
+                    }
+                    if (runningTask != null || unresolved || deterministicFailure) {
                         Column(
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
@@ -300,52 +357,37 @@ fun TodayScreen(
                                 .navigationBarsPadding()
                                 .padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
                             horizontalAlignment = Alignment.End,
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
-                            if (unresolved) {
-                                OperationUnresolvedPanel(
-                                    onRetry = directManipulationController::retryUnresolved,
-                                )
-                            }
-                            if (deterministicFailure) {
-                                OperationFailedPanel()
-                            }
-                            if (canAdd && !selectionModeActive) {
-                                BoxWithConstraints(
-                                    modifier = Modifier.fillMaxWidth().height(96.dp),
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 64.dp),
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .onGloballyPositioned {
+                                            bottomOverlayBottomPx = it.boundsInParent().bottom
+                                        },
+                                    horizontalAlignment = Alignment.End,
+                                    verticalArrangement = Arrangement.spacedBy(12.dp),
                                 ) {
-                                    val density = LocalDensity.current
-                                    val maxX = with(density) { (maxWidth - 64.dp).toPx().coerceAtLeast(0f) }
-                                    val maxY = with(density) { (maxHeight - 64.dp).toPx().coerceAtLeast(0f) }
-                                    FloatingActionButton(
-                                        onClick = { planningController.openCreate(day) },
-                                        shape = CircleShape,
-                                        containerColor = Color(0xFFE8E8E5),
-                                        contentColor = TaskChuteColors.Background,
-                                        modifier = Modifier
-                                            .align(Alignment.BottomEnd)
-                                            .offset { IntOffset(addFabOffset.x.roundToInt(), addFabOffset.y.roundToInt()) }
-                                            .pointerInput(day.logicalDate) {
-                                                detectTodayFabTapDrag(
-                                                    onDrag = { delta ->
-                                                        addFabOffset = Offset(
-                                                            (addFabOffset.x + delta.x).coerceIn(-maxX, 0f),
-                                                            (addFabOffset.y + delta.y).coerceIn(-maxY, 0f),
-                                                        )
-                                                    },
-                                                )
-                                            }
-                                            .size(64.dp)
-                                            .semantics { contentDescription = "タスクを追加" },
-                                    ) { ChromeIcon(TaskChuteIcons.Add, "タスクを追加", Modifier.size(19.dp)) }
+                                    if (unresolved) {
+                                        OperationUnresolvedPanel(
+                                            onRetry = directManipulationController::retryUnresolved,
+                                        )
+                                    }
+                                    if (deterministicFailure) {
+                                        OperationFailedPanel()
+                                    }
+                                    if (!selectionModeActive) runningTask?.let { task ->
+                                        RunningTaskPanel(
+                                            task = task,
+                                            controller = controller,
+                                            enabled = !state.pendingEntryIds.contains(task.id),
+                                        )
+                                    }
                                 }
-                            }
-                            if (!selectionModeActive) runningTask?.let { task ->
-                                RunningTaskPanel(
-                                    task = task,
-                                    controller = controller,
-                                    enabled = !state.pendingEntryIds.contains(task.id),
-                                )
                             }
                         }
                     }
@@ -441,6 +483,7 @@ private fun TodayContent(
     onToggleSelection: (String) -> Unit,
     onOpenDatePicker: (Set<String>, Boolean) -> Unit,
     onOpenHeaderDatePicker: () -> Unit,
+    onHeaderBoundsChanged: (Float) -> Unit,
     onRequestDelete: (Set<String>) -> Unit,
     modifier: Modifier,
 ) {
@@ -516,7 +559,14 @@ private fun TodayContent(
             remaining.add(insertion.coerceIn(0, remaining.size), source.id)
             if (remaining != currentIds && isLegalManualReorder(entries, remaining)) {
                 if (source.routineDerived) {
-                    directManipulationController?.move(day, source.id, targetSectionId, PlacementTarget(targetSectionId, targetEntryId, edge), routineScoped = true)
+                    directManipulationController?.move(
+                        day,
+                        source.id,
+                        targetSectionId,
+                        PlacementTarget(targetSectionId, targetEntryId, edge),
+                        routineScoped = true,
+                        relativePlannedStartAnchor = true,
+                    )
                 } else {
                     directManipulationController?.reorder(day, targetSectionId, remaining, setOf(source.id))
                 }
@@ -528,6 +578,7 @@ private fun TodayContent(
                 targetSectionId,
                 PlacementTarget(targetSectionId, targetEntryId, edge),
                 routineScoped = source.routineDerived,
+                relativePlannedStartAnchor = source.routineDerived,
             )
         }
     }
@@ -585,6 +636,9 @@ private fun TodayContent(
             onPrevious = controller::previousDay,
             onNext = controller::nextDay,
             onOpenDatePicker = onOpenHeaderDatePicker,
+            modifier = Modifier.onGloballyPositioned {
+                onHeaderBoundsChanged(it.boundsInParent().bottom)
+            },
         )
         state.errorMessage?.let {
             Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp))
@@ -1119,7 +1173,7 @@ private fun TodayTaskRow(
     val insertionPadding by animateDpAsState(if (dropTarget) 6.dp else 0.dp, label = "drop-target-padding")
     val hasActions = canEdit || canDuplicate || canOpenNote || canDayOperate || canLifecycleDelete || canPlannedDelete || canPastForwardOperate
     val canSwipeNote = canOpenNote && (canEdit || canNoteOnly)
-    val hasOtherActions = hasActions && !canNoteOnly
+    val hasOtherActions = hasActions && (!canNoteOnly || canPastForwardOperate)
     val swipeActionCount = (if (canEdit) 1 else 0) + (if (canSwipeNote) 1 else 0) + (if (hasOtherActions) 1 else 0)
     val swipeThreshold = with(LocalDensity.current) { 48.dp.toPx() }
     val swipeRevealWidth = with(LocalDensity.current) {

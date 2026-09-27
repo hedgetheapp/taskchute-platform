@@ -37,6 +37,7 @@ sealed interface DirectManipulationRequest {
         val expectedPlacementRevision: Int,
         val placement: PlacementTarget?,
         val routineScoped: Boolean = false,
+        val relativePlannedStartAnchor: Boolean = false,
     ) : DirectManipulationRequest
 
     data class Duplicate(
@@ -106,10 +107,15 @@ class TodayDirectManipulationHttpRepository(
                 val placementJson = request.placement?.let {
                     ",\"placement\":{\"kind\":\"relative_to_entry\",\"anchor_entry_id\":\"${JsonEncoding.escape(it.anchorEntryId)}\",\"edge\":\"${it.edge.name.lowercase()}\"}"
                 }.orEmpty()
-                body = if (request.routineScoped) {
-                    """{"operation_id":"${JsonEncoding.escape(request.operationId)}","taskchute_day_id":"${JsonEncoding.escape(request.taskChuteDayId)}","entry_ids":["${JsonEncoding.escape(request.entryId)}"],"section_id":${nullableString(request.sectionId)},"expected_placement_revision":${request.expectedPlacementRevision}$placementJson}"""
+                val relativePlannedStartJson = if (request.relativePlannedStartAnchor) {
+                    ",\"relative_planned_start\":\"anchor\""
                 } else {
-                    """{"operation_id":"${JsonEncoding.escape(request.operationId)}","entry_id":"${JsonEncoding.escape(request.entryId)}","taskchute_day_id":"${JsonEncoding.escape(request.taskChuteDayId)}","section_id":${nullableString(request.sectionId)},"expected_placement_revision":${request.expectedPlacementRevision}$placementJson}"""
+                    ""
+                }
+                body = if (request.routineScoped) {
+                    """{"operation_id":"${JsonEncoding.escape(request.operationId)}","taskchute_day_id":"${JsonEncoding.escape(request.taskChuteDayId)}","entry_ids":["${JsonEncoding.escape(request.entryId)}"],"section_id":${nullableString(request.sectionId)},"expected_placement_revision":${request.expectedPlacementRevision}$placementJson$relativePlannedStartJson}"""
+                } else {
+                    """{"operation_id":"${JsonEncoding.escape(request.operationId)}","entry_id":"${JsonEncoding.escape(request.entryId)}","taskchute_day_id":"${JsonEncoding.escape(request.taskChuteDayId)}","section_id":${nullableString(request.sectionId)},"expected_placement_revision":${request.expectedPlacementRevision}$placementJson$relativePlannedStartJson}"""
                 }
             }
             is DirectManipulationRequest.Duplicate -> {
@@ -196,10 +202,23 @@ class TodayDirectManipulationController(
         move(day, entryId, target.sectionId, target)
     }
 
-    fun move(day: TodayDay, entryId: String, targetSectionId: String?, placement: PlacementTarget?, routineScoped: Boolean = false) {
+    fun move(
+        day: TodayDay,
+        entryId: String,
+        targetSectionId: String?,
+        placement: PlacementTarget?,
+        routineScoped: Boolean = false,
+        relativePlannedStartAnchor: Boolean = false,
+    ) {
         val dayId = day.taskChuteDayId ?: return
         if (state.pendingEntryIds.isNotEmpty() || state.unresolvedRequest != null || !canPlanDay(day)) return
-        dispatch(setOf(entryId), DirectManipulationRequest.Move(UUIDv7.next(), entryId, dayId, targetSectionId, day.placementRevision, placement, routineScoped))
+        dispatch(
+            setOf(entryId),
+            DirectManipulationRequest.Move(
+                UUIDv7.next(), entryId, dayId, targetSectionId, day.placementRevision,
+                placement, routineScoped, relativePlannedStartAnchor,
+            ),
+        )
     }
 
     fun duplicate(day: TodayDay, source: TodayTask) {

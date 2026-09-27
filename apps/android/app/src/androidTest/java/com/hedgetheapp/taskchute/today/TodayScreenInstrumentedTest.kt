@@ -613,7 +613,6 @@ class TodayScreenInstrumentedTest {
         composeRule.onNodeWithText("複製").assertIsDisplayed().performClick()
         composeRule.waitUntil(15_000) { directRepository.duplicateCalls.get() == 1 }
         assertEquals(1, directRepository.duplicateCalls.get())
-        assertEquals(1, composeRule.onAllNodesWithText("ノート").fetchSemanticsNodes().size)
     }
 
     @Test
@@ -676,6 +675,22 @@ class TodayScreenInstrumentedTest {
 
         composeRule.onNodeWithContentDescription("タスクを追加").assertIsDisplayed()
         assertEquals(1, composeRule.onAllNodesWithContentDescription("タスクを追加").fetchSemanticsNodes().size)
+    }
+
+    @Test
+    fun quickAddFabCanMoveAcrossTodayContentRegion() {
+        launchPlanningScreen(FakePlanningRepository())
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        val fab = composeRule.onNodeWithContentDescription("タスクを追加")
+        val initialTop = fab.fetchSemanticsNode().boundsInRoot.top
+        fab.performTouchInput {
+            down(center)
+            moveTo(center + Offset(0f, -240f), delayMillis = 100)
+            up()
+        }
+        val movedTop = fab.fetchSemanticsNode().boundsInRoot.top
+        assertTrue("Quick Add should move well beyond the old 32dp drag range", initialTop - movedTop > 80f)
     }
 
     @Test
@@ -918,8 +933,9 @@ class TodayScreenInstrumentedTest {
     }
 
     @Test
-    fun pastTaskWithIdentityExposesNoteOnlySwipe() {
+    fun pastPlannedTaskExposesNoteAndForwardMoveSwipe() {
         var openedTaskNote = 0
+        val directRepository = FakeDirectManipulationRepository()
         val task = dayWith().sections.single().entries.single().copy(taskId = "task-history")
         val initialDay = dayWith().copy(
             logicalDate = "2000-01-01",
@@ -927,16 +943,27 @@ class TodayScreenInstrumentedTest {
             planningEnabled = false,
             sections = listOf(dayWith().sections.single().copy(entries = listOf(task))),
         )
-        launchPlanningScreen(FakePlanningRepository(), initialDay, onOpenTaskNote = { openedTaskNote++ })
+        launchPlanningScreen(
+            FakePlanningRepository(),
+            initialDay,
+            directRepository,
+            onOpenTaskNote = { openedTaskNote++ },
+        )
         waitForStatus(TodayLoadStatus.CONTENT)
 
         composeRule.onNodeWithText("Write report").performTouchInput { swipeLeft() }
         composeRule.onNodeWithContentDescription("タスクのノート").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("タスクの操作").assertIsDisplayed()
         assertActionIsOnRevealedRight("Write report", "タスクのノート")
-        assertSwipeActionLabelsHidden()
+        assertTrue(composeRule.onAllNodesWithText("編集", substring = false).fetchSemanticsNodes().isEmpty())
+        assertTrue(composeRule.onAllNodesWithText("その他", substring = false).fetchSemanticsNodes().isEmpty())
         composeRule.onNodeWithContentDescription("タスクのノート").performClick()
-        assertTrue(composeRule.onAllNodesWithContentDescription("タスクの操作").fetchSemanticsNodes().isEmpty())
         assertEquals(1, openedTaskNote)
+
+        composeRule.onNodeWithText("Write report").performTouchInput { swipeLeft() }
+        composeRule.onNodeWithContentDescription("タスクの操作").performClick()
+        composeRule.onNodeWithText("今日へ移動").assertIsDisplayed()
+        composeRule.onNodeWithText("日付を移動").assertIsDisplayed()
     }
     @Test
     fun ordinaryPlannedRowUsesSwipeRevealForEditing() {
@@ -1177,7 +1204,7 @@ class TodayScreenInstrumentedTest {
 
     private fun assertSwipeActionLabelsHidden() {
         assertTrue(composeRule.onAllNodesWithText("編集", substring = false).fetchSemanticsNodes().isEmpty())
-        assertEquals(1, composeRule.onAllNodesWithText("ノート", substring = false).fetchSemanticsNodes().size)
+        assertTrue(composeRule.onAllNodesWithText("ノート", substring = false).fetchSemanticsNodes().isEmpty())
         assertTrue(composeRule.onAllNodesWithText("その他", substring = false).fetchSemanticsNodes().isEmpty())
     }
     private companion object {

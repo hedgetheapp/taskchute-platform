@@ -24,6 +24,8 @@ export function isBulkMoveEntriesToSectionOccurrenceRequest(
       && ((placement as Record<string, unknown>).edge === "before"
         || (placement as Record<string, unknown>).edge === "after")
   );
+  const relativePlannedStartValid = body.relative_planned_start === undefined
+    || body.relative_planned_start === "anchor";
   return !(("user_id") in body)
     && typeof body.operation_id === "string" && isUuidV7(body.operation_id)
     && typeof body.taskchute_day_id === "string" && isUuidV7(body.taskchute_day_id)
@@ -33,7 +35,8 @@ export function isBulkMoveEntriesToSectionOccurrenceRequest(
     && (body.section_id === null || (typeof body.section_id === "string" && isUuidV7(body.section_id)))
     && Number.isSafeInteger(body.expected_placement_revision)
     && Number(body.expected_placement_revision) >= 0
-    && placementValid;
+    && placementValid
+    && relativePlannedStartValid;
 }
 
 interface SettingsRow {
@@ -135,6 +138,7 @@ async function bulkMoveEntriesToSectionOccurrenceAtPlacement(
   requestFingerprint: string,
   currentLogicalDate: string,
   targetPlannedStart: number | null,
+  relativePlannedStart: boolean,
   targets: TargetRow[],
   now: string,
 ): Promise<BulkMoveEntriesToSectionOccurrenceResult> {
@@ -155,6 +159,21 @@ async function bulkMoveEntriesToSectionOccurrenceAtPlacement(
     return reject(db, appUserId, request, requestFingerprint, "resource_conflict",
       "The placement anchor must be an unselected planned Entry in the target Section");
   }
+  if (relativePlannedStart && (
+    request.entry_ids.length !== 1
+    || targets.length !== 1
+    || targets[0].routine_occurrence_id === null
+    || targets[0].lifecycle_state !== "planned"
+    || (request.section_id === null
+      ? anchor.planned_start_minute !== null
+      : anchor.planned_start_minute === null)
+  )) {
+    return reject(db, appUserId, request, requestFingerprint, "resource_conflict",
+      "Relative planned-start placement is only valid for a single Routine Entry with a matching anchor cohort");
+  }
+  const effectiveTargetPlannedStart = relativePlannedStart
+    ? anchor.planned_start_minute
+    : targetPlannedStart;
 
   const groups = new Map<string, PlacementRow[]>();
   for (const row of displayRows) {
@@ -174,7 +193,7 @@ async function bulkMoveEntriesToSectionOccurrenceAtPlacement(
   regrouped.set(targetKey, remainingTarget);
 
   // A same-Section block move must remain inside the existing planned-start cohorts.
-  if (selectedCanonical.every((row) => row.section_id === request.section_id)) {
+  if (!relativePlannedStart && selectedCanonical.every((row) => row.section_id === request.section_id)) {
     const currentTargetPlanned = displayRows.filter((row) => row.section_id === request.section_id && row.lifecycle_state === "planned");
     const finalTargetPlanned = remainingTarget.filter((row) => row.lifecycle_state === "planned");
     if (currentTargetPlanned.length !== finalTargetPlanned.length
@@ -197,7 +216,7 @@ async function bulkMoveEntriesToSectionOccurrenceAtPlacement(
   const changedEntryIds = request.entry_ids.filter((entryId) => {
     const target = targetById.get(entryId)!;
     return target.section_id !== request.section_id
-      || target.planned_start_minute !== targetPlannedStart
+      || target.planned_start_minute !== effectiveTargetPlannedStart
       || target.position !== finalPositionById.get(entryId);
   });
   const routinePlans: RoutinePlan[] = request.entry_ids.flatMap((entryId) => {
@@ -205,12 +224,12 @@ async function bulkMoveEntriesToSectionOccurrenceAtPlacement(
     if (target.routine_occurrence_id === null) return [];
     const overrideChanged = target.section_plan_override_present !== 1
       || !sameNullable(target.section_override_id, request.section_id)
-      || !sameNullable(target.planned_start_override_minute, targetPlannedStart);
+      || !sameNullable(target.planned_start_override_minute, effectiveTargetPlannedStart);
     return [{
       entry_id: target.id,
       routine_occurrence_id: target.routine_occurrence_id,
       target_section_id: request.section_id,
-      target_planned_start_minute: targetPlannedStart,
+      target_planned_start_minute: effectiveTargetPlannedStart,
       override_changed: overrideChanged,
     }];
   });
@@ -221,7 +240,7 @@ async function bulkMoveEntriesToSectionOccurrenceAtPlacement(
   const selectedExpectedJson = JSON.stringify(request.entry_ids.map((entryId) => ({
     entry_id: entryId,
     target_section_id: request.section_id,
-    target_planned_start_minute: targetPlannedStart,
+    target_planned_start_minute: effectiveTargetPlannedStart,
     position: finalPositionById.get(entryId),
   })));
   const snapshotJson = snapshotRows(targets);
@@ -233,7 +252,7 @@ async function bulkMoveEntriesToSectionOccurrenceAtPlacement(
     changed_entry_ids: changedEntryIds,
     routine_override_changed_entry_ids: routineOverrideChangedEntryIds,
     section_id: request.section_id,
-    planned_start_minute: targetPlannedStart,
+    planned_start_minute: effectiveTargetPlannedStart,
     placement_revision: request.expected_placement_revision + (visibleChanged ? 1 : 0),
   };
   const assertionId = `bulk-section-occurrence:${request.operation_id}`;
@@ -250,7 +269,8 @@ async function bulkMoveEntriesToSectionOccurrenceAtPlacement(
                AND c.logical_start_minute IS NOT NULL AND c.logical_end_minute IS NOT NULL
           ))
           AND EXISTS (SELECT 1 FROM entries anchor WHERE anchor.app_user_id = ? AND anchor.taskchute_day_id = ?
-            AND anchor.id = ? AND anchor.section_id IS ? AND anchor.position = ? AND anchor.lifecycle_state = 'planned')
+            AND anchor.id = ? AND anchor.section_id IS ? AND anchor.position = ?
+            AND anchor.planned_start_minute IS ? AND anchor.lifecycle_state = 'planned')
           AND (SELECT COUNT(*) FROM entries WHERE app_user_id = ? AND taskchute_day_id = ?
             AND id IN (SELECT value FROM json_each(?))) = json_array_length(?)
           AND NOT EXISTS (
@@ -274,6 +294,7 @@ async function bulkMoveEntriesToSectionOccurrenceAtPlacement(
           request.expected_placement_revision, currentLogicalDate, request.section_id,
           appUserId, request.taskchute_day_id, request.section_id,
           appUserId, request.taskchute_day_id, placement.anchor_entry_id, request.section_id, anchor.position,
+          anchor.planned_start_minute,
           appUserId, request.taskchute_day_id, JSON.stringify(request.entry_ids), JSON.stringify(request.entry_ids),
           snapshotJson, appUserId, request.taskchute_day_id),
       db.prepare(`UPDATE entries SET position = position + ?
@@ -288,7 +309,7 @@ async function bulkMoveEntriesToSectionOccurrenceAtPlacement(
         WHERE app_user_id = ? AND taskchute_day_id = ? AND lifecycle_state = 'planned'
           AND id IN (SELECT value FROM json_each(?))
           AND EXISTS (SELECT 1 FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
-        .bind(selectedExpectedJson, request.section_id, targetPlannedStart, appUserId, request.taskchute_day_id,
+        .bind(selectedExpectedJson, request.section_id, effectiveTargetPlannedStart, appUserId, request.taskchute_day_id,
           JSON.stringify(request.entry_ids), appUserId, request.operation_id),
       db.prepare(`WITH requested(entry_id, position) AS (
           SELECT json_extract(value, '$.entry_id'), CAST(json_extract(value, '$.position') AS INTEGER) FROM json_each(?)
@@ -464,12 +485,24 @@ export async function bulkMoveEntriesToSectionOccurrence(
     "A selected Routine Entry is unavailable for this bulk Section change",
   );
 
+  const relativePlannedStart = request.relative_planned_start === "anchor";
+  if (relativePlannedStart && (
+    !request.placement
+    || request.entry_ids.length !== 1
+    || targets.length !== 1
+    || targets[0].routine_occurrence_id === null
+  )) return reject(
+    db, appUserId, request, requestFingerprint, "resource_conflict",
+    "Relative planned-start placement is only valid for a single Routine Entry",
+  );
+
   const targetPlannedStart = request.section_id === null
     ? null
     : (sectionResult.results[0] as { logical_start_minute: number }).logical_start_minute;
   if (request.placement) {
     return bulkMoveEntriesToSectionOccurrenceAtPlacement(
-      db, appUserId, request, requestFingerprint, currentLogicalDate, targetPlannedStart, targets, now,
+      db, appUserId, request, requestFingerprint, currentLogicalDate, targetPlannedStart,
+      relativePlannedStart, targets, now,
     );
   }
   const targetById = new Map(targets.map((target) => [target.id, target]));
