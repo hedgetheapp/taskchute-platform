@@ -3,7 +3,7 @@
 - Past established Dayのeligible ordinary Planned rowで、left swipeのNote + `…`を表示し、More sheetの`今日へ移動` / `日付を移動`を利用可能にした。Past edit / duplicate / delete / execution / D&D、D-147(B)のmanual minute actual-start補正は変更していない。
 - Android single Routine occurrence D&Dだけがoptional `relative_planned_start: "anchor"`を送り、anchor planned-start cohortへcanonical収束する。markerなしは既存D-120 Web/bulk semanticsを維持し、empty/collapsed Section behaviorとexpanded row-target priorityを保持した。Today Add FABは測定content bounds内でmemory-onlyに移動可能にした。
 - Implementation `41fe8aac60ab8a5311402f5da19696e61624980b`、Worker focused `14 / 14`、Android JVM / Web typecheck / compile / assemble / diff-check、exact-SHA CI `36291132875` PASS。Today標準AVDは`37 / 45`で8件の既存fixture/expectation failure、D-148 focusedはPASS。APK artifact ID `10921289611`、nonprod Worker `3b5a9f10-b0b9-4bf1-9ab4-7b0ef4f2b7c7`、runtime/DB safety PASS。Galaxy S23 / authenticated QAはNOT_RUN、ProductionはNOT_RUN、ReleasedはNO。
-- 作業開始後にD-148 Decisionへ追加されたD&D edge auto-scrollは今回のユーザー指定4点に含めず、`NOT_IMPLEMENTED / NOT_VERIFIED`として記録する。schema / migration / dependency / Notes / D-145は変更していない。
+- D&D edge auto-scrollを追加。実測Today `LazyColumn` viewportの上下`72.dp` edge zone、edge接近時のquadratic speed ramp（最大`32.dp/frame`）、既存drag snapshotを維持した実スクロール後の2フレーム待機・geometry再base・current pointer再解決を行う。focused JVM / focused AVDはPASSし、既存Today全surfaceはrunner完了通知なしでPARTIAL / NOT_VERIFIED。Implementation `d0b4ef424631db32705e83a8334ed901cb4d5ad8`、exact-SHA CI `36296338053` PASS、APK artifact `taskchute-android-debug-d0b4ef424631db32705e83a8334ed901cb4d5ad8` / ID `10924475595`。Worker/API/shared contract、schema、migration、dependency、nonprod、production、Notes、D-145は変更・実施していない。
 
 ### D-147B Android manual minute actual-start adjacency — 2026-09-27
 

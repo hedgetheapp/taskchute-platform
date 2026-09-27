@@ -1,6 +1,6 @@
 # D-148 — Android Today D-147 Device Correctives v0.1
 
-Status: **Approved — 4-item corrective implemented; D&D edge auto-scroll remains not implemented / not verified**
+Status: **Approved — 5-item corrective implemented / integrated; focused edge auto-scroll PASS; full Today surface remains partial / not verified**
 
 Date: 2026-09-27
 
@@ -136,3 +136,11 @@ Implementation must cover at least:
 - Quick Add tap/drag/reset and Selection Mode rules remain green.
 
 Because section 2 changes a shared request and Worker behavior, run focused/full Worker coverage, Android focused/full JVM coverage, Web compatibility/typecheck, Today AVD, exact-SHA CI, and persistent nonprod runtime/safety verification. Galaxy S23 final verification remains Product Owner manual evidence.
+
+## Implementation evidence — Section 5
+
+The Today Task-list viewport is measured in root coordinates from the existing `LazyColumn`; the bottom edge is reduced by the existing `110.dp` content inset so the activation zone remains above bottom overlays/navigation. The reversible edge zone is `72.dp` and the capped per-frame delta is `32.dp`, with a quadratic ramp from 20% at the inner zone boundary to the cap at the exact edge. Top movement is negative and bottom movement is positive, guarded by `canScrollBackward` / `canScrollForward` and consumed scroll distance.
+
+Drag-start snapshot hit testing remains authoritative during ordinary drag. The root pointer Y is tracked independently of list scroll, and after a non-zero `scrollBy` the implementation waits for two Compose frames, copies the measured row/entry/Section maps into a refreshed snapshot, and resolves the current pointer against that snapshot. The dragged overlay keeps its source row root top and therefore remains under the finger while content scrolls. The loop stops on drag end/cancel/release, edge exit, list boundary, logical-Day change, or disposal; no post-drop scroll is scheduled.
+
+Focused `TodayDirectManipulationTest` coverage passes for outside/top/bottom/ramp/cap/invalid/boundary behavior and refreshed-bound target resolution. The focused `longPressDragNearBottomEdgeAutoScrollsTowardInitiallyOffscreenRows` AVD case reached an initially off-screen cross-Section target and dispatched the existing move path. The later Today-surface run did not return a runner completion result and is recorded as partial/not verified; no target-app crash-buffer entry was present. No Worker/API/shared contract, schema, migration, dependency, nonprod, or production change was made.
