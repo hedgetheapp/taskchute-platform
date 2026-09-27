@@ -494,7 +494,7 @@ private fun TodayContent(
     var dragPointerId by remember { mutableStateOf<PointerId?>(null) }
     var dragPointerSessionActive by remember { mutableStateOf(false) }
     var dragFinishIssued by remember { mutableStateOf(false) }
-    var dragPreviewPhase by remember { mutableStateOf(AndroidDragPreviewPhase.DRAG_STABLE) }
+    var freezeProvisionalPreviewForAutoScroll by remember { mutableStateOf(false) }
     var openSwipeEntryId by remember { mutableStateOf<String?>(null) }
     val renderDay = provisionalDay ?: day
     LaunchedEffect(day.logicalDate, state.status) { openSwipeEntryId = null }
@@ -529,7 +529,7 @@ private fun TodayContent(
             target = target,
         )
         dragPointerRootY = positionY
-        if (shouldUpdateAndroidProvisionalPreview(dragPreviewPhase)) {
+        if (shouldUpdateAndroidProvisionalPreview(freezeProvisionalPreviewForAutoScroll)) {
             provisionalDay = target?.let { previewDayForTarget(day, current.entryId, it) }
         }
     }
@@ -540,7 +540,7 @@ private fun TodayContent(
         dragPointerDown = false
         dragPointerId = null
         dragPointerSessionActive = false
-        dragPreviewPhase = AndroidDragPreviewPhase.DRAG_STABLE
+        freezeProvisionalPreviewForAutoScroll = false
         provisionalDay = null
         val target = drag.target ?: return
         val source = day.allEntries.firstOrNull { it.id == drag.entryId } ?: return
@@ -618,12 +618,11 @@ private fun TodayContent(
             }
             if (delta != 0f) {
                 val consumed = todayListState.scrollBy(delta)
-                if (abs(consumed) > 0.5f) {
-                    if (dragPreviewPhase != AndroidDragPreviewPhase.AUTO_SCROLLING) {
-                        dragPreviewPhase = AndroidDragPreviewPhase.AUTO_SCROLLING
-                        // Keep only the non-layout-shifting cue while the list moves.
-                        provisionalDay = null
-                    }
+                if (shouldFreezeAndroidProvisionalPreview(consumed)) {
+                    // Keep the current provisional placement stable while the list is moving.
+                    // The target is still refreshed below, but it must not feed back into row
+                    // composition until scrolling has stopped.
+                    freezeProvisionalPreviewForAutoScroll = true
                     // Scroll mutates LazyListState immediately, but bounds are published by
                     // the next layout pass. Rebase only after that pass, keeping ordinary
                     // drag hit-testing on its stable snapshot.
@@ -652,24 +651,26 @@ private fun TodayContent(
                             target = target,
                         )
                     }
-                } else if (dragPreviewPhase == AndroidDragPreviewPhase.AUTO_SCROLLING) {
-                    dragPreviewPhase = AndroidDragPreviewPhase.SETTLING
+                } else if (freezeProvisionalPreviewForAutoScroll) {
+                    // A zero-consumed frame means the edge scroll stopped or reached a list
+                    // boundary. Apply the latest target after the refreshed layout is stable.
+                    withFrameNanos { }
+                    withFrameNanos { }
+                    freezeProvisionalPreviewForAutoScroll = false
+                    val current = dragState
+                    if (current != null) {
+                        provisionalDay = current.target?.let { previewDayForTarget(day, current.entryId, it) }
+                    }
                 }
-            } else if (dragPreviewPhase == AndroidDragPreviewPhase.AUTO_SCROLLING) {
-                dragPreviewPhase = AndroidDragPreviewPhase.SETTLING
-            }
-            if (dragPreviewPhase == AndroidDragPreviewPhase.SETTLING) {
-                // Let the final layout/rebase settle before re-enabling the ordinary
-                // provisional-order preview. Pointer-up may still commit the latest target
-                // during this wait without requiring a preview frame first.
+            } else if (freezeProvisionalPreviewForAutoScroll) {
+                // The pointer left the edge zone. Settle the latest target without changing
+                // row geometry while the list was scrolling.
                 withFrameNanos { }
                 withFrameNanos { }
+                freezeProvisionalPreviewForAutoScroll = false
                 val current = dragState
                 if (current != null) {
-                    dragPreviewPhase = AndroidDragPreviewPhase.DRAG_STABLE
                     provisionalDay = current.target?.let { previewDayForTarget(day, current.entryId, it) }
-                } else {
-                    dragPreviewPhase = AndroidDragPreviewPhase.DRAG_STABLE
                 }
             }
             withFrameNanos { }
@@ -682,7 +683,7 @@ private fun TodayContent(
         dragPointerId = null
         dragPointerSessionActive = false
         dragFinishIssued = false
-        dragPreviewPhase = AndroidDragPreviewPhase.DRAG_STABLE
+        freezeProvisionalPreviewForAutoScroll = false
         provisionalDay = null
     }
     val isRefreshing = state.status == TodayLoadStatus.REFRESHING
@@ -733,7 +734,7 @@ private fun TodayContent(
                             dragPointerDown = false
                             dragPointerId = null
                             dragPointerSessionActive = false
-                            dragPreviewPhase = AndroidDragPreviewPhase.DRAG_STABLE
+                            freezeProvisionalPreviewForAutoScroll = false
                             provisionalDay = null
                         }
                         break
@@ -759,7 +760,7 @@ private fun TodayContent(
                             dragPointerId = null
                             dragPointerSessionActive = false
                             dragFinishIssued = false
-                            dragPreviewPhase = AndroidDragPreviewPhase.DRAG_STABLE
+                            freezeProvisionalPreviewForAutoScroll = false
                             provisionalDay = null
                         }
                         dragPointerDown = false
@@ -891,8 +892,9 @@ private fun TodayContent(
                         dragging = dragState?.entryId == task.id,
                         dragPlaceholder = dragState?.entryId == task.id,
                         dragDeltaY = dragState?.takeIf { it.entryId == task.id }?.deltaY ?: 0f,
-                        dropTarget = dragState?.target?.key == entryDropKey(task.id),
-                        dropTargetLayoutShift = dragPreviewPhase == AndroidDragPreviewPhase.DRAG_STABLE,
+                        dropTarget = false,
+                        dropTargetCue = freezeProvisionalPreviewForAutoScroll &&
+                            dragState?.target?.key == entryDropKey(task.id),
                         onDragStart = { pointerId, pointerPosition ->
                             directManipulationController?.takeIf { !todayListState.isScrollInProgress && it.canDrag(day, task) }?.let {
                                 val bounds = dropBounds[task.id]
@@ -903,6 +905,7 @@ private fun TodayContent(
                                 dragPointerId = pointerId
                                 dragPointerSessionActive = true
                                 dragFinishIssued = false
+                                freezeProvisionalPreviewForAutoScroll = false
                                 dragState = AndroidDragState(
                                     entryId = task.id,
                                     sourceSectionId = section.id,
@@ -1003,8 +1006,9 @@ private fun TodayContent(
                         dragging = dragState?.entryId == task.id,
                         dragPlaceholder = dragState?.entryId == task.id,
                         dragDeltaY = dragState?.takeIf { it.entryId == task.id }?.deltaY ?: 0f,
-                        dropTarget = dragState?.target?.key == entryDropKey(task.id),
-                        dropTargetLayoutShift = dragPreviewPhase == AndroidDragPreviewPhase.DRAG_STABLE,
+                        dropTarget = false,
+                        dropTargetCue = freezeProvisionalPreviewForAutoScroll &&
+                            dragState?.target?.key == entryDropKey(task.id),
                         onDragStart = { pointerId, pointerPosition ->
                             directManipulationController?.takeIf { !todayListState.isScrollInProgress && it.canDrag(day, task) }?.let {
                                 val bounds = dropBounds[task.id]
@@ -1015,6 +1019,7 @@ private fun TodayContent(
                                 dragPointerId = pointerId
                                 dragPointerSessionActive = true
                                 dragFinishIssued = false
+                                freezeProvisionalPreviewForAutoScroll = false
                                 dragState = AndroidDragState(
                                     entryId = task.id,
                                     sourceSectionId = null,
@@ -1081,14 +1086,10 @@ private const val UNSECTIONED_DROP_KEY = "__unsectioned__"
 internal const val D148_DRAG_EDGE_ZONE = 72
 internal const val D148_DRAG_MAX_SCROLL_PER_FRAME = 32
 
-internal enum class AndroidDragPreviewPhase {
-    DRAG_STABLE,
-    AUTO_SCROLLING,
-    SETTLING,
-}
+internal fun shouldFreezeAndroidProvisionalPreview(consumedPx: Float): Boolean =
+    consumedPx.isFinite() && abs(consumedPx) > 0.5f
 
-internal fun shouldUpdateAndroidProvisionalPreview(phase: AndroidDragPreviewPhase): Boolean =
-    phase == AndroidDragPreviewPhase.DRAG_STABLE
+internal fun shouldUpdateAndroidProvisionalPreview(isFrozen: Boolean): Boolean = !isFrozen
 
 internal fun androidDragAutoScrollDelta(
     pointerY: Float,
@@ -1364,7 +1365,7 @@ private fun TodayTaskRow(
     dragPlaceholder: Boolean,
     dragDeltaY: Float,
     dropTarget: Boolean,
-    dropTargetLayoutShift: Boolean,
+    dropTargetCue: Boolean,
     onDragStart: (PointerId, Offset) -> Unit,
     onDragMove: (Offset) -> Unit,
     dropBounds: MutableMap<String, Rect>,
@@ -1380,9 +1381,10 @@ private fun TodayTaskRow(
         if (!swipeMenuOpen || selectionModeActive) swipeOffset = 0f
     }
     val insertionPadding by animateDpAsState(
-        if (dropTarget && dropTargetLayoutShift) 6.dp else 0.dp,
+        if (dropTarget) 6.dp else 0.dp,
         label = "drop-target-padding",
     )
+    val visualDropTarget = dropTarget || dropTargetCue
     val hasActions = canEdit || canDuplicate || canOpenNote || canDayOperate || canLifecycleDelete || canPlannedDelete || canPastForwardOperate
     val canSwipeNote = canOpenNote && (canEdit || canNoteOnly)
     val hasOtherActions = hasActions && (!canNoteOnly || canPastForwardOperate)
@@ -1483,7 +1485,7 @@ private fun TodayTaskRow(
                     } else Modifier,
                 ).then(
                     if (dragging) Modifier
-                    else if (dropTarget) Modifier
+                    else if (visualDropTarget) Modifier
                         .background(Color(0x802C665D))
                         .border(BorderStroke(2.dp, Color(0xFF58C8B2)))
                     else Modifier,

@@ -501,6 +501,40 @@ class TodayScreenInstrumentedTest {
     }
 
     @Test
+    fun longPressDragMovesAcrossVisibleSectionsWithOneDispatch() {
+        val directRepository = FakeDirectManipulationRepository()
+        val base = dayWith().sections.single().entries.single()
+        val source = base.copy(id = "entry-cross-source", title = "Cross source", taskId = "task-cross-source")
+        val target = base.copy(id = "entry-cross-target", title = "Cross target", taskId = "task-cross-target")
+        val initialDay = dayWith().copy(
+            sections = listOf(
+                TodaySection("section-cross-source", "Cross source section", 480, 720, listOf(source)),
+                TodaySection("section-cross-target", "Cross target section", 720, 900, listOf(target)),
+            ),
+        )
+        launchPlanningScreen(FakePlanningRepository(), initialDay, directRepository)
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        val sourceNode = composeRule.onNodeWithContentDescription("タスクをドラッグ: Cross source")
+        val sourceBounds = sourceNode.fetchSemanticsNode().boundsInRoot
+        val targetBounds = composeRule.onNodeWithContentDescription("タスクをドラッグ: Cross target")
+            .fetchSemanticsNode()
+            .boundsInRoot
+        sourceNode.performTouchInput {
+            down(center)
+            advanceEventTime(600)
+            moveBy(Offset(0f, targetBounds.center.y - sourceBounds.center.y), delayMillis = 100)
+            up()
+        }
+
+        composeRule.waitUntil(15_000) { directRepository.moveCalls.get() == 1 }
+        assertEquals(1, directRepository.moveCalls.get())
+        assertEquals("section-cross-target", directRepository.lastMove?.sectionId)
+        assertEquals("entry-cross-target", directRepository.lastMove?.placement?.anchorEntryId)
+        assertFalse(directRepository.lastMove?.relativePlannedStartAnchor == true)
+    }
+
+    @Test
     fun unresolvedOperationUsesBottomPanelAndPreservesTodayForExactRetry() {
         val directRepository = FakeDirectManipulationRepository().apply {
             result = DirectManipulationResult.Ambiguous

@@ -84,10 +84,33 @@ class TodayDirectManipulationTest {
     }
 
     @Test
-    fun autoScrollFreezesLayoutPreviewUntilTheLatestTargetCanSettle() {
-        assertTrue(shouldUpdateAndroidProvisionalPreview(AndroidDragPreviewPhase.DRAG_STABLE))
-        assertFalse(shouldUpdateAndroidProvisionalPreview(AndroidDragPreviewPhase.AUTO_SCROLLING))
-        assertFalse(shouldUpdateAndroidProvisionalPreview(AndroidDragPreviewPhase.SETTLING))
+    fun provisionalPreviewFreezesOnlyAfterScrollConsumesPixels() {
+        assertFalse(shouldFreezeAndroidProvisionalPreview(0f))
+        assertFalse(shouldFreezeAndroidProvisionalPreview(0.5f))
+        assertFalse(shouldFreezeAndroidProvisionalPreview(-0.5f))
+        assertTrue(shouldFreezeAndroidProvisionalPreview(0.51f))
+        assertTrue(shouldFreezeAndroidProvisionalPreview(-0.51f))
+        assertTrue(shouldUpdateAndroidProvisionalPreview(false))
+        assertFalse(shouldUpdateAndroidProvisionalPreview(true))
+    }
+
+    @Test
+    fun repeatedConsumedScrollKeepsPreviewFrozenAndStopCanApplyLatestTarget() {
+        var frozen = false
+        var previewUpdates = 0
+
+        listOf(12f, 12f, 8f).forEach { consumed ->
+            if (shouldFreezeAndroidProvisionalPreview(consumed)) frozen = true
+            if (shouldUpdateAndroidProvisionalPreview(frozen)) previewUpdates++
+        }
+        assertTrue(frozen)
+        assertEquals(0, previewUpdates)
+
+        val stopConsumed = 0f
+        if (!shouldFreezeAndroidProvisionalPreview(stopConsumed)) frozen = false
+        if (shouldUpdateAndroidProvisionalPreview(frozen)) previewUpdates++
+        assertFalse(frozen)
+        assertEquals(1, previewUpdates)
     }
 
     @Test
