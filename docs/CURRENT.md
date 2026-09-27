@@ -1,3 +1,11 @@
+### D-148 Android Today D-147 device correctives — 2026-09-27
+
+**Status: 4-item corrective IMPLEMENTED / INTEGRATED / focused PASS / persistent nonprod PASS / Today AVD PARTIAL / Galaxy S23 NOT_RUN / Production NOT_RUN / Released NO**。Past established Dayのeligible ordinary Planned rowでNote + `…` forward-move actionを復元し、Android single Routine occurrence D&Dはoptional `relative_planned_start: "anchor"` でanchor planned-start cohortへ収束させた。markerなしはD-120 Web/bulk semanticsを維持し、empty/collapsed Section drop回帰を保持した。Today Add FABは測定したusable content bounds内でmemory-onlyに移動可能とした。
+
+Implementation `41fe8aac60ab8a5311402f5da19696e61624980b`、Worker focused `14 / 14`、Android JVM / Web typecheck / compile / assemble / `git diff --check`、exact-SHA CI `36291132875`はPASS。Today標準AVDは`45 tests / 37 PASS / 8 existing fixture or expectation failures`のPARTIALだが、D-148 focused casesはPASS、APK install / MainActivity / crash bufferはPASS。APK artifact `taskchute-android-debug-41fe8aac60ab8a5311402f5da19696e61624980b` / ID `10921289611`。Persistent nonprod Worker version `3b5a9f10-b0b9-4bf1-9ab4-7b0ef4f2b7c7`、root `200`、protected API `401`、APP/AUTH migration pendingなし、quick_check `ok`、FK empty、read-only writes `0`。authenticated/disposable feature QAはNOT_RUN。
+
+作業開始後にcurrent D-148 Decisionへ追加された5件目のD&D edge auto-scrollは、今回のユーザー指定4点の範囲外のため実装・検証していない（`NOT_IMPLEMENTED / NOT_VERIFIED`）。D-147(B)、D-145、Notes系、schema、migration、dependency、Production、Releaseは変更・実施していない。Galaxy S23は`NOT_RUN / PRODUCT_OWNER_MANUAL`。
+
 ### D-147 Android Today dogfood correctives — 2026-09-27
 
 **Status: A/B/C/D/E/F/G/H/I IMPLEMENTED / INTEGRATED / focused PASS / persistent nonprod PASS / AVD PARTIAL / Galaxy S23 NOT_RUN / Production NOT_RUN / Released NO**。D-147Aのcorrectives（Routine repeat icon accent、Routine occurrence-only delete、planned Routine occurrence D&D、Quick Add / Startのoptimistic canonical ordering、Routine planned-start Section同期、established past planned ordinary Taskのcurrent/future forward move、Today Add FABのtemporary bounded drag）とcorrective 1の2件に加え、D-147Bのmanual minute-granularity actual-start adjacencyを実装した。marker付きAndroid manual editorだけが同一表示minute内の完了Execution blockerをeffective startへ補正し、exact caller、Start、自動timestamp、Webは従来どおり。

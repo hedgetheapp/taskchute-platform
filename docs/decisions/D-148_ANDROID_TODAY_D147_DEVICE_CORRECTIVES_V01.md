@@ -1,6 +1,6 @@
 # D-148 — Android Today D-147 Device Correctives v0.1
 
-Status: **Approved — Implementation not started**
+Status: **Approved — 4-item corrective implemented; D&D edge auto-scroll remains not implemented / not verified**
 
 Date: 2026-09-27
 

@@ -1,6 +1,6 @@
 ## D-148 — Android Today D-147 Device Correctives v0.1
 
-Status: **Approved**
+Status: **Approved / 4-item corrective implemented; D&D edge auto-scroll not implemented**
 
 Canonical Decision: `docs/decisions/D-148_ANDROID_TODAY_D147_DEVICE_CORRECTIVES_V01.md`。
 

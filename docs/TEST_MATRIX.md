@@ -1,3 +1,20 @@
+## D-148 Android Today D-147 device correctives — 2026-09-27
+
+| ID | Area | Evidence | Status |
+|---|---|---|---|
+| D148-PAST | Past eligible ordinary Planned composition | Left swipe exposes Note + `…`; More sheet exposes `今日へ移動` / `日付を移動`; past edit / duplicate / delete / execution / D&D remain unavailable | PASS |
+| D148-ROUTINE-INTENT | Android single Routine relative D&D | Optional `relative_planned_start: "anchor"` is emitted only for one Routine-derived Planned entry with a concrete anchor; anchor planned-start cohort is canonical; omitted marker preserves D-120 Web/bulk behavior | PASS |
+| D148-SECTION | Section drop regression | Empty/collapsed Section-only target and expanded row-target priority remain green; no new Sectionなし semantics | PASS |
+| D148-FAB | Today Add FAB | Measured usable content bounds replace the old 96dp local range; tap remains Quick Add, drag is memory-only, selection hides it, and panel overlap is avoided | PASS |
+| D148-WORKER | Worker focused / compatibility | `bulk-move-entries-to-section.integration.test.ts`: `14 / 14 PASS`; ordinary/multi-entry/no-anchor requests reject or retain D-120 semantics; replay/CAS/owner/day/ended-Section guards remain | PASS |
+| D148-ANDROID | Android JVM / build | Full Android JVM, `:app:compileDebugKotlin`, `:app:compileDebugAndroidTestKotlin`, `:app:assembleDebug`, focused D-148 instrumentation | PASS |
+| D148-CI | Exact pushed SHA | `main@41fe8aac60ab8a5311402f5da19696e61624980b`, CI `36291132875`: classifier, Android JVM/signed APK/instrumentation compile/signing, Web/Worker/typecheck/tests/build | PASS |
+| D148-APK | Fresh artifact | `taskchute-android-debug-41fe8aac60ab8a5311402f5da19696e61624980b`, artifact ID `10921289611` | PASS |
+| D148-AVD | Today standard surface | `scripts/android-qa.ps1 -Surface Today`: `45 tests / 37 PASS / 8 existing fixture or expectation failures`; D-148 focused cases PASS; install/MainActivity/crash buffer PASS | PARTIAL / EXISTING FIXTURES |
+| D148-NONPROD | Persistent nonprod safety | Worker `taskchute-web-nonprod`, version `3b5a9f10-b0b9-4bf1-9ab4-7b0ef4f2b7c7`; guard PASS; root `200`; protected API `401`; APP/AUTH migration pendingなし; quick_check `ok`; FK empty; read-only writes `0` | PASS |
+| D148-EDGE-AUTOSCROLL | D&D edge auto-scroll | Added to the canonical D-148 Decision after this four-item implementation scope began; not part of the user-authorized four corrections and not implemented or verified here | NOT_IMPLEMENTED / NOT_VERIFIED |
+| D148-DEVICE | Galaxy S23 / release boundary | Product Owner manual device check not run for this corrective; D-147(B), D-145, Notes, schema, migration, dependency, Production, Release untouched | NOT_RUN / PRODUCT_OWNER_MANUAL |
+
 ## D-147A Android Today dogfood correctives — 2026-09-26
 
 | ID | Area | Evidence | Status |

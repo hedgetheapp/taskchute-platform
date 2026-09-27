@@ -1,3 +1,10 @@
+### D-148 Android Today D-147 device correctives — 2026-09-27
+
+- Past established Dayのeligible ordinary Planned rowで、left swipeのNote + `…`を表示し、More sheetの`今日へ移動` / `日付を移動`を利用可能にした。Past edit / duplicate / delete / execution / D&D、D-147(B)のmanual minute actual-start補正は変更していない。
+- Android single Routine occurrence D&Dだけがoptional `relative_planned_start: "anchor"`を送り、anchor planned-start cohortへcanonical収束する。markerなしは既存D-120 Web/bulk semanticsを維持し、empty/collapsed Section behaviorとexpanded row-target priorityを保持した。Today Add FABは測定content bounds内でmemory-onlyに移動可能にした。
+- Implementation `41fe8aac60ab8a5311402f5da19696e61624980b`、Worker focused `14 / 14`、Android JVM / Web typecheck / compile / assemble / diff-check、exact-SHA CI `36291132875` PASS。Today標準AVDは`37 / 45`で8件の既存fixture/expectation failure、D-148 focusedはPASS。APK artifact ID `10921289611`、nonprod Worker `3b5a9f10-b0b9-4bf1-9ab4-7b0ef4f2b7c7`、runtime/DB safety PASS。Galaxy S23 / authenticated QAはNOT_RUN、ProductionはNOT_RUN、ReleasedはNO。
+- 作業開始後にD-148 Decisionへ追加されたD&D edge auto-scrollは今回のユーザー指定4点に含めず、`NOT_IMPLEMENTED / NOT_VERIFIED`として記録する。schema / migration / dependency / Notes / D-145は変更していない。
+
 ### D-147B Android manual minute actual-start adjacency — 2026-09-27
 
 - Androidのmanual actual-time editorだけが`input_precision: "minute"`を送信し、同一TaskChuteDay・同一表示minute内で開始を妨げる完了Execution blockerがある場合のみ、最大`ended_at`へeffective startを補正する。active/open、残存overlap、入力end超過、future / Day境界外、minute境界外はrejectし、既存Execution・exact caller・Start timestamp・Web・D-132 actual Section authorityは変更しない。
