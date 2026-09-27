@@ -1,6 +1,6 @@
 # D-147 — Android Today Dogfood Correctives v0.1
 
-Status: **Approved — A/C/D/E/F/G/H/I implemented; B deferred by Product Owner**
+Status: **Approved — A/B/C/D/E/F/G/H/I implemented; D-147B integrated; focused verification PASS; Today AVD PARTIAL; Galaxy S23 NOT_RUN; Production NOT_RUN; Released NO**
 
 Date: 2026-09-26
 
@@ -233,3 +233,16 @@ Worker/API/shared contract、input_precision、schema、migration、dependency�
 Implementation commit: `602741f8dd1565a093c0d9a0be46cc8d0f8b05b4`
 Focused Android JVM、Android JVM suite、`:app:compileDebugKotlin`、`:app:compileDebugAndroidTestKotlin`、`:app:assembleDebug`、`git diff --check`: PASS。Today AVDは`44 tests / 35 PASS / 9 existing fixture failures`で、前回D-147Aと同じPARTIAL。MainActivity起動、APK install、crash bufferはPASS。
 Exact-SHA CI: run `36282360581` PASS。APK artifact `taskchute-android-debug-602741f8dd1565a093c0d9a0be46cc8d0f8b05b4` / ID `10919013636`。Worker/API/shared contract、`input_precision`、schema、migration、dependency、nonprod、production、Releaseは変更・実施していない。Galaxy S23はNOT_RUN / PRODUCT_OWNER_MANUAL。
+
+## D-147B implementation checkpoint — 2026-09-27
+
+D-147(B)のmanual minute-granularity actual-start adjacencyを実装した。Androidの手入力actual-time editor（既存Entry編集および作成Entryのmanual actual-time入力）のみが、後方互換な`input_precision: "minute"` markerを送信する。Start button、自動Start timestamp、Webおよびmarkerなしのexact-instant callerは従来どおりで、minute補正を適用しない。
+
+Workerは入力された表示minuteのDay establishment timezone境界を厳密に検証し、同一TaskChuteDay・同一owner・別Executionのうち、元のminute startより後かつ同じ表示minute終端より前に終了する完了Executionだけを候補にする。候補の最大`ended_at`をeffective startへ採用し、effective start/endで既存`overlapsSql`を再評価する。active/open、残存overlap、入力end超過、future start、Day境界外、minute境界外はrejectする。actual Section解決、lifecycle transition、Execution writeはeffective startをauthorityとし、既存Executionは変更しない。
+
+blockerのexact identity / timestamps / same-Day条件はpre-read後の同一D1 lifecycle guardにも含め、blockerの競合変更時にstale snapやpartial domain mutationを許さない。operation fingerprintはmarkerを含む元の正規化requestで計算し、effective timestampから再生成しないため、exact replay / ambiguity / CAS authorityを維持する。
+
+Implementation commit: `c379b26dc571d7956d9b69ba68e1b804edbb3f40`
+Focused Worker `execution-correction` `15 / 15 PASS`、Worker全体 `38 files / 364 tests PASS`、Web typecheck、Android manual-payload focused tests、Android JVM suite、`:app:compileDebugAndroidTestKotlin`、`:app:assembleDebug`、`git diff --check`: PASS。Today AVDは`44 tests / 35 PASS / 9 existing fixture failures`で、D-147A既知のPARTIALを維持し、新規app crashなし。MainActivity起動、APK install、crash bufferはPASS。
+
+Exact-SHA CI: run `36285059315` PASS（classifier、Web/Worker、Android JVM、signed nonprod APK、instrumentation compile、signing verification、upload）。APK artifact `taskchute-android-debug-c379b26dc571d7956d9b69ba68e1b804edbb3f40` / ID `10920775303` / expires `2026-10-04T01:19:06Z`。Persistent nonprod Worker version `c3a450e7-167d-4ece-a18e-4bb9c84ee5ea`、root `200`、protected API `401`、migration pendingなし、APP/AUTH quick check `ok`、FK empty、read-only probe writes `0`。CUA helper unavailableのためauthenticated/disposable feature mutation QAは`NOT_RUN`。Galaxy S23は`NOT_RUN / PRODUCT_OWNER_MANUAL`、schema、migration、dependency、Production、Releaseは変更・実施していない。

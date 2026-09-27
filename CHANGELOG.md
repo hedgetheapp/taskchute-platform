@@ -1,3 +1,9 @@
+### D-147B Android manual minute actual-start adjacency — 2026-09-27
+
+- Androidのmanual actual-time editorだけが`input_precision: "minute"`を送信し、同一TaskChuteDay・同一表示minute内で開始を妨げる完了Execution blockerがある場合のみ、最大`ended_at`へeffective startを補正する。active/open、残存overlap、入力end超過、future / Day境界外、minute境界外はrejectし、既存Execution・exact caller・Start timestamp・Web・D-132 actual Section authorityは変更しない。
+- blocker identity/timestampを同一D1 lifecycle guardへ含め、元request（markerを含む）でfingerprint/replayを維持。Worker focused `15 / 15`、Worker全体 `38 files / 364 tests`、Android JVM、Web typecheck、Android compile / assemble、`git diff --check`、exact-SHA CI `36285059315` PASS。
+- Persistent nonprod Worker `c3a450e7-167d-4ece-a18e-4bb9c84ee5ea`、root `200`、protected API `401`、DB safety PASS。Today AVDは`44 tests / 35 PASS / 9 existing fixture failures`のPARTIAL、APK artifact ID `10920775303`。authenticated QAはCUA helper unavailableのためNOT_RUN、Galaxy S23はNOT_RUN、ProductionはNOT_RUN、ReleasedはNO。schema / migration / dependencyは変更なし。
+
 ### D-147A Android Today dogfood correctives
 
 - Routine repeat icon accent、Routine occurrence-only delete / D&D、Quick Add / Startのoptimistic canonical ordering、Routine planned-start Section同期、established past planned ordinary Taskのforward move、Today Add FAB temporary dragを実装。

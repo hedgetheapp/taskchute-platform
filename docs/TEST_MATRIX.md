@@ -26,7 +26,29 @@ D-147(B)は独立して完全保留。D-147Aの他の独立項目は実装・検
 | D147A-CORRECTIVE-APK | Fresh artifact | `taskchute-android-debug-602741f8dd1565a093c0d9a0be46cc8d0f8b05b4`, artifact ID `10919013636` | PASS |
 | D147A-CORRECTIVE-BOUNDARY | B / scope | D-147(B)は完全保留。`input_precision`、Worker/API/shared contract、schema、migration、dependency、nonprod、production、Releaseは変更・実施していない。Galaxy S23は未実施 | DEFERRED / NOT_RUN |
 
-D-147全体はB deferredのためpartial statusを維持する。D-147A corrective 1は独立したA scopeの補正であり、既存Today full-surface 9件のfixture failureをPASSへ昇格させない。
+D-147A corrective 1時点ではB deferredのためD-147全体をpartialとして記録していた。D-147B実装後も、既存Today full-surface 9件のfixture failureはPASSへ昇格させない。
+
+### D-147B Android manual minute actual-start adjacency — 2026-09-27
+
+| ID | Area | Evidence | Status |
+|---|---|---|---|
+| D147B-IMPLEMENTATION | Manual minute caller boundary | Android existing-entry / created-entry manual actual-time editorだけが`input_precision: "minute"`を送信。Start、自動timestamp、Web、markerなしexact-instant callerは変更なし | PASS |
+| D147B-BLOCKER | Exact blocker semantics | 同一owner・同一TaskChuteDay・別Execution、`started_at <= original minute start < ended_at < minute end`の完了Executionだけを候補にし、最大`ended_at`へ補正。future-start、次minute終端、active/openは対象外 | PASS |
+| D147B-GUARDS | Safety / overlap | effective start/endで既存`overlapsSql`を再評価。active/open、残存overlap、入力end超過、future、Day境界外、minute境界外をreject。既存Executionは不変 | PASS |
+| D147B-ATOMIC | D1 concurrency guard | blockerのexact ID / entry / timestamps / same-Day条件をpre-read後の同一lifecycle batch guardへ含め、競合時はstale snap / partial mutationなし | PASS |
+| D147B-REPLAY | Fingerprint / replay | markerを含む元の正規化requestでfingerprintを計算し、effective timestampから再生成しない。exact replay / ambiguity / CAS authorityを維持 | PASS |
+| D147B-WORKER | Worker focused | `execution-correction.integration.test.ts` `15 / 15 PASS`; exact caller、marker validator、same-minute maximum、existing correction、all rejection guards、overlap、D1 race proxy、replayを含む | PASS |
+| D147B-REG | Shared regression | Worker `38 files / 364 tests PASS`; Web `npm run typecheck` PASS; Android payload focused tests / full `:app:testDebugUnitTest` PASS | PASS |
+| D147B-BUILD | Android build | `:app:compileDebugAndroidTestKotlin`, `:app:assembleDebug`, `git diff --check` | PASS |
+| D147B-NONPROD | Persistent nonprod safety | Worker `c3a450e7-167d-4ece-a18e-4bb9c84ee5ea`; root `200`; protected API `401`; migration pendingなし; APP/AUTH quick `ok`; FK empty; read-only writes `0` | PASS |
+| D147B-AVD | Today runtime | `TaskChute_API33`: 44 tests中35 PASS / 9 existing fixture failures。APK install、MainActivity、crash bufferはPASS。D-147A既知partialを維持し、D-147B起因の新規crashはなし | PARTIAL / EXISTING FIXTURES |
+| D147B-CI | Exact pushed SHA | run `36285059315`: classifier / Web・Worker / Android JVM / signed APK / instrumentation compile / signing / upload PASS | PASS |
+| D147B-APK | Fresh artifact | `taskchute-android-debug-c379b26dc571d7956d9b69ba68e1b804edbb3f40`, artifact ID `10920775303`, expires `2026-10-04T01:19:06Z` | PASS |
+| D147B-QA | Authenticated feature QA | CUA helper unavailableのためauthenticated/disposable mutation QAは未実施。credentials取得・re-login・既存data mutationなし | AUTHENTICATED_WEB_NOT_RUN |
+| D147B-DEVICE | Galaxy S23 | Product Owner physical-device verification | NOT_RUN / PRODUCT_OWNER_MANUAL |
+| D147B-BOUNDARY | Scope | Worker/API/shared contractのみD-147B実装範囲で変更。schema / migration / dependencyなし。Production / Release / D-145 / Notesは未実施 | PASS / NOT_RUN |
+
+D-147Bにより、D-147全体のB deferred状態は解消した。Today full-surfaceの既知9件failureはD-147BのPASSへ昇格させず、D-147AからのPARTIAL evidenceを保持する。
 ## D-138 Android Today Planning / Lifecycle Refinements — 2026-09-24
 
 D-138は、Android Todayのplanned boundary、Routine occurrence-only planning、Running estimate、Completed projection、actual-start-only transitionを既存のWorker authorityへ接続する狭いcorrective。D-129 ended Section guard、D-081 execution-first ordering、Routine Definition authority、past / unestablished future / future execution boundaryは維持する。
