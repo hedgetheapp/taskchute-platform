@@ -1,3 +1,9 @@
+## D-148 device follow-up — cc3 D&D regression
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D148-DEVICE-CC3-DND-REGRESSION | Galaxy S23 / Today D&D | Ordinary provisional reorder and edge auto-scroll must remain usable together; corrective must not regress non-scroll reorder | Product Owner manual test of APK `cc3a83ef3887c2fc06ec952ddb33b73c6bfa173c`: auto-scroll does not operate, provisional reorder is incorrect even without scrolling, reorder cannot be completed reliably. Source diff: preview phase adds ordinary target layout shift and clears provisional order at auto-scroll entry | FAIL / USER_REPORTED |
+
 ## D-148 device follow-up — Routine empty-Section D&D
 
 | ID | Area | Requirement | Evidence | Status |
