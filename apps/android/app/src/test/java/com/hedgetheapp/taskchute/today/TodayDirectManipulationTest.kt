@@ -121,33 +121,26 @@ class TodayDirectManipulationTest {
     }
 
     @Test
-    fun provisionalPreviewFreezesOnlyAfterScrollConsumesPixels() {
-        assertFalse(shouldFreezeAndroidProvisionalPreview(0f))
-        assertFalse(shouldFreezeAndroidProvisionalPreview(0.5f))
-        assertFalse(shouldFreezeAndroidProvisionalPreview(-0.5f))
-        assertTrue(shouldFreezeAndroidProvisionalPreview(0.51f))
-        assertTrue(shouldFreezeAndroidProvisionalPreview(-0.51f))
-        assertTrue(shouldUpdateAndroidProvisionalPreview(false))
-        assertFalse(shouldUpdateAndroidProvisionalPreview(true))
+    fun autoScrollRebaseStartsOnlyAfterScrollConsumesPixels() {
+        assertFalse(shouldRebaseAndroidDragAfterConsumedScroll(0f))
+        assertFalse(shouldRebaseAndroidDragAfterConsumedScroll(0.5f))
+        assertFalse(shouldRebaseAndroidDragAfterConsumedScroll(-0.5f))
+        assertTrue(shouldRebaseAndroidDragAfterConsumedScroll(0.51f))
+        assertTrue(shouldRebaseAndroidDragAfterConsumedScroll(-0.51f))
     }
 
     @Test
-    fun repeatedConsumedScrollKeepsPreviewFrozenAndStopCanApplyLatestTarget() {
-        var frozen = false
-        var previewUpdates = 0
+    fun repeatedConsumedScrollKeepsRebasePendingUntilScrollStops() {
+        var rebasePending = false
 
         listOf(12f, 12f, 8f).forEach { consumed ->
-            if (shouldFreezeAndroidProvisionalPreview(consumed)) frozen = true
-            if (shouldUpdateAndroidProvisionalPreview(frozen)) previewUpdates++
+            if (shouldRebaseAndroidDragAfterConsumedScroll(consumed)) rebasePending = true
         }
-        assertTrue(frozen)
-        assertEquals(0, previewUpdates)
+        assertTrue(rebasePending)
 
         val stopConsumed = 0f
-        if (!shouldFreezeAndroidProvisionalPreview(stopConsumed)) frozen = false
-        if (shouldUpdateAndroidProvisionalPreview(frozen)) previewUpdates++
-        assertFalse(frozen)
-        assertEquals(1, previewUpdates)
+        if (!shouldRebaseAndroidDragAfterConsumedScroll(stopConsumed)) rebasePending = false
+        assertFalse(rebasePending)
     }
 
     @Test

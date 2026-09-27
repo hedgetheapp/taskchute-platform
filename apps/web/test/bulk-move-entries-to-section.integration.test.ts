@@ -8,6 +8,7 @@ import {
   bulkMoveEntriesToSectionOccurrence,
   isBulkMoveEntriesToSectionOccurrenceRequest,
 } from "../worker/application/bulk-move-entries-to-section-occurrence";
+import { bulkMoveEntriesToDay } from "../worker/application/bulk-move-entries-to-day";
 import type { MoveEntryPlacementIntent } from "../src/shared/contracts";
 import { loadTaskChuteDayByLogicalDate } from "../worker/application/load-current-day";
 import { uuidv7 } from "../src/shared/uuidv7";
@@ -393,6 +394,132 @@ describe.sequential("BulkMoveEntriesToSection", () => {
     expect(sameResult).toMatchObject({ section_id: sameFixture.sectionA, planned_start_minute: 120, placement_revision: 1 });
     expect(await env.APP_DB.prepare("SELECT planned_start_minute FROM entries WHERE id = ?")
       .bind(sameFixture.routineEntryId).first()).toEqual({ planned_start_minute: 120 });
+  });
+
+  it("supports ordinary, native Routine, and date-moved Routine future-Day cross-Section placement", async () => {
+    const fixture = await seed();
+    const futureDayId = uuidv7();
+    const futureAnchorTaskId = uuidv7();
+    const futureAnchorEntryId = uuidv7();
+    const futureOrdinaryTaskId = uuidv7();
+    const futureOrdinaryEntryId = uuidv7();
+    const nativeRoutineTaskId = uuidv7();
+    const nativeRoutineDefinitionId = uuidv7();
+    const nativeRoutineOccurrenceId = uuidv7();
+    const nativeRoutineEntryId = uuidv7();
+    const configurationVersionId = await env.APP_DB.prepare(
+      "SELECT configuration_version_id FROM taskchute_day_section_contexts WHERE taskchute_day_id = ? AND section_id = ?",
+    ).bind(fixture.dayId, fixture.sectionA).first<string>("configuration_version_id");
+    await env.APP_DB.batch([
+      env.APP_DB.prepare(`INSERT INTO taskchute_days
+        (id, app_user_id, logical_date, start_instant, end_instant, establishment_timezone,
+         establishment_boundary_minutes, establishment_disambiguation, placement_revision, created_at)
+        VALUES (?, ?, '2026-09-03', '2026-09-03T00:00:00.000Z', '2026-09-04T00:00:00.000Z', 'UTC', 0, 'compatible', 0, ?)`)
+        .bind(futureDayId, fixture.userId, now),
+      ...[
+        [fixture.sectionA, "Alpha", 0, 0, 720],
+        [fixture.sectionB, "Beta", 1, 720, 1440],
+      ].map(([sectionId, title, order, start, end]) => env.APP_DB.prepare(`INSERT INTO taskchute_day_section_contexts
+        (app_user_id, taskchute_day_id, section_id, configuration_version_id, title, logical_start_minute,
+         logical_end_minute, actual_start_instant, actual_end_instant, context_order)
+        VALUES (?, ?, ?, ?, ?, ?, ?, '2026-09-03T00:00:00.000Z', '2026-09-04T00:00:00.000Z', ?)`)
+        .bind(fixture.userId, futureDayId, sectionId, configurationVersionId, title, start, end, order)),
+      env.APP_DB.prepare("INSERT INTO tasks (id, app_user_id, title, created_at) VALUES (?, ?, 'Future anchor', ?)")
+        .bind(futureAnchorTaskId, fixture.userId, now),
+      env.APP_DB.prepare("INSERT INTO tasks (id, app_user_id, title, created_at) VALUES (?, ?, 'Future ordinary', ?), (?, ?, 'Future native Routine', ?)")
+        .bind(futureOrdinaryTaskId, fixture.userId, now, nativeRoutineTaskId, fixture.userId, now),
+      env.APP_DB.prepare(`INSERT INTO routine_definitions
+        (id, app_user_id, task_id, recurrence_type, start_logical_date, end_logical_date,
+         default_section_id, default_estimate_seconds, default_planned_start_minute, materialization_order,
+         defaults_revision, created_at)
+        VALUES (?, ?, ?, 'daily', '2026-09-03', NULL, ?, 900, 60, 2, 0, ?)`)
+        .bind(nativeRoutineDefinitionId, fixture.userId, nativeRoutineTaskId, fixture.sectionA, now),
+      env.APP_DB.prepare(`INSERT INTO routine_occurrences
+        (id, app_user_id, routine_definition_id, origin_taskchute_day_id,
+         section_plan_override_present, section_override_id, planned_start_override_minute,
+         estimate_override_present, estimate_override_seconds, created_at)
+        VALUES (?, ?, ?, ?, 0, NULL, NULL, 0, NULL, ?)`)
+        .bind(nativeRoutineOccurrenceId, fixture.userId, nativeRoutineDefinitionId, futureDayId, now),
+      env.APP_DB.prepare(`INSERT INTO entries
+        (id, app_user_id, task_id, taskchute_day_id, section_id, position, lifecycle_state,
+         estimate_seconds, planned_start_minute, created_at)
+        VALUES (?, ?, ?, ?, ?, 1, 'planned', 600, 720, ?)`)
+        .bind(futureAnchorEntryId, fixture.userId, futureAnchorTaskId, futureDayId, fixture.sectionB, now),
+      env.APP_DB.prepare(`INSERT INTO entries
+        (id, app_user_id, task_id, taskchute_day_id, section_id, position, lifecycle_state,
+         estimate_seconds, planned_start_minute, created_at)
+        VALUES (?, ?, ?, ?, ?, 1, 'planned', 600, 60, ?)`)
+        .bind(futureOrdinaryEntryId, fixture.userId, futureOrdinaryTaskId, futureDayId, fixture.sectionA, now),
+      env.APP_DB.prepare(`INSERT INTO entries
+        (id, app_user_id, task_id, taskchute_day_id, section_id, position, lifecycle_state,
+         estimate_seconds, planned_start_minute, created_at, routine_occurrence_id)
+        VALUES (?, ?, ?, ?, ?, 2, 'planned', 900, 60, ?, ?)`)
+        .bind(nativeRoutineEntryId, fixture.userId, nativeRoutineTaskId, futureDayId, fixture.sectionA, now, nativeRoutineOccurrenceId),
+    ]);
+
+    const ordinaryRequest = {
+      operation_id: uuidv7(),
+      taskchute_day_id: futureDayId,
+      entry_ids: [futureOrdinaryEntryId],
+      section_id: fixture.sectionB,
+      expected_placement_revision: 0,
+      placement: { kind: "relative_to_entry" as const, anchor_entry_id: futureAnchorEntryId, edge: "after" as const },
+    };
+    const ordinaryResult = await bulkMoveEntriesToSectionOccurrence(env.APP_DB, fixture.userId, ordinaryRequest, now);
+    expect(ordinaryResult).toMatchObject({ section_id: fixture.sectionB, planned_start_minute: 720, placement_revision: 1 });
+
+    const nativeRequest = {
+      operation_id: uuidv7(),
+      taskchute_day_id: futureDayId,
+      entry_ids: [nativeRoutineEntryId],
+      section_id: fixture.sectionB,
+      expected_placement_revision: ordinaryResult.placement_revision,
+      placement: { kind: "relative_to_entry" as const, anchor_entry_id: futureAnchorEntryId, edge: "after" as const },
+      relative_planned_start: "anchor" as const,
+    };
+    const nativeResult = await bulkMoveEntriesToSectionOccurrence(env.APP_DB, fixture.userId, nativeRequest, now);
+    expect(nativeResult).toMatchObject({ section_id: fixture.sectionB, planned_start_minute: 720, placement_revision: 2 });
+
+    const moved = await bulkMoveEntriesToDay(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(),
+      source_taskchute_day_id: fixture.dayId,
+      entry_ids: [fixture.routineEntryId],
+      target_logical_date: "2026-09-03",
+      expected_source_placement_revision: 0,
+      allow_section_fallback: false,
+    }, now);
+    expect(moved.target_taskchute_day_id).toBe(futureDayId);
+    expect(await env.APP_DB.prepare("SELECT taskchute_day_id FROM entries WHERE id = ?")
+      .bind(fixture.routineEntryId).first()).toEqual({ taskchute_day_id: futureDayId });
+    expect(await env.APP_DB.prepare("SELECT origin_taskchute_day_id FROM routine_occurrences WHERE id = ?")
+      .bind(fixture.routineOccurrenceId).first()).toEqual({ origin_taskchute_day_id: fixture.dayId });
+
+    const sectionRequest = {
+      operation_id: uuidv7(),
+      taskchute_day_id: futureDayId,
+      entry_ids: [fixture.routineEntryId],
+      section_id: fixture.sectionB,
+      expected_placement_revision: moved.target_placement_revision,
+      placement: { kind: "relative_to_entry" as const, anchor_entry_id: futureAnchorEntryId, edge: "after" as const },
+      relative_planned_start: "anchor" as const,
+    };
+    const corrected = await bulkMoveEntriesToSectionOccurrence(env.APP_DB, fixture.userId, sectionRequest, now);
+    expect(corrected).toMatchObject({
+      taskchute_day_id: futureDayId,
+      section_id: fixture.sectionB,
+      planned_start_minute: 720,
+      placement_revision: moved.target_placement_revision + 1,
+    });
+    expect(await env.APP_DB.prepare("SELECT section_id, planned_start_minute FROM entries WHERE id = ?")
+      .bind(fixture.routineEntryId).first()).toEqual({ section_id: fixture.sectionB, planned_start_minute: 720 });
+    expect(await env.APP_DB.prepare("SELECT origin_taskchute_day_id, section_override_id, planned_start_override_minute FROM routine_occurrences WHERE id = ?")
+      .bind(fixture.routineOccurrenceId).first()).toEqual({
+      origin_taskchute_day_id: fixture.dayId,
+      section_override_id: fixture.sectionB,
+      planned_start_override_minute: 720,
+    });
+    expect(await bulkMoveEntriesToSectionOccurrence(env.APP_DB, fixture.userId, sectionRequest, now))
+      .toEqual(corrected);
   });
 
   it("rejects the relative Routine intent when its anchor shape is missing or mismatched", async () => {

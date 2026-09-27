@@ -491,6 +491,7 @@ class TodayScreenInstrumentedTest {
             down(center)
             advanceEventTime(600)
             moveBy(Offset(0f, targetBounds.center.y + targetBounds.height * 0.25f - sourceBounds.center.y), delayMillis = 100)
+            composeRule.onNodeWithText("Write report").assertIsDisplayed()
             up()
         }
 

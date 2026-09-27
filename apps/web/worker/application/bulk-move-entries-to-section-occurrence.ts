@@ -474,7 +474,7 @@ export async function bulkMoveEntriesToSectionOccurrence(
     "Only planned Entries can have their Section changed in bulk",
   );
   if (targets.some((target) => target.routine_occurrence_id !== null && (
-    target.routine_definition_id === null || target.routine_origin_taskchute_day_id !== request.taskchute_day_id
+    target.routine_definition_id === null || target.routine_origin_taskchute_day_id === null
       || target.section_plan_override_present === null
   ))) return reject(
     db, appUserId, request, requestFingerprint, "resource_conflict",
