@@ -1,3 +1,9 @@
+## D-148 device follow-up — parent pointer capture after source-row disposal
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D148-DEVICE-PARENT-POINTER-CAPTURE | Galaxy S23 / Today D&D | After long-press handoff, stable Today parent must consume drag movement early enough that LazyColumn cannot revert to ordinary finger scroll when the source row leaves composition | Product Owner manual test of APK `30b9ffd5a572097bfc25a1cf4239d9bbe84c573b`: during auto-scroll, held drag begins behaving like normal vertical finger scrolling and Task cannot be placed. Source review: row detector consumes movement only while composed; parent currently observes at Final pass without consuming | FAIL / USER_REPORTED |
+
 ## D-148 device follow-up — dual pointer-position authority
 
 | ID | Area | Requirement | Evidence | Status |
