@@ -316,6 +316,19 @@ Persistent nonprod evidence:
 | D131-PERSISTENT | Persistent nonprod | canonical persistent nonprodでD-131 runtimeを検証する | D-131 | PASS (DEPLOY / RUNTIME / DB); AUTHENTICATED_BROWSER_NOT_RUN |
 | D131-PRODUCTION | Production | production migration / runtime / smoke | D-131 | NOT_RUN / RELEASE NO |
 
+## D-131 corrective — future Routine materialization follows selected Day Section context — 2026-09-28
+
+Section configuration reconciliationでRoutineDefinitionのstored default Sectionが旧contextを指す状態を作り、planned start `11:30`を新しいfuture Day Sectionへ移したfocused RED fixtureでは、current codeが「default Section and planned start are not synchronized」で初回materializationを拒否した。D-131のDay context authorityと一致しないroot causeを確認した。
+
+| ID | Verification target | Evidence | Status |
+|---|---|---|---|
+| D131-CORRECTIVE-IMPLEMENTATION | Worker / Routine materialization | non-null `default_planned_start_minute`から選択future Dayのcanonical `[start, end)` contextを一意解決し、stored RoutineDefinition default Sectionは変更しない。0 / 複数match、boundary、null planned-start pair invariant、既存replay / transaction semanticsは維持 | `0732b6ca264afd91e7feee42430ae2cfdcadf2ff` | PASS |
+| D131-CORRECTIVE-LOCAL | Focused regression | RED reproduction後にDay Navigation `19 / 19 PASS`、Routine R2B `19 / 19 PASS`、`npm run typecheck`、Worker build、`git diff --check` | Local focused | PASS |
+| D131-CORRECTIVE-CI | Exact implementation SHA | Classifier / Web and Worker verification PASS、Android APK job SKIPPED | GitHub Actions `36359852667` | PASS |
+| D131-CORRECTIVE-NONPROD | Persistent nonprod | Worker `taskchute-web-nonprod` version `0097de84-e791-4874-9df2-d2e1d553fd62`; root `200`; protected Future Day API `401`; APP/AUTH migration pending `0 / 0`; quick_check `ok`; FK empty; placement / transaction guards `0 / 0` | read-only runtime / DB probes | PASS |
+| D131-CORRECTIVE-AUTH | Authenticated Future Day GET | existing CUA session unavailable; no credential retrieval / re-login / user-visible mutation | `AUTHENTICATED_FUTURE_GET_NOT_RUN` | NOT_RUN |
+| D131-CORRECTIVE-BOUNDARY | Android / persistence / release | Android/APK not required for Worker-only corrective; no existing nonprod data mutation; schema / migration / dependency / API route unchanged | Production `NOT_RUN`; Released `NO` | PASS / NOT_REQUIRED / NOT_RUN / NO |
+
 ## Android Today actual-time prefill / Running projection / consecutive Quick Add corrective — 2026-09-21
 
 | ID | Verification target | Evidence | Status |
