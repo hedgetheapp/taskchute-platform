@@ -166,3 +166,22 @@ The current artifact therefore records Galaxy S23 edge-auto-scroll continuity as
 The Today-level pointer handler is keyed by logical Day rather than swipe-menu state and records the long-press pointer ID. Once the row hands off the drag, row disposal, detector cancellation, and detector completion cannot call `finishDrag()` or clear the session. The parent observes the physical pointer at the final pass and commits at most once on the matching physical up; cancellation or Day disposal clears without a write. Existing measured edge zones, scroll-frame geometry rebase, root pointer-Y authority, and D-148 placement semantics remain unchanged.
 
 The footer overlay corrective uses one measured bottom-aligned stack: the 104dp Running progress panel (plus any unresolved/failure panels) is directly above the footer, and the Add FAB is positioned 12dp above the stack and may still be dragged upward within the existing safe header bound. Focused JVM, focused Running-stack AVD, and focused off-screen edge-drag AVD verification PASS. The standard `Today` surface runner still did not return a completion result after starting `connectedDebugAndroidTest`; the target-app crash buffer was empty, so the full surface remains `PARTIAL / NOT_VERIFIED`. Exact-SHA CI `36300424234` PASS; APK artifact `taskchute-android-debug-7180514d540273f237bd471724d4430e2daa9624`, ID `10925795373`, expires `2026-10-04T06:35:52Z`. Galaxy S23 remains `NOT_RUN / PRODUCT_OWNER_MANUAL`.
+
+
+## Device corrective follow-up — auto-scroll / provisional-order interference
+
+Galaxy S23 manual verification of continuity-corrective artifact `7180514d540273f237bd471724d4430e2daa9624` found that the drag session now remains alive, but edge auto-scroll and provisional reorder can still interfere: while the list is programmatically scrolling, repeated `provisionalDay` reorder updates also move the rendered rows, making the intended insertion position unstable and difficult to select.
+
+This remains a D-148 section 5 presentation corrective, not new Product semantics.
+
+Corrective requirement:
+
+- D-127 provisional order remains available for ordinary non-auto-scrolling drag;
+- while edge auto-scroll is actively consuming non-zero list scroll, do not repeatedly mutate the rendered Task order in response to every rebased target;
+- continue updating the canonical in-memory drag target from refreshed post-scroll geometry;
+- during active auto-scroll, show a non-layout-shifting target cue for the current anchor / before-or-after edge rather than moving Task rows on every frame;
+- when auto-scroll stops because the pointer leaves the edge zone or the list reaches its boundary, settle the latest target and resume the ordinary provisional-order preview;
+- physical pointer-up during auto-scroll still commits the latest resolved target exactly once; it must not require waiting for provisional preview to resume;
+- D-127 drag snapshot stability, D-148 geometry rebase, parent pointer completion authority, D-129 guards, Routine placement semantics, and server authority remain unchanged.
+
+The current artifact therefore records Galaxy S23 auto-scroll/provisional-order interaction as `FAIL / USER_REPORTED` pending corrective verification.
