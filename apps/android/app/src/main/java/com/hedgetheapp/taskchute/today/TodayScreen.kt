@@ -494,6 +494,7 @@ private fun TodayContent(
     var dragPointerId by remember { mutableStateOf<PointerId?>(null) }
     var dragPointerSessionActive by remember { mutableStateOf(false) }
     var dragFinishIssued by remember { mutableStateOf(false) }
+    var dragPreviewPhase by remember { mutableStateOf(AndroidDragPreviewPhase.DRAG_STABLE) }
     var openSwipeEntryId by remember { mutableStateOf<String?>(null) }
     val renderDay = provisionalDay ?: day
     LaunchedEffect(day.logicalDate, state.status) { openSwipeEntryId = null }
@@ -528,7 +529,9 @@ private fun TodayContent(
             target = target,
         )
         dragPointerRootY = positionY
-        provisionalDay = target?.let { previewDayForTarget(day, current.entryId, it) }
+        if (shouldUpdateAndroidProvisionalPreview(dragPreviewPhase)) {
+            provisionalDay = target?.let { previewDayForTarget(day, current.entryId, it) }
+        }
     }
     fun finishDrag() {
         val drag = dragState ?: return
@@ -537,6 +540,7 @@ private fun TodayContent(
         dragPointerDown = false
         dragPointerId = null
         dragPointerSessionActive = false
+        dragPreviewPhase = AndroidDragPreviewPhase.DRAG_STABLE
         provisionalDay = null
         val target = drag.target ?: return
         val source = day.allEntries.firstOrNull { it.id == drag.entryId } ?: return
@@ -544,7 +548,14 @@ private fun TodayContent(
         val targetEntryId = target.anchorEntryId
         if (targetEntryId == null) {
             if (drag.sourceSectionId == targetSectionId) return
-            directManipulationController?.move(day, source.id, targetSectionId, null)
+            directManipulationController?.move(
+                day,
+                source.id,
+                targetSectionId,
+                null,
+                routineScoped = source.routineDerived,
+                relativePlannedStartAnchor = false,
+            )
             return
         }
         val edge = target.edge ?: return
@@ -608,6 +619,11 @@ private fun TodayContent(
             if (delta != 0f) {
                 val consumed = todayListState.scrollBy(delta)
                 if (abs(consumed) > 0.5f) {
+                    if (dragPreviewPhase != AndroidDragPreviewPhase.AUTO_SCROLLING) {
+                        dragPreviewPhase = AndroidDragPreviewPhase.AUTO_SCROLLING
+                        // Keep only the non-layout-shifting cue while the list moves.
+                        provisionalDay = null
+                    }
                     // Scroll mutates LazyListState immediately, but bounds are published by
                     // the next layout pass. Rebase only after that pass, keeping ordinary
                     // drag hit-testing on its stable snapshot.
@@ -635,8 +651,25 @@ private fun TodayContent(
                             emptySectionIdsSnapshot = emptySectionDropIds.toMap(),
                             target = target,
                         )
-                        provisionalDay = target?.let { previewDayForTarget(day, current.entryId, it) }
                     }
+                } else if (dragPreviewPhase == AndroidDragPreviewPhase.AUTO_SCROLLING) {
+                    dragPreviewPhase = AndroidDragPreviewPhase.SETTLING
+                }
+            } else if (dragPreviewPhase == AndroidDragPreviewPhase.AUTO_SCROLLING) {
+                dragPreviewPhase = AndroidDragPreviewPhase.SETTLING
+            }
+            if (dragPreviewPhase == AndroidDragPreviewPhase.SETTLING) {
+                // Let the final layout/rebase settle before re-enabling the ordinary
+                // provisional-order preview. Pointer-up may still commit the latest target
+                // during this wait without requiring a preview frame first.
+                withFrameNanos { }
+                withFrameNanos { }
+                val current = dragState
+                if (current != null) {
+                    dragPreviewPhase = AndroidDragPreviewPhase.DRAG_STABLE
+                    provisionalDay = current.target?.let { previewDayForTarget(day, current.entryId, it) }
+                } else {
+                    dragPreviewPhase = AndroidDragPreviewPhase.DRAG_STABLE
                 }
             }
             withFrameNanos { }
@@ -649,6 +682,7 @@ private fun TodayContent(
         dragPointerId = null
         dragPointerSessionActive = false
         dragFinishIssued = false
+        dragPreviewPhase = AndroidDragPreviewPhase.DRAG_STABLE
         provisionalDay = null
     }
     val isRefreshing = state.status == TodayLoadStatus.REFRESHING
@@ -699,6 +733,7 @@ private fun TodayContent(
                             dragPointerDown = false
                             dragPointerId = null
                             dragPointerSessionActive = false
+                            dragPreviewPhase = AndroidDragPreviewPhase.DRAG_STABLE
                             provisionalDay = null
                         }
                         break
@@ -724,6 +759,7 @@ private fun TodayContent(
                             dragPointerId = null
                             dragPointerSessionActive = false
                             dragFinishIssued = false
+                            dragPreviewPhase = AndroidDragPreviewPhase.DRAG_STABLE
                             provisionalDay = null
                         }
                         dragPointerDown = false
@@ -855,7 +891,8 @@ private fun TodayContent(
                         dragging = dragState?.entryId == task.id,
                         dragPlaceholder = dragState?.entryId == task.id,
                         dragDeltaY = dragState?.takeIf { it.entryId == task.id }?.deltaY ?: 0f,
-                        dropTarget = false,
+                        dropTarget = dragState?.target?.key == entryDropKey(task.id),
+                        dropTargetLayoutShift = dragPreviewPhase == AndroidDragPreviewPhase.DRAG_STABLE,
                         onDragStart = { pointerId, pointerPosition ->
                             directManipulationController?.takeIf { !todayListState.isScrollInProgress && it.canDrag(day, task) }?.let {
                                 val bounds = dropBounds[task.id]
@@ -966,7 +1003,8 @@ private fun TodayContent(
                         dragging = dragState?.entryId == task.id,
                         dragPlaceholder = dragState?.entryId == task.id,
                         dragDeltaY = dragState?.takeIf { it.entryId == task.id }?.deltaY ?: 0f,
-                        dropTarget = false,
+                        dropTarget = dragState?.target?.key == entryDropKey(task.id),
+                        dropTargetLayoutShift = dragPreviewPhase == AndroidDragPreviewPhase.DRAG_STABLE,
                         onDragStart = { pointerId, pointerPosition ->
                             directManipulationController?.takeIf { !todayListState.isScrollInProgress && it.canDrag(day, task) }?.let {
                                 val bounds = dropBounds[task.id]
@@ -1042,6 +1080,15 @@ private suspend fun PointerInputScope.detectTodayFabTapDrag(onDrag: (Offset) -> 
 private const val UNSECTIONED_DROP_KEY = "__unsectioned__"
 internal const val D148_DRAG_EDGE_ZONE = 72
 internal const val D148_DRAG_MAX_SCROLL_PER_FRAME = 32
+
+internal enum class AndroidDragPreviewPhase {
+    DRAG_STABLE,
+    AUTO_SCROLLING,
+    SETTLING,
+}
+
+internal fun shouldUpdateAndroidProvisionalPreview(phase: AndroidDragPreviewPhase): Boolean =
+    phase == AndroidDragPreviewPhase.DRAG_STABLE
 
 internal fun androidDragAutoScrollDelta(
     pointerY: Float,
@@ -1317,6 +1364,7 @@ private fun TodayTaskRow(
     dragPlaceholder: Boolean,
     dragDeltaY: Float,
     dropTarget: Boolean,
+    dropTargetLayoutShift: Boolean,
     onDragStart: (PointerId, Offset) -> Unit,
     onDragMove: (Offset) -> Unit,
     dropBounds: MutableMap<String, Rect>,
@@ -1331,7 +1379,10 @@ private fun TodayTaskRow(
     LaunchedEffect(swipeMenuOpen, selectionModeActive) {
         if (!swipeMenuOpen || selectionModeActive) swipeOffset = 0f
     }
-    val insertionPadding by animateDpAsState(if (dropTarget) 6.dp else 0.dp, label = "drop-target-padding")
+    val insertionPadding by animateDpAsState(
+        if (dropTarget && dropTargetLayoutShift) 6.dp else 0.dp,
+        label = "drop-target-padding",
+    )
     val hasActions = canEdit || canDuplicate || canOpenNote || canDayOperate || canLifecycleDelete || canPlannedDelete || canPastForwardOperate
     val canSwipeNote = canOpenNote && (canEdit || canNoteOnly)
     val hasOtherActions = hasActions && (!canNoteOnly || canPastForwardOperate)

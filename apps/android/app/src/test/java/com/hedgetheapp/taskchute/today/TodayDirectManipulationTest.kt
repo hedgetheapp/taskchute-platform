@@ -84,6 +84,13 @@ class TodayDirectManipulationTest {
     }
 
     @Test
+    fun autoScrollFreezesLayoutPreviewUntilTheLatestTargetCanSettle() {
+        assertTrue(shouldUpdateAndroidProvisionalPreview(AndroidDragPreviewPhase.DRAG_STABLE))
+        assertFalse(shouldUpdateAndroidProvisionalPreview(AndroidDragPreviewPhase.AUTO_SCROLLING))
+        assertFalse(shouldUpdateAndroidProvisionalPreview(AndroidDragPreviewPhase.SETTLING))
+    }
+
+    @Test
     fun refreshedBoundsAreUsedForTheNewlyVisibleDropTarget() {
         val beforeScroll = resolveAndroidDropTarget(
             positionY = 620f,
@@ -246,6 +253,59 @@ class TodayDirectManipulationTest {
         assertTrue(requests.single().third.orEmpty().contains("\"entry_ids\":[\"entry-1\"]"))
         assertTrue(requests.single().third.orEmpty().contains("\"placement\""))
         assertTrue(requests.single().third.orEmpty().contains("\"relative_planned_start\":\"anchor\""))
+    }
+
+    @Test
+    fun routineNoAnchorMoveUsesOccurrenceEndpointWithoutRelativeAnchor() {
+        val requests = mutableListOf<Triple<String, String, String?>>()
+        val repository = TodayDirectManipulationHttpRepository(request = { method, path, body ->
+            requests += Triple(method, path, body)
+            TodayHttpResponse(200, "{}")
+        })
+
+        assertEquals(
+            DirectManipulationResult.Success,
+            repository.execute(DirectManipulationRequest.Move(
+                operationId = "op-routine-empty-section",
+                entryId = "entry-routine",
+                taskChuteDayId = "day-1",
+                sectionId = "section-empty",
+                expectedPlacementRevision = 5,
+                placement = null,
+                routineScoped = true,
+                relativePlannedStartAnchor = false,
+            )),
+        )
+
+        assertEquals("/api/v1/taskchute-days/current/entries/bulk-section-occurrence", requests.single().second)
+        assertTrue(requests.single().third.orEmpty().contains("\"section_id\":\"section-empty\""))
+        assertFalse(requests.single().third.orEmpty().contains("\"placement\""))
+        assertFalse(requests.single().third.orEmpty().contains("relative_planned_start"))
+    }
+
+    @Test
+    fun routineSectionlessNoAnchorMoveRemainsOccurrenceAware() {
+        val requests = mutableListOf<Triple<String, String, String?>>()
+        val repository = TodayDirectManipulationHttpRepository(request = { method, path, body ->
+            requests += Triple(method, path, body)
+            TodayHttpResponse(200, "{}")
+        })
+
+        repository.execute(DirectManipulationRequest.Move(
+            operationId = "op-routine-unsectioned",
+            entryId = "entry-routine",
+            taskChuteDayId = "day-1",
+            sectionId = null,
+            expectedPlacementRevision = 5,
+            placement = null,
+            routineScoped = true,
+            relativePlannedStartAnchor = false,
+        ))
+
+        assertEquals("/api/v1/taskchute-days/current/entries/bulk-section-occurrence", requests.single().second)
+        assertTrue(requests.single().third.orEmpty().contains("\"section_id\":null"))
+        assertFalse(requests.single().third.orEmpty().contains("\"placement\""))
+        assertFalse(requests.single().third.orEmpty().contains("relative_planned_start"))
     }
 
     @Test

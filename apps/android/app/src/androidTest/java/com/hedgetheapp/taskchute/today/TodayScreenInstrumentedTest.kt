@@ -809,6 +809,40 @@ class TodayScreenInstrumentedTest {
     }
 
     @Test
+    fun routineEmptySectionHeaderUsesOccurrenceAwareNoAnchorMove() {
+        val directRepository = FakeDirectManipulationRepository()
+        val source = dayWith().sections.single().entries.single().copy(
+            taskId = "task-routine",
+            routineDerived = true,
+        )
+        val initialDay = dayWith().copy(
+            sections = listOf(
+                dayWith().sections.single().copy(entries = listOf(source)),
+                TodaySection("section-empty-routine", "Empty routine section", 720, 900, emptyList()),
+            ),
+        )
+        launchPlanningScreen(FakePlanningRepository(), initialDay, directRepository)
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        val sourceNode = composeRule.onNodeWithContentDescription("タスクをドラッグ: Write report")
+        val sourceBounds = sourceNode.fetchSemanticsNode().boundsInRoot
+        val emptySectionBounds = composeRule.onNodeWithText("Empty routine section").fetchSemanticsNode().boundsInRoot
+        sourceNode.performTouchInput {
+            down(center)
+            advanceEventTime(600)
+            moveBy(Offset(0f, emptySectionBounds.center.y - sourceBounds.center.y), delayMillis = 100)
+            up()
+        }
+
+        composeRule.waitUntil(15_000) { directRepository.moveCalls.get() == 1 }
+        assertEquals(1, directRepository.moveCalls.get())
+        assertEquals("section-empty-routine", directRepository.lastMove?.sectionId)
+        assertEquals(null, directRepository.lastMove?.placement)
+        assertTrue(directRepository.lastMove?.routineScoped == true)
+        assertFalse(directRepository.lastMove?.relativePlannedStartAnchor == true)
+    }
+
+    @Test
     fun collapsedNonEmptyConfiguredSectionHeaderAcceptsSectionOnlyMove() {
         val directRepository = FakeDirectManipulationRepository()
         val base = dayWith().sections.single().entries.single()
