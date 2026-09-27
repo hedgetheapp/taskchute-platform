@@ -1,6 +1,6 @@
 # D-148 — Android Today D-147 Device Correctives v0.1
 
-Status: **Approved — D&D regression corrective implemented / integrated; focused PASS; corrective Galaxy S23 NOT_RUN / PRODUCT_OWNER_MANUAL; Today surface partial / not verified**
+Status: **Approved — D&D parent pointer-capture corrective implemented / integrated; focused PASS; corrective Galaxy S23 NOT_RUN / PRODUCT_OWNER_MANUAL; Today surface partial / not verified**
 
 Date: 2026-09-27
 
@@ -304,3 +304,13 @@ Corrective requirement:
 - programmatic edge auto-scroll remains driven by the existing D-148 list-state loop; physical finger movement itself must not directly scroll the LazyColumn during an active drag.
 
 This remains an implementation corrective under D-148, not a new Product semantic.
+
+## Device corrective follow-up — parent pointer ownership capture
+
+Implementation `ce84f3f3e963ce3d3dda22485e0fe086ed09f5a6` completes the parent-capture corrective while retaining the preceding D-148 preview, auto-scroll, and Routine placement behavior.
+
+- `TodayTaskRow` and `detectShortLongPressDrag` no longer expose or invoke a row-level `onDragMove` callback. The source row only detects the long-press and hands off the PointerId/initial position.
+- The stable Today parent observes `PointerEventPass.Initial`, remains passive before handoff, and consumes movement only for the matching active pressed drag pointer. Root Y is derived only from the stable parent root coordinate; the rendered source-row top is not used after handoff.
+- Parent physical pointer-up remains the only completion authority, protected by `dragFinishIssued`; row disposal/cancellation cannot write or clear the active session. Existing D-148 edge auto-scroll, consumed-scroll preview freeze/rebase/settle, D-129 guards, and Routine empty-Section no-anchor semantics are unchanged.
+
+Focused/full Android JVM `211 / 211` passed. TaskChute_API33 focused same-Section, visible cross-Section, and source-row-offscreen edge auto-scroll tests passed three consecutive rounds; Routine empty-Section no-anchor passed. The standard `scripts/android-qa.ps1 -Surface Today` reached `connectedDebugAndroidTest` but returned no completion result and was stopped; target-app crash buffer was empty, so the full Today surface remains `HARNESS_HUNG / PARTIAL / NOT_VERIFIED`. Compile Kotlin, instrumentation compile, debug assemble, and `git diff --check` passed. Exact-SHA CI `36308834382` passed; signed APK artifact `taskchute-android-debug-ce84f3f3e963ce3d3dda22485e0fe086ed09f5a6`, ID `10928148531`, expires `2026-10-04T09:18:45Z`. Galaxy S23 remains `NOT_RUN / PRODUCT_OWNER_MANUAL`; Worker/API/shared contract, schema, migration, dependency, persistent nonprod, D-145, Notes, Production, and Release were not changed or run.
