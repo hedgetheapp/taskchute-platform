@@ -1,4 +1,5 @@
 ### D-148 Android Today D-147 device correctives — 2026-09-27
+Galaxy S23 manual verification of artifact `d0b4ef424631db32705e83a8334ed901cb4d5ad8` found edge auto-scroll continuity `FAIL / USER_REPORTED`: while the Task is still held, auto-scroll can stop and the reorder behaves as if prematurely cancelled/dropped. This is a D-148 §5 corrective pending implementation; the four earlier D-148 device findings are not re-opened.
 
 **Status: 5-item corrective IMPLEMENTED / INTEGRATED / focused PASS / Today AVD PARTIAL / Galaxy S23 NOT_RUN / Production NOT_RUN / Released NO**。Past established Dayのeligible ordinary Planned rowでNote + `…` forward-move actionを復元し、Android single Routine occurrence D&Dはoptional `relative_planned_start: "anchor"` でanchor planned-start cohortへ収束させた。markerなしはD-120 Web/bulk semanticsを維持し、empty/collapsed Section drop回帰を保持した。Today Add FABは測定したusable content bounds内でmemory-onlyに移動可能とし、Task-list viewport edgeでのD&D auto-scrollとスクロール後snapshot再baseを追加した。
 
