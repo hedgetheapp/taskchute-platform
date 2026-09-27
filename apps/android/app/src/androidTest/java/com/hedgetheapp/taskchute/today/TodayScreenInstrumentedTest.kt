@@ -763,7 +763,7 @@ class TodayScreenInstrumentedTest {
         assertTrue(composeRule.onAllNodesWithContentDescription("タスクを開始").fetchSemanticsNodes().isEmpty())
     }
     @Test
-    fun bottomRightAddRemainsSeparateFromRunningPanel() {
+    fun runningPanelIsFooterAdjacentAndAddFabIsAboveIt() {
         val planningRepository = FakePlanningRepository()
         launchPlanningScreen(planningRepository, initialDay = dayWith(LifecycleState.RUNNING))
         waitForStatus(TodayLoadStatus.CONTENT)
@@ -774,8 +774,8 @@ class TodayScreenInstrumentedTest {
         val addBounds = composeRule.onNodeWithContentDescription("タスクを追加").fetchSemanticsNode().boundsInRoot
         val panelBounds = composeRule.onNodeWithContentDescription("実行中タスクを完了").fetchSemanticsNode().boundsInRoot
         assertTrue(
-            "Quick Add must not overlap the running panel",
-            addBounds.bottom <= panelBounds.top || addBounds.top >= panelBounds.bottom,
+            "Quick Add must sit above the footer-adjacent running panel",
+            addBounds.bottom <= panelBounds.top,
         )
     }
 

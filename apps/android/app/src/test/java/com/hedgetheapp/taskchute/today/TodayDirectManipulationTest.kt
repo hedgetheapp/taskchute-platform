@@ -15,6 +15,46 @@ import org.junit.Test
 
 class TodayDirectManipulationTest {
     @Test
+    fun parentDragCommitRequiresThePhysicalPointerUpAndMatchingActiveSession() {
+        assertFalse(
+            shouldFinishAndroidDragOnParentUp(
+                isDragActive = true,
+                isPhysicalPointerUp = false,
+                pointerMatches = true,
+                alreadyFinished = false,
+            ),
+        )
+        assertFalse(
+            shouldFinishAndroidDragOnParentUp(
+                isDragActive = true,
+                isPhysicalPointerUp = true,
+                pointerMatches = false,
+                alreadyFinished = false,
+            ),
+        )
+        assertTrue(
+            shouldFinishAndroidDragOnParentUp(
+                isDragActive = true,
+                isPhysicalPointerUp = true,
+                pointerMatches = true,
+                alreadyFinished = false,
+            ),
+        )
+    }
+
+    @Test
+    fun parentDragCommitCannotBeIssuedTwiceForOnePointerUp() {
+        assertFalse(
+            shouldFinishAndroidDragOnParentUp(
+                isDragActive = true,
+                isPhysicalPointerUp = true,
+                pointerMatches = true,
+                alreadyFinished = true,
+            ),
+        )
+    }
+
+    @Test
     fun dragAutoScrollReturnsZeroOutsideTheViewportEdgeZones() {
         assertEquals(0f, androidDragAutoScrollDelta(300f, 100f, 700f, 80f, 32f), 0f)
         assertEquals(0f, androidDragAutoScrollDelta(50f, 100f, 700f, 80f, 32f), 0f)
