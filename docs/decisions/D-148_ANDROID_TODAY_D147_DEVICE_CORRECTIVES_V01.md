@@ -1,6 +1,6 @@
 # D-148 — Android Today D-147 Device Correctives v0.1
 
-Status: **Approved — implementation integrated; latest Galaxy S23 D&D regression FAIL / USER_REPORTED; corrective pending; Today surface not verified**
+Status: **Approved — D&D regression corrective implemented / integrated; focused PASS; corrective Galaxy S23 NOT_RUN / PRODUCT_OWNER_MANUAL; Today surface partial / not verified**
 
 Date: 2026-09-27
 
