@@ -339,3 +339,25 @@ Current Android focused AVD covers future planning actions and current-Day cross
 - date-moved Routine-derived Entry cross-Section D&D where origin Day differs from current Entry Day.
 
 Corrective must preserve D-112 date-move origin semantics and D-120/D-126 future placement semantics. Do not rewrite `origin_taskchute_day_id` to the destination Day merely to satisfy the Section-move guard.
+
+
+## Approved visual corrective — stable source row + destination insertion preview
+
+Product Owner approved changing Android Today D&D presentation so the grabbed Task does not disappear from its source location while dragging.
+
+Current implementation moves the source Entry inside `provisionalDay` and renders `ProvisionalDropSlot` at that moved Entry's new location. Because the source slot collapses while the destination slot appears elsewhere, list geometry changes on every target change and contributes to visible D&D jitter.
+
+Approved presentation behavior:
+
+- the canonical rendered Day/order remains stable while a drag is active;
+- the source Task row remains at its original canonical position for the entire drag session;
+- the source row may be visually ghosted to indicate that it is currently grabbed, but its layout slot must remain;
+- `DraggedTaskOverlay` remains the only element that follows the physical pointer;
+- the destination shows a temporary insertion preview / ghost slot at the resolved before/after target;
+- moving the target relocates only that destination insertion preview; it must not remove/reinsert the source Entry in the list;
+- empty/collapsed Section keeps the existing Section-level destination cue semantics;
+- no canonical Day mutation occurs until physical pointer-up dispatches the existing placement command;
+- cancel removes the destination preview and restores the unchanged canonical list with no write;
+- parent pointer ownership, edge auto-scroll, target rebase, Routine occurrence semantics, D-129 guards, and exact-once physical-up commit remain unchanged.
+
+This is an approved user-visible presentation change. It does not change persisted placement semantics, API contract, RoutineDefinition semantics, schema, migration, or production behavior.
