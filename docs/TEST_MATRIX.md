@@ -1,3 +1,9 @@
+## D-148 device follow-up — edge auto-scroll continuity
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D148-DEVICE-AUTOSCROLL-CONTINUITY | Galaxy S23 / drag session | Holding a Task through top/bottom edge auto-scroll must keep the same drag session until physical pointer-up; source-row disposal/cancel must not prematurely finish/cancel reorder | Product Owner manual test of APK `d0b4ef424631db32705e83a8334ed901cb4d5ad8`: auto-scroll can stop partway and behave as if reorder was cancelled/dropped before finger release | FAIL / USER_REPORTED |
+
 ## D-148 Android Today D-147 device correctives — 2026-09-27
 
 | ID | Area | Evidence | Status |
