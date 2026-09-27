@@ -34,6 +34,10 @@ dependencies are unchanged.
 - overrun fill/knob `#EBA44E`
 - elapsed and remaining values use total `HH:MM:SS` formatting without a
   24-hour wrap
+- when the Today Add FAB is simultaneously visible, the Running progress panel
+  occupies the footer-adjacent bottom slot; the Add FAB is positioned above
+  the panel with the existing 12dp separation and must not overlap or sit
+  between the panel and footer
 
 Figma visual reference: `UbTJH6ykYNBQJS4Wvwz9jb`, page `Running Progress`
 (`481:2`), section (`485:2`), example (`502:17`). Figma remains visual
