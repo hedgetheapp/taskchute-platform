@@ -255,3 +255,26 @@ Implementation `30b9ffd5a572097bfc25a1cf4239d9bbe84c573b` restores the pre-`cc3a
 - Stable Today-parent pointer ownership, physical pointer-up completion, `dragFinishIssued` single-dispatch protection, D-127 snapshot hit-testing, geometry rebase, D-129 guards, and Routine empty-Section `routineScoped=true` / `placement=null` / no-relative-marker semantics remain unchanged.
 
 Focused `TodayDirectManipulationTest` and full Android JVM `209 / 209` passed. TaskChute_API33 focused same-Section, visible cross-Section, Routine empty-Section, and edge auto-scroll tests passed; the three-test D&D set passed three consecutive times. The standard `scripts/android-qa.ps1 -Surface Today` did not return a result and was stopped after the target app crash buffer showed no FATAL/ANR; this remains `PARTIAL / NOT_VERIFIED`. Exact-SHA CI `36305702958` passed with signed APK `taskchute-android-debug-30b9ffd5a572097bfc25a1cf4239d9bbe84c573b`, artifact ID `10926923449`, expires `2026-10-04T08:18:53Z`. Galaxy S23 remains `NOT_RUN / PRODUCT_OWNER_MANUAL`.
+
+
+## Device corrective follow-up — dual pointer-position authority
+
+Galaxy S23 manual verification of recovery artifact `30b9ffd5a572097bfc25a1cf4239d9bbe84c573b` reports that D&D is still not behaving correctly. This current artifact is therefore `FAIL / USER_REPORTED` for device D&D despite focused AVD PASS.
+
+Source review identified a remaining structural conflict after the earlier completion-authority fix:
+
+- the stable Today-level parent pointer session updates drag position from the physical pointer in root coordinates;
+- the source-row long-press detector also continues calling `onDragMove(change.position)`;
+- the row callback converts its local coordinate back to root using the current `dropBounds[task.id].top`;
+- `provisionalDay` can move the source Entry/placeholder to a different rendered position, which changes `dropBounds[task.id]`;
+- therefore row-local movement can inject a different root Y for the same physical pointer while the parent simultaneously writes the correct root Y.
+
+Corrective requirement:
+
+- after long-press handoff, the stable Today parent is the sole authority for physical pointer position, drop-target updates, and completion;
+- the row detector may continue owning/consuming the gesture so LazyColumn/swipe interaction does not steal it, but it must not write drag position after handoff;
+- remove the row-local `dropBounds[task.id].top + localPosition.y` position reconstruction from active drag;
+- provisional reorder must not affect pointer coordinates;
+- existing auto-scroll snapshot/rebase, preview freeze, Routine empty-Section routing, D-129 guards, and physical-up single commit remain unchanged.
+
+This is an implementation corrective inside the already-approved D-148 interaction contract, not a new Product semantic.
