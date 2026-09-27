@@ -16,6 +16,18 @@
 |---|---|---|---|---|
 | D148-DEVICE-AUTOSCROLL-CONTINUITY | Galaxy S23 / drag session | Holding a Task through top/bottom edge auto-scroll must keep the same drag session until physical pointer-up; source-row disposal/cancel must not prematurely finish/cancel reorder | Product Owner manual test of APK `d0b4ef424631db32705e83a8334ed901cb4d5ad8`: auto-scroll can stop partway and behave as if reorder was cancelled/dropped before finger release | FAIL / USER_REPORTED |
 
+## D-148 device corrective — preview stability and Routine empty-Section D&D — 2026-09-27
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D148-FOLLOWUP-IMPLEMENTATION | Android Today D&D | Freeze layout-changing `provisionalDay` during consumed auto-scroll, keep latest target/cue, settle after scroll stops; use occurrence-aware no-anchor move for Planned Routine empty-Section drops | Implementation `cc3a83ef3887c2fc06ec952ddb33b73c6bfa173c`; explicit `DRAG_STABLE` / `AUTO_SCROLLING` / `SETTLING` state; Routine no-anchor uses `routineScoped=true`, `placement=null`, `relativePlannedStartAnchor=false` | PASS |
+| D148-FOLLOWUP-JVM | Focused/full Android JVM | preview freeze helper, latest-target path, Routine occurrence endpoint/no-anchor payload, Sectionなし payload, existing D&D regressions | `TodayDirectManipulationTest` focused PASS; full `:app:testDebugUnitTest` `208 / 208 PASS` | PASS |
+| D148-FOLLOWUP-AVD | Today focused runtime | held edge auto-scroll reaches newly visible target; Routine empty Section dispatches once without deterministic failure | `TaskChute_API33`: `longPressDragNearBottomEdgeAutoScrollsTowardInitiallyOffscreenRows` PASS with one move and off-screen anchor; `routineEmptySectionHeaderUsesOccurrenceAwareNoAnchorMove` PASS with one occurrence-aware move, null placement, no relative marker | PASS / FOCUSED |
+| D148-FOLLOWUP-AVD-FULL | Today standard surface | affected Today gate and crash safety | `scripts/android-qa.ps1 -Surface Today` reached `connectedDebugAndroidTest` but did not return completion; target app crash buffer empty | PARTIAL / NOT_VERIFIED |
+| D148-FOLLOWUP-BUILD | Android build / static | compile, instrumentation compile, assemble, diff check | `:app:compileDebugKotlin`, `:app:compileDebugAndroidTestKotlin`, `:app:assembleDebug`, `git diff --check` PASS | PASS |
+| D148-FOLLOWUP-CI | Exact pushed SHA / APK | Android impact-aware CI and signed artifact | `main@cc3a83ef3887c2fc06ec952ddb33b73c6bfa173c`, CI `36302559765`: classifier PASS; Android JVM, signed Debug build, instrumentation APK compile, signing verification, upload PASS; Web/Worker SKIP. Artifact `taskchute-android-debug-cc3a83ef3887c2fc06ec952ddb33b73c6bfa173c`, ID `10925464530`, expires `2026-10-04T07:18:41Z` | PASS |
+| D148-FOLLOWUP-BOUNDARY | Product / server / device | preserve D-127/D-148 semantics and boundaries | Worker/API/shared contract, schema, migration, dependency, persistent nonprod, D-145, Notes, Production, Release unchanged; Galaxy S23 not run | PASS / NOT_REQUIRED / NOT_RUN / NO |
+
 ## D-148 device follow-up corrective — 2026-09-27
 
 | ID | Area | Requirement | Evidence | Status |

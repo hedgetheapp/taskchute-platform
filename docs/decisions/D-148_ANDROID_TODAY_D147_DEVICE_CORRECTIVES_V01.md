@@ -1,6 +1,6 @@
 # D-148 — Android Today D-147 Device Correctives v0.1
 
-Status: **Approved — 5-item corrective plus drag-session continuity corrective implemented / integrated; focused PASS; Today surface remains partial / not verified**
+Status: **Approved — 5-item corrective plus drag-session, footer, preview-stability, and Routine empty-Section correctives implemented / integrated; focused PASS; Today surface remains partial / not verified**
 
 Date: 2026-09-27
 
@@ -206,3 +206,13 @@ Corrective requirement:
 - no new endpoint, schema, migration, or persistence authority is introduced.
 
 The current artifact records Routine-to-empty-Section D&D as `FAIL / USER_REPORTED` pending corrective verification.
+
+## Device corrective follow-up implementation — preview stability and Routine empty Section
+
+Implementation `cc3a83ef3887c2fc06ec952ddb33b73c6bfa173c` addresses both follow-up findings without changing D-127 drag stability or server semantics.
+
+- During consumed edge auto-scroll, an explicit `AUTO_SCROLLING` / `SETTLING` phase freezes layout-changing `provisionalDay` updates, clears the synthetic preview once at scroll entry, and keeps only the current anchor/Section drop cue. Refreshed bounds continue to update `dragState.target`; after two Compose frames without consumed scroll, the latest target settles back into the ordinary stable provisional preview.
+- Physical pointer-up during the frozen phase commits the latest target exactly once, without waiting for the provisional preview. Cancellation still clears without a write.
+- A Routine-derived anchorless Section drop now uses the existing occurrence-aware endpoint with `routineScoped=true`, `placement=null`, and no `relative_planned_start` marker. Ordinary anchorless moves remain on the ordinary endpoint; same-Section anchorless drops remain no-op.
+
+Focused/full Android JVM, instrumentation compile, debug assemble, and `git diff --check` passed. Focused `TaskChute_API33` tests for the Routine empty-Section request and held edge auto-scroll/off-screen target both passed. The standard Today runner reached `connectedDebugAndroidTest` but did not return completion; the target-app crash buffer was empty, so the full Today surface remains `PARTIAL / NOT_VERIFIED`. Exact-SHA CI `36302559765` passed; APK artifact `taskchute-android-debug-cc3a83ef3887c2fc06ec952ddb33b73c6bfa173c`, ID `10925464530`, expires `2026-10-04T07:18:41Z`. Galaxy S23 remains `NOT_RUN / PRODUCT_OWNER_MANUAL`.
