@@ -933,6 +933,8 @@ class TodayScreenInstrumentedTest {
             advanceEventTime(600)
             moveTo(Offset(center.x, 1_450f), delayMillis = 100)
             advanceEventTime(1_000)
+            assertEquals(0, directRepository.moveCalls.get())
+            moveBy(Offset(0f, -8f), delayMillis = 100)
             up()
         }
 

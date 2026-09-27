@@ -725,7 +725,12 @@ private fun TodayContent(
                 val down = awaitFirstDown(requireUnconsumed = false)
                 var moved = false
                 while (true) {
-                    val event = awaitPointerEvent(PointerEventPass.Final)
+                    // The parent observes the physical pointer early in the pipeline. Before
+                    // handoff it remains passive so normal scroll/swipe/pull-to-refresh keeps
+                    // its existing ownership. After handoff it becomes the sole drag consumer,
+                    // so LazyColumn cannot turn a held drag into ordinary vertical scrolling
+                    // when the source row is disposed by auto-scroll.
+                    val event = awaitPointerEvent(PointerEventPass.Initial)
                     val change = event.changes.firstOrNull { it.id == down.id }
                     if (change == null) {
                         if (dragPointerSessionActive && dragPointerId == down.id) {
@@ -740,8 +745,14 @@ private fun TodayContent(
                         break
                     }
                     if (kotlin.math.abs(change.position.x - down.position.x) > 4f || kotlin.math.abs(change.position.y - down.position.y) > 4f) moved = true
-                    if (dragPointerSessionActive && dragPointerId == down.id && dragState != null && change.pressed) {
-                        updateDragPosition(dragPointerHostRootTop + change.position.y)
+                    val parentOwnsDrag = shouldConsumeAndroidDragPointerMovement(
+                        isDragActive = dragState != null && dragPointerSessionActive,
+                        pointerMatches = dragPointerId == down.id,
+                        pointerPressed = change.pressed,
+                    )
+                    if (parentOwnsDrag) {
+                        updateDragPosition(androidDragPointerRootY(dragPointerHostRootTop, change.position.y))
+                        change.consume()
                     }
                     if (change.changedToUpIgnoreConsumed() || !change.pressed) {
                         if (shouldFinishAndroidDragOnParentUp(
@@ -921,10 +932,6 @@ private fun TodayContent(
                                 )
                             }
                         },
-                        onDragMove = { localPosition ->
-                            val rowTop = dropBounds[task.id]?.top
-                            updateDragPosition(rowTop?.plus(localPosition.y) ?: localPosition.y)
-                        },
                         dropBounds = dropBounds,
                         dropBoundsSectionId = dropBoundsSectionId,
                         dropBoundsEligible = dropBoundsEligible,
@@ -1034,10 +1041,6 @@ private fun TodayContent(
                                     target = null,
                                 )
                             }
-                        },
-                        onDragMove = { localPosition ->
-                            val rowTop = dropBounds[task.id]?.top
-                            updateDragPosition(rowTop?.plus(localPosition.y) ?: localPosition.y)
                         },
                         dropBounds = dropBounds,
                         dropBoundsSectionId = dropBoundsSectionId,
@@ -1367,7 +1370,6 @@ private fun TodayTaskRow(
     dropTarget: Boolean,
     dropTargetCue: Boolean,
     onDragStart: (PointerId, Offset) -> Unit,
-    onDragMove: (Offset) -> Unit,
     dropBounds: MutableMap<String, Rect>,
     dropBoundsSectionId: MutableMap<String, String?>,
     dropBoundsEligible: MutableMap<String, Boolean>,
@@ -1408,7 +1410,6 @@ private fun TodayTaskRow(
         }.pointerInput(task.id) {
             detectShortLongPressDrag(
                 onDragStart = onDragStart,
-                onDragMove = onDragMove,
             )
         }
     } else Modifier
@@ -2438,9 +2439,17 @@ internal fun shouldFinishAndroidDragOnParentUp(
     alreadyFinished: Boolean,
 ): Boolean = isDragActive && isPhysicalPointerUp && pointerMatches && !alreadyFinished
 
+internal fun shouldConsumeAndroidDragPointerMovement(
+    isDragActive: Boolean,
+    pointerMatches: Boolean,
+    pointerPressed: Boolean,
+): Boolean = isDragActive && pointerMatches && pointerPressed
+
+internal fun androidDragPointerRootY(hostRootTop: Float, pointerLocalY: Float): Float =
+    hostRootTop + pointerLocalY
+
 private suspend fun PointerInputScope.detectShortLongPressDrag(
     onDragStart: (PointerId, Offset) -> Unit,
-    onDragMove: (Offset) -> Unit,
 ) {
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false)
@@ -2458,14 +2467,13 @@ private suspend fun PointerInputScope.detectShortLongPressDrag(
         } == null
         if (!held) return@awaitEachGesture
         onDragStart(down.id, down.position)
-        val completed = drag(down.id) { change ->
-            onDragMove(change.position)
-            change.consume()
-        }
+        // The Today parent owns movement consumption and physical pointer-up completion.
+        // This detector only waits for the handoff gesture while the source row remains
+        // composed; disposal/cancellation after handoff must be harmless.
+        drag(down.id) { }
         // The Today-level pointer session owns completion. A row may leave the
         // LazyColumn during edge auto-scroll, so row disposal/cancellation must
         // never commit or clear the active session here.
-        if (!completed) return@awaitEachGesture
     }
 }
 

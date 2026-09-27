@@ -55,6 +55,43 @@ class TodayDirectManipulationTest {
     }
 
     @Test
+    fun parentConsumesOnlyTheMatchingPostHandoffPointer() {
+        assertFalse(
+            shouldConsumeAndroidDragPointerMovement(
+                isDragActive = false,
+                pointerMatches = true,
+                pointerPressed = true,
+            ),
+        )
+        assertFalse(
+            shouldConsumeAndroidDragPointerMovement(
+                isDragActive = true,
+                pointerMatches = false,
+                pointerPressed = true,
+            ),
+        )
+        assertFalse(
+            shouldConsumeAndroidDragPointerMovement(
+                isDragActive = true,
+                pointerMatches = true,
+                pointerPressed = false,
+            ),
+        )
+        assertTrue(
+            shouldConsumeAndroidDragPointerMovement(
+                isDragActive = true,
+                pointerMatches = true,
+                pointerPressed = true,
+            ),
+        )
+    }
+
+    @Test
+    fun postHandoffRootPointerPositionUsesOnlyTheStableParentCoordinate() {
+        assertEquals(412f, androidDragPointerRootY(300f, 112f), 0f)
+    }
+
+    @Test
     fun dragAutoScrollReturnsZeroOutsideTheViewportEdgeZones() {
         assertEquals(0f, androidDragAutoScrollDelta(300f, 100f, 700f, 80f, 32f), 0f)
         assertEquals(0f, androidDragAutoScrollDelta(50f, 100f, 700f, 80f, 32f), 0f)
