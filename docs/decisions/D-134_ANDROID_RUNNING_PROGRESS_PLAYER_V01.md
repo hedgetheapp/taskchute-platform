@@ -49,3 +49,14 @@ This is Android presentation-only. No Worker/API, shared contract, domain,
 schema, migration, persistence authority, realtime protocol, or dependency
 change is approved by D-134. Galaxy S23 requires Product Owner manual smoke;
 Production remains `NOT_RUN` and Released remains `NO`.
+
+## Stack corrective evidence
+
+The D-134 panel remains 104dp and keeps its existing Complete/ticker semantics.
+Implementation `7180514d540273f237bd471724d4430e2daa9624` measures the combined
+footer-adjacent Running/unresolved/failure overlay stack and places the Today
+Add FAB 12dp above the stack, so the FAB cannot sit between the panel and the
+footer. Focused JVM and focused AVD verification pass; the standard Today
+surface runner did not return completion and remains `PARTIAL / NOT_VERIFIED`.
+Worker/API/shared contract, schema, migration, dependency, nonprod, and
+production are unchanged. Galaxy S23 remains `NOT_RUN / PRODUCT_OWNER_MANUAL`.

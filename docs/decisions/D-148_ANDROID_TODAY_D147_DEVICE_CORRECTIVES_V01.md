@@ -1,6 +1,6 @@
 # D-148 — Android Today D-147 Device Correctives v0.1
 
-Status: **Approved — 5-item corrective implemented / integrated; focused edge auto-scroll PASS; full Today surface remains partial / not verified**
+Status: **Approved — 5-item corrective plus drag-session continuity corrective implemented / integrated; focused PASS; Today surface remains partial / not verified**
 
 Date: 2026-09-27
 
@@ -161,4 +161,8 @@ Corrective requirement:
 - the parent pointer-input key/identity must remain stable through auto-scroll and unrelated swipe-state changes;
 - edge auto-scroll, geometry rebase, provisional target, and D-129 / Routine placement semantics remain unchanged.
 
-The current artifact therefore records Galaxy S23 edge-auto-scroll continuity as `FAIL / USER_REPORTED` pending corrective verification.
+The current artifact therefore records Galaxy S23 edge-auto-scroll continuity as `FAIL / USER_REPORTED` historical evidence. The continuity corrective is implemented in `7180514d540273f237bd471724d4430e2daa9624`.
+
+The Today-level pointer handler is keyed by logical Day rather than swipe-menu state and records the long-press pointer ID. Once the row hands off the drag, row disposal, detector cancellation, and detector completion cannot call `finishDrag()` or clear the session. The parent observes the physical pointer at the final pass and commits at most once on the matching physical up; cancellation or Day disposal clears without a write. Existing measured edge zones, scroll-frame geometry rebase, root pointer-Y authority, and D-148 placement semantics remain unchanged.
+
+The footer overlay corrective uses one measured bottom-aligned stack: the 104dp Running progress panel (plus any unresolved/failure panels) is directly above the footer, and the Add FAB is positioned 12dp above the stack and may still be dragged upward within the existing safe header bound. Focused JVM, focused Running-stack AVD, and focused off-screen edge-drag AVD verification PASS. The standard `Today` surface runner still did not return a completion result after starting `connectedDebugAndroidTest`; the target-app crash buffer was empty, so the full surface remains `PARTIAL / NOT_VERIFIED`. Exact-SHA CI `36300424234` PASS; APK artifact `taskchute-android-debug-7180514d540273f237bd471724d4430e2daa9624`, ID `10925795373`, expires `2026-10-04T06:35:52Z`. Galaxy S23 remains `NOT_RUN / PRODUCT_OWNER_MANUAL`.

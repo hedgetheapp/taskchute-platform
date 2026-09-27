@@ -4,6 +4,18 @@
 |---|---|---|---|---|
 | D148-DEVICE-AUTOSCROLL-CONTINUITY | Galaxy S23 / drag session | Holding a Task through top/bottom edge auto-scroll must keep the same drag session until physical pointer-up; source-row disposal/cancel must not prematurely finish/cancel reorder | Product Owner manual test of APK `d0b4ef424631db32705e83a8334ed901cb4d5ad8`: auto-scroll can stop partway and behave as if reorder was cancelled/dropped before finger release | FAIL / USER_REPORTED |
 
+## D-148 device follow-up corrective — 2026-09-27
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D148-CORRECTIVE-IMPLEMENTATION | Android Today ownership / overlay | Row initiates and samples drag only; stable Today parent owns physical-up commit; footer → overlay stack → Add FAB order | Implementation `7180514d540273f237bd471724d4430e2daa9624`; row detector no longer has completion/cancel commit callbacks; parent pointer identity is stable by logical Day; measured bottom stack places 104dp Running panel/failure stack at footer and FAB 12dp above | PASS |
+| D148-CORRECTIVE-JVM | Focused/full Android JVM | parent commit requires matching physical up, cannot commit twice; existing D&D/FAB helper regressions remain green | `TodayDirectManipulationTest` 29 / 29 PASS; full `:app:testDebugUnitTest` 205 / 205 PASS | PASS |
+| D148-CORRECTIVE-AVD | Today focused runtime | source row can leave viewport during held edge drag; newly visible cross-Section target receives exactly one move; Running panel/FAB stack has no overlap | `TaskChute_API33` focused `longPressDragNearBottomEdgeAutoScrollsTowardInitiallyOffscreenRows` PASS with `moveCalls == 1`; `runningPanelIsFooterAdjacentAndAddFabIsAboveIt` PASS | PASS / FOCUSED |
+| D148-CORRECTIVE-AVD-FULL | Today standard surface | standard Today gate and crash safety | `scripts/android-qa.ps1 -Surface Today` reached `connectedDebugAndroidTest` but runner did not return completion; target app crash buffer empty | PARTIAL / NOT_VERIFIED |
+| D148-CORRECTIVE-BUILD | Android build / static | compile, instrumentation compile, assemble, diff check | `:app:compileDebugKotlin`, `:app:compileDebugAndroidTestKotlin`, `:app:assembleDebug`, `git diff --check` PASS | PASS |
+| D148-CORRECTIVE-CI | Exact pushed SHA / APK | Android impact-aware CI and signed artifact | `main@7180514d540273f237bd471724d4430e2daa9624`, CI `36300424234`: classifier PASS; Android JVM, signed Debug build, instrumentation APK compile, signing verification, upload PASS; Web/Worker SKIP. Artifact `taskchute-android-debug-7180514d540273f237bd471724d4430e2daa9624`, ID `10925795373`, expires `2026-10-04T06:35:52Z` | PASS |
+| D148-CORRECTIVE-BOUNDARY | Product / server / device | preserve D-148 semantics and boundaries | Worker/API/shared contract, schema, migration, dependency, nonprod, D-145, Notes, Production, Release unchanged; Galaxy S23 not run | PASS / NOT_REQUIRED / NOT_RUN / NO |
+
 ## D-148 Android Today D-147 device correctives — 2026-09-27
 
 | ID | Area | Evidence | Status |
