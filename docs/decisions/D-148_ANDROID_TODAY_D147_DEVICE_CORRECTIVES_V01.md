@@ -77,6 +77,24 @@ Requirements:
 
 The exact Compose layout/measured-bound implementation is delegated; a fixed 96dp movement container is no longer acceptable.
 
+### 5. D&D edge auto-scroll
+
+While a Task row is being dragged in Android Today, the Task list must automatically scroll when the drag pointer approaches the visible scrollable area's top or bottom edge so a Task can be moved beyond the initially visible viewport.
+
+Requirements:
+
+- define a top and bottom edge activation zone inside the actual Task-list viewport;
+- while the pointer remains in the top zone, scroll upward continuously until either the pointer leaves the zone or the list reaches its top;
+- while the pointer remains in the bottom zone, scroll downward continuously until either the pointer leaves the zone or the list reaches its bottom;
+- scroll speed should increase as the pointer gets closer to the viewport edge; exact speed curve/threshold is a reversible implementation detail;
+- auto-scroll must stop immediately on drop, drag cancel, pointer release, or when the pointer leaves the edge zone;
+- while the list is auto-scrolling, the current drag position must continue to resolve against the newly visible Task/Section geometry so the provisional insertion cue and final drop target stay accurate;
+- normal non-drag scrolling, pull-to-refresh, swipe actions, Selection Mode, and long-press drag initiation must remain unchanged;
+- D-129 ended-Section restrictions and all D-148 Routine occurrence placement semantics remain authoritative during auto-scroll;
+- auto-scroll is presentation/interaction behavior only and adds no persistence or server authority.
+
+Implementation should use the existing Today LazyColumn/list state. Do not create a second independent scroll container or an invisible full-screen gesture layer that blocks Task interaction.
+
 ## Compatibility / non-goals
 
 Preserve:
@@ -112,6 +130,9 @@ Implementation must cover at least:
 - requests without the new optional intent preserve existing D-120 target-Section canonical planned-start behavior;
 - invalid use of the optional intent (ordinary Entry, multiple Entry, no relative placement) rejects without partial mutation;
 - FAB can move materially farther upward than the prior 96dp container while remaining within safe header/nav bounds;
+- dragging near the Task-list top/bottom edge auto-scrolls in the intended direction and can reach initially off-screen Task/Section targets;
+- edge auto-scroll stops on edge exit/drop/cancel/list boundary and does not continue after drag ends;
+- provisional insertion cue/drop target remains correct while auto-scrolling;
 - Quick Add tap/drag/reset and Selection Mode rules remain green.
 
 Because section 2 changes a shared request and Worker behavior, run focused/full Worker coverage, Android focused/full JVM coverage, Web compatibility/typecheck, Today AVD, exact-SHA CI, and persistent nonprod runtime/safety verification. Galaxy S23 final verification remains Product Owner manual evidence.
