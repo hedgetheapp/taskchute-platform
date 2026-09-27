@@ -244,3 +244,14 @@ This corrective must prioritize restoring the last known device behavior before 
 - pointer-up must still commit the latest resolved target exactly once.
 
 The `cc3a83e...` artifact is therefore `FAIL / USER_REPORTED` for ordinary D&D and edge auto-scroll. Focused AVD PASS does not supersede this physical-device evidence.
+
+## D&D regression recovery — 2026-09-27
+
+Implementation `30b9ffd5a572097bfc25a1cf4239d9bbe84c573b` restores the pre-`cc3a83e...` ordinary drag presentation while retaining the valid Routine empty-Section routing fix.
+
+- Ordinary Task rows no longer activate the layout-changing target padding or ordinary-row target marker. D-127 provisional placement remains the ordinary non-auto-scrolling preview.
+- A single `freezeProvisionalPreviewForAutoScroll` boolean becomes true only after `LazyListState.scrollBy` consumes non-zero pixels. The current `provisionalDay` is never cleared at scroll entry; refreshed snapshots and target resolution continue while the already-rendered preview remains stable.
+- While frozen, the current target is shown only with a non-layout-shifting cue inside the existing row bounds. After the edge leaves or the list reaches a boundary, two Compose frames are allowed for layout publication, then the latest target is applied once and ordinary preview resumes.
+- Stable Today-parent pointer ownership, physical pointer-up completion, `dragFinishIssued` single-dispatch protection, D-127 snapshot hit-testing, geometry rebase, D-129 guards, and Routine empty-Section `routineScoped=true` / `placement=null` / no-relative-marker semantics remain unchanged.
+
+Focused `TodayDirectManipulationTest` and full Android JVM `209 / 209` passed. TaskChute_API33 focused same-Section, visible cross-Section, Routine empty-Section, and edge auto-scroll tests passed; the three-test D&D set passed three consecutive times. The standard `scripts/android-qa.ps1 -Surface Today` did not return a result and was stopped after the target app crash buffer showed no FATAL/ANR; this remains `PARTIAL / NOT_VERIFIED`. Exact-SHA CI `36305702958` passed with signed APK `taskchute-android-debug-30b9ffd5a572097bfc25a1cf4239d9bbe84c573b`, artifact ID `10926923449`, expires `2026-10-04T08:18:53Z`. Galaxy S23 remains `NOT_RUN / PRODUCT_OWNER_MANUAL`.

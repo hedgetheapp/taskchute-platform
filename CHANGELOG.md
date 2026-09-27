@@ -1,3 +1,9 @@
+### D-148 Android Today D&D regression recovery — 2026-09-27
+
+- `cc3a83e...`のGalaxy S23 `FAIL / USER_REPORTED`を履歴として保持し、pre-cc3の通常D&D presentationへ復旧。通常rowのlayout-changing target paddingと3状態previewを除去し、consumed auto-scroll時だけ単一booleanで現行`provisionalDay`を保持する。snapshot/target rebase、非layout cue、edge停止後の最新target settle、stable parent physical-up authority、Routine empty-Section occurrence-aware no-anchor requestは維持した。
+- Implementation `30b9ffd5a572097bfc25a1cf4239d9bbe84c573b`、focused/full Android JVM `209 / 209`、same-section/cross-section/Routine-empty/edge focused AVDの3セット連続、compile / instrumentation compile / assemble / diff-checkはPASS。`scripts/android-qa.ps1 -Surface Today`は結果XMLなしでハングし、target app crash bufferは空。標準Today surfaceはPARTIAL / NOT_VERIFIED、Galaxy S23はNOT_RUN、ProductionはNOT_RUN、ReleasedはNO。
+- Exact-SHA CI `36305702958` PASS、fresh APK `taskchute-android-debug-30b9ffd5a572097bfc25a1cf4239d9bbe84c573b` / artifact ID `10926923449` / expires `2026-10-04T08:18:53Z`。Worker/API/shared contract、schema、migration、dependency、persistent nonprod、D-145、Notesは変更・実施していない。
+
 ### D-148 Android Today D-147 device correctives — 2026-09-27
 
 - D-148 follow-upとして、edge auto-scroll中は`provisionalDay`によるlayout-changing reorderを凍結し、target cueだけを追従させ、scroll停止後に最新targetへsettleするよう修正。Planned Routine occurrenceのanchorless empty-Section dropは既存occurrence-aware endpointへ`routineScoped=true`、`placement=null`、relative markerなしでdispatchするよう修正した。Implementation `cc3a83ef3887c2fc06ec952ddb33b73c6bfa173c`、focused/full Android JVM `208 / 208`、focused AVD 2件、exact-SHA CI `36302559765` PASS、APK artifact ID `10925464530`。標準Today surfaceはPARTIAL / NOT_VERIFIED、Galaxy S23はNOT_RUN、ProductionはNOT_RUN、ReleasedはNO。
