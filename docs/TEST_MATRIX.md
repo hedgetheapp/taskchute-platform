@@ -1,3 +1,9 @@
+## D-148 device follow-up — auto-scroll / provisional-order interaction
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D148-DEVICE-AUTOSCROLL-PROVISIONAL | Galaxy S23 / drag presentation | Edge auto-scroll and provisional reorder must not fight over row geometry; scrolling must remain smooth while the latest rebased drop target stays selectable | Product Owner manual test of APK `7180514d540273f237bd471724d4430e2daa9624`: scroll and provisional reorder overlap, making reorder targeting unstable | FAIL / USER_REPORTED |
+
 ## D-148 device follow-up — edge auto-scroll continuity
 
 | ID | Area | Requirement | Evidence | Status |
