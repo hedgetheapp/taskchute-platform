@@ -1,3 +1,11 @@
+## D-148 — Android Today D-147 Device Correctives v0.1
+
+Status: **Approved**
+
+Canonical Decision: `docs/decisions/D-148_ANDROID_TODAY_D147_DEVICE_CORRECTIVES_V01.md`。
+
+Galaxy S23でのD-147確認から、Past eligible ordinary Planned rowの`…` forward-move actionが旧Note-only条件で隠れる問題、Android single Routine occurrence D&Dのprovisional anchor位置とcanonical planned-startの不一致、Section往復時に末尾dropが先頭へ収束する問題、Today Add FABが96dp container内に閉じて上方向へほぼ動けない問題をcorrectする。Web/D-120 bulk semanticsは維持し、Android single Routine relative placementだけがanchor planned-start cohortを明示する後方互換intentを既存commandへ追加する。schema/migration/new endpoint/Notes/D-145/productionは含めない。
+
 ## D-147 — Android Today Dogfood Correctives v0.1
 
 Status: **Approved**
