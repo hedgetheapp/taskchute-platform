@@ -1,3 +1,9 @@
+## D-148 device follow-up — Routine empty-Section D&D
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D148-DEVICE-ROUTINE-EMPTY-SECTION | Galaxy S23 / Routine D&D | Planned Routine occurrence dropped into a Section with no relative anchor must use the occurrence-aware no-anchor move path and converge without deterministic failure | Product Owner manual test of APK `7180514d540273f237bd471724d4430e2daa9624`: target Section had no Tasks; operation showed `操作を完了できませんでした`. Source review: no-anchor branch omitted `routineScoped = source.routineDerived` | FAIL / USER_REPORTED |
+
 ## D-148 device follow-up — auto-scroll / provisional-order interaction
 
 | ID | Area | Requirement | Evidence | Status |
