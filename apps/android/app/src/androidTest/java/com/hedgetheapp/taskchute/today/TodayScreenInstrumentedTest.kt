@@ -845,6 +845,37 @@ class TodayScreenInstrumentedTest {
     }
 
     @Test
+    fun longPressDragNearBottomEdgeAutoScrollsTowardInitiallyOffscreenRows() {
+        val directRepository = FakeDirectManipulationRepository().apply {
+            // Keep the list at the post-drag scroll position long enough to assert
+            // that the initially off-screen anchor became visible.
+            result = DirectManipulationResult.Ambiguous
+        }
+        launchPlanningScreen(
+            FakePlanningRepository(),
+            initialDay = longDragCrossSectionDay(),
+            directRepository = directRepository,
+        )
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        val sourceNode = composeRule.onNodeWithContentDescription("タスクをドラッグ: Drag source")
+        assertTrue(composeRule.onAllNodesWithText("Offscreen target", substring = false).fetchSemanticsNodes().isEmpty())
+        sourceNode.performTouchInput {
+            down(center)
+            advanceEventTime(600)
+            moveTo(Offset(center.x, 1_450f), delayMillis = 100)
+            advanceEventTime(1_000)
+            up()
+        }
+
+        composeRule.waitUntil(15_000) { directRepository.moveCalls.get() == 1 }
+        assertEquals(1, directRepository.moveCalls.get())
+        assertEquals("section-target", directRepository.lastMove?.sectionId)
+        assertEquals("entry-offscreen-target", directRepository.lastMove?.placement?.anchorEntryId)
+        composeRule.onNodeWithText("Offscreen target", substring = false).assertIsDisplayed()
+    }
+
+    @Test
     fun currentRunningRowExposesRichSwipeAndMetadataEditor() {
         val task = dayWith(LifecycleState.RUNNING).sections.single().entries.single().copy(taskId = "task-running")
         val initialDay = dayWith(LifecycleState.RUNNING).copy(
@@ -1253,5 +1284,76 @@ class TodayScreenInstrumentedTest {
             unsectionedEntries = emptyList(),
             activeExecution = null,
         )
+
+        fun longDragDay() = dayWith().copy(
+            sections = listOf(
+                dayWith().sections.single().copy(
+                    entries = buildList {
+                        add(
+                            TodayTask(
+                                id = "entry-drag-source",
+                                title = "Drag source",
+                                lifecycleState = LifecycleState.PLANNED,
+                                project = null,
+                                mode = null,
+                                estimateSeconds = 600,
+                                plannedStartMinute = 540,
+                                executionId = null,
+                                activeStartedAt = null,
+                            ),
+                        )
+                        repeat(10) { index ->
+                            add(
+                                TodayTask(
+                                    id = "entry-filler-$index",
+                                    title = "Filler $index",
+                                    lifecycleState = LifecycleState.PLANNED,
+                                    project = null,
+                                    mode = null,
+                                    estimateSeconds = 600,
+                                    plannedStartMinute = 540,
+                                    executionId = null,
+                                    activeStartedAt = null,
+                                ),
+                            )
+                        }
+                        add(
+                            TodayTask(
+                                id = "entry-offscreen-target",
+                                title = "Offscreen target",
+                                lifecycleState = LifecycleState.PLANNED,
+                                project = null,
+                                mode = null,
+                                estimateSeconds = 600,
+                                plannedStartMinute = 780,
+                                executionId = null,
+                                activeStartedAt = null,
+                            ),
+                        )
+                    },
+                ),
+            ),
+        )
+
+        fun longDragCrossSectionDay() = longDragDay().let { sourceDay ->
+            val sourceSection = sourceDay.sections.single()
+            sourceDay.copy(
+                sections = listOf(
+                    sourceSection.copy(
+                        id = "section-source",
+                        title = "Source",
+                        endMinute = 720,
+                        entries = sourceSection.entries.dropLast(1),
+                    ),
+                    TodaySection(
+                        id = "section-target",
+                        title = "Destination",
+                        startMinute = 720,
+                        endMinute = 900,
+                        entries = listOf(sourceSection.entries.last()),
+                    ),
+                ),
+            )
+        }
     }
 }

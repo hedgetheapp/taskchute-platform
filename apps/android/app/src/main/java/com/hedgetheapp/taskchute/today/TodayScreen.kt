@@ -9,6 +9,7 @@ import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -113,6 +114,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.res.painterResource
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.delay
+import kotlin.math.abs
 import java.time.LocalDate
 import java.time.Instant
 import java.time.ZoneId
@@ -498,6 +500,10 @@ private fun TodayContent(
     var dragState by remember { mutableStateOf<AndroidDragState?>(null) }
     var provisionalDay by remember { mutableStateOf<TodayDay?>(null) }
     var dragContentRootTop by remember { mutableStateOf(0f) }
+    var dragViewportBounds by remember { mutableStateOf<Rect?>(null) }
+    var dragPointerRootY by remember { mutableStateOf<Float?>(null) }
+    var dragPointerHostRootTop by remember { mutableStateOf(0f) }
+    var dragPointerDown by remember { mutableStateOf(false) }
     var openSwipeEntryId by remember { mutableStateOf<String?>(null) }
     val renderDay = provisionalDay ?: day
     LaunchedEffect(day.logicalDate, state.status) { openSwipeEntryId = null }
@@ -513,9 +519,9 @@ private fun TodayContent(
             emptySectionDropIds.remove(UNSECTIONED_DROP_KEY)
         }
     }
-    fun updateDragPosition(deltaY: Float) {
+    fun updateDragPosition(pointerRootY: Float) {
         val current = dragState ?: return
-        val positionY = current.positionY + deltaY
+        val positionY = pointerRootY
         val target = resolveAndroidDropTarget(
             positionY = positionY,
             sourceEntryId = current.entryId,
@@ -528,14 +534,17 @@ private fun TodayContent(
         )
         dragState = current.copy(
             positionY = positionY,
-            deltaY = current.deltaY + deltaY,
+            deltaY = positionY - (current.positionY - current.deltaY),
             target = target,
         )
+        dragPointerRootY = positionY
         provisionalDay = target?.let { previewDayForTarget(day, current.entryId, it) }
     }
     fun finishDrag() {
         val drag = dragState ?: return
         dragState = null
+        dragPointerRootY = null
+        dragPointerDown = false
         provisionalDay = null
         val target = drag.target ?: return
         val source = day.allEntries.firstOrNull { it.id == drag.entryId } ?: return
@@ -584,6 +593,69 @@ private fun TodayContent(
     }
     val pullToRefreshState = rememberPullToRefreshState()
     val todayListState = rememberLazyListState()
+    val edgeZonePx = with(LocalDensity.current) { D148_DRAG_EDGE_ZONE.dp.toPx() }
+    val maxAutoScrollDeltaPx = with(LocalDensity.current) { D148_DRAG_MAX_SCROLL_PER_FRAME.dp.toPx() }
+    val listBottomContentPaddingPx = with(LocalDensity.current) { 110.dp.toPx() }
+    LaunchedEffect(dragState != null, day.logicalDate) {
+        while (dragState != null) {
+            val pointerY = dragPointerRootY
+            val viewport = dragViewportBounds
+            val delta = if (pointerY != null && viewport != null) {
+                androidDragAutoScrollDelta(
+                    pointerY = pointerY,
+                    viewportTop = viewport.top,
+                    viewportBottom = viewport.bottom,
+                    edgeZonePx = edgeZonePx,
+                    maxDeltaPx = maxAutoScrollDeltaPx,
+                    canScrollBackward = todayListState.canScrollBackward,
+                    canScrollForward = todayListState.canScrollForward,
+                )
+            } else {
+                0f
+            }
+            if (delta != 0f) {
+                val consumed = todayListState.scrollBy(delta)
+                if (abs(consumed) > 0.5f) {
+                    // Scroll mutates LazyListState immediately, but bounds are published by
+                    // the next layout pass. Rebase only after that pass, keeping ordinary
+                    // drag hit-testing on its stable snapshot.
+                    withFrameNanos { }
+                    withFrameNanos { }
+                    val current = dragState
+                    val currentPointer = dragPointerRootY
+                    if (current != null && currentPointer != null) {
+                        val target = resolveAndroidDropTarget(
+                            positionY = currentPointer,
+                            sourceEntryId = current.entryId,
+                            entryBounds = dropBounds.toMap(),
+                            entrySectionIds = dropBoundsSectionId.toMap(),
+                            entryAnchorEligible = dropBoundsEligible.toMap(),
+                            emptySectionBounds = emptySectionDropBounds.toMap(),
+                            emptySectionIds = emptySectionDropIds.toMap(),
+                            endedSectionIds = endedSectionIdsForAndroid(day),
+                        )
+                        dragState = current.copy(
+                            rowBoundsSnapshot = rowBounds.toMap(),
+                            entryBoundsSnapshot = dropBounds.toMap(),
+                            entrySectionIdsSnapshot = dropBoundsSectionId.toMap(),
+                            entryAnchorEligibleSnapshot = dropBoundsEligible.toMap(),
+                            emptySectionBoundsSnapshot = emptySectionDropBounds.toMap(),
+                            emptySectionIdsSnapshot = emptySectionDropIds.toMap(),
+                            target = target,
+                        )
+                        provisionalDay = target?.let { previewDayForTarget(day, current.entryId, it) }
+                    }
+                }
+            }
+            withFrameNanos { }
+        }
+    }
+    LaunchedEffect(day.logicalDate) {
+        dragState = null
+        dragPointerRootY = null
+        dragPointerDown = false
+        provisionalDay = null
+    }
     val isRefreshing = state.status == TodayLoadStatus.REFRESHING
     PullToRefreshBox(
         isRefreshing = isRefreshing,
@@ -616,7 +688,9 @@ private fun TodayContent(
                 }
             }
         },
-        modifier = modifier.pointerInput(openSwipeEntryId) {
+        modifier = modifier.onGloballyPositioned {
+            dragPointerHostRootTop = it.boundsInRoot().top
+        }.pointerInput(openSwipeEntryId) {
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = false)
                 var moved = false
@@ -624,7 +698,21 @@ private fun TodayContent(
                     val event = awaitPointerEvent(PointerEventPass.Final)
                     val change = event.changes.firstOrNull { it.id == down.id } ?: continue
                     if (kotlin.math.abs(change.position.x - down.position.x) > 4f || kotlin.math.abs(change.position.y - down.position.y) > 4f) moved = true
-                    if (change.changedToUpIgnoreConsumed() || !change.pressed) break
+                    if (dragPointerDown && dragState != null && change.pressed) {
+                        updateDragPosition(dragPointerHostRootTop + change.position.y)
+                    }
+                    if (change.changedToUpIgnoreConsumed() || !change.pressed) {
+                        if (change.changedToUpIgnoreConsumed() && dragPointerDown && dragState != null) {
+                            finishDrag()
+                        } else if (!change.pressed) {
+                            dragState = null
+                            dragPointerRootY = null
+                            dragPointerDown = false
+                            provisionalDay = null
+                        }
+                        dragPointerDown = false
+                        break
+                    }
                 }
                 if (!moved && openSwipeEntryId != null) openSwipeEntryId = null
             }
@@ -653,12 +741,23 @@ private fun TodayContent(
         }
         Box(
             modifier = Modifier.fillMaxWidth().weight(1f).onGloballyPositioned {
-                dragContentRootTop = it.boundsInRoot().top
+                val bounds = it.boundsInRoot()
+                dragContentRootTop = bounds.top
             },
         ) {
             LazyColumn(
                 state = todayListState,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().onGloballyPositioned {
+                    val bounds = it.boundsInRoot()
+                    // The list keeps a bottom content inset for the FAB/navigation and
+                    // running-operation surfaces. The edge zone belongs above that inset.
+                    dragViewportBounds = Rect(
+                        left = bounds.left,
+                        top = bounds.top,
+                        right = bounds.right,
+                        bottom = (bounds.bottom - listBottomContentPaddingPx).coerceAtLeast(bounds.top),
+                    )
+                },
                 contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 110.dp),
                 // Keep section headers and task rows visually contiguous as one compact grouped surface.
                 verticalArrangement = Arrangement.spacedBy(0.dp),
@@ -734,7 +833,7 @@ private fun TodayContent(
                         onDelete = { onRequestDelete(setOf(task.id)) },
                         canDrag = directManipulationController?.canDrag(day, task, selectedEntryIds) == true
                             && !state.pendingEntryIds.contains(task.id)
-                            && !todayListState.isScrollInProgress,
+                            && (!todayListState.isScrollInProgress || dragState?.entryId == task.id),
                         dragging = dragState?.entryId == task.id,
                         dragPlaceholder = dragState?.entryId == task.id,
                         dragDeltaY = dragState?.takeIf { it.entryId == task.id }?.deltaY ?: 0f,
@@ -742,10 +841,15 @@ private fun TodayContent(
                         onDragStart = { pointerPosition ->
                             directManipulationController?.takeIf { !todayListState.isScrollInProgress && it.canDrag(day, task) }?.let {
                                 val bounds = dropBounds[task.id]
+                                val pointerRootY = bounds?.top?.plus(pointerPosition.y) ?: pointerPosition.y
+                                val sourceRootTop = bounds?.top ?: pointerRootY
+                                dragPointerRootY = pointerRootY
+                                dragPointerDown = true
                                 dragState = AndroidDragState(
                                     entryId = task.id,
                                     sourceSectionId = section.id,
-                                    positionY = bounds?.top?.plus(pointerPosition.y) ?: pointerPosition.y,
+                                    positionY = pointerRootY,
+                                    sourceStartRootTop = sourceRootTop,
                                     rowBoundsSnapshot = rowBounds.toMap(),
                                     entryBoundsSnapshot = dropBounds.toMap(),
                                     entrySectionIdsSnapshot = dropBoundsSectionId.toMap(),
@@ -756,9 +860,18 @@ private fun TodayContent(
                                 )
                             }
                         },
-                        onDragMove = ::updateDragPosition,
+                        onDragMove = { localPosition ->
+                            val rowTop = dropBounds[task.id]?.top
+                            updateDragPosition(rowTop?.plus(localPosition.y) ?: localPosition.y)
+                        },
                         onDragEnd = ::finishDrag,
-                        onDragCancel = { dragState = null; provisionalDay = null },
+                        onDragCancel = {
+                            if (!dragPointerDown) {
+                                dragState = null
+                                dragPointerRootY = null
+                                provisionalDay = null
+                            }
+                        },
                         dropBounds = dropBounds,
                         dropBoundsSectionId = dropBoundsSectionId,
                         dropBoundsEligible = dropBoundsEligible,
@@ -836,7 +949,7 @@ private fun TodayContent(
                         onDelete = { onRequestDelete(setOf(task.id)) },
                         canDrag = directManipulationController?.canDrag(day, task, selectedEntryIds) == true
                             && !state.pendingEntryIds.contains(task.id)
-                            && !todayListState.isScrollInProgress,
+                            && (!todayListState.isScrollInProgress || dragState?.entryId == task.id),
                         dragging = dragState?.entryId == task.id,
                         dragPlaceholder = dragState?.entryId == task.id,
                         dragDeltaY = dragState?.takeIf { it.entryId == task.id }?.deltaY ?: 0f,
@@ -844,10 +957,15 @@ private fun TodayContent(
                         onDragStart = { pointerPosition ->
                             directManipulationController?.takeIf { !todayListState.isScrollInProgress && it.canDrag(day, task) }?.let {
                                 val bounds = dropBounds[task.id]
+                                val pointerRootY = bounds?.top?.plus(pointerPosition.y) ?: pointerPosition.y
+                                val sourceRootTop = bounds?.top ?: pointerRootY
+                                dragPointerRootY = pointerRootY
+                                dragPointerDown = true
                                 dragState = AndroidDragState(
                                     entryId = task.id,
                                     sourceSectionId = null,
-                                    positionY = bounds?.top?.plus(pointerPosition.y) ?: pointerPosition.y,
+                                    positionY = pointerRootY,
+                                    sourceStartRootTop = sourceRootTop,
                                     rowBoundsSnapshot = rowBounds.toMap(),
                                     entryBoundsSnapshot = dropBounds.toMap(),
                                     entrySectionIdsSnapshot = dropBoundsSectionId.toMap(),
@@ -858,9 +976,18 @@ private fun TodayContent(
                                 )
                             }
                         },
-                        onDragMove = ::updateDragPosition,
+                        onDragMove = { localPosition ->
+                            val rowTop = dropBounds[task.id]?.top
+                            updateDragPosition(rowTop?.plus(localPosition.y) ?: localPosition.y)
+                        },
                         onDragEnd = ::finishDrag,
-                        onDragCancel = { dragState = null; provisionalDay = null },
+                        onDragCancel = {
+                            if (!dragPointerDown) {
+                                dragState = null
+                                dragPointerRootY = null
+                                provisionalDay = null
+                            }
+                        },
                         dropBounds = dropBounds,
                         dropBoundsSectionId = dropBoundsSectionId,
                         dropBoundsEligible = dropBoundsEligible,
@@ -871,9 +998,7 @@ private fun TodayContent(
             }
             dragState?.let { drag ->
                 day.allEntries.firstOrNull { it.id == drag.entryId }?.let { draggedTask ->
-                    val sourceTop = drag.rowBoundsSnapshot[drag.entryId]?.top
-                        ?: drag.entryBoundsSnapshot[drag.entryId]?.top
-                        ?: dragContentRootTop
+                    val sourceTop = drag.sourceStartRootTop
                     DraggedTaskOverlay(
                         task = draggedTask,
                         modifier = Modifier
@@ -907,6 +1032,35 @@ private suspend fun PointerInputScope.detectTodayFabTapDrag(onDrag: (Offset) -> 
     }
 }
 private const val UNSECTIONED_DROP_KEY = "__unsectioned__"
+internal const val D148_DRAG_EDGE_ZONE = 72
+internal const val D148_DRAG_MAX_SCROLL_PER_FRAME = 32
+
+internal fun androidDragAutoScrollDelta(
+    pointerY: Float,
+    viewportTop: Float,
+    viewportBottom: Float,
+    edgeZonePx: Float,
+    maxDeltaPx: Float,
+    canScrollBackward: Boolean = true,
+    canScrollForward: Boolean = true,
+): Float {
+    if (!pointerY.isFinite() || !viewportTop.isFinite() || !viewportBottom.isFinite() ||
+        !edgeZonePx.isFinite() || !maxDeltaPx.isFinite() || edgeZonePx <= 0f || maxDeltaPx <= 0f ||
+        viewportBottom <= viewportTop || viewportBottom - viewportTop <= edgeZonePx * 2f ||
+        pointerY < viewportTop || pointerY > viewportBottom
+    ) return 0f
+
+    fun scaledDelta(distanceToEdge: Float): Float {
+        val progress = ((edgeZonePx - distanceToEdge) / edgeZonePx).coerceIn(0f, 1f)
+        return maxDeltaPx * (0.2f + 0.8f * progress * progress)
+    }
+
+    return when {
+        pointerY <= viewportTop + edgeZonePx && canScrollBackward -> -scaledDelta(pointerY - viewportTop)
+        pointerY >= viewportBottom - edgeZonePx && canScrollForward -> scaledDelta(viewportBottom - pointerY)
+        else -> 0f
+    }
+}
 
 internal data class AndroidDropTarget(
     val key: String,
@@ -919,6 +1073,7 @@ private data class AndroidDragState(
     val entryId: String,
     val sourceSectionId: String?,
     val positionY: Float,
+    val sourceStartRootTop: Float,
     val rowBoundsSnapshot: Map<String, Rect> = emptyMap(),
     val entryBoundsSnapshot: Map<String, Rect> = emptyMap(),
     val entrySectionIdsSnapshot: Map<String, String?> = emptyMap(),
@@ -1155,7 +1310,7 @@ private fun TodayTaskRow(
     dragDeltaY: Float,
     dropTarget: Boolean,
     onDragStart: (Offset) -> Unit,
-    onDragMove: (Float) -> Unit,
+    onDragMove: (Offset) -> Unit,
     onDragEnd: () -> Unit,
     onDragCancel: () -> Unit,
     dropBounds: MutableMap<String, Rect>,
@@ -2221,7 +2376,7 @@ private const val D112_DRAG_HOLD_MS = 350L
 
 private suspend fun PointerInputScope.detectShortLongPressDrag(
     onDragStart: (Offset) -> Unit,
-    onDragMove: (Float) -> Unit,
+    onDragMove: (Offset) -> Unit,
     onDragEnd: () -> Unit,
     onDragCancel: () -> Unit,
 ) {
@@ -2242,7 +2397,7 @@ private suspend fun PointerInputScope.detectShortLongPressDrag(
         if (!held) return@awaitEachGesture
         onDragStart(down.position)
         val completed = drag(down.id) { change ->
-            onDragMove((change.position - change.previousPosition).y)
+            onDragMove(change.position)
             change.consume()
         }
         if (completed) onDragEnd() else onDragCancel()

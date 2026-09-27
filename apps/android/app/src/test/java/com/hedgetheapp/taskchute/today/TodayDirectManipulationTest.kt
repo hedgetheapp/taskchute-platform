@@ -15,6 +15,63 @@ import org.junit.Test
 
 class TodayDirectManipulationTest {
     @Test
+    fun dragAutoScrollReturnsZeroOutsideTheViewportEdgeZones() {
+        assertEquals(0f, androidDragAutoScrollDelta(300f, 100f, 700f, 80f, 32f), 0f)
+        assertEquals(0f, androidDragAutoScrollDelta(50f, 100f, 700f, 80f, 32f), 0f)
+        assertEquals(0f, androidDragAutoScrollDelta(750f, 100f, 700f, 80f, 32f), 0f)
+    }
+
+    @Test
+    fun dragAutoScrollUsesSignedDirectionAndIncreasesTowardTheEdge() {
+        val topNear = androidDragAutoScrollDelta(150f, 100f, 700f, 80f, 32f)
+        val topAtEdge = androidDragAutoScrollDelta(100f, 100f, 700f, 80f, 32f)
+        val bottomNear = androidDragAutoScrollDelta(650f, 100f, 700f, 80f, 32f)
+        val bottomAtEdge = androidDragAutoScrollDelta(700f, 100f, 700f, 80f, 32f)
+
+        assertTrue(topNear < 0f)
+        assertTrue(bottomNear > 0f)
+        assertTrue(kotlin.math.abs(topAtEdge) >= kotlin.math.abs(topNear))
+        assertTrue(bottomAtEdge >= bottomNear)
+        assertEquals(-32f, topAtEdge, 0f)
+        assertEquals(32f, bottomAtEdge, 0f)
+    }
+
+    @Test
+    fun dragAutoScrollSafelyHandlesTinyViewportsAndListBoundaries() {
+        assertEquals(0f, androidDragAutoScrollDelta(100f, 100f, 240f, 80f, 32f), 0f)
+        assertEquals(0f, androidDragAutoScrollDelta(100f, 100f, 700f, 80f, 32f, canScrollBackward = false), 0f)
+        assertEquals(0f, androidDragAutoScrollDelta(700f, 100f, 700f, 80f, 32f, canScrollForward = false), 0f)
+    }
+
+    @Test
+    fun refreshedBoundsAreUsedForTheNewlyVisibleDropTarget() {
+        val beforeScroll = resolveAndroidDropTarget(
+            positionY = 620f,
+            sourceEntryId = "entry-source",
+            entryBounds = mapOf("entry-visible" to Rect(0f, 120f, 100f, 200f)),
+            entrySectionIds = mapOf("entry-visible" to "section-1"),
+            entryAnchorEligible = mapOf("entry-visible" to true),
+            emptySectionBounds = emptyMap(),
+            emptySectionIds = emptyMap(),
+        )
+        val afterScroll = resolveAndroidDropTarget(
+            positionY = 620f,
+            sourceEntryId = "entry-source",
+            entryBounds = mapOf("entry-offscreen-before" to Rect(0f, 580f, 100f, 660f)),
+            entrySectionIds = mapOf("entry-offscreen-before" to "section-2"),
+            entryAnchorEligible = mapOf("entry-offscreen-before" to true),
+            emptySectionBounds = emptyMap(),
+            emptySectionIds = emptyMap(),
+        )
+
+        assertEquals(null, beforeScroll)
+        assertEquals(
+            AndroidDropTarget("entry:entry-offscreen-before", "section-2", "entry-offscreen-before", PlacementEdge.AFTER),
+            afterScroll,
+        )
+    }
+
+    @Test
     fun pendingPlacementMutationSuppressesDuplicateDispatch() {
         val repository = FakeRepository().apply { hold = true }
         var refreshes = 0
