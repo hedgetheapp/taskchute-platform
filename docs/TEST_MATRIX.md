@@ -1,3 +1,9 @@
+## D-148 device follow-up — future-Day cross-Section D&D
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D148-DEVICE-FUTURE-CROSS-SECTION | Galaxy S23 / Future Day D&D | Explicitly established future Day must allow approved ordinary and Routine occurrence-only cross-Section placement; date-moved Routine origin identity must not make the Entry uneditable | Product Owner manual test of APK `ce84f3f3e963ce3d3dda22485e0fe086ed09f5a6`: tomorrow cross-Section D&D shows deterministic failure. Source review: date move preserves `origin_taskchute_day_id`, but `BulkMoveEntriesToSectionOccurrence` requires it to equal request Day | FAIL / USER_REPORTED |
+
 ## D-148 device follow-up — parent pointer capture after source-row disposal
 
 | ID | Area | Requirement | Evidence | Status |
