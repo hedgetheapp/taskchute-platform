@@ -504,10 +504,11 @@ export async function ensureCurrentDayRoutineEntries(
         || definition.default_planned_start_minute >= boundary + 1440 || matches.length !== 1) {
         throw new Error("Routine default planned start is invalid for the established TaskChuteDay context");
       }
+      // D-131 freezes the selected Day's Section context at establishment. A
+      // RoutineDefinition's stored default Section may be stale after a
+      // configuration reconciliation, so the planned minute is authoritative
+      // for the materialized occurrence's effective Section.
       sectionId = matches[0]!.section_id;
-      if (matches[0]!.section_id !== definition.default_section_id) {
-        throw new Error("Routine default Section and planned start are not synchronized for the established TaskChuteDay context");
-      }
     } else if (definition.default_section_id !== null) {
       throw new Error("Routine default Section requires a planned start");
     }
