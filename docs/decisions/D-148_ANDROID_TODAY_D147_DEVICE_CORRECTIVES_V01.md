@@ -144,3 +144,21 @@ The Today Task-list viewport is measured in root coordinates from the existing `
 Drag-start snapshot hit testing remains authoritative during ordinary drag. The root pointer Y is tracked independently of list scroll, and after a non-zero `scrollBy` the implementation waits for two Compose frames, copies the measured row/entry/Section maps into a refreshed snapshot, and resolves the current pointer against that snapshot. The dragged overlay keeps its source row root top and therefore remains under the finger while content scrolls. The loop stops on drag end/cancel/release, edge exit, list boundary, logical-Day change, or disposal; no post-drop scroll is scheduled.
 
 Focused `TodayDirectManipulationTest` coverage passes for outside/top/bottom/ramp/cap/invalid/boundary behavior and refreshed-bound target resolution. The focused `longPressDragNearBottomEdgeAutoScrollsTowardInitiallyOffscreenRows` AVD case reached an initially off-screen cross-Section target and dispatched the existing move path. The later Today-surface run did not return a runner completion result and is recorded as partial/not verified; no target-app crash-buffer entry was present. No Worker/API/shared contract, schema, migration, dependency, nonprod, or production change was made.
+
+
+## Device corrective follow-up — drag session continuity
+
+Galaxy S23 manual verification of implementation `d0b4ef424631db32705e83a8334ed901cb4d5ad8` found that edge auto-scroll can stop partway through a held drag and behave as if the reorder session was cancelled/dropped before the finger is released.
+
+This is a failure of the already-approved D-148 section 5 interaction contract, not new Product semantics.
+
+Corrective requirement:
+
+- after long-press drag begins, the stable Today-level pointer session is the sole authority for drag completion;
+- source-row pointer disposal, cancellation, or local drag-detector completion caused by LazyColumn auto-scroll/recomposition must not call `finishDrag()` while the physical pointer is still down;
+- source-row gesture ownership may initiate the drag and provide movement while available, but final drop occurs only on the stable parent session's real pointer-up;
+- cancellation without physical pointer-up must preserve the active drag session while the parent still observes the pointer as pressed;
+- the parent pointer-input key/identity must remain stable through auto-scroll and unrelated swipe-state changes;
+- edge auto-scroll, geometry rebase, provisional target, and D-129 / Routine placement semantics remain unchanged.
+
+The current artifact therefore records Galaxy S23 edge-auto-scroll continuity as `FAIL / USER_REPORTED` pending corrective verification.
