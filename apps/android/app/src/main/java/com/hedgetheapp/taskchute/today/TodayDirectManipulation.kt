@@ -215,6 +215,10 @@ class TodayDirectManipulationController(
         if (entryIds.isEmpty() || state.pendingEntryIds.isNotEmpty() || state.unresolvedRequest != null
             || day.taskChuteDayId == null || (!canPlanDay(day) && !allowPastSource)
         ) return
+        if (allowPastSource && targetLogicalDate < day.logicalDate) {
+            state = state.copy(errorMessage = "過去の日には移動できません。", feedbackMessage = null)
+            return
+        }
         val ids = entryIds.toList().sorted()
         state = state.copy(pendingEntryIds = ids.toSet(), errorMessage = null, feedbackMessage = null)
         scope.launch {

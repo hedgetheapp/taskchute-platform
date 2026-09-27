@@ -136,6 +136,11 @@ private fun currentLogicalDate(day: TodayDay): String {
     return logicalDate.toString()
 }
 
+internal data class AndroidDateMoveRequest(
+    val entryIds: Set<String>,
+    val allowPastSource: Boolean,
+)
+
 @Composable
 fun TodayScreen(controller: TodayController, onSignOut: () -> Unit) {
     TodayScreen(controller, null, {}, onSignOut)
@@ -158,7 +163,7 @@ fun TodayScreen(
     val planningState = planningController?.state ?: TaskPlanningUiState()
     var selectedEntryIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var selectionModeActive by remember { mutableStateOf(false) }
-    var datePickerEntryIds by remember { mutableStateOf<Set<String>?>(null) }
+    var datePickerMoveRequest by remember { mutableStateOf<AndroidDateMoveRequest?>(null) }
     var deleteEntryIds by remember { mutableStateOf<Set<String>?>(null) }
     var headerDatePickerVisible by remember { mutableStateOf(false) }
     var taskNoteSheetTask by remember { mutableStateOf<TodayTask?>(null) }
@@ -193,17 +198,18 @@ fun TodayScreen(
             },
         )
     }
-    if (datePickerEntryIds != null && day != null) {
+    if (datePickerMoveRequest != null && day != null) {
         TaskChuteDatePickerDialog(
             initialLogicalDate = day.logicalDate,
-            onDismissRequest = { datePickerEntryIds = null },
+            onDismissRequest = { datePickerMoveRequest = null },
             onConfirm = { logicalDate ->
-                val entryIds = datePickerEntryIds ?: return@TaskChuteDatePickerDialog
-                datePickerEntryIds = null
+                val request = datePickerMoveRequest ?: return@TaskChuteDatePickerDialog
+                datePickerMoveRequest = null
                 directManipulationController?.moveToDay(
                     day,
-                    entryIds,
+                    request.entryIds,
                     logicalDate,
+                    allowPastSource = request.allowPastSource,
                 )
             },
         )
@@ -223,7 +229,9 @@ fun TodayScreen(
                     BulkActionBar(
                         count = bulkSelected.size,
                         hasSelection = bulkSelected.isNotEmpty(),
-                        onChooseDate = { datePickerEntryIds = bulkSelected },
+                        onChooseDate = {
+                            datePickerMoveRequest = AndroidDateMoveRequest(bulkSelected, allowPastSource = false)
+                        },
                         onDelete = { deleteEntryIds = bulkSelected },
                         onClear = {
                             selectionModeActive = false
@@ -267,7 +275,9 @@ fun TodayScreen(
                         selectedEntryIds = next
                         selectionModeActive = next.isNotEmpty()
                     },
-                    onOpenDatePicker = { datePickerEntryIds = it },
+                    onOpenDatePicker = { entryIds, allowPastSource ->
+                        datePickerMoveRequest = AndroidDateMoveRequest(entryIds, allowPastSource)
+                    },
                     onOpenHeaderDatePicker = { headerDatePickerVisible = true },
                     onRequestDelete = { deleteEntryIds = it },
                     modifier = Modifier.fillMaxSize(),
@@ -429,7 +439,7 @@ private fun TodayContent(
     onEnterSelection: (String) -> Unit,
     selectedEntryIds: Set<String>,
     onToggleSelection: (String) -> Unit,
-    onOpenDatePicker: (Set<String>) -> Unit,
+    onOpenDatePicker: (Set<String>, Boolean) -> Unit,
     onOpenHeaderDatePicker: () -> Unit,
     onRequestDelete: (Set<String>) -> Unit,
     modifier: Modifier,
@@ -627,6 +637,10 @@ private fun TodayContent(
                     )
                 }
                 if (section.id !in collapsedSectionIds) items(section.entries, key = { it.id }) { task ->
+                    val canPastForwardMove = !day.planningEnabled && day.taskChuteDayId != null &&
+                        task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived &&
+                        task.firstStartedAt == null && task.lastEndedAt == null && task.executionId == null &&
+                        directManipulationController != null
                     TodayTaskRow(
                         modifier = Modifier.animateItem(),
                         day = day,
@@ -658,11 +672,11 @@ private fun TodayContent(
                         canDayOperate = canPlanDay(day) && task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived && directManipulationController != null,
                         canLifecycleDelete = day.isCurrent && task.lifecycleState != LifecycleState.PLANNED && !task.routineDerived && directManipulationController != null,
                         canPlannedDelete = canPlanDay(day) && task.lifecycleState == LifecycleState.PLANNED && task.routineDerived && directManipulationController != null,
-                        canPastForwardOperate = !day.planningEnabled && day.taskChuteDayId != null && task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived && task.firstStartedAt == null && task.lastEndedAt == null && task.executionId == null && directManipulationController != null,
+                        canPastForwardOperate = canPastForwardMove,
                         onMovePrevious = { directManipulationController?.moveToDay(day, setOf(task.id), LocalDate.parse(day.logicalDate).minusDays(1).toString()) },
                         onMoveNext = { directManipulationController?.moveToDay(day, setOf(task.id), LocalDate.parse(day.logicalDate).plusDays(1).toString()) },
                         onMoveToday = { directManipulationController?.moveToDay(day, setOf(task.id), currentLogicalDate(day), allowPastSource = true) },
-                        onPickDate = { onOpenDatePicker(setOf(task.id)) },
+                        onPickDate = { onOpenDatePicker(setOf(task.id), canPastForwardMove) },
                         onDelete = { onRequestDelete(setOf(task.id)) },
                         canDrag = directManipulationController?.canDrag(day, task, selectedEntryIds) == true
                             && !state.pendingEntryIds.contains(task.id)
@@ -725,6 +739,10 @@ private fun TodayContent(
                     )
                 }
                 if (UNSECTIONED_DROP_KEY !in collapsedSectionIds) items(renderDay.unsectionedEntries, key = { it.id }) { task ->
+                    val canPastForwardMove = !day.planningEnabled && day.taskChuteDayId != null &&
+                        task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived &&
+                        task.firstStartedAt == null && task.lastEndedAt == null && task.executionId == null &&
+                        directManipulationController != null
                     TodayTaskRow(
                         modifier = Modifier.animateItem(),
                         day = day,
@@ -756,11 +774,11 @@ private fun TodayContent(
                         canDayOperate = canPlanDay(day) && task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived && directManipulationController != null,
                         canLifecycleDelete = day.isCurrent && task.lifecycleState != LifecycleState.PLANNED && !task.routineDerived && directManipulationController != null,
                         canPlannedDelete = canPlanDay(day) && task.lifecycleState == LifecycleState.PLANNED && task.routineDerived && directManipulationController != null,
-                        canPastForwardOperate = !day.planningEnabled && day.taskChuteDayId != null && task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived && task.firstStartedAt == null && task.lastEndedAt == null && task.executionId == null && directManipulationController != null,
+                        canPastForwardOperate = canPastForwardMove,
                         onMovePrevious = { directManipulationController?.moveToDay(day, setOf(task.id), LocalDate.parse(day.logicalDate).minusDays(1).toString()) },
                         onMoveNext = { directManipulationController?.moveToDay(day, setOf(task.id), LocalDate.parse(day.logicalDate).plusDays(1).toString()) },
                         onMoveToday = { directManipulationController?.moveToDay(day, setOf(task.id), currentLogicalDate(day), allowPastSource = true) },
-                        onPickDate = { onOpenDatePicker(setOf(task.id)) },
+                        onPickDate = { onOpenDatePicker(setOf(task.id), canPastForwardMove) },
                         onDelete = { onRequestDelete(setOf(task.id)) },
                         canDrag = directManipulationController?.canDrag(day, task, selectedEntryIds) == true
                             && !state.pendingEntryIds.contains(task.id)
@@ -870,7 +888,7 @@ internal fun previewDayForTarget(day: TodayDay, entryId: String, target: Android
     )
 
 internal fun isEligibleAndroidDropAnchor(task: TodayTask): Boolean =
-    task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived
+    task.lifecycleState == LifecycleState.PLANNED
 
 internal fun resolveAndroidDropTarget(
     positionY: Float,

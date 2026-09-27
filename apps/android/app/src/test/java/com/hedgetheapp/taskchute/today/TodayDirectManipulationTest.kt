@@ -166,6 +166,87 @@ class TodayDirectManipulationTest {
         assertTrue(await { requests.singleOrNull() is DirectManipulationRequest.MoveToDay })
         controller.close()
     }
+
+    @Test
+    fun establishedPastPlannedTaskCanDispatchCurrentAndFutureDatePickerMoves() {
+        val requests = mutableListOf<DirectManipulationRequest>()
+        val controller = TodayDirectManipulationController(
+            repository = object : TodayDirectManipulationRepository {
+                override fun execute(request: DirectManipulationRequest): DirectManipulationResult {
+                    requests += request
+                    return DirectManipulationResult.Success
+                }
+            },
+            onRefresh = {},
+            onUnauthorized = {},
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+        )
+        val source = pastDay().copy(taskChuteDayId = "past-day")
+
+        controller.moveToDay(source, setOf("entry-1"), "2026-09-14", allowPastSource = true)
+        assertTrue(await { requests.size == 1 && controller.state.pendingEntryIds.isEmpty() })
+        controller.moveToDay(source, setOf("entry-1"), "2026-09-20", allowPastSource = true)
+
+        assertTrue(await { requests.size == 2 })
+        assertEquals(
+            listOf("2026-09-14", "2026-09-20"),
+            requests.map { (it as DirectManipulationRequest.MoveToDay).targetLogicalDate },
+        )
+        controller.close()
+    }
+
+    @Test
+    fun establishedPastPlannedTaskRejectsPastDatePickerTargetWithoutMutation() {
+        val requests = mutableListOf<DirectManipulationRequest>()
+        val controller = TodayDirectManipulationController(
+            repository = object : TodayDirectManipulationRepository {
+                override fun execute(request: DirectManipulationRequest): DirectManipulationResult {
+                    requests += request
+                    return DirectManipulationResult.Success
+                }
+            },
+            onRefresh = {},
+            onUnauthorized = {},
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+        )
+
+        controller.moveToDay(
+            pastDay().copy(taskChuteDayId = "past-day"),
+            setOf("entry-1"),
+            "2026-09-12",
+            allowPastSource = true,
+        )
+
+        assertTrue(requests.isEmpty())
+        assertEquals("過去の日には移動できません。", controller.state.errorMessage)
+        controller.close()
+    }
+
+    @Test
+    fun onlyPlannedRowsIncludingRoutineRowsCanBeDropAnchors() {
+        assertTrue(isEligibleAndroidDropAnchor(task(LifecycleState.PLANNED)))
+        assertTrue(isEligibleAndroidDropAnchor(task(LifecycleState.PLANNED, routineDerived = true)))
+        assertFalse(isEligibleAndroidDropAnchor(task(LifecycleState.RUNNING)))
+        assertFalse(isEligibleAndroidDropAnchor(task(LifecycleState.COMPLETED)))
+    }
+
+    @Test
+    fun routineSourceCanResolveRelativePlacementAgainstRoutineAnchor() {
+        val target = resolveAndroidDropTarget(
+            positionY = 300f,
+            sourceEntryId = "routine-source",
+            entryBounds = mapOf("routine-anchor" to Rect(0f, 260f, 100f, 340f)),
+            entrySectionIds = mapOf("routine-anchor" to "section-1"),
+            entryAnchorEligible = mapOf("routine-anchor" to true),
+            emptySectionBounds = emptyMap(),
+            emptySectionIds = emptyMap(),
+        )
+
+        assertEquals(
+            AndroidDropTarget("entry:routine-anchor", "section-1", "routine-anchor", PlacementEdge.AFTER),
+            target,
+        )
+    }
     @Test
     fun emptySectionMoveOmitsRelativePlacement() {
         val requests = mutableListOf<DirectManipulationRequest>()
