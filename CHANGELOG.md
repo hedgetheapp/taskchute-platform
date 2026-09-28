@@ -266,3 +266,9 @@
 - D-131 Section configuration reconciliation後に未establish future Dayを初回openする際、RoutineDefinitionのstored default Sectionが旧contextでも、`default_planned_start_minute`を選択Dayのcanonical Section contextへ再解決してmaterializeするよう修正した。RoutineDefinitionは変更せず、boundary / unique match / null pair invariant / schedule / replay / transaction semanticsを維持した。
 - Implementation `0732b6ca264afd91e7feee42430ae2cfdcadf2ff`、RED reproduction、Day Navigation `19 / 19`、Routine R2B `19 / 19`、typecheck、Worker build、diff-check、exact-SHA CI `36359852667`はPASS。Android jobはSKIPPED。
 - Persistent nonprod `taskchute-web-nonprod` version `0097de84-e791-4874-9df2-d2e1d553fd62`のguard / root `200` / protected API `401` / APP-AUTH migration `0 / 0` / quick_check / FK / guardsはPASS。CUA unavailableのためauthenticated Future Day GETはNOT_RUN。既存data mutation、schema / migration / dependency、Android/APK、productionは実施していない。ReleasedはNO。
+### D-148 Android Today legal D&D target visibility corrective — 2026-09-28
+
+- Added forgiving legal-boundary ownership zones so eligible drop targets remain visible and reachable without replacing the stable drag snapshot.
+- Ordinary same-Section boundaries are limited to the source planned-start cohort; Routine same-Section drops retain occurrence-aware relative placement, while cross-Section and empty/collapsed Section semantics remain unchanged. The insertion cue renders above the lifted overlay.
+- Implementation `e8a4198e518a14380a25c71016689a9567d6d1df`; focused/full Android JVM, focused Today AVD, Android builds, diff-check, and exact-SHA CI `36379323128` PASS. APK artifact `10952023768` / `taskchute-android-debug-e8a4198e518a14380a25c71016689a9567d6d1df`.
+- Galaxy S23 corrective retest remains `NOT_VERIFIED / PRODUCT_OWNER_MANUAL`; prior failures are retained as historical evidence. Worker/API/shared contract, schema, migration, dependency, persistent nonprod, Production, and Release were untouched.
