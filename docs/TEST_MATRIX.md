@@ -4002,3 +4002,18 @@ The old artifact's `FAIL / USER_REPORTED` is historical evidence and is not over
 | D148-RELATIVE-TODAY-FULL | Today standard surface | Not run for this narrow corrective per the focused verification boundary; prior standard Today runner remains `HARNESS_HUNG / PARTIAL / NOT_VERIFIED`. | NOT_RUN / NOT_VERIFIED |
 | D148-RELATIVE-DEVICE | Galaxy S23 | New corrective APK has not been manually retested; earlier D-148 failures remain historical evidence. | NOT_VERIFIED / PRODUCT_OWNER_MANUAL |
 | D148-RELATIVE-BOUNDARY | Product/server/device boundary | No Worker/API/shared contract, schema, migration, dependency, persistent nonprod, D-145, Notes, Production, or Release change/run. | PASS / NOT_REQUIRED / NOT_RUN / NO |
+
+## D-148 two-task placement revision synchronization corrective — 2026-09-28
+
+| ID | Surface | Evidence | Status |
+|---|---|---|---|
+| D148-TWO-TASK-IMPLEMENTATION | Android Today state / D&D | Implementation `08d16e138df0897e3224259d284204060cb0c684` parses nullable successful `placement_revision`, confirms it monotonically and by logical date before pending clear/refresh, and filters same-Section insertion boundaries by simulated post-removal/post-insertion order. | PASS |
+| D148-TWO-TASK-JVM | Focused Android JVM | Four affected classes: `TodayDirectManipulationTest` 50, `TodayControllerTest` 14, `TaskPlanningControllerTest` 13, `TaskPlanningHttpRepositoryTest` 11; `88 / 88 PASS`. Coverage includes no-op boundaries, meaningful two-row boundaries, response revision parsing, callback ordering, date scoping/monotonicity, and consecutive N→N+1 revision handoff. | PASS |
+| D148-TWO-TASK-WORKER | Existing Worker proof | Unchanged `apps/web/test/b2.integration.test.ts`: `15 / 15 PASS`, including relative MoveEntry, no-op, replay, and placement behavior. | PASS / EXISTING PROOF |
+| D148-TWO-TASK-AVD | `TaskChute_API33` Today | Focused instrumentation PASS: current-Day source A to meaningful B-after, established future-Day source B to meaningful A-before, existing ordinary relative D&D, and existing Routine occurrence-aware D&D. Crash buffer empty. | PASS / FOCUSED |
+| D148-TWO-TASK-AVD-CHAIN | Immediate consecutive UI re-entry | Same-test second physical drag after the first optimistic move did not re-enter reliably in the existing Compose harness; resolver and optimistic order were separately diagnosed, and the case is not claimed as a product pass. Controller-level consecutive N→N+1 revision handoff is PASS. | NOT_VERIFIED / TEST_HARNESS_LIMITATION |
+| D148-TWO-TASK-BUILD | Android build/static | `:app:compileDebugKotlin`, `:app:compileDebugAndroidTestKotlin`, `:app:assembleDebug`, and `git diff --check` PASS. | PASS |
+| D148-TWO-TASK-CI | Exact pushed SHA / APK | `main@08d16e138df0897e3224259d284204060cb0c684`, CI `36417239160` PASS; Android JVM, signed Debug build, instrumentation APK compile/signing, and upload PASS; Web/Worker correctly SKIP. Artifact `taskchute-android-debug-08d16e138df0897e3224259d284204060cb0c684`, ID `10967568385`, expires `2026-10-05T11:44:35Z`. | PASS |
+| D148-TWO-TASK-TODAY-FULL | Today standard surface | Not run for this narrow corrective; prior standard Today runner remains `HARNESS_HUNG / PARTIAL / NOT_VERIFIED`. | NOT_RUN / NOT_VERIFIED |
+| D148-TWO-TASK-DEVICE | Galaxy S23 | New corrective APK has not been manually retested; prior D-148 device evidence remains historical. | NOT_VERIFIED / PRODUCT_OWNER_MANUAL |
+| D148-TWO-TASK-BOUNDARY | Product/server/device boundary | No Worker/API/shared contract, schema, migration, dependency, persistent nonprod, D-145, Notes, Production, or Release change/run. | PASS / NOT_REQUIRED / NOT_RUN / NO |

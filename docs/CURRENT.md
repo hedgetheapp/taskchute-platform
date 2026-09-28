@@ -2972,3 +2972,11 @@ Implementation `e8a4198e518a14380a25c71016689a9567d6d1df` keeps the stable drag 
 The standard Today runner was not rerun for this corrective. The prior Galaxy S23 D&D failures remain historical `FAIL / USER_REPORTED`; this corrective has not yet received a Galaxy S23 retest and is `NOT_VERIFIED / PRODUCT_OWNER_MANUAL`. Worker/API/shared contract, schema, migration, dependency, persistent nonprod, Production, and Release were not changed or run.
 
 **Status: IMPLEMENTED / INTEGRATED / focused PASS / Galaxy S23 corrective NOT_VERIFIED / Production NOT_RUN / Released NO**
+
+### D-148 two-task placement revision synchronization corrective — 2026-09-28
+
+Implementation `08d16e138df0897e3224259d284204060cb0c684` synchronizes Android Today/direct-manipulation placement revisions from successful server responses before pending clear and refresh, with date-scoped monotonic confirmation shared by planning saves and D&D. Same-Section two-row no-op boundaries are filtered by simulated canonical order, while meaningful before/after boundaries remain available. Existing Worker relative MoveEntry semantics were unchanged and the focused Worker proof was `15 / 15 PASS`.
+
+Focused Android JVM was `88 / 88 PASS`. `TaskChute_API33` focused current/future meaningful-boundary D&D plus existing ordinary/Routine relative cases passed; compile, instrumentation compile, assemble, and diff-check passed. The immediate second UI drag in one Compose test was not reliable after the first optimistic reorder and remains `NOT_VERIFIED / TEST_HARNESS_LIMITATION`; deterministic consecutive revision handoff is covered by JVM. Exact-SHA CI `36417239160` passed and produced APK `taskchute-android-debug-08d16e138df0897e3224259d284204060cb0c684` / ID `10967568385`.
+
+Galaxy S23 is `NOT_VERIFIED / PRODUCT_OWNER_MANUAL`; standard Today surface, persistent nonprod, Production, and Release were not run. Worker/API/shared contract, schema, migration, dependency, D-145, and Notes were unchanged. **Status: IMPLEMENTED / INTEGRATED / focused PASS / Today chain NOT_VERIFIED / Galaxy S23 NOT_VERIFIED / Production NOT_RUN / Released NO**

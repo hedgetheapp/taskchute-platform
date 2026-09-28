@@ -57,6 +57,12 @@
 # Changelog
 
 ## Unreleased
+### D-148 Android Today two-task placement revision synchronization corrective — 2026-09-28
+
+- Successful Android planning/direct-manipulation responses now synchronize nullable server `placement_revision` into the date-scoped monotonic Today state before pending clear/refresh, preventing the next operation from using a stale revision while retaining the optimistic projection.
+- Same-Section D&D no-op insertion boundaries are omitted by simulating source removal and candidate insertion; meaningful boundaries, existing ordinary/Routine relative MoveEntry semantics, future-Day eligibility, and Worker behavior remain unchanged.
+- Focused Android JVM `88 / 88`, existing Worker proof `15 / 15`, focused `TaskChute_API33` cases, compile / instrumentation compile / assemble / diff-check, and exact-SHA CI `36417239160` PASS. The same-test immediate second UI drag remains `NOT_VERIFIED / TEST_HARNESS_LIMITATION`; Galaxy S23 `NOT_VERIFIED`, Production `NOT_RUN`, Released `NO`.
+
 ### D-148 Android Today insertion boundary / bottom edge auto-scroll corrective — 2026-09-27
 
 - Android Today D&D now resolves adjacent row hits to one deterministic insertion boundary and renders one thin non-layout-shifting insertion line; destination rows no longer receive a duplicate full-row cue.
