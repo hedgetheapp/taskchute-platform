@@ -75,6 +75,7 @@ sealed interface DirectManipulationRequest {
 
 sealed interface DirectManipulationResult {
     data object Success : DirectManipulationResult
+    data class SuccessWithRevision(val placementRevision: Int?) : DirectManipulationResult
     data object Unauthorized : DirectManipulationResult
     data object Ambiguous : DirectManipulationResult
     data class Failure(val message: String) : DirectManipulationResult
@@ -149,7 +150,10 @@ class TodayDirectManipulationHttpRepository(
             }
             response.status == 503 -> DirectManipulationResult.Ambiguous
             response.status !in 200..299 -> DirectManipulationResult.Failure(DETERMINISTIC_FAILURE_MESSAGE)
-            else -> DirectManipulationResult.Success
+            else -> runCatching { TaskPlanningJsonParser.parsePlacementRevision(response.body) }
+                .getOrNull()
+                ?.let(DirectManipulationResult::SuccessWithRevision)
+                ?: DirectManipulationResult.Success
         }
     }
 
@@ -171,6 +175,7 @@ class TodayDirectManipulationController(
     private val onOptimisticIntent: (DirectManipulationRequest) -> Unit = {},
     private val onOptimisticFailure: () -> Unit = {},
     private val loadDay: ((String) -> TodayResult)? = null,
+    private val onPlacementRevisionConfirmed: (String, Int) -> Unit = { _, _ -> },
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
 ) {
     var state by mutableStateOf(DirectManipulationUiState())
@@ -195,7 +200,11 @@ class TodayDirectManipulationController(
     fun reorder(day: TodayDay, sectionId: String?, entryIds: List<String>, affectedEntryIds: Set<String>) {
         val dayId = day.taskChuteDayId ?: return
         if (entryIds.isEmpty() || state.pendingEntryIds.isNotEmpty() || state.unresolvedRequest != null || !canPlanDay(day)) return
-        dispatch(affectedEntryIds, DirectManipulationRequest.Reorder(UUIDv7.next(), dayId, sectionId, entryIds, day.placementRevision))
+        dispatch(
+            affectedEntryIds,
+            DirectManipulationRequest.Reorder(UUIDv7.next(), dayId, sectionId, entryIds, day.placementRevision),
+            logicalDate = day.logicalDate,
+        )
     }
 
     fun move(day: TodayDay, entryId: String, target: PlacementTarget) {
@@ -218,6 +227,7 @@ class TodayDirectManipulationController(
                 UUIDv7.next(), entryId, dayId, targetSectionId, day.placementRevision,
                 placement, routineScoped, relativePlannedStartAnchor,
             ),
+            logicalDate = day.logicalDate,
         )
     }
 
@@ -227,6 +237,7 @@ class TodayDirectManipulationController(
         dispatch(
             setOf(source.id),
             DirectManipulationRequest.Duplicate(UUIDv7.next(), source.id, UUIDv7.next(), UUIDv7.next(), day.taskChuteDayId, day.placementRevision),
+            logicalDate = day.logicalDate,
         )
     }
 
@@ -270,6 +281,7 @@ class TodayDirectManipulationController(
                     allowSectionFallback = true,
                 ),
                 successMessage,
+                day.logicalDate,
             )
         }
     }
@@ -282,6 +294,7 @@ class TodayDirectManipulationController(
             entryIds,
             DirectManipulationRequest.Delete(UUIDv7.next(), day.taskChuteDayId, entryIds.toList().sorted(), day.placementRevision),
             successMessage,
+            day.logicalDate,
         )
     }
 
@@ -292,6 +305,7 @@ class TodayDirectManipulationController(
             setOf(task.id),
             DirectManipulationRequest.HardDelete(UUIDv7.next(), task.id, day.taskChuteDayId, day.placementRevision),
             successMessage,
+            day.logicalDate,
         )
     }
 
@@ -317,7 +331,15 @@ class TodayDirectManipulationController(
 
     fun close() = scope.cancel()
 
-    private fun dispatch(entryIds: Set<String>, request: DirectManipulationRequest, successMessage: String? = null) {
+    private var unresolvedLogicalDate: String? = null
+
+    private fun dispatch(
+        entryIds: Set<String>,
+        request: DirectManipulationRequest,
+        successMessage: String? = null,
+        logicalDate: String? = null,
+    ) {
+        if (logicalDate != null) unresolvedLogicalDate = logicalDate
         onOptimisticIntent(request)
         state = state.copy(
             pendingEntryIds = entryIds,
@@ -327,17 +349,37 @@ class TodayDirectManipulationController(
         )
         scope.launch {
             val result = withContext(Dispatchers.IO) { repository.execute(request) }
-            state = state.copy(pendingEntryIds = emptySet())
             when (result) {
                 DirectManipulationResult.Success -> {
-                    state = state.copy(errorMessage = null, unresolvedRequest = null, feedbackMessage = successMessage)
+                    unresolvedLogicalDate = null
+                    state = state.copy(
+                        pendingEntryIds = emptySet(),
+                        errorMessage = null,
+                        unresolvedRequest = null,
+                        feedbackMessage = successMessage,
+                    )
+                    onRefresh()
+                }
+                is DirectManipulationResult.SuccessWithRevision -> {
+                    result.placementRevision?.let { revision ->
+                        unresolvedLogicalDate?.let { date -> onPlacementRevisionConfirmed(date, revision) }
+                    }
+                    unresolvedLogicalDate = null
+                    state = state.copy(
+                        pendingEntryIds = emptySet(),
+                        errorMessage = null,
+                        unresolvedRequest = null,
+                        feedbackMessage = successMessage,
+                    )
                     onRefresh()
                 }
                 DirectManipulationResult.Unauthorized -> {
+                    state = state.copy(pendingEntryIds = emptySet())
                     onOptimisticFailure()
                     onUnauthorized()
                 }
                 DirectManipulationResult.Ambiguous -> {
+                    state = state.copy(pendingEntryIds = emptySet())
                     onOptimisticFailure()
                     state = state.copy(
                         unresolvedRequest = request,
@@ -345,6 +387,7 @@ class TodayDirectManipulationController(
                     )
                 }
                 is DirectManipulationResult.Failure -> {
+                    state = state.copy(pendingEntryIds = emptySet())
                     onOptimisticFailure()
                     nextDeterministicFailureToken += 1
                     state = state.copy(

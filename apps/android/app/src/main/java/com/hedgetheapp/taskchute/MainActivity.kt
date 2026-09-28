@@ -76,6 +76,7 @@ class MainActivity : ComponentActivity() {
             repository = TaskPlanningHttpRepository { method, path, body -> controller.authenticatedRequest(method, path, body)?.let { TodayHttpResponse(it.status, it.body) } },
             onUnauthorized = controller::restore,
             onSaved = todayController::reconcileSilently,
+            onPlacementRevisionConfirmed = todayController::confirmPlacementRevision,
             onOptimisticIntent = todayController::applyOptimisticPlanning,
             latestDay = { todayController.state.day },
             onOptimisticFailure = { todayController.clearOptimisticPresentation(); todayController.reconcileSilently() },
@@ -90,6 +91,7 @@ class MainActivity : ComponentActivity() {
             onOptimisticIntent = todayController::applyOptimisticDirectManipulation,
             onOptimisticFailure = todayController::clearOptimisticPresentation,
             loadDay = todayRepository::loadDay,
+            onPlacementRevisionConfirmed = todayController::confirmPlacementRevision,
         )
         notesController = NotesController(
             repository = DocumentHttpRepository(

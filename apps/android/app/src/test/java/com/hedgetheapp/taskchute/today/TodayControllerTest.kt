@@ -199,6 +199,23 @@ class TodayControllerTest {
         assertTrue(repository.requestedDates.contains("2026-09-17"))
         controller.close()
     }
+
+    @Test
+    fun placementRevisionConfirmationIsDateScopedAndMonotonic() {
+        val repository = FakeRepository().apply { loadResult = TodayResult.Success(dayWith(LifecycleState.PLANNED)) }
+        val controller = controller(repository)
+        controller.loadCurrent()
+        assertTrue(repository.loadStarted.await(2, TimeUnit.SECONDS))
+        assertTrue(awaitState(controller) { it.day != null })
+
+        controller.confirmPlacementRevision("2026-09-14", 8)
+        controller.confirmPlacementRevision("2026-09-14", 7)
+        controller.confirmPlacementRevision("2026-09-15", 99)
+
+        assertEquals(8, controller.state.day?.placementRevision)
+        controller.close()
+    }
+
     @Test
     fun realtimeDayInvalidationReloadsSelectedDay() {
         val repository = FakeRepository().apply { loadResult = TodayResult.Success(dayWith(LifecycleState.PLANNED)) }

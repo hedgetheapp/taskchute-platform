@@ -51,6 +51,19 @@ class TodayController(
         }
     }
 
+    /** Accepts the server placement revision without replacing the optimistic projection. */
+    fun confirmPlacementRevision(logicalDate: String, revision: Int) {
+        val day = state.day?.takeIf { it.logicalDate == logicalDate } ?: return
+        val nextRevision = maxOf(day.placementRevision, revision)
+        val nextDay = day.copy(placementRevision = nextRevision)
+        val nextOptimisticDay = state.optimisticDay?.let { optimisticDay ->
+            optimisticDay
+                .takeIf { it.logicalDate == logicalDate }
+                ?.copy(placementRevision = maxOf(optimisticDay.placementRevision, revision))
+        }
+        state = state.copy(day = nextDay, optimisticDay = nextOptimisticDay)
+    }
+
     fun clearOptimisticPresentation() {
         optimisticActive = false
         optimisticReconcileGeneration = null

@@ -16,6 +16,7 @@ class TaskPlanningController(
     private val repository: TaskPlanningRepository,
     private val onUnauthorized: () -> Unit,
     private val onSaved: () -> Unit,
+    private val onPlacementRevisionConfirmed: (String, Int) -> Unit = { _, _ -> },
     private val onOptimisticIntent: (TaskEditorState, NormalizedTaskInput) -> Unit = { _, _ -> },
     private val onOptimisticFailure: (String) -> Unit = {},
     private val latestDay: () -> TodayDay? = { null },
@@ -139,6 +140,7 @@ class TaskPlanningController(
                     onSaved()
                 }
                 is PlanningSaveResult.SuccessWithRevision -> {
+                    onPlacementRevisionConfirmed(editor.day.logicalDate, result.placementRevision)
                     rememberPlacementRevision(editor.day.logicalDate, result.placementRevision)
                     state = TaskPlanningUiState()
                     onSaved()

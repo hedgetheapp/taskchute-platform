@@ -1196,6 +1196,14 @@ internal fun resolveAndroidDropTarget(
                 .sorted()
         }
 
+    val orderedEntryIdsBySection = validEntries
+        .groupBy { entrySectionIds[it.key] }
+        .mapValues { (_, entries) ->
+            entries.sortedWith(compareBy<Map.Entry<String, Rect>>({ it.value.top }, { it.value.bottom }, { it.key }))
+                .map { it.key }
+        }
+    val resolvedSourceSectionId = sourceSectionId ?: entrySectionIds[sourceEntryId]
+
     fun isLegalEntryAnchor(entryId: String): Boolean {
         val targetSectionId = entrySectionIds[entryId]
         if (targetSectionId in endedSectionIds || entryAnchorEligible[entryId] == false) return false
@@ -1206,6 +1214,18 @@ internal fun resolveAndroidDropTarget(
     }
 
     val eligibleEntries = validEntries.filter { it.key != sourceEntryId && isLegalEntryAnchor(it.key) }
+
+    fun changesCanonicalOrder(entryId: String, sectionId: String?, edge: PlacementEdge): Boolean {
+        if (resolvedSourceSectionId != sectionId) return true
+        val currentIds = orderedEntryIdsBySection[sectionId].orEmpty()
+        if (sourceEntryId !in currentIds || entryId !in currentIds) return true
+        val withoutSource = currentIds.filterNot { it == sourceEntryId }.toMutableList()
+        val anchorIndex = withoutSource.indexOf(entryId)
+        if (anchorIndex < 0) return true
+        withoutSource.add(if (edge == PlacementEdge.AFTER) anchorIndex + 1 else anchorIndex, sourceEntryId)
+        return withoutSource != currentIds
+    }
+
     val boundaries = eligibleEntries
         .flatMap { (entryId, bounds) ->
             val sectionId = entrySectionIds[entryId]
@@ -1216,6 +1236,7 @@ internal fun resolveAndroidDropTarget(
                 InsertionBoundary(entryId, sectionId, PlacementEdge.BEFORE, bounds.top),
             )
         }
+        .filter { changesCanonicalOrder(it.entryId, it.sectionId, it.edge) }
         .sortedWith(compareBy<InsertionBoundary>({ it.y }, { if (it.edge == PlacementEdge.AFTER) 0 else 1 }, { it.entryId }))
         .fold(mutableListOf<InsertionBoundary>()) { unique, candidate ->
             if (unique.none {
@@ -1235,8 +1256,8 @@ internal fun resolveAndroidDropTarget(
             val previousPhysicalY = physicalBoundaryYs.lastOrNull { it < boundary.y - 0.5f }
             val nextPhysicalY = physicalBoundaryYs.firstOrNull { it > boundary.y + 0.5f }
             val sourceBounds = entryBounds[sourceEntryId]
-            val lower = if (boundaryIndex == 0) {
-                if (sourceSectionId == boundary.sectionId && sourceBounds != null &&
+            var lower = if (boundaryIndex == 0) {
+                if (resolvedSourceSectionId == boundary.sectionId && sourceBounds != null &&
                     sourceBounds.top.isFinite() && sourceBounds.top <= boundary.y
                 ) {
                     sourceBounds.top
@@ -1246,7 +1267,18 @@ internal fun resolveAndroidDropTarget(
             } else {
                 midpoint(previousPhysicalY ?: range.start, boundary.y)
             }
-            val upper = midpoint(boundary.y, nextPhysicalY ?: range.endInclusive)
+            var upper = midpoint(boundary.y, nextPhysicalY ?: range.endInclusive)
+            if (resolvedSourceSectionId == boundary.sectionId && sourceBounds != null) {
+                when {
+                    boundary.y < sourceBounds.top -> {
+                        upper = minOf(upper, midpoint(boundary.y, sourceBounds.top))
+                    }
+                    boundary.y > sourceBounds.bottom -> {
+                        lower = maxOf(lower, midpoint(boundary.y, sourceBounds.bottom))
+                    }
+                    else -> return@mapNotNull null
+                }
+            }
             if (positionY < lower || positionY > upper) return@mapNotNull null
             boundary
         }

@@ -207,6 +207,30 @@ class TaskPlanningControllerTest {
     }
 
     @Test
+    fun successfulCreateConfirmsPlacementRevisionToTodayBeforeSavedCallback() {
+        val repository = FakePlanningRepository().apply {
+            saveResults.add(PlanningSaveResult.SuccessWithRevision(6))
+        }
+        val confirmations = mutableListOf<Pair<String, Int>>()
+        val controller = TaskPlanningController(
+            repository = repository,
+            onUnauthorized = {},
+            onSaved = {},
+            onPlacementRevisionConfirmed = { date, revision -> confirmations += date to revision },
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+        )
+
+        controller.openCreate(currentDay())
+        assertTrue(await { controller.state.references != null })
+        controller.updateDraft(controller.state.editor!!.draft.copy(title = "Quick add revision"))
+        controller.save()
+        assertTrue(await { controller.state.editor == null && !controller.state.saving })
+
+        assertEquals(listOf("2026-09-14" to 6), confirmations)
+        controller.close()
+    }
+
+    @Test
     fun retryRebasesCreateAgainstLatestCanonicalRevision() {
         var canonical = currentDay()
         val repository = FakePlanningRepository().apply {

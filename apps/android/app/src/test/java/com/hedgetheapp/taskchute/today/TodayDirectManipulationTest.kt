@@ -10,6 +10,7 @@ import kotlinx.coroutines.SupervisorJob
 import androidx.compose.ui.geometry.Rect
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -322,7 +323,7 @@ class TodayDirectManipulationTest {
     }
 
     @Test
-    fun sourceSlotTransitionsToNearestLegalBoundary() {
+    fun sourceSlotIsNeutralWhenEveryVisibleBoundaryPreservesOrder() {
         val target = resolveAndroidDropTarget(
             positionY = 150f,
             sourceEntryId = "entry-b",
@@ -346,9 +347,102 @@ class TodayDirectManipulationTest {
             emptySectionIds = emptyMap(),
         )
 
-        assertEquals(entryDropKey("entry-c"), target?.key)
-        assertEquals(PlacementEdge.BEFORE, target?.edge)
+        assertNull(target)
+    }
+
+    @Test
+    fun twoRowSourceAExposesOnlyMeaningfulDownwardMove() {
+        val target = resolveAndroidDropTarget(
+            positionY = 160f,
+            sourceEntryId = "entry-a",
+            sourceSectionId = "section-1",
+            entryBounds = mapOf(
+                "entry-a" to Rect(0f, 20f, 100f, 100f),
+                "entry-b" to Rect(0f, 100f, 100f, 180f),
+            ),
+            entrySectionIds = mapOf("entry-a" to "section-1", "entry-b" to "section-1"),
+            entryAnchorEligible = mapOf("entry-a" to true, "entry-b" to true),
+            emptySectionBounds = emptyMap(),
+            emptySectionIds = emptyMap(),
+        )
+
+        assertEquals(entryDropKey("entry-b"), target?.key)
+        assertEquals(PlacementEdge.AFTER, target?.edge)
         assertEquals(180f, target?.resolvedBoundaryY)
+    }
+
+    @Test
+    fun twoRowSourceBExposesOnlyMeaningfulUpwardMove() {
+        val target = resolveAndroidDropTarget(
+            positionY = 40f,
+            sourceEntryId = "entry-b",
+            sourceSectionId = "section-1",
+            entryBounds = mapOf(
+                "entry-a" to Rect(0f, 20f, 100f, 100f),
+                "entry-b" to Rect(0f, 100f, 100f, 180f),
+            ),
+            entrySectionIds = mapOf("entry-a" to "section-1", "entry-b" to "section-1"),
+            entryAnchorEligible = mapOf("entry-a" to true, "entry-b" to true),
+            emptySectionBounds = emptyMap(),
+            emptySectionIds = emptyMap(),
+        )
+
+        assertEquals(entryDropKey("entry-a"), target?.key)
+        assertEquals(PlacementEdge.BEFORE, target?.edge)
+        assertEquals(20f, target?.resolvedBoundaryY)
+    }
+
+    @Test
+    fun reorderedTwoRowSourceCanMoveBackAfterTheOtherRow() {
+        val target = resolveAndroidDropTarget(
+            positionY = 160f,
+            sourceEntryId = "entry-b",
+            sourceSectionId = "section-1",
+            entryBounds = mapOf(
+                "entry-b" to Rect(0f, 20f, 100f, 100f),
+                "entry-a" to Rect(0f, 100f, 100f, 180f),
+            ),
+            entrySectionIds = mapOf("entry-a" to "section-1", "entry-b" to "section-1"),
+            entryAnchorEligible = mapOf("entry-a" to true, "entry-b" to true),
+            emptySectionBounds = emptyMap(),
+            emptySectionIds = emptyMap(),
+        )
+
+        assertEquals(entryDropKey("entry-a"), target?.key)
+        assertEquals(PlacementEdge.AFTER, target?.edge)
+    }
+
+    @Test
+    fun twoRowNoOpZonesDoNotResolveToVisibleMoveTargets() {
+        val commonBounds = mapOf(
+            "entry-a" to Rect(0f, 20f, 100f, 100f),
+            "entry-b" to Rect(0f, 100f, 100f, 180f),
+        )
+        val commonSections = mapOf("entry-a" to "section-1", "entry-b" to "section-1")
+        assertNull(
+            resolveAndroidDropTarget(
+                positionY = 120f,
+                sourceEntryId = "entry-a",
+                sourceSectionId = "section-1",
+                entryBounds = commonBounds,
+                entrySectionIds = commonSections,
+                entryAnchorEligible = mapOf("entry-a" to true, "entry-b" to true),
+                emptySectionBounds = emptyMap(),
+                emptySectionIds = emptyMap(),
+            ),
+        )
+        assertNull(
+            resolveAndroidDropTarget(
+                positionY = 80f,
+                sourceEntryId = "entry-b",
+                sourceSectionId = "section-1",
+                entryBounds = commonBounds,
+                entrySectionIds = commonSections,
+                entryAnchorEligible = mapOf("entry-a" to true, "entry-b" to true),
+                emptySectionBounds = emptyMap(),
+                emptySectionIds = emptyMap(),
+            ),
+        )
     }
 
     @Test
@@ -434,6 +528,67 @@ class TodayDirectManipulationTest {
     }
 
     @Test
+    fun successfulPlacementRevisionIsConfirmedBeforeRefresh() {
+        val repository = FakeRepository().apply {
+            result = DirectManipulationResult.SuccessWithRevision(8)
+        }
+        val confirmations = mutableListOf<Pair<String, Int>>()
+        val controller = TodayDirectManipulationController(
+            repository = repository,
+            onRefresh = {},
+            onUnauthorized = {},
+            onPlacementRevisionConfirmed = { date, revision -> confirmations += date to revision },
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+        )
+
+        controller.reorder(day(), "section-1", listOf("entry-2", "entry-1"), setOf("entry-1"))
+
+        assertTrue(await { controller.state.pendingEntryIds.isEmpty() })
+        assertEquals(listOf("2026-09-14" to 8), confirmations)
+        controller.close()
+    }
+
+    @Test
+    fun consecutiveMovesUseTheConfirmedRevisionForTheNextRequest() {
+        val requests = CopyOnWriteArrayList<DirectManipulationRequest>()
+        val initialDay = day()
+        var latestDay = initialDay
+        val repository = object : TodayDirectManipulationRepository {
+            override fun execute(request: DirectManipulationRequest): DirectManipulationResult {
+                requests += request
+                return DirectManipulationResult.SuccessWithRevision(
+                    initialDay.placementRevision + requests.size,
+                )
+            }
+        }
+        val controller = TodayDirectManipulationController(
+            repository = repository,
+            onRefresh = {},
+            onUnauthorized = {},
+            onPlacementRevisionConfirmed = { date, revision ->
+                if (date == latestDay.logicalDate) {
+                    latestDay = latestDay.copy(
+                        placementRevision = maxOf(latestDay.placementRevision, revision),
+                    )
+                }
+            },
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+        )
+        val target = PlacementTarget("section-1", "entry-2", PlacementEdge.AFTER)
+
+        controller.move(latestDay, "entry-1", target)
+        assertTrue(await { requests.size == 1 && controller.state.pendingEntryIds.isEmpty() })
+        controller.move(latestDay, "entry-1", target)
+        assertTrue(await { requests.size == 2 && controller.state.pendingEntryIds.isEmpty() })
+
+        assertEquals(
+            listOf(initialDay.placementRevision, initialDay.placementRevision + 1),
+            requests.map { (it as DirectManipulationRequest.Move).expectedPlacementRevision },
+        )
+        controller.close()
+    }
+
+    @Test
     fun futurePlanningDispatchesDuplicateMoveAndDeleteCommands() {
         val repository = FakeRepository()
         val controller = TodayDirectManipulationController(
@@ -500,6 +655,25 @@ class TodayDirectManipulationTest {
         assertTrue(requests[1].second.endsWith("/entries/entry-1/duplicate"))
         assertTrue(requests[2].third.orEmpty().contains("\"section_id\":\"section-empty\""))
         assertFalse(requests[2].third.orEmpty().contains("\"placement\""))
+    }
+
+    @Test
+    fun httpRepositoryParsesSuccessfulPlacementRevisionWhenPresent() {
+        val repository = TodayDirectManipulationHttpRepository(
+            request = { _, _, _ -> TodayHttpResponse(200, "{\"placement_revision\":8}") },
+        )
+
+        assertEquals(
+            DirectManipulationResult.SuccessWithRevision(8),
+            repository.execute(DirectManipulationRequest.Move(
+                operationId = "op-revision",
+                entryId = "entry-1",
+                taskChuteDayId = "day-1",
+                sectionId = "section-2",
+                expectedPlacementRevision = 7,
+                placement = null,
+            )),
+        )
     }
 
     @Test

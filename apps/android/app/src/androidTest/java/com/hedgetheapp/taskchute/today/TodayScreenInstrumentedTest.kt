@@ -572,6 +572,65 @@ class TodayScreenInstrumentedTest {
     }
 
     @Test
+    fun twoRowCurrentDayMovesDownToTheOnlyMeaningfulBoundary() {
+        val directRepository = FakeDirectManipulationRepository()
+        val base = dayWith().sections.single().entries.single()
+        val first = base.copy(id = "entry-two-a", title = "Two row A", taskId = "task-two-a", plannedStartMinute = 540)
+        val second = base.copy(id = "entry-two-b", title = "Two row B", taskId = "task-two-b", plannedStartMinute = 600)
+        val initialDay = dayWith().copy(
+            sections = listOf(dayWith().sections.single().copy(entries = listOf(first, second))),
+        )
+        launchPlanningScreen(FakePlanningRepository(), initialDay, directRepository, refreshAfterDirect = false)
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        val sourceA = composeRule.onNodeWithContentDescription("タスクをドラッグ: Two row A")
+        val sourceABounds = sourceA.fetchSemanticsNode().boundsInRoot
+        val targetB = composeRule.onNodeWithContentDescription("タスクをドラッグ: Two row B")
+        val targetBBounds = targetB.fetchSemanticsNode().boundsInRoot
+        sourceA.performTouchInput {
+            down(center)
+            advanceEventTime(600)
+            moveBy(Offset(0f, targetBBounds.bottom - targetBBounds.height * 0.1f - sourceABounds.center.y), delayMillis = 100)
+            up()
+        }
+        composeRule.waitUntil(15_000) { directRepository.moveCalls.get() == 1 }
+        assertEquals("entry-two-b", directRepository.lastMove?.placement?.anchorEntryId)
+        assertEquals(PlacementEdge.AFTER, directRepository.lastMove?.placement?.edge)
+    }
+
+    @Test
+    fun twoRowFutureDayMovesUpToTheOnlyMeaningfulBoundary() {
+        val directRepository = FakeDirectManipulationRepository()
+        val base = dayWith().sections.single().entries.single()
+        val first = base.copy(id = "future-two-a", title = "Future two A", taskId = "future-two-task-a", plannedStartMinute = 540)
+        val second = base.copy(id = "future-two-b", title = "Future two B", taskId = "future-two-task-b", plannedStartMinute = 600)
+        val futureDay = dayWith().copy(
+            logicalDate = "2026-09-15",
+            isCurrent = false,
+            taskChuteDayId = "future-two-day",
+            sections = listOf(dayWith().sections.single().copy(entries = listOf(first, second))),
+        )
+        launchPlanningScreen(FakePlanningRepository(), futureDay, directRepository, refreshAfterDirect = false)
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        val sourceB = composeRule.onNodeWithContentDescription("タスクをドラッグ: Future two B")
+        val sourceBBounds = sourceB.fetchSemanticsNode().boundsInRoot
+        val targetA = composeRule.onNodeWithContentDescription("タスクをドラッグ: Future two A")
+        val targetABounds = targetA.fetchSemanticsNode().boundsInRoot
+        sourceB.performTouchInput {
+            down(center)
+            advanceEventTime(600)
+            moveBy(Offset(0f, targetABounds.top + targetABounds.height * 0.1f - sourceBBounds.center.y), delayMillis = 100)
+            up()
+        }
+        composeRule.waitUntil(15_000) { directRepository.moveCalls.get() == 1 }
+        assertEquals("future-two-a", directRepository.lastMove?.placement?.anchorEntryId)
+        assertEquals(PlacementEdge.BEFORE, directRepository.lastMove?.placement?.edge)
+
+        assertEquals(1, directRepository.moveCalls.get())
+    }
+
+    @Test
     fun routineRelativeSameSectionDropUsesOccurrenceAwareMoveOnce() {
         val directRepository = FakeDirectManipulationRepository()
         val base = dayWith().sections.single().entries.single()
@@ -1329,6 +1388,7 @@ class TodayScreenInstrumentedTest {
         initialDay: TodayDay = dayWith(),
         directRepository: FakeDirectManipulationRepository? = null,
         onOpenTaskNote: (TodayTask) -> Unit = {},
+        refreshAfterDirect: Boolean = true,
     ) {
         val repo = FakeTodayRepository(initialDay = initialDay)
         repository = repo
@@ -1346,8 +1406,9 @@ class TodayScreenInstrumentedTest {
         this.directManipulationController = directRepository?.let {
             TodayDirectManipulationController(
                 repository = it,
-                onRefresh = controller!!::refresh,
+                onRefresh = { if (refreshAfterDirect) controller?.refresh() },
                 onUnauthorized = {},
+                onOptimisticIntent = controller!!::applyOptimisticDirectManipulation,
                 scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
             )
         }
