@@ -272,3 +272,9 @@
 - Ordinary same-Section boundaries are limited to the source planned-start cohort; Routine same-Section drops retain occurrence-aware relative placement, while cross-Section and empty/collapsed Section semantics remain unchanged. The insertion cue renders above the lifted overlay.
 - Implementation `e8a4198e518a14380a25c71016689a9567d6d1df`; focused/full Android JVM, focused Today AVD, Android builds, diff-check, and exact-SHA CI `36379323128` PASS. APK artifact `10952023768` / `taskchute-android-debug-e8a4198e518a14380a25c71016689a9567d6d1df`.
 - Galaxy S23 corrective retest remains `NOT_VERIFIED / PRODUCT_OWNER_MANUAL`; prior failures are retained as historical evidence. Worker/API/shared contract, schema, migration, dependency, persistent nonprod, Production, and Release were untouched.
+
+### D-148 Android Today single-task relative D&D corrective — 2026-09-28
+
+- Restored ordinary single-Task concrete-anchor D&D through the existing `MoveEntry` relative-placement path across planned-start cohorts. The earlier same-Section cohort filter was limited to the bulk `ReorderEntries` semantics; no client-side planned-start or order rewrite was added.
+- Routine-derived single-Task anchors retain the occurrence-aware flags, while same-Section no-anchor no-op, Section-only moves, future-Day eligibility, stable source/snapshot, auto-scroll/rebase, and parent pointer-up one-time dispatch remain unchanged.
+- Focused JVM, focused `TaskChute_API33` current/future/Routine/edge cases, compile / instrumentation compile / assemble / diff-check, and exact-SHA CI `36409567988` PASS. APK artifact `10964185874` / `taskchute-android-debug-50e79a0b70eb9a45d30e3f5876ceb56d3efe5bc0`. Galaxy S23 remains `NOT_VERIFIED / PRODUCT_OWNER_MANUAL`; Worker/API/shared contract, schema, migration, dependency, persistent nonprod, D-145, Notes, Production, and Release were unchanged/not run.

@@ -3989,3 +3989,16 @@ The old artifact's `FAIL / USER_REPORTED` is historical evidence and is not over
 | D148-LEGAL-CI | GitHub Actions | Exact `main@e8a4198e518a14380a25c71016689a9567d6d1df`, CI run `36379323128` PASS. Android JVM, signed debug build, instrumentation APK compile, signing verification, and upload PASS; Web/Worker correctly SKIP. APK `taskchute-android-debug-e8a4198e518a14380a25c71016689a9567d6d1df`, artifact ID `10952023768`, expires `2026-10-05T04:52:31Z`. | PASS |
 | D148-LEGAL-DEVICE | Galaxy S23 | Earlier D-148 D&D failures remain historical `FAIL / USER_REPORTED`; this corrective APK has not been manually retested. | NOT_VERIFIED / PRODUCT_OWNER_MANUAL |
 | D148-LEGAL-SCOPE | Boundary | Android Today and focused tests only. No Worker/API/shared contract, schema, migration, dependency, persistent nonprod, Production, or Release change/run. | PASS / NOT_REQUIRED / NOT_RUN / NO |
+
+## D-148 single-task relative D&D corrective — 2026-09-28
+
+| ID | Surface | Evidence | Status |
+|---|---|---|---|
+| D148-RELATIVE-IMPLEMENTATION | Android Today single Task | Implementation `50e79a0b70eb9a45d30e3f5876ceb56d3efe5bc0`: ordinary concrete anchors are resolved across planned-start cohorts and dispatched through existing `MoveEntry` relative placement once; Routine anchors retain occurrence-aware flags. No relative marker is sent for ordinary Tasks. | PASS |
+| D148-RELATIVE-JVM | Focused Android JVM | `TodayDirectManipulationTest` focused suite PASS; resolver now covers ordinary cross-cohort concrete anchor exposure while preserving ended-section, lifecycle, no-op, Section-only, and Routine paths. | PASS |
+| D148-RELATIVE-AVD | `TaskChute_API33` Today | Focused instrumentation PASS: ordinary same-Section cross-cohort upward/downward moves, existing Routine relative move, future-Day ordinary/Routine relative moves, visible cross-Section move, and off-screen edge auto-scroll. Each expected dispatch occurred once; crash buffer empty. | PASS / FOCUSED |
+| D148-RELATIVE-BUILD | Android build/static | `:app:compileDebugKotlin`, `:app:compileDebugAndroidTestKotlin`, `:app:assembleDebug`, and `git diff --check` PASS. | PASS |
+| D148-RELATIVE-CI | Exact pushed SHA / APK | `main@50e79a0b70eb9a45d30e3f5876ceb56d3efe5bc0`, CI `36409567988` PASS; classifier PASS, Android JVM, signed Debug build, instrumentation APK compile, signing verification, and upload PASS; Web/Worker SKIP. Artifact `taskchute-android-debug-50e79a0b70eb9a45d30e3f5876ceb56d3efe5bc0`, ID `10964185874`, expires `2026-10-05T10:27:49Z`. | PASS |
+| D148-RELATIVE-TODAY-FULL | Today standard surface | Not run for this narrow corrective per the focused verification boundary; prior standard Today runner remains `HARNESS_HUNG / PARTIAL / NOT_VERIFIED`. | NOT_RUN / NOT_VERIFIED |
+| D148-RELATIVE-DEVICE | Galaxy S23 | New corrective APK has not been manually retested; earlier D-148 failures remain historical evidence. | NOT_VERIFIED / PRODUCT_OWNER_MANUAL |
+| D148-RELATIVE-BOUNDARY | Product/server/device boundary | No Worker/API/shared contract, schema, migration, dependency, persistent nonprod, D-145, Notes, Production, or Release change/run. | PASS / NOT_REQUIRED / NOT_RUN / NO |
