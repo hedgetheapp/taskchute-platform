@@ -3961,6 +3961,20 @@ The earlier D-121 Galaxy S23 evidence for implementation `b4f3925...` remains hi
 | D127-CORR-SCOPE | Boundary | no Worker/API/schema/migration/dependency/production/tag/Release change; D-127 Server-authoritative and D-125 semantics retained | PASS / NOT_REQUIRED |
 
 The old artifact's `FAIL / USER_REPORTED` is historical evidence and is not overwritten by this corrective. The corrective remains Integrated/Tested locally but not Verified until the new artifact receives physical-device evidence. Production remains `NOT_RUN` and Released remains `NO`.
+
+## D-148 stale reconcile revision rollback corrective — 2026-09-28
+
+| ID | Surface | Evidence | Status |
+|---|---|---|---|
+| D148-STALE-IMPLEMENTATION | Android Today state | `c43fffe6470531037183c7162f519ec196e29bc4`: per-logical-date monotonic revision floor; stale GET rejected without optimistic/error rollback; one coalesced silent retry; newer/equal GET accepted | PASS |
+| D148-STALE-JVM | Android focused JVM | `91 / 91 PASS`: TodayController 17, TodayDirectManipulation 50, TaskPlanningController 13, TaskPlanningHttpRepository 11; includes stale current/future reconcile, date isolation, optimistic preservation, and Quick Add N+1..N+4 revision chain | PASS |
+| D148-STALE-WORKER | Worker proof | Unchanged `b2.integration.test.ts` `15 / 15 PASS`; no Worker/API/shared contract change | PASS / EXISTING PROOF |
+| D148-STALE-AVD | `TaskChute_API33` Today | Four-row current/future meaningful-boundary D&D cases `4 / 4 PASS`, one expected dispatch per case; MainActivity/UI-tree smoke PASS; target-app crash buffer has no FATAL/ANR marker | PASS / FOCUSED |
+| D148-STALE-RACE-AVD | Quick Add + injected stale HTTP in one UI flow | Existing Compose harness cannot inject the stale GET during the same UI flow; deterministic equivalent is covered by JVM | NOT_VERIFIED / TEST_HARNESS_LIMITATION |
+| D148-STALE-BUILD | Android build/static | `:app:compileDebugKotlin`, `:app:compileDebugAndroidTestKotlin`, `:app:assembleDebug`, `git diff --check` PASS | PASS |
+| D148-STALE-CI | Exact pushed SHA / APK | `main@c43fffe6470531037183c7162f519ec196e29bc4`, CI `36421585299` PASS; classifier Android-only, Web/Worker skipped; APK `taskchute-android-debug-c43fffe6470531037183c7162f519ec196e29bc4`, ID `10970281200`, expires `2026-10-05T12:26:59Z` | PASS |
+| D148-STALE-DEVICE | Galaxy S23 | New corrective APK has not been manually retested | NOT_VERIFIED / PRODUCT_OWNER_MANUAL |
+| D148-STALE-BOUNDARY | Scope | No Worker/API/shared contract, schema, migration, dependency, persistent nonprod, D-145, Notes, Production, or Release change/run | PASS / NOT_REQUIRED / NOT_RUN / NO |
 ## D-148 Android Today D&D parent pointer ownership capture — 2026-09-27
 
 - Implementation `ce84f3f3e963ce3d3dda22485e0fe086ed09f5a6` removes row-level `onDragMove` authority. After long-press handoff, the stable Today parent observes `PointerEventPass.Initial`, consumes only the matching active pressed pointer, derives root Y from the parent coordinate, and remains the sole physical-up / one-time finish authority. Before handoff normal scroll/swipe/pull-to-refresh movement remains unconsumed.

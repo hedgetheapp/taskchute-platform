@@ -1,3 +1,9 @@
+### D-148 Android Today stale reconcile revision rollback corrective — 2026-09-28
+
+- Android Today now keeps a monotonic `placement_revision` floor per logical date. Successful Quick Add/planning/D&D responses advance that floor before refresh; stale GET snapshots are ignored without replacing the optimistic projection or showing an error, with one coalesced silent retry. Newer/equal snapshots remain normal, and Future Day state is date-isolated.
+- Focused Android JVM `91 / 91`, unchanged Worker proof `15 / 15`, focused `TaskChute_API33` four-row D&D `4 / 4`, MainActivity/UI-tree smoke, crash-buffer check, compile / instrumentation compile / assemble / diff-check, and exact-SHA CI `36421585299` PASS. The same-flow Quick Add plus injected stale HTTP case remains `NOT_VERIFIED / TEST_HARNESS_LIMITATION`.
+- APK `taskchute-android-debug-c43fffe6470531037183c7162f519ec196e29bc4`, artifact ID `10970281200`, expires `2026-10-05T12:26:59Z`. Galaxy S23 `NOT_VERIFIED / PRODUCT_OWNER_MANUAL`, persistent nonprod / Production `NOT_RUN`, Released `NO`; Worker/API/shared contract, schema, migration, dependency, D-145, and Notes unchanged.
+
 ### D-148 Android Today D&D regression recovery — 2026-09-27
 
 - `cc3a83e...`のGalaxy S23 `FAIL / USER_REPORTED`を履歴として保持し、pre-cc3の通常D&D presentationへ復旧。通常rowのlayout-changing target paddingと3状態previewを除去し、consumed auto-scroll時だけ単一booleanで現行`provisionalDay`を保持する。snapshot/target rebase、非layout cue、edge停止後の最新target settle、stable parent physical-up authority、Routine empty-Section occurrence-aware no-anchor requestは維持した。
