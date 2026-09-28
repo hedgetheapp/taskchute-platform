@@ -507,6 +507,219 @@ class TodayScreenInstrumentedTest {
     }
 
     @Test
+    fun physicalTwoStepRelativeMoveUsesFreshRevisionWithoutNavigation() {
+        val directRepository = FakeDirectManipulationRepository().apply {
+            scriptedResults += DirectManipulationResult.SuccessWithRevision(6)
+            scriptedResults += DirectManipulationResult.SuccessWithRevision(7)
+        }
+        val base = dayWith().sections.single().entries.single()
+        val entries = (1..4).map { index ->
+            base.copy(
+                id = "physical-entry-$index",
+                title = "Physical task $index",
+                taskId = "physical-task-$index",
+                plannedStartMinute = 540,
+            )
+        }
+        val initialDay = dayWith().copy(
+            placementRevision = 5,
+            sections = listOf(dayWith().sections.single().copy(entries = entries)),
+        )
+        launchPlanningScreen(
+            FakePlanningRepository(),
+            initialDay = initialDay,
+            directRepository = directRepository,
+            refreshAfterDirect = false,
+        )
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        fun dragAfter(sourceTitle: String, targetTitle: String) {
+            val sourceNode = composeRule.onNodeWithContentDescription("タスクをドラッグ: $sourceTitle")
+            val sourceBounds = sourceNode.fetchSemanticsNode().boundsInRoot
+            val targetBounds = composeRule.onNodeWithContentDescription("タスクをドラッグ: $targetTitle")
+                .fetchSemanticsNode().boundsInRoot
+            sourceNode.performTouchInput {
+                down(center)
+                advanceEventTime(600)
+                moveBy(
+                    Offset(0f, targetBounds.bottom - targetBounds.height * 0.1f - sourceBounds.center.y),
+                    delayMillis = 100,
+                )
+                up()
+            }
+        }
+
+        dragAfter("Physical task 2", "Physical task 3")
+        composeRule.waitUntil(15_000) {
+            directRepository.moves.size == 1 && controller?.state?.presentedDay?.placementRevision == 6
+        }
+        assertEquals(5, directRepository.moves[0].expectedPlacementRevision)
+
+        // Same mounted Today screen and same parent pointerInput host: no navigation or reload.
+        dragAfter("Physical task 2", "Physical task 4")
+        composeRule.waitUntil(15_000) {
+            directRepository.moves.size == 2 && controller?.state?.presentedDay?.placementRevision == 7
+        }
+        assertEquals(6, directRepository.moves[1].expectedPlacementRevision)
+        assertEquals("physical-entry-4", directRepository.moves[1].placement?.anchorEntryId)
+        assertEquals(PlacementEdge.AFTER, directRepository.moves[1].placement?.edge)
+    }
+
+    @Test
+    fun physicalTwoStepRelativeMoveUsesFreshRevisionOnEstablishedFutureDay() {
+        val directRepository = FakeDirectManipulationRepository().apply {
+            scriptedResults += DirectManipulationResult.SuccessWithRevision(6)
+            scriptedResults += DirectManipulationResult.SuccessWithRevision(7)
+        }
+        val base = dayWith().sections.single().entries.single()
+        val entries = (1..4).map { index ->
+            base.copy(
+                id = "future-physical-entry-$index",
+                title = "Future physical task $index",
+                taskId = "future-physical-task-$index",
+                plannedStartMinute = 540,
+            )
+        }
+        val futureDay = dayWith().copy(
+            logicalDate = "2026-09-15",
+            isCurrent = false,
+            taskChuteDayId = "future-day-1",
+            placementRevision = 5,
+            sections = listOf(dayWith().sections.single().copy(entries = entries)),
+        )
+        launchPlanningScreen(
+            FakePlanningRepository(),
+            initialDay = futureDay,
+            directRepository = directRepository,
+            refreshAfterDirect = false,
+        )
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        fun dragAfter(sourceTitle: String, targetTitle: String) {
+            val sourceNode = composeRule.onNodeWithContentDescription("タスクをドラッグ: $sourceTitle")
+            val sourceBounds = sourceNode.fetchSemanticsNode().boundsInRoot
+            val targetBounds = composeRule.onNodeWithContentDescription("タスクをドラッグ: $targetTitle")
+                .fetchSemanticsNode().boundsInRoot
+            sourceNode.performTouchInput {
+                down(center)
+                advanceEventTime(600)
+                moveBy(
+                    Offset(0f, targetBounds.bottom - targetBounds.height * 0.1f - sourceBounds.center.y),
+                    delayMillis = 100,
+                )
+                up()
+            }
+        }
+
+        dragAfter("Future physical task 2", "Future physical task 3")
+        composeRule.waitUntil(15_000) {
+            directRepository.moves.size == 1 && controller?.state?.presentedDay?.placementRevision == 6
+        }
+        dragAfter("Future physical task 2", "Future physical task 4")
+        composeRule.waitUntil(15_000) {
+            directRepository.moves.size == 2 && controller?.state?.presentedDay?.placementRevision == 7
+        }
+        assertEquals(5, directRepository.moves[0].expectedPlacementRevision)
+        assertEquals(6, directRepository.moves[1].expectedPlacementRevision)
+        assertEquals("future-physical-entry-4", directRepository.moves[1].placement?.anchorEntryId)
+    }
+
+    @Test
+    fun physicalDragUsesRevisionConfirmedByQuickAddOnSameScreen() {
+        val directRepository = FakeDirectManipulationRepository().apply {
+            scriptedResults += DirectManipulationResult.SuccessWithRevision(7)
+        }
+        val base = dayWith().sections.single().entries.single()
+        val entries = (1..4).map { index ->
+            base.copy(
+                id = "quick-add-entry-$index",
+                title = "Quick Add physical task $index",
+                taskId = "quick-add-task-$index",
+                plannedStartMinute = 540,
+            )
+        }
+        val initialDay = dayWith().copy(
+            placementRevision = 5,
+            sections = listOf(dayWith().sections.single().copy(entries = entries)),
+        )
+        launchPlanningScreen(
+            FakePlanningRepository(),
+            initialDay = initialDay,
+            directRepository = directRepository,
+            refreshAfterDirect = false,
+        )
+        waitForStatus(TodayLoadStatus.CONTENT)
+        requireNotNull(controller).confirmPlacementRevision(initialDay.logicalDate, 6)
+        composeRule.waitUntil(5_000) { controller?.state?.presentedDay?.placementRevision == 6 }
+
+        val sourceNode = composeRule.onNodeWithContentDescription("タスクをドラッグ: Quick Add physical task 2")
+        val sourceBounds = sourceNode.fetchSemanticsNode().boundsInRoot
+        val targetBounds = composeRule.onNodeWithContentDescription("タスクをドラッグ: Quick Add physical task 3")
+            .fetchSemanticsNode().boundsInRoot
+        sourceNode.performTouchInput {
+            down(center)
+            advanceEventTime(600)
+            moveBy(
+                Offset(0f, targetBounds.bottom - targetBounds.height * 0.1f - sourceBounds.center.y),
+                delayMillis = 100,
+            )
+            up()
+        }
+
+        composeRule.waitUntil(15_000) { directRepository.moves.size == 1 && controller?.state?.presentedDay?.placementRevision == 7 }
+        assertEquals(6, directRepository.moves.single().expectedPlacementRevision)
+    }
+
+    @Test
+    fun physicalRoutineMoveUsesCurrentParentPointerOwner() {
+        val directRepository = FakeDirectManipulationRepository().apply {
+            scriptedResults += DirectManipulationResult.SuccessWithRevision(6)
+        }
+        val base = dayWith().sections.single().entries.single()
+        val routine = base.copy(
+            id = "physical-routine-source",
+            title = "Physical Routine source",
+            taskId = "physical-routine-task",
+            routineDerived = true,
+            plannedStartMinute = 540,
+        )
+        val anchor = base.copy(
+            id = "physical-routine-anchor",
+            title = "Physical Routine anchor",
+            taskId = "physical-routine-anchor-task",
+            routineDerived = true,
+            plannedStartMinute = 660,
+        )
+        val initialDay = dayWith().copy(
+            placementRevision = 5,
+            sections = listOf(dayWith().sections.single().copy(entries = listOf(routine, anchor))),
+        )
+        launchPlanningScreen(
+            FakePlanningRepository(),
+            initialDay = initialDay,
+            directRepository = directRepository,
+            refreshAfterDirect = false,
+        )
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        val sourceNode = composeRule.onNodeWithContentDescription("タスクをドラッグ: Physical Routine source")
+        val sourceBounds = sourceNode.fetchSemanticsNode().boundsInRoot
+        val targetBounds = composeRule.onNodeWithContentDescription("タスクをドラッグ: Physical Routine anchor")
+            .fetchSemanticsNode().boundsInRoot
+        sourceNode.performTouchInput {
+            down(center)
+            advanceEventTime(600)
+            moveBy(Offset(0f, targetBounds.center.y - sourceBounds.center.y), delayMillis = 100)
+            up()
+        }
+
+        composeRule.waitUntil(15_000) { directRepository.moves.size == 1 }
+        assertTrue(directRepository.moves.single().routineScoped)
+        assertTrue(directRepository.moves.single().relativePlannedStartAnchor)
+        assertEquals(5, directRepository.moves.single().expectedPlacementRevision)
+    }
+
+    @Test
     fun longPressDragMovesFourRowDifferentCohortUpwardWithOneMoveDispatch() {
         val directRepository = FakeDirectManipulationRepository()
         val base = dayWith().sections.single().entries.single()

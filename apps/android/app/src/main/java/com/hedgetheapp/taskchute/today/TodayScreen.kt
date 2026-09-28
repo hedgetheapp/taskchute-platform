@@ -74,6 +74,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -593,6 +594,10 @@ private fun TodayContent(
             )
         }
     }
+    // The parent pointer coroutine is intentionally keyed only by logical date so an active
+    // drag is not cancelled by ordinary same-day recomposition. Keep its command callback
+    // current so a later physical pointer-up uses the latest placement revision.
+    val latestFinishDrag = rememberUpdatedState(newValue = { finishDrag() })
     val pullToRefreshState = rememberPullToRefreshState()
     val todayListState = rememberLazyListState()
     val edgeZonePx = with(LocalDensity.current) { D148_DRAG_EDGE_ZONE.dp.toPx() }
@@ -750,7 +755,7 @@ private fun TodayContent(
                             )
                         ) {
                             dragFinishIssued = true
-                            finishDrag()
+                            latestFinishDrag.value()
                         } else if (!change.pressed) {
                             dragState = null
                             dragPointerRootY = null
