@@ -4045,3 +4045,17 @@ The old artifact's `FAIL / USER_REPORTED` is historical evidence and is not over
 | D148-DIAG-DEVICE | Galaxy S23 | Exact second request/status/code/message from the reported device failure was not captured; historical meaningful `2 → 4 AFTER` remains `FAIL / USER_REPORTED`; new diagnostic APK awaits manual retest | NOT_VERIFIED / PRODUCT_OWNER_MANUAL |
 | D148-DIAG-NONPROD | Persistent nonprod | Android diagnostic-only scope; no Worker source or shared contract change | NOT_REQUIRED |
 | D148-DIAG-BOUNDARY | Product/server/device boundary | No Worker/API/shared contract, schema, migration, dependency, D-145, Notes, persistent nonprod, Production, or Release change/run | PASS / NOT_REQUIRED / NOT_RUN / NO |
+
+## D-148 stale parent pointerInput closure / physical revision freshness corrective — 2026-09-28
+
+| ID | Surface | Evidence | Status |
+|---|---|---|---|
+| D148-CLOSURE-RED | Android physical pointer | Real Compose `performTouchInput` RED before the fix: first `2 → 3 AFTER` used revision `5` and returned `6`; the second same-screen `2 → 4 AFTER` incorrectly reused `5`, failing the expected `6` assertion | PASS / RED REPRODUCED |
+| D148-CLOSURE-IMPLEMENTATION | Today parent pointer owner | `8996e1b66895f5bd77d0636646f197f16fc99418` keeps `.pointerInput(day.logicalDate)` stable and uses `rememberUpdatedState` so physical pointer-up dereferences the latest `finishDrag` callback/Day | PASS |
+| D148-CLOSURE-JVM | Android focused JVM | `TodayDirectManipulationTest` `53 / 53 PASS`; existing direct-manipulation/revision authority coverage remains green | PASS |
+| D148-CLOSURE-AVD | `TaskChute_API33` Today | Current two-step, established Future two-step, same-screen Quick Add-confirmed revision, and Routine physical regression `4 / 4`; existing auto-scroll/cohort/future/pointer-owner regressions `5 / 5`; crash buffer empty | PASS / FOCUSED |
+| D148-CLOSURE-BUILD | Android build/static | `:app:compileDebugKotlin`, `:app:compileDebugAndroidTestKotlin`, `:app:assembleDebug`, and `git diff --check` PASS | PASS |
+| D148-CLOSURE-CI | Exact pushed SHA / APK | `main@8996e1b66895f5bd77d0636646f197f16fc99418`, CI `36434645647` PASS; Android JVM, signed debug build, instrumentation APK compile/signing/upload PASS; Web/Worker SKIP; APK `taskchute-android-debug-8996e1b66895f5bd77d0636646f197f16fc99418`, artifact ID `10975751026`, expires `2026-10-05T14:18:23Z` | PASS |
+| D148-CLOSURE-DEVICE | Galaxy S23 | This APK has not been manually retested; historical device failure remains historical evidence | NOT_VERIFIED / PRODUCT_OWNER_MANUAL |
+| D148-CLOSURE-NONPROD | Persistent nonprod | Android-only corrective; no Worker source/shared contract change or deploy | NOT_REQUIRED |
+| D148-CLOSURE-BOUNDARY | Scope | No Worker/API/shared contract, schema, migration, dependency, persistent nonprod, D-145, Notes, Production, or Release change/run | PASS / NOT_REQUIRED / NOT_RUN / NO |
