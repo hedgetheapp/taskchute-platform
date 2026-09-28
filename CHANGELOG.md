@@ -1,3 +1,9 @@
+### D-148 Android Today exact failure diagnosis and real client chain — 2026-09-28
+
+- Added internal structured capture for deterministic direct-manipulation failures without exposing backend details in the generic Japanese UI, plus a real HTTP client-chain regression proving that the first successful move's returned revision is serialized into the immediate second move for current and established future Days.
+- Focused Android JVM `53 / 53`, Worker `16 / 16`, selected Today AVD `7 / 7`, final Android build/diff-check/crash-buffer, and exact-SHA CI `36428149578` PASS. APK `taskchute-android-debug-a2eab4c92cbaf44718cd63c058ab8e9246672e32`, artifact ID `10972313039`, expires `2026-10-05T13:25:08Z`.
+- The scripted `409 resource_conflict` fixture is local diagnostic evidence only; the exact Galaxy S23 failure response was not captured. Galaxy remains `NOT_VERIFIED / PRODUCT_OWNER_MANUAL`; Production `NOT_RUN`; Released `NO`. No Worker/API/shared contract, schema, migration, dependency, or nonprod change.
+
 ### D-148 Android Today stale reconcile revision rollback corrective — 2026-09-28
 
 - Android Today now keeps a monotonic `placement_revision` floor per logical date. Successful Quick Add/planning/D&D responses advance that floor before refresh; stale GET snapshots are ignored without replacing the optimistic projection or showing an error, with one coalesced silent retry. Newer/equal snapshots remain normal, and Future Day state is date-isolated.

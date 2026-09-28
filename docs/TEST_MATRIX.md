@@ -4031,3 +4031,17 @@ The old artifact's `FAIL / USER_REPORTED` is historical evidence and is not over
 | D148-TWO-TASK-TODAY-FULL | Today standard surface | Not run for this narrow corrective; prior standard Today runner remains `HARNESS_HUNG / PARTIAL / NOT_VERIFIED`. | NOT_RUN / NOT_VERIFIED |
 | D148-TWO-TASK-DEVICE | Galaxy S23 | New corrective APK has not been manually retested; prior D-148 device evidence remains historical. | NOT_VERIFIED / PRODUCT_OWNER_MANUAL |
 | D148-TWO-TASK-BOUNDARY | Product/server/device boundary | No Worker/API/shared contract, schema, migration, dependency, persistent nonprod, D-145, Notes, Production, or Release change/run. | PASS / NOT_REQUIRED / NOT_RUN / NO |
+
+## D-148 exact deterministic failure diagnosis and real client chain — 2026-09-28
+
+| ID | Surface | Evidence | Status |
+|---|---|---|---|
+| D148-DIAG-IMPLEMENTATION | Android direct manipulation diagnostics | `a2eab4c92cbaf44718cd63c058ab8e9246672e32` preserves structured `status` / `code` / `serverMessage` / `reconcile` fields internally and keeps the generic Japanese UI message; debug logging does not render backend details | PASS |
+| D148-DIAG-JVM | Android focused JVM | `TodayDirectManipulationTest` `53 / 53 PASS`; parser, serialized HTTP chain, returned-revision callback, and TodayController/presented-Day immediate second move are covered | PASS |
+| D148-DIAG-WORKER | Worker W1/W2 | `b2.integration.test.ts` `16 / 16 PASS`, including same/distinct planned-start sequential `2 → 3 AFTER` then `2 → 4 AFTER`; no Worker source change | PASS / EXISTING + FOCUSED |
+| D148-DIAG-AVD | `TaskChute_API33` Today | Selected instrumentation `7 / 7 PASS`: current/future immediate two-step revision chains plus five D&D/auto-scroll regressions; crash buffer empty | PASS / FOCUSED |
+| D148-DIAG-BUILD | Android build/static | `:app:compileDebugKotlin`, `:app:compileDebugAndroidTestKotlin`, `:app:assembleDebug`, and `git diff --check` PASS | PASS |
+| D148-DIAG-CI | Exact pushed SHA / APK | `main@a2eab4c92cbaf44718cd63c058ab8e9246672e32`, CI `36428149578` PASS for classifier, Android JVM/signed APK, and Web/Worker verification; APK `taskchute-android-debug-a2eab4c92cbaf44718cd63c058ab8e9246672e32`, artifact ID `10972313039`, expires `2026-10-05T13:25:08Z` | PASS |
+| D148-DIAG-DEVICE | Galaxy S23 | Exact second request/status/code/message from the reported device failure was not captured; historical meaningful `2 → 4 AFTER` remains `FAIL / USER_REPORTED`; new diagnostic APK awaits manual retest | NOT_VERIFIED / PRODUCT_OWNER_MANUAL |
+| D148-DIAG-NONPROD | Persistent nonprod | Android diagnostic-only scope; no Worker source or shared contract change | NOT_REQUIRED |
+| D148-DIAG-BOUNDARY | Product/server/device boundary | No Worker/API/shared contract, schema, migration, dependency, D-145, Notes, persistent nonprod, Production, or Release change/run | PASS / NOT_REQUIRED / NOT_RUN / NO |
