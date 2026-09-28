@@ -8,6 +8,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -26,6 +27,8 @@ class TodayController(
     private var optimisticActive = false
     private var optimisticReconcileGeneration: Long? = null
     private val pendingEntryIds = mutableSetOf<String>()
+    private val confirmedPlacementRevisionFloors = mutableMapOf<String, Int>()
+    private val staleReconcileRetryFloors = mutableMapOf<String, Int>()
 
     fun loadCurrent() = load(null)
 
@@ -53,15 +56,20 @@ class TodayController(
 
     /** Accepts the server placement revision without replacing the optimistic projection. */
     fun confirmPlacementRevision(logicalDate: String, revision: Int) {
-        val day = state.day?.takeIf { it.logicalDate == logicalDate } ?: return
-        val nextRevision = maxOf(day.placementRevision, revision)
-        val nextDay = day.copy(placementRevision = nextRevision)
+        val previousFloor = confirmedPlacementRevisionFloors[logicalDate] ?: 0
+        val nextRevision = maxOf(previousFloor, revision)
+        confirmedPlacementRevisionFloors[logicalDate] = nextRevision
+        if (nextRevision > previousFloor) staleReconcileRetryFloors.remove(logicalDate)
+        val day = state.day?.takeIf { it.logicalDate == logicalDate }
+        val nextDay = day?.copy(placementRevision = maxOf(day.placementRevision, nextRevision))
         val nextOptimisticDay = state.optimisticDay?.let { optimisticDay ->
-            optimisticDay
-                .takeIf { it.logicalDate == logicalDate }
-                ?.copy(placementRevision = maxOf(optimisticDay.placementRevision, revision))
+            if (optimisticDay.logicalDate == logicalDate) {
+                optimisticDay.copy(placementRevision = maxOf(optimisticDay.placementRevision, nextRevision))
+            } else {
+                optimisticDay
+            }
         }
-        state = state.copy(day = nextDay, optimisticDay = nextOptimisticDay)
+        if (nextDay != null) state = state.copy(day = nextDay, optimisticDay = nextOptimisticDay)
     }
 
     fun clearOptimisticPresentation() {
@@ -143,8 +151,9 @@ class TodayController(
             loadInFlight = false
             when (result) {
                 is TodayResult.Success -> {
-                    publishDay(result.day, startedOptimisticGeneration)
-                    flushDeferredRealtimeReload(visible = false)
+                    if (publishDay(result.day, startedOptimisticGeneration)) {
+                        flushDeferredRealtimeReload(visible = false)
+                    }
                 }
                 TodayResult.Unauthorized -> {
                     deferredRealtimeReload = false
@@ -198,7 +207,14 @@ class TodayController(
         load(state.day?.logicalDate, visible = visible)
     }
 
-    private fun publishDay(day: TodayDay, startedOptimisticGeneration: Long) {
+    private fun publishDay(day: TodayDay, startedOptimisticGeneration: Long): Boolean {
+        val floor = confirmedPlacementRevisionFloors[day.logicalDate] ?: 0
+        if (day.placementRevision < floor) {
+            scheduleStaleReconcile(day.logicalDate, floor)
+            return false
+        }
+        confirmedPlacementRevisionFloors[day.logicalDate] = maxOf(floor, day.placementRevision)
+        staleReconcileRetryFloors.remove(day.logicalDate)
         val replaceOptimistic = optimisticActive && optimisticReconcileGeneration == startedOptimisticGeneration
         if (replaceOptimistic) {
             optimisticActive = false
@@ -211,6 +227,21 @@ class TodayController(
             pendingEntryIds = pendingEntryIds.toSet(),
             optimisticDay = if (replaceOptimistic || !optimisticActive) null else state.optimisticDay,
         )
+        return true
+    }
+
+    private fun scheduleStaleReconcile(logicalDate: String, floor: Int) {
+        if (staleReconcileRetryFloors[logicalDate] == floor) return
+        staleReconcileRetryFloors[logicalDate] = floor
+        scope.launch {
+            delay(100)
+            if (state.day?.logicalDate != logicalDate ||
+                confirmedPlacementRevisionFloors[logicalDate] != floor ||
+                loadInFlight ||
+                pendingEntryIds.isNotEmpty()
+            ) return@launch
+            load(logicalDate, visible = false)
+        }
     }
 
     private fun publishPending() {

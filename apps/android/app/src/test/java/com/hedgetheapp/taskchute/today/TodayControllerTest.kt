@@ -217,6 +217,102 @@ class TodayControllerTest {
     }
 
     @Test
+    fun staleReconcileCannotRollBackConfirmedRevisionOrOptimisticProjection() {
+        val first = dayWith(LifecycleState.PLANNED).copy(
+            placementRevision = 10,
+            sections = listOf(
+                TodaySection(
+                    "section-1",
+                    "Morning",
+                    480,
+                    720,
+                    listOf(task(LifecycleState.PLANNED), task(LifecycleState.PLANNED).copy(id = "entry-2")),
+                ),
+            ),
+        )
+        val repository = FakeRepository().apply {
+            loadResult = TodayResult.Success(first)
+            loadResultAfterFirst = TodayResult.Success(first.copy(placementRevision = 10))
+        }
+        val controller = controller(repository)
+        controller.loadCurrent()
+        assertTrue(repository.loadStarted.await(2, TimeUnit.SECONDS))
+        assertTrue(awaitState(controller) { it.day?.placementRevision == 10 })
+
+        controller.applyOptimisticDirectManipulation(
+            DirectManipulationRequest.Move(
+                operationId = "optimistic-move",
+                entryId = "entry-1",
+                taskChuteDayId = "day-1",
+                sectionId = "section-1",
+                expectedPlacementRevision = 10,
+                placement = PlacementTarget("section-1", "entry-2", PlacementEdge.AFTER),
+            ),
+        )
+        controller.confirmPlacementRevision("2026-09-14", 14)
+        repository.holdLoad = true
+        controller.reconcileSilently()
+        assertTrue(repository.reloadStarted.await(2, TimeUnit.SECONDS))
+        repository.releaseLoad.countDown()
+
+        assertTrue(awaitState(controller) { it.optimisticDay != null && it.day?.placementRevision == 14 })
+        assertEquals(
+            listOf("entry-2", "entry-1"),
+            controller.state.presentedDay?.sections?.single()?.entries?.map { it.id },
+        )
+        assertEquals(null, controller.state.errorMessage)
+        controller.close()
+    }
+
+    @Test
+    fun newerReconcileAdvancesTheConfirmedRevisionFloorNormally() {
+        val first = dayWith(LifecycleState.PLANNED).copy(placementRevision = 10)
+        val repository = FakeRepository().apply {
+            loadResult = TodayResult.Success(first)
+            loadResultAfterFirst = TodayResult.Success(first.copy(placementRevision = 15))
+        }
+        val controller = controller(repository)
+        controller.loadCurrent()
+        assertTrue(repository.loadStarted.await(2, TimeUnit.SECONDS))
+        assertTrue(awaitState(controller) { it.day?.placementRevision == 10 })
+
+        controller.confirmPlacementRevision("2026-09-14", 14)
+        controller.reconcileSilently()
+
+        assertTrue(awaitState(controller) { it.day?.placementRevision == 15 })
+        assertEquals(null, controller.state.errorMessage)
+        controller.close()
+    }
+
+    @Test
+    fun staleReconcileProtectionAppliesToAnEstablishedFutureDay() {
+        val first = dayWith(LifecycleState.PLANNED).copy(
+            logicalDate = "2026-09-15",
+            isCurrent = false,
+            taskChuteDayId = "future-day-1",
+            placementRevision = 10,
+        )
+        val repository = FakeRepository().apply {
+            loadResult = TodayResult.Success(first)
+            loadResultAfterFirst = TodayResult.Success(first.copy(placementRevision = 10))
+        }
+        val controller = controller(repository)
+        controller.loadLogicalDate("2026-09-15")
+        assertTrue(repository.loadStarted.await(2, TimeUnit.SECONDS))
+        assertTrue(awaitState(controller) { it.day?.logicalDate == "2026-09-15" })
+
+        controller.confirmPlacementRevision("2026-09-15", 14)
+        repository.holdLoad = true
+        controller.reconcileSilently()
+        assertTrue(repository.reloadStarted.await(2, TimeUnit.SECONDS))
+        repository.releaseLoad.countDown()
+
+        assertTrue(awaitState(controller) { it.day?.placementRevision == 14 })
+        assertEquals(null, controller.state.errorMessage)
+        controller.close()
+    }
+
+    @Test
     fun realtimeDayInvalidationReloadsSelectedDay() {
         val repository = FakeRepository().apply { loadResult = TodayResult.Success(dayWith(LifecycleState.PLANNED)) }
         val controller = controller(repository)

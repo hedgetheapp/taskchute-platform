@@ -191,10 +191,11 @@ class TaskPlanningControllerTest {
             saveResults.add(PlanningSaveResult.SuccessWithRevision(6))
             saveResults.add(PlanningSaveResult.SuccessWithRevision(7))
             saveResults.add(PlanningSaveResult.SuccessWithRevision(8))
+            saveResults.add(PlanningSaveResult.SuccessWithRevision(9))
         }
         val controller = controller(repository)
 
-        listOf("A", "B", "C").forEach { title ->
+        listOf("A", "B", "C", "D").forEach { title ->
             controller.openCreate(currentDay())
             assertTrue(await { controller.state.references != null })
             controller.updateDraft(controller.state.editor!!.draft.copy(title = title))
@@ -202,7 +203,7 @@ class TaskPlanningControllerTest {
             assertTrue(await { controller.state.editor == null && !controller.state.saving })
         }
 
-        assertEquals(listOf(5, 6, 7), repository.savedEditors.map { it.day.placementRevision })
+        assertEquals(listOf(5, 6, 7, 8), repository.savedEditors.map { it.day.placementRevision })
         controller.close()
     }
 
