@@ -527,8 +527,11 @@ private fun TodayContent(
             entryBounds = current.entryBoundsSnapshot,
             entrySectionIds = current.entrySectionIdsSnapshot,
             entryAnchorEligible = current.entryAnchorEligibleSnapshot,
-            emptySectionBounds = current.emptySectionBoundsSnapshot,
-            emptySectionIds = current.emptySectionIdsSnapshot,
+            // Task geometry remains frozen for D-127 stability. Empty Section headers can
+            // mount after drag start (notably the temporary unsectioned header), so only
+            // Section-level target maps are read live here.
+            emptySectionBounds = emptySectionDropBounds.toMap(),
+            emptySectionIds = emptySectionDropIds.toMap(),
             endedSectionIds = endedSectionIdsForAndroid(day),
         )
         dragState = current.copy(
@@ -1218,6 +1221,23 @@ internal fun resolveAndroidDropTarget(
         return true
     }
 
+    // A measured empty/collapsed Section header owns its own rectangle. Resolve it before
+    // adjacent Task insertion boundaries so the header cue is the only destination shown.
+    val emptyTarget = emptySectionBounds.entries
+        .filter { emptySectionIds[it.key] !in endedSectionIds && positionY >= it.value.top && positionY <= it.value.bottom }
+        .minWithOrNull(compareBy({ kotlin.math.abs(positionY - it.value.center.y) }, { it.key }))
+    val emptyTargetSectionId = emptyTarget?.let { emptySectionIds[it.key] }
+    if (emptyTarget != null && validEntries.none {
+            entrySectionIds[it.key] == emptyTargetSectionId && positionY >= it.value.top && positionY <= it.value.bottom
+        }) {
+        return AndroidDropTarget(
+            key = sectionDropKey(emptyTarget.key.takeUnless { it == UNSECTIONED_DROP_KEY }),
+            sectionId = emptyTargetSectionId,
+            anchorEntryId = null,
+            edge = null,
+        )
+    }
+
     val eligibleEntries = validEntries.filter { it.key != sourceEntryId && isLegalEntryAnchor(it.key) }
 
     fun changesCanonicalOrder(entryId: String, sectionId: String?, edge: PlacementEdge): Boolean {
@@ -1305,16 +1325,7 @@ internal fun resolveAndroidDropTarget(
         )
     }
 
-    val emptyTarget = emptySectionBounds.entries
-        .filter { emptySectionIds[it.key] !in endedSectionIds && positionY >= it.value.top && positionY <= it.value.bottom }
-        .minWithOrNull(compareBy({ kotlin.math.abs(positionY - it.value.center.y) }, { it.key }))
-        ?: return null
-    return AndroidDropTarget(
-        key = sectionDropKey(emptyTarget.key.takeUnless { it == UNSECTIONED_DROP_KEY }),
-        sectionId = emptySectionIds[emptyTarget.key],
-        anchorEntryId = null,
-        edge = null,
-    )
+    return null
 }
 
 private fun midpoint(first: Float, second: Float): Float = first + (second - first) / 2f

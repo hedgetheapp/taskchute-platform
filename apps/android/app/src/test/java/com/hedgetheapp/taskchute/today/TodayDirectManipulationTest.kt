@@ -1166,6 +1166,21 @@ class TodayDirectManipulationTest {
     }
 
     @Test
+    fun dropTargetResolverPrefersEmptySectionHeaderOverAdjacentTaskBoundary() {
+        val target = resolveAndroidDropTarget(
+            positionY = 180f,
+            sourceEntryId = "entry-source",
+            entryBounds = mapOf("entry-target" to Rect(0f, 100f, 100f, 220f)),
+            entrySectionIds = mapOf("entry-target" to "section-morning"),
+            entryAnchorEligible = mapOf("entry-target" to true),
+            emptySectionBounds = mapOf("section-afternoon" to Rect(0f, 170f, 100f, 250f)),
+            emptySectionIds = mapOf("section-afternoon" to "section-afternoon"),
+        )
+
+        assertEquals(AndroidDropTarget("section:section-afternoon", "section-afternoon", null, null), target)
+    }
+
+    @Test
     fun dropTargetResolverSupportsEmptyUnsectionedTarget() {
         val target = resolveAndroidDropTarget(
             positionY = 300f,

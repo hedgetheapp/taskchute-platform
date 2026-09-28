@@ -1398,6 +1398,110 @@ class TodayScreenInstrumentedTest {
     }
 
     @Test
+    fun emptyUnsectionedHeaderMountsAfterDragStartAndAcceptsMove() {
+        val directRepository = FakeDirectManipulationRepository()
+        val source = dayWith().sections.single().entries.single().copy(taskId = "task-source")
+        val initialDay = dayWith().copy(
+            sections = listOf(dayWith().sections.single().copy(entries = listOf(source))),
+            unsectionedEntries = emptyList(),
+        )
+        launchPlanningScreen(FakePlanningRepository(), initialDay, directRepository, refreshAfterDirect = false)
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        val sourceNode = composeRule.onNodeWithContentDescription("タスクをドラッグ: Write report")
+        val sourceBounds = sourceNode.fetchSemanticsNode().boundsInRoot
+        sourceNode.performTouchInput {
+            down(center)
+            advanceEventTime(600)
+            // The temporary unsectioned header is mounted after drag handoff. Its expected
+            // center is one 12dp gap plus half of the 38dp header below the source row;
+            // move once to that position, then nudge after the layout publishes its bounds.
+            val pxPerDp = sourceBounds.height / 84f
+            val headerDelta = sourceBounds.height * 0.5f + 31f * pxPerDp
+            moveBy(Offset(0f, headerDelta), delayMillis = 100)
+            moveBy(Offset(0f, 2f), delayMillis = 100)
+            assertTrue(composeRule.onAllNodesWithContentDescription("挿入位置").fetchSemanticsNodes().isEmpty())
+            up()
+        }
+
+        composeRule.waitUntil(15_000) { directRepository.moveCalls.get() == 1 }
+        assertEquals(1, directRepository.moveCalls.get())
+        assertEquals(null, directRepository.lastMove?.sectionId)
+        assertEquals(null, directRepository.lastMove?.placement)
+    }
+
+    @Test
+    fun multipleEmptySectionHeadersRemainIndividuallySpatialTargets() {
+        val directRepository = FakeDirectManipulationRepository()
+        val source = dayWith().sections.single().entries.single().copy(taskId = "task-source")
+        val base = dayWith().sections.single()
+        val initialDay = dayWith().copy(
+            sections = listOf(
+                base.copy(id = "section-source", title = "Morning", entries = listOf(source)),
+                TodaySection("section-afternoon", "Afternoon empty", 720, 900, emptyList()),
+                TodaySection("section-night", "Night empty", 900, 1200, emptyList()),
+            ),
+        )
+        launchPlanningScreen(FakePlanningRepository(), initialDay, directRepository, refreshAfterDirect = false)
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        fun dragToHeader(title: String) {
+            val sourceNode = composeRule.onNodeWithContentDescription("タスクをドラッグ: Write report")
+            val sourceBounds = sourceNode.fetchSemanticsNode().boundsInRoot
+            val targetBounds = composeRule.onNodeWithText(title).fetchSemanticsNode().boundsInRoot
+            sourceNode.performTouchInput {
+                down(center)
+                advanceEventTime(600)
+                moveBy(Offset(0f, targetBounds.center.y - sourceBounds.center.y), delayMillis = 100)
+                assertTrue(composeRule.onAllNodesWithContentDescription("挿入位置").fetchSemanticsNodes().isEmpty())
+                up()
+            }
+        }
+
+        dragToHeader("Afternoon empty")
+        composeRule.waitUntil(15_000) { directRepository.moveCalls.get() == 1 }
+        assertEquals("section-afternoon", directRepository.moves[0].sectionId)
+        assertEquals(null, directRepository.moves[0].placement)
+
+        dragToHeader("Night empty")
+        composeRule.waitUntil(15_000) { directRepository.moveCalls.get() == 2 }
+        assertEquals("section-night", directRepository.moves[1].sectionId)
+        assertEquals(null, directRepository.moves[1].placement)
+    }
+
+    @Test
+    fun futureDayEmptySectionHeaderUsesSectionOnlyMove() {
+        val directRepository = FakeDirectManipulationRepository()
+        val source = dayWith().sections.single().entries.single().copy(taskId = "future-empty-source")
+        val futureDay = dayWith().copy(
+            logicalDate = "2026-09-15",
+            isCurrent = false,
+            taskChuteDayId = "future-empty-day",
+            sections = listOf(
+                dayWith().sections.single().copy(entries = listOf(source)),
+                TodaySection("future-empty-section", "Future empty", 720, 900, emptyList()),
+            ),
+        )
+        launchPlanningScreen(FakePlanningRepository(), futureDay, directRepository, refreshAfterDirect = false)
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        val sourceNode = composeRule.onNodeWithContentDescription("タスクをドラッグ: Write report")
+        val sourceBounds = sourceNode.fetchSemanticsNode().boundsInRoot
+        val targetBounds = composeRule.onNodeWithText("Future empty").fetchSemanticsNode().boundsInRoot
+        sourceNode.performTouchInput {
+            down(center)
+            advanceEventTime(600)
+            moveBy(Offset(0f, targetBounds.center.y - sourceBounds.center.y), delayMillis = 100)
+            assertTrue(composeRule.onAllNodesWithContentDescription("挿入位置").fetchSemanticsNodes().isEmpty())
+            up()
+        }
+
+        composeRule.waitUntil(15_000) { directRepository.moveCalls.get() == 1 }
+        assertEquals("future-empty-section", directRepository.lastMove?.sectionId)
+        assertEquals(null, directRepository.lastMove?.placement)
+    }
+
+    @Test
     fun routineEmptySectionHeaderUsesOccurrenceAwareNoAnchorMove() {
         val directRepository = FakeDirectManipulationRepository()
         val source = dayWith().sections.single().entries.single().copy(
