@@ -1,6 +1,6 @@
 # D-148 — Android Today D-147 Device Correctives v0.1
 
-Status: **Approved — D&D future-Day/stable-source corrective implemented / integrated; focused PASS; persistent nonprod read-only PASS; Today surface partial / not verified; Galaxy S23 NOT_RUN / PRODUCT_OWNER_MANUAL**
+Status: **Approved — D&D future-Day/stable-source and empty-Section target correctives implemented / integrated; focused PASS; Today surface partial / not verified; Galaxy S23 NOT_VERIFIED / PRODUCT_OWNER_MANUAL**
 
 Date: 2026-09-27
 
@@ -444,3 +444,11 @@ Implementation `8996e1b66895f5bd77d0636646f197f16fc99418` keeps the parent point
 The required RED was reproduced with a real Compose `performTouchInput` two-step physical gesture: the first `2 → 3 AFTER` request used revision `5` and returned `6`; before the fix, the second same-screen `2 → 4 AFTER` request incorrectly reused `5` and the assertion expected `6` failed. After the fix, current-Day and established-Future-Day two-step physical drags, a same-screen Quick Add-confirmed revision handoff, and a Routine physical regression all passed. Existing auto-scroll, cohort, future-Day, and parent-pointer regressions also passed. The Quick Add handoff test confirms the revision through the mounted `TodayController` state; it does not claim a separate UI-entry test.
 
 Focused Android JVM, `TaskChute_API33` focused instrumentation, compile/build, instrumentation APK compile, crash-buffer check, and `git diff --check` passed. Exact-SHA CI `36434645647` passed for `main@8996e1b66895f5bd77d0636646f197f16fc99418`; the signed APK artifact is recorded in `TEST_MATRIX.md`. Web/Worker verification was skipped by the Android-only classifier. Galaxy S23 remains `NOT_VERIFIED / PRODUCT_OWNER_MANUAL` pending manual retest with this APK. No Worker/API/shared contract, schema, migration, dependency, persistent nonprod, Production, or Release change was made.
+
+## Corrective evidence: empty Section header drop targets — 2026-09-29
+
+The pre-fix empty-target visualization failure was recorded as `FAIL / USER_REPORTED`: a measured empty Section header could lose pointer ownership to an adjacent Task insertion boundary, and the temporary empty `セクションなし` header mounted after drag start was absent from the frozen active snapshot.
+
+Implementation `635ceacf46196a937bceeaaa9e21a1d31a3ea3c0` resolves a live measured empty/collapsed Section header before Task insertion boundaries, except when a visible actual Task row occupies the pointer. Task row/anchor geometry remains frozen; only `emptySectionDropBounds` / `emptySectionDropIds` are read live during active drag, allowing the temporary unsectioned header to become targetable after mounting. Section targets keep `anchorEntryId=null` and `edge=null`, so no `DragInsertionLine` is rendered; existing occurrence-aware Routine no-anchor flags remain unchanged.
+
+Focused `TodayDirectManipulationTest` passed `54 / 54`. `TaskChute_API33` focused E1-E6 passed `6 / 6`: configured empty Section, empty unsectioned after drag start, multiple empty Sections, non-empty Section insertion regression, established Future Day, and Routine no-anchor. Final compile, instrumentation compile, assemble, `git diff --check`, and target-app crash-buffer check passed. Exact-SHA CI `36496763036` passed; signed APK artifact `taskchute-android-debug-635ceacf46196a937bceeaaa9e21a1d31a3ea3c0`, ID `11003786549`, expires `2026-10-05T23:15:00Z`. The standard Today surface runner was not run for this focused corrective. Galaxy S23 remains `NOT_VERIFIED / PRODUCT_OWNER_MANUAL`; no Worker/API/shared contract, schema, migration, dependency, persistent nonprod, Production, or Release change was made.

@@ -1,3 +1,9 @@
+### D-148 Android Today empty Section header drop targets corrective — 2026-09-29
+
+- Empty configured and temporary unsectioned Section headers now participate as measured Section-only D&D targets without inventing relative placement or an insertion line; frozen Task geometry and Routine occurrence-aware no-anchor semantics remain intact.
+- Focused Android JVM `54 / 54` and `TaskChute_API33` E1-E6 `6 / 6` passed. Exact-SHA CI `36496763036` passed and produced APK `taskchute-android-debug-635ceacf46196a937bceeaaa9e21a1d31a3ea3c0`, artifact ID `11003786549`, expires `2026-10-05T23:15:00Z`. Galaxy S23 `NOT_VERIFIED / PRODUCT_OWNER_MANUAL`; standard Today full surface `NOT_RUN / NOT_VERIFIED`; Production `NOT_RUN`; Released `NO`.
+- No Worker/API/shared contract, schema, migration, dependency, persistent nonprod, D-145, or Notes change.
+
 ### D-148 Android Today exact failure diagnosis and real client chain — 2026-09-28
 
 - Added internal structured capture for deterministic direct-manipulation failures without exposing backend details in the generic Japanese UI, plus a real HTTP client-chain regression proving that the first successful move's returned revision is serialized into the immediate second move for current and established future Days.

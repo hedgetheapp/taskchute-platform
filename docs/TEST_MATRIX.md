@@ -4059,3 +4059,18 @@ The old artifact's `FAIL / USER_REPORTED` is historical evidence and is not over
 | D148-CLOSURE-DEVICE | Galaxy S23 | This APK has not been manually retested; historical device failure remains historical evidence | NOT_VERIFIED / PRODUCT_OWNER_MANUAL |
 | D148-CLOSURE-NONPROD | Persistent nonprod | Android-only corrective; no Worker source/shared contract change or deploy | NOT_REQUIRED |
 | D148-CLOSURE-BOUNDARY | Scope | No Worker/API/shared contract, schema, migration, dependency, persistent nonprod, D-145, Notes, Production, or Release change/run | PASS / NOT_REQUIRED / NOT_RUN / NO |
+
+## D-148 empty Section header drop targets corrective — 2026-09-29
+
+| ID | Surface | Evidence | Status |
+|---|---|---|---|
+| D148-EMPTY-RED | Pre-fix device report | Empty configured Section and temporary `セクションなし` header could fail to become visible/targetable during drag; recorded as `FAIL / USER_REPORTED`. | FAIL / USER_REPORTED |
+| D148-EMPTY-IMPLEMENTATION | Android Today target resolution | `635ceacf46196a937bceeaaa9e21a1d31a3ea3c0` reads empty Section bounds/IDs live while preserving the frozen Task geometry snapshot. Measured empty headers precede adjacent Task boundaries unless an actual Task row occupies the pointer; Section-only targets carry null anchor/edge and do not render an insertion line. | PASS |
+| D148-EMPTY-JVM | Focused Android JVM | `TodayDirectManipulationTest` `54 / 54 PASS`, including empty-header precedence, empty/unsectioned target discovery, multiple empty Sections, and existing target-priority/no-target guards. | PASS |
+| D148-EMPTY-AVD | `TaskChute_API33` Today | Focused E1-E6 `6 / 6 PASS`: configured empty Section, empty unsectioned after drag start, multiple empty Sections, non-empty insertion regression, established Future Day, and Routine occurrence-aware no-anchor; crash buffer empty. | PASS / FOCUSED |
+| D148-EMPTY-BUILD | Android build/static | `:app:compileDebugKotlin`, `:app:compileDebugAndroidTestKotlin`, `:app:assembleDebug`, and `git diff --check` PASS. | PASS |
+| D148-EMPTY-CI | Exact pushed SHA / APK | `main@635ceacf46196a937bceeaaa9e21a1d31a3ea3c0`, CI `36496763036` PASS; classifier and Android JVM/signed APK verification passed, Web/Worker correctly skipped. Artifact `taskchute-android-debug-635ceacf46196a937bceeaaa9e21a1d31a3ea3c0`, ID `11003786549`, expires `2026-10-05T23:15:00Z`. | PASS |
+| D148-EMPTY-TODAY-FULL | Today standard surface | Not run for this focused corrective; no full-surface completion evidence is claimed. | NOT_RUN / NOT_VERIFIED |
+| D148-EMPTY-DEVICE | Galaxy S23 | New APK has not been manually retested. | NOT_VERIFIED / PRODUCT_OWNER_MANUAL |
+| D148-EMPTY-NONPROD | Persistent nonprod | Android-only scope; no Worker/API/shared contract change or deploy. | NOT_REQUIRED |
+| D148-EMPTY-BOUNDARY | Product/server/device boundary | No Worker/API/shared contract, schema, migration, dependency, persistent nonprod, D-145, Notes, Production, or Release change/run. | PASS / NOT_REQUIRED / NOT_RUN / NO |
