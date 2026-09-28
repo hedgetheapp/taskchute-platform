@@ -522,9 +522,13 @@ private fun TodayContent(
         val target = resolveAndroidDropTarget(
             positionY = positionY,
             sourceEntryId = current.entryId,
+            sourceSectionId = current.sourceSectionId,
+            sourceRoutineDerived = current.sourceRoutineDerived,
+            sourcePlannedStartMinute = current.sourcePlannedStartMinute,
             entryBounds = current.entryBoundsSnapshot,
             entrySectionIds = current.entrySectionIdsSnapshot,
             entryAnchorEligible = current.entryAnchorEligibleSnapshot,
+            entryPlannedStartMinutes = current.entryPlannedStartMinutesSnapshot,
             emptySectionBounds = current.emptySectionBoundsSnapshot,
             emptySectionIds = current.emptySectionIdsSnapshot,
             endedSectionIds = endedSectionIdsForAndroid(day),
@@ -571,7 +575,7 @@ private fun TodayContent(
             var insertion = if (edge == PlacementEdge.BEFORE) targetIndex else targetIndex + 1
             if (sourceIndex < insertion) insertion -= 1
             remaining.add(insertion.coerceIn(0, remaining.size), source.id)
-            if (remaining != currentIds && isLegalManualReorder(entries, remaining)) {
+            if (remaining != currentIds && isLegalAndroidSameSectionDrop(source.routineDerived, entries, remaining)) {
                 if (source.routineDerived) {
                     directManipulationController?.move(
                         day,
@@ -636,9 +640,13 @@ private fun TodayContent(
                         val target = resolveAndroidDropTarget(
                             positionY = currentPointer,
                             sourceEntryId = current.entryId,
+                            sourceSectionId = current.sourceSectionId,
+                            sourceRoutineDerived = current.sourceRoutineDerived,
+                            sourcePlannedStartMinute = current.sourcePlannedStartMinute,
                             entryBounds = dropBounds.toMap(),
                             entrySectionIds = dropBoundsSectionId.toMap(),
                             entryAnchorEligible = dropBoundsEligible.toMap(),
+                            entryPlannedStartMinutes = current.entryPlannedStartMinutesSnapshot,
                             emptySectionBounds = emptySectionDropBounds.toMap(),
                             emptySectionIds = emptySectionDropIds.toMap(),
                             endedSectionIds = endedSectionIdsForAndroid(day),
@@ -917,8 +925,11 @@ private fun TodayContent(
                                     entryBoundsSnapshot = dropBounds.toMap(),
                                     entrySectionIdsSnapshot = dropBoundsSectionId.toMap(),
                                     entryAnchorEligibleSnapshot = dropBoundsEligible.toMap(),
+                                    entryPlannedStartMinutesSnapshot = day.allEntries.associate { it.id to it.plannedStartMinute },
                                     emptySectionBoundsSnapshot = emptySectionDropBounds.toMap(),
                                     emptySectionIdsSnapshot = emptySectionDropIds.toMap(),
+                                    sourceRoutineDerived = task.routineDerived,
+                                    sourcePlannedStartMinute = task.plannedStartMinute,
                                     target = null,
                                 )
                             }
@@ -1026,8 +1037,11 @@ private fun TodayContent(
                                     entryBoundsSnapshot = dropBounds.toMap(),
                                     entrySectionIdsSnapshot = dropBoundsSectionId.toMap(),
                                     entryAnchorEligibleSnapshot = dropBoundsEligible.toMap(),
+                                    entryPlannedStartMinutesSnapshot = day.allEntries.associate { it.id to it.plannedStartMinute },
                                     emptySectionBoundsSnapshot = emptySectionDropBounds.toMap(),
                                     emptySectionIdsSnapshot = emptySectionDropIds.toMap(),
+                                    sourceRoutineDerived = task.routineDerived,
+                                    sourcePlannedStartMinute = task.plannedStartMinute,
                                     target = null,
                                 )
                             }
@@ -1051,7 +1065,9 @@ private fun TodayContent(
                                 (boundaryY - dragContentRootTop - insertionLineHalfHeightPx).roundToInt(),
                             )
                         }
-                        .zIndex(5f),
+                        // The cue is presentation-only, but must remain visible above the
+                        // pointer-following source overlay when both occupy the same Y.
+                        .zIndex(20f),
                 )
             }
             dragState?.let { drag ->
@@ -1140,8 +1156,11 @@ private data class AndroidDragState(
     val entryBoundsSnapshot: Map<String, Rect> = emptyMap(),
     val entrySectionIdsSnapshot: Map<String, String?> = emptyMap(),
     val entryAnchorEligibleSnapshot: Map<String, Boolean> = emptyMap(),
+    val entryPlannedStartMinutesSnapshot: Map<String, Int?> = emptyMap(),
     val emptySectionBoundsSnapshot: Map<String, Rect> = emptyMap(),
     val emptySectionIdsSnapshot: Map<String, String?> = emptyMap(),
+    val sourceRoutineDerived: Boolean = false,
+    val sourcePlannedStartMinute: Int? = null,
     val deltaY: Float = 0f,
     val target: AndroidDropTarget?,
 )
@@ -1164,9 +1183,13 @@ internal fun isEligibleAndroidDropAnchor(task: TodayTask): Boolean =
 internal fun resolveAndroidDropTarget(
     positionY: Float,
     sourceEntryId: String,
+    sourceSectionId: String? = null,
+    sourceRoutineDerived: Boolean = false,
+    sourcePlannedStartMinute: Int? = null,
     entryBounds: Map<String, Rect>,
     entrySectionIds: Map<String, String?>,
     entryAnchorEligible: Map<String, Boolean> = emptyMap(),
+    entryPlannedStartMinutes: Map<String, Int?> = emptyMap(),
     emptySectionBounds: Map<String, Rect>,
     emptySectionIds: Map<String, String?>,
     endedSectionIds: Set<String> = emptySet(),
@@ -1180,15 +1203,30 @@ internal fun resolveAndroidDropTarget(
         val y: Float,
     )
 
-    val eligibleEntries = entryBounds.entries.filter {
-        it.key != sourceEntryId &&
-            entryAnchorEligible[it.key] != false &&
-            entrySectionIds[it.key] !in endedSectionIds &&
-            it.value.top.isFinite() && it.value.bottom.isFinite() && it.value.bottom >= it.value.top
+    val validEntries = entryBounds.entries.filter {
+        it.value.top.isFinite() && it.value.bottom.isFinite() && it.value.bottom >= it.value.top
     }
-    val sectionRanges = eligibleEntries.groupBy { entrySectionIds[it.key] }.mapValues { (_, entries) ->
+    val sectionRanges = validEntries.groupBy { entrySectionIds[it.key] }.mapValues { (_, entries) ->
         entries.minOf { it.value.top }..entries.maxOf { it.value.bottom }
     }
+    val physicalBoundaryYsBySection = validEntries
+        .groupBy { entrySectionIds[it.key] }
+        .mapValues { (_, entries) ->
+            entries.flatMap { listOf(it.value.top, it.value.bottom) }
+                .filter { it.isFinite() }
+                .distinct()
+                .sorted()
+        }
+
+    fun isLegalEntryAnchor(entryId: String): Boolean {
+        val targetSectionId = entrySectionIds[entryId]
+        if (targetSectionId in endedSectionIds || entryAnchorEligible[entryId] == false) return false
+        if (sourceSectionId != targetSectionId || sourceRoutineDerived || entryPlannedStartMinutes.isEmpty()) return true
+        if (!entryPlannedStartMinutes.containsKey(entryId)) return true
+        return entryPlannedStartMinutes[entryId] == sourcePlannedStartMinute
+    }
+
+    val eligibleEntries = validEntries.filter { it.key != sourceEntryId && isLegalEntryAnchor(it.key) }
     val boundaries = eligibleEntries
         .flatMap { (entryId, bounds) ->
             val sectionId = entrySectionIds[entryId]
@@ -1201,22 +1239,46 @@ internal fun resolveAndroidDropTarget(
         }
         .sortedWith(compareBy<InsertionBoundary>({ it.y }, { if (it.edge == PlacementEdge.AFTER) 0 else 1 }, { it.entryId }))
         .fold(mutableListOf<InsertionBoundary>()) { unique, candidate ->
-            val range = sectionRanges[candidate.sectionId]
-            if (range != null && positionY in range && unique.none {
+            if (unique.none {
                     it.sectionId == candidate.sectionId && abs(it.y - candidate.y) <= 0.5f
                 }) {
                 unique += candidate
             }
             unique
         }
-    val entryTarget = boundaries.minWithOrNull(
-        compareBy<InsertionBoundary>(
-            { abs(positionY - it.y) },
-            { if (it.edge == PlacementEdge.AFTER) 0 else 1 },
-            { it.y },
-            { it.entryId },
-        ),
-    )
+    val entryTarget = boundaries.asSequence()
+        .mapNotNull { boundary ->
+            val range = sectionRanges[boundary.sectionId] ?: return@mapNotNull null
+            val sectionBoundaries = boundaries.filter { it.sectionId == boundary.sectionId }
+            val boundaryIndex = sectionBoundaries.indexOf(boundary)
+            if (boundaryIndex < 0) return@mapNotNull null
+            val physicalBoundaryYs = physicalBoundaryYsBySection[boundary.sectionId].orEmpty()
+            val previousPhysicalY = physicalBoundaryYs.lastOrNull { it < boundary.y - 0.5f }
+            val nextPhysicalY = physicalBoundaryYs.firstOrNull { it > boundary.y + 0.5f }
+            val sourceBounds = entryBounds[sourceEntryId]
+            val lower = if (boundaryIndex == 0) {
+                if (sourceSectionId == boundary.sectionId && sourceBounds != null &&
+                    sourceBounds.top.isFinite() && sourceBounds.top <= boundary.y
+                ) {
+                    sourceBounds.top
+                } else {
+                    range.start
+                }
+            } else {
+                midpoint(previousPhysicalY ?: range.start, boundary.y)
+            }
+            val upper = midpoint(boundary.y, nextPhysicalY ?: range.endInclusive)
+            if (positionY < lower || positionY > upper) return@mapNotNull null
+            boundary
+        }
+        .minWithOrNull(
+            compareBy<InsertionBoundary>(
+                { abs(positionY - it.y) },
+                { if (it.edge == PlacementEdge.AFTER) 0 else 1 },
+                { it.y },
+                { it.entryId },
+            ),
+        )
     if (entryTarget != null) {
         return AndroidDropTarget(
             key = entryDropKey(entryTarget.entryId),
@@ -1238,6 +1300,8 @@ internal fun resolveAndroidDropTarget(
         edge = null,
     )
 }
+
+private fun midpoint(first: Float, second: Float): Float = first + (second - first) / 2f
 
 private fun endedSectionIdsForAndroid(day: TodayDay): Set<String> {
     if (!day.isCurrent) return emptySet()
@@ -1323,6 +1387,12 @@ private fun isLegalManualReorder(entries: List<TodayTask>, desiredIds: List<Stri
             )
     }
 }
+
+internal fun isLegalAndroidSameSectionDrop(
+    sourceRoutineDerived: Boolean,
+    entries: List<TodayTask>,
+    desiredIds: List<String>,
+): Boolean = sourceRoutineDerived || isLegalManualReorder(entries, desiredIds)
 
 @Composable
 private fun SectionHeader(
