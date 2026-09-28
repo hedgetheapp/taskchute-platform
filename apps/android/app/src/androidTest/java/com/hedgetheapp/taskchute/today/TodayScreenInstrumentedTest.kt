@@ -24,6 +24,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsProperties
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CoroutineScope
@@ -534,6 +535,108 @@ class TodayScreenInstrumentedTest {
         assertEquals("entry-B", directRepository.lastMove?.placement?.anchorEntryId)
         assertFalse(directRepository.lastMove?.routineScoped == true)
         assertFalse(directRepository.lastMove?.relativePlannedStartAnchor == true)
+    }
+
+    @Test
+    fun immediateTwoStepRelativeMoveUsesReturnedRevisionForCurrentDay() {
+        val directRepository = FakeDirectManipulationRepository().apply {
+            scriptedResults += DirectManipulationResult.SuccessWithRevision(6)
+            scriptedResults += DirectManipulationResult.SuccessWithRevision(7)
+        }
+        val base = dayWith().sections.single().entries.single()
+        val entries = (1..4).map { index ->
+            base.copy(
+                id = "entry-$index",
+                title = "Task $index",
+                taskId = "task-$index",
+                plannedStartMinute = 540,
+            )
+        }
+        val initialDay = dayWith().copy(
+            placementRevision = 5,
+            sections = listOf(dayWith().sections.single().copy(entries = entries)),
+        )
+        launchPlanningScreen(
+            FakePlanningRepository(),
+            initialDay = initialDay,
+            directRepository = directRepository,
+            refreshAfterDirect = false,
+        )
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        directManipulationController?.move(
+            requireNotNull(controller?.state?.presentedDay),
+            "entry-2",
+            PlacementTarget("section-1", "entry-3", PlacementEdge.AFTER),
+        )
+        composeRule.waitUntil(15_000) {
+            directRepository.moves.size == 1 && controller?.state?.presentedDay?.placementRevision == 6
+        }
+        assertEquals(5, directRepository.moves[0].expectedPlacementRevision)
+
+        directManipulationController?.move(
+            requireNotNull(controller?.state?.presentedDay),
+            "entry-2",
+            PlacementTarget("section-1", "entry-4", PlacementEdge.AFTER),
+        )
+        composeRule.waitUntil(15_000) {
+            directRepository.moves.size == 2 && controller?.state?.presentedDay?.placementRevision == 7
+        }
+        assertEquals("entry-2", directRepository.moves[1].entryId)
+        assertEquals("entry-4", directRepository.moves[1].placement?.anchorEntryId)
+        assertEquals(PlacementEdge.AFTER, directRepository.moves[1].placement?.edge)
+        assertEquals(6, directRepository.moves[1].expectedPlacementRevision)
+    }
+
+    @Test
+    fun immediateTwoStepRelativeMoveUsesReturnedRevisionForEstablishedFutureDay() {
+        val directRepository = FakeDirectManipulationRepository().apply {
+            scriptedResults += DirectManipulationResult.SuccessWithRevision(6)
+            scriptedResults += DirectManipulationResult.SuccessWithRevision(7)
+        }
+        val base = dayWith().sections.single().entries.single()
+        val entries = (1..4).map { index ->
+            base.copy(
+                id = "future-entry-$index",
+                title = "Future task $index",
+                taskId = "future-task-$index",
+                plannedStartMinute = 540,
+            )
+        }
+        val futureDay = dayWith().copy(
+            logicalDate = "2026-09-15",
+            isCurrent = false,
+            taskChuteDayId = "future-day-1",
+            placementRevision = 5,
+            sections = listOf(dayWith().sections.single().copy(entries = entries)),
+        )
+        launchPlanningScreen(
+            FakePlanningRepository(),
+            initialDay = futureDay,
+            directRepository = directRepository,
+            refreshAfterDirect = false,
+        )
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        directManipulationController?.move(
+            requireNotNull(controller?.state?.presentedDay),
+            "future-entry-2",
+            PlacementTarget("section-1", "future-entry-3", PlacementEdge.AFTER),
+        )
+        composeRule.waitUntil(15_000) {
+            directRepository.moves.size == 1 && controller?.state?.presentedDay?.placementRevision == 6
+        }
+        directManipulationController?.move(
+            requireNotNull(controller?.state?.presentedDay),
+            "future-entry-2",
+            PlacementTarget("section-1", "future-entry-4", PlacementEdge.AFTER),
+        )
+        composeRule.waitUntil(15_000) {
+            directRepository.moves.size == 2 && controller?.state?.presentedDay?.placementRevision == 7
+        }
+        assertEquals("future-entry-4", directRepository.moves[1].placement?.anchorEntryId)
+        assertEquals(PlacementEdge.AFTER, directRepository.moves[1].placement?.edge)
+        assertEquals(6, directRepository.moves[1].expectedPlacementRevision)
     }
 
     @Test
@@ -1409,6 +1512,7 @@ class TodayScreenInstrumentedTest {
                 onRefresh = { if (refreshAfterDirect) controller?.refresh() },
                 onUnauthorized = {},
                 onOptimisticIntent = controller!!::applyOptimisticDirectManipulation,
+                onPlacementRevisionConfirmed = controller!!::confirmPlacementRevision,
                 scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
             )
         }
@@ -1519,6 +1623,8 @@ class TodayScreenInstrumentedTest {
         @Volatile var lastRequest: DirectManipulationRequest? = null
         @Volatile var result: DirectManipulationResult = DirectManipulationResult.Success
         var lastMove: DirectManipulationRequest.Move? = null
+        val moves = CopyOnWriteArrayList<DirectManipulationRequest.Move>()
+        val scriptedResults = CopyOnWriteArrayList<DirectManipulationResult>()
 
         override fun execute(request: DirectManipulationRequest): DirectManipulationResult {
             if (firstRequest == null) firstRequest = request
@@ -1532,12 +1638,13 @@ class TodayScreenInstrumentedTest {
                 is DirectManipulationRequest.Move -> {
                     moveCalls.incrementAndGet()
                     lastMove = request
+                    moves += request
                 }
                 is DirectManipulationRequest.MoveToDay -> bulkMoveCalls.incrementAndGet()
                 is DirectManipulationRequest.Delete -> deleteCalls.incrementAndGet()
                 is DirectManipulationRequest.HardDelete -> deleteCalls.incrementAndGet()
             }
-            return result
+            return scriptedResults.removeFirstOrNull() ?: result
         }
     }
 

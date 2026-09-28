@@ -179,6 +179,54 @@ describe.sequential("Dogfood Day B2 planned start", () => {
       .toEqual([historical, sectionAnchor, first]);
   });
 
+  it("D-148 accepts the immediate second ordinary relative move at the returned revision", async () => {
+    const sameCohort = await seedTimedDay();
+    const sameIds = [
+      await addEntry(sameCohort.userId, sameCohort.dayId, sameCohort.sectionIds[0]!, 1, "planned", 600),
+      await addEntry(sameCohort.userId, sameCohort.dayId, sameCohort.sectionIds[0]!, 2, "planned", 600),
+      await addEntry(sameCohort.userId, sameCohort.dayId, sameCohort.sectionIds[0]!, 3, "planned", 600),
+      await addEntry(sameCohort.userId, sameCohort.dayId, sameCohort.sectionIds[0]!, 4, "planned", 600),
+    ];
+    const sameFirst = await moveEntry(env.APP_DB, sameCohort.userId, {
+      operation_id: uuidv7(), entry_id: sameIds[1]!, taskchute_day_id: sameCohort.dayId,
+      section_id: sameCohort.sectionIds[0]!, expected_placement_revision: 0,
+      placement: { kind: "relative_to_entry", anchor_entry_id: sameIds[2]!, edge: "after" },
+    });
+    expect(sameFirst).toMatchObject({ placement_revision: 1, entry_id: sameIds[1] });
+    const sameSecond = await moveEntry(env.APP_DB, sameCohort.userId, {
+      operation_id: uuidv7(), entry_id: sameIds[1]!, taskchute_day_id: sameCohort.dayId,
+      section_id: sameCohort.sectionIds[0]!, expected_placement_revision: 1,
+      placement: { kind: "relative_to_entry", anchor_entry_id: sameIds[3]!, edge: "after" },
+    });
+    expect(sameSecond).toMatchObject({ placement_revision: 2, entry_id: sameIds[1] });
+    expect(await revision(sameCohort.dayId)).toBe(2);
+
+    const distinctCohort = await seedTimedDay();
+    const distinctIds = [
+      await addEntry(distinctCohort.userId, distinctCohort.dayId, distinctCohort.sectionIds[0]!, 1, "planned", 540),
+      await addEntry(distinctCohort.userId, distinctCohort.dayId, distinctCohort.sectionIds[0]!, 2, "planned", 600),
+      await addEntry(distinctCohort.userId, distinctCohort.dayId, distinctCohort.sectionIds[0]!, 3, "planned", 660),
+      await addEntry(distinctCohort.userId, distinctCohort.dayId, distinctCohort.sectionIds[0]!, 4, "planned", 700),
+    ];
+    const distinctFirst = await moveEntry(env.APP_DB, distinctCohort.userId, {
+      operation_id: uuidv7(), entry_id: distinctIds[1]!, taskchute_day_id: distinctCohort.dayId,
+      section_id: distinctCohort.sectionIds[0]!, expected_placement_revision: 0,
+      placement: { kind: "relative_to_entry", anchor_entry_id: distinctIds[2]!, edge: "after" },
+    });
+    expect(distinctFirst).toMatchObject({ placement_revision: 1, entry_id: distinctIds[1] });
+    expect(await env.APP_DB.prepare("SELECT planned_start_minute FROM entries WHERE id = ?")
+      .bind(distinctIds[1]).first<number>("planned_start_minute")).toBe(660);
+    const distinctSecond = await moveEntry(env.APP_DB, distinctCohort.userId, {
+      operation_id: uuidv7(), entry_id: distinctIds[1]!, taskchute_day_id: distinctCohort.dayId,
+      section_id: distinctCohort.sectionIds[0]!, expected_placement_revision: 1,
+      placement: { kind: "relative_to_entry", anchor_entry_id: distinctIds[3]!, edge: "after" },
+    });
+    expect(distinctSecond).toMatchObject({ placement_revision: 2, entry_id: distinctIds[1] });
+    expect(await env.APP_DB.prepare("SELECT planned_start_minute FROM entries WHERE id = ?")
+      .bind(distinctIds[1]).first<number>("planned_start_minute")).toBe(700);
+    expect(await revision(distinctCohort.dayId)).toBe(2);
+  });
+
   it("guards D-083 relative and legacy MoveEntry no-ops with exact replay", async () => {
     const fixture = await seedTimedDay();
     const relativeSource = await addEntry(fixture.userId, fixture.dayId, fixture.sectionIds[0]!, 10, "planned", 480);

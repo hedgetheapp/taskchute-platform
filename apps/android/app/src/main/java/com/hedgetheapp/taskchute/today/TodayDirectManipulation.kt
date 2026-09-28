@@ -1,8 +1,12 @@
 package com.hedgetheapp.taskchute.today
 
+import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.hedgetheapp.taskchute.BuildConfig
+import com.hedgetheapp.taskchute.network.JsonParser
+import com.hedgetheapp.taskchute.network.JsonValue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -78,10 +82,33 @@ sealed interface DirectManipulationResult {
     data class SuccessWithRevision(val placementRevision: Int?) : DirectManipulationResult
     data object Unauthorized : DirectManipulationResult
     data object Ambiguous : DirectManipulationResult
-    data class Failure(val message: String) : DirectManipulationResult
+    data class Failure(
+        val message: String,
+        val status: Int? = null,
+        val code: String? = null,
+        val serverMessage: String? = null,
+        val reconcile: Boolean? = null,
+    ) : DirectManipulationResult
 }
 
 internal const val DETERMINISTIC_FAILURE_MESSAGE = "操作を完了できませんでした。\nもう一度操作してください。"
+
+internal fun parseDirectManipulationFailure(body: String?, status: Int?): DirectManipulationResult.Failure {
+    val errorObject = runCatching {
+        (JsonParser(body ?: "").parse() as? JsonValue.Object)
+            ?.fields?.get("error") as? JsonValue.Object
+    }.getOrNull()
+    return DirectManipulationResult.Failure(
+        message = DETERMINISTIC_FAILURE_MESSAGE,
+        status = status,
+        code = (errorObject?.fields?.get("code") as? JsonValue.StringValue)?.value,
+        serverMessage = (errorObject?.fields?.get("message") as? JsonValue.StringValue)?.value,
+        reconcile = when (val value = errorObject?.fields?.get("reconcile")) {
+            is JsonValue.BooleanValue -> value.value
+            else -> null
+        },
+    )
+}
 
 interface TodayDirectManipulationRepository {
     fun execute(request: DirectManipulationRequest): DirectManipulationResult
@@ -149,7 +176,7 @@ class TodayDirectManipulationHttpRepository(
                 DirectManipulationResult.Unauthorized
             }
             response.status == 503 -> DirectManipulationResult.Ambiguous
-            response.status !in 200..299 -> DirectManipulationResult.Failure(DETERMINISTIC_FAILURE_MESSAGE)
+            response.status !in 200..299 -> parseDirectManipulationFailure(response.body, response.status)
             else -> runCatching { TaskPlanningJsonParser.parsePlacementRevision(response.body) }
                 .getOrNull()
                 ?.let(DirectManipulationResult::SuccessWithRevision)
@@ -166,6 +193,7 @@ data class DirectManipulationUiState(
     val unresolvedRequest: DirectManipulationRequest? = null,
     val feedbackMessage: String? = null,
     val deterministicFailureToken: Long? = null,
+    val lastDeterministicFailure: DirectManipulationResult.Failure? = null,
 )
 
 class TodayDirectManipulationController(
@@ -315,13 +343,13 @@ class TodayDirectManipulationController(
     }
 
     fun clearError() {
-        state = state.copy(errorMessage = null, feedbackMessage = null, deterministicFailureToken = null)
+        state = state.copy(errorMessage = null, feedbackMessage = null, deterministicFailureToken = null, lastDeterministicFailure = null)
     }
 
     /** Clears only the deterministic failure instance that scheduled this dismissal. */
     fun clearDeterministicError(token: Long) {
         if (state.deterministicFailureToken == token && state.errorMessage == DETERMINISTIC_FAILURE_MESSAGE) {
-            state = state.copy(errorMessage = null, deterministicFailureToken = null)
+            state = state.copy(errorMessage = null, deterministicFailureToken = null, lastDeterministicFailure = null)
         }
     }
 
@@ -346,9 +374,11 @@ class TodayDirectManipulationController(
             errorMessage = null,
             feedbackMessage = null,
             deterministicFailureToken = null,
+            lastDeterministicFailure = null,
         )
         scope.launch {
             val result = withContext(Dispatchers.IO) { repository.execute(request) }
+            logDebugResult(request, result, unresolvedLogicalDate)
             when (result) {
                 DirectManipulationResult.Success -> {
                     unresolvedLogicalDate = null
@@ -393,6 +423,7 @@ class TodayDirectManipulationController(
                     state = state.copy(
                         errorMessage = DETERMINISTIC_FAILURE_MESSAGE,
                         deterministicFailureToken = nextDeterministicFailureToken,
+                        lastDeterministicFailure = result,
                     )
                 }
             }
@@ -406,5 +437,35 @@ class TodayDirectManipulationController(
         is DirectManipulationRequest.MoveToDay -> request.entryIds.toSet()
         is DirectManipulationRequest.Delete -> request.entryIds.toSet()
         is DirectManipulationRequest.HardDelete -> setOf(request.entryId)
+    }
+
+    private fun logDebugResult(
+        request: DirectManipulationRequest,
+        result: DirectManipulationResult,
+        logicalDate: String?,
+    ) {
+        if (!BuildConfig.DEBUG) return
+        val commandAndRevision = when (request) {
+            is DirectManipulationRequest.Reorder -> "reorder expectedRevision=${request.expectedPlacementRevision}"
+            is DirectManipulationRequest.Move -> "move expectedRevision=${request.expectedPlacementRevision}"
+            is DirectManipulationRequest.Duplicate -> "duplicate expectedRevision=${request.expectedPlacementRevision}"
+            is DirectManipulationRequest.MoveToDay -> "moveToDay expectedRevision=${request.expectedSourcePlacementRevision}"
+            is DirectManipulationRequest.Delete -> "delete expectedRevision=${request.expectedPlacementRevision}"
+            is DirectManipulationRequest.HardDelete -> "hardDelete expectedRevision=${request.expectedPlacementRevision}"
+        }
+        val resultDetails = when (result) {
+            is DirectManipulationResult.Failure ->
+                "status=${result.status} code=${result.code} reconcile=${result.reconcile} serverMessage=${result.serverMessage}"
+            is DirectManipulationResult.SuccessWithRevision -> "returnedRevision=${result.placementRevision}"
+            DirectManipulationResult.Success -> "result=success"
+            DirectManipulationResult.Unauthorized -> "result=unauthorized"
+            DirectManipulationResult.Ambiguous -> "result=ambiguous"
+        }
+        runCatching {
+            Log.d(
+                "TodayDirectManipulation",
+                "command=$commandAndRevision logicalDate=${logicalDate ?: "unknown"} $resultDetails",
+            )
+        }
     }
 }

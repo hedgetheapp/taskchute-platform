@@ -503,7 +503,10 @@ class TodayDirectManipulationTest {
         assertTrue(controller.state.pendingEntryIds.contains("entry-1"))
 
         repository.release.countDown()
-        assertTrue(await { controller.state.pendingEntryIds.isEmpty() && refreshes == 1 })
+        assertTrue(
+            "pending=${controller.state.pendingEntryIds} refreshes=$refreshes",
+            await { controller.state.pendingEntryIds.isEmpty() && refreshes == 1 },
+        )
         assertEquals(1, refreshes)
         controller.close()
     }
@@ -674,6 +677,154 @@ class TodayDirectManipulationTest {
                 placement = null,
             )),
         )
+    }
+
+    @Test
+    fun httpRepositoryPreservesStructuredWorkerFailureWithoutChangingGenericUiCopy() {
+        val result = parseDirectManipulationFailure(
+            """{"error":{"code":"resource_conflict","message":"placement snapshot conflict","reconcile":true}}""",
+            409,
+        )
+
+        assertEquals(DETERMINISTIC_FAILURE_MESSAGE, result.message)
+        assertEquals(409, result.status)
+        assertEquals("resource_conflict", result.code)
+        assertEquals("placement snapshot conflict", result.serverMessage)
+        assertEquals(true, result.reconcile)
+    }
+
+    @Test
+    fun realHttpClientChainUsesReturnedRevisionForImmediateSecondMove() {
+        val requests = mutableListOf<Triple<String, String, String?>>()
+        val responses = mutableListOf(
+            TodayHttpResponse(200, "{\"placement_revision\":1}"),
+            TodayHttpResponse(
+                409,
+                """{"error":{"code":"resource_conflict","message":"placement snapshot conflict","reconcile":true}}""",
+            ),
+        )
+        val repository = TodayDirectManipulationHttpRepository(
+            request = { method, path, body ->
+                requests += Triple(method, path, body)
+                responses.removeAt(0)
+            },
+        )
+        var confirmedRevision = 0
+        val controller = TodayDirectManipulationController(
+            repository = repository,
+            onRefresh = {},
+            onUnauthorized = {},
+            onPlacementRevisionConfirmed = { _, revision -> confirmedRevision = revision },
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+        )
+        val initial = fourTaskDay().copy(placementRevision = 0)
+
+        controller.move(
+            initial,
+            entryId = "entry-2",
+            target = PlacementTarget("section-1", "entry-3", PlacementEdge.AFTER),
+        )
+        assertTrue(await { requests.size == 1 && confirmedRevision == 1 })
+        assertTrue(requests[0].third.orEmpty().contains("\"entry_id\":\"entry-2\""))
+        assertTrue(requests[0].third.orEmpty().contains("\"anchor_entry_id\":\"entry-3\""))
+        assertTrue(requests[0].third.orEmpty().contains("\"edge\":\"after\""))
+        assertTrue(requests[0].third.orEmpty().contains("\"expected_placement_revision\":0"))
+
+        controller.move(
+            initial.copy(placementRevision = confirmedRevision),
+            entryId = "entry-2",
+            target = PlacementTarget("section-1", "entry-4", PlacementEdge.AFTER),
+        )
+        assertTrue(await {
+            requests.size == 2 &&
+                controller.state.pendingEntryIds.isEmpty() &&
+                controller.state.lastDeterministicFailure != null
+        })
+        assertTrue(requests[1].third.orEmpty().contains("\"entry_id\":\"entry-2\""))
+        assertTrue(requests[1].third.orEmpty().contains("\"anchor_entry_id\":\"entry-4\""))
+        assertTrue(requests[1].third.orEmpty().contains("\"edge\":\"after\""))
+        assertTrue(requests[1].third.orEmpty().contains("\"expected_placement_revision\":1"))
+        assertEquals(DETERMINISTIC_FAILURE_MESSAGE, controller.state.errorMessage)
+        assertEquals(409, controller.state.lastDeterministicFailure?.status)
+        assertEquals("resource_conflict", controller.state.lastDeterministicFailure?.code)
+        assertEquals("placement snapshot conflict", controller.state.lastDeterministicFailure?.serverMessage)
+        assertEquals(true, controller.state.lastDeterministicFailure?.reconcile)
+        controller.close()
+    }
+
+    @Test
+    fun todayPresentedDayCarriesConfirmedRevisionIntoImmediateSecondHttpMove() {
+        val initialDay = fourTaskDay().copy(placementRevision = 0)
+        val requests = mutableListOf<Triple<String, String, String?>>()
+        val responses = mutableListOf(
+            TodayHttpResponse(200, "{\"placement_revision\":1}"),
+            TodayHttpResponse(200, "{\"placement_revision\":2}"),
+        )
+        val httpRepository = TodayDirectManipulationHttpRepository(
+            request = { method, path, body ->
+                requests += Triple(method, path, body)
+                responses.removeAt(0)
+            },
+        )
+        val todayRepository = object : TodayRepository {
+            override fun loadDay(logicalDate: String?): TodayResult = TodayResult.Success(initialDay)
+            override fun startTask(task: TodayTask, placementRevision: Int): TodayMutationResult = TodayMutationResult.Success
+            override fun completeTask(task: TodayTask): TodayMutationResult = TodayMutationResult.Success
+        }
+        val todayController = TodayController(
+            repository = todayRepository,
+            onUnauthorized = {},
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+        )
+        todayController.loadCurrent()
+        assertTrue(await { todayController.state.presentedDay != null })
+        val directController = TodayDirectManipulationController(
+            repository = httpRepository,
+            onRefresh = {},
+            onUnauthorized = {},
+            onOptimisticIntent = todayController::applyOptimisticDirectManipulation,
+            onPlacementRevisionConfirmed = todayController::confirmPlacementRevision,
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+        )
+
+        directController.move(
+            requireNotNull(todayController.state.presentedDay),
+            entryId = "entry-2",
+            target = PlacementTarget("section-1", "entry-3", PlacementEdge.AFTER),
+        )
+        assertTrue(
+            "requests=${requests.size} revision=${todayController.state.presentedDay?.placementRevision} pending=${directController.state.pendingEntryIds}",
+            await {
+                requests.size == 1 &&
+                    todayController.state.presentedDay?.placementRevision == 1 &&
+                    directController.state.pendingEntryIds.isEmpty()
+            },
+        )
+        assertEquals(
+            listOf("entry-1", "entry-3", "entry-2", "entry-4"),
+            todayController.state.presentedDay?.sections?.single()?.entries?.map { it.id },
+        )
+
+        directController.move(
+            requireNotNull(todayController.state.presentedDay),
+            entryId = "entry-2",
+            target = PlacementTarget("section-1", "entry-4", PlacementEdge.AFTER),
+        )
+        assertTrue(await {
+            requests.size == 2 &&
+                todayController.state.presentedDay?.placementRevision == 2 &&
+                directController.state.pendingEntryIds.isEmpty()
+        })
+        assertTrue(requests[1].third.orEmpty().contains("\"entry_id\":\"entry-2\""))
+        assertTrue(requests[1].third.orEmpty().contains("\"anchor_entry_id\":\"entry-4\""))
+        assertTrue(requests[1].third.orEmpty().contains("\"edge\":\"after\""))
+        assertTrue(requests[1].third.orEmpty().contains("\"expected_placement_revision\":1"))
+        assertEquals(
+            listOf("entry-1", "entry-3", "entry-4", "entry-2"),
+            todayController.state.presentedDay?.sections?.single()?.entries?.map { it.id },
+        )
+        directController.close()
+        todayController.close()
     }
 
     @Test
@@ -1120,7 +1271,7 @@ class TodayDirectManipulationTest {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2)
         while (System.nanoTime() < deadline) {
             if (predicate()) return true
-            Thread.yield()
+            Thread.sleep(1)
         }
         return predicate()
     }
@@ -1175,6 +1326,20 @@ class TodayDirectManipulationTest {
             unsectionedEntries = emptyList(),
             activeExecution = null,
             taskChuteDayId = "day-1",
+        )
+
+        fun fourTaskDay() = day().copy(
+            sections = listOf(
+                day().sections.single().copy(
+                    entries = (1..4).map { index ->
+                        task(LifecycleState.PLANNED).copy(
+                            id = "entry-$index",
+                            taskId = "task-$index",
+                            title = "Task $index",
+                        )
+                    },
+                ),
+            ),
         )
 
         fun futureDay() = day().copy(
