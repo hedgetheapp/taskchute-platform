@@ -261,7 +261,6 @@ class TodayDirectManipulationTest {
             positionY = 240f,
             sourceEntryId = "entry-b",
             sourceSectionId = "section-1",
-            sourcePlannedStartMinute = 600,
             entryBounds = mapOf(
                 "entry-a" to Rect(0f, 20f, 100f, 100f),
                 "entry-b" to Rect(0f, 100f, 100f, 180f),
@@ -279,12 +278,6 @@ class TodayDirectManipulationTest {
                 "entry-b" to true,
                 "entry-c" to true,
                 "entry-d" to true,
-            ),
-            entryPlannedStartMinutes = mapOf(
-                "entry-a" to 600,
-                "entry-b" to 600,
-                "entry-c" to 600,
-                "entry-d" to 600,
             ),
             emptySectionBounds = emptyMap(),
             emptySectionIds = emptyMap(),
@@ -296,12 +289,11 @@ class TodayDirectManipulationTest {
     }
 
     @Test
-    fun ordinaryCrossCohortBoundaryIsNotExposed() {
+    fun ordinaryCrossCohortBoundaryIsExposedForSingleTaskMove() {
         val target = resolveAndroidDropTarget(
             positionY = 240f,
             sourceEntryId = "entry-a",
             sourceSectionId = "section-1",
-            sourcePlannedStartMinute = 600,
             entryBounds = mapOf(
                 "entry-a" to Rect(0f, 20f, 100f, 100f),
                 "entry-b" to Rect(0f, 100f, 100f, 180f),
@@ -320,17 +312,13 @@ class TodayDirectManipulationTest {
                 "entry-c" to true,
                 "entry-d" to true,
             ),
-            entryPlannedStartMinutes = mapOf(
-                "entry-a" to 600,
-                "entry-b" to 600,
-                "entry-c" to 660,
-                "entry-d" to 660,
-            ),
             emptySectionBounds = emptyMap(),
             emptySectionIds = emptyMap(),
         )
 
-        assertEquals(null, target)
+        assertEquals(entryDropKey("entry-c"), target?.key)
+        assertEquals(PlacementEdge.AFTER, target?.edge)
+        assertEquals(260f, target?.resolvedBoundaryY)
     }
 
     @Test
@@ -339,7 +327,6 @@ class TodayDirectManipulationTest {
             positionY = 150f,
             sourceEntryId = "entry-b",
             sourceSectionId = "section-1",
-            sourcePlannedStartMinute = 600,
             entryBounds = mapOf(
                 "entry-a" to Rect(0f, 20f, 100f, 100f),
                 "entry-b" to Rect(0f, 100f, 100f, 180f),
@@ -354,11 +341,6 @@ class TodayDirectManipulationTest {
                 "entry-a" to true,
                 "entry-b" to true,
                 "entry-c" to true,
-            ),
-            entryPlannedStartMinutes = mapOf(
-                "entry-a" to 600,
-                "entry-b" to 600,
-                "entry-c" to 600,
             ),
             emptySectionBounds = emptyMap(),
             emptySectionIds = emptyMap(),
@@ -375,8 +357,6 @@ class TodayDirectManipulationTest {
             positionY = 150f,
             sourceEntryId = "routine-source",
             sourceSectionId = "section-1",
-            sourceRoutineDerived = true,
-            sourcePlannedStartMinute = 600,
             entryBounds = mapOf(
                 "routine-source" to Rect(0f, 20f, 100f, 100f),
                 "routine-anchor" to Rect(0f, 100f, 100f, 180f),
@@ -386,10 +366,6 @@ class TodayDirectManipulationTest {
                 "routine-anchor" to "section-1",
             ),
             entryAnchorEligible = mapOf("routine-anchor" to true),
-            entryPlannedStartMinutes = mapOf(
-                "routine-source" to 600,
-                "routine-anchor" to 660,
-            ),
             emptySectionBounds = emptyMap(),
             emptySectionIds = emptyMap(),
         )
@@ -400,37 +376,14 @@ class TodayDirectManipulationTest {
     }
 
     @Test
-    fun routineSameSectionDropBypassesOrdinaryCohortGuard() {
-        val source = task(LifecycleState.PLANNED, routineDerived = true).copy(id = "routine-source")
-        val anchor = task(LifecycleState.PLANNED).copy(id = "routine-anchor", plannedStartMinute = 660)
-
-        assertTrue(
-            isLegalAndroidSameSectionDrop(
-                sourceRoutineDerived = true,
-                entries = listOf(source, anchor),
-                desiredIds = listOf("routine-anchor", "routine-source"),
-            ),
-        )
-        assertFalse(
-            isLegalAndroidSameSectionDrop(
-                sourceRoutineDerived = false,
-                entries = listOf(source, anchor),
-                desiredIds = listOf("routine-anchor", "routine-source"),
-            ),
-        )
-    }
-
-    @Test
     fun crossSectionBoundaryRemainsAvailableAcrossCohorts() {
         val target = resolveAndroidDropTarget(
             positionY = 150f,
             sourceEntryId = "entry-source",
             sourceSectionId = "section-1",
-            sourcePlannedStartMinute = 600,
             entryBounds = mapOf("entry-target" to Rect(0f, 100f, 100f, 180f)),
             entrySectionIds = mapOf("entry-target" to "section-2"),
             entryAnchorEligible = mapOf("entry-target" to true),
-            entryPlannedStartMinutes = mapOf("entry-target" to 660),
             emptySectionBounds = emptyMap(),
             emptySectionIds = emptyMap(),
         )

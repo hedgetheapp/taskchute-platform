@@ -469,7 +469,7 @@ class TodayScreenInstrumentedTest {
     }
 
     @Test
-    fun longPressDragKeepsOnePointerGestureAndReordersEligibleRows() {
+    fun longPressDragKeepsOnePointerGestureAndMovesRelativeToEligibleRow() {
         val directRepository = FakeDirectManipulationRepository()
         val first = TodayTask(
             id = "entry-1", title = "Write report", lifecycleState = LifecycleState.PLANNED,
@@ -496,18 +496,21 @@ class TodayScreenInstrumentedTest {
             up()
         }
 
-        composeRule.waitUntil(15_000) { directRepository.reorderCalls.get() == 1 }
-        assertEquals(1, directRepository.reorderCalls.get())
-        assertEquals(listOf("entry-2", "entry-1"), directRepository.lastReorderIds)
+        composeRule.waitUntil(15_000) { directRepository.moveCalls.get() == 1 }
+        assertEquals(1, directRepository.moveCalls.get())
+        assertEquals(0, directRepository.reorderCalls.get())
+        assertEquals("entry-2", directRepository.lastMove?.placement?.anchorEntryId)
+        assertFalse(directRepository.lastMove?.routineScoped == true)
+        assertFalse(directRepository.lastMove?.relativePlannedStartAnchor == true)
         assertTrue(composeRule.onAllNodesWithText("タスクを編集").fetchSemanticsNodes().isEmpty())
     }
 
     @Test
-    fun longPressDragMovesFourRowSameCohortUpwardWithOneDispatch() {
+    fun longPressDragMovesFourRowDifferentCohortUpwardWithOneMoveDispatch() {
         val directRepository = FakeDirectManipulationRepository()
         val base = dayWith().sections.single().entries.single()
         val entries = listOf("A", "B", "C", "D").mapIndexed { index, title ->
-            base.copy(id = "entry-$title", title = title, taskId = "task-$title", plannedStartMinute = 540)
+            base.copy(id = "entry-$title", title = title, taskId = "task-$title", plannedStartMinute = 540 + index * 60)
         }
         val initialDay = dayWith().copy(
             sections = listOf(dayWith().sections.single().copy(entries = entries)),
@@ -521,17 +524,20 @@ class TodayScreenInstrumentedTest {
         sourceNode.performTouchInput {
             down(center)
             advanceEventTime(600)
-            moveBy(Offset(0f, targetBounds.top - sourceBounds.center.y), delayMillis = 100)
+            moveBy(Offset(0f, targetBounds.bottom - targetBounds.height * 0.1f - sourceBounds.center.y), delayMillis = 100)
             up()
         }
 
-        composeRule.waitUntil(15_000) { directRepository.reorderCalls.get() == 1 }
-        assertEquals(1, directRepository.reorderCalls.get())
-        assertEquals(listOf("entry-A", "entry-D", "entry-B", "entry-C"), directRepository.lastReorderIds)
+        composeRule.waitUntil(15_000) { directRepository.moveCalls.get() == 1 }
+        assertEquals(1, directRepository.moveCalls.get())
+        assertEquals(0, directRepository.reorderCalls.get())
+        assertEquals("entry-B", directRepository.lastMove?.placement?.anchorEntryId)
+        assertFalse(directRepository.lastMove?.routineScoped == true)
+        assertFalse(directRepository.lastMove?.relativePlannedStartAnchor == true)
     }
 
     @Test
-    fun longPressDragDoesNotExposeCrossCohortBoundaryOrDispatch() {
+    fun longPressDragMovesFourRowDifferentCohortDownwardWithOneMoveDispatch() {
         val directRepository = FakeDirectManipulationRepository()
         val base = dayWith().sections.single().entries.single()
         val entries = listOf(
@@ -548,21 +554,21 @@ class TodayScreenInstrumentedTest {
 
         val sourceNode = composeRule.onNodeWithContentDescription("タスクをドラッグ: Cohort A")
         val sourceBounds = sourceNode.fetchSemanticsNode().boundsInRoot
-        val invalidTargetBounds = composeRule.onNodeWithContentDescription("タスクをドラッグ: Cohort D")
+        val targetBounds = composeRule.onNodeWithContentDescription("タスクをドラッグ: Cohort D")
             .fetchSemanticsNode().boundsInRoot
         sourceNode.performTouchInput {
             down(center)
             advanceEventTime(600)
-            moveBy(Offset(0f, invalidTargetBounds.center.y - sourceBounds.center.y), delayMillis = 100)
-            composeRule.waitUntil(2_000) {
-                composeRule.onAllNodesWithContentDescription("挿入位置").fetchSemanticsNodes().isEmpty()
-            }
+            moveBy(Offset(0f, targetBounds.bottom - targetBounds.height * 0.1f - sourceBounds.center.y), delayMillis = 100)
             up()
         }
 
-        composeRule.waitUntil(2_000) { directRepository.reorderCalls.get() == 0 }
+        composeRule.waitUntil(15_000) { directRepository.moveCalls.get() == 1 }
+        assertEquals(1, directRepository.moveCalls.get())
         assertEquals(0, directRepository.reorderCalls.get())
-        assertTrue(composeRule.onAllNodesWithText("操作を完了できませんでした").fetchSemanticsNodes().isEmpty())
+        assertEquals("entry-d", directRepository.lastMove?.placement?.anchorEntryId)
+        assertFalse(directRepository.lastMove?.routineScoped == true)
+        assertFalse(directRepository.lastMove?.relativePlannedStartAnchor == true)
     }
 
     @Test
@@ -591,6 +597,85 @@ class TodayScreenInstrumentedTest {
         composeRule.waitUntil(15_000) { directRepository.moveCalls.get() == 1 }
         assertEquals(1, directRepository.moveCalls.get())
         assertEquals("entry-routine-anchor", directRepository.lastMove?.placement?.anchorEntryId)
+        assertTrue(directRepository.lastMove?.routineScoped == true)
+        assertTrue(directRepository.lastMove?.relativePlannedStartAnchor == true)
+    }
+
+    @Test
+    fun futureDayOrdinaryDifferentCohortDropUsesRelativeMoveOnce() {
+        val directRepository = FakeDirectManipulationRepository()
+        val base = dayWith().sections.single().entries.single()
+        val entries = listOf("A", "B", "C", "D").mapIndexed { index, title ->
+            base.copy(id = "future-entry-$title", title = "Future $title", taskId = "future-task-$title", plannedStartMinute = 540 + index * 60)
+        }
+        val futureDay = dayWith().copy(
+            logicalDate = "2026-09-15",
+            isCurrent = false,
+            taskChuteDayId = "future-day-1",
+            sections = listOf(dayWith().sections.single().copy(entries = entries)),
+        )
+        launchPlanningScreen(FakePlanningRepository(), futureDay, directRepository)
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        val sourceNode = composeRule.onNodeWithContentDescription("タスクをドラッグ: Future A")
+        val sourceBounds = sourceNode.fetchSemanticsNode().boundsInRoot
+        val targetBounds = composeRule.onNodeWithContentDescription("タスクをドラッグ: Future D")
+            .fetchSemanticsNode().boundsInRoot
+        sourceNode.performTouchInput {
+            down(center)
+            advanceEventTime(600)
+            moveBy(Offset(0f, targetBounds.bottom - targetBounds.height * 0.1f - sourceBounds.center.y), delayMillis = 100)
+            up()
+        }
+
+        composeRule.waitUntil(15_000) { directRepository.moveCalls.get() == 1 }
+        assertEquals(1, directRepository.moveCalls.get())
+        assertEquals("future-entry-D", directRepository.lastMove?.placement?.anchorEntryId)
+        assertFalse(directRepository.lastMove?.routineScoped == true)
+        assertFalse(directRepository.lastMove?.relativePlannedStartAnchor == true)
+    }
+
+    @Test
+    fun futureDayRoutineDifferentCohortDropUsesOccurrenceAwareMoveOnce() {
+        val directRepository = FakeDirectManipulationRepository()
+        val base = dayWith().sections.single().entries.single()
+        val routine = base.copy(
+            id = "future-routine-source",
+            title = "Future Routine source",
+            taskId = "future-routine-task",
+            routineDerived = true,
+            plannedStartMinute = 540,
+        )
+        val anchor = base.copy(
+            id = "future-routine-anchor",
+            title = "Future Routine anchor",
+            taskId = "future-routine-anchor-task",
+            routineDerived = true,
+            plannedStartMinute = 660,
+        )
+        val futureDay = dayWith().copy(
+            logicalDate = "2026-09-15",
+            isCurrent = false,
+            taskChuteDayId = "future-day-1",
+            sections = listOf(dayWith().sections.single().copy(entries = listOf(routine, anchor))),
+        )
+        launchPlanningScreen(FakePlanningRepository(), futureDay, directRepository)
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        val sourceNode = composeRule.onNodeWithContentDescription("タスクをドラッグ: Future Routine source")
+        val sourceBounds = sourceNode.fetchSemanticsNode().boundsInRoot
+        val targetBounds = composeRule.onNodeWithContentDescription("タスクをドラッグ: Future Routine anchor")
+            .fetchSemanticsNode().boundsInRoot
+        sourceNode.performTouchInput {
+            down(center)
+            advanceEventTime(600)
+            moveBy(Offset(0f, targetBounds.center.y - sourceBounds.center.y), delayMillis = 100)
+            up()
+        }
+
+        composeRule.waitUntil(15_000) { directRepository.moveCalls.get() == 1 }
+        assertEquals(1, directRepository.moveCalls.get())
+        assertEquals("future-routine-anchor", directRepository.lastMove?.placement?.anchorEntryId)
         assertTrue(directRepository.lastMove?.routineScoped == true)
         assertTrue(directRepository.lastMove?.relativePlannedStartAnchor == true)
     }
