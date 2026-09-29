@@ -1,16 +1,16 @@
 # D-146 — Android Notes Interaction Refinements + Movable Add FAB v0.1
 
-Status: **Approved — Implemented / Integrated / focused PASS / Notes AVD PASS / Galaxy S23 NOT_RUN / Production NOT_RUN / Released NO**
+Status: **Approved — Implemented / Integrated / focused PASS / Notes AVD PASS / Galaxy S23 PASS / USER_CONFIRMED / Production NOT_RUN / Released NO**
 
 Date: 2026-09-26
 
 ## Implementation and verification closeout — 2026-09-29
 
-Implementation `df89d1ef539eac7ebb353da5f7b4bda2490324d1` completes the approved Android Notes dogfood slice. Standalone Note title focus/select-all is session-scoped, empty-title validation is local and recoverable, list timestamps use device-local time, row actions use the compact `…` bottom sheet, and the shared Markdown editor uses `本文を入力`, unfocused full-line preview, and touch-slop-safe link/checkbox interaction. Notes Selection Mode and the shared movable Add FAB are implemented without bulk Document mutation or a new persistence authority.
+Implementation `df89d1ef539eac7ebb353da5f7b4bda2490324d11` completes the approved Android Notes dogfood slice. Standalone Note title focus/select-all is session-scoped, empty-title validation is local and recoverable, list timestamps use device-local time, row actions use the compact `…` bottom sheet, and the shared Markdown editor uses `本文を入力`, unfocused full-line preview, and touch-slop-safe link/checkbox interaction. Notes Selection Mode and the shared movable Add FAB are implemented without bulk Document mutation or a new persistence authority.
 
-Focused Markdown/Notes JVM tests, the Android JVM suite (`237 / 237`), Notes `TaskChute_API33` instrumentation (`15 / 15`), the Today shared-FAB representative test (`1 / 1`), `:app:compileDebugKotlin`, `:app:compileDebugAndroidTestKotlin`, `:app:assembleDebug`, and `git diff --check` passed. MainActivity/UI-tree smoke passed with an empty target-app crash buffer. Exact-SHA CI `36505504619` passed; signed APK artifact `taskchute-android-debug-df89d1ef539eac7ebb353da5f7b4bda2490324d1`, artifact ID `11007415041`, expires `2026-10-06T00:59:07Z`.
+Focused Markdown/Notes JVM tests, the Android JVM suite (`237 / 237`), Notes `TaskChute_API33` instrumentation (`15 / 15`), the Today shared-FAB representative test (`1 / 1`), `:app:compileDebugKotlin`, `:app:compileDebugAndroidTestKotlin`, `:app:assembleDebug`, and `git diff --check` passed. MainActivity/UI-tree smoke passed with an empty target-app crash buffer. Exact-SHA CI `36505504619` passed; signed APK artifact `taskchute-android-debug-df89d1ef539eac7ebb353da5f7b4bda2490324d11`, artifact ID `11007415041`, expires `2026-10-06T00:59:07Z`.
 
-Worker/API/shared contracts, Web, schema, migration, dependency, persistent nonprod, D-145, Production, and Release were not changed or run. Galaxy S23 remains `NOT_RUN / PRODUCT_OWNER_MANUAL`.
+Worker/API/shared contracts, Web, schema, migration, dependency, persistent nonprod, D-145, Production, and Release were not changed or run. Product Owner tested the fresh D-146 APK on Galaxy S23 and reported `問題なし`; representative D-146 device smoke is `PASS / USER_CONFIRMED`. This does not claim a full device matrix or pixel-perfect comparison.
 
 ## Context
 
@@ -190,6 +190,6 @@ Implementation must include focused automated coverage for at least:
 - Notes right-swipe Selection Mode, whole-row toggle, zero-selection exit, action/FAB suppression;
 - Today + Notes movable Add FAB tap/drag bounds/reset semantics.
 
-Run impacted Android JVM tests and surface-aware Android runtime verification. Because the shared FAB touches Today and Notes, run both Today and Notes surface verification unless source impact analysis proves a narrower safe contract. Galaxy S23 remains Product Owner manual evidence until performed.
+Run impacted Android JVM tests and surface-aware Android runtime verification. Because the shared FAB touches Today and Notes, run both Today and Notes surface verification unless source impact analysis proves a narrower safe contract. Product Owner subsequently completed representative Galaxy S23 verification of the fresh D-146 APK and reported `問題なし`; record that device smoke as `PASS / USER_CONFIRMED` without promoting it to a full device matrix.
 
 Production and Release remain NOT_RUN / NO.
