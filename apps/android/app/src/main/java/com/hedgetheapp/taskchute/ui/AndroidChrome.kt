@@ -90,7 +90,7 @@ fun AndroidNavigationBar(
     ) {
         Row(modifier = Modifier.fillMaxWidth().height(56.dp)) {
             AndroidNavigationItem(selected == AndroidDestination.TODAY, "Task", R.drawable.android_footer_task_alt, 20.dp, 20.dp, onToday, "Task", Modifier.weight(1f))
-            AndroidNavigationItem(selected == AndroidDestination.NOTES, "Notes", R.drawable.android_footer_description, 16.dp, 20.dp, onNotes, "Notes", Modifier.weight(1f))
+            AndroidNavigationItem(selected == AndroidDestination.NOTES, "Notes", R.drawable.android_footer_description, 16.dp, 20.dp, onNotes, "ノート一覧", Modifier.weight(1f))
             AndroidNavigationItem(selected == AndroidDestination.DAILY, "Daily", R.drawable.android_footer_edit_note, 20.dp, 20.dp, onDaily, "Daily", Modifier.weight(1f))
             AndroidNavigationItem(selected == AndroidDestination.SETTINGS, "Settings", R.drawable.android_footer_settings, 20.dp, 20.dp, onSettings, "Settings", Modifier.weight(1f))
         }

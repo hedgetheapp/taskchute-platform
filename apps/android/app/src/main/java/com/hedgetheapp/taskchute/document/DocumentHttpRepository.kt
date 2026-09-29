@@ -20,6 +20,7 @@ class DocumentHttpRepository(
                         title = item.stringField("title"),
                         revision = item.intField("revision"),
                         updatedAt = item.stringField("updated_at"),
+                        createdAt = item.nullableStringField("created_at") ?: "",
                     )
                 }
                 DocumentListResult.Success(documents)

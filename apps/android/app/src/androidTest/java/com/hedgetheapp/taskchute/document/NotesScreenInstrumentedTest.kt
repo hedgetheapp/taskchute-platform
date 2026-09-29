@@ -68,7 +68,7 @@ class NotesScreenInstrumentedTest {
         composeRule.onNodeWithContentDescription("ノートを新規作成").performClick()
         composeRule.waitUntil(10_000) { controller?.state?.editor?.document != null }
         assertTrue(composeRule.onAllNodesWithText("保存", substring = false).fetchSemanticsNodes().isEmpty())
-        composeRule.onNodeWithText("Markdown").performTextInput("manual flush")
+        composeRule.onNodeWithText("本文を入力").performTextInput("manual flush")
         composeRule.runOnIdle { controller!!.save() }
 
         composeRule.waitUntil(5_000) { repository.updateCalls.get() == 1 && controller?.state?.editor?.dirty == false }
@@ -98,7 +98,7 @@ class NotesScreenInstrumentedTest {
 
         composeRule.onNodeWithContentDescription("ノートを新規作成").performClick()
         composeRule.waitUntil(10_000) { controller?.state?.editor?.document != null }
-        composeRule.onNodeWithText("Markdown").performTextInput("discard me")
+        composeRule.onNodeWithText("本文を入力").performTextInput("discard me")
         composeRule.waitUntil(5_000) { controller?.state?.editor?.errorMessage == "failure" }
 
         composeRule.onNodeWithText("‹ ノート").performClick()
@@ -159,13 +159,13 @@ class NotesScreenInstrumentedTest {
         composeRule.setContent { MaterialTheme { notesScreen() } }
 
         composeRule.onNodeWithText("Archive me").assertIsDisplayed()
-        composeRule.onNodeWithText("操作").performClick()
+        composeRule.onNodeWithContentDescription("Archive meの操作").performClick()
         composeRule.onAllNodesWithText("アーカイブ").get(1).performClick()
         composeRule.waitUntil(10_000) { repository.archiveCalls.get() == 1 && controller?.state?.documents?.isEmpty() == true }
 
         composeRule.onNodeWithText("アーカイブ").performClick()
         composeRule.onNodeWithText("Archive me").assertIsDisplayed()
-        composeRule.onNodeWithText("操作").performClick()
+        composeRule.onNodeWithContentDescription("Archive meの操作").performClick()
         composeRule.onNodeWithText("削除").performClick()
         composeRule.onNodeWithText("ノートを削除").assertIsDisplayed()
         composeRule.onNodeWithText("削除").performClick()

@@ -246,12 +246,11 @@ private fun touchedLineIndexes(lines: List<SourceLine>, selection: MarkdownSelec
     return (startLine..endLine).toSet()
 }
 
-internal class MarkdownPreviewTransformation(private val activeSelection: MarkdownSelection) : VisualTransformation {
+internal class MarkdownPreviewTransformation(private val activeSelection: MarkdownSelection?) : VisualTransformation {
     override fun filter(text: AnnotatedString): TransformedText {
         val source = text.text
-        val selection = activeSelection.normalized(source.length)
         val lines = sourceLines(source)
-        val active = touchedLineIndexes(lines, selection)
+        val active = activeSelection?.let { touchedLineIndexes(lines, it.normalized(source.length)) }.orEmpty()
         val builder = PreviewBuilder(source)
         lines.forEachIndexed { index, line ->
             if (index in active) {
@@ -412,6 +411,8 @@ fun MarkdownLiveEditor(
     onTextFieldValueChange: ((TextFieldValue) -> Unit)? = null,
 ) {
     var fieldValue by remember { mutableStateOf(TextFieldValue(value)) }
+    var selectionRestoreAfterTap by remember { mutableStateOf<TextRange?>(null) }
+    var staleTextAfterCheckboxToggle by remember { mutableStateOf<String?>(null) }
     var hasFocus by remember { mutableStateOf(false) }
     var textLayoutResult by remember { mutableStateOf<androidx.compose.ui.text.TextLayoutResult?>(null) }
     val focusRequester = remember { FocusRequester() }
@@ -420,18 +421,19 @@ fun MarkdownLiveEditor(
     val density = LocalDensity.current
     val imeVisible = WindowInsets.ime.getBottom(density) > 0
     val toolbarVisible = hasFocus && imeVisible && enabled
-    val previewTransformation = remember(fieldValue.text, fieldValue.selection.start, fieldValue.selection.end) {
+    val previewSelection = if (hasFocus) MarkdownSelection(fieldValue.selection.start, fieldValue.selection.end) else null
+    val previewTransformation = remember(fieldValue.text, fieldValue.selection.start, fieldValue.selection.end, hasFocus) {
         MarkdownPreviewTransformation(
-            MarkdownSelection(fieldValue.selection.start, fieldValue.selection.end),
+            previewSelection,
         )
     }
     val transformedPreview = remember(fieldValue.text, fieldValue.selection.start, fieldValue.selection.end) {
         previewTransformation.filter(AnnotatedString(fieldValue.text))
     }
-    val checkboxHits = remember(fieldValue.text, fieldValue.selection.start, fieldValue.selection.end) {
+    val checkboxHits = remember(fieldValue.text, fieldValue.selection.start, fieldValue.selection.end, hasFocus) {
         renderedTaskCheckboxHits(
             source = fieldValue.text,
-            selection = MarkdownSelection(fieldValue.selection.start, fieldValue.selection.end),
+            selection = previewSelection,
             mapping = transformedPreview.offsetMapping,
         )
     }
@@ -469,6 +471,7 @@ fun MarkdownLiveEditor(
                     TextRange(result.mapOffset(it.start), result.mapOffset(it.end))
                 }
                 val next = fieldValue.copy(text = result.text, selection = selection, composition = composition)
+                staleTextAfterCheckboxToggle = fieldValue.text
                 fieldValue = next
                 onValueChange(next.text)
                 onTextFieldValueChange?.invoke(next)
@@ -528,17 +531,25 @@ fun MarkdownLiveEditor(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
-                    .pointerInput(enabled, checkboxHits, linkHits) {
+                    .pointerInput(enabled) {
                         if (!enabled) return@pointerInput
                         awaitEachGesture {
                             val down = awaitFirstDown(
                                 requireUnconsumed = false,
                                 pass = PointerEventPass.Initial,
                             )
+                            val selectionAtDown = fieldValue.selection
                             val layout = latestTextLayoutResult.value
-                            val checkbox = layout?.getOffsetForPosition(down.position)?.let { offset ->
+                            val checkbox = layout?.let { textLayout ->
+                                val offset = textLayout.getOffsetForPosition(down.position)
                                 latestCheckboxHits.value.firstOrNull {
                                     offset in it.transformedStart until it.transformedEndExclusive
+                                } ?: run {
+                                    val line = textLayout.getLineForVerticalPosition(down.position.y)
+                                    latestCheckboxHits.value.firstOrNull { hit ->
+                                        textLayout.getLineForOffset(hit.transformedStart) == line &&
+                                            down.position.x <= textLayout.getBoundingBox((hit.transformedEndExclusive - 1).coerceAtLeast(hit.transformedStart)).right + 24f
+                                    }
                                 }
                             }
                             val link = layout?.getOffsetForPosition(down.position)?.let { offset ->
@@ -548,7 +559,6 @@ fun MarkdownLiveEditor(
                             }
                             if (checkbox == null && link == null) return@awaitEachGesture
 
-                            down.consume()
                             var canceled = false
                             var upPosition = down.position
                             while (true) {
@@ -556,21 +566,32 @@ fun MarkdownLiveEditor(
                                 val change = event.changes.firstOrNull { it.id == down.id } ?: continue
                                 upPosition = change.position
                                 if (change.changedToUpIgnoreConsumed()) {
-                                    change.consume()
                                     break
                                 }
                                 if (!change.pressed) {
                                     canceled = true
                                     break
                                 }
-                                change.consume()
+                                if ((change.position - down.position).getDistance() > viewConfiguration.touchSlop) {
+                                    canceled = true
+                                    break
+                                }
                             }
 
-                            if (!canceled) {
-                                val upOffset = layout?.getOffsetForPosition(upPosition)
-                                if (checkbox != null && upOffset != null && upOffset in checkbox.transformedStart until checkbox.transformedEndExclusive) {
+                            if (!canceled && (upPosition - down.position).getDistance() <= viewConfiguration.touchSlop) {
+                                if (checkbox != null) {
+                                    selectionRestoreAfterTap = selectionAtDown
+                                    if (fieldValue.selection != selectionAtDown) {
+                                        fieldValue = fieldValue.copy(selection = selectionAtDown)
+                                        onTextFieldValueChange?.invoke(fieldValue)
+                                    }
                                     toggleCheckbox.value(checkbox.sourceStart)
-                                } else if (link != null && upOffset != null && upOffset in link.transformedStart until link.transformedEndExclusive) {
+                                } else if (link != null) {
+                                    selectionRestoreAfterTap = selectionAtDown
+                                    if (fieldValue.selection != selectionAtDown) {
+                                        fieldValue = fieldValue.copy(selection = selectionAtDown)
+                                        onTextFieldValueChange?.invoke(fieldValue)
+                                    }
                                     openUrl.value(link.destination)
                                 }
                             }
@@ -580,9 +601,21 @@ fun MarkdownLiveEditor(
                 BasicTextField(
                     value = fieldValue,
                     onValueChange = {
-                        fieldValue = it
-                        onValueChange(it.text)
-                        onTextFieldValueChange?.invoke(it)
+                        val previousText = fieldValue.text
+                        if (staleTextAfterCheckboxToggle == it.text && it.text != previousText) {
+                            staleTextAfterCheckboxToggle = null
+                        } else {
+                            val restored = selectionRestoreAfterTap
+                            if (it.text == previousText && restored != null) {
+                                selectionRestoreAfterTap = null
+                                fieldValue = it.copy(selection = restored)
+                                onTextFieldValueChange?.invoke(fieldValue)
+                            } else {
+                                fieldValue = it
+                                if (it.text != previousText) onValueChange(it.text)
+                                onTextFieldValueChange?.invoke(it)
+                            }
+                        }
                     },
                     enabled = enabled,
                     textStyle = MaterialTheme.typography.bodyLarge.copy(color = TaskChuteColors.PrimaryText, fontSize = 16.sp),
@@ -599,7 +632,7 @@ fun MarkdownLiveEditor(
                         .onFocusChanged { hasFocus = it.isFocused },
                     decorationBox = { innerTextField ->
                         Box(Modifier.fillMaxSize().padding(top = 2.dp)) {
-                            if (fieldValue.text.isEmpty()) Text("Markdown", color = TaskChuteColors.SecondaryText)
+                            if (fieldValue.text.isEmpty()) Text("本文を入力", color = TaskChuteColors.SecondaryText)
                             innerTextField()
                         }
                     },

@@ -74,6 +74,14 @@ class MarkdownLiveEditorTest {
     }
 
     @Test
+    fun unfocusedEditorRendersSupportedSyntaxOnEveryLine() {
+        val source = "**重要**\n- 項目\n- [ ] 未完了"
+        val result = MarkdownPreviewTransformation(null).filter(AnnotatedString(source))
+
+        assertEquals("重要\n• 項目\n☐ 未完了", result.text.text)
+    }
+
+    @Test
     fun transformedOffsetsRemainMonotonicAroundHiddenMarkers() {
         val source = "前\n**重要**\n[リンク](https://example.com)"
         val transformed = MarkdownPreviewTransformation(MarkdownSelection(0, 0)).filter(AnnotatedString(source))

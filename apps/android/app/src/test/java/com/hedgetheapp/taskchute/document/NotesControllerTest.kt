@@ -39,6 +39,38 @@ class NotesControllerTest {
     }
 
     @Test
+    fun emptyStandaloneTitleShowsLocalValidationAndRecoversWithAutosave() {
+        val repository = FakeRepository()
+        val controller = controller(repository)
+
+        controller.openNew()
+        assertTrue(await { controller.state.editor?.document != null })
+        controller.updateTitle("")
+        controller.save()
+
+        assertEquals("タイトルを入力してください", controller.state.editor?.errorMessage)
+        val updatesBeforeRecovery = repository.updateRequests.size
+        controller.updateTitle("Recovered")
+
+        assertEquals(NoteSaveStatus.UNSAVED, controller.state.editor?.saveStatus)
+        assertTrue(controller.state.editor?.errorMessage == null)
+        assertTrue(await { repository.updateRequests.size > updatesBeforeRecovery })
+    }
+
+    @Test
+    fun selectionTogglesAndAutoExitsWhenLastDocumentIsCleared() {
+        val controller = controller(FakeRepository())
+        controller.enterSelection("doc-1")
+        assertTrue(controller.state.selectionModeActive)
+        assertEquals(setOf("doc-1"), controller.state.selectedDocumentIds)
+
+        controller.toggleSelection("doc-1")
+
+        assertFalse(controller.state.selectionModeActive)
+        assertTrue(controller.state.selectedDocumentIds.isEmpty())
+    }
+
+    @Test
     fun canonicalCreateTitleIsAdopted() {
         val repository = FakeRepository().apply {
             createResult = DocumentResult.Success(document("doc-1", "notitle3", ""))

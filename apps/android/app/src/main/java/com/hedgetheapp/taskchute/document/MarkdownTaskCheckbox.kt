@@ -106,7 +106,7 @@ private fun trimUrl(raw: String): String? {
 
 internal fun renderedTaskCheckboxHits(
     source: String,
-    selection: MarkdownSelection,
+    selection: MarkdownSelection?,
     mapping: OffsetMapping,
 ): List<RenderedTaskCheckboxHit> {
     val active = activeLineStarts(source, selection)
@@ -134,7 +134,8 @@ internal fun renderedTaskCheckboxHits(
     return hits
 }
 
-private fun activeLineStarts(source: String, selection: MarkdownSelection): Set<Int> {
+private fun activeLineStarts(source: String, selection: MarkdownSelection?): Set<Int> {
+    if (selection == null) return emptySet()
     val range = selection.normalized(source.length)
     val active = mutableSetOf<Int>()
     var lineStart = 0

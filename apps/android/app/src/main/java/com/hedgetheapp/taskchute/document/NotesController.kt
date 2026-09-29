@@ -50,6 +50,8 @@ data class NoteEditorState(
     val unresolvedRequest: NoteEditorRequest? = null,
     val errorMessage: String? = null,
     val saveStatus: NoteSaveStatus = NoteSaveStatus.SAVED,
+    val sessionId: Int = 0,
+    val focusTitleOnStart: Boolean = false,
 ) {
     val dirty: Boolean
         get() = if (document == null) title.isNotBlank() || markdownBody.isNotBlank()
@@ -69,6 +71,8 @@ data class NotesUiState(
     val unresolvedTaskEnsure: TaskPrimaryEnsureRequest? = null,
     val unresolvedTaskTitle: String? = null,
     val taskEnsureSaving: Boolean = false,
+    val selectionModeActive: Boolean = false,
+    val selectedDocumentIds: Set<String> = emptySet(),
 )
 
 class NotesController(
@@ -106,8 +110,27 @@ class NotesController(
     }
 
     fun setArchivedView(archived: Boolean) {
-        if (state.editor != null || state.lifecycleSaving || state.unresolvedLifecycleRequest != null) return
+        if (state.editor != null || state.lifecycleSaving || state.unresolvedLifecycleRequest != null || state.selectionModeActive) return
         load(archived)
+    }
+
+    fun enterSelection(documentId: String) {
+        if (state.editor != null || state.lifecycleSaving || state.unresolvedLifecycleRequest != null) return
+        state = state.copy(selectionModeActive = true, selectedDocumentIds = setOf(documentId))
+    }
+
+    fun toggleSelection(documentId: String) {
+        if (!state.selectionModeActive) return
+        val next = if (documentId in state.selectedDocumentIds) {
+            state.selectedDocumentIds - documentId
+        } else {
+            state.selectedDocumentIds + documentId
+        }
+        state = state.copy(selectionModeActive = next.isNotEmpty(), selectedDocumentIds = next)
+    }
+
+    fun exitSelection() {
+        state = state.copy(selectionModeActive = false, selectedDocumentIds = emptySet())
     }
 
     fun archiveStandalone(document: AndroidDocumentSummary, archived: Boolean) {
@@ -142,6 +165,8 @@ class NotesController(
             origin = NoteEditorOrigin.STANDALONE_LIST,
             title = "notitle",
             saveStatus = NoteSaveStatus.UNSAVED,
+            sessionId = generation,
+            focusTitleOnStart = true,
         )
         state = state.copy(editor = editor, errorMessage = null)
         submit(
@@ -150,14 +175,14 @@ class NotesController(
         )
     }
 
-    fun openStandalone(documentId: String) {
+    fun openStandalone(documentId: String, focusTitle: Boolean = false) {
         if (hasUnsavedChanges) return
         editorGeneration += 1
         val generation = editorGeneration
         state = state.copy(editor = null, errorMessage = null, unresolvedTaskEnsure = null, unresolvedTaskTitle = null)
         scope.launch {
             when (val result = withContext(Dispatchers.IO) { repository.fetchStandalone(documentId) }) {
-                is DocumentResult.Success -> if (generation == editorGeneration) state = state.copy(editor = editorFor(result.document, origin = NoteEditorOrigin.STANDALONE_LIST))
+                is DocumentResult.Success -> if (generation == editorGeneration) state = state.copy(editor = editorFor(result.document, origin = NoteEditorOrigin.STANDALONE_LIST, sessionId = generation, focusTitleOnStart = focusTitle))
                 DocumentResult.Missing -> state = state.copy(errorMessage = "ノートが見つかりません。")
                 DocumentResult.Unauthorized -> {
                     state = state.copy(errorMessage = "認証が必要です。")
@@ -213,7 +238,7 @@ class NotesController(
     ) {
         when (result) {
             is DocumentResult.Success -> state = state.copy(
-                editor = editorFor(result.document, taskTitle, taskId, NoteEditorOrigin.TODAY_TASK),
+                editor = editorFor(result.document, taskTitle, taskId, NoteEditorOrigin.TODAY_TASK, sessionId = editorGeneration),
                 unresolvedTaskEnsure = null,
                 unresolvedTaskTitle = null,
                 taskEnsureSaving = false,
@@ -240,11 +265,14 @@ class NotesController(
     fun updateTitle(value: String) {
         val editor = state.editor ?: return
         if (editor.blocked || editor.kind != DocumentKind.STANDALONE) return
+        val localValidationError = editor.errorMessage == TITLE_REQUIRED_ERROR
+        val nextError = if (localValidationError) null else editor.errorMessage
         state = state.copy(editor = editor.copy(
             title = value,
-            saveStatus = if (editor.saving) NoteSaveStatus.SAVING else if (editor.errorMessage == null) NoteSaveStatus.UNSAVED else editor.saveStatus,
-        ), errorMessage = null)
-        if (editor.errorMessage == null) scheduleAutosave()
+            errorMessage = nextError,
+            saveStatus = if (editor.saving) NoteSaveStatus.SAVING else if (nextError == null) NoteSaveStatus.UNSAVED else editor.saveStatus,
+        ))
+        if (nextError == null) scheduleAutosave()
     }
 
     fun updateBody(value: String) {
@@ -253,7 +281,7 @@ class NotesController(
         state = state.copy(editor = editor.copy(
             markdownBody = value,
             saveStatus = if (editor.saving) NoteSaveStatus.SAVING else if (editor.errorMessage == null) NoteSaveStatus.UNSAVED else editor.saveStatus,
-        ), errorMessage = null)
+        ))
         if (editor.errorMessage == null) scheduleAutosave()
     }
 
@@ -273,7 +301,7 @@ class NotesController(
         }
         val request = createRequest(editor)
         if (request == null) {
-            state = state.copy(editor = editor.copy(saveStatus = NoteSaveStatus.ERROR, errorMessage = "タイトルを入力してください。"))
+            state = state.copy(editor = editor.copy(saveStatus = NoteSaveStatus.ERROR, errorMessage = TITLE_REQUIRED_ERROR))
             return
         }
         submit(request)
@@ -350,10 +378,12 @@ class NotesController(
 
     private fun createRequest(editor: NoteEditorState): NoteEditorRequest? {
         return if (editor.document == null) {
+            if (editor.title.trim().isBlank()) return null
             NoteEditorRequest.Create(
-                StandaloneCreateRequest(UUIDv7.next(), UUIDv7.next(), "notitle", ""),
+                StandaloneCreateRequest(UUIDv7.next(), UUIDv7.next(), editor.title.trim(), editor.markdownBody),
             )
         } else if (editor.kind == DocumentKind.STANDALONE) {
+            if (editor.title.trim().isBlank()) return null
             NoteEditorRequest.Update(
                 StandaloneUpdateRequest(UUIDv7.next(), editor.document.documentId, editor.document.revision, editor.title.trim(), editor.markdownBody),
             )
@@ -483,7 +513,7 @@ class NotesController(
     }
 
     private fun updateSummary(document: AndroidDocument): List<AndroidDocumentSummary> {
-        val summary = AndroidDocumentSummary(document.documentId, document.title, document.revision, document.updatedAt)
+        val summary = AndroidDocumentSummary(document.documentId, document.title, document.revision, document.updatedAt, document.createdAt)
         val withoutCurrent = state.documents.filterNot { it.documentId == document.documentId }
         return if (document.kind == DocumentKind.STANDALONE) listOf(summary) + withoutCurrent else state.documents
     }
@@ -495,7 +525,7 @@ class NotesController(
         if (editor.blocked || !editor.dirty) return
         debounceJob = scope.launch {
             delay(NOTE_AUTOSAVE_DEBOUNCE_MS)
-            if (generation == editorGeneration && state.editor?.dirty == true && state.editor?.blocked == false && state.editor?.errorMessage == null) save()
+            if (generation == editorGeneration && state.editor?.dirty == true && state.editor?.blocked == false) save()
         }
     }
 
@@ -513,7 +543,7 @@ class NotesController(
         debounceJob = null
         deferredNavigation = null
         editorGeneration += 1
-        state = state.copy(editor = null, errorMessage = null)
+        state = state.copy(editor = null, errorMessage = null, selectionModeActive = false, selectedDocumentIds = emptySet())
     }
 
     private fun editorFor(
@@ -521,6 +551,8 @@ class NotesController(
         taskTitle: String? = null,
         taskId: String? = null,
         origin: NoteEditorOrigin = NoteEditorOrigin.STANDALONE_LIST,
+        sessionId: Int = editorGeneration,
+        focusTitleOnStart: Boolean = false,
     ) = NoteEditorState(
         kind = document.kind,
         document = document,
@@ -530,9 +562,12 @@ class NotesController(
         title = document.title,
         markdownBody = document.markdownBody,
         saveStatus = NoteSaveStatus.SAVED,
+        sessionId = sessionId,
+        focusTitleOnStart = focusTitleOnStart,
     )
 
     private companion object {
         const val NOTE_AUTOSAVE_DEBOUNCE_MS = 1_000L
+        const val TITLE_REQUIRED_ERROR = "タイトルを入力してください"
     }
 }

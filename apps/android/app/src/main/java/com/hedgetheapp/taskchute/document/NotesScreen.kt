@@ -7,6 +7,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,7 +17,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.lazy.LazyColumn
@@ -24,10 +27,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -44,19 +43,38 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hedgetheapp.taskchute.ui.AndroidDestination
 import com.hedgetheapp.taskchute.ui.AndroidNavigationBar
+import com.hedgetheapp.taskchute.ui.MovableAddFab
 import com.hedgetheapp.taskchute.ui.TaskChuteColors
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 fun NotesScreen(
     controller: NotesController,
     onNavigateToday: () -> Unit,
@@ -66,11 +84,17 @@ fun NotesScreen(
     val state = controller.state
     var leaveAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     var deleteTarget by remember { mutableStateOf<AndroidDocumentSummary?>(null) }
+    var actionTarget by remember { mutableStateOf<AndroidDocumentSummary?>(null) }
+    var notesFabOffset by remember(state.archivedView) { mutableStateOf(Offset.Zero) }
 
     fun attemptLeave(action: () -> Unit) {
         when {
             controller.state.editor?.blocked == true -> Unit
             controller.state.lifecycleSaving || controller.state.unresolvedLifecycleRequest != null -> Unit
+            controller.state.selectionModeActive -> {
+                controller.exitSelection()
+                action()
+            }
             controller.requiresDiscardConfirmation -> leaveAction = action
             else -> controller.flushAndNavigate(action)
         }
@@ -107,41 +131,73 @@ fun NotesScreen(
     Scaffold(
         containerColor = TaskChuteColors.NotesBackground,
         bottomBar = {
-            AndroidNavigationBar(
-                selected = AndroidDestination.NOTES,
-                onToday = { attemptLeave(onNavigateToday) },
-                onNotes = { attemptLeave {} },
-                onDaily = { attemptLeave(onNavigateDaily) },
-                onSettings = { attemptLeave(onNavigateSettings) },
-            )
-        },
-        floatingActionButton = {
-            if (state.editor == null) {
-                FloatingActionButton(
-                    onClick = controller::openNew,
-                    shape = RoundedCornerShape(22.dp),
-                    containerColor = Color(0xFFECECEC),
-                    contentColor = TaskChuteColors.NotesBackground,
-                    elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 0.dp),
-                    modifier = Modifier.semantics { contentDescription = "ノートを新規作成" },
-                ) { Text("＋") }
+            Box(Modifier.imePadding()) {
+                AndroidNavigationBar(
+                    selected = AndroidDestination.NOTES,
+                    onToday = { attemptLeave(onNavigateToday) },
+                    onNotes = { attemptLeave {} },
+                    onDaily = { attemptLeave(onNavigateDaily) },
+                    onSettings = { attemptLeave(onNavigateSettings) },
+                )
             }
         },
     ) { padding ->
-        if (state.editor == null) {
-            NotesList(
-                controller = controller,
-                state = state,
-                onRequestDelete = { deleteTarget = it },
-                modifier = Modifier.fillMaxSize().padding(padding),
-            )
-        } else {
-            NoteEditor(
-                controller,
-                state.editor,
-                Modifier.fillMaxSize().padding(padding).imePadding(),
-                onBack = { attemptLeave(::leaveEditorToOrigin) },
-            )
+        BoxWithConstraints(Modifier.fillMaxSize().padding(padding)) {
+            if (state.editor == null) {
+                NotesList(
+                    controller = controller,
+                    state = state,
+                    onOpenActions = { actionTarget = it },
+                    modifier = Modifier.fillMaxSize(),
+                )
+                if (!state.selectionModeActive) {
+                    val density = LocalDensity.current
+                    val maxX = with(density) { (maxWidth - 64.dp).toPx().coerceAtLeast(0f) }
+                    val maxY = with(density) { (maxHeight - 64.dp).toPx().coerceAtLeast(0f) }
+                    MovableAddFab(
+                        contentDescription = "ノートを新規作成",
+                        onClick = controller::openNew,
+                        onDrag = { delta ->
+                            notesFabOffset = Offset(
+                                (notesFabOffset.x + delta.x).coerceIn(-maxX, 0f),
+                                (notesFabOffset.y + delta.y).coerceIn(-maxY, 0f),
+                            )
+                        },
+                        modifier = Modifier.align(Alignment.BottomEnd).offset {
+                            IntOffset(notesFabOffset.x.roundToInt(), notesFabOffset.y.roundToInt())
+                        }.size(64.dp),
+                    )
+                }
+            } else {
+                NoteEditor(
+                    controller,
+                    state.editor,
+                    Modifier.fillMaxSize().imePadding(),
+                    onBack = { attemptLeave(::leaveEditorToOrigin) },
+                )
+            }
+        }
+    }
+
+    actionTarget?.let { document ->
+        ModalBottomSheet(
+            onDismissRequest = { actionTarget = null },
+            containerColor = TaskChuteColors.SurfaceElevated,
+        ) {
+            Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(document.title, color = TaskChuteColors.PrimaryText, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                TextButton(onClick = {
+                    actionTarget = null
+                    controller.openStandalone(document.documentId, focusTitle = true)
+                }, modifier = Modifier.fillMaxWidth()) { Text("名前を変更", color = TaskChuteColors.PrimaryText) }
+                TextButton(onClick = {
+                    actionTarget = null
+                    controller.archiveStandalone(document, !state.archivedView)
+                }, modifier = Modifier.fillMaxWidth()) { Text(if (state.archivedView) "復元" else "アーカイブ", color = TaskChuteColors.PrimaryText) }
+                TextButton(onClick = { actionTarget = null; deleteTarget = document }, modifier = Modifier.fillMaxWidth()) {
+                    Text("削除", color = MaterialTheme.colorScheme.error)
+                }
+            }
         }
     }
 
@@ -241,7 +297,7 @@ fun TaskNoteBottomSheet(
 private fun NotesList(
     controller: NotesController,
     state: NotesUiState,
-    onRequestDelete: (AndroidDocumentSummary) -> Unit,
+    onOpenActions: (AndroidDocumentSummary) -> Unit,
     modifier: Modifier,
 ) {
     Column(modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
@@ -280,42 +336,62 @@ private fun NotesList(
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 items(state.documents, key = { it.documentId }) { document ->
-                    var menuExpanded by remember(document.documentId) { mutableStateOf(false) }
+                    val selected = document.documentId in state.selectedDocumentIds
                     Row(
-                        modifier = Modifier.fillMaxWidth().height(78.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(78.dp)
+                            .pointerInput(document.documentId, state.selectionModeActive) {
+                                awaitEachGesture {
+                                    val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                                    var moved = false
+                                    var horizontal = 0f
+                                    var vertical = 0f
+                                    while (true) {
+                                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                                        val change = event.changes.firstOrNull { it.id == down.id } ?: continue
+                                        horizontal = change.position.x - down.position.x
+                                        vertical = change.position.y - down.position.y
+                                        if (!moved && (change.position - down.position).getDistance() > viewConfiguration.touchSlop) {
+                                            moved = true
+                                        }
+                                        if (change.changedToUpIgnoreConsumed() || !change.pressed) break
+                                    }
+                                    if (moved && horizontal > viewConfiguration.touchSlop && abs(horizontal) > abs(vertical)) {
+                                        controller.enterSelection(document.documentId)
+                                    }
+                                }
+                            },
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Column(
-                            modifier = Modifier.weight(1f).clickable { controller.openStandalone(document.documentId) }.padding(start = 2.dp, top = 10.dp, bottom = 10.dp),
-                        ) {
-                            Text(document.title, maxLines = 1, overflow = TextOverflow.Ellipsis, color = TaskChuteColors.PrimaryText, style = MaterialTheme.typography.titleMedium)
-                            Text("更新 ${document.updatedAt}", style = MaterialTheme.typography.bodySmall, color = TaskChuteColors.SecondaryText)
-                        }
-                        Box {
+                        if (state.selectionModeActive) {
                             Box(
-                                modifier = Modifier.width(80.dp).height(34.dp).clip(RoundedCornerShape(17.dp))
-                                    .background(TaskChuteColors.Control)
-                                    .clickable(enabled = !state.lifecycleSaving && state.unresolvedLifecycleRequest == null) { menuExpanded = true }
-                                    .semantics { contentDescription = "ノートの操作" },
+                                modifier = Modifier.width(48.dp).height(48.dp).clickable { controller.toggleSelection(document.documentId) }
+                                    .semantics { contentDescription = if (selected) "選択済み ${document.title}" else "未選択 ${document.title}" },
                                 contentAlignment = Alignment.Center,
                             ) {
-                                Text("操作", color = TaskChuteColors.PrimaryText, style = MaterialTheme.typography.labelMedium)
+                                Text(if (selected) "☑" else "☐", color = if (selected) TaskChuteColors.AccentBlue else TaskChuteColors.SecondaryText, fontSize = 22.sp)
                             }
-                            DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-                                DropdownMenuItem(
-                                    text = { Text(if (state.archivedView) "復元" else "アーカイブ") },
-                                    onClick = {
-                                        menuExpanded = false
-                                        controller.archiveStandalone(document, !state.archivedView)
-                                    },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("削除") },
-                                    onClick = {
-                                        menuExpanded = false
-                                        onRequestDelete(document)
-                                    },
-                                )
+                        }
+                        Column(
+                            modifier = Modifier.weight(1f).clickable {
+                                if (state.selectionModeActive) controller.toggleSelection(document.documentId)
+                                else controller.openStandalone(document.documentId)
+                            }.padding(start = 2.dp, top = 10.dp, bottom = 10.dp),
+                        ) {
+                            Text(document.title, maxLines = 1, overflow = TextOverflow.Ellipsis, color = TaskChuteColors.PrimaryText, style = MaterialTheme.typography.titleMedium)
+                            Text("作成日 ${formatDocumentTimestamp(document.createdAt)}", style = MaterialTheme.typography.bodySmall, color = TaskChuteColors.SecondaryText)
+                            Text("更新日 ${formatDocumentTimestamp(document.updatedAt)}", style = MaterialTheme.typography.bodySmall, color = TaskChuteColors.SecondaryText)
+                        }
+                        if (!state.selectionModeActive) Box {
+                            Box(
+                                modifier = Modifier.width(48.dp).height(48.dp).clip(RoundedCornerShape(24.dp))
+                                    .background(TaskChuteColors.Control)
+                                    .clickable(enabled = !state.lifecycleSaving && state.unresolvedLifecycleRequest == null) { onOpenActions(document) }
+                                    .semantics { contentDescription = "${document.title}の操作" },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text("…", color = TaskChuteColors.PrimaryText, fontSize = 24.sp)
                             }
                         }
                     }
@@ -326,8 +402,23 @@ private fun NotesList(
     }
 }
 
+private fun formatDocumentTimestamp(value: String): String {
+    if (value.isBlank()) return "--"
+    return runCatching {
+        Instant.parse(value).atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
+    }.getOrElse { value }
+}
+
 @Composable
 private fun NoteEditor(controller: NotesController, editor: NoteEditorState, modifier: Modifier, onBack: () -> Unit) {
+    val titleFocusRequester = remember(editor.sessionId) { FocusRequester() }
+    var titleValue by remember(editor.sessionId) { mutableStateOf(TextFieldValue(editor.title)) }
+    LaunchedEffect(editor.sessionId, editor.focusTitleOnStart) {
+        if (editor.focusTitleOnStart && editor.kind == DocumentKind.STANDALONE) {
+            titleValue = titleValue.copy(selection = TextRange(0, titleValue.text.length))
+            titleFocusRequester.requestFocus()
+        }
+    }
     Column(
         modifier = modifier.padding(horizontal = 20.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -341,12 +432,15 @@ private fun NoteEditor(controller: NotesController, editor: NoteEditorState, mod
         }
         if (editor.kind == DocumentKind.STANDALONE) {
             OutlinedTextField(
-                value = editor.title,
-                onValueChange = controller::updateTitle,
+                value = titleValue,
+                onValueChange = {
+                    titleValue = it
+                    controller.updateTitle(it.text)
+                },
                 label = { Text("タイトル") },
                 singleLine = true,
                 enabled = !editor.blocked,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().focusRequester(titleFocusRequester),
             )
         } else {
             Text(editor.taskTitle ?: "タスクノート", style = MaterialTheme.typography.titleMedium, color = TaskChuteColors.PrimaryText)

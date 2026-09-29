@@ -50,7 +50,6 @@ import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -129,6 +128,7 @@ import com.hedgetheapp.taskchute.ui.AndroidDestination
 import com.hedgetheapp.taskchute.ui.AndroidNavigationBar
 import com.hedgetheapp.taskchute.ui.ChromeIcon
 import com.hedgetheapp.taskchute.ui.TaskChuteIcons
+import com.hedgetheapp.taskchute.ui.MovableAddFab
 import com.hedgetheapp.taskchute.ui.TaskChuteColors
 import com.hedgetheapp.taskchute.ui.TaskChuteDatePickerDialog
 import com.hedgetheapp.taskchute.ui.TaskChuteDateNavigator
@@ -327,11 +327,18 @@ fun TodayScreen(
                             val maxY = (fabBaseTop - safeTop).coerceAtLeast(0f)
 
                             if (canAdd && !selectionModeActive) {
-                                FloatingActionButton(
+                                MovableAddFab(
                                     onClick = { planningController.openCreate(day) },
-                                    shape = CircleShape,
                                     containerColor = Color(0xFFE8E8E5),
                                     contentColor = TaskChuteColors.Background,
+                                    iconSize = 19.dp,
+                                    contentDescription = "タスクを追加",
+                                    onDrag = { delta ->
+                                        addFabOffset = Offset(
+                                            (addFabOffset.x + delta.x).coerceIn(-maxX, 0f),
+                                            (addFabOffset.y + delta.y).coerceIn(-maxY, 0f),
+                                        )
+                                    },
                                     modifier = Modifier
                                         .align(Alignment.BottomEnd)
                                         .offset {
@@ -340,19 +347,8 @@ fun TodayScreen(
                                                 (fabBaseOffsetY + addFabOffset.y.coerceIn(-maxY, 0f)).roundToInt(),
                                             )
                                         }
-                                        .pointerInput(day.logicalDate) {
-                                            detectTodayFabTapDrag(
-                                                onDrag = { delta ->
-                                                    addFabOffset = Offset(
-                                                        (addFabOffset.x + delta.x).coerceIn(-maxX, 0f),
-                                                        (addFabOffset.y + delta.y).coerceIn(-maxY, 0f),
-                                                    )
-                                                },
-                                            )
-                                        }
                                         .size(64.dp)
-                                        .semantics { contentDescription = "タスクを追加" },
-                                ) { ChromeIcon(TaskChuteIcons.Add, "タスクを追加", Modifier.size(19.dp)) }
+                                )
                             }
                             if (runningTask != null || unresolved || deterministicFailure) {
                                 Column(
@@ -1080,23 +1076,6 @@ private fun TodayContent(
     }
 }
 
-private suspend fun PointerInputScope.detectTodayFabTapDrag(onDrag: (Offset) -> Unit) {
-    awaitEachGesture {
-        val down = awaitFirstDown(requireUnconsumed = false)
-        var moved = false
-        while (true) {
-            val event = awaitPointerEvent()
-            val change = event.changes.firstOrNull { it.id == down.id } ?: continue
-            val delta = change.position - change.previousPosition
-            if (!moved && (change.position - down.position).getDistance() > 8f) moved = true
-            if (moved) {
-                change.consume()
-                onDrag(delta)
-            }
-            if (change.changedToUpIgnoreConsumed() || !change.pressed) break
-        }
-    }
-}
 private const val UNSECTIONED_DROP_KEY = "__unsectioned__"
 internal const val D148_DRAG_EDGE_ZONE = 72
 internal const val D148_DRAG_MAX_SCROLL_PER_FRAME = 32

@@ -34,6 +34,7 @@ data class AndroidDocumentSummary(
     val title: String,
     val revision: Int,
     val updatedAt: String,
+    val createdAt: String = "",
 )
 
 data class SetStandaloneDocumentArchivedRequest(
