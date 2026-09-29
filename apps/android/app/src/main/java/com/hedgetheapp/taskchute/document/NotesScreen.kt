@@ -131,15 +131,13 @@ fun NotesScreen(
     Scaffold(
         containerColor = TaskChuteColors.NotesBackground,
         bottomBar = {
-            Box(Modifier.imePadding()) {
-                AndroidNavigationBar(
-                    selected = AndroidDestination.NOTES,
-                    onToday = { attemptLeave(onNavigateToday) },
-                    onNotes = { attemptLeave {} },
-                    onDaily = { attemptLeave(onNavigateDaily) },
-                    onSettings = { attemptLeave(onNavigateSettings) },
-                )
-            }
+            AndroidNavigationBar(
+                selected = AndroidDestination.NOTES,
+                onToday = { attemptLeave(onNavigateToday) },
+                onNotes = { attemptLeave {} },
+                onDaily = { attemptLeave(onNavigateDaily) },
+                onSettings = { attemptLeave(onNavigateSettings) },
+            )
         },
     ) { padding ->
         BoxWithConstraints(Modifier.fillMaxSize().padding(padding)) {

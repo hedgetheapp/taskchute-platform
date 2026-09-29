@@ -269,6 +269,24 @@ class NotesScreenInstrumentedTest {
     }
 
     @Test
+    fun notesEditorBodyFocusKeepsGlobalFooterSemantics() {
+        val repository = FakeRepository()
+        controller = NotesController(repository, onUnauthorized = {})
+        composeRule.setContent { MaterialTheme { notesScreen() } }
+
+        composeRule.onNodeWithContentDescription("ノートを新規作成").performClick()
+        composeRule.waitUntil(10_000) { controller?.state?.editor?.document != null }
+        composeRule.onNodeWithContentDescription("ノート一覧").assertIsDisplayed()
+
+        composeRule.onAllNodes(hasSetTextAction(), useUnmergedTree = true).get(1).performClick()
+        composeRule.onAllNodes(hasSetTextAction(), useUnmergedTree = true).get(1).performTextInput("ime")
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithContentDescription("Markdown body").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithContentDescription("ノート一覧").fetchSemanticsNodes().isNotEmpty())
+    }
+
+    @Test
     fun markdownImeToolbarExposesSixActionsAndAppliesBoldToRawSource() {
         var latest = TextFieldValue("live", selection = TextRange(0, 4))
         composeRule.setContent {
