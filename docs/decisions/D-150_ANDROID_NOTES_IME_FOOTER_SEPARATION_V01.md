@@ -24,3 +24,13 @@ Today / Daily / Settingsを含む共有`AndroidNavigationBar`、Activity / manif
 - Exact-SHA CI `36566735084` PASS、signed APK `taskchute-android-debug-cde59c0ee2fa170298b86cf518d761e1ba52c934`、artifact ID `11032391422`、expires `2026-10-06T12:16:13Z`。
 - Galaxy S23: `NOT_VERIFIED / PRODUCT_OWNER_MANUAL`
 - Persistent nonprod: `NOT_REQUIRED`; Production: `NOT_RUN`; Released: `NO`
+
+## Corrective — Markdown toolbar / IME adjacency
+
+Product OwnerのGalaxy S23確認で、初回実装後も`Scaffold`が`bottomBar`の高さをcontent paddingとして予約し続け、Markdown toolbarがIME上端よりfooter相当分高く残ることが判明した。Notes editorが開いていてIMEがvisibleな場合だけ`Scaffold.bottomBar`へcontentを渡さず、footerの計測自体を除去する。editor側の`imePadding()`は単一のIME回避ownerとして保持し、負のoffset、translation、固定高さ補正、Activity/window inset変更は行わない。`MarkdownLiveEditor.kt`は変更しない。
+
+- Corrective implementation: `a5e01f3ef0c1dd791dbc595bc63276b67a923ac8`
+- `shouldShowNotesNavigationBar(editorOpen, imeVisible)`の4状態focused JVM: `1 / 1 PASS`
+- `TaskChute_API33` focused Notes instrumentation: `4 / 4 PASS`
+- Exact-SHA CI `36569749556` PASS、APK `taskchute-android-debug-a5e01f3ef0c1dd791dbc595bc63276b67a923ac8`、artifact ID `11033721498`、expires `2026-10-06T12:44:07Z`
+- 実IMEのtoolbar隣接pixel geometryはCompose runnerがIMEを開けないため未直接測定。Galaxy S23のcorrective確認待ち。

@@ -4126,12 +4126,13 @@ The old artifact's `FAIL / USER_REPORTED` is historical evidence and is not over
 
 | ID | Area | Requirement | Evidence | Status |
 |---|---|---|---|---|
-| D150-IMPLEMENTATION | Android Notes | Notes-only bottom bar IME insetを除去し、editor側IME insetを維持 | `NotesScreen.kt`のNotes `Scaffold.bottomBar` wrapperのみ変更。Implementation `cde59c0ee2fa170298b86cf518d761e1ba52c934` | PASS |
-| D150-IME | Notes focused instrumentation | body focus後のMarkdown body / global footer semantics、既存6-action toolbar | `TaskChute_API33`: `notesEditorBodyFocusKeepsGlobalFooterSemantics`、`markdownImeToolbarExposesSixActionsAndAppliesBoldToRawSource` `2 / 2 PASS`; 実IMEの表示geometryはrunner limitationで直接assertせず | PASS / GEOMETRY NOT_VERIFIED |
+| D150-IMPLEMENTATION | Android Notes | Notes-only bottom bar IME insetを除去し、editor open + IME visible時はbottomBar footprint自体を除去 | Corrective `NotesScreen.kt`。`MarkdownLiveEditor.kt`、共有footer、Activity/window insetは不変。Implementation `a5e01f3ef0c1dd791dbc595bc63276b67a923ac8` | PASS |
+| D150-IME | Notes focused instrumentation | body editor / global footer / existing 6-action toolbar | `TaskChute_API33`: `notesEditorBodyFocusKeepsEditorSemantics`、`markdownImeToolbarExposesSixActionsAndAppliesBoldToRawSource` `2 / 2 PASS`; real IME geometryはrunner limitation | PASS / GEOMETRY NOT_VERIFIED |
+| D150-STATE | Presentation helper | IME false/true × editor closed/openのnavigation bar visibility | `NotesScreenTest.navigationBarIsHiddenOnlyForOpenEditorWithVisibleIme` `1 / 1 PASS` | PASS |
 | D150-REGRESSION | Notes representative flows | safe flush / Project Primary editor | `notesFooterReturnsFromEditorToTheNotesListAfterSafeFlush`、`materializedProjectPrimaryIsClearlyListedAndOpensBodyOnlyEditor` `2 / 2 PASS` | PASS / FOCUSED |
 | D150-BUILD | Android build | required local gates | `:app:compileDebugKotlin`、`:app:compileDebugAndroidTestKotlin`、`:app:assembleDebug`、`git diff --check` PASS | PASS |
 | D150-SMOKE | Runtime | MainActivity / UI tree / crash buffer | MainActivity launch、UI tree取得、target-app crash buffer empty | PASS |
-| D150-CI | Exact SHA / APK | impact-aware Android CI | CI `36566735084` PASS、exact SHA `cde59c0ee2fa170298b86cf518d761e1ba52c934`、APK `taskchute-android-debug-cde59c0ee2fa170298b86cf518d761e1ba52c934` / artifact ID `11032391422` / expires `2026-10-06T12:16:13Z`; Web/Worker SKIP | PASS |
+| D150-CI | Exact SHA / APK | impact-aware Android CI | CI `36569749556` PASS、exact SHA `a5e01f3ef0c1dd791dbc595bc63276b67a923ac8`、APK `taskchute-android-debug-a5e01f3ef0c1dd791dbc595bc63276b67a923ac8` / artifact ID `11033721498` / expires `2026-10-06T12:44:07Z`; Web/Worker SKIP | PASS |
 | D150-DEVICE | Galaxy S23 | Product Owner physical verification | 未実施。manual check待ち | NOT_VERIFIED / PRODUCT_OWNER_MANUAL |
 | D150-FULL | Full Notes | unrelated full runner boundary | full Notes runnerは既知の既存hangがあるため今回の主ゲートにしていない | PARTIAL / NOT_VERIFIED |
 | D150-SCOPE | Boundary | preserve existing Notes/domain/server behavior | Worker/API/shared contract、Web、schema、migration、dependency、persistent nonprod、Production、Release untouched/not required | PASS / NOT_REQUIRED / NOT_RUN / NO |

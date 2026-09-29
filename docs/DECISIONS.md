@@ -4,7 +4,7 @@ Status: **Approved / Implemented / Integrated**
 
 Canonical Decision: `docs/decisions/D-150_ANDROID_NOTES_IME_FOOTER_SEPARATION_V01.md`
 
-Notesのstandalone editorでは本文の`imePadding()`とD-135 Markdown toolbarを維持しつつ、Notes固有の`Scaffold.bottomBar`へ重ねていた`imePadding()`を除去する。これにより本文focus中も共通footerは通常のbottom bar位置に留まり、Today / Daily / Settings、Markdown source/autosave、Task Primary Note、Worker/API、schema、migration、dependency semanticsは変更しない。実装 `cde59c0ee2fa170298b86cf518d761e1ba52c934`、focused Notes AVD選択`4 / 4 PASS`、Galaxy S23 `NOT_VERIFIED / PRODUCT_OWNER_MANUAL`、Production `NOT_RUN`、Released `NO`。
+Notesのstandalone editorでは本文の`imePadding()`とD-135 Markdown toolbarを維持しつつ、Notes固有の`Scaffold.bottomBar`へ重ねていた`imePadding()`を除去する。初回実装後に残ったScaffoldのfooter予約をcorrective `a5e01f3ef0c1dd791dbc595bc63276b67a923ac8`で、editor open + IME visible時だけbottomBar content自体を渡さない方式へ修正した。負のoffsetやActivity/window inset変更はなく、`MarkdownLiveEditor.kt`も不変。focused JVM `1 / 1`、focused Notes AVD `4 / 4`、CI `36569749556`、APK artifact ID `11033721498`。Today / Daily / Settings、Markdown source/autosave、Task Primary Note、Worker/API、schema、migration、dependency semanticsは変更しない。Galaxy S23 `NOT_VERIFIED / PRODUCT_OWNER_MANUAL`、Production `NOT_RUN`、Released `NO`。
 
 ## D-149 — Android Project Primary Notes v0.1
 
