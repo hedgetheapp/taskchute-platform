@@ -1,6 +1,10 @@
 # D-148 — Android Today D-147 Device Correctives v0.1
 
-Status: **Approved — D&D future-Day/stable-source and empty-Section target correctives implemented / integrated; focused PASS; Today surface partial / not verified; Galaxy S23 NOT_VERIFIED / PRODUCT_OWNER_MANUAL**
+Status: **Approved — D&D future-Day/stable-source and empty-Section target correctives implemented / integrated; focused PASS; Today surface partial / not verified; Galaxy S23 representative smoke PASS / USER_CONFIRMED; Production NOT_RUN / Released NO**
+
+## Current Galaxy S23 closeout — 2026-09-29
+
+The Product Owner checked the latest D-148 APK `taskchute-android-debug-635ceacf46196a937bceeaaa9e21a1d31a3ea3c0` (artifact ID `11003786549`) on Galaxy S23 and reported `OK.問題なし`. This is current representative device evidence for the D-148 corrective set, including the empty/collapsed Section target behavior. Earlier Galaxy S23 `FAIL / USER_REPORTED` findings remain historical evidence for the superseded intermediate APKs and are not erased by this closeout. This does not claim a full device matrix or pixel comparison. Production remains `NOT_RUN`; Released remains `NO`.
 
 Date: 2026-09-27
 

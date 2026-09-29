@@ -307,3 +307,12 @@
 - Fixed the confirmed stale parent `pointerInput(day.logicalDate)` completion closure: the parent drag session remains stable, while `rememberUpdatedState` makes physical pointer-up use the latest confirmed placement revision after same-day recomposition.
 - Pre-fix real `performTouchInput` RED reproduced first revision `5 → 6` followed by an incorrect second request with revision `5`. Post-fix current/future two-step, same-screen Quick Add revision handoff, Routine, and existing auto-scroll/pointer regressions passed; focused JVM `53 / 53`, Android build/instrumentation compile/assemble, crash-buffer check, and `git diff --check` passed.
 - Exact-SHA CI `36434645647` PASS; APK `taskchute-android-debug-8996e1b66895f5bd77d0636646f197f16fc99418`, artifact ID `10975751026`, expires `2026-10-05T14:18:23Z`. Galaxy S23 remains `NOT_VERIFIED / PRODUCT_OWNER_MANUAL`; Worker/API/shared contract, schema, migration, dependency, persistent nonprod, Production, and Release were unchanged/not run.
+### D-146 Android Notes interaction refinements + movable Add FAB — 2026-09-29
+
+- Implemented the approved Android Notes dogfood correctives: one-shot new-title focus/select-all, recoverable empty-title validation, local-time created/updated timestamps, compact `…` lifecycle sheet, shared `本文を入力` Markdown placeholder/full unfocused preview, touch-slop-safe link/checkbox interaction, Notes Selection Mode, and shared memory-only movable Add FAB.
+- Android JVM `237 / 237`, Notes AVD `15 / 15`, Today shared-FAB representative `1 / 1`, final Android builds/diff-check, MainActivity smoke, and exact-SHA CI `36505504619` passed. APK `taskchute-android-debug-df89d1ef539eac7ebb353da5f7b4bda2490324d`, artifact ID `11007415041`, expires `2026-10-06T00:59:07Z`. Galaxy S23 `NOT_RUN / PRODUCT_OWNER_MANUAL`; Production `NOT_RUN`; Released `NO`.
+- No Worker/API/shared contract, Web, schema, migration, dependency, persistent nonprod, D-145, or production change.
+
+### D-148 current Galaxy S23 closeout — 2026-09-29
+
+- Product Owner checked the latest D-148 APK `taskchute-android-debug-635ceacf46196a937bceeaaa9e21a1d31a3ea3c0` (artifact ID `11003786549`) on Galaxy S23 and reported `OK.問題なし`, recorded as `PASS / USER_CONFIRMED` representative smoke. Earlier intermediate APK failures remain historical evidence; full device matrix/pixel comparison is not claimed. Production `NOT_RUN`; Released `NO`.

@@ -1,8 +1,16 @@
 # D-146 — Android Notes Interaction Refinements + Movable Add FAB v0.1
 
-Status: **Approved — Implementation not started**
+Status: **Approved — Implemented / Integrated / focused PASS / Notes AVD PASS / Galaxy S23 NOT_RUN / Production NOT_RUN / Released NO**
 
 Date: 2026-09-26
+
+## Implementation and verification closeout — 2026-09-29
+
+Implementation `df89d1ef539eac7ebb353da5f7b4bda2490324d` completes the approved Android Notes dogfood slice. Standalone Note title focus/select-all is session-scoped, empty-title validation is local and recoverable, list timestamps use device-local time, row actions use the compact `…` bottom sheet, and the shared Markdown editor uses `本文を入力`, unfocused full-line preview, and touch-slop-safe link/checkbox interaction. Notes Selection Mode and the shared movable Add FAB are implemented without bulk Document mutation or a new persistence authority.
+
+Focused Markdown/Notes JVM tests, the Android JVM suite (`237 / 237`), Notes `TaskChute_API33` instrumentation (`15 / 15`), the Today shared-FAB representative test (`1 / 1`), `:app:compileDebugKotlin`, `:app:compileDebugAndroidTestKotlin`, `:app:assembleDebug`, and `git diff --check` passed. MainActivity/UI-tree smoke passed with an empty target-app crash buffer. Exact-SHA CI `36505504619` passed; signed APK artifact `taskchute-android-debug-df89d1ef539eac7ebb353da5f7b4bda2490324d`, artifact ID `11007415041`, expires `2026-10-06T00:59:07Z`.
+
+Worker/API/shared contracts, Web, schema, migration, dependency, persistent nonprod, D-145, Production, and Release were not changed or run. Galaxy S23 remains `NOT_RUN / PRODUCT_OWNER_MANUAL`.
 
 ## Context
 

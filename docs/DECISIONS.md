@@ -16,7 +16,7 @@ Galaxy S23 dogfoodで確認したAndroid Todayのcorrectiveを一つのLarge Bat
 
 ## D-146 — Android Notes Interaction Refinements + Movable Add FAB v0.1
 
-Status: **Approved**
+Status: **Approved / Implemented / Integrated / focused PASS / Notes AVD PASS / Galaxy S23 NOT_RUN / Production NOT_RUN / Released NO**
 
 Canonical Decision: `docs/decisions/D-146_ANDROID_NOTES_INTERACTION_REFINEMENTS_MOVABLE_ADD_FAB_V01.md`。
 
