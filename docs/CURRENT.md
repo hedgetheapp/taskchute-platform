@@ -3030,4 +3030,4 @@ Notes standalone editorの`Scaffold.bottomBar`からNotes-only `imePadding()`を
 
 ### D-150 corrective — Markdown toolbar / IME adjacency — 2026-09-29
 
-初回D-150後のProduct Owner finding（toolbarがIMEよりfooter相当分上に残る）を、Notes `Scaffold`がeditor open + IME visible時だけ`bottomBar` contentなしになるよう修正した。editorの`imePadding()`を保持し、`MarkdownLiveEditor.kt`と共有footerは変更していない。Focused JVM `1 / 1`、Notes AVD `4 / 4`、build/diff-check、MainActivity/UI-tree/crash-buffer、CI `36569749556` PASS。APK artifact ID `11033721498`。実IME geometryはtest harness limitation、Galaxy S23 `NOT_VERIFIED / PRODUCT_OWNER_MANUAL`、Production `NOT_RUN`、Released `NO`。
+初回D-150後のProduct Owner finding（toolbarがIMEよりfooter相当分上に残る）を、Notes `Scaffold`がeditor open + IME visible時だけ`bottomBar` contentなしになるよう修正した。editorの`imePadding()`を保持し、`MarkdownLiveEditor.kt`と共有footerは変更していない。Focused JVM `1 / 1`、Notes AVD `4 / 4`、build/diff-check、MainActivity/UI-tree/crash-buffer、CI `36569749556` PASS。APK artifact ID `11033721498`。実IME geometryはautomated harness limitationで未直接測定だが、Product OwnerがGalaxy S23でcorrective APKを確認し`オケ問題なし`と報告したため、representative toolbar/IME adjacency smokeは`PASS / USER_CONFIRMED`。Production `NOT_RUN`、Released `NO`。
