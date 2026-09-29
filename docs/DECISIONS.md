@@ -1,3 +1,11 @@
+## D-150 — Android Notes IME footer separation v0.1
+
+Status: **Approved / Implemented / Integrated**
+
+Canonical Decision: `docs/decisions/D-150_ANDROID_NOTES_IME_FOOTER_SEPARATION_V01.md`
+
+Notesのstandalone editorでは本文の`imePadding()`とD-135 Markdown toolbarを維持しつつ、Notes固有の`Scaffold.bottomBar`へ重ねていた`imePadding()`を除去する。これにより本文focus中も共通footerは通常のbottom bar位置に留まり、Today / Daily / Settings、Markdown source/autosave、Task Primary Note、Worker/API、schema、migration、dependency semanticsは変更しない。実装 `cde59c0ee2fa170298b86cf518d761e1ba52c934`、focused Notes AVD選択`4 / 4 PASS`、Galaxy S23 `NOT_VERIFIED / PRODUCT_OWNER_MANUAL`、Production `NOT_RUN`、Released `NO`。
+
 ## D-149 — Android Project Primary Notes v0.1
 
 Status: **Approved / Implemented / Integrated**

@@ -4122,3 +4122,16 @@ The old artifact's `FAIL / USER_REPORTED` is historical evidence and is not over
 | D149C-FULL | Full Notes surface | Existing full Notes runner boundary | Not rerun for corrective; known pre-existing `taskPrimaryAutosavesAndBackReturnsToToday` hang remains `PARTIAL / NOT_VERIFIED` | BOUNDARY |
 | D149C-DEVICE | Galaxy S23 | Corrective physical-device verification | Not run; Product Owner manual check remains pending | NOT_VERIFIED / PRODUCT_OWNER_MANUAL |
 | D149C-SCOPE | Boundary | No server/persistence or deployment side effects | Worker/API/shared contract, Web, schema, migration, dependency, persistent nonprod, Production, and Release untouched/not required | PASS / NOT_REQUIRED / NOT_RUN / NO |
+## D-150 Android Notes IME footer separation — 2026-09-29
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D150-IMPLEMENTATION | Android Notes | Notes-only bottom bar IME insetを除去し、editor側IME insetを維持 | `NotesScreen.kt`のNotes `Scaffold.bottomBar` wrapperのみ変更。Implementation `cde59c0ee2fa170298b86cf518d761e1ba52c934` | PASS |
+| D150-IME | Notes focused instrumentation | body focus後のMarkdown body / global footer semantics、既存6-action toolbar | `TaskChute_API33`: `notesEditorBodyFocusKeepsGlobalFooterSemantics`、`markdownImeToolbarExposesSixActionsAndAppliesBoldToRawSource` `2 / 2 PASS`; 実IMEの表示geometryはrunner limitationで直接assertせず | PASS / GEOMETRY NOT_VERIFIED |
+| D150-REGRESSION | Notes representative flows | safe flush / Project Primary editor | `notesFooterReturnsFromEditorToTheNotesListAfterSafeFlush`、`materializedProjectPrimaryIsClearlyListedAndOpensBodyOnlyEditor` `2 / 2 PASS` | PASS / FOCUSED |
+| D150-BUILD | Android build | required local gates | `:app:compileDebugKotlin`、`:app:compileDebugAndroidTestKotlin`、`:app:assembleDebug`、`git diff --check` PASS | PASS |
+| D150-SMOKE | Runtime | MainActivity / UI tree / crash buffer | MainActivity launch、UI tree取得、target-app crash buffer empty | PASS |
+| D150-CI | Exact SHA / APK | impact-aware Android CI | CI `36566735084` PASS、exact SHA `cde59c0ee2fa170298b86cf518d761e1ba52c934`、APK `taskchute-android-debug-cde59c0ee2fa170298b86cf518d761e1ba52c934` / artifact ID `11032391422` / expires `2026-10-06T12:16:13Z`; Web/Worker SKIP | PASS |
+| D150-DEVICE | Galaxy S23 | Product Owner physical verification | 未実施。manual check待ち | NOT_VERIFIED / PRODUCT_OWNER_MANUAL |
+| D150-FULL | Full Notes | unrelated full runner boundary | full Notes runnerは既知の既存hangがあるため今回の主ゲートにしていない | PARTIAL / NOT_VERIFIED |
+| D150-SCOPE | Boundary | preserve existing Notes/domain/server behavior | Worker/API/shared contract、Web、schema、migration、dependency、persistent nonprod、Production、Release untouched/not required | PASS / NOT_REQUIRED / NOT_RUN / NO |
