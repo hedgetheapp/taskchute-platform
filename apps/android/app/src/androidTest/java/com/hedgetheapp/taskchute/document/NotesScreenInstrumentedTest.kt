@@ -172,6 +172,49 @@ class NotesScreenInstrumentedTest {
         composeRule.waitUntil(10_000) { repository.deleteCalls.get() == 1 && controller?.state?.documents?.isEmpty() == true }
     }
 
+    @Test
+    fun materializedProjectPrimaryIsClearlyListedAndOpensBodyOnlyEditor() {
+        val repository = FakeRepository().apply {
+            projectDocuments = listOf(AndroidProjectDocumentSummary("project-doc", "project-1", "Project A", true, 2, "2026-09-10T01:02:03Z", "2026-09-15T04:05:06Z"))
+            projectDocument = AndroidDocument("project-doc", DocumentKind.PROJECT_PRIMARY, "Project A", "old", 2, projectId = "project-1")
+        }
+        controller = NotesController(repository, onUnauthorized = {})
+        composeRule.setContent { MaterialTheme { notesScreen() } }
+
+        composeRule.onNodeWithText("PROJECT NOTE").assertIsDisplayed()
+        composeRule.onNodeWithText("Project A（アーカイブ）").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithText("作成日", substring = true).fetchSemanticsNodes().isNotEmpty())
+        assertTrue(composeRule.onAllNodesWithText("更新日", substring = true).fetchSemanticsNodes().isNotEmpty())
+        assertTrue(composeRule.onAllNodesWithContentDescription("Project A（アーカイブ）の操作").fetchSemanticsNodes().isEmpty())
+
+        composeRule.onNodeWithContentDescription("PROJECT NOTE Project A（アーカイブ）").performClick()
+        composeRule.waitUntil(10_000) { controller?.state?.editor?.origin == NoteEditorOrigin.PROJECT_LIST }
+        composeRule.onNodeWithText("Project A").assertIsDisplayed()
+        composeRule.onNodeWithText("Project名はProject側が管理します。").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithText("タイトル", substring = false).fetchSemanticsNodes().isEmpty())
+        composeRule.runOnIdle { controller!!.updateBody("project body") }
+        composeRule.waitUntil(10_000) { repository.projectUpdateCalls.get() == 1 && controller?.state?.editor?.dirty == false }
+    }
+
+    @Test
+    fun projectPrimaryCannotEnterOrOpenFromStandaloneSelectionMode() {
+        val repository = FakeRepository().apply {
+            activeDocuments = listOf(AndroidDocumentSummary("doc-1", "Standalone", 1, "now"))
+            projectDocuments = listOf(AndroidProjectDocumentSummary("project-doc", "project-1", "Project A", false, 2))
+            projectDocument = AndroidDocument("project-doc", DocumentKind.PROJECT_PRIMARY, "Project A", "body", 2, projectId = "project-1")
+        }
+        controller = NotesController(repository, onUnauthorized = {})
+        composeRule.setContent { MaterialTheme { notesScreen() } }
+        composeRule.waitUntil(10_000) { controller?.state?.documents?.isNotEmpty() == true }
+
+        composeRule.runOnIdle { controller!!.enterSelection("doc-1") }
+        composeRule.onNodeWithText("Project A").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("PROJECT NOTE Project A").performClick()
+        composeRule.waitForIdle()
+        assertEquals(0, repository.projectFetchCalls.get())
+        assertEquals(null, controller?.state?.editor)
+    }
+
 
     @Test
     fun focusedMarkdownBodyShowsSixImeToolbarActionsAndKeepsSourceInput() {
@@ -355,14 +398,21 @@ class NotesScreenInstrumentedTest {
         val taskUpdateCalls = AtomicInteger()
         val archiveCalls = AtomicInteger()
         val deleteCalls = AtomicInteger()
+        val projectFetchCalls = AtomicInteger()
+        val projectUpdateCalls = AtomicInteger()
         var lastCreate: StandaloneCreateRequest? = null
         var lastUpdate: StandaloneUpdateRequest? = null
         var taskDocument: AndroidDocument? = null
         var failUpdates = false
         var activeDocuments: List<AndroidDocumentSummary> = emptyList()
         var archivedDocuments: List<AndroidDocumentSummary> = emptyList()
+        var projectDocuments: List<AndroidProjectDocumentSummary> = emptyList()
+        var projectDocument: AndroidDocument? = null
 
-        override fun listStandalone(archived: Boolean) = DocumentListResult.Success(if (archived) archivedDocuments else activeDocuments)
+        override fun listStandalone(archived: Boolean) = DocumentListResult.Success(
+            if (archived) archivedDocuments else activeDocuments,
+            if (archived) emptyList() else projectDocuments,
+        )
 
         override fun setStandaloneArchived(request: SetStandaloneDocumentArchivedRequest): DocumentLifecycleResult {
             archiveCalls.incrementAndGet()
@@ -408,6 +458,11 @@ class NotesScreenInstrumentedTest {
         override fun fetchTaskPrimary(documentId: String): DocumentResult = taskDocument?.let { DocumentResult.Success(it) }
             ?: DocumentResult.Missing
 
+        override fun fetchProjectPrimary(documentId: String): DocumentResult {
+            projectFetchCalls.incrementAndGet()
+            return projectDocument?.let { DocumentResult.Success(it) } ?: DocumentResult.Missing
+        }
+
         override fun ensureTaskPrimary(request: TaskPrimaryEnsureRequest): DocumentResult = DocumentResult.Missing
 
         override fun updateTaskPrimary(request: TaskPrimaryUpdateRequest): DocumentResult {
@@ -415,6 +470,18 @@ class NotesScreenInstrumentedTest {
             return DocumentResult.Success(
                 AndroidDocument(request.documentId, DocumentKind.TASK_PRIMARY, "", request.markdownBody, request.expectedRevision + 1, taskId = request.taskId),
             )
+        }
+
+        override fun updateProjectPrimary(request: ProjectPrimaryUpdateRequest): DocumentResult {
+            projectUpdateCalls.incrementAndGet()
+            return DocumentResult.Success(AndroidDocument(
+                request.documentId,
+                DocumentKind.PROJECT_PRIMARY,
+                "Project A",
+                request.markdownBody,
+                request.expectedRevision + 1,
+                projectId = request.projectId,
+            ))
         }
     }
 }

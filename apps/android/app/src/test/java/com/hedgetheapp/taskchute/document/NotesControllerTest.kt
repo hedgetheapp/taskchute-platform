@@ -278,6 +278,123 @@ class NotesControllerTest {
     }
 
     @Test
+    fun activeListExposesMaterializedProjectPrimarySummaries() {
+        val repository = FakeRepository().apply {
+            projectSummaries = listOf(projectSummary("project-doc-1", "project-1", "Project A"))
+        }
+        val controller = controller(repository)
+
+        controller.load(archived = false)
+
+        assertTrue(await { controller.state.projectDocuments.size == 1 })
+        assertEquals("project-1", controller.state.projectDocuments.single().projectId)
+        controller.close()
+    }
+
+    @Test
+    fun projectPrimaryOpenFetchesOnceAndUsesProjectEditorOrigin() {
+        val repository = FakeRepository().apply {
+            projectFetchResult = DocumentResult.Success(projectDocument("project-doc-1", "project-1", "Project A", "body", 2))
+        }
+        val controller = controller(repository)
+
+        controller.openProjectPrimary("project-doc-1", "project-1", "Old Project A")
+
+        assertTrue(await { controller.state.editor != null })
+        assertEquals(1, repository.projectFetchCalls)
+        assertEquals(NoteEditorOrigin.PROJECT_LIST, controller.state.editor?.origin)
+        assertEquals(DocumentKind.PROJECT_PRIMARY, controller.state.editor?.kind)
+        assertEquals("Project A", controller.state.editor?.projectTitle)
+        assertEquals("project-1", controller.state.editor?.projectId)
+        controller.close()
+    }
+
+    @Test
+    fun projectPrimaryBodyAutosavesWithExactProjectUpdateRequest() {
+        val repository = FakeRepository().apply {
+            projectFetchResult = DocumentResult.Success(projectDocument("project-doc-1", "project-1", "Project A", "old", 7))
+        }
+        val controller = controller(repository)
+        controller.openProjectPrimary("project-doc-1", "project-1", "Project A")
+        assertTrue(await { controller.state.editor != null })
+
+        controller.updateBody("new body")
+
+        assertTrue(await { repository.projectUpdateRequests.size == 1 })
+        val request = repository.projectUpdateRequests.single()
+        assertEquals("project-1", request.projectId)
+        assertEquals("project-doc-1", request.documentId)
+        assertEquals(7, request.expectedRevision)
+        assertEquals("new body", request.markdownBody)
+        controller.close()
+    }
+
+    @Test
+    fun projectPrimarySaveWhileTypingPreservesNewerBodyAndSendsFollowUp() {
+        val repository = FakeRepository().apply {
+            projectFetchResult = DocumentResult.Success(projectDocument("project-doc-1", "project-1", "Project A", "old", 7))
+            projectUpdateStarted = CountDownLatch(1)
+            releaseProjectUpdate = CountDownLatch(1)
+        }
+        val controller = controller(repository)
+        controller.openProjectPrimary("project-doc-1", "project-1", "Project A")
+        assertTrue(await { controller.state.editor != null })
+
+        controller.updateBody("first")
+        controller.save()
+        assertTrue(repository.projectUpdateStarted!!.await(2, TimeUnit.SECONDS))
+        controller.updateBody("second")
+        repository.releaseProjectUpdate!!.countDown()
+
+        assertTrue(await { repository.projectUpdateRequests.size == 2 })
+        assertEquals("first", repository.projectUpdateRequests[0].markdownBody)
+        assertEquals("second", repository.projectUpdateRequests[1].markdownBody)
+        controller.close()
+    }
+
+    @Test
+    fun ambiguousProjectSaveDoesNotAdoptWrongProjectDocument() {
+        val repository = FakeRepository().apply {
+            projectFetchResult = DocumentResult.Success(projectDocument("project-doc-1", "project-1", "Project A", "old", 7))
+            projectUpdateResultProvider = { request ->
+                if (projectUpdateRequests.size == 1) DocumentResult.Ambiguous("unknown")
+                else DocumentResult.Success(projectDocument(request.documentId, request.projectId, "Project A", request.markdownBody, request.expectedRevision + 1))
+            }
+            projectReconcileResult = DocumentResult.Success(projectDocument("project-doc-1", "project-2", "Project B", "new body", 8))
+        }
+        val controller = controller(repository)
+        controller.openProjectPrimary("project-doc-1", "project-1", "Project A")
+        assertTrue(await { controller.state.editor != null })
+
+        controller.updateBody("new body")
+        controller.save()
+
+        assertTrue(await { controller.state.editor?.blocked == true })
+        assertTrue(await { repository.projectFetchCalls == 2 })
+        assertEquals("new body", controller.state.editor?.markdownBody)
+        assertEquals(2, repository.projectFetchCalls)
+        controller.close()
+    }
+
+    @Test
+    fun projectPrimaryConflictPreservesLocalDraft() {
+        val repository = FakeRepository().apply {
+            projectFetchResult = DocumentResult.Success(projectDocument("project-doc-1", "project-1", "Project A", "old", 7))
+            projectUpdateResult = DocumentResult.Conflict("conflict")
+        }
+        val controller = controller(repository)
+        controller.openProjectPrimary("project-doc-1", "project-1", "Project A")
+        assertTrue(await { controller.state.editor != null })
+
+        controller.updateBody("local draft")
+        controller.save()
+
+        assertTrue(await { controller.state.editor?.saveStatus == NoteSaveStatus.CONFLICT })
+        assertEquals("local draft", controller.state.editor?.markdownBody)
+        controller.close()
+    }
+
+    @Test
     fun controllerCloseCancelsPendingAutosave() {
         val repository = FakeRepository().apply {
             fetchResult = DocumentResult.Success(document("doc-1", "Note", "old", 0))
@@ -358,6 +475,7 @@ class NotesControllerTest {
         val updateRequests = mutableListOf<StandaloneUpdateRequest>()
         val ensureRequests = mutableListOf<TaskPrimaryEnsureRequest>()
         val taskUpdateRequests = mutableListOf<TaskPrimaryUpdateRequest>()
+        val projectUpdateRequests = mutableListOf<ProjectPrimaryUpdateRequest>()
         val archiveRequests = mutableListOf<SetStandaloneDocumentArchivedRequest>()
         val deleteRequests = mutableListOf<DeleteStandaloneDocumentRequest>()
         var createResult: DocumentResult? = null
@@ -366,13 +484,21 @@ class NotesControllerTest {
         var fetchResult: DocumentResult? = null
         var ensureResult: DocumentResult? = null
         var taskFetchResult: DocumentResult? = null
+        var projectFetchResult: DocumentResult? = null
+        var projectUpdateResult: DocumentResult? = null
+        var projectUpdateResultProvider: ((ProjectPrimaryUpdateRequest) -> DocumentResult)? = null
+        var projectReconcileResult: DocumentResult? = null
+        var projectSummaries: List<AndroidProjectDocumentSummary> = emptyList()
+        var projectFetchCalls = 0
+        var projectUpdateStarted: CountDownLatch? = null
+        var releaseProjectUpdate: CountDownLatch? = null
         var createStarted: CountDownLatch? = null
         var releaseCreate: CountDownLatch? = null
         var updateStarted: CountDownLatch? = null
         var releaseUpdate: CountDownLatch? = null
         var lifecycleResult: DocumentLifecycleResult = DocumentLifecycleResult.Success()
 
-        override fun listStandalone(archived: Boolean) = DocumentListResult.Success(emptyList())
+        override fun listStandalone(archived: Boolean) = DocumentListResult.Success(emptyList(), if (archived) emptyList() else projectSummaries)
 
         override fun setStandaloneArchived(request: SetStandaloneDocumentArchivedRequest): DocumentLifecycleResult {
             archiveRequests += request
@@ -408,6 +534,11 @@ class NotesControllerTest {
 
         override fun fetchTaskPrimary(documentId: String): DocumentResult = taskFetchResult ?: DocumentResult.Missing
 
+        override fun fetchProjectPrimary(documentId: String): DocumentResult {
+            projectFetchCalls += 1
+            return if (projectFetchCalls > 1 && projectReconcileResult != null) projectReconcileResult!! else projectFetchResult ?: DocumentResult.Missing
+        }
+
         override fun ensureTaskPrimary(request: TaskPrimaryEnsureRequest): DocumentResult {
             ensureRequests += request
             return ensureResult ?: DocumentResult.Missing
@@ -419,6 +550,15 @@ class NotesControllerTest {
                 AndroidDocument(request.documentId, DocumentKind.TASK_PRIMARY, "", request.markdownBody, request.expectedRevision + 1, taskId = request.taskId),
             )
         }
+
+        override fun updateProjectPrimary(request: ProjectPrimaryUpdateRequest): DocumentResult {
+            projectUpdateRequests += request
+            projectUpdateStarted?.countDown()
+            releaseProjectUpdate?.await(2, TimeUnit.SECONDS)
+            return projectUpdateResultProvider?.invoke(request) ?: projectUpdateResult ?: DocumentResult.Success(
+                projectDocument(request.documentId, request.projectId, "Project A", request.markdownBody, request.expectedRevision + 1),
+            )
+        }
     }
 
     private companion object {
@@ -428,6 +568,27 @@ class NotesControllerTest {
             title = title,
             markdownBody = body,
             revision = revision,
+            createdAt = "2026-09-14T00:00:00Z",
+            updatedAt = "2026-09-14T00:00:00Z",
+        )
+
+        fun projectSummary(documentId: String, projectId: String, title: String) = AndroidProjectDocumentSummary(
+            documentId = documentId,
+            projectId = projectId,
+            projectTitle = title,
+            projectArchived = false,
+            revision = 1,
+            createdAt = "2026-09-14T00:00:00Z",
+            updatedAt = "2026-09-14T00:00:00Z",
+        )
+
+        fun projectDocument(id: String, projectId: String, title: String, body: String, revision: Int) = AndroidDocument(
+            documentId = id,
+            kind = DocumentKind.PROJECT_PRIMARY,
+            title = title,
+            markdownBody = body,
+            revision = revision,
+            projectId = projectId,
             createdAt = "2026-09-14T00:00:00Z",
             updatedAt = "2026-09-14T00:00:00Z",
         )

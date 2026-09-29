@@ -9,9 +9,10 @@ data class AndroidDocument(
     val taskId: String? = null,
     val createdAt: String = "",
     val updatedAt: String = "",
+    val projectId: String? = null,
 )
 
-enum class DocumentKind { STANDALONE, TASK_PRIMARY }
+enum class DocumentKind { STANDALONE, TASK_PRIMARY, PROJECT_PRIMARY }
 
 data class AndroidDailyDocumentSummary(
     val taskchuteDayId: String,
@@ -37,6 +38,16 @@ data class AndroidDocumentSummary(
     val createdAt: String = "",
 )
 
+data class AndroidProjectDocumentSummary(
+    val documentId: String,
+    val projectId: String,
+    val projectTitle: String,
+    val projectArchived: Boolean,
+    val revision: Int,
+    val createdAt: String = "",
+    val updatedAt: String = "",
+)
+
 data class SetStandaloneDocumentArchivedRequest(
     val operationId: String,
     val documentId: String,
@@ -51,7 +62,10 @@ data class DeleteStandaloneDocumentRequest(
 )
 
 sealed interface DocumentListResult {
-    data class Success(val documents: List<AndroidDocumentSummary>) : DocumentListResult
+    data class Success(
+        val documents: List<AndroidDocumentSummary>,
+        val projectDocuments: List<AndroidProjectDocumentSummary> = emptyList(),
+    ) : DocumentListResult
     data object Unauthorized : DocumentListResult
     data class Failure(val message: String) : DocumentListResult
 }
@@ -98,6 +112,14 @@ data class TaskPrimaryEnsureRequest(
 data class TaskPrimaryUpdateRequest(
     val operationId: String,
     val taskId: String,
+    val documentId: String,
+    val expectedRevision: Int,
+    val markdownBody: String,
+)
+
+data class ProjectPrimaryUpdateRequest(
+    val operationId: String,
+    val projectId: String,
     val documentId: String,
     val expectedRevision: Int,
     val markdownBody: String,
@@ -150,5 +172,9 @@ interface AndroidDocumentRepository {
     fun ensureTaskPrimary(request: TaskPrimaryEnsureRequest): DocumentResult
 
     fun updateTaskPrimary(request: TaskPrimaryUpdateRequest): DocumentResult
+
+    fun fetchProjectPrimary(documentId: String): DocumentResult
+
+    fun updateProjectPrimary(request: ProjectPrimaryUpdateRequest): DocumentResult
 
 }

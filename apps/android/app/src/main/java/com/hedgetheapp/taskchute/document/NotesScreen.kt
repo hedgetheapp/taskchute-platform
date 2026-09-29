@@ -331,7 +331,7 @@ private fun NotesList(
                 CircularProgressIndicator(modifier = Modifier.padding(8.dp))
                 Text("ノートを読み込んでいます…")
             }
-        } else if (state.documents.isEmpty() && state.errorMessage == null) {
+        } else if (state.documents.isEmpty() && state.projectDocuments.isEmpty() && state.errorMessage == null) {
             Text("ノートはありません。", color = TaskChuteColors.SecondaryText)
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -397,8 +397,40 @@ private fun NotesList(
                     }
                     HorizontalDivider(color = TaskChuteColors.Divider)
                 }
+                if (!state.archivedView) {
+                    items(state.projectDocuments, key = { "project-${it.documentId}" }) { document ->
+                        ProjectDocumentRow(
+                            document = document,
+                            selectionModeActive = state.selectionModeActive,
+                            onOpen = { controller.openProjectPrimary(document.documentId, document.projectId, document.projectTitle) },
+                        )
+                        HorizontalDivider(color = TaskChuteColors.Divider)
+                    }
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun ProjectDocumentRow(
+    document: AndroidProjectDocumentSummary,
+    selectionModeActive: Boolean,
+    onOpen: () -> Unit,
+) {
+    val title = document.projectTitle + if (document.projectArchived) "（アーカイブ）" else ""
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(92.dp)
+            .clickable(enabled = !selectionModeActive, onClick = onOpen)
+            .padding(start = 2.dp, top = 10.dp, bottom = 10.dp)
+            .semantics { contentDescription = "PROJECT NOTE $title" },
+    ) {
+        Text("PROJECT NOTE", color = TaskChuteColors.AccentBlue, style = MaterialTheme.typography.labelMedium)
+        Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, color = TaskChuteColors.PrimaryText, style = MaterialTheme.typography.titleMedium)
+        Text("作成日 ${formatDocumentTimestamp(document.createdAt)}", style = MaterialTheme.typography.bodySmall, color = TaskChuteColors.SecondaryText)
+        Text("更新日 ${formatDocumentTimestamp(document.updatedAt)}", style = MaterialTheme.typography.bodySmall, color = TaskChuteColors.SecondaryText)
     }
 }
 
@@ -442,9 +474,12 @@ private fun NoteEditor(controller: NotesController, editor: NoteEditorState, mod
                 enabled = !editor.blocked,
                 modifier = Modifier.fillMaxWidth().focusRequester(titleFocusRequester),
             )
-        } else {
+        } else if (editor.kind == DocumentKind.TASK_PRIMARY) {
             Text(editor.taskTitle ?: "タスクノート", style = MaterialTheme.typography.titleMedium, color = TaskChuteColors.PrimaryText)
             Text("TaskタイトルはTask側が管理します。", style = MaterialTheme.typography.bodySmall, color = TaskChuteColors.SecondaryText)
+        } else {
+            Text(editor.projectTitle ?: editor.title, style = MaterialTheme.typography.titleMedium, color = TaskChuteColors.PrimaryText)
+            Text("Project名はProject側が管理します。", style = MaterialTheme.typography.bodySmall, color = TaskChuteColors.SecondaryText)
         }
         MarkdownLiveEditor(
             value = editor.markdownBody,

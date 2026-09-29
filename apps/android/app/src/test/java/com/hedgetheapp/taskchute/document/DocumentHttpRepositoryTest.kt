@@ -20,6 +20,85 @@ class DocumentHttpRepositoryTest {
     }
 
     @Test
+    fun listParsesStandaloneAndProjectPrimarySummaries() {
+        val repository = repository { _, _, _ ->
+            TodayHttpResponse(200, """{"documents":[{"document_id":"doc-1","title":"Note","revision":2,"updated_at":"2026-09-15T00:00:00Z"}],"project_documents":[{"document_id":"project-doc-1","kind":"project_primary","project_id":"project-1","project_title":"Project A","project_archived":true,"revision":4,"created_at":"2026-09-10T01:02:03Z","updated_at":"2026-09-15T04:05:06Z"}]}""")
+        }
+
+        val result = repository.listStandalone() as DocumentListResult.Success
+
+        assertEquals("doc-1", result.documents.single().documentId)
+        assertEquals("project-doc-1", result.projectDocuments.single().documentId)
+        assertEquals("project-1", result.projectDocuments.single().projectId)
+        assertEquals("Project A", result.projectDocuments.single().projectTitle)
+        assertTrue(result.projectDocuments.single().projectArchived)
+        assertEquals(4, result.projectDocuments.single().revision)
+    }
+
+    @Test
+    fun missingProjectDocumentsIsBackwardCompatible() {
+        val repository = repository { _, _, _ ->
+            TodayHttpResponse(200, """{"documents":[]}""")
+        }
+
+        val result = repository.listStandalone() as DocumentListResult.Success
+
+        assertTrue(result.projectDocuments.isEmpty())
+    }
+
+    @Test
+    fun projectPrimaryFetchUsesCanonicalRouteAndFields() {
+        val requests = mutableListOf<Triple<String, String, String?>>()
+        val repository = DocumentHttpRepository(
+            request = { method, path, body ->
+                requests += Triple(method, path, body)
+                TodayHttpResponse(200, projectDocumentResponse("project-doc-1", "project-1", "Project A", "body", 3).substringAfter("{\"document\":").removeSuffix("}"))
+            },
+        )
+
+        val result = repository.fetchProjectPrimary("project-doc-1") as DocumentResult.Success
+
+        assertEquals("GET", requests.single().first)
+        assertEquals("/api/v1/project-primary-documents/project-doc-1", requests.single().second)
+        assertEquals("project-doc-1", result.document.documentId)
+        assertEquals(DocumentKind.PROJECT_PRIMARY, result.document.kind)
+        assertEquals("project-1", result.document.projectId)
+        assertEquals("Project A", result.document.title)
+        assertEquals("body", result.document.markdownBody)
+        assertEquals(3, result.document.revision)
+    }
+
+    @Test
+    fun projectPrimaryUpdateUsesCanonicalRouteAndNeverSendsTitle() {
+        val requests = mutableListOf<Triple<String, String, String?>>()
+        val repository = DocumentHttpRepository(
+            request = { method, path, body ->
+                requests += Triple(method, path, body)
+                TodayHttpResponse(200, """{"document":{"document_id":"project-doc-1","kind":"project_primary","project_id":"project-1","project_title":"Project A","markdown_body":"new body","revision":4,"created_at":"2026-09-10T01:02:03Z","updated_at":"2026-09-15T04:05:06Z"}}""")
+            },
+        )
+
+        val result = repository.updateProjectPrimary(ProjectPrimaryUpdateRequest("op-project", "project-1", "project-doc-1", 3, "new body"))
+
+        assertTrue(result is DocumentResult.Success)
+        assertEquals("POST", requests.single().first)
+        assertEquals("/api/v1/project-primary-documents/project-doc-1", requests.single().second)
+        assertTrue(requests.single().third.orEmpty().contains("\"project_id\":\"project-1\""))
+        assertTrue(requests.single().third.orEmpty().contains("\"expected_revision\":3"))
+        assertTrue(requests.single().third.orEmpty().contains("\"markdown_body\":\"new body\""))
+        assertTrue(!requests.single().third.orEmpty().contains("\"title\""))
+    }
+
+    @Test
+    fun unknownDocumentKindFailsSafelyInsteadOfBecomingStandalone() {
+        val repository = repository { _, _, _ ->
+            TodayHttpResponse(200, """{"document":{"document_id":"doc-1","kind":"future_kind","title":"x","markdown_body":"","revision":0}}""")
+        }
+
+        assertTrue(repository.fetchStandalone("doc-1") is DocumentResult.Failure)
+    }
+
+    @Test
     fun createAndUpdateKeepCanonicalJsonFieldsAndEscaping() {
         val requests = mutableListOf<Triple<String, String, String?>>()
         val repository = DocumentHttpRepository(
@@ -87,4 +166,7 @@ class DocumentHttpRepositoryTest {
 
     private fun documentResponse(id: String, title: String, body: String, revision: Int): String =
         """{"document":{"document_id":"$id","kind":"standalone","title":"$title","markdown_body":"$body","revision":$revision,"created_at":"2026-09-15T00:00:00Z","updated_at":"2026-09-15T00:00:00Z"}}"""
+
+    private fun projectDocumentResponse(id: String, projectId: String, projectTitle: String, body: String, revision: Int): String =
+        """{"document":{"document_id":"$id","kind":"project_primary","project_id":"$projectId","project_title":"$projectTitle","markdown_body":"$body","revision":$revision,"created_at":"2026-09-10T01:02:03Z","updated_at":"2026-09-15T04:05:06Z"}}"""
 }

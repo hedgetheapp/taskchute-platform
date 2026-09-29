@@ -17,6 +17,7 @@ sealed interface NoteEditorRequest {
     data class Create(val request: StandaloneCreateRequest) : NoteEditorRequest
     data class Update(val request: StandaloneUpdateRequest) : NoteEditorRequest
     data class TaskUpdate(val request: TaskPrimaryUpdateRequest) : NoteEditorRequest
+    data class ProjectUpdate(val request: ProjectPrimaryUpdateRequest) : NoteEditorRequest
 }
 
 sealed interface NoteLifecycleRequest {
@@ -27,6 +28,7 @@ sealed interface NoteLifecycleRequest {
 enum class NoteEditorOrigin {
     STANDALONE_LIST,
     TODAY_TASK,
+    PROJECT_LIST,
 }
 
 enum class NoteSaveStatus {
@@ -44,6 +46,8 @@ data class NoteEditorState(
     val origin: NoteEditorOrigin = NoteEditorOrigin.STANDALONE_LIST,
     val taskTitle: String? = null,
     val taskId: String? = null,
+    val projectTitle: String? = null,
+    val projectId: String? = null,
     val title: String = "",
     val markdownBody: String = "",
     val saving: Boolean = false,
@@ -55,7 +59,8 @@ data class NoteEditorState(
 ) {
     val dirty: Boolean
         get() = if (document == null) title.isNotBlank() || markdownBody.isNotBlank()
-        else title != document.title || markdownBody != document.markdownBody
+        else if (kind == DocumentKind.STANDALONE) title != document.title || markdownBody != document.markdownBody
+        else markdownBody != document.markdownBody
 
     val blocked: Boolean get() = unresolvedRequest != null
 }
@@ -63,6 +68,7 @@ data class NoteEditorState(
 data class NotesUiState(
     val loadingList: Boolean = false,
     val documents: List<AndroidDocumentSummary> = emptyList(),
+    val projectDocuments: List<AndroidProjectDocumentSummary> = emptyList(),
     val archivedView: Boolean = false,
     val lifecycleSaving: Boolean = false,
     val unresolvedLifecycleRequest: NoteLifecycleRequest? = null,
@@ -99,7 +105,11 @@ class NotesController(
         state = state.copy(loadingList = true, archivedView = archived, errorMessage = null)
         scope.launch {
             when (val result = withContext(Dispatchers.IO) { repository.listStandalone(archived) }) {
-                is DocumentListResult.Success -> state = state.copy(loadingList = false, documents = result.documents)
+                is DocumentListResult.Success -> state = state.copy(
+                    loadingList = false,
+                    documents = result.documents,
+                    projectDocuments = if (archived) emptyList() else result.projectDocuments,
+                )
                 DocumentListResult.Unauthorized -> {
                     state = state.copy(loadingList = false, errorMessage = "認証が必要です。")
                     onUnauthorized()
@@ -184,6 +194,40 @@ class NotesController(
             when (val result = withContext(Dispatchers.IO) { repository.fetchStandalone(documentId) }) {
                 is DocumentResult.Success -> if (generation == editorGeneration) state = state.copy(editor = editorFor(result.document, origin = NoteEditorOrigin.STANDALONE_LIST, sessionId = generation, focusTitleOnStart = focusTitle))
                 DocumentResult.Missing -> state = state.copy(errorMessage = "ノートが見つかりません。")
+                DocumentResult.Unauthorized -> {
+                    state = state.copy(errorMessage = "認証が必要です。")
+                    onUnauthorized()
+                }
+                is DocumentResult.Failure -> state = state.copy(errorMessage = result.message)
+                is DocumentResult.Conflict -> state = state.copy(errorMessage = result.message)
+                is DocumentResult.Ambiguous -> state = state.copy(errorMessage = result.message)
+            }
+        }
+    }
+
+    fun openProjectPrimary(documentId: String, projectId: String, projectTitle: String) {
+        if (hasUnsavedChanges || state.selectionModeActive) return
+        editorGeneration += 1
+        val generation = editorGeneration
+        state = state.copy(editor = null, errorMessage = null, unresolvedTaskEnsure = null, unresolvedTaskTitle = null)
+        scope.launch {
+            when (val result = withContext(Dispatchers.IO) { repository.fetchProjectPrimary(documentId) }) {
+                is DocumentResult.Success -> {
+                    if (generation != editorGeneration) return@launch
+                    val document = result.document
+                    if (document.kind == DocumentKind.PROJECT_PRIMARY && document.documentId == documentId && document.projectId == projectId) {
+                        state = state.copy(editor = editorFor(
+                            document,
+                            origin = NoteEditorOrigin.PROJECT_LIST,
+                            projectId = projectId,
+                            projectTitle = document.title,
+                            sessionId = generation,
+                        ))
+                    } else {
+                        state = state.copy(errorMessage = "プロジェクトノートを読み取れませんでした。再試行してください。")
+                    }
+                }
+                DocumentResult.Missing -> state = state.copy(errorMessage = "プロジェクトノートが見つかりません。")
                 DocumentResult.Unauthorized -> {
                     state = state.copy(errorMessage = "認証が必要です。")
                     onUnauthorized()
@@ -387,9 +431,19 @@ class NotesController(
             NoteEditorRequest.Update(
                 StandaloneUpdateRequest(UUIDv7.next(), editor.document.documentId, editor.document.revision, editor.title.trim(), editor.markdownBody),
             )
-        } else {
+        } else if (editor.kind == DocumentKind.TASK_PRIMARY) {
             NoteEditorRequest.TaskUpdate(
                 TaskPrimaryUpdateRequest(UUIDv7.next(), editor.taskId ?: return null, editor.document.documentId, editor.document.revision, editor.markdownBody),
+            )
+        } else {
+            NoteEditorRequest.ProjectUpdate(
+                ProjectPrimaryUpdateRequest(
+                    operationId = UUIDv7.next(),
+                    projectId = editor.projectId ?: editor.document.projectId ?: return null,
+                    documentId = editor.document.documentId,
+                    expectedRevision = editor.document.revision,
+                    markdownBody = editor.markdownBody,
+                ),
             )
         }
     }
@@ -404,6 +458,7 @@ class NotesController(
                     is NoteEditorRequest.Create -> repository.createStandalone(request.request)
                     is NoteEditorRequest.Update -> repository.updateStandalone(request.request)
                     is NoteEditorRequest.TaskUpdate -> repository.updateTaskPrimary(request.request)
+                    is NoteEditorRequest.ProjectUpdate -> repository.updateProjectPrimary(request.request)
                 }
             }
             if (generation != editorGeneration) return@launch
@@ -440,10 +495,12 @@ class NotesController(
                 is NoteEditorRequest.Create -> request.request.documentId
                 is NoteEditorRequest.Update -> request.request.documentId
                 is NoteEditorRequest.TaskUpdate -> request.request.documentId
+                is NoteEditorRequest.ProjectUpdate -> request.request.documentId
             }
             val result = withContext(Dispatchers.IO) {
                 when (request) {
                     is NoteEditorRequest.TaskUpdate -> repository.fetchTaskPrimary(documentId)
+                    is NoteEditorRequest.ProjectUpdate -> repository.fetchProjectPrimary(documentId)
                     else -> repository.fetchStandalone(documentId)
                 }
             }
@@ -481,6 +538,9 @@ class NotesController(
         is NoteEditorRequest.TaskUpdate -> document.kind == DocumentKind.TASK_PRIMARY
             && document.documentId == request.request.documentId && document.markdownBody == request.request.markdownBody
             && document.revision >= request.request.expectedRevision
+        is NoteEditorRequest.ProjectUpdate -> document.kind == DocumentKind.PROJECT_PRIMARY
+            && document.documentId == request.request.documentId && document.projectId == request.request.projectId
+            && document.markdownBody == request.request.markdownBody && document.revision >= request.request.expectedRevision
     }
 
     private fun adopt(document: AndroidDocument, request: NoteEditorRequest) {
@@ -490,6 +550,8 @@ class NotesController(
             editor = current.copy(
                 document = document,
                 title = if (current.kind == DocumentKind.STANDALONE && localMatchesSent) document.title else current.title,
+                projectTitle = if (current.kind == DocumentKind.PROJECT_PRIMARY) document.title else current.projectTitle,
+                projectId = if (current.kind == DocumentKind.PROJECT_PRIMARY) document.projectId else current.projectId,
                 markdownBody = if (localMatchesSent) document.markdownBody else current.markdownBody,
                 saving = false,
                 unresolvedRequest = null,
@@ -497,6 +559,7 @@ class NotesController(
                 saveStatus = if (localMatchesSent) NoteSaveStatus.SAVED else NoteSaveStatus.UNSAVED,
             ),
             documents = updateSummary(document),
+            projectDocuments = updateProjectSummary(document),
         )
         if (localMatchesSent) finishDeferredNavigationIfReady() else scheduleAutosave()
     }
@@ -510,12 +573,27 @@ class NotesController(
             && editor.markdownBody == request.request.markdownBody
         is NoteEditorRequest.TaskUpdate -> editor.kind == DocumentKind.TASK_PRIMARY
             && editor.markdownBody == request.request.markdownBody
+        is NoteEditorRequest.ProjectUpdate -> editor.kind == DocumentKind.PROJECT_PRIMARY
+            && editor.projectId == request.request.projectId && editor.markdownBody == request.request.markdownBody
     }
 
     private fun updateSummary(document: AndroidDocument): List<AndroidDocumentSummary> {
         val summary = AndroidDocumentSummary(document.documentId, document.title, document.revision, document.updatedAt, document.createdAt)
         val withoutCurrent = state.documents.filterNot { it.documentId == document.documentId }
         return if (document.kind == DocumentKind.STANDALONE) listOf(summary) + withoutCurrent else state.documents
+    }
+
+    private fun updateProjectSummary(document: AndroidDocument): List<AndroidProjectDocumentSummary> {
+        if (document.kind != DocumentKind.PROJECT_PRIMARY || document.projectId == null) return state.projectDocuments
+        return state.projectDocuments.map { summary ->
+            if (summary.documentId == document.documentId) summary.copy(
+                projectId = document.projectId,
+                projectTitle = document.title,
+                revision = document.revision,
+                createdAt = document.createdAt,
+                updatedAt = document.updatedAt,
+            ) else summary
+        }
     }
 
     private fun scheduleAutosave() {
@@ -551,6 +629,8 @@ class NotesController(
         taskTitle: String? = null,
         taskId: String? = null,
         origin: NoteEditorOrigin = NoteEditorOrigin.STANDALONE_LIST,
+        projectTitle: String? = null,
+        projectId: String? = null,
         sessionId: Int = editorGeneration,
         focusTitleOnStart: Boolean = false,
     ) = NoteEditorState(
@@ -559,6 +639,8 @@ class NotesController(
         origin = origin,
         taskTitle = taskTitle,
         taskId = taskId ?: document.taskId,
+        projectTitle = projectTitle ?: if (document.kind == DocumentKind.PROJECT_PRIMARY) document.title else null,
+        projectId = projectId ?: document.projectId,
         title = document.title,
         markdownBody = document.markdownBody,
         saveStatus = NoteSaveStatus.SAVED,

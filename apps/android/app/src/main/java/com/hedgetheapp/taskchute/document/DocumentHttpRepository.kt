@@ -23,7 +23,20 @@ class DocumentHttpRepository(
                         createdAt = item.nullableStringField("created_at") ?: "",
                     )
                 }
-                DocumentListResult.Success(documents)
+                val projectDocuments = (root.fields["project_documents"] as? JsonValue.Array)?.values.orEmpty().map { value ->
+                    val item = value.objectValue()
+                    if (item.stringField("kind") != "project_primary") error("Project document kind must be project_primary")
+                    AndroidProjectDocumentSummary(
+                        documentId = item.stringField("document_id"),
+                        projectId = item.stringField("project_id"),
+                        projectTitle = item.stringField("project_title"),
+                        projectArchived = item.booleanField("project_archived"),
+                        revision = item.intField("revision"),
+                        createdAt = item.nullableStringField("created_at") ?: "",
+                        updatedAt = item.nullableStringField("updated_at") ?: "",
+                    )
+                }
+                DocumentListResult.Success(documents, projectDocuments)
             }.getOrElse { DocumentListResult.Failure("ノート一覧を読み取れませんでした。再試行してください。") }
             HttpResult.Unauthorized -> DocumentListResult.Unauthorized
             is HttpResult.Failure -> DocumentListResult.Failure(response.message)
@@ -56,6 +69,8 @@ class DocumentHttpRepository(
 
     override fun fetchTaskPrimary(documentId: String): DocumentResult = fetch("/api/v1/task-primary-documents/${JsonEncoding.pathSegment(documentId)}", DocumentKind.TASK_PRIMARY)
 
+    override fun fetchProjectPrimary(documentId: String): DocumentResult = fetch("/api/v1/project-primary-documents/${JsonEncoding.pathSegment(documentId)}", DocumentKind.PROJECT_PRIMARY)
+
     override fun ensureTaskPrimary(request: TaskPrimaryEnsureRequest): DocumentResult = mutation(
         "POST",
         "/api/v1/tasks/${JsonEncoding.pathSegment(request.taskId)}/primary-document",
@@ -68,6 +83,12 @@ class DocumentHttpRepository(
         """{"operation_id":"${JsonEncoding.escape(request.operationId)}","task_id":"${JsonEncoding.escape(request.taskId)}","document_id":"${JsonEncoding.escape(request.documentId)}","expected_revision":${request.expectedRevision},"markdown_body":"${JsonEncoding.escape(request.markdownBody)}"}""",
     )
 
+    override fun updateProjectPrimary(request: ProjectPrimaryUpdateRequest): DocumentResult = mutation(
+        "POST",
+        "/api/v1/project-primary-documents/${JsonEncoding.pathSegment(request.documentId)}",
+        """{"operation_id":"${JsonEncoding.escape(request.operationId)}","project_id":"${JsonEncoding.escape(request.projectId)}","document_id":"${JsonEncoding.escape(request.documentId)}","expected_revision":${request.expectedRevision},"markdown_body":"${JsonEncoding.escape(request.markdownBody)}"}""",
+    )
+
     private fun fetch(path: String, kind: DocumentKind): DocumentResult = when (val response = execute("GET", path, null)) {
         is HttpResult.Success -> runCatching { DocumentResult.Success(parseDocument(response.body.objectValue(), kind)) }
             .getOrElse { DocumentResult.Failure("ノートを読み取れませんでした。再試行してください。") }
@@ -78,7 +99,7 @@ class DocumentHttpRepository(
     private fun mutation(method: String, path: String, body: String): DocumentResult = when (val response = execute(method, path, body)) {
         is HttpResult.Success -> runCatching {
             val root = response.body.objectValue()
-            DocumentResult.Success(parseDocument(root.objectField("document"), if (root.objectField("document").stringField("kind") == "task_primary") DocumentKind.TASK_PRIMARY else DocumentKind.STANDALONE))
+            DocumentResult.Success(parseDocument(root.objectField("document")))
         }.getOrElse { DocumentResult.Failure("ノートの保存結果を読み取れませんでした。再試行してください。") }
         HttpResult.Unauthorized -> DocumentResult.Unauthorized
         is HttpResult.Failure -> when {
@@ -132,16 +153,30 @@ class DocumentHttpRepository(
         }
     }
 
-    private fun parseDocument(value: JsonValue.Object, kind: DocumentKind): AndroidDocument = AndroidDocument(
-        documentId = value.stringField("document_id"),
-        kind = kind,
-        title = value.nullableStringField("title") ?: "",
-        markdownBody = value.stringField("markdown_body"),
-        revision = value.intField("revision"),
-        taskId = value.nullableStringField("task_id"),
-        createdAt = value.nullableStringField("created_at") ?: "",
-        updatedAt = value.nullableStringField("updated_at") ?: "",
-    )
+    private fun parseDocument(value: JsonValue.Object, expectedKind: DocumentKind? = null): AndroidDocument {
+        val kind = when (value.stringField("kind")) {
+            "standalone" -> DocumentKind.STANDALONE
+            "task_primary" -> DocumentKind.TASK_PRIMARY
+            "project_primary" -> DocumentKind.PROJECT_PRIMARY
+            else -> error("Unknown document kind")
+        }
+        if (expectedKind != null && expectedKind != kind) error("Unexpected document kind")
+        return AndroidDocument(
+            documentId = value.stringField("document_id"),
+            kind = kind,
+            title = when (kind) {
+                DocumentKind.STANDALONE -> value.stringField("title")
+                DocumentKind.PROJECT_PRIMARY -> value.stringField("project_title")
+                DocumentKind.TASK_PRIMARY -> value.nullableStringField("title") ?: ""
+            },
+            markdownBody = value.stringField("markdown_body"),
+            revision = value.intField("revision"),
+            taskId = value.nullableStringField("task_id"),
+            createdAt = value.nullableStringField("created_at") ?: "",
+            updatedAt = value.nullableStringField("updated_at") ?: "",
+            projectId = value.nullableStringField("project_id"),
+        )
+    }
 
     private sealed interface HttpResult {
         data class Success(val body: String) : HttpResult
@@ -177,3 +212,6 @@ private fun JsonValue.Object.nullableStringField(name: String): String? = when (
 
 private fun JsonValue.Object.intField(name: String): Int = (fields[name] as? JsonValue.NumberValue)?.value?.toIntOrNull()
     ?: error("Document field '$name' must be an integer")
+
+private fun JsonValue.Object.booleanField(name: String): Boolean = (fields[name] as? JsonValue.BooleanValue)?.value
+    ?: error("Document field '$name' must be boolean")
