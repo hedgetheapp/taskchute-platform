@@ -4136,3 +4136,17 @@ The old artifact's `FAIL / USER_REPORTED` is historical evidence and is not over
 | D150-DEVICE | Galaxy S23 | Product Owner physical verification | Corrective APK `a5e01f3ef0c1dd791dbc595bc63276b67a923ac8`を実機確認し、footer非表示中のMarkdown toolbar / IME adjacencyとIME終了後footer復帰について`オケ問題なし`と報告 | PASS / USER_CONFIRMED |
 | D150-FULL | Full Notes | unrelated full runner boundary | full Notes runnerは既知の既存hangがあるため今回の主ゲートにしていない | PARTIAL / NOT_VERIFIED |
 | D150-SCOPE | Boundary | preserve existing Notes/domain/server behavior | Worker/API/shared contract、Web、schema、migration、dependency、persistent nonprod、Production、Release untouched/not required | PASS / NOT_REQUIRED / NOT_RUN / NO |
+## D-151 Android Notes Long-Press Selection — 2026-09-29
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D151-DECISION | Notes interaction | D-146のNotes Selection Mode trigger/presentationを限定supersede | D-151 canonical Decision: long-press entry, no left→right selection swipe, no checkbox, selected-row visual/semantics; Document/API/Worker authority unchanged | SPECIFIED |
+| D151-IMPLEMENTATION | Android Notes | Standalone row long-press starts Selection Mode and selects initiating row | Implementation `ecd7234105574d929f6b5cf9bd7d26377f6cc37f`; `combinedClickable`, row-wide tap toggle, zero-selection exit, action/open suppression preserved | PASS |
+| D151-SCROLL-GUARD | Notes gesture safety | Active list scroll blocks long-press entry | `canStartNotesSelection` matrix JVM: inactive/idle allowed; active scroll or Selection Mode blocked `4 / 4` assertions; UI reads current `LazyListState.isScrollInProgress` at dispatch | PASS |
+| D151-AVD | `TaskChute_API33` Notes | long-press, selection toggle/zero-exit/no-checkbox, swipe removal, Project guard, editor regression | Focused individual serial runs `4 / 4 PASS`: `standaloneLongPressSelectsRowAndSelectionTapsToggleWithoutCheckboxes`, `horizontalSwipeDoesNotEnterStandaloneSelectionMode`, `projectPrimaryCannotEnterOrOpenFromStandaloneSelectionMode`, `notesEditorBodyFocusKeepsEditorSemantics` | PASS / FOCUSED |
+| D151-JVM | Android JVM | focused helper and full affected suite | `NotesScreenTest` `2 / 2 PASS`; full `:app:testDebugUnitTest` `266 / 266 PASS` | PASS |
+| D151-BUILD | Android build/static | compile, instrumentation compile, assemble, diff-check | `:app:compileDebugKotlin`, `:app:compileDebugAndroidTestKotlin`, `:app:assembleDebug`, `git diff --check` PASS | PASS |
+| D151-SMOKE | Runtime | MainActivity/UI tree/crash buffer | MainActivity resolved, UI tree captured after reinstall, target-app crash buffer empty | PASS |
+| D151-CI | Exact pushed SHA / APK | Android impact-aware CI and signed artifact | `main@ecd7234105574d929f6b5cf9bd7d26377f6cc37f`, CI `36576219498` PASS; Web/Worker SKIP; APK `taskchute-android-debug-ecd7234105574d929f6b5cf9bd7d26377f6cc37f`, artifact ID `11036894455`, expires `2026-10-06T13:38:02Z` | PASS |
+| D151-DEVICE | Galaxy S23 | Product Owner physical verification | Not run; fresh APK manual check remains pending | NOT_VERIFIED / PRODUCT_OWNER_MANUAL |
+| D151-BOUNDARY | Product/server/device | Preserve Notes/D-149/D-150 and server boundaries | Worker/API/shared contract, Web, schema, migration, dependency, persistent nonprod, Production, Release unchanged/not run; full Notes runner remains outside focused scope due known task-primary autosave hang | PASS / NOT_REQUIRED / NOT_RUN / NO |

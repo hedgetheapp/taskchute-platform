@@ -1,3 +1,11 @@
+## D-151 — Android Notes Long-Press Selection v0.1
+
+Status: **Approved / Implemented / Integrated / focused PASS / Notes AVD focused PASS / Galaxy S23 NOT_VERIFIED / Production NOT_RUN / Released NO**
+
+Canonical Decision: `docs/decisions/D-151_ANDROID_NOTES_LONG_PRESS_SELECTION_V01.md`
+
+Notes Selection Modeの開始をD-146の左→右スワイプからStandalone Note rowの長押しへ変更し、checkboxを廃止してselected rowの薄いblue background / AccentBlue outlineと`selected` semanticsで状態を示す。Selection Mode中のrow-wide tap toggle、zero-selection exit、Back、Project Primary非選択、Note open / `…` / Add FAB suppressionは維持する。`LazyListState.isScrollInProgress`中のlong-press entryを拒否し、旧horizontal pointer recognizerは削除する。Document/API/Worker/schema/migration/dependency/autosave/CAS/IME semanticsは変更しない。Implementation `ecd7234105574d929f6b5cf9bd7d26377f6cc37f`、focused JVM `2 / 2`、full Android JVM `266 / 266`、focused Notes AVD `4 / 4`、CI `36576219498`、APK artifact ID `11036894455`。Galaxy S23 `NOT_VERIFIED / PRODUCT_OWNER_MANUAL`、Production `NOT_RUN`、Released `NO`。
+
 ## D-150 — Android Notes IME footer separation v0.1
 
 Status: **Approved / Implemented / Integrated**
