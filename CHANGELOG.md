@@ -316,3 +316,8 @@
 ### D-148 current Galaxy S23 closeout — 2026-09-29
 
 - Product Owner checked the latest D-148 APK `taskchute-android-debug-635ceacf46196a937bceeaaa9e21a1d31a3ea3c0` (artifact ID `11003786549`) on Galaxy S23 and reported `OK.問題なし`, recorded as `PASS / USER_CONFIRMED` representative smoke. Earlier intermediate APK failures remain historical evidence; full device matrix/pixel comparison is not claimed. Production `NOT_RUN`; Released `NO`.
+### D-137 Android Daily loading latency corrective — 2026-09-29
+
+- Android Daily now starts the Day projection and established-Day Daily summary read concurrently on an initial/cache-miss load. A controller-lifetime memory-only summary relation cache skips repeated full Daily list retrieval for known logical dates; successful Ensure/fetch updates the cache, and a cached Missing relation triggers one canonical re-list/reconcile without creating a synthetic document.
+- Focused `DailyControllerTest` `7 / 7`, `DailyDocumentHttpRepositoryTest` `3 / 3`, Daily Compose AVD `1 / 1`, MainActivity/UI-tree smoke, crash buffer, `:app:compileDebugKotlin`, `:app:compileDebugAndroidTestKotlin`, `:app:assembleDebug`, and `git diff --check` passed. Exact-SHA CI `36519478907` passed; signed APK `taskchute-android-debug-c3625072b3c35f853839e17a55d1809fd198fe00`, artifact ID `11011904203`, expires `2026-10-06T04:00:48Z`.
+- Worker/API/shared contract, schema, migration, dependency, persistent nonprod, and UI/domain semantics were unchanged. Web/Worker verification was skipped by the Android-only classifier. Authenticated Daily network runtime and Galaxy S23 remain `NOT_VERIFIED / PRODUCT_OWNER_MANUAL`; Production `NOT_RUN`; Released `NO`.
