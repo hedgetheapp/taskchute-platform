@@ -3,6 +3,8 @@ package com.hedgetheapp.taskchute.document
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -213,6 +215,55 @@ class NotesScreenInstrumentedTest {
         composeRule.waitForIdle()
         assertEquals(0, repository.projectFetchCalls.get())
         assertEquals(null, controller?.state?.editor)
+    }
+
+    @Test
+    fun standaloneLongPressSelectsRowAndSelectionTapsToggleWithoutCheckboxes() {
+        val repository = FakeRepository().apply {
+            activeDocuments = listOf(
+                AndroidDocumentSummary("doc-1", "Standalone A", 1, "now"),
+                AndroidDocumentSummary("doc-2", "Standalone B", 1, "now"),
+            )
+        }
+        controller = NotesController(repository, onUnauthorized = {})
+        composeRule.setContent { MaterialTheme { notesScreen() } }
+
+        composeRule.onNodeWithContentDescription("Standalone A").performTouchInput {
+            down(pointerId = 0, position = androidx.compose.ui.geometry.Offset(40f, 39f))
+            advanceEventTime(700)
+            up(pointerId = 0)
+        }
+        composeRule.waitUntil(5_000) { controller?.state?.selectionModeActive == true }
+        assertEquals(setOf("doc-1"), controller?.state?.selectedDocumentIds)
+        composeRule.onNodeWithContentDescription("Standalone A").assertIsSelected()
+        composeRule.onNodeWithContentDescription("Standalone B").assertIsNotSelected()
+        assertTrue(composeRule.onAllNodesWithText("☑", substring = false).fetchSemanticsNodes().isEmpty())
+        assertTrue(composeRule.onAllNodesWithText("☐", substring = false).fetchSemanticsNodes().isEmpty())
+
+        composeRule.onNodeWithContentDescription("Standalone B").performClick()
+        assertEquals(setOf("doc-1", "doc-2"), controller?.state?.selectedDocumentIds)
+        composeRule.onNodeWithContentDescription("Standalone A").performClick()
+        composeRule.onNodeWithContentDescription("Standalone B").performClick()
+        composeRule.waitUntil(5_000) { controller?.state?.selectionModeActive == false }
+        assertTrue(controller?.state?.selectedDocumentIds?.isEmpty() == true)
+    }
+
+    @Test
+    fun horizontalSwipeDoesNotEnterStandaloneSelectionMode() {
+        val repository = FakeRepository().apply {
+            activeDocuments = listOf(AndroidDocumentSummary("doc-1", "Swipe note", 1, "now"))
+        }
+        controller = NotesController(repository, onUnauthorized = {})
+        composeRule.setContent { MaterialTheme { notesScreen() } }
+
+        composeRule.onNodeWithContentDescription("Swipe note").performTouchInput {
+            down(pointerId = 0, position = androidx.compose.ui.geometry.Offset(40f, 39f))
+            moveTo(androidx.compose.ui.geometry.Offset(320f, 39f), delayMillis = 300)
+            up(pointerId = 0)
+        }
+        composeRule.waitForIdle()
+        assertFalse(controller?.state?.selectionModeActive == true)
+        assertTrue(controller?.state?.selectedDocumentIds?.isEmpty() == true)
     }
 
     @Test

@@ -2,7 +2,9 @@ package com.hedgetheapp.taskchute.document
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
@@ -12,6 +14,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -26,6 +29,7 @@ import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -46,11 +50,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalDensity
@@ -58,6 +57,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
@@ -72,11 +72,13 @@ import com.hedgetheapp.taskchute.ui.TaskChuteColors
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import kotlin.math.abs
 import kotlin.math.roundToInt
 
 internal fun shouldShowNotesNavigationBar(editorOpen: Boolean, imeVisible: Boolean): Boolean =
     !(editorOpen && imeVisible)
+
+internal fun canStartNotesSelection(selectionModeActive: Boolean, listScrollInProgress: Boolean): Boolean =
+    !selectionModeActive && !listScrollInProgress
 
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
@@ -350,50 +352,46 @@ private fun NotesList(
         } else if (state.documents.isEmpty() && state.projectNotes.isEmpty() && state.errorMessage == null) {
             Text("ノートはありません。", color = TaskChuteColors.SecondaryText)
         } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            val listState = rememberLazyListState()
+            LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 items(state.documents, key = { it.documentId }) { document ->
                     val selected = document.documentId in state.selectedDocumentIds
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(78.dp)
-                            .pointerInput(document.documentId, state.selectionModeActive) {
-                                awaitEachGesture {
-                                    val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                                    var moved = false
-                                    var horizontal = 0f
-                                    var vertical = 0f
-                                    while (true) {
-                                        val event = awaitPointerEvent(PointerEventPass.Initial)
-                                        val change = event.changes.firstOrNull { it.id == down.id } ?: continue
-                                        horizontal = change.position.x - down.position.x
-                                        vertical = change.position.y - down.position.y
-                                        if (!moved && (change.position - down.position).getDistance() > viewConfiguration.touchSlop) {
-                                            moved = true
-                                        }
-                                        if (change.changedToUpIgnoreConsumed() || !change.pressed) break
-                                    }
-                                    if (moved && horizontal > viewConfiguration.touchSlop && abs(horizontal) > abs(vertical)) {
-                                        controller.enterSelection(document.documentId)
-                                    }
-                                }
-                            },
+                            .then(
+                                if (selected) Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(TaskChuteColors.AccentBlue.copy(alpha = 0.12f))
+                                    .border(1.dp, TaskChuteColors.AccentBlue, RoundedCornerShape(8.dp))
+                                else Modifier,
+                            ),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        if (state.selectionModeActive) {
-                            Box(
-                                modifier = Modifier.width(48.dp).height(48.dp).clickable { controller.toggleSelection(document.documentId) }
-                                    .semantics { contentDescription = if (selected) "選択済み ${document.title}" else "未選択 ${document.title}" },
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(if (selected) "☑" else "☐", color = if (selected) TaskChuteColors.AccentBlue else TaskChuteColors.SecondaryText, fontSize = 22.sp)
-                            }
-                        }
                         Column(
-                            modifier = Modifier.weight(1f).clickable {
-                                if (state.selectionModeActive) controller.toggleSelection(document.documentId)
-                                else controller.openStandalone(document.documentId)
-                            }.padding(start = 2.dp, top = 10.dp, bottom = 10.dp),
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .weight(1f)
+                                .combinedClickable(
+                                    onClick = {
+                                        if (state.selectionModeActive) controller.toggleSelection(document.documentId)
+                                        else controller.openStandalone(document.documentId)
+                                    },
+                                    onLongClickLabel = "選択モードを開始",
+                                    onLongClick = if (state.selectionModeActive) null else {
+                                        {
+                                            if (canStartNotesSelection(false, listState.isScrollInProgress)) {
+                                                controller.enterSelection(document.documentId)
+                                            }
+                                        }
+                                    },
+                                )
+                                .semantics(mergeDescendants = true) {
+                                    contentDescription = document.title
+                                    this.selected = selected
+                                }
+                                .padding(start = 2.dp, top = 10.dp, bottom = 10.dp),
                         ) {
                             Text(document.title, maxLines = 1, overflow = TextOverflow.Ellipsis, color = TaskChuteColors.PrimaryText, style = MaterialTheme.typography.titleMedium)
                             Text("作成日 ${formatDocumentTimestamp(document.createdAt)}", style = MaterialTheme.typography.bodySmall, color = TaskChuteColors.SecondaryText)
