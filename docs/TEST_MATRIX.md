@@ -4078,12 +4078,13 @@ The old artifact's `FAIL / USER_REPORTED` is historical evidence and is not over
 
 | ID | Area | Requirement | Evidence | Status |
 |---|---|---|---|---|
-| D146-IMPLEMENTATION | Android Notes | Approved Notes list/editor and shared Markdown correctives | Implementation `df89d1ef539eac7ebb353da5f7b4bda2490324d`; title session focus, local validation recovery, timestamps, `…` actions, selection mode, shared FAB, preview/tap-scroll behavior | PASS |
+| D146-IMPLEMENTATION | Android Notes | Approved Notes list/editor and shared Markdown correctives | Implementation `df89d1ef539eac7ebb353da5f7b4bda2490324d1`; title session focus, local validation recovery, timestamps, `…` actions, selection mode, shared FAB, preview/tap-scroll behavior | PASS |
 | D146-JVM | Android JVM | Focused Notes/Markdown tests and full Android JVM regression | Focused tests PASS; full `:app:testDebugUnitTest` `237 / 237` PASS | PASS |
 | D146-AVD | Notes / Today | Notes interaction surface and shared Add FAB regression | `TaskChute_API33` Notes `15 / 15` PASS; Today `quickAddFabCanMoveAcrossTodayContentRegion` `1 / 1` PASS | PASS / FOCUSED |
 | D146-BUILD | Android build/static | compile, instrumentation compile, assemble, diff-check | `:app:compileDebugKotlin`, `:app:compileDebugAndroidTestKotlin`, `:app:assembleDebug`, `git diff --check` PASS; MainActivity/UI-tree smoke PASS; target-app crash buffer empty | PASS |
-| D146-CI | Exact pushed SHA / APK | Impact-aware CI and signed artifact | `main@df89d1ef539eac7ebb353da5f7b4bda2490324d`, CI `36505504619` PASS; artifact `taskchute-android-debug-df89d1ef539eac7ebb353da5f7b4bda2490324d`, ID `11007415041`, expires `2026-10-06T00:59:07Z`; Web/Worker SKIP | PASS |
-| D146-BOUNDARY | Product/server/device | Preserve Notes authority and scope boundary | Worker/API/shared contract, Web, schema, migration, dependency, persistent nonprod, D-145, Production, and Release unchanged/not run; Galaxy S23 `NOT_RUN / PRODUCT_OWNER_MANUAL` | PASS / NOT_REQUIRED / NOT_RUN / NO |
+| D146-CI | Exact pushed SHA / APK | Impact-aware CI and signed artifact | `main@df89d1ef539eac7ebb353da5f7b4bda2490324d1`, CI `36505504619` PASS; artifact `taskchute-android-debug-df89d1ef539eac7ebb353da5f7b4bda2490324d1`, ID `11007415041`, expires `2026-10-06T00:59:07Z`; Web/Worker SKIP | PASS |
+| D146-BOUNDARY | Product/server/device | Preserve Notes authority and scope boundary | Worker/API/shared contract, Web, schema, migration, dependency, persistent nonprod, D-145, Production, and Release unchanged/not run; Product Owner tested the fresh D-146 APK on Galaxy S23 and reported `問題なし` | PASS / USER_CONFIRMED / Production NOT_RUN / Released NO |
+| D146-DEVICE | Galaxy S23 | Representative fresh D-146 device smoke | Product Owner reported `問題なし` after testing the fresh D-146 APK; representative smoke only, not a full device matrix or pixel comparison | PASS / USER_CONFIRMED |
 
 ## D-148 current Galaxy S23 closeout — 2026-09-29
 
