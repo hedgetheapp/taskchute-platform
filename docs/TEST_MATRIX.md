@@ -4133,6 +4133,6 @@ The old artifact's `FAIL / USER_REPORTED` is historical evidence and is not over
 | D150-BUILD | Android build | required local gates | `:app:compileDebugKotlin`、`:app:compileDebugAndroidTestKotlin`、`:app:assembleDebug`、`git diff --check` PASS | PASS |
 | D150-SMOKE | Runtime | MainActivity / UI tree / crash buffer | MainActivity launch、UI tree取得、target-app crash buffer empty | PASS |
 | D150-CI | Exact SHA / APK | impact-aware Android CI | CI `36569749556` PASS、exact SHA `a5e01f3ef0c1dd791dbc595bc63276b67a923ac8`、APK `taskchute-android-debug-a5e01f3ef0c1dd791dbc595bc63276b67a923ac8` / artifact ID `11033721498` / expires `2026-10-06T12:44:07Z`; Web/Worker SKIP | PASS |
-| D150-DEVICE | Galaxy S23 | Product Owner physical verification | 未実施。manual check待ち | NOT_VERIFIED / PRODUCT_OWNER_MANUAL |
+| D150-DEVICE | Galaxy S23 | Product Owner physical verification | Corrective APK `a5e01f3ef0c1dd791dbc595bc63276b67a923ac8`を実機確認し、footer非表示中のMarkdown toolbar / IME adjacencyとIME終了後footer復帰について`オケ問題なし`と報告 | PASS / USER_CONFIRMED |
 | D150-FULL | Full Notes | unrelated full runner boundary | full Notes runnerは既知の既存hangがあるため今回の主ゲートにしていない | PARTIAL / NOT_VERIFIED |
 | D150-SCOPE | Boundary | preserve existing Notes/domain/server behavior | Worker/API/shared contract、Web、schema、migration、dependency、persistent nonprod、Production、Release untouched/not required | PASS / NOT_REQUIRED / NOT_RUN / NO |
