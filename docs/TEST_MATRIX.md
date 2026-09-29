@@ -4093,3 +4093,16 @@ The old artifact's `FAIL / USER_REPORTED` is historical evidence and is not over
 |---|---|---|---|---|
 | D148-CURRENT-DEVICE | Galaxy S23 / D-148 corrective set | Representative current D-148 device smoke | Product Owner checked APK `taskchute-android-debug-635ceacf46196a937bceeaaa9e21a1d31a3ea3c0`, artifact ID `11003786549`, on Galaxy S23 and reported `OK.問題なし` | PASS / USER_CONFIRMED |
 | D148-HISTORICAL-BOUNDARY | Evidence scope | Preserve prior failures without overstating coverage | Intermediate APK `FAIL / USER_REPORTED` rows remain historical; this closeout is not a full device matrix or pixel comparison. Production `NOT_RUN`; Released `NO` | PASS / BOUNDARY |
+## D-149 Android Project Primary Notes v0.1
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D149-IMPLEMENTATION | Android Notes | Project Primary model/list/editor support | Implementation `97a9367fb1917b0b4f5b56a5ff9a4824b1fb86c4`; no Worker/API/shared contract, schema, migration, or dependency change | PASS |
+| D149-REPOSITORY | Android document HTTP | Optional `project_documents`, canonical project fetch/update routes, exact kind/project identity, legacy omission compatibility | `DocumentHttpRepositoryTest` covered list, legacy list, fetch route/fields, update payload, and unknown kind safety | PASS |
+| D149-CONTROLLER | Android Notes controller | Project list exposure, body-only open, exact project update, save-while-typing follow-up, conflict and ambiguous wrong-document rejection | `NotesControllerTest` included in focused `33 / 33` JVM PASS | PASS |
+| D149-UI | Android Notes UI | PROJECT NOTE row, title/archive/timestamps, no standalone lifecycle affordances, body-only Project editor, selection-mode guard | `NotesScreenInstrumentedTest` D-149 tests passed individually on `TaskChute_API33` | PASS / FOCUSED |
+| D149-AVD | TaskChute_API33 | Materialized Project row opens editor, autosaves body; standalone selection cannot open Project | D-149 instrumentation `2 / 2` PASS. Full Notes runner stopped at an existing `taskPrimaryAutosavesAndBackReturnsToToday` hang; full surface remains not verified | PASS / FOCUSED; PARTIAL FULL |
+| D149-BUILD | Android build | Required local compile/build/static checks | `:app:compileDebugKotlin`, `:app:compileDebugAndroidTestKotlin`, `:app:assembleDebug`, `git diff --check` PASS | PASS |
+| D149-CI | Exact pushed SHA / APK | Android impact-aware CI and signed artifact | `main@97a9367fb1917b0b4f5b56a5ff9a4824b1fb86c4`, CI `36556167363` PASS; APK `taskchute-android-debug-97a9367fb1917b0b4f5b56a5ff9a4824b1fb86c4`, artifact ID `11027763308`, expires `2026-10-06T10:35:34Z`; Web/Worker SKIP | PASS |
+| D149-DEVICE | Galaxy S23 | Representative physical-device verification | Not run; Product Owner manual check remains pending | NOT_VERIFIED / PRODUCT_OWNER_MANUAL |
+| D149-SCOPE | Boundary | Preserve D-111 semantics and leave server/persistence surfaces unchanged | Worker/API/shared contract, Web, schema, migration, dependency, persistent nonprod, Production, and Release untouched | PASS / NOT_REQUIRED / NOT_RUN / NO |

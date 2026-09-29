@@ -1,3 +1,11 @@
+## D-149 — Android Project Primary Notes v0.1
+
+Status: **Approved / Implemented / Integrated**
+
+Canonical Decision: `docs/decisions/D-149_ANDROID_PROJECT_PRIMARY_NOTES_V01.md`。
+
+Android Notesのmaterialized Project Primary Documentをactive Notes listへ追加し、Project titleを編集しないbody-only editorからMarkdown bodyだけを既存Document update contractでautosaveする。Project rowは`PROJECT NOTE`、current title、archive suffix、created/updated timestampを表示し、standaloneのselection / swipe / lifecycle actionsやProject Ensureは持たない。旧list responseの`project_documents` omission、unknown kind、別Project文書を安全に扱い、D-111のautosave/CAS/conflict/ambiguous retry/safe flushと既存API/DB authorityを維持する。Implementation `97a9367fb1917b0b4f5b56a5ff9a4824b1fb86c4`、focused JVM `33 / 33`、D-149 instrumentation `2 / 2`、exact-SHA CI `36556167363`、APK artifact ID `11027763308`。Full Notes instrumentationは既存ケースのhangにより未完了で、Galaxy S23は`NOT_VERIFIED / PRODUCT_OWNER_MANUAL`、Productionは`NOT_RUN`、Releasedは`NO`。
+
 ## D-148 — Android Today D-147 Device Correctives v0.1
 
 Status: **Approved / 5-item corrective implemented and integrated; focused edge auto-scroll PASS; full Today surface partial / not verified**
