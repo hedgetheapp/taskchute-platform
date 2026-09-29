@@ -21,6 +21,8 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -73,6 +75,9 @@ import java.time.format.DateTimeFormatter
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
+internal fun shouldShowNotesNavigationBar(editorOpen: Boolean, imeVisible: Boolean): Boolean =
+    !(editorOpen && imeVisible)
+
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
 fun NotesScreen(
@@ -82,6 +87,9 @@ fun NotesScreen(
     onNavigateDaily: () -> Unit = {},
 ) {
     val state = controller.state
+    val density = LocalDensity.current
+    val imeVisible = WindowInsets.ime.getBottom(density) > 0
+    val showNavigationBar = shouldShowNotesNavigationBar(state.editor != null, imeVisible)
     var leaveAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     var deleteTarget by remember { mutableStateOf<AndroidDocumentSummary?>(null) }
     var actionTarget by remember { mutableStateOf<AndroidDocumentSummary?>(null) }
@@ -131,13 +139,15 @@ fun NotesScreen(
     Scaffold(
         containerColor = TaskChuteColors.NotesBackground,
         bottomBar = {
-            AndroidNavigationBar(
-                selected = AndroidDestination.NOTES,
-                onToday = { attemptLeave(onNavigateToday) },
-                onNotes = { attemptLeave {} },
-                onDaily = { attemptLeave(onNavigateDaily) },
-                onSettings = { attemptLeave(onNavigateSettings) },
-            )
+            if (showNavigationBar) {
+                AndroidNavigationBar(
+                    selected = AndroidDestination.NOTES,
+                    onToday = { attemptLeave(onNavigateToday) },
+                    onNotes = { attemptLeave {} },
+                    onDaily = { attemptLeave(onNavigateDaily) },
+                    onSettings = { attemptLeave(onNavigateSettings) },
+                )
+            }
         },
     ) { padding ->
         BoxWithConstraints(Modifier.fillMaxSize().padding(padding)) {

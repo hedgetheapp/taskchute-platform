@@ -269,7 +269,7 @@ class NotesScreenInstrumentedTest {
     }
 
     @Test
-    fun notesEditorBodyFocusKeepsGlobalFooterSemantics() {
+    fun notesEditorBodyFocusKeepsEditorSemantics() {
         val repository = FakeRepository()
         controller = NotesController(repository, onUnauthorized = {})
         composeRule.setContent { MaterialTheme { notesScreen() } }
@@ -283,7 +283,6 @@ class NotesScreenInstrumentedTest {
         composeRule.waitForIdle()
 
         composeRule.onNodeWithContentDescription("Markdown body").assertIsDisplayed()
-        assertTrue(composeRule.onAllNodesWithContentDescription("ノート一覧").fetchSemanticsNodes().isNotEmpty())
     }
 
     @Test
