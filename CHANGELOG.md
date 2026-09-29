@@ -339,6 +339,8 @@
 - Implementation `cde59c0ee2fa170298b86cf518d761e1ba52c934`。focused Notes instrumentation選択`4 / 4 PASS`、compile / instrumentation compile / assemble / diff-check、MainActivity/UI-tree/crash-buffer smoke PASS。Exact-SHA CI `36566735084` PASS、APK artifact `taskchute-android-debug-cde59c0ee2fa170298b86cf518d761e1ba52c934` / ID `11032391422` / expires `2026-10-06T12:16:13Z`。実IME geometryはtest harness limitationで直接assertしていない。Galaxy S23 `NOT_VERIFIED / PRODUCT_OWNER_MANUAL`、Production `NOT_RUN`、Released `NO`。
 - Worker/API/shared contract、Web、schema、migration、dependency、persistent nonprodは変更・実施なし。
 
+- Product Ownerがcorrective APK `a5e01f3ef0c1dd791dbc595bc63276b67a923ac8`をGalaxy S23で確認し、Markdown toolbar / IME adjacencyとIME終了後のfooter復帰を`オケ問題なし`と確認。D-150 corrective representative device smokeを`PASS / USER_CONFIRMED`へ更新する。automated pixel geometryは引き続きharness limitationとして分離する。
+
 ### D-150 corrective — Markdown toolbar / IME adjacency — 2026-09-29
 
 - Product OwnerのGalaxy S23 finding（Markdown toolbarがIME上端よりfooter相当分高く残る）に対し、Notes editor open + IME visible時は`Scaffold.bottomBar`へcontentを渡さず、footerの計測予約そのものを除去した。editor側`imePadding()`と`MarkdownLiveEditor.kt`は維持し、負のoffset・Activity/window inset変更は行っていない。
