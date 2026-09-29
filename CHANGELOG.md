@@ -310,7 +310,7 @@
 ### D-146 Android Notes interaction refinements + movable Add FAB — 2026-09-29
 
 - Implemented the approved Android Notes dogfood correctives: one-shot new-title focus/select-all, recoverable empty-title validation, local-time created/updated timestamps, compact `…` lifecycle sheet, shared `本文を入力` Markdown placeholder/full unfocused preview, touch-slop-safe link/checkbox interaction, Notes Selection Mode, and shared memory-only movable Add FAB.
-- Android JVM `237 / 237`, Notes AVD `15 / 15`, Today shared-FAB representative `1 / 1`, final Android builds/diff-check, MainActivity smoke, and exact-SHA CI `36505504619` passed. APK `taskchute-android-debug-df89d1ef539eac7ebb353da5f7b4bda2490324d`, artifact ID `11007415041`, expires `2026-10-06T00:59:07Z`. Galaxy S23 `NOT_RUN / PRODUCT_OWNER_MANUAL`; Production `NOT_RUN`; Released `NO`.
+- Android JVM `237 / 237`, Notes AVD `15 / 15`, Today shared-FAB representative `1 / 1`, final Android builds/diff-check, MainActivity smoke, and exact-SHA CI `36505504619` passed. APK `taskchute-android-debug-df89d1ef539eac7ebb353da5f7b4bda2490324d1`, artifact ID `11007415041`, expires `2026-10-06T00:59:07Z`. Galaxy S23 `NOT_RUN / PRODUCT_OWNER_MANUAL`; Production `NOT_RUN`; Released `NO`.
 - No Worker/API/shared contract, Web, schema, migration, dependency, persistent nonprod, D-145, or production change.
 
 ### D-148 current Galaxy S23 closeout — 2026-09-29
