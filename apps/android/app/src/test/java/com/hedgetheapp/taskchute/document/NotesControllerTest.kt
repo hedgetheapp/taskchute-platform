@@ -292,6 +292,130 @@ class NotesControllerTest {
     }
 
     @Test
+    fun allProjectBoardItemsAppearAndMaterializedRelationIsJoinedByProjectId() {
+        val repository = FakeRepository().apply {
+            projectSummaries = listOf(projectSummary("project-doc-a", "project-a", "Old A"))
+            projectCatalog = listOf(
+                projectCandidate("project-b", "Project B", archived = true, boardPosition = 1),
+                projectCandidate("project-a", "Current A", boardPosition = 2),
+            )
+        }
+        val controller = controller(repository)
+
+        controller.load()
+
+        assertTrue(await { controller.state.projectNotes.size == 2 })
+        assertEquals(listOf("project-b", "project-a"), controller.state.projectNotes.map { it.projectId })
+        assertNull(controller.state.projectNotes.first().documentId)
+        assertEquals("project-doc-a", controller.state.projectNotes.last().documentId)
+        assertEquals("Current A", controller.state.projectNotes.last().projectTitle)
+        assertTrue(controller.state.projectNotes.first().projectArchived)
+        controller.close()
+    }
+
+    @Test
+    fun archivedNotesStayStandaloneOnlyAndDoNotLoadProjectBoard() {
+        val repository = FakeRepository().apply {
+            projectCatalog = listOf(projectCandidate("project-1", "Project A", boardPosition = 1))
+            projectSummaries = listOf(projectSummary("project-doc-1", "project-1", "Project A"))
+        }
+        val controller = controller(repository)
+
+        controller.load(archived = true)
+
+        assertTrue(await { !controller.state.loadingList })
+        assertEquals(0, repository.projectBoardCalls)
+        assertTrue(controller.state.projectNotes.isEmpty())
+        assertTrue(controller.state.projectDocuments.isEmpty())
+        controller.close()
+    }
+
+    @Test
+    fun wrongProjectEnsureIdentityIsRejectedWithoutCorruptingCandidate() {
+        val repository = FakeRepository().apply {
+            projectCatalog = listOf(projectCandidate("project-1", "Project A", boardPosition = 1))
+            projectEnsureResult = DocumentResult.Success(
+                AndroidDocument("wrong-doc", DocumentKind.PROJECT_PRIMARY, "Other", "", 0, projectId = "project-2"),
+            )
+        }
+        val controller = controller(repository)
+        controller.load()
+        assertTrue(await { controller.state.projectNotes.size == 1 })
+
+        controller.openProjectNote(controller.state.projectNotes.single())
+
+        assertTrue(await { !controller.state.projectEnsureSaving })
+        assertNull(controller.state.editor)
+        assertTrue(controller.state.unresolvedProjectEnsure != null)
+        assertNull(controller.state.projectNotes.single().documentId)
+        controller.close()
+    }
+
+    @Test
+    fun projectBoardFailureKeepsMaterializedFallbackAndReportsRecoverableError() {
+        val repository = FakeRepository().apply {
+            projectSummaries = listOf(projectSummary("project-doc-1", "project-1", "Project A"))
+            projectCatalogResult = ProjectCatalogResult.Failure("catalog unavailable")
+        }
+        val controller = controller(repository)
+
+        controller.load()
+
+        assertTrue(await { !controller.state.loadingList })
+        assertEquals("catalog unavailable", controller.state.errorMessage)
+        assertEquals("project-doc-1", controller.state.projectNotes.single().documentId)
+        controller.close()
+    }
+
+    @Test
+    fun unmaterializedProjectFirstOpenEnsuresOnceAndOpensBodyEditor() {
+        val repository = FakeRepository().apply {
+            projectCatalog = listOf(projectCandidate("project-1", "Project A", boardPosition = 1))
+            projectEnsureResult = DocumentResult.Success(projectDocument("project-doc-1", "project-1", "Project A", "", 0))
+        }
+        val controller = controller(repository)
+        controller.load()
+        assertTrue(await { controller.state.projectNotes.size == 1 })
+
+        controller.openProjectNote(controller.state.projectNotes.single())
+
+        assertTrue(await { controller.state.editor?.kind == DocumentKind.PROJECT_PRIMARY })
+        assertEquals(1, repository.projectEnsureRequests.size)
+        assertEquals("project-1", repository.projectEnsureRequests.single().projectId)
+        assertEquals("project-doc-1", controller.state.projectNotes.single().documentId)
+        controller.close()
+    }
+
+    @Test
+    fun ambiguousProjectEnsureKeepsExactRequestAndRetriesIt() {
+        val repository = FakeRepository().apply {
+            projectCatalog = listOf(projectCandidate("project-1", "Project A", boardPosition = 1))
+            projectEnsureResult = DocumentResult.Ambiguous("unknown")
+            projectFetchResult = DocumentResult.Missing
+        }
+        val controller = controller(repository)
+        controller.load()
+        assertTrue(await { controller.state.projectNotes.size == 1 })
+        controller.openProjectNote(controller.state.projectNotes.single())
+
+        assertTrue(await {
+            controller.state.unresolvedProjectEnsure != null &&
+                !controller.state.projectEnsureSaving &&
+                repository.projectFetchCalls == 1
+        })
+        val original = controller.state.unresolvedProjectEnsure!!
+        assertEquals(1, repository.projectEnsureRequests.size)
+        assertEquals(1, repository.projectFetchCalls)
+
+        repository.projectEnsureResult = DocumentResult.Success(projectDocument(original.documentId, original.projectId, "Project A", "", 0))
+        controller.retryProjectPrimaryEnsure()
+
+        assertTrue(await { controller.state.editor?.document?.documentId == original.documentId })
+        assertEquals(original, repository.projectEnsureRequests[1])
+        controller.close()
+    }
+
+    @Test
     fun projectPrimaryOpenFetchesOnceAndUsesProjectEditorOrigin() {
         val repository = FakeRepository().apply {
             projectFetchResult = DocumentResult.Success(projectDocument("project-doc-1", "project-1", "Project A", "body", 2))
@@ -475,6 +599,7 @@ class NotesControllerTest {
         val updateRequests = mutableListOf<StandaloneUpdateRequest>()
         val ensureRequests = mutableListOf<TaskPrimaryEnsureRequest>()
         val taskUpdateRequests = mutableListOf<TaskPrimaryUpdateRequest>()
+        val projectEnsureRequests = mutableListOf<ProjectPrimaryEnsureRequest>()
         val projectUpdateRequests = mutableListOf<ProjectPrimaryUpdateRequest>()
         val archiveRequests = mutableListOf<SetStandaloneDocumentArchivedRequest>()
         val deleteRequests = mutableListOf<DeleteStandaloneDocumentRequest>()
@@ -483,13 +608,17 @@ class NotesControllerTest {
         var updateResultProvider: ((StandaloneUpdateRequest) -> DocumentResult)? = null
         var fetchResult: DocumentResult? = null
         var ensureResult: DocumentResult? = null
+        var projectEnsureResult: DocumentResult? = null
+        var projectCatalogResult: ProjectCatalogResult? = null
         var taskFetchResult: DocumentResult? = null
         var projectFetchResult: DocumentResult? = null
         var projectUpdateResult: DocumentResult? = null
         var projectUpdateResultProvider: ((ProjectPrimaryUpdateRequest) -> DocumentResult)? = null
         var projectReconcileResult: DocumentResult? = null
         var projectSummaries: List<AndroidProjectDocumentSummary> = emptyList()
+        var projectCatalog: List<AndroidProjectNoteCandidate> = emptyList()
         var projectFetchCalls = 0
+        var projectBoardCalls = 0
         var projectUpdateStarted: CountDownLatch? = null
         var releaseProjectUpdate: CountDownLatch? = null
         var createStarted: CountDownLatch? = null
@@ -499,6 +628,13 @@ class NotesControllerTest {
         var lifecycleResult: DocumentLifecycleResult = DocumentLifecycleResult.Success()
 
         override fun listStandalone(archived: Boolean) = DocumentListResult.Success(emptyList(), if (archived) emptyList() else projectSummaries)
+
+        override fun loadProjectBoard(): ProjectCatalogResult {
+            projectBoardCalls += 1
+            return projectCatalogResult ?: ProjectCatalogResult.Success(if (projectCatalog.isNotEmpty()) projectCatalog else projectSummaries.mapIndexed { index, summary ->
+                projectCandidate(summary.projectId, summary.projectTitle, summary.projectArchived, index)
+            })
+        }
 
         override fun setStandaloneArchived(request: SetStandaloneDocumentArchivedRequest): DocumentLifecycleResult {
             archiveRequests += request
@@ -544,6 +680,11 @@ class NotesControllerTest {
             return ensureResult ?: DocumentResult.Missing
         }
 
+        override fun ensureProjectPrimary(request: ProjectPrimaryEnsureRequest): DocumentResult {
+            projectEnsureRequests += request
+            return projectEnsureResult ?: DocumentResult.Missing
+        }
+
         override fun updateTaskPrimary(request: TaskPrimaryUpdateRequest): DocumentResult {
             taskUpdateRequests += request
             return DocumentResult.Success(
@@ -580,6 +721,13 @@ class NotesControllerTest {
             revision = 1,
             createdAt = "2026-09-14T00:00:00Z",
             updatedAt = "2026-09-14T00:00:00Z",
+        )
+
+        fun projectCandidate(projectId: String, title: String, archived: Boolean = false, boardPosition: Int) = AndroidProjectNoteCandidate(
+            projectId = projectId,
+            projectTitle = title,
+            projectArchived = archived,
+            boardPosition = boardPosition,
         )
 
         fun projectDocument(id: String, projectId: String, title: String, body: String, revision: Int) = AndroidDocument(

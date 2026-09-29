@@ -215,6 +215,44 @@ class NotesScreenInstrumentedTest {
         assertEquals(null, controller?.state?.editor)
     }
 
+    @Test
+    fun unmaterializedProjectIsVisibleAndLazyEnsuresOnFirstTap() {
+        val repository = FakeRepository().apply {
+            projectCatalog = listOf(
+                AndroidProjectNoteCandidate(
+                    projectId = "project-new",
+                    projectTitle = "Project New",
+                    projectArchived = false,
+                    boardPosition = 1,
+                ),
+            )
+            projectEnsureResult = DocumentResult.Success(
+                AndroidDocument(
+                    documentId = "project-doc-new",
+                    kind = DocumentKind.PROJECT_PRIMARY,
+                    title = "Project New",
+                    markdownBody = "",
+                    revision = 0,
+                    projectId = "project-new",
+                ),
+            )
+        }
+        controller = NotesController(repository, onUnauthorized = {})
+        composeRule.setContent { MaterialTheme { notesScreen() } }
+
+        composeRule.onNodeWithText("PROJECT NOTE").assertIsDisplayed()
+        composeRule.onNodeWithText("Project New").assertIsDisplayed()
+        assertEquals(0, repository.projectEnsureCalls.get())
+
+        composeRule.onNodeWithContentDescription("PROJECT NOTE Project New").performClick()
+        composeRule.waitUntil(10_000) {
+            repository.projectEnsureCalls.get() == 1 &&
+                controller?.state?.editor?.origin == NoteEditorOrigin.PROJECT_LIST
+        }
+        assertEquals("project-new", repository.lastProjectEnsure?.projectId)
+        assertEquals("project-doc-new", controller?.state?.editor?.document?.documentId)
+    }
+
 
     @Test
     fun focusedMarkdownBodyShowsSixImeToolbarActionsAndKeepsSourceInput() {
@@ -400,14 +438,18 @@ class NotesScreenInstrumentedTest {
         val deleteCalls = AtomicInteger()
         val projectFetchCalls = AtomicInteger()
         val projectUpdateCalls = AtomicInteger()
+        val projectEnsureCalls = AtomicInteger()
         var lastCreate: StandaloneCreateRequest? = null
         var lastUpdate: StandaloneUpdateRequest? = null
+        var lastProjectEnsure: ProjectPrimaryEnsureRequest? = null
         var taskDocument: AndroidDocument? = null
         var failUpdates = false
         var activeDocuments: List<AndroidDocumentSummary> = emptyList()
         var archivedDocuments: List<AndroidDocumentSummary> = emptyList()
         var projectDocuments: List<AndroidProjectDocumentSummary> = emptyList()
+        var projectCatalog: List<AndroidProjectNoteCandidate> = emptyList()
         var projectDocument: AndroidDocument? = null
+        var projectEnsureResult: DocumentResult? = null
 
         override fun listStandalone(archived: Boolean) = DocumentListResult.Success(
             if (archived) archivedDocuments else activeDocuments,
@@ -461,6 +503,38 @@ class NotesScreenInstrumentedTest {
         override fun fetchProjectPrimary(documentId: String): DocumentResult {
             projectFetchCalls.incrementAndGet()
             return projectDocument?.let { DocumentResult.Success(it) } ?: DocumentResult.Missing
+        }
+
+        override fun loadProjectBoard(): ProjectCatalogResult = ProjectCatalogResult.Success(
+            if (projectCatalog.isNotEmpty()) projectCatalog else projectDocuments.mapIndexed { index, summary ->
+                AndroidProjectNoteCandidate(
+                    projectId = summary.projectId,
+                    projectTitle = summary.projectTitle,
+                    projectArchived = summary.projectArchived,
+                    boardPosition = index,
+                    documentId = summary.documentId,
+                    revision = summary.revision,
+                    createdAt = summary.createdAt,
+                    updatedAt = summary.updatedAt,
+                )
+            },
+        )
+
+        override fun ensureProjectPrimary(request: ProjectPrimaryEnsureRequest): DocumentResult {
+            projectEnsureCalls.incrementAndGet()
+            lastProjectEnsure = request
+            return projectEnsureResult
+                ?: projectDocument?.let { DocumentResult.Success(it) }
+                ?: DocumentResult.Success(
+                    AndroidDocument(
+                        documentId = request.documentId,
+                        kind = DocumentKind.PROJECT_PRIMARY,
+                        title = "Project A",
+                        markdownBody = "",
+                        revision = 0,
+                        projectId = request.projectId,
+                    ),
+                )
         }
 
         override fun ensureTaskPrimary(request: TaskPrimaryEnsureRequest): DocumentResult = DocumentResult.Missing

@@ -48,6 +48,17 @@ data class AndroidProjectDocumentSummary(
     val updatedAt: String = "",
 )
 
+data class AndroidProjectNoteCandidate(
+    val projectId: String,
+    val projectTitle: String,
+    val projectArchived: Boolean,
+    val boardPosition: Int,
+    val documentId: String? = null,
+    val revision: Int? = null,
+    val createdAt: String = "",
+    val updatedAt: String = "",
+)
+
 data class SetStandaloneDocumentArchivedRequest(
     val operationId: String,
     val documentId: String,
@@ -109,6 +120,12 @@ data class TaskPrimaryEnsureRequest(
     val documentId: String,
 )
 
+data class ProjectPrimaryEnsureRequest(
+    val operationId: String,
+    val projectId: String,
+    val documentId: String,
+)
+
 data class TaskPrimaryUpdateRequest(
     val operationId: String,
     val taskId: String,
@@ -145,6 +162,12 @@ sealed interface DailyListResult {
     data class Failure(val message: String) : DailyListResult
 }
 
+sealed interface ProjectCatalogResult {
+    data class Success(val projects: List<AndroidProjectNoteCandidate>) : ProjectCatalogResult
+    data object Unauthorized : ProjectCatalogResult
+    data class Failure(val message: String) : ProjectCatalogResult
+}
+
 sealed interface DailyResult {
     data class Success(val document: AndroidDailyDocument) : DailyResult
     data object Missing : DailyResult
@@ -156,6 +179,8 @@ sealed interface DailyResult {
 
 interface AndroidDocumentRepository {
     fun listStandalone(archived: Boolean = false): DocumentListResult
+
+    fun loadProjectBoard(): ProjectCatalogResult
 
     fun fetchStandalone(documentId: String): DocumentResult
 
@@ -170,6 +195,8 @@ interface AndroidDocumentRepository {
     fun fetchTaskPrimary(documentId: String): DocumentResult
 
     fun ensureTaskPrimary(request: TaskPrimaryEnsureRequest): DocumentResult
+
+    fun ensureProjectPrimary(request: ProjectPrimaryEnsureRequest): DocumentResult
 
     fun updateTaskPrimary(request: TaskPrimaryUpdateRequest): DocumentResult
 

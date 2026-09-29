@@ -8,6 +8,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -69,6 +70,7 @@ data class NotesUiState(
     val loadingList: Boolean = false,
     val documents: List<AndroidDocumentSummary> = emptyList(),
     val projectDocuments: List<AndroidProjectDocumentSummary> = emptyList(),
+    val projectNotes: List<AndroidProjectNoteCandidate> = emptyList(),
     val archivedView: Boolean = false,
     val lifecycleSaving: Boolean = false,
     val unresolvedLifecycleRequest: NoteLifecycleRequest? = null,
@@ -77,6 +79,9 @@ data class NotesUiState(
     val unresolvedTaskEnsure: TaskPrimaryEnsureRequest? = null,
     val unresolvedTaskTitle: String? = null,
     val taskEnsureSaving: Boolean = false,
+    val unresolvedProjectEnsure: ProjectPrimaryEnsureRequest? = null,
+    val unresolvedProjectTitle: String? = null,
+    val projectEnsureSaving: Boolean = false,
     val selectionModeActive: Boolean = false,
     val selectedDocumentIds: Set<String> = emptySet(),
 )
@@ -95,7 +100,8 @@ class NotesController(
 
     val hasUnsavedChanges: Boolean
         get() = state.editor?.dirty == true || state.editor?.blocked == true || state.editor?.saving == true ||
-            state.unresolvedTaskEnsure != null || state.lifecycleSaving || state.unresolvedLifecycleRequest != null
+            state.unresolvedTaskEnsure != null || state.projectEnsureSaving || state.unresolvedProjectEnsure != null ||
+            state.lifecycleSaving || state.unresolvedLifecycleRequest != null
 
     val requiresDiscardConfirmation: Boolean
         get() = state.editor?.let { it.dirty && !it.saving && !it.blocked && it.errorMessage != null } == true
@@ -104,17 +110,48 @@ class NotesController(
         if (state.loadingList) return
         state = state.copy(loadingList = true, archivedView = archived, errorMessage = null)
         scope.launch {
-            when (val result = withContext(Dispatchers.IO) { repository.listStandalone(archived) }) {
-                is DocumentListResult.Success -> state = state.copy(
-                    loadingList = false,
-                    documents = result.documents,
-                    projectDocuments = if (archived) emptyList() else result.projectDocuments,
-                )
+            val documentsDeferred = async(Dispatchers.IO) { repository.listStandalone(archived) }
+            val projectsDeferred = if (archived) null else async(Dispatchers.IO) { repository.loadProjectBoard() }
+            when (val documents = documentsDeferred.await()) {
+                is DocumentListResult.Success -> {
+                    val projectCatalog = projectsDeferred?.await()
+                    when (projectCatalog) {
+                        is ProjectCatalogResult.Success -> state = state.copy(
+                            loadingList = false,
+                            documents = documents.documents,
+                            projectDocuments = documents.projectDocuments,
+                            projectNotes = mergeProjectNotes(projectCatalog.projects, documents.projectDocuments),
+                        )
+                        ProjectCatalogResult.Unauthorized -> {
+                            state = state.copy(
+                                loadingList = false,
+                                documents = documents.documents,
+                                projectDocuments = documents.projectDocuments,
+                                projectNotes = fallbackProjectNotes(documents.projectDocuments),
+                                errorMessage = "プロジェクト一覧を読み込めませんでした。再試行してください。",
+                            )
+                            onUnauthorized()
+                        }
+                        is ProjectCatalogResult.Failure -> state = state.copy(
+                            loadingList = false,
+                            documents = documents.documents,
+                            projectDocuments = documents.projectDocuments,
+                            projectNotes = fallbackProjectNotes(documents.projectDocuments),
+                            errorMessage = projectCatalog.message,
+                        )
+                        null -> state = state.copy(
+                            loadingList = false,
+                            documents = documents.documents,
+                            projectDocuments = emptyList(),
+                            projectNotes = emptyList(),
+                        )
+                    }
+                }
                 DocumentListResult.Unauthorized -> {
                     state = state.copy(loadingList = false, errorMessage = "認証が必要です。")
                     onUnauthorized()
                 }
-                is DocumentListResult.Failure -> state = state.copy(loadingList = false, errorMessage = result.message)
+                is DocumentListResult.Failure -> state = state.copy(loadingList = false, errorMessage = documents.message)
             }
         }
     }
@@ -209,7 +246,15 @@ class NotesController(
         if (hasUnsavedChanges || state.selectionModeActive) return
         editorGeneration += 1
         val generation = editorGeneration
-        state = state.copy(editor = null, errorMessage = null, unresolvedTaskEnsure = null, unresolvedTaskTitle = null)
+        state = state.copy(
+            editor = null,
+            errorMessage = null,
+            unresolvedTaskEnsure = null,
+            unresolvedTaskTitle = null,
+            unresolvedProjectEnsure = null,
+            unresolvedProjectTitle = null,
+            projectEnsureSaving = false,
+        )
         scope.launch {
             when (val result = withContext(Dispatchers.IO) { repository.fetchProjectPrimary(documentId) }) {
                 is DocumentResult.Success -> {
@@ -237,6 +282,122 @@ class NotesController(
                 is DocumentResult.Ambiguous -> state = state.copy(errorMessage = result.message)
             }
         }
+    }
+
+    fun openProjectNote(candidate: AndroidProjectNoteCandidate) {
+        if (candidate.documentId != null) {
+            openProjectPrimary(candidate.documentId, candidate.projectId, candidate.projectTitle)
+            return
+        }
+        openUnmaterializedProject(candidate)
+    }
+
+    private fun openUnmaterializedProject(candidate: AndroidProjectNoteCandidate) {
+        if (hasUnsavedChanges || state.selectionModeActive) return
+        editorGeneration += 1
+        val generation = editorGeneration
+        val request = ProjectPrimaryEnsureRequest(UUIDv7.next(), candidate.projectId, UUIDv7.next())
+        state = state.copy(
+            editor = null,
+            errorMessage = null,
+            unresolvedTaskEnsure = null,
+            unresolvedTaskTitle = null,
+            unresolvedProjectEnsure = request,
+            unresolvedProjectTitle = candidate.projectTitle,
+            projectEnsureSaving = true,
+        )
+        scope.launch {
+            val result = withContext(Dispatchers.IO) { repository.ensureProjectPrimary(request) }
+            if (generation == editorGeneration) handleProjectEnsureResult(result, request, generation)
+        }
+    }
+
+    fun retryProjectPrimaryEnsure() {
+        val request = state.unresolvedProjectEnsure ?: return
+        if (state.projectEnsureSaving) return
+        state = state.copy(projectEnsureSaving = true, errorMessage = null)
+        scope.launch {
+            val result = withContext(Dispatchers.IO) { repository.ensureProjectPrimary(request) }
+            handleProjectEnsureResult(result, request, editorGeneration)
+        }
+    }
+
+    private fun handleProjectEnsureResult(result: DocumentResult, request: ProjectPrimaryEnsureRequest, generation: Int) {
+        when (result) {
+            is DocumentResult.Success -> {
+                val document = result.document
+                if (document.kind != DocumentKind.PROJECT_PRIMARY || document.projectId != request.projectId) {
+                    state = state.copy(
+                        projectEnsureSaving = false,
+                        errorMessage = "プロジェクトノートを読み取れませんでした。再試行してください。",
+                    )
+                } else {
+                    adoptEnsuredProject(document, request.projectId, generation)
+                }
+            }
+            DocumentResult.Missing -> state = state.copy(
+                projectEnsureSaving = false,
+                errorMessage = "プロジェクトノートを作成できませんでした。元のノート作成を再試行してください。",
+            )
+            DocumentResult.Unauthorized -> {
+                state = state.copy(projectEnsureSaving = false, errorMessage = "認証が必要です。")
+                onUnauthorized()
+            }
+            is DocumentResult.Failure, is DocumentResult.Conflict -> state = state.copy(
+                projectEnsureSaving = false,
+                unresolvedProjectEnsure = null,
+                unresolvedProjectTitle = null,
+                errorMessage = when (result) {
+                    is DocumentResult.Failure -> result.message
+                    is DocumentResult.Conflict -> result.message
+                    else -> "プロジェクトノートを作成できませんでした。"
+                },
+            )
+            is DocumentResult.Ambiguous -> {
+                state = state.copy(projectEnsureSaving = false, errorMessage = result.message)
+                reconcileProjectEnsure(request, generation)
+            }
+        }
+    }
+
+    private fun reconcileProjectEnsure(request: ProjectPrimaryEnsureRequest, generation: Int) {
+        scope.launch {
+            val result = withContext(Dispatchers.IO) { repository.fetchProjectPrimary(request.documentId) }
+            if (generation != editorGeneration) return@launch
+            if (result is DocumentResult.Success
+                && result.document.kind == DocumentKind.PROJECT_PRIMARY
+                && result.document.documentId == request.documentId
+                && result.document.projectId == request.projectId
+            ) {
+                adoptEnsuredProject(result.document, request.projectId, generation)
+            } else {
+                state = state.copy(
+                    projectEnsureSaving = false,
+                    errorMessage = "保存結果を確認できませんでした。元のノート作成を再試行してください。",
+                )
+            }
+        }
+    }
+
+    private fun adoptEnsuredProject(document: AndroidDocument, projectId: String, generation: Int) {
+        val projectTitle = state.unresolvedProjectTitle
+            ?: state.projectNotes.firstOrNull { it.projectId == projectId }?.projectTitle
+            ?: document.title
+        state = state.copy(
+            editor = editorFor(
+                document,
+                origin = NoteEditorOrigin.PROJECT_LIST,
+                projectId = projectId,
+                projectTitle = projectTitle,
+                sessionId = generation,
+            ),
+            projectNotes = updateProjectNote(document),
+            projectDocuments = updateProjectSummary(document),
+            unresolvedProjectEnsure = null,
+            unresolvedProjectTitle = null,
+            projectEnsureSaving = false,
+            errorMessage = null,
+        )
     }
 
     fun openTaskPrimary(taskId: String, taskTitle: String, primaryDocumentId: String?) {
@@ -560,6 +721,7 @@ class NotesController(
             ),
             documents = updateSummary(document),
             projectDocuments = updateProjectSummary(document),
+            projectNotes = updateProjectNote(document),
         )
         if (localMatchesSent) finishDeferredNavigationIfReady() else scheduleAutosave()
     }
@@ -593,6 +755,53 @@ class NotesController(
                 createdAt = document.createdAt,
                 updatedAt = document.updatedAt,
             ) else summary
+        }
+    }
+
+    private fun mergeProjectNotes(
+        projects: List<AndroidProjectNoteCandidate>,
+        documents: List<AndroidProjectDocumentSummary>,
+    ): List<AndroidProjectNoteCandidate> {
+        val documentsByProject = documents.associateBy { it.projectId }
+        return projects
+            .map { project ->
+                val document = documentsByProject[project.projectId]
+                project.copy(
+                    documentId = document?.documentId,
+                    revision = document?.revision,
+                    createdAt = document?.createdAt ?: "",
+                    updatedAt = document?.updatedAt ?: "",
+                )
+            }
+            .sortedWith(compareBy<AndroidProjectNoteCandidate> { it.boardPosition }.thenBy { it.projectId })
+    }
+
+    private fun fallbackProjectNotes(documents: List<AndroidProjectDocumentSummary>): List<AndroidProjectNoteCandidate> = documents
+        .map {
+            AndroidProjectNoteCandidate(
+                projectId = it.projectId,
+                projectTitle = it.projectTitle,
+                projectArchived = it.projectArchived,
+                boardPosition = Int.MAX_VALUE,
+                documentId = it.documentId,
+                revision = it.revision,
+                createdAt = it.createdAt,
+                updatedAt = it.updatedAt,
+            )
+        }
+        .sortedBy { it.projectId }
+
+    private fun updateProjectNote(document: AndroidDocument): List<AndroidProjectNoteCandidate> {
+        val projectId = document.projectId ?: return state.projectNotes
+        val projectTitle = state.projectNotes.firstOrNull { it.projectId == projectId }?.projectTitle ?: document.title
+        return state.projectNotes.map { candidate ->
+            if (candidate.projectId == projectId) candidate.copy(
+                projectTitle = projectTitle,
+                documentId = document.documentId,
+                revision = document.revision,
+                createdAt = document.createdAt,
+                updatedAt = document.updatedAt,
+            ) else candidate
         }
     }
 

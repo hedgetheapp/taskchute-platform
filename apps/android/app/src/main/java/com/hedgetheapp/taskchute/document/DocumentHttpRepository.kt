@@ -43,6 +43,22 @@ class DocumentHttpRepository(
         }
     }
 
+    override fun loadProjectBoard(): ProjectCatalogResult = when (val response = execute("GET", "/api/v1/project-board", null)) {
+        is HttpResult.Success -> runCatching {
+            ProjectCatalogResult.Success(response.body.objectValue().arrayField("projects").map { value ->
+                val item = value.objectValue()
+                AndroidProjectNoteCandidate(
+                    projectId = item.stringField("id"),
+                    projectTitle = item.stringField("title"),
+                    projectArchived = item.booleanField("archived"),
+                    boardPosition = item.intField("board_position"),
+                )
+            })
+        }.getOrElse { ProjectCatalogResult.Failure("プロジェクト一覧を読み取れませんでした。再試行してください。") }
+        HttpResult.Unauthorized -> ProjectCatalogResult.Unauthorized
+        is HttpResult.Failure -> ProjectCatalogResult.Failure(response.message)
+    }
+
     override fun fetchStandalone(documentId: String): DocumentResult = fetch("/api/v1/documents/${JsonEncoding.pathSegment(documentId)}", DocumentKind.STANDALONE)
 
     override fun createStandalone(request: StandaloneCreateRequest): DocumentResult = mutation(
@@ -75,6 +91,12 @@ class DocumentHttpRepository(
         "POST",
         "/api/v1/tasks/${JsonEncoding.pathSegment(request.taskId)}/primary-document",
         """{"operation_id":"${JsonEncoding.escape(request.operationId)}","task_id":"${JsonEncoding.escape(request.taskId)}","document_id":"${JsonEncoding.escape(request.documentId)}"}""",
+    )
+
+    override fun ensureProjectPrimary(request: ProjectPrimaryEnsureRequest): DocumentResult = mutation(
+        "POST",
+        "/api/v1/projects/${JsonEncoding.pathSegment(request.projectId)}/primary-document",
+        """{"operation_id":"${JsonEncoding.escape(request.operationId)}","project_id":"${JsonEncoding.escape(request.projectId)}","document_id":"${JsonEncoding.escape(request.documentId)}"}""",
     )
 
     override fun updateTaskPrimary(request: TaskPrimaryUpdateRequest): DocumentResult = mutation(

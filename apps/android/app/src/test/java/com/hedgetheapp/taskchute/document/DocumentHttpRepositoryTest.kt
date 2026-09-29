@@ -47,6 +47,42 @@ class DocumentHttpRepositoryTest {
     }
 
     @Test
+    fun projectBoardParsesAllProjectsWithBoardOrder() {
+        val repository = repository { method, path, _ ->
+            assertEquals("GET", method)
+            assertEquals("/api/v1/project-board", path)
+            TodayHttpResponse(200, """{"board_revision":8,"projects":[{"id":"project-b","title":"Project B","archived":true,"board_position":2},{"id":"project-a","title":"Project A","archived":false,"board_position":1}]}""")
+        }
+
+        val result = repository.loadProjectBoard() as ProjectCatalogResult.Success
+
+        assertEquals(listOf("project-b", "project-a"), result.projects.map { it.projectId })
+        assertTrue(result.projects.first().projectArchived)
+        assertEquals(2, result.projects.first().boardPosition)
+    }
+
+    @Test
+    fun projectPrimaryEnsureUsesExactExistingRouteAndPayload() {
+        val requests = mutableListOf<Triple<String, String, String?>>()
+        val repository = DocumentHttpRepository(
+            request = { method, path, body ->
+                requests += Triple(method, path, body)
+                TodayHttpResponse(200, projectDocumentResponse("project-doc-1", "project-1", "Project A", "", 1))
+            },
+        )
+
+        val result = repository.ensureProjectPrimary(ProjectPrimaryEnsureRequest("op-ensure", "project-1", "project-doc-1"))
+
+        assertTrue(result is DocumentResult.Success)
+        assertEquals("POST", requests.single().first)
+        assertEquals("/api/v1/projects/project-1/primary-document", requests.single().second)
+        assertEquals("project-doc-1", (result as DocumentResult.Success).document.documentId)
+        assertTrue(requests.single().third.orEmpty().contains("\"operation_id\":\"op-ensure\""))
+        assertTrue(requests.single().third.orEmpty().contains("\"project_id\":\"project-1\""))
+        assertTrue(requests.single().third.orEmpty().contains("\"document_id\":\"project-doc-1\""))
+    }
+
+    @Test
     fun projectPrimaryFetchUsesCanonicalRouteAndFields() {
         val requests = mutableListOf<Triple<String, String, String?>>()
         val repository = DocumentHttpRepository(

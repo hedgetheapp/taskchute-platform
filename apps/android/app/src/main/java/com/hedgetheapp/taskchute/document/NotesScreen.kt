@@ -227,7 +227,7 @@ fun TaskNoteBottomSheet(
     fun attemptDismiss() {
         if (state.editor != null) {
             controller.flushAndNavigate(onDismiss)
-        } else if (state.unresolvedTaskEnsure == null) {
+        } else if (state.unresolvedTaskEnsure == null && state.unresolvedProjectEnsure == null) {
             onDismiss()
         }
     }
@@ -287,6 +287,11 @@ fun TaskNoteBottomSheet(
                     state.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                     TextButton(onClick = controller::retryTaskPrimaryEnsure, enabled = !state.taskEnsureSaving) { Text("元のノート作成を再試行") }
                 }
+                state.unresolvedProjectEnsure != null -> {
+                    if (state.projectEnsureSaving) CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally))
+                    state.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    TextButton(onClick = controller::retryProjectPrimaryEnsure, enabled = !state.projectEnsureSaving) { Text("元のノート作成を再試行") }
+                }
                 else -> CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally))
             }
         }
@@ -322,6 +327,9 @@ private fun NotesList(
             if (state.unresolvedTaskEnsure != null) {
                 TextButton(onClick = controller::retryTaskPrimaryEnsure, enabled = !state.taskEnsureSaving) { Text("元のノート作成を再試行") }
             }
+            if (state.unresolvedProjectEnsure != null) {
+                TextButton(onClick = controller::retryProjectPrimaryEnsure, enabled = !state.projectEnsureSaving) { Text("元のノート作成を再試行") }
+            }
             state.unresolvedLifecycleRequest?.let {
                 TextButton(onClick = controller::retryLifecycle, enabled = !state.lifecycleSaving) { Text("元の操作を再試行") }
             }
@@ -331,7 +339,7 @@ private fun NotesList(
                 CircularProgressIndicator(modifier = Modifier.padding(8.dp))
                 Text("ノートを読み込んでいます…")
             }
-        } else if (state.documents.isEmpty() && state.projectDocuments.isEmpty() && state.errorMessage == null) {
+        } else if (state.documents.isEmpty() && state.projectNotes.isEmpty() && state.errorMessage == null) {
             Text("ノートはありません。", color = TaskChuteColors.SecondaryText)
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -398,11 +406,11 @@ private fun NotesList(
                     HorizontalDivider(color = TaskChuteColors.Divider)
                 }
                 if (!state.archivedView) {
-                    items(state.projectDocuments, key = { "project-${it.documentId}" }) { document ->
+                    items(state.projectNotes, key = { "project-${it.projectId}" }) { document ->
                         ProjectDocumentRow(
                             document = document,
                             selectionModeActive = state.selectionModeActive,
-                            onOpen = { controller.openProjectPrimary(document.documentId, document.projectId, document.projectTitle) },
+                            onOpen = { controller.openProjectNote(document) },
                         )
                         HorizontalDivider(color = TaskChuteColors.Divider)
                     }
@@ -414,7 +422,7 @@ private fun NotesList(
 
 @Composable
 private fun ProjectDocumentRow(
-    document: AndroidProjectDocumentSummary,
+    document: AndroidProjectNoteCandidate,
     selectionModeActive: Boolean,
     onOpen: () -> Unit,
 ) {
