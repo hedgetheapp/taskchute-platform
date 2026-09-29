@@ -1,6 +1,6 @@
 # D-151 — Android Notes Long-Press Selection v0.1
 
-Status: **Approved / Implemented / Integrated / focused PASS / Notes AVD focused PASS / Galaxy S23 NOT_VERIFIED / Production NOT_RUN / Released NO**
+Status: **Approved / Implemented / Integrated / focused PASS / Notes AVD focused PASS / Galaxy S23 PASS / USER_CONFIRMED / Production NOT_RUN / Released NO**
 
 Date: 2026-09-29
 
@@ -34,4 +34,4 @@ bulk Document mutation、Project row selection、new lifecycle/API/Worker comman
 - Exact-SHA CI `36576219498` PASS; Web/Worker verification skipped by Android-only classifier
 - APK `taskchute-android-debug-ecd7234105574d929f6b5cf9bd7d26377f6cc37f`, artifact ID `11036894455`, expires `2026-10-06T13:38:02Z`
 - Full Notes runner was not run; the pre-existing task-primary autosave hang remains outside this focused corrective
-- Galaxy S23: `NOT_VERIFIED / PRODUCT_OWNER_MANUAL`; persistent nonprod: `NOT_REQUIRED`; Production: `NOT_RUN`; Released: `NO`
+- Galaxy S23: `PASS / USER_CONFIRMED` — Product Owner tested the fresh D-151 APK and reported `問題なし`; representative long-press Selection Mode smoke only, not a full device matrix. Persistent nonprod: `NOT_REQUIRED`; Production: `NOT_RUN`; Released: `NO`
