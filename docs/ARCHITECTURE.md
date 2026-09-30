@@ -1,5 +1,13 @@
 # Architecture
 
+## D-154 Wear OS / Pixel Watch boundary
+
+Wear OS v0.1は`apps/android`配下のdedicated `:wear` native clientとする。Android phoneとWatchはsame application id / signing identityを維持し、Wearable Data Layerは初回pairing/auth bridgeだけに使う。通常のToday query / Start / CompleteはWatchからTaskChute Serverへ直接HTTPSで送るため、PhoneはTaskChute data proxyやDomain authorityにならない。
+
+PairingはWatch-generated request id + nonce、signed-in Androidの明示確認、Server-issued short-lived one-time grant、Data Layer transfer、Watch側grant exchangeの順で行う。PhoneのBetter Auth cookieをWatchへコピーせず、exchange成功時にWatch専用Better Auth sessionを作る。grantは120秒以内、nonce-bound、single-use、atomic consume。D-154はAUTH/APP migrationや新pairing secretを追加しない。既存Better Auth 1.7.1 verification/session foundation上で安全に実現できない場合は実装を停止してMaterialな追加Decisionへ戻す。
+
+Watchのopaque cookie jarはD-106と同様にno-backup app-private storage + Android Keystore AES-GCMで暗号化する。Server principal mapping、APP_DB ownership、Day / Entry / Execution / placement authorityは既存contractをそのまま使う。Public Release用fallback auth、offline DB、background realtime、Tile/Complicationはこのboundaryに含めない。
+
 ## Android lifecycle editor / placement / forecast boundary
 
 `TaskPlanningController`はDay projectionとEntry lifecycleからeditor capabilityを選び、`TaskPlanningHttpRepository`は既存のTask metadata、Mode、Section move、planned-start、estimate、`SetExecutionTimes` endpointをoperation単位で呼び出す。actual timeのinstant化にはDayのlogical date、canonical timezone、establishment boundaryを使う。Section moveを先に実行した場合は返却された最新 placement revisionを後続のexecution-times requestへ引き継ぐ。D-132ではPlannedの`SetExecutionTimes` requestもcurrent placement revisionを渡し、Workerがactual startからactual Sectionを解決して、必要なcross-Section placementとlifecycle / Execution作成を一つのatomic outcomeとして確定する。

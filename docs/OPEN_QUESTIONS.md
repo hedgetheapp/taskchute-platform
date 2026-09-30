@@ -146,7 +146,7 @@ Current implementation / verification fact:
 - Passkey導入時期
 - OAuth / MFAの必要性
 - future native client token format / storage / refresh / revocation
-- Wear OS credential handoff
+- Wear OS public Release向けfallback authentication（Credential Manager / OAuth等）のexact方式。D-154のAndroid-paired dogfood token bridgeだけではRelease条件を満たした扱いにしない
 - Cloudflare Accessをpreview outer gateへ使うか
 - bootstrap disable deployment後のversion convergence確認をproduction operator procedureへどう固定するか
 
@@ -420,8 +420,8 @@ First Server + Web vertical slice、D-038 B1 / B3、D-039 B2はImplemented / Int
 - Androidのinitial Compose architecture詳細
 - D-121で通常modeのTask rowからselection checkboxを隠しSelection Modeだけで表示する方向はApproved済みだが、通常modeからSelection Modeへ入る具体的interaction（long-press、別control等）は未決
 - Android Widgetのinitial scope
-- Wear OS / Pixel Watchのinitial feature scope
-- Wear OS standalone / companion dependencyの境界
+- D-154 v0.1より後のWear OS scope（Completed history row、date navigation、Task edit / D&D、Notes / Daily、Tile / Complication、Location、offline / background realtime等）
+- Wear OS public distribution時のstandalone metadata / iOS-paired watch対応。D-154 v0.1はAndroid companion-assisted initial auth + post-pair Server-direct runtimeまでをApproved
 - native iOS appへ進むentry criteria
 
 ## Deployment / verification

@@ -45,7 +45,9 @@ one-offなcompanionとして独立実装せず、Android appのDomain / API / lo
 
 companion clientとして対応対象とする。
 
-running Task、next Task、Start / Complete等のexecution-oriented experienceを中心候補とし、exact scopeは別途設計する。
+D-154で最初のv0.1 scopeをApprovedした。Android companionで初回接続を承認した後はWatch自身がTaskChute Serverへ直接接続し、current DayのSection-grouped Task list、Start、Runningのelapsed / remaining / progress、Complete、next Taskをexecution-orientedに扱う。初回pairing以外の通常TaskChute dataをPhone proxyへ依存させない。
+
+v0.1ではdate navigation、Task edit / D&D、Notes / Daily、Tile / Complication、offline / background realtime、Location、public Release向けfallback authenticationを含めない。
 
 ### iOS native
 

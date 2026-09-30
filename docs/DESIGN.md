@@ -16,6 +16,17 @@
 
 `assets/brand/taskchute-icon-master.png` は、提供されたTaskChuteのTF・チェックリスト・葉のアートワークを外周の余白だけ正規化した共通マスターである。Android launcher iconとWeb site/browser iconはこのマスターから生成し、製品名・アートワーク・画面UIの意味は変更しない。
 
+
+## D-154 Wear OS / Pixel Watch v0.1
+
+Canonical Figmaはfile `UbTJH6ykYNBQJS4Wvwz9jb` page `559:2`、concept board `559:3`。主要stateは01 Today / Idle `561:33`、02 Running `561:52`、03 Complete / Next `561:87`、04 Network error `561:101`、05 Sign in `561:110`。
+
+01 Todayは日付を`YYYY-MM-DD(a)`で中央表示し、Section headerを`HH:MM - HH:MM  SectionName`の順で中央にまとめる。timeはsecondary、Section名はprimary emphasisとする。TaskはDigital Crown / touchで縦scrollし、planned rowは左にprojected start/end + connector、中央にTask titleと2段目の`hourglass_top + estimate + repeat`、右に`play_arrow` Startを置く。Section名はTask metadataへ重複表示しない。Completed history rowはv0.1で新規に発明しない。
+
+Start tap後は別のStarting stateを挟まず02 Runningへ即時遷移する。Runningは`実行中`labelにdotを付けず、Task title左へ同色の`fiber_manual_record`、elapsedに`schedule`、remainingに`hourglass_top`、estimate-based progress、`stop` Complete actionを置く。右側timeはtotal estimateではなくremaining。elapsed / remainingは`HH:MM:SS`。03は`check_circle` + `完了しました` + actual duration + 次のTask、04は`error` + retry、05は`ログイン` + `アプリで接続`だけを表示する。
+
+Start / connectはMaterial 3 Primary Container系、CompleteはError Container系のsemantic roleを使う。hard-codedな疑似brand blue/redをauthorityにせず、cross-platform icon ruleどおり公式Material Symbolsを使う。
+
 ## Cross-platform icon system
 
 TaskChute Platformのfirst-party UIでは、Android、Web、Wear OS（Pixel Watchを含む）を横断して、Googleの[Material Symbols & Icons](https://fonts.google.com/icons)をアイコンの第一選択とする。既存画面との整合が取れる場合は`Material Symbols Rounded`を標準familyとして使い、同じ意味のaction / statusにはplatformをまたいで同じsymbolを優先する。

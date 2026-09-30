@@ -1,3 +1,13 @@
+## D-154 — Wear OS / Pixel Watch v0.1
+
+Status: **Approved / implementation pending**
+
+Canonical Decision: `docs/decisions/D-154_WEAR_OS_PIXEL_WATCH_V01.md`
+
+Android-paired Pixel Watch向けの最初のWear OS vertical sliceをApprovedとする。初回認証はsigned-in Android companionの明示確認 + Wearable Data Layerによるshort-lived one-time grant bridgeを使い、Phone session cookie自体はWatchへコピーしない。Watchは交換後に独立したBetter Auth sessionを保持し、通常のToday read / Start / CompleteはPhone proxyではなくTaskChute Serverへ直接HTTPSで行う。grantは120秒以内・nonce-bound・single-use・atomic consumeとし、D-154はAUTH/APP migrationや新しいpairing secretを承認しない。安全なsession issuance / atomic exchangeを既存Better Auth foundation上で実現できない場合はSTOPする。
+
+UIはFigma `559:2` / `559:3`をv0.1 targetとし、current DayのSection-grouped vertical list、projected start/end、`hourglass_top` estimate、Routine `repeat`、immediate Running transition、elapsed / remaining / progress、Complete / Next、Network error、`ログイン` + `アプリで接続`を含む。Completed history row、date navigation、Task edit/D&D、Notes/Daily、Tile/Complication、offline/background realtime等はこのsliceで新規に設計しない。Public Releaseに必要なfallback authenticationは別DecisionまでOpenとする。
+
 ## D-151 — Android Notes Long-Press Selection v0.1
 
 Status: **Approved / Implemented / Integrated / focused PASS / Notes AVD focused PASS / Galaxy S23 PASS / USER_CONFIRMED / Production NOT_RUN / Released NO**
