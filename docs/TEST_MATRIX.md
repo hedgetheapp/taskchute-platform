@@ -1,4 +1,4 @@
-## D-154 Wear OS / Pixel Watch v0.1 — 2026-09-30
+## D-154 Wear OS / Pixel Watch v0.1 — initial implementation checkpoint — 2026-09-30
 
 | ID | Area | Requirement | Evidence | Status |
 |---|---|---|---|---|
@@ -10,6 +10,19 @@
 | D154-PHONE-AVD | Phone emulator | Android phone regression and app launch/crash safety | `TaskChute_API33` `-Surface All`: `70` tests, `67` passed, `3` failed. One unrelated Settings expectation mismatch; two Today test teardown failures after emulator package-manager service disappeared. Following emulator cold boot, APK install, MainActivity login-screen launch, UI tree and empty app-crash buffer PASS. Pairing protocol instrumented test `1 / 1 PASS`. | PARTIAL / HARNESS_FAILURES |
 | D154-WEAR-RUNTIME | Wear emulator | Watch UI/session/API runtime on Wear virtual device | No Wear AVD available; Wear APK built and included in CI but not executed in an emulator | NOT_RUN / ENVIRONMENT_UNAVAILABLE |
 | D154-DEVICE-RELEASE | Physical devices / release | Product Owner device smoke and production/release boundary | Galaxy S23 / Pixel Watch `NOT_RUN / PRODUCT_OWNER_MANUAL`; Production `NOT_RUN`; Released `NO` | NOT_RUN / NO |
+
+## D-154A Wear pairing visual / timeout-retry corrective — 2026-09-30
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D154A-IMPLEMENTATION | Wear pairing | D-154 Figma sign-in Dark UI, TaskChute launcher icon, bounded connect/grant wait and safe retry | Implementation `a4753c2f8acc0eaa406518b4c77aa595bfd604bb`; Figma `561:110`; Wear launcher PNGs are byte-identical to existing Phone assets; no dependency / Worker / API / schema / migration change | PASS |
+| D154A-JVM | Phone / Wear pairing | Retry creates fresh request identity; timeout/failure clears pending identity; stale/wrong grants ignored; presentation has bounded idle/busy/error states | Wear JVM `15 / 15 PASS`; Phone pairing protocol focused JVM `2 / 2 PASS` | PASS |
+| D154A-ANDROID-BUILD | Android Phone + Wear | Kotlin compile, instrumentation compile, debug APK assembly | Local `:app:compileDebugKotlin`, `:app:compileDebugAndroidTestKotlin`, `:app:assembleDebug`, and matching `:wear` compile/assemble tasks PASS with nonprod base URL; `git diff --check` PASS | PASS |
+| D154A-AVD-DATALAYER | Paired Phone / Wear AVD | Figma idle/error/retry presentation and paired-node Wearable Data Layer request-send path | Prior focused run on this same implementation content: Wear API37 AVD idle/error/retry UI screenshot/UI-tree; Wear `WearDataLayerConnectivityInstrumentedTest` + launcher/security instrumentation `6 / 6 PASS`; Phone pairing/session instrumentation `2 / 2 PASS`; send task succeeded to the officially paired Phone node. This proves queue/send acceptance, not guaranteed remote delivery. On the latest continuation, `TaskChute_Wear_API36` did not appear in `adb devices`, so no new instrumentation rerun was claimed. | PASS / PRIOR EVIDENCE; CURRENT RERUN NOT_RUN |
+| D154A-COMPOSE-UI | Wear pairing Compose UI | Compose UI instrumentation for rendered screen | Attempted 3 tests; API37 Espresso failed with `NoSuchMethodException: android.hardware.input.InputManager.getInstance`. That instrumentation was removed; JVM presentation tests and AVD screenshot evidence do not upgrade the failed instrumentation result. | FAIL / TOOLING_INCOMPATIBLE |
+| D154A-AUTH-E2E | Phone approval → Watch grant → Watch session → Today | Positive authenticated pairing flow | Phone AVD was signed out at the login screen. No safe existing auth fixture was available; no credentials were retrieved or requested. | NOT_RUN / AUTH_FIXTURE_UNAVAILABLE |
+| D154A-CI-ARTIFACTS | Exact SHA CI | Android CI / signed Phone and Wear APKs | `main@a4753c2f8acc0eaa406518b4c77aa595bfd604bb`; classifier and Android job PASS; Web/Worker SKIP. Fresh Phone and Wear APK artifacts were uploaded. | PASS |
+| D154A-DEVICE-RELEASE | Physical devices / production | User-device smoke and release boundary | Galaxy S23 / Pixel Watch `NOT_RUN / PRODUCT_OWNER_MANUAL`; Production `NOT_RUN`; Released `NO` | NOT_RUN / NO |
 
 ## D-148 insertion boundary / bottom edge auto-scroll corrective — 2026-09-27
 

@@ -1,3 +1,10 @@
+### D-154A Wear pairing visual / timeout-retry corrective — 2026-09-30
+
+- Wear sign-in now follows the approved Figma Dark UI (`561:110`), packages the same TaskChute launcher icon assets as Phone, and gives connect/send/grant waits bounded failure plus fresh-identity retry without weakening grant validation or exposing secrets.
+- Implementation `a4753c2f8acc0eaa406518b4c77aa595bfd604bb`; focused Wear JVM `15 / 15`, Phone pairing JVM `2 / 2`, Phone/Wear Kotlin + instrumentation compile and debug assemble PASS; exact-SHA CI PASS with fresh signed Phone/Wear APKs. Web/Worker classifier SKIP.
+- Prior paired-node Wear API37 AVD evidence: idle/error/retry UI smoke and Data Layer send acceptance; Wear instrumented `6 / 6`, Phone instrumented `2 / 2`. Latest continuation could not reconnect the Wear AVD through adb, so no additional runtime PASS is claimed. Authenticated grant→Today remains `NOT_RUN / AUTH_FIXTURE_UNAVAILABLE`; API37 Compose UI instrumentation remains recorded as tooling failure (`InputManager.getInstance` missing).
+- Galaxy S23 / Pixel Watch `NOT_RUN`; Production `NOT_RUN`; Released `NO`. Worker/API/schema/migration/dependency/persistent nonprod unchanged.
+
 ### D-154 Wear OS / Pixel Watch v0.1 — 2026-09-30
 
 - Added the Android-paired Wear OS `:wear` app for current-Day Section/task projection, forecast and estimate display, Routine marker, Start, Running progress, Complete / Next, and retryable network errors. Pairing requires explicit phone confirmation and a short-lived one-time nonce-bound grant; the Watch establishes its own Better Auth session and never receives the phone session cookie.
