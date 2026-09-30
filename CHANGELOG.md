@@ -1,3 +1,10 @@
+### D-153A Android Today Quick Add picker focus corrective — 2026-09-30
+
+- `ReferencePicker` now explicitly clears Task-title focus after IME hide before requesting picker focus and opening Project / Mode / Section choices. CREATE's initial title autofocus remains session-scoped; picker close/selection does not reclaim focus, while a new CREATE session focuses the title again.
+- Focused picker regression and related Today tests PASS. The D-153 initial `55 / 64` baseline and confirmed focus defect are retained as historical evidence; all eight remaining failures were verified against current canonical behavior and corrected in test fixtures/selectors/assertions only. An extra test-isolation timeout caused by leaving a newly opened editor/IME active was fixed by cancelling that session.
+- TaskChute_API33 Today full instrumentation `64 / 64`, Android JVM `274 / 274`, compile / instrumentation compile / assemble / MainActivity + UI tree / crash buffer / `git diff --check` PASS. Implementation `f6d8b0496161032b8f2d0edf5ce417bd5fec8bba`; exact-SHA CI `36668787675` PASS, Web/Worker SKIP. APK `taskchute-android-debug-f6d8b0496161032b8f2d0edf5ce417bd5fec8bba`, artifact ID `11076473159`, expires `2026-10-07T04:28:35Z`.
+- Galaxy S23 `NOT_RUN / PRODUCT_OWNER_MANUAL`; persistent nonprod `NOT_REQUIRED`; Worker/API, schema, migration, dependency unchanged; Production `NOT_RUN`; Released `NO`.
+
 ### D-148 Android Today empty Section header drop targets corrective — 2026-09-29
 
 - Empty configured and temporary unsectioned Section headers now participate as measured Section-only D&D targets without inventing relative placement or an insertion line; frozen Task geometry and Routine occurrence-aware no-anchor semantics remain intact.
