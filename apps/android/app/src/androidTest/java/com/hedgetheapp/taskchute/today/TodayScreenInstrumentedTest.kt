@@ -91,7 +91,12 @@ class TodayScreenInstrumentedTest {
         composeRule.waitUntil(10_000) {
             repo.startCalls.get() == 1 && controller?.state?.pendingEntryIds?.contains("entry-1") == true
         }
-        composeRule.onNodeWithContentDescription("タスクを開始", useUnmergedTree = true).assertIsNotEnabled()
+        assertTrue(
+            "optimistic Running projection must not retain the Start action",
+            composeRule.onAllNodesWithContentDescription("タスクを開始", useUnmergedTree = true)
+                .fetchSemanticsNodes()
+                .isEmpty(),
+        )
         assertEquals(1, repo.startCalls.get())
 
         repo.releaseStart.countDown()
@@ -242,11 +247,12 @@ class TodayScreenInstrumentedTest {
         launchScreen(onNavigateSettings = { settingsClicks++ })
         waitForStatus(TodayLoadStatus.CONTENT)
 
-        assertTrue(composeRule.onAllNodesWithText("今日").fetchSemanticsNodes().isNotEmpty())
+        composeRule.onNodeWithContentDescription("Task").assertIsDisplayed().assertIsEnabled()
         assertTrue(composeRule.onAllNodesWithText("プロジェクト").fetchSemanticsNodes().isEmpty())
-        composeRule.onNodeWithText("ノート").assertIsDisplayed().assertIsEnabled()
-        composeRule.onNodeWithText("設定").assertIsDisplayed().assertIsEnabled()
-        composeRule.onNodeWithText("設定").performClick()
+        composeRule.onNodeWithContentDescription("ノート一覧").assertIsDisplayed().assertIsEnabled()
+        composeRule.onNodeWithContentDescription("Daily").assertIsDisplayed().assertIsEnabled()
+        composeRule.onNodeWithContentDescription("Settings").assertIsDisplayed().assertIsEnabled()
+        composeRule.onNodeWithContentDescription("Settings").performClick()
         assertEquals(1, settingsClicks)
     }
 
@@ -258,19 +264,25 @@ class TodayScreenInstrumentedTest {
             mode = TodayMode("mode-pc", "PC"),
         )
         val initialDay = dayWith().copy(
+            isCurrent = false,
+            startInstant = "2026-09-13T15:00:00Z",
+            establishmentTimezone = "Asia/Tokyo",
             sections = listOf(dayWith().sections.single().copy(entries = listOf(task))),
         )
         launchPlanningScreen(FakePlanningRepository(), initialDay)
         waitForStatus(TodayLoadStatus.CONTENT)
 
-        composeRule.onNodeWithContentDescription("開始見込み時刻: 09:00、終了見込み時刻: 09:10").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription(
+            "開始見込み時刻: 00:00、終了見込み時刻: 00:10",
+            useUnmergedTree = true,
+        ).assertIsDisplayed()
         composeRule.onNodeWithText("10分 /").assertIsDisplayed()
         composeRule.onNodeWithText("未開始").assertIsDisplayed()
         composeRule.onNodeWithText("仕事 / PC").assertIsDisplayed()
     }
 
     @Test
-    fun runningRowKeepsPlannedProjectionSeparateFromActualMetadata() {
+    fun runningRowProjectsFromActualStartAndShowsActualMetadata() {
         val task = dayWith(LifecycleState.RUNNING).sections.single().entries.single().copy(
             plannedStartMinute = 600,
             estimateSeconds = 1200,
@@ -282,18 +294,22 @@ class TodayScreenInstrumentedTest {
         val initialDay = dayWith(LifecycleState.RUNNING).copy(
             sections = listOf(dayWith(LifecycleState.RUNNING).sections.single().copy(entries = listOf(task))),
             activeExecution = TodayExecution("execution-1", task.id, "2026-09-14T01:42:00Z", 1200),
+            establishmentTimezone = "Asia/Tokyo",
         )
         launchPlanningScreen(FakePlanningRepository(), initialDay)
         waitForStatus(TodayLoadStatus.CONTENT)
 
-        composeRule.onNodeWithContentDescription("開始見込み時刻: 10:00、終了見込み時刻: 10:20").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription(
+            "開始見込み時刻: 10:42、終了見込み時刻: 11:02",
+            useUnmergedTree = true,
+        ).assertIsDisplayed()
         composeRule.onNodeWithText("20分 /").assertIsDisplayed()
         composeRule.onNodeWithText("仕事 / PC").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("タスクを完了").assertIsDisplayed()
     }
 
     @Test
-    fun completedRowUsesPlannedProjectionAndCanonicalDuration() {
+    fun completedRowUsesActualProjectionAndCanonicalDuration() {
         val task = dayWith(LifecycleState.COMPLETED).sections.single().entries.single().copy(
             plannedStartMinute = 480,
             estimateSeconds = 1200,
@@ -306,11 +322,15 @@ class TodayScreenInstrumentedTest {
         val initialDay = dayWith(LifecycleState.COMPLETED).copy(
             sections = listOf(dayWith(LifecycleState.COMPLETED).sections.single().copy(entries = listOf(task))),
             activeExecution = null,
+            establishmentTimezone = "Asia/Tokyo",
         )
         launchPlanningScreen(FakePlanningRepository(), initialDay)
         waitForStatus(TodayLoadStatus.CONTENT)
 
-        composeRule.onNodeWithContentDescription("開始見込み時刻: 08:00、終了見込み時刻: 08:20").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription(
+            "実績開始時刻: 09:15、実績終了時刻: 09:35",
+            useUnmergedTree = true,
+        ).assertIsDisplayed()
         composeRule.onNodeWithText("20分 /").assertIsDisplayed()
         composeRule.onNodeWithText("20分)").assertIsDisplayed()
         composeRule.onNodeWithText("(", substring = false).assertIsDisplayed()
@@ -1122,7 +1142,7 @@ class TodayScreenInstrumentedTest {
         val fabBounds = composeRule.onNodeWithContentDescription("タスクを追加")
             .fetchSemanticsNode()
             .boundsInRoot
-        assertTrue("unresolved panel must remain above the Quick Add FAB", panelMessageBounds.bottom < fabBounds.top)
+        assertTrue("Quick Add FAB must remain above the footer-adjacent unresolved panel", fabBounds.bottom < panelMessageBounds.top)
 
         val originalRequest = directRepository.firstRequest
         directRepository.result = DirectManipulationResult.Success
@@ -1166,7 +1186,7 @@ class TodayScreenInstrumentedTest {
         val fabBounds = composeRule.onNodeWithContentDescription("タスクを追加")
             .fetchSemanticsNode()
             .boundsInRoot
-        assertTrue("failure panel must remain above the Quick Add FAB", messageBounds.bottom < fabBounds.top)
+        assertTrue("Quick Add FAB must remain above the footer-adjacent failure panel", fabBounds.bottom < messageBounds.top)
         composeRule.waitUntil(10_000) {
             composeRule.onAllNodesWithText(DETERMINISTIC_FAILURE_MESSAGE, substring = false)
                 .fetchSemanticsNodes()
@@ -1212,22 +1232,36 @@ class TodayScreenInstrumentedTest {
 
         composeRule.onNodeWithContentDescription("タスクを追加").performClick()
         val editableFields = composeRule.onAllNodes(hasSetTextAction())
-        editableFields.get(0).assertIsFocused().performTextInput("Plan from Android")
+        val titleField = editableFields.get(0)
+        titleField.assertIsFocused().performTextInput("Plan from Android")
+        fun titleIsFocused(): Boolean {
+            val config = titleField.fetchSemanticsNode().config
+            return config.contains(SemanticsProperties.Focused) && config[SemanticsProperties.Focused]
+        }
+        fun waitForPickerAndTitleFocusToLeave(label: String) {
+            composeRule.waitUntil(5_000) {
+                composeRule.onAllNodesWithText(label, substring = false).fetchSemanticsNodes().size >= 2
+            }
+            composeRule.waitUntil(5_000) { !titleIsFocused() }
+            assertFalse("Task title regained focus while $label picker was open", titleIsFocused())
+        }
         composeRule.onAllNodesWithText("Project", substring = false).get(0).performClick()
-        val titleFocusedAfterProject = editableFields.get(0).fetchSemanticsNode().config.contains(SemanticsProperties.Focused) &&
-            editableFields.get(0).fetchSemanticsNode().config[SemanticsProperties.Focused]
-        assertFalse(titleFocusedAfterProject)
+        waitForPickerAndTitleFocusToLeave("Project")
         composeRule.onAllNodesWithText("Project", substring = false).get(1).performClick()
+        assertFalse("Task title regained focus after Project selection", titleIsFocused())
         composeRule.onAllNodesWithText("Mode", substring = false).get(0).performClick()
-        val titleFocusedAfterMode = editableFields.get(0).fetchSemanticsNode().config.contains(SemanticsProperties.Focused) &&
-            editableFields.get(0).fetchSemanticsNode().config[SemanticsProperties.Focused]
-        assertFalse(titleFocusedAfterMode)
+        waitForPickerAndTitleFocusToLeave("Mode")
         composeRule.onAllNodesWithText("Mode", substring = false).get(1).performClick()
+        assertFalse("Task title regained focus after Mode selection", titleIsFocused())
         composeRule.onAllNodesWithText("Section", substring = false).get(0).performClick()
-        val titleFocusedAfterSection = editableFields.get(0).fetchSemanticsNode().config.contains(SemanticsProperties.Focused) &&
-            editableFields.get(0).fetchSemanticsNode().config[SemanticsProperties.Focused]
-        assertFalse(titleFocusedAfterSection)
-        composeRule.onNodeWithText("Morning", substring = false).performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Morning", substring = false).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.waitUntil(5_000) { !titleIsFocused() }
+        assertFalse("Task title regained focus while Section picker was open", titleIsFocused())
+        val morningOptions = composeRule.onAllNodesWithText("Morning", substring = false)
+        morningOptions.get(morningOptions.fetchSemanticsNodes().lastIndex).performClick()
+        assertFalse("Task title regained focus after Section selection", titleIsFocused())
         val startField = editableFields.get(1)
         startField.performTextClearance()
         startField.performTextInput("900")
@@ -1254,6 +1288,21 @@ class TodayScreenInstrumentedTest {
         composeRule.waitUntil(15_000) { planningRepository.saveCalls.get() == 1 }
         assertEquals(1, planningRepository.saveCalls.get())
         assertEquals("Plan from Android", planningRepository.lastInput?.title)
+        composeRule.waitUntil(5_000) {
+            runCatching {
+                composeRule.onNodeWithContentDescription("タスクを追加").assertIsDisplayed()
+                true
+            }.getOrDefault(false)
+        }
+        composeRule.onNodeWithContentDescription("タスクを追加").performClick()
+        val nextCreateTitleField = composeRule.onAllNodes(hasSetTextAction()).get(0)
+        composeRule.waitUntil(5_000) {
+            val config = nextCreateTitleField.fetchSemanticsNode().config
+            config.contains(SemanticsProperties.Focused) && config[SemanticsProperties.Focused]
+        }
+        nextCreateTitleField.assertIsFocused()
+        composeRule.onNodeWithText("キャンセル").performClick()
+        composeRule.waitUntil(5_000) { planningController?.state?.editor == null }
     }
 
     @Test
@@ -1630,14 +1679,14 @@ class TodayScreenInstrumentedTest {
 
         composeRule.onNodeWithContentDescription("タスクを編集").performClick()
         composeRule.waitUntil(5_000) {
-            composeRule.onAllNodesWithText("実行中タスクの編集").fetchSemanticsNodes().isNotEmpty()
+            composeRule.onAllNodesWithText("実績タスクの編集").fetchSemanticsNodes().isNotEmpty()
         }
-        composeRule.onNodeWithText("実行中タスクの編集").assertIsDisplayed()
+        composeRule.onNodeWithText("実績タスクの編集").assertIsDisplayed()
         composeRule.onNodeWithText("Project").assertIsDisplayed()
         composeRule.onNodeWithText("Mode").assertIsDisplayed()
         assertTrue(composeRule.onAllNodesWithText("Section", substring = false).fetchSemanticsNodes().isEmpty())
         assertTrue(composeRule.onAllNodesWithText("開始予定", substring = false).fetchSemanticsNodes().isEmpty())
-        assertTrue(composeRule.onAllNodesWithText("見積（分）", substring = false).fetchSemanticsNodes().isEmpty())
+        composeRule.onNodeWithText("見積（分）", substring = false).assertIsDisplayed().assertIsEnabled()
     }
 
     @Test

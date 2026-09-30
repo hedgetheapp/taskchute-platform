@@ -107,6 +107,7 @@ import android.content.Context
 import android.view.accessibility.AccessibilityManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -2414,11 +2415,13 @@ private fun ReferencePicker(
     enabled: Boolean,
 ) {
     val focusRequester = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     Box {
         OutlinedButton(
             onClick = {
                 keyboardController?.hide()
+                focusManager.clearFocus(force = true)
                 focusRequester.requestFocus()
                 onExpandedChange(true)
             },
