@@ -11,19 +11,29 @@ class WearMainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val repository = WearHttpRepository(BuildConfig.TASKCHUTE_BASE_URL, WearEncryptedSessionStore(this))
-        controller = WearTodayController(repository)
+        val realtime = WearRealtimeConnectionManager(
+            cookieProvider = repository::realtimeCookieHeader,
+            socketFactory = OkHttpWearRealtimeSocketFactory(BuildConfig.TASKCHUTE_BASE_URL),
+            scheduler = AndroidWearRealtimeScheduler(),
+            callbacks = WearRealtimeCallbacks(
+                onDayInvalidation = { logicalDate -> controller.onDayInvalidation(logicalDate) },
+                onUnauthorized = { controller.onRealtimeUnauthorized() },
+            ),
+        )
+        controller = WearTodayController(repository, realtime)
         pairingBridge = WearPairingBridge(this) { grant -> controller.onPairingGrant(pairingBridge, grant) }
-        controller.restore()
         setContent { WearTaskChuteApp(controller, pairingBridge) }
     }
 
     override fun onStart() {
         super.onStart()
+        controller.onForeground()
         pairingBridge.startListening()
     }
 
     override fun onStop() {
         pairingBridge.stopListening()
+        controller.onBackground()
         super.onStop()
     }
 

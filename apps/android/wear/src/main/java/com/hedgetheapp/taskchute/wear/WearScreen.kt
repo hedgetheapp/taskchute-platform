@@ -4,6 +4,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -30,8 +32,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -266,39 +270,61 @@ private fun SectionHeader(section: WearSection) {
 @Composable
 private fun TaskRow(day: WearDay, task: WearTask, onStart: (WearTask) -> Unit) {
     val projection = wearForecast(day, task, Instant.now())
+    val rowShape = RoundedCornerShape(WearPlannedRowSpec.ROW_RADIUS_DP.dp)
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp, horizontal = 2.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(WearPlannedRowSpec.ROW_HEIGHT_DP.dp)
+            .clip(rowShape)
+            .background(Color(0xFF202020))
+            .border(WearPlannedRowSpec.ROW_BORDER_DP.dp, Color(0xFF383838), rowShape)
+            .padding(
+                start = WearPlannedRowSpec.LEADING_PADDING_DP.dp,
+                end = WearPlannedRowSpec.TRAILING_PADDING_DP.dp,
+            ),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         ProjectionSlot(projection)
+        Spacer(Modifier.width(WearPlannedRowSpec.COLUMN_GAP_DP.dp))
         Column(
-            modifier = Modifier.weight(1f).padding(horizontal = 4.dp),
+            modifier = Modifier.weight(1f),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(3.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Text(task.title, style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(
+                task.title,
+                style = MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp, fontWeight = FontWeight.Bold),
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-                Image(painterResource(R.drawable.ic_material_hourglass_top_24), contentDescription = null, modifier = Modifier.size(13.dp))
-                Spacer(Modifier.width(3.dp))
+                Image(painterResource(R.drawable.ic_material_hourglass_top_24), contentDescription = null, modifier = Modifier.size(10.dp))
+                Spacer(Modifier.width(6.dp))
                 Text(task.estimateSeconds?.let { "${it / 60}分" } ?: "--", style = MaterialTheme.typography.labelMedium)
                 if (task.routineDerived) {
-                    Spacer(Modifier.width(5.dp))
-                    Image(painterResource(R.drawable.ic_material_repeat_24), contentDescription = "Routine", modifier = Modifier.size(13.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Image(painterResource(R.drawable.ic_material_repeat_24), contentDescription = "Routine", modifier = Modifier.size(10.dp))
                 }
             }
         }
-        Button(
-            onClick = { onStart(task) },
-            modifier = Modifier.size(44.dp).semantics { contentDescription = "Start ${task.title}" },
-            shape = CircleShape,
-            contentPadding = PaddingValues(0.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-            ),
+        Spacer(Modifier.width(WearPlannedRowSpec.COLUMN_GAP_DP.dp))
+        Box(
+            modifier = Modifier
+                .size(WearPlannedRowSpec.ACTION_SIZE_DP.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.primaryContainer)
+                .border(WearPlannedRowSpec.ACTION_BORDER_DP.dp, Color(0xFF4A4A45), CircleShape)
+                .clickable(role = Role.Button, onClick = { onStart(task) })
+                .semantics { contentDescription = "Start ${task.title}" },
+            contentAlignment = Alignment.Center,
         ) {
-            Image(painterResource(R.drawable.ic_material_play_arrow_24), contentDescription = null, modifier = Modifier.size(20.dp))
+            Image(
+                painterResource(R.drawable.ic_material_play_arrow_24),
+                contentDescription = null,
+                modifier = Modifier.size(WearPlannedRowSpec.ACTION_ICON_SIZE_DP.dp),
+                colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onPrimaryContainer),
+            )
         }
     }
 }
@@ -307,12 +333,14 @@ private fun TaskRow(day: WearDay, task: WearTask, onStart: (WearTask) -> Unit) {
 private fun ProjectionSlot(projection: WearProjection) {
     val lineColor = MaterialTheme.colorScheme.outlineVariant
     Column(
-        modifier = Modifier.width(42.dp),
+        modifier = Modifier
+            .width(WearPlannedRowSpec.PROJECTION_WIDTH_DP.dp)
+            .height(WearPlannedRowSpec.PROJECTION_HEIGHT_DP.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
         Text(formatWearMinute(projection.startMinute), style = MaterialTheme.typography.labelSmall, maxLines = 1)
-        Canvas(Modifier.height(12.dp).width(1.dp)) {
+        Canvas(Modifier.height(WearPlannedRowSpec.PROJECTION_CONNECTOR_HEIGHT_DP.dp).width(1.dp)) {
             drawLine(
                 color = lineColor,
                 start = androidx.compose.ui.geometry.Offset(size.width / 2f, 0f),

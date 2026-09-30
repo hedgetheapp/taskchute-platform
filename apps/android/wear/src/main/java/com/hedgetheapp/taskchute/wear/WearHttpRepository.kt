@@ -5,7 +5,6 @@ import java.io.IOException
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
-import java.util.UUID
 import org.json.JSONObject
 
 internal sealed interface WearAuthResult {
@@ -34,6 +33,7 @@ internal interface WearRepository {
     fun loadToday(): WearLoadResult
     fun start(day: WearDay, task: WearTask): WearMutationResult
     fun complete(task: WearTask): WearMutationResult
+    fun clearSession() = Unit
 }
 
 internal class WearHttpRepository(
@@ -45,15 +45,24 @@ internal class WearHttpRepository(
         ?.takeIf { it.protocol.equals("https", ignoreCase = true) }
         ?.let { "${it.protocol}://${it.authority}" }
         .orEmpty()
+    private val cookieLock = Any()
     private val cookies = linkedMapOf<String, String>()
+
+    internal fun realtimeCookieHeader(): String? = cookieHeader()
+
+    override fun clearSession() {
+        clearUnauthorized()
+    }
 
     override fun restoreSession(): WearAuthResult {
         val saved = runCatching { sessionStore.load() }.getOrNull() ?: run {
-            cookies.clear()
+            synchronized(cookieLock) { cookies.clear() }
             return WearAuthResult.SignedOut
         }
-        cookies.clear()
-        cookies.putAll(saved.cookies)
+        synchronized(cookieLock) {
+            cookies.clear()
+            cookies.putAll(saved.cookies)
+        }
         val response = request("GET", "/api/auth/get-session", null)
         return when {
             response.status == null || response.status >= 500 -> WearAuthResult.TransientFailure
@@ -66,7 +75,7 @@ internal class WearHttpRepository(
     }
 
     override fun exchangePairingGrant(requestId: String, nonce: String, grant: String): WearAuthResult {
-        cookies.clear()
+        synchronized(cookieLock) { cookies.clear() }
         sessionStore.clear()
         val body = JSONObject().put("request_id", requestId).put("nonce", nonce).put("grant", grant).toString()
         val response = request("POST", "/api/auth/wear/pairing-exchange", body)
@@ -74,8 +83,8 @@ internal class WearHttpRepository(
             response.status == null || response.status >= 500 -> WearAuthResult.TransientFailure
             response.status == 401 -> clearUnauthorized()
             response.status !in 200..299 -> WearAuthResult.ProtocolFailure
-            cookies.isEmpty() -> WearAuthResult.ProtocolFailure
-            !sessionStore.save(WearCookieSession(cookies.toMap())) -> WearAuthResult.ProtocolFailure
+            cookieSnapshot().isEmpty() -> WearAuthResult.ProtocolFailure
+            !sessionStore.save(WearCookieSession(cookieSnapshot())) -> WearAuthResult.ProtocolFailure
             else -> WearAuthResult.SignedIn
         }
     }
@@ -95,22 +104,13 @@ internal class WearHttpRepository(
     }
 
     override fun start(day: WearDay, task: WearTask): WearMutationResult {
-        val body = JSONObject()
-            .put("operation_id", UUID.randomUUID().toString())
-            .put("entry_id", task.id)
-            .put("execution_id", UUID.randomUUID().toString())
-            .put("expected_placement_revision", day.placementRevision)
-            .toString()
+        val body = newWearStartRequest(task.id, day.placementRevision).toJson()
         return mutate("/api/v1/entries/${pathSegment(task.id)}/start", body)
     }
 
     override fun complete(task: WearTask): WearMutationResult {
         val executionId = task.executionId ?: return WearMutationResult.Rejected
-        val body = JSONObject()
-            .put("operation_id", UUID.randomUUID().toString())
-            .put("entry_id", task.id)
-            .put("execution_id", executionId)
-            .toString()
+        val body = newWearCompleteRequest(task.id, executionId).toJson()
         return mutate("/api/v1/entries/${pathSegment(task.id)}/complete", body)
     }
 
@@ -128,12 +128,13 @@ internal class WearHttpRepository(
     }
 
     private fun persistCurrentSession(fallback: WearCookieSession): WearAuthResult {
-        val latest = cookies.takeIf { it.isNotEmpty() }?.let { WearCookieSession(it.toMap()) } ?: fallback
+        val snapshot = cookieSnapshot()
+        val latest = snapshot.takeIf { it.isNotEmpty() }?.let(::WearCookieSession) ?: fallback
         return if (sessionStore.save(latest)) WearAuthResult.SignedIn else WearAuthResult.ProtocolFailure
     }
 
     private fun clearUnauthorized(): WearAuthResult {
-        cookies.clear()
+        synchronized(cookieLock) { cookies.clear() }
         sessionStore.clear()
         return WearAuthResult.SignedOut
     }
@@ -197,10 +198,14 @@ internal class WearHttpRepository(
         val name = pair.substring(0, separator).trim()
         val value = pair.substring(separator + 1).trim()
         if (name.isBlank() || name.any { it == '\r' || it == '\n' } || value.any { it == '\r' || it == '\n' }) return
-        if (value.isEmpty()) cookies.remove(name) else cookies[name] = value
+        synchronized(cookieLock) {
+            if (value.isEmpty()) cookies.remove(name) else cookies[name] = value
+        }
     }
 
-    private fun cookieHeader(): String? = cookies.toSortedMap().entries
+    private fun cookieSnapshot(): Map<String, String> = synchronized(cookieLock) { cookies.toMap() }
+
+    private fun cookieHeader(): String? = cookieSnapshot().toSortedMap().entries
         .joinToString("; ") { "${it.key}=${it.value}" }.takeIf { it.isNotEmpty() }
 
     private fun pathSegment(value: String): String = java.net.URLEncoder.encode(value, Charsets.UTF_8.name()).replace("+", "%20")

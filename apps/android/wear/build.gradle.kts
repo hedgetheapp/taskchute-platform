@@ -68,6 +68,7 @@ dependencies {
     implementation("androidx.core:core-ktx:1.19.0")
     implementation("androidx.activity:activity-compose:1.12.1")
     implementation("com.google.android.gms:play-services-wearable:20.0.1")
+    implementation("com.squareup.okhttp3:okhttp:5.3.0")
     implementation(platform("androidx.compose:compose-bom:2026.08.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")
