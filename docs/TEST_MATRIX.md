@@ -4150,3 +4150,24 @@ The old artifact's `FAIL / USER_REPORTED` is historical evidence and is not over
 | D151-CI | Exact pushed SHA / APK | Android impact-aware CI and signed artifact | `main@ecd7234105574d929f6b5cf9bd7d26377f6cc37f`, CI `36576219498` PASS; Web/Worker SKIP; APK `taskchute-android-debug-ecd7234105574d929f6b5cf9bd7d26377f6cc37f`, artifact ID `11036894455`, expires `2026-10-06T13:38:02Z` | PASS |
 | D151-DEVICE | Galaxy S23 | Product Owner physical verification | Fresh D-151 APKを実機確認し、long-press selection / checkboxなしselected-row visual / row-wide toggle / zero-selection exit / swipe廃止 / scroll中長押し抑止について`問題なし`と報告。Representative smoke only, not a full device matrix | PASS / USER_CONFIRMED |
 | D151-BOUNDARY | Product/server/device | Preserve Notes/D-149/D-150 and server boundaries | Worker/API/shared contract, Web, schema, migration, dependency, persistent nonprod, Production, Release unchanged/not run; full Notes runner remains outside focused scope due known task-primary autosave hang | PASS / NOT_REQUIRED / NOT_RUN / NO |
+
+## D-152 Android Document Realtime Invalidation — 2026-09-30
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D152-DECISION | Canonical decision | Extend D-108 to Notes/Daily document invalidation without changing Document authority | `docs/decisions/D-152_ANDROID_DOCUMENT_REALTIME_INVALIDATION_V01.md` | SPECIFIED |
+| D152-IMPLEMENTATION | Android / Worker | Targeted/wildcard document scope, controller routing, safe canonical refetch, Daily no-Ensure | `d9b48e63fd6f4eaa3dc109feba97432db1d6d609`; source review and focused tests | PASS |
+| D152-PROTOCOL-MANAGER | Android realtime | Parse, dedupe, coalesce, wildcard dominance, bounded queue; preserve day invalidation | Focused `RealtimeProtocolTest` and `RealtimeConnectionManagerTest`; included in Android JVM `274 / 274` | PASS |
+| D152-CONTROLLERS | Android Notes/Daily | Clean refresh; unrelated no-op; dirty/saving/blocked preservation; deferred save/reconcile; no Daily Ensure | Focused `NotesControllerTest` / `DailyControllerTest`; Android JVM `274 / 274` | PASS |
+| D152-WORKER | Worker mapping | Successful Daily Ensure wildcard and Daily body targeted scopes; existing document mappings preserved | `realtime-invalidation.test.ts` focused PASS; exact CI Worker/D1 PASS | PASS |
+| D152-ANDROID-NOTES | `TaskChute_API33` Notes | Notes realtime-related surface and existing editor safety | Notes focused instrumentation PASS; install/MainActivity/UI-tree/crash-buffer smoke PASS | PASS / FOCUSED |
+| D152-ANDROID-DAILY | `TaskChute_API33` Daily | Daily invalidation path and no-materialization safety | Daily focused instrumentation PASS; reinstall/MainActivity/UI-tree/crash-buffer smoke PASS | PASS / FOCUSED |
+| D152-ANDROID-TODAY | `TaskChute_API33` Today | Existing Today regression boundary after shared realtime wiring | 64 tests: 55 PASS, 9 existing projection/Quick Add/feedback fixture or UI expectation failures; target-app crash buffer empty | PARTIAL / NOT_VERIFIED |
+| D152-JVM | Android JVM | Affected Android unit suite | `:app:testDebugUnitTest`: `274 / 274` PASS | PASS |
+| D152-TYPECHECK | Web | Worker/Web type compatibility | `npm run typecheck` PASS; exact CI Web/Worker job PASS | PASS |
+| D152-BUILD | Android | compile, instrumentation compile, APK | `:app:compileDebugKotlin`, `:app:compileDebugAndroidTestKotlin`, `:app:assembleDebug` PASS; CI signed APK PASS | PASS |
+| D152-NONPROD | Persistent nonprod | Deploy guard, exact Worker, runtime and DB read-only safety | `taskchute-web-nonprod`, version `bc473455-e9d1-4268-b767-b48b346d9a3d`; guard/dry-run/root `200`/protected `401`; APP/AUTH quick check `ok`, migration metadata read-only | PASS |
+| D152-CI | Exact SHA | Android and Web/Worker impact-aware CI | CI `36657992841` PASS; APK `taskchute-android-debug-d9b48e63fd6f4eaa3dc109feba97432db1d6d609`, artifact ID `11073237433`, expires `2026-10-07T02:05:49Z` | PASS |
+| D152-CROSS-CLIENT | Realtime | Authenticated two-client live invalidation flow | Not run; no authorized two-client mutation session used | NOT_RUN |
+| D152-DEVICE | Galaxy S23 | Physical-device document realtime verification | Product Owner manual check pending | NOT_RUN / PRODUCT_OWNER_MANUAL |
+| D152-BOUNDARY | Product / server / release | Preserve D-111, Daily authority, schema and deployment boundaries | No schema/migration/dependency change; Production `NOT_RUN`; Released `NO` | PASS / NOT_RUN / NO |

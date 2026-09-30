@@ -351,3 +351,9 @@
 - D-146のNotes Selection Modeを、左→右スワイプ開始・checkbox表示からStandalone Note rowのCompose標準long-press開始・selected row visualへcorrective。row-wide tap toggle、zero-selection auto-exit、Project Primary guard、Back、Add FAB/row action suppressionを維持し、`LazyListState.isScrollInProgress`中のentryを拒否。
 - Implementation `ecd7234105574d929f6b5cf9bd7d26377f6cc37f`、focused JVM `2 / 2`、full Android JVM `266 / 266`、focused Notes AVD `4 / 4`、build/diff-check、MainActivity/UI-tree/crash-buffer smoke、Exact-SHA CI `36576219498` PASS。APK `taskchute-android-debug-ecd7234105574d929f6b5cf9bd7d26377f6cc37f` / artifact ID `11036894455` / expires `2026-10-06T13:38:02Z`。
 - Product Ownerがfresh D-151 APKをGalaxy S23で確認し`問題なし`と報告したため、long-press Selection Modeの代表device smokeを`PASS / USER_CONFIRMED`として記録する（full device matrixではない）。Persistent nonprod `NOT_REQUIRED`、Production `NOT_RUN`、Released `NO`。Worker/API/shared contract、Web、schema、migration、dependencyは変更なし。Full Notes runnerは既知のtask-primary autosave hang境界を維持。
+
+### D-152 Android Document Realtime Invalidation — 2026-09-30
+
+- Added bounded targeted/wildcard realtime document invalidation for Android Notes and Daily, with Worker mapping for successful document mutations and Daily Ensure/body updates.
+- Clean loaded editors refetch canonical HTTP data; dirty, saving, and blocked drafts are preserved and deferred invalidations retry at the existing save/reconcile boundary. Daily invalidation never performs Ensure/materialization.
+- Android JVM `274 / 274`, Notes/Daily focused AVD, Worker focused test, Web typecheck, exact-SHA CI `36657992841`, and persistent nonprod runtime smoke PASS. Today standard surface remains `PARTIAL / NOT_VERIFIED`; Galaxy S23 `NOT_RUN`; Production `NOT_RUN`; Released `NO`.

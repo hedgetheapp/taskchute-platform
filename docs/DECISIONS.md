@@ -2445,3 +2445,11 @@ new-tab presentation. No Task/Project/RoutineOccurrence note relations,
 backlinks, preview, attachments, or Task Note lifecycle are included.
 
 Canonical: `docs/decisions/D-101_TASK_PRIMARY_NOTE_AND_DOCUMENT_PERMALINKS.md`
+
+## D-152 — Android Document Realtime Invalidation v0.1
+
+Status: **Approved / Implemented / Integrated / focused PASS / Notes and Daily AVD PASS / Today surface partial**
+
+Canonical Decision: `docs/decisions/D-152_ANDROID_DOCUMENT_REALTIME_INVALIDATION_V01.md`
+
+D-152は、D-108のAndroid Today invalidation boundaryをNotes / DailyのDocument projectionへ狭く拡張する。既存realtime envelopeへbounded targeted/wildcard document scopeを追加し、Workerはsuccessful standalone / Task Primary / Project Primary / Daily mutation後に既存Document authorityをinvalidateする。Androidはcleanなloaded stateだけをcanonical HTTPで再取得し、dirty / saving / blocked draftを保持してsave/reconcile boundaryで再試行する。Daily realtime eventはEnsureやmaterializationを起こさない。Document payload、Markdown/autosave/CAS、polling、offline、schema、migration、dependency、production semanticsは変更しない。
