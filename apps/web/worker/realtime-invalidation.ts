@@ -16,6 +16,15 @@ export function realtimeScopesForMutation(request: Request): RealtimeScope[] {
     || path === "/api/v1/section-configurations/initial"
     || path === "/api/v1/section-configuration") return [{ kind: "day" }];
 
+  if (path.startsWith("/api/v1/taskchute-days/") && path.endsWith("/daily-primary-document")) {
+    return [{ kind: "documents" }];
+  }
+
+  if (path.startsWith("/api/v1/daily-primary-documents/")) {
+    const match = path.match(/daily-primary-documents\/([^/]+)/);
+    return [documentScope(match?.[1])];
+  }
+
   if (path.startsWith("/api/v1/documents") || path.startsWith("/api/v1/project-primary-documents")
     || path.startsWith("/api/v1/task-primary-documents") || path.includes("/primary-document")) {
     const match = path.match(/(?:documents|primary-documents)\/([^/]+)/);

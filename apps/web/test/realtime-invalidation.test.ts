@@ -31,6 +31,8 @@ describe("realtime invalidation contract", () => {
     expect(realtimeScopesForMutation(new Request("https://example.test/api/v1/routines/reorder", { method: "POST" })).map((scope) => scope.kind)).toEqual(["routines", "day"]);
     expect(realtimeScopesForMutation(new Request("https://example.test/api/v1/entries/entry-1/future-routine", { method: "POST" })).map((scope) => scope.kind)).toEqual(["routines", "day"]);
     expect(realtimeScopesForMutation(new Request("https://example.test/api/v1/documents/doc-1", { method: "POST" })).map((scope) => scope.kind)).toEqual(["documents", "day", "projects"]);
+    expect(realtimeScopesForMutation(new Request("https://example.test/api/v1/daily-primary-documents/doc-1", { method: "POST" }))).toEqual([{ kind: "documents", document_ids: ["doc-1"] }]);
+    expect(realtimeScopesForMutation(new Request("https://example.test/api/v1/taskchute-days/day-1/daily-primary-document", { method: "POST" }))).toEqual([{ kind: "documents" }]);
     expect(realtimeScopesForMutation(new Request("https://example.test/api/v1/projects/abc", { method: "GET" }))).toEqual([]);
   });
 });

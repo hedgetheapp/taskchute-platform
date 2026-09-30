@@ -43,6 +43,32 @@ class RealtimeConnectionManagerTest {
     }
 
     @Test
+    fun coalescesDocumentTargetsAndWildcardDominatesWithoutChangingDayDelivery() {
+        val factory = FakeSocketFactory()
+        val scheduler = FakeScheduler()
+        val documentInvalidated = mutableListOf<Set<String>?>()
+        val dayInvalidated = mutableListOf<String?>()
+        val manager = manager(
+            factory,
+            scheduler,
+            RealtimeConnectionCallbacks(
+                onDayInvalidation = { dayInvalidated += it },
+                onDocumentsInvalidation = { documentInvalidated += it },
+            ),
+        )
+        manager.start()
+        factory.socket!!.open()
+        factory.socket!!.message("{\"version\":1,\"type\":\"invalidate\",\"scopes\":[{\"kind\":\"documents\",\"document_ids\":[\"doc-a\"]}]}")
+        factory.socket!!.message("{\"version\":1,\"type\":\"invalidate\",\"scopes\":[{\"kind\":\"day\",\"logical_date\":\"2026-09-14\"},{\"kind\":\"documents\",\"document_ids\":[\"doc-b\"]}]}")
+        factory.socket!!.message("{\"version\":1,\"type\":\"invalidate\",\"scopes\":[{\"kind\":\"documents\"}]}")
+
+        scheduler.runAll()
+
+        assertEquals(listOf("2026-09-14"), dayInvalidated)
+        assertEquals(listOf(null), documentInvalidated)
+    }
+
+    @Test
     fun reconnectUsesBoundedJitteredBackoffAndDoesNotDuplicateSockets() {
         val factory = FakeSocketFactory()
         val scheduler = FakeScheduler()

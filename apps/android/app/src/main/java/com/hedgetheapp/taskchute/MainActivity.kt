@@ -126,8 +126,20 @@ class MainActivity : ComponentActivity() {
                 }
             },
             callbacks = RealtimeConnectionCallbacks(
-                onConnected = { runOnUiThread { todayController.onRealtimeConnected() } },
+                onConnected = {
+                    runOnUiThread {
+                        todayController.onRealtimeConnected()
+                        notesController.onRealtimeConnected()
+                        dailyController.onRealtimeConnected()
+                    }
+                },
                 onDayInvalidation = { logicalDate -> runOnUiThread { todayController.onRealtimeDayInvalidation(logicalDate) } },
+                onDocumentsInvalidation = { documentIds ->
+                    runOnUiThread {
+                        notesController.onRealtimeDocumentsInvalidation(documentIds)
+                        dailyController.onRealtimeDocumentsInvalidation(documentIds)
+                    }
+                },
                 onAuthFailure = { runOnUiThread { controller.restore() } },
             ),
         )
@@ -139,6 +151,8 @@ class MainActivity : ComponentActivity() {
         if (::realtimeManager.isInitialized && controller.state is AuthUiState.SignedIn) {
             realtimeManager.start()
             todayController.onRealtimeForeground()
+            notesController.onRealtimeForeground()
+            dailyController.onRealtimeForeground()
         }
     }
 
@@ -183,6 +197,8 @@ private fun TaskChuteApp(
         if (state is AuthUiState.SignedIn) {
             realtimeManager.start()
             todayController.onRealtimeForeground()
+            notesController.onRealtimeForeground()
+            dailyController.onRealtimeForeground()
         } else if (state is AuthUiState.SignedOut) {
             realtimeManager.stop()
             destination = AndroidDestination.TODAY

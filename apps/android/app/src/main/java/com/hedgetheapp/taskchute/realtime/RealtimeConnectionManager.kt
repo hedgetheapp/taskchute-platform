@@ -43,6 +43,7 @@ internal fun interface RealtimeAuthProbe {
 internal data class RealtimeConnectionCallbacks(
     val onConnected: () -> Unit = {},
     val onDayInvalidation: (logicalDate: String?) -> Unit = {},
+    val onDocumentsInvalidation: (documentIds: Set<String>?) -> Unit = {},
     val onAuthFailure: () -> Unit = {},
     val onStateChanged: (RealtimeConnectionState) -> Unit = {},
 )
@@ -59,6 +60,7 @@ internal class RealtimeConnectionManager(
         const val INITIAL_RECONNECT_DELAY_MS = 500L
         const val MAX_RECONNECT_DELAY_MS = 30_000L
         const val INVALIDATION_COALESCE_DELAY_MS = 50L
+        const val MAX_PENDING_DOCUMENT_IDS = 100
     }
 
     private var started = false
@@ -68,9 +70,12 @@ internal class RealtimeConnectionManager(
     private var reconnectAttempt = 0
     private var reconnectTimer: RealtimeCancellable? = null
     private var invalidationTimer: RealtimeCancellable? = null
-    private var invalidationPending = false
+    private var dayInvalidationPending = false
     private var invalidationWildcard = false
     private var invalidationDate: String? = null
+    private var documentInvalidationPending = false
+    private var documentInvalidationWildcard = false
+    private val documentInvalidationIds = linkedSetOf<String>()
     private var state = RealtimeConnectionState.IDLE
 
     fun currentState(): RealtimeConnectionState = state
@@ -89,9 +94,12 @@ internal class RealtimeConnectionManager(
         reconnectTimer = null
         invalidationTimer?.cancel()
         invalidationTimer = null
-        invalidationPending = false
+        dayInvalidationPending = false
         invalidationWildcard = false
         invalidationDate = null
+        documentInvalidationPending = false
+        documentInvalidationWildcard = false
+        documentInvalidationIds.clear()
         activeSocket?.close()
         activeSocket = null
         setState(RealtimeConnectionState.IDLE)
@@ -122,6 +130,11 @@ internal class RealtimeConnectionManager(
                     if (!isActive(connectionId, socket)) return
                     val invalidation = RealtimeInvalidationParser.parse(message) ?: return
                     invalidation.dayScopes.forEach { enqueueDayInvalidation(it.logicalDate) }
+                    invalidation.documentScopes.forEach { scope ->
+                        if (scope.documentIds == null || scope.documentIds.isNotEmpty()) {
+                            enqueueDocumentInvalidation(scope.documentIds)
+                        }
+                    }
                 }
 
                 override fun onFailure(socket: RealtimeSocket, responseCode: Int?) {
@@ -178,7 +191,7 @@ internal class RealtimeConnectionManager(
 
     private fun enqueueDayInvalidation(logicalDate: String?) {
         if (!started) return
-        invalidationPending = true
+        dayInvalidationPending = true
         if (logicalDate == null) {
             invalidationWildcard = true
             invalidationDate = null
@@ -188,15 +201,43 @@ internal class RealtimeConnectionManager(
             invalidationWildcard = true
             invalidationDate = null
         }
+        scheduleInvalidationFlush()
+    }
+
+    private fun enqueueDocumentInvalidation(documentIds: Set<String>?) {
+        if (!started) return
+        documentInvalidationPending = true
+        if (documentIds == null) {
+            documentInvalidationWildcard = true
+            documentInvalidationIds.clear()
+        } else if (!documentInvalidationWildcard) {
+            documentInvalidationIds += documentIds
+            if (documentInvalidationIds.size > MAX_PENDING_DOCUMENT_IDS) {
+                documentInvalidationWildcard = true
+                documentInvalidationIds.clear()
+            }
+        }
+        scheduleInvalidationFlush()
+    }
+
+    private fun scheduleInvalidationFlush() {
         if (invalidationTimer != null) return
         invalidationTimer = scheduler.schedule(INVALIDATION_COALESCE_DELAY_MS) {
             invalidationTimer = null
-            if (!invalidationPending || !started) return@schedule
+            if (!started) return@schedule
+            val hasDay = dayInvalidationPending
+            val hasDocuments = documentInvalidationPending
+            if (!hasDay && !hasDocuments) return@schedule
             val date = if (invalidationWildcard) null else invalidationDate
-            invalidationPending = false
+            val documentIds = if (documentInvalidationWildcard) null else documentInvalidationIds.toSet()
+            dayInvalidationPending = false
             invalidationWildcard = false
             invalidationDate = null
-            callbacks.onDayInvalidation(date)
+            documentInvalidationPending = false
+            documentInvalidationWildcard = false
+            documentInvalidationIds.clear()
+            if (hasDay) callbacks.onDayInvalidation(date)
+            if (hasDocuments) callbacks.onDocumentsInvalidation(documentIds)
         }
     }
 

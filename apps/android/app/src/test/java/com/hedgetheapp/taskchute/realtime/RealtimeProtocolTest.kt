@@ -13,15 +13,20 @@ class RealtimeProtocolTest {
         )
 
         assertEquals(listOf(AndroidRealtimeDayScope("2026-09-14")), parsed?.dayScopes)
+        assertEquals(emptyList<AndroidRealtimeDocumentScope>(), parsed?.documentScopes)
     }
 
     @Test
-    fun parsesWildcardDayAndIgnoresNonDayScopes() {
+    fun parsesWildcardAndTargetedDocumentScopesAlongsideDay() {
         val parsed = RealtimeInvalidationParser.parse(
-            "{\"version\":1,\"type\":\"invalidate\",\"scopes\":[{\"kind\":\"day\"},{\"kind\":\"documents\"},{\"kind\":\"routines\"}]}",
+            "{\"version\":1,\"type\":\"invalidate\",\"scopes\":[{\"kind\":\"day\"},{\"kind\":\"documents\"},{\"kind\":\"documents\",\"document_ids\":[\"doc-a\",\"doc-a\",\"doc-b\"]},{\"kind\":\"routines\"}]}",
         )
 
         assertEquals(listOf(AndroidRealtimeDayScope(null)), parsed?.dayScopes)
+        assertEquals(
+            listOf(AndroidRealtimeDocumentScope(null), AndroidRealtimeDocumentScope(setOf("doc-a", "doc-b"))),
+            parsed?.documentScopes,
+        )
     }
 
     @Test

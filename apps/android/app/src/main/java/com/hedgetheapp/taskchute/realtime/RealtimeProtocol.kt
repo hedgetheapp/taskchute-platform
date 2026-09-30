@@ -8,10 +8,15 @@ internal const val REALTIME_MAX_MESSAGE_BYTES = 16 * 1024
 
 internal data class AndroidRealtimeInvalidation(
     val dayScopes: List<AndroidRealtimeDayScope>,
+    val documentScopes: List<AndroidRealtimeDocumentScope>,
 )
 
 internal data class AndroidRealtimeDayScope(
     val logicalDate: String?,
+)
+
+internal data class AndroidRealtimeDocumentScope(
+    val documentIds: Set<String>?,
 )
 
 internal object RealtimeInvalidationParser {
@@ -26,6 +31,7 @@ internal object RealtimeInvalidationParser {
         if (scopes.values.isEmpty() || scopes.values.size > 32) return null
 
         val dayScopes = mutableListOf<AndroidRealtimeDayScope>()
+        val documentScopes = mutableListOf<AndroidRealtimeDocumentScope>()
         for (value in scopes.values) {
             val scope = value as? JsonValue.Object ?: return null
             val kind = (scope.fields["kind"] as? JsonValue.StringValue)?.value ?: return null
@@ -45,10 +51,13 @@ internal object RealtimeInvalidationParser {
                 "documents" -> {
                     if (!hasOnly(scope, "kind", "document_ids")) return null
                     if (!scope.fields.containsKey("document_ids")) {
-                        Unit
+                        documentScopes += AndroidRealtimeDocumentScope(null)
                     } else when (val ids = scope.fields["document_ids"]) {
                         is JsonValue.Array -> {
                             if (ids.values.size > 100 || ids.values.any { !isSafeIdentifier(it) }) return null
+                            documentScopes += AndroidRealtimeDocumentScope(
+                                ids.values.map { (it as JsonValue.StringValue).value }.toSet(),
+                            )
                         }
                         else -> return null
                     }
@@ -56,7 +65,7 @@ internal object RealtimeInvalidationParser {
                 else -> return null
             }
         }
-        return AndroidRealtimeInvalidation(dayScopes)
+        return AndroidRealtimeInvalidation(dayScopes, documentScopes)
     }
 
     private fun hasOnly(value: JsonValue.Object, vararg names: String): Boolean =

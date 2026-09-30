@@ -434,6 +434,85 @@ class NotesControllerTest {
     }
 
     @Test
+    fun cleanOpenStandaloneRefreshesFromTargetedDocumentInvalidation() {
+        val repository = FakeRepository().apply {
+            fetchResults = ArrayDeque(
+                listOf(
+                    DocumentResult.Success(document("doc-1", "Note", "old", 1)),
+                    DocumentResult.Success(document("doc-1", "Note", "remote", 2)),
+                ),
+            )
+        }
+        val controller = controller(repository)
+        controller.openStandalone("doc-1")
+        assertTrue(await { controller.state.editor?.markdownBody == "old" })
+
+        controller.onRealtimeDocumentsInvalidation(setOf("doc-1"))
+
+        assertTrue(await { controller.state.editor?.markdownBody == "remote" })
+        assertEquals(2, repository.fetchStandaloneCalls)
+        controller.close()
+    }
+
+    @Test
+    fun unrelatedDocumentInvalidationDoesNotReplaceOpenEditor() {
+        val repository = FakeRepository().apply {
+            fetchResult = DocumentResult.Success(document("doc-1", "Note", "old", 1))
+        }
+        val controller = controller(repository)
+        controller.openStandalone("doc-1")
+        assertTrue(await { controller.state.editor != null })
+
+        controller.onRealtimeDocumentsInvalidation(setOf("other-doc"))
+
+        Thread.sleep(100)
+        assertEquals("old", controller.state.editor?.markdownBody)
+        assertEquals(1, repository.fetchStandaloneCalls)
+        controller.close()
+    }
+
+    @Test
+    fun savingEditorIsNotInterruptedAndDeferredInvalidationRefreshesAfterSave() {
+        val repository = FakeRepository().apply {
+            fetchResult = DocumentResult.Success(document("doc-1", "Note", "old", 1))
+            updateStarted = CountDownLatch(1)
+            releaseUpdate = CountDownLatch(1)
+        }
+        val controller = controller(repository)
+        controller.openStandalone("doc-1")
+        assertTrue(await { controller.state.editor != null })
+
+        controller.updateBody("local")
+        controller.save()
+        assertTrue(repository.updateStarted!!.await(2, TimeUnit.SECONDS))
+        repository.fetchResult = DocumentResult.Success(document("doc-1", "Note", "remote", 3))
+        controller.onRealtimeDocumentsInvalidation(setOf("doc-1"))
+        assertTrue(controller.state.editor?.saving == true)
+        assertEquals("local", controller.state.editor?.markdownBody)
+
+        repository.releaseUpdate!!.countDown()
+        assertTrue(await { controller.state.editor?.markdownBody == "remote" })
+        controller.close()
+    }
+
+    @Test
+    fun cleanProjectPrimaryRefreshUsesSharedDocumentPath() {
+        val repository = FakeRepository().apply {
+            projectFetchResult = DocumentResult.Success(projectDocument("project-doc-1", "project-1", "Project A", "old", 1))
+        }
+        val controller = controller(repository)
+        controller.openProjectPrimary("project-doc-1", "project-1", "Project A")
+        assertTrue(await { controller.state.editor?.markdownBody == "old" })
+
+        repository.projectFetchResult = DocumentResult.Success(projectDocument("project-doc-1", "project-1", "Project A", "remote", 2))
+        controller.onRealtimeDocumentsInvalidation(setOf("project-doc-1"))
+
+        assertTrue(await { controller.state.editor?.markdownBody == "remote" })
+        assertEquals(2, repository.projectFetchCalls)
+        controller.close()
+    }
+
+    @Test
     fun projectPrimaryBodyAutosavesWithExactProjectUpdateRequest() {
         val repository = FakeRepository().apply {
             projectFetchResult = DocumentResult.Success(projectDocument("project-doc-1", "project-1", "Project A", "old", 7))
@@ -607,6 +686,7 @@ class NotesControllerTest {
         var updateResult: DocumentResult? = null
         var updateResultProvider: ((StandaloneUpdateRequest) -> DocumentResult)? = null
         var fetchResult: DocumentResult? = null
+        var fetchResults: ArrayDeque<DocumentResult>? = null
         var ensureResult: DocumentResult? = null
         var projectEnsureResult: DocumentResult? = null
         var projectCatalogResult: ProjectCatalogResult? = null
@@ -618,6 +698,7 @@ class NotesControllerTest {
         var projectSummaries: List<AndroidProjectDocumentSummary> = emptyList()
         var projectCatalog: List<AndroidProjectNoteCandidate> = emptyList()
         var projectFetchCalls = 0
+        var fetchStandaloneCalls = 0
         var projectBoardCalls = 0
         var projectUpdateStarted: CountDownLatch? = null
         var releaseProjectUpdate: CountDownLatch? = null
@@ -646,11 +727,15 @@ class NotesControllerTest {
             return lifecycleResult
         }
 
-        override fun fetchStandalone(documentId: String): DocumentResult = fetchResult
-            ?: createRequests.lastOrNull()?.let { request ->
-                DocumentResult.Success(document(request.documentId, request.title, request.markdownBody))
-            }
-            ?: DocumentResult.Missing
+        override fun fetchStandalone(documentId: String): DocumentResult {
+            fetchStandaloneCalls += 1
+            return fetchResult
+                ?: fetchResults?.removeFirstOrNull()
+                ?: createRequests.lastOrNull()?.let { request ->
+                    DocumentResult.Success(document(request.documentId, request.title, request.markdownBody))
+                }
+                ?: DocumentResult.Missing
+        }
 
         override fun createStandalone(request: StandaloneCreateRequest): DocumentResult {
             createRequests += request

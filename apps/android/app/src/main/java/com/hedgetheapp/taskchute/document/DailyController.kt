@@ -46,6 +46,9 @@ class DailyController(
     private var debounceJob: Job? = null
     private var deferredNavigation: (() -> Unit)? = null
     private val dailySummaryCache = mutableMapOf<String, AndroidDailyDocumentSummary>()
+    private var dailySurfaceLoaded = false
+    private var pendingDocumentInvalidation = false
+    private var documentRefreshInFlight = false
 
     var state by mutableStateOf(DailyUiState())
         private set
@@ -53,11 +56,28 @@ class DailyController(
     val hasUnsavedChanges: Boolean get() = state.dirty || state.saving || state.blocked
 
     fun loadCurrent() {
+        dailySurfaceLoaded = true
         scope.launch { loadDate(null) }
     }
 
     fun previousDate() = state.selectedDate?.let { changeDate(it, -1) }
     fun nextDate() = state.selectedDate?.let { changeDate(it, 1) }
+
+    fun onRealtimeConnected() = onRealtimeForeground()
+
+    fun onRealtimeForeground() {
+        if (!dailySurfaceLoaded || state.document == null) return
+        pendingDocumentInvalidation = true
+        reconcileDocumentInvalidation()
+    }
+
+    fun onRealtimeDocumentsInvalidation(documentIds: Set<String>?) {
+        if (!dailySurfaceLoaded) return
+        val document = state.document ?: return
+        if (documentIds != null && document.documentId !in documentIds) return
+        pendingDocumentInvalidation = true
+        reconcileDocumentInvalidation()
+    }
 
     fun selectDate(logicalDate: String) {
         if (logicalDate == state.selectedDate) return
@@ -240,7 +260,10 @@ class DailyController(
                 is DailyResult.Success -> {
                     val localMatches = state.markdownBody == request.markdownBody
                     state = state.copy(document = result.document, markdownBody = if (localMatches) result.document.markdownBody else state.markdownBody, saving = false, unresolvedRequest = null, saveStatus = if (localMatches) DailySaveStatus.SAVED else DailySaveStatus.UNSAVED, errorMessage = null)
-                    if (localMatches) finishDeferredNavigationIfReady() else scheduleAutosave()
+                    if (localMatches) {
+                        finishDeferredNavigationIfReady()
+                        reconcileDocumentInvalidation()
+                    } else scheduleAutosave()
                 }
                 DailyResult.Unauthorized -> { state = state.copy(saving = false, unresolvedRequest = request, saveStatus = DailySaveStatus.AMBIGUOUS, errorMessage = "認証が必要です。保存内容を保持しています。"); onUnauthorized() }
                 is DailyResult.Conflict -> state = state.copy(saving = false, saveStatus = DailySaveStatus.CONFLICT, errorMessage = result.message)
@@ -265,6 +288,38 @@ class DailyController(
         val action = deferredNavigation ?: return
         deferredNavigation = null
         action()
+    }
+
+    private fun reconcileDocumentInvalidation() {
+        val document = state.document ?: return
+        if (!pendingDocumentInvalidation || state.dirty || state.saving || state.blocked || documentRefreshInFlight) return
+
+        pendingDocumentInvalidation = false
+        documentRefreshInFlight = true
+        val documentId = document.documentId
+        scope.launch {
+            val result = withContext(Dispatchers.IO) { repository.fetchDaily(documentId) }
+            documentRefreshInFlight = false
+            if (state.document?.documentId != documentId) return@launch
+            when (result) {
+                is DailyResult.Success -> {
+                    if (!state.dirty && !state.saving && !state.blocked) {
+                        state = state.copy(
+                            document = result.document,
+                            markdownBody = result.document.markdownBody,
+                            saveStatus = DailySaveStatus.SAVED,
+                            errorMessage = null,
+                        )
+                    }
+                }
+                DailyResult.Unauthorized -> onUnauthorized()
+                is DailyResult.Failure -> state = state.copy(errorMessage = result.message)
+                DailyResult.Missing -> state = state.copy(errorMessage = "デイリーノートが見つかりません。")
+                is DailyResult.Conflict -> state = state.copy(errorMessage = result.message, saveStatus = DailySaveStatus.CONFLICT)
+                is DailyResult.Ambiguous -> state = state.copy(errorMessage = result.message, saveStatus = DailySaveStatus.AMBIGUOUS)
+            }
+            reconcileDocumentInvalidation()
+        }
     }
 
     private fun changeDate(date: String, days: Long) {

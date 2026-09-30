@@ -155,6 +155,69 @@ class DailyControllerTest {
     }
 
     @Test
+    fun cleanLoadedDailyRefreshesFromTargetedDocumentInvalidationWithoutEnsure() {
+        val repository = FakeRepository().apply {
+            listResult = DailyListResult.Success(listOf(summary("2026-09-29", "day-a", "doc-a")))
+            fetchResults = ArrayDeque(
+                listOf(
+                    DailyResult.Success(document("doc-a", "day-a", "2026-09-29", "old")),
+                    DailyResult.Success(document("doc-a", "day-a", "2026-09-29", "remote")),
+                ),
+            )
+        }
+        val controller = controller(repository)
+
+        controller.loadCurrent()
+        assertTrue(await { controller.state.markdownBody == "old" })
+        controller.onRealtimeDocumentsInvalidation(setOf("doc-a"))
+
+        assertTrue(await { controller.state.markdownBody == "remote" })
+        assertEquals(listOf("doc-a", "doc-a"), repository.fetchIds)
+        assertEquals(0, repository.ensureCalls.get())
+        controller.close()
+    }
+
+    @Test
+    fun dirtyDailyPreservesDraftUntilExistingSaveBoundary() {
+        val repository = FakeRepository().apply {
+            listResult = DailyListResult.Success(listOf(summary("2026-09-29", "day-a", "doc-a")))
+            updateResult = DailyResult.Success(document("doc-a", "day-a", "2026-09-29", "local"))
+            fetchResults = ArrayDeque(
+                listOf(
+                    DailyResult.Success(document("doc-a", "day-a", "2026-09-29", "old")),
+                    DailyResult.Success(document("doc-a", "day-a", "2026-09-29", "remote")),
+                ),
+            )
+        }
+        val controller = controller(repository)
+
+        controller.loadCurrent()
+        assertTrue(await { controller.state.markdownBody == "old" })
+        controller.updateBody("local")
+        controller.onRealtimeDocumentsInvalidation(setOf("doc-a"))
+
+        Thread.sleep(100)
+        assertEquals("local", controller.state.markdownBody)
+        assertEquals(listOf("doc-a"), repository.fetchIds)
+
+        controller.save()
+        assertTrue(await { controller.state.markdownBody == "remote" })
+        controller.close()
+    }
+
+    @Test
+    fun realtimeInvalidationDoesNotEnsureWhenDailyDocumentIsNotLoaded() {
+        val repository = FakeRepository()
+        val controller = controller(repository)
+
+        controller.onRealtimeDocumentsInvalidation(null)
+
+        assertEquals(0, repository.ensureCalls.get())
+        assertEquals(emptyList<String>(), repository.fetchIds)
+        controller.close()
+    }
+
+    @Test
     fun parallelUnauthorizedResultsTriggerOneControllerAuthHandoff() {
         val repository = FakeRepository().apply {
             listResult = DailyListResult.Unauthorized
@@ -168,7 +231,7 @@ class DailyControllerTest {
 
         controller.loadCurrent()
 
-        assertTrue(await { !controller.state.loading })
+        assertTrue(await { !controller.state.loading && authCalls == 1 })
         assertEquals(1, authCalls)
         controller.close()
     }
@@ -216,6 +279,7 @@ class DailyControllerTest {
         var listResults: ArrayDeque<DailyListResult>? = null
         var listProvider: (() -> DailyListResult)? = null
         var ensureResult: DailyResult = DailyResult.Failure("unexpected ensure")
+        var updateResult: DailyResult = DailyResult.Failure("unused")
         var fetchResults: ArrayDeque<DailyResult>? = null
         val listCalls = AtomicInteger()
         val ensureCalls = AtomicInteger()
@@ -236,7 +300,7 @@ class DailyControllerTest {
             return ensureResult
         }
 
-        override fun updateDaily(request: DailyUpdateRequest): DailyResult = DailyResult.Failure("unused")
+        override fun updateDaily(request: DailyUpdateRequest): DailyResult = updateResult
     }
 
     private companion object {

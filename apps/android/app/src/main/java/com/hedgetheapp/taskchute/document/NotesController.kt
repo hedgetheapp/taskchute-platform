@@ -94,6 +94,10 @@ class NotesController(
     private var editorGeneration = 0
     private var debounceJob: Job? = null
     private var deferredNavigation: (() -> Unit)? = null
+    private var notesSurfaceLoaded = false
+    private var pendingDocumentInvalidationWildcard = false
+    private val pendingDocumentInvalidationIds = linkedSetOf<String>()
+    private var documentRefreshInFlight = false
 
     var state by mutableStateOf(NotesUiState())
         private set
@@ -107,6 +111,7 @@ class NotesController(
         get() = state.editor?.let { it.dirty && !it.saving && !it.blocked && it.errorMessage != null } == true
 
     fun load(archived: Boolean = state.archivedView) {
+        notesSurfaceLoaded = true
         if (state.loadingList) return
         state = state.copy(loadingList = true, archivedView = archived, errorMessage = null)
         scope.launch {
@@ -154,6 +159,31 @@ class NotesController(
                 is DocumentListResult.Failure -> state = state.copy(loadingList = false, errorMessage = documents.message)
             }
         }
+    }
+
+    fun onRealtimeConnected() = onRealtimeForeground()
+
+    fun onRealtimeForeground() {
+        if (!notesSurfaceLoaded && state.editor == null) return
+        if (notesSurfaceLoaded) load(state.archivedView)
+        state.editor?.document?.let {
+            pendingDocumentInvalidationWildcard = true
+            reconcileDocumentInvalidation()
+        }
+    }
+
+    fun onRealtimeDocumentsInvalidation(documentIds: Set<String>?) {
+        if (!notesSurfaceLoaded && state.editor == null) return
+        if (notesSurfaceLoaded) load(state.archivedView)
+        val document = state.editor?.document ?: return
+        if (documentIds != null && document.documentId !in documentIds) return
+        if (documentIds == null) {
+            pendingDocumentInvalidationWildcard = true
+            pendingDocumentInvalidationIds.clear()
+        } else if (!pendingDocumentInvalidationWildcard) {
+            pendingDocumentInvalidationIds += documentIds
+        }
+        reconcileDocumentInvalidation()
     }
 
     fun setArchivedView(archived: Boolean) {
@@ -723,7 +753,10 @@ class NotesController(
             projectDocuments = updateProjectSummary(document),
             projectNotes = updateProjectNote(document),
         )
-        if (localMatchesSent) finishDeferredNavigationIfReady() else scheduleAutosave()
+        if (localMatchesSent) {
+            finishDeferredNavigationIfReady()
+            reconcileDocumentInvalidation()
+        } else scheduleAutosave()
     }
 
     private fun localMatchesRequest(editor: NoteEditorState, request: NoteEditorRequest): Boolean = when (request) {
@@ -829,8 +862,73 @@ class NotesController(
         debounceJob?.cancel()
         debounceJob = null
         deferredNavigation = null
+        pendingDocumentInvalidationWildcard = false
+        pendingDocumentInvalidationIds.clear()
         editorGeneration += 1
         state = state.copy(editor = null, errorMessage = null, selectionModeActive = false, selectedDocumentIds = emptySet())
+    }
+
+    private fun reconcileDocumentInvalidation() {
+        val editor = state.editor ?: return
+        val currentDocument = editor.document ?: return
+        val relevant = pendingDocumentInvalidationWildcard || currentDocument.documentId in pendingDocumentInvalidationIds
+        if (!relevant || editor.dirty || editor.saving || editor.blocked || documentRefreshInFlight) return
+
+        pendingDocumentInvalidationWildcard = false
+        pendingDocumentInvalidationIds.remove(currentDocument.documentId)
+        documentRefreshInFlight = true
+        val generation = editorGeneration
+        scope.launch {
+            val result = withContext(Dispatchers.IO) { fetchCanonicalDocument(currentDocument) }
+            if (generation != editorGeneration) {
+                documentRefreshInFlight = false
+                return@launch
+            }
+            documentRefreshInFlight = false
+            when (result) {
+                is DocumentResult.Success -> {
+                    val activeEditor = state.editor
+                    if (activeEditor?.document?.documentId == currentDocument.documentId
+                        && !activeEditor.dirty && !activeEditor.saving && !activeEditor.blocked
+                    ) {
+                        adoptExternalDocument(result.document)
+                    }
+                }
+                DocumentResult.Unauthorized -> onUnauthorized()
+                is DocumentResult.Failure -> state = state.copy(errorMessage = result.message)
+                DocumentResult.Missing -> state = state.copy(errorMessage = "ノートが見つかりません。")
+                is DocumentResult.Conflict -> state = state.copy(errorMessage = result.message)
+                is DocumentResult.Ambiguous -> state = state.copy(errorMessage = result.message)
+            }
+            reconcileDocumentInvalidation()
+        }
+    }
+
+    private fun fetchCanonicalDocument(document: AndroidDocument): DocumentResult = when (document.kind) {
+        DocumentKind.STANDALONE -> repository.fetchStandalone(document.documentId)
+        DocumentKind.TASK_PRIMARY -> repository.fetchTaskPrimary(document.documentId)
+        DocumentKind.PROJECT_PRIMARY -> repository.fetchProjectPrimary(document.documentId)
+    }
+
+    private fun adoptExternalDocument(document: AndroidDocument) {
+        val editor = state.editor ?: return
+        if (editor.document?.documentId != document.documentId) return
+        state = state.copy(
+            editor = editor.copy(
+                document = document,
+                title = if (editor.kind == DocumentKind.STANDALONE) document.title else editor.title,
+                projectTitle = if (editor.kind == DocumentKind.PROJECT_PRIMARY) document.title else editor.projectTitle,
+                projectId = document.projectId ?: editor.projectId,
+                markdownBody = document.markdownBody,
+                saving = false,
+                unresolvedRequest = null,
+                errorMessage = null,
+                saveStatus = NoteSaveStatus.SAVED,
+            ),
+            documents = updateSummary(document),
+            projectDocuments = updateProjectSummary(document),
+            projectNotes = updateProjectNote(document),
+        )
     }
 
     private fun editorFor(
