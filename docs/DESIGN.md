@@ -16,6 +16,14 @@
 
 `assets/brand/taskchute-icon-master.png` は、提供されたTaskChuteのTF・チェックリスト・葉のアートワークを外周の余白だけ正規化した共通マスターである。Android launcher iconとWeb site/browser iconはこのマスターから生成し、製品名・アートワーク・画面UIの意味は変更しない。
 
+## Cross-platform icon system
+
+TaskChute Platformのfirst-party UIでは、Android、Web、Wear OS（Pixel Watchを含む）を横断して、Googleの[Material Symbols & Icons](https://fonts.google.com/icons)をアイコンの第一選択とする。既存画面との整合が取れる場合は`Material Symbols Rounded`を標準familyとして使い、同じ意味のaction / statusにはplatformをまたいで同じsymbolを優先する。
+
+公式Material Symbolが存在する場合は、独自に三角形・四角形・線画などを描き直して代替しない。Figma、Android、Web、Wear OSの各実装では、公式glyph / vector / font assetを利用する。`FILL`、weight、grade、optical size、色、container treatmentは画面サイズ・状態・accessibilityに応じて調整してよいが、symbol自体のsemantic identityは維持する。
+
+独自iconを使うのは、適切なMaterial Symbolが存在しない場合、TaskChute固有のbrand assetが必要な場合、またはcanonical Product / Design Decisionで明示的に例外承認された場合に限る。brand / launcher / favicon等の製品固有アートワークは本ルールの対象外とする。
+
 
 +## D-138 Android Today visual / interaction refinement
 +
