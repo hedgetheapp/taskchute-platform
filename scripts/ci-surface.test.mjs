@@ -11,6 +11,14 @@ test("Android-only paths run Android and skip Web/Worker", () => {
   ]), { runWeb: false, runAndroid: true, reason: "apps/android/app/src/main/java/com/example/Today.kt:android, apps/android/app/src/androidTest/java/com/example/TodayTest.kt:android, scripts/android-qa.ps1:android, docs/CURRENT.md:docs" });
 });
 
+test("Wear module paths run Android", () => {
+  assert.deepEqual(classifyPaths(["apps/android/wear/src/main/java/com/example/WearMainActivity.kt"]), {
+    runWeb: false,
+    runAndroid: true,
+    reason: "apps/android/wear/src/main/java/com/example/WearMainActivity.kt:android",
+  });
+});
+
 test("Web React-only paths run Web/Worker and skip Android", () => {
   assert.equal(classifyPaths(["apps/web/src/web/NotesBoard.tsx"]).runWeb, true);
   assert.equal(classifyPaths(["apps/web/src/web/NotesBoard.tsx"]).runAndroid, false);

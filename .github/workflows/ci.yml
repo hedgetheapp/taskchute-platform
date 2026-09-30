@@ -138,44 +138,55 @@ jobs:
           test -s "$keystore"
 
       - name: JVM tests
-        run: bash ./gradlew --no-daemon :app:testDebugUnitTest
+        run: bash ./gradlew --no-daemon :app:testDebugUnitTest :wear:testDebugUnitTest
 
-      - name: Debug build (signed nonprod)
+      - name: Phone and Wear debug builds (signed nonprod)
         env:
           TASKCHUTE_ANDROID_SIGNING_STORE_FILE: ${{ runner.temp }}/taskchute-android-nonprod.jks
           TASKCHUTE_ANDROID_SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_NONPROD_STORE_PASSWORD }}
           TASKCHUTE_ANDROID_SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_NONPROD_KEY_PASSWORD }}
-        run: bash ./gradlew --no-daemon :app:assembleDebug -Ptaskchute.baseUrl=https://taskchute-web-nonprod.taskfulness-sync.workers.dev -Ptaskchute.versionCode=${{ steps.android_version.outputs.version_code }}
+        run: bash ./gradlew --no-daemon :app:assembleDebug :wear:assembleDebug -Ptaskchute.baseUrl=https://taskchute-web-nonprod.taskfulness-sync.workers.dev -Ptaskchute.versionCode=${{ steps.android_version.outputs.version_code }}
 
-      - name: Instrumentation APK compile (signed nonprod)
+      - name: Phone and Wear instrumentation APK compile (signed nonprod)
         env:
           TASKCHUTE_ANDROID_SIGNING_STORE_FILE: ${{ runner.temp }}/taskchute-android-nonprod.jks
           TASKCHUTE_ANDROID_SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_NONPROD_STORE_PASSWORD }}
           TASKCHUTE_ANDROID_SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_NONPROD_KEY_PASSWORD }}
-        run: bash ./gradlew --no-daemon :app:assembleDebugAndroidTest -Ptaskchute.versionCode=${{ steps.android_version.outputs.version_code }}
+        run: bash ./gradlew --no-daemon :app:assembleDebugAndroidTest :wear:assembleDebugAndroidTest -Ptaskchute.baseUrl=https://taskchute-web-nonprod.taskfulness-sync.workers.dev -Ptaskchute.versionCode=${{ steps.android_version.outputs.version_code }}
 
-      - name: Verify nonprod APK signing certificate
+      - name: Verify phone and Wear nonprod APK signing certificates
         shell: bash
         env:
           TASKCHUTE_ANDROID_SIGNING_STORE_FILE: ${{ runner.temp }}/taskchute-android-nonprod.jks
           TASKCHUTE_ANDROID_SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_NONPROD_STORE_PASSWORD }}
         run: |
           set -euo pipefail
-          apk="app/build/outputs/apk/debug/app-debug.apk"
+          apks=("app/build/outputs/apk/debug/app-debug.apk" "wear/build/outputs/apk/debug/wear-debug.apk")
           apksigner="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
           test -n "$apksigner"
           key_fingerprint="$(keytool -list -v -keystore "$TASKCHUTE_ANDROID_SIGNING_STORE_FILE" -storepass "$TASKCHUTE_ANDROID_SIGNING_STORE_PASSWORD" -alias taskchute-nonprod | sed -n 's/^.*SHA256: *//p' | head -n 1 | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')"
-          apk_fingerprint="$("$apksigner" verify --verbose --print-certs "$apk" | sed -n 's/^.*certificate SHA-256 digest: *//p' | head -n 1 | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')"
           test -n "$key_fingerprint"
-          test -n "$apk_fingerprint"
-          test "$key_fingerprint" = "$apk_fingerprint"
-          echo "APK signer SHA-256: $apk_fingerprint"
+          for apk in "${apks[@]}"; do
+            test -s "$apk"
+            apk_fingerprint="$("$apksigner" verify --verbose --print-certs "$apk" | sed -n 's/^.*certificate SHA-256 digest: *//p' | head -n 1 | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')"
+            test -n "$apk_fingerprint"
+            test "$key_fingerprint" = "$apk_fingerprint"
+            echo "$apk signer SHA-256: $apk_fingerprint"
+          done
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
           name: taskchute-android-debug-${{ github.sha }}
           path: apps/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload Wear OS debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: taskchute-wear-debug-${{ github.sha }}
+          path: apps/android/wear/build/outputs/apk/debug/wear-debug.apk
           if-no-files-found: error
           retention-days: 7
 

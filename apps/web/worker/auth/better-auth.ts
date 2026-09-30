@@ -1,4 +1,5 @@
 import { betterAuth } from "better-auth";
+import { wearPairingPlugin } from "./wear-pairing";
 
 const SESSION_EXPIRES_IN_SECONDS = 60 * 60 * 24 * 7;
 const SESSION_UPDATE_AGE_SECONDS = 60 * 60 * 24;
@@ -28,6 +29,7 @@ export function createRequestAuth(request: Request, env: Env, allowOperatorSignU
     },
     telemetry: { enabled: false },
     logger: { level: "error" },
+    plugins: [wearPairingPlugin],
   });
 }
 

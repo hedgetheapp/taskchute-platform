@@ -5,16 +5,19 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.lifecycle.lifecycleScope
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -25,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.hedgetheapp.taskchute.auth.AuthUiState
+import com.hedgetheapp.taskchute.auth.PhoneWearPairingController
 import com.hedgetheapp.taskchute.realtime.AndroidRealtimeScheduler
 import com.hedgetheapp.taskchute.realtime.OkHttpRealtimeSocketFactory
 import com.hedgetheapp.taskchute.realtime.RealtimeAuthProbe
@@ -63,10 +67,18 @@ class MainActivity : ComponentActivity() {
     private lateinit var notesController: NotesController
     private lateinit var settingsController: SettingsController
     private lateinit var dailyController: DailyController
+    private lateinit var wearPairingController: PhoneWearPairingController
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         controller = AuthController(this, BuildConfig.TASKCHUTE_BASE_URL)
+        wearPairingController = PhoneWearPairingController(
+            context = this,
+            request = { method, path, body ->
+                controller.authenticatedRequest(method, path, body)?.let { TodayHttpResponse(it.status, it.body) }
+            },
+            onUnauthorized = controller::restore,
+        )
         val todayRepository = TodayHttpRepository(
             request = { method, path, body -> controller.authenticatedRequest(method, path, body)?.let { TodayHttpResponse(it.status, it.body) } },
             onUnauthorized = {},
@@ -143,11 +155,12 @@ class MainActivity : ComponentActivity() {
                 onAuthFailure = { runOnUiThread { controller.restore() } },
             ),
         )
-        setContent { TaskChuteApp(controller, todayController, planningController, directManipulationController, notesController, settingsController, dailyController, realtimeManager) }
+        setContent { TaskChuteApp(controller, todayController, planningController, directManipulationController, notesController, settingsController, dailyController, realtimeManager, wearPairingController) }
     }
 
     override fun onStart() {
         super.onStart()
+        if (::wearPairingController.isInitialized) wearPairingController.setForeground(true)
         if (::realtimeManager.isInitialized && controller.state is AuthUiState.SignedIn) {
             realtimeManager.start()
             todayController.onRealtimeForeground()
@@ -157,6 +170,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
+        if (::wearPairingController.isInitialized) wearPairingController.setForeground(false)
         if (::realtimeManager.isInitialized) realtimeManager.stop()
         super.onStop()
     }
@@ -169,6 +183,7 @@ class MainActivity : ComponentActivity() {
         notesController.close()
         settingsController.close()
         dailyController.close()
+        wearPairingController.close()
         realtimeManager.stop()
         realtimeHttpClient.dispatcher.executorService.shutdown()
         realtimeHttpClient.connectionPool.evictAll()
@@ -186,6 +201,7 @@ private fun TaskChuteApp(
     settingsController: SettingsController,
     dailyController: DailyController,
     realtimeManager: RealtimeConnectionManager,
+    wearPairingController: PhoneWearPairingController,
 ) {
     val state = controller.state
     var destination by remember { mutableStateOf(AndroidDestination.TODAY) }
@@ -194,6 +210,7 @@ private fun TaskChuteApp(
 
     LaunchedEffect(controller) { controller.restore() }
     LaunchedEffect(state) {
+        wearPairingController.setSignedIn(state is AuthUiState.SignedIn)
         if (state is AuthUiState.SignedIn) {
             realtimeManager.start()
             todayController.onRealtimeForeground()
@@ -208,6 +225,7 @@ private fun TaskChuteApp(
 
     TaskChuteTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
+            Box(Modifier.fillMaxSize()) {
             when (state) {
                 AuthUiState.Restoring -> Centered("認証状態を確認しています…", true)
                 AuthUiState.SigningIn -> LoginForm(email, password, { email = it }, { password = it }, true) { }
@@ -254,8 +272,34 @@ private fun TaskChuteApp(
                     }
                 }
             }
+                if (state is AuthUiState.SignedIn) WearPairingConfirmationDialog(wearPairingController)
+            }
         }
     }
+}
+
+@Composable
+private fun WearPairingConfirmationDialog(controller: PhoneWearPairingController) {
+    val pairing = controller.pending ?: return
+    AlertDialog(
+        onDismissRequest = { if (!pairing.submitting) controller.reject() },
+        title = { Text("Wear OS から接続要求") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("このWatchをTaskChuteへ接続しますか？")
+                val errorMessage = pairing.error
+                if (errorMessage != null) Text(errorMessage, color = MaterialTheme.colorScheme.error)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = controller::confirm, enabled = !pairing.submitting) {
+                Text(if (pairing.submitting) "接続中…" else "接続")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = controller::reject, enabled = !pairing.submitting) { Text("拒否") }
+        },
+    )
 }
 
 @Composable

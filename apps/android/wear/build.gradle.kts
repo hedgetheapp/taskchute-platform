@@ -11,10 +11,7 @@ val signingKeyPassword = System.getenv("TASKCHUTE_ANDROID_SIGNING_KEY_PASSWORD")
 val signingValues = listOf(signingStoreFile, signingStorePassword, signingKeyPassword)
 val signingValuesPresent = signingValues.count { !it.isNullOrBlank() }
 if (signingValuesPresent != 0 && signingValuesPresent != signingValues.size) {
-    throw GradleException(
-        "Android nonprod signing requires TASKCHUTE_ANDROID_SIGNING_STORE_FILE, " +
-            "TASKCHUTE_ANDROID_SIGNING_STORE_PASSWORD, and TASKCHUTE_ANDROID_SIGNING_KEY_PASSWORD together."
-    )
+    throw GradleException("Wear nonprod signing requires the same complete Android signing configuration as the phone app.")
 }
 val nonprodSigningConfigured = signingValuesPresent == signingValues.size
 if (nonprodSigningConfigured && !File(requireNotNull(signingStoreFile)).isFile) {
@@ -27,7 +24,7 @@ val configuredVersionCode = providers.gradleProperty("taskchute.versionCode").or
 } ?: 1
 
 android {
-    namespace = "com.hedgetheapp.taskchute"
+    namespace = "com.hedgetheapp.taskchute.wear"
     compileSdk = 37
 
     defaultConfig {
@@ -36,7 +33,6 @@ android {
         targetSdk = 37
         versionCode = configuredVersionCode
         versionName = "0.1"
-
         val configuredBaseUrl = providers.gradleProperty("taskchute.baseUrl").orNull ?: ""
         buildConfigField("String", "TASKCHUTE_BASE_URL", "\"${configuredBaseUrl.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -56,44 +52,32 @@ android {
 
     buildTypes {
         getByName("debug") {
-            if (nonprodSigningConfigured) {
-                signingConfig = signingConfigs.getByName("nonprod")
-            }
+            if (nonprodSigningConfigured) signingConfig = signingConfigs.getByName("nonprod")
         }
     }
 
-    buildFeatures {
-        compose = true
-        buildConfig = true
-    }
-
+    buildFeatures { compose = true; buildConfig = true }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-
-    packaging {
-        resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
-    }
+    packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
 }
 
 dependencies {
     implementation("androidx.core:core-ktx:1.19.0")
     implementation("androidx.activity:activity-compose:1.12.1")
-    implementation("com.squareup.okhttp3:okhttp:5.3.0")
     implementation("com.google.android.gms:play-services-wearable:20.0.1")
     implementation(platform("androidx.compose:compose-bom:2026.08.00"))
-    debugImplementation(platform("androidx.compose:compose-bom:2026.08.00"))
-    androidTestImplementation(platform("androidx.compose:compose-bom:2026.08.00"))
     implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.ui:ui-tooling-preview")
-    implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.foundation:foundation")
+    implementation("androidx.wear.compose:compose-foundation:1.5.0")
+    implementation("androidx.wear.compose:compose-material3:1.5.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
 
     testImplementation("junit:junit:4.13.2")
-
+    androidTestImplementation(platform("androidx.compose:compose-bom:2026.08.00"))
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
-    androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.test:core:1.7.0")
-    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
-    debugImplementation("androidx.compose.ui:ui-test-manifest")
+    androidTestImplementation("androidx.test:runner:1.7.0")
 }

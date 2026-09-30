@@ -21,6 +21,10 @@ const fixture = {
 class BrowserSession {
   private readonly cookies = new Map<string, string>();
 
+  cookieHeader(): string {
+    return Array.from(this.cookies.entries(), ([name, value]) => `${name}=${value}`).join("; ");
+  }
+
   async fetch(path: string, init: RequestInit = {}): Promise<Response> {
     const headers = new Headers(init.headers);
     if (this.cookies.size > 0) headers.set("cookie", Array.from(this.cookies.entries(), ([name, value]) => `${name}=${value}`).join("; "));
@@ -47,6 +51,16 @@ class BrowserSession {
 
 async function json<T>(response: Response): Promise<T> {
   return (await response.json()) as T;
+}
+
+function base64Url(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function uuidV4(): string {
+  return crypto.randomUUID();
 }
 
 describe.sequential("production runtime bootstrap slice", () => {
@@ -176,6 +190,100 @@ describe.sequential("production runtime bootstrap slice", () => {
     const expiryMillis = typeof expiry?.expiresAt === "number" ? expiry.expiresAt : Date.parse(expiry?.expiresAt ?? "");
     expect(expiryMillis - Date.now()).toBeGreaterThan(6.9 * 24 * 60 * 60 * 1000);
     expect(expiryMillis - Date.now()).toBeLessThan(7.1 * 24 * 60 * 60 * 1000);
+  });
+
+  it("issues nonce-bound single-use Wear grants and exchanges them into independent sessions", async () => {
+    const unauthenticated = await exports.default.fetch(new Request(`${origin}/api/auth/wear/pairing-grant`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin, referer: `${origin}/` },
+      body: JSON.stringify({ request_id: uuidV4(), nonce: base64Url(new Uint8Array(32).fill(1)) }),
+    }));
+    expect(unauthenticated.status).toBe(401);
+
+    const nonce = base64Url(new Uint8Array(32).fill(7));
+    const requestId = uuidV4();
+    const grantResponse = await browser.post("/api/auth/wear/pairing-grant", { request_id: requestId, nonce });
+    expect(grantResponse.status).toBe(200);
+    expect(grantResponse.headers.get("cache-control")).toContain("no-store");
+    const grantBody = await json<{ grant: string; expires_at: string }>(grantResponse);
+    expect(grantBody.grant).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(Date.parse(grantBody.expires_at) - Date.now()).toBeGreaterThan(0);
+    expect(Date.parse(grantBody.expires_at) - Date.now()).toBeLessThanOrEqual(120_000);
+
+    const stored = await env.AUTH_DB.prepare(
+      "SELECT identifier, value FROM verification WHERE identifier LIKE 'wear-pairing:%' ORDER BY createdAt DESC LIMIT 1",
+    ).first<{ identifier: string; value: string }>();
+    expect(stored).not.toBeNull();
+    expect(stored?.identifier).not.toContain(grantBody.grant);
+    expect(stored?.value).not.toContain(grantBody.grant);
+    expect(stored?.value).not.toContain(nonce);
+    expect(stored?.value).toContain(requestId);
+
+    const exchange = (exchangeNonce: string) => exports.default.fetch(new Request(
+      `${origin}/api/auth/wear/pairing-exchange`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json", origin },
+        body: JSON.stringify({ request_id: requestId, nonce: exchangeNonce, grant: grantBody.grant }),
+      },
+    ));
+    expect((await exchange(base64Url(new Uint8Array(32).fill(8)))).status).toBe(401);
+    expect(await env.AUTH_DB.prepare("SELECT COUNT(*) AS count FROM verification WHERE identifier = ?")
+      .bind(stored!.identifier).first<number>("count")).toBe(1);
+
+    const userId = (await env.AUTH_DB.prepare("SELECT id FROM user WHERE email = ?")
+      .bind(fixture.email).first<{ id: string }>())!.id;
+    const sessionsBefore = await env.AUTH_DB.prepare("SELECT COUNT(*) AS count FROM session WHERE userId = ?")
+      .bind(userId).first<number>("count");
+    const successfulExchange = await exchange(nonce);
+    expect(successfulExchange.status).toBe(200);
+    expect(await json(successfulExchange)).toEqual({ ok: true });
+    const watchCookie = successfulExchange.headers.getSetCookie()
+      .map((value) => value.split(";", 1)[0]).join("; ");
+    expect(watchCookie.length).toBeGreaterThan(0);
+    expect(watchCookie).not.toBe(browser.cookieHeader());
+    expect(watchCookie).not.toContain(grantBody.grant);
+    const protectedResponse = await exports.default.fetch(new Request(`${origin}/api/v1/taskchute-days/current`, {
+      headers: { cookie: watchCookie },
+    }));
+    expect(protectedResponse.status).toBe(200);
+    expect((await exchange(nonce)).status).toBe(401);
+    const sessionsAfter = await env.AUTH_DB.prepare("SELECT COUNT(*) AS count FROM session WHERE userId = ?")
+      .bind(userId).first<number>("count");
+    expect(sessionsAfter).toBe(sessionsBefore! + 1);
+
+    const concurrentNonce = base64Url(new Uint8Array(32).fill(9));
+    const concurrentRequestId = uuidV4();
+    const concurrentGrantResponse = await browser.post("/api/auth/wear/pairing-grant", {
+      request_id: concurrentRequestId, nonce: concurrentNonce,
+    });
+    const concurrentGrant = await json<{ grant: string }>(concurrentGrantResponse);
+    const concurrentExchange = () => exports.default.fetch(new Request(`${origin}/api/auth/wear/pairing-exchange`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin },
+      body: JSON.stringify({ request_id: concurrentRequestId, nonce: concurrentNonce, grant: concurrentGrant.grant }),
+    }));
+    const concurrentResults = await Promise.all([concurrentExchange(), concurrentExchange()]);
+    expect(concurrentResults.map((result) => result.status).sort()).toEqual([200, 401]);
+
+    const expiryNonce = base64Url(new Uint8Array(32).fill(10));
+    const expiryRequestId = uuidV4();
+    const expiryGrantResponse = await browser.post("/api/auth/wear/pairing-grant", {
+      request_id: expiryRequestId, nonce: expiryNonce,
+    });
+    const expiryGrant = await json<{ grant: string }>(expiryGrantResponse);
+    const expiryRow = await env.AUTH_DB.prepare(
+      "SELECT identifier FROM verification WHERE value LIKE ? ORDER BY createdAt DESC LIMIT 1",
+    ).bind(`%${expiryRequestId}%`).first<{ identifier: string }>();
+    expect(expiryRow).not.toBeNull();
+    await env.AUTH_DB.prepare("UPDATE verification SET expiresAt = ? WHERE identifier = ?")
+      .bind(new Date(Date.now() - 1).toISOString(), expiryRow!.identifier).run();
+    const expiredExchange = await exports.default.fetch(new Request(`${origin}/api/auth/wear/pairing-exchange`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin },
+      body: JSON.stringify({ request_id: expiryRequestId, nonce: expiryNonce, grant: expiryGrant.grant }),
+    }));
+    expect(expiredExchange.status).toBe(401);
   });
 
   it("keeps Revert withdrawn while requiring the current SetExecutionTimes contract", async () => {

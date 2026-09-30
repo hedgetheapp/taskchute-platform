@@ -17,4 +17,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "taskchute-android"
-include(":app")
+include(":app", ":wear")
