@@ -1,3 +1,16 @@
+## D-154 Wear OS / Pixel Watch v0.1 — 2026-09-30
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D154-IMPLEMENTATION | Android Phone + Wear | Approved v0.1 flow: explicit phone pairing confirmation, independent Watch session, current-Day projection and lifecycle actions | Implementation `850f6356ca7ad5d95d500bce9727c8e8143bf260`; Watch uses direct HTTPS and encrypted local session storage; phone cookie is not copied; no schema / APP/AUTH migration | PASS |
+| D154-WORKER-TESTS | Pairing grant/exchange | One-time nonce-bound grant validation, expiry, wrong-nonce behavior, replay/concurrency and session creation | `test/runtime.integration.test.ts` `36 / 36`; `npm run typecheck`; local pairing protocol coverage PASS | PASS |
+| D154-ANDROID-JVM | Android Phone / Wear JVM | Pairing bridge and Wear session/projection behavior | App JVM `276 / 276`; Wear JVM `7 / 7` | PASS |
+| D154-BUILD-CI | Build and exact SHA | Phone and Wear Kotlin compile, instrumentation compilation, assemble, signing parity, CI artifact generation | Required Gradle compile/assemble gates PASS; exact-SHA GitHub Actions run [`36699695527`](https://github.com/hedgetheapp/taskchute-platform/actions/runs/36699695527) PASS. Phone APK `taskchute-android-debug-850f6356ca7ad5d95d500bce9727c8e8143bf260` / artifact `11089423682`; Wear APK `taskchute-wear-debug-850f6356ca7ad5d95d500bce9727c8e8143bf260` / artifact `11089383950` (both expire 2026-10-07) | PASS |
+| D154-NONPROD | Persistent nonprod safety | Exact main deployed only to canonical nonprod; bindings/runtime safe; routes and databases healthy | `taskchute-web-nonprod` version `75f519f3-9e47-46b6-a239-0ddd77c56a18`; `RUNTIME_ENV=nonprod`, bootstrap disabled, canonical APP/AUTH/Realtime bindings; root `200`, unauth protected Day and pairing grant `401`; no migrations pending; APP/AUTH `quick_check=ok`, FK checks empty, read-only probes report zero writes. Authenticated phone↔Watch runtime pairing not run (no Watch emulator/device). | PASS / AUTHENTICATED_PAIR_NOT_RUN |
+| D154-PHONE-AVD | Phone emulator | Android phone regression and app launch/crash safety | `TaskChute_API33` `-Surface All`: `70` tests, `67` passed, `3` failed. One unrelated Settings expectation mismatch; two Today test teardown failures after emulator package-manager service disappeared. Following emulator cold boot, APK install, MainActivity login-screen launch, UI tree and empty app-crash buffer PASS. Pairing protocol instrumented test `1 / 1 PASS`. | PARTIAL / HARNESS_FAILURES |
+| D154-WEAR-RUNTIME | Wear emulator | Watch UI/session/API runtime on Wear virtual device | No Wear AVD available; Wear APK built and included in CI but not executed in an emulator | NOT_RUN / ENVIRONMENT_UNAVAILABLE |
+| D154-DEVICE-RELEASE | Physical devices / release | Product Owner device smoke and production/release boundary | Galaxy S23 / Pixel Watch `NOT_RUN / PRODUCT_OWNER_MANUAL`; Production `NOT_RUN`; Released `NO` | NOT_RUN / NO |
+
 ## D-148 insertion boundary / bottom edge auto-scroll corrective — 2026-09-27
 
 | ID | Area | Requirement | Evidence | Status |

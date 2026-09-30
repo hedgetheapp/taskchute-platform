@@ -1,3 +1,10 @@
+### D-154 Wear OS / Pixel Watch v0.1 — 2026-09-30
+
+- Added the Android-paired Wear OS `:wear` app for current-Day Section/task projection, forecast and estimate display, Routine marker, Start, Running progress, Complete / Next, and retryable network errors. Pairing requires explicit phone confirmation and a short-lived one-time nonce-bound grant; the Watch establishes its own Better Auth session and never receives the phone session cookie.
+- Implementation `850f6356ca7ad5d95d500bce9727c8e8143bf260`; exact-SHA CI `36699695527` PASS, including Android JVM, signed Phone/Wear APK builds and instrumentation APK compilation. Phone APK artifact ID `11089423682`; Wear APK artifact ID `11089383950`.
+- Persistent nonprod Worker `taskchute-web-nonprod` version `75f519f3-9e47-46b6-a239-0ddd77c56a18`; environment/bindings, root/protected-route smoke, no-pending-migration, D1 quick-check/FK and read-only safety checks PASS. Positive authenticated phone-to-Watch pairing runtime is `NOT_RUN` because no Watch emulator/device was available.
+- App JVM `276 / 276`, Wear JVM `7 / 7`, Worker focused integration `36 / 36`, typecheck and build gates PASS. `TaskChute_API33` full `-Surface All` was `PARTIAL` (70 tests: 67 passed, 3 failed: one unrelated Settings expectation and two emulator package-manager/Activity teardown harness failures); after cold boot, MainActivity launch/UI and target crash-buffer smoke PASS. Wear emulator / Pixel Watch `NOT_RUN / PRODUCT_OWNER_MANUAL`; Production `NOT_RUN`; Released `NO`. No APP/AUTH migration; pairing uses the Wearable Data Layer dependency.
+
 ### D-153A Android Today Quick Add picker focus corrective — 2026-09-30
 
 - `ReferencePicker` now explicitly clears Task-title focus after IME hide before requesting picker focus and opening Project / Mode / Section choices. CREATE's initial title autofocus remains session-scoped; picker close/selection does not reclaim focus, while a new CREATE session focuses the title again.
