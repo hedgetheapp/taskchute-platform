@@ -4,7 +4,9 @@
 
     <application
         android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
         android:label="TaskChute"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:usesCleartextTraffic="false"
         android:supportsRtl="true">
         <meta-data android:name="com.google.android.wearable.standalone" android:value="true" />

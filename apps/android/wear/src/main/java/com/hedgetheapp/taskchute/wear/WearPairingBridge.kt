@@ -1,9 +1,7 @@
 package com.hedgetheapp.taskchute.wear
 
 import android.content.Context
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
+import java.util.concurrent.CancellationException
 import com.google.android.gms.tasks.Task
 import com.google.android.gms.wearable.MessageClient
 import com.google.android.gms.wearable.MessageEvent
@@ -13,16 +11,21 @@ import java.util.Base64
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-internal data class WearPairGrant(val requestId: String, val nonce: String, val grant: String)
+internal class WearPairGrant(val requestId: String, val nonce: String, val grant: String) {
+    override fun toString(): String = "WearPairGrant(requestId=$requestId, nonce=<redacted>, grant=<redacted>)"
+}
 
 internal object WearPairingProtocol {
     const val PHONE_REQUEST_PATH = "/d154/pair-request"
@@ -77,12 +80,11 @@ internal class WearPairingBridge(
     private val nodeClient = Wearable.getNodeClient(context.applicationContext)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var listening = false
-    private var pendingRequestId: String? = null
-    private var pendingNonce: String? = null
-    private var targetPhoneNodeId: String? = null
+    private val stateMachine = WearPairingStateMachine()
+    private var grantTimeoutJob: Job? = null
 
-    var state by mutableStateOf<WearPairingState>(WearPairingState.Idle)
-        private set
+    val state: WearPairingState
+        get() = stateMachine.state
 
     fun startListening() {
         if (listening) return
@@ -96,78 +98,91 @@ internal class WearPairingBridge(
     }
 
     fun beginPairing() {
-        if (state == WearPairingState.Sending || state == WearPairingState.Exchanging) return
-        state = WearPairingState.Sending
+        if (!stateMachine.begin()) return
+        grantTimeoutJob?.cancel()
+        grantTimeoutJob = null
         scope.launch {
-            val result = runCatching {
-                withContext(Dispatchers.IO) {
-                    val nodes = nodeClient.connectedNodes.await()
-                    val phones = nodes.filter(Node::isNearby)
-                    val target = phones.singleOrNull() ?: if (phones.isEmpty() && nodes.size == 1) nodes.single() else null
-                    target ?: error("近くのAndroid端末を特定できません。")
+            val node = try {
+                withTimeoutOrNull(WEAR_PAIRING_REQUEST_TIMEOUT_MILLIS) {
+                    withContext(Dispatchers.IO) {
+                        val nodes = nodeClient.connectedNodes.await()
+                        val phones = nodes.filter(Node::isNearby)
+                        phones.singleOrNull() ?: if (phones.isEmpty() && nodes.size == 1) nodes.single() else null
+                    }
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                null
             }
-            val node = result.getOrNull()
             if (node == null) {
-                state = WearPairingState.Error(result.exceptionOrNull()?.message ?: "Androidへ接続できません。")
+                stateMachine.noConnectedPhone()
                 return@launch
             }
-            val requestId = WearPairingProtocol.newRequestId()
-            val nonce = WearPairingProtocol.newNonce()
-            val payload = JSONObject().put("request_id", requestId).put("nonce", nonce).toString().toByteArray(Charsets.UTF_8)
+            val request = stateMachine.prepareRequest(node.id) ?: return@launch
+            val payload = JSONObject().put("request_id", request.requestId).put("nonce", request.nonce)
+                .toString().toByteArray(Charsets.UTF_8)
             // Publish the request tuple before sendMessage: the phone can return a grant immediately.
-            pendingRequestId = requestId
-            pendingNonce = nonce
-            targetPhoneNodeId = node.id
-            state = WearPairingState.Waiting
-            val send = runCatching {
-                withContext(Dispatchers.IO) {
-                    messageClient.sendMessage(node.id, PHONE_REQUEST_PATH, payload).await()
-                }
+            val sendSucceeded = try {
+                withTimeoutOrNull(WEAR_PAIRING_REQUEST_TIMEOUT_MILLIS) {
+                    withContext(Dispatchers.IO) {
+                        messageClient.sendMessage(node.id, PHONE_REQUEST_PATH, payload).await()
+                    }
+                } != null
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                false
             }
-            if (send.isFailure) {
-                pendingRequestId = null
-                pendingNonce = null
-                targetPhoneNodeId = null
-                state = WearPairingState.Error("接続要求を送れません。もう一度お試しください。")
+            if (!sendSucceeded) {
+                stateMachine.sendFailed(request.requestId)
+                return@launch
+            }
+            if (stateMachine.isWaitingFor(request.requestId)) {
+                grantTimeoutJob?.cancel()
+                grantTimeoutJob = scope.launch {
+                    delay(WEAR_PAIRING_GRANT_TIMEOUT_MILLIS)
+                    stateMachine.expire(request.requestId)
+                    grantTimeoutJob = null
+                }
             }
         }
     }
 
-    fun pairingExchangeStarted() {
-        state = WearPairingState.Exchanging
-    }
+    fun pairingExchangeStarted() = Unit
 
     fun pairingExchangeFinished(success: Boolean, message: String? = null) {
-        pendingRequestId = null
-        pendingNonce = null
-        targetPhoneNodeId = null
-        state = if (success) WearPairingState.Idle else WearPairingState.Error(message ?: "接続を完了できません。再試行してください。")
+        grantTimeoutJob?.cancel()
+        grantTimeoutJob = null
+        stateMachine.exchangeFinished(success, message)
     }
 
     fun cancel() {
-        pendingRequestId = null
-        pendingNonce = null
-        targetPhoneNodeId = null
-        state = WearPairingState.Idle
+        grantTimeoutJob?.cancel()
+        grantTimeoutJob = null
+        stateMachine.cancel()
     }
 
     override fun onMessageReceived(event: MessageEvent) {
-        if (state != WearPairingState.Waiting) return
+        val pending = stateMachine.pendingIdentity ?: return
         val pairGrant = WearPairingProtocol.parseGrant(
             sourceNodeId = event.sourceNodeId,
-            expectedNodeId = targetPhoneNodeId,
-            expectedRequestId = pendingRequestId,
-            nonce = pendingNonce,
+            expectedNodeId = pending.nodeId,
+            expectedRequestId = pending.requestId,
+            nonce = pending.nonce,
             path = event.path,
             bytes = event.data,
         ) ?: return
-        state = WearPairingState.Exchanging
+        if (!stateMachine.acceptGrant(event.sourceNodeId, pairGrant)) return
+        grantTimeoutJob?.cancel()
+        grantTimeoutJob = null
         onGrant(pairGrant)
     }
 
     fun close() {
         stopListening()
+        grantTimeoutJob?.cancel()
+        grantTimeoutJob = null
         scope.coroutineContext.cancel()
     }
 

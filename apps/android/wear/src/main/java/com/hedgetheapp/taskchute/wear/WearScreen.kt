@@ -2,25 +2,31 @@ package com.hedgetheapp.taskchute.wear
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -37,6 +43,7 @@ import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.ButtonDefaults
 import androidx.wear.compose.material3.CircularProgressIndicator
+import androidx.wear.compose.material3.ColorScheme
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
 import java.time.Instant
@@ -45,17 +52,62 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlinx.coroutines.delay
 
+private val TaskChuteWearDarkColorScheme = ColorScheme(
+    primary = Color(0xFFD9E2FF),
+    primaryDim = Color(0xFFB2C5FF),
+    primaryContainer = Color(0xFF2E4578),
+    onPrimary = Color(0xFF102957),
+    onPrimaryContainer = Color(0xFFD9E2FF),
+    secondary = Color(0xFFC0C7DB),
+    secondaryDim = Color(0xFFA4ADC2),
+    secondaryContainer = Color(0xFF30384B),
+    onSecondary = Color(0xFF252C3D),
+    onSecondaryContainer = Color(0xFFDDE2F5),
+    tertiary = Color(0xFFE5B9D8),
+    tertiaryDim = Color(0xFFD09FC2),
+    tertiaryContainer = Color(0xFF4A2942),
+    onTertiary = Color(0xFF3A1B32),
+    onTertiaryContainer = Color(0xFFFFD7F1),
+    surfaceContainerLow = Color(0xFF000000),
+    surfaceContainer = Color(0xFF080808),
+    surfaceContainerHigh = Color(0xFF151515),
+    onSurface = Color(0xFFF1F1EF),
+    onSurfaceVariant = Color(0xFFB8B9BC),
+    outline = Color(0xFF85878C),
+    outlineVariant = Color(0xFF424448),
+    background = Color(0xFF000000),
+    onBackground = Color(0xFFF1F1EF),
+    error = Color(0xFFFFB4AB),
+    errorDim = Color(0xFFE46962),
+    errorContainer = Color(0xFF5A1D1A),
+    onError = Color(0xFF690005),
+    onErrorContainer = Color(0xFFFFDAD6),
+)
+
+@Composable
+internal fun WearTaskChuteTheme(content: @Composable () -> Unit) {
+    MaterialTheme(colorScheme = TaskChuteWearDarkColorScheme) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background),
+        ) {
+            content()
+        }
+    }
+}
+
 @Composable
 internal fun WearTaskChuteApp(controller: WearTodayController, pairingBridge: WearPairingBridge) {
-    MaterialTheme {
+    WearTaskChuteTheme {
         when (val state = controller.state) {
             WearScreenState.Restoring, WearScreenState.Loading -> LoadingScreen()
-            WearScreenState.SignedOut -> PairingScreen(pairingBridge)
+            WearScreenState.SignedOut -> PairingScreen(pairingBridge.state, pairingBridge::beginPairing)
             is WearScreenState.Error -> ErrorScreen(state.message, controller::loadToday)
             is WearScreenState.Today -> TodayScreen(state.day, controller::start)
             is WearScreenState.Running -> RunningScreen(state.day, controller::complete)
             is WearScreenState.Completed -> CompletedScreen(state, controller::start)
-            is WearScreenState.WaitingForPhone -> PairingScreen(pairingBridge)
+            is WearScreenState.WaitingForPhone -> PairingScreen(pairingBridge.state, pairingBridge::beginPairing)
         }
     }
 }
@@ -71,26 +123,90 @@ private fun LoadingScreen() = WearList {
 }
 
 @Composable
-private fun PairingScreen(bridge: WearPairingBridge) = WearList {
-    item {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("ログイン", style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
-            when (val pairing = bridge.state) {
-                WearPairingState.Idle -> Text("スマートフォンのTaskChuteアプリで接続を承認してください。", textAlign = TextAlign.Center)
-                WearPairingState.Sending -> Text("接続要求を送信しています…", textAlign = TextAlign.Center)
-                WearPairingState.Waiting -> Text("スマートフォンで接続を承認してください。", textAlign = TextAlign.Center)
-                WearPairingState.Exchanging -> Text("安全に接続しています…", textAlign = TextAlign.Center)
-                is WearPairingState.Error -> Text(pairing.message, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center)
+internal fun PairingScreen(pairingState: WearPairingState, onConnect: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF0F0F0F))
+            .background(Color.Black, CircleShape)
+            .border(1.dp, Color(0xFF2E2E2E), CircleShape)
+            .padding(horizontal = 8.dp, vertical = 8.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        val presentation = pairingState.presentation()
+        Column(
+            modifier = Modifier
+                .fillMaxWidth(0.625f)
+                .offset(y = (-10).dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(7.dp),
+        ) {
+            Text(
+                "ログイン",
+                style = MaterialTheme.typography.titleLarge.copy(
+                    fontSize = 12.sp,
+                    lineHeight = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                ),
+                textAlign = TextAlign.Center,
+                color = MaterialTheme.colorScheme.onBackground,
+                maxLines = 1,
+            )
+            if (presentation.errorTitle != null) {
+                Text(
+                    presentation.errorTitle,
+                    style = MaterialTheme.typography.titleLarge.copy(fontSize = 12.sp, lineHeight = 14.sp),
+                    color = MaterialTheme.colorScheme.error,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                )
+                Text(
+                    presentation.errorMessage.orEmpty(),
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, lineHeight = 11.sp),
+                    textAlign = TextAlign.Center,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
             Button(
-                onClick = bridge::beginPairing,
-                enabled = bridge.state == WearPairingState.Idle || bridge.state is WearPairingState.Error,
-                modifier = Modifier.fillMaxWidth(),
+                onClick = onConnect,
+                enabled = !presentation.isBusy,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(25.dp)
+                    .semantics { contentDescription = presentation.actionContentDescription },
+                shape = CircleShape,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                 ),
-            ) { Text("アプリで接続") }
+            ) {
+                if (presentation.isBusy) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+                        CircularProgressIndicator(Modifier.size(15.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            presentation.actionLabel,
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                fontSize = 8.sp,
+                                lineHeight = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                            ),
+                            maxLines = 1,
+                        )
+                    }
+                } else {
+                    Text(
+                        presentation.actionLabel,
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            fontSize = 8.sp,
+                            lineHeight = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                        ),
+                        maxLines = 1,
+                    )
+                }
+            }
         }
     }
 }
