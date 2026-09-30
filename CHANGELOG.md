@@ -1,3 +1,9 @@
+### D-154B Wear foreground realtime / UUIDv7 / Start UI corrective — 2026-10-01
+
+- Wear lifecycle IDs now follow the existing UUIDv7 contract. While foreground, Wear listens to the existing invalidate-only realtime route with its own session cookie, coalesces Day invalidations, reloads canonical Today, stops realtime on background, and refreshes on resume. Planned Start row now matches Figma `561:21` responsive card and fixed 48dp action geometry.
+- Implementation `88ba74170053711aba4d9c4cbcc0817c3b1b7f5d`; Wear JVM `30 / 30`, Wear compile / instrumentation compile / assemble PASS. Exact-SHA CI `36792844251` attempt 2 PASS after attempt 1 failed one unchanged Phone test; local isolated rerun of that Phone test PASS. Signed Phone/Wear APK artifacts are recorded in `docs/TEST_MATRIX.md`.
+- Wear AVD and D-154B live realtime/device smoke `NOT_RUN` because the configured host HAXM is unsupported by the installed emulator. Previous D-154A Espresso instrumentation failure and authenticated grant→Today `NOT_RUN` remain unchanged. No Worker/API/shared contract/schema/migration change or nonprod deploy; existing OkHttp 5.3.0 family reused. Production `NOT_RUN`; Released `NO`.
+
 ### D-154A Wear pairing visual / timeout-retry corrective — 2026-09-30
 
 - Wear sign-in now follows the approved Figma Dark UI (`561:110`), packages the same TaskChute launcher icon assets as Phone, and gives connect/send/grant waits bounded failure plus fresh-identity retry without weakening grant validation or exposing secrets.

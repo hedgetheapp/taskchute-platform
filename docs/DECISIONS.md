@@ -1,6 +1,14 @@
+## D-154B — Wear foreground realtime / UUIDv7 / Start UI corrective
+
+Status: **Approved / Implemented / Integrated / exact-SHA CI PASS / Wear AVD NOT_RUN / device NOT_RUN**
+
+Canonical Decision: `docs/decisions/D-154B_WEAR_FOREGROUND_REALTIME_UUIDV7_START_UI_CORRECTIVE_V01.md`
+
+Wear Today foreground中だけ既存invalidate-only realtimeを使い、foreground/resumeでcanonical Dayを再取得する。Watch専用cookie、transient reconnect、401時のsession clear、invalidation coalescing/stale-response guardを維持する。Start/Complete request identitiesを既存lifecycle contractのUUIDv7へ合わせ、Planned rowのStart actionをFigma `561:21`のresponsive 82dp row / fixed 48dp actionへ修正する。Worker/API/shared contract、schema、migration、new networking frameworkは変更しない。Implementation `88ba74170053711aba4d9c4cbcc0817c3b1b7f5d`、exact-SHA CI run `36792844251` attempt 2 PASS。AVD / Pixel Watch runtimeは未実施、Production NOT_RUN、Released NO。
+
 ## D-154 — Wear OS / Pixel Watch v0.1
 
-Status: **Approved / implementation pending**
+Status: **Approved / base implementation integrated; follow-up evidence in D-154A and D-154B**
 
 Canonical Decision: `docs/decisions/D-154_WEAR_OS_PIXEL_WATCH_V01.md`
 
