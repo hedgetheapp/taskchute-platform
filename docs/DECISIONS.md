@@ -1,10 +1,10 @@
 ## D-151 — Android Notes Long-Press Selection v0.1
 
-Status: **Approved / Implemented / Integrated / focused PASS / Notes AVD focused PASS / Galaxy S23 NOT_VERIFIED / Production NOT_RUN / Released NO**
+Status: **Approved / Implemented / Integrated / focused PASS / Notes AVD focused PASS / Galaxy S23 PASS / USER_CONFIRMED / Production NOT_RUN / Released NO**
 
 Canonical Decision: `docs/decisions/D-151_ANDROID_NOTES_LONG_PRESS_SELECTION_V01.md`
 
-Notes Selection Modeの開始をD-146の左→右スワイプからStandalone Note rowの長押しへ変更し、checkboxを廃止してselected rowの薄いblue background / AccentBlue outlineと`selected` semanticsで状態を示す。Selection Mode中のrow-wide tap toggle、zero-selection exit、Back、Project Primary非選択、Note open / `…` / Add FAB suppressionは維持する。`LazyListState.isScrollInProgress`中のlong-press entryを拒否し、旧horizontal pointer recognizerは削除する。Document/API/Worker/schema/migration/dependency/autosave/CAS/IME semanticsは変更しない。Implementation `ecd7234105574d929f6b5cf9bd7d26377f6cc37f`、focused JVM `2 / 2`、full Android JVM `266 / 266`、focused Notes AVD `4 / 4`、CI `36576219498`、APK artifact ID `11036894455`。Galaxy S23 `NOT_VERIFIED / PRODUCT_OWNER_MANUAL`、Production `NOT_RUN`、Released `NO`。
+Notes Selection Modeの開始をD-146の左→右スワイプからStandalone Note rowの長押しへ変更し、checkboxを廃止してselected rowの薄いblue background / AccentBlue outlineと`selected` semanticsで状態を示す。Selection Mode中のrow-wide tap toggle、zero-selection exit、Back、Project Primary非選択、Note open / `…` / Add FAB suppressionは維持する。`LazyListState.isScrollInProgress`中のlong-press entryを拒否し、旧horizontal pointer recognizerは削除する。Document/API/Worker/schema/migration/dependency/autosave/CAS/IME semanticsは変更しない。Implementation `ecd7234105574d929f6b5cf9bd7d26377f6cc37f`、focused JVM `2 / 2`、full Android JVM `266 / 266`、focused Notes AVD `4 / 4`、CI `36576219498`、APK artifact ID `11036894455`。Galaxy S23 `PASS / USER_CONFIRMED`（Product Ownerがfresh D-151 APKを確認した代表smoke。full device matrixではない）、Production `NOT_RUN`、Released `NO`。
 
 ## D-150 — Android Notes IME footer separation v0.1
 
@@ -12,7 +12,7 @@ Status: **Approved / Implemented / Integrated**
 
 Canonical Decision: `docs/decisions/D-150_ANDROID_NOTES_IME_FOOTER_SEPARATION_V01.md`
 
-Notesのstandalone editorでは本文の`imePadding()`とD-135 Markdown toolbarを維持しつつ、Notes固有の`Scaffold.bottomBar`へ重ねていた`imePadding()`を除去する。初回実装後に残ったScaffoldのfooter予約をcorrective `a5e01f3ef0c1dd791dbc595bc63276b67a923ac8`で、editor open + IME visible時だけbottomBar content自体を渡さない方式へ修正した。負のoffsetやActivity/window inset変更はなく、`MarkdownLiveEditor.kt`も不変。focused JVM `1 / 1`、focused Notes AVD `4 / 4`、CI `36569749556`、APK artifact ID `11033721498`。Today / Daily / Settings、Markdown source/autosave、Task Primary Note、Worker/API、schema、migration、dependency semanticsは変更しない。Galaxy S23 `NOT_VERIFIED / PRODUCT_OWNER_MANUAL`、Production `NOT_RUN`、Released `NO`。
+Notesのstandalone editorでは本文の`imePadding()`とD-135 Markdown toolbarを維持しつつ、Notes固有の`Scaffold.bottomBar`へ重ねていた`imePadding()`を除去する。初回実装後に残ったScaffoldのfooter予約をcorrective `a5e01f3ef0c1dd791dbc595bc63276b67a923ac8`で、editor open + IME visible時だけbottomBar content自体を渡さない方式へ修正した。負のoffsetやActivity/window inset変更はなく、`MarkdownLiveEditor.kt`も不変。focused JVM `1 / 1`、focused Notes AVD `4 / 4`、CI `36569749556`、APK artifact ID `11033721498`。Today / Daily / Settings、Markdown source/autosave、Task Primary Note、Worker/API、schema、migration、dependency semanticsは変更しない。Galaxy S23 representative smoke `PASS / USER_CONFIRMED`（実IME geometryのpixel-level測定やfull device matrixではない）、Production `NOT_RUN`、Released `NO`。
 
 ## D-149 — Android Project Primary Notes v0.1
 
