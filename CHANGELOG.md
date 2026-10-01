@@ -2,7 +2,7 @@
 
 - Android Task Add / Edit fields now follow the approved Figma outlined-field hierarchy with floating Japanese labels, centered values, and aligned spacing. New Task start reminders remain OFF; enabling an unset reminder defaults to `開始時刻` (0 minutes), and the checkbox plus `開始通知` label toggle the same control.
 - Android JVM `286 / 286 PASS`; Kotlin and instrumentation compilation PASS; exact-SHA CI PASS. Today AVD surface was `63 / 64` due a test-code menu-selection mistake; the corrected affected test passed `1 / 1`, while the full surface was not rerun. Three representative screenshots were reviewed.
-- Galaxy S23 `NOT_RUN / PRODUCT_OWNER_MANUAL`; Production `NOT_RUN`; Released `NO`. No Worker/API/shared contract, Web, schema, migration, dependency, or persistent nonprod change.
+- Galaxy S23 representative D-155A Task Editor UI smoke is `PASS / USER_CONFIRMED` from the Product Owner's fresh implementation APK check. This does not upgrade separate D-155 physical alarm / Pixel Watch delivery evidence. Production `NOT_RUN`; Released `NO`. No Worker/API/shared contract, Web, schema, migration, dependency, or persistent nonprod change.
 
 ### D-155 Android Task Reminders v0.1 — 2026-10-01
 
