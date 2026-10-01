@@ -1,3 +1,9 @@
+### D-155A Android Today Task Editor Figma fidelity corrective — 2026-10-01
+
+- Android Task Add / Edit fields now follow the approved Figma outlined-field hierarchy with floating Japanese labels, centered values, and aligned spacing. New Task start reminders remain OFF; enabling an unset reminder defaults to `開始時刻` (0 minutes), and the checkbox plus `開始通知` label toggle the same control.
+- Android JVM `286 / 286 PASS`; Kotlin and instrumentation compilation PASS; exact-SHA CI PASS. Today AVD surface was `63 / 64` due a test-code menu-selection mistake; the corrected affected test passed `1 / 1`, while the full surface was not rerun. Three representative screenshots were reviewed.
+- Galaxy S23 `NOT_RUN / PRODUCT_OWNER_MANUAL`; Production `NOT_RUN`; Released `NO`. No Worker/API/shared contract, Web, schema, migration, dependency, or persistent nonprod change.
+
 ### D-155 Android Task Reminders v0.1 — 2026-10-01
 
 - Android Today now stores per-Entry start-reminder offset (`null / 0 / 5 / 10 / 15 / 30 / 60`) and estimate-overrun intent canonically. The existing Task create/edit API persists reminder settings atomically with the Entry; ordinary Task reminders remain independent of D-145 fixed-start semantics. Android uses `SCHEDULE_EXACT_ALARM`, contextual `POST_NOTIFICATIONS` permission, canonical-state reconciliation, reboot/app-replacement/permission recovery, and the standard Android-to-Wear notification bridge. No `USE_EXACT_ALARM`, inexact fallback, FCM, foreground service, Watch-native scheduler, or D-145 change.

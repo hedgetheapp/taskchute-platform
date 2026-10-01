@@ -979,3 +979,9 @@ Note保存のstatusとは別に、serialized JSON bodyのUTF-8 byte数が約90%�
 Project Boardの各Project rowには既存Project Board actionと同列の「プロジェクトノート」affordanceを置き、クリック時だけProject Primary relationをEnsureして共通floating Markdown source editorを開く。Notesは既存のNote listへProject Noteを統合し、`すべて / 通常ノート / プロジェクトノート` filterで切り替える。NotesでProject Note rowを選んだ場合はNotes editor内のbody-only inline Markdown editorを使い、Today / Project Board / direct routeはfloating editorを使う。同一Projectのfloating windowが存在する場合はNotesからそれをactivate / restoreし、inline editorを二重に作らない。Project Primary editorはProject titleをread-only authorityとして表示し、bodyのみを既存のDocument save/CAS/ambiguity/barrier経路で編集する。DayのProject cellからも同じwindow registry・canonical document routeを使う。
 
 Project archiveではNote relationを維持する。Project hard deleteはdirty draft、in-flight save、unresolved exact retryのいずれかがある場合に既存barrierで停止し、確認後にProjectとProject Primary relation/Documentを同じdelete outcomeで処理する。Task/Entry/Executionの既存画面・Note window・mobile presentation・Preview/attachment/search/backlinkは変更しない。
+
+## D-155A Android Today Task Editor Figma fidelity corrective
+
+Android TodayのTask Add / Edit formはFigma Task Editor reference `UbTJH6ykYNBQJS4Wvwz9jb` / node `637:2` と関連state `637:6`、`637:42`、`666:16`に合わせ、dark surface上の48dp・16dp cornerのoutlined field、outlineを横切るfloating label、中央寄せvalueを使う。2列fieldは12dp間隔とし、Section / Project / Mode / estimateのlabelは`セクション` / `プロジェクト` / `モード` / `見積`。
+
+Start reminderはcheckboxと`開始通知`文字の両方を同じON/OFF targetとし、timing selectorは独立する。新規Taskは引き続きOFF (`null`)。OFFからONへ初めて切り替えたときは0分 (`開始時刻`) を選び、既存の明示offsetは保持する。Estimate-overrun controlはoutlined field内でReminder fieldと揃える。このUI correctiveはD-155のreminder persistence / scheduling semanticsを変更しない。
