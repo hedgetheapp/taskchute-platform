@@ -61,7 +61,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
@@ -2290,7 +2289,7 @@ private fun TaskEditorForm(
         }
         if (planningFieldsEditable) {
             ReferencePicker(
-                label = "Section",
+                label = "セクション",
                 value = selectedSection?.title ?: "なし",
                 expanded = sectionExpanded,
                 onExpandedChange = { sectionExpanded = it },
@@ -2307,9 +2306,9 @@ private fun TaskEditorForm(
                 enabled = !state.saving,
             )
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             ReferencePicker(
-                label = "Project", value = selectedProject?.title ?: "なし", expanded = projectExpanded,
+                label = "プロジェクト", value = selectedProject?.title ?: "なし", expanded = projectExpanded,
                 onExpandedChange = { projectExpanded = it },
                 options = listOf(null to "なし") + (references?.projects?.map { it.id to it.title } ?: emptyList()),
                 onSelected = { controller.updateDraft(draft.copy(projectId = it)); projectExpanded = false },
@@ -2317,7 +2316,7 @@ private fun TaskEditorForm(
                 modifier = Modifier.weight(1f),
             )
             ReferencePicker(
-                label = "Mode", value = selectedMode?.title ?: "なし", expanded = modeExpanded,
+                label = "モード", value = selectedMode?.title ?: "なし", expanded = modeExpanded,
                 onExpandedChange = { modeExpanded = it },
                 options = listOf(null to "なし") + (references?.modes?.map { it.id to it.title } ?: emptyList()),
                 onSelected = { controller.updateDraft(draft.copy(modeId = it)); modeExpanded = false },
@@ -2326,7 +2325,7 @@ private fun TaskEditorForm(
             )
         }
         if (planningFieldsEditable) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 CompactFigmaTextField(
                     value = draft.plannedStartText,
                     onValueChange = { controller.updateDraft(draft.copy(plannedStartText = it)) },
@@ -2344,23 +2343,23 @@ private fun TaskEditorForm(
             }
         }
         if (planningFieldsEditable || editor.capability == TaskEditorCapability.RUNNING_METADATA) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            CompactFigmaTextField(
-                value = draft.estimateText,
-                onValueChange = { controller.updateDraft(draft.copy(estimateText = it)) },
-                label = "見積（分）",
-                modifier = Modifier.weight(1f),
-                enabled = !state.saving,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            )
-            ReminderToggle(
-                checked = draft.notifyOnEstimateOverrun,
-                enabled = !state.saving && editor.capability != TaskEditorCapability.COMPLETED_METADATA,
-                label = "超過通知",
-                modifier = Modifier.weight(1f),
-                onCheckedChange = { controller.updateDraft(draft.copy(notifyOnEstimateOverrun = it)) },
-            )
-        }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                CompactFigmaTextField(
+                    value = draft.estimateText,
+                    onValueChange = { controller.updateDraft(draft.copy(estimateText = it)) },
+                    label = "見積",
+                    modifier = Modifier.weight(1f),
+                    enabled = !state.saving,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                )
+                ReminderToggle(
+                    checked = draft.notifyOnEstimateOverrun,
+                    enabled = !state.saving && editor.capability != TaskEditorCapability.COMPLETED_METADATA,
+                    label = "超過通知",
+                    modifier = Modifier.weight(1f),
+                    onCheckedChange = { controller.updateDraft(draft.copy(notifyOnEstimateOverrun = it)) },
+                )
+            }
         }
         val reminderEnabled = draft.startReminderOffsetMinutes != null || draft.notifyOnEstimateOverrun
         if (reminderEnabled && !reminderPermissionsAvailable(context)) {
@@ -2369,7 +2368,7 @@ private fun TaskEditorForm(
             }
         }
         if (editor.day.isCurrent) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 CompactFigmaTextField(
                     value = draft.actualStartText,
                     onValueChange = { controller.updateDraft(draft.copy(actualStartText = it)) },
@@ -2421,48 +2420,38 @@ private fun CompactFigmaTextField(
 ) {
     var focused by remember { mutableStateOf(false) }
     val borderColor = if (focused) TaskChuteColors.AccentBlue else Color(0xFF343434)
-    BasicTextField(
-        value = value,
-        onValueChange = onValueChange,
-        enabled = enabled,
-        singleLine = true,
-        keyboardOptions = keyboardOptions,
-        textStyle = MaterialTheme.typography.bodyLarge.copy(
-            color = TaskChuteColors.PrimaryText,
-            fontSize = 15.sp,
-        ),
-        modifier = modifier
-            .height(48.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .border(1.dp, borderColor, RoundedCornerShape(16.dp))
-            .onFocusChanged { focused = it.isFocused }
-            .padding(horizontal = 16.dp),
-        decorationBox = { innerTextField ->
-            Box(Modifier.fillMaxSize()) {
-                if (value.isBlank()) {
-                    Text(
-                        label,
-                        color = Color(0xFFA3A3A0),
-                        fontSize = 16.sp,
-                        modifier = Modifier.align(Alignment.CenterStart),
-                        maxLines = 1,
-                    )
-                } else {
-                    Text(
-                        label,
-                        color = Color(0xFFA3A3A0),
-                        fontSize = 12.sp,
-                        modifier = Modifier.align(Alignment.TopStart).offset(y = (-1).dp),
-                        maxLines = 1,
-                    )
+    Box(modifier.height(48.dp)) {
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            enabled = enabled,
+            singleLine = true,
+            keyboardOptions = keyboardOptions,
+            textStyle = MaterialTheme.typography.bodyLarge.copy(
+                color = TaskChuteColors.PrimaryText,
+                fontSize = 15.sp,
+            ),
+            modifier = Modifier.fillMaxSize()
+                .border(1.dp, borderColor, RoundedCornerShape(16.dp))
+                .onFocusChanged { focused = it.isFocused }
+                .padding(horizontal = 16.dp),
+            decorationBox = { innerTextField ->
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
+                    innerTextField()
                 }
-                Box(
-                    modifier = Modifier.fillMaxWidth().align(if (value.isBlank()) Alignment.CenterStart else Alignment.BottomStart)
-                        .padding(bottom = if (value.isBlank()) 0.dp else 2.dp),
-                ) { innerTextField() }
-            }
-        },
-    )
+            },
+        )
+        Text(
+            text = label,
+            color = TaskChuteColors.SecondaryText,
+            fontSize = 12.sp,
+            maxLines = 1,
+            modifier = Modifier.align(Alignment.TopStart)
+                .offset(x = 11.dp, y = (-7).dp)
+                .background(TaskChuteColors.Surface)
+                .padding(horizontal = 4.dp),
+        )
+    }
 }
 
 private fun reminderPermissionsAvailable(context: Context): Boolean {
@@ -2483,29 +2472,58 @@ private fun ReminderOffsetField(
 ) {
     var expanded by remember { mutableStateOf(false) }
     Row(
-        modifier.height(48.dp).clip(RoundedCornerShape(16.dp))
+        modifier.height(48.dp)
             .border(1.dp, Color(0xFF343434), RoundedCornerShape(16.dp))
-            .padding(start = 4.dp, end = 8.dp),
+            .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ReminderCheckbox(
-            checked = value != null,
-            enabled = enabled,
-            description = "開始通知",
-            onCheckedChange = { onValueChange(if (it) 10 else null) },
-        )
-        Text("開始通知", color = TaskChuteColors.PrimaryText, fontSize = 12.sp, maxLines = 1)
-        Spacer(Modifier.weight(1f))
-        Box {
+        val checked = value != null
+        Row(
+            modifier = Modifier.weight(1f).fillMaxHeight()
+                .toggleable(
+                    value = checked,
+                    enabled = enabled,
+                    role = Role.Checkbox,
+                    onValueChange = { onValueChange(if (it) value ?: 0 else null) },
+                )
+                .semantics { contentDescription = "開始通知" },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            ReminderCheckboxVisual(checked)
+            Spacer(Modifier.width(4.dp))
             Text(
-                text = reminderOffsetLabel(value ?: 10),
-                color = if (enabled && value != null) TaskChuteColors.PrimaryText else TaskChuteColors.SecondaryText,
+                "開始通知",
+                color = if (enabled && checked) TaskChuteColors.PrimaryText else TaskChuteColors.SecondaryText,
                 fontSize = 12.sp,
                 maxLines = 1,
-                modifier = Modifier.clip(RoundedCornerShape(8.dp))
-                    .then(if (enabled && value != null) Modifier.clickable { expanded = true } else Modifier)
-                    .padding(horizontal = 4.dp, vertical = 8.dp),
+                overflow = TextOverflow.Ellipsis,
             )
+        }
+        Box {
+            Row(
+                modifier = Modifier
+                    .then(
+                        if (enabled && checked) Modifier.clickable { expanded = true }
+                        else Modifier.semantics { disabled() },
+                    )
+                    .semantics { contentDescription = "開始通知タイミング" }
+                    .padding(start = 2.dp, end = 2.dp, top = 8.dp, bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = reminderOffsetLabel(value ?: 0),
+                    color = if (enabled && checked) TaskChuteColors.PrimaryText else TaskChuteColors.SecondaryText,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    softWrap = false,
+                )
+                Text(
+                    "⌄",
+                    color = if (enabled && checked) TaskChuteColors.PrimaryText else TaskChuteColors.SecondaryText,
+                    fontSize = 14.sp,
+                    modifier = Modifier.padding(start = 4.dp),
+                )
+            }
             DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                 listOf(0, 5, 10, 15, 30, 60).forEach { offset ->
                     DropdownMenuItem(
@@ -2526,10 +2544,21 @@ private fun ReminderToggle(
     modifier: Modifier = Modifier,
     onCheckedChange: (Boolean) -> Unit,
 ) {
-    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        modifier.height(48.dp)
+            .border(1.dp, Color(0xFF343434), RoundedCornerShape(16.dp))
+            .padding(horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         ReminderCheckbox(checked, enabled, label, onCheckedChange)
-        Text(label, color = if (enabled) TaskChuteColors.PrimaryText else TaskChuteColors.SecondaryText,
-            fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Spacer(Modifier.width(4.dp))
+        Text(
+            label,
+            color = if (enabled) TaskChuteColors.PrimaryText else TaskChuteColors.SecondaryText,
+            fontSize = 12.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -2541,7 +2570,7 @@ private fun ReminderCheckbox(
     onCheckedChange: (Boolean) -> Unit,
 ) {
     Box(
-        modifier = Modifier.size(32.dp).toggleable(
+        modifier = Modifier.size(28.dp).toggleable(
             value = checked,
             enabled = enabled,
             role = Role.Checkbox,
@@ -2549,13 +2578,20 @@ private fun ReminderCheckbox(
         ).semantics { contentDescription = description },
         contentAlignment = Alignment.Center,
     ) {
-        Box(
-            Modifier.size(18.dp).clip(RoundedCornerShape(5.dp))
-                .background(if (checked) TaskChuteColors.AccentBlue else Color.Transparent)
-                .border(1.dp, if (checked) TaskChuteColors.AccentBlue else Color(0xFF7F7F7A), RoundedCornerShape(5.dp)),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (checked) Text("✓", color = Color.White, fontSize = 12.sp, lineHeight = 12.sp, fontWeight = FontWeight.Bold)
+        ReminderCheckboxVisual(checked)
+    }
+}
+
+@Composable
+private fun ReminderCheckboxVisual(checked: Boolean) {
+    Box(
+        Modifier.size(18.dp).clip(RoundedCornerShape(3.dp))
+            .background(if (checked) TaskChuteColors.AccentBlue else Color.Transparent)
+            .border(1.dp, if (checked) TaskChuteColors.AccentBlue else Color(0xFF7F7F7A), RoundedCornerShape(3.dp)),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (checked) {
+            Text("✓", color = Color(0xFF191919), fontSize = 12.sp, lineHeight = 12.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -2581,23 +2617,38 @@ private fun ReferencePicker(
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     Box(modifier) {
-        OutlinedButton(
-            onClick = {
-                keyboardController?.hide()
-                focusManager.clearFocus(force = true)
-                focusRequester.requestFocus()
-                onExpandedChange(true)
-            },
-            enabled = enabled,
-            modifier = Modifier.fillMaxWidth().height(48.dp).focusRequester(focusRequester),
-            shape = RoundedCornerShape(16.dp),
-            border = BorderStroke(1.dp, Color(0xFF343434)),
+        Box(
+            modifier = Modifier.fillMaxWidth().height(48.dp)
+                .border(1.dp, Color(0xFF343434), RoundedCornerShape(16.dp))
+                .focusRequester(focusRequester)
+                .clickable(enabled = enabled) {
+                    keyboardController?.hide()
+                    focusManager.clearFocus(force = true)
+                    focusRequester.requestFocus()
+                    onExpandedChange(true)
+                }
+                .padding(horizontal = 16.dp),
+            contentAlignment = Alignment.CenterStart,
         ) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(label)
-                Text(value, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
+            Text(
+                value,
+                color = TaskChuteColors.PrimaryText,
+                fontSize = 15.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
+        Text(
+            text = label,
+            color = TaskChuteColors.SecondaryText,
+            fontSize = 12.sp,
+            maxLines = 1,
+            modifier = Modifier.align(Alignment.TopStart)
+                .offset(x = 11.dp, y = (-7).dp)
+                .background(TaskChuteColors.Surface)
+                .padding(horizontal = 4.dp),
+        )
         DropdownMenu(expanded = expanded, onDismissRequest = { onExpandedChange(false) }) {
             options.forEach { (id, title) ->
                 DropdownMenuItem(text = { Text(title) }, onClick = { onSelected(id) })

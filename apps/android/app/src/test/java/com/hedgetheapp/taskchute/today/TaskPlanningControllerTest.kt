@@ -24,6 +24,7 @@ class TaskPlanningControllerTest {
 
         controller.openCreate(currentDay())
         assertTrue(await { controller.state.references != null })
+        assertNull(controller.state.editor?.draft?.startReminderOffsetMinutes)
         controller.updateDraft(controller.state.editor!!.draft.copy(title = "新しいタスク", estimateText = "15"))
         controller.save()
         controller.save()
@@ -123,6 +124,12 @@ class TaskPlanningControllerTest {
         assertTrue(await { controller.state.editor != null })
         assertEquals(15, controller.state.editor?.draft?.startReminderOffsetMinutes)
         assertEquals(true, controller.state.editor?.draft?.notifyOnEstimateOverrun)
+        controller.dismiss()
+        listOf(0, 60).forEach { offset ->
+            controller.openEdit(currentDay(), task.copy(startReminderOffsetMinutes = offset))
+            assertEquals(offset, controller.state.editor?.draft?.startReminderOffsetMinutes)
+            controller.dismiss()
+        }
         controller.close()
     }
 

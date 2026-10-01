@@ -1,6 +1,9 @@
 package com.hedgetheapp.taskchute.today
 
+import android.graphics.Bitmap
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsFocused
@@ -21,18 +24,21 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.swipeRight
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsProperties
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import java.io.FileOutputStream
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -47,6 +53,14 @@ class TodayScreenInstrumentedTest {
     private var repository: FakeTodayRepository? = null
     private var planningController: TaskPlanningController? = null
     private var directManipulationController: TodayDirectManipulationController? = null
+
+    private fun captureTaskEditorScreenshot(name: String) {
+        val bitmap = composeRule.onRoot().captureToImage().asAndroidBitmap()
+        val output = InstrumentationRegistry.getInstrumentation().targetContext.cacheDir.resolve(name)
+        FileOutputStream(output).use { stream ->
+            check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream))
+        }
+    }
 
     @After
     fun tearDown() {
@@ -1231,10 +1245,18 @@ class TodayScreenInstrumentedTest {
         waitForStatus(TodayLoadStatus.CONTENT)
 
         composeRule.onNodeWithContentDescription("タスクを追加").performClick()
-        composeRule.onNodeWithContentDescription("開始通知").assertIsDisplayed().performClick()
-        composeRule.onNodeWithText("10分前", substring = false).performClick()
-        composeRule.onNodeWithText("15分前", substring = false).performClick()
+        assertNull(planningController?.state?.editor?.draft?.startReminderOffsetMinutes)
+        composeRule.onNodeWithText("開始時刻", substring = false).assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("開始通知タイミング").assertIsNotEnabled()
+        captureTaskEditorScreenshot("d155a-task-editor-reminder-off.png")
+        composeRule.onNodeWithText("開始通知", useUnmergedTree = true).assertIsDisplayed()
+            .performTouchInput { click() }
+        assertEquals(0, planningController?.state?.editor?.draft?.startReminderOffsetMinutes)
+        captureTaskEditorScreenshot("d155a-task-editor-reminder-on-start-time.png")
         composeRule.onNodeWithContentDescription("超過通知").assertIsDisplayed().performClick()
+        captureTaskEditorScreenshot("d155a-task-editor-reminder-on-overrun-on.png")
+        composeRule.onNodeWithContentDescription("開始通知タイミング").assertIsEnabled().performClick()
+        composeRule.onNodeWithText("15分前", substring = false).performClick()
         val editableFields = composeRule.onAllNodes(hasSetTextAction())
         val titleField = editableFields.get(0)
         titleField.assertIsFocused().performTextInput("Plan from Android")
@@ -1242,22 +1264,22 @@ class TodayScreenInstrumentedTest {
             val config = titleField.fetchSemanticsNode().config
             return config.contains(SemanticsProperties.Focused) && config[SemanticsProperties.Focused]
         }
-        fun waitForPickerAndTitleFocusToLeave(label: String) {
+        fun waitForPickerAndTitleFocusToLeave(option: String) {
             composeRule.waitUntil(5_000) {
-                composeRule.onAllNodesWithText(label, substring = false).fetchSemanticsNodes().size >= 2
+                composeRule.onAllNodesWithText(option, substring = false).fetchSemanticsNodes().isNotEmpty()
             }
             composeRule.waitUntil(5_000) { !titleIsFocused() }
-            assertFalse("Task title regained focus while $label picker was open", titleIsFocused())
+            assertFalse("Task title regained focus while $option picker was open", titleIsFocused())
         }
-        composeRule.onAllNodesWithText("Project", substring = false).get(0).performClick()
+        composeRule.onNodeWithText("プロジェクト", substring = false).performClick()
         waitForPickerAndTitleFocusToLeave("Project")
-        composeRule.onAllNodesWithText("Project", substring = false).get(1).performClick()
+        composeRule.onNodeWithText("Project", substring = false).performClick()
         assertFalse("Task title regained focus after Project selection", titleIsFocused())
-        composeRule.onAllNodesWithText("Mode", substring = false).get(0).performClick()
+        composeRule.onNodeWithText("モード", substring = false).performClick()
         waitForPickerAndTitleFocusToLeave("Mode")
-        composeRule.onAllNodesWithText("Mode", substring = false).get(1).performClick()
+        composeRule.onNodeWithText("Mode", substring = false).performClick()
         assertFalse("Task title regained focus after Mode selection", titleIsFocused())
-        composeRule.onAllNodesWithText("Section", substring = false).get(0).performClick()
+        composeRule.onNodeWithText("セクション", substring = false).performClick()
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithText("Morning", substring = false).fetchSemanticsNodes().isNotEmpty()
         }
@@ -1275,12 +1297,14 @@ class TodayScreenInstrumentedTest {
         estimateField.performTextInput("10")
         estimateField.assertIsFocused()
         assertTrue(editableFields.fetchSemanticsNodes().size >= 3)
-        composeRule.onNodeWithText("Task名").assertIsDisplayed()
-        composeRule.onNodeWithText("Project").assertIsDisplayed()
-        composeRule.onNodeWithText("Mode").assertIsDisplayed()
-        composeRule.onNodeWithText("Section").assertIsDisplayed()
-        composeRule.onNodeWithText("開始予定").assertIsDisplayed()
-        composeRule.onNodeWithText("見積（分）").assertExists()
+        listOf("Task名", "セクション", "プロジェクト", "モード", "開始予定", "見積", "開始時間", "終了時間")
+            .forEach { label ->
+                assertEquals(
+                    "Expected one visible $label field label",
+                    1,
+                    composeRule.onAllNodesWithText(label, substring = false).fetchSemanticsNodes().size,
+                )
+            }
         composeRule.waitUntil(10_000) {
             runCatching {
                 composeRule.onNodeWithText("追加", substring = false).assertIsEnabled()
@@ -1688,11 +1712,11 @@ class TodayScreenInstrumentedTest {
             composeRule.onAllNodesWithText("実績タスクの編集").fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithText("実績タスクの編集").assertIsDisplayed()
-        composeRule.onNodeWithText("Project").assertIsDisplayed()
-        composeRule.onNodeWithText("Mode").assertIsDisplayed()
-        assertTrue(composeRule.onAllNodesWithText("Section", substring = false).fetchSemanticsNodes().isEmpty())
+        composeRule.onNodeWithText("プロジェクト").assertIsDisplayed()
+        composeRule.onNodeWithText("モード").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithText("セクション", substring = false).fetchSemanticsNodes().isEmpty())
         assertTrue(composeRule.onAllNodesWithText("開始予定", substring = false).fetchSemanticsNodes().isEmpty())
-        composeRule.onNodeWithText("見積（分）", substring = false).assertIsDisplayed().assertIsEnabled()
+        composeRule.onNodeWithText("見積", substring = false).assertIsDisplayed().assertIsEnabled()
     }
 
     @Test
