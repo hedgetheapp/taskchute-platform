@@ -7,6 +7,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -30,8 +31,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
@@ -228,127 +227,269 @@ private fun ErrorScreen(message: String, onRetry: () -> Unit) = WearList {
 }
 
 @Composable
-private fun TodayScreen(day: WearDay, onStart: (WearTask) -> Unit) = WearList {
-    item {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(formatWearDate(day.logicalDate), style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
-        }
-    }
-    day.sections.forEach { section ->
-        val planned = section.tasks.filter { it.lifecycle == WearLifecycle.PLANNED }
-        if (planned.isEmpty()) return@forEach
-        item(key = "section-${section.id}") {
-            SectionHeader(section)
-        }
-        items(planned, key = { it.id }) { task -> TaskRow(day, task, onStart) }
-    }
-    val unsectionedPlanned = day.unsectionedTasks.filter { it.lifecycle == WearLifecycle.PLANNED }
-    if (unsectionedPlanned.isNotEmpty()) {
-        item(key = "section-unsectioned") {
-            Text("Sectionなし", style = MaterialTheme.typography.titleSmall, modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
-        }
-        items(unsectionedPlanned, key = { it.id }) { task -> TaskRow(day, task, onStart) }
-    }
-    if (day.allTasks.none { it.lifecycle == WearLifecycle.PLANNED }) {
-        item { Text("予定はありません", textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()) }
-    }
-}
-
-@Composable
-private fun SectionHeader(section: WearSection) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text("${formatWearMinute(section.startMinute)} - ${formatWearMinute(section.endMinute)}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.width(5.dp))
-        Text(section.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-    }
-}
-
-@Composable
-private fun TaskRow(day: WearDay, task: WearTask, onStart: (WearTask) -> Unit) {
-    val projection = wearForecast(day, task, Instant.now())
-    val rowShape = RoundedCornerShape(WearPlannedRowSpec.ROW_RADIUS_DP.dp)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(WearPlannedRowSpec.ROW_HEIGHT_DP.dp)
-            .clip(rowShape)
-            .background(Color(0xFF202020))
-            .border(WearPlannedRowSpec.ROW_BORDER_DP.dp, Color(0xFF383838), rowShape)
-            .padding(
-                start = WearPlannedRowSpec.LEADING_PADDING_DP.dp,
-                end = WearPlannedRowSpec.TRAILING_PADDING_DP.dp,
+private fun TodayScreen(day: WearDay, onStart: (WearTask) -> Unit) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val layout = WearLayoutSpec.forAvailableSize(maxWidth.value, maxHeight.value)
+        WearList(
+            contentPadding = PaddingValues(
+                start = layout.horizontalPagePaddingDp.dp,
+                end = layout.horizontalPagePaddingDp.dp,
+                top = layout.todayTopPaddingDp.dp,
+                bottom = layout.todayBottomPaddingDp.dp,
             ),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        ProjectionSlot(projection)
-        Spacer(Modifier.width(WearPlannedRowSpec.COLUMN_GAP_DP.dp))
-        Column(
-            modifier = Modifier.weight(1f),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Text(
-                task.title,
-                style = MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp, fontWeight = FontWeight.Bold),
-                textAlign = TextAlign.Center,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-                Image(painterResource(R.drawable.ic_material_hourglass_top_24), contentDescription = null, modifier = Modifier.size(10.dp))
-                Spacer(Modifier.width(6.dp))
-                Text(task.estimateSeconds?.let { "${it / 60}分" } ?: "--", style = MaterialTheme.typography.labelMedium)
-                if (task.routineDerived) {
-                    Spacer(Modifier.width(6.dp))
-                    Image(painterResource(R.drawable.ic_material_repeat_24), contentDescription = "Routine", modifier = Modifier.size(10.dp))
+            item {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        formatWearDate(day.logicalDate),
+                        modifier = Modifier.width(layout.taskRowWidthDp.dp),
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontSize = layout.scaledFigma(20f).sp,
+                            lineHeight = layout.scaledFigma(24f).sp,
+                            fontWeight = FontWeight.Bold,
+                        ),
+                        color = Color(0xFFF1F1EF),
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.height(layout.groupGapDp.dp))
+                }
+            }
+            day.sections.forEach { section ->
+                val planned = section.tasks.filter { it.lifecycle == WearLifecycle.PLANNED }
+                if (planned.isEmpty()) return@forEach
+                item(key = "section-${section.id}") {
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        SectionHeader(section, layout)
+                    }
+                }
+                items(planned, key = { it.id }) { task ->
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        TaskRow(day, task, onStart, layout)
+                    }
+                }
+            }
+            val unsectionedPlanned = day.unsectionedTasks.filter { it.lifecycle == WearLifecycle.PLANNED }
+            if (unsectionedPlanned.isNotEmpty()) {
+                item(key = "section-unsectioned") {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Text(
+                            "Sectionなし",
+                            modifier = Modifier.width(layout.taskRowWidthDp.dp),
+                            style = MaterialTheme.typography.titleSmall.copy(
+                                fontSize = layout.scaledFigma(14f).sp,
+                                fontWeight = FontWeight.Bold,
+                            ),
+                            color = Color(0xFFF1F1EF),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Spacer(Modifier.height(layout.groupGapDp.dp))
+                    }
+                }
+                items(unsectionedPlanned, key = { it.id }) { task ->
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        TaskRow(day, task, onStart, layout)
+                    }
+                }
+            }
+            if (day.allTasks.none { it.lifecycle == WearLifecycle.PLANNED }) {
+                item {
+                    Text(
+                        "予定はありません",
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.Center,
+                        fontSize = layout.scaledFigma(14f).sp,
+                    )
                 }
             }
         }
-        Spacer(Modifier.width(WearPlannedRowSpec.COLUMN_GAP_DP.dp))
-        Box(
-            modifier = Modifier
-                .size(WearPlannedRowSpec.ACTION_SIZE_DP.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primaryContainer)
-                .border(WearPlannedRowSpec.ACTION_BORDER_DP.dp, Color(0xFF4A4A45), CircleShape)
-                .clickable(role = Role.Button, onClick = { onStart(task) })
-                .semantics { contentDescription = "Start ${task.title}" },
-            contentAlignment = Alignment.Center,
-        ) {
-            Image(
-                painterResource(R.drawable.ic_material_play_arrow_24),
-                contentDescription = null,
-                modifier = Modifier.size(WearPlannedRowSpec.ACTION_ICON_SIZE_DP.dp),
-                colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onPrimaryContainer),
-            )
-        }
     }
 }
 
 @Composable
-private fun ProjectionSlot(projection: WearProjection) {
-    val lineColor = MaterialTheme.colorScheme.outlineVariant
+private fun SectionHeader(section: WearSection, layout: WearLayoutSpec) {
+    Row(
+        modifier = Modifier
+            .width(layout.taskRowWidthDp.dp)
+            .padding(vertical = layout.sectionVerticalPaddingDp.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            "${formatWearMinute(section.startMinute)} - ${formatWearMinute(section.endMinute)}",
+            modifier = Modifier.weight(1f, fill = false),
+            style = MaterialTheme.typography.labelMedium.copy(
+                fontSize = layout.scaledFigma(14f).sp,
+                fontWeight = FontWeight.Medium,
+            ),
+            color = Color(0xFFA3A3A0),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.width(layout.scaledFigma(10f).dp))
+        Text(
+            section.title,
+            modifier = Modifier.weight(1f, fill = false),
+            style = MaterialTheme.typography.titleSmall.copy(
+                fontSize = layout.scaledFigma(14f).sp,
+                fontWeight = FontWeight.Bold,
+            ),
+            color = Color(0xFFF1F1EF),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun TaskRow(day: WearDay, task: WearTask, onStart: (WearTask) -> Unit, layout: WearLayoutSpec) {
+    val projection = wearForecast(day, task, Instant.now())
+    val rowShape = RoundedCornerShape(layout.taskRowRadiusDp.dp)
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            modifier = Modifier
+                .width(layout.taskRowWidthDp.dp)
+                .height(layout.taskRowItemHeightDp.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Row(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .width(layout.taskRowWidthDp.dp)
+                    .height(layout.taskRowVisualHeightDp.dp)
+                    .clip(rowShape)
+                    .background(Color(0xFF202020))
+                    .border(layout.taskRowBorderDp.dp, Color(0xFF383838), rowShape)
+                    .padding(
+                        start = layout.scaledFigma(WearPlannedRowSpec.LEADING_PADDING_FIGMA.toFloat()).dp,
+                        end = layout.scaledFigma(WearPlannedRowSpec.TRAILING_PADDING_FIGMA.toFloat()).dp,
+                    ),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                ProjectionSlot(projection, layout)
+                Spacer(Modifier.width(layout.rowColumnGapDp.dp))
+                Column(
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.Start,
+                    verticalArrangement = Arrangement.spacedBy(layout.scaledFigma(3f).dp),
+                ) {
+                    Text(
+                        task.title,
+                        modifier = Modifier.fillMaxWidth(),
+                        style = MaterialTheme.typography.bodyLarge.copy(
+                            fontSize = layout.scaledFigma(16f).sp,
+                            lineHeight = layout.scaledFigma(19f).sp,
+                            fontWeight = FontWeight.Bold,
+                        ),
+                        color = Color(0xFFF1F1EF),
+                        textAlign = TextAlign.Start,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Image(
+                            painterResource(R.drawable.ic_material_hourglass_top_24),
+                            contentDescription = null,
+                            modifier = Modifier.size(layout.scaledFigma(14f).dp),
+                            colorFilter = ColorFilter.tint(Color(0xFFA3A3A0)),
+                        )
+                        Spacer(Modifier.width(layout.scaledFigma(6f).dp))
+                        Text(
+                            task.estimateSeconds?.let { "${it / 60}分" } ?: "--",
+                            modifier = Modifier.weight(1f, fill = false),
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontSize = layout.scaledFigma(11f).sp,
+                                lineHeight = layout.scaledFigma(14f).sp,
+                            ),
+                            color = Color(0xFFA3A3A0),
+                            maxLines = 1,
+                            overflow = TextOverflow.Clip,
+                        )
+                        if (task.routineDerived) {
+                            Spacer(Modifier.width(layout.scaledFigma(6f).dp))
+                            Image(
+                                painterResource(R.drawable.ic_material_repeat_24),
+                                contentDescription = "Routine",
+                                modifier = Modifier.size(layout.scaledFigma(14f).dp),
+                                colorFilter = ColorFilter.tint(Color(0xFFA3A3A0)),
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.width(layout.rowColumnGapDp.dp))
+                Spacer(Modifier.width(layout.actionTouchTargetDp.dp))
+            }
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = layout.scaledFigma(WearPlannedRowSpec.TRAILING_PADDING_FIGMA.toFloat()).dp)
+                    .size(layout.actionTouchTargetDp.dp)
+                    .clickable(role = Role.Button, onClick = { onStart(task) })
+                    .semantics { contentDescription = "Start ${task.title}" },
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(layout.actionVisualSizeDp.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primaryContainer)
+                        .border(maxOf(0.5f, layout.scaledFigma(1f)).dp, Color(0xFF4A4A45), CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Image(
+                        painterResource(R.drawable.ic_material_play_arrow_24),
+                        contentDescription = null,
+                        modifier = Modifier.size(layout.actionIconSizeDp.dp),
+                        colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onPrimaryContainer),
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.height(layout.groupGapDp.dp))
+    }
+}
+
+@Composable
+private fun ProjectionSlot(projection: WearProjection, layout: WearLayoutSpec) {
+    val lineColor = Color(0xFFA3A3A0)
     Column(
         modifier = Modifier
-            .width(WearPlannedRowSpec.PROJECTION_WIDTH_DP.dp)
-            .height(WearPlannedRowSpec.PROJECTION_HEIGHT_DP.dp),
+            .width(layout.rowProjectionWidthDp.dp)
+            .height(layout.rowProjectionHeightDp.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Text(formatWearMinute(projection.startMinute), style = MaterialTheme.typography.labelSmall, maxLines = 1)
-        Canvas(Modifier.height(WearPlannedRowSpec.PROJECTION_CONNECTOR_HEIGHT_DP.dp).width(1.dp)) {
+        Text(
+            formatWearMinute(projection.startMinute),
+            style = MaterialTheme.typography.labelSmall.copy(fontSize = layout.scaledFigma(11f).sp, fontWeight = FontWeight.Bold),
+            color = Color(0xFFA3A3A0),
+            maxLines = 1,
+        )
+        Canvas(Modifier.height(layout.projectionConnectorHeightDp.dp).width(layout.scaledFigma(0.5f).dp)) {
             drawLine(
                 color = lineColor,
                 start = androidx.compose.ui.geometry.Offset(size.width / 2f, 0f),
                 end = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height),
-                strokeWidth = 1.dp.toPx(),
+                strokeWidth = maxOf(0.5f, layout.scaledFigma(0.5f)).dp.toPx(),
             )
         }
-        Text(formatWearMinute(projection.endMinute), style = MaterialTheme.typography.labelSmall, maxLines = 1)
+        Text(
+            formatWearMinute(projection.endMinute),
+            style = MaterialTheme.typography.labelSmall.copy(fontSize = layout.scaledFigma(11f).sp, fontWeight = FontWeight.Bold),
+            color = Color(0xFFA3A3A0),
+            maxLines = 1,
+        )
     }
 }
 
@@ -363,42 +504,219 @@ private fun RunningScreen(day: WearDay, onComplete: () -> Unit) {
         }
     }
     val progress = wearProgress(day.activeExecution?.startedAt ?: task.activeStartedAt, task.estimateSeconds, now)
-    WearList {
-        item {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("実行中", style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
-                Row(horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                    Image(
-                        painterResource(R.drawable.ic_material_fiber_manual_record_24),
-                        contentDescription = null,
-                        modifier = Modifier.size(14.dp),
-                        colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onBackground),
-                    )
-                    Spacer(Modifier.width(5.dp))
-                    Text(task.title, style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                }
-                if (progress.fraction != null) {
-                    ProgressRing(progress.fraction, Modifier.size(100.dp))
-                    TimeLine(R.drawable.ic_material_schedule_24, "経過", formatWearDuration(progress.elapsedSeconds))
-                    TimeLine(
-                        R.drawable.ic_material_hourglass_top_24,
-                        if ((progress.overrunSeconds ?: 0L) > 0) "超過" else "残り",
-                        if ((progress.overrunSeconds ?: 0L) > 0) formatWearDuration(progress.overrunSeconds) else formatWearDuration(progress.remainingSeconds),
-                    )
-                } else {
-                    TimeLine(R.drawable.ic_material_schedule_24, "経過", formatWearDuration(progress.elapsedSeconds))
-                }
-                Button(
-                    onClick = onComplete,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val layout = WearLayoutSpec.forAvailableSize(maxWidth.value, maxHeight.value)
+        val overrun = progress.overrunSeconds?.takeIf { it > 0L }
+        val hasRemaining = progress.fraction != null
+        Column(
+            modifier = Modifier
+                .width(layout.runningContentWidthDp.dp)
+                .align(Alignment.Center),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(layout.scaledFigma(10f).dp),
+        ) {
+            Text(
+                "実行中",
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontSize = layout.scaledFigma(12f).sp,
+                    lineHeight = layout.scaledFigma(15f).sp,
+                    fontWeight = FontWeight.Bold,
+                ),
+                color = Color(0xFF52A3FF),
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+            )
+            Row(
+                modifier = Modifier.width(layout.runningTitleGroupWidthDp.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Image(
+                    painterResource(R.drawable.ic_material_fiber_manual_record_24),
+                    contentDescription = null,
+                    modifier = Modifier.size(layout.scaledFigma(16f).dp),
+                    colorFilter = ColorFilter.tint(Color(0xFFF1F1EF)),
+                )
+                Spacer(Modifier.width(layout.scaledFigma(6f).dp))
+                Text(
+                    task.title,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontSize = layout.scaledFigma(24f).sp,
+                        lineHeight = layout.scaledFigma(30f).sp,
+                        fontWeight = FontWeight.Bold,
                     ),
+                    color = Color(0xFFF1F1EF),
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Row(
+                modifier = Modifier.width(layout.runningContentWidthDp.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                RunningTimeMetric(
+                    icon = R.drawable.ic_material_schedule_filled_24,
+                    time = formatWearDuration(progress.elapsedSeconds),
+                    widthDp = layout.runningTimeGroupWidthDp,
+                    iconSizeDp = layout.scaledFigma(18f),
+                    gapDp = layout.scaledFigma(6f),
+                    fontSizeSp = layout.scaledFigma(20f),
+                    color = Color(0xFFF1F1EF),
+                    fontWeight = FontWeight.Bold,
+                    description = "経過 ${formatWearDuration(progress.elapsedSeconds)}",
+                    trailing = false,
+                )
+                if (hasRemaining) {
+                    val rightTime = if (overrun != null) "+${formatWearDuration(overrun)}" else formatWearDuration(progress.remainingSeconds)
+                    RunningTimeMetric(
+                        icon = R.drawable.ic_material_hourglass_top_filled_24,
+                        time = rightTime,
+                        widthDp = layout.runningTimeGroupWidthDp,
+                        iconSizeDp = layout.scaledFigma(18f),
+                        gapDp = layout.scaledFigma(6f),
+                        fontSizeSp = layout.scaledFigma(20f),
+                        color = if (overrun != null) Color(0xFFEBA44E) else Color(0xFFA3A3A0),
+                        fontWeight = FontWeight.Medium,
+                        description = if (overrun != null) "超過 ${formatWearDuration(overrun)}" else "残り ${formatWearDuration(progress.remainingSeconds)}",
+                        trailing = true,
+                    )
+                }
+            }
+            if (progress.fraction != null) {
+                val trackShape = RoundedCornerShape(layout.runningProgressRadiusDp.dp)
+                Box(
+                    modifier = Modifier
+                        .width(layout.runningProgressWidthDp.dp)
+                        .height(layout.runningProgressHeightDp.dp)
+                        .clip(trackShape)
+                        .background(Color(0xFF303030)),
                 ) {
-                    Image(painterResource(R.drawable.ic_material_stop_24), contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("Complete")
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .fillMaxWidth(progress.fraction.coerceIn(0f, 1f))
+                            .height(layout.runningProgressHeightDp.dp)
+                            .background(if (overrun != null) Color(0xFFEBA44E) else MaterialTheme.colorScheme.primary, trackShape),
+                    )
+                }
+            }
+            Box(
+                modifier = Modifier
+                    .size(layout.actionTouchTargetDp.dp)
+                    .clickable(role = Role.Button, onClick = onComplete)
+                    .semantics { contentDescription = "Complete ${task.title}" },
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(layout.runningCompleteVisualSizeDp.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.errorContainer)
+                        .border(maxOf(0.5f, layout.scaledFigma(1f)).dp, Color(0xFF4A4A45), CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Image(
+                        painterResource(R.drawable.ic_material_stop_filled_24),
+                        contentDescription = null,
+                        modifier = Modifier.size(layout.runningCompleteIconSizeDp.dp),
+                        colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onErrorContainer),
+                    )
+                }
+            }
+            day.nextPlannedTask?.let { RunningNextTaskCard(it, layout) }
+        }
+    }
+}
+
+@Composable
+private fun RunningTimeMetric(
+    icon: Int,
+    time: String,
+    widthDp: Float,
+    iconSizeDp: Float,
+    gapDp: Float,
+    fontSizeSp: Float,
+    color: Color,
+    fontWeight: FontWeight,
+    description: String,
+    trailing: Boolean,
+) {
+    Row(
+        modifier = Modifier.width(widthDp.dp).semantics { contentDescription = description },
+        horizontalArrangement = if (trailing) Arrangement.End else Arrangement.Start,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Image(painterResource(icon), contentDescription = null, modifier = Modifier.size(iconSizeDp.dp), colorFilter = ColorFilter.tint(color))
+        Spacer(Modifier.width(gapDp.dp))
+        Text(
+            time,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.titleLarge.copy(fontSize = fontSizeSp.sp, lineHeight = (fontSizeSp * 1.2f).sp, fontWeight = fontWeight),
+            color = color,
+            textAlign = if (trailing) TextAlign.End else TextAlign.Start,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Clip,
+        )
+    }
+}
+
+@Composable
+private fun RunningNextTaskCard(task: WearTask, layout: WearLayoutSpec) {
+    val cardShape = RoundedCornerShape(layout.scaledFigma(18f).dp)
+    Column(
+        modifier = Modifier
+            .width(layout.runningContentWidthDp.dp)
+            .height(layout.runningNextCardHeightDp.dp)
+            .clip(cardShape)
+            .background(Color(0xFF202020))
+            .padding(horizontal = layout.scaledFigma(14f).dp, vertical = layout.scaledFigma(10f).dp),
+        verticalArrangement = Arrangement.spacedBy(layout.scaledFigma(2f).dp),
+    ) {
+        Text(
+            "次",
+            style = MaterialTheme.typography.labelSmall.copy(fontSize = layout.scaledFigma(10f).sp, fontWeight = FontWeight.Bold),
+            color = Color(0xFFA3A3A0),
+            maxLines = 1,
+        )
+        Text(
+            "${task.title}  ·  ${task.estimateSeconds?.let { "${it / 60}分" } ?: "--"}",
+            modifier = Modifier.fillMaxWidth(),
+            style = MaterialTheme.typography.bodyMedium.copy(fontSize = layout.scaledFigma(13f).sp, fontWeight = FontWeight.Medium),
+            color = Color(0xFFF1F1EF),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun CompletedScreen(state: WearScreenState.Completed, onStart: (WearTask) -> Unit) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val layout = WearLayoutSpec.forAvailableSize(maxWidth.value, maxHeight.value)
+        WearList {
+            item {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Image(painterResource(R.drawable.ic_material_check_circle_24), contentDescription = null, modifier = Modifier.size(34.dp))
+                    Text("完了しました", style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+                    Text(state.completedTask.title, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    state.completedTask.completedDurationSeconds?.let {
+                        TimeLine(R.drawable.ic_material_schedule_24, "実績", formatWearDuration(it.toLong()))
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Text("次のTask", style = MaterialTheme.typography.titleSmall, textAlign = TextAlign.Center)
+                    val next = state.day.nextPlannedTask
+                    if (next == null) {
+                        Text("予定はありません", textAlign = TextAlign.Center)
+                    } else {
+                        TaskRow(state.day, next, onStart, layout)
+                    }
                 }
             }
         }
@@ -416,41 +734,11 @@ private fun TimeLine(icon: Int, label: String, time: String) {
 }
 
 @Composable
-private fun ProgressRing(progress: Float, modifier: Modifier = Modifier) {
-    val indicator = MaterialTheme.colorScheme.primary
-    val track = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.18f)
-    Canvas(modifier) {
-        val stroke = 5.dp.toPx()
-        drawArc(track, -90f, 360f, false, style = Stroke(stroke))
-        drawArc(indicator, -90f, 360f * progress.coerceIn(0f, 1f), false, style = Stroke(stroke, cap = StrokeCap.Round))
-    }
-}
-
-@Composable
-private fun CompletedScreen(state: WearScreenState.Completed, onStart: (WearTask) -> Unit) = WearList {
-    item {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Image(painterResource(R.drawable.ic_material_check_circle_24), contentDescription = null, modifier = Modifier.size(34.dp))
-            Text("完了しました", style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
-            Text(state.completedTask.title, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            state.completedTask.completedDurationSeconds?.let {
-                TimeLine(R.drawable.ic_material_schedule_24, "実績", formatWearDuration(it.toLong()))
-            }
-            Spacer(Modifier.height(4.dp))
-            Text("次のTask", style = MaterialTheme.typography.titleSmall, textAlign = TextAlign.Center)
-            val next = state.day.nextPlannedTask
-            if (next == null) {
-                Text("予定はありません", textAlign = TextAlign.Center)
-            } else {
-                TaskRow(state.day, next, onStart)
-            }
-        }
-    }
-}
-
-@Composable
-private fun WearList(content: androidx.wear.compose.foundation.lazy.TransformingLazyColumnScope.() -> Unit) {
-    TransformingLazyColumn(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 18.dp), content = content)
+private fun WearList(
+    contentPadding: PaddingValues = PaddingValues(horizontal = 12.dp, vertical = 18.dp),
+    content: androidx.wear.compose.foundation.lazy.TransformingLazyColumnScope.() -> Unit,
+) {
+    TransformingLazyColumn(contentPadding = contentPadding, content = content)
 }
 
 private fun formatWearDate(value: String): String = runCatching {
