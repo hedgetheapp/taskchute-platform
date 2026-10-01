@@ -211,3 +211,30 @@ Required evidence is impact-based and must distinguish:
 A phone-only Android emulator or compile PASS is not Pixel Watch verification. Production migration /
 deploy, Release, fallback authentication, restore, destructive cleanup, branch creation, PR, merge,
 tag, and Release are outside this work item.
+
+## D-154C responsive Today / Running visual corrective — 2026-10-01
+
+This implementation follow-up applies the approved Figma visual direction to the existing Wear
+client without changing D-154 product, lifecycle, authentication, or server semantics:
+
+- Translate the 454-unit Figma references (`561:33` Today/Idle, `561:52` Running,
+  `561:87` Complete/Next, and `561:21` Planned row) using the measured Compose available width and
+  height, capped at the reference scale. Planned rows retain the approximate `350 / 454` width
+  ratio on normal displays, a flexible one-line Task title, projection/estimate/Routine context, and
+  a 48dp accessible Start hit target whose visual control scales with the display.
+- Keep `TransformingLazyColumn` and existing scrolling/Crown behavior. Date and Section labels,
+  projection, metadata, and row geometry scale with the available round-screen size rather than
+  treating Figma frame pixels as fixed Compose dp.
+- Running uses the Figma horizontal 8-unit progress track and elapsed/remaining values aligned at
+  opposite ends, without visible elapsed/remaining labels; the completion control is a circular
+  icon-only Stop action with an accessible semantic label, followed by the Next Task card when
+  present. D-134 estimate/progress/missing-estimate/overrun calculations and existing lifecycle
+  command authority remain unchanged.
+- Start and Stop retain Material 3 semantic action-color roles. No new dependency or server/API,
+  shared-contract, schema, migration, authentication, realtime, or persistence behavior is added.
+
+Source review, Wear JVM, Kotlin compile, instrumentation compile, assemble, and exact-SHA CI passed.
+No Wear AVD profile or connected adb target was available, so this evidence does not claim runtime
+or Figma screenshot verification. The Product Owner-reported D-154B paired Phone/Pixel Watch
+functional smoke is functional-only and does not verify D-154C visual fidelity; D-154C physical
+visual smoke remains `NOT_RUN / PRODUCT_OWNER_MANUAL`.

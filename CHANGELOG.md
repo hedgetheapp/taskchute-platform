@@ -1,3 +1,9 @@
+### D-154C Wear Today / Running Figma fidelity and responsive corrective — 2026-10-01
+
+- Wear Today layout now scales the 454-unit Figma frames to measured Compose size while retaining `TransformingLazyColumn`, a flexible Task-title column, projection, estimate and Routine marker. Running now uses a horizontal progress track, left/right elapsed and remaining values, an icon-only circular Stop action, and a Next Task card; D-134 progress/overrun and D-154B auth/realtime/lifecycle semantics are unchanged.
+- Implementation `59d929fe97bbb8546e6a1dcafed1f28b7bb5ae83`; Wear JVM `36 / 36`, main/instrumentation Kotlin compile, debug assemble and `git diff --check` PASS. Exact-SHA CI `36813125625` PASS; signed Wear APK artifact `11140442673` and Phone APK artifact `11140517608` are recorded in `docs/TEST_MATRIX.md`.
+- No Wear AVD profile or adb target was available, so runtime visual verification is `NOT_RUN`; D-154C physical visual smoke remains `NOT_RUN / PRODUCT_OWNER_MANUAL`. Product Owner-reported D-154B paired-device functional smoke is recorded as `PASS / USER_CONFIRMED` only, not as visual evidence. No Worker/API/shared contract/schema/migration/dependency/nonprod or production change; Production `NOT_RUN`, Released `NO`.
+
 ### D-154B Wear foreground realtime / UUIDv7 / Start UI corrective — 2026-10-01
 
 - Wear lifecycle IDs now follow the existing UUIDv7 contract. While foreground, Wear listens to the existing invalidate-only realtime route with its own session cookie, coalesces Day invalidations, reloads canonical Today, stops realtime on background, and refreshes on resume. Planned Start row now matches Figma `561:21` responsive card and fixed 48dp action geometry.
