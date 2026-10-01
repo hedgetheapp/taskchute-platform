@@ -65,6 +65,8 @@ interface EntryRow {
   project_title: string | null;
   estimate_seconds: number | null;
   planned_start_minute: number | null;
+  start_reminder_offset_minutes: number | null;
+  notify_on_estimate_overrun: number;
   live_mode_id: string | null;
   live_mode_title: string | null;
   snapshot_mode_id: string | null;
@@ -150,6 +152,8 @@ function toEntryRow(value: unknown): EntryRow {
     project_title: projectTitle,
     estimate_seconds: row.estimate_seconds === null ? null : requiredNumber(row, "estimate_seconds"),
     planned_start_minute: row.planned_start_minute === null ? null : requiredNumber(row, "planned_start_minute"),
+    start_reminder_offset_minutes: row.start_reminder_offset_minutes === null ? null : requiredNumber(row, "start_reminder_offset_minutes"),
+    notify_on_estimate_overrun: requiredNumber(row, "notify_on_estimate_overrun"),
     live_mode_id: row.live_mode_id === null ? null : requiredString(row, "live_mode_id"),
     live_mode_title: row.live_mode_title === null ? null : requiredString(row, "live_mode_title"),
     snapshot_mode_id: row.snapshot_mode_id === null ? null : requiredString(row, "snapshot_mode_id"),
@@ -373,6 +377,7 @@ async function loadEstablishedProjection(
     db
       .prepare(
         `SELECT e.id AS entry_id, e.section_id, e.position, e.lifecycle_state, e.estimate_seconds, e.planned_start_minute,
+                e.start_reminder_offset_minutes, e.notify_on_estimate_overrun,
                 e.routine_occurrence_id, ro.routine_definition_id,
                 c.routine_definition_id AS future_routine_definition_id,
                 rd.end_logical_date AS routine_end_logical_date,
@@ -477,6 +482,8 @@ async function loadEstablishedProjection(
       lifecycle_state: row.lifecycle_state,
       estimate_seconds: row.estimate_seconds,
       planned_start_minute: row.planned_start_minute,
+      start_reminder_offset_minutes: row.start_reminder_offset_minutes,
+      notify_on_estimate_overrun: row.notify_on_estimate_overrun === 1,
       ...(row.future_routine_definition_id === null ? {} : { future_routine_definition_id: row.future_routine_definition_id }),
       mode: (row.lifecycle_state === "planned"
         ? (row.live_mode_id && row.live_mode_title ? { id: row.live_mode_id, title: row.live_mode_title, source: "live" as const } : null)

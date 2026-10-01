@@ -79,6 +79,8 @@ class TaskPlanningController(
                     estimateText = task.estimateSeconds?.let { (it / 60).toString() } ?: "",
                     actualStartText = formatExecutionClock(task.activeStartedAt ?: task.firstStartedAt, day.establishmentTimezone),
                     actualEndText = formatExecutionClock(task.lastEndedAt, day.establishmentTimezone),
+                    startReminderOffsetMinutes = task.startReminderOffsetMinutes,
+                    notifyOnEstimateOverrun = task.notifyOnEstimateOverrun,
                 ),
                 capability = capability,
             ),

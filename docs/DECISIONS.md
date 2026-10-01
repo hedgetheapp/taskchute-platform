@@ -2471,3 +2471,10 @@ Status: **Approved / Implemented / Integrated / focused PASS / Notes and Daily A
 Canonical Decision: `docs/decisions/D-152_ANDROID_DOCUMENT_REALTIME_INVALIDATION_V01.md`
 
 D-152は、D-108のAndroid Today invalidation boundaryをNotes / DailyのDocument projectionへ狭く拡張する。既存realtime envelopeへbounded targeted/wildcard document scopeを追加し、Workerはsuccessful standalone / Task Primary / Project Primary / Daily mutation後に既存Document authorityをinvalidateする。Androidはcleanなloaded stateだけをcanonical HTTPで再取得し、dirty / saving / blocked draftを保持してsave/reconcile boundaryで再試行する。Daily realtime eventはEnsureやmaterializationを起こさない。Document payload、Markdown/autosave/CAS、polling、offline、schema、migration、dependency、production semanticsは変更しない。
+## D-155 — Android Task Reminders v0.1
+
+Status: **Approved / implementation in progress**
+
+Canonical Decision: `docs/decisions/D-155_ANDROID_TASK_REMINDERS_V01.md`.
+
+Android Today may store independent per-Entry start-reminder (`0/5/10/15/30/60` minutes or off) and estimate-overrun intent. Entry data is server-canonical; exact AlarmManager scheduling and minimal reboot/deduplication registry are device-local. D-155 uses `SCHEDULE_EXACT_ALARM` plus Android 13+ notification permission, with no inexact fallback. Ordinary Android notifications may bridge to Wear OS through the platform notification path. Routine settings are occurrence-only, new occurrences default off, and D-145 fixed-start/forecast semantics remain separate.

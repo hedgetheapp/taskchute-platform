@@ -108,6 +108,25 @@ class TaskPlanningControllerTest {
     }
 
     @Test
+    fun reminderIntentRequiresPlannedStartAndPositiveEstimateAndSurvivesEditPrefill() {
+        assertNotNull(TaskEditorValidation.validate(TaskEditorDraft(title = "A", startReminderOffsetMinutes = 5)).errorMessage)
+        assertNotNull(TaskEditorValidation.validate(TaskEditorDraft(title = "A", plannedStartText = "09:00",
+            notifyOnEstimateOverrun = true)).errorMessage)
+        val valid = TaskEditorValidation.validate(TaskEditorDraft(title = "A", plannedStartText = "09:00",
+            estimateText = "25", startReminderOffsetMinutes = 0, notifyOnEstimateOverrun = true))
+        assertEquals(0, valid.input?.startReminderOffsetMinutes)
+        assertEquals(true, valid.input?.notifyOnEstimateOverrun)
+
+        val task = plannedTask().copy(startReminderOffsetMinutes = 15, notifyOnEstimateOverrun = true)
+        val controller = controller(FakePlanningRepository())
+        controller.openEdit(currentDay(), task)
+        assertTrue(await { controller.state.editor != null })
+        assertEquals(15, controller.state.editor?.draft?.startReminderOffsetMinutes)
+        assertEquals(true, controller.state.editor?.draft?.notifyOnEstimateOverrun)
+        controller.close()
+    }
+
+    @Test
     fun plannedStartAcceptsCompactAndPaddedInputAndKeepsExtendedHours() {
         assertEquals(540, TaskEditorValidation.validate(TaskEditorDraft(title = "A", plannedStartText = "900")).input?.plannedStartMinute)
         assertEquals(540, TaskEditorValidation.validate(TaskEditorDraft(title = "A", plannedStartText = "0900")).input?.plannedStartMinute)

@@ -25,6 +25,8 @@ data class TaskEditorDraft(
     val estimateText: String = "",
     val actualStartText: String = "",
     val actualEndText: String = "",
+    val startReminderOffsetMinutes: Int? = null,
+    val notifyOnEstimateOverrun: Boolean = false,
 )
 
 data class TaskEditorState(
@@ -63,6 +65,8 @@ data class NormalizedTaskInput(
     val clientEntryId: String? = null,
     val projectTitle: String? = null,
     val modeTitle: String? = null,
+    val startReminderOffsetMinutes: Int? = null,
+    val notifyOnEstimateOverrun: Boolean = false,
 )
 
 data class TaskEditorValidation(
@@ -80,6 +84,16 @@ data class TaskEditorValidation(
             val estimateMinutes = draft.estimateText.trim().toLongOrNull()
             if (draft.estimateText.isNotBlank() && (estimateMinutes == null || estimateMinutes <= 0L || estimateMinutes > Int.MAX_VALUE / 60L)) {
                 return invalid("見積は1分以上の整数で入力してください。")
+            }
+            if (draft.startReminderOffsetMinutes != null
+                && draft.startReminderOffsetMinutes !in setOf(0, 5, 10, 15, 30, 60)) {
+                return invalid("開始通知の時間を選択してください。")
+            }
+            if (draft.startReminderOffsetMinutes != null && plannedStart == null) {
+                return invalid("開始通知には開始予定が必要です。")
+            }
+            if (draft.notifyOnEstimateOverrun && (estimateMinutes == null || estimateMinutes <= 0L)) {
+                return invalid("超過通知には1分以上の見積が必要です。")
             }
             val actualStart = if (draft.actualStartText.isBlank()) null else parseActualClock(draft.actualStartText)
                 ?: return invalid("開始時間は HH:mm（900 / 0900 も可）で入力してください。")
@@ -102,6 +116,8 @@ data class TaskEditorValidation(
                     estimateSeconds = estimateMinutes?.times(60L)?.toInt(),
                     actualStartMinute = actualStart,
                     actualEndMinute = actualEnd,
+                    startReminderOffsetMinutes = draft.startReminderOffsetMinutes,
+                    notifyOnEstimateOverrun = draft.notifyOnEstimateOverrun,
                 ),
                 errorMessage = null,
             )

@@ -127,6 +127,97 @@ describe.sequential("D-060 UpdateTaskMetadata", () => {
       .rejects.toMatchObject({ code: "resource_conflict" });
   });
 
+  it("updates reminder intent with Entry CAS, preserves placement, and replays once", async () => {
+    const fixture = await seed();
+    await env.APP_DB.prepare(`UPDATE entries SET planned_start_minute = 600, estimate_seconds = 900 WHERE id = ?`)
+      .bind(fixture.entryId).run();
+    const beforeRevision = await env.APP_DB.prepare("SELECT placement_revision FROM taskchute_days WHERE id = ?")
+      .bind(fixture.dayId).first<number>("placement_revision");
+    const request = { operation_id: uuidv7(), entry_id: fixture.entryId, task_id: fixture.taskId,
+      expected_title: "Before", expected_project_id: fixture.projectId, title: "Before", project_id: fixture.projectId,
+      start_reminder_offset_minutes: 5, notify_on_estimate_overrun: true };
+    const updated = await updateTaskMetadata(env.APP_DB, fixture.userId, request, now);
+    expect(await updateTaskMetadata(env.APP_DB, fixture.userId, request, now)).toEqual(updated);
+    expect(await env.APP_DB.prepare(`SELECT start_reminder_offset_minutes, notify_on_estimate_overrun FROM entries WHERE id = ?`)
+      .bind(fixture.entryId).first()).toEqual({ start_reminder_offset_minutes: 5, notify_on_estimate_overrun: 1 });
+    expect(await env.APP_DB.prepare("SELECT placement_revision FROM taskchute_days WHERE id = ?")
+      .bind(fixture.dayId).first<number>("placement_revision")).toEqual(beforeRevision);
+    await expect(updateTaskMetadata(env.APP_DB, fixture.userId, { ...request, operation_id: uuidv7(),
+      start_reminder_offset_minutes: 15, expected_title: "stale" }, now)).rejects.toMatchObject({ code: "resource_conflict" });
+    const disabled = { ...request, operation_id: uuidv7(), start_reminder_offset_minutes: null,
+      notify_on_estimate_overrun: false };
+    await updateTaskMetadata(env.APP_DB, fixture.userId, disabled, now);
+    expect(await env.APP_DB.prepare(`SELECT start_reminder_offset_minutes, notify_on_estimate_overrun FROM entries WHERE id = ?`)
+      .bind(fixture.entryId).first()).toEqual({ start_reminder_offset_minutes: null, notify_on_estimate_overrun: 0 });
+  });
+
+  it("supports a future Routine occurrence reminder without changing its Definition and rejects invalid states", async () => {
+    const fixture = await seedEstablishedFuture();
+    const routineId = uuidv7(); const occurrenceId = uuidv7();
+    await env.APP_DB.batch([
+      env.APP_DB.prepare(`INSERT INTO routine_definitions
+        (id, app_user_id, task_id, recurrence_type, start_logical_date, default_section_id,
+         default_planned_start_minute, default_estimate_seconds, materialization_order, defaults_revision, created_at)
+        VALUES (?, ?, ?, 'daily', '2026-09-06', ?, 360, 1200, 1, 0, ?)`)
+        .bind(routineId, fixture.userId, fixture.taskId,
+          (await env.APP_DB.prepare("SELECT id FROM sections WHERE app_user_id = ? ORDER BY sort_order LIMIT 1")
+            .bind(fixture.userId).first<{id:string}>())!.id, createdAt),
+      env.APP_DB.prepare(`INSERT INTO routine_occurrences (id, app_user_id, routine_definition_id, origin_taskchute_day_id, created_at)
+        VALUES (?, ?, ?, ?, ?)`).bind(occurrenceId, fixture.userId, routineId, fixture.futureDayId, createdAt),
+      env.APP_DB.prepare("UPDATE entries SET routine_occurrence_id = ?, planned_start_minute = 360, estimate_seconds = 1200 WHERE id = ?")
+        .bind(occurrenceId, fixture.futureEntryId),
+    ]);
+    const request = { operation_id: uuidv7(), entry_id: fixture.futureEntryId, task_id: fixture.taskId,
+      expected_title: "Before", expected_project_id: fixture.projectId, title: "Before", project_id: fixture.projectId,
+      start_reminder_offset_minutes: 15 };
+    await updateTaskMetadata(env.APP_DB, fixture.userId, request, now);
+    expect(await env.APP_DB.prepare("SELECT start_reminder_offset_minutes FROM entries WHERE id = ?")
+      .bind(fixture.futureEntryId).first()).toEqual({ start_reminder_offset_minutes: 15 });
+    expect(await env.APP_DB.prepare("SELECT default_planned_start_minute, default_estimate_seconds FROM routine_definitions WHERE id = ?")
+      .bind(routineId).first()).toEqual({ default_planned_start_minute: 360, default_estimate_seconds: 1200 });
+    await expect(updateTaskMetadata(env.APP_DB, fixture.userId, { ...request, operation_id: uuidv7(),
+      start_reminder_offset_minutes: 5, title: "Changed" }, now)).rejects.toMatchObject({ code: "resource_conflict" });
+    await env.APP_DB.prepare("UPDATE entries SET estimate_seconds = NULL WHERE id = ?").bind(fixture.futureEntryId).run();
+    await expect(updateTaskMetadata(env.APP_DB, fixture.userId, { ...request, operation_id: uuidv7(),
+      start_reminder_offset_minutes: null, notify_on_estimate_overrun: true }, now)).rejects.toMatchObject({ code: "resource_conflict" });
+  });
+
+  it("allows only overrun reminder mutation for ordinary and Routine Running Entries", async () => {
+    const ordinary = await seed();
+    await env.APP_DB.prepare("UPDATE entries SET lifecycle_state = 'running', estimate_seconds = 900 WHERE id = ?")
+      .bind(ordinary.entryId).run();
+    const runningRequest = { operation_id: uuidv7(), entry_id: ordinary.entryId, task_id: ordinary.taskId,
+      expected_title: "Before", expected_project_id: ordinary.projectId, title: "Before", project_id: ordinary.projectId,
+      notify_on_estimate_overrun: true };
+    await updateTaskMetadata(env.APP_DB, ordinary.userId, runningRequest, now);
+    expect(await env.APP_DB.prepare("SELECT notify_on_estimate_overrun, start_reminder_offset_minutes FROM entries WHERE id = ?")
+      .bind(ordinary.entryId).first()).toEqual({ notify_on_estimate_overrun: 1, start_reminder_offset_minutes: null });
+    await expect(updateTaskMetadata(env.APP_DB, ordinary.userId, { ...runningRequest, operation_id: uuidv7(),
+      start_reminder_offset_minutes: 5 }, now)).rejects.toMatchObject({ code: "resource_conflict" });
+
+    const routine = await seed();
+    const routineId = uuidv7(); const occurrenceId = uuidv7();
+    await env.APP_DB.batch([
+      env.APP_DB.prepare(`INSERT INTO routine_definitions
+        (id, app_user_id, task_id, recurrence_type, start_logical_date, default_estimate_seconds,
+         materialization_order, defaults_revision, created_at)
+        VALUES (?, ?, ?, 'daily', '2026-09-05', 900, 1, 0, ?)`)
+        .bind(routineId, routine.userId, routine.taskId, createdAt),
+      env.APP_DB.prepare(`INSERT INTO routine_occurrences (id, app_user_id, routine_definition_id, origin_taskchute_day_id, created_at)
+        VALUES (?, ?, ?, ?, ?)`).bind(occurrenceId, routine.userId, routineId, routine.dayId, createdAt),
+      env.APP_DB.prepare("UPDATE entries SET lifecycle_state = 'running', estimate_seconds = 600, routine_occurrence_id = ? WHERE id = ?")
+        .bind(occurrenceId, routine.entryId),
+    ]);
+    const routineRequest = { operation_id: uuidv7(), entry_id: routine.entryId, task_id: routine.taskId,
+      expected_title: "Before", expected_project_id: routine.projectId, title: "Before", project_id: routine.projectId,
+      notify_on_estimate_overrun: true };
+    await updateTaskMetadata(env.APP_DB, routine.userId, routineRequest, now);
+    expect(await env.APP_DB.prepare("SELECT default_estimate_seconds FROM routine_definitions WHERE id = ?")
+      .bind(routineId).first()).toEqual({ default_estimate_seconds: 900 });
+    expect(await env.APP_DB.prepare("SELECT estimate_seconds, notify_on_estimate_overrun, lifecycle_state FROM entries WHERE id = ?")
+      .bind(routine.entryId).first()).toEqual({ estimate_seconds: 600, notify_on_estimate_overrun: 1, lifecycle_state: "running" });
+  });
+
   it("rejects a missing owner Project and non-eligible Routine/cross-owner access without changing Task data", async () => {
     const fixture = await seed();
     const missingProject = { operation_id: uuidv7(), entry_id: fixture.entryId, task_id: fixture.taskId,

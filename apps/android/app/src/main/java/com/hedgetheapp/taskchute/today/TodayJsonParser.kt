@@ -68,6 +68,8 @@ internal object TodayJsonParser {
             firstStartedAt = executionSummary?.nullableStringField("first_started_at"),
             lastEndedAt = executionSummary?.nullableStringField("last_ended_at"),
             completedDurationSeconds = executionSummary?.nullableIntField("completed_duration_seconds"),
+            startReminderOffsetMinutes = value.nullableIntField("start_reminder_offset_minutes"),
+            notifyOnEstimateOverrun = value.nullableBooleanField("notify_on_estimate_overrun") ?: false,
             routineDerived = value.nullableObjectField("routine") != null,
             taskId = task.stringField("id"),
             primaryDocumentId = task.nullableStringField("primary_document_id"),
@@ -104,6 +106,12 @@ internal object TodayJsonParser {
 
     private fun JsonValue.Object.booleanField(name: String): Boolean =
         (fields[name] as? JsonValue.BooleanValue)?.value ?: error("Today field '$name' must be boolean")
+
+    private fun JsonValue.Object.nullableBooleanField(name: String): Boolean? = when (val value = fields[name]) {
+        null, JsonValue.Null -> null
+        is JsonValue.BooleanValue -> value.value
+        else -> error("Today field '$name' must be boolean or null")
+    }
 
     private fun JsonValue.Object.intField(name: String): Int =
         nullableIntField(name) ?: error("Today field '$name' must be an integer")

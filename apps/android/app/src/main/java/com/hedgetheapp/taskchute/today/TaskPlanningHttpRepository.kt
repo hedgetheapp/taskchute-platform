@@ -35,7 +35,7 @@ class TaskPlanningHttpRepository(
         val operationId = UUIDv7.next()
         val logicalDateJson = if (day.isCurrent) "" else ",\"logical_date\":\"${JsonEncoding.escape(day.logicalDate)}\""
         val addBody = """
-            {"operation_id":"${JsonEncoding.escape(operationId)}","task_id":"${JsonEncoding.escape(taskId)}","entry_id":"${JsonEncoding.escape(entryId)}","project_id":${nullableString(input.projectId)},"mode_id":${nullableString(input.modeId)},"title":"${JsonEncoding.escape(input.title)}","taskchute_day_id":"${JsonEncoding.escape(day.taskChuteDayId!!)}","section_id":${nullableString(input.sectionId)},"expected_placement_revision":${day.placementRevision}$logicalDateJson}
+            {"operation_id":"${JsonEncoding.escape(operationId)}","task_id":"${JsonEncoding.escape(taskId)}","entry_id":"${JsonEncoding.escape(entryId)}","project_id":${nullableString(input.projectId)},"mode_id":${nullableString(input.modeId)},"title":"${JsonEncoding.escape(input.title)}","taskchute_day_id":"${JsonEncoding.escape(day.taskChuteDayId!!)}","section_id":${nullableString(input.sectionId)},"planned_start_minute":${input.plannedStartMinute ?: "null"},"expected_placement_revision":${day.placementRevision},"estimate_seconds":${input.estimateSeconds ?: "null"},"start_reminder_offset_minutes":${input.startReminderOffsetMinutes ?: "null"},"notify_on_estimate_overrun":${input.notifyOnEstimateOverrun}$logicalDateJson}
         """.trimIndent()
         val addPath = if (day.isCurrent) "/api/v1/taskchute-days/current/entries" else "/api/v1/taskchute-days/by-logical-date/entries"
         val added = execute("POST", addPath, addBody)
@@ -44,21 +44,6 @@ class TaskPlanningHttpRepository(
             is PlanningHttpResult.Failure -> return PlanningSaveResult.Failure(added.message)
             is PlanningHttpResult.Success -> runCatching { TaskPlanningJsonParser.parsePlacementRevision(added.body) }
                 .getOrElse { return PlanningSaveResult.Failure("タスク追加結果を読み取れませんでした。再試行してください。") }
-        }
-        if (input.estimateSeconds != null) {
-            when (val result = executeEstimate(entryId, null, input.estimateSeconds)) {
-                PlanningSaveResult.Success -> Unit
-                is PlanningSaveResult.SuccessWithRevision -> placementRevision = result.placementRevision
-                else -> return result
-            }
-        }
-        val defaultStart = day.sections.firstOrNull { it.id == input.sectionId }?.startMinute
-        if (input.plannedStartMinute != defaultStart) {
-            when (val result = executePlannedStart(entryId, day.taskChuteDayId, input.plannedStartMinute, placementRevision)) {
-                PlanningSaveResult.Success -> Unit
-                is PlanningSaveResult.SuccessWithRevision -> placementRevision = result.placementRevision
-                else -> return result
-            }
         }
         if (input.actualStartMinute != null) {
             when (val result = executeActualTimesForCreatedEntry(day, input, entryId, placementRevision)) {
@@ -92,6 +77,10 @@ class TaskPlanningHttpRepository(
                     else -> return result
                 }
             }
+            when (val result = updateReminderSettingsIfChanged(task, taskId, input.title, currentProjectId, routineInput)) {
+                PlanningSaveResult.Success, is PlanningSaveResult.SuccessWithRevision -> Unit
+                else -> return result
+            }
             if (editor.day.isCurrent && routineInput.actualStartMinute != null) {
                 return when (val actualResult = executeActualTimes(editor, routineInput, placementRevision)) {
                     PlanningSaveResult.Success -> PlanningSaveResult.SuccessWithRevision(placementRevision)
@@ -124,6 +113,10 @@ class TaskPlanningHttpRepository(
                     PlanningSaveResult.Success, is PlanningSaveResult.SuccessWithRevision -> Unit
                     else -> return result
                 }
+            }
+            when (val result = updateReminderSettingsIfChanged(task, taskId, task.title, currentProjectId, input)) {
+                PlanningSaveResult.Success, is PlanningSaveResult.SuccessWithRevision -> Unit
+                else -> return result
             }
             return executeActualTimes(editor, input, editor.day.placementRevision)
         }
@@ -164,7 +157,31 @@ class TaskPlanningHttpRepository(
                 else -> return result
             }
         }
+        when (val result = updateReminderSettingsIfChanged(task, taskId, input.title, input.projectId, input)) {
+            PlanningSaveResult.Success, is PlanningSaveResult.SuccessWithRevision -> Unit
+            else -> return result
+        }
         return executeActualTimes(editor, input, placementRevision)
+    }
+
+    private fun updateReminderSettingsIfChanged(
+        task: TodayTask,
+        taskId: String,
+        title: String,
+        projectId: String?,
+        input: NormalizedTaskInput,
+    ): PlanningSaveResult {
+        val startChanged = task.startReminderOffsetMinutes != input.startReminderOffsetMinutes
+        val overrunChanged = task.notifyOnEstimateOverrun != input.notifyOnEstimateOverrun
+        if (!startChanged && !overrunChanged) return PlanningSaveResult.Success
+        val fields = buildString {
+            if (startChanged) append(",\"start_reminder_offset_minutes\":${input.startReminderOffsetMinutes ?: "null"}")
+            if (overrunChanged) append(",\"notify_on_estimate_overrun\":${input.notifyOnEstimateOverrun}")
+        }
+        val body = """
+            {"operation_id":"${JsonEncoding.escape(UUIDv7.next())}","entry_id":"${JsonEncoding.escape(task.id)}","task_id":"${JsonEncoding.escape(taskId)}","expected_title":"${JsonEncoding.escape(title)}","expected_project_id":${nullableString(projectId)},"title":"${JsonEncoding.escape(title)}","project_id":${nullableString(projectId)}$fields}
+        """.trimIndent()
+        return execute("POST", "/api/v1/entries/${JsonEncoding.pathSegment(task.id)}/task-metadata", body).toSaveResult()
     }
 
     private fun executeActualTimes(

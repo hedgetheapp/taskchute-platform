@@ -97,6 +97,8 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.Role
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -104,7 +106,17 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.content.Context
+import android.Manifest
+import android.app.AlarmManager
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 import android.view.accessibility.AccessibilityManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
@@ -173,6 +185,22 @@ fun TodayScreen(
     var headerDatePickerVisible by remember { mutableStateOf(false) }
     var taskNoteSheetTask by remember { mutableStateOf<TodayTask?>(null) }
     val context = LocalContext.current
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        controller.refresh()
+    }
+    val requestReminderAccess: () -> Unit = {
+        val notificationsAllowed = Build.VERSION.SDK_INT < 33 || ContextCompat.checkSelfPermission(
+            context, Manifest.permission.POST_NOTIFICATIONS,
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!notificationsAllowed && Build.VERSION.SDK_INT >= 33) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            if (Build.VERSION.SDK_INT >= 31 && !alarmManager.canScheduleExactAlarms()) {
+                context.startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:${context.packageName}")))
+            }
+        }
+    }
     val deterministicFailureToken = directManipulationController?.state?.let { directState ->
         if (directState.errorMessage == DETERMINISTIC_FAILURE_MESSAGE) directState.deterministicFailureToken else null
     }
@@ -399,7 +427,7 @@ fun TodayScreen(
                 Box(Modifier.width(40.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFFA3A3A0).copy(alpha = 0.55f)))
             },
         ) {
-            TaskEditorForm(planningController, planningState, Modifier.imePadding())
+            TaskEditorForm(planningController, planningState, Modifier.imePadding(), requestReminderAccess)
         }
     }
 
@@ -2208,7 +2236,13 @@ private val RUNNING_PROGRESS_TRACK_COLOR = Color(0xFF3C464E)
 private val RUNNING_OVERRUN_COLOR = Color(0xFFEBA44E)
 
 @Composable
-private fun TaskEditorForm(controller: TaskPlanningController, state: TaskPlanningUiState, modifier: Modifier) {
+private fun TaskEditorForm(
+    controller: TaskPlanningController,
+    state: TaskPlanningUiState,
+    modifier: Modifier,
+    onRequestReminderAccess: () -> Unit,
+) {
+    val context = LocalContext.current
     val editor = state.editor ?: return
     val references = state.references
     val draft = editor.draft
@@ -2254,78 +2288,105 @@ private fun TaskEditorForm(controller: TaskPlanningController, state: TaskPlanni
                 enabled = titleEditable && !state.saving,
             )
         }
-        ReferencePicker(
-            label = "Project",
-            value = selectedProject?.title ?: "なし",
-            expanded = projectExpanded,
-            onExpandedChange = { projectExpanded = it },
-            options = listOf(null to "なし") + (references?.projects?.map { it.id to it.title } ?: emptyList()),
-            onSelected = { controller.updateDraft(draft.copy(projectId = it)); projectExpanded = false },
-            enabled = references != null && !state.loadingReferences && !state.saving && !routinePlanning,
-        )
-        ReferencePicker(
-            label = "Mode",
-            value = selectedMode?.title ?: "なし",
-            expanded = modeExpanded,
-            onExpandedChange = { modeExpanded = it },
-            options = listOf(null to "なし") + (references?.modes?.map { it.id to it.title } ?: emptyList()),
-            onSelected = { controller.updateDraft(draft.copy(modeId = it)); modeExpanded = false },
-            enabled = references != null && !state.loadingReferences && !state.saving && !routinePlanning,
-        )
         if (planningFieldsEditable) {
-        ReferencePicker(
-            label = "Section",
-            value = selectedSection?.title ?: "なし",
-            expanded = sectionExpanded,
-            onExpandedChange = { sectionExpanded = it },
-            options = listOf(null to "なし") + editor.day.sections.map { it.id to it.title },
-            onSelected = {
-                controller.updateDraft(
-                    draft.copy(
-                        sectionId = it,
-                        plannedStartText = formatEditorMinute(editor.day.sections.firstOrNull { section -> section.id == it }?.startMinute),
-                    ),
+            ReferencePicker(
+                label = "Section",
+                value = selectedSection?.title ?: "なし",
+                expanded = sectionExpanded,
+                onExpandedChange = { sectionExpanded = it },
+                options = listOf(null to "なし") + editor.day.sections.map { it.id to it.title },
+                onSelected = {
+                    controller.updateDraft(
+                        draft.copy(
+                            sectionId = it,
+                            plannedStartText = formatEditorMinute(editor.day.sections.firstOrNull { section -> section.id == it }?.startMinute),
+                        ),
+                    )
+                    sectionExpanded = false
+                },
+                enabled = !state.saving,
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ReferencePicker(
+                label = "Project", value = selectedProject?.title ?: "なし", expanded = projectExpanded,
+                onExpandedChange = { projectExpanded = it },
+                options = listOf(null to "なし") + (references?.projects?.map { it.id to it.title } ?: emptyList()),
+                onSelected = { controller.updateDraft(draft.copy(projectId = it)); projectExpanded = false },
+                enabled = references != null && !state.loadingReferences && !state.saving && !routinePlanning,
+                modifier = Modifier.weight(1f),
+            )
+            ReferencePicker(
+                label = "Mode", value = selectedMode?.title ?: "なし", expanded = modeExpanded,
+                onExpandedChange = { modeExpanded = it },
+                options = listOf(null to "なし") + (references?.modes?.map { it.id to it.title } ?: emptyList()),
+                onSelected = { controller.updateDraft(draft.copy(modeId = it)); modeExpanded = false },
+                enabled = references != null && !state.loadingReferences && !state.saving && !routinePlanning,
+                modifier = Modifier.weight(1f),
+            )
+        }
+        if (planningFieldsEditable) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                CompactFigmaTextField(
+                    value = draft.plannedStartText,
+                    onValueChange = { controller.updateDraft(draft.copy(plannedStartText = it)) },
+                    label = "開始予定",
+                    modifier = Modifier.weight(1f),
+                    enabled = !state.saving,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 )
-                sectionExpanded = false
-            },
-            enabled = !state.saving,
-        )
-        CompactFigmaTextField(
-            value = draft.plannedStartText,
-            onValueChange = { controller.updateDraft(draft.copy(plannedStartText = it)) },
-            label = "開始予定",
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !state.saving,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-        )
+                ReminderOffsetField(
+                    value = draft.startReminderOffsetMinutes,
+                    enabled = !state.saving,
+                    onValueChange = { controller.updateDraft(draft.copy(startReminderOffsetMinutes = it)) },
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
         if (planningFieldsEditable || editor.capability == TaskEditorCapability.RUNNING_METADATA) {
-        CompactFigmaTextField(
-            value = draft.estimateText,
-            onValueChange = { controller.updateDraft(draft.copy(estimateText = it)) },
-            label = "見積（分）",
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !state.saving,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            CompactFigmaTextField(
+                value = draft.estimateText,
+                onValueChange = { controller.updateDraft(draft.copy(estimateText = it)) },
+                label = "見積（分）",
+                modifier = Modifier.weight(1f),
+                enabled = !state.saving,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            )
+            ReminderToggle(
+                checked = draft.notifyOnEstimateOverrun,
+                enabled = !state.saving && editor.capability != TaskEditorCapability.COMPLETED_METADATA,
+                label = "超過通知",
+                modifier = Modifier.weight(1f),
+                onCheckedChange = { controller.updateDraft(draft.copy(notifyOnEstimateOverrun = it)) },
+            )
+        }
+        }
+        val reminderEnabled = draft.startReminderOffsetMinutes != null || draft.notifyOnEstimateOverrun
+        if (reminderEnabled && !reminderPermissionsAvailable(context)) {
+            TextButton(onClick = onRequestReminderAccess, enabled = !state.saving) {
+                Text("通知の権限を設定", color = TaskChuteColors.AccentBlue)
+            }
         }
         if (editor.day.isCurrent) {
-            CompactFigmaTextField(
-                value = draft.actualStartText,
-                onValueChange = { controller.updateDraft(draft.copy(actualStartText = it)) },
-                label = "開始時間",
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !state.saving,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            )
-            CompactFigmaTextField(
-                value = draft.actualEndText,
-                onValueChange = { controller.updateDraft(draft.copy(actualEndText = it)) },
-                label = "終了時間",
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !state.saving,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                CompactFigmaTextField(
+                    value = draft.actualStartText,
+                    onValueChange = { controller.updateDraft(draft.copy(actualStartText = it)) },
+                    label = "開始時間",
+                    modifier = Modifier.weight(1f),
+                    enabled = !state.saving,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                )
+                CompactFigmaTextField(
+                    value = draft.actualEndText,
+                    onValueChange = { controller.updateDraft(draft.copy(actualEndText = it)) },
+                    label = "終了時間",
+                    modifier = Modifier.weight(1f),
+                    enabled = !state.saving,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                )
+            }
         }
         state.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         if (references == null && !state.loadingReferences) {
@@ -2404,6 +2465,107 @@ private fun CompactFigmaTextField(
     )
 }
 
+private fun reminderPermissionsAvailable(context: Context): Boolean {
+    val notificationsAllowed = Build.VERSION.SDK_INT < 33 || ContextCompat.checkSelfPermission(
+        context, Manifest.permission.POST_NOTIFICATIONS,
+    ) == PackageManager.PERMISSION_GRANTED
+    val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+    val exactAlarmAllowed = Build.VERSION.SDK_INT < 31 || alarmManager.canScheduleExactAlarms()
+    return notificationsAllowed && exactAlarmAllowed
+}
+
+@Composable
+private fun ReminderOffsetField(
+    value: Int?,
+    enabled: Boolean,
+    onValueChange: (Int?) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Row(
+        modifier.height(48.dp).clip(RoundedCornerShape(16.dp))
+            .border(1.dp, Color(0xFF343434), RoundedCornerShape(16.dp))
+            .padding(start = 4.dp, end = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        ReminderCheckbox(
+            checked = value != null,
+            enabled = enabled,
+            description = "開始通知",
+            onCheckedChange = { onValueChange(if (it) 10 else null) },
+        )
+        Text("開始通知", color = TaskChuteColors.PrimaryText, fontSize = 12.sp, maxLines = 1)
+        Spacer(Modifier.weight(1f))
+        Box {
+            Text(
+                text = reminderOffsetLabel(value ?: 10),
+                color = if (enabled && value != null) TaskChuteColors.PrimaryText else TaskChuteColors.SecondaryText,
+                fontSize = 12.sp,
+                maxLines = 1,
+                modifier = Modifier.clip(RoundedCornerShape(8.dp))
+                    .then(if (enabled && value != null) Modifier.clickable { expanded = true } else Modifier)
+                    .padding(horizontal = 4.dp, vertical = 8.dp),
+            )
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                listOf(0, 5, 10, 15, 30, 60).forEach { offset ->
+                    DropdownMenuItem(
+                        text = { Text(reminderOffsetLabel(offset)) },
+                        onClick = { onValueChange(offset); expanded = false },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReminderToggle(
+    checked: Boolean,
+    enabled: Boolean,
+    label: String,
+    modifier: Modifier = Modifier,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        ReminderCheckbox(checked, enabled, label, onCheckedChange)
+        Text(label, color = if (enabled) TaskChuteColors.PrimaryText else TaskChuteColors.SecondaryText,
+            fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
+private fun ReminderCheckbox(
+    checked: Boolean,
+    enabled: Boolean,
+    description: String,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Box(
+        modifier = Modifier.size(32.dp).toggleable(
+            value = checked,
+            enabled = enabled,
+            role = Role.Checkbox,
+            onValueChange = onCheckedChange,
+        ).semantics { contentDescription = description },
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            Modifier.size(18.dp).clip(RoundedCornerShape(5.dp))
+                .background(if (checked) TaskChuteColors.AccentBlue else Color.Transparent)
+                .border(1.dp, if (checked) TaskChuteColors.AccentBlue else Color(0xFF7F7F7A), RoundedCornerShape(5.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (checked) Text("✓", color = Color.White, fontSize = 12.sp, lineHeight = 12.sp, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+private fun reminderOffsetLabel(minutes: Int): String = when (minutes) {
+    0 -> "開始時刻"
+    60 -> "1時間前"
+    else -> "${minutes}分前"
+}
+
 @Composable
 private fun ReferencePicker(
     label: String,
@@ -2413,11 +2575,12 @@ private fun ReferencePicker(
     options: List<Pair<String?, String>>,
     onSelected: (String?) -> Unit,
     enabled: Boolean,
+    modifier: Modifier = Modifier,
 ) {
     val focusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
-    Box {
+    Box(modifier) {
         OutlinedButton(
             onClick = {
                 keyboardController?.hide()

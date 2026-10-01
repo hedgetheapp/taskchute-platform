@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { startEntry } from "../worker/application/entry-lifecycle";
-import { addTaskToDay } from "../worker/application/add-task-to-day";
+import { addTaskToDay, isAddTaskToDayRequest } from "../worker/application/add-task-to-day";
 import { isMoveEntryRequest, moveEntry, setEntryEstimate } from "../worker/application/entry-planning";
 import { loadCurrentTaskChuteDay } from "../worker/application/load-current-day";
 import { setEntryPlannedStart } from "../worker/application/planned-start";
@@ -330,6 +330,78 @@ describe.sequential("Dogfood Day B2 planned start", () => {
       .bind(completed).first()).toEqual({ lifecycle_state: "completed", planned_start_minute: 840, section_id: fixture.sectionIds[1] });
     expect(await env.APP_DB.prepare("SELECT started_at, ended_at FROM executions WHERE id = ?")
       .bind(executionId).first()).toEqual({ started_at: "2026-08-28T14:00:00.000Z", ended_at: "2026-08-28T14:34:00.000Z" });
+  });
+
+  it("atomically creates an Entry with reminder intent, preserves legacy omission defaults, and replays once", async () => {
+    const fixture = await seedTimedDay();
+    const taskId = uuidv7();
+    const entryId = uuidv7();
+    const request = {
+      operation_id: uuidv7(), task_id: taskId, entry_id: entryId, project_id: null, title: "D155 disposable",
+      taskchute_day_id: fixture.dayId, section_id: fixture.sectionIds[1]!, expected_placement_revision: 0,
+      estimate_seconds: 1500, start_reminder_offset_minutes: 10, notify_on_estimate_overrun: true,
+    };
+    expect(isAddTaskToDayRequest(request)).toBe(true);
+    expect(isAddTaskToDayRequest({ ...request, start_reminder_offset_minutes: 7 })).toBe(false);
+    expect(isAddTaskToDayRequest({ ...request, notify_on_estimate_overrun: "yes" })).toBe(false);
+
+    const created = await addTaskToDay(env.APP_DB, fixture.userId, request, createdAt);
+    expect(await addTaskToDay(env.APP_DB, fixture.userId, request, createdAt)).toEqual(created);
+    expect(await env.APP_DB.prepare(`SELECT estimate_seconds, planned_start_minute, start_reminder_offset_minutes,
+        notify_on_estimate_overrun FROM entries WHERE app_user_id = ? AND id = ?`)
+      .bind(fixture.userId, entryId).first()).toEqual({
+        estimate_seconds: 1500, planned_start_minute: 540, start_reminder_offset_minutes: 10,
+        notify_on_estimate_overrun: 1,
+      });
+    expect(await revision(fixture.dayId)).toBe(1);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM tasks WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, taskId).first<number>("count")).toBe(1);
+
+    const legacyTaskId = uuidv7(); const legacyEntryId = uuidv7();
+    await addTaskToDay(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), task_id: legacyTaskId, entry_id: legacyEntryId, project_id: null,
+      title: "Legacy create", taskchute_day_id: fixture.dayId, section_id: fixture.sectionIds[1]!,
+      expected_placement_revision: 1,
+    }, createdAt);
+    expect(await env.APP_DB.prepare(`SELECT estimate_seconds, start_reminder_offset_minutes,
+        notify_on_estimate_overrun FROM entries WHERE app_user_id = ? AND id = ?`)
+      .bind(fixture.userId, legacyEntryId).first()).toEqual({
+        estimate_seconds: null, start_reminder_offset_minutes: null, notify_on_estimate_overrun: 0,
+      });
+
+    const canonicalDay = await loadCurrentTaskChuteDay(env.APP_DB, fixture.userId, "2026-08-28T12:00:00.000Z");
+    expect(canonicalDay.sections.flatMap((section) => section.entries).find((entry) => entry.id === entryId))
+      .toMatchObject({
+        estimate_seconds: 1500,
+        planned_start_minute: 540,
+        start_reminder_offset_minutes: 10,
+        notify_on_estimate_overrun: true,
+      });
+  });
+
+  it("atomically resolves a custom create-time planned start to its canonical Section", async () => {
+    const fixture = await seedTimedDay();
+    const request = {
+      operation_id: uuidv7(), task_id: uuidv7(), entry_id: uuidv7(), project_id: null,
+      title: "D155 custom planned start", taskchute_day_id: fixture.dayId,
+      // The editor's prior Section selection may be stale after the user changes the clock value.
+      section_id: fixture.sectionIds[0]!, planned_start_minute: 600,
+      expected_placement_revision: 0, estimate_seconds: 1500,
+      start_reminder_offset_minutes: 5, notify_on_estimate_overrun: true,
+    };
+    expect(isAddTaskToDayRequest(request)).toBe(true);
+    expect(isAddTaskToDayRequest({ ...request, placement: { kind: "section_start" } })).toBe(false);
+
+    const created = await addTaskToDay(env.APP_DB, fixture.userId, request, createdAt);
+    expect(created).toMatchObject({ section_id: fixture.sectionIds[1], placement_revision: 1 });
+    expect(await addTaskToDay(env.APP_DB, fixture.userId, request, createdAt)).toEqual(created);
+    expect(await env.APP_DB.prepare(`SELECT section_id, planned_start_minute, estimate_seconds,
+        start_reminder_offset_minutes, notify_on_estimate_overrun FROM entries WHERE id = ?`)
+      .bind(request.entry_id).first()).toEqual({
+        section_id: fixture.sectionIds[1], planned_start_minute: 600, estimate_seconds: 1500,
+        start_reminder_offset_minutes: 5, notify_on_estimate_overrun: 1,
+      });
+    expect(await revision(fixture.dayId)).toBe(1);
   });
 
   it("uses extended wall-clock boundaries, derives Section placement, clears, and replays exactly once", async () => {

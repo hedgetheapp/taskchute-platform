@@ -1231,6 +1231,10 @@ class TodayScreenInstrumentedTest {
         waitForStatus(TodayLoadStatus.CONTENT)
 
         composeRule.onNodeWithContentDescription("タスクを追加").performClick()
+        composeRule.onNodeWithContentDescription("開始通知").assertIsDisplayed().performClick()
+        composeRule.onNodeWithText("10分前", substring = false).performClick()
+        composeRule.onNodeWithText("15分前", substring = false).performClick()
+        composeRule.onNodeWithContentDescription("超過通知").assertIsDisplayed().performClick()
         val editableFields = composeRule.onAllNodes(hasSetTextAction())
         val titleField = editableFields.get(0)
         titleField.assertIsFocused().performTextInput("Plan from Android")
@@ -1288,6 +1292,8 @@ class TodayScreenInstrumentedTest {
         composeRule.waitUntil(15_000) { planningRepository.saveCalls.get() == 1 }
         assertEquals(1, planningRepository.saveCalls.get())
         assertEquals("Plan from Android", planningRepository.lastInput?.title)
+        assertEquals(15, planningRepository.lastInput?.startReminderOffsetMinutes)
+        assertEquals(true, planningRepository.lastInput?.notifyOnEstimateOverrun)
         composeRule.waitUntil(5_000) {
             runCatching {
                 composeRule.onNodeWithContentDescription("タスクを追加").assertIsDisplayed()

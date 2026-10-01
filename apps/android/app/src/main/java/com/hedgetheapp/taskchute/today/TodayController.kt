@@ -16,6 +16,7 @@ class TodayController(
     private val repository: TodayRepository,
     private val onUnauthorized: () -> Unit,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
+    private val onCanonicalDayLoaded: (TodayDay) -> Unit = {},
 ) {
     var state by mutableStateOf(TodayUiState())
         private set
@@ -152,6 +153,7 @@ class TodayController(
             when (result) {
                 is TodayResult.Success -> {
                     if (publishDay(result.day, startedOptimisticGeneration)) {
+                        onCanonicalDayLoaded(result.day)
                         flushDeferredRealtimeReload(visible = false)
                     }
                 }

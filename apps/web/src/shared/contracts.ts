@@ -408,6 +408,10 @@ export interface EntryProjection {
   lifecycle_state: "planned" | "running" | "completed";
   estimate_seconds: number | null;
   planned_start_minute: number | null;
+  /** D-155: per-Entry local Android start reminder; absent is tolerated for old fixtures/clients. */
+  start_reminder_offset_minutes?: number | null;
+  /** D-155: per-Entry local Android overrun notification; absent is off. */
+  notify_on_estimate_overrun?: boolean;
   /** D-116B source correlation; this does not make the Entry a RoutineOccurrence. */
   future_routine_definition_id?: string | null;
   /** D-068 Mode projection; optional for compatibility with older fixtures/clients. */
@@ -521,6 +525,12 @@ export interface AddTaskToDayRequest {
   logical_date?: string;
   section_id: string | null;
   expected_placement_revision: number;
+  /** D-155 optional Entry-owned reminder intent. Omission keeps the legacy defaults (off). */
+  estimate_seconds?: number | null;
+  start_reminder_offset_minutes?: number | null;
+  notify_on_estimate_overrun?: boolean;
+  /** Optional atomic create-time planned start; the Worker resolves its authoritative Section. */
+  planned_start_minute?: number | null;
   /** D-074: optional server-authoritative insertion intent for current-Day keyboard insertion. */
   placement?: AddTaskPlacementIntent;
 }
@@ -794,6 +804,9 @@ export interface UpdateTaskMetadataRequest {
   expected_project_id: string | null;
   title: string;
   project_id: string | null;
+  /** D-155 partial Entry reminder patch; omitted fields are unchanged, null disables start reminder. */
+  start_reminder_offset_minutes?: number | null;
+  notify_on_estimate_overrun?: boolean;
 }
 
 export interface UpdateTaskMetadataResult {

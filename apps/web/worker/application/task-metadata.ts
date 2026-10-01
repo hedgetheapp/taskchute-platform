@@ -11,13 +11,20 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export function isUpdateTaskMetadataRequest(value: unknown): value is UpdateTaskMetadataRequest {
   if (!isRecord(value) || "user_id" in value) return false;
+  const validReminderOffset = value.start_reminder_offset_minutes === undefined
+    || value.start_reminder_offset_minutes === null
+    || (typeof value.start_reminder_offset_minutes === "number"
+      && Number.isSafeInteger(value.start_reminder_offset_minutes)
+      && [0, 5, 10, 15, 30, 60].includes(value.start_reminder_offset_minutes));
   return typeof value.operation_id === "string" && isUuidV7(value.operation_id)
     && typeof value.entry_id === "string" && isUuidV7(value.entry_id)
     && typeof value.task_id === "string" && isUuidV7(value.task_id)
     && typeof value.expected_title === "string"
     && (value.expected_project_id === null || (typeof value.expected_project_id === "string" && isUuidV7(value.expected_project_id)))
     && typeof value.title === "string" && value.title.trim().length > 0 && value.title.trim().length <= 300
-    && (value.project_id === null || (typeof value.project_id === "string" && isUuidV7(value.project_id)));
+    && (value.project_id === null || (typeof value.project_id === "string" && isUuidV7(value.project_id)))
+    && validReminderOffset
+    && (value.notify_on_estimate_overrun === undefined || typeof value.notify_on_estimate_overrun === "boolean");
 }
 
 function normalizedRequest(request: UpdateTaskMetadataRequest): UpdateTaskMetadataRequest {
@@ -42,8 +49,13 @@ interface MetadataRow {
   task_title: string;
   entry_task_title: string;
   task_project_id: string | null;
+  task_project_title: string | null;
   lifecycle_state: string;
   routine_occurrence_id: string | null;
+  planned_start_minute: number | null;
+  estimate_seconds: number | null;
+  start_reminder_offset_minutes: number | null;
+  notify_on_estimate_overrun: number;
   logical_date: string;
   project_snapshot_entry_id: string | null;
   historical_project_id: string | null;
@@ -71,7 +83,9 @@ export async function updateTaskMetadata(
     : null;
   const row = await db.prepare(`SELECT e.task_id, t.title AS task_title,
       COALESCE(ets.task_title, t.title) AS entry_task_title, t.project_id AS task_project_id,
+      p.title AS task_project_title,
       e.taskchute_day_id, e.lifecycle_state, e.routine_occurrence_id, d.logical_date,
+      e.planned_start_minute, e.estimate_seconds, e.start_reminder_offset_minutes, e.notify_on_estimate_overrun,
       eps.entry_id AS project_snapshot_entry_id, eps.project_id AS historical_project_id,
       eps.project_title AS historical_project_title,
       EXISTS (SELECT 1 FROM executions x WHERE x.app_user_id = e.app_user_id AND x.entry_id = e.id
@@ -80,11 +94,88 @@ export async function updateTaskMetadata(
     JOIN taskchute_days d ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
     LEFT JOIN entry_task_snapshots ets ON ets.app_user_id = e.app_user_id AND ets.entry_id = e.id
     LEFT JOIN entry_project_snapshots eps ON eps.app_user_id = e.app_user_id AND eps.entry_id = e.id
+    LEFT JOIN projects p ON p.app_user_id = t.app_user_id AND p.id = t.project_id
     WHERE e.app_user_id = ? AND e.id = ? AND e.task_id = ?`).bind(appUserId, request.entry_id, request.task_id)
     .first<MetadataRow>();
   if (!row) return reject(db, appUserId, request, requestFingerprint, "resource_not_found", "Entry or Task is unavailable");
   const isCurrent = settings !== null && row.logical_date === currentLogicalDate;
   const isFuture = settings !== null && currentLogicalDate !== null && row.logical_date > currentLogicalDate;
+  const hasStartReminderPatch = Object.prototype.hasOwnProperty.call(request, "start_reminder_offset_minutes");
+  const hasOverrunReminderPatch = Object.prototype.hasOwnProperty.call(request, "notify_on_estimate_overrun");
+  if (hasStartReminderPatch || hasOverrunReminderPatch) {
+    const metadataUnchanged = request.title === row.task_title && request.expected_title === row.task_title
+      && request.project_id === row.task_project_id && request.expected_project_id === row.task_project_id;
+    const plannedEligible = (isCurrent || isFuture) && row.lifecycle_state === "planned";
+    const runningEligible = isCurrent && row.lifecycle_state === "running";
+    const startOffset = hasStartReminderPatch ? request.start_reminder_offset_minutes! : row.start_reminder_offset_minutes;
+    const notifyOnOverrun = hasOverrunReminderPatch ? request.notify_on_estimate_overrun! : row.notify_on_estimate_overrun === 1;
+    if (!metadataUnchanged || (!plannedEligible && !runningEligible)
+      || (runningEligible && hasStartReminderPatch)
+      || (startOffset !== null && row.planned_start_minute === null)
+      || (notifyOnOverrun && (row.estimate_seconds === null || row.estimate_seconds <= 0))) {
+      return reject(db, appUserId, request, requestFingerprint, "resource_conflict", "Reminder settings are not eligible for this Entry state or planning data");
+    }
+    const lifecycle = row.lifecycle_state;
+    const allowedDate = isCurrent ? "d.logical_date = ?" : "d.logical_date > ?";
+    const expectedDate = currentLogicalDate!;
+    const assertionId = `task-metadata:${request.operation_id}`;
+    const updatedResult: UpdateTaskMetadataResult = {
+      entry_id: request.entry_id, task_id: request.task_id,
+      title: row.task_title,
+      project: row.task_project_id === null || row.task_project_title === null
+        ? null : { id: row.task_project_id, title: row.task_project_title },
+    };
+    const nextStartOffset = hasStartReminderPatch ? request.start_reminder_offset_minutes! : row.start_reminder_offset_minutes;
+    const nextOverrun = hasOverrunReminderPatch ? (request.notify_on_estimate_overrun ? 1 : 0) : row.notify_on_estimate_overrun;
+    try {
+      const [update, assertion, operation] = await db.batch([
+        db.prepare(`UPDATE entries SET
+            start_reminder_offset_minutes = CASE WHEN ? = 1 THEN ? ELSE start_reminder_offset_minutes END,
+            notify_on_estimate_overrun = CASE WHEN ? = 1 THEN ? ELSE notify_on_estimate_overrun END
+          WHERE app_user_id = ? AND id = ? AND task_id = ? AND taskchute_day_id = ?
+            AND lifecycle_state = ? AND routine_occurrence_id IS ?
+            AND planned_start_minute IS ? AND estimate_seconds IS ?
+            AND start_reminder_offset_minutes IS ? AND notify_on_estimate_overrun = ?
+            AND EXISTS (SELECT 1 FROM taskchute_days d WHERE d.app_user_id = entries.app_user_id
+              AND d.id = entries.taskchute_day_id AND ${allowedDate})
+            AND EXISTS (SELECT 1 FROM tasks t WHERE t.app_user_id = entries.app_user_id
+              AND t.id = entries.task_id AND t.title = ? AND t.project_id IS ?)`)
+          .bind(hasStartReminderPatch ? 1 : 0, request.start_reminder_offset_minutes ?? null,
+            hasOverrunReminderPatch ? 1 : 0, request.notify_on_estimate_overrun ? 1 : 0,
+            appUserId, request.entry_id, request.task_id, row.taskchute_day_id, lifecycle, row.routine_occurrence_id,
+            row.planned_start_minute, row.estimate_seconds, row.start_reminder_offset_minutes, row.notify_on_estimate_overrun,
+            expectedDate, row.task_title, row.task_project_id),
+        db.prepare(`INSERT INTO transaction_assertions (app_user_id, id, ok)
+          SELECT ?, ?, CASE WHEN changes() = 1 AND EXISTS (SELECT 1 FROM entries e
+            JOIN taskchute_days d ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
+            JOIN tasks t ON t.app_user_id = e.app_user_id AND t.id = e.task_id
+            WHERE e.app_user_id = ? AND e.id = ? AND e.task_id = ? AND e.taskchute_day_id = ?
+              AND e.lifecycle_state = ? AND e.routine_occurrence_id IS ?
+              AND e.planned_start_minute IS ? AND e.estimate_seconds IS ?
+              AND e.start_reminder_offset_minutes IS ? AND e.notify_on_estimate_overrun = ?
+              AND d.logical_date ${isCurrent ? "=" : ">"} ? AND t.title = ? AND t.project_id IS ?)
+            THEN 1 ELSE 0 END`)
+          .bind(appUserId, assertionId, appUserId, request.entry_id, request.task_id, row.taskchute_day_id,
+            lifecycle, row.routine_occurrence_id, row.planned_start_minute, row.estimate_seconds,
+            nextStartOffset, nextOverrun, expectedDate, row.task_title, row.task_project_id),
+        db.prepare(`INSERT INTO operations (app_user_id, operation_id, command_type, request_fingerprint_version,
+            request_fingerprint, outcome_kind, result_json, created_at)
+          SELECT ?, ?, 'UpdateTaskMetadata', ?, ?, 'success', ?, ? WHERE EXISTS
+            (SELECT 1 FROM transaction_assertions WHERE app_user_id = ? AND id = ? AND ok = 1)`)
+          .bind(appUserId, request.operation_id, REQUEST_FINGERPRINT_VERSION, requestFingerprint,
+            JSON.stringify(updatedResult), nowInstant, appUserId, assertionId),
+        db.prepare("DELETE FROM transaction_assertions WHERE app_user_id = ? AND id = ?").bind(appUserId, assertionId),
+      ]);
+      if (update.meta.changes > 0 && assertion.meta.changes > 0 && operation.meta.changes > 0) return updatedResult;
+      const committed = await readOperation(db, appUserId, request.operation_id);
+      if (committed) return replayOperation<UpdateTaskMetadataResult>(committed, "UpdateTaskMetadata", requestFingerprint);
+      return reject(db, appUserId, request, requestFingerprint, "resource_conflict", "Reminder settings changed before editing");
+    } catch {
+      const committed = await readOperation(db, appUserId, request.operation_id);
+      if (committed) return replayOperation<UpdateTaskMetadataResult>(committed, "UpdateTaskMetadata", requestFingerprint);
+      throw new HttpError(503, "infrastructure_ambiguous", "The reminder settings outcome is unknown; reload canonical state and retry", true);
+    }
+  }
   const isPlannedMetadataUpdate = (isCurrent || isFuture)
     && row.lifecycle_state === "planned" && row.routine_occurrence_id === null;
   const isRunningMetadataUpdate = isCurrent

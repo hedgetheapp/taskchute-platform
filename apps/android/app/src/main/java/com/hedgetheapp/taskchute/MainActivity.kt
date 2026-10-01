@@ -56,6 +56,7 @@ import com.hedgetheapp.taskchute.today.TodayDirectManipulationHttpRepository
 import com.hedgetheapp.taskchute.settings.SettingsController
 import com.hedgetheapp.taskchute.settings.SettingsHttpRepository
 import com.hedgetheapp.taskchute.settings.SettingsScreen
+import com.hedgetheapp.taskchute.reminders.TaskReminderScheduler
 
 class MainActivity : ComponentActivity() {
     private lateinit var controller: AuthController
@@ -68,10 +69,12 @@ class MainActivity : ComponentActivity() {
     private lateinit var settingsController: SettingsController
     private lateinit var dailyController: DailyController
     private lateinit var wearPairingController: PhoneWearPairingController
+    private lateinit var taskReminderScheduler: TaskReminderScheduler
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         controller = AuthController(this, BuildConfig.TASKCHUTE_BASE_URL)
+        taskReminderScheduler = TaskReminderScheduler(this)
         wearPairingController = PhoneWearPairingController(
             context = this,
             request = { method, path, body ->
@@ -83,7 +86,11 @@ class MainActivity : ComponentActivity() {
             request = { method, path, body -> controller.authenticatedRequest(method, path, body)?.let { TodayHttpResponse(it.status, it.body) } },
             onUnauthorized = {},
         )
-        todayController = TodayController(repository = todayRepository, onUnauthorized = controller::restore)
+        todayController = TodayController(
+            repository = todayRepository,
+            onUnauthorized = controller::restore,
+            onCanonicalDayLoaded = taskReminderScheduler::reconcile,
+        )
         planningController = TaskPlanningController(
             repository = TaskPlanningHttpRepository { method, path, body -> controller.authenticatedRequest(method, path, body)?.let { TodayHttpResponse(it.status, it.body) } },
             onUnauthorized = controller::restore,

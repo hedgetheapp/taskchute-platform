@@ -6,7 +6,7 @@ import org.junit.Test
 
 class TaskPlanningHttpRepositoryTest {
     @Test
-    fun createComposesCanonicalCommandsForAllEditorFields() {
+    fun createPersistsPlanEstimateAndReminderIntentInOneAddTaskCommand() {
         val requests = mutableListOf<Triple<String, String, String?>>()
         val repository = TaskPlanningHttpRepository { method, path, body ->
             requests += Triple(method, path, body)
@@ -17,19 +17,41 @@ class TaskPlanningHttpRepositoryTest {
         }
         val result = repository.save(
             editor = TaskEditorState(TaskEditorMode.CREATE, currentDay(), null, TaskEditorDraft()),
-            input = NormalizedTaskInput("日本語 \"Task\"", "project-1", "mode-1", "section-1", 600, 900),
+            input = NormalizedTaskInput("日本語 \"Task\"", "project-1", "mode-1", "section-1", 600, 900,
+                startReminderOffsetMinutes = 10, notifyOnEstimateOverrun = true),
         )
 
         assertEquals(6, (result as PlanningSaveResult.SuccessWithRevision).placementRevision)
-        assertEquals(3, requests.size)
+        assertEquals(1, requests.size)
         assertEquals("POST", requests[0].first)
         assertEquals("/api/v1/taskchute-days/current/entries", requests[0].second)
         assertTrue(requests[0].third!!.contains("\\\"Task\\\""))
         assertTrue(requests[0].third!!.contains("\"project_id\":\"project-1\""))
-        assertEquals("/api/v1/entries/${extractEntryId(requests[0].third!!)}/estimate", requests[1].second)
-        assertTrue(requests[1].third!!.contains("\"estimate_seconds\":900"))
-        assertEquals("/api/v1/entries/${extractEntryId(requests[0].third!!)}/planned-start", requests[2].second)
-        assertTrue(requests[2].third!!.contains("\"planned_start_minute\":600"))
+        assertTrue(requests[0].third!!.contains("\"estimate_seconds\":900"))
+        assertTrue(requests[0].third!!.contains("\"planned_start_minute\":600"))
+        assertTrue(requests[0].third!!.contains("\"start_reminder_offset_minutes\":10"))
+        assertTrue(requests[0].third!!.contains("\"notify_on_estimate_overrun\":true"))
+    }
+
+    @Test
+    fun plannedEditSendsOnlyChangedReminderFieldsThroughExistingTaskMetadataCommand() {
+        val requests = mutableListOf<Triple<String, String, String?>>()
+        val task = TodayTask("entry-1", "Planned", LifecycleState.PLANNED, null, null, 900, 480, null, null, taskId = "task-1")
+        val day = currentDay().copy(sections = listOf(TodaySection("section-1", "Morning", 480, 720, listOf(task))))
+        val repository = TaskPlanningHttpRepository { method, path, body ->
+            requests += Triple(method, path, body)
+            TodayHttpResponse(204, null)
+        }
+        val input = NormalizedTaskInput("Planned", null, null, "section-1", 480, 900,
+            startReminderOffsetMinutes = 5, notifyOnEstimateOverrun = true)
+
+        assertEquals(PlanningSaveResult.Success, repository.save(
+            TaskEditorState(TaskEditorMode.EDIT, day, task, TaskEditorDraft(title = task.title)), input,
+        ))
+        assertEquals(1, requests.size)
+        assertTrue(requests.single().second.endsWith("/task-metadata"))
+        assertTrue(requests.single().third!!.contains("\"start_reminder_offset_minutes\":5"))
+        assertTrue(requests.single().third!!.contains("\"notify_on_estimate_overrun\":true"))
     }
 
     @Test
