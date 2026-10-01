@@ -33,6 +33,8 @@ internal fun applyOptimisticPlanning(
             executionId = null,
             activeStartedAt = null,
             taskId = taskId,
+            startReminderOffsetMinutes = input.startReminderOffsetMinutes,
+            notifyOnEstimateOverrun = input.notifyOnEstimateOverrun,
         )
     } else {
         val actualStart = input.actualStartMinute?.let { logicalMinuteToInstant(day, it) }
@@ -63,6 +65,8 @@ internal fun applyOptimisticPlanning(
             firstStartedAt = actualStart ?: original.firstStartedAt,
             lastEndedAt = actualEnd ?: if (lifecycle == LifecycleState.COMPLETED) original.lastEndedAt else null,
             completedDurationSeconds = duration,
+            startReminderOffsetMinutes = input.startReminderOffsetMinutes,
+            notifyOnEstimateOverrun = input.notifyOnEstimateOverrun,
         )
     }
 

@@ -9,6 +9,81 @@ import org.junit.Test
 
 class TodayOptimisticTest {
     @Test
+    fun planningOverlayProjectsReminderIntentForCreateAndEdit() {
+        val createInput = NormalizedTaskInput(
+            title = "Reminder task",
+            projectId = null,
+            modeId = null,
+            sectionId = "morning",
+            plannedStartMinute = 540,
+            estimateSeconds = 600,
+            clientTaskId = "task-reminder",
+            clientEntryId = "entry-reminder",
+            startReminderOffsetMinutes = 15,
+            notifyOnEstimateOverrun = true,
+        )
+        val created = applyOptimisticPlanning(
+            day(),
+            TaskEditorState(TaskEditorMode.CREATE, day(), null, TaskEditorDraft()),
+            createInput,
+        ).allEntries.single { it.id == "entry-reminder" }
+
+        assertEquals(15, created.startReminderOffsetMinutes)
+        assertEquals(true, created.notifyOnEstimateOverrun)
+
+        val source = day()
+        val original = source.allEntries.single { it.id == "entry-a" }
+        val editOnInput = createInput.copy(
+            title = original.title,
+            clientTaskId = null,
+            clientEntryId = null,
+            startReminderOffsetMinutes = 0,
+            notifyOnEstimateOverrun = true,
+        )
+        val editedOn = applyOptimisticPlanning(
+            source,
+            TaskEditorState(TaskEditorMode.EDIT, source, original, TaskEditorDraft()),
+            editOnInput,
+        ).allEntries.single { it.id == original.id }
+
+        assertEquals(0, editedOn.startReminderOffsetMinutes)
+        assertEquals(true, editedOn.notifyOnEstimateOverrun)
+    }
+
+    @Test
+    fun planningOverlayProjectsReminderOptOutForEdit() {
+        val source = day()
+        val original = source.allEntries.single { it.id == "entry-a" }.copy(
+            startReminderOffsetMinutes = 15,
+            notifyOnEstimateOverrun = true,
+        )
+        val sourceWithReminder = source.copy(
+            sections = source.sections.map { section ->
+                if (section.id == "morning") section.copy(
+                    entries = section.entries.map { if (it.id == original.id) original else it },
+                ) else section
+            },
+        )
+        val projected = applyOptimisticPlanning(
+            sourceWithReminder,
+            TaskEditorState(TaskEditorMode.EDIT, sourceWithReminder, original, TaskEditorDraft()),
+            NormalizedTaskInput(
+                title = original.title,
+                projectId = null,
+                modeId = null,
+                sectionId = "morning",
+                plannedStartMinute = original.plannedStartMinute,
+                estimateSeconds = original.estimateSeconds,
+                startReminderOffsetMinutes = null,
+                notifyOnEstimateOverrun = false,
+            ),
+        ).allEntries.single { it.id == original.id }
+
+        assertNull(projected.startReminderOffsetMinutes)
+        assertEquals(false, projected.notifyOnEstimateOverrun)
+    }
+
+    @Test
     fun planningOverlayAddsAndEditsWithoutChangingEntryIdentity() {
         val createInput = NormalizedTaskInput(
             title = "New",

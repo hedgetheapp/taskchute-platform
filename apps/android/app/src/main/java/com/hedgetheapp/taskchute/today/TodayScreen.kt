@@ -92,6 +92,7 @@ import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.disabled
@@ -2431,6 +2432,7 @@ private fun CompactFigmaTextField(
                 color = TaskChuteColors.PrimaryText,
                 fontSize = 15.sp,
             ),
+            cursorBrush = SolidColor(TaskChuteColors.PrimaryText),
             modifier = Modifier.fillMaxSize()
                 .border(1.dp, borderColor, RoundedCornerShape(16.dp))
                 .onFocusChanged { focused = it.isFocused }

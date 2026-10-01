@@ -134,6 +134,56 @@ class TaskPlanningControllerTest {
     }
 
     @Test
+    fun savedReminderIntentSurvivesImmediateEditReopenBeforeCanonicalReconcile() {
+        val original = plannedTask().copy(
+            startReminderOffsetMinutes = null,
+            notifyOnEstimateOverrun = false,
+        )
+        val canonicalDay = currentDay().copy(
+            sections = listOf(TodaySection("section-1", "Morning", 480, 720, listOf(original))),
+        )
+        var presentedDay = canonicalDay
+        val repository = FakePlanningRepository().apply { holdSave = true }
+        val controller = TaskPlanningController(
+            repository = repository,
+            onUnauthorized = {},
+            onSaved = {}, // Canonical reconciliation is deliberately held outside this test interval.
+            onOptimisticIntent = { editor, input ->
+                presentedDay = applyOptimisticPlanning(presentedDay, editor, input)
+            },
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+        )
+
+        controller.openEdit(presentedDay, original)
+        assertTrue(await { controller.state.references != null })
+        controller.updateDraft(
+            controller.state.editor!!.draft.copy(
+                startReminderOffsetMinutes = 0,
+                notifyOnEstimateOverrun = true,
+            ),
+        )
+        controller.save()
+
+        assertTrue(repository.saveStarted.await(2, TimeUnit.SECONDS))
+        assertEquals(0, repository.lastInput?.startReminderOffsetMinutes)
+        assertEquals(true, repository.lastInput?.notifyOnEstimateOverrun)
+        repository.releaseSave.countDown()
+        assertTrue(await { !controller.state.saving })
+
+        val optimisticTask = presentedDay.allEntries.single { it.id == original.id }
+        assertEquals(null, canonicalDay.allEntries.single { it.id == original.id }.startReminderOffsetMinutes)
+        assertEquals(false, canonicalDay.allEntries.single { it.id == original.id }.notifyOnEstimateOverrun)
+        assertEquals(0, optimisticTask.startReminderOffsetMinutes)
+        assertEquals(true, optimisticTask.notifyOnEstimateOverrun)
+
+        controller.openEdit(presentedDay, optimisticTask)
+        val reopenedDraft = controller.state.editor?.draft
+        assertEquals(0, reopenedDraft?.startReminderOffsetMinutes)
+        assertEquals(true, reopenedDraft?.notifyOnEstimateOverrun)
+        controller.close()
+    }
+
+    @Test
     fun plannedStartAcceptsCompactAndPaddedInputAndKeepsExtendedHours() {
         assertEquals(540, TaskEditorValidation.validate(TaskEditorDraft(title = "A", plannedStartText = "900")).input?.plannedStartMinute)
         assertEquals(540, TaskEditorValidation.validate(TaskEditorDraft(title = "A", plannedStartText = "0900")).input?.plannedStartMinute)

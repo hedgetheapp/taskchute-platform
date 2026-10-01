@@ -1260,6 +1260,7 @@ class TodayScreenInstrumentedTest {
         val editableFields = composeRule.onAllNodes(hasSetTextAction())
         val titleField = editableFields.get(0)
         titleField.assertIsFocused().performTextInput("Plan from Android")
+        captureTaskEditorScreenshot("d155b-task-editor-focused-cursor.png")
         fun titleIsFocused(): Boolean {
             val config = titleField.fetchSemanticsNode().config
             return config.contains(SemanticsProperties.Focused) && config[SemanticsProperties.Focused]
