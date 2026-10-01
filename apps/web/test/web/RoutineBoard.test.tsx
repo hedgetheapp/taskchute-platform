@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RoutineBoardProjection } from "../../src/shared/contracts";
 
 const mocks = vi.hoisted(() => ({
@@ -57,6 +57,10 @@ beforeEach(() => {
   mocks.updateRoutine.mockResolvedValue({});
   mocks.reorderRoutines.mockResolvedValue({});
   mocks.deleteRoutine.mockResolvedValue({ routine_definition_id: routineId, board_revision: 3 });
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("Routine Board", () => {
@@ -194,6 +198,7 @@ describe("Routine Board", () => {
   });
 
   it("uses the canonical current date as today and makes the date field the only calendar trigger", async () => {
+    vi.setSystemTime(new Date("2026-08-31T15:00:00.000Z"));
     board.routines[0]!.start_logical_date = "2026-09-05";
     render(<RoutineBoard onUnauthorized={vi.fn()} />);
     const startDate = await screen.findByLabelText("Active Routineの開始日");
