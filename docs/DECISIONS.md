@@ -2478,3 +2478,12 @@ Status: **Approved / Implemented / Integrated / focused verification PASS; authe
 Canonical Decision: `docs/decisions/D-155_ANDROID_TASK_REMINDERS_V01.md`.
 
 Android Today may store independent per-Entry start-reminder (`0/5/10/15/30/60` minutes or off) and estimate-overrun intent. Entry data is server-canonical; exact AlarmManager scheduling and minimal reboot/deduplication registry are device-local. D-155 uses `SCHEDULE_EXACT_ALARM` plus Android 13+ notification permission, with no inexact fallback. Ordinary Android notifications may bridge to Wear OS through the platform notification path. Routine settings are occurrence-only, new occurrences default off, and D-145 fixed-start/forecast semantics remain separate.
+
+## D-156 — Android Today Lifecycle Rollback / Reopen v0.1
+
+Status: **Approved**
+
+Canonical Decision: `docs/decisions/D-156_ANDROID_TODAY_LIFECYCLE_ROLLBACK_REOPEN_V01.md`
+
+D-156 allows two explicit reverse lifecycle corrections from the current established Day Android Task Editor: Running with cleared actual start/end returns to Planned by invalidating only the current active Execution, and Completed with retained start plus cleared end returns to Running by reopening the same Execution. Current Section / planned start / position / placement revision are preserved. Completed→Running must preserve the user-global no-overlap and single-active-Execution invariants and rejects conflicts without modifying other Executions. Direct Completed→Planned remains out of scope; use the two-step Completed→Running→Planned flow. This narrowly supersedes D-058's current Start Revert withdrawal and the existing Completed-reopen rejection; past/future correction, Web/Wear UI, audit history, schema/migration and production remain out of scope.
+

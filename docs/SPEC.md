@@ -992,3 +992,16 @@ Realtime notificationはfreshness acceleratorであり、canonical authorityで�
 Projectはowner-scoped shared `Document`を0または1つの`project_primary` relationとして持てる。relationとDocumentはProject Note affordanceまたはProject/Document routeからlazyにEnsureされ、Document coreはProject FKを直接持たず、relation tableでProject identityを表す。Project rowのtitleが唯一のtitle authorityであり、Project Primary Documentの`title`はNULL、Markdown source `body`だけを保存する。Documentはnon-negative revisionとserver timestampsを持ち、body Updateはowner-scoped expected-revision CAS、operation fingerprint/exact replay、operation-id misuse rejectionを使う。
 
 Project PrimaryはNotes一覧の`プロジェクトノート` filter、Project Board、TodayのProject cellから共通`/?view=note&document=<document-id>` resolverで開く。list projectionはbodyを含めず、resolverはrelationと現在のProject titleをowner scopeで再解決し、missing/cross-owner identityへ別Note fallbackをしない。Notes一覧でのProject Note選択はNotes editor内のbody-only inline editor、Today / Project Board / direct routeはshared floating editorを使用し、同一Projectのfloating windowが既にあればそれをactivate / restoreしてinline editorを二重にmountしない。Project Primaryはtabごとに最大1つのeditable writerを持つ。Project archiveはrelation/Documentを保持し、Project hard deleteは既存dirty/in-flight/unresolved barrierの後、Project・relation・linked Project Primary Documentを一つのatomic outcomeとして削除し、Task/Entry/Execution/historyを変更しない。APP `0032_project_primary_documents.sql`は既存Document/Task Primary/operationsを保持してこのkind・relation・guardを追加し、AUTH migration・新規dependency・Task/Project-specific parallel Document storageは追加しない。
+
+## D-156 Android Today lifecycle rollback / reopen
+
+For a current established Day, Android Task Editor may perform two reverse lifecycle corrections.
+
+A Running Entry with both actual start and actual end cleared is saved as Planned. The current active Execution is invalidated/removed, while the Entry's current Section, planned start, position, estimate and placement revision remain unchanged. An end value without a start remains invalid.
+
+A Completed Entry with its actual start retained and actual end cleared is saved as Running by reopening the same Execution: execution identity and started_at are retained, ended_at becomes null, and lifecycle becomes Running. This transition is rejected if it would create user-global Execution overlap or violate the single-active-Execution invariant. Other Executions are never silently deleted, truncated or shifted.
+
+Completed start+end both blank is not a direct Completed→Planned command in v0.1. A user who needs that outcome performs Completed→Running by clearing end, then after canonical reconciliation clears start to perform Running→Planned.
+
+These semantics apply to ordinary and Routine-derived current-Day Entries that already have the Android lifecycle-metadata editor capability; Routine Definition/defaults/recurrence and unrelated occurrences are unchanged. Past/future lifecycle correction, Web/Wear UI exposure, interruption/pause semantics, audit/tombstone persistence, schema/migration and production behavior are not added.
+

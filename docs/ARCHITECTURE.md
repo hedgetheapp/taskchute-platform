@@ -715,3 +715,14 @@ Realtime notificationはfreshness acceleratorであり、canonical authorityで�
 Project Primaryはshared `documents` rowとowner-scoped `project_primary_documents` relationの組み合わせで表現する。Project titleはProject query authorityからread projectionへ供給し、Document rowへ複製しない。EnsureはProject/Document/relation/operation identityを同一D1 atomic batchで確定し、既存relationがあればcanonical rowへ収束する。UpdateはDocument revision CASを使い、exact replay/misuseは既存operations persistenceを再利用する。
 
 Project Board、Notes、TodayのProject cellは同じWeb window registryと`TaskNoteEditor`を再利用し、Document resolverはProject relationとcurrent Project titleをowner scopeで直接照合する。Project deleteの既存command guardはlinked Project Primary Document identityを短命 assertionとして保持し、relationとDocumentだけをguarded batchで削除する。APP `0032`は既存Document/Task Primary/operation dataを再構築時にもfield-for-fieldで保持し、AUTH DB、runtime holiday/routine/calendar semantics、Task/Entry/Execution historyには依存しない。
+
+## D-156 lifecycle correction authority
+
+D-156 keeps Entry lifecycle and Execution facts server-canonical. Android Task Editor only expresses the user's correction intent; optimistic Day state is presentation-only and must reconcile to the canonical result.
+
+Running→Planned reuses the historical `RevertEntryStart` command shape/guard semantics: owner-scoped current active Execution identity and start snapshot are guarded, the active Execution row is removed and the Entry lifecycle becomes Planned in one atomic outcome. Current Entry placement and Day placement revision are preserved. The D-058 route withdrawal is superseded only for this current-Day correction path; no new schema or command-type migration is required because the historical compatibility allow-list remains present.
+
+Completed→Running remains in `SetExecutionTimes`: the same Execution row is updated with `ended_at = NULL` and active terminal state, and the Entry lifecycle transitions atomically to Running. Existing operation fingerprint/replay, lifecycle snapshot, owner isolation, no-overlap guard and the partial unique active-Execution invariant remain authoritative. The prior unconditional Completed-reopen rejection is removed only for this approved transition.
+
+Android repository dispatch selects rollback vs ordinary actual-time correction from the original lifecycle plus normalized actual fields. Server success is followed by the existing canonical Today reconcile; D-155 reminder scheduling reacts only to that canonical state. Web and Wear receive no new UI affordance in this slice.
+

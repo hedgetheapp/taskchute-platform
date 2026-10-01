@@ -985,3 +985,15 @@ Project archiveではNote relationを維持する。Project hard deleteはdirty 
 Android TodayのTask Add / Edit formはFigma Task Editor reference `UbTJH6ykYNBQJS4Wvwz9jb` / node `637:2` と関連state `637:6`、`637:42`、`666:16`に合わせ、dark surface上の48dp・16dp cornerのoutlined field、outlineを横切るfloating label、中央寄せvalueを使う。2列fieldは12dp間隔とし、Section / Project / Mode / estimateのlabelは`セクション` / `プロジェクト` / `モード` / `見積`。
 
 Start reminderはcheckboxと`開始通知`文字の両方を同じON/OFF targetとし、timing selectorは独立する。新規Taskは引き続きOFF (`null`)。OFFからONへ初めて切り替えたときは0分 (`開始時刻`) を選び、既存の明示offsetは保持する。Estimate-overrun controlはoutlined field内でReminder fieldと揃える。このUI correctiveはD-155のreminder persistence / scheduling semanticsを変更しない。
+
+## D-156 Android Today lifecycle rollback / reopen interaction
+
+Current-Day Task Editor keeps the existing actual-time fields and uses clearing as the lifecycle correction gesture; no separate `未実行に戻す` / `実行中に戻す` button is added.
+
+- Running: clear `開始時間` (with `終了時間` also empty) and Save → Planned.
+- Completed: keep `開始時間`, clear `終了時間`, and Save → Running.
+- Completed with both actual fields blank is not accepted in v0.1; direct Completed→Planned is not exposed.
+- If Completed→Running would overlap another Execution or another Task is already Running, Save fails with the existing understandable mutation feedback and the editor/canonical reconciliation path remains recoverable.
+
+The same visual fields and HH:mm input conventions remain. No new confirmation dialog is required for this correction flow.
+
