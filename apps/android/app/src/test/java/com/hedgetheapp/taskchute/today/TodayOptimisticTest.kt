@@ -264,6 +264,52 @@ class TodayOptimisticTest {
     }
 
     @Test
+    fun completedDirectRollbackClearsOnlyExecutionProjectionAndPreservesPlanningAndReminderIntent() {
+        val source = day()
+        val original = source.allEntries.first { it.id == "entry-a" }.copy(
+            lifecycleState = LifecycleState.COMPLETED,
+            executionId = "execution-completed",
+            activeStartedAt = null,
+            firstStartedAt = "2026-09-20T09:00:13.456Z",
+            lastEndedAt = "2026-09-20T09:30:15.789Z",
+            completedDurationSeconds = 1_802,
+            estimateSeconds = 1_800,
+            startReminderOffsetMinutes = 15,
+            notifyOnEstimateOverrun = true,
+        )
+        val completedDay = source.copy(
+            sections = source.sections.map { section ->
+                section.copy(entries = section.entries.map { if (it.id == original.id) original else it })
+            },
+            activeExecution = null,
+        )
+        val projected = applyOptimisticPlanning(
+            completedDay,
+            TaskEditorState(TaskEditorMode.EDIT, completedDay, original, TaskEditorDraft()),
+            NormalizedTaskInput(original.title, original.project?.id, original.mode?.id,
+                "morning", original.plannedStartMinute, original.estimateSeconds,
+                actualStartMinute = null, actualEndMinute = null,
+                startReminderOffsetMinutes = null, notifyOnEstimateOverrun = false),
+        )
+
+        val task = projected.allEntries.single { it.id == original.id }
+        assertEquals(LifecycleState.PLANNED, task.lifecycleState)
+        assertNull(task.executionId)
+        assertNull(task.activeStartedAt)
+        assertNull(task.firstStartedAt)
+        assertNull(task.lastEndedAt)
+        assertEquals(0, task.completedDurationSeconds)
+        assertTrue(projected.sections.single { it.id == "morning" }.entries.any { it.id == original.id })
+        assertEquals(original.plannedStartMinute, task.plannedStartMinute)
+        assertEquals(original.estimateSeconds, task.estimateSeconds)
+        assertEquals(original.project, task.project)
+        assertEquals(original.mode, task.mode)
+        assertEquals(original.startReminderOffsetMinutes, task.startReminderOffsetMinutes)
+        assertEquals(original.notifyOnEstimateOverrun, task.notifyOnEstimateOverrun)
+        assertNull(projected.activeExecution)
+    }
+
+    @Test
     fun dragTargetUsesStableSnapshotThresholdsDuringProvisionalAnimation() {
         val bounds = mapOf(
             "entry-a" to Rect(0f, 0f, 100f, 50f),

@@ -225,10 +225,12 @@ class TaskPlanningControllerTest {
         assertNull(completedReopen.input?.actualEndMinute)
         assertNull(completedReopen.errorMessage)
 
-        val completedBlank = TaskEditorValidation.validate(
+        val completedRollback = TaskEditorValidation.validate(
             TaskEditorDraft(title = "A"), TaskEditorCapability.COMPLETED_METADATA,
         )
-        assertNotNull(completedBlank.errorMessage)
+        assertNull(completedRollback.errorMessage)
+        assertNull(completedRollback.input?.actualStartMinute)
+        assertNull(completedRollback.input?.actualEndMinute)
 
         val runningRollback = TaskEditorValidation.validate(
             TaskEditorDraft(title = "A"), TaskEditorCapability.RUNNING_METADATA,
@@ -256,6 +258,42 @@ class TaskPlanningControllerTest {
         controller.openEdit(currentDay(), task)
 
         assertTrue(await { controller.state.editor != null })
+        assertEquals("", controller.state.editor?.draft?.actualStartText)
+        assertEquals("", controller.state.editor?.draft?.actualEndText)
+        controller.close()
+    }
+
+    @Test
+    fun completedRollbackOptimisticDayReopensAsPlannedWithBlankActualFields() {
+        val emptyDay = currentDay()
+        val source = emptyDay.copy(
+            sections = listOf(emptyDay.sections.single().copy(entries = listOf(plannedTask()))),
+        )
+        val completed = source.allEntries.first().copy(
+            lifecycleState = LifecycleState.COMPLETED,
+            executionId = "execution-completed",
+            activeStartedAt = null,
+            firstStartedAt = "2026-09-14T09:00:13.456Z",
+            lastEndedAt = "2026-09-14T09:30:15.789Z",
+            completedDurationSeconds = 1_802,
+        )
+        val completedDay = source.copy(sections = source.sections.map { section ->
+            section.copy(entries = section.entries.map { if (it.id == completed.id) completed else it })
+        })
+        val rolledBack = applyOptimisticPlanning(
+            completedDay,
+            TaskEditorState(TaskEditorMode.EDIT, completedDay, completed, TaskEditorDraft()),
+            NormalizedTaskInput(completed.title, completed.project?.id, completed.mode?.id,
+                completedDay.sections.first { section -> section.entries.any { it.id == completed.id } }.id,
+                completed.plannedStartMinute, completed.estimateSeconds),
+        )
+        val repository = FakePlanningRepository()
+        val controller = controller(repository)
+
+        controller.openEdit(rolledBack, rolledBack.allEntries.single { it.id == completed.id })
+
+        assertTrue(await { controller.state.editor != null })
+        assertEquals(LifecycleState.PLANNED, controller.state.editor?.originalTask?.lifecycleState)
         assertEquals("", controller.state.editor?.draft?.actualStartText)
         assertEquals("", controller.state.editor?.draft?.actualEndText)
         controller.close()

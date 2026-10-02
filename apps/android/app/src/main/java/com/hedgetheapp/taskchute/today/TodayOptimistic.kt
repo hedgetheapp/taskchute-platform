@@ -41,10 +41,12 @@ internal fun applyOptimisticPlanning(
         val actualEnd = input.actualEndMinute?.let { logicalMinuteToInstant(day, it) }
         val rollbackToPlanned = original.lifecycleState == LifecycleState.RUNNING
             && input.actualStartMinute == null && input.actualEndMinute == null
+        val directCompletedRollback = original.lifecycleState == LifecycleState.COMPLETED
+            && input.actualStartMinute == null && input.actualEndMinute == null
         val reopenToRunning = original.lifecycleState == LifecycleState.COMPLETED
             && input.actualStartMinute != null && input.actualEndMinute == null
         val lifecycle = when {
-            rollbackToPlanned -> LifecycleState.PLANNED
+            rollbackToPlanned || directCompletedRollback -> LifecycleState.PLANNED
             reopenToRunning -> LifecycleState.RUNNING
             actualEnd != null -> LifecycleState.COMPLETED
             actualStart != null -> LifecycleState.RUNNING
@@ -62,11 +64,13 @@ internal fun applyOptimisticPlanning(
         val preservedHistoricalStart = original.firstStartedAt
             ?.takeUnless { rollbackToPlanned && it == original.activeStartedAt }
         original.copy(
-            title = input.title,
-            project = input.projectId?.let { TodayProject(it, input.projectTitle ?: it) },
-            mode = input.modeId?.let { TodayMode(it, input.modeTitle ?: it) },
-            estimateSeconds = input.estimateSeconds,
-            plannedStartMinute = input.plannedStartMinute,
+            title = if (directCompletedRollback) original.title else input.title,
+            project = if (directCompletedRollback) original.project
+                else input.projectId?.let { TodayProject(it, input.projectTitle ?: it) },
+            mode = if (directCompletedRollback) original.mode
+                else input.modeId?.let { TodayMode(it, input.modeTitle ?: it) },
+            estimateSeconds = if (directCompletedRollback) original.estimateSeconds else input.estimateSeconds,
+            plannedStartMinute = if (directCompletedRollback) original.plannedStartMinute else input.plannedStartMinute,
             lifecycleState = lifecycle,
             executionId = when (lifecycle) {
                 LifecycleState.PLANNED -> null
@@ -78,25 +82,35 @@ internal fun applyOptimisticPlanning(
                 LifecycleState.PLANNED, LifecycleState.COMPLETED -> null
             },
             firstStartedAt = when {
+                directCompletedRollback -> null
                 rollbackToPlanned -> preservedHistoricalStart
                 reopenToRunning -> original.firstStartedAt ?: actualStart
                 else -> actualStart ?: original.firstStartedAt
             },
             lastEndedAt = when {
+                directCompletedRollback -> null
                 rollbackToPlanned -> original.lastEndedAt
                 reopenToRunning -> null
                 actualEnd != null -> actualEnd
                 lifecycle == LifecycleState.COMPLETED -> original.lastEndedAt
                 else -> null
             },
-            completedDurationSeconds = if (reopenToRunning) 0 else duration,
-            startReminderOffsetMinutes = input.startReminderOffsetMinutes,
-            notifyOnEstimateOverrun = input.notifyOnEstimateOverrun,
+            completedDurationSeconds = if (reopenToRunning || directCompletedRollback) 0 else duration,
+            startReminderOffsetMinutes = if (directCompletedRollback) original.startReminderOffsetMinutes
+                else input.startReminderOffsetMinutes,
+            notifyOnEstimateOverrun = if (directCompletedRollback) original.notifyOnEstimateOverrun
+                else input.notifyOnEstimateOverrun,
         )
     }
 
     val withoutOriginal = day.removeEntry(entryId)
-    val updatedDay = withoutOriginal.insertEntry(input.sectionId, optimistic)
+    val targetSectionId = if (original?.lifecycleState == LifecycleState.COMPLETED
+        && input.actualStartMinute == null && input.actualEndMinute == null) {
+        day.sectionIdOf(entryId)
+    } else {
+        input.sectionId
+    }
+    val updatedDay = withoutOriginal.insertEntry(targetSectionId, optimistic)
     return when (optimistic.lifecycleState) {
         LifecycleState.RUNNING -> updatedDay.copy(
             activeExecution = TodayExecution(

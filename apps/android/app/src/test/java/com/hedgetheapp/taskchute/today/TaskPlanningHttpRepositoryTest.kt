@@ -435,7 +435,7 @@ class TaskPlanningHttpRepositoryTest {
         }
 
         assertEquals(PlanningSaveResult.Success, repository.save(editor, input))
-        val body = requests.single().third.orEmpty()
+        val body = requests.last().third.orEmpty()
         assertEquals("/api/v1/entries/entry-1/execution-times", requests.single().second)
         assertTrue(body.contains("\"expected_lifecycle_state\":\"completed\""))
         assertTrue(body.contains("\"execution_id\":\"execution-1\""))
@@ -443,6 +443,80 @@ class TaskPlanningHttpRepositoryTest {
         assertTrue(body.contains("\"expected_started_at\":\"$startedAt\""))
         assertTrue(body.contains("\"ended_at\":null"))
         assertTrue(!body.contains("input_precision"))
+    }
+
+    @Test
+    fun completedBothBlankUsesDirectRollbackAndReusesExactOperationAfterAmbiguousResponse() {
+        val requests = mutableListOf<Triple<String, String, String?>>()
+        val startedAt = "2026-09-14T09:00:13.456Z"
+        val endedAt = "2026-09-14T09:30:15.789Z"
+        val task = TodayTask(
+            id = "entry-1", title = "Completed task", lifecycleState = LifecycleState.COMPLETED,
+            project = TodayProject("project-1", "Project"), mode = TodayMode("mode-1", "Mode"),
+            estimateSeconds = 1_800, plannedStartMinute = 540,
+            executionId = "execution-1", activeStartedAt = null, taskId = "task-1",
+            firstStartedAt = startedAt, lastEndedAt = endedAt,
+            startReminderOffsetMinutes = 10, notifyOnEstimateOverrun = true,
+        )
+        val day = currentDay().copy(
+            establishmentTimezone = "UTC",
+            sections = listOf(TodaySection("section-1", "Morning", 480, 720, listOf(task))),
+        )
+        val editor = TaskEditorState(
+            TaskEditorMode.EDIT, day, task,
+            TaskEditorDraft(title = task.title, projectId = "project-1", modeId = "mode-1",
+                sectionId = "section-1", plannedStartText = "09:00", estimateText = "30",
+                actualStartText = "", actualEndText = "", startReminderOffsetMinutes = 10,
+                notifyOnEstimateOverrun = true),
+            TaskEditorCapability.COMPLETED_METADATA,
+        )
+        val input = NormalizedTaskInput(task.title, "project-1", "mode-1", "section-1", 540, 1_800,
+            actualStartMinute = null, actualEndMinute = null, startReminderOffsetMinutes = 10,
+            notifyOnEstimateOverrun = true)
+        val repository = TaskPlanningHttpRepository { method, path, body ->
+            requests += Triple(method, path, body)
+            if (requests.size == 1) null else TodayHttpResponse(204, null)
+        }
+
+        assertTrue(repository.save(editor, input) is PlanningSaveResult.Failure)
+        assertEquals(PlanningSaveResult.Success, repository.save(editor, input))
+
+        assertEquals(2, requests.size)
+        assertEquals("POST", requests.first().first)
+        assertEquals("/api/v1/entries/entry-1/revert-start", requests.first().second)
+        assertEquals(requests.first().third, requests.last().third)
+        val body = requests.last().third.orEmpty()
+        assertTrue(body.contains("\"expected_lifecycle_state\":\"completed\""))
+        assertTrue(body.contains("\"execution_id\":\"execution-1\""))
+        assertTrue(body.contains("\"expected_started_at\":\"$startedAt\""))
+        assertTrue(body.contains("\"expected_ended_at\":\"$endedAt\""))
+        assertTrue(body.contains("\"operation_id\":"))
+        assertTrue(requests.none { it.second.endsWith("/execution-times") })
+    }
+
+    @Test
+    fun completedDirectRollbackDoesNotCombineMetadataOrReminderMutation() {
+        val task = TodayTask(
+            id = "entry-1", title = "Completed task", lifecycleState = LifecycleState.COMPLETED,
+            project = null, mode = null, estimateSeconds = 1_800, plannedStartMinute = 540,
+            executionId = "execution-1", activeStartedAt = null, taskId = "task-1",
+            firstStartedAt = "2026-09-14T09:00:13.456Z", lastEndedAt = "2026-09-14T09:30:15.789Z",
+        )
+        var writes = 0
+        val repository = TaskPlanningHttpRepository { _, _, _ ->
+            writes++
+            TodayHttpResponse(204, null)
+        }
+        val day = currentDay().copy(sections = listOf(TodaySection("section-1", "Morning", 480, 720, listOf(task))))
+        val editor = TaskEditorState(TaskEditorMode.EDIT, day, task,
+            TaskEditorDraft(title = task.title, actualStartText = "", actualEndText = "", projectId = "project-1"),
+            TaskEditorCapability.COMPLETED_METADATA)
+
+        val unchanged = NormalizedTaskInput(task.title, null, null, "section-1", 540, 1_800,
+            null, null, notifyOnEstimateOverrun = false)
+        assertTrue(repository.save(editor, unchanged.copy(projectId = "project-1")) is PlanningSaveResult.Failure)
+        assertTrue(repository.save(editor, unchanged.copy(startReminderOffsetMinutes = 10)) is PlanningSaveResult.Failure)
+        assertEquals(0, writes)
     }
 
     @Test

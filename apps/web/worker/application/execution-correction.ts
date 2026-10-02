@@ -17,6 +17,8 @@ type InstantField = "started_at" | "ended_at" | "expected_started_at" | "expecte
 
 interface EntryRow {
   entry_id: string;
+  continuation_chain_id: string | null;
+  continuation_parent_entry_id: string | null;
   taskchute_day_id: string;
   logical_date: string;
   lifecycle_state: ExecutionCorrectionLifecycleState;
@@ -71,10 +73,14 @@ function isLifecycleState(value: unknown): value is ExecutionCorrectionLifecycle
 
 export function isRevertEntryStartRequest(value: unknown): value is RevertEntryStartRequest {
   if (!isRecord(value) || "user_id" in value) return false;
+  const legacyRunningRollback = !("expected_lifecycle_state" in value) && !("expected_ended_at" in value);
+  const completedDirectRollback = value.expected_lifecycle_state === "completed"
+    && typeof value.expected_ended_at === "string";
   return typeof value.operation_id === "string" && isUuidV7(value.operation_id)
     && typeof value.entry_id === "string" && isUuidV7(value.entry_id)
     && typeof value.execution_id === "string" && isUuidV7(value.execution_id)
-    && typeof value.expected_started_at === "string";
+    && typeof value.expected_started_at === "string"
+    && (legacyRunningRollback || completedDirectRollback);
 }
 
 export function isSetExecutionTimesRequest(value: unknown): value is SetExecutionTimesRequest {
@@ -142,7 +148,8 @@ async function reject<T>(
 }
 
 async function readEntry(db: D1Database, appUserId: string, entryId: string): Promise<EntryRow | null> {
-  return db.prepare(`SELECT e.id AS entry_id, e.taskchute_day_id, d.logical_date, e.lifecycle_state, e.section_id,
+  return db.prepare(`SELECT e.id AS entry_id, e.continuation_chain_id, e.continuation_parent_entry_id,
+      e.taskchute_day_id, d.logical_date, e.lifecycle_state, e.section_id,
       e.planned_start_minute, e.position, d.placement_revision, d.start_instant, d.end_instant,
       d.establishment_timezone
     FROM entries e JOIN taskchute_days d ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
@@ -253,7 +260,13 @@ function currentDayGuardSql(alias: string, currentDay: CurrentDayContext): { sql
 }
 
 function normalizedRevertRequest(request: RevertEntryStartRequest): RevertEntryStartRequest {
-  return { ...request, expected_started_at: canonicalInstant(request.expected_started_at, "expected_started_at") };
+  return {
+    ...request,
+    expected_started_at: canonicalInstant(request.expected_started_at, "expected_started_at"),
+    ...(request.expected_ended_at === undefined
+      ? {}
+      : { expected_ended_at: canonicalInstant(request.expected_ended_at, "expected_ended_at") }),
+  };
 }
 
 export async function revertEntryStart(
@@ -263,6 +276,8 @@ export async function revertEntryStart(
   nowInstant = new Date().toISOString(),
 ): Promise<RevertEntryStartResult> {
   const request = normalizedRevertRequest(input);
+  const completedDirectRollback = request.expected_lifecycle_state === "completed";
+  const expectedLifecycle = completedDirectRollback ? "completed" : "running";
   const requestFingerprint = await fingerprint(request);
   const prior = await readOperation(db, appUserId, request.operation_id);
   if (prior) return replayOperation<RevertEntryStartResult>(prior, "RevertEntryStart", requestFingerprint);
@@ -280,10 +295,29 @@ export async function revertEntryStart(
     return reject<RevertEntryStartResult>(db, appUserId, request, requestFingerprint,
       "resource_conflict", "RevertEntryStart is limited to the current established Day", "RevertEntryStart");
   }
-  if (execution.entry_id !== request.entry_id || execution.ended_at !== null || execution.terminal_outcome !== null
-    || entry.lifecycle_state !== "running" || !sameInstant(execution.started_at, request.expected_started_at)) {
+  const expectedExecutionMatches = execution.entry_id === request.entry_id
+    && sameInstant(execution.started_at, request.expected_started_at)
+    && (completedDirectRollback
+      ? execution.ended_at !== null
+        && execution.terminal_outcome === "completed"
+        && request.expected_ended_at !== undefined
+        && sameInstant(execution.ended_at, request.expected_ended_at)
+      : execution.ended_at === null && execution.terminal_outcome === null);
+  if (!expectedExecutionMatches || entry.lifecycle_state !== expectedLifecycle) {
     return reject<RevertEntryStartResult>(db, appUserId, request, requestFingerprint,
-      "resource_conflict", "Only the current active Start can be reverted", "RevertEntryStart");
+      "resource_conflict", "The current Execution can no longer be reverted", "RevertEntryStart");
+  }
+  if (completedDirectRollback) {
+    const executionCount = await db.prepare("SELECT COUNT(*) AS count FROM executions WHERE app_user_id = ? AND entry_id = ?")
+      .bind(appUserId, request.entry_id).first<number>("count");
+    const chainCount = entry.continuation_chain_id === null ? 0 : await db.prepare(
+      "SELECT COUNT(*) AS count FROM entries WHERE app_user_id = ? AND continuation_chain_id = ?",
+    ).bind(appUserId, entry.continuation_chain_id).first<number>("count");
+    if (executionCount !== 1 || entry.continuation_chain_id !== entry.entry_id
+      || entry.continuation_parent_entry_id !== null || chainCount !== 1) {
+      return reject<RevertEntryStartResult>(db, appUserId, request, requestFingerprint,
+        "resource_conflict", "Only an isolated single-segment completed Execution can be reverted", "RevertEntryStart");
+    }
   }
 
   const result: RevertEntryStartResult = {
@@ -297,6 +331,24 @@ export async function revertEntryStart(
   };
   const assertionId = `revert-start:${request.operation_id}`;
   const currentGuard = currentDayGuardSql("d", currentDay);
+  const lifecycleExecutionGuard = completedDirectRollback
+    ? `e.lifecycle_state = 'completed'
+       AND x.ended_at IS NOT NULL AND x.terminal_outcome = 'completed'
+       AND julianday(x.ended_at) = julianday(?)
+       AND (SELECT COUNT(*) FROM executions all_x
+         WHERE all_x.app_user_id = e.app_user_id AND all_x.entry_id = e.id) = 1
+       AND e.continuation_chain_id = e.id AND e.continuation_parent_entry_id IS NULL
+       AND NOT EXISTS (SELECT 1 FROM entries chain_entry
+         WHERE chain_entry.app_user_id = e.app_user_id
+           AND chain_entry.continuation_chain_id = e.continuation_chain_id
+           AND chain_entry.id <> e.id)`
+    : `e.lifecycle_state = 'running'
+       AND x.ended_at IS NULL AND x.terminal_outcome IS NULL`;
+  const lifecycleExecutionBindings = completedDirectRollback ? [request.expected_ended_at] : [];
+  const deleteExecutionGuard = completedDirectRollback
+    ? `AND julianday(ended_at) = julianday(?) AND terminal_outcome = 'completed'`
+    : `AND ended_at IS NULL AND terminal_outcome IS NULL`;
+  const deleteExecutionBindings = completedDirectRollback ? [request.expected_ended_at] : [];
   try {
     const [guard] = await db.batch([
       db.prepare(`INSERT INTO lifecycle_command_guards (app_user_id, operation_id, entry_id, execution_id, command_type)
@@ -304,19 +356,22 @@ export async function revertEntryStart(
           FROM entries e
           JOIN taskchute_days d ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
           JOIN executions x ON x.app_user_id = e.app_user_id AND x.entry_id = e.id
-         WHERE e.app_user_id = ? AND e.id = ? AND e.lifecycle_state = 'running'
-           AND x.id = ? AND x.ended_at IS NULL AND x.terminal_outcome IS NULL
+         WHERE e.app_user_id = ? AND e.id = ?
+           AND ${lifecycleExecutionGuard}
+           AND x.id = ?
            AND julianday(x.started_at) = julianday(?)
            ${currentGuard.sql}`)
-        .bind(appUserId, request.operation_id, appUserId, request.entry_id, request.execution_id,
-          request.expected_started_at, ...currentGuard.bindings),
+        .bind(appUserId, request.operation_id, appUserId, request.entry_id, ...lifecycleExecutionBindings,
+          request.execution_id, request.expected_started_at, ...currentGuard.bindings),
       db.prepare(`DELETE FROM executions WHERE app_user_id = ? AND id = ?
+        AND entry_id = ? AND julianday(started_at) = julianday(?) ${deleteExecutionGuard}
         AND EXISTS (SELECT 1 FROM lifecycle_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
-        .bind(appUserId, request.execution_id, appUserId, request.operation_id),
+        .bind(appUserId, request.execution_id, request.entry_id, request.expected_started_at,
+          ...deleteExecutionBindings, appUserId, request.operation_id),
       db.prepare(`UPDATE entries SET lifecycle_state = 'planned'
-        WHERE app_user_id = ? AND id = ? AND lifecycle_state = 'running'
+        WHERE app_user_id = ? AND id = ? AND lifecycle_state = ?
           AND EXISTS (SELECT 1 FROM lifecycle_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
-        .bind(appUserId, request.entry_id, appUserId, request.operation_id),
+        .bind(appUserId, request.entry_id, expectedLifecycle, appUserId, request.operation_id),
       db.prepare(`INSERT INTO transaction_assertions (app_user_id, id, ok)
         SELECT ?, ?, CASE WHEN
           EXISTS (SELECT 1 FROM entries e JOIN taskchute_days d

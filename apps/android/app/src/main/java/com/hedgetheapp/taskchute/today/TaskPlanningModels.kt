@@ -103,9 +103,6 @@ data class TaskEditorValidation(
             if (capability == TaskEditorCapability.RUNNING_METADATA && actualStart == null && actualEnd != null) {
                 return invalid("終了時間だけは設定できません。開始時間を入力してください。")
             }
-            if (capability == TaskEditorCapability.COMPLETED_METADATA && actualStart == null) {
-                return invalid("完了済みタスクは開始時間が必要です。")
-            }
             return TaskEditorValidation(
                 input = NormalizedTaskInput(
                     title = title,

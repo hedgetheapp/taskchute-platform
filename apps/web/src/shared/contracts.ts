@@ -778,6 +778,9 @@ export interface RevertEntryStartRequest {
   entry_id: string;
   execution_id: string;
   expected_started_at: string;
+  /** Omitted by legacy callers; completed direct rollback supplies both fields. */
+  expected_lifecycle_state?: "completed";
+  expected_ended_at?: string;
 }
 
 export interface RevertEntryStartResult {

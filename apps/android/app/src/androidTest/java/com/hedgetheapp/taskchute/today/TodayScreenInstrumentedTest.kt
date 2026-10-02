@@ -1778,7 +1778,7 @@ class TodayScreenInstrumentedTest {
     }
 
     @Test
-    fun completedEditorCannotClearBothActualTimes() {
+    fun completedEditorClearsBothActualTimesAndSavesDirectPlannedRollback() {
         val planningRepository = FakePlanningRepository()
         val completed = dayWith(LifecycleState.COMPLETED).sections.single().entries.single().copy(
             taskId = "task-completed",
@@ -1801,10 +1801,11 @@ class TodayScreenInstrumentedTest {
         fields.get(1).performTextClearance()
 
         composeRule.onNodeWithText("保存", substring = false).performScrollTo().performClick()
-        composeRule.onAllNodesWithText("完了済みタスクは開始時間が必要です。", substring = false)
-            .get(0).assertIsDisplayed()
-        assertEquals(0, planningRepository.saveCalls.get())
-        assertTrue(planningController?.state?.editor != null)
+        composeRule.waitUntil(10_000) { planningRepository.saveCalls.get() == 1 }
+        assertNull(planningRepository.lastInput?.actualStartMinute)
+        assertNull(planningRepository.lastInput?.actualEndMinute)
+        assertEquals(LifecycleState.COMPLETED, planningRepository.lastEditor?.originalTask?.lifecycleState)
+        composeRule.waitUntil(5_000) { planningController?.state?.editor == null }
     }
 
     @Test

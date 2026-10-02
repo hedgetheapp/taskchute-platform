@@ -126,6 +126,213 @@ async function makeLifecycleEntry(
 }
 
 describe.sequential("D-156 Android lifecycle correction", () => {
+  it("accepts only the legacy Running rollback shape or a complete Completed rollback snapshot", () => {
+    const legacy = {
+      operation_id: uuidv7(), entry_id: uuidv7(), execution_id: uuidv7(),
+      expected_started_at: "2026-08-28T06:00:00.000Z",
+    };
+    expect(isRevertEntryStartRequest(legacy)).toBe(true);
+    expect(isRevertEntryStartRequest({
+      ...legacy, expected_lifecycle_state: "completed", expected_ended_at: "2026-08-28T06:30:00.000Z",
+    })).toBe(true);
+    expect(isRevertEntryStartRequest({ ...legacy, expected_lifecycle_state: "completed" })).toBe(false);
+    expect(isRevertEntryStartRequest({ ...legacy, expected_ended_at: "2026-08-28T06:30:00.000Z" })).toBe(false);
+    expect(isRevertEntryStartRequest({
+      ...legacy, expected_lifecycle_state: "running", expected_ended_at: null,
+    })).toBe(false);
+    expect(isRevertEntryStartRequest({
+      ...legacy, expected_lifecycle_state: "completed", expected_ended_at: null,
+    })).toBe(false);
+  });
+
+  it("directly rolls one ordinary Completed Execution back to Planned atomically and replays exactly", async () => {
+    const fixture = await seedFixture(true, 360);
+    const executionId = await makeLifecycleEntry(fixture, "completed",
+      "2026-08-28T06:00:00.123Z", "2026-08-28T06:30:00.456Z");
+    const unrelated = await addExecution(fixture, "2026-08-28T07:00:00.000Z", "2026-08-28T07:15:00.000Z");
+    await env.APP_DB.prepare("UPDATE entries SET estimate_seconds = 900 WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, fixture.entryId).run();
+    const beforeEntry = await env.APP_DB.prepare(`SELECT task_id, taskchute_day_id, section_id, position, lifecycle_state,
+        estimate_seconds, planned_start_minute, routine_occurrence_id
+      FROM entries WHERE app_user_id = ? AND id = ?`).bind(fixture.userId, fixture.entryId).first<Record<string, unknown>>();
+    const beforeTask = await env.APP_DB.prepare(`SELECT title, project_id FROM tasks WHERE app_user_id = ? AND id = (
+      SELECT task_id FROM entries WHERE app_user_id = ? AND id = ?)`)
+      .bind(fixture.userId, fixture.userId, fixture.entryId).first();
+    const beforeRevision = await env.APP_DB.prepare("SELECT placement_revision FROM taskchute_days WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, fixture.dayId).first();
+    const beforeUnrelated = await env.APP_DB.prepare("SELECT id, entry_id, started_at, ended_at, terminal_outcome FROM executions WHERE id = ?")
+      .bind(unrelated.executionId).first();
+    const request = {
+      operation_id: uuidv7(), entry_id: fixture.entryId, execution_id: executionId,
+      expected_lifecycle_state: "completed" as const,
+      expected_started_at: "2026-08-28T06:00:00.123Z",
+      expected_ended_at: "2026-08-28T06:30:00.456Z",
+    };
+
+    const result = await revertEntryStart(env.APP_DB, fixture.userId, request, now);
+    expect(result).toMatchObject({ lifecycle_state: "planned", execution_id: executionId,
+      section_id: fixture.sectionId, planned_start_minute: 360, position: 1, placement_revision: 0 });
+    expect(await revertEntryStart(env.APP_DB, fixture.userId, request, now)).toEqual(result);
+    await expect(revertEntryStart(env.APP_DB, fixture.userId,
+      { ...request, expected_ended_at: "2026-08-28T06:31:00.000Z" }, now))
+      .rejects.toMatchObject({ code: "operation_id_misuse" });
+    expect(await env.APP_DB.prepare(`SELECT task_id, taskchute_day_id, section_id, position, lifecycle_state,
+        estimate_seconds, planned_start_minute, routine_occurrence_id
+      FROM entries WHERE app_user_id = ? AND id = ?`).bind(fixture.userId, fixture.entryId).first()).toEqual({
+      ...beforeEntry, lifecycle_state: "planned",
+    });
+    expect(await env.APP_DB.prepare(`SELECT title, project_id FROM tasks WHERE app_user_id = ? AND id = (
+      SELECT task_id FROM entries WHERE app_user_id = ? AND id = ?)`)
+      .bind(fixture.userId, fixture.userId, fixture.entryId).first())
+      .toEqual(beforeTask);
+    expect(await env.APP_DB.prepare("SELECT placement_revision FROM taskchute_days WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, fixture.dayId).first()).toEqual(beforeRevision);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM executions WHERE app_user_id = ? AND entry_id = ?")
+      .bind(fixture.userId, fixture.entryId).first<number>("count")).toBe(0);
+    expect(await env.APP_DB.prepare("SELECT id, entry_id, started_at, ended_at, terminal_outcome FROM executions WHERE id = ?")
+      .bind(unrelated.executionId).first()).toEqual(beforeUnrelated);
+    expect(await operationCount(fixture.userId, "RevertEntryStart")).toBe(1);
+  });
+
+  it("directly rolls a Routine-derived Completed occurrence back without changing occurrence or defaults", async () => {
+    const fixture = await seedFixture();
+    const routineDefinitionId = uuidv7();
+    const routineOccurrenceId = uuidv7();
+    const routine = await createRoutine(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), task_id: uuidv7(), routine_definition_id: routineDefinitionId,
+      title: "Completed routine rollback", expected_board_revision: 0,
+    }, now);
+    const routineEntryId = uuidv7();
+    await env.APP_DB.batch([
+      env.APP_DB.prepare(`INSERT INTO routine_occurrences
+        (id, app_user_id, routine_definition_id, origin_taskchute_day_id,
+         section_plan_override_present, section_override_id, planned_start_override_minute,
+         estimate_override_present, estimate_override_seconds, created_at)
+        VALUES (?, ?, ?, ?, 1, ?, 360, 1, 900, ?)`)
+        .bind(routineOccurrenceId, fixture.userId, routineDefinitionId, fixture.dayId, fixture.sectionId, createdAt),
+      env.APP_DB.prepare(`INSERT INTO routine_occurrence_task_snapshots
+        (app_user_id, routine_occurrence_id, task_title, project_id, project_title)
+        VALUES (?, ?, 'Completed routine rollback', NULL, NULL)`)
+        .bind(fixture.userId, routineOccurrenceId),
+      env.APP_DB.prepare(`INSERT INTO entries
+        (id, app_user_id, task_id, taskchute_day_id, section_id, position, lifecycle_state,
+         estimate_seconds, planned_start_minute, created_at, routine_occurrence_id)
+        VALUES (?, ?, ?, ?, ?, 2, 'planned', 900, 360, ?, ?)`)
+        .bind(routineEntryId, fixture.userId, routine.task_id, fixture.dayId, fixture.sectionId, createdAt, routineOccurrenceId),
+    ]);
+    const executionId = await makeLifecycleEntry({ ...fixture, entryId: routineEntryId }, "completed",
+      "2026-08-28T06:00:00.000Z", "2026-08-28T06:30:00.000Z");
+    const beforeOccurrence = await env.APP_DB.prepare(`SELECT section_plan_override_present, section_override_id,
+        planned_start_override_minute, estimate_override_present, estimate_override_seconds
+      FROM routine_occurrences WHERE app_user_id = ? AND id = ?`).bind(fixture.userId, routineOccurrenceId).first();
+    const beforeDefaults = await env.APP_DB.prepare(`SELECT default_section_id, default_planned_start_minute, default_estimate_seconds
+      FROM routine_definitions WHERE app_user_id = ? AND id = ?`).bind(fixture.userId, routineDefinitionId).first();
+
+    await revertEntryStart(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), entry_id: routineEntryId, execution_id: executionId,
+      expected_lifecycle_state: "completed", expected_started_at: "2026-08-28T06:00:00.000Z",
+      expected_ended_at: "2026-08-28T06:30:00.000Z",
+    }, now);
+
+    expect(await env.APP_DB.prepare("SELECT routine_occurrence_id, lifecycle_state FROM entries WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, routineEntryId).first()).toEqual({
+      routine_occurrence_id: routineOccurrenceId, lifecycle_state: "planned",
+    });
+    expect(await env.APP_DB.prepare(`SELECT section_plan_override_present, section_override_id,
+        planned_start_override_minute, estimate_override_present, estimate_override_seconds
+      FROM routine_occurrences WHERE app_user_id = ? AND id = ?`).bind(fixture.userId, routineOccurrenceId).first())
+      .toEqual(beforeOccurrence);
+    expect(await env.APP_DB.prepare(`SELECT default_section_id, default_planned_start_minute, default_estimate_seconds
+      FROM routine_definitions WHERE app_user_id = ? AND id = ?`).bind(fixture.userId, routineDefinitionId).first())
+      .toEqual(beforeDefaults);
+  });
+
+  it("rejects stale, wrong-owner, interrupted, multi-segment and wrong-lifecycle Completed rollback without partial writes", async () => {
+    const completedRequest = (fixture: Awaited<ReturnType<typeof seedFixture>>, executionId: string, operationId = uuidv7()) => ({
+      operation_id: operationId, entry_id: fixture.entryId, execution_id: executionId,
+      expected_lifecycle_state: "completed" as const,
+      expected_started_at: "2026-08-28T06:00:00.000Z",
+      expected_ended_at: "2026-08-28T06:30:00.000Z",
+    });
+
+    const staleStart = await seedFixture();
+    const staleStartExecution = await makeLifecycleEntry(staleStart, "completed",
+      "2026-08-28T06:00:00.000Z", "2026-08-28T06:30:00.000Z");
+    await expect(revertEntryStart(env.APP_DB, staleStart.userId,
+      { ...completedRequest(staleStart, staleStartExecution), expected_started_at: "2026-08-28T06:01:00.000Z" }, now))
+      .rejects.toMatchObject({ code: "resource_conflict" });
+
+    const staleEnd = await seedFixture();
+    const staleEndExecution = await makeLifecycleEntry(staleEnd, "completed",
+      "2026-08-28T06:00:00.000Z", "2026-08-28T06:30:00.000Z");
+    await expect(revertEntryStart(env.APP_DB, staleEnd.userId,
+      { ...completedRequest(staleEnd, staleEndExecution), expected_ended_at: "2026-08-28T06:31:00.000Z" }, now))
+      .rejects.toMatchObject({ code: "resource_conflict" });
+
+    const wrongOwner = await seedFixture();
+    const ownedExecution = await makeLifecycleEntry(wrongOwner, "completed",
+      "2026-08-28T06:00:00.000Z", "2026-08-28T06:30:00.000Z");
+    const otherOwner = await seedFixture();
+    await expect(revertEntryStart(env.APP_DB, otherOwner.userId,
+      { ...completedRequest(wrongOwner, ownedExecution, uuidv7()) }, now))
+      .rejects.toMatchObject({ code: "resource_not_found" });
+
+    const wrongLifecycle = await seedFixture();
+    const wrongLifecycleExecution = await makeLifecycleEntry(wrongLifecycle, "completed",
+      "2026-08-28T06:00:00.000Z", "2026-08-28T06:30:00.000Z");
+    await env.APP_DB.prepare("UPDATE entries SET lifecycle_state = 'running' WHERE app_user_id = ? AND id = ?")
+      .bind(wrongLifecycle.userId, wrongLifecycle.entryId).run();
+    await expect(revertEntryStart(env.APP_DB, wrongLifecycle.userId,
+      completedRequest(wrongLifecycle, wrongLifecycleExecution), now)).rejects.toMatchObject({ code: "resource_conflict" });
+
+    const wrongExecution = await seedFixture();
+    const wrongExecutionId = await makeLifecycleEntry(wrongExecution, "completed",
+      "2026-08-28T06:00:00.000Z", "2026-08-28T06:30:00.000Z");
+    const unrelatedExecution = await addExecution(wrongExecution, "2026-08-28T07:00:00.000Z", "2026-08-28T07:15:00.000Z");
+    await expect(revertEntryStart(env.APP_DB, wrongExecution.userId,
+      completedRequest(wrongExecution, unrelatedExecution.executionId), now)).rejects.toMatchObject({ code: "resource_conflict" });
+    expect(await env.APP_DB.prepare("SELECT lifecycle_state FROM entries WHERE app_user_id = ? AND id = ?")
+      .bind(wrongExecution.userId, wrongExecution.entryId).first()).toEqual({ lifecycle_state: "completed" });
+    expect(await env.APP_DB.prepare("SELECT ended_at FROM executions WHERE app_user_id = ? AND id = ?")
+      .bind(wrongExecution.userId, wrongExecutionId).first()).toEqual({ ended_at: "2026-08-28T06:30:00.000Z" });
+
+    const interrupted = await seedFixture();
+    const interruptedExecution = await makeLifecycleEntry(interrupted, "completed",
+      "2026-08-28T06:00:00.000Z", "2026-08-28T06:30:00.000Z");
+    await env.APP_DB.prepare("UPDATE executions SET terminal_outcome = 'interrupted' WHERE app_user_id = ? AND id = ?")
+      .bind(interrupted.userId, interruptedExecution).run();
+    await expect(revertEntryStart(env.APP_DB, interrupted.userId,
+      completedRequest(interrupted, interruptedExecution), now)).rejects.toMatchObject({ code: "resource_conflict" });
+
+    const multi = await seedFixture();
+    const firstExecution = await makeLifecycleEntry(multi, "completed",
+      "2026-08-28T06:00:00.000Z", "2026-08-28T06:30:00.000Z");
+    const secondExecution = uuidv7();
+    await env.APP_DB.prepare(`INSERT INTO executions
+      (id, app_user_id, entry_id, started_at, ended_at, created_at, terminal_outcome)
+      VALUES (?, ?, ?, '2026-08-28T07:00:00.000Z', '2026-08-28T07:15:00.000Z', ?, 'completed')`)
+      .bind(secondExecution, multi.userId, multi.entryId, createdAt).run();
+    await expect(revertEntryStart(env.APP_DB, multi.userId,
+      completedRequest(multi, firstExecution), now)).rejects.toMatchObject({ code: "resource_conflict" });
+    expect(await env.APP_DB.prepare("SELECT lifecycle_state FROM entries WHERE app_user_id = ? AND id = ?")
+      .bind(multi.userId, multi.entryId).first()).toEqual({ lifecycle_state: "completed" });
+    expect(await env.APP_DB.prepare("SELECT id FROM executions WHERE app_user_id = ? AND entry_id = ? ORDER BY id")
+      .bind(multi.userId, multi.entryId).all()).toMatchObject({ results: [{ id: firstExecution }, { id: secondExecution }] });
+
+    const continuation = await seedFixture();
+    const continuationExecution = await makeLifecycleEntry(continuation, "completed",
+      "2026-08-28T06:00:00.000Z", "2026-08-28T06:30:00.000Z");
+    const chainSibling = await addExecution(continuation, "2026-08-28T07:00:00.000Z", "2026-08-28T07:15:00.000Z");
+    await env.APP_DB.prepare("UPDATE entries SET continuation_chain_id = ? WHERE app_user_id = ? AND id = ?")
+      .bind(continuation.entryId, continuation.userId, chainSibling.entryId).run();
+    await expect(revertEntryStart(env.APP_DB, continuation.userId,
+      completedRequest(continuation, continuationExecution), now)).rejects.toMatchObject({ code: "resource_conflict" });
+    expect(await env.APP_DB.prepare("SELECT lifecycle_state FROM entries WHERE app_user_id = ? AND id = ?")
+      .bind(continuation.userId, continuation.entryId).first()).toEqual({ lifecycle_state: "completed" });
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM executions WHERE app_user_id = ? AND entry_id = ?")
+      .bind(continuation.userId, continuation.entryId).first<number>("count")).toBe(1);
+  });
+
   it("reverts only the current active Execution, preserves placement, replays exactly, and rejects operation misuse", async () => {
     const fixture = await seedFixture(true, 360);
     const executionId = await makeLifecycleEntry(fixture, "running", "2026-08-28T06:00:00.000Z", null);

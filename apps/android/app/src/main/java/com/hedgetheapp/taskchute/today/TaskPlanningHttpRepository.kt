@@ -67,6 +67,18 @@ class TaskPlanningHttpRepository(
         val currentProjectId = task.project?.id
         val currentModeId = task.mode?.id
         val currentSectionId = editor.day.sections.firstOrNull { section -> section.entries.any { it.id == task.id } }?.id
+        val directCompletedRollback = task.lifecycleState == LifecycleState.COMPLETED
+            && input.actualStartMinute == null && input.actualEndMinute == null
+        if (directCompletedRollback) {
+            if (input.title != task.title || input.projectId != currentProjectId || input.modeId != currentModeId
+                || input.sectionId != currentSectionId || input.plannedStartMinute != task.plannedStartMinute
+                || input.estimateSeconds != task.estimateSeconds
+                || input.startReminderOffsetMinutes != task.startReminderOffsetMinutes
+                || input.notifyOnEstimateOverrun != task.notifyOnEstimateOverrun) {
+                return PlanningSaveResult.Failure("完了済みから予定へ戻す操作では、他のタスク設定を同時に変更できません。")
+            }
+            return executeRevertEntryStart(editor, task, completedDirectRollback = true)
+        }
         if (editor.capability == TaskEditorCapability.ROUTINE_PLANNING) {
             val routineInput = synchronizeRoutineSectionPlan(editor.day, input)
             var placementRevision = editor.day.placementRevision
@@ -196,6 +208,10 @@ class TaskPlanningHttpRepository(
         placementRevision: Int,
     ): PlanningSaveResult {
         val task = editor.originalTask ?: return PlanningSaveResult.Success
+        if (task.lifecycleState == LifecycleState.COMPLETED
+            && input.actualStartMinute == null && input.actualEndMinute == null) {
+            return executeRevertEntryStart(editor, task, completedDirectRollback = true)
+        }
         if (task.lifecycleState == LifecycleState.RUNNING && input.actualStartMinute == null && input.actualEndMinute == null) {
             return executeRevertEntryStart(editor, task)
         }
@@ -250,20 +266,26 @@ class TaskPlanningHttpRepository(
         }
     }
 
-    private fun executeRevertEntryStart(editor: TaskEditorState, task: TodayTask): PlanningSaveResult {
-        if (!editor.day.isCurrent) return PlanningSaveResult.Failure("開始の取り消しは今日のタスクだけ実行できます。")
+    private fun executeRevertEntryStart(
+        editor: TaskEditorState,
+        task: TodayTask,
+        completedDirectRollback: Boolean = false,
+    ): PlanningSaveResult {
+        if (!editor.day.isCurrent) return PlanningSaveResult.Failure("ライフサイクルの修正は今日のタスクだけ実行できます。")
         val executionId = task.executionId
-            ?: return PlanningSaveResult.Failure("実行中のExecution IDを取得できません。再読み込みしてください。")
+            ?: return PlanningSaveResult.Failure("対象のExecution IDを取得できません。再読み込みしてください。")
         val startedAt = task.activeStartedAt ?: task.firstStartedAt
-            ?: return PlanningSaveResult.Failure("実行中の開始時刻を取得できません。再読み込みしてください。")
+            ?: return PlanningSaveResult.Failure("実行の開始時刻を取得できません。再読み込みしてください。")
+        val endedAt = if (completedDirectRollback) task.lastEndedAt
+            ?: return PlanningSaveResult.Failure("完了したExecutionの終了時刻を取得できません。再読み込みしてください。") else null
         val path = "/api/v1/entries/${JsonEncoding.pathSegment(task.id)}/revert-start"
         val payload = """
-            {"entry_id":"${JsonEncoding.escape(task.id)}","execution_id":"${JsonEncoding.escape(executionId)}","expected_started_at":"${JsonEncoding.escape(startedAt)}"}
+            {"entry_id":"${JsonEncoding.escape(task.id)}","execution_id":"${JsonEncoding.escape(executionId)}","expected_started_at":"${JsonEncoding.escape(startedAt)}"${if (completedDirectRollback) ",\"expected_lifecycle_state\":\"completed\",\"expected_ended_at\":\"${JsonEncoding.escape(endedAt!!)}\"" else ""}}
         """.trimIndent()
         return executeLifecycleMutation(path, payload).toSaveResult()
     }
 
-    /** Reuse one operation identity for an unchanged D-156 intent after an ambiguous transport result. */
+    /** Reuse one operation identity for an unchanged D-156/D-157 intent after an ambiguous result. */
     private fun executeLifecycleMutation(path: String, payload: String): PlanningHttpResult {
         val intentKey = "$path|$payload"
         val operationId = ambiguousLifecycleOperationIds.getOrPut(intentKey, UUIDv7::next)
