@@ -2512,3 +2512,15 @@ Canonical Decision: `docs/decisions/D-159_WEAR_RUNNING_PROJECTION_EVENT_SYNC_V01
 D-159 requires the Pixel Watch complication to be invalidated promptly whenever the server-canonical Running projection changes, regardless of whether the triggering edit came from Web, Android Phone, or Wear. This includes Start, Complete, Running estimate changes, actual start/end corrections, Completed → Running reopen, Running/Completed → Planned rollback, and other canonical edits that materially change the complication projection. The Watch then re-reads canonical current-Day state and refreshes the complication; elapsed progression itself remains local/time-dependent and must not require minute-by-minute server polling. The existing 300-second D-158 periodic refresh remains a fallback, not the desired primary propagation path.
 
 The exact transport is deliberately not selected by this Decision. FCM/direct Watch push, Phone/Data Layer assistance, or another platform-supported invalidation mechanism requires a feasibility/security/cost review before implementation. No new schema, credential, Firebase project, background service, dependency, or production change is approved by D-159 itself.
+
+## D-160 — Wear Running Projection FCM Transport v0.1
+
+Status: **Approved / Implementation not started**
+
+Canonical Decision: `docs/decisions/D-160_WEAR_RUNNING_PROJECTION_FCM_TRANSPORT_V01.md`.
+
+D-160 selects direct Firebase Cloud Messaging from TaskChute Server to the Wear app as the D-159 event-driven invalidation transport. Messages are normal-priority, invalidation-only data messages; the Watch re-fetches canonical current Day and refreshes the complication through background work. D-158's 300-second system refresh remains fallback and no hard delivery SLA is claimed.
+
+The approved implementation includes a minimal owner-bound Wear push registration table/migration and authenticated register/unregister API, Wear Firebase Messaging + WorkManager dependencies, a dedicated least-privilege FCM sender service account whose private key exists only as a Cloudflare Worker secret, and best-effort post-commit fanout. Push failure never changes a successful Task mutation outcome. The existing realtime mutation mapping may be reused only after replacing `response.ok`-style notification gating with an explicit canonical-commit outcome boundary.
+
+Production Firebase/credentials/deploy remain unapproved and `NOT_RUN`.

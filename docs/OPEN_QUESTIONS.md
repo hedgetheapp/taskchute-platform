@@ -421,7 +421,7 @@ First Server + Web vertical slice、D-038 B1 / B3、D-039 B2はImplemented / Int
 - D-121で通常modeのTask rowからselection checkboxを隠しSelection Modeだけで表示する方向はApproved済みだが、通常modeからSelection Modeへ入る具体的interaction（long-press、別control等）は未決
 - Android Widgetのinitial scope
 - D-154 v0.1より後のWear OS scope（Completed history row、date navigation、Task edit / D&D、Notes / Daily、Tile、Location、offline / background realtime等）。Complication first sliceはD-158でApproved済み
-- D-159のevent-driven Wear Running projection invalidationを実現するexact transport。候補にはWatchへのdirect cloud push（例: FCM data invalidation）、Android Phone + Wear Data Layer経由、その他Wear OS supported background mechanismがある。決定前に、Doze/background delivery、token/FID lifecycle、server credential storage、APP persistence/migration、retry/stale cleanup、battery、privacy、Cloudflare Workerからのsend feasibility、継続Costを比較する。D-159自体はFCM/Firebaseやschema追加をApprovedしない
+- D-159のevent-driven Wear Running projection transportはD-160でdirect FCM v0.1として解決済み。残るOpenは、将来のkeyless sender authenticationへの置換、tokenの長期stale-age cleanup policy、multi-Watch管理UX、production Firebase/IAM導入時期、Doze下の実測latency改善可否である。
 - Wear OS public distribution時のstandalone metadata / iOS-paired watch対応。D-154 v0.1はAndroid companion-assisted initial auth + post-pair Server-direct runtimeまでをApproved
 - native iOS appへ進むentry criteria
 

@@ -3129,4 +3129,22 @@ Product Owner approved the cross-client behavior requirement on 2026-10-02. When
 
 Canonical Decision: `docs/decisions/D-159_WEAR_RUNNING_PROJECTION_EVENT_SYNC_V01.md`.
 
-Transport architecture is intentionally not yet selected. A feasibility task must compare direct Watch cloud push/FCM, Phone/Data Layer assistance, and other platform-supported mechanisms, including Doze delivery, credentials, registration lifecycle/persistence, migration, battery, privacy, retry, cost, and Cloudflare compatibility. No code/schema/dependency/Firebase project/production change is approved yet.
+Feasibility completed: direct Watch FCM is the only first-slice candidate that covers Web/Phone/Wear source changes while the Wear Activity is closed without requiring a persistent Watch socket. D-160 now approves normal-priority invalidation-only FCM, WorkManager canonical refetch, owner-bound Wear registration persistence/API, the required APP migration, official Firebase Messaging + AndroidX WorkManager dependencies, and a least-privilege FCM sender service-account private key stored only as a Cloudflare Worker secret. The 300-second complication refresh remains fallback; no hard latency SLA is promised. Implementation is NOT_STARTED. Production remains unapproved/NOT_RUN.
+
+## D-160 Wear Running Projection FCM transport — Approved / NOT_IMPLEMENTED
+
+D-159 feasibility found direct FCM to the Wear app to be the smallest architecture that covers Web, Android Phone, and Wear-originated canonical Running projection changes while the Wear Activity is closed. Phone/Data Layer alone cannot cover Web/phone-background cases without another background mechanism; a persistent Watch WebSocket conflicts with current battery/background boundaries.
+
+Approved v0.1:
+- normal-priority FCM data invalidation only;
+- Watch canonical refetch via WorkManager, then complication refresh;
+- D-158 300-second refresh retained as fallback;
+- owner-scoped multi-Watch registration table + migration and authenticated register/unregister API;
+- official Firebase Messaging + AndroidX WorkManager dependencies;
+- dedicated least-privilege FCM sender service account, private key only in Cloudflare Worker secret;
+- explicit canonical-commit notification boundary instead of HTTP `response.ok`;
+- push failure never rolls back a successful Task mutation.
+
+Canonical Decision: `docs/decisions/D-160_WEAR_RUNNING_PROJECTION_FCM_TRANSPORT_V01.md`.
+
+Implementation, migration, Firebase/nonprod resource setup, secret provisioning, persistent nonprod verification, fresh APKs, Pixel Watch verification and production are all NOT_RUN. Production remains unapproved; Released NO.

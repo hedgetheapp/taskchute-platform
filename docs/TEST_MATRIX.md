@@ -4334,3 +4334,15 @@ The old artifact's `FAIL / USER_REPORTED` is historical evidence and is not over
 | D159-IMPLEMENTATION | Wear/Server | Selected transport and projection invalidation path | Transport not yet Approved; implementation prohibited until follow-up Material Decision if required. | NOT_RUN |
 | D159-DEVICE | Pixel Watch | Start/Complete/estimate/time correction/reopen/rollback from relevant clients visibly converge without waiting for the 300s fallback in normal connected conditions | Physical verification not run. | NOT_RUN / PRODUCT_OWNER_MANUAL |
 | D159-BOUNDARY | Production/release | No unapproved schema/dependency/security/cost/production change during feasibility | Production `NOT_RUN`; Released `NO`. | NOT_RUN / NO |
+
+## D-160 Wear Running Projection FCM transport — 2026-10-02
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D160-DECISION | Architecture | Direct normal-priority FCM invalidation, WorkManager canonical refetch, 300s fallback | Canonical Decision `docs/decisions/D-160_WEAR_RUNNING_PROJECTION_FCM_TRANSPORT_V01.md`. | APPROVED |
+| D160-COMMIT-BOUNDARY | Worker | Only canonical committed mutation outcomes fan out; HTTP 2xx/domain rejection must not emit false invalidation | Feasibility identified current `response.ok` risk; implementation not started. | NOT_RUN |
+| D160-REGISTRATION | APP/Worker | Owner-scoped Watch installation/token register, rotate, unregister, multi-device, invalid-token cleanup | APP migration/API approved but not implemented. | NOT_RUN |
+| D160-FCM-SENDER | Worker/Google | Least-privilege service account; private key only Worker secret; OAuth v1 send; invalidation-only normal-priority message | External project/IAM/secret not provisioned. | NOT_RUN |
+| D160-WEAR | Wear | FirebaseMessagingService → WorkManager → canonical Today → complication update; no Task data in push; no foreground service/background socket | Dependencies/code not implemented. | NOT_RUN |
+| D160-INTEGRATION | Cross-client | Phone/Web/Wear Start, Complete, estimate/time edit, reopen/rollback converge without normally waiting for 300s | Persistent nonprod + Pixel Watch evidence not run. | NOT_RUN / PRODUCT_OWNER_MANUAL |
+| D160-BOUNDARY | Production/release | Nonprod first; production Firebase/secret/deploy excluded | Production `NOT_RUN`; Released `NO`. | NOT_RUN / NO |

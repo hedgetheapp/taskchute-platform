@@ -743,3 +743,57 @@ The preferred semantic type for estimated Running work is Goal Progress because 
 No foreground service or background websocket is added. Periodic requests follow the platform minimum update interval; time-dependent/dynamic values should advance locally where supported. Successful Watch-side Start/Complete may request a complication refresh. Web/Phone-originated canonical changes while the Wear Activity is closed converge only at a later OS data request in D-158.
 
 D-158 may add the official AndroidX watch-face complication data-source module to the existing Wear Android stack. No Worker/API/schema/migration or third-party runtime dependency is introduced.
+
+## D-160 Wear FCM transport architecture
+
+D-159のcross-client Wear freshness pathは次の構成とする。
+
+```text
+Web / Android Phone / Wear mutation
+          ↓
+canonical application commit
+          ↓
+explicit committed mutation outcome
+          ↓
+Running-projection invalidation fanout
+      ├─ existing foreground RealtimeHub
+      └─ FCM normal-priority data message
+                         ↓
+                Wear FirebaseMessagingService
+                         ↓
+                   WorkManager
+                         ↓
+       authenticated canonical Today fetch
+                         ↓
+         ComplicationDataSourceUpdateRequester
+```
+
+FCMはcanonical state transportではなくinvalidate signal transportである。FCM send acceptanceはWatch delivery証明ではなく、Watch fetch結果だけがComplication state authorityとなる。
+
+### Persistence
+
+APP DBへowner-scoped Wear push registrationを追加する。v0.1 physical modelは以下の責務を持つ。
+
+- stable registration `id` (UUIDv7)
+- `app_user_id`
+- Watch-local stable `installation_id` (UUIDv7)
+- raw opaque `fcm_token` delivery address
+- `created_at`
+- `updated_at`
+- `last_seen_at`
+
+`(app_user_id, installation_id)`とcurrent token bindingを重複しないよう制約する。FCM tokenは認証credentialではないがsensitive delivery addressとして扱い、通常log / UI / analyticsへ出さない。複数Watch registrationを一userへ許可する。
+
+Authenticated register/unregister APIはownerをsessionから解決し、client supplied owner IDを受け付けない。account switch / token rotationはcurrent authenticated ownerへのbinding更新として扱い、permanent invalid-token responseはregistration cleanupへ利用する。
+
+### Server credential
+
+Nonproduction FCM senderは専用Google service accountを使用し、FCM送信に必要な最小権限だけを付与する。user-managed private keyをCloudflare Worker secretとして保持し、repository、D1、logs、APK、client configへ保存しない。OAuth 2.0 access tokenはそのkeyから短命にmintする。
+
+このkeyは長期credentialでありrotation対象とする。将来Cloudflare Workerから利用できる実用的なkeyless federationが確認できた場合は置換候補とするが、D-160 v0.1はbroker等の追加serviceを導入しない。
+
+### Dependency / runtime
+
+Wear appへofficial Firebase Messaging SDKとAndroidX WorkManagerを追加してよい。foreground serviceやbackground WebSocketは追加しない。FCM受信後のcanonical readはbounded background workとして実行し、complicationの300秒fallbackを維持する。
+
+Firebase/Google project、client config、service account、Worker secretはnonproductionから導入する。Production resource/credential/deployは別途承認まで作成・適用しない。

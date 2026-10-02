@@ -123,3 +123,7 @@ If the selected design requires any of these Material changes, return to the Pro
 D-159 supersedes D-158 only in the desired cross-client freshness target: waiting for the next periodic refresh is now fallback behavior, not the desired normal path.
 
 Until D-159 transport is selected and implemented, the current D-158 300-second behavior remains the implementation fact.
+
+## Follow-up
+
+D-160 (`docs/decisions/D-160_WEAR_RUNNING_PROJECTION_FCM_TRANSPORT_V01.md`) resolves the transport architecture that remained pending in this Decision. D-159 remains the Product behavior authority; D-160 supplies the approved v0.1 direct-FCM transport, registration persistence/API, sender credential boundary, and post-commit fanout architecture.

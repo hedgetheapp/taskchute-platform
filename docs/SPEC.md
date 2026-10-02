@@ -1046,3 +1046,29 @@ Runningがなくなった場合、ComplicationはD-158のidle / no-running表現
 elapsedの連続進行はWatchのlocal/time-dependent valueで行い、そのための秒/分単位network pollingは禁止する。event-driven invalidationが失敗・遅延した場合のfallbackとしてD-158の300秒system refreshを維持する。
 
 “速やかに”はevent-driven invalidationをcanonical commit後に発行するProduct requirementであり、OS/network push transportにhard realtime SLAを要求するものではない。exact delivery mechanism、priority、retry、registration/token persistence、security、costはD-159 feasibilityで決定前事項として扱う。
+
+## D-160 Wear FCM invalidation transport
+
+D-159のevent-driven invalidationはFCM data messageをprimary transportとする。
+
+- priorityはnormal
+- payloadは原則 `running_projection_invalidated` のようなopaque invalidationだけとし、Task title、estimate、execution timestamp、Document、cookie/session等のpersonal/canonical dataを含めない
+- WatchはpayloadをDomain authorityとして扱わず、既存authenticated sessionでcanonical current Dayを再取得してからComplicationを更新する
+- background canonical fetchはplatform-safeなWorkManager executionへ委ねる
+- elapsed tickingはD-158のlocal/time-dependent valueを維持し、FCMやserver pollingをtimerとして使わない
+- Dozeやnetwork stateでnormal-priority deliveryが遅延し得るためhard realtime SLAを置かない
+- D-158の300秒system refreshをfallbackとして残す
+
+### Registration lifecycle
+
+Wear app installationはsessionから独立したlocal `installation_id`（UUIDv7）をno-backup private storageへ保持し、FCM registration tokenとともにauthenticated registration APIへ送る。Serverはrequest bodyのowner identityを信用せず、current Watch sessionから`app_user_id`を解決する。
+
+複数Wear installationをownerごとに登録可能とする。token refresh / re-pair / account switchではcurrent authenticated ownerへ最新token bindingを収束させる。logout時はbest-effort unregisterを試みるが、失敗してもpush payloadがinvalidation-onlyであることを前提にcanonical secret/data漏えいへつながらない。FCMがpermanent invalid tokenを返したregistrationはserver側で削除可能とする。
+
+### Post-commit semantics
+
+FCM fanoutはcanonical mutationが実際にcommitした後だけ行う。HTTP 2xx / `Response.ok`だけをcommit判定に使ってはならない。Domain rejectionをHTTP 200 bodyで返す既存pathを考慮し、application outcomeから明示的なcommitted signalを得るinternal boundaryを設ける。
+
+Push送信はbest-effort freshness side effectであり、push失敗・timeout・token cleanup失敗を理由に既に成功したTask mutationをrollbackまたはfailure responseへ変更しない。
+
+既存D-105 realtime mappingをmutation coverage sourceとして再利用してよいが、RealtimeHub / FCMの双方がcanonical-commit後だけpublishされるよう共通outcome boundaryを整合する。
