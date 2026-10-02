@@ -4324,3 +4324,13 @@ The old artifact's `FAIL / USER_REPORTED` is historical evidence and is not over
 | D158-WEAR-BUILD | Wear build/manifest | Complication service, official AndroidX API, provider permission, compile/APK | `androidx.wear.watchface:watchface-complications-data-source-ktx:1.3.0`; Wear Kotlin compile, AndroidTest Kotlin compile, `:wear:assembleDebug` PASS. Manifest inspection confirms exported `WearRunningComplicationService`, system `BIND_COMPLICATION_PROVIDER` permission, GOAL_PROGRESS/SHORT_TEXT/LONG_TEXT, 300-second update period. Exact-SHA CI `37006092049` PASS. Wear APK `taskchute-wear-debug-3e695a3d76a968a6a4aad6e3fd8e393932ca8667` / ID `11225847657`; Phone APK ID `11225971712`; both expire `2026-10-09`. | PASS |
 | D158-WEAR-RUNTIME | Wear runtime | Complication selectable/rendered while app closed; tap opens app; no crash | No Wear AVD/profile or connected Wear target was available; phone AVD was not substituted. Pixel Watch physical verification has not been performed. | NOT_RUN / NO_WEAR_AVD_AVAILABLE; PRODUCT_OWNER_MANUAL |
 | D158-BOUNDARY | Server/data/release | No Worker/API/schema/migration/background realtime/foreground service/production | Android Wear-only implementation; no Worker/API/shared contract/schema/migration/dependency or persistent nonprod changes. No foreground service/background realtime. Production `NOT_RUN`; Released `NO`. | PASS / NOT_RUN / NO |
+
+## D-159 Wear Running Projection event-driven sync — 2026-10-02
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D159-PRODUCT | Cross-client Running projection | Web/Phone/Wear canonical projection changes trigger prompt Watch invalidation; 300s remains fallback | Canonical Decision `docs/decisions/D-159_WEAR_RUNNING_PROJECTION_EVENT_SYNC_V01.md`. | APPROVED |
+| D159-FEASIBILITY | Transport | Compare direct Watch push/FCM, Phone/Data Layer, other platform-supported mechanism; Doze, latency, battery, privacy, auth/credentials, token lifecycle, persistence/migration, retry, cost, Cloudflare Worker compatibility | Investigation not yet executed. | NOT_RUN |
+| D159-IMPLEMENTATION | Wear/Server | Selected transport and projection invalidation path | Transport not yet Approved; implementation prohibited until follow-up Material Decision if required. | NOT_RUN |
+| D159-DEVICE | Pixel Watch | Start/Complete/estimate/time correction/reopen/rollback from relevant clients visibly converge without waiting for the 300s fallback in normal connected conditions | Physical verification not run. | NOT_RUN / PRODUCT_OWNER_MANUAL |
+| D159-BOUNDARY | Production/release | No unapproved schema/dependency/security/cost/production change during feasibility | Production `NOT_RUN`; Released `NO`. | NOT_RUN / NO |

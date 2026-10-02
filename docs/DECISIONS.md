@@ -2502,3 +2502,13 @@ Status: **Approved / Implementation not started**
 Canonical Decision: `docs/decisions/D-158_WEAR_OS_RUNNING_COMPLICATION_V01.md`.
 
 D-158 adds a read-only Wear OS complication data source so the current Running Task can be understood from the watch face without opening TaskChute. Running with a positive estimate exposes elapsed/estimate goal progress and preserves over-target semantics; Running without estimate exposes elapsed-only state without inventing a goal. Idle and signed-out states remain compact and safe. Tap opens the existing Wear app. Final colors/arc/badge rendering remain watch-face-controlled, so the orange overrun mockup is visual intent rather than a pixel-exact contract. The complication may read the canonical current Day with the existing encrypted Watch session when Wear OS requests data and may request refresh after Watch-side Start/Complete, but D-154B realtime remains foreground-only. Tile, background realtime, custom watch face, Worker/API/schema/migration, production and Release remain out of scope.
+
+## D-159 — Wear Running Projection event-driven sync requirement v0.1
+
+Status: **Approved / Transport architecture pending feasibility**
+
+Canonical Decision: `docs/decisions/D-159_WEAR_RUNNING_PROJECTION_EVENT_SYNC_V01.md`.
+
+D-159 requires the Pixel Watch complication to be invalidated promptly whenever the server-canonical Running projection changes, regardless of whether the triggering edit came from Web, Android Phone, or Wear. This includes Start, Complete, Running estimate changes, actual start/end corrections, Completed → Running reopen, Running/Completed → Planned rollback, and other canonical edits that materially change the complication projection. The Watch then re-reads canonical current-Day state and refreshes the complication; elapsed progression itself remains local/time-dependent and must not require minute-by-minute server polling. The existing 300-second D-158 periodic refresh remains a fallback, not the desired primary propagation path.
+
+The exact transport is deliberately not selected by this Decision. FCM/direct Watch push, Phone/Data Layer assistance, or another platform-supported invalidation mechanism requires a feasibility/security/cost review before implementation. No new schema, credential, Firebase project, background service, dependency, or production change is approved by D-159 itself.

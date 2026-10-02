@@ -1024,3 +1024,25 @@ Running Entryに正のestimateがある場合、complicationはelapsedをcurrent
 signed-in idleはcompact idle state、signed-outはlogin stateを返し、tapは既存Wear appを開く。transient network failureでRunning stateを捏造しない。Complicationはread-onlyでStart/Completeを直接実行しない。
 
 Watch-side Start/Complete成功後はplatform update requesterでrefreshを要求できるが、Web/Phone側の変更を閉じたWatchへ即時pushするbackground realtimeはD-158に含めない。periodic refreshはWear OSのbattery制約に従い、秒/分単位network pollingを行わない。最終描画はwatch face authorityであり、TaskChuteは第三者/system watch faceの色・arc・alert badgeをpixel-exactに強制しない。
+
+## D-159 Wear Running Projection event-driven sync
+
+Complicationの表示authorityはserver-canonical current Day / active Execution / Entry metadataである。Running projectionを構成するcanonical factsが変化した場合、変更元clientに関係なくWatch側へevent-driven invalidationを届け、Watchがcanonical current Dayを再取得した後にComplication updateを要求する。
+
+対象となる変更は少なくとも以下を含む。
+
+- Planned → Running Start
+- Running → Completed Complete、またはactual end手入力
+- Running中estimate変更
+- Running中actual start訂正
+- Completed → Running（actual end clear; D-156）
+- Running → Planned rollback（D-156）
+- eligible Completed → Planned direct rollback（D-157）
+- complication payload / accessibility presentationに影響するTask title等のcanonical metadata変更
+- その他、current Running Taskのidentity / lifecycle / started_at / estimate等を変化させるcanonical mutation
+
+Runningがなくなった場合、ComplicationはD-158のidle / no-running表現へ収束する。次Taskを自動表示することはD-159のrequirementではない。新しいRunning Taskが開始された場合は、そのTaskのcanonical start / estimateからprogress表示へ速やかに切り替える。
+
+elapsedの連続進行はWatchのlocal/time-dependent valueで行い、そのための秒/分単位network pollingは禁止する。event-driven invalidationが失敗・遅延した場合のfallbackとしてD-158の300秒system refreshを維持する。
+
+“速やかに”はevent-driven invalidationをcanonical commit後に発行するProduct requirementであり、OS/network push transportにhard realtime SLAを要求するものではない。exact delivery mechanism、priority、retry、registration/token persistence、security、costはD-159 feasibilityで決定前事項として扱う。

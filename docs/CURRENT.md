@@ -3122,3 +3122,11 @@ Canonical Decision: `docs/decisions/D-158_WEAR_OS_RUNNING_COMPLICATION_V01.md`.
 Implementation `3e695a3d76a968a6a4aad6e3fd8e393932ca8667`. Focused presentation/controller tests and full Wear JVM suite `49 / 49` PASS; Wear Kotlin, AndroidTest Kotlin compile, debug assemble, and provider manifest inspection PASS. Exact-SHA CI `37006092049` PASS (Web/Worker skipped by Android-only classifier). Fresh signed Wear APK artifact `taskchute-wear-debug-3e695a3d76a968a6a4aad6e3fd8e393932ca8667` / ID `11225847657`, expires `2026-10-09`; CI also produced Phone APK artifact ID `11225971712`.
 
 Wear AVD verification is `NOT_RUN / NO_WEAR_AVD_AVAILABLE`; no phone emulator was substituted. Pixel Watch physical verification remains `NOT_RUN / PRODUCT_OWNER_MANUAL`. D-158 adds no Tile, background realtime, custom watch face, Worker/API/schema/migration, persistent nonprod, production, or Release scope. Production `NOT_RUN`; Released `NO`.
+
+## D-159 Wear Running Projection event-driven sync — Approved / FEASIBILITY_PENDING
+
+Product Owner approved the cross-client behavior requirement on 2026-10-02. Whenever a server-canonical change alters the Wear complication's Running projection, the Watch should be invalidated promptly regardless of whether the source was Web, Android Phone, or Wear. Scope includes Start, Complete / manual end, Running estimate and actual-start correction, Completed→Running reopen, Running/Completed→Planned rollback, and other canonical changes that affect the current Running projection. After invalidation the Watch re-fetches canonical current Day and refreshes the complication. Elapsed progression remains local/time-dependent; D-158's 300-second refresh remains a fallback.
+
+Canonical Decision: `docs/decisions/D-159_WEAR_RUNNING_PROJECTION_EVENT_SYNC_V01.md`.
+
+Transport architecture is intentionally not yet selected. A feasibility task must compare direct Watch cloud push/FCM, Phone/Data Layer assistance, and other platform-supported mechanisms, including Doze delivery, credentials, registration lifecycle/persistence, migration, battery, privacy, retry, cost, and Cloudflare compatibility. No code/schema/dependency/Firebase project/production change is approved yet.

@@ -51,6 +51,8 @@ v0.1ではdate navigation、Task edit / D&D、Notes / Daily、Tile / Complicatio
 
 D-158でComplicationだけを後続scopeとしてApprovedした。文字盤からcurrent Running Taskのelapsed / estimate progressを確認でき、estimate超過はgoal超過として表現する。TaskChuteはsemantic dataを供給し、実際のring形状・色・optional field表示は選択中watch faceのrendererへ委ねる。タップは既存Wear appを開く。Tile、watch-face上のStart/Complete、background realtime、custom watch faceは引き続き未承認 / Open。
 
+D-159で、Complicationが参照する**server-canonical Running projectionの変更をclient起点に依存せず速やかにWatchへ反映すること**をProduct requirementとしてApprovedした。Web / Android Phone / Wearのいずれから行ったStart / Complete、Running estimate変更、actual start / end訂正、Completed→Running reopen、Running/Completed→Planned rollback等でRunning projectionが変わった場合、Watchはevent-driven invalidationを受けてcanonical current Dayを再取得しComplicationをrefreshすることをtargetとする。経過時間の進行自体はWatch側のtime-dependent表示で進め、毎分server pollingしない。D-158の300秒周期はfallbackとして残す。exact transport / push provider / persisted registration modelはfeasibility後に別途決定する。
+
 ### iOS native
 
 将来対応するが、native clientとしての優先度は低くする。
