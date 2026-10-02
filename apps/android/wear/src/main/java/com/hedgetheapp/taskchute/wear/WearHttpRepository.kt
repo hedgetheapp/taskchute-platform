@@ -39,6 +39,7 @@ internal interface WearRepository {
 internal class WearHttpRepository(
     rawBaseUrl: String,
     private val sessionStore: WearSessionStore,
+    private val requestTimeoutMillis: Int = DEFAULT_REQUEST_TIMEOUT_MILLIS,
 ) : WearRepository {
     private val baseUrl = rawBaseUrl.trimEnd('/')
     private val origin = runCatching { URL(baseUrl) }.getOrNull()
@@ -148,8 +149,8 @@ internal class WearHttpRepository(
         if (origin.isBlank()) return WearHttpResponse(null, "")
         val connection = (URL(baseUrl + path).openConnection() as HttpURLConnection).apply {
             requestMethod = method
-            connectTimeout = 10_000
-            readTimeout = 10_000
+            connectTimeout = requestTimeoutMillis
+            readTimeout = requestTimeoutMillis
             useCaches = false
             setRequestProperty("Accept", "application/json")
             setRequestProperty("Cache-Control", "no-store")
@@ -212,5 +213,8 @@ internal class WearHttpRepository(
 
     private data class WearHttpResponse(val status: Int?, val body: String)
 
-    private companion object { const val MAX_RESPONSE_BYTES = 2 * 1024 * 1024 }
+    private companion object {
+        const val DEFAULT_REQUEST_TIMEOUT_MILLIS = 10_000
+        const val MAX_RESPONSE_BYTES = 2 * 1024 * 1024
+    }
 }

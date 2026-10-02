@@ -18,6 +18,7 @@ internal class WearTodayController(
     private val realtime: WearRealtimeClient = NoopWearRealtimeClient,
     private val mainDispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val onCanonicalLifecycleReconciled: () -> Unit = {},
 ) {
     private val scope = CoroutineScope(SupervisorJob() + mainDispatcher)
     private val authMutex = Mutex()
@@ -219,6 +220,18 @@ internal class WearTodayController(
         val authAtStart = authGeneration
         val loadId = ++nextLoadId
         val load = loadMutex.withLock { withContext(ioDispatcher) { repository.loadToday() } }
+        val canonicalTransitionConfirmed = (load as? WearLoadResult.Success)?.day?.let { day ->
+            if (completion) {
+                day.allTasks.any { it.id == task.id && it.lifecycle == WearLifecycle.COMPLETED }
+            } else {
+                day.activeExecution?.entryId == task.id
+            }
+        } == true
+        if (canonicalTransitionConfirmed &&
+            (mutation == WearMutationResult.Success || mutation == WearMutationResult.Ambiguous)
+        ) {
+            onCanonicalLifecycleReconciled()
+        }
         if (!foreground || lifecycleAtStart != lifecycleGeneration || authAtStart != authGeneration || loadId < latestAppliedLoadId) return
         latestAppliedLoadId = loadId
         when (load) {

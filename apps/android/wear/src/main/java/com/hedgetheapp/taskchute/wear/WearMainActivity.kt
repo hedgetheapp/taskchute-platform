@@ -20,7 +20,11 @@ class WearMainActivity : ComponentActivity() {
                 onUnauthorized = { controller.onRealtimeUnauthorized() },
             ),
         )
-        controller = WearTodayController(repository, realtime)
+        controller = WearTodayController(
+            repository,
+            realtime,
+            onCanonicalLifecycleReconciled = { WearComplicationRefreshRequester.request(this) },
+        )
         pairingBridge = WearPairingBridge(this) { grant -> controller.onPairingGrant(pairingBridge, grant) }
         setContent { WearTaskChuteApp(controller, pairingBridge) }
     }

@@ -96,13 +96,78 @@ class WearTodayControllerRealtimeTest {
         assertTrue(realtime.stopCount >= 1)
     }
 
-    private fun controller(repository: FakeWearRepository, realtime: FakeRealtimeClient) =
+    @Test
+    fun canonicalStartAndCompleteEachRequestComplicationRefreshOnce() {
+        val repository = FakeWearRepository()
+        val task = plannedTask()
+        var refreshCount = 0
+        repository.onLoad = {
+            if (repository.loadCount == 1) {
+                WearLoadResult.Success(day("2026-10-01").copy(unsectionedTasks = listOf(task)))
+            } else {
+                WearLoadResult.Success(runningDay(task))
+            }
+        }
+        val controller = controller(repository, FakeRealtimeClient()) { refreshCount += 1 }
+        controller.onForeground()
+        controller.start(task)
+
+        assertEquals(1, refreshCount)
+
+        repository.onLoad = { WearLoadResult.Success(completedDay(task.copy(lifecycle = WearLifecycle.COMPLETED))) }
+        controller.complete()
+
+        assertEquals(2, refreshCount)
+    }
+
+    @Test
+    fun unconfirmedOrRejectedLifecycleMutationDoesNotRequestComplicationRefresh() {
+        val repository = FakeWearRepository().apply { startResult = WearMutationResult.Rejected }
+        val task = plannedTask()
+        repository.onLoad = { WearLoadResult.Success(day("2026-10-01").copy(unsectionedTasks = listOf(task))) }
+        var refreshCount = 0
+        val controller = controller(repository, FakeRealtimeClient()) { refreshCount += 1 }
+        controller.onForeground()
+        controller.start(task)
+        assertEquals(0, refreshCount)
+
+        val unauthorizedRepository = FakeWearRepository().apply {
+            startResult = WearMutationResult.Unauthorized
+            onLoad = { WearLoadResult.Success(day("2026-10-01").copy(unsectionedTasks = listOf(task))) }
+        }
+        val unauthorizedController = controller(unauthorizedRepository, FakeRealtimeClient()) { refreshCount += 1 }
+        unauthorizedController.onForeground()
+        unauthorizedController.start(task)
+        assertEquals(0, refreshCount)
+    }
+
+    private fun controller(
+        repository: FakeWearRepository,
+        realtime: FakeRealtimeClient,
+        onCanonicalLifecycleReconciled: () -> Unit = {},
+    ) =
         WearTodayController(
             repository = repository,
             realtime = realtime,
             mainDispatcher = Dispatchers.Unconfined,
             ioDispatcher = Dispatchers.Unconfined,
+            onCanonicalLifecycleReconciled = onCanonicalLifecycleReconciled,
         )
+
+    private fun plannedTask() = WearTask(
+        id = "task-1", title = "Task", lifecycle = WearLifecycle.PLANNED, estimateSeconds = 900,
+        routineDerived = false, executionId = null, activeStartedAt = null, firstStartedAt = null,
+        completedDurationSeconds = null,
+    )
+
+    private fun runningDay(task: WearTask) = day("2026-10-01").copy(
+        unsectionedTasks = listOf(task.copy(lifecycle = WearLifecycle.RUNNING, executionId = "execution-1")),
+        activeExecution = WearExecution("execution-1", task.id, "2026-10-01T10:00:00Z", task.estimateSeconds),
+    )
+
+    private fun completedDay(task: WearTask) = day("2026-10-01").copy(
+        unsectionedTasks = listOf(task.copy(lifecycle = WearLifecycle.COMPLETED)),
+    )
 
     private fun day(logicalDate: String) = WearDay(
         logicalDate = logicalDate,
@@ -118,6 +183,8 @@ class WearTodayControllerRealtimeTest {
         var restoreCount = 0
         var loadCount = 0
         var clearSessionCount = 0
+        var startResult: WearMutationResult = WearMutationResult.Success
+        var completeResult: WearMutationResult = WearMutationResult.Success
         var onLoad: () -> WearLoadResult = { WearLoadResult.Success(day("2026-10-01")) }
 
         override fun restoreSession(): WearAuthResult {
@@ -132,8 +199,8 @@ class WearTodayControllerRealtimeTest {
             return onLoad()
         }
 
-        override fun start(day: WearDay, task: WearTask) = WearMutationResult.Success
-        override fun complete(task: WearTask) = WearMutationResult.Success
+        override fun start(day: WearDay, task: WearTask) = startResult
+        override fun complete(task: WearTask) = completeResult
         override fun clearSession() {
             clearSessionCount += 1
         }
