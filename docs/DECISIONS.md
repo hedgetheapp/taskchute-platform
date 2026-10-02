@@ -2487,3 +2487,12 @@ Canonical Decision: `docs/decisions/D-156_ANDROID_TODAY_LIFECYCLE_ROLLBACK_REOPE
 
 D-156 allows two explicit reverse lifecycle corrections from the current established Day Android Task Editor: Running with cleared actual start/end returns to Planned by invalidating only the current active Execution, and Completed with retained start plus cleared end returns to Running by reopening the same Execution. Current Section / planned start / position / placement revision are preserved. Completed→Running must preserve the user-global no-overlap and single-active-Execution invariants and rejects conflicts without modifying other Executions. Direct Completed→Planned remains out of scope; use the two-step Completed→Running→Planned flow. This narrowly supersedes D-058's current Start Revert withdrawal and the existing Completed-reopen rejection; past/future correction, Web/Wear UI, audit history, schema/migration and production remain out of scope.
 
+## D-157 — Android Today Completed → Planned Direct Rollback v0.1
+
+Status: **Approved / Implementation not started**
+
+Canonical Decision: docs/decisions/D-157_ANDROID_TODAY_COMPLETED_DIRECT_ROLLBACK_V01.md
+
+D-157 extends the current-Day Android lifecycle correction UX so an eligible Completed Entry with one unambiguous editable non-interrupted Execution returns directly to Planned when both actual start and end are cleared and saved. The guarded completed Execution is deleted atomically with the lifecycle transition; Section, planned start, position, estimate, placement revision, Task/Mode/Routine occurrence identity, and unrelated Execution history remain unchanged. Completed with start retained + end blank still means Running, while end-only remains invalid. Routine-derived occurrences have occurrence-only parity. D-157 narrowly supersedes only D-156's two-step requirement and adds no schema, migration, new lifecycle state, Web/Wear UI, multi-Execution history deletion, production, or release scope.
+
+

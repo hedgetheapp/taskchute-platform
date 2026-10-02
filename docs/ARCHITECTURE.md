@@ -726,3 +726,11 @@ Completed→Running remains in `SetExecutionTimes`: the same Execution row is up
 
 Android repository dispatch selects rollback vs ordinary actual-time correction from the original lifecycle plus normalized actual fields. Server success is followed by the existing canonical Today reconcile; D-155 reminder scheduling reacts only to that canonical state. Web and Wear receive no new UI affordance in this slice.
 
+## D-157 direct completed rollback authority
+
+D-157 remains server-canonical and extends the existing execution-correction boundary rather than introducing client-only lifecycle authority. The direct Completed → Planned outcome must be one atomic guarded mutation: identify the exact current-Day Completed Entry and its one editable non-interrupted Execution using owner/lifecycle/execution/start/end snapshots, delete only that Execution, and set the Entry lifecycle to Planned while preserving placement and placement revision.
+
+Implementation should reuse the existing D-156 / historical execution-correction operation family and its operation fingerprint, exact replay, misuse rejection, lifecycle guards, transaction assertions, and ambiguity handling. A backward-compatible extension of the current RevertEntryStart path is preferred over a new command family. If safe implementation would require a new persisted command type or migration, implementation must STOP for approval rather than adding it implicitly.
+
+Android dispatch distinguishes Completed start-only (reopen via SetExecutionTimes) from Completed both-blank (direct rollback). Optimistic state is presentation-only and must clear the removed single Execution projection before canonical reconciliation. D-155 reminder scheduling reacts to the resulting canonical Planned state.
+

@@ -3099,3 +3099,11 @@ Exact current `main` `b3a162e88d7d1484650836e176903ec52388b035` was built with `
 
 Post-deploy root returned `200`; unauthenticated protected current-Day API returned `401`. APP/AUTH migration inventories had no pending migrations (`0 / 0`); remote APP/AUTH `PRAGMA quick_check=ok`, foreign-key checks empty, and all probes reported `rows_written=0`. APP transaction assertion, lifecycle/placement/routine guard, routine-materialization guard, and active-Execution aggregate counts were `0`. No schema or migration was changed/applied. Authenticated disposable D-156 operation QA remains `NOT_RUN / AUTH_FIXTURE_UNAVAILABLE`: no authorized browser/Phone session was available (browser inventory empty; Phone AVD previously showed native unauthenticated login). No credentials were obtained/requested, no QA Task was created, and no existing user data was mutated. Galaxy S23 `NOT_RUN / PRODUCT_OWNER_MANUAL`; Production `NOT_RUN`; Released `NO`. No dependency change; Web/Wear UI, past/future correction, and audit/tombstone persistence remain out of scope.
 
+## D-157 Android Today Completed → Planned direct rollback — Approved / NOT_IMPLEMENTED
+
+Product Owner approved direct current-Day Completed → Planned rollback on 2026-10-02. In the Android Task Editor, clearing both actual start and actual end on an eligible Completed Entry will return it directly to Planned. The one unambiguous editable non-interrupted completed Execution is removed atomically; current Section, planned start, position, estimate, placement revision, Task/Mode/Routine occurrence identity, and unrelated Execution history are preserved. Completed start-retained + end-blank remains D-156 Completed → Running; end-only remains invalid.
+
+Canonical Decision: docs/decisions/D-157_ANDROID_TODAY_COMPLETED_DIRECT_ROLLBACK_V01.md.
+
+Current runtime still implements the D-156 two-step rule, so D-157 implementation, automated verification, persistent nonprod deployment, fresh APK, and Galaxy S23 verification are NOT_RUN. No schema/migration/new lifecycle state is approved. Multi-Execution/interrupted history deletion, past/future correction, Web/Wear UI, Production, and Release remain out of scope.
+

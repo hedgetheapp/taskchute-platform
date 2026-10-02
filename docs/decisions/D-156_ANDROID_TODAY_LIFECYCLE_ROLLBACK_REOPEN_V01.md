@@ -137,3 +137,8 @@ Android focused verification must cover:
 - D-155 reminder settings are not reset
 
 Persistent nonprod verification is required because Worker lifecycle semantics change. Production remains NOT_RUN unless separately approved.
+
+## Superseded in part by D-157
+
+D-157 (docs/decisions/D-157_ANDROID_TODAY_COMPLETED_DIRECT_ROLLBACK_V01.md) supersedes only the D-156 rule that Completed start+end both blank is invalid and requires a two-step rollback. For an eligible current-Day Completed Entry with one unambiguous editable non-interrupted Execution, clearing both actual fields now means direct Completed → Planned. All other D-156 semantics remain in force.
+

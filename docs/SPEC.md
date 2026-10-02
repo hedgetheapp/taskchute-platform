@@ -1005,3 +1005,13 @@ Completed start+end both blank is not a direct Completed→Planned command in v0
 
 These semantics apply to ordinary and Routine-derived current-Day Entries that already have the Android lifecycle-metadata editor capability; Routine Definition/defaults/recurrence and unrelated occurrences are unchanged. Past/future lifecycle correction, Web/Wear UI exposure, interruption/pause semantics, audit/tombstone persistence, schema/migration and production behavior are not added.
 
+## D-157 Android Today Completed → Planned direct rollback
+
+For a current established Day, an eligible Android Completed Entry with one unambiguous editable non-interrupted Execution may be returned directly to Planned by clearing both actual start and actual end and saving.
+
+The server atomically deletes only that guarded completed Execution and transitions the Entry to Planned. Current Section, planned start, position, estimate, placement revision, Task metadata, Mode, and Routine occurrence identity are preserved. No other Execution is deleted, truncated, shifted, or rewritten. The removed single Execution no longer contributes actual start/end/duration projection.
+
+Completed with start retained and end cleared continues to mean Completed → Running under D-156. Completed with end present but start blank remains invalid.
+
+This capability does not apply to interrupted/continuation history, multiple Execution segments, ambiguous editable identity, past/future Day correction, Web/Wear UI, or general history deletion. Routine-derived current-Day occurrences use the same occurrence-only semantics and do not mutate Routine Definition/defaults/other occurrences. No schema, migration, or new lifecycle state is added.
+

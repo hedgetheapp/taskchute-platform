@@ -997,3 +997,13 @@ Current-Day Task Editor keeps the existing actual-time fields and uses clearing 
 
 The same visual fields and HH:mm input conventions remain. No new confirmation dialog is required for this correction flow.
 
+## D-157 Android Today direct Completed rollback interaction
+
+The existing actual-time fields remain the only interaction surface.
+
+- Completed: keep 開始時間, clear 終了時間, Save → Running.
+- Completed: clear both 開始時間 and 終了時間, Save → Planned.
+- Completed: clear only 開始時間 while 終了時間 remains → invalid.
+
+No extra 開始前に戻す button and no confirmation dialog are added. The direct both-blank gesture is available only within the existing safe current-Day Completed correction boundary; interrupted or multi-Execution history is not silently erased.
+
