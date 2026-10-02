@@ -1,3 +1,9 @@
+### D-156 Android Today lifecycle rollback / reopen — 2026-10-02
+
+- Current-Day Android Task Editor now supports Running→Planned by clearing both actual-time fields and removing only the active Execution, and Completed→Running by clearing only the end while retaining the same Execution ID and start. Current-Day, stale identity, owner, overlap and active-Execution guards remain authoritative; earlier Execution history, placement/revision, Routine defaults/occurrences, and D-155 reminders are preserved.
+- Implementation `18ad643449e1a0e5be1a72eb5b80b1e66181ff82`; focused Worker `60 / 60`, focused Android `46`, full Android JVM `296 / 296`, Today AVD `67 / 67`, compile/build/typecheck and `git diff --check` PASS. Exact-SHA CI `36948215186` PASS. Phone APK artifact `11202158537`; Wear APK artifact `11202762929`.
+- Nonprod build and canonical deploy guard PASS; backup/recovery, persistent deploy/runtime/DB verification and authenticated disposable QA are `NOT_RUN` because Cloudflare CLI auth was unavailable and Phone AVD had no authenticated fixture. No remote or user-data mutation. Galaxy S23 `NOT_RUN`; Production `NOT_RUN`; Released `NO`. No schema, migration, or dependency change.
+
 ### D-155B Android Task Editor reminder reopen + dark cursor corrective — 2026-10-01
 
 - Fixed optimistic Today presentation so accepted reminder intent (`startReminderOffsetMinutes`, `notifyOnEstimateOverrun`) is projected for both CREATE and EDIT. Immediate edit reopen now shows the just-saved reminder values while the canonical Day remains separate and authoritative. The shared Task Editor `BasicTextField` caret now uses `SolidColor(TaskChuteColors.PrimaryText)`.
