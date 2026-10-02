@@ -2495,4 +2495,10 @@ Canonical Decision: docs/decisions/D-157_ANDROID_TODAY_COMPLETED_DIRECT_ROLLBACK
 
 D-157 extends the current-Day Android lifecycle correction UX so an eligible Completed Entry with one unambiguous editable non-interrupted Execution returns directly to Planned when both actual start and end are cleared and saved. The guarded completed Execution is deleted atomically with the lifecycle transition; Section, planned start, position, estimate, placement revision, Task/Mode/Routine occurrence identity, and unrelated Execution history remain unchanged. Completed with start retained + end blank still means Running, while end-only remains invalid. Routine-derived occurrences have occurrence-only parity. D-157 narrowly supersedes only D-156's two-step requirement and adds no schema, migration, new lifecycle state, Web/Wear UI, multi-Execution history deletion, production, or release scope.
 
+## D-158 — Wear OS Running Complication v0.1
 
+Status: **Approved / Implementation not started**
+
+Canonical Decision: `docs/decisions/D-158_WEAR_OS_RUNNING_COMPLICATION_V01.md`.
+
+D-158 adds a read-only Wear OS complication data source so the current Running Task can be understood from the watch face without opening TaskChute. Running with a positive estimate exposes elapsed/estimate goal progress and preserves over-target semantics; Running without estimate exposes elapsed-only state without inventing a goal. Idle and signed-out states remain compact and safe. Tap opens the existing Wear app. Final colors/arc/badge rendering remain watch-face-controlled, so the orange overrun mockup is visual intent rather than a pixel-exact contract. The complication may read the canonical current Day with the existing encrypted Watch session when Wear OS requests data and may request refresh after Watch-side Start/Complete, but D-154B realtime remains foreground-only. Tile, background realtime, custom watch face, Worker/API/schema/migration, production and Release remain out of scope.

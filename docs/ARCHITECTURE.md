@@ -734,3 +734,12 @@ Implementation should reuse the existing D-156 / historical execution-correction
 
 Android dispatch distinguishes Completed start-only (reopen via SetExecutionTimes) from Completed both-blank (direct rollback). Optimistic state is presentation-only and must clear the removed single Execution projection before canonical reconciliation. D-155 reminder scheduling reacts to the resulting canonical Planned state.
 
+## D-158 Wear complication boundary
+
+Wear complication is a system-bound read surface independent of `WearMainActivity`. A Wear OS complication data-source service may instantiate the existing encrypted Watch session store and a read-only-capable Wear HTTP repository to load the current canonical Day when the complication system requests data. It must not copy the cookie into complication payloads, logs, intents, or public storage.
+
+The preferred semantic type for estimated Running work is Goal Progress because an elapsed value can legitimately exceed its target. Compact text / ranged representations are compatibility fallbacks only; they must not change Domain meaning. Final visual rendering belongs to the selected watch face.
+
+No foreground service or background websocket is added. Periodic requests follow the platform minimum update interval; time-dependent/dynamic values should advance locally where supported. Successful Watch-side Start/Complete may request a complication refresh. Web/Phone-originated canonical changes while the Wear Activity is closed converge only at a later OS data request in D-158.
+
+D-158 may add the official AndroidX watch-face complication data-source module to the existing Wear Android stack. No Worker/API/schema/migration or third-party runtime dependency is introduced.

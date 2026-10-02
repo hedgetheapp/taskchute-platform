@@ -1007,3 +1007,17 @@ The existing actual-time fields remain the only interaction surface.
 
 No extra 開始前に戻す button and no confirmation dialog are added. The direct both-blank gesture is available only within the existing safe current-Day Completed correction boundary; interrupted or multi-Execution history is not silently erased.
 
+## D-158 Wear OS Running Complication
+
+Target placement is a circular watch-face complication slot like the Product Owner's current bottom complication. This is a semantic design target rather than ownership of the watch face renderer.
+
+Preferred states:
+
+- Running + estimate, within estimate: TaskChute icon where supported, goal-progress ring, compact `elapsed/estimate` minute text such as `18/30`.
+- Running + estimate, overrun: semantic value exceeds target; compact text such as `36/30`. Orange/red overrun ring or alert affordance is desired when the watch face chooses to render over-goal state distinctly, but exact color/badge is not guaranteed.
+- Running without estimate: elapsed-only compact representation; no fake goal ring.
+- No Running Task: compact TaskChute idle state such as `待機`.
+- Signed out: compact `ログイン` state.
+- Tap any actionable TaskChute complication state → existing Wear app.
+
+D-158 does not add a custom watch face, Tile, watch-face Start/Complete action, or pixel-exact complication rendering.

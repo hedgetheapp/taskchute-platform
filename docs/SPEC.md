@@ -1015,3 +1015,12 @@ Completed with start retained and end cleared continues to mean Completed → Ru
 
 This capability does not apply to interrupted/continuation history, multiple Execution segments, ambiguous editable identity, past/future Day correction, Web/Wear UI, or general history deletion. Routine-derived current-Day occurrences use the same occurrence-only semantics and do not mutate Routine Definition/defaults/other occurrences. No schema, migration, or new lifecycle state is added.
 
+## D-158 Wear OS Running Complication
+
+Wear OSは、TaskChute Activityを開いていない状態でも、watch-face complicationからcurrent canonical Running stateを確認できる。
+
+Running Entryに正のestimateがある場合、complicationはelapsedをcurrent value、estimateをgoal/targetとして公開し、elapsedがestimateを超えた場合もgoal超過値をそのまま保持する。compact textはwatch faceが表示可能な場合にelapsed/estimate（例: `18/30`, `36/30`）を優先する。Runningにestimateがない場合はtargetを捏造せずelapsed-only表示へfallbackする。
+
+signed-in idleはcompact idle state、signed-outはlogin stateを返し、tapは既存Wear appを開く。transient network failureでRunning stateを捏造しない。Complicationはread-onlyでStart/Completeを直接実行しない。
+
+Watch-side Start/Complete成功後はplatform update requesterでrefreshを要求できるが、Web/Phone側の変更を閉じたWatchへ即時pushするbackground realtimeはD-158に含めない。periodic refreshはWear OSのbattery制約に従い、秒/分単位network pollingを行わない。最終描画はwatch face authorityであり、TaskChuteは第三者/system watch faceの色・arc・alert badgeをpixel-exactに強制しない。

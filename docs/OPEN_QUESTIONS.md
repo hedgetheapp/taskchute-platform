@@ -420,7 +420,7 @@ First Server + Web vertical slice、D-038 B1 / B3、D-039 B2はImplemented / Int
 - Androidのinitial Compose architecture詳細
 - D-121で通常modeのTask rowからselection checkboxを隠しSelection Modeだけで表示する方向はApproved済みだが、通常modeからSelection Modeへ入る具体的interaction（long-press、別control等）は未決
 - Android Widgetのinitial scope
-- D-154 v0.1より後のWear OS scope（Completed history row、date navigation、Task edit / D&D、Notes / Daily、Tile / Complication、Location、offline / background realtime等）
+- D-154 v0.1より後のWear OS scope（Completed history row、date navigation、Task edit / D&D、Notes / Daily、Tile、Location、offline / background realtime等）。Complication first sliceはD-158でApproved済み
 - Wear OS public distribution時のstandalone metadata / iOS-paired watch対応。D-154 v0.1はAndroid companion-assisted initial auth + post-pair Server-direct runtimeまでをApproved
 - native iOS appへ進むentry criteria
 

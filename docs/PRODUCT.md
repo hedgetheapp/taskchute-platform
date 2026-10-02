@@ -49,6 +49,8 @@ D-154で最初のv0.1 scopeをApprovedした。Android companionで初回接続�
 
 v0.1ではdate navigation、Task edit / D&D、Notes / Daily、Tile / Complication、offline / background realtime、Location、public Release向けfallback authenticationを含めない。
 
+D-158でComplicationだけを後続scopeとしてApprovedした。文字盤からcurrent Running Taskのelapsed / estimate progressを確認でき、estimate超過はgoal超過として表現する。TaskChuteはsemantic dataを供給し、実際のring形状・色・optional field表示は選択中watch faceのrendererへ委ねる。タップは既存Wear appを開く。Tile、watch-face上のStart/Complete、background realtime、custom watch faceは引き続き未承認 / Open。
+
 ### iOS native
 
 将来対応するが、native clientとしての優先度は低くする。
