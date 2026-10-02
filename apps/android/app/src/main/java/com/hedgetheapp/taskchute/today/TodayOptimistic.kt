@@ -39,7 +39,13 @@ internal fun applyOptimisticPlanning(
     } else {
         val actualStart = input.actualStartMinute?.let { logicalMinuteToInstant(day, it) }
         val actualEnd = input.actualEndMinute?.let { logicalMinuteToInstant(day, it) }
+        val rollbackToPlanned = original.lifecycleState == LifecycleState.RUNNING
+            && input.actualStartMinute == null && input.actualEndMinute == null
+        val reopenToRunning = original.lifecycleState == LifecycleState.COMPLETED
+            && input.actualStartMinute != null && input.actualEndMinute == null
         val lifecycle = when {
+            rollbackToPlanned -> LifecycleState.PLANNED
+            reopenToRunning -> LifecycleState.RUNNING
             actualEnd != null -> LifecycleState.COMPLETED
             actualStart != null -> LifecycleState.RUNNING
             else -> original.lifecycleState
@@ -53,6 +59,8 @@ internal fun applyOptimisticPlanning(
         } else {
             original.completedDurationSeconds
         }
+        val preservedHistoricalStart = original.firstStartedAt
+            ?.takeUnless { rollbackToPlanned && it == original.activeStartedAt }
         original.copy(
             title = input.title,
             project = input.projectId?.let { TodayProject(it, input.projectTitle ?: it) },
@@ -60,11 +68,28 @@ internal fun applyOptimisticPlanning(
             estimateSeconds = input.estimateSeconds,
             plannedStartMinute = input.plannedStartMinute,
             lifecycleState = lifecycle,
-            executionId = if (lifecycle == LifecycleState.RUNNING) original.executionId ?: "optimistic-$entryId" else original.executionId,
-            activeStartedAt = if (lifecycle == LifecycleState.RUNNING) actualStart ?: original.activeStartedAt else null,
-            firstStartedAt = actualStart ?: original.firstStartedAt,
-            lastEndedAt = actualEnd ?: if (lifecycle == LifecycleState.COMPLETED) original.lastEndedAt else null,
-            completedDurationSeconds = duration,
+            executionId = when (lifecycle) {
+                LifecycleState.PLANNED -> null
+                LifecycleState.RUNNING -> original.executionId ?: "optimistic-$entryId"
+                LifecycleState.COMPLETED -> original.executionId
+            },
+            activeStartedAt = when (lifecycle) {
+                LifecycleState.RUNNING -> if (reopenToRunning) original.firstStartedAt ?: actualStart else actualStart ?: original.activeStartedAt
+                LifecycleState.PLANNED, LifecycleState.COMPLETED -> null
+            },
+            firstStartedAt = when {
+                rollbackToPlanned -> preservedHistoricalStart
+                reopenToRunning -> original.firstStartedAt ?: actualStart
+                else -> actualStart ?: original.firstStartedAt
+            },
+            lastEndedAt = when {
+                rollbackToPlanned -> original.lastEndedAt
+                reopenToRunning -> null
+                actualEnd != null -> actualEnd
+                lifecycle == LifecycleState.COMPLETED -> original.lastEndedAt
+                else -> null
+            },
+            completedDurationSeconds = if (reopenToRunning) 0 else duration,
             startReminderOffsetMinutes = input.startReminderOffsetMinutes,
             notifyOnEstimateOverrun = input.notifyOnEstimateOverrun,
         )
@@ -82,7 +107,9 @@ internal fun applyOptimisticPlanning(
             ),
         )
         LifecycleState.COMPLETED -> updatedDay.copy(activeExecution = null)
-        LifecycleState.PLANNED -> updatedDay
+        LifecycleState.PLANNED -> updatedDay.copy(
+            activeExecution = updatedDay.activeExecution?.takeUnless { it.entryId == entryId },
+        )
     }
 }
 

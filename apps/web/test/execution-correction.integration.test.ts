@@ -1,7 +1,8 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { loadCurrentTaskChuteDay } from "../worker/application/load-current-day";
-import { isSetExecutionTimesRequest, setExecutionTimes } from "../worker/application/execution-correction";
+import { createRoutine } from "../worker/application/routine-board";
+import { isRevertEntryStartRequest, isSetExecutionTimesRequest, revertEntryStart, setExecutionTimes } from "../worker/application/execution-correction";
 import { uuidv7 } from "../src/shared/uuidv7";
 
 const createdAt = "2026-08-28T05:00:00.000Z";
@@ -104,6 +105,287 @@ async function addOtherDay(fixture: Awaited<ReturnType<typeof seedFixture>>) {
     .bind(otherDayId, fixture.userId, createdAt).run();
   return otherDayId;
 }
+
+async function makeLifecycleEntry(
+  fixture: Awaited<ReturnType<typeof seedFixture>>,
+  lifecycle: "running" | "completed",
+  startedAt: string,
+  endedAt: string | null,
+) {
+  const executionId = uuidv7();
+  await env.APP_DB.batch([
+    env.APP_DB.prepare("UPDATE entries SET lifecycle_state = ? WHERE app_user_id = ? AND id = ?")
+      .bind(lifecycle, fixture.userId, fixture.entryId),
+    env.APP_DB.prepare(`INSERT INTO executions
+      (id, app_user_id, entry_id, started_at, ended_at, created_at, terminal_outcome)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`)
+      .bind(executionId, fixture.userId, fixture.entryId, startedAt, endedAt, createdAt,
+        endedAt === null ? null : "completed"),
+  ]);
+  return executionId;
+}
+
+describe.sequential("D-156 Android lifecycle correction", () => {
+  it("reverts only the current active Execution, preserves placement, replays exactly, and rejects operation misuse", async () => {
+    const fixture = await seedFixture(true, 360);
+    const executionId = await makeLifecycleEntry(fixture, "running", "2026-08-28T06:00:00.000Z", null);
+    const request = {
+      operation_id: uuidv7(), entry_id: fixture.entryId, execution_id: executionId,
+      expected_started_at: "2026-08-28T06:00:00.000Z",
+    };
+    expect(isRevertEntryStartRequest(request)).toBe(true);
+    const before = await env.APP_DB.prepare(`SELECT e.section_id, e.planned_start_minute, e.position, d.placement_revision
+      FROM entries e JOIN taskchute_days d ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
+      WHERE e.id = ?`).bind(fixture.entryId).first();
+
+    const result = await revertEntryStart(env.APP_DB, fixture.userId, request, now);
+    expect(result).toMatchObject({ lifecycle_state: "planned", execution_id: executionId,
+      section_id: fixture.sectionId, planned_start_minute: 360, position: 1, placement_revision: 0 });
+    expect(await revertEntryStart(env.APP_DB, fixture.userId, request, now)).toEqual(result);
+    await expect(revertEntryStart(env.APP_DB, fixture.userId,
+      { ...request, expected_started_at: "2026-08-28T06:01:00.000Z" }, now))
+      .rejects.toMatchObject({ code: "operation_id_misuse" });
+    expect(await env.APP_DB.prepare("SELECT lifecycle_state FROM entries WHERE id = ?")
+      .bind(fixture.entryId).first()).toEqual({ lifecycle_state: "planned" });
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM executions WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, executionId).first<number>("count")).toBe(0);
+    expect(await env.APP_DB.prepare(`SELECT e.section_id, e.planned_start_minute, e.position, d.placement_revision
+      FROM entries e JOIN taskchute_days d ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
+      WHERE e.id = ?`).bind(fixture.entryId).first()).toEqual(before);
+    expect(await operationCount(fixture.userId, "RevertEntryStart")).toBe(1);
+  });
+
+  it("preserves earlier valid execution history when reverting the later active segment", async () => {
+    const fixture = await seedFixture();
+    const olderExecutionId = uuidv7();
+    const activeExecutionId = uuidv7();
+    await env.APP_DB.batch([
+      env.APP_DB.prepare(`INSERT INTO executions
+        (id, app_user_id, entry_id, started_at, ended_at, created_at, terminal_outcome)
+        VALUES (?, ?, ?, '2026-08-28T05:30:00.000Z', '2026-08-28T05:45:00.000Z', ?, 'completed'),
+               (?, ?, ?, '2026-08-28T06:00:00.000Z', NULL, ?, NULL)`)
+        .bind(olderExecutionId, fixture.userId, fixture.entryId, createdAt,
+          activeExecutionId, fixture.userId, fixture.entryId, createdAt),
+      env.APP_DB.prepare("UPDATE entries SET lifecycle_state = 'running' WHERE id = ?").bind(fixture.entryId),
+    ]);
+    const result = await revertEntryStart(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), entry_id: fixture.entryId, execution_id: activeExecutionId,
+      expected_started_at: "2026-08-28T06:00:00.000Z",
+    }, now);
+    expect(result.lifecycle_state).toBe("planned");
+    expect(await env.APP_DB.prepare(`SELECT id, started_at, ended_at, terminal_outcome FROM executions
+      WHERE app_user_id = ? AND entry_id = ?`).bind(fixture.userId, fixture.entryId).all())
+      .toMatchObject({ results: [{ id: olderExecutionId, started_at: "2026-08-28T05:30:00.000Z",
+        ended_at: "2026-08-28T05:45:00.000Z", terminal_outcome: "completed" }] });
+  });
+
+  it("supports a Routine-derived current-Day rollback without changing its occurrence or definition", async () => {
+    const fixture = await seedFixture();
+    const routineDefinitionId = uuidv7();
+    const routineOccurrenceId = uuidv7();
+    const routine = await createRoutine(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), task_id: uuidv7(), routine_definition_id: routineDefinitionId,
+      title: "Routine rollback", expected_board_revision: 0,
+    }, now);
+    const routineEntryId = uuidv7();
+    await env.APP_DB.batch([
+      env.APP_DB.prepare(`INSERT INTO routine_occurrences
+        (id, app_user_id, routine_definition_id, origin_taskchute_day_id, created_at)
+        VALUES (?, ?, ?, ?, ?)`).bind(routineOccurrenceId, fixture.userId, routineDefinitionId, fixture.dayId, createdAt),
+      env.APP_DB.prepare(`INSERT INTO routine_occurrence_task_snapshots
+        (app_user_id, routine_occurrence_id, task_title, project_id, project_title)
+        VALUES (?, ?, 'Routine rollback', NULL, NULL)`).bind(fixture.userId, routineOccurrenceId),
+      env.APP_DB.prepare(`INSERT INTO entries
+        (id, app_user_id, task_id, taskchute_day_id, section_id, position, lifecycle_state,
+         estimate_seconds, planned_start_minute, created_at, routine_occurrence_id)
+        VALUES (?, ?, ?, ?, ?, 2, 'planned', 900, 360, ?, ?)`)
+        .bind(routineEntryId, fixture.userId, routine.task_id, fixture.dayId, fixture.sectionId, createdAt, routineOccurrenceId),
+    ]);
+    const routineFixture = { ...fixture, entryId: routineEntryId };
+    const executionId = await makeLifecycleEntry(routineFixture, "running", "2026-08-28T06:00:00.000Z", null);
+    const before = await env.APP_DB.prepare(`SELECT default_section_id, default_planned_start_minute, default_estimate_seconds
+      FROM routine_definitions WHERE app_user_id = ? AND id = ?`).bind(fixture.userId, routineDefinitionId).first();
+    await revertEntryStart(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), entry_id: routineEntryId, execution_id: executionId,
+      expected_started_at: "2026-08-28T06:00:00.000Z",
+    }, now);
+    expect(await env.APP_DB.prepare(`SELECT routine_occurrence_id, lifecycle_state FROM entries WHERE id = ?`)
+      .bind(routineEntryId).first()).toEqual({ routine_occurrence_id: routineOccurrenceId, lifecycle_state: "planned" });
+    expect(await env.APP_DB.prepare(`SELECT default_section_id, default_planned_start_minute, default_estimate_seconds
+      FROM routine_definitions WHERE app_user_id = ? AND id = ?`).bind(fixture.userId, routineDefinitionId).first()).toEqual(before);
+  });
+
+  it("rejects stale, wrong-owner, wrong-Execution, and non-current-Day rollback without partial writes", async () => {
+    const fixture = await seedFixture();
+    const executionId = await makeLifecycleEntry(fixture, "running", "2026-08-28T06:00:00.000Z", null);
+    const base = { operation_id: uuidv7(), entry_id: fixture.entryId, execution_id: executionId,
+      expected_started_at: "2026-08-28T06:00:00.000Z" };
+    await expect(revertEntryStart(env.APP_DB, fixture.userId,
+      { ...base, expected_started_at: "2026-08-28T06:01:00.000Z" }, now))
+      .rejects.toMatchObject({ code: "resource_conflict" });
+    const other = await seedFixture();
+    await expect(revertEntryStart(env.APP_DB, other.userId, { ...base, operation_id: uuidv7() }, now))
+      .rejects.toMatchObject({ code: "resource_not_found" });
+    await expect(revertEntryStart(env.APP_DB, fixture.userId,
+      { ...base, operation_id: uuidv7(), execution_id: uuidv7() }, now))
+      .rejects.toMatchObject({ code: "resource_not_found" });
+
+    const pastDayId = await addOtherDay(fixture);
+    await env.APP_DB.prepare("UPDATE entries SET taskchute_day_id = ? WHERE id = ?").bind(pastDayId, fixture.entryId).run();
+    await expect(revertEntryStart(env.APP_DB, fixture.userId,
+      { ...base, operation_id: uuidv7() }, now)).rejects.toMatchObject({ code: "resource_conflict" });
+    expect(await env.APP_DB.prepare("SELECT lifecycle_state FROM entries WHERE id = ?")
+      .bind(fixture.entryId).first()).toEqual({ lifecycle_state: "running" });
+    expect(await env.APP_DB.prepare("SELECT ended_at FROM executions WHERE id = ?")
+      .bind(executionId).first()).toEqual({ ended_at: null });
+  });
+
+  it("reopens the same completed Execution, preserves start and placement, clears terminal state, and replays", async () => {
+    const fixture = await seedFixture(true, 360);
+    const executionId = await makeLifecycleEntry(fixture, "completed",
+      "2026-08-28T06:00:00.123Z", "2026-08-28T06:30:00.000Z");
+    const request = {
+      operation_id: uuidv7(), entry_id: fixture.entryId, execution_id: executionId,
+      expected_lifecycle_state: "completed" as const,
+      started_at: "2026-08-28T06:00:00.123Z", ended_at: null,
+      expected_started_at: "2026-08-28T06:00:00.123Z", expected_ended_at: "2026-08-28T06:30:00.000Z",
+    };
+    const result = await setExecutionTimes(env.APP_DB, fixture.userId, request, now);
+    expect(result).toMatchObject({ lifecycle_state: "running", execution: { id: executionId,
+      started_at: "2026-08-28T06:00:00.123Z", ended_at: null }, placement_revision: 0 });
+    expect(await setExecutionTimes(env.APP_DB, fixture.userId, request, now)).toEqual(result);
+    await expect(setExecutionTimes(env.APP_DB, fixture.userId, { ...request, started_at: "2026-08-28T06:01:00.000Z" }, now))
+      .rejects.toMatchObject({ code: "operation_id_misuse" });
+    expect(await env.APP_DB.prepare("SELECT lifecycle_state FROM entries WHERE id = ?")
+      .bind(fixture.entryId).first()).toEqual({ lifecycle_state: "running" });
+    expect(await env.APP_DB.prepare("SELECT id, started_at, ended_at, terminal_outcome FROM executions WHERE id = ?")
+      .bind(executionId).first()).toEqual({ id: executionId, started_at: request.started_at, ended_at: null, terminal_outcome: null });
+    expect(await env.APP_DB.prepare("SELECT placement_revision FROM taskchute_days WHERE id = ?")
+      .bind(fixture.dayId).first<number>("placement_revision")).toBe(0);
+  });
+
+  it("rejects a later overlapping Execution but permits exact earlier adjacency", async () => {
+    // The canonical one-active-Execution-per-user index makes a second open Execution
+    // unrepresentable; exercise the same overlap predicate with a later completed segment.
+    const fixture = await seedFixture();
+    const executionId = await makeLifecycleEntry(fixture, "completed",
+      "2026-08-28T06:00:00.000Z", "2026-08-28T06:30:00.000Z");
+    await addExecution(fixture, "2026-08-28T06:30:00.000Z", "2026-08-28T07:00:00.000Z");
+    await expect(setExecutionTimes(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), entry_id: fixture.entryId, execution_id: executionId,
+      expected_lifecycle_state: "completed", started_at: "2026-08-28T06:00:00.000Z", ended_at: null,
+      expected_started_at: "2026-08-28T06:00:00.000Z", expected_ended_at: "2026-08-28T06:30:00.000Z",
+    }, now)).rejects.toMatchObject({ code: "resource_conflict" });
+    expect(await env.APP_DB.prepare("SELECT lifecycle_state FROM entries WHERE id = ?")
+      .bind(fixture.entryId).first()).toEqual({ lifecycle_state: "completed" });
+    expect(await env.APP_DB.prepare("SELECT ended_at, terminal_outcome FROM executions WHERE id = ?")
+      .bind(executionId).first()).toEqual({ ended_at: "2026-08-28T06:30:00.000Z", terminal_outcome: "completed" });
+
+    const adjacent = await seedFixture();
+    await addExecution(adjacent, "2026-08-28T05:30:00.000Z", "2026-08-28T06:00:00.000Z");
+    const adjacentExecutionId = await makeLifecycleEntry(adjacent, "completed",
+      "2026-08-28T06:00:00.000Z", "2026-08-28T06:30:00.000Z");
+    await expect(setExecutionTimes(env.APP_DB, adjacent.userId, {
+      operation_id: uuidv7(), entry_id: adjacent.entryId, execution_id: adjacentExecutionId,
+      expected_lifecycle_state: "completed", started_at: "2026-08-28T06:00:00.000Z", ended_at: null,
+      expected_started_at: "2026-08-28T06:00:00.000Z", expected_ended_at: "2026-08-28T06:30:00.000Z",
+    }, now)).resolves.toMatchObject({ lifecycle_state: "running" });
+  });
+
+  it("rejects reopen while another Entry is active", async () => {
+    const fixture = await seedFixture();
+    const executionId = await makeLifecycleEntry(fixture, "completed",
+      "2026-08-28T06:00:00.000Z", "2026-08-28T06:30:00.000Z");
+    await addExecution(fixture, "2026-08-28T07:00:00.000Z", null);
+    await expect(setExecutionTimes(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), entry_id: fixture.entryId, execution_id: executionId,
+      expected_lifecycle_state: "completed", started_at: "2026-08-28T06:00:00.000Z", ended_at: null,
+      expected_started_at: "2026-08-28T06:00:00.000Z", expected_ended_at: "2026-08-28T06:30:00.000Z",
+    }, now)).rejects.toMatchObject({ code: "resource_conflict" });
+    expect(await env.APP_DB.prepare("SELECT lifecycle_state FROM entries WHERE id = ?")
+      .bind(fixture.entryId).first()).toEqual({ lifecycle_state: "completed" });
+    expect(await env.APP_DB.prepare("SELECT ended_at, terminal_outcome FROM executions WHERE id = ?")
+      .bind(executionId).first()).toEqual({ ended_at: "2026-08-28T06:30:00.000Z", terminal_outcome: "completed" });
+  });
+
+  it("reopens a Routine-derived occurrence without changing occurrence overrides or Routine defaults", async () => {
+    const fixture = await seedFixture();
+    const routineDefinitionId = uuidv7();
+    const routineOccurrenceId = uuidv7();
+    const routine = await createRoutine(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), task_id: uuidv7(), routine_definition_id: routineDefinitionId,
+      title: "Routine reopen", expected_board_revision: 0,
+    }, now);
+    const routineEntryId = uuidv7();
+    const executionId = uuidv7();
+    await env.APP_DB.batch([
+      env.APP_DB.prepare(`INSERT INTO routine_occurrences
+        (id, app_user_id, routine_definition_id, origin_taskchute_day_id,
+         section_plan_override_present, section_override_id, planned_start_override_minute,
+         estimate_override_present, estimate_override_seconds, created_at)
+        VALUES (?, ?, ?, ?, 1, ?, 360, 1, 1200, ?)`)
+        .bind(routineOccurrenceId, fixture.userId, routineDefinitionId, fixture.dayId, fixture.sectionId, createdAt),
+      env.APP_DB.prepare(`INSERT INTO routine_occurrence_task_snapshots
+        (app_user_id, routine_occurrence_id, task_title, project_id, project_title)
+        VALUES (?, ?, 'Routine reopen', NULL, NULL)`).bind(fixture.userId, routineOccurrenceId),
+      env.APP_DB.prepare(`INSERT INTO entries
+        (id, app_user_id, task_id, taskchute_day_id, section_id, position, lifecycle_state,
+         estimate_seconds, planned_start_minute, created_at, routine_occurrence_id)
+        VALUES (?, ?, ?, ?, ?, 2, 'completed', 1200, 360, ?, ?)`)
+        .bind(routineEntryId, fixture.userId, routine.task_id, fixture.dayId, fixture.sectionId, createdAt, routineOccurrenceId),
+      env.APP_DB.prepare(`INSERT INTO executions
+        (id, app_user_id, entry_id, started_at, ended_at, created_at, terminal_outcome)
+        VALUES (?, ?, ?, '2026-08-28T06:00:00.000Z', '2026-08-28T06:20:00.000Z', ?, 'completed')`)
+        .bind(executionId, fixture.userId, routineEntryId, createdAt),
+    ]);
+    const occurrenceBefore = await env.APP_DB.prepare(`SELECT section_plan_override_present, section_override_id,
+        planned_start_override_minute, estimate_override_present, estimate_override_seconds
+      FROM routine_occurrences WHERE app_user_id = ? AND id = ?`)
+      .bind(fixture.userId, routineOccurrenceId).first();
+    const definitionBefore = await env.APP_DB.prepare(`SELECT default_section_id, default_planned_start_minute,
+        default_estimate_seconds FROM routine_definitions WHERE app_user_id = ? AND id = ?`)
+      .bind(fixture.userId, routineDefinitionId).first();
+
+    const result = await setExecutionTimes(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), entry_id: routineEntryId, execution_id: executionId,
+      expected_lifecycle_state: "completed", started_at: "2026-08-28T06:00:00.000Z", ended_at: null,
+      expected_started_at: "2026-08-28T06:00:00.000Z", expected_ended_at: "2026-08-28T06:20:00.000Z",
+    }, now);
+    expect(result).toMatchObject({ lifecycle_state: "running", execution: { id: executionId, ended_at: null } });
+    expect(await env.APP_DB.prepare("SELECT routine_occurrence_id, lifecycle_state, section_id, planned_start_minute, estimate_seconds FROM entries WHERE id = ?")
+      .bind(routineEntryId).first()).toEqual({ routine_occurrence_id: routineOccurrenceId, lifecycle_state: "running",
+        section_id: fixture.sectionId, planned_start_minute: 360, estimate_seconds: 1200 });
+    expect(await env.APP_DB.prepare(`SELECT section_plan_override_present, section_override_id,
+        planned_start_override_minute, estimate_override_present, estimate_override_seconds
+      FROM routine_occurrences WHERE app_user_id = ? AND id = ?`)
+      .bind(fixture.userId, routineOccurrenceId).first()).toEqual(occurrenceBefore);
+    expect(await env.APP_DB.prepare(`SELECT default_section_id, default_planned_start_minute,
+        default_estimate_seconds FROM routine_definitions WHERE app_user_id = ? AND id = ?`)
+      .bind(fixture.userId, routineDefinitionId).first()).toEqual(definitionBefore);
+  });
+
+  it("rejects reopen outside the current established Day and never reopens an interrupted terminal", async () => {
+    const fixture = await seedFixture();
+    const pastDayId = await addOtherDay(fixture);
+    const executionId = await makeLifecycleEntry(fixture, "completed",
+      "2026-08-28T06:00:00.000Z", "2026-08-28T06:30:00.000Z");
+    await env.APP_DB.prepare("UPDATE entries SET taskchute_day_id = ? WHERE id = ?").bind(pastDayId, fixture.entryId).run();
+    const request = {
+      operation_id: uuidv7(), entry_id: fixture.entryId, execution_id: executionId,
+      expected_lifecycle_state: "completed" as const, started_at: "2026-08-28T06:00:00.000Z", ended_at: null,
+      expected_started_at: "2026-08-28T06:00:00.000Z", expected_ended_at: "2026-08-28T06:30:00.000Z",
+    };
+    await expect(setExecutionTimes(env.APP_DB, fixture.userId, request, now)).rejects.toMatchObject({ code: "resource_conflict" });
+    await env.APP_DB.prepare("UPDATE entries SET taskchute_day_id = ? WHERE id = ?").bind(fixture.dayId, fixture.entryId).run();
+    await env.APP_DB.prepare("UPDATE executions SET terminal_outcome = 'interrupted' WHERE id = ?").bind(executionId).run();
+    await expect(setExecutionTimes(env.APP_DB, fixture.userId, { ...request, operation_id: uuidv7() }, now))
+      .rejects.toMatchObject({ code: "resource_conflict" });
+    expect(await env.APP_DB.prepare("SELECT lifecycle_state FROM entries WHERE id = ?")
+      .bind(fixture.entryId).first()).toEqual({ lifecycle_state: "completed" });
+    expect(await env.APP_DB.prepare("SELECT ended_at, terminal_outcome FROM executions WHERE id = ?")
+      .bind(executionId).first()).toEqual({ ended_at: "2026-08-28T06:30:00.000Z", terminal_outcome: "interrupted" });
+  });
+});
 
 describe.sequential("D-060 SetExecutionTimes", () => {
   it("creates and corrects actual facts without changing planned placement, then reloads the projection", async () => {

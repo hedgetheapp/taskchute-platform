@@ -1,10 +1,13 @@
 import { Temporal } from "@js-temporal/polyfill";
 import type {
   ExecutionCorrectionLifecycleState,
+  RevertEntryStartRequest,
+  RevertEntryStartResult,
   SetExecutionTimesRequest,
   SetExecutionTimesResult,
 } from "../../src/shared/contracts";
 import { isUuidV7 } from "../domain/uuidv7";
+import { resolveTaskChuteDay } from "../domain/taskchute-day";
 import { readDaySectionContexts } from "./load-current-day";
 import { persistRejection, readOperation, replayOperation } from "../persistence/operations";
 import { HttpError } from "./errors";
@@ -15,6 +18,7 @@ type InstantField = "started_at" | "ended_at" | "expected_started_at" | "expecte
 interface EntryRow {
   entry_id: string;
   taskchute_day_id: string;
+  logical_date: string;
   lifecycle_state: ExecutionCorrectionLifecycleState;
   section_id: string | null;
   planned_start_minute: number | null;
@@ -30,6 +34,15 @@ interface ExecutionRow {
   entry_id: string;
   started_at: string;
   ended_at: string | null;
+  terminal_outcome: "completed" | "interrupted" | null;
+}
+
+interface CurrentDayContext {
+  timezone: string;
+  boundaryMinutes: number;
+  logicalDate: string;
+  startInstant: string;
+  endInstant: string;
 }
 
 interface MinuteBlocker {
@@ -54,6 +67,14 @@ function isOptionalInstant(value: unknown): value is string | null {
 
 function isLifecycleState(value: unknown): value is ExecutionCorrectionLifecycleState {
   return value === "planned" || value === "running" || value === "completed";
+}
+
+export function isRevertEntryStartRequest(value: unknown): value is RevertEntryStartRequest {
+  if (!isRecord(value) || "user_id" in value) return false;
+  return typeof value.operation_id === "string" && isUuidV7(value.operation_id)
+    && typeof value.entry_id === "string" && isUuidV7(value.entry_id)
+    && typeof value.execution_id === "string" && isUuidV7(value.execution_id)
+    && typeof value.expected_started_at === "string";
 }
 
 export function isSetExecutionTimesRequest(value: unknown): value is SetExecutionTimesRequest {
@@ -108,11 +129,12 @@ async function reject<T>(
   requestFingerprint: string,
   code: "resource_not_found" | "resource_conflict",
   message: string,
+  commandType: "SetExecutionTimes" | "RevertEntryStart" = "SetExecutionTimes",
 ): Promise<T> {
   return persistRejection<T>(db, {
     appUserId,
     operationId: request.operation_id,
-    commandType: "SetExecutionTimes",
+    commandType,
     requestFingerprint,
     outcomeKind: "domain_rejection",
     result: { code, message },
@@ -120,7 +142,7 @@ async function reject<T>(
 }
 
 async function readEntry(db: D1Database, appUserId: string, entryId: string): Promise<EntryRow | null> {
-  return db.prepare(`SELECT e.id AS entry_id, e.taskchute_day_id, e.lifecycle_state, e.section_id,
+  return db.prepare(`SELECT e.id AS entry_id, e.taskchute_day_id, d.logical_date, e.lifecycle_state, e.section_id,
       e.planned_start_minute, e.position, d.placement_revision, d.start_instant, d.end_instant,
       d.establishment_timezone
     FROM entries e JOIN taskchute_days d ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
@@ -182,8 +204,153 @@ function blockerGuard(
 }
 
 async function readExecution(db: D1Database, appUserId: string, executionId: string): Promise<ExecutionRow | null> {
-  return db.prepare("SELECT id, entry_id, started_at, ended_at FROM executions WHERE app_user_id = ? AND id = ?")
+  return db.prepare("SELECT id, entry_id, started_at, ended_at, terminal_outcome FROM executions WHERE app_user_id = ? AND id = ?")
     .bind(appUserId, executionId).first<ExecutionRow>();
+}
+
+async function readCurrentDayContext(
+  db: D1Database,
+  appUserId: string,
+  nowInstant: string,
+): Promise<CurrentDayContext | null> {
+  const settings = await db.prepare("SELECT timezone, day_boundary_minutes FROM user_settings WHERE app_user_id = ?")
+    .bind(appUserId).first<{ timezone: string; day_boundary_minutes: number }>();
+  if (!settings) return null;
+  try {
+    const resolved = resolveTaskChuteDay(nowInstant, {
+      timezone: settings.timezone,
+      boundaryMinutes: settings.day_boundary_minutes,
+    });
+    return {
+      timezone: settings.timezone,
+      boundaryMinutes: settings.day_boundary_minutes,
+      logicalDate: resolved.logicalDate,
+      startInstant: resolved.startInstant,
+      endInstant: resolved.endInstant,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function entryIsInCurrentDay(entry: EntryRow, currentDay: CurrentDayContext): boolean {
+  return entry.logical_date === currentDay.logicalDate
+    && compareInstants(entry.start_instant, currentDay.startInstant) === 0
+    && compareInstants(entry.end_instant, currentDay.endInstant) === 0;
+}
+
+function currentDayGuardSql(alias: string, currentDay: CurrentDayContext): { sql: string; bindings: unknown[] } {
+  return {
+    sql: `AND ${alias}.logical_date = ?
+      AND julianday(${alias}.start_instant) = julianday(?)
+      AND julianday(${alias}.end_instant) = julianday(?)
+      AND EXISTS (SELECT 1 FROM user_settings current_settings
+        WHERE current_settings.app_user_id = ${alias}.app_user_id
+          AND current_settings.timezone = ? AND current_settings.day_boundary_minutes = ?)`,
+    bindings: [currentDay.logicalDate, currentDay.startInstant, currentDay.endInstant,
+      currentDay.timezone, currentDay.boundaryMinutes],
+  };
+}
+
+function normalizedRevertRequest(request: RevertEntryStartRequest): RevertEntryStartRequest {
+  return { ...request, expected_started_at: canonicalInstant(request.expected_started_at, "expected_started_at") };
+}
+
+export async function revertEntryStart(
+  db: D1Database,
+  appUserId: string,
+  input: RevertEntryStartRequest,
+  nowInstant = new Date().toISOString(),
+): Promise<RevertEntryStartResult> {
+  const request = normalizedRevertRequest(input);
+  const requestFingerprint = await fingerprint(request);
+  const prior = await readOperation(db, appUserId, request.operation_id);
+  if (prior) return replayOperation<RevertEntryStartResult>(prior, "RevertEntryStart", requestFingerprint);
+
+  const [entry, execution, currentDay] = await Promise.all([
+    readEntry(db, appUserId, request.entry_id),
+    readExecution(db, appUserId, request.execution_id),
+    readCurrentDayContext(db, appUserId, nowInstant),
+  ]);
+  const converged = await readOperation(db, appUserId, request.operation_id);
+  if (converged) return replayOperation<RevertEntryStartResult>(converged, "RevertEntryStart", requestFingerprint);
+  if (!entry || !execution) return reject<RevertEntryStartResult>(db, appUserId, request, requestFingerprint,
+    "resource_not_found", "Entry or active Execution is unavailable", "RevertEntryStart");
+  if (!currentDay || !entryIsInCurrentDay(entry, currentDay)) {
+    return reject<RevertEntryStartResult>(db, appUserId, request, requestFingerprint,
+      "resource_conflict", "RevertEntryStart is limited to the current established Day", "RevertEntryStart");
+  }
+  if (execution.entry_id !== request.entry_id || execution.ended_at !== null || execution.terminal_outcome !== null
+    || entry.lifecycle_state !== "running" || !sameInstant(execution.started_at, request.expected_started_at)) {
+    return reject<RevertEntryStartResult>(db, appUserId, request, requestFingerprint,
+      "resource_conflict", "Only the current active Start can be reverted", "RevertEntryStart");
+  }
+
+  const result: RevertEntryStartResult = {
+    entry_id: request.entry_id,
+    lifecycle_state: "planned",
+    execution_id: request.execution_id,
+    section_id: entry.section_id,
+    planned_start_minute: entry.planned_start_minute,
+    position: entry.position,
+    placement_revision: entry.placement_revision,
+  };
+  const assertionId = `revert-start:${request.operation_id}`;
+  const currentGuard = currentDayGuardSql("d", currentDay);
+  try {
+    const [guard] = await db.batch([
+      db.prepare(`INSERT INTO lifecycle_command_guards (app_user_id, operation_id, entry_id, execution_id, command_type)
+        SELECT ?, ?, e.id, x.id, 'RevertEntryStart'
+          FROM entries e
+          JOIN taskchute_days d ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
+          JOIN executions x ON x.app_user_id = e.app_user_id AND x.entry_id = e.id
+         WHERE e.app_user_id = ? AND e.id = ? AND e.lifecycle_state = 'running'
+           AND x.id = ? AND x.ended_at IS NULL AND x.terminal_outcome IS NULL
+           AND julianday(x.started_at) = julianday(?)
+           ${currentGuard.sql}`)
+        .bind(appUserId, request.operation_id, appUserId, request.entry_id, request.execution_id,
+          request.expected_started_at, ...currentGuard.bindings),
+      db.prepare(`DELETE FROM executions WHERE app_user_id = ? AND id = ?
+        AND EXISTS (SELECT 1 FROM lifecycle_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(appUserId, request.execution_id, appUserId, request.operation_id),
+      db.prepare(`UPDATE entries SET lifecycle_state = 'planned'
+        WHERE app_user_id = ? AND id = ? AND lifecycle_state = 'running'
+          AND EXISTS (SELECT 1 FROM lifecycle_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(appUserId, request.entry_id, appUserId, request.operation_id),
+      db.prepare(`INSERT INTO transaction_assertions (app_user_id, id, ok)
+        SELECT ?, ?, CASE WHEN
+          EXISTS (SELECT 1 FROM entries e JOIN taskchute_days d
+            ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
+            WHERE e.app_user_id = ? AND e.id = ? AND e.lifecycle_state = 'planned'
+              AND e.section_id IS ? AND e.planned_start_minute IS ? AND e.position = ?
+              AND d.placement_revision = ?)
+          AND NOT EXISTS (SELECT 1 FROM executions WHERE app_user_id = ? AND id = ?)
+        THEN 1 ELSE 0 END
+        WHERE EXISTS (SELECT 1 FROM lifecycle_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(appUserId, assertionId, appUserId, request.entry_id, entry.section_id, entry.planned_start_minute,
+          entry.position, entry.placement_revision, appUserId, request.execution_id, appUserId, request.operation_id),
+      db.prepare(`INSERT INTO operations (app_user_id, operation_id, command_type, request_fingerprint_version,
+          request_fingerprint, outcome_kind, result_json, created_at)
+        SELECT ?, ?, 'RevertEntryStart', ?, ?, 'success', ?, ?
+          WHERE EXISTS (SELECT 1 FROM lifecycle_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(appUserId, request.operation_id, REQUEST_FINGERPRINT_VERSION, requestFingerprint,
+          JSON.stringify(result), nowInstant, appUserId, request.operation_id),
+      db.prepare("DELETE FROM transaction_assertions WHERE app_user_id = ? AND id = ?").bind(appUserId, assertionId),
+      db.prepare("DELETE FROM lifecycle_command_guards WHERE app_user_id = ? AND operation_id = ?")
+        .bind(appUserId, request.operation_id),
+    ]);
+    if (guard.meta.changes === 0) {
+      const committed = await readOperation(db, appUserId, request.operation_id);
+      if (committed) return replayOperation<RevertEntryStartResult>(committed, "RevertEntryStart", requestFingerprint);
+      return reject<RevertEntryStartResult>(db, appUserId, request, requestFingerprint,
+        "resource_conflict", "Only the current active Start can be reverted", "RevertEntryStart");
+    }
+    return result;
+  } catch {
+    const committed = await readOperation(db, appUserId, request.operation_id);
+    if (committed) return replayOperation<RevertEntryStartResult>(committed, "RevertEntryStart", requestFingerprint);
+    throw new HttpError(503, "infrastructure_ambiguous", "The outcome is unknown; reload canonical state and retry", true);
+  }
 }
 
 function overlapsSql(alias: string): string {
@@ -251,8 +418,18 @@ export async function setExecutionTimes(
   if (request.expected_lifecycle_state !== entry.lifecycle_state) {
     return reject(db, appUserId, request, requestFingerprint, "resource_conflict", "Entry lifecycle state changed");
   }
-  if (request.expected_lifecycle_state === "completed" && request.ended_at === null) {
-    return reject(db, appUserId, request, requestFingerprint, "resource_conflict", "A completed Entry cannot be reopened");
+  const reopeningCompleted = request.expected_lifecycle_state === "completed" && request.ended_at === null;
+  let currentDay: CurrentDayContext | null = null;
+  if (reopeningCompleted) {
+    if (request.expected_started_at === null || !sameInstant(request.started_at, request.expected_started_at)) {
+      return reject(db, appUserId, request, requestFingerprint, "resource_conflict",
+        "Reopening a completed Execution must preserve its original start");
+    }
+    currentDay = await readCurrentDayContext(db, appUserId, now);
+    if (!currentDay || !entryIsInCurrentDay(entry, currentDay)) {
+      return reject(db, appUserId, request, requestFingerprint, "resource_conflict",
+        "A completed Execution can only be reopened on the current established Day");
+    }
   }
   if (request.expected_lifecycle_state === "planned") {
     if (execution || request.expected_started_at !== null || request.expected_ended_at !== null) {
@@ -263,6 +440,10 @@ export async function setExecutionTimes(
       || (execution.ended_at === null && request.expected_lifecycle_state === "completed")
       || (execution.ended_at !== null && request.expected_lifecycle_state === "running")) {
       return reject(db, appUserId, request, requestFingerprint, "resource_conflict", "Execution is no longer editable in this lifecycle state");
+    }
+    if (reopeningCompleted && execution.terminal_outcome === "interrupted") {
+      return reject(db, appUserId, request, requestFingerprint, "resource_conflict",
+        "An interrupted Execution cannot be reopened as completed work");
     }
     if (request.expected_started_at === null || !sameInstant(execution.started_at, request.expected_started_at)
       || (request.expected_ended_at === null
@@ -326,6 +507,9 @@ export async function setExecutionTimes(
   const expectedRevision = guardedPlacementRevision ?? null;
   const dayId = entry.taskchute_day_id;
   const blockerGuardSpec = blockerGuard(minuteBlocker, appUserId, dayId);
+  const currentDayGuard = reopeningCompleted && currentDay
+    ? currentDayGuardSql("d", currentDay)
+    : { sql: "", bindings: [] as unknown[] };
   const lifecycleGuard = request.expected_lifecycle_state === "planned"
     ? db.prepare(`INSERT INTO lifecycle_command_guards (app_user_id, operation_id, entry_id, execution_id, command_type)
         SELECT ?, ?, e.id, ?, 'SetExecutionTimes'
@@ -347,13 +531,16 @@ export async function setExecutionTimes(
          WHERE e.app_user_id = ? AND e.id = ? AND e.lifecycle_state = ? AND x.id = ?
            AND x.started_at = ?
            AND ((? IS NULL AND x.ended_at IS NULL) OR (? IS NOT NULL AND x.ended_at = ?))
+           AND x.terminal_outcome IS ?
            AND (? IS NULL OR d.placement_revision = ?)
            AND ${overlapsSql("e")}
-            ${blockerGuardSpec.sql}`)
+            ${blockerGuardSpec.sql}
+            ${currentDayGuard.sql}`)
       .bind(appUserId, request.operation_id, appUserId, request.entry_id, request.expected_lifecycle_state, request.execution_id,
         request.expected_started_at, request.expected_ended_at, request.expected_ended_at, request.expected_ended_at,
-        expectedRevision, expectedRevision, request.execution_id, effectiveRequest.ended_at, effectiveRequest.ended_at, effectiveRequest.started_at,
-        ...blockerGuardSpec.bindings);
+        execution?.terminal_outcome ?? null, expectedRevision, expectedRevision, request.execution_id,
+        effectiveRequest.ended_at, effectiveRequest.ended_at, effectiveRequest.started_at,
+        ...blockerGuardSpec.bindings, ...currentDayGuard.bindings);
   try {
     const [placementGuard, guard] = await db.batch([
       movesSection

@@ -1721,6 +1721,93 @@ class TodayScreenInstrumentedTest {
     }
 
     @Test
+    fun runningEditorCanClearStartAndSaveLifecycleRollbackIntent() {
+        val planningRepository = FakePlanningRepository()
+        val initialDay = dayWith(LifecycleState.RUNNING).copy(establishmentTimezone = "UTC")
+        launchPlanningScreen(planningRepository, initialDay)
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        composeRule.onAllNodesWithText("Running panel task").get(0).performTouchInput { swipeLeft() }
+        composeRule.onNodeWithContentDescription("タスクを編集").performClick()
+        composeRule.onNodeWithText("実績タスクの編集").assertIsDisplayed()
+        composeRule.onNodeWithText("終了時間", substring = false).assertIsDisplayed()
+        val fields = composeRule.onAllNodes(hasSetTextAction())
+        assertEquals(3, fields.fetchSemanticsNodes().size)
+        fields.get(1).performTextClearance()
+        assertEquals("", planningController?.state?.editor?.draft?.actualStartText)
+        assertEquals("", planningController?.state?.editor?.draft?.actualEndText)
+
+        composeRule.onNodeWithText("保存", substring = false).performScrollTo().performClick()
+        composeRule.waitUntil(10_000) { planningRepository.saveCalls.get() == 1 }
+        assertNull(planningRepository.lastInput?.actualStartMinute)
+        assertNull(planningRepository.lastInput?.actualEndMinute)
+        composeRule.waitUntil(5_000) { planningController?.state?.editor == null }
+    }
+
+    @Test
+    fun completedEditorCanKeepStartAndClearEndToRequestReopen() {
+        val planningRepository = FakePlanningRepository()
+        val completed = dayWith(LifecycleState.COMPLETED).sections.single().entries.single().copy(
+            taskId = "task-completed",
+            executionId = "execution-completed",
+            firstStartedAt = "2026-09-14T09:00:13.456Z",
+            lastEndedAt = "2026-09-14T09:30:15.789Z",
+        )
+        val initialDay = dayWith(LifecycleState.COMPLETED).copy(
+            establishmentTimezone = "UTC",
+            sections = listOf(dayWith().sections.single().copy(entries = listOf(completed))),
+        )
+        launchPlanningScreen(planningRepository, initialDay)
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        composeRule.onNodeWithText("Write report").performTouchInput { swipeLeft() }
+        composeRule.onNodeWithContentDescription("タスクを編集").performClick()
+        composeRule.onNodeWithText("実績タスクの編集").assertIsDisplayed()
+        val fields = composeRule.onAllNodes(hasSetTextAction())
+        assertEquals(2, fields.fetchSemanticsNodes().size)
+        fields.get(1).performTextClearance()
+        assertEquals("09:00", planningController?.state?.editor?.draft?.actualStartText)
+        assertEquals("", planningController?.state?.editor?.draft?.actualEndText)
+
+        composeRule.onNodeWithText("保存", substring = false).performScrollTo().performClick()
+        composeRule.waitUntil(10_000) { planningRepository.saveCalls.get() == 1 }
+        assertEquals(540, planningRepository.lastInput?.actualStartMinute)
+        assertNull(planningRepository.lastInput?.actualEndMinute)
+        assertEquals("execution-completed", planningRepository.lastEditor?.originalTask?.executionId)
+        composeRule.waitUntil(5_000) { planningController?.state?.editor == null }
+    }
+
+    @Test
+    fun completedEditorCannotClearBothActualTimes() {
+        val planningRepository = FakePlanningRepository()
+        val completed = dayWith(LifecycleState.COMPLETED).sections.single().entries.single().copy(
+            taskId = "task-completed",
+            executionId = "execution-completed",
+            firstStartedAt = "2026-09-14T09:00:13.456Z",
+            lastEndedAt = "2026-09-14T09:30:15.789Z",
+        )
+        val initialDay = dayWith(LifecycleState.COMPLETED).copy(
+            establishmentTimezone = "UTC",
+            sections = listOf(dayWith().sections.single().copy(entries = listOf(completed))),
+        )
+        launchPlanningScreen(planningRepository, initialDay)
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        composeRule.onNodeWithText("Write report").performTouchInput { swipeLeft() }
+        composeRule.onNodeWithContentDescription("タスクを編集").performClick()
+        val fields = composeRule.onAllNodes(hasSetTextAction())
+        assertEquals(2, fields.fetchSemanticsNodes().size)
+        fields.get(0).performTextClearance()
+        fields.get(1).performTextClearance()
+
+        composeRule.onNodeWithText("保存", substring = false).performScrollTo().performClick()
+        composeRule.onAllNodesWithText("完了済みタスクは開始時間が必要です。", substring = false)
+            .get(0).assertIsDisplayed()
+        assertEquals(0, planningRepository.saveCalls.get())
+        assertTrue(planningController?.state?.editor != null)
+    }
+
+    @Test
     fun runningRowWithoutTaskIdentityKeepsEditAndOtherButNoNote() {
         launchPlanningScreen(FakePlanningRepository(), initialDay = dayWith(LifecycleState.RUNNING))
         waitForStatus(TodayLoadStatus.CONTENT)
@@ -1994,6 +2081,7 @@ class TodayScreenInstrumentedTest {
     private class FakePlanningRepository : TaskPlanningRepository {
         val saveCalls = AtomicInteger()
         @Volatile var lastInput: NormalizedTaskInput? = null
+        @Volatile var lastEditor: TaskEditorState? = null
 
         override fun loadReferences() = PlanningReferencesResult.Success(
             PlanningReferences(
@@ -2004,6 +2092,7 @@ class TodayScreenInstrumentedTest {
 
         override fun save(editor: TaskEditorState, input: NormalizedTaskInput): PlanningSaveResult {
             saveCalls.incrementAndGet()
+            lastEditor = editor
             lastInput = input
             return PlanningSaveResult.Success
         }

@@ -31,7 +31,12 @@ import {
 import { isLogicalDate } from "./domain/taskchute-day";
 import { completeEntry, isCompleteEntryRequest, isStartEntryRequest, startEntry } from "./application/entry-lifecycle";
 import { interruptEntry, isInterruptEntryRequest } from "./application/interrupt-entry";
-import { isSetExecutionTimesRequest, setExecutionTimes } from "./application/execution-correction";
+import {
+  isRevertEntryStartRequest,
+  isSetExecutionTimesRequest,
+  revertEntryStart,
+  setExecutionTimes,
+} from "./application/execution-correction";
 import { isUpdateTaskMetadataRequest, updateTaskMetadata } from "./application/task-metadata";
 import { isMoveEntryRequest, isSetEntryEstimateRequest, moveEntry, setEntryEstimate } from "./application/entry-planning";
 import { isReorderEntriesRequest, reorderEntries } from "./application/reorder-entries";
@@ -632,6 +637,14 @@ async function route(request: Request, env: Env): Promise<Response> {
       throw new HttpError(400, "malformed_request", "Invalid SetExecutionTimes request");
     }
     return Response.json(await setExecutionTimes(env.APP_DB, principal.appUserId, body));
+  }
+  const revertStartMatch = url.pathname.match(/^\/api\/v1\/entries\/([^/]+)\/revert-start$/);
+  if (request.method === "POST" && revertStartMatch) {
+    const body = await readBoundedJson(request);
+    if (revertStartMatch[1] !== (body as { entry_id?: unknown })?.entry_id || !isRevertEntryStartRequest(body)) {
+      throw new HttpError(400, "malformed_request", "Invalid RevertEntryStart request");
+    }
+    return Response.json(await revertEntryStart(env.APP_DB, principal.appUserId, body));
   }
   const lifecycleMatch = url.pathname.match(/^\/api\/v1\/entries\/([^/]+)\/(start|complete|interrupt)$/);
   if (request.method === "POST" && lifecycleMatch) {

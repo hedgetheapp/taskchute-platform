@@ -286,13 +286,13 @@ describe.sequential("production runtime bootstrap slice", () => {
     expect(expiredExchange.status).toBe(401);
   });
 
-  it("keeps Revert withdrawn while requiring the current SetExecutionTimes contract", async () => {
+  it("recognizes RevertEntryStart while requiring the current lifecycle contracts", async () => {
     const entryId = uuidv7();
     const revert = await browser.post(`/api/v1/entries/${entryId}/revert-start`, {
       operation_id: uuidv7(), entry_id: entryId, taskchute_day_id: uuidv7(), execution_id: uuidv7(),
     });
-    expect(revert.status).toBe(404);
-    expect(await json(revert)).toEqual({ error: { code: "resource_not_found", message: "Not found", reconcile: false } });
+    expect(revert.status).toBe(400);
+    expect((await json<{ error: { code: string } }>(revert)).error.code).toBe("malformed_request");
 
     const correction = await browser.post(`/api/v1/entries/${entryId}/execution-times`, {
       operation_id: uuidv7(), entry_id: entryId, taskchute_day_id: uuidv7(), actual_started_at: null, actual_ended_at: null,

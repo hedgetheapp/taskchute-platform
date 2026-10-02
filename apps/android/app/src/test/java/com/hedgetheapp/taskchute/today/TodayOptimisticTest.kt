@@ -200,6 +200,70 @@ class TodayOptimisticTest {
     }
 
     @Test
+    fun lifecycleEditorRollbackImmediatelyReturnsRunningEntryToPlannedAndKeepsOlderHistory() {
+        val source = day()
+        val original = source.allEntries.first { it.id == "entry-a" }.copy(
+            lifecycleState = LifecycleState.RUNNING,
+            executionId = "execution-active",
+            activeStartedAt = "2026-09-20T10:00:00Z",
+            firstStartedAt = "2026-09-20T08:00:00Z",
+            lastEndedAt = "2026-09-20T08:45:00Z",
+        )
+        val runningDay = source.copy(
+            sections = source.sections.map { section ->
+                section.copy(entries = section.entries.map { if (it.id == original.id) original else it })
+            },
+            activeExecution = TodayExecution("execution-active", original.id, original.activeStartedAt!!, original.estimateSeconds),
+        )
+        val projected = applyOptimisticPlanning(
+            runningDay,
+            TaskEditorState(TaskEditorMode.EDIT, runningDay, original, TaskEditorDraft()),
+            NormalizedTaskInput(original.title, null, null, "morning", original.plannedStartMinute,
+                original.estimateSeconds, actualStartMinute = null, actualEndMinute = null),
+        )
+
+        val task = projected.allEntries.single { it.id == original.id }
+        assertEquals(LifecycleState.PLANNED, task.lifecycleState)
+        assertNull(task.executionId)
+        assertNull(task.activeStartedAt)
+        assertEquals("2026-09-20T08:00:00Z", task.firstStartedAt)
+        assertEquals("2026-09-20T08:45:00Z", task.lastEndedAt)
+        assertNull(projected.activeExecution)
+    }
+
+    @Test
+    fun lifecycleEditorReopenImmediatelyKeepsTheCompletedExecutionStart() {
+        val source = day()
+        val original = source.allEntries.first { it.id == "entry-a" }.copy(
+            lifecycleState = LifecycleState.COMPLETED,
+            executionId = "execution-completed",
+            activeStartedAt = null,
+            firstStartedAt = "2026-09-20T09:00:13.456Z",
+            lastEndedAt = "2026-09-20T09:30:15.789Z",
+            completedDurationSeconds = 1_802,
+        )
+        val completedDay = source.copy(sections = source.sections.map { section ->
+            section.copy(entries = section.entries.map { if (it.id == original.id) original else it })
+        })
+        val projected = applyOptimisticPlanning(
+            completedDay,
+            TaskEditorState(TaskEditorMode.EDIT, completedDay, original, TaskEditorDraft()),
+            NormalizedTaskInput(original.title, null, null, "morning", original.plannedStartMinute,
+                original.estimateSeconds, actualStartMinute = 9 * 60, actualEndMinute = null),
+        )
+
+        val task = projected.allEntries.single { it.id == original.id }
+        assertEquals(LifecycleState.RUNNING, task.lifecycleState)
+        assertEquals("execution-completed", task.executionId)
+        assertEquals(original.firstStartedAt, task.activeStartedAt)
+        assertEquals(original.firstStartedAt, task.firstStartedAt)
+        assertNull(task.lastEndedAt)
+        assertEquals(0, task.completedDurationSeconds)
+        assertEquals("execution-completed", projected.activeExecution?.id)
+        assertEquals(original.firstStartedAt, projected.activeExecution?.startedAt)
+    }
+
+    @Test
     fun dragTargetUsesStableSnapshotThresholdsDuringProvisionalAnimation() {
         val bounds = mapOf(
             "entry-a" to Rect(0f, 0f, 100f, 50f),

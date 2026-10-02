@@ -268,9 +268,10 @@ class TaskPlanningHttpRepositoryTest {
         val task = TodayTask("entry-1", "Running task", LifecycleState.RUNNING, TodayProject("project-old", "Old"), TodayMode("mode-old", "Old"), 600, 540, "execution-1", "2026-09-20T01:00:00Z", false, "task-1")
         val editor = TaskEditorState(
             TaskEditorMode.EDIT,
-            currentDay(),
+            currentDay().copy(establishmentTimezone = "UTC"),
             task,
-            TaskEditorDraft(title = task.title, projectId = "project-new", modeId = "mode-old", plannedStartText = "9:00", estimateText = "10"),
+            TaskEditorDraft(title = task.title, projectId = "project-new", modeId = "mode-old",
+                plannedStartText = "9:00", estimateText = "10", actualStartText = "01:00"),
             TaskEditorCapability.RUNNING_METADATA,
         )
         val repository = TaskPlanningHttpRepository { method, path, body ->
@@ -278,7 +279,10 @@ class TaskPlanningHttpRepositoryTest {
             TodayHttpResponse(204, null)
         }
 
-        assertEquals(PlanningSaveResult.Success, repository.save(editor, editor.draft.let { NormalizedTaskInput(it.title, it.projectId, it.modeId, it.sectionId, 9 * 60, 10 * 60) }))
+        assertEquals(PlanningSaveResult.Success, repository.save(editor, editor.draft.let {
+            NormalizedTaskInput(it.title, it.projectId, it.modeId, it.sectionId, 9 * 60, 10 * 60,
+                actualStartMinute = 60, actualEndMinute = null)
+        }))
         assertEquals(1, requests.size)
         assertEquals("/api/v1/entries/entry-1/task-metadata", requests.single().second)
         assertTrue(requests.single().third!!.contains("\"title\":\"Running task\""))
@@ -291,9 +295,10 @@ class TaskPlanningHttpRepositoryTest {
         val task = TodayTask("entry-1", "Running task", LifecycleState.RUNNING, TodayProject("project-old", "Old"), TodayMode("mode-old", "Old"), 600, 540, "execution-1", "2026-09-20T01:00:00Z", false, "task-1")
         val editor = TaskEditorState(
             TaskEditorMode.EDIT,
-            currentDay(),
+            currentDay().copy(establishmentTimezone = "UTC"),
             task,
-            TaskEditorDraft(title = task.title, projectId = "project-old", modeId = "mode-new", plannedStartText = "9:00", estimateText = "10"),
+            TaskEditorDraft(title = task.title, projectId = "project-old", modeId = "mode-new",
+                plannedStartText = "9:00", estimateText = "10", actualStartText = "01:00"),
             TaskEditorCapability.RUNNING_METADATA,
         )
         val repository = TaskPlanningHttpRepository { method, path, body ->
@@ -301,7 +306,9 @@ class TaskPlanningHttpRepositoryTest {
             TodayHttpResponse(204, null)
         }
 
-        assertEquals(PlanningSaveResult.Success, repository.save(editor, NormalizedTaskInput(task.title, "project-old", "mode-new", null, 9 * 60, 10 * 60)))
+        assertEquals(PlanningSaveResult.Success, repository.save(editor,
+            NormalizedTaskInput(task.title, "project-old", "mode-new", null, 9 * 60, 10 * 60,
+                actualStartMinute = 60, actualEndMinute = null)))
         assertEquals(1, requests.size)
         assertEquals("/api/v1/entries/entry-1/mode", requests.single().second)
         assertTrue(requests.single().third!!.contains("\"mode_id\":\"mode-new\""))
@@ -341,8 +348,8 @@ class TaskPlanningHttpRepositoryTest {
                 originalTask = task,
                 draft = TaskEditorDraft(
                     title = task.title,
-                    actualStartText = "0900",
-                    actualEndText = "0930",
+                    actualStartText = "0905",
+                    actualEndText = "0935",
                 ),
                 capability = TaskEditorCapability.COMPLETED_METADATA,
             ),
@@ -353,8 +360,8 @@ class TaskPlanningHttpRepositoryTest {
                 sectionId = "section-1",
                 plannedStartMinute = 540,
                 estimateSeconds = 1_800,
-                actualStartMinute = 540,
-                actualEndMinute = 570,
+                actualStartMinute = 545,
+                actualEndMinute = 575,
             ),
         )
 
@@ -363,9 +370,108 @@ class TaskPlanningHttpRepositoryTest {
         assertEquals("/api/v1/entries/entry-1/execution-times", requests.single().second)
         assertTrue(requests.single().third!!.contains("\"expected_lifecycle_state\":\"completed\""))
         assertTrue(requests.single().third!!.contains("\"execution_id\":\"execution-1\""))
-        assertTrue(requests.single().third!!.contains("\"started_at\":\"2026-09-14T09:00:00Z\""))
-        assertTrue(requests.single().third!!.contains("\"ended_at\":\"2026-09-14T09:30:00Z\""))
+        assertTrue(requests.single().third!!.contains("\"started_at\":\"2026-09-14T09:05:00Z\""))
+        assertTrue(requests.single().third!!.contains("\"ended_at\":\"2026-09-14T09:35:00Z\""))
         assertTrue(requests.single().third!!.contains("\"input_precision\":\"minute\""))
+    }
+
+    @Test
+    fun runningBlankActualTimesUseRevertStartAndReuseOperationIdAfterAmbiguousResponse() {
+        val requests = mutableListOf<Triple<String, String, String?>>()
+        val task = TodayTask(
+            id = "entry-1", title = "Running", lifecycleState = LifecycleState.RUNNING,
+            project = null, mode = null, estimateSeconds = 1_800, plannedStartMinute = 540,
+            executionId = "execution-1", activeStartedAt = "2026-09-14T09:00:13.456Z",
+            taskId = "task-1", firstStartedAt = "2026-09-14T09:00:13.456Z",
+        )
+        val editor = TaskEditorState(
+            TaskEditorMode.EDIT, currentDay(), task,
+            TaskEditorDraft(title = task.title, actualStartText = "", actualEndText = ""),
+            TaskEditorCapability.RUNNING_METADATA,
+        )
+        val input = NormalizedTaskInput(task.title, null, null, "section-1", 540, 1_800)
+        val repository = TaskPlanningHttpRepository { method, path, body ->
+            requests += Triple(method, path, body)
+            if (requests.size == 1) null else TodayHttpResponse(204, null)
+        }
+
+        assertTrue(repository.save(editor, input) is PlanningSaveResult.Failure)
+        assertEquals(PlanningSaveResult.Success, repository.save(editor, input))
+
+        assertEquals(2, requests.size)
+        assertEquals("POST", requests.first().first)
+        assertEquals("/api/v1/entries/entry-1/revert-start", requests.first().second)
+        assertEquals(requests.first().third, requests.last().third)
+        assertTrue(requests.last().third.orEmpty().contains("\"execution_id\":\"execution-1\""))
+        assertTrue(requests.last().third.orEmpty().contains("\"expected_started_at\":\"2026-09-14T09:00:13.456Z\""))
+        assertTrue(requests.last().third.orEmpty().contains("\"operation_id\":"))
+        assertTrue(requests.none { it.second.endsWith("/execution-times") })
+    }
+
+    @Test
+    fun completedReopenPreservesExactExecutionStartAndDoesNotUseMinutePrecisionCorrection() {
+        val requests = mutableListOf<Triple<String, String, String?>>()
+        val startedAt = "2026-09-14T09:00:13.456Z"
+        val endedAt = "2026-09-14T09:30:15.789Z"
+        val task = TodayTask(
+            id = "entry-1", title = "Completed", lifecycleState = LifecycleState.COMPLETED,
+            project = null, mode = null, estimateSeconds = 1_800, plannedStartMinute = 540,
+            executionId = "execution-1", activeStartedAt = null, taskId = "task-1",
+            firstStartedAt = startedAt, lastEndedAt = endedAt,
+        )
+        val day = currentDay().copy(
+            establishmentTimezone = "UTC",
+            sections = listOf(TodaySection("section-1", "Morning", 480, 720, listOf(task))),
+        )
+        val editor = TaskEditorState(
+            TaskEditorMode.EDIT, day, task,
+            TaskEditorDraft(title = task.title, actualStartText = "09:00", actualEndText = ""),
+            TaskEditorCapability.COMPLETED_METADATA,
+        )
+        val input = NormalizedTaskInput(task.title, null, null, "section-1", 540, 1_800, 540, null)
+        val repository = TaskPlanningHttpRepository { method, path, body ->
+            requests += Triple(method, path, body)
+            TodayHttpResponse(204, null)
+        }
+
+        assertEquals(PlanningSaveResult.Success, repository.save(editor, input))
+        val body = requests.single().third.orEmpty()
+        assertEquals("/api/v1/entries/entry-1/execution-times", requests.single().second)
+        assertTrue(body.contains("\"expected_lifecycle_state\":\"completed\""))
+        assertTrue(body.contains("\"execution_id\":\"execution-1\""))
+        assertTrue(body.contains("\"started_at\":\"$startedAt\""))
+        assertTrue(body.contains("\"expected_started_at\":\"$startedAt\""))
+        assertTrue(body.contains("\"ended_at\":null"))
+        assertTrue(!body.contains("input_precision"))
+    }
+
+    @Test
+    fun unchangedMultiExecutionCompletedTimesDoNotDispatchCorrection() {
+        val task = TodayTask(
+            id = "entry-1", title = "Completed", lifecycleState = LifecycleState.COMPLETED,
+            project = null, mode = null, estimateSeconds = 1_800, plannedStartMinute = 540,
+            executionId = null, activeStartedAt = null, taskId = "task-1",
+            firstStartedAt = "2026-09-14T09:00:13.456Z", lastEndedAt = "2026-09-14T09:30:15.789Z",
+        )
+        val day = currentDay().copy(
+            establishmentTimezone = "UTC",
+            sections = listOf(TodaySection("section-1", "Morning", 480, 720, listOf(task))),
+        )
+        var writes = 0
+        val repository = TaskPlanningHttpRepository { _, _, _ ->
+            writes++
+            TodayHttpResponse(204, null)
+        }
+        val editor = TaskEditorState(
+            TaskEditorMode.EDIT, day, task,
+            TaskEditorDraft(title = task.title, actualStartText = "09:00", actualEndText = "09:30"),
+            TaskEditorCapability.COMPLETED_METADATA,
+        )
+
+        assertEquals(PlanningSaveResult.Success, repository.save(
+            editor, NormalizedTaskInput(task.title, null, null, "section-1", 540, 1_800, 540, 570),
+        ))
+        assertEquals(0, writes)
     }
 
     @Test

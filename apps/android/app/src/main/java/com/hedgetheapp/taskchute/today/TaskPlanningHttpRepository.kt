@@ -10,6 +10,8 @@ import java.time.ZonedDateTime
 class TaskPlanningHttpRepository(
     private val request: (method: String, path: String, body: String?) -> TodayHttpResponse?,
 ) : TaskPlanningRepository {
+    private val ambiguousLifecycleOperationIds = mutableMapOf<String, String>()
+
     override fun loadReferences(): PlanningReferencesResult {
         val projectsResponse = execute("GET", "/api/v1/projects", null)
         if (projectsResponse !is PlanningHttpResult.Success) return projectsResponse.toReferencesResult()
@@ -58,6 +60,10 @@ class TaskPlanningHttpRepository(
     private fun update(editor: TaskEditorState, input: NormalizedTaskInput): PlanningSaveResult {
         val task = editor.originalTask ?: return PlanningSaveResult.Failure("編集対象を取得できません。")
         val taskId = task.taskId ?: return PlanningSaveResult.Failure("編集対象のTask IDを取得できません。再読み込みしてください。")
+        if (task.lifecycleState == LifecycleState.COMPLETED && input.actualStartMinute != null
+            && input.actualEndMinute == null && task.executionId == null) {
+            return PlanningSaveResult.Failure("複数の実行履歴があるため、このタスクを実行中へ戻せません。")
+        }
         val currentProjectId = task.project?.id
         val currentModeId = task.mode?.id
         val currentSectionId = editor.day.sections.firstOrNull { section -> section.entries.any { it.id == task.id } }?.id
@@ -190,23 +196,85 @@ class TaskPlanningHttpRepository(
         placementRevision: Int,
     ): PlanningSaveResult {
         val task = editor.originalTask ?: return PlanningSaveResult.Success
+        if (task.lifecycleState == LifecycleState.RUNNING && input.actualStartMinute == null && input.actualEndMinute == null) {
+            return executeRevertEntryStart(editor, task)
+        }
         if (input.actualStartMinute == null) return PlanningSaveResult.Success
+        if (task.lifecycleState == LifecycleState.RUNNING && input.actualEndMinute == null
+            && parseActualClock(formatExecutionClock(task.activeStartedAt, editor.day.establishmentTimezone)) == input.actualStartMinute) {
+            return PlanningSaveResult.Success
+        }
         val zone = editor.day.establishmentTimezone?.let { runCatching { ZoneId.of(it) }.getOrNull() }
             ?: return PlanningSaveResult.Failure("実績時間のタイムゾーンを取得できません。再読み込みしてください。")
-        val startedAt = logicalMinuteToInstant(editor.day, input.actualStartMinute, zone)
+        val expectedStartedAt = if (task.lifecycleState == LifecycleState.PLANNED) null else task.activeStartedAt ?: task.firstStartedAt
+        val expectedEndedAt = if (task.lifecycleState == LifecycleState.PLANNED) null else task.lastEndedAt
+        if (task.lifecycleState == LifecycleState.COMPLETED) {
+            val unchangedStart = parseActualClock(formatExecutionClock(expectedStartedAt, editor.day.establishmentTimezone)) ==
+                input.actualStartMinute
+            val unchangedEnd = parseActualClock(formatExecutionClock(expectedEndedAt, editor.day.establishmentTimezone)) ==
+                input.actualEndMinute
+            if (unchangedStart && unchangedEnd) return PlanningSaveResult.Success
+            if (task.executionId == null) {
+                return PlanningSaveResult.Failure("複数の実行履歴があるため、実績時刻を変更できません。")
+            }
+        }
+        val reopeningCompleted = task.lifecycleState == LifecycleState.COMPLETED && input.actualEndMinute == null
+        val startedAt = if (reopeningCompleted) {
+            val originalStart = expectedStartedAt
+                ?: return PlanningSaveResult.Failure("再開する実行の開始時刻を取得できません。再読み込みしてください。")
+            if (parseActualClock(formatExecutionClock(originalStart, editor.day.establishmentTimezone)) != input.actualStartMinute) {
+                return PlanningSaveResult.Failure("実行中へ戻すときは開始時間を変更できません。")
+            }
+            originalStart
+        } else {
+            logicalMinuteToInstant(editor.day, input.actualStartMinute, zone)
+        }
         val endedAt = input.actualEndMinute?.let { logicalMinuteToInstant(editor.day, it, zone) }
-        val expectedStartedAt = task.activeStartedAt ?: task.firstStartedAt
-        val expectedEndedAt = task.lastEndedAt
-        val executionId = task.executionId ?: UUIDv7.next()
+        val executionId = if (task.lifecycleState == LifecycleState.PLANNED) task.executionId ?: UUIDv7.next()
+        else task.executionId ?: return PlanningSaveResult.Failure("対象の実行IDを取得できません。再読み込みしてください。")
         val expectedPlacement = if (task.lifecycleState == LifecycleState.PLANNED) {
             ",\"expected_placement_revision\":$placementRevision"
         } else {
             ""
         }
-        val body = """
-            {"operation_id":"${JsonEncoding.escape(UUIDv7.next())}","entry_id":"${JsonEncoding.escape(task.id)}","execution_id":"${JsonEncoding.escape(executionId)}","expected_lifecycle_state":"${editor.originalTask!!.lifecycleState.name.lowercase()}","started_at":"${JsonEncoding.escape(startedAt)}","ended_at":${endedAt?.let { "\"${JsonEncoding.escape(it)}\"" } ?: "null"},"expected_started_at":${expectedStartedAt?.let { "\"${JsonEncoding.escape(it)}\"" } ?: "null"},"expected_ended_at":${expectedEndedAt?.let { "\"${JsonEncoding.escape(it)}\"" } ?: "null"}$expectedPlacement,"input_precision":"minute"}
+        val path = "/api/v1/entries/${JsonEncoding.pathSegment(task.id)}/execution-times"
+        val inputPrecision = if (reopeningCompleted) "" else ",\"input_precision\":\"minute\""
+        val payload = """
+            {"entry_id":"${JsonEncoding.escape(task.id)}","execution_id":"${JsonEncoding.escape(executionId)}","expected_lifecycle_state":"${task.lifecycleState.name.lowercase()}","started_at":"${JsonEncoding.escape(startedAt)}","ended_at":${endedAt?.let { "\"${JsonEncoding.escape(it)}\"" } ?: "null"},"expected_started_at":${expectedStartedAt?.let { "\"${JsonEncoding.escape(it)}\"" } ?: "null"},"expected_ended_at":${expectedEndedAt?.let { "\"${JsonEncoding.escape(it)}\"" } ?: "null"}$expectedPlacement$inputPrecision}
         """.trimIndent()
-        return execute("POST", "/api/v1/entries/${JsonEncoding.pathSegment(task.id)}/execution-times", body).toSaveResult()
+        return if (reopeningCompleted) {
+            executeLifecycleMutation(path, payload).toSaveResult()
+        } else {
+            val body = payload.replaceFirst("{", "{\"operation_id\":\"${JsonEncoding.escape(UUIDv7.next())}\",")
+            execute("POST", path, body).toSaveResult()
+        }
+    }
+
+    private fun executeRevertEntryStart(editor: TaskEditorState, task: TodayTask): PlanningSaveResult {
+        if (!editor.day.isCurrent) return PlanningSaveResult.Failure("開始の取り消しは今日のタスクだけ実行できます。")
+        val executionId = task.executionId
+            ?: return PlanningSaveResult.Failure("実行中のExecution IDを取得できません。再読み込みしてください。")
+        val startedAt = task.activeStartedAt ?: task.firstStartedAt
+            ?: return PlanningSaveResult.Failure("実行中の開始時刻を取得できません。再読み込みしてください。")
+        val path = "/api/v1/entries/${JsonEncoding.pathSegment(task.id)}/revert-start"
+        val payload = """
+            {"entry_id":"${JsonEncoding.escape(task.id)}","execution_id":"${JsonEncoding.escape(executionId)}","expected_started_at":"${JsonEncoding.escape(startedAt)}"}
+        """.trimIndent()
+        return executeLifecycleMutation(path, payload).toSaveResult()
+    }
+
+    /** Reuse one operation identity for an unchanged D-156 intent after an ambiguous transport result. */
+    private fun executeLifecycleMutation(path: String, payload: String): PlanningHttpResult {
+        val intentKey = "$path|$payload"
+        val operationId = ambiguousLifecycleOperationIds.getOrPut(intentKey, UUIDv7::next)
+        val body = payload.replaceFirst("{", "{\"operation_id\":\"${JsonEncoding.escape(operationId)}\",")
+        val result = execute("POST", path, body)
+        when (result) {
+            is PlanningHttpResult.Success -> ambiguousLifecycleOperationIds.remove(intentKey)
+            PlanningHttpResult.Unauthorized -> Unit
+            is PlanningHttpResult.Failure -> if (!result.ambiguous) ambiguousLifecycleOperationIds.remove(intentKey)
+        }
+        return result
     }
 
     private fun executeActualTimesForCreatedEntry(
@@ -316,11 +384,12 @@ class TaskPlanningHttpRepository(
 
     private fun execute(method: String, path: String, body: String?): PlanningHttpResult {
         val response = runCatching { request(method, path, body) }.getOrNull()
-            ?: return PlanningHttpResult.Failure("接続できませんでした。再試行してください。")
+            ?: return PlanningHttpResult.Failure("接続できませんでした。再試行してください。", ambiguous = true)
         return when {
-            response.status == null -> PlanningHttpResult.Failure("接続できませんでした。再試行してください。")
+            response.status == null -> PlanningHttpResult.Failure("接続できませんでした。再試行してください。", ambiguous = true)
             response.status == 401 -> PlanningHttpResult.Unauthorized
-            response.status !in 200..299 -> PlanningHttpResult.Failure("Todayを更新できませんでした。再試行してください。")
+            response.status !in 200..299 -> PlanningHttpResult.Failure("Todayを更新できませんでした。再試行してください。",
+                ambiguous = response.status >= 500)
             else -> PlanningHttpResult.Success(response.body)
         }
     }
@@ -331,7 +400,7 @@ class TaskPlanningHttpRepository(
 private sealed interface PlanningHttpResult {
     data class Success(val body: String?) : PlanningHttpResult
     data object Unauthorized : PlanningHttpResult
-    data class Failure(val message: String) : PlanningHttpResult
+    data class Failure(val message: String, val ambiguous: Boolean = false) : PlanningHttpResult
 
     fun toSaveResult(): PlanningSaveResult = when (this) {
         is Success -> PlanningSaveResult.Success

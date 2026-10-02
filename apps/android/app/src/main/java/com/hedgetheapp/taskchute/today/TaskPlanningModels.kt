@@ -100,11 +100,11 @@ data class TaskEditorValidation(
             val actualEnd = if (draft.actualEndText.isBlank()) null else parseActualClock(draft.actualEndText)
                 ?: return invalid("終了時間は HH:mm（900 / 0900 も可）で入力してください。")
             if (actualEnd != null && actualStart == null) return invalid("終了時間だけは設定できません。開始時間を入力してください。")
-            if (capability == TaskEditorCapability.RUNNING_METADATA && actualStart == null) {
-                return invalid("実行中タスクは開始時間を入力してください。")
+            if (capability == TaskEditorCapability.RUNNING_METADATA && actualStart == null && actualEnd != null) {
+                return invalid("終了時間だけは設定できません。開始時間を入力してください。")
             }
-            if (capability == TaskEditorCapability.COMPLETED_METADATA && (actualStart == null || actualEnd == null)) {
-                return invalid("完了済みタスクは開始時間と終了時間を入力してください。")
+            if (capability == TaskEditorCapability.COMPLETED_METADATA && actualStart == null) {
+                return invalid("完了済みタスクは開始時間が必要です。")
             }
             return TaskEditorValidation(
                 input = NormalizedTaskInput(

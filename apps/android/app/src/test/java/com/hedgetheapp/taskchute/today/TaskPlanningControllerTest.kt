@@ -217,18 +217,48 @@ class TaskPlanningControllerTest {
                 TaskEditorCapability.FULL_PLANNING,
             ).errorMessage,
         )
-        assertNotNull(
-            TaskEditorValidation.validate(
-                TaskEditorDraft(title = "A", actualStartText = "900"),
-                TaskEditorCapability.COMPLETED_METADATA,
-            ).errorMessage,
+        val completedReopen = TaskEditorValidation.validate(
+            TaskEditorDraft(title = "A", actualStartText = "900"),
+            TaskEditorCapability.COMPLETED_METADATA,
         )
-        assertNotNull(
-            TaskEditorValidation.validate(
-                TaskEditorDraft(title = "A"),
-                TaskEditorCapability.RUNNING_METADATA,
-            ).errorMessage,
+        assertEquals(540, completedReopen.input?.actualStartMinute)
+        assertNull(completedReopen.input?.actualEndMinute)
+        assertNull(completedReopen.errorMessage)
+
+        val completedBlank = TaskEditorValidation.validate(
+            TaskEditorDraft(title = "A"), TaskEditorCapability.COMPLETED_METADATA,
         )
+        assertNotNull(completedBlank.errorMessage)
+
+        val runningRollback = TaskEditorValidation.validate(
+            TaskEditorDraft(title = "A"), TaskEditorCapability.RUNNING_METADATA,
+        )
+        assertNull(runningRollback.errorMessage)
+        assertNull(runningRollback.input?.actualStartMinute)
+        assertNull(runningRollback.input?.actualEndMinute)
+
+        assertNotNull(TaskEditorValidation.validate(
+            TaskEditorDraft(title = "A", actualEndText = "1230"), TaskEditorCapability.RUNNING_METADATA,
+        ).errorMessage)
+        assertNotNull(TaskEditorValidation.validate(
+            TaskEditorDraft(title = "A", actualEndText = "1230"), TaskEditorCapability.COMPLETED_METADATA,
+        ).errorMessage)
+    }
+
+    @Test
+    fun plannedEditorDoesNotPrefillHistoricalExecutionTimesAfterLifecycleRollback() {
+        val task = plannedTask().copy(
+            firstStartedAt = "2026-09-14T09:00:00Z",
+            lastEndedAt = "2026-09-14T09:30:00Z",
+        )
+        val controller = controller(FakePlanningRepository())
+
+        controller.openEdit(currentDay(), task)
+
+        assertTrue(await { controller.state.editor != null })
+        assertEquals("", controller.state.editor?.draft?.actualStartText)
+        assertEquals("", controller.state.editor?.draft?.actualEndText)
+        controller.close()
     }
 
     @Test
@@ -247,6 +277,8 @@ class TaskPlanningControllerTest {
     @Test
     fun editPrefillsCanonicalExecutionInstantsInTheDayTimezone() {
         val task = plannedTask().copy(
+            lifecycleState = LifecycleState.COMPLETED,
+            executionId = "execution-completed",
             activeStartedAt = "2026-09-21T00:04:00Z",
             firstStartedAt = "2026-09-21T00:04:00Z",
             lastEndedAt = "2026-09-21T00:35:00Z",
@@ -258,6 +290,24 @@ class TaskPlanningControllerTest {
         assertTrue(await { controller.state.editor != null })
         assertEquals("09:04", controller.state.editor?.draft?.actualStartText)
         assertEquals("09:35", controller.state.editor?.draft?.actualEndText)
+        controller.close()
+    }
+
+    @Test
+    fun runningEditorShowsOnlyActiveStartAndDoesNotPrefillAnEarlierEnd() {
+        val task = plannedTask(lifecycleState = LifecycleState.RUNNING).copy(
+            executionId = "execution-active",
+            activeStartedAt = "2026-09-14T00:04:00Z",
+            firstStartedAt = "2026-09-14T00:04:00Z",
+            lastEndedAt = "2026-09-14T00:35:00Z",
+        )
+        val controller = controller(FakePlanningRepository())
+
+        controller.openEdit(currentDay().copy(establishmentTimezone = "UTC"), task)
+
+        assertTrue(await { controller.state.editor != null })
+        assertEquals("00:04", controller.state.editor?.draft?.actualStartText)
+        assertEquals("", controller.state.editor?.draft?.actualEndText)
         controller.close()
     }
 

@@ -773,6 +773,23 @@ export interface InterruptEntryResult {
 
 export type ExecutionCorrectionLifecycleState = "planned" | "running" | "completed";
 
+export interface RevertEntryStartRequest {
+  operation_id: string;
+  entry_id: string;
+  execution_id: string;
+  expected_started_at: string;
+}
+
+export interface RevertEntryStartResult {
+  entry_id: string;
+  lifecycle_state: "planned";
+  execution_id: string;
+  section_id: string | null;
+  planned_start_minute: number | null;
+  position: number;
+  placement_revision: number;
+}
+
 export interface SetExecutionTimesRequest {
   operation_id: string;
   entry_id: string;

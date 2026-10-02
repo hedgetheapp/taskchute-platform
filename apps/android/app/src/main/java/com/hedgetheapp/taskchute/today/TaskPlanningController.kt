@@ -77,8 +77,16 @@ class TaskPlanningController(
                     sectionId = day.sections.firstOrNull { section -> section.entries.any { it.id == task.id } }?.id,
                     plannedStartText = formatEditorMinute(task.plannedStartMinute),
                     estimateText = task.estimateSeconds?.let { (it / 60).toString() } ?: "",
-                    actualStartText = formatExecutionClock(task.activeStartedAt ?: task.firstStartedAt, day.establishmentTimezone),
-                    actualEndText = formatExecutionClock(task.lastEndedAt, day.establishmentTimezone),
+                    actualStartText = when (task.lifecycleState) {
+                        LifecycleState.PLANNED -> ""
+                        LifecycleState.RUNNING -> formatExecutionClock(task.activeStartedAt, day.establishmentTimezone)
+                        LifecycleState.COMPLETED -> formatExecutionClock(task.firstStartedAt ?: task.activeStartedAt, day.establishmentTimezone)
+                    },
+                    actualEndText = if (task.lifecycleState == LifecycleState.COMPLETED) {
+                        formatExecutionClock(task.lastEndedAt, day.establishmentTimezone)
+                    } else {
+                        ""
+                    },
                     startReminderOffsetMinutes = task.startReminderOffsetMinutes,
                     notifyOnEstimateOverrun = task.notifyOnEstimateOverrun,
                 ),
