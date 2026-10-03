@@ -1,6 +1,6 @@
 # D-145 — Fixed Start Anchor / Plan Conflict / Reminder v0.1
 
-Status: **Approved — Product semantics / Implementation not started**
+Status: **Approved / fixed-start forecast and conflict-warning semantics implemented under D-161; replanning assistance remains unimplemented**
 
 Date: 2026-09-26
 
@@ -204,3 +204,7 @@ Implementation verification must cover at least:
 13. canonical server authority, retry/reconcile safety, and existing Day/Routine semantics remain intact.
 
 Device notification delivery, OS permission behavior, and reboot/process-death rescheduling require separate evidence after the implementation mechanism is approved.
+
+## Implementation status — 2026-10-03
+
+D-161 implements the approved narrow fixed-start forecast and conflict-warning semantics using enabled D-155 Start Notification intent on a materialized Entry as the marker. D-155 supplies the already-approved persistence and delivery mechanism; D-161 does not change reminder delivery. See `docs/decisions/D-161_REMINDER_BACKED_FIXED_START_AND_CONFLICT_WARNINGS_V01.md` and current evidence in `docs/CURRENT.md` / `docs/TEST_MATRIX.md`. Automatic replanning assistance and the other explicitly excluded D-145 items remain unimplemented. The original unresolved implementation questions above describe the D-145 approval-time state; D-161 resolves only the stated marker/forecast relationship.

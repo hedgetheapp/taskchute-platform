@@ -1,3 +1,9 @@
+### D-161 Reminder-backed fixed-start forecast and conflict warnings — 2026-10-03
+
+- Implemented the approved narrow D-161 relationship: an enabled D-155 start reminder marks a materialized Entry fixed-start for forecast, while the planned minute is the anchor and the reminder offset affects delivery only. Android and Web derive overlap and timed-Section overflow warnings without changing the plan.
+- Android JVM `310 / 310 PASS`; focused Web forecast tests `17 / 17 PASS`; focused D-161 UI case `1 / 1 PASS`; Web typecheck/build and Android compile, AndroidTest compile, assemble, and diff check PASS. `App.test.tsx` full-file run was `293 / 299`; six timer/interaction cases passed on targeted reruns, so the full-file run is recorded as partial rather than clean. Exact-SHA CI for `f0bf87d89d5ade3b0be7c06873de97ad35a2af2b` passed.
+- Persistent nonprod deploy guard PASS; `taskchute-web-nonprod` Worker version `1641b575-9393-42c1-b7b9-68a541d0aaa2`; root `200`, unauthenticated protected API `401`. No authenticated browser QA or QA data mutation. Today AVD `NOT_RUN / AVD_HYPERVISOR_HAXM_UNSUPPORTED`; authenticated browser `NOT_RUN / BROWSER_BRIDGE_UNAVAILABLE`. Production `NOT_RUN`; Released `NO`.
+
 ### D-160 Wear complication accepted-refresh corrective — 2026-10-03
 
 - Wear now asks AndroidX to refresh the complication after a successful, fresh canonical Today response is accepted. Lifecycle/auth generation and load-id stale guards run first; failed and unauthorized fetches do not request a refresh. The independent complication fetch does not feed back into the controller, so no refresh loop is introduced.

@@ -1,6 +1,6 @@
 ## D-161 — Reminder-backed Fixed Start and Conflict Warnings v0.1
 
-Status: **Approved**
+Status: **Approved / Implemented / Integrated / exact-SHA CI PASS / persistent nonprod runtime PASS; UI/device verification NOT_RUN**
 
 Canonical Decision: `docs/decisions/D-161_REMINDER_BACKED_FIXED_START_AND_CONFLICT_WARNINGS_V01.md`
 
@@ -74,11 +74,11 @@ Android Notesのstandalone list/editorと共通Markdown editorを、既存Docume
 
 ## D-145 — Fixed Start Anchor / Plan Conflict / Reminder v0.1
 
-Status: **Approved — Product semantics / Implementation not started**
+Status: **Approved / narrow fixed-start forecast and conflict-warning scope implemented under D-161; replanning assistance remains unimplemented**
 
 Canonical Decision: `docs/decisions/D-145_FIXED_START_ANCHOR_AND_REMINDER_V01.md`。
 
-fixed-startをordinary planned startとは別の明示概念とし、固定TaskのStart Forecastは前作業が押しても固定時刻自体を表示する。超過はTask/Sectionのplanning conflictとして可視化し、固定開始時刻を基準にper-Task reminderを扱う。exact persistence ownership、schema/migration、notification scheduling mechanism/permission/background architectureは未決で、必要なMaterial Decisionは実装前にProduct Ownerへ戻す。
+fixed-startをordinary planned startとは別の明示概念とし、固定TaskのStart Forecastは前作業が押しても固定時刻自体を表示する。超過はTask/Sectionのplanning conflictとして可視化する。D-161はmaterialized EntryのD-155 reminder ONをmarkerとして使い、D-145のforecast/conflict semanticsを限定的に実装した。D-155はreminder persistence / deliveryを実装済み。automatic replanning shortcuts/assistanceは未実装であり、D-145の過去の未決事項はD-161が明示した範囲を除いて引き続き未決とする。
 
 ## D-138 — Android Today Planning / Lifecycle Refinements v0.1
 
@@ -2485,7 +2485,7 @@ Status: **Approved / Implemented / Integrated / focused verification PASS; authe
 
 Canonical Decision: `docs/decisions/D-155_ANDROID_TASK_REMINDERS_V01.md`.
 
-Android Today may store independent per-Entry start-reminder (`0/5/10/15/30/60` minutes or off) and estimate-overrun intent. Entry data is server-canonical; exact AlarmManager scheduling and minimal reboot/deduplication registry are device-local. D-155 uses `SCHEDULE_EXACT_ALARM` plus Android 13+ notification permission, with no inexact fallback. Ordinary Android notifications may bridge to Wear OS through the platform notification path. Routine settings are occurrence-only, new occurrences default off, and D-145 fixed-start/forecast semantics remain separate.
+Android Today may store independent per-Entry start-reminder (`0/5/10/15/30/60` minutes or off) and estimate-overrun intent. Entry data is server-canonical; exact AlarmManager scheduling and minimal reboot/deduplication registry are device-local. D-155 uses `SCHEDULE_EXACT_ALARM` plus Android 13+ notification permission, with no inexact fallback. Ordinary Android notifications may bridge to Wear OS through the platform notification path. Routine settings are occurrence-only and new occurrences default off. D-161 reuses enabled start-reminder intent as the fixed-start forecast marker; it does not change D-155 reminder delivery semantics.
 
 ## D-156 — Android Today Lifecycle Rollback / Reopen v0.1
 

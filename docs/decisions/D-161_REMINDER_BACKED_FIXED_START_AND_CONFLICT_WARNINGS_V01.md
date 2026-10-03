@@ -1,6 +1,6 @@
 # D-161 — Reminder-backed Fixed Start and Conflict Warnings v0.1
 
-Status: **Approved**
+Status: **Approved / Implemented / Integrated / exact-SHA CI PASS / persistent nonprod runtime PASS; UI/device verification NOT_RUN**
 
 Date: 2026-10-03
 
