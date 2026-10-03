@@ -213,6 +213,14 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      - name: Upload Wear OS instrumentation APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: taskchute-wear-androidTest-${{ github.sha }}
+          path: apps/android/wear/build/outputs/apk/androidTest/debug/wear-debug-androidTest.apk
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Remove temporary nonprod keystore
         if: always()
         shell: bash

@@ -7,10 +7,12 @@ import android.content.Intent
 import android.graphics.drawable.Icon
 import android.os.Build
 import androidx.wear.protolayout.expression.DynamicBuilders.DynamicInstant
+import androidx.wear.protolayout.expression.DynamicBuilders.DynamicString
 import androidx.wear.watchface.complications.data.ComplicationData
 import androidx.wear.watchface.complications.data.ComplicationText
 import androidx.wear.watchface.complications.data.ComplicationType
 import androidx.wear.watchface.complications.data.CountUpTimeReference
+import androidx.wear.watchface.complications.data.DynamicComplicationText
 import androidx.wear.watchface.complications.data.GoalProgressComplicationData
 import androidx.wear.watchface.complications.data.LongTextComplicationData
 import androidx.wear.watchface.complications.data.MonochromaticImage
@@ -33,7 +35,7 @@ class WearRunningComplicationService : SuspendingComplicationDataSourceService()
             elapsedSeconds = PREVIEW_ELAPSED_SECONDS,
             estimateSeconds = PREVIEW_ESTIMATE_SECONDS,
             startedAt = Instant.now().minusSeconds(PREVIEW_ELAPSED_SECONDS),
-            compactText = "15/30",
+            fallbackText = "15/30",
             contentDescription = "TaskChute、経過 15分 / 見積 30分",
             taskTitle = "TaskChute",
         )
@@ -51,6 +53,7 @@ class WearRunningComplicationService : SuspendingComplicationDataSourceService()
     }
 
     override suspend fun onComplicationRequest(request: ComplicationRequest): ComplicationData {
+        WearLatencyDiagnostics.mark("wear_complication_request_received")
         val presentation = withContext(Dispatchers.IO) { loadPresentation() }
         return when (wearComplicationPayloadKind(requestedType(request.complicationType), presentation)) {
             WearComplicationPayloadKind.NO_DATA -> NoDataComplicationData()
@@ -60,7 +63,7 @@ class WearRunningComplicationService : SuspendingComplicationDataSourceService()
                     elapsedSeconds = running.elapsedSeconds,
                     estimateSeconds = requireNotNull(running.estimateSeconds),
                     startedAt = running.startedAt,
-                    compactText = running.compactText,
+                    fallbackText = running.compactText,
                     contentDescription = running.contentDescription,
                     taskTitle = running.taskTitle,
                 )
@@ -99,7 +102,7 @@ class WearRunningComplicationService : SuspendingComplicationDataSourceService()
                 text = if (presentation.estimateSeconds == null) {
                     elapsedText(presentation.startedAt)
                 } else {
-                    plainText(shortSafeProgressText(presentation))
+                    progressText(presentation.startedAt, presentation.estimateSeconds, presentation.compactText)
                 }
             }
             WearComplicationPresentation.Idle -> {
@@ -129,7 +132,7 @@ class WearRunningComplicationService : SuspendingComplicationDataSourceService()
         elapsedSeconds: Long,
         estimateSeconds: Int,
         startedAt: Instant,
-        compactText: String,
+        fallbackText: String,
         contentDescription: String,
         taskTitle: String,
     ): GoalProgressComplicationData {
@@ -152,7 +155,7 @@ class WearRunningComplicationService : SuspendingComplicationDataSourceService()
             )
         }
         return builder
-            .setText(plainText(compactText))
+            .setText(progressText(startedAt, estimateSeconds, fallbackText))
             .setTitle(plainText(taskTitle))
             .setMonochromaticImage(monochromaticImage())
             .setTapAction(openWearAppIntent())
@@ -179,9 +182,20 @@ class WearRunningComplicationService : SuspendingComplicationDataSourceService()
             CountUpTimeReference(startedAt.truncatedTo(ChronoUnit.SECONDS)),
         ).setDisplayAsNow(false).build()
 
-    private fun shortSafeProgressText(running: WearComplicationPresentation.Running): String =
-        running.compactText.takeIf { it.length < SHORT_TEXT_LIMIT }
-            ?: if (running.elapsedSeconds / 60L > 999L) "999+m" else "${running.elapsedSeconds / 60L}m"
+    private fun progressText(startedAt: Instant, estimateSeconds: Int, fallbackText: String): ComplicationText {
+        val targetMinutes = wearEstimateMinutes(estimateSeconds)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val minutes = DynamicInstant.withSecondsPrecision(startedAt)
+                .durationUntil(DynamicInstant.platformTimeWithSecondsPrecision())
+                .toIntMinutes()
+            val dynamic = minutes.format().concat(DynamicString.constant("/$targetMinutes"))
+            return DynamicComplicationText(dynamic, fallbackText)
+        }
+        return TimeDifferenceComplicationText.Builder(
+            TimeDifferenceStyle.SHORT_DUAL_UNIT,
+            CountUpTimeReference(startedAt.truncatedTo(ChronoUnit.SECONDS)),
+        ).setDisplayAsNow(false).setText("^1/$targetMinutes").build()
+    }
 
     private fun plainText(text: String): ComplicationText = PlainComplicationText.Builder(text).build()
 
@@ -210,7 +224,6 @@ class WearRunningComplicationService : SuspendingComplicationDataSourceService()
 
     companion object {
         private const val REQUEST_TIMEOUT_MILLIS = 4_000
-        private const val SHORT_TEXT_LIMIT = 7
         private const val TAP_REQUEST_CODE = 158
         private const val PREVIEW_ELAPSED_SECONDS = 15L * 60L
         private const val PREVIEW_ESTIMATE_SECONDS = 30 * 60
@@ -224,6 +237,7 @@ internal object WearComplicationRefreshRequester {
                 context,
                 ComponentName(context, WearRunningComplicationService::class.java),
             ).requestUpdateAll()
+            WearLatencyDiagnostics.mark("wear_complication_refresh_requested")
         }
     }
 }

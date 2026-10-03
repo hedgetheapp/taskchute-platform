@@ -1,6 +1,7 @@
 package com.hedgetheapp.taskchute.wear
 
 import android.content.Context
+import android.os.SystemClock
 import androidx.work.BackoffPolicy
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
@@ -56,19 +57,24 @@ internal class WearProjectionInvalidationWorker(
     parameters: WorkerParameters,
 ) : CoroutineWorker(context, parameters) {
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
+        WearLatencyDiagnostics.mark("wear_invalidation_work_start")
         if (BuildConfig.TASKCHUTE_BASE_URL.isBlank()) return@withContext Result.success()
         val repository = WearHttpRepository(BuildConfig.TASKCHUTE_BASE_URL, WearEncryptedSessionStore(applicationContext))
         when (repository.restoreSession()) {
             WearAuthResult.SignedOut, WearAuthResult.ProtocolFailure -> Result.success()
             WearAuthResult.TransientFailure -> retryWithinLimit()
-            WearAuthResult.SignedIn -> when (val load = repository.loadToday()) {
-                is WearLoadResult.Success -> {
-                    currentCoroutineContext().ensureActive()
-                    WearComplicationRefreshRequester.request(applicationContext)
-                    Result.success()
+            WearAuthResult.SignedIn -> {
+                val started = SystemClock.elapsedRealtime()
+                when (val load = repository.loadToday()) {
+                    is WearLoadResult.Success -> {
+                        currentCoroutineContext().ensureActive()
+                        WearLatencyDiagnostics.mark("wear_today_refetch_success", SystemClock.elapsedRealtime() - started)
+                        WearComplicationRefreshRequester.request(applicationContext)
+                        Result.success()
+                    }
+                    WearLoadResult.Unauthorized -> Result.success()
+                    is WearLoadResult.Failure -> if (load.ambiguous) retryWithinLimit() else Result.success()
                 }
-                WearLoadResult.Unauthorized -> Result.success()
-                is WearLoadResult.Failure -> if (load.ambiguous) retryWithinLimit() else Result.success()
             }
         }
     }

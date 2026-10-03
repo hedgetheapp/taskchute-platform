@@ -20,6 +20,18 @@ class WearComplicationPresentationTest {
     }
 
     @Test
+    fun compactProgressAdvancesAtMinuteBoundariesWithoutRefetching() {
+        val start = Instant.parse("2026-10-02T10:00:00Z")
+        val estimate = 3_600
+        assertEquals("0/60", wearProgressText(start, estimate, start.plusSeconds(59)))
+        assertEquals("1/60", wearProgressText(start, estimate, start.plusSeconds(60)))
+        assertEquals("59/60", wearProgressText(start, estimate, start.plusSeconds(3_599)))
+        assertEquals("60/60", wearProgressText(start, estimate, start.plusSeconds(3_600)))
+        assertEquals("61/60", wearProgressText(start, estimate, start.plusSeconds(3_660)))
+        assertEquals("0/60", wearProgressText(start, estimate, start.minusSeconds(10)))
+    }
+
+    @Test
     fun exactEstimateIsNotReportedAsOverrun() {
         val result = running(startedAt = "2026-10-02T09:30:00Z", estimate = 2_880)
         assertEquals(2_880L, result.elapsedSeconds)
@@ -106,6 +118,18 @@ class WearComplicationPresentationTest {
             WearComplicationPayloadKind.TEXT,
             wearComplicationPayloadKind(WearComplicationRequestedType.SHORT_TEXT, idle),
         )
+        for (presentation in listOf(
+            WearComplicationPresentation.Idle,
+            WearComplicationPresentation.SignedOut,
+            WearComplicationPresentation.Unavailable,
+        )) {
+            assertEquals(WearComplicationPayloadKind.TEXT,
+                wearComplicationPayloadKind(WearComplicationRequestedType.LONG_TEXT, presentation))
+            assertEquals(WearComplicationPayloadKind.TEXT,
+                wearComplicationPayloadKind(WearComplicationRequestedType.SHORT_TEXT, presentation))
+            assertEquals(WearComplicationPayloadKind.NO_DATA,
+                wearComplicationPayloadKind(WearComplicationRequestedType.GOAL_PROGRESS, presentation))
+        }
     }
 
     @Test

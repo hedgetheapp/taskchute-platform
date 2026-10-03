@@ -47,8 +47,8 @@ internal fun wearComplicationPresentation(
                     val elapsed = Duration.between(startedAt, now).seconds.coerceAtLeast(0L)
                     val estimate = task.estimateSeconds?.takeIf { it > 0 }
                     val elapsedMinutes = elapsed / 60L
-                    val estimateMinutes = estimate?.let { ceil(it / 60.0).toLong() }
-                    val compact = if (estimateMinutes == null) "${elapsedMinutes}m" else "$elapsedMinutes/$estimateMinutes"
+                    val estimateMinutes = estimate?.let(::wearEstimateMinutes)
+                    val compact = if (estimate == null) "${elapsedMinutes}m" else wearProgressText(startedAt, estimate, now)
                     val safeTitle = task.title
                         .replace(Regex("[\\p{Cc}\\p{Cf}]+"), " ")
                         .replace(Regex("\\s+"), " ")
@@ -99,5 +99,10 @@ internal fun wearComplicationPayloadKind(
 }
 
 internal fun wearComplicationTapTargetClassName(): String = WearMainActivity::class.java.name
+
+internal fun wearEstimateMinutes(estimateSeconds: Int): Long = ceil(estimateSeconds / 60.0).toLong()
+
+internal fun wearProgressText(startedAt: Instant, estimateSeconds: Int, now: Instant): String =
+    "${Duration.between(startedAt, now).seconds.coerceAtLeast(0L) / 60L}/${wearEstimateMinutes(estimateSeconds)}"
 
 private const val MAX_TITLE_LENGTH = 48

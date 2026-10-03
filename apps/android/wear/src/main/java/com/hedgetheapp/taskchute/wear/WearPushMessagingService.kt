@@ -13,6 +13,7 @@ internal object WearPushMessage {
 class WearPushMessagingService : FirebaseMessagingService() {
     override fun onMessageReceived(message: RemoteMessage) {
         if (WearPushMessage.isRunningProjectionInvalidation(message.data)) {
+            WearLatencyDiagnostics.mark("wear_fcm_received")
             WearPushWork.enqueueInvalidation(applicationContext)
         }
     }
