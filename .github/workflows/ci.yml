@@ -137,6 +137,20 @@ jobs:
           chmod 600 "$keystore"
           test -s "$keystore"
 
+      - name: Prepare Wear nonprod Firebase client config
+        shell: bash
+        env:
+          WEAR_GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.WEAR_GOOGLE_SERVICES_JSON_BASE64 }}
+        run: |
+          set -euo pipefail
+          test -n "$WEAR_GOOGLE_SERVICES_JSON_BASE64"
+          config="wear/google-services.json"
+          test ! -e "$config"
+          umask 077
+          printf '%s' "$WEAR_GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > "$config"
+          test -s "$config"
+          node -e 'const fs = require("node:fs"); let config; try { config = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); } catch { process.exit(1); } const project = config?.project_info?.project_id; if (typeof project !== "string" || !project.endsWith("-nonprod") || !Array.isArray(config.client) || !config.client.some((client) => client?.client_info?.android_client_info?.package_name === "com.hedgetheapp.taskchute")) process.exit(1)' "$config"
+
       - name: JVM tests
         run: bash ./gradlew --no-daemon :app:testDebugUnitTest :wear:testDebugUnitTest
 
@@ -146,6 +160,14 @@ jobs:
           TASKCHUTE_ANDROID_SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_NONPROD_STORE_PASSWORD }}
           TASKCHUTE_ANDROID_SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_NONPROD_KEY_PASSWORD }}
         run: bash ./gradlew --no-daemon :app:assembleDebug :wear:assembleDebug -Ptaskchute.baseUrl=https://taskchute-web-nonprod.taskfulness-sync.workers.dev -Ptaskchute.versionCode=${{ steps.android_version.outputs.version_code }}
+
+      - name: Verify Wear Firebase resources were generated
+        shell: bash
+        run: |
+          set -euo pipefail
+          resources="wear/build/generated/res/processDebugGoogleServices/values/values.xml"
+          test -s "$resources"
+          grep -q 'name="google_app_id"' "$resources"
 
       - name: Phone and Wear instrumentation APK compile (signed nonprod)
         env:
@@ -166,6 +188,7 @@ jobs:
           test -n "$apksigner"
           key_fingerprint="$(keytool -list -v -keystore "$TASKCHUTE_ANDROID_SIGNING_STORE_FILE" -storepass "$TASKCHUTE_ANDROID_SIGNING_STORE_PASSWORD" -alias taskchute-nonprod | sed -n 's/^.*SHA256: *//p' | head -n 1 | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')"
           test -n "$key_fingerprint"
+          test "$key_fingerprint" = "690C0BA4EC3C8C92C84883F54BA343FF37AC0B83CEDCAEB626777885E8B602B3"
           for apk in "${apks[@]}"; do
             test -s "$apk"
             apk_fingerprint="$("$apksigner" verify --verbose --print-certs "$apk" | sed -n 's/^.*certificate SHA-256 digest: *//p' | head -n 1 | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')"
@@ -194,3 +217,8 @@ jobs:
         if: always()
         shell: bash
         run: rm -f "$RUNNER_TEMP/taskchute-android-nonprod.jks"
+
+      - name: Remove temporary Wear Firebase client config
+        if: always()
+        shell: bash
+        run: rm -f -- wear/google-services.json
