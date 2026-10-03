@@ -35,6 +35,12 @@ TaskChute Platformのfirst-party UIでは、Android、Web、Wear OS（Pixel Watc
 
 独自iconを使うのは、適切なMaterial Symbolが存在しない場合、TaskChute固有のbrand assetが必要な場合、またはcanonical Product / Design Decisionで明示的に例外承認された場合に限る。brand / launcher / favicon等の製品固有アートワークは本ルールの対象外とする。
 
+## D-162 Android Today compact header and display control
+
+Android Todayのheaderは、左に約48dpのreserved geometry、中央にremaining widthを使うfull-date pill、右に約56dpの`表示` controlを置く。Today headerから前日/翌日arrowを除き、中央pillのDatePickerを唯一のvisible date-navigation affordanceとする。日付はyearとweekdayを含む。reserved領域にdead hamburger buttonは置かない。shared date navigatorを使うDailyの既存header/navigationは変えない。
+
+`表示`はcompact menuを開き、`完了タスクを表示` switchを持つ。OFF時もSection headerとcanonical forecast/warning contextを保持し、Completed rowだけをrender対象から除く。Preference persistenceはdevice/browser-localで、server dataを変更しない。AndroidのSection collapseはlogical date + stable Section identity（`Sectionなし`を含む）単位で復元し、新しい/保存値のないDayはexpandedとする。Behavior authorityはD-162とし、Figma `UbTJH6ykYNBQJS4Wvwz9jb` node `685:2`はvisual referenceとして扱う。
+
 
 +## D-138 Android Today visual / interaction refinement
 +

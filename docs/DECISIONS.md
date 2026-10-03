@@ -1,3 +1,11 @@
+## D-162 — Today Compact Header and Persistent Display Preferences v0.1
+
+Status: **Approved / Implemented / Integrated / exact-SHA CI PASS; Today AVD PARTIAL**
+
+Canonical Decision: `docs/decisions/D-162_TODAY_COMPACT_HEADER_AND_PERSISTENT_DISPLAY_PREFERENCES_V01.md`
+
+Android Today alone uses a compact full-date header without adjacent-day arrows, retains the center DatePicker control, reserves the left slot without a dead menu button, and exposes a right-side `表示` control. Completed visibility is device-local and defaults ON; Android Section collapse persists by logical date and stable Section identity. Web persists its existing Completed visibility preference in browser-local storage. Daily header behavior and Web Section-collapse persistence remain unchanged. All state is presentation-only; no cross-device sync, Worker/API/schema/migration/dependency, or production change is included. AVD evidence is partial as recorded in `TEST_MATRIX.md`.
+
 ## D-161 — Reminder-backed Fixed Start and Conflict Warnings v0.1
 
 Status: **Approved / Implemented / Integrated / exact-SHA CI PASS / persistent nonprod runtime PASS; UI/device verification NOT_RUN**

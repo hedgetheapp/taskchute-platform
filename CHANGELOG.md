@@ -1,3 +1,9 @@
+### D-162 Android Today compact header + persistent display preferences — 2026-10-03
+
+- Android Today now uses a compact full-date header with center DatePicker and `表示` Completed visibility control; Daily navigation remains unchanged.
+- Completed visibility persists locally on Android and Web; Android Section collapse persists per logical date and stable Section identity. All preferences remain presentation-only.
+- Android JVM `321 / 321`; focused Web `10 PASS`, typecheck/build PASS; Daily AVD `1 / 1 PASS`. Today full-surface run is partial (`71 / 73`); one fixed-start/Section accessibility case remains unresolved. Exact-SHA CI PASS. Production `NOT_RUN`; Released `NO`.
+
 ### D-161 Reminder-backed fixed-start forecast and conflict warnings — 2026-10-03
 
 - Implemented the approved narrow D-161 relationship: an enabled D-155 start reminder marks a materialized Entry fixed-start for forecast, while the planned minute is the anchor and the reminder offset affects delivery only. Android and Web derive overlap and timed-Section overflow warnings without changing the plan.
