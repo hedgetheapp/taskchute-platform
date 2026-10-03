@@ -3123,15 +3123,15 @@ Implementation `3e695a3d76a968a6a4aad6e3fd8e393932ca8667`. Focused presentation/
 
 Wear AVD verification is `NOT_RUN / NO_WEAR_AVD_AVAILABLE`; no phone emulator was substituted. Pixel Watch physical verification remains `NOT_RUN / PRODUCT_OWNER_MANUAL`. D-158 adds no Tile, background realtime, custom watch face, Worker/API/schema/migration, persistent nonprod, production, or Release scope. Production `NOT_RUN`; Released `NO`.
 
-## D-159 Wear Running Projection event-driven sync — Approved / FEASIBILITY_PENDING
+## D-159 Wear Running Projection event-driven sync — Approved / FEASIBILITY_COMPLETE
 
 Product Owner approved the cross-client behavior requirement on 2026-10-02. Whenever a server-canonical change alters the Wear complication's Running projection, the Watch should be invalidated promptly regardless of whether the source was Web, Android Phone, or Wear. Scope includes Start, Complete / manual end, Running estimate and actual-start correction, Completed→Running reopen, Running/Completed→Planned rollback, and other canonical changes that affect the current Running projection. After invalidation the Watch re-fetches canonical current Day and refreshes the complication. Elapsed progression remains local/time-dependent; D-158's 300-second refresh remains a fallback.
 
 Canonical Decision: `docs/decisions/D-159_WEAR_RUNNING_PROJECTION_EVENT_SYNC_V01.md`.
 
-Feasibility completed: direct Watch FCM is the only first-slice candidate that covers Web/Phone/Wear source changes while the Wear Activity is closed without requiring a persistent Watch socket. D-160 now approves normal-priority invalidation-only FCM, WorkManager canonical refetch, owner-bound Wear registration persistence/API, the required APP migration, official Firebase Messaging + AndroidX WorkManager dependencies, and a least-privilege FCM sender service-account private key stored only as a Cloudflare Worker secret. The 300-second complication refresh remains fallback; no hard latency SLA is promised. Implementation is NOT_STARTED. Production remains unapproved/NOT_RUN.
+Feasibility selected direct Watch FCM as the first-slice candidate because it covers Web/Phone/Wear source changes while the Wear Activity is closed without requiring a persistent Watch socket. D-160 approved normal-priority invalidation-only FCM, WorkManager canonical refetch, owner-bound Wear registration persistence/API, the APP migration, official Firebase Messaging + AndroidX WorkManager dependencies, and a least-privilege sender key stored only as a Cloudflare Worker secret. The implementation is integrated at `a006e7507bda2a56e6f5925e7bfd15c708d52bb4`; no hard latency SLA is promised. D-158 300-second refresh remains fallback.
 
-## D-160 Wear Running Projection FCM transport — Approved / NOT_IMPLEMENTED
+## D-160 Wear Running Projection FCM transport — Implemented / Integrated / External nonprod setup required
 
 D-159 feasibility found direct FCM to the Wear app to be the smallest architecture that covers Web, Android Phone, and Wear-originated canonical Running projection changes while the Wear Activity is closed. Phone/Data Layer alone cannot cover Web/phone-background cases without another background mechanism; a persistent Watch WebSocket conflicts with current battery/background boundaries.
 
@@ -3147,4 +3147,8 @@ Approved v0.1:
 
 Canonical Decision: `docs/decisions/D-160_WEAR_RUNNING_PROJECTION_FCM_TRANSPORT_V01.md`.
 
-Implementation, migration, Firebase/nonprod resource setup, secret provisioning, persistent nonprod verification, fresh APKs, Pixel Watch verification and production are all NOT_RUN. Production remains unapproved; Released NO.
+Implementation commit `a006e7507bda2a56e6f5925e7bfd15c708d52bb4` adds the explicit canonical-commit marker shared by RealtimeHub and FCM, owner-authenticated registration/unregister routes, APP migration `0036_wear_push_registrations.sql`, normal-priority data-only FCM HTTP v1 sender, and Wear FirebaseMessagingService / WorkManager canonical refetch integration. Cross-owner installation takeover is rejected; a prior owner must authorize unregister before a different owner can register that installation. Firebase Messaging BOM `34.19.0`, WorkManager `2.12.0`, Google Services plugin `4.5.0`. Exact-SHA CI `37086947942` PASS; Phone/Wear artifacts `11260658949` / `11260284497`.
+
+Local verification: focused Worker/D1 `13 / 13`, full Worker/D1 `401 / 401`, Web typecheck/build, Wear JVM `55 / 55`, Wear Kotlin compile, AndroidTest compile, debug assemble, and diff check PASS. Sol Medium security follow-up: no unresolved blocker. The standalone generic migration helper has an unrelated existing D-086 fixture expectation failure; D-160 focused migration application/schema/FK/quick-check evidence passes.
+
+Nonprod config build, canonical deploy guard, and dry-run PASS. No `apps/android/wear/google-services.json` or `TASKCHUTE_FCM_SERVICE_ACCOUNT_JSON` is provisioned; therefore remote APP migration/deploy/authenticated delivery were not performed and no Worker version exists. Status: `MANUAL_EXTERNAL_SETUP_REQUIRED`. Wear AVD `NOT_RUN / NO_WEAR_AVD_AVAILABLE`; Pixel Watch `NOT_RUN / PRODUCT_OWNER_MANUAL`. Production `NOT_RUN`; Released `NO`.
