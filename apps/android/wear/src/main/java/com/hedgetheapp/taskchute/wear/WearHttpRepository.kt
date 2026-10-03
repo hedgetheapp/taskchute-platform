@@ -27,6 +27,19 @@ internal sealed interface WearMutationResult {
     data object Rejected : WearMutationResult
 }
 
+internal enum class WearPushRegistrationResult { Success, Unauthorized, Retry, Rejected }
+
+internal fun classifyWearPushRegistrationResponse(
+    status: Int?,
+    successPayload: Boolean,
+): WearPushRegistrationResult = when {
+    status == null || status >= 500 -> WearPushRegistrationResult.Retry
+    status == 401 -> WearPushRegistrationResult.Unauthorized
+    status !in 200..299 -> WearPushRegistrationResult.Rejected
+    successPayload -> WearPushRegistrationResult.Success
+    else -> WearPushRegistrationResult.Rejected
+}
+
 internal interface WearRepository {
     fun restoreSession(): WearAuthResult
     fun exchangePairingGrant(requestId: String, nonce: String, grant: String): WearAuthResult
@@ -40,6 +53,7 @@ internal class WearHttpRepository(
     rawBaseUrl: String,
     private val sessionStore: WearSessionStore,
     private val requestTimeoutMillis: Int = DEFAULT_REQUEST_TIMEOUT_MILLIS,
+    private val installationIdProvider: (() -> String?)? = null,
 ) : WearRepository {
     private val baseUrl = rawBaseUrl.trimEnd('/')
     private val origin = runCatching { URL(baseUrl) }.getOrNull()
@@ -52,6 +66,7 @@ internal class WearHttpRepository(
     internal fun realtimeCookieHeader(): String? = cookieHeader()
 
     override fun clearSession() {
+        unregisterPushRegistrationBestEffort()
         clearUnauthorized()
     }
 
@@ -76,6 +91,7 @@ internal class WearHttpRepository(
     }
 
     override fun exchangePairingGrant(requestId: String, nonce: String, grant: String): WearAuthResult {
+        unregisterPushRegistrationBestEffort()
         synchronized(cookieLock) { cookies.clear() }
         sessionStore.clear()
         val body = JSONObject().put("request_id", requestId).put("nonce", nonce).put("grant", grant).toString()
@@ -113,6 +129,31 @@ internal class WearHttpRepository(
         val executionId = task.executionId ?: return WearMutationResult.Rejected
         val body = newWearCompleteRequest(task.id, executionId).toJson()
         return mutate("/api/v1/entries/${pathSegment(task.id)}/complete", body)
+    }
+
+    fun registerPushToken(installationId: String, token: String): WearPushRegistrationResult =
+        pushRegistrationRequest(
+            "/api/v1/wear/push-registration",
+            JSONObject().put("installation_id", installationId).put("fcm_token", token).toString(),
+            "registered",
+        )
+
+    fun unregisterPushRegistration(installationId: String): WearPushRegistrationResult =
+        pushRegistrationRequest(
+            "/api/v1/wear/push-registration/unregister",
+            JSONObject().put("installation_id", installationId).toString(),
+            "unregistered",
+        )
+
+    private fun pushRegistrationRequest(path: String, body: String, successField: String): WearPushRegistrationResult {
+        val response = request("POST", path, body)
+        val successfulPayload = runCatching { JSONObject(response.body).optBoolean(successField) }.getOrDefault(false)
+        return classifyWearPushRegistrationResponse(response.status, successfulPayload)
+    }
+
+    private fun unregisterPushRegistrationBestEffort() {
+        val installationId = runCatching { installationIdProvider?.invoke() }.getOrNull() ?: return
+        runCatching { unregisterPushRegistration(installationId) }
     }
 
     private fun mutate(path: String, body: String): WearMutationResult {

@@ -123,7 +123,15 @@ import {
   loadDailyPrimaryDocuments,
   updateDailyPrimaryDocument,
 } from "./application/daily-primary-documents";
-import { realtimeScopesForMutation, serializePublishRequest } from "./realtime-invalidation";
+import { affectsWearRunningProjection, realtimeScopesForMutation, serializePublishRequest } from "./realtime-invalidation";
+import { hasCommittedMutation, mutationResponse } from "./mutation-response";
+import {
+  isWearPushRegistrationRequest,
+  isWearPushUnregistrationRequest,
+  registerWearPushInstallation,
+  unregisterWearPushInstallation,
+} from "./application/wear-push-registrations";
+import { sendWearRunningProjectionInvalidation } from "./fcm-sender";
 import {
   createFutureRoutineFromCompletedEntry,
   isCreateFutureRoutineFromCompletedEntryRequest,
@@ -176,6 +184,30 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (!url.pathname.startsWith("/api/")) return new Response("Not found", { status: 404 });
 
   const principal = await resolvePrincipal(request, env);
+  if (request.method === "POST" && url.pathname === "/api/v1/wear/push-registration") {
+    const body = await readBoundedJson(request);
+    if (!isWearPushRegistrationRequest(body)) {
+      throw new HttpError(400, "malformed_request", "Invalid Wear push registration request");
+    }
+    try {
+      return mutationResponse(await registerWearPushInstallation(env.APP_DB, principal.appUserId, body));
+    } catch (error) {
+      if (error instanceof HttpError) throw error;
+      throw new HttpError(503, "infrastructure_ambiguous", "Wear registration outcome is unknown", true);
+    }
+  }
+  if (request.method === "POST" && url.pathname === "/api/v1/wear/push-registration/unregister") {
+    const body = await readBoundedJson(request);
+    if (!isWearPushUnregistrationRequest(body)) {
+      throw new HttpError(400, "malformed_request", "Invalid Wear push unregistration request");
+    }
+    try {
+      return mutationResponse(await unregisterWearPushInstallation(env.APP_DB, principal.appUserId, body));
+    } catch (error) {
+      if (error instanceof HttpError) throw error;
+      throw new HttpError(503, "infrastructure_ambiguous", "Wear registration removal outcome is unknown", true);
+    }
+  }
   if (request.method === "GET" && url.pathname === "/api/v1/taskchute-days/current") {
     return Response.json(await loadCurrentTaskChuteDay(env.APP_DB, principal.appUserId));
   }
@@ -187,7 +219,7 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (!isSetAutoCarryOverduePlannedRequest(body)) {
       throw new HttpError(400, "malformed_request", "Invalid SetAutoCarryOverduePlanned request");
     }
-    return Response.json(await setAutoCarryOverduePlanned(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await setAutoCarryOverduePlanned(env.APP_DB, principal.appUserId, body));
   }
   if (request.method === "GET" && url.pathname === "/api/v1/settings/effective-day-calendar") {
     const logicalDate = url.searchParams.get("logical_date");
@@ -211,7 +243,7 @@ async function route(request: Request, env: Env): Promise<Response> {
       || !isEnsureProjectPrimaryDocumentRequest(body)) {
       throw new HttpError(400, "malformed_request", "Invalid EnsureProjectPrimaryDocument request");
     }
-    return Response.json(await ensureProjectPrimaryDocument(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await ensureProjectPrimaryDocument(env.APP_DB, principal.appUserId, body));
   }
   const projectPrimaryDocumentMatch = url.pathname.match(/^\/api\/v1\/project-primary-documents\/([^/]+)$/);
   if (request.method === "GET" && projectPrimaryDocumentMatch) {
@@ -223,7 +255,7 @@ async function route(request: Request, env: Env): Promise<Response> {
       || !isUpdateProjectPrimaryDocumentRequest(body)) {
       throw new HttpError(400, "malformed_request", "Invalid UpdateProjectPrimaryDocument request");
     }
-    return Response.json(await updateProjectPrimaryDocument(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await updateProjectPrimaryDocument(env.APP_DB, principal.appUserId, body));
   }
   const taskPrimaryByTaskMatch = url.pathname.match(/^\/api\/v1\/tasks\/([^/]+)\/primary-document$/);
   if (request.method === "GET" && taskPrimaryByTaskMatch) {
@@ -235,7 +267,7 @@ async function route(request: Request, env: Env): Promise<Response> {
       || !isEnsureTaskPrimaryDocumentRequest(body)) {
       throw new HttpError(400, "malformed_request", "Invalid EnsureTaskPrimaryDocument request");
     }
-    return Response.json(await ensureTaskPrimaryDocument(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await ensureTaskPrimaryDocument(env.APP_DB, principal.appUserId, body));
   }
   const taskPrimaryDocumentMatch = url.pathname.match(/^\/api\/v1\/task-primary-documents\/([^/]+)$/);
   if (request.method === "GET" && taskPrimaryDocumentMatch) {
@@ -247,7 +279,7 @@ async function route(request: Request, env: Env): Promise<Response> {
       || !isUpdateTaskPrimaryDocumentRequest(body)) {
       throw new HttpError(400, "malformed_request", "Invalid UpdateTaskPrimaryDocument request");
     }
-    return Response.json(await updateTaskPrimaryDocument(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await updateTaskPrimaryDocument(env.APP_DB, principal.appUserId, body));
   }
   if (request.method === "GET" && url.pathname === "/api/v1/daily-primary-documents") {
     return Response.json(await loadDailyPrimaryDocuments(env.APP_DB, principal.appUserId));
@@ -259,7 +291,7 @@ async function route(request: Request, env: Env): Promise<Response> {
       || !isEnsureDailyPrimaryDocumentRequest(body)) {
       throw new HttpError(400, "malformed_request", "Invalid EnsureDailyPrimaryDocument request");
     }
-    return Response.json(await ensureDailyPrimaryDocument(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await ensureDailyPrimaryDocument(env.APP_DB, principal.appUserId, body));
   }
   const dailyPrimaryDocumentMatch = url.pathname.match(/^\/api\/v1\/daily-primary-documents\/([^/]+)$/);
   if (request.method === "GET" && dailyPrimaryDocumentMatch) {
@@ -271,7 +303,7 @@ async function route(request: Request, env: Env): Promise<Response> {
       || !isUpdateDailyPrimaryDocumentRequest(body)) {
       throw new HttpError(400, "malformed_request", "Invalid UpdateDailyPrimaryDocument request");
     }
-    return Response.json(await updateDailyPrimaryDocument(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await updateDailyPrimaryDocument(env.APP_DB, principal.appUserId, body));
   }
   const documentPermalinkMatch = url.pathname.match(/^\/api\/v1\/documents\/([^/]+)\/resolve$/);
   if (request.method === "GET" && documentPermalinkMatch) {
@@ -286,7 +318,7 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (!isCreateStandaloneDocumentRequest(body)) {
       throw new HttpError(400, "malformed_request", "Invalid CreateStandaloneDocument request");
     }
-    return Response.json(await createStandaloneDocument(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await createStandaloneDocument(env.APP_DB, principal.appUserId, body));
   }
   if (request.method === "POST" && documentMatch) {
     const body = await readBoundedJson(request);
@@ -294,7 +326,7 @@ async function route(request: Request, env: Env): Promise<Response> {
       || !isUpdateDocumentRequest(body)) {
       throw new HttpError(400, "malformed_request", "Invalid UpdateDocument request");
     }
-    return Response.json(await updateDocument(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await updateDocument(env.APP_DB, principal.appUserId, body));
   }
   const documentArchiveMatch = url.pathname.match(/^\/api\/v1\/documents\/([^/]+)\/archive$/);
   if (request.method === "POST" && documentArchiveMatch) {
@@ -303,7 +335,7 @@ async function route(request: Request, env: Env): Promise<Response> {
       || !isSetStandaloneDocumentArchivedRequest(body)) {
       throw new HttpError(400, "malformed_request", "Invalid SetStandaloneDocumentArchived request");
     }
-    return Response.json(await setStandaloneDocumentArchived(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await setStandaloneDocumentArchived(env.APP_DB, principal.appUserId, body));
   }
   const documentDeleteMatch = url.pathname.match(/^\/api\/v1\/documents\/([^/]+)\/delete$/);
   if (request.method === "POST" && documentDeleteMatch) {
@@ -312,14 +344,14 @@ async function route(request: Request, env: Env): Promise<Response> {
       || !isDeleteStandaloneDocumentRequest(body)) {
       throw new HttpError(400, "malformed_request", "Invalid DeleteStandaloneDocument request");
     }
-    return Response.json(await deleteStandaloneDocument(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await deleteStandaloneDocument(env.APP_DB, principal.appUserId, body));
   }
   if (request.method === "POST" && url.pathname === "/api/v1/settings/effective-day-overrides") {
     const body = await readBoundedJson(request);
     if (!isUpsertEffectiveDayOverrideRequest(body)) {
       throw new HttpError(400, "malformed_request", "Invalid UpsertEffectiveDayOverride request");
     }
-    return Response.json(await upsertEffectiveDayOverride(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await upsertEffectiveDayOverride(env.APP_DB, principal.appUserId, body));
   }
   const effectiveDayDeleteMatch = url.pathname.match(/^\/api\/v1\/settings\/effective-day-overrides\/([^/]+)\/delete$/);
   if (request.method === "POST" && effectiveDayDeleteMatch) {
@@ -328,7 +360,7 @@ async function route(request: Request, env: Env): Promise<Response> {
       || !isDeleteEffectiveDayOverrideRequest(body)) {
       throw new HttpError(400, "malformed_request", "Invalid DeleteEffectiveDayOverride request");
     }
-    return Response.json(await deleteEffectiveDayOverride(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await deleteEffectiveDayOverride(env.APP_DB, principal.appUserId, body));
   }
   if (request.method === "GET" && url.pathname === "/api/v1/taskchute-days/by-logical-date") {
     const logicalDate = url.searchParams.get("logical_date");
@@ -349,12 +381,12 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (request.method === "POST" && url.pathname === "/api/v1/modes") {
     const body = await readBoundedJson(request);
     if (!isCreateModeRequest(body)) throw new HttpError(400, "malformed_request", "Invalid CreateMode request");
-    return Response.json(await createMode(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await createMode(env.APP_DB, principal.appUserId, body));
   }
   if (request.method === "POST" && url.pathname === "/api/v1/modes/reorder") {
     const body = await readBoundedJson(request);
     if (!isReorderModesRequest(body)) throw new HttpError(400, "malformed_request", "Invalid ReorderModes request");
-    return Response.json(await reorderModes(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await reorderModes(env.APP_DB, principal.appUserId, body));
   }
   const modeArchiveMatch = url.pathname.match(/^\/api\/v1\/modes\/([^/]+)\/archive$/);
   if (request.method === "POST" && modeArchiveMatch) {
@@ -362,7 +394,7 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (modeArchiveMatch[1] !== (body as { mode_id?: unknown })?.mode_id || !isSetModeArchivedRequest(body)) {
       throw new HttpError(400, "malformed_request", "Invalid SetModeArchived request");
     }
-    return Response.json(await setModeArchived(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await setModeArchived(env.APP_DB, principal.appUserId, body));
   }
   const modeDeleteMatch = url.pathname.match(/^\/api\/v1\/modes\/([^/]+)\/delete$/);
   if (request.method === "POST" && modeDeleteMatch) {
@@ -370,7 +402,7 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (modeDeleteMatch[1] !== (body as { mode_id?: unknown })?.mode_id || !isDeleteModeRequest(body)) {
       throw new HttpError(400, "malformed_request", "Invalid DeleteMode request");
     }
-    return Response.json(await deleteMode(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await deleteMode(env.APP_DB, principal.appUserId, body));
   }
   const modeUpdateMatch = url.pathname.match(/^\/api\/v1\/modes\/([^/]+)$/);
   if (request.method === "POST" && modeUpdateMatch) {
@@ -378,7 +410,7 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (modeUpdateMatch[1] !== (body as { mode_id?: unknown })?.mode_id || !isUpdateModeRequest(body)) {
       throw new HttpError(400, "malformed_request", "Invalid UpdateMode request");
     }
-    return Response.json(await updateMode(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await updateMode(env.APP_DB, principal.appUserId, body));
   }
   if (request.method === "GET" && url.pathname === "/api/v1/routines") {
     return Response.json(await loadRoutineBoard(env.APP_DB, principal.appUserId));
@@ -386,12 +418,12 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (request.method === "POST" && url.pathname === "/api/v1/routines") {
     const body = await readBoundedJson(request);
     if (!isCreateRoutineRequest(body)) throw new HttpError(400, "malformed_request", "Invalid CreateRoutine request");
-    return Response.json(await createRoutine(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await createRoutine(env.APP_DB, principal.appUserId, body));
   }
   if (request.method === "POST" && url.pathname === "/api/v1/routines/reorder") {
     const body = await readBoundedJson(request);
     if (!isReorderRoutinesRequest(body)) throw new HttpError(400, "malformed_request", "Invalid ReorderRoutines request");
-    return Response.json(await reorderRoutines(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await reorderRoutines(env.APP_DB, principal.appUserId, body));
   }
   const routineEnabledMatch = url.pathname.match(/^\/api\/v1\/routines\/([^/]+)\/enabled$/);
   if (request.method === "POST" && routineEnabledMatch) {
@@ -400,7 +432,7 @@ async function route(request: Request, env: Env): Promise<Response> {
       || !isSetRoutineEnabledRequest(body)) {
       throw new HttpError(400, "malformed_request", "Invalid SetRoutineEnabled request");
     }
-    return Response.json(await setRoutineEnabled(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await setRoutineEnabled(env.APP_DB, principal.appUserId, body));
   }
   const routineUpdateMatch = url.pathname.match(/^\/api\/v1\/routines\/([^/]+)$/);
   if (request.method === "POST" && routineUpdateMatch) {
@@ -409,7 +441,7 @@ async function route(request: Request, env: Env): Promise<Response> {
       || !isUpdateRoutineRequest(body)) {
       throw new HttpError(400, "malformed_request", "Invalid UpdateRoutine request");
     }
-    return Response.json(await updateRoutine(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await updateRoutine(env.APP_DB, principal.appUserId, body));
   }
   const routineDeleteMatch = url.pathname.match(/^\/api\/v1\/routines\/([^/]+)\/delete$/);
   if (request.method === "POST" && routineDeleteMatch) {
@@ -418,17 +450,17 @@ async function route(request: Request, env: Env): Promise<Response> {
       || !isDeleteRoutineRequest(body)) {
       throw new HttpError(400, "malformed_request", "Invalid DeleteRoutine request");
     }
-    return Response.json(await deleteRoutine(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await deleteRoutine(env.APP_DB, principal.appUserId, body));
   }
   if (request.method === "POST" && url.pathname === "/api/v1/projects") {
     const body = await readBoundedJson(request);
     if (!isCreateProjectRequest(body)) throw new HttpError(400, "malformed_request", "Invalid CreateProject request");
-    return Response.json(await createProject(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await createProject(env.APP_DB, principal.appUserId, body));
   }
   if (request.method === "POST" && url.pathname === "/api/v1/projects/reorder") {
     const body = await readBoundedJson(request);
     if (!isReorderProjectsRequest(body)) throw new HttpError(400, "malformed_request", "Invalid ReorderProjects request");
-    return Response.json(await reorderProjects(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await reorderProjects(env.APP_DB, principal.appUserId, body));
   }
   const projectArchiveMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/archive$/);
   if (request.method === "POST" && projectArchiveMatch) {
@@ -437,7 +469,7 @@ async function route(request: Request, env: Env): Promise<Response> {
       || !isSetProjectArchivedRequest(body)) {
       throw new HttpError(400, "malformed_request", "Invalid SetProjectArchived request");
     }
-    return Response.json(await setProjectArchived(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await setProjectArchived(env.APP_DB, principal.appUserId, body));
   }
   const projectUpdateMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)$/);
   if (request.method === "POST" && projectUpdateMatch) {
@@ -446,7 +478,7 @@ async function route(request: Request, env: Env): Promise<Response> {
       || !isUpdateProjectRequest(body)) {
       throw new HttpError(400, "malformed_request", "Invalid UpdateProject request");
     }
-    return Response.json(await updateProject(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await updateProject(env.APP_DB, principal.appUserId, body));
   }
   const projectDeleteMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/delete$/);
   if (request.method === "POST" && projectDeleteMatch) {
@@ -455,31 +487,31 @@ async function route(request: Request, env: Env): Promise<Response> {
       || !isDeleteProjectRequest(body)) {
       throw new HttpError(400, "malformed_request", "Invalid DeleteProject request");
     }
-    return Response.json(await deleteProject(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await deleteProject(env.APP_DB, principal.appUserId, body));
   }
   if (request.method === "POST" && url.pathname === "/api/v1/taskchute-days/current/entries") {
     const body = await readBoundedJson(request);
     if (!isAddTaskToDayRequest(body) || body.logical_date !== undefined) {
       throw new HttpError(400, "malformed_request", "Invalid current-Day AddTaskToDay request");
     }
-    return Response.json(await addTaskToDay(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await addTaskToDay(env.APP_DB, principal.appUserId, body));
   }
   if (request.method === "POST" && url.pathname === "/api/v1/taskchute-days/by-logical-date/entries") {
     const body = await readBoundedJson(request);
     if (!isAddTaskToDayRequest(body) || body.logical_date === undefined) {
       throw new HttpError(400, "malformed_request", "Invalid logical-date AddTaskToDay request");
     }
-    return Response.json(await addTaskToDay(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await addTaskToDay(env.APP_DB, principal.appUserId, body));
   }
   if (request.method === "POST" && url.pathname === "/api/v1/taskchute-days/current/entries/reorder") {
     const body = await readBoundedJson(request);
     if (!isReorderEntriesRequest(body)) throw new HttpError(400, "malformed_request", "Invalid ReorderEntries request");
-    return Response.json(await reorderEntries(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await reorderEntries(env.APP_DB, principal.appUserId, body));
   }
   if (request.method === "POST" && url.pathname === "/api/v1/taskchute-days/current/entries/bulk-delete") {
     const body = await readBoundedJson(request);
     if (!isBulkDeleteEntriesRequest(body)) throw new HttpError(400, "malformed_request", "Invalid BulkDeleteEntries request");
-    return Response.json(await bulkDeleteEntries(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await bulkDeleteEntries(env.APP_DB, principal.appUserId, body));
   }
   const deleteCompletedEntryMatch = url.pathname.match(/^\/api\/v1\/entries\/([^/]+)\/delete-completed$/);
   if (request.method === "POST" && deleteCompletedEntryMatch) {
@@ -488,38 +520,38 @@ async function route(request: Request, env: Env): Promise<Response> {
       || !isDeleteCompletedEntryRequest(body)) {
       throw new HttpError(400, "malformed_request", "Invalid DeleteCompletedEntry request");
     }
-    return Response.json(await deleteCompletedEntry(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await deleteCompletedEntry(env.APP_DB, principal.appUserId, body));
   }
   if (request.method === "POST" && url.pathname === "/api/v1/taskchute-days/entries/bulk-move-to-day") {
     const body = await readBoundedJson(request);
     if (!isBulkMoveEntriesToDayRequest(body)) throw new HttpError(400, "malformed_request", "Invalid BulkMoveEntriesToDay request");
-    return Response.json(await bulkMoveEntriesToDay(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await bulkMoveEntriesToDay(env.APP_DB, principal.appUserId, body));
   }
   if (request.method === "POST" && url.pathname === "/api/v1/taskchute-days/current/entries/bulk-section") {
     const body = await readBoundedJson(request);
     if (!isBulkMoveEntriesToSectionRequest(body)) throw new HttpError(400, "malformed_request", "Invalid BulkMoveEntriesToSection request");
-    return Response.json(await bulkMoveEntriesToSection(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await bulkMoveEntriesToSection(env.APP_DB, principal.appUserId, body));
   }
   if (request.method === "POST" && url.pathname === "/api/v1/taskchute-days/current/entries/bulk-section-occurrence") {
     const body = await readBoundedJson(request);
     if (!isBulkMoveEntriesToSectionOccurrenceRequest(body)) throw new HttpError(400, "malformed_request", "Invalid BulkMoveEntriesToSectionOccurrence request");
-    return Response.json(await bulkMoveEntriesToSectionOccurrence(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await bulkMoveEntriesToSectionOccurrence(env.APP_DB, principal.appUserId, body));
   }
   if (request.method === "POST" && url.pathname === "/api/v1/taskchute-days/current/entries/bulk-section-scoped") {
     const body = await readBoundedJson(request);
     if (!isBulkMoveEntriesToSectionScopedRequest(body)) throw new HttpError(400, "malformed_request", "Invalid BulkMoveEntriesToSectionScoped request");
-    return Response.json(await bulkMoveEntriesToSectionScoped(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await bulkMoveEntriesToSectionScoped(env.APP_DB, principal.appUserId, body));
   }
   if (request.method === "POST" && (url.pathname === "/api/v1/taskchute-days/current/entries/bulk-estimate"
     || url.pathname === "/api/v1/taskchute-days/by-logical-date/entries/bulk-estimate")) {
     const body = await readBoundedJson(request);
     if (!isBulkSetEntriesEstimateScopedRequest(body)) throw new HttpError(400, "malformed_request", "Invalid BulkSetEntriesEstimateScoped request");
-    return Response.json(await bulkSetEntriesEstimateScoped(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await bulkSetEntriesEstimateScoped(env.APP_DB, principal.appUserId, body));
   }
   if (request.method === "POST" && url.pathname === "/api/v1/section-configurations/initial") {
     const body = await readBoundedJson(request);
     if (!isEstablishInitialSectionConfigurationRequest(body)) throw new HttpError(400, "malformed_request", "Invalid initial Section configuration request");
-    return Response.json(await establishInitialSectionConfiguration(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await establishInitialSectionConfiguration(env.APP_DB, principal.appUserId, body));
   }
   if (request.method === "GET" && url.pathname === "/api/v1/section-configuration") {
     return Response.json(await loadSectionConfiguration(env.APP_DB, principal.appUserId));
@@ -529,12 +561,12 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (!isUpdateSectionConfigurationRequest(body)) {
       throw new HttpError(400, "malformed_request", "Invalid UpdateSectionConfiguration request");
     }
-    return Response.json(await updateSectionConfiguration(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await updateSectionConfiguration(env.APP_DB, principal.appUserId, body));
   }
   if (request.method === "POST" && url.pathname === "/api/v1/taskchute-days/current/entries/move") {
     const body = await readBoundedJson(request);
     if (!isMoveEntryRequest(body)) throw new HttpError(400, "malformed_request", "Invalid MoveEntry request");
-    return Response.json(await moveEntry(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await moveEntry(env.APP_DB, principal.appUserId, body));
   }
   const duplicateMatch = url.pathname.match(/^\/api\/v1\/entries\/([^/]+)\/duplicate$/);
   if (request.method === "POST" && duplicateMatch) {
@@ -542,7 +574,7 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (duplicateMatch[1] !== (body as { source_entry_id?: unknown })?.source_entry_id || !isDuplicateEntryRequest(body)) {
       throw new HttpError(400, "malformed_request", "Invalid DuplicateEntry request");
     }
-    return Response.json(await duplicateEntry(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await duplicateEntry(env.APP_DB, principal.appUserId, body));
   }
   const entryModeMatch = url.pathname.match(/^\/api\/v1\/entries\/([^/]+)\/mode$/);
   if (request.method === "POST" && entryModeMatch) {
@@ -550,7 +582,7 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (entryModeMatch[1] !== (body as { entry_id?: unknown })?.entry_id || !isSetEntryModeRequest(body)) {
       throw new HttpError(400, "malformed_request", "Invalid SetEntryMode request");
     }
-    return Response.json(await setEntryMode(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await setEntryMode(env.APP_DB, principal.appUserId, body));
   }
   const estimateMatch = url.pathname.match(/^\/api\/v1\/entries\/([^/]+)\/estimate$/);
   if (request.method === "POST" && estimateMatch) {
@@ -558,7 +590,7 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (estimateMatch[1] !== (body as { entry_id?: unknown })?.entry_id || !isSetEntryEstimateRequest(body)) {
       throw new HttpError(400, "malformed_request", "Invalid SetEntryEstimate request");
     }
-    return Response.json(await setEntryEstimate(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await setEntryEstimate(env.APP_DB, principal.appUserId, body));
   }
   const plannedStartMatch = url.pathname.match(/^\/api\/v1\/entries\/([^/]+)\/planned-start$/);
   if (request.method === "POST" && plannedStartMatch) {
@@ -566,7 +598,7 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (plannedStartMatch[1] !== (body as { entry_id?: unknown })?.entry_id || !isSetEntryPlannedStartRequest(body)) {
       throw new HttpError(400, "malformed_request", "Invalid SetEntryPlannedStart request");
     }
-    return Response.json(await setEntryPlannedStart(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await setEntryPlannedStart(env.APP_DB, principal.appUserId, body));
   }
   const routineConvertMatch = url.pathname.match(/^\/api\/v1\/entries\/([^/]+)\/routine$/);
   if (request.method === "POST" && routineConvertMatch) {
@@ -575,7 +607,7 @@ async function route(request: Request, env: Env): Promise<Response> {
       || !isConvertEntryToRoutineRequest(body)) {
       throw new HttpError(400, "malformed_request", "Invalid ConvertEntryToRoutine request");
     }
-    return Response.json(await convertEntryToRoutine(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await convertEntryToRoutine(env.APP_DB, principal.appUserId, body));
   }
   const futureRoutineMatch = url.pathname.match(/^\/api\/v1\/entries\/([^/]+)\/future-routine$/);
   if (request.method === "POST" && futureRoutineMatch) {
@@ -584,7 +616,7 @@ async function route(request: Request, env: Env): Promise<Response> {
       || !isCreateFutureRoutineFromCompletedEntryRequest(body)) {
       throw new HttpError(400, "malformed_request", "Invalid CreateFutureRoutineFromCompletedEntry request");
     }
-    return Response.json(await createFutureRoutineFromCompletedEntry(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await createFutureRoutineFromCompletedEntry(env.APP_DB, principal.appUserId, body));
   }
   const routineEndMatch = url.pathname.match(/^\/api\/v1\/routines\/([^/]+)\/end$/);
   if (request.method === "POST" && routineEndMatch) {
@@ -593,7 +625,7 @@ async function route(request: Request, env: Env): Promise<Response> {
       || !isEndRoutineRequest(body)) {
       throw new HttpError(400, "malformed_request", "Invalid EndRoutine request");
     }
-    return Response.json(await endRoutine(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await endRoutine(env.APP_DB, principal.appUserId, body));
   }
   const routineEstimateMatch = url.pathname.match(/^\/api\/v1\/entries\/([^/]+)\/routine-estimate$/);
   if (request.method === "POST" && routineEstimateMatch) {
@@ -602,7 +634,7 @@ async function route(request: Request, env: Env): Promise<Response> {
       || !isSetRoutineEstimateRequest(body)) {
       throw new HttpError(400, "malformed_request", "Invalid SetRoutineEstimate request");
     }
-    return Response.json(await setRoutineEstimate(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await setRoutineEstimate(env.APP_DB, principal.appUserId, body));
   }
   const routineModeMatch = url.pathname.match(/^\/api\/v1\/entries\/([^/]+)\/routine-mode$/);
   if (request.method === "POST" && routineModeMatch) {
@@ -611,7 +643,7 @@ async function route(request: Request, env: Env): Promise<Response> {
       || !isSetRoutineModeRequest(body)) {
       throw new HttpError(400, "malformed_request", "Invalid SetRoutineMode request");
     }
-    return Response.json(await setRoutineMode(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await setRoutineMode(env.APP_DB, principal.appUserId, body));
   }
   const routineSectionPlanMatch = url.pathname.match(/^\/api\/v1\/entries\/([^/]+)\/routine-section-plan$/);
   if (request.method === "POST" && routineSectionPlanMatch) {
@@ -620,7 +652,7 @@ async function route(request: Request, env: Env): Promise<Response> {
       || !isSetRoutineSectionPlanRequest(body)) {
       throw new HttpError(400, "malformed_request", "Invalid SetRoutineSectionPlan request");
     }
-    return Response.json(await setRoutineSectionPlan(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await setRoutineSectionPlan(env.APP_DB, principal.appUserId, body));
   }
   const taskMetadataMatch = url.pathname.match(/^\/api\/v1\/entries\/([^/]+)\/task-metadata$/);
   if (request.method === "POST" && taskMetadataMatch) {
@@ -628,7 +660,7 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (taskMetadataMatch[1] !== (body as { entry_id?: unknown })?.entry_id || !isUpdateTaskMetadataRequest(body)) {
       throw new HttpError(400, "malformed_request", "Invalid UpdateTaskMetadata request");
     }
-    return Response.json(await updateTaskMetadata(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await updateTaskMetadata(env.APP_DB, principal.appUserId, body));
   }
   const executionTimesMatch = url.pathname.match(/^\/api\/v1\/entries\/([^/]+)\/execution-times$/);
   if (request.method === "POST" && executionTimesMatch) {
@@ -636,7 +668,7 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (executionTimesMatch[1] !== (body as { entry_id?: unknown })?.entry_id || !isSetExecutionTimesRequest(body)) {
       throw new HttpError(400, "malformed_request", "Invalid SetExecutionTimes request");
     }
-    return Response.json(await setExecutionTimes(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await setExecutionTimes(env.APP_DB, principal.appUserId, body));
   }
   const revertStartMatch = url.pathname.match(/^\/api\/v1\/entries\/([^/]+)\/revert-start$/);
   if (request.method === "POST" && revertStartMatch) {
@@ -644,7 +676,7 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (revertStartMatch[1] !== (body as { entry_id?: unknown })?.entry_id || !isRevertEntryStartRequest(body)) {
       throw new HttpError(400, "malformed_request", "Invalid RevertEntryStart request");
     }
-    return Response.json(await revertEntryStart(env.APP_DB, principal.appUserId, body));
+    return mutationResponse(await revertEntryStart(env.APP_DB, principal.appUserId, body));
   }
   const lifecycleMatch = url.pathname.match(/^\/api\/v1\/entries\/([^/]+)\/(start|complete|interrupt)$/);
   if (request.method === "POST" && lifecycleMatch) {
@@ -657,15 +689,15 @@ async function route(request: Request, env: Env): Promise<Response> {
     }
     if (lifecycleMatch[2] === "start") {
       if (!isStartEntryRequest(body)) throw new HttpError(400, "malformed_request", "Invalid StartEntry request");
-      return Response.json(await startEntry(env.APP_DB, principal.appUserId, body));
+      return mutationResponse(await startEntry(env.APP_DB, principal.appUserId, body));
     }
     if (lifecycleMatch[2] === "complete") {
       if (!isCompleteEntryRequest(body)) throw new HttpError(400, "malformed_request", "Invalid CompleteEntry request");
-      return Response.json(await completeEntry(env.APP_DB, principal.appUserId, body));
+      return mutationResponse(await completeEntry(env.APP_DB, principal.appUserId, body));
     }
     if (lifecycleMatch[2] === "interrupt") {
       if (!isInterruptEntryRequest(body)) throw new HttpError(400, "malformed_request", "Invalid InterruptEntry request");
-      return Response.json(await interruptEntry(env.APP_DB, principal.appUserId, body));
+      return mutationResponse(await interruptEntry(env.APP_DB, principal.appUserId, body));
     }
     throw new HttpError(400, "malformed_request", "Invalid lifecycle request");
   }
@@ -676,26 +708,43 @@ export default {
   async fetch(request: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
     try {
       const response = await route(request, env);
-      const scopes = realtimeScopesForMutation(request);
-      if (response.ok && scopes.length > 0 && env.REALTIME_HUB) {
-        const publish = serializePublishRequest(scopes);
-        if (publish) {
+      if (hasCommittedMutation(response)) {
+        const scopes = realtimeScopesForMutation(request);
+        const publishPromises: Promise<unknown>[] = [];
+        if (scopes.length > 0 && env.REALTIME_HUB) {
+          const publish = serializePublishRequest(scopes);
+          if (publish) {
+            try {
+              const principal = await resolvePrincipal(request, env);
+              const id = env.REALTIME_HUB.idFromName(principal.appUserId);
+              const publishRequest = new Request("https://realtime.internal/__taskchute_publish", {
+                method: "POST",
+                headers: { "content-type": "application/json", "x-taskchute-realtime-internal": "publish" },
+                body: publish,
+              });
+              publishPromises.push(env.REALTIME_HUB.get(id).fetch(publishRequest).catch((error) => {
+                console.error(JSON.stringify({ message: "realtime invalidation publish failed", error: error instanceof Error ? error.message : "unknown" }));
+              }));
+            } catch (error) {
+              console.error(JSON.stringify({ message: "realtime invalidation authorization failed", error: error instanceof Error ? error.message : "unknown" }));
+            }
+          }
+        }
+        if (affectsWearRunningProjection(request) && env.TASKCHUTE_FCM_SERVICE_ACCOUNT_JSON) {
           try {
             const principal = await resolvePrincipal(request, env);
-            const id = env.REALTIME_HUB.idFromName(principal.appUserId);
-            const publishRequest = new Request("https://realtime.internal/__taskchute_publish", {
-              method: "POST",
-              headers: { "content-type": "application/json", "x-taskchute-realtime-internal": "publish" },
-              body: publish,
-            });
-            const publishPromise = env.REALTIME_HUB.get(id).fetch(publishRequest).catch((error) => {
-              console.error(JSON.stringify({ message: "realtime invalidation publish failed", error: error instanceof Error ? error.message : "unknown" }));
-            });
-            if (ctx) ctx.waitUntil(publishPromise);
-            else void publishPromise;
-          } catch (error) {
-            console.error(JSON.stringify({ message: "realtime invalidation authorization failed", error: error instanceof Error ? error.message : "unknown" }));
+            publishPromises.push(sendWearRunningProjectionInvalidation(env.APP_DB, principal.appUserId,
+              env.TASKCHUTE_FCM_SERVICE_ACCOUNT_JSON).catch(() => {
+              console.error(JSON.stringify({ message: "wear FCM invalidation failed" }));
+            }));
+          } catch {
+            console.error(JSON.stringify({ message: "wear FCM invalidation scheduling failed" }));
           }
+        }
+        if (publishPromises.length > 0) {
+          const sideEffects = Promise.allSettled(publishPromises);
+          if (ctx) ctx.waitUntil(sideEffects);
+          else void sideEffects;
         }
       }
       return response.status === 101 ? response : withSecurityHeaders(response);

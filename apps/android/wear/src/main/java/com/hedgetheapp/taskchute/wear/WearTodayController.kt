@@ -19,6 +19,7 @@ internal class WearTodayController(
     private val mainDispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val onCanonicalLifecycleReconciled: () -> Unit = {},
+    private val onAuthenticated: () -> Unit = {},
 ) {
     private val scope = CoroutineScope(SupervisorJob() + mainDispatcher)
     private val authMutex = Mutex()
@@ -70,6 +71,7 @@ internal class WearTodayController(
                 WearAuthResult.SignedIn -> {
                     authenticated = true
                     authGeneration += 1
+                    onAuthenticated()
                     if (foreground) {
                         realtime.start()
                         requestCanonicalRefresh(showLoading = true)
@@ -100,6 +102,7 @@ internal class WearTodayController(
                     bridge.pairingExchangeFinished(true)
                     authenticated = true
                     authGeneration += 1
+                    onAuthenticated()
                     if (foreground) {
                         realtime.start()
                         requestCanonicalRefresh(showLoading = true)

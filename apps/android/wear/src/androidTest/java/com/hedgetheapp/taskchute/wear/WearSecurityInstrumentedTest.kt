@@ -17,6 +17,16 @@ class WearSecurityInstrumentedTest {
     private val context: Context get() = ApplicationProvider.getApplicationContext()
 
     @Test
+    fun installationIdentityIsStableAndStoredInNoBackupAppPrivateDirectory() {
+        val first = WearInstallationIdStore.get(context)
+        val second = WearInstallationIdStore.get(context)
+
+        assertEquals(first, second)
+        assertEquals(true, WearInstallationIdStore.isUuidV7(first))
+        assertEquals(true, java.io.File(context.noBackupFilesDir, "taskchute-wear-installation-id").isFile)
+    }
+
+    @Test
     fun watchCookieSessionUsesEncryptedNoBackupStorageAndRoundTrips() {
         val store = WearEncryptedSessionStore(context)
         val rawSessionToken = "never-persist-this-in-plaintext-0123456789"

@@ -10,7 +10,12 @@ class WearMainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val repository = WearHttpRepository(BuildConfig.TASKCHUTE_BASE_URL, WearEncryptedSessionStore(this))
+        val installationId = { WearInstallationIdStore.get(this) }
+        val repository = WearHttpRepository(
+            BuildConfig.TASKCHUTE_BASE_URL,
+            WearEncryptedSessionStore(this),
+            installationIdProvider = installationId,
+        )
         val realtime = WearRealtimeConnectionManager(
             cookieProvider = repository::realtimeCookieHeader,
             socketFactory = OkHttpWearRealtimeSocketFactory(BuildConfig.TASKCHUTE_BASE_URL),
@@ -24,6 +29,7 @@ class WearMainActivity : ComponentActivity() {
             repository,
             realtime,
             onCanonicalLifecycleReconciled = { WearComplicationRefreshRequester.request(this) },
+            onAuthenticated = { WearPushWork.enqueueRegistration(this) },
         )
         pairingBridge = WearPairingBridge(this) { grant -> controller.onPairingGrant(pairingBridge, grant) }
         setContent { WearTaskChuteApp(controller, pairingBridge) }

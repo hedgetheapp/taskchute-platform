@@ -5,6 +5,10 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+if (File(projectDir, "google-services.json").isFile) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 val signingStoreFile = System.getenv("TASKCHUTE_ANDROID_SIGNING_STORE_FILE")
 val signingStorePassword = System.getenv("TASKCHUTE_ANDROID_SIGNING_STORE_PASSWORD")
 val signingKeyPassword = System.getenv("TASKCHUTE_ANDROID_SIGNING_KEY_PASSWORD")
@@ -66,7 +70,10 @@ android {
 
 dependencies {
     implementation("androidx.core:core-ktx:1.19.0")
+    implementation("androidx.work:work-runtime-ktx:2.12.0")
     implementation("androidx.activity:activity-compose:1.12.1")
+    implementation(platform("com.google.firebase:firebase-bom:34.19.0"))
+    implementation("com.google.firebase:firebase-messaging")
     implementation("com.google.android.gms:play-services-wearable:20.0.1")
     implementation("com.squareup.okhttp3:okhttp:5.3.0")
     implementation(platform("androidx.compose:compose-bom:2026.08.00"))

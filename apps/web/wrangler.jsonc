@@ -38,6 +38,9 @@
   "env": {
     "nonprod": {
       "name": "taskchute-web-nonprod",
+      "secrets": {
+        "required": ["TASKCHUTE_FCM_SERVICE_ACCOUNT_JSON"]
+      },
       "vars": {
         "RUNTIME_ENV": "nonprod",
         "BOOTSTRAP_ENABLED": "false"

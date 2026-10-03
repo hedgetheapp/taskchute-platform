@@ -21,6 +21,18 @@ class WearTodayControllerRealtimeTest {
     }
 
     @Test
+    fun authenticatedSessionTriggersBestEffortRegistrationConvergence() {
+        val repository = FakeWearRepository()
+        var registrationRequests = 0
+        val controller = controller(repository, FakeRealtimeClient(), onAuthenticated = { registrationRequests += 1 })
+
+        controller.onForeground()
+
+        assertEquals(1, registrationRequests)
+        assertEquals(1, repository.restoreCount)
+    }
+
+    @Test
     fun backgroundStopsRealtimeIgnoresInvalidationsAndResumeReloadsCanonicalDay() {
         val repository = FakeWearRepository()
         val realtime = FakeRealtimeClient()
@@ -144,6 +156,7 @@ class WearTodayControllerRealtimeTest {
     private fun controller(
         repository: FakeWearRepository,
         realtime: FakeRealtimeClient,
+        onAuthenticated: () -> Unit = {},
         onCanonicalLifecycleReconciled: () -> Unit = {},
     ) =
         WearTodayController(
@@ -152,6 +165,7 @@ class WearTodayControllerRealtimeTest {
             mainDispatcher = Dispatchers.Unconfined,
             ioDispatcher = Dispatchers.Unconfined,
             onCanonicalLifecycleReconciled = onCanonicalLifecycleReconciled,
+            onAuthenticated = onAuthenticated,
         )
 
     private fun plannedTask() = WearTask(
