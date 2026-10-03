@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.text.KeyboardOptions
@@ -66,6 +67,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Switch
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -95,6 +97,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.Role
@@ -508,6 +511,10 @@ private fun TodayContent(
     modifier: Modifier,
 ) {
     val day = state.presentedDay ?: return LoadingToday()
+    val appContext = LocalContext.current.applicationContext
+    val displayPreferences = remember(appContext) { TodayDisplayPreferences(appContext) }
+    var showCompleted by remember(displayPreferences) { mutableStateOf(displayPreferences.showCompleted()) }
+    var displayMenuExpanded by remember { mutableStateOf(false) }
     var forecastNow by remember(day.logicalDate) { mutableStateOf(Instant.now()) }
     LaunchedEffect(day.logicalDate, day.isCurrent) {
         while (day.isCurrent) {
@@ -523,7 +530,9 @@ private fun TodayContent(
     val dropBoundsEligible = remember { mutableStateMapOf<String, Boolean>() }
     val emptySectionDropBounds = remember { mutableStateMapOf<String, Rect>() }
     val emptySectionDropIds = remember { mutableStateMapOf<String, String?>() }
-    var collapsedSectionIds by remember(day.logicalDate) { mutableStateOf<Set<String>>(emptySet()) }
+    var collapsedSectionIds by remember(day.logicalDate) {
+        mutableStateOf(displayPreferences.collapsedSections(day.logicalDate))
+    }
     var dragState by remember { mutableStateOf<AndroidDragState?>(null) }
     var dragContentRootTop by remember { mutableStateOf(0f) }
     var dragViewportBounds by remember { mutableStateOf<Rect?>(null) }
@@ -535,6 +544,15 @@ private fun TodayContent(
     var dragFinishIssued by remember { mutableStateOf(false) }
     var autoScrollConsumed by remember { mutableStateOf(false) }
     var openSwipeEntryId by remember { mutableStateOf<String?>(null) }
+    val validCollapsedSectionKeys = remember(day.logicalDate, day.sections, day.unsectionedEntries) {
+        buildSet {
+            day.sections.forEach { add(it.id) }
+            if (day.unsectionedEntries.isNotEmpty()) add(UNSECTIONED_DROP_KEY)
+        }
+    }
+    LaunchedEffect(day.logicalDate, validCollapsedSectionKeys) {
+        collapsedSectionIds = displayPreferences.pruneCollapsedSections(day.logicalDate, validCollapsedSectionKeys)
+    }
     // Active drag presentation always renders the canonical Day. The source slot stays stable;
     // only the pointer overlay and destination cue move.
     val renderDay = day
@@ -574,6 +592,10 @@ private fun TodayContent(
             target = target,
         )
         dragPointerRootY = positionY
+    }
+    fun updateCollapsedSectionIds(next: Set<String>) {
+        collapsedSectionIds = next
+        displayPreferences.setCollapsedSections(day.logicalDate, next)
     }
     fun finishDrag() {
         val drag = dragState ?: return
@@ -818,6 +840,25 @@ private fun TodayContent(
             onPrevious = controller::previousDay,
             onNext = controller::nextDay,
             onOpenDatePicker = onOpenHeaderDatePicker,
+            showAdjacentDayControls = false,
+            compactDateControl = true,
+            trailingContent = {
+                TodayDisplayControl(
+                    expanded = displayMenuExpanded,
+                    showCompleted = showCompleted,
+                    onExpandedChange = { displayMenuExpanded = it },
+                    onShowCompletedChange = { visible ->
+                        showCompleted = visible
+                        displayPreferences.setShowCompleted(visible)
+                        if (!visible && openSwipeEntryId?.let { openId ->
+                                day.allEntries.firstOrNull { it.id == openId }?.lifecycleState == LifecycleState.COMPLETED
+                            } == true
+                        ) {
+                            openSwipeEntryId = null
+                        }
+                    },
+                )
+            },
             modifier = Modifier.onGloballyPositioned {
                 onHeaderBoundsChanged(it.boundsInParent().bottom)
             },
@@ -868,11 +909,12 @@ private fun TodayContent(
                         warning = dayForecast.sections[section.id],
                         collapsed = section.id in collapsedSectionIds,
                         onToggleCollapsed = {
-                            collapsedSectionIds = if (section.id in collapsedSectionIds) {
+                            val next = if (section.id in collapsedSectionIds) {
                                 collapsedSectionIds - section.id
                             } else {
                                 collapsedSectionIds + section.id
                             }
+                            updateCollapsedSectionIds(next)
                         },
                         dropTarget = dragState?.target?.key == sectionDropKey(section.id),
                         modifier = Modifier.onGloballyPositioned {
@@ -888,7 +930,10 @@ private fun TodayContent(
                         },
                     )
                 }
-                if (section.id !in collapsedSectionIds) items(section.entries, key = { it.id }) { task ->
+                val visibleSectionEntries = if (showCompleted) section.entries else {
+                    section.entries.filter { it.lifecycleState != LifecycleState.COMPLETED }
+                }
+                if (section.id !in collapsedSectionIds) items(visibleSectionEntries, key = { it.id }) { task ->
                     val canPastForwardMove = !day.planningEnabled && day.taskChuteDayId != null &&
                         task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived &&
                         task.firstStartedAt == null && task.lastEndedAt == null && task.executionId == null &&
@@ -980,11 +1025,12 @@ private fun TodayContent(
                         warning = null,
                         collapsed = UNSECTIONED_DROP_KEY in collapsedSectionIds,
                         onToggleCollapsed = {
-                            collapsedSectionIds = if (UNSECTIONED_DROP_KEY in collapsedSectionIds) {
+                            val next = if (UNSECTIONED_DROP_KEY in collapsedSectionIds) {
                                 collapsedSectionIds - UNSECTIONED_DROP_KEY
                             } else {
                                 collapsedSectionIds + UNSECTIONED_DROP_KEY
                             }
+                            updateCollapsedSectionIds(next)
                         },
                         dropTarget = dragState?.target?.key == sectionDropKey(null),
                         modifier = Modifier.onGloballyPositioned {
@@ -999,7 +1045,10 @@ private fun TodayContent(
                         },
                     )
                 }
-                if (UNSECTIONED_DROP_KEY !in collapsedSectionIds) items(renderDay.unsectionedEntries, key = { it.id }) { task ->
+                val visibleUnsectionedEntries = if (showCompleted) renderDay.unsectionedEntries else {
+                    renderDay.unsectionedEntries.filter { it.lifecycleState != LifecycleState.COMPLETED }
+                }
+                if (UNSECTIONED_DROP_KEY !in collapsedSectionIds) items(visibleUnsectionedEntries, key = { it.id }) { task ->
                     val canPastForwardMove = !day.planningEnabled && day.taskChuteDayId != null &&
                         task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived &&
                         task.firstStartedAt == null && task.lastEndedAt == null && task.executionId == null &&
@@ -1118,7 +1167,64 @@ private fun TodayContent(
     }
 }
 
-private const val UNSECTIONED_DROP_KEY = "__unsectioned__"
+private const val UNSECTIONED_DROP_KEY = TodayDisplayPreferences.UNSECTIONED_KEY
+
+@Composable
+private fun TodayDisplayControl(
+    expanded: Boolean,
+    showCompleted: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    onShowCompletedChange: (Boolean) -> Unit,
+) {
+    Box(Modifier.width(56.dp), contentAlignment = Alignment.Center) {
+        Row(
+            modifier = Modifier.width(56.dp).height(40.dp).clip(RoundedCornerShape(20.dp))
+                .background(TaskChuteColors.Control)
+                .clickable(role = Role.Button) { onExpandedChange(true) }
+                .semantics { contentDescription = "表示" },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.today_header_visibility),
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = TaskChuteColors.PrimaryText,
+            )
+            Spacer(Modifier.width(4.dp))
+            Text("表示", color = TaskChuteColors.PrimaryText, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { onExpandedChange(false) },
+            modifier = Modifier.width(216.dp),
+        ) {
+            Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                Text("表示", color = TaskChuteColors.PrimaryText, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Row(
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp).padding(top = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        "完了タスクを表示",
+                        modifier = Modifier.weight(1f),
+                        color = TaskChuteColors.PrimaryText,
+                        fontSize = 13.sp,
+                    )
+                    Switch(
+                        checked = showCompleted,
+                        onCheckedChange = onShowCompletedChange,
+                        modifier = Modifier.semantics {
+                            contentDescription = "完了タスクを表示"
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
 internal const val D148_DRAG_EDGE_ZONE = 72
 internal const val D148_DRAG_MAX_SCROLL_PER_FRAME = 32
 

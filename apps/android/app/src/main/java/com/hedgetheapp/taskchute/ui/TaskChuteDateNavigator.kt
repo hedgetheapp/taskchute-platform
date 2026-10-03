@@ -38,6 +38,9 @@ fun TaskChuteDateNavigator(
     onNext: () -> Unit,
     onOpenDatePicker: () -> Unit,
     modifier: Modifier = Modifier,
+    showAdjacentDayControls: Boolean = true,
+    compactDateControl: Boolean = false,
+    trailingContent: (@Composable () -> Unit)? = null,
 ) {
     val enabled = logicalDate != null
     Row(
@@ -45,29 +48,37 @@ fun TaskChuteDateNavigator(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        IconButton(
-            onClick = onPrevious,
-            enabled = enabled,
-            modifier = Modifier.size(44.dp).clip(CircleShape).background(TaskChuteColors.Control)
-                .semantics { contentDescription = "前の日" },
-        ) {
-            Icon(painterResource(R.drawable.today_header_chevron_left), "前の日", Modifier.size(28.dp))
+        if (showAdjacentDayControls) {
+            IconButton(
+                onClick = onPrevious,
+                enabled = enabled,
+                modifier = Modifier.size(44.dp).clip(CircleShape).background(TaskChuteColors.Control)
+                    .semantics { contentDescription = "前の日" },
+            ) {
+                Icon(painterResource(R.drawable.today_header_chevron_left), "前の日", Modifier.size(28.dp))
+            }
+        } else {
+            Spacer(Modifier.width(48.dp).height(44.dp))
         }
         Row(
             modifier = Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(22.dp))
                 .background(TaskChuteColors.SurfaceElevated)
                 .clickable(enabled = enabled, onClick = onOpenDatePicker)
                 .semantics { contentDescription = "表示日付を選択" }
-                .padding(horizontal = 14.dp),
+                .padding(horizontal = if (compactDateControl) 8.dp else 14.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
         ) {
-            Icon(painterResource(R.drawable.today_header_calendar_month), "日付", Modifier.size(28.dp))
-            Spacer(Modifier.width(8.dp))
+            Icon(
+                painterResource(R.drawable.today_header_calendar_month),
+                "日付",
+                Modifier.size(if (compactDateControl) 18.dp else 28.dp),
+            )
+            Spacer(Modifier.width(if (compactDateControl) 7.dp else 8.dp))
             Text(
                 formatTaskChuteDateLabel(logicalDate),
                 style = MaterialTheme.typography.titleMedium.copy(
-                    fontSize = 18.sp,
+                    fontSize = if (compactDateControl) 14.sp else 18.sp,
                     fontWeight = FontWeight.Bold,
                 ),
                 color = TaskChuteColors.PrimaryText,
@@ -75,13 +86,17 @@ fun TaskChuteDateNavigator(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        IconButton(
-            onClick = onNext,
-            enabled = enabled,
-            modifier = Modifier.size(44.dp).clip(CircleShape).background(TaskChuteColors.Control)
-                .semantics { contentDescription = "次の日" },
-        ) {
-            Icon(painterResource(R.drawable.today_header_chevron_right), "次の日", Modifier.size(28.dp))
+        if (trailingContent != null) {
+            trailingContent()
+        } else {
+            IconButton(
+                onClick = onNext,
+                enabled = enabled,
+                modifier = Modifier.size(44.dp).clip(CircleShape).background(TaskChuteColors.Control)
+                    .semantics { contentDescription = "次の日" },
+            ) {
+                Icon(painterResource(R.drawable.today_header_chevron_right), "次の日", Modifier.size(28.dp))
+            }
         }
     }
 }

@@ -2,6 +2,8 @@ package com.hedgetheapp.taskchute.today
 
 import android.graphics.Bitmap
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.assertIsDisplayed
@@ -36,6 +38,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import org.junit.After
+import org.junit.Before
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -54,6 +57,11 @@ class TodayScreenInstrumentedTest {
     private var planningController: TaskPlanningController? = null
     private var directManipulationController: TodayDirectManipulationController? = null
 
+    @Before
+    fun clearDisplayPreferencesBeforeTest() {
+        clearDisplayPreferences()
+    }
+
     private fun captureTaskEditorScreenshot(name: String) {
         val bitmap = composeRule.onRoot().captureToImage().asAndroidBitmap()
         val output = InstrumentationRegistry.getInstrumentation().targetContext.cacheDir.resolve(name)
@@ -71,6 +79,7 @@ class TodayScreenInstrumentedTest {
         controller?.close()
         planningController?.close()
         directManipulationController?.close()
+        clearDisplayPreferences()
     }
 
     @Test
@@ -251,14 +260,18 @@ class TodayScreenInstrumentedTest {
     }
 
     @Test
-    fun dateControlsRenderAndRequestAdjacentDay() {
+    fun todayHeaderUsesCompactDateAndDisplayMenuWithoutAdjacentDayControls() {
         val repo = launchScreen()
         waitForStatus(TodayLoadStatus.CONTENT)
 
-        composeRule.onNodeWithContentDescription("前の日").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("次の日").performClick()
-        composeRule.waitUntil(15_000) { repo.requestedDates.contains("2026-09-15") }
-        assertTrue(repo.requestedDates.contains("2026-09-15"))
+        assertTrue(composeRule.onAllNodesWithContentDescription("前の日").fetchSemanticsNodes().isEmpty())
+        assertTrue(composeRule.onAllNodesWithContentDescription("次の日").fetchSemanticsNodes().isEmpty())
+        composeRule.onNodeWithText("2026-09-14 (月)").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("表示").assertIsDisplayed().performClick()
+        composeRule.onNodeWithText("完了タスクを表示").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("表示日付を選択").performClick()
+        composeRule.onNodeWithText("キャンセル").performClick()
+        assertTrue(repo.requestedDates.none { it == "2026-09-15" })
     }
 
     @Test
@@ -298,6 +311,81 @@ class TodayScreenInstrumentedTest {
         composeRule.onNodeWithContentDescription("Settings").assertIsDisplayed().assertIsEnabled()
         composeRule.onNodeWithContentDescription("Settings").performClick()
         assertEquals(1, settingsClicks)
+    }
+
+    @Test
+    fun completedVisibilityHidesOnlyCompletedRowsAndCanRestoreThem() {
+        launchScreen(FakeTodayRepository(initialDay = displayTestDay()))
+        waitForStatus(TodayLoadStatus.CONTENT)
+        composeRule.onNodeWithText("Planned visibility row").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithText("Running visibility row").fetchSemanticsNodes().isNotEmpty())
+        composeRule.onNodeWithText("Completed visibility row").assertIsDisplayed()
+
+        composeRule.onNodeWithContentDescription("表示").performClick()
+        composeRule.onNodeWithContentDescription("完了タスクを表示").performClick()
+
+        assertTrue(composeRule.onAllNodesWithText("Completed visibility row").fetchSemanticsNodes().isEmpty())
+        composeRule.onNodeWithText("Planned visibility row").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithText("Running visibility row").fetchSemanticsNodes().isNotEmpty())
+        composeRule.onNodeWithText("Morning").assertIsDisplayed()
+
+        composeRule.onNodeWithContentDescription("表示").performClick()
+        composeRule.onNodeWithContentDescription("完了タスクを表示").performClick()
+        composeRule.onNodeWithText("Completed visibility row").assertIsDisplayed()
+    }
+
+    @Test
+    fun completedOnlySectionRemainsVisibleWhenCompletedRowsAreHidden() {
+        todayPreferences().setShowCompleted(false)
+        launchScreen(FakeTodayRepository(initialDay = dayWith(LifecycleState.COMPLETED)))
+        waitForStatus(TodayLoadStatus.CONTENT)
+        assertTrue(composeRule.onAllNodesWithText("Write report").fetchSemanticsNodes().isEmpty())
+        composeRule.onNodeWithText("Morning").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Morningセクションを折りたたむ").assertIsDisplayed()
+    }
+
+    @Test
+    fun savedDisplayAndCollapsePreferencesRestoreWhenTodayContentIsRecreated() {
+        val prefs = todayPreferences()
+        prefs.setShowCompleted(false)
+        prefs.setCollapsedSections("2026-09-14", setOf("section-1"))
+        val screenVisible = mutableStateOf(true)
+        launchScreen(FakeTodayRepository(initialDay = displayTestDay()), screenVisibility = screenVisible)
+        waitForStatus(TodayLoadStatus.CONTENT)
+        composeRule.onNodeWithContentDescription("Morningセクションを展開").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("表示").performClick()
+        composeRule.onNodeWithContentDescription("完了タスクを表示").assertIsDisplayed().assertIsEnabled()
+
+        composeRule.runOnIdle { screenVisible.value = false }
+        composeRule.waitForIdle()
+        composeRule.runOnIdle { screenVisible.value = true }
+        composeRule.waitUntil(10_000) {
+            composeRule.onAllNodesWithContentDescription("Morningセクションを展開").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithContentDescription("Morningセクションを展開").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("表示").performClick()
+        assertTrue(composeRule.onAllNodesWithContentDescription("完了タスクを表示").fetchSemanticsNodes().isNotEmpty())
+        assertTrue(composeRule.onAllNodesWithText("Completed visibility row").fetchSemanticsNodes().isEmpty())
+    }
+
+    @Test
+    fun unsectionedCollapsePreferenceRestoresFromStableSentinel() {
+        val task = dayWith().sections.single().entries.single().copy(id = "unsectioned-entry", title = "Unsectioned task")
+        todayPreferences().setCollapsedSections("2026-09-14", setOf(TodayDisplayPreferences.UNSECTIONED_KEY))
+        launchScreen(FakeTodayRepository(initialDay = dayWith().copy(sections = emptyList(), unsectionedEntries = listOf(task))))
+        waitForStatus(TodayLoadStatus.CONTENT)
+        composeRule.onNodeWithContentDescription("セクションなしセクションを展開").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithText("Unsectioned task").fetchSemanticsNodes().isEmpty())
+    }
+
+    @Test
+    fun staleSectionCollapsePreferenceIsPrunedAgainstCanonicalDay() {
+        val prefs = todayPreferences()
+        prefs.setCollapsedSections("2026-09-14", setOf("deleted-section"))
+        launchScreen()
+        waitForStatus(TodayLoadStatus.CONTENT)
+        composeRule.waitUntil(5_000) { prefs.collapsedSections("2026-09-14").isEmpty() }
+        composeRule.onNodeWithContentDescription("Morningセクションを折りたたむ").assertIsDisplayed()
     }
 
     @Test
@@ -1398,7 +1486,7 @@ class TodayScreenInstrumentedTest {
         launchPlanningScreen(planningRepository)
         waitForStatus(TodayLoadStatus.CONTENT)
 
-        composeRule.onNodeWithContentDescription("次の日").performClick()
+        controller?.nextDay()
         composeRule.waitUntil(15_000) {
             composeRule.onAllNodesWithText("2026-09-15", substring = true).fetchSemanticsNodes().isNotEmpty()
         }
@@ -1981,6 +2069,7 @@ class TodayScreenInstrumentedTest {
     private fun launchScreen(
         repo: FakeTodayRepository = FakeTodayRepository(),
         onNavigateSettings: () -> Unit = {},
+        screenVisibility: MutableState<Boolean>? = null,
     ): FakeTodayRepository {
         repository = repo
         controller = TodayController(
@@ -1990,15 +2079,29 @@ class TodayScreenInstrumentedTest {
         )
         composeRule.setContent {
             MaterialTheme {
-                TodayScreen(
-                    controller = requireNotNull(controller),
-                    planningController = null,
-                    onNavigateSettings = onNavigateSettings,
-                    onSignOut = {},
-                )
+                if (screenVisibility?.value != false) {
+                    TodayScreen(
+                        controller = requireNotNull(controller),
+                        planningController = null,
+                        onNavigateSettings = onNavigateSettings,
+                        onSignOut = {},
+                    )
+                }
             }
         }
         return repo
+    }
+
+    private fun todayPreferences() = TodayDisplayPreferences(
+        InstrumentationRegistry.getInstrumentation().targetContext,
+    )
+
+    private fun clearDisplayPreferences() {
+        InstrumentationRegistry.getInstrumentation().targetContext
+            .getSharedPreferences(TodayDisplayPreferences.PREFERENCES_NAME, 0)
+            .edit()
+            .clear()
+            .commit()
     }
 
     private fun launchPlanningScreen(
@@ -2216,6 +2319,27 @@ class TodayScreenInstrumentedTest {
             },
             taskChuteDayId = "day-1",
         )
+
+        fun displayTestDay(): TodayDay {
+            val planned = dayWith().sections.single().entries.single().copy(
+                id = "planned-visible", title = "Planned visibility row",
+            )
+            val running = dayWith(LifecycleState.RUNNING).sections.single().entries.single().copy(
+                id = "running-visible", title = "Running visibility row",
+            )
+            val completed = dayWith(LifecycleState.COMPLETED).sections.single().entries.single().copy(
+                id = "completed-visible", title = "Completed visibility row",
+            )
+            return dayWith().copy(
+                sections = listOf(dayWith().sections.single().copy(entries = listOf(planned, running, completed))),
+                activeExecution = TodayExecution(
+                    id = "execution-1",
+                    entryId = running.id,
+                    startedAt = "2026-09-14T01:00:00Z",
+                    estimateSeconds = 600,
+                ),
+            )
+        }
 
         fun emptyDay() = TodayDay(
             logicalDate = "2026-09-14",

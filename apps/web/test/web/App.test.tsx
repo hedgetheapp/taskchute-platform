@@ -22,7 +22,7 @@ vi.mock("../../src/web/api", async () => {
   return { ...actual, api: mocks };
 });
 
-import { App, DAY_COLUMNS_STORAGE_KEY, DAY_SECTION_COLLAPSE_STORAGE_KEY, SIDEBAR_STORAGE_KEY,
+import { App, DAY_COLUMNS_STORAGE_KEY, DAY_SECTION_COLLAPSE_STORAGE_KEY, SHOW_COMPLETED_STORAGE_KEY, SIDEBAR_STORAGE_KEY,
   formatActualClockInput, formatClockInputFromLogicalMinute, formatEstimate, logicalMinuteFromClock, parseActualClockInput, parseFourDigitClock } from "../../src/web/App";
 import { ApiClientError } from "../../src/web/api";
 import { dayTableStyle, defaultDayColumnPreference } from "../../src/web/day-columns";
@@ -1512,12 +1512,131 @@ describe("Dogfood Day shell", () => {
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Morningを折りたたむ" }));
     const displayMenu = await openDisplayMenu();
+    const collapsePreferenceBefore = window.localStorage.getItem(DAY_SECTION_COLLAPSE_STORAGE_KEY);
     fireEvent.click(within(displayMenu).getByRole("checkbox", { name: "実行済みを表示" }));
+    expect(window.localStorage.getItem(DAY_SECTION_COLLAPSE_STORAGE_KEY)).toBe(collapsePreferenceBefore);
     fireEvent.click(screen.getByRole("button", { name: "Morningを展開" }));
     expect(screen.getByText("Canonical task")).toBeTruthy();
     expect(screen.queryByText("Second task")).toBeNull();
     fireEvent.click(within(displayMenu).getByRole("checkbox", { name: "実行済みを表示" }));
     expect(screen.getByText("Second task")).toBeTruthy();
+  });
+
+  it("defaults Completed visibility to on when no saved preference exists", async () => {
+    mocks.loadDay.mockResolvedValue(completedDay);
+    render(<App />);
+    expect(await screen.findByText("Canonical task")).toBeTruthy();
+    const menu = await openDisplayMenu();
+    expect((within(menu).getByRole("checkbox", { name: "実行済みを表示" }) as HTMLInputElement).checked).toBe(true);
+  });
+
+  it("restores saved Completed visibility off and keeps the Section visible", async () => {
+    window.localStorage.setItem(SHOW_COMPLETED_STORAGE_KEY, JSON.stringify(false));
+    mocks.loadDay.mockResolvedValue(completedDay);
+    render(<App />);
+    await screen.findByRole("region", { name: "DayBoard" });
+    expect(screen.queryByText("Canonical task")).toBeNull();
+    expect(screen.getAllByText("Morning")[0]).toBeTruthy();
+    const menu = await openDisplayMenu();
+    expect((within(menu).getByRole("checkbox", { name: "実行済みを表示" }) as HTMLInputElement).checked).toBe(false);
+  });
+
+  it("restores saved Completed visibility on", async () => {
+    window.localStorage.setItem(SHOW_COMPLETED_STORAGE_KEY, JSON.stringify(true));
+    mocks.loadDay.mockResolvedValue(completedDay);
+    render(<App />);
+    expect(await screen.findByText("Canonical task")).toBeTruthy();
+    const menu = await openDisplayMenu();
+    expect((within(menu).getByRole("checkbox", { name: "実行済みを表示" }) as HTMLInputElement).checked).toBe(true);
+  });
+
+  it("falls back to shown when the saved Completed preference is malformed", async () => {
+    window.localStorage.setItem(SHOW_COMPLETED_STORAGE_KEY, "{not-json");
+    mocks.loadDay.mockResolvedValue(completedDay);
+    render(<App />);
+    expect(await screen.findByText("Canonical task")).toBeTruthy();
+    const menu = await openDisplayMenu();
+    expect((within(menu).getByRole("checkbox", { name: "実行済みを表示" }) as HTMLInputElement).checked).toBe(true);
+  });
+
+  it("falls back to shown when reading the Completed preference throws", async () => {
+    const read = window.localStorage.getItem.bind(window.localStorage);
+    vi.spyOn(window.localStorage, "getItem").mockImplementation((key) => {
+      if (key === SHOW_COMPLETED_STORAGE_KEY) throw new Error("storage disabled");
+      return read(key);
+    });
+    mocks.loadDay.mockResolvedValue(completedDay);
+    render(<App />);
+    expect(await screen.findByText("Canonical task")).toBeTruthy();
+    const menu = await openDisplayMenu();
+    expect((within(menu).getByRole("checkbox", { name: "実行済みを表示" }) as HTMLInputElement).checked).toBe(true);
+  });
+
+  it("keeps the in-memory toggle usable when writing the Completed preference throws", async () => {
+    const write = window.localStorage.setItem.bind(window.localStorage);
+    vi.spyOn(window.localStorage, "setItem").mockImplementation((key, value) => {
+      if (key === SHOW_COMPLETED_STORAGE_KEY) throw new Error("storage disabled");
+      return write(key, value);
+    });
+    const mixedDay = { ...twoPlannedDay, sections: [{ ...twoPlannedDay.sections[0], entries: [
+      firstEntry, { ...secondEntry, lifecycle_state: "completed" as const },
+    ] }, emptyDay.sections[1]] };
+    mocks.loadDay.mockResolvedValue(mixedDay);
+    render(<App />);
+    expect(await screen.findByText("Second task")).toBeTruthy();
+    const menu = await openDisplayMenu();
+    fireEvent.click(within(menu).getByRole("checkbox", { name: "実行済みを表示" }));
+    expect(screen.queryByText("Second task")).toBeNull();
+    expect(screen.getByText("Canonical task")).toBeTruthy();
+  });
+
+  it("hides Completed rows only when toggled off, then restores them and saves on", async () => {
+    const mixedDay = { ...twoPlannedDay, sections: [{ ...twoPlannedDay.sections[0], entries: [
+      firstEntry, { ...secondEntry, lifecycle_state: "completed" as const },
+    ] }, emptyDay.sections[1]] };
+    mocks.loadDay.mockResolvedValue(mixedDay);
+    render(<App />);
+    expect(await screen.findByText("Second task")).toBeTruthy();
+    const menu = await openDisplayMenu();
+    const checkbox = within(menu).getByRole("checkbox", { name: "実行済みを表示" });
+    fireEvent.click(checkbox);
+    expect(screen.queryByText("Second task")).toBeNull();
+    expect(screen.getByText("Canonical task")).toBeTruthy();
+    expect(screen.getAllByText("Morning")[0]).toBeTruthy();
+    fireEvent.click(checkbox);
+    expect(screen.getByText("Second task")).toBeTruthy();
+    await waitFor(() => expect(window.localStorage.getItem(SHOW_COMPLETED_STORAGE_KEY)).toBe("true"));
+  });
+
+  it("restores Completed visibility off after App remount without changing Section collapse", async () => {
+    const mixedDay = { ...twoPlannedDay, sections: [{ ...twoPlannedDay.sections[0], entries: [
+      firstEntry, { ...secondEntry, lifecycle_state: "completed" as const },
+    ] }, emptyDay.sections[1]] };
+    mocks.loadDay.mockResolvedValue(mixedDay);
+    const firstRender = render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Morningを折りたたむ" }));
+    const menu = await openDisplayMenu();
+    fireEvent.click(within(menu).getByRole("checkbox", { name: "実行済みを表示" }));
+    await waitFor(() => expect(window.localStorage.getItem(SHOW_COMPLETED_STORAGE_KEY)).toBe("false"));
+    const collapseBeforeUnmount = window.localStorage.getItem(DAY_SECTION_COLLAPSE_STORAGE_KEY);
+    firstRender.unmount();
+
+    render(<App />);
+    expect(await screen.findByRole("button", { name: "Morningを展開" })).toBeTruthy();
+    const restoredMenu = await openDisplayMenu();
+    expect((within(restoredMenu).getByRole("checkbox", { name: "実行済みを表示" }) as HTMLInputElement).checked).toBe(false);
+    expect(window.localStorage.getItem(DAY_SECTION_COLLAPSE_STORAGE_KEY)).toBe(collapseBeforeUnmount);
+  });
+
+  it("persists Completed visibility independently from the existing collapse preference key", async () => {
+    mocks.loadDay.mockResolvedValue(completedDay);
+    render(<App />);
+    await screen.findByText("Canonical task");
+    const menu = await openDisplayMenu();
+    const collapseBefore = window.localStorage.getItem(DAY_SECTION_COLLAPSE_STORAGE_KEY);
+    fireEvent.click(within(menu).getByRole("checkbox", { name: "実行済みを表示" }));
+    await waitFor(() => expect(window.localStorage.getItem(SHOW_COMPLETED_STORAGE_KEY)).toBe("false"));
+    expect(window.localStorage.getItem(DAY_SECTION_COLLAPSE_STORAGE_KEY)).toBe(collapseBefore);
   });
 
   it("does not run global navigation while editing text or during IME composition", async () => {

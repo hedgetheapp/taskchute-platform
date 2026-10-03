@@ -250,6 +250,7 @@ type TaskMetadataDraft = {
  */
 export const DAY_SECTION_COLLAPSE_STORAGE_KEY = "taskchute.web.day-section-collapse.v1";
 const DAY_SECTION_COLLAPSE_STORAGE_VERSION = 1;
+export const SHOW_COMPLETED_STORAGE_KEY = "taskchute.web.show-completed.v1";
 export const SIDEBAR_STORAGE_KEY = "taskchute.web.sidebar.v1";
 const SIDEBAR_STORAGE_VERSION = 1;
 const UNSECTIONED_SECTION_KEY = "unsectioned";
@@ -267,6 +268,27 @@ type PersistedSidebarPreference = {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readPersistedShowCompleted(): boolean {
+  if (typeof window === "undefined") return true;
+  try {
+    const raw = window.localStorage.getItem(SHOW_COMPLETED_STORAGE_KEY);
+    if (raw === null) return true;
+    const parsed: unknown = JSON.parse(raw);
+    return typeof parsed === "boolean" ? parsed : true;
+  } catch {
+    return true;
+  }
+}
+
+function persistShowCompleted(showCompleted: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(SHOW_COMPLETED_STORAGE_KEY, JSON.stringify(showCompleted));
+  } catch {
+    // localStorage may be unavailable or full; the current view remains usable in memory.
+  }
 }
 
 function defaultRoutineSchedule(kind: string): RoutineScheduleInput {
@@ -1114,7 +1136,7 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [draftTask, setDraftTask] = useState<DraftTask | null>(null);
   const [pendingFocusKey, setPendingFocusKey] = useState<string | null>(null);
-  const [showCompleted, setShowCompleted] = useState(true);
+  const [showCompleted, setShowCompleted] = useState(readPersistedShowCompleted);
   const [collapsedSectionsByDay, setCollapsedSectionsByDay] = useState<CollapsedSectionsByDay>(readPersistedCollapsedSections);
   const [sidebarState, setSidebarState] = useState<SidebarState>(readPersistedSidebarState);
   const [dayColumnPreference, setDayColumnPreference] = useState<DayColumnPreference>(readPersistedDayColumnPreference);
@@ -2225,6 +2247,10 @@ export function App() {
   useEffect(() => {
     persistCollapsedSections(collapsedSectionsByDay);
   }, [collapsedSectionsByDay]);
+
+  useEffect(() => {
+    persistShowCompleted(showCompleted);
+  }, [showCompleted]);
 
   useEffect(() => {
     persistSidebarState(sidebarState);
