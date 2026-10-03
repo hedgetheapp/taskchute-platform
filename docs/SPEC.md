@@ -18,6 +18,8 @@ D-129により、current logical Dayでeffective current instant以前に終了�
 
 Android Task RowのPlanned開始・終了見込みはWeb Start Forecastのderived projection（current cursor、active Runningのremaining estimate、display order、planned startをbarrierにしない）に合わせる。D-130によりRunning rowは開始見込みへcanonical actual startを表示し、終了見込みを`actual start + Entry estimate`で表示する。estimateなしでは終了見込みだけ未表示とし、Running遷移後に`--:--`へ戻さない。見積と実績durationはpresentation上は常に総分数で表示する。Header DatePickerとTask Actionsの日付移動は同一Compose DatePicker UI implementationを共有する。
 
+D-161により、materialized Day Entryの`start_reminder_offset_minutes != null`はD-145 fixed-start markerとなり、fixed anchorはDay logical date / establishment timezoneにおける`planned_start_minute`である。reminder offsetはnotification deliveryだけに影響し、forecast anchorを動かさない。fixed planned Entryはincoming cursorが遅れてもanchorを表示し、`max(0, cursor - anchor)`をadvisory overlapとして導出し、endがある場合のdownstream cursorをanchor + estimateへresetする。Reminder OFFはD-032 flexible forecastへ戻る。Task conflict amountとtimed Sectionの最大overlap / projected-end overflow warningはderived-onlyで、collapsed Sectionでも発見でき、自動plan mutationは行わない。D-155 reminder delivery semanticsは維持し、同Decisionのfixed-start / forecast関係だけをD-161がsupersedeする。
+
 
 +## D-138 Android Today planning / lifecycle refinements
 +

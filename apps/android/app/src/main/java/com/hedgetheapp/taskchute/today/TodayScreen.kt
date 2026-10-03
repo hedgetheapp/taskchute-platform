@@ -508,6 +508,15 @@ private fun TodayContent(
     modifier: Modifier,
 ) {
     val day = state.presentedDay ?: return LoadingToday()
+    var forecastNow by remember(day.logicalDate) { mutableStateOf(Instant.now()) }
+    LaunchedEffect(day.logicalDate, day.isCurrent) {
+        while (day.isCurrent) {
+            val nowMillis = Instant.now().toEpochMilli()
+            delay((60_000L - nowMillis % 60_000L).coerceAtLeast(1L))
+            forecastNow = Instant.now()
+        }
+    }
+    val dayForecast = remember(day, forecastNow) { calculateTodayStartForecast(day, forecastNow) }
     val rowBounds = remember { mutableStateMapOf<String, Rect>() }
     val dropBounds = remember { mutableStateMapOf<String, Rect>() }
     val dropBoundsSectionId = remember { mutableStateMapOf<String, String?>() }
@@ -856,6 +865,7 @@ private fun TodayContent(
                 item(key = "section-${section.id}") {
                     SectionHeader(
                         section = section,
+                        warning = dayForecast.sections[section.id],
                         collapsed = section.id in collapsedSectionIds,
                         onToggleCollapsed = {
                             collapsedSectionIds = if (section.id in collapsedSectionIds) {
@@ -887,6 +897,7 @@ private fun TodayContent(
                         modifier = Modifier.animateItem(),
                         day = day,
                         task = task,
+                        forecast = dayForecast.entries[task.id],
                         sectionId = section.id,
                         enabled = !state.pendingEntryIds.contains(task.id),
                         controller = controller,
@@ -966,6 +977,7 @@ private fun TodayContent(
                 item(key = "section-unsectioned") {
                     SectionHeader(
                         section = null,
+                        warning = null,
                         collapsed = UNSECTIONED_DROP_KEY in collapsedSectionIds,
                         onToggleCollapsed = {
                             collapsedSectionIds = if (UNSECTIONED_DROP_KEY in collapsedSectionIds) {
@@ -996,6 +1008,7 @@ private fun TodayContent(
                         modifier = Modifier.animateItem(),
                         day = day,
                         task = task,
+                        forecast = dayForecast.entries[task.id],
                         sectionId = null,
                         enabled = !state.pendingEntryIds.contains(task.id),
                         controller = controller,
@@ -1397,7 +1410,7 @@ private fun DraggedTaskOverlay(task: TodayTask, modifier: Modifier = Modifier) {
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                TaskMetadata(task, Modifier.fillMaxWidth())
+                TaskMetadata(task, modifier = Modifier.fillMaxWidth())
             }
         }
     }
@@ -1426,6 +1439,7 @@ private fun isLegalManualReorder(entries: List<TodayTask>, desiredIds: List<Stri
 @Composable
 private fun SectionHeader(
     section: TodaySection?,
+    warning: SectionForecastWarning?,
     collapsed: Boolean,
     onToggleCollapsed: () -> Unit,
     modifier: Modifier = Modifier,
@@ -1433,12 +1447,30 @@ private fun SectionHeader(
 ) {
     val title = section?.title ?: "セクションなし"
     val range = section?.let { "${formatMinute(it.startMinute)} - ${formatMinute(it.endMinute)}" }
+    val warningDescription = warning?.let {
+        buildList {
+            if (it.hasOverlap) add("固定開始への最大重複${conflictMinutesCeiling(it.overlapSeconds)}分")
+            if (it.hasOverflow) add("セクション終了を${conflictMinutesCeiling(it.overflowSeconds)}分超過")
+        }.joinToString("、")
+    }
+    val warningLabel = warning?.let {
+        when {
+            it.hasOverlap && it.hasOverflow -> "⚠ 要確認"
+            it.hasOverlap -> "⚠ ${conflictMinutesCeiling(it.overlapSeconds)}分重複"
+            else -> "⚠ ${conflictMinutesCeiling(it.overflowSeconds)}分超過"
+        }
+    }
     Row(
         modifier = modifier.fillMaxWidth().height(38.dp)
             .background(TaskChuteColors.SurfaceElevated)
             .then(if (dropTarget) Modifier.background(Color(0x8C18423C)).border(BorderStroke(2.dp, Color(0xFF58C8B2))) else Modifier)
             .clickable(onClick = onToggleCollapsed)
-            .semantics { contentDescription = "${title}セクション${if (collapsed) "を展開" else "を折りたたむ"}" }
+            .semantics {
+                contentDescription = buildString {
+                    append("${title}セクション${if (collapsed) "を展開" else "を折りたたむ"}")
+                    warningDescription?.let { append("。警告: ").append(it) }
+                }
+            }
             .padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -1465,6 +1497,14 @@ private fun SectionHeader(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
+        warningLabel?.let {
+            Text(
+                text = it,
+                color = TaskChuteColors.Attention,
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, fontWeight = FontWeight.SemiBold),
+                maxLines = 1,
+            )
+        }
     }
 }
 
@@ -1475,6 +1515,7 @@ private fun TodayTaskRow(
     modifier: Modifier = Modifier,
     day: TodayDay,
     task: TodayTask,
+    forecast: EntryStartForecast?,
     sectionId: String?,
     enabled: Boolean,
     controller: TodayController,
@@ -1627,7 +1668,18 @@ private fun TodayTaskRow(
                 ).padding(top = insertionPadding)
                     .animateContentSize()
                     .semantics {
-                        contentDescription = if (dragging) "タスクを移動中: " + task.title else "タスクをドラッグ: " + task.title
+                        val fixedForecastDescription = forecast
+                            ?.takeIf { task.lifecycleState == LifecycleState.PLANNED && it.fixedStart }
+                            ?.let {
+                                buildString {
+                                    append("。固定開始${formatMinute(it.startMinute)}、終了見込み${formatMinute(it.endMinute)}")
+                                    if (it.conflictSeconds > 0) {
+                                        append("、前の予定が${conflictMinutesCeiling(it.conflictSeconds)}分重複しています")
+                                    }
+                                }
+                            }.orEmpty()
+                        contentDescription = if (dragging) "タスクを移動中: " + task.title
+                            else "タスクをドラッグ: " + task.title + fixedForecastDescription
                     },
             shape = RoundedCornerShape(0.dp),
             colors = CardDefaults.cardColors(containerColor = rowSurface),
@@ -1645,7 +1697,7 @@ private fun TodayTaskRow(
                         onToggleSelection = onToggleSelection,
                     )
                 } else {
-                    TaskProjectionSlot(task, day)
+                    TaskProjectionSlot(task, forecast)
                 }
                 Spacer(Modifier.width(4.dp))
                 val canEnterSelection = !selectionModeActive && canSelect
@@ -1702,7 +1754,7 @@ private fun TodayTaskRow(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    TaskMetadata(task, Modifier.fillMaxWidth())
+                    TaskMetadata(task, forecast, Modifier.fillMaxWidth())
                 }
                 Spacer(Modifier.width(10.dp))
                 when {
@@ -1801,15 +1853,18 @@ private fun TodayTaskRow(
 }
 
 @Composable
-private fun TaskProjectionSlot(task: TodayTask, day: TodayDay? = null) {
-    val forecast = day?.let { forecastForTask(it, task) }
-    val projectionStart = formatMinute(forecast?.first)
-    val projectionEnd = formatMinute(forecast?.second)
+private fun TaskProjectionSlot(task: TodayTask, forecast: EntryStartForecast? = null) {
+    val projectionStart = formatMinute(forecast?.startMinute)
+    val projectionEnd = formatMinute(forecast?.endMinute)
+    val conflictDescription = forecast?.takeIf { it.fixedStart && it.conflictSeconds > 0 }
+        ?.let { "、前の予定が${conflictMinutesCeiling(it.conflictSeconds)}分重複しています" }
     Box(
         modifier = Modifier.size(width = 48.dp, height = 84.dp)
             .semantics {
                 contentDescription = if (task.lifecycleState == LifecycleState.COMPLETED) {
                     "実績開始時刻: " + projectionStart + "、実績終了時刻: " + projectionEnd
+                } else if (task.lifecycleState == LifecycleState.PLANNED && forecast?.fixedStart == true) {
+                    "固定開始見込み時刻: " + projectionStart + "、終了見込み時刻: " + projectionEnd + (conflictDescription ?: "")
                 } else {
                     "開始見込み時刻: " + projectionStart + "、終了見込み時刻: " + projectionEnd
                 }
@@ -1818,9 +1873,14 @@ private fun TaskProjectionSlot(task: TodayTask, day: TodayDay? = null) {
         Text(
             projectionStart,
             modifier = Modifier.align(Alignment.TopCenter).offset(y = 5.dp).fillMaxWidth(),
-            color = TaskChuteColors.SecondaryText,
+            color = if (task.lifecycleState == LifecycleState.PLANNED && forecast?.fixedStart == true) {
+                TaskChuteColors.Attention
+            } else TaskChuteColors.SecondaryText,
             fontSize = 11.sp,
             lineHeight = 21.sp,
+            fontWeight = if (task.lifecycleState == LifecycleState.PLANNED && forecast?.fixedStart == true) {
+                FontWeight.SemiBold
+            } else FontWeight.Normal,
             textAlign = TextAlign.Center,
         )
         Box(
@@ -1888,7 +1948,7 @@ private fun TaskActionRow(iconRes: Int, label: String, destructive: Boolean = fa
 }
 
 @Composable
-private fun TaskMetadata(task: TodayTask, modifier: Modifier = Modifier) {
+private fun TaskMetadata(task: TodayTask, forecast: EntryStartForecast? = null, modifier: Modifier = Modifier) {
     val estimate = task.estimateSeconds?.let { formatEstimate(it) + " /" } ?: "-- /"
     val status = when (task.lifecycleState) {
         LifecycleState.PLANNED -> "未開始"
@@ -1964,15 +2024,31 @@ private fun TaskMetadata(task: TodayTask, modifier: Modifier = Modifier) {
             TaskMetadataIcon(R.drawable.ic_material_repeat_24, tint = if (task.routineDerived) TaskChuteColors.AccentBlue else TaskChuteColors.SecondaryText)
             Spacer(Modifier.width(6.dp))
             val context = listOfNotNull(task.project?.title, task.mode?.title).joinToString(" / ")
-            Text(
-                context,
-                modifier = Modifier.weight(1f),
-                color = TaskChuteColors.SecondaryText,
-                fontSize = 13.sp,
-                lineHeight = 17.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            val conflict = forecast?.takeIf { it.fixedStart && it.conflictSeconds > 0 }
+            if (conflict != null) {
+                Text(
+                    text = "⚠ ${conflictMinutesCeiling(conflict.conflictSeconds)}分重複",
+                    modifier = Modifier.weight(1f).semantics {
+                        contentDescription = "前の予定が${conflictMinutesCeiling(conflict.conflictSeconds)}分重複しています"
+                    },
+                    color = TaskChuteColors.Attention,
+                    fontSize = 13.sp,
+                    lineHeight = 17.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Clip,
+                )
+            } else {
+                Text(
+                    context,
+                    modifier = Modifier.weight(1f),
+                    color = TaskChuteColors.SecondaryText,
+                    fontSize = 13.sp,
+                    lineHeight = 17.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }

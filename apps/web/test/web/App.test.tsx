@@ -909,6 +909,32 @@ describe("Dogfood Day shell", () => {
     expect(screen.queryByRole("textbox", { name: /開始見込/ })).toBeNull();
   });
 
+  it("shows reminder-backed fixed time and conflict in the task and collapsed Section warning", async () => {
+    const fixedDay: CurrentTaskChuteDayProjection = {
+      ...twoPlannedDay,
+      projection_generated_at: "2026-08-22T09:00:00Z",
+      sections: [{ ...twoPlannedDay.sections[0], logical_start_minute: 0, logical_end_minute: 1_220,
+        actual_start_instant: "2026-08-22T00:00:00Z", actual_end_instant: "2026-08-22T20:20:00Z",
+        entries: [
+          { ...firstEntry, estimate_seconds: 40_320, planned_start_minute: 0, start_reminder_offset_minutes: null },
+          { ...secondEntry, estimate_seconds: 1_800, planned_start_minute: 1_200, start_reminder_offset_minutes: 15 },
+        ] }, twoPlannedDay.sections[1]],
+    };
+    mocks.loadDay.mockResolvedValue(fixedDay);
+    render(<App />);
+
+    const fixedCell = await screen.findByLabelText("Second taskの固定開始見込 20:00。前の予定が12分重複しています");
+    expect(fixedCell.textContent).toContain("20:00");
+    expect(fixedCell.textContent).toContain("⚠ 12分重複");
+    const summary = await screen.findByRole("button", {
+      name: "Morningを折りたたむ。警告: 固定開始への最大重複12分、セクション終了を10分超過",
+    });
+    expect(summary.textContent).toContain("⚠ 要確認");
+    fireEvent.click(summary);
+    expect(summary.getAttribute("aria-expanded")).toBe("false");
+    expect(summary.textContent).toContain("⚠ 要確認");
+  });
+
   it("advances the local forecast clock without polling and cleans the timer on unmount", async () => {
     let tick: (() => void) | null = null;
     const performanceSpy = vi.spyOn(performance, "now").mockReturnValue(1_000);

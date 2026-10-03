@@ -59,7 +59,7 @@ import type {
 } from "../shared/contracts";
 import { mergeRealtimeScopes, type RealtimeRefresh, type RealtimeScope } from "../shared/realtime";
 import { isSamePlannedStartCohort } from "../shared/planned-entry-order";
-import { advanceProjectionClock, calculateStartForecast, formatStartForecast } from "../shared/start-forecast";
+import { advanceProjectionClock, calculateStartForecast, conflictMinutesCeiling, formatStartForecast } from "../shared/start-forecast";
 import { uuidv7 } from "../shared/uuidv7";
 import { api, ApiClientError, authSubjectIdFromSession } from "./api";
 import {
@@ -7009,9 +7009,27 @@ export function App() {
         </span>;
       }
       case "forecast":
-        return <span className="forecast-cell" data-day-column-cell={key} aria-label={`${entry.task.title}の開始見込`}>
-          {entry.lifecycle_state === "completed" ? "--:--" : renderEmptyValue(formatStartForecast(forecastByEntryId[entry.id], currentDay.taskchute_day.logical_date, currentDay.taskchute_day.establishment_timezone), "開始見込なし")}
-        </span>;
+        {
+          const forecast = forecastByEntryId.byEntryId[entry.id];
+          const startText = entry.lifecycle_state === "completed" ? "--:--" : formatStartForecast(
+            forecast?.startInstant,
+            currentDay.taskchute_day.logical_date,
+            currentDay.taskchute_day.establishment_timezone,
+          );
+          const conflictText = forecast?.fixedStart && forecast.conflictSeconds > 0
+            ? `前の予定が${conflictMinutesCeiling(forecast.conflictSeconds)}分重複`
+            : null;
+          const conflictMinutes = conflictText ? conflictMinutesCeiling(forecast?.conflictSeconds ?? 0) : null;
+          const fixedLabel = forecast?.fixedStart
+            ? `固定開始見込 ${startText}${conflictText ? `。${conflictText}しています` : ""}`
+            : null;
+          return <span className={`forecast-cell${forecast?.fixedStart ? " is-fixed-start" : ""}`}
+            data-day-column-cell={key}
+            aria-label={fixedLabel ? `${entry.task.title}の${fixedLabel}` : `${entry.task.title}の開始見込`}>
+            <span className="forecast-time">{entry.lifecycle_state === "completed" ? "--:--" : renderEmptyValue(startText, "開始見込なし")}</span>
+            {conflictMinutes !== null && <span className="forecast-conflict-warning" aria-hidden="true">⚠ {conflictMinutes}分重複</span>}
+          </span>;
+        }
       case "actualStart":
         return <span className="actual-start-cell actual-time-cell" data-day-column-cell={key}>
           {executionTimeCell(entry, "start")}
@@ -7766,6 +7784,20 @@ export function App() {
           const completedCount = section.entries.filter((entry) => entry.lifecycle_state === "completed").length;
           const sectionTarget: FocusTarget = { kind: "section", id: groupKey(section.id) };
           const sectionCollapsed = collapsedSectionsByDay[currentDay.taskchute_day.logical_date]?.[groupKey(section.id)] === true;
+          const sectionWarning = section.id === null ? undefined : forecastByEntryId.bySectionId[section.id];
+          const sectionWarningLabel = sectionWarning
+            ? [
+              sectionWarning.overlapSeconds > 0 ? `固定開始への最大重複${conflictMinutesCeiling(sectionWarning.overlapSeconds)}分` : null,
+              sectionWarning.overflowSeconds > 0 ? `セクション終了を${conflictMinutesCeiling(sectionWarning.overflowSeconds)}分超過` : null,
+            ].filter((part): part is string => part !== null).join("、")
+            : null;
+          const sectionWarningVisual = sectionWarning
+            ? sectionWarning.overlapSeconds > 0 && sectionWarning.overflowSeconds > 0
+              ? "⚠ 要確認"
+              : sectionWarning.overlapSeconds > 0
+                ? `⚠ ${conflictMinutesCeiling(sectionWarning.overlapSeconds)}分重複`
+                : `⚠ ${conflictMinutesCeiling(sectionWarning.overflowSeconds)}分超過`
+            : null;
           const sectionDropActive = entryDrag?.targetSectionKey === groupKey(section.id) && canDropOnSection(section.id);
           const sectionDropPlaceholder = sectionDropActive && !sectionCollapsed ? (
             <div className="section-drop-placeholder" aria-hidden="true"><span>ここに追加</span></div>
@@ -7777,7 +7809,7 @@ export function App() {
                 tabIndex={0}
                 role="button"
                 aria-expanded={!sectionCollapsed}
-                aria-label={`${section.title}を${sectionCollapsed ? "展開" : "折りたたむ"}`}
+                aria-label={`${section.title}を${sectionCollapsed ? "展開" : "折りたたむ"}${sectionWarningLabel ? `。警告: ${sectionWarningLabel}` : ""}`}
                 data-day-focus-target
                 data-section-id={section.id ?? ""}
                 data-focus-key={focusKey(sectionTarget)}
@@ -7802,7 +7834,9 @@ export function App() {
                   toggleSection(section.id);
                 }}
               >
-                <div className="section-summary-content"><strong>{section.title}</strong><span>{section.id === null ? "時間帯なし" : `${formatLogicalMinute(section.logical_start_minute)}–${formatLogicalMinute(section.logical_end_minute)}`} · {completedCount}/{section.entries.length + pendingAdds.length} 実行済み · 見積 {formatEstimate(section.estimate_total_seconds + pendingAdds.reduce((sum, item) => sum + (item.estimateSeconds ?? 0), 0))}</span></div>
+                <div className="section-summary-content"><strong>{section.title}</strong>
+                  {sectionWarningVisual && <span className="section-summary-warning" aria-hidden="true">{sectionWarningVisual}</span>}
+                  <span>{section.id === null ? "時間帯なし" : `${formatLogicalMinute(section.logical_start_minute)}–${formatLogicalMinute(section.logical_end_minute)}`} · {completedCount}/{section.entries.length + pendingAdds.length} 実行済み · 見積 {formatEstimate(section.estimate_total_seconds + pendingAdds.reduce((sum, item) => sum + (item.estimateSeconds ?? 0), 0))}</span></div>
                 <div className="section-summary-actions">
                   <button type="button" className="add-task-button" aria-label={`${section.title}にTaskを追加`} title={`${section.title}にTaskを追加`}
                     disabled={mutationLocked || hasRetainedMutationScope(placementMutationScope()) || !day.planning_enabled || day.section_configuration_required}

@@ -97,6 +97,36 @@ class TodayScreenInstrumentedTest {
     }
 
     @Test
+    fun fixedStartConflictAndSectionOverflowRemainAccessibleWhenCollapsed() {
+        val prior = dayWith().sections.single().entries.single().copy(
+            id = "entry-prior", title = "Prior work", estimateSeconds = 40_320, plannedStartMinute = 0,
+        )
+        val fixed = prior.copy(
+            id = "entry-fixed", title = "Fixed meeting", estimateSeconds = 1_800,
+            plannedStartMinute = 1_200, startReminderOffsetMinutes = 15,
+        )
+        val initialDay = dayWith().copy(
+            isCurrent = false,
+            startInstant = "2026-09-14T19:00:00Z",
+            establishmentTimezone = "UTC",
+            sections = listOf(TodaySection("section-1", "Morning", 0, 1_215, listOf(prior, fixed))),
+        )
+        launchPlanningScreen(FakePlanningRepository(), initialDay = initialDay)
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        composeRule.onNodeWithContentDescription(
+            "タスクをドラッグ: Fixed meeting。固定開始20:00、終了見込み20:30、前の予定が12分重複しています",
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText("⚠ 12分重複").assertIsDisplayed()
+        val collapsedWarning = "Morningセクションを折りたたむ。警告: 固定開始への最大重複12分、セクション終了を15分超過"
+        composeRule.onNodeWithContentDescription(collapsedWarning).assertIsDisplayed().performClick()
+        composeRule.onNodeWithContentDescription(
+            "Morningセクションを展開。警告: 固定開始への最大重複12分、セクション終了を15分超過",
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText("⚠ 要確認").assertIsDisplayed()
+    }
+
+    @Test
     fun startDispatchesOnceAndReloadsRunningState() {
         val repo = launchScreen(FakeTodayRepository().apply { holdStart = true })
         waitForStatus(TodayLoadStatus.CONTENT)

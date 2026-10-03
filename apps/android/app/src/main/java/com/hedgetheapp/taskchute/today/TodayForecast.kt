@@ -1,47 +1,150 @@
 package com.hedgetheapp.taskchute.today
 
+import com.hedgetheapp.taskchute.reminders.logicalMinuteInstant
+import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
-import java.time.ZonedDateTime
 
-/** Mirrors the Web Start Forecast cursor: planned starts are not barriers. */
-internal fun forecastForTask(day: TodayDay, task: TodayTask, now: Instant = Instant.now()): Pair<Int?, Int?> {
-    val zone = day.establishmentTimezone?.let { runCatching { ZoneId.of(it) }.getOrNull() } ?: return null to null
-    if (task.lifecycleState == LifecycleState.COMPLETED) {
-        val actualStart = task.firstStartedAt?.let { runCatching { Instant.parse(it) }.getOrNull() }
-        val actualEnd = task.lastEndedAt?.let { runCatching { Instant.parse(it) }.getOrNull() }
-        return actualStart?.let { logicalMinute(it, day, zone) } to actualEnd?.let { logicalMinute(it, day, zone) }
-    }
-    if (task.lifecycleState == LifecycleState.RUNNING) {
-        val actualStart = task.activeStartedAt ?: task.firstStartedAt ?: return null to null
-        val start = runCatching { Instant.parse(actualStart) }.getOrNull() ?: return null to null
-        val end = task.estimateSeconds?.let { start.plusSeconds(it.toLong()) }
-        return logicalMinute(start, day, zone) to end?.let { logicalMinute(it, day, zone) }
-    }
-    var cursor = if (day.isCurrent) now else day.startInstant?.let { runCatching { Instant.parse(it) }.getOrNull() } ?: return null to null
-    day.activeExecution?.let { active ->
-        val estimate = active.estimateSeconds ?: return@let
-        val elapsed = (now.epochSecond - Instant.parse(active.startedAt).epochSecond).coerceAtLeast(0)
-        cursor = cursor.plusSeconds((estimate - elapsed).coerceAtLeast(0))
-    }
-    val planned = day.sections.flatMap { it.entries } + day.unsectionedEntries
-    val target = planned.firstOrNull { it.id == task.id && it.lifecycleState == LifecycleState.PLANNED } ?: return null to null
-    for (candidate in planned) {
-        if (candidate.lifecycleState != LifecycleState.PLANNED) continue
-        if (candidate.id == target.id) {
-            val start = cursor
-            val end = candidate.estimateSeconds?.let { start.plusSeconds(it.toLong()) }
-            return logicalMinute(start, day, zone) to end?.let { logicalMinute(it, day, zone) }
-        }
-        candidate.estimateSeconds?.let { cursor = cursor.plusSeconds(it.toLong()) }
-    }
-    return null to null
+internal data class EntryStartForecast(
+    val startMinute: Int?,
+    val endMinute: Int?,
+    val fixedStart: Boolean = false,
+    val conflictSeconds: Long = 0,
+)
+
+internal data class SectionForecastWarning(
+    val overlapSeconds: Long,
+    val overflowSeconds: Long,
+) {
+    val hasOverlap: Boolean get() = overlapSeconds > 0
+    val hasOverflow: Boolean get() = overflowSeconds > 0
 }
 
-private fun logicalMinute(instant: Instant, day: TodayDay, zone: ZoneId): Int {
+internal data class TodayStartForecast(
+    val entries: Map<String, EntryStartForecast>,
+    val sections: Map<String, SectionForecastWarning>,
+)
+
+/** D-032 flexible forecast plus D-145/D-161 fixed anchors and derived Section warnings. */
+internal fun calculateTodayStartForecast(day: TodayDay, now: Instant = Instant.now()): TodayStartForecast {
+    val zone = day.establishmentTimezone?.let { runCatching { ZoneId.of(it) }.getOrNull() }
+        ?: return TodayStartForecast(emptyMap(), emptyMap())
+    val logicalDate = runCatching { LocalDate.parse(day.logicalDate) }.getOrNull()
+        ?: return TodayStartForecast(emptyMap(), emptyMap())
+    val entryForecasts = mutableMapOf<String, EntryStartForecast>()
+    val overlapBySection = mutableMapOf<String, Long>()
+    val sectionWarnings = mutableMapOf<String, SectionForecastWarning>()
+
+    for (task in day.allEntries) {
+        when (task.lifecycleState) {
+            LifecycleState.COMPLETED -> {
+                val start = task.firstStartedAt?.let { runCatching { Instant.parse(it) }.getOrNull() }
+                val end = task.lastEndedAt?.let { runCatching { Instant.parse(it) }.getOrNull() }
+                entryForecasts[task.id] = EntryStartForecast(
+                    start?.let { logicalMinute(it, logicalDate, zone) },
+                    end?.let { logicalMinute(it, logicalDate, zone) },
+                )
+            }
+            LifecycleState.RUNNING -> {
+                val actualStart = task.activeStartedAt ?: task.firstStartedAt
+                val start = actualStart?.let { runCatching { Instant.parse(it) }.getOrNull() }
+                val end = start?.let { value ->
+                    task.estimateSeconds?.takeIf { it >= 0 }?.let { estimate -> value.plusSeconds(estimate.toLong()) }
+                }
+                entryForecasts[task.id] = EntryStartForecast(
+                    start?.let { logicalMinute(it, logicalDate, zone) },
+                    end?.let { logicalMinute(it, logicalDate, zone) },
+                )
+            }
+            LifecycleState.PLANNED -> Unit
+        }
+    }
+
+    if (!day.planningEnabled) return TodayStartForecast(entryForecasts, emptyMap())
+
+    var cursor = if (day.isCurrent) now else day.startInstant?.let {
+        runCatching { Instant.parse(it) }.getOrNull()
+    } ?: return TodayStartForecast(entryForecasts, emptyMap())
+
+    var activeForecastEnd: Instant? = null
+    if (day.isCurrent) {
+        day.activeExecution?.let { active ->
+            val estimateSeconds = active.estimateSeconds?.takeIf { it >= 0 } ?: return@let
+            val startedAt = runCatching { Instant.parse(active.startedAt) }.getOrNull() ?: return@let
+            val elapsedSeconds = Duration.between(startedAt, now).seconds.coerceAtLeast(0)
+            val remainingSeconds = (estimateSeconds.toLong() - elapsedSeconds).coerceAtLeast(0)
+            cursor = now.plusSeconds(remainingSeconds)
+            activeForecastEnd = cursor
+        }
+    }
+
+    // Match Web/D-032 eligibility: only planned rows in configured timed Sections forecast.
+    for (section in day.sections) {
+        val sectionStart = section.startMinute?.takeIf { it in 0..2879 } ?: continue
+        val sectionEnd = section.endMinute?.takeIf { it in (sectionStart + 1)..2880 } ?: continue
+        val sectionEndInstant = runCatching { logicalMinuteInstantForBoundary(day.logicalDate, zone, sectionEnd) }.getOrNull()
+            ?: continue
+        val sectionEndCandidates = mutableListOf<Instant>()
+        if (activeForecastEnd != null && day.activeExecution?.entryId?.let { id -> section.entries.any { it.id == id } } == true) {
+            sectionEndCandidates += activeForecastEnd
+        }
+
+        for (task in section.entries) {
+            if (task.lifecycleState != LifecycleState.PLANNED) continue
+            val plannedMinute = task.plannedStartMinute?.takeIf { it in 0..2879 }
+            val fixedAnchor = plannedMinute?.takeIf { task.startReminderOffsetMinutes != null }?.let { minute ->
+                runCatching { logicalMinuteInstant(day.logicalDate, zone, minute) }.getOrNull()
+            }
+            val fixed = fixedAnchor != null
+            val conflictSeconds = fixedAnchor?.let { durationSecondsCeiling(Duration.between(it, cursor)) } ?: 0L
+            val startInstant = fixedAnchor ?: cursor
+            val estimate = task.estimateSeconds?.takeIf { it >= 0 }
+            val endInstant = estimate?.let { startInstant.plusSeconds(it.toLong()) }
+
+            entryForecasts[task.id] = EntryStartForecast(
+                startMinute = if (fixed) requireNotNull(plannedMinute) else logicalMinute(startInstant, logicalDate, zone),
+                endMinute = endInstant?.let { logicalMinute(it, logicalDate, zone) },
+                fixedStart = fixed,
+                conflictSeconds = conflictSeconds,
+            )
+            if (conflictSeconds > 0) {
+                overlapBySection[section.id] = maxOf(overlapBySection[section.id] ?: 0, conflictSeconds)
+            }
+            if (endInstant != null) sectionEndCandidates += endInstant
+            cursor = endInstant ?: startInstant
+        }
+        // Section end warnings are based on the greatest projected end in the Section,
+        // not a sum of durations or historical actual rows.
+        val maxEnd = sectionEndCandidates.maxOrNull()
+        val overflow = maxEnd?.let { durationSecondsCeiling(Duration.between(sectionEndInstant, it)) } ?: 0L
+        val overlap = overlapBySection[section.id] ?: 0L
+        if (overlap > 0 || overflow > 0) {
+            sectionWarnings[section.id] = SectionForecastWarning(overlap, overflow)
+        }
+    }
+    return TodayStartForecast(entryForecasts, sectionWarnings)
+}
+
+internal fun forecastForTask(day: TodayDay, task: TodayTask, now: Instant = Instant.now()): Pair<Int?, Int?> =
+    calculateTodayStartForecast(day, now).entries[task.id]?.let { it.startMinute to it.endMinute } ?: (null to null)
+
+internal fun conflictMinutesCeiling(conflictSeconds: Long): Long =
+    if (conflictSeconds <= 0) 0 else (conflictSeconds + 59) / 60
+
+private fun durationSecondsCeiling(duration: Duration): Long {
+    val millis = duration.toMillis().coerceAtLeast(0)
+    return if (millis == 0L) 0 else (millis + 999) / 1_000
+}
+
+private fun logicalMinuteInstantForBoundary(logicalDate: String, zone: ZoneId, minute: Int): Instant {
+    require(minute in 0..2880)
+    return if (minute == 2880) logicalMinuteInstant(logicalDate, zone, 2879).plusSeconds(60)
+    else logicalMinuteInstant(logicalDate, zone, minute)
+}
+
+private fun logicalMinute(instant: Instant, logicalDate: LocalDate, zone: ZoneId): Int {
     val local = instant.atZone(zone)
-    val logicalDate = LocalDate.parse(day.logicalDate)
     val dayOffset = local.toLocalDate().toEpochDay() - logicalDate.toEpochDay()
     return local.hour * 60 + local.minute + (dayOffset * 1440L).toInt()
 }

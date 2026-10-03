@@ -52,6 +52,7 @@ object TaskChuteColors {
     val SelectionBorder = Color(0xFF7F7F7A)
     val CompletedControl = Color(0xFF1F2D26)
     val CompletedIcon = Color(0xFF7BCF9B)
+    val Attention = Color(0xFFFF6B6B)
 }
 
 private val TaskChuteDarkColors = darkColorScheme(

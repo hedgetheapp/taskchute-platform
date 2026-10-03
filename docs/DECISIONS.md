@@ -1,3 +1,11 @@
+## D-161 — Reminder-backed Fixed Start and Conflict Warnings v0.1
+
+Status: **Approved**
+
+Canonical Decision: `docs/decisions/D-161_REMINDER_BACKED_FIXED_START_AND_CONFLICT_WARNINGS_V01.md`
+
+For a materialized Day Entry, enabled D-155 Start Notification (`start_reminder_offset_minutes != null`) is the v0.1 fixed-start marker and `planned_start_minute` is the forecast anchor. The reminder offset changes notification delivery timing only. D-161 narrowly supersedes D-155's contrary fixed-start / forecast relationship while retaining its delivery semantics, and reuses D-145's non-sliding anchor, advisory overlap, Section overflow, and no-auto-repair semantics. Forecast/conflict/Section warnings are derived from existing Day, Entry, Execution, Section and display-order data; no schema, migration, command, dependency, or persistent warning state is added. D-032 flexible forecast remains unchanged.
+
 ## D-154B — Wear foreground realtime / UUIDv7 / Start UI corrective
 
 Status: **Approved / Implemented / Integrated / exact-SHA CI PASS / Wear AVD NOT_RUN / device NOT_RUN**

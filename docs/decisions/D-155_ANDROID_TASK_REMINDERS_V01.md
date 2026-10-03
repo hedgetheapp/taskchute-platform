@@ -45,3 +45,7 @@ D-145 fixed-start anchors and plan-conflict semantics remain separate and are no
 - Fixed-start anchors, forecast barriers, or plan-conflict presentation.
 - Inexact fallback, foreground service, full-screen notification, push service, or Watch-native scheduling.
 - Web reminder UI, production deployment, Release, schema changes beyond the additive Entry migration, or dependencies.
+
+## Narrow supersession by D-161
+
+D-161 (2026-10-03) supersedes only this Decision's statements that reminder intent does not define fixed-start status or affect Start Forecast. For a materialized Day Entry, non-null `start_reminder_offset_minutes` is now the D-145 fixed-start marker, anchored at `planned_start_minute`; the offset still affects notification delivery only. All D-155 reminder transport, delivery, permission, lifecycle, ownership, and persistence semantics remain unchanged. See `docs/decisions/D-161_REMINDER_BACKED_FIXED_START_AND_CONFLICT_WARNINGS_V01.md`.
