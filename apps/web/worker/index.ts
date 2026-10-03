@@ -706,9 +706,18 @@ async function route(request: Request, env: Env): Promise<Response> {
 
 export default {
   async fetch(request: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
+    const requestStartedAtMs = Date.now();
     try {
       const response = await route(request, env);
       if (hasCommittedMutation(response)) {
+        const affectsWearProjection = affectsWearRunningProjection(request);
+        if (affectsWearProjection && env.RUNTIME_ENV === "nonprod") {
+          console.log(JSON.stringify({
+            message: "wear_canonical_mutation_response_ready",
+            epochMs: Date.now(),
+            requestElapsedMs: Date.now() - requestStartedAtMs,
+          }));
+        }
         const scopes = realtimeScopesForMutation(request);
         const publishPromises: Promise<unknown>[] = [];
         if (scopes.length > 0 && env.REALTIME_HUB) {
@@ -730,11 +739,11 @@ export default {
             }
           }
         }
-        if (affectsWearRunningProjection(request) && env.TASKCHUTE_FCM_SERVICE_ACCOUNT_JSON) {
+        if (affectsWearProjection && env.TASKCHUTE_FCM_SERVICE_ACCOUNT_JSON) {
           try {
             const principal = await resolvePrincipal(request, env);
             publishPromises.push(sendWearRunningProjectionInvalidation(env.APP_DB, principal.appUserId,
-              env.TASKCHUTE_FCM_SERVICE_ACCOUNT_JSON).catch(() => {
+              env.TASKCHUTE_FCM_SERVICE_ACCOUNT_JSON, env.RUNTIME_ENV === "nonprod").catch(() => {
               console.error(JSON.stringify({ message: "wear FCM invalidation failed" }));
             }));
           } catch {

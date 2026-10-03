@@ -33,13 +33,19 @@ export async function sendWearRunningProjectionInvalidation(
   db: D1Database,
   appUserId: string,
   serviceAccountJson: string | undefined,
+  timingDiagnosticsEnabled = false,
 ): Promise<void> {
   if (!serviceAccountJson) return;
+  const dispatchStartedAtMs = Date.now();
+  if (timingDiagnosticsEnabled) {
+    console.log(JSON.stringify({ message: "wear_fcm_send_start", epochMs: dispatchStartedAtMs }));
+  }
   let account: FcmServiceAccount;
   try {
     account = parseServiceAccount(serviceAccountJson);
   } catch {
     console.error(JSON.stringify({ message: "wear FCM configuration is invalid" }));
+    if (timingDiagnosticsEnabled) logWearFcmDispatchFailure("configuration", dispatchStartedAtMs);
     return;
   }
 
@@ -48,14 +54,35 @@ export async function sendWearRunningProjectionInvalidation(
     accessToken = await getAccessToken(account);
   } catch {
     console.error(JSON.stringify({ message: "wear FCM authorization failed" }));
+    if (timingDiagnosticsEnabled) logWearFcmDispatchFailure("authorization", dispatchStartedAtMs);
     return;
   }
 
   const rows = await db.prepare(`SELECT id, app_user_id, installation_id, fcm_token
     FROM wear_push_registrations WHERE app_user_id = ? ORDER BY created_at, id`)
     .bind(appUserId).all<WearPushRegistrationRow>();
-  await Promise.all(rows.results.map((registration) => sendToRegistration(db, account.project_id,
+  const results = await Promise.all(rows.results.map((registration) => sendToRegistration(db, account.project_id,
     accessToken, registration)));
+  if (timingDiagnosticsEnabled) {
+    console.log(JSON.stringify({
+      message: "wear_fcm_send_complete",
+      epochMs: Date.now(),
+      elapsedMs: Date.now() - dispatchStartedAtMs,
+      registrationCount: rows.results.length,
+      sentCount: results.filter((result) => result === "sent").length,
+      removedCount: results.filter((result) => result === "removed").length,
+      failedCount: results.filter((result) => result === "failed").length,
+    }));
+  }
+}
+
+function logWearFcmDispatchFailure(stage: "configuration" | "authorization", startedAtMs: number): void {
+  console.log(JSON.stringify({
+    message: "wear_fcm_send_failed",
+    stage,
+    epochMs: Date.now(),
+    elapsedMs: Date.now() - startedAtMs,
+  }));
 }
 
 export function isPermanentFcmRegistrationFailure(body: unknown): boolean {
@@ -76,7 +103,7 @@ async function sendToRegistration(
   projectId: string,
   accessToken: string,
   registration: WearPushRegistrationRow,
-): Promise<void> {
+): Promise<"sent" | "removed" | "failed"> {
   try {
     const response = await fetch(`${FCM_INVALIDATION_ENDPOINT}${encodeURIComponent(projectId)}/messages:send`, {
       method: "POST",
@@ -90,18 +117,20 @@ async function sendToRegistration(
         },
       }),
     });
-    if (response.ok) return;
+    if (response.ok) return "sent";
     const errorBody: unknown = await response.json().catch(() => null);
     if (isPermanentFcmRegistrationFailure(errorBody)) {
       await db.prepare(`DELETE FROM wear_push_registrations
         WHERE id = ? AND app_user_id = ? AND installation_id = ? AND fcm_token = ?`)
         .bind(registration.id, registration.app_user_id, registration.installation_id, registration.fcm_token).run();
-      return;
+      return "removed";
     }
     console.warn(JSON.stringify({ message: "wear FCM send failed", status: response.status }));
+    return "failed";
   } catch {
     // Push is a best-effort freshness side effect; canonical mutation success is final.
     console.warn(JSON.stringify({ message: "wear FCM send failed", status: "network" }));
+    return "failed";
   }
 }
 

@@ -13,7 +13,10 @@ beforeAll(async () => {
   await env.APP_DB.prepare("INSERT INTO app_users (id, created_at) VALUES (?, ?)").bind(userId, createdAt).run();
 });
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 function testServiceAccount(): string {
   const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
@@ -61,7 +64,8 @@ describe("Wear Running FCM mapping and provider errors", () => {
     const requests: RequestInit[] = [];
     vi.stubGlobal("fetch", mockedFetchForFcm(Response.json({ name: "projects/taskchute/messages/1" }), requests));
 
-    await sendWearRunningProjectionInvalidation(env.APP_DB, userId, testServiceAccount());
+    const timingLogs = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    await sendWearRunningProjectionInvalidation(env.APP_DB, userId, testServiceAccount(), true);
 
     expect(requests).toHaveLength(2);
     const oauthBody = new URLSearchParams(String(requests[0].body));
@@ -82,6 +86,20 @@ describe("Wear Running FCM mapping and provider errors", () => {
       data: { type: "running_projection_invalidated" },
       android: { priority: "NORMAL", collapse_key: "wear-running-projection" },
     });
+    const timingEvents = timingLogs.mock.calls.map(([line]) => JSON.parse(String(line)) as Record<string, unknown>);
+    expect(timingEvents.map((event) => event.message)).toEqual(["wear_fcm_send_start", "wear_fcm_send_complete"]);
+    expect(timingEvents[1]).toMatchObject({ registrationCount: 1, sentCount: 1, removedCount: 0, failedCount: 0 });
+    expect(JSON.stringify(timingEvents)).not.toContain(token);
+    expect(JSON.stringify(timingEvents)).not.toContain(userId);
+  });
+
+  it("keeps Worker timing logs disabled unless the nonprod caller opts in", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ access_token: "test-access-token", expires_in: 3600 })));
+    const timingLogs = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    await sendWearRunningProjectionInvalidation(env.APP_DB, uuidv7(), testServiceAccount());
+
+    expect(timingLogs).not.toHaveBeenCalled();
   });
 
   it("keeps provider failures best-effort and does not throw into the canonical mutation path", async () => {
