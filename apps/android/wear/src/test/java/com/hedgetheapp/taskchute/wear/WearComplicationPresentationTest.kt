@@ -15,6 +15,10 @@ class WearComplicationPresentationTest {
         assertEquals(1_080L, result.elapsedSeconds)
         assertEquals(1_800, result.estimateSeconds)
         assertEquals("18/30", result.compactText)
+        assertEquals(
+            WearComplicationPayloadKind.GOAL_PROGRESS,
+            wearComplicationPayloadKind(WearComplicationRequestedType.GOAL_PROGRESS, result),
+        )
         assertFalse(result.overrun)
         assertTrue(result.contentDescription.contains("集中作業"))
     }
@@ -130,6 +134,12 @@ class WearComplicationPresentationTest {
             assertEquals(WearComplicationPayloadKind.NO_DATA,
                 wearComplicationPayloadKind(WearComplicationRequestedType.GOAL_PROGRESS, presentation))
         }
+        assertEquals("待機", wearComplicationTextFallback(WearComplicationRequestedType.SHORT_TEXT, idle)?.text)
+        assertEquals("TaskChute 待機", wearComplicationTextFallback(WearComplicationRequestedType.LONG_TEXT, idle)?.text)
+        assertEquals("ログイン", wearComplicationTextFallback(WearComplicationRequestedType.SHORT_TEXT, WearComplicationPresentation.SignedOut)?.text)
+        assertEquals("ログイン", wearComplicationTextFallback(WearComplicationRequestedType.LONG_TEXT, WearComplicationPresentation.SignedOut)?.text)
+        assertEquals("未取得", wearComplicationTextFallback(WearComplicationRequestedType.SHORT_TEXT, WearComplicationPresentation.Unavailable)?.text)
+        assertEquals("未取得", wearComplicationTextFallback(WearComplicationRequestedType.LONG_TEXT, WearComplicationPresentation.Unavailable)?.text)
     }
 
     @Test
@@ -153,6 +163,20 @@ class WearComplicationPresentationTest {
         assertEquals(
             WearComplicationPresentation.Unavailable,
             wearComplicationPresentation(WearAuthResult.SignedIn, WearLoadResult.Success(malformedDay), now),
+        )
+    }
+
+    @Test
+    fun activeExecutionMustResolveToMatchingRunningEntry() {
+        val task = task(WearLifecycle.RUNNING, 1_800)
+        val mismatchedDay = day().copy(
+            unsectionedTasks = listOf(task),
+            activeExecution = WearExecution("execution-1", "different-entry", "2026-10-02T10:00:00Z", 1_800),
+        )
+
+        assertEquals(
+            WearComplicationPresentation.Unavailable,
+            wearComplicationPresentation(WearAuthResult.SignedIn, WearLoadResult.Success(mismatchedDay), now),
         )
     }
 

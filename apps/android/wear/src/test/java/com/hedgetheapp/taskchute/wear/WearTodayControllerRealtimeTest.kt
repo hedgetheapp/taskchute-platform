@@ -74,6 +74,7 @@ class WearTodayControllerRealtimeTest {
     fun responseFromPreviousForegroundCannotOverwriteResumeRefresh() {
         val repository = FakeWearRepository()
         val realtime = FakeRealtimeClient()
+        var complicationRefreshes = 0
         lateinit var controller: WearTodayController
         repository.onLoad = {
             if (repository.loadCount == 1) {
@@ -84,7 +85,11 @@ class WearTodayControllerRealtimeTest {
                 WearLoadResult.Success(day("2026-10-01"))
             }
         }
-        controller = controller(repository, realtime)
+        controller = controller(
+            repository,
+            realtime,
+            onCanonicalRefreshAccepted = { complicationRefreshes += 1 },
+        )
 
         controller.onForeground()
 
@@ -92,6 +97,7 @@ class WearTodayControllerRealtimeTest {
         assertEquals(WearScreenState.Today(day("2026-10-01")), controller.state)
         assertEquals(2, realtime.startCount)
         assertTrue(realtime.stopCount >= 1)
+        assertEquals("only the accepted resume result requests complication refresh", 1, complicationRefreshes)
     }
 
     @Test
@@ -120,7 +126,11 @@ class WearTodayControllerRealtimeTest {
                 WearLoadResult.Success(runningDay(task))
             }
         }
-        val controller = controller(repository, FakeRealtimeClient()) { refreshCount += 1 }
+        val controller = controller(
+            repository,
+            FakeRealtimeClient(),
+            onCanonicalLifecycleReconciled = { refreshCount += 1 },
+        )
         controller.onForeground()
         controller.start(task)
 
@@ -138,7 +148,11 @@ class WearTodayControllerRealtimeTest {
         val task = plannedTask()
         repository.onLoad = { WearLoadResult.Success(day("2026-10-01").copy(unsectionedTasks = listOf(task))) }
         var refreshCount = 0
-        val controller = controller(repository, FakeRealtimeClient()) { refreshCount += 1 }
+        val controller = controller(
+            repository,
+            FakeRealtimeClient(),
+            onCanonicalLifecycleReconciled = { refreshCount += 1 },
+        )
         controller.onForeground()
         controller.start(task)
         assertEquals(0, refreshCount)
@@ -147,10 +161,66 @@ class WearTodayControllerRealtimeTest {
             startResult = WearMutationResult.Unauthorized
             onLoad = { WearLoadResult.Success(day("2026-10-01").copy(unsectionedTasks = listOf(task))) }
         }
-        val unauthorizedController = controller(unauthorizedRepository, FakeRealtimeClient()) { refreshCount += 1 }
+        val unauthorizedController = controller(
+            unauthorizedRepository,
+            FakeRealtimeClient(),
+            onCanonicalLifecycleReconciled = { refreshCount += 1 },
+        )
         unauthorizedController.onForeground()
         unauthorizedController.start(task)
         assertEquals(0, refreshCount)
+    }
+
+    @Test
+    fun acceptedCanonicalRefreshRequestsComplicationRefreshOncePerAcceptedDay() {
+        val repository = FakeWearRepository()
+        var refreshes = 0
+        val controller = controller(
+            repository,
+            FakeRealtimeClient(),
+            onCanonicalRefreshAccepted = { refreshes += 1 },
+        )
+
+        controller.onForeground()
+        assertEquals(1, repository.loadCount)
+        assertEquals(1, refreshes)
+
+        controller.onDayInvalidation("2026-10-01")
+
+        assertEquals(2, repository.loadCount)
+        assertEquals(2, refreshes)
+    }
+
+    @Test
+    fun failedOrUnauthorizedCanonicalRefreshDoesNotRequestComplicationRefresh() {
+        val failedRepository = FakeWearRepository().apply {
+            onLoad = { WearLoadResult.Failure(ambiguous = false) }
+        }
+        var refreshes = 0
+        val failedController = controller(
+            failedRepository,
+            FakeRealtimeClient(),
+            onCanonicalRefreshAccepted = { refreshes += 1 },
+        )
+
+        failedController.onForeground()
+
+        assertEquals(0, refreshes)
+        assertTrue(failedController.state is WearScreenState.Error)
+
+        val unauthorizedRepository = FakeWearRepository().apply {
+            onLoad = { WearLoadResult.Unauthorized }
+        }
+        val unauthorizedController = controller(
+            unauthorizedRepository,
+            FakeRealtimeClient(),
+            onCanonicalRefreshAccepted = { refreshes += 1 },
+        )
+
+        unauthorizedController.onForeground()
+
+        assertEquals(0, refreshes)
+        assertEquals(WearScreenState.SignedOut, unauthorizedController.state)
     }
 
     private fun controller(
@@ -158,6 +228,7 @@ class WearTodayControllerRealtimeTest {
         realtime: FakeRealtimeClient,
         onAuthenticated: () -> Unit = {},
         onCanonicalLifecycleReconciled: () -> Unit = {},
+        onCanonicalRefreshAccepted: () -> Unit = {},
     ) =
         WearTodayController(
             repository = repository,
@@ -166,6 +237,7 @@ class WearTodayControllerRealtimeTest {
             ioDispatcher = Dispatchers.Unconfined,
             onCanonicalLifecycleReconciled = onCanonicalLifecycleReconciled,
             onAuthenticated = onAuthenticated,
+            onCanonicalRefreshAccepted = onCanonicalRefreshAccepted,
         )
 
     private fun plannedTask() = WearTask(

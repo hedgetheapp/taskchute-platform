@@ -30,6 +30,7 @@ class WearMainActivity : ComponentActivity() {
             realtime,
             onCanonicalLifecycleReconciled = { WearComplicationRefreshRequester.request(this) },
             onAuthenticated = { WearPushWork.enqueueRegistration(this) },
+            onCanonicalRefreshAccepted = { WearComplicationRefreshRequester.request(this) },
         )
         pairingBridge = WearPairingBridge(this) { grant -> controller.onPairingGrant(pairingBridge, grant) }
         setContent { WearTaskChuteApp(controller, pairingBridge) }

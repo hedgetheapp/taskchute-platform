@@ -20,6 +20,7 @@ internal class WearTodayController(
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val onCanonicalLifecycleReconciled: () -> Unit = {},
     private val onAuthenticated: () -> Unit = {},
+    private val onCanonicalRefreshAccepted: () -> Unit = {},
 ) {
     private val scope = CoroutineScope(SupervisorJob() + mainDispatcher)
     private val authMutex = Mutex()
@@ -205,7 +206,10 @@ internal class WearTodayController(
                 "Todayを読み込めません。通信を確認してTodayを再読込してください。",
                 currentDay(),
             )
-            is WearLoadResult.Success -> state = stateForDay(result.day)
+            is WearLoadResult.Success -> {
+                state = stateForDay(result.day)
+                onCanonicalRefreshAccepted()
+            }
         }
     }
 

@@ -92,33 +92,17 @@ class WearRunningComplicationService : SuspendingComplicationDataSourceService()
         type: ComplicationType,
         presentation: WearComplicationPresentation,
     ): ComplicationData {
-        val text: ComplicationText
-        val title: String
-        val description: String
-        when (presentation) {
+        val (text, title, description) = when (presentation) {
             is WearComplicationPresentation.Running -> {
-                title = presentation.taskTitle
-                description = presentation.contentDescription
-                text = if (presentation.estimateSeconds == null) {
+                val progress = if (presentation.estimateSeconds == null) {
                     elapsedText(presentation.startedAt)
                 } else {
                     progressText(presentation.startedAt, presentation.estimateSeconds, presentation.compactText)
                 }
+                Triple(progress, presentation.taskTitle, presentation.contentDescription)
             }
-            WearComplicationPresentation.Idle -> {
-                title = "TaskChute"
-                description = "TaskChute、待機中"
-                text = plainText("待機")
-            }
-            WearComplicationPresentation.SignedOut -> {
-                title = "TaskChute"
-                description = "TaskChuteにログインしてください"
-                text = plainText("ログイン")
-            }
-            WearComplicationPresentation.Unavailable -> {
-                title = "TaskChute"
-                description = "TaskChuteの状態を確認できません"
-                text = plainText("未取得")
+            else -> wearComplicationTextFallback(requestedType(type), presentation)!!.let {
+                Triple(plainText(it.text), it.title, it.contentDescription)
             }
         }
         return when (type) {

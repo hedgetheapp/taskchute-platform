@@ -23,6 +23,12 @@ internal sealed interface WearComplicationPresentation {
 internal enum class WearComplicationRequestedType { GOAL_PROGRESS, SHORT_TEXT, LONG_TEXT, UNSUPPORTED }
 internal enum class WearComplicationPayloadKind { GOAL_PROGRESS, TEXT, NO_DATA }
 
+internal data class WearComplicationTextFallback(
+    val text: String,
+    val contentDescription: String,
+    val title: String,
+)
+
 internal fun wearComplicationPresentation(
     auth: WearAuthResult,
     load: WearLoadResult? = null,
@@ -96,6 +102,34 @@ internal fun wearComplicationPayloadKind(
         } else {
             WearComplicationPayloadKind.NO_DATA
         }
+}
+
+internal fun wearComplicationTextFallback(
+    type: WearComplicationRequestedType,
+    presentation: WearComplicationPresentation,
+): WearComplicationTextFallback? {
+    if (type != WearComplicationRequestedType.SHORT_TEXT && type != WearComplicationRequestedType.LONG_TEXT) {
+        return null
+    }
+    val longText = type == WearComplicationRequestedType.LONG_TEXT
+    return when (presentation) {
+        is WearComplicationPresentation.Running -> null
+        WearComplicationPresentation.Idle -> WearComplicationTextFallback(
+            text = if (longText) "TaskChute 待機" else "待機",
+            contentDescription = "TaskChute、待機中",
+            title = "TaskChute",
+        )
+        WearComplicationPresentation.SignedOut -> WearComplicationTextFallback(
+            text = "ログイン",
+            contentDescription = "TaskChuteにログインしてください",
+            title = "TaskChute",
+        )
+        WearComplicationPresentation.Unavailable -> WearComplicationTextFallback(
+            text = "未取得",
+            contentDescription = "TaskChuteの状態を確認できません",
+            title = "TaskChute",
+        )
+    }
 }
 
 internal fun wearComplicationTapTargetClassName(): String = WearMainActivity::class.java.name
