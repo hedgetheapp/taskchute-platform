@@ -1,3 +1,10 @@
+### D-163 Routine occurrence title override and Today D&D corrective — 2026-10-04
+
+- Planned Routine occurrence title edits from Android Today now write an occurrence-only `SetRoutineTitle` override. The shared Task title, Routine Definition, recurrence, other occurrences, and historical snapshots remain unchanged; APP migration `0037` adds only nullable `title_override`.
+- Android D&D now displays only legal insertion boundaries that the final command can dispatch, using stable visible-row geometry refreshed at drag start and after actual auto-scroll. Existing Routine placement and D-147/D-148 command semantics remain unchanged.
+- Worker focused `31 / 31`, full Worker/D1 `415 / 415`, bounded migration checks, Android JVM `327 / 327`, typecheck, Android compile / AndroidTest compile / assemble, and exact-SHA CI `37185122007` PASS. Today AVD `72 / 75` PARTIAL: D-163 focused cases pass; two Compose-timeout cases and one fixed-start/Section accessibility assertion remain failing. Exact CI APK artifacts: Phone `11296816909`, Wear `11296278282`.
+- Persistent nonprod APP migration and Worker deploy PASS (`taskchute-web-nonprod`, version `2923dc67-0c9a-4e61-8646-002e9bacd97b`); runtime/API/DB integrity checks PASS, with no QA or existing user-data mutation. Authenticated Web QA `NOT_RUN / AUTH_FIXTURE_UNAVAILABLE`; Galaxy S23 `NOT_RUN / PRODUCT_OWNER_MANUAL`. Production `NOT_RUN`; Released `NO`. D-145 and Notes were not changed.
+
 ### D-162 Android Today compact header + persistent display preferences — 2026-10-03
 
 - Android Today now uses a compact full-date header with center DatePicker and `表示` Completed visibility control; Daily navigation remains unchanged.

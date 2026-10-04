@@ -70,6 +70,14 @@ Canonical Decision: `docs/decisions/D-164_WEAR_STANDALONE_CONNECTIVITY_AND_LAST_
 
 Wear remains a standalone canonical client that talks directly to TaskChute Server with its own Watch session and lets Wear OS choose available Phone-mediated / Wi-Fi / LTE transport. A transient fetch/network failure must not erase a previously confirmed Running complication into `NoData`; last-known-good Running projection may be retained only as a temporary display fallback until the next successful canonical fetch. Canonical success with no active execution clears the Running presentation, and explicit unauthorized/session loss remains authoritative. The implementation must also eliminate the current success → complication refresh → redundant second-fetch failure path that can make a valid Running display disappear. D-160 event-driven invalidation and D-158 300-second fallback remain unchanged. Physical Pixel Watch LTE verification is required after implementation.
 
+## D-163 — Routine Occurrence Title Override and Today D&D Corrective v0.1
+
+Status: **Approved / Implemented / Integrated; exact-SHA CI PASS; persistent nonprod PASS; Today AVD PARTIAL**
+
+Canonical Decision: `docs/decisions/D-163_ROUTINE_OCCURRENCE_TITLE_OVERRIDE_AND_TODAY_DND_CORRECTIVE_V01.md`
+
+Planned Routine occurrences may receive an occurrence-only title override; planned projection uses the override or otherwise the live shared Task title, while Running/Completed projection keeps its historical title snapshot. A title equal to the shared Task title normalizes back to NULL. The change updates only that occurrence plus its planned-to-running snapshot mirror atomically and never rewrites historical snapshots. `SetRoutineTitle` is limited to planned occurrences on the current or already-established future Day. Today D&D insertion cues are restricted to legal dispatched boundaries and use visible-row geometry snapshots refreshed only at actual auto-scroll rebase. Existing D-147/D-148 placement semantics remain unchanged. D-138 is narrowly superseded for planned Routine occurrence title editing only; D-145 and Notes are out of scope.
+
 ## D-162 — Today Compact Header and Persistent Display Preferences v0.1
 
 Status: **Approved / Implemented / Integrated / exact-SHA CI PASS; Today AVD PARTIAL**

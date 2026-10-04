@@ -42,6 +42,10 @@ Android Todayのheaderは、左に約48dpのreserved geometry、中央にremaini
 `表示`はcompact menuを開き、`完了タスクを表示` switchを持つ。OFF時もSection headerとcanonical forecast/warning contextを保持し、Completed rowだけをrender対象から除く。Preference persistenceはdevice/browser-localで、server dataを変更しない。AndroidのSection collapseはlogical date + stable Section identity（`Sectionなし`を含む）単位で復元し、新しい/保存値のないDayはexpandedとする。Behavior authorityはD-162とし、Figma `UbTJH6ykYNBQJS4Wvwz9jb` node `685:2`はvisual referenceとして扱う。
 
 
+## D-163 Android Today Routine title and D&D corrective
+
+A planned Routine occurrence displays its effective occurrence title: an explicit occurrence override when present, otherwise the current shared Task title. Editing this title is occurrence-only and does not alter Routine settings or historical display. Today D&D shows a non-layout-shifting cue only at a legal insertion boundary the existing release command can execute; the same resolved boundary drives the final dispatch. Geometry remains a stable visible-row snapshot between drag start and actual auto-scroll rebase.
+
 +## D-138 Android Today visual / interaction refinement
 +
 +Completed Task Rowの左48dp projection slotは、D-138ではplanned forecastではなくestablishment timezoneのcanonical actual start / endを表示する。Planned / Runningの既存visual semanticsは維持する。Routine occurrenceのplanned Section / start editとRunning estimate editは既存Today editorのfield capabilityとして表現し、Routine Definitionやrecurrenceの設定面をTodayへ持ち込まない。

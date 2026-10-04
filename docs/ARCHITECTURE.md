@@ -19,6 +19,10 @@ Running / Completed単体削除は`TodayDirectManipulationController`から既�
 D-129のended Section判定はAndroid parserが受け取るSection `actual_end_instant`を優先し、fallbackが必要な旧projectionでもcanonical logical boundaryから導出する。`resolveAndroidDropTarget`とWebのentry-planning / bulk-move handlersが同じdestination eligibilityを適用する。Forecastは`TodayForecast.kt`のpure projection helperで、WebのStart Forecast semanticsをAndroid表示へ移植し、actual execution metadataとは分離する。
 
 
+## D-163 Routine occurrence title authority and drag target projection
+
+`SetRoutineTitle` is a typed, owner-scoped command over one materialized Routine occurrence. The Worker validates the Entry/Occurrence/Task/Day identity and allowed lifecycle/Day boundary, then atomically stores the nullable title override and keeps the planned-to-running historical title snapshot mirror consistent. A title equal to the shared Task title is normalized to NULL. Planned projection reads override-or-base title; Running/Completed projection continues to read the stored historical snapshot. APP migration `0037` adds the nullable field without backfill. Android D&D uses one legal target resolution for cue and release; visible-row bounds are captured at drag start and rebased only after an actual list scroll, not on ordinary recomposition.
+
 +## D-138 planning / lifecycle authority
 +
 +D-138 keeps server canonical authority in the existing AddTaskToDay / SetEntryPlannedStart, SetEntryEstimate, SetExecutionTimes, SetRoutineSectionPlan, and SetRoutineEstimate paths. Routine occurrence requests remain separate from Routine Definition updates. Android selects editor capability from Day planning authority, lifecycle, and Routine-derived status; Completed projection derives actual start / end only for display. Estimate edits do not change placement revision, and no new persistence authority, schema, migration, or command family is introduced.
