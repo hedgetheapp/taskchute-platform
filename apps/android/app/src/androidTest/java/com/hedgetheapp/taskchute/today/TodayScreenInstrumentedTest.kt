@@ -1041,11 +1041,11 @@ class TodayScreenInstrumentedTest {
     }
 
     @Test
-    fun twoRowCurrentDayMovesDownToTheOnlyMeaningfulBoundary() {
+    fun sameCohortCurrentDayDragShowsCueAndReordersOnceOnRelease() {
         val directRepository = FakeDirectManipulationRepository()
         val base = dayWith().sections.single().entries.single()
         val first = base.copy(id = "entry-two-a", title = "Two row A", taskId = "task-two-a", plannedStartMinute = 540)
-        val second = base.copy(id = "entry-two-b", title = "Two row B", taskId = "task-two-b", plannedStartMinute = 600)
+        val second = base.copy(id = "entry-two-b", title = "Two row B", taskId = "task-two-b", plannedStartMinute = 540)
         val initialDay = dayWith().copy(
             sections = listOf(dayWith().sections.single().copy(entries = listOf(first, second))),
         )
@@ -1056,15 +1056,45 @@ class TodayScreenInstrumentedTest {
         val sourceABounds = sourceA.fetchSemanticsNode().boundsInRoot
         val targetB = composeRule.onNodeWithContentDescription("タスクをドラッグ: Two row B")
         val targetBBounds = targetB.fetchSemanticsNode().boundsInRoot
-        sourceA.performTouchInput {
-            down(center)
-            advanceEventTime(600)
-            moveBy(Offset(0f, targetBBounds.bottom - targetBBounds.height * 0.1f - sourceABounds.center.y), delayMillis = 100)
-            up()
+        val root = composeRule.onRoot()
+        composeRule.mainClock.autoAdvance = false
+        var fingerDown = false
+        try {
+            root.performTouchInput {
+                down(sourceABounds.center)
+                fingerDown = true
+                advanceEventTime(600)
+                moveTo(Offset(targetBBounds.center.x, targetBBounds.bottom - 8f), delayMillis = 100)
+            }
+            composeRule.mainClock.advanceTimeBy(100)
+            val insertionCue = composeRule.onNodeWithContentDescription("挿入位置")
+            insertionCue.assertIsDisplayed()
+            val cueBounds = insertionCue.fetchSemanticsNode().boundsInRoot
+            assertTrue(
+                "the visible insertion cue must identify the same AFTER boundary that release dispatches",
+                kotlin.math.abs(cueBounds.center.y - targetBBounds.bottom) <= 4f,
+            )
+            assertEquals("a held drag must not dispatch before physical pointer-up", 0, directRepository.moveCalls.get())
+            root.performTouchInput { up() }
+            fingerDown = false
+            composeRule.mainClock.advanceTimeBy(100)
+        } finally {
+            if (fingerDown) root.performTouchInput { up() }
+            composeRule.mainClock.autoAdvance = true
         }
         composeRule.waitUntil(15_000) { directRepository.moveCalls.get() == 1 }
+        assertEquals(1, directRepository.moveCalls.get())
+        assertEquals(0, directRepository.reorderCalls.get())
         assertEquals("entry-two-b", directRepository.lastMove?.placement?.anchorEntryId)
         assertEquals(PlacementEdge.AFTER, directRepository.lastMove?.placement?.edge)
+        val secondAfterMove = composeRule.onNodeWithContentDescription("タスクをドラッグ: Two row B")
+            .fetchSemanticsNode().boundsInRoot
+        val firstAfterMove = composeRule.onNodeWithContentDescription("タスクをドラッグ: Two row A")
+            .fetchSemanticsNode().boundsInRoot
+        assertTrue(
+            "the released anchor/edge must change the rendered canonical section order",
+            secondAfterMove.center.y < firstAfterMove.center.y,
+        )
     }
 
     @Test
