@@ -1,6 +1,6 @@
 # D-164 — Wear Standalone Connectivity and Last-Known-Good Running Complication v0.1
 
-Status: **Approved / Not implemented**
+Status: **Approved / Implemented / Integrated / Automated verification PASS / Pixel Watch verification NOT_RUN**
 
 Date: 2026-10-04
 
@@ -95,4 +95,8 @@ Future implementation verification should include a physical Pixel Watch LTE sce
 6. completing the Task elsewhere is reflected after the Watch next successfully reaches the server.
 7. explicit unauthorized/signed-out behavior remains correct.
 
-Until implemented and tested, this remains **Approved / Not implemented / Not verified**.
+## Implementation status — 2026-10-04
+
+Implementation `1cbb55de3252a9b0cc504920cfea15e3d3242e24` stores only the sanitized Running title, canonical start instant, and optional estimate in a Watch-local AES-GCM encrypted `noBackupFilesDir` file protected by Android Keystore. Canonical Running success replaces that projection before requesting a complication refresh; canonical idle clears it. Transient fetch/auth transport failures may render the retained projection, while signed-out/401 paths clear the session-scoped projection and request an update. D-160 invalidation passes its already accepted canonical Day into the same persistence path before the provider can make its redundant request. Direct Watch HTTPS, D-158 periodic refresh, and D-160 invalidation remain unchanged.
+
+Wear JVM `65 / 65`, Wear Kotlin compile, AndroidTest Kotlin compile, and debug assemble PASS. Exact-SHA Actions run `37194477188` attempt 2 PASS; attempt 1 had one failure in unchanged Phone test `TodayDirectManipulationTest.deterministicFailureDismissalIsGenerationSafe`, which passed in an isolated uncached local rerun. Fresh Wear APK artifact `11300910343` expires `2026-10-11T10:17:04Z`. No Wear AVD/adb target was available; Pixel Watch LTE verification remains `NOT_RUN / PRODUCT_OWNER_MANUAL`.

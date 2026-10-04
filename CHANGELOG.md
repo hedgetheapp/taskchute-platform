@@ -1,3 +1,10 @@
+### D-164 Wear standalone connectivity + last-known-good Running complication — 2026-10-04
+
+- Wear preserves its minimal, sanitized last-known-good Running projection in an AES-GCM encrypted Android-Keystore-backed no-backup file. Transient auth/network/timeout/5xx-equivalent failures retain the display; accepted canonical Running replaces it, canonical idle clears it, and signed-out/401 clears it without stale fallback.
+- D-160 invalidation now persists the already accepted canonical Day before requesting complication refresh, so a redundant transient provider fetch cannot erase the Running state. Wear remains a direct authenticated HTTPS client; D-158 300-second refresh and D-160 event invalidation are unchanged.
+- Implementation `1cbb55de3252a9b0cc504920cfea15e3d3242e24`; Wear JVM `65 / 65`, Wear compile, AndroidTest compile, debug assemble, and `git diff --check` PASS. Exact-SHA CI `37194477188` attempt 2 PASS after one unchanged Phone dismissal-token test failed on attempt 1 and passed an isolated local rerun. Fresh Wear APK artifact `11300910343`; Wear AndroidTest artifact `11300209037`.
+- No Wear AVD or adb target was available; Pixel Watch LTE `NOT_RUN / PRODUCT_OWNER_MANUAL`. No Worker/API/shared contract/schema/migration/dependency/nonprod change. Production `NOT_RUN`; Released `NO`.
+
 ### D-163A Android Today D&D device regression investigation — 2026-10-04
 
 - Product Owner reported that the D-163 Galaxy S23 APK no longer reordered Today Tasks (`FAIL / USER_REPORTED / PRODUCT_DEFECT`). On current main, the focused AVD same-cohort reorder flow did not reproduce the report, so no Android product-code change or unsupported root-cause claim was made. Added an instrumentation regression asserting cue/dispatch boundary identity, no dispatch before physical pointer-up, one Move on release, and changed rendered order.

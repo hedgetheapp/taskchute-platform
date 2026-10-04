@@ -64,11 +64,11 @@ D-161 Section overflow warning is corrected to the same logical-minute precision
 
 ## D-164 — Wear Standalone Connectivity and Last-Known-Good Running Complication v0.1
 
-Status: **Approved / Not implemented / Not verified**
+Status: **Approved / Implemented / Integrated / Automated verification PASS / Pixel Watch verification NOT_RUN**
 
 Canonical Decision: `docs/decisions/D-164_WEAR_STANDALONE_CONNECTIVITY_AND_LAST_KNOWN_RUNNING_COMPLICATION_V01.md`
 
-Wear remains a standalone canonical client that talks directly to TaskChute Server with its own Watch session and lets Wear OS choose available Phone-mediated / Wi-Fi / LTE transport. A transient fetch/network failure must not erase a previously confirmed Running complication into `NoData`; last-known-good Running projection may be retained only as a temporary display fallback until the next successful canonical fetch. Canonical success with no active execution clears the Running presentation, and explicit unauthorized/session loss remains authoritative. The implementation must also eliminate the current success → complication refresh → redundant second-fetch failure path that can make a valid Running display disappear. D-160 event-driven invalidation and D-158 300-second fallback remain unchanged. Physical Pixel Watch LTE verification is required after implementation.
+Wear remains a standalone canonical client that talks directly to TaskChute Server with its own Watch session and lets Wear OS choose available Phone-mediated / Wi-Fi / LTE transport. A transient fetch/network failure must not erase a previously confirmed Running complication into `NoData`; last-known-good Running projection may be retained only as a temporary display fallback until the next successful canonical fetch. Canonical success with no active execution clears the Running presentation, and explicit unauthorized/session loss remains authoritative. Implementation `1cbb55de3252a9b0cc504920cfea15e3d3242e24`; Wear JVM, compile/assemble and exact-SHA CI pass. Pixel Watch LTE verification remains `NOT_RUN / PRODUCT_OWNER_MANUAL` and is tracked in `docs/TEST_MATRIX.md`.
 
 ## D-163 — Routine Occurrence Title Override and Today D&D Corrective v0.1
 
