@@ -1,3 +1,11 @@
+## D-169 — Android Today Task Note Presence Indicator v0.1
+
+Status: **Approved / Not implemented / Not verified**
+
+Canonical Decision: `docs/decisions/D-169_ANDROID_TODAY_TASK_NOTE_PRESENCE_INDICATOR_V01.md`
+
+Android Today Task-row third-line metadata adds a Note presence icon beside the existing Routine icon. The Note icon is always shown; `primary_document_id` / Android `primaryDocumentId` is the canonical authority, with accent blue when a Task Primary Note relation exists and secondary gray when it does not. The indicator represents relation existence, not Markdown body non-emptiness, and is informational only: existing left-swipe Note access remains unchanged and the icon itself is not a new tap target. No Document/body fetch, API/schema, Web/Wear, or persistence change is introduced.
+
 ## D-168 — Android Today Horizontal Day Paging v0.1
 
 Status: **Approved / Not implemented / Not verified**
