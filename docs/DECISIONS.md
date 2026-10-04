@@ -1,3 +1,11 @@
+## D-172 — Android Note Cursor Position Restore v0.1
+
+Status: **Approved / Not implemented / Not verified**
+
+Canonical Decision: `docs/decisions/D-172_ANDROID_NOTE_CURSOR_POSITION_RESTORE_V01.md`
+
+Android Markdown Note editors persist the last caret position per stable `document_id` in device-local storage and restore it when the same Note is reopened, including after app process restart. Applies to Standalone, Task Primary, Project Primary, and Daily Notes. The saved offset is clamped against the current Markdown body, does not contain Note content, does not affect Document revision/autosave/CAS, and is not synced to Web/other devices. Restore must not force focus or open the IME, and new/unmaterialized Notes begin persistent tracking only after adopting a stable Document identity.
+
 ## D-171 — Android Actual Start Quick Inputs v0.1
 
 Status: **Approved / Not implemented / Not verified**
