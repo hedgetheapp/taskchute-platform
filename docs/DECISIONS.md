@@ -1,3 +1,11 @@
+## D-168 — Android Today Horizontal Day Paging v0.1
+
+Status: **Approved / Not implemented / Not verified**
+
+Canonical Decision: `docs/decisions/D-168_ANDROID_TODAY_HORIZONTAL_DAY_PAGING_V01.md`
+
+Android Today gains adjacent-Day horizontal paging without restoring D-162's removed header arrows. Conventional left swipe moves to the next Day and right swipe moves to the previous Day, but gesture ownership is determined by the start region: Task-row gestures remain D-123 / D-124 Task actions and Selection Mode, while Section Headers and non-interactive/blank Today content can initiate page navigation. Vertical scroll, long-press D&D, footer/FAB/Running Player and modal controls remain protected. Paging follows the finger and snaps/settles like an adjacent page; DatePicker remains the arbitrary-date navigation affordance. Daily/Web are unchanged.
+
 ## D-167 — Android Complete→Start Serial Lifecycle Handoff Corrective v0.1
 
 Status: **Approved / Not implemented / Not verified**
