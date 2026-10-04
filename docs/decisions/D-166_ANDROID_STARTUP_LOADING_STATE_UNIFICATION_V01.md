@@ -1,6 +1,6 @@
 # D-166 — Android Startup Loading State Unification v0.1
 
-Status: **Approved / Not implemented**
+Status: **Approved / Implemented / Integrated / Automated verification PASS / Galaxy S23 NOT_RUN**
 
 Date: 2026-10-04
 
@@ -92,7 +92,7 @@ It does not change:
 
 ## Verification target
 
-Future implementation should verify at minimum:
+Verification target (the items below are implementation checks; unrun device/session evidence remains explicitly pending):
 
 1. cold start with valid saved session shows centered `読み込み中` immediately;
 2. no `認証状態を確認しています…` text is rendered during successful startup;
@@ -102,4 +102,8 @@ Future implementation should verify at minimum:
 6. transient auth/network failure still reaches the existing retry/error behavior;
 7. existing Today loading-state tests are updated without weakening auth-state coverage.
 
-Until implemented and tested, this remains **Approved / Not implemented / Not verified**.
+## Implementation evidence — 2026-10-04
+
+Implementation `16f7ae45eeb4cdbde7ca277b9d48aa3c698f944e` introduces one shared full-screen loading presentation for app-level `AuthUiState.Restoring` and Today `LOADING` / non-interactive `AUTH_REQUIRED`. Focused JVM coverage: `LoadingPresentationTest` `3 / 3 PASS`; focused `TaskChute_API33` instrumentation: `LoadingPresentationInstrumentedTest` `1 / 1 PASS`. `:app:compileDebugKotlin`, `:app:compileDebugAndroidTestKotlin`, and `:app:assembleDebug` PASS. Exact-SHA CI run [`37204798119`](https://github.com/hedgetheapp/taskchute-platform/actions/runs/37204798119), attempt 3, PASS; the first two attempts failed only the unchanged `TodayDirectManipulationTest.deterministicFailureDismissalIsGenerationSafe`, which passed in isolated local execution (`1 / 1`). Phone APK artifact `11304062667` was generated.
+
+AVD MainActivity smoke launched successfully and reached the explicit unauthenticated/configuration screen because no base URL or authentication fixture was configured; no credentials were obtained. The target app remained alive and no TaskChute crash was present. A valid-saved-session cold-start transition and Galaxy S23 verification remain `NOT_RUN`. Production `NOT_RUN`; Released `NO`. No authentication/session/request-ordering, backend/API, persistence, schema/migration, dependency, or production behavior changed.

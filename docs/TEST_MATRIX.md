@@ -1,3 +1,14 @@
+## D-166 Android startup loading-state unification — 2026-10-04
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D166-PRESENTATION | Auth / Today loading | Auth restoring, Today LOADING and non-interactive AUTH_REQUIRED use the same centered `読み込み中`; actionable auth/error states remain explicit | Shared `FullScreenLoadingPresentation`; pure presentation mapping keeps SignedOut/login, SigningIn, SigningOut, SignedIn content, and NetworkError retry/error behavior explicit. | PASS / SOURCE + JVM |
+| D166-JVM | Android presentation routing | Verify auth-state and Today-state mappings | `LoadingPresentationTest` `3 / 3 PASS`, covering generic loading routes and preserved login/content/error routes. | PASS / FOCUSED JVM |
+| D166-AVD | Android UI / startup smoke | Shared loading surface renders; launch app and inspect UI/crash buffer | `LoadingPresentationInstrumentedTest` `1 / 1 PASS` on `TaskChute_API33`, asserting `読み込み中` and absence of auth-internal copy. MainActivity cold launch succeeded and reached explicit unauthenticated/configuration UI because base URL/auth fixture was unavailable; no credentials used, app remained alive, and no TaskChute crash found. Valid-session startup transition `NOT_RUN`. | PASS / FOCUSED INSTRUMENTATION; E2E NOT_RUN |
+| D166-BUILD | Android build | Main Kotlin, instrumentation Kotlin, debug APK | `:app:compileDebugKotlin`, `:app:compileDebugAndroidTestKotlin`, `:app:assembleDebug`, `git diff --check` PASS. | PASS |
+| D166-CI-APK | Exact implementation SHA | Classifier, Android JVM, signed Phone/Wear APK and instrumentation APK artifacts | `main@16f7ae45eeb4cdbde7ca277b9d48aa3c698f944e`, exact-SHA CI [`37204798119`](https://github.com/hedgetheapp/taskchute-platform/actions/runs/37204798119) attempt 3 PASS; classifier PASS, Web/Worker SKIP. Attempts 1–2 failed only unchanged `TodayDirectManipulationTest.deterministicFailureDismissalIsGenerationSafe`, which passed isolated locally (`1 / 1`). Phone APK `taskchute-android-debug-16f7ae45eeb4cdbde7ca277b9d48aa3c698f944e`, artifact `11304062667`, expires `2026-10-11T13:21:38Z`. | PASS / RETRY |
+| D166-DEVICE-SCOPE | Device / backend / release | Preserve presentation-only boundary and distinguish unrun evidence | Galaxy S23 `NOT_RUN / PRODUCT_OWNER_MANUAL`; no authenticated saved-session startup E2E. No Worker/API/shared contract/schema/migration/dependency/persistent nonprod change. Production `NOT_RUN`; Released `NO`. | PASS / NOT_RUN / NO |
+
 ## D-165 Today Section overflow minute-precision corrective — 2026-10-04
 
 | ID | Area | Requirement | Evidence | Status |

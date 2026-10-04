@@ -1,3 +1,8 @@
+### D-166 Android startup loading-state unification — 2026-10-04
+
+- Unified app auth restore, Today initial loading, and non-interactive auth reconciliation under the shared centered `読み込み中` presentation; explicit login/progress/retry states remain unchanged.
+- Focused JVM `3 / 3`, TaskChute_API33 instrumentation `1 / 1`, Android compile/assemble and exact-SHA CI `37204798119` attempt 3 PASS. Phone APK artifact `11304062667`. Valid-session startup E2E and Galaxy S23 remain `NOT_RUN`; Production `NOT_RUN`, Released `NO`.
+
 ### D-163B Android Today same-pair reverse D&D corrective — 2026-10-04
 
 - Fixed the immediate same-pair reverse reorder failure after an optimistic successful Move. The long-lived Today parent pointer session now resolves cues from the latest presented Day; auto-scroll rebase also uses current Day eligibility/order while retaining stable measured geometry snapshots.

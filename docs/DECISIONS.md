@@ -48,11 +48,11 @@ Android Today currently can compose an immediate Start B optimistic transition f
 
 ## D-166 — Android Startup Loading State Unification v0.1
 
-Status: **Approved / Not implemented / Not verified**
+Status: **Approved / Implemented / Integrated / Automated verification PASS / Galaxy S23 NOT_RUN**
 
 Canonical Decision: `docs/decisions/D-166_ANDROID_STARTUP_LOADING_STATE_UNIFICATION_V01.md`
 
-Android startup no longer exposes auth-restore wording as a separate visible phase once implemented. Existing non-interactive auth restore / AUTH_REQUIRED reconciliation and Today initial loading use one centered `読み込み中` presentation with the same geometry/style as Today loading, producing a continuous `読み込み中 → Today` transition. Real actionable states remain explicit: SignedOut/login, sign-in/out progress as needed, and retry/error states are not hidden. This is presentation-only; authentication/session authority, request ordering, backend/schema and realtime behavior remain unchanged.
+Android startup no longer exposes auth-restore wording as a separate visible phase. Existing non-interactive auth restore / AUTH_REQUIRED reconciliation and Today initial loading use one centered `読み込み中` presentation with the same geometry/style, producing a continuous `読み込み中 → Today` transition. Real actionable states remain explicit: SignedOut/login, sign-in/out progress as needed, and retry/error states are not hidden. Implementation `16f7ae45eeb4cdbde7ca277b9d48aa3c698f944e`; focused JVM `3 / 3`, focused TaskChute_API33 instrumentation `1 / 1`, Android compile/assemble and exact-SHA CI `37204798119` attempt 3 PASS. Valid-saved-session startup E2E and Galaxy S23 remain `NOT_RUN`; Production `NOT_RUN`, Released `NO`. Presentation-only; authentication/session authority, request ordering, backend/schema and realtime behavior remain unchanged.
 
 ## D-165 — Today Section Overflow Minute-Precision Corrective v0.1
 
