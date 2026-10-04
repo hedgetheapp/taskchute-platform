@@ -6,6 +6,8 @@ import type {
   MoveEntryPlacementIntent,
   SetRoutineSectionPlanRequest,
   SetRoutineSectionPlanResult,
+  SetRoutineTitleRequest,
+  SetRoutineTitleResult,
 } from "../../src/shared/contracts";
 import { isUuidV7 } from "../domain/uuidv7";
 import { resolveTaskChuteDay } from "../domain/taskchute-day";
@@ -42,6 +44,8 @@ interface RoutineEditRow {
   default_planned_start_minute: number | null;
   default_estimate_seconds: number | null;
   defaults_revision: number;
+  base_task_title: string;
+  title_override: string | null;
 }
 
 interface SectionPlanTargetRow {
@@ -148,8 +152,10 @@ async function readRoutineEditRow(db: D1Database, appUserId: string, entryId: st
       ro.section_plan_override_present, ro.estimate_override_present,
       CASE WHEN rmo.routine_occurrence_id IS NULL THEN 0 ELSE 1 END AS mode_override_present,
       em.mode_id AS entry_mode_id, rdm.mode_id AS default_mode_id, md.title AS default_mode_title,
-      rd.default_section_id, rd.default_planned_start_minute, rd.default_estimate_seconds, rd.defaults_revision
+      rd.default_section_id, rd.default_planned_start_minute, rd.default_estimate_seconds, rd.defaults_revision,
+      t.title AS base_task_title, ro.title_override
     FROM entries e
+    JOIN tasks t ON t.app_user_id = e.app_user_id AND t.id = e.task_id
     JOIN taskchute_days d ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
     JOIN routine_occurrences ro ON ro.app_user_id = e.app_user_id AND ro.id = e.routine_occurrence_id
     JOIN routine_definitions rd ON rd.app_user_id = ro.app_user_id AND rd.id = ro.routine_definition_id
@@ -166,7 +172,7 @@ async function reject<T>(
   db: D1Database,
   appUserId: string,
   operationId: string,
-  commandType: "SetRoutineEstimate" | "SetRoutineSectionPlan" | "SetRoutineMode",
+  commandType: "SetRoutineEstimate" | "SetRoutineSectionPlan" | "SetRoutineMode" | "SetRoutineTitle",
   requestFingerprint: string,
   message: string,
   revision = false,
@@ -861,5 +867,124 @@ export async function setRoutineSectionPlan(
     const committed = await readOperation(db, appUserId, request.operation_id);
     if (committed) return replayOperation(committed, "SetRoutineSectionPlan", requestFingerprint);
     throw new HttpError(503, "infrastructure_ambiguous", "The Routine placement outcome is unknown; reload and retry", true);
+  }
+}
+
+export function isSetRoutineTitleRequest(value: unknown): value is SetRoutineTitleRequest {
+  if (!value || typeof value !== "object") return false;
+  const body = value as Record<string, unknown>;
+  return !(("user_id") in body)
+    && typeof body.operation_id === "string" && isUuidV7(body.operation_id)
+    && typeof body.entry_id === "string" && isUuidV7(body.entry_id)
+    && typeof body.taskchute_day_id === "string" && isUuidV7(body.taskchute_day_id)
+    && typeof body.title === "string";
+}
+
+/** Occurrence-only title authority for a planned Routine Entry (D-163). */
+export async function setRoutineTitle(
+  db: D1Database,
+  appUserId: string,
+  request: SetRoutineTitleRequest,
+  nowInstant = new Date().toISOString(),
+): Promise<SetRoutineTitleResult> {
+  const normalizedTitle = request.title.trim();
+  const normalizedRequest = { ...request, title: normalizedTitle };
+  const requestFingerprint = await fingerprint(normalizedRequest);
+  const prior = await readOperation(db, appUserId, request.operation_id);
+  if (prior) return replayOperation(prior, "SetRoutineTitle", requestFingerprint);
+  if (normalizedTitle.length < 1 || normalizedTitle.length > 300) {
+    return reject(db, appUserId, request.operation_id, "SetRoutineTitle", requestFingerprint,
+      "Routine occurrence title must contain 1–300 characters");
+  }
+
+  const [currentDay, row] = await Promise.all([
+    readCurrentDay(db, appUserId, nowInstant),
+    readRoutineEditRow(db, appUserId, request.entry_id),
+  ]);
+  if (!row || !currentDay || row.taskchute_day_id !== request.taskchute_day_id
+    || row.logical_date < currentDay.logical_date || row.lifecycle_state !== "planned") {
+    return reject(db, appUserId, request.operation_id, "SetRoutineTitle", requestFingerprint,
+      "Only a planned Routine occurrence on the current or an established future Day can be renamed");
+  }
+
+  const effectiveTitle = normalizedTitle === row.base_task_title ? row.base_task_title : normalizedTitle;
+  const titleOverride = effectiveTitle === row.base_task_title ? null : effectiveTitle;
+  const result: SetRoutineTitleResult = {
+    entry_id: row.entry_id,
+    title: effectiveTitle,
+    title_override_present: titleOverride !== null,
+  };
+  const assertionId = `routine-title:${request.operation_id}`;
+  const now = new Date().toISOString();
+  try {
+    const statements: D1PreparedStatement[] = [
+      db.prepare(`INSERT INTO routine_command_guards (app_user_id, operation_id, command_type)
+        SELECT ?, ?, 'SetRoutineTitle' WHERE EXISTS (
+          SELECT 1 FROM entries e
+          JOIN taskchute_days d ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
+          JOIN tasks t ON t.app_user_id = e.app_user_id AND t.id = e.task_id
+          JOIN routine_occurrences ro ON ro.app_user_id = e.app_user_id AND ro.id = e.routine_occurrence_id
+          JOIN routine_definitions rd ON rd.app_user_id = ro.app_user_id AND rd.id = ro.routine_definition_id
+          WHERE e.app_user_id = ? AND e.id = ? AND e.taskchute_day_id = ?
+            AND e.lifecycle_state = 'planned' AND d.logical_date >= ?
+            AND ro.id = ? AND rd.id = ? AND t.title = ? AND ro.title_override IS ?
+            AND NOT EXISTS (SELECT 1 FROM routine_occurrence_suppressions x
+              WHERE x.app_user_id = ro.app_user_id AND x.routine_occurrence_id = ro.id)
+            AND EXISTS (SELECT 1 FROM routine_occurrence_task_snapshots rs
+              WHERE rs.app_user_id = ro.app_user_id AND rs.routine_occurrence_id = ro.id)
+        )`)
+        .bind(appUserId, request.operation_id, appUserId, row.entry_id, request.taskchute_day_id,
+          currentDay.logical_date, row.routine_occurrence_id, row.routine_definition_id,
+          row.base_task_title, row.title_override),
+      db.prepare(`UPDATE routine_occurrences SET title_override = ? WHERE app_user_id = ? AND id = ?
+        AND EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(titleOverride, appUserId, row.routine_occurrence_id, appUserId, request.operation_id),
+      db.prepare(`UPDATE routine_occurrence_task_snapshots SET task_title = ? WHERE app_user_id = ?
+        AND routine_occurrence_id = ? AND EXISTS (
+          SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(effectiveTitle, appUserId, row.routine_occurrence_id, appUserId, request.operation_id),
+      db.prepare(`INSERT INTO transaction_assertions (app_user_id, id, ok)
+        SELECT ?, ?, CASE WHEN
+          EXISTS (SELECT 1 FROM entries e
+            JOIN taskchute_days d ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
+            JOIN routine_occurrences ro
+            ON ro.app_user_id = e.app_user_id AND ro.id = e.routine_occurrence_id
+            JOIN tasks t ON t.app_user_id = e.app_user_id AND t.id = e.task_id
+            WHERE e.app_user_id = ? AND e.id = ? AND e.taskchute_day_id = ?
+              AND e.lifecycle_state = 'planned' AND d.logical_date >= ?
+              AND ro.id = ? AND t.title = ? AND ro.title_override IS ?)
+          AND (SELECT COUNT(*) FROM routine_occurrence_task_snapshots
+            WHERE app_user_id = ? AND routine_occurrence_id = ?) = 1
+          AND (SELECT task_title FROM routine_occurrence_task_snapshots
+            WHERE app_user_id = ? AND routine_occurrence_id = ?) = ?
+        THEN 1 ELSE 0 END WHERE EXISTS (
+          SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(appUserId, assertionId, appUserId, row.entry_id, request.taskchute_day_id,
+          currentDay.logical_date, row.routine_occurrence_id, row.base_task_title, titleOverride,
+          appUserId, row.routine_occurrence_id, appUserId, row.routine_occurrence_id,
+          effectiveTitle, appUserId, request.operation_id),
+      db.prepare(`INSERT INTO operations (app_user_id, operation_id, command_type, request_fingerprint_version,
+        request_fingerprint, outcome_kind, result_json, created_at)
+        SELECT ?, ?, 'SetRoutineTitle', ?, ?, 'success', ?, ? WHERE EXISTS (
+          SELECT 1 FROM transaction_assertions WHERE app_user_id = ? AND id = ? AND ok = 1)`)
+        .bind(appUserId, request.operation_id, REQUEST_FINGERPRINT_VERSION, requestFingerprint,
+          JSON.stringify(result), now, appUserId, assertionId),
+      db.prepare("DELETE FROM transaction_assertions WHERE app_user_id = ? AND id = ?")
+        .bind(appUserId, assertionId),
+      db.prepare("DELETE FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?")
+        .bind(appUserId, request.operation_id),
+    ];
+    const results = await db.batch(statements);
+    const committed = await readOperation(db, appUserId, request.operation_id);
+    if (committed) return replayOperation(committed, "SetRoutineTitle", requestFingerprint);
+    if (results[0]?.meta.changes === 0) {
+      return reject(db, appUserId, request.operation_id, "SetRoutineTitle", requestFingerprint,
+        "Routine occurrence title state changed before commit");
+    }
+    throw new Error("Routine occurrence title committed without an operation result");
+  } catch {
+    const committed = await readOperation(db, appUserId, request.operation_id);
+    if (committed) return replayOperation(committed, "SetRoutineTitle", requestFingerprint);
+    throw new HttpError(503, "infrastructure_ambiguous", "The Routine occurrence title outcome is unknown; retry the same operation", true);
   }
 }

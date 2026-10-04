@@ -131,6 +131,172 @@ class TodayDirectManipulationTest {
     }
 
     @Test
+    fun staleOffscreenGeometryCannotCreateInsertionCueInsideVisibleTaskRow() {
+        val staleAndVisibleBounds = mapOf(
+            "stale-offscreen" to Rect(0f, 100f, 400f, 180f),
+            "visible-target" to Rect(0f, 140f, 400f, 240f),
+        )
+        val staleTarget = resolveAndroidDropTarget(
+            positionY = 175f,
+            sourceEntryId = "source",
+            sourceSectionId = "source-section",
+            entryBounds = staleAndVisibleBounds,
+            entrySectionIds = mapOf("stale-offscreen" to "destination", "visible-target" to "destination"),
+            entryAnchorEligible = mapOf("stale-offscreen" to true, "visible-target" to true),
+            emptySectionBounds = emptyMap(),
+            emptySectionIds = emptyMap(),
+        )
+        val geometry = snapshotVisibleAndroidDragGeometry(
+            visibleItemKeys = setOf("source", "visible-target"),
+            entryBounds = staleAndVisibleBounds,
+            entrySectionIds = mapOf("stale-offscreen" to "destination", "visible-target" to "destination"),
+            entryAnchorEligible = mapOf("stale-offscreen" to true, "visible-target" to true),
+        )
+
+        val target = resolveAndroidDropTarget(
+            positionY = 175f,
+            sourceEntryId = "source",
+            sourceSectionId = "source-section",
+            entryBounds = geometry.entryBounds,
+            entrySectionIds = geometry.entrySectionIds,
+            entryAnchorEligible = geometry.entryAnchorEligible,
+            emptySectionBounds = emptyMap(),
+            emptySectionIds = emptyMap(),
+            canonicalEntryOrderBySection = mapOf<String?, List<String>>(
+                "source-section" to listOf("source"),
+                "destination" to listOf("stale-offscreen", "visible-target"),
+            ),
+        )
+
+        // Reproduces the old failure: the disposed row's retained bottom was 180px,
+        // which lies inside the currently visible target row (140..240px).
+        assertEquals("stale-offscreen", staleTarget?.anchorEntryId)
+        assertEquals(180f, staleTarget?.resolvedBoundaryY)
+        assertEquals(setOf("visible-target"), geometry.entryBounds.keys)
+        assertEquals("visible-target", target?.anchorEntryId)
+        assertTrue(target?.resolvedBoundaryY == 140f || target?.resolvedBoundaryY == 240f)
+        assertTrue(target?.resolvedBoundaryY != 180f)
+        val releasedAtCue = resolveAndroidDropTarget(
+            positionY = target!!.resolvedBoundaryY!!,
+            sourceEntryId = "source",
+            sourceSectionId = "source-section",
+            entryBounds = geometry.entryBounds,
+            entrySectionIds = geometry.entrySectionIds,
+            entryAnchorEligible = geometry.entryAnchorEligible,
+            emptySectionBounds = emptyMap(),
+            emptySectionIds = emptyMap(),
+            canonicalEntryOrderBySection = mapOf<String?, List<String>>(
+                "source-section" to listOf("source"),
+                "destination" to listOf("stale-offscreen", "visible-target"),
+            ),
+            canonicalEntrySectionById = mapOf(
+                "source" to "source-section",
+                "stale-offscreen" to "destination",
+                "visible-target" to "destination",
+            ),
+        )
+        assertEquals("the visible insertion cue and release resolve to one command target", target, releasedAtCue)
+    }
+
+    @Test
+    fun insertionCueIsOnlyAResolvedLegalRowBoundary() {
+        val bounds = mapOf(
+            "routine-source" to Rect(0f, 20f, 100f, 100f),
+            "routine-anchor" to Rect(0f, 100f, 100f, 180f),
+            "routine-next" to Rect(0f, 180f, 100f, 260f),
+        )
+        val sections = bounds.keys.associateWith { "section-1" }
+        val order = mapOf<String?, List<String>>("section-1" to listOf("routine-source", "routine-anchor", "routine-next"))
+        val target = resolveAndroidDropTarget(
+            positionY = 150f,
+            sourceEntryId = "routine-source",
+            sourceSectionId = "section-1",
+            entryBounds = bounds,
+            entrySectionIds = sections,
+            entryAnchorEligible = bounds.keys.associateWith { true },
+            emptySectionBounds = emptyMap(),
+            emptySectionIds = emptyMap(),
+            canonicalEntryOrderBySection = order,
+            canonicalEntrySectionById = sections,
+        )
+
+        assertEquals("routine-anchor", target?.anchorEntryId)
+        assertEquals(PlacementEdge.AFTER, target?.edge)
+        assertEquals(180f, target?.resolvedBoundaryY)
+        assertTrue(target?.resolvedBoundaryY == bounds[target?.anchorEntryId]?.top
+            || target?.resolvedBoundaryY == bounds[target?.anchorEntryId]?.bottom)
+        assertEquals(
+            "release on the rendered line must preserve anchor, section and edge",
+            target,
+            resolveAndroidDropTarget(
+                positionY = target!!.resolvedBoundaryY!!,
+                sourceEntryId = "routine-source",
+                sourceSectionId = "section-1",
+                entryBounds = bounds,
+                entrySectionIds = sections,
+                entryAnchorEligible = bounds.keys.associateWith { true },
+                emptySectionBounds = emptyMap(),
+                emptySectionIds = emptyMap(),
+                canonicalEntryOrderBySection = order,
+                canonicalEntrySectionById = sections,
+            ),
+        )
+    }
+
+    @Test
+    fun staleMovedLifecycleAndEndedSectionAnchorsHaveNoCue() {
+        val bounds = mapOf("anchor" to Rect(0f, 100f, 100f, 180f))
+        val staleSource = resolveAndroidDropTarget(
+            positionY = 150f,
+            sourceEntryId = "source",
+            sourceSectionId = "old-source-section",
+            entryBounds = bounds,
+            entrySectionIds = mapOf("anchor" to "target-section", "source" to "old-source-section"),
+            entryAnchorEligible = mapOf("source" to true, "anchor" to true),
+            emptySectionBounds = emptyMap(),
+            emptySectionIds = emptyMap(),
+            canonicalEntrySectionById = mapOf("source" to "new-source-section", "anchor" to "target-section"),
+        )
+        val staleSection = resolveAndroidDropTarget(
+            positionY = 150f,
+            sourceEntryId = "source",
+            sourceSectionId = "source-section",
+            entryBounds = bounds,
+            entrySectionIds = mapOf("anchor" to "old-section"),
+            entryAnchorEligible = mapOf("anchor" to true),
+            emptySectionBounds = emptyMap(),
+            emptySectionIds = emptyMap(),
+            canonicalEntrySectionById = mapOf("source" to "source-section", "anchor" to "new-section"),
+        )
+        val ineligibleLifecycle = resolveAndroidDropTarget(
+            positionY = 150f,
+            sourceEntryId = "source",
+            sourceSectionId = "source-section",
+            entryBounds = bounds,
+            entrySectionIds = mapOf("anchor" to "target-section"),
+            entryAnchorEligible = mapOf("anchor" to false),
+            emptySectionBounds = emptyMap(),
+            emptySectionIds = emptyMap(),
+        )
+        val endedSection = resolveAndroidDropTarget(
+            positionY = 150f,
+            sourceEntryId = "source",
+            sourceSectionId = "source-section",
+            entryBounds = bounds,
+            entrySectionIds = mapOf("anchor" to "ended-section"),
+            entryAnchorEligible = mapOf("anchor" to true),
+            emptySectionBounds = emptyMap(),
+            emptySectionIds = emptyMap(),
+            endedSectionIds = setOf("ended-section"),
+        )
+
+        assertNull(staleSource)
+        assertNull(staleSection)
+        assertNull(ineligibleLifecycle)
+        assertNull(endedSection)
+    }
+
+    @Test
     fun repeatedConsumedScrollKeepsRebasePendingUntilScrollStops() {
         var rebasePending = false
 

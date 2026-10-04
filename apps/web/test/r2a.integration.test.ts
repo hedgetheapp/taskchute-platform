@@ -1,9 +1,11 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { uuidv7 } from "../src/shared/uuidv7";
-import { loadCurrentTaskChuteDay } from "../worker/application/load-current-day";
+import { loadCurrentTaskChuteDay, loadTaskChuteDayByLogicalDate } from "../worker/application/load-current-day";
+import { startEntry } from "../worker/application/entry-lifecycle";
 import { convertEntryToRoutine } from "../worker/application/routine";
-import { setRoutineEstimate, setRoutineSectionPlan } from "../worker/application/routine-planning";
+import { setRoutineEstimate, setRoutineSectionPlan, setRoutineTitle } from "../worker/application/routine-planning";
+import { updateRoutine } from "../worker/application/routine-board";
 
 const now = "2026-08-29T08:00:00.000Z";
 
@@ -99,9 +101,227 @@ async function insertOccurrence(input: {
       VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)`)
       .bind(entryId, input.userId, input.taskId, input.dayId, input.sectionId,
         input.lifecycle ?? "planned", input.estimate, input.plannedStart, occurrenceId, now),
+    env.APP_DB.prepare(`INSERT INTO routine_occurrence_task_snapshots
+      (app_user_id, routine_occurrence_id, task_title, project_id, project_title)
+      SELECT ?, ?, t.title, t.project_id,
+        (SELECT title FROM projects WHERE app_user_id = t.app_user_id AND id = t.project_id)
+      FROM tasks t WHERE t.app_user_id = ? AND t.id = ?`)
+      .bind(input.userId, occurrenceId, input.userId, input.taskId),
   ]);
   return { occurrenceId, entryId };
 }
+
+describe.sequential("D-163 Routine occurrence title overrides", () => {
+  it("keeps a planned title override occurrence-only, replays exactly, and resets to the live Task title", async () => {
+    const fixture = await seedRoutine();
+    const futureDayId = await insertDay(fixture.userId, fixture.versionId, fixture.sections, "2026-08-30");
+    const future = await insertOccurrence({ userId: fixture.userId, definitionId: fixture.definitionId,
+      taskId: fixture.taskId, dayId: futureDayId, sectionId: fixture.sections[0]!, estimate: 900, plannedStart: 300 });
+    const request = { operation_id: uuidv7(), entry_id: fixture.entryId,
+      taskchute_day_id: fixture.dayId, title: "  Occurrence-specific title  " };
+    expect(await setRoutineTitle(env.APP_DB, fixture.userId, request, now)).toEqual({
+      entry_id: fixture.entryId, title: "Occurrence-specific title", title_override_present: true,
+    });
+    expect(await setRoutineTitle(env.APP_DB, fixture.userId, request, now)).toEqual({
+      entry_id: fixture.entryId, title: "Occurrence-specific title", title_override_present: true,
+    });
+    await expect(setRoutineTitle(env.APP_DB, fixture.userId, { ...request, title: "Different title" }, now))
+      .rejects.toMatchObject({ code: "operation_id_misuse" });
+
+    const beforeRename = await loadCurrentTaskChuteDay(env.APP_DB, fixture.userId, now);
+    expect(beforeRename.sections.flatMap((section) => section.entries).find((entry) => entry.id === fixture.entryId)?.task.title)
+      .toBe("Occurrence-specific title");
+    const beforeRenameFuture = await loadTaskChuteDayByLogicalDate(env.APP_DB, fixture.userId, "2026-08-30", now);
+    expect(beforeRenameFuture.sections.flatMap((section) => section.entries).find((entry) => entry.id === future.entryId)?.task.title)
+      .toBe("R2A fixture");
+    expect(await env.APP_DB.prepare("SELECT title FROM tasks WHERE id = ?").bind(fixture.taskId).first())
+      .toEqual({ title: "R2A fixture" });
+    expect(await env.APP_DB.prepare(`SELECT rd.default_section_id, rd.default_planned_start_minute,
+      rd.default_estimate_seconds FROM routine_definitions rd WHERE rd.app_user_id = ? AND rd.id = ?`)
+      .bind(fixture.userId, fixture.definitionId).first()).toEqual({
+        default_section_id: fixture.sections[0], default_planned_start_minute: 300, default_estimate_seconds: 900,
+      });
+
+    const settings = await env.APP_DB.prepare(`SELECT b.settings_revision, rd.default_section_id,
+      rd.default_planned_start_minute, rd.default_estimate_seconds FROM routine_board_items b
+      JOIN routine_definitions rd ON rd.app_user_id = b.app_user_id AND rd.id = b.routine_definition_id
+      WHERE b.app_user_id = ? AND b.routine_definition_id = ?`)
+      .bind(fixture.userId, fixture.definitionId).first<{
+        settings_revision: number; default_section_id: string; default_planned_start_minute: number;
+        default_estimate_seconds: number;
+      }>();
+    await updateRoutine(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), routine_definition_id: fixture.definitionId,
+      expected_settings_revision: settings!.settings_revision, title: "Renamed shared Task",
+      project_id: null, schedule: { kind: "daily" }, default_section_id: settings!.default_section_id,
+      default_planned_start_minute: settings!.default_planned_start_minute,
+      default_estimate_seconds: settings!.default_estimate_seconds,
+      start_logical_date: "2026-08-29", end_logical_date: null,
+    }, now);
+    expect(await env.APP_DB.prepare(`SELECT task_title FROM routine_occurrence_task_snapshots
+      WHERE app_user_id = ? AND routine_occurrence_id = ?`).bind(fixture.userId, fixture.occurrenceId).first())
+      .toEqual({ task_title: "Occurrence-specific title" });
+
+    const reset = await setRoutineTitle(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), entry_id: fixture.entryId, taskchute_day_id: fixture.dayId,
+      title: "  Renamed shared Task  ",
+    }, now);
+    expect(reset).toMatchObject({ title: "Renamed shared Task", title_override_present: false });
+    expect(await env.APP_DB.prepare("SELECT title_override FROM routine_occurrences WHERE id = ?")
+      .bind(fixture.occurrenceId).first()).toEqual({ title_override: null });
+    expect(await env.APP_DB.prepare(`SELECT task_title FROM routine_occurrence_task_snapshots
+      WHERE app_user_id = ? AND routine_occurrence_id = ?`).bind(fixture.userId, fixture.occurrenceId).first())
+      .toEqual({ task_title: "Renamed shared Task" });
+    expect((await loadCurrentTaskChuteDay(env.APP_DB, fixture.userId, now).then((day) =>
+      day.sections.flatMap((section) => section.entries).find((entry) => entry.id === fixture.entryId)?.task.title)))
+      .toBe("Renamed shared Task");
+  });
+
+  it("allows only planned occurrences on the current or already-established future Day", async () => {
+    const fixture = await seedRoutine();
+    const futureDay = await insertDay(fixture.userId, fixture.versionId, fixture.sections, "2026-08-30");
+    const future = await insertOccurrence({ userId: fixture.userId, definitionId: fixture.definitionId,
+      taskId: fixture.taskId, dayId: futureDay, sectionId: fixture.sections[0]!, estimate: 900, plannedStart: 300 });
+    const futureResult = await setRoutineTitle(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), entry_id: future.entryId, taskchute_day_id: futureDay, title: "Future occurrence title",
+    }, now);
+    expect(futureResult).toMatchObject({ title: "Future occurrence title", title_override_present: true });
+    const futureProjection = await loadTaskChuteDayByLogicalDate(env.APP_DB, fixture.userId, "2026-08-30", now);
+    expect(futureProjection.sections.flatMap((section) => section.entries)
+      .find((entry) => entry.id === future.entryId)?.task.title).toBe("Future occurrence title");
+
+    const pastDay = await insertDay(fixture.userId, fixture.versionId, fixture.sections, "2026-08-28");
+    const past = await insertOccurrence({ userId: fixture.userId, definitionId: fixture.definitionId,
+      taskId: fixture.taskId, dayId: pastDay, sectionId: fixture.sections[0]!, estimate: 900, plannedStart: 300 });
+    await expect(setRoutineTitle(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), entry_id: past.entryId, taskchute_day_id: pastDay, title: "Past must reject",
+    }, now)).rejects.toMatchObject({ code: "resource_conflict" });
+    expect(await env.APP_DB.prepare("SELECT title_override FROM routine_occurrences WHERE id = ?")
+      .bind(past.occurrenceId).first()).toEqual({ title_override: null });
+
+    await env.APP_DB.prepare("UPDATE entries SET lifecycle_state = 'running' WHERE id = ?")
+      .bind(fixture.entryId).run();
+    await expect(setRoutineTitle(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), entry_id: fixture.entryId, taskchute_day_id: fixture.dayId, title: "Running must reject",
+    }, now)).rejects.toMatchObject({ code: "resource_conflict" });
+  });
+
+  it("rejects blank, oversized, ordinary, completed and mismatched-owner/day title mutations", async () => {
+    const fixture = await seedRoutine();
+    const futureDayId = await insertDay(fixture.userId, fixture.versionId, fixture.sections, "2026-08-30");
+    const otherUserId = uuidv7();
+    await env.APP_DB.prepare("INSERT INTO app_users (id, created_at) VALUES (?, ?)").bind(otherUserId, now).run();
+    const ordinaryTaskId = uuidv7();
+    const ordinaryEntryId = uuidv7();
+    await env.APP_DB.batch([
+      env.APP_DB.prepare("INSERT INTO tasks (id, app_user_id, title, created_at) VALUES (?, ?, 'Ordinary', ?)")
+        .bind(ordinaryTaskId, fixture.userId, now),
+      env.APP_DB.prepare(`INSERT INTO entries
+        (id, app_user_id, task_id, taskchute_day_id, section_id, position, lifecycle_state, created_at)
+        VALUES (?, ?, ?, ?, ?, 2, 'planned', ?)`)
+        .bind(ordinaryEntryId, fixture.userId, ordinaryTaskId, fixture.dayId, fixture.sections[0], now),
+    ]);
+
+    const attempt = (input: { userId?: string; entryId?: string; dayId?: string; title: string }) => setRoutineTitle(
+      env.APP_DB,
+      input.userId ?? fixture.userId,
+      { operation_id: uuidv7(), entry_id: input.entryId ?? fixture.entryId,
+        taskchute_day_id: input.dayId ?? fixture.dayId, title: input.title },
+      now,
+    );
+    await expect(attempt({ title: "   " })).rejects.toMatchObject({ code: "resource_conflict" });
+    await expect(attempt({ title: "x".repeat(301) })).rejects.toMatchObject({ code: "resource_conflict" });
+    await expect(attempt({ entryId: ordinaryEntryId, title: "Ordinary must reject" }))
+      .rejects.toMatchObject({ code: "resource_conflict" });
+    await expect(attempt({ dayId: futureDayId, title: "Mismatched Day must reject" }))
+      .rejects.toMatchObject({ code: "resource_conflict" });
+    await expect(attempt({ userId: otherUserId, title: "Wrong owner must reject" }))
+      .rejects.toMatchObject({ code: "resource_conflict" });
+
+    await env.APP_DB.prepare("UPDATE entries SET lifecycle_state = 'completed' WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, fixture.entryId).run();
+    await expect(attempt({ title: "Completed must reject" })).rejects.toMatchObject({ code: "resource_conflict" });
+
+    expect(await env.APP_DB.prepare("SELECT title_override FROM routine_occurrences WHERE id = ?")
+      .bind(fixture.occurrenceId).first()).toEqual({ title_override: null });
+    expect(await env.APP_DB.prepare(`SELECT task_title FROM routine_occurrence_task_snapshots
+      WHERE app_user_id = ? AND routine_occurrence_id = ?`).bind(fixture.userId, fixture.occurrenceId).first())
+      .toEqual({ task_title: "R2A fixture" });
+    expect(await env.APP_DB.prepare("SELECT title FROM tasks WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, ordinaryTaskId).first()).toEqual({ title: "Ordinary" });
+  });
+
+  it("uses the live base title while Planned and freezes it when the occurrence starts", async () => {
+    const fixture = await seedRoutine();
+    const settings = await env.APP_DB.prepare(`SELECT b.settings_revision, rd.default_section_id,
+      rd.default_planned_start_minute, rd.default_estimate_seconds FROM routine_board_items b
+      JOIN routine_definitions rd ON rd.app_user_id = b.app_user_id AND rd.id = b.routine_definition_id
+      WHERE b.app_user_id = ? AND b.routine_definition_id = ?`)
+      .bind(fixture.userId, fixture.definitionId).first<{
+        settings_revision: number; default_section_id: string; default_planned_start_minute: number;
+        default_estimate_seconds: number;
+      }>();
+    const rename = (title: string, revision: number) => updateRoutine(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), routine_definition_id: fixture.definitionId,
+      expected_settings_revision: revision, title, project_id: null, schedule: { kind: "daily" },
+      default_section_id: settings!.default_section_id,
+      default_planned_start_minute: settings!.default_planned_start_minute,
+      default_estimate_seconds: settings!.default_estimate_seconds,
+      start_logical_date: "2026-08-29", end_logical_date: null,
+    }, now);
+
+    await rename("Base title at Start", settings!.settings_revision);
+    const planned = await loadCurrentTaskChuteDay(env.APP_DB, fixture.userId, now);
+    expect(planned.sections.flatMap((section) => section.entries).find((entry) => entry.id === fixture.entryId)?.task.title)
+      .toBe("Base title at Start");
+
+    const started = await startEntry(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), entry_id: fixture.entryId, execution_id: uuidv7(),
+    }, now);
+    expect(started.lifecycle_state).toBe("running");
+    await rename("Later base title", settings!.settings_revision + 1);
+    const running = await loadCurrentTaskChuteDay(env.APP_DB, fixture.userId, now);
+    expect(running.sections.flatMap((section) => section.entries).find((entry) => entry.id === fixture.entryId)?.task.title)
+      .toBe("Base title at Start");
+    expect(await env.APP_DB.prepare("SELECT title FROM tasks WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, fixture.taskId).first()).toEqual({ title: "Later base title" });
+  });
+
+  it("freezes an overridden Planned title as the historical title when the occurrence starts", async () => {
+    const fixture = await seedRoutine();
+    await setRoutineTitle(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), entry_id: fixture.entryId, taskchute_day_id: fixture.dayId,
+      title: "Effective title at Start",
+    }, now);
+    const started = await startEntry(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), entry_id: fixture.entryId, execution_id: uuidv7(),
+    }, now);
+    expect(started.lifecycle_state).toBe("running");
+
+    const settings = await env.APP_DB.prepare(`SELECT b.settings_revision, rd.default_section_id,
+      rd.default_planned_start_minute, rd.default_estimate_seconds FROM routine_board_items b
+      JOIN routine_definitions rd ON rd.app_user_id = b.app_user_id AND rd.id = b.routine_definition_id
+      WHERE b.app_user_id = ? AND b.routine_definition_id = ?`)
+      .bind(fixture.userId, fixture.definitionId).first<{
+        settings_revision: number; default_section_id: string; default_planned_start_minute: number;
+        default_estimate_seconds: number;
+      }>();
+    await updateRoutine(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), routine_definition_id: fixture.definitionId,
+      expected_settings_revision: settings!.settings_revision, title: "Later shared rename", project_id: null,
+      schedule: { kind: "daily" }, default_section_id: settings!.default_section_id,
+      default_planned_start_minute: settings!.default_planned_start_minute,
+      default_estimate_seconds: settings!.default_estimate_seconds,
+      start_logical_date: "2026-08-29", end_logical_date: null,
+    }, now);
+    const projection = await loadCurrentTaskChuteDay(env.APP_DB, fixture.userId, now);
+    expect(projection.sections.flatMap((section) => section.entries).find((entry) => entry.id === fixture.entryId)?.task.title)
+      .toBe("Effective title at Start");
+    expect(await env.APP_DB.prepare(`SELECT task_title FROM routine_occurrence_task_snapshots
+      WHERE app_user_id = ? AND routine_occurrence_id = ?`).bind(fixture.userId, fixture.occurrenceId).first())
+      .toEqual({ task_title: "Effective title at Start" });
+  });
+});
 
 describe.sequential("Routine R2A current-Day overrides", () => {
   it("persists explicit occurrence values and NULLs, replays, resets from current defaults, and projects override state", async () => {

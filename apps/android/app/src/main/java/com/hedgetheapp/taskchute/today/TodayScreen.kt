@@ -572,20 +572,27 @@ private fun TodayContent(
     fun updateDragPosition(pointerRootY: Float) {
         val current = dragState ?: return
         val positionY = pointerRootY
-        val target = resolveAndroidDropTarget(
-            positionY = positionY,
-            sourceEntryId = current.entryId,
-            sourceSectionId = current.sourceSectionId,
-            entryBounds = current.entryBoundsSnapshot,
-            entrySectionIds = current.entrySectionIdsSnapshot,
-            entryAnchorEligible = current.entryAnchorEligibleSnapshot,
-            // Task geometry remains frozen for D-127 stability. Empty Section headers can
-            // mount after drag start (notably the temporary unsectioned header), so only
-            // Section-level target maps are read live here.
-            emptySectionBounds = emptySectionDropBounds.toMap(),
-            emptySectionIds = emptySectionDropIds.toMap(),
-            endedSectionIds = endedSectionIdsForAndroid(day),
-        )
+        val canonicalEntrySections = canonicalAndroidEntrySectionById(day)
+        val canonicalEntryEligibility = canonicalAndroidEntryAnchorEligibility(day)
+        val target = if (canonicalEntryEligibility[current.entryId] == true
+            && canonicalEntrySections[current.entryId] == current.sourceSectionId
+        ) {
+            resolveAndroidDropTarget(
+                positionY = positionY,
+                sourceEntryId = current.entryId,
+                sourceSectionId = current.sourceSectionId,
+                entryBounds = current.entryBoundsSnapshot,
+                entrySectionIds = current.entrySectionIdsSnapshot,
+                entryAnchorEligible = canonicalEntryEligibility,
+                emptySectionBounds = current.emptySectionBoundsSnapshot,
+                emptySectionIds = current.emptySectionIdsSnapshot,
+                endedSectionIds = endedSectionIdsForAndroid(day),
+                canonicalEntryOrderBySection = canonicalAndroidEntryOrderBySection(day),
+                canonicalEntrySectionById = canonicalEntrySections,
+            )
+        } else {
+            null
+        }
         dragState = current.copy(
             positionY = positionY,
             deltaY = positionY - (current.positionY - current.deltaY),
@@ -607,6 +614,9 @@ private fun TodayContent(
         autoScrollConsumed = false
         val target = drag.target ?: return
         val source = day.allEntries.firstOrNull { it.id == drag.entryId } ?: return
+        if (!isEligibleAndroidDropAnchor(source)
+            || canonicalAndroidEntrySectionById(day)[source.id] != drag.sourceSectionId
+        ) return
         val targetSectionId = target.sectionId
         val targetEntryId = target.anchorEntryId
         if (targetEntryId == null) {
@@ -694,24 +704,39 @@ private fun TodayContent(
                     val current = dragState
                     val currentPointer = dragPointerRootY
                     if (current != null && currentPointer != null) {
+                        val visibleKeys = todayListState.layoutInfo.visibleItemsInfo
+                            .mapNotNull { it.key as? String }.toSet()
+                        val visibleGeometry = snapshotVisibleAndroidDragGeometry(
+                            visibleItemKeys = visibleKeys,
+                            entryBounds = dropBounds.toMap(),
+                            entrySectionIds = dropBoundsSectionId.toMap(),
+                            entryAnchorEligible = dropBoundsEligible.toMap(),
+                        )
+                        val visibleEmptySections = snapshotVisibleAndroidSectionGeometry(
+                            visibleItemKeys = visibleKeys,
+                            sectionBounds = emptySectionDropBounds.toMap(),
+                            sectionIds = emptySectionDropIds.toMap(),
+                        )
                         val target = resolveAndroidDropTarget(
                             positionY = currentPointer,
                             sourceEntryId = current.entryId,
                             sourceSectionId = current.sourceSectionId,
-                            entryBounds = dropBounds.toMap(),
-                            entrySectionIds = dropBoundsSectionId.toMap(),
-                            entryAnchorEligible = dropBoundsEligible.toMap(),
-                            emptySectionBounds = emptySectionDropBounds.toMap(),
-                            emptySectionIds = emptySectionDropIds.toMap(),
+                            entryBounds = visibleGeometry.entryBounds,
+                            entrySectionIds = visibleGeometry.entrySectionIds,
+                            entryAnchorEligible = canonicalAndroidEntryAnchorEligibility(day),
+                            emptySectionBounds = visibleEmptySections.first,
+                            emptySectionIds = visibleEmptySections.second,
                             endedSectionIds = endedSectionIdsForAndroid(day),
+                            canonicalEntryOrderBySection = canonicalAndroidEntryOrderBySection(day),
+                            canonicalEntrySectionById = canonicalAndroidEntrySectionById(day),
                         )
                         dragState = current.copy(
-                            rowBoundsSnapshot = rowBounds.toMap(),
-                            entryBoundsSnapshot = dropBounds.toMap(),
-                            entrySectionIdsSnapshot = dropBoundsSectionId.toMap(),
-                            entryAnchorEligibleSnapshot = dropBoundsEligible.toMap(),
-                            emptySectionBoundsSnapshot = emptySectionDropBounds.toMap(),
-                            emptySectionIdsSnapshot = emptySectionDropIds.toMap(),
+                            rowBoundsSnapshot = rowBounds.toMap().filterKeys { it in visibleKeys },
+                            entryBoundsSnapshot = visibleGeometry.entryBounds,
+                            entrySectionIdsSnapshot = visibleGeometry.entrySectionIds,
+                            entryAnchorEligibleSnapshot = visibleGeometry.entryAnchorEligible,
+                            emptySectionBoundsSnapshot = visibleEmptySections.first,
+                            emptySectionIdsSnapshot = visibleEmptySections.second,
                             target = target,
                         )
                     }
@@ -948,7 +973,6 @@ private fun TodayContent(
                         controller = controller,
                         showExecutionAction = day.isCurrent,
                         canEdit = canPlanDay(day) && (day.isCurrent || task.lifecycleState == LifecycleState.PLANNED)
-                            && (!task.routineDerived || day.isCurrent)
                             && planningController != null,
                         onEdit = { planningController?.openEdit(day, task) },
                         canDuplicate = canPlanDay(day) && task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived
@@ -995,17 +1019,25 @@ private fun TodayContent(
                                 dragPointerSessionActive = true
                                 dragFinishIssued = false
                                 autoScrollConsumed = false
+                                val visibleKeys = todayListState.layoutInfo.visibleItemsInfo
+                                    .mapNotNull { it.key as? String }.toSet()
+                                val visibleGeometry = snapshotVisibleAndroidDragGeometry(
+                                    visibleKeys, dropBounds.toMap(), dropBoundsSectionId.toMap(), dropBoundsEligible.toMap(),
+                                )
+                                val visibleEmptySections = snapshotVisibleAndroidSectionGeometry(
+                                    visibleKeys, emptySectionDropBounds.toMap(), emptySectionDropIds.toMap(),
+                                )
                                 dragState = AndroidDragState(
                                     entryId = task.id,
                                     sourceSectionId = section.id,
                                     positionY = pointerRootY,
                                     sourceStartRootTop = sourceRootTop,
-                                    rowBoundsSnapshot = rowBounds.toMap(),
-                                    entryBoundsSnapshot = dropBounds.toMap(),
-                                    entrySectionIdsSnapshot = dropBoundsSectionId.toMap(),
-                                    entryAnchorEligibleSnapshot = dropBoundsEligible.toMap(),
-                                    emptySectionBoundsSnapshot = emptySectionDropBounds.toMap(),
-                                    emptySectionIdsSnapshot = emptySectionDropIds.toMap(),
+                                    rowBoundsSnapshot = rowBounds.toMap().filterKeys { it in visibleKeys },
+                                    entryBoundsSnapshot = visibleGeometry.entryBounds,
+                                    entrySectionIdsSnapshot = visibleGeometry.entrySectionIds,
+                                    entryAnchorEligibleSnapshot = visibleGeometry.entryAnchorEligible,
+                                    emptySectionBoundsSnapshot = visibleEmptySections.first,
+                                    emptySectionIdsSnapshot = visibleEmptySections.second,
                                     target = null,
                                 )
                             }
@@ -1063,7 +1095,6 @@ private fun TodayContent(
                         controller = controller,
                         showExecutionAction = day.isCurrent,
                         canEdit = canPlanDay(day) && (day.isCurrent || task.lifecycleState == LifecycleState.PLANNED)
-                            && (!task.routineDerived || day.isCurrent)
                             && planningController != null,
                         onEdit = { planningController?.openEdit(day, task) },
                         canDuplicate = canPlanDay(day) && task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived
@@ -1110,17 +1141,25 @@ private fun TodayContent(
                                 dragPointerSessionActive = true
                                 dragFinishIssued = false
                                 autoScrollConsumed = false
+                                val visibleKeys = todayListState.layoutInfo.visibleItemsInfo
+                                    .mapNotNull { it.key as? String }.toSet()
+                                val visibleGeometry = snapshotVisibleAndroidDragGeometry(
+                                    visibleKeys, dropBounds.toMap(), dropBoundsSectionId.toMap(), dropBoundsEligible.toMap(),
+                                )
+                                val visibleEmptySections = snapshotVisibleAndroidSectionGeometry(
+                                    visibleKeys, emptySectionDropBounds.toMap(), emptySectionDropIds.toMap(),
+                                )
                                 dragState = AndroidDragState(
                                     entryId = task.id,
                                     sourceSectionId = null,
                                     positionY = pointerRootY,
                                     sourceStartRootTop = sourceRootTop,
-                                    rowBoundsSnapshot = rowBounds.toMap(),
-                                    entryBoundsSnapshot = dropBounds.toMap(),
-                                    entrySectionIdsSnapshot = dropBoundsSectionId.toMap(),
-                                    entryAnchorEligibleSnapshot = dropBoundsEligible.toMap(),
-                                    emptySectionBoundsSnapshot = emptySectionDropBounds.toMap(),
-                                    emptySectionIdsSnapshot = emptySectionDropIds.toMap(),
+                                    rowBoundsSnapshot = rowBounds.toMap().filterKeys { it in visibleKeys },
+                                    entryBoundsSnapshot = visibleGeometry.entryBounds,
+                                    entrySectionIdsSnapshot = visibleGeometry.entrySectionIds,
+                                    entryAnchorEligibleSnapshot = visibleGeometry.entryAnchorEligible,
+                                    emptySectionBoundsSnapshot = visibleEmptySections.first,
+                                    emptySectionIdsSnapshot = visibleEmptySections.second,
                                     target = null,
                                 )
                             }
@@ -1281,6 +1320,53 @@ private data class AndroidDragState(
     val target: AndroidDropTarget?,
 )
 
+internal data class AndroidVisibleDragGeometry(
+    val entryBounds: Map<String, Rect>,
+    val entrySectionIds: Map<String, String?>,
+    val entryAnchorEligible: Map<String, Boolean>,
+)
+
+internal fun snapshotVisibleAndroidDragGeometry(
+    visibleItemKeys: Set<String>,
+    entryBounds: Map<String, Rect>,
+    entrySectionIds: Map<String, String?>,
+    entryAnchorEligible: Map<String, Boolean>,
+): AndroidVisibleDragGeometry {
+    val visibleEntryIds = entryBounds.keys.filterTo(mutableSetOf()) { it in visibleItemKeys }
+    return AndroidVisibleDragGeometry(
+        entryBounds = entryBounds.filterKeys { it in visibleEntryIds },
+        entrySectionIds = entrySectionIds.filterKeys { it in visibleEntryIds },
+        entryAnchorEligible = entryAnchorEligible.filterKeys { it in visibleEntryIds },
+    )
+}
+
+internal fun snapshotVisibleAndroidSectionGeometry(
+    visibleItemKeys: Set<String>,
+    sectionBounds: Map<String, Rect>,
+    sectionIds: Map<String, String?>,
+): Pair<Map<String, Rect>, Map<String, String?>> {
+    val visibleSections = sectionBounds.keys.filterTo(mutableSetOf()) { key ->
+        val lazyKey = if (key == UNSECTIONED_DROP_KEY) "section-unsectioned" else "section-$key"
+        lazyKey in visibleItemKeys
+    }
+    return sectionBounds.filterKeys { it in visibleSections } to sectionIds.filterKeys { it in visibleSections }
+}
+
+internal fun canonicalAndroidEntryOrderBySection(day: TodayDay): Map<String?, List<String>> {
+    val result = day.sections.associate { section -> section.id as String? to section.entries.map { it.id } }
+        .toMutableMap()
+    result[null] = day.unsectionedEntries.map { it.id }
+    return result
+}
+
+internal fun canonicalAndroidEntrySectionById(day: TodayDay): Map<String, String?> = buildMap {
+    day.sections.forEach { section -> section.entries.forEach { put(it.id, section.id) } }
+    day.unsectionedEntries.forEach { put(it.id, null) }
+}
+
+internal fun canonicalAndroidEntryAnchorEligibility(day: TodayDay): Map<String, Boolean> =
+    day.allEntries.associate { it.id to isEligibleAndroidDropAnchor(it) }
+
 internal fun entryDropKey(entryId: String): String = "entry:$entryId"
 
 internal fun sectionDropKey(sectionId: String?): String = "section:${sectionId ?: UNSECTIONED_DROP_KEY}"
@@ -1306,6 +1392,8 @@ internal fun resolveAndroidDropTarget(
     emptySectionBounds: Map<String, Rect>,
     emptySectionIds: Map<String, String?>,
     endedSectionIds: Set<String> = emptySet(),
+    canonicalEntryOrderBySection: Map<String?, List<String>> = emptyMap(),
+    canonicalEntrySectionById: Map<String, String?>? = null,
 ): AndroidDropTarget? {
     if (!positionY.isFinite()) return null
 
@@ -1338,10 +1426,17 @@ internal fun resolveAndroidDropTarget(
                 .map { it.key }
         }
     val resolvedSourceSectionId = sourceSectionId ?: entrySectionIds[sourceEntryId]
+    if (canonicalEntrySectionById != null &&
+        (sourceEntryId !in canonicalEntrySectionById
+            || canonicalEntrySectionById[sourceEntryId] != resolvedSourceSectionId)
+    ) return null
 
     fun isLegalEntryAnchor(entryId: String): Boolean {
         val targetSectionId = entrySectionIds[entryId]
         if (targetSectionId in endedSectionIds || entryAnchorEligible[entryId] == false) return false
+        if (canonicalEntrySectionById != null &&
+            (entryId !in canonicalEntrySectionById || canonicalEntrySectionById[entryId] != targetSectionId)
+        ) return false
         // Single-entry Android D&D uses MoveEntry relative placement. Its server
         // authority adopts the concrete anchor's planned-start cohort; the
         // D-120 same-cohort restriction remains limited to ReorderEntries callers.
@@ -1369,7 +1464,7 @@ internal fun resolveAndroidDropTarget(
 
     fun changesCanonicalOrder(entryId: String, sectionId: String?, edge: PlacementEdge): Boolean {
         if (resolvedSourceSectionId != sectionId) return true
-        val currentIds = orderedEntryIdsBySection[sectionId].orEmpty()
+        val currentIds = canonicalEntryOrderBySection[sectionId] ?: orderedEntryIdsBySection[sectionId].orEmpty()
         if (sourceEntryId !in currentIds || entryId !in currentIds) return true
         val withoutSource = currentIds.filterNot { it == sourceEntryId }.toMutableList()
         val anchorIndex = withoutSource.indexOf(entryId)
@@ -2433,7 +2528,9 @@ private fun TaskEditorForm(
     val planningFieldsEditable = editor.capability == TaskEditorCapability.FULL_PLANNING ||
         editor.capability == TaskEditorCapability.ROUTINE_PLANNING
     val routinePlanning = editor.capability == TaskEditorCapability.ROUTINE_PLANNING
-    val titleEditable = editor.mode == TaskEditorMode.CREATE || editor.capability == TaskEditorCapability.FULL_PLANNING
+    val titleEditable = editor.mode == TaskEditorMode.CREATE
+        || editor.capability == TaskEditorCapability.FULL_PLANNING
+        || editor.capability == TaskEditorCapability.ROUTINE_PLANNING
     var projectExpanded by remember(editor) { mutableStateOf(false) }
     var modeExpanded by remember(editor) { mutableStateOf(false) }
     var sectionExpanded by remember(editor) { mutableStateOf(false) }
@@ -2519,7 +2616,7 @@ private fun TaskEditorForm(
                 )
                 ReminderOffsetField(
                     value = draft.startReminderOffsetMinutes,
-                    enabled = !state.saving,
+                    enabled = !state.saving && !routinePlanning,
                     onValueChange = { controller.updateDraft(draft.copy(startReminderOffsetMinutes = it)) },
                     modifier = Modifier.weight(1f),
                 )
@@ -2537,7 +2634,8 @@ private fun TaskEditorForm(
                 )
                 ReminderToggle(
                     checked = draft.notifyOnEstimateOverrun,
-                    enabled = !state.saving && editor.capability != TaskEditorCapability.COMPLETED_METADATA,
+                    enabled = !state.saving && !routinePlanning
+                        && editor.capability != TaskEditorCapability.COMPLETED_METADATA,
                     label = "超過通知",
                     modifier = Modifier.weight(1f),
                     onCheckedChange = { controller.updateDraft(draft.copy(notifyOnEstimateOverrun = it)) },

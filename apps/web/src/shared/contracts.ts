@@ -436,6 +436,8 @@ export interface RoutineEntryProjection {
   default_mode_title?: string | null;
   mode_override_present?: boolean;
   defaults_revision: number;
+  /** Shared Task title before an occurrence-only planned title override. */
+  base_task_title?: string;
 }
 
 export interface SectionProjection {
@@ -1004,6 +1006,16 @@ export interface SetRoutineModeResult {
   mode_title: string | null;
   mode_override_present: boolean;
   defaults_revision: number;
+}
+
+export interface SetRoutineTitleRequest extends RoutineEntryMutationBase {
+  title: string;
+}
+
+export interface SetRoutineTitleResult {
+  entry_id: string;
+  title: string;
+  title_override_present: boolean;
 }
 
 export type SetRoutineEstimateRequest = RoutineEntryMutationBase & (

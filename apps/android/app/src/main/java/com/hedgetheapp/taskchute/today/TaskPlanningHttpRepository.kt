@@ -11,6 +11,8 @@ class TaskPlanningHttpRepository(
     private val request: (method: String, path: String, body: String?) -> TodayHttpResponse?,
 ) : TaskPlanningRepository {
     private val ambiguousLifecycleOperationIds = mutableMapOf<String, String>()
+    private val ambiguousRoutineTitleOperationIds = mutableMapOf<String, String>()
+    private val confirmedRoutinePlacementRevisions = mutableMapOf<String, Int>()
 
     override fun loadReferences(): PlanningReferencesResult {
         val projectsResponse = execute("GET", "/api/v1/projects", null)
@@ -80,12 +82,23 @@ class TaskPlanningHttpRepository(
             return executeRevertEntryStart(editor, task, completedDirectRollback = true)
         }
         if (editor.capability == TaskEditorCapability.ROUTINE_PLANNING) {
+            if (input.startReminderOffsetMinutes != task.startReminderOffsetMinutes
+                || input.notifyOnEstimateOverrun != task.notifyOnEstimateOverrun
+            ) {
+                return PlanningSaveResult.Failure("Routineの通知設定はこの編集では変更できません。")
+            }
             val routineInput = synchronizeRoutineSectionPlan(editor.day, input)
-            var placementRevision = editor.day.placementRevision
+            val dayId = editor.day.taskChuteDayId ?: return PlanningSaveResult.Failure("編集対象の日を取得できません。")
+            val placementKey = "$dayId\u0000${task.id}"
+            val rememberedRevision = confirmedRoutinePlacementRevisions[placementKey] ?: editor.day.placementRevision
+            var placementRevision = maxOf(editor.day.placementRevision, rememberedRevision)
             if (currentSectionId != routineInput.sectionId || task.plannedStartMinute != routineInput.plannedStartMinute) {
                 when (val result = executeRoutineSectionPlan(task, editor.day, routineInput.sectionId, routineInput.plannedStartMinute, placementRevision)) {
-                    is PlanningSaveResult.SuccessWithRevision -> placementRevision = result.placementRevision
-                    PlanningSaveResult.Success -> Unit
+                    is PlanningSaveResult.SuccessWithRevision -> {
+                        placementRevision = result.placementRevision
+                        confirmedRoutinePlacementRevisions[placementKey] = placementRevision
+                    }
+                    PlanningSaveResult.Success -> confirmedRoutinePlacementRevisions[placementKey] = placementRevision
                     else -> return result
                 }
             }
@@ -95,9 +108,11 @@ class TaskPlanningHttpRepository(
                     else -> return result
                 }
             }
-            when (val result = updateReminderSettingsIfChanged(task, taskId, input.title, currentProjectId, routineInput)) {
-                PlanningSaveResult.Success, is PlanningSaveResult.SuccessWithRevision -> Unit
-                else -> return result
+            if (input.title != task.title) {
+                when (val result = executeRoutineTitle(task, editor.day, input.title)) {
+                    PlanningSaveResult.Success, is PlanningSaveResult.SuccessWithRevision -> Unit
+                    else -> return result
+                }
             }
             if (editor.day.isCurrent && routineInput.actualStartMinute != null) {
                 return when (val actualResult = executeActualTimes(editor, routineInput, placementRevision)) {
@@ -132,7 +147,9 @@ class TaskPlanningHttpRepository(
                     else -> return result
                 }
             }
-            when (val result = updateReminderSettingsIfChanged(task, taskId, task.title, currentProjectId, input)) {
+            when (val result = updateReminderSettingsIfChanged(
+                task, taskId, task.routineBaseTitle ?: task.title, currentProjectId, input,
+            )) {
                 PlanningSaveResult.Success, is PlanningSaveResult.SuccessWithRevision -> Unit
                 else -> return result
             }
@@ -366,6 +383,29 @@ class TaskPlanningHttpRepository(
             {"operation_id":"${JsonEncoding.escape(UUIDv7.next())}","entry_id":"${JsonEncoding.escape(task.id)}","taskchute_day_id":"${JsonEncoding.escape(dayId)}","estimate_seconds":${seconds ?: "null"},"action":"occurrence"}
         """.trimIndent()
         return execute("POST", "/api/v1/entries/${JsonEncoding.pathSegment(task.id)}/routine-estimate", body).toSaveResult()
+    }
+
+    private fun executeRoutineTitle(task: TodayTask, day: TodayDay, title: String): PlanningSaveResult {
+        val dayId = day.taskChuteDayId ?: return PlanningSaveResult.Failure("編集対象の日を取得できません。")
+        val normalizedTitle = title.trim()
+        val retryKey = "${dayId}\u0000${task.id}\u0000$normalizedTitle"
+        val operationId = ambiguousRoutineTitleOperationIds.getOrPut(retryKey, UUIDv7::next)
+        val body = """
+            {"operation_id":"${JsonEncoding.escape(operationId)}","entry_id":"${JsonEncoding.escape(task.id)}","taskchute_day_id":"${JsonEncoding.escape(dayId)}","title":"${JsonEncoding.escape(normalizedTitle)}"}
+        """.trimIndent()
+        return when (val result = execute(
+            "POST", "/api/v1/entries/${JsonEncoding.pathSegment(task.id)}/routine-title", body,
+        )) {
+            is PlanningHttpResult.Success -> {
+                ambiguousRoutineTitleOperationIds.remove(retryKey)
+                PlanningSaveResult.Success
+            }
+            PlanningHttpResult.Unauthorized -> PlanningSaveResult.Unauthorized
+            is PlanningHttpResult.Failure -> {
+                if (!result.ambiguous) ambiguousRoutineTitleOperationIds.remove(retryKey)
+                PlanningSaveResult.Failure(result.message)
+            }
+        }
     }
 
     private fun executeTaskMetadata(task: TodayTask, taskId: String, projectId: String?, title: String = task.title): PlanningHttpResult {

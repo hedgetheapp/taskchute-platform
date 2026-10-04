@@ -46,9 +46,11 @@ import {
   isSetRoutineModeRequest,
   isSetRoutineEstimateRequest,
   isSetRoutineSectionPlanRequest,
+  isSetRoutineTitleRequest,
   setRoutineMode,
   setRoutineEstimate,
   setRoutineSectionPlan,
+  setRoutineTitle,
 } from "./application/routine-planning";
 import {
   createRoutine,
@@ -653,6 +655,15 @@ async function route(request: Request, env: Env): Promise<Response> {
       throw new HttpError(400, "malformed_request", "Invalid SetRoutineSectionPlan request");
     }
     return mutationResponse(await setRoutineSectionPlan(env.APP_DB, principal.appUserId, body));
+  }
+  const routineTitleMatch = url.pathname.match(/^\/api\/v1\/entries\/([^/]+)\/routine-title$/);
+  if (request.method === "POST" && routineTitleMatch) {
+    const body = await readBoundedJson(request);
+    if (routineTitleMatch[1] !== (body as { entry_id?: unknown })?.entry_id
+      || !isSetRoutineTitleRequest(body)) {
+      throw new HttpError(400, "malformed_request", "Invalid SetRoutineTitle request");
+    }
+    return mutationResponse(await setRoutineTitle(env.APP_DB, principal.appUserId, body));
   }
   const taskMetadataMatch = url.pathname.match(/^\/api\/v1\/entries\/([^/]+)\/task-metadata$/);
   if (request.method === "POST" && taskMetadataMatch) {

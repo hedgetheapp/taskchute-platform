@@ -32,6 +32,7 @@ data class TodayTask(
     val completedDurationSeconds: Int? = null,
     val startReminderOffsetMinutes: Int? = null,
     val notifyOnEstimateOverrun: Boolean = false,
+    val routineBaseTitle: String? = null,
 )
 
 enum class LifecycleState {

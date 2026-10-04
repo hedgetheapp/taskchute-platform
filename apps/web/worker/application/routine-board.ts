@@ -819,6 +819,12 @@ async function newCurrentPlanForUpdate(db: D1Database, appUserId: string, taskId
     || !isRoutineScheduleEligibleWithCalendar({ schedule: request.schedule, startLogicalDate: request.start_logical_date,
       endLogicalDate: request.end_logical_date, candidateLogicalDate: context.logicalDate, calendar })
     || await pausedOn(db, appUserId, request.routine_definition_id, context.logicalDate)) return null;
+  // A Running/Completed occurrence is absent from readPlannedOccurrences, but it still
+  // owns this Routine's logical date. Never create a replacement when updating defaults.
+  const existingOccurrence = await db.prepare(`SELECT 1 AS present FROM routine_occurrences
+    WHERE app_user_id = ? AND routine_definition_id = ? AND origin_taskchute_day_id = ? LIMIT 1`)
+    .bind(appUserId, request.routine_definition_id, context.dayId).first();
+  if (existingOccurrence) return null;
   if (request.default_section_id !== null) {
     const valid = await db.prepare(`SELECT COUNT(*) AS count FROM taskchute_day_section_contexts
       WHERE app_user_id = ? AND taskchute_day_id = ? AND section_id = ?
@@ -1001,7 +1007,10 @@ export async function updateRoutine(db: D1Database, appUserId: string, request: 
           SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
         .bind(appUserId, request.routine_definition_id, request.expected_settings_revision,
           appUserId, request.operation_id),
-      db.prepare(`UPDATE routine_occurrence_task_snapshots SET task_title = ?, project_id = ?,
+      db.prepare(`UPDATE routine_occurrence_task_snapshots SET task_title = COALESCE(
+        (SELECT ro.title_override FROM routine_occurrences ro
+          WHERE ro.app_user_id = routine_occurrence_task_snapshots.app_user_id
+            AND ro.id = routine_occurrence_task_snapshots.routine_occurrence_id), ?), project_id = ?,
         project_title = (SELECT title FROM projects WHERE app_user_id = ? AND id = ?)
         WHERE app_user_id = ? AND routine_occurrence_id IN (
           SELECT o.id FROM routine_occurrences o JOIN taskchute_days d

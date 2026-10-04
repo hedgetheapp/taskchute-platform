@@ -50,6 +50,7 @@ internal object TodayJsonParser {
             else -> error("unknown Today lifecycle state")
         }
         val executionSummary = value.nullableObjectField("execution_summary")
+        val routine = value.nullableObjectField("routine")
         return TodayTask(
             id = value.stringField("id"),
             title = task.stringField("title"),
@@ -70,9 +71,10 @@ internal object TodayJsonParser {
             completedDurationSeconds = executionSummary?.nullableIntField("completed_duration_seconds"),
             startReminderOffsetMinutes = value.nullableIntField("start_reminder_offset_minutes"),
             notifyOnEstimateOverrun = value.nullableBooleanField("notify_on_estimate_overrun") ?: false,
-            routineDerived = value.nullableObjectField("routine") != null,
+            routineDerived = routine != null,
             taskId = task.stringField("id"),
             primaryDocumentId = task.nullableStringField("primary_document_id"),
+            routineBaseTitle = routine?.nullableStringField("base_task_title") ?: if (routine != null) task.stringField("title") else null,
         )
     }
 

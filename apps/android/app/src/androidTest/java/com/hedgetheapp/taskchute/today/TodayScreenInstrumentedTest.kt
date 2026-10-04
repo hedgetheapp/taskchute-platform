@@ -18,6 +18,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextClearance
@@ -1807,6 +1808,104 @@ class TodayScreenInstrumentedTest {
         assertEquals("section-target", directRepository.lastMove?.sectionId)
         assertEquals("entry-offscreen-target", directRepository.lastMove?.placement?.anchorEntryId)
         composeRule.onNodeWithText("Offscreen target", substring = false).assertIsDisplayed()
+    }
+
+    @Test
+    fun routineDragAfterAutoScrollShowsAndDispatchesTheSameVisibleRowBoundary() {
+        val directRepository = FakeDirectManipulationRepository()
+        val scrolledDay = longDragCrossSectionDay().let { day ->
+            day.copy(
+                logicalDate = "2026-09-15",
+                isCurrent = false,
+                taskChuteDayId = "d163-established-future",
+                sections = day.sections.mapIndexed { index, section ->
+                    section.copy(entries = section.entries.mapIndexed { entryIndex, task ->
+                        task.copy(routineDerived = index == 0 && entryIndex == 0 || index == 1)
+                    })
+                },
+            )
+        }
+        launchPlanningScreen(
+            FakePlanningRepository(),
+            initialDay = scrolledDay,
+            directRepository = directRepository,
+            refreshAfterDirect = false,
+        )
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        val sourceBounds = composeRule.onNodeWithContentDescription("タスクをドラッグ: Drag source")
+            .fetchSemanticsNode().boundsInRoot
+        val root = composeRule.onRoot()
+        val rootBounds = root.fetchSemanticsNode().boundsInRoot
+        root.performTouchInput {
+            down(sourceBounds.center)
+            advanceEventTime(600)
+            moveTo(Offset(sourceBounds.center.x, rootBounds.bottom - 180f), delayMillis = 100)
+        }
+        composeRule.mainClock.autoAdvance = false
+        composeRule.mainClock.advanceTimeBy(1_200)
+        // Move inside the measured viewport while keeping the same physical pointer down.
+        // This pauses edge scrolling so assertions can inspect the live drag surface.
+        root.performTouchInput { moveTo(Offset(sourceBounds.center.x, rootBounds.center.y)) }
+        composeRule.mainClock.advanceTimeBy(100)
+        val dateHeaderBottom = composeRule.onNodeWithText("2026-09-15", substring = true)
+            .fetchSemanticsNode().boundsInRoot.bottom
+        val footerTop = composeRule.onNodeWithContentDescription("Daily")
+            .fetchSemanticsNode().boundsInRoot.top
+        val sourceBoundsAfterDrop = composeRule.onAllNodesWithContentDescription("タスクをドラッグ: Drag source")
+            .fetchSemanticsNodes().map { it.boundsInRoot }
+        assertTrue(
+            "the source row should be outside the visible Task list while the parent still owns the held drag; source=$sourceBoundsAfterDrop, list=($dateHeaderBottom,$footerTop)",
+            sourceBoundsAfterDrop.none { it.bottom > dateHeaderBottom && it.top < footerTop },
+        )
+        val targetBounds = composeRule.onNodeWithContentDescription("タスクをドラッグ: Offscreen target")
+            .fetchSemanticsNode().boundsInRoot
+        val releasePosition = Offset(targetBounds.center.x, targetBounds.bottom - 20f)
+        root.performTouchInput { moveTo(releasePosition) }
+        composeRule.mainClock.advanceTimeBy(100)
+        val cueBounds = composeRule.onNodeWithContentDescription("挿入位置").fetchSemanticsNode().boundsInRoot
+        assertTrue("cue must align with the target row boundary", kotlin.math.abs(cueBounds.center.y - targetBounds.bottom) <= 4f)
+        root.performTouchInput { up() }
+        composeRule.mainClock.advanceTimeBy(100)
+        composeRule.mainClock.autoAdvance = true
+        composeRule.waitUntil(15_000) { directRepository.moveCalls.get() == 1 }
+        assertEquals(1, directRepository.moveCalls.get())
+        assertEquals("entry-offscreen-target", directRepository.lastMove?.placement?.anchorEntryId)
+        assertEquals(PlacementEdge.AFTER, directRepository.lastMove?.placement?.edge)
+        assertTrue(directRepository.lastMove?.routineScoped == true)
+        assertTrue(directRepository.lastMove?.relativePlannedStartAnchor == true)
+        composeRule.onNodeWithText("Offscreen target", substring = false).assertIsDisplayed()
+    }
+
+    @Test
+    fun establishedFutureRoutineOccurrenceEditorAllowsOccurrenceTitleChange() {
+        val planningRepository = FakePlanningRepository()
+        val routine = dayWith().sections.single().entries.single().copy(routineDerived = true)
+        val futureDay = dayWith().copy(
+            logicalDate = "2026-09-15",
+            isCurrent = false,
+            taskChuteDayId = "d163-future-title-day",
+            sections = listOf(dayWith().sections.single().copy(entries = listOf(routine))),
+        )
+        launchPlanningScreen(planningRepository, initialDay = futureDay)
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        composeRule.onNodeWithText("Write report").performTouchInput { swipeLeft() }
+        composeRule.onNodeWithContentDescription("タスクを編集").assertIsDisplayed().performClick()
+        composeRule.onNodeWithContentDescription("開始通知", useUnmergedTree = true).assertIsNotEnabled()
+        composeRule.onNodeWithContentDescription("超過通知", useUnmergedTree = true).assertIsNotEnabled()
+        val titleField = composeRule.onNode(hasSetTextAction() and hasText("Write report"), useUnmergedTree = true)
+        titleField.assertIsEnabled()
+        titleField.performTextClearance()
+        composeRule.onNode(
+            hasSetTextAction() and hasText("", substring = false),
+            useUnmergedTree = true,
+        ).performTextInput("Occurrence title")
+        composeRule.onNodeWithText("保存").performClick()
+        composeRule.waitUntil(5_000) { planningRepository.saveCalls.get() == 1 }
+        assertEquals("Occurrence title", planningRepository.lastInput?.title)
+        assertEquals("2026-09-15", planningRepository.lastEditor?.day?.logicalDate)
+        assertEquals(TaskEditorCapability.ROUTINE_PLANNING, planningRepository.lastEditor?.capability)
     }
 
     @Test

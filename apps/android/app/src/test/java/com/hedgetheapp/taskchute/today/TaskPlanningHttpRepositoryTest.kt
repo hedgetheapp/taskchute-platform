@@ -262,6 +262,77 @@ class TaskPlanningHttpRepositoryTest {
         assertTrue(requests[1].second.endsWith("/routine-estimate"))
         assertTrue(requests[1].third.orEmpty().contains("\"estimate_seconds\":1500"))
     }
+
+    @Test
+    fun routineOccurrenceTitleUsesDedicatedCommandAndExactAmbiguousRetry() {
+        val requests = mutableListOf<Triple<String, String, String?>>()
+        var titleAttempts = 0
+        val task = TodayTask(
+            id = "entry-title", title = "Existing occurrence title", lifecycleState = LifecycleState.PLANNED,
+            project = null, mode = null, estimateSeconds = 600, plannedStartMinute = 540,
+            executionId = null, activeStartedAt = null, routineDerived = true, taskId = "task-shared",
+            routineBaseTitle = "Shared Routine title",
+        )
+        val day = currentDay().copy(sections = listOf(
+            TodaySection("section-1", "Morning", 480, 720, listOf(task)),
+        ))
+        val repository = TaskPlanningHttpRepository { method, path, body ->
+            requests += Triple(method, path, body)
+            if (path.endsWith("/routine-title") && ++titleAttempts == 1) TodayHttpResponse(503, null)
+            else TodayHttpResponse(204, null)
+        }
+        val editor = TaskEditorState(
+            TaskEditorMode.EDIT, day, task,
+            TaskEditorDraft(title = "New occurrence title", sectionId = "section-1", plannedStartText = "09:00", estimateText = "10"),
+            TaskEditorCapability.ROUTINE_PLANNING,
+        )
+        val input = NormalizedTaskInput("New occurrence title", null, null, "section-1", 540, 600)
+
+        assertTrue(repository.save(editor, input) is PlanningSaveResult.Failure)
+        assertEquals(PlanningSaveResult.SuccessWithRevision(day.placementRevision), repository.save(editor, input))
+        assertEquals(2, requests.size)
+        assertTrue(requests.all { it.second.endsWith("/routine-title") })
+        assertTrue(requests.all { it.third.orEmpty().contains("\"title\":\"New occurrence title\"") })
+        val firstOperation = Regex("\\\"operation_id\\\":\\\"([^\\\"]+)\\\"")
+            .find(requests[0].third.orEmpty())?.groupValues?.get(1)
+        val retryOperation = Regex("\\\"operation_id\\\":\\\"([^\\\"]+)\\\"")
+            .find(requests[1].third.orEmpty())?.groupValues?.get(1)
+        assertEquals(firstOperation, retryOperation)
+    }
+
+    @Test
+    fun routineTitleEditRejectsReminderChangesBeforeAnyOccurrenceMutation() {
+        val requests = mutableListOf<Triple<String, String, String?>>()
+        val task = TodayTask(
+            id = "entry-title-reminder", title = "Base", lifecycleState = LifecycleState.PLANNED,
+            project = null, mode = null, estimateSeconds = 600, plannedStartMinute = 540,
+            executionId = null, activeStartedAt = null,
+            routineDerived = true, taskId = "task-shared", startReminderOffsetMinutes = null,
+            notifyOnEstimateOverrun = false,
+        )
+        val day = currentDay().copy(sections = listOf(
+            TodaySection("section-1", "Morning", 480, 720, listOf(task)),
+        ))
+        val repository = TaskPlanningHttpRepository { method, path, body ->
+            requests += Triple(method, path, body)
+            TodayHttpResponse(204, null)
+        }
+        val editor = TaskEditorState(
+            TaskEditorMode.EDIT, day, task,
+            TaskEditorDraft(title = "Occurrence title", sectionId = "section-1", plannedStartText = "09:00",
+                estimateText = "10", startReminderOffsetMinutes = 5),
+            TaskEditorCapability.ROUTINE_PLANNING,
+        )
+
+        val result = repository.save(
+            editor,
+            NormalizedTaskInput("Occurrence title", null, null, "section-1", 540, 600,
+                startReminderOffsetMinutes = 5),
+        )
+
+        assertTrue(result is PlanningSaveResult.Failure)
+        assertEquals(0, requests.size)
+    }
 @Test
     fun runningProjectSaveUsesOnlyTaskMetadataEndpoint() {
         val requests = mutableListOf<Triple<String, String, String?>>()

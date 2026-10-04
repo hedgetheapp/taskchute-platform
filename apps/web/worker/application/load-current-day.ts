@@ -83,6 +83,7 @@ interface EntryRow {
   default_mode_title: string | null;
   mode_override_present: number | null;
   defaults_revision: number | null;
+  base_task_title: string;
   execution_first_started_at: string | null;
   execution_last_ended_at: string | null;
   execution_completed_duration_seconds: number | null;
@@ -145,6 +146,7 @@ function toEntryRow(value: unknown): EntryRow {
     lifecycle_state: lifecycle,
     task_id: requiredString(row, "task_id"),
     task_title: requiredString(row, "task_title"),
+    base_task_title: typeof row.base_task_title === "string" ? row.base_task_title : requiredString(row, "task_title"),
     primary_document_id: row.primary_document_id === null ? null : requiredString(row, "primary_document_id"),
     future_routine_definition_id: row.future_routine_definition_id === null
       ? null : requiredString(row, "future_routine_definition_id"),
@@ -393,8 +395,10 @@ async function loadEstablishedProjection(
                 execution_summary.active_execution_id AS execution_active_id,
                 execution_summary.last_outcome AS execution_last_outcome,
                 t.id AS task_id,
-                CASE WHEN rs.routine_occurrence_id IS NOT NULL THEN rs.task_title
+                CASE WHEN ro.id IS NOT NULL AND e.lifecycle_state = 'planned' THEN COALESCE(ro.title_override, t.title)
+                     WHEN rs.routine_occurrence_id IS NOT NULL THEN rs.task_title
                      WHEN ets.entry_id IS NOT NULL THEN ets.task_title ELSE t.title END AS task_title,
+                t.title AS base_task_title,
                 CASE WHEN rs.routine_occurrence_id IS NOT NULL THEN rs.project_id
                      WHEN eps.entry_id IS NOT NULL THEN eps.project_id ELSE p.id END AS project_id,
                 CASE WHEN rs.routine_occurrence_id IS NOT NULL THEN rs.project_title
@@ -525,6 +529,7 @@ async function loadEstablishedProjection(
         default_mode_title: row.default_mode_title,
         mode_override_present: row.mode_override_present === 1,
         defaults_revision: row.defaults_revision!,
+        base_task_title: row.base_task_title,
       } : null,
       task: {
         id: row.task_id,

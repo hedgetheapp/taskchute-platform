@@ -47,6 +47,15 @@ class TodayJsonParserTest {
         assertNull(legacy.sections.single().entries.single().startReminderOffsetMinutes)
         assertEquals(false, legacy.sections.single().entries.single().notifyOnEstimateOverrun)
     }
+
+    @Test
+    fun parsesRoutineBaseTitleForReminderMetadataWithoutChangingEffectiveTitle() {
+        val day = TodayJsonParser.parse(
+            SAMPLE.replace("\"routine\":null", "\"routine\":{\"base_task_title\":\"Shared title\"}"),
+        )
+        assertEquals("Write", day.sections.single().entries.single().title)
+        assertEquals("Shared title", day.sections.single().entries.single().routineBaseTitle)
+    }
     @Test(expected = IllegalStateException::class)
     fun rejectsUnknownLifecycleState() {
         TodayJsonParser.parse(SAMPLE.replace("running", "paused"))
