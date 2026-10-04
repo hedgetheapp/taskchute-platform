@@ -1098,6 +1098,170 @@ class TodayScreenInstrumentedTest {
     }
 
     @Test
+    fun samePairCanBeReversedImmediatelyAfterSuccessfulReorderWithoutRefresh() {
+        val directRepository = FakeDirectManipulationRepository().apply {
+            scriptedResults += DirectManipulationResult.SuccessWithRevision(6)
+            scriptedResults += DirectManipulationResult.SuccessWithRevision(7)
+            scriptedResults += DirectManipulationResult.SuccessWithRevision(8)
+        }
+        val base = dayWith().sections.single().entries.single()
+        val first = base.copy(id = "entry-reverse-a", title = "Reverse A", taskId = "task-reverse-a", plannedStartMinute = 540)
+        val second = base.copy(id = "entry-reverse-b", title = "Reverse B", taskId = "task-reverse-b", plannedStartMinute = 540)
+        val third = base.copy(id = "entry-reverse-c", title = "Reverse C", taskId = "task-reverse-c", plannedStartMinute = 540)
+        val initialDay = dayWith().copy(
+            sections = listOf(dayWith().sections.single().copy(entries = listOf(first, second, third))),
+        )
+        launchPlanningScreen(
+            FakePlanningRepository(), initialDay, directRepository,
+            refreshAfterDirect = false, silentReconcileAfterDirect = true,
+        )
+        waitForStatus(TodayLoadStatus.CONTENT)
+        val todayRepository = requireNotNull(repository)
+        todayRepository.holdRefresh = true
+        directRepository.onRequestExecuted = { request ->
+            if (request is DirectManipulationRequest.Move) {
+                todayRepository.currentDay = applyOptimisticDirectManipulation(todayRepository.currentDay, request)
+                    .copy(placementRevision = request.expectedPlacementRevision + 1)
+            }
+        }
+
+        val root = composeRule.onRoot()
+        composeRule.mainClock.autoAdvance = false
+        var fingerDown = false
+        try {
+            val sourceA = composeRule.onNodeWithContentDescription("タスクをドラッグ: Reverse A")
+                .fetchSemanticsNode().boundsInRoot
+            val targetB = composeRule.onNodeWithContentDescription("タスクをドラッグ: Reverse B")
+                .fetchSemanticsNode().boundsInRoot
+            root.performTouchInput {
+                down(sourceA.center)
+                fingerDown = true
+                advanceEventTime(600)
+                moveTo(Offset(targetB.center.x, targetB.bottom - 8f), delayMillis = 100)
+            }
+            composeRule.mainClock.advanceTimeBy(100)
+            val firstCue = composeRule.onNodeWithContentDescription("挿入位置")
+            firstCue.assertIsDisplayed()
+            assertEquals(0, directRepository.moveCalls.get())
+            root.performTouchInput { up() }
+            fingerDown = false
+            composeRule.mainClock.advanceTimeBy(100)
+
+            composeRule.waitUntil(15_000) {
+                directRepository.moveCalls.get() == 1 &&
+                    directManipulationController?.state?.pendingEntryIds?.isEmpty() == true &&
+                    synchronized(todayRepository.requestedDates) { todayRepository.requestedDates.size == 2 } &&
+                    controller?.state?.presentedDay?.sections?.singleOrNull()?.entries?.map { it.id } ==
+                    listOf("entry-reverse-b", "entry-reverse-a", "entry-reverse-c") &&
+                    controller?.state?.presentedDay?.placementRevision == 6
+            }
+            assertEquals(listOf("entry-reverse-a", "entry-reverse-b", "entry-reverse-c"),
+                controller?.state?.day?.sections?.single()?.entries?.map { it.id })
+            assertEquals(listOf("entry-reverse-b", "entry-reverse-a", "entry-reverse-c"),
+                controller?.state?.presentedDay?.sections?.single()?.entries?.map { it.id })
+            assertEquals("no manual refresh is issued; only initial load and silent reconcile run", 2,
+                synchronized(todayRepository.requestedDates) { todayRepository.requestedDates.size })
+
+            // Let the first reorder's item-placement animation publish its final bounds before
+            // asserting the next physical drag; the product flow does not require a refresh.
+            composeRule.mainClock.advanceTimeBy(600)
+            composeRule.mainClock.advanceTimeByFrame()
+            val sourceB = composeRule.onNodeWithContentDescription("タスクをドラッグ: Reverse B")
+                .fetchSemanticsNode().boundsInRoot
+            val targetA = composeRule.onNodeWithContentDescription("タスクをドラッグ: Reverse A")
+                .fetchSemanticsNode().boundsInRoot
+            root.performTouchInput {
+                down(sourceB.center)
+                fingerDown = true
+                advanceEventTime(600)
+                moveTo(Offset(targetA.center.x, targetA.bottom - 8f), delayMillis = 100)
+            }
+            composeRule.mainClock.advanceTimeBy(100)
+            val reverseCueVisible = composeRule.onAllNodesWithContentDescription("挿入位置")
+                .fetchSemanticsNodes().isNotEmpty()
+            assertTrue(
+                "same-pair reverse drag must expose the boundary after A; canonical=${controller?.state?.day?.sections?.single()?.entries?.map { it.id }}, " +
+                    "presented=${controller?.state?.presentedDay?.sections?.single()?.entries?.map { it.id }}, " +
+                    "pending=${directManipulationController?.state?.pendingEntryIds}",
+                reverseCueVisible,
+            )
+            val reverseCueBounds = composeRule.onNodeWithContentDescription("挿入位置")
+                .fetchSemanticsNode().boundsInRoot
+            assertTrue(kotlin.math.abs(reverseCueBounds.center.y - targetA.bottom) <= 4f)
+            assertEquals("the reverse Move must wait for physical pointer-up", 1, directRepository.moveCalls.get())
+            root.performTouchInput { up() }
+            fingerDown = false
+            composeRule.mainClock.advanceTimeBy(100)
+        } finally {
+            if (fingerDown) root.performTouchInput { up() }
+            composeRule.mainClock.autoAdvance = true
+        }
+
+        composeRule.waitUntil(15_000) {
+            directRepository.moveCalls.get() == 2 &&
+                directManipulationController?.state?.pendingEntryIds?.isEmpty() == true
+        }
+        assertEquals(listOf("entry-reverse-a", "entry-reverse-b", "entry-reverse-c"),
+            controller?.state?.presentedDay?.sections?.single()?.entries?.map { it.id })
+        assertEquals("the second intent uses the revision confirmed by the first Move", 7,
+            controller?.state?.presentedDay?.placementRevision)
+
+        todayRepository.releaseRefresh.countDown()
+        composeRule.waitUntil(15_000) {
+            synchronized(todayRepository.requestedDates) { todayRepository.requestedDates.size >= 3 } &&
+                controller?.state?.day?.sections?.singleOrNull()?.entries?.map { it.id } ==
+                listOf("entry-reverse-a", "entry-reverse-b", "entry-reverse-c") &&
+                controller?.state?.presentedDay?.placementRevision == 7
+        }
+        assertEquals(2, directRepository.moves.size)
+        assertEquals("entry-reverse-a", directRepository.moves[0].entryId)
+        assertEquals("entry-reverse-b", directRepository.moves[0].placement?.anchorEntryId)
+        assertEquals(PlacementEdge.AFTER, directRepository.moves[0].placement?.edge)
+        assertEquals(5, directRepository.moves[0].expectedPlacementRevision)
+        assertEquals("entry-reverse-b", directRepository.moves[1].entryId)
+        assertEquals("entry-reverse-a", directRepository.moves[1].placement?.anchorEntryId)
+        assertEquals(PlacementEdge.AFTER, directRepository.moves[1].placement?.edge)
+        assertEquals(6, directRepository.moves[1].expectedPlacementRevision)
+        assertEquals(0, directRepository.reorderCalls.get())
+
+        val sourceC = composeRule.onNodeWithContentDescription("タスクをドラッグ: Reverse C")
+            .fetchSemanticsNode().boundsInRoot
+        val targetAAfterReconcile = composeRule.onNodeWithContentDescription("タスクをドラッグ: Reverse A")
+            .fetchSemanticsNode().boundsInRoot
+        var thirdFingerDown = false
+        composeRule.mainClock.autoAdvance = false
+        try {
+            root.performTouchInput {
+                down(sourceC.center)
+                thirdFingerDown = true
+                advanceEventTime(600)
+                moveTo(Offset(targetAAfterReconcile.center.x, targetAAfterReconcile.top + 8f), delayMillis = 100)
+            }
+            composeRule.mainClock.advanceTimeBy(100)
+            composeRule.onNodeWithContentDescription("挿入位置").assertIsDisplayed()
+            assertEquals("a third drag remains available after canonical reconciliation", 2, directRepository.moveCalls.get())
+            root.performTouchInput { up() }
+            thirdFingerDown = false
+            composeRule.mainClock.advanceTimeBy(100)
+        } finally {
+            if (thirdFingerDown) root.performTouchInput { up() }
+            composeRule.mainClock.autoAdvance = true
+        }
+        composeRule.waitUntil(15_000) { directRepository.moveCalls.get() == 3 && directManipulationController?.state?.pendingEntryIds?.isEmpty() == true }
+        assertEquals("entry-reverse-c", directRepository.moves[2].entryId)
+        assertEquals("entry-reverse-a", directRepository.moves[2].placement?.anchorEntryId)
+        assertEquals(PlacementEdge.BEFORE, directRepository.moves[2].placement?.edge)
+        assertEquals(7, directRepository.moves[2].expectedPlacementRevision)
+        val aBounds = composeRule.onNodeWithContentDescription("タスクをドラッグ: Reverse A")
+            .fetchSemanticsNode().boundsInRoot
+        val bBounds = composeRule.onNodeWithContentDescription("タスクをドラッグ: Reverse B")
+            .fetchSemanticsNode().boundsInRoot
+        val cBounds = composeRule.onNodeWithContentDescription("タスクをドラッグ: Reverse C")
+            .fetchSemanticsNode().boundsInRoot
+        assertTrue(cBounds.center.y < aBounds.center.y && aBounds.center.y < bBounds.center.y)
+    }
+
+    @Test
     fun twoRowFutureDayMovesUpToTheOnlyMeaningfulBoundary() {
         val directRepository = FakeDirectManipulationRepository()
         val base = dayWith().sections.single().entries.single()
@@ -2239,6 +2403,7 @@ class TodayScreenInstrumentedTest {
         directRepository: FakeDirectManipulationRepository? = null,
         onOpenTaskNote: (TodayTask) -> Unit = {},
         refreshAfterDirect: Boolean = true,
+        silentReconcileAfterDirect: Boolean = false,
     ) {
         val repo = FakeTodayRepository(initialDay = initialDay)
         repository = repo
@@ -2256,7 +2421,10 @@ class TodayScreenInstrumentedTest {
         this.directManipulationController = directRepository?.let {
             TodayDirectManipulationController(
                 repository = it,
-                onRefresh = { if (refreshAfterDirect) controller?.refresh() },
+                onRefresh = {
+                    if (silentReconcileAfterDirect) controller?.reconcileSilently()
+                    else if (refreshAfterDirect) controller?.refresh()
+                },
                 onUnauthorized = {},
                 onOptimisticIntent = controller!!::applyOptimisticDirectManipulation,
                 onPlacementRevisionConfirmed = controller!!::confirmPlacementRevision,
@@ -2297,7 +2465,7 @@ class TodayScreenInstrumentedTest {
         var mode = LoadMode.SUCCESS
         @Volatile
         var holdLoad = false
-        var holdRefresh = false
+        @Volatile var holdRefresh = false
         @Volatile
         var holdStart = false
         @Volatile
@@ -2374,6 +2542,7 @@ class TodayScreenInstrumentedTest {
         var lastMove: DirectManipulationRequest.Move? = null
         val moves = CopyOnWriteArrayList<DirectManipulationRequest.Move>()
         val scriptedResults = CopyOnWriteArrayList<DirectManipulationResult>()
+        @Volatile var onRequestExecuted: ((DirectManipulationRequest) -> Unit)? = null
 
         override fun execute(request: DirectManipulationRequest): DirectManipulationResult {
             if (firstRequest == null) firstRequest = request
@@ -2393,6 +2562,7 @@ class TodayScreenInstrumentedTest {
                 is DirectManipulationRequest.Delete -> deleteCalls.incrementAndGet()
                 is DirectManipulationRequest.HardDelete -> deleteCalls.incrementAndGet()
             }
+            onRequestExecuted?.invoke(request)
             return scriptedResults.removeFirstOrNull() ?: result
         }
     }

@@ -550,6 +550,9 @@ private fun TodayContent(
             if (day.unsectionedEntries.isNotEmpty()) add(UNSECTIONED_DROP_KEY)
         }
     }
+    // Long-lived pointer/scroll coroutines must resolve against the latest rendered Day,
+    // including an optimistic reorder, without restarting the parent-owned pointer session.
+    val latestPresentedDay = rememberUpdatedState(day)
     LaunchedEffect(day.logicalDate, validCollapsedSectionKeys) {
         collapsedSectionIds = displayPreferences.pruneCollapsedSections(day.logicalDate, validCollapsedSectionKeys)
     }
@@ -571,9 +574,10 @@ private fun TodayContent(
     }
     fun updateDragPosition(pointerRootY: Float) {
         val current = dragState ?: return
+        val effectiveDay = latestPresentedDay.value
         val positionY = pointerRootY
-        val canonicalEntrySections = canonicalAndroidEntrySectionById(day)
-        val canonicalEntryEligibility = canonicalAndroidEntryAnchorEligibility(day)
+        val canonicalEntrySections = canonicalAndroidEntrySectionById(effectiveDay)
+        val canonicalEntryEligibility = canonicalAndroidEntryAnchorEligibility(effectiveDay)
         val target = if (canonicalEntryEligibility[current.entryId] == true
             && canonicalEntrySections[current.entryId] == current.sourceSectionId
         ) {
@@ -586,8 +590,8 @@ private fun TodayContent(
                 entryAnchorEligible = canonicalEntryEligibility,
                 emptySectionBounds = current.emptySectionBoundsSnapshot,
                 emptySectionIds = current.emptySectionIdsSnapshot,
-                endedSectionIds = endedSectionIdsForAndroid(day),
-                canonicalEntryOrderBySection = canonicalAndroidEntryOrderBySection(day),
+                endedSectionIds = endedSectionIdsForAndroid(effectiveDay),
+                canonicalEntryOrderBySection = canonicalAndroidEntryOrderBySection(effectiveDay),
                 canonicalEntrySectionById = canonicalEntrySections,
             )
         } else {
@@ -667,6 +671,9 @@ private fun TodayContent(
     // drag is not cancelled by ordinary same-day recomposition. Keep its command callback
     // current so a later physical pointer-up uses the latest placement revision.
     val latestFinishDrag = rememberUpdatedState(newValue = { finishDrag() })
+    val latestDragPositionUpdater = rememberUpdatedState(newValue = { pointerRootY: Float ->
+        updateDragPosition(pointerRootY)
+    })
     val pullToRefreshState = rememberPullToRefreshState()
     val todayListState = rememberLazyListState()
     val edgeZonePx = with(LocalDensity.current) { D148_DRAG_EDGE_ZONE.dp.toPx() }
@@ -704,6 +711,7 @@ private fun TodayContent(
                     val current = dragState
                     val currentPointer = dragPointerRootY
                     if (current != null && currentPointer != null) {
+                        val effectiveDay = latestPresentedDay.value
                         val visibleKeys = todayListState.layoutInfo.visibleItemsInfo
                             .mapNotNull { it.key as? String }.toSet()
                         val visibleGeometry = snapshotVisibleAndroidDragGeometry(
@@ -723,12 +731,12 @@ private fun TodayContent(
                             sourceSectionId = current.sourceSectionId,
                             entryBounds = visibleGeometry.entryBounds,
                             entrySectionIds = visibleGeometry.entrySectionIds,
-                            entryAnchorEligible = canonicalAndroidEntryAnchorEligibility(day),
+                            entryAnchorEligible = canonicalAndroidEntryAnchorEligibility(effectiveDay),
                             emptySectionBounds = visibleEmptySections.first,
                             emptySectionIds = visibleEmptySections.second,
-                            endedSectionIds = endedSectionIdsForAndroid(day),
-                            canonicalEntryOrderBySection = canonicalAndroidEntryOrderBySection(day),
-                            canonicalEntrySectionById = canonicalAndroidEntrySectionById(day),
+                            endedSectionIds = endedSectionIdsForAndroid(effectiveDay),
+                            canonicalEntryOrderBySection = canonicalAndroidEntryOrderBySection(effectiveDay),
+                            canonicalEntrySectionById = canonicalAndroidEntrySectionById(effectiveDay),
                         )
                         dragState = current.copy(
                             rowBoundsSnapshot = rowBounds.toMap().filterKeys { it in visibleKeys },
@@ -827,7 +835,9 @@ private fun TodayContent(
                         pointerPressed = change.pressed,
                     )
                     if (parentOwnsDrag) {
-                        updateDragPosition(androidDragPointerRootY(dragPointerHostRootTop, change.position.y))
+                        latestDragPositionUpdater.value(
+                            androidDragPointerRootY(dragPointerHostRootTop, change.position.y),
+                        )
                         change.consume()
                     }
                     if (change.changedToUpIgnoreConsumed() || !change.pressed) {
