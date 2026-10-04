@@ -88,7 +88,7 @@ class WearTodayControllerRealtimeTest {
         controller = controller(
             repository,
             realtime,
-            onCanonicalRefreshAccepted = { complicationRefreshes += 1 },
+            onCanonicalRefreshAccepted = { _ -> complicationRefreshes += 1 },
         )
 
         controller.onForeground()
@@ -104,13 +104,21 @@ class WearTodayControllerRealtimeTest {
     fun realtimeUnauthorizedSignsOutAndClearsOnlyTheWatchSession() {
         val repository = FakeWearRepository()
         val realtime = FakeRealtimeClient()
-        val controller = controller(repository, realtime)
+        val events = mutableListOf<String>()
+        repository.onClearSession = { events += "session-cleared" }
+        val controller = controller(
+            repository,
+            realtime,
+            onSessionInvalidated = { events += "projection-cleared" },
+            onComplicationRefreshRequested = { events += "complication-refresh" },
+        )
         controller.onForeground()
 
         controller.onRealtimeUnauthorized()
 
         assertEquals(WearScreenState.SignedOut, controller.state)
         assertEquals(1, repository.clearSessionCount)
+        assertEquals(listOf("projection-cleared", "session-cleared", "complication-refresh"), events)
         assertTrue(realtime.stopCount >= 1)
     }
 
@@ -129,7 +137,7 @@ class WearTodayControllerRealtimeTest {
         val controller = controller(
             repository,
             FakeRealtimeClient(),
-            onCanonicalLifecycleReconciled = { refreshCount += 1 },
+            onCanonicalLifecycleReconciled = { _ -> refreshCount += 1 },
         )
         controller.onForeground()
         controller.start(task)
@@ -151,7 +159,7 @@ class WearTodayControllerRealtimeTest {
         val controller = controller(
             repository,
             FakeRealtimeClient(),
-            onCanonicalLifecycleReconciled = { refreshCount += 1 },
+            onCanonicalLifecycleReconciled = { _ -> refreshCount += 1 },
         )
         controller.onForeground()
         controller.start(task)
@@ -164,7 +172,7 @@ class WearTodayControllerRealtimeTest {
         val unauthorizedController = controller(
             unauthorizedRepository,
             FakeRealtimeClient(),
-            onCanonicalLifecycleReconciled = { refreshCount += 1 },
+            onCanonicalLifecycleReconciled = { _ -> refreshCount += 1 },
         )
         unauthorizedController.onForeground()
         unauthorizedController.start(task)
@@ -178,7 +186,7 @@ class WearTodayControllerRealtimeTest {
         val controller = controller(
             repository,
             FakeRealtimeClient(),
-            onCanonicalRefreshAccepted = { refreshes += 1 },
+            onCanonicalRefreshAccepted = { _ -> refreshes += 1 },
         )
 
         controller.onForeground()
@@ -200,7 +208,7 @@ class WearTodayControllerRealtimeTest {
         val failedController = controller(
             failedRepository,
             FakeRealtimeClient(),
-            onCanonicalRefreshAccepted = { refreshes += 1 },
+            onCanonicalRefreshAccepted = { _ -> refreshes += 1 },
         )
 
         failedController.onForeground()
@@ -214,7 +222,7 @@ class WearTodayControllerRealtimeTest {
         val unauthorizedController = controller(
             unauthorizedRepository,
             FakeRealtimeClient(),
-            onCanonicalRefreshAccepted = { refreshes += 1 },
+            onCanonicalRefreshAccepted = { _ -> refreshes += 1 },
         )
 
         unauthorizedController.onForeground()
@@ -227,8 +235,10 @@ class WearTodayControllerRealtimeTest {
         repository: FakeWearRepository,
         realtime: FakeRealtimeClient,
         onAuthenticated: () -> Unit = {},
-        onCanonicalLifecycleReconciled: () -> Unit = {},
-        onCanonicalRefreshAccepted: () -> Unit = {},
+        onCanonicalLifecycleReconciled: (WearDay) -> Unit = {},
+        onCanonicalRefreshAccepted: (WearDay) -> Unit = {},
+        onSessionInvalidated: () -> Unit = {},
+        onComplicationRefreshRequested: () -> Unit = {},
     ) =
         WearTodayController(
             repository = repository,
@@ -238,6 +248,8 @@ class WearTodayControllerRealtimeTest {
             onCanonicalLifecycleReconciled = onCanonicalLifecycleReconciled,
             onAuthenticated = onAuthenticated,
             onCanonicalRefreshAccepted = onCanonicalRefreshAccepted,
+            onSessionInvalidated = onSessionInvalidated,
+            onComplicationRefreshRequested = onComplicationRefreshRequested,
         )
 
     private fun plannedTask() = WearTask(
@@ -272,6 +284,7 @@ class WearTodayControllerRealtimeTest {
         var startResult: WearMutationResult = WearMutationResult.Success
         var completeResult: WearMutationResult = WearMutationResult.Success
         var onLoad: () -> WearLoadResult = { WearLoadResult.Success(day("2026-10-01")) }
+        var onClearSession: () -> Unit = {}
 
         override fun restoreSession(): WearAuthResult {
             restoreCount += 1
@@ -289,6 +302,7 @@ class WearTodayControllerRealtimeTest {
         override fun complete(task: WearTask) = completeResult
         override fun clearSession() {
             clearSessionCount += 1
+            onClearSession()
         }
     }
 

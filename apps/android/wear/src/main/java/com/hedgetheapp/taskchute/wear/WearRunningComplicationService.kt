@@ -73,19 +73,24 @@ class WearRunningComplicationService : SuspendingComplicationDataSourceService()
     }
 
     private fun loadPresentation(): WearComplicationPresentation = try {
+        val store = WearEncryptedRunningProjectionStore(applicationContext)
+        val cached = store.load()
         val repository = WearHttpRepository(
             BuildConfig.TASKCHUTE_BASE_URL,
             WearEncryptedSessionStore(applicationContext),
             requestTimeoutMillis = REQUEST_TIMEOUT_MILLIS,
         )
         val auth = repository.restoreSession()
-        if (auth == WearAuthResult.SignedIn) {
-            wearComplicationPresentation(auth, repository.loadToday(), Instant.now())
-        } else {
-            wearComplicationPresentation(auth, now = Instant.now())
-        }
+        val load = if (auth == WearAuthResult.SignedIn) repository.loadToday() else null
+        resolveWearComplication(auth, load, Instant.now(), cached).also { it.persistCache(store) }.presentation
     } catch (_: Exception) {
-        WearComplicationPresentation.Unavailable
+        val store = WearEncryptedRunningProjectionStore(applicationContext)
+        resolveWearComplication(
+            WearAuthResult.TransientFailure,
+            load = null,
+            now = Instant.now(),
+            lastKnownGood = store.load(),
+        ).presentation
     }
 
     private fun textData(
@@ -215,6 +220,26 @@ class WearRunningComplicationService : SuspendingComplicationDataSourceService()
 }
 
 internal object WearComplicationRefreshRequester {
+    fun acceptCanonical(context: Context, day: WearDay) {
+        val store = WearEncryptedRunningProjectionStore(context.applicationContext)
+        resolveWearComplication(
+            WearAuthResult.SignedIn,
+            WearLoadResult.Success(day),
+            Instant.now(),
+            store.load(),
+        ).also { it.persistCache(store) }
+        request(context)
+    }
+
+    fun authenticationLost(context: Context) {
+        clearLastKnownGood(context)
+        request(context)
+    }
+
+    fun clearLastKnownGood(context: Context) {
+        WearEncryptedRunningProjectionStore(context.applicationContext).clear()
+    }
+
     fun request(context: Context) {
         runCatching {
             ComplicationDataSourceUpdateRequester.create(

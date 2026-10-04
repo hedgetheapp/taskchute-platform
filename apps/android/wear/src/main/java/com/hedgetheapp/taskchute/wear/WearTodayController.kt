@@ -18,9 +18,11 @@ internal class WearTodayController(
     private val realtime: WearRealtimeClient = NoopWearRealtimeClient,
     private val mainDispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
-    private val onCanonicalLifecycleReconciled: () -> Unit = {},
+    private val onCanonicalLifecycleReconciled: (WearDay) -> Unit = {},
     private val onAuthenticated: () -> Unit = {},
-    private val onCanonicalRefreshAccepted: () -> Unit = {},
+    private val onCanonicalRefreshAccepted: (WearDay) -> Unit = {},
+    private val onSessionInvalidated: () -> Unit = {},
+    private val onComplicationRefreshRequested: () -> Unit = {},
 ) {
     private val scope = CoroutineScope(SupervisorJob() + mainDispatcher)
     private val authMutex = Mutex()
@@ -76,6 +78,8 @@ internal class WearTodayController(
                     if (foreground) {
                         realtime.start()
                         requestCanonicalRefresh(showLoading = true)
+                    } else {
+                        onComplicationRefreshRequested()
                     }
                 }
                 WearAuthResult.TransientFailure -> {
@@ -92,6 +96,7 @@ internal class WearTodayController(
 
     fun onPairingGrant(bridge: WearPairingBridge, pairGrant: WearPairGrant) {
         bridge.pairingExchangeStarted()
+        onSessionInvalidated()
         scope.launch {
             val auth = authMutex.withLock {
                 withContext(ioDispatcher) {
@@ -107,14 +112,23 @@ internal class WearTodayController(
                     if (foreground) {
                         realtime.start()
                         requestCanonicalRefresh(showLoading = true)
+                    } else {
+                        onComplicationRefreshRequested()
                     }
                 }
                 WearAuthResult.SignedOut -> {
                     authenticated = false
                     bridge.pairingExchangeFinished(false, "接続情報の有効期限が切れました。Watchから再度接続してください。")
+                    onComplicationRefreshRequested()
                 }
-                WearAuthResult.TransientFailure -> bridge.pairingExchangeFinished(false, "通信結果を確認できません。接続状態を確認して再試行してください。")
-                WearAuthResult.ProtocolFailure -> bridge.pairingExchangeFinished(false, "接続を完了できません。Watchから再度接続してください。")
+                WearAuthResult.TransientFailure -> {
+                    bridge.pairingExchangeFinished(false, "通信結果を確認できません。接続状態を確認して再試行してください。")
+                    onComplicationRefreshRequested()
+                }
+                WearAuthResult.ProtocolFailure -> {
+                    bridge.pairingExchangeFinished(false, "接続を完了できません。Watchから再度接続してください。")
+                    onComplicationRefreshRequested()
+                }
             }
         }
     }
@@ -137,9 +151,10 @@ internal class WearTodayController(
 
     fun onRealtimeUnauthorized() {
         if (!foreground || !authenticated) return
-        transitionSignedOut()
+        transitionSignedOut(requestComplicationRefresh = false)
         scope.launch {
             authMutex.withLock { withContext(ioDispatcher) { repository.clearSession() } }
+            onComplicationRefreshRequested()
         }
     }
 
@@ -208,7 +223,7 @@ internal class WearTodayController(
             )
             is WearLoadResult.Success -> {
                 state = stateForDay(result.day)
-                onCanonicalRefreshAccepted()
+                onCanonicalRefreshAccepted(result.day)
             }
         }
     }
@@ -227,7 +242,8 @@ internal class WearTodayController(
         val authAtStart = authGeneration
         val loadId = ++nextLoadId
         val load = loadMutex.withLock { withContext(ioDispatcher) { repository.loadToday() } }
-        val canonicalTransitionConfirmed = (load as? WearLoadResult.Success)?.day?.let { day ->
+        val canonicalDay = (load as? WearLoadResult.Success)?.day
+        val canonicalTransitionConfirmed = canonicalDay?.let { day ->
             if (completion) {
                 day.allTasks.any { it.id == task.id && it.lifecycle == WearLifecycle.COMPLETED }
             } else {
@@ -237,7 +253,7 @@ internal class WearTodayController(
         if (canonicalTransitionConfirmed &&
             (mutation == WearMutationResult.Success || mutation == WearMutationResult.Ambiguous)
         ) {
-            onCanonicalLifecycleReconciled()
+            onCanonicalLifecycleReconciled(canonicalDay)
         }
         if (!foreground || lifecycleAtStart != lifecycleGeneration || authAtStart != authGeneration || loadId < latestAppliedLoadId) return
         latestAppliedLoadId = loadId
@@ -269,12 +285,14 @@ internal class WearTodayController(
         }
     }
 
-    private fun transitionSignedOut() {
+    private fun transitionSignedOut(requestComplicationRefresh: Boolean = true) {
         authenticated = false
         authGeneration += 1
         refreshGate.clearPending()
         realtime.stop()
         state = WearScreenState.SignedOut
+        onSessionInvalidated()
+        if (requestComplicationRefresh) onComplicationRefreshRequested()
     }
 
     private fun stateForDay(day: WearDay): WearScreenState =

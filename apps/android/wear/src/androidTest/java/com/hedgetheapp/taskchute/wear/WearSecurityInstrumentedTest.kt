@@ -43,6 +43,28 @@ class WearSecurityInstrumentedTest {
     }
 
     @Test
+    fun runningComplicationFallbackIsEncryptedInNoBackupStorage() {
+        val store = WearEncryptedRunningProjectionStore(context)
+        val title = "private-running-title-164"
+        val snapshot = WearRunningProjectionSnapshot(
+            taskTitle = title,
+            startedAt = Instant.parse("2026-10-04T10:00:00Z"),
+            estimateSeconds = 1_800,
+        )
+        store.clear()
+        try {
+            assertEquals(true, store.save(snapshot))
+            assertEquals(snapshot, store.load())
+            val cacheFile = java.io.File(context.noBackupFilesDir, "taskchute-wear-running-projection.bin")
+            assertEquals(true, cacheFile.isFile)
+            assertFalse(cacheFile.readBytes().toString(Charsets.ISO_8859_1).contains(title))
+        } finally {
+            store.clear()
+        }
+        assertNull(store.load())
+    }
+
+    @Test
     fun onlyGrantFromPairedPhoneForPendingRequestIsAccepted() {
         val requestId = WearPairingProtocol.newRequestId()
         val nonce = WearPairingProtocol.newNonce()

@@ -3,6 +3,7 @@ package com.hedgetheapp.taskchute.wear
 import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -108,6 +109,131 @@ class WearComplicationPresentationTest {
     }
 
     @Test
+    fun transientCanonicalFailureRetainsLastKnownGoodAndRecomputesElapsedProgress() {
+        val cached = snapshot("古い表示")
+
+        val resolution = resolveWearComplication(
+            WearAuthResult.SignedIn,
+            WearLoadResult.Failure(ambiguous = true),
+            now,
+            cached,
+        )
+
+        val running = resolution.presentation as WearComplicationPresentation.Running
+        assertEquals("古い表示", running.taskTitle)
+        assertEquals(1_080L, running.elapsedSeconds)
+        assertEquals("18/30", running.compactText)
+        assertEquals(WearComplicationCacheChange.Keep, resolution.cacheChange)
+    }
+
+    @Test
+    fun transientSessionValidationFailureMayUseLastKnownGoodButSignedOutMayNot() {
+        val cached = snapshot("作業")
+        val transient = resolveWearComplication(WearAuthResult.TransientFailure, null, now, cached)
+        assertTrue(transient.presentation is WearComplicationPresentation.Running)
+        assertEquals(WearComplicationCacheChange.Keep, transient.cacheChange)
+
+        val signedOut = resolveWearComplication(WearAuthResult.SignedOut, null, now, cached)
+        assertEquals(WearComplicationPresentation.SignedOut, signedOut.presentation)
+        assertEquals(WearComplicationCacheChange.Clear, signedOut.cacheChange)
+
+        val unauthorized = resolveWearComplication(
+            WearAuthResult.SignedIn,
+            WearLoadResult.Unauthorized,
+            now,
+            cached,
+        )
+        assertEquals(WearComplicationPresentation.SignedOut, unauthorized.presentation)
+        assertEquals(WearComplicationCacheChange.Clear, unauthorized.cacheChange)
+    }
+
+    @Test
+    fun canonicalRunningReplacesCachedIdentityAndCanonicalIdleClearsIt() {
+        val newTask = task(WearLifecycle.RUNNING, 2_400).copy(id = "task-2", title = "新しい作業")
+        val dayWithNewRun = day().copy(
+            unsectionedTasks = listOf(newTask),
+            activeExecution = WearExecution("execution-2", "task-2", "2026-10-02T10:12:00Z", 2_400),
+        )
+        val running = resolveWearComplication(
+            WearAuthResult.SignedIn,
+            WearLoadResult.Success(dayWithNewRun),
+            now,
+            snapshot("古い作業"),
+        )
+        assertEquals("新しい作業", (running.presentation as WearComplicationPresentation.Running).taskTitle)
+        assertEquals(
+            WearRunningProjectionSnapshot("新しい作業", Instant.parse("2026-10-02T10:12:00Z"), 2_400),
+            (running.cacheChange as WearComplicationCacheChange.Save).snapshot,
+        )
+
+        val idle = resolveWearComplication(
+            WearAuthResult.SignedIn,
+            WearLoadResult.Success(day()),
+            now,
+            snapshot("古い作業"),
+        )
+        assertEquals(WearComplicationPresentation.Idle, idle.presentation)
+        assertEquals(WearComplicationCacheChange.Clear, idle.cacheChange)
+    }
+
+    @Test
+    fun successfulInvalidationRefetchSurvivesRedundantTransientComplicationFetch() {
+        val canonicalDay = day().copy(
+            sections = listOf(WearSection("section", "午前", 0, 720, listOf(task(WearLifecycle.RUNNING, 1_800)))),
+            activeExecution = WearExecution("execution-1", "task-1", "2026-10-02T10:00:00Z", 1_800),
+        )
+        val store = MemoryProjectionStore()
+        resolveWearComplication(
+            WearAuthResult.SignedIn,
+            WearLoadResult.Success(canonicalDay),
+            now,
+            store.load(),
+        ).persistCache(store)
+
+        val subsequentProviderFailure = resolveWearComplication(
+            WearAuthResult.SignedIn,
+            WearLoadResult.Failure(ambiguous = true),
+            now.plusSeconds(60),
+            store.load(),
+        )
+
+        assertEquals("19/30", (subsequentProviderFailure.presentation as WearComplicationPresentation.Running).compactText)
+        assertEquals(WearComplicationCacheChange.Keep, subsequentProviderFailure.cacheChange)
+    }
+
+    @Test
+    fun deterministicFailureDoesNotRenderStaleFallbackAndMalformedSuccessDoesNotClearIt() {
+        val cached = snapshot("作業")
+        val rejected = resolveWearComplication(
+            WearAuthResult.SignedIn,
+            WearLoadResult.Failure(ambiguous = false),
+            now,
+            cached,
+        )
+        assertEquals(WearComplicationPresentation.Unavailable, rejected.presentation)
+        assertEquals(WearComplicationCacheChange.Keep, rejected.cacheChange)
+
+        val malformed = day().copy(activeExecution = WearExecution("execution", "missing", "invalid", null))
+        val invalidSuccess = resolveWearComplication(
+            WearAuthResult.SignedIn,
+            WearLoadResult.Success(malformed),
+            now,
+            cached,
+        )
+        assertEquals(WearComplicationPresentation.Unavailable, invalidSuccess.presentation)
+        assertEquals(WearComplicationCacheChange.Keep, invalidSuccess.cacheChange)
+    }
+
+    @Test
+    fun encryptedStoreCodecRoundTripsAndRejectsCorruptOrInvalidSnapshots() {
+        val snapshot = snapshot("安全な表示")
+        val encoded = requireNotNull(WearRunningProjectionCodec.encode(snapshot))
+        assertEquals(snapshot, WearRunningProjectionCodec.decode(encoded))
+        assertNull(WearRunningProjectionCodec.decode(encoded + byteArrayOf(1)))
+        assertNull(WearRunningProjectionCodec.encode(snapshot.copy(estimateSeconds = 0)))
+    }
+
+    @Test
     fun unsupportedAndWrongGoalRequestsFailSafely() {
         val idle = WearComplicationPresentation.Idle
         assertEquals(
@@ -188,6 +314,22 @@ class WearComplicationPresentationTest {
         )
         return wearComplicationPresentation(WearAuthResult.SignedIn, WearLoadResult.Success(day), now)
             as WearComplicationPresentation.Running
+    }
+
+    private fun snapshot(title: String) = WearRunningProjectionSnapshot(
+        taskTitle = title,
+        startedAt = Instant.parse("2026-10-02T10:00:00Z"),
+        estimateSeconds = 1_800,
+    )
+
+    private class MemoryProjectionStore : WearRunningProjectionStore {
+        private var value: WearRunningProjectionSnapshot? = null
+        override fun load() = value
+        override fun save(snapshot: WearRunningProjectionSnapshot): Boolean {
+            value = snapshot
+            return true
+        }
+        override fun clear() { value = null }
     }
 
     private fun day() = WearDay("2026-10-02", 1, emptyList(), emptyList(), null, null, "UTC")

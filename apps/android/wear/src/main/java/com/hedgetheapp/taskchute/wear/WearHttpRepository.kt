@@ -148,7 +148,9 @@ internal class WearHttpRepository(
     private fun pushRegistrationRequest(path: String, body: String, successField: String): WearPushRegistrationResult {
         val response = request("POST", path, body)
         val successfulPayload = runCatching { JSONObject(response.body).optBoolean(successField) }.getOrDefault(false)
-        return classifyWearPushRegistrationResponse(response.status, successfulPayload)
+        val result = classifyWearPushRegistrationResponse(response.status, successfulPayload)
+        if (result == WearPushRegistrationResult.Unauthorized) clearUnauthorized()
+        return result
     }
 
     private fun unregisterPushRegistrationBestEffort() {

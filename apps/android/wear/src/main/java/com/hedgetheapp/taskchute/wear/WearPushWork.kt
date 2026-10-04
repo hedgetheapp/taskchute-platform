@@ -61,7 +61,11 @@ internal class WearProjectionInvalidationWorker(
         if (BuildConfig.TASKCHUTE_BASE_URL.isBlank()) return@withContext Result.success()
         val repository = WearHttpRepository(BuildConfig.TASKCHUTE_BASE_URL, WearEncryptedSessionStore(applicationContext))
         when (repository.restoreSession()) {
-            WearAuthResult.SignedOut, WearAuthResult.ProtocolFailure -> Result.success()
+            WearAuthResult.SignedOut -> {
+                WearComplicationRefreshRequester.authenticationLost(applicationContext)
+                Result.success()
+            }
+            WearAuthResult.ProtocolFailure -> Result.success()
             WearAuthResult.TransientFailure -> retryWithinLimit()
             WearAuthResult.SignedIn -> {
                 val started = SystemClock.elapsedRealtime()
@@ -69,10 +73,13 @@ internal class WearProjectionInvalidationWorker(
                     is WearLoadResult.Success -> {
                         currentCoroutineContext().ensureActive()
                         WearLatencyDiagnostics.mark("wear_today_refetch_success", SystemClock.elapsedRealtime() - started)
-                        WearComplicationRefreshRequester.request(applicationContext)
+                        WearComplicationRefreshRequester.acceptCanonical(applicationContext, load.day)
                         Result.success()
                     }
-                    WearLoadResult.Unauthorized -> Result.success()
+                    WearLoadResult.Unauthorized -> {
+                        WearComplicationRefreshRequester.authenticationLost(applicationContext)
+                        Result.success()
+                    }
                     is WearLoadResult.Failure -> if (load.ambiguous) retryWithinLimit() else Result.success()
                 }
             }
@@ -96,7 +103,11 @@ internal class WearPushRegistrationWorker(
             .getOrElse { return@withContext retryWithinLimit() }
         val repository = WearHttpRepository(BuildConfig.TASKCHUTE_BASE_URL, WearEncryptedSessionStore(applicationContext))
         when (repository.restoreSession()) {
-            WearAuthResult.SignedOut, WearAuthResult.ProtocolFailure -> return@withContext Result.success()
+            WearAuthResult.SignedOut -> {
+                WearComplicationRefreshRequester.authenticationLost(applicationContext)
+                return@withContext Result.success()
+            }
+            WearAuthResult.ProtocolFailure -> return@withContext Result.success()
             WearAuthResult.TransientFailure -> return@withContext retryWithinLimit()
             WearAuthResult.SignedIn -> Unit
         }
@@ -106,7 +117,11 @@ internal class WearPushRegistrationWorker(
         when (repository.registerPushToken(installationId, token)) {
             WearPushRegistrationResult.Success -> Result.success()
             WearPushRegistrationResult.Retry -> retryWithinLimit()
-            WearPushRegistrationResult.Unauthorized, WearPushRegistrationResult.Rejected -> Result.success()
+            WearPushRegistrationResult.Unauthorized -> {
+                WearComplicationRefreshRequester.authenticationLost(applicationContext)
+                Result.success()
+            }
+            WearPushRegistrationResult.Rejected -> Result.success()
         }
     }
 

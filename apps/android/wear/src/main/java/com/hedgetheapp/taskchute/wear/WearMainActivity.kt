@@ -28,9 +28,11 @@ class WearMainActivity : ComponentActivity() {
         controller = WearTodayController(
             repository,
             realtime,
-            onCanonicalLifecycleReconciled = { WearComplicationRefreshRequester.request(this) },
+            onCanonicalLifecycleReconciled = { day -> WearComplicationRefreshRequester.acceptCanonical(this, day) },
             onAuthenticated = { WearPushWork.enqueueRegistration(this) },
-            onCanonicalRefreshAccepted = { WearComplicationRefreshRequester.request(this) },
+            onCanonicalRefreshAccepted = { day -> WearComplicationRefreshRequester.acceptCanonical(this, day) },
+            onSessionInvalidated = { WearComplicationRefreshRequester.clearLastKnownGood(this) },
+            onComplicationRefreshRequested = { WearComplicationRefreshRequester.request(this) },
         )
         pairingBridge = WearPairingBridge(this) { grant -> controller.onPairingGrant(pairingBridge, grant) }
         setContent { WearTaskChuteApp(controller, pairingBridge) }

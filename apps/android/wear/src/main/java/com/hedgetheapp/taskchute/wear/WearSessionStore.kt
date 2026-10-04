@@ -62,7 +62,7 @@ internal object WearCookieCodec {
     private const val MAX_BYTES = 24 * 1024
 }
 
-internal class WearEncryptedSessionStore(context: Context) : WearSessionStore {
+internal class WearEncryptedSessionStore(private val context: Context) : WearSessionStore {
     private val file = File(context.noBackupFilesDir, FILE_NAME)
 
     override fun load(): WearCookieSession? = try {
@@ -101,6 +101,8 @@ internal class WearEncryptedSessionStore(context: Context) : WearSessionStore {
     override fun clear() {
         file.delete()
         File(file.parentFile, "$FILE_NAME.tmp").delete()
+        // Running task presentation is scoped to the authenticated Watch session.
+        WearEncryptedRunningProjectionStore(context).clear()
     }
 
     private fun decrypt(envelope: ByteArray): ByteArray? {
