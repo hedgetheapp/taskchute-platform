@@ -44,7 +44,10 @@ import com.hedgetheapp.taskchute.today.TodayScreen
 import com.hedgetheapp.taskchute.today.TaskPlanningController
 import com.hedgetheapp.taskchute.today.TaskPlanningHttpRepository
 import com.hedgetheapp.taskchute.ui.AndroidDestination
+import com.hedgetheapp.taskchute.ui.AuthScreenPresentation
+import com.hedgetheapp.taskchute.ui.FullScreenLoadingPresentation
 import com.hedgetheapp.taskchute.ui.TaskChuteTheme
+import com.hedgetheapp.taskchute.ui.authScreenPresentation
 import com.hedgetheapp.taskchute.document.DailyController
 import com.hedgetheapp.taskchute.document.DailyDocumentHttpRepository
 import com.hedgetheapp.taskchute.document.DailyScreen
@@ -233,17 +236,23 @@ private fun TaskChuteApp(
     TaskChuteTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
             Box(Modifier.fillMaxSize()) {
-            when (state) {
-                AuthUiState.Restoring -> Centered("認証状態を確認しています…", true)
-                AuthUiState.SigningIn -> LoginForm(email, password, { email = it }, { password = it }, true) { }
-                AuthUiState.SigningOut -> Centered("ログアウトしています…", true)
-                is AuthUiState.SignedOut -> LoginForm(email, password, { email = it }, { password = it }, false, state.message) {
-                    val submitted = password
-                    password = ""
-                    controller.signIn(email, submitted)
+            when (authScreenPresentation(state)) {
+                AuthScreenPresentation.GENERIC_LOADING -> FullScreenLoadingPresentation()
+                AuthScreenPresentation.SIGNING_IN -> LoginForm(email, password, { email = it }, { password = it }, true) { }
+                AuthScreenPresentation.SIGNING_OUT -> Centered("ログアウトしています…", true)
+                AuthScreenPresentation.LOGIN -> {
+                    val signedOut = state as AuthUiState.SignedOut
+                    LoginForm(email, password, { email = it }, { password = it }, false, signedOut.message) {
+                        val submitted = password
+                        password = ""
+                        controller.signIn(email, submitted)
+                    }
                 }
-                is AuthUiState.NetworkError -> ErrorState(state.message, controller::retry)
-                is AuthUiState.SignedIn -> {
+                AuthScreenPresentation.RETRY_ERROR -> {
+                    val networkError = state as AuthUiState.NetworkError
+                    ErrorState(networkError.message, controller::retry)
+                }
+                AuthScreenPresentation.AUTHENTICATED -> {
                     val signOut = { realtimeManager.stop(); planningController.dismiss(); controller.signOut() }
                     when (destination) {
                         AndroidDestination.TODAY -> TodayScreen(

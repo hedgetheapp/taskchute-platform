@@ -148,6 +148,9 @@ import com.hedgetheapp.taskchute.ui.MovableAddFab
 import com.hedgetheapp.taskchute.ui.TaskChuteColors
 import com.hedgetheapp.taskchute.ui.TaskChuteDatePickerDialog
 import com.hedgetheapp.taskchute.ui.TaskChuteDateNavigator
+import com.hedgetheapp.taskchute.ui.FullScreenLoadingPresentation
+import com.hedgetheapp.taskchute.ui.TodayScreenPresentation
+import com.hedgetheapp.taskchute.ui.todayScreenPresentation
 
 private fun currentLogicalDate(day: TodayDay): String {
     val zone = day.establishmentTimezone?.let { runCatching { ZoneId.of(it) }.getOrNull() } ?: ZoneId.systemDefault()
@@ -260,10 +263,12 @@ fun TodayScreen(
         ?.toSet()
         .orEmpty()
 
+    val screenPresentation = todayScreenPresentation(state.status)
+    Box(Modifier.fillMaxSize()) {
     Scaffold(
         containerColor = TaskChuteColors.Background,
         bottomBar = {
-            Column {
+            if (screenPresentation != TodayScreenPresentation.GENERIC_LOADING) Column {
                 if (selectionModeActive && day != null) {
                     BulkActionBar(
                         count = bulkSelected.size,
@@ -289,12 +294,9 @@ fun TodayScreen(
         },
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
-            when (state.status) {
-                TodayLoadStatus.LOADING -> LoadingToday()
-                TodayLoadStatus.REFRESHING,
-                TodayLoadStatus.CONTENT,
-                TodayLoadStatus.EMPTY,
-                -> TodayContent(
+            when (screenPresentation) {
+                TodayScreenPresentation.GENERIC_LOADING -> Unit
+                TodayScreenPresentation.CONTENT -> TodayContent(
                     controller = controller,
                     state = state,
                     planningController = planningController,
@@ -323,8 +325,7 @@ fun TodayScreen(
                     onRequestDelete = { deleteEntryIds = it },
                     modifier = Modifier.fillMaxSize(),
                 )
-                TodayLoadStatus.ERROR -> TodayError(controller::refresh)
-                TodayLoadStatus.AUTH_REQUIRED -> TodayAuthRequired()
+                TodayScreenPresentation.RETRY_ERROR -> TodayError(controller::refresh)
             }
             if (state.status == TodayLoadStatus.CONTENT || state.status == TodayLoadStatus.EMPTY || state.status == TodayLoadStatus.REFRESHING) {
                 state.presentedDay?.takeIf { canPlanDay(it) || it.isCurrent }?.let { day ->
@@ -415,6 +416,10 @@ fun TodayScreen(
                     }
                 }
             }
+        }
+    }
+        if (screenPresentation == TodayScreenPresentation.GENERIC_LOADING) {
+            FullScreenLoadingPresentation(Modifier.fillMaxSize())
         }
     }
 
@@ -510,7 +515,7 @@ private fun TodayContent(
     onRequestDelete: (Set<String>) -> Unit,
     modifier: Modifier,
 ) {
-    val day = state.presentedDay ?: return LoadingToday()
+    val day = state.presentedDay ?: return FullScreenLoadingPresentation(modifier)
     val appContext = LocalContext.current.applicationContext
     val displayPreferences = remember(appContext) { TodayDisplayPreferences(appContext) }
     var showCompleted by remember(displayPreferences) { mutableStateOf(displayPreferences.showCompleted()) }
@@ -2950,19 +2955,6 @@ private fun ReferencePicker(
 }
 
 @Composable
-private fun LoadingToday() {
-    Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        CircularProgressIndicator(
-            modifier = Modifier.size(32.dp),
-            color = Color.White,
-            strokeWidth = 3.dp,
-        )
-        Spacer(Modifier.height(12.dp))
-        Text("読み込み中", color = TaskChuteColors.SecondaryText)
-    }
-}
-
-@Composable
 private fun EmptyToday(modifier: Modifier = Modifier) {
     BoxWithConstraints(
         modifier = modifier.fillMaxWidth(),
@@ -3031,15 +3023,6 @@ private fun TodayError(retry: () -> Unit) {
         ) {
             Text("再試行", fontSize = 14.sp, fontWeight = FontWeight.Bold)
         }
-    }
-}
-
-@Composable
-private fun TodayAuthRequired() {
-    Column(Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        CircularProgressIndicator()
-        Spacer(Modifier.height(12.dp))
-        Text("認証状態を確認しています…")
     }
 }
 
