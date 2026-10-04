@@ -1,3 +1,11 @@
+## D-167 — Android Complete→Start Serial Lifecycle Handoff Corrective v0.1
+
+Status: **Approved / Not implemented / Not verified**
+
+Canonical Decision: `docs/decisions/D-167_ANDROID_COMPLETE_START_SERIAL_LIFECYCLE_HANDOFF_CORRECTIVE_V01.md`
+
+Android Today currently can compose an immediate Start B optimistic transition from stale canonical state while Complete A is still only optimistically applied, briefly rendering A and B as Running together. Complete A and Start B can also be sent concurrently because pending guards are per Entry, allowing Start B to race the server's one-active-Execution invariant. D-167 keeps the UI responsive but chains optimistic lifecycle state from the current presented Day and serializes dependent execution mutations so Complete A resolves safely before Start B is dispatched. Generic failure/transport ambiguity reconciles canonical Today before any dependent Start continues. No Worker/API/schema/domain change.
+
 ## D-166 — Android Startup Loading State Unification v0.1
 
 Status: **Approved / Not implemented / Not verified**
