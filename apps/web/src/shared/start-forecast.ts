@@ -60,6 +60,16 @@ function positiveSecondsCeiling(milliseconds: number): number {
   return positive === 0 ? 0 : Math.ceil(positive / 1000);
 }
 
+function displayedLogicalMinute(instant: string, logicalDate: string, timezone: string): number | null {
+  try {
+    const zoned = Temporal.Instant.from(instant).toZonedDateTimeISO(timezone);
+    const dayOffset = zoned.toPlainDate().since(Temporal.PlainDate.from(logicalDate), { largestUnit: "day" }).days;
+    return dayOffset * 1440 + zoned.hour * 60 + zoned.minute;
+  } catch {
+    return null;
+  }
+}
+
 export function conflictMinutesCeiling(seconds: number): number {
   return seconds <= 0 ? 0 : Math.ceil(seconds / 60);
 }
@@ -141,11 +151,14 @@ export function calculateStartForecast(
       cursorMilliseconds = endMilliseconds ?? startMilliseconds;
     }
 
-    const sectionEndInstant = timezone ? logicalMinuteInstant(logicalDate, timezone, sectionEnd) : null;
     const lastProjectedEnd = projectedEnds.length > 0 ? Math.max(...projectedEnds) : null;
-    const overflowSeconds = sectionEndInstant && lastProjectedEnd !== null
-      ? positiveSecondsCeiling(lastProjectedEnd - instantMilliseconds(sectionEndInstant))
-      : 0;
+    const maximumDisplayedEndMinute = timezone && lastProjectedEnd !== null
+      ? displayedLogicalMinute(instantFromMilliseconds(lastProjectedEnd), logicalDate, timezone)
+      : null;
+    const overflowMinutes = maximumDisplayedEndMinute === null
+      ? 0
+      : Math.max(maximumDisplayedEndMinute - sectionEnd, 0);
+    const overflowSeconds = overflowMinutes * 60;
     if (maximumOverlapSeconds > 0 || overflowSeconds > 0) {
       bySectionId[section.id] = { overlapSeconds: maximumOverlapSeconds, overflowSeconds };
     }
@@ -160,16 +173,11 @@ export function formatStartForecast(
   timezone: string | null,
 ): string {
   if (!forecastInstant || !timezone) return "—";
-  try {
-    const zoned = Temporal.Instant.from(forecastInstant).toZonedDateTimeISO(timezone);
-    const dayOffset = zoned.toPlainDate().since(Temporal.PlainDate.from(logicalDate), { largestUnit: "day" }).days;
-    const logicalMinute = dayOffset * 1440 + zoned.hour * 60 + zoned.minute;
-    const sign = logicalMinute < 0 ? "-" : "";
-    const absolute = Math.abs(logicalMinute);
-    return `${sign}${String(Math.floor(absolute / 60)).padStart(2, "0")}:${String(absolute % 60).padStart(2, "0")}`;
-  } catch {
-    return "—";
-  }
+  const logicalMinute = displayedLogicalMinute(forecastInstant, logicalDate, timezone);
+  if (logicalMinute === null) return "—";
+  const sign = logicalMinute < 0 ? "-" : "";
+  const absolute = Math.abs(logicalMinute);
+  return `${sign}${String(Math.floor(absolute / 60)).padStart(2, "0")}:${String(absolute % 60).padStart(2, "0")}`;
 }
 
 export function advanceProjectionClock(serverInstant: string, elapsedMilliseconds: number): string {

@@ -120,6 +120,25 @@ class TodayForecastTest {
     }
 
     @Test
+    fun sectionOverflowUsesTheDisplayedLogicalMinute() {
+        listOf(
+            10_801 to 0L, // 12:00:01
+            10_859 to 0L, // 12:00:59
+            10_860 to 60L, // 12:01:00
+            10_919 to 60L, // 12:01:59
+        ).forEach { (estimateSeconds, expectedOverflowSeconds) ->
+            val planned = task("planned-$estimateSeconds", LifecycleState.PLANNED, estimateSeconds, 0)
+            val configuredDay = day(listOf(planned)).copy(
+                sections = listOf(TodaySection("section", "Section", 0, 720, listOf(planned))),
+            )
+
+            val warning = calculateTodayStartForecast(configuredDay, currentNow).sections["section"]
+
+            assertEquals(expectedOverflowSeconds, warning?.overflowSeconds ?: 0L)
+        }
+    }
+
+    @Test
     fun noConflictOrOverflowAndMissingSectionEndDoNotCreateWarnings() {
         val first = task("first", LifecycleState.PLANNED, 600, 0)
         val day = day(listOf(first))
@@ -164,6 +183,25 @@ class TodayForecastTest {
         val forecasts = calculateTodayStartForecast(day, Instant.parse("2026-09-14T10:10:00Z")).entries
         assertEquals(630 to 660, forecasts[first.id]?.let { it.startMinute to it.endMinute })
         assertEquals(660 to 670, forecasts[second.id]?.let { it.startMinute to it.endMinute })
+    }
+
+    @Test
+    fun activeRunningEndpointIsCanonicalAndStableAcrossTickerTimes() {
+        val running = task("running", LifecycleState.RUNNING, 1_799, null)
+        val planned = task("planned", LifecycleState.PLANNED, 0, null)
+        val day = day(listOf(running, planned)).copy(
+            sections = listOf(TodaySection("section", "Section", 0, 630, listOf(running, planned))),
+            activeExecution = TodayExecution("execution", running.id, "2026-09-14T10:00:00.500Z", 1_799),
+        )
+
+        val beforeEndpoint = calculateTodayStartForecast(day, Instant.parse("2026-09-14T10:29:59.300Z"))
+        val laterTicker = calculateTodayStartForecast(day, Instant.parse("2026-09-14T10:29:59.400Z"))
+        val afterEndpoint = calculateTodayStartForecast(day, Instant.parse("2026-09-14T10:30:00Z"))
+
+        assertEquals(629, beforeEndpoint.entries[planned.id]?.startMinute)
+        assertEquals(beforeEndpoint.entries[planned.id]?.startMinute, laterTicker.entries[planned.id]?.startMinute)
+        // Preserve the existing queue rule after the canonical estimate endpoint has passed.
+        assertEquals(630, afterEndpoint.entries[planned.id]?.startMinute)
     }
 
     @Test

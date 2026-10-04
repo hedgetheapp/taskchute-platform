@@ -196,6 +196,23 @@ describe("Start Forecast v0.1", () => {
     expect(noEnd.bySectionId).toEqual({});
   });
 
+  it("compares Section overflow at the displayed logical-minute precision", () => {
+    const cases = [
+      [10_834, 0], // 12:00:34
+      [10_859, 0], // 12:00:59
+      [10_860, 60], // 12:01:00
+      [10_919, 60], // 12:01:59
+    ] as const;
+
+    for (const [estimateSeconds, expectedOverflowSeconds] of cases) {
+      const planned = entry("entry-1", estimateSeconds);
+      const day = projection({ sections: [section("section-a", [planned], 0, 720)] });
+
+      expect(calculateStartForecast(day, now).bySectionId["section-a"]?.overflowSeconds ?? 0)
+        .toBe(expectedOverflowSeconds);
+    }
+  });
+
   it("does not invent overflow for Sectionless entries and rounds positive conflicts upward", () => {
     const fixed = entry("entry-1", 60, "planned", { section_id: null, planned_start_minute: 480, start_reminder_offset_minutes: 0 });
     const result = calculateStartForecast(projection({ unsectioned_entries: [fixed], sections: [] }), now);

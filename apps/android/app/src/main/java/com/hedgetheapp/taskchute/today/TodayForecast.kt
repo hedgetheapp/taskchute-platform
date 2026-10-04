@@ -72,10 +72,11 @@ internal fun calculateTodayStartForecast(day: TodayDay, now: Instant = Instant.n
         day.activeExecution?.let { active ->
             val estimateSeconds = active.estimateSeconds?.takeIf { it >= 0 } ?: return@let
             val startedAt = runCatching { Instant.parse(active.startedAt) }.getOrNull() ?: return@let
-            val elapsedSeconds = Duration.between(startedAt, now).seconds.coerceAtLeast(0)
-            val remainingSeconds = (estimateSeconds.toLong() - elapsedSeconds).coerceAtLeast(0)
-            cursor = now.plusSeconds(remainingSeconds)
-            activeForecastEnd = cursor
+            val estimatedEnd = startedAt.plusSeconds(estimateSeconds.toLong())
+            // The canonical endpoint is independent of ticker precision. Keep the existing
+            // queue behavior once that endpoint has passed: subsequent planned work starts now.
+            activeForecastEnd = estimatedEnd
+            cursor = if (estimatedEnd.isAfter(now)) estimatedEnd else now
         }
     }
 
@@ -83,8 +84,6 @@ internal fun calculateTodayStartForecast(day: TodayDay, now: Instant = Instant.n
     for (section in day.sections) {
         val sectionStart = section.startMinute?.takeIf { it in 0..2879 } ?: continue
         val sectionEnd = section.endMinute?.takeIf { it in (sectionStart + 1)..2880 } ?: continue
-        val sectionEndInstant = runCatching { logicalMinuteInstantForBoundary(day.logicalDate, zone, sectionEnd) }.getOrNull()
-            ?: continue
         val sectionEndCandidates = mutableListOf<Instant>()
         if (activeForecastEnd != null && day.activeExecution?.entryId?.let { id -> section.entries.any { it.id == id } } == true) {
             sectionEndCandidates += activeForecastEnd
@@ -117,7 +116,9 @@ internal fun calculateTodayStartForecast(day: TodayDay, now: Instant = Instant.n
         // Section end warnings are based on the greatest projected end in the Section,
         // not a sum of durations or historical actual rows.
         val maxEnd = sectionEndCandidates.maxOrNull()
-        val overflow = maxEnd?.let { durationSecondsCeiling(Duration.between(sectionEndInstant, it)) } ?: 0L
+        val overflow = maxEnd?.let { projectedEnd ->
+            (logicalMinute(projectedEnd, logicalDate, zone) - sectionEnd).coerceAtLeast(0).toLong() * 60L
+        } ?: 0L
         val overlap = overlapBySection[section.id] ?: 0L
         if (overlap > 0 || overflow > 0) {
             sectionWarnings[section.id] = SectionForecastWarning(overlap, overflow)
@@ -135,12 +136,6 @@ internal fun conflictMinutesCeiling(conflictSeconds: Long): Long =
 private fun durationSecondsCeiling(duration: Duration): Long {
     val millis = duration.toMillis().coerceAtLeast(0)
     return if (millis == 0L) 0 else (millis + 999) / 1_000
-}
-
-private fun logicalMinuteInstantForBoundary(logicalDate: String, zone: ZoneId, minute: Int): Instant {
-    require(minute in 0..2880)
-    return if (minute == 2880) logicalMinuteInstant(logicalDate, zone, 2879).plusSeconds(60)
-    else logicalMinuteInstant(logicalDate, zone, minute)
 }
 
 private fun logicalMinute(instant: Instant, logicalDate: LocalDate, zone: ZoneId): Int {
