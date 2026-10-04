@@ -1,3 +1,11 @@
+## D-171 — Android Actual Start Quick Inputs v0.1
+
+Status: **Approved / Not implemented / Not verified**
+
+Canonical Decision: `docs/decisions/D-171_ANDROID_ACTUAL_START_QUICK_INPUTS_V01.md`
+
+Android Today Task Editor adds actual-start quick inputs for `前回タスク終了` and `現在時刻`, while keeping actual-end manual-only. Manual `HH:mm` continues to use D-147(B) minute semantics and `input_precision: "minute"`; quick choices retain an exact Instant in ephemeral editor state even though the field still displays `HH:mm`. `現在時刻` captures the activation Instant; `前回タスク終了` resolves the most recently ended canonical Execution in the same TaskChute Day using exact `ended_at`, not row order. Manual editing after a quick choice clears the hidden exact Instant. Existing lifecycle/overlap/Day/end-order guards remain authoritative, and no Worker/API/schema change is approved.
+
 ## D-170 — Android Warm Loading Performance v0.1
 
 Status: **Approved / Not implemented / Not verified**
