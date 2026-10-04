@@ -96,6 +96,53 @@ class TodayControllerTest {
     }
 
     @Test
+    fun unauthorizedRecoveryThenTodaySuccessExitsLoading() {
+        val repository = FakeRepository().apply {
+            loadResults = listOf(TodayResult.Unauthorized, TodayResult.Success(dayWith(LifecycleState.PLANNED)))
+        }
+        var unauthorized = 0
+        val controller = TodayController(repository, { unauthorized++ }, CoroutineScope(SupervisorJob() + Dispatchers.Unconfined))
+
+        controller.loadCurrent()
+        assertTrue(awaitState(controller) { it.status == TodayLoadStatus.AUTH_REQUIRED })
+
+        // Auth restoration returns SignedIn and TodayScreen mounts again.
+        controller.loadCurrent()
+
+        assertTrue(awaitState(controller) { it.status == TodayLoadStatus.CONTENT })
+        assertEquals(1, unauthorized)
+        assertEquals(2, repository.loadCallCount())
+        controller.close()
+    }
+
+    @Test
+    fun repeatedUnauthorizedAfterRecoveryShowsRetryInsteadOfLooping() {
+        val repository = FakeRepository().apply {
+            loadResults = listOf(
+                TodayResult.Unauthorized,
+                TodayResult.Unauthorized,
+                TodayResult.Success(dayWith(LifecycleState.PLANNED)),
+            )
+        }
+        var unauthorized = 0
+        val controller = TodayController(repository, { unauthorized++ }, CoroutineScope(SupervisorJob() + Dispatchers.Unconfined))
+
+        controller.loadCurrent()
+        assertTrue(awaitState(controller) { it.status == TodayLoadStatus.AUTH_REQUIRED })
+        controller.loadCurrent()
+
+        assertTrue(awaitState(controller) { it.status == TodayLoadStatus.ERROR })
+        assertEquals(1, unauthorized)
+        assertEquals(2, repository.loadCallCount())
+
+        // The existing user retry starts a new bounded attempt and can recover normally.
+        controller.refresh()
+        assertTrue(awaitState(controller) { it.status == TodayLoadStatus.CONTENT })
+        assertEquals(3, repository.loadCallCount())
+        controller.close()
+    }
+
+    @Test
     fun startRefreshesCanonicalDayAndSuppressesDoubleSubmit() {
         val task = task(LifecycleState.PLANNED)
         val repository = FakeRepository().apply {
@@ -386,6 +433,7 @@ class TodayControllerTest {
         var startResult: TodayMutationResult = TodayMutationResult.Success
         var completeResult: TodayMutationResult = TodayMutationResult.Success
         var loadResultAfterFirst: TodayResult? = null
+        var loadResults: List<TodayResult>? = null
         var holdLoad = false
         var holdStart = false
         val loadStarted = CountDownLatch(1)
@@ -404,7 +452,8 @@ class TodayControllerTest {
             val call = loadCalls.incrementAndGet()
             if (call == 1) loadStarted.countDown() else reloadStarted.countDown()
             if (holdLoad) releaseLoad.await(2, TimeUnit.SECONDS)
-            return if (call == 1) loadResult else loadResultAfterFirst ?: loadResult
+            return loadResults?.getOrNull(call - 1)
+                ?: if (call == 1) loadResult else loadResultAfterFirst ?: loadResult
         }
 
         override fun startTask(task: TodayTask, placementRevision: Int): TodayMutationResult {

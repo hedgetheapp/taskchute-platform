@@ -24,6 +24,7 @@ class TodayController(
     private var lastRequestedLogicalDate: String? = null
     private var loadInFlight = false
     private var deferredRealtimeReload = false
+    private var authRecoveryAttempted = false
     private var optimisticGeneration = 0L
     private var optimisticActive = false
     private var optimisticReconcileGeneration: Long? = null
@@ -33,7 +34,11 @@ class TodayController(
 
     fun loadCurrent() = load(null)
 
-    fun refresh() = load(lastRequestedLogicalDate)
+    fun refresh() {
+        // A user-initiated retry starts a fresh, bounded auth-recovery attempt.
+        authRecoveryAttempted = false
+        load(lastRequestedLogicalDate)
+    }
 
     /** Reconcile server state without blanking Today or showing the pull-to-refresh state. */
     fun reconcileSilently() {
@@ -152,6 +157,7 @@ class TodayController(
             loadInFlight = false
             when (result) {
                 is TodayResult.Success -> {
+                    authRecoveryAttempted = false
                     if (publishDay(result.day, startedOptimisticGeneration)) {
                         onCanonicalDayLoaded(result.day)
                         flushDeferredRealtimeReload(visible = false)
@@ -159,8 +165,18 @@ class TodayController(
                 }
                 TodayResult.Unauthorized -> {
                     deferredRealtimeReload = false
-                    state = state.copy(status = TodayLoadStatus.AUTH_REQUIRED, errorMessage = "認証の有効期限を確認しています…")
-                    onUnauthorized()
+                    if (!authRecoveryAttempted) {
+                        authRecoveryAttempted = true
+                        state = state.copy(status = TodayLoadStatus.AUTH_REQUIRED, errorMessage = "認証の有効期限を確認しています…")
+                        onUnauthorized()
+                    } else {
+                        // Do not cycle through SignedIn -> Today -> 401 -> restore indefinitely.
+                        // Keep the saved session intact and expose the existing explicit retry UI.
+                        state = state.copy(
+                            status = TodayLoadStatus.ERROR,
+                            errorMessage = "認証を確認後もTodayを読み込めませんでした。再試行してください。",
+                        )
+                    }
                 }
                 is TodayResult.Failure -> {
                     if (visible || state.day == null) {

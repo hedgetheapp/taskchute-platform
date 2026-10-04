@@ -3,6 +3,7 @@ package com.hedgetheapp.taskchute.today
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TodayJsonParserTest {
@@ -11,6 +12,7 @@ class TodayJsonParserTest {
         val day = TodayJsonParser.parse(SAMPLE)
 
         assertEquals("2026-09-14", day.logicalDate)
+        assertTrue(day.isCurrent)
         assertEquals(42, day.placementRevision)
         assertEquals("day-1", day.taskChuteDayId)
         assertEquals(1, day.sections.size)

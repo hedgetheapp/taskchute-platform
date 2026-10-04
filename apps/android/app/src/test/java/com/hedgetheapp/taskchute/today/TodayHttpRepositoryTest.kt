@@ -21,6 +21,23 @@ class TodayHttpRepositoryTest {
     }
 
     @Test
+    fun serverAndMalformedProjectionFailuresStayRetryableWithoutAuthHandoff() {
+        var handoffs = 0
+        val serverFailure = TodayHttpRepository(
+            request = { _, _, _ -> TodayHttpResponse(503, "unavailable") },
+            onUnauthorized = { handoffs++ },
+        )
+        val malformedProjection = TodayHttpRepository(
+            request = { _, _, _ -> TodayHttpResponse(200, "{}") },
+            onUnauthorized = { handoffs++ },
+        )
+
+        assertEquals(TodayResult.Failure("Todayを読み込めませんでした。再試行してください。"), serverFailure.loadDay())
+        assertEquals(TodayResult.Failure("サーバーのTodayデータを読み取れませんでした。"), malformedProjection.loadDay())
+        assertEquals(0, handoffs)
+    }
+
+    @Test
     fun startUsesExistingEntryAndPlacementContract() {
         var method = ""
         var path = ""
