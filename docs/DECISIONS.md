@@ -1,3 +1,11 @@
+## D-164 — Wear Standalone Connectivity and Last-Known-Good Running Complication v0.1
+
+Status: **Approved / Not implemented / Not verified**
+
+Canonical Decision: `docs/decisions/D-164_WEAR_STANDALONE_CONNECTIVITY_AND_LAST_KNOWN_RUNNING_COMPLICATION_V01.md`
+
+Wear remains a standalone canonical client that talks directly to TaskChute Server with its own Watch session and lets Wear OS choose available Phone-mediated / Wi-Fi / LTE transport. A transient fetch/network failure must not erase a previously confirmed Running complication into `NoData`; last-known-good Running projection may be retained only as a temporary display fallback until the next successful canonical fetch. Canonical success with no active execution clears the Running presentation, and explicit unauthorized/session loss remains authoritative. The implementation must also eliminate the current success → complication refresh → redundant second-fetch failure path that can make a valid Running display disappear. D-160 event-driven invalidation and D-158 300-second fallback remain unchanged. Physical Pixel Watch LTE verification is required after implementation.
+
 ## D-162 — Today Compact Header and Persistent Display Preferences v0.1
 
 Status: **Approved / Implemented / Integrated / exact-SHA CI PASS; Today AVD PARTIAL**
