@@ -1,3 +1,11 @@
+## D-165 — Today Section Overflow Minute-Precision Corrective v0.1
+
+Status: **Approved / Not implemented / Not verified**
+
+Canonical Decision: `docs/decisions/D-165_TODAY_SECTION_OVERFLOW_MINUTE_PRECISION_CORRECTIVE_V01.md`
+
+D-161 Section overflow warning is corrected to the same logical-minute precision visible in Today. A projected endpoint that still renders as the Section end minute (for example `12:00:34` displayed as `12:00` against a `12:00` Section end) does not show `1分超過`; overflow begins when the visible projected minute advances beyond the Section end. Android additionally derives active Running endpoint directly as canonical `started_at + estimate_seconds` instead of `now + truncated remaining seconds`, eliminating sub-second drift. Web adopts the same minute-precision overflow semantics. Fixed-start overlap/conflict semantics remain unchanged.
+
 ## D-164 — Wear Standalone Connectivity and Last-Known-Good Running Complication v0.1
 
 Status: **Approved / Not implemented / Not verified**
