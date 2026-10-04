@@ -1,3 +1,14 @@
+## D-165 Today Section overflow minute-precision corrective — 2026-10-04
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D165-ANDROID | Android forecast | Section overflow compares the visible logical minute; active Running endpoint is `started_at + estimate_seconds`; post-endpoint queue cursor behavior is unchanged | `TodayForecastTest` `17 / 17 PASS`; covers `12:00:01` / `12:00:59` = no overflow, `12:01:00` / `12:01:59` = `60s`, stable planned cursor around a sub-second endpoint, and resume from `now` after endpoint. | PASS / FOCUSED JVM |
+| D165-WEB | Web forecast parity | Same logical-minute overflow semantics and fixed-start overlap behavior | `start-forecast.test.ts` `18 / 18 PASS`; covers `12:00:34` / `12:00:59` = none, `12:01:00` / `12:01:59` = `60s`; existing fixed overlap assertions unchanged. Web `tsc --noEmit` PASS. | PASS |
+| D165-BUILD | Android local build | Kotlin compile and debug assemble | `:app:compileDebugKotlin`, `:app:assembleDebug`, and `git diff --check` PASS. | PASS |
+| D165-CI-APK | Exact implementation SHA | Impact classifier, Android JVM/signed APK, Web/Worker | `main@1617b489e73cf62a02e9a245dcb287d4752b2957`; Actions [`37198909151`](https://github.com/hedgetheapp/taskchute-platform/actions/runs/37198909151) attempt 3 PASS. Attempts 1–2 each failed only unchanged `TodayDirectManipulationTest.deterministicFailureDismissalIsGenerationSafe`; isolated local test `1 / 1 PASS`; full Android job passed on attempt 3. Fresh Phone APK `taskchute-android-debug-1617b489e73cf62a02e9a245dcb287d4752b2957`, artifact `11302382646`, expires `2026-10-11T11:40:22Z`. Web/Worker job and production build PASS. | PASS / RETRY |
+| D165-DEVICE | Runtime/device | Forecast-only change; no UI layout change | Today AVD `NOT_RUN` (not required for pure forecast corrective); Galaxy S23 `NOT_RUN / PRODUCT_OWNER_MANUAL`. | NOT_RUN |
+| D165-SCOPE | Boundary | No server, persistence, or production change | No Worker/API/shared contract/schema/migration/dependency or persistent nonprod operation. Production `NOT_RUN`; Released `NO`. | PASS / NOT_REQUIRED / NOT_RUN / NO |
+
 ## D-164 Wear standalone connectivity + last-known-good Running complication — 2026-10-04
 
 | ID | Area | Requirement | Evidence | Status |

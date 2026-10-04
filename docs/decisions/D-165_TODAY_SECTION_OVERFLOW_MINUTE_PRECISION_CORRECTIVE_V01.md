@@ -1,6 +1,6 @@
 # D-165 — Today Section Overflow Minute-Precision Corrective v0.1
 
-Status: **Approved / Not implemented**
+Status: **Approved / Implemented / Integrated / Automated verification PASS / Galaxy S23 NOT_RUN**
 
 Date: 2026-10-04
 
@@ -120,4 +120,10 @@ Future implementation should verify at minimum:
 5. fixed-start overlap warning tests remain unchanged.
 6. existing D-161 combined warning / collapsed discoverability behavior remains intact.
 
-Until implemented and tested, this remains **Approved / Not implemented / Not verified**.
+## Implementation evidence
+
+- Implementation `1617b489e73cf62a02e9a245dcb287d4752b2957` uses the same establishment-timezone logical-minute conversion as Today forecast display for Android and Web Section overflow. Android active Running forecast endpoint is canonical `started_at + estimate_seconds`; the planned queue still resumes from `now` after that endpoint has passed.
+- Android `TodayForecastTest` `17 / 17 PASS`; Web `start-forecast.test.ts` `18 / 18 PASS`; Web typecheck, Android Kotlin compile, debug assemble, and `git diff --check` PASS. Existing fixed-start overlap seconds and upward minute rounding remain unchanged.
+- Exact-SHA CI run [`37198909151`](https://github.com/hedgetheapp/taskchute-platform/actions/runs/37198909151), attempt 3, PASS. Attempts 1 and 2 each failed only the unchanged `TodayDirectManipulationTest.deterministicFailureDismissalIsGenerationSafe`; that test passed an isolated local rerun `1 / 1`, and the full Android job passed on attempt 3.
+- Fresh Phone APK `taskchute-android-debug-1617b489e73cf62a02e9a245dcb287d4752b2957`, artifact `11302382646`, expires `2026-10-11T11:40:22Z`. CI also produced Wear APK artifact `11302128086` and Wear AndroidTest artifact `11302367718`.
+- This is a forecast-only change: no UI layout, Worker/API/shared contract, schema, migration, persistence, dependency, or nonprod change. AVD `NOT_RUN`; Galaxy S23 `NOT_RUN / PRODUCT_OWNER_MANUAL`. Production `NOT_RUN`; Released `NO`.

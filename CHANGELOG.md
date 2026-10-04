@@ -1,3 +1,9 @@
+### D-165 Today Section overflow minute-precision corrective — 2026-10-04
+
+- Android and Web now compare Section overflow using the logical minute shown in Today; Android's active Running projected endpoint is canonical `started_at + estimate_seconds`. The existing queue behavior after that endpoint and fixed-start overlap rounding are unchanged.
+- Android focused `17 / 17`, Web focused `18 / 18`, Web typecheck, Android Kotlin compile/assemble, and `git diff --check` PASS. Exact implementation CI `37198909151` attempt 3 PASS; attempts 1–2 failed only one unchanged direct-manipulation test, which passed locally in isolation (`1 / 1`). Fresh Phone APK artifact `11302382646` expires `2026-10-11T11:40:22Z`.
+- No AVD/UI, Worker/API/shared contract/schema/migration/dependency/nonprod change. Galaxy S23 `NOT_RUN / PRODUCT_OWNER_MANUAL`; Production `NOT_RUN`; Released `NO`.
+
 ### D-164 Wear standalone connectivity + last-known-good Running complication — 2026-10-04
 
 - Wear preserves its minimal, sanitized last-known-good Running projection in an AES-GCM encrypted Android-Keystore-backed no-backup file. Transient auth/network/timeout/5xx-equivalent failures retain the display; accepted canonical Running replaces it, canonical idle clears it, and signed-out/401 clears it without stale fallback.

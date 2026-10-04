@@ -56,11 +56,13 @@ Android startup no longer exposes auth-restore wording as a separate visible pha
 
 ## D-165 — Today Section Overflow Minute-Precision Corrective v0.1
 
-Status: **Approved / Not implemented / Not verified**
+Status: **Approved / Implemented / Integrated / Automated verification PASS / Galaxy S23 NOT_RUN**
 
 Canonical Decision: `docs/decisions/D-165_TODAY_SECTION_OVERFLOW_MINUTE_PRECISION_CORRECTIVE_V01.md`
 
 D-161 Section overflow warning is corrected to the same logical-minute precision visible in Today. A projected endpoint that still renders as the Section end minute (for example `12:00:34` displayed as `12:00` against a `12:00` Section end) does not show `1分超過`; overflow begins when the visible projected minute advances beyond the Section end. Android additionally derives active Running endpoint directly as canonical `started_at + estimate_seconds` instead of `now + truncated remaining seconds`, eliminating sub-second drift. Web adopts the same minute-precision overflow semantics. Fixed-start overlap/conflict semantics remain unchanged.
+
+Implementation `1617b489e73cf62a02e9a245dcb287d4752b2957`; Android and Web focused tests, Android compile/assemble, Web typecheck, and exact-SHA CI run `37198909151` attempt 3 PASS. Fresh Phone APK artifact `11302382646`. Galaxy S23 `NOT_RUN / PRODUCT_OWNER_MANUAL`; Production `NOT_RUN`; Released `NO`.
 
 ## D-164 — Wear Standalone Connectivity and Last-Known-Good Running Complication v0.1
 
