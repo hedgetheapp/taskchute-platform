@@ -1,3 +1,11 @@
+## D-166 — Android Startup Loading State Unification v0.1
+
+Status: **Approved / Not implemented / Not verified**
+
+Canonical Decision: `docs/decisions/D-166_ANDROID_STARTUP_LOADING_STATE_UNIFICATION_V01.md`
+
+Android startup no longer exposes auth-restore wording as a separate visible phase once implemented. Existing non-interactive auth restore / AUTH_REQUIRED reconciliation and Today initial loading use one centered `読み込み中` presentation with the same geometry/style as Today loading, producing a continuous `読み込み中 → Today` transition. Real actionable states remain explicit: SignedOut/login, sign-in/out progress as needed, and retry/error states are not hidden. This is presentation-only; authentication/session authority, request ordering, backend/schema and realtime behavior remain unchanged.
+
 ## D-165 — Today Section Overflow Minute-Precision Corrective v0.1
 
 Status: **Approved / Not implemented / Not verified**
