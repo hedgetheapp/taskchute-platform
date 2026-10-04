@@ -3,6 +3,11 @@
 - Unified app auth restore, Today initial loading, and non-interactive auth reconciliation under the shared centered `読み込み中` presentation; explicit login/progress/retry states remain unchanged.
 - Focused JVM `3 / 3`, TaskChute_API33 instrumentation `1 / 1`, Android compile/assemble and exact-SHA CI `37204798119` attempt 3 PASS. Phone APK artifact `11304062667`. Valid-session startup E2E and Galaxy S23 remain `NOT_RUN`; Production `NOT_RUN`, Released `NO`.
 
+### D-166A Android Today task-list repeated-401 recovery corrective — 2026-10-05
+
+- Classified the repeat-401 auth restore cycle as `D166_EXPOSED_EXISTING_DEFECT`: D-166's loading presentation made an existing Today/auth recovery loop appear as generic loading. Today now performs one automatic auth recovery per load chain; repeated 401 enters the existing explicit retry UI without clearing the saved session or forcing logout.
+- Focused Android JVM `47 / 47`, `:app:compileDebugKotlin`, `:app:compileDebugAndroidTestKotlin`, `:app:assembleDebug`, and `git diff --check` PASS. Exact-SHA CI `37244436723` PASS; Phone APK artifact `11318756405`. Nonprod root `200` / unauthenticated protected current-Day API `401`; authenticated Day boundary, Today AVD and Galaxy S23 corrective retest remain `NOT_RUN`. No Worker/API/schema/migration/dependency/persistent nonprod change. D-167 untouched. Production `NOT_RUN`; Released `NO`.
+
 ### D-163B Android Today same-pair reverse D&D corrective — 2026-10-04
 
 - Fixed the immediate same-pair reverse reorder failure after an optimistic successful Move. The long-lived Today parent pointer session now resolves cues from the latest presented Day; auto-scroll rebase also uses current Day eligibility/order while retaining stable measured geometry snapshots.
