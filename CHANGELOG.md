@@ -1,3 +1,9 @@
+### D-163A Android Today D&D device regression investigation — 2026-10-04
+
+- Product Owner reported that the D-163 Galaxy S23 APK no longer reordered Today Tasks (`FAIL / USER_REPORTED / PRODUCT_DEFECT`). On current main, the focused AVD same-cohort reorder flow did not reproduce the report, so no Android product-code change or unsupported root-cause claim was made. Added an instrumentation regression asserting cue/dispatch boundary identity, no dispatch before physical pointer-up, one Move on release, and changed rendered order.
+- Four focused TaskChute_API33 instrumentation cases PASS: same-cohort same-Section reorder, cross-Section move, Routine relative move, and source-row-offscreen auto-scroll targeting. Android compile, AndroidTest compile, assemble, and `git diff --check` PASS. Full Today surface was not rerun because its known unrelated `72 / 75 PARTIAL` result already includes broader duplicate coverage; this did not change production behavior.
+- Test commit `4a2f6bef1fe5f44c91c9ef3ed3074967a9f5bc12`; exact-SHA Actions run `37189213096` attempt 2 PASS. Attempt 1 had one failure in the unchanged `TodayDirectManipulationTest.deterministicFailureDismissalIsGenerationSafe`; its focused local rerun and the same-SHA retry PASS. Fresh Phone APK `taskchute-android-debug-4a2f6bef1fe5f44c91c9ef3ed3074967a9f5bc12`, artifact `11298590457`, expires `2026-10-11T08:39:04Z`. Root cause and corrective-SHA Galaxy S23 retest remain open; device status is not promoted to PASS. Production `NOT_RUN`; Released `NO`.
+
 ### D-163 Routine occurrence title override and Today D&D corrective — 2026-10-04
 
 - Planned Routine occurrence title edits from Android Today now write an occurrence-only `SetRoutineTitle` override. The shared Task title, Routine Definition, recurrence, other occurrences, and historical snapshots remain unchanged; APP migration `0037` adds only nullable `title_override`.
