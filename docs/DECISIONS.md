@@ -1,3 +1,11 @@
+## D-170 — Android Warm Loading Performance v0.1
+
+Status: **Approved / Not implemented / Not verified**
+
+Canonical Decision: `docs/decisions/D-170_ANDROID_WARM_LOADING_PERFORMANCE_V01.md`
+
+Android Today / Notes / Daily adopt a measured stale-while-revalidate style for same-process warm navigation without changing Server authority. Already-loaded usable content remains visible immediately on re-entry while canonical refresh runs in the background; Notes must not replace an existing list with its blocking loading row, and Daily must not replace an already-loaded same-date editor/body with a spinner. Dirty/saving/blocked editor state remains protected. The first slice adds local/dev before/after timing evidence and uses memory-only state; no persistent cache, offline editing, API/schema/migration, third-party telemetry, or backend redesign is approved.
+
 ## D-169 — Android Today Task Note Presence Indicator v0.1
 
 Status: **Approved / Not implemented / Not verified**
