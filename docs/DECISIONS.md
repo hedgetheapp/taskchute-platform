@@ -1,3 +1,11 @@
+## D-174 — Android Past-Day Task Edit / Delete Parity v0.1
+
+Status: **Approved / Not implemented / Not verified**
+
+Canonical Decision: `docs/decisions/D-174_ANDROID_PAST_DAY_TASK_EDIT_DELETE_PARITY_V01.md`
+
+An already-established past TaskChuteDay is editable history. Android may correct an eligible selected Entry or Routine occurrence through the existing editor and may delete one eligible row with confirmation. Ordinary lifecycle fields follow the existing Planned / Running / Completed editor semantics; actual-time correction preserves Entry / Execution identity, origin Day / frozen Section context, owner scope, overlap, CAS, replay, and protected-history guards. Routine changes are occurrence-only. D-042's unestablished-past no-fabrication / record-none boundary, D-081 / D-132 actual-Section authority, D-155 reminder boundary, past Start / ordinary Complete buttons, historical D&D / reorder, Duplicate, and bulk delete remain unchanged. No schema / migration is approved; if a field or Routine delete cannot use existing local authority safely, stop before implementation. Galaxy S23 D-174 verification is `NOT_RUN / PRODUCT_OWNER_MANUAL`; Production `NOT_RUN`, Released `NO`, D-167 `NOT_STARTED`.
+
 ## D-173B — Cross-Day Running Client Compatibility Corrective v0.1
 
 Status: **Approved / Implemented / Integrated / Exact-SHA CI PASS / Persistent nonprod deployed / Galaxy S23 cross-Day Phone smoke PASS (user-confirmed); Android Daily and Pixel Watch not run**

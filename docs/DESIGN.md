@@ -58,11 +58,13 @@ current-Day equivalentと同じvisual rhythmを使う。Execution controlはFutu
 Start / Complete / Interrupt / RunningTaskPanelはcurrent Dayだけに表示する。
 
 Future Dayを明示的に開いた時点でD-119どおりDayがestablish / Routine reconcileされるため、
-`未来日は参照のみ` badgeは表示しない。Past Dayは`過去日は参照のみ`としてhistorical contentを
-表示し、planning / execution mutation surfaceを出さない。
+`未来日は参照のみ` badgeは表示しない。Past Dayはhistorical contentを表示する。D-174対象の
+established past Entry / Routine occurrenceは既存Task Editorと確認付きsingle-row deleteを利用できる。
+unestablished past Dayと編集・削除対象外のrowはD-042どおりread-onlyとする。
 
-Figma current visual referenceは`Today — Flow & States` の
-`Future / Planning`、`Past / Read-only`、`Future Past / Behavior`。
+Figma visual referenceは`Today — Flow & States` の
+`Future / Planning`、`Past / Read-only`、`Future Past / Behavior`。`Past / Read-only`は
+D-042のunestablished past Day / 対象外rowに限る。D-174対象rowは既存Task Editor、Note、その他の削除確認を使う。
 
 ## D-135 Android Markdown Live Preview + IME Toolbar
 
@@ -74,7 +76,7 @@ body focus中にIMEが表示されている場合だけ、約48dpの横スクロ
 
 current DayのRunning panelはFigma `UbTJH6ykYNBQJS4Wvwz9jb` page `481:2` / section `485:2` / example `502:17`に合わせた104dp progress playerとする。active executionの`activeStartedAt`、なければ`firstStartedAt`を表示専用tickerの時刻基準にし、elapsed / remaining / progress / overrunを計算する。estimateが未設定または正でない場合はelapsedのみを表示し、remaining / progress / overrunは表示しない。24時間を超える経過時間もtotal時間として表示する。
 
-FutureではStart / Complete / Interrupt / RunningTaskPanelを表示せず、Pastはread-onlyのまま維持する。Execution / lifecycle / API / schema / migration / dependency semanticsは変更しない。
+FutureではStart / Complete / Interrupt / RunningTaskPanelを表示しない。PastでもStart / ordinary Complete / Interrupt / RunningTaskPanelは追加せず、D-174対象のestablished history correctionとeligible single-row deleteだけを既存surfaceで提供する。unestablished past Dayはread-onlyのままとする。Execution / lifecycle semanticsはD-173BとD-174の既存command境界に従い、new API command / schema / migration / dependencyは追加しない。
 
 ## D-125 Android Today Error / Retry states
 

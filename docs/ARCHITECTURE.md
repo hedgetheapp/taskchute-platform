@@ -426,8 +426,9 @@ projectionのままとする。Start / Completeの成功後は再取得し、cli
 
 Material 3 Compose画面は軽量state holderとrepository boundaryだけを持ち、local DB、
 operation queue、offline sync、realtime connection、new API command、schema / migrationを
-追加しない。future / past non-current DayのviewはD-041 / D-042のread-only boundaryに
-従い、execution actionを無効化する。
+追加しない。future Dayとunestablished past DayはD-041 / D-042のmutation boundaryを維持する。
+D-174対象のestablished past Dayは既存Task Editorおよびsingle-row delete commandで歴史訂正を行うが、
+Start / ordinary Completeなどのexecution actionは無効のままとする。
 
 ## D-108 Android realtime invalidation architecture
 

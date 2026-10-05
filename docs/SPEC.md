@@ -4,15 +4,31 @@
 
 exact DB schema、SQL、UI component library、Android local DB、offline conflict algorithm等は、別途DecisionされるまでOpenとする。
 
+## D-174 Android Past-Day Task Edit / Delete Parity
+
+Status: Approved; implementation and verification are pending.
+
+An already-established past TaskChuteDay is editable history. Android may open an eligible past Entry in the existing Task Editor and may delete one eligible row after explicit destructive confirmation. Past Planned ordinary Entries may correct title, Project, Mode, Section, planned start, estimate, and actual start/end; past Running and Completed Entries receive their corresponding existing lifecycle editor capabilities, estimate / actual-time correction, and only the rollback / reopen transitions allowed by existing safe lifecycle guards. Manual actual-time input follows the existing lifecycle semantics. A Routine-derived past Entry uses the same capability only through occurrence-local authority.
+
+All writes are owner-scoped and bounded to the selected established Day and stable Entry / Execution / occurrence identities. Existing operation replay, placement revision / CAS, overlap, future-time, exactly-one-active-Execution, protected-history, and canonical reconciliation guards remain authoritative. Actual start stays within the owning Day interval; actual end may cross its boundary. A successful historical actual-time correction retains the same Entry / Execution and origin Day / Section; it does not create a synthetic Execution, fake Complete, split, or automatic move. Selected-date navigation is retained after save / delete.
+
+Planned Section / start correction uses the selected Day's frozen Section context, never today's configuration, and does not rewrite that context. An explicitly selected Section may be historically ended; D-129's current-time destination guard does not block this correction. Running / Completed actual-Section resolution remains D-081 / D-132 authority; D-174 does not introduce independent planning-Section editing for those lifecycles.
+
+Historical title / Project / Mode and Routine fields use existing Entry snapshots, historical relations, and occurrence overrides only where they can update the selected Entry / occurrence without mutating unrelated Entries, shared current / future Task or Routine authority, or other occurrences. No new persisted representation or schema / migration is approved. If a requested field cannot be represented safely by existing authority, implementation must stop before adding schema / migration and return the field and options.
+
+Past Routine edits and deletes are occurrence-only; they never change the Routine Definition, recurrence, defaults, unrelated snapshots, or future / other occurrences. Occurrence deletion must use existing suppression / skip authority to prevent regeneration. Running / Completed Routine deletion is unavailable if selected-occurrence-local cleanup cannot be proved safe or would require a new schema / migration. Continuation, `completed_entry_future_routines`, and other protected references must be preserved or reject the delete safely; no cascade reaches unrelated history.
+
+D-174 does not add past Start-now or ordinary Complete buttons, historical D&D / reorder, Duplicate, bulk historical delete, Quick Add, or past reminder configuration. D-147 established-past Planned forward-day move remains unchanged. D-042's unestablished-past record-none, no-fabrication, and no-backfill behavior remains unchanged. This narrowly supersedes established-past read-only wording from D-123, D-124, D-147, D-148 and related specifications for the edit / eligible single-row delete surface only. D-012 retry safety, D-043 planning synchronization, D-081 / D-132 actual-Section semantics, D-155 reminder behavior, D-173B cross-Day Execution semantics, and all other current / future behavior remain authoritative.
+
 ## Android Today lifecycle editor / placement / forecast parity
 
-Current logical Dayのordinary Entryに対するAndroid editor capabilityは次のとおりとする。PlannedはTask名、Project、Mode、Section、planned start、estimate、actual start、actual endを編集できる。actual startだけならRunning、actual startとactual endの両方ならCompletedとして既存`SetExecutionTimes` semanticsへ接続する。RunningはProject / Modeとactual start / end、CompletedはProject / Modeとactual start / endを編集できる。CompletedのProject / Modeはshared Task definitionを変更せず、既存のhistorical Entry relation / snapshot semanticsを使う。Future Plannedはplanning capabilityのみ、Pastはread-only、Routine-derived Entryはこのordinary editor経路の対象外とする。
+Current logical Dayのordinary Entryに対するAndroid editor capabilityは次のとおりとする。PlannedはTask名、Project、Mode、Section、planned start、estimate、actual start、actual endを編集できる。actual startだけならRunning、actual startとactual endの両方ならCompletedとして既存`SetExecutionTimes` semanticsへ接続する。RunningはProject / Modeとactual start / end、CompletedはProject / Modeとactual start / endを編集できる。CompletedのProject / Modeはshared Task definitionを変更せず、既存のhistorical Entry relation / snapshot semanticsを使う。Future Plannedはplanning capabilityのみとする。Established past Entry / occurrenceはD-174のhistorical editor capabilityに従い、unestablished pastはD-042どおりread-onlyである。Routine-derived Entryはordinary Task authorityを使わず、occurrence-only authorityへ従う。
 
 Time inputは数字3〜4桁または`HH:mm`を受け、`900` / `0900` / `930` / `1230`を正規化する。hourは0..23、minuteは0..59。Plannedのend-only、Completedのstart/end不足は保存不可。logical Day、canonical timezone、establishment boundaryを使ってinstantへ変換し、端末の日付・timezoneをauthorityにしない。
 
 D-132により、current DayのPlanned Entryをactual time入力でRunning / Completedへ遷移させる場合、`SetExecutionTimes`はactual startが属するestablished Day Sectionをserverで解決し、元のplanned Section有無にかかわらずresult Sectionをactual Sectionへ合わせる。planned startは保持する。cross-Section時だけDay placement revisionをexactly +1し、同一Sectionなら不要なrevision増分を行わない。Section内表示順はD-081 execution-first projectionをそのまま使う。
 
-Current logical DayのRunning / Completed単体削除はD-067の既存`DeleteCompletedEntry` route / DTO / operationを再利用する。Runningはcanonical active Execution、Completedはterminal Execution、owner、current Day、placement revisionなどのserver guardを満たす場合だけ対象となり、EntryとEntry-bound Executions / guards / snapshotsをatomicに削除する。Task / Project / Mode definition、Routine definition / occurrence、unrelated recordsは保持し、fake Complete / Interrupt / continuation / synthetic endは生成しない。Planned delete、bulk Running / Completed delete、Past / Future deleteはこの経路へ変更しない。
+Current logical DayのRunning / Completed単体削除はD-067の既存`DeleteCompletedEntry` route / DTO / operationを再利用する。D-174は同じ既存Entry-bound delete semanticsを、明示的な過去Day correctionとして安全な単一Running / Completed Entryにも拡張する。対象はcanonical active Executionまたはterminal Execution、owner、exact established Day、stable Entry / Execution relation、placement revisionなどのserver guardを満たす場合だけであり、Entryと対象Entry-bound Executions / guards / snapshotsをatomicに削除する。Task / Project / Mode definition、Routine definition、other occurrences / Entries、unrelated recordsは保持し、fake Complete / Interrupt / continuation / synthetic endは生成しない。Planned deleteは既存のplanned delete authorityを使う。Future delete、bulk Running / Completed delete、protected relationを壊すdeleteは引き続き不可とする。
 
 D-129により、current logical Dayでeffective current instant以前に終了したconfigured Sectionは新しいmanual placement destinationにできない。AndroidのD&D preview、drop、Section editorはそのSectionを候補・highlight・provisional slotから除外し、serverのentry planning / bulk move guardと一致させる。既存Entryの保持や同一Section reorderをこのguardだけで禁止しない。
 
@@ -23,7 +39,7 @@ D-161により、materialized Day Entryの`start_reminder_offset_minutes != null
 
 ## D-163 Android Today Routine occurrence title and D&D corrective
 
-For a planned Routine-derived Entry on the current established Day or an already-established future Day, Android Today may edit this occurrence's title through the typed `SetRoutineTitle` command. The effective planned title is the nullable occurrence title override when present, otherwise the shared Task title. This edit must not mutate the shared Task title, Routine Definition, recurrence, reminders, another occurrence, or historical snapshots. Equal-to-base title normalizes to NULL; the planned-to-running title snapshot mirror changes atomically with the override. Running / Completed, past, and unestablished future occurrences are not title-editable through this path. The D-138 Routine occurrence Section/start/estimate authority remains separate. D-147 / D-148 placement commands remain authoritative; Android drag cues may represent only legal dispatched boundaries and must resolve the same target at release using stable visible geometry snapshots. This narrowly supersedes D-138's Routine title read-only boundary for planned occurrences only.
+For a planned Routine-derived Entry on the current established Day or an already-established future Day, Android Today may edit this occurrence's title through the typed `SetRoutineTitle` command. The effective planned title is the nullable occurrence title override when present, otherwise the shared Task title. This edit must not mutate the shared Task title, Routine Definition, recurrence, reminders, another occurrence, or historical snapshots. Equal-to-base title normalizes to NULL; the planned-to-running title snapshot mirror changes atomically with the override. D-174 additionally permits this occurrence-local correction for an eligible Planned occurrence on an established past Day; Running / Completed and unestablished future occurrences remain outside this title path. The D-138 Routine occurrence Section/start/estimate authority remains separate. D-147 / D-148 placement commands remain authoritative; Android drag cues may represent only legal dispatched boundaries and must resolve the same target at release using stable visible geometry snapshots. This narrowly supersedes D-138's Routine title read-only boundary for planned occurrences only.
 
 +## D-138 Android Today planning / lifecycle refinements
 +
@@ -51,7 +67,7 @@ Figmaはvisual reference、Product / Domain behaviorは既存D-109〜D-126とSer
 
 候補参照のロード中はProject / Mode selectorをdisabledとし、候補ロード専用の説明文は表示しない。参照取得失敗時のretryと、既存のTask planning save / eligibility / CAS semanticsは変えない。Selection footerは`日付 / 削除 / 解除`だけを提供し、selection-eligible判定、zero-selection exit、bulk commandは既存仕様を使う。成功したTask deleteはsuccess toast/copyを表示せず、error・ambiguous・retry状態は保持する。
 
-Today rowのTask NoteはToday-backed Bottom Sheetとして表示する。Task titleはread-only、Markdown bodyだけを編集可能とし、Task Primary document authority、NotesControllerのautosave、CAS、conflict、ambiguous retry、safe flushを再利用する。standalone Notesのlist/editor routingは別のまま維持する。Swipe action、Task Actions、Running panel、Drag feedbackの今回の変更はpresentation / interaction surfaceに限定し、D&D placement、lifecycle action eligibility、Future/Past boundary、Task / Entry / Execution semanticsを変更しない。
+Today rowのTask NoteはToday-backed Bottom Sheetとして表示する。Task titleはNote上ではread-only、Markdown bodyだけを編集可能とし、Task Primary document authority、NotesControllerのautosave、CAS、conflict、ambiguous retry、safe flushを再利用する。standalone Notesのlist/editor routingは別のまま維持する。D-121で扱ったSwipe action、Task Actions、Running panel、Drag feedback自体はpresentation / interaction correctiveであり、D&D placement、lifecycle button eligibility、Future boundary、Task / Entry / Execution semanticsを変更しない。Established past editor / eligible delete capabilityは後続のD-174に従う。
 
 ## D-126 Android Future-Day Planning Parity v0.1
 
@@ -63,7 +79,7 @@ approved bulk day-operation、Task Noteをfutureでも提供する。
 
 `Todayと同じ`はcurrent-Day eligibilityとのparityであり、Routine-derived、running、completed、
 pending等のprotected rowへfutureだけ新しいmutationを付与しない。Future DayではStart / Complete /
-Interrupt / RunningTaskPanelを提供せずExecutionを生成しない。Past DayはD-042どおりread-onlyである。
+Interrupt / RunningTaskPanelを提供せずExecutionを生成しない。Established past Dayのeligible editor / single-row deleteはD-174、unestablished past DayはD-042どおりrecord-none / read-onlyである。
 
 Android scopeではD-109 / D-110 / D-112 / D-121 / D-123 / D-124のfuture read-only / Note-only
 restrictionをこの範囲でsupersedeする。既存future-capable canonical commandを再利用し、必要なら
@@ -110,7 +126,7 @@ swipe-open中は同じrowのtrailing execution actionを同時表示しない。
 
 valid `taskId`を持つvisible rowは、planning write eligibilityがなくてもD-110 Task Primary Noteを
 開ける。running / completed / Routine-derived / future / past等では、他のplanning actionを増やさず、
-左swipeでNote-only affordanceを提示できる。
+左swipeでNote-only affordanceを提示できる。ただしD-174対象のestablished past rowは、existing Task Editorと安全なsingle-row deleteを追加で利用できる。Unestablished past / protected invalid rowは従来どおりread-onlyである。
 
 eligible current-Day ordinary planned Taskをcollapsed configured Section headerへdropした場合、
 target Sectionがnon-emptyでもauto-expandせず、既存Section-area / Section-only `MoveEntry` semanticsを
@@ -206,7 +222,7 @@ Addは`+`から開き、最初のSaveで既存の`AddTaskToDay`を呼ぶ。編�
 構成して利用する。各commandのpending / retry / error / operation / CAS semanticsは
 既存Server contractを維持し、成功後はcanonical Today projectionを再取得する。
 
-future / past Day、running / completed Entry、Routine-derived Entryはread-onlyとする。
+future Day、past unestablished Day、running / completed Entry、Routine-derived EntryはD-109 planning editに対してread-onlyとする。Established past correctionについてはD-174が別途approved editor / delete exceptionを定義する。
 Section選択とplanned startは既存D-043 synchronizationへ合わせ、未establish Dayをこの
 操作だけで作成しない。Today shellはdate navigationを直接表示し、Project / Notesは
 disabled、Settingsは既存logoutへ接続する。D-106 auth、D-108 foreground realtimeの
@@ -368,7 +384,7 @@ Status: Approved (D-042). Runtime: NOT_IMPLEMENTED.
 - TaskChuteDayが存在しないpast logical dateはempty / record-none read-only projectionとして表示する。normal established Dayのempty stateとは区別する。
 - past unestablished view / reload / repeated readはTaskChuteDay、interval / timezone / boundary context、Section historical context、RoutineOccurrence / Entry、Task / Entry / planning stateをcreate / synthesize / persist / backfillしない。
 - Day Navigation v0.1はpast unestablished DayのAdd Task、placement、estimate / planned start、reorder、Start / Complete、Routine conversionを提供せず、direct mutationもDB変更なしでrejectする。
-- D-040 current-Day lazy ensureをpast unestablished dateへretroactiveに実行しない。established past Dayへのnew editing / historical correction / backfillは別scopeとする。
+- D-040 current-Day lazy ensureをpast unestablished dateへretroactiveに実行しない。D-174は既established past Dayに限って既存Entry / occurrenceのhistorical correctionとeligible single-row deleteを定める。unestablished past Dayへのediting / historical backfillは承認しない。
 - future unestablished DayはD-041、past unestablished DayはD-042に従い、current TaskChuteDay behaviorは変更しない。
 
 ## Entry placement and ordering
@@ -719,7 +735,7 @@ Pointer/touch D&D, Task Editor Section selection, Bulk Section change, and other
 
 ## D-128 Current-Day Running Entry hard delete extension
 
-D-128 extends the D-067 hard-delete boundary only for a single canonical `running` Entry on the server-authoritative current TaskChuteDay. Android may invoke the action only from the current Day's Task Actions `その他 → 削除` after explicit destructive confirmation. Past / future Running or Completed Entries and Running / Completed bulk delete remain unavailable.
+D-128 extends the D-067 hard-delete boundary for a single canonical `running` Entry on the server-authoritative current TaskChuteDay. D-174 separately extends the same existing single-row delete authority to an explicitly selected established past Day where all Entry / Execution / protected-history guards pass. Android requires explicit destructive confirmation. Future Running or Completed Entries and Running / Completed bulk delete remain unavailable; D-174 does not weaken protected-reference rejection.
 
 The existing `DeleteCompletedEntry` request / result, route, operation `command_type`, owner scope, placement CAS, fingerprint / exact replay, and atomic mutation are retained for compatibility. The Worker accepts a target lifecycle of `running | completed`: completed keeps the D-067 no-active-Execution requirement; running must have its canonical active Execution relation. Running deletion removes the Entry and all of its Executions including the active row, plus the same Entry-bound guards / snapshots / relations removed by D-067. It does not synthesize Complete, Interrupt, continuation, or `ended_at` history. Task / Project / Mode definition identity, unrelated history, RoutineDefinition / RoutineOccurrence identity, and D-067 no-regeneration / reference-integrity protections remain intact.
 
@@ -727,7 +743,7 @@ This compatibility extension requires no new schema, migration, command family, 
 
 ## D-067 Completed Entry hard delete contract
 
-`DeleteCompletedEntry` accepts `{ operation_id, taskchute_day_id, entry_id, expected_placement_revision }` and returns `{ entry_id, deleted_execution_ids, taskchute_day_id, placement_revision }`. The authenticated principal is derived server-side. The Worker accepts the command only for the server-authoritative current Day and an Entry owned by that principal whose lifecycle is exactly `completed`, whose Executions have no active row, and whose execution relation is canonical. Past/future Day, planned Entry, owner mismatch, stale revision, changed target, and lifecycle/execution anomalies reject. D-128 is the only exception to the original running rejection and applies only to the server-authoritative current Day.
+`DeleteCompletedEntry` accepts `{ operation_id, taskchute_day_id, entry_id, expected_placement_revision }` and returns `{ entry_id, deleted_execution_ids, taskchute_day_id, placement_revision }`. The authenticated principal is derived server-side. The original D-067 command accepts the server-authoritative current Day and an Entry owned by that principal whose lifecycle is exactly `completed`, whose Executions have no active row, and whose execution relation is canonical. D-128 added current-Day Running. D-174 extends this family to an explicit established-past historical delete of one safe Running / Completed Entry, retaining owner, exact Day / identity, placement revision, execution relation, protected-history, and lifecycle checks. Past Planned delete uses its existing planned-delete authority under D-174's exact Day / owner guards. Record-none / unestablished past, future Day, owner mismatch, stale revision, changed target, and lifecycle/execution anomalies reject.
 
 The command is one atomic D1 mutation. It deletes all target Executions first, removes Entry-bound `lifecycle_command_guards` and `entry_project_snapshots` required by existing `ON DELETE RESTRICT` references, deletes the Entry, increments `placement_revision` exactly once, and stores the success operation. On any failure the transaction leaves the Entry, Executions, revision, and operation state converged; the operation is not inferred as successful from an absent Entry. Exact operation replay returns the original result, while operation-id misuse rejects.
 
@@ -737,27 +753,30 @@ The target Task, Project, unrelated Entries/Executions, RoutineDefinition, Routi
 
 Status: Approved. Runtime / APP migration: IMPLEMENTED / INTEGRATED / NO MIGRATION.
 
-- The Web and Worker accept Task-level Project set / clear only for an authenticated owner's established current or future TaskChuteDay Entry whose lifecycle is `planned`, whose `routine` relation is `NULL`, and whose Day is planning-enabled. Unestablished preview, record-none / past, running, completed, Routine-derived, missing, and cross-owner targets reject without a write.
+- The Web and Worker accept Task-level Project set / clear only for an authenticated owner's established current or future TaskChuteDay Entry whose lifecycle is `planned`, whose `routine` relation is `NULL`, and whose Day is planning-enabled. Unestablished preview, record-none / past, running, completed, Routine-derived, missing, and cross-owner targets reject without a write. D-174 does not make an unsafe shared Task-level Project mutation the authority for historical rows: Planned correction may use the existing ordinary Task / Entry planning authority only where changing it cannot silently alter unrelated Entry history; Running / Completed correction uses existing Entry / historical snapshot authority. If the selected historical value cannot be corrected safely without affecting unrelated Entries or adding persistence, stop before implementation.
 - Project remains `Task.project_id`; `NULL` is displayed as `Projectなし`. An active owner-scoped Project can be newly assigned, an archived Project cannot be newly assigned, and an existing archived assignment remains readable. Project assignment does not create an Entry-specific relation.
 - On future Days, Task title is read-only and any requested title / expected title must match the canonical Task title. Section, planned start, estimate, Mode, Entry / Task / Day identity, and Day `placement_revision` remain unchanged. Future Day mutation reuses `UpdateTaskMetadata` with an atomic guard over the TaskChuteDay ID, logical date, Entry, Task, lifecycle, and Routine relation; no new command, queue, or migration is introduced.
 - Current-Day dispatch remains D-066's global serial dispatcher. Future-Day dispatch uses the existing direct/scoped path with the same exact operation identity, ambiguity retention, retry, navigation / reload / logout / unload guard, and canonical reconciliation boundary. Production verification is separate from this contract.
 
 ## D-070 Future established-Day Mode assignment
 
-`SetEntryMode`はauthenticated ownerのestablished currentまたはfuture Dayに属するordinary planned Entryへ適用できる。future previewにはcanonical Entryが存在しないためMode editorを表示せず、established past、record-none past、running、completed、Routine-derived、owner外、missing targetはWorkerでrejectしWebでread-onlyとする。
+`SetEntryMode`はauthenticated ownerのestablished currentまたはfuture Dayに属するordinary planned Entryへ適用できる。future previewにはcanonical Entryが存在しないためMode editorを表示せず、record-none past、running、completed、Routine-derived、owner外、missing targetはWorkerでrejectしWebでread-onlyとする。D-174の対象では、Androidの歴史訂正editorからestablished past Planned ordinary EntryのModeをexisting Entry-scoped authorityで訂正できる。
 
 - `mode_id = null`はrelation clear、owner-scoped existing ModeDefinitionはset / replaceである。Mode Boardのserver orderをoptionsへ使い、same-title Modeはstable IDで扱う。assignmentはEntry、Task、Day、Section、planned start、estimate、Project、`placement_revision`を変更せず、future assignment時にhistorical snapshotを作らない。
 
 ## D-116A Completed Entry historical Project / Mode correction
 
 On the current established Day, an owner may correct Project and Mode for an
-ordinary completed Entry with completed Execution history. Routine-derived,
-past/future, and otherwise ineligible Entries remain read-only. D-117 additionally
+ordinary completed Entry with completed Execution history. D-117 additionally
 allows Project / Mode metadata changes for an ordinary running Entry on the current
 established Day; this does not make its planning, lifecycle, or placement controls
-editable. Task title, lifecycle, Section, estimate, planned start, placement, and Day
-`placement_revision` do not change. A running Mode change updates the live Entry
-relation while the start-time historical snapshot remains authoritative after completion.
+editable. D-174 extends the corresponding safe, Entry/history-local metadata
+correction to an eligible Entry on an established past Day. Routine-derived Entries
+use occurrence-local authority only; record-none past and otherwise ineligible
+Entries remain read-only. Task title, lifecycle, Section, estimate, planned start,
+placement, and Day `placement_revision` do not change under this metadata-only
+capability. A running Mode change updates the live Entry relation while the
+start-time historical snapshot remains authoritative after completion.
 
 Completed Project authority is the Entry's `entry_project_snapshots` row, not
 the shared Task's `tasks.project_id`. Set / replace / clear updates only that
@@ -1009,7 +1028,7 @@ A Completed Entry with its actual start retained and actual end cleared is saved
 
 Completed start+end both blank is not a direct Completed→Planned command in v0.1. A user who needs that outcome performs Completed→Running by clearing end, then after canonical reconciliation clears start to perform Running→Planned.
 
-These semantics apply to ordinary and Routine-derived current-Day Entries that already have the Android lifecycle-metadata editor capability; Routine Definition/defaults/recurrence and unrelated occurrences are unchanged. Past/future lifecycle correction, Web/Wear UI exposure, interruption/pause semantics, audit/tombstone persistence, schema/migration and production behavior are not added.
+These semantics apply to ordinary and Routine-derived current-Day Entries that already have the Android lifecycle-metadata editor capability; Routine Definition/defaults/recurrence and unrelated occurrences are unchanged. D-174 separately extends eligible lifecycle correction to established past Days through existing safe guards; future correction, Web/Wear UI exposure, interruption/pause semantics, audit/tombstone persistence, schema/migration and production behavior are not added.
 
 ## D-157 Android Today Completed → Planned direct rollback
 
@@ -1019,7 +1038,7 @@ The server atomically deletes only that guarded completed Execution and transiti
 
 Completed with start retained and end cleared continues to mean Completed → Running under D-156. Completed with end present but start blank remains invalid.
 
-This capability does not apply to interrupted/continuation history, multiple Execution segments, ambiguous editable identity, past/future Day correction, Web/Wear UI, or general history deletion. Routine-derived current-Day occurrences use the same occurrence-only semantics and do not mutate Routine Definition/defaults/other occurrences. No schema, migration, or new lifecycle state is added.
+This capability does not apply to interrupted/continuation history, multiple Execution segments, ambiguous editable identity, future Day correction, Web/Wear UI, or general history deletion. D-174 separately approves eligible established-past corrections where the same isolated-Execution guard can be applied. Routine-derived current-Day occurrences use the same occurrence-only semantics and do not mutate Routine Definition/defaults/other occurrences. No schema, migration, or new lifecycle state is added.
 
 ## D-158 Wear OS Running Complication
 
