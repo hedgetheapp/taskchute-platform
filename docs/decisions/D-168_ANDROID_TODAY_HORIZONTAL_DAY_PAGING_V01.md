@@ -1,6 +1,6 @@
 # D-168 — Android Today Horizontal Day Paging v0.1
 
-Status: **Approved / Not implemented**
+Status: **Approved / Implemented / Integrated / Verification partial**
 
 Date: 2026-10-04
 
@@ -170,4 +170,10 @@ Future implementation should verify at minimum:
 14. empty Day can still page in both directions;
 15. navigation uses canonical adjacent-Day load and creates no mutation.
 
-Until implemented and tested, this remains **Approved / Not implemented / Not verified**.
+## Implementation and verification closeout — 2026-10-05
+
+Implementation `844bd1982420a6cae93b031d8bec070aa593f7d7` is integrated on `main`. Android Today now arbitrates horizontal intent after touch slop, keeps vertical intent passive, excludes Task-row surfaces (including their translated revealed-action surface), follows the finger, snaps back below threshold, and settles a committed swipe before using the existing `loadLogicalDate(...)` authority for exactly one adjacent date. Selection Mode, active D&D, header controls, bottom overlays, and non-content load states block paging. The existing D-148 parent pointer observer and Task-row command semantics remain in place.
+
+Focused gesture JVM tests pass `3 / 3`; the full Android app JVM suite passes `373 / 373`. Focused `TaskChute_API33` AVD cases passed for Section Header left/right and tap collapse, vertical and below-threshold gestures, empty Day left/right, Selection Mode, Running Player/FAB/footer protection, row left/right swipe regression, paging while row actions are open, and long-press D&D. The one-time full Today surface run is **PARTIAL**: 62 of 85 tests started, 58 passed and 4 failed; the emulator package manager/transport then became unavailable and 23 tests did not run. The open-row-action paging case passed in isolation but its full-suite Activity teardown timed out. See `docs/TEST_MATRIX.md` for the failure names and evidence boundary. Do not treat the full Today surface as passing.
+
+App Kotlin compile, AndroidTest Kotlin compile, `packageDebug`, `packageDebugAndroidTest`, `git diff --check`, and exact-SHA CI pass. CI verifies Android JVM, signed Phone/Wear builds, instrumentation APK compilation and signing, and uploads a fresh signed Phone APK; Web/Worker verification is skipped under the Android-only impact classification. No Worker/API/shared contract, schema/migration, dependency, Web Today, Wear, Daily, production, or release change was made. Galaxy S23 remains `NOT_RUN / PRODUCT_OWNER_MANUAL`; Production `NOT_RUN`; Released `NO`.

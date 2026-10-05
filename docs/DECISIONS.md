@@ -56,11 +56,11 @@ Android Today Task-row third-line metadata adds a Note presence icon beside the 
 
 ## D-168 — Android Today Horizontal Day Paging v0.1
 
-Status: **Approved / Not implemented / Not verified**
+Status: **Approved / Implemented / Integrated / focused Android JVM + AVD + exact-SHA CI PASS / full Today AVD PARTIAL**
 
 Canonical Decision: `docs/decisions/D-168_ANDROID_TODAY_HORIZONTAL_DAY_PAGING_V01.md`
 
-Android Today gains adjacent-Day horizontal paging without restoring D-162's removed header arrows. Conventional left swipe moves to the next Day and right swipe moves to the previous Day, but gesture ownership is determined by the start region: Task-row gestures remain D-123 / D-124 Task actions and Selection Mode, while Section Headers and non-interactive/blank Today content can initiate page navigation. Vertical scroll, long-press D&D, footer/FAB/Running Player and modal controls remain protected. Paging follows the finger and snaps/settles like an adjacent page; DatePicker remains the arbitrary-date navigation affordance. Daily/Web are unchanged.
+Android Today gains adjacent-Day horizontal paging without restoring D-162's removed header arrows. Conventional left swipe moves to the next Day and right swipe moves to the previous Day, but gesture ownership is determined by the start region: Task-row gestures remain D-123 / D-124 Task actions and Selection Mode, while Section Headers and non-interactive/blank Today content can initiate page navigation. Vertical scroll, long-press D&D, footer/FAB/Running Player and modal controls remain protected. Paging follows the finger and snaps/settles like an adjacent page; DatePicker remains the arbitrary-date navigation affordance. Daily/Web are unchanged. Implementation `844bd1982420a6cae93b031d8bec070aa593f7d7` is on `main`; full Android app JVM `373 / 373`, focused D-168 AVD regressions, and exact-SHA CI pass. The full Today AVD remains partial after emulator transport failure; see `docs/TEST_MATRIX.md`. Galaxy S23 `NOT_RUN / PRODUCT_OWNER_MANUAL`; Production `NOT_RUN`; Released `NO`.
 
 ## D-167 — Android Complete→Start Serial Lifecycle Handoff Corrective v0.1
 
