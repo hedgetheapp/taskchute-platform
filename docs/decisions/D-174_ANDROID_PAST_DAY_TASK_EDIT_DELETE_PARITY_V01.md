@@ -1,6 +1,6 @@
 # D-174 Android Past-Day Task Edit / Delete Parity v0.1
 
-Status: **Approved / Implemented / Integrated / Local, exact-SHA CI, and persistent nonprod verified; authenticated QA and Android device verification pending**
+Status: **Approved / Implemented / Integrated / Local, exact-SHA CI, and persistent nonprod verified; representative Galaxy S23 actual-end correction PASS / authenticated QA and AVD UI pending**
 
 ## Decision
 
@@ -74,4 +74,4 @@ No schema, migration, dependency, production operation, or existing user-data mu
 - Fresh signed Phone APK artifact `taskchute-android-debug-2ae2ee32084cb89037b83845b8623081715d207e`, artifact ID `11328331801`, expires `2026-10-12T06:01:46Z`; the CI signer fingerprint was verified locally. Wear APK and AndroidTest artifacts were also produced by the same CI run.
 - Authenticated disposable QA is `NOT_RUN / AUTH_FIXTURE_UNAVAILABLE`; no QA account or Task was created and no existing user / `睡眠` history was mutated. The focused Android instrumentation Kotlin compiled, but the local `TaskChute_API33` AVD did not reach boot-complete within 180 seconds; Android UI runtime is `NOT_RUN / AVD_BOOT_TIMEOUT`.
 
-Galaxy S23 D-174 verification remains `NOT_RUN / PRODUCT_OWNER_MANUAL`; the separate D-173B cross-Day Galaxy S23 report remains `PASS / USER_CONFIRMED` and is not inherited as D-174 evidence. Production is `NOT_RUN`, Released is `NO`, and D-167 remains `NOT_STARTED`.
+The Product Owner reports a representative Galaxy S23 D-174 check: opened prior-Day `睡眠`, edited actual end to `08:00`, saved, and observed `問題なし` (`PASS / USER_CONFIRMED`). This is evidence for that actual-end correction path only; it does not verify delete or the full matrix. The separate D-173B cross-Day report remains distinct. Production is `NOT_RUN`, Released is `NO`, and D-167 remains `NOT_STARTED`.

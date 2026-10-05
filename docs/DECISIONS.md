@@ -1,10 +1,18 @@
+## D-175 — Android Consecutive Actual-Time Save Revision / Reconcile Corrective
+
+Status: **Approved corrective / Implemented / Integrated / Local and exact-SHA CI PASS; AVD UI and D-175 exact-build Galaxy S23 pending**
+
+Canonical record: `docs/decisions/D-175_ANDROID_CONSECUTIVE_ACTUAL_TIME_REVISION_RECONCILE_CORRECTIVE_V01.md`
+
+This corrective preserves existing server-authoritative actual-time and placement-revision semantics. Android previously discarded `SetExecutionTimesResult.placement_revision`; it now returns the canonical revision to the existing controller handoff before closing the editor. A stale lower-revision projection cannot replace the optimistic Running / Completed presentation, and the later canonical projection clears it normally. No `TodayController` production change, Worker/API change, schema/migration, or nonprod deployment was required. Local Android app JVM `356 / 356`, focused Worker `30 / 30`, compile/build gates, and exact-SHA CI pass. AVD UI `NOT_RUN / AVD_BOOT_TIMEOUT`; D-175 Galaxy exact-build check `NOT_RUN / PRODUCT_OWNER_MANUAL`. Production `NOT_RUN`; Released `NO`; D-167 `NOT_STARTED`.
+
 ## D-174 — Android Past-Day Task Edit / Delete Parity v0.1
 
-Status: **Approved / Implemented / Integrated / Local, exact-SHA CI, and persistent nonprod verified; authenticated QA and Android device verification pending**
+Status: **Approved / Implemented / Integrated / Local, exact-SHA CI, and persistent nonprod verified; representative Galaxy S23 actual-end correction PASS / authenticated QA and AVD UI pending**
 
 Canonical Decision: `docs/decisions/D-174_ANDROID_PAST_DAY_TASK_EDIT_DELETE_PARITY_V01.md`
 
-An already-established past TaskChuteDay is editable history. Android reuses the existing Task Editor and single-row delete confirmation; Routine changes are occurrence-only. Existing command guards preserve stable Entry / Execution identity, origin Day / frozen Section context, owner, overlap, CAS, replay, lifecycle, and protected-history semantics. No schema / migration was added. Shared ordinary Planned Task title / Project edits fail closed where they would change other Entry or Routine authority; supporting a historical-only value needs a separate persistence decision. Full Web/Worker and Android CI, persistent nonprod deploy, and read-only integrity probes pass. Authenticated disposable QA is `NOT_RUN / AUTH_FIXTURE_UNAVAILABLE`; Android UI runtime is `NOT_RUN / AVD_BOOT_TIMEOUT`. Exact-SHA CI `37269689329` attempt 2 PASS, Worker version `a3aa8ed4-36dd-42be-ba6b-a93f646cbadc`, Phone APK artifact `11328331801`. Galaxy S23 D-174 `NOT_RUN / PRODUCT_OWNER_MANUAL`; Production `NOT_RUN`, Released `NO`, D-167 `NOT_STARTED`.
+An already-established past TaskChuteDay is editable history. Android reuses the existing Task Editor and single-row delete confirmation; Routine changes are occurrence-only. Existing command guards preserve stable Entry / Execution identity, origin Day / frozen Section context, owner, overlap, CAS, replay, lifecycle, and protected-history semantics. No schema / migration was added. Shared ordinary Planned Task title / Project edits fail closed where they would change other Entry or Routine authority; supporting a historical-only value needs a separate persistence decision. Full Web/Worker and Android CI, persistent nonprod deploy, and read-only integrity probes pass. Authenticated disposable QA is `NOT_RUN / AUTH_FIXTURE_UNAVAILABLE`; Android UI runtime is `NOT_RUN / AVD_BOOT_TIMEOUT`. Exact-SHA CI `37269689329` attempt 2 PASS, Worker version `a3aa8ed4-36dd-42be-ba6b-a93f646cbadc`, Phone APK artifact `11328331801`. Product Owner reports representative Galaxy S23 PASS for prior-Day `睡眠` actual-end correction to `08:00` (`PASS / USER_CONFIRMED`); delete and full device matrix are not verified. Production `NOT_RUN`, Released `NO`, D-167 `NOT_STARTED`.
 
 ## D-173B — Cross-Day Running Client Compatibility Corrective v0.1
 

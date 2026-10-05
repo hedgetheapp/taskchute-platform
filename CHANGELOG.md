@@ -1,8 +1,14 @@
+### D-175 Android Consecutive Actual-Time Save Revision / Reconcile Corrective — 2026-10-05
+
+- Fixed Android to retain the canonical placement revision returned by successful actual-time mutations and hand it to the next editor save immediately. RED reproduced the old request sequence as expected revisions `[5, 5]` and canonical simulated responses `[200, 409 revision_conflict]`; after the fix it is `[5, 6]` with `[200, 200]` and no conflict. The handset's raw HTTP status was not captured; the failure mechanism is reproduced by the canonical Worker conflict contract.
+- Stale-reconcile coverage confirms the existing optimistic presentation keeps A Completed while a lower-revision Planned projection is stale, then adopts canonical Completed at the confirmed revision. No `TodayController` production change, Worker/API, schema/migration, or persistent nonprod deploy.
+- Local app JVM `356 / 356`, focused Worker `30 / 30`, Kotlin / AndroidTest compile, signed APK build, and exact-SHA CI PASS. AVD UI `NOT_RUN / AVD_BOOT_TIMEOUT`; D-175 Galaxy exact-build check `NOT_RUN / PRODUCT_OWNER_MANUAL`. Production `NOT_RUN`; Released `NO`; D-167 `NOT_STARTED`.
+
 ### D-174 Android past-Day Task edit / delete parity — 2026-10-05
 
 - Implemented eligible historical correction and single-row delete through Android's existing Task Editor and commands. Stable Entry / Execution identity, origin Day, Routine occurrence-only semantics, and existing owner / replay / CAS / overlap / lifecycle / protected-history guards remain. No schema or migration was added.
 - Shared ordinary Planned Task title / Project edits fail closed when Task-level changes would affect other Entry or Routine authority; Entry-local persistence would need a separate Decision. Exact-SHA CI `37269689329` attempt 2, full local Web/Worker/Android verification, and persistent nonprod verification pass. Worker version `a3aa8ed4-36dd-42be-ba6b-a93f646cbadc`; signed Phone APK artifact `11328331801`.
-- Authenticated disposable QA `NOT_RUN / AUTH_FIXTURE_UNAVAILABLE`; Android UI runtime `NOT_RUN / AVD_BOOT_TIMEOUT`; Galaxy S23 D-174 `NOT_RUN / PRODUCT_OWNER_MANUAL`. Production `NOT_RUN`; Released `NO`; D-167 `NOT_STARTED`.
+- Authenticated disposable QA `NOT_RUN / AUTH_FIXTURE_UNAVAILABLE`; Android UI runtime `NOT_RUN / AVD_BOOT_TIMEOUT`. Product Owner reports a representative Galaxy S23 PASS for prior-Day `睡眠` actual-end correction to `08:00`; delete and full device matrix are not verified. Production `NOT_RUN`; Released `NO`; D-167 `NOT_STARTED`.
 
 ### D-173A Android nonprod Today current-Day failure diagnostic — 2026-10-05
 
