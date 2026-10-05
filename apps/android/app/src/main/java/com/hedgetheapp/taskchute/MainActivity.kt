@@ -40,6 +40,7 @@ import kotlinx.coroutines.launch
 import com.hedgetheapp.taskchute.today.TodayController
 import com.hedgetheapp.taskchute.today.TodayHttpRepository
 import com.hedgetheapp.taskchute.today.TodayHttpResponse
+import com.hedgetheapp.taskchute.today.shouldExposeTodayDiagnostic
 import com.hedgetheapp.taskchute.today.TodayScreen
 import com.hedgetheapp.taskchute.today.TaskPlanningController
 import com.hedgetheapp.taskchute.today.TaskPlanningHttpRepository
@@ -88,6 +89,7 @@ class MainActivity : ComponentActivity() {
         val todayRepository = TodayHttpRepository(
             request = { method, path, body -> controller.authenticatedRequest(method, path, body)?.let { TodayHttpResponse(it.status, it.body) } },
             onUnauthorized = {},
+            diagnosticsEnabled = shouldExposeTodayDiagnostic(BuildConfig.DEBUG, BuildConfig.TASKCHUTE_BASE_URL),
         )
         todayController = TodayController(
             repository = todayRepository,

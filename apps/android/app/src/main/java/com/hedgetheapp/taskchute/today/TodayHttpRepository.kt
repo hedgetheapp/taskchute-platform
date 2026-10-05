@@ -1,10 +1,14 @@
 package com.hedgetheapp.taskchute.today
 
+import com.hedgetheapp.taskchute.network.JsonParser
+import com.hedgetheapp.taskchute.network.JsonValue
+import java.net.URI
 import java.net.URLEncoder
 
 class TodayHttpRepository(
     private val request: (method: String, path: String, body: String?) -> TodayHttpResponse?,
     private val onUnauthorized: () -> Unit,
+    private val diagnosticsEnabled: Boolean = false,
 ) : TodayRepository {
     override fun loadDay(logicalDate: String?): TodayResult {
         val path = logicalDate?.let {
@@ -45,18 +49,72 @@ class TodayHttpRepository(
 
     private fun executeForDay(method: String, path: String, body: String?): TodayResult {
         val response = runCatching { request(method, path, body) }.getOrNull()
-            ?: return TodayResult.Failure("接続できませんでした。再試行してください。")
+            ?: return TodayResult.Failure(
+                "接続できませんでした。再試行してください。",
+                diagnostic = diagnostic("NETWORK_NO_RESPONSE"),
+            )
         return when {
-            response.status == null -> TodayResult.Failure("接続できませんでした。再試行してください。")
+            response.status == null -> TodayResult.Failure(
+                "接続できませんでした。再試行してください。",
+                diagnostic = diagnostic("NETWORK_NO_RESPONSE"),
+            )
             response.status == 401 -> {
                 onUnauthorized()
                 TodayResult.Unauthorized
             }
-            response.status !in 200..299 -> TodayResult.Failure("Todayを読み込めませんでした。再試行してください。")
+            response.status !in 200..299 -> TodayResult.Failure(
+                "Todayを読み込めませんでした。再試行してください。",
+                diagnostic = diagnostic(httpDiagnostic(response.status, response.body)),
+            )
             else -> runCatching { TodayResult.Success(TodayJsonParser.parse(response.body)) }
-                .getOrElse { TodayResult.Failure("サーバーのTodayデータを読み取れませんでした。") }
+                .getOrElse {
+                    TodayResult.Failure(
+                        "サーバーのTodayデータを読み取れませんでした。",
+                        diagnostic = diagnostic("HTTP ${response.status} / PARSE_ERROR"),
+                    )
+                }
         }
     }
+
+    private fun diagnostic(value: String): String? = value.takeIf { diagnosticsEnabled }
+
+    private fun httpDiagnostic(status: Int, body: String?): String {
+        val code = runCatching {
+            val root = JsonParser(body.orEmpty()).parse() as? JsonValue.Object ?: return@runCatching null
+            val error = root.fields["error"] as? JsonValue.Object ?: return@runCatching null
+            val candidate = (error.fields["code"] as? JsonValue.StringValue)?.value
+            candidate?.takeIf { it in CANONICAL_API_ERROR_CODES }
+        }.getOrNull()
+        return if (code == null) "HTTP $status" else "HTTP $status / $code"
+    }
+
+    private companion object {
+        val CANONICAL_API_ERROR_CODES = setOf(
+            "malformed_request",
+            "unauthenticated",
+            "forbidden",
+            "resource_not_found",
+            "resource_conflict",
+            "revision_conflict",
+            "operation_id_misuse",
+            "operation_persistence_incompatible",
+            "infrastructure_ambiguous",
+        )
+    }
+}
+
+internal fun shouldExposeTodayDiagnostic(debugBuild: Boolean, baseUrl: String): Boolean {
+    if (!debugBuild) return false
+    return runCatching {
+        val uri = URI(baseUrl)
+        uri.scheme.equals("https", ignoreCase = true) &&
+            uri.host.equals("taskchute-web-nonprod.taskfulness-sync.workers.dev", ignoreCase = true) &&
+            uri.port == -1 &&
+            uri.rawUserInfo == null &&
+            uri.rawPath.orEmpty().let { it.isEmpty() || it == "/" } &&
+            uri.rawQuery == null &&
+            uri.rawFragment == null
+    }.getOrDefault(false)
 }
 
 internal object JsonEncoding {

@@ -53,6 +53,22 @@ class TodayControllerTest {
     }
 
     @Test
+    fun loadFailureCarriesOnlyTheSafeDiagnosticToTodayPresentationState() {
+        val repository = FakeRepository().apply {
+            loadResult = TodayResult.Failure("retry", diagnostic = "HTTP 503 / infrastructure_ambiguous")
+        }
+        val controller = controller(repository)
+
+        controller.loadCurrent()
+
+        assertTrue(repository.loadStarted.await(2, TimeUnit.SECONDS))
+        assertTrue(awaitState(controller) { it.status == TodayLoadStatus.ERROR })
+        assertEquals("retry", controller.state.errorMessage)
+        assertEquals("HTTP 503 / infrastructure_ambiguous", controller.state.diagnosticMessage)
+        controller.close()
+    }
+
+    @Test
     fun refreshFailureRetriesTheSameLogicalDateThroughStandardLoading() {
         val repository = FakeRepository().apply {
             loadResult = TodayResult.Success(dayWith(LifecycleState.PLANNED))

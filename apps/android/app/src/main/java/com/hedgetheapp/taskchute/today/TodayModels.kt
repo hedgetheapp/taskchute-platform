@@ -101,7 +101,7 @@ data class TodayHttpResponse(
 sealed interface TodayResult {
     data class Success(val day: TodayDay) : TodayResult
     data object Unauthorized : TodayResult
-    data class Failure(val message: String) : TodayResult
+    data class Failure(val message: String, val diagnostic: String? = null) : TodayResult
 }
 
 sealed interface TodayMutationResult {
@@ -131,6 +131,7 @@ data class TodayUiState(
     val status: TodayLoadStatus = TodayLoadStatus.LOADING,
     val day: TodayDay? = null,
     val errorMessage: String? = null,
+    val diagnosticMessage: String? = null,
     val pendingEntryIds: Set<String> = emptySet(),
     val optimisticDay: TodayDay? = null,
 )

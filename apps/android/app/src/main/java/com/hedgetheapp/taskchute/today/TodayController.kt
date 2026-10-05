@@ -149,6 +149,7 @@ class TodayController(
             state = state.copy(
                 status = if (hasExisting) TodayLoadStatus.REFRESHING else TodayLoadStatus.LOADING,
                 errorMessage = null,
+                diagnosticMessage = null,
                 optimisticDay = null,
             )
         }
@@ -167,7 +168,7 @@ class TodayController(
                     deferredRealtimeReload = false
                     if (!authRecoveryAttempted) {
                         authRecoveryAttempted = true
-                        state = state.copy(status = TodayLoadStatus.AUTH_REQUIRED, errorMessage = "認証の有効期限を確認しています…")
+                        state = state.copy(status = TodayLoadStatus.AUTH_REQUIRED, errorMessage = "認証の有効期限を確認しています…", diagnosticMessage = null)
                         onUnauthorized()
                     } else {
                         // Do not cycle through SignedIn -> Today -> 401 -> restore indefinitely.
@@ -175,12 +176,17 @@ class TodayController(
                         state = state.copy(
                             status = TodayLoadStatus.ERROR,
                             errorMessage = "認証を確認後もTodayを読み込めませんでした。再試行してください。",
+                            diagnosticMessage = null,
                         )
                     }
                 }
                 is TodayResult.Failure -> {
                     if (visible || state.day == null) {
-                        state = state.copy(status = TodayLoadStatus.ERROR, errorMessage = result.message)
+                        state = state.copy(
+                            status = TodayLoadStatus.ERROR,
+                            errorMessage = result.message,
+                            diagnosticMessage = result.diagnostic,
+                        )
                     }
                     if (visible) flushDeferredRealtimeReload()
                 }
@@ -242,6 +248,7 @@ class TodayController(
             status = if (day.hasEntries) TodayLoadStatus.CONTENT else TodayLoadStatus.EMPTY,
             day = day,
             errorMessage = null,
+            diagnosticMessage = null,
             pendingEntryIds = pendingEntryIds.toSet(),
             optimisticDay = if (replaceOptimistic || !optimisticActive) null else state.optimisticDay,
         )

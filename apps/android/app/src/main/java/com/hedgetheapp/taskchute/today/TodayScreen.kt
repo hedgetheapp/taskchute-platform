@@ -325,7 +325,7 @@ fun TodayScreen(
                     onRequestDelete = { deleteEntryIds = it },
                     modifier = Modifier.fillMaxSize(),
                 )
-                TodayScreenPresentation.RETRY_ERROR -> TodayError(controller::refresh)
+                TodayScreenPresentation.RETRY_ERROR -> TodayError(state.diagnosticMessage, controller::refresh)
             }
             if (state.status == TodayLoadStatus.CONTENT || state.status == TodayLoadStatus.EMPTY || state.status == TodayLoadStatus.REFRESHING) {
                 state.presentedDay?.takeIf { canPlanDay(it) || it.isCurrent }?.let { day ->
@@ -906,7 +906,6 @@ private fun TodayContent(
         state.errorMessage?.let {
             Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp))
         }
-
         directManipulationController?.state?.feedbackMessage?.let {
             Text(it, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 16.dp))
         }
@@ -2988,7 +2987,7 @@ private fun EmptyToday(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun TodayError(retry: () -> Unit) {
+private fun TodayError(diagnostic: String?, retry: () -> Unit) {
     Column(
         Modifier.fillMaxSize().padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -3010,6 +3009,16 @@ private fun TodayError(retry: () -> Unit) {
             fontSize = 13.sp,
             textAlign = TextAlign.Center,
         )
+        diagnostic?.let {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "診断: $it",
+                modifier = Modifier.fillMaxWidth(),
+                color = TaskChuteColors.SecondaryText,
+                fontSize = 12.sp,
+                textAlign = TextAlign.Center,
+            )
+        }
         Spacer(Modifier.height(16.dp))
         Button(
             onClick = retry,
