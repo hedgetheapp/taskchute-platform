@@ -1,10 +1,10 @@
 ## D-175 — Android Consecutive Actual-Time Save Revision / Reconcile Corrective
 
-Status: **Approved corrective / Implemented / Integrated / Local and exact-SHA CI PASS; AVD UI and D-175 exact-build Galaxy S23 pending**
+Status: **Approved corrective / Implemented / Integrated / Local and exact-SHA CI PASS / Galaxy S23 PASS (USER_CONFIRMED); AVD UI not run**
 
 Canonical record: `docs/decisions/D-175_ANDROID_CONSECUTIVE_ACTUAL_TIME_REVISION_RECONCILE_CORRECTIVE_V01.md`
 
-This corrective preserves existing server-authoritative actual-time and placement-revision semantics. Android previously discarded `SetExecutionTimesResult.placement_revision`; it now returns the canonical revision to the existing controller handoff before closing the editor. A stale lower-revision projection cannot replace the optimistic Running / Completed presentation, and the later canonical projection clears it normally. No `TodayController` production change, Worker/API change, schema/migration, or nonprod deployment was required. Local Android app JVM `356 / 356`, focused Worker `30 / 30`, compile/build gates, and exact-SHA CI pass. AVD UI `NOT_RUN / AVD_BOOT_TIMEOUT`; D-175 Galaxy exact-build check `NOT_RUN / PRODUCT_OWNER_MANUAL`. Production `NOT_RUN`; Released `NO`; D-167 `NOT_STARTED`.
+This corrective preserves existing server-authoritative actual-time and placement-revision semantics. Android previously discarded `SetExecutionTimesResult.placement_revision`; it now returns the canonical revision to the existing controller handoff before closing the editor. A stale lower-revision projection cannot replace the optimistic Running / Completed presentation, and the later canonical projection clears it normally. No `TodayController` production change, Worker/API change, schema/migration, or nonprod deployment was required. Local Android app JVM `356 / 356`, focused Worker `30 / 30`, compile/build gates, and exact-SHA CI pass. AVD UI `NOT_RUN / AVD_BOOT_TIMEOUT`; Product Owner exact-build Galaxy S23 consecutive A→B actual-time save retest `PASS / USER_CONFIRMED`. Production `NOT_RUN`; Released `NO`; D-167 `NOT_STARTED`.
 
 ## D-174 — Android Past-Day Task Edit / Delete Parity v0.1
 
