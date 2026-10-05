@@ -1,3 +1,8 @@
+### D-173A Android nonprod Today current-Day failure diagnostic — 2026-10-05
+
+- Added safe Today load-failure classification for HTTP status/canonical error code, malformed 2xx projection, and network/no-response. Only Debug builds pointed at the exact canonical nonprod URL display the secondary diagnostic; response messages/bodies, credentials, identifiers, and exception text remain hidden. Existing retry copy and D-166A 401 recovery are unchanged. D-173 root cause remains unknown pending Product Owner update-in-place verification.
+- Implementation `5c365056eab33e69dc120e493971744b5edcebd1`; focused Android JVM `30 / 30`, Kotlin and AndroidTest compile, debug assemble, exact-SHA CI and signed nonprod Phone APK PASS. Today AVD / Galaxy S23 `NOT_RUN / PRODUCT_OWNER_MANUAL`; no Worker/API/schema/migration/dependency/nonprod mutation. Production `NOT_RUN`; Released `NO`.
+
 ### D-166 Android startup loading-state unification — 2026-10-04
 
 - Unified app auth restore, Today initial loading, and non-interactive auth reconciliation under the shared centered `読み込み中` presentation; explicit login/progress/retry states remain unchanged.

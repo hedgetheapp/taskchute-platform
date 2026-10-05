@@ -1,3 +1,13 @@
+## D-173A Android nonprod current-Day failure diagnostic — 2026-10-05
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D173A-CLASSIFICATION | Authenticated Today GET result | Safely distinguish HTTP errors, malformed successful projection, and absent/failed transport without exposing payload details | Focused repository tests cover canonical HTTP `503 / infrastructure_ambiguous`, malformed HTTP 500 body (`HTTP 500` only), malformed HTTP 200 (`PARSE_ERROR`), null and thrown transport (`NETWORK_NO_RESPONSE`), 401 retaining `Unauthorized`/auth handoff, and valid 200 projection. Only allowlisted canonical `error.code` values can accompany a status; response `message`, body, and exception text are not returned. | PASS / FOCUSED JVM |
+| D173A-PRESENTATION-GATE | Today retry error | Show the safe secondary diagnostic only for Debug + exact canonical HTTPS nonprod base URL; leave other builds without it | The shared Today retry surface renders `診断: ...` only when the repository was constructed with the tested debug/nonprod gate. Generic retry copy and D-166A 401 flow remain unchanged. Tests reject release mode, a production/other URL, and noncanonical URL path. | PASS / SOURCE + FOCUSED JVM |
+| D173A-LOCAL-CI | Android verification | Focused JVM, Kotlin/AndroidTest compile, APK assembly, and exact implementation-SHA Actions | `main@5c365056eab33e69dc120e493971744b5edcebd1`; `TodayHttpRepositoryTest` `10 / 10`; `TodayControllerTest` `20 / 20`. `:app:compileDebugKotlin`, `:app:compileDebugAndroidTestKotlin`, `:app:assembleDebug`, `git diff --check`, exact-SHA CI, and signed nonprod Phone APK job PASS; Web/Worker correctly SKIP for Android-only changes. | PASS |
+| D173A-DEVICE | Current-day incident evidence | Capture exact authenticated current-Day response classification on the user's existing installed app without session/data reset | AVD and Galaxy S23 product verification were not performed by Codex. Product Owner update-in-place verification remains pending; do not logout, clear app data, or reinstall. | NOT_RUN / PRODUCT_OWNER_MANUAL |
+| D173A-ROOT-CAUSE-SCOPE | Incident and change boundary | Keep D-173 cause unclassified until authenticated response evidence exists | Root cause remains `UNKNOWN`; no authenticated persistent nonprod fixture was used. No Worker/API/shared contract/schema/migration/dependency, auth/session semantics, Wear/D-167, persistent nonprod or user-data change. Production `NOT_RUN`; Released `NO`. | PENDING DEVICE EVIDENCE / SCOPE PASS |
+
 ## D-166 Android startup loading-state unification — 2026-10-04
 
 | ID | Area | Requirement | Evidence | Status |
