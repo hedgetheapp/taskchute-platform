@@ -48,11 +48,11 @@ Android Today / Notes / Daily adopt a measured stale-while-revalidate style for 
 
 ## D-169 — Android Today Task Note Presence Indicator v0.1
 
-Status: **Approved / Not implemented / Not verified**
+Status: **Approved / Implemented / Integrated / focused Android JVM + D-169 AVD + exact-SHA CI PASS / full Today AVD PARTIAL**
 
 Canonical Decision: `docs/decisions/D-169_ANDROID_TODAY_TASK_NOTE_PRESENCE_INDICATOR_V01.md`
 
-Android Today Task-row third-line metadata adds a Note presence icon beside the existing Routine icon. The Note icon is always shown; `primary_document_id` / Android `primaryDocumentId` is the canonical authority, with accent blue when a Task Primary Note relation exists and secondary gray when it does not. The indicator represents relation existence, not Markdown body non-emptiness, and is informational only: existing left-swipe Note access remains unchanged and the icon itself is not a new tap target. No Document/body fetch, API/schema, Web/Wear, or persistence change is introduced.
+Android Today Task-row third-line metadata adds a Note presence icon beside the existing Routine icon. The Note icon is always shown; `primary_document_id` / Android `primaryDocumentId` is the canonical authority, with accent blue when a Task Primary Note relation exists and secondary gray when it does not. The indicator represents relation existence, not Markdown body non-emptiness, and is informational only: existing left-swipe Note access remains unchanged and the icon itself is not a new tap target. Implementation `4115aae464d8f7f64d34167b18584f0b1ad6cc40` is on `main`; focused Android JVM, focused D-169 AVD, and exact-SHA CI pass. Full Today AVD remains partial because of the previously recorded fixed-start / Section accessibility fixture failure and harness timeout. No Document/body fetch, API/schema/migration/dependency, Web/Wear, or persistence change is introduced. Galaxy S23 `NOT_RUN / PRODUCT_OWNER_MANUAL`; Production `NOT_RUN`; Released `NO`.
 
 ## D-168 — Android Today Horizontal Day Paging v0.1
 

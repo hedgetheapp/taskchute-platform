@@ -1,6 +1,6 @@
 # D-169 — Android Today Task Note Presence Indicator v0.1
 
-Status: **Approved / Not implemented**
+Status: **Approved / Implemented / Integrated / focused Android JVM + D-169 AVD + exact-SHA CI PASS / full Today AVD PARTIAL**
 
 Date: 2026-10-04
 
@@ -104,9 +104,21 @@ It does not change:
 - Wear Today;
 - production/release state.
 
+## Implementation and verification closeout — 2026-10-05
+
+Implementation commit `4115aae464d8f7f64d34167b18584f0b1ad6cc40` is integrated on `main`. Android Today reuses `android_footer_description.xml` at the Routine icon's 10dp visual size, takes presence exclusively from `TodayTask.primaryDocumentId`, preserves the fixed metadata-row height and weighted Project / Mode ellipsis, and adds no Note-icon action. The empty-body relation fixture remains blue. No body fetch, API/shared contract, schema/migration, dependency, Web/Wear, production, or release change was made.
+
+Verification:
+
+- Focused tint JVM tests: `2 / 2 PASS`; full Android app JVM: `370 / 370 PASS`.
+- Targeted `TaskChute_API33` instrumentation `taskNoteIndicatorIsInformationalAndExistingSwipeNoteStillOpens`: `1 / 1 PASS`. A direct Note-icon tap did not invoke the Note callback; the existing left-swipe Note action invoked it.
+- Android app and AndroidTest compile / install path, `git diff --check`, and exact-SHA CI PASS. CI produced signed Phone and Wear APKs and compiled the instrumentation APK; Web/Worker verification was skipped by Android-only impact classification.
+- The full `scripts/android-qa.ps1 -Surface Today` surface is PARTIAL: the harness reached its five-minute limit, and `fixedStartConflictAndSectionOverflowRemainAccessibleWhenCollapsed` failed because its expected drag row was not displayed. This same outstanding fixed-start / Section fixture failure is recorded in D-162 / D-163; a Compose timeout was also observed. The focused D-169 case passed, but the complete Today suite is not claimed as PASS. The attempted main-baseline isolation could not run because Gradle needed a distribution download blocked by the local network policy.
+- Galaxy S23: `NOT_RUN / PRODUCT_OWNER_MANUAL`. Production: `NOT_RUN`. Released: `NO`.
+
 ## Verification target
 
-Future implementation should verify at minimum:
+The approved verification contract was:
 
 1. Task row without `primaryDocumentId` renders gray Note icon.
 2. Task row with `primaryDocumentId` renders blue Note icon.
@@ -119,4 +131,4 @@ Future implementation should verify at minimum:
 9. existing Task-row left-swipe Note action still works.
 10. no Document body fetch is introduced into Today rendering.
 
-Until implemented and tested, this remains **Approved / Not implemented / Not verified**.
+The approved presentation behavior is implemented and integrated. Full Today AVD verification remains partial as described above; Product Owner device confirmation is still outstanding.
