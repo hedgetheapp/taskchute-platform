@@ -160,6 +160,8 @@ data class TodayUiState(
     val diagnosticMessage: String? = null,
     val pendingEntryIds: Set<String> = emptySet(),
     val optimisticDay: TodayDay? = null,
+    /** Explicit selection while an adjacent Day is loading; null means the current Day route. */
+    val selectedLogicalDate: String? = null,
 )
 
 val TodayUiState.presentedDay: TodayDay?

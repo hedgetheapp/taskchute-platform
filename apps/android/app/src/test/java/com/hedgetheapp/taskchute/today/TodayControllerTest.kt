@@ -9,6 +9,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -72,7 +73,7 @@ class TodayControllerTest {
     @Test
     fun refreshFailureRetriesTheSameLogicalDateThroughStandardLoading() {
         val repository = FakeRepository().apply {
-            loadResult = TodayResult.Success(dayWith(LifecycleState.PLANNED))
+            loadResult = TodayResult.Success(dayAt("2026-09-16", "Task"))
             loadResultAfterFirst = TodayResult.Failure("network")
         }
         val controller = controller(repository)
@@ -83,13 +84,15 @@ class TodayControllerTest {
 
         controller.refresh()
         assertTrue(repository.reloadStarted.await(2, TimeUnit.SECONDS))
-        assertTrue(awaitState(controller) { it.status == TodayLoadStatus.ERROR })
+        assertTrue(awaitState(controller) {
+            it.status == TodayLoadStatus.CONTENT && it.errorMessage?.contains("保存済み") == true
+        })
         assertEquals(listOf("2026-09-16", "2026-09-16"), repository.requestedDates)
 
         repository.loadResultAfterFirst = TodayResult.Success(dayWith(LifecycleState.PLANNED))
         repository.holdLoad = true
         controller.refresh()
-        assertTrue(awaitState(controller) { it.status == TodayLoadStatus.LOADING })
+        assertTrue(awaitState(controller) { it.status == TodayLoadStatus.REFRESHING })
         assertEquals("2026-09-16", repository.requestedDates.last())
 
         repository.releaseLoad.countDown()
@@ -462,7 +465,10 @@ class TodayControllerTest {
         assertEquals(1, repository.startCalls.get())
         assertEquals(1, repository.loadCallCount())
         repository.releaseStart.countDown()
-        assertTrue(awaitState(controller) { it.pendingEntryIds.isEmpty() && it.day?.runningTask?.id == "entry-b" })
+        assertTrue(
+            "state=${controller.state}; calls=${repository.loadCallCount()}; events=${repository.events}",
+            awaitState(controller) { it.pendingEntryIds.isEmpty() && it.day?.runningTask?.id == "entry-b" },
+        )
 
         assertEquals(2, repository.loadCallCount())
         assertEquals(1, repository.events.count { it == "load-start:2" })
@@ -845,8 +851,14 @@ class TodayControllerTest {
         assertEquals(1, repository.loadCallCount())
 
         repository.releaseStart.countDown()
-        assertTrue(repository.reloadStarted.await(2, TimeUnit.SECONDS))
-        assertTrue(awaitState(controller) { it.pendingEntryIds.isEmpty() && it.day?.runningTask != null })
+        assertTrue(
+            "reload missing: state=${controller.state}; calls=${repository.loadCallCount()}; events=${repository.events}",
+            repository.reloadStarted.await(2, TimeUnit.SECONDS),
+        )
+        assertTrue(
+            "state=${controller.state}; calls=${repository.loadCallCount()}; events=${repository.events}",
+            awaitState(controller) { it.pendingEntryIds.isEmpty() && it.day?.runningTask != null },
+        )
         assertEquals(2, repository.loadCallCount())
         controller.close()
     }
@@ -862,6 +874,112 @@ class TodayControllerTest {
         controller.onRealtimeDayInvalidation("2026-09-15")
 
         assertEquals(1, repository.loadCallCount())
+        controller.close()
+    }
+
+    @Test
+    fun cachedAdjacentDayRendersImmediatelyAndCanonicalRevalidationReplacesIt() {
+        val repository = FakeRepository().apply {
+            loadResult = TodayResult.Success(dayWith(LifecycleState.PLANNED))
+            setDateResults("2026-09-15", TodayResult.Success(dayAt("2026-09-15", "Target")))
+            setDateResults(
+                "2026-09-14",
+                TodayResult.Success(dayAt("2026-09-14", "Revalidated")),
+            )
+            holdDateCall("2026-09-14", 1)
+        }
+        val controller = controller(repository)
+        controller.loadCurrent()
+        assertTrue(awaitState(controller) { it.status == TodayLoadStatus.CONTENT })
+
+        controller.loadLogicalDate("2026-09-15")
+        assertTrue(awaitState(controller) { it.day?.logicalDate == "2026-09-15" && it.status == TodayLoadStatus.CONTENT })
+
+        controller.loadLogicalDate("2026-09-14")
+        assertTrue(repository.awaitDateCallStarted("2026-09-14", 1))
+        assertEquals("2026-09-14", controller.state.presentedDay?.logicalDate)
+        assertEquals(TodayLoadStatus.REFRESHING, controller.state.status)
+        assertEquals("Task", controller.state.presentedDay?.allEntries?.single()?.title)
+
+        repository.releaseDateCall("2026-09-14", 1)
+        assertTrue(awaitState(controller) {
+            it.status == TodayLoadStatus.CONTENT && it.presentedDay?.allEntries?.singleOrNull()?.title == "Revalidated"
+        })
+        controller.close()
+    }
+
+    @Test
+    fun failedWarmRefreshPreservesTheUsableCachedDayAndShowsRetryError() {
+        val repository = FakeRepository().apply {
+            loadResult = TodayResult.Success(dayWith(LifecycleState.PLANNED))
+            setDateResults("2026-09-15", TodayResult.Success(dayAt("2026-09-15", "Target")))
+            setDateResults("2026-09-14", TodayResult.Failure("offline"))
+        }
+        val controller = controller(repository)
+        controller.loadCurrent()
+        assertTrue(awaitState(controller) { it.status == TodayLoadStatus.CONTENT })
+        controller.loadLogicalDate("2026-09-15")
+        assertTrue(awaitState(controller) { it.day?.logicalDate == "2026-09-15" && it.status == TodayLoadStatus.CONTENT })
+
+        controller.loadLogicalDate("2026-09-14")
+
+        assertTrue(awaitState(controller) {
+            it.status == TodayLoadStatus.CONTENT && it.errorMessage?.contains("保存済み") == true
+        })
+        assertEquals("2026-09-14", controller.state.presentedDay?.logicalDate)
+        assertEquals("Task", controller.state.presentedDay?.allEntries?.single()?.title)
+        controller.close()
+    }
+
+    @Test
+    fun olderPrefetchResponseCannotReplaceANewerSelectedDay() {
+        val repository = FakeRepository().apply {
+            loadResult = TodayResult.Success(dayWith(LifecycleState.PLANNED))
+            setDateResults("2026-09-15", TodayResult.Success(dayAt("2026-09-15", "Older target")))
+            setDateResults("2026-09-16", TodayResult.Success(dayAt("2026-09-16", "New target")))
+            holdDateCall("2026-09-15", 1)
+        }
+        val controller = controller(repository)
+        controller.loadCurrent()
+        assertTrue(awaitState(controller) { it.status == TodayLoadStatus.CONTENT })
+
+        controller.prefetchLogicalDate("2026-09-15")
+        assertTrue(repository.awaitDateCallStarted("2026-09-15", 1))
+        controller.loadLogicalDate("2026-09-15")
+        controller.loadLogicalDate("2026-09-16")
+        assertTrue(awaitState(controller) { it.day?.logicalDate == "2026-09-16" && it.status == TodayLoadStatus.CONTENT })
+
+        repository.releaseDateCall("2026-09-15", 1)
+        assertTrue(repository.awaitDateCallFinished("2026-09-15", 1))
+        assertTrue(awaitState(controller) { it.day?.logicalDate == "2026-09-16" })
+        assertEquals("2026-09-16", controller.state.day?.logicalDate)
+        controller.close()
+    }
+
+    @Test
+    fun sessionResetClearsTodayStateAndIgnoresAnOldPrincipalRead() {
+        val repository = FakeRepository().apply {
+            loadResult = TodayResult.Success(dayWith(LifecycleState.PLANNED))
+            setDateResults("2026-09-15", TodayResult.Success(dayAt("2026-09-15", "Old principal")))
+            holdDateCall("2026-09-15", 1)
+        }
+        val controller = controller(repository)
+        controller.loadCurrent()
+        assertTrue(awaitState(controller) { it.status == TodayLoadStatus.CONTENT })
+        controller.prefetchLogicalDate("2026-09-15")
+        assertTrue(repository.awaitDateCallStarted("2026-09-15", 1))
+        controller.loadLogicalDate("2026-09-15")
+
+        controller.resetForSessionChange()
+        repository.releaseDateCall("2026-09-15", 1)
+        assertTrue(repository.awaitDateCallFinished("2026-09-15", 1))
+        assertNull(controller.state.day)
+        assertNull(controller.state.selectedLogicalDate)
+        assertEquals(TodayLoadStatus.LOADING, controller.state.status)
+
+        controller.loadLogicalDate("2026-09-15")
+        assertTrue(awaitState(controller) { it.day?.logicalDate == "2026-09-15" && it.status == TodayLoadStatus.CONTENT })
+        assertEquals(2, repository.dateCallCount("2026-09-15"))
         controller.close()
     }
 
@@ -906,23 +1024,77 @@ class TodayControllerTest {
         val startPlacementRevisions = CopyOnWriteArrayList<Int>()
         val events = CopyOnWriteArrayList<String>()
         val requestedDates = mutableListOf<String?>()
+        private val dateResults = mutableMapOf<String, MutableList<TodayResult>>()
+        private val dateCalls = mutableMapOf<String, Int>()
+        private val heldDateCalls = mutableSetOf<Pair<String, Int>>()
+        private val dateCallStarted = mutableMapOf<Pair<String, Int>, CountDownLatch>()
+        private val dateCallReleased = mutableMapOf<Pair<String, Int>, CountDownLatch>()
+        private val dateCallFinished = mutableMapOf<Pair<String, Int>, CountDownLatch>()
         private val loadCalls = AtomicInteger()
 
         fun loadCallCount(): Int = loadCalls.get()
 
+        fun setDateResults(date: String, vararg results: TodayResult) = synchronized(requestedDates) {
+            dateResults[date] = results.toMutableList()
+        }
+
+        fun holdDateCall(date: String, call: Int) = synchronized(requestedDates) {
+            val key = date to call
+            heldDateCalls += key
+            dateCallStarted[key] = CountDownLatch(1)
+            dateCallReleased[key] = CountDownLatch(1)
+            dateCallFinished[key] = CountDownLatch(1)
+        }
+
+        fun awaitDateCallStarted(date: String, call: Int): Boolean =
+            dateLatch(dateCallStarted, date, call).await(2, TimeUnit.SECONDS)
+
+        fun awaitDateCallFinished(date: String, call: Int): Boolean =
+            dateLatch(dateCallFinished, date, call).await(2, TimeUnit.SECONDS)
+
+        fun releaseDateCall(date: String, call: Int) = dateLatch(dateCallReleased, date, call).countDown()
+
+        fun dateCallCount(date: String): Int = synchronized(requestedDates) { dateCalls[date] ?: 0 }
+
+        private fun dateLatch(
+            latches: MutableMap<Pair<String, Int>, CountDownLatch>,
+            date: String,
+            call: Int,
+        ): CountDownLatch = synchronized(requestedDates) { latches.getValue(date to call) }
+
         override fun loadDay(logicalDate: String?): TodayResult {
-            synchronized(requestedDates) { requestedDates += logicalDate }
+            val dateCall = synchronized(requestedDates) {
+                requestedDates += logicalDate
+                logicalDate?.let { date -> (dateCalls.getOrDefault(date, 0) + 1).also { dateCalls[date] = it } }
+            }
             val call = loadCalls.incrementAndGet()
             if (call == 1) loadStarted.countDown() else reloadStarted.countDown()
             events += "load-start:$call"
+            if (logicalDate != null && dateCall != null) {
+                val key = logicalDate to dateCall
+                val release = synchronized(requestedDates) {
+                    if (key in heldDateCalls) dateCallReleased.getValue(key) else null
+                }
+                if (release != null) {
+                    dateLatch(dateCallStarted, logicalDate, dateCall).countDown()
+                    release.await(2, TimeUnit.SECONDS)
+                }
+            }
             if (call == 2 && holdSecondLoad) {
                 secondLoadStarted.countDown()
                 releaseSecondLoad.await(2, TimeUnit.SECONDS)
             }
             if (holdLoad) releaseLoad.await(2, TimeUnit.SECONDS)
-            val result = loadResults?.getOrNull(call - 1)
+            val result = synchronized(requestedDates) {
+                logicalDate?.let { date ->
+                    dateResults[date]?.let { results -> results.getOrNull((dateCall ?: 1) - 1) ?: results.lastOrNull() }
+                }
+            } ?: loadResults?.getOrNull(call - 1)
                 ?: if (call == 1) loadResult else loadResultAfterFirst ?: loadResult
             events += "load-end:$call"
+            if (logicalDate != null && dateCall != null) {
+                synchronized(requestedDates) { dateCallFinished[logicalDate to dateCall]?.countDown() }
+            }
             return result
         }
 
@@ -958,6 +1130,14 @@ class TodayControllerTest {
             sections = listOf(TodaySection("section-1", "Morning", 480, 720, listOf(task(state)))),
             unsectionedEntries = emptyList(),
             activeExecution = if (state == LifecycleState.RUNNING) TodayExecution("execution-1", "entry-1", "2026-09-14T01:00:00Z", 600) else null,
+        )
+
+        fun dayAt(date: String, title: String) = dayWith(LifecycleState.PLANNED).copy(
+            logicalDate = date,
+            isCurrent = date == "2026-09-14",
+            sections = dayWith(LifecycleState.PLANNED).sections.map { section ->
+                section.copy(entries = section.entries.map { it.copy(title = title) })
+            },
         )
 
         fun handoffDay(

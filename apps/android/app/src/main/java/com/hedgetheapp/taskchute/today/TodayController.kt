@@ -5,8 +5,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import java.time.LocalDate
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -23,6 +26,8 @@ class TodayController(
 
     private var lastRequestedLogicalDate: String? = null
     private var loadInFlight = false
+    private var selectedLoadGeneration = 0L
+    private var sessionGeneration = 0L
     private var deferredRealtimeReload = false
     private var authRecoveryAttempted = false
     private var optimisticGeneration = 0L
@@ -39,6 +44,28 @@ class TodayController(
     private var queuedStartIntent: QueuedStartIntent? = null
     private val confirmedPlacementRevisionFloors = mutableMapOf<String, Int>()
     private val staleReconcileRetryFloors = mutableMapOf<String, Int>()
+    private val canonicalDayCache = TodayDayMemoryCache()
+    private data class SelectedDayLoad(
+        val logicalDate: String?,
+        val generation: Long,
+        val sessionGeneration: Long,
+        val visible: Boolean,
+        val optimisticGeneration: Long,
+    )
+    private data class DayReadRequest(
+        val logicalDate: String?,
+        val sessionGeneration: Long,
+        val result: Deferred<TodayResult>,
+        var selectedLoad: SelectedDayLoad? = null,
+    )
+    private val dayReadRequests = mutableMapOf<String?, DayReadRequest>()
+    private var pendingSelectedDayLoad: SelectedDayLoad? = null
+    private var pendingPrefetchLogicalDate: String? = null
+
+    private companion object {
+        const val MAX_CONCURRENT_DAY_READS = 2
+        const val WARM_DAY_REFRESH_ERROR = "保存済みのTodayを表示しています。最新情報を取得できませんでした。"
+    }
 
     fun loadCurrent() = load(null)
 
@@ -77,6 +104,7 @@ class TodayController(
         val previousFloor = confirmedPlacementRevisionFloors[logicalDate] ?: 0
         val nextRevision = maxOf(previousFloor, revision)
         confirmedPlacementRevisionFloors[logicalDate] = nextRevision
+        canonicalDayCache.remove(logicalDate)
         if (nextRevision > previousFloor) staleReconcileRetryFloors.remove(logicalDate)
         val day = state.day?.takeIf { it.logicalDate == logicalDate }
         val nextDay = day?.copy(placementRevision = maxOf(day.placementRevision, nextRevision))
@@ -104,12 +132,49 @@ class TodayController(
 
     fun loadLogicalDate(logicalDate: String) = load(logicalDate)
 
+    /** Read one adjacent Day early without changing the selected Day or persistent state. */
+    fun prefetchLogicalDate(logicalDate: String) {
+        if (logicalDate.isBlank()) return
+        cachedCanonicalDay(logicalDate)?.let { return }
+        if (dayReadRequests.containsKey(logicalDate) || pendingSelectedDayLoad?.logicalDate == logicalDate) return
+        if (dayReadRequests.size >= MAX_CONCURRENT_DAY_READS) {
+            pendingPrefetchLogicalDate = logicalDate
+            return
+        }
+        startDayRead(logicalDate)
+    }
+
+    /** Discard Today data before an auth transition can expose it to another principal. */
+    fun resetForSessionChange() {
+        sessionGeneration += 1
+        selectedLoadGeneration += 1
+        dayReadRequests.values.forEach { it.result.cancel() }
+        dayReadRequests.clear()
+        pendingSelectedDayLoad = null
+        pendingPrefetchLogicalDate = null
+        canonicalDayCache.clear()
+        lastRequestedLogicalDate = null
+        loadInFlight = false
+        deferredRealtimeReload = false
+        authRecoveryAttempted = false
+        optimisticGeneration += 1
+        optimisticActive = false
+        optimisticReconcileGeneration = null
+        pendingEntryIds.clear()
+        pendingComplete = null
+        queuedStartIntent = null
+        confirmedPlacementRevisionFloors.clear()
+        staleReconcileRetryFloors.clear()
+        state = TodayUiState()
+    }
+
     fun onRealtimeConnected() = requestRealtimeReload()
 
     fun onRealtimeForeground() = requestRealtimeReload()
 
     fun onRealtimeDayInvalidation(logicalDate: String?) {
-        val selectedDate = state.day?.logicalDate
+        if (logicalDate == null) canonicalDayCache.clear() else canonicalDayCache.remove(logicalDate)
+        val selectedDate = state.selectedLogicalDate ?: state.day?.logicalDate
         if (logicalDate != null && selectedDate != null && logicalDate != selectedDate) return
         requestRealtimeReload()
     }
@@ -159,13 +224,20 @@ class TodayController(
         val canonicalTask = canonicalDay.allEntries.firstOrNull { it.id == task.id }
             ?: canonicalDay.runningTask?.takeIf { it.id == task.id }
             ?: task
+        val operationSessionGeneration = sessionGeneration
         scope.launch {
             val result = withContext(Dispatchers.IO) { repository.completeTask(canonicalTask) }
+            if (operationSessionGeneration != sessionGeneration) return@launch
             finishComplete(intent, result)
         }
     }
 
-    fun close() = scope.coroutineContext.cancel()
+    fun close() {
+        canonicalDayCache.clear()
+        dayReadRequests.values.forEach { it.result.cancel() }
+        dayReadRequests.clear()
+        scope.coroutineContext.cancel()
+    }
 
     private fun moveDay(delta: Long) {
         val date = state.day?.logicalDate ?: return
@@ -185,63 +257,185 @@ class TodayController(
                 return
             }
         }
-        if (loadInFlight) {
+        if (loadInFlight && (!visible || logicalDate == lastRequestedLogicalDate)) {
             if (!visible) deferredRealtimeReload = true
             return
         }
-        loadInFlight = true
+        val generation = ++selectedLoadGeneration
+        val request = SelectedDayLoad(
+            logicalDate = logicalDate,
+            generation = generation,
+            sessionGeneration = sessionGeneration,
+            visible = visible,
+            optimisticGeneration = optimisticGeneration,
+        )
         lastRequestedLogicalDate = logicalDate
-        val startedOptimisticGeneration = optimisticGeneration
         if (visible) {
-            val hasExisting = state.day != null && state.status != TodayLoadStatus.ERROR
+            val warmDay = logicalDate?.let(::cachedCanonicalDay)
+            val hasSameDay = state.presentedDay?.let { existing ->
+                (logicalDate == null && existing.isCurrent) || existing.logicalDate == logicalDate
+            } == true
             optimisticActive = false
             optimisticReconcileGeneration = null
             state = state.copy(
-                status = if (hasExisting) TodayLoadStatus.REFRESHING else TodayLoadStatus.LOADING,
+                status = when {
+                    warmDay != null || hasSameDay -> TodayLoadStatus.REFRESHING
+                    else -> TodayLoadStatus.LOADING
+                },
+                day = warmDay ?: state.day,
+                selectedLogicalDate = logicalDate,
                 errorMessage = null,
                 diagnosticMessage = null,
                 optimisticDay = null,
             )
         }
+        loadInFlight = true
+        pendingSelectedDayLoad = null
+        if (pendingPrefetchLogicalDate == logicalDate) pendingPrefetchLogicalDate = null
+        startSelectedDayLoad(request)
+    }
+
+    private fun startSelectedDayLoad(request: SelectedDayLoad) {
+        if (request.sessionGeneration != sessionGeneration || request.generation != selectedLoadGeneration) return
+        val activeRead = dayReadRequests[request.logicalDate]
+        if (activeRead != null) {
+            activeRead.selectedLoad = request
+            return
+        }
+        if (dayReadRequests.size >= MAX_CONCURRENT_DAY_READS) {
+            pendingSelectedDayLoad = request
+            return
+        }
+        startDayRead(request.logicalDate, request)
+    }
+
+    private fun startDayRead(logicalDate: String?, selectedLoad: SelectedDayLoad? = null) {
+        dayReadRequests[logicalDate]?.let { existing ->
+            if (selectedLoad != null) existing.selectedLoad = selectedLoad
+            return
+        }
+        if (dayReadRequests.size >= MAX_CONCURRENT_DAY_READS) {
+            if (selectedLoad != null) pendingSelectedDayLoad = selectedLoad
+            else if (logicalDate != null) pendingPrefetchLogicalDate = logicalDate
+            return
+        }
+
+        val requestSessionGeneration = sessionGeneration
+        val request = DayReadRequest(
+            logicalDate = logicalDate,
+            sessionGeneration = requestSessionGeneration,
+            result = scope.async(Dispatchers.IO) { repository.loadDay(logicalDate) },
+            selectedLoad = selectedLoad,
+        )
+        dayReadRequests[logicalDate] = request
         scope.launch {
-            val result = withContext(Dispatchers.IO) { repository.loadDay(logicalDate) }
-            loadInFlight = false
-            when (result) {
-                is TodayResult.Success -> {
-                    authRecoveryAttempted = false
-                    if (publishDay(result.day, startedOptimisticGeneration)) {
-                        onCanonicalDayLoaded(result.day)
-                        flushDeferredRealtimeReload(visible = false)
+            val result = try {
+                request.result.await()
+            } catch (_: CancellationException) {
+                null
+            } catch (_: Exception) {
+                TodayResult.Failure("接続できませんでした。再試行してください。")
+            }
+            if (dayReadRequests[logicalDate] === request) dayReadRequests.remove(logicalDate)
+            if (request.sessionGeneration == sessionGeneration) {
+                if (result != null) {
+                    val canonicalResult = validateRequestedDay(logicalDate, result)
+                    if (canonicalResult is TodayResult.Success) cacheCanonicalDay(canonicalResult.day)
+                    request.selectedLoad?.let { selectedLoad ->
+                        finishSelectedDayLoad(selectedLoad, canonicalResult)
                     }
                 }
-                TodayResult.Unauthorized -> {
-                    deferredRealtimeReload = false
-                    if (!authRecoveryAttempted) {
-                        authRecoveryAttempted = true
-                        state = state.copy(status = TodayLoadStatus.AUTH_REQUIRED, errorMessage = "認証の有効期限を確認しています…", diagnosticMessage = null)
-                        onUnauthorized()
-                    } else {
-                        // Do not cycle through SignedIn -> Today -> 401 -> restore indefinitely.
-                        // Keep the saved session intact and expose the existing explicit retry UI.
-                        state = state.copy(
-                            status = TodayLoadStatus.ERROR,
-                            errorMessage = "認証を確認後もTodayを読み込めませんでした。再試行してください。",
-                            diagnosticMessage = null,
-                        )
-                    }
-                }
-                is TodayResult.Failure -> {
-                    if (visible || state.day == null) {
-                        state = state.copy(
-                            status = TodayLoadStatus.ERROR,
-                            errorMessage = result.message,
-                            diagnosticMessage = result.diagnostic,
-                        )
-                    }
-                    if (visible) flushDeferredRealtimeReload()
-                }
+                startQueuedDayReads()
             }
         }
+    }
+
+    private fun startQueuedDayReads() {
+        if (dayReadRequests.size >= MAX_CONCURRENT_DAY_READS) return
+        val selected = pendingSelectedDayLoad
+        if (selected != null) {
+            pendingSelectedDayLoad = null
+            if (selected.sessionGeneration == sessionGeneration && selected.generation == selectedLoadGeneration) {
+                startSelectedDayLoad(selected)
+            }
+        }
+        if (dayReadRequests.size < MAX_CONCURRENT_DAY_READS) {
+            val prefetchedDate = pendingPrefetchLogicalDate
+            pendingPrefetchLogicalDate = null
+            if (prefetchedDate != null && prefetchedDate != lastRequestedLogicalDate && cachedCanonicalDay(prefetchedDate) == null) {
+                startDayRead(prefetchedDate)
+            }
+        }
+    }
+
+    private fun validateRequestedDay(logicalDate: String?, result: TodayResult): TodayResult = when {
+        result is TodayResult.Success && logicalDate != null && result.day.logicalDate != logicalDate ->
+            TodayResult.Failure("Todayを読み込めませんでした。再試行してください。")
+        else -> result
+    }
+
+    private fun finishSelectedDayLoad(request: SelectedDayLoad, result: TodayResult) {
+        if (request.sessionGeneration != sessionGeneration || request.generation != selectedLoadGeneration) return
+        loadInFlight = false
+        when (result) {
+            is TodayResult.Success -> {
+                authRecoveryAttempted = false
+                if (publishDay(result.day, request.optimisticGeneration)) {
+                    onCanonicalDayLoaded(result.day)
+                    flushDeferredRealtimeReload(visible = false)
+                }
+            }
+            TodayResult.Unauthorized -> {
+                deferredRealtimeReload = false
+                canonicalDayCache.clear()
+                if (!authRecoveryAttempted) {
+                    authRecoveryAttempted = true
+                    state = state.copy(status = TodayLoadStatus.AUTH_REQUIRED, errorMessage = "認証の有効期限を確認しています…", diagnosticMessage = null)
+                    onUnauthorized()
+                } else {
+                    // Do not cycle through SignedIn -> Today -> 401 -> restore indefinitely.
+                    // Keep the saved session intact and expose the existing explicit retry UI.
+                    state = state.copy(
+                        status = TodayLoadStatus.ERROR,
+                        errorMessage = "認証を確認後もTodayを読み込めませんでした。再試行してください。",
+                        diagnosticMessage = null,
+                    )
+                }
+            }
+            is TodayResult.Failure -> {
+                val warmDay = state.presentedDay?.takeIf { it.logicalDate == request.logicalDate }
+                if (request.visible && warmDay != null) {
+                    state = state.copy(
+                        status = if (warmDay.hasEntries) TodayLoadStatus.CONTENT else TodayLoadStatus.EMPTY,
+                        errorMessage = WARM_DAY_REFRESH_ERROR,
+                        diagnosticMessage = result.diagnostic,
+                        selectedLogicalDate = null,
+                    )
+                } else if (request.visible || state.day == null) {
+                    state = state.copy(
+                        status = TodayLoadStatus.ERROR,
+                        errorMessage = result.message,
+                        diagnosticMessage = result.diagnostic,
+                    )
+                }
+                if (request.visible) flushDeferredRealtimeReload()
+            }
+        }
+    }
+
+    private fun cachedCanonicalDay(logicalDate: String): TodayDay? {
+        val cached = canonicalDayCache[logicalDate] ?: return null
+        val revisionFloor = confirmedPlacementRevisionFloors[logicalDate] ?: 0
+        if (cached.placementRevision < revisionFloor) {
+            canonicalDayCache.remove(logicalDate)
+            return null
+        }
+        return cached
+    }
+
+    private fun cacheCanonicalDay(day: TodayDay) {
+        val revisionFloor = confirmedPlacementRevisionFloors[day.logicalDate] ?: 0
+        if (day.placementRevision >= revisionFloor) canonicalDayCache.put(day)
     }
 
     private fun finishComplete(intent: PendingComplete, result: TodayMutationResult) {
@@ -281,11 +475,12 @@ class TodayController(
     }
 
     private fun reconcileAfterUncertainComplete(intent: QueuedStartIntent, completeError: String) {
+        val operationSessionGeneration = sessionGeneration
         scope.launch {
             while (loadInFlight && queuedStartIntent == intent) delay(10)
-            if (queuedStartIntent != intent) return@launch
+            if (operationSessionGeneration != sessionGeneration || queuedStartIntent != intent) return@launch
             val result = withContext(Dispatchers.IO) { repository.loadDay(intent.logicalDate) }
-            if (queuedStartIntent != intent) return@launch
+            if (operationSessionGeneration != sessionGeneration || queuedStartIntent != intent) return@launch
             if (!isIntentStillSelected(intent)) {
                 cancelQueuedStartIntent(intent)
                 deferredRealtimeReload = false
@@ -354,8 +549,10 @@ class TodayController(
     }
 
     private fun sendStart(task: TodayTask, logicalDate: String, placementRevision: Int, handoff: QueuedStartIntent?) {
+        val operationSessionGeneration = sessionGeneration
         scope.launch {
             val result = withContext(Dispatchers.IO) { repository.startTask(task, placementRevision) }
+            if (operationSessionGeneration != sessionGeneration) return@launch
             finishStart(task.id, logicalDate, handoff, result)
         }
     }
@@ -414,17 +611,18 @@ class TodayController(
     }
 
     private fun requestRealtimeReload() {
+        canonicalDayCache.clear()
         if (loadInFlight || pendingEntryIds.isNotEmpty() || optimisticActive) {
             deferredRealtimeReload = true
             return
         }
-        load(state.day?.logicalDate)
+        load(state.selectedLogicalDate ?: state.day?.logicalDate)
     }
 
     private fun flushDeferredRealtimeReload(visible: Boolean = true) {
         if (!deferredRealtimeReload || loadInFlight || pendingEntryIds.isNotEmpty()) return
         deferredRealtimeReload = false
-        load(state.day?.logicalDate, visible = visible)
+        load(state.selectedLogicalDate ?: state.day?.logicalDate, visible = visible)
     }
 
     private fun publishDay(day: TodayDay, startedOptimisticGeneration: Long): Boolean {
@@ -443,11 +641,13 @@ class TodayController(
         state = state.copy(
             status = if (day.hasEntries) TodayLoadStatus.CONTENT else TodayLoadStatus.EMPTY,
             day = day,
+            selectedLogicalDate = null,
             errorMessage = null,
             diagnosticMessage = null,
             pendingEntryIds = pendingEntryIds.toSet(),
             optimisticDay = if (replaceOptimistic || !optimisticActive) null else state.optimisticDay,
         )
+        cacheCanonicalDay(day)
         return true
     }
 
@@ -482,5 +682,6 @@ class TodayController(
         optimisticGeneration += 1
         optimisticActive = true
         optimisticReconcileGeneration = null
+        state.day?.logicalDate?.let(canonicalDayCache::remove)
     }
 }

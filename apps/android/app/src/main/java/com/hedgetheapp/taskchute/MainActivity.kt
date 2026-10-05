@@ -228,10 +228,13 @@ private fun TaskChuteApp(
             todayController.onRealtimeForeground()
             notesController.onRealtimeForeground()
             dailyController.onRealtimeForeground()
-        } else if (state is AuthUiState.SignedOut) {
+        } else {
+            todayController.resetForSessionChange()
             realtimeManager.stop()
-            destination = AndroidDestination.TODAY
-            planningController.dismiss()
+            if (state is AuthUiState.SignedOut) {
+                destination = AndroidDestination.TODAY
+                planningController.dismiss()
+            }
         }
     }
 

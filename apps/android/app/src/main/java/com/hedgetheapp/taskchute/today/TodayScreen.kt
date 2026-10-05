@@ -230,14 +230,17 @@ fun TodayScreen(
         selectionModeActive = false
         selectedEntryIds = emptySet()
     }
-    val day = state.presentedDay
+    val selectedDayIsPresented = state.selectedLogicalDate == null ||
+        state.presentedDay?.logicalDate == state.selectedLogicalDate
+    val day = state.presentedDay?.takeIf { selectedDayIsPresented }
+    val headerLogicalDate = state.selectedLogicalDate ?: day?.logicalDate
     var addFabOffset by remember(day?.logicalDate) { mutableStateOf(Offset.Zero) }
     var todayHeaderBottomPx by remember(day?.logicalDate) { mutableStateOf(0f) }
     var bottomOverlayTopPx by remember(day?.logicalDate) { mutableStateOf(Float.POSITIVE_INFINITY) }
     var bottomOverlayTopRootPx by remember(day?.logicalDate) { mutableStateOf(Float.POSITIVE_INFINITY) }
-    if (headerDatePickerVisible && day != null) {
+    if (headerDatePickerVisible && headerLogicalDate != null) {
         TaskChuteDatePickerDialog(
-            initialLogicalDate = day.logicalDate,
+            initialLogicalDate = headerLogicalDate,
             onDismissRequest = { headerDatePickerVisible = false },
             onConfirm = { logicalDate ->
                 headerDatePickerVisible = false
@@ -268,7 +271,12 @@ fun TodayScreen(
         ?.toSet()
         .orEmpty()
 
-    val screenPresentation = todayScreenPresentation(state.status)
+    val selectedTargetPending = state.selectedLogicalDate != null && !selectedDayIsPresented
+    val screenPresentation = if (selectedTargetPending) {
+        TodayScreenPresentation.CONTENT
+    } else {
+        todayScreenPresentation(state.status)
+    }
     Box(Modifier.fillMaxSize()) {
     Scaffold(
         containerColor = TaskChuteColors.Background,
@@ -333,7 +341,7 @@ fun TodayScreen(
                 TodayScreenPresentation.RETRY_ERROR -> TodayError(state.diagnosticMessage, controller::refresh)
             }
             if (state.status == TodayLoadStatus.CONTENT || state.status == TodayLoadStatus.EMPTY || state.status == TodayLoadStatus.REFRESHING) {
-                state.presentedDay?.takeIf { canPlanDay(it) || it.isCurrent }?.let { day ->
+                day?.takeIf { canPlanDay(it) || it.isCurrent }?.let { day ->
                     val runningTask = if (day.isCurrent) day.runningTask else null
                     val canAdd = canPlanDay(day) && planningController != null
                     val unresolved = directManipulationController?.state?.unresolvedRequest != null
@@ -503,6 +511,37 @@ private fun BulkActionButton(label: String, enabled: Boolean, onClick: () -> Uni
 }
 
 @Composable
+private fun TodayFixedHeader(
+    logicalDate: String?,
+    displayMenuExpanded: Boolean,
+    showCompleted: Boolean,
+    onDisplayMenuExpandedChange: (Boolean) -> Unit,
+    onShowCompletedChange: (Boolean) -> Unit,
+    onOpenDatePicker: () -> Unit,
+    onHeaderBoundsChanged: (Float) -> Unit,
+) {
+    TaskChuteDateNavigator(
+        logicalDate = logicalDate,
+        onPrevious = {},
+        onNext = {},
+        onOpenDatePicker = onOpenDatePicker,
+        showAdjacentDayControls = false,
+        compactDateControl = true,
+        trailingContent = {
+            TodayDisplayControl(
+                expanded = displayMenuExpanded,
+                showCompleted = showCompleted,
+                onExpandedChange = onDisplayMenuExpandedChange,
+                onShowCompletedChange = onShowCompletedChange,
+            )
+        },
+        modifier = Modifier.onGloballyPositioned {
+            onHeaderBoundsChanged(it.boundsInParent().bottom)
+        },
+    )
+}
+
+@Composable
 private fun TodayContent(
     controller: TodayController,
     state: TodayUiState,
@@ -520,11 +559,77 @@ private fun TodayContent(
     onRequestDelete: (Set<String>) -> Unit,
     modifier: Modifier,
 ) {
-    val day = state.presentedDay ?: return FullScreenLoadingPresentation(modifier)
+    val displayedDay = state.presentedDay
+    val day = displayedDay?.takeIf {
+        state.selectedLogicalDate == null || it.logicalDate == state.selectedLogicalDate
+    }
+    val headerLogicalDate = state.selectedLogicalDate ?: day?.logicalDate ?: displayedDay?.logicalDate
     val appContext = LocalContext.current.applicationContext
     val displayPreferences = remember(appContext) { TodayDisplayPreferences(appContext) }
     var showCompleted by remember(displayPreferences) { mutableStateOf(displayPreferences.showCompleted()) }
     var displayMenuExpanded by remember { mutableStateOf(false) }
+    var pageOffsetPx by remember { mutableStateOf(0f) }
+    var pagePhysicalDirection by remember { mutableStateOf(0) }
+    var pageMotionBusy by remember { mutableStateOf(false) }
+    var pageCommitted by remember { mutableStateOf(false) }
+    var pageSettleToken by remember { mutableStateOf(0) }
+    var pendingPagePhysicalDirection by remember { mutableStateOf(0) }
+    var pendingPageWidthPx by remember { mutableStateOf(0f) }
+    LaunchedEffect(pageSettleToken) {
+        if (pageSettleToken == 0) return@LaunchedEffect
+        val physicalDirection = pendingPagePhysicalDirection
+        val pageWidth = pendingPageWidthPx
+        val targetOffset = if (physicalDirection == 0) 0f else physicalDirection * pageWidth
+        animate(
+            initialValue = pageOffsetPx,
+            targetValue = targetOffset,
+            animationSpec = tween(durationMillis = 220),
+        ) { value, _ -> pageOffsetPx = value }
+        pageOffsetPx = 0f
+        pagePhysicalDirection = 0
+        pageMotionBusy = false
+        pageCommitted = false
+    }
+    if (day == null) {
+        Column(modifier.fillMaxSize()) {
+            TodayFixedHeader(
+                logicalDate = headerLogicalDate,
+                displayMenuExpanded = displayMenuExpanded,
+                showCompleted = showCompleted,
+                onDisplayMenuExpandedChange = { displayMenuExpanded = it },
+                onShowCompletedChange = { visible ->
+                    showCompleted = visible
+                    displayPreferences.setShowCompleted(visible)
+                },
+                onOpenDatePicker = onOpenHeaderDatePicker,
+                onHeaderBoundsChanged = onHeaderBoundsChanged,
+            )
+            Box(Modifier.fillMaxWidth().weight(1f)) {
+                if (pageMotionBusy && pageCommitted && pagePhysicalDirection != 0) {
+                    FullScreenLoadingPresentation(
+                        Modifier.fillMaxSize().graphicsLayer {
+                            translationX = -pagePhysicalDirection * size.width + pageOffsetPx
+                        },
+                    )
+                } else if (state.status == TodayLoadStatus.ERROR) {
+                    Column(
+                        Modifier.fillMaxSize().padding(horizontal = 24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                    ) {
+                        Text(
+                            state.errorMessage ?: "Todayを読み込めませんでした。",
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                        TextButton(onClick = controller::refresh) { Text("再試行") }
+                    }
+                } else {
+                    FullScreenLoadingPresentation(Modifier.fillMaxSize())
+                }
+            }
+        }
+        return
+    }
     var forecastNow by remember(day.logicalDate) { mutableStateOf(Instant.now()) }
     LaunchedEffect(day.logicalDate, day.isCurrent) {
         while (day.isCurrent) {
@@ -557,12 +662,6 @@ private fun TodayContent(
     var dragFinishIssued by remember { mutableStateOf(false) }
     var autoScrollConsumed by remember { mutableStateOf(false) }
     var openSwipeEntryId by remember { mutableStateOf<String?>(null) }
-    var pageOffsetPx by remember(day.logicalDate) { mutableStateOf(0f) }
-    var pagePhysicalDirection by remember(day.logicalDate) { mutableStateOf(0) }
-    var pageMotionBusy by remember(day.logicalDate) { mutableStateOf(false) }
-    var pageSettleToken by remember(day.logicalDate) { mutableStateOf(0) }
-    var pendingPagePhysicalDirection by remember(day.logicalDate) { mutableStateOf(0) }
-    var pendingPageWidthPx by remember(day.logicalDate) { mutableStateOf(0f) }
     val validCollapsedSectionKeys = remember(day.logicalDate, day.sections, day.unsectionedEntries) {
         buildSet {
             day.sections.forEach { add(it.id) }
@@ -698,24 +797,6 @@ private fun TodayContent(
             dragPointerSessionActive || (state.status != TodayLoadStatus.CONTENT && state.status != TodayLoadStatus.EMPTY),
     )
     val latestBottomOverlayTopRootPx = rememberUpdatedState(bottomOverlayTopRootPx)
-    LaunchedEffect(day.logicalDate, pageSettleToken) {
-        if (pageSettleToken == 0) return@LaunchedEffect
-        val physicalDirection = pendingPagePhysicalDirection
-        val pageWidth = pendingPageWidthPx
-        val targetOffset = if (physicalDirection == 0) 0f else physicalDirection * pageWidth
-        animate(
-            initialValue = pageOffsetPx,
-            targetValue = targetOffset,
-            animationSpec = tween(durationMillis = 220),
-        ) { value, _ -> pageOffsetPx = value }
-        if (physicalDirection == 0) {
-            pageOffsetPx = 0f
-            pagePhysicalDirection = 0
-            pageMotionBusy = false
-        } else {
-            controller.loadLogicalDate(adjacentTodayLogicalDate(day.logicalDate, physicalDirection))
-        }
-    }
     val pullToRefreshState = rememberPullToRefreshState()
     val todayListState = rememberLazyListState()
     val edgeZonePx = with(LocalDensity.current) { D148_DRAG_EDGE_ZONE.dp.toPx() }
@@ -908,6 +989,12 @@ private fun TodayContent(
                             pagingAxis = resolveTodayPagingGestureAxis(deltaX, deltaY, viewConfiguration.touchSlop)
                         }
                         if (pagingAxis == TodayPagingGestureAxis.HORIZONTAL) {
+                            if (!pagingOwned) {
+                                val direction = deltaX.compareTo(0f)
+                                if (direction != 0) {
+                                    controller.prefetchLogicalDate(adjacentTodayLogicalDate(day.logicalDate, direction))
+                                }
+                            }
                             pagingOwned = true
                             pageMotionBusy = true
                             deltaX.compareTo(0f).takeIf { it != 0 }?.let { pagePhysicalDirection = it }
@@ -929,6 +1016,10 @@ private fun TodayContent(
                                 0
                             }
                             if (physicalDirection != 0) pagePhysicalDirection = physicalDirection
+                            pageCommitted = physicalDirection != 0
+                            if (physicalDirection != 0) {
+                                controller.loadLogicalDate(adjacentTodayLogicalDate(day.logicalDate, physicalDirection))
+                            }
                             pendingPagePhysicalDirection = physicalDirection
                             pendingPageWidthPx = size.width.toFloat()
                             pageSettleToken += 1
@@ -970,44 +1061,50 @@ private fun TodayContent(
         },
     ) {
         Box(Modifier.fillMaxSize().clipToBounds()) {
-        if (pageMotionBusy && pagePhysicalDirection != 0) {
-            FullScreenLoadingPresentation(
-                Modifier.fillMaxSize().graphicsLayer {
-                    translationX = -pagePhysicalDirection * size.width + pageOffsetPx
+        Column(Modifier.fillMaxSize()) {
+            TodayFixedHeader(
+                logicalDate = state.selectedLogicalDate ?: day.logicalDate,
+                displayMenuExpanded = displayMenuExpanded,
+                showCompleted = showCompleted,
+                onDisplayMenuExpandedChange = { displayMenuExpanded = it },
+                onShowCompletedChange = { visible ->
+                    showCompleted = visible
+                    displayPreferences.setShowCompleted(visible)
+                    if (!visible && openSwipeEntryId?.let { openId ->
+                            day.allEntries.firstOrNull { it.id == openId }?.lifecycleState == LifecycleState.COMPLETED
+                        } == true
+                    ) {
+                        openSwipeEntryId = null
+                    }
                 },
+                onOpenDatePicker = onOpenHeaderDatePicker,
+                onHeaderBoundsChanged = onHeaderBoundsChanged,
             )
-        }
-        Column(Modifier.fillMaxSize().graphicsLayer { translationX = pageOffsetPx }) {
-        TaskChuteDateNavigator(
-            logicalDate = day.logicalDate,
-            onPrevious = controller::previousDay,
-            onNext = controller::nextDay,
-            onOpenDatePicker = onOpenHeaderDatePicker,
-            showAdjacentDayControls = false,
-            compactDateControl = true,
-            trailingContent = {
-                TodayDisplayControl(
-                    expanded = displayMenuExpanded,
-                    showCompleted = showCompleted,
-                    onExpandedChange = { displayMenuExpanded = it },
-                    onShowCompletedChange = { visible ->
-                        showCompleted = visible
-                        displayPreferences.setShowCompleted(visible)
-                        if (!visible && openSwipeEntryId?.let { openId ->
-                                day.allEntries.firstOrNull { it.id == openId }?.lifecycleState == LifecycleState.COMPLETED
-                            } == true
-                        ) {
-                            openSwipeEntryId = null
+            Box(Modifier.fillMaxWidth().weight(1f).clipToBounds()) {
+                if (pageMotionBusy && pagePhysicalDirection != 0 && !pageCommitted) {
+                    FullScreenLoadingPresentation(
+                        Modifier.fillMaxSize().graphicsLayer {
+                            translationX = -pagePhysicalDirection * size.width + pageOffsetPx
+                        },
+                    )
+                }
+                Column(
+                    Modifier.fillMaxSize().graphicsLayer {
+                        translationX = if (pageCommitted && pagePhysicalDirection != 0) {
+                            -pagePhysicalDirection * size.width + pageOffsetPx
+                        } else {
+                            pageOffsetPx
                         }
                     },
-                )
-            },
-            modifier = Modifier.onGloballyPositioned {
-                onHeaderBoundsChanged(it.boundsInParent().bottom)
-            },
-        )
+                ) {
         state.errorMessage?.let {
-            Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.weight(1f))
+                TextButton(onClick = controller::refresh) { Text("再試行") }
+            }
         }
         directManipulationController?.state?.feedbackMessage?.let {
             Text(it, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 16.dp))
@@ -1343,7 +1440,9 @@ private fun TodayContent(
         }
         }
         }
+        }
     }
+}
 }
 
 private const val UNSECTIONED_DROP_KEY = TodayDisplayPreferences.UNSECTIONED_KEY

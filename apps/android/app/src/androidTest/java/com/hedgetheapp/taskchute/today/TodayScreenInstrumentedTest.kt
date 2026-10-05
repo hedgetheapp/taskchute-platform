@@ -1,6 +1,7 @@
 package com.hedgetheapp.taskchute.today
 
 import android.graphics.Bitmap
+import android.os.SystemClock
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
@@ -35,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 import java.io.FileOutputStream
 import kotlinx.coroutines.CoroutineScope
@@ -79,6 +81,7 @@ class TodayScreenInstrumentedTest {
         repository?.releaseRefresh?.countDown()
         repository?.releaseStart?.countDown()
         repository?.releaseComplete?.countDown()
+        repository?.releaseAllHeldDates()
         controller?.close()
         planningController?.close()
         directManipulationController?.close()
@@ -159,6 +162,89 @@ class TodayScreenInstrumentedTest {
         waitForLogicalDate("2026-09-14")
 
         assertEquals(listOf(null, "2026-09-15", "2026-09-14"), requestedDateSnapshot(repo))
+    }
+
+    @Test
+    fun fixedHeaderStaysInPlaceWhileBodyPagesAndColdLoadingStaysBelowIt() {
+        val repo = launchScreen()
+        waitForStatus(TodayLoadStatus.CONTENT)
+        repo.holdDate("2026-09-15")
+
+        val root = composeRule.onRoot()
+        val section = composeRule.onNodeWithContentDescription("Morningセクションを折りたたむ")
+        val sectionBounds = section.fetchSemanticsNode().boundsInRoot
+        val dateControl = composeRule.onNodeWithContentDescription("表示日付を選択")
+        val displayControl = composeRule.onNodeWithContentDescription("表示")
+        val dateBounds = dateControl.fetchSemanticsNode().boundsInRoot
+        val displayBounds = displayControl.fetchSemanticsNode().boundsInRoot
+        val firstHorizontalMoveAt = SystemClock.elapsedRealtimeNanos()
+        root.performTouchInput {
+            down(sectionBounds.center)
+            moveTo(
+                Offset(sectionBounds.center.x - sectionBounds.width * 0.4f, sectionBounds.center.y),
+                delayMillis = 180,
+            )
+        }
+        assertTrue(repo.awaitDateReadStarted("2026-09-15"))
+        assertBoundsXUnchanged(dateBounds, dateControl.fetchSemanticsNode().boundsInRoot)
+        assertBoundsXUnchanged(displayBounds, displayControl.fetchSemanticsNode().boundsInRoot)
+        composeRule.onNodeWithText("2026-09-14 (月)").assertIsDisplayed()
+
+        val committedAt = SystemClock.elapsedRealtimeNanos()
+        root.performTouchInput { up() }
+        composeRule.waitUntil(15_000) { controller?.state?.selectedLogicalDate == "2026-09-15" }
+        composeRule.onNodeWithText("2026-09-15 (火)").assertIsDisplayed()
+        composeRule.onNodeWithText("読み込み中").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithText("Write report").fetchSemanticsNodes().isEmpty())
+        assertBoundsXUnchanged(dateBounds, dateControl.fetchSemanticsNode().boundsInRoot)
+        assertBoundsXUnchanged(displayBounds, displayControl.fetchSemanticsNode().boundsInRoot)
+
+        repo.releaseDate("2026-09-15")
+        waitForLogicalDate("2026-09-15")
+        composeRule.onNodeWithText("Write report").assertIsDisplayed()
+        assertBoundsXUnchanged(dateBounds, dateControl.fetchSemanticsNode().boundsInRoot)
+        assertBoundsXUnchanged(displayBounds, displayControl.fetchSemanticsNode().boundsInRoot)
+        val usableAt = SystemClock.elapsedRealtimeNanos()
+        println(
+            "D168A_TIMING mode=cold horizontalMoveToFirstContentMs=${(usableAt - firstHorizontalMoveAt) / 1_000_000} " +
+                "commitToFirstContentMs=${(usableAt - committedAt) / 1_000_000} " +
+                "targetReadMs=${repo.readDurationMs("2026-09-15")}",
+        )
+    }
+
+    @Test
+    fun warmReversePagingKeepsCachedContentVisibleDuringCanonicalRevalidation() {
+        val repo = launchScreen()
+        waitForStatus(TodayLoadStatus.CONTENT)
+        val section = composeRule.onNodeWithContentDescription("Morningセクションを折りたたむ")
+
+        section.performTouchInput { swipeLeft() }
+        waitForLogicalDate("2026-09-15")
+        repo.holdRefresh = true
+
+        val startedAt = SystemClock.elapsedRealtimeNanos()
+        section.performTouchInput { swipeRight() }
+        composeRule.waitUntil(15_000) {
+            controller?.state?.day?.logicalDate == "2026-09-14" &&
+                controller?.state?.status == TodayLoadStatus.REFRESHING
+        }
+        composeRule.onNodeWithText("2026-09-14 (月)").assertIsDisplayed()
+        composeRule.onNodeWithText("Write report").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithText("読み込み中").fetchSemanticsNodes().isEmpty())
+        val warmUsableAt = SystemClock.elapsedRealtimeNanos()
+
+        repo.releaseRefresh.countDown()
+        waitForStatus(TodayLoadStatus.CONTENT)
+        println(
+            "D168A_TIMING mode=warmReverse gestureToUsableMs=${(warmUsableAt - startedAt) / 1_000_000} " +
+                "targetReadMs=${repo.readDurationMs("2026-09-14")}",
+        )
+        assertEquals(listOf<String?>(null, "2026-09-15", "2026-09-14"), requestedDateSnapshot(repo))
+    }
+
+    private fun assertBoundsXUnchanged(before: androidx.compose.ui.geometry.Rect, after: androidx.compose.ui.geometry.Rect) {
+        assertEquals("fixed Today header must not translate horizontally", before.left, after.left, 0.5f)
+        assertEquals("fixed Today header must keep its width", before.width, after.width, 0.5f)
     }
 
     @Test
@@ -2720,12 +2806,46 @@ class TodayScreenInstrumentedTest {
         val startCalls = AtomicInteger()
         val completeCalls = AtomicInteger()
         val requestedDates = mutableListOf<String?>()
+        private val heldLogicalDates = ConcurrentHashMap.newKeySet<String>()
+        private val dateReadStarted = ConcurrentHashMap<String, CountDownLatch>()
+        private val dateReadReleased = ConcurrentHashMap<String, CountDownLatch>()
+        private val readStartedAtNanos = ConcurrentHashMap<String, Long>()
+        private val readFinishedAtNanos = ConcurrentHashMap<String, Long>()
+
+        fun holdDate(logicalDate: String) {
+            heldLogicalDates.add(logicalDate)
+            dateReadStarted[logicalDate] = CountDownLatch(1)
+            dateReadReleased[logicalDate] = CountDownLatch(1)
+        }
+
+        fun awaitDateReadStarted(logicalDate: String): Boolean =
+            dateReadStarted.getValue(logicalDate).await(2, TimeUnit.SECONDS)
+
+        fun releaseDate(logicalDate: String) {
+            dateReadReleased[logicalDate]?.countDown()
+            heldLogicalDates.remove(logicalDate)
+        }
+
+        fun releaseAllHeldDates() {
+            heldLogicalDates.toList().forEach(::releaseDate)
+        }
+
+        fun readDurationMs(logicalDate: String): Long? {
+            val start = readStartedAtNanos[logicalDate] ?: return null
+            val end = readFinishedAtNanos[logicalDate] ?: return null
+            return (end - start) / 1_000_000
+        }
 
         override fun loadDay(logicalDate: String?): TodayResult {
             synchronized(requestedDates) { requestedDates += logicalDate }
+            logicalDate?.let { readStartedAtNanos.putIfAbsent(it, SystemClock.elapsedRealtimeNanos()) }
             if (holdLoad) releaseLoad.await()
+            if (logicalDate != null && logicalDate in heldLogicalDates) {
+                dateReadStarted.getValue(logicalDate).countDown()
+                dateReadReleased.getValue(logicalDate).await()
+            }
             if (holdRefresh) releaseRefresh.await()
-            return when (mode) {
+            val result = when (mode) {
                 LoadMode.SUCCESS -> TodayResult.Success(
                     currentDay.copy(
                         logicalDate = logicalDate ?: currentDay.logicalDate,
@@ -2735,6 +2855,8 @@ class TodayScreenInstrumentedTest {
                 LoadMode.ERROR -> TodayResult.Failure("ネットワークエラー")
                 LoadMode.UNAUTHORIZED -> TodayResult.Unauthorized
             }
+            logicalDate?.let { readFinishedAtNanos[it] = SystemClock.elapsedRealtimeNanos() }
+            return result
         }
 
         override fun startTask(task: TodayTask, placementRevision: Int): TodayMutationResult {
