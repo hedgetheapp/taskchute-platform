@@ -2,7 +2,7 @@
 
 - Fixed Android to retain the canonical placement revision returned by successful actual-time mutations and hand it to the next editor save immediately. RED reproduced the old request sequence as expected revisions `[5, 5]` and canonical simulated responses `[200, 409 revision_conflict]`; after the fix it is `[5, 6]` with `[200, 200]` and no conflict. The handset's raw HTTP status was not captured; the failure mechanism is reproduced by the canonical Worker conflict contract.
 - Stale-reconcile coverage confirms the existing optimistic presentation keeps A Completed while a lower-revision Planned projection is stale, then adopts canonical Completed at the confirmed revision. No `TodayController` production change, Worker/API, schema/migration, or persistent nonprod deploy.
-- Local app JVM `356 / 356`, focused Worker `30 / 30`, Kotlin / AndroidTest compile, signed APK build, and exact-SHA CI PASS. AVD UI `NOT_RUN / AVD_BOOT_TIMEOUT`; D-175 Galaxy exact-build check `NOT_RUN / PRODUCT_OWNER_MANUAL`. Production `NOT_RUN`; Released `NO`; D-167 `NOT_STARTED`.
+- Local app JVM `356 / 356`, focused Worker `30 / 30`, Kotlin / AndroidTest compile, signed APK build, and exact-SHA CI PASS. AVD UI `NOT_RUN / AVD_BOOT_TIMEOUT`; Product Owner exact-build Galaxy S23 consecutive A→B actual-time save retest `PASS / USER_CONFIRMED` (`問題なし`, no reported failure or lifecycle rollback). Production `NOT_RUN`; Released `NO`; D-167 `NOT_STARTED`.
 
 ### D-174 Android past-Day Task edit / delete parity — 2026-10-05
 
