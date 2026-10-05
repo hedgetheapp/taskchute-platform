@@ -1,6 +1,6 @@
 # D-169 — Android Today Task Note Presence Indicator v0.1
 
-Status: **Approved / Implemented / Integrated / focused Android JVM + D-169 AVD + exact-SHA CI PASS / full Today AVD PARTIAL**
+Status: **Approved / Implemented / Integrated / focused Android JVM + D-169 AVD + exact-SHA CI PASS / full Today AVD PARTIAL / Galaxy S23 representative smoke PASS (user-confirmed)**
 
 Date: 2026-10-04
 
@@ -114,7 +114,7 @@ Verification:
 - Targeted `TaskChute_API33` instrumentation `taskNoteIndicatorIsInformationalAndExistingSwipeNoteStillOpens`: `1 / 1 PASS`. A direct Note-icon tap did not invoke the Note callback; the existing left-swipe Note action invoked it.
 - Android app and AndroidTest compile / install path, `git diff --check`, and exact-SHA CI PASS. CI produced signed Phone and Wear APKs and compiled the instrumentation APK; Web/Worker verification was skipped by Android-only impact classification.
 - The full `scripts/android-qa.ps1 -Surface Today` surface is PARTIAL: the harness reached its five-minute limit, and `fixedStartConflictAndSectionOverflowRemainAccessibleWhenCollapsed` failed because its expected drag row was not displayed. This same outstanding fixed-start / Section fixture failure is recorded in D-162 / D-163; a Compose timeout was also observed. The focused D-169 case passed, but the complete Today suite is not claimed as PASS. The attempted main-baseline isolation could not run because Gradle needed a distribution download blocked by the local network policy.
-- Galaxy S23: `NOT_RUN / PRODUCT_OWNER_MANUAL`. Production: `NOT_RUN`. Released: `NO`.
+- Product Owner tested the fresh D-169 Phone build on Galaxy S23 against the requested representative checklist and reported `問題なし`. Record the representative device smoke as `PASS / USER_CONFIRMED`: Note absent/gray and Note present/blue presentation, Routine + Note combined presentation, Project / Mode layout, existing left-swipe Note access, and informational no-action Note icon showed no reported issue. This is not a full device matrix. Production: `NOT_RUN`. Released: `NO`.
 
 ## Verification target
 
