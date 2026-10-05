@@ -30,6 +30,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.unit.dp
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
@@ -2256,6 +2257,36 @@ class TodayScreenInstrumentedTest {
     }
 
     @Test
+    fun taskNoteIndicatorIsInformationalAndExistingSwipeNoteStillOpens() {
+        val base = dayWith().sections.single().entries.single()
+        val task = base.copy(
+            taskId = "task-with-primary-note",
+            primaryDocumentId = "empty-body-primary-document",
+            project = TodayProject("project-1", "Project"),
+            mode = TodayMode("mode-1", "Mode"),
+        )
+        val initialDay = dayWith().copy(
+            sections = listOf(dayWith().sections.single().copy(entries = listOf(task))),
+        )
+        var openedTaskNote = 0
+        launchPlanningScreen(FakePlanningRepository(), initialDay, onOpenTaskNote = { openedTaskNote++ })
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        val contextBounds = composeRule.onNodeWithText("Project / Mode").fetchSemanticsNode().boundsInRoot
+        val rootBounds = composeRule.onRoot().fetchSemanticsNode().boundsInRoot
+        val noteIconCenter = Offset(
+            x = contextBounds.left - with(composeRule.density) { 11.dp.toPx() } - rootBounds.left,
+            y = contextBounds.center.y - rootBounds.top,
+        )
+        composeRule.onRoot().performTouchInput { click(noteIconCenter) }
+        assertEquals("The metadata icon must not open a Note", 0, openedTaskNote)
+
+        composeRule.onNodeWithText(task.title).performTouchInput { swipeLeft() }
+        composeRule.onNodeWithContentDescription("タスクのノート").assertIsDisplayed().performClick()
+        assertEquals("The established swipe action still opens the Task Primary Note", 1, openedTaskNote)
+    }
+
+    @Test
     fun runningRowWithoutTaskIdentityKeepsEditAndOtherButNoNote() {
         launchPlanningScreen(FakePlanningRepository(), initialDay = dayWith(LifecycleState.RUNNING))
         waitForStatus(TodayLoadStatus.CONTENT)
@@ -2268,7 +2299,10 @@ class TodayScreenInstrumentedTest {
 
     @Test
     fun routineDerivedRunningRowRemainsNoteOnly() {
-        val task = dayWith(LifecycleState.RUNNING, routineDerived = true).sections.single().entries.single().copy(taskId = "task-routine-running")
+        val task = dayWith(LifecycleState.RUNNING, routineDerived = true).sections.single().entries.single().copy(
+            taskId = "task-routine-running",
+            primaryDocumentId = "empty-body-primary-document",
+        )
         val initialDay = dayWith(LifecycleState.RUNNING, routineDerived = true).copy(
             sections = listOf(dayWith(LifecycleState.RUNNING, routineDerived = true).sections.single().copy(entries = listOf(task))),
         )

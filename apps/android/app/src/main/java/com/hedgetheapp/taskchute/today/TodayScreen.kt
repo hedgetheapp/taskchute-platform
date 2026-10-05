@@ -2246,7 +2246,9 @@ private fun TaskMetadata(task: TodayTask, forecast: EntryStartForecast? = null, 
             Modifier.fillMaxWidth().height(17.dp).padding(start = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            TaskMetadataIcon(R.drawable.ic_material_repeat_24, tint = if (task.routineDerived) TaskChuteColors.AccentBlue else TaskChuteColors.SecondaryText)
+            TaskMetadataIcon(R.drawable.ic_material_repeat_24, tint = taskRoutineMetadataTint(task.routineDerived))
+            Spacer(Modifier.width(6.dp))
+            TaskMetadataIcon(R.drawable.android_footer_description, tint = taskNoteMetadataTint(task.primaryDocumentId))
             Spacer(Modifier.width(6.dp))
             val context = listOfNotNull(task.project?.title, task.mode?.title).joinToString(" / ")
             val conflict = forecast?.takeIf { it.fixedStart && it.conflictSeconds > 0 }
@@ -2277,6 +2279,12 @@ private fun TaskMetadata(task: TodayTask, forecast: EntryStartForecast? = null, 
         }
     }
 }
+
+internal fun taskRoutineMetadataTint(routineDerived: Boolean): Color =
+    if (routineDerived) TaskChuteColors.AccentBlue else TaskChuteColors.SecondaryText
+
+internal fun taskNoteMetadataTint(primaryDocumentId: String?): Color =
+    if (primaryDocumentId != null) TaskChuteColors.AccentBlue else TaskChuteColors.SecondaryText
 
 @Composable
 private fun TaskMetadataIcon(iconRes: Int, tint: Color = TaskChuteColors.SecondaryText) {
