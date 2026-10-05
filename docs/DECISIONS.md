@@ -1,10 +1,10 @@
 ## D-173B — Cross-Day Running Client Compatibility Corrective v0.1
 
-Status: **Approved / Implemented / Integrated / Exact-SHA CI PASS / Persistent nonprod deployed / Device verification not run**
+Status: **Approved / Implemented / Integrated / Exact-SHA CI PASS / Persistent nonprod deployed / Galaxy S23 cross-Day Phone smoke PASS (user-confirmed); Android Daily and Pixel Watch not run**
 
 Canonical Decision: `docs/decisions/D-173B_CROSS_DAY_RUNNING_CLIENT_COMPATIBILITY_CORRECTIVE_V01.md`
 
-An active Execution may continue across a TaskChute Day or Section boundary, while its Task/Entry remains on its originating Day and Section. Current-Day rows remain current-Day-only. Android, Web, and Wear resolve the normal Running presentation from an additive minimal `active_entry` projection when that Entry is outside the queried Day rows; normal Complete uses the existing stable Entry and Execution identity. No automatic move, copy, split, completion, special cross-Day UI, schema/migration, or data repair is introduced. Existing global active-Execution forecast semantics remain unchanged. Android RED confirms the `CROSS_DAY_ACTIVE_EXECUTION_CLIENT_INCOMPATIBILITY`; Wear parser instrumentation runtime RED is not run because no compatible emulator/device is available. Device verification remains Product Owner manual.
+An active Execution may continue across a TaskChute Day or Section boundary, while its Task/Entry remains on its originating Day and Section. Current-Day rows remain current-Day-only. Android, Web, and Wear resolve the normal Running presentation from an additive minimal `active_entry` projection when that Entry is outside the queried Day rows; normal Complete uses the existing stable Entry and Execution identity. No automatic move, copy, split, completion, special cross-Day UI, schema/migration, or data repair is introduced. Existing global active-Execution forecast semantics remain unchanged. Android RED confirms the `CROSS_DAY_ACTIVE_EXECUTION_CLIENT_INCOMPATIBILITY`; Wear parser instrumentation runtime RED is not run because no compatible emulator/device is available. Product Owner confirms the representative Galaxy S23 Phone path: cross-Day incident recovered, Today usable, prior-Day `睡眠` completed through the ordinary action. Android Daily and Pixel Watch remain unverified.
 
 ## D-172 — Android Note Cursor Position Restore v0.1
 
