@@ -304,10 +304,10 @@ class TaskPlanningHttpRepository(
             {"entry_id":"${JsonEncoding.escape(task.id)}","execution_id":"${JsonEncoding.escape(executionId)}","expected_lifecycle_state":"${task.lifecycleState.name.lowercase()}","started_at":"${JsonEncoding.escape(startedAt)}","ended_at":${endedAt?.let { "\"${JsonEncoding.escape(it)}\"" } ?: "null"},"expected_started_at":${expectedStartedAt?.let { "\"${JsonEncoding.escape(it)}\"" } ?: "null"},"expected_ended_at":${expectedEndedAt?.let { "\"${JsonEncoding.escape(it)}\"" } ?: "null"}$expectedPlacement$inputPrecision}
         """.trimIndent()
         return if (reopeningCompleted) {
-            executeLifecycleMutation(path, payload).toSaveResult()
+            executeLifecycleMutation(path, payload).toExecutionTimesSaveResult()
         } else {
             val body = payload.replaceFirst("{", "{\"operation_id\":\"${JsonEncoding.escape(UUIDv7.next())}\",")
-            execute("POST", path, body).toSaveResult()
+            execute("POST", path, body).toExecutionTimesSaveResult()
         }
     }
 
@@ -364,7 +364,8 @@ class TaskPlanningHttpRepository(
         val body = """
             {"operation_id":"${JsonEncoding.escape(UUIDv7.next())}","entry_id":"${JsonEncoding.escape(entryId)}","execution_id":"${JsonEncoding.escape(UUIDv7.next())}","expected_lifecycle_state":"planned","started_at":"${JsonEncoding.escape(startedAt)}","ended_at":${endedAt?.let { "\"${JsonEncoding.escape(it)}\"" } ?: "null"},"expected_started_at":null,"expected_ended_at":null$expectedPlacement,"input_precision":"minute"}
         """.trimIndent()
-        return execute("POST", "/api/v1/entries/${JsonEncoding.pathSegment(entryId)}/execution-times", body).toSaveResult()
+        return execute("POST", "/api/v1/entries/${JsonEncoding.pathSegment(entryId)}/execution-times", body)
+            .toExecutionTimesSaveResult()
     }
 
     private fun logicalMinuteToInstant(day: TodayDay, minute: Int, zone: ZoneId): String {
@@ -518,6 +519,16 @@ private sealed interface PlanningHttpResult {
 
     fun toSaveResult(): PlanningSaveResult = when (this) {
         is Success -> PlanningSaveResult.Success
+        Unauthorized -> PlanningSaveResult.Unauthorized
+        is Failure -> PlanningSaveResult.Failure(message)
+    }
+
+    fun toExecutionTimesSaveResult(): PlanningSaveResult = when (this) {
+        is Success -> runCatching {
+            PlanningSaveResult.SuccessWithRevision(TaskPlanningJsonParser.parsePlacementRevision(body))
+        }.getOrElse {
+            PlanningSaveResult.Failure("実績時刻の保存結果を読み取れませんでした。再読み込みしてください。")
+        }
         Unauthorized -> PlanningSaveResult.Unauthorized
         is Failure -> PlanningSaveResult.Failure(message)
     }

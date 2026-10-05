@@ -61,7 +61,7 @@ class TaskPlanningHttpRepositoryTest {
             requests += Triple(method, path, body)
             when (path) {
                 "/api/v1/taskchute-days/current/entries" -> TodayHttpResponse(200, "{\"placement_revision\":6}")
-                else -> TodayHttpResponse(204, null)
+                else -> executionTimesResponse(6)
             }
         }
 
@@ -106,10 +106,10 @@ class TaskPlanningHttpRepositoryTest {
         )
         val repository = TaskPlanningHttpRepository { method, path, body ->
             requests += Triple(method, path, body)
-            TodayHttpResponse(204, null)
+            if (path.endsWith("/execution-times")) executionTimesResponse(5) else TodayHttpResponse(204, null)
         }
 
-        assertEquals(PlanningSaveResult.Success, repository.save(
+        assertEquals(PlanningSaveResult.SuccessWithRevision(5), repository.save(
             TaskEditorState(TaskEditorMode.EDIT, day, task, TaskEditorDraft(title = task.title)),
             NormalizedTaskInput(task.title, null, null, "section-1", 1_380, 3_600,
                 actualStartMinute = 1_380, actualEndMinute = 480),
@@ -135,7 +135,7 @@ class TaskPlanningHttpRepositoryTest {
         )
         val repository = TaskPlanningHttpRepository { method, path, body ->
             requests += Triple(method, path, body)
-            TodayHttpResponse(204, null)
+            if (path.endsWith("/execution-times")) executionTimesResponse(5, lifecycleState = "running") else TodayHttpResponse(204, null)
         }
 
         val result = repository.save(
@@ -146,13 +146,97 @@ class TaskPlanningHttpRepositoryTest {
             NormalizedTaskInput(task.title, null, null, "section-1", 480, 600, actualStartMinute = 540),
         )
 
-        assertEquals(PlanningSaveResult.Success, result)
+        assertEquals(PlanningSaveResult.SuccessWithRevision(5), result)
         assertEquals(1, requests.size)
         assertTrue(requests.single().second.endsWith("/execution-times"))
         assertTrue(requests.single().third!!.contains("\"expected_lifecycle_state\":\"planned\""))
         assertTrue(requests.single().third!!.contains("\"expected_placement_revision\":5"))
         assertTrue(requests.single().third!!.contains("\"input_precision\":\"minute\""))
     }
+
+    @Test
+    fun plannedCompletedActualCorrectionReturnsServerRevisionAfterSectionMove() {
+        val requests = mutableListOf<Triple<String, String, String?>>()
+        val task = TodayTask(
+            id = "entry-1", title = "Planned task", lifecycleState = LifecycleState.PLANNED,
+            project = null, mode = null, estimateSeconds = 600, plannedStartMinute = 540,
+            executionId = null, activeStartedAt = null, taskId = "task-1",
+        )
+        val day = currentDay().copy(
+            establishmentTimezone = "UTC",
+            sections = listOf(
+                TodaySection("morning", "Morning", 480, 720, listOf(task)),
+                TodaySection("afternoon", "Afternoon", 720, 1_080, emptyList()),
+            ),
+        )
+        val repository = TaskPlanningHttpRepository { method, path, body ->
+            requests += Triple(method, path, body)
+            if (path.endsWith("/execution-times")) executionTimesResponse(6, sectionId = "afternoon")
+            else TodayHttpResponse(204, null)
+        }
+
+        val result = repository.save(
+            TaskEditorState(TaskEditorMode.EDIT, day, task, TaskEditorDraft(title = task.title)),
+            NormalizedTaskInput(task.title, null, null, "morning", 540, 600,
+                actualStartMinute = 780, actualEndMinute = 810),
+        )
+
+        assertEquals(PlanningSaveResult.SuccessWithRevision(6), result)
+        assertEquals(1, requests.size)
+        assertTrue(requests.single().third.orEmpty().contains("\"expected_placement_revision\":5"))
+        assertTrue(requests.single().third.orEmpty().contains("\"expected_lifecycle_state\":\"planned\""))
+    }
+
+    @Test
+    fun runningActualCorrectionRetainsCanonicalRevisionForSameSection() {
+        val task = TodayTask(
+            id = "entry-1", title = "Running", lifecycleState = LifecycleState.RUNNING,
+            project = null, mode = null, estimateSeconds = 600, plannedStartMinute = 540,
+            executionId = "execution-1", activeStartedAt = "2026-09-14T09:00:00Z", taskId = "task-1",
+            firstStartedAt = "2026-09-14T09:00:00Z",
+        )
+        val day = currentDay().copy(
+            establishmentTimezone = "UTC",
+            sections = listOf(TodaySection("section-1", "Morning", 480, 720, listOf(task))),
+        )
+        val repository = TaskPlanningHttpRepository { _, path, _ ->
+            if (path.endsWith("/execution-times")) executionTimesResponse(9)
+            else TodayHttpResponse(204, null)
+        }
+
+        assertEquals(PlanningSaveResult.SuccessWithRevision(9), repository.save(
+            TaskEditorState(TaskEditorMode.EDIT, day, task, TaskEditorDraft(title = task.title)),
+            NormalizedTaskInput(task.title, null, null, "section-1", 540, 600,
+                actualStartMinute = 545, actualEndMinute = 575),
+        ))
+    }
+
+    @Test
+    fun successfulExecutionTimesResponseWithoutPlacementRevisionFailsClosed() {
+        val task = TodayTask(
+            id = "entry-1", title = "Planned", lifecycleState = LifecycleState.PLANNED,
+            project = null, mode = null, estimateSeconds = 600, plannedStartMinute = 540,
+            executionId = null, activeStartedAt = null, taskId = "task-1",
+        )
+        val day = currentDay().copy(
+            establishmentTimezone = "UTC",
+            sections = listOf(TodaySection("section-1", "Morning", 480, 720, listOf(task))),
+        )
+        val repository = TaskPlanningHttpRepository { _, path, _ ->
+            if (path.endsWith("/execution-times")) TodayHttpResponse(200, "{}")
+            else TodayHttpResponse(204, null)
+        }
+
+        assertEquals(
+            PlanningSaveResult.Failure("実績時刻の保存結果を読み取れませんでした。再読み込みしてください。"),
+            repository.save(
+                TaskEditorState(TaskEditorMode.EDIT, day, task, TaskEditorDraft(title = task.title)),
+                NormalizedTaskInput(task.title, null, null, "section-1", 540, 600,
+                    actualStartMinute = 545, actualEndMinute = 575),
+            ),
+        )
+    }
+
     @Test
     fun plannedStartOnlyCreateSendsNullEndAndUsesRunningTransitionContract() {
         val requests = mutableListOf<Triple<String, String, String?>>()
@@ -160,7 +244,7 @@ class TaskPlanningHttpRepositoryTest {
             requests += Triple(method, path, body)
             when (path) {
                 "/api/v1/taskchute-days/current/entries" -> TodayHttpResponse(200, "{\"placement_revision\":6}")
-                else -> TodayHttpResponse(204, null)
+                else -> executionTimesResponse(6, lifecycleState = "running")
             }
         }
 
@@ -468,7 +552,7 @@ class TaskPlanningHttpRepositoryTest {
         )
         val repository = TaskPlanningHttpRepository { method, path, body ->
             requests += Triple(method, path, body)
-            TodayHttpResponse(204, null)
+            if (path.endsWith("/execution-times")) executionTimesResponse(8) else TodayHttpResponse(204, null)
         }
 
         val result = repository.save(
@@ -495,7 +579,7 @@ class TaskPlanningHttpRepositoryTest {
             ),
         )
 
-        assertEquals(PlanningSaveResult.Success, result)
+        assertEquals(PlanningSaveResult.SuccessWithRevision(8), result)
         assertEquals(1, requests.size)
         assertEquals("/api/v1/entries/entry-1/execution-times", requests.single().second)
         assertTrue(requests.single().third!!.contains("\"expected_lifecycle_state\":\"completed\""))
@@ -561,10 +645,11 @@ class TaskPlanningHttpRepositoryTest {
         val input = NormalizedTaskInput(task.title, null, null, "section-1", 540, 1_800, 540, null)
         val repository = TaskPlanningHttpRepository { method, path, body ->
             requests += Triple(method, path, body)
-            TodayHttpResponse(204, null)
+            if (path.endsWith("/execution-times")) executionTimesResponse(5, lifecycleState = "running")
+            else TodayHttpResponse(204, null)
         }
 
-        assertEquals(PlanningSaveResult.Success, repository.save(editor, input))
+        assertEquals(PlanningSaveResult.SuccessWithRevision(5), repository.save(editor, input))
         val body = requests.last().third.orEmpty()
         assertEquals("/api/v1/entries/entry-1/execution-times", requests.single().second)
         assertTrue(body.contains("\"expected_lifecycle_state\":\"completed\""))
@@ -692,6 +777,18 @@ class TaskPlanningHttpRepositoryTest {
     }
 
     private fun extractEntryId(body: String): String = Regex("\\\"entry_id\\\":\\\"([^\\\"]+)\\\"").find(body)!!.groupValues[1]
+
+    private fun executionTimesResponse(
+        revision: Int,
+        sectionId: String? = "section-1",
+        lifecycleState: String = "completed",
+    ): TodayHttpResponse {
+        val endedAt = if (lifecycleState == "completed") "\"2026-09-14T09:30:00Z\"" else "null"
+        val body = """
+            {"entry_id":"entry-1","lifecycle_state":"$lifecycleState","execution":{"id":"execution-1","entry_id":"entry-1","started_at":"2026-09-14T09:00:00Z","ended_at":$endedAt},"section_id":${sectionId?.let { "\"$it\"" } ?: "null"},"planned_start_minute":540,"position":0,"placement_revision":$revision}
+        """.trimIndent()
+        return TodayHttpResponse(200, body)
+    }
 
     private companion object {
         fun futureDay() = currentDay().copy(

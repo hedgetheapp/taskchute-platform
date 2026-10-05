@@ -429,6 +429,88 @@ class TaskPlanningControllerTest {
     }
 
     @Test
+    fun consecutiveActualTimeEditsUseTheRepositoryReturnedRevisionImmediately() {
+        var serverRevision = 5
+        val expectedRevisions = mutableListOf<Int>()
+        val statuses = mutableListOf<Int>()
+        val conflictCodes = mutableListOf<String>()
+        val repository = TaskPlanningHttpRepository { _, path, body ->
+            when (path) {
+                "/api/v1/projects" -> TodayHttpResponse(200, "{\"projects\":[]}")
+                "/api/v1/mode-board" -> TodayHttpResponse(200, "{\"modes\":[]}")
+                else -> if (path.endsWith("/execution-times")) {
+                    val requestBody = body.orEmpty()
+                    val expectedRevision = Regex("\\\"expected_placement_revision\\\":(\\d+)")
+                        .find(requestBody)?.groupValues?.get(1)?.toInt()
+                        ?: error("Planned actual-time mutation must include expected_placement_revision")
+                    expectedRevisions += expectedRevision
+                    val entryId = Regex("\\\"entry_id\\\":\\\"([^\\\"]+)\\\"")
+                        .find(requestBody)?.groupValues?.get(1) ?: error("entry_id is required")
+                    if (expectedRevision != serverRevision) {
+                        statuses += 409
+                        conflictCodes += "revision_conflict"
+                        TodayHttpResponse(409, "{\"error\":{\"code\":\"revision_conflict\",\"message\":\"The placement revision is stale\"}}")
+                    } else {
+                        serverRevision += 1
+                        statuses += 200
+                        TodayHttpResponse(200, """
+                            {"entry_id":"$entryId","lifecycle_state":"completed","execution":{"id":"execution-$entryId","entry_id":"$entryId","started_at":"2026-09-14T13:00:00Z","ended_at":"2026-09-14T13:30:00Z"},"section_id":"afternoon","planned_start_minute":540,"position":0,"placement_revision":$serverRevision}
+                        """.trimIndent())
+                    }
+                } else {
+                    TodayHttpResponse(204, null)
+                }
+            }
+        }
+        val taskA = plannedTask().copy(id = "entry-a", title = "Task A", taskId = "task-a")
+        val taskB = plannedTask().copy(id = "entry-b", title = "Task B", taskId = "task-b")
+        var presentedDay = currentDay().copy(
+            establishmentTimezone = "UTC",
+            sections = listOf(
+                TodaySection("morning", "Morning", 480, 720, listOf(taskA, taskB)),
+                TodaySection("afternoon", "Afternoon", 720, 1_080, emptyList()),
+            ),
+        )
+        val controller = TaskPlanningController(
+            repository = repository,
+            onUnauthorized = {},
+            onSaved = {},
+            onPlacementRevisionConfirmed = { logicalDate, revision ->
+                if (presentedDay.logicalDate == logicalDate) {
+                    presentedDay = presentedDay.copy(placementRevision = maxOf(presentedDay.placementRevision, revision))
+                }
+            },
+            onOptimisticIntent = { editor, input ->
+                presentedDay = applyOptimisticPlanning(presentedDay, editor, input)
+            },
+            latestDay = { presentedDay },
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+        )
+
+        fun saveActual(task: TodayTask, start: String, end: String) {
+            controller.openEdit(presentedDay, presentedDay.allEntries.single { it.id == task.id })
+            assertTrue(await { controller.state.references != null })
+            controller.updateDraft(controller.state.editor!!.draft.copy(actualStartText = start, actualEndText = end))
+            controller.save()
+            assertTrue(await { !controller.state.saving })
+        }
+
+        saveActual(taskA, "1300", "1330")
+        assertEquals(LifecycleState.COMPLETED, presentedDay.allEntries.single { it.id == taskA.id }.lifecycleState)
+        saveActual(taskB, "1400", "1430")
+
+        assertEquals(
+            "expected revisions [5, 6], HTTP statuses [200, 200], conflict codes []",
+            "expected revisions $expectedRevisions, HTTP statuses $statuses, conflict codes $conflictCodes",
+        )
+        assertNull(controller.state.editor)
+        assertEquals(7, presentedDay.placementRevision)
+        assertEquals(LifecycleState.COMPLETED, presentedDay.allEntries.single { it.id == taskA.id }.lifecycleState)
+        assertEquals(LifecycleState.COMPLETED, presentedDay.allEntries.single { it.id == taskB.id }.lifecycleState)
+        controller.close()
+    }
+
+    @Test
     fun retryRebasesCreateAgainstLatestCanonicalRevision() {
         var canonical = currentDay()
         val repository = FakePlanningRepository().apply {

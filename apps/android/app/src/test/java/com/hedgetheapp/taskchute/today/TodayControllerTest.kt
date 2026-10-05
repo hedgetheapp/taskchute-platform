@@ -358,6 +358,81 @@ class TodayControllerTest {
     }
 
     @Test
+    fun stalePlannedProjectionBelowConfirmedActualTimeRevisionCannotReplaceOptimisticCompletion() {
+        val planned = task(LifecycleState.PLANNED)
+        val section = TodaySection("section-1", "Morning", 480, 720, listOf(planned))
+        val initial = dayWith(LifecycleState.PLANNED).copy(placementRevision = 5, sections = listOf(section))
+        val stale = initial.copy(placementRevision = 5)
+        val fresh = initial.copy(
+            placementRevision = 6,
+            sections = listOf(section.copy(entries = listOf(
+                planned.copy(
+                    lifecycleState = LifecycleState.COMPLETED,
+                    executionId = "execution-1",
+                    firstStartedAt = "2026-09-14T13:00:00Z",
+                    lastEndedAt = "2026-09-14T13:30:00Z",
+                ),
+            ))),
+        )
+        val staleStarted = CountDownLatch(1)
+        val releaseStale = CountDownLatch(1)
+        val freshStarted = CountDownLatch(1)
+        val releaseFresh = CountDownLatch(1)
+        val loads = AtomicInteger()
+        val repository = object : TodayRepository {
+            override fun loadDay(logicalDate: String?): TodayResult = when (loads.incrementAndGet()) {
+                1 -> TodayResult.Success(initial)
+                2 -> {
+                    staleStarted.countDown()
+                    releaseStale.await(2, TimeUnit.SECONDS)
+                    TodayResult.Success(stale)
+                }
+                else -> {
+                    freshStarted.countDown()
+                    releaseFresh.await(2, TimeUnit.SECONDS)
+                    TodayResult.Success(fresh)
+                }
+            }
+
+            override fun startTask(task: TodayTask, placementRevision: Int) = TodayMutationResult.Success
+            override fun completeTask(task: TodayTask) = TodayMutationResult.Success
+        }
+        val controller = TodayController(
+            repository = repository,
+            onUnauthorized = {},
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+        )
+        controller.loadCurrent()
+        assertTrue(awaitState(controller) { it.day?.placementRevision == 5 })
+
+        val editor = TaskEditorState(
+            TaskEditorMode.EDIT, initial, planned,
+            TaskEditorDraft(title = planned.title, actualStartText = "1300", actualEndText = "1330"),
+        )
+        val input = NormalizedTaskInput(planned.title, null, null, "section-1", 540, 600,
+            actualStartMinute = 780, actualEndMinute = 810)
+        controller.applyOptimisticPlanning(editor, input)
+        controller.confirmPlacementRevision("2026-09-14", 6)
+        assertEquals(LifecycleState.COMPLETED, controller.state.presentedDay?.allEntries?.single()?.lifecycleState)
+        assertEquals(6, controller.state.presentedDay?.placementRevision)
+
+        controller.reconcileSilently()
+        assertTrue(staleStarted.await(2, TimeUnit.SECONDS))
+        releaseStale.countDown()
+        assertTrue(freshStarted.await(2, TimeUnit.SECONDS))
+
+        assertEquals(6, controller.state.day?.placementRevision)
+        assertEquals(LifecycleState.PLANNED, controller.state.day?.allEntries?.single()?.lifecycleState)
+        assertEquals(LifecycleState.COMPLETED, controller.state.presentedDay?.allEntries?.single()?.lifecycleState)
+        assertEquals(6, controller.state.presentedDay?.placementRevision)
+
+        releaseFresh.countDown()
+        assertTrue(awaitState(controller) { it.optimisticDay == null && it.day?.placementRevision == 6 })
+        assertEquals(LifecycleState.COMPLETED, controller.state.presentedDay?.allEntries?.single()?.lifecycleState)
+        controller.close()
+    }
+
+    @Test
     fun newerReconcileAdvancesTheConfirmedRevisionFloorNormally() {
         val first = dayWith(LifecycleState.PLANNED).copy(placementRevision = 10)
         val repository = FakeRepository().apply {
