@@ -1,6 +1,6 @@
 # D-167 — Android Complete→Start Serial Lifecycle Handoff Corrective v0.1
 
-Status: **Approved / Implemented / Integrated / Local verification and exact-SHA CI PASS / AVD not run / Galaxy S23 not run**
+Status: **Approved / Implemented / Integrated / Local verification and exact-SHA CI PASS / AVD not run / Galaxy S23 representative smoke PASS (user-confirmed)**
 
 Date: 2026-10-04
 
@@ -132,4 +132,4 @@ The D-173B cross-Day case is covered: prior-Day A is represented by `active_entr
 
 Focused Android controller and repository tests pass (`32 / 32` and `13 / 13`); the full app JVM suite passes (`368 / 368`). Existing focused Worker lifecycle integration tests pass (`14 / 14`). `:app:compileDebugKotlin`, `:app:compileDebugAndroidTestKotlin`, `:app:assembleDebug`, signed CI Phone/Wear builds, AndroidTest APK compile, signing-certificate verification, and `git diff --check` pass. Exact-SHA CI for the implementation commit passes; Web/Worker CI is skipped by the Android-only classifier. A fresh signed Phone APK is available from that run.
 
-Today AVD runtime is `NOT_RUN / AVD_BOOT_TIMEOUT` because `TaskChute_API33` did not reach `sys.boot_completed=1` within the 180-second boot window; instrumentation runtime did not execute. Galaxy S23 D-167 verification remains `NOT_RUN / PRODUCT_OWNER_MANUAL`; the separate D-175 Galaxy result is not reused. No Worker/API/shared contract, schema/migration, dependency, persistent nonprod deploy, or user-data mutation. Production `NOT_RUN`; Released `NO`.
+Today AVD runtime is `NOT_RUN / AVD_BOOT_TIMEOUT` because `TaskChute_API33` did not reach `sys.boot_completed=1` within the 180-second boot window; instrumentation runtime did not execute. The Product Owner then tested the fresh D-167 Phone build on Galaxy S23 against the requested immediate `A Running → Complete A → Start B` path and reported `たぶんok`. Record this representative device smoke as `PASS / USER_CONFIRMED`; the concise report is evidence for the requested path only and does not claim a full device matrix, exhaustive race verification, or AVD runtime coverage. The separate D-175 Galaxy result is not reused. No Worker/API/shared contract, schema/migration, dependency, persistent nonprod deploy, or user-data mutation. Production `NOT_RUN`; Released `NO`.
