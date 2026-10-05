@@ -243,9 +243,17 @@ internal class WearTodayController(
         val loadId = ++nextLoadId
         val load = loadMutex.withLock { withContext(ioDispatcher) { repository.loadToday() } }
         val canonicalDay = (load as? WearLoadResult.Success)?.day
+        val crossDayCompletionConfirmed = completion
+            && previousDay.activeExecution?.entryId == task.id
+            && previousDay.activeEntry?.id == task.id
+            && canonicalDay != null
+            && canonicalDay.activeExecution == null
+            && canonicalDay.activeEntry == null
+            && canonicalDay.allTasks.none { it.id == task.id }
         val canonicalTransitionConfirmed = canonicalDay?.let { day ->
             if (completion) {
                 day.allTasks.any { it.id == task.id && it.lifecycle == WearLifecycle.COMPLETED }
+                    || crossDayCompletionConfirmed
             } else {
                 day.activeExecution?.entryId == task.id
             }
@@ -269,6 +277,7 @@ internal class WearTodayController(
                 when {
                     completion && currentTask?.lifecycle == WearLifecycle.COMPLETED ->
                         state = WearScreenState.Completed(day, currentTask)
+                    crossDayCompletionConfirmed -> state = stateForDay(day)
                     !completion && day.activeExecution?.entryId == task.id -> state = WearScreenState.Running(day)
                     mutation == WearMutationResult.Rejected -> state = WearScreenState.Error(
                         "Taskは変更されていません。\n通信を確認して再試行してください。", day,

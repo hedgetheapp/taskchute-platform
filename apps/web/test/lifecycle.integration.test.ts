@@ -293,11 +293,20 @@ describe.sequential("ordering and lifecycle increment", () => {
   });
 
   it("keeps one active Execution across the TaskChuteDay boundary and completes it from its stable identity", async () => {
-    const priorDayEntry = await env.APP_DB.prepare("SELECT id FROM entries WHERE app_user_id = ? AND taskchute_day_id = ? AND lifecycle_state = 'planned' ORDER BY position LIMIT 1")
-      .bind(userId, dayId).first<string>("id");
+    const priorDayEntry = await env.APP_DB.prepare(`SELECT e.id, e.task_id, t.title AS task_title
+      FROM entries e JOIN tasks t ON t.app_user_id = e.app_user_id AND t.id = e.task_id
+      WHERE e.app_user_id = ? AND e.taskchute_day_id = ? AND e.lifecycle_state = 'planned' ORDER BY e.position LIMIT 1`)
+      .bind(userId, dayId).first<{ id: string; task_id: string; task_title: string }>();
     if (!priorDayEntry) throw new Error("missing prior-day planned Entry");
+    const idlePriorDay = await loadCurrentTaskChuteDay(env.APP_DB, userId, startInstant);
+    expect(idlePriorDay.active_execution).toBeNull();
+    expect(idlePriorDay.active_entry).toBeNull();
     const executionId = uuidv7();
-    const started = await startEntry(env.APP_DB, userId, { operation_id: uuidv7(), entry_id: priorDayEntry, execution_id: executionId }, startInstant);
+    const started = await startEntry(env.APP_DB, userId, { operation_id: uuidv7(), entry_id: priorDayEntry.id, execution_id: executionId }, startInstant);
+    const sameDay = await loadCurrentTaskChuteDay(env.APP_DB, userId, startInstant);
+    expect(sameDay.active_entry).toBeNull();
+    expect(sameDay.active_execution?.entry_id).toBe(priorDayEntry.id);
+    expect(sameDay.sections.flatMap((section) => section.entries).find((entry) => entry.id === priorDayEntry.id)?.lifecycle_state).toBe("running");
     const nextDayInitial = await loadCurrentTaskChuteDay(env.APP_DB, userId, "2026-08-23T12:00:00.000Z");
     expect(nextDayInitial.taskchute_day.id).not.toBe(dayId);
     const nextTaskId = uuidv7();
@@ -312,16 +321,26 @@ describe.sequential("ordering and lifecycle increment", () => {
     ]);
     const acrossBoundary = await loadCurrentTaskChuteDay(env.APP_DB, userId, "2026-08-23T12:00:00.000Z");
     expect(acrossBoundary.active_execution).toMatchObject({ ...started.execution, entry_estimate_seconds: null });
-    expect(acrossBoundary.sections.flatMap((section) => section.entries).some((entry) => entry.id === priorDayEntry)).toBe(false);
+    expect(acrossBoundary.active_entry).toMatchObject({
+      id: priorDayEntry.id,
+      task: { id: priorDayEntry.task_id, title: priorDayEntry.task_title },
+      lifecycle_state: "running",
+      estimate_seconds: null,
+    });
+    expect(acrossBoundary.sections.flatMap((section) => section.entries).some((entry) => entry.id === priorDayEntry.id)).toBe(false);
+    expect(acrossBoundary.unsectioned_entries.some((entry) => entry.id === priorDayEntry.id)).toBe(false);
     expect(acrossBoundary.next_entry?.id).toBe(nextEntryId);
     const executionCount = await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM executions WHERE app_user_id = ?")
       .bind(userId).first<number>("count");
-    const completed = await completeEntry(env.APP_DB, userId, { operation_id: uuidv7(), entry_id: priorDayEntry, execution_id: executionId });
+    const completed = await completeEntry(env.APP_DB, userId, { operation_id: uuidv7(), entry_id: priorDayEntry.id, execution_id: executionId });
     expect(completed.execution.started_at).toBe(started.execution.started_at);
     expect(completed.execution.ended_at).not.toBeNull();
+    const idleCurrentDay = await loadCurrentTaskChuteDay(env.APP_DB, userId, "2026-08-23T12:00:00.000Z");
+    expect(idleCurrentDay.active_execution).toBeNull();
+    expect(idleCurrentDay.active_entry).toBeNull();
     expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM executions WHERE app_user_id = ?")
       .bind(userId).first<number>("count")).toBe(executionCount);
-    expect((await loadCurrentTaskChuteDay(env.APP_DB, userId, "2026-08-23T12:00:00.000Z")).next_entry?.id).toBe(nextEntryId);
+    expect(idleCurrentDay.next_entry?.id).toBe(nextEntryId);
   });
 
   it("rejects cross-owner lifecycle access and leaves transient guards empty", async () => {

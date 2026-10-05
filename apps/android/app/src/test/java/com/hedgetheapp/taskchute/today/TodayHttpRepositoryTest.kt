@@ -138,6 +138,39 @@ class TodayHttpRepositoryTest {
     }
 
     @Test
+    fun crossDayRunningPresentationUsesExistingCompleteEntryAndExecutionIdentity() {
+        var method = ""
+        var path = ""
+        var body = ""
+        val repository = TodayHttpRepository(
+            request = { requestMethod, requestPath, requestBody ->
+                method = requestMethod
+                path = requestPath
+                body = requestBody.orEmpty()
+                TodayHttpResponse(204, null)
+            },
+            onUnauthorized = {},
+        )
+        val crossDayRunningTask = TodayTask(
+            id = "entry-from-origin-day",
+            title = "Cross-day task",
+            lifecycleState = LifecycleState.RUNNING,
+            project = null,
+            mode = null,
+            estimateSeconds = 900,
+            plannedStartMinute = null,
+            executionId = "execution-cross-day",
+            activeStartedAt = "2026-10-04T23:50:00Z",
+        )
+
+        assertEquals(TodayMutationResult.Success, repository.completeTask(crossDayRunningTask))
+        assertEquals("POST", method)
+        assertEquals("/api/v1/entries/entry-from-origin-day/complete", path)
+        assertTrue(body.contains("\"entry_id\":\"entry-from-origin-day\""))
+        assertTrue(body.contains("\"execution_id\":\"execution-cross-day\""))
+    }
+
+    @Test
     fun dateReadUsesCanonicalLogicalDateQuery() {
         var path = ""
         val repository = TodayHttpRepository(

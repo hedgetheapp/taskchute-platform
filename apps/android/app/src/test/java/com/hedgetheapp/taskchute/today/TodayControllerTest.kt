@@ -234,6 +234,36 @@ class TodayControllerTest {
     }
 
     @Test
+    fun crossDayCompleteUsesStableEntryAndExecutionIdentityAndKeepsCurrentRows() {
+        val initial = crossDayDay()
+        val plannedIds = initial.allEntries.map { it.id }
+        val repository = FakeRepository().apply {
+            loadResults = listOf(
+                TodayResult.Success(initial),
+                TodayResult.Success(initial.copy(activeExecution = null, activeEntry = null)),
+            )
+        }
+        val controller = controller(repository)
+        controller.loadCurrent()
+        assertTrue(repository.loadStarted.await(2, TimeUnit.SECONDS))
+        assertTrue(awaitState(controller) { it.day?.runningTask?.id == "prior-entry" })
+        assertEquals(plannedIds, controller.state.day?.allEntries?.map { it.id })
+
+        repository.holdLoad = true
+        controller.complete(controller.state.day!!.runningTask!!)
+
+        assertTrue(repository.reloadStarted.await(2, TimeUnit.SECONDS))
+        assertEquals("prior-entry", repository.completedTask?.id)
+        assertEquals("prior-execution", repository.completedTask?.executionId)
+        assertEquals(plannedIds, controller.state.presentedDay?.allEntries?.map { it.id })
+        assertEquals(null, controller.state.presentedDay?.runningTask)
+
+        repository.releaseLoad.countDown()
+        assertTrue(awaitState(controller) { it.optimisticDay == null && it.day?.runningTask == null })
+        controller.close()
+    }
+
+    @Test
     fun dateNavigationUsesAdjacentLogicalDate() {
         val repository = FakeRepository().apply { loadResult = TodayResult.Success(dayWith(LifecycleState.PLANNED)) }
         val controller = controller(repository)
@@ -448,6 +478,7 @@ class TodayControllerTest {
         var loadResult: TodayResult = TodayResult.Success(emptyDay())
         var startResult: TodayMutationResult = TodayMutationResult.Success
         var completeResult: TodayMutationResult = TodayMutationResult.Success
+        var completedTask: TodayTask? = null
         var loadResultAfterFirst: TodayResult? = null
         var loadResults: List<TodayResult>? = null
         var holdLoad = false
@@ -479,7 +510,10 @@ class TodayControllerTest {
             return startResult
         }
 
-        override fun completeTask(task: TodayTask): TodayMutationResult = completeResult
+        override fun completeTask(task: TodayTask): TodayMutationResult {
+            completedTask = task
+            return completeResult
+        }
     }
 
     private companion object {
@@ -493,6 +527,17 @@ class TodayControllerTest {
             sections = listOf(TodaySection("section-1", "Morning", 480, 720, listOf(task(state)))),
             unsectionedEntries = emptyList(),
             activeExecution = if (state == LifecycleState.RUNNING) TodayExecution("execution-1", "entry-1", "2026-09-14T01:00:00Z", 600) else null,
+        )
+
+        fun crossDayDay() = TodayDay(
+            logicalDate = "2026-10-05",
+            isCurrent = true,
+            planningEnabled = true,
+            placementRevision = 1,
+            sections = listOf(TodaySection("morning", "Morning", 240, 720, listOf(task(LifecycleState.PLANNED).copy(id = "day-b-entry")))),
+            unsectionedEntries = emptyList(),
+            activeExecution = TodayExecution("prior-execution", "prior-entry", "2026-10-04T12:00:00Z", 1_800),
+            activeEntry = TodayActiveEntry("prior-entry", "sleep-task", "睡眠", LifecycleState.RUNNING, 1_800),
         )
 
         fun emptyDay() = TodayDay("2026-09-14", true, true, 0, emptyList(), emptyList(), null)

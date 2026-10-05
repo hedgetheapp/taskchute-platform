@@ -14,6 +14,7 @@ internal object WearJsonParser {
         val active = root.nullableObject("active_execution")?.let {
             WearExecution(it.getString("id"), it.getString("entry_id"), it.getString("started_at"), it.nullableInt("entry_estimate_seconds"))
         }
+        val activeEntry = root.nullableObject("active_entry")?.let(::parseActiveEntry)
         val result = WearDay(
             logicalDate = day.getString("logical_date"),
             placementRevision = root.getInt("placement_revision"),
@@ -22,9 +23,31 @@ internal object WearJsonParser {
             activeExecution = active,
             startInstant = day.optString("start_instant").takeUnless { it == "" || it == "null" },
             establishmentTimezone = day.optString("establishment_timezone").takeUnless { it == "" || it == "null" },
+            activeEntry = activeEntry,
         )
         require(active == null || result.runningTask != null) { "Active Execution Entry is absent from current Day" }
+        require(activeEntry == null || active?.entryId == activeEntry.id) { "Active Entry does not match Active Execution" }
+        require(activeEntry == null || result.allTasks.none { it.id == activeEntry.id }) { "Active Entry must stay outside current Day rows" }
+        require(activeEntry == null || activeEntry.lifecycle == WearLifecycle.RUNNING) { "Active Entry must be running" }
+        require(activeEntry == null || activeEntry.estimateSeconds == active?.estimateSeconds) { "Active Entry estimate does not match Active Execution" }
         return result
+    }
+
+    private fun parseActiveEntry(value: JSONObject): WearActiveEntry {
+        val lifecycle = when (value.getString("lifecycle_state")) {
+            "running" -> WearLifecycle.RUNNING
+            "planned" -> WearLifecycle.PLANNED
+            "completed" -> WearLifecycle.COMPLETED
+            else -> error("Unknown active Entry lifecycle state")
+        }
+        val task = value.getJSONObject("task")
+        return WearActiveEntry(
+            id = value.getString("id"),
+            taskId = task.getString("id"),
+            title = task.getString("title"),
+            lifecycle = lifecycle,
+            estimateSeconds = value.nullableInt("estimate_seconds"),
+        )
     }
 
     private fun parseSection(value: JSONObject) = WearSection(

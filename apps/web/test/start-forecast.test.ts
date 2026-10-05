@@ -80,8 +80,11 @@ describe("Start Forecast v0.1", () => {
     const result = calculateStartForecast(projection({
       active_execution: { id: "execution", entry_id: "other-day-entry", entry_estimate_seconds: 1800,
         started_at: "2026-08-22T08:50:00Z", ended_at: null },
+      active_entry: { id: "other-day-entry", task: { id: "other-day-task", title: "Running" },
+        lifecycle_state: "running", estimate_seconds: 1800 },
     }), now);
     expect(result.byEntryId["entry-1"].startInstant).toBe("2026-08-22T09:20:00Z");
+    expect(result.byEntryId["other-day-entry"]).toBeUndefined();
   });
 
   it("keeps over-estimate and null-estimate active work at effective now", () => {

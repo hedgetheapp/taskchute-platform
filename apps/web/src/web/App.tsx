@@ -6091,6 +6091,10 @@ export function App() {
   const allEligibleBulkSelected = eligibleBulkEntries.length > 0 && selectedBulkEntries.length === eligibleBulkEntries.length;
   const bulkSelectionIndeterminate = selectedBulkEntries.length > 0 && !allEligibleBulkSelected;
   const activeEntry = currentDay.active_execution ? allEntries.find((entry) => entry.id === currentDay.active_execution?.entry_id) : null;
+  const activeRunnerTitle = currentDay.active_execution
+    ? activeEntry?.task.title
+      ?? (currentDay.active_entry?.id === currentDay.active_execution.entry_id ? currentDay.active_entry.task.title : null)
+    : null;
   const resolvedColumnDefinitions = visibleDayColumnOrder(dayColumnPreference)
     .map((key) => DAY_COLUMN_DEFINITIONS.find((definition) => definition.key === key)!).filter(Boolean);
   const forecastByEntryId = calculateStartForecast(
@@ -8114,7 +8118,7 @@ export function App() {
 
       {day.active_execution && (
         <aside className="floating-runner" aria-label="実行中のTask">
-          <div><span className="runner-state">実行中</span><strong>{activeEntry?.task.title ?? "別日の実行中Task"}</strong><small>{day.active_execution.started_at} から</small></div>
+          <div><span className="runner-state">実行中</span>{activeRunnerTitle !== null && <strong>{activeRunnerTitle}</strong>}<small>{day.active_execution.started_at} から</small></div>
           <button type="button" aria-label="実行中のTaskを完了" disabled={mutationLocked || isMutationScopeBusy(["execution-lane"])} onClick={() => void complete(day.active_execution!.entry_id)}>完了</button>
         </aside>
       )}

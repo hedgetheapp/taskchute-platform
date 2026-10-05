@@ -149,6 +149,22 @@ class TodayOptimisticTest {
     }
 
     @Test
+    fun crossDayCompleteClearsOnlyTheSeparateRunningProjection() {
+        val currentTask = task("today-entry").copy(title = "Today task")
+        val crossDay = day().copy(
+            sections = listOf(TodaySection("morning", "Morning", 240, 720, listOf(currentTask))),
+            activeExecution = TodayExecution("prior-execution", "prior-entry", "2026-09-29T20:00:00Z", 1_800),
+            activeEntry = TodayActiveEntry("prior-entry", "prior-task", "Sleep", LifecycleState.RUNNING, 1_800),
+        )
+
+        val completed = applyOptimisticLifecycle(crossDay, "prior-entry", LifecycleState.COMPLETED)
+
+        assertEquals(listOf("today-entry"), completed.allEntries.map { it.id })
+        assertEquals(null, completed.activeExecution)
+        assertEquals(null, completed.activeEntry)
+    }
+
+    @Test
     fun lifecycleEditorProjectionAppliesActualTimesBeforeReconcile() {
         val original = day().allEntries.first { it.id == "entry-a" }
         val projected = applyOptimisticPlanning(

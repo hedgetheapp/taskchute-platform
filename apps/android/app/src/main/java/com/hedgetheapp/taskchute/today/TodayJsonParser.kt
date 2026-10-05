@@ -12,6 +12,7 @@ internal object TodayJsonParser {
         val sections = root.arrayField("sections").map { value -> parseSection(value.asObject()) }
         val unsectioned = root.arrayField("unsectioned_entries").map { value -> parseTask(value.asObject()) }
         val activeExecution = root.nullableObjectField("active_execution")?.let(::parseExecution)
+        val activeEntry = root.nullableObjectField("active_entry")?.let(::parseActiveEntry)
         val day = TodayDay(
             logicalDate = logicalDate,
             isCurrent = root.booleanField("is_current"),
@@ -25,11 +26,41 @@ internal object TodayJsonParser {
             endInstant = taskChuteDay.nullableStringField("end_instant"),
             establishmentTimezone = taskChuteDay.nullableStringField("establishment_timezone"),
             establishmentBoundaryMinutes = taskChuteDay.nullableIntField("establishment_boundary_minutes") ?: 0,
+            activeEntry = activeEntry,
         )
-        require(activeExecution == null || day.allEntries.any { it.id == activeExecution.entryId }) {
+        require(activeExecution == null || day.allEntries.any { it.id == activeExecution.entryId }
+            || activeEntry?.id == activeExecution.entryId) {
             "active execution entry is missing from Today projection"
         }
+        require(activeEntry == null || activeExecution?.entryId == activeEntry.id) {
+            "active entry does not match active execution"
+        }
+        require(activeEntry == null || day.allEntries.none { it.id == activeEntry.id }) {
+            "active entry must stay outside Today rows"
+        }
+        require(activeEntry == null || activeEntry.lifecycleState == LifecycleState.RUNNING) {
+            "active entry must be running"
+        }
+        require(activeEntry == null || activeEntry.estimateSeconds == activeExecution?.estimateSeconds) {
+            "active entry estimate does not match active execution"
+        }
         return day
+    }
+
+    private fun parseActiveEntry(value: JsonValue.Object): TodayActiveEntry {
+        val task = value.objectField("task")
+        return TodayActiveEntry(
+            id = value.stringField("id"),
+            taskId = task.stringField("id"),
+            title = task.stringField("title"),
+            lifecycleState = when (value.stringField("lifecycle_state")) {
+                "running" -> LifecycleState.RUNNING
+                "planned" -> LifecycleState.PLANNED
+                "completed" -> LifecycleState.COMPLETED
+                else -> error("unknown Today active entry lifecycle state")
+            },
+            estimateSeconds = value.nullableIntField("estimate_seconds"),
+        )
     }
 
     private fun parseSection(value: JsonValue.Object): TodaySection = TodaySection(

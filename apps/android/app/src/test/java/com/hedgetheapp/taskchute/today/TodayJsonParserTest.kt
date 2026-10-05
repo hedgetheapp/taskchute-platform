@@ -25,6 +25,7 @@ class TodayJsonParserTest {
         assertEquals("p1", day.sections.single().entries.single().project?.id)
         assertEquals("m1", day.sections.single().entries.single().mode?.id)
         assertEquals("execution-1", day.activeExecution?.id)
+        assertNull(day.activeEntry)
         assertNotNull(day.runningTask)
         assertEquals(false, day.sections.single().entries.single().routineDerived)
         assertEquals(10, day.sections.single().entries.single().startReminderOffsetMinutes)
@@ -58,12 +59,46 @@ class TodayJsonParserTest {
         assertEquals("Write", day.sections.single().entries.single().title)
         assertEquals("Shared title", day.sections.single().entries.single().routineBaseTitle)
     }
+
+    @Test
+    fun crossDayActiveExecutionKeepsPriorDayTaskOutsideCurrentDayRows() {
+        val day = TodayJsonParser.parse(CROSS_DAY_PROJECTION)
+
+        assertEquals(listOf("day-b-entry"), day.allEntries.map { it.id })
+        assertEquals("prior-entry", day.activeEntry?.id)
+        assertEquals("sleep-task", day.activeEntry?.taskId)
+        assertEquals("prior-entry", day.runningTask?.id)
+        assertEquals("睡眠", day.runningTask?.title)
+        assertEquals(3600, day.runningTask?.estimateSeconds)
+        assertEquals("execution-prior", day.runningTask?.executionId)
+        assertEquals("2026-10-04T12:00:00Z", day.runningTask?.activeStartedAt)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun rejectsActiveEntryThatDoesNotMatchTheActiveExecution() {
+        TodayJsonParser.parse(CROSS_DAY_PROJECTION.replace("\"id\":\"prior-entry\",\"task\"", "\"id\":\"other-entry\",\"task\""))
+    }
+
     @Test(expected = IllegalStateException::class)
     fun rejectsUnknownLifecycleState() {
         TodayJsonParser.parse(SAMPLE.replace("running", "paused"))
     }
 
     private companion object {
+        const val CROSS_DAY_PROJECTION = """
+            {
+              "taskchute_day":{"id":"day-b","logical_date":"2026-10-05","start_instant":"2026-10-04T15:00:00Z","end_instant":"2026-10-05T15:00:00Z","establishment_timezone":"Asia/Tokyo","establishment_boundary_minutes":240},
+              "is_current":true,"planning_enabled":true,"placement_revision":1,"section_configuration_required":false,
+              "sections":[{"id":"morning","title":"朝","logical_start_minute":240,"logical_end_minute":720,"entries":[
+                {"id":"day-b-entry","task":{"id":"day-b-task","title":"今日の予定","project":null},"section_id":"morning","position":1,"lifecycle_state":"planned","estimate_seconds":1200,"planned_start_minute":null,"mode":null,"routine":null,"execution_summary":{"first_started_at":null,"last_ended_at":null,"completed_duration_seconds":0,"active_started_at":null,"active_execution_id":null}}
+              ]}],
+              "unsectioned_entries":[],
+              "active_execution":{"id":"execution-prior","entry_id":"prior-entry","started_at":"2026-10-04T12:00:00Z","ended_at":null,"entry_estimate_seconds":3600},
+              "active_entry":{"id":"prior-entry","task":{"id":"sleep-task","title":"睡眠"},"lifecycle_state":"running","estimate_seconds":3600},
+              "next_entry":{"id":"day-b-entry","task":{"id":"day-b-task","title":"今日の予定","project":null},"section_id":"morning","position":1,"lifecycle_state":"planned","estimate_seconds":1200,"planned_start_minute":null,"mode":null,"routine":null,"execution_summary":{"first_started_at":null,"last_ended_at":null,"completed_duration_seconds":0,"active_started_at":null,"active_execution_id":null}}
+            }
+        """
+
         const val SAMPLE = """
             {
               "taskchute_day":{"id":"day-1","logical_date":"2026-09-14","start_instant":"2026-09-14T00:00:00Z","end_instant":"2026-09-15T00:00:00Z","establishment_timezone":"Asia/Tokyo","establishment_boundary_minutes":240},

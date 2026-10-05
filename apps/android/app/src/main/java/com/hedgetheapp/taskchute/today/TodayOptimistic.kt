@@ -138,7 +138,15 @@ internal fun applyOptimisticLifecycle(
     entryId: String,
     nextState: LifecycleState,
 ): TodayDay {
-    val task = day.allEntries.firstOrNull { it.id == entryId } ?: return day
+    val task = day.allEntries.firstOrNull { it.id == entryId }
+    if (task == null) {
+        return if (nextState == LifecycleState.COMPLETED
+            && day.activeExecution?.entryId == entryId
+            && day.activeEntry?.id == entryId
+        ) {
+            day.copy(activeExecution = null, activeEntry = null)
+        } else day
+    }
     val now = Instant.now().toString()
     val updated = when (nextState) {
         LifecycleState.RUNNING -> task.copy(

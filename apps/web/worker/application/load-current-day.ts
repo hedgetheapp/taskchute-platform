@@ -96,6 +96,9 @@ interface EntryRow {
 interface ExecutionRow {
   id: string;
   entry_id: string;
+  active_task_id: string;
+  active_task_title: string;
+  active_entry_lifecycle_state: "planned" | "running" | "completed";
   entry_estimate_seconds: number | null;
   started_at: string;
   ended_at: string | null;
@@ -457,10 +460,19 @@ async function loadEstablishedProjection(
       )
       .bind(appUserId, appUserId, appUserId, day.id),
     includeActiveExecution
-      ? db.prepare(`SELECT x.id, x.entry_id, e.estimate_seconds AS entry_estimate_seconds, x.started_at, x.ended_at, x.terminal_outcome
+      ? db.prepare(`SELECT x.id, x.entry_id, t.id AS active_task_id,
+          CASE WHEN rs.routine_occurrence_id IS NOT NULL THEN rs.task_title
+               WHEN ets.entry_id IS NOT NULL THEN ets.task_title ELSE t.title END AS active_task_title,
+          e.lifecycle_state AS active_entry_lifecycle_state,
+          e.estimate_seconds AS entry_estimate_seconds, x.started_at, x.ended_at, x.terminal_outcome
           FROM executions x JOIN entries e ON e.app_user_id = x.app_user_id AND e.id = x.entry_id
+          JOIN tasks t ON t.app_user_id = e.app_user_id AND t.id = e.task_id
+          LEFT JOIN routine_occurrence_task_snapshots rs
+            ON rs.app_user_id = e.app_user_id AND rs.routine_occurrence_id = e.routine_occurrence_id
+          LEFT JOIN entry_task_snapshots ets ON ets.app_user_id = e.app_user_id AND ets.entry_id = e.id
           WHERE x.app_user_id = ? AND x.ended_at IS NULL LIMIT 1`).bind(appUserId)
-      : db.prepare(`SELECT NULL AS id, NULL AS entry_id, NULL AS entry_estimate_seconds,
+      : db.prepare(`SELECT NULL AS id, NULL AS entry_id, NULL AS active_task_id, NULL AS active_task_title,
+          NULL AS active_entry_lifecycle_state, NULL AS entry_estimate_seconds,
           NULL AS started_at, NULL AS ended_at WHERE false`),
     db.prepare(`SELECT x.id, x.entry_id, x.started_at, x.ended_at, x.terminal_outcome
       FROM executions x JOIN entries e ON e.app_user_id = x.app_user_id AND e.id = x.entry_id
@@ -563,6 +575,16 @@ async function loadEstablishedProjection(
   const nextEntry = [...unsectionedEntries, ...sections.flatMap((section) => section.entries)]
     .find((entry) => entry.lifecycle_state === "planned") ?? null;
   const activeExecution = executionResult.results[0] as ExecutionRow | undefined;
+  const projectedEntryIds = new Set(entryRows.map((row) => row.entry_id));
+  const activeEntry = activeExecution?.active_entry_lifecycle_state === "running"
+    && !projectedEntryIds.has(activeExecution.entry_id)
+    ? {
+      id: activeExecution.entry_id,
+      task: { id: activeExecution.active_task_id, title: activeExecution.active_task_title },
+      lifecycle_state: "running" as const,
+      estimate_seconds: activeExecution.entry_estimate_seconds,
+    }
+    : null;
   return {
     projection_generated_at: projectionGeneratedAt,
     establishment_state: "established",
@@ -587,6 +609,7 @@ async function loadEstablishedProjection(
       started_at: activeExecution.started_at,
       ended_at: activeExecution.ended_at,
     } : null,
+    active_entry: activeEntry,
     next_entry: nextEntry,
   };
 }

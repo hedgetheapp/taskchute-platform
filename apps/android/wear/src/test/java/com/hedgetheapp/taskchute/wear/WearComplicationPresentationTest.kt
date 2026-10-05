@@ -306,6 +306,34 @@ class WearComplicationPresentationTest {
         )
     }
 
+    @Test
+    fun crossDayActiveEntryIsCanonicalRunningAndRefreshesTheLastKnownGoodProjection() {
+        val day = day().copy(
+            sections = listOf(WearSection("today-section", "朝", 240, 720, listOf(
+                task(WearLifecycle.PLANNED, 1_200).copy(id = "today-entry", title = "今日の予定"),
+            ))),
+            activeExecution = WearExecution("execution-prior", "prior-entry", "2026-10-02T10:00:00Z", 1_800),
+            activeEntry = WearActiveEntry("prior-entry", "sleep-task", "睡眠", WearLifecycle.RUNNING, 1_800),
+        )
+        val currentTime = Instant.parse("2026-10-02T10:18:00Z")
+
+        val resolution = resolveWearComplication(
+            WearAuthResult.SignedIn,
+            WearLoadResult.Success(day),
+            currentTime,
+            lastKnownGood = null,
+        )
+
+        assertEquals("prior-entry", day.runningTask?.id)
+        assertEquals(WearComplicationPresentation.Running("睡眠", Instant.parse("2026-10-02T10:00:00Z"), 1_080, 1_800,
+            "18/30", "睡眠、経過 18分 / 見積 30分", false), resolution.presentation)
+        assertEquals(
+            WearComplicationCacheChange.Save(WearRunningProjectionSnapshot("睡眠", Instant.parse("2026-10-02T10:00:00Z"), 1_800)),
+            resolution.cacheChange,
+        )
+        assertEquals(listOf("today-entry"), day.allTasks.map { it.id })
+    }
+
     private fun running(startedAt: String, estimate: Int?, title: String = "集中作業"): WearComplicationPresentation.Running {
         val task = task(WearLifecycle.RUNNING, estimate).copy(title = title)
         val day = day().copy(

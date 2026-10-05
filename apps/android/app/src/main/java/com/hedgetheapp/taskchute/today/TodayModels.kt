@@ -57,6 +57,14 @@ data class TodayExecution(
     val estimateSeconds: Int?,
 )
 
+data class TodayActiveEntry(
+    val id: String,
+    val taskId: String,
+    val title: String,
+    val lifecycleState: LifecycleState,
+    val estimateSeconds: Int?,
+)
+
 data class TodayDay(
     val logicalDate: String,
     val isCurrent: Boolean,
@@ -70,10 +78,27 @@ data class TodayDay(
     val endInstant: String? = null,
     val establishmentTimezone: String? = null,
     val establishmentBoundaryMinutes: Int = 0,
+    val activeEntry: TodayActiveEntry? = null,
 ) {
     val allEntries: List<TodayTask> get() = sections.flatMap { it.entries } + unsectionedEntries
     val runningTask: TodayTask?
-        get() = activeExecution?.let { execution -> allEntries.firstOrNull { it.id == execution.entryId } }
+        get() = activeExecution?.let { execution ->
+            allEntries.firstOrNull { it.id == execution.entryId }
+                ?: activeEntry?.takeIf { it.id == execution.entryId }?.let { entry ->
+                    TodayTask(
+                        id = entry.id,
+                        title = entry.title,
+                        lifecycleState = entry.lifecycleState,
+                        project = null,
+                        mode = null,
+                        estimateSeconds = entry.estimateSeconds,
+                        plannedStartMinute = null,
+                        executionId = execution.id,
+                        activeStartedAt = execution.startedAt,
+                        taskId = entry.taskId,
+                    )
+                }
+        }
     val hasEntries: Boolean get() = allEntries.isNotEmpty()
 }
 

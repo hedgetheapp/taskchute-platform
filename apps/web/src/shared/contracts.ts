@@ -460,6 +460,8 @@ interface TaskChuteDayProjectionBase {
   sections: SectionProjection[];
   unsectioned_entries: EntryProjection[];
   active_execution: ActiveExecutionProjection | null;
+  /** Minimal presentation for a user-global active Entry omitted from this Day's rows. */
+  active_entry?: ActiveEntryPresentationProjection | null;
   next_entry: EntryProjection | null;
 }
 
@@ -500,6 +502,13 @@ export interface ExecutionProjection {
 
 export interface ActiveExecutionProjection extends ExecutionProjection {
   entry_estimate_seconds: number | null;
+}
+
+export interface ActiveEntryPresentationProjection {
+  id: string;
+  task: Pick<TaskSummary, "id" | "title">;
+  lifecycle_state: "running";
+  estimate_seconds: number | null;
 }
 
 export interface CreateProjectRequest {

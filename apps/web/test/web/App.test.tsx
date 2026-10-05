@@ -3858,12 +3858,25 @@ describe("Dogfood Day shell", () => {
     expect(screen.queryByRole("button", { name: "保留中のStartを再試行" })).toBeNull();
   });
 
-  it("can complete a cross-Day active Execution from the runner without inventing a Task title", async () => {
-    const crossDay = { ...emptyDay, active_execution: runningDay.active_execution };
+  it("shows the ordinary Running title and completes a cross-Day active Execution without adding it to Day rows", async () => {
+    const activeExecution = runningDay.active_execution!;
+    const runningEntry = runningDay.sections.flatMap((section) => section.entries).find((entry) => entry.id === activeExecution.entry_id)!;
+    const crossDay = {
+      ...emptyDay,
+      active_execution: activeExecution,
+      active_entry: {
+        id: runningEntry.id,
+        task: { id: runningEntry.task.id, title: runningEntry.task.title },
+        lifecycle_state: "running" as const,
+        estimate_seconds: runningEntry.estimate_seconds,
+      },
+    };
     mocks.loadDay.mockResolvedValueOnce(crossDay).mockResolvedValueOnce(emptyDay);
     render(<App />);
     const runner = await screen.findByRole("complementary", { name: "実行中のTask" });
-    expect(runner.textContent).toContain("別日の実行中Task");
+    expect(runner.textContent).toContain(runningEntry.task.title);
+    expect(runner.textContent).not.toContain("別日の実行中Task");
+    expect(document.querySelector(`[data-entry-id="${activeExecution.entry_id}"]`)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "実行中のTaskを完了" }));
     await waitFor(() => expect(mocks.completeEntry).toHaveBeenCalledTimes(1));
     expect(mocks.completeEntry.mock.calls[0][0]).toMatchObject({

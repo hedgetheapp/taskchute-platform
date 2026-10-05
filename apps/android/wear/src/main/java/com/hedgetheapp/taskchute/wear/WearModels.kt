@@ -33,6 +33,14 @@ internal data class WearExecution(
     val estimateSeconds: Int?,
 )
 
+internal data class WearActiveEntry(
+    val id: String,
+    val taskId: String,
+    val title: String,
+    val lifecycle: WearLifecycle,
+    val estimateSeconds: Int?,
+)
+
 internal data class WearDay(
     val logicalDate: String,
     val placementRevision: Int,
@@ -41,9 +49,25 @@ internal data class WearDay(
     val activeExecution: WearExecution?,
     val startInstant: String?,
     val establishmentTimezone: String?,
+    val activeEntry: WearActiveEntry? = null,
 ) {
     val allTasks: List<WearTask> get() = sections.flatMap { it.tasks } + unsectionedTasks
-    val runningTask: WearTask? get() = activeExecution?.let { active -> allTasks.firstOrNull { it.id == active.entryId } }
+    val runningTask: WearTask? get() = activeExecution?.let { active ->
+        allTasks.firstOrNull { it.id == active.entryId }
+            ?: activeEntry?.takeIf { it.id == active.entryId }?.let { entry ->
+                WearTask(
+                    id = entry.id,
+                    title = entry.title,
+                    lifecycle = entry.lifecycle,
+                    estimateSeconds = entry.estimateSeconds,
+                    routineDerived = false,
+                    executionId = active.id,
+                    activeStartedAt = active.startedAt,
+                    firstStartedAt = active.startedAt,
+                    completedDurationSeconds = null,
+                )
+            }
+    }
     val nextPlannedTask: WearTask? get() = allTasks.firstOrNull { it.lifecycle == WearLifecycle.PLANNED }
 }
 

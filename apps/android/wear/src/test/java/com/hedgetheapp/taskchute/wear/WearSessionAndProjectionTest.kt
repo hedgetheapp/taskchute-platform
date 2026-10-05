@@ -80,6 +80,21 @@ class WearSessionAndProjectionTest {
         assertEquals(WearProjection(810, null), wearForecast(day, running, Instant.parse("2026-09-30T04:34:00Z")))
     }
 
+    @Test
+    fun crossDayActiveEntryStaysOutsideRowsAndStillShiftsPlannedForecastByRemainingEstimate() {
+        val active = WearExecution("execution-prior", "prior-entry", "2026-09-30T04:00:00Z", 3600)
+        val priorEntry = WearActiveEntry("prior-entry", "sleep-task", "睡眠", WearLifecycle.RUNNING, 3600)
+        val planned = task("today-planned", estimateSeconds = 600)
+        val day = day(tasks = listOf(planned), active = active).copy(activeEntry = priorEntry)
+
+        assertEquals(listOf("today-planned"), day.allTasks.map { it.id })
+        assertEquals("prior-entry", day.runningTask?.id)
+        assertEquals("execution-prior", day.runningTask?.executionId)
+        val now = Instant.parse("2026-09-30T04:30:00Z")
+        assertEquals(WearProjection(780, 840), wearForecast(day, day.runningTask!!, now))
+        assertEquals(WearProjection(840, 850), wearForecast(day, planned, now))
+    }
+
     private fun task(
         id: String,
         lifecycle: WearLifecycle = WearLifecycle.PLANNED,
@@ -106,4 +121,5 @@ class WearSessionAndProjectionTest {
         startInstant = "2026-09-29T15:00:00Z",
         establishmentTimezone = "Asia/Tokyo",
     )
+
 }

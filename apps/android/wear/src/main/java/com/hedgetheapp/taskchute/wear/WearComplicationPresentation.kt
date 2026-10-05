@@ -110,7 +110,7 @@ internal fun wearComplicationPresentation(
             if (execution == null) {
                 WearComplicationPresentation.Idle
             } else {
-                val task = day.allTasks.firstOrNull { it.id == execution.entryId }
+                val task = day.runningTask
                 val startedAt = runCatching { Instant.parse(execution.startedAt) }.getOrNull()
                 if (task == null || task.lifecycle != WearLifecycle.RUNNING || startedAt == null) {
                     WearComplicationPresentation.Unavailable

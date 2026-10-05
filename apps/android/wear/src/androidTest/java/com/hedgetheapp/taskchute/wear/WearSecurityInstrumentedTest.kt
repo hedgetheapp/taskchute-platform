@@ -133,4 +133,29 @@ class WearSecurityInstrumentedTest {
         assertEquals(1800, day.activeExecution?.estimateSeconds)
         assertEquals(WearProjection(630, 660), wearForecast(day, day.runningTask!!, Instant.parse("2026-09-30T01:40:00Z")))
     }
+
+    @Test
+    fun crossDayProjectionKeepsPriorDayTaskOutsideCurrentDayRowsAndResolvesRunning() {
+        val body = """
+            {
+              "placement_revision": 1,
+              "taskchute_day": {"logical_date":"2026-10-05","start_instant":"2026-10-04T15:00:00Z","establishment_timezone":"Asia/Tokyo"},
+              "sections": [{"id":"morning","title":"朝","logical_start_minute":240,"logical_end_minute":720,"entries":[
+                {"id":"day-b-entry","lifecycle_state":"planned","estimate_seconds":1200,"planned_start_minute":null,"task":{"id":"day-b-task","title":"今日の予定"},"routine":null,"execution_summary":null}
+              ]}],
+              "unsectioned_entries": [],
+              "active_execution": {"id":"execution-prior","entry_id":"prior-entry","started_at":"2026-10-04T12:00:00Z","ended_at":null,"entry_estimate_seconds":3600},
+              "active_entry": {"id":"prior-entry","task":{"id":"sleep-task","title":"睡眠"},"lifecycle_state":"running","estimate_seconds":3600}
+            }
+        """.trimIndent()
+
+        val day = WearJsonParser.parseDay(body)
+
+        assertEquals(listOf("day-b-entry"), day.allTasks.map { it.id })
+        assertEquals("prior-entry", day.runningTask?.id)
+        assertEquals("睡眠", day.runningTask?.title)
+        assertEquals(3600, day.runningTask?.estimateSeconds)
+        assertEquals("execution-prior", day.runningTask?.executionId)
+        assertEquals("2026-10-04T12:00:00Z", day.runningTask?.activeStartedAt)
+    }
 }
