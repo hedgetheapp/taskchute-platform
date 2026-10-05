@@ -88,6 +88,39 @@ class TaskPlanningControllerTest {
     }
 
     @Test
+    fun establishedPastPlannedEntryOpensFullPlanningEditor() {
+        val controller = controller(FakePlanningRepository())
+
+        controller.openEdit(establishedPastDay(), plannedTask())
+
+        assertNotNull(controller.state.editor)
+        assertEquals(TaskEditorCapability.FULL_PLANNING, controller.state.editor?.capability)
+        controller.close()
+    }
+
+    @Test
+    fun establishedPastRunningEntryOpensRunningEditor() {
+        val controller = controller(FakePlanningRepository())
+
+        controller.openEdit(establishedPastDay(), plannedTask(lifecycleState = LifecycleState.RUNNING))
+
+        assertNotNull(controller.state.editor)
+        assertEquals(TaskEditorCapability.RUNNING_METADATA, controller.state.editor?.capability)
+        controller.close()
+    }
+
+    @Test
+    fun establishedPastCompletedEntryOpensCompletedEditor() {
+        val controller = controller(FakePlanningRepository())
+
+        controller.openEdit(establishedPastDay(), plannedTask(lifecycleState = LifecycleState.COMPLETED))
+
+        assertNotNull(controller.state.editor)
+        assertEquals(TaskEditorCapability.COMPLETED_METADATA, controller.state.editor?.capability)
+        controller.close()
+    }
+
+    @Test
     fun futurePlanningDayAllowsCreate() {
         val repository = FakePlanningRepository()
         val controller = controller(repository)
@@ -504,6 +537,8 @@ class TaskPlanningControllerTest {
             planningEnabled = false,
             taskChuteDayId = null,
         )
+
+        fun establishedPastDay() = pastDay().copy(taskChuteDayId = "past-day-1")
 
         fun plannedTask(
             lifecycleState: LifecycleState = LifecycleState.PLANNED,

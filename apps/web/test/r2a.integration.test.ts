@@ -177,7 +177,7 @@ describe.sequential("D-163 Routine occurrence title overrides", () => {
       .toBe("Renamed shared Task");
   });
 
-  it("allows only planned occurrences on the current or already-established future Day", async () => {
+  it("allows planned occurrence title correction on current, established future, and established past Days", async () => {
     const fixture = await seedRoutine();
     const futureDay = await insertDay(fixture.userId, fixture.versionId, fixture.sections, "2026-08-30");
     const future = await insertOccurrence({ userId: fixture.userId, definitionId: fixture.definitionId,
@@ -193,11 +193,14 @@ describe.sequential("D-163 Routine occurrence title overrides", () => {
     const pastDay = await insertDay(fixture.userId, fixture.versionId, fixture.sections, "2026-08-28");
     const past = await insertOccurrence({ userId: fixture.userId, definitionId: fixture.definitionId,
       taskId: fixture.taskId, dayId: pastDay, sectionId: fixture.sections[0]!, estimate: 900, plannedStart: 300 });
-    await expect(setRoutineTitle(env.APP_DB, fixture.userId, {
-      operation_id: uuidv7(), entry_id: past.entryId, taskchute_day_id: pastDay, title: "Past must reject",
-    }, now)).rejects.toMatchObject({ code: "resource_conflict" });
+    const pastResult = await setRoutineTitle(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), entry_id: past.entryId, taskchute_day_id: pastDay, title: "Historical occurrence title",
+    }, now);
+    expect(pastResult).toMatchObject({ title: "Historical occurrence title", title_override_present: true });
     expect(await env.APP_DB.prepare("SELECT title_override FROM routine_occurrences WHERE id = ?")
-      .bind(past.occurrenceId).first()).toEqual({ title_override: null });
+      .bind(past.occurrenceId).first()).toEqual({ title_override: "Historical occurrence title" });
+    expect(await env.APP_DB.prepare("SELECT task_title FROM routine_occurrence_task_snapshots WHERE routine_occurrence_id = ?")
+      .bind(past.occurrenceId).first()).toEqual({ task_title: "Historical occurrence title" });
 
     await env.APP_DB.prepare("UPDATE entries SET lifecycle_state = 'running' WHERE id = ?")
       .bind(fixture.entryId).run();

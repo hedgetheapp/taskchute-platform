@@ -2279,8 +2279,7 @@ class TodayScreenInstrumentedTest {
     }
 
     @Test
-    fun pastPlannedTaskExposesNoteAndForwardMoveSwipe() {
-        var openedTaskNote = 0
+    fun pastPlannedTaskExposesEditorSingleRowDeleteAndExistingForwardMove() {
         val directRepository = FakeDirectManipulationRepository()
         val task = dayWith().sections.single().entries.single().copy(taskId = "task-history")
         val initialDay = dayWith().copy(
@@ -2293,24 +2292,70 @@ class TodayScreenInstrumentedTest {
             FakePlanningRepository(),
             initialDay,
             directRepository,
-            onOpenTaskNote = { openedTaskNote++ },
         )
         waitForStatus(TodayLoadStatus.CONTENT)
 
         composeRule.onNodeWithText("Write report").performTouchInput { swipeLeft() }
         composeRule.onNodeWithContentDescription("タスクのノート").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("タスクの操作").assertIsDisplayed()
-        assertActionIsOnRevealedRight("Write report", "タスクのノート")
-        assertTrue(composeRule.onAllNodesWithText("編集", substring = false).fetchSemanticsNodes().isEmpty())
-        assertTrue(composeRule.onAllNodesWithText("その他", substring = false).fetchSemanticsNodes().isEmpty())
-        composeRule.onNodeWithContentDescription("タスクのノート").performClick()
-        assertEquals(1, openedTaskNote)
+        assertTrue(composeRule.onAllNodesWithContentDescription("タスクを開始").fetchSemanticsNodes().isEmpty())
+        composeRule.onNodeWithContentDescription("タスクを編集").assertIsDisplayed().performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("タスクを編集").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("タスクを編集").assertIsDisplayed()
+        composeRule.onNodeWithText("開始時間", substring = false).assertIsDisplayed()
+        composeRule.onNodeWithText("終了時間", substring = false).assertIsDisplayed()
+        composeRule.onNodeWithText("キャンセル", substring = false).performClick()
 
         composeRule.onNodeWithText("Write report").performTouchInput { swipeLeft() }
         composeRule.onNodeWithContentDescription("タスクの操作").performClick()
         composeRule.onNodeWithText("今日へ移動").assertIsDisplayed()
         composeRule.onNodeWithText("日付を移動").assertIsDisplayed()
+        composeRule.onNodeWithText("削除", substring = false).assertIsDisplayed().performClick()
+        composeRule.onNodeWithText("選択した1件の予定を削除しますか？").assertIsDisplayed()
+        composeRule.onNodeWithText("削除", substring = false).performClick()
+        composeRule.waitUntil(5_000) { directRepository.deleteCalls.get() == 1 }
+        val delete = directRepository.lastRequest as DirectManipulationRequest.Delete
+        assertEquals(listOf(task.id), delete.entryIds)
+        assertEquals("day-1", delete.taskChuteDayId)
     }
+
+    @Test
+    fun pastRunningAndCompletedRowsOpenTheirExistingHistoricalEditors() {
+        val running = dayWith(LifecycleState.RUNNING).sections.single().entries.single().copy(
+            id = "past-running", title = "Past Running", taskId = "task-past-running",
+            executionId = "execution-past-running", activeStartedAt = "2000-01-01T09:00:00Z",
+            firstStartedAt = "2000-01-01T09:00:00Z",
+        )
+        val completed = dayWith(LifecycleState.COMPLETED).sections.single().entries.single().copy(
+            id = "past-completed", title = "Past Completed", taskId = "task-past-completed",
+            executionId = "execution-past-completed", firstStartedAt = "2000-01-01T10:00:00Z",
+            lastEndedAt = "2000-01-01T10:30:00Z",
+        )
+        val base = dayWith(LifecycleState.RUNNING)
+        val initialDay = base.copy(
+            logicalDate = "2000-01-01", isCurrent = false, planningEnabled = false,
+            sections = listOf(base.sections.single().copy(entries = listOf(running, completed))),
+            activeExecution = TodayExecution("execution-past-running", running.id, "2000-01-01T09:00:00Z", 600),
+        )
+        launchPlanningScreen(FakePlanningRepository(), initialDay)
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        for (taskTitle in listOf("Past Running", "Past Completed")) {
+            composeRule.onNodeWithText(taskTitle).performTouchInput { swipeLeft() }
+            composeRule.onNodeWithContentDescription("タスクを編集").assertIsDisplayed().performClick()
+            composeRule.waitUntil(5_000) {
+                composeRule.onAllNodesWithText("実績タスクの編集").fetchSemanticsNodes().isNotEmpty()
+            }
+            composeRule.onNodeWithText("実績タスクの編集").assertIsDisplayed()
+            composeRule.onNodeWithText("プロジェクト").assertIsDisplayed()
+            composeRule.onNodeWithText("モード").assertIsDisplayed()
+            assertTrue(composeRule.onAllNodesWithContentDescription("タスクを開始").fetchSemanticsNodes().isEmpty())
+            composeRule.onNodeWithText("キャンセル", substring = false).performClick()
+        }
+    }
+
     @Test
     fun ordinaryPlannedRowUsesSwipeRevealForEditing() {
         val planningRepository = FakePlanningRepository()

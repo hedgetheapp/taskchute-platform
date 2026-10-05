@@ -38,6 +38,9 @@ interface RoutineEditRow {
   estimate_override_present: number;
   mode_override_present: number;
   entry_mode_id: string | null;
+  mode_snapshot_entry_id: string | null;
+  snapshot_mode_id: string | null;
+  snapshot_mode_title: string | null;
   default_mode_id: string | null;
   default_mode_title: string | null;
   default_section_id: string | null;
@@ -151,7 +154,9 @@ async function readRoutineEditRow(db: D1Database, appUserId: string, entryId: st
       ro.id AS routine_occurrence_id, ro.routine_definition_id,
       ro.section_plan_override_present, ro.estimate_override_present,
       CASE WHEN rmo.routine_occurrence_id IS NULL THEN 0 ELSE 1 END AS mode_override_present,
-      em.mode_id AS entry_mode_id, rdm.mode_id AS default_mode_id, md.title AS default_mode_title,
+      em.mode_id AS entry_mode_id, ems.entry_id AS mode_snapshot_entry_id,
+      ems.mode_id AS snapshot_mode_id, ems.mode_title AS snapshot_mode_title,
+      rdm.mode_id AS default_mode_id, md.title AS default_mode_title,
       rd.default_section_id, rd.default_planned_start_minute, rd.default_estimate_seconds, rd.defaults_revision,
       t.title AS base_task_title, ro.title_override
     FROM entries e
@@ -162,6 +167,7 @@ async function readRoutineEditRow(db: D1Database, appUserId: string, entryId: st
     LEFT JOIN routine_occurrence_mode_overrides rmo
       ON rmo.app_user_id = ro.app_user_id AND rmo.routine_occurrence_id = ro.id
     LEFT JOIN entry_modes em ON em.app_user_id = e.app_user_id AND em.entry_id = e.id
+    LEFT JOIN entry_mode_snapshots ems ON ems.app_user_id = e.app_user_id AND ems.entry_id = e.id
     LEFT JOIN routine_definition_modes rdm
       ON rdm.app_user_id = rd.app_user_id AND rdm.routine_definition_id = rd.id
     LEFT JOIN mode_definitions md ON md.app_user_id = rdm.app_user_id AND md.id = rdm.mode_id
@@ -199,9 +205,9 @@ function isEditableRoutineOccurrence(
   kind: "section" | "estimate",
 ): row is RoutineEditRow {
   if (row === null || currentDay === null || row.taskchute_day_id !== requestedDayId) return false;
-  if (kind === "section") return row.lifecycle_state === "planned" && row.logical_date >= currentDay.logical_date;
-  return (row.lifecycle_state === "planned" && row.logical_date >= currentDay.logical_date)
-    || (row.lifecycle_state === "running" && row.logical_date === currentDay.logical_date);
+  if (kind === "section") return row.lifecycle_state === "planned";
+  return row.lifecycle_state === "planned"
+    || (row.lifecycle_state === "running" && row.logical_date <= currentDay.logical_date);
 }
 
 /**
@@ -222,11 +228,14 @@ export async function setRoutineMode(
     readCurrentDay(db, appUserId, nowInstant),
     readRoutineEditRow(db, appUserId, request.entry_id),
   ]);
-  if (!isCurrentPlannedRoutine(row, currentDay, request.taskchute_day_id)) {
+  const pastRoutineOccurrence = request.action === "occurrence" && row !== null && currentDay !== null
+    && row.taskchute_day_id === request.taskchute_day_id && row.logical_date < currentDay.logical_date
+    && ["planned", "running", "completed"].includes(row.lifecycle_state);
+  if (!isCurrentPlannedRoutine(row, currentDay, request.taskchute_day_id) && !pastRoutineOccurrence) {
     return reject(db, appUserId, request.operation_id, "SetRoutineMode", requestFingerprint,
-      "Only a current-Day planned Routine Entry Mode can be edited");
+      "Only an established planned or historical Routine occurrence Mode can be edited");
   }
-  const activeDay = currentDay!;
+  const establishedCurrentDay = currentDay!;
   const targetMode = request.mode_id === null ? null : await db.prepare(`SELECT m.id, m.title,
       CASE WHEN a.mode_id IS NULL THEN 0 ELSE 1 END AS archived
     FROM mode_definitions m LEFT JOIN mode_archives a
@@ -237,7 +246,9 @@ export async function setRoutineMode(
     return reject(db, appUserId, request.operation_id, "SetRoutineMode", requestFingerprint,
       "Mode is unavailable");
   }
-  const assignmentBase = request.action === "definition" ? row.default_mode_id : row.entry_mode_id;
+  const effectiveOccurrenceMode = pastRoutineOccurrence && row.lifecycle_state === "completed"
+      && row.mode_snapshot_entry_id !== null ? row.snapshot_mode_id : row.entry_mode_id;
+  const assignmentBase = request.action === "definition" ? row.default_mode_id : effectiveOccurrenceMode;
   if (targetMode?.archived === 1 && targetMode.id !== assignmentBase) {
     return reject(db, appUserId, request.operation_id, "SetRoutineMode", requestFingerprint,
       "An archived Mode cannot be newly assigned");
@@ -245,6 +256,11 @@ export async function setRoutineMode(
   if (request.action === "definition" && row.defaults_revision !== request.expected_defaults_revision) {
     return reject(db, appUserId, request.operation_id, "SetRoutineMode", requestFingerprint,
       "The Routine defaults revision is stale", true);
+  }
+
+  if (pastRoutineOccurrence && row.lifecycle_state !== "planned") {
+    return setPastRoutineOccurrenceMode(db, appUserId, request, requestFingerprint, row, currentDay,
+      targetMode, effectiveOccurrenceMode, nowInstant);
   }
 
   const sameEffectiveMode = row.entry_mode_id === request.mode_id;
@@ -262,6 +278,14 @@ export async function setRoutineMode(
   };
   const assertionId = `routine-mode:${request.operation_id}`;
   const now = new Date().toISOString();
+  const plannedDayGuard = pastRoutineOccurrence
+    ? `AND EXISTS (SELECT 1 FROM taskchute_days d WHERE d.app_user_id = e.app_user_id
+        AND d.id = e.taskchute_day_id AND d.id = ? AND d.logical_date = ? AND d.logical_date < ?)`
+    : `AND EXISTS (SELECT 1 FROM taskchute_days d WHERE d.app_user_id = e.app_user_id
+        AND d.id = e.taskchute_day_id AND d.id = ? AND d.logical_date = ?)`;
+  const dayGuardBindings = pastRoutineOccurrence
+    ? [request.taskchute_day_id, row.logical_date, establishedCurrentDay.logical_date]
+    : [request.taskchute_day_id, establishedCurrentDay.logical_date];
   try {
     const guard = db.prepare(`INSERT INTO routine_command_guards (app_user_id, operation_id, command_type)
       SELECT ?, ?, 'SetRoutineMode' WHERE EXISTS (
@@ -269,7 +293,7 @@ export async function setRoutineMode(
         JOIN routine_occurrences ro ON ro.app_user_id = e.app_user_id AND ro.id = e.routine_occurrence_id
         JOIN routine_definitions rd ON rd.app_user_id = ro.app_user_id AND rd.id = ro.routine_definition_id
         WHERE e.app_user_id = ? AND e.id = ? AND e.taskchute_day_id = ?
-          AND e.lifecycle_state = 'planned' AND ro.id = ? AND rd.id = ?
+          ${plannedDayGuard} AND e.lifecycle_state = 'planned' AND ro.id = ? AND rd.id = ?
           AND rd.defaults_revision = ?
           AND NOT EXISTS (SELECT 1 FROM routine_occurrence_suppressions x
             WHERE x.app_user_id = ro.app_user_id AND x.routine_occurrence_id = ro.id)
@@ -279,7 +303,8 @@ export async function setRoutineMode(
             WHERE app_user_id = ro.app_user_id AND routine_occurrence_id = ro.id) IS ?
           AND (SELECT mode_id FROM entry_modes
             WHERE app_user_id = e.app_user_id AND entry_id = e.id) IS ?)`)
-      .bind(appUserId, request.operation_id, appUserId, row.entry_id, activeDay.id,
+      .bind(appUserId, request.operation_id, appUserId, row.entry_id, request.taskchute_day_id,
+        ...dayGuardBindings,
         row.routine_occurrence_id, row.routine_definition_id,
         request.action === "definition" ? request.expected_defaults_revision : row.defaults_revision,
         row.mode_override_present, row.mode_override_present === 1 ? row.entry_mode_id : null,
@@ -406,6 +431,157 @@ export async function setRoutineMode(
   }
 }
 
+async function setPastRoutineOccurrenceMode(
+  db: D1Database,
+  appUserId: string,
+  request: SetRoutineModeRequest,
+  requestFingerprint: string,
+  row: RoutineEditRow,
+  currentDay: CurrentDayRow,
+  targetMode: { id: string; title: string; archived: number } | null,
+  effectiveModeId: string | null,
+  nowInstant: string,
+): Promise<SetRoutineModeResult> {
+  const sameEffectiveMode = effectiveModeId === request.mode_id;
+  const occurrenceNoOp = row.mode_override_present === 0 && sameEffectiveMode;
+  const targetOverridePresent = row.mode_override_present === 1 || !sameEffectiveMode;
+  const result: SetRoutineModeResult = {
+    entry_id: row.entry_id,
+    mode_id: request.mode_id,
+    mode_title: targetMode?.title ?? null,
+    mode_override_present: targetOverridePresent,
+    defaults_revision: row.defaults_revision,
+  };
+  const assertionId = `past-routine-mode:${request.operation_id}`;
+  const stateGuard = row.lifecycle_state === "running"
+    ? `e.lifecycle_state = 'running'
+        AND (SELECT COUNT(*) FROM executions x WHERE x.app_user_id = e.app_user_id
+          AND x.entry_id = e.id AND x.ended_at IS NULL AND x.terminal_outcome IS NULL) = 1`
+    : `e.lifecycle_state = 'completed'
+        AND EXISTS (SELECT 1 FROM executions x WHERE x.app_user_id = e.app_user_id
+          AND x.entry_id = e.id AND x.ended_at IS NOT NULL AND x.terminal_outcome = 'completed')
+        AND NOT EXISTS (SELECT 1 FROM executions x WHERE x.app_user_id = e.app_user_id
+          AND x.entry_id = e.id AND x.ended_at IS NULL)`;
+  const existingSnapshotCount = row.mode_snapshot_entry_id === null ? 0 : 1;
+  try {
+    const guard = db.prepare(`INSERT INTO routine_command_guards (app_user_id, operation_id, command_type)
+      SELECT ?, ?, 'SetRoutineMode' WHERE EXISTS (
+        SELECT 1 FROM entries e
+        JOIN taskchute_days d ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
+        JOIN routine_occurrences ro ON ro.app_user_id = e.app_user_id AND ro.id = e.routine_occurrence_id
+        JOIN routine_definitions rd ON rd.app_user_id = ro.app_user_id AND rd.id = ro.routine_definition_id
+        WHERE e.app_user_id = ? AND e.id = ? AND e.taskchute_day_id = ?
+          AND d.logical_date = ? AND d.logical_date < ? AND ${stateGuard}
+          AND ro.id = ? AND rd.id = ? AND rd.defaults_revision = ?
+          AND NOT EXISTS (SELECT 1 FROM routine_occurrence_suppressions x
+            WHERE x.app_user_id = ro.app_user_id AND x.routine_occurrence_id = ro.id)
+          AND (SELECT COUNT(*) FROM routine_occurrence_mode_overrides
+            WHERE app_user_id = ro.app_user_id AND routine_occurrence_id = ro.id) = ?
+          AND (SELECT mode_id FROM routine_occurrence_mode_overrides
+            WHERE app_user_id = ro.app_user_id AND routine_occurrence_id = ro.id) IS ?
+          AND (SELECT mode_id FROM entry_modes WHERE app_user_id = e.app_user_id AND entry_id = e.id) IS ?
+          AND (SELECT COUNT(*) FROM entry_mode_snapshots WHERE app_user_id = e.app_user_id AND entry_id = e.id) = ?
+          AND (SELECT mode_id FROM entry_mode_snapshots WHERE app_user_id = e.app_user_id AND entry_id = e.id) IS ?
+          AND (SELECT mode_title FROM entry_mode_snapshots WHERE app_user_id = e.app_user_id AND entry_id = e.id) IS ?)`)
+      .bind(appUserId, request.operation_id, appUserId, row.entry_id, request.taskchute_day_id,
+        row.logical_date, currentDay.logical_date, row.routine_occurrence_id, row.routine_definition_id,
+        row.defaults_revision, row.mode_override_present, row.mode_override_present === 1 ? row.entry_mode_id : null,
+        row.entry_mode_id, existingSnapshotCount, row.snapshot_mode_id, row.snapshot_mode_title);
+    const statements: D1PreparedStatement[] = [guard];
+    if (occurrenceNoOp) {
+      statements.push(db.prepare("SELECT 1 AS noop"));
+    } else {
+      statements.push(
+        db.prepare(`INSERT INTO routine_occurrence_mode_overrides (app_user_id, routine_occurrence_id, mode_id)
+          SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)
+          ON CONFLICT (app_user_id, routine_occurrence_id) DO UPDATE SET mode_id = excluded.mode_id`)
+          .bind(appUserId, row.routine_occurrence_id, request.mode_id, appUserId, request.operation_id),
+        request.mode_id === null
+          ? db.prepare(`DELETE FROM entry_modes WHERE app_user_id = ? AND entry_id = ?
+              AND EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+            .bind(appUserId, row.entry_id, appUserId, request.operation_id)
+          : db.prepare(`INSERT INTO entry_modes (app_user_id, entry_id, mode_id)
+              SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)
+              ON CONFLICT (app_user_id, entry_id) DO UPDATE SET mode_id = excluded.mode_id`)
+            .bind(appUserId, row.entry_id, request.mode_id, appUserId, request.operation_id),
+      );
+      if (row.lifecycle_state === "completed") {
+        statements.push(request.mode_id === null
+          ? db.prepare(`DELETE FROM entry_mode_snapshots WHERE app_user_id = ? AND entry_id = ?
+              AND EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+            .bind(appUserId, row.entry_id, appUserId, request.operation_id)
+          : db.prepare(`INSERT INTO entry_mode_snapshots (app_user_id, entry_id, mode_id, mode_title, captured_at)
+              SELECT ?, ?, ?, ?, COALESCE((SELECT captured_at FROM entry_mode_snapshots
+                WHERE app_user_id = ? AND entry_id = ?),
+                (SELECT MIN(started_at) FROM executions WHERE app_user_id = ? AND entry_id = ?), ?)
+              WHERE EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)
+              ON CONFLICT (app_user_id, entry_id) DO UPDATE SET mode_id = excluded.mode_id, mode_title = excluded.mode_title`)
+            .bind(appUserId, row.entry_id, request.mode_id, targetMode!.title, appUserId, row.entry_id,
+              appUserId, row.entry_id, nowInstant, appUserId, request.operation_id));
+      } else {
+        statements.push(db.prepare("SELECT 1 AS running_mode_no_snapshot"));
+      }
+    }
+    const expectedOverrideCount = occurrenceNoOp ? 0 : 1;
+    const expectedOverrideMode = occurrenceNoOp ? null : request.mode_id;
+    const expectedSnapshotCount = row.lifecycle_state === "completed" && !occurrenceNoOp
+      ? request.mode_id === null ? 0 : 1
+      : existingSnapshotCount;
+    const expectedSnapshotMode = row.lifecycle_state === "completed" && !occurrenceNoOp
+      ? request.mode_id : row.snapshot_mode_id;
+    const expectedSnapshotTitle = row.lifecycle_state === "completed" && !occurrenceNoOp
+      ? targetMode?.title ?? null : row.snapshot_mode_title;
+    statements.push(
+      db.prepare(`INSERT INTO transaction_assertions (app_user_id, id, ok)
+        SELECT ?, ?, CASE WHEN EXISTS (SELECT 1 FROM entries e JOIN taskchute_days d
+          ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
+          WHERE e.app_user_id = ? AND e.id = ? AND e.lifecycle_state = ? AND e.taskchute_day_id = ?
+            AND d.logical_date = ? AND d.logical_date < ? AND ${stateGuard})
+          AND (SELECT mode_id FROM entry_modes WHERE app_user_id = ? AND entry_id = ?) IS ?
+          AND (SELECT COUNT(*) FROM routine_occurrence_mode_overrides
+            WHERE app_user_id = ? AND routine_occurrence_id = ?) = ?
+          AND (SELECT mode_id FROM routine_occurrence_mode_overrides
+            WHERE app_user_id = ? AND routine_occurrence_id = ?) IS ?
+          AND (SELECT COUNT(*) FROM entry_mode_snapshots WHERE app_user_id = ? AND entry_id = ?) = ?
+          AND (SELECT mode_id FROM entry_mode_snapshots WHERE app_user_id = ? AND entry_id = ?) IS ?
+          AND (SELECT mode_title FROM entry_mode_snapshots WHERE app_user_id = ? AND entry_id = ?) IS ?
+          THEN 1 ELSE 0 END
+        WHERE EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(appUserId, assertionId, appUserId, row.entry_id, row.lifecycle_state,
+          request.taskchute_day_id, row.logical_date, currentDay.logical_date,
+          appUserId, row.entry_id, occurrenceNoOp ? row.entry_mode_id : request.mode_id,
+          appUserId, row.routine_occurrence_id, expectedOverrideCount,
+          appUserId, row.routine_occurrence_id, expectedOverrideMode,
+          appUserId, row.entry_id, expectedSnapshotCount,
+          appUserId, row.entry_id, expectedSnapshotMode,
+          appUserId, row.entry_id, expectedSnapshotTitle,
+          appUserId, request.operation_id),
+      db.prepare(`INSERT INTO operations
+        (app_user_id, operation_id, command_type, request_fingerprint_version,
+         request_fingerprint, outcome_kind, result_json, created_at)
+        SELECT ?, ?, 'SetRoutineMode', ?, ?, 'success', ?, ? WHERE EXISTS (
+          SELECT 1 FROM transaction_assertions WHERE app_user_id = ? AND id = ? AND ok = 1)`)
+        .bind(appUserId, request.operation_id, REQUEST_FINGERPRINT_VERSION, requestFingerprint,
+          JSON.stringify(result), nowInstant, appUserId, assertionId),
+      db.prepare("DELETE FROM transaction_assertions WHERE app_user_id = ? AND id = ?").bind(appUserId, assertionId),
+      db.prepare("DELETE FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?")
+        .bind(appUserId, request.operation_id),
+    );
+    const results = await db.batch(statements);
+    const committed = await readOperation(db, appUserId, request.operation_id);
+    if (committed) return replayOperation(committed, "SetRoutineMode", requestFingerprint);
+    if (results[0]?.meta.changes === 0) {
+      return reject(db, appUserId, request.operation_id, "SetRoutineMode", requestFingerprint,
+        "The historical Routine Mode changed before commit", true);
+    }
+    throw new HttpError(503, "infrastructure_ambiguous", "The historical Routine Mode outcome is unknown; reload and retry", true);
+  } catch {
+    const committed = await readOperation(db, appUserId, request.operation_id);
+    if (committed) return replayOperation(committed, "SetRoutineMode", requestFingerprint);
+    throw new HttpError(503, "infrastructure_ambiguous", "The historical Routine Mode outcome is unknown; reload and retry", true);
+  }
+}
+
 export async function setRoutineEstimate(
   db: D1Database,
   appUserId: string,
@@ -424,7 +600,7 @@ export async function setRoutineEstimate(
     : isCurrentPlannedRoutine(row, currentDay, request.taskchute_day_id);
   if (!row || !currentDay || !editableEstimate) {
     return reject(db, appUserId, request.operation_id, "SetRoutineEstimate", requestFingerprint,
-      "Only an established current/future planned or current-Day running Routine Entry estimate can be edited");
+      "Only an established planned or current/past Running Routine Entry estimate can be edited");
   }
   const activeDay = currentDay;
   if (request.action === "definition" && row.defaults_revision !== request.expected_defaults_revision) {
@@ -902,9 +1078,9 @@ export async function setRoutineTitle(
     readRoutineEditRow(db, appUserId, request.entry_id),
   ]);
   if (!row || !currentDay || row.taskchute_day_id !== request.taskchute_day_id
-    || row.logical_date < currentDay.logical_date || row.lifecycle_state !== "planned") {
+    || row.lifecycle_state !== "planned") {
     return reject(db, appUserId, request.operation_id, "SetRoutineTitle", requestFingerprint,
-      "Only a planned Routine occurrence on the current or an established future Day can be renamed");
+      "Only an established planned Routine occurrence can be renamed");
   }
 
   const effectiveTitle = normalizedTitle === row.base_task_title ? row.base_task_title : normalizedTitle;
@@ -926,15 +1102,15 @@ export async function setRoutineTitle(
           JOIN routine_occurrences ro ON ro.app_user_id = e.app_user_id AND ro.id = e.routine_occurrence_id
           JOIN routine_definitions rd ON rd.app_user_id = ro.app_user_id AND rd.id = ro.routine_definition_id
           WHERE e.app_user_id = ? AND e.id = ? AND e.taskchute_day_id = ?
-            AND e.lifecycle_state = 'planned' AND d.logical_date >= ?
+            AND e.lifecycle_state = 'planned' AND d.logical_date = ?
             AND ro.id = ? AND rd.id = ? AND t.title = ? AND ro.title_override IS ?
             AND NOT EXISTS (SELECT 1 FROM routine_occurrence_suppressions x
               WHERE x.app_user_id = ro.app_user_id AND x.routine_occurrence_id = ro.id)
             AND EXISTS (SELECT 1 FROM routine_occurrence_task_snapshots rs
               WHERE rs.app_user_id = ro.app_user_id AND rs.routine_occurrence_id = ro.id)
         )`)
-        .bind(appUserId, request.operation_id, appUserId, row.entry_id, request.taskchute_day_id,
-          currentDay.logical_date, row.routine_occurrence_id, row.routine_definition_id,
+      .bind(appUserId, request.operation_id, appUserId, row.entry_id, request.taskchute_day_id,
+          row.logical_date, row.routine_occurrence_id, row.routine_definition_id,
           row.base_task_title, row.title_override),
       db.prepare(`UPDATE routine_occurrences SET title_override = ? WHERE app_user_id = ? AND id = ?
         AND EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
@@ -951,7 +1127,7 @@ export async function setRoutineTitle(
             ON ro.app_user_id = e.app_user_id AND ro.id = e.routine_occurrence_id
             JOIN tasks t ON t.app_user_id = e.app_user_id AND t.id = e.task_id
             WHERE e.app_user_id = ? AND e.id = ? AND e.taskchute_day_id = ?
-              AND e.lifecycle_state = 'planned' AND d.logical_date >= ?
+              AND e.lifecycle_state = 'planned' AND d.logical_date = ?
               AND ro.id = ? AND t.title = ? AND ro.title_override IS ?)
           AND (SELECT COUNT(*) FROM routine_occurrence_task_snapshots
             WHERE app_user_id = ? AND routine_occurrence_id = ?) = 1
@@ -960,7 +1136,7 @@ export async function setRoutineTitle(
         THEN 1 ELSE 0 END WHERE EXISTS (
           SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
         .bind(appUserId, assertionId, appUserId, row.entry_id, request.taskchute_day_id,
-          currentDay.logical_date, row.routine_occurrence_id, row.base_task_title, titleOverride,
+          row.logical_date, row.routine_occurrence_id, row.base_task_title, titleOverride,
           appUserId, row.routine_occurrence_id, appUserId, row.routine_occurrence_id,
           effectiveTitle, appUserId, request.operation_id),
       db.prepare(`INSERT INTO operations (app_user_id, operation_id, command_type, request_fingerprint_version,

@@ -33,6 +33,9 @@ interface TargetRow {
   lifecycle_state: "planned" | "running" | "completed";
   routine_occurrence_id: string | null;
   routine_record_id: string | null;
+  continuation_chain_id: string | null;
+  continuation_parent_entry_id: string | null;
+  chain_entry_count: number;
   execution_count: number;
   suppression_count: number;
   position: number;
@@ -61,6 +64,9 @@ function targetSnapshot(rows: TargetRow[]): string {
     id: row.id,
     lifecycle_state: row.lifecycle_state,
     routine_occurrence_id: row.routine_occurrence_id,
+    continuation_chain_id: row.continuation_chain_id,
+    continuation_parent_entry_id: row.continuation_parent_entry_id,
+    chain_entry_count: row.chain_entry_count,
     position: row.position,
     execution_count: row.execution_count,
     suppression_count: row.suppression_count,
@@ -90,8 +96,10 @@ export async function bulkDeleteEntries(
     timezone: settings.timezone,
     boundaryMinutes: settings.day_boundary_minutes,
   }).logicalDate;
-  if (day.logical_date < currentLogicalDate) {
-    return reject(db, appUserId, request, requestFingerprint, "resource_conflict", "Bulk delete is unavailable for a past TaskChuteDay");
+  const isPastSingleDelete = day.logical_date < currentLogicalDate && request.entry_ids.length === 1;
+  if (day.logical_date < currentLogicalDate && !isPastSingleDelete) {
+    return reject(db, appUserId, request, requestFingerprint, "resource_conflict",
+      "Past TaskChuteDays allow only a single planned Entry delete");
   }
   if (day.placement_revision !== request.expected_placement_revision) {
     return persistRejection<BulkDeleteEntriesResult>(db, {
@@ -105,8 +113,11 @@ export async function bulkDeleteEntries(
   }
 
   const idsJson = JSON.stringify(request.entry_ids);
-  const targetResult = await db.prepare(`SELECT e.id, e.lifecycle_state, e.routine_occurrence_id, e.position,
+  const targetResult = await db.prepare(`SELECT e.id, e.lifecycle_state, e.routine_occurrence_id,
+      e.continuation_chain_id, e.continuation_parent_entry_id, e.position,
       ro.id AS routine_record_id,
+      (SELECT COUNT(*) FROM entries chain_entry WHERE chain_entry.app_user_id = e.app_user_id
+        AND chain_entry.continuation_chain_id = e.continuation_chain_id) AS chain_entry_count,
       (SELECT COUNT(*) FROM executions x WHERE x.app_user_id = e.app_user_id AND x.entry_id = e.id) AS execution_count,
       (SELECT COUNT(*) FROM routine_occurrence_suppressions s
         WHERE s.app_user_id = e.app_user_id AND s.routine_occurrence_id = e.routine_occurrence_id) AS suppression_count
@@ -121,6 +132,11 @@ export async function bulkDeleteEntries(
   }
   if (targets.some((target) => target.lifecycle_state !== "planned")) {
     return reject(db, appUserId, request, requestFingerprint, "resource_conflict", "Only planned Entries can be bulk deleted");
+  }
+  if (isPastSingleDelete && targets.some((target) => target.continuation_chain_id !== target.id
+    || target.continuation_parent_entry_id !== null || target.chain_entry_count !== 1)) {
+    return reject(db, appUserId, request, requestFingerprint, "resource_conflict",
+      "An Entry in a continuation chain cannot be deleted safely");
   }
   if (targets.some((target) => target.routine_occurrence_id === null && target.execution_count > 0)) {
     return reject(db, appUserId, request, requestFingerprint, "resource_conflict", "An ordinary Entry has execution history and cannot be removed safely");
@@ -147,7 +163,8 @@ export async function bulkDeleteEntries(
     const [guard, , , , , assertion, operationPersist] = await db.batch([
       db.prepare(`INSERT INTO placement_command_guards (operation_id, app_user_id, taskchute_day_id, expected_revision)
         SELECT ?, app_user_id, id, ? FROM taskchute_days
-        WHERE app_user_id = ? AND id = ? AND placement_revision = ? AND logical_date >= ?
+        WHERE app_user_id = ? AND id = ? AND placement_revision = ?
+          AND (logical_date >= ? OR (? = 1 AND logical_date < ?))
           AND NOT EXISTS (
             SELECT 1 FROM json_each(?) snapshot
             LEFT JOIN entries e ON e.app_user_id = ? AND e.taskchute_day_id = ?
@@ -155,6 +172,11 @@ export async function bulkDeleteEntries(
             WHERE e.id IS NULL
               OR e.lifecycle_state != json_extract(snapshot.value, '$.lifecycle_state')
               OR e.routine_occurrence_id IS NOT json_extract(snapshot.value, '$.routine_occurrence_id')
+              OR e.continuation_chain_id IS NOT json_extract(snapshot.value, '$.continuation_chain_id')
+              OR e.continuation_parent_entry_id IS NOT json_extract(snapshot.value, '$.continuation_parent_entry_id')
+              OR CAST(json_extract(snapshot.value, '$.chain_entry_count') AS INTEGER) !=
+                (SELECT COUNT(*) FROM entries chain_entry WHERE chain_entry.app_user_id = e.app_user_id
+                  AND chain_entry.continuation_chain_id = e.continuation_chain_id)
               OR e.position != CAST(json_extract(snapshot.value, '$.position') AS INTEGER)
               OR (CAST(json_extract(snapshot.value, '$.execution_count') AS INTEGER) !=
                 (SELECT COUNT(*) FROM executions x WHERE x.app_user_id = e.app_user_id AND x.entry_id = e.id))
@@ -163,7 +185,8 @@ export async function bulkDeleteEntries(
                   WHERE s.app_user_id = e.app_user_id AND s.routine_occurrence_id = e.routine_occurrence_id))
           )`)
         .bind(request.operation_id, request.expected_placement_revision, appUserId, request.taskchute_day_id,
-          request.expected_placement_revision, currentLogicalDate, snapshotJson, appUserId, request.taskchute_day_id),
+          request.expected_placement_revision, currentLogicalDate, isPastSingleDelete ? 1 : 0, currentLogicalDate,
+          snapshotJson, appUserId, request.taskchute_day_id),
       db.prepare(`DELETE FROM entry_modes
         WHERE app_user_id = ? AND entry_id IN (SELECT value FROM json_each(?))
           AND EXISTS (SELECT 1 FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?)`)

@@ -95,6 +95,33 @@ class TaskPlanningHttpRepositoryTest {
     }
 
     @Test
+    fun historicalEditMapsNextMorningActualEndToTheFollowingPhysicalDay() {
+        val requests = mutableListOf<Triple<String, String, String?>>()
+        val task = TodayTask("entry-past", "Overnight task", LifecycleState.PLANNED,
+            null, null, 3_600, 1_380, null, null, taskId = "task-past")
+        val day = pastDay().copy(
+            establishmentTimezone = "UTC",
+            establishmentBoundaryMinutes = 240,
+            sections = listOf(TodaySection("section-1", "Night", 240, 1_440, listOf(task))),
+        )
+        val repository = TaskPlanningHttpRepository { method, path, body ->
+            requests += Triple(method, path, body)
+            TodayHttpResponse(204, null)
+        }
+
+        assertEquals(PlanningSaveResult.Success, repository.save(
+            TaskEditorState(TaskEditorMode.EDIT, day, task, TaskEditorDraft(title = task.title)),
+            NormalizedTaskInput(task.title, null, null, "section-1", 1_380, 3_600,
+                actualStartMinute = 1_380, actualEndMinute = 480),
+        ))
+        assertEquals(1, requests.size)
+        assertEquals("/api/v1/entries/entry-past/execution-times", requests.single().second)
+        assertTrue(requests.single().third!!.contains("\"started_at\":\"2026-09-13T23:00:00Z\""))
+        assertTrue(requests.single().third!!.contains("\"ended_at\":\"2026-09-14T08:00:00Z\""))
+        assertTrue(requests.single().third!!.contains("\"expected_lifecycle_state\":\"planned\""))
+    }
+
+    @Test
     fun sectionedPlannedEditIncludesCurrentPlacementRevisionForActualTransition() {
         val requests = mutableListOf<Triple<String, String, String?>>()
         val task = TodayTask(
@@ -298,6 +325,38 @@ class TaskPlanningHttpRepositoryTest {
         val retryOperation = Regex("\\\"operation_id\\\":\\\"([^\\\"]+)\\\"")
             .find(requests[1].third.orEmpty())?.groupValues?.get(1)
         assertEquals(firstOperation, retryOperation)
+    }
+
+    @Test
+    fun historicalRoutineTitleProjectAndModeCorrectionsUseOccurrenceCommandsWithoutStaleTitleCas() {
+        val requests = mutableListOf<Triple<String, String, String?>>()
+        val task = TodayTask(
+            id = "entry-historical-routine", title = "Old occurrence title", lifecycleState = LifecycleState.PLANNED,
+            project = TodayProject("project-old", "Old project"), mode = TodayMode("mode-old", "Old mode"),
+            estimateSeconds = 600, plannedStartMinute = 540, executionId = null, activeStartedAt = null,
+            routineDerived = true, taskId = "task-routine", routineBaseTitle = "Shared Routine title",
+        )
+        val day = pastDay().copy(sections = listOf(
+            TodaySection("section-1", "Morning", 480, 720, listOf(task)),
+        ))
+        val repository = TaskPlanningHttpRepository { method, path, body ->
+            requests += Triple(method, path, body)
+            TodayHttpResponse(204, null)
+        }
+
+        assertEquals(PlanningSaveResult.SuccessWithRevision(day.placementRevision), repository.save(
+            TaskEditorState(TaskEditorMode.EDIT, day, task,
+                TaskEditorDraft(title = "Corrected occurrence", sectionId = "section-1", plannedStartText = "09:00", estimateText = "10"),
+                TaskEditorCapability.ROUTINE_PLANNING),
+            NormalizedTaskInput("Corrected occurrence", "project-new", "mode-new", "section-1", 540, 600),
+        ))
+        assertEquals(3, requests.size)
+        assertTrue(requests[0].second.endsWith("/task-metadata"))
+        assertTrue(requests[0].third.orEmpty().contains("\"expected_title\":\"Old occurrence title\""))
+        assertTrue(requests[0].third.orEmpty().contains("\"title\":\"Old occurrence title\""))
+        assertTrue(requests[1].second.endsWith("/routine-mode"))
+        assertTrue(requests[2].second.endsWith("/routine-title"))
+        assertTrue(requests[2].third.orEmpty().contains("\"title\":\"Corrected occurrence\""))
     }
 
     @Test
@@ -639,6 +698,12 @@ class TaskPlanningHttpRepositoryTest {
             logicalDate = "2026-09-15",
             isCurrent = false,
             taskChuteDayId = "future-day-1",
+        )
+        fun pastDay() = currentDay().copy(
+            logicalDate = "2026-09-13",
+            isCurrent = false,
+            planningEnabled = false,
+            taskChuteDayId = "past-day-1",
         )
         fun currentDay() = TodayDay(
             logicalDate = "2026-09-14",

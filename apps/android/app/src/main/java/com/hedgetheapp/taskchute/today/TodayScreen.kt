@@ -973,6 +973,7 @@ private fun TodayContent(
                     section.entries.filter { it.lifecycleState != LifecycleState.COMPLETED }
                 }
                 if (section.id !in collapsedSectionIds) items(visibleSectionEntries, key = { it.id }) { task ->
+                    val historicalDay = !day.isCurrent && !day.planningEnabled && day.taskChuteDayId != null
                     val canPastForwardMove = !day.planningEnabled && day.taskChuteDayId != null &&
                         task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived &&
                         task.firstStartedAt == null && task.lastEndedAt == null && task.executionId == null &&
@@ -986,15 +987,15 @@ private fun TodayContent(
                         enabled = !state.pendingEntryIds.contains(task.id),
                         controller = controller,
                         showExecutionAction = day.isCurrent,
-                        canEdit = canPlanDay(day) && (day.isCurrent || task.lifecycleState == LifecycleState.PLANNED)
-                            && planningController != null,
+                        canEdit = ((canPlanDay(day) && (day.isCurrent || task.lifecycleState == LifecycleState.PLANNED))
+                            || historicalDay) && planningController != null,
                         onEdit = { planningController?.openEdit(day, task) },
                         canDuplicate = canPlanDay(day) && task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived
                             && directManipulationController != null && directManipulationController.state.pendingEntryIds.isEmpty()
                             && directManipulationController.state.unresolvedRequest == null,
                         onDuplicate = { directManipulationController?.duplicate(day, task) },
                         canOpenNote = task.taskId != null,
-                        canNoteOnly = task.taskId != null && !day.isCurrent &&
+                        canNoteOnly = task.taskId != null && !day.isCurrent && !historicalDay &&
                             (task.lifecycleState == LifecycleState.COMPLETED || task.routineDerived || !canPlanDay(day)),
                         onOpenNote = { onOpenTaskNote(task) },
                         selectionModeActive = selectionModeActive,
@@ -1006,8 +1007,12 @@ private fun TodayContent(
                         canSelect = directManipulationController?.canSelect(day, task) == true,
                         onToggleSelection = { onToggleSelection(task.id) },
                         canDayOperate = canPlanDay(day) && task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived && directManipulationController != null,
-                        canLifecycleDelete = day.isCurrent && task.lifecycleState != LifecycleState.PLANNED && !task.routineDerived && directManipulationController != null,
-                        canPlannedDelete = canPlanDay(day) && task.lifecycleState == LifecycleState.PLANNED && task.routineDerived && directManipulationController != null,
+                        canLifecycleDelete = ((historicalDay && task.lifecycleState != LifecycleState.PLANNED)
+                            || (day.isCurrent && task.lifecycleState != LifecycleState.PLANNED && !task.routineDerived))
+                            && directManipulationController != null,
+                        canPlannedDelete = ((historicalDay && task.lifecycleState == LifecycleState.PLANNED)
+                            || (canPlanDay(day) && task.lifecycleState == LifecycleState.PLANNED && task.routineDerived))
+                            && directManipulationController != null,
                         canPastForwardOperate = canPastForwardMove,
                         onMovePrevious = { directManipulationController?.moveToDay(day, setOf(task.id), LocalDate.parse(day.logicalDate).minusDays(1).toString()) },
                         onMoveNext = { directManipulationController?.moveToDay(day, setOf(task.id), LocalDate.parse(day.logicalDate).plusDays(1).toString()) },
@@ -1095,6 +1100,7 @@ private fun TodayContent(
                     renderDay.unsectionedEntries.filter { it.lifecycleState != LifecycleState.COMPLETED }
                 }
                 if (UNSECTIONED_DROP_KEY !in collapsedSectionIds) items(visibleUnsectionedEntries, key = { it.id }) { task ->
+                    val historicalDay = !day.isCurrent && !day.planningEnabled && day.taskChuteDayId != null
                     val canPastForwardMove = !day.planningEnabled && day.taskChuteDayId != null &&
                         task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived &&
                         task.firstStartedAt == null && task.lastEndedAt == null && task.executionId == null &&
@@ -1108,15 +1114,15 @@ private fun TodayContent(
                         enabled = !state.pendingEntryIds.contains(task.id),
                         controller = controller,
                         showExecutionAction = day.isCurrent,
-                        canEdit = canPlanDay(day) && (day.isCurrent || task.lifecycleState == LifecycleState.PLANNED)
-                            && planningController != null,
+                        canEdit = ((canPlanDay(day) && (day.isCurrent || task.lifecycleState == LifecycleState.PLANNED))
+                            || historicalDay) && planningController != null,
                         onEdit = { planningController?.openEdit(day, task) },
                         canDuplicate = canPlanDay(day) && task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived
                             && directManipulationController != null && directManipulationController.state.pendingEntryIds.isEmpty()
                             && directManipulationController.state.unresolvedRequest == null,
                         onDuplicate = { directManipulationController?.duplicate(day, task) },
                         canOpenNote = task.taskId != null,
-                        canNoteOnly = task.taskId != null && !day.isCurrent &&
+                        canNoteOnly = task.taskId != null && !day.isCurrent && !historicalDay &&
                             (task.lifecycleState == LifecycleState.COMPLETED || task.routineDerived || !canPlanDay(day)),
                         onOpenNote = { onOpenTaskNote(task) },
                         selectionModeActive = selectionModeActive,
@@ -1128,8 +1134,12 @@ private fun TodayContent(
                         canSelect = directManipulationController?.canSelect(day, task) == true,
                         onToggleSelection = { onToggleSelection(task.id) },
                         canDayOperate = canPlanDay(day) && task.lifecycleState == LifecycleState.PLANNED && !task.routineDerived && directManipulationController != null,
-                        canLifecycleDelete = day.isCurrent && task.lifecycleState != LifecycleState.PLANNED && !task.routineDerived && directManipulationController != null,
-                        canPlannedDelete = canPlanDay(day) && task.lifecycleState == LifecycleState.PLANNED && task.routineDerived && directManipulationController != null,
+                        canLifecycleDelete = ((historicalDay && task.lifecycleState != LifecycleState.PLANNED)
+                            || (day.isCurrent && task.lifecycleState != LifecycleState.PLANNED && !task.routineDerived))
+                            && directManipulationController != null,
+                        canPlannedDelete = ((historicalDay && task.lifecycleState == LifecycleState.PLANNED)
+                            || (canPlanDay(day) && task.lifecycleState == LifecycleState.PLANNED && task.routineDerived))
+                            && directManipulationController != null,
                         canPastForwardOperate = canPastForwardMove,
                         onMovePrevious = { directManipulationController?.moveToDay(day, setOf(task.id), LocalDate.parse(day.logicalDate).minusDays(1).toString()) },
                         onMoveNext = { directManipulationController?.moveToDay(day, setOf(task.id), LocalDate.parse(day.logicalDate).plusDays(1).toString()) },
@@ -2058,8 +2068,8 @@ private fun TodayTaskRow(
                     TaskActionRow(R.drawable.ic_material_chevron_left_24, "前の日へ移動", onClick = { actionsSheetOpen = false; onMovePrevious() })
                     TaskActionRow(R.drawable.ic_material_chevron_right_24, "次の日へ移動", onClick = { actionsSheetOpen = false; onMoveNext() })
                     TaskActionRow(R.drawable.ic_material_schedule_24, "日付を移動", onClick = { actionsSheetOpen = false; onPickDate() })
-                    TaskActionRow(R.drawable.ic_material_delete_24, "削除", destructive = true, onClick = { actionsSheetOpen = false; onDelete() })
-                } else if (canPlannedDelete || canLifecycleDelete) {
+                }
+                if (canDayOperate || canPlannedDelete || canLifecycleDelete) {
                     TaskActionRow(R.drawable.ic_material_delete_24, "削除", destructive = true, onClick = { actionsSheetOpen = false; onDelete() })
                 }
             }
@@ -2542,6 +2552,8 @@ private fun TaskEditorForm(
     val planningFieldsEditable = editor.capability == TaskEditorCapability.FULL_PLANNING ||
         editor.capability == TaskEditorCapability.ROUTINE_PLANNING
     val routinePlanning = editor.capability == TaskEditorCapability.ROUTINE_PLANNING
+    val historicalPastDay = !editor.day.isCurrent && !editor.day.planningEnabled && editor.day.taskChuteDayId != null
+    val historicalRoutineCorrection = routinePlanning && historicalPastDay
     val titleEditable = editor.mode == TaskEditorMode.CREATE
         || editor.capability == TaskEditorCapability.FULL_PLANNING
         || editor.capability == TaskEditorCapability.ROUTINE_PLANNING
@@ -2606,7 +2618,8 @@ private fun TaskEditorForm(
                 onExpandedChange = { projectExpanded = it },
                 options = listOf(null to "なし") + (references?.projects?.map { it.id to it.title } ?: emptyList()),
                 onSelected = { controller.updateDraft(draft.copy(projectId = it)); projectExpanded = false },
-                enabled = references != null && !state.loadingReferences && !state.saving && !routinePlanning,
+                enabled = references != null && !state.loadingReferences && !state.saving
+                    && (!routinePlanning || historicalRoutineCorrection),
                 modifier = Modifier.weight(1f),
             )
             ReferencePicker(
@@ -2614,7 +2627,8 @@ private fun TaskEditorForm(
                 onExpandedChange = { modeExpanded = it },
                 options = listOf(null to "なし") + (references?.modes?.map { it.id to it.title } ?: emptyList()),
                 onSelected = { controller.updateDraft(draft.copy(modeId = it)); modeExpanded = false },
-                enabled = references != null && !state.loadingReferences && !state.saving && !routinePlanning,
+                enabled = references != null && !state.loadingReferences && !state.saving
+                    && (!routinePlanning || historicalRoutineCorrection),
                 modifier = Modifier.weight(1f),
             )
         }
@@ -2630,7 +2644,7 @@ private fun TaskEditorForm(
                 )
                 ReminderOffsetField(
                     value = draft.startReminderOffsetMinutes,
-                    enabled = !state.saving && !routinePlanning,
+                    enabled = !state.saving && !routinePlanning && !historicalPastDay,
                     onValueChange = { controller.updateDraft(draft.copy(startReminderOffsetMinutes = it)) },
                     modifier = Modifier.weight(1f),
                 )
@@ -2649,6 +2663,7 @@ private fun TaskEditorForm(
                 ReminderToggle(
                     checked = draft.notifyOnEstimateOverrun,
                     enabled = !state.saving && !routinePlanning
+                        && !historicalPastDay
                         && editor.capability != TaskEditorCapability.COMPLETED_METADATA,
                     label = "超過通知",
                     modifier = Modifier.weight(1f),
@@ -2662,7 +2677,7 @@ private fun TaskEditorForm(
                 Text("通知の権限を設定", color = TaskChuteColors.AccentBlue)
             }
         }
-        if (editor.day.isCurrent) {
+        if (editor.day.isCurrent || (!editor.day.planningEnabled && editor.day.taskChuteDayId != null)) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 CompactFigmaTextField(
                     value = draft.actualStartText,

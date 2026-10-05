@@ -32,6 +32,10 @@ interface TargetRow {
   routine_occurrence_id: string | null;
   execution_count: number;
   active_execution_count: number;
+  continuation_chain_id: string | null;
+  continuation_parent_entry_id: string | null;
+  chain_entry_count: number;
+  suppression_count: number;
 }
 
 async function reject(
@@ -75,8 +79,8 @@ export async function deleteCompletedEntry(
     timezone: settings.timezone,
     boundaryMinutes: settings.day_boundary_minutes,
   }).logicalDate;
-  if (day.logical_date !== currentLogicalDate) {
-    return reject(db, appUserId, request, requestFingerprint, "resource_conflict", "Completed Entry deletion is available only for the current TaskChuteDay");
+  if (day.logical_date > currentLogicalDate) {
+    return reject(db, appUserId, request, requestFingerprint, "resource_conflict", "A future TaskChuteDay Entry cannot be deleted through lifecycle correction");
   }
   if (day.placement_revision !== request.expected_placement_revision) {
     return persistRejection<DeleteCompletedEntryResult>(db, {
@@ -90,21 +94,35 @@ export async function deleteCompletedEntry(
   }
 
   const target = await db.prepare(`SELECT e.id, e.lifecycle_state, e.routine_occurrence_id,
+      e.continuation_chain_id, e.continuation_parent_entry_id,
       (SELECT COUNT(*) FROM executions x WHERE x.app_user_id = e.app_user_id AND x.entry_id = e.id) AS execution_count,
-      (SELECT COUNT(*) FROM executions x WHERE x.app_user_id = e.app_user_id AND x.entry_id = e.id AND x.ended_at IS NULL) AS active_execution_count
+      (SELECT COUNT(*) FROM executions x WHERE x.app_user_id = e.app_user_id AND x.entry_id = e.id AND x.ended_at IS NULL) AS active_execution_count,
+      (SELECT COUNT(*) FROM entries chain_entry WHERE chain_entry.app_user_id = e.app_user_id
+        AND chain_entry.continuation_chain_id = e.continuation_chain_id) AS chain_entry_count,
+      (SELECT COUNT(*) FROM routine_occurrence_suppressions s WHERE s.app_user_id = e.app_user_id
+        AND s.routine_occurrence_id = e.routine_occurrence_id) AS suppression_count
     FROM entries e
     WHERE e.app_user_id = ? AND e.taskchute_day_id = ? AND e.id = ?`).bind(
     appUserId, request.taskchute_day_id, request.entry_id,
   ).first<TargetRow>();
   if (!target) return reject(db, appUserId, request, requestFingerprint, "resource_conflict", "The Entry does not belong to this TaskChuteDay");
   if (target.lifecycle_state !== "running" && target.lifecycle_state !== "completed") {
-    return reject(db, appUserId, request, requestFingerprint, "resource_conflict", "Only current Running or Completed Entries can be hard deleted");
+    return reject(db, appUserId, request, requestFingerprint, "resource_conflict", "Only Running or Completed Entries can be hard deleted");
   }
   if (target.lifecycle_state === "running" && target.active_execution_count !== 1) {
     return reject(db, appUserId, request, requestFingerprint, "resource_conflict", "A Running Entry must have exactly one active Execution");
   }
   if (target.lifecycle_state === "completed" && (target.active_execution_count > 0 || target.execution_count === 0)) {
     return reject(db, appUserId, request, requestFingerprint, "resource_conflict", "A Completed Entry must have terminal Execution history");
+  }
+  if (target.continuation_chain_id !== target.id || target.continuation_parent_entry_id !== null
+    || target.chain_entry_count !== 1) {
+    return reject(db, appUserId, request, requestFingerprint, "resource_conflict",
+      "An Entry in a continuation chain cannot be deleted safely");
+  }
+  if (target.routine_occurrence_id !== null && target.suppression_count !== 0) {
+    return reject(db, appUserId, request, requestFingerprint, "resource_conflict",
+      "This Routine occurrence is already suppressed and cannot be deleted safely");
   }
   const futureRoutineLink = await db.prepare(`SELECT 1 AS linked FROM completed_entry_future_routines
     WHERE app_user_id = ? AND source_entry_id = ?`).bind(appUserId, request.entry_id).first();
@@ -125,10 +143,10 @@ export async function deleteCompletedEntry(
   const assertionId = `delete-completed-entry:${request.operation_id}`;
 
   try {
-    const [guard, , , , , , , , assertion, operationPersist] = await db.batch([
+    const statements = await db.batch([
       db.prepare(`INSERT INTO placement_command_guards (operation_id, app_user_id, taskchute_day_id, expected_revision)
         SELECT ?, app_user_id, id, ? FROM taskchute_days
-        WHERE app_user_id = ? AND id = ? AND logical_date = ? AND placement_revision = ?
+        WHERE app_user_id = ? AND id = ? AND logical_date = ? AND logical_date <= ? AND placement_revision = ?
           AND EXISTS (
             SELECT 1 FROM entries e
             WHERE e.app_user_id = taskchute_days.app_user_id AND e.taskchute_day_id = taskchute_days.id
@@ -138,11 +156,21 @@ export async function deleteCompletedEntry(
                 AND NOT EXISTS (SELECT 1 FROM executions x WHERE x.app_user_id = e.app_user_id AND x.entry_id = e.id AND x.ended_at IS NULL))
                 OR (e.lifecycle_state = 'running'
                 AND (SELECT COUNT(*) FROM executions x WHERE x.app_user_id = e.app_user_id AND x.entry_id = e.id AND x.ended_at IS NULL) = 1))
+              AND e.continuation_chain_id = e.id AND e.continuation_parent_entry_id IS NULL
+              AND (SELECT COUNT(*) FROM entries chain_entry WHERE chain_entry.app_user_id = e.app_user_id
+                AND chain_entry.continuation_chain_id = e.continuation_chain_id) = 1
+              AND (e.routine_occurrence_id IS NULL OR NOT EXISTS (SELECT 1 FROM routine_occurrence_suppressions s
+                WHERE s.app_user_id = e.app_user_id AND s.routine_occurrence_id = e.routine_occurrence_id))
               AND NOT EXISTS (SELECT 1 FROM completed_entry_future_routines c
                 WHERE c.app_user_id = e.app_user_id AND c.source_entry_id = e.id)
           )`)
         .bind(request.operation_id, request.expected_placement_revision, appUserId, request.taskchute_day_id,
-          currentLogicalDate, request.expected_placement_revision, request.entry_id),
+          day.logical_date, currentLogicalDate, request.expected_placement_revision, request.entry_id),
+      db.prepare(`INSERT INTO routine_occurrence_suppressions (app_user_id, routine_occurrence_id, suppressed_at, reason)
+        SELECT e.app_user_id, e.routine_occurrence_id, ?, 'skip' FROM entries e
+        WHERE e.app_user_id = ? AND e.taskchute_day_id = ? AND e.id = ? AND e.routine_occurrence_id IS NOT NULL
+          AND EXISTS (SELECT 1 FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
+        .bind(now, appUserId, request.taskchute_day_id, request.entry_id, appUserId, request.operation_id),
       db.prepare(`DELETE FROM executions
         WHERE app_user_id = ? AND entry_id = ?
           AND EXISTS (SELECT 1 FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
@@ -175,17 +203,20 @@ export async function deleteCompletedEntry(
       db.prepare(`UPDATE taskchute_days SET placement_revision = placement_revision + 1
         WHERE app_user_id = ? AND id = ? AND logical_date = ? AND placement_revision = ?
           AND EXISTS (SELECT 1 FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
-        .bind(appUserId, request.taskchute_day_id, currentLogicalDate, request.expected_placement_revision,
+        .bind(appUserId, request.taskchute_day_id, day.logical_date, request.expected_placement_revision,
           appUserId, request.operation_id),
       db.prepare(`INSERT INTO transaction_assertions (app_user_id, id, ok)
         SELECT ?, ?, CASE WHEN
           EXISTS (SELECT 1 FROM taskchute_days WHERE app_user_id = ? AND id = ? AND placement_revision = ?)
           AND NOT EXISTS (SELECT 1 FROM entries WHERE app_user_id = ? AND id = ?)
           AND NOT EXISTS (SELECT 1 FROM executions WHERE app_user_id = ? AND entry_id = ?)
+          AND (? IS NULL OR EXISTS (SELECT 1 FROM routine_occurrence_suppressions
+            WHERE app_user_id = ? AND routine_occurrence_id = ? AND reason = 'skip'))
           THEN 1 ELSE 0 END
         WHERE EXISTS (SELECT 1 FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
         .bind(appUserId, assertionId, appUserId, request.taskchute_day_id, result.placement_revision,
-          appUserId, request.entry_id, appUserId, request.entry_id, appUserId, request.operation_id),
+          appUserId, request.entry_id, appUserId, request.entry_id, target.routine_occurrence_id,
+          appUserId, target.routine_occurrence_id, appUserId, request.operation_id),
       db.prepare(`INSERT INTO operations (app_user_id, operation_id, command_type, request_fingerprint_version,
         request_fingerprint, outcome_kind, result_json, created_at)
         SELECT ?, ?, 'DeleteCompletedEntry', ?, ?, 'success', ?, ? WHERE EXISTS
@@ -196,6 +227,9 @@ export async function deleteCompletedEntry(
       db.prepare("DELETE FROM placement_command_guards WHERE app_user_id = ? AND operation_id = ?")
         .bind(appUserId, request.operation_id),
     ]);
+    const guard = statements[0]!;
+    const assertion = statements[10]!;
+    const operationPersist = statements[11]!;
     if (guard.meta.changes === 0) {
       const committed = await readOperation(db, appUserId, request.operation_id);
       if (committed) return replayOperation<DeleteCompletedEntryResult>(committed, "DeleteCompletedEntry", requestFingerprint);

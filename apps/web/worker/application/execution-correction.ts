@@ -246,16 +246,32 @@ function entryIsInCurrentDay(entry: EntryRow, currentDay: CurrentDayContext): bo
     && compareInstants(entry.end_instant, currentDay.endInstant) === 0;
 }
 
-function currentDayGuardSql(alias: string, currentDay: CurrentDayContext): { sql: string; bindings: unknown[] } {
+function entryIsInEstablishedCurrentOrPastDay(entry: EntryRow, currentDay: CurrentDayContext): boolean {
+  return entry.logical_date < currentDay.logicalDate || entryIsInCurrentDay(entry, currentDay);
+}
+
+function establishedHistoryDayGuardSql(
+  alias: string,
+  entry: EntryRow,
+  currentDay: CurrentDayContext,
+): { sql: string; bindings: unknown[] } {
+  if (entry.logical_date === currentDay.logicalDate) {
+    return {
+      sql: `AND ${alias}.logical_date = ?
+        AND julianday(${alias}.start_instant) = julianday(?)
+        AND julianday(${alias}.end_instant) = julianday(?)
+        AND EXISTS (SELECT 1 FROM user_settings current_settings
+          WHERE current_settings.app_user_id = ${alias}.app_user_id
+            AND current_settings.timezone = ? AND current_settings.day_boundary_minutes = ?)`,
+      bindings: [currentDay.logicalDate, currentDay.startInstant, currentDay.endInstant,
+        currentDay.timezone, currentDay.boundaryMinutes],
+    };
+  }
   return {
-    sql: `AND ${alias}.logical_date = ?
+    sql: `AND ${alias}.logical_date = ? AND ${alias}.logical_date < ?
       AND julianday(${alias}.start_instant) = julianday(?)
-      AND julianday(${alias}.end_instant) = julianday(?)
-      AND EXISTS (SELECT 1 FROM user_settings current_settings
-        WHERE current_settings.app_user_id = ${alias}.app_user_id
-          AND current_settings.timezone = ? AND current_settings.day_boundary_minutes = ?)`,
-    bindings: [currentDay.logicalDate, currentDay.startInstant, currentDay.endInstant,
-      currentDay.timezone, currentDay.boundaryMinutes],
+      AND julianday(${alias}.end_instant) = julianday(?)`,
+    bindings: [entry.logical_date, currentDay.logicalDate, entry.start_instant, entry.end_instant],
   };
 }
 
@@ -291,9 +307,9 @@ export async function revertEntryStart(
   if (converged) return replayOperation<RevertEntryStartResult>(converged, "RevertEntryStart", requestFingerprint);
   if (!entry || !execution) return reject<RevertEntryStartResult>(db, appUserId, request, requestFingerprint,
     "resource_not_found", "Entry or active Execution is unavailable", "RevertEntryStart");
-  if (!currentDay || !entryIsInCurrentDay(entry, currentDay)) {
+  if (!currentDay || !entryIsInEstablishedCurrentOrPastDay(entry, currentDay)) {
     return reject<RevertEntryStartResult>(db, appUserId, request, requestFingerprint,
-      "resource_conflict", "RevertEntryStart is limited to the current established Day", "RevertEntryStart");
+      "resource_conflict", "RevertEntryStart is limited to an established current or past Day", "RevertEntryStart");
   }
   const expectedExecutionMatches = execution.entry_id === request.entry_id
     && sameInstant(execution.started_at, request.expected_started_at)
@@ -330,7 +346,7 @@ export async function revertEntryStart(
     placement_revision: entry.placement_revision,
   };
   const assertionId = `revert-start:${request.operation_id}`;
-  const currentGuard = currentDayGuardSql("d", currentDay);
+  const currentGuard = establishedHistoryDayGuardSql("d", entry, currentDay);
   const lifecycleExecutionGuard = completedDirectRollback
     ? `e.lifecycle_state = 'completed'
        AND x.ended_at IS NOT NULL AND x.terminal_outcome = 'completed'
@@ -481,9 +497,9 @@ export async function setExecutionTimes(
         "Reopening a completed Execution must preserve its original start");
     }
     currentDay = await readCurrentDayContext(db, appUserId, now);
-    if (!currentDay || !entryIsInCurrentDay(entry, currentDay)) {
+    if (!currentDay || !entryIsInEstablishedCurrentOrPastDay(entry, currentDay)) {
       return reject(db, appUserId, request, requestFingerprint, "resource_conflict",
-        "A completed Execution can only be reopened on the current established Day");
+        "A completed Execution can only be reopened on an established current or past Day");
     }
   }
   if (request.expected_lifecycle_state === "planned") {
@@ -563,7 +579,7 @@ export async function setExecutionTimes(
   const dayId = entry.taskchute_day_id;
   const blockerGuardSpec = blockerGuard(minuteBlocker, appUserId, dayId);
   const currentDayGuard = reopeningCompleted && currentDay
-    ? currentDayGuardSql("d", currentDay)
+    ? establishedHistoryDayGuardSql("d", entry, currentDay)
     : { sql: "", bindings: [] as unknown[] };
   const lifecycleGuard = request.expected_lifecycle_state === "planned"
     ? db.prepare(`INSERT INTO lifecycle_command_guards (app_user_id, operation_id, entry_id, execution_id, command_type)

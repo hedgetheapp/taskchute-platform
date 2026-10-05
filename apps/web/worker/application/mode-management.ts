@@ -414,14 +414,15 @@ export async function setEntryMode(db: D1Database, appUserId: string, input: Set
   }).logicalDate;
   const isCurrent = entry.logical_date === currentDate;
   const isFuture = entry.logical_date > currentDate;
-  const isPlannedMetadataUpdate = (isCurrent || isFuture)
+  const isPast = entry.logical_date < currentDate;
+  const isPlannedMetadataUpdate = (isCurrent || isFuture || isPast)
     && entry.lifecycle_state === "planned" && entry.routine_occurrence_id === null;
-  const isRunningMetadataUpdate = isCurrent
+  const isRunningMetadataUpdate = (isCurrent || isPast)
     && entry.lifecycle_state === "running" && entry.routine_occurrence_id === null;
-  const isCompletedHistoricalCorrection = isCurrent && entry.lifecycle_state === "completed"
+  const isCompletedHistoricalCorrection = (isCurrent || isPast) && entry.lifecycle_state === "completed"
     && entry.routine_occurrence_id === null && entry.has_completed_execution === 1;
   if (!isPlannedMetadataUpdate && !isRunningMetadataUpdate && !isCompletedHistoricalCorrection) {
-    return reject(db, appUserId, input, "SetEntryMode", fp, "resource_conflict", "Only an ordinary planned Entry, an eligible current-Day running Entry, or an eligible completed current-Day Entry can change Mode");
+    return reject(db, appUserId, input, "SetEntryMode", fp, "resource_conflict", "Only an eligible ordinary planned Entry or current/past Running or Completed Entry can change Mode");
   }
   const effectiveModeId = isCompletedHistoricalCorrection && entry.mode_snapshot_entry_id !== null
     ? entry.snapshot_mode_id : entry.mode_id;
@@ -578,7 +579,7 @@ export async function setEntryMode(db: D1Database, appUserId: string, input: Set
         }>();
       if (!latest) return reject(db, appUserId, input, "SetEntryMode", fp, "resource_not_found", "Entry is unavailable");
       if (latest.lifecycle_state !== "completed" || latest.routine_occurrence_id !== null
-        || latest.logical_date !== currentDate || latest.has_completed_execution !== 1) {
+        || latest.logical_date !== entry.logical_date || latest.logical_date > currentDate || latest.has_completed_execution !== 1) {
         return reject(db, appUserId, input, "SetEntryMode", fp, "resource_conflict", "The completed Entry is no longer eligible for Mode correction");
       }
       const latestEffectiveModeId = latest.snapshot_entry_id !== null ? latest.snapshot_mode_id : latest.mode_id;

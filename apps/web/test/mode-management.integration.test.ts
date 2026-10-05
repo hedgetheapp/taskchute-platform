@@ -86,6 +86,48 @@ async function addCompletedSharedEntry(fixture: Awaited<ReturnType<typeof seed>>
 }
 
 describe.sequential("D-068 Mode management", () => {
+  it("corrects Mode on past Planned, Running, and Completed ordinary Entries with historical snapshot authority", async () => {
+    const fixture = await seed();
+    const firstId = await seedMode(fixture.userId, "Past Focus");
+    const secondId = await seedMode(fixture.userId, "Past Light");
+    const thirdId = await seedMode(fixture.userId, "Past Review");
+    await env.APP_DB.prepare(`UPDATE taskchute_days SET logical_date = '2026-09-04',
+      start_instant = '2026-09-04T00:00:00.000Z', end_instant = '2026-09-05T00:00:00.000Z' WHERE id = ?`)
+      .bind(fixture.dayId).run();
+
+    await expect(setEntryMode(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), entry_id: fixture.entryId, expected_mode_id: null, mode_id: firstId,
+    }, now)).resolves.toMatchObject({ mode_id: firstId, mode_title: "Past Focus" });
+    await env.APP_DB.prepare("UPDATE entries SET lifecycle_state = 'running' WHERE id = ?").bind(fixture.entryId).run();
+    await env.APP_DB.prepare(`INSERT INTO executions (id, app_user_id, entry_id, started_at, created_at)
+      VALUES (?, ?, ?, '2026-09-04T08:00:00.000Z', ?)`)
+      .bind(uuidv7(), fixture.userId, fixture.entryId, now).run();
+    await expect(setEntryMode(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), entry_id: fixture.entryId, expected_mode_id: firstId, mode_id: secondId,
+    }, now)).resolves.toMatchObject({ mode_id: secondId, mode_title: "Past Light" });
+
+    const capturedAt = "2026-09-04T08:00:00.000Z";
+    await env.APP_DB.batch([
+      env.APP_DB.prepare("UPDATE entries SET lifecycle_state = 'completed' WHERE id = ?").bind(fixture.entryId),
+      env.APP_DB.prepare("UPDATE executions SET ended_at = '2026-09-04T08:30:00.000Z', terminal_outcome = 'completed' WHERE entry_id = ?")
+        .bind(fixture.entryId),
+      env.APP_DB.prepare(`INSERT INTO entry_mode_snapshots (app_user_id, entry_id, mode_id, mode_title, captured_at)
+        VALUES (?, ?, ?, 'Past Light', ?)`)
+        .bind(fixture.userId, fixture.entryId, secondId, capturedAt),
+    ]);
+    await expect(setEntryMode(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), entry_id: fixture.entryId, expected_mode_id: secondId, mode_id: thirdId,
+    }, now)).resolves.toMatchObject({ mode_id: thirdId, mode_title: "Past Review" });
+    expect(await env.APP_DB.prepare(`SELECT mode_id, mode_title, captured_at FROM entry_mode_snapshots WHERE app_user_id = ? AND entry_id = ?`)
+      .bind(fixture.userId, fixture.entryId).first()).toEqual({
+        mode_id: thirdId, mode_title: "Past Review", captured_at: capturedAt,
+      });
+    expect(await env.APP_DB.prepare("SELECT mode_id FROM entry_modes WHERE app_user_id = ? AND entry_id = ?")
+      .bind(fixture.userId, fixture.entryId).first()).toEqual({ mode_id: thirdId });
+    expect(await env.APP_DB.prepare("SELECT placement_revision FROM taskchute_days WHERE id = ?")
+      .bind(fixture.dayId).first<number>("placement_revision")).toBe(0);
+  });
+
   it("creates, renames, reorders, assigns, and snapshots a Mode", async () => {
     const fixture = await seed();
     const firstId = uuidv7(); const secondId = uuidv7();
@@ -219,7 +261,7 @@ describe.sequential("D-068 Mode management", () => {
     await env.APP_DB.prepare("UPDATE entries SET routine_occurrence_id = NULL WHERE id = ?").bind(fixture.futureEntryId).run();
     await env.APP_DB.prepare("UPDATE taskchute_days SET logical_date = '2026-09-04' WHERE id = ?").bind(fixture.futureDayId).run();
     await expect(setEntryMode(env.APP_DB, fixture.userId, { operation_id: uuidv7(), entry_id: fixture.futureEntryId,
-      expected_mode_id: firstId, mode_id: null }, now)).rejects.toMatchObject({ code: "resource_conflict" });
+      expected_mode_id: firstId, mode_id: null }, now)).resolves.toMatchObject({ mode_id: null, mode_title: null });
   });
 
   it("rejects a concurrent Day move, lifecycle change, or relation change without partial Mode mutation", async () => {

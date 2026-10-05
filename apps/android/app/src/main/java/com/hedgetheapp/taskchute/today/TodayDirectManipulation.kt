@@ -315,8 +315,10 @@ class TodayDirectManipulationController(
     }
 
     fun delete(day: TodayDay, entryIds: Set<String>, successMessage: String? = null) {
+        val historicalSingleDelete = !day.isCurrent && !day.planningEnabled && day.taskChuteDayId != null
+            && entryIds.size == 1
         if (entryIds.isEmpty() || state.pendingEntryIds.isNotEmpty() || state.unresolvedRequest != null
-            || day.taskChuteDayId == null || !canPlanDay(day)
+            || day.taskChuteDayId == null || (!canPlanDay(day) && !historicalSingleDelete)
         ) return
         dispatch(
             entryIds,
@@ -327,7 +329,8 @@ class TodayDirectManipulationController(
     }
 
     fun deleteLifecycle(day: TodayDay, task: TodayTask, successMessage: String? = null) {
-        if (!day.isCurrent || day.taskChuteDayId == null || task.lifecycleState == LifecycleState.PLANNED
+        val historicalPast = !day.isCurrent && !day.planningEnabled && day.taskChuteDayId != null
+        if ((!day.isCurrent && !historicalPast) || day.taskChuteDayId == null || task.lifecycleState == LifecycleState.PLANNED
             || state.pendingEntryIds.isNotEmpty() || state.unresolvedRequest != null) return
         dispatch(
             setOf(task.id),

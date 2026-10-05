@@ -75,7 +75,7 @@ async function seed() {
       lifecycle_state, estimate_seconds, planned_start_minute, created_at) VALUES (?, ?, ?, ?, ?, 5, 'completed', 600, 60, ?)`)
       .bind(completedEntryId, userId, completedTaskId, dayId, sectionId, now),
   ]);
-  return { userId, dayId, ordinaryTaskId, ordinaryEntryId, secondEntryId, routineDefinitionId, routineOccurrenceId,
+  return { userId, dayId, sectionId, ordinaryTaskId, ordinaryEntryId, secondEntryId, routineDefinitionId, routineOccurrenceId,
     routineEntryId, runningEntryId, completedEntryId };
 }
 
@@ -99,6 +99,64 @@ async function state(fixture: Awaited<ReturnType<typeof seed>>) {
 }
 
 describe.sequential("BulkDeleteEntries", () => {
+  it("allows a single past planned delete, suppresses a deleted past Routine occurrence, and rejects past bulk delete", async () => {
+    const ordinary = await seed();
+    await env.APP_DB.prepare(`UPDATE taskchute_days SET logical_date = '2026-09-01',
+      start_instant = '2026-09-01T00:00:00.000Z', end_instant = '2026-09-02T00:00:00.000Z' WHERE id = ?`)
+      .bind(ordinary.dayId).run();
+    await expect(bulkDeleteEntries(env.APP_DB, ordinary.userId, requestFor(ordinary, [ordinary.ordinaryEntryId]), now))
+      .resolves.toMatchObject({ deleted_entry_ids: [ordinary.ordinaryEntryId], skipped_routine_entry_ids: [], placement_revision: 1 });
+    expect(await env.APP_DB.prepare("SELECT id FROM entries WHERE id = ?").bind(ordinary.ordinaryEntryId).first()).toBeNull();
+
+    const routine = await seed();
+    await env.APP_DB.prepare(`UPDATE taskchute_days SET logical_date = '2026-09-01',
+      start_instant = '2026-09-01T00:00:00.000Z', end_instant = '2026-09-02T00:00:00.000Z' WHERE id = ?`)
+      .bind(routine.dayId).run();
+    await expect(bulkDeleteEntries(env.APP_DB, routine.userId, requestFor(routine, [routine.routineEntryId]), now))
+      .resolves.toMatchObject({ deleted_entry_ids: [], skipped_routine_entry_ids: [routine.routineEntryId], placement_revision: 1 });
+    expect(await env.APP_DB.prepare("SELECT reason FROM routine_occurrence_suppressions WHERE app_user_id = ? AND routine_occurrence_id = ?")
+      .bind(routine.userId, routine.routineOccurrenceId).first()).toEqual({ reason: "skip" });
+    expect(await env.APP_DB.prepare("SELECT id FROM routine_definitions WHERE id = ?")
+      .bind(routine.routineDefinitionId).first()).toEqual({ id: routine.routineDefinitionId });
+
+    const multiple = await seed();
+    await env.APP_DB.prepare(`UPDATE taskchute_days SET logical_date = '2026-09-01',
+      start_instant = '2026-09-01T00:00:00.000Z', end_instant = '2026-09-02T00:00:00.000Z' WHERE id = ?`)
+      .bind(multiple.dayId).run();
+    await expect(bulkDeleteEntries(env.APP_DB, multiple.userId,
+      requestFor(multiple, [multiple.ordinaryEntryId, multiple.secondEntryId]), now))
+      .rejects.toMatchObject({ code: "resource_conflict" });
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM entries WHERE app_user_id = ? AND taskchute_day_id = ?")
+      .bind(multiple.userId, multiple.dayId).first<number>("count")).toBeGreaterThan(0);
+  });
+
+  it("rejects a past Planned delete when the Entry belongs to a continuation chain", async () => {
+    const fixture = await seed();
+    await env.APP_DB.prepare(`UPDATE taskchute_days SET logical_date = '2026-09-01',
+      start_instant = '2026-09-01T00:00:00.000Z', end_instant = '2026-09-02T00:00:00.000Z' WHERE id = ?`)
+      .bind(fixture.dayId).run();
+    const childTaskId = uuidv7();
+    const childEntryId = uuidv7();
+    await env.APP_DB.batch([
+      env.APP_DB.prepare("INSERT INTO tasks (id, app_user_id, title, created_at) VALUES (?, ?, 'Continuation child', ?)")
+        .bind(childTaskId, fixture.userId, now),
+      env.APP_DB.prepare(`INSERT INTO entries (id, app_user_id, task_id, taskchute_day_id, section_id, position,
+        lifecycle_state, created_at, continuation_chain_id, continuation_parent_entry_id)
+        VALUES (?, ?, ?, ?, ?, 6, 'planned', ?, ?, ?)`)
+        .bind(childEntryId, fixture.userId, childTaskId, fixture.dayId, fixture.sectionId, now,
+          fixture.ordinaryEntryId, fixture.ordinaryEntryId),
+      env.APP_DB.prepare("UPDATE entries SET continuation_chain_id = ? WHERE app_user_id = ? AND id = ?")
+        .bind(fixture.ordinaryEntryId, fixture.userId, fixture.ordinaryEntryId),
+    ]);
+    const before = await env.APP_DB.prepare("SELECT id, continuation_chain_id, continuation_parent_entry_id FROM entries WHERE app_user_id = ? AND id IN (?, ?) ORDER BY id")
+      .bind(fixture.userId, fixture.ordinaryEntryId, childEntryId).all();
+
+    await expect(bulkDeleteEntries(env.APP_DB, fixture.userId,
+      requestFor(fixture, [fixture.ordinaryEntryId]), now)).rejects.toMatchObject({ code: "resource_conflict" });
+    expect((await env.APP_DB.prepare("SELECT id, continuation_chain_id, continuation_parent_entry_id FROM entries WHERE app_user_id = ? AND id IN (?, ?) ORDER BY id")
+      .bind(fixture.userId, fixture.ordinaryEntryId, childEntryId).all()).results).toEqual(before.results);
+  });
+
   it("removes ordinary Entries and skips Routine Entries atomically, preserving identity and replaying once", async () => {
     const fixture = await seed();
     const request = requestFor(fixture, [fixture.ordinaryEntryId, fixture.routineEntryId]);

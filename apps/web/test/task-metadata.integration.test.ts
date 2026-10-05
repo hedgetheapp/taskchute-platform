@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
+import { setEntryEstimate } from "../worker/application/entry-planning";
 import { updateTaskMetadata } from "../worker/application/task-metadata";
 import { uuidv7 } from "../src/shared/uuidv7";
 
@@ -125,6 +126,132 @@ describe.sequential("D-060 UpdateTaskMetadata", () => {
       .bind(fixture.userId, fixture.entryId).first()).toEqual(before);
     await expect(updateTaskMetadata(env.APP_DB, fixture.userId, { ...request, operation_id: uuidv7(), title: "Renamed" }, now))
       .rejects.toMatchObject({ code: "resource_conflict" });
+  });
+
+  it("corrects an isolated past Planned Task without widening the Task-level edit to siblings", async () => {
+    const fixture = await seed();
+    await env.APP_DB.prepare(`UPDATE taskchute_days SET logical_date = '2026-09-04',
+      start_instant = '2026-09-04T00:00:00.000Z', end_instant = '2026-09-05T00:00:00.000Z' WHERE id = ?`)
+      .bind(fixture.dayId).run();
+    const request = { operation_id: uuidv7(), entry_id: fixture.entryId, task_id: fixture.taskId,
+      expected_title: "Before", expected_project_id: fixture.projectId,
+      title: "Past correction", project_id: fixture.nextProjectId };
+    await expect(updateTaskMetadata(env.APP_DB, fixture.userId, request, now)).resolves.toEqual({
+      entry_id: fixture.entryId, task_id: fixture.taskId, title: "Past correction",
+      project: { id: fixture.nextProjectId, title: "New project" },
+    });
+    expect(await env.APP_DB.prepare("SELECT title, project_id FROM tasks WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, fixture.taskId).first()).toEqual({ title: "Past correction", project_id: fixture.nextProjectId });
+    expect(await env.APP_DB.prepare("SELECT placement_revision FROM taskchute_days WHERE id = ?")
+      .bind(fixture.dayId).first<number>("placement_revision")).toBe(7);
+
+    const shared = await seed();
+    const otherDayId = uuidv7();
+    const otherEntryId = uuidv7();
+    await env.APP_DB.batch([
+      env.APP_DB.prepare(`UPDATE taskchute_days SET logical_date = '2026-09-04',
+        start_instant = '2026-09-04T00:00:00.000Z', end_instant = '2026-09-05T00:00:00.000Z' WHERE id = ?`).bind(shared.dayId),
+      env.APP_DB.prepare(`INSERT INTO taskchute_days
+        (id, app_user_id, logical_date, start_instant, end_instant, establishment_timezone,
+         establishment_boundary_minutes, establishment_disambiguation, placement_revision, created_at)
+        VALUES (?, ?, '2026-09-06', '2026-09-06T00:00:00.000Z', '2026-09-07T00:00:00.000Z', 'UTC', 0, 'compatible', 0, ?)`)
+        .bind(otherDayId, shared.userId, createdAt),
+      env.APP_DB.prepare(`INSERT INTO entries (id, app_user_id, task_id, taskchute_day_id, section_id, position, lifecycle_state, created_at)
+        VALUES (?, ?, ?, ?, (SELECT section_id FROM entries WHERE id = ?), 2, 'planned', ?)`)
+        .bind(otherEntryId, shared.userId, shared.taskId, otherDayId, shared.entryId, createdAt),
+    ]);
+    await expect(updateTaskMetadata(env.APP_DB, shared.userId, { ...request, operation_id: uuidv7(),
+      entry_id: shared.entryId, task_id: shared.taskId }, now)).rejects.toMatchObject({ code: "resource_conflict" });
+    expect(await env.APP_DB.prepare("SELECT title, project_id FROM tasks WHERE id = ?").bind(shared.taskId).first())
+      .toEqual({ title: "Before", project_id: shared.projectId });
+  });
+
+  it("allows estimate correction for a past Running Entry without changing its Execution", async () => {
+    const fixture = await seed();
+    const executionId = uuidv7();
+    await env.APP_DB.batch([
+      env.APP_DB.prepare(`UPDATE taskchute_days SET logical_date = '2026-09-04',
+        start_instant = '2026-09-04T00:00:00.000Z', end_instant = '2026-09-05T00:00:00.000Z'
+        WHERE app_user_id = ? AND id = ?`).bind(fixture.userId, fixture.dayId),
+      env.APP_DB.prepare("UPDATE entries SET lifecycle_state = 'running', estimate_seconds = 600 WHERE app_user_id = ? AND id = ?")
+        .bind(fixture.userId, fixture.entryId),
+      env.APP_DB.prepare(`INSERT INTO executions (id, app_user_id, entry_id, started_at, ended_at, created_at)
+        VALUES (?, ?, ?, '2026-09-04T08:00:00.000Z', NULL, '2026-09-04T08:00:00.000Z')`)
+        .bind(executionId, fixture.userId, fixture.entryId),
+    ]);
+
+    await expect(setEntryEstimate(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), entry_id: fixture.entryId, estimate_seconds: 1_200,
+    })).resolves.toEqual({ entry_id: fixture.entryId, estimate_seconds: 1_200 });
+    expect(await env.APP_DB.prepare("SELECT estimate_seconds, lifecycle_state FROM entries WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, fixture.entryId).first()).toEqual({ estimate_seconds: 1_200, lifecycle_state: "running" });
+    expect(await env.APP_DB.prepare("SELECT id, started_at, ended_at FROM executions WHERE app_user_id = ? AND entry_id = ?")
+      .bind(fixture.userId, fixture.entryId).first()).toEqual({
+      id: executionId, started_at: "2026-09-04T08:00:00.000Z", ended_at: null,
+    });
+  });
+
+  it("corrects a past Running Entry Project through its Entry snapshot without changing shared Task metadata", async () => {
+    const fixture = await seedCompletedSharedEntries();
+    await env.APP_DB.batch([
+      env.APP_DB.prepare(`UPDATE taskchute_days SET logical_date = '2026-09-04',
+        start_instant = '2026-09-04T00:00:00.000Z', end_instant = '2026-09-05T00:00:00.000Z' WHERE id = ?`).bind(fixture.dayId),
+      env.APP_DB.prepare("UPDATE entries SET lifecycle_state = 'running' WHERE id = ?").bind(fixture.entryId),
+      env.APP_DB.prepare("UPDATE executions SET ended_at = NULL, terminal_outcome = NULL WHERE id = ?").bind(fixture.executionId),
+    ]);
+    const request = { operation_id: uuidv7(), entry_id: fixture.entryId, task_id: fixture.taskId,
+      expected_title: "Before", expected_project_id: fixture.projectId,
+      title: "Before", project_id: fixture.nextProjectId };
+    await expect(updateTaskMetadata(env.APP_DB, fixture.userId, request, now)).resolves.toMatchObject({
+      title: "Before", project: { id: fixture.nextProjectId, title: "New project" },
+    });
+    expect(await env.APP_DB.prepare("SELECT project_id FROM tasks WHERE id = ?").bind(fixture.taskId).first())
+      .toEqual({ project_id: fixture.projectId });
+    expect(await env.APP_DB.prepare("SELECT project_id, project_title FROM entry_project_snapshots WHERE entry_id = ?")
+      .bind(fixture.entryId).first()).toEqual({ project_id: fixture.nextProjectId, project_title: "New project" });
+    expect(await env.APP_DB.prepare("SELECT project_id FROM entry_project_snapshots WHERE entry_id = ?")
+      .bind(fixture.entryId).first()).not.toEqual(await env.APP_DB.prepare("SELECT project_id FROM entry_project_snapshots WHERE entry_id = ?")
+      .bind(fixture.secondEntryId).first());
+  });
+
+  it("corrects a past Routine Project on its occurrence snapshot without changing the Task", async () => {
+    const fixture = await seed();
+    const routineDefinitionId = uuidv7();
+    const routineOccurrenceId = uuidv7();
+    await env.APP_DB.batch([
+      env.APP_DB.prepare(`UPDATE taskchute_days SET logical_date = '2026-09-04',
+        start_instant = '2026-09-04T00:00:00.000Z', end_instant = '2026-09-05T00:00:00.000Z' WHERE id = ?`)
+        .bind(fixture.dayId),
+      env.APP_DB.prepare(`INSERT INTO routine_definitions
+        (id, app_user_id, task_id, recurrence_type, start_logical_date, default_section_id,
+         default_planned_start_minute, default_estimate_seconds, materialization_order, defaults_revision, created_at)
+        VALUES (?, ?, ?, 'daily', '2026-09-04',
+          (SELECT section_id FROM entries WHERE app_user_id = ? AND id = ?), 60, 600, 1, 0, ?)`)
+        .bind(routineDefinitionId, fixture.userId, fixture.taskId, fixture.userId, fixture.entryId, createdAt),
+      env.APP_DB.prepare(`INSERT INTO routine_occurrences
+        (id, app_user_id, routine_definition_id, origin_taskchute_day_id, created_at)
+        VALUES (?, ?, ?, ?, ?)`)
+        .bind(routineOccurrenceId, fixture.userId, routineDefinitionId, fixture.dayId, createdAt),
+      env.APP_DB.prepare(`INSERT INTO routine_occurrence_task_snapshots
+        (app_user_id, routine_occurrence_id, task_title, project_id, project_title)
+        VALUES (?, ?, 'Before', ?, 'Old project')`)
+        .bind(fixture.userId, routineOccurrenceId, fixture.projectId),
+      env.APP_DB.prepare("UPDATE entries SET routine_occurrence_id = ? WHERE app_user_id = ? AND id = ?")
+        .bind(routineOccurrenceId, fixture.userId, fixture.entryId),
+    ]);
+    const request = { operation_id: uuidv7(), entry_id: fixture.entryId, task_id: fixture.taskId,
+      expected_title: "Before", expected_project_id: fixture.projectId, title: "Before", project_id: fixture.nextProjectId };
+
+    await expect(updateTaskMetadata(env.APP_DB, fixture.userId, request, now)).resolves.toEqual({
+      entry_id: fixture.entryId, task_id: fixture.taskId, title: "Before",
+      project: { id: fixture.nextProjectId, title: "New project" },
+    });
+    expect(await env.APP_DB.prepare("SELECT project_id FROM tasks WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, fixture.taskId).first()).toEqual({ project_id: fixture.projectId });
+    expect(await env.APP_DB.prepare("SELECT project_id, project_title, task_title FROM routine_occurrence_task_snapshots WHERE app_user_id = ? AND routine_occurrence_id = ?")
+      .bind(fixture.userId, routineOccurrenceId).first()).toEqual({
+        project_id: fixture.nextProjectId, project_title: "New project", task_title: "Before",
+      });
   });
 
   it("updates reminder intent with Entry CAS, preserves placement, and replays once", async () => {
@@ -346,6 +473,9 @@ describe.sequential("D-060 UpdateTaskMetadata", () => {
 
   it("corrects only a completed Entry historical Project when its Task is shared", async () => {
     const fixture = await seedCompletedSharedEntries();
+    await env.APP_DB.prepare(`UPDATE taskchute_days SET logical_date = '2026-09-04',
+      start_instant = '2026-09-04T00:00:00.000Z', end_instant = '2026-09-05T00:00:00.000Z' WHERE id = ?`)
+      .bind(fixture.dayId).run();
     const taskBefore = await env.APP_DB.prepare("SELECT id, title, project_id, created_at FROM tasks WHERE app_user_id = ? AND id = ?")
       .bind(fixture.userId, fixture.taskId).first();
     const entryBefore = await env.APP_DB.prepare(`SELECT e.id, e.task_id, e.taskchute_day_id, e.section_id, e.position,

@@ -108,13 +108,27 @@ class TaskPlanningHttpRepository(
                     else -> return result
                 }
             }
+            if (isHistoricalPastDay(editor.day) && currentProjectId != input.projectId) {
+                when (executeTaskMetadata(task, taskId, input.projectId)) {
+                    PlanningHttpResult.Unauthorized -> return PlanningSaveResult.Unauthorized
+                    is PlanningHttpResult.Failure -> return PlanningSaveResult.Failure("Projectを更新できませんでした。再読み込みしてください。")
+                    is PlanningHttpResult.Success -> Unit
+                }
+            }
+            if (isHistoricalPastDay(editor.day) && currentModeId != input.modeId) {
+                when (val result = executeRoutineMode(task, editor.day, input.modeId)) {
+                    PlanningHttpResult.Unauthorized -> return PlanningSaveResult.Unauthorized
+                    is PlanningHttpResult.Failure -> return PlanningSaveResult.Failure(result.message)
+                    is PlanningHttpResult.Success -> Unit
+                }
+            }
             if (input.title != task.title) {
                 when (val result = executeRoutineTitle(task, editor.day, input.title)) {
                     PlanningSaveResult.Success, is PlanningSaveResult.SuccessWithRevision -> Unit
                     else -> return result
                 }
             }
-            if (editor.day.isCurrent && routineInput.actualStartMinute != null) {
+            if ((editor.day.isCurrent || isHistoricalPastDay(editor.day)) && routineInput.actualStartMinute != null) {
                 return when (val actualResult = executeActualTimes(editor, routineInput, placementRevision)) {
                     PlanningSaveResult.Success -> PlanningSaveResult.SuccessWithRevision(placementRevision)
                     is PlanningSaveResult.SuccessWithRevision, PlanningSaveResult.Unauthorized, is PlanningSaveResult.Failure -> actualResult
@@ -129,9 +143,21 @@ class TaskPlanningHttpRepository(
                     is PlanningHttpResult.Failure -> return PlanningSaveResult.Failure(result.message)
                     is PlanningHttpResult.Success -> Unit
                 }
+            } else if (task.routineDerived && isHistoricalPastDay(editor.day) && currentProjectId != input.projectId) {
+                when (executeTaskMetadata(task, taskId, input.projectId)) {
+                    PlanningHttpResult.Unauthorized -> return PlanningSaveResult.Unauthorized
+                    is PlanningHttpResult.Failure -> return PlanningSaveResult.Failure("Projectを更新できませんでした。再読み込みしてください。")
+                    is PlanningHttpResult.Success -> Unit
+                }
             }
             if (!task.routineDerived && currentModeId != input.modeId) {
                 when (val result = executeMode(task, input.modeId)) {
+                    PlanningHttpResult.Unauthorized -> return PlanningSaveResult.Unauthorized
+                    is PlanningHttpResult.Failure -> return PlanningSaveResult.Failure(result.message)
+                    is PlanningHttpResult.Success -> Unit
+                }
+            } else if (task.routineDerived && isHistoricalPastDay(editor.day) && currentModeId != input.modeId) {
+                when (val result = executeRoutineMode(task, editor.day, input.modeId)) {
                     PlanningHttpResult.Unauthorized -> return PlanningSaveResult.Unauthorized
                     is PlanningHttpResult.Failure -> return PlanningSaveResult.Failure(result.message)
                     is PlanningHttpResult.Success -> Unit
@@ -262,7 +288,9 @@ class TaskPlanningHttpRepository(
         } else {
             logicalMinuteToInstant(editor.day, input.actualStartMinute, zone)
         }
-        val endedAt = input.actualEndMinute?.let { logicalMinuteToInstant(editor.day, it, zone) }
+        val endedAt = input.actualEndMinute?.let {
+            logicalEndMinuteToInstant(editor.day, input.actualStartMinute, it, zone)
+        }
         val executionId = if (task.lifecycleState == LifecycleState.PLANNED) task.executionId ?: UUIDv7.next()
         else task.executionId ?: return PlanningSaveResult.Failure("対象の実行IDを取得できません。再読み込みしてください。")
         val expectedPlacement = if (task.lifecycleState == LifecycleState.PLANNED) {
@@ -288,7 +316,9 @@ class TaskPlanningHttpRepository(
         task: TodayTask,
         completedDirectRollback: Boolean = false,
     ): PlanningSaveResult {
-        if (!editor.day.isCurrent) return PlanningSaveResult.Failure("ライフサイクルの修正は今日のタスクだけ実行できます。")
+        if (!editor.day.isCurrent && !isHistoricalPastDay(editor.day)) {
+            return PlanningSaveResult.Failure("ライフサイクルを修正できるDayではありません。再読み込みしてください。")
+        }
         val executionId = task.executionId
             ?: return PlanningSaveResult.Failure("対象のExecution IDを取得できません。再読み込みしてください。")
         val startedAt = task.activeStartedAt ?: task.firstStartedAt
@@ -324,8 +354,12 @@ class TaskPlanningHttpRepository(
     ): PlanningSaveResult {
         val zone = day.establishmentTimezone?.let { runCatching { ZoneId.of(it) }.getOrNull() }
             ?: return PlanningSaveResult.Failure("実績時間のタイムゾーンを取得できません。再読み込みしてください。")
-        val startedAt = logicalMinuteToInstant(day, input.actualStartMinute!!, zone)
-        val endedAt = input.actualEndMinute?.let { logicalMinuteToInstant(day, it, zone) }
+        val actualStartMinute = input.actualStartMinute
+            ?: return PlanningSaveResult.Failure("実績開始時刻を取得できません。再読み込みしてください。")
+        val startedAt = logicalMinuteToInstant(day, actualStartMinute, zone)
+        val endedAt = input.actualEndMinute?.let {
+            logicalEndMinuteToInstant(day, actualStartMinute, it, zone)
+        }
         val expectedPlacement = ",\"expected_placement_revision\":$placementRevision"
         val body = """
             {"operation_id":"${JsonEncoding.escape(UUIDv7.next())}","entry_id":"${JsonEncoding.escape(entryId)}","execution_id":"${JsonEncoding.escape(UUIDv7.next())}","expected_lifecycle_state":"planned","started_at":"${JsonEncoding.escape(startedAt)}","ended_at":${endedAt?.let { "\"${JsonEncoding.escape(it)}\"" } ?: "null"},"expected_started_at":null,"expected_ended_at":null$expectedPlacement,"input_precision":"minute"}
@@ -337,6 +371,15 @@ class TaskPlanningHttpRepository(
         val date = LocalDate.parse(day.logicalDate).plusDays(if (minute < day.establishmentBoundaryMinutes) 1 else 0)
         return ZonedDateTime.of(date, LocalTime.of(minute / 60, minute % 60), zone).toInstant().toString()
     }
+
+    private fun logicalEndMinuteToInstant(day: TodayDay, startedMinute: Int, endedMinute: Int, zone: ZoneId): String {
+        val startedDate = java.time.Instant.parse(logicalMinuteToInstant(day, startedMinute, zone)).atZone(zone).toLocalDate()
+        val endDate = startedDate.plusDays(if (endedMinute < startedMinute) 1 else 0)
+        return ZonedDateTime.of(endDate, LocalTime.of(endedMinute / 60, endedMinute % 60), zone).toInstant().toString()
+    }
+
+    private fun isHistoricalPastDay(day: TodayDay): Boolean = !day.isCurrent
+        && !day.planningEnabled && day.taskChuteDayId != null
 
     private fun executeSectionMove(
         task: TodayTask,
@@ -420,6 +463,15 @@ class TaskPlanningHttpRepository(
             {"operation_id":"${JsonEncoding.escape(UUIDv7.next())}","entry_id":"${JsonEncoding.escape(task.id)}","expected_mode_id":${nullableString(task.mode?.id)},"mode_id":${nullableString(modeId)}}
         """.trimIndent()
         return execute("POST", "/api/v1/entries/${JsonEncoding.pathSegment(task.id)}/mode", body)
+    }
+
+    private fun executeRoutineMode(task: TodayTask, day: TodayDay, modeId: String?): PlanningHttpResult {
+        val dayId = day.taskChuteDayId
+            ?: return PlanningHttpResult.Failure("編集対象の日を取得できません。")
+        val body = """
+            {"operation_id":"${JsonEncoding.escape(UUIDv7.next())}","entry_id":"${JsonEncoding.escape(task.id)}","taskchute_day_id":"${JsonEncoding.escape(dayId)}","action":"occurrence","mode_id":${nullableString(modeId)}}
+        """.trimIndent()
+        return execute("POST", "/api/v1/entries/${JsonEncoding.pathSegment(task.id)}/routine-mode", body)
     }
 
     private fun executeEstimate(entryId: String, expectedSeconds: Int?, seconds: Int?): PlanningSaveResult {

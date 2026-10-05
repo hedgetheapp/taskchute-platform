@@ -118,9 +118,41 @@ describe.sequential("DeleteCompletedEntry", () => {
     expect(await env.APP_DB.prepare("SELECT id FROM routine_occurrences WHERE id = ?").bind(fixture.routineOccurrenceId).first()).toEqual({ id: fixture.routineOccurrenceId });
     expect(await env.APP_DB.prepare("SELECT routine_occurrence_id FROM routine_occurrence_task_snapshots WHERE routine_occurrence_id = ?").bind(fixture.routineOccurrenceId).first()).toEqual({ routine_occurrence_id: fixture.routineOccurrenceId });
     expect(await env.APP_DB.prepare("SELECT id FROM entries WHERE routine_occurrence_id = ?").bind(fixture.routineOccurrenceId).first()).toBeNull();
+    expect(await env.APP_DB.prepare("SELECT reason FROM routine_occurrence_suppressions WHERE app_user_id = ? AND routine_occurrence_id = ?")
+      .bind(fixture.userId, fixture.routineOccurrenceId).first()).toEqual({ reason: "skip" });
     const projection = await loadCurrentTaskChuteDay(env.APP_DB, fixture.userId, now);
     expect([...projection.unsectioned_entries, ...projection.sections.flatMap((section) => section.entries)].some((entry) => entry.id === fixture.routineEntryId)).toBe(false);
     expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM entries WHERE routine_occurrence_id = ?").bind(fixture.routineOccurrenceId).first("count")).toBe(0);
+  });
+
+  it("deletes past Routine Running and Completed occurrences with one skip suppression each", async () => {
+    const completed = await seed({ dayDate: "2026-09-01" });
+    await expect(deleteCompletedEntry(env.APP_DB, completed.userId,
+      requestFor(completed, completed.routineEntryId), now)).resolves.toMatchObject({
+      entry_id: completed.routineEntryId, placement_revision: 1,
+    });
+    expect(await env.APP_DB.prepare("SELECT reason FROM routine_occurrence_suppressions WHERE app_user_id = ? AND routine_occurrence_id = ?")
+      .bind(completed.userId, completed.routineOccurrenceId).first()).toEqual({ reason: "skip" });
+    expect(await env.APP_DB.prepare("SELECT routine_occurrence_id FROM routine_occurrence_task_snapshots WHERE app_user_id = ? AND routine_occurrence_id = ?")
+      .bind(completed.userId, completed.routineOccurrenceId).first()).toEqual({ routine_occurrence_id: completed.routineOccurrenceId });
+
+    const running = await seed({ dayDate: "2026-09-01" });
+    await env.APP_DB.batch([
+      env.APP_DB.prepare(`UPDATE executions SET ended_at = '2026-09-01T09:30:00.000Z', terminal_outcome = 'completed'
+        WHERE app_user_id = ? AND id = ?`).bind(running.userId, running.runningExecutionId),
+      env.APP_DB.prepare("UPDATE entries SET lifecycle_state = 'running' WHERE app_user_id = ? AND id = ?")
+        .bind(running.userId, running.routineEntryId),
+      env.APP_DB.prepare("UPDATE executions SET ended_at = NULL, terminal_outcome = NULL WHERE app_user_id = ? AND id = ?")
+        .bind(running.userId, running.routineExecutionId),
+    ]);
+    await expect(deleteCompletedEntry(env.APP_DB, running.userId,
+      requestFor(running, running.routineEntryId), now)).resolves.toMatchObject({
+      entry_id: running.routineEntryId, placement_revision: 1,
+    });
+    expect(await env.APP_DB.prepare("SELECT reason FROM routine_occurrence_suppressions WHERE app_user_id = ? AND routine_occurrence_id = ?")
+      .bind(running.userId, running.routineOccurrenceId).first()).toEqual({ reason: "skip" });
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM entries WHERE app_user_id = ? AND routine_occurrence_id = ?")
+      .bind(running.userId, running.routineOccurrenceId).first("count")).toBe(0);
   });
 
   it("rejects planned and keeps all state", async () => {
@@ -129,6 +161,20 @@ describe.sequential("DeleteCompletedEntry", () => {
     await expect(deleteCompletedEntry(env.APP_DB, fixture.userId, requestFor(fixture, fixture.plannedEntryId), now)).rejects.toMatchObject({ code: "resource_conflict" });
     expect(await env.APP_DB.prepare("SELECT id FROM entries WHERE id = ?").bind(fixture.plannedEntryId).first()).toEqual({ id: fixture.plannedEntryId });
     expect(await env.APP_DB.prepare("SELECT placement_revision FROM taskchute_days WHERE id = ?").bind(fixture.dayId).first("placement_revision")).toEqual(before);
+  });
+
+  it("rejects deleting an Entry with continuation identity and preserves its history", async () => {
+    const fixture = await seed({ dayDate: "2026-09-01" });
+    await env.APP_DB.prepare("UPDATE entries SET continuation_chain_id = ? WHERE app_user_id = ? AND id = ?")
+      .bind(uuidv7(), fixture.userId, fixture.ordinaryEntryId).run();
+    await expect(deleteCompletedEntry(env.APP_DB, fixture.userId,
+      requestFor(fixture, fixture.ordinaryEntryId), now)).rejects.toMatchObject({
+      code: "resource_conflict", message: expect.stringContaining("continuation chain"),
+    });
+    expect(await env.APP_DB.prepare("SELECT id FROM entries WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, fixture.ordinaryEntryId).first()).toEqual({ id: fixture.ordinaryEntryId });
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM executions WHERE app_user_id = ? AND entry_id = ?")
+      .bind(fixture.userId, fixture.ordinaryEntryId).first<number>("count")).toBe(2);
   });
 
   it("deletes a current-Day running Entry with its active Execution and replays", async () => {
@@ -147,11 +193,13 @@ describe.sequential("DeleteCompletedEntry", () => {
     expect(await env.APP_DB.prepare("SELECT id FROM tasks WHERE id = ?").bind(fixture.runningTaskId).first()).toEqual({ id: fixture.runningTaskId });
   });
 
-  it("rejects stale, past, future, owner mismatch, active anomaly and operation misuse", async () => {
+  it("rejects stale, future, owner mismatch, active anomaly and operation misuse", async () => {
     const fixture = await seed();
     await expect(deleteCompletedEntry(env.APP_DB, fixture.userId, requestFor(fixture, fixture.ordinaryEntryId, 1), now)).rejects.toMatchObject({ code: "revision_conflict" });
     const past = await seed({ dayDate: "2026-09-01" });
-    await expect(deleteCompletedEntry(env.APP_DB, past.userId, requestFor(past, past.ordinaryEntryId), now)).rejects.toMatchObject({ code: "resource_conflict" });
+    await expect(deleteCompletedEntry(env.APP_DB, past.userId, requestFor(past, past.ordinaryEntryId), now))
+      .resolves.toMatchObject({ entry_id: past.ordinaryEntryId, placement_revision: 1 });
+    expect(await env.APP_DB.prepare("SELECT id FROM entries WHERE id = ?").bind(past.ordinaryEntryId).first()).toBeNull();
     const future = await seed({ dayDate: "2026-09-03" });
     await expect(deleteCompletedEntry(env.APP_DB, future.userId, requestFor(future, future.ordinaryEntryId), now)).rejects.toMatchObject({ code: "resource_conflict" });
     const otherUser = uuidv7();

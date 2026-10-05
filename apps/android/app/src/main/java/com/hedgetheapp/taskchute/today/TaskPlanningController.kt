@@ -28,7 +28,7 @@ class TaskPlanningController(
 
     fun openCreate(day: TodayDay) {
         val planningDay = freshPlanningDay(day)
-        if (!canEditDay(planningDay) || state.saving) return
+        if (!canPlanDay(planningDay) || state.saving) return
         val zone = planningDay.establishmentTimezone?.let { runCatching { ZoneId.of(it) }.getOrNull() }
         val section = if (zone == null) {
             // Older projections without canonical timezone cannot safely infer wall-clock Section.
@@ -51,15 +51,15 @@ class TaskPlanningController(
     }
 
     fun openEdit(day: TodayDay, task: TodayTask) {
-        if (!canEditDay(day) || state.saving) return
+        if (!canEditEntryDay(day) || state.saving) return
         val routineCapability = when {
             !task.routineDerived -> null
             task.lifecycleState == LifecycleState.PLANNED -> TaskEditorCapability.ROUTINE_PLANNING
-            task.lifecycleState == LifecycleState.RUNNING && day.isCurrent -> TaskEditorCapability.RUNNING_METADATA
-            task.lifecycleState == LifecycleState.COMPLETED && day.isCurrent -> TaskEditorCapability.COMPLETED_METADATA
+            task.lifecycleState == LifecycleState.RUNNING && (day.isCurrent || isEstablishedPastDay(day)) -> TaskEditorCapability.RUNNING_METADATA
+            task.lifecycleState == LifecycleState.COMPLETED && (day.isCurrent || isEstablishedPastDay(day)) -> TaskEditorCapability.COMPLETED_METADATA
             else -> return
         }
-        if (!day.isCurrent && task.lifecycleState != LifecycleState.PLANNED) return
+        if (!day.isCurrent && !isEstablishedPastDay(day) && task.lifecycleState != LifecycleState.PLANNED) return
         val capability = routineCapability ?: when (task.lifecycleState) {
             LifecycleState.PLANNED -> TaskEditorCapability.FULL_PLANNING
             LifecycleState.RUNNING -> TaskEditorCapability.RUNNING_METADATA
@@ -193,7 +193,11 @@ class TaskPlanningController(
         }
     }
 
-    private fun canEditDay(day: TodayDay): Boolean = canPlanDay(day)
+    private fun canEditEntryDay(day: TodayDay): Boolean = day.taskChuteDayId != null
+        && (!day.isCurrent || day.planningEnabled)
+
+    private fun isEstablishedPastDay(day: TodayDay): Boolean = !day.isCurrent
+        && !day.planningEnabled && day.taskChuteDayId != null
 
     private fun freshPlanningDay(day: TodayDay): TodayDay {
         val canonicalRevision = latestDay()

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { uuidv7 } from "../src/shared/uuidv7";
 import { loadCurrentTaskChuteDay } from "../worker/application/load-current-day";
 import { createRoutine, loadRoutineBoard, setRoutineEnabled, updateRoutine } from "../worker/application/routine-board";
-import { setRoutineMode } from "../worker/application/routine-planning";
+import { setRoutineEstimate, setRoutineMode, setRoutineSectionPlan } from "../worker/application/routine-planning";
 
 const now = "2026-09-01T12:00:00.000Z";
 
@@ -60,6 +60,97 @@ async function establishRoutine(fixture: Awaited<ReturnType<typeof seed>>) {
 }
 
 describe.sequential("D-085 Routine Mode", () => {
+  it("corrects past Planned, Running, and Completed occurrence Mode plus Planned estimate and Section only on that occurrence", async () => {
+    const fixture = await establishRoutine(await seed());
+    const pastDayId = uuidv7();
+    const pastOccurrenceId = uuidv7();
+    const pastEntryId = uuidv7();
+    await env.APP_DB.batch([
+      env.APP_DB.prepare(`INSERT INTO taskchute_days
+        (id, app_user_id, logical_date, start_instant, end_instant, establishment_timezone, establishment_boundary_minutes,
+         establishment_disambiguation, placement_revision, created_at)
+        VALUES (?, ?, '2026-08-31', '2026-08-31T00:00:00Z', '2026-09-01T00:00:00Z', 'UTC', 0, 'compatible', 0, ?)`)
+        .bind(pastDayId, fixture.userId, now),
+      env.APP_DB.prepare(`INSERT INTO taskchute_day_section_contexts
+        (app_user_id, taskchute_day_id, section_id, configuration_version_id, title, logical_start_minute, logical_end_minute,
+         actual_start_instant, actual_end_instant, context_order)
+        VALUES (?, ?, ?, NULL, 'Focus', 0, 1440, '2026-08-31T00:00:00Z', '2026-09-01T00:00:00Z', 0)`)
+        .bind(fixture.userId, pastDayId, fixture.sectionId),
+      env.APP_DB.prepare(`INSERT INTO routine_occurrences
+        (id, app_user_id, routine_definition_id, origin_taskchute_day_id, created_at)
+        VALUES (?, ?, ?, ?, ?)`)
+        .bind(pastOccurrenceId, fixture.userId, fixture.routineDefinitionId, pastDayId, now),
+      env.APP_DB.prepare(`INSERT INTO routine_occurrence_task_snapshots
+        (app_user_id, routine_occurrence_id, task_title, project_id, project_title)
+        VALUES (?, ?, 'Routine Mode fixture', NULL, NULL)`)
+        .bind(fixture.userId, pastOccurrenceId),
+      env.APP_DB.prepare(`INSERT INTO entries
+        (id, app_user_id, task_id, taskchute_day_id, section_id, position, lifecycle_state,
+         estimate_seconds, planned_start_minute, created_at, routine_occurrence_id)
+        VALUES (?, ?, ?, ?, ?, 1, 'planned', 600, 600, ?, ?)`)
+        .bind(pastEntryId, fixture.userId, fixture.entry.task.id, pastDayId, fixture.sectionId, now, pastOccurrenceId),
+      env.APP_DB.prepare("INSERT INTO entry_modes (app_user_id, entry_id, mode_id) VALUES (?, ?, ?)")
+        .bind(fixture.userId, pastEntryId, fixture.modeA),
+    ]);
+    const occurrenceRequest = (modeId: string | null) => ({ operation_id: uuidv7(), entry_id: pastEntryId,
+      taskchute_day_id: pastDayId, action: "occurrence" as const, mode_id: modeId });
+
+    await expect(setRoutineMode(env.APP_DB, fixture.userId, occurrenceRequest(fixture.modeB), now))
+      .resolves.toMatchObject({ mode_id: fixture.modeB, mode_override_present: true });
+    await expect(setRoutineEstimate(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), entry_id: pastEntryId, taskchute_day_id: pastDayId,
+      action: "occurrence", estimate_seconds: 1200,
+    }, now)).resolves.toMatchObject({ entry_id: pastEntryId, estimate_seconds: 1200, estimate_override_present: true });
+    await expect(setRoutineSectionPlan(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), entry_id: pastEntryId, taskchute_day_id: pastDayId,
+      action: "occurrence", section_id: fixture.sectionId, planned_start_minute: 700, expected_placement_revision: 0,
+    }, now)).resolves.toMatchObject({ entry_id: pastEntryId, section_id: fixture.sectionId,
+      planned_start_minute: 700, placement_revision: 1, section_plan_override_present: true });
+
+    expect(await env.APP_DB.prepare(`SELECT mode_id FROM routine_definition_modes
+      WHERE app_user_id = ? AND routine_definition_id = ?`).bind(fixture.userId, fixture.routineDefinitionId).first())
+      .toEqual({ mode_id: fixture.modeA });
+    expect(await env.APP_DB.prepare(`SELECT default_estimate_seconds, default_planned_start_minute
+      FROM routine_definitions WHERE app_user_id = ? AND id = ?`).bind(fixture.userId, fixture.routineDefinitionId).first())
+      .toEqual({ default_estimate_seconds: 600, default_planned_start_minute: 600 });
+    expect(await env.APP_DB.prepare(`SELECT mode_id FROM routine_occurrence_mode_overrides
+      WHERE app_user_id = ? AND routine_occurrence_id = ?`).bind(fixture.userId, pastOccurrenceId).first())
+      .toEqual({ mode_id: fixture.modeB });
+    expect(await env.APP_DB.prepare(`SELECT estimate_seconds, planned_start_minute, taskchute_day_id
+      FROM entries WHERE app_user_id = ? AND id = ?`).bind(fixture.userId, pastEntryId).first())
+      .toEqual({ estimate_seconds: 1200, planned_start_minute: 700, taskchute_day_id: pastDayId });
+    expect(await env.APP_DB.prepare(`SELECT estimate_seconds FROM entries WHERE app_user_id = ? AND id = ?`)
+      .bind(fixture.userId, fixture.entry.id).first()).toEqual({ estimate_seconds: 600 });
+
+    const executionId = uuidv7();
+    await env.APP_DB.batch([
+      env.APP_DB.prepare("UPDATE entries SET lifecycle_state = 'running' WHERE app_user_id = ? AND id = ?")
+        .bind(fixture.userId, pastEntryId),
+      env.APP_DB.prepare(`INSERT INTO executions (id, app_user_id, entry_id, started_at, created_at)
+        VALUES (?, ?, ?, '2026-08-31T20:00:00.000Z', ?)`)
+        .bind(executionId, fixture.userId, pastEntryId, now),
+    ]);
+    await expect(setRoutineMode(env.APP_DB, fixture.userId, occurrenceRequest(fixture.modeC), now))
+      .resolves.toMatchObject({ mode_id: fixture.modeC, mode_override_present: true });
+    expect(await env.APP_DB.prepare("SELECT mode_id FROM entry_modes WHERE app_user_id = ? AND entry_id = ?")
+      .bind(fixture.userId, pastEntryId).first()).toEqual({ mode_id: fixture.modeC });
+
+    await env.APP_DB.batch([
+      env.APP_DB.prepare("UPDATE entries SET lifecycle_state = 'completed' WHERE app_user_id = ? AND id = ?")
+        .bind(fixture.userId, pastEntryId),
+      env.APP_DB.prepare(`UPDATE executions SET ended_at = '2026-08-31T20:30:00.000Z', terminal_outcome = 'completed'
+        WHERE app_user_id = ? AND id = ?`).bind(fixture.userId, executionId),
+      env.APP_DB.prepare(`INSERT INTO entry_mode_snapshots (app_user_id, entry_id, mode_id, mode_title, captured_at)
+        VALUES (?, ?, ?, 'Mode C', '2026-08-31T20:00:00.000Z')`).bind(fixture.userId, pastEntryId, fixture.modeC),
+    ]);
+    await expect(setRoutineMode(env.APP_DB, fixture.userId, occurrenceRequest(fixture.modeA), now))
+      .resolves.toMatchObject({ mode_id: fixture.modeA, mode_override_present: true });
+    expect(await env.APP_DB.prepare("SELECT mode_id, mode_title FROM entry_mode_snapshots WHERE app_user_id = ? AND entry_id = ?")
+      .bind(fixture.userId, pastEntryId).first()).toEqual({ mode_id: fixture.modeA, mode_title: "Mode A" });
+    expect(await env.APP_DB.prepare("SELECT mode_id FROM routine_definition_modes WHERE app_user_id = ? AND routine_definition_id = ?")
+      .bind(fixture.userId, fixture.routineDefinitionId).first()).toEqual({ mode_id: fixture.modeA });
+  });
+
   it("persists same-value occurrence no-op without creating an override", async () => {
     const fixture = await establishRoutine(await seed());
     const day = await loadCurrentTaskChuteDay(env.APP_DB, fixture.userId, now);
