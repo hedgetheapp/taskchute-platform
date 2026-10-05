@@ -40,11 +40,11 @@ Android Today Task Editor adds actual-start quick inputs for `前回タスク終
 
 ## D-170 — Android Warm Loading Performance v0.1
 
-Status: **Approved / Not implemented / Not verified**
+Status: **Approved / Partially implemented — D-168A Today adjacent-paging slice only / broader scope not verified**
 
 Canonical Decision: `docs/decisions/D-170_ANDROID_WARM_LOADING_PERFORMANCE_V01.md`
 
-Android Today / Notes / Daily adopt a measured stale-while-revalidate style for same-process warm navigation without changing Server authority. Already-loaded usable content remains visible immediately on re-entry while canonical refresh runs in the background; Notes must not replace an existing list with its blocking loading row, and Daily must not replace an already-loaded same-date editor/body with a spinner. Dirty/saving/blocked editor state remains protected. The first slice adds local/dev before/after timing evidence and uses memory-only state; no persistent cache, offline editing, API/schema/migration, third-party telemetry, or backend redesign is approved.
+Android Today / Notes / Daily adopt a measured stale-while-revalidate style for same-process warm navigation without changing Server authority. D-168A implements only the adjacent-Day Today paging slice: bounded memory-only canonical Day reuse, immediate warm presentation with canonical revalidation, and cold loading confined below the fixed header. The only configured AVD is Wear-only (`D173B_Wear_API37`), so numerical before/after timing remains `NOT_RUN`. Notes and Daily warm re-entry, dirty/saving/blocked editor protection, and broader D-170 cold/warm measurements remain unimplemented and unverified. No persistent cache, offline editing, API/schema/migration, third-party telemetry, or backend redesign is approved.
 
 ## D-169 — Android Today Task Note Presence Indicator v0.1
 
@@ -61,6 +61,14 @@ Status: **Approved / Implemented / Integrated / focused Android JVM + AVD + exac
 Canonical Decision: `docs/decisions/D-168_ANDROID_TODAY_HORIZONTAL_DAY_PAGING_V01.md`
 
 Android Today gains adjacent-Day horizontal paging without restoring D-162's removed header arrows. Conventional left swipe moves to the next Day and right swipe moves to the previous Day, but gesture ownership is determined by the start region: Task-row gestures remain D-123 / D-124 Task actions and Selection Mode, while Section Headers and non-interactive/blank Today content can initiate page navigation. Vertical scroll, long-press D&D, footer/FAB/Running Player and modal controls remain protected. Paging follows the finger and snaps/settles like an adjacent page; DatePicker remains the arbitrary-date navigation affordance. Daily/Web are unchanged. Implementation `844bd1982420a6cae93b031d8bec070aa593f7d7` is on `main`; full Android app JVM `373 / 373`, focused D-168 AVD regressions, and exact-SHA CI pass. The full Today AVD remains partial after emulator transport failure; see `docs/TEST_MATRIX.md`. Galaxy S23 `NOT_RUN / PRODUCT_OWNER_MANUAL`; Production `NOT_RUN`; Released `NO`.
+
+## D-168A — Android Today Fixed Header + Fast Adjacent-Day Paging Corrective
+
+Status: **Implemented / Integrated / local Android JVM + compile + APK build + exact-SHA CI PASS / AVD UI and numerical timing NOT_RUN**
+
+Canonical Decision: `docs/decisions/D-168_ANDROID_TODAY_HORIZONTAL_DAY_PAGING_V01.md`
+
+Implementation `c59ae871ab7c1610517881f5ae760c7071b492af` keeps the Today header, date picker, and `表示` fixed while translating only the body. The previous page container moved the header and delayed the target read until settle completed. Horizontal intent now starts a bounded canonical read; a three-Day process-memory LRU supports immediate warm presentation and background revalidation. Cold loading stays below the header; date/session generations prevent stale publication and the cache clears on session change/close. Full app JVM `379 / 379`, Kotlin / AndroidTest compile, debug APK assembly, and `git diff --check` pass. Exact-SHA CI [`37322578898`](https://github.com/hedgetheapp/taskchute-platform/actions/runs/37322578898) passes. Signed Phone artifact `taskchute-android-debug-c59ae871ab7c1610517881f5ae760c7071b492af`, ID `11351285351`, expires `2026-10-12T14:13:19Z`. AVD UI runtime and numeric before/after timing are `NOT_RUN`: no device is connected and the only configured AVD is the incompatible `D173B_Wear_API37`. D-170 is implemented only for this Today paging slice; Notes/Daily remain open. No Worker/API/schema/migration/dependency/persistent cache change. Galaxy S23 `NOT_RUN / PRODUCT_OWNER_MANUAL`; Production `NOT_RUN`; Released `NO`.
 
 ## D-167 — Android Complete→Start Serial Lifecycle Handoff Corrective v0.1
 

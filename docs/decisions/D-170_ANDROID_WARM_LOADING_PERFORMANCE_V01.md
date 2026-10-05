@@ -1,6 +1,6 @@
 # D-170 — Android Warm Loading Performance v0.1
 
-Status: **Approved / Not implemented**
+Status: **Approved / Partially implemented — D-168A Today paging slice only / broader verification pending**
 
 Date: 2026-10-04
 
@@ -190,4 +190,8 @@ Future implementation should verify at minimum:
 11. no persistent cache, schema, migration, API, or dependency is added;
 12. before/after timing evidence is recorded.
 
-Until implemented and tested, this remains **Approved / Not implemented / Not verified**.
+Notes/Daily warm re-entry and the broader D-170 scope remain **Approved / Not implemented / Not verified**. The Today adjacent-Day paging sub-slice delivered by D-168A is implemented; it does not close D-170 as a whole.
+
+## Partial implementation closeout — D-168A Today paging — 2026-10-05
+
+D-168A starts the canonical adjacent-Day read as soon as a horizontal paging gesture is established and overlaps it with settle. It uses a bounded three-Day memory-only canonical cache, immediately presents a warm target while revalidating, confines cold loading/retry to below the fixed Today header, and discards stale responses across selected-date or session changes. Full Android app JVM `379 / 379`, Android app/AndroidTest compilation, and debug APK assembly pass. Exact-SHA CI [`37322578898`](https://github.com/hedgetheapp/taskchute-platform/actions/runs/37322578898) passes, including signed Phone/Wear builds and instrumentation APK compilation/signing. Signed Phone artifact `taskchute-android-debug-c59ae871ab7c1610517881f5ae760c7071b492af` (ID `11351285351`) expires `2026-10-12T14:13:19Z`. AVD UI runtime and numerical before/after timing are `NOT_RUN`: there is no connected ADB device and the only configured AVD, `D173B_Wear_API37`, is not a compatible Phone Today test target. No measured latency improvement is claimed. Notes and Daily behavior, dirty editor protection, and D-170 broader timing remain open. No persistence, offline writes, API/schema/migration, third-party telemetry, or backend changes. Production `NOT_RUN`; Released `NO`.
