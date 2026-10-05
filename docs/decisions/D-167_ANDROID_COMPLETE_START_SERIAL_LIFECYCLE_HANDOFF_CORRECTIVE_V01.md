@@ -1,6 +1,6 @@
 # D-167 — Android Complete→Start Serial Lifecycle Handoff Corrective v0.1
 
-Status: **Approved / Not implemented**
+Status: **Approved / Implemented / Integrated / Local verification and exact-SHA CI PASS / AVD not run / Galaxy S23 not run**
 
 Date: 2026-10-04
 
@@ -120,4 +120,16 @@ Future implementation should verify at minimum:
 9. realtime invalidation remains deferred/coalesced across the lifecycle handoff.
 10. server still reports max one active Execution.
 
-Until implemented and tested, this remains **Approved / Not implemented / Not verified**.
+## Implementation and verification — 2026-10-05
+
+Implementation was integrated on `main` as `ab190e9371d1ec540a32ddb0bfd31b79fbcdc427`.
+
+The pre-fix visual RED reproduced two Running rows: after completing A and immediately starting B, the presented running row IDs were A and B while B owned the effective active execution. A deterministic ordering RED held Complete A and observed Start B dispatch before Complete A resolved. The predecessor-failure, canonical-completed recovery, and Unauthorized focused cases also failed against the original controller behavior.
+
+`TodayController` now accepts one dependent Start intent while Complete is in flight, bound to the originating logical date, Entry identity, and stable task data. Optimistic lifecycle state composes from `presentedDay`, so immediate presentation is A Completed / B Running with one Running row. Start B is dispatched exactly once only after safe predecessor resolution. Generic Complete failure triggers a canonical reload of the bound date; the controller continues only when A is no longer active, B is still Planned, and the selected/current Day still matches. A still-active predecessor, stale/ineligible intent, navigation, or Unauthorized cancels B; Unauthorized follows the existing auth handoff once. Realtime invalidations remain deferred/coalesced, duplicate taps for the same queued B do not duplicate requests, and isolated Start/Complete behavior remains covered.
+
+The D-173B cross-Day case is covered: prior-Day A is represented by `active_entry`, completed using its stable identity, and current-Day B remains in current-Day rows and starts only after A safely resolves. The lifecycle Start response's existing nullable `placement_revision` is parsed by Android and handed to the existing date-scoped monotonic revision floor before reconciliation. A moved Section returns the canonical increment; no-move returns null. Worker/API behavior was not changed.
+
+Focused Android controller and repository tests pass (`32 / 32` and `13 / 13`); the full app JVM suite passes (`368 / 368`). Existing focused Worker lifecycle integration tests pass (`14 / 14`). `:app:compileDebugKotlin`, `:app:compileDebugAndroidTestKotlin`, `:app:assembleDebug`, signed CI Phone/Wear builds, AndroidTest APK compile, signing-certificate verification, and `git diff --check` pass. Exact-SHA CI for the implementation commit passes; Web/Worker CI is skipped by the Android-only classifier. A fresh signed Phone APK is available from that run.
+
+Today AVD runtime is `NOT_RUN / AVD_BOOT_TIMEOUT` because `TaskChute_API33` did not reach `sys.boot_completed=1` within the 180-second boot window; instrumentation runtime did not execute. Galaxy S23 D-167 verification remains `NOT_RUN / PRODUCT_OWNER_MANUAL`; the separate D-175 Galaxy result is not reused. No Worker/API/shared contract, schema/migration, dependency, persistent nonprod deploy, or user-data mutation. Production `NOT_RUN`; Released `NO`.

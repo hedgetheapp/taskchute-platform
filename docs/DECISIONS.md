@@ -64,11 +64,11 @@ Android Today gains adjacent-Day horizontal paging without restoring D-162's rem
 
 ## D-167 — Android Complete→Start Serial Lifecycle Handoff Corrective v0.1
 
-Status: **Approved / Not implemented / Not verified**
+Status: **Approved / Implemented / Integrated / Local verification and exact-SHA CI PASS / AVD not run / Galaxy S23 not run**
 
 Canonical Decision: `docs/decisions/D-167_ANDROID_COMPLETE_START_SERIAL_LIFECYCLE_HANDOFF_CORRECTIVE_V01.md`
 
-Android Today currently can compose an immediate Start B optimistic transition from stale canonical state while Complete A is still only optimistically applied, briefly rendering A and B as Running together. Complete A and Start B can also be sent concurrently because pending guards are per Entry, allowing Start B to race the server's one-active-Execution invariant. D-167 keeps the UI responsive but chains optimistic lifecycle state from the current presented Day and serializes dependent execution mutations so Complete A resolves safely before Start B is dispatched. Generic failure/transport ambiguity reconciles canonical Today before any dependent Start continues. No Worker/API/schema/domain change.
+Android Today now composes the immediate Start B optimistic transition from the effective presented Day and serializes the one dependent Start intent behind Complete A. On generic failure it reloads the intent's canonical Day and resumes only with proof that A is inactive, B remains Planned, and the Day still matches; otherwise it cancels. Unauthorized also cancels and follows the existing auth flow. D-173B cross-Day `active_entry`, duplicate taps, realtime coalescing, Day navigation, and the nullable lifecycle Start `placement_revision` handoff are covered. Focused Android `TodayControllerTest` / `TodayHttpRepositoryTest` `32 / 32` and `13 / 13`, full app JVM `368 / 368`, focused Worker lifecycle `14 / 14`, Android compile / AndroidTest compile / assemble, and exact-SHA CI pass. Implementation `main@ab190e9371d1ec540a32ddb0bfd31b79fbcdc427`; a fresh signed Phone APK was produced. AVD `NOT_RUN / AVD_BOOT_TIMEOUT`; Galaxy S23 `NOT_RUN / PRODUCT_OWNER_MANUAL`. No Worker/API/schema/migration/dependency or persistent nonprod change. Production `NOT_RUN`; Released `NO`.
 
 ## D-166 — Android Startup Loading State Unification v0.1
 

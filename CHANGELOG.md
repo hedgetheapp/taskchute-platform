@@ -1,3 +1,9 @@
+### D-167 Android Complete→Start serial lifecycle handoff corrective — 2026-10-05
+
+- Fixed the Android Today optimistic and network-ordering race for immediate Complete A → Start B. The UI chains from the latest presented Day and shows only B Running; one queued dependent Start is sent once after Complete safely resolves. Generic failure reloads canonical Today before any continuation, while still-active A, stale/ineligible intent, Day navigation, or Unauthorized cancels B. Same-B taps are bounded and realtime invalidation stays coalesced.
+- Android now retains the existing nullable lifecycle Start `placement_revision` through the date-scoped revision floor. D-173B prior-Day `active_entry` completion and current-Day B start remain compatible. No Worker/API, schema/migration, dependency, persistent nonprod, or existing-user data change.
+- Baseline RED reproduced A+B both Running and Start B dispatching before held Complete A resolved. Focused controller/repository `32 / 32` and `13 / 13`, full app JVM `368 / 368`, focused Worker lifecycle `14 / 14`, compile/AndroidTest compile/assemble, exact-SHA CI, signed Phone APK, and `git diff --check` PASS. AVD `NOT_RUN / AVD_BOOT_TIMEOUT`; Galaxy S23 `NOT_RUN / PRODUCT_OWNER_MANUAL`. Production `NOT_RUN`; Released `NO`.
+
 ### D-175 Android Consecutive Actual-Time Save Revision / Reconcile Corrective — 2026-10-05
 
 - Fixed Android to retain the canonical placement revision returned by successful actual-time mutations and hand it to the next editor save immediately. RED reproduced the old request sequence as expected revisions `[5, 5]` and canonical simulated responses `[200, 409 revision_conflict]`; after the fix it is `[5, 6]` with `[200, 200]` and no conflict. The handset's raw HTTP status was not captured; the failure mechanism is reproduced by the canonical Worker conflict contract.
