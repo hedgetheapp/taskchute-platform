@@ -35,7 +35,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
@@ -69,6 +71,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Switch
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -84,12 +87,14 @@ import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.PointerId
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.boundsInParent
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
@@ -530,6 +535,7 @@ private fun TodayContent(
     }
     val dayForecast = remember(day, forecastNow) { calculateTodayStartForecast(day, forecastNow) }
     val rowBounds = remember { mutableStateMapOf<String, Rect>() }
+    val pagingRowBounds = remember { mutableStateMapOf<String, Rect>() }
     val dropBounds = remember { mutableStateMapOf<String, Rect>() }
     val dropBoundsSectionId = remember { mutableStateMapOf<String, String?>() }
     val dropBoundsEligible = remember { mutableStateMapOf<String, Boolean>() }
@@ -541,14 +547,22 @@ private fun TodayContent(
     var dragState by remember { mutableStateOf<AndroidDragState?>(null) }
     var dragContentRootTop by remember { mutableStateOf(0f) }
     var dragViewportBounds by remember { mutableStateOf<Rect?>(null) }
+    var pageGestureBounds by remember { mutableStateOf<Rect?>(null) }
     var dragPointerRootY by remember { mutableStateOf<Float?>(null) }
     var dragPointerHostRootTop by remember { mutableStateOf(0f) }
+    var dragPointerHostRootLeft by remember { mutableStateOf(0f) }
     var dragPointerDown by remember { mutableStateOf(false) }
     var dragPointerId by remember { mutableStateOf<PointerId?>(null) }
     var dragPointerSessionActive by remember { mutableStateOf(false) }
     var dragFinishIssued by remember { mutableStateOf(false) }
     var autoScrollConsumed by remember { mutableStateOf(false) }
     var openSwipeEntryId by remember { mutableStateOf<String?>(null) }
+    var pageOffsetPx by remember(day.logicalDate) { mutableStateOf(0f) }
+    var pagePhysicalDirection by remember(day.logicalDate) { mutableStateOf(0) }
+    var pageMotionBusy by remember(day.logicalDate) { mutableStateOf(false) }
+    var pageSettleToken by remember(day.logicalDate) { mutableStateOf(0) }
+    var pendingPagePhysicalDirection by remember(day.logicalDate) { mutableStateOf(0) }
+    var pendingPageWidthPx by remember(day.logicalDate) { mutableStateOf(0f) }
     val validCollapsedSectionKeys = remember(day.logicalDate, day.sections, day.unsectionedEntries) {
         buildSet {
             day.sections.forEach { add(it.id) }
@@ -679,11 +693,35 @@ private fun TodayContent(
     val latestDragPositionUpdater = rememberUpdatedState(newValue = { pointerRootY: Float ->
         updateDragPosition(pointerRootY)
     })
+    val latestPageGestureBlocked = rememberUpdatedState(
+        selectionModeActive || displayMenuExpanded || pageMotionBusy || dragState != null ||
+            dragPointerSessionActive || (state.status != TodayLoadStatus.CONTENT && state.status != TodayLoadStatus.EMPTY),
+    )
+    val latestBottomOverlayTopRootPx = rememberUpdatedState(bottomOverlayTopRootPx)
+    LaunchedEffect(day.logicalDate, pageSettleToken) {
+        if (pageSettleToken == 0) return@LaunchedEffect
+        val physicalDirection = pendingPagePhysicalDirection
+        val pageWidth = pendingPageWidthPx
+        val targetOffset = if (physicalDirection == 0) 0f else physicalDirection * pageWidth
+        animate(
+            initialValue = pageOffsetPx,
+            targetValue = targetOffset,
+            animationSpec = tween(durationMillis = 220),
+        ) { value, _ -> pageOffsetPx = value }
+        if (physicalDirection == 0) {
+            pageOffsetPx = 0f
+            pagePhysicalDirection = 0
+            pageMotionBusy = false
+        } else {
+            controller.loadLogicalDate(adjacentTodayLogicalDate(day.logicalDate, physicalDirection))
+        }
+    }
     val pullToRefreshState = rememberPullToRefreshState()
     val todayListState = rememberLazyListState()
     val edgeZonePx = with(LocalDensity.current) { D148_DRAG_EDGE_ZONE.dp.toPx() }
     val maxAutoScrollDeltaPx = with(LocalDensity.current) { D148_DRAG_MAX_SCROLL_PER_FRAME.dp.toPx() }
     val insertionLineHalfHeightPx = with(LocalDensity.current) { 1.5.dp.toPx() }
+    val pageFlingVelocityThresholdPxPerSecond = with(LocalDensity.current) { 1_000.dp.toPx() }
     LaunchedEffect(dragState != null, day.logicalDate) {
         while (dragState != null) {
             val pointerY = dragPointerRootY
@@ -814,11 +852,28 @@ private fun TodayContent(
             }
         },
         modifier = modifier.onGloballyPositioned {
-            dragPointerHostRootTop = it.boundsInRoot().top
+            val hostBounds = it.boundsInRoot()
+            dragPointerHostRootTop = hostBounds.top
+            dragPointerHostRootLeft = hostBounds.left
         }.pointerInput(day.logicalDate) {
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = false)
                 var moved = false
+                var pagingAxis = TodayPagingGestureAxis.UNDECIDED
+                var pagingOwned = false
+                var pagingSettled = false
+                val downRoot = Offset(
+                    x = dragPointerHostRootLeft + down.position.x,
+                    y = dragPointerHostRootTop + down.position.y,
+                )
+                val downStartedOnTaskRow = pagingRowBounds.values.any { it.contains(downRoot) }
+                val bottomOverlayTop = latestBottomOverlayTopRootPx.value
+                val downStartedInBottomOverlay = bottomOverlayTop.isFinite() && downRoot.y >= bottomOverlayTop
+                val pagingEligibleAtDown = pageGestureBounds?.contains(downRoot) == true &&
+                    !downStartedOnTaskRow && !downStartedInBottomOverlay && !latestPageGestureBlocked.value
+                val velocityTracker = VelocityTracker().apply {
+                    addPosition(down.uptimeMillis, down.position)
+                }
                 while (true) {
                     // The parent observes the physical pointer early in the pipeline. Before
                     // handoff it remains passive so normal scroll/swipe/pull-to-refresh keeps
@@ -833,6 +888,7 @@ private fun TodayContent(
                         if (dragPointerSessionActive && dragPointerId == down.id) continue
                         break
                     }
+                    velocityTracker.addPosition(change.uptimeMillis, change.position)
                     if (kotlin.math.abs(change.position.x - down.position.x) > 4f || kotlin.math.abs(change.position.y - down.position.y) > 4f) moved = true
                     val parentOwnsDrag = shouldConsumeAndroidDragPointerMovement(
                         isDragActive = dragState != null && dragPointerSessionActive,
@@ -845,10 +901,42 @@ private fun TodayContent(
                         )
                         change.consume()
                     }
-                    if (change.changedToUpIgnoreConsumed() || !change.pressed) {
+                    if (!parentOwnsDrag && pagingEligibleAtDown && pagingAxis != TodayPagingGestureAxis.VERTICAL) {
+                        val deltaX = change.position.x - down.position.x
+                        val deltaY = change.position.y - down.position.y
+                        if (pagingAxis == TodayPagingGestureAxis.UNDECIDED) {
+                            pagingAxis = resolveTodayPagingGestureAxis(deltaX, deltaY, viewConfiguration.touchSlop)
+                        }
+                        if (pagingAxis == TodayPagingGestureAxis.HORIZONTAL) {
+                            pagingOwned = true
+                            pageMotionBusy = true
+                            deltaX.compareTo(0f).takeIf { it != 0 }?.let { pagePhysicalDirection = it }
+                            pageOffsetPx = deltaX.coerceIn(-size.width.toFloat(), size.width.toFloat())
+                            change.consume()
+                        }
+                    }
+                    val physicalPointerUp = change.changedToUpIgnoreConsumed()
+                    if (physicalPointerUp || !change.pressed) {
+                        if (pagingOwned) {
+                            val physicalDirection = if (physicalPointerUp) {
+                                committedTodayPagingDirection(
+                                    offsetPx = pageOffsetPx,
+                                    velocityXPxPerSecond = velocityTracker.calculateVelocity().x,
+                                    pageWidthPx = size.width.toFloat(),
+                                    flingVelocityThresholdPxPerSecond = pageFlingVelocityThresholdPxPerSecond,
+                                ) ?: 0
+                            } else {
+                                0
+                            }
+                            if (physicalDirection != 0) pagePhysicalDirection = physicalDirection
+                            pendingPagePhysicalDirection = physicalDirection
+                            pendingPageWidthPx = size.width.toFloat()
+                            pageSettleToken += 1
+                            pagingSettled = true
+                        }
                         if (shouldFinishAndroidDragOnParentUp(
                                 isDragActive = dragState != null,
-                                isPhysicalPointerUp = change.changedToUpIgnoreConsumed(),
+                                isPhysicalPointerUp = physicalPointerUp,
                                 pointerMatches = dragPointerId == down.id && dragPointerSessionActive,
                                 alreadyFinished = dragFinishIssued,
                             )
@@ -870,11 +958,26 @@ private fun TodayContent(
                         break
                     }
                 }
+                if (pagingOwned && !pagingSettled) {
+                    // A cancelled pointer is never a page command; return the current page to
+                    // its origin and keep the existing physical pointer-up D&D path untouched.
+                    pendingPagePhysicalDirection = 0
+                    pendingPageWidthPx = size.width.toFloat()
+                    pageSettleToken += 1
+                }
                 if (!moved && openSwipeEntryId != null) openSwipeEntryId = null
             }
         },
     ) {
-        Column(Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize().clipToBounds()) {
+        if (pageMotionBusy && pagePhysicalDirection != 0) {
+            FullScreenLoadingPresentation(
+                Modifier.fillMaxSize().graphicsLayer {
+                    translationX = -pagePhysicalDirection * size.width + pageOffsetPx
+                },
+            )
+        }
+        Column(Modifier.fillMaxSize().graphicsLayer { translationX = pageOffsetPx }) {
         TaskChuteDateNavigator(
             logicalDate = day.logicalDate,
             onPrevious = controller::previousDay,
@@ -910,7 +1013,11 @@ private fun TodayContent(
             Text(it, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 16.dp))
         }
         if (!renderDay.hasEntries && renderDay.sections.isEmpty() && renderDay.unsectionedEntries.isEmpty()) {
-            EmptyToday(Modifier.fillMaxWidth().weight(1f))
+            EmptyToday(
+                Modifier.fillMaxWidth().weight(1f).onGloballyPositioned {
+                    pageGestureBounds = it.boundsInRoot()
+                },
+            )
             return@Column
         }
         Box(
@@ -934,6 +1041,12 @@ private fun TodayContent(
                             bounds.bottom,
                             bottomOverlayTopRootPx.takeIf { it.isFinite() } ?: bounds.bottom,
                         ),
+                    )
+                    pageGestureBounds = Rect(
+                        left = bounds.left,
+                        top = bounds.top,
+                        right = bounds.right,
+                        bottom = bounds.bottom,
                     )
                 },
                 contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 110.dp),
@@ -1065,6 +1178,7 @@ private fun TodayContent(
                         dropBoundsSectionId = dropBoundsSectionId,
                         dropBoundsEligible = dropBoundsEligible,
                         rowBounds = rowBounds,
+                        pagingRowBounds = pagingRowBounds,
                     )
                 }
             }
@@ -1192,6 +1306,7 @@ private fun TodayContent(
                         dropBoundsSectionId = dropBoundsSectionId,
                         dropBoundsEligible = dropBoundsEligible,
                         rowBounds = rowBounds,
+                        pagingRowBounds = pagingRowBounds,
                     )
                 }
             }
@@ -1225,6 +1340,7 @@ private fun TodayContent(
                     )
                 }
             }
+        }
         }
         }
     }
@@ -1778,11 +1894,18 @@ private fun TodayTaskRow(
     dropBoundsSectionId: MutableMap<String, String?>,
     dropBoundsEligible: MutableMap<String, Boolean>,
     rowBounds: MutableMap<String, Rect>,
+    pagingRowBounds: MutableMap<String, Rect>,
 ) {
     var actionsSheetOpen by remember(task.id) { mutableStateOf(false) }
     var swipeOffset by remember(task.id) { mutableStateOf(0f) }
     var swipeGestureStarted by remember(task.id) { mutableStateOf(false) }
     var swipeGestureStartOffset by remember(task.id) { mutableStateOf(0f) }
+    DisposableEffect(task.id) {
+        onDispose {
+            rowBounds.remove(task.id)
+            pagingRowBounds.remove(task.id)
+        }
+    }
     LaunchedEffect(swipeMenuOpen, selectionModeActive) {
         if (!swipeMenuOpen || selectionModeActive) swipeOffset = 0f
     }
@@ -1819,7 +1942,9 @@ private fun TodayTaskRow(
     } else Modifier
     Box(
         modifier.fillMaxWidth().background(rowSurface).then(rowDragGestureModifier).onGloballyPositioned {
-            rowBounds[task.id] = it.boundsInRoot()
+            val bounds = it.boundsInRoot()
+            rowBounds[task.id] = bounds
+            pagingRowBounds[task.id] = bounds
         },
     ) {
         if (!selectionModeActive && hasActions && swipeOffset <= -swipeThreshold) {
@@ -1880,6 +2005,16 @@ private fun TodayTaskRow(
                     } else Modifier
                 )
                 .offset { IntOffset(swipeOffset.roundToInt(), 0) }
+                .onGloballyPositioned {
+                    val visualBounds = it.boundsInRoot()
+                    val baseBounds = rowBounds[task.id] ?: visualBounds
+                    pagingRowBounds[task.id] = Rect(
+                        left = minOf(baseBounds.left, visualBounds.left),
+                        top = minOf(baseBounds.top, visualBounds.top),
+                        right = maxOf(baseBounds.right, visualBounds.right),
+                        bottom = maxOf(baseBounds.bottom, visualBounds.bottom),
+                    )
+                }
                 .then(
                     if (dragging) Modifier.graphicsLayer {
                         alpha = 0.35f

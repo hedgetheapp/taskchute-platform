@@ -26,6 +26,7 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.swipeRight
+import androidx.compose.ui.test.swipeUp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.compose.ui.geometry.Offset
@@ -105,6 +106,116 @@ class TodayScreenInstrumentedTest {
 
         composeRule.onNodeWithContentDescription("Morningセクションを展開").performClick()
         composeRule.onNodeWithText("Write report").assertIsDisplayed()
+    }
+
+    @Test
+    fun sectionHeaderSwipesLoadExactlyOneAdjacentDayInEitherDirection() {
+        val repo = launchScreen()
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        composeRule.onNodeWithContentDescription("Morningセクションを折りたたむ").performTouchInput { swipeLeft() }
+        waitForLogicalDate("2026-09-15")
+        composeRule.onNodeWithText("Morning").assertIsDisplayed()
+
+        composeRule.onNodeWithContentDescription("Morningセクションを折りたたむ").performTouchInput { swipeRight() }
+        waitForLogicalDate("2026-09-14")
+        assertEquals(listOf(null, "2026-09-15", "2026-09-14"), requestedDateSnapshot(repo))
+
+        composeRule.onNodeWithContentDescription("Morningセクションを折りたたむ").performClick()
+        assertTrue(composeRule.onAllNodesWithText("Write report").fetchSemanticsNodes().isEmpty())
+    }
+
+    @Test
+    fun verticalAndBelowThresholdSectionGesturesDoNotLoadAnotherDay() {
+        val repo = launchScreen()
+        waitForStatus(TodayLoadStatus.CONTENT)
+        val requestsBefore = requestedDateSnapshot(repo)
+        val section = composeRule.onNodeWithContentDescription("Morningセクションを折りたたむ")
+
+        section.performTouchInput { swipeUp() }
+        composeRule.waitForIdle()
+        assertEquals(requestsBefore, requestedDateSnapshot(repo))
+
+        val sectionWidthPx = section.fetchSemanticsNode().boundsInRoot.width
+        section.performTouchInput {
+            down(center)
+            moveBy(Offset(-sectionWidthPx * 0.14f, 0f), delayMillis = 250)
+            advanceEventTime(250)
+            up()
+        }
+        composeRule.waitForIdle()
+        assertEquals(requestsBefore, requestedDateSnapshot(repo))
+        assertEquals("2026-09-14", controller?.state?.presentedDay?.logicalDate)
+    }
+
+    @Test
+    fun emptyDayCanPageLeftAndRight() {
+        val repo = launchScreen(FakeTodayRepository(initialDay = emptyDay()))
+        waitForStatus(TodayLoadStatus.EMPTY)
+
+        composeRule.onNodeWithText("タスクはありません").performTouchInput { swipeLeft() }
+        waitForLogicalDate("2026-09-15")
+        composeRule.onNodeWithText("タスクはありません").performTouchInput { swipeRight() }
+        waitForLogicalDate("2026-09-14")
+
+        assertEquals(listOf(null, "2026-09-15", "2026-09-14"), requestedDateSnapshot(repo))
+    }
+
+    @Test
+    fun selectionModeDisablesPagingFromSectionHeader() {
+        launchPlanningScreen(FakePlanningRepository(), directRepository = FakeDirectManipulationRepository())
+        waitForStatus(TodayLoadStatus.CONTENT)
+        val repo = requireNotNull(repository)
+        val requestSnapshot = requestedDateSnapshot(repo)
+
+        composeRule.onNodeWithText("Write report").performTouchInput { swipeRight() }
+        composeRule.onNodeWithText("1件選択").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Morningセクションを折りたたむ").performTouchInput { swipeLeft() }
+        composeRule.waitForIdle()
+
+        assertEquals(requestSnapshot, requestedDateSnapshot(repo))
+        assertEquals("2026-09-14", controller?.state?.presentedDay?.logicalDate)
+        composeRule.onNodeWithText("1件選択").assertIsDisplayed()
+    }
+
+    @Test
+    fun pagingFromSectionHeaderWhileTaskActionsAreOpenDoesNotInvokeThem() {
+        val baseTask = dayWith().sections.single().entries.single().copy(taskId = "task-1")
+        val initialDay = dayWith().copy(
+            sections = listOf(dayWith().sections.single().copy(entries = listOf(baseTask))),
+        )
+        val directRepository = FakeDirectManipulationRepository()
+        launchPlanningScreen(FakePlanningRepository(), initialDay, directRepository)
+        waitForStatus(TodayLoadStatus.CONTENT)
+        val repo = requireNotNull(repository)
+
+        composeRule.onNodeWithText("Write report").performTouchInput { swipeLeft() }
+        composeRule.onNodeWithContentDescription("タスクを編集").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Morningセクションを折りたたむ").performTouchInput { swipeLeft() }
+        waitForLogicalDate("2026-09-15")
+
+        assertEquals(listOf(null, "2026-09-15"), requestedDateSnapshot(repo))
+        assertEquals(0, directRepository.moveCalls.get())
+        assertTrue(composeRule.onAllNodesWithContentDescription("タスクを編集").fetchSemanticsNodes().isEmpty())
+    }
+
+    @Test
+    fun runningPanelFabAndFooterInteractionsDoNotPageToday() {
+        val runningDay = dayWith(LifecycleState.RUNNING)
+        launchPlanningScreen(FakePlanningRepository(), initialDay = runningDay)
+        waitForStatus(TodayLoadStatus.CONTENT)
+        val repo = requireNotNull(repository)
+
+        composeRule.onNodeWithContentDescription("Daily").performClick()
+        composeRule.onNodeWithContentDescription("実行中タスクを完了").performClick()
+        composeRule.waitUntil(15_000) {
+            requireNotNull(controller).state.status == TodayLoadStatus.CONTENT &&
+                composeRule.onAllNodesWithText("Write report").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithContentDescription("タスクを追加").performClick()
+
+        assertTrue(requestedDateSnapshot(repo).all { it == null })
+        assertEquals("2026-09-14", controller?.state?.presentedDay?.logicalDate)
     }
 
     @Test
@@ -604,20 +715,25 @@ class TodayScreenInstrumentedTest {
         )
         launchPlanningScreen(FakePlanningRepository(), initialDay, directRepository)
         waitForStatus(TodayLoadStatus.CONTENT)
+        val repo = requireNotNull(repository)
+        val requestsBeforeGestures = requestedDateSnapshot(repo)
 
         composeRule.onNodeWithText("Write report").performTouchInput { swipeLeft() }
         composeRule.onNodeWithContentDescription("タスクを編集").assertIsDisplayed()
         assertTrue(composeRule.onAllNodesWithContentDescription("タスクを開始").fetchSemanticsNodes().isEmpty())
+        assertEquals(requestsBeforeGestures, requestedDateSnapshot(repo))
 
         // The first Left → Right gesture only closes the open menu; it does not enter selection.
         composeRule.onNodeWithText("Write report").performTouchInput { swipeRight() }
         assertTrue(composeRule.onAllNodesWithContentDescription("タスクを編集").fetchSemanticsNodes().isEmpty())
         assertTrue(composeRule.onAllNodesWithText("1件選択").fetchSemanticsNodes().isEmpty())
+        assertEquals(requestsBeforeGestures, requestedDateSnapshot(repo))
         composeRule.onNodeWithContentDescription("タスクを開始").assertIsDisplayed()
 
         // A separate Left → Right gesture from neutral enters selection mode.
         composeRule.onNodeWithText("Write report").performTouchInput { swipeRight() }
         composeRule.onNodeWithText("1件選択").assertIsDisplayed()
+        assertEquals(requestsBeforeGestures, requestedDateSnapshot(repo))
     }
 
     @Test
@@ -2564,6 +2680,14 @@ class TodayScreenInstrumentedTest {
         composeRule.waitUntil(15_000) { controller?.state?.status == status }
         assertEquals(status, controller?.state?.status)
     }
+
+    private fun waitForLogicalDate(logicalDate: String) {
+        composeRule.waitUntil(15_000) { controller?.state?.presentedDay?.logicalDate == logicalDate }
+        assertEquals(logicalDate, controller?.state?.presentedDay?.logicalDate)
+    }
+
+    private fun requestedDateSnapshot(repo: FakeTodayRepository): List<String?> =
+        synchronized(repo.requestedDates) { repo.requestedDates.toList() }
 
     private enum class LoadMode {
         SUCCESS,
