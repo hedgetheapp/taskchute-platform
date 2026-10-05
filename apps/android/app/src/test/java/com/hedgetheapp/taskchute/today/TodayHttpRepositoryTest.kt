@@ -108,12 +108,12 @@ class TodayHttpRepositoryTest {
                 method = requestMethod
                 path = requestPath
                 body = requestBody.orEmpty()
-                TodayHttpResponse(204, null)
+                TodayHttpResponse(200, START_RESULT_NO_MOVE)
             },
             onUnauthorized = {},
         )
 
-        assertEquals(TodayMutationResult.Success, repository.startTask(plannedTask(), 7))
+        assertEquals(TodayMutationResult.SuccessWithRevision(null), repository.startTask(plannedTask(), 7))
         assertEquals("POST", method)
         assertEquals("/api/v1/entries/entry-1/start", path)
         assertTrue(body.contains("\"entry_id\":\"entry-1\""))
@@ -121,6 +121,26 @@ class TodayHttpRepositoryTest {
         assertTrue(body.contains("\"operation_id\":\""))
         assertTrue(body.contains("\"execution_id\":\""))
         assertTrue(!body.contains("input_precision"))
+    }
+
+    @Test
+    fun startRetainsCanonicalPlacementRevisionWhenActualSectionChanges() {
+        val repository = TodayHttpRepository(
+            request = { _, _, _ -> TodayHttpResponse(200, START_RESULT_MOVED) },
+            onUnauthorized = {},
+        )
+
+        assertEquals(TodayMutationResult.SuccessWithRevision(8), repository.startTask(plannedTask(), 7))
+    }
+
+    @Test
+    fun malformedStartSuccessFailsClosedWhenRevisionHandoffIsMissing() {
+        val repository = TodayHttpRepository(
+            request = { _, _, _ -> TodayHttpResponse(200, START_RESULT_NO_REVISION) },
+            onUnauthorized = {},
+        )
+
+        assertTrue(repository.startTask(plannedTask(), 7) is TodayMutationResult.Failure)
     }
 
     @Test
@@ -188,6 +208,15 @@ class TodayHttpRepositoryTest {
         const val VALID_PROJECTION = """
             {"taskchute_day":{"id":"day-1","logical_date":"2026-10-05"},"is_current":true,
             "planning_enabled":true,"placement_revision":0,"sections":[],"unsectioned_entries":[],"active_execution":null}
+        """
+        const val START_RESULT_NO_MOVE = """
+            {"entry_id":"entry-1","lifecycle_state":"running","execution":{"id":"execution-1","entry_id":"entry-1","started_at":"2026-09-14T09:00:00Z","ended_at":null},"section_id":"section-1","placement_revision":null}
+        """
+        const val START_RESULT_MOVED = """
+            {"entry_id":"entry-1","lifecycle_state":"running","execution":{"id":"execution-1","entry_id":"entry-1","started_at":"2026-09-14T09:00:00Z","ended_at":null},"section_id":"section-2","placement_revision":8}
+        """
+        const val START_RESULT_NO_REVISION = """
+            {"entry_id":"entry-1","lifecycle_state":"running","execution":{"id":"execution-1","entry_id":"entry-1","started_at":"2026-09-14T09:00:00Z","ended_at":null},"section_id":"section-2"}
         """
 
         fun diagnosticRepository(response: TodayHttpResponse?, enabled: Boolean = true) = TodayHttpRepository(

@@ -22,7 +22,7 @@ class TodayHttpRepository(
         val body = """
             {"operation_id":"${JsonEncoding.escape(UUIDv7.next())}","entry_id":"${JsonEncoding.escape(task.id)}","execution_id":"${JsonEncoding.escape(executionId)}","expected_placement_revision":$placementRevision}
         """.trimIndent()
-        return executeMutation("POST", "/api/v1/entries/${JsonEncoding.pathSegment(task.id)}/start", body)
+        return executeStartMutation("/api/v1/entries/${JsonEncoding.pathSegment(task.id)}/start", body)
     }
 
     override fun completeTask(task: TodayTask): TodayMutationResult {
@@ -44,6 +44,44 @@ class TodayHttpRepository(
             }
             response.status !in 200..299 -> TodayMutationResult.Failure("Todayを更新できませんでした。再試行してください。")
             else -> TodayMutationResult.Success
+        }
+    }
+
+    private fun executeStartMutation(path: String, body: String?): TodayMutationResult {
+        val response = runCatching { request("POST", path, body) }.getOrNull()
+            ?: return TodayMutationResult.Failure("接続できませんでした。再試行してください。")
+        return when {
+            response.status == null -> TodayMutationResult.Failure("接続できませんでした。再試行してください。")
+            response.status == 401 -> {
+                onUnauthorized()
+                TodayMutationResult.Unauthorized
+            }
+            response.status !in 200..299 -> TodayMutationResult.Failure("Todayを更新できませんでした。再試行してください。")
+            else -> runCatching { parseStartPlacementRevision(response.body) }
+                .fold(
+                    onSuccess = TodayMutationResult::SuccessWithRevision,
+                    onFailure = { TodayMutationResult.Failure("Todayを更新できませんでした。再試行してください。") },
+                )
+        }
+    }
+
+    private fun parseStartPlacementRevision(body: String?): Int? {
+        val root = JsonParser(body ?: "").parse() as? JsonValue.Object
+            ?: error("Start response must be an object")
+        val entryId = (root.fields["entry_id"] as? JsonValue.StringValue)?.value
+            ?.takeIf { it.isNotBlank() } ?: error("Start response entry_id must be a string")
+        require((root.fields["lifecycle_state"] as? JsonValue.StringValue)?.value == "running")
+        val execution = root.fields["execution"] as? JsonValue.Object ?: error("Start response execution must be an object")
+        require((execution.fields["id"] as? JsonValue.StringValue)?.value?.isNotBlank() == true)
+        require((execution.fields["entry_id"] as? JsonValue.StringValue)?.value == entryId)
+        require((execution.fields["started_at"] as? JsonValue.StringValue)?.value?.isNotBlank() == true)
+        require(execution.fields["ended_at"] == JsonValue.Null)
+        val revision = root.fields["placement_revision"] ?: error("Start response placement_revision is required")
+        return when (revision) {
+            JsonValue.Null -> null
+            is JsonValue.NumberValue -> revision.value.toIntOrNull()?.takeIf { it >= 0 }
+                ?: error("Start response placement_revision must be a non-negative integer or null")
+            else -> error("Start response placement_revision must be a non-negative integer or null")
         }
     }
 

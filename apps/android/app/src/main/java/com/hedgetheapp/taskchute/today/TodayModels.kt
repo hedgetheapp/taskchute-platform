@@ -131,6 +131,7 @@ sealed interface TodayResult {
 
 sealed interface TodayMutationResult {
     data object Success : TodayMutationResult
+    data class SuccessWithRevision(val placementRevision: Int?) : TodayMutationResult
     data object Unauthorized : TodayMutationResult
     data class Failure(val message: String) : TodayMutationResult
 }

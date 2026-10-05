@@ -1,6 +1,7 @@
 package com.hedgetheapp.taskchute.today
 
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CoroutineScope
@@ -234,6 +235,300 @@ class TodayControllerTest {
     }
 
     @Test
+    fun immediateStartOptimismMustChainFromPresentedCompletedDay() {
+        val initial = handoffDay()
+        val repository = FakeRepository().apply {
+            loadResult = TodayResult.Success(initial)
+            holdComplete = true
+        }
+        val controller = controller(repository)
+        controller.loadCurrent()
+        assertTrue(repository.loadStarted.await(2, TimeUnit.SECONDS))
+        assertTrue(awaitState(controller) { it.day != null })
+
+        controller.complete(initial.allEntries.single { it.id == "entry-a" })
+        assertTrue(repository.completeStarted.await(2, TimeUnit.SECONDS))
+        controller.start(initial.allEntries.single { it.id == "entry-b" })
+
+        val presented = controller.state.presentedDay!!
+        val runningIds = presented.allEntries.filter { it.lifecycleState == LifecycleState.RUNNING }.map { it.id }
+        val activeEntryId = presented.activeExecution?.entryId
+        val aState = presented.allEntries.single { it.id == "entry-a" }.lifecycleState
+        repository.releaseComplete.countDown()
+        controller.close()
+
+        assertEquals(LifecycleState.COMPLETED, aState)
+        assertEquals("Expected only B to be Running, actual rows=$runningIds", listOf("entry-b"), runningIds)
+        assertEquals("Expected B to own the effective active execution", "entry-b", activeEntryId)
+    }
+
+    @Test
+    fun startRequestMustWaitUntilCompletePredecessorResolves() {
+        val initial = handoffDay()
+        val repository = FakeRepository().apply {
+            loadResult = TodayResult.Success(initial)
+            loadResultAfterFirst = TodayResult.Success(handoffDay(aState = LifecycleState.COMPLETED, bState = LifecycleState.RUNNING))
+            holdComplete = true
+        }
+        val controller = controller(repository)
+        controller.loadCurrent()
+        assertTrue(repository.loadStarted.await(2, TimeUnit.SECONDS))
+        assertTrue(awaitState(controller) { it.day != null })
+
+        controller.complete(initial.allEntries.single { it.id == "entry-a" })
+        assertTrue(repository.completeStarted.await(2, TimeUnit.SECONDS))
+        controller.start(initial.allEntries.single { it.id == "entry-b" })
+        controller.start(initial.allEntries.single { it.id == "entry-b" })
+        val startDispatchedBeforeCompleteResolved = repository.startStarted.await(250, TimeUnit.MILLISECONDS)
+        val callsBeforeCompleteResolved = repository.startCalls.get()
+
+        repository.releaseComplete.countDown()
+        assertTrue(repository.startStarted.await(2, TimeUnit.SECONDS))
+        repository.releaseStart.countDown()
+        assertTrue(awaitState(controller) { it.pendingEntryIds.isEmpty() && it.day?.runningTask?.id == "entry-b" })
+        controller.close()
+
+        assertFalse("Start B must not be dispatched while Complete A is held", startDispatchedBeforeCompleteResolved)
+        assertEquals("Start B must remain unsent while Complete A is in flight", 0, callsBeforeCompleteResolved)
+        assertEquals(1, repository.startCalls.get())
+        assertEquals("entry-b", repository.startedEntryIds.single())
+    }
+
+    @Test
+    fun failedCompleteWithCanonicalRunningA_CancelsDependentStart() {
+        val initial = handoffDay()
+        val repository = FakeRepository().apply {
+            loadResults = listOf(
+                TodayResult.Success(initial),
+                TodayResult.Success(handoffDay(aState = LifecycleState.RUNNING, bState = LifecycleState.PLANNED)),
+            )
+            completeResult = TodayMutationResult.Failure("complete failed")
+            holdComplete = true
+        }
+        val controller = controller(repository)
+        controller.loadCurrent()
+        assertTrue(repository.loadStarted.await(2, TimeUnit.SECONDS))
+        assertTrue(awaitState(controller) { it.day != null })
+
+        controller.complete(initial.allEntries.single { it.id == "entry-a" })
+        assertTrue(repository.completeStarted.await(2, TimeUnit.SECONDS))
+        controller.start(initial.allEntries.single { it.id == "entry-b" })
+        repository.releaseComplete.countDown()
+
+        assertTrue(awaitState(controller) { it.errorMessage == "complete failed" && it.pendingEntryIds.isEmpty() })
+        val result = controller.state.presentedDay
+        val starts = repository.startCalls.get()
+        val error = controller.state.errorMessage
+        controller.close()
+
+        assertEquals("A canonical active Execution must cancel queued B", 0, starts)
+        assertEquals(LifecycleState.RUNNING, result?.allEntries?.single { it.id == "entry-a" }?.lifecycleState)
+        assertEquals(LifecycleState.PLANNED, result?.allEntries?.single { it.id == "entry-b" }?.lifecycleState)
+        assertEquals("complete failed", error)
+    }
+
+    @Test
+    fun failedCompleteMayContinueOnlyAfterCanonicalCompletedAIsLoaded() {
+        val initial = handoffDay()
+        val canonicalCompleted = handoffDay(aState = LifecycleState.COMPLETED, bState = LifecycleState.PLANNED)
+        val repository = FakeRepository().apply {
+            loadResults = listOf(
+                TodayResult.Success(initial),
+                TodayResult.Success(canonicalCompleted),
+                TodayResult.Success(handoffDay(aState = LifecycleState.COMPLETED, bState = LifecycleState.RUNNING)),
+            )
+            completeResult = TodayMutationResult.Failure("transport uncertain")
+            holdComplete = true
+            holdSecondLoad = true
+            holdStart = true
+        }
+        val controller = controller(repository)
+        controller.loadCurrent()
+        assertTrue(repository.loadStarted.await(2, TimeUnit.SECONDS))
+        assertTrue(awaitState(controller) { it.day != null })
+
+        controller.complete(initial.allEntries.single { it.id == "entry-a" })
+        assertTrue(repository.completeStarted.await(2, TimeUnit.SECONDS))
+        controller.start(initial.allEntries.single { it.id == "entry-b" })
+        repository.releaseComplete.countDown()
+
+        assertTrue(repository.secondLoadStarted.await(2, TimeUnit.SECONDS))
+        val startsBeforeCanonicalProof = repository.startCalls.get()
+        repository.releaseSecondLoad.countDown()
+        assertTrue(repository.startStarted.await(2, TimeUnit.SECONDS))
+        repository.releaseStart.countDown()
+        assertTrue(awaitState(controller) { it.pendingEntryIds.isEmpty() && it.day?.runningTask?.id == "entry-b" })
+        val events = repository.events.toList()
+        controller.close()
+
+        assertEquals("Queued Start must not be sent before canonical revalidation", 0, startsBeforeCanonicalProof)
+        assertTrue(events.indexOf("load-end:2") < events.indexOf("start:entry-b"))
+        assertEquals(1, events.count { it == "start:entry-b" })
+    }
+
+    @Test
+    fun failedCompleteCancelsQueuedStartWhenCanonicalBIsNoLongerPlanned() {
+        val initial = handoffDay()
+        val canonicalIneligible = handoffDay(
+            aState = LifecycleState.COMPLETED,
+            bState = LifecycleState.COMPLETED,
+        )
+        val repository = FakeRepository().apply {
+            loadResults = listOf(TodayResult.Success(initial), TodayResult.Success(canonicalIneligible))
+            completeResult = TodayMutationResult.Failure("complete uncertain")
+            holdComplete = true
+        }
+        val controller = controller(repository)
+        controller.loadCurrent()
+        assertTrue(repository.loadStarted.await(2, TimeUnit.SECONDS))
+        assertTrue(awaitState(controller) { it.day != null })
+
+        controller.complete(initial.allEntries.single { it.id == "entry-a" })
+        assertTrue(repository.completeStarted.await(2, TimeUnit.SECONDS))
+        controller.start(initial.allEntries.single { it.id == "entry-b" })
+        repository.releaseComplete.countDown()
+
+        assertTrue(awaitState(controller) { it.errorMessage == "complete uncertain" && it.pendingEntryIds.isEmpty() })
+        assertEquals(0, repository.startCalls.get())
+        assertEquals(LifecycleState.COMPLETED, controller.state.presentedDay?.allEntries?.single { it.id == "entry-b" }?.lifecycleState)
+        controller.close()
+    }
+
+    @Test
+    fun crossDayActiveEntryCanCompleteAndQueueCurrentDayStart() {
+        val initial = crossDayDay()
+        val currentRowIds = initial.allEntries.map { it.id }
+        val repository = FakeRepository().apply {
+            loadResult = TodayResult.Success(initial)
+            loadResultAfterFirst = TodayResult.Success(initial.copy(
+                activeExecution = TodayExecution("execution-b", "day-b-entry", "2026-10-05T12:00:00Z", 600),
+                activeEntry = null,
+                sections = initial.sections.map { section -> section.copy(entries = section.entries.map { it.copy(lifecycleState = LifecycleState.RUNNING, executionId = "execution-b") }) },
+            ))
+            holdComplete = true
+            holdStart = true
+        }
+        val controller = controller(repository)
+        controller.loadCurrent()
+        assertTrue(repository.loadStarted.await(2, TimeUnit.SECONDS))
+        assertTrue(awaitState(controller) { it.day?.runningTask?.id == "prior-entry" })
+
+        val priorActive = controller.state.day!!.runningTask!!
+        controller.complete(priorActive)
+        assertTrue(repository.completeStarted.await(2, TimeUnit.SECONDS))
+        controller.start(initial.allEntries.single { it.id == "day-b-entry" })
+
+        val presented = controller.state.presentedDay!!
+        assertEquals("prior-entry", repository.completedTask?.id)
+        assertEquals("prior-execution", repository.completedTask?.executionId)
+        assertEquals(currentRowIds, presented.allEntries.map { it.id })
+        assertEquals(listOf("day-b-entry"), presented.allEntries.filter { it.lifecycleState == LifecycleState.RUNNING }.map { it.id })
+        assertEquals("day-b-entry", presented.activeExecution?.entryId)
+        assertEquals(0, repository.startCalls.get())
+
+        repository.releaseComplete.countDown()
+        assertTrue(repository.startStarted.await(2, TimeUnit.SECONDS))
+        assertEquals(1, repository.startCalls.get())
+        repository.releaseStart.countDown()
+        assertTrue(awaitState(controller) { it.pendingEntryIds.isEmpty() })
+        controller.close()
+    }
+
+    @Test
+    fun realtimeInvalidationDuringCompleteStartHandoffProducesOneFinalReload() {
+        val initial = handoffDay()
+        val repository = FakeRepository().apply {
+            loadResults = listOf(
+                TodayResult.Success(initial),
+                TodayResult.Success(handoffDay(aState = LifecycleState.COMPLETED, bState = LifecycleState.RUNNING)),
+            )
+            holdComplete = true
+            holdStart = true
+        }
+        val controller = controller(repository)
+        controller.loadCurrent()
+        assertTrue(repository.loadStarted.await(2, TimeUnit.SECONDS))
+        assertTrue(awaitState(controller) { it.day != null })
+
+        controller.complete(initial.allEntries.single { it.id == "entry-a" })
+        assertTrue(repository.completeStarted.await(2, TimeUnit.SECONDS))
+        controller.start(initial.allEntries.single { it.id == "entry-b" })
+        controller.onRealtimeDayInvalidation("2026-09-14")
+        controller.onRealtimeForeground()
+        assertEquals(1, repository.loadCallCount())
+
+        repository.releaseComplete.countDown()
+        assertTrue(repository.startStarted.await(2, TimeUnit.SECONDS))
+        assertEquals(1, repository.startCalls.get())
+        assertEquals(1, repository.loadCallCount())
+        repository.releaseStart.countDown()
+        assertTrue(awaitState(controller) { it.pendingEntryIds.isEmpty() && it.day?.runningTask?.id == "entry-b" })
+
+        assertEquals(2, repository.loadCallCount())
+        assertEquals(1, repository.events.count { it == "load-start:2" })
+        controller.close()
+    }
+
+    @Test
+    fun navigationCancelsQueuedStartBeforeItCanTargetAnotherDay() {
+        val initial = handoffDay()
+        val otherDay = dayWith(LifecycleState.PLANNED).copy(logicalDate = "2026-09-15", isCurrent = false)
+        val repository = FakeRepository().apply {
+            loadResults = listOf(TodayResult.Success(initial), TodayResult.Success(otherDay), TodayResult.Success(otherDay))
+            holdComplete = true
+        }
+        val controller = controller(repository)
+        controller.loadCurrent()
+        assertTrue(repository.loadStarted.await(2, TimeUnit.SECONDS))
+        assertTrue(awaitState(controller) { it.day != null })
+
+        controller.complete(initial.allEntries.single { it.id == "entry-a" })
+        assertTrue(repository.completeStarted.await(2, TimeUnit.SECONDS))
+        controller.start(initial.allEntries.single { it.id == "entry-b" })
+        controller.nextDay()
+        assertTrue(awaitState(controller) { it.day?.logicalDate == "2026-09-15" })
+
+        repository.releaseComplete.countDown()
+        assertTrue(awaitState(controller) { it.pendingEntryIds.isEmpty() })
+        assertEquals(0, repository.startCalls.get())
+        assertEquals("2026-09-15", controller.state.day?.logicalDate)
+        controller.close()
+    }
+
+    @Test
+    fun unauthorizedCompleteCancelsDependentStartAndHandsOffOnce() {
+        val initial = handoffDay()
+        val repository = FakeRepository().apply {
+            loadResult = TodayResult.Success(initial)
+            completeResult = TodayMutationResult.Unauthorized
+            holdComplete = true
+        }
+        var authHandoffs = 0
+        val controller = TodayController(
+            repository = repository,
+            onUnauthorized = { authHandoffs++ },
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+        )
+        controller.loadCurrent()
+        assertTrue(repository.loadStarted.await(2, TimeUnit.SECONDS))
+        assertTrue(awaitState(controller) { it.day != null })
+
+        controller.complete(initial.allEntries.single { it.id == "entry-a" })
+        assertTrue(repository.completeStarted.await(2, TimeUnit.SECONDS))
+        controller.start(initial.allEntries.single { it.id == "entry-b" })
+        repository.releaseComplete.countDown()
+
+        assertTrue(awaitState(controller) { it.status == TodayLoadStatus.AUTH_REQUIRED })
+        val starts = repository.startCalls.get()
+        val pending = controller.state.pendingEntryIds
+        controller.close()
+
+        assertEquals(0, starts)
+        assertTrue(pending.isEmpty())
+        assertEquals(1, authHandoffs)
+    }
+
+    @Test
     fun crossDayCompleteUsesStableEntryAndExecutionIdentityAndKeepsCurrentRows() {
         val initial = crossDayDay()
         val plannedIds = initial.allEntries.map { it.id }
@@ -306,6 +601,42 @@ class TodayControllerTest {
         controller.confirmPlacementRevision("2026-09-15", 99)
 
         assertEquals(8, controller.state.day?.placementRevision)
+        controller.close()
+    }
+
+    @Test
+    fun startResultPlacementRevisionRaisesFloorBeforeStaleReloadCanReplaceIt() {
+        val initial = dayWith(LifecycleState.PLANNED).copy(placementRevision = 5)
+        val staleReload = dayWith(LifecycleState.PLANNED).copy(placementRevision = 5)
+        val canonicalRunning = dayWith(LifecycleState.RUNNING).copy(placementRevision = 8)
+        val repository = FakeRepository().apply {
+            loadResults = listOf(
+                TodayResult.Success(initial),
+                TodayResult.Success(staleReload),
+                TodayResult.Success(canonicalRunning),
+            )
+            startResult = TodayMutationResult.SuccessWithRevision(8)
+            holdStart = true
+            holdSecondLoad = true
+        }
+        val controller = controller(repository)
+        controller.loadCurrent()
+        assertTrue(repository.loadStarted.await(2, TimeUnit.SECONDS))
+        assertTrue(awaitState(controller) { it.day?.placementRevision == 5 })
+
+        controller.start(initial.allEntries.single())
+        assertTrue(repository.startStarted.await(2, TimeUnit.SECONDS))
+        repository.releaseStart.countDown()
+        assertTrue(repository.secondLoadStarted.await(2, TimeUnit.SECONDS))
+        assertEquals(8, controller.state.day?.placementRevision)
+        assertEquals(8, controller.state.presentedDay?.placementRevision)
+        assertEquals(listOf(5), repository.startPlacementRevisions.toList())
+
+        repository.releaseSecondLoad.countDown()
+        assertTrue(awaitState(controller) {
+            it.optimisticDay == null && it.day?.placementRevision == 8 && it.day.runningTask?.id == "entry-1"
+        })
+        assertEquals(3, repository.loadCallCount())
         controller.close()
     }
 
@@ -558,12 +889,22 @@ class TodayControllerTest {
         var loadResults: List<TodayResult>? = null
         var holdLoad = false
         var holdStart = false
+        var holdComplete = false
+        var holdSecondLoad = false
         val loadStarted = CountDownLatch(1)
         val reloadStarted = CountDownLatch(1)
         val releaseLoad = CountDownLatch(1)
+        val secondLoadStarted = CountDownLatch(1)
+        val releaseSecondLoad = CountDownLatch(1)
         val startStarted = CountDownLatch(1)
         val releaseStart = CountDownLatch(1)
+        val completeStarted = CountDownLatch(1)
+        val releaseComplete = CountDownLatch(1)
         val startCalls = AtomicInteger()
+        val completeCalls = AtomicInteger()
+        val startedEntryIds = CopyOnWriteArrayList<String>()
+        val startPlacementRevisions = CopyOnWriteArrayList<Int>()
+        val events = CopyOnWriteArrayList<String>()
         val requestedDates = mutableListOf<String?>()
         private val loadCalls = AtomicInteger()
 
@@ -573,13 +914,23 @@ class TodayControllerTest {
             synchronized(requestedDates) { requestedDates += logicalDate }
             val call = loadCalls.incrementAndGet()
             if (call == 1) loadStarted.countDown() else reloadStarted.countDown()
+            events += "load-start:$call"
+            if (call == 2 && holdSecondLoad) {
+                secondLoadStarted.countDown()
+                releaseSecondLoad.await(2, TimeUnit.SECONDS)
+            }
             if (holdLoad) releaseLoad.await(2, TimeUnit.SECONDS)
-            return loadResults?.getOrNull(call - 1)
+            val result = loadResults?.getOrNull(call - 1)
                 ?: if (call == 1) loadResult else loadResultAfterFirst ?: loadResult
+            events += "load-end:$call"
+            return result
         }
 
         override fun startTask(task: TodayTask, placementRevision: Int): TodayMutationResult {
             startCalls.incrementAndGet()
+            startedEntryIds += task.id
+            startPlacementRevisions += placementRevision
+            events += "start:${task.id}"
             startStarted.countDown()
             if (holdStart) releaseStart.await(2, TimeUnit.SECONDS)
             return startResult
@@ -587,6 +938,11 @@ class TodayControllerTest {
 
         override fun completeTask(task: TodayTask): TodayMutationResult {
             completedTask = task
+            completeCalls.incrementAndGet()
+            events += "complete-start:${task.id}"
+            completeStarted.countDown()
+            if (holdComplete) releaseComplete.await(2, TimeUnit.SECONDS)
+            events += "complete-end:${task.id}"
             return completeResult
         }
     }
@@ -602,6 +958,26 @@ class TodayControllerTest {
             sections = listOf(TodaySection("section-1", "Morning", 480, 720, listOf(task(state)))),
             unsectionedEntries = emptyList(),
             activeExecution = if (state == LifecycleState.RUNNING) TodayExecution("execution-1", "entry-1", "2026-09-14T01:00:00Z", 600) else null,
+        )
+
+        fun handoffDay(
+            aState: LifecycleState = LifecycleState.RUNNING,
+            bState: LifecycleState = LifecycleState.PLANNED,
+        ) = TodayDay(
+            logicalDate = "2026-09-14",
+            isCurrent = true,
+            planningEnabled = true,
+            placementRevision = 5,
+            sections = listOf(TodaySection(
+                "section-1", "Morning", 480, 720,
+                listOf(
+                    task(aState).copy(id = "entry-a", title = "Task A", taskId = "task-a", executionId = if (aState == LifecycleState.RUNNING) "execution-a" else null),
+                    task(bState).copy(id = "entry-b", title = "Task B", taskId = "task-b", executionId = if (bState == LifecycleState.RUNNING) "execution-b" else null),
+                ),
+            )),
+            unsectionedEntries = emptyList(),
+            activeExecution = if (aState == LifecycleState.RUNNING) TodayExecution("execution-a", "entry-a", "2026-09-14T01:00:00Z", 600)
+                else if (bState == LifecycleState.RUNNING) TodayExecution("execution-b", "entry-b", "2026-09-14T02:00:00Z", 600) else null,
         )
 
         fun crossDayDay() = TodayDay(

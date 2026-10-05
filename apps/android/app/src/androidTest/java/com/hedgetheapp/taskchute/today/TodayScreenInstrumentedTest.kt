@@ -190,6 +190,42 @@ class TodayScreenInstrumentedTest {
     }
 
     @Test
+    fun immediateCompleteThenStartShowsOneRunningAndSerializesRequests() {
+        val repo = FakeTodayRepository(initialDay = handoffDay()).apply {
+            holdComplete = true
+            holdStart = true
+            onCompleteAccepted = { currentDay = applyOptimisticLifecycle(currentDay, it.id, LifecycleState.COMPLETED) }
+            onStartAccepted = { currentDay = applyOptimisticLifecycle(currentDay, it.id, LifecycleState.RUNNING) }
+        }
+        launchScreen(repo)
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        composeRule.onNodeWithContentDescription("実行中タスクを完了").performClick()
+        composeRule.waitUntil(10_000) { repo.completeCalls.get() == 1 }
+        composeRule.onNodeWithContentDescription("タスクを開始").performClick()
+
+        composeRule.waitUntil(10_000) {
+            controller?.state?.presentedDay?.allEntries?.any {
+                it.id == "entry-b" && it.lifecycleState == LifecycleState.RUNNING
+            } == true
+        }
+        val optimistic = controller?.state?.presentedDay ?: error("Presented Day must remain available")
+        assertEquals(LifecycleState.COMPLETED, optimistic.allEntries.single { it.id == "entry-a" }.lifecycleState)
+        assertEquals(listOf("entry-b"), optimistic.allEntries.filter { it.lifecycleState == LifecycleState.RUNNING }.map { it.id })
+        assertEquals("entry-b", optimistic.activeExecution?.entryId)
+        assertEquals(0, repo.startCalls.get())
+
+        repo.releaseComplete.countDown()
+        composeRule.waitUntil(10_000) { repo.startCalls.get() == 1 }
+        repo.releaseStart.countDown()
+        composeRule.waitUntil(10_000) {
+            controller?.state?.pendingEntryIds?.isEmpty() == true && controller?.state?.day?.runningTask?.id == "entry-b"
+        }
+        composeRule.onNodeWithContentDescription("実行中タスクを完了").assertIsDisplayed()
+        assertEquals(1, repo.startCalls.get())
+    }
+
+    @Test
     fun loadingStateIsRenderedUntilRepositoryReturns() {
         val repo = FakeTodayRepository().apply { holdLoad = true }
         launchScreen(repo)
@@ -2515,6 +2551,10 @@ class TodayScreenInstrumentedTest {
         var holdStart = false
         @Volatile
         var holdComplete = false
+        @Volatile
+        var onStartAccepted: ((TodayTask) -> Unit)? = null
+        @Volatile
+        var onCompleteAccepted: ((TodayTask) -> Unit)? = null
         val releaseLoad = CountDownLatch(1)
         val releaseRefresh = CountDownLatch(1)
         val releaseStart = CountDownLatch(1)
@@ -2542,14 +2582,14 @@ class TodayScreenInstrumentedTest {
         override fun startTask(task: TodayTask, placementRevision: Int): TodayMutationResult {
             startCalls.incrementAndGet()
             if (holdStart) releaseStart.await()
-            currentDay = dayWith(LifecycleState.RUNNING)
+            onStartAccepted?.invoke(task) ?: run { currentDay = dayWith(LifecycleState.RUNNING) }
             return TodayMutationResult.Success
         }
 
         override fun completeTask(task: TodayTask): TodayMutationResult {
             completeCalls.incrementAndGet()
             if (holdComplete) releaseComplete.await()
-            currentDay = dayWith(LifecycleState.COMPLETED)
+            onCompleteAccepted?.invoke(task) ?: run { currentDay = dayWith(LifecycleState.COMPLETED) }
             return TodayMutationResult.Success
         }
     }
@@ -2662,6 +2702,26 @@ class TodayScreenInstrumentedTest {
                 null
             },
             taskChuteDayId = "day-1",
+        )
+
+        fun handoffDay() = dayWith().copy(
+            sections = listOf(
+                TodaySection(
+                    id = "section-1",
+                    title = "Morning",
+                    startMinute = 480,
+                    endMinute = 720,
+                    entries = listOf(
+                        dayWith(LifecycleState.RUNNING).sections.single().entries.single().copy(
+                            id = "entry-a", title = "Task A", taskId = "task-a", executionId = "execution-a",
+                        ),
+                        dayWith().sections.single().entries.single().copy(
+                            id = "entry-b", title = "Task B", taskId = "task-b",
+                        ),
+                    ),
+                ),
+            ),
+            activeExecution = TodayExecution("execution-a", "entry-a", "2026-09-14T01:00:00Z", 600),
         )
 
         fun displayTestDay(): TodayDay {
