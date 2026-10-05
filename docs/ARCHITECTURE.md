@@ -471,6 +471,8 @@ Executionはactual instantを保持し、logical boundary crossing時も1つのE
 
 以下はcanonical task-state authorityではなくprojectionとする。
 
+The established current-Day response may include an optional top-level `active_entry` presentation projection when the user-global active Execution's Entry belongs to another Day and therefore is absent from the queried Day rows. It contains only stable Entry id, Task id/effective title, Running lifecycle, and estimate. It is resolved within the authenticated owner's Entry/Task/snapshot scope, and does not join Section/Entry lists, placement revision, ordering, Next, or current-Day Section overflow. `active_execution` remains the lifecycle authority; clients combine it with this minimal projection to render the ordinary Running task and use the existing Complete identity. Same-Day active Entries continue to resolve from the Day rows.
+
 - DayBoard
 - Calendar
 - Timeline
