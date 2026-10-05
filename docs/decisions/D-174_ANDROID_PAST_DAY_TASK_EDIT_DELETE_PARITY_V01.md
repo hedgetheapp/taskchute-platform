@@ -1,6 +1,6 @@
 # D-174 Android Past-Day Task Edit / Delete Parity v0.1
 
-Status: **Approved / Not implemented / Not verified**
+Status: **Approved / Implemented / Integrated / Local, exact-SHA CI, and persistent nonprod verified; authenticated QA and Android device verification pending**
 
 ## Decision
 
@@ -34,7 +34,7 @@ Running / Completed Section authority remains D-081 / D-132. Actual start may re
 
 Historical metadata edits are local to the selected Entry or occurrence. For an ordinary Planned Entry, use existing ordinary Task / Entry planning authority only where it does not silently rewrite unrelated Entry history. For Running / Completed Entries, use existing Entry snapshots and historical relations; for Routine-derived Entries, use occurrence-local overrides / snapshots. Do not change unrelated Entries, shared current / future Task or Routine authority, or future occurrences. Stable Entry / Execution identities remain unchanged.
 
-No new persisted representation or schema / migration is approved by D-174. If any requested field cannot be corrected within the existing authority without changing unrelated records or adding schema / migration, stop before implementation and return the exact field, limitation, and options.
+No new persisted representation or schema / migration is approved by D-174. If existing authority cannot correct a field without changing unrelated records, fail closed and report the exact field / limitation. Any expansion requiring new persistence or migration must stop before that change and return options for a separate Decision.
 
 ## Routine-derived Entries
 
@@ -50,4 +50,28 @@ Delete is single-row and requires explicit destructive confirmation. Reuse or na
 
 D-174 narrowly supersedes the established-past read-only boundary from D-123, D-124, D-147, D-148 and related SPEC wording **only** for the past edit / eligible single-row delete surface defined here. D-042's unestablished-past record-none / no-fabrication / no-backfill boundary is unchanged. Existing current / future semantics, D-012 operation retry safety, D-043 planning synchronization, D-081 / D-132 actual-Section authority, D-129 current-time placement guard, D-155 reminder boundary, and D-173B cross-Day Execution semantics remain authoritative except for the explicit historical correction rules above.
 
-Historical D-123 / D-124 / D-147 / D-148 records remain evidence of the earlier approved scope; this Decision does not rewrite those records. Implementation is not yet verified. Galaxy S23 D-174 verification is `NOT_RUN / PRODUCT_OWNER_MANUAL`; Production is `NOT_RUN`, Released is `NO`, and D-167 remains `NOT_STARTED`.
+Historical D-123 / D-124 / D-147 / D-148 records remain evidence of the earlier approved scope; this Decision does not rewrite those records.
+
+## Implementation and authority map
+
+Implementation `2ae2ee32084cb89037b83845b8623081715d207e` is integrated on `main`. Android reuses the selected established Day, existing Task Editor, and single-row delete confirmation. Existing commands and persistence are retained:
+
+- Ordinary Planned title and Project use `UpdateTaskMetadata` only when the Task is not shared with another Entry or a Routine Definition. Shared Task metadata is rejected safely because changing the Task would rewrite unrelated/current/future authority and Planned Entry has no historical metadata snapshot. Running / Completed title remains read-only as in the existing editor; Project correction uses the selected Entry's historical snapshot.
+- Mode uses `SetEntryMode` for ordinary Entries and occurrence / Entry snapshot authority for Routine-derived Entries. Planned Section and planned start use the existing `MoveEntry` / `SetEntryPlannedStart` paths with the selected Day's frozen Section context. Routine Planned title, Project, Section, planned start, and estimate stay occurrence-local.
+- Estimate uses `SetEntryEstimate` for Planned Entries and allows an established past Running Entry only with exactly one active Execution; Routine estimate uses `SetRoutineEstimate` occurrence authority. Actual start / end use `SetExecutionTimes`; lifecycle rollback uses the existing safe `RevertEntryStart` / execution-correction rules.
+- Actual-time correction preserves Entry and Execution identity and originating Day. Actual start remains inside the owning Day; actual end may cross its boundary. Owner, future-time, overlap, active-Execution uniqueness, placement revision / CAS, operation replay, and canonical reconciliation checks remain enforced.
+- A single past Planned row uses the existing `BulkDeleteEntries` planned-deletion authority; past Running / Completed uses `DeleteCompletedEntry`. Routine deletion records occurrence suppression. Continuation-chain and completed-entry future-Routine protections remain enforced; unsafe targets reject without a cascade.
+
+The shared ordinary Planned Task title / Project case above remains intentionally guarded. Supporting a historical-only value where that Task is referenced by other history or a Routine Definition needs a new Entry-local persistence authority and a separate schema / migration Decision; D-174 did not authorize it. The exact options remain an Open Question in `docs/OPEN_QUESTIONS.md`.
+
+No schema, migration, dependency, production operation, or existing user-data mutation was introduced.
+
+## Verification and remaining evidence
+
+- `npm run verify:heavy -- --surface cross`: Web `15 files / 490 tests PASS`, Worker / D1 `41 files / 428 tests PASS`, typecheck, normal build, and `git diff --check` PASS. Android app and Wear JVM suites, Android / AndroidTest Kotlin compilation, and signed debug APK build / verification also PASS.
+- Exact-SHA GitHub Actions [run `37269689329`](https://github.com/hedgetheapp/taskchute-platform/actions/runs/37269689329) attempt 2 PASS. Attempt 1 failed only the unchanged, previously intermittent `TodayDirectManipulationTest.deterministicFailureDismissalIsGenerationSafe`; its isolated forced local rerun PASSed before the failed CI job was retried.
+- Persistent nonprod `taskchute-web-nonprod` deploy PASS; Worker version `a3aa8ed4-36dd-42be-ba6b-a93f646cbadc`. Guarded bindings were APP `taskchute-app-nonprod`, AUTH `taskchute-auth-nonprod`, and `REALTIME_HUB/RealtimeHub/sqlite`; `RUNTIME_ENV=nonprod`, `BOOTSTRAP_ENABLED=false`. Root `200`, unauthenticated protected current-Day API `401`; APP / AUTH `quick_check=ok`, foreign-key checks empty, and no pending migrations. Every remote D1 integrity probe reported `rows_written=0`.
+- Fresh signed Phone APK artifact `taskchute-android-debug-2ae2ee32084cb89037b83845b8623081715d207e`, artifact ID `11328331801`, expires `2026-10-12T06:01:46Z`; the CI signer fingerprint was verified locally. Wear APK and AndroidTest artifacts were also produced by the same CI run.
+- Authenticated disposable QA is `NOT_RUN / AUTH_FIXTURE_UNAVAILABLE`; no QA account or Task was created and no existing user / `睡眠` history was mutated. The focused Android instrumentation Kotlin compiled, but the local `TaskChute_API33` AVD did not reach boot-complete within 180 seconds; Android UI runtime is `NOT_RUN / AVD_BOOT_TIMEOUT`.
+
+Galaxy S23 D-174 verification remains `NOT_RUN / PRODUCT_OWNER_MANUAL`; the separate D-173B cross-Day Galaxy S23 report remains `PASS / USER_CONFIRMED` and is not inherited as D-174 evidence. Production is `NOT_RUN`, Released is `NO`, and D-167 remains `NOT_STARTED`.

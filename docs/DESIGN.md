@@ -94,7 +94,8 @@ Running rowのleft-swipeはplanned swipeと同じ3-action rhythmで`編集 → �
 row本体はTask titleを読める範囲で左へ退避し、Complete controlは隠す。露出した右側のrow areaは
 Running surfaceの薄青を連続させ、その上へ3 actionを配置する。current-Day Completedも
 lifecycle-aware editorとD-128の削除入口に合わせて`編集 / ノート / その他`を表示する。非current / historical等の
-planning-ineligible rowはD-123のNote-only境界を維持する。
+planning-ineligible rowはD-123のNote-only境界を維持する。D-174 eligible established-past rowだけは明示的な
+例外として既存editor / eligible deleteを使い、unestablished pastやその他のineligible rowはread-onlyを維持する。
 
 Selection Modeへの主要遷移は「選択可能Taskを右swipe → そのTaskがselected → 全row checkbox表示」と
 する。Selection Mode中はselection-eligible rowのcheckboxだけを小さいtap targetとして扱わず、
@@ -111,7 +112,8 @@ planned current-Dayのeligible Task rowを左swipeした状態は、48dpの丸�
 日付を移動 / 削除`を縦に並べる。Task NoteはSwipeの直接shortcutと重複させない。
 valid `taskId`を持つplanning-ineligible rowは原則として左swipeでNoteだけをrevealする。
 ただしcurrent-Day RunningはD-124、current-Day Completedはlifecycle-aware editor / D-128により
-`編集 / ノート / その他`を表示する。future / past等ではこの例外を適用しない。
+`編集 / ノート / その他`を表示する。Future Dayとineligible past rowではこの例外を適用しない。
+Eligible established-past rowはD-174に従い既存editorとeligible delete actionを利用する。
 
 drag中にcollapsed configured Sectionへ重なった場合、Sectionは開かず、Header全体をdrop targetとして
 tealのoutline + subtle backgroundで強調する。source Section側はTaskが抜ける仮状態へreflowしてよい。

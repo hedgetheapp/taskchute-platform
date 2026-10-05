@@ -264,6 +264,8 @@ D-041により、未establishの未来Dayのview / repeated navigationはnon-per
 
 D-042により、未establishの過去Dayはempty / record-none read-only historical gapとして扱う。current settingsからinterval / Section contextを捏造せず、Routine / Task / Entry / planning stateをbackfillしない。established past Dayはexisting canonical context / historyを表示する。D-174はこのestablished past Dayについて、既存authorityで表現できる範囲のEntry / Routine occurrence-local correctionと安全なsingle-row deleteをApprovedした。未establish past Dayのmutation / historical backfillは引き続き提供せず、別のexplicit Product Decisionを要する。
 
+- D-174 shared ordinary Planned Task title / Project: when the Task is also referenced by another Entry or Routine Definition, the current Task-level metadata command is rejected so an edit cannot silently change sibling history or current/future authority. Should this remain an eligibility guard, should D-174 add Entry-local historical metadata snapshots / overrides through a separately approved migration, or should shared Task mutation be explicitly authorized? Until decided, the current fail-closed guard remains.
+
 Current implementationではactual resolved boundary instantでday membershipを判定し、start / next-day endを別々にtimezone ruleからresolveする。materialized intervalとestablishment timezone / boundary contextを保存する。
 
 PR #5ではactive ExecutionをTaskChuteDay境界で分割せず、current dayへ切り替わった後もsame Executionとしてprojection / Completeできる。

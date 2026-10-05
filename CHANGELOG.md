@@ -1,3 +1,9 @@
+### D-174 Android past-Day Task edit / delete parity — 2026-10-05
+
+- Implemented eligible historical correction and single-row delete through Android's existing Task Editor and commands. Stable Entry / Execution identity, origin Day, Routine occurrence-only semantics, and existing owner / replay / CAS / overlap / lifecycle / protected-history guards remain. No schema or migration was added.
+- Shared ordinary Planned Task title / Project edits fail closed when Task-level changes would affect other Entry or Routine authority; Entry-local persistence would need a separate Decision. Exact-SHA CI `37269689329` attempt 2, full local Web/Worker/Android verification, and persistent nonprod verification pass. Worker version `a3aa8ed4-36dd-42be-ba6b-a93f646cbadc`; signed Phone APK artifact `11328331801`.
+- Authenticated disposable QA `NOT_RUN / AUTH_FIXTURE_UNAVAILABLE`; Android UI runtime `NOT_RUN / AVD_BOOT_TIMEOUT`; Galaxy S23 D-174 `NOT_RUN / PRODUCT_OWNER_MANUAL`. Production `NOT_RUN`; Released `NO`; D-167 `NOT_STARTED`.
+
 ### D-173A Android nonprod Today current-Day failure diagnostic — 2026-10-05
 
 - Added safe Today load-failure classification for HTTP status/canonical error code, malformed 2xx projection, and network/no-response. Only Debug builds pointed at the exact canonical nonprod URL display the secondary diagnostic; response messages/bodies, credentials, identifiers, and exception text remain hidden. Existing retry copy and D-166A 401 recovery are unchanged. D-173 root cause remains unknown pending Product Owner update-in-place verification.

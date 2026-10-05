@@ -1,10 +1,10 @@
 ## D-174 — Android Past-Day Task Edit / Delete Parity v0.1
 
-Status: **Approved / Not implemented / Not verified**
+Status: **Approved / Implemented / Integrated / Local, exact-SHA CI, and persistent nonprod verified; authenticated QA and Android device verification pending**
 
 Canonical Decision: `docs/decisions/D-174_ANDROID_PAST_DAY_TASK_EDIT_DELETE_PARITY_V01.md`
 
-An already-established past TaskChuteDay is editable history. Android may correct an eligible selected Entry or Routine occurrence through the existing editor and may delete one eligible row with confirmation. Ordinary lifecycle fields follow the existing Planned / Running / Completed editor semantics; actual-time correction preserves Entry / Execution identity, origin Day / frozen Section context, owner scope, overlap, CAS, replay, and protected-history guards. Routine changes are occurrence-only. D-042's unestablished-past no-fabrication / record-none boundary, D-081 / D-132 actual-Section authority, D-155 reminder boundary, past Start / ordinary Complete buttons, historical D&D / reorder, Duplicate, and bulk delete remain unchanged. No schema / migration is approved; if a field or Routine delete cannot use existing local authority safely, stop before implementation. Galaxy S23 D-174 verification is `NOT_RUN / PRODUCT_OWNER_MANUAL`; Production `NOT_RUN`, Released `NO`, D-167 `NOT_STARTED`.
+An already-established past TaskChuteDay is editable history. Android reuses the existing Task Editor and single-row delete confirmation; Routine changes are occurrence-only. Existing command guards preserve stable Entry / Execution identity, origin Day / frozen Section context, owner, overlap, CAS, replay, lifecycle, and protected-history semantics. No schema / migration was added. Shared ordinary Planned Task title / Project edits fail closed where they would change other Entry or Routine authority; supporting a historical-only value needs a separate persistence decision. Full Web/Worker and Android CI, persistent nonprod deploy, and read-only integrity probes pass. Authenticated disposable QA is `NOT_RUN / AUTH_FIXTURE_UNAVAILABLE`; Android UI runtime is `NOT_RUN / AVD_BOOT_TIMEOUT`. Exact-SHA CI `37269689329` attempt 2 PASS, Worker version `a3aa8ed4-36dd-42be-ba6b-a93f646cbadc`, Phone APK artifact `11328331801`. Galaxy S23 D-174 `NOT_RUN / PRODUCT_OWNER_MANUAL`; Production `NOT_RUN`, Released `NO`, D-167 `NOT_STARTED`.
 
 ## D-173B — Cross-Day Running Client Compatibility Corrective v0.1
 
