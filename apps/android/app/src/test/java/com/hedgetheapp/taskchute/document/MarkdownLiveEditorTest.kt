@@ -1,11 +1,37 @@
 package com.hedgetheapp.taskchute.document
 
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MarkdownLiveEditorTest {
+    @Test
+    fun missingOrOutOfRangeSavedCaretUsesSafeSourceSelection() {
+        assertEquals(TextFieldValue("body"), initialMarkdownTextFieldValue("body", null))
+        assertEquals(TextRange(0), initialMarkdownTextFieldValue("body", -3).selection)
+        assertEquals(TextRange(4), initialMarkdownTextFieldValue("body", 20).selection)
+        assertEquals("body", initialMarkdownTextFieldValue("body", 2).text)
+        assertEquals(TextRange(2), initialMarkdownTextFieldValue("body", 2).selection)
+    }
+
+    @Test
+    fun externalBodyChangesKeepTheCurrentSelectionAndClampWhenShortened() {
+        val restored = initialMarkdownTextFieldValue("0123456789", 2)
+        val active = restored.copy(selection = TextRange(7))
+
+        assertEquals(TextRange(7), clampMarkdownTextFieldValueToBody(active, "01234567890").selection)
+        assertEquals(TextRange(4), clampMarkdownTextFieldValueToBody(active, "0123").selection)
+    }
+
+    @Test
+    fun nonCollapsedSelectionPersistsItsEndEndpoint() {
+        assertEquals(7, persistedDocumentCaretOffset(TextRange(2, 7)))
+        assertEquals(2, persistedDocumentCaretOffset(TextRange(7, 2)))
+    }
+
     @Test
     fun boldAtCaretPlacesCaretBetweenDelimiters() {
         val result = MarkdownEditCommands.bold("abc", MarkdownSelection(1, 1))

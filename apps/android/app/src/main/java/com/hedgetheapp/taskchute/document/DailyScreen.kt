@@ -32,6 +32,11 @@ import com.hedgetheapp.taskchute.ui.TaskChuteDateNavigator
 import com.hedgetheapp.taskchute.ui.TaskChuteColors
 import com.hedgetheapp.taskchute.R
 
+internal data class DailyCursorEditorIdentity(val sessionKey: String, val documentId: String)
+
+internal fun dailyCursorEditorIdentity(state: DailyUiState): DailyCursorEditorIdentity? =
+    state.document?.documentId?.let { DailyCursorEditorIdentity(sessionKey = it, documentId = it) }
+
 @Composable
 fun DailyScreen(
     controller: DailyController,
@@ -40,6 +45,7 @@ fun DailyScreen(
     onNavigateSettings: () -> Unit,
 ) {
     val state = controller.state
+    val cursorIdentity = dailyCursorEditorIdentity(state)
     var datePickerVisible by remember { mutableStateOf(false) }
     var navigationRequested by remember { mutableStateOf<(() -> Unit)?>(null) }
 
@@ -105,6 +111,8 @@ fun DailyScreen(
                         onValueChange = controller::updateBody,
                         enabled = !state.blocked,
                         modifier = Modifier.fillMaxWidth().weight(1f),
+                        editorSessionKey = cursorIdentity?.sessionKey ?: state.selectedDate ?: Unit,
+                        cursorDocumentId = cursorIdentity?.documentId,
                         footer = {
                             Text(
                                 when (state.saveStatus) {

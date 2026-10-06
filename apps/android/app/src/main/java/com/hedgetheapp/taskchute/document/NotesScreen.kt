@@ -80,6 +80,11 @@ internal fun shouldShowNotesNavigationBar(editorOpen: Boolean, imeVisible: Boole
 internal fun canStartNotesSelection(selectionModeActive: Boolean, listScrollInProgress: Boolean): Boolean =
     !selectionModeActive && !listScrollInProgress
 
+internal data class NoteCursorEditorIdentity(val sessionId: Int, val documentId: String?)
+
+internal fun noteCursorEditorIdentity(editor: NoteEditorState): NoteCursorEditorIdentity =
+    NoteCursorEditorIdentity(editor.sessionId, editor.document?.documentId)
+
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
 fun NotesScreen(
@@ -258,12 +263,15 @@ fun TaskNoteBottomSheet(
             when {
                 state.editor?.origin == NoteEditorOrigin.TODAY_TASK -> {
                     val editor = state.editor!!
+                    val cursorIdentity = noteCursorEditorIdentity(editor)
                     Text(editor.taskTitle ?: "タスクノート", color = TaskChuteColors.PrimaryText, fontSize = 17.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     MarkdownLiveEditor(
                         value = editor.markdownBody,
                         onValueChange = controller::updateBody,
                         enabled = !editor.blocked,
                         modifier = Modifier.fillMaxWidth().weight(1f).padding(top = 2.dp),
+                        editorSessionKey = cursorIdentity.sessionId,
+                        cursorDocumentId = cursorIdentity.documentId,
                         footer = {
                             HorizontalDivider(color = TaskChuteColors.Divider)
                             Text(
@@ -457,6 +465,7 @@ private fun formatDocumentTimestamp(value: String): String {
 
 @Composable
 private fun NoteEditor(controller: NotesController, editor: NoteEditorState, modifier: Modifier, onBack: () -> Unit) {
+    val cursorIdentity = noteCursorEditorIdentity(editor)
     val titleFocusRequester = remember(editor.sessionId) { FocusRequester() }
     var titleValue by remember(editor.sessionId) { mutableStateOf(TextFieldValue(editor.title)) }
     LaunchedEffect(editor.sessionId, editor.focusTitleOnStart) {
@@ -500,6 +509,8 @@ private fun NoteEditor(controller: NotesController, editor: NoteEditorState, mod
             onValueChange = controller::updateBody,
             enabled = !editor.blocked,
             modifier = Modifier.fillMaxWidth().weight(1f),
+            editorSessionKey = cursorIdentity.sessionId,
+            cursorDocumentId = cursorIdentity.documentId,
             footer = {
                 Text(
                     when (editor.saveStatus) {

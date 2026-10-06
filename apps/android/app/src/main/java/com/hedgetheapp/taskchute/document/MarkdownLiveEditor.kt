@@ -39,6 +39,7 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalUriHandler
@@ -409,8 +410,20 @@ fun MarkdownLiveEditor(
     footer: @Composable ColumnScope.() -> Unit = {},
     onOpenUrl: ((String) -> Unit)? = null,
     onTextFieldValueChange: ((TextFieldValue) -> Unit)? = null,
+    editorSessionKey: Any = Unit,
+    cursorDocumentId: String? = null,
 ) {
-    var fieldValue by remember { mutableStateOf(TextFieldValue(value)) }
+    val context = LocalContext.current
+    val cursorPreferences = remember(context) { DocumentCursorPreferences(context) }
+    val currentCursorDocumentId = rememberUpdatedState(cursorDocumentId)
+    val currentTextFieldValueChange = rememberUpdatedState(onTextFieldValueChange)
+    // Notes keep this key stable when an unmaterialized editor adopts its canonical document ID.
+    val initialCaretOffset = remember(editorSessionKey) {
+        cursorDocumentId?.let(cursorPreferences::readCaretOffset)
+    }
+    var fieldValue by remember(editorSessionKey) {
+        mutableStateOf(initialMarkdownTextFieldValue(value, initialCaretOffset))
+    }
     var selectionRestoreAfterTap by remember { mutableStateOf<TextRange?>(null) }
     var staleTextAfterCheckboxToggle by remember { mutableStateOf<String?>(null) }
     var hasFocus by remember { mutableStateOf(false) }
@@ -421,6 +434,12 @@ fun MarkdownLiveEditor(
     val density = LocalDensity.current
     val imeVisible = WindowInsets.ime.getBottom(density) > 0
     val toolbarVisible = hasFocus && imeVisible && enabled
+    val onTextFieldValueObserved: (TextFieldValue) -> Unit = { next ->
+        currentCursorDocumentId.value?.let { documentId ->
+            cursorPreferences.writeCaretOffset(documentId, persistedDocumentCaretOffset(next.selection))
+        }
+        currentTextFieldValueChange.value?.invoke(next)
+    }
     val previewSelection = if (hasFocus) MarkdownSelection(fieldValue.selection.start, fieldValue.selection.end) else null
     val previewTransformation = remember(fieldValue.text, fieldValue.selection.start, fieldValue.selection.end, hasFocus) {
         MarkdownPreviewTransformation(
@@ -474,7 +493,7 @@ fun MarkdownLiveEditor(
                 staleTextAfterCheckboxToggle = fieldValue.text
                 fieldValue = next
                 onValueChange(next.text)
-                onTextFieldValueChange?.invoke(next)
+                onTextFieldValueObserved(next)
                 focusRequester.requestFocus()
                 keyboardController?.show()
             }
@@ -514,11 +533,10 @@ fun MarkdownLiveEditor(
 
     LaunchedEffect(value) {
         if (fieldValue.text != value) {
-            val selection = TextRange(
-                fieldValue.selection.start.coerceIn(0, value.length),
-                fieldValue.selection.end.coerceIn(0, value.length),
-            )
-            fieldValue = fieldValue.copy(text = value, selection = selection, composition = null)
+            fieldValue = clampMarkdownTextFieldValueToBody(fieldValue, value)
+            currentCursorDocumentId.value?.let { documentId ->
+                cursorPreferences.writeCaretOffset(documentId, persistedDocumentCaretOffset(fieldValue.selection))
+            }
         }
     }
 
@@ -583,14 +601,14 @@ fun MarkdownLiveEditor(
                                     selectionRestoreAfterTap = selectionAtDown
                                     if (fieldValue.selection != selectionAtDown) {
                                         fieldValue = fieldValue.copy(selection = selectionAtDown)
-                                        onTextFieldValueChange?.invoke(fieldValue)
+                                        onTextFieldValueObserved(fieldValue)
                                     }
                                     toggleCheckbox.value(checkbox.sourceStart)
                                 } else if (link != null) {
                                     selectionRestoreAfterTap = selectionAtDown
                                     if (fieldValue.selection != selectionAtDown) {
                                         fieldValue = fieldValue.copy(selection = selectionAtDown)
-                                        onTextFieldValueChange?.invoke(fieldValue)
+                                        onTextFieldValueObserved(fieldValue)
                                     }
                                     openUrl.value(link.destination)
                                 }
@@ -609,11 +627,11 @@ fun MarkdownLiveEditor(
                             if (it.text == previousText && restored != null) {
                                 selectionRestoreAfterTap = null
                                 fieldValue = it.copy(selection = restored)
-                                onTextFieldValueChange?.invoke(fieldValue)
+                                onTextFieldValueObserved(fieldValue)
                             } else {
                                 fieldValue = it
                                 if (it.text != previousText) onValueChange(it.text)
-                                onTextFieldValueChange?.invoke(it)
+                                onTextFieldValueObserved(it)
                             }
                         }
                     },
@@ -647,7 +665,7 @@ fun MarkdownLiveEditor(
                 onValueChange = { next ->
                     fieldValue = next
                     onValueChange(next.text)
-                    onTextFieldValueChange?.invoke(next)
+                    onTextFieldValueObserved(next)
                     focusRequester.requestFocus()
                     keyboardController?.show()
                 },
