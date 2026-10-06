@@ -807,25 +807,27 @@ describe.sequential("D-060 SetExecutionTimes", () => {
     expect(await operationCount(fixture.userId)).toBe(4);
   });
 
-  it("snaps a minute-marked start to the maximum same-minute completed blocker and replays it", async () => {
+  it("snaps to an earlier Execution ending later in the requested minute and replays it", async () => {
     const fixture = await seedFixture(true);
-    const blocker = await addExecution(fixture, "2026-08-28T05:50:00.000Z", "2026-08-28T06:16:01.000Z");
+    const blocker = await addExecution(fixture, "2026-08-28T10:00:00.000Z", "2026-08-28T10:45:38.000Z");
+    await env.APP_DB.prepare("UPDATE entries SET section_id = ? WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.daySectionId, fixture.userId, blocker.entryId).run();
     const request = {
       operation_id: uuidv7(), entry_id: fixture.entryId, execution_id: uuidv7(),
       expected_lifecycle_state: "planned" as const,
-      started_at: "2026-08-28T06:16:00.000Z", ended_at: "2026-08-28T06:30:00.000Z",
+      started_at: "2026-08-28T10:45:00.000Z", ended_at: "2026-08-28T11:00:00.000Z",
       expected_started_at: null, expected_ended_at: null, expected_placement_revision: 0,
       input_precision: "minute" as const,
     };
     const result = await setExecutionTimes(env.APP_DB, fixture.userId, request, now);
-    expect(result).toMatchObject({ lifecycle_state: "completed", placement_revision: 0,
-      execution: { started_at: "2026-08-28T06:16:01.000Z", ended_at: request.ended_at } });
+    expect(result).toMatchObject({ lifecycle_state: "completed", placement_revision: 1,
+      execution: { started_at: "2026-08-28T10:45:38.000Z", ended_at: request.ended_at } });
     expect(await setExecutionTimes(env.APP_DB, fixture.userId, request, now)).toEqual(result);
     await expect(setExecutionTimes(env.APP_DB, fixture.userId,
       { ...request, ended_at: "2026-08-28T06:31:00.000Z" }, now))
       .rejects.toMatchObject({ code: "operation_id_misuse" });
     expect(await env.APP_DB.prepare("SELECT started_at, ended_at FROM executions WHERE id = ?")
-      .bind(blocker.executionId).first()).toEqual({ started_at: "2026-08-28T05:50:00.000Z", ended_at: "2026-08-28T06:16:01.000Z" });
+      .bind(blocker.executionId).first()).toEqual({ started_at: "2026-08-28T10:00:00.000Z", ended_at: "2026-08-28T10:45:38.000Z" });
   });
 
   it("snaps a completed blocker wholly inside the requested displayed minute", async () => {

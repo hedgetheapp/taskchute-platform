@@ -190,8 +190,11 @@ class TaskPlanningHttpRepositoryTest {
         ))
 
         assertEquals(1, requests.size)
+        assertEquals("POST", requests.single().first)
         assertEquals("/api/v1/entries/entry-1/execution-times", requests.single().second)
         assertTrue(requests.single().third!!.contains("\"started_at\":\"2026-09-14T10:45:00Z\""))
+        assertTrue(requests.single().third!!.contains("\"expected_lifecycle_state\":\"planned\""))
+        assertTrue(requests.single().third!!.contains("\"ended_at\":null"))
         assertTrue(requests.single().third!!.contains("\"input_precision\":\"minute\""))
     }
 
