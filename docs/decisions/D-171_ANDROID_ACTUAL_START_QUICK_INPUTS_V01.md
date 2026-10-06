@@ -1,6 +1,6 @@
 # D-171 — Android Actual Start Quick Inputs v0.1
 
-Status: **Approved / Implemented / Integrated / focused Android JVM + app and AndroidTest compile + signed Phone APK + exact-SHA CI PASS / Phone AVD and Galaxy S23 NOT_RUN**
+Status: **Approved / Implemented / Integrated / focused Android JVM + app and AndroidTest compile + signed Phone APK + exact-SHA CI PASS / Galaxy S23 representative smoke PASS (user-confirmed) / Phone AVD NOT_RUN**
 
 Date: 2026-10-04
 
@@ -192,5 +192,5 @@ The editor holds a typed, memory-only `ExactActualStart(Instant, source)` where 
 - `:app:compileDebugKotlin`, `:app:compileDebugAndroidTestKotlin`, `:app:assembleDebug`, and `git diff --check` PASS. The focused instrumentation source checks eligible actions, unavailable prior-end, and exact Now display; it compiled but was not run.
 - Exact-SHA CI [`37460343105`](https://github.com/hedgetheapp/taskchute-platform/actions/runs/37460343105), attempt 2 PASS on implementation SHA. Attempt 1 exposed one unrelated existing reminder-prefill test failure; its isolated local rerun passed, and the full same-SHA Android app/Wear JVM, signed debug builds, instrumentation APK compile, signing checks, and artifact upload passed on attempt 2. Web/Worker verification was skipped by Android-only path classification.
 - Fresh signed nonprod Phone APK: `taskchute-android-debug-ccf624ec231e3919187b0bf0038f3936842c1ac7`, artifact ID `11413037002`, expires `2026-10-13T12:07:11Z`.
-- No compatible Phone AVD was available (`NOT_RUN / NO_COMPATIBLE_PHONE_AVD`). Galaxy S23 remains `NOT_RUN / PRODUCT_OWNER_MANUAL`.
+- No compatible Phone AVD was available (`NOT_RUN / NO_COMPATIBLE_PHONE_AVD`). Product Owner installed the fresh D-171 build on Galaxy S23 and reported `問題なし` after the requested quick-input smoke. Record `現在時刻`, `前回タスク終了`, save behavior, and manual-overwrite interaction as representative `PASS / USER_CONFIRMED`, without claiming a full device matrix or exact-seconds visibility on-device.
 - Production `NOT_RUN`; Released `NO`.
