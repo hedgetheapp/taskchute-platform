@@ -86,15 +86,35 @@ data class NotesUiState(
     val selectedDocumentIds: Set<String> = emptySet(),
 )
 
+private data class NotesListSnapshot(
+    val documents: List<AndroidDocumentSummary>,
+    val projectDocuments: List<AndroidProjectDocumentSummary>,
+    val projectNotes: List<AndroidProjectNoteCandidate>,
+)
+
+private data class NotesListRequest(
+    val generation: Int,
+    val sessionGeneration: Int,
+    val archived: Boolean,
+)
+
 class NotesController(
     private val repository: AndroidDocumentRepository,
     private val onUnauthorized: () -> Unit,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
 ) {
+    private var sessionGeneration = 0
+    private var sessionJob = SupervisorJob(scope.coroutineContext[Job])
+    private var sessionScope = CoroutineScope(scope.coroutineContext + sessionJob)
     private var editorGeneration = 0
+    private var listGeneration = 0
     private var debounceJob: Job? = null
     private var deferredNavigation: (() -> Unit)? = null
     private var notesSurfaceLoaded = false
+    private var activeListSnapshot: NotesListSnapshot? = null
+    private var archivedListSnapshot: NotesListSnapshot? = null
+    private var listRequest: NotesListRequest? = null
+    private var pendingListRefresh = false
     private var pendingDocumentInvalidationWildcard = false
     private val pendingDocumentInvalidationIds = linkedSetOf<String>()
     private var documentRefreshInFlight = false
@@ -104,7 +124,8 @@ class NotesController(
 
     val hasUnsavedChanges: Boolean
         get() = state.editor?.dirty == true || state.editor?.blocked == true || state.editor?.saving == true ||
-            state.unresolvedTaskEnsure != null || state.projectEnsureSaving || state.unresolvedProjectEnsure != null ||
+            state.editor?.saveStatus in setOf(NoteSaveStatus.CONFLICT, NoteSaveStatus.AMBIGUOUS, NoteSaveStatus.ERROR) ||
+            state.taskEnsureSaving || state.unresolvedTaskEnsure != null || state.projectEnsureSaving || state.unresolvedProjectEnsure != null ||
             state.lifecycleSaving || state.unresolvedLifecycleRequest != null
 
     val requiresDiscardConfirmation: Boolean
@@ -112,52 +133,149 @@ class NotesController(
 
     fun load(archived: Boolean = state.archivedView) {
         notesSurfaceLoaded = true
-        if (state.loadingList) return
-        state = state.copy(loadingList = true, archivedView = archived, errorMessage = null)
-        scope.launch {
-            val documentsDeferred = async(Dispatchers.IO) { repository.listStandalone(archived) }
-            val projectsDeferred = if (archived) null else async(Dispatchers.IO) { repository.loadProjectBoard() }
-            when (val documents = documentsDeferred.await()) {
-                is DocumentListResult.Success -> {
-                    val projectCatalog = projectsDeferred?.await()
-                    when (projectCatalog) {
-                        is ProjectCatalogResult.Success -> state = state.copy(
-                            loadingList = false,
-                            documents = documents.documents,
-                            projectDocuments = documents.projectDocuments,
-                            projectNotes = mergeProjectNotes(projectCatalog.projects, documents.projectDocuments),
-                        )
-                        ProjectCatalogResult.Unauthorized -> {
-                            state = state.copy(
-                                loadingList = false,
-                                documents = documents.documents,
-                                projectDocuments = documents.projectDocuments,
-                                projectNotes = fallbackProjectNotes(documents.projectDocuments),
-                                errorMessage = "プロジェクト一覧を読み込めませんでした。再試行してください。",
+        val currentRequest = listRequest
+        if (currentRequest?.archived == archived && currentRequest.sessionGeneration == sessionGeneration) return
+
+        val generation = ++listGeneration
+        val request = NotesListRequest(generation, sessionGeneration, archived)
+        listRequest = request
+        pendingListRefresh = false
+        val cached = listSnapshot(archived)
+        state = state.copy(
+            loadingList = cached == null,
+            documents = cached?.documents.orEmpty(),
+            projectDocuments = cached?.projectDocuments.orEmpty(),
+            projectNotes = cached?.projectNotes.orEmpty(),
+            archivedView = archived,
+            errorMessage = null,
+        )
+        sessionScope.launch {
+            try {
+                val documentsDeferred = async(Dispatchers.IO) { repository.listStandalone(archived) }
+                val projectsDeferred = if (archived) null else async(Dispatchers.IO) { repository.loadProjectBoard() }
+                when (val documents = documentsDeferred.await()) {
+                    is DocumentListResult.Success -> {
+                        if (!isCurrentListRequest(request)) return@launch
+                        val projectCatalog = projectsDeferred?.await()
+                        if (!isCurrentListRequest(request)) return@launch
+                        when (projectCatalog) {
+                            is ProjectCatalogResult.Success -> applyListSnapshot(
+                                request,
+                                NotesListSnapshot(
+                                    documents.documents,
+                                    documents.projectDocuments,
+                                    mergeProjectNotes(projectCatalog.projects, documents.projectDocuments),
+                                ),
                             )
-                            onUnauthorized()
+                            ProjectCatalogResult.Unauthorized -> {
+                                applyListSnapshot(
+                                    request,
+                                    NotesListSnapshot(
+                                        documents.documents,
+                                        documents.projectDocuments,
+                                        fallbackProjectNotes(documents.projectDocuments),
+                                    ),
+                                    "プロジェクト一覧を読み込めませんでした。再試行してください。",
+                                )
+                                onUnauthorized()
+                            }
+                            is ProjectCatalogResult.Failure -> applyListSnapshot(
+                                request,
+                                NotesListSnapshot(
+                                    documents.documents,
+                                    documents.projectDocuments,
+                                    fallbackProjectNotes(documents.projectDocuments),
+                                ),
+                                projectCatalog.message,
+                            )
+                            null -> applyListSnapshot(
+                                request,
+                                NotesListSnapshot(documents.documents, emptyList(), emptyList()),
+                            )
                         }
-                        is ProjectCatalogResult.Failure -> state = state.copy(
-                            loadingList = false,
-                            documents = documents.documents,
-                            projectDocuments = documents.projectDocuments,
-                            projectNotes = fallbackProjectNotes(documents.projectDocuments),
-                            errorMessage = projectCatalog.message,
-                        )
-                        null -> state = state.copy(
-                            loadingList = false,
-                            documents = documents.documents,
-                            projectDocuments = emptyList(),
-                            projectNotes = emptyList(),
-                        )
+                    }
+                    DocumentListResult.Unauthorized -> {
+                        if (!isCurrentListRequest(request)) return@launch
+                        finishListRequest(request, errorMessage = "認証が必要です。")
+                        onUnauthorized()
+                    }
+                    is DocumentListResult.Failure -> {
+                        if (!isCurrentListRequest(request)) return@launch
+                        finishListRequest(request, errorMessage = documents.message)
                     }
                 }
-                DocumentListResult.Unauthorized -> {
-                    state = state.copy(loadingList = false, errorMessage = "認証が必要です。")
-                    onUnauthorized()
+            } finally {
+                if (listRequest == request) {
+                    listRequest = null
+                    val refreshAgain = pendingListRefresh
+                    pendingListRefresh = false
+                    if (refreshAgain && notesSurfaceLoaded) load(state.archivedView)
                 }
-                is DocumentListResult.Failure -> state = state.copy(loadingList = false, errorMessage = documents.message)
             }
+        }
+    }
+
+    fun resetForSessionChange() {
+        sessionGeneration += 1
+        listGeneration += 1
+        editorGeneration += 1
+        sessionJob.cancel()
+        sessionJob = SupervisorJob(scope.coroutineContext[Job])
+        sessionScope = CoroutineScope(scope.coroutineContext + sessionJob)
+        debounceJob?.cancel()
+        debounceJob = null
+        deferredNavigation = null
+        notesSurfaceLoaded = false
+        activeListSnapshot = null
+        archivedListSnapshot = null
+        listRequest = null
+        pendingListRefresh = false
+        pendingDocumentInvalidationWildcard = false
+        pendingDocumentInvalidationIds.clear()
+        documentRefreshInFlight = false
+        state = NotesUiState()
+    }
+
+    private fun listSnapshot(archived: Boolean): NotesListSnapshot? =
+        if (archived) archivedListSnapshot else activeListSnapshot
+
+    private fun isCurrentListRequest(request: NotesListRequest): Boolean =
+        listRequest == request && request.sessionGeneration == sessionGeneration
+
+    private fun applyListSnapshot(
+        request: NotesListRequest,
+        snapshot: NotesListSnapshot,
+        errorMessage: String? = null,
+    ) {
+        if (!isCurrentListRequest(request)) return
+        if (request.archived) archivedListSnapshot = snapshot else activeListSnapshot = snapshot
+        if (state.archivedView == request.archived) {
+            state = state.copy(
+                loadingList = false,
+                documents = snapshot.documents,
+                projectDocuments = snapshot.projectDocuments,
+                projectNotes = snapshot.projectNotes,
+                errorMessage = errorMessage,
+            )
+        }
+    }
+
+    private fun captureCurrentListSnapshot() {
+        val snapshot = NotesListSnapshot(state.documents, state.projectDocuments, state.projectNotes)
+        if (state.archivedView) archivedListSnapshot = snapshot else activeListSnapshot = snapshot
+    }
+
+    private fun finishListRequest(request: NotesListRequest, errorMessage: String) {
+        if (!isCurrentListRequest(request)) return
+        state = state.copy(loadingList = false, errorMessage = errorMessage)
+    }
+
+    private fun refreshListAfterInvalidation() {
+        val currentRequest = listRequest
+        if (currentRequest?.archived == state.archivedView && currentRequest.sessionGeneration == sessionGeneration) {
+            pendingListRefresh = true
+        } else {
+            load(state.archivedView)
         }
     }
 
@@ -165,7 +283,7 @@ class NotesController(
 
     fun onRealtimeForeground() {
         if (!notesSurfaceLoaded && state.editor == null) return
-        if (notesSurfaceLoaded) load(state.archivedView)
+        if (notesSurfaceLoaded) refreshListAfterInvalidation()
         state.editor?.document?.let {
             pendingDocumentInvalidationWildcard = true
             reconcileDocumentInvalidation()
@@ -174,7 +292,7 @@ class NotesController(
 
     fun onRealtimeDocumentsInvalidation(documentIds: Set<String>?) {
         if (!notesSurfaceLoaded && state.editor == null) return
-        if (notesSurfaceLoaded) load(state.archivedView)
+        if (notesSurfaceLoaded) refreshListAfterInvalidation()
         val document = state.editor?.document ?: return
         if (documentIds != null && document.documentId !in documentIds) return
         if (documentIds == null) {
@@ -188,7 +306,16 @@ class NotesController(
 
     fun setArchivedView(archived: Boolean) {
         if (state.editor != null || state.lifecycleSaving || state.unresolvedLifecycleRequest != null || state.selectionModeActive) return
-        load(archived)
+        if (archived == state.archivedView) return
+        val cached = listSnapshot(archived)
+        state = state.copy(
+            loadingList = cached == null,
+            documents = cached?.documents.orEmpty(),
+            projectDocuments = cached?.projectDocuments.orEmpty(),
+            projectNotes = cached?.projectNotes.orEmpty(),
+            archivedView = archived,
+            errorMessage = null,
+        )
     }
 
     fun enterSelection(documentId: String) {
@@ -257,7 +384,7 @@ class NotesController(
         editorGeneration += 1
         val generation = editorGeneration
         state = state.copy(editor = null, errorMessage = null, unresolvedTaskEnsure = null, unresolvedTaskTitle = null)
-        scope.launch {
+        sessionScope.launch {
             when (val result = withContext(Dispatchers.IO) { repository.fetchStandalone(documentId) }) {
                 is DocumentResult.Success -> if (generation == editorGeneration) state = state.copy(editor = editorFor(result.document, origin = NoteEditorOrigin.STANDALONE_LIST, sessionId = generation, focusTitleOnStart = focusTitle))
                 DocumentResult.Missing -> state = state.copy(errorMessage = "ノートが見つかりません。")
@@ -285,7 +412,7 @@ class NotesController(
             unresolvedProjectTitle = null,
             projectEnsureSaving = false,
         )
-        scope.launch {
+        sessionScope.launch {
             when (val result = withContext(Dispatchers.IO) { repository.fetchProjectPrimary(documentId) }) {
                 is DocumentResult.Success -> {
                     if (generation != editorGeneration) return@launch
@@ -336,7 +463,7 @@ class NotesController(
             unresolvedProjectTitle = candidate.projectTitle,
             projectEnsureSaving = true,
         )
-        scope.launch {
+        sessionScope.launch {
             val result = withContext(Dispatchers.IO) { repository.ensureProjectPrimary(request) }
             if (generation == editorGeneration) handleProjectEnsureResult(result, request, generation)
         }
@@ -346,7 +473,7 @@ class NotesController(
         val request = state.unresolvedProjectEnsure ?: return
         if (state.projectEnsureSaving) return
         state = state.copy(projectEnsureSaving = true, errorMessage = null)
-        scope.launch {
+        sessionScope.launch {
             val result = withContext(Dispatchers.IO) { repository.ensureProjectPrimary(request) }
             handleProjectEnsureResult(result, request, editorGeneration)
         }
@@ -391,7 +518,7 @@ class NotesController(
     }
 
     private fun reconcileProjectEnsure(request: ProjectPrimaryEnsureRequest, generation: Int) {
-        scope.launch {
+        sessionScope.launch {
             val result = withContext(Dispatchers.IO) { repository.fetchProjectPrimary(request.documentId) }
             if (generation != editorGeneration) return@launch
             if (result is DocumentResult.Success
@@ -428,6 +555,7 @@ class NotesController(
             projectEnsureSaving = false,
             errorMessage = null,
         )
+        captureCurrentListSnapshot()
     }
 
     fun openTaskPrimary(taskId: String, taskTitle: String, primaryDocumentId: String?) {
@@ -446,7 +574,7 @@ class NotesController(
             unresolvedTaskTitle = ensureRequest?.let { taskTitle },
             taskEnsureSaving = ensureRequest != null,
         )
-        scope.launch {
+        sessionScope.launch {
             val result = withContext(Dispatchers.IO) {
                 if (primaryDocumentId != null) repository.fetchTaskPrimary(primaryDocumentId)
                 else repository.ensureTaskPrimary(requireNotNull(ensureRequest))
@@ -459,7 +587,7 @@ class NotesController(
         val request = state.unresolvedTaskEnsure ?: return
         if (state.taskEnsureSaving) return
         state = state.copy(taskEnsureSaving = true, errorMessage = null)
-        scope.launch {
+        sessionScope.launch {
             val result = withContext(Dispatchers.IO) { repository.ensureTaskPrimary(request) }
             handleTaskPrimaryResult(result, request.taskId, state.unresolvedTaskTitle, request)
         }
@@ -577,13 +705,14 @@ class NotesController(
 
     fun close() {
         debounceJob?.cancel()
+        sessionJob.cancel()
         scope.cancel()
     }
 
     private fun submitLifecycle(request: NoteLifecycleRequest) {
         if (state.lifecycleSaving) return
         state = state.copy(lifecycleSaving = true, errorMessage = null, unresolvedLifecycleRequest = null)
-        scope.launch {
+        sessionScope.launch {
             val result = withContext(Dispatchers.IO) {
                 when (request) {
                     is NoteLifecycleRequest.Archive -> repository.setStandaloneArchived(request.request)
@@ -643,7 +772,7 @@ class NotesController(
         val editor = state.editor ?: return
         if (editor.saving) return
         state = state.copy(editor = editor.copy(saving = true, errorMessage = null, saveStatus = NoteSaveStatus.SAVING))
-        scope.launch {
+        sessionScope.launch {
             val result = withContext(Dispatchers.IO) {
                 when (request) {
                     is NoteEditorRequest.Create -> repository.createStandalone(request.request)
@@ -681,7 +810,7 @@ class NotesController(
     }
 
     private fun reconcileAmbiguous(request: NoteEditorRequest) {
-        scope.launch {
+        sessionScope.launch {
             val documentId = when (request) {
                 is NoteEditorRequest.Create -> request.request.documentId
                 is NoteEditorRequest.Update -> request.request.documentId
@@ -700,7 +829,7 @@ class NotesController(
     }
 
     private fun reconcileTaskPrimaryEnsure(request: TaskPrimaryEnsureRequest, taskTitle: String?) {
-        scope.launch {
+        sessionScope.launch {
             val result = withContext(Dispatchers.IO) { repository.fetchTaskPrimary(request.documentId) }
             if (result is DocumentResult.Success && result.document.kind == DocumentKind.TASK_PRIMARY
                 && (result.document.taskId == null || result.document.taskId == request.taskId)
@@ -753,6 +882,7 @@ class NotesController(
             projectDocuments = updateProjectSummary(document),
             projectNotes = updateProjectNote(document),
         )
+        captureCurrentListSnapshot()
         if (localMatchesSent) {
             finishDeferredNavigationIfReady()
             reconcileDocumentInvalidation()
@@ -843,7 +973,7 @@ class NotesController(
         debounceJob?.cancel()
         val editor = state.editor ?: return
         if (editor.blocked || !editor.dirty) return
-        debounceJob = scope.launch {
+        debounceJob = sessionScope.launch {
             delay(NOTE_AUTOSAVE_DEBOUNCE_MS)
             if (generation == editorGeneration && state.editor?.dirty == true && state.editor?.blocked == false) save()
         }
@@ -878,7 +1008,7 @@ class NotesController(
         pendingDocumentInvalidationIds.remove(currentDocument.documentId)
         documentRefreshInFlight = true
         val generation = editorGeneration
-        scope.launch {
+        sessionScope.launch {
             val result = withContext(Dispatchers.IO) { fetchCanonicalDocument(currentDocument) }
             if (generation != editorGeneration) {
                 documentRefreshInFlight = false
@@ -929,6 +1059,7 @@ class NotesController(
             projectDocuments = updateProjectSummary(document),
             projectNotes = updateProjectNote(document),
         )
+        captureCurrentListSnapshot()
     }
 
     private fun editorFor(

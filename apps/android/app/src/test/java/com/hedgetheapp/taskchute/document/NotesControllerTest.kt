@@ -6,6 +6,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import java.util.concurrent.atomic.AtomicInteger
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -288,6 +289,201 @@ class NotesControllerTest {
 
         assertTrue(await { controller.state.projectDocuments.size == 1 })
         assertEquals("project-1", controller.state.projectDocuments.single().projectId)
+        controller.close()
+    }
+
+    @Test
+    fun firstListLoadKeepsBlockingLoadingUntilCanonicalListArrives() {
+        val started = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val repository = FakeRepository().apply {
+            standaloneListProvider = {
+                started.countDown()
+                release.await(2, TimeUnit.SECONDS)
+                DocumentListResult.Success(listOf(summary("doc-cold", "Cold")))
+            }
+        }
+        val controller = controller(repository)
+
+        controller.load()
+
+        assertTrue(controller.state.loadingList)
+        assertTrue(started.await(2, TimeUnit.SECONDS))
+        release.countDown()
+        assertTrue(await { !controller.state.loadingList && controller.state.documents.singleOrNull()?.documentId == "doc-cold" })
+        controller.close()
+    }
+
+    @Test
+    fun warmActiveListRemainsVisibleUntilCanonicalRefreshCompletes() {
+        val started = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val calls = AtomicInteger()
+        val repository = FakeRepository().apply {
+            standaloneListProvider = {
+                if (calls.incrementAndGet() == 1) {
+                    DocumentListResult.Success(listOf(summary("doc-old", "Old")))
+                } else {
+                    started.countDown()
+                    release.await(2, TimeUnit.SECONDS)
+                    DocumentListResult.Success(listOf(summary("doc-new", "New")))
+                }
+            }
+        }
+        val controller = controller(repository)
+        controller.load()
+        assertTrue(await { !controller.state.loadingList && controller.state.documents.singleOrNull()?.documentId == "doc-old" })
+
+        controller.load()
+
+        assertTrue(started.await(2, TimeUnit.SECONDS))
+        assertFalse(controller.state.loadingList)
+        assertEquals("doc-old", controller.state.documents.single().documentId)
+        release.countDown()
+        assertTrue(await { controller.state.documents.singleOrNull()?.documentId == "doc-new" })
+        controller.close()
+    }
+
+    @Test
+    fun loadedEmptyActiveListIsStillWarmDuringRefresh() {
+        val started = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val calls = AtomicInteger()
+        val repository = FakeRepository().apply {
+            standaloneListProvider = {
+                if (calls.incrementAndGet() == 1) {
+                    DocumentListResult.Success(emptyList())
+                } else {
+                    started.countDown()
+                    release.await(2, TimeUnit.SECONDS)
+                    DocumentListResult.Success(emptyList())
+                }
+            }
+        }
+        val controller = controller(repository)
+        controller.load()
+        assertTrue(await { !controller.state.loadingList && calls.get() == 1 })
+
+        controller.load()
+
+        assertTrue(started.await(2, TimeUnit.SECONDS))
+        assertFalse(controller.state.loadingList)
+        assertTrue(controller.state.documents.isEmpty())
+        release.countDown()
+        assertTrue(await { calls.get() == 2 })
+        controller.close()
+    }
+
+    @Test
+    fun failedWarmListRefreshPreservesListAndShowsRetryError() {
+        val calls = AtomicInteger()
+        val repository = FakeRepository().apply {
+            standaloneListProvider = {
+                when (calls.incrementAndGet()) {
+                    1 -> DocumentListResult.Success(listOf(summary("doc-kept", "Kept")))
+                    2 -> DocumentListResult.Failure("refresh failed")
+                    else -> DocumentListResult.Success(listOf(summary("doc-retried", "Retried")))
+                }
+            }
+        }
+        val controller = controller(repository)
+        controller.load()
+        assertTrue(await { !controller.state.loadingList && controller.state.documents.size == 1 })
+
+        controller.load()
+
+        assertTrue(await { !controller.state.loadingList && controller.state.errorMessage == "refresh failed" })
+        assertEquals("doc-kept", controller.state.documents.single().documentId)
+
+        controller.load()
+
+        assertTrue(await { !controller.state.loadingList && controller.state.errorMessage == null && controller.state.documents.singleOrNull()?.documentId == "doc-retried" })
+        controller.close()
+    }
+
+    @Test
+    fun activeAndArchivedListsNeverReuseEachOthersWarmContents() {
+        val archivedStarted = CountDownLatch(1)
+        val releaseArchived = CountDownLatch(1)
+        val repository = FakeRepository().apply {
+            standaloneListProvider = { archived ->
+                if (archived) {
+                    archivedStarted.countDown()
+                    releaseArchived.await(2, TimeUnit.SECONDS)
+                    DocumentListResult.Success(listOf(summary("doc-archived", "Archived")))
+                } else {
+                    DocumentListResult.Success(listOf(summary("doc-active", "Active")))
+                }
+            }
+        }
+        val controller = controller(repository)
+        controller.load(archived = false)
+        assertTrue(await { !controller.state.loadingList && controller.state.documents.singleOrNull()?.documentId == "doc-active" })
+
+        controller.load(archived = true)
+
+        assertTrue(archivedStarted.await(2, TimeUnit.SECONDS))
+        assertTrue(controller.state.loadingList)
+        assertTrue(controller.state.archivedView)
+        assertTrue(controller.state.documents.isEmpty())
+        releaseArchived.countDown()
+        assertTrue(await { !controller.state.loadingList && controller.state.documents.singleOrNull()?.documentId == "doc-archived" })
+
+        controller.load(archived = false)
+
+        assertFalse(controller.state.loadingList)
+        assertEquals("doc-active", controller.state.documents.single().documentId)
+        controller.close()
+    }
+
+    @Test
+    fun sessionResetClearsListAndDirtyEditorState() {
+        val repository = FakeRepository().apply {
+            standaloneListProvider = { DocumentListResult.Success(listOf(summary("doc-reset", "Reset"))) }
+            fetchResult = DocumentResult.Success(document("doc-reset", "Reset", "old"))
+        }
+        val controller = controller(repository)
+        controller.load()
+        assertTrue(await { controller.state.documents.size == 1 })
+        controller.openStandalone("doc-reset")
+        assertTrue(await { controller.state.editor != null })
+        controller.updateBody("local draft")
+        assertTrue(controller.hasUnsavedChanges)
+
+        controller.resetForSessionChange()
+
+        assertEquals(NotesUiState(), controller.state)
+        assertFalse(controller.hasUnsavedChanges)
+        controller.close()
+    }
+
+    @Test
+    fun priorSessionListResponseCannotRepopulateAfterReset() {
+        val started = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val returned = CountDownLatch(1)
+        val repository = FakeRepository().apply {
+            standaloneListProvider = {
+                started.countDown()
+                try {
+                    release.await(2, TimeUnit.SECONDS)
+                } catch (_: InterruptedException) {
+                    // Return a late result even when the old session job is cancelled.
+                } finally {
+                    returned.countDown()
+                }
+                DocumentListResult.Success(listOf(summary("doc-old-session", "Old")))
+            }
+        }
+        val controller = controller(repository)
+        controller.load()
+        assertTrue(started.await(2, TimeUnit.SECONDS))
+
+        controller.resetForSessionChange()
+        release.countDown()
+        assertTrue(returned.await(2, TimeUnit.SECONDS))
+
+        assertEquals(NotesUiState(), controller.state)
         controller.close()
     }
 
@@ -697,6 +893,8 @@ class NotesControllerTest {
         var projectReconcileResult: DocumentResult? = null
         var projectSummaries: List<AndroidProjectDocumentSummary> = emptyList()
         var projectCatalog: List<AndroidProjectNoteCandidate> = emptyList()
+        var standaloneListProvider: ((Boolean) -> DocumentListResult)? = null
+        val standaloneListCalls = AtomicInteger()
         var projectFetchCalls = 0
         var fetchStandaloneCalls = 0
         var projectBoardCalls = 0
@@ -708,7 +906,11 @@ class NotesControllerTest {
         var releaseUpdate: CountDownLatch? = null
         var lifecycleResult: DocumentLifecycleResult = DocumentLifecycleResult.Success()
 
-        override fun listStandalone(archived: Boolean) = DocumentListResult.Success(emptyList(), if (archived) emptyList() else projectSummaries)
+        override fun listStandalone(archived: Boolean): DocumentListResult {
+            standaloneListCalls.incrementAndGet()
+            return standaloneListProvider?.invoke(archived)
+                ?: DocumentListResult.Success(emptyList(), if (archived) emptyList() else projectSummaries)
+        }
 
         override fun loadProjectBoard(): ProjectCatalogResult {
             projectBoardCalls += 1
@@ -788,6 +990,13 @@ class NotesControllerTest {
     }
 
     private companion object {
+        fun summary(documentId: String, title: String) = AndroidDocumentSummary(
+            documentId = documentId,
+            title = title,
+            revision = 1,
+            updatedAt = "2026-10-01T00:00:00Z",
+        )
+
         fun document(id: String, title: String, body: String, revision: Int = 1) = AndroidDocument(
             documentId = id,
             kind = DocumentKind.STANDALONE,

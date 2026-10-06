@@ -219,17 +219,40 @@ private fun TaskChuteApp(
     var destination by remember { mutableStateOf(AndroidDestination.TODAY) }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var signOutConfirmationVisible by remember { mutableStateOf(false) }
+    var authenticatedSessionActive by remember { mutableStateOf(false) }
+
+    fun continueSignOut() {
+        realtimeManager.stop()
+        planningController.dismiss()
+        controller.signOut()
+    }
+
+    fun requestSignOut() {
+        if (notesController.hasUnsavedChanges || dailyController.hasUnsavedChanges) {
+            signOutConfirmationVisible = true
+        } else {
+            continueSignOut()
+        }
+    }
 
     LaunchedEffect(controller) { controller.restore() }
     LaunchedEffect(state) {
         wearPairingController.setSignedIn(state is AuthUiState.SignedIn)
         if (state is AuthUiState.SignedIn) {
+            authenticatedSessionActive = true
             realtimeManager.start()
             todayController.onRealtimeForeground()
             notesController.onRealtimeForeground()
             dailyController.onRealtimeForeground()
         } else {
             todayController.resetForSessionChange()
+            if (authenticatedSessionActive) {
+                notesController.resetForSessionChange()
+                dailyController.resetForSessionChange()
+            }
+            authenticatedSessionActive = false
+            signOutConfirmationVisible = false
             realtimeManager.stop()
             if (state is AuthUiState.SignedOut) {
                 destination = AndroidDestination.TODAY
@@ -258,7 +281,7 @@ private fun TaskChuteApp(
                     ErrorState(networkError.message, controller::retry)
                 }
                 AuthScreenPresentation.AUTHENTICATED -> {
-                    val signOut = { realtimeManager.stop(); planningController.dismiss(); controller.signOut() }
+                    val signOut = ::requestSignOut
                     when (destination) {
                         AndroidDestination.TODAY -> TodayScreen(
                             controller = todayController,
@@ -292,6 +315,24 @@ private fun TaskChuteApp(
                         )
                     }
                 }
+            }
+            if (signOutConfirmationVisible && state is AuthUiState.SignedIn) {
+                AlertDialog(
+                    onDismissRequest = { signOutConfirmationVisible = false },
+                    title = { Text("未保存の変更があります") },
+                    text = { Text("NotesまたはDailyの未保存・未解決の変更は、ログアウトすると破棄されます。") },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            signOutConfirmationVisible = false
+                            notesController.resetForSessionChange()
+                            dailyController.resetForSessionChange()
+                            continueSignOut()
+                        }) { Text("破棄してログアウト") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { signOutConfirmationVisible = false }) { Text("キャンセル") }
+                    },
+                )
             }
                 if (state is AuthUiState.SignedIn) WearPairingConfirmationDialog(wearPairingController)
             }

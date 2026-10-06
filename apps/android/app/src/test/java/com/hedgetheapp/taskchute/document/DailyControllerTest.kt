@@ -9,6 +9,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -35,10 +36,295 @@ class DailyControllerTest {
 
         controller.loadCurrent()
 
+        assertTrue(controller.state.loading)
         assertTrue(dayStarted.await(2, TimeUnit.SECONDS))
         assertTrue(listStarted.await(2, TimeUnit.SECONDS))
         release.countDown()
         assertTrue(await { controller.state.document?.documentId == "doc-a" })
+        controller.close()
+    }
+
+    @Test
+    fun warmSameDateRefreshKeepsEditorVisibleUntilCanonicalDocumentReturns() {
+        val fetchStarted = CountDownLatch(1)
+        val releaseRefresh = CountDownLatch(1)
+        val fetchCalls = AtomicInteger()
+        val repository = FakeRepository().apply {
+            listResult = DailyListResult.Success(listOf(summary("2026-09-29", "day-a", "doc-a")))
+            fetchProvider = { documentId, call ->
+                if (call == 1) DailyResult.Success(document(documentId, "day-a", "2026-09-29", "old"))
+                else {
+                    fetchStarted.countDown()
+                    releaseRefresh.await(2, TimeUnit.SECONDS)
+                    fetchCalls.incrementAndGet()
+                    DailyResult.Success(document(documentId, "day-a", "2026-09-29", "canonical", revision = 1))
+                }
+            }
+        }
+        val controller = controller(repository)
+        controller.loadCurrent()
+        assertTrue(await { controller.state.document?.documentId == "doc-a" && controller.state.markdownBody == "old" })
+
+        controller.loadCurrent()
+
+        assertTrue(fetchStarted.await(2, TimeUnit.SECONDS))
+        assertFalse(controller.state.loading)
+        assertEquals("2026-09-29", controller.state.selectedDate)
+        assertEquals("old", controller.state.markdownBody)
+        releaseRefresh.countDown()
+        assertTrue(await { controller.state.markdownBody == "canonical" })
+        assertEquals(1, fetchCalls.get())
+        controller.close()
+    }
+
+    @Test
+    fun typingAfterWarmRefreshStartsCannotBeOverwrittenByItsResponse() {
+        val fetchStarted = CountDownLatch(1)
+        val releaseRefresh = CountDownLatch(1)
+        val repository = FakeRepository().apply {
+            listResult = DailyListResult.Success(listOf(summary("2026-09-29", "day-a", "doc-a")))
+            fetchProvider = { documentId, call ->
+                if (call == 1) DailyResult.Success(document(documentId, "day-a", "2026-09-29", "old"))
+                else {
+                    fetchStarted.countDown()
+                    releaseRefresh.await(2, TimeUnit.SECONDS)
+                    DailyResult.Success(document(documentId, "day-a", "2026-09-29", "stale remote", revision = 1))
+                }
+            }
+        }
+        val controller = controller(repository)
+        controller.loadCurrent()
+        assertTrue(await { controller.state.markdownBody == "old" })
+        controller.loadCurrent()
+        assertTrue(fetchStarted.await(2, TimeUnit.SECONDS))
+
+        controller.updateBody("typed after request")
+        releaseRefresh.countDown()
+
+        assertTrue(await { controller.state.markdownBody == "typed after request" && !controller.state.loading })
+        assertTrue(controller.state.dirty)
+        assertEquals(0, controller.state.document?.revision)
+        controller.close()
+    }
+
+    @Test
+    fun warmResponseStartedBeforeTypingCannotAdoptAfterDraftIsRevertedClean() {
+        val staleRefreshStarted = CountDownLatch(1)
+        val releaseStaleRefresh = CountDownLatch(1)
+        val followUpStarted = CountDownLatch(1)
+        val releaseFollowUp = CountDownLatch(1)
+        val repository = FakeRepository().apply {
+            listResult = DailyListResult.Success(listOf(summary("2026-09-29", "day-a", "doc-a")))
+            fetchProvider = { documentId, call ->
+                when (call) {
+                    1 -> DailyResult.Success(document(documentId, "day-a", "2026-09-29", "old"))
+                    2 -> {
+                        staleRefreshStarted.countDown()
+                        releaseStaleRefresh.await(2, TimeUnit.SECONDS)
+                        DailyResult.Success(document(documentId, "day-a", "2026-09-29", "remote", revision = 1))
+                    }
+                    else -> {
+                        followUpStarted.countDown()
+                        releaseFollowUp.await(2, TimeUnit.SECONDS)
+                        DailyResult.Success(document(documentId, "day-a", "2026-09-29", "remote", revision = 1))
+                    }
+                }
+            }
+        }
+        val controller = controller(repository)
+        controller.loadCurrent()
+        assertTrue(await { controller.state.markdownBody == "old" })
+        controller.loadCurrent()
+        assertTrue(staleRefreshStarted.await(2, TimeUnit.SECONDS))
+
+        controller.updateBody("transient typing")
+        controller.updateBody("old")
+        assertFalse(controller.state.dirty)
+        releaseStaleRefresh.countDown()
+
+        assertTrue(followUpStarted.await(2, TimeUnit.SECONDS))
+        assertEquals("old", controller.state.markdownBody)
+        assertEquals(0, controller.state.document?.revision)
+        releaseFollowUp.countDown()
+        assertTrue(await { controller.state.markdownBody == "remote" })
+        controller.close()
+    }
+
+    @Test
+    fun savingWarmDailyIsNotOverwrittenByBackgroundRefresh() {
+        val refreshStarted = CountDownLatch(1)
+        val releaseRefresh = CountDownLatch(1)
+        val updateStarted = CountDownLatch(1)
+        val releaseUpdate = CountDownLatch(1)
+        val repository = FakeRepository().apply {
+            listResult = DailyListResult.Success(listOf(summary("2026-09-29", "day-a", "doc-a")))
+            fetchProvider = { documentId, call ->
+                if (call == 1) DailyResult.Success(document(documentId, "day-a", "2026-09-29", "old"))
+                else {
+                    refreshStarted.countDown()
+                    releaseRefresh.await(2, TimeUnit.SECONDS)
+                    DailyResult.Success(document(documentId, "day-a", "2026-09-29", "stale remote", revision = 1))
+                }
+            }
+            updateStartedLatch = updateStarted
+            updateReleaseLatch = releaseUpdate
+            updateResult = DailyResult.Success(document("doc-a", "day-a", "2026-09-29", "local", revision = 1))
+        }
+        val controller = controller(repository)
+        controller.loadCurrent()
+        assertTrue(await { controller.state.markdownBody == "old" })
+        controller.updateBody("local")
+        controller.save()
+        assertTrue(updateStarted.await(2, TimeUnit.SECONDS))
+
+        controller.loadCurrent()
+        assertTrue(refreshStarted.await(2, TimeUnit.SECONDS))
+        assertTrue(controller.state.saving)
+        releaseRefresh.countDown()
+        assertTrue(await { repository.fetchCalls.get() == 2 })
+        assertEquals("local", controller.state.markdownBody)
+        assertTrue(controller.state.saving)
+
+        releaseUpdate.countDown()
+        assertTrue(await { !controller.state.saving && controller.state.markdownBody == "local" })
+        controller.close()
+    }
+
+    @Test
+    fun blockedWarmDailyKeepsUnresolvedRequestAndDraftDuringRefresh() {
+        val repository = FakeRepository().apply {
+            listResult = DailyListResult.Success(listOf(summary("2026-09-29", "day-a", "doc-a")))
+            fetchResults = ArrayDeque(
+                listOf(
+                    DailyResult.Success(document("doc-a", "day-a", "2026-09-29", "old")),
+                    DailyResult.Success(document("doc-a", "day-a", "2026-09-29", "remote", revision = 1)),
+                ),
+            )
+            updateResult = DailyResult.Ambiguous("unknown")
+        }
+        val controller = controller(repository)
+        controller.loadCurrent()
+        assertTrue(await { controller.state.markdownBody == "old" })
+        controller.updateBody("local draft")
+        controller.save()
+        assertTrue(await { controller.state.blocked })
+        val unresolved = controller.state.unresolvedRequest
+
+        controller.loadCurrent()
+
+        assertTrue(await { repository.fetchCalls.get() == 2 })
+        assertEquals("local draft", controller.state.markdownBody)
+        assertEquals(unresolved, controller.state.unresolvedRequest)
+        assertTrue(controller.state.blocked)
+        controller.close()
+    }
+
+    @Test
+    fun failedWarmDailyRefreshKeepsBodySaveStatusAndOffersRetry() {
+        val repository = FakeRepository().apply {
+            listResult = DailyListResult.Success(listOf(summary("2026-09-29", "day-a", "doc-a")))
+            fetchResults = ArrayDeque(
+                listOf(
+                    DailyResult.Success(document("doc-a", "day-a", "2026-09-29", "warm body")),
+                    DailyResult.Failure("refresh failed"),
+                ),
+            )
+        }
+        val controller = controller(repository)
+        controller.loadCurrent()
+        assertTrue(await { controller.state.markdownBody == "warm body" })
+        val statusBeforeRefresh = controller.state.saveStatus
+
+        controller.loadCurrent()
+
+        assertTrue(await { controller.state.errorMessage == "refresh failed" && !controller.state.loading })
+        assertEquals("warm body", controller.state.markdownBody)
+        assertEquals(statusBeforeRefresh, controller.state.saveStatus)
+        assertTrue(controller.state.canRetryLoad)
+        controller.close()
+    }
+
+    @Test
+    fun unavailableDayRefreshKeepsPreviouslyLoadedSameDateDocument() {
+        val dayCalls = AtomicInteger()
+        val repository = FakeRepository().apply {
+            listResults = ArrayDeque(
+                listOf(
+                    DailyListResult.Success(listOf(summary("2026-09-29", "day-a", "doc-a"))),
+                    DailyListResult.Success(emptyList()),
+                ),
+            )
+            fetchResult = DailyResult.Success(document("doc-a", "day-a", "2026-09-29", "warm body"))
+            ensureResult = DailyResult.Failure("must not ensure")
+        }
+        val controller = controller(
+            repository = repository,
+            loadDay = {
+                if (dayCalls.incrementAndGet() == 1) TodayResult.Success(day("2026-09-29", "day-a"))
+                else TodayResult.Success(day("2026-09-29", "day-a").copy(taskChuteDayId = null))
+            },
+        )
+        controller.loadCurrent()
+        assertTrue(await { controller.state.markdownBody == "warm body" })
+
+        controller.loadCurrent()
+
+        assertTrue(await { controller.state.errorMessage == "この日はまだ利用できません。" && !controller.state.loading })
+        assertEquals("doc-a", controller.state.document?.documentId)
+        assertEquals("warm body", controller.state.markdownBody)
+        assertTrue(controller.state.canRetryLoad)
+        assertEquals(0, repository.ensureCalls.get())
+        controller.close()
+    }
+
+    @Test
+    fun sessionResetClearsDailyDraftAndSummaryCacheBeforeNewSessionLoad() {
+        val repository = FakeRepository().apply {
+            listResult = DailyListResult.Success(listOf(summary("2026-09-29", "day-a", "doc-a")))
+            fetchResult = DailyResult.Success(document("doc-a", "day-a", "2026-09-29", "old"))
+        }
+        val controller = controller(repository)
+        controller.loadCurrent()
+        assertTrue(await { controller.state.document != null })
+        controller.updateBody("local draft")
+        assertTrue(controller.hasUnsavedChanges)
+
+        controller.resetForSessionChange()
+
+        assertEquals(DailyUiState(), controller.state)
+        assertFalse(controller.hasUnsavedChanges)
+        controller.selectDate("2026-09-29")
+        assertTrue(await { repository.listCalls.get() == 2 && controller.state.document?.documentId == "doc-a" })
+        controller.close()
+    }
+
+    @Test
+    fun priorSessionDayResponseCannotRepopulateAfterReset() {
+        val dayStarted = CountDownLatch(1)
+        val releaseDay = CountDownLatch(1)
+        val dayReturned = CountDownLatch(1)
+        val controller = controller(
+            repository = FakeRepository(),
+            loadDay = {
+                dayStarted.countDown()
+                try {
+                    releaseDay.await(2, TimeUnit.SECONDS)
+                } catch (_: InterruptedException) {
+                    // Return a late result even when the old session job is cancelled.
+                } finally {
+                    dayReturned.countDown()
+                }
+                TodayResult.Success(day("2026-09-29", "day-a"))
+            },
+        )
+        controller.loadCurrent()
+        assertTrue(dayStarted.await(2, TimeUnit.SECONDS))
+
+        controller.resetForSessionChange()
+        releaseDay.countDown()
+
+        assertTrue(dayReturned.await(2, TimeUnit.SECONDS))
+        assertEquals(DailyUiState(), controller.state)
         controller.close()
     }
 
@@ -280,9 +566,14 @@ class DailyControllerTest {
         var listProvider: (() -> DailyListResult)? = null
         var ensureResult: DailyResult = DailyResult.Failure("unexpected ensure")
         var updateResult: DailyResult = DailyResult.Failure("unused")
+        var updateStartedLatch: CountDownLatch? = null
+        var updateReleaseLatch: CountDownLatch? = null
+        var fetchProvider: ((String, Int) -> DailyResult)? = null
+        var fetchResult: DailyResult? = null
         var fetchResults: ArrayDeque<DailyResult>? = null
         val listCalls = AtomicInteger()
         val ensureCalls = AtomicInteger()
+        val fetchCalls = AtomicInteger()
         val fetchIds = mutableListOf<String>()
 
         override fun listDaily(): DailyListResult {
@@ -292,7 +583,11 @@ class DailyControllerTest {
 
         override fun fetchDaily(documentId: String): DailyResult {
             synchronized(fetchIds) { fetchIds += documentId }
-            return fetchResults?.removeFirstOrNull() ?: DailyResult.Success(document(documentId, "day-a", "2026-09-29", "body"))
+            val call = fetchCalls.incrementAndGet()
+            return fetchProvider?.invoke(documentId, call)
+                ?: fetchResult
+                ?: fetchResults?.removeFirstOrNull()
+                ?: DailyResult.Success(document(documentId, "day-a", "2026-09-29", "body"))
         }
 
         override fun ensureDaily(request: DailyEnsureRequest): DailyResult {
@@ -300,13 +595,17 @@ class DailyControllerTest {
             return ensureResult
         }
 
-        override fun updateDaily(request: DailyUpdateRequest): DailyResult = updateResult
+        override fun updateDaily(request: DailyUpdateRequest): DailyResult {
+            updateStartedLatch?.countDown()
+            updateReleaseLatch?.await(2, TimeUnit.SECONDS)
+            return updateResult
+        }
     }
 
     private companion object {
         fun summary(date: String, dayId: String, documentId: String?) = AndroidDailyDocumentSummary(dayId, date, documentId)
 
-        fun document(documentId: String, dayId: String, date: String, body: String) = AndroidDailyDocument(documentId, dayId, date, body, 0)
+        fun document(documentId: String, dayId: String, date: String, body: String, revision: Int = 0) = AndroidDailyDocument(documentId, dayId, date, body, revision)
 
         fun day(date: String, dayId: String) = TodayDay(
             logicalDate = date,

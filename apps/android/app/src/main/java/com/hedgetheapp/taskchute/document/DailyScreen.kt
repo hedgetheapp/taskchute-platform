@@ -119,12 +119,20 @@ fun DailyScreen(
                                 fontSize = 13.sp,
                             )
                             state.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                            if (state.canRetryLoad) {
+                                androidx.compose.material3.TextButton(onClick = controller::retryLoad) { Text("再試行") }
+                            }
                             if (state.blocked) Button(onClick = controller::retryUnresolved, enabled = !state.saving) { Text("元の保存を再試行") }
                         },
                     )
                 }
                 else -> {
-                    Text(state.errorMessage ?: "この日のデイリーノートは利用できません。", color = TaskChuteColors.SecondaryText)
+                    Column {
+                        Text(state.errorMessage ?: "この日のデイリーノートは利用できません。", color = TaskChuteColors.SecondaryText)
+                        if (state.canRetryLoad) {
+                            androidx.compose.material3.TextButton(onClick = controller::retryLoad) { Text("再試行") }
+                        }
+                    }
                 }
             }
         }
