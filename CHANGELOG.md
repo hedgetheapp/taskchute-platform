@@ -247,6 +247,12 @@
 # Changelog
 
 ## Unreleased
+### D-170B Android Notes / Daily warm re-entry — 2026-10-06
+
+- Notes keeps active/archive lists visible during canonical refresh; Daily keeps the loaded same-date editor visible and protects dirty, saving, blocked, newer-typed, and unresolved state. Canonical refresh failures preserve usable content with retry. Session-bound memory is cleared on auth exit, and pending local state requires the approved explicit discard/cancel sign-out choice.
+- Notes focused JVM `40 / 40`, Daily `19 / 19`, app/AndroidTest compile, debug APK build, and exact-SHA CI `37444571375` PASS on final code-tree SHA `bd4b79f19a68989ac4b576b535ca703cc2070a44`. A test-only follow-up hardened the pre-existing Today token wait after CI exposed its transient-null race. Signed Phone artifact `11402413860`, expires `2026-10-13T09:42:46Z`.
+- Held-response tests prove content stays visible before refresh completion; numeric timing, Phone AVD UI and Galaxy S23 remain `NOT_RUN`. No Worker/API/schema/migration/dependency/persistent cache/Web/Wear/production change. Production `NOT_RUN`; Released `NO`.
+
 ### D-148 Android Today two-task placement revision synchronization corrective — 2026-09-28
 
 - Successful Android planning/direct-manipulation responses now synchronize nullable server `placement_revision` into the date-scoped monotonic Today state before pending clear/refresh, preventing the next operation from using a stale revision while retaining the optimistic projection.
