@@ -413,7 +413,9 @@ Android側のsession credentialは動的cookie jarとしてmemoryに保持し、
 
 D-106のsigned-in shellは、将来のToday / offline / realtime / Widget / native
 integrationへ拡張できる境界だけを用意する。offline local DB、sync、conflict、
-background credential behaviorは未決であり、このfoundationで先取りしない。
+general background credential behaviorは引き続き未決であり、このfoundationで先取りしない。
+ただしD-177はAndroid Home Widget v0.1に限り、既存の暗号化済みAndroid sessionを
+background Widget read / Start / Completeで再利用するnarrow boundaryをApprovedする。
 
 ## D-107 Android Today boundary
 
@@ -804,3 +806,16 @@ Nonproduction FCM senderは専用Google service accountを使用し、FCM送信�
 Wear appへofficial Firebase Messaging SDKとAndroidX WorkManagerを追加してよい。foreground serviceやbackground WebSocketは追加しない。FCM受信後のcanonical readはbounded background workとして実行し、complicationの300秒fallbackを維持する。
 
 Firebase/Google project、client config、service account、Worker secretはnonproductionから導入する。Production resource/credential/deployは別途承認まで作成・適用しない。
+
+
+## D-177 Android Home Widget v0.1 boundary
+
+Android Home Widget is a presentation/action surface over the existing Android Today authority, not a separate Domain client.
+
+The Widget reuses the existing encrypted Android Better Auth cookie/session storage and the existing Today HTTP repository contracts. It may load canonical current Today and issue existing Start / Complete commands while the app UI is not foregrounded. No new token, credential exchange, Widget-specific server route, APP/AUTH persistence, or lifecycle authority is introduced.
+
+The v0.1 Widget keeps no independent canonical Domain database. After a Widget mutation succeeds it re-fetches/reconciles canonical Today before presenting the resulting lifecycle state. A `401`, deterministic rejection, or ambiguous transport failure never becomes local canonical success.
+
+The current server single-active-Execution invariant remains authoritative. While an Execution is active, a next Planned Task may be displayed but Widget Start is not dispatched for it. After canonical Complete removes the active Execution, the next Planned Task may be promoted and started.
+
+No persistent background socket, foreground service, minute-by-minute server polling, Phone FCM requirement, or new long-term Android dependency is part of D-177. Local elapsed display may use platform time-dependent Widget primitives; progress is recalculated on Widget render/refresh.

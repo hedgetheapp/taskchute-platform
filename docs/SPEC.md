@@ -1097,3 +1097,16 @@ FCM fanoutはcanonical mutationが実際にcommitした後だけ行う。HTTP 2x
 Push送信はbest-effort freshness side effectであり、push失敗・timeout・token cleanup失敗を理由に既に成功したTask mutationをrollbackまたはfailure responseへ変更しない。
 
 既存D-105 realtime mappingをmutation coverage sourceとして再利用してよいが、RealtimeHub / FCMの双方がcanonical-commit後だけpublishされるよう共通outcome boundaryを整合する。
+
+
+## D-177 Android Home Widget v0.1
+
+Android exposes a compact current-Day home-screen Widget.
+
+When a Task is Running, the Widget shows the Running Task title, local elapsed time, positive estimate when present, progress using the existing Running Progress Player visual language, the existing `stop` Complete action, and the next canonical Planned Task.
+
+After canonical Complete succeeds and Today is reconciled, the completed Task disappears and the next Planned Task becomes the primary visible Task with the existing `play_arrow` Start action. When no Task is Running, the first eligible Planned Entry in canonical current-Day order is the primary Widget Task. When no eligible Planned Task exists, the Widget is idle/empty and exposes no Start mutation.
+
+The Widget may issue existing Start / Complete commands without opening the Android app UI by reusing the existing encrypted Android authenticated session. While any Execution is active, a displayed next Planned Task is preview-only and the Widget must not dispatch its Start. Existing lifecycle, owner, operation identity, placement/revision, and single-active-Execution rules remain unchanged.
+
+No date navigation, Quick Add, Notes, Section list, new API/schema/migration, general offline queue, persistent background realtime, foreground service, minute server polling, or Phone FCM requirement is included in v0.1.

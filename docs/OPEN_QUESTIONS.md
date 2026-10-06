@@ -26,8 +26,10 @@ D-106により、Android native first-class clientのauth foundation（既存Bet
 Auth cookie sessionのstartup restore、401 / network distinction、Keystoreでの
 opaque session保護、signed-in shell）が解決され、D-107により最初のAndroid Domain UI
 としてToday read / Start / Complete surfaceがApproved / implemented scopeになった。
-offline local DB、sync / conflict、background execution、Widget、realtime、native
-credential handoffは引き続き未決であり、D-107はこれらを決定しない。
+offline local DB、sync / conflict、general background execution、realtime、native
+credential handoffは引き続き未決であり、D-107はこれらを決定しない。Android Widgetの
+v0.1 scopeと、そのWidget read / Start / Completeに限るbackground session reuseは
+D-177で解決済みである。
 
 - `AUTH_DB`にはBetter Auth 1.7.1 physical schemaをmigrationとして実装済み
 - `APP_DB`にはapp user / auth mapping / settings / projects / sections / taskchute_days / tasks / entries / operations / executions / temporary command guard・assertionを実装済み
@@ -421,7 +423,7 @@ First Server + Web vertical slice、D-038 B1 / B3、D-039 B2はImplemented / Int
 - Android native implementationへ進むentry criteria
 - Androidのinitial Compose architecture詳細
 - D-121で通常modeのTask rowからselection checkboxを隠しSelection Modeだけで表示する方向はApproved済みだが、通常modeからSelection Modeへ入る具体的interaction（long-press、別control等）は未決
-- Android Widgetのinitial scope
+- D-177より後のAndroid Widget scope（resize/layout variants、より広いTask list、date navigation、Quick Add、Notes、cross-client即時push/realtime等）
 - D-154 v0.1より後のWear OS scope（Completed history row、date navigation、Task edit / D&D、Notes / Daily、Tile、Location、offline / background realtime等）。Complication first sliceはD-158でApproved済み
 - D-159のevent-driven Wear Running projection transportはD-160でdirect FCM v0.1として解決済み。残るOpenは、将来のkeyless sender authenticationへの置換、tokenの長期stale-age cleanup policy、multi-Watch管理UX、production Firebase/IAM導入時期、Doze下の実測latency改善可否である。
 - Wear OS public distribution時のstandalone metadata / iOS-paired watch対応。D-154 v0.1はAndroid companion-assisted initial auth + post-pair Server-direct runtimeまでをApproved

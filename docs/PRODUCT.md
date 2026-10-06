@@ -41,6 +41,10 @@ Androidはoffline-capableを前提とする。ただし、offline中に可能な
 
 one-offなcompanionとして独立実装せず、Android appのDomain / API / local-state architectureを再利用する。
 
+D-177でv0.1をApprovedした。ホーム画面ではcurrent Running Taskとnext Planned Taskだけをcompactに扱い、Running時はelapsed / estimate / progressとComplete、Complete後またはidle時はnext Planned Taskを主表示へ繰り上げてStartできる。Start / CompleteはAndroid app UIを開かず、既存の暗号化済みAndroid sessionとcanonical Today HTTP commandを再利用して直接実行する。
+
+v0.1ではdate navigation、Quick Add、Notes、Section list、general offline command queue、persistent background realtime、Phone Widget向けFCM、継続的server pollingを含めない。
+
 ### Wear OS / Pixel Watch
 
 companion clientとして対応対象とする。

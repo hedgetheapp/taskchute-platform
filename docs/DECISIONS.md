@@ -2656,3 +2656,12 @@ D-160 selects direct Firebase Cloud Messaging from TaskChute Server to the Wear 
 The approved implementation includes a minimal owner-bound Wear push registration table/migration and authenticated register/unregister API, Wear Firebase Messaging + WorkManager dependencies, a dedicated least-privilege FCM sender service account whose private key exists only as a Cloudflare Worker secret, and best-effort post-commit fanout. Push failure never changes a successful Task mutation outcome. The existing realtime mutation mapping may be reused only after replacing `response.ok`-style notification gating with an explicit canonical-commit outcome boundary.
 
 Production Firebase/credentials/deploy remain unapproved and `NOT_RUN`.
+
+
+## D-177 — Android Home Widget v0.1
+
+Status: **Approved / Implementation not started**
+
+Canonical Decision: `docs/decisions/D-177_ANDROID_HOME_WIDGET_V01.md`.
+
+D-177 defines the first Android home-screen Widget as a compact current-Day execution surface. Running shows the current Task with elapsed / estimate / progress and the next Planned Task; after canonical Complete the completed Task disappears and the next Planned Task is promoted. Idle Start and Running Complete execute directly from the Widget using the existing encrypted Android Better Auth session and existing Today HTTP commands, without opening the app UI. The existing single-active-Execution invariant remains authoritative, so next-task Start is not dispatched while another Execution is active. No new API/schema/migration, foreground service, persistent background socket, minute server polling, Phone FCM requirement, or long-term dependency is approved.
