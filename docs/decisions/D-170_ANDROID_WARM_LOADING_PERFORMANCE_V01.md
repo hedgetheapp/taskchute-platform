@@ -1,6 +1,6 @@
 # D-170 — Android Warm Loading Performance v0.1
 
-Status: **Approved / Implemented / Integrated (D-168A Today; D-170B Notes + Daily) / focused JVM + exact-SHA CI PASS / Phone UI and numerical timing not run**
+Status: **Approved / Implemented / Integrated (D-168A Today; D-170B Notes + Daily) / focused JVM + exact-SHA CI PASS / Galaxy S23 representative smoke PASS (user-confirmed) / AVD UI and numerical timing not run**
 
 Date: 2026-10-04
 
@@ -223,4 +223,4 @@ Notes and Daily asynchronous work uses a cancellable session child scope. Authen
 
 Focused `NotesControllerTest` `40 / 40 PASS`, `DailyControllerTest` `19 / 19 PASS`, and the additional CI-triggered Today token-generation test `1 / 1 PASS`. App Kotlin compile, AndroidTest Kotlin compile, debug APK assemble, and `git diff --check` pass. The first exact-SHA CI attempt on `aeba709` exposed an existing unrelated failure-token test that treated an intermediate `null` as a new token; its predicate was hardened in the test-only `bd4b79f` follow-up. Exact-SHA CI [`37444571375`](https://github.com/hedgetheapp/taskchute-platform/actions/runs/37444571375) on `bd4b79f` passes all Android jobs; Web/Worker were correctly skipped. Fresh signed Phone APK `taskchute-android-debug-bd4b79f19a68989ac4b576b535ca703cc2070a44`, artifact ID `11402413860`, expires `2026-10-13T09:42:46Z`.
 
-Held-response tests prove usable warm Notes/Daily content remains available before canonical response completion; numeric before/after device timing is `NOT_RUN`, and no latency claim is quantified. No compatible Phone AVD was available (`D173B_Wear_API37` is Wear-only); Android UI runtime is `NOT_RUN / NO_COMPATIBLE_PHONE_AVD`. Galaxy S23 is `NOT_RUN / PRODUCT_OWNER_MANUAL`. No Worker/API/shared contract, schema/migration, dependency, persistent cache, Web/Wear, production operation, or user-data mutation. Production `NOT_RUN`; Released `NO`.
+Held-response tests prove usable warm Notes/Daily content remains available before canonical response completion; numeric before/after device timing is `NOT_RUN`, and no latency claim is quantified. No compatible Phone AVD was available (`D173B_Wear_API37` is Wear-only); Android UI runtime remains `NOT_RUN / NO_COMPATIBLE_PHONE_AVD`. Product Owner tested the fresh D-170B Phone build on Galaxy S23 and reported no issues (`なし` in context of the requested smoke); record Notes warm re-entry, Daily same-date warm re-entry, and ordinary interaction behavior as representative `PASS / USER_CONFIRMED`, without claiming a full device matrix, dedicated destructive sign-out test, or numerical latency measurement. No Worker/API/shared contract, schema/migration, dependency, persistent cache, Web/Wear, production operation, or user-data mutation. Production `NOT_RUN`; Released `NO`.
