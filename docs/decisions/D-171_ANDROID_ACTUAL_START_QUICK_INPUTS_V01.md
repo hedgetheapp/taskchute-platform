@@ -1,6 +1,6 @@
 # D-171 — Android Actual Start Quick Inputs v0.1
 
-Status: **Approved / Not implemented**
+Status: **Approved / Implemented / Integrated / focused Android JVM + app and AndroidTest compile + signed Phone APK + exact-SHA CI PASS / Phone AVD and Galaxy S23 NOT_RUN**
 
 Date: 2026-10-04
 
@@ -167,4 +167,30 @@ Future implementation should verify at minimum:
 11. automatic Start remains exact and unchanged;
 12. no schema/migration/shared API change is introduced.
 
-Until implemented and tested, this remains **Approved / Not implemented / Not verified**.
+## Implementation closeout — 2026-10-06
+
+Implementation `ccf624ec231e3919187b0bf0038f3936842c1ac7` is integrated on `main`.
+
+### Feasibility and target identity
+
+The current Today projection is sufficient for every editor state where D-171 quick inputs are enabled. The Day projection exposes each Entry's canonical latest `lastEndedAt`, derived from `MAX(ended_at)` across its canonical Executions. Taking the maximum parsed `Instant` across the selected Day's `allEntries` yields the latest ended Execution independent of visual row order; no new API field is needed.
+
+- Planned target: quick input is enabled only when the projection has no Execution identity or historical start/end, so the target cannot contribute its own end.
+- Running target: quick input is enabled only with its active Execution identity and start. That active Execution is open; any projected `lastEndedAt` for this Entry is from a different, earlier ended segment and is a safe candidate.
+- Completed target: quick input is enabled only when `executionId` identifies the sole canonical Execution. The target Entry is excluded from candidates, so its own end cannot be reused.
+- Completed multi-Execution target: `executionId` is unavailable/ambiguous, so both quick inputs are unavailable for this target.
+
+Candidate selection parses exact canonical Instants, compares them across the selected Day, and uses a stable Entry ID tie-break. No candidate leaves the prior-end action disabled and does not fill the field.
+
+### Android implementation
+
+The editor holds a typed, memory-only `ExactActualStart(Instant, source)` where source is `PREVIOUS_END` or `NOW`. Both actions are shown next to actual-start only for eligible editors; actual end stays manual. `NOW` captures the injected clock at activation. The text field formats that Instant as `HH:mm` in the Day establishment timezone. Manual text activity clears exact authority even when the user retypes the same displayed minute; the existing D-147(B) `input_precision: "minute"` path then remains in effect. Exact quick requests send the exact `started_at` without that marker. Optimistic presentation keeps the exact start and resolves the actual Section when possible. No Worker, shared API, schema, migration, or dependency change was made.
+
+### Verification and artifact
+
+- Focused Android JVM: Controller `5 / 5`, repository `4 / 4`, optimistic `1 / 1` PASS. Coverage includes latest exact candidate and row reorder, target exclusion, Running prior segment, Completed multi-segment unavailability, no candidate, exact Now and Day-local display, same-minute manual authority reset, exact request payloads, D-176 manual minute marker, Completed→Running reopen, and exact optimistic projection.
+- `:app:compileDebugKotlin`, `:app:compileDebugAndroidTestKotlin`, `:app:assembleDebug`, and `git diff --check` PASS. The focused instrumentation source checks eligible actions, unavailable prior-end, and exact Now display; it compiled but was not run.
+- Exact-SHA CI [`37460343105`](https://github.com/hedgetheapp/taskchute-platform/actions/runs/37460343105), attempt 2 PASS on implementation SHA. Attempt 1 exposed one unrelated existing reminder-prefill test failure; its isolated local rerun passed, and the full same-SHA Android app/Wear JVM, signed debug builds, instrumentation APK compile, signing checks, and artifact upload passed on attempt 2. Web/Worker verification was skipped by Android-only path classification.
+- Fresh signed nonprod Phone APK: `taskchute-android-debug-ccf624ec231e3919187b0bf0038f3936842c1ac7`, artifact ID `11413037002`, expires `2026-10-13T12:07:11Z`.
+- No compatible Phone AVD was available (`NOT_RUN / NO_COMPATIBLE_PHONE_AVD`). Galaxy S23 remains `NOT_RUN / PRODUCT_OWNER_MANUAL`.
+- Production `NOT_RUN`; Released `NO`.

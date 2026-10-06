@@ -32,7 +32,7 @@ Android Markdown Note editors persist the last caret position per stable `docume
 
 ## D-171 — Android Actual Start Quick Inputs v0.1
 
-Status: **Approved / Not implemented / Not verified**
+Status: **Approved / Implemented / Integrated / focused Android JVM + app and AndroidTest compile + signed Phone APK + exact-SHA CI PASS / Phone AVD and Galaxy S23 NOT_RUN**
 
 Canonical Decision: `docs/decisions/D-171_ANDROID_ACTUAL_START_QUICK_INPUTS_V01.md`
 
