@@ -1,6 +1,6 @@
 # D-172 — Android Note Cursor Position Restore v0.1
 
-Status: **Approved / Not implemented**
+Status: **Approved / Implemented / Integrated / focused JVM + exact-SHA CI PASS / device runtime NOT_RUN**
 
 Date: 2026-10-04
 
@@ -144,4 +144,10 @@ Future implementation should verify at minimum:
 12. cursor movement creates no network request and does not affect Document revision/autosave/CAS.
 13. no schema/migration/API dependency change.
 
-Until implemented and tested, this remains **Approved / Not implemented / Not verified**.
+## Implementation and verification status — 2026-10-06
+
+Implemented in `07703dc440fae5f71a8376ff372517bbbb85f730`. The dedicated Android-private `DocumentCursorPreferences` store uses the `taskchute.document.cursor.v1` namespace and one integer caret-offset key per stable `document_id`. Non-collapsed selections persist `TextRange.end`.
+
+`MarkdownLiveEditor` initializes the source `TextFieldValue.selection` from the stored offset once per editor session and clamps it to the current Markdown body. Notes use `NoteEditorState.sessionId` as the initialization key, independent of `document_id`: adoption of a canonical ID therefore retains the live caret and does not load an older saved position over it. Cursor callbacks use the current `editor.document?.documentId`, so later selection changes persist under the adopted ID. Daily uses `state.document?.documentId` for both its cursor key and editor-session key. Existing body-update behavior retains and clamps the active selection; restore does not request focus or show the IME.
+
+Focused JVM tests pass: `DocumentCursorPreferencesTest` `5 / 5`, `MarkdownLiveEditorTest` `22 / 22`, `NotesScreenTest` `4 / 4`, and `DailyScreenTest` `2 / 2` (`33 / 33` total). `:app:compileDebugKotlin`, `:app:assembleDebug`, and `git diff --check` pass. Exact-SHA CI passed Android JVM, signed Phone/Wear APK builds, AndroidTest APK compilation, certificate checks, and artifact uploads. No compatible Phone AVD/device was available, so standalone/Daily UI reopen, no-IME, process-restart, checkbox/link UI, and Galaxy S23 manual verification remain `NOT_RUN / PRODUCT_OWNER_MANUAL`; the exact fresh Phone APK is identified in the task handoff. No Worker/API/shared contract/schema/migration/dependency, Web, Wear, production, or release change. The Decision remains approved as written; this implementation does not add cross-device or semantic cursor rebasing behavior.
