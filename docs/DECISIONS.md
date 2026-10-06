@@ -24,13 +24,13 @@ An active Execution may continue across a TaskChute Day or Section boundary, whi
 
 ## D-172 — Android Note Cursor Position Restore v0.1
 
-Status: **Approved / Implemented / Integrated / focused JVM and exact-SHA CI PASS / device verification NOT_RUN**
+Status: **Approved / Implemented / Integrated / focused JVM and exact-SHA CI PASS / Galaxy S23 representative smoke PASS (user-confirmed) / Phone AVD NOT_RUN**
 
 Canonical Decision: `docs/decisions/D-172_ANDROID_NOTE_CURSOR_POSITION_RESTORE_V01.md`
 
 Android Markdown Note editors persist the last caret position per stable `document_id` in device-local storage and restore it when the same Note is reopened, including after app process restart. Applies to Standalone, Task Primary, Project Primary, and Daily Notes. The saved offset is clamped against the current Markdown body, does not contain Note content, does not affect Document revision/autosave/CAS, and is not synced to Web/other devices. Restore must not force focus or open the IME, and new/unmaterialized Notes begin persistent tracking only after adopting a stable Document identity.
 
-Implementation `07703dc440fae5f71a8376ff372517bbbb85f730` uses the dedicated `taskchute.document.cursor.v1` preference namespace and stores only one integer source-caret offset per `document_id`. The Markdown editor reads it once per editor-session initialization; Notes use the existing `sessionId` so stable-ID adoption does not reset an active selection, and Daily uses its canonical `documentId`. Focused JVM `33 / 33`, local Android compile/build, exact-SHA CI, AndroidTest APK compile, and signed Phone APK upload pass. Phone AVD and Galaxy S23 runtime verification remain not run; see `TEST_MATRIX.md` for evidence boundaries.
+Implementation `07703dc440fae5f71a8376ff372517bbbb85f730` uses the dedicated `taskchute.document.cursor.v1` preference namespace and stores only one integer source-caret offset per `document_id`. The Markdown editor reads it once per editor-session initialization; Notes use the existing `sessionId` so stable-ID adoption does not reset an active selection, and Daily uses its canonical `documentId`. Focused JVM `33 / 33`, local Android compile/build, exact-SHA CI, AndroidTest APK compile, and signed Phone APK upload pass. Phone AVD runtime remains not run. Product Owner installed the fresh D-172 build on Galaxy S23 and reported `たぶんおけ`; record representative Note/Daily cursor re-entry as `PASS / USER_CONFIRMED`, without claiming a full device matrix or separately proving every optional process-restart/IME/Markdown-interaction item. See `TEST_MATRIX.md` for evidence boundaries.
 
 ## D-171 — Android Actual Start Quick Inputs v0.1
 
