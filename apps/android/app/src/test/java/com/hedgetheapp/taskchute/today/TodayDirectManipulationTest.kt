@@ -1436,7 +1436,7 @@ class TodayDirectManipulationTest {
         val firstToken = controller.state.deterministicFailureToken ?: error("missing first token")
 
         controller.reorder(day(), "section-1", listOf("entry-2", "entry-1"), setOf("entry-1"))
-        assertTrue(await { controller.state.deterministicFailureToken != firstToken })
+        assertTrue(await { controller.state.deterministicFailureToken?.let { it != firstToken } == true })
         val secondToken = controller.state.deterministicFailureToken ?: error("missing second token")
 
         controller.clearDeterministicError(firstToken)
