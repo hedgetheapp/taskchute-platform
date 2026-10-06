@@ -184,7 +184,9 @@ async function findMinuteBlocker(
     .bind(appUserId, entry.taskchute_day_id, request.execution_id).all<MinuteBlocker>();
   let selected: MinuteBlocker | null = null;
   for (const row of rows.results) {
-    if (compareInstants(row.started_at, window.start) <= 0
+    // Manual input identifies a displayed minute, so the prior interval may
+    // begin within that minute while its hidden seconds still need adjacency.
+    if (compareInstants(row.started_at, window.end) < 0
       && compareInstants(row.ended_at, window.start) > 0
       && compareInstants(row.ended_at, window.end) < 0
       && (!selected || compareInstants(row.ended_at, selected.ended_at) > 0)) {

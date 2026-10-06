@@ -155,6 +155,47 @@ class TaskPlanningHttpRepositoryTest {
     }
 
     @Test
+    fun manualActualStartAtSameDisplayedMinuteUsesMinutePrecision() {
+        val requests = mutableListOf<Triple<String, String, String?>>()
+        val task = TodayTask(
+            id = "entry-1", title = "Planned task", lifecycleState = LifecycleState.PLANNED,
+            project = null, mode = null, estimateSeconds = 600, plannedStartMinute = 600,
+            executionId = null, activeStartedAt = null, routineDerived = false, taskId = "task-1",
+        )
+        val day = currentDay().copy(
+            establishmentTimezone = "UTC",
+            sections = listOf(TodaySection("section-1", "Morning", 480, 720, listOf(task))),
+        )
+        val repository = TaskPlanningHttpRepository { method, path, body ->
+            requests += Triple(method, path, body)
+            if (path.endsWith("/execution-times")) executionTimesResponse(5, lifecycleState = "running")
+            else TodayHttpResponse(204, null)
+        }
+
+        assertEquals(PlanningSaveResult.SuccessWithRevision(5), repository.save(
+            TaskEditorState(
+                TaskEditorMode.EDIT, day, task,
+                TaskEditorDraft(title = task.title, actualStartText = "10:45"),
+            ),
+            NormalizedTaskInput(
+                title = task.title,
+                projectId = null,
+                modeId = null,
+                sectionId = "section-1",
+                plannedStartMinute = 600,
+                estimateSeconds = 600,
+                actualStartMinute = 645,
+                actualEndMinute = null,
+            ),
+        ))
+
+        assertEquals(1, requests.size)
+        assertEquals("/api/v1/entries/entry-1/execution-times", requests.single().second)
+        assertTrue(requests.single().third!!.contains("\"started_at\":\"2026-09-14T10:45:00Z\""))
+        assertTrue(requests.single().third!!.contains("\"input_precision\":\"minute\""))
+    }
+
+    @Test
     fun plannedCompletedActualCorrectionReturnsServerRevisionAfterSectionMove() {
         val requests = mutableListOf<Triple<String, String, String?>>()
         val task = TodayTask(

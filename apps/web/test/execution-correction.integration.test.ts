@@ -738,11 +738,13 @@ describe.sequential("D-060 SetExecutionTimes", () => {
 
   it("rejects a stale cross-Section placement revision without partial writes", async () => {
     const fixture = await seedFixture(true, 480);
+    await addExecution(fixture, "2026-08-28T10:30:12.000Z", "2026-08-28T10:30:38.000Z");
     const request = {
       operation_id: uuidv7(), entry_id: fixture.entryId, execution_id: uuidv7(),
       expected_lifecycle_state: "planned" as const,
       started_at: "2026-08-28T10:30:00.000Z", ended_at: null,
       expected_started_at: null, expected_ended_at: null, expected_placement_revision: 1,
+      input_precision: "minute" as const,
     };
     await expect(setExecutionTimes(env.APP_DB, fixture.userId, request, now)).rejects.toMatchObject({ code: "revision_conflict" });
     expect(await env.APP_DB.prepare("SELECT lifecycle_state, section_id, planned_start_minute FROM entries WHERE id = ?")
@@ -826,6 +828,76 @@ describe.sequential("D-060 SetExecutionTimes", () => {
       .bind(blocker.executionId).first()).toEqual({ started_at: "2026-08-28T05:50:00.000Z", ended_at: "2026-08-28T06:16:01.000Z" });
   });
 
+  it("snaps a completed blocker wholly inside the requested displayed minute", async () => {
+    const fixture = await seedFixture(true);
+    const blocker = await addExecution(fixture, "2026-08-28T10:45:12.000Z", "2026-08-28T10:45:38.000Z");
+    const request = {
+      operation_id: uuidv7(), entry_id: fixture.entryId, execution_id: uuidv7(),
+      expected_lifecycle_state: "planned" as const,
+      started_at: "2026-08-28T10:45:00.000Z", ended_at: "2026-08-28T11:00:00.000Z",
+      expected_started_at: null, expected_ended_at: null, expected_placement_revision: 0,
+      input_precision: "minute" as const,
+    };
+
+    await expect(setExecutionTimes(env.APP_DB, fixture.userId, request, now)).resolves.toMatchObject({
+      lifecycle_state: "completed",
+      placement_revision: 1,
+      execution: { id: request.execution_id, started_at: "2026-08-28T10:45:38.000Z", ended_at: request.ended_at },
+    });
+    expect(await env.APP_DB.prepare("SELECT started_at, ended_at FROM executions WHERE id = ?")
+      .bind(blocker.executionId).first()).toEqual({
+      started_at: "2026-08-28T10:45:12.000Z", ended_at: "2026-08-28T10:45:38.000Z",
+    });
+  });
+
+  it("snaps to the last instant inside the displayed minute", async () => {
+    const fixture = await seedFixture(true);
+    await addExecution(fixture, "2026-08-28T06:16:12.000Z", "2026-08-28T06:16:59.999Z");
+    const request = {
+      operation_id: uuidv7(), entry_id: fixture.entryId, execution_id: uuidv7(),
+      expected_lifecycle_state: "planned" as const,
+      started_at: "2026-08-28T06:16:00.000Z", ended_at: "2026-08-28T06:30:00.000Z",
+      expected_started_at: null, expected_ended_at: null, expected_placement_revision: 0,
+      input_precision: "minute" as const,
+    };
+
+    await expect(setExecutionTimes(env.APP_DB, fixture.userId, request, now)).resolves.toMatchObject({
+      execution: { started_at: "2026-08-28T06:16:59.999Z" },
+    });
+  });
+
+  it("keeps exact adjacency at the requested minute start", async () => {
+    const fixture = await seedFixture(true);
+    await addExecution(fixture, "2026-08-28T05:50:00.000Z", "2026-08-28T06:16:00.000Z");
+    const request = {
+      operation_id: uuidv7(), entry_id: fixture.entryId, execution_id: uuidv7(),
+      expected_lifecycle_state: "planned" as const,
+      started_at: "2026-08-28T06:16:00.000Z", ended_at: "2026-08-28T06:30:00.000Z",
+      expected_started_at: null, expected_ended_at: null, expected_placement_revision: 0,
+      input_precision: "minute" as const,
+    };
+
+    await expect(setExecutionTimes(env.APP_DB, fixture.userId, request, now)).resolves.toMatchObject({
+      execution: { started_at: request.started_at, ended_at: request.ended_at },
+    });
+  });
+
+  it("snaps a completed same-minute blocker that starts after the requested minute start", async () => {
+    const fixture = await seedFixture(true);
+    await addExecution(fixture, "2026-08-28T06:16:00.500Z", "2026-08-28T06:16:30.000Z");
+    const request = {
+      operation_id: uuidv7(), entry_id: fixture.entryId, execution_id: uuidv7(),
+      expected_lifecycle_state: "planned" as const,
+      started_at: "2026-08-28T06:16:00.000Z", ended_at: "2026-08-28T06:30:00.000Z",
+      expected_started_at: null, expected_ended_at: null, expected_placement_revision: 0,
+      input_precision: "minute" as const,
+    };
+
+    await expect(setExecutionTimes(env.APP_DB, fixture.userId, request, now)).resolves.toMatchObject({
+      execution: { started_at: "2026-08-28T06:16:30.000Z" },
+    });
+  });
+
   it("chooses the maximum eligible blocker end", async () => {
     const fixture = await seedFixture(true);
     await addExecution(fixture, "2026-08-28T05:40:00.000Z", "2026-08-28T06:16:01.000Z");
@@ -863,6 +935,34 @@ describe.sequential("D-060 SetExecutionTimes", () => {
     });
   });
 
+  it("classifies a stale expected Execution snapshot before same-minute overlap", async () => {
+    const fixture = await seedFixture(true);
+    const executionId = await makeLifecycleEntry(fixture, "completed",
+      "2026-08-28T06:00:00.000Z", "2026-08-28T06:10:00.000Z");
+    await addExecution(fixture, "2026-08-28T06:16:12.000Z", "2026-08-28T06:16:38.000Z");
+    const request = {
+      operation_id: uuidv7(), entry_id: fixture.entryId, execution_id: executionId,
+      expected_lifecycle_state: "completed" as const,
+      started_at: "2026-08-28T06:16:00.000Z", ended_at: "2026-08-28T06:30:00.000Z",
+      expected_started_at: "2026-08-28T06:00:01.000Z", expected_ended_at: "2026-08-28T06:10:00.000Z",
+      input_precision: "minute" as const,
+    };
+
+    await expect(setExecutionTimes(env.APP_DB, fixture.userId, request, now)).rejects.toMatchObject({
+      status: 409, code: "resource_conflict",
+    });
+    const operation = await env.APP_DB.prepare("SELECT outcome_kind, result_json FROM operations WHERE app_user_id = ? AND operation_id = ?")
+      .bind(fixture.userId, request.operation_id).first<{ outcome_kind: string; result_json: string }>();
+    expect(operation?.outcome_kind).toBe("domain_rejection");
+    expect(JSON.parse(operation?.result_json ?? "{}")).toEqual({
+      code: "resource_conflict", message: "Execution changed before correction",
+    });
+    expect(await env.APP_DB.prepare("SELECT started_at, ended_at FROM executions WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, executionId).first()).toEqual({
+      started_at: "2026-08-28T06:00:00.000Z", ended_at: "2026-08-28T06:10:00.000Z",
+    });
+  });
+
   it("keeps exact callers unsnapped and rejects unknown or non-boundary precision", async () => {
     const fixture = await seedFixture(true);
     await addExecution(fixture, "2026-08-28T05:50:00.000Z", "2026-08-28T06:16:01.000Z");
@@ -881,11 +981,10 @@ describe.sequential("D-060 SetExecutionTimes", () => {
     expect(isSetExecutionTimesRequest({ ...exact, input_precision: "second" })).toBe(false);
   });
 
-  it("rejects active, next-minute, future-start, residual-overlap, end, and future-time cases", async () => {
+  it("rejects active, out-of-minute, invalid-end, and future-time cases", async () => {
     const cases = [
-      { name: "active", blockerStart: "2026-08-28T05:50:00.000Z", blockerEnd: null, expected: "resource_conflict" },
-      { name: "next-minute", blockerStart: "2026-08-28T05:50:00.000Z", blockerEnd: "2026-08-28T06:17:00.000Z", expected: "resource_conflict" },
-      { name: "future-start", blockerStart: "2026-08-28T06:16:00.500Z", blockerEnd: "2026-08-28T06:16:30.000Z", expected: "resource_conflict" },
+      { name: "active in minute", blockerStart: "2026-08-28T06:16:12.000Z", blockerEnd: null, expected: "resource_conflict" },
+      { name: "ends outside minute", blockerStart: "2026-08-28T06:16:12.000Z", blockerEnd: "2026-08-28T06:17:00.000Z", expected: "resource_conflict" },
       { name: "end-before-effective", blockerStart: "2026-08-28T05:50:00.000Z", blockerEnd: "2026-08-28T06:16:01.000Z", end: "2026-08-28T06:16:00.500Z", expected: "resource_conflict" },
       { name: "future", blockerStart: "2026-08-28T05:50:00.000Z", blockerEnd: null, start: "2026-08-28T12:01:00.000Z", expected: "resource_conflict" },
     ];
@@ -920,8 +1019,8 @@ describe.sequential("D-060 SetExecutionTimes", () => {
 
   it("keeps the final overlap guard after snapping and rejects the Day boundary", async () => {
     const fixture = await seedFixture(true);
-    await addExecution(fixture, "2026-08-28T05:50:00.000Z", "2026-08-28T06:16:01.000Z");
-    await addExecution(fixture, "2026-08-28T06:16:00.500Z", "2026-08-28T06:20:00.000Z");
+    await addExecution(fixture, "2026-08-28T06:16:12.000Z", "2026-08-28T06:16:38.000Z");
+    await addExecution(fixture, "2026-08-28T06:16:39.000Z", "2026-08-28T06:20:00.000Z");
     const residual = {
       operation_id: uuidv7(), entry_id: fixture.entryId, execution_id: uuidv7(), expected_lifecycle_state: "planned" as const,
       started_at: "2026-08-28T06:16:00.000Z", ended_at: "2026-08-28T06:30:00.000Z", expected_started_at: null,
