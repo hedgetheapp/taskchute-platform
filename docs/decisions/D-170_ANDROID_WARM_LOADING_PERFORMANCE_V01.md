@@ -122,6 +122,23 @@ For editable Documents:
 
 Any broader editable-document cache semantics require a separate Decision.
 
+### 6A. Sign-out handling when Notes / Daily have unsaved state
+
+The Product Owner approved the following sign-out behavior for D-170 session isolation.
+
+If neither Notes nor Daily has an unsaved / saving / unresolved state, sign-out proceeds normally.
+
+If Notes or Daily has an unsaved, saving, blocked, ambiguous, conflict, or otherwise unresolved local editing state that could be lost by session reset:
+
+- do **not** sign out immediately;
+- present a confirmation dialog explaining that unsaved changes exist;
+- actions are **破棄してログアウト** and **キャンセル**;
+- **破棄してログアウト** explicitly discards the local pending state and then signs out;
+- **キャンセル** aborts sign-out and returns to the current authenticated UI;
+- do not add an automatic “save then sign out” workflow in this slice.
+
+This confirmation is the authority boundary that permits Notes / Daily memory and pending-state reset on sign-out without silent data loss.
+
 ### 7. Measurement first
 
 Before optimization, add local/dev performance evidence for at least:
