@@ -216,6 +216,37 @@ class TodayOptimisticTest {
     }
 
     @Test
+    fun exactQuickStartForNewTaskOptimisticallyPreservesCapturedInstant() {
+        val exactStart = "2026-09-14T03:34:27.481Z"
+        val input = NormalizedTaskInput(
+            title = "Quick start",
+            projectId = null,
+            modeId = null,
+            sectionId = "morning",
+            plannedStartMinute = 540,
+            estimateSeconds = 600,
+            actualStartMinute = 12 * 60 + 34,
+            clientTaskId = "task-exact",
+            clientEntryId = "entry-exact",
+            actualStartInstant = exactStart,
+        )
+        val day = day().copy(establishmentTimezone = "Asia/Tokyo")
+
+        val projected = applyOptimisticPlanning(
+            day,
+            TaskEditorState(TaskEditorMode.CREATE, day, null, TaskEditorDraft()),
+            input,
+        )
+
+        val task = projected.allEntries.single { it.id == "entry-exact" }
+        assertEquals(LifecycleState.RUNNING, task.lifecycleState)
+        assertEquals(exactStart, task.activeStartedAt)
+        assertEquals(exactStart, projected.activeExecution?.startedAt)
+        assertTrue(projected.sections.single { it.id == "afternoon" }.entries.any { it.id == task.id })
+        assertTrue(projected.sections.single { it.id == "morning" }.entries.none { it.id == task.id })
+    }
+
+    @Test
     fun lifecycleEditorRollbackImmediatelyReturnsRunningEntryToPlannedAndKeepsOlderHistory() {
         val source = day()
         val original = source.allEntries.first { it.id == "entry-a" }.copy(

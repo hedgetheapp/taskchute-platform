@@ -38,6 +38,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
+import java.time.Instant
 import java.io.FileOutputStream
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -2371,6 +2372,30 @@ class TodayScreenInstrumentedTest {
     }
 
     @Test
+    fun actualStartQuickInputsShowForEligibleEditorAndNowFillsExactDayLocalMinute() {
+        val task = dayWith().sections.single().entries.single()
+        val base = dayWith()
+        val initialDay = base.copy(
+            establishmentTimezone = "Asia/Tokyo",
+            sections = listOf(base.sections.single().copy(entries = listOf(task))),
+        )
+        val fixedNow = Instant.parse("2026-09-14T03:34:27.481Z")
+        launchPlanningScreen(FakePlanningRepository(), initialDay, nowProvider = { fixedNow })
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        composeRule.onNodeWithText(task.title).performTouchInput { swipeLeft() }
+        composeRule.onNodeWithContentDescription("タスクを編集").performClick()
+        composeRule.onNodeWithText("開始時間", substring = false).assertIsDisplayed()
+        composeRule.onNodeWithText("終了時間", substring = false).assertIsDisplayed()
+        composeRule.onNodeWithText("前回タスク終了", substring = false).performScrollTo().assertIsDisplayed().assertIsNotEnabled()
+        composeRule.onNodeWithText("現在時刻", substring = false).performScrollTo().assertIsDisplayed().assertIsEnabled().performClick()
+
+        assertEquals("12:34", planningController?.state?.editor?.draft?.actualStartText)
+        assertEquals(ExactActualStart(fixedNow, ExactActualStartSource.NOW), planningController?.state?.editor?.draft?.exactActualStart)
+        assertEquals(1, composeRule.onAllNodesWithText("現在時刻", substring = false).fetchSemanticsNodes().size)
+    }
+
+    @Test
     fun runningEditorCanClearStartAndSaveLifecycleRollbackIntent() {
         val planningRepository = FakePlanningRepository()
         val initialDay = dayWith(LifecycleState.RUNNING).copy(establishmentTimezone = "UTC")
@@ -2721,6 +2746,7 @@ class TodayScreenInstrumentedTest {
         onOpenTaskNote: (TodayTask) -> Unit = {},
         refreshAfterDirect: Boolean = true,
         silentReconcileAfterDirect: Boolean = false,
+        nowProvider: () -> Instant = Instant::now,
     ) {
         val repo = FakeTodayRepository(initialDay = initialDay)
         repository = repo
@@ -2734,6 +2760,7 @@ class TodayScreenInstrumentedTest {
             onUnauthorized = {},
             onSaved = {},
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
+            now = nowProvider,
         )
         this.directManipulationController = directRepository?.let {
             TodayDirectManipulationController(

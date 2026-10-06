@@ -9,6 +9,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.time.Instant
 import java.time.ZoneId
 import java.time.ZonedDateTime
 
@@ -21,6 +22,7 @@ class TaskPlanningController(
     private val onOptimisticFailure: (String) -> Unit = {},
     private val latestDay: () -> TodayDay? = { null },
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
+    private val now: () -> Instant = Instant::now,
 ) {
     var state by mutableStateOf(TaskPlanningUiState())
         private set
@@ -97,8 +99,63 @@ class TaskPlanningController(
     }
 
     fun updateDraft(draft: TaskEditorDraft) {
-        if (state.saving || state.editor == null) return
-        state = state.copy(editor = state.editor!!.copy(draft = draft), errorMessage = null)
+        if (state.saving) return
+        val editor = state.editor ?: return
+        val nextDraft = if (draft.actualStartText != editor.draft.actualStartText) {
+            draft.copy(exactActualStart = null)
+        } else {
+            draft
+        }
+        state = state.copy(editor = editor.copy(draft = nextDraft), errorMessage = null)
+    }
+
+    /** Text input is manual intent, even when the retyped HH:mm matches the quick selection. */
+    fun updateActualStartText(value: String) {
+        if (state.saving) return
+        val editor = state.editor ?: return
+        state = state.copy(
+            editor = editor.copy(draft = editor.draft.copy(actualStartText = value, exactActualStart = null)),
+            errorMessage = null,
+        )
+    }
+
+    fun selectCurrentTime() {
+        if (!canSelectActualStartQuickInput()) return
+        selectExactActualStart(now(), ExactActualStartSource.NOW)
+    }
+
+    fun selectPreviousTaskEnd() {
+        if (!canSelectActualStartQuickInput()) return
+        val editor = state.editor ?: return
+        val instant = resolvePreviousTaskEnd(editor.day, editor.originalTask) ?: return
+        selectExactActualStart(instant, ExactActualStartSource.PREVIOUS_END)
+    }
+
+    internal fun previousTaskEndForEditor(): Instant? {
+        if (!canSelectActualStartQuickInput()) return null
+        val editor = state.editor ?: return null
+        return resolvePreviousTaskEnd(editor.day, editor.originalTask)
+    }
+
+    internal fun canSelectActualStartQuickInput(): Boolean {
+        if (state.saving) return false
+        val editor = state.editor ?: return false
+        return canUseActualStartQuickInputs(editor)
+    }
+
+    private fun selectExactActualStart(instant: Instant, source: ExactActualStartSource) {
+        val editor = state.editor ?: return
+        val text = formatExecutionClock(instant.toString(), editor.day.establishmentTimezone)
+        if (text.isBlank()) return
+        state = state.copy(
+            editor = editor.copy(
+                draft = editor.draft.copy(
+                    actualStartText = text,
+                    exactActualStart = ExactActualStart(instant, source),
+                ),
+            ),
+            errorMessage = null,
+        )
     }
 
     fun dismiss() {

@@ -16,6 +16,17 @@ enum class TaskEditorCapability {
     COMPLETED_METADATA,
 }
 
+enum class ExactActualStartSource {
+    PREVIOUS_END,
+    NOW,
+}
+
+/** Exact quick-input authority exists only while this in-memory editor draft remains untouched. */
+data class ExactActualStart(
+    val instant: Instant,
+    val source: ExactActualStartSource,
+)
+
 data class TaskEditorDraft(
     val title: String = "",
     val projectId: String? = null,
@@ -27,6 +38,7 @@ data class TaskEditorDraft(
     val actualEndText: String = "",
     val startReminderOffsetMinutes: Int? = null,
     val notifyOnEstimateOverrun: Boolean = false,
+    val exactActualStart: ExactActualStart? = null,
 )
 
 data class TaskEditorState(
@@ -36,6 +48,51 @@ data class TaskEditorState(
     val draft: TaskEditorDraft,
     val capability: TaskEditorCapability = TaskEditorCapability.FULL_PLANNING,
 )
+
+/**
+ * Whether the existing save path can safely address the Execution that an exact start edits.
+ * Planned Entries must have no prior Execution; Running uses its active ID; Completed editing is
+ * supported only when the projection provides the single canonical Execution ID.
+ */
+internal fun canUseActualStartQuickInputs(editor: TaskEditorState): Boolean {
+    val actualTimeDay = editor.day.isCurrent ||
+        (!editor.day.planningEnabled && editor.day.taskChuteDayId != null)
+    val hasCanonicalTimezone = editor.day.establishmentTimezone?.let { runCatching { ZoneId.of(it) }.isSuccess } == true
+    if (!actualTimeDay || !hasCanonicalTimezone) return false
+    val task = editor.originalTask ?: return editor.mode == TaskEditorMode.CREATE && editor.day.isCurrent
+    return when (task.lifecycleState) {
+        LifecycleState.PLANNED -> task.executionId == null && task.firstStartedAt == null && task.lastEndedAt == null
+        LifecycleState.RUNNING -> task.executionId != null && task.activeStartedAt != null
+        LifecycleState.COMPLETED -> task.executionId != null && task.firstStartedAt != null && task.lastEndedAt != null
+    }
+}
+
+/** Resolve the latest canonical ended Instant without consulting visual row order. */
+internal fun resolvePreviousTaskEnd(day: TodayDay, target: TodayTask?): Instant? {
+    if (target != null && when (target.lifecycleState) {
+            LifecycleState.PLANNED -> target.executionId != null || target.firstStartedAt != null || target.lastEndedAt != null
+            LifecycleState.RUNNING -> target.executionId == null || target.activeStartedAt == null
+            LifecycleState.COMPLETED -> target.executionId == null || target.firstStartedAt == null || target.lastEndedAt == null
+        }) return null
+
+    val targetEntryId = target?.id
+    val targetState = target?.lifecycleState
+    data class Candidate(val instant: Instant, val entryId: String)
+    return day.allEntries.asSequence()
+        .filter { entry ->
+            // A Running Entry's active Execution is open, so its lastEndedAt belongs to a
+            // different, earlier Execution and remains eligible. A single-Execution Completed
+            // target's own end is excluded; a Planned target has no Execution history.
+            entry.id != targetEntryId || targetState == LifecycleState.RUNNING
+        }
+        .mapNotNull { entry ->
+            val endedAt = entry.lastEndedAt ?: return@mapNotNull null
+            val instant = runCatching { Instant.parse(endedAt) }.getOrNull() ?: return@mapNotNull null
+            Candidate(instant, entry.id)
+        }
+        .maxWithOrNull(compareBy<Candidate>({ it.instant }, { it.entryId }))
+        ?.instant
+}
 
 internal fun synchronizeRoutineSectionPlan(day: TodayDay, input: NormalizedTaskInput): NormalizedTaskInput {
     val plannedStart = input.plannedStartMinute ?: return input.copy(sectionId = null)
@@ -67,6 +124,7 @@ data class NormalizedTaskInput(
     val modeTitle: String? = null,
     val startReminderOffsetMinutes: Int? = null,
     val notifyOnEstimateOverrun: Boolean = false,
+    val actualStartInstant: String? = null,
 )
 
 data class TaskEditorValidation(
@@ -113,6 +171,7 @@ data class TaskEditorValidation(
                     estimateSeconds = estimateMinutes?.times(60L)?.toInt(),
                     actualStartMinute = actualStart,
                     actualEndMinute = actualEnd,
+                    actualStartInstant = if (actualStart == null) null else draft.exactActualStart?.instant?.toString(),
                     startReminderOffsetMinutes = draft.startReminderOffsetMinutes,
                     notifyOnEstimateOverrun = draft.notifyOnEstimateOverrun,
                 ),

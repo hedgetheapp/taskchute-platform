@@ -259,8 +259,12 @@ class TaskPlanningHttpRepository(
             return executeRevertEntryStart(editor, task)
         }
         if (input.actualStartMinute == null) return PlanningSaveResult.Success
-        if (task.lifecycleState == LifecycleState.RUNNING && input.actualEndMinute == null
-            && parseActualClock(formatExecutionClock(task.activeStartedAt, editor.day.establishmentTimezone)) == input.actualStartMinute) {
+        val sameRunningStart = if (input.actualStartInstant != null) {
+            input.actualStartInstant == task.activeStartedAt
+        } else {
+            parseActualClock(formatExecutionClock(task.activeStartedAt, editor.day.establishmentTimezone)) == input.actualStartMinute
+        }
+        if (task.lifecycleState == LifecycleState.RUNNING && input.actualEndMinute == null && sameRunningStart) {
             return PlanningSaveResult.Success
         }
         val zone = editor.day.establishmentTimezone?.let { runCatching { ZoneId.of(it) }.getOrNull() }
@@ -268,8 +272,11 @@ class TaskPlanningHttpRepository(
         val expectedStartedAt = if (task.lifecycleState == LifecycleState.PLANNED) null else task.activeStartedAt ?: task.firstStartedAt
         val expectedEndedAt = if (task.lifecycleState == LifecycleState.PLANNED) null else task.lastEndedAt
         if (task.lifecycleState == LifecycleState.COMPLETED) {
-            val unchangedStart = parseActualClock(formatExecutionClock(expectedStartedAt, editor.day.establishmentTimezone)) ==
-                input.actualStartMinute
+            val unchangedStart = if (input.actualStartInstant != null) {
+                input.actualStartInstant == expectedStartedAt
+            } else {
+                parseActualClock(formatExecutionClock(expectedStartedAt, editor.day.establishmentTimezone)) == input.actualStartMinute
+            }
             val unchangedEnd = parseActualClock(formatExecutionClock(expectedEndedAt, editor.day.establishmentTimezone)) ==
                 input.actualEndMinute
             if (unchangedStart && unchangedEnd) return PlanningSaveResult.Success
@@ -281,12 +288,17 @@ class TaskPlanningHttpRepository(
         val startedAt = if (reopeningCompleted) {
             val originalStart = expectedStartedAt
                 ?: return PlanningSaveResult.Failure("再開する実行の開始時刻を取得できません。再読み込みしてください。")
-            if (parseActualClock(formatExecutionClock(originalStart, editor.day.establishmentTimezone)) != input.actualStartMinute) {
+            val sameStart = if (input.actualStartInstant != null) {
+                input.actualStartInstant == originalStart
+            } else {
+                parseActualClock(formatExecutionClock(originalStart, editor.day.establishmentTimezone)) == input.actualStartMinute
+            }
+            if (!sameStart) {
                 return PlanningSaveResult.Failure("実行中へ戻すときは開始時間を変更できません。")
             }
             originalStart
         } else {
-            logicalMinuteToInstant(editor.day, input.actualStartMinute, zone)
+            input.actualStartInstant ?: logicalMinuteToInstant(editor.day, input.actualStartMinute, zone)
         }
         val endedAt = input.actualEndMinute?.let {
             logicalEndMinuteToInstant(editor.day, input.actualStartMinute, it, zone)
@@ -299,7 +311,7 @@ class TaskPlanningHttpRepository(
             ""
         }
         val path = "/api/v1/entries/${JsonEncoding.pathSegment(task.id)}/execution-times"
-        val inputPrecision = if (reopeningCompleted) "" else ",\"input_precision\":\"minute\""
+        val inputPrecision = if (reopeningCompleted || input.actualStartInstant != null) "" else ",\"input_precision\":\"minute\""
         val payload = """
             {"entry_id":"${JsonEncoding.escape(task.id)}","execution_id":"${JsonEncoding.escape(executionId)}","expected_lifecycle_state":"${task.lifecycleState.name.lowercase()}","started_at":"${JsonEncoding.escape(startedAt)}","ended_at":${endedAt?.let { "\"${JsonEncoding.escape(it)}\"" } ?: "null"},"expected_started_at":${expectedStartedAt?.let { "\"${JsonEncoding.escape(it)}\"" } ?: "null"},"expected_ended_at":${expectedEndedAt?.let { "\"${JsonEncoding.escape(it)}\"" } ?: "null"}$expectedPlacement$inputPrecision}
         """.trimIndent()
@@ -356,13 +368,14 @@ class TaskPlanningHttpRepository(
             ?: return PlanningSaveResult.Failure("実績時間のタイムゾーンを取得できません。再読み込みしてください。")
         val actualStartMinute = input.actualStartMinute
             ?: return PlanningSaveResult.Failure("実績開始時刻を取得できません。再読み込みしてください。")
-        val startedAt = logicalMinuteToInstant(day, actualStartMinute, zone)
+        val startedAt = input.actualStartInstant ?: logicalMinuteToInstant(day, actualStartMinute, zone)
         val endedAt = input.actualEndMinute?.let {
             logicalEndMinuteToInstant(day, actualStartMinute, it, zone)
         }
         val expectedPlacement = ",\"expected_placement_revision\":$placementRevision"
+        val inputPrecision = if (input.actualStartInstant == null) ",\"input_precision\":\"minute\"" else ""
         val body = """
-            {"operation_id":"${JsonEncoding.escape(UUIDv7.next())}","entry_id":"${JsonEncoding.escape(entryId)}","execution_id":"${JsonEncoding.escape(UUIDv7.next())}","expected_lifecycle_state":"planned","started_at":"${JsonEncoding.escape(startedAt)}","ended_at":${endedAt?.let { "\"${JsonEncoding.escape(it)}\"" } ?: "null"},"expected_started_at":null,"expected_ended_at":null$expectedPlacement,"input_precision":"minute"}
+            {"operation_id":"${JsonEncoding.escape(UUIDv7.next())}","entry_id":"${JsonEncoding.escape(entryId)}","execution_id":"${JsonEncoding.escape(UUIDv7.next())}","expected_lifecycle_state":"planned","started_at":"${JsonEncoding.escape(startedAt)}","ended_at":${endedAt?.let { "\"${JsonEncoding.escape(it)}\"" } ?: "null"},"expected_started_at":null,"expected_ended_at":null$expectedPlacement$inputPrecision}
         """.trimIndent()
         return execute("POST", "/api/v1/entries/${JsonEncoding.pathSegment(entryId)}/execution-times", body)
             .toExecutionTimesSaveResult()

@@ -22,22 +22,36 @@ internal fun applyOptimisticPlanning(
     if (entryId == null) return day
 
     val optimistic = if (original == null) {
+        val actualStart = input.actualStartInstant ?: input.actualStartMinute?.let { logicalMinuteToInstant(day, it) }
+        val actualEnd = input.actualEndMinute?.let { logicalMinuteToInstant(day, it) }
+        val lifecycle = when {
+            actualEnd != null -> LifecycleState.COMPLETED
+            actualStart != null -> LifecycleState.RUNNING
+            else -> LifecycleState.PLANNED
+        }
+        val optimisticExecutionId = actualStart?.let { "optimistic-$entryId" }
+        val duration = if (actualStart != null && actualEnd != null) {
+            runCatching { Duration.between(Instant.parse(actualStart), Instant.parse(actualEnd)).seconds.toInt().coerceAtLeast(0) }.getOrNull()
+        } else null
         TodayTask(
             id = entryId,
             title = input.title,
-            lifecycleState = LifecycleState.PLANNED,
+            lifecycleState = lifecycle,
             project = input.projectId?.let { TodayProject(it, input.projectTitle ?: it) },
             mode = input.modeId?.let { TodayMode(it, input.modeTitle ?: it) },
             estimateSeconds = input.estimateSeconds,
             plannedStartMinute = input.plannedStartMinute,
-            executionId = null,
-            activeStartedAt = null,
+            executionId = optimisticExecutionId,
+            activeStartedAt = if (lifecycle == LifecycleState.RUNNING) actualStart else null,
             taskId = taskId,
+            firstStartedAt = actualStart,
+            lastEndedAt = actualEnd,
+            completedDurationSeconds = duration,
             startReminderOffsetMinutes = input.startReminderOffsetMinutes,
             notifyOnEstimateOverrun = input.notifyOnEstimateOverrun,
         )
     } else {
-        val actualStart = input.actualStartMinute?.let { logicalMinuteToInstant(day, it) }
+        val actualStart = input.actualStartInstant ?: input.actualStartMinute?.let { logicalMinuteToInstant(day, it) }
         val actualEnd = input.actualEndMinute?.let { logicalMinuteToInstant(day, it) }
         val rollbackToPlanned = original.lifecycleState == LifecycleState.RUNNING
             && input.actualStartMinute == null && input.actualEndMinute == null
@@ -78,13 +92,15 @@ internal fun applyOptimisticPlanning(
                 LifecycleState.COMPLETED -> original.executionId
             },
             activeStartedAt = when (lifecycle) {
-                LifecycleState.RUNNING -> if (reopenToRunning) original.firstStartedAt ?: actualStart else actualStart ?: original.activeStartedAt
+                LifecycleState.RUNNING -> if (reopenToRunning) {
+                    input.actualStartInstant ?: original.firstStartedAt ?: actualStart
+                } else actualStart ?: original.activeStartedAt
                 LifecycleState.PLANNED, LifecycleState.COMPLETED -> null
             },
             firstStartedAt = when {
                 directCompletedRollback -> null
                 rollbackToPlanned -> preservedHistoricalStart
-                reopenToRunning -> original.firstStartedAt ?: actualStart
+                reopenToRunning -> input.actualStartInstant ?: original.firstStartedAt ?: actualStart
                 else -> actualStart ?: original.firstStartedAt
             },
             lastEndedAt = when {
@@ -103,12 +119,15 @@ internal fun applyOptimisticPlanning(
         )
     }
 
+    val exactActualSection = input.actualStartInstant?.let { value ->
+        runCatching { Instant.parse(value) }.getOrNull()?.let { resolveOptimisticExecutionSection(day, it) }
+    }
     val withoutOriginal = day.removeEntry(entryId)
     val targetSectionId = if (original?.lifecycleState == LifecycleState.COMPLETED
         && input.actualStartMinute == null && input.actualEndMinute == null) {
         day.sectionIdOf(entryId)
     } else {
-        input.sectionId
+        exactActualSection ?: input.sectionId
     }
     val updatedDay = withoutOriginal.insertEntry(targetSectionId, optimistic)
     return when (optimistic.lifecycleState) {

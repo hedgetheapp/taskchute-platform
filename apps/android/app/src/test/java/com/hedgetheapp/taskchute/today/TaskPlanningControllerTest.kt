@@ -5,6 +5,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.time.ZoneId
 import java.time.ZonedDateTime
+import java.time.Instant
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -379,6 +380,125 @@ class TaskPlanningControllerTest {
         assertTrue(await { controller.state.editor != null })
         assertEquals("00:04", controller.state.editor?.draft?.actualStartText)
         assertEquals("", controller.state.editor?.draft?.actualEndText)
+        controller.close()
+    }
+
+    @Test
+    fun previousTaskEndUsesLatestInstantIndependentOfRowOrderAndExcludesCompletedTarget() {
+        val target = plannedTask(lifecycleState = LifecycleState.COMPLETED).copy(
+            executionId = "target-execution",
+            firstStartedAt = "2026-09-14T03:00:00Z",
+            lastEndedAt = "2026-09-14T04:30:00Z",
+        )
+        val earlier = plannedTask(lifecycleState = LifecycleState.COMPLETED).copy(
+            id = "ended-earlier", firstStartedAt = "2026-09-14T03:20:00Z", lastEndedAt = "2026-09-14T03:45:12.123Z",
+        )
+        val latest = plannedTask(lifecycleState = LifecycleState.COMPLETED).copy(
+            id = "ended-latest", firstStartedAt = "2026-09-14T03:50:00Z", lastEndedAt = "2026-09-14T03:55:02.250Z",
+        )
+        val day = currentDay().copy(
+            establishmentTimezone = "Asia/Tokyo",
+            sections = listOf(TodaySection("section-1", "Morning", 480, 720, listOf(target, earlier, latest))),
+        )
+
+        assertEquals(Instant.parse(latest.lastEndedAt!!), resolvePreviousTaskEnd(day, target))
+        val reordered = day.copy(sections = listOf(day.sections.single().copy(entries = listOf(latest, target, earlier))))
+        assertEquals(Instant.parse(latest.lastEndedAt!!), resolvePreviousTaskEnd(reordered, target))
+
+        val controller = controller(FakePlanningRepository())
+        controller.openEdit(day, target)
+        controller.selectPreviousTaskEnd()
+
+        val draft = controller.state.editor!!.draft
+        assertEquals("12:55", draft.actualStartText)
+        assertEquals(ExactActualStart(Instant.parse(latest.lastEndedAt!!), ExactActualStartSource.PREVIOUS_END), draft.exactActualStart)
+        assertEquals(latest.lastEndedAt, TaskEditorValidation.validate(draft).input?.actualStartInstant)
+        controller.updateActualStartText("12:55")
+        assertNull(controller.state.editor?.draft?.exactActualStart)
+        assertNull(TaskEditorValidation.validate(controller.state.editor!!.draft).input?.actualStartInstant)
+        controller.close()
+    }
+
+    @Test
+    fun runningTargetCanUseItsEarlierEndedExecutionButNotItsOpenTargetExecution() {
+        val target = plannedTask(lifecycleState = LifecycleState.RUNNING).copy(
+            executionId = "active-execution",
+            activeStartedAt = "2026-09-14T04:00:00Z",
+            firstStartedAt = "2026-09-14T03:00:00Z",
+            lastEndedAt = "2026-09-14T03:55:02.250Z",
+        )
+        val other = plannedTask(lifecycleState = LifecycleState.COMPLETED).copy(
+            id = "other-ended", firstStartedAt = "2026-09-14T03:10:00Z", lastEndedAt = "2026-09-14T03:50:00Z",
+        )
+        val day = currentDay().copy(sections = listOf(TodaySection("section-1", "Morning", 480, 720, listOf(other, target))))
+
+        assertEquals(Instant.parse(target.lastEndedAt!!), resolvePreviousTaskEnd(day, target))
+        val withoutEarlierSegment = day.copy(sections = listOf(day.sections.single().copy(entries = listOf(other, target.copy(lastEndedAt = null)))))
+        assertEquals(Instant.parse(other.lastEndedAt), resolvePreviousTaskEnd(withoutEarlierSegment, target.copy(lastEndedAt = null)))
+    }
+
+    @Test
+    fun currentTimeQuickInputKeepsExactInstantAndManualTypingClearsIt() {
+        val fixedNow = Instant.parse("2026-09-14T03:34:27.481Z")
+        val task = plannedTask()
+        val day = currentDay().copy(
+            establishmentTimezone = "Asia/Tokyo",
+            sections = listOf(TodaySection("section-1", "Morning", 480, 720, listOf(task))),
+        )
+        val controller = TaskPlanningController(
+            repository = FakePlanningRepository(),
+            onUnauthorized = {},
+            onSaved = {},
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+            now = { fixedNow },
+        )
+
+        controller.openEdit(day, task)
+        controller.selectCurrentTime()
+        assertEquals("12:34", controller.state.editor?.draft?.actualStartText)
+        assertEquals(ExactActualStart(fixedNow, ExactActualStartSource.NOW), controller.state.editor?.draft?.exactActualStart)
+        assertEquals(fixedNow.toString(), TaskEditorValidation.validate(controller.state.editor!!.draft).input?.actualStartInstant)
+
+        controller.updateActualStartText("12:34")
+        val manual = TaskEditorValidation.validate(controller.state.editor!!.draft).input
+        assertNull(controller.state.editor?.draft?.exactActualStart)
+        assertEquals(754, manual?.actualStartMinute)
+        assertNull(manual?.actualStartInstant)
+        controller.close()
+    }
+
+    @Test
+    fun completedMultiExecutionTargetCannotOfferExactQuickInput() {
+        val task = plannedTask(lifecycleState = LifecycleState.COMPLETED).copy(
+            executionId = null,
+            firstStartedAt = "2026-09-14T03:00:00Z",
+            lastEndedAt = "2026-09-14T03:30:00Z",
+        )
+        val day = currentDay().copy(
+            establishmentTimezone = "UTC",
+            sections = listOf(TodaySection("section-1", "Morning", 480, 720, listOf(task))),
+        )
+        val editor = TaskEditorState(TaskEditorMode.EDIT, day, task, TaskEditorDraft(title = task.title), TaskEditorCapability.COMPLETED_METADATA)
+
+        assertFalse(canUseActualStartQuickInputs(editor))
+        assertNull(resolvePreviousTaskEnd(day, task))
+    }
+
+    @Test
+    fun previousTaskEndDoesNotFabricateValueWhenDayHasNoEndedExecution() {
+        val task = plannedTask()
+        val day = currentDay().copy(
+            establishmentTimezone = "UTC",
+            sections = listOf(TodaySection("section-1", "Morning", 480, 720, listOf(task))),
+        )
+        val controller = controller(FakePlanningRepository())
+
+        controller.openEdit(day, task)
+        controller.selectPreviousTaskEnd()
+
+        assertEquals("", controller.state.editor?.draft?.actualStartText)
+        assertNull(controller.state.editor?.draft?.exactActualStart)
+        assertNull(controller.previousTaskEndForEditor())
         controller.close()
     }
 

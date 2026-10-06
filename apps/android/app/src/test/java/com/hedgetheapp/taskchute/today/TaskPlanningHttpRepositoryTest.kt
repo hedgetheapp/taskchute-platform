@@ -95,6 +95,72 @@ class TaskPlanningHttpRepositoryTest {
     }
 
     @Test
+    fun currentDayCreateWithExactQuickStartPreservesInstantAndOmitsMinutePrecision() {
+        val requests = mutableListOf<Triple<String, String, String?>>()
+        val repository = TaskPlanningHttpRepository { method, path, body ->
+            requests += Triple(method, path, body)
+            when (path) {
+                "/api/v1/taskchute-days/current/entries" -> TodayHttpResponse(200, "{\"placement_revision\":6}")
+                else -> executionTimesResponse(6, lifecycleState = "running")
+            }
+        }
+        val exactStart = "2026-09-14T03:34:27.481Z"
+        val input = NormalizedTaskInput(
+            title = "Quick start",
+            projectId = null,
+            modeId = null,
+            sectionId = "section-1",
+            plannedStartMinute = 480,
+            estimateSeconds = null,
+            actualStartMinute = 754,
+            actualStartInstant = exactStart,
+        )
+
+        assertEquals(PlanningSaveResult.SuccessWithRevision(6), repository.save(
+            TaskEditorState(TaskEditorMode.CREATE, currentDay().copy(establishmentTimezone = "Asia/Tokyo"), null,
+                TaskEditorDraft(title = "Quick start", actualStartText = "12:34",
+                    exactActualStart = ExactActualStart(java.time.Instant.parse(exactStart), ExactActualStartSource.NOW))),
+            input,
+        ))
+        val payload = requests.last().third!!
+        assertTrue(payload.contains("\"started_at\":\"$exactStart\""))
+        assertTrue(!payload.contains("input_precision"))
+    }
+
+    @Test
+    fun exactPreviousEndStartUsesExactInstantWithoutMinutePrecision() {
+        val requests = mutableListOf<Triple<String, String, String?>>()
+        val task = TodayTask(
+            id = "entry-1", title = "Running", lifecycleState = LifecycleState.RUNNING,
+            project = null, mode = null, estimateSeconds = 1_800, plannedStartMinute = 540,
+            executionId = "execution-1", activeStartedAt = "2026-09-14T09:00:13.456Z",
+            taskId = "task-1", firstStartedAt = "2026-09-14T09:00:13.456Z",
+        )
+        val editor = TaskEditorState(
+            TaskEditorMode.EDIT,
+            currentDay().copy(establishmentTimezone = "UTC"),
+            task,
+            TaskEditorDraft(title = task.title, actualStartText = "09:05"),
+            TaskEditorCapability.RUNNING_METADATA,
+        )
+        val exactEnd = "2026-09-14T09:05:42.987Z"
+        val repository = TaskPlanningHttpRepository { method, path, body ->
+            requests += Triple(method, path, body)
+            executionTimesResponse(8, lifecycleState = "running")
+        }
+        val input = NormalizedTaskInput(
+            title = task.title, projectId = null, modeId = null, sectionId = "section-1",
+            plannedStartMinute = 540, estimateSeconds = 1_800, actualStartMinute = 545,
+            actualStartInstant = exactEnd,
+        )
+
+        assertEquals(PlanningSaveResult.SuccessWithRevision(8), repository.save(editor, input))
+        val payload = requests.single().third!!
+        assertTrue(payload.contains("\"started_at\":\"$exactEnd\""))
+        assertTrue(!payload.contains("input_precision"))
+    }
+
+    @Test
     fun historicalEditMapsNextMorningActualEndToTheFollowingPhysicalDay() {
         val requests = mutableListOf<Triple<String, String, String?>>()
         val task = TodayTask("entry-past", "Overnight task", LifecycleState.PLANNED,

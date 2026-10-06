@@ -2923,7 +2923,7 @@ private fun TaskEditorForm(
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 CompactFigmaTextField(
                     value = draft.actualStartText,
-                    onValueChange = { controller.updateDraft(draft.copy(actualStartText = it)) },
+                    onValueChange = controller::updateActualStartText,
                     label = "開始時間",
                     modifier = Modifier.weight(1f),
                     enabled = !state.saving,
@@ -2937,6 +2937,26 @@ private fun TaskEditorForm(
                     enabled = !state.saving,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 )
+            }
+            val canUseQuickInputs = canUseActualStartQuickInputs(editor)
+            if (canUseQuickInputs) {
+                val previousTaskEnd = if (state.saving) null else controller.previousTaskEndForEditor()
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(
+                        onClick = controller::selectPreviousTaskEnd,
+                        enabled = !state.saving && previousTaskEnd != null,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                    ) {
+                        Text("前回タスク終了", fontSize = 12.sp, maxLines = 1, softWrap = false)
+                    }
+                    TextButton(
+                        onClick = controller::selectCurrentTime,
+                        enabled = !state.saving,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                    ) {
+                        Text("現在時刻", fontSize = 12.sp, maxLines = 1, softWrap = false)
+                    }
+                }
             }
         }
         state.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
