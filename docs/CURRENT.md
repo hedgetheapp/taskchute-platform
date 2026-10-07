@@ -1,3 +1,7 @@
+### D-177 Android Home Widget estimate-boundary refinement — 2026-10-07
+
+**Status: APPROVED / IMPLEMENTATION PENDING.** RemoteViews can locally tick remaining time but cannot itself switch UI semantics at the zero crossing. Product Owner approved one local AlarmManager refresh at the canonical estimate-end instant: elapsed/remaining tick locally before the boundary; boundary delivery re-renders Today-equivalent overrun presentation. Exact alarm is used when permitted, otherwise a one-shot inexact fallback. No periodic polling, service, WorkManager, FCM, dependency, API/schema/migration, or lifecycle/auth change is approved.
+
 ### D-177 Android Home Widget Running time-row refinement — 2026-10-07
 
 **Status: APPROVED / IMPLEMENTATION PENDING.** Product Owner approved aligning the Widget Running time row to Android Today's existing Running Progress Player: left = `schedule` + elapsed, right = `hourglass_top` + remaining (`estimate - elapsed`), and after overrun right = `00:00:00` plus `more_time` + positive overrun; progress adopts the same normal/overrun color semantics. Estimate-less behavior remains unchanged. This supersedes D-177 v0.1's earlier raw-estimate-on-right presentation only; Widget lifecycle/auth/background boundaries are unchanged.

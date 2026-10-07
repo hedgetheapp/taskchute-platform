@@ -117,13 +117,19 @@ D-177 adds no:
 
 - persistent background WebSocket;
 - foreground service;
-- minute-by-minute server polling;
+- periodic/minute-by-minute server polling;
 - FCM requirement for the Phone Widget;
 - general offline command queue.
+
+A single local AlarmManager wake-up at the current Running Task's estimate boundary is Approved for the narrow purpose of switching the Widget from remaining-time presentation to Today-equivalent overrun presentation. This is not periodic polling and must not perform repeated background scheduling while the same estimate boundary remains authoritative.
 
 Elapsed time may advance locally using platform time-dependent Widget presentation.
 
 The progress bar may be recalculated when the Widget renders/refreshes; it does not require continuous server polling.
+
+For a positive estimate, the Widget may use platform Chronometer behavior to advance elapsed and remaining time locally. Because RemoteViews cannot itself switch icons/colors at the zero crossing, schedule one local AlarmManager refresh for the canonical estimate-end instant. At that wake-up the Widget re-renders Today-equivalent overrun presentation. Cancel or replace the pending boundary alarm when canonical Running identity, start instant, estimate, completion, sign-out, or Widget installation state changes.
+
+Use exact alarm delivery only when the platform permits it. If exact-alarm special access is unavailable, use a one-shot inexact AlarmManager fallback rather than requesting a new permission flow or introducing a persistent service. A delayed fallback refresh may temporarily delay the overrun visual transition; it must never invent canonical Task lifecycle state or trigger server polling.
 
 Widget refresh should occur after Widget actions and after relevant Android app canonical reconciliation/mutations when practical. Instant cross-client Web→Phone Widget propagation is not required by v0.1.
 
@@ -131,7 +137,7 @@ Widget refresh should occur after Widget actions and after relevant Android app 
 
 Prefer existing Android/platform APIs and current app infrastructure.
 
-D-177 does not approve a new long-term dependency solely for the Widget. In particular, implementation should not add Glance/WorkManager or another framework unless investigation proves the platform APIs/current dependencies cannot satisfy this Decision; that case is a STOP condition and returns to the Product Owner.
+D-177 does not approve a new long-term dependency solely for the Widget. In particular, implementation should not add Glance/WorkManager or another framework. The approved one-shot estimate-boundary refresh must use the platform AlarmManager / BroadcastReceiver foundation already present in the Android app.
 
 No APP/AUTH schema change, migration, Worker/API contract change, production operation, or Release is approved by D-177.
 
@@ -176,3 +182,17 @@ Implementation commit `d600f75dac79548853d28c7662fb7f70aa194de3` is on `main`. T
 Focused JVM `19 / 19` passes. Android app and instrumentation sources compile, and local debug Phone plus instrumentation APK assembly passes. The required All runtime gate was attempted once; `TaskChute_API33` did not reach `sys.boot_completed=1` within 180 seconds, so runtime is `NOT_RUN / ENV_BLOCKED`. Exact-SHA GitHub Actions Android CI, signed APK build, certificate checks, and artifact upload pass. Targeted Sol Medium review found no meaningful authentication or exposure blocker; its remaining receiver-deadline caveat is recorded as R-078. Verification detail is in `docs/TEST_MATRIX.md`.
 
 Galaxy S23 remains `NOT_RUN / PRODUCT_OWNER_MANUAL`. Production remains `NOT_RUN`; Released remains `NO`.
+
+
+## Running estimate-boundary refresh refinement — 2026-10-07
+
+RemoteViews countdown can update remaining time locally but cannot invoke app code when the countdown crosses zero, so it cannot by itself switch the Widget to the Today-equivalent overrun icon/color presentation. Product Owner approved a narrow one-shot AlarmManager refinement:
+
+- while a canonical Running Task has a positive estimate, locally advance elapsed and remaining time using Widget-supported time-dependent views;
+- schedule exactly one Widget refresh target for the canonical estimate-end instant;
+- on boundary delivery, re-render from current/canonical Widget state into Today-equivalent overrun presentation;
+- cancel/replace the boundary schedule when Running identity/start/estimate changes, when the Task completes, on sign-out, or when no installed Widget needs it;
+- do not poll the server at intervals and do not introduce a service, WorkManager, FCM, or new dependency;
+- if exact-alarm special access is unavailable, use a one-shot inexact AlarmManager fallback. A delayed transition is acceptable; fabricated lifecycle success or periodic polling is not.
+
+This refinement changes only Widget presentation/scheduling. Existing D-177 authentication, canonical Start/Complete authority, and lifecycle rules remain unchanged.

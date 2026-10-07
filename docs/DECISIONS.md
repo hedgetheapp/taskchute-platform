@@ -2670,3 +2670,8 @@ D-177 defines the first Android home-screen Widget as a compact current-Day exec
 ### D-177 Running time-row refinement — 2026-10-07
 
 Product Owner refined the approved Android Home Widget Running presentation to match the existing Android Today Running Progress Player. The left value is elapsed time with `schedule`; the right value is remaining time (`estimate - elapsed`) with `hourglass_top`, not the raw estimate. After overrun, remaining is `00:00:00` and `more_time` + positive overrun is shown, with the same overrun progress-color semantics. Estimate-less Running still does not invent a goal.
+
+
+### D-177 estimate-boundary refresh refinement — 2026-10-07
+
+Product Owner approved a one-shot AlarmManager Widget refresh at the canonical Running estimate-end instant. This lets locally ticking elapsed/remaining RemoteViews transition to Today-equivalent overrun icons/colors without periodic polling or a persistent service. Exact delivery is used only when platform special access permits it; otherwise a one-shot inexact AlarmManager fallback is allowed. Existing D-177 auth/lifecycle authority is unchanged.

@@ -819,3 +819,10 @@ The v0.1 Widget keeps no independent canonical Domain database. After a Widget m
 The current server single-active-Execution invariant remains authoritative. While an Execution is active, a next Planned Task may be displayed but Widget Start is not dispatched for it. After canonical Complete removes the active Execution, the next Planned Task may be promoted and started.
 
 No persistent background socket, foreground service, minute-by-minute server polling, Phone FCM requirement, or new long-term Android dependency is part of D-177. Local elapsed display may use platform time-dependent Widget primitives; progress is recalculated on Widget render/refresh.
+
+
+### D-177 estimate-boundary Widget refresh
+
+The Phone Widget may use the app's existing platform AlarmManager foundation for one presentation wake-up at a Running Task's estimate boundary. This scheduler is not Task authority and stores only the minimum local identity/timing needed to cancel or replace the pending Widget refresh. Boundary delivery re-renders/reconciles Widget presentation; it does not create a new server command path.
+
+No periodic poller, foreground service, WorkManager, FCM requirement, or new dependency is introduced. Exact alarm access is opportunistic: exact when permitted, otherwise a one-shot inexact AlarmManager fallback.

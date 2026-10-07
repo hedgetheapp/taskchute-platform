@@ -1,3 +1,7 @@
+## R-079 — D-177 Widget estimate-boundary alarm delivery
+
+D-177 uses a one-shot local AlarmManager refresh to bridge the RemoteViews zero-crossing limitation. Exact alarm special access may be unavailable on Android 12+, and inexact fallback delivery may be delayed by platform power management. The accepted consequence is a delayed visual transition to overrun state; the Widget must not compensate with periodic polling, a persistent service, or fabricated Task lifecycle state. Canonical Running identity/start/estimate changes must cancel/replace stale boundary alarms so an old alarm cannot misrepresent a newer Running Task.
+
 # Risks
 
 ## R-078 — D-177 Android Widget receiver deadline

@@ -1123,3 +1123,12 @@ For a Running Task with a positive estimate, the Android Home Widget mirrors the
 - no positive estimate continues to avoid inventing a remaining/progress goal.
 
 The current Android Today `RunningTaskPanel` is the semantic/icon authority for this Widget row.
+
+
+### D-177 Widget estimate-boundary one-shot refresh — 2026-10-07
+
+Android Home Widget may schedule one local AlarmManager refresh at the canonical Running estimate-end instant so RemoteViews can transition from locally ticking remaining time to Today-equivalent overrun presentation.
+
+The schedule is presentation-only. It does not mutate Task state and does not introduce periodic server polling. A canonical Running identity/start/estimate change, completion, sign-out, or Widget removal cancels or replaces the previous boundary schedule.
+
+If exact-alarm special access is available, use an exact one-shot alarm. If unavailable, use a one-shot inexact AlarmManager fallback; the overrun visual transition may be delayed, but Task lifecycle/canonical state must not be fabricated.
