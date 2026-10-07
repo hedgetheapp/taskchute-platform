@@ -41,14 +41,17 @@ When one Task is Running, the Widget shows:
 - `今のタスク`;
 - the Running Task title;
 - the same running-action semantics as Android Today, using the existing `stop` icon language;
-- elapsed time on the left;
-- estimate on the right when a positive estimate exists;
-- the existing Running Progress Player visual language for the progress track/bar;
+- elapsed time on the left, with the same `schedule` icon language as the Android Today Running Progress Player;
+- remaining time (`estimate - elapsed`) on the right when a positive estimate exists, with the same `hourglass_top` icon language;
+- after estimate overrun, right side follows the Android Today Running Progress Player: remaining is clamped to `00:00:00`, and `more_time` + `+HH:MM:SS` communicates overrun;
+- the existing Running Progress Player visual language for the progress track/bar, including the overrun color transition;
 - the next Planned Task below the Running Task.
 
-Elapsed / estimate are displayed in `HH:MM:SS` form where applicable.
+Elapsed / remaining / overrun are displayed in `HH:MM:SS` form where applicable.
 
-When the Running Task has no positive estimate, the Widget must not invent a goal. It may show elapsed-only state and omit the estimate/progress goal, consistent with existing Running semantics.
+The semantic and icon authority for this Running time row is the current Android Today `RunningTaskPanel`; the Widget must not independently reinterpret these values.
+
+When the Running Task has no positive estimate, the Widget must not invent a goal. It may show elapsed-only state and omit the remaining/progress goal, consistent with existing Running semantics.
 
 ### 3. Complete → next-task promotion
 
@@ -150,7 +153,7 @@ If Figma and canonical lifecycle/security rules conflict, the canonical rules wi
 Implementation should verify at minimum:
 
 1. idle/no-running state promotes the first eligible canonical Planned Task;
-2. Running state shows current Task + elapsed/estimate/progress + next Planned Task;
+2. Running state shows current Task + elapsed/remaining/progress + next Planned Task, with Today-equivalent schedule/hourglass/overrun icon semantics;
 3. estimate-less Running does not invent a progress goal;
 4. direct Widget Complete uses canonical Complete and, after success/reconcile, removes the completed Task and promotes the next Task;
 5. direct Widget Start works when no Execution is active;

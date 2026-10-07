@@ -1110,3 +1110,16 @@ After canonical Complete succeeds and Today is reconciled, the completed Task di
 The Widget may issue existing Start / Complete commands without opening the Android app UI by reusing the existing encrypted Android authenticated session. While any Execution is active, a displayed next Planned Task is preview-only and the Widget must not dispatch its Start. Existing lifecycle, owner, operation identity, placement/revision, and single-active-Execution rules remain unchanged.
 
 No date navigation, Quick Add, Notes, Section list, new API/schema/migration, general offline queue, persistent background realtime, foreground service, minute server polling, or Phone FCM requirement is included in v0.1.
+
+
+### D-177 Android Home Widget Running time-row refinement — 2026-10-07
+
+For a Running Task with a positive estimate, the Android Home Widget mirrors the Android Today Running Progress Player time-row semantics rather than displaying the raw estimate on the right.
+
+- left: `schedule` + elapsed `HH:MM:SS`;
+- right before overrun: `hourglass_top` + remaining `estimate - elapsed` as `HH:MM:SS`;
+- right after overrun: `hourglass_top` + `00:00:00`, then `more_time` + `+HH:MM:SS` overrun;
+- progress uses the same normal/overrun semantic and color direction as Android Today;
+- no positive estimate continues to avoid inventing a remaining/progress goal.
+
+The current Android Today `RunningTaskPanel` is the semantic/icon authority for this Widget row.

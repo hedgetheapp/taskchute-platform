@@ -2665,3 +2665,8 @@ Status: **Approved / Implementation not started**
 Canonical Decision: `docs/decisions/D-177_ANDROID_HOME_WIDGET_V01.md`.
 
 D-177 defines the first Android home-screen Widget as a compact current-Day execution surface. Running shows the current Task with elapsed / estimate / progress and the next Planned Task; after canonical Complete the completed Task disappears and the next Planned Task is promoted. Idle Start and Running Complete execute directly from the Widget using the existing encrypted Android Better Auth session and existing Today HTTP commands, without opening the app UI. The existing single-active-Execution invariant remains authoritative, so next-task Start is not dispatched while another Execution is active. No new API/schema/migration, foreground service, persistent background socket, minute server polling, Phone FCM requirement, or long-term dependency is approved.
+
+
+### D-177 Running time-row refinement — 2026-10-07
+
+Product Owner refined the approved Android Home Widget Running presentation to match the existing Android Today Running Progress Player. The left value is elapsed time with `schedule`; the right value is remaining time (`estimate - elapsed`) with `hourglass_top`, not the raw estimate. After overrun, remaining is `00:00:00` and `more_time` + positive overrun is shown, with the same overrun progress-color semantics. Estimate-less Running still does not invent a goal.
