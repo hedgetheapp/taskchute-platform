@@ -212,3 +212,12 @@ After the request:
 - signed-out/unavailable may still render their explicit terminal/status states when those are the actual resolved result.
 
 This refinement changes presentation only. It does not add optimistic canonical mutation or weaken the existing Start / Complete authority.
+
+
+## Running / action UX refinement implementation closeout — 2026-10-07
+
+Implementation `99aa7fcb9d478a3fe690bf600047ba144ae4e7b8` is on `main`. The Running row now mirrors Today semantics: elapsed and remaining locally advance; after the estimate boundary, canonical re-read renders zero remaining, positive overrun, and the overrun progress color. Estimate-less Running remains elapsed-only with no progress goal or alarm. Direct Start / Complete retain the current Widget content while the existing command and canonical reconciliation run; the action gate, fresh Entry / Execution identity validation, encrypted session, and lifecycle authority remain unchanged.
+
+A Widget-specific AlarmManager scheduler stores only a SHA-256 identity and alarm metadata in app-private preferences. Its non-exported receivers use immutable PendingIntents with a per-identity URI, exact delivery when permitted, and one-shot inexact fallback otherwise. Reconciliation replaces/cancels changed or invalid boundaries, stale deliveries cannot clear a newer record, and boot/package/exact-access changes restore or reevaluate the current alarm. When the boundary refresh observes the exact whole-second equality where overrun is still zero, one final wakeup at +1 second renders the first positive second; there is no polling or recurring loop. No task title, session, credential, API, schema, migration, or dependency was added.
+
+Focused Widget JVM tests pass `26 / 26`; Android main and AndroidTest Kotlin compile, Phone debug APK assemble, and diff check pass. Exact-SHA CI for the implementation passed on attempt 2 after attempt 1 encountered an unrelated existing `DailyControllerTest.savingWarmDailyIsNotOverwrittenByBackgroundRefresh` assertion; the isolated rerun of that test passed. CI passed Android JVM, signed Phone/Wear build, instrumentation APK compilation, certificate verification, and artifact upload. The local environment had no connected device and only a Wear AVD, so Phone runtime/instrumentation remains `NOT_RUN / ENV_BLOCKED`; Galaxy S23 remains `NOT_RUN / PRODUCT_OWNER_MANUAL`. Production remains `NOT_RUN`; Released remains `NO`.
