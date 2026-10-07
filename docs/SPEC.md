@@ -1132,3 +1132,10 @@ Android Home Widget may schedule one local AlarmManager refresh at the canonical
 The schedule is presentation-only. It does not mutate Task state and does not introduce periodic server polling. A canonical Running identity/start/estimate change, completion, sign-out, or Widget removal cancels or replaces the previous boundary schedule.
 
 If exact-alarm special access is available, use an exact one-shot alarm. If unavailable, use a one-shot inexact AlarmManager fallback; the overrun visual transition may be delayed, but Task lifecycle/canonical state must not be fabricated.
+
+
+### D-177 Widget Start / Complete in-flight presentation — 2026-10-07
+
+Direct Widget Start / Complete keeps the currently rendered Task content visible while the background command and canonical re-read are in flight. Do not replace the Widget with a full `読み込み中` presentation for these actions.
+
+When reconciliation finishes, render the canonical result. Failure/stale-action handling continues to avoid fabricated lifecycle success; an error notice may be shown on the reconciled state. Explicit signed-out/unavailable states remain allowed when they are the resolved result.

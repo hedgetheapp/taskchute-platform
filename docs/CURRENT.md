@@ -1,3 +1,7 @@
+### D-177 Android Home Widget action-loading refinement — 2026-10-07
+
+**Status: APPROVED / IMPLEMENTATION PENDING.** Direct Widget Start / Complete must no longer replace the entire Widget with `読み込み中` while the request runs. Keep current content visible, retain duplicate-action gating and fresh canonical validation, then replace with the reconciled result. Failures may use the existing notice/error presentation; signed-out/unavailable remain explicit resolved states. This presentation refinement is to be implemented together with the already-approved remaining/overrun one-shot AlarmManager refinement.
+
 ### D-177 Android Home Widget estimate-boundary refinement — 2026-10-07
 
 **Status: APPROVED / IMPLEMENTATION PENDING.** RemoteViews can locally tick remaining time but cannot itself switch UI semantics at the zero crossing. Product Owner approved one local AlarmManager refresh at the canonical estimate-end instant: elapsed/remaining tick locally before the boundary; boundary delivery re-renders Today-equivalent overrun presentation. Exact alarm is used when permitted, otherwise a one-shot inexact fallback. No periodic polling, service, WorkManager, FCM, dependency, API/schema/migration, or lifecycle/auth change is approved.

@@ -196,3 +196,19 @@ RemoteViews countdown can update remaining time locally but cannot invoke app co
 - if exact-alarm special access is unavailable, use a one-shot inexact AlarmManager fallback. A delayed transition is acceptable; fabricated lifecycle success or periodic polling is not.
 
 This refinement changes only Widget presentation/scheduling. Existing D-177 authentication, canonical Start/Complete authority, and lifecycle rules remain unchanged.
+
+
+## Start / Complete in-flight presentation refinement — 2026-10-07
+
+Widget direct Start / Complete must not replace the whole Widget with a generic `読み込み中` state while the command is in flight.
+
+The currently rendered Widget content remains visible until canonical reconciliation returns a new state. Duplicate command dispatch remains bounded by the existing Widget action gate and fresh canonical validation.
+
+After the request:
+
+- canonical success renders the reconciled new lifecycle state;
+- stale action renders current canonical state without a loading flash;
+- deterministic/transport failure must not invent success and may use the existing notice/error presentation over the reconciled state;
+- signed-out/unavailable may still render their explicit terminal/status states when those are the actual resolved result.
+
+This refinement changes presentation only. It does not add optimistic canonical mutation or weaken the existing Start / Complete authority.

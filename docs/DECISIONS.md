@@ -2675,3 +2675,8 @@ Product Owner refined the approved Android Home Widget Running presentation to m
 ### D-177 estimate-boundary refresh refinement — 2026-10-07
 
 Product Owner approved a one-shot AlarmManager Widget refresh at the canonical Running estimate-end instant. This lets locally ticking elapsed/remaining RemoteViews transition to Today-equivalent overrun icons/colors without periodic polling or a persistent service. Exact delivery is used only when platform special access permits it; otherwise a one-shot inexact AlarmManager fallback is allowed. Existing D-177 auth/lifecycle authority is unchanged.
+
+
+### D-177 Start / Complete loading-flash refinement — 2026-10-07
+
+Product Owner removed the full-Widget `読み込み中` transition from direct Widget Start / Complete. The existing content remains visible during the bounded background command; canonical reconciliation then replaces it with the resolved state. This is presentation-only and does not introduce optimistic lifecycle authority.
