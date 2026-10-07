@@ -11,6 +11,14 @@ import android.widget.ImageView
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.hedgetheapp.taskchute.R
+import com.hedgetheapp.taskchute.today.LifecycleState
+import com.hedgetheapp.taskchute.today.TodayDay
+import com.hedgetheapp.taskchute.today.TodayExecution
+import com.hedgetheapp.taskchute.today.TodayMode
+import com.hedgetheapp.taskchute.today.TodayProject
+import com.hedgetheapp.taskchute.today.TodaySection
+import com.hedgetheapp.taskchute.today.TodayTask
+import java.time.Instant
 import java.util.concurrent.atomic.AtomicReference
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -123,4 +131,130 @@ class AndroidHomeWidgetInstrumentedTest {
         assertEquals(View.GONE, empty.findViewById<View>(R.id.home_widget_idle_task_row).visibility)
         assertEquals(View.VISIBLE, empty.findViewById<View>(R.id.home_widget_idle_empty).visibility)
     }
+
+    @Test
+    fun optimisticStartReappliedCanonicalRunningRestoresCompleteAction() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val presentation = optimisticAndroidHomeWidgetStart("Running task", 123_456L)!!
+        val root = applyAndReapply(
+            context,
+            AndroidHomeWidgetRenderer.optimisticViews(context, presentation),
+            AndroidHomeWidgetRenderer.contentViews(context, 177, canonicalRunningState("execution")),
+        )
+        val complete = root.findViewById<View>(R.id.home_widget_complete_action)
+
+        assertEquals(View.VISIBLE, complete.visibility)
+        assertTrue(complete.hasOnClickListeners())
+        assertEquals(context.getString(R.string.home_widget_complete_action), complete.contentDescription)
+    }
+
+    @Test
+    fun optimisticCompleteReappliedCanonicalIdleRestoresStartAction() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val optimistic = AndroidHomeWidgetRenderer.optimisticViews(
+            context,
+            optimisticAndroidHomeWidgetComplete(AndroidHomeWidgetDisplayTask("Next task", "10:30 · 25分")),
+        )
+        val root = applyAndReapply(
+            context,
+            optimistic,
+            AndroidHomeWidgetRenderer.contentViews(context, 178, canonicalIdleState(withNext = true)),
+        )
+        val start = root.findViewById<View>(R.id.home_widget_idle_start_action)
+
+        assertEquals(View.VISIBLE, start.visibility)
+        assertTrue(start.hasOnClickListeners())
+        assertEquals(context.getString(R.string.home_widget_start_action), start.contentDescription)
+    }
+
+    @Test
+    fun canonicalRunningWithoutExecutionHidesAndClearsPreviouslyBoundCompleteAction() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val root = applyAndReapply(
+            context,
+            AndroidHomeWidgetRenderer.contentViews(context, 179, canonicalRunningState("execution")),
+            AndroidHomeWidgetRenderer.contentViews(context, 179, canonicalRunningState(executionId = null)),
+        )
+        val complete = root.findViewById<View>(R.id.home_widget_complete_action)
+
+        assertEquals(View.GONE, complete.visibility)
+        assertFalse(complete.hasOnClickListeners())
+    }
+
+    @Test
+    fun canonicalIdleWithoutNextTaskHidesAndClearsPreviouslyBoundStartAction() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val root = applyAndReapply(
+            context,
+            AndroidHomeWidgetRenderer.contentViews(context, 180, canonicalIdleState(withNext = true)),
+            AndroidHomeWidgetRenderer.contentViews(context, 180, canonicalIdleState(withNext = false)),
+        )
+        val start = root.findViewById<View>(R.id.home_widget_idle_start_action)
+
+        assertEquals(View.GONE, start.visibility)
+        assertFalse(start.hasOnClickListeners())
+    }
+
+    private fun applyAndReapply(context: android.content.Context, first: RemoteViews, next: RemoteViews): View {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val result = AtomicReference<View>()
+        instrumentation.runOnMainSync {
+            val root = first.apply(context, FrameLayout(context))
+            next.reapply(context, root)
+            result.set(root)
+        }
+        return result.get()
+    }
+
+    private fun canonicalRunningState(executionId: String?): AndroidHomeWidgetState.Content {
+        val startedAt = "2026-10-07T09:50:00Z"
+        val task = widgetTask("running", LifecycleState.RUNNING, executionId)
+        val execution = executionId?.let { TodayExecution(it, task.id, startedAt, 1800) }
+        val day = widgetDay(listOf(task), execution)
+        val projection = if (execution == null) {
+            AndroidHomeWidgetProjection.Running(
+                task = task,
+                nextPlanned = null,
+                startedAt = startedAt,
+                elapsedSeconds = 600,
+                remainingSeconds = null,
+                overrunSeconds = null,
+                estimateSeconds = null,
+                progressPermille = null,
+            )
+        } else {
+            projectAndroidHomeWidget(day, Instant.parse("2026-10-07T10:00:00Z")) as AndroidHomeWidgetProjection.Running
+        }
+        return AndroidHomeWidgetState.Content(day, projection)
+    }
+
+    private fun canonicalIdleState(withNext: Boolean): AndroidHomeWidgetState.Content {
+        val tasks = if (withNext) listOf(widgetTask("next", LifecycleState.PLANNED)) else emptyList()
+        val day = widgetDay(tasks, execution = null)
+        val projection = projectAndroidHomeWidget(day, Instant.parse("2026-10-07T10:00:00Z")) as AndroidHomeWidgetProjection.Idle
+        return AndroidHomeWidgetState.Content(day, projection)
+    }
+
+    private fun widgetDay(tasks: List<TodayTask>, execution: TodayExecution?): TodayDay = TodayDay(
+        logicalDate = "2026-10-07",
+        isCurrent = true,
+        planningEnabled = true,
+        placementRevision = 1,
+        sections = listOf(TodaySection("section", "Section", 0, 1440, tasks)),
+        unsectionedEntries = emptyList(),
+        activeExecution = execution,
+        taskChuteDayId = "day-id",
+    )
+
+    private fun widgetTask(id: String, state: LifecycleState, executionId: String? = null) = TodayTask(
+        id = id,
+        title = id.replaceFirstChar(Char::uppercase),
+        lifecycleState = state,
+        project = TodayProject("project", "Project"),
+        mode = TodayMode("mode", "Mode"),
+        estimateSeconds = 1800,
+        plannedStartMinute = null,
+        executionId = executionId,
+        activeStartedAt = executionId?.let { "2026-10-07T09:50:00Z" },
+    )
 }

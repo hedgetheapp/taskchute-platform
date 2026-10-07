@@ -61,6 +61,42 @@ class AndroidHomeWidgetLogicTest {
     }
 
     @Test
+    fun canonicalCompleteActionRequiresUsableExecutionIdentity() {
+        val running = task("running", LifecycleState.RUNNING, executionId = "execution")
+        val canonicalDay = day(
+            tasks = listOf(running),
+            execution = TodayExecution("execution", "running", "2026-10-07T09:50:00Z", 1800),
+        )
+
+        assertEquals("execution", canonicalAndroidHomeWidgetCompleteExecutionId(running, canonicalDay))
+        assertEquals(
+            "execution",
+            canonicalAndroidHomeWidgetCompleteExecutionId(running.copy(executionId = null), canonicalDay),
+        )
+        assertNull(canonicalAndroidHomeWidgetCompleteExecutionId(running.copy(executionId = " "), day(listOf(running))))
+        assertNull(canonicalAndroidHomeWidgetCompleteExecutionId(running.copy(id = " "), canonicalDay))
+        assertNull(canonicalAndroidHomeWidgetCompleteExecutionId(running.copy(executionId = null), day(listOf(running))))
+    }
+
+    @Test
+    fun canonicalStartActionRequiresAnEligiblePlannedTask() {
+        val planned = task("planned", LifecycleState.PLANNED)
+
+        assertEquals(planned, canonicalAndroidHomeWidgetStartTask(AndroidHomeWidgetProjection.Idle(planned)))
+        assertNull(canonicalAndroidHomeWidgetStartTask(AndroidHomeWidgetProjection.Idle(null)))
+        assertNull(
+            canonicalAndroidHomeWidgetStartTask(
+                AndroidHomeWidgetProjection.Idle(planned.copy(id = " ")),
+            ),
+        )
+        assertNull(
+            canonicalAndroidHomeWidgetStartTask(
+                AndroidHomeWidgetProjection.Idle(planned.copy(lifecycleState = LifecycleState.RUNNING)),
+            ),
+        )
+    }
+
+    @Test
     fun activeExecutionFromAnotherDayIsShownWithCurrentDayPlannedPreview() {
         val day = day(
             tasks = listOf(task("today-next", LifecycleState.PLANNED)),

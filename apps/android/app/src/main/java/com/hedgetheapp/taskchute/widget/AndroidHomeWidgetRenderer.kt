@@ -87,22 +87,37 @@ internal object AndroidHomeWidgetRenderer {
     }
 
     private fun renderStatus(context: Context, widgetId: Int, messageRes: Int) {
-        val views = baseViews(context, widgetId)
-        views.setViewVisibility(R.id.home_widget_running_content, android.view.View.GONE)
-        views.setViewVisibility(R.id.home_widget_idle_content, android.view.View.GONE)
-        views.setViewVisibility(R.id.home_widget_notice, android.view.View.GONE)
-        views.setViewVisibility(R.id.home_widget_status, android.view.View.VISIBLE)
-        views.setTextViewText(R.id.home_widget_status, context.getString(messageRes))
-        update(context, widgetId, views)
+        update(context, widgetId, statusViews(context, widgetId, messageRes))
     }
 
+    private fun statusViews(context: Context, widgetId: Int, messageRes: Int): RemoteViews =
+        baseViews(context, widgetId).apply {
+            setViewVisibility(R.id.home_widget_running_content, View.GONE)
+            setViewVisibility(R.id.home_widget_idle_content, View.GONE)
+            setViewVisibility(R.id.home_widget_notice, View.GONE)
+            setViewVisibility(R.id.home_widget_status, View.VISIBLE)
+            setTextViewText(R.id.home_widget_status, context.getString(messageRes))
+        }
+
     private fun renderContent(context: Context, widgetId: Int, state: AndroidHomeWidgetState.Content) {
+        update(context, widgetId, contentViews(context, widgetId, state))
+    }
+
+    internal fun contentViews(
+        context: Context,
+        widgetId: Int,
+        state: AndroidHomeWidgetState.Content,
+    ): RemoteViews {
+        if (state.projection is AndroidHomeWidgetProjection.InvalidActiveState) {
+            return statusViews(context, widgetId, R.string.home_widget_unavailable)
+        }
+
         val views = baseViews(context, widgetId)
         state.notice?.let { notice ->
-            views.setViewVisibility(R.id.home_widget_notice, android.view.View.VISIBLE)
+            views.setViewVisibility(R.id.home_widget_notice, View.VISIBLE)
             views.setTextViewText(R.id.home_widget_notice, notice)
-        } ?: views.setViewVisibility(R.id.home_widget_notice, android.view.View.GONE)
-        views.setViewVisibility(R.id.home_widget_status, android.view.View.GONE)
+        } ?: views.setViewVisibility(R.id.home_widget_notice, View.GONE)
+        views.setViewVisibility(R.id.home_widget_status, View.GONE)
 
         when (val projection = state.projection) {
             is AndroidHomeWidgetProjection.Running -> {
@@ -162,9 +177,9 @@ internal object AndroidHomeWidgetRenderer {
                     setTaskText(views, R.id.home_widget_running_next_title, R.id.home_widget_running_next_metadata, next)
                 }
 
-                val executionId = projection.task.executionId
-                    ?: state.day.activeExecution?.takeIf { it.entryId == projection.task.id }?.id
+                val executionId = canonicalAndroidHomeWidgetCompleteExecutionId(projection.task, state.day)
                 if (executionId != null) {
+                    views.setViewVisibility(R.id.home_widget_complete_action, View.VISIBLE)
                     val completeIntent = AndroidHomeWidgetIntents.actionPendingIntent(
                         context,
                         widgetId,
@@ -177,41 +192,49 @@ internal object AndroidHomeWidgetRenderer {
                         context.getString(R.string.home_widget_complete_action),
                     )
                 } else {
-                    views.setViewVisibility(R.id.home_widget_complete_action, android.view.View.GONE)
+                    views.setViewVisibility(R.id.home_widget_complete_action, View.GONE)
+                    views.setOnClickPendingIntent(R.id.home_widget_complete_action, null)
                 }
             }
 
             is AndroidHomeWidgetProjection.Idle -> {
-                views.setViewVisibility(R.id.home_widget_running_content, android.view.View.GONE)
-                views.setViewVisibility(R.id.home_widget_idle_content, android.view.View.VISIBLE)
+                views.setViewVisibility(R.id.home_widget_running_content, View.GONE)
+                views.setViewVisibility(R.id.home_widget_idle_content, View.VISIBLE)
                 val next = projection.nextPlanned
                 if (next == null) {
-                    views.setViewVisibility(R.id.home_widget_idle_task_row, android.view.View.GONE)
-                    views.setViewVisibility(R.id.home_widget_idle_empty, android.view.View.VISIBLE)
+                    views.setViewVisibility(R.id.home_widget_idle_task_row, View.GONE)
+                    views.setViewVisibility(R.id.home_widget_idle_empty, View.VISIBLE)
                 } else {
-                    views.setViewVisibility(R.id.home_widget_idle_task_row, android.view.View.VISIBLE)
-                    views.setViewVisibility(R.id.home_widget_idle_empty, android.view.View.GONE)
+                    views.setViewVisibility(R.id.home_widget_idle_task_row, View.VISIBLE)
+                    views.setViewVisibility(R.id.home_widget_idle_empty, View.GONE)
                     setTaskText(views, R.id.home_widget_idle_task_title, R.id.home_widget_idle_task_metadata, next)
+                }
+
+                val startTask = canonicalAndroidHomeWidgetStartTask(projection)
+                if (startTask != null) {
+                    views.setViewVisibility(R.id.home_widget_idle_start_action, View.VISIBLE)
                     val startIntent = AndroidHomeWidgetIntents.actionPendingIntent(
                         context,
                         widgetId,
-                        AndroidHomeWidgetAction.Start(next.id),
-                        next.toDisplayTask(),
+                        AndroidHomeWidgetAction.Start(startTask.id),
+                        startTask.toDisplayTask(),
                     )
                     views.setOnClickPendingIntent(R.id.home_widget_idle_start_action, startIntent)
                     views.setContentDescription(
                         R.id.home_widget_idle_start_action,
                         context.getString(R.string.home_widget_start_action),
                     )
+                } else {
+                    views.setViewVisibility(R.id.home_widget_idle_start_action, View.GONE)
+                    views.setOnClickPendingIntent(R.id.home_widget_idle_start_action, null)
                 }
             }
 
             AndroidHomeWidgetProjection.InvalidActiveState -> {
-                renderStatus(context, widgetId, R.string.home_widget_unavailable)
-                return
+                return statusViews(context, widgetId, R.string.home_widget_unavailable)
             }
         }
-        update(context, widgetId, views)
+        return views
     }
 
     private fun setTaskText(views: RemoteViews, titleId: Int, metadataId: Int, task: TodayTask) {

@@ -81,6 +81,24 @@ internal fun projectAndroidHomeWidget(day: TodayDay, now: Instant): AndroidHomeW
     )
 }
 
+internal fun canonicalAndroidHomeWidgetCompleteExecutionId(
+    task: TodayTask,
+    day: TodayDay,
+): String? {
+    if (task.id.isBlank()) return null
+    return task.executionId?.takeIf(String::isNotBlank)
+        ?: day.activeExecution
+            ?.takeIf { it.entryId == task.id }
+            ?.id
+            ?.takeIf(String::isNotBlank)
+}
+
+internal fun canonicalAndroidHomeWidgetStartTask(
+    projection: AndroidHomeWidgetProjection.Idle,
+): TodayTask? = projection.nextPlanned?.takeIf {
+    it.id.isNotBlank() && it.lifecycleState == LifecycleState.PLANNED
+}
+
 private fun hasActiveExecution(day: TodayDay): Boolean =
     day.activeExecution != null || day.activeEntry != null ||
         day.allEntries.any { it.lifecycleState == LifecycleState.RUNNING }
