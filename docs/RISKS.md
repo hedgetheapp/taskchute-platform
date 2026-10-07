@@ -1,5 +1,9 @@
 # Risks
 
+## R-078 — D-177 Android Widget receiver deadline
+
+D-177 performs a canonical Today read, direct Start / Complete, and canonical reconciliation inside a short-lived Widget broadcast. The private receiver uses `goAsync()`, runs work off the main thread, and finishes the pending result through cleanup paths; Widget HTTP connects/reads use 2-second timeouts and responses remain size-bounded. Java's read timeout is an inactivity timeout, not an absolute response deadline. An unusually slow trickling response can therefore outlive the platform's receiver window, and the local AVD runtime gate could not provide device evidence because `TaskChute_API33` failed to boot within 180 seconds. The targeted Sol Medium review found no meaningful authentication, Intent exposure, stale-action, or data-leakage blocker. Reassess the receiver timing if representative Galaxy S23 or network evidence shows deadline failures; do not add a persistent service or polling loop without a separate Decision.
+
 ## R-077 — D-121 Android unified dark UI and gesture arbitration
 
 D-121ではToday / Notes / Settingsの共通dark chromeに加え、Today rowのselection state、execution

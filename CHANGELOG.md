@@ -1,3 +1,8 @@
+### D-177 Android Home Widget v0.1 — 2026-10-07
+
+- Implemented the compact Android home Widget with platform `AppWidgetProvider` / `RemoteViews`, current Running + next Planned preview, idle promotion, elapsed/estimate/progress, and existing Today `stop` / `play_arrow` actions. Widget actions reuse the encrypted Better Auth session and canonical Today commands, reject stale identities after a fresh read, serialize duplicate requests, and render a reconciled server projection. Android app canonical loads and sign-out request a Widget refresh. No new dependency, API, schema, migration, Worker, production operation, or Release.
+- Focused JVM `19 / 19`, AndroidTest compile, debug Phone/instrumentation APK builds, and `git diff --check` PASS. Exact-SHA CI at implementation `d600f75dac79548853d28c7662fb7f70aa194de3` PASS, including signed APK builds/certificate checks/artifact upload. Required `scripts/android-qa.ps1` All was attempted once; `TaskChute_API33` did not boot within 180 seconds, so runtime is `NOT_RUN / ENV_BLOCKED`. Galaxy S23 remains `NOT_RUN / PRODUCT_OWNER_MANUAL`; Production `NOT_RUN`; Released `NO`. R-078 records the receiver's residual slow-trickle deadline caveat.
+
 ### D-167 Android Complete→Start serial lifecycle handoff corrective — 2026-10-05
 
 - Fixed the Android Today optimistic and network-ordering race for immediate Complete A → Start B. The UI chains from the latest presented Day and shows only B Running; one queued dependent Start is sent once after Complete safely resolves. Generic failure reloads canonical Today before any continuation, while still-active A, stale/ineligible intent, Day navigation, or Unauthorized cancels B. Same-B taps are bounded and realtime invalidation stays coalesced.

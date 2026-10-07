@@ -1,6 +1,6 @@
 # D-177 — Android Home Widget v0.1
 
-Status: **Approved / Implementation not started**
+Status: **Approved / Implemented / Exact-SHA CI PASS / Local AVD ENV_BLOCKED / Product Owner device verification pending**
 
 Date: 2026-10-07
 
@@ -165,3 +165,11 @@ Implementation should verify at minimum:
 Galaxy S23 physical Widget behavior remains `NOT_RUN / PRODUCT_OWNER_MANUAL` until the exact implementation APK is tested.
 
 Production remains `NOT_RUN`; Released remains `NO`.
+
+## Implementation closeout — 2026-10-07
+
+Implementation commit `d600f75dac79548853d28c7662fb7f70aa194de3` is on `main`. The Android implementation uses the platform `AppWidgetProvider` / `RemoteViews`, a non-exported action receiver with `goAsync()`, the existing encrypted Better Auth session, and the canonical Today repository/HTTP commands. Start and Complete re-read current Today, validate the canonical Entry / Execution identity, and render only a reconciled server projection. The Widget adds no dependency or server/persistence surface.
+
+Focused JVM `19 / 19` passes. Android app and instrumentation sources compile, and local debug Phone plus instrumentation APK assembly passes. The required All runtime gate was attempted once; `TaskChute_API33` did not reach `sys.boot_completed=1` within 180 seconds, so runtime is `NOT_RUN / ENV_BLOCKED`. Exact-SHA GitHub Actions Android CI, signed APK build, certificate checks, and artifact upload pass. Targeted Sol Medium review found no meaningful authentication or exposure blocker; its remaining receiver-deadline caveat is recorded as R-078. Verification detail is in `docs/TEST_MATRIX.md`.
+
+Galaxy S23 remains `NOT_RUN / PRODUCT_OWNER_MANUAL`. Production remains `NOT_RUN`; Released remains `NO`.
