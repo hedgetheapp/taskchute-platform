@@ -826,3 +826,12 @@ No persistent background socket, foreground service, minute-by-minute server pol
 The Phone Widget may use the app's existing platform AlarmManager foundation for one presentation wake-up at a Running Task's estimate boundary. This scheduler is not Task authority and stores only the minimum local identity/timing needed to cancel or replace the pending Widget refresh. Boundary delivery re-renders/reconciles Widget presentation; it does not create a new server command path.
 
 No periodic poller, foreground service, WorkManager, FCM requirement, or new dependency is introduced. Exact alarm access is opportunistic: exact when permitted, otherwise a one-shot inexact AlarmManager fallback.
+
+
+### D-177 optimistic Widget presentation boundary
+
+Android Home Widget may keep a minimal ephemeral/local presentation snapshot sufficient to derive the immediate Start / Complete visual projection. This snapshot is not Domain authority and must not contain auth secrets. The server/canonical Today read remains the source of lifecycle truth.
+
+Widget optimistic Start may use the local tap instant for temporary timer presentation only. Canonical `started_at` replaces it when the server result reconciles. Boundary alarms are never scheduled from provisional timing.
+
+Widget optimistic Complete may hide the Running card and promote the locally known next Planned item, but no successor lifecycle command is newly authorized until the current mutation resolves. Failure/rejection restores canonical presentation.

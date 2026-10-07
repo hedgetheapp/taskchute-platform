@@ -1,3 +1,7 @@
+### D-177 Android Home Widget immediate lifecycle feedback — 2026-10-07
+
+**Status: APPROVED / IMPLEMENTATION PENDING.** Product Owner requires Widget Start and Complete to reflect immediately. Start should render the tapped Planned Task as an ephemeral Running projection at once; Complete should immediately remove the Running presentation and promote the already-known next Planned Task. This mirrors Android Today's optimistic-presentation pattern while preserving server authority: fresh canonical validation, existing commands, operation identity, encrypted session, and post-command reconciliation remain unchanged. Provisional Start may use tap time for display only and must not own estimate-boundary alarm scheduling. While the mutation is unresolved, do not send another lifecycle command from provisional identities. Failure/stale/401/ambiguity returns to canonical state. No generic loading flash.
+
 ### D-177 Android Home Widget Running / action UX refinements — 2026-10-07
 
 **Status: IMPLEMENTED / INTEGRATED / FOCUSED JVM 26 / 26 PASS / EXACT-SHA CI PASS / PHONE RUNTIME ENV_BLOCKED / GALAXY S23 NOT_RUN / PRODUCTION NOT_RUN / RELEASED NO.** Implementation `99aa7fcb9d478a3fe690bf600047ba144ae4e7b8` is on `main`.

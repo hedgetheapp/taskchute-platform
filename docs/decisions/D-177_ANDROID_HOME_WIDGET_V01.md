@@ -221,3 +221,29 @@ Implementation `99aa7fcb9d478a3fe690bf600047ba144ae4e7b8` is on `main`. The Runn
 A Widget-specific AlarmManager scheduler stores only a SHA-256 identity and alarm metadata in app-private preferences. Its non-exported receivers use immutable PendingIntents with a per-identity URI, exact delivery when permitted, and one-shot inexact fallback otherwise. Reconciliation replaces/cancels changed or invalid boundaries, stale deliveries cannot clear a newer record, and boot/package/exact-access changes restore or reevaluate the current alarm. When the boundary refresh observes the exact whole-second equality where overrun is still zero, one final wakeup at +1 second renders the first positive second; there is no polling or recurring loop. No task title, session, credential, API, schema, migration, or dependency was added.
 
 Focused Widget JVM tests pass `26 / 26`; Android main and AndroidTest Kotlin compile, Phone debug APK assemble, and diff check pass. Exact-SHA CI for the implementation passed on attempt 2 after attempt 1 encountered an unrelated existing `DailyControllerTest.savingWarmDailyIsNotOverwrittenByBackgroundRefresh` assertion; the isolated rerun of that test passed. CI passed Android JVM, signed Phone/Wear build, instrumentation APK compilation, certificate verification, and artifact upload. The local environment had no connected device and only a Wear AVD, so Phone runtime/instrumentation remains `NOT_RUN / ENV_BLOCKED`; Galaxy S23 remains `NOT_RUN / PRODUCT_OWNER_MANUAL`. Production remains `NOT_RUN`; Released remains `NO`.
+
+
+## Immediate optimistic Start / Complete presentation refinement — 2026-10-07
+
+Product Owner requires direct Widget Start and Complete to feel immediate rather than waiting for the background canonical round trip.
+
+The Widget may therefore render an **ephemeral optimistic lifecycle projection immediately on tap**, following the same authority split already used by Android Today:
+
+- Start tap on the currently displayed eligible Planned Task immediately presents that Task as Running;
+- Complete tap on the currently displayed Running Task immediately removes the Running presentation and promotes the already-known next Planned Task when available;
+- the optimistic projection is presentation-only and is never persisted as canonical Task / Execution state;
+- the existing encrypted session, fresh canonical validation, server Start / Complete command, operation identity, and post-command canonical reconciliation remain authoritative.
+
+For optimistic Start, local tap time may be used only as a provisional display start for elapsed/remaining presentation until canonical Running returns. Canonical `started_at` replaces it on reconciliation. Do not schedule the estimate-boundary AlarmManager wake-up from a provisional start; schedule/replace it only from reconciled canonical Running state.
+
+For optimistic Complete, the current estimate-boundary presentation alarm may be cancelled immediately; if canonical reconciliation restores the same Running state after failure/rejection, normal reconciliation re-establishes the authoritative boundary alarm.
+
+While one Widget lifecycle mutation is unresolved:
+
+- duplicate lifecycle command dispatch remains blocked;
+- provisional action controls must not create a second Start / Complete against identities that are not yet canonical;
+- this refinement does not newly approve general queued Widget lifecycle handoff beyond the existing D-177 action gate.
+
+On stale action, deterministic failure, transport ambiguity, Unauthorized, or canonical contradiction, discard the optimistic projection and render the reconciled canonical result. The existing notice/error presentation may be used. A process death may lose the ephemeral optimistic projection; subsequent Widget refresh still recovers canonical state.
+
+This refinement supersedes the earlier D-177 statement that Start / Complete keep the old rendered content until reconciliation. It preserves the separate requirement that the Widget never blank to a generic `読み込み中` state.

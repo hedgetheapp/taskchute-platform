@@ -1139,3 +1139,18 @@ If exact-alarm special access is available, use an exact one-shot alarm. If unav
 Direct Widget Start / Complete keeps the currently rendered Task content visible while the background command and canonical re-read are in flight. Do not replace the Widget with a full `読み込み中` presentation for these actions.
 
 When reconciliation finishes, render the canonical result. Failure/stale-action handling continues to avoid fabricated lifecycle success; an error notice may be shown on the reconciled state. Explicit signed-out/unavailable states remain allowed when they are the resolved result.
+
+
+### D-177 Widget immediate optimistic lifecycle presentation — 2026-10-07
+
+Direct Android Home Widget Start / Complete updates presentation immediately on tap.
+
+- Start: the displayed eligible Planned Task becomes an ephemeral Running projection immediately. Local tap time may drive provisional elapsed/remaining display until canonical Running replaces it.
+- Complete: the current Running presentation disappears immediately and the already-known next Planned Task is promoted when present.
+- The projection is device-local presentation only. It is not canonical persistence and does not create/complete an Execution by itself.
+- Fresh canonical validation, existing Start / Complete HTTP commands, and post-command reconciliation remain authoritative.
+- While the mutation is unresolved, do not dispatch another lifecycle command from provisional identities.
+- Failure/stale/401/ambiguous outcomes discard the optimistic projection and render reconciled canonical state with the existing error/notice behavior.
+- Do not schedule estimate-boundary alarms from provisional Start time; canonical Running reconciliation owns boundary scheduling.
+
+The Widget must still avoid any full-screen `読み込み中` flash.

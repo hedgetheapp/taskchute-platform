@@ -2680,3 +2680,8 @@ Product Owner approved a one-shot AlarmManager Widget refresh at the canonical R
 ### D-177 Start / Complete loading-flash refinement — 2026-10-07
 
 Product Owner removed the full-Widget `読み込み中` transition from direct Widget Start / Complete. The existing content remains visible during the bounded background command; canonical reconciliation then replaces it with the resolved state. This is presentation-only and does not introduce optimistic lifecycle authority.
+
+
+### D-177 immediate optimistic Widget lifecycle refinement — 2026-10-07
+
+Product Owner approved immediate optimistic presentation for direct Widget Start / Complete. Start immediately appears Running; Complete immediately removes Running and promotes the known next Planned Task. These are ephemeral presentation overlays only: existing fresh canonical validation, server commands, operation identity, encrypted session, and reconciliation remain authoritative. Provisional Start timing must not schedule estimate-boundary alarms, and unresolved lifecycle mutations do not authorize another provisional lifecycle command. Failure/stale/401/ambiguity returns to canonical state. Generic loading flashes remain prohibited.
