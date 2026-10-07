@@ -249,3 +249,15 @@ On stale action, deterministic failure, transport ambiguity, Unauthorized, or ca
 This refinement supersedes the earlier D-177 statement that Start / Complete keep the old rendered content until reconciliation. It preserves the separate requirement that the Widget never blank to a generic `読み込み中` state.
 
 **Implementation closeout — 2026-10-07.** Implementation `435212d962b271e6d4f5adbeb4a55889f11ba6de` is integrated on `main`. The receiver applies a `RemoteViews` partial update after the existing action gate accepts a tap and before starting background canonical work. Start uses the already-rendered title and tap-time `elapsedRealtime` for display only; Complete uses the already-rendered next Planned title/metadata when available. Optimistic action controls are hidden and cleared. No provisional Execution identity, boundary alarm, follow-on lifecycle command, or app-private task snapshot/cache is created. The existing controller retains fresh canonical validation, command, and reconciled render authority. Focused Widget JVM is `30 / 30 PASS`; Android app and instrumentation compile, debug APK assemble, diff check, and exact-SHA CI pass. No compatible Phone runtime was available, so Widget runtime remains `NOT_RUN / ENV_BLOCKED`; Galaxy S23 remains `NOT_RUN / PRODUCT_OWNER_MANUAL`. Production remains `NOT_RUN`; Released remains `NO`.
+
+
+## Canonical action-control restore corrective — 2026-10-07
+
+D-177 v4 optimistic lifecycle presentation intentionally hides lifecycle controls while a mutation is unresolved. Product-owner device testing found a corrective defect: after optimistic Start is reconciled to canonical Running, the Complete action can remain hidden because the optimistic `RemoteViews` patch set the control to `GONE` and canonical render rebinds its PendingIntent without explicitly restoring `VISIBLE`. The symmetric Idle Start control has the same restoration risk after optimistic Complete.
+
+This is not a new Product Decision. Canonical D-177 behavior already requires:
+- canonical Running with a valid Execution identity exposes Complete;
+- canonical Idle with an eligible next Planned Task exposes Start;
+- provisional/optimistic states keep lifecycle controls non-actionable.
+
+Corrective implementation must explicitly restore visibility and actionable PendingIntent on canonical Running/Idle render, and explicitly hide/clear the controls when canonical state is not eligible. Verification must cover the full optimistic → canonical transition rather than isolated optimistic and canonical renders only.

@@ -1,3 +1,4 @@
+| D177-ACTION-RESTORE | Optimistic → canonical lifecycle action restoration | After optimistic Start, canonical Running must restore visible/actionable Complete. After optimistic Complete, canonical Idle with eligible next Planned must restore visible/actionable Start. Canonical ineligible states must hide/clear the action. | Product Owner device report exposed the missing Complete control on v4. Source review confirms canonical render rebinds PendingIntent but omits explicit VISIBLE restoration after optimistic patches set GONE. Corrective implementation/test pending. | FAIL / PRODUCT_DEFECT — CORRECTIVE PENDING |
 ## D-177 Android Home Widget v0.1 — 2026-10-07
 
 | ID | Area | Requirement | Evidence | Status |
