@@ -41,13 +41,21 @@ class AndroidHomeWidgetActionReceiver : BroadcastReceiver() {
         val worker = runCatching {
             Thread({
                 try {
-                    if (!isRefresh) ids.forEach { AndroidHomeWidgetRenderer.loading(appContext, it) }
+                    val requestKind = if (isRefresh) {
+                        AndroidHomeWidgetRequestKind.CANONICAL_REFRESH
+                    } else {
+                        AndroidHomeWidgetRequestKind.ACTION
+                    }
+                    if (shouldShowAndroidHomeWidgetLoading(requestKind)) {
+                        ids.forEach { AndroidHomeWidgetRenderer.loading(appContext, it) }
+                    }
                     val runtime = createAndroidHomeWidgetRuntime(appContext)
                     val state = when (runtime) {
                         is AndroidHomeWidgetRuntime.Ready -> request?.let(runtime.controller::perform) ?: runtime.controller.refresh()
                         AndroidHomeWidgetRuntime.SignedOut -> AndroidHomeWidgetState.SignedOut
                         AndroidHomeWidgetRuntime.Unavailable -> AndroidHomeWidgetState.Unavailable
                     }
+                    AndroidHomeWidgetBoundaryScheduler(appContext).reconcile(state)
                     ids.forEach { AndroidHomeWidgetRenderer.render(appContext, it, state) }
                 } catch (_: Throwable) {
                     ids.forEach {

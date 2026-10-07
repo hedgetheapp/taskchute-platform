@@ -18,6 +18,8 @@ internal sealed interface AndroidHomeWidgetProjection {
         val nextPlanned: TodayTask?,
         val startedAt: String,
         val elapsedSeconds: Long?,
+        val remainingSeconds: Long?,
+        val overrunSeconds: Long?,
         val estimateSeconds: Int?,
         val progressPermille: Int?,
     ) : AndroidHomeWidgetProjection
@@ -30,7 +32,10 @@ internal sealed interface AndroidHomeWidgetProjection {
 internal data class AndroidHomeWidgetRunningPresentation(
     val elapsedSeconds: Long?,
     val elapsedText: String,
-    val estimateText: String?,
+    val remainingSeconds: Long?,
+    val remainingText: String?,
+    val overrunSeconds: Long?,
+    val overrunText: String?,
     val progressPermille: Int?,
 )
 
@@ -44,7 +49,10 @@ internal fun androidHomeWidgetRunningPresentation(
     return AndroidHomeWidgetRunningPresentation(
         elapsedSeconds = progress.elapsedSeconds,
         elapsedText = formatRunningDuration(progress.elapsedSeconds),
-        estimateText = estimate?.let { formatRunningDuration(it.toLong()) },
+        remainingSeconds = progress.remainingSeconds,
+        remainingText = estimate?.let { formatRunningDuration(progress.remainingSeconds) },
+        overrunSeconds = progress.overrunSeconds?.takeIf { it > 0L },
+        overrunText = progress.overrunSeconds?.takeIf { it > 0L }?.let { "+${formatRunningDuration(it)}" },
         progressPermille = estimate?.let { (progress.progress * 1000f).roundToInt().coerceIn(0, 1000) },
     )
 }
@@ -66,6 +74,8 @@ internal fun projectAndroidHomeWidget(day: TodayDay, now: Instant): AndroidHomeW
         nextPlanned = nextPlanned,
         startedAt = canonicalExecution.startedAt,
         elapsedSeconds = presentation.elapsedSeconds,
+        remainingSeconds = presentation.remainingSeconds,
+        overrunSeconds = presentation.overrunSeconds,
         estimateSeconds = runningTask.estimateSeconds?.takeIf { it > 0 },
         progressPermille = presentation.progressPermille,
     )
@@ -149,6 +159,15 @@ internal sealed interface AndroidHomeWidgetState {
     data object SignedOut : AndroidHomeWidgetState
     data object Unavailable : AndroidHomeWidgetState
 }
+
+internal enum class AndroidHomeWidgetRequestKind {
+    INITIAL_LOAD,
+    CANONICAL_REFRESH,
+    ACTION,
+}
+
+internal fun shouldShowAndroidHomeWidgetLoading(kind: AndroidHomeWidgetRequestKind): Boolean =
+    kind == AndroidHomeWidgetRequestKind.INITIAL_LOAD
 
 internal class AndroidHomeWidgetController(
     private val repository: TodayRepository,

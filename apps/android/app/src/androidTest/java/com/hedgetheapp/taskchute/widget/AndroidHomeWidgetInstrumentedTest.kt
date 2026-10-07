@@ -7,6 +7,7 @@ import android.widget.Chronometer
 import android.widget.FrameLayout
 import android.widget.ProgressBar
 import android.widget.RemoteViews
+import android.widget.ImageView
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.hedgetheapp.taskchute.R
@@ -31,10 +32,20 @@ class AndroidHomeWidgetInstrumentedTest {
             ComponentName(context, AndroidHomeWidgetActionReceiver::class.java),
             PackageManager.GET_META_DATA,
         )
+        val boundaryReceiver = context.packageManager.getReceiverInfo(
+            ComponentName(context, AndroidHomeWidgetBoundaryReceiver::class.java),
+            PackageManager.GET_META_DATA,
+        )
+        val boundaryRestoreReceiver = context.packageManager.getReceiverInfo(
+            ComponentName(context, AndroidHomeWidgetBoundaryRestoreReceiver::class.java),
+            PackageManager.GET_META_DATA,
+        )
 
         assertTrue(provider.exported)
         assertEquals(R.xml.taskchute_home_widget_info, provider.metaData?.getInt("android.appwidget.provider"))
         assertFalse(actionReceiver.exported)
+        assertFalse(boundaryReceiver.exported)
+        assertFalse(boundaryRestoreReceiver.exported)
     }
 
     @Test
@@ -49,8 +60,15 @@ class AndroidHomeWidgetInstrumentedTest {
         }
 
         assertNotNull(inflated.get().findViewById<Chronometer>(R.id.home_widget_elapsed))
+        assertNotNull(inflated.get().findViewById<ImageView>(R.id.home_widget_elapsed_icon))
+        assertNotNull(inflated.get().findViewById<Chronometer>(R.id.home_widget_remaining))
+        assertNotNull(inflated.get().findViewById<View>(R.id.home_widget_remaining_row))
+        assertNotNull(inflated.get().findViewById<Chronometer>(R.id.home_widget_overrun))
+        assertNotNull(inflated.get().findViewById<View>(R.id.home_widget_overrun_row))
         assertNotNull(inflated.get().findViewById<ProgressBar>(R.id.home_widget_progress))
+        assertNotNull(inflated.get().findViewById<ProgressBar>(R.id.home_widget_progress_overrun))
         assertNotNull(inflated.get().findViewById<View>(R.id.home_widget_complete_action))
         assertNotNull(inflated.get().findViewById<View>(R.id.home_widget_idle_start_action))
+        assertTrue(inflated.get().findViewById<Chronometer>(R.id.home_widget_remaining).isCountDown)
     }
 }

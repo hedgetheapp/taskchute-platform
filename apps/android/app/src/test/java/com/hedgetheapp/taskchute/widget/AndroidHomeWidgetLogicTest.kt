@@ -14,6 +14,8 @@ import com.hedgetheapp.taskchute.today.TodayTask
 import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -52,6 +54,8 @@ class AndroidHomeWidgetLogicTest {
         assertEquals("running", projection.task.id)
         assertEquals("next", projection.nextPlanned?.id)
         assertEquals(600L, projection.elapsedSeconds)
+        assertEquals(1200L, projection.remainingSeconds)
+        assertNull(projection.overrunSeconds)
         assertEquals(1800, projection.estimateSeconds)
         assertEquals(333, projection.progressPermille)
     }
@@ -94,12 +98,17 @@ class AndroidHomeWidgetLogicTest {
         val nonPositiveEstimate = androidHomeWidgetRunningPresentation("2026-10-07T09:50:00Z", 0, now)
 
         assertEquals("00:10:00", positive.elapsedText)
-        assertEquals("00:30:00", positive.estimateText)
+        assertEquals(1200L, positive.remainingSeconds)
+        assertEquals("00:20:00", positive.remainingText)
+        assertNull(positive.overrunSeconds)
+        assertNull(positive.overrunText)
         assertEquals(333, positive.progressPermille)
         assertEquals("00:10:00", noEstimate.elapsedText)
-        assertNull(noEstimate.estimateText)
+        assertNull(noEstimate.remainingSeconds)
+        assertNull(noEstimate.remainingText)
+        assertNull(noEstimate.overrunSeconds)
         assertNull(noEstimate.progressPermille)
-        assertNull(nonPositiveEstimate.estimateText)
+        assertNull(nonPositiveEstimate.remainingText)
         assertNull(nonPositiveEstimate.progressPermille)
     }
 
@@ -112,8 +121,172 @@ class AndroidHomeWidgetLogicTest {
         )
 
         assertEquals("01:30:00", presentation.elapsedText)
-        assertEquals("00:30:00", presentation.estimateText)
+        assertEquals(0L, presentation.remainingSeconds)
+        assertEquals("00:00:00", presentation.remainingText)
+        assertEquals(3600L, presentation.overrunSeconds)
+        assertEquals("+01:00:00", presentation.overrunText)
         assertEquals(1000, presentation.progressPermille)
+    }
+
+    @Test
+    fun estimateBoundaryHasZeroRemainingAndOverrunBeginsOnlyAfterBoundary() {
+        val atBoundary = androidHomeWidgetRunningPresentation(
+            startedAt = "2026-10-07T09:30:00Z",
+            estimateSeconds = 1800,
+            now = now,
+        )
+        val afterBoundary = androidHomeWidgetRunningPresentation(
+            startedAt = "2026-10-07T09:30:00Z",
+            estimateSeconds = 1800,
+            now = now.plusSeconds(1),
+        )
+
+        assertEquals(0L, atBoundary.remainingSeconds)
+        assertEquals("00:00:00", atBoundary.remainingText)
+        assertNull(atBoundary.overrunSeconds)
+        assertEquals(0L, afterBoundary.remainingSeconds)
+        assertEquals(1L, afterBoundary.overrunSeconds)
+        assertEquals("+00:00:01", afterBoundary.overrunText)
+    }
+
+    @Test
+    fun estimateBoundaryPlanRequiresStableCanonicalIdentityAndFutureEnd() {
+        val running = day(
+            tasks = listOf(task("running", LifecycleState.RUNNING, executionId = "execution")),
+            execution = TodayExecution("execution", "running", "2026-10-07T09:50:00Z", 1800),
+        )
+        val state = AndroidHomeWidgetState.Content(running, projectAndroidHomeWidget(running, now))
+        val plan = planAndroidHomeWidgetBoundary(state, now)
+
+        assertNotNull(plan)
+        assertEquals(Instant.parse("2026-10-07T10:20:00Z").toEpochMilli(), plan?.triggerAtEpochMillis)
+
+        val atBoundaryDay = running.copy(
+            activeExecution = TodayExecution("execution", "running", "2026-10-07T09:30:00Z", 1800),
+            sections = listOf(TodaySection("section", "Section", 0, 1440,
+                listOf(task("running", LifecycleState.RUNNING, executionId = "execution")))),
+        )
+        val boundaryInstant = Instant.parse("2026-10-07T10:00:00Z")
+        val atBoundaryState = AndroidHomeWidgetState.Content(
+            atBoundaryDay,
+            projectAndroidHomeWidget(atBoundaryDay, boundaryInstant),
+        )
+        val firstOverrunSecond = planAndroidHomeWidgetBoundary(atBoundaryState, boundaryInstant)
+        assertEquals(Instant.parse("2026-10-07T10:00:01Z").toEpochMilli(), firstOverrunSecond?.triggerAtEpochMillis)
+        val firstOverrunInstant = boundaryInstant.plusSeconds(1)
+        val afterBoundaryState = AndroidHomeWidgetState.Content(
+            atBoundaryDay,
+            projectAndroidHomeWidget(atBoundaryDay, firstOverrunInstant),
+        )
+        assertNull(planAndroidHomeWidgetBoundary(afterBoundaryState, firstOverrunInstant))
+
+        val mismatchedTask = running.copy(
+            sections = listOf(TodaySection("section", "Section", 0, 1440,
+                listOf(task("running", LifecycleState.RUNNING, executionId = "other-execution")))),
+        )
+        val mismatchedState = AndroidHomeWidgetState.Content(mismatchedTask, projectAndroidHomeWidget(mismatchedTask, now))
+        assertNull(planAndroidHomeWidgetBoundary(mismatchedState, now))
+    }
+
+    @Test
+    fun estimateBoundaryAlarmDeduplicatesAndReplacesChangedRunningIdentity() {
+        val plan = AndroidHomeWidgetBoundaryPlan("entry-execution-start-estimate", 1_791_376_800_000L)
+        val current = AndroidHomeWidgetBoundaryAlarmRecord(plan, AndroidHomeWidgetBoundaryAlarmMode.EXACT)
+
+        assertTrue(decideAndroidHomeWidgetBoundary(
+            current,
+            plan,
+            AndroidHomeWidgetBoundaryAlarmMode.EXACT,
+        ) is AndroidHomeWidgetBoundaryDecision.Keep)
+        assertTrue(decideAndroidHomeWidgetBoundary(
+            current,
+            plan.copy(identityKey = "changed-execution"),
+            AndroidHomeWidgetBoundaryAlarmMode.EXACT,
+        ) is AndroidHomeWidgetBoundaryDecision.Schedule)
+        assertTrue(decideAndroidHomeWidgetBoundary(
+            current,
+            plan,
+            AndroidHomeWidgetBoundaryAlarmMode.INEXACT,
+        ) is AndroidHomeWidgetBoundaryDecision.Schedule)
+        assertTrue(decideAndroidHomeWidgetBoundary(
+            current,
+            null,
+            AndroidHomeWidgetBoundaryAlarmMode.EXACT,
+        ) is AndroidHomeWidgetBoundaryDecision.Cancel)
+    }
+
+    @Test
+    fun estimateBoundaryKeyChangesWhenEntryExecutionStartOrEstimateChanges() {
+        fun plan(entryId: String, executionId: String, startedAt: String, estimate: Int): AndroidHomeWidgetBoundaryPlan {
+            val runningTask = task(entryId, LifecycleState.RUNNING, executionId = executionId, estimateSeconds = estimate)
+            val current = day(
+                tasks = listOf(runningTask),
+                execution = TodayExecution(executionId, entryId, startedAt, estimate),
+            )
+            return requireNotNull(planAndroidHomeWidgetBoundary(
+                AndroidHomeWidgetState.Content(current, projectAndroidHomeWidget(current, now)),
+                now,
+            ))
+        }
+
+        val baseline = plan("entry", "execution", "2026-10-07T09:50:00Z", 1800)
+
+        assertNotEquals(baseline.identityKey, plan("other-entry", "execution", "2026-10-07T09:50:00Z", 1800).identityKey)
+        assertNotEquals(baseline.identityKey, plan("entry", "other-execution", "2026-10-07T09:50:00Z", 1800).identityKey)
+        assertNotEquals(baseline.identityKey, plan("entry", "execution", "2026-10-07T09:51:00Z", 1800).identityKey)
+        assertNotEquals(baseline.identityKey, plan("entry", "execution", "2026-10-07T09:50:00Z", 2400).identityKey)
+    }
+
+    @Test
+    fun estimateBoundaryAlarmClearsForIdleEstimateLessAndSignedOutStates() {
+        val noEstimate = day(
+            tasks = listOf(task("running", LifecycleState.RUNNING, executionId = "execution", estimateSeconds = null)),
+            execution = TodayExecution("execution", "running", "2026-10-07T09:50:00Z", null),
+        )
+        val idle = day(tasks = listOf(task("planned", LifecycleState.PLANNED)))
+        val currentAlarm = AndroidHomeWidgetBoundaryAlarmRecord(
+            AndroidHomeWidgetBoundaryPlan("previous", 1_791_376_800_000L),
+            AndroidHomeWidgetBoundaryAlarmMode.INEXACT,
+        )
+
+        assertNull(planAndroidHomeWidgetBoundary(
+            AndroidHomeWidgetState.Content(noEstimate, projectAndroidHomeWidget(noEstimate, now)), now,
+        ))
+        assertNull(planAndroidHomeWidgetBoundary(
+            AndroidHomeWidgetState.Content(idle, projectAndroidHomeWidget(idle, now)), now,
+        ))
+        assertNull(planAndroidHomeWidgetBoundary(AndroidHomeWidgetState.SignedOut, now))
+        assertTrue(decideAndroidHomeWidgetBoundary(
+            currentAlarm,
+            null,
+            AndroidHomeWidgetBoundaryAlarmMode.INEXACT,
+        ) is AndroidHomeWidgetBoundaryDecision.Cancel)
+    }
+
+    @Test
+    fun estimateBoundaryAlarmUsesExactOnlyWhenAllowedAndRejectsStaleDelivery() {
+        assertEquals(
+            AndroidHomeWidgetBoundaryAlarmMode.EXACT,
+            androidHomeWidgetBoundaryAlarmMode(sdkInt = 28, canScheduleExactAlarms = false),
+        )
+        assertEquals(
+            AndroidHomeWidgetBoundaryAlarmMode.EXACT,
+            androidHomeWidgetBoundaryAlarmMode(sdkInt = 31, canScheduleExactAlarms = true),
+        )
+        assertEquals(
+            AndroidHomeWidgetBoundaryAlarmMode.INEXACT,
+            androidHomeWidgetBoundaryAlarmMode(sdkInt = 31, canScheduleExactAlarms = false),
+        )
+        assertTrue(isCurrentAndroidHomeWidgetBoundaryAlarm("current", "current"))
+        assertFalse(isCurrentAndroidHomeWidgetBoundaryAlarm("stale", "current"))
+        assertFalse(isCurrentAndroidHomeWidgetBoundaryAlarm(null, "current"))
+    }
+
+    @Test
+    fun startAndCompleteActionsKeepCurrentWidgetContentWhileInFlight() {
+        assertTrue(shouldShowAndroidHomeWidgetLoading(AndroidHomeWidgetRequestKind.INITIAL_LOAD))
+        assertFalse(shouldShowAndroidHomeWidgetLoading(AndroidHomeWidgetRequestKind.CANONICAL_REFRESH))
+        assertFalse(shouldShowAndroidHomeWidgetLoading(AndroidHomeWidgetRequestKind.ACTION))
     }
 
     @Test

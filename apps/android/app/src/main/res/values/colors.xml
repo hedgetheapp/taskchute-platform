@@ -9,5 +9,6 @@
     <color name="home_widget_primary_text">#F1F1EF</color>
     <color name="home_widget_secondary_text">#A3A3A0</color>
     <color name="home_widget_accent">#52A3FF</color>
+    <color name="home_widget_overrun">#EBA44E</color>
     <color name="home_widget_progress_track">#3C464E</color>
 </resources>

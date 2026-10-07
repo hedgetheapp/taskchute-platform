@@ -11,7 +11,6 @@ import android.widget.RemoteViews
 import com.hedgetheapp.taskchute.MainActivity
 import com.hedgetheapp.taskchute.R
 import com.hedgetheapp.taskchute.today.TodayTask
-import com.hedgetheapp.taskchute.today.formatRunningDuration
 
 internal object AndroidHomeWidgetRenderer {
     fun loading(context: Context, widgetId: Int) {
@@ -56,19 +55,40 @@ internal object AndroidHomeWidgetRenderer {
                     views.setTextViewText(R.id.home_widget_elapsed, "--:--:--")
                 }
 
-                val estimate = projection.estimateSeconds
-                if (estimate != null && estimate > 0) {
-                    views.setViewVisibility(R.id.home_widget_estimate, android.view.View.VISIBLE)
-                    views.setTextViewText(R.id.home_widget_estimate, formatRunningDuration(estimate.toLong()))
-                } else {
-                    views.setViewVisibility(R.id.home_widget_estimate, android.view.View.GONE)
+                views.setViewVisibility(R.id.home_widget_remaining_row, android.view.View.GONE)
+                views.setViewVisibility(R.id.home_widget_overrun_row, android.view.View.GONE)
+                if (projection.estimateSeconds != null) {
+                    val overrun = projection.overrunSeconds
+                    if (overrun != null && overrun > 0L) {
+                        views.setViewVisibility(R.id.home_widget_overrun_row, android.view.View.VISIBLE)
+                        val overrunBase = SystemClock.elapsedRealtime() - overrun.coerceAtLeast(0L) * 1000L
+                        views.setChronometer(R.id.home_widget_overrun, overrunBase, "+%s", true)
+                    } else {
+                        views.setViewVisibility(R.id.home_widget_remaining_row, android.view.View.VISIBLE)
+                        val remaining = projection.remainingSeconds
+                        if (remaining == null) {
+                            views.setChronometer(R.id.home_widget_remaining, SystemClock.elapsedRealtime(), "%s", false)
+                            views.setTextViewText(R.id.home_widget_remaining, "--:--:--")
+                        } else {
+                            val remainingBase = SystemClock.elapsedRealtime() + remaining.coerceAtLeast(0L) * 1000L
+                            views.setChronometerCountDown(R.id.home_widget_remaining, true)
+                            views.setChronometer(R.id.home_widget_remaining, remainingBase, "%s", true)
+                        }
+                    }
                 }
 
-                if (projection.progressPermille != null) {
+                val progress = projection.progressPermille
+                if (progress != null && projection.overrunSeconds == null) {
                     views.setViewVisibility(R.id.home_widget_progress, android.view.View.VISIBLE)
-                    views.setProgressBar(R.id.home_widget_progress, 1000, projection.progressPermille, false)
+                    views.setViewVisibility(R.id.home_widget_progress_overrun, android.view.View.GONE)
+                    views.setProgressBar(R.id.home_widget_progress, 1000, progress, false)
+                } else if (progress != null) {
+                    views.setViewVisibility(R.id.home_widget_progress, android.view.View.GONE)
+                    views.setViewVisibility(R.id.home_widget_progress_overrun, android.view.View.VISIBLE)
+                    views.setProgressBar(R.id.home_widget_progress_overrun, 1000, progress, false)
                 } else {
                     views.setViewVisibility(R.id.home_widget_progress, android.view.View.GONE)
+                    views.setViewVisibility(R.id.home_widget_progress_overrun, android.view.View.GONE)
                 }
 
                 val next = projection.nextPlanned
