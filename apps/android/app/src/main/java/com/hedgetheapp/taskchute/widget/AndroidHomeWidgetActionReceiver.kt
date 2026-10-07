@@ -3,6 +3,7 @@ package com.hedgetheapp.taskchute.widget
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.os.SystemClock
 
 class AndroidHomeWidgetActionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -31,6 +32,35 @@ class AndroidHomeWidgetActionReceiver : BroadcastReceiver() {
         if (!runCatching { gate.tryBegin(isRefresh) }.getOrDefault(false)) {
             runCatching { pendingResult.finish() }
             return
+        }
+
+        request?.let { action ->
+            runCatching {
+                val presentation = when (action) {
+                    is AndroidHomeWidgetAction.Start -> optimisticAndroidHomeWidgetStart(
+                        intent.getStringExtra(AndroidHomeWidgetIntents.EXTRA_PRESENTATION_TASK_TITLE),
+                        SystemClock.elapsedRealtime(),
+                    )
+
+                    is AndroidHomeWidgetAction.Complete -> if (
+                        intent.getBooleanExtra(AndroidHomeWidgetIntents.EXTRA_PRESENTATION_PAYLOAD_AVAILABLE, false)
+                    ) {
+                        optimisticAndroidHomeWidgetComplete(
+                            intent.getStringExtra(AndroidHomeWidgetIntents.EXTRA_PRESENTATION_TASK_TITLE)
+                                ?.takeIf(String::isNotBlank)
+                                ?.let { title ->
+                                    AndroidHomeWidgetDisplayTask(
+                                        title = title,
+                                        metadata = intent.getStringExtra(AndroidHomeWidgetIntents.EXTRA_PRESENTATION_TASK_METADATA),
+                                    )
+                                },
+                        )
+                    } else {
+                        null
+                    }
+                }
+                presentation?.let { AndroidHomeWidgetRenderer.renderOptimistic(appContext, widgetId, it) }
+            }
         }
 
         val finishPending = {

@@ -290,6 +290,36 @@ class AndroidHomeWidgetLogicTest {
     }
 
     @Test
+    fun optimisticStartIsDisplayOnlyAndCannotOwnLifecycleOrBoundaryAlarm() {
+        val presentation = optimisticAndroidHomeWidgetStart("first", 123_456L)
+
+        assertNotNull(presentation)
+        assertEquals("first", presentation?.title)
+        assertEquals(123_456L, presentation?.tapElapsedRealtimeMillis)
+        assertFalse(presentation?.canDispatchLifecycleAction ?: true)
+        assertFalse(presentation?.ownsBoundaryAlarm ?: true)
+    }
+
+    @Test
+    fun optimisticStartRequiresAlreadyRenderedTaskTitle() {
+        assertNull(optimisticAndroidHomeWidgetStart(null, 123_456L))
+        assertNull(optimisticAndroidHomeWidgetStart("   ", 123_456L))
+    }
+
+    @Test
+    fun optimisticCompletePromotesOnlyKnownNextTaskWithoutEnablingStart() {
+        val next = AndroidHomeWidgetDisplayTask("next", "10:30 · 25分")
+        val promoted = optimisticAndroidHomeWidgetComplete(next)
+        val empty = optimisticAndroidHomeWidgetComplete(null)
+
+        assertEquals(next, promoted.nextPlanned)
+        assertFalse(promoted.canDispatchLifecycleAction)
+        assertFalse(promoted.ownsBoundaryAlarm)
+        assertNull(empty.nextPlanned)
+        assertFalse(empty.canDispatchLifecycleAction)
+    }
+
+    @Test
     fun plannedMetadataShowsOnlyCanonicalValues() {
         assertEquals("10:00 · 30分", formatAndroidHomeWidgetPlannedMetadata(
             task("planned", LifecycleState.PLANNED, plannedStartMinute = 600, estimateSeconds = 1800),
@@ -371,7 +401,10 @@ class AndroidHomeWidgetLogicTest {
         assertTrue(result is AndroidHomeWidgetState.Content)
         assertEquals(2, repository.readCount)
         assertEquals(listOf("first" to 7), repository.started.map { it.first.id to it.second })
-        assertTrue((result as AndroidHomeWidgetState.Content).projection is AndroidHomeWidgetProjection.Running)
+        val reconciled = result as AndroidHomeWidgetState.Content
+        val canonicalRunning = reconciled.projection as AndroidHomeWidgetProjection.Running
+        assertEquals("new-execution", canonicalRunning.task.executionId)
+        assertEquals("2026-10-07T10:00:00Z", canonicalRunning.startedAt)
     }
 
     @Test
@@ -407,6 +440,25 @@ class AndroidHomeWidgetLogicTest {
 
         assertEquals(2, repository.readCount)
         assertEquals("first", (result.projection as AndroidHomeWidgetProjection.Idle).nextPlanned?.id)
+        assertTrue(result.notice?.contains("操作を完了できません") == true)
+    }
+
+    @Test
+    fun completeFailureRestoresCanonicalRunningState() {
+        val running = day(
+            tasks = listOf(task("running", LifecycleState.RUNNING, executionId = "execution")),
+            execution = TodayExecution("execution", "running", "2026-10-07T09:00:00Z", 1800),
+        )
+        val repository = FakeRepository(
+            reads = listOf(TodayResult.Success(running), TodayResult.Success(running)),
+            completeResult = TodayMutationResult.Failure("conflict"),
+        )
+        val controller = AndroidHomeWidgetController(repository) { now }
+
+        val result = controller.perform(AndroidHomeWidgetAction.Complete("running", "execution")) as AndroidHomeWidgetState.Content
+
+        assertEquals(2, repository.readCount)
+        assertTrue(result.projection is AndroidHomeWidgetProjection.Running)
         assertTrue(result.notice?.contains("操作を完了できません") == true)
     }
 

@@ -108,6 +108,45 @@ internal sealed interface AndroidHomeWidgetAction {
     data class Complete(val entryId: String, val executionId: String) : AndroidHomeWidgetAction
 }
 
+internal data class AndroidHomeWidgetDisplayTask(
+    val title: String,
+    val metadata: String?,
+)
+
+/** A one-shot RemoteViews presentation. It has no lifecycle identity and never owns an alarm. */
+internal sealed interface AndroidHomeWidgetOptimisticPresentation {
+    val canDispatchLifecycleAction: Boolean
+    val ownsBoundaryAlarm: Boolean
+
+    data class Running(
+        val title: String,
+        val tapElapsedRealtimeMillis: Long,
+    ) : AndroidHomeWidgetOptimisticPresentation {
+        override val canDispatchLifecycleAction: Boolean = false
+        override val ownsBoundaryAlarm: Boolean = false
+    }
+
+    data class Idle(
+        val nextPlanned: AndroidHomeWidgetDisplayTask?,
+    ) : AndroidHomeWidgetOptimisticPresentation {
+        override val canDispatchLifecycleAction: Boolean = false
+        override val ownsBoundaryAlarm: Boolean = false
+    }
+}
+
+internal fun optimisticAndroidHomeWidgetStart(
+    taskTitle: String?,
+    tapElapsedRealtimeMillis: Long,
+): AndroidHomeWidgetOptimisticPresentation.Running? =
+    taskTitle?.takeIf(String::isNotBlank)?.let {
+        AndroidHomeWidgetOptimisticPresentation.Running(it, tapElapsedRealtimeMillis)
+    }
+
+internal fun optimisticAndroidHomeWidgetComplete(
+    nextPlanned: AndroidHomeWidgetDisplayTask?,
+): AndroidHomeWidgetOptimisticPresentation.Idle =
+    AndroidHomeWidgetOptimisticPresentation.Idle(nextPlanned)
+
 internal sealed interface AndroidHomeWidgetActionPlan {
     data object Stale : AndroidHomeWidgetActionPlan
     data class Start(val task: TodayTask, val placementRevision: Int) : AndroidHomeWidgetActionPlan
