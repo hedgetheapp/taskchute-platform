@@ -265,3 +265,13 @@ Corrective implementation must explicitly restore visibility and actionable Pend
 **Implementation closeout — 2026-10-08.** Implementation `8462c7fab753b945688ac15b6af408a83dfee666` now sets canonical Running Complete and eligible Idle Start to `VISIBLE` before binding the canonical PendingIntent and expected content description. Running without a usable Execution identity and Idle without an eligible Planned Task explicitly hide the action and clear any PendingIntent. `AndroidHomeWidgetRenderer.contentViews` is the same RemoteViews builder used by production rendering and by the transition instrumentation tests. The tests cover optimistic Start → canonical Running, optimistic Complete → canonical Idle-with-next, Running without Execution, and Idle without next using `RemoteViews.reapply`; focused JVM action eligibility tests protect the fail-closed decisions.
 
 Focused Widget JVM `32 / 32`, `:app:compileDebugKotlin`, `:app:compileDebugAndroidTestKotlin`, `:app:assembleDebug`, and `git diff --check` pass. Exact implementation-SHA CI passed classification and the Android JVM / signed nonprod APK job, including Phone/Wear builds, instrumentation APK compilation, signer checks, and artifact upload; Web/Worker was skipped by Android-only classification. Phone instrumentation runtime is `NOT_RUN / ENV_BLOCKED` because the ADB server could not start and the emulator CLI is unavailable. Galaxy S23 remains `NOT_RUN / PRODUCT_OWNER_MANUAL`. No v4 behavior, Product semantics, dependency, API/schema/migration, backend, or production boundary changed. Production remains `NOT_RUN`; Released remains `NO`.
+
+
+### Galaxy S23 representative corrective smoke — 2026-10-08
+
+Product Owner installed/tested the exact corrective build for implementation `8462c7fab753b945688ac15b6af408a83dfee666` on Galaxy S23 and reported `問題なし`. Record this as narrow `PASS / USER_CONFIRMED` evidence for the requested action-restoration path:
+
+- after optimistic Start reconciles to canonical Running, Complete remains visible/actionable;
+- after optimistic Complete reconciles to canonical Idle with an eligible next Planned Task, Start remains visible/actionable.
+
+This is representative smoke only, not a full device matrix or exhaustive Widget runtime verification. Automated Phone instrumentation remains `NOT_RUN / ENV_BLOCKED`. Production remains `NOT_RUN`; Released remains `NO`.

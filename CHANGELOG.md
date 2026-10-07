@@ -1,3 +1,7 @@
+### D-177 Galaxy S23 action-restore confirmation — 2026-10-08
+
+- Product Owner tested exact corrective implementation `8462c7fab753b945688ac15b6af408a83dfee666` on Galaxy S23 and reported `問題なし`. Representative smoke confirms Complete is restored after Start→canonical Running and Start is restored after Complete→canonical Idle. Record as `PASS / USER_CONFIRMED`, not a full device matrix. Automated Phone instrumentation remains `NOT_RUN / ENV_BLOCKED`; Production `NOT_RUN`; Released `NO`.
+
 ### D-177 Android Home Widget v0.1 — 2026-10-07
 
 - Implemented the compact Android home Widget with platform `AppWidgetProvider` / `RemoteViews`, current Running + next Planned preview, idle promotion, elapsed/estimate/progress, and existing Today `stop` / `play_arrow` actions. Widget actions reuse the encrypted Better Auth session and canonical Today commands, reject stale identities after a fresh read, serialize duplicate requests, and render a reconciled server projection. Android app canonical loads and sign-out request a Widget refresh. No new dependency, API, schema, migration, Worker, production operation, or Release.
