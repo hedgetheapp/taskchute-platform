@@ -25,6 +25,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.hedgetheapp.taskchute.auth.AuthUiState
@@ -61,6 +62,7 @@ import com.hedgetheapp.taskchute.settings.SettingsController
 import com.hedgetheapp.taskchute.settings.SettingsHttpRepository
 import com.hedgetheapp.taskchute.settings.SettingsScreen
 import com.hedgetheapp.taskchute.reminders.TaskReminderScheduler
+import com.hedgetheapp.taskchute.widget.AndroidHomeWidgetIntents
 
 class MainActivity : ComponentActivity() {
     private lateinit var controller: AuthController
@@ -94,7 +96,10 @@ class MainActivity : ComponentActivity() {
         todayController = TodayController(
             repository = todayRepository,
             onUnauthorized = controller::restore,
-            onCanonicalDayLoaded = taskReminderScheduler::reconcile,
+            onCanonicalDayLoaded = { day ->
+                taskReminderScheduler.reconcile(day)
+                if (day.isCurrent) AndroidHomeWidgetIntents.requestRefresh(applicationContext)
+            },
         )
         planningController = TaskPlanningController(
             repository = TaskPlanningHttpRepository { method, path, body -> controller.authenticatedRequest(method, path, body)?.let { TodayHttpResponse(it.status, it.body) } },
@@ -216,6 +221,7 @@ private fun TaskChuteApp(
     wearPairingController: PhoneWearPairingController,
 ) {
     val state = controller.state
+    val appContext = LocalContext.current.applicationContext
     var destination by remember { mutableStateOf(AndroidDestination.TODAY) }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -255,6 +261,7 @@ private fun TaskChuteApp(
             signOutConfirmationVisible = false
             realtimeManager.stop()
             if (state is AuthUiState.SignedOut) {
+                AndroidHomeWidgetIntents.requestRefresh(appContext)
                 destination = AndroidDestination.TODAY
                 planningController.dismiss()
             }

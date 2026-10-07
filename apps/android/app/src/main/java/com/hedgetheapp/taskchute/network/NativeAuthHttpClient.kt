@@ -10,9 +10,13 @@ import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-class NativeAuthHttpClient(rawBaseUrl: String) : AuthTransport {
+class NativeAuthHttpClient(
+    rawBaseUrl: String,
+    private val requestTimeoutMs: Int = DEFAULT_REQUEST_TIMEOUT_MS,
+) : AuthTransport {
     private companion object {
         const val MAX_RESPONSE_BYTES = 64 * 1024
+        const val DEFAULT_REQUEST_TIMEOUT_MS = 10_000
     }
 
     private val baseUrl = AppConfig.validateBaseUrl(rawBaseUrl)
@@ -70,8 +74,8 @@ class NativeAuthHttpClient(rawBaseUrl: String) : AuthTransport {
         if (clearCookieBeforeRequest) cookies.clear()
         val connection = (URL(baseUrl + path).openConnection() as HttpURLConnection).apply {
             requestMethod = method
-            connectTimeout = 10_000
-            readTimeout = 10_000
+            connectTimeout = requestTimeoutMs
+            readTimeout = requestTimeoutMs
             useCaches = false
             setRequestProperty("Accept", "application/json")
             cookies.headerValue()?.let { setRequestProperty("Cookie", it) }

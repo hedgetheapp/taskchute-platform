@@ -1,0 +1,294 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/home_widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/home_widget_background"
+    android:orientation="vertical"
+    android:padding="12dp">
+
+    <TextView
+        android:id="@+id/home_widget_notice"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="6dp"
+        android:textColor="@color/home_widget_accent"
+        android:textSize="11sp"
+        android:visibility="gone" />
+
+    <LinearLayout
+        android:id="@+id/home_widget_running_content"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="7dp"
+            android:text="@string/home_widget_running_label"
+            android:textColor="@color/home_widget_accent"
+            android:textSize="10sp" />
+
+        <LinearLayout
+            android:id="@+id/home_widget_running_card"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/home_widget_running_surface"
+            android:orientation="vertical"
+            android:padding="10dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/home_widget_running_status"
+                        android:textColor="@color/home_widget_accent"
+                        android:textSize="10sp" />
+
+                    <TextView
+                        android:id="@+id/home_widget_running_title"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:textColor="@color/home_widget_primary_text"
+                        android:textSize="14sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <FrameLayout
+                    android:id="@+id/home_widget_complete_action"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:background="@drawable/home_widget_running_action_surface"
+                    android:contentDescription="@string/home_widget_complete_action"
+                    android:focusable="true">
+
+                    <ImageView
+                        android:id="@+id/home_widget_stop_icon"
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:layout_gravity="center"
+                        android:contentDescription="@null"
+                        android:src="@drawable/ic_material_stop_24"
+                        android:tint="@color/home_widget_accent" />
+                </FrameLayout>
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="20dp"
+                android:layout_marginTop="4dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <Chronometer
+                    android:id="@+id/home_widget_elapsed"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:format="%s"
+                    android:singleLine="true"
+                    android:textColor="@color/home_widget_primary_text"
+                    android:textSize="12sp" />
+
+                <TextView
+                    android:id="@+id/home_widget_estimate"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:gravity="end"
+                    android:singleLine="true"
+                    android:textColor="@color/home_widget_secondary_text"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <ProgressBar
+                android:id="@+id/home_widget_progress"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="5dp"
+                android:layout_marginTop="5dp"
+                android:max="1000"
+                android:progress="0"
+                android:progressDrawable="@drawable/home_widget_progress" />
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="5dp"
+            android:text="@string/home_widget_next_label"
+            android:textColor="@color/home_widget_secondary_text"
+            android:textSize="10sp" />
+
+        <LinearLayout
+            android:id="@+id/home_widget_running_next_row"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:background="@drawable/home_widget_task_surface"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="10dp"
+            android:paddingEnd="4dp">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/home_widget_running_next_title"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="@color/home_widget_primary_text"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/home_widget_running_next_metadata"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="@color/home_widget_secondary_text"
+                    android:textSize="11sp" />
+            </LinearLayout>
+
+            <FrameLayout
+                android:id="@+id/home_widget_running_start_preview"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="@drawable/home_widget_action_surface"
+                android:contentDescription="@string/home_widget_start_blocked_action">
+
+                <ImageView
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:layout_gravity="center"
+                    android:contentDescription="@null"
+                    android:src="@drawable/ic_material_play_arrow_24"
+                    android:tint="@color/home_widget_secondary_text" />
+            </FrameLayout>
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/home_widget_running_no_next"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:background="@drawable/home_widget_task_surface"
+            android:gravity="center_vertical"
+            android:paddingStart="10dp"
+            android:text="@string/home_widget_no_next_task"
+            android:textColor="@color/home_widget_secondary_text"
+            android:textSize="12sp"
+            android:visibility="gone" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/home_widget_idle_content"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="7dp"
+            android:text="@string/home_widget_next_label"
+            android:textColor="@color/home_widget_secondary_text"
+            android:textSize="10sp" />
+
+        <LinearLayout
+            android:id="@+id/home_widget_idle_task_row"
+            android:layout_width="match_parent"
+            android:layout_height="64dp"
+            android:background="@drawable/home_widget_task_surface"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="10dp"
+            android:paddingEnd="4dp">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/home_widget_idle_task_title"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="@color/home_widget_primary_text"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/home_widget_idle_task_metadata"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="@color/home_widget_secondary_text"
+                    android:textSize="11sp" />
+            </LinearLayout>
+
+            <FrameLayout
+                android:id="@+id/home_widget_idle_start_action"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="@drawable/home_widget_action_surface"
+                android:contentDescription="@string/home_widget_start_action"
+                android:focusable="true">
+
+                <ImageView
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:layout_gravity="center"
+                    android:contentDescription="@null"
+                    android:src="@drawable/ic_material_play_arrow_24"
+                    android:tint="@color/home_widget_primary_text" />
+            </FrameLayout>
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/home_widget_idle_empty"
+            android:layout_width="match_parent"
+            android:layout_height="64dp"
+            android:background="@drawable/home_widget_task_surface"
+            android:gravity="center_vertical"
+            android:paddingStart="10dp"
+            android:text="@string/home_widget_no_next_task"
+            android:textColor="@color/home_widget_secondary_text"
+            android:textSize="12sp"
+            android:visibility="gone" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/home_widget_status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:minHeight="64dp"
+        android:textColor="@color/home_widget_secondary_text"
+        android:textSize="13sp"
+        android:visibility="gone" />
+</LinearLayout>
