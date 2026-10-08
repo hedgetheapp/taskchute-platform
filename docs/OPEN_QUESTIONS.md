@@ -324,7 +324,7 @@ D-041は当時、未来DayをviewするだけではRoutineOccurrence / Entryをm
 
 ## Review / historical context
 
-Reviewをhistorical factsからのprojectionとする方向はD-016でApproved済み。D-178でAndroid v0.1のprimary viewをDate / Project / Mode、対象をCompletedのみ、actual authorityをvalid Execution、Project / Mode attributionをCompleted resultのhistorical classificationかつexplicit correction追従とすることをApprovedした。
+Reviewをhistorical factsからのprojectionとする方向はD-016でApproved済み。D-178でAndroid v0.1のprimary viewをDate / Project / Mode / Note、Task実績集計の対象をCompletedのみ、actual authorityをvalid Execution、Project / Mode attributionをCompleted resultのhistorical classificationかつexplicit correction追従とすることをApprovedした。
 
 D-022によりFirst sliceではmaterialized TaskChuteDayのactual interval / establishment contextを保持し、destructive hard-delete APIは提供しない。
 
