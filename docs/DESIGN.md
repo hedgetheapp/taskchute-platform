@@ -21,7 +21,7 @@ Android bottom navigation `Task / Notes / Daily / Review / Settings` で `Review
 - Mode: historical Mode別にCompleted / Unexecuted（Planned）件数を分け、Completed実績時間の共通時間軸horizontal bar chart / history drill-downを用意する。
 - Note: 4種類すべてのNoteを横断する一覧。Note識別情報・種類・作成日・最新canonical更新日・追跡開始後のdistinct updated TaskChuteDay件数を表示する。Note選択で記録済みの日別Created / Updated履歴へ進む。追跡導入前の更新履歴欠落は0件=編集なしと解釈しない。
 
-Figma concept page `720:2` / board `720:3` はvisual exploration。Date日付は画面中央。Project / Modeの比較barは進捗率表示ではなく共通の時間目盛りを持つ実績時間チャート。Unexecutedは件数のみで時間barへ含めない。Running件数カードは表示しない。DateのUnexecuted件数は選択Dayに**現在割り当てられたPlanned Entry**の数であり、Day A→B移動成功後はDay Aの件数が減りDay Bが増える。元Dayに未実行の履歴件数を残さない。Mock上のTask / Note名、数値、色、細かな寸法は例示であって確定値ではない。Project / Modeは初期案として全期間概要を用い、期間filter、chart geometry、empty/error/loading、sort、detail遷移、accessibility等は後続設計で詰める。Product semanticsは`docs/decisions/D-178_REVIEW_V01.md`と`docs/SPEC.md`を優先し、未承認schema/migrationは追加しない。
+Figma concept page `720:2` / board `720:3` はvisual exploration。Date日付は画面中央。Project / Modeの比較barは進捗率表示ではなく共通の時間目盛りを持つ実績時間チャート。Unexecutedは件数のみで時間barへ含めない。Running件数カードは表示しない。DateのUnexecuted件数は選択Dayに**現在割り当てられたPlanned Entry**の数であり、Day A→B移動成功後はDay Aの件数が減りDay Bが増える。元Dayに未実行の履歴件数を残さない。Mock上のTask / Note名、数値、色、細かな寸法は例示であって確定値ではない。Project / Modeも4 tab共通の選択期間に限定し、旧全期間概念は廃止。Noteも期間内の作成/記録済み更新活動から抽出する。exact month/year aggregation、Routine timestampのDay帰属、chart geometry、empty/error/loading、sort、detail遷移、accessibility等は後続設計で詰める。Product semanticsは`docs/decisions/D-178_REVIEW_V01.md`と`docs/SPEC.md`を優先し、未承認schema/migrationは追加しない。
 
 ## TaskChute brand icon
 
