@@ -2,7 +2,7 @@
 
 Canonical Decision: `docs/decisions/D-178_REVIEW_V01.md`
 
-Android shared footerに `Review`（Material Symbols Rounded `analytics`）を追加し、v0.1のprimary viewをDate / Project / Modeとする。Task実績集計はCompletedのみで、Planned / Runningは除外する。actualはvalid Execution factをauthorityとし、Project / Modeはlive Task metadataではなくCompleted resultのhistorical classificationを使う。eligibleなCompleted Project / Modeを後から明示訂正した場合はReviewもその訂正へ追従する。Reviewは現行のStandalone / Task Primary / Project Primary / Daily Primary Note activityも対象とし、各TaskChuteDayでNoteを `Created` または `Updated` のどちらか一方に分類する。同日作成後の追加編集はCreatedのみ、既存Noteの同日複数更新はUpdated 1件とする。current documents persistenceは過去の全update eventを保持していないため、complete historical update Reviewに必要なschema/migration・pre-migration history方針は別Material Decisionとする。exact UI/query/API、broader historical coverageは後続設計とする。
+Android shared footerに `Review`（Material Symbols Rounded `analytics`）を追加し、v0.1のprimary viewをDate / Project / Mode / Noteとする。Task実績集計はCompletedのみで、Planned / Runningは除外する。actualはvalid Execution factをauthorityとし、Project / Modeはlive Task metadataではなくCompleted resultのhistorical classificationを使う。eligibleなCompleted Project / Modeを後から明示訂正した場合はReviewもその訂正へ追従する。Reviewは現行のStandalone / Task Primary / Project Primary / Daily Primary Note activityも対象とし、各TaskChuteDayでNoteを `Created` または `Updated` のどちらか一方に分類する。同日作成後の追加編集はCreatedのみ、既存Noteの同日複数更新はUpdated 1件とする。current documents persistenceは過去の全update eventを保持していないため、complete historical update Reviewに必要なschema/migration・pre-migration history方針は別Material Decisionとする。exact UI/query/API、broader historical coverageは後続設計とする。
 
 ## D-175 — Android Consecutive Actual-Time Save Revision / Reconcile Corrective
 
