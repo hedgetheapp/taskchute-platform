@@ -1178,4 +1178,6 @@ Current implemented Note kinds in scope are standalone, task_primary, project_pr
 
 A Note created and edited again in the same TaskChuteDay is shown only as Created. Multiple updates to one pre-existing Note in the same Day are deduplicated to one Updated Note. No-op saves do not count. Activity uses the canonical TaskChuteDay interval containing the successful mutation instant, not midnight-only grouping.
 
-Current documents persistence does not preserve every historical update instant; it retains created_at, latest updated_at, and current revision. Review must not invent missing historical update days. A separate approved persistence/migration strategy is required before complete historical Note-update Review can be implemented.
+The approved historical granularity is **which TaskChuteDay** a Note was created or meaningfully updated on, not each edit's time or count. Review v0.1 does not require per-edit events, revision/content snapshots, or edit-level timestamps in the activity history. Existing Document `created_at` / `updated_at` behavior is not changed by this decision.
+
+Current documents persistence does not preserve every historical update instant; it retains created_at, latest updated_at, and current revision. Review must not invent missing historical update days. The exact physical Day-level activity persistence, atomic write contract, schema/migration, and pre-migration history treatment still require separate approval before complete historical Note-update Review can be implemented.
