@@ -33,27 +33,22 @@ Review v0.1 is organized around four primary views:
 
 **Approved 2026-10-09 — Android UI baseline:** The Review destination shows four top-level switching tabs, `Date / Project / Mode / Note`. The approved information architecture and initial presentation are:
 
-- **Date:** one selected TaskChuteDay at a time. Present Completed Task count and total valid actual duration, Note Created count and Note Updated count, a list of Completed Tasks for that Day, and the Day's Created/Updated Note activity list. The user can navigate between logical Days. Use a compact count/list overview before introducing charts.
-- **Project:** aggregate Completed Task count and valid actual duration by the completed result's historical Project classification, showing relative actual-time allocation in a horizontal bar chart and allowing selection of a category to inspect its completed-result history.
-- **Mode:** the analogous aggregation by historical Mode classification, with Completed Task count, valid actual duration, a horizontal bar chart, and category-to-history drill-down.
+- **Date:** one selected TaskChuteDay at a time. Present distinct **Completed / Unexecuted (canonical Planned) / Running** Task counts and total valid **Completed** actual duration, Note Created count and Note Updated count, a list of Completed Tasks for that Day, and the Day's Created/Updated Note activity list. The user can navigate between logical Days. Use a compact count/list overview before introducing charts.
+- **Project:** show Completed and Unexecuted (canonical Planned) counts separately by Project. Aggregate valid Completed actual duration by the completed result's historical Project classification, showing relative actual-time allocation in a horizontal bar chart and allowing selection of a category to inspect its completed-result history.
+- **Mode:** analogous Completed and Unexecuted (canonical Planned) counts by Mode, with valid Completed actual duration by historical completed-result classification, a horizontal actual-time chart, and category-to-history drill-down.
 - **Note:** a dedicated cross-Note lifecycle list for all four existing Note kinds. Show each Note's identity/type, original creation date, latest canonical update date, and count of distinct **tracked** update TaskChuteDays after tracking activation. Selecting a Note leads to its date-level Created/Updated activity history. Never imply that untracked pre-activation updates are known or that a zero tracked-day count means no earlier edits.
 
-Project / Mode overview may initially use an all-period aggregate, as illustrated in the approved UI concept. These are **UI/content commitments**, not an approval of exact filters, sorting, grouping edge cases, chart geometry/colors, timestamps, API shapes, or schema. The illustrative numbers/names in the mock are not specification data.
+Project / Mode overview may initially use an all-period aggregate, as illustrated in the approved UI concept. The exact all-period semantics for Planned counts are still Open. These are **UI/content commitments**, not an approval of exact filters, sorting, grouping edge cases, chart geometry/colors, timestamps, API shapes, or schema. The illustrative numbers/names in the mock are not specification data.
 
 Week / Month Review, exact cross-Day Execution allocation, exact Project/Mode unknown-class handling and broader drill-down behavior remain open as previously documented.
 
 ### 3. Inclusion boundary
 
-Review v0.1 includes **Completed Tasks / Entries only**.
+**Amendment approved 2026-10-09 — lifecycle counts:** The earlier Completed-only *count restriction* is superseded for count metrics only. Date displays separate **Completed / Unexecuted (canonical Planned) / Running** Task counts. Project and Mode display **Completed / Unexecuted (canonical Planned)** counts for each category. Running is not implicitly Unexecuted, nor is Project/Mode Running breakdown approved.
 
-The following are excluded from v0.1 aggregation:
+**Completed-only actual duration and achievement semantics remain authoritative.** Actual-duration totals, Project/Mode time-comparison charts and Completed history continue to use Completed results and valid canonical Execution facts only. Never add Planned/Running estimates or show progress percentages in actual-time charts. Review count data must be grounded in canonical persisted facts; optimistic/provisional presentation is not authority.
 
-- Planned;
-- Running;
-- provisional / optimistic presentation;
-- incomplete work that has not reached Completed.
-
-Review remains a projection over canonical historical facts. A UI state alone must not create Review results.
+This approval does **not** define a complete historical 'was never executed on that Day' fact. How Planned counts behave for previously selected Days, moves, deletion/cancellation, Routine skip/suppression/materialization, lifecycle reversion, and all-period Project/Mode aggregation is Open. Planned Project/Mode classification needs its own authority investigation, not silent reuse of Completed historical metadata or today's live Task metadata. Do not invent unavailable historical non-execution facts.
 
 ### 4. Actual duration authority
 
@@ -109,7 +104,7 @@ D-178 now approves **Day-granularity historical Note activity** as the required 
 
 D-178 does not yet approve:
 
-- exact API/query shape and exact detail/filter/sort interactions beyond the approved four-view UI baseline;
+- exact API/query shape, historical Planned count/category attribution, and exact detail/filter/sort interactions beyond the approved four-view UI baseline;
 - schema or migration, including the exact physical daily Note activity model and cutover mechanism;
 - cache/materialized aggregate tables;
 - Week / Month UI;
