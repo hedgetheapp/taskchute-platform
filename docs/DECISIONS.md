@@ -1,3 +1,9 @@
+## D-178 — Review v0.1
+
+Canonical Decision: `docs/decisions/D-178_REVIEW_V01.md`
+
+Android shared footerに `Review`（Material Symbols Rounded `analytics`）を追加し、v0.1のprimary viewをDate / Project / Modeとする。集計対象はCompletedのみで、Planned / Runningは除外する。actualはvalid Execution factをauthorityとし、Project / Modeはlive Task metadataではなくCompleted resultのhistorical classificationを使う。eligibleなCompleted Project / Modeを後から明示訂正した場合はReviewもその訂正へ追従する。exact UI、query/API、schema/migration、broader historical coverageは後続設計とし、必要なMaterial Decisionは別途承認する。
+
 ## D-175 — Android Consecutive Actual-Time Save Revision / Reconcile Corrective
 
 Status: **Approved corrective / Implemented / Integrated / Local and exact-SHA CI PASS / Galaxy S23 PASS (USER_CONFIRMED); AVD UI not run**

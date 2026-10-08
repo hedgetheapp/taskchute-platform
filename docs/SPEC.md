@@ -1154,3 +1154,14 @@ Direct Android Home Widget Start / Complete updates presentation immediately on 
 - Do not schedule estimate-boundary alarms from provisional Start time; canonical Running reconciliation owns boundary scheduling.
 
 The Widget must still avoid any full-screen `読み込み中` flash.
+
+
+## D-178 Review v0.1
+
+Android Review v0.1 is a projection over canonical historical facts and is reachable from shared bottom navigation as `Review` using the Material Symbols Rounded `analytics` icon.
+
+The first Review slice provides three primary views: Date (TaskChuteDay), Project, and Mode. Only Completed Entries / Tasks are included. Planned and Running work is excluded.
+
+Actual duration comes from valid canonical Execution facts after approved actual-time correction. Project / Mode attribution uses the completed result's historical classification rather than the Task's current live metadata. When an eligible Completed result's Project / Mode is explicitly corrected under approved historical-correction semantics, Review follows the corrected classification.
+
+Exact visual composition, query/API shape, cross-Day allocation presentation, broader review dimensions, and any required schema/migration remain separate design/Decision work. Missing historical Project / Mode classification must not be silently inferred from current live Task metadata.

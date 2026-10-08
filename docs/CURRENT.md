@@ -1,3 +1,7 @@
+### D-178 Review v0.1 — 2026-10-08
+
+**Status: APPROVED / DESIGN PENDING / IMPLEMENTATION NOT_STARTED.** Android shared footer will add `Review` with Material Symbols Rounded `analytics`, yielding `Task / Notes / Daily / Review / Settings`. v0.1 primary views are Date / Project / Mode. Aggregation includes Completed only; Planned / Running are excluded. Actual time uses valid canonical Execution facts. Project / Mode classification is historical and correction-aware: an explicit eligible Completed Project / Mode correction must update Review classification, while current live Task metadata must not retroactively reclassify history. Exact UI/query/API and any schema/migration remain pending; no implementation, production change, or Release has started. Decision: `docs/decisions/D-178_REVIEW_V01.md`.
+
 ### D-177 Android Home Widget canonical action-control restore corrective — 2026-10-08
 
 **Status: IMPLEMENTED / LOCAL + EXACT-SHA CI PASS / GALAXY S23 REPRESENTATIVE SMOKE PASS (USER_CONFIRMED) / PHONE RUNTIME ENV_BLOCKED / PRODUCTION NOT_RUN / RELEASED NO.** Implementation `8462c7fab753b945688ac15b6af408a83dfee666` explicitly restores canonical Running Complete and eligible Idle Start to `VISIBLE` while binding the canonical PendingIntent and content description. Ineligible canonical states explicitly set the action `GONE` and clear the PendingIntent. The correction fixes the v4 optimistic-to-canonical RemoteViews reapply defect without changing v4 optimistic feedback, server authority, alarms, action gate, authentication, or cache behavior.

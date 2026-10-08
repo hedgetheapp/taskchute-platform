@@ -324,7 +324,7 @@ D-041は当時、未来DayをviewするだけではRoutineOccurrence / Entryをm
 
 ## Review / historical context
 
-Reviewをhistorical factsからのprojectionとする方向はD-016でApproved済み。
+Reviewをhistorical factsからのprojectionとする方向はD-016でApproved済み。D-178でAndroid v0.1のprimary viewをDate / Project / Mode、対象をCompletedのみ、actual authorityをvalid Execution、Project / Mode attributionをCompleted resultのhistorical classificationかつexplicit correction追従とすることをApprovedした。
 
 D-022によりFirst sliceではmaterialized TaskChuteDayのactual interval / establishment contextを保持し、destructive hard-delete APIは提供しない。
 
@@ -340,14 +340,15 @@ Current runtimeではExecutionの`id / app_user_id / entry_id / started_at / end
 
 - Section以外のhistorical contextをsnapshot / versioned reference等のどの方式で保持するか
 - Executionに保存するProject / Section / Task contextのexact fields
-- Project移動 / rename / delete後のReview display semantics
+- D-178対象外または未解決のProject rename / delete後の表示ラベル・archived/deleted presentation semantics
 - Section delete/archive retentionのexact physical modelとlegacy time-range unknown contextのexact UI presentation
 - corrected Executionのaudit trail / prior timestamp retention
 - cancelled / removed Executionを通常Reviewとは別にどの程度表示するか
 - Routine achievement / streak calculation rule
 - logical day / week / month集計のexact timezone semantics
 - qualitative Review Document model / UX
-- Review query / caching strategy
+- D-178のDate / Project / Modeを実現するexact Review query / caching strategy
+- existing historical Project / Mode representationが全Review-eligible Completed resultを十分にcoverするか。不足時のsnapshot/reference migration strategy
 
 ## Documents
 
