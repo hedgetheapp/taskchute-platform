@@ -346,7 +346,7 @@ Current runtimeではExecutionの`id / app_user_id / entry_id / started_at / end
 - cancelled / removed Executionを通常Reviewとは別にどの程度表示するか
 - Routine achievement / streak calculation rule
 - logical day / week / month集計のexact timezone semantics
-- D-178 Note activityのexact UI（Created / Updated count、title list、drill-down等）
+- D-178 Note activityのexact UI（Created / Updated count、title list、drill-down等）。manual Note snapshot / content-version snapshot UIはD-178 scope外
 - D-178 Note update historyを永続化するexact physical model（event log / revision history等）とschema/migration
 - D-178導入前のNote update historyをどう扱うか。current `updated_at`だけから存在しない中間update dayを推測しない
 - D-178のDate / Project / Modeを実現するexact Review query / caching strategy

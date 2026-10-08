@@ -104,6 +104,7 @@ D-178 does not yet approve:
 - Task / Routine / Section review views;
 - interrupted / cancelled-specific Review presentation;
 - exact cross-Day Execution allocation UI;
+- manual Note snapshots / content-version snapshot UI;
 - Web Review navigation;
 - production rollout.
 
