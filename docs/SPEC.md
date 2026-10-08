@@ -1160,11 +1160,17 @@ The Widget must still avoid any full-screen `読み込み中` flash.
 
 Android Review v0.1 is a projection over canonical historical facts and is reachable from shared bottom navigation as `Review` using the Material Symbols Rounded `analytics` icon.
 
-The first Review slice provides four primary views: Date (TaskChuteDay), Project, Mode, and Note. Date summarizes Note activity for the selected Day; Note is the dedicated view for each Note's lifecycle and activity across Days. Only Completed Entries / Tasks are included in Task aggregation. Planned and Running work is excluded.
+The first Review slice provides four top-level switching views: Date (TaskChuteDay), Project, Mode, and Note. Only Completed Entries / Tasks are included in Task aggregation. Planned and Running work is excluded.
+
+The **approved UI baseline** for Date is a selected logical-Day overview: Completed Task count, summed valid actual duration, Note Created count, Note Updated count, the Day's Completed Task list, and the Day's Created/Updated Note list, with logical-Day navigation. Date initially emphasizes metrics and lists rather than a chart.
+
+Project and Mode are separate views showing category-level Completed Task count, summed valid actual duration, and relative time allocation using horizontal bar charts. Users can select a category to inspect its completed-result history; exact filtering and presentation of the drill-down remain design work. The initial concept uses an all-period overview, with exact time-range controls not yet decided.
+
+Note is a dedicated cross-Note lifecycle view for standalone, task_primary, project_primary, and daily_primary Documents. Its list displays Note identity/kind, canonical creation date, latest canonical update date, and count of distinct **tracked update TaskChuteDays** after tracking activation. Selecting a Note opens a date-level activity history (Created/Updated). Missing pre-activation updates must not be presented as recorded activity. Exact ordering, filters, detail navigation mechanics and graph styling remain open.
 
 Actual duration comes from valid canonical Execution facts after approved actual-time correction. Project / Mode attribution uses the completed result's historical classification rather than the Task's current live metadata. When an eligible Completed result's Project / Mode is explicitly corrected under approved historical-correction semantics, Review follows the corrected classification.
 
-Exact visual composition, query/API shape, cross-Day allocation presentation, broader review dimensions, and any required schema/migration remain separate design/Decision work. Missing historical Project / Mode classification must not be silently inferred from current live Task metadata.
+Exact visual styling, layout geometry, detailed controls/filter/sort behavior, query/API shape, cross-Day allocation presentation, broader review dimensions, and any required schema/migration remain separate design/Decision work. Missing historical Project / Mode classification must not be silently inferred from current live Task metadata.
 
 
 ### D-178 Review Note activity
