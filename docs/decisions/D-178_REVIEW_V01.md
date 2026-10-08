@@ -112,7 +112,7 @@ D-178 does not yet approve:
 - schema or migration, including the exact physical daily Note activity model and cutover mechanism;
 - cache/materialized aggregate tables;
 - weekly or otherwise unspecified period selection;
-- Task / Routine / Section review views;
+- standalone Task / Routine / Section primary Review views (Routine Created/Deleted summary counts within Date are approved);
 - interrupted / cancelled-specific Review presentation;
 - exact cross-Day Execution allocation UI;
 - manual Note snapshots / content-version snapshot UI;
