@@ -61,7 +61,39 @@ Therefore, when the user explicitly changes the Project or Mode of an eligible C
 
 This direction is consistent with D-116A for Completed Entry historical Project / Mode correction. Implementation must investigate whether existing historical representations cover every Review-eligible result before expanding the query surface. Missing historical classification must not be silently inferred from current live Task metadata.
 
-### 6. Deferred from this Decision
+### 6. Note activity in Review
+
+Review v0.1 also includes note activity for the selected TaskChuteDay.
+
+The current implemented Note / Document kinds in scope are:
+
+- standalone Note;
+- Task Primary Note;
+- Project Primary Note;
+- Daily Primary Note.
+
+For Review classification, each Note is placed at most once into one of the following buckets for a TaskChuteDay:
+
+- **Created** — the Note's canonical `created_at` belongs to that TaskChuteDay;
+- **Updated** — the Note was created before that TaskChuteDay and had one or more canonical content-changing updates during that TaskChuteDay.
+
+If a Note is created and then edited again within the same TaskChuteDay, it appears only as **Created** and must not also appear as Updated.
+
+Multiple updates to the same pre-existing Note within one TaskChuteDay count as one Updated Note for Review. No-op saves that do not advance canonical Document state do not create Review activity.
+
+Note activity is assigned to the TaskChuteDay whose canonical interval contains the successful create/update instant, rather than using a midnight-only civil-date rule.
+
+Exact Review presentation of Note activity (counts, title list, drill-down, etc.) remains design work.
+
+### 7. Current persistence gap
+
+The current `documents` model stores canonical `created_at`, current `updated_at`, and `revision`, but it does not retain a per-update historical event/revision timeline. A later update overwrites `updated_at`.
+
+Therefore the current persistence can identify creation time and only the most recent update time; it cannot reconstruct every historical TaskChuteDay on which an existing Note was updated.
+
+D-178 approves the Product semantics above but does **not** approve a schema/migration or physical event-history representation. Before implementation can claim complete historical Note update Review, a separate Material Decision must define the persisted update-history strategy and the treatment of pre-migration history. The implementation must not fabricate missing historical update days from current metadata.
+
+### 8. Deferred from this Decision
 
 D-178 does not yet approve:
 
@@ -72,7 +104,6 @@ D-178 does not yet approve:
 - Task / Routine / Section review views;
 - interrupted / cancelled-specific Review presentation;
 - exact cross-Day Execution allocation UI;
-- qualitative Review notes/documents;
 - Web Review navigation;
 - production rollout.
 

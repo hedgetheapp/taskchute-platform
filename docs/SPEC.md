@@ -1165,3 +1165,17 @@ The first Review slice provides three primary views: Date (TaskChuteDay), Projec
 Actual duration comes from valid canonical Execution facts after approved actual-time correction. Project / Mode attribution uses the completed result's historical classification rather than the Task's current live metadata. When an eligible Completed result's Project / Mode is explicitly corrected under approved historical-correction semantics, Review follows the corrected classification.
 
 Exact visual composition, query/API shape, cross-Day allocation presentation, broader review dimensions, and any required schema/migration remain separate design/Decision work. Missing historical Project / Mode classification must not be silently inferred from current live Task metadata.
+
+
+### D-178 Review Note activity
+
+Review Date / Day detail includes canonical Note activity in addition to Completed Task aggregates.
+
+Current implemented Note kinds in scope are standalone, task_primary, project_primary, and daily_primary. For each TaskChuteDay, a Note is classified at most once:
+
+- Created when its canonical create instant belongs to the Day;
+- Updated when it existed before the Day and had one or more canonical content-changing updates in the Day.
+
+A Note created and edited again in the same TaskChuteDay is shown only as Created. Multiple updates to one pre-existing Note in the same Day are deduplicated to one Updated Note. No-op saves do not count. Activity uses the canonical TaskChuteDay interval containing the successful mutation instant, not midnight-only grouping.
+
+Current documents persistence does not preserve every historical update instant; it retains created_at, latest updated_at, and current revision. Review must not invent missing historical update days. A separate approved persistence/migration strategy is required before complete historical Note-update Review can be implemented.
