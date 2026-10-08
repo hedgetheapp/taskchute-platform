@@ -351,7 +351,9 @@ Current runtimeではExecutionの`id / app_user_id / entry_id / started_at / end
 - D-178導入前のNote更新履歴は**補完・復元・backfillしない**とApproved済み。追跡機能有効化後の成功した更新からのみ日別履歴を記録する。既存`created_at`は保持する。未決はそのcutoverのexact mechanism（既存の更新日をseedしない）
 - D-178のUnexecutedは現在そのTaskChuteDayに割り当てられたcanonical Planned Entryの件数であり、過去Dayでも『当時未実行だった』snapshotは持たないとApproved。Day A→Bへ未実行Taskを移動成功後、Aから除外・Bへ計上し、Aが0件になり得る。Running件数はReview全体で非表示。他のdelete/cancel・Routine skip/suppress/cleanup・materialization・Running→Plannedの取り消し・unestablished future・all-period aggregationは未決。
 - D-178 Planned Project/Modeのhistorical category authority、unknown / no Project/Mode、rename/delete、Completed historical correctionとの境界を設計する。
-- D-178のDate / Project / Modeを実現するexact Review query / caching strategy
+- D-178 Date/Project/Mode/Noteの全4 viewで日次/月次/年次を共通選択（dropdown1つ、中央期間・前後移動、tab間維持）するUIはApproved。未決はgranularity変更時のanchor、TaskChuteDayと暦月/年境界、月次/年次のPlanned distinct count、cross-Day actual allocation、Note期間内活動と通算metadataの関係。
+- D-178 DateにRoutine Definition Created/Deleted件数を選択期間ごとに追加する方向はApproved。routine occurrence/無効化を除き、同期間作成削除は両方1件。既存`routine_definitions.created_at` / `routine_definition_archives.archived_at`のDay attribution、過去coverage、query contractは未決。
+- D-178のDate / Project / Mode / Noteを共通期間で実現するexact Review query / caching strategy
 - existing historical Project / Mode representationが全Review-eligible Completed resultを十分にcoverするか。不足時のsnapshot/reference migration strategy
 
 ## Documents
