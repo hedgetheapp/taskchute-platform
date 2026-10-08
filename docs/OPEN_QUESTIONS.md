@@ -324,7 +324,7 @@ D-041は当時、未来DayをviewするだけではRoutineOccurrence / Entryをm
 
 ## Review / historical context
 
-Reviewをhistorical factsからのprojectionとする方向はD-016でApproved済み。D-178でAndroid v0.1のprimary viewをDate / Project / Mode / Note、Task実績時間・成果の集計対象をCompletedのみ（件数はDateがCompleted / Unexecuted / Running、Project/ModeがCompleted / Unexecuted）、actual authorityをvalid Execution、Project / Mode attributionをCompleted resultのhistorical classificationかつexplicit correction追従とすることをApprovedした。
+Reviewをhistorical factsからのprojectionとする方向はD-016でApproved済み。D-178でAndroid v0.1のprimary viewをDate / Project / Mode / Note、Task実績時間・成果の集計対象をCompletedのみ（件数はDateがCompleted / Unexecuted、Project/ModeがCompleted / Unexecuted。Running件数は対象外）、actual authorityをvalid Execution、Project / Mode attributionをCompleted resultのhistorical classificationかつexplicit correction追従とすることをApprovedした。
 
 D-022によりFirst sliceではmaterialized TaskChuteDayのactual interval / establishment contextを保持し、destructive hard-delete APIは提供しない。
 
@@ -346,10 +346,10 @@ Current runtimeではExecutionの`id / app_user_id / entry_id / started_at / end
 - cancelled / removed Executionを通常Reviewとは別にどの程度表示するか
 - Routine achievement / streak calculation rule
 - logical day / week / month集計のexact timezone semantics
-- D-178の4-view UI baseline（DateはCompleted / Unexecuted / Running別件数・Completed実績時間・Note Created/Updated集計と両一覧、Project/ModeはCompleted / Unexecuted別件数とCompleted実績時間の共通時間軸横棒比較、Noteは作成日・最新更新日・追跡開始後の更新日数と日別活動への導線）はApproved済み。未決はexact visual/layout、range/filter/sort、詳細drill-down、前回更新間隔の要否、空/unknown/disabled等のUI state。manual Note snapshot / content-version snapshot UIはD-178 scope外
+- D-178の4-view UI baseline（DateはCompleted / Unexecuted別件数・Completed実績時間・Note Created/Updated集計と両一覧、Project/ModeはCompleted / Unexecuted別件数とCompleted実績時間の共通時間軸横棒比較、Noteは作成日・最新更新日・追跡開始後の更新日数と日別活動への導線）はApproved済み。未決はexact visual/layout、range/filter/sort、詳細drill-down、前回更新間隔の要否、空/unknown/disabled等のUI state。manual Note snapshot / content-version snapshot UIはD-178 scope外
 - D-178 Note update historyは**Noteごと・TaskChuteDayごとの更新有無**まで記録するとApproved済み。未決はそのexact physical daily-activity model、atomic mutation/write contract、schema/migration（編集時刻ごとのevent/revision historyはReview v0.1では不要）
 - D-178導入前のNote更新履歴は**補完・復元・backfillしない**とApproved済み。追跡機能有効化後の成功した更新からのみ日別履歴を記録する。既存`created_at`は保持する。未決はそのcutoverのexact mechanism（既存の更新日をseedしない）
-- D-178のUnexecutedはcanonical Planned lifecycleの件数としてApproved。過去日の未実行as-of factが現在Planned stateで復元可能か、Day間移動・削除・cancel・Routine skip/suppress/cleanup・materialization・Running→Plannedの取り消し・all-period aggregation semanticsを精査し、復元不能な過去を捏造しない。RunningのProject/Mode別件数は今回未承認。
+- D-178のUnexecutedは現在そのTaskChuteDayに割り当てられたcanonical Planned Entryの件数であり、過去Dayでも『当時未実行だった』snapshotは持たないとApproved。Day A→Bへ未実行Taskを移動成功後、Aから除外・Bへ計上し、Aが0件になり得る。Running件数はReview全体で非表示。他のdelete/cancel・Routine skip/suppress/cleanup・materialization・Running→Plannedの取り消し・unestablished future・all-period aggregationは未決。
 - D-178 Planned Project/Modeのhistorical category authority、unknown / no Project/Mode、rename/delete、Completed historical correctionとの境界を設計する。
 - D-178のDate / Project / Modeを実現するexact Review query / caching strategy
 - existing historical Project / Mode representationが全Review-eligible Completed resultを十分にcoverするか。不足時のsnapshot/reference migration strategy
