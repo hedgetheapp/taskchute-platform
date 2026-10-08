@@ -346,7 +346,7 @@ Current runtimeではExecutionの`id / app_user_id / entry_id / started_at / end
 - cancelled / removed Executionを通常Reviewとは別にどの程度表示するか
 - Routine achievement / streak calculation rule
 - logical day / week / month集計のexact timezone semantics
-- D-178 Note primary viewのexact UI / metrics（Created / Updated summary、created date、latest update、previous-update interval、distinct updated TaskChuteDay count、drill-down等）。manual Note snapshot / content-version snapshot UIはD-178 scope外
+- D-178の4-view UI baseline（DateはCompleted件数・実績時間・Note Created/Updated集計と両一覧、Project/Modeは件数・時間の横棒比較、Noteは作成日・最新更新日・追跡開始後の更新日数と日別活動への導線）はApproved済み。未決はexact visual/layout、range/filter/sort、詳細drill-down、前回更新間隔の要否、空/unknown/disabled等のUI state。manual Note snapshot / content-version snapshot UIはD-178 scope外
 - D-178 Note update historyは**Noteごと・TaskChuteDayごとの更新有無**まで記録するとApproved済み。未決はそのexact physical daily-activity model、atomic mutation/write contract、schema/migration（編集時刻ごとのevent/revision historyはReview v0.1では不要）
 - D-178導入前のNote更新履歴は**補完・復元・backfillしない**とApproved済み。追跡機能有効化後の成功した更新からのみ日別履歴を記録する。既存`created_at`は保持する。未決はそのcutoverのexact mechanism（既存の更新日をseedしない）
 - D-178のDate / Project / Modeを実現するexact Review query / caching strategy
