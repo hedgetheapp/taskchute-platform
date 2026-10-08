@@ -4,13 +4,24 @@
 
 この文書は、TaskChute PlatformのUI / visual / interaction targetを記録するcanonical documentである。
 
-現在canonical化済みのscopeは、Desktop WebのDay Table foundation、それに直接関係するcontrol / interaction、Day date navigation、Section / ProjectのSettings navigationとする。
+現在canonical化済みのscopeは、Desktop WebのDay Table foundationと関連navigation / settings、Android / Wear OSのDecision別visual target、ならびにD-178 Android Reviewの承認済みUI baseline等とする。
 
 - Product / Domain behaviorは`docs/SPEC.md`を正本とする。
 - Approved Decisionとその状態は`docs/DECISIONS.md`を正本とする。
 - Architectureは`docs/ARCHITECTURE.md`を正本とする。
 - implementation / verification statusは`docs/FEATURES.md`、`docs/CURRENT.md`、`docs/TEST_MATRIX.md`を正本とする。
 - この文書は新しいDomain semanticsを作らず、上記canonical docsと矛盾する場合は上記を優先する。
+
+## D-178 Android Review v0.1 — approved information architecture
+
+Android bottom navigation `Task / Notes / Daily / Review / Settings` で `Review` はMaterial Symbols Rounded `analytics` を使う。Review画面のheader直下に `Date / Project / Mode / Note` の4 switching tabsを置く。
+
+- Date: 選択中TaskChuteDayの日付移動 + Completed件数 / 実績合計時間 / Note新規作成件数 / Note更新件数。下部にCompleted Task一覧とCreated / Updated Note活動一覧を置く。v0.1は数値＋一覧を先行し、専用グラフを必須としない。
+- Project: Completed結果のhistorical Project別に件数・実績時間と時間配分をhorizontal bar chartで表示し、選択したcategoryのCompleted Task履歴へのdrill-down導線を用意する。
+- Mode: historical Mode別にProjectと同様の件数・実績時間・horizontal bar chart / history drill-downを用意する。
+- Note: 4種類すべてのNoteを横断する一覧。Note識別情報・種類・作成日・最新canonical更新日・追跡開始後のdistinct updated TaskChuteDay件数を表示する。Note選択で記録済みの日別Created / Updated履歴へ進む。追跡導入前の更新履歴欠落は0件=編集なしと解釈しない。
+
+Mock上のTask / Note名、数値、色、細かな寸法は例示であって確定値ではない。Project / Modeは初期案として全期間概要を用い、期間filter、chart geometry、empty/error/loading、sort、detail遷移、accessibility等は後続設計で詰める。Product semanticsは`docs/decisions/D-178_REVIEW_V01.md`と`docs/SPEC.md`を優先し、未承認schema/migrationは追加しない。
 
 ## TaskChute brand icon
 
