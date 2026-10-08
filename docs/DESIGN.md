@@ -16,7 +16,7 @@
 
 Android bottom navigation `Task / Notes / Daily / Review / Settings` で `Review` はMaterial Symbols Rounded `analytics` を使う。Review画面のheader直下に `Date / Project / Mode / Note` の4 switching tabsを置く。
 
-- Date: 選択中TaskChuteDayの日付移動 + **Completed / Unexecuted（canonical Planned）の別件数** / Completedの実績合計時間 / Note新規作成件数 / Note更新件数。下部にCompleted Task一覧とCreated / Updated Note活動一覧を置く。v0.1は数値＋一覧を先行し、専用グラフを必須としない。
+- Date: 選択中TaskChuteDayの日付移動 + **Completed / Unexecuted（canonical Planned）の別件数** / Completedの実績合計時間 / Note新規作成件数 / Note更新件数。未実行タスクの一覧・タスク詳細への導線（既存の許可された日付移動操作への接続を想定。exact UXは未決）と、Completed Task一覧・Created / Updated Note活動一覧を置く。v0.1は数値＋一覧を先行し、専用グラフを必須としない。
 - Project: Completed / Unexecuted（Planned）の件数を別表示。Completed結果のhistorical Project別に実績時間と時間配分を共通時間軸のhorizontal bar chartで表示し、選択したcategoryのCompleted Task履歴へのdrill-down導線を用意する。
 - Mode: historical Mode別にCompleted / Unexecuted（Planned）件数を分け、Completed実績時間の共通時間軸horizontal bar chart / history drill-downを用意する。
 - Note: 4種類すべてのNoteを横断する一覧。Note識別情報・種類・作成日・最新canonical更新日・追跡開始後のdistinct updated TaskChuteDay件数を表示する。Note選択で記録済みの日別Created / Updated履歴へ進む。追跡導入前の更新履歴欠落は0件=編集なしと解釈しない。
