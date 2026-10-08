@@ -16,12 +16,12 @@
 
 Android bottom navigation `Task / Notes / Daily / Review / Settings` で `Review` はMaterial Symbols Rounded `analytics` を使う。Review画面のheader直下に `Date / Project / Mode / Note` の4 switching tabsを置く。
 
-- Date: 選択中TaskChuteDayの日付移動 + Completed件数 / 実績合計時間 / Note新規作成件数 / Note更新件数。下部にCompleted Task一覧とCreated / Updated Note活動一覧を置く。v0.1は数値＋一覧を先行し、専用グラフを必須としない。
-- Project: Completed結果のhistorical Project別に件数・実績時間と時間配分をhorizontal bar chartで表示し、選択したcategoryのCompleted Task履歴へのdrill-down導線を用意する。
-- Mode: historical Mode別にProjectと同様の件数・実績時間・horizontal bar chart / history drill-downを用意する。
+- Date: 選択中TaskChuteDayの日付移動 + **Completed / Unexecuted（canonical Planned） / Runningの別件数** / Completedの実績合計時間 / Note新規作成件数 / Note更新件数。下部にCompleted Task一覧とCreated / Updated Note活動一覧を置く。v0.1は数値＋一覧を先行し、専用グラフを必須としない。
+- Project: Completed / Unexecuted（Planned）の件数を別表示。Completed結果のhistorical Project別に実績時間と時間配分を共通時間軸のhorizontal bar chartで表示し、選択したcategoryのCompleted Task履歴へのdrill-down導線を用意する。
+- Mode: historical Mode別にCompleted / Unexecuted（Planned）件数を分け、Completed実績時間の共通時間軸horizontal bar chart / history drill-downを用意する。
 - Note: 4種類すべてのNoteを横断する一覧。Note識別情報・種類・作成日・最新canonical更新日・追跡開始後のdistinct updated TaskChuteDay件数を表示する。Note選択で記録済みの日別Created / Updated履歴へ進む。追跡導入前の更新履歴欠落は0件=編集なしと解釈しない。
 
-Mock上のTask / Note名、数値、色、細かな寸法は例示であって確定値ではない。Project / Modeは初期案として全期間概要を用い、期間filter、chart geometry、empty/error/loading、sort、detail遷移、accessibility等は後続設計で詰める。Product semanticsは`docs/decisions/D-178_REVIEW_V01.md`と`docs/SPEC.md`を優先し、未承認schema/migrationは追加しない。
+Figma concept page `720:2` / board `720:3` はvisual exploration。Date日付は画面中央。Project / Modeの比較barは進捗率表示ではなく共通の時間目盛りを持つ実績時間チャート。Unexecutedは件数のみで時間barへ含めない。Mock上のTask / Note名、数値、色、細かな寸法は例示であって確定値ではない。Project / Modeは初期案として全期間概要を用い、期間filter、chart geometry、empty/error/loading、sort、detail遷移、accessibility等は後続設計で詰める。Product semanticsは`docs/decisions/D-178_REVIEW_V01.md`と`docs/SPEC.md`を優先し、未承認schema/migrationは追加しない。
 
 ## TaskChute brand icon
 
