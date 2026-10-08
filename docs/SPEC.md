@@ -1160,7 +1160,7 @@ The Widget must still avoid any full-screen `読み込み中` flash.
 
 Android Review v0.1 is a projection over canonical historical facts and is reachable from shared bottom navigation as `Review` using the Material Symbols Rounded `analytics` icon.
 
-The first Review slice provides three primary views: Date (TaskChuteDay), Project, and Mode. Only Completed Entries / Tasks are included. Planned and Running work is excluded.
+The first Review slice provides four primary views: Date (TaskChuteDay), Project, Mode, and Note. Date summarizes Note activity for the selected Day; Note is the dedicated view for each Note's lifecycle and activity across Days. Only Completed Entries / Tasks are included in Task aggregation. Planned and Running work is excluded.
 
 Actual duration comes from valid canonical Execution facts after approved actual-time correction. Project / Mode attribution uses the completed result's historical classification rather than the Task's current live metadata. When an eligible Completed result's Project / Mode is explicitly corrected under approved historical-correction semantics, Review follows the corrected classification.
 
