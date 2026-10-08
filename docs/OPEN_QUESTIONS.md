@@ -347,7 +347,7 @@ Current runtimeではExecutionの`id / app_user_id / entry_id / started_at / end
 - Routine achievement / streak calculation rule
 - logical day / week / month集計のexact timezone semantics
 - D-178 Note primary viewのexact UI / metrics（Created / Updated summary、created date、latest update、previous-update interval、distinct updated TaskChuteDay count、drill-down等）。manual Note snapshot / content-version snapshot UIはD-178 scope外
-- D-178 Note update historyを永続化するexact physical model（event log / revision history等）とschema/migration
+- D-178 Note update historyは**Noteごと・TaskChuteDayごとの更新有無**まで記録するとApproved済み。未決はそのexact physical daily-activity model、atomic mutation/write contract、schema/migration（編集時刻ごとのevent/revision historyはReview v0.1では不要）
 - D-178導入前のNote update historyをどう扱うか。current `updated_at`だけから存在しない中間update dayを推測しない
 - D-178のDate / Project / Modeを実現するexact Review query / caching strategy
 - existing historical Project / Mode representationが全Review-eligible Completed resultを十分にcoverするか。不足時のsnapshot/reference migration strategy
