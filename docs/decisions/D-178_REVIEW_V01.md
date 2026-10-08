@@ -24,13 +24,14 @@ This Decision does not yet require a matching Web navigation change.
 
 ### 2. v0.1 primary views
 
-Review v0.1 is organized around three primary views:
+Review v0.1 is organized around four primary views:
 
 - **Date** — results grouped by TaskChuteDay;
 - **Project** — results grouped by the completed result's Project classification;
-- **Mode** — results grouped by the completed result's Mode classification.
+- **Mode** — results grouped by the completed result's Mode classification;
+- **Note** — Note lifecycle/activity review across the current Note kinds.
 
-Exact chart/list composition, filtering controls, drill-down navigation, and visual layout remain design work.
+Date may summarize Note activity for the selected TaskChuteDay, while Note is the dedicated cross-Note lifecycle view. The Note view is intended to surface Notes that are actively evolving, long untouched, or worth revisiting. Exact chart/list composition, filtering controls, drill-down navigation, visual layout, and final Note metrics remain design work.
 
 ### 3. Inclusion boundary
 
