@@ -82,6 +82,8 @@ If a Note is created and then edited again within the same TaskChuteDay, it appe
 
 Multiple updates to the same pre-existing Note within one TaskChuteDay count as one Updated Note for Review. No-op saves that do not advance canonical Document state do not create Review activity.
 
+**Approved 2026-10-08 — history granularity:** Persist sufficient historical Note activity to identify **which TaskChuteDays** each Note was created or meaningfully updated on, with at most one Review activity classification per Note per Day. Review v0.1 does **not** require recording each individual edit time, edit count, or revision/content snapshot. This is a Product-level daily-granularity decision, not approval of any specific table, migration, or update-write algorithm. Existing Document `created_at` / `updated_at` semantics remain unchanged.
+
 Note activity is assigned to the TaskChuteDay whose canonical interval contains the successful create/update instant, rather than using a midnight-only civil-date rule.
 
 Exact Review presentation of Note activity (counts, title list, drill-down, etc.) remains design work.
@@ -92,14 +94,14 @@ The current `documents` model stores canonical `created_at`, current `updated_at
 
 Therefore the current persistence can identify creation time and only the most recent update time; it cannot reconstruct every historical TaskChuteDay on which an existing Note was updated.
 
-D-178 approves the Product semantics above but does **not** approve a schema/migration or physical event-history representation. Before implementation can claim complete historical Note update Review, a separate Material Decision must define the persisted update-history strategy and the treatment of pre-migration history. The implementation must not fabricate missing historical update days from current metadata.
+D-178 now approves **Day-granularity historical Note activity** as the required persistence outcome; a per-edit event/revision history is not required for Review v0.1. D-178 does **not** approve a schema/migration, exact physical daily-activity representation, or transaction/write algorithm. Before implementation can claim complete historical Note update Review, a separate Material Decision must define the physical persistence/migration strategy and the treatment of pre-migration history. The implementation must not fabricate missing historical update days from current metadata.
 
 ### 8. Deferred from this Decision
 
 D-178 does not yet approve:
 
 - exact API/query shape;
-- schema or migration;
+- schema or migration, including the exact physical daily Note activity model;
 - cache/materialized aggregate tables;
 - Week / Month UI;
 - Task / Routine / Section review views;
