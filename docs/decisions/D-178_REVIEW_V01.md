@@ -111,7 +111,7 @@ D-178 does not yet approve:
 - exact API/query shape, historical Planned count/category attribution, and exact detail/filter/sort interactions beyond the approved four-view UI baseline;
 - schema or migration, including the exact physical daily Note activity model and cutover mechanism;
 - cache/materialized aggregate tables;
-- Week / Month UI;
+- weekly or otherwise unspecified period selection;
 - Task / Routine / Section review views;
 - interrupted / cancelled-specific Review presentation;
 - exact cross-Day Execution allocation UI;
