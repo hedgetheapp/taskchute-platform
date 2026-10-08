@@ -94,14 +94,14 @@ The current `documents` model stores canonical `created_at`, current `updated_at
 
 Therefore the current persistence can identify creation time and only the most recent update time; it cannot reconstruct every historical TaskChuteDay on which an existing Note was updated.
 
-D-178 now approves **Day-granularity historical Note activity** as the required persistence outcome; a per-edit event/revision history is not required for Review v0.1. D-178 does **not** approve a schema/migration, exact physical daily-activity representation, or transaction/write algorithm. Before implementation can claim complete historical Note update Review, a separate Material Decision must define the physical persistence/migration strategy and the treatment of pre-migration history. The implementation must not fabricate missing historical update days from current metadata.
+D-178 now approves **Day-granularity historical Note activity** as the required persistence outcome; a per-edit event/revision history is not required for Review v0.1. D-178 does **not** approve a schema/migration, exact physical daily-activity representation, or transaction/write algorithm. The Product Owner approved **forward-only Note update history** on 2026-10-08: record successful canonical content-changing updates only from the activation of the new activity-tracking capability onward. Do **not** reconstruct, infer, seed, or backfill historical update-Day activity before activation from `updated_at`, revision, or any other current metadata. This applies equally to existing Notes and newly created Notes after activation. Existing Notes and their original canonical `created_at` remain unchanged and may still show their known creation dates; a known creation date is not evidence of any unknown pre-activation update activity. The exact activation/cutover mechanism and physical persistence/migration strategy remain implementation-design and Material Decision items; this approval does not authorize a schema/migration.
 
 ### 8. Deferred from this Decision
 
 D-178 does not yet approve:
 
 - exact API/query shape;
-- schema or migration, including the exact physical daily Note activity model;
+- schema or migration, including the exact physical daily Note activity model and cutover mechanism;
 - cache/materialized aggregate tables;
 - Week / Month UI;
 - Task / Routine / Section review views;
