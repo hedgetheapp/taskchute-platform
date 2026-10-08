@@ -31,7 +31,16 @@ Review v0.1 is organized around four primary views:
 - **Mode** — results grouped by the completed result's Mode classification;
 - **Note** — Note lifecycle/activity review across the current Note kinds.
 
-Date may summarize Note activity for the selected TaskChuteDay, while Note is the dedicated cross-Note lifecycle view. The Note view is intended to surface Notes that are actively evolving, long untouched, or worth revisiting. Exact chart/list composition, filtering controls, drill-down navigation, visual layout, and final Note metrics remain design work.
+**Approved 2026-10-09 — Android UI baseline:** The Review destination shows four top-level switching tabs, `Date / Project / Mode / Note`. The approved information architecture and initial presentation are:
+
+- **Date:** one selected TaskChuteDay at a time. Present Completed Task count and total valid actual duration, Note Created count and Note Updated count, a list of Completed Tasks for that Day, and the Day's Created/Updated Note activity list. The user can navigate between logical Days. Use a compact count/list overview before introducing charts.
+- **Project:** aggregate Completed Task count and valid actual duration by the completed result's historical Project classification, showing relative actual-time allocation in a horizontal bar chart and allowing selection of a category to inspect its completed-result history.
+- **Mode:** the analogous aggregation by historical Mode classification, with Completed Task count, valid actual duration, a horizontal bar chart, and category-to-history drill-down.
+- **Note:** a dedicated cross-Note lifecycle list for all four existing Note kinds. Show each Note's identity/type, original creation date, latest canonical update date, and count of distinct **tracked** update TaskChuteDays after tracking activation. Selecting a Note leads to its date-level Created/Updated activity history. Never imply that untracked pre-activation updates are known or that a zero tracked-day count means no earlier edits.
+
+Project / Mode overview may initially use an all-period aggregate, as illustrated in the approved UI concept. These are **UI/content commitments**, not an approval of exact filters, sorting, grouping edge cases, chart geometry/colors, timestamps, API shapes, or schema. The illustrative numbers/names in the mock are not specification data.
+
+Week / Month Review, exact cross-Day Execution allocation, exact Project/Mode unknown-class handling and broader drill-down behavior remain open as previously documented.
 
 ### 3. Inclusion boundary
 
@@ -100,7 +109,7 @@ D-178 now approves **Day-granularity historical Note activity** as the required 
 
 D-178 does not yet approve:
 
-- exact API/query shape;
+- exact API/query shape and exact detail/filter/sort interactions beyond the approved four-view UI baseline;
 - schema or migration, including the exact physical daily Note activity model and cutover mechanism;
 - cache/materialized aggregate tables;
 - Week / Month UI;
