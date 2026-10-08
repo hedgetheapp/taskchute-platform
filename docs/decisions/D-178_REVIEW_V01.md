@@ -98,7 +98,9 @@ Multiple updates to the same pre-existing Note within one TaskChuteDay count as 
 
 Note activity is assigned to the TaskChuteDay whose canonical interval contains the successful create/update instant, rather than using a midnight-only civil-date rule.
 
-Exact Review presentation of Note activity (counts, title list, drill-down, etc.) remains design work.
+**Approved 2026-10-09 — Monthly/Yearly distinct Updated Notes:** The headline `Updated Notes` count for a selected **month or year** is the number of **distinct canonical Note/Document identities** with at least one **tracked canonical Updated TaskChuteDay** belonging to that selected period, **not the sum of daily Updated counts**. Count each such Note at most once per selected month/year even if it was updated on multiple days or saved many times per day. In Note detail, display the actual **number and dates of distinct tracked Updated TaskChuteDays within the selected period** (e.g. an existing Note updated on October 1, 5 and 9 is **Updated Notes: 1**, **Updated Days: 3** for October). These are different metrics; do not label the per-Note days as extra Notes. Date's monthly/yearly headline and the Note tab must use the same unique-Note authority. Keep daily Created-over-Updated precedence on a single TaskChuteDay. The exact monthly/yearly relationship between Created and Updated when a Note is created and later edited on **different Days of the same period** remains to be decided; do not silently add or exclude it from either bucket without an approved rule. Existing forward-only update tracking remains unchanged: never infer pre-activation Updated Days or treat untracked past edits as zero historical activity.
+
+Exact visual styling, list sort/filter/drill-down navigation and the monthly/yearly Created-versus-Updated overlap rule remain design work; the distinct Updated Notes headline and per-Note updated-day detail semantics above are Approved.
 
 ### 7. Current persistence gap
 
