@@ -23,7 +23,7 @@ Android bottom navigation `Task / Notes / Daily / Review / Settings` で `Review
 
 Note一覧/活動詳細では、対象期間の活動がある**アーカイブ済みStandalone Noteも表示**し、Note種類・タイトルと並んで`アーカイブ済み`状態を明示する。アーカイブ/復元のみはNote本文等の内容更新に含めず、既存Documentの`updated_at`が進んでもReviewのUpdated Dayを増やさない。Noteの開き方・編集可否は既存のarchive Domainルールに従い、Review画面から勝手に復元しない。既存Domain権限でNote/Documentが**完全削除**されたら、過去も含めた日次・月次・年次のReview Note一覧/活動詳細から除外し、Created/Updated Noteの集計もそのNote ID分を再集計して減らす。Review専用の削除済みNote行は作らない。D-103によりProject hard deleteでProject Primary Documentが完全削除された場合も同様（Task/Project履歴の集計ルールは変更しない）。削除自体をUpdated Dayとして記録しない。具体的なactivity物理削除方式とexact visual geometryは未決。
 
-既存Noteの通算`created_at`はそのまま保持するが、過去の作成Instantに対しownerの**保存済みTaskChuteDay intervalがちょうど1件**対応しない場合、日次・月次・年次ReviewのCreated件数・Created活動一覧には入れない。現在のtimezone/boundaryで過去Dayを推測・新設しない。導入後の正しく記録されたUpdated活動はCreated帰属不能でも独立して表示・集計する。見せ方の詳細と新規保存時のDay未確立/重複挙動は後続設計。
+既存Noteの通算`created_at`はそのまま保持するが、過去の作成Instantに対しownerの**保存済みTaskChuteDay intervalがちょうど1件**対応しない場合、日次・月次・年次ReviewのCreated件数・Created活動一覧には入れない。現在のtimezone/boundaryで過去Dayを推測・新設しない。導入後の正しく記録されたUpdated活動はCreated帰属不能でも独立して表示・集計する。見せ方の詳細と保存時のDay重複挙動は後続設計。**現在のNote保存時にDayが0件の場合は、現在Day・必要なSection contextとNote保存・Activity・operationを同一atomic境界で確立するProduct B案をApproved**。通常のNote保存を単にDay未materializedで失敗させず、既存DomainのTask/Section/Routine semanticsを維持する。実現不可・競合等が安全に処理できない場合は実装をSTOPし、判断に戻す。過去Dayを自動作成する許可ではない。
 
 Note更新の履歴保存は、ownerごと・Noteごと・TaskChuteDayごとに最大1件だけ持つ**専用テーブル方式**をApproved。全4 Document kindの成功したcontent-changing updateと同一atomic boundaryで記録し、no-op、archive/restore、deleteをUpdated扱いにしない。既存の完全削除では該当Noteの更新Day行も同一safe atomic delete境界で削除する。既存Noteの更新日backfillや自動履歴間引きは行わない。容量・query負荷は20年相当のfocused synthetic検証で評価してからexact schema/index/FK/migration/cutoverを別Material Decisionとして確定する。
 
