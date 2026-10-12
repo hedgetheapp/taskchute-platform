@@ -578,9 +578,9 @@ async function saveArtifacts() {
 }
 
 function startWranglerDev(wranglerPath, port) {
-  report.commands.push("node <apps/web>/node_modules/wrangler/bin/wrangler.js dev --local --ip 127.0.0.1 --port <ephemeral> --log-level error --config <RUNNER_TEMP>/d178-scratch/wrangler.jsonc --persist-to <RUNNER_TEMP>/d178-scratch/persist");
+  report.commands.push("node <apps/web>/node_modules/wrangler/bin/wrangler.js dev --local --ip 127.0.0.1 --port <ephemeral> --log-level info --config <RUNNER_TEMP>/d178-scratch/wrangler.jsonc --persist-to <RUNNER_TEMP>/d178-scratch/persist");
   const child = spawn(process.execPath, [
-    wranglerPath, "dev", "--local", "--ip", "127.0.0.1", "--port", String(port), "--log-level", "error",
+    wranglerPath, "dev", "--local", "--ip", "127.0.0.1", "--port", String(port), "--log-level", "info",
     "--config", configPath, "--persist-to", persistDirectory,
   ], {
     cwd: repositoryRoot,
@@ -590,8 +590,11 @@ function startWranglerDev(wranglerPath, port) {
   });
   let stdout = "";
   let stderr = "";
-  child.stdout.setEncoding("utf8").on("data", (chunk) => { stdout += chunk; });
-  child.stderr.setEncoding("utf8").on("data", (chunk) => { stderr += chunk; });
+  child.stdout.setEncoding("utf8").on("data", (chunk) => { stdout = (stdout + chunk).slice(-20000); });
+  child.stderr.setEncoding("utf8").on("data", (chunk) => { stderr = (stderr + chunk).slice(-20000); });
+  child.on("error", (error) => {
+    logLines.push(`wrangler dev spawn error: ${sanitize(error?.message ?? error)}`);
+  });
   child.on("close", (code, signal) => {
     logLines.push(`wrangler dev exited (code=${code ?? "null"}, signal=${signal ?? "none"})`);
     if (stdout.trim()) logLines.push(sanitize(stdout));
@@ -602,15 +605,29 @@ function startWranglerDev(wranglerPath, port) {
 
 async function waitForWorker(timeoutMs = 45000) {
   const deadline = Date.now() + timeoutMs;
+  let attempts = 0;
+  let firstHttpFailure = null;
+  let lastObservation = "no health requests completed";
   while (Date.now() < deadline) {
-    if (devProcess.exitCode !== null || devProcess.signalCode !== null) return null;
+    if (devProcess.exitCode !== null || devProcess.signalCode !== null) {
+      logLines.push(`wrangler dev terminated before health was confirmed: ${lastObservation}`);
+      return null;
+    }
+    attempts++;
     try {
       const response = await fetch(`${workerBaseUrl}/health`, { signal: AbortSignal.timeout(1500) });
-      const body = await response.json();
-      if (response.ok && body.status === "PASS") return body;
-    } catch {}
+      const responseText = await response.text();
+      let body = null;
+      try { body = JSON.parse(responseText); } catch {}
+      if (response.ok && body?.status === "PASS") return body;
+      lastObservation = `HTTP ${response.status}; body=${sanitize(responseText.slice(0, 1200))}`;
+      if (!firstHttpFailure) firstHttpFailure = lastObservation;
+    } catch (error) {
+      lastObservation = `fetch failed: ${sanitize(error?.message ?? error)}; cause=${sanitize(error?.cause?.message ?? "")}`;
+    }
     await new Promise((resolveWait) => setTimeout(resolveWait, 250));
   }
+  logLines.push(`Worker health timeout after ${attempts} attempts: last=${lastObservation}; first HTTP failure=${firstHttpFailure ?? "none"}`);
   return null;
 }
 
