@@ -41,6 +41,7 @@ import kotlinx.coroutines.launch
 import com.hedgetheapp.taskchute.today.TodayController
 import com.hedgetheapp.taskchute.today.TodayHttpRepository
 import com.hedgetheapp.taskchute.today.TodayHttpResponse
+import com.hedgetheapp.taskchute.today.TodayDay
 import com.hedgetheapp.taskchute.today.shouldExposeTodayDiagnostic
 import com.hedgetheapp.taskchute.today.TodayScreen
 import com.hedgetheapp.taskchute.today.TaskPlanningController
@@ -64,6 +65,7 @@ import com.hedgetheapp.taskchute.settings.SettingsScreen
 import com.hedgetheapp.taskchute.reminders.TaskReminderScheduler
 import com.hedgetheapp.taskchute.widget.AndroidHomeWidgetIntents
 import com.hedgetheapp.taskchute.review.ReviewScreen
+import com.hedgetheapp.taskchute.review.ReviewDailyMetricsController
 
 class MainActivity : ComponentActivity() {
     private lateinit var controller: AuthController
@@ -77,6 +79,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var dailyController: DailyController
     private lateinit var wearPairingController: PhoneWearPairingController
     private lateinit var taskReminderScheduler: TaskReminderScheduler
+    private lateinit var reviewDailyMetricsController: ReviewDailyMetricsController
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -94,13 +97,19 @@ class MainActivity : ComponentActivity() {
             onUnauthorized = {},
             diagnosticsEnabled = shouldExposeTodayDiagnostic(BuildConfig.DEBUG, BuildConfig.TASKCHUTE_BASE_URL),
         )
+        val onCanonicalDayLoaded: (TodayDay) -> Unit = { day ->
+            taskReminderScheduler.reconcile(day)
+            if (day.isCurrent) AndroidHomeWidgetIntents.requestRefresh(applicationContext)
+        }
+        reviewDailyMetricsController = ReviewDailyMetricsController(
+            loadDay = todayRepository::loadDay,
+            onUnauthorized = controller::restore,
+            onCanonicalCurrentDayLoaded = onCanonicalDayLoaded,
+        )
         todayController = TodayController(
             repository = todayRepository,
             onUnauthorized = controller::restore,
-            onCanonicalDayLoaded = { day ->
-                taskReminderScheduler.reconcile(day)
-                if (day.isCurrent) AndroidHomeWidgetIntents.requestRefresh(applicationContext)
-            },
+            onCanonicalDayLoaded = onCanonicalDayLoaded,
         )
         planningController = TaskPlanningController(
             repository = TaskPlanningHttpRepository { method, path, body -> controller.authenticatedRequest(method, path, body)?.let { TodayHttpResponse(it.status, it.body) } },
@@ -173,7 +182,20 @@ class MainActivity : ComponentActivity() {
                 onAuthFailure = { runOnUiThread { controller.restore() } },
             ),
         )
-        setContent { TaskChuteApp(controller, todayController, planningController, directManipulationController, notesController, settingsController, dailyController, realtimeManager, wearPairingController) }
+        setContent {
+            TaskChuteApp(
+                controller,
+                todayController,
+                planningController,
+                directManipulationController,
+                notesController,
+                settingsController,
+                dailyController,
+                realtimeManager,
+                wearPairingController,
+                reviewDailyMetricsController,
+            )
+        }
     }
 
     override fun onStart() {
@@ -201,6 +223,7 @@ class MainActivity : ComponentActivity() {
         notesController.close()
         settingsController.close()
         dailyController.close()
+        reviewDailyMetricsController.close()
         wearPairingController.close()
         realtimeManager.stop()
         realtimeHttpClient.dispatcher.executorService.shutdown()
@@ -220,6 +243,7 @@ private fun TaskChuteApp(
     dailyController: DailyController,
     realtimeManager: RealtimeConnectionManager,
     wearPairingController: PhoneWearPairingController,
+    reviewDailyMetricsController: ReviewDailyMetricsController,
 ) {
     val state = controller.state
     val appContext = LocalContext.current.applicationContext
@@ -254,6 +278,7 @@ private fun TaskChuteApp(
             dailyController.onRealtimeForeground()
         } else {
             todayController.resetForSessionChange()
+            reviewDailyMetricsController.resetForSessionChange()
             if (authenticatedSessionActive) {
                 notesController.resetForSessionChange()
                 dailyController.resetForSessionChange()
@@ -326,6 +351,7 @@ private fun TaskChuteApp(
                             onNavigateReview = { destination = AndroidDestination.REVIEW },
                         )
                         AndroidDestination.REVIEW -> ReviewScreen(
+                            dailyMetricsController = reviewDailyMetricsController,
                             onNavigateToday = { destination = AndroidDestination.TODAY },
                             onNavigateNotes = { destination = AndroidDestination.NOTES },
                             onNavigateDaily = { destination = AndroidDestination.DAILY },
@@ -409,3 +435,4 @@ private fun Centered(message: String, showProgress: Boolean) {
         if (showProgress) CircularProgressIndicator()
     }
 }
+

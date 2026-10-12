@@ -16,6 +16,8 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -61,7 +63,7 @@ internal enum class ReviewPeriodGranularity(val selectorLabel: String, val menuL
 
 internal data class ReviewPeriodState(
     val granularity: ReviewPeriodGranularity,
-    val anchor: LocalDate,
+    val anchor: LocalDate?,
 )
 
 internal data class ReviewScreenState(
@@ -78,34 +80,39 @@ internal fun selectReviewGranularity(
 ): ReviewScreenState {
     val anchor = when (granularity) {
         ReviewPeriodGranularity.DAILY -> state.period.anchor
-        ReviewPeriodGranularity.MONTHLY -> state.period.anchor.withDayOfMonth(1)
-        ReviewPeriodGranularity.YEARLY -> state.period.anchor.withDayOfYear(1)
+        ReviewPeriodGranularity.MONTHLY -> state.period.anchor?.withDayOfMonth(1)
+        ReviewPeriodGranularity.YEARLY -> state.period.anchor?.withDayOfYear(1)
     }
     return state.copy(period = ReviewPeriodState(granularity, anchor))
 }
 
 internal fun stepReviewPeriod(state: ReviewScreenState, amount: Long): ReviewScreenState {
-    val anchor = when (state.period.granularity) {
-        ReviewPeriodGranularity.DAILY -> state.period.anchor.plusDays(amount)
-        ReviewPeriodGranularity.MONTHLY -> state.period.anchor.plusMonths(amount)
-        ReviewPeriodGranularity.YEARLY -> state.period.anchor.plusYears(amount)
+    val anchor = state.period.anchor?.let { current ->
+        when (state.period.granularity) {
+            ReviewPeriodGranularity.DAILY -> current.plusDays(amount)
+            ReviewPeriodGranularity.MONTHLY -> current.plusMonths(amount)
+            ReviewPeriodGranularity.YEARLY -> current.plusYears(amount)
+        }
     }
     return state.copy(period = state.period.copy(anchor = anchor))
 }
 
-internal fun reviewPeriodLabel(period: ReviewPeriodState): String = when (period.granularity) {
-    ReviewPeriodGranularity.DAILY -> period.anchor.format(DateTimeFormatter.ofPattern("yyyy/MM/dd"))
-    ReviewPeriodGranularity.MONTHLY -> period.anchor.format(DateTimeFormatter.ofPattern("yyyy/MM"))
-    ReviewPeriodGranularity.YEARLY -> period.anchor.format(DateTimeFormatter.ofPattern("yyyy"))
-}
+internal fun reviewPeriodLabel(period: ReviewPeriodState): String = period.anchor?.let { anchor ->
+    when (period.granularity) {
+        ReviewPeriodGranularity.DAILY -> anchor.format(DateTimeFormatter.ofPattern("yyyy/MM/dd"))
+        ReviewPeriodGranularity.MONTHLY -> anchor.format(DateTimeFormatter.ofPattern("yyyy/MM"))
+        ReviewPeriodGranularity.YEARLY -> anchor.format(DateTimeFormatter.ofPattern("yyyy"))
+    }
+} ?: "—"
 
 @Composable
-fun ReviewScreen(
+internal fun ReviewScreen(
+    dailyMetricsController: ReviewDailyMetricsController,
     onNavigateToday: () -> Unit,
     onNavigateNotes: () -> Unit,
     onNavigateDaily: () -> Unit,
     onNavigateSettings: () -> Unit,
-    initialAnchor: LocalDate = LocalDate.now(),
+    initialAnchor: LocalDate? = null,
 ) {
     var state by remember(initialAnchor) {
         mutableStateOf(
@@ -114,6 +121,37 @@ fun ReviewScreen(
                 period = ReviewPeriodState(ReviewPeriodGranularity.DAILY, initialAnchor),
             ),
         )
+    }
+    val dailyMetricsState = dailyMetricsController.state
+
+    fun revalidateDailySelection(next: ReviewScreenState) {
+        if (next.selectedView == ReviewPrimaryView.DATE
+            && next.period.granularity == ReviewPeriodGranularity.DAILY
+        ) {
+            dailyMetricsController.loadDaily(next.period.anchor?.toString(), debounceMillis = 250)
+        } else if (next.period.anchor != null) {
+            dailyMetricsController.cancelActiveLoad()
+        }
+    }
+
+    androidx.compose.runtime.LaunchedEffect(dailyMetricsController) {
+        dailyMetricsController.loadDaily(initialAnchor?.toString())
+    }
+    androidx.compose.runtime.LaunchedEffect(dailyMetricsState.currentLogicalDate) {
+        if (state.period.anchor == null) {
+            val currentDate = dailyMetricsState.currentLogicalDate?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+            if (currentDate != null) {
+                val anchor = when (state.period.granularity) {
+                    ReviewPeriodGranularity.DAILY -> currentDate
+                    ReviewPeriodGranularity.MONTHLY -> currentDate.withDayOfMonth(1)
+                    ReviewPeriodGranularity.YEARLY -> currentDate.withDayOfYear(1)
+                }
+                state = state.copy(period = state.period.copy(anchor = anchor))
+            }
+        }
+    }
+    androidx.compose.runtime.DisposableEffect(dailyMetricsController) {
+        onDispose { dailyMetricsController.cancelActiveLoad() }
     }
 
     Scaffold(
@@ -136,40 +174,132 @@ fun ReviewScreen(
             Text("Review", style = MaterialTheme.typography.headlineMedium, color = TaskChuteColors.PrimaryText)
             ReviewPrimaryTabs(
                 selectedView = state.selectedView,
-                onSelect = { state = selectReviewView(state, it) },
+                onSelect = {
+                    val next = selectReviewView(state, it)
+                    state = next
+                    revalidateDailySelection(next)
+                },
             )
             ReviewPeriodControls(
                 period = state.period,
-                onSelectGranularity = { state = selectReviewGranularity(state, it) },
-                onPrevious = { state = stepReviewPeriod(state, -1) },
-                onNext = { state = stepReviewPeriod(state, 1) },
+                onSelectGranularity = {
+                    val next = selectReviewGranularity(state, it)
+                    state = next
+                    revalidateDailySelection(next)
+                },
+                onPrevious = {
+                    val next = stepReviewPeriod(state, -1)
+                    state = next
+                    revalidateDailySelection(next)
+                },
+                onNext = {
+                    val next = stepReviewPeriod(state, 1)
+                    state = next
+                    revalidateDailySelection(next)
+                },
             )
             Surface(
                 modifier = Modifier.fillMaxWidth().weight(1f),
                 shape = RoundedCornerShape(18.dp),
                 color = TaskChuteColors.Surface,
             ) {
-                Column(
+                Box(
                     modifier = Modifier.fillMaxSize().padding(20.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Text(
-                        state.selectedView.contentTitle,
-                        style = MaterialTheme.typography.titleLarge,
-                        color = TaskChuteColors.PrimaryText,
-                        textAlign = TextAlign.Center,
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    Text(
-                        "集計データは次の実装で対応します",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TaskChuteColors.SecondaryText,
-                        textAlign = TextAlign.Center,
-                    )
+                    when (state.selectedView) {
+                        ReviewPrimaryView.DATE -> if (state.period.granularity == ReviewPeriodGranularity.DAILY) {
+                            ReviewDailyMetricsContent(
+                                state = dailyMetricsState,
+                                onRetry = { dailyMetricsController.loadDaily(state.period.anchor?.toString()) },
+                            )
+                        } else {
+                            ReviewCenteredMessage("月次・年次の集計はまだ接続されていません")
+                        }
+                        else -> ReviewPlaceholderContent(state.selectedView.contentTitle)
+                    }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ReviewDailyMetricsContent(
+    state: ReviewDailyMetricsUiState,
+    onRetry: () -> Unit,
+) {
+    when (state.status) {
+        ReviewDailyMetricsStatus.CONTENT,
+        ReviewDailyMetricsStatus.EMPTY,
+        -> {
+            val metrics = state.metrics ?: return ReviewCenteredMessage("集計データを確認できませんでした")
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(18.dp),
+            ) {
+                if (state.status == ReviewDailyMetricsStatus.EMPTY) {
+                    Text("この日のTaskChuteDayにEntryはありません", color = TaskChuteColors.SecondaryText)
+                }
+                ReviewMetricRow("Completed（完了）", "${metrics.completedCount} 件")
+                ReviewMetricRow("Unexecuted（Planned）", "${metrics.unexecutedCount} 件")
+                ReviewMetricRow("Completed actual duration", formatReviewDuration(metrics.completedActualDurationSeconds))
+            }
+        }
+        ReviewDailyMetricsStatus.UNESTABLISHED -> ReviewCenteredMessage(state.message ?: "この日はまだ記録されていません。")
+        ReviewDailyMetricsStatus.FUTURE_UNAVAILABLE -> ReviewCenteredMessage(state.message ?: "未来日の集計はまだ接続されていません。")
+        ReviewDailyMetricsStatus.ERROR -> Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(state.message ?: "集計データを読み込めませんでした。", color = TaskChuteColors.SecondaryText, textAlign = TextAlign.Center)
+            Button(onClick = onRetry) { Text("再試行") }
+        }
+        ReviewDailyMetricsStatus.AUTH_REQUIRED -> ReviewLoadingMessage(state.message ?: "認証状態を確認しています…")
+        ReviewDailyMetricsStatus.IDLE,
+        ReviewDailyMetricsStatus.LOADING,
+        -> ReviewLoadingMessage("日次集計を読み込んでいます")
+    }
+}
+
+@Composable
+private fun ReviewMetricRow(label: String, value: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(label, style = MaterialTheme.typography.titleMedium, color = TaskChuteColors.SecondaryText)
+        Text(value, style = MaterialTheme.typography.headlineSmall, color = TaskChuteColors.PrimaryText)
+    }
+}
+
+@Composable
+private fun ReviewLoadingMessage(message: String) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        CircularProgressIndicator()
+        Text(message, style = MaterialTheme.typography.bodyMedium, color = TaskChuteColors.SecondaryText, textAlign = TextAlign.Center)
+    }
+}
+
+@Composable
+private fun ReviewCenteredMessage(message: String) {
+    Text(
+        message,
+        style = MaterialTheme.typography.bodyMedium,
+        color = TaskChuteColors.SecondaryText,
+        textAlign = TextAlign.Center,
+    )
+}
+
+@Composable
+private fun ReviewPlaceholderContent(title: String) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text(title, style = MaterialTheme.typography.titleLarge, color = TaskChuteColors.PrimaryText, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(10.dp))
+        Text("集計データは次の実装で対応します", style = MaterialTheme.typography.bodyMedium, color = TaskChuteColors.SecondaryText, textAlign = TextAlign.Center)
     }
 }
 
@@ -267,6 +397,7 @@ private fun ReviewPeriodControls(
         ) {
             IconButton(
                 onClick = onPrevious,
+                enabled = period.anchor != null,
                 modifier = Modifier.size(36.dp).semantics { contentDescription = "Previous period" },
             ) {
                 Icon(TaskChuteIcons.ChevronLeft, contentDescription = null, modifier = Modifier.size(20.dp), tint = TaskChuteColors.SecondaryText)
@@ -284,6 +415,7 @@ private fun ReviewPeriodControls(
             )
             IconButton(
                 onClick = onNext,
+                enabled = period.anchor != null,
                 modifier = Modifier.size(36.dp).semantics { contentDescription = "Next period" },
             ) {
                 Icon(TaskChuteIcons.ChevronRight, contentDescription = null, modifier = Modifier.size(20.dp), tint = TaskChuteColors.SecondaryText)
@@ -291,3 +423,4 @@ private fun ReviewPeriodControls(
         }
     }
 }
+
