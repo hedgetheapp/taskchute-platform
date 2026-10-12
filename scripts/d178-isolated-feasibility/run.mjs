@@ -620,7 +620,7 @@ async function main() {
   const config = {
     name: "d178-isolated-d1-fixture",
     main: workerPath,
-    compatibility_date: "2026-10-10",
+    compatibility_date: "2026-08-22",
     workers_dev: false,
     d1_databases: [{
       binding: "DB",
