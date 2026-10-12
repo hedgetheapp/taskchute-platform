@@ -97,7 +97,7 @@ async function runGuardCostCase(db, sampleSize) {
   const guardedOwner = `cost-guarded-${sampleSize}`;
   const payload = JSON.stringify(Array.from({ length: sampleSize }, (_, index) => index));
   const seedSql = (table) => `INSERT INTO ${table} (${baseColumns})
-    SELECT 'cost-' || CAST(value AS TEXT), ?,
+    SELECT 'cost-' || ? || '-' || CAST(value AS TEXT), ?,
       date('1990-01-01', printf('+%d days', CAST(value AS INTEGER))),
       strftime('%Y-%m-%dT%H:%M:%fZ', '1990-01-01', printf('+%d days', CAST(value AS INTEGER))),
       strftime('%Y-%m-%dT%H:%M:%fZ', '1990-01-01', printf('+%d days', CAST(value AS INTEGER)), '+1 hour'),
@@ -109,7 +109,7 @@ async function runGuardCostCase(db, sampleSize) {
     ["guard_cost_days", guardedOwner, "guarded"],
   ]) {
     const sql = seedSql(table);
-    const result = await db.prepare(sql).bind(owner, createdAt, payload).run();
+    const result = await db.prepare(sql).bind(sampleSize, owner, createdAt, payload).run();
     evidence.push({
       label: `seed-${label}-${sampleSize}`,
       sql,
@@ -179,7 +179,7 @@ async function runGuardCostCase(db, sampleSize) {
     `${sampleDate}T00:30:00.000Z`, "Etc/UTC", 0, "compatible", 0, createdAt,
   ];
   const immutableSql = "UPDATE guard_cost_days SET start_instant = ?, end_instant = ? WHERE app_user_id = ? AND id = ?";
-  const immutableValues = [`${sampleDate}T02:00:00.000Z`, `${sampleDate}T03:00:00.000Z`, guardedOwner, `cost-${sampleSize - 1}`];
+  const immutableValues = [`${sampleDate}T02:00:00.000Z`, `${sampleDate}T03:00:00.000Z`, guardedOwner, `cost-${sampleSize}-${sampleSize - 1}`];
   const replaceSql = `INSERT OR REPLACE INTO guard_cost_days (${baseColumns}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
   const replaceValues = [
     `cost-replacement-${sampleSize}`, guardedOwner, sampleDate, `${sampleDate}T02:00:00.000Z`,
@@ -226,11 +226,11 @@ async function runGuardCostCase(db, sampleSize) {
     (SELECT start_instant FROM guard_cost_days WHERE app_user_id = ? AND id = ?) AS original_start,
     (SELECT end_instant FROM guard_cost_days WHERE app_user_id = ? AND id = ?) AS original_end`;
   const stateValues = (attemptedId) => [guardedOwner, guardedOwner, guardedOwner, attemptedId,
-    guardedOwner, attemptedId, guardedOwner, `cost-${sampleSize - 1}`, guardedOwner, `cost-${sampleSize - 1}`];
+    guardedOwner, attemptedId, guardedOwner, `cost-${sampleSize}-${sampleSize - 1}`, guardedOwner, `cost-${sampleSize}-${sampleSize - 1}`];
   await checkRejectedAttempt("guarded-overlap-rejection", overlapSql, overlapValues,
     "synthetic day interval overlap", stateSql, stateValues(`cost-overlap-${sampleSize}`));
   await checkRejectedAttempt("guarded-immutability-rejection", immutableSql, immutableValues,
-    "synthetic established day identity is immutable", stateSql, stateValues(`cost-${sampleSize - 1}`));
+    "synthetic established day identity is immutable", stateSql, stateValues(`cost-${sampleSize}-${sampleSize - 1}`));
   const fenceSql = `SELECT d.id, d.logical_date, d.start_instant, d.end_instant, f.day_id,
     (SELECT COUNT(*) FROM guard_cost_days WHERE app_user_id = ?) AS day_count,
     (SELECT COUNT(*) FROM guard_cost_fences WHERE app_user_id = ?) AS fence_count

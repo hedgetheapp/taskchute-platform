@@ -141,13 +141,15 @@ async function postCase(name) {
     if (result.httpStatus !== 200 && result.body.status !== "FAIL") {
       return { name, status: "NOT_RUN", reason: `unexpected HTTP ${result.httpStatus}`, response: result.body };
     }
-    return result.body;
+    return { ...result.body, name };
   } catch (error) {
     return { name, status: "NOT_RUN", reason: sanitize(error?.message ?? error) };
   }
 }
 
 async function postRacePair(mode, raceKey, requestRows, setup = null) {
+  // SQLite IDs are global: scope every synthetic request ID to its race, not just its owner.
+  requestRows = requestRows.map((row) => ({ ...row, requestId: `${raceKey}-${row.requestId}` }));
   let setupEvidence = null;
   if (setup) {
     try {
