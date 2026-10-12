@@ -43,6 +43,7 @@ fun DailyScreen(
     onNavigateToday: () -> Unit,
     onNavigateNotes: () -> Unit,
     onNavigateSettings: () -> Unit,
+    onNavigateReview: () -> Unit = {},
 ) {
     val state = controller.state
     val cursorIdentity = dailyCursorEditorIdentity(state)
@@ -88,6 +89,7 @@ fun DailyScreen(
                 selected = AndroidDestination.DAILY,
                 onToday = { leave(onNavigateToday) },
                 onNotes = { leave(onNavigateNotes) },
+                onReview = { leave(onNavigateReview) },
                 onDaily = { },
                 onSettings = { leave(onNavigateSettings) },
             )

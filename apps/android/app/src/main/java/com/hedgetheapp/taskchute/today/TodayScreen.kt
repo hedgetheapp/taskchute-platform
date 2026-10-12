@@ -186,6 +186,7 @@ fun TodayScreen(
     directManipulationController: TodayDirectManipulationController? = null,
     onOpenTaskNote: (TodayTask) -> Unit = {},
     taskNoteController: NotesController? = null,
+    onNavigateReview: () -> Unit = {},
 ) {
     val state = controller.state
     val planningState = planningController?.state ?: TaskPlanningUiState()
@@ -302,6 +303,7 @@ fun TodayScreen(
                     onSettings = onNavigateSettings,
                     onNotes = onNavigateNotes,
                     onDaily = onNavigateDaily,
+                    onReview = onNavigateReview,
                 )
             }
         },

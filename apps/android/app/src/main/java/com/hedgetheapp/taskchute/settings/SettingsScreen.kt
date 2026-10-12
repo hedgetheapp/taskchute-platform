@@ -65,6 +65,7 @@ fun SettingsScreen(
     onNavigateNotes: () -> Unit,
     onSignOut: () -> Unit,
     onNavigateDaily: () -> Unit = {},
+    onNavigateReview: () -> Unit = {},
 ) {
     val state = controller.state
     var leaveHome by remember { mutableStateOf(false) }
@@ -77,6 +78,7 @@ fun SettingsScreen(
                 onToday = onNavigateToday,
                 onNotes = onNavigateNotes,
                 onDaily = onNavigateDaily,
+                onReview = onNavigateReview,
                 onSettings = {},
             )
         },

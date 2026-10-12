@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -33,7 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hedgetheapp.taskchute.R
 
-enum class AndroidDestination { TODAY, NOTES, DAILY, SETTINGS }
+enum class AndroidDestination { TODAY, NOTES, DAILY, REVIEW, SETTINGS }
 
 object TaskChuteColors {
     val Background = Color(0xFF191919)
@@ -85,6 +86,7 @@ fun AndroidNavigationBar(
     onNotes: () -> Unit,
     onSettings: () -> Unit = {},
     onDaily: () -> Unit = {},
+    onReview: () -> Unit = {},
 ) {
     Column(
         modifier = Modifier.fillMaxWidth().navigationBarsPadding().background(TaskChuteColors.Background),
@@ -93,6 +95,7 @@ fun AndroidNavigationBar(
             AndroidNavigationItem(selected == AndroidDestination.TODAY, "Task", R.drawable.android_footer_task_alt, 20.dp, 20.dp, onToday, "Task", Modifier.weight(1f))
             AndroidNavigationItem(selected == AndroidDestination.NOTES, "Notes", R.drawable.android_footer_description, 16.dp, 20.dp, onNotes, "ノート一覧", Modifier.weight(1f))
             AndroidNavigationItem(selected == AndroidDestination.DAILY, "Daily", R.drawable.android_footer_edit_note, 20.dp, 20.dp, onDaily, "Daily", Modifier.weight(1f))
+            AndroidNavigationItem(selected == AndroidDestination.REVIEW, "Review", R.drawable.android_footer_analytics, 20.dp, 20.dp, onReview, "Review", Modifier.weight(1f))
             AndroidNavigationItem(selected == AndroidDestination.SETTINGS, "Settings", R.drawable.android_footer_settings, 20.dp, 20.dp, onSettings, "Settings", Modifier.weight(1f))
         }
     }
@@ -114,7 +117,7 @@ private fun AndroidNavigationItem(
         contentAlignment = Alignment.TopCenter,
     ) {
         Box(
-            modifier = Modifier.width(82.dp).height(36.dp).clip(RoundedCornerShape(18.dp)).background(if (selected) Color(0xFF2F2F2D) else Color.Transparent),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp).height(36.dp).clip(RoundedCornerShape(18.dp)).background(if (selected) Color(0xFF2F2F2D) else Color.Transparent),
             contentAlignment = Alignment.Center,
         ) {
             Icon(painter = painterResource(iconRes), contentDescription = null, modifier = Modifier.height(iconHeight).width(iconWidth), tint = if (selected) TaskChuteColors.PrimaryText else TaskChuteColors.SecondaryText)

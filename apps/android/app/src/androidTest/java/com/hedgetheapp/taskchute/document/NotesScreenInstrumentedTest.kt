@@ -138,6 +138,24 @@ class NotesScreenInstrumentedTest {
     }
 
     @Test
+    fun reviewFooterWaitsForNotesAutosaveBeforeNavigating() {
+        val repository = FakeRepository()
+        val reviewNavigations = AtomicInteger()
+        controller = NotesController(repository, onUnauthorized = {})
+        composeRule.setContent { MaterialTheme { notesScreen(onNavigateReview = { reviewNavigations.incrementAndGet() }) } }
+
+        composeRule.onNodeWithContentDescription("ノートを新規作成").performClick()
+        composeRule.waitUntil(10_000) { controller?.state?.editor?.document != null }
+        composeRule.runOnIdle { controller!!.updateBody("footer flush") }
+        composeRule.onNodeWithContentDescription("Review").performClick()
+
+        composeRule.waitUntil(10_000) {
+            repository.updateCalls.get() == 1 && controller?.state?.editor == null && reviewNavigations.get() == 1
+        }
+        assertEquals(1, repository.updateCalls.get())
+    }
+
+    @Test
     fun notesFooterReturnsFromEditorToTheNotesListAfterSafeFlush() {
         val repository = FakeRepository()
         controller = NotesController(repository, onUnauthorized = {})
@@ -150,6 +168,25 @@ class NotesScreenInstrumentedTest {
 
         composeRule.waitUntil(10_000) { repository.updateCalls.get() == 1 && controller?.state?.editor == null }
         assertEquals(1, repository.updateCalls.get())
+    }
+
+    @Test
+    fun reviewNavigationFromDirtyNotesWaitsForDiscardConfirmation() {
+        val repository = FakeRepository().apply { failUpdates = true }
+        val reviewNavigations = AtomicInteger()
+        controller = NotesController(repository, onUnauthorized = {})
+        composeRule.setContent { MaterialTheme { notesScreen(onNavigateReview = { reviewNavigations.incrementAndGet() }) } }
+
+        composeRule.onNodeWithContentDescription("ノートを新規作成").performClick()
+        composeRule.waitUntil(10_000) { controller?.state?.editor?.document != null }
+        composeRule.runOnIdle { controller!!.updateBody("unsaved before Review") }
+        composeRule.waitUntil(10_000) { controller?.state?.editor?.errorMessage == "failure" }
+
+        composeRule.onNodeWithContentDescription("Review").performClick()
+        composeRule.onNodeWithText("変更を破棄しますか？").assertIsDisplayed()
+        assertEquals(0, reviewNavigations.get())
+        composeRule.onNodeWithText("破棄して移動").performClick()
+        composeRule.waitUntil(5_000) { controller?.state?.editor == null && reviewNavigations.get() == 1 }
     }
 
     @Test
@@ -492,10 +529,11 @@ class NotesScreenInstrumentedTest {
     }
 
     @Composable
-    private fun notesScreen() = NotesScreen(
+    private fun notesScreen(onNavigateReview: () -> Unit = {}) = NotesScreen(
         controller = requireNotNull(controller),
         onNavigateToday = {},
         onNavigateSettings = {},
+        onNavigateReview = onNavigateReview,
     )
 
     private class FakeRepository : AndroidDocumentRepository {

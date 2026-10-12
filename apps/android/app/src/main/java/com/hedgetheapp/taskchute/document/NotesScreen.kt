@@ -92,6 +92,7 @@ fun NotesScreen(
     onNavigateToday: () -> Unit,
     onNavigateSettings: () -> Unit,
     onNavigateDaily: () -> Unit = {},
+    onNavigateReview: () -> Unit = {},
 ) {
     val state = controller.state
     val density = LocalDensity.current
@@ -152,6 +153,7 @@ fun NotesScreen(
                     onToday = { attemptLeave(onNavigateToday) },
                     onNotes = { attemptLeave {} },
                     onDaily = { attemptLeave(onNavigateDaily) },
+                    onReview = { attemptLeave(onNavigateReview) },
                     onSettings = { attemptLeave(onNavigateSettings) },
                 )
             }

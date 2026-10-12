@@ -13,6 +13,7 @@ import com.hedgetheapp.taskchute.today.TodayResult
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import java.util.concurrent.atomic.AtomicInteger
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -59,14 +60,60 @@ class DailyScreenInstrumentedTest {
         assertEquals("2026-09-29", controller?.state?.selectedDate)
     }
 
+    @Test
+    fun reviewNavigationFromDirtyDailyWaitsForSaveConfirmation() {
+        val repository = FakeRepository()
+        val reviewNavigations = AtomicInteger()
+        controller = DailyController(
+            repository = repository,
+            loadDay = { TodayResult.Success(day()) },
+            onUnauthorized = {},
+        )
+        composeRule.setContent {
+            MaterialTheme {
+                DailyScreen(
+                    controller = requireNotNull(controller),
+                    onNavigateToday = {},
+                    onNavigateNotes = {},
+                    onNavigateSettings = {},
+                    onNavigateReview = { reviewNavigations.incrementAndGet() },
+                )
+            }
+        }
+
+        composeRule.waitUntil(10_000) { controller?.state?.document != null }
+        composeRule.runOnIdle { controller!!.updateBody("unsaved before Review") }
+        composeRule.onNodeWithContentDescription("Review").performClick()
+        composeRule.onNodeWithText("保存して移動しますか？").assertIsDisplayed()
+        assertEquals(0, reviewNavigations.get())
+        composeRule.onNodeWithText("保存して移動").performClick()
+        composeRule.waitUntil(10_000) { repository.updateCalls.get() == 1 && reviewNavigations.get() == 1 }
+        assertEquals("unsaved before Review", repository.lastUpdateBody)
+    }
+
     private class FakeRepository : DailyDocumentRepository {
+        val updateCalls = AtomicInteger()
+        var lastUpdateBody: String? = null
+
         override fun listDaily() = DailyListResult.Success(listOf(AndroidDailyDocumentSummary("day-1", "2026-09-29", "doc-1")))
 
         override fun fetchDaily(documentId: String) = DailyResult.Success(AndroidDailyDocument(documentId, "day-1", "2026-09-29", "Daily body", 0))
 
         override fun ensureDaily(request: DailyEnsureRequest) = error("unexpected ensure")
 
-        override fun updateDaily(request: DailyUpdateRequest) = error("unused")
+        override fun updateDaily(request: DailyUpdateRequest): DailyResult {
+            updateCalls.incrementAndGet()
+            lastUpdateBody = request.markdownBody
+            return DailyResult.Success(
+                AndroidDailyDocument(
+                    request.documentId,
+                    request.taskchuteDayId,
+                    "2026-09-29",
+                    request.markdownBody,
+                    request.expectedRevision + 1,
+                ),
+            )
+        }
     }
 
     private companion object {

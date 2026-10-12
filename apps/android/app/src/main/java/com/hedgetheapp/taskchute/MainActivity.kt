@@ -63,6 +63,7 @@ import com.hedgetheapp.taskchute.settings.SettingsHttpRepository
 import com.hedgetheapp.taskchute.settings.SettingsScreen
 import com.hedgetheapp.taskchute.reminders.TaskReminderScheduler
 import com.hedgetheapp.taskchute.widget.AndroidHomeWidgetIntents
+import com.hedgetheapp.taskchute.review.ReviewScreen
 
 class MainActivity : ComponentActivity() {
     private lateinit var controller: AuthController
@@ -296,6 +297,7 @@ private fun TaskChuteApp(
                             onNavigateSettings = { destination = AndroidDestination.SETTINGS },
                             onNavigateNotes = { destination = AndroidDestination.NOTES },
                             onNavigateDaily = { destination = AndroidDestination.DAILY },
+                            onNavigateReview = { destination = AndroidDestination.REVIEW },
                             directManipulationController = directManipulationController,
                             taskNoteController = notesController,
                             onOpenTaskNote = { task -> task.taskId?.let { notesController.openTaskPrimary(it, task.title, task.primaryDocumentId) } },
@@ -306,6 +308,7 @@ private fun TaskChuteApp(
                             onNavigateToday = { destination = AndroidDestination.TODAY },
                             onNavigateNotes = { destination = AndroidDestination.NOTES },
                             onNavigateDaily = { destination = AndroidDestination.DAILY },
+                            onNavigateReview = { destination = AndroidDestination.REVIEW },
                             onSignOut = signOut,
                         )
                         AndroidDestination.NOTES -> NotesScreen(
@@ -313,11 +316,19 @@ private fun TaskChuteApp(
                             onNavigateToday = { destination = AndroidDestination.TODAY },
                             onNavigateSettings = { destination = AndroidDestination.SETTINGS },
                             onNavigateDaily = { destination = AndroidDestination.DAILY },
+                            onNavigateReview = { destination = AndroidDestination.REVIEW },
                         )
                         AndroidDestination.DAILY -> DailyScreen(
                             controller = dailyController,
                             onNavigateToday = { destination = AndroidDestination.TODAY },
                             onNavigateNotes = { destination = AndroidDestination.NOTES },
+                            onNavigateSettings = { destination = AndroidDestination.SETTINGS },
+                            onNavigateReview = { destination = AndroidDestination.REVIEW },
+                        )
+                        AndroidDestination.REVIEW -> ReviewScreen(
+                            onNavigateToday = { destination = AndroidDestination.TODAY },
+                            onNavigateNotes = { destination = AndroidDestination.NOTES },
+                            onNavigateDaily = { destination = AndroidDestination.DAILY },
                             onNavigateSettings = { destination = AndroidDestination.SETTINGS },
                         )
                     }
