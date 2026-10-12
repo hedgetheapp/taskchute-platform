@@ -2165,7 +2165,7 @@ Remote smoke harnessの前提誤りにより追加test dataとsessionが残っ�
 | HISTORY-01 | History | Task / Project等の現在metadata変更で過去Executionのhistorical meaningを黙って再分類しない | Approved (D-016) | NOT_IMPLEMENTED |
 | HISTORY-02 | History | historical reference中のentityをunsafe hard deleteしてfactを参照不能にしない | Approved (D-016) | NOT_IMPLEMENTED |
 
-Cross-day lifecycle testでは、前日Entryのactive Executionを翌TaskChuteDayでも同一Executionとして保持し、分割せずCompleteできることをPASSしている。ただしlogical day overlapによるReview / aggregation queryは未実装のため`CORE-DAY-04`全体はPASSへ昇格しない。
+Cross-day lifecycle testでは、前日Entryのactive Executionを翌TaskChuteDayでも同一Executionとして保持し、分割せずCompleteできることをPASSしている。D-178 Android Date daily sliceでは、選択した1 Dayのcanonicalなper-Entry `execution_summary.completed_duration_seconds`を読み、全durationをowner Dayへ集計する。logical Day boundary上のoverlap時間を複数Dayへ配賦するqueryは実装していないため、`CORE-DAY-04`全体は引き続き`NOT_IMPLEMENTED`であり、PASSへ昇格しない。
 
 ### Day Navigation v0.1 verification contract
 
