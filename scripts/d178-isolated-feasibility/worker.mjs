@@ -97,7 +97,7 @@ async function runGuardCostCase(db, sampleSize) {
   const guardedOwner = `cost-guarded-${sampleSize}`;
   const payload = JSON.stringify(Array.from({ length: sampleSize }, (_, index) => index));
   const seedSql = (table) => `INSERT INTO ${table} (${baseColumns})
-    SELECT 'cost-' || ? || '-' || CAST(value AS TEXT), ?,
+    SELECT 'cost-' || CAST(? AS INTEGER) || '-' || CAST(value AS TEXT), ?,
       date('1990-01-01', printf('+%d days', CAST(value AS INTEGER))),
       strftime('%Y-%m-%dT%H:%M:%fZ', '1990-01-01', printf('+%d days', CAST(value AS INTEGER))),
       strftime('%Y-%m-%dT%H:%M:%fZ', '1990-01-01', printf('+%d days', CAST(value AS INTEGER)), '+1 hour'),
