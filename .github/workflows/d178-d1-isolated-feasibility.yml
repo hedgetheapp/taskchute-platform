@@ -1,0 +1,56 @@
+name: D-178 isolated local D1 feasibility
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: d178-isolated-d1-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  isolated-d1:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.22.3
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Seed sanitized artifact before dependency installation
+        env:
+          D178_GITHUB_SHA: ${{ github.sha }}
+          D178_GITHUB_RUN_ID: ${{ github.run_id }}
+          D178_GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
+          D178_GITHUB_EVENT_NAME: ${{ github.event_name }}
+        run: node scripts/d178-isolated-feasibility/run.mjs --metadata-only
+
+      - name: Install the locked Wrangler runtime
+        run: npm ci --prefix apps/web
+
+      - name: Run synthetic local D1 feasibility cases
+        env:
+          D178_GITHUB_SHA: ${{ github.sha }}
+          D178_GITHUB_RUN_ID: ${{ github.run_id }}
+          D178_GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
+          D178_GITHUB_EVENT_NAME: ${{ github.event_name }}
+        run: node scripts/d178-isolated-feasibility/run.mjs
+
+      - name: Upload sanitized D1 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: d178-isolated-d1-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/d178-isolated-d1-artifact
+          if-no-files-found: warn
+          retention-days: 7
