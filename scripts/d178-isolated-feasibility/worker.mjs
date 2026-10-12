@@ -648,8 +648,10 @@ export default {
     const url = new URL(request.url);
     try {
       if (request.method === "GET" && url.pathname === "/health") {
-        const version = await env.DB.prepare("SELECT sqlite_version() AS sqlite_version").first();
-        return json({ status: "PASS", sqliteVersion: version?.sqlite_version ?? null });
+        const probe = await env.DB.prepare("SELECT 1 AS healthy").first();
+        if (probe?.healthy !== 1) return json({ status: "FAIL", error: "D1 health probe did not return 1" }, 503);
+        return json({ status: "PASS", sqliteVersion: null,
+          sqliteVersionStatus: "NOT_AVAILABLE: sqlite_version() is not authorized via D1 Worker API" });
       }
       if (request.method === "POST" && url.pathname === "/case") {
         const body = await request.json();
