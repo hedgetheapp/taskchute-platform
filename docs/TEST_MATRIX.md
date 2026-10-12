@@ -1,3 +1,15 @@
+## D-178 Android Review first vertical slice — 2026-10-12
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| D178-REVIEW-NAV | Authenticated Android navigation and five-item footer | Show Task / Notes / Daily / Review / Settings in the approved order with accessible selection; route between existing destinations and Review | `a3a5e27799482762a2993cb5480a50df1ad452d6`; `AndroidNavigationBarInstrumentedTest` updated for five destinations, selected semantics, and 320dp width; Review route / footer instrumentation compiles. Exact-SHA [CI run 38233166147](https://github.com/hedgetheapp/taskchute-platform/actions/runs/38233166147) passed. | PASS / ANDROID COMPILE + EXACT-SHA CI; UI RUNTIME NOT_RUN |
+| D178-REVIEW-PERIOD | Shared Review view and period state | Date / Project / Mode / Note retain one daily/monthly/yearly granularity and period anchor while switching views; no fabricated metrics | `ReviewPeriodStateTest` `2 / 2 PASS`; `ReviewScreenInstrumentedTest` compiles; placeholder contains no metric values. | PASS / FOCUSED JVM + ANDROID TEST COMPILE |
+| D178-REVIEW-LEAVE-GUARD | Notes / Daily safe navigation | Selecting Review from Notes or Daily must use existing autosave / save / discard guards | `NotesScreenInstrumentedTest` covers Review after flush and explicit discard; `DailyScreenInstrumentedTest` covers save confirmation before Review callback. Both instrumentation sources compile; device runtime was unavailable. | PASS / TEST COMPILE; RUNTIME NOT_RUN |
+| D178-REVIEW-BUILD-CI-APK | Local build and exact-SHA signed Phone artifact | Build Android app and instrumentation source; verify signed nonprod Phone APK for the implementation SHA | Local `:app:compileDebugKotlin`, `:app:compileDebugAndroidTestKotlin`, `:app:assembleDebug`, and `git diff --check` pass. Exact-SHA CI `a3a5e27799482762a2993cb5480a50df1ad452d6` passed. Phone artifact `taskchute-android-debug-a3a5e27799482762a2993cb5480a50df1ad452d6`, [artifact ZIP](https://api.github.com/repos/hedgetheapp/taskchute-platform/actions/artifacts/11739785946/zip), SHA-256 `3947c12508d2cd6d8ed7afbc7d1b4a1c0563354ec05303abbf134f1475596dd4`. | PASS |
+| D178-REVIEW-RUNTIME | Phone emulator / device review | Run affected Android instrumentation and review the matching APK on Galaxy S23 | `adb` server could not start; Android SDK emulator executable and `TaskChute_API33` AVD are unavailable. `scripts/android-qa.ps1` runtime was not run. Galaxy S23 and Product verification remain NOT_RUN. | NOT_RUN / ENV_BLOCKED; PRODUCT VERIFIED NO; RELEASED NO |
+
+Scope stayed Android UI/navigation only. No Review API/Worker, Note activity persistence, Day guard/schema/migration, Web/Wear behavior, sample data, or production mutation was introduced. Web/Worker CI was skipped by Android-only change classification.
+
 ## D-178 isolated Wrangler-local D1 feasibility — 2026-10-12
 
 | ID | Area | Requirement | Evidence | Status |
