@@ -42,11 +42,13 @@ class ReviewDailyMetricsProjectionTest {
         val completed = task(
             id = "entry-crossing-midnight",
             state = LifecycleState.COMPLETED,
+            // The server summary represents two valid Execution intervals totaling two hours;
+            // the wall-clock span is four hours and must not be used as the actual duration.
             actual = 7_200,
             estimate = 1,
         ).copy(
             firstStartedAt = "2026-10-12T23:00:00Z",
-            lastEndedAt = "2026-10-13T01:00:00Z",
+            lastEndedAt = "2026-10-13T03:00:00Z",
         )
         val day = establishedDay(logicalDate = "2026-10-12", sectionEntries = listOf(completed))
 
