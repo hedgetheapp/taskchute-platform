@@ -22,6 +22,7 @@ import {
   updateProject,
 } from "./application/project-management";
 import { HttpError } from "./application/errors";
+import { loadReviewDateMetrics, reviewDateMetricRange } from "./application/review-date-metrics";
 import { loadCurrentTaskChuteDay, loadTaskChuteDayByLogicalDate } from "./application/load-current-day";
 import {
   isSetAutoCarryOverduePlannedRequest,
@@ -212,6 +213,15 @@ async function route(request: Request, env: Env): Promise<Response> {
   }
   if (request.method === "GET" && url.pathname === "/api/v1/taskchute-days/current") {
     return Response.json(await loadCurrentTaskChuteDay(env.APP_DB, principal.appUserId));
+  }
+  if (request.method === "GET" && url.pathname === "/api/v1/review/date-metrics") {
+    const periods = url.searchParams.getAll("period");
+    const anchors = url.searchParams.getAll("anchor");
+    const range = periods.length === 1 && anchors.length === 1
+      ? reviewDateMetricRange(periods[0], anchors[0])
+      : null;
+    if (!range) throw new HttpError(400, "malformed_request", "Invalid Review Date metrics period");
+    return Response.json(await loadReviewDateMetrics(env.APP_DB, principal.appUserId, range));
   }
   if (request.method === "GET" && url.pathname === "/api/v1/settings/auto-carry-overdue-planned") {
     return Response.json(await loadAutoCarryOverduePlannedSetting(env.APP_DB, principal.appUserId));

@@ -66,6 +66,8 @@ import com.hedgetheapp.taskchute.reminders.TaskReminderScheduler
 import com.hedgetheapp.taskchute.widget.AndroidHomeWidgetIntents
 import com.hedgetheapp.taskchute.review.ReviewScreen
 import com.hedgetheapp.taskchute.review.ReviewDailyMetricsController
+import com.hedgetheapp.taskchute.review.ReviewPeriodMetricsController
+import com.hedgetheapp.taskchute.review.ReviewPeriodMetricsHttpRepository
 
 class MainActivity : ComponentActivity() {
     private lateinit var controller: AuthController
@@ -80,6 +82,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var wearPairingController: PhoneWearPairingController
     private lateinit var taskReminderScheduler: TaskReminderScheduler
     private lateinit var reviewDailyMetricsController: ReviewDailyMetricsController
+    private lateinit var reviewPeriodMetricsController: ReviewPeriodMetricsController
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -105,6 +108,12 @@ class MainActivity : ComponentActivity() {
             loadDay = todayRepository::loadDay,
             onUnauthorized = controller::restore,
             onCanonicalCurrentDayLoaded = onCanonicalDayLoaded,
+        )
+        reviewPeriodMetricsController = ReviewPeriodMetricsController(
+            loadMetrics = ReviewPeriodMetricsHttpRepository(
+                request = { method, path, body -> controller.authenticatedRequest(method, path, body)?.let { TodayHttpResponse(it.status, it.body) } },
+            )::load,
+            onUnauthorized = controller::restore,
         )
         todayController = TodayController(
             repository = todayRepository,
@@ -194,6 +203,7 @@ class MainActivity : ComponentActivity() {
                 realtimeManager,
                 wearPairingController,
                 reviewDailyMetricsController,
+                reviewPeriodMetricsController,
             )
         }
     }
@@ -224,6 +234,7 @@ class MainActivity : ComponentActivity() {
         settingsController.close()
         dailyController.close()
         reviewDailyMetricsController.close()
+        reviewPeriodMetricsController.close()
         wearPairingController.close()
         realtimeManager.stop()
         realtimeHttpClient.dispatcher.executorService.shutdown()
@@ -244,6 +255,7 @@ private fun TaskChuteApp(
     realtimeManager: RealtimeConnectionManager,
     wearPairingController: PhoneWearPairingController,
     reviewDailyMetricsController: ReviewDailyMetricsController,
+    reviewPeriodMetricsController: ReviewPeriodMetricsController,
 ) {
     val state = controller.state
     val appContext = LocalContext.current.applicationContext
@@ -279,6 +291,7 @@ private fun TaskChuteApp(
         } else {
             todayController.resetForSessionChange()
             reviewDailyMetricsController.resetForSessionChange()
+            reviewPeriodMetricsController.resetForSessionChange()
             if (authenticatedSessionActive) {
                 notesController.resetForSessionChange()
                 dailyController.resetForSessionChange()
@@ -352,6 +365,7 @@ private fun TaskChuteApp(
                         )
                         AndroidDestination.REVIEW -> ReviewScreen(
                             dailyMetricsController = reviewDailyMetricsController,
+                            periodMetricsController = reviewPeriodMetricsController,
                             onNavigateToday = { destination = AndroidDestination.TODAY },
                             onNavigateNotes = { destination = AndroidDestination.NOTES },
                             onNavigateDaily = { destination = AndroidDestination.DAILY },

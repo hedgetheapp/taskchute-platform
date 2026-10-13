@@ -108,6 +108,7 @@ internal fun reviewPeriodLabel(period: ReviewPeriodState): String = period.ancho
 @Composable
 internal fun ReviewScreen(
     dailyMetricsController: ReviewDailyMetricsController,
+    periodMetricsController: ReviewPeriodMetricsController,
     onNavigateToday: () -> Unit,
     onNavigateNotes: () -> Unit,
     onNavigateDaily: () -> Unit,
@@ -123,15 +124,31 @@ internal fun ReviewScreen(
         )
     }
     val dailyMetricsState = dailyMetricsController.state
+    val periodMetricsState = periodMetricsController.state
 
     fun revalidateDailySelection(next: ReviewScreenState) {
-        if (next.selectedView == ReviewPrimaryView.DATE
-            && next.period.granularity == ReviewPeriodGranularity.DAILY
-        ) {
-            dailyMetricsController.loadDaily(next.period.anchor?.toString(), debounceMillis = 250)
-        } else if (next.period.anchor != null) {
+        if (next.selectedView != ReviewPrimaryView.DATE) {
             dailyMetricsController.cancelActiveLoad()
+            periodMetricsController.cancelActiveLoad()
+            return
         }
+        if (next.period.granularity == ReviewPeriodGranularity.DAILY) {
+            periodMetricsController.cancelActiveLoad()
+            dailyMetricsController.loadDaily(next.period.anchor?.toString(), debounceMillis = 250)
+            return
+        }
+        val anchor = next.period.anchor?.toString()
+        if (anchor == null) {
+            periodMetricsController.cancelActiveLoad()
+            if (dailyMetricsState.currentLogicalDate == null
+                && dailyMetricsState.status == ReviewDailyMetricsStatus.IDLE
+            ) {
+                dailyMetricsController.loadDaily()
+            }
+            return
+        }
+        dailyMetricsController.cancelActiveLoad()
+        periodMetricsController.load(next.period.granularity, anchor)
     }
 
     androidx.compose.runtime.LaunchedEffect(dailyMetricsController) {
@@ -146,12 +163,17 @@ internal fun ReviewScreen(
                     ReviewPeriodGranularity.MONTHLY -> currentDate.withDayOfMonth(1)
                     ReviewPeriodGranularity.YEARLY -> currentDate.withDayOfYear(1)
                 }
-                state = state.copy(period = state.period.copy(anchor = anchor))
+                val next = state.copy(period = state.period.copy(anchor = anchor))
+                state = next
+                revalidateDailySelection(next)
             }
         }
     }
     androidx.compose.runtime.DisposableEffect(dailyMetricsController) {
-        onDispose { dailyMetricsController.cancelActiveLoad() }
+        onDispose {
+            dailyMetricsController.cancelActiveLoad()
+            periodMetricsController.cancelActiveLoad()
+        }
     }
 
     Scaffold(
@@ -213,14 +235,81 @@ internal fun ReviewScreen(
                                 state = dailyMetricsState,
                                 onRetry = { dailyMetricsController.loadDaily(state.period.anchor?.toString()) },
                             )
+                        } else if (state.period.anchor == null) {
+                            ReviewPeriodAnchorContent(
+                                currentDayState = dailyMetricsState,
+                                onRetry = { dailyMetricsController.loadDaily() },
+                            )
                         } else {
-                            ReviewCenteredMessage("月次・年次の集計はまだ接続されていません")
+                            ReviewPeriodMetricsContent(
+                                state = periodMetricsState,
+                                onRetry = {
+                                    periodMetricsController.load(state.period.granularity, state.period.anchor.toString())
+                                },
+                            )
                         }
                         else -> ReviewPlaceholderContent(state.selectedView.contentTitle)
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ReviewPeriodAnchorContent(
+    currentDayState: ReviewDailyMetricsUiState,
+    onRetry: () -> Unit,
+) {
+    if (currentDayState.status == ReviewDailyMetricsStatus.ERROR) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text("サーバーの現在日を確認できませんでした。", color = TaskChuteColors.SecondaryText, textAlign = TextAlign.Center)
+            Button(onClick = onRetry) { Text("再試行") }
+        }
+    } else {
+        ReviewLoadingMessage("サーバーの現在日を確認しています")
+    }
+}
+
+@Composable
+private fun ReviewPeriodMetricsContent(
+    state: ReviewPeriodMetricsUiState,
+    onRetry: () -> Unit,
+) {
+    when (state.status) {
+        ReviewPeriodMetricsStatus.CONTENT,
+        ReviewPeriodMetricsStatus.EMPTY,
+        -> {
+            val metrics = state.metrics ?: return ReviewCenteredMessage("集計データを確認できませんでした")
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(18.dp),
+            ) {
+                if (state.status == ReviewPeriodMetricsStatus.EMPTY) {
+                    Text(state.message ?: "この期間のTaskChuteDayに対象Entryはありません。", color = TaskChuteColors.SecondaryText)
+                }
+                ReviewMetricRow("Completed（完了）", "${metrics.completedCount} 件")
+                ReviewMetricRow("Unexecuted（Planned）", "${metrics.unexecutedCount} 件")
+                ReviewMetricRow("Completed actual duration", formatReviewDuration(metrics.completedActualDurationSeconds))
+            }
+        }
+        ReviewPeriodMetricsStatus.UNESTABLISHED -> ReviewCenteredMessage(
+            state.message ?: "この期間に記録されたTaskChuteDayはありません。",
+        )
+        ReviewPeriodMetricsStatus.ERROR -> Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(state.message ?: "集計データを読み込めませんでした。", color = TaskChuteColors.SecondaryText, textAlign = TextAlign.Center)
+            Button(onClick = onRetry) { Text("再試行") }
+        }
+        ReviewPeriodMetricsStatus.AUTH_REQUIRED -> ReviewLoadingMessage(state.message ?: "認証状態を確認しています…")
+        ReviewPeriodMetricsStatus.IDLE,
+        ReviewPeriodMetricsStatus.LOADING,
+        -> ReviewLoadingMessage("期間集計を読み込んでいます")
     }
 }
 

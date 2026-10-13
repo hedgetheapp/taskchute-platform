@@ -28,10 +28,12 @@ class ReviewScreenInstrumentedTest {
     @get:Rule
     val composeRule = createComposeRule()
     private val controllers = mutableListOf<ReviewDailyMetricsController>()
+    private val periodControllers = mutableListOf<ReviewPeriodMetricsController>()
 
     @After
     fun closeControllers() {
         controllers.forEach(ReviewDailyMetricsController::close)
+        periodControllers.forEach(ReviewPeriodMetricsController::close)
     }
 
     @Test
@@ -44,10 +46,14 @@ class ReviewScreenInstrumentedTest {
                 day(logicalDate, current = false, entries = emptyList())
             }
         }
+        val periodController = periodMetricsController { granularity, anchor ->
+            ReviewPeriodMetricsResult.Success(periodMetrics(granularity, anchor, completed = if (anchor == "2026-01-01") 4 else 6))
+        }
         composeRule.setContent {
             TaskChuteTheme {
                 ReviewScreen(
                     dailyMetricsController = controller,
+                    periodMetricsController = periodController,
                     onNavigateToday = { todayNavigations.incrementAndGet() },
                     onNavigateNotes = {},
                     onNavigateDaily = {},
@@ -76,12 +82,18 @@ class ReviewScreenInstrumentedTest {
         composeRule.onNodeWithContentDescription("Review period: Daily").performClick()
         composeRule.onNodeWithText("Monthly").performClick()
         composeRule.onNodeWithContentDescription("Selected period: 2026/01").assertIsDisplayed()
-        composeRule.onNodeWithText("月次・年次の集計はまだ接続されていません").assertIsDisplayed()
-        assertTrue(composeRule.onAllNodesWithText("2 件").fetchSemanticsNodes().isEmpty())
+        composeRule.waitUntil(5_000) { composeRule.onAllNodesWithText("4 件").fetchSemanticsNodes().isNotEmpty() }
+        composeRule.onNodeWithText("Completed actual duration").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Next period").performClick()
         composeRule.onNodeWithContentDescription("Selected period: 2026/02").assertIsDisplayed()
+        composeRule.waitUntil(5_000) { composeRule.onAllNodesWithText("6 件").fetchSemanticsNodes().isNotEmpty() }
         composeRule.onNodeWithContentDescription("Project").performClick()
         composeRule.onNodeWithContentDescription("Selected period: 2026/02").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Review period: Monthly").performClick()
+        composeRule.onNodeWithText("Yearly").performClick()
+        composeRule.onNodeWithContentDescription("Selected period: 2026").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Date").performClick()
+        composeRule.waitUntil(5_000) { composeRule.onAllNodesWithText("6 件").fetchSemanticsNodes().isNotEmpty() }
 
         composeRule.onNodeWithContentDescription("Task").performClick()
         assertEquals(1, todayNavigations.get())
@@ -90,10 +102,14 @@ class ReviewScreenInstrumentedTest {
     @Test
     fun monthlyDailyViewDoesNotReuseDailyMetrics() {
         val controller = metricsController { _ -> day("2026-01-31", current = true, entries = sampleEntries()) }
+        val periodController = periodMetricsController { granularity, anchor ->
+            ReviewPeriodMetricsResult.Success(periodMetrics(granularity, anchor, completed = 8, duration = 240))
+        }
         composeRule.setContent {
             TaskChuteTheme {
                 ReviewScreen(
                     dailyMetricsController = controller,
+                    periodMetricsController = periodController,
                     onNavigateToday = {},
                     onNavigateNotes = {},
                     onNavigateDaily = {},
@@ -105,8 +121,9 @@ class ReviewScreenInstrumentedTest {
 
         composeRule.onNodeWithContentDescription("Review period: Daily").performClick()
         composeRule.onNodeWithText("Monthly").performClick()
-        composeRule.onNodeWithText("月次・年次の集計はまだ接続されていません").assertIsDisplayed()
-        assertTrue(composeRule.onAllNodesWithText("0 件").fetchSemanticsNodes().isEmpty())
+        composeRule.waitUntil(5_000) { composeRule.onAllNodesWithText("8 件").fetchSemanticsNodes().isNotEmpty() }
+        composeRule.onNodeWithText("Completed actual duration").assertIsDisplayed()
+        composeRule.onNodeWithText("4分").assertIsDisplayed()
         assertTrue(composeRule.onAllNodesWithText("2 件").fetchSemanticsNodes().isEmpty())
     }
 
@@ -134,6 +151,9 @@ class ReviewScreenInstrumentedTest {
             TaskChuteTheme {
                 ReviewScreen(
                     dailyMetricsController = controller,
+                    periodMetricsController = periodMetricsController { granularity, anchor ->
+                        ReviewPeriodMetricsResult.Success(periodMetrics(granularity, anchor))
+                    },
                     onNavigateToday = {},
                     onNavigateNotes = {},
                     onNavigateDaily = {},
@@ -158,6 +178,29 @@ class ReviewScreenInstrumentedTest {
         loadDay = { logicalDate -> TodayResult.Success(dayForDate(logicalDate)) },
         onUnauthorized = {},
     ).also(controllers::add)
+
+    private fun periodMetricsController(
+        load: (ReviewPeriodGranularity, String) -> ReviewPeriodMetricsResult,
+    ) = ReviewPeriodMetricsController(
+        loadMetrics = load,
+        onUnauthorized = {},
+    ).also(periodControllers::add)
+
+    private fun periodMetrics(
+        granularity: ReviewPeriodGranularity,
+        anchor: String,
+        completed: Long = 0,
+        unexecuted: Long = 0,
+        duration: Long = 0,
+        establishedDays: Long = 1,
+    ) = ReviewPeriodMetrics(
+        granularity = granularity,
+        anchor = anchor,
+        establishedDayCount = establishedDays,
+        completedCount = completed,
+        unexecutedCount = unexecuted,
+        completedActualDurationSeconds = duration,
+    )
 
     private fun sampleEntries() = listOf(
         task("completed-a", LifecycleState.COMPLETED, duration = 3_723),
