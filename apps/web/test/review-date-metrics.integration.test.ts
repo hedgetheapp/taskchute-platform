@@ -49,7 +49,7 @@ async function seedEntry(
   await env.APP_DB.prepare(`INSERT INTO entries
     (id, app_user_id, task_id, taskchute_day_id, section_id, position, lifecycle_state,
      estimate_seconds, created_at, routine_occurrence_id)
-undefined`)
+    VALUES (?, ?, ?, ?, NULL, ?, ?, 1200, ?, ?)`)
     .bind(entryId, userId, taskId, dayId, position, lifecycle, createdAt, routineOccurrenceId).run();
   return entryId;
 }
