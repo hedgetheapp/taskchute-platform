@@ -32,6 +32,11 @@ async function seedTask(userId: string, title = "Review metrics fixture") {
   return taskId;
 }
 
+async function nextEntryPosition(userId: string, dayId: string) {
+  return (await env.APP_DB.prepare(`SELECT COALESCE(MAX(position), 0) + 1 AS position FROM entries
+    WHERE app_user_id = ? AND taskchute_day_id = ?`).bind(userId, dayId).first<number>("position")) ?? 1;
+}
+
 async function seedEntry(
   userId: string,
   dayId: string,
@@ -40,11 +45,12 @@ async function seedEntry(
   routineOccurrenceId: string | null = null,
 ) {
   const entryId = uuidv7();
+  const position = await nextEntryPosition(userId, dayId);
   await env.APP_DB.prepare(`INSERT INTO entries
     (id, app_user_id, task_id, taskchute_day_id, section_id, position, lifecycle_state,
      estimate_seconds, created_at, routine_occurrence_id)
-    VALUES (?, ?, ?, ?, NULL, 1, ?, 1200, ?, ?)`)
-    .bind(entryId, userId, taskId, dayId, lifecycle, createdAt, routineOccurrenceId).run();
+undefined`)
+    .bind(entryId, userId, taskId, dayId, position, lifecycle, createdAt, routineOccurrenceId).run();
   return entryId;
 }
 
@@ -151,12 +157,12 @@ describe.sequential("D-178 Date monthly/yearly metrics", () => {
     expect(march).toMatchObject({ established_day_count: 1, completed_count: 1, unexecuted_count: 0,
       completed_actual_duration_seconds: 60 });
 
-    await env.APP_DB.prepare("UPDATE entries SET taskchute_day_id = ? WHERE app_user_id = ? AND id = ?")
-      .bind(febLeapDay, userId, plannedEntry).run();
+    await env.APP_DB.prepare("UPDATE entries SET taskchute_day_id = ?, position = ? WHERE app_user_id = ? AND id = ?")
+      .bind(febLeapDay, await nextEntryPosition(userId, febLeapDay), userId, plannedEntry).run();
     expect((await loadReviewDateMetrics(env.APP_DB, userId, reviewDateMetricRange("monthly", "2024-02-01")!))
       .unexecuted_count).toBe(1);
-    await env.APP_DB.prepare("UPDATE entries SET taskchute_day_id = ? WHERE app_user_id = ? AND id = ?")
-      .bind(marchFirst, userId, plannedEntry).run();
+    await env.APP_DB.prepare("UPDATE entries SET taskchute_day_id = ?, position = ? WHERE app_user_id = ? AND id = ?")
+      .bind(marchFirst, await nextEntryPosition(userId, marchFirst), userId, plannedEntry).run();
     expect((await loadReviewDateMetrics(env.APP_DB, userId, reviewDateMetricRange("monthly", "2024-02-01")!))
       .unexecuted_count).toBe(0);
     expect((await loadReviewDateMetrics(env.APP_DB, userId, reviewDateMetricRange("monthly", "2024-03-01")!))
@@ -168,8 +174,8 @@ describe.sequential("D-178 Date monthly/yearly metrics", () => {
     expect(december).toMatchObject({ established_day_count: 1, completed_count: 0, unexecuted_count: 1,
       completed_actual_duration_seconds: 0 });
     await env.APP_DB.batch([
-      env.APP_DB.prepare("UPDATE entries SET taskchute_day_id = ? WHERE app_user_id = ? AND id = ?")
-        .bind(janFirst, userId, yearBoundaryEntry),
+      env.APP_DB.prepare("UPDATE entries SET taskchute_day_id = ?, position = ? WHERE app_user_id = ? AND id = ?")
+        .bind(janFirst, await nextEntryPosition(userId, janFirst), userId, yearBoundaryEntry),
       env.APP_DB.prepare(`UPDATE taskchute_days SET placement_revision = placement_revision + 1
         WHERE app_user_id = ? AND id IN (?, ?)`)
         .bind(userId, decLast, janFirst),

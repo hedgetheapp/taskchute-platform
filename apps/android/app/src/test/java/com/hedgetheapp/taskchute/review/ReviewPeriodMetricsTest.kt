@@ -52,7 +52,6 @@ class ReviewPeriodMetricsTest {
                 requestCount.incrementAndGet()
                 TodayHttpResponse(200, """{"period_granularity":"monthly","period_anchor":"2026-10-01"}""")
             },
-            onUnauthorized = {},
         )
 
         assertTrue(repository.load(ReviewPeriodGranularity.MONTHLY, "2026-10-02") is ReviewPeriodMetricsResult.Failure)
