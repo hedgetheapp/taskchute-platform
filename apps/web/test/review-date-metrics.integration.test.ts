@@ -92,7 +92,7 @@ async function seedSuppressedRoutineEntry(userId: string, dayId: string) {
 }
 
 async function scopedCounts(userId: string) {
-  const tables = ["taskchute_days", "entries", "executions", "routine_occurrences", "routine_occurrence_suppressions", "operations"];
+  const tables = ["taskchute_days", "entries", "executions", "tasks", "routine_definitions", "routine_occurrences", "routine_occurrence_suppressions", "operations"];
   return Object.fromEntries(await Promise.all(tables.map(async (table) => [table,
     await env.APP_DB.prepare(`SELECT COUNT(*) AS count FROM ${table} WHERE app_user_id = ?`)
       .bind(userId).first<number>("count")]))) as Record<string, number | null>;

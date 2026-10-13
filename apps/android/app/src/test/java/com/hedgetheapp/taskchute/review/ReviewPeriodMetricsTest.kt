@@ -61,6 +61,7 @@ class ReviewPeriodMetricsTest {
 
         assertTrue(repository.load(ReviewPeriodGranularity.MONTHLY, "2026-10-02") is ReviewPeriodMetricsResult.Failure)
         assertTrue(repository.load(ReviewPeriodGranularity.YEARLY, "2026-02-01") is ReviewPeriodMetricsResult.Failure)
+        assertTrue(repository.load(ReviewPeriodGranularity.YEARLY, "2026-01-02") is ReviewPeriodMetricsResult.Failure)
         assertEquals(0, requestCount.get())
         assertTrue(repository.load(ReviewPeriodGranularity.MONTHLY, "2026-10-01") is ReviewPeriodMetricsResult.Failure)
         assertTrue(repository.load(ReviewPeriodGranularity.YEARLY, "2026-01-01") is ReviewPeriodMetricsResult.Failure)
