@@ -48,16 +48,21 @@ class ReviewPeriodMetricsTest {
     fun repositoryRejectsInvalidAnchorsMalformedPayloadsAndWrongPeriodResponses() {
         val requestCount = AtomicInteger()
         val repository = ReviewPeriodMetricsHttpRepository(
-            request = { _, _, _ ->
+            request = { _, path, _ ->
                 requestCount.incrementAndGet()
-                TodayHttpResponse(200, """{"period_granularity":"monthly","period_anchor":"2026-10-01"}""")
+                val body = if (path.contains("period=yearly")) {
+                    metricsJson("monthly", "2026-01-01")
+                } else {
+                    """{"period_granularity":"monthly","period_anchor":"2026-10-01"}"""
+                }
+                TodayHttpResponse(200, body)
             },
         )
 
         assertTrue(repository.load(ReviewPeriodGranularity.MONTHLY, "2026-10-02") is ReviewPeriodMetricsResult.Failure)
         assertEquals(0, requestCount.get())
-        assertTrue(repository.load(ReviewPeriodGranularity.YEARLY, "2026-10-01") is ReviewPeriodMetricsResult.Failure)
         assertTrue(repository.load(ReviewPeriodGranularity.MONTHLY, "2026-10-01") is ReviewPeriodMetricsResult.Failure)
+        assertTrue(repository.load(ReviewPeriodGranularity.YEARLY, "2026-01-01") is ReviewPeriodMetricsResult.Failure)
         assertEquals(2, requestCount.get())
     }
 
