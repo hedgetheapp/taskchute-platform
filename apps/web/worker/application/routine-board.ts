@@ -1333,12 +1333,12 @@ export async function deleteRoutine(db: D1Database, appUserId: string, request: 
         .bind(appUserId, appUserId, request.routine_definition_id, currentLogicalDate, appUserId, request.operation_id),
       db.prepare(`INSERT INTO routine_definition_archives
         (app_user_id, routine_definition_id, archived_at, deleted_logical_date)
-        SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM routine_command_guards
+        SELECT ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM routine_command_guards
           WHERE app_user_id = ? AND operation_id = ?)
           AND EXISTS (SELECT 1 FROM user_settings WHERE app_user_id = ?
             AND timezone IS ? AND day_boundary_minutes IS ?)`)
-        .bind(appUserId, request.routine_definition_id, nowInstant, appUserId, request.operation_id,
-          appUserId, current.timezone, current.boundaryMinutes),
+        .bind(appUserId, request.routine_definition_id, nowInstant, currentLogicalDate, appUserId,
+          request.operation_id, appUserId, current.timezone, current.boundaryMinutes),
       db.prepare(`DELETE FROM routine_board_items WHERE app_user_id = ? AND routine_definition_id = ?
         AND EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
         .bind(appUserId, request.routine_definition_id, appUserId, request.operation_id),

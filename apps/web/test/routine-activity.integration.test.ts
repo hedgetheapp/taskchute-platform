@@ -12,8 +12,6 @@ async function seedOwner() {
     env.APP_DB.prepare(`INSERT INTO user_settings (app_user_id, timezone, day_boundary_minutes, updated_at)
       VALUES (?, 'UTC', 0, ?)`)
       .bind(appUserId, now),
-    env.APP_DB.prepare("INSERT INTO routine_board_heads (app_user_id, board_revision) VALUES (?, 0)")
-      .bind(appUserId),
   ]);
   return appUserId;
 }
