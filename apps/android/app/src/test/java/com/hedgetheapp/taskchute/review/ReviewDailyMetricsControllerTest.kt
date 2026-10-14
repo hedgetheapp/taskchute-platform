@@ -122,12 +122,18 @@ class ReviewDailyMetricsControllerTest {
 
     @Test
     fun changingDateClearsPreviousListsImmediatelyAndFailureDoesNotRestoreThem() {
+        val historicalReadStarted = CountDownLatch(1)
+        val releaseHistoricalRead = CountDownLatch(1)
         val controller = controller({ logicalDate ->
             when (logicalDate) {
                 null -> TodayResult.Success(day("2026-10-13", isCurrent = true, entries = listOf(
                     task("current-title", LifecycleState.COMPLETED, 120),
                 )))
-                else -> TodayResult.Failure("offline")
+                else -> {
+                    historicalReadStarted.countDown()
+                    releaseHistoricalRead.await(2, TimeUnit.SECONDS)
+                    TodayResult.Failure("offline")
+                }
             }
         })
 
@@ -136,8 +142,10 @@ class ReviewDailyMetricsControllerTest {
         assertEquals(listOf("current-title"), controller.state.metrics?.completedEntries?.map { it.title })
 
         controller.loadDaily("2026-10-12")
+        assertTrue(historicalReadStarted.await(2, TimeUnit.SECONDS))
         assertEquals(ReviewDailyMetricsStatus.LOADING, controller.state.status)
         assertNull(controller.state.metrics)
+        releaseHistoricalRead.countDown()
         assertTrue(awaitState(controller) { it.status == ReviewDailyMetricsStatus.ERROR })
         assertNull(controller.state.metrics)
         controller.close()
