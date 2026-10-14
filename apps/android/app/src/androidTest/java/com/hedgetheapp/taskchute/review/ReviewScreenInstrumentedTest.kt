@@ -131,6 +131,75 @@ class ReviewScreenInstrumentedTest {
     }
 
     @Test
+    fun routineActivityShowsCoverageCountsAndDoesNotInventUnmeasuredZero() {
+        val unmeasured = ReviewRoutineActivity(ReviewRoutineActivityCoverage.UNMEASURED, null, null, null, null)
+        val partial = ReviewRoutineActivity(
+            ReviewRoutineActivityCoverage.PARTIAL,
+            createdCount = 2,
+            deletedCount = 1,
+            coverageStartedAt = "2026-10-14T02:00:00.000Z",
+            coverageStartedLogicalDate = "2026-10-14",
+        )
+        val complete = ReviewRoutineActivity(
+            ReviewRoutineActivityCoverage.COMPLETE,
+            createdCount = 0,
+            deletedCount = 0,
+            coverageStartedAt = "2026-10-14T02:00:00.000Z",
+            coverageStartedLogicalDate = "2026-10-14",
+        )
+        val controller = metricsController { _ -> day("2026-10-14", current = true, entries = sampleEntries()) }
+        val periodController = periodMetricsController { granularity, anchor ->
+            when (granularity) {
+                ReviewPeriodGranularity.DAILY -> ReviewPeriodMetricsResult.RoutineActivitySuccess(unmeasured)
+                ReviewPeriodGranularity.MONTHLY -> ReviewPeriodMetricsResult.Success(
+                    periodMetrics(granularity, anchor, routineActivity = partial),
+                )
+                ReviewPeriodGranularity.YEARLY -> ReviewPeriodMetricsResult.Success(
+                    periodMetrics(granularity, anchor, routineActivity = complete),
+                )
+            }
+        }
+        composeRule.setContent {
+            TaskChuteTheme {
+                ReviewScreen(
+                    dailyMetricsController = controller,
+                    periodMetricsController = periodController,
+                    onNavigateToday = {},
+                    onNavigateNotes = {},
+                    onNavigateDaily = {},
+                    onNavigateSettings = {},
+                    initialAnchor = LocalDate.of(2026, 10, 14),
+                )
+            }
+        }
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Routine activity coverage: 未計測").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("Routine Created").assertIsDisplayed()
+        composeRule.onNodeWithText("Routine Deleted").assertIsDisplayed()
+        assertEquals(2, composeRule.onAllNodesWithText("—").fetchSemanticsNodes().size)
+
+        composeRule.onNodeWithContentDescription("Review period: Daily").performClick()
+        composeRule.onNodeWithText("Monthly").performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Routine activity coverage: 一部計測（開始: 2026-10-14T02:00:00.000Z）")
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("Routine Created").assertIsDisplayed()
+        composeRule.onNodeWithText("2 件").assertIsDisplayed()
+        composeRule.onNodeWithText("Routine Deleted").assertIsDisplayed()
+        composeRule.onNodeWithText("1 件").assertIsDisplayed()
+
+        composeRule.onNodeWithContentDescription("Review period: Monthly").performClick()
+        composeRule.onNodeWithText("Yearly").performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Routine activity coverage: 計測済み").fetchSemanticsNodes().isNotEmpty()
+        }
+        assertTrue(composeRule.onAllNodesWithText("0 件").fetchSemanticsNodes().isNotEmpty())
+    }
+
+    @Test
     fun changingDailyPeriodShowsTheSelectedHistoricalDayMetrics() {
         val requests = java.util.concurrent.CopyOnWriteArrayList<String?>()
         val controller = ReviewDailyMetricsController(
@@ -229,6 +298,7 @@ class ReviewScreenInstrumentedTest {
         unexecuted: Long = 0,
         duration: Long = 0,
         establishedDays: Long = 1,
+        routineActivity: ReviewRoutineActivity? = null,
     ) = ReviewPeriodMetrics(
         granularity = granularity,
         anchor = anchor,
@@ -236,6 +306,7 @@ class ReviewScreenInstrumentedTest {
         completedCount = completed,
         unexecutedCount = unexecuted,
         completedActualDurationSeconds = duration,
+        routineActivity = routineActivity,
     )
 
     private fun sampleEntries() = listOf(
