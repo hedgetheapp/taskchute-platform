@@ -81,6 +81,67 @@ class ReviewPeriodMetricsTest {
     }
 
     @Test
+    fun dailyActivityUsesDateMetricsAndTreatsOlderBackendAsUnavailable() {
+        val paths = CopyOnWriteArrayList<String>()
+        var status = 200
+        var body = activityJson("UNMEASURED", "null", "null", "null", "null")
+        val repository = ReviewPeriodMetricsHttpRepository(
+            request = { method, path, requestBody ->
+                assertEquals("GET", method)
+                assertNull(requestBody)
+                paths += path
+                TodayHttpResponse(status, body)
+            },
+        )
+
+        val unmeasured = repository.load(ReviewPeriodGranularity.DAILY, "2026-10-14")
+        assertTrue(unmeasured is ReviewPeriodMetricsResult.RoutineActivitySuccess)
+        assertEquals(ReviewRoutineActivityCoverage.UNMEASURED,
+            (unmeasured as ReviewPeriodMetricsResult.RoutineActivitySuccess).activity?.coverage)
+
+        body = activityJson("PARTIAL", "2", "1", "\"2026-10-14T02:00:00.000Z\"", "\"2026-10-14\"")
+        val partial = repository.load(ReviewPeriodGranularity.DAILY, "2026-10-14")
+        assertEquals(2L, (partial as ReviewPeriodMetricsResult.RoutineActivitySuccess).activity?.createdCount)
+
+        status = 400 // Old Worker does not recognize the daily query and returns malformed_request.
+        val oldBackend = repository.load(ReviewPeriodGranularity.DAILY, "2026-10-14")
+        assertTrue(oldBackend is ReviewPeriodMetricsResult.RoutineActivitySuccess)
+        assertNull((oldBackend as ReviewPeriodMetricsResult.RoutineActivitySuccess).activity)
+        status = 404 // An older route deployment may not expose Review Date metrics at all.
+        val missingRoute = repository.load(ReviewPeriodGranularity.DAILY, "2026-10-14")
+        assertTrue(missingRoute is ReviewPeriodMetricsResult.RoutineActivitySuccess)
+        assertNull((missingRoute as ReviewPeriodMetricsResult.RoutineActivitySuccess).activity)
+
+        status = 401
+        assertTrue(repository.load(ReviewPeriodGranularity.DAILY, "2026-10-14") is ReviewPeriodMetricsResult.Unauthorized)
+        status = 503
+        assertTrue(repository.load(ReviewPeriodGranularity.DAILY, "2026-10-14") is ReviewPeriodMetricsResult.Failure)
+        assertEquals(List(6) { "/api/v1/review/date-metrics?period=daily&anchor=2026-10-14" }, paths)
+    }
+
+    @Test
+    fun periodPayloadParsesTrueZeroAndPreservesOldBackendMetricsAsUnavailableActivity() {
+        val repository = ReviewPeriodMetricsHttpRepository(
+            request = { _, _, _ -> TodayHttpResponse(200,
+                metricsJson("monthly", "2026-10-01", routineActivity = routineActivityJson(
+                    "COMPLETE", "0", "0", "\"2026-10-14T02:00:00.000Z\"", "\"2026-10-14\"",
+                ))) },
+        )
+        val complete = repository.load(ReviewPeriodGranularity.MONTHLY, "2026-10-01")
+        assertTrue(complete is ReviewPeriodMetricsResult.Success)
+        val activity = (complete as ReviewPeriodMetricsResult.Success).metrics.routineActivity
+        assertEquals(ReviewRoutineActivityCoverage.COMPLETE, activity?.coverage)
+        assertEquals(0L, activity?.createdCount)
+        assertEquals(0L, activity?.deletedCount)
+
+        val oldBackend = ReviewPeriodMetricsHttpRepository(
+            request = { _, _, _ -> TodayHttpResponse(200, metricsJson("monthly", "2026-10-01")) },
+        ).load(ReviewPeriodGranularity.MONTHLY, "2026-10-01")
+        assertTrue(oldBackend is ReviewPeriodMetricsResult.Success)
+        assertNull((oldBackend as ReviewPeriodMetricsResult.Success).metrics.routineActivity)
+    }
+
+    @Test
     fun establishedEmptyAndUnestablishedPeriodsStayDistinct() {
         val calls = AtomicInteger()
         val controller = controller { _, anchor ->
@@ -96,6 +157,7 @@ class ReviewPeriodMetricsTest {
         assertTrue(awaitState(controller) { it.status == ReviewPeriodMetricsStatus.EMPTY })
         assertEquals(0L, controller.state.metrics?.completedCount)
         assertEquals(0L, controller.state.metrics?.unexecutedCount)
+        assertEquals(ReviewRoutineActivityStatus.UNAVAILABLE, controller.state.routineActivity.status)
 
         controller.load(ReviewPeriodGranularity.MONTHLY, "2026-11-01")
         assertTrue(awaitState(controller) { it.status == ReviewPeriodMetricsStatus.UNESTABLISHED })
@@ -189,7 +251,24 @@ class ReviewPeriodMetricsTest {
         granularity: String,
         anchor: String,
         durationSeconds: Long = 0,
-    ) = """{"period_granularity":"$granularity","period_anchor":"$anchor","established_day_count":29,"completed_count":4,"unexecuted_count":0,"completed_actual_duration_seconds":$durationSeconds}"""
+        routineActivity: String? = null,
+    ) = """{"period_granularity":"$granularity","period_anchor":"$anchor","established_day_count":29,"completed_count":4,"unexecuted_count":0,"completed_actual_duration_seconds":$durationSeconds${routineActivity?.let { ",\"routine_activity\":$it" } ?: ""}}"""
+
+    private fun activityJson(
+        coverage: String,
+        created: String,
+        deleted: String,
+        startedAt: String,
+        startedLogicalDate: String,
+    ) = """{"period_granularity":"daily","period_anchor":"2026-10-14","routine_activity":${routineActivityJson(coverage, created, deleted, startedAt, startedLogicalDate)}}"""
+
+    private fun routineActivityJson(
+        coverage: String,
+        created: String,
+        deleted: String,
+        startedAt: String,
+        startedLogicalDate: String,
+    ) = """{"coverage_status":"$coverage","created_count":$created,"deleted_count":$deleted,"coverage_started_at":$startedAt,"coverage_started_logical_date":$startedLogicalDate}"""
 
     private fun metrics(
         granularity: ReviewPeriodGranularity = ReviewPeriodGranularity.MONTHLY,

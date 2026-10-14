@@ -11,6 +11,10 @@ describe("Review Date metric period range", () => {
       startLogicalDate: "2024-01-01",
       endLogicalDateExclusive: "2025-01-01",
     });
+    expect(reviewDateMetricRange("daily", "2024-02-29")).toMatchObject({
+      startLogicalDate: "2024-02-29",
+      endLogicalDateExclusive: "2024-03-01",
+    });
   });
 
   it("rejects a noncanonical anchor or an invalid calendar date", () => {

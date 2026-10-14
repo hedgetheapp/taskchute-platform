@@ -24,6 +24,7 @@ interface CurrentContext {
   logicalDate: string;
   dayId: string | null;
   placementRevision: number | null;
+  timezone: string;
   boundaryMinutes: number;
 }
 
@@ -257,7 +258,8 @@ async function currentContext(db: D1Database, appUserId: string, nowInstant: str
     WHERE app_user_id = ? AND logical_date = ?`).bind(appUserId, resolved.logicalDate)
     .first<{ id: string; placement_revision: number }>();
   return { logicalDate: resolved.logicalDate, dayId: day?.id ?? null,
-    placementRevision: day?.placement_revision ?? null, boundaryMinutes: resolved.boundaryMinutes };
+    placementRevision: day?.placement_revision ?? null, timezone: resolved.timezone,
+    boundaryMinutes: resolved.boundaryMinutes };
 }
 
 export async function loadRoutineBoard(
@@ -430,11 +432,14 @@ export async function createRoutine(db: D1Database, appUserId: string, request: 
         .bind(request.task_id, appUserId, projectId, request.title.trim(), nowInstant, appUserId, request.expected_board_revision),
       db.prepare(`INSERT INTO routine_definitions (id, app_user_id, task_id, recurrence_type,
         start_logical_date, end_logical_date, default_section_id, default_estimate_seconds,
-        default_planned_start_minute, materialization_order, defaults_revision, created_at)
-        SELECT ?, ?, ?, 'daily', ?, ?, ?, ?, ?, ?, 0, ? WHERE EXISTS (
-          SELECT 1 FROM tasks WHERE app_user_id = ? AND id = ?)`)
+        default_planned_start_minute, materialization_order, defaults_revision, created_at, created_logical_date)
+        SELECT ?, ?, ?, 'daily', ?, ?, ?, ?, ?, ?, 0, ?, ? WHERE EXISTS (
+          SELECT 1 FROM tasks WHERE app_user_id = ? AND id = ?)
+          AND EXISTS (SELECT 1 FROM user_settings WHERE app_user_id = ?
+            AND timezone IS ? AND day_boundary_minutes IS ?)`)
         .bind(request.routine_definition_id, appUserId, request.task_id, startLogicalDate, endLogicalDate, request.default_section_id ?? null, request.default_estimate_seconds ?? null, request.default_planned_start_minute ?? null, materializationOrder,
-          nowInstant, appUserId, request.task_id),
+          nowInstant, context.logicalDate, appUserId, request.task_id, appUserId, context.timezone,
+          context.boundaryMinutes),
       db.prepare(`INSERT INTO routine_schedules
         (app_user_id, routine_definition_id, schedule_kind, interval_days, interval_weeks,
          interval_months, weekdays_mask, month_day, month_ordinal, month_weekday)
@@ -1256,7 +1261,8 @@ export async function deleteRoutine(db: D1Database, appUserId: string, request: 
     // Resolve the cleanup boundary from the server-side user settings. The
     // derived SQL shape keeps every cleanup statement in the same guarded D1
     // batch as the tombstone and board revision update.
-    const currentLogicalDate = (await currentContext(db, appUserId, nowInstant)).logicalDate;
+    const current = await currentContext(db, appUserId, nowInstant);
+    const currentLogicalDate = current.logicalDate;
     const boundRoutineEntryIds = `SELECT e.id FROM entries e
       JOIN routine_occurrences o ON o.app_user_id = e.app_user_id AND o.id = e.routine_occurrence_id
       JOIN taskchute_days d ON d.app_user_id = e.app_user_id AND d.id = e.taskchute_day_id
@@ -1276,10 +1282,13 @@ export async function deleteRoutine(db: D1Database, appUserId: string, request: 
           AND EXISTS (SELECT 1 FROM routine_definitions
             WHERE app_user_id = ? AND id = ?)
           AND NOT EXISTS (SELECT 1 FROM routine_definition_archives
-            WHERE app_user_id = ? AND routine_definition_id = ?)`)
+            WHERE app_user_id = ? AND routine_definition_id = ?)
+          AND EXISTS (SELECT 1 FROM user_settings WHERE app_user_id = ?
+            AND timezone IS ? AND day_boundary_minutes IS ?)`)
         .bind(appUserId, request.operation_id, appUserId, request.expected_board_revision,
           appUserId, request.routine_definition_id, request.expected_settings_revision,
-          appUserId, request.routine_definition_id, appUserId, request.routine_definition_id),
+          appUserId, request.routine_definition_id, appUserId, request.routine_definition_id,
+          appUserId, current.timezone, current.boundaryMinutes),
       db.prepare(`UPDATE taskchute_days SET placement_revision = placement_revision + 1
         WHERE app_user_id = ? AND logical_date >= ? AND EXISTS (
           SELECT 1 FROM entries e JOIN routine_occurrences o
@@ -1322,10 +1331,14 @@ export async function deleteRoutine(db: D1Database, appUserId: string, request: 
         AND id IN (${removableOccurrenceIds})
         AND EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
         .bind(appUserId, appUserId, request.routine_definition_id, currentLogicalDate, appUserId, request.operation_id),
-      db.prepare(`INSERT INTO routine_definition_archives (app_user_id, routine_definition_id, archived_at)
+      db.prepare(`INSERT INTO routine_definition_archives
+        (app_user_id, routine_definition_id, archived_at, deleted_logical_date)
         SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM routine_command_guards
-          WHERE app_user_id = ? AND operation_id = ?)`)
-        .bind(appUserId, request.routine_definition_id, nowInstant, appUserId, request.operation_id),
+          WHERE app_user_id = ? AND operation_id = ?)
+          AND EXISTS (SELECT 1 FROM user_settings WHERE app_user_id = ?
+            AND timezone IS ? AND day_boundary_minutes IS ?)`)
+        .bind(appUserId, request.routine_definition_id, nowInstant, appUserId, request.operation_id,
+          appUserId, current.timezone, current.boundaryMinutes),
       db.prepare(`DELETE FROM routine_board_items WHERE app_user_id = ? AND routine_definition_id = ?
         AND EXISTS (SELECT 1 FROM routine_command_guards WHERE app_user_id = ? AND operation_id = ?)`)
         .bind(appUserId, request.routine_definition_id, appUserId, request.operation_id),

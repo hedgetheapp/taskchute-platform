@@ -108,7 +108,7 @@ describe.sequential("CreateFutureRoutineFromCompletedEntry", () => {
 
     expect(await env.APP_DB.prepare(`SELECT t.title, t.project_id, r.default_section_id,
         r.default_planned_start_minute, r.default_estimate_seconds, r.start_logical_date, r.end_logical_date,
-        s.schedule_kind, rdm.mode_id
+        r.created_at, r.created_logical_date, s.schedule_kind, rdm.mode_id
       FROM routine_definitions r JOIN tasks t ON t.app_user_id = r.app_user_id AND t.id = r.task_id
       JOIN routine_schedules s ON s.app_user_id = r.app_user_id AND s.routine_definition_id = r.id
       LEFT JOIN routine_definition_modes rdm ON rdm.app_user_id = r.app_user_id
@@ -117,6 +117,7 @@ describe.sequential("CreateFutureRoutineFromCompletedEntry", () => {
       .toMatchObject({ title: "Historical task title", project_id: fixture.sourceProjectId,
         default_section_id: fixture.sectionId, default_planned_start_minute: 0,
         default_estimate_seconds: 1800, start_logical_date: "2026-09-02", end_logical_date: null,
+        created_at: currentDayInstant, created_logical_date: "2026-09-01",
         schedule_kind: "daily", mode_id: fixture.modeId });
     expect(fixture.taskProjectIdAfterStart).not.toBe(fixture.sourceProjectId);
 

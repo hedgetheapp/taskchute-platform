@@ -7,6 +7,7 @@ import com.hedgetheapp.taskchute.network.JsonParser
 import com.hedgetheapp.taskchute.network.JsonValue
 import com.hedgetheapp.taskchute.today.TodayHttpResponse
 import java.net.URLEncoder
+import java.time.Instant
 import java.time.LocalDate
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -27,10 +28,39 @@ internal data class ReviewPeriodMetrics(
     val completedCount: Long,
     val unexecutedCount: Long,
     val completedActualDurationSeconds: Long,
+    val routineActivity: ReviewRoutineActivity? = null,
+)
+
+internal enum class ReviewRoutineActivityCoverage { UNMEASURED, PARTIAL, COMPLETE }
+
+internal data class ReviewRoutineActivity(
+    val coverage: ReviewRoutineActivityCoverage,
+    val createdCount: Long?,
+    val deletedCount: Long?,
+    val coverageStartedAt: String?,
+    val coverageStartedLogicalDate: String?,
+)
+
+internal enum class ReviewRoutineActivityStatus {
+    IDLE,
+    LOADING,
+    UNMEASURED,
+    PARTIAL,
+    COMPLETE,
+    UNAVAILABLE,
+    ERROR,
+    AUTH_REQUIRED,
+}
+
+internal data class ReviewRoutineActivityUiState(
+    val status: ReviewRoutineActivityStatus = ReviewRoutineActivityStatus.IDLE,
+    val activity: ReviewRoutineActivity? = null,
+    val message: String? = null,
 )
 
 internal sealed interface ReviewPeriodMetricsResult {
     data class Success(val metrics: ReviewPeriodMetrics) : ReviewPeriodMetricsResult
+    data class RoutineActivitySuccess(val activity: ReviewRoutineActivity?) : ReviewPeriodMetricsResult
     data object Unauthorized : ReviewPeriodMetricsResult
     data class Failure(val message: String) : ReviewPeriodMetricsResult
 }
@@ -39,13 +69,13 @@ internal class ReviewPeriodMetricsHttpRepository(
     private val request: (method: String, path: String, body: String?) -> TodayHttpResponse?,
 ) {
     fun load(granularity: ReviewPeriodGranularity, anchor: String): ReviewPeriodMetricsResult {
-        if (granularity == ReviewPeriodGranularity.DAILY || !isCanonicalAnchor(granularity, anchor)) {
+        if (!isCanonicalAnchor(granularity, anchor)) {
             return ReviewPeriodMetricsResult.Failure("選択期間を確認できませんでした。")
         }
         val period = when (granularity) {
+            ReviewPeriodGranularity.DAILY -> "daily"
             ReviewPeriodGranularity.MONTHLY -> "monthly"
             ReviewPeriodGranularity.YEARLY -> "yearly"
-            ReviewPeriodGranularity.DAILY -> error("Daily period does not use aggregate metrics")
         }
         val encodedAnchor = URLEncoder.encode(anchor, Charsets.UTF_8.name())
         val response = runCatching {
@@ -54,15 +84,16 @@ internal class ReviewPeriodMetricsHttpRepository(
 
         return when {
             response.status == null -> ReviewPeriodMetricsResult.Failure("接続できません。再試行してください。")
-            response.status == 401 -> {
-                ReviewPeriodMetricsResult.Unauthorized
-            }
+            response.status == 401 -> ReviewPeriodMetricsResult.Unauthorized
+            granularity == ReviewPeriodGranularity.DAILY && response.status in setOf(400, 404) ->
+                ReviewPeriodMetricsResult.RoutineActivitySuccess(null)
             response.status !in 200..299 -> ReviewPeriodMetricsResult.Failure("集計データを読み込めませんでした。再試行してください。")
+            granularity == ReviewPeriodGranularity.DAILY ->
+                ReviewPeriodMetricsResult.RoutineActivitySuccess(parseDailyRoutineActivity(response.body, anchor))
             else -> runCatching { parseReviewPeriodMetrics(response.body, granularity, anchor) }
-                .fold(
-                    onSuccess = ReviewPeriodMetricsResult::Success,
-                    onFailure = { ReviewPeriodMetricsResult.Failure("サーバーの集計データを読み取れませんでした。") },
-                )
+                .fold(ReviewPeriodMetricsResult::Success) {
+                    ReviewPeriodMetricsResult.Failure("サーバーの集計データを読み取れませんでした。")
+                }
         }
     }
 
@@ -94,13 +125,64 @@ internal class ReviewPeriodMetricsHttpRepository(
             completedCount = nonNegativeLong("completed_count"),
             unexecutedCount = nonNegativeLong("unexecuted_count"),
             completedActualDurationSeconds = nonNegativeLong("completed_actual_duration_seconds"),
+            routineActivity = parseRoutineActivity(root.fields["routine_activity"]),
         )
     }
+
+    private fun parseDailyRoutineActivity(body: String?, expectedAnchor: String): ReviewRoutineActivity? =
+        runCatching {
+            val root = JsonParser(body ?: "").parse() as? JsonValue.Object
+                ?: error("Review activity response must be an object")
+            require((root.fields["period_granularity"] as? JsonValue.StringValue)?.value == "daily")
+            require((root.fields["period_anchor"] as? JsonValue.StringValue)?.value == expectedAnchor)
+            parseRoutineActivity(root.fields["routine_activity"])
+        }.getOrNull()
+
+    private fun parseRoutineActivity(value: JsonValue?): ReviewRoutineActivity? = runCatching {
+        val root = value as? JsonValue.Object ?: return null
+        val coverage = when ((root.fields["coverage_status"] as? JsonValue.StringValue)?.value) {
+            "UNMEASURED" -> ReviewRoutineActivityCoverage.UNMEASURED
+            "PARTIAL" -> ReviewRoutineActivityCoverage.PARTIAL
+            "COMPLETE" -> ReviewRoutineActivityCoverage.COMPLETE
+            else -> return null
+        }
+        fun nullableString(field: String): String? = when (val fieldValue = root.fields[field]) {
+            JsonValue.Null -> null
+            is JsonValue.StringValue -> fieldValue.value
+            else -> null
+        }
+        val createdRaw = root.fields["created_count"]
+        val deletedRaw = root.fields["deleted_count"]
+        val startedAt = nullableString("coverage_started_at")
+        val startedLogicalDate = nullableString("coverage_started_logical_date")
+        when (coverage) {
+            ReviewRoutineActivityCoverage.UNMEASURED -> {
+                require(createdRaw === JsonValue.Null && deletedRaw === JsonValue.Null)
+                require((startedAt == null && startedLogicalDate == null)
+                    || (startedAt != null && runCatching { Instant.parse(startedAt) }.isSuccess
+                        && startedLogicalDate != null && isLogicalDate(startedLogicalDate)))
+            }
+            ReviewRoutineActivityCoverage.PARTIAL,
+            ReviewRoutineActivityCoverage.COMPLETE,
+            -> {
+                val createdCount = (createdRaw as? JsonValue.NumberValue)?.value?.toLongOrNull()
+                    ?.takeIf { it >= 0L }
+                val deletedCount = (deletedRaw as? JsonValue.NumberValue)?.value?.toLongOrNull()
+                    ?.takeIf { it >= 0L }
+                require(createdCount != null && deletedCount != null)
+                require(startedAt != null && runCatching { Instant.parse(startedAt) }.isSuccess)
+                require(startedLogicalDate != null && isLogicalDate(startedLogicalDate))
+                return ReviewRoutineActivity(coverage, createdCount, deletedCount, startedAt, startedLogicalDate)
+            }
+        }
+        ReviewRoutineActivity(coverage, null, null, startedAt, startedLogicalDate)
+    }.getOrNull()
 }
 
 internal enum class ReviewPeriodMetricsStatus {
     IDLE,
     LOADING,
+    ACTIVITY_ONLY,
     CONTENT,
     EMPTY,
     UNESTABLISHED,
@@ -113,6 +195,7 @@ internal data class ReviewPeriodMetricsUiState(
     val granularity: ReviewPeriodGranularity? = null,
     val anchor: String? = null,
     val metrics: ReviewPeriodMetrics? = null,
+    val routineActivity: ReviewRoutineActivityUiState = ReviewRoutineActivityUiState(),
     val message: String? = null,
 )
 
@@ -139,8 +222,9 @@ internal class ReviewPeriodMetricsController(
     private var closed = false
 
     fun load(granularity: ReviewPeriodGranularity, anchor: String) {
-        if (closed || granularity == ReviewPeriodGranularity.DAILY) return
-        if (state.status == ReviewPeriodMetricsStatus.LOADING
+        if (closed) return
+        if ((state.status == ReviewPeriodMetricsStatus.LOADING
+                || state.routineActivity.status == ReviewRoutineActivityStatus.LOADING)
             && state.granularity == granularity && state.anchor == anchor
         ) return
 
@@ -150,10 +234,16 @@ internal class ReviewPeriodMetricsController(
             activeLoad?.let { previous -> if (!previous.readStarted) previous.job?.cancel() }
             activeLoad = null
             state = ReviewPeriodMetricsUiState(
-                status = ReviewPeriodMetricsStatus.ERROR,
+                status = if (granularity == ReviewPeriodGranularity.DAILY) {
+                    ReviewPeriodMetricsStatus.ACTIVITY_ONLY
+                } else ReviewPeriodMetricsStatus.ERROR,
                 granularity = granularity,
                 anchor = anchor,
                 message = "選択期間を確認できませんでした。",
+                routineActivity = ReviewRoutineActivityUiState(
+                    status = ReviewRoutineActivityStatus.ERROR,
+                    message = "選択期間を確認できませんでした。",
+                ),
             )
             return
         }
@@ -164,9 +254,12 @@ internal class ReviewPeriodMetricsController(
         val operation = LoadOperation()
         activeLoad = operation
         state = ReviewPeriodMetricsUiState(
-            status = ReviewPeriodMetricsStatus.LOADING,
+            status = if (granularity == ReviewPeriodGranularity.DAILY) {
+                ReviewPeriodMetricsStatus.ACTIVITY_ONLY
+            } else ReviewPeriodMetricsStatus.LOADING,
             granularity = granularity,
             anchor = anchor,
+            routineActivity = ReviewRoutineActivityUiState(status = ReviewRoutineActivityStatus.LOADING),
         )
         operation.job = scope.launch {
             operation.readStarted = true
@@ -175,17 +268,43 @@ internal class ReviewPeriodMetricsController(
             when (result) {
                 ReviewPeriodMetricsResult.Unauthorized -> {
                     state = state.copy(
-                        status = ReviewPeriodMetricsStatus.AUTH_REQUIRED,
+                        status = if (granularity == ReviewPeriodGranularity.DAILY) {
+                            ReviewPeriodMetricsStatus.ACTIVITY_ONLY
+                        } else ReviewPeriodMetricsStatus.AUTH_REQUIRED,
                         metrics = null,
                         message = "認証状態を確認しています…",
+                        routineActivity = ReviewRoutineActivityUiState(
+                            status = ReviewRoutineActivityStatus.AUTH_REQUIRED,
+                            message = "認証状態を確認しています…",
+                        ),
                     )
                     onUnauthorized()
                 }
                 is ReviewPeriodMetricsResult.Failure -> state = state.copy(
-                    status = ReviewPeriodMetricsStatus.ERROR,
+                    status = if (granularity == ReviewPeriodGranularity.DAILY) {
+                        ReviewPeriodMetricsStatus.ACTIVITY_ONLY
+                    } else ReviewPeriodMetricsStatus.ERROR,
                     metrics = null,
                     message = result.message,
+                    routineActivity = ReviewRoutineActivityUiState(
+                        status = ReviewRoutineActivityStatus.ERROR,
+                        message = result.message,
+                    ),
                 )
+                is ReviewPeriodMetricsResult.RoutineActivitySuccess -> {
+                    if (granularity == ReviewPeriodGranularity.DAILY) {
+                        state = state.copy(routineActivity = routineActivityUiState(result.activity))
+                    } else {
+                        state = state.copy(
+                            status = ReviewPeriodMetricsStatus.ERROR,
+                            message = "選択期間の集計データを確認できませんでした。再試行してください。",
+                            routineActivity = ReviewRoutineActivityUiState(
+                                status = ReviewRoutineActivityStatus.UNAVAILABLE,
+                                message = "活動データを確認できませんでした。",
+                            ),
+                        )
+                    }
+                }
                 is ReviewPeriodMetricsResult.Success -> publishMetrics(generation, session, result.metrics, granularity, anchor)
             }
         }
@@ -245,6 +364,10 @@ internal class ReviewPeriodMetricsController(
                 status = ReviewPeriodMetricsStatus.ERROR,
                 metrics = null,
                 message = "選択期間の集計データを確認できませんでした。再試行してください。",
+                routineActivity = ReviewRoutineActivityUiState(
+                    status = ReviewRoutineActivityStatus.UNAVAILABLE,
+                    message = "活動データを確認できませんでした。",
+                ),
             )
             return
         }
@@ -256,6 +379,7 @@ internal class ReviewPeriodMetricsController(
         state = state.copy(
             status = nextStatus,
             metrics = if (nextStatus == ReviewPeriodMetricsStatus.UNESTABLISHED) null else metrics,
+            routineActivity = routineActivityUiState(metrics.routineActivity),
             message = when (nextStatus) {
                 ReviewPeriodMetricsStatus.UNESTABLISHED -> "この期間に記録されたTaskChuteDayはありません。"
                 ReviewPeriodMetricsStatus.EMPTY -> "この期間のTaskChuteDayに対象Entryはありません。"
@@ -266,6 +390,31 @@ internal class ReviewPeriodMetricsController(
 
     private fun isCurrent(generation: Long, session: Long): Boolean =
         !closed && generation == requestGeneration && session == sessionGeneration
+
+    private fun routineActivityUiState(activity: ReviewRoutineActivity?): ReviewRoutineActivityUiState {
+        if (activity == null || !isValidRoutineActivity(activity)) {
+            return ReviewRoutineActivityUiState(
+                status = ReviewRoutineActivityStatus.UNAVAILABLE,
+                message = "Routine活動データを利用できません。",
+            )
+        }
+        val status = when (activity.coverage) {
+            ReviewRoutineActivityCoverage.UNMEASURED -> ReviewRoutineActivityStatus.UNMEASURED
+            ReviewRoutineActivityCoverage.PARTIAL -> ReviewRoutineActivityStatus.PARTIAL
+            ReviewRoutineActivityCoverage.COMPLETE -> ReviewRoutineActivityStatus.COMPLETE
+        }
+        return ReviewRoutineActivityUiState(status = status, activity = activity)
+    }
+
+    private fun isValidRoutineActivity(activity: ReviewRoutineActivity): Boolean = when (activity.coverage) {
+        ReviewRoutineActivityCoverage.UNMEASURED -> activity.createdCount == null && activity.deletedCount == null
+        ReviewRoutineActivityCoverage.PARTIAL,
+        ReviewRoutineActivityCoverage.COMPLETE,
+        -> activity.createdCount != null && activity.createdCount >= 0L
+            && activity.deletedCount != null && activity.deletedCount >= 0L
+            && activity.coverageStartedAt?.let { runCatching { Instant.parse(it) }.isSuccess } == true
+            && activity.coverageStartedLogicalDate?.let(::isLogicalDate) == true
+    }
 }
 
 internal fun isLogicalDate(value: String): Boolean =

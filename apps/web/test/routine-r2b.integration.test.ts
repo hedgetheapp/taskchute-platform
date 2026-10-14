@@ -51,6 +51,29 @@ async function createOff(userId: string, title = "Board Routine", expectedBoardR
   return { request, result };
 }
 
+function databaseThatChangesSettingsBeforeNextBatch(
+  db: D1Database,
+  userId: string,
+  timezone: string,
+  boundaryMinutes: number,
+): D1Database {
+  let changed = false;
+  return new Proxy(db, {
+    get(target, property) {
+      if (property === "batch") return async (statements: D1PreparedStatement[]) => {
+        if (!changed) {
+          changed = true;
+          await target.prepare(`UPDATE user_settings SET timezone = ?, day_boundary_minutes = ?
+            WHERE app_user_id = ?`).bind(timezone, boundaryMinutes, userId).run();
+        }
+        return target.batch(statements);
+      };
+      const value = Reflect.get(target, property) as unknown;
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+}
+
 describe.sequential("Routine R2B Board", () => {
   it("creates a local-style blank commit atomically as OFF without materializing an occurrence", async () => {
     const fixture = await seedUser();
@@ -58,6 +81,9 @@ describe.sequential("Routine R2B Board", () => {
     expect(result).toMatchObject({ task_id: request.task_id, routine_definition_id: request.routine_definition_id,
       board_position: 1, board_revision: 1, settings_revision: 0 });
     expect(await createRoutine(env.APP_DB, fixture.userId, request, now)).toEqual(result);
+    expect(await env.APP_DB.prepare(`SELECT created_logical_date FROM routine_definitions
+      WHERE app_user_id = ? AND id = ?`).bind(fixture.userId, request.routine_definition_id)
+      .first<string>("created_logical_date")).toBe("2026-09-01");
     await expect(createRoutine(env.APP_DB, fixture.userId, { ...request, title: "misuse" }, now))
       .rejects.toMatchObject({ code: "operation_id_misuse" });
     expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM routine_occurrences WHERE app_user_id = ?")
@@ -65,6 +91,72 @@ describe.sequential("Routine R2B Board", () => {
     const board = await loadRoutineBoard(env.APP_DB, fixture.userId, now);
     expect(board.routines).toEqual([expect.objectContaining({ title: "Board Routine", enabled: false,
       schedule: { kind: "daily" }, project: null })]);
+  });
+
+  it("pins create and delete to the event-time TaskChuteDay across DST without requiring a Day row", async () => {
+    const fixture = await seedUser();
+    await env.APP_DB.prepare(`UPDATE user_settings SET timezone = 'America/New_York',
+      day_boundary_minutes = 240 WHERE app_user_id = ?`).bind(fixture.userId).run();
+    const eventInstant = "2026-11-01T05:30:00.000Z"; // 01:30 before the 04:00 fall-back Day boundary.
+    expect(await env.APP_DB.prepare(`SELECT COUNT(*) AS value FROM taskchute_days
+      WHERE app_user_id = ? AND logical_date = '2026-10-31'`).bind(fixture.userId).first<number>("value"))
+      .toBe(0);
+
+    const created = await createRoutine(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), task_id: uuidv7(), routine_definition_id: uuidv7(),
+      title: "DST dayless Routine", expected_board_revision: 0,
+    }, eventInstant);
+    expect(await env.APP_DB.prepare(`SELECT created_at, created_logical_date FROM routine_definitions
+      WHERE app_user_id = ? AND id = ?`).bind(fixture.userId, created.routine_definition_id).first())
+      .toEqual({ created_at: eventInstant, created_logical_date: "2026-10-31" });
+
+    const deleted = await deleteRoutine(env.APP_DB, fixture.userId, {
+      operation_id: uuidv7(), routine_definition_id: created.routine_definition_id,
+      expected_settings_revision: 0, expected_board_revision: created.board_revision,
+    }, eventInstant);
+    expect(deleted.board_revision).toBe(created.board_revision + 1);
+    expect(await env.APP_DB.prepare(`SELECT archived_at, deleted_logical_date FROM routine_definition_archives
+      WHERE app_user_id = ? AND routine_definition_id = ?`)
+      .bind(fixture.userId, created.routine_definition_id).first())
+      .toEqual({ archived_at: eventInstant, deleted_logical_date: "2026-10-31" });
+    expect(await env.APP_DB.prepare(`SELECT COUNT(*) AS value FROM taskchute_days
+      WHERE app_user_id = ? AND logical_date = '2026-10-31'`).bind(fixture.userId).first<number>("value"))
+      .toBe(0);
+  });
+
+  it("rolls back a Routine mutation when event-time settings change before its commit batch", async () => {
+    const createFixture = await seedUser();
+    const createRequest = { operation_id: uuidv7(), task_id: uuidv7(), routine_definition_id: uuidv7(),
+      title: "settings race", expected_board_revision: 0 };
+    const changedBeforeCreate = databaseThatChangesSettingsBeforeNextBatch(
+      env.APP_DB, createFixture.userId, "Asia/Tokyo", 0,
+    );
+    await expect(createRoutine(changedBeforeCreate, createFixture.userId, createRequest, now))
+      .rejects.toMatchObject({ code: "infrastructure_ambiguous" });
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS value FROM tasks WHERE app_user_id = ? AND id = ?")
+      .bind(createFixture.userId, createRequest.task_id).first<number>("value")).toBe(0);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS value FROM routine_definitions WHERE app_user_id = ? AND id = ?")
+      .bind(createFixture.userId, createRequest.routine_definition_id).first<number>("value")).toBe(0);
+    expect(await env.APP_DB.prepare("SELECT board_revision FROM routine_board_heads WHERE app_user_id = ?")
+      .bind(createFixture.userId).first<number>("board_revision")).toBe(0);
+
+    const deleteFixture = await seedUser();
+    const created = await createOff(deleteFixture.userId);
+    const changedBeforeDelete = databaseThatChangesSettingsBeforeNextBatch(
+      env.APP_DB, deleteFixture.userId, "Asia/Tokyo", 0,
+    );
+    await deleteRoutine(changedBeforeDelete, deleteFixture.userId, {
+      operation_id: uuidv7(), routine_definition_id: created.result.routine_definition_id,
+      expected_settings_revision: 0, expected_board_revision: created.result.board_revision,
+    }, now);
+    expect(await env.APP_DB.prepare(`SELECT COUNT(*) AS value FROM routine_definition_archives
+      WHERE app_user_id = ? AND routine_definition_id = ?`)
+      .bind(deleteFixture.userId, created.result.routine_definition_id).first<number>("value")).toBe(0);
+    expect(await env.APP_DB.prepare("SELECT board_revision FROM routine_board_heads WHERE app_user_id = ?")
+      .bind(deleteFixture.userId).first<number>("board_revision")).toBe(created.result.board_revision);
+    expect(await env.APP_DB.prepare(`SELECT COUNT(*) AS value FROM routine_board_items
+      WHERE app_user_id = ? AND routine_definition_id = ?`)
+      .bind(deleteFixture.userId, created.result.routine_definition_id).first<number>("value")).toBe(1);
   });
 
   it("persists optional create defaults atomically and preserves legacy null defaults", async () => {
@@ -596,8 +688,10 @@ describe.sequential("Routine R2B Board", () => {
       .bind(fixture.userId, entry.id).first<string>("routine_occurrence_id")).toBe(entry.routine_occurrence_id);
     expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM routine_occurrences WHERE app_user_id = ? AND id = ?")
       .bind(fixture.userId, entry.routine_occurrence_id).first<number>("count")).toBe(1);
-    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM routine_definition_archives WHERE app_user_id = ? AND routine_definition_id = ?")
-      .bind(fixture.userId, created.result.routine_definition_id).first<number>("count")).toBe(1);
+    expect(await env.APP_DB.prepare(`SELECT archived_at, deleted_logical_date FROM routine_definition_archives
+      WHERE app_user_id = ? AND routine_definition_id = ?`)
+      .bind(fixture.userId, created.result.routine_definition_id).first())
+      .toEqual({ archived_at: now, deleted_logical_date: "2026-09-01" });
   });
 
   it("keeps an explicit historical no-Project snapshot when the current Task later gains a Project", async () => {
@@ -645,6 +739,9 @@ describe.sequential("Routine R2B Board", () => {
     });
     expect(await env.APP_DB.prepare("SELECT routine_occurrence_id FROM routine_occurrence_task_snapshots WHERE app_user_id = ?")
       .bind(fixture.userId).first<string>("routine_occurrence_id")).toBe(occurrenceId);
+    expect(await env.APP_DB.prepare(`SELECT created_at, created_logical_date FROM routine_definitions
+      WHERE app_user_id = ? AND id = ?`).bind(fixture.userId, definitionId).first())
+      .toEqual({ created_at: now, created_logical_date: fixture.day.taskchute_day.logical_date });
   });
 
   it("materializes every D-086 recurrence family through the shared evaluator", async () => {

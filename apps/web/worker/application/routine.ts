@@ -67,6 +67,8 @@ interface RoutineMaterializationPlan {
 interface CurrentRoutineDayRow {
   id: string;
   logical_date: string;
+  timezone: string;
+  boundaryMinutes: number;
 }
 
 function scheduleSnapshot(row: Pick<RoutineDefinitionRow, "schedule_kind" | "interval_days" | "interval_weeks"
@@ -93,8 +95,9 @@ async function readCurrentRoutineDay(
     timezone: settings.timezone,
     boundaryMinutes: settings.day_boundary_minutes,
   });
-  return db.prepare("SELECT id, logical_date FROM taskchute_days WHERE app_user_id = ? AND logical_date = ?")
-    .bind(appUserId, resolved.logicalDate).first<CurrentRoutineDayRow>();
+  const day = await db.prepare("SELECT id, logical_date FROM taskchute_days WHERE app_user_id = ? AND logical_date = ?")
+    .bind(appUserId, resolved.logicalDate).first<{ id: string; logical_date: string }>();
+  return day ? { ...day, timezone: settings.timezone, boundaryMinutes: settings.day_boundary_minutes } : null;
 }
 
 function isLogicalDate(value: unknown): value is string {
@@ -193,14 +196,17 @@ export async function convertEntryToRoutine(
           SELECT 1 FROM entries WHERE app_user_id = ? AND id = ? AND taskchute_day_id = ?
             AND lifecycle_state = 'planned' AND routine_occurrence_id IS NULL
             AND NOT EXISTS (SELECT 1 FROM routine_definitions r
-              WHERE r.app_user_id = entries.app_user_id AND r.task_id = entries.task_id))`)
-        .bind(appUserId, request.operation_id, appUserId, request.entry_id, currentDay.id),
+              WHERE r.app_user_id = entries.app_user_id AND r.task_id = entries.task_id))
+          AND EXISTS (SELECT 1 FROM user_settings WHERE app_user_id = ?
+            AND timezone IS ? AND day_boundary_minutes IS ?)`)
+        .bind(appUserId, request.operation_id, appUserId, request.entry_id, currentDay.id,
+          appUserId, currentDay.timezone, currentDay.boundaryMinutes),
       db.prepare(`INSERT INTO routine_definitions
         (id, app_user_id, task_id, recurrence_type, start_logical_date, end_logical_date,
          default_section_id, default_estimate_seconds, default_planned_start_minute,
-         materialization_order, created_at)
+         materialization_order, created_at, created_logical_date)
          SELECT ?, ?, e.task_id, 'daily', ?, ?, e.section_id, e.estimate_seconds,
-           e.planned_start_minute, ?, ? FROM entries e
+           e.planned_start_minute, ?, ?, ? FROM entries e
          WHERE e.app_user_id = ? AND e.id = ? AND e.taskchute_day_id = ?
            AND e.lifecycle_state = 'planned' AND e.routine_occurrence_id IS NULL
            AND NOT EXISTS (SELECT 1 FROM routine_definitions existing
@@ -208,7 +214,7 @@ export async function convertEntryToRoutine(
            AND EXISTS (SELECT 1 FROM routine_command_guards
              WHERE app_user_id = ? AND operation_id = ?)`)
         .bind(request.routine_definition_id, appUserId, currentDay.logical_date,
-          request.end_logical_date, orderRow.value, nowInstant, appUserId, request.entry_id,
+          request.end_logical_date, orderRow.value, nowInstant, currentDay.logical_date, appUserId, request.entry_id,
           currentDay.id, appUserId, request.operation_id),
       db.prepare(`INSERT INTO routine_schedules
         (app_user_id, routine_definition_id, schedule_kind, interval_days, interval_weeks,

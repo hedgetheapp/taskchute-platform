@@ -351,12 +351,12 @@ export async function createFutureRoutineFromCompletedEntry(
         .bind(request.task_id, appUserId, metadata.projectId, source.task_title, nowInstant, appUserId, preconditionId),
       db.prepare(`INSERT INTO routine_definitions (id, app_user_id, task_id, recurrence_type,
         start_logical_date, end_logical_date, default_section_id, default_estimate_seconds,
-        default_planned_start_minute, materialization_order, defaults_revision, created_at)
-        SELECT ?, ?, ?, 'daily', ?, NULL, ?, ?, ?, ?, 0, ? WHERE EXISTS (
+        default_planned_start_minute, materialization_order, defaults_revision, created_at, created_logical_date)
+        SELECT ?, ?, ?, 'daily', ?, NULL, ?, ?, ?, ?, 0, ?, ? WHERE EXISTS (
           SELECT 1 FROM transaction_assertions WHERE app_user_id = ? AND id = ? AND ok = 1)`)
         .bind(request.routine_definition_id, appUserId, request.task_id, startLogicalDate,
           metadata.defaultSectionId, source.estimate_seconds, metadata.defaultPlannedStartMinute,
-          board.materializationOrder, nowInstant, appUserId, preconditionId),
+          board.materializationOrder, nowInstant, currentDay.logicalDate, appUserId, preconditionId),
       db.prepare(`INSERT INTO routine_schedules
         (app_user_id, routine_definition_id, schedule_kind, interval_days, interval_weeks,
          interval_months, weekdays_mask, month_day, month_ordinal, month_weekday)

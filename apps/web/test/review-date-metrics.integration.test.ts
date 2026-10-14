@@ -109,7 +109,9 @@ describe.sequential("D-178 Date monthly/yearly metrics", () => {
     expect(reviewDateMetricRange("monthly", "2024-02-02")).toBeNull();
     expect(reviewDateMetricRange("monthly", "2023-02-31")).toBeNull();
     expect(reviewDateMetricRange("yearly", "2024-02-01")).toBeNull();
-    expect(reviewDateMetricRange("daily", "2024-02-01")).toBeNull();
+    expect(reviewDateMetricRange("daily", "2024-02-29")).toMatchObject({
+      startLogicalDate: "2024-02-29", endLogicalDateExclusive: "2024-03-01",
+    });
     expect(reviewDateMetricRange("yearly", "9999-01-01")?.endLogicalDateExclusive).toBeNull();
   });
 
@@ -145,6 +147,10 @@ describe.sequential("D-178 Date monthly/yearly metrics", () => {
     expect(february).toEqual({
       period_granularity: "monthly", period_anchor: "2024-02-01", established_day_count: 2,
       completed_count: 2, unexecuted_count: 1, completed_actual_duration_seconds: 780,
+      routine_activity: {
+        coverage_status: "UNMEASURED", created_count: null, deleted_count: null,
+        coverage_started_at: null, coverage_started_logical_date: null,
+      },
     });
     expect(await scopedCounts(userId)).toEqual(before);
 

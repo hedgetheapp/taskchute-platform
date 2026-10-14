@@ -1,6 +1,7 @@
 import { isLogicalDate } from "../domain/taskchute-day";
+import { Temporal as PolyfillTemporal } from "@js-temporal/polyfill";
 
-export type ReviewDateMetricGranularity = "monthly" | "yearly";
+export type ReviewDateMetricGranularity = "daily" | "monthly" | "yearly";
 
 export interface ReviewDateMetricRange {
   granularity: ReviewDateMetricGranularity;
@@ -16,6 +17,17 @@ export interface ReviewDateMetrics {
   completed_count: number;
   unexecuted_count: number;
   completed_actual_duration_seconds: number;
+  routine_activity: ReviewRoutineActivity;
+}
+
+export type RoutineActivityCoverageStatus = "UNMEASURED" | "PARTIAL" | "COMPLETE";
+
+export interface ReviewRoutineActivity {
+  coverage_status: RoutineActivityCoverageStatus;
+  created_count: number | null;
+  deleted_count: number | null;
+  coverage_started_at: string | null;
+  coverage_started_logical_date: string | null;
 }
 
 interface ReviewDateMetricsRow {
@@ -27,9 +39,19 @@ interface ReviewDateMetricsRow {
 
 /** A month/year anchor is the first logical date in the selected calendar period. */
 export function reviewDateMetricRange(period: unknown, anchor: unknown): ReviewDateMetricRange | null {
-  if ((period !== "monthly" && period !== "yearly") || typeof anchor !== "string" || !isLogicalDate(anchor)) return null;
+  if ((period !== "daily" && period !== "monthly" && period !== "yearly")
+    || typeof anchor !== "string" || !isLogicalDate(anchor)) return null;
   const year = Number(anchor.slice(0, 4));
   const month = Number(anchor.slice(5, 7));
+  if (period === "daily") {
+    let endLogicalDateExclusive: string | null;
+    try {
+      endLogicalDateExclusive = PolyfillTemporal.PlainDate.from(anchor).add({ days: 1 }).toString();
+    } catch {
+      endLogicalDateExclusive = null;
+    }
+    return { granularity: period, anchor, startLogicalDate: anchor, endLogicalDateExclusive };
+  }
   if (period === "monthly" && anchor.slice(8) !== "01") return null;
   if (period === "yearly" && (month !== 1 || anchor.slice(8) !== "01")) return null;
 
@@ -125,6 +147,94 @@ export async function loadReviewDateMetrics(
     completed_count: row.completed_count,
     unexecuted_count: row.unexecuted_count,
     completed_actual_duration_seconds: row.completed_actual_duration_seconds,
+    routine_activity: await loadReviewRoutineActivity(db, appUserId, range),
+  };
+}
+
+/** Routine activity is attributed from event dates and does not require persisted Days. */
+export async function loadReviewRoutineActivity(
+  db: D1Database,
+  appUserId: string,
+  range: ReviewDateMetricRange,
+): Promise<ReviewRoutineActivity> {
+  const marker = await db.prepare(`SELECT started_at, started_logical_date
+    FROM routine_activity_coverage WHERE app_user_id = ?`)
+    .bind(appUserId).first<{ started_at: string | null; started_logical_date: string | null }>();
+
+  if (!marker?.started_at || !marker.started_logical_date) {
+    return {
+      coverage_status: "UNMEASURED",
+      created_count: null,
+      deleted_count: null,
+      coverage_started_at: null,
+      coverage_started_logical_date: null,
+    };
+  }
+  if (!Number.isFinite(Date.parse(marker.started_at)) || !isLogicalDate(marker.started_logical_date)) {
+    throw new Error("Invalid Routine activity coverage marker");
+  }
+
+  let completeFromLogicalDate: string | null = null;
+  try {
+    // A timezone-offset change spans less than 48 hours; the boundary range adds
+    // less than 24 hours. Four logical dates therefore clear any pre-marker row
+    // even if timezone or boundary settings are changed after activation.
+    completeFromLogicalDate = PolyfillTemporal.PlainDate.from(marker.started_logical_date)
+      .add({ days: 4 }).toString();
+  } catch {
+    // No representable post-marker date can be proven complete near year 9999.
+  }
+
+  const startedDate = PolyfillTemporal.PlainDate.from(marker.started_logical_date);
+  const endsBeforeCoverage = range.endLogicalDateExclusive !== null
+    && PolyfillTemporal.PlainDate.compare(
+      PolyfillTemporal.PlainDate.from(range.endLogicalDateExclusive), startedDate,
+    ) <= 0;
+  const startsAfterCoverageSlack = completeFromLogicalDate !== null
+    && PolyfillTemporal.PlainDate.compare(
+      PolyfillTemporal.PlainDate.from(range.startLogicalDate),
+      PolyfillTemporal.PlainDate.from(completeFromLogicalDate),
+    ) >= 0;
+  const status: RoutineActivityCoverageStatus = endsBeforeCoverage
+    ? "UNMEASURED"
+    : startsAfterCoverageSlack ? "COMPLETE" : "PARTIAL";
+  if (status === "UNMEASURED") {
+    return {
+      coverage_status: status,
+      created_count: null,
+      deleted_count: null,
+      coverage_started_at: marker.started_at,
+      coverage_started_logical_date: marker.started_logical_date,
+    };
+  }
+
+  const row = await db.prepare(`SELECT
+      (SELECT COUNT(*) FROM routine_definitions
+        WHERE app_user_id = ? AND created_logical_date >= ?
+          AND (? IS NULL OR created_logical_date < ?)
+          AND (? <> 'PARTIAL' OR created_at >= ?)) AS created_count,
+      (SELECT COUNT(*) FROM routine_definition_archives
+        WHERE app_user_id = ? AND deleted_logical_date >= ?
+          AND (? IS NULL OR deleted_logical_date < ?)
+          AND (? <> 'PARTIAL' OR archived_at >= ?)) AS deleted_count`)
+    .bind(
+      appUserId, range.startLogicalDate, range.endLogicalDateExclusive, range.endLogicalDateExclusive,
+      status, marker.started_at,
+      appUserId, range.startLogicalDate, range.endLogicalDateExclusive, range.endLogicalDateExclusive,
+      status, marker.started_at,
+    )
+    .first<{ created_count: number; deleted_count: number }>();
+
+  if (!row || !Number.isSafeInteger(row.created_count) || row.created_count < 0
+    || !Number.isSafeInteger(row.deleted_count) || row.deleted_count < 0) {
+    throw new Error("Invalid Routine activity aggregate");
+  }
+  return {
+    coverage_status: status,
+    created_count: row.created_count,
+    deleted_count: row.deleted_count,
+    coverage_started_at: marker.started_at,
+    coverage_started_logical_date: marker.started_logical_date,
   };
 }
 

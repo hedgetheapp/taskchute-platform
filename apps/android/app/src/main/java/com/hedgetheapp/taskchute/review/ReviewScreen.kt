@@ -136,8 +136,10 @@ internal fun ReviewScreen(
             return
         }
         if (next.period.granularity == ReviewPeriodGranularity.DAILY) {
-            periodMetricsController.cancelActiveLoad()
             dailyMetricsController.loadDaily(next.period.anchor?.toString(), debounceMillis = 250)
+            next.period.anchor?.toString()?.let {
+                periodMetricsController.load(ReviewPeriodGranularity.DAILY, it)
+            } ?: periodMetricsController.cancelActiveLoad()
             return
         }
         val anchor = next.period.anchor?.toString()
@@ -154,8 +156,9 @@ internal fun ReviewScreen(
         periodMetricsController.load(next.period.granularity, anchor)
     }
 
-    androidx.compose.runtime.LaunchedEffect(dailyMetricsController) {
+    androidx.compose.runtime.LaunchedEffect(dailyMetricsController, periodMetricsController) {
         dailyMetricsController.loadDaily(initialAnchor?.toString())
+        state.period.anchor?.toString()?.let { periodMetricsController.load(state.period.granularity, it) }
     }
     androidx.compose.runtime.LaunchedEffect(dailyMetricsState.currentLogicalDate) {
         if (state.period.anchor == null) {
@@ -237,6 +240,12 @@ internal fun ReviewScreen(
                             ReviewDailyMetricsContent(
                                 state = dailyMetricsState,
                                 onRetry = { dailyMetricsController.loadDaily(state.period.anchor?.toString()) },
+                                routineActivityState = periodMetricsState.routineActivity,
+                                onRoutineActivityRetry = {
+                                    state.period.anchor?.toString()?.let {
+                                        periodMetricsController.load(ReviewPeriodGranularity.DAILY, it)
+                                    }
+                                },
                             )
                         } else if (state.period.anchor == null) {
                             ReviewPeriodAnchorContent(
@@ -297,19 +306,26 @@ private fun ReviewPeriodMetricsContent(
                 ReviewMetricRow("Completed（完了）", "${metrics.completedCount} 件")
                 ReviewMetricRow("Unexecuted（Planned）", "${metrics.unexecutedCount} 件")
                 ReviewMetricRow("Completed actual duration", formatReviewDuration(metrics.completedActualDurationSeconds))
+                ReviewRoutineActivityContent(state.routineActivity, onRetry)
             }
         }
-        ReviewPeriodMetricsStatus.UNESTABLISHED -> ReviewCenteredMessage(
-            state.message ?: "この期間に記録されたTaskChuteDayはありません。",
-        )
+        ReviewPeriodMetricsStatus.UNESTABLISHED -> Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(18.dp),
+        ) {
+            ReviewRoutineActivityContent(state.routineActivity, onRetry)
+            Text(state.message ?: "この期間に記録されたTaskChuteDayはありません。", color = TaskChuteColors.SecondaryText)
+        }
         ReviewPeriodMetricsStatus.ERROR -> Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Text(state.message ?: "集計データを読み込めませんでした。", color = TaskChuteColors.SecondaryText, textAlign = TextAlign.Center)
             Button(onClick = onRetry) { Text("再試行") }
+            ReviewRoutineActivityContent(state.routineActivity, onRetry)
         }
         ReviewPeriodMetricsStatus.AUTH_REQUIRED -> ReviewLoadingMessage(state.message ?: "認証状態を確認しています…")
+        ReviewPeriodMetricsStatus.ACTIVITY_ONLY -> ReviewRoutineActivityContent(state.routineActivity, onRetry)
         ReviewPeriodMetricsStatus.IDLE,
         ReviewPeriodMetricsStatus.LOADING,
         -> ReviewLoadingMessage("期間集計を読み込んでいます")
@@ -320,6 +336,8 @@ private fun ReviewPeriodMetricsContent(
 private fun ReviewDailyMetricsContent(
     state: ReviewDailyMetricsUiState,
     onRetry: () -> Unit,
+    routineActivityState: ReviewRoutineActivityUiState,
+    onRoutineActivityRetry: () -> Unit,
 ) {
     when (state.status) {
         ReviewDailyMetricsStatus.CONTENT,
@@ -333,6 +351,9 @@ private fun ReviewDailyMetricsContent(
             ) {
                 if (state.status == ReviewDailyMetricsStatus.EMPTY) item {
                     Text("この日のTaskChuteDayにEntryはありません", color = TaskChuteColors.SecondaryText)
+                }
+                item(key = "review-daily-routine-activity") {
+                    ReviewRoutineActivityContent(routineActivityState, onRoutineActivityRetry)
                 }
                 item(key = "review-daily-summary-completed") {
                     ReviewMetricRow("Completed（完了）", "${metrics.completedCount} 件")
@@ -365,19 +386,68 @@ private fun ReviewDailyMetricsContent(
                 }
             }
         }
-        ReviewDailyMetricsStatus.UNESTABLISHED -> ReviewCenteredMessage(state.message ?: "この日はまだ記録されていません。")
-        ReviewDailyMetricsStatus.FUTURE_UNAVAILABLE -> ReviewCenteredMessage(state.message ?: "未来日の集計はまだ接続されていません。")
+        ReviewDailyMetricsStatus.UNESTABLISHED -> Column(
+            modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(18.dp),
+        ) {
+            ReviewRoutineActivityContent(routineActivityState, onRoutineActivityRetry)
+            Text(state.message ?: "この日はまだ記録されていません。", color = TaskChuteColors.SecondaryText)
+        }
+        ReviewDailyMetricsStatus.FUTURE_UNAVAILABLE -> Column(
+            modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(18.dp),
+        ) {
+            ReviewRoutineActivityContent(routineActivityState, onRoutineActivityRetry)
+            Text(state.message ?: "未来日の集計はまだ接続されていません。", color = TaskChuteColors.SecondaryText)
+        }
         ReviewDailyMetricsStatus.ERROR -> Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Text(state.message ?: "集計データを読み込めませんでした。", color = TaskChuteColors.SecondaryText, textAlign = TextAlign.Center)
             Button(onClick = onRetry) { Text("再試行") }
+            ReviewRoutineActivityContent(routineActivityState, onRoutineActivityRetry)
         }
         ReviewDailyMetricsStatus.AUTH_REQUIRED -> ReviewLoadingMessage(state.message ?: "認証状態を確認しています…")
         ReviewDailyMetricsStatus.IDLE,
         ReviewDailyMetricsStatus.LOADING,
         -> ReviewLoadingMessage("日次集計を読み込んでいます")
+    }
+}
+
+@Composable
+private fun ReviewRoutineActivityContent(
+    state: ReviewRoutineActivityUiState,
+    onRetry: () -> Unit,
+) {
+    val activity = state.activity
+    val countText = when (state.status) {
+        ReviewRoutineActivityStatus.PARTIAL,
+        ReviewRoutineActivityStatus.COMPLETE,
+        -> activity?.createdCount?.let { "$it 件" } ?: "—"
+        else -> "—"
+    }
+    val deletedText = when (state.status) {
+        ReviewRoutineActivityStatus.PARTIAL,
+        ReviewRoutineActivityStatus.COMPLETE,
+        -> activity?.deletedCount?.let { "$it 件" } ?: "—"
+        else -> "—"
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        ReviewMetricRow("Routine Created", countText)
+        ReviewMetricRow("Routine Deleted", deletedText)
+        val coverageLabel = when (state.status) {
+            ReviewRoutineActivityStatus.UNMEASURED -> "未計測"
+            ReviewRoutineActivityStatus.PARTIAL -> "一部計測（開始: ${activity?.coverageStartedAt ?: "日時不明"}）"
+            ReviewRoutineActivityStatus.COMPLETE -> "計測済み"
+            ReviewRoutineActivityStatus.UNAVAILABLE -> "利用不可（サーバー更新後に再試行してください）"
+            ReviewRoutineActivityStatus.ERROR -> state.message ?: "読み込めませんでした。"
+            ReviewRoutineActivityStatus.AUTH_REQUIRED -> "認証状態を確認しています…"
+            ReviewRoutineActivityStatus.LOADING -> "Routine活動を読み込んでいます"
+            ReviewRoutineActivityStatus.IDLE -> "Routine活動は未読込です"
+        }
+        Text("Routine activity coverage: $coverageLabel", color = TaskChuteColors.SecondaryText)
+        if (state.status == ReviewRoutineActivityStatus.ERROR) {
+            Button(onClick = onRetry) { Text("Routine活動を再試行") }
+        }
     }
 }
 
