@@ -145,10 +145,10 @@ describe.sequential("Routine R2B Board", () => {
     const changedBeforeDelete = databaseThatChangesSettingsBeforeNextBatch(
       env.APP_DB, deleteFixture.userId, "Asia/Tokyo", 0,
     );
-    await deleteRoutine(changedBeforeDelete, deleteFixture.userId, {
+    await expect(deleteRoutine(changedBeforeDelete, deleteFixture.userId, {
       operation_id: uuidv7(), routine_definition_id: created.result.routine_definition_id,
       expected_settings_revision: 0, expected_board_revision: created.result.board_revision,
-    }, now);
+    }, now)).rejects.toMatchObject({ code: "resource_conflict" });
     expect(await env.APP_DB.prepare(`SELECT COUNT(*) AS value FROM routine_definition_archives
       WHERE app_user_id = ? AND routine_definition_id = ?`)
       .bind(deleteFixture.userId, created.result.routine_definition_id).first<number>("value")).toBe(0);

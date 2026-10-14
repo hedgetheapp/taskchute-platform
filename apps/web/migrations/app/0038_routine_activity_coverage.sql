@@ -6,15 +6,19 @@ PRAGMA defer_foreign_keys = ON;
 ALTER TABLE routine_definitions ADD COLUMN created_logical_date TEXT CHECK (
   created_logical_date IS NULL OR (
     length(created_logical_date) = 10
-    AND created_logical_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
-    AND date(created_logical_date) = created_logical_date
+      AND substr(created_logical_date, 5, 1) = '-'
+      AND substr(created_logical_date, 8, 1) = '-'
+      AND date(created_logical_date, '+0 days') IS NOT NULL
+      AND date(created_logical_date, '+0 days') = created_logical_date
   )
 );
 ALTER TABLE routine_definition_archives ADD COLUMN deleted_logical_date TEXT CHECK (
   deleted_logical_date IS NULL OR (
     length(deleted_logical_date) = 10
-    AND deleted_logical_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
-    AND date(deleted_logical_date) = deleted_logical_date
+      AND substr(deleted_logical_date, 5, 1) = '-'
+      AND substr(deleted_logical_date, 8, 1) = '-'
+      AND date(deleted_logical_date, '+0 days') IS NOT NULL
+      AND date(deleted_logical_date, '+0 days') = deleted_logical_date
   )
 );
 
@@ -24,14 +28,15 @@ CREATE TABLE routine_activity_coverage (
   app_user_id TEXT PRIMARY KEY NOT NULL,
   started_at TEXT NOT NULL CHECK (
     length(started_at) = 24
-    AND started_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9]Z'
     AND strftime('%Y-%m-%dT%H:%M:%fZ', started_at) IS NOT NULL
     AND strftime('%Y-%m-%dT%H:%M:%fZ', started_at) = started_at
   ),
   started_logical_date TEXT NOT NULL CHECK (
     length(started_logical_date) = 10
-    AND started_logical_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
-    AND date(started_logical_date) = started_logical_date
+    AND substr(started_logical_date, 5, 1) = '-'
+    AND substr(started_logical_date, 8, 1) = '-'
+    AND date(started_logical_date, '+0 days') IS NOT NULL
+    AND date(started_logical_date, '+0 days') = started_logical_date
   ),
   FOREIGN KEY (app_user_id) REFERENCES app_users(id) ON DELETE RESTRICT
 );

@@ -25,12 +25,14 @@ async function seedTask(appUserId: string, title = "Routine activity fixture") {
 
 async function insertLegacyRoutine(appUserId: string, taskId: string, createdAt = now) {
   const routineId = uuidv7();
+  const materializationOrder = await env.APP_DB.prepare(`SELECT COALESCE(MAX(materialization_order), 0) + 1 AS value
+    FROM routine_definitions WHERE app_user_id = ?`).bind(appUserId).first<number>("value");
   await env.APP_DB.prepare(`INSERT INTO routine_definitions
     (id, app_user_id, task_id, recurrence_type, start_logical_date, end_logical_date,
      default_section_id, default_estimate_seconds, default_planned_start_minute,
      materialization_order, created_at)
-    VALUES (?, ?, ?, 'daily', '2026-10-14', NULL, NULL, NULL, NULL, 1, ?)`)
-    .bind(routineId, appUserId, taskId, createdAt).run();
+    VALUES (?, ?, ?, 'daily', '2026-10-14', NULL, NULL, NULL, NULL, ?, ?)`)
+    .bind(routineId, appUserId, taskId, materializationOrder, createdAt).run();
   return routineId;
 }
 
