@@ -4,6 +4,12 @@
 
 Resolved Decisionの正本は`docs/DECISIONS.md`を参照する。
 
+## D-178 Routine Activity guarded activation — status 2026-10-14
+
+Product semantics for forward-only Routine activity capture, the owner activation marker, and fail-closed event-date guard are approved and implemented on `main` at `a9fe1adb664cc1257b7470e3d5b672126a937d76`; exact all-surface CI, including Worker/D1, passed ([run 38530978235](https://github.com/hedgetheapp/taskchute-platform/actions/runs/38530978235)). Historical backfill remains prohibited, and no owner marker has been set.
+
+Persistent nonprod activation is still open: the existing Wrangler auth token expired and could not refresh non-interactively, so APP/AUTH backup and isolated recovery verification, migration `0038`, deploy/safety probes, authenticated create/delete and coverage smoke, and authorized QA-owner selection/activation are `NOT_RUN`. The local Windows D1 harness could not start; exact-SHA GitHub D1 tests passed. The old-Worker rejection path has CI coverage but has not been proven against a persistent nonprod deployment. Resume only after existing Cloudflare authorization is usable and a permitted nonprod owner/fixture is verified. Production remains `NOT_RUN`; Product Verified `NO`; Released `NO`.
+
 ## Infrastructure / persistence
 
 Cloudflare Workers + D1のinitial adoption自体はD-020でApproved済み。
