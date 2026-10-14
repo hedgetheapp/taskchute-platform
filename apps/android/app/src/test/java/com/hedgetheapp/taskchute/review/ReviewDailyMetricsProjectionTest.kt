@@ -34,7 +34,25 @@ class ReviewDailyMetricsProjectionTest {
         assertEquals(2, projection.metrics.completedCount)
         assertEquals(1, projection.metrics.unexecutedCount)
         assertEquals(3_900L, projection.metrics.completedActualDurationSeconds)
+        assertEquals(projection.metrics.completedCount, projection.metrics.completedEntries.size)
+        assertEquals(projection.metrics.unexecutedCount, projection.metrics.unexecutedEntries.size)
+        assertEquals(listOf("entry-completed", "entry-completed-2"), projection.metrics.completedEntries.map { it.id })
+        assertEquals(listOf("entry-completed", "entry-completed-2"), projection.metrics.completedEntries.map { it.title })
+        assertEquals(listOf(1_800L, 2_100L), projection.metrics.completedEntries.map { it.completedDurationSeconds })
+        assertEquals(listOf("entry-planned"), projection.metrics.unexecutedEntries.map { it.id })
         assertTrue(projection.metrics.hasEntries)
+    }
+
+    @Test
+    fun conflictingDuplicateEntryIdFailsClosed() {
+        val result = projectReviewDailyMetrics(
+            establishedDay(
+                sectionEntries = listOf(task("same-entry", LifecycleState.PLANNED, actual = null)),
+                unsectionedEntries = listOf(task("same-entry", LifecycleState.PLANNED, actual = null).copy(title = "different content")),
+            ),
+        )
+
+        assertEquals(ReviewDailyProjection.Invalid, result)
     }
 
     @Test
@@ -56,6 +74,7 @@ class ReviewDailyMetricsProjectionTest {
 
         assertEquals(1, projection.metrics.completedCount)
         assertEquals(7_200L, projection.metrics.completedActualDurationSeconds)
+        assertEquals(7_200L, projection.metrics.completedEntries.single().completedDurationSeconds)
     }
 
     @Test
@@ -91,6 +110,8 @@ class ReviewDailyMetricsProjectionTest {
         assertEquals(0, emptyMetrics.completedCount)
         assertEquals(0, emptyMetrics.unexecutedCount)
         assertEquals(0L, emptyMetrics.completedActualDurationSeconds)
+        assertTrue(emptyMetrics.completedEntries.isEmpty())
+        assertTrue(emptyMetrics.unexecutedEntries.isEmpty())
         assertTrue(!emptyMetrics.hasEntries)
         assertEquals(ReviewDailyProjection.Unestablished, unestablished)
     }

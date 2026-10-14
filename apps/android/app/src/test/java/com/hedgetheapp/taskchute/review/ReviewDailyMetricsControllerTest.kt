@@ -121,6 +121,29 @@ class ReviewDailyMetricsControllerTest {
     }
 
     @Test
+    fun changingDateClearsPreviousListsImmediatelyAndFailureDoesNotRestoreThem() {
+        val controller = controller({ logicalDate ->
+            when (logicalDate) {
+                null -> TodayResult.Success(day("2026-10-13", isCurrent = true, entries = listOf(
+                    task("current-title", LifecycleState.COMPLETED, 120),
+                )))
+                else -> TodayResult.Failure("offline")
+            }
+        })
+
+        controller.loadDaily()
+        assertTrue(awaitState(controller) { it.status == ReviewDailyMetricsStatus.CONTENT })
+        assertEquals(listOf("current-title"), controller.state.metrics?.completedEntries?.map { it.title })
+
+        controller.loadDaily("2026-10-12")
+        assertEquals(ReviewDailyMetricsStatus.LOADING, controller.state.status)
+        assertNull(controller.state.metrics)
+        assertTrue(awaitState(controller) { it.status == ReviewDailyMetricsStatus.ERROR })
+        assertNull(controller.state.metrics)
+        controller.close()
+    }
+
+    @Test
     fun unauthorizedCurrentDayRequestsAuthRestoreWithoutPublishingNumbers() {
         val unauthorizedCount = AtomicInteger()
         val controller = controller(

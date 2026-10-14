@@ -9,6 +9,14 @@ internal data class ReviewDailyMetrics(
     val unexecutedCount: Int,
     val completedActualDurationSeconds: Long,
     val hasEntries: Boolean,
+    val completedEntries: List<ReviewDailyEntry>,
+    val unexecutedEntries: List<ReviewDailyEntry>,
+)
+
+internal data class ReviewDailyEntry(
+    val id: String,
+    val title: String,
+    val completedDurationSeconds: Long? = null,
 )
 
 internal sealed interface ReviewDailyProjection {
@@ -31,31 +39,27 @@ internal fun projectReviewDailyMetrics(day: TodayDay): ReviewDailyProjection {
         if (previous != null && previous != entry) return ReviewDailyProjection.Invalid
     }
 
-    var completedCount = 0
-    var unexecutedCount = 0
+    val completedEntries = mutableListOf<ReviewDailyEntry>()
+    val unexecutedEntries = mutableListOf<ReviewDailyEntry>()
     var completedDurationSeconds = 0L
     for (entry in entriesById.values) {
         when (entry.lifecycleState) {
             LifecycleState.COMPLETED -> {
                 val duration = entry.completedDurationSeconds ?: return ReviewDailyProjection.Invalid
                 if (duration < 0) return ReviewDailyProjection.Invalid
-                completedCount = try {
-                    Math.addExact(completedCount, 1)
-                } catch (_: ArithmeticException) {
-                    return ReviewDailyProjection.Invalid
-                }
                 completedDurationSeconds = try {
                     Math.addExact(completedDurationSeconds, duration.toLong())
                 } catch (_: ArithmeticException) {
                     return ReviewDailyProjection.Invalid
                 }
+                completedEntries += ReviewDailyEntry(
+                    id = entry.id,
+                    title = entry.title,
+                    completedDurationSeconds = duration.toLong(),
+                )
             }
             LifecycleState.PLANNED -> {
-                unexecutedCount = try {
-                    Math.addExact(unexecutedCount, 1)
-                } catch (_: ArithmeticException) {
-                    return ReviewDailyProjection.Invalid
-                }
+                unexecutedEntries += ReviewDailyEntry(id = entry.id, title = entry.title)
             }
             LifecycleState.RUNNING -> Unit
         }
@@ -63,10 +67,12 @@ internal fun projectReviewDailyMetrics(day: TodayDay): ReviewDailyProjection {
 
     return ReviewDailyProjection.Available(
         ReviewDailyMetrics(
-            completedCount = completedCount,
-            unexecutedCount = unexecutedCount,
+            completedCount = completedEntries.size,
+            unexecutedCount = unexecutedEntries.size,
             completedActualDurationSeconds = completedDurationSeconds,
             hasEntries = entriesById.isNotEmpty(),
+            completedEntries = completedEntries.toList(),
+            unexecutedEntries = unexecutedEntries.toList(),
         ),
     )
 }

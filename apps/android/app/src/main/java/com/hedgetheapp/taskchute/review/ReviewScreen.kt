@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
@@ -32,6 +34,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
@@ -323,16 +326,43 @@ private fun ReviewDailyMetricsContent(
         ReviewDailyMetricsStatus.EMPTY,
         -> {
             val metrics = state.metrics ?: return ReviewCenteredMessage("集計データを確認できませんでした")
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(18.dp),
+            LazyColumn(
+                modifier = Modifier.fillMaxSize().testTag("review-daily-list"),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 8.dp),
             ) {
-                if (state.status == ReviewDailyMetricsStatus.EMPTY) {
+                if (state.status == ReviewDailyMetricsStatus.EMPTY) item {
                     Text("この日のTaskChuteDayにEntryはありません", color = TaskChuteColors.SecondaryText)
                 }
-                ReviewMetricRow("Completed（完了）", "${metrics.completedCount} 件")
-                ReviewMetricRow("Unexecuted（Planned）", "${metrics.unexecutedCount} 件")
-                ReviewMetricRow("Completed actual duration", formatReviewDuration(metrics.completedActualDurationSeconds))
+                item(key = "review-daily-summary-completed") {
+                    ReviewMetricRow("Completed（完了）", "${metrics.completedCount} 件")
+                }
+                item(key = "review-daily-summary-unexecuted") {
+                    ReviewMetricRow("Unexecuted（Planned）", "${metrics.unexecutedCount} 件")
+                }
+                item(key = "review-daily-summary-duration") {
+                    ReviewMetricRow("Completed actual duration", formatReviewDuration(metrics.completedActualDurationSeconds))
+                }
+                item(key = "review-daily-completed-heading") {
+                    ReviewDailyListHeading("Completed（完了したタスク）")
+                }
+                if (metrics.completedEntries.isEmpty()) {
+                    item(key = "review-daily-completed-empty") { ReviewDailyEmptyListMessage() }
+                } else {
+                    items(metrics.completedEntries, key = { "completed-${it.id}" }) { entry ->
+                        ReviewDailyEntryRow(entry)
+                    }
+                }
+                item(key = "review-daily-unexecuted-heading") {
+                    ReviewDailyListHeading("Unexecuted（未実行 / Planned）")
+                }
+                if (metrics.unexecutedEntries.isEmpty()) {
+                    item(key = "review-daily-unexecuted-empty") { ReviewDailyEmptyListMessage() }
+                } else {
+                    items(metrics.unexecutedEntries, key = { "planned-${it.id}" }) { entry ->
+                        ReviewDailyEntryRow(entry)
+                    }
+                }
             }
         }
         ReviewDailyMetricsStatus.UNESTABLISHED -> ReviewCenteredMessage(state.message ?: "この日はまだ記録されていません。")
@@ -348,6 +378,42 @@ private fun ReviewDailyMetricsContent(
         ReviewDailyMetricsStatus.IDLE,
         ReviewDailyMetricsStatus.LOADING,
         -> ReviewLoadingMessage("日次集計を読み込んでいます")
+    }
+}
+
+@Composable
+private fun ReviewDailyListHeading(title: String) {
+    Text(
+        title,
+        style = MaterialTheme.typography.titleMedium,
+        color = TaskChuteColors.PrimaryText,
+        fontWeight = FontWeight.SemiBold,
+    )
+}
+
+@Composable
+private fun ReviewDailyEmptyListMessage() {
+    Text("0件", style = MaterialTheme.typography.bodyMedium, color = TaskChuteColors.SecondaryText)
+}
+
+@Composable
+private fun ReviewDailyEntryRow(entry: ReviewDailyEntry) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(
+            entry.title,
+            style = MaterialTheme.typography.bodyLarge,
+            color = TaskChuteColors.PrimaryText,
+        )
+        entry.completedDurationSeconds?.let { duration ->
+            Text(
+                "実績 ${formatReviewDuration(duration)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = TaskChuteColors.SecondaryText,
+            )
+        }
     }
 }
 

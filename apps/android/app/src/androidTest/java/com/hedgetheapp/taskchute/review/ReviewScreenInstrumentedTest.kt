@@ -2,10 +2,13 @@ package com.hedgetheapp.taskchute.review
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.hedgetheapp.taskchute.ui.TaskChuteTheme
@@ -163,6 +166,10 @@ class ReviewScreenInstrumentedTest {
         }
 
         composeRule.waitUntil(5_000) { composeRule.onAllNodesWithText("2 件").fetchSemanticsNodes().isNotEmpty() }
+        composeRule.onNodeWithText("today-done-a").assertIsDisplayed()
+        composeRule.onNodeWithText("today-done-b").assertIsDisplayed()
+        composeRule.onNodeWithText("today-plan").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithText("running").fetchSemanticsNodes().isEmpty())
         composeRule.onNodeWithContentDescription("Previous period").performClick()
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithText("2026/10/12").fetchSemanticsNodes().isNotEmpty()
@@ -171,7 +178,36 @@ class ReviewScreenInstrumentedTest {
         composeRule.onNodeWithContentDescription("Selected period: 2026/10/12").assertIsDisplayed()
         composeRule.onNodeWithText("0 件").assertIsDisplayed()
         composeRule.onNodeWithText("10秒").assertIsDisplayed()
+        composeRule.onNodeWithText("previous-done").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithText("today-done-a").fetchSemanticsNodes().isEmpty())
         assertEquals(listOf(null, null, "2026-10-12"), requests)
+    }
+
+    @Test
+    fun longDailyListsScrollWhilePeriodControlsAndFooterStayAvailable() {
+        val entries = (0 until 80).map { index -> task("planned-$index", LifecycleState.PLANNED, duration = null) }
+        val controller = metricsController { _ -> day("2026-10-13", current = true, entries = entries) }
+        composeRule.setContent {
+            TaskChuteTheme {
+                ReviewScreen(
+                    dailyMetricsController = controller,
+                    periodMetricsController = periodMetricsController { granularity, anchor ->
+                        ReviewPeriodMetricsResult.Success(periodMetrics(granularity, anchor))
+                    },
+                    onNavigateToday = {},
+                    onNavigateNotes = {},
+                    onNavigateDaily = {},
+                    onNavigateSettings = {},
+                    initialAnchor = LocalDate.of(2026, 10, 13),
+                )
+            }
+        }
+
+        composeRule.waitUntil(5_000) { composeRule.onAllNodesWithText("80 件").fetchSemanticsNodes().isNotEmpty() }
+        composeRule.onNodeWithTag("review-daily-list").performScrollToNode(hasText("planned-79"))
+        composeRule.onNodeWithText("planned-79").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Selected period: 2026/10/13").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Task").assertIsDisplayed()
     }
 
     private fun metricsController(dayForDate: (String?) -> TodayDay) = ReviewDailyMetricsController(
