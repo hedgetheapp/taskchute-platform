@@ -1,6 +1,6 @@
 # D-178 — Review v0.1
 
-Status: **Approved / Design pending / Implementation not started**
+Status: **Approved / Design pending for remaining open areas / Partial implementation (Android Review shell and Date daily/monthly/yearly slices)**
 
 Date: 2026-10-08
 
@@ -143,4 +143,4 @@ Any required schema/migration or broader historical-snapshot expansion returns t
 
 ## Verification status
 
-Design only. No implementation or verification has started.
+The Android Review shell and Date daily/monthly/yearly slices are implemented. Verification evidence and the current status are recorded in `docs/CURRENT.md` and `docs/TEST_MATRIX.md`. Other Review views, query/persistence areas, and interactions that remain Open are not covered by this implementation status. This note records implementation progress and does not change any Approved or Open semantics above.
