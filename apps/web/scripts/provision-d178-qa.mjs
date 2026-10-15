@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { spawn } from "node:child_process";
 import { open } from "node:fs/promises";
-import { mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,11 +11,20 @@ import {
   stopLocalWorker,
   waitForLocalWorker,
 } from "./d178-qa-worker-startup.mjs";
+import {
+  createD178PrivateStore,
+  hardenWindowsPrivateDirectory,
+  stableD178QaIdentity,
+} from "./d178-qa-credentials.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const APP_DIR = path.resolve(SCRIPT_DIR, "..");
 const REPO_DIR = path.resolve(APP_DIR, "..", "..");
-const OUTPUT_DIR = path.resolve(REPO_DIR, "..", "outputs");
+const LEGACY_STATE_PATH = path.resolve(REPO_DIR, "..", "outputs", "d178-qa-provisioning-private-state.json");
+const OPERATOR_PRIVATE_DIR = process.env.LOCALAPPDATA
+  ? path.join(process.env.LOCALAPPDATA, "TaskChutePlatform", "D178")
+  : "";
+const BACKUP_ROOT = OPERATOR_PRIVATE_DIR ? path.join(OPERATOR_PRIVATE_DIR, "backups") : "";
 const WRANGLER_CONFIG = path.join(APP_DIR, "dist", "taskchute_web", "wrangler.json");
 const WRANGLER_BIN = path.join(APP_DIR, "node_modules", "wrangler", "bin", "wrangler.js");
 const EXPECTED_WORKER = "taskchute-web-nonprod";
@@ -25,12 +34,18 @@ const EXPECTED_DATABASES = {
   "taskchute-auth-nonprod": "60085f8d-0c4e-4c15-98e9-3ce178398041",
   "taskchute-app-nonprod": "6ad7e35f-5d03-4be3-9b00-46cd713a51c3",
 };
-const STATE_PATH = path.join(OUTPUT_DIR, "d178-qa-provisioning-private-state.json");
+const PREFLIGHT_ONLY = process.argv.includes("--preflight-only");
+const privateStore = createD178PrivateStore({
+  rootDir: OPERATOR_PRIVATE_DIR,
+  legacyStatePath: LEGACY_STATE_PATH,
+});
 
 let devProcess;
 let temporaryRunDirectory;
 let operatorLockHandle;
-const OPERATOR_LOCK_PATH = STATE_PATH + ".lock";
+const OPERATOR_LOCK_PATH = OPERATOR_PRIVATE_DIR
+  ? path.join(OPERATOR_PRIVATE_DIR, "operator.lock")
+  : "";
 
 function stop(message) {
   throw new Error(message);
@@ -42,6 +57,20 @@ function sha256(value) {
 
 function timestampLabel() {
   return new Date().toISOString().replaceAll(":", "-").replaceAll(".", "-");
+}
+
+function sqlLiteral(value) {
+  return "'" + String(value).replaceAll("'", "''") + "'";
+}
+
+function ensureOperatorPrivateRootIsOutsideRepository() {
+  if (!OPERATOR_PRIVATE_DIR || !path.isAbsolute(OPERATOR_PRIVATE_DIR)) {
+    stop("LOCALAPPDATA is unavailable; no private operator store can be established.");
+  }
+  const relative = path.relative(REPO_DIR, path.resolve(OPERATOR_PRIVATE_DIR));
+  if (relative === "" || (!path.isAbsolute(relative) && relative !== ".." && !relative.startsWith(".." + path.sep))) {
+    stop("The operator-private state path must be outside the repository.");
+  }
 }
 
 function makeWranglerEnv() {
@@ -198,6 +227,146 @@ async function verifyCoverageBaseline() {
   return rows[0].marker_count;
 }
 
+async function verifyRemoteD178Identity(existing, legacyState) {
+  const identity = stableD178QaIdentity();
+  const authRows = await executeReadOnly(
+    "taskchute-auth-nonprod",
+    "SELECT id, email, name FROM user;",
+  );
+  if (authRows.some((row) => typeof row.id !== "string"
+    || typeof row.email !== "string"
+    || typeof row.name !== "string")) {
+    stop("The nonprod AUTH identity inventory could not be reconciled safely.");
+  }
+  const markerUsers = authRows.filter((row) => row.name === identity.authDisplayName);
+  const legacyDigest = legacyState?.email_sha256 ?? null;
+  const credentialDigest = existing.credentials
+    ? sha256(existing.credentials.email.trim().toLowerCase())
+    : null;
+  const legacyEmailUsers = legacyDigest
+    ? authRows.filter((row) => sha256(row.email.trim().toLowerCase()) === legacyDigest)
+    : [];
+  const credentialEmailUsers = credentialDigest
+    ? authRows.filter((row) => sha256(row.email.trim().toLowerCase()) === credentialDigest)
+    : [];
+  if (markerUsers.length > 1 || legacyEmailUsers.length > 1 || credentialEmailUsers.length > 1) {
+    stop("The nonprod AUTH identity inventory contains duplicate D-178 candidates.");
+  }
+
+  const appDatabase = "taskchute-app-nonprod";
+  const qaUser = sqlLiteral(identity.appUserId);
+  const appMetricRows = await executeReadOnly(appDatabase,
+    "SELECT "
+      + "(SELECT COUNT(*) FROM app_users WHERE id = " + qaUser + ") AS app_user_count, "
+      + "(SELECT COUNT(*) FROM auth_subject_mappings WHERE auth_provider = 'better-auth' AND app_user_id = " + qaUser + ") AS mapping_count, "
+      + "(SELECT COUNT(*) FROM user_settings WHERE app_user_id = " + qaUser + ") AS settings_count, "
+      + "(SELECT COUNT(*) FROM sections WHERE app_user_id = " + qaUser + ") AS section_count, "
+      + "(SELECT COUNT(*) FROM routine_activity_coverage WHERE app_user_id = " + qaUser + ") AS coverage_count;");
+  if (appMetricRows.length !== 1) stop("The nonprod APP QA identity counts could not be read safely.");
+  const appMetrics = appMetricRows[0];
+  const metricNames = ["app_user_count", "mapping_count", "settings_count", "section_count", "coverage_count"];
+  if (metricNames.some((name) => !Number.isSafeInteger(appMetrics[name]) || appMetrics[name] < 0)) {
+    stop("The nonprod APP QA identity counts were malformed.");
+  }
+
+  const ownerTables = await executeReadOnly(appDatabase,
+    "SELECT name FROM sqlite_schema WHERE type = 'table' AND sql LIKE '%REFERENCES app_users%';");
+  if (ownerTables.length === 0 || ownerTables.some((table) => typeof table.name !== "string"
+    || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(table.name))) {
+    stop("The nonprod APP owner table inventory could not be reconciled safely.");
+  }
+  const ownerRows = await executeReadOnly(appDatabase, "SELECT " + ownerTables.map((table, index) =>
+    "(SELECT COUNT(*) FROM \"" + table.name + "\" WHERE app_user_id = " + qaUser + ") AS c" + index,
+  ).join(", ") + ";");
+  if (ownerRows.length !== 1 || ownerTables.some((_, index) =>
+    !Number.isSafeInteger(ownerRows[0]["c" + index]) || ownerRows[0]["c" + index] < 0)) {
+    stop("The nonprod APP owner data could not be reconciled safely.");
+  }
+  const ownerCounts = new Map(ownerTables.map((table, index) => [table.name, ownerRows[0]["c" + index]]));
+  const anyAppRows = appMetrics.app_user_count > 0
+    || appMetrics.mapping_count > 0
+    || appMetrics.settings_count > 0
+    || appMetrics.section_count > 0
+    || appMetrics.coverage_count > 0
+    || [...ownerCounts.values()].some((count) => count > 0);
+
+  const subjectMappings = markerUsers.length === 1
+    ? await executeReadOnly(appDatabase,
+      "SELECT app_user_id FROM auth_subject_mappings WHERE auth_provider = 'better-auth' AND auth_subject_id = "
+        + sqlLiteral(markerUsers[0].id) + " LIMIT 3;")
+    : [];
+  if (subjectMappings.length > 1 || subjectMappings.some((row) => row.app_user_id !== identity.appUserId)) {
+    stop("The D-178 AUTH subject is mapped to an unexpected APP owner.");
+  }
+  const fingerprint = sha256(JSON.stringify({
+    authMarkerIds: markerUsers.map((row) => row.id).sort(),
+    legacyMatchIds: legacyEmailUsers.map((row) => row.id).sort(),
+    credentialMatchIds: credentialEmailUsers.map((row) => row.id).sort(),
+    appMetrics,
+    ownerCounts: [...ownerCounts].sort(([left], [right]) => left.localeCompare(right)),
+    subjectMappings: subjectMappings.map((row) => row.app_user_id).sort(),
+  }));
+
+  const hasStoredCredentials = Boolean(existing.credentials);
+  if (markerUsers.length === 1) {
+    const authUser = markerUsers[0];
+    if (!hasStoredCredentials
+      || credentialEmailUsers.length !== 1
+      || credentialEmailUsers[0].id !== authUser.id
+      || authUser.email.trim().toLowerCase() !== existing.credentials.email.trim().toLowerCase()) {
+      stop("A D-178 AUTH identity exists without a matching recoverable operator credential vault.");
+    }
+    if (legacyEmailUsers.some((row) => row.id !== authUser.id)) {
+      stop("The earlier private state conflicts with a different nonprod AUTH user.");
+    }
+    if (appMetrics.app_user_count !== 1) {
+      stop("The existing D-178 AUTH identity has no unambiguous APP owner reservation.");
+    }
+    if (appMetrics.mapping_count === 1 && subjectMappings.length === 1) {
+      return { status: "recoverable", identity, fingerprint };
+    }
+    if (appMetrics.mapping_count !== 0 || subjectMappings.length !== 0) {
+      stop("The D-178 AUTH/APP mapping is only partially or ambiguously present.");
+    }
+    const expectedReservation = new Map([
+      ["user_settings", 1],
+      ["sections", 1],
+      ["routine_board_heads", 1],
+      ["project_board_heads", 1],
+      ["mode_board_heads", 1],
+    ]);
+    if ([...ownerCounts].some(([name, count]) => count !== (expectedReservation.get(name) ?? 0))
+      || expectedReservation.size !== [...ownerCounts].filter(([name]) => expectedReservation.has(name)).length
+      || appMetrics.coverage_count !== 0) {
+      stop("The unmapped D-178 APP reservation is not in its recoverable baseline state.");
+    }
+    return { status: "recoverable", identity, fingerprint };
+  }
+
+  if (legacyEmailUsers.length > 0 || credentialEmailUsers.length > 0) {
+    stop("A nonprod AUTH user matches a private D-178 email digest but not the QA identity marker.");
+  }
+  if (!anyAppRows) return { status: "absent", identity, fingerprint };
+  if (!hasStoredCredentials
+    || appMetrics.app_user_count !== 1
+    || appMetrics.mapping_count !== 0
+    || appMetrics.coverage_count !== 0) {
+    stop("The nonprod APP contains an unrecognized D-178 QA identity or partial provision.");
+  }
+  const expectedReservation = new Map([
+    ["user_settings", 1],
+    ["sections", 1],
+    ["routine_board_heads", 1],
+    ["project_board_heads", 1],
+    ["mode_board_heads", 1],
+  ]);
+  if ([...ownerCounts].some(([name, count]) => count !== (expectedReservation.get(name) ?? 0))
+    || expectedReservation.size !== [...ownerCounts].filter(([name]) => expectedReservation.has(name)).length) {
+    stop("The unmapped D-178 APP reservation is not in its recoverable baseline state.");
+  }
+  return { status: "recoverable", identity, fingerprint };
+}
+
 async function exportDatabase(databaseName, filePath) {
   await runWrangler([
     "d1", "export", databaseName, "--remote", "--output", filePath,
@@ -214,8 +383,11 @@ async function exportDatabase(databaseName, filePath) {
 }
 
 async function createFreshBackups(markerCount) {
-  const backupDirectory = path.join(OUTPUT_DIR, "d178-nonprod-preqa-" + timestampLabel());
+  await mkdir(BACKUP_ROOT, { recursive: true });
+  await hardenWindowsPrivateDirectory(BACKUP_ROOT);
+  const backupDirectory = path.join(BACKUP_ROOT, "d178-nonprod-preqa-" + timestampLabel());
   await mkdir(backupDirectory, { recursive: true });
+  await hardenWindowsPrivateDirectory(backupDirectory);
   const appPath = path.join(backupDirectory, "taskchute-app-nonprod.sql");
   const authPath = path.join(backupDirectory, "taskchute-auth-nonprod.sql");
   const app = await exportDatabase("taskchute-app-nonprod", appPath);
@@ -236,85 +408,6 @@ async function createFreshBackups(markerCount) {
   const manifestPath = path.join(backupDirectory, "manifest.json");
   await writeFile(manifestPath, JSON.stringify(manifest, null, 2) + "\n", { flag: "wx" });
   return backupDirectory;
-}
-
-function hiddenPrompt(label) {
-  if (!process.stdin.isTTY || typeof process.stdin.setRawMode !== "function") {
-    stop("A private interactive TTY is required for QA email/password input.");
-  }
-  return new Promise((resolve, reject) => {
-    let value = "";
-    let finished = false;
-    process.stdout.write(label);
-    process.stdin.setRawMode(true);
-    process.stdin.setEncoding("utf8");
-    process.stdin.resume();
-    const finish = (error) => {
-      if (finished) return;
-      finished = true;
-      process.stdin.off("data", onData);
-      process.stdin.setRawMode(false);
-      process.stdin.pause();
-      process.stdout.write("\n");
-      if (error) reject(error);
-      else resolve(value);
-    };
-    const onData = (chunk) => {
-      for (const character of chunk) {
-        if (character === "\u0003") {
-          finish(new Error("Private input was cancelled."));
-          return;
-        }
-        if (character === "\r" || character === "\n") {
-          finish();
-          return;
-        }
-        if (character === "\u007f" || character === "\b") {
-          value = Array.from(value).slice(0, -1).join("");
-        } else if (character >= " ") {
-          value += character;
-        }
-      }
-    };
-    process.stdin.on("data", onData);
-  });
-}
-
-function validEmail(email) {
-  return email.length <= 320 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-}
-
-async function readOrCreatePrivateState(email) {
-  await mkdir(OUTPUT_DIR, { recursive: true });
-  const digest = sha256(email.trim().toLowerCase());
-  let existing;
-  try {
-    existing = JSON.parse(await readFile(STATE_PATH, "utf8"));
-  } catch (error) {
-    if (error?.code !== "ENOENT") stop("Private operator state is unreadable; no account operation was started.");
-  }
-  if (existing) {
-    if (existing.version !== 1 || existing.alias !== "d178-routine-qa" || existing.email_sha256 !== digest) {
-      stop("The private QA state does not match the supplied email; no D1 write was started.");
-    }
-    return existing;
-  }
-  const initial = {
-    version: 1,
-    alias: "d178-routine-qa",
-    email_sha256: digest,
-    status: "started",
-    started_at: new Date().toISOString(),
-  };
-  const temporaryPath = STATE_PATH + ".tmp-" + randomBytes(6).toString("hex");
-  await writeFile(temporaryPath, JSON.stringify(initial, null, 2) + "\n", { flag: "wx", mode: 0o600 });
-  try {
-    await rename(temporaryPath, STATE_PATH);
-  } catch {
-    await rm(temporaryPath, { force: true });
-    stop("Could not create the private QA recovery state; no D1 write was started.");
-  }
-  return initial;
 }
 
 async function acquireOperatorLock() {
@@ -363,21 +456,11 @@ async function releaseOperatorLock() {
   await rm(OPERATOR_LOCK_PATH, { force: true }).catch(() => undefined);
 }
 
-async function savePrivateState(state) {
-  const temporaryPath = STATE_PATH + ".tmp-" + randomBytes(6).toString("hex");
-  await writeFile(temporaryPath, JSON.stringify(state, null, 2) + "\n", { flag: "wx", mode: 0o600 });
-  await rename(temporaryPath, STATE_PATH);
-}
-
 async function stopWorker() {
   await stopLocalWorker(devProcess);
 }
 
-async function runProvisioning() {
-  if (Number(process.versions.node.split(".")[0]) < 22) {
-    stop("Use Node.js 22 or newer for the pinned Wrangler version.");
-  }
-  await loadAndVerifyGeneratedConfig();
+async function verifyRemoteReadOnlyPreflight(existing, legacyState, expectedMarkerCount) {
   await verifyCloudflareAuthentication();
   await verifyRemoteD1Targets();
   await verifyActiveDeployment();
@@ -386,70 +469,125 @@ async function runProvisioning() {
   await verifyDatabaseIntegrity("taskchute-auth-nonprod");
   await verifyDatabaseIntegrity("taskchute-app-nonprod");
   const markerCount = await verifyCoverageBaseline();
-  const backupDirectory = await createFreshBackups(markerCount);
-
-  process.stdout.write("非本番対象・Worker version・migration・integrity・保全backupを確認しました。\n");
-  await acquireOperatorLock();
-  const generatedConfig = await loadAndVerifyGeneratedConfig();
-  const bindingByName = new Map(generatedConfig.d1_databases.map((binding) => [binding.database_name, binding]));
-  temporaryRunDirectory = await mkdtemp(path.join(os.tmpdir(), "d178-qa-provision-"));
-  const localConfigPath = path.join(temporaryRunDirectory, "wrangler.jsonc");
-  const devVarsPath = path.join(temporaryRunDirectory, ".dev.vars");
-  const workerLogPath = path.join(temporaryRunDirectory, "logs");
-  const localConfig = {
-    name: "d178-qa-provision-local",
-    main: path.join(APP_DIR, "worker", "qa-provisioning.ts"),
-    compatibility_date: "2026-08-22",
-    compatibility_flags: ["nodejs_compat"],
-    vars: {
-      RUNTIME_ENV: "nonprod",
-      BOOTSTRAP_ENABLED: "false",
-      D178_QA_PROVISIONING_ENABLED: "true",
-      D178_QA_TARGET_APP_DATABASE: "taskchute-app-nonprod",
-      D178_QA_TARGET_AUTH_DATABASE: "taskchute-auth-nonprod",
-    },
-    d1_databases: [
-      { binding: "AUTH_DB", database_name: "taskchute-auth-nonprod", database_id: bindingByName.get("taskchute-auth-nonprod").database_id, remote: true },
-      { binding: "APP_DB", database_name: "taskchute-app-nonprod", database_id: bindingByName.get("taskchute-app-nonprod").database_id, remote: true },
-    ],
-  };
-  const operatorToken = randomBytes(32).toString("base64url");
-  const authSecret = randomBytes(48).toString("base64url");
-  await writeFile(localConfigPath, JSON.stringify(localConfig, null, 2) + "\n", { flag: "wx" });
-  await writeFile(devVarsPath,
-    "BETTER_AUTH_SECRET=" + authSecret + "\nD178_QA_PROVISIONING_TOKEN=" + operatorToken + "\n",
-    { flag: "wx", mode: 0o600 });
-  await mkdir(workerLogPath, { recursive: true });
-
-  let port;
-  let inspectorPort;
-  try {
-    [port, inspectorPort] = await reserveLocalPorts(2);
-  } catch {
-    stop("Could not reserve loopback ports for the isolated local Worker (category=loopback_port_error).");
+  if (expectedMarkerCount !== undefined && markerCount !== expectedMarkerCount) {
+    stop("The nonprod coverage marker baseline changed during the guarded operation.");
   }
-  devProcess = startLocalWorker({
-    wranglerBin: WRANGLER_BIN,
-    configPath: localConfigPath,
-    port,
-    inspectorPort,
-    cwd: temporaryRunDirectory,
-    env: {
+  const qaIdentity = await verifyRemoteD178Identity(existing, legacyState);
+  return { markerCount, qaIdentity };
+}
+
+async function runProvisioning() {
+  if (Number(process.versions.node.split(".")[0]) < 22) {
+    stop("Use Node.js 22 or newer for the pinned Wrangler version.");
+  }
+  ensureOperatorPrivateRootIsOutsideRepository();
+  await privateStore.ensureReady();
+  await acquireOperatorLock();
+
+  let preparedCredentials;
+  let operatorToken = "";
+  let authSecret = "";
+  let workerEnv;
+  let requestBody = "";
+  await loadAndVerifyGeneratedConfig();
+  try {
+    const legacyState = await privateStore.readLegacyState();
+    const existing = await privateStore.loadExisting();
+    const initialPreflight = await verifyRemoteReadOnlyPreflight(existing, legacyState);
+    if (PREFLIGHT_ONLY) {
+      process.stdout.write(
+        "D-178 nonprod read-only preflight PASS (QA identity=" + initialPreflight.qaIdentity.status
+          + "; coverage markers=" + initialPreflight.markerCount + "; no account write performed).\n",
+      );
+      return { status: "preflight_only", qaIdentity: initialPreflight.qaIdentity.status };
+    }
+    const backupDirectory = await createFreshBackups(initialPreflight.markerCount);
+    preparedCredentials = await privateStore.prepareCredentials({
+      remoteReconciled: true,
+      remoteState: initialPreflight.qaIdentity.status,
+    });
+
+    const finalLegacyState = await privateStore.readLegacyState();
+    const finalExisting = await privateStore.loadExisting();
+    const finalPreflight = await verifyRemoteReadOnlyPreflight(
+      finalExisting,
+      finalLegacyState,
+      initialPreflight.markerCount,
+    );
+    if (finalPreflight.qaIdentity.status !== initialPreflight.qaIdentity.status
+      || finalPreflight.qaIdentity.fingerprint !== initialPreflight.qaIdentity.fingerprint) {
+      stop("The remote D-178 identity changed after the read-only preflight; no operator POST was sent.");
+    }
+
+    const generatedConfig = await loadAndVerifyGeneratedConfig();
+    const bindingByName = new Map(generatedConfig.d1_databases.map((binding) => [binding.database_name, binding]));
+    temporaryRunDirectory = await mkdtemp(path.join(os.tmpdir(), "d178-qa-provision-"));
+    const localConfigPath = path.join(temporaryRunDirectory, "wrangler.jsonc");
+    const workerLogPath = path.join(temporaryRunDirectory, "logs");
+    const localConfig = {
+      name: "d178-qa-provision-local",
+      main: path.join(APP_DIR, "worker", "qa-provisioning.ts"),
+      compatibility_date: "2026-08-22",
+      compatibility_flags: ["nodejs_compat"],
+      secrets: { required: ["BETTER_AUTH_SECRET", "D178_QA_PROVISIONING_TOKEN"] },
+      vars: {
+        RUNTIME_ENV: "nonprod",
+        BOOTSTRAP_ENABLED: "false",
+        D178_QA_PROVISIONING_ENABLED: "true",
+        D178_QA_TARGET_APP_DATABASE: "taskchute-app-nonprod",
+        D178_QA_TARGET_AUTH_DATABASE: "taskchute-auth-nonprod",
+      },
+      d1_databases: [
+        { binding: "AUTH_DB", database_name: "taskchute-auth-nonprod", database_id: bindingByName.get("taskchute-auth-nonprod").database_id, remote: true },
+        { binding: "APP_DB", database_name: "taskchute-app-nonprod", database_id: bindingByName.get("taskchute-app-nonprod").database_id, remote: true },
+      ],
+    };
+    await writeFile(localConfigPath, JSON.stringify(localConfig, null, 2) + "\n", { flag: "wx" });
+    await mkdir(workerLogPath, { recursive: true });
+
+    operatorToken = randomBytes(32).toString("base64url");
+    authSecret = randomBytes(48).toString("base64url");
+    workerEnv = {
       ...makeWranglerEnv(),
       CLOUDFLARE_ENV: "",
       WRANGLER_LOG: "error",
       WRANGLER_LOG_PATH: workerLogPath,
-    },
-  });
-  try {
+      BETTER_AUTH_SECRET: authSecret,
+      D178_QA_PROVISIONING_TOKEN: operatorToken,
+    };
+    let port;
+    let inspectorPort;
+    try {
+      [port, inspectorPort] = await reserveLocalPorts(2);
+    } catch {
+      stop("Could not reserve loopback ports for the isolated local Worker (category=loopback_port_error).");
+    }
+    devProcess = startLocalWorker({
+      wranglerBin: WRANGLER_BIN,
+      configPath: localConfigPath,
+      port,
+      inspectorPort,
+      cwd: temporaryRunDirectory,
+      env: workerEnv,
+    });
     await waitForLocalWorker(devProcess, port);
-    process.stdout.write("ローカルWorker起動を確認しました。QA用credentialsを入力できます。\n");
-    const email = (await hiddenPrompt("QA用メールアドレス（非表示入力）: ")).trim();
-    if (!validEmail(email)) stop("The private email did not pass local format validation; no credentials were sent.");
-    const password = await hiddenPrompt("QA用password（非表示入力）: ");
-    if (password.length < 8 || password.length > 128) stop("The private password did not pass length validation; no credentials were sent.");
-    const state = await readOrCreatePrivateState(email);
 
+    const beforePostExisting = await privateStore.loadExisting();
+    const beforePostLegacy = await privateStore.readLegacyState();
+    const beforePost = await verifyRemoteReadOnlyPreflight(
+      beforePostExisting,
+      beforePostLegacy,
+      initialPreflight.markerCount,
+    );
+    if (beforePost.qaIdentity.status !== initialPreflight.qaIdentity.status
+      || beforePost.qaIdentity.fingerprint !== initialPreflight.qaIdentity.fingerprint) {
+      stop("The remote D-178 identity changed while the loopback Worker was starting; no operator POST was sent.");
+    }
+
+    requestBody = JSON.stringify({
+      email: preparedCredentials.credentials.email,
+      password: preparedCredentials.credentials.password,
+    });
     const response = await fetch("http://127.0.0.1:" + port + "/__operator/d178-qa/provision", {
       method: "POST",
       headers: {
@@ -457,35 +595,61 @@ async function runProvisioning() {
         origin: "http://127.0.0.1:" + port,
         "x-taskchute-qa-provision-token": operatorToken,
       },
-      body: JSON.stringify({ email, password }),
+      body: requestBody,
       signal: AbortSignal.timeout(90000),
     });
     const responseBody = await response.json().catch(() => ({}));
     if (!response.ok || responseBody.alias !== "d178-routine-qa"
       || !["created", "recovered", "already_provisioned"].includes(responseBody.status)) {
-      const code = typeof responseBody?.error?.code === "string" ? responseBody.error.code : "unknown";
+      const candidateCode = responseBody?.error?.code;
+      const code = typeof candidateCode === "string" && /^[a-z0-9_]{1,48}$/.test(candidateCode)
+        ? candidateCode
+        : "unknown";
       stop("QA provisioning stopped with status " + response.status + " (" + code + "). The response contained no credential values.");
     }
-    await savePrivateState({
-      ...state,
+    await privateStore.saveState({
+      ...preparedCredentials.state,
       status: "provisioned",
       provisioned_at: new Date().toISOString(),
     });
     process.stdout.write("QA alias d178-routine-qa: " + responseBody.status + "\n");
-    process.stdout.write("Fresh APP/AUTH preservation backups are stored outside the repository.\n");
+    process.stdout.write("Fresh APP/AUTH preservation backups are stored in the operator-private directory.\n");
     return { status: responseBody.status, backupDirectory };
   } finally {
-    await stopWorker();
-    if (temporaryRunDirectory) {
-      try {
-        await rm(temporaryRunDirectory, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 });
-      } catch {
-        stop("The isolated local Worker stopped, but its temporary configuration could not be safely removed.");
-      }
+    let workerStopFailed = false;
+    let temporaryCleanupFailed = false;
+    try {
+      await stopWorker();
+    } catch {
+      workerStopFailed = true;
     }
-    temporaryRunDirectory = undefined;
-    devProcess = undefined;
-    await releaseOperatorLock();
+    try {
+      if (temporaryRunDirectory) {
+        await rm(temporaryRunDirectory, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 });
+      }
+    } catch {
+      temporaryCleanupFailed = true;
+    } finally {
+      temporaryRunDirectory = undefined;
+      devProcess = undefined;
+      if (preparedCredentials?.credentials) {
+        preparedCredentials.credentials.email = "";
+        preparedCredentials.credentials.password = "";
+      }
+      preparedCredentials = undefined;
+      if (workerEnv) {
+        workerEnv.BETTER_AUTH_SECRET = "";
+        workerEnv.D178_QA_PROVISIONING_TOKEN = "";
+      }
+      workerEnv = undefined;
+      requestBody = "";
+      operatorToken = "";
+      authSecret = "";
+      await releaseOperatorLock();
+    }
+    if (workerStopFailed || temporaryCleanupFailed) {
+      stop("The isolated Worker cleanup was incomplete; in-memory secrets were cleared and the operator lock was released.");
+    }
   }
 }
 

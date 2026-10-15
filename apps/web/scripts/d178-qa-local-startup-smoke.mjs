@@ -61,7 +61,6 @@ export async function runLocalStartupSmoke() {
   const homeDirectory = path.join(temporaryDirectory, "isolated-home");
   const logsDirectory = path.join(temporaryDirectory, "logs");
   const configPath = path.join(temporaryDirectory, "wrangler.jsonc");
-  const devVarsPath = path.join(temporaryDirectory, ".dev.vars");
   const workerMain = path.join(APP_DIR, "worker", "qa-provisioning.ts");
   let worker;
 
@@ -73,6 +72,7 @@ export async function runLocalStartupSmoke() {
       main: workerMain,
       compatibility_date: "2026-08-22",
       compatibility_flags: ["nodejs_compat"],
+      secrets: { required: ["BETTER_AUTH_SECRET", "D178_QA_PROVISIONING_TOKEN"] },
       vars: {
         RUNTIME_ENV: "nonprod",
         BOOTSTRAP_ENABLED: "false",
@@ -86,10 +86,6 @@ export async function runLocalStartupSmoke() {
       ],
     };
     await writeFile(configPath, JSON.stringify(localConfig, null, 2) + "\n", { flag: "wx" });
-    await writeFile(devVarsPath,
-      "BETTER_AUTH_SECRET=" + randomBytes(48).toString("base64url")
-        + "\nD178_QA_PROVISIONING_TOKEN=" + randomBytes(32).toString("base64url") + "\n",
-      { flag: "wx", mode: 0o600 });
 
     let ports;
     try {
@@ -98,13 +94,16 @@ export async function runLocalStartupSmoke() {
       throw new Error("The local startup smoke could not reserve loopback ports (category=loopback_port_error).");
     }
 
+    const workerEnv = createCredentialFreeEnv(homeDirectory, logsDirectory);
+    workerEnv.BETTER_AUTH_SECRET = randomBytes(48).toString("base64url");
+    workerEnv.D178_QA_PROVISIONING_TOKEN = randomBytes(32).toString("base64url");
     worker = startLocalWorker({
       wranglerBin: WRANGLER_BIN,
       configPath,
       port: ports[0],
       inspectorPort: ports[1],
       cwd: temporaryDirectory,
-      env: createCredentialFreeEnv(homeDirectory, logsDirectory),
+      env: workerEnv,
     });
     const probe = await waitForLocalWorker(worker, ports[0], { timeoutMs: 60_000 });
     return {
@@ -122,7 +121,7 @@ export async function runLocalStartupSmoke() {
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
   runLocalStartupSmoke().then((result) => {
     process.stdout.write(
-      `D-178 QA local Worker startup smoke PASS (HTTP ${result.status}; ${result.mode}; GET only; no operator POST or Cloudflare credentials).\n`,
+      `D-178 QA local Worker startup smoke PASS (HTTP ${result.status}; ${result.mode}; GET only; no QA account or Cloudflare credentials).\n`,
     );
   }).catch((error) => {
     const message = error instanceof Error ? error.message : "Local Worker startup smoke failed.";

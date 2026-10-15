@@ -130,7 +130,7 @@ describe.sequential("D-178 isolated QA provisioning entrypoint", () => {
 
   it("serializes a competing owner, recovers AUTH success after APP failure, and is idempotent", async () => {
     const identity = await d178QaIdentity();
-    const email = "d178-recovery-" + uuidv7() + "@example.test";
+    const email = "d178-routine-qa-" + uuidv7() + "@d178-qa.invalid";
     const password = "private-recovery-pass-1234";
     const otherEmail = "d178-racer-" + uuidv7() + "@example.test";
     const otherPassword = "private-racer-pass-1234";

@@ -178,6 +178,19 @@ Product / Domainを起点とするが、platform constraints、Security、perfor
 
 この運用原則自体は、**未承認の新規QAアカウント/DB書き込みを包括的に許可しない**。新たなMaterial Security Decision、公開認証緩和、production操作、destructive/irreversible、restoreなどは引き続きユーザー承認が必要。D-178の個別承認は `docs/decisions/D-178_REVIEW_V01.md` を参照する。
 
+## D-178 nonprod QA credential and Gate D operation
+
+D-178’s approved single-account exception is executed by Codex as a noninteractive operator flow. Before any remote write, reconcile the canonical nonprod AUTH/APP identities and owner marker, verify the exact Worker and D1 targets, and create/checksum fresh APP/AUTH exports outside the repository. Do not restore them. Stop on any identity collision or ambiguous partial state.
+
+On Windows, generate the synthetic `.invalid` email and random password with the OS CSPRNG, store the recoverable record with DPAPI CurrentUser under a verified ACL limited to the current user and SYSTEM, then read it back before the first remote write. Preserve older private digests in an encrypted external archive only after read-only remote reconciliation proves the old identity absent. Pass only required secret names through Wrangler’s `secrets.required` process environment; never put values in CLI arguments, `.dev.vars`, console output, tracked files, or reports. Do not ask the user to type or disclose test credentials.
+
+Codex executes the following from `apps/web` when the approved task and authenticated Wrangler session are available; these are operator implementation steps, not user credential-entry instructions:
+
+- `node scripts/provision-d178-qa.mjs --preflight-only`
+- `node scripts/provision-d178-qa.mjs`
+- `node scripts/d178-qa-gate-d.mjs`
+
+Gate D activates the marker only for the approved QA owner after the required read checks, authenticated operations, and rollback checks pass. Use stable saved operation IDs for recovery, verify no unintended TaskChuteDays or owner rows remain, and retain the QA account. Report persistent and local-only evidence separately; an old SQL-shape probe through a temporary Worker does not mean an old deployed Worker binary was run.
 ## Codex Task Contract
 
 複数step・実装・調査・verificationを伴う作業は原則Markdown Task Contractで渡す。

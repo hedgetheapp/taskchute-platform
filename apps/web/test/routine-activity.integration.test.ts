@@ -4,6 +4,7 @@ import { uuidv7 } from "../src/shared/uuidv7";
 import { loadReviewRoutineActivity, reviewDateMetricRange } from "../worker/application/review-date-metrics";
 
 const now = "2026-10-14T02:00:00.000Z";
+const D178_GATE_D_ROLLBACK_SENTINEL_TABLE = "d178_gate_d_rollback_sentinel_20261015";
 
 async function seedOwner() {
   const appUserId = uuidv7();
@@ -136,6 +137,47 @@ describe.sequential("D-178 Routine activity coverage and DB guard", () => {
     const otherOwner = await seedOwner();
     const otherTaskId = await seedTask(otherOwner);
     await expect(insertLegacyRoutine(otherOwner, otherTaskId)).resolves.toBeTruthy();
+  });
+
+  it("rolls back a diagnostic batch when the expected owner guard does not reject", async () => {
+    const appUserId = await seedOwner();
+    const taskId = uuidv7();
+    const routineId = uuidv7();
+    const operationId = uuidv7();
+    const boardBefore = await env.APP_DB.prepare("SELECT board_revision FROM routine_board_heads WHERE app_user_id = ?")
+      .bind(appUserId).first<number>("board_revision");
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS value FROM routine_activity_coverage WHERE app_user_id = ?")
+      .bind(appUserId).first<number>("value")).toBe(0);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS value FROM sqlite_schema WHERE type = 'table' AND name = ?")
+      .bind(D178_GATE_D_ROLLBACK_SENTINEL_TABLE).first<number>("value")).toBe(0);
+
+    await expect(env.APP_DB.batch([
+      env.APP_DB.prepare("INSERT INTO tasks (id, app_user_id, title, created_at) VALUES (?, ?, ?, ?)")
+        .bind(taskId, appUserId, "Rollback-only diagnostic", now),
+      env.APP_DB.prepare("INSERT INTO routine_definitions " +
+        "(id, app_user_id, task_id, recurrence_type, start_logical_date, end_logical_date, " +
+        "default_section_id, default_estimate_seconds, default_planned_start_minute, materialization_order, created_at) " +
+        "VALUES (?, ?, ?, 'daily', '2026-10-14', NULL, NULL, NULL, NULL, " +
+        "(SELECT COALESCE(MAX(materialization_order), 0) + 1 FROM routine_definitions WHERE app_user_id = ?), ?)")
+        .bind(routineId, appUserId, taskId, appUserId, now),
+      env.APP_DB.prepare("UPDATE routine_board_heads SET board_revision = board_revision + 1 WHERE app_user_id = ?")
+        .bind(appUserId),
+      env.APP_DB.prepare("INSERT INTO operations " +
+        "(app_user_id, operation_id, command_type, request_fingerprint_version, " +
+        "request_fingerprint, outcome_kind, result_json, created_at) " +
+        "VALUES (?, ?, 'CreateRoutine', 1, 'rollback-diagnostic', 'success', '{}', ?)")
+        .bind(appUserId, operationId, now),
+      env.APP_DB.prepare("INSERT INTO " + D178_GATE_D_ROLLBACK_SENTINEL_TABLE + " (id) VALUES (1)"),
+    ])).rejects.toThrow(new RegExp(D178_GATE_D_ROLLBACK_SENTINEL_TABLE));
+
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS value FROM tasks WHERE app_user_id = ? AND id = ?")
+      .bind(appUserId, taskId).first<number>("value")).toBe(0);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS value FROM routine_definitions WHERE app_user_id = ? AND id = ?")
+      .bind(appUserId, routineId).first<number>("value")).toBe(0);
+    expect(await env.APP_DB.prepare("SELECT board_revision FROM routine_board_heads WHERE app_user_id = ?")
+      .bind(appUserId).first<number>("board_revision")).toBe(boardBefore);
+    expect(await env.APP_DB.prepare("SELECT COUNT(*) AS value FROM operations WHERE app_user_id = ? AND operation_id = ?")
+      .bind(appUserId, operationId).first<number>("value")).toBe(0);
   });
 
   it("reports unmeasured, partial, and complete counts without Days, backfill, or read side effects", async () => {

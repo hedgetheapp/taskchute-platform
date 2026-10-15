@@ -56,9 +56,15 @@ test("QA provisioner imports spawn used by its Wrangler preflight", async () => 
   const source = await readFile(new URL("./provision-d178-qa.mjs", import.meta.url), "utf8");
   assert.match(source, /^import\s+\{\s*spawn\s*\}\s+from\s+["']node:child_process["'];$/m);
   assert.match(source, /spawn\(process\.execPath,\s*\[WRANGLER_BIN,\s*\.\.\.args\]/);
+  assert.match(source, /secrets:\s*\{\s*required:\s*\["BETTER_AUTH_SECRET",\s*"D178_QA_PROVISIONING_TOKEN"\]/);
+  assert.match(source, /D178_QA_PROVISIONING_TOKEN:\s*operatorToken/);
+  assert.doesNotMatch(source, /hiddenPrompt|\.dev\.vars|process\.stdin/);
+  const smokeSource = await readFile(new URL("./d178-qa-local-startup-smoke.mjs", import.meta.url), "utf8");
+  assert.match(smokeSource, /secrets:\s*\{\s*required:/);
+  assert.doesNotMatch(smokeSource, /devVarsPath|\.dev\.vars/);
 });
 
-test("D-178 QA Worker starts with synthetic local D1 and no operator credentials", { timeout: 75_000 }, async () => {
+test("D-178 QA Worker starts with synthetic local D1 without a QA account", { timeout: 75_000 }, async () => {
   const result = await runLocalStartupSmoke();
   assert.equal(result.status, 404);
   assert.equal(result.operatorPostSent, false);
