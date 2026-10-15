@@ -170,6 +170,14 @@ Product / Domainを起点とするが、platform constraints、Security、perfor
 
 既に決定済みの内容やApproved scope内の事実を反映するdocs maintenanceは通常開発フローに含めてよい。Material Decisionを含むdocs変更は先にユーザー判断へ戻す。
 
+## Nonprod QA fixture execution responsibility
+
+ユーザーが非本番QA fixtureの作成・使用を承認した場合、テスト専用アカウントの認証情報生成、秘密保持、初期化、テスト実行と検証結果記録は原則**Codexが行い、ユーザーの手入力を前提にしない**。実装の具体的なSecurity boundary、認証方式、データ操作範囲は対象featureのApproved Decision / Task Contractを優先する。
+
+承認済みのQA用途でも、CSPRNGによる専用credential、承認されたremote nonprod targetの照合、既存owner/identityの衝突検知、再実行/部分失敗時の安全な回復、秘密を公開しない取り扱いが必要。credentialを後で再使用する必要があれば、remote書き込み前にOS保護などの安全な保存/回復手段を確立する。ユーザーにパスワードのコピー/チャット貼り付けやPowerShell作業を繰り返し要求しない。既存private stateを根拠なく削除・上書きせず、remote実状態と照合してSTOP条件を適用する。
+
+この運用原則自体は、**未承認の新規QAアカウント/DB書き込みを包括的に許可しない**。新たなMaterial Security Decision、公開認証緩和、production操作、destructive/irreversible、restoreなどは引き続きユーザー承認が必要。D-178の個別承認は `docs/decisions/D-178_REVIEW_V01.md` を参照する。
+
 ## Codex Task Contract
 
 複数step・実装・調査・verificationを伴う作業は原則Markdown Task Contractで渡す。
