@@ -121,8 +121,8 @@ async function loadAndVerifyGeneratedConfig() {
     const binding = byName.get(name);
     if (!binding || binding.database_id !== id) stop("Generated D1 binding did not match the approved nonprod target.");
   }
-  if (JSON.stringify(config).includes("production")) {
-    stop("Generated config contains a production reference; no operation was started.");
+  if (bindings.some((binding) => /production/i.test(binding.database_name ?? ""))) {
+    stop("Generated config contains a production D1 binding; no operation was started.");
   }
   return config;
 }
