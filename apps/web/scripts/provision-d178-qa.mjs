@@ -1,10 +1,15 @@
 import { createHash, randomBytes } from "node:crypto";
-import { spawn } from "node:child_process";
-import { createConnection, createServer } from "node:net";
 import { open } from "node:fs/promises";
-import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  reserveLocalPorts,
+  startLocalWorker,
+  stopLocalWorker,
+  waitForLocalWorker,
+} from "./d178-qa-worker-startup.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const APP_DIR = path.resolve(SCRIPT_DIR, "..");
@@ -363,67 +368,8 @@ async function savePrivateState(state) {
   await rename(temporaryPath, STATE_PATH);
 }
 
-async function reserveLocalPort() {
-  return new Promise((resolve, reject) => {
-    const server = createServer();
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address();
-      const port = typeof address === "object" && address ? address.port : 0;
-      server.close((error) => error ? reject(error) : resolve(port));
-    });
-  });
-}
-
-function startWorker(port, configPath, devVarsPath) {
-  const child = spawn(process.execPath, [
-    WRANGLER_BIN, "dev", "--config", configPath, "--ip", "127.0.0.1", "--port", String(port),
-    "--inspector-ip", "127.0.0.1", "--show-interactive-dev-session", "false", "--log-level", "error",
-  ], {
-    cwd: APP_DIR,
-    env: { ...makeWranglerEnv(), CLOUDFLARE_ENV: "", WRANGLER_LOG: "error" },
-    windowsHide: true,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  let output = "";
-  child.stdout.setEncoding("utf8");
-  child.stderr.setEncoding("utf8");
-  child.stdout.on("data", (chunk) => { output = (output + chunk).slice(-12000); });
-  child.stderr.on("data", (chunk) => { output = (output + chunk).slice(-12000); });
-  child.once("error", () => { output += " process-start-error"; });
-  return { child, getOutput: () => output, devVarsPath };
-}
-
-async function waitForWorker(server, port) {
-  const deadline = Date.now() + 45000;
-  while (Date.now() < deadline) {
-    if (server.child.exitCode !== null) stop("The isolated local Worker stopped before it became ready.");
-    const connected = await new Promise((resolve) => {
-      const socket = createConnection({ host: "127.0.0.1", port });
-      socket.once("connect", () => { socket.destroy(); resolve(true); });
-      socket.once("error", () => resolve(false));
-    });
-    if (connected) {
-      const probe = await fetch("http://127.0.0.1:" + port + "/__operator/health", { method: "GET" }).catch(() => null);
-      if (probe) return;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 250));
-  }
-  const output = server.getOutput().toLowerCase();
-  const reason = output.includes("auth") || output.includes("token")
-    ? "Cloudflare remote D1 authorization failed."
-    : "The local Worker failed to start with its explicit remote D1 bindings.";
-  stop(reason + " No credentials were sent to the Worker.");
-}
-
 async function stopWorker() {
-  if (!devProcess?.child || devProcess.child.exitCode !== null) return;
-  devProcess.child.kill("SIGINT");
-  await Promise.race([
-    new Promise((resolve) => devProcess.child.once("close", resolve)),
-    new Promise((resolve) => setTimeout(resolve, 5000)),
-  ]);
-  if (devProcess.child.exitCode === null) devProcess.child.kill("SIGTERM");
+  await stopLocalWorker(devProcess);
 }
 
 async function runProvisioning() {
@@ -443,22 +389,15 @@ async function runProvisioning() {
 
   process.stdout.write("非本番対象・Worker version・migration・integrity・保全backupを確認しました。\n");
   await acquireOperatorLock();
-  const email = (await hiddenPrompt("QA用メールアドレス（非表示入力）: ")).trim();
-  if (!validEmail(email)) stop("The private email did not pass local format validation; no credentials were sent.");
-  const password = await hiddenPrompt("QA用password（非表示入力）: ");
-  if (password.length < 8 || password.length > 128) stop("The private password did not pass length validation; no credentials were sent.");
-  const state = await readOrCreatePrivateState(email);
-
   const generatedConfig = await loadAndVerifyGeneratedConfig();
   const bindingByName = new Map(generatedConfig.d1_databases.map((binding) => [binding.database_name, binding]));
-  const runId = randomBytes(8).toString("hex");
-  temporaryRunDirectory = path.join(APP_DIR, ".wrangler", "d178-qa-provision-" + runId);
-  await mkdir(temporaryRunDirectory, { recursive: false });
+  temporaryRunDirectory = await mkdtemp(path.join(os.tmpdir(), "d178-qa-provision-"));
   const localConfigPath = path.join(temporaryRunDirectory, "wrangler.jsonc");
   const devVarsPath = path.join(temporaryRunDirectory, ".dev.vars");
+  const workerLogPath = path.join(temporaryRunDirectory, "logs");
   const localConfig = {
     name: "d178-qa-provision-local",
-    main: "../../worker/qa-provisioning.ts",
+    main: path.join(APP_DIR, "worker", "qa-provisioning.ts"),
     compatibility_date: "2026-08-22",
     compatibility_flags: ["nodejs_compat"],
     vars: {
@@ -479,11 +418,37 @@ async function runProvisioning() {
   await writeFile(devVarsPath,
     "BETTER_AUTH_SECRET=" + authSecret + "\nD178_QA_PROVISIONING_TOKEN=" + operatorToken + "\n",
     { flag: "wx", mode: 0o600 });
+  await mkdir(workerLogPath, { recursive: true });
 
-  const port = await reserveLocalPort();
-  devProcess = startWorker(port, localConfigPath, devVarsPath);
+  let port;
+  let inspectorPort;
   try {
-    await waitForWorker(devProcess, port);
+    [port, inspectorPort] = await reserveLocalPorts(2);
+  } catch {
+    stop("Could not reserve loopback ports for the isolated local Worker (category=loopback_port_error).");
+  }
+  devProcess = startLocalWorker({
+    wranglerBin: WRANGLER_BIN,
+    configPath: localConfigPath,
+    port,
+    inspectorPort,
+    cwd: temporaryRunDirectory,
+    env: {
+      ...makeWranglerEnv(),
+      CLOUDFLARE_ENV: "",
+      WRANGLER_LOG: "error",
+      WRANGLER_LOG_PATH: workerLogPath,
+    },
+  });
+  try {
+    await waitForLocalWorker(devProcess, port);
+    process.stdout.write("ローカルWorker起動を確認しました。QA用credentialsを入力できます。\n");
+    const email = (await hiddenPrompt("QA用メールアドレス（非表示入力）: ")).trim();
+    if (!validEmail(email)) stop("The private email did not pass local format validation; no credentials were sent.");
+    const password = await hiddenPrompt("QA用password（非表示入力）: ");
+    if (password.length < 8 || password.length > 128) stop("The private password did not pass length validation; no credentials were sent.");
+    const state = await readOrCreatePrivateState(email);
+
     const response = await fetch("http://127.0.0.1:" + port + "/__operator/d178-qa/provision", {
       method: "POST",
       headers: {
@@ -510,7 +475,13 @@ async function runProvisioning() {
     return { status: responseBody.status, backupDirectory };
   } finally {
     await stopWorker();
-    if (temporaryRunDirectory) await rm(temporaryRunDirectory, { recursive: true, force: true });
+    if (temporaryRunDirectory) {
+      try {
+        await rm(temporaryRunDirectory, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 });
+      } catch {
+        stop("The isolated local Worker stopped, but its temporary configuration could not be safely removed.");
+      }
+    }
     temporaryRunDirectory = undefined;
     devProcess = undefined;
     await releaseOperatorLock();
