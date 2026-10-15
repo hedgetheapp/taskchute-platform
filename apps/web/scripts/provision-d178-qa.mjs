@@ -45,7 +45,8 @@ function makeWranglerEnv() {
   const logDirectory = path.join(APP_DIR, ".wrangler", "d178-operator-logs");
   return {
     ...process.env,
-    WRANGLER_LOG: "error",
+    WRANGLER_LOG: "log",
+    WRANGLER_WRITE_LOGS: "false",
     WRANGLER_LOG_PATH: logDirectory,
   };
 }
