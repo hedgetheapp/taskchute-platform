@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
   buildWranglerDevArgs,
@@ -49,6 +50,12 @@ test("Wrangler dev binds both services to loopback and uses dynamic ports", () =
   ]);
   assert.equal(args.includes("--remote"), false);
   assert.equal(args.includes("--tunnel"), false);
+});
+
+test("QA provisioner imports spawn used by its Wrangler preflight", async () => {
+  const source = await readFile(new URL("./provision-d178-qa.mjs", import.meta.url), "utf8");
+  assert.match(source, /^import\s+\{\s*spawn\s*\}\s+from\s+["']node:child_process["'];$/m);
+  assert.match(source, /spawn\(process\.execPath,\s*\[WRANGLER_BIN,\s*\.\.\.args\]/);
 });
 
 test("D-178 QA Worker starts with synthetic local D1 and no operator credentials", { timeout: 75_000 }, async () => {
