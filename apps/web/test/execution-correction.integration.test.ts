@@ -316,8 +316,11 @@ describe.sequential("D-156 Android lifecycle correction", () => {
       completedRequest(multi, firstExecution), now)).rejects.toMatchObject({ code: "resource_conflict" });
     expect(await env.APP_DB.prepare("SELECT lifecycle_state FROM entries WHERE app_user_id = ? AND id = ?")
       .bind(multi.userId, multi.entryId).first()).toEqual({ lifecycle_state: "completed" });
+    const orderedMultiExecutionIds = [firstExecution, secondExecution].sort();
     expect(await env.APP_DB.prepare("SELECT id FROM executions WHERE app_user_id = ? AND entry_id = ? ORDER BY id")
-      .bind(multi.userId, multi.entryId).all()).toMatchObject({ results: [{ id: firstExecution }, { id: secondExecution }] });
+      .bind(multi.userId, multi.entryId).all()).toMatchObject({
+      results: orderedMultiExecutionIds.map((id) => ({ id })),
+    });
 
     const continuation = await seedFixture();
     const continuationExecution = await makeLifecycleEntry(continuation, "completed",
