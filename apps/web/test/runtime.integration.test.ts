@@ -172,6 +172,12 @@ describe.sequential("production runtime bootstrap slice", () => {
     });
     const secondResult = await json<{ app_user_id: string; recovered: boolean }>(second);
     expect(secondResult).toEqual({ app_user_id: appUserId, recovered: true });
+
+    const differentUser = await browser.post("/api/internal/bootstrap", {
+      ...body,
+      email: "second-bootstrap.fixture@example.test",
+    }, { "x-taskchute-bootstrap-token": "fixture-only-bootstrap-token" });
+    expect(differentUser.status).toBe(409);
     expect(await env.AUTH_DB.prepare("SELECT COUNT(*) AS count FROM user").first<number>("count")).toBe(1);
     expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM app_users").first<number>("count")).toBe(1);
     expect(await env.APP_DB.prepare("SELECT COUNT(*) AS count FROM sections").first<number>("count")).toBe(2);

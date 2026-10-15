@@ -10,7 +10,12 @@ function requireAuthSecret(): string {
   return secret;
 }
 
-export function createRequestAuth(request: Request, env: Env, allowOperatorSignUp = false) {
+export function createRequestAuth(
+  request: Request,
+  env: Env,
+  allowOperatorSignUp = false,
+  disableLogs = false,
+) {
   const origin = new URL(request.url).origin;
   return betterAuth({
     database: env.AUTH_DB,
@@ -28,7 +33,7 @@ export function createRequestAuth(request: Request, env: Env, allowOperatorSignU
       updateAge: SESSION_UPDATE_AGE_SECONDS,
     },
     telemetry: { enabled: false },
-    logger: { level: "error" },
+    logger: disableLogs ? { disabled: true } : { level: "error" },
     plugins: [wearPairingPlugin],
   });
 }
