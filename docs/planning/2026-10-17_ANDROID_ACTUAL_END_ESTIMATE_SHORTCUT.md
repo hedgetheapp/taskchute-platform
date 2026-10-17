@@ -1,7 +1,7 @@
 # Android Actual End — 「見積通り」quick input (proposal)
 
 **Recorded:** 2026-10-17  
-**Status:** Product request captured / exact timestamp precision **AGREED 2026-10-17** / remaining behavior details **PROPOSED** / **NOT_STARTED**  
+**Status:** Product request captured / exact timestamp precision and one-shot recalculation **AGREED 2026-10-17** / remaining behavior details **PROPOSED** / **NOT_STARTED**  
 **Current GitHub main observed before recording:** `d9d8c293f2a306e25968f0be15ab99462be4645a`
 
 ## User request
@@ -17,14 +17,14 @@ In the Android Today Task Editor, actual-start inputs already have `前回タス
 - No usable actual start or estimate → shortcut unavailable (disabled/hidden presentation delegated).
 - Allow crossing the calendar midnight where existing owning-Day historical correction semantics permit it; preserve same Entry/Execution and owning Day.
 - Existing future-time, start/end ordering, overlap, single active Execution, authenticated owner, Day and revision/replay validation remain authoritative. An estimated end in the future is not automatically accepted as a completed actual end.
-- **Agreed 2026-10-17 — exact timestamp precision:** use the effective actual-start Instant plus estimate duration without rounding to minute boundaries, preserving source seconds (and fractional seconds when present). For example actual start `10:00:35` + 30 minutes → effective actual end `10:30:35`; display Day-local `10:30` (`HH:mm`). This is an explicit user choice of option A. Do not silently replace the underlying exact timestamp with `10:30:00`. Handling of later manual edits remains proposed, not yet finalized.
+- **Agreed 2026-10-17 — exact timestamp precision:** use the effective actual-start Instant plus estimate duration without rounding to minute boundaries, preserving source seconds (and fractional seconds when present). For example actual start `10:00:35` + 30 minutes → effective actual end `10:30:35`; display Day-local `10:30` (`HH:mm`). This is an explicit user choice of option A. Do not silently replace the underlying exact timestamp with `10:30:00`. Later changes to start/estimate do not automatically change the end time; recalculate on an explicit re-tap only (agreed).
 - Apply to Android actual-end editing only; no changes proposed to automatic Complete button behavior, Web/Wear, schema, migration, or shared Worker/API without a separate feasibility/Decision.
 
 ## Open product questions
 
 1. **Resolved (user choice A, 2026-10-17):** quick-input actual end preserves exact seconds/subseconds from actual start plus estimate duration, without minute rounding. Display stays `HH:mm`.
 2. **Open:** should the action be visible but disabled when the proposed end would be in the future, or allow filling with save-time validation? **Recommendation:** disable when it cannot produce a valid end.
-3. **Open:** when actual start / estimate is manually edited after applying the end shortcut, should end remain fixed until the next tap? **Recommendation:** one-shot fill, no hidden continuous recalculation.
+3. **Resolved (user choice A, 2026-10-17):** the shortcut is a one-shot fill. If actual start or estimate changes after tapping `見積通り`, the actual-end value remains fixed; it is recalculated only on the next explicit tap. No continuous automatic follow-up.
 
 ## References and boundaries
 
