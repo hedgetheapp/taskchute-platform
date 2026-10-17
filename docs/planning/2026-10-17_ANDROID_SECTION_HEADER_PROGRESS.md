@@ -1,7 +1,7 @@
 # Android Today Section header: progress and remaining workload (proposal)
 
 **Recorded:** 2026-10-17  
-**Status:** User request captured / calculation semantics and display edge cases **PROPOSED / OPEN** / **NOT_STARTED**  
+**Status:** Product Owner selected **dynamic remaining workload (A)** on 2026-10-17 / edge cases and display details **OPEN** / **NOT_STARTED**  
 **GitHub main read-only investigation baseline:** `9aa644f150b9653b6421c4387e758663d88b9aad`
 
 ## User-visible request
@@ -10,7 +10,7 @@ The Product Owner wants Section headers to show the whole Section's task count, 
 
 `09:00-12:00 セクション名 (4/10件 1h20m)`
 
-Interpret the requested `4/10` as **4 Completed out of 10 assigned entries**. The intended meaning of `1h20m` is to be confirmed before it becomes approved Product semantics.
+Interpret the requested `4/10` as **4 Completed out of 10 assigned entries**. The Product Owner selected **remaining estimated task workload**, dynamically decreasing for an active Running task, not elapsed clock time remaining until Section end.
 
 Initial scope assumption from discussion context: **Android Today Section headers**; Web/Wear parity not yet decided. No implementation requested while travelling.
 
@@ -27,16 +27,16 @@ Initial scope assumption from discussion context: **Android Today Section header
 
 1. Per selected established Day Section, summarize **currently assigned Entries**. `completed/total件` uses Completed count / all Planned+Running+Completed count, not Task Definition count or history of moved/deleted assignments. Routine occurrences and ordinary Entries each count as assigned Entries when present.
 2. Same Section summary stays visible even while Section is collapsed or Completed rows are hidden by D-162; it updates after confirmed canonical changes in status/placement/delete and can use existing carefully reconciled optimistic presentation where safe.
-3. **Recommended interpretation of remaining time:** **remaining work estimate**, not the wall-clock time until Section end. Completed contributes 0; Planned with estimate contributes full estimate; current active Running with estimate contributes `max(0, estimate - elapsed)`. Running whose estimate is exceeded contributes 0 rather than a negative balance; overrun remains visible separately. Whether a Running entry whose active execution is on another logical Day participates in its owning Day needs verification.
+3. **Agreed direction (2026-10-17):** display **dynamic remaining estimated workload**, not the wall-clock time until Section end. Completed contributes 0; Planned with an estimate contributes its full estimate; the active Running task with an estimate contributes `max(0, estimate - elapsed)` and this portion decreases as the Execution progresses. Estimate value itself is not mutated. At or beyond estimate, Running contributes 0 (never negative), while Completed count increases only on actual completion. Whether a Running Entry whose active Execution belongs to another logical Day participates in its owning Day needs verification.
 4. Unknown estimates must not silently be treated as a fully known zero remaining duration. Decide compact display for partial totals: e.g. known portion plus `+`/a small unknown-estimate marker, or `--` when no valid estimates are available.
 5. Format compactly near `HH:MM - HH:MM Section name` as `(4/10件 1h20m)`; allow reasonable responsive/ellipsis behavior for long Section names, narrow Galaxy S23 width, and existing warning labels. Avoid hiding warning content or changing expand/collapse, horizontal paging or D&D touch targets.
 6. `セクションなし` group, empty Sections (`0/0件`), current/future/past Days, and unknown estimate cases require appropriate fallback rules. No DB write or mutation for display-only aggregation.
 
 ## Open questions
 
-- **Primary:** Does `1h20m` mean (A) remaining **estimated task workload**, including the estimated remainder of Running, or (B) remaining **clock time until the Section's configured end**? Recommendation: A because it reflects unfinished work, independent from the Section time window.
+- **Resolved (Product Owner, 2026-10-17):** Option A, **dynamic remaining estimated workload**. Running's remaining portion decreases over time; it is not Section clock time, and its configured estimate itself does not change.
 - If A: What to show when one or more uncompleted tasks have no estimate? Recommendation: show calculated known remaining work with an explicit unknown marker rather than falsely presenting a complete total.
-- Live Running countdown update cadence, rounding to display minutes, and whether static estimates are preferable to a live remaining estimate.
+- Exact Running countdown update cadence and minute rounding remain open; dynamic (not static) remaining estimate is selected.
 - Overflow handling with Section title and existing warning on narrow screens (single-line compact vs secondary detail line); no change to D-161 warning semantics.
 - Whether first release should be Android-only, and whether the unsectioned group gets the same summary.
 
