@@ -1,7 +1,8 @@
 # D-179 Android Today Actual End 「見積通り」 Quick Input — implementation closeout
 
 **Status:** IMPLEMENTED / local app + Wear JVM PASS / focused AVD PASS / exact-SHA CI PASS / signed Phone APK verified / Product Verified NO / Released NO
-**Implementation SHA:** `e360792306a66e134b89027f93049499c915bb48` (`main`)
+**Feature implementation SHA:** `e360792306a66e134b89027f93049499c915bb48` (`main`)  
+**Layout follow-up SHA:** `b08001838e06e8d66a10be7a90f955551a676ada` (`main`)
 **Decision:** [D-179](../decisions/D-179_ANDROID_ACTUAL_END_ESTIMATE_QUICK_INPUT_V01.md)
 
 ## Delivered behavior
@@ -27,4 +28,4 @@
 
 ## Boundaries and remaining evidence
 
-No Worker/API/shared contract, schema, migration, dependency, deployment, persistent nonprod data, or production change was made. Persistent nonprod and production checks were not run. No Galaxy S23 confirmation for this shortcut has been supplied. Product Verified remains `NO`; Released remains `NO`.
+No Worker/API/shared contract, schema, migration, dependency, deployment, persistent nonprod data, or production change was made. Persistent nonprod and production checks were not run. **Galaxy S23 representative USER_CONFIRMED PASS (2026-10-18):** after receiving the layout follow-up exact-SHA Phone APK `b08001838e06e8d66a10be7a90f955551a676ada` (versionCode `1176`) and being asked to verify `見積通り` alignment and save behavior, the Product Owner replied `問題なし`. This is limited evidence for the requested layout and save flow, not independent device-level verification of exact stored subsecond Instants or the whole device matrix. The broader Today AVD remains `44 / 49 PARTIAL`. Overall Product Verified remains `NO`; Released remains `NO`.
