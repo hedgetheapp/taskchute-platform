@@ -1,6 +1,7 @@
 # D-180 — Android Today Section Header Progress v0.1
 
-Status: **Approved Stage 1 / Implemented `b7b405df1a25ffd68ba256cacef9c8563a5bf71f` / range-width corrective implemented `af83b64a2f4d59910d30c0d694ff1109e2a36a0f` / empty Section + continuous-track visual corrective APPROVED, NOT_IMPLEMENTED**  
+
+Status: **Approved Stage 1 / Implemented `b7b405df1a25ffd68ba256cacef9c8563a5bf71f` / range-width corrective implemented `af83b64a2f4d59910d30c0d694ff1109e2a36a0f` / empty Section + continuous-track corrective implemented `a6d231404e1526832b6d9fe1d653c85555717656` / focused JVM, AVD pixel and exact-SHA CI PASS / Galaxy S23 NOT_RUN / Production NOT_RUN / Released NO**
 Date: 2026-10-18
 
 ## Goal and decision origin
@@ -28,9 +29,9 @@ The Product Owner reported the Stage 1 bar was too short and explicitly required
 
 The Product Owner also approved removing the apparent split of the progress bar (`---|-----`): **render one visually continuous horizontal track** so that the completed segment transitions directly into the uncompleted track at the 0–100% boundary, **without an intentional gap, stop indicator, or separation artefact**. Maintain the existing track/active colors, 4dp height (unless implementation needs a justified minor presentation adjustment), time-range-matched width/left/right bounds, rounded outer container if supported, 2-line header, second-row order, accessibility and progress semantics. This is a **user-visible Android Today UI presentation correction only**. It must not change remaining-workload calculation, warning information, drag/collapse hit areas, data, Worker/API, Section persistence, schema, dependency, Web/Wear behavior, or production.
 
-**Implementation note (not binding product design):** the current Android Compose Material 3 `LinearProgressIndicator` uses default track gap, stroke cap, and stop marker. On the currently installed Compose BOM, confirm a supported signature and ensure the final pixels show no split; simply setting `gapSize = 0.dp` may still leave extra spacing with a round cap, so consider a butt cap and an empty stop-indicator drawing lambda, or a tiny custom one-piece track within the existing UI/test scope. Confirm visually via focused Android UI/pixel verification, not only `ProgressBarRangeInfo`.
+**Implementation evidence (not a new design requirement):** SHA `a6d231404e1526832b6d9fe1d653c85555717656` uses the supported Material3 indicator parameters to remove the gap, rounded-cap seam, and stop marker. Focused Android pixel verification passed for an intermediate fill and for a full `0/0` bar at default and narrow/large-text AVD settings. See `docs/CURRENT.md` and `docs/TEST_MATRIX.md` for exact verification and CI/artifact evidence.
 
-**Required regression coverage:** `0/0` → fraction 1.0 and a full uninterrupted bar; `0/5` → 0.0; `2/5` → 0.4; `5/5` → 1.0; continuous active/track transition at an intermediate fraction; time-range width and alignment within 1dp at normal and 360dp/font-scale 1.3; warnings, collapsed state and completed-row hiding unchanged. Keep previous evidence for the *earlier* implementation truthful; revised behavior remains `NOT_RUN` until the corrective SHA is built and exercised.
+**Regression evidence:** `TodaySectionProgressTest` passed `10/10`, covering `0/0` → fraction 1.0, `0/5` → 0.0, `2/5` → 0.4 and `5/5` → 1.0. Focused Android pixel/layout and warning tests passed `6/6` executions across default and 360dp/font-scale 1.3 configurations, including the intermediate active/track transition, full empty bar, time-range width/alignment within 1dp, warnings, collapsed state and completed-row hiding. The old assertion for `0/0` → 0f is invalidated by the approved product change and is not reported as passing the new rule.
 
 ## Scope / non-goals
 
