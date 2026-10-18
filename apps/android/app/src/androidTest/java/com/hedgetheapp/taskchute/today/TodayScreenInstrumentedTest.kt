@@ -14,6 +14,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -579,6 +580,114 @@ class TodayScreenInstrumentedTest {
         assertTrue(composeRule.onAllNodesWithText("Write report").fetchSemanticsNodes().isEmpty())
         composeRule.onNodeWithText("Morning").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Morningセクションを折りたたむ").assertIsDisplayed()
+    }
+
+    @Test
+    fun sectionProgressAlignsWithTimeAndRemainsVisibleWhenCompletedRowsAreHiddenAndCollapsed() {
+        todayPreferences().setShowCompleted(false)
+        val completedOne = dayWith(LifecycleState.COMPLETED).sections.single().entries.single()
+            .copy(id = "completed-one", title = "Completed one")
+        val completedTwo = completedOne.copy(id = "completed-two", title = "Completed two", estimateSeconds = null)
+        val planned = dayWith().sections.single().entries.single()
+            .copy(id = "planned-known", title = "Planned known", estimateSeconds = 2_400, routineDerived = true)
+        val unknown = planned.copy(id = "planned-unknown", title = "Planned unknown", estimateSeconds = null)
+        val running = dayWith(LifecycleState.RUNNING).sections.single().entries.single()
+            .copy(id = "running-entry", title = "Running entry", estimateSeconds = 3_600)
+        val execution = TodayExecution(
+            id = "running-execution",
+            entryId = running.id,
+            startedAt = Instant.now().minusSeconds(60).toString(),
+            estimateSeconds = running.estimateSeconds,
+        )
+        val section = TodaySection(
+            id = "section-1",
+            title = "Morning",
+            startMinute = 480,
+            endMinute = 720,
+            entries = listOf(completedOne, completedTwo, planned, running, unknown),
+        )
+        launchScreen(
+            FakeTodayRepository(
+                initialDay = dayWith().copy(sections = listOf(section), activeExecution = execution),
+            ),
+        )
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        val timeBounds = composeRule.onNodeWithTag("section-time-range-section-1", useUnmergedTree = true)
+            .fetchSemanticsNode().boundsInRoot
+        val barNode = composeRule.onNodeWithTag("section-progress-bar-section-1", useUnmergedTree = true).assertIsDisplayed()
+        val barBounds = barNode.fetchSemanticsNode().boundsInRoot
+        val durationNode = composeRule.onNodeWithTag("section-progress-duration-section-1", useUnmergedTree = true).assertIsDisplayed()
+        val durationBounds = durationNode.fetchSemanticsNode().boundsInRoot
+        val countBounds = composeRule.onNodeWithTag("section-progress-count-section-1", useUnmergedTree = true)
+            .fetchSemanticsNode().boundsInRoot
+        val completionBounds = composeRule.onNodeWithTag("section-completion-icon-section-1", useUnmergedTree = true)
+            .fetchSemanticsNode().boundsInRoot
+        val remainingIconBounds = composeRule.onNodeWithTag("section-remaining-icon-section-1", useUnmergedTree = true)
+            .fetchSemanticsNode().boundsInRoot
+        val tolerance = with(composeRule.density) { 1.dp.toPx() }
+
+        assertTrue("progress bar must align with the first-line time", kotlin.math.abs(barBounds.left - timeBounds.left) <= tolerance)
+        assertTrue("progress bar width must follow the duration text", kotlin.math.abs(barBounds.width - durationBounds.width) <= tolerance)
+        assertTrue(barBounds.right <= completionBounds.left)
+        assertTrue(completionBounds.right <= countBounds.left)
+        assertTrue(countBounds.right <= remainingIconBounds.left)
+        assertTrue(remainingIconBounds.right <= durationBounds.left)
+        assertEquals(0.4f, barNode.fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo].current, 0.001f)
+        assertTrue(composeRule.onAllNodesWithText("2/5件").fetchSemanticsNodes().isNotEmpty())
+        assertTrue(composeRule.onAllNodesWithText("Completed one").fetchSemanticsNodes().isEmpty())
+        assertTrue(composeRule.onAllNodesWithText("Completed two").fetchSemanticsNodes().isEmpty())
+        val durationText = durationNode.fetchSemanticsNode().config[SemanticsProperties.Text]
+            .joinToString(separator = "") { it.text }
+        assertTrue("unknown unfinished estimate must remain marked", durationText.endsWith("+"))
+
+        composeRule.onNodeWithContentDescription("Morningセクションを折りたたむ").performClick()
+        composeRule.onNodeWithContentDescription("Morningセクションを展開").assertIsDisplayed()
+        composeRule.onNodeWithText("2/5件").assertIsDisplayed()
+        composeRule.onNodeWithTag("section-progress-bar-section-1").assertIsDisplayed()
+    }
+
+    @Test
+    fun sectionlessHeaderKeepsItsExistingPresentationWithoutSectionSummary() {
+        val unsectioned = dayWith().sections.single().entries.single().copy(id = "unsectioned", title = "Inbox task")
+        launchScreen(
+            FakeTodayRepository(initialDay = dayWith().copy(sections = emptyList(), unsectionedEntries = listOf(unsectioned))),
+        )
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        composeRule.onNodeWithContentDescription("セクションなしセクションを折りたたむ").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithTag("section-progress-bar-section-1").fetchSemanticsNodes().isEmpty())
+        composeRule.onNodeWithText("Inbox task").assertIsDisplayed()
+    }
+
+    @Test
+    fun sectionWarningsRemainVisibleAndAccessibleBesideProgressWhenCollapsed() {
+        val prior = dayWith().sections.single().entries.single().copy(
+            id = "entry-prior", title = "Prior work", estimateSeconds = 3_600, plannedStartMinute = null,
+        )
+        val fixed = prior.copy(
+            id = "entry-fixed", title = "Fixed meeting", estimateSeconds = 600,
+            plannedStartMinute = 570, startReminderOffsetMinutes = 0,
+        )
+        val initialDay = dayWith().copy(
+            isCurrent = false,
+            startInstant = "2026-09-14T09:00:00Z",
+            establishmentTimezone = "UTC",
+            sections = listOf(TodaySection("section-1", "Morning", 480, 720, listOf(prior, fixed))),
+        )
+        launchScreen(FakeTodayRepository(initialDay = initialDay))
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        composeRule.onNodeWithText("0/2件").assertIsDisplayed()
+        composeRule.onNodeWithText("1h10m").assertIsDisplayed()
+        assertTextHasVisibleBounds("⚠ 30分重複")
+        val collapsedWarning = "Morningセクションを折りたたむ。警告: 固定開始への最大重複30分"
+        composeRule.onNodeWithContentDescription(collapsedWarning).assertIsDisplayed().performClick()
+        composeRule.onNodeWithContentDescription(
+            "Morningセクションを展開。警告: 固定開始への最大重複30分",
+        ).assertIsDisplayed()
+        assertTextHasVisibleBounds("⚠ 30分重複")
+        composeRule.onNodeWithText("0/2件").assertIsDisplayed()
     }
 
     @Test
@@ -3141,6 +3250,21 @@ class TodayScreenInstrumentedTest {
         assertTrue(composeRule.onAllNodesWithText("ノート", substring = false).fetchSemanticsNodes().isEmpty())
         assertTrue(composeRule.onAllNodesWithText("その他", substring = false).fetchSemanticsNodes().isEmpty())
     }
+
+    private fun assertTextHasVisibleBounds(text: String) {
+        val rootBounds = composeRule.onRoot().fetchSemanticsNode().boundsInRoot
+        val nodes = composeRule.onAllNodesWithText(text, useUnmergedTree = true).fetchSemanticsNodes()
+        assertTrue("Expected visible semantics for $text", nodes.isNotEmpty())
+        assertTrue(
+            "Expected $text within the visible root bounds",
+            nodes.any { node ->
+                val bounds = node.boundsInRoot
+                bounds.width > 0f && bounds.height > 0f
+                    && bounds.bottom > rootBounds.top && bounds.top < rootBounds.bottom
+            },
+        )
+    }
+
     private companion object {
         fun dayWith(state: LifecycleState = LifecycleState.PLANNED, routineDerived: Boolean = false) = TodayDay(
             logicalDate = "2026-09-14",

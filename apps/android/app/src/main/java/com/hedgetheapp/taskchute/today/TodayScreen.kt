@@ -57,6 +57,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.NavigationBar
@@ -635,8 +636,18 @@ private fun TodayContent(
         return
     }
     var forecastNow by remember(day.logicalDate) { mutableStateOf(Instant.now()) }
-    LaunchedEffect(day.logicalDate, day.isCurrent) {
-        while (day.isCurrent) {
+    val hasSectionRunningExecution = day.activeExecution?.let { execution ->
+        day.sections.any { section ->
+            section.entries.any { entry ->
+                entry.id == execution.entryId
+                    && entry.lifecycleState == LifecycleState.RUNNING
+                    && entry.estimateSeconds?.let { it > 0 } == true
+                    && runCatching { Instant.parse(execution.startedAt) }.isSuccess
+            }
+        }
+    } == true
+    LaunchedEffect(day.logicalDate, day.isCurrent, hasSectionRunningExecution) {
+        while (day.isCurrent || hasSectionRunningExecution) {
             val nowMillis = Instant.now().toEpochMilli()
             delay((60_000L - nowMillis % 60_000L).coerceAtLeast(1L))
             forecastNow = Instant.now()
@@ -1160,6 +1171,8 @@ private fun TodayContent(
                     SectionHeader(
                         section = section,
                         warning = dayForecast.sections[section.id],
+                        activeExecution = day.activeExecution,
+                        now = forecastNow,
                         collapsed = section.id in collapsedSectionIds,
                         onToggleCollapsed = {
                             val next = if (section.id in collapsedSectionIds) {
@@ -1289,6 +1302,8 @@ private fun TodayContent(
                     SectionHeader(
                         section = null,
                         warning = null,
+                        activeExecution = day.activeExecution,
+                        now = forecastNow,
                         collapsed = UNSECTIONED_DROP_KEY in collapsedSectionIds,
                         onToggleCollapsed = {
                             val next = if (UNSECTIONED_DROP_KEY in collapsedSectionIds) {
@@ -1884,6 +1899,8 @@ private fun isLegalManualReorder(entries: List<TodayTask>, desiredIds: List<Stri
 private fun SectionHeader(
     section: TodaySection?,
     warning: SectionForecastWarning?,
+    activeExecution: TodayExecution?,
+    now: Instant,
     collapsed: Boolean,
     onToggleCollapsed: () -> Unit,
     modifier: Modifier = Modifier,
@@ -1891,6 +1908,10 @@ private fun SectionHeader(
 ) {
     val title = section?.title ?: "セクションなし"
     val range = section?.let { "${formatMinute(it.startMinute)} - ${formatMinute(it.endMinute)}" }
+    val rangeModifier = section?.id?.let { Modifier.testTag("section-time-range-$it") } ?: Modifier
+    val sectionProgress = section
+        ?.takeIf { it.startMinute != null && it.endMinute != null }
+        ?.let { calculateTodaySectionProgress(it, activeExecution, now) }
     val warningDescription = warning?.let {
         buildList {
             if (it.hasOverlap) add("固定開始への最大重複${conflictMinutesCeiling(it.overlapSeconds)}分")
@@ -1904,8 +1925,8 @@ private fun SectionHeader(
             else -> "⚠ ${conflictMinutesCeiling(it.overflowSeconds)}分超過"
         }
     }
-    Row(
-        modifier = modifier.fillMaxWidth().height(38.dp)
+    Column(
+        modifier = modifier.fillMaxWidth()
             .background(TaskChuteColors.SurfaceElevated)
             .then(if (dropTarget) Modifier.background(Color(0x8C18423C)).border(BorderStroke(2.dp, Color(0xFF58C8B2))) else Modifier)
             .clickable(onClick = onToggleCollapsed)
@@ -1914,40 +1935,116 @@ private fun SectionHeader(
                     append("${title}セクション${if (collapsed) "を展開" else "を折りたたむ"}")
                     warningDescription?.let { append("。警告: ").append(it) }
                 }
-            }
-            .padding(horizontal = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+            },
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Icon(
-            painter = painterResource(if (collapsed) R.drawable.today_section_chevron_right else R.drawable.today_section_expand_more),
-            contentDescription = if (collapsed) "展開" else "折りたたみ",
-            modifier = Modifier.size(20.dp),
-            tint = TaskChuteColors.SecondaryText,
-        )
-        range?.let {
+        Row(
+            modifier = Modifier.fillMaxWidth().height(38.dp).padding(horizontal = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Icon(
+                painter = painterResource(if (collapsed) R.drawable.today_section_chevron_right else R.drawable.today_section_expand_more),
+                contentDescription = if (collapsed) "展開" else "折りたたみ",
+                modifier = Modifier.size(20.dp),
+                tint = TaskChuteColors.SecondaryText,
+            )
+            range?.let { rangeText ->
+                Text(
+                    rangeText,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 15.sp, fontWeight = FontWeight.Medium),
+                    color = TaskChuteColors.SecondaryText,
+                    maxLines = 1,
+                    modifier = rangeModifier,
+                )
+            }
             Text(
-                it,
+                title,
                 style = MaterialTheme.typography.bodyMedium.copy(fontSize = 15.sp, fontWeight = FontWeight.Medium),
-                color = TaskChuteColors.SecondaryText,
+                color = TaskChuteColors.PrimaryText,
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
             )
+            warningLabel?.let {
+                Text(
+                    text = it,
+                    color = TaskChuteColors.Attention,
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, fontWeight = FontWeight.SemiBold),
+                    maxLines = 1,
+                )
+            }
         }
-        Text(
-            title,
-            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 15.sp, fontWeight = FontWeight.Medium),
-            color = TaskChuteColors.PrimaryText,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-        warningLabel?.let {
-            Text(
-                text = it,
-                color = TaskChuteColors.Attention,
-                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, fontWeight = FontWeight.SemiBold),
-                maxLines = 1,
+        if (section != null && sectionProgress != null) {
+            val durationLabel = formatTodaySectionRemainingWorkload(
+                sectionProgress.remainingSeconds,
+                sectionProgress.hasUnknownRemaining,
             )
+            var durationTextWidthPx by remember(section.id) { mutableStateOf(0) }
+            val durationTextWidth = with(LocalDensity.current) {
+                durationTextWidthPx.toDp().coerceAtLeast(24.dp)
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(start = 44.dp, end = 14.dp, bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+            ) {
+                LinearProgressIndicator(
+                    progress = { sectionProgress.completedFraction },
+                    modifier = Modifier
+                        .width(durationTextWidth)
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .testTag("section-progress-bar-${section.id}"),
+                    color = TaskChuteColors.AccentBlue,
+                    trackColor = TaskChuteColors.SecondaryText.copy(alpha = 0.28f),
+                )
+                Box(
+                    modifier = Modifier
+                        .size(16.dp)
+                        .border(1.dp, TaskChuteColors.SecondaryText, CircleShape)
+                        .testTag("section-completion-icon-${section.id}"),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_material_check_24),
+                        contentDescription = null,
+                        modifier = Modifier.size(10.dp),
+                        tint = TaskChuteColors.SecondaryText,
+                    )
+                }
+                Text(
+                    text = "${sectionProgress.completedCount}/${sectionProgress.totalCount}件",
+                    modifier = Modifier.testTag("section-progress-count-${section.id}"),
+                    color = TaskChuteColors.SecondaryText,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        fontFeatureSettings = "tnum",
+                    ),
+                    maxLines = 1,
+                )
+                Icon(
+                    painter = painterResource(R.drawable.ic_material_hourglass_top_24),
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp).testTag("section-remaining-icon-${section.id}"),
+                    tint = TaskChuteColors.SecondaryText,
+                )
+                Text(
+                    text = durationLabel,
+                    modifier = Modifier.testTag("section-progress-duration-${section.id}"),
+                    color = TaskChuteColors.PrimaryText,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        fontFeatureSettings = "tnum",
+                    ),
+                    maxLines = 1,
+                    onTextLayout = { layout ->
+                        if (durationTextWidthPx != layout.size.width) durationTextWidthPx = layout.size.width
+                    },
+                )
+            }
         }
     }
 }
