@@ -1,3 +1,9 @@
+## D-180 — Android Today Section Header Progress v0.1
+
+Canonical Decision: `docs/decisions/D-180_ANDROID_SECTION_HEADER_PROGRESS_V01.md`
+
+2026-10-18 承認。Android Todayの既存Sectionヘッダーを2行に拡張し、2行目にコンパクトな進捗バー、Completed/Total件数、動的な残見積作業時間を表示する。**バーのfill率はCompleted Entry件数÷現在そのSectionに属する全Entry件数**（4/10=40%）、Runningは完了までfillを進めず、見積残時間のみ経過とともに減る。未見積の未完了Entryがあれば既知の残時間合計に`+`を付ける。バーは1行目の時刻テキスト先頭に左揃えし、時間テキスト相当のコンパクト幅とする。完了行非表示・折りたたみ中も集計は全割当Entryから算出する。D-161/D-165警告・D&D・日付・Execution authorityを維持する。Stage 1はAndroidの既存timed Sectionのみで表示専用。`セクションなし`の新規集計UXとユーザー設定Section iconの保存/schema/APIは別判断。コード実装は未着手。
+
 ## D-179 — Android Actual End 「見積通り」 Quick Input v0.1
 
 Canonical Decision: `docs/decisions/D-179_ANDROID_ACTUAL_END_ESTIMATE_QUICK_INPUT_V01.md`
