@@ -490,6 +490,7 @@ class TaskPlanningControllerTest {
             now = { fixedNow },
         )
         controller.openEdit(day, task)
+        assertTrue(await { controller.state.references != null && !controller.state.loadingReferences })
 
         assertTrue(controller.canSelectActualEndEstimateQuickInput())
         controller.selectActualEndEstimate()
@@ -541,6 +542,7 @@ class TaskPlanningControllerTest {
             sections = listOf(TodaySection("section-1", "Morning", 480, 720, listOf(planned))),
         )
         controller.openEdit(day, planned)
+        assertTrue(await { controller.state.references != null && !controller.state.loadingReferences })
         assertFalse(controller.canSelectActualEndEstimateQuickInput())
         controller.updateActualStartText("09:00")
         assertTrue(controller.canSelectActualEndEstimateQuickInput())
@@ -561,6 +563,7 @@ class TaskPlanningControllerTest {
             TodaySection("section-1", "Morning", 480, 720, listOf(blocker, planned)),
         ))
         controller.openEdit(targetDay, planned)
+        assertTrue(await { controller.state.references != null && !controller.state.loadingReferences })
         controller.updateActualStartText("09:00")
         assertFalse(controller.canSelectActualEndEstimateQuickInput()) // D-147(B) would snap to 09:00:35.250.
         controller.dismiss()
@@ -573,6 +576,7 @@ class TaskPlanningControllerTest {
         )
         val runningDay = day.copy(sections = listOf(TodaySection("section-1", "Morning", 480, 720, listOf(running))))
         controller.openEdit(runningDay, running)
+        assertTrue(await { controller.state.references != null && !controller.state.loadingReferences })
         assertFalse(controller.canSelectActualEndEstimateQuickInput()) // A positive estimate would end in the future.
         controller.updateDraft(controller.state.editor!!.draft.copy(estimateText = "0"))
         assertFalse(controller.canSelectActualEndEstimateQuickInput())
@@ -587,6 +591,7 @@ class TaskPlanningControllerTest {
         )
         val completedDay = day.copy(sections = listOf(TodaySection("section-1", "Morning", 480, 720, listOf(completed))))
         controller.openEdit(completedDay, completed)
+        assertTrue(await { controller.state.references != null && !controller.state.loadingReferences })
         controller.updateDraft(controller.state.editor!!.draft.copy(estimateText = "30"))
         assertTrue(controller.canSelectActualEndEstimateQuickInput())
         controller.selectActualEndEstimate()
@@ -620,6 +625,7 @@ class TaskPlanningControllerTest {
             now = { Instant.parse("2026-09-16T08:00:00Z") },
         )
         controller.openEdit(day, task)
+        assertTrue(await { controller.state.references != null && !controller.state.loadingReferences })
 
         assertTrue(controller.canSelectActualEndEstimateQuickInput())
         controller.selectActualEndEstimate()
