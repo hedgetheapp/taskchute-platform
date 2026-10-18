@@ -613,28 +613,48 @@ class TodayScreenInstrumentedTest {
         )
         waitForStatus(TodayLoadStatus.CONTENT)
 
-        val timeBounds = composeRule.onNodeWithTag("section-time-range-section-1", useUnmergedTree = true)
+        val headerBounds = composeRule.onNodeWithContentDescription("Morningセクションを折りたたむ")
             .fetchSemanticsNode().boundsInRoot
+        val timeNode = composeRule.onNodeWithTag("section-time-range-section-1", useUnmergedTree = true).assertIsDisplayed()
+        val timeBounds = timeNode.fetchSemanticsNode().boundsInRoot
         val barNode = composeRule.onNodeWithTag("section-progress-bar-section-1", useUnmergedTree = true).assertIsDisplayed()
         val barBounds = barNode.fetchSemanticsNode().boundsInRoot
         val durationNode = composeRule.onNodeWithTag("section-progress-duration-section-1", useUnmergedTree = true).assertIsDisplayed()
         val durationBounds = durationNode.fetchSemanticsNode().boundsInRoot
-        val countBounds = composeRule.onNodeWithTag("section-progress-count-section-1", useUnmergedTree = true)
+        val countNode = composeRule.onNodeWithTag("section-progress-count-section-1", useUnmergedTree = true).assertIsDisplayed()
+        val countBounds = countNode
             .fetchSemanticsNode().boundsInRoot
-        val completionBounds = composeRule.onNodeWithTag("section-completion-icon-section-1", useUnmergedTree = true)
+        val completionNode = composeRule.onNodeWithTag("section-completion-icon-section-1", useUnmergedTree = true).assertIsDisplayed()
+        val completionBounds = completionNode
             .fetchSemanticsNode().boundsInRoot
-        val remainingIconBounds = composeRule.onNodeWithTag("section-remaining-icon-section-1", useUnmergedTree = true)
+        val remainingIconNode = composeRule.onNodeWithTag("section-remaining-icon-section-1", useUnmergedTree = true).assertIsDisplayed()
+        val remainingIconBounds = remainingIconNode
             .fetchSemanticsNode().boundsInRoot
         val tolerance = with(composeRule.density) { 1.dp.toPx() }
 
         assertTrue("progress bar must align with the first-line time", kotlin.math.abs(barBounds.left - timeBounds.left) <= tolerance)
-        assertTrue("progress bar width must follow the duration text", kotlin.math.abs(barBounds.width - durationBounds.width) <= tolerance)
+        assertTrue("progress bar must end with the first-line time", kotlin.math.abs(barBounds.right - timeBounds.right) <= tolerance)
+        assertTrue("progress bar width must match the full time range", kotlin.math.abs(barBounds.width - timeBounds.width) <= tolerance)
+        assertTrue("fixture must distinguish the full time range from the shorter duration label", barBounds.width > durationBounds.width + tolerance)
+        listOf(timeBounds, barBounds, completionBounds, countBounds, remainingIconBounds, durationBounds).forEach { bounds ->
+            assertTrue(
+                "all progress metrics must remain inside the section header horizontally",
+                bounds.left >= headerBounds.left - tolerance && bounds.right <= headerBounds.right + tolerance,
+            )
+            assertTrue(
+                "all progress metrics must remain inside the section header vertically",
+                bounds.top >= headerBounds.top - tolerance && bounds.bottom <= headerBounds.bottom + tolerance,
+            )
+        }
+        listOf(completionBounds, countBounds, remainingIconBounds, durationBounds).forEach { bounds ->
+            assertTrue("all progress metrics must remain on the bar's second row", kotlin.math.abs(bounds.center.y - barBounds.center.y) <= tolerance)
+        }
         assertTrue(barBounds.right <= completionBounds.left)
         assertTrue(completionBounds.right <= countBounds.left)
         assertTrue(countBounds.right <= remainingIconBounds.left)
         assertTrue(remainingIconBounds.right <= durationBounds.left)
         assertEquals(0.4f, barNode.fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo].current, 0.001f)
-        assertTrue(composeRule.onAllNodesWithText("2/5件").fetchSemanticsNodes().isNotEmpty())
+        composeRule.onNodeWithText("2/5件").assertIsDisplayed()
         assertTrue(composeRule.onAllNodesWithText("Completed one").fetchSemanticsNodes().isEmpty())
         assertTrue(composeRule.onAllNodesWithText("Completed two").fetchSemanticsNodes().isEmpty())
         val durationText = durationNode.fetchSemanticsNode().config[SemanticsProperties.Text]

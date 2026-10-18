@@ -1909,6 +1909,7 @@ private fun SectionHeader(
     val title = section?.title ?: "セクションなし"
     val range = section?.let { "${formatMinute(it.startMinute)} - ${formatMinute(it.endMinute)}" }
     val rangeModifier = section?.id?.let { Modifier.testTag("section-time-range-$it") } ?: Modifier
+    val rangeTextWidthPx = remember(section?.id, range) { mutableStateOf(0) }
     val sectionProgress = section
         ?.takeIf { it.startMinute != null && it.endMinute != null }
         ?.let { calculateTodaySectionProgress(it, activeExecution, now) }
@@ -1956,6 +1957,9 @@ private fun SectionHeader(
                     color = TaskChuteColors.SecondaryText,
                     maxLines = 1,
                     modifier = rangeModifier,
+                    onTextLayout = { layout ->
+                        if (rangeTextWidthPx.value != layout.size.width) rangeTextWidthPx.value = layout.size.width
+                    },
                 )
             }
             Text(
@@ -1975,15 +1979,12 @@ private fun SectionHeader(
                 )
             }
         }
-        if (section != null && sectionProgress != null) {
+        if (section != null && sectionProgress != null && rangeTextWidthPx.value > 0) {
             val durationLabel = formatTodaySectionRemainingWorkload(
                 sectionProgress.remainingSeconds,
                 sectionProgress.hasUnknownRemaining,
             )
-            var durationTextWidthPx by remember(section.id) { mutableStateOf(0) }
-            val durationTextWidth = with(LocalDensity.current) {
-                durationTextWidthPx.toDp().coerceAtLeast(24.dp)
-            }
+            val rangeTextWidth = with(LocalDensity.current) { rangeTextWidthPx.value.toDp() }
             Row(
                 modifier = Modifier.fillMaxWidth().padding(start = 44.dp, end = 14.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -1992,7 +1993,7 @@ private fun SectionHeader(
                 LinearProgressIndicator(
                     progress = { sectionProgress.completedFraction },
                     modifier = Modifier
-                        .width(durationTextWidth)
+                        .width(rangeTextWidth)
                         .height(4.dp)
                         .clip(RoundedCornerShape(2.dp))
                         .testTag("section-progress-bar-${section.id}"),
@@ -2040,9 +2041,6 @@ private fun SectionHeader(
                         fontFeatureSettings = "tnum",
                     ),
                     maxLines = 1,
-                    onTextLayout = { layout ->
-                        if (durationTextWidthPx != layout.size.width) durationTextWidthPx = layout.size.width
-                    },
                 )
             }
         }
