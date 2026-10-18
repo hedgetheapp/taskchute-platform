@@ -181,6 +181,47 @@ describe.sequential("BulkDeleteEntries", () => {
       .some((entry) => entry.id === fixture.routineEntryId || entry.id === fixture.ordinaryEntryId)).toBe(false);
   });
 
+  it("suppresses only a selected future Routine occurrence across replay and repeated future-Day ensure", async () => {
+    const fixture = await seed();
+    await env.APP_DB.batch([
+      env.APP_DB.prepare(`UPDATE taskchute_days SET logical_date = '2026-09-03',
+        start_instant = '2026-09-03T00:00:00.000Z', end_instant = '2026-09-04T00:00:00.000Z' WHERE id = ?`)
+        .bind(fixture.dayId),
+      env.APP_DB.prepare(`UPDATE taskchute_day_section_contexts SET actual_start_instant = '2026-09-03T00:00:00.000Z',
+        actual_end_instant = '2026-09-04T00:00:00.000Z' WHERE app_user_id = ? AND taskchute_day_id = ?`)
+        .bind(fixture.userId, fixture.dayId),
+    ]);
+    const definitionBefore = await env.APP_DB.prepare(`SELECT id, task_id, recurrence_type, start_logical_date,
+      end_logical_date, defaults_revision FROM routine_definitions WHERE app_user_id = ? AND id = ?`)
+      .bind(fixture.userId, fixture.routineDefinitionId).first();
+    const request = requestFor(fixture, [fixture.routineEntryId]);
+
+    const first = await bulkDeleteEntries(env.APP_DB, fixture.userId, request, now);
+    expect(first).toEqual({ taskchute_day_id: fixture.dayId, deleted_entry_ids: [],
+      skipped_routine_entry_ids: [fixture.routineEntryId], placement_revision: 1 });
+    expect(await bulkDeleteEntries(env.APP_DB, fixture.userId, request, now)).toEqual(first);
+    expect(await env.APP_DB.prepare(`SELECT reason FROM routine_occurrence_suppressions
+      WHERE app_user_id = ? AND routine_occurrence_id = ?`)
+      .bind(fixture.userId, fixture.routineOccurrenceId).first()).toEqual({ reason: "skip" });
+    expect(await env.APP_DB.prepare(`SELECT id, taskchute_day_id, routine_occurrence_id FROM entries
+      WHERE app_user_id = ? AND id = ?`).bind(fixture.userId, fixture.routineEntryId).first())
+      .toEqual({ id: fixture.routineEntryId, taskchute_day_id: fixture.dayId, routine_occurrence_id: fixture.routineOccurrenceId });
+
+    for (let ensure = 0; ensure < 2; ensure += 1) {
+      const projection = await loadTaskChuteDayByLogicalDate(env.APP_DB, fixture.userId, "2026-09-03", now);
+      const visibleEntries = [...projection.unsectioned_entries, ...projection.sections.flatMap((section) => section.entries)];
+      expect(visibleEntries.some((entry) => entry.id === fixture.routineEntryId)).toBe(false);
+    }
+    expect(await env.APP_DB.prepare(`SELECT id, task_id, recurrence_type, start_logical_date,
+      end_logical_date, defaults_revision FROM routine_definitions WHERE app_user_id = ? AND id = ?`)
+      .bind(fixture.userId, fixture.routineDefinitionId).first()).toEqual(definitionBefore);
+    expect(await env.APP_DB.prepare(`SELECT COUNT(*) AS count FROM routine_occurrences
+      WHERE app_user_id = ? AND routine_definition_id = ? AND origin_taskchute_day_id = ?`)
+      .bind(fixture.userId, fixture.routineDefinitionId, fixture.dayId).first<number>("count")).toBe(1);
+    expect(await env.APP_DB.prepare("SELECT placement_revision FROM taskchute_days WHERE app_user_id = ? AND id = ?")
+      .bind(fixture.userId, fixture.dayId).first<number>("placement_revision")).toBe(1);
+  });
+
   it.each(["running", "completed"] as const)("rejects a %s target without partial mutation", async (stateName) => {
     const fixture = await seed();
     const entryId = stateName === "running" ? fixture.runningEntryId : fixture.completedEntryId;

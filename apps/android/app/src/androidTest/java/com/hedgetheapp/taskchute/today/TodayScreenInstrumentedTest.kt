@@ -1969,6 +1969,81 @@ class TodayScreenInstrumentedTest {
     }
 
     @Test
+    fun futureRoutineSectionedPlannedRowWithNoteCanDeleteOnlySelectedOccurrence() {
+        assertFutureRoutinePlannedDeleteFlow(unsectioned = false)
+    }
+
+    @Test
+    fun futureRoutineUnsectionedPlannedRowWithNoteCanDeleteOnlySelectedOccurrence() {
+        assertFutureRoutinePlannedDeleteFlow(unsectioned = true)
+    }
+
+    private fun assertFutureRoutinePlannedDeleteFlow(unsectioned: Boolean) {
+        val directRepository = FakeDirectManipulationRepository()
+        var openedTaskNotes = 0
+        val baseDay = dayWith()
+        val routineTask = baseDay.sections.single().entries.single().copy(
+            id = if (unsectioned) "future-routine-unsectioned-entry" else "future-routine-sectioned-entry",
+            title = "Future Routine",
+            taskId = "future-routine-task",
+            primaryDocumentId = "future-routine-note",
+            routineDerived = true,
+        )
+        val futureDay = baseDay.copy(
+            logicalDate = "2026-09-15",
+            isCurrent = false,
+            planningEnabled = true,
+            placementRevision = 23,
+            taskChuteDayId = "future-routine-day",
+            sections = listOf(baseDay.sections.single().copy(entries = if (unsectioned) emptyList() else listOf(routineTask))),
+            unsectionedEntries = if (unsectioned) listOf(routineTask) else emptyList(),
+        )
+        launchPlanningScreen(
+            FakePlanningRepository(),
+            initialDay = futureDay,
+            directRepository = directRepository,
+            onOpenTaskNote = { openedTaskNotes++ },
+        )
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        assertTrue(composeRule.onAllNodesWithContentDescription("タスクを開始").fetchSemanticsNodes().isEmpty())
+        assertTrue(composeRule.onAllNodesWithContentDescription("タスクを完了").fetchSemanticsNodes().isEmpty())
+        composeRule.onNodeWithText("Future Routine").performTouchInput { swipeLeft() }
+        composeRule.onNodeWithContentDescription("タスクを編集").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("タスクのノート").assertIsDisplayed().performClick()
+        assertEquals(1, openedTaskNotes)
+
+        composeRule.onNodeWithText("Future Routine").performTouchInput { swipeLeft() }
+        composeRule.onNodeWithContentDescription("タスクの操作").assertIsDisplayed().performClick()
+        composeRule.onNodeWithText("削除", substring = false).assertIsDisplayed()
+        listOf("複製", "今日へ移動", "日付を移動", "前の日へ移動", "次の日へ移動").forEach { forbiddenAction ->
+            assertTrue(
+                "$forbiddenAction must not be added for a future Routine occurrence",
+                composeRule.onAllNodesWithText(forbiddenAction, substring = false).fetchSemanticsNodes().isEmpty(),
+            )
+        }
+        assertEquals(0, directRepository.deleteCalls.get())
+
+        composeRule.onNodeWithText("削除", substring = false).performClick()
+        composeRule.onNodeWithText("選択した1件の予定を削除しますか？").assertIsDisplayed()
+        composeRule.onNodeWithText("キャンセル", substring = false).performClick()
+        assertEquals("Cancel must not dispatch a mutation", 0, directRepository.deleteCalls.get())
+
+        composeRule.onNodeWithText("Future Routine").performTouchInput { swipeLeft() }
+        composeRule.onNodeWithContentDescription("タスクの操作").performClick()
+        composeRule.onNodeWithText("削除", substring = false).performClick()
+        composeRule.onNodeWithText("削除", substring = false).performClick()
+        composeRule.waitUntil(5_000) { directRepository.deleteCalls.get() == 1 }
+
+        val request = directRepository.lastRequest as DirectManipulationRequest.Delete
+        assertEquals(listOf(routineTask.id), request.entryIds)
+        assertEquals("future-routine-day", request.taskChuteDayId)
+        assertEquals(23, request.expectedPlacementRevision)
+        assertTrue(request.operationId.isNotBlank())
+        assertEquals(1, directRepository.deleteCalls.get())
+    }
+
+    @Test
     fun futurePlannedRowEntersSelectionModeByLeftToRightSwipe() {
         val directRepository = FakeDirectManipulationRepository()
         val futureDay = dayWith().copy(
@@ -2564,6 +2639,37 @@ class TodayScreenInstrumentedTest {
         composeRule.onNodeWithContentDescription("タスクのノート").assertIsDisplayed().performClick()
         assertTrue(composeRule.onAllNodesWithContentDescription("タスクの操作").fetchSemanticsNodes().isEmpty())
         assertEquals(2, openedTaskNotes)
+    }
+
+    @Test
+    fun futureCompletedWithTaskNoteRemainsNoteOnly() {
+        var openedTaskNotes = 0
+        val baseDay = dayWith(LifecycleState.COMPLETED)
+        val completed = baseDay.sections.single().entries.single().copy(
+            id = "future-completed-entry",
+            title = "Future Completed",
+            taskId = "future-completed-task",
+        )
+        val futureDay = baseDay.copy(
+            logicalDate = "2026-09-15",
+            isCurrent = false,
+            planningEnabled = true,
+            taskChuteDayId = "future-completed-day",
+            sections = listOf(baseDay.sections.single().copy(entries = listOf(completed))),
+        )
+        launchPlanningScreen(
+            FakePlanningRepository(),
+            initialDay = futureDay,
+            onOpenTaskNote = { openedTaskNotes++ },
+        )
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        composeRule.onNodeWithText("Future Completed").performTouchInput { swipeLeft() }
+        composeRule.onNodeWithContentDescription("タスクのノート").assertIsDisplayed().performClick()
+        assertEquals(1, openedTaskNotes)
+        assertTrue(composeRule.onAllNodesWithContentDescription("タスクの操作").fetchSemanticsNodes().isEmpty())
+        assertTrue(composeRule.onAllNodesWithContentDescription("タスクを開始").fetchSemanticsNodes().isEmpty())
+        assertTrue(composeRule.onAllNodesWithContentDescription("タスクを完了").fetchSemanticsNodes().isEmpty())
     }
 
     @Test

@@ -2017,7 +2017,7 @@ private fun TodayTaskRow(
     val visualDropTarget = dropTarget || dropTargetCue
     val hasActions = canEdit || canDuplicate || canOpenNote || canDayOperate || canLifecycleDelete || canPlannedDelete || canPastForwardOperate
     val canSwipeNote = canOpenNote && (canEdit || canNoteOnly)
-    val hasOtherActions = hasActions && (!canNoteOnly || canPastForwardOperate)
+    val hasOtherActions = canEdit || canDuplicate || canDayOperate || canLifecycleDelete || canPlannedDelete || canPastForwardOperate
     val swipeActionCount = (if (canEdit) 1 else 0) + (if (canSwipeNote) 1 else 0) + (if (hasOtherActions) 1 else 0)
     val swipeThreshold = with(LocalDensity.current) { 48.dp.toPx() }
     val swipeRevealWidth = with(LocalDensity.current) {

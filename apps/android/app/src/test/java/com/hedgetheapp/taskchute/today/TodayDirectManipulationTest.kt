@@ -781,6 +781,39 @@ class TodayDirectManipulationTest {
         assertTrue(repository.requests[2] is DirectManipulationRequest.Delete)
         controller.close()
     }
+
+    @Test
+    fun futureRoutineDeleteTargetsSelectedDayAndRetriesTheExactRequest() {
+        val repository = FakeRepository().apply { result = DirectManipulationResult.Ambiguous }
+        val controller = TodayDirectManipulationController(
+            repository = repository,
+            onRefresh = {},
+            onUnauthorized = {},
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+        )
+        val future = futureDay().copy(taskChuteDayId = "future-routine-day", placementRevision = 23)
+        val routine = task(LifecycleState.PLANNED, routineDerived = true).copy(
+            id = "future-routine-entry",
+            taskId = "future-routine-task",
+        )
+
+        controller.delete(future, setOf(routine.id))
+        assertTrue(await { repository.requests.size == 1 && controller.state.unresolvedRequest != null })
+        val original = repository.requests.single() as DirectManipulationRequest.Delete
+        assertEquals(listOf(routine.id), original.entryIds)
+        assertEquals("future-routine-day", original.taskChuteDayId)
+        assertEquals(23, original.expectedPlacementRevision)
+        assertTrue(original.operationId.isNotBlank())
+        assertEquals(original, controller.state.unresolvedRequest)
+
+        repository.result = DirectManipulationResult.Success
+        controller.retryUnresolved()
+        assertTrue(await { repository.requests.size == 2 && controller.state.unresolvedRequest == null })
+        assertEquals("Ambiguous retry must reuse the selected Day, Entry, revision, and operation identity", original,
+            repository.requests[1])
+        controller.close()
+    }
+
     @Test
     fun httpRepositoryUsesCanonicalMoveAndDuplicateEndpoints() {
         val requests = mutableListOf<Triple<String, String, String?>>()
