@@ -1,7 +1,7 @@
 # Android Actual End — 「見積通り」quick input (proposal)
 
 **Recorded:** 2026-10-17  
-**Status:** Product request captured / exact timestamp precision and one-shot recalculation **AGREED 2026-10-17** / remaining behavior details **PROPOSED** / **NOT_STARTED**  
+**Status:** Superseded for implementation authority by canonical **D-179 Approved 2026-10-18**; **implementation NOT_STARTED**. Retained as historical idea/choice record.  
 **Current GitHub main observed before recording:** `d9d8c293f2a306e25968f0be15ab99462be4645a`
 
 ## User request
@@ -33,4 +33,4 @@ In the Android Today Task Editor, actual-start inputs already have `前回タス
 - `docs/decisions/D-174_ANDROID_PAST_DAY_TASK_EDIT_DELETE_PARITY_V01.md`: historical editing, future end rejection, midnight crossing, preserving owning Day/Execution identity.
 - `docs/TEST_MATRIX.md`: implementation verification to be added when approved.
 
-**No implementation, tests, APK, schema, migration, deployment, or user-data change is authorized by this note.** Before Codex implementation, reconcile latest branch/HEAD/docs, resolve the product questions, then prepare a focused Markdown Task Contract. Avoid unrelated full suites.
+**This old planning note is not the implementation authority.** The Product Owner approved the narrowed behavior on 2026-10-18; use `docs/decisions/D-179_ANDROID_ACTUAL_END_ESTIMATE_QUICK_INPUT_V01.md` (including its feasibility gate and STOP conditions), not the old open-question statuses above, for approved execution. No implementation, tests, APK, schema, migration, deployment, or user-data change was made by this documentation update. Before Codex implementation, reconcile latest branch/HEAD/docs, resolve the product questions, then prepare a focused Markdown Task Contract. Avoid unrelated full suites.
