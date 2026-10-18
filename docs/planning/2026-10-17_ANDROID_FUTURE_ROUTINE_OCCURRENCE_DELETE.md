@@ -1,7 +1,7 @@
 # Android: Future-day Routine occurrence delete action — completed
 
 **Recorded:** 2026-10-17  
-**Status:** Implemented / **CLOSED WITH LOCAL + EXACT-SHA EVIDENCE; GALAXY S23 NOT_RUN**
+**Status:** Implemented / **CLOSED WITH LOCAL + EXACT-SHA EVIDENCE; GALAXY S23 REPRESENTATIVE USER-CONFIRMED PASS (2026-10-18)**
 **Owner:** Product Owner decision authority; Codex implementation; ChatGPT canonical-doc coordination.
 
 ## Problem
@@ -23,7 +23,7 @@ At the time this note was recorded, Android Today did not expose the expected de
 - The implementation follows D-126 (Android future planning parity without widening protected row eligibility), D-119 (explicitly established future Day), and existing Routine suppression/delete semantics. D-174 remains scoped to occurrence-local past deletion and was not used to extend future behavior.
 - The focused `TaskChute_API33` flows pass for sectioned and unsectioned future Planned Routine rows and for a future Completed note-only negative case. Direct manipulation JVM tests pass `58 / 58`. One focused synthetic D1 integration test verifies exact replay, suppression through repeated future-Day ensure, and unchanged Routine Entry / Definition.
 - The full Today AVD run completed `85 / 91`, with six failures. Five unrelated tests reproduced with the original action-visibility expression; one swipe failure from the full run passed when isolated. The full surface remains `PARTIAL`, while the focused changed behavior passes.
-- Exact-SHA CI and signed Phone APK verification passed. Galaxy S23 manual UX remains `NOT_RUN`; Product Verified remains `NO`; Released remains `NO`.
+- Exact-SHA CI and signed Phone APK verification passed. On 2026-10-18, in response to the requested Galaxy S23 representative check of deleting one future-Day Routine occurrence while leaving the same Routine on another Day, the Product Owner replied `問題なし`. Record `PASS / USER_CONFIRMED` for that scoped device behavior, not a full device matrix. The Today-wide AVD suite remains `PARTIAL`; overall Product Verified remains `NO`; Released remains `NO`.
 
 ## Canonical reference status
 
