@@ -16,6 +16,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.hasSetTextAction
@@ -2495,8 +2496,31 @@ class TodayScreenInstrumentedTest {
         composeRule.onAllNodesWithText(task.title).get(0).performTouchInput { swipeLeft() }
         composeRule.onNodeWithContentDescription("タスクを編集").performClick()
         composeRule.onNodeWithText("終了時間", substring = false).assertIsDisplayed()
-        composeRule.onNodeWithText("見積通り", substring = false)
-            .performScrollTo().assertIsDisplayed().assertIsEnabled().performClick()
+        val estimateQuickInput = composeRule.onNodeWithText("見積通り", substring = false)
+            .performScrollTo().assertIsDisplayed().assertIsEnabled()
+        val previousEndQuickInput = composeRule.onNodeWithText("前回タスク終了", substring = false)
+            .performScrollTo().assertIsDisplayed().assertIsNotEnabled()
+        val currentTimeQuickInput = composeRule.onNodeWithText("現在時刻", substring = false)
+            .performScrollTo().assertIsDisplayed().assertIsEnabled()
+        val actualStartBounds = composeRule.onNodeWithTag("today-actual-start-field")
+            .fetchSemanticsNode().boundsInRoot
+        val actualEndBounds = composeRule.onNodeWithTag("today-actual-end-field")
+            .fetchSemanticsNode().boundsInRoot
+        val estimateBounds = estimateQuickInput.fetchSemanticsNode().boundsInRoot
+        val previousEndBounds = previousEndQuickInput.fetchSemanticsNode().boundsInRoot
+        val currentTimeBounds = currentTimeQuickInput.fetchSemanticsNode().boundsInRoot
+
+        assertEquals("actual time inputs keep equal two-column widths", actualStartBounds.width, actualEndBounds.width, 1f)
+        assertTrue("actual start and end inputs remain separate columns", actualStartBounds.right < actualEndBounds.left)
+        assertEquals("estimate shortcut aligns with actual end input", actualEndBounds.left, estimateBounds.left, 0.5f)
+        assertTrue("estimate shortcut stays inside the end column", estimateBounds.right <= actualEndBounds.right + 0.5f)
+        assertTrue("previous-end shortcut stays below the start input", previousEndBounds.top >= actualStartBounds.bottom - 0.5f)
+        assertTrue("current-time shortcut stays below the start input", currentTimeBounds.top >= actualStartBounds.bottom - 0.5f)
+        assertTrue("previous-end shortcut stays inside the start column", previousEndBounds.left >= actualStartBounds.left - 0.5f && previousEndBounds.right <= actualEndBounds.left + 0.5f)
+        assertTrue("current-time shortcut stays inside the start column", currentTimeBounds.left >= actualStartBounds.left - 0.5f && currentTimeBounds.right <= actualEndBounds.left + 0.5f)
+        assertTrue("estimate shortcut stays below the end input", estimateBounds.top >= actualEndBounds.bottom - 0.5f)
+
+        estimateQuickInput.performClick()
 
         assertEquals("09:30", planningController?.state?.editor?.draft?.actualEndText)
         assertEquals("2026-09-14T09:30:35.250Z", planningController?.state?.editor?.draft?.exactActualEnd?.instant?.toString())

@@ -17,6 +17,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -93,6 +94,7 @@ import androidx.compose.ui.layout.boundsInParent
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.zIndex
@@ -2927,7 +2929,7 @@ private fun TaskEditorForm(
                     value = draft.actualStartText,
                     onValueChange = controller::updateActualStartText,
                     label = "開始時間",
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).testTag("today-actual-start-field"),
                     enabled = !state.saving,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 )
@@ -2935,37 +2937,48 @@ private fun TaskEditorForm(
                     value = draft.actualEndText,
                     onValueChange = { controller.updateDraft(draft.copy(actualEndText = it)) },
                     label = "終了時間",
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).testTag("today-actual-end-field"),
                     enabled = !state.saving,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     onFocus = controller::beginManualActualEndEdit,
                 )
             }
-            TextButton(
-                onClick = controller::selectActualEndEstimate,
-                enabled = !state.saving && controller.canSelectActualEndEstimateQuickInput(),
-                modifier = Modifier.fillMaxWidth(),
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-            ) {
-                Text("見積通り", fontSize = 12.sp, maxLines = 1, softWrap = false)
-            }
             val canUseQuickInputs = canUseActualStartQuickInputs(editor)
-            if (canUseQuickInputs) {
-                val previousTaskEnd = if (state.saving) null else controller.previousTaskEndForEditor()
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(
-                        onClick = controller::selectPreviousTaskEnd,
-                        enabled = !state.saving && previousTaskEnd != null,
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                    ) {
-                        Text("前回タスク終了", fontSize = 12.sp, maxLines = 1, softWrap = false)
+            val previousTaskEnd = if (state.saving) null else controller.previousTaskEndForEditor()
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                FlowRow(
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalArrangement = Arrangement.spacedBy(0.dp),
+                ) {
+                    if (canUseQuickInputs) {
+                        TextButton(
+                            onClick = controller::selectPreviousTaskEnd,
+                            enabled = !state.saving && previousTaskEnd != null,
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                        ) {
+                            Text("前回タスク終了", fontSize = 12.sp)
+                        }
+                        TextButton(
+                            onClick = controller::selectCurrentTime,
+                            enabled = !state.saving,
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                        ) {
+                            Text("現在時刻", fontSize = 12.sp)
+                        }
                     }
+                }
+                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.TopStart) {
                     TextButton(
-                        onClick = controller::selectCurrentTime,
-                        enabled = !state.saving,
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                        onClick = controller::selectActualEndEstimate,
+                        enabled = !state.saving && controller.canSelectActualEndEstimateQuickInput(),
+                        contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp),
                     ) {
-                        Text("現在時刻", fontSize = 12.sp, maxLines = 1, softWrap = false)
+                        Text("見積通り", fontSize = 12.sp)
                     }
                 }
             }
