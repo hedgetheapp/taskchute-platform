@@ -10,7 +10,7 @@ internal data class TodaySectionProgress(
     val hasUnknownRemaining: Boolean,
 ) {
     val completedFraction: Float
-        get() = if (totalCount == 0) 0f else (completedCount.toDouble() / totalCount.toDouble()).toFloat()
+        get() = if (totalCount == 0) 1f else (completedCount.toDouble() / totalCount.toDouble()).toFloat()
 }
 
 /** Summarizes only the Entries currently projected into this configured Section. */

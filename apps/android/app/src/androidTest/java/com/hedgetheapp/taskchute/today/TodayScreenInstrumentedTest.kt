@@ -6,6 +6,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
@@ -20,6 +21,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performClick
@@ -32,6 +34,7 @@ import androidx.compose.ui.test.swipeRight
 import androidx.compose.ui.test.swipeUp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.hedgetheapp.taskchute.ui.TaskChuteColors
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.unit.dp
@@ -76,6 +79,63 @@ class TodayScreenInstrumentedTest {
         FileOutputStream(output).use { stream ->
             check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream))
         }
+    }
+
+    private fun assertContinuousProgressPixels(node: SemanticsNodeInteraction, expectedFraction: Float) {
+        val bitmap = node.captureToImage().asAndroidBitmap()
+        val y = bitmap.height / 2
+        val width = bitmap.width
+        val activeColor = bitmap.getPixel((width * expectedFraction / 2f).toInt(), y)
+        val trackColor = bitmap.getPixel((width * (expectedFraction + 1f) / 2f).toInt(), y)
+        assertTrue("fixture must render distinct active and track colors", activeColor != trackColor)
+
+        val boundary = (width * expectedFraction).toInt()
+        val seamTolerance = with(composeRule.density) { 1.dp.roundToPx() }.coerceAtLeast(1)
+        val unexpectedAwayFromSeam = (2 until width - 2).filter { x ->
+            val color = bitmap.getPixel(x, y)
+            kotlin.math.abs(x - boundary) > seamTolerance &&
+                color != if (x < boundary) activeColor else trackColor
+        }
+        assertTrue(
+            "progress must have no gap or stop marker away from the antialiased seam; unexpected=$unexpectedAwayFromSeam",
+            unexpectedAwayFromSeam.isEmpty(),
+        )
+        (boundary - seamTolerance..boundary + seamTolerance).forEach { x ->
+            if (x in 2 until width - 2) {
+                assertBetweenColors(
+                    bitmap.getPixel(x, y),
+                    activeColor,
+                    trackColor,
+                    "progress seam pixel $x must blend directly between active and track",
+                )
+            }
+        }
+        assertEquals("active fill must reach the 40% boundary", activeColor, bitmap.getPixel(boundary - 2, y))
+        assertEquals("remaining track must begin at the 40% boundary", trackColor, bitmap.getPixel(boundary + 2, y))
+    }
+
+    private fun assertBetweenColors(pixel: Int, first: Int, second: Int, message: String) {
+        val tolerance = 4
+        val channels = listOf(24, 16, 8)
+        val isBetween = channels.all { shift ->
+            val value = pixel shr shift and 0xff
+            val firstChannel = first shr shift and 0xff
+            val secondChannel = second shr shift and 0xff
+            value in (minOf(firstChannel, secondChannel) - tolerance).coerceAtLeast(0)..(maxOf(firstChannel, secondChannel) + tolerance).coerceAtMost(255)
+        }
+        assertTrue(message, isBetween)
+    }
+
+    private fun assertSolidProgressPixels(node: SemanticsNodeInteraction) {
+        val bitmap = node.captureToImage().asAndroidBitmap()
+        val y = bitmap.height / 2
+        val expected = bitmap.getPixel(bitmap.width / 2, y)
+        assertEquals("100% progress must use the active color", TaskChuteColors.AccentBlue.toArgb(), expected)
+        val unexpectedInteriorPixels = (2 until bitmap.width - 2).count { x -> bitmap.getPixel(x, y) != expected }
+        assertTrue(
+            "empty Section's 100% bar must be uninterrupted; unexpected pixels=$unexpectedInteriorPixels",
+            unexpectedInteriorPixels <= 1,
+        )
     }
 
     @After
@@ -654,6 +714,7 @@ class TodayScreenInstrumentedTest {
         assertTrue(countBounds.right <= remainingIconBounds.left)
         assertTrue(remainingIconBounds.right <= durationBounds.left)
         assertEquals(0.4f, barNode.fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo].current, 0.001f)
+        assertContinuousProgressPixels(barNode, expectedFraction = 0.4f)
         composeRule.onNodeWithText("2/5件").assertIsDisplayed()
         assertTrue(composeRule.onAllNodesWithText("Completed one").fetchSemanticsNodes().isEmpty())
         assertTrue(composeRule.onAllNodesWithText("Completed two").fetchSemanticsNodes().isEmpty())
@@ -665,6 +726,20 @@ class TodayScreenInstrumentedTest {
         composeRule.onNodeWithContentDescription("Morningセクションを展開").assertIsDisplayed()
         composeRule.onNodeWithText("2/5件").assertIsDisplayed()
         composeRule.onNodeWithTag("section-progress-bar-section-1").assertIsDisplayed()
+    }
+
+    @Test
+    fun emptySectionKeepsZeroCountAndRemainingButShowsFullProgressBar() {
+        val emptySection = dayWith().sections.single().copy(entries = emptyList())
+        launchScreen(FakeTodayRepository(initialDay = dayWith().copy(sections = listOf(emptySection))))
+        waitForStatus(TodayLoadStatus.EMPTY)
+
+        composeRule.onNodeWithText("0/0件").assertIsDisplayed()
+        composeRule.onNodeWithText("0m").assertIsDisplayed()
+        val progress = composeRule.onNodeWithTag("section-progress-bar-section-1", useUnmergedTree = true)
+            .assertIsDisplayed()
+        assertEquals(1f, progress.fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo].current, 0.001f)
+        assertSolidProgressPixels(progress)
     }
 
     @Test

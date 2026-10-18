@@ -102,6 +102,7 @@ import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.semantics.contentDescription
@@ -1999,6 +2000,9 @@ private fun SectionHeader(
                         .testTag("section-progress-bar-${section.id}"),
                     color = TaskChuteColors.AccentBlue,
                     trackColor = TaskChuteColors.SecondaryText.copy(alpha = 0.28f),
+                    strokeCap = StrokeCap.Butt,
+                    gapSize = 0.dp,
+                    drawStopIndicator = {},
                 )
                 Box(
                     modifier = Modifier

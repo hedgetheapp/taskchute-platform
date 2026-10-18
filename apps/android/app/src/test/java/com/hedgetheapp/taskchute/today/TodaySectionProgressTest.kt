@@ -30,11 +30,13 @@ class TodaySectionProgressTest {
     }
 
     @Test
-    fun emptyAndAllCompletedSectionsHaveEmptyOrCompleteCountWithoutRemainingWork() {
+    fun emptyAndAllCompletedSectionsPreserveCountsAndReportCompleteProgress() {
         val empty = calculateTodaySectionProgress(section(), null, now)
         assertEquals(0, empty.completedCount)
         assertEquals(0, empty.totalCount)
-        assertEquals(0f, empty.completedFraction)
+        assertEquals(1f, empty.completedFraction)
+        assertEquals(0L, empty.remainingSeconds)
+        assertEquals("0m", formatTodaySectionRemainingWorkload(empty.remainingSeconds, empty.hasUnknownRemaining))
 
         val completed = calculateTodaySectionProgress(
             section(
@@ -49,6 +51,35 @@ class TodaySectionProgressTest {
         assertEquals(1f, completed.completedFraction)
         assertEquals(0L, completed.remainingSeconds)
         assertFalse(completed.hasUnknownRemaining)
+    }
+
+    @Test
+    fun emptyAndNonemptyProgressFractionsMatchTheD180Examples() {
+        val empty = calculateTodaySectionProgress(section(), null, now)
+        val noneComplete = calculateTodaySectionProgress(
+            section(*(1..5).map { task("planned-$it", LifecycleState.PLANNED, estimateSeconds = 600) }.toTypedArray()),
+            null,
+            now,
+        )
+        val partlyComplete = calculateTodaySectionProgress(
+            section(
+                *(1..2).map { task("done-$it", LifecycleState.COMPLETED, estimateSeconds = 600) }
+                    .plus((1..3).map { task("remaining-$it", LifecycleState.PLANNED, estimateSeconds = 600) })
+                    .toTypedArray(),
+            ),
+            null,
+            now,
+        )
+        val allComplete = calculateTodaySectionProgress(
+            section(*(1..5).map { task("done-$it", LifecycleState.COMPLETED, estimateSeconds = 600) }.toTypedArray()),
+            null,
+            now,
+        )
+
+        assertEquals(1f, empty.completedFraction)
+        assertEquals(0f, noneComplete.completedFraction)
+        assertEquals(0.4f, partlyComplete.completedFraction, 0.0001f)
+        assertEquals(1f, allComplete.completedFraction)
     }
 
     @Test
