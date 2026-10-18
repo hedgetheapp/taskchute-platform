@@ -47,4 +47,4 @@ Unresolved material Sectionless behavior, unapproved icon storage/schema/API, ch
 - D-121 Section header, D-134 Running progress, D-161/D-165 Section warnings, D-162 completed hide, D-173B overnight Running, D-131 config reconciliation
 - `docs/DEVELOPMENT_WORKFLOW.md` and `docs/TEST_MATRIX.md`
 
-This decision records the approved product scope. The Stage 1 implementation and verification evidence for `b7b405df1a25ffd68ba256cacef9c8563a5bf71f` is recorded in `docs/CURRENT.md` and `docs/TEST_MATRIX.md`; that evidence does not claim Galaxy S23 verification or release.
+This decision records the approved product scope. Evidence for the Stage 1 implementation (`b7b405df1a25ffd68ba256cacef9c8563a5bf71f`) and approved 2026-10-18 bar-width corrective (`af83b64a2f4d59910d30c0d694ff1109e2a36a0f`) is recorded in `docs/CURRENT.md` and `docs/TEST_MATRIX.md`; that evidence does not claim Galaxy S23 verification or release.

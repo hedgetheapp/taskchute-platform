@@ -2,7 +2,7 @@
 
 Canonical Decision: `docs/decisions/D-180_ANDROID_SECTION_HEADER_PROGRESS_V01.md`
 
-2026-10-18 承認。Android Todayの既存Sectionヘッダーを2行に拡張し、2行目にコンパクトな進捗バー、Completed/Total件数、動的な残見積作業時間を表示する。**バーのfill率はCompleted Entry件数÷現在そのSectionに属する全Entry件数**（4/10=40%）、Runningは完了までfillを進めず、見積残時間のみ経過とともに減る。未見積の未完了Entryがあれば既知の残時間合計に`+`を付ける。バーの長さは**1行目のセクション時間表記 `09:00 - 12:00` の文字領域と左右端が完全一致**する（2026-10-18ユーザー指定による幅変更）。左端は `09:00` の先頭、右端は `12:00` 最後の `0` まで。従来の残り時間テキスト幅との一致指定は廃止。2行目のバー→件数→残り時間の順番と2行構成は維持する。完了行非表示・折りたたみ中も集計は全割当Entryから算出する。D-161/D-165警告・D&D・日付・Execution authorityを維持する。Stage 1はAndroidの既存timed Sectionのみで表示専用。`セクションなし`の新規集計UXとユーザー設定Section iconの保存/schema/APIは別判断。Stage 1本体は `b7b405df1a25ffd68ba256cacef9c8563a5bf71f` で実装済み。バー幅の追加視覚修正は承認済み・実装未着手。
+2026-10-18 承認。Android Todayの既存Sectionヘッダーを2行に拡張し、2行目にコンパクトな進捗バー、Completed/Total件数、動的な残見積作業時間を表示する。**バーのfill率はCompleted Entry件数÷現在そのSectionに属する全Entry件数**（4/10=40%）、Runningは完了までfillを進めず、見積残時間のみ経過とともに減る。未見積の未完了Entryがあれば既知の残時間合計に`+`を付ける。バーの長さは**1行目のセクション時間表記 `09:00 - 12:00` の文字領域と左右端が完全一致**する（2026-10-18ユーザー指定による幅変更）。左端は `09:00` の先頭、右端は `12:00` 最後の `0` まで。従来の残り時間テキスト幅との一致指定は廃止。2行目のバー→件数→残り時間の順番と2行構成は維持する。完了行非表示・折りたたみ中も集計は全割当Entryから算出する。D-161/D-165警告・D&D・日付・Execution authorityを維持する。Stage 1はAndroidの既存timed Sectionのみで表示専用。`セクションなし`の新規集計UXとユーザー設定Section iconの保存/schema/APIは別判断。Stage 1本体は `b7b405df1a25ffd68ba256cacef9c8563a5bf71f` で実装済み。バー幅の追加視覚修正は `af83b64a2f4d59910d30c0d694ff1109e2a36a0f` で実装済み。
 
 ## D-179 — Android Actual End 「見積通り」 Quick Input v0.1
 

@@ -1,7 +1,7 @@
 # Android Today Section header: progress and remaining workload (proposal)
 
 **Recorded:** 2026-10-17  
-**Status:** Stage 1 **Approved/Implemented D-180** at `b7b405df1a25ffd68ba256cacef9c8563a5bf71f`; **2026-10-18 bar-width corrective APPROVED / NOT_IMPLEMENTED**, see canonical D-180 / custom icon persistence and `セクションなし` summary **OPEN**
+**Status:** Stage 1 **Approved/Implemented D-180** at `b7b405df1a25ffd68ba256cacef9c8563a5bf71f`; **2026-10-18 bar-width corrective APPROVED / IMPLEMENTED** at `af83b64a2f4d59910d30c0d694ff1109e2a36a0f`, see canonical D-180 / custom icon persistence and `セクションなし` summary **OPEN**
 **GitHub main read-only investigation baseline:** `9aa644f150b9653b6421c4387e758663d88b9aad`
 
 ## User-visible request
