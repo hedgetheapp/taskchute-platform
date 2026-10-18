@@ -1,3 +1,9 @@
+## D-179 — Android Actual End 「見積通り」 Quick Input v0.1
+
+Canonical Decision: `docs/decisions/D-179_ANDROID_ACTUAL_END_ESTIMATE_QUICK_INPUT_V01.md`
+
+2026-10-18承認。Android Today Task Editorの既存の実績終了時間欄に`見積通り`ショートカットを追加する。タップした時点で、選択Entryのeffectiveな**実績開始Instant + 見積秒数**を、秒・小数秒まで保持した実績終了予定Instantとして入力し、表示はDay timezoneの`HH:mm`とする。タップだけでは保存・完了せず、Saveを必要とする。開始時刻・見積を後から編集しても自動再計算しない（再タップ時だけ更新）。終了時刻を手入力するとexact quick-input authorityは消える。開始Instantの確定不能やD-147(B) minute snapとの衝突などで保存時のexact durationを保証できない場合はSTOPし、推測・minute丸めで代替しない。D-171の既存開始ショートカット、未来時刻禁止、D-174跨日実績訂正、既存Execution identity / replay / CASを維持し、Worker/API/schema/migration/Productionは対象外。
+
 ## D-178 — Review v0.1
 
 Canonical Decision: `docs/decisions/D-178_REVIEW_V01.md`
