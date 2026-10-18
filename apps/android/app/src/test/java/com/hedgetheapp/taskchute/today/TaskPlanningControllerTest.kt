@@ -64,6 +64,7 @@ class TaskPlanningControllerTest {
         controller.openEdit(futureDay(), plannedTask())
         assertTrue(await { controller.state.editor != null })
         assertEquals(TaskEditorCapability.FULL_PLANNING, controller.state.editor?.capability)
+        assertFalse(controller.canSelectActualEndEstimateQuickInput())
         controller.dismiss()
 
         controller.openEdit(pastDay(), plannedTask())
@@ -468,6 +469,170 @@ class TaskPlanningControllerTest {
     }
 
     @Test
+    fun estimateEndQuickInputKeepsExactInstantsAndIsOneShot() {
+        val startedAt = Instant.parse("2026-09-14T09:00:35.250Z")
+        val fixedNow = Instant.parse("2026-09-14T11:00:00Z")
+        val task = plannedTask(LifecycleState.RUNNING).copy(
+            estimateSeconds = 1_800,
+            executionId = "execution-active",
+            activeStartedAt = startedAt.toString(),
+            firstStartedAt = startedAt.toString(),
+        )
+        val day = currentDay().copy(
+            establishmentTimezone = "UTC",
+            sections = listOf(TodaySection("section-1", "Morning", 480, 720, listOf(task))),
+        )
+        val controller = TaskPlanningController(
+            repository = FakePlanningRepository(),
+            onUnauthorized = {},
+            onSaved = {},
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+            now = { fixedNow },
+        )
+        controller.openEdit(day, task)
+
+        assertTrue(controller.canSelectActualEndEstimateQuickInput())
+        controller.selectActualEndEstimate()
+        var draft = controller.state.editor!!.draft
+        var input = TaskEditorValidation.validate(draft).input
+        assertEquals("09:30", draft.actualEndText)
+        assertEquals(ExactActualEnd(
+            Instant.parse("2026-09-14T09:30:35.250Z"), startedAt, "09:00", 0, 570,
+        ), draft.exactActualEnd)
+        assertEquals(startedAt.toString(), input?.actualStartInstant)
+        assertEquals("2026-09-14T09:30:35.250Z", input?.actualEndInstant)
+        assertEquals(540, input?.actualStartMinute)
+        assertEquals(570, input?.actualEndMinute)
+
+        controller.updateDraft(draft.copy(estimateText = "20"))
+        assertEquals("09:30", controller.state.editor?.draft?.actualEndText)
+        assertEquals("2026-09-14T09:30:35.250Z", TaskEditorValidation.validate(controller.state.editor!!.draft).input?.actualEndInstant)
+        controller.selectActualEndEstimate()
+        draft = controller.state.editor!!.draft
+        assertEquals("09:20", draft.actualEndText)
+        assertEquals("2026-09-14T09:20:35.250Z", draft.exactActualEnd?.instant?.toString())
+
+        controller.updateActualStartText("09:01")
+        draft = controller.state.editor!!.draft
+        input = TaskEditorValidation.validate(draft).input
+        assertEquals("2026-09-14T09:20:35.250Z", input?.actualEndInstant)
+        assertNull(input?.actualStartInstant)
+        assertTrue(controller.canSelectActualEndEstimateQuickInput())
+        controller.selectActualEndEstimate()
+        assertEquals("09:21", controller.state.editor?.draft?.actualEndText)
+        assertEquals("2026-09-14T09:21:00Z", controller.state.editor?.draft?.exactActualEnd?.instant?.toString())
+        controller.close()
+    }
+
+    @Test
+    fun estimateEndQuickInputFailsClosedForMissingFutureAndAmbiguousStartsAndClearsManualEnd() {
+        val fixedNow = Instant.parse("2026-09-14T10:00:00Z")
+        val repository = FakePlanningRepository()
+        val controller = TaskPlanningController(
+            repository = repository,
+            onUnauthorized = {},
+            onSaved = {},
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+            now = { fixedNow },
+        )
+        val planned = plannedTask().copy(estimateSeconds = 1_800)
+        val day = currentDay().copy(
+            establishmentTimezone = "UTC",
+            sections = listOf(TodaySection("section-1", "Morning", 480, 720, listOf(planned))),
+        )
+        controller.openEdit(day, planned)
+        assertFalse(controller.canSelectActualEndEstimateQuickInput())
+        controller.updateActualStartText("09:00")
+        assertTrue(controller.canSelectActualEndEstimateQuickInput())
+        controller.selectActualEndEstimate()
+        val manualMinuteInput = TaskEditorValidation.validate(controller.state.editor!!.draft).input
+        assertEquals(540, manualMinuteInput?.actualStartMinute)
+        assertNull(manualMinuteInput?.actualStartInstant) // Preserve D-147(B) minute authority.
+        assertEquals("2026-09-14T09:30:00Z", manualMinuteInput?.actualEndInstant)
+        controller.dismiss()
+
+        val blocker = plannedTask(LifecycleState.COMPLETED).copy(
+            id = "minute-blocker",
+            executionId = "execution-blocker",
+            firstStartedAt = "2026-09-14T08:55:00Z",
+            lastEndedAt = "2026-09-14T09:00:35.250Z",
+        )
+        val targetDay = day.copy(sections = listOf(
+            TodaySection("section-1", "Morning", 480, 720, listOf(blocker, planned)),
+        ))
+        controller.openEdit(targetDay, planned)
+        controller.updateActualStartText("09:00")
+        assertFalse(controller.canSelectActualEndEstimateQuickInput()) // D-147(B) would snap to 09:00:35.250.
+        controller.dismiss()
+
+        val running = planned.copy(
+            lifecycleState = LifecycleState.RUNNING,
+            executionId = "execution-active",
+            activeStartedAt = fixedNow.toString(),
+            firstStartedAt = fixedNow.toString(),
+        )
+        val runningDay = day.copy(sections = listOf(TodaySection("section-1", "Morning", 480, 720, listOf(running))))
+        controller.openEdit(runningDay, running)
+        assertFalse(controller.canSelectActualEndEstimateQuickInput()) // A positive estimate would end in the future.
+        controller.updateDraft(controller.state.editor!!.draft.copy(estimateText = "0"))
+        assertFalse(controller.canSelectActualEndEstimateQuickInput())
+        controller.dismiss()
+
+        val completed = running.copy(
+            lifecycleState = LifecycleState.COMPLETED,
+            estimateSeconds = 1_817,
+            activeStartedAt = "2026-09-14T09:00:35.250Z",
+            firstStartedAt = "2026-09-14T09:00:35.250Z",
+            lastEndedAt = "2026-09-14T09:30:35.250Z",
+        )
+        val completedDay = day.copy(sections = listOf(TodaySection("section-1", "Morning", 480, 720, listOf(completed))))
+        controller.openEdit(completedDay, completed)
+        controller.updateDraft(controller.state.editor!!.draft.copy(estimateText = "30"))
+        assertTrue(controller.canSelectActualEndEstimateQuickInput())
+        controller.selectActualEndEstimate()
+        assertNotNull(controller.state.editor?.draft?.exactActualEnd)
+        assertEquals("2026-09-14T09:30:52.250Z", controller.state.editor?.draft?.exactActualEnd?.instant?.toString())
+        controller.beginManualActualEndEdit()
+        assertNull(controller.state.editor?.draft?.exactActualEnd)
+        assertNull(TaskEditorValidation.validate(controller.state.editor!!.draft).input?.actualEndInstant)
+        controller.close()
+    }
+
+    @Test
+    fun estimateEndQuickInputAllowsEstablishedPastDayAndCrossesItsBoundaryExactly() {
+        val startedAt = Instant.parse("2026-09-14T23:45:12.345Z")
+        val task = plannedTask(LifecycleState.COMPLETED).copy(
+            estimateSeconds = 1_800,
+            executionId = "execution-completed",
+            firstStartedAt = startedAt.toString(),
+            lastEndedAt = "2026-09-15T00:10:00Z",
+        )
+        val day = establishedPastDay().copy(
+            logicalDate = "2026-09-14",
+            establishmentTimezone = "UTC",
+            sections = listOf(TodaySection("section-1", "Night", 1_320, 1_680, listOf(task))),
+        )
+        val controller = TaskPlanningController(
+            repository = FakePlanningRepository(),
+            onUnauthorized = {},
+            onSaved = {},
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+            now = { Instant.parse("2026-09-16T08:00:00Z") },
+        )
+        controller.openEdit(day, task)
+
+        assertTrue(controller.canSelectActualEndEstimateQuickInput())
+        controller.selectActualEndEstimate()
+        assertEquals("00:15", controller.state.editor?.draft?.actualEndText)
+        assertEquals("2026-09-15T00:15:12.345Z", controller.state.editor?.draft?.exactActualEnd?.instant?.toString())
+        assertEquals(
+            "2026-09-15T00:15:12.345Z",
+            TaskEditorValidation.validate(controller.state.editor!!.draft).input?.actualEndInstant,
+        )
+        controller.close()
+    }
+
+    @Test
     fun completedMultiExecutionTargetCannotOfferExactQuickInput() {
         val task = plannedTask(lifecycleState = LifecycleState.COMPLETED).copy(
             executionId = null,
@@ -482,6 +647,12 @@ class TaskPlanningControllerTest {
 
         assertFalse(canUseActualStartQuickInputs(editor))
         assertNull(resolvePreviousTaskEnd(day, task))
+
+        val controller = controller(FakePlanningRepository())
+        controller.openEdit(day, task)
+        assertTrue(controller.state.editor != null)
+        assertFalse(controller.canSelectActualEndEstimateQuickInput())
+        controller.close()
     }
 
     @Test

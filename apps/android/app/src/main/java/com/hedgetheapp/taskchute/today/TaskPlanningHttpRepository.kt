@@ -260,7 +260,7 @@ class TaskPlanningHttpRepository(
         }
         if (input.actualStartMinute == null) return PlanningSaveResult.Success
         val sameRunningStart = if (input.actualStartInstant != null) {
-            input.actualStartInstant == task.activeStartedAt
+            sameInstant(input.actualStartInstant, task.activeStartedAt)
         } else {
             parseActualClock(formatExecutionClock(task.activeStartedAt, editor.day.establishmentTimezone)) == input.actualStartMinute
         }
@@ -273,12 +273,16 @@ class TaskPlanningHttpRepository(
         val expectedEndedAt = if (task.lifecycleState == LifecycleState.PLANNED) null else task.lastEndedAt
         if (task.lifecycleState == LifecycleState.COMPLETED) {
             val unchangedStart = if (input.actualStartInstant != null) {
-                input.actualStartInstant == expectedStartedAt
+                sameInstant(input.actualStartInstant, expectedStartedAt)
             } else {
                 parseActualClock(formatExecutionClock(expectedStartedAt, editor.day.establishmentTimezone)) == input.actualStartMinute
             }
-            val unchangedEnd = parseActualClock(formatExecutionClock(expectedEndedAt, editor.day.establishmentTimezone)) ==
-                input.actualEndMinute
+            val unchangedEnd = if (input.actualEndInstant != null) {
+                sameInstant(input.actualEndInstant, expectedEndedAt)
+            } else {
+                parseActualClock(formatExecutionClock(expectedEndedAt, editor.day.establishmentTimezone)) ==
+                    input.actualEndMinute
+            }
             if (unchangedStart && unchangedEnd) return PlanningSaveResult.Success
             if (task.executionId == null) {
                 return PlanningSaveResult.Failure("複数の実行履歴があるため、実績時刻を変更できません。")
@@ -289,7 +293,7 @@ class TaskPlanningHttpRepository(
             val originalStart = expectedStartedAt
                 ?: return PlanningSaveResult.Failure("再開する実行の開始時刻を取得できません。再読み込みしてください。")
             val sameStart = if (input.actualStartInstant != null) {
-                input.actualStartInstant == originalStart
+                sameInstant(input.actualStartInstant, originalStart)
             } else {
                 parseActualClock(formatExecutionClock(originalStart, editor.day.establishmentTimezone)) == input.actualStartMinute
             }
@@ -300,7 +304,7 @@ class TaskPlanningHttpRepository(
         } else {
             input.actualStartInstant ?: logicalMinuteToInstant(editor.day, input.actualStartMinute, zone)
         }
-        val endedAt = input.actualEndMinute?.let {
+        val endedAt = input.actualEndInstant ?: input.actualEndMinute?.let {
             logicalEndMinuteToInstant(editor.day, input.actualStartMinute, it, zone)
         }
         val executionId = if (task.lifecycleState == LifecycleState.PLANNED) task.executionId ?: UUIDv7.next()
@@ -369,7 +373,7 @@ class TaskPlanningHttpRepository(
         val actualStartMinute = input.actualStartMinute
             ?: return PlanningSaveResult.Failure("実績開始時刻を取得できません。再読み込みしてください。")
         val startedAt = input.actualStartInstant ?: logicalMinuteToInstant(day, actualStartMinute, zone)
-        val endedAt = input.actualEndMinute?.let {
+        val endedAt = input.actualEndInstant ?: input.actualEndMinute?.let {
             logicalEndMinuteToInstant(day, actualStartMinute, it, zone)
         }
         val expectedPlacement = ",\"expected_placement_revision\":$placementRevision"
@@ -390,6 +394,13 @@ class TaskPlanningHttpRepository(
         val startedDate = java.time.Instant.parse(logicalMinuteToInstant(day, startedMinute, zone)).atZone(zone).toLocalDate()
         val endDate = startedDate.plusDays(if (endedMinute < startedMinute) 1 else 0)
         return ZonedDateTime.of(endDate, LocalTime.of(endedMinute / 60, endedMinute % 60), zone).toInstant().toString()
+    }
+
+    private fun sameInstant(left: String, right: String?): Boolean {
+        if (right == null) return false
+        val leftInstant = runCatching { java.time.Instant.parse(left) }.getOrNull() ?: return false
+        val rightInstant = runCatching { java.time.Instant.parse(right) }.getOrNull() ?: return false
+        return leftInstant == rightInstant
     }
 
     private fun isHistoricalPastDay(day: TodayDay): Boolean = !day.isCurrent

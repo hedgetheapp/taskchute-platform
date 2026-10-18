@@ -9,7 +9,10 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.time.Duration
 import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalTime
 import java.time.ZoneId
 import java.time.ZonedDateTime
 
@@ -101,11 +104,14 @@ class TaskPlanningController(
     fun updateDraft(draft: TaskEditorDraft) {
         if (state.saving) return
         val editor = state.editor ?: return
-        val nextDraft = if (draft.actualStartText != editor.draft.actualStartText) {
-            draft.copy(exactActualStart = null)
-        } else {
-            draft
-        }
+        val startChanged = draft.actualStartText != editor.draft.actualStartText
+        val endChanged = draft.actualEndText != editor.draft.actualEndText
+        val nextDraft = draft.copy(
+            exactActualStart = if (startChanged) null else draft.exactActualStart,
+            actualStartManualEditVersion = if (startChanged) editor.draft.actualStartManualEditVersion + 1
+                else draft.actualStartManualEditVersion,
+            exactActualEnd = if (endChanged) null else draft.exactActualEnd,
+        )
         state = state.copy(editor = editor.copy(draft = nextDraft), errorMessage = null)
     }
 
@@ -114,7 +120,44 @@ class TaskPlanningController(
         if (state.saving) return
         val editor = state.editor ?: return
         state = state.copy(
-            editor = editor.copy(draft = editor.draft.copy(actualStartText = value, exactActualStart = null)),
+            editor = editor.copy(draft = editor.draft.copy(
+                actualStartText = value,
+                exactActualStart = null,
+                actualStartManualEditVersion = editor.draft.actualStartManualEditVersion + 1,
+            )),
+            errorMessage = null,
+        )
+    }
+
+    /** A focused end field is manual intent, including a same-minute re-entry. */
+    fun beginManualActualEndEdit() {
+        if (state.saving) return
+        val editor = state.editor ?: return
+        if (editor.draft.exactActualEnd == null) return
+        state = state.copy(
+            editor = editor.copy(draft = editor.draft.copy(exactActualEnd = null)),
+            errorMessage = null,
+        )
+    }
+
+    fun canSelectActualEndEstimateQuickInput(): Boolean {
+        if (state.saving) return false
+        val editor = state.editor ?: return false
+        return proposedActualEnd(editor, now()) != null
+    }
+
+    fun selectActualEndEstimate() {
+        if (state.saving) return
+        val editor = state.editor ?: return
+        val proposed = proposedActualEnd(editor, now()) ?: return
+        val text = formatExecutionClock(proposed.instant.toString(), editor.day.establishmentTimezone)
+        if (text.isBlank()) return
+        val minute = parseActualClock(text) ?: return
+        state = state.copy(
+            editor = editor.copy(draft = editor.draft.copy(
+                actualEndText = text,
+                exactActualEnd = proposed.copy(displayedMinute = minute),
+            )),
             errorMessage = null,
         )
     }
@@ -156,6 +199,132 @@ class TaskPlanningController(
             ),
             errorMessage = null,
         )
+    }
+
+    private fun proposedActualEnd(editor: TaskEditorState, at: Instant): ExactActualEnd? {
+        if (!canUseActualStartQuickInputs(editor) || editor.day.taskChuteDayId == null) return null
+        val timezone = editor.day.establishmentTimezone?.let { runCatching { ZoneId.of(it) }.getOrNull() }
+            ?: return null
+        val draft = editor.draft
+        val visibleStart = parseActualClock(draft.actualStartText) ?: return null
+        val effectiveStart = resolveEffectiveActualStart(editor, visibleStart, timezone) ?: return null
+        val estimateSeconds = if (editor.capability == TaskEditorCapability.COMPLETED_METADATA) {
+            editor.originalTask?.estimateSeconds?.toLong()?.takeIf { it > 0L }
+        } else {
+            draft.estimateText.trim().toLongOrNull()
+                ?.takeIf { it > 0L && it <= Int.MAX_VALUE / 60L }
+                ?.times(60L)
+        } ?: return null
+        val end = runCatching { effectiveStart.instant.plusSeconds(estimateSeconds) }.getOrNull() ?: return null
+        if (end.isAfter(at)) return null
+        val display = formatExecutionClock(end.toString(), timezone.id)
+        val displayMinute = parseActualClock(display) ?: return null
+        return ExactActualEnd(
+            instant = end,
+            sourceStartedAt = effectiveStart.instant,
+            sourceStartText = draft.actualStartText,
+            sourceStartManualEditVersion = draft.actualStartManualEditVersion,
+            displayedMinute = displayMinute,
+            sourceStartRequiresMinutePrecision = effectiveStart.requiresMinutePrecision,
+        )
+    }
+
+    private data class EffectiveActualStart(
+        val instant: Instant,
+        val requiresMinutePrecision: Boolean,
+    )
+
+    private fun resolveEffectiveActualStart(
+        editor: TaskEditorState,
+        visibleMinute: Int,
+        timezone: ZoneId,
+    ): EffectiveActualStart? {
+        val draft = editor.draft
+        val quickStart = draft.exactActualStart?.instant?.takeIf {
+            parseActualClock(formatExecutionClock(it.toString(), timezone.id)) == visibleMinute
+        }
+        if (quickStart != null) return EffectiveActualStart(quickStart, requiresMinutePrecision = false)
+
+        if (draft.actualStartManualEditVersion == 0) {
+            val canonicalStart = resolveCanonicalExecutionStart(editor.originalTask)?.takeIf {
+                parseActualClock(formatExecutionClock(it.toString(), timezone.id)) == visibleMinute
+            }
+            if (canonicalStart != null) return EffectiveActualStart(canonicalStart, requiresMinutePrecision = false)
+            return null
+        }
+
+        val day = editor.day
+        val startDate = LocalDate.parse(day.logicalDate)
+            .plusDays(if (visibleMinute < day.establishmentBoundaryMinutes) 1 else 0)
+        val minuteStart = runCatching {
+            ZonedDateTime.of(
+                startDate,
+                LocalTime.of(visibleMinute / 60, visibleMinute % 60),
+                timezone,
+            ).toInstant()
+        }.getOrNull() ?: return null
+        if (parseActualClock(formatExecutionClock(minuteStart.toString(), timezone.id)) != visibleMinute) return null
+        if (!canProveManualMinuteWillNotSnap(editor, minuteStart, timezone)) return null
+        return EffectiveActualStart(minuteStart, requiresMinutePrecision = true)
+    }
+
+    /**
+     * D-147(B) may move a manual minute start to a completed Execution ending inside that
+     * displayed minute. The Day projection can prove the no-snap case only when every ended
+     * Entry exposes one canonical Execution; ambiguous or multi-Execution history fails closed.
+     */
+    private fun canProveManualMinuteWillNotSnap(
+        editor: TaskEditorState,
+        minuteStart: Instant,
+        timezone: ZoneId,
+    ): Boolean {
+        val startZoned = runCatching { minuteStart.atZone(timezone) }.getOrNull() ?: return false
+        val minuteEndLocal = runCatching { startZoned.toLocalDateTime().plusMinutes(1) }.getOrNull() ?: return false
+        val endOffsets = timezone.rules.getValidOffsets(minuteEndLocal)
+        if (endOffsets.size != 1 || endOffsets.single() != startZoned.offset) return false
+        val minuteEnd = runCatching { ZonedDateTime.ofLocal(minuteEndLocal, timezone, startZoned.offset).toInstant() }
+            .getOrNull() ?: return false
+        if (Duration.between(minuteStart, minuteEnd) != Duration.ofMinutes(1)) return false
+        val target = editor.originalTask
+        for (entry in editor.day.allEntries) {
+            val rawEnd = entry.lastEndedAt ?: continue
+            val endedAt = runCatching { Instant.parse(rawEnd) }.getOrNull() ?: return false
+            if (target?.lifecycleState == LifecycleState.COMPLETED
+                && entry.id == target.id && entry.executionId != null
+                && entry.executionId == target.executionId
+            ) {
+                // SetExecutionTimes excludes the selected Execution from its blocker query.
+                continue
+            }
+            if (entry.lifecycleState == LifecycleState.RUNNING
+                || entry.lifecycleState == LifecycleState.PLANNED
+                || entry.executionId == null
+            ) return false
+            val startedAt = entry.firstStartedAt?.let { runCatching { Instant.parse(it) }.getOrNull() }
+                ?: return false
+            if (startedAt.isBefore(minuteEnd) && endedAt.isAfter(minuteStart) && endedAt.isBefore(minuteEnd)) {
+                return false
+            }
+        }
+        return true
+    }
+
+    private fun resolveCanonicalExecutionStart(task: TodayTask?): Instant? {
+        task ?: return null
+        if (task.executionId == null) return null
+        val raw = when (task.lifecycleState) {
+            LifecycleState.PLANNED -> return null
+            LifecycleState.RUNNING -> task.activeStartedAt ?: return null
+            LifecycleState.COMPLETED -> {
+                if (task.activeStartedAt != null && task.firstStartedAt != null) {
+                    val active = runCatching { Instant.parse(task.activeStartedAt) }.getOrNull() ?: return null
+                    val first = runCatching { Instant.parse(task.firstStartedAt) }.getOrNull() ?: return null
+                    if (active != first) return null
+                }
+                task.activeStartedAt ?: task.firstStartedAt ?: return null
+            }
+        }
+        return runCatching { Instant.parse(raw) }.getOrNull()
     }
 
     fun dismiss() {

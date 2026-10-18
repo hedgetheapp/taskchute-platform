@@ -27,6 +27,16 @@ data class ExactActualStart(
     val source: ExactActualStartSource,
 )
 
+/** Exact end authority exists only for the one-shot estimate quick fill in this editor draft. */
+data class ExactActualEnd(
+    val instant: Instant,
+    val sourceStartedAt: Instant,
+    val sourceStartText: String,
+    val sourceStartManualEditVersion: Int,
+    val displayedMinute: Int,
+    val sourceStartRequiresMinutePrecision: Boolean = false,
+)
+
 data class TaskEditorDraft(
     val title: String = "",
     val projectId: String? = null,
@@ -39,6 +49,8 @@ data class TaskEditorDraft(
     val startReminderOffsetMinutes: Int? = null,
     val notifyOnEstimateOverrun: Boolean = false,
     val exactActualStart: ExactActualStart? = null,
+    val actualStartManualEditVersion: Int = 0,
+    val exactActualEnd: ExactActualEnd? = null,
 )
 
 data class TaskEditorState(
@@ -125,6 +137,7 @@ data class NormalizedTaskInput(
     val startReminderOffsetMinutes: Int? = null,
     val notifyOnEstimateOverrun: Boolean = false,
     val actualStartInstant: String? = null,
+    val actualEndInstant: String? = null,
 )
 
 data class TaskEditorValidation(
@@ -157,6 +170,7 @@ data class TaskEditorValidation(
                 ?: return invalid("開始時間は HH:mm（900 / 0900 も可）で入力してください。")
             val actualEnd = if (draft.actualEndText.isBlank()) null else parseActualClock(draft.actualEndText)
                 ?: return invalid("終了時間は HH:mm（900 / 0900 も可）で入力してください。")
+            val exactEnd = draft.exactActualEnd?.takeIf { actualEnd == it.displayedMinute }
             if (actualEnd != null && actualStart == null) return invalid("終了時間だけは設定できません。開始時間を入力してください。")
             if (capability == TaskEditorCapability.RUNNING_METADATA && actualStart == null && actualEnd != null) {
                 return invalid("終了時間だけは設定できません。開始時間を入力してください。")
@@ -171,7 +185,13 @@ data class TaskEditorValidation(
                     estimateSeconds = estimateMinutes?.times(60L)?.toInt(),
                     actualStartMinute = actualStart,
                     actualEndMinute = actualEnd,
-                    actualStartInstant = if (actualStart == null) null else draft.exactActualStart?.instant?.toString(),
+                    actualStartInstant = if (actualStart == null) null else draft.exactActualStart?.instant?.toString()
+                        ?: exactEnd?.takeIf {
+                            draft.actualStartText == it.sourceStartText
+                                && draft.actualStartManualEditVersion == it.sourceStartManualEditVersion
+                        }?.takeUnless { it.sourceStartRequiresMinutePrecision }
+                        ?.sourceStartedAt?.toString(),
+                    actualEndInstant = exactEnd?.instant?.toString(),
                     startReminderOffsetMinutes = draft.startReminderOffsetMinutes,
                     notifyOnEstimateOverrun = draft.notifyOnEstimateOverrun,
                 ),

@@ -2938,7 +2938,16 @@ private fun TaskEditorForm(
                     modifier = Modifier.weight(1f),
                     enabled = !state.saving,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    onFocus = controller::beginManualActualEndEdit,
                 )
+            }
+            TextButton(
+                onClick = controller::selectActualEndEstimate,
+                enabled = !state.saving && controller.canSelectActualEndEstimateQuickInput(),
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+            ) {
+                Text("見積通り", fontSize = 12.sp, maxLines = 1, softWrap = false)
             }
             val canUseQuickInputs = canUseActualStartQuickInputs(editor)
             if (canUseQuickInputs) {
@@ -2991,6 +3000,7 @@ private fun CompactFigmaTextField(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    onFocus: (() -> Unit)? = null,
 ) {
     var focused by remember { mutableStateOf(false) }
     val borderColor = if (focused) TaskChuteColors.AccentBlue else Color(0xFF343434)
@@ -3008,7 +3018,10 @@ private fun CompactFigmaTextField(
             cursorBrush = SolidColor(TaskChuteColors.PrimaryText),
             modifier = Modifier.fillMaxSize()
                 .border(1.dp, borderColor, RoundedCornerShape(16.dp))
-                .onFocusChanged { focused = it.isFocused }
+                .onFocusChanged {
+                    if (it.isFocused && !focused) onFocus?.invoke()
+                    focused = it.isFocused
+                }
                 .padding(horizontal = 16.dp),
             decorationBox = { innerTextField ->
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {

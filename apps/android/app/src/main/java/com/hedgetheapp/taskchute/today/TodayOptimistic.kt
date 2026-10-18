@@ -23,7 +23,7 @@ internal fun applyOptimisticPlanning(
 
     val optimistic = if (original == null) {
         val actualStart = input.actualStartInstant ?: input.actualStartMinute?.let { logicalMinuteToInstant(day, it) }
-        val actualEnd = input.actualEndMinute?.let { logicalMinuteToInstant(day, it) }
+        val actualEnd = input.actualEndInstant ?: input.actualEndMinute?.let { logicalMinuteToInstant(day, it) }
         val lifecycle = when {
             actualEnd != null -> LifecycleState.COMPLETED
             actualStart != null -> LifecycleState.RUNNING
@@ -52,7 +52,7 @@ internal fun applyOptimisticPlanning(
         )
     } else {
         val actualStart = input.actualStartInstant ?: input.actualStartMinute?.let { logicalMinuteToInstant(day, it) }
-        val actualEnd = input.actualEndMinute?.let { logicalMinuteToInstant(day, it) }
+        val actualEnd = input.actualEndInstant ?: input.actualEndMinute?.let { logicalMinuteToInstant(day, it) }
         val rollbackToPlanned = original.lifecycleState == LifecycleState.RUNNING
             && input.actualStartMinute == null && input.actualEndMinute == null
         val directCompletedRollback = original.lifecycleState == LifecycleState.COMPLETED

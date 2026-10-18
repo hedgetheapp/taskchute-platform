@@ -2471,6 +2471,43 @@ class TodayScreenInstrumentedTest {
     }
 
     @Test
+    fun estimateEndQuickInputIsVisibleAndSavesExactEndThroughEditor() {
+        val repository = FakePlanningRepository()
+        val startedAt = "2026-09-14T09:00:35.250Z"
+        val base = dayWith(LifecycleState.RUNNING)
+        val task = base.sections.single().entries.single().copy(
+            estimateSeconds = 1_800,
+            activeStartedAt = startedAt,
+            firstStartedAt = startedAt,
+        )
+        val initialDay = base.copy(
+            establishmentTimezone = "UTC",
+            sections = listOf(base.sections.single().copy(entries = listOf(task))),
+            activeExecution = TodayExecution(task.executionId!!, task.id, startedAt, task.estimateSeconds),
+        )
+        launchPlanningScreen(
+            repository,
+            initialDay,
+            nowProvider = { Instant.parse("2026-09-14T11:00:00Z") },
+        )
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        composeRule.onAllNodesWithText(task.title).get(0).performTouchInput { swipeLeft() }
+        composeRule.onNodeWithContentDescription("タスクを編集").performClick()
+        composeRule.onNodeWithText("終了時間", substring = false).assertIsDisplayed()
+        composeRule.onNodeWithText("見積通り", substring = false)
+            .performScrollTo().assertIsDisplayed().assertIsEnabled().performClick()
+
+        assertEquals("09:30", planningController?.state?.editor?.draft?.actualEndText)
+        assertEquals("2026-09-14T09:30:35.250Z", planningController?.state?.editor?.draft?.exactActualEnd?.instant?.toString())
+        composeRule.onNodeWithText("保存", substring = false).performScrollTo().performClick()
+        composeRule.waitUntil(10_000) { repository.saveCalls.get() == 1 }
+        assertEquals(startedAt, repository.lastInput?.actualStartInstant)
+        assertEquals("2026-09-14T09:30:35.250Z", repository.lastInput?.actualEndInstant)
+        composeRule.waitUntil(5_000) { planningController?.state?.editor == null }
+    }
+
+    @Test
     fun runningEditorCanClearStartAndSaveLifecycleRollbackIntent() {
         val planningRepository = FakePlanningRepository()
         val initialDay = dayWith(LifecycleState.RUNNING).copy(establishmentTimezone = "UTC")

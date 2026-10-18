@@ -113,6 +113,41 @@ class TodayOptimisticTest {
     }
 
     @Test
+    fun planningOverlayRetainsExactActualEndAndDuration() {
+        val source = day().copy(establishmentTimezone = "UTC")
+        val original = source.allEntries.first().copy(
+            lifecycleState = LifecycleState.RUNNING,
+            executionId = "execution-a",
+            activeStartedAt = "2026-09-20T09:00:35.250Z",
+            firstStartedAt = "2026-09-20T09:00:35.250Z",
+        )
+        val runningDay = source.copy(sections = source.sections.map { section ->
+            section.copy(entries = section.entries.map { if (it.id == original.id) original else it })
+        })
+        val updated = applyOptimisticPlanning(
+            runningDay,
+            TaskEditorState(TaskEditorMode.EDIT, runningDay, original, TaskEditorDraft()),
+            NormalizedTaskInput(
+                title = original.title,
+                projectId = null,
+                modeId = null,
+                sectionId = "morning",
+                plannedStartMinute = original.plannedStartMinute,
+                estimateSeconds = 1_800,
+                actualStartMinute = 540,
+                actualEndMinute = 570,
+                actualStartInstant = "2026-09-20T09:00:35.250Z",
+                actualEndInstant = "2026-09-20T09:30:35.250Z",
+            ),
+        ).allEntries.single { it.id == original.id }
+
+        assertEquals(LifecycleState.COMPLETED, updated.lifecycleState)
+        assertEquals("2026-09-20T09:00:35.250Z", updated.firstStartedAt)
+        assertEquals("2026-09-20T09:30:35.250Z", updated.lastEndedAt)
+        assertEquals(1_800, updated.completedDurationSeconds)
+    }
+
+    @Test
     fun reorderAndMoveOverlayUsesEntryOrderAndPlacement() {
         val reordered = applyOptimisticDirectManipulation(
             day(),

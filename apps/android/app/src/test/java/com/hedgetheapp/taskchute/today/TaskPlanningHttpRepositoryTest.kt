@@ -322,6 +322,117 @@ class TaskPlanningHttpRepositoryTest {
     }
 
     @Test
+    fun exactEstimateEndUsesSetExecutionTimesWithoutMinutePrecisionMarker() {
+        val requests = mutableListOf<Triple<String, String, String?>>()
+        val startedAt = "2026-09-14T10:00:35.250Z"
+        val endedAt = "2026-09-14T10:30:35.250Z"
+        val task = TodayTask(
+            id = "entry-1", title = "Running", lifecycleState = LifecycleState.RUNNING,
+            project = null, mode = null, estimateSeconds = 1_800, plannedStartMinute = 540,
+            executionId = "execution-1", activeStartedAt = startedAt, taskId = "task-1",
+            firstStartedAt = startedAt,
+        )
+        val day = currentDay().copy(
+            establishmentTimezone = "UTC",
+            sections = listOf(TodaySection("section-1", "Morning", 480, 720, listOf(task))),
+        )
+        val repository = TaskPlanningHttpRepository { method, path, body ->
+            requests += Triple(method, path, body)
+            executionTimesResponse(6, lifecycleState = "completed", startedAt = startedAt, endedAt = endedAt)
+        }
+
+        val result = repository.save(
+            TaskEditorState(TaskEditorMode.EDIT, day, task, TaskEditorDraft(title = task.title)),
+            NormalizedTaskInput(
+                task.title, null, null, "section-1", 540, 1_800,
+                actualStartMinute = 600, actualEndMinute = 630,
+                actualStartInstant = startedAt, actualEndInstant = endedAt,
+            ),
+        )
+
+        assertTrue(result is PlanningSaveResult.SuccessWithRevision)
+        val body = requests.single().third.orEmpty()
+        assertTrue(body.contains("\"started_at\":\"$startedAt\""))
+        assertTrue(body.contains("\"ended_at\":\"$endedAt\""))
+        assertTrue(body.contains("\"expected_started_at\":\"$startedAt\""))
+        assertTrue(!body.contains("input_precision"))
+    }
+
+    @Test
+    fun exactEstimateEndWithSafeManualMinuteStartRetainsMinutePrecisionMarker() {
+        val requests = mutableListOf<Triple<String, String, String?>>()
+        val task = TodayTask(
+            id = "entry-1", title = "Planned", lifecycleState = LifecycleState.PLANNED,
+            project = null, mode = null, estimateSeconds = 1_800, plannedStartMinute = 540,
+            executionId = null, activeStartedAt = null, taskId = "task-1",
+        )
+        val day = currentDay().copy(
+            establishmentTimezone = "UTC",
+            sections = listOf(TodaySection("section-1", "Morning", 480, 720, listOf(task))),
+        )
+        val repository = TaskPlanningHttpRepository { method, path, body ->
+            requests += Triple(method, path, body)
+            executionTimesResponse(6, startedAt = "2026-09-14T09:00:00Z", endedAt = "2026-09-14T09:30:00Z")
+        }
+
+        val result = repository.save(
+            TaskEditorState(TaskEditorMode.EDIT, day, task, TaskEditorDraft(title = task.title)),
+            NormalizedTaskInput(
+                task.title, null, null, "section-1", 540, 1_800,
+                actualStartMinute = 540, actualEndMinute = 570,
+                actualStartInstant = null, actualEndInstant = "2026-09-14T09:30:00Z",
+            ),
+        )
+
+        assertTrue(result is PlanningSaveResult.SuccessWithRevision)
+        val body = requests.single().third.orEmpty()
+        assertTrue(body.contains("\"started_at\":\"2026-09-14T09:00:00Z\""))
+        assertTrue(body.contains("\"ended_at\":\"2026-09-14T09:30:00Z\""))
+        assertTrue(body.contains("\"input_precision\":\"minute\""))
+    }
+
+    @Test
+    fun completedExactEndCorrectionIsNotNoOpWhenVisibleMinuteMatches() {
+        val requests = mutableListOf<Triple<String, String, String?>>()
+        val startedAt = "2026-09-14T09:00:13.456Z"
+        val previousEnd = "2026-09-14T09:30:15.789Z"
+        val correctedEnd = "2026-09-14T09:30:35.250Z"
+        val task = TodayTask(
+            id = "entry-1", title = "Completed", lifecycleState = LifecycleState.COMPLETED,
+            project = null, mode = null, estimateSeconds = 1_800, plannedStartMinute = 540,
+            executionId = "execution-1", activeStartedAt = null, taskId = "task-1",
+            firstStartedAt = startedAt, lastEndedAt = previousEnd,
+        )
+        val day = currentDay().copy(
+            establishmentTimezone = "UTC",
+            sections = listOf(TodaySection("section-1", "Morning", 480, 720, listOf(task))),
+        )
+        val repository = TaskPlanningHttpRepository { method, path, body ->
+            requests += Triple(method, path, body)
+            executionTimesResponse(6, lifecycleState = "completed", startedAt = startedAt, endedAt = correctedEnd)
+        }
+
+        val result = repository.save(
+            TaskEditorState(
+                TaskEditorMode.EDIT, day, task, TaskEditorDraft(title = task.title),
+                TaskEditorCapability.COMPLETED_METADATA,
+            ),
+            NormalizedTaskInput(
+                task.title, null, null, "section-1", 540, 1_800,
+                actualStartMinute = 540, actualEndMinute = 570,
+                actualStartInstant = startedAt, actualEndInstant = correctedEnd,
+            ),
+        )
+
+        assertTrue(result is PlanningSaveResult.SuccessWithRevision)
+        val body = requests.single().third.orEmpty()
+        assertTrue(body.contains("\"started_at\":\"$startedAt\""))
+        assertTrue(body.contains("\"ended_at\":\"$correctedEnd\""))
+        assertTrue(body.contains("\"expected_ended_at\":\"$previousEnd\""))
+        assertTrue(!body.contains("input_precision"))
+    }
+
+    @Test
     fun successfulExecutionTimesResponseWithoutPlacementRevisionFailsClosed() {
         val task = TodayTask(
             id = "entry-1", title = "Planned", lifecycleState = LifecycleState.PLANNED,
@@ -892,10 +1003,11 @@ class TaskPlanningHttpRepositoryTest {
         revision: Int,
         sectionId: String? = "section-1",
         lifecycleState: String = "completed",
+        startedAt: String = "2026-09-14T09:00:00Z",
+        endedAt: String? = if (lifecycleState == "completed") "2026-09-14T09:30:00Z" else null,
     ): TodayHttpResponse {
-        val endedAt = if (lifecycleState == "completed") "\"2026-09-14T09:30:00Z\"" else "null"
         val body = """
-            {"entry_id":"entry-1","lifecycle_state":"$lifecycleState","execution":{"id":"execution-1","entry_id":"entry-1","started_at":"2026-09-14T09:00:00Z","ended_at":$endedAt},"section_id":${sectionId?.let { "\"$it\"" } ?: "null"},"planned_start_minute":540,"position":0,"placement_revision":$revision}
+            {"entry_id":"entry-1","lifecycle_state":"$lifecycleState","execution":{"id":"execution-1","entry_id":"entry-1","started_at":"$startedAt","ended_at":${endedAt?.let { "\"$it\"" } ?: "null"}},"section_id":${sectionId?.let { "\"$it\"" } ?: "null"},"planned_start_minute":540,"position":0,"placement_revision":$revision}
         """.trimIndent()
         return TodayHttpResponse(200, body)
     }
