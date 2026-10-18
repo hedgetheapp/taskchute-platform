@@ -1,12 +1,12 @@
-# Android: Future-day Routine occurrence delete action — pending
+# Android: Future-day Routine occurrence delete action — completed
 
 **Recorded:** 2026-10-17  
-**Status:** Agreed direction / **NOT_STARTED** (documentation only)  
-**Owner:** Product Owner decides; ChatGPT organizes; Codex implements later.
+**Status:** Implemented / **CLOSED WITH LOCAL + EXACT-SHA EVIDENCE; GALAXY S23 NOT_RUN**
+**Owner:** Product Owner decision authority; Codex implementation; ChatGPT canonical-doc coordination.
 
 ## Problem
 
-On Android Today, a Routine-derived Planned Task shown on a selected future Day cannot currently be deleted through the expected row action, while an ordinary Planned Task can. This was reported in the product discussion; no new implementation or device verification was performed when recording this note.
+At the time this note was recorded, Android Today did not expose the expected delete action for a Routine-derived Planned Task on a selected future Day, while an ordinary Planned Task could be deleted. No implementation or device verification had been performed yet.
 
 ## Agreed user-visible intent
 
@@ -15,18 +15,19 @@ On Android Today, a Routine-derived Planned Task shown on a selected future Day 
 - The deleted occurrence must not immediately regenerate when the selected Day is reloaded/reconciled. Preserve existing occurrence suppression and canonical mutation/retry semantics.
 - The intended work is to correct Android **action visibility/eligibility wiring** where existing canonical single-occurrence delete already supports the selected future Day. Do not assume a Worker/API/schema change is necessary or approved.
 
-## Scope boundary and next investigation
+## Scope boundary and implementation result
 
-- **Implementation is not started.** No code, tests, migration, deployment, or user-data mutation is authorized by this tracking note.
-- Before implementation, Codex must read current GitHub canonical docs, inspect the actual Android action gating and existing delete command for a selected established future Day, and verify current-Day Routine single-occurrence behavior.
-- Respect D-126 (Android future planning parity, without widening Routine row eligibility on its own), D-119 (explicitly established future Day), and existing Routine suppression/delete semantics. D-174 covers occurrence-local past deletion; it does not automatically extend future behavior.
-- If the current canonical command cannot safely delete exactly the selected future occurrence, **STOP** and report the Product/domain options. Do not silently introduce persistence, migrations, new command families, or broader destructive scope.
-- On later implementation, use focused tests for future Routine delete action availability, ordinary-task parity, per-occurrence suppression/non-regeneration, other dates/definition remaining unchanged, and existing replay/reconciliation guards. Do not run unrelated full suites by default.
-- Create the formal Codex Markdown Task Contract only when implementation resumes, after reconciling against then-current `main` and canonical docs.
+- The implementation remains limited to the approved Android row affordance and its focused tests. No production Worker/API/shared contract/schema/migration/dependency, deployment, persistent nonprod mutation, or production action was made.
+- Source inspection confirmed that `TodayDirectManipulationController.delete(...)` already dispatches the selected established future Day, while `TodayTaskRow` hid `その他` behind the coarse `canNoteOnly` shortcut even when `canPlannedDelete` was available.
+- `hasOtherActions` now reflects the actual available action set, including `canPlannedDelete`, in both sectioned and unsectioned rows. The existing confirmation, `BulkDeleteEntries`, operation identity, retry, suppression, and canonical reconciliation paths are reused.
+- The implementation follows D-126 (Android future planning parity without widening protected row eligibility), D-119 (explicitly established future Day), and existing Routine suppression/delete semantics. D-174 remains scoped to occurrence-local past deletion and was not used to extend future behavior.
+- The focused `TaskChute_API33` flows pass for sectioned and unsectioned future Planned Routine rows and for a future Completed note-only negative case. Direct manipulation JVM tests pass `58 / 58`. One focused synthetic D1 integration test verifies exact replay, suppression through repeated future-Day ensure, and unchanged Routine Entry / Definition.
+- The full Today AVD run completed `85 / 91`, with six failures. Five unrelated tests reproduced with the original action-visibility expression; one swipe failure from the full run passed when isolated. The full surface remains `PARTIAL`, while the focused changed behavior passes.
+- Exact-SHA CI and signed Phone APK verification passed. Galaxy S23 manual UX remains `NOT_RUN`; Product Verified remains `NO`; Released remains `NO`.
 
 ## Canonical reference status
 
-This is a **pending-work tracking note**, not a new Approved Decision, not test evidence, and not a replacement for canonical Product/Domain SPEC. If any detail conflicts with newer canonical docs, report it and obtain a Material Decision where required. Promote finalized changes to the appropriate canonical docs during an approved implementation/closeout.
+This was a **pending-work tracking note**, not a new Approved Decision or a replacement for canonical Product/Domain SPEC. It is now closed as an implementation tracker; canonical semantics remain in the referenced Approved Decisions. Current verification evidence is in `docs/TEST_MATRIX.md`.
 
 Relevant canonical files at record time:
 

@@ -1,3 +1,14 @@
+## Android Today selected future-Day Routine occurrence delete — 2026-10-18
+
+| ID | Area | Requirement | Evidence | Status |
+|---|---|---|---|---|
+| ANDROID-FUTURE-ROUTINE-DELETE-UI | Selected established future Day, sectioned and unsectioned Planned Routine rows | First ran the sectioned regression before the fix: failed because `タスクの操作` was hidden while `canPlannedDelete=true`. After the fix, sectioned flow, unsectioned flow, and future Completed note-only negative case each passed individually on `TaskChute_API33`. Cancel sends no mutation; confirm dispatches one Delete for the selected Day / Entry / revision and a nonblank operation ID; no duplicate, date-move, Start, or Complete action is added. | PASS / FOCUSED AVD 3 / 3 |
+| ANDROID-FUTURE-ROUTINE-DELETE-RETRY | Selected future Day request and ambiguous retry | `TodayDirectManipulationTest` passed `58 / 58`; the new case checks Entry ID, selected future Day ID, placement revision, operation ID, and exact request reuse after ambiguous retry. | PASS / JVM |
+| ANDROID-FUTURE-ROUTINE-SUPPRESSION | Occurrence-only suppression / replay / reload ensure | Focused `bulk-delete-entries.integration.test.ts` synthetic local D1 case passed: selected Routine occurrence is suppressed, exact replay is stable, two future-Day ensures do not regenerate it, and the Routine Definition / Entry remain unchanged. No Worker production code changed. | PASS / SYNTHETIC LOCAL D1 |
+| ANDROID-FUTURE-ROUTINE-TODAY-AVD | Full Today surface and unaffected Today behaviors | `scripts/android-qa.ps1 -Surface Today` completed instrumentation: `85 / 91` passed and six failed. Five unrelated failures reproduced when `hasOtherActions` was temporarily restored to its pre-change expression; the sixth (`sectionHeaderSwipesLoadExactlyOneAdjacentDayInEitherDirection`) passed in isolated rerun. MainActivity install/launch and crash-buffer smoke passed. The full surface is not green; focused new tests are green. | PARTIAL / LOCAL AVD |
+| ANDROID-FUTURE-ROUTINE-CI-APK | Exact implementation SHA / signed Phone artifact | Implementation `0503b35865eec26b7acc78a0d12d8f05a103a656`; exact-SHA GitHub Actions passed classifier, Android JVM, signed Phone/Wear build, instrumentation APK compilation and signing verification, Web/Worker/D1 tests, and production build. Phone APK was downloaded and locally signature-verified; artifact/run details and SHA-256 are in the direct handoff. | PASS / EXACT-SHA CI |
+| ANDROID-FUTURE-ROUTINE-DEVICE-SCOPE | Handset, persistent service, and release boundary | Galaxy S23 manual UX remains `NOT_RUN / PRODUCT_OWNER_MANUAL`; persistent nonprod is `NOT_REQUIRED`; Production `NOT_RUN`; Product Verified `NO`; Released `NO`. No backend/API/schema/migration/dependency, deployment, persistent nonprod, or production operation was performed. | PASS / NOT_RUN / NO |
+
 ## D-178 Routine Activity guarded activation — 2026-10-15
 
 | ID | Area | Requirement | Evidence | Status |
