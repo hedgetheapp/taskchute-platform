@@ -1,6 +1,6 @@
 # D-179 — Android Actual End 「見積通り」 Quick Input v0.1
 
-Status: **Approved product intent (2026-10-18) / Implementation NOT_STARTED / exact-end client feasibility gate required**
+Status: **Approved product intent (2026-10-18) / IMPLEMENTED at `e360792306a66e134b89027f93049499c915bb48` / exact-SHA CI PASS / signed Phone APK verified / Product Verified NO / Released NO**
 
 Date: 2026-10-18
 
@@ -43,5 +43,6 @@ Inspection of `main` at decision time finds that `TaskPlanningModels.kt` support
 - D-174 established past-Day historical correction
 - D-156 / D-157 rollback/reopen
 - `docs/DEVELOPMENT_WORKFLOW.md`, `docs/TEST_MATRIX.md`
+- `docs/planning/2026-10-18_ANDROID_ACTUAL_END_ESTIMATE_QUICK_INPUT.md` — implementation and exact-SHA verification closeout.
 
 No implementation or release operation was performed in this Decision commit.
