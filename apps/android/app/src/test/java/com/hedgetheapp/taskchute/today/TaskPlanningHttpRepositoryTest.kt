@@ -665,38 +665,191 @@ class TaskPlanningHttpRepositoryTest {
     }
 
     @Test
-    fun routineTitleEditRejectsReminderChangesBeforeAnyOccurrenceMutation() {
+    fun routineOccurrenceReminderUsesSharedTaskMetadataAfterOccurrencePrerequisites() {
         val requests = mutableListOf<Triple<String, String, String?>>()
         val task = TodayTask(
-            id = "entry-title-reminder", title = "Base", lifecycleState = LifecycleState.PLANNED,
-            project = null, mode = null, estimateSeconds = 600, plannedStartMinute = 540,
+            id = "entry-title-reminder", title = "Occurrence override", lifecycleState = LifecycleState.PLANNED,
+            project = TodayProject("snapshot-project", "Occurrence project"), mode = null,
+            estimateSeconds = 600, plannedStartMinute = 540,
             executionId = null, activeStartedAt = null,
             routineDerived = true, taskId = "task-shared", startReminderOffsetMinutes = null,
-            notifyOnEstimateOverrun = false,
+            notifyOnEstimateOverrun = false, routineBaseTitle = "Stale shared title",
+            routineDefinitionId = "routine-definition-1",
         )
         val day = currentDay().copy(sections = listOf(
             TodaySection("section-1", "Morning", 480, 720, listOf(task)),
+            TodaySection("section-2", "Afternoon", 720, 1_080, emptyList()),
         ))
         val repository = TaskPlanningHttpRepository { method, path, body ->
             requests += Triple(method, path, body)
-            TodayHttpResponse(204, null)
+            when {
+                path == "/api/v1/routines" -> TodayHttpResponse(200, routineBoardJson())
+                path.endsWith("/routine-section-plan") -> TodayHttpResponse(200, "{\"placement_revision\":6}")
+                else -> TodayHttpResponse(204, null)
+            }
         }
         val editor = TaskEditorState(
             TaskEditorMode.EDIT, day, task,
-            TaskEditorDraft(title = "Occurrence title", sectionId = "section-1", plannedStartText = "09:00",
-                estimateText = "10", startReminderOffsetMinutes = 5),
+            TaskEditorDraft(title = "Changed occurrence title", sectionId = "section-2", plannedStartText = "13:00",
+                estimateText = "25", startReminderOffsetMinutes = 15, notifyOnEstimateOverrun = true),
             TaskEditorCapability.ROUTINE_PLANNING,
         )
 
         val result = repository.save(
             editor,
-            NormalizedTaskInput("Occurrence title", null, null, "section-1", 540, 600,
-                startReminderOffsetMinutes = 5),
+            NormalizedTaskInput("Changed occurrence title", "snapshot-project", null, "section-2", 780, 1_500,
+                startReminderOffsetMinutes = 15, notifyOnEstimateOverrun = true),
         )
 
-        assertTrue(result is PlanningSaveResult.Failure)
+        assertEquals(PlanningSaveResult.SuccessWithRevision(6), result)
+        assertEquals(
+            listOf("/api/v1/routines", "/routine-section-plan", "/routine-estimate", "/routine-title", "/task-metadata"),
+            requests.map { it.second.removePrefix("/api/v1/entries/entry-title-reminder") },
+        )
+        assertTrue(requests[2].third.orEmpty().contains("\"estimate_seconds\":1500"))
+        assertTrue(requests[3].third.orEmpty().contains("\"title\":\"Changed occurrence title\""))
+        val reminderBody = requests.last().third.orEmpty()
+        assertTrue(reminderBody.contains("\"entry_id\":\"entry-title-reminder\""))
+        assertTrue(reminderBody.contains("\"expected_title\":\"Canonical shared title\""))
+        assertTrue(reminderBody.contains("\"title\":\"Canonical shared title\""))
+        assertTrue(reminderBody.contains("\"expected_project_id\":\"base-project\""))
+        assertTrue(reminderBody.contains("\"project_id\":\"base-project\""))
+        assertTrue(reminderBody.contains("\"start_reminder_offset_minutes\":15"))
+        assertTrue(reminderBody.contains("\"notify_on_estimate_overrun\":true"))
+        assertTrue(!reminderBody.contains("Occurrence override"))
+        assertTrue(!reminderBody.contains("snapshot-project"))
+    }
+
+    @Test
+    fun routineReminderClearSendsExplicitNullAndFalse() {
+        val requests = mutableListOf<Triple<String, String, String?>>()
+        val task = routineReminderTask().copy(startReminderOffsetMinutes = 15, notifyOnEstimateOverrun = true)
+        val day = futureDay().copy(sections = listOf(TodaySection("section-1", "Morning", 480, 720, listOf(task))))
+        val repository = TaskPlanningHttpRepository { method, path, body ->
+            requests += Triple(method, path, body)
+            if (path == "/api/v1/routines") TodayHttpResponse(200, routineBoardJson()) else TodayHttpResponse(204, null)
+        }
+
+        assertEquals(PlanningSaveResult.SuccessWithRevision(day.placementRevision), repository.save(
+            TaskEditorState(TaskEditorMode.EDIT, day, task,
+                TaskEditorDraft(title = task.title, sectionId = "section-1", plannedStartText = "09:00", estimateText = "10"),
+                TaskEditorCapability.ROUTINE_PLANNING),
+            NormalizedTaskInput(task.title, null, null, "section-1", 540, 600,
+                startReminderOffsetMinutes = null, notifyOnEstimateOverrun = false),
+        ))
+        val body = requests.last().third.orEmpty()
+        assertTrue(body.contains("\"start_reminder_offset_minutes\":null"))
+        assertTrue(body.contains("\"notify_on_estimate_overrun\":false"))
+    }
+
+    @Test
+    fun routineReminderRejectsInvalidEffectivePlanAndMissingDefinitionBeforeWrites() {
+        val task = routineReminderTask()
+        val day = currentDay().copy(sections = listOf(TodaySection("section-1", "Morning", 480, 720, listOf(task))))
+        val requests = mutableListOf<Triple<String, String, String?>>()
+        val repository = TaskPlanningHttpRepository { method, path, body ->
+            requests += Triple(method, path, body)
+            TodayHttpResponse(204, null)
+        }
+        fun save(input: NormalizedTaskInput, source: TodayTask = task): PlanningSaveResult = repository.save(
+            TaskEditorState(TaskEditorMode.EDIT, day, source,
+                TaskEditorDraft(title = source.title, sectionId = "section-1"), TaskEditorCapability.ROUTINE_PLANNING),
+            input,
+        )
+
+        assertTrue(save(NormalizedTaskInput(task.title, null, null, "section-1", null, 600,
+            startReminderOffsetMinutes = 5)) is PlanningSaveResult.Failure)
+        assertTrue(save(NormalizedTaskInput(task.title, null, null, "section-1", 540, null,
+            notifyOnEstimateOverrun = true)) is PlanningSaveResult.Failure)
+        assertTrue(save(NormalizedTaskInput(task.title, null, null, "section-1", 540, 600,
+            startReminderOffsetMinutes = 5), task.copy(routineDefinitionId = null)) is PlanningSaveResult.Failure)
         assertEquals(0, requests.size)
     }
+
+    @Test
+    fun routineReminderAmbiguousRetryReusesOperationAndSkipsSucceededPrerequisites() {
+        val requests = mutableListOf<Triple<String, String, String?>>()
+        var reminderAttempts = 0
+        val task = routineReminderTask()
+        val day = currentDay().copy(sections = listOf(
+            TodaySection("section-1", "Morning", 480, 720, listOf(task)),
+            TodaySection("section-2", "Afternoon", 720, 1_080, emptyList()),
+        ))
+        val repository = TaskPlanningHttpRepository { method, path, body ->
+            requests += Triple(method, path, body)
+            when {
+                path == "/api/v1/routines" -> TodayHttpResponse(200, routineBoardJson())
+                path.endsWith("/routine-section-plan") -> TodayHttpResponse(200, "{\"placement_revision\":6}")
+                path.endsWith("/task-metadata") && ++reminderAttempts == 1 -> TodayHttpResponse(503, null)
+                else -> TodayHttpResponse(204, null)
+            }
+        }
+        val editor = TaskEditorState(TaskEditorMode.EDIT, day, task,
+            TaskEditorDraft(title = task.title, sectionId = "section-2", plannedStartText = "13:00", estimateText = "25",
+                startReminderOffsetMinutes = 15), TaskEditorCapability.ROUTINE_PLANNING)
+        val input = NormalizedTaskInput(task.title, null, null, "section-2", 780, 1_500,
+            startReminderOffsetMinutes = 15)
+
+        assertTrue(repository.save(editor, input) is PlanningSaveResult.Failure)
+        assertEquals(PlanningSaveResult.SuccessWithRevision(6), repository.save(editor, input))
+        assertEquals(5, requests.size)
+        assertEquals("/routine-section-plan", requests[1].second.removePrefix("/api/v1/entries/entry-routine"))
+        assertEquals("/routine-estimate", requests[2].second.removePrefix("/api/v1/entries/entry-routine"))
+        assertTrue(requests[3].second.endsWith("/task-metadata"))
+        assertTrue(requests[4].second.endsWith("/task-metadata"))
+        assertEquals(requests[3].third, requests[4].third)
+    }
+
+    @Test
+    fun currentRunningRoutineAllowsOnlyOverrunReminderAndUsesSharedTaskMetadata() {
+        val requests = mutableListOf<Triple<String, String, String?>>()
+        val task = routineReminderTask().copy(
+            lifecycleState = LifecycleState.RUNNING,
+            executionId = "execution-1",
+            activeStartedAt = "2026-09-14T09:00:00Z",
+            startReminderOffsetMinutes = null,
+            notifyOnEstimateOverrun = false,
+        )
+        val day = currentDay().copy(
+            establishmentTimezone = "UTC",
+            sections = listOf(TodaySection("section-1", "Morning", 480, 720, listOf(task))),
+        )
+        val repository = TaskPlanningHttpRepository { method, path, body ->
+            requests += Triple(method, path, body)
+            if (path == "/api/v1/routines") TodayHttpResponse(200, routineBoardJson()) else TodayHttpResponse(204, null)
+        }
+        val editor = TaskEditorState(TaskEditorMode.EDIT, day, task,
+            TaskEditorDraft(title = task.title, estimateText = "10", notifyOnEstimateOverrun = true),
+            TaskEditorCapability.RUNNING_METADATA)
+
+        assertEquals(PlanningSaveResult.Success, repository.save(editor,
+            NormalizedTaskInput(task.title, null, null, null, 540, 600, actualStartMinute = 540,
+                notifyOnEstimateOverrun = true)))
+        assertEquals(listOf("/api/v1/routines", "/task-metadata"), requests.map {
+            if (it.second == "/api/v1/routines") it.second else it.second.substringAfter("entry-routine")
+        })
+        assertTrue(requests.last().third.orEmpty().contains("\"expected_title\":\"Canonical shared title\""))
+        assertTrue(requests.last().third.orEmpty().contains("\"project_id\":\"base-project\""))
+
+        requests.clear()
+        val startChanged = repository.save(editor, NormalizedTaskInput(task.title, null, null, null, 540, 600,
+            startReminderOffsetMinutes = 5, notifyOnEstimateOverrun = true))
+        assertTrue(startChanged is PlanningSaveResult.Failure)
+        assertEquals(0, requests.size)
+    }
+
+    private fun routineReminderTask() = TodayTask(
+        id = "entry-routine", title = "Occurrence title", lifecycleState = LifecycleState.PLANNED,
+        project = TodayProject("snapshot-project", "Occurrence project"), mode = null,
+        estimateSeconds = 600, plannedStartMinute = 540, executionId = null, activeStartedAt = null,
+        routineDerived = true, taskId = "task-shared", routineBaseTitle = "Old base title",
+        routineDefinitionId = "routine-definition-1",
+    )
+
+    private fun routineBoardJson() = """
+        {"routines":[{"routine_definition_id":"routine-definition-1","task_id":"task-shared",
+          "title":"Canonical shared title","project":{"id":"base-project","title":"Base Project"}}]}
+    """.trimIndent()
 @Test
     fun runningProjectSaveUsesOnlyTaskMetadataEndpoint() {
         val requests = mutableListOf<Triple<String, String, String?>>()

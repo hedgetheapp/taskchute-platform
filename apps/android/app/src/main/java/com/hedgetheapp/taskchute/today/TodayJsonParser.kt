@@ -106,6 +106,7 @@ internal object TodayJsonParser {
             taskId = task.stringField("id"),
             primaryDocumentId = task.nullableStringField("primary_document_id"),
             routineBaseTitle = routine?.nullableStringField("base_task_title") ?: if (routine != null) task.stringField("title") else null,
+            routineDefinitionId = routine?.nullableStringField("routine_definition_id"),
         )
     }
 

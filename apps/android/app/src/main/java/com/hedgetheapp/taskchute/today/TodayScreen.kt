@@ -2899,6 +2899,9 @@ private fun TaskEditorForm(
     val routinePlanning = editor.capability == TaskEditorCapability.ROUTINE_PLANNING
     val historicalPastDay = !editor.day.isCurrent && !editor.day.planningEnabled && editor.day.taskChuteDayId != null
     val historicalRoutineCorrection = routinePlanning && historicalPastDay
+    val routineReminderEditable = routinePlanning
+        && (editor.day.isCurrent || editor.day.planningEnabled)
+        && editor.originalTask?.lifecycleState == LifecycleState.PLANNED
     val titleEditable = editor.mode == TaskEditorMode.CREATE
         || editor.capability == TaskEditorCapability.FULL_PLANNING
         || editor.capability == TaskEditorCapability.ROUTINE_PLANNING
@@ -2989,7 +2992,7 @@ private fun TaskEditorForm(
                 )
                 ReminderOffsetField(
                     value = draft.startReminderOffsetMinutes,
-                    enabled = !state.saving && !routinePlanning && !historicalPastDay,
+                    enabled = !state.saving && (!routinePlanning || routineReminderEditable) && !historicalPastDay,
                     onValueChange = { controller.updateDraft(draft.copy(startReminderOffsetMinutes = it)) },
                     modifier = Modifier.weight(1f),
                 )
@@ -3007,7 +3010,7 @@ private fun TaskEditorForm(
                 )
                 ReminderToggle(
                     checked = draft.notifyOnEstimateOverrun,
-                    enabled = !state.saving && !routinePlanning
+                    enabled = !state.saving && (!routinePlanning || routineReminderEditable)
                         && !historicalPastDay
                         && editor.capability != TaskEditorCapability.COMPLETED_METADATA,
                     label = "超過通知",

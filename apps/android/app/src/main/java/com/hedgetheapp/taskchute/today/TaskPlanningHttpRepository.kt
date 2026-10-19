@@ -12,6 +12,7 @@ class TaskPlanningHttpRepository(
 ) : TaskPlanningRepository {
     private val ambiguousLifecycleOperationIds = mutableMapOf<String, String>()
     private val ambiguousRoutineTitleOperationIds = mutableMapOf<String, String>()
+    private val ambiguousRoutineReminderMutations = mutableMapOf<String, PendingRoutineReminderMutation>()
     private val confirmedRoutinePlacementRevisions = mutableMapOf<String, Int>()
 
     override fun loadReferences(): PlanningReferencesResult {
@@ -82,14 +83,65 @@ class TaskPlanningHttpRepository(
             return executeRevertEntryStart(editor, task, completedDirectRollback = true)
         }
         if (editor.capability == TaskEditorCapability.ROUTINE_PLANNING) {
-            if (input.startReminderOffsetMinutes != task.startReminderOffsetMinutes
-                || input.notifyOnEstimateOverrun != task.notifyOnEstimateOverrun
-            ) {
-                return PlanningSaveResult.Failure("Routineの通知設定はこの編集では変更できません。")
-            }
             val routineInput = synchronizeRoutineSectionPlan(editor.day, input)
             val dayId = editor.day.taskChuteDayId ?: return PlanningSaveResult.Failure("編集対象の日を取得できません。")
             val placementKey = "$dayId\u0000${task.id}"
+            val reminderChanged = reminderChanged(task, routineInput)
+            val reminderIntentKey = routineReminderIntentKey(dayId, task, routineInput)
+            val pendingReminder = ambiguousRoutineReminderMutations[placementKey]
+            if (pendingReminder != null) {
+                when {
+                    task.startReminderOffsetMinutes == pendingReminder.nextStartOffset
+                        && task.notifyOnEstimateOverrun == pendingReminder.nextNotifyOnOverrun -> {
+                        ambiguousRoutineReminderMutations.remove(placementKey)
+                    }
+                    task.startReminderOffsetMinutes == pendingReminder.expectedStartOffset
+                        && task.notifyOnEstimateOverrun == pendingReminder.expectedNotifyOnOverrun -> {
+                        if (pendingReminder.intentKey != reminderIntentKey) {
+                            return PlanningSaveResult.Failure(
+                                "前回の通知保存結果を確認できません。Todayを再読み込みしてから再試行してください。",
+                            )
+                        }
+                        return when (val retried = executePendingRoutineReminder(task, placementKey, pendingReminder)) {
+                            PlanningHttpResult.Unauthorized -> PlanningSaveResult.Unauthorized
+                            is PlanningHttpResult.Failure -> PlanningSaveResult.Failure(retried.message)
+                            is PlanningHttpResult.Success -> {
+                                val remembered = confirmedRoutinePlacementRevisions[placementKey]
+                                    ?: editor.day.placementRevision
+                                if ((editor.day.isCurrent || isHistoricalPastDay(editor.day))
+                                    && routineInput.actualStartMinute != null) {
+                                    when (val actualResult = executeActualTimes(editor, routineInput, remembered)) {
+                                        PlanningSaveResult.Success -> PlanningSaveResult.SuccessWithRevision(remembered)
+                                        else -> actualResult
+                                    }
+                                } else {
+                                    PlanningSaveResult.SuccessWithRevision(remembered)
+                                }
+                            }
+                        }
+                    }
+                    else -> ambiguousRoutineReminderMutations.remove(placementKey)
+                }
+            }
+            val eligibleReminderDay = editor.day.isCurrent || editor.day.planningEnabled
+            if (reminderChanged && (!eligibleReminderDay || task.lifecycleState != LifecycleState.PLANNED)) {
+                return PlanningSaveResult.Failure("このRoutine occurrenceでは通知設定を変更できません。再読み込みしてください。")
+            }
+            if (reminderChanged && routineInput.startReminderOffsetMinutes != null
+                && routineInput.plannedStartMinute == null) {
+                return PlanningSaveResult.Failure("開始通知には開始予定が必要です。")
+            }
+            if (reminderChanged && routineInput.notifyOnEstimateOverrun
+                && (routineInput.estimateSeconds == null || routineInput.estimateSeconds <= 0)) {
+                return PlanningSaveResult.Failure("超過通知には1分以上の見積が必要です。")
+            }
+            val reminderMetadata = if (reminderChanged) {
+                when (val lookup = loadRoutineReminderTaskMetadata(task)) {
+                    is RoutineReminderMetadataLookup.Success -> lookup.metadata
+                    RoutineReminderMetadataLookup.Unauthorized -> return PlanningSaveResult.Unauthorized
+                    is RoutineReminderMetadataLookup.Failure -> return PlanningSaveResult.Failure(lookup.message)
+                }
+            } else null
             val rememberedRevision = confirmedRoutinePlacementRevisions[placementKey] ?: editor.day.placementRevision
             var placementRevision = maxOf(editor.day.placementRevision, rememberedRevision)
             if (currentSectionId != routineInput.sectionId || task.plannedStartMinute != routineInput.plannedStartMinute) {
@@ -128,6 +180,14 @@ class TaskPlanningHttpRepository(
                     else -> return result
                 }
             }
+            when (val result = updateReminderSettingsIfChanged(
+                task, taskId, input, reminderMetadata,
+                routineReminderKey = placementKey,
+                routineReminderIntent = reminderIntentKey,
+            )) {
+                PlanningSaveResult.Success, is PlanningSaveResult.SuccessWithRevision -> Unit
+                else -> return result
+            }
             if ((editor.day.isCurrent || isHistoricalPastDay(editor.day)) && routineInput.actualStartMinute != null) {
                 return when (val actualResult = executeActualTimes(editor, routineInput, placementRevision)) {
                     PlanningSaveResult.Success -> PlanningSaveResult.SuccessWithRevision(placementRevision)
@@ -137,6 +197,64 @@ class TaskPlanningHttpRepository(
             return PlanningSaveResult.SuccessWithRevision(placementRevision)
         }
         if (editor.capability != TaskEditorCapability.FULL_PLANNING) {
+            val reminderChanged = reminderChanged(task, input)
+            val routineReminderDayId = editor.day.taskChuteDayId
+            val routineReminderKey = routineReminderDayId?.let { "$it\u0000${task.id}" }
+            val routineReminderIntent = if (task.routineDerived && routineReminderDayId != null) {
+                routineReminderIntentKey(routineReminderDayId, task, input)
+            } else null
+            val pendingReminder = routineReminderKey?.let(ambiguousRoutineReminderMutations::get)
+            if (pendingReminder != null) {
+                when {
+                    task.startReminderOffsetMinutes == pendingReminder.nextStartOffset
+                        && task.notifyOnEstimateOverrun == pendingReminder.nextNotifyOnOverrun -> {
+                        ambiguousRoutineReminderMutations.remove(routineReminderKey)
+                    }
+                    task.startReminderOffsetMinutes == pendingReminder.expectedStartOffset
+                        && task.notifyOnEstimateOverrun == pendingReminder.expectedNotifyOnOverrun -> {
+                        if (pendingReminder.intentKey != routineReminderIntent) {
+                            return PlanningSaveResult.Failure(
+                                "前回の通知保存結果を確認できません。Todayを再読み込みしてから再試行してください。",
+                            )
+                        }
+                        return when (val retried = executePendingRoutineReminder(
+                            task, routineReminderKey, pendingReminder,
+                        )) {
+                            PlanningHttpResult.Unauthorized -> PlanningSaveResult.Unauthorized
+                            is PlanningHttpResult.Failure -> PlanningSaveResult.Failure(retried.message)
+                            is PlanningHttpResult.Success -> executeActualTimes(editor, input, editor.day.placementRevision)
+                        }
+                    }
+                    else -> ambiguousRoutineReminderMutations.remove(routineReminderKey)
+                }
+            }
+            if (task.routineDerived && reminderChanged) {
+                if (task.lifecycleState == LifecycleState.COMPLETED) {
+                    return PlanningSaveResult.Failure("完了済みRoutine occurrenceの通知設定は変更できません。")
+                }
+                if (task.lifecycleState == LifecycleState.RUNNING) {
+                    if (input.startReminderOffsetMinutes != task.startReminderOffsetMinutes) {
+                        return PlanningSaveResult.Failure("実行中は開始通知を変更できません。")
+                    }
+                    if (!editor.day.isCurrent) {
+                        return PlanningSaveResult.Failure("過去Dayの通知設定は変更できません。再読み込みしてください。")
+                    }
+                } else if (input.startReminderOffsetMinutes != null && input.plannedStartMinute == null) {
+                    return PlanningSaveResult.Failure("開始通知には開始予定が必要です。")
+                }
+                val effectiveEstimate = if (task.lifecycleState == LifecycleState.RUNNING) input.estimateSeconds
+                    else task.estimateSeconds
+                if (input.notifyOnEstimateOverrun && (effectiveEstimate == null || effectiveEstimate <= 0)) {
+                    return PlanningSaveResult.Failure("超過通知には1分以上の見積が必要です。")
+                }
+            }
+            val reminderMetadata = if (task.routineDerived && reminderChanged) {
+                when (val lookup = loadRoutineReminderTaskMetadata(task)) {
+                    is RoutineReminderMetadataLookup.Success -> lookup.metadata
+                    RoutineReminderMetadataLookup.Unauthorized -> return PlanningSaveResult.Unauthorized
+                    is RoutineReminderMetadataLookup.Failure -> return PlanningSaveResult.Failure(lookup.message)
+                }
+            } else null
             if (!task.routineDerived && currentProjectId != input.projectId) {
                 when (val result = executeTaskMetadata(task, taskId, input.projectId)) {
                     PlanningHttpResult.Unauthorized -> return PlanningSaveResult.Unauthorized
@@ -174,7 +292,9 @@ class TaskPlanningHttpRepository(
                 }
             }
             when (val result = updateReminderSettingsIfChanged(
-                task, taskId, task.routineBaseTitle ?: task.title, currentProjectId, input,
+                task, taskId, input, reminderMetadata,
+                routineReminderKey = routineReminderKey,
+                routineReminderIntent = routineReminderIntent,
             )) {
                 PlanningSaveResult.Success, is PlanningSaveResult.SuccessWithRevision -> Unit
                 else -> return result
@@ -218,7 +338,10 @@ class TaskPlanningHttpRepository(
                 else -> return result
             }
         }
-        when (val result = updateReminderSettingsIfChanged(task, taskId, input.title, input.projectId, input)) {
+        when (val result = updateReminderSettingsIfChanged(
+            task, taskId, input,
+            sharedTaskMetadata = RoutineReminderSharedTaskMetadata(input.title, input.projectId),
+        )) {
             PlanningSaveResult.Success, is PlanningSaveResult.SuccessWithRevision -> Unit
             else -> return result
         }
@@ -228,21 +351,88 @@ class TaskPlanningHttpRepository(
     private fun updateReminderSettingsIfChanged(
         task: TodayTask,
         taskId: String,
-        title: String,
-        projectId: String?,
         input: NormalizedTaskInput,
+        sharedTaskMetadata: RoutineReminderSharedTaskMetadata? = null,
+        routineReminderKey: String? = null,
+        routineReminderIntent: String? = null,
     ): PlanningSaveResult {
         val startChanged = task.startReminderOffsetMinutes != input.startReminderOffsetMinutes
         val overrunChanged = task.notifyOnEstimateOverrun != input.notifyOnEstimateOverrun
         if (!startChanged && !overrunChanged) return PlanningSaveResult.Success
+        val title = sharedTaskMetadata?.title ?: task.routineBaseTitle ?: task.title
+        val projectId = if (sharedTaskMetadata != null) sharedTaskMetadata.projectId else task.project?.id
         val fields = buildString {
             if (startChanged) append(",\"start_reminder_offset_minutes\":${input.startReminderOffsetMinutes ?: "null"}")
             if (overrunChanged) append(",\"notify_on_estimate_overrun\":${input.notifyOnEstimateOverrun}")
         }
+        val operationId = UUIDv7.next()
         val body = """
-            {"operation_id":"${JsonEncoding.escape(UUIDv7.next())}","entry_id":"${JsonEncoding.escape(task.id)}","task_id":"${JsonEncoding.escape(taskId)}","expected_title":"${JsonEncoding.escape(title)}","expected_project_id":${nullableString(projectId)},"title":"${JsonEncoding.escape(title)}","project_id":${nullableString(projectId)}$fields}
+            {"operation_id":"${JsonEncoding.escape(operationId)}","entry_id":"${JsonEncoding.escape(task.id)}","task_id":"${JsonEncoding.escape(taskId)}","expected_title":"${JsonEncoding.escape(title)}","expected_project_id":${nullableString(projectId)},"title":"${JsonEncoding.escape(title)}","project_id":${nullableString(projectId)}$fields}
         """.trimIndent()
-        return execute("POST", "/api/v1/entries/${JsonEncoding.pathSegment(task.id)}/task-metadata", body).toSaveResult()
+        val path = "/api/v1/entries/${JsonEncoding.pathSegment(task.id)}/task-metadata"
+        val result = execute("POST", path, body)
+        if (routineReminderKey != null && routineReminderIntent != null) {
+            when (result) {
+                is PlanningHttpResult.Success -> ambiguousRoutineReminderMutations.remove(routineReminderKey)
+                PlanningHttpResult.Unauthorized -> Unit
+                is PlanningHttpResult.Failure -> if (result.ambiguous) {
+                    ambiguousRoutineReminderMutations[routineReminderKey] = PendingRoutineReminderMutation(
+                        intentKey = routineReminderIntent,
+                        body = body,
+                        expectedStartOffset = task.startReminderOffsetMinutes,
+                        expectedNotifyOnOverrun = task.notifyOnEstimateOverrun,
+                        nextStartOffset = input.startReminderOffsetMinutes,
+                        nextNotifyOnOverrun = input.notifyOnEstimateOverrun,
+                    )
+                } else {
+                    ambiguousRoutineReminderMutations.remove(routineReminderKey)
+                }
+            }
+        }
+        return result.toSaveResult()
+    }
+
+    private fun loadRoutineReminderTaskMetadata(task: TodayTask): RoutineReminderMetadataLookup {
+        val routineDefinitionId = task.routineDefinitionId
+            ?: return RoutineReminderMetadataLookup.Failure("Routine Definition IDを取得できません。Todayを再読み込みしてください。")
+        val taskId = task.taskId
+            ?: return RoutineReminderMetadataLookup.Failure("共有Task IDを取得できません。Todayを再読み込みしてください。")
+        return when (val response = execute("GET", "/api/v1/routines", null)) {
+            PlanningHttpResult.Unauthorized -> RoutineReminderMetadataLookup.Unauthorized
+            is PlanningHttpResult.Failure -> RoutineReminderMetadataLookup.Failure(response.message)
+            is PlanningHttpResult.Success -> runCatching {
+                TaskPlanningJsonParser.parseRoutineReminderTaskMetadata(
+                    response.body, routineDefinitionId, taskId,
+                )
+            }.fold(
+                onSuccess = { metadata ->
+                    if (metadata == null) {
+                        RoutineReminderMetadataLookup.Failure(
+                            "共有Task情報を取得できません。Routineが変更された可能性があります。再読み込みしてください。",
+                        )
+                    } else {
+                        RoutineReminderMetadataLookup.Success(metadata)
+                    }
+                },
+                onFailure = {
+                    RoutineReminderMetadataLookup.Failure("共有Task情報を読み取れません。Todayを再読み込みしてください。")
+                },
+            )
+        }
+    }
+
+    private fun executePendingRoutineReminder(
+        task: TodayTask,
+        key: String,
+        pending: PendingRoutineReminderMutation,
+    ): PlanningHttpResult {
+        val result = execute("POST", "/api/v1/entries/${JsonEncoding.pathSegment(task.id)}/task-metadata", pending.body)
+        when (result) {
+            is PlanningHttpResult.Success -> ambiguousRoutineReminderMutations.remove(key)
+            PlanningHttpResult.Unauthorized -> Unit
+            is PlanningHttpResult.Failure -> if (!result.ambiguous) ambiguousRoutineReminderMutations.remove(key)
+        }
+        return result
     }
 
     private fun executeActualTimes(
@@ -406,6 +596,14 @@ class TaskPlanningHttpRepository(
     private fun isHistoricalPastDay(day: TodayDay): Boolean = !day.isCurrent
         && !day.planningEnabled && day.taskChuteDayId != null
 
+    private fun reminderChanged(task: TodayTask, input: NormalizedTaskInput): Boolean =
+        task.startReminderOffsetMinutes != input.startReminderOffsetMinutes
+            || task.notifyOnEstimateOverrun != input.notifyOnEstimateOverrun
+
+    private fun routineReminderIntentKey(dayId: String, task: TodayTask, input: NormalizedTaskInput): String =
+        listOf(dayId, task.id, task.routineDefinitionId.orEmpty(), task.taskId.orEmpty(), input.toString())
+            .joinToString("\u0000")
+
     private fun executeSectionMove(
         task: TodayTask,
         dayId: String?,
@@ -536,6 +734,21 @@ class TaskPlanningHttpRepository(
     private fun nullableString(value: String?): String = value?.let { "\"${JsonEncoding.escape(it)}\"" } ?: "null"
 }
 
+private data class PendingRoutineReminderMutation(
+    val intentKey: String,
+    val body: String,
+    val expectedStartOffset: Int?,
+    val expectedNotifyOnOverrun: Boolean,
+    val nextStartOffset: Int?,
+    val nextNotifyOnOverrun: Boolean,
+)
+
+private sealed interface RoutineReminderMetadataLookup {
+    data class Success(val metadata: RoutineReminderSharedTaskMetadata) : RoutineReminderMetadataLookup
+    data object Unauthorized : RoutineReminderMetadataLookup
+    data class Failure(val message: String) : RoutineReminderMetadataLookup
+}
+
 private sealed interface PlanningHttpResult {
     data class Success(val body: String?) : PlanningHttpResult
     data object Unauthorized : PlanningHttpResult
@@ -574,6 +787,28 @@ internal object TaskPlanningJsonParser {
         else TodayMode(value.stringField("id"), value.stringField("title"))
     }.filterNotNull()
 
+    fun parseRoutineReminderTaskMetadata(
+        body: String?,
+        routineDefinitionId: String,
+        expectedTaskId: String,
+    ): RoutineReminderSharedTaskMetadata? {
+        val root = JsonParser(body ?: "").parse() as? JsonValue.Object
+            ?: error("Routine board response must be an object")
+        val routines = root.fields["routines"] as? JsonValue.Array
+            ?: error("Routine board field 'routines' must be an array")
+        val item = routines.values.asSequence()
+            .map { it as? JsonValue.Object ?: error("Routine item must be an object") }
+            .firstOrNull { it.stringField("routine_definition_id") == routineDefinitionId }
+            ?: return null
+        if (item.stringField("task_id") != expectedTaskId) return null
+        val projectId = when (val project = item.fields["project"]) {
+            JsonValue.Null -> null
+            is JsonValue.Object -> project.stringField("id")
+            else -> error("Routine project must be an object or null")
+        }
+        return RoutineReminderSharedTaskMetadata(item.stringField("title"), projectId)
+    }
+
     fun parsePlacementRevision(body: String?): Int {
         val root = JsonParser(body ?: "").parse() as? JsonValue.Object
             ?: error("Add response must be an object")
@@ -600,3 +835,8 @@ internal object TaskPlanningJsonParser {
     private fun JsonValue.Object.intField(name: String): Int =
         (fields[name] as? JsonValue.NumberValue)?.value?.toIntOrNull() ?: error("Field '$name' must be an integer")
 }
+
+internal data class RoutineReminderSharedTaskMetadata(
+    val title: String,
+    val projectId: String?,
+)

@@ -2592,7 +2592,7 @@ class TodayScreenInstrumentedTest {
     }
 
     @Test
-    fun establishedFutureRoutineOccurrenceEditorAllowsOccurrenceTitleChange() {
+    fun establishedFutureRoutineOccurrenceEditorAllowsTitleAndReminderChanges() {
         val planningRepository = FakePlanningRepository()
         val routine = dayWith().sections.single().entries.single().copy(routineDerived = true)
         val futureDay = dayWith().copy(
@@ -2606,8 +2606,11 @@ class TodayScreenInstrumentedTest {
 
         composeRule.onNodeWithText("Write report").performTouchInput { swipeLeft() }
         composeRule.onNodeWithContentDescription("タスクを編集").assertIsDisplayed().performClick()
-        composeRule.onNodeWithContentDescription("開始通知", useUnmergedTree = true).assertIsNotEnabled()
-        composeRule.onNodeWithContentDescription("超過通知", useUnmergedTree = true).assertIsNotEnabled()
+        composeRule.onNodeWithContentDescription("開始通知", useUnmergedTree = true).assertIsEnabled()
+            .performTouchInput { click() }
+        composeRule.onNodeWithContentDescription("開始通知タイミング", useUnmergedTree = true).assertIsEnabled().performClick()
+        composeRule.onNodeWithText("15分前", substring = false).performClick()
+        composeRule.onNodeWithContentDescription("超過通知", useUnmergedTree = true).assertIsEnabled().performClick()
         val titleField = composeRule.onNode(hasSetTextAction() and hasText("Write report"), useUnmergedTree = true)
         titleField.assertIsEnabled()
         titleField.performTextClearance()
@@ -2618,8 +2621,65 @@ class TodayScreenInstrumentedTest {
         composeRule.onNodeWithText("保存").performClick()
         composeRule.waitUntil(5_000) { planningRepository.saveCalls.get() == 1 }
         assertEquals("Occurrence title", planningRepository.lastInput?.title)
+        assertEquals(15, planningRepository.lastInput?.startReminderOffsetMinutes)
+        assertEquals(true, planningRepository.lastInput?.notifyOnEstimateOverrun)
         assertEquals("2026-09-15", planningRepository.lastEditor?.day?.logicalDate)
         assertEquals(TaskEditorCapability.ROUTINE_PLANNING, planningRepository.lastEditor?.capability)
+    }
+
+    @Test
+    fun routineReminderControlsStayDisabledForHistoricalEntries() {
+        val planningRepository = FakePlanningRepository()
+        val routine = dayWith().sections.single().entries.single().copy(routineDerived = true)
+        val pastDay = dayWith().copy(
+            logicalDate = "2026-09-13",
+            isCurrent = false,
+            planningEnabled = false,
+            taskChuteDayId = "d178-past-routine-day",
+            sections = listOf(dayWith().sections.single().copy(entries = listOf(routine))),
+        )
+        launchPlanningScreen(planningRepository, initialDay = pastDay)
+        waitForStatus(TodayLoadStatus.CONTENT)
+        composeRule.onNodeWithText("Write report").performTouchInput { swipeLeft() }
+        composeRule.onNodeWithContentDescription("タスクを編集").performClick()
+        composeRule.onNodeWithContentDescription("開始通知", useUnmergedTree = true).assertIsNotEnabled()
+        composeRule.onNodeWithContentDescription("超過通知", useUnmergedTree = true).assertIsNotEnabled()
+    }
+
+    @Test
+    fun completedRoutineOccurrenceDoesNotExposeReminderControls() {
+        val completedRepository = FakePlanningRepository()
+        val completed = dayWith().sections.single().entries.single().copy(
+            routineDerived = true,
+            lifecycleState = LifecycleState.COMPLETED,
+        )
+        val completedDay = dayWith().copy(
+            sections = listOf(dayWith().sections.single().copy(entries = listOf(completed))),
+        )
+        launchPlanningScreen(completedRepository, initialDay = completedDay)
+        waitForStatus(TodayLoadStatus.CONTENT)
+        composeRule.onNodeWithText("Write report").performTouchInput { swipeLeft() }
+        composeRule.onNodeWithContentDescription("タスクを編集").performClick()
+        assertTrue(composeRule.onAllNodesWithContentDescription("開始通知", useUnmergedTree = true)
+            .fetchSemanticsNodes().isEmpty())
+        assertTrue(composeRule.onAllNodesWithContentDescription("超過通知", useUnmergedTree = true)
+            .fetchSemanticsNodes().isEmpty())
+    }
+
+    @Test
+    fun currentRunningRoutineKeepsOverrunReminderEnabledAndHidesStartReminder() {
+        val planningRepository = FakePlanningRepository()
+        val routine = dayWith(LifecycleState.RUNNING).sections.single().entries.single().copy(routineDerived = true)
+        val currentDay = dayWith(LifecycleState.RUNNING).copy(
+            sections = listOf(dayWith(LifecycleState.RUNNING).sections.single().copy(entries = listOf(routine))),
+        )
+        launchPlanningScreen(planningRepository, initialDay = currentDay)
+        waitForStatus(TodayLoadStatus.CONTENT)
+        composeRule.onAllNodesWithText(routine.title).get(0).performTouchInput { swipeLeft() }
+        composeRule.onNodeWithContentDescription("タスクを編集").performClick()
+        assertTrue(composeRule.onAllNodesWithContentDescription("開始通知", useUnmergedTree = true)
+            .fetchSemanticsNodes().isEmpty())
+        composeRule.onNodeWithContentDescription("超過通知", useUnmergedTree = true).assertIsEnabled()
     }
 
     @Test

@@ -54,10 +54,14 @@ class TodayJsonParserTest {
     @Test
     fun parsesRoutineBaseTitleForReminderMetadataWithoutChangingEffectiveTitle() {
         val day = TodayJsonParser.parse(
-            SAMPLE.replace("\"routine\":null", "\"routine\":{\"base_task_title\":\"Shared title\"}"),
+            SAMPLE.replace(
+                "\"routine\":null",
+                "\"routine\":{\"routine_definition_id\":\"routine-1\",\"base_task_title\":\"Shared title\"}",
+            ),
         )
         assertEquals("Write", day.sections.single().entries.single().title)
         assertEquals("Shared title", day.sections.single().entries.single().routineBaseTitle)
+        assertEquals("routine-1", day.sections.single().entries.single().routineDefinitionId)
     }
 
     @Test
