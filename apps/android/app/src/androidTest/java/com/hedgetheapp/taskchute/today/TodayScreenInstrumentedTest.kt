@@ -2628,6 +2628,32 @@ class TodayScreenInstrumentedTest {
     }
 
     @Test
+    fun currentPlannedRoutineOccurrenceEditorAllowsReminderChanges() {
+        val planningRepository = FakePlanningRepository()
+        val routine = dayWith().sections.single().entries.single().copy(routineDerived = true)
+        val currentDay = dayWith().copy(
+            sections = listOf(dayWith().sections.single().copy(entries = listOf(routine))),
+        )
+        launchPlanningScreen(planningRepository, initialDay = currentDay)
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        composeRule.onNodeWithText("Write report").performTouchInput { swipeLeft() }
+        composeRule.onNodeWithContentDescription("タスクを編集").performClick()
+        composeRule.onNodeWithContentDescription("開始通知", useUnmergedTree = true).assertIsEnabled()
+            .performTouchInput { click() }
+        composeRule.onNodeWithContentDescription("開始通知タイミング", useUnmergedTree = true).assertIsEnabled().performClick()
+        composeRule.onNodeWithText("15分前", substring = false).performClick()
+        composeRule.onNodeWithContentDescription("超過通知", useUnmergedTree = true).assertIsEnabled().performClick()
+        composeRule.onNodeWithText("保存").performClick()
+
+        composeRule.waitUntil(5_000) { planningRepository.saveCalls.get() == 1 }
+        assertEquals(15, planningRepository.lastInput?.startReminderOffsetMinutes)
+        assertEquals(true, planningRepository.lastInput?.notifyOnEstimateOverrun)
+        assertEquals("2026-09-14", planningRepository.lastEditor?.day?.logicalDate)
+        assertEquals(TaskEditorCapability.ROUTINE_PLANNING, planningRepository.lastEditor?.capability)
+    }
+
+    @Test
     fun routineReminderControlsStayDisabledForHistoricalEntries() {
         val planningRepository = FakePlanningRepository()
         val routine = dayWith().sections.single().entries.single().copy(routineDerived = true)
