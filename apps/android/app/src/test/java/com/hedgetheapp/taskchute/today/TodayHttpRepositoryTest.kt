@@ -203,8 +203,62 @@ class TodayHttpRepositoryTest {
         assertEquals("/api/v1/taskchute-days/by-logical-date?logical_date=2026-09-14", path)
     }
 
+    @Test
+    fun interruptUsesD073ContractAndKeepsExactPayloadForReplay() {
+        val requests = mutableListOf<Triple<String, String, String>>()
+        val repository = TodayHttpRepository(
+            request = { method, path, body ->
+                requests += Triple(method, path, body.orEmpty())
+                TodayHttpResponse(200, interruptResult(INTERRUPT_REQUEST))
+            },
+            onUnauthorized = {},
+        )
+
+        assertEquals(TodayInterruptResult.Confirmed(8), repository.interruptTask(INTERRUPT_REQUEST))
+        assertEquals(TodayInterruptResult.Confirmed(8), repository.interruptTask(INTERRUPT_REQUEST))
+        assertEquals(2, requests.size)
+        assertEquals("POST", requests.first().first)
+        assertEquals("/api/v1/entries/source-entry/interrupt", requests.first().second)
+        assertEquals(requests.first().third, requests.last().third)
+        assertTrue(requests.first().third.contains("\"operation_id\":\"operation-1\""))
+        assertTrue(requests.first().third.contains("\"active_execution_id\":\"execution-a\""))
+        assertTrue(requests.first().third.contains("\"target_execution_id\":\"execution-b\""))
+        assertTrue(requests.first().third.contains("\"continuation_entry_id\":\"continuation-a\""))
+        assertTrue(requests.first().third.contains("\"expected_placement_revision\":7"))
+    }
+
+    @Test
+    fun interruptSeparatesAmbiguousOutcomeFromDeterministicRejection() {
+        val ambiguous = TodayHttpRepository(
+            request = { _, _, _ -> TodayHttpResponse(503, """{"error":{"code":"infrastructure_ambiguous","message":"private","reconcile":true}}""") },
+            onUnauthorized = {},
+        )
+        val stale = TodayHttpRepository(
+            request = { _, _, _ -> TodayHttpResponse(409, """{"error":{"code":"revision_conflict","message":"stale"}}""") },
+            onUnauthorized = {},
+        )
+        val malformedSuccess = TodayHttpRepository(
+            request = { _, _, _ -> TodayHttpResponse(200, "{}") },
+            onUnauthorized = {},
+        )
+
+        assertTrue(ambiguous.interruptTask(INTERRUPT_REQUEST) is TodayInterruptResult.Ambiguous)
+        assertEquals("revision_conflict", (stale.interruptTask(INTERRUPT_REQUEST) as TodayInterruptResult.Rejected).code)
+        assertTrue(malformedSuccess.interruptTask(INTERRUPT_REQUEST) is TodayInterruptResult.Ambiguous)
+    }
+
     private companion object {
         const val CANONICAL_NONPROD_URL = "https://taskchute-web-nonprod.taskfulness-sync.workers.dev"
+        val INTERRUPT_REQUEST = TodayInterruptEntryRequest(
+            operationId = "operation-1",
+            taskChuteDayId = "day-1",
+            sourceEntryId = "source-entry",
+            activeExecutionId = "execution-a",
+            targetEntryId = "target-entry",
+            targetExecutionId = "execution-b",
+            continuationEntryId = "continuation-a",
+            expectedPlacementRevision = 7,
+        )
         const val VALID_PROJECTION = """
             {"taskchute_day":{"id":"day-1","logical_date":"2026-10-05"},"is_current":true,
             "planning_enabled":true,"placement_revision":0,"sections":[],"unsectioned_entries":[],"active_execution":null}
@@ -224,6 +278,10 @@ class TodayHttpRepositoryTest {
             onUnauthorized = {},
             diagnosticsEnabled = enabled,
         )
+
+        fun interruptResult(request: TodayInterruptEntryRequest) = """
+            {"taskchute_day_id":"${request.taskChuteDayId}","source_entry_id":"${request.sourceEntryId}","target_entry_id":"${request.targetEntryId}","continuation_entry_id":"${request.continuationEntryId}","interruption_instant":"2026-09-14T09:01:00Z","interruption_logical_minute":541,"placement_revision":${request.expectedPlacementRevision + 1},"source_execution":{"id":"${request.activeExecutionId}","entry_id":"${request.sourceEntryId}","started_at":"2026-09-14T09:00:00Z","ended_at":"2026-09-14T09:01:00Z","outcome":"interrupted"},"target_execution":{"id":"${request.targetExecutionId}","entry_id":"${request.targetEntryId}","started_at":"2026-09-14T09:01:00Z","ended_at":null,"outcome":null},"continuation":{"entry_id":"${request.continuationEntryId}","task_id":"task-a","section_id":"section-1","position":2,"planned_start_minute":541,"estimate_seconds":540}}
+        """.trimIndent()
 
         fun plannedTask() = TodayTask(
             id = "entry-1",

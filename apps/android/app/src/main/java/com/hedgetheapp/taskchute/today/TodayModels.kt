@@ -34,7 +34,13 @@ data class TodayTask(
     val notifyOnEstimateOverrun: Boolean = false,
     val routineBaseTitle: String? = null,
     val routineDefinitionId: String? = null,
+    val lastOutcome: TodayExecutionOutcome? = null,
 )
+
+enum class TodayExecutionOutcome {
+    COMPLETED,
+    INTERRUPTED,
+}
 
 enum class LifecycleState {
     PLANNED,
@@ -124,6 +130,24 @@ data class TodayHttpResponse(
     val body: String?,
 )
 
+data class TodayInterruptEntryRequest(
+    val operationId: String,
+    val taskChuteDayId: String,
+    val sourceEntryId: String,
+    val activeExecutionId: String,
+    val targetEntryId: String,
+    val targetExecutionId: String,
+    val continuationEntryId: String,
+    val expectedPlacementRevision: Int,
+)
+
+sealed interface TodayInterruptResult {
+    data class Confirmed(val placementRevision: Int) : TodayInterruptResult
+    data object Unauthorized : TodayInterruptResult
+    data class Rejected(val code: String, val message: String) : TodayInterruptResult
+    data class Ambiguous(val message: String) : TodayInterruptResult
+}
+
 sealed interface TodayResult {
     data class Success(val day: TodayDay) : TodayResult
     data object Unauthorized : TodayResult
@@ -143,6 +167,9 @@ interface TodayRepository {
     fun startTask(task: TodayTask, placementRevision: Int): TodayMutationResult
 
     fun completeTask(task: TodayTask): TodayMutationResult
+
+    fun interruptTask(request: TodayInterruptEntryRequest): TodayInterruptResult =
+        TodayInterruptResult.Rejected("unsupported", "中断・継続を実行できませんでした。")
 }
 
 enum class TodayLoadStatus {
@@ -163,6 +190,8 @@ data class TodayUiState(
     val optimisticDay: TodayDay? = null,
     /** Explicit selection while an adjacent Day is loading; null means the current Day route. */
     val selectedLogicalDate: String? = null,
+    val interruptFeedback: String? = null,
+    val canRetryInterrupt: Boolean = false,
 )
 
 val TodayUiState.presentedDay: TodayDay?

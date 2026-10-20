@@ -33,6 +33,96 @@ class TodayHttpRepository(
         return executeMutation("POST", "/api/v1/entries/${JsonEncoding.pathSegment(task.id)}/complete", body)
     }
 
+    override fun interruptTask(operation: TodayInterruptEntryRequest): TodayInterruptResult {
+        val body = """
+            {"operation_id":"${JsonEncoding.escape(operation.operationId)}","taskchute_day_id":"${JsonEncoding.escape(operation.taskChuteDayId)}","source_entry_id":"${JsonEncoding.escape(operation.sourceEntryId)}","active_execution_id":"${JsonEncoding.escape(operation.activeExecutionId)}","target_entry_id":"${JsonEncoding.escape(operation.targetEntryId)}","target_execution_id":"${JsonEncoding.escape(operation.targetExecutionId)}","continuation_entry_id":"${JsonEncoding.escape(operation.continuationEntryId)}","expected_placement_revision":${operation.expectedPlacementRevision}}
+        """.trimIndent()
+        val response = try {
+            request("POST", "/api/v1/entries/${JsonEncoding.pathSegment(operation.sourceEntryId)}/interrupt", body)
+        } catch (_: Exception) {
+            null
+        }
+        if (response?.status == null) {
+            return TodayInterruptResult.Ambiguous("中断・継続の結果を確認できません。")
+        }
+        if (response.status == 401) {
+            onUnauthorized()
+            return TodayInterruptResult.Unauthorized
+        }
+        if (response.status in 200..299) {
+            val revision = runCatching { parseInterruptPlacementRevision(response.body, operation) }.getOrNull()
+            return revision?.let(TodayInterruptResult::Confirmed)
+                ?: TodayInterruptResult.Ambiguous("中断・継続の結果を確認できません。")
+        }
+        val error = parseInterruptError(response.body)
+        if (response.status >= 500 || error?.first == "infrastructure_ambiguous" || error?.third == true) {
+            return TodayInterruptResult.Ambiguous("中断・継続の結果を確認できません。")
+        }
+        return TodayInterruptResult.Rejected(
+            code = error?.first ?: "http_${response.status}",
+            message = error?.second ?: "中断・継続の前提が変わりました。Todayを再読み込みしてください。",
+        )
+    }
+
+    private fun parseInterruptPlacementRevision(body: String?, request: TodayInterruptEntryRequest): Int {
+        val root = JsonParser(body ?: "").parse() as? JsonValue.Object
+            ?: error("InterruptEntry response must be an object")
+        fun requiredString(obj: JsonValue.Object, key: String): String =
+            (obj.fields[key] as? JsonValue.StringValue)?.value?.takeIf { it.isNotBlank() }
+                ?: error("InterruptEntry response $key must be a non-empty string")
+        fun requiredObject(obj: JsonValue.Object, key: String): JsonValue.Object =
+            obj.fields[key] as? JsonValue.Object ?: error("InterruptEntry response $key must be an object")
+        fun requiredInt(obj: JsonValue.Object, key: String): Int =
+            (obj.fields[key] as? JsonValue.NumberValue)?.value?.toIntOrNull()
+                ?: error("InterruptEntry response $key must be an integer")
+
+        require(requiredString(root, "taskchute_day_id") == request.taskChuteDayId)
+        require(requiredString(root, "source_entry_id") == request.sourceEntryId)
+        require(requiredString(root, "target_entry_id") == request.targetEntryId)
+        require(requiredString(root, "continuation_entry_id") == request.continuationEntryId)
+        requiredString(root, "interruption_instant")
+        val interruptionMinute = requiredInt(root, "interruption_logical_minute")
+        require(interruptionMinute >= 0)
+
+        val sourceExecution = requiredObject(root, "source_execution")
+        require(requiredString(sourceExecution, "id") == request.activeExecutionId)
+        require(requiredString(sourceExecution, "entry_id") == request.sourceEntryId)
+        requiredString(sourceExecution, "started_at")
+        requiredString(sourceExecution, "ended_at")
+        require(requiredString(sourceExecution, "outcome") == "interrupted")
+
+        val targetExecution = requiredObject(root, "target_execution")
+        require(requiredString(targetExecution, "id") == request.targetExecutionId)
+        require(requiredString(targetExecution, "entry_id") == request.targetEntryId)
+        requiredString(targetExecution, "started_at")
+        require(targetExecution.fields["ended_at"] == JsonValue.Null)
+        require(targetExecution.fields["outcome"] == null || targetExecution.fields["outcome"] == JsonValue.Null)
+
+        val continuation = requiredObject(root, "continuation")
+        require(requiredString(continuation, "entry_id") == request.continuationEntryId)
+        requiredString(continuation, "task_id")
+        requiredString(continuation, "section_id")
+        require(requiredInt(continuation, "position") >= 0)
+        require(requiredInt(continuation, "planned_start_minute") == interruptionMinute)
+        val estimate = continuation.fields["estimate_seconds"]
+        require(estimate == null || estimate == JsonValue.Null ||
+            ((estimate as? JsonValue.NumberValue)?.value?.toIntOrNull()?.let { it >= 0 } == true))
+
+        val revision = requiredInt(root, "placement_revision")
+        require(revision == request.expectedPlacementRevision + 1)
+        return revision
+    }
+
+    private fun parseInterruptError(body: String?): Triple<String, String, Boolean>? = runCatching {
+        val root = JsonParser(body ?: "").parse() as? JsonValue.Object ?: return null
+        val error = root.fields["error"] as? JsonValue.Object ?: return null
+        val code = (error.fields["code"] as? JsonValue.StringValue)?.value ?: return null
+        val message = (error.fields["message"] as? JsonValue.StringValue)?.value
+            ?: "中断・継続の前提が変わりました。Todayを再読み込みしてください。"
+        val reconcile = (error.fields["reconcile"] as? JsonValue.BooleanValue)?.value == true
+        Triple(code, message, reconcile)
+    }.getOrNull()
+
     private fun executeMutation(method: String, path: String, body: String?): TodayMutationResult {
         val response = runCatching { request(method, path, body) }.getOrNull()
             ?: return TodayMutationResult.Failure("接続できませんでした。再試行してください。")

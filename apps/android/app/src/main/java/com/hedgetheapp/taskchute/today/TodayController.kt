@@ -40,8 +40,14 @@ class TodayController(
         val predecessorEntryId: String,
         val task: TodayTask,
     )
+    private data class PendingInterrupt(
+        val logicalDate: String,
+        val request: TodayInterruptEntryRequest,
+    )
     private var pendingComplete: PendingComplete? = null
     private var queuedStartIntent: QueuedStartIntent? = null
+    private var pendingInterrupt: PendingInterrupt? = null
+    private var interruptInFlight = false
     private val confirmedPlacementRevisionFloors = mutableMapOf<String, Int>()
     private val staleReconcileRetryFloors = mutableMapOf<String, Int>()
     private val canonicalDayCache = TodayDayMemoryCache()
@@ -163,6 +169,8 @@ class TodayController(
         pendingEntryIds.clear()
         pendingComplete = null
         queuedStartIntent = null
+        pendingInterrupt = null
+        interruptInFlight = false
         confirmedPlacementRevisionFloors.clear()
         staleReconcileRetryFloors.clear()
         state = TodayUiState()
@@ -182,17 +190,24 @@ class TodayController(
     fun start(task: TodayTask) {
         val canonicalDay = state.day ?: return
         val presentedDay = state.presentedDay?.takeIf { it.logicalDate == canonicalDay.logicalDate } ?: return
-        if (!canonicalDay.isCurrent || queuedStartIntent != null || task.lifecycleState != LifecycleState.PLANNED) return
+        if (!canonicalDay.isCurrent || queuedStartIntent != null || pendingInterrupt != null ||
+            task.lifecycleState != LifecycleState.PLANNED
+        ) return
         val predecessor = pendingComplete
         if (predecessor != null && predecessor.logicalDate != canonicalDay.logicalDate) return
         val presentedTask = presentedDay.allEntries.firstOrNull { it.id == task.id } ?: return
-        if (presentedTask.lifecycleState != LifecycleState.PLANNED || !pendingEntryIds.add(task.id)) return
-        if (presentedDay.allEntries.any { it.lifecycleState == LifecycleState.RUNNING } ||
+        val canonicalTarget = canonicalDay.allEntries.firstOrNull { it.id == task.id } ?: return
+        if (presentedTask.lifecycleState != LifecycleState.PLANNED ||
+            canonicalTarget.lifecycleState != LifecycleState.PLANNED
+        ) return
+
+        val hasRunningProjection = presentedDay.allEntries.any { it.lifecycleState == LifecycleState.RUNNING } ||
             presentedDay.activeExecution != null || presentedDay.activeEntry != null
-        ) {
-            pendingEntryIds.remove(task.id)
+        if (hasRunningProjection && predecessor == null) {
+            startInterrupt(canonicalDay, presentedDay, canonicalTarget)
             return
         }
+        if (hasRunningProjection || !pendingEntryIds.add(task.id)) return
         beginOptimisticMutation()
         applyOptimisticDay(applyOptimisticLifecycle(presentedDay, task.id, LifecycleState.RUNNING))
         val queued = predecessor?.let {
@@ -208,6 +223,13 @@ class TodayController(
                 handoff = null,
             )
         }
+    }
+
+    /** Retry an unresolved D-073 mutation with the exact request previously sent. */
+    fun retryInterrupt() {
+        val intent = pendingInterrupt ?: return
+        if (interruptInFlight) return
+        dispatchInterrupt(intent)
     }
 
     fun complete(task: TodayTask) {
@@ -230,6 +252,187 @@ class TodayController(
             if (operationSessionGeneration != sessionGeneration) return@launch
             finishComplete(intent, result)
         }
+    }
+
+    private fun startInterrupt(canonicalDay: TodayDay, presentedDay: TodayDay, target: TodayTask) {
+        val execution = canonicalDay.activeExecution ?: return
+        val taskChuteDayId = canonicalDay.taskChuteDayId?.takeIf { it.isNotBlank() } ?: return
+        val source = canonicalDay.allEntries.singleOrNull {
+            it.id == execution.entryId && it.lifecycleState == LifecycleState.RUNNING
+        } ?: return
+        val presentedSource = presentedDay.allEntries.singleOrNull {
+            it.id == source.id && it.lifecycleState == LifecycleState.RUNNING
+        } ?: return
+        if (!canonicalDay.planningEnabled ||
+            canonicalDay.activeEntry != null || source.routineDerived || target.routineDerived ||
+            presentedSource.executionId != execution.id ||
+            canonicalDay.allEntries.count { it.lifecycleState == LifecycleState.RUNNING } != 1 ||
+            presentedDay.activeExecution?.id != execution.id ||
+            pendingEntryIds.isNotEmpty()
+        ) return
+
+        val request = TodayInterruptEntryRequest(
+            operationId = UUIDv7.next(),
+            taskChuteDayId = taskChuteDayId,
+            sourceEntryId = source.id,
+            activeExecutionId = execution.id,
+            targetEntryId = target.id,
+            targetExecutionId = UUIDv7.next(),
+            continuationEntryId = UUIDv7.next(),
+            expectedPlacementRevision = effectivePlacementRevision(canonicalDay),
+        )
+        val intent = PendingInterrupt(canonicalDay.logicalDate, request)
+        pendingInterrupt = intent
+        canonicalDayCache.remove(canonicalDay.logicalDate)
+        pendingEntryIds += source.id
+        pendingEntryIds += target.id
+        state = state.copy(
+            pendingEntryIds = pendingEntryIds.toSet(),
+            errorMessage = null,
+            interruptFeedback = "中断・継続を処理しています…",
+            canRetryInterrupt = false,
+        )
+        dispatchInterrupt(intent)
+    }
+
+    private fun dispatchInterrupt(intent: PendingInterrupt) {
+        if (pendingInterrupt != intent || interruptInFlight) return
+        interruptInFlight = true
+        state = state.copy(
+            errorMessage = null,
+            interruptFeedback = "中断・継続を処理しています…",
+            canRetryInterrupt = false,
+        )
+        val operationSessionGeneration = sessionGeneration
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { repository.interruptTask(intent.request) }
+                    .getOrElse { TodayInterruptResult.Ambiguous("中断・継続の結果を確認できません。") }
+            }
+            if (operationSessionGeneration != sessionGeneration || pendingInterrupt != intent) return@launch
+            interruptInFlight = false
+            when (result) {
+                is TodayInterruptResult.Confirmed -> {
+                    confirmPlacementRevision(intent.logicalDate, result.placementRevision)
+                    reconcileInterrupt(intent, result.placementRevision, null, null)
+                }
+                is TodayInterruptResult.Ambiguous ->
+                    reconcileInterrupt(intent, null, result.message, null)
+                is TodayInterruptResult.Rejected ->
+                    reconcileInterrupt(intent, null, null, result)
+                TodayInterruptResult.Unauthorized -> {
+                    releaseInterrupt(intent)
+                    deferredRealtimeReload = false
+                    state = state.copy(status = TodayLoadStatus.AUTH_REQUIRED, errorMessage = "認証の有効期限を確認しています…")
+                    onUnauthorized()
+                }
+            }
+        }
+    }
+
+    private fun reconcileInterrupt(
+        intent: PendingInterrupt,
+        requiredPlacementRevision: Int?,
+        ambiguityMessage: String?,
+        rejection: TodayInterruptResult.Rejected?,
+    ) {
+        val operationSessionGeneration = sessionGeneration
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { repository.loadDay(intent.logicalDate) }
+                    .getOrElse { TodayResult.Failure("Todayを再読み込みできませんでした。") }
+            }
+            if (operationSessionGeneration != sessionGeneration || pendingInterrupt != intent) return@launch
+            when (result) {
+                is TodayResult.Success -> {
+                    val day = result.day
+                    if (day.logicalDate != intent.logicalDate || !day.isCurrent) {
+                        finishUnresolvedInterrupt(intent, ambiguityMessage, rejection)
+                        return@launch
+                    }
+                    if (state.day?.logicalDate == day.logicalDate) {
+                        if (publishDay(day, optimisticGeneration)) onCanonicalDayLoaded(day)
+                    } else {
+                        cacheCanonicalDay(day)
+                    }
+                    val confirmed = isInterruptProjection(day, intent.request) &&
+                        (requiredPlacementRevision == null || day.placementRevision >= requiredPlacementRevision)
+                    if (confirmed) {
+                        releaseInterrupt(intent)
+                        state = state.copy(errorMessage = null, interruptFeedback = null, canRetryInterrupt = false)
+                        deferredRealtimeReload = false
+                        flushDeferredRealtimeReload(visible = false)
+                    } else {
+                        finishUnresolvedInterrupt(intent, ambiguityMessage, rejection)
+                    }
+                }
+                TodayResult.Unauthorized -> {
+                    if (rejection != null) {
+                        releaseInterrupt(intent)
+                        state = state.copy(status = TodayLoadStatus.AUTH_REQUIRED, errorMessage = rejectionMessage(rejection))
+                    } else {
+                        state = state.copy(
+                            status = TodayLoadStatus.AUTH_REQUIRED,
+                            interruptFeedback = "認証を確認後、同じ中断・継続操作を再試行してください。",
+                            canRetryInterrupt = true,
+                        )
+                    }
+                    onUnauthorized()
+                }
+                is TodayResult.Failure -> finishUnresolvedInterrupt(intent, ambiguityMessage, rejection)
+            }
+        }
+    }
+
+    private fun finishUnresolvedInterrupt(
+        intent: PendingInterrupt,
+        ambiguityMessage: String?,
+        rejection: TodayInterruptResult.Rejected?,
+    ) {
+        if (rejection != null) {
+            releaseInterrupt(intent)
+            state = state.copy(interruptFeedback = null, canRetryInterrupt = false)
+            setMutationFailure(rejectionMessage(rejection))
+            deferredRealtimeReload = false
+            if (state.day?.logicalDate == intent.logicalDate) load(intent.logicalDate, visible = false)
+            return
+        }
+        val message = ambiguityMessage?.takeIf { it.isNotBlank() }
+            ?: "中断・継続の保存状態を確認できません。"
+        state = state.copy(
+            interruptFeedback = "$message 同じ操作を再試行してください。",
+            canRetryInterrupt = true,
+        )
+    }
+
+    private fun rejectionMessage(rejection: TodayInterruptResult.Rejected): String = when (rejection.code) {
+        "revision_conflict" -> "配置が更新されました。最新状態を確認して、もう一度開始してください。"
+        "resource_conflict" -> "中断・継続の前提が変わりました。最新状態を確認してください。"
+        else -> "中断・継続を実行できませんでした。最新状態を確認してください。"
+    }
+
+    private fun releaseInterrupt(intent: PendingInterrupt) {
+        if (pendingInterrupt != intent) return
+        pendingInterrupt = null
+        interruptInFlight = false
+        pendingEntryIds.remove(intent.request.sourceEntryId)
+        pendingEntryIds.remove(intent.request.targetEntryId)
+        state = state.copy(pendingEntryIds = pendingEntryIds.toSet())
+    }
+
+    private fun isInterruptProjection(day: TodayDay, request: TodayInterruptEntryRequest): Boolean {
+        if (!day.isCurrent || day.taskChuteDayId != request.taskChuteDayId || day.activeEntry != null) return false
+        val activeExecution = day.activeExecution ?: return false
+        val source = day.allEntries.firstOrNull { it.id == request.sourceEntryId } ?: return false
+        val target = day.allEntries.firstOrNull { it.id == request.targetEntryId } ?: return false
+        val continuation = day.allEntries.firstOrNull { it.id == request.continuationEntryId } ?: return false
+        return source.lifecycleState == LifecycleState.COMPLETED &&
+            source.lastOutcome == TodayExecutionOutcome.INTERRUPTED &&
+            target.lifecycleState == LifecycleState.RUNNING && target.executionId == request.targetExecutionId &&
+            continuation.lifecycleState == LifecycleState.PLANNED &&
+            source.taskId != null && continuation.taskId == source.taskId &&
+            activeExecution.entryId == target.id && activeExecution.id == request.targetExecutionId &&
+            day.allEntries.count { it.lifecycleState == LifecycleState.RUNNING } == 1
     }
 
     fun close() {

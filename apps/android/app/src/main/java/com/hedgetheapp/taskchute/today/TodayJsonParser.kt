@@ -81,6 +81,12 @@ internal object TodayJsonParser {
             else -> error("unknown Today lifecycle state")
         }
         val executionSummary = value.nullableObjectField("execution_summary")
+        val lastOutcome = when (executionSummary?.nullableStringField("last_outcome")) {
+            null -> null
+            "completed" -> TodayExecutionOutcome.COMPLETED
+            "interrupted" -> TodayExecutionOutcome.INTERRUPTED
+            else -> error("unknown Today execution outcome")
+        }
         val routine = value.nullableObjectField("routine")
         return TodayTask(
             id = value.stringField("id"),
@@ -107,6 +113,7 @@ internal object TodayJsonParser {
             primaryDocumentId = task.nullableStringField("primary_document_id"),
             routineBaseTitle = routine?.nullableStringField("base_task_title") ?: if (routine != null) task.stringField("title") else null,
             routineDefinitionId = routine?.nullableStringField("routine_definition_id"),
+            lastOutcome = lastOutcome,
         )
     }
 

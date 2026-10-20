@@ -1113,6 +1113,17 @@ private fun TodayContent(
                         }
                     },
                 ) {
+        state.interruptFeedback?.let { message ->
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(message, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
+                if (state.canRetryInterrupt) {
+                    TextButton(onClick = controller::retryInterrupt) { Text("同じ操作を再試行") }
+                }
+            }
+        }
         state.errorMessage?.let {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -2321,20 +2332,25 @@ private fun TodayTaskRow(
                 Spacer(Modifier.width(10.dp))
                 when {
                     task.lifecycleState == LifecycleState.COMPLETED -> {
+                        val interrupted = task.lastOutcome == TodayExecutionOutcome.INTERRUPTED
                         Box(
                             modifier = Modifier.size(48.dp)
                                 .clip(CircleShape)
                                 .background(TaskChuteColors.CompletedControl)
                                 .border(1.dp, TaskChuteColors.TaskActionBorder, CircleShape)
-                                .semantics { contentDescription = "完了済み" },
+                                .semantics { contentDescription = if (interrupted) "中断済み" else "完了済み" },
                             contentAlignment = Alignment.Center,
                         ) {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_material_check_24),
-                                contentDescription = null,
-                                tint = TaskChuteColors.CompletedIcon,
-                                modifier = Modifier.size(17.dp),
-                            )
+                            if (interrupted) {
+                                Text("中断", color = TaskChuteColors.CompletedIcon, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            } else {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_material_check_24),
+                                    contentDescription = null,
+                                    tint = TaskChuteColors.CompletedIcon,
+                                    modifier = Modifier.size(17.dp),
+                                )
+                            }
                         }
                     }
                     showExecutionAction && task.lifecycleState == LifecycleState.PLANNED -> {

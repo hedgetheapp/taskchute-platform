@@ -10,6 +10,7 @@ import kotlinx.coroutines.SupervisorJob
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -395,6 +396,105 @@ class TodayControllerTest {
         assertEquals(0, repository.startCalls.get())
         assertEquals(LifecycleState.COMPLETED, controller.state.presentedDay?.allEntries?.single { it.id == "entry-b" }?.lifecycleState)
         controller.close()
+    }
+
+    @Test
+    fun ordinaryPlannedStartWhileRunningUsesInterruptAndReconcilesHistoryAndContinuation() {
+        val initial = interruptDay()
+        val repository = FakeRepository().apply {
+            loadResult = TodayResult.Success(initial)
+            interruptResults = listOf(TodayInterruptResult.Confirmed(6))
+            onInterruptCall = { request, _ -> loadResultAfterFirst = TodayResult.Success(interruptedDay(initial, request)) }
+        }
+        val controller = controller(repository)
+        controller.loadCurrent()
+        assertTrue(repository.loadStarted.await(2, TimeUnit.SECONDS))
+        assertTrue(awaitState(controller) { it.day?.activeExecution?.entryId == "entry-a" })
+
+        controller.start(initial.allEntries.single { it.id == "entry-b" })
+
+        assertTrue(awaitState(controller) {
+            it.pendingEntryIds.isEmpty() && it.day?.activeExecution?.entryId == "entry-b"
+        })
+        val request = repository.interruptRequests.single()
+        assertEquals("day-1", request.taskChuteDayId)
+        assertEquals("entry-a", request.sourceEntryId)
+        assertEquals("execution-a", request.activeExecutionId)
+        assertEquals("entry-b", request.targetEntryId)
+        assertEquals(5, request.expectedPlacementRevision)
+        assertEquals(6, controller.state.day?.placementRevision)
+        assertEquals(TodayExecutionOutcome.INTERRUPTED, controller.state.day?.allEntries?.single { it.id == "entry-a" }?.lastOutcome)
+        assertEquals(LifecycleState.RUNNING, controller.state.day?.runningTask?.lifecycleState)
+        assertEquals("entry-b", controller.state.day?.activeExecution?.entryId)
+        assertEquals(request.targetExecutionId, controller.state.day?.activeExecution?.id)
+        assertEquals(1, controller.state.day?.allEntries?.count { it.lifecycleState == LifecycleState.RUNNING })
+        assertEquals(LifecycleState.PLANNED, controller.state.day?.allEntries?.single { it.id == request.continuationEntryId }?.lifecycleState)
+        assertEquals("task-a", controller.state.day?.allEntries?.single { it.id == request.continuationEntryId }?.taskId)
+        assertEquals(0, repository.startCalls.get())
+        assertEquals(0, repository.completeCalls.get())
+        controller.close()
+    }
+
+    @Test
+    fun ambiguousInterruptKeepsAndRetriesTheExactRequest() {
+        val initial = interruptDay()
+        val repository = FakeRepository().apply {
+            loadResult = TodayResult.Success(initial)
+            interruptResults = listOf(
+                TodayInterruptResult.Ambiguous("transport uncertain"),
+                TodayInterruptResult.Confirmed(6),
+            )
+            onInterruptCall = { request, attempt ->
+                if (attempt == 2) loadResultAfterFirst = TodayResult.Success(interruptedDay(initial, request))
+            }
+        }
+        val controller = controller(repository)
+        controller.loadCurrent()
+        assertTrue(repository.loadStarted.await(2, TimeUnit.SECONDS))
+        assertTrue(awaitState(controller) { it.day?.activeExecution?.entryId == "entry-a" })
+
+        controller.start(initial.allEntries.single { it.id == "entry-b" })
+        assertTrue(awaitState(controller) { it.canRetryInterrupt })
+        val firstRequest = repository.interruptRequests.single()
+        assertEquals("entry-a", controller.state.day?.activeExecution?.entryId)
+        assertEquals(LifecycleState.PLANNED, controller.state.day?.allEntries?.single { it.id == "entry-b" }?.lifecycleState)
+
+        controller.retryInterrupt()
+
+        assertTrue(awaitState(controller) { it.pendingEntryIds.isEmpty() && it.interruptFeedback == null })
+        assertEquals(2, repository.interruptRequests.size)
+        assertSame(firstRequest, repository.interruptRequests[1])
+        assertEquals(firstRequest, repository.interruptRequests[1])
+        assertEquals(5, repository.interruptRequests[1].expectedPlacementRevision)
+        assertEquals(firstRequest.operationId, repository.interruptRequests[1].operationId)
+        assertEquals(firstRequest.targetExecutionId, repository.interruptRequests[1].targetExecutionId)
+        assertEquals(firstRequest.continuationEntryId, repository.interruptRequests[1].continuationEntryId)
+        controller.close()
+    }
+
+    @Test
+    fun interruptRejectsRoutineNonCurrentAndMismatchedActiveSource() {
+        val base = interruptDay()
+        val routineSource = base.copy(sections = base.sections.map { section ->
+            section.copy(entries = section.entries.map { if (it.id == "entry-a") it.copy(routineDerived = true) else it })
+        })
+        val routineTarget = base.copy(sections = base.sections.map { section ->
+            section.copy(entries = section.entries.map { if (it.id == "entry-b") it.copy(routineDerived = true) else it })
+        })
+        val nonCurrent = base.copy(isCurrent = false)
+        val mismatched = base.copy(activeExecution = TodayExecution("execution-other", "entry-a", "2026-09-14T01:00:00Z", 600))
+
+        listOf(routineSource, routineTarget, nonCurrent, mismatched).forEach { initial ->
+            val repository = FakeRepository().apply { loadResult = TodayResult.Success(initial) }
+            val controller = controller(repository)
+            controller.loadCurrent()
+            assertTrue(repository.loadStarted.await(2, TimeUnit.SECONDS))
+            assertTrue(awaitState(controller) { it.day != null })
+            controller.start(initial.allEntries.single { it.id == "entry-b" })
+            assertEquals(0, repository.interruptCalls.get())
+            assertEquals(0, repository.startCalls.get())
+            controller.close()
+        }
     }
 
     @Test
@@ -1002,6 +1102,8 @@ class TodayControllerTest {
         var loadResult: TodayResult = TodayResult.Success(emptyDay())
         var startResult: TodayMutationResult = TodayMutationResult.Success
         var completeResult: TodayMutationResult = TodayMutationResult.Success
+        var interruptResults: List<TodayInterruptResult> = emptyList()
+        var onInterruptCall: ((TodayInterruptEntryRequest, Int) -> Unit)? = null
         var completedTask: TodayTask? = null
         var loadResultAfterFirst: TodayResult? = null
         var loadResults: List<TodayResult>? = null
@@ -1020,6 +1122,8 @@ class TodayControllerTest {
         val releaseComplete = CountDownLatch(1)
         val startCalls = AtomicInteger()
         val completeCalls = AtomicInteger()
+        val interruptCalls = AtomicInteger()
+        val interruptRequests = CopyOnWriteArrayList<TodayInterruptEntryRequest>()
         val startedEntryIds = CopyOnWriteArrayList<String>()
         val startPlacementRevisions = CopyOnWriteArrayList<Int>()
         val events = CopyOnWriteArrayList<String>()
@@ -1117,6 +1221,14 @@ class TodayControllerTest {
             events += "complete-end:${task.id}"
             return completeResult
         }
+
+        override fun interruptTask(request: TodayInterruptEntryRequest): TodayInterruptResult {
+            val attempt = interruptCalls.incrementAndGet()
+            interruptRequests += request
+            onInterruptCall?.invoke(request, attempt)
+            events += "interrupt:${request.operationId}"
+            return interruptResults.getOrNull(attempt - 1) ?: TodayInterruptResult.Rejected("unsupported", "unsupported")
+        }
     }
 
     private companion object {
@@ -1159,6 +1271,58 @@ class TodayControllerTest {
             activeExecution = if (aState == LifecycleState.RUNNING) TodayExecution("execution-a", "entry-a", "2026-09-14T01:00:00Z", 600)
                 else if (bState == LifecycleState.RUNNING) TodayExecution("execution-b", "entry-b", "2026-09-14T02:00:00Z", 600) else null,
         )
+
+        fun interruptDay(sourceRoutine: Boolean = false, targetRoutine: Boolean = false) = TodayDay(
+            logicalDate = "2026-09-14",
+            isCurrent = true,
+            planningEnabled = true,
+            placementRevision = 5,
+            sections = listOf(TodaySection(
+                "section-1", "Morning", 480, 720,
+                listOf(
+                    task(LifecycleState.RUNNING).copy(
+                        id = "entry-a", title = "Task A", taskId = "task-a", executionId = "execution-a",
+                        routineDerived = sourceRoutine,
+                    ),
+                    task(LifecycleState.PLANNED).copy(
+                        id = "entry-b", title = "Task B", taskId = "task-b", executionId = null,
+                        routineDerived = targetRoutine,
+                    ),
+                ),
+            )),
+            unsectionedEntries = emptyList(),
+            activeExecution = TodayExecution("execution-a", "entry-a", "2026-09-14T01:00:00Z", 600),
+            taskChuteDayId = "day-1",
+        )
+
+        fun interruptedDay(initial: TodayDay, request: TodayInterruptEntryRequest): TodayDay {
+            val source = initial.allEntries.single { it.id == request.sourceEntryId }.copy(
+                lifecycleState = LifecycleState.COMPLETED,
+                executionId = null,
+                activeStartedAt = null,
+                lastEndedAt = "2026-09-14T01:01:00Z",
+                lastOutcome = TodayExecutionOutcome.INTERRUPTED,
+            )
+            val target = initial.allEntries.single { it.id == request.targetEntryId }.copy(
+                lifecycleState = LifecycleState.RUNNING,
+                executionId = request.targetExecutionId,
+                activeStartedAt = "2026-09-14T01:01:00Z",
+            )
+            val continuation = source.copy(
+                id = request.continuationEntryId,
+                lifecycleState = LifecycleState.PLANNED,
+                executionId = null,
+                activeStartedAt = null,
+                plannedStartMinute = 541,
+                estimateSeconds = 540,
+                lastOutcome = null,
+            )
+            return initial.copy(
+                placementRevision = request.expectedPlacementRevision + 1,
+                sections = listOf(initial.sections.single().copy(entries = listOf(source, target, continuation))),
+                activeExecution = TodayExecution(request.targetExecutionId, target.id, "2026-09-14T01:01:00Z", 600),
+            )
+        }
 
         fun crossDayDay() = TodayDay(
             logicalDate = "2026-10-05",

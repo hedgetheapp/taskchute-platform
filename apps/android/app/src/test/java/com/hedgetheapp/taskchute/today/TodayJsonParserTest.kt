@@ -52,6 +52,21 @@ class TodayJsonParserTest {
     }
 
     @Test
+    fun parsesInterruptedOutcomeWithoutReclassifyingLifecycle() {
+        val completedProjection = SAMPLE
+            .replace("\"lifecycle_state\":\"running\"", "\"lifecycle_state\":\"completed\"")
+            .replace(
+                "\"active_execution\":{\"id\":\"execution-1\",\"entry_id\":\"e1\",\"started_at\":\"2026-09-14T01:00:00Z\",\"ended_at\":null,\"entry_estimate_seconds\":1800}",
+                "\"active_execution\":null",
+            )
+            .replace("\"last_outcome\":null", "\"last_outcome\":\"interrupted\"")
+        val day = TodayJsonParser.parse(completedProjection)
+
+        assertEquals(LifecycleState.COMPLETED, day.sections.single().entries.single().lifecycleState)
+        assertEquals(TodayExecutionOutcome.INTERRUPTED, day.sections.single().entries.single().lastOutcome)
+    }
+
+    @Test
     fun parsesRoutineBaseTitleForReminderMetadataWithoutChangingEffectiveTitle() {
         val day = TodayJsonParser.parse(
             SAMPLE.replace(

@@ -431,6 +431,33 @@ class TodayScreenInstrumentedTest {
     }
 
     @Test
+    fun plannedStartWhileRunningShowsInterruptedHistoryRunningTargetAndContinuation() {
+        val initial = interruptDay()
+        val repo = FakeTodayRepository(initialDay = initial).apply {
+            interruptResult = TodayInterruptResult.Confirmed(6)
+            onInterruptAccepted = { request -> currentDay = interruptedDay(initial, request) }
+        }
+        launchScreen(repo)
+        waitForStatus(TodayLoadStatus.CONTENT)
+
+        composeRule.onNodeWithContentDescription("タスクを開始").performClick()
+
+        composeRule.waitUntil(10_000) {
+            repo.interruptCalls.get() == 1 && controller?.state?.pendingEntryIds?.isEmpty() == true &&
+                controller?.state?.day?.activeExecution?.entryId == "entry-b"
+        }
+        val day = requireNotNull(controller?.state?.day)
+        assertEquals(1, repo.interruptCalls.get())
+        assertEquals(0, repo.startCalls.get())
+        assertEquals(TodayExecutionOutcome.INTERRUPTED, day.allEntries.single { it.id == "entry-a" }.lastOutcome)
+        assertEquals(LifecycleState.RUNNING, day.allEntries.single { it.id == "entry-b" }.lifecycleState)
+        assertEquals(LifecycleState.PLANNED, day.allEntries.single { it.id == repo.interruptRequests.single().continuationEntryId }.lifecycleState)
+        assertEquals(1, day.allEntries.count { it.lifecycleState == LifecycleState.RUNNING })
+        composeRule.onNodeWithContentDescription("中断済み").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("実行中タスクを完了").assertIsDisplayed()
+    }
+
+    @Test
     fun runningPanelCompleteDispatchesOnceAndCompletedTaskHasNoStart() {
         val repo = launchScreen(FakeTodayRepository(initialDay = dayWith(LifecycleState.RUNNING)).apply { holdComplete = true })
         waitForStatus(TodayLoadStatus.CONTENT)
@@ -3283,12 +3310,18 @@ class TodayScreenInstrumentedTest {
         var onStartAccepted: ((TodayTask) -> Unit)? = null
         @Volatile
         var onCompleteAccepted: ((TodayTask) -> Unit)? = null
+        @Volatile
+        var interruptResult: TodayInterruptResult = TodayInterruptResult.Rejected("unsupported", "unsupported")
+        @Volatile
+        var onInterruptAccepted: ((TodayInterruptEntryRequest) -> Unit)? = null
         val releaseLoad = CountDownLatch(1)
         val releaseRefresh = CountDownLatch(1)
         val releaseStart = CountDownLatch(1)
         val releaseComplete = CountDownLatch(1)
         val startCalls = AtomicInteger()
         val completeCalls = AtomicInteger()
+        val interruptCalls = AtomicInteger()
+        val interruptRequests = CopyOnWriteArrayList<TodayInterruptEntryRequest>()
         val requestedDates = mutableListOf<String?>()
         private val heldLogicalDates = ConcurrentHashMap.newKeySet<String>()
         private val dateReadStarted = ConcurrentHashMap<String, CountDownLatch>()
@@ -3355,6 +3388,13 @@ class TodayScreenInstrumentedTest {
             if (holdComplete) releaseComplete.await()
             onCompleteAccepted?.invoke(task) ?: run { currentDay = dayWith(LifecycleState.COMPLETED) }
             return TodayMutationResult.Success
+        }
+
+        override fun interruptTask(request: TodayInterruptEntryRequest): TodayInterruptResult {
+            interruptCalls.incrementAndGet()
+            interruptRequests += request
+            onInterruptAccepted?.invoke(request)
+            return interruptResult
         }
     }
 
@@ -3502,6 +3542,35 @@ class TodayScreenInstrumentedTest {
             ),
             activeExecution = TodayExecution("execution-a", "entry-a", "2026-09-14T01:00:00Z", 600),
         )
+
+        fun interruptDay() = handoffDay().copy(taskChuteDayId = "day-1")
+
+        fun interruptedDay(initial: TodayDay, request: TodayInterruptEntryRequest): TodayDay {
+            val source = initial.allEntries.single { it.id == request.sourceEntryId }.copy(
+                lifecycleState = LifecycleState.COMPLETED,
+                executionId = null,
+                activeStartedAt = null,
+                lastEndedAt = "2026-09-14T01:01:00Z",
+                lastOutcome = TodayExecutionOutcome.INTERRUPTED,
+            )
+            val target = initial.allEntries.single { it.id == request.targetEntryId }.copy(
+                lifecycleState = LifecycleState.RUNNING,
+                executionId = request.targetExecutionId,
+                activeStartedAt = "2026-09-14T01:01:00Z",
+            )
+            val continuation = source.copy(
+                id = request.continuationEntryId,
+                lifecycleState = LifecycleState.PLANNED,
+                plannedStartMinute = 541,
+                estimateSeconds = 540,
+                lastOutcome = null,
+            )
+            return initial.copy(
+                placementRevision = request.expectedPlacementRevision + 1,
+                sections = listOf(initial.sections.single().copy(entries = listOf(source, target, continuation))),
+                activeExecution = TodayExecution(request.targetExecutionId, target.id, "2026-09-14T01:01:00Z", 600),
+            )
+        }
 
         fun displayTestDay(): TodayDay {
             val planned = dayWith().sections.single().entries.single().copy(
