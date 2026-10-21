@@ -36,7 +36,7 @@ The Product Owner explicitly selected **Option A** after Codex identified the D-
 
 Acceptance: when other Planned rows already exist in B's Section, the user sees **B → C → other Planned work**, independent of those rows' planned-start cohort. An unrelated ordinary D-073 interruption continues to use its existing D-073/D-081 order; title edits and Completed-hide do not corrupt or lose C. Cover Running/Completed B, multiple Quick operations, completed-hidden, no duplicate C, and canonical Web/Android convergence using focused tests.
 
-## 2026-10-21 Android responsiveness corrective — Approved user feedback (implementation pending)
+## 2026-10-21 Android responsiveness corrective — Approved / implemented at `e53fd8d75ae93d10068ee892f03cc74b894ee8e9` (focused evidence)
 
 The Product Owner's Galaxy S23 representative observation is that immediately after ordinary Task Start the bottom Running progress panel appears **before** the `割込` action, which only appears after several seconds; tapping `割込` shows an unwanted `割り込みを処理しています…` sentence and a perceptible delay before the next state.
 
